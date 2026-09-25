@@ -91,7 +91,7 @@ function envelope(overrides = {}) {
 /* ── the sitemap reader ─────────────────────────────────────────────────── */
 
 test('the sale route takes sale apartments and nothing else from a mixed sitemap', () => {
-  const urls = sitemapUrls(sitemapXml, SALE_ROUTE, envelope(), HOME_GE);
+  const { urls } = sitemapUrls(sitemapXml, SALE_ROUTE, envelope(), HOME_GE);
   assert.ok(urls.length > 0, 'the sale route found no listings in its own sitemap');
   for (const url of urls) {
     assert.match(url, /\/binebi\/iyideba-binebi\//);
@@ -110,7 +110,7 @@ test('one listing is taken once, not once per language', () => {
    * rediscover the same sku, and hand the entity resolver a mess this file
    * created.
    */
-  const urls = sitemapUrls(sitemapXml, SALE_ROUTE, envelope(), HOME_GE);
+  const { urls } = sitemapUrls(sitemapXml, SALE_ROUTE, envelope(), HOME_GE);
   assert.equal(urls.some((u) => u.includes('/en/')), false, '/en/ duplicates were taken too');
   assert.equal(urls.some((u) => u.includes('/ru/')), false, '/ru/ duplicates were taken too');
 
@@ -120,8 +120,8 @@ test('one listing is taken once, not once per language', () => {
 });
 
 test('the city hint narrows the sitemap before anything is fetched', () => {
-  const all = sitemapUrls(sitemapXml, SALE_ROUTE, envelope({ city: null }), HOME_GE);
-  const tbilisi = sitemapUrls(sitemapXml, SALE_ROUTE, envelope({ city: 'Tbilisi' }), HOME_GE);
+  const { urls: all } = sitemapUrls(sitemapXml, SALE_ROUTE, envelope({ city: null }), HOME_GE);
+  const { urls: tbilisi } = sitemapUrls(sitemapXml, SALE_ROUTE, envelope({ city: 'Tbilisi' }), HOME_GE);
   assert.ok(tbilisi.length > 0, 'the Tbilisi hint filtered every URL away');
   assert.ok(tbilisi.length <= all.length);
   for (const url of tbilisi) assert.match(url, /-tbilisi-/i);
@@ -133,8 +133,8 @@ test('a Georgian city name reaches the Latin slug', () => {
    * the cross-script case that made entity resolution impossible before
    * place.ts existed, arriving now in a URL filter.
    */
-  const inGeorgian = sitemapUrls(sitemapXml, SALE_ROUTE, envelope({ city: 'თბილისი' }), HOME_GE);
-  const inLatin = sitemapUrls(sitemapXml, SALE_ROUTE, envelope({ city: 'Tbilisi' }), HOME_GE);
+  const { urls: inGeorgian } = sitemapUrls(sitemapXml, SALE_ROUTE, envelope({ city: 'თბილისი' }), HOME_GE);
+  const { urls: inLatin } = sitemapUrls(sitemapXml, SALE_ROUTE, envelope({ city: 'Tbilisi' }), HOME_GE);
   assert.deepEqual(inGeorgian, inLatin);
   assert.ok(inGeorgian.length > 0);
 });
@@ -145,8 +145,8 @@ test('a city the place vocabulary does not know reads the sitemap unfiltered', (
    * and guessing one would report a working source as an empty market --
    * strictly worse than reading wider and letting withinEnvelope judge.
    */
-  const unfiltered = sitemapUrls(sitemapXml, SALE_ROUTE, envelope({ city: null }), HOME_GE);
-  const unknown = sitemapUrls(sitemapXml, SALE_ROUTE, envelope({ city: 'Zugdidi' }), HOME_GE);
+  const { urls: unfiltered } = sitemapUrls(sitemapXml, SALE_ROUTE, envelope({ city: null }), HOME_GE);
+  const { urls: unknown } = sitemapUrls(sitemapXml, SALE_ROUTE, envelope({ city: 'Zugdidi' }), HOME_GE);
   assert.equal(latinNameFor('Zugdidi'), null, 'precondition: this city is not in the table');
   assert.deepEqual(unknown, unfiltered);
 });
@@ -197,6 +197,29 @@ test('the Georgian title is preserved rather than translated away', async () => 
 
   // The raw evidence stays in the language the source published it in.
   assert.match(listing.title ?? '', /[Ⴀ-ჿ]/, 'the Georgian title was lost');
+});
+
+test('a city the sitemap does not carry is an honest zero, not an unreadable source', async () => {
+  /*
+   * THE MISREPORT THIS FIXES, caught by a live run rather than by a fixture.
+   * Asking home.ge for Batumi returned PARSE_FAILED -- "we could not read
+   * it" -- when the truth was that sitemap_listings1.xml is 2,162 Tbilisi
+   * out of 2,164 and simply has no Batumi in it. Reported that way a working
+   * portal looks broken and gets marked DEGRADED, which is exactly the
+   * fetch-failed versus zero-results confusion this codebase keeps insisting
+   * on separating.
+   */
+  const adapter = new ConfiguredPortalAdapter({ config: HOME_GE, routes: [SALE_ROUTE] });
+  const ctx = context({ [SITEMAP_URL]: sitemapXml });
+  const result = await adapter.searchListings(envelope({ city: 'Batumi' }), ctx);
+
+  assert.equal(result.ok, true, 'a city absent from the sitemap was reported as a failure');
+  assert.equal(result.value.listings.length, 0);
+  // The sitemap DID name listings for this route; the city filter removed them.
+  assert.ok(result.value.rejectedByEnvelope > 0,
+    'the listings the city filter removed were not counted');
+  // Unknown, not zero: the site never said how many Batumi flats it has.
+  assert.equal(result.value.totalAvailable, null);
 });
 
 test('a sitemap with no matching path is a parse failure, not an empty market', async () => {

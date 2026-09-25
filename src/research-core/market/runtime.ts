@@ -626,6 +626,13 @@ export function createPortalRuntime(options: PortalRuntimeOptions = {}): PortalR
    * returns null for a place that table does not know -- in which case the
    * sitemap is read unfiltered rather than filtered down to nothing.
    */
+  /* The three child sitemaps its index names, in the order it names them. */
+  const HOME_GE_SITEMAPS = [
+    'https://www.home.ge/files/sitemap/sitemap_listings1.xml',
+    'https://www.home.ge/files/sitemap/sitemap_listings2.xml',
+    'https://www.home.ge/files/sitemap/sitemap_listings3.xml',
+  ] as const;
+
   const homeGeCityHint = (city: string): RegExp | null => {
     const latin = latinNameFor(city);
     return latin ? new RegExp(`-${latin}-`, 'i') : null;
@@ -671,6 +678,10 @@ export function createPortalRuntime(options: PortalRuntimeOptions = {}): PortalR
             pathPattern: /home\.ge\/binebi\/iyideba-binebi\//i,
             /* The slug spells the city in Latin: ...-tbilisi-saburtalo-26565 */
             cityHint: homeGeCityHint,
+            /* Split by id, not by city: listings1 is 2,162 Tbilisi out of
+               2,164, so a Batumi question has to keep walking. Read only
+               while the route is still short of what was asked for. */
+            alsoTry: HOME_GE_SITEMAPS.slice(1),
           },
         },
         {
@@ -680,6 +691,7 @@ export function createPortalRuntime(options: PortalRuntimeOptions = {}): PortalR
           sitemap: {
             pathPattern: /home\.ge\/binebi\/qiravdeba-binebi\//i,
             cityHint: homeGeCityHint,
+            alsoTry: HOME_GE_SITEMAPS.slice(1),
           },
         },
       ],

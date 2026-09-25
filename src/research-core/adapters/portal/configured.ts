@@ -95,6 +95,18 @@ export interface CollectionRoute {
     /** Only <loc> entries matching this are listings for this route. */
     pathPattern: RegExp;
     /**
+     * Further child sitemaps, read ONLY when the ones before them have not
+     * produced enough candidates.
+     *
+     * home.ge splits its listings across three files by id, not by city:
+     * sitemap_listings1.xml is 2,162 Tbilisi out of 2,164, so a Batumi
+     * question finds nothing there and everything it wants in a later file.
+     * Reading all three every time would move 1.7MB to answer a question the
+     * first file usually settles, so they are walked in order and the walk
+     * stops as soon as the route has enough.
+     */
+    alsoTry?: readonly string[];
+    /**
      * Optional slug filter, applied to the URL before anything is fetched.
      *
      * home.ge writes the city and district into the slug --
@@ -250,12 +262,68 @@ export class ConfiguredPortalAdapter implements ListingPortalAdapter {
        * whole point is to not spend 2,000 requests finding the 20 that are in
        * the right city.
        */
-      candidates = sitemapUrls(collection.body, route, query, this.config);
-      if (candidates.length === 0) {
+      const wantedCount = Math.max(1, Math.min(query.limit ?? 10, 25));
+      let read = sitemapUrls(collection.body, route, query, this.config);
+      candidates = [...read.urls];
+      let matchedPath = read.matchedPath;
+
+      /*
+       * Walk the further child sitemaps ONLY while short. home.ge splits its
+       * listings by id rather than by city -- listings1 is 2,162 Tbilisi out
+       * of 2,164 -- so a Tbilisi question stops here and a Batumi one keeps
+       * going. Reading all three unconditionally would move 1.7MB to answer
+       * a question the first file usually settles.
+       */
+      for (const extra of route.sitemap.alsoTry ?? []) {
+        if (candidates.length >= wantedCount) break;
+        let next;
+        try {
+          next = await context.fetchDocument(extra);
+          networkRequests += 1;
+        } catch {
+          /* A child sitemap that will not load does not invalidate the ones
+             that did; the shortfall is reported by what we return. */
+          continue;
+        }
+        if (next.status >= 400) continue;
+        read = sitemapUrls(next.body, route, query, this.config);
+        matchedPath += read.matchedPath;
+        for (const url of read.urls) {
+          if (!candidates.includes(url)) candidates.push(url);
+        }
+      }
+
+      /*
+       * TWO DIFFERENT EMPTIES. Nothing matched the path at all means the file
+       * is not what this route thinks it is -- a PARSE failure. Plenty
+       * matched and the city hint removed them all means the sitemap is fine
+       * and this market is not in it, which is an honest zero and must not be
+       * reported as an unreadable source. Reported the other way round, a
+       * working portal looks broken and gets marked DEGRADED.
+       */
+      if (matchedPath === 0) {
         return {
           ok: false,
           reason: 'PARSE_FAILED',
           detail: `the sitemap carried no URL matching ${route.sitemap.pathPattern}`,
+        };
+      }
+      if (candidates.length === 0) {
+        return {
+          ok: true,
+          value: {
+            listings: [],
+            /* The site named this many for the route and did not say how many
+               are in this city, so the total stays unknown rather than 0. */
+            totalAvailable: null,
+            truncated: false,
+            appliedFilters: appliedFilters(query, new Set<string>(), Boolean(route.countryCode)),
+            /* Counted as rejected rather than never-seen: the sitemap did
+               name them and the city filter is what removed them. */
+            rejectedByEnvelope: matchedPath,
+            pagesFetched: 1 + (route.sitemap.alsoTry?.length ?? 0),
+            networkRequests,
+          },
         };
       }
     } else {
@@ -613,28 +681,46 @@ function appliedFilters(
  * picks one, because fetching a listing three times to learn the same id is
  * the mistake this would otherwise make quietly.
  */
+export interface SitemapRead {
+  /** URLs this route may fetch, after every filter. */
+  urls: string[];
+  /**
+   * How many belonged to this route BEFORE the city hint.
+   *
+   * The two numbers answer different questions and used to be one. Zero
+   * matched means we could not read the file -- wrong pattern, wrong
+   * sitemap, a site that changed shape -- and that is a PARSE failure. Many
+   * matched and none survived the hint means the file is fine and this city
+   * simply is not in it, which is a true statement about a market and must
+   * never be reported as an unreadable source.
+   */
+  matchedPath: number;
+}
+
 export function sitemapUrls(
   xml: string,
   route: CollectionRoute,
   query: ListingQuery,
   config: PortalSourceConfig,
-): string[] {
+): SitemapRead {
   const spec = route.sitemap;
-  if (!spec) return [];
+  if (!spec) return { urls: [], matchedPath: 0 };
   const hint = query.city && spec.cityHint ? spec.cityHint(query.city) : null;
 
-  const out: string[] = [];
+  const urls: string[] = [];
   const seen = new Set<string>();
+  let matchedPath = 0;
   for (const match of xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)) {
     const url = servableUrl(match[1], config);
     if (!url || seen.has(url)) continue;
     if (!spec.pathPattern.test(url)) continue;
     if (!isDetailUrl(url, config)) continue;
-    if (hint && !hint.test(url)) continue;
     seen.add(url);
-    out.push(url);
+    matchedPath += 1;
+    if (hint && !hint.test(url)) continue;
+    urls.push(url);
   }
-  return out;
+  return { urls, matchedPath };
 }
 
 /**

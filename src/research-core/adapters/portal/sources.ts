@@ -727,13 +727,47 @@ export const HOME_GE: PortalSourceConfig = {
   saleBasis: 'ASKING_SALE_PRICE',
   rentBasis: 'ASKING_RENT',
   /*
-   * Nothing here. The page publishes a schema.org Product with an Offer
-   * carrying price and priceCurrency, and a name that states transaction,
-   * rooms, condition, city and district in Georgian. The SCHEMA_ORG strategy
-   * reads all of it, and a text rule invented on top would be a second
-   * reader of a page that already answers properly.
+   * THE OFFER CARRIES THE MONEY; THE TITLE CARRIES THE PLACE.
+   *
+   * home.ge's JSON-LD Product has name, description and an Offer, and
+   * NOTHING ELSE -- no address, no floor size, no room count. The first live
+   * run against the real site returned city null, district null, rooms null
+   * and areaSqm null on both listings.
+   *
+   * A null city is not a harmless gap. withinEnvelope treats an absent field
+   * as UNEVALUATED and keeps the listing, so a Tbilisi campaign would have
+   * accepted a Batumi flat and reported the city filter as applied -- the
+   * exact Chakvi failure this framework already has a regression test for.
+   *
+   * The title states all of it, comma-delimited in a fixed order:
+   *
+   *   იყიდება ბინა, 7 ოთახიანი, ახალი აშენებული, თბილისი, ვაკე
+   *   [sale] [flat], [7 rooms], [newly built], [Tbilisi], [Vake]
+   *
+   * So the rules below anchor on ოთახიანი -- the one token that is always
+   * present and always in the same slot -- rather than counting commas from
+   * either end. A listing that omits the condition slot yields ABSENCE from
+   * these rules, which is the honest answer; counting from the end would
+   * have silently returned the condition as the city instead.
+   *
+   * SCOPED TO THE TITLE for the reason place.ge's rules are: unscoped, this
+   * captured a sidebar of related listings and produced a plausible, wrong
+   * district.
+   *
+   * NO AREA RULE. The size appears only in Georgian prose inside the
+   * description ("130 კვ. ფართის ბინა"), in a sentence whose shape varies
+   * per seller. A pattern fitted to two examples would produce confident
+   * wrong numbers on the third, and areaSqm feeds price-per-sqm. Absent is
+   * correct until the site publishes it as data.
    */
-  enrich: [],
+  enrich: [
+    { field: 'rooms', from: 'TEXT_PATTERN', scope: 'TITLE',
+      pattern: /,\s*(\d+)\s*ოთახიანი/ },
+    { field: 'city', from: 'TEXT_CAPTURE', scope: 'TITLE',
+      pattern: /ოთახიანი,\s*[^,]{3,30},\s*([^,]{3,25})/ },
+    { field: 'district', from: 'TEXT_CAPTURE', scope: 'TITLE',
+      pattern: /ოთახიანი,\s*[^,]{3,30},\s*[^,]{3,25},\s*([^,\-]{3,30})/ },
+  ],
 };
 
 export const PORTAL_SOURCES: readonly PortalSourceConfig[] = [

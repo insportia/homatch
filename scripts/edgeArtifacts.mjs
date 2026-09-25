@@ -710,6 +710,32 @@ if (isMain) {
       } else {
         tally.unproven += 1;
         unproven.push(name);
+        /*
+         * THE DIAGNOSIS GOES IN THE ANNOTATION, NOT ONLY IN THE LOG.
+         *
+         * Everything printed above lands in the job log, and a job log is
+         * readable by whoever can authenticate to this repository's Actions
+         * API. A check-run ANNOTATION is readable more widely, and it is
+         * what anybody reaching for the failure sees first -- so a run that
+         * failed for a knowable reason should not require log access to
+         * learn what that reason was.
+         *
+         * The names of mismatched modules are path shapes, not contents:
+         * this is public build output and the files themselves stay out of
+         * it. Path shapes are also the thing that has repeatedly cost a run
+         * to rediscover.
+         */
+        const detail = [
+          `state=${proof.state}`,
+          `version=${pre[name]?.version ?? 0}->${proof.version}`,
+          `deployment=${moved}`,
+          `modules=${proof.deployedFileCount} deployed/${proof.matched} compared`,
+          proof.mismatched.length ? `mismatched=${proof.mismatched.slice(0, 6).join(',')}` : '',
+          proof.foreign.length ? `notInRevision=${proof.foreign.slice(0, 4).join(',')}` : '',
+          proof.unresolved.length ? `noSource=${proof.unresolved.slice(0, 4).join(',')}` : '',
+          `reason=${proof.reason}`,
+        ].filter(Boolean).join(' ');
+        console.log(`::error::${name} UNPROVEN — ${detail}`);
         if (proof.state === PROOF.STALE) tally.stale += 1;
         else if (proof.state === PROOF.INCOMPLETE) tally.incomplete += 1;
         else tally.unavailable += 1;

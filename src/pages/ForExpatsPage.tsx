@@ -48,6 +48,10 @@ import {
   type ExpatUpdate,
   type RentalCommunity,
 } from '@/services/expats';
+import { PublicHeader, HeaderSpacer } from '@/components/home/PublicHeader';
+import { usePublicNavLinks } from '@/site/publicNav';
+import { SiteFooter } from '@/components/home/sections/SiteFooter';
+import LocalSectionNav from '@/components/common/LocalSectionNav';
 
 export default function ForExpatsPage() {
   const { t, lang } = useLanguage();
@@ -84,12 +88,39 @@ export default function ForExpatsPage() {
     };
   }, [tbilisi.nameKa, tbilisi.nameEn]);
 
+  const headerLinks = usePublicNavLinks();
+
   return (
-    <>
+    <div className="min-h-screen overflow-x-hidden bg-background text-foreground">
       <PageMeta title={t('expat_meta_title')} description={t('expat_meta_description')} />
       <ExpatSeo path="/for-expats/georgia" />
 
+      {/*
+        * FOR EXPATS IS PART OF HOMATCH, AND NOW LOOKS LIKE IT.
+        *
+        * These three pages rendered a bare fragment: no header, no footer,
+        * no way back. A visitor who arrived from a search result was inside
+        * what felt like a different product, with the rest of Homatch
+        * unreachable and nothing saying where they were. Solid rather than
+        * transparent because this hero is a light canvas -- the transparent
+        * state only works over a full-bleed black hero, and on white it
+        * renders the logo white on white.
+        */}
+      <PublicHeader links={headerLinks} solid />
+      <HeaderSpacer />
+
       <ExpatHero />
+
+      {/* Where the reader is inside a long page, and how to get about it. */}
+      <LocalSectionNav
+        ariaLabelKey="nav_on_this_page"
+        sections={[
+          { id: 'cost-of-living', labelKey: 'expat_pathway_live_title' },
+          { id: 'budget', labelKey: 'expat_pathway_buy_title' },
+          { id: 'topics', labelKey: 'expat_pathway_move_title' },
+          { id: 'tools', labelKey: 'expat_pathway_invest_title' },
+        ]}
+      />
 
       <div className="mx-auto w-full max-w-[76rem] space-y-16 px-5 py-14 sm:py-20">
         <GeorgiaAtAGlance />
@@ -124,7 +155,9 @@ export default function ForExpatsPage() {
           <Ecosystem />
         </div>
       </div>
-    </>
+
+      <SiteFooter />
+    </div>
   );
 }
 

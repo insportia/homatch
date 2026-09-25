@@ -35,6 +35,9 @@ import {
   type ExpatTopic,
   type TopicFact,
 } from '@/services/expats';
+import { PublicHeader, HeaderSpacer } from '@/components/home/PublicHeader';
+import { usePublicNavLinks } from '@/site/publicNav';
+import { SiteFooter } from '@/components/home/sections/SiteFooter';
 
 /** The handoffs a topic can carry, by the domain it belongs to. */
 const DOMAIN_HANDOFF: Record<string, { to: string; key: string }[]> = {
@@ -119,8 +122,18 @@ export default function ExpatTopicPage() {
   const freshness = judgeFreshness(topic.lastVerifiedAt, topic.factClass);
   const handoffs = DOMAIN_HANDOFF[topic.domain] ?? [];
 
+  const headerLinks = usePublicNavLinks();
+
   return (
-    <>
+    <div className="min-h-screen overflow-x-hidden bg-background text-foreground">
+      {/*
+        * Part of Homatch, and now visibly so. This page rendered a bare
+        * fragment: a visitor arriving from a search result had no header,
+        * no footer and no way into the rest of the product.
+        */}
+      <PublicHeader links={headerLinks} solid />
+      <HeaderSpacer />
+
       <PageMeta title={`${content.title} — Homatch`} description={content.summary} />
       <ExpatSeo
         path={path}
@@ -254,6 +267,8 @@ export default function ExpatTopicPage() {
           {t('expat_topic_back')}
         </Link>
       </article>
-    </>
+
+      <SiteFooter />
+    </div>
   );
 }

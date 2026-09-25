@@ -45,6 +45,9 @@ import {
   type ExpatUpdate,
   type ReminderPreferenceRow,
 } from '@/services/expats';
+import { PublicHeader, HeaderSpacer } from '@/components/home/PublicHeader';
+import { usePublicNavLinks } from '@/site/publicNav';
+import { SiteFooter } from '@/components/home/sections/SiteFooter';
 
 export default function ExpatPlanPage() {
   const { t } = useLanguage();
@@ -145,9 +148,16 @@ export default function ExpatPlanPage() {
   const stats = progress(tasks);
   const planKeys = tasks.map((task) => task.templateKey);
 
+  const headerLinks = usePublicNavLinks();
+
   return (
-    <>
+    <div className="min-h-screen overflow-x-hidden bg-background text-foreground">
       <PageMeta title={t('expat_plan_meta_title')} description={t('expat_plan_meta_description')} />
+
+      {/* The plan is a signed-in page and still part of the product: it had
+          no header, no footer and no way back out to Homatch. */}
+      <PublicHeader links={headerLinks} solid />
+      <HeaderSpacer />
 
       <div className="mx-auto w-full max-w-[64rem] px-5 py-12 sm:py-16">
         <header className="mb-8">
@@ -195,7 +205,9 @@ export default function ExpatPlanPage() {
           </div>
         ) : null}
       </div>
-    </>
+
+      <SiteFooter />
+    </div>
   );
 }
 

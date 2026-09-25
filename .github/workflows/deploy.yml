@@ -397,6 +397,29 @@ jobs:
         with:
           fetch-depth: 0
 
+      # THE PROOF NEEDS THE ESZIP PARSER, SO THIS JOB NEEDS node_modules.
+      #
+      # It never did before: every script it ran was dependency-free, so the
+      # job checked out and went straight to the CLI. "Prove it in production"
+      # now reads the deployed artifact, which means parsing an eszip, which
+      # means @deno/eszip -- and without an install that import fails, every
+      # function reports UNAVAILABLE, and the whole mechanism is inert while
+      # looking like a principled refusal.
+      #
+      # Same pnpm and same lockfile as Validate, so the parser is pinned by
+      # the repository rather than resolved fresh at deploy time.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Fetch deployment refs
         run: git fetch origin '+refs/deployed/*:refs/deployed/*' || echo "no deployment refs yet - first run"
 

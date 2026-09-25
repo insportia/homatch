@@ -26,12 +26,16 @@
  *     PRODUCTION CONTAINS THE EXPECTED ARTIFACT FOR EVERY OWED FUNCTION.
  *
  * That question is asked by comparing the deployed source closure against the
- * revision, byte for byte. THE REST API DOES NOT YET HAND THAT OVER — see the
- * correction above ARTIFACT_ROUTES — so today every owed function answers
- * UNAVAILABLE and the ref stays where it is. That is deliberate. The proof is
- * written for the evidence it requires rather than bent to the evidence that
- * happens to be available, and a guard that cannot see is a guard that says
- * so instead of waving work through.
+ * revision, byte for byte. The source comes out of the deployed eszip's own
+ * source maps — see WHERE THE DEPLOYED SOURCE COMES FROM below — so it is the
+ * original TypeScript the bundler was handed, not a transpiler output anyone
+ * has to re-derive.
+ *
+ * When the artifact cannot be read, the answer is UNAVAILABLE and the ref
+ * stays where it is. That is deliberate. The proof is written for the evidence
+ * it requires rather than bent to the evidence that happens to be available,
+ * and a guard that cannot see is a guard that says so instead of waving work
+ * through.
  *
  *   node scripts/edgeArtifacts.mjs snapshot ai-talk-session comm-agent
  *   node scripts/edgeArtifacts.mjs verify pre.json post.json --since <ms>
@@ -52,53 +56,102 @@ const FUNCTIONS_DIR = 'supabase/functions';
 export const ABSENT = { version: 0, updated_at: 0, absent: true };
 
 /*
- * WHERE THE DEPLOYED FILES WOULD COME FROM, AND WHY THEY DO NOT.
+ * WHERE THE DEPLOYED SOURCE COMES FROM.
  *
- * CORRECTION, 2026-09-25. An earlier version of this comment claimed the
- * metadata endpoint now returns `files[]`. It does not, and run 36104657682
- * proved it: all eighteen owed functions came back `files: 0/N` and the proof
- * correctly refused to advance the ref.
+ * Two endpoints, and only one of them is any use:
  *
- * The claim came from reading a Supabase MCP `get_edge_function` response,
- * which really does hand back the deployed original TypeScript for the whole
- * closure. That tool reaches it by some route CI does not have; the REST
- * Management API this script can reach does not expose it. Measured:
+ *   GET /v1/projects/{ref}/functions/{slug}        metadata. Measured against
+ *       production: no files[], and ?include_files=true does not add them
+ *       either — run 36104657682 asked for all eighteen owed functions and
+ *       every one came back empty. An earlier version of this file claimed
+ *       otherwise, from reading a Supabase MCP response; that tool reaches
+ *       the source by a route CI does not have.
  *
- *   GET  /v1/projects/{ref}/functions/{slug}                    no files[]
- *   GET  /v1/projects/{ref}/functions/{slug}?include_files=true no files[]
- *   GET  /v1/projects/{ref}/functions/{slug}/body               the deployed
- *        eszip, which would need a parser this repository does not have
+ *   GET /v1/projects/{ref}/functions/{slug}/body   the deployed eszip. This
+ *       is the artifact, and it is what production is actually running.
  *
- * Both routes are still tried, because asking costs one request and the day
- * the API grows the field this starts working without anyone noticing it was
- * waiting. Until then every function is UNAVAILABLE, which is UNPROVEN, which
- * leaves refs/deployed/edge exactly where it is. That is the failure this is
- * supposed to have: the alternative is a guard that passes without evidence.
+ * WHAT IS INSIDE AN ESZIP, MEASURED RATHER THAN ASSUMED.
+ *
+ * A module's stored source is TRANSPILED JavaScript — types stripped, `as`
+ * removed, `interface` gone. Comparing that against repository TypeScript
+ * would mean reimplementing the transpiler, which is exactly why an earlier
+ * investigation ruled this endpoint out.
+ *
+ * But every module also carries a SOURCE MAP, and its `sourcesContent` is the
+ * original file, byte for byte. Built an eszip from real TypeScript, parsed it
+ * back, and compared: transpiled source 153 chars against an original of 215,
+ * `interface` and `as Local` gone from the module body and both present in
+ * sourcesContent, which matched the original exactly.
+ *
+ * So sourcesContent is the comparison layer. It is the original local source,
+ * it is what the bundler actually took, and it needs no transpiler.
  */
-const ARTIFACT_ROUTES = [
-  (ref, name) => `https://api.supabase.com/v1/projects/${ref}/functions/${name}`,
-  (ref, name) => `https://api.supabase.com/v1/projects/${ref}/functions/${name}?include_files=true`,
-];
+const META_URL = (ref, name) => `https://api.supabase.com/v1/projects/${ref}/functions/${name}`;
+const BODY_URL = (ref, name) => `${META_URL(ref, name)}/body`;
 
-export async function fetchArtifact(name, { projectRef, token, fetchImpl = fetch, withFiles = true } = {}) {
-  let body = null;
-  let route = null;
-  for (const url of withFiles ? ARTIFACT_ROUTES : ARTIFACT_ROUTES.slice(0, 1)) {
-    const res = await fetchImpl(url(projectRef, name), { headers: { Authorization: `Bearer ${token}` } });
-    if (res.status === 404) return { ...ABSENT };
-    if (!res.ok) {
-      /* A variant the API does not know is not a reason to fail the run —
-         only the plain route has to work. */
-      if (body) break;
-      if (url === ARTIFACT_ROUTES[0]) throw new Error(`${name}: API answered ${res.status}`);
-      break;
+/** The eszip container magic. Anything before it is an envelope, not content. */
+const ESZIP_MAGIC = 'ESZIP';
+
+/**
+ * Every plausible eszip inside whatever the endpoint handed back, best first.
+ *
+ * The CLI uploads `CONST_PREFIX || brotli(eszip)`, so a stored blob may arrive
+ * wearing a prefix, a compression, both or neither. Guessing wrong is not
+ * dangerous — the parser rejects nonsense and the function ends up UNAVAILABLE
+ * — but guessing wrong when the right answer was available WOULD be, so this
+ * offers candidates and lets the parser arbitrate rather than deciding alone.
+ *
+ * Searching raw bytes for the magic is the LAST resort on purpose: brotli
+ * stores short or incompressible input almost literally, so the magic often
+ * appears inside the compressed stream and a naive scan hands the parser a
+ * corrupt tail that merely looks right.
+ */
+export function eszipCandidates(buf, { brotliDecompress } = {}) {
+  const out = [];
+  const magicAt0 = (b) => b.length >= ESZIP_MAGIC.length
+    && b.subarray(0, ESZIP_MAGIC.length).toString('latin1') === ESZIP_MAGIC;
+  const scan = (b) => {
+    const head = b.subarray(0, Math.min(b.length, 4096)).toString('latin1');
+    const i = head.indexOf(ESZIP_MAGIC);
+    return i > 0 ? b.subarray(i) : null;
+  };
+
+  if (magicAt0(buf)) out.push(buf);
+  if (brotliDecompress) {
+    /*
+     * Offset 0 first, then a short way in: the CLI puts a fixed constant in
+     * front of the compressed eszip, and its length is an implementation
+     * detail rather than something worth hardcoding here. Bounded to 64 and
+     * stopped at the first success, and only reached when the bytes were not
+     * a bare container to begin with.
+     */
+    for (let offset = 0; offset <= 64; offset += 1) {
+      if (offset > 0 && out.length > 0) break;
+      let inflated;
+      try { inflated = brotliDecompress(buf.subarray(offset)); } catch { continue; }
+      if (magicAt0(inflated)) { out.push(inflated); break; }
+      const found = scan(inflated);
+      if (found) { out.push(found); break; }
     }
-    body = await res.json();
-    route = url(projectRef, name).includes('include_files') ? 'include_files' : 'plain';
-    if (Array.isArray(body.files)) break;
-    if (!withFiles) break;
   }
-  if (!body) throw new Error(`${name}: no route answered`);
+  const scanned = scan(buf);
+  if (scanned) out.push(scanned);
+  return out;
+}
+
+/** The single best candidate, or null. Kept for callers that want one guess. */
+export function unwrapEszip(buf, opts = {}) {
+  return eszipCandidates(buf, opts)[0] ?? null;
+}
+
+/** Metadata only: version, timestamps and the diagnostic hash. */
+export async function fetchArtifact(name, { projectRef, token, fetchImpl = fetch } = {}) {
+  const res = await fetchImpl(META_URL(projectRef, name), {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (res.status === 404) return { ...ABSENT };
+  if (!res.ok) throw new Error(`${name}: API answered ${res.status}`);
+  const body = await res.json();
   return {
     version: Number(body.version ?? 0),
     updated_at: Number(body.updated_at ?? 0),
@@ -121,30 +174,97 @@ export async function fetchArtifact(name, { projectRef, token, fetchImpl = fetch
      * exactly `deployed.ezbr_sha256 === freshly_computed.sha256`, which is
      * what "No change found in Function: x" means.
      *
-     * WHY IT STILL CANNOT BE THE PROOF. It is not reproducible. Production
-     * measured it twice over a byte-identical source closure and disagreed
-     * with itself: cartesia-access-token v26 a34394a5... and v27 43428031...,
-     * the same four files, each verified identical to its revision, with no
-     * commit in between touching supabase/ or src/. Seventeen other functions
-     * hashed stably across the same pair of runs, so the bundle is MOSTLY
-     * deterministic — and "mostly" is precisely what a proof may not be.
-     *
-     * An expected hash that a clean checkout cannot reproduce cannot decide
-     * whether production is current, so this is printed and never believed.
+     * WHY IT IS NOT THE PROOF. It is not reproducible. Production measured it
+     * twice over a byte-identical source closure and disagreed with itself:
+     * cartesia-access-token v26 a34394a5... and v27 43428031..., the same four
+     * files, each verified identical to its revision, with no commit in
+     * between touching supabase/ or src/. Seventeen other functions hashed
+     * stably across the same pair of runs, so the bundle is MOSTLY
+     * deterministic — and "mostly" is what a proof may not be.
      */
     ezbr_sha256: body.ezbr_sha256 ?? null,
-    /*
-     * The deployed ORIGINAL TypeScript — IF the API ever supplies it.
-     *
-     * It does not today; see the correction above ARTIFACT_ROUTES. null means
-     * the API did not give them, which is UNAVAILABLE and therefore unproven.
-     * It is never quietly downgraded to a weaker check.
-     */
-    files: Array.isArray(body.files)
-      ? body.files.map((f) => ({ name: String(f.name), content: String(f.content ?? '') }))
-      : null,
-    route,
   };
+}
+
+/**
+ * The local modules production is actually running, as original source.
+ *
+ * Remote dependencies (https:, jsr:, npm:) are deliberately not returned:
+ * they do not come from this repository and there is nothing here to compare
+ * them against. Only `file:` modules — the entrypoint, _shared and src/ — are
+ * the deployed local code this proof is about.
+ *
+ * A local module whose source map carries no sourcesContent is returned with
+ * `content: null` rather than with its transpiled body, because the transpiled
+ * body is not comparable and pretending otherwise would fail every function
+ * for the wrong reason. The proof reads null as "cannot be established".
+ */
+export async function fetchDeployedModules(name, { projectRef, token, fetchImpl = fetch, parserFactory } = {}) {
+  const res = await fetchImpl(BODY_URL(projectRef, name), {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (res.status === 404) return { ok: false, reason: 'production has no body for this function', modules: null };
+  if (!res.ok) return { ok: false, reason: `body endpoint answered ${res.status}`, modules: null };
+
+  const raw = Buffer.from(await res.arrayBuffer());
+  const { brotliDecompressSync } = await import('node:zlib');
+  const candidates = eszipCandidates(raw, { brotliDecompress: brotliDecompressSync });
+  if (candidates.length === 0) {
+    return { ok: false, reason: `no eszip container in ${raw.length} bytes`, modules: null, bytes: raw.length };
+  }
+
+  const makeParser = parserFactory ?? (async () => {
+    const { Parser } = await import('@deno/eszip');
+    return Parser.createInstance();
+  });
+
+  /*
+   * Each candidate gets its own parser instance: parseBytes is stateful, and a
+   * rejected attempt must not leave anything behind for the next one.
+   */
+  let parser = null;
+  let specifiers = null;
+  let lastError = 'no candidate parsed';
+  for (const candidate of candidates) {
+    let attempt;
+    try {
+      attempt = await makeParser();
+    } catch (err) {
+      return { ok: false, reason: `eszip parser unavailable: ${err?.message ?? err}`, modules: null, bytes: raw.length };
+    }
+    try {
+      specifiers = await attempt.parseBytes(new Uint8Array(candidate));
+      await attempt.load();
+      parser = attempt;
+      break;
+    } catch (err) {
+      lastError = err?.message ?? String(err);
+    }
+  }
+  if (!parser) {
+    return { ok: false, reason: `eszip did not parse: ${lastError}`, modules: null, bytes: raw.length };
+  }
+
+  const modules = [];
+  for (const specifier of specifiers) {
+    if (!String(specifier).startsWith('file:')) continue;
+    let sourceUrl = specifier;
+    let content = null;
+    try {
+      const rawMap = await parser.getModuleSourceMap(specifier);
+      if (rawMap) {
+        const map = JSON.parse(rawMap);
+        const from = (map.sources ?? [])[0];
+        const text = (map.sourcesContent ?? [])[0];
+        if (typeof text === 'string') {
+          content = text;
+          if (typeof from === 'string' && from.startsWith('file:')) sourceUrl = from;
+        }
+      }
+    } catch { /* leave content null: unresolvable, not wrong */ }
+    modules.push({ specifier, sourceUrl, content });
+  }
+  return { ok: true, reason: `${modules.length} local module(s)`, modules, bytes: raw.length };
 }
 
 /*
@@ -196,10 +316,15 @@ export async function snapshot(names, opts) {
 
 /** What a proof can conclude. Anything not PROVEN_* leaves the ref alone. */
 export const PROOF = {
-  /** Every deployed file is byte-identical to this revision. */
+  /** Every deployed local module is identical to this revision. */
   PROVEN_EXACT: 'PROVEN_EXACT',
-  /** Files unavailable, but a hash whose semantics we can reproduce matched. */
-  PROVEN_HASH: 'PROVEN_HASH',
+  /*
+   * There is deliberately no PROVEN_HASH. The only hash production offers is
+   * ezbr_sha256, it is the CLI's own number, and it is not reproducible --
+   * cartesia-access-token hashed differently twice over an identical source
+   * closure. A proof state nobody can reach honestly is a proof state that
+   * eventually gets reached dishonestly.
+   */
   /** Production answered, and what it is running is not this revision. */
   STALE: 'STALE',
   /** Production is running a file this revision does not have, or the
@@ -270,51 +395,58 @@ export function matchDeployedName(deployedName, expectedPaths) {
  */
 const canonical = (s) => String(s).split('\r\n').join('\n');
 
-export function proveArtifact({ name, expected, deployed, expectedEzbr = null }) {
+export function proveArtifact({ name, expected, deployed }) {
   const expectedPaths = Object.keys(expected);
   const entry = `${FUNCTIONS_DIR}/${name}/index.ts`;
+  const modules = Array.isArray(deployed?.modules) ? deployed.modules : null;
   const base = {
     name,
     version: deployed?.version ?? 0,
     updated_at: deployed?.updated_at ?? 0,
     ezbr_sha256: deployed?.ezbr_sha256 ?? null,
     expectedFileCount: expectedPaths.length,
-    deployedFileCount: deployed?.files?.length ?? 0,
+    deployedFileCount: modules?.length ?? 0,
+    matched: 0,
     missing: [],
     foreign: [],
     mismatched: [],
     ambiguous: [],
+    unresolved: [],
   };
 
   if (!deployed || deployed.absent) {
     return { ...base, state: PROOF.UNAVAILABLE, reason: 'production has no such function' };
   }
-
-  if (!Array.isArray(deployed.files)) {
+  if (!modules) {
     /*
-     * No files means no correctness evidence. The only thing allowed to stand
-     * in for them is a hash we can independently reproduce — which today we
-     * cannot, so callers pass no expectedEzbr and this is honestly UNAVAILABLE
-     * rather than quietly falling back to "the version moved, near enough".
+     * No readable artifact is no correctness evidence, and there is nothing
+     * weaker that may stand in for it. ezbr_sha256 is right there and is NOT
+     * used: it is the CLI's own number and it is not reproducible.
      */
-    if (expectedEzbr && deployed.ezbr_sha256 && expectedEzbr === deployed.ezbr_sha256) {
-      return { ...base, state: PROOF.PROVEN_HASH, reason: 'deployed bundle hash equals the expected bundle hash' };
-    }
     return {
       ...base,
       state: PROOF.UNAVAILABLE,
-      reason: 'the API returned no deployed files and no reproducible bundle hash to stand in for them',
+      reason: deployed.reason ?? 'the deployed artifact could not be read',
     };
   }
 
   const matchedExpected = new Set();
-  for (const file of deployed.files) {
-    const hits = matchDeployedName(file.name, expectedPaths);
-    if (hits.length === 0) { base.foreign.push(file.name); continue; }
-    if (hits.length > 1) { base.ambiguous.push(file.name); continue; }
+  for (const mod of modules) {
+    const path = decodeURIComponent(String(mod.sourceUrl ?? mod.specifier ?? '')).replace(/^file:\/\//, '');
+    const hits = matchDeployedName(path, expectedPaths);
+    if (hits.length === 0) { base.foreign.push(path); continue; }
+    if (hits.length > 1) { base.ambiguous.push(path); continue; }
     const repoPath = hits[0];
     matchedExpected.add(repoPath);
-    if (canonical(expected[repoPath]) !== canonical(file.content)) base.mismatched.push(repoPath);
+    /*
+     * A local module whose source map carried no sourcesContent. Its
+     * transpiled body is in the artifact and is NOT comparable to repository
+     * TypeScript, so this is "cannot be established" rather than "differs" —
+     * and it blocks the proof instead of quietly passing.
+     */
+    if (typeof mod.content !== 'string') { base.unresolved.push(repoPath); continue; }
+    base.matched += 1;
+    if (canonical(expected[repoPath]) !== canonical(mod.content)) base.mismatched.push(repoPath);
   }
   base.missing = expectedPaths.filter((p) => !matchedExpected.has(p));
 
@@ -323,12 +455,23 @@ export function proveArtifact({ name, expected, deployed, expectedEzbr = null })
       ...base,
       state: PROOF.INCOMPLETE,
       reason: base.foreign.length
-        ? `production runs ${base.foreign.length} file(s) this revision does not have`
-        : `${base.ambiguous.length} deployed name(s) matched more than one repository path`,
+        ? `production runs ${base.foreign.length} local module(s) this revision does not have`
+        : `${base.ambiguous.length} deployed path(s) matched more than one repository file`,
+    };
+  }
+  if (base.unresolved.length) {
+    return {
+      ...base,
+      state: PROOF.INCOMPLETE,
+      reason: `${base.unresolved.length} deployed module(s) carried no original source to compare`,
     };
   }
   if (base.mismatched.length) {
-    return { ...base, state: PROOF.STALE, reason: `${base.mismatched.length} deployed file(s) differ from this revision` };
+    return {
+      ...base,
+      state: PROOF.STALE,
+      reason: `${base.mismatched.length} deployed module(s) differ from this revision`,
+    };
   }
   if (!matchedExpected.has(entry)) {
     return { ...base, state: PROOF.INCOMPLETE, reason: 'the deployment does not contain the function entrypoint' };
@@ -336,12 +479,12 @@ export function proveArtifact({ name, expected, deployed, expectedEzbr = null })
   return {
     ...base,
     state: PROOF.PROVEN_EXACT,
-    reason: `${deployed.files.length} deployed file(s) identical to this revision`,
+    reason: `${base.matched} deployed module(s) identical to this revision`,
   };
 }
 
 /** Is this proof good enough to let the ref move? */
-export const isProven = (proof) => proof.state === PROOF.PROVEN_EXACT || proof.state === PROOF.PROVEN_HASH;
+export const isProven = (proof) => proof.state === PROOF.PROVEN_EXACT;
 
 /** Read one function's expected closure off disk, as proveArtifact wants it. */
 export function expectedClosure(name, root = process.cwd()) {
@@ -460,33 +603,50 @@ if (isMain) {
       token: process.env.SUPABASE_ACCESS_TOKEN,
     };
     const tally = {
-      owed: 0, proven: 0, unproven: 0, exact: 0, hashProven: 0, stale: 0, incomplete: 0, unavailable: 0,
+      owed: 0, proven: 0, unproven: 0, exact: 0, stale: 0, incomplete: 0, unavailable: 0,
     };
     const unproven = [];
-    let routeSeen = null;
 
     for (const name of Object.keys(post)) {
       tally.owed += 1;
-      const deployed = await fetchArtifact(name, opts);
-      routeSeen ??= deployed.route;
-      const proof = proveArtifact({ name, expected: expectedClosure(name), deployed });
+      const meta = await fetchArtifact(name, opts);
+      const body = meta.absent
+        ? { ok: false, reason: 'production has no such function', modules: null }
+        : await fetchDeployedModules(name, opts);
+      const proof = proveArtifact({
+        name,
+        expected: expectedClosure(name),
+        deployed: { ...meta, modules: body.modules, reason: body.reason },
+      });
       const ev = evidence.get(name);
       const moved = ev?.ok ? 'new version uploaded during this run' : 'deduplicated / already-current';
 
       console.log(`${name}:`);
       console.log(`  version ${pre[name]?.version ?? 0} -> ${proof.version}`);
       console.log(`  deployment: ${moved}`);
+      console.log(`  body: ${body.ok ? `retrieved (${body.bytes ?? 0} bytes)` : `NOT retrieved — ${body.reason}`}`);
       console.log(`  artifact: ${proof.state}`);
-      console.log(`  files: ${proof.deployedFileCount}/${proof.expectedFileCount} deployed/expected-closure`);
+      console.log(
+        `  modules: ${proof.deployedFileCount} deployed local, ${proof.matched} compared`
+        + `, ${proof.expectedFileCount} in the expected closure`,
+      );
       /* Names only. Never contents: this log is public build output. */
       if (proof.mismatched.length) console.log(`  mismatched: ${proof.mismatched.slice(0, 8).join(', ')}${proof.mismatched.length > 8 ? ` (+${proof.mismatched.length - 8})` : ''}`);
       if (proof.foreign.length) console.log(`  not in this revision: ${proof.foreign.slice(0, 8).join(', ')}`);
       if (proof.ambiguous.length) console.log(`  ambiguous: ${proof.ambiguous.slice(0, 8).join(', ')}`);
+      if (proof.unresolved.length) console.log(`  no original source: ${proof.unresolved.slice(0, 8).join(', ')}`);
+      /*
+       * Reported, never decisive. A type-only import is followed by
+       * importClosure() and erased by the bundler, so a healthy function
+       * normally has some of these.
+       */
+      if (proof.missing.length) console.log(`  in closure but not deployed: ${proof.missing.length} (type-only imports and unused re-exports land here)`);
+      console.log(`  ezbr_sha256: ${String(proof.ezbr_sha256).slice(0, 16)} (diagnostic; not reproducible)`);
       console.log(`  result: ${isProven(proof) ? 'PROVEN' : 'UNPROVEN'}  (${proof.reason})`);
 
       if (isProven(proof)) {
         tally.proven += 1;
-        if (proof.state === PROOF.PROVEN_EXACT) tally.exact += 1; else tally.hashProven += 1;
+        tally.exact += 1;
       } else {
         tally.unproven += 1;
         unproven.push(name);
@@ -497,10 +657,9 @@ if (isMain) {
     }
 
     console.log('');
-    console.log(`artifact source: ${routeSeen ?? 'none'}`);
     console.log(
       `owed=${tally.owed} proven=${tally.proven} unproven=${tally.unproven} `
-      + `exact=${tally.exact} hash=${tally.hashProven} stale=${tally.stale} `
+      + `exact=${tally.exact} stale=${tally.stale} `
       + `incomplete=${tally.incomplete} unavailable=${tally.unavailable}`,
     );
     if (unproven.length) {

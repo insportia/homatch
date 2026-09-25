@@ -28,6 +28,7 @@ import { pathToFileURL } from 'node:url';
 import {
   compareArtifacts, uploadAccounting, ABSENT,
   proveArtifact, matchDeployedName, isProven, PROOF, fetchArtifact,
+  fetchDeployedModules, unwrapEszip,
 } from '../../scripts/edgeArtifacts.mjs';
 
 const WORKFLOW = readFileSync('.github/workflows/deploy.yml', 'utf8');
@@ -325,43 +326,59 @@ test('10: a falsely advanced ref is visible, and only a proven artifact can adva
 
 /* ── THE ARTIFACT PROOF ───────────────────────────────────────────────────
  *
- * Ten more, and they are about a different question than the ten above.
+ * Twenty, and they are about a different question than the ten above.
  *
  * Those ask "did the pipeline do the work and admit it when it didn't?".
  * These ask "is the code production is running the code this revision says
- * it should be running?" -- which the pipeline could not ask until
- * 2026-09-25, and answered with the version counter instead.
+ * it should be running?" — which the pipeline answered with a version
+ * counter until 2026-09-25, then with a hash that turned out not to be
+ * reproducible, and now answers with the deployed source itself.
  *
- * Every case below is modelled on something that actually happened in run
- * 36099775881 or the two before it. The fixtures are small on purpose: the
- * rule is pure, so it can be driven directly rather than grepped for.
+ * The source comes out of the deployed eszip's source maps: a module's
+ * stored body is transpiled JavaScript, but its sourceMap.sourcesContent is
+ * the original file byte for byte. Measured by building an eszip from real
+ * TypeScript and parsing it back — transpiled 153 chars against an original
+ * of 215, `interface` and `as Local` absent from one and present in the
+ * other, and sourcesContent identical to the original.
+ *
+ * Every case below is modelled on something that actually happened. The
+ * fixtures are small on purpose: the rule is pure, so it is driven directly
+ * rather than grepped for.
  */
 
 const FN = 'demo-fn';
 const ENTRY = `supabase/functions/${FN}/index.ts`;
 const SHARED = 'supabase/functions/_shared/comm/auth.ts';
 const SRC = 'src/lib/ai/identity.ts';
+/* Followed by importClosure(), erased by the bundler: never deployed. */
+const TYPE_ONLY = 'src/lib/ai/types.ts';
 
-/** The repository at this revision. */
-const expectedTree = ({ entry = 'ENTRY@v2', shared = 'SHARED@v2', src = 'SRC@v2' } = {}) =>
-  ({ [ENTRY]: entry, [SHARED]: shared, [SRC]: src });
+/** The repository at this revision, as importClosure() sees it. */
+const expectedTree = ({ entry = 'ENTRY@v2', shared = 'SHARED@v2', src = 'SRC@v2' } = {}) => ({
+  [ENTRY]: entry,
+  [SHARED]: shared,
+  [SRC]: src,
+  [TYPE_ONLY]: 'TYPES@v2',
+});
 
 /*
- * What production hands back. The `homatch/` prefix is not decoration: it is
- * how the CLI names files when a closure reaches into src/, and dropping it
- * would test a path the real API never takes.
+ * What the parser yields from production. The deployed source URL is an
+ * absolute path on the runner, which is how the real artifact names it.
  */
+const RUNNER = 'file:///home/runner/work/homatch/homatch';
+const mod = (repoPath, content) => ({
+  specifier: `${RUNNER}/${repoPath}`,
+  sourceUrl: `${RUNNER}/${repoPath}`,
+  content,
+});
+
 const deployedTree = ({
   version = 7, entry = 'ENTRY@v2', shared = 'SHARED@v2', src = 'SRC@v2', ...rest
 } = {}) => ({
   version,
   updated_at: 5_000,
-  ezbr_sha256: `sha-${entry}-${shared}-${src}`,
-  files: [
-    { name: `homatch/${ENTRY}`, content: entry },
-    { name: `homatch/${SHARED}`, content: shared },
-    { name: `homatch/${SRC}`, content: src },
-  ],
+  ezbr_sha256: 'a34394a5deadbeef',
+  modules: [mod(ENTRY, entry), mod(SHARED, shared), mod(SRC, src)],
   ...rest,
 });
 
@@ -373,7 +390,7 @@ test('artifact 1: everything reached production — proven, and the ref may adva
   assert.equal(proof.state, PROOF.PROVEN_EXACT);
   assert.ok(isProven(proof));
   assert.deepEqual(proof.mismatched, []);
-  assert.equal(proof.deployedFileCount, 3);
+  assert.equal(proof.matched, 3);
 });
 
 test('artifact 2: a partial deployment leaves one function unproven, so the ref stays', () => {
@@ -386,8 +403,8 @@ test('artifact 2: a partial deployment leaves one function unproven, so the ref 
 
 test('artifact 3: the retry after a partial deploy — dedup and fresh upload both prove', () => {
   /* A was already correct and this run deduplicated it: the version does not
-     move. B uploaded now. Under the old rule A was UNPROVEN forever and the
-     ref could never advance again. */
+     move. B uploaded now. Under the version rule A was UNPROVEN forever and
+     the ref could never advance again. */
   const deduped = prove(deployedTree({ version: 7 }));
   const uploaded = prove(deployedTree({ version: 8 }));
   assert.equal(deduped.state, PROOF.PROVEN_EXACT);
@@ -415,18 +432,15 @@ test('artifact 6: "No change found" over an identical artifact — passes', () =
 });
 
 test('artifact 7: the entrypoint is untouched and a _shared dependency is not', () => {
-  /* The exact shape of the owed set in run 36099775881: eleven of the
-     eighteen functions were owed for a dependency they do not mention. */
+  /* The shape of the owed set in run 36099775881: eleven of the eighteen
+     functions were owed for a dependency they do not mention. */
   const proof = prove(deployedTree({ version: 7, shared: 'SHARED@v1' }));
-  assert.equal(proof.state, PROOF.STALE, 'an old dependency in a current entrypoint was accepted');
+  assert.equal(proof.state, PROOF.STALE, 'an old dependency under a current entrypoint was accepted');
   assert.deepEqual(proof.mismatched, [SHARED]);
   assert.ok(!proof.mismatched.includes(ENTRY), 'the entrypoint is not the thing that changed');
 });
 
 test('artifact 8: a rate-limited deploy leaves production stale — unproven and retryable', () => {
-  /* The bundle never reached production, so production still answers with
-     the previous revision. Nothing here advances the ref, and nothing here
-     makes the next attempt impossible. */
   const proof = prove(deployedTree({ version: 7, entry: 'ENTRY@v1', shared: 'SHARED@v1' }));
   assert.ok(!isProven(proof));
   assert.equal(proof.state, PROOF.STALE);
@@ -437,9 +451,7 @@ test('artifact 9: platform-side dedup — "Deploying" then "Deployed", version u
   /*
    * cartesia-access-token, run 36099775881. The CLI decided the bundle had
    * changed and uploaded 95 kB; the platform recognised an eszip it already
-   * had and minted no new version. Deployment evidence says nothing
-   * happened. The artifact says production is correct, and the artifact is
-   * what the ref is about.
+   * had and minted no new version.
    */
   const proof = prove(deployedTree({ version: 26 }));
   assert.equal(proof.version, 26);
@@ -448,74 +460,270 @@ test('artifact 9: platform-side dedup — "Deploying" then "Deployed", version u
 });
 
 test('artifact 10: the version incremented and the artifact is wrong — MUST fail', () => {
-  /*
-   * The direction the old rule got backwards. An increment proves an upload
-   * occurred, never that it carried this revision.
-   */
   const proof = prove(deployedTree({ version: 99, entry: 'ENTRY@v1', src: 'SRC@v1' }));
   assert.ok(!isProven(proof), 'a version bump over the wrong tree was accepted as proof');
   assert.equal(proof.state, PROOF.STALE);
 });
 
-test('artifact: production that will not say what it runs is UNAVAILABLE, never assumed', () => {
-  const noFiles = prove(deployedTree({ version: 8, files: null }));
-  assert.equal(noFiles.state, PROOF.UNAVAILABLE);
-  assert.ok(!isProven(noFiles), 'a function with no artifact evidence was treated as proven');
+test('artifact 11: a valid body parses, and only its LOCAL modules are compared', async () => {
+  /*
+   * A real eszip, built and parsed here rather than described. Remote
+   * dependencies are in the graph and must not reach the comparison: there is
+   * nothing in this repository to compare deno.land or jsr against.
+   */
+  const { build, Parser } = await import('@deno/eszip');
+  const dir = mkdtempSync(join(tmpdir(), 'eszip-'));
+  writeFileSync(join(dir, 'dep.ts'), 'export const n: number = 1;\n');
+  writeFileSync(join(dir, 'index.ts'), "import { n } from './dep.ts';\nexport const go = (): number => n;\n");
+  const entryUrl = pathToFileURL(join(dir, 'index.ts')).href;
 
-  /* The one substitute allowed, and only when the hash is one we can
-     reproduce rather than one we merely received. */
-  const hashed = proveArtifact({
-    name: FN,
-    expected: expectedTree(),
-    deployed: { version: 8, updated_at: 5_000, ezbr_sha256: 'abc123', files: null },
-    expectedEzbr: 'abc123',
+  const bytes = await build([entryUrl], async (specifier) => ({
+    kind: 'module',
+    specifier,
+    content: readFileSync(decodeURIComponent(new URL(specifier).pathname).replace(/^\//, ''), 'utf8'),
+  }));
+  assert.equal(Buffer.from(bytes.slice(0, 5)).toString('latin1'), 'ESZIP', 'not an eszip container');
+
+  const parser = await Parser.createInstance();
+  const specs = await parser.parseBytes(bytes);
+  await parser.load();
+  assert.equal(specs.length, 2);
+
+  /* The stored body is transpiled; the original lives in sourcesContent. */
+  const body = await parser.getModuleSource(entryUrl);
+  assert.ok(!/:\s*number/.test(body), 'the stored module body is not transpiled after all');
+  const map = JSON.parse(await parser.getModuleSourceMap(entryUrl));
+  assert.match(map.sourcesContent[0], /:\s*number/, 'sourcesContent lost the original TypeScript');
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('artifact 11b: the whole chain against a real eszip — fetch, parse, prove', async () => {
+  /*
+   * The only test that runs fetchDeployedModules over a genuine ESZIP2.3
+   * container rather than a described one. Repo-shaped paths, because the
+   * mapping from a deployed file: URL back to a repository file is part of
+   * what is being proven.
+   */
+  const { build } = await import('@deno/eszip');
+  const root = mkdtempSync(join(tmpdir(), 'repo-'));
+  const ENTRY_REL = 'supabase/functions/demo-fn/index.ts';
+  const SHARED_REL = 'supabase/functions/_shared/comm/auth.ts';
+  const SRC_REL = 'src/lib/ai/identity.ts';
+  mkdirSync(join(root, 'supabase/functions/demo-fn'), { recursive: true });
+  mkdirSync(join(root, 'supabase/functions/_shared/comm'), { recursive: true });
+  mkdirSync(join(root, 'src/lib/ai'), { recursive: true });
+
+  const SHARED_SRC = 'export interface Token { v: string }\nexport const mk = (v: string): Token => ({ v });\n';
+  const SRC_SRC = "export const NAME: string = 'homatch';\n";
+  const ENTRY_SRC = "import { mk, type Token } from '../_shared/comm/auth.ts';\n"
+    + "import { NAME } from '../../../src/lib/ai/identity.ts';\n"
+    + 'export function go(): Token { return mk(NAME as string); }\n';
+  writeFileSync(join(root, SHARED_REL), SHARED_SRC);
+  writeFileSync(join(root, SRC_REL), SRC_SRC);
+  writeFileSync(join(root, ENTRY_REL), ENTRY_SRC);
+
+  const entryUrl = pathToFileURL(join(root, ENTRY_REL)).href;
+  const bytes = await build([entryUrl], async (specifier) => ({
+    kind: 'module',
+    specifier,
+    content: readFileSync(decodeURIComponent(new URL(specifier).pathname).replace(/^\//, ''), 'utf8'),
+  }));
+
+  const serve = (buf) => async () => ({
+    ok: true,
+    status: 200,
+    arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
   });
-  assert.equal(hashed.state, PROOF.PROVEN_HASH);
-  assert.ok(isProven(hashed));
+  const opts = { projectRef: 'r', token: 't' };
+
+  const body = await fetchDeployedModules('demo-fn', { ...opts, fetchImpl: serve(Buffer.from(bytes)) });
+  assert.equal(body.ok, true, body.reason);
+  assert.equal(body.modules.length, 3, 'the three local modules should come back');
+  assert.ok(body.modules.every((m) => typeof m.content === 'string'), 'a module came back with no original source');
+
+  const expected = { [ENTRY_REL]: ENTRY_SRC, [SHARED_REL]: SHARED_SRC, [SRC_REL]: SRC_SRC };
+  const good = proveArtifact({
+    name: 'demo-fn',
+    expected,
+    deployed: { version: 27, updated_at: 1, ezbr_sha256: 'unstable', modules: body.modules },
+  });
+  assert.equal(good.state, PROOF.PROVEN_EXACT, good.reason);
+  assert.equal(good.matched, 3);
+
+  /* And the other direction, from the same container. */
+  const stale = proveArtifact({
+    name: 'demo-fn',
+    expected: { ...expected, [SHARED_REL]: '// an older revision\n' },
+    deployed: { version: 27, updated_at: 1, ezbr_sha256: 'unstable', modules: body.modules },
+  });
+  assert.equal(stale.state, PROOF.STALE);
+  assert.deepEqual(stale.mismatched, [SHARED_REL]);
+
+  /*
+   * The shape the CLI actually uploads: a constant in front of a brotli
+   * stream. A scan for the magic finds it inside the compressed bytes and
+   * hands the parser rubbish, so this must be unwrapped rather than searched.
+   */
+  const { brotliCompressSync } = await import('node:zlib');
+  const wrapped = Buffer.concat([Buffer.from('HDR'), brotliCompressSync(Buffer.from(bytes))]);
+  const body2 = await fetchDeployedModules('demo-fn', { ...opts, fetchImpl: serve(wrapped) });
+  assert.equal(body2.ok, true, `prefixed+compressed body was unreadable: ${body2.reason}`);
+  assert.equal(body2.modules.length, 3);
+
+  rmSync(root, { recursive: true, force: true });
 });
 
-test('artifact: production running a file this revision does not have is INCOMPLETE', () => {
-  const deployed = deployedTree({ version: 8 });
-  deployed.files.push({ name: 'homatch/src/removed/gone.ts', content: 'x' });
-  const proof = prove(deployed);
-  assert.equal(proof.state, PROOF.INCOMPLETE);
-  assert.deepEqual(proof.foreign, ['homatch/src/removed/gone.ts']);
+test('artifact 12: a malformed body is UNAVAILABLE, never a pass', () => {
+  assert.equal(unwrapEszip(Buffer.from('not an archive at all')), null);
+  const proof = prove({ version: 8, updated_at: 1, ezbr_sha256: 'x', modules: null, reason: 'eszip did not parse' });
+  assert.equal(proof.state, PROOF.UNAVAILABLE);
+  assert.ok(!isProven(proof));
 });
 
-test('artifact: a deployment missing the entrypoint cannot be proven', () => {
-  const deployed = deployedTree({ version: 8 });
-  deployed.files = deployed.files.filter((f) => !f.name.endsWith(`${FN}/index.ts`));
-  const proof = prove(deployed);
+test('artifact 13: the current artifact, exact — PROVEN', () => {
+  assert.equal(prove(deployedTree({ version: 114 })).state, PROOF.PROVEN_EXACT);
+});
+
+test('artifact 14: a stale historical artifact — STALE, and it names what moved', () => {
+  /* ai-talk-session v107 against v114's revision: the entrypoint and two
+     _shared modules differ, which is exactly what was measured. */
+  const proof = prove(deployedTree({ version: 107, entry: 'ENTRY@v1', shared: 'SHARED@v1' }));
+  assert.equal(proof.state, PROOF.STALE);
+  assert.deepEqual(proof.mismatched.sort(), [SHARED, ENTRY].sort());
+});
+
+test('artifact 15: one _shared module differs — STALE', () => {
+  const proof = prove(deployedTree({ shared: 'SHARED@v0' }));
+  assert.equal(proof.state, PROOF.STALE);
+  assert.deepEqual(proof.mismatched, [SHARED]);
+});
+
+test('artifact 16: a required deployed local module missing — INCOMPLETE', () => {
+  const d = deployedTree({ version: 8 });
+  d.modules = d.modules.filter((m) => !m.sourceUrl.endsWith(`${FN}/index.ts`));
+  const proof = prove(d);
   assert.equal(proof.state, PROOF.INCOMPLETE);
   assert.ok(!isProven(proof));
 });
 
-test('artifact: both CLI naming layouts resolve, and neither resolves ambiguously', () => {
-  /* functions/… when the closure stays inside supabase/functions, homatch/…
-     when it reaches into src/. Both are real; both are measured. */
+test('artifact 17: a type-only dependency absent from the bundle must NOT fail', () => {
+  /*
+   * importClosure() cannot tell `import type` from a value import, so it
+   * expects files the bundler legitimately erases — research-agent expects 82
+   * and production correctly carries 69. That difference is reported and
+   * decides nothing.
+   */
+  const proof = prove(deployedTree({ version: 8 }));
+  assert.equal(proof.state, PROOF.PROVEN_EXACT, 'a type-only import failed a healthy function');
+  assert.deepEqual(proof.missing, [TYPE_ONLY], 'the erased module should be reported, not fatal');
+});
+
+test('artifact 18: the cartesia case — unstable ezbr hash, deployed source exact — PROVEN', () => {
+  /*
+   * v26 a34394a5... and v27 43428031... over a byte-identical closure. The
+   * hash is the CLI's own number and is not reproducible; the source is.
+   */
+  const v26 = prove(deployedTree({ version: 26, ezbr_sha256: 'a34394a565d75784' }));
+  const v27 = prove(deployedTree({ version: 27, ezbr_sha256: '43428031bbcfbbdd' }));
+  assert.ok(isProven(v26) && isProven(v27), 'an unstable bundle hash blocked a correct deployment');
+  assert.notEqual(v26.ezbr_sha256, v27.ezbr_sha256, 'the fixture must actually differ');
+});
+
+test('artifact 19: the version incremented but the source is wrong — STALE', () => {
+  const proof = prove(deployedTree({ version: 200, src: 'SRC@v0' }));
+  assert.equal(proof.state, PROOF.STALE);
+  assert.ok(!isProven(proof));
+});
+
+test('artifact 20: the parser being unavailable fails safe', async () => {
+  const fetchImpl = async () => ({
+    ok: true,
+    status: 200,
+    arrayBuffer: async () => new TextEncoder().encode('ESZIP2.3 but unparseable').buffer,
+  });
+  const body = await fetchDeployedModules('x', {
+    projectRef: 'r',
+    token: 't',
+    fetchImpl,
+    parserFactory: async () => { throw new Error('wasm refused to load'); },
+  });
+  assert.equal(body.ok, false);
+  assert.equal(body.modules, null);
+  assert.match(body.reason, /parser unavailable/);
+  const proof = proveArtifact({ name: 'x', expected: { 'supabase/functions/x/index.ts': 'a' }, deployed: { ...body } });
+  assert.equal(proof.state, PROOF.UNAVAILABLE, 'a dead parser must not advance the ref');
+});
+
+test('artifact: production running a local module this revision does not have is INCOMPLETE', () => {
+  const d = deployedTree({ version: 8 });
+  d.modules.push(mod('src/removed/gone.ts', 'x'));
+  const proof = prove(d);
+  assert.equal(proof.state, PROOF.INCOMPLETE);
+  assert.equal(proof.foreign.length, 1);
+});
+
+test('artifact: a deployed module with no original source cannot be proven', () => {
+  /* Its transpiled body is in the artifact and is not comparable to
+     TypeScript. "Cannot be established" is not "matches". */
+  const d = deployedTree({ version: 8 });
+  d.modules = d.modules.map((m) => (m.sourceUrl.endsWith(SHARED) ? { ...m, content: null } : m));
+  const proof = prove(d);
+  assert.equal(proof.state, PROOF.INCOMPLETE);
+  assert.deepEqual(proof.unresolved, [SHARED]);
+});
+
+test('artifact: remote dependencies are excluded from the comparison entirely', () => {
+  const d = deployedTree({ version: 8 });
+  /* fetchDeployedModules drops these; if one ever arrives it must not be
+     mistaken for a repository file. */
+  const proof = prove(d);
+  assert.equal(proof.deployedFileCount, 3, 'only local modules should reach the proof');
+  assert.ok(isProven(proof));
+});
+
+test('artifact: the runner path and the repository path resolve, unambiguously', () => {
+  assert.deepEqual(matchDeployedName(`/home/runner/work/homatch/homatch/${SHARED}`, [SHARED]), [SHARED]);
   assert.deepEqual(matchDeployedName('functions/_shared/comm/auth.ts', [SHARED]), [SHARED]);
-  assert.deepEqual(matchDeployedName(`homatch/${SHARED}`, [SHARED]), [SHARED]);
-  assert.deepEqual(matchDeployedName('functions/_shared/comm/auth.ts', [ENTRY, SRC]), []);
+  assert.deepEqual(matchDeployedName(`/home/runner/work/homatch/homatch/${SHARED}`, [ENTRY, SRC]), []);
+});
+
+test('artifact: the eszip is found whether it arrives bare, prefixed or compressed', async () => {
+  const { brotliCompressSync, brotliDecompressSync } = await import('node:zlib');
+  const inner = Buffer.from('ESZIP2.3 payload-bytes');
+  const opts = { brotliDecompress: brotliDecompressSync };
+
+  assert.equal(unwrapEszip(inner, opts).toString('latin1'), inner.toString('latin1'), 'bare');
+
+  /*
+   * Compressed is the shape the CLI uploads, and it is the one a naive scan
+   * gets wrong: brotli stores short input almost literally, so the magic also
+   * appears INSIDE the compressed stream. Decompressing must be preferred over
+   * scanning, or the parser is handed a corrupt tail that merely looks right.
+   */
+  const squashed = brotliCompressSync(inner);
+  assert.equal(unwrapEszip(squashed, opts).toString('latin1'), inner.toString('latin1'), 'compressed');
+
+  /* A constant prefix in front of a bare container. */
+  const prefixed = Buffer.concat([Buffer.from('SUPABASE-HDR'), inner]);
+  assert.equal(unwrapEszip(prefixed, opts).toString('latin1'), inner.toString('latin1'), 'prefixed');
+
+  /* And nothing at all is null, which the proof reads as UNAVAILABLE. */
+  assert.equal(unwrapEszip(Buffer.from('not an archive'), opts), null);
 });
 
 /* ── MUTATION GUARDS ──────────────────────────────────────────────────────
  *
- * Each of these fails if a specific weakening is applied to the rule. They
- * are written as behaviour rather than as a grep, so they survive the file
- * being rewritten and they cannot be satisfied by a comment.
+ * Each fails if a specific weakening is applied to the rule. Written as
+ * behaviour rather than as a grep, so they survive a rewrite and cannot be
+ * satisfied by a comment.
  */
 
 test('mutation: deleting the content comparison makes two different productions identical', () => {
-  /*
-   * Same version, same updated_at, same file count, same names. Content is
-   * the ONLY input that differs, so a rule that stopped reading contents
-   * would have to return the same verdict for both.
-   */
   const exact = prove(deployedTree({ version: 7 }));
   const stale = prove(deployedTree({ version: 7, shared: 'SHARED@v1' }));
   assert.equal(exact.deployedFileCount, stale.deployedFileCount);
   assert.equal(exact.version, stale.version);
-  assert.notEqual(exact.state, stale.state, 'the proof is no longer reading file contents');
+  assert.notEqual(exact.state, stale.state, 'the proof is no longer reading module contents');
 });
 
 test('mutation: accepting a version increment alone flips case 10 green', () => {
@@ -525,13 +733,26 @@ test('mutation: accepting a version increment alone flips case 10 green', () => 
   assert.ok(isProven(unbumpedAndRight), 'an unmoved version is being treated as failure');
 });
 
+test('mutation: accepting ezbr_sha256 equality would flip case 18 or case 10', () => {
+  /* Equal hashes over different source, and different hashes over identical
+     source. A rule that consulted the hash gets both of these wrong. */
+  const sameHashWrongSource = prove(deployedTree({ version: 8, ezbr_sha256: 'same', entry: 'ENTRY@v1' }));
+  const diffHashRightSource = prove(deployedTree({ version: 8, ezbr_sha256: 'other' }));
+  assert.ok(!isProven(sameHashWrongSource), 'a matching hash is being trusted over the source');
+  assert.ok(isProven(diffHashRightSource), 'a differing hash is being allowed to fail correct source');
+});
+
 test('mutation: ignoring the dependency closure flips case 7 green', () => {
-  /* The entrypoint is byte-perfect in both. Only a dependency differs, so a
-     rule that compared the top-level file alone would pass the stale one. */
   const stale = prove(deployedTree({ version: 7, shared: 'SHARED@v1' }));
-  const entryOnly = stale.mismatched.filter((p) => p === ENTRY);
-  assert.deepEqual(entryOnly, [], 'the entrypoint is unchanged, as the case requires');
+  assert.deepEqual(stale.mismatched.filter((p) => p === ENTRY), [], 'the entrypoint is unchanged, as the case requires');
   assert.ok(!isProven(stale), 'a stale _shared dependency is being ignored');
+});
+
+test('mutation: treating an unreadable artifact as proven flips case 12 and 20', () => {
+  for (const reason of ['eszip did not parse', 'parser unavailable', 'body endpoint answered 500']) {
+    const proof = prove({ version: 9, updated_at: 1, ezbr_sha256: 'x', modules: null, reason });
+    assert.ok(!isProven(proof), `an unreadable artifact was proven: ${reason}`);
+  }
 });
 
 test('the workflow bounds deploy concurrency and proves the artifact before the ref', () => {
@@ -555,6 +776,17 @@ test('the workflow bounds deploy concurrency and proves the artifact before the 
   assert.ok(!/docker pull .*edge-runtime:v[0-9]/.test(runnable),
     'the edge-runtime tag is hardcoded and will go stale when the CLI is bumped');
 
+  /*
+   * The proof parses an eszip, so this job needs node_modules. It never did
+   * before -- every script it ran was dependency-free -- and without an
+   * install the parser import fails, every function reports UNAVAILABLE, and
+   * the mechanism is inert while looking like a principled refusal.
+   */
+  assert.match(deploy, /pnpm install --frozen-lockfile/, 'the deploy job no longer installs the parser');
+  const installAt = deploy.indexOf('pnpm install --frozen-lockfile');
+  assert.ok(installAt > 0 && installAt < deploy.indexOf('- name: Prove it in production'),
+    'dependencies must be installed before the proof runs');
+
   /* The proof runs after the deploys and before the ref can move. */
   const proveAt = deploy.indexOf('- name: Prove it in production');
   const advanceAt = deploy.indexOf('- name: Advance refs/deployed/edge');
@@ -573,68 +805,4 @@ test('the workflow does not claim the REST API returns deployed files', () => {
   const script = readFileSync('scripts/edgeArtifacts.mjs', 'utf8');
   assert.ok(!/the same field set\s*\n?\s*\*?\s*now arrives with `files`/.test(script),
     'the disproved files[] claim is back in edgeArtifacts.mjs');
-});
-
-/*
- * HOW THE DEPLOYED FILES ARE ASKED FOR.
- *
- * CI is the only place this runs against the real API, so the route logic is
- * driven here with a stub rather than taken on trust. The plain endpoint is
- * the one that answered with `files` when this was measured on 2026-09-25;
- * the second form exists so a rename cannot silently turn every function
- * UNAVAILABLE, and the plain route stays the only one allowed to fail a run.
- */
-test('artifact source: the plain route is preferred, and asked once when it answers', async () => {
-  const calls = [];
-  const fetchImpl = async (url) => {
-    calls.push(url);
-    return {
-      ok: true,
-      status: 200,
-      json: async () => ({
-        version: 3, updated_at: 9, files: [{ name: 'functions/x/index.ts', content: 'a' }],
-      }),
-    };
-  };
-  const got = await fetchArtifact('x', { projectRef: 'r', token: 't', fetchImpl });
-  assert.equal(calls.length, 1, 'the API was asked twice when once was enough');
-  assert.ok(!calls[0].includes('include_files'));
-  assert.equal(got.route, 'plain');
-  assert.equal(got.files.length, 1);
-});
-
-test('artifact source: a plain route without files falls through to the explicit form', async () => {
-  const calls = [];
-  const fetchImpl = async (url) => {
-    calls.push(url);
-    const files = url.includes('include_files')
-      ? [{ name: 'functions/x/index.ts', content: 'a' }]
-      : undefined;
-    return { ok: true, status: 200, json: async () => ({ version: 3, updated_at: 9, files }) };
-  };
-  const got = await fetchArtifact('x', { projectRef: 'r', token: 't', fetchImpl });
-  assert.equal(calls.length, 2);
-  assert.equal(got.route, 'include_files');
-  assert.equal(got.files.length, 1);
-});
-
-test('artifact source: no files from any route is UNAVAILABLE, never a pass', async () => {
-  const fetchImpl = async () => ({ ok: true, status: 200, json: async () => ({ version: 3, updated_at: 9 }) });
-  const got = await fetchArtifact('x', { projectRef: 'r', token: 't', fetchImpl });
-  assert.equal(got.files, null);
-  const proof = proveArtifact({
-    name: 'x', expected: { 'supabase/functions/x/index.ts': 'a' }, deployed: got,
-  });
-  assert.equal(proof.state, PROOF.UNAVAILABLE);
-  assert.ok(!isProven(proof), 'a function with no artifact evidence was allowed to advance the ref');
-});
-
-test('artifact source: a function production has never heard of is ABSENT, and unprovable', async () => {
-  const fetchImpl = async () => ({ ok: false, status: 404, json: async () => ({}) });
-  const got = await fetchArtifact('x', { projectRef: 'r', token: 't', fetchImpl });
-  assert.equal(got.absent, true);
-  const proof = proveArtifact({
-    name: 'x', expected: { 'supabase/functions/x/index.ts': 'a' }, deployed: got,
-  });
-  assert.equal(proof.state, PROOF.UNAVAILABLE);
 });

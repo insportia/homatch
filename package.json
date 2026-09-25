@@ -102,6 +102,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.5",
+    "@deno/eszip": "0.106.0",
     "@tailwindcss/container-queries": "^0.1.1",
     "@types/bmapgl": "^0.0.7",
     "@types/lodash": "^4.17.24",

@@ -137,6 +137,52 @@ export const PORTAL_SOURCE_POLICIES: SourcePolicy[] = [
   },
   {
     ...DEFAULT_SOURCE_POLICY,
+    id: 'forum:forum.ge',
+    domains: ['forum.ge'],
+    hosts: ['forum.ge', 'www.forum.ge'],
+    sourceFamily: 'forum.ge',
+    kind: 'FORUM',
+    enabled: true,
+    allowedMethods: ['GET'],
+    /*
+     * ITS ROBOTS.TXT STATES Crawl-delay: 2, FOR EVERYONE.
+     *
+     * An explicit rate, given to us by name in the `*` group, which is more
+     * than any property portal in this file offered. Honoured at one request
+     * every 2.5 seconds -- slower than asked, because rounding the other way
+     * would be taking the number as a target rather than a limit.
+     *
+     * It also disallows act=Print, act=Search, act=Online and act=Msg. The
+     * last of those is private messages. Nothing here constructs any of
+     * them: a board is ?showforum=N and a thread is ?showtopic=N.
+     *
+     * THE ONLY FORUM IN THIS FILE, and the first DEMAND source in the
+     * system. Every other host here publishes supply.
+     */
+    rate: { concurrency: 1, requestsPerSecond: 0.4, burst: 1 },
+    robots: 'RESPECT',
+    browserRenderingAllowed: false,
+    maxResponseBytes: 4_000_000,
+    timeoutMs: 20_000,
+    /*
+     * A thread is not a price. It changes when somebody replies and not
+     * otherwise, so a longer cache is honest here -- and re-reading a
+     * ten-year-old thread every half hour would be rude for no benefit.
+     */
+    cacheTtlMs: 6 * 60 * 60 * 1000,
+    cacheStaleMs: 24 * 60 * 60 * 1000,
+    visibility: 'PUBLIC',
+    authority: 0.3,
+    notes:
+      'Georgian discussion board, real-estate section (showforum=92). Reads '
+      + 'as PublicSignal rather than NormalizedListing: posts have an author '
+      + 'and a thread and no price basis. Direction is decided by '
+      + 'signals/direction.ts and UNKNOWN is stored as UNKNOWN. Authority is '
+      + 'low deliberately -- a forum post is somebody saying something, not a '
+      + 'registry recording it.',
+  },
+  {
+    ...DEFAULT_SOURCE_POLICY,
     id: 'portal:makler.ge',
     domains: ['makler.ge'],
     hosts: ['makler.ge', 'www.makler.ge'],

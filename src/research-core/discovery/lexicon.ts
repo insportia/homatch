@@ -53,6 +53,34 @@ export interface LanguageLexicon {
   wantToInvest: string[];
   /** Somebody is moving here and will need somewhere. */
   relocating: string[];
+  /**
+   * "I am looking for" — the seeking verb, on its own.
+   *
+   * WHY THIS BUCKET HAD TO EXIST. Every phrase above is matched
+   * CONTIGUOUSLY, and in most of these languages the verb and its object are
+   * not adjacent: a Russian speaker writes "ищу КВАРТИРУ в Тбилиси для
+   * инвестиций", not "ищу для инвестиций"; a Turk writes "satılık daire
+   * ARIYORUM". The phrase table held the joined-up forms, so four of the six
+   * languages silently failed to recognise their own most common way of
+   * asking to buy a flat — and Turkish read "satılık daire arıyorum" (I am
+   * looking for an apartment for sale) as a SELLER, because `satılık` matched
+   * and nothing else did.
+   *
+   * A bare seeking verb is not evidence of property demand: "ищу
+   * сантехника" is somebody looking for a plumber. So these count ONLY when
+   * the text also names a property noun, which is the condition that makes
+   * them safe to be this broad.
+   */
+  seeking: string[];
+  /**
+   * "Looking for a tenant" — a seeking verb pointing the other way.
+   *
+   * A landlord advertising for tenants and a tenant looking for a flat both
+   * open with "looking for", and they are opposite sides of the market.
+   * Checked BEFORE `seeking`, because it is the more specific reading and
+   * getting it wrong files every landlord as a renter.
+   */
+  seekingCounterparty: string[];
   /** "for sale", "იყიდება" — somebody IS SELLING. Supply side. */
   forSale: string[];
   /** "for rent", "ქირავდება" — somebody IS LETTING. Supply side. */
@@ -107,6 +135,15 @@ export const LEXICON: Record<ResearchLanguage, LanguageLexicon> = {
       'moving to', 'relocating to', 'just moved to', 'planning to move to',
       'settling in', 'coming to live in',
     ],
+    seeking: [
+      'looking for', 'searching for', 'in search of', 'need to find', 'hoping to find',
+      'anyone got', 'anyone have', 'recommendations for',
+    ],
+    seekingCounterparty: [
+      'looking for tenants', 'looking for a tenant', 'looking for buyers',
+      'looking for a buyer', 'seeking tenants', 'tenant wanted', 'buyer wanted',
+      'looking for a new owner',
+    ],
     forSale: ['for sale', 'selling my', 'price negotiable', 'owner selling', 'direct from owner'],
     forRent: ['for rent', 'available for rent', 'renting out', 'now available', 'monthly rent'],
     propertyTypes: {
@@ -134,6 +171,11 @@ export const LEXICON: Record<ResearchLanguage, LanguageLexicon> = {
       'შემოსავლიანი ბინა მაინტერესებს',
     ],
     relocating: ['გადმოვდივარ', 'გადავდივარ', 'ვსახლდები', 'ჩამოვდივარ საცხოვრებლად'],
+    seeking: ['ვეძებ', 'ვეძებთ', 'მჭირდება', 'მინდა', 'მაინტერესებს', 'ვეძებდი'],
+    seekingCounterparty: [
+      'ვეძებ მდგმურს', 'ვეძებ დამქირავებელს', 'ვეძებ მყიდველს',
+      'მდგმური მჭირდება', 'დამქირავებელი მჭირდება',
+    ],
     forSale: ['იყიდება', 'ბინა იყიდება', 'გასაყიდია', 'მესაკუთრისგან'],
     forRent: ['ქირავდება', 'გასაქირავებელია', 'ბინა ქირავდება', 'თვიური ქირა'],
     propertyTypes: {
@@ -161,6 +203,14 @@ export const LEXICON: Record<ResearchLanguage, LanguageLexicon> = {
       'ищу доходную недвижимость',
     ],
     relocating: ['переезжаю в', 'перебираюсь в', 'переехал в', 'планирую переезд'],
+    seeking: [
+      'ищу', 'ищем', 'нужна', 'нужен', 'нужно', 'подскажите', 'рассматриваю',
+      'интересует', 'посоветуйте', 'хочу найти',
+    ],
+    seekingCounterparty: [
+      'ищу арендатора', 'ищем арендатора', 'ищу квартиранта', 'ищу жильца',
+      'ищу покупателя', 'нужен арендатор', 'нужен квартирант',
+    ],
     forSale: ['продается', 'продаётся', 'продам', 'от собственника', 'срочно продам'],
     forRent: ['сдается', 'сдаётся', 'сдам', 'в аренду', 'помесячно'],
     propertyTypes: {
@@ -185,6 +235,14 @@ export const LEXICON: Record<ResearchLanguage, LanguageLexicon> = {
     ],
     wantToInvest: ['yatırımcı arıyor', 'yatırım için arıyorum', 'yatırımlık gayrimenkul'],
     relocating: ['taşınıyorum', 'yerleşiyorum', 'taşınmayı planlıyorum'],
+    seeking: [
+      'arıyorum', 'arıyoruz', 'aranıyor', 'istiyorum', 'lazım', 'bakıyorum',
+      'ihtiyacım var', 'tavsiye',
+    ],
+    seekingCounterparty: [
+      'kiracı arıyorum', 'kiracı aranıyor', 'kiracı lazım', 'alıcı arıyorum',
+      'müşteri arıyorum', 'alıcı aranıyor',
+    ],
     forSale: ['satılık', 'sahibinden satılık', 'acil satılık'],
     forRent: ['kiralık', 'sahibinden kiralık', 'aylık kira'],
     propertyTypes: {
@@ -209,6 +267,13 @@ export const LEXICON: Record<ResearchLanguage, LanguageLexicon> = {
     ],
     wantToInvest: ['مستثمر يبحث عن', 'أبحث عن عقار استثماري', 'فرصة استثمارية عقارية'],
     relocating: ['انتقل إلى', 'سأنتقل إلى', 'أخطط للانتقال'],
+    seeking: [
+      'أبحث عن', 'ابحث عن', 'نبحث عن', 'مطلوب', 'أريد', 'اريد', 'أرغب في',
+      'أحتاج', 'احتاج',
+    ],
+    seekingCounterparty: [
+      'أبحث عن مستأجر', 'مطلوب مستأجر', 'أبحث عن مشتري', 'مطلوب مشتري',
+    ],
     forSale: ['للبيع', 'شقة للبيع', 'من المالك مباشرة'],
     forRent: ['للإيجار', 'شقة للإيجار', 'إيجار شهري'],
     propertyTypes: {
@@ -233,6 +298,13 @@ export const LEXICON: Record<ResearchLanguage, LanguageLexicon> = {
     ],
     wantToInvest: ['משקיע מחפש', 'מחפש נכס להשקעה', 'הזדמנות השקעה בנדלן'],
     relocating: ['עובר ל', 'עוברת ל', 'מתכנן לעבור'],
+    seeking: [
+      'מחפש', 'מחפשת', 'מחפשים', 'מעוניין', 'מעוניינת', 'דרוש', 'דרושה',
+      'צריך', 'צריכה',
+    ],
+    seekingCounterparty: [
+      'מחפש שוכר', 'מחפש דייר', 'מחפשת שוכר', 'מחפש קונה', 'דרוש שוכר',
+    ],
     forSale: ['למכירה', 'דירה למכירה', 'מהבעלים'],
     forRent: ['להשכרה', 'דירה להשכרה', 'שכר דירה חודשי'],
     propertyTypes: {
@@ -257,6 +329,13 @@ export const LEXICON: Record<ResearchLanguage, LanguageLexicon> = {
     ],
     wantToInvest: ['निवेश के लिए', 'investment ke liye property', 'निवेश करना चाहता हूं'],
     relocating: ['शिफ्ट हो रहा हूं', 'move कर रहा हूं', 'रहने आ रहा हूं'],
+    seeking: [
+      'ढूंढ रहा हूं', 'ढूंढ रही हूं', 'चाहिए', 'तलाश है', 'looking for',
+      'chahiye', 'dhoond raha hun',
+    ],
+    seekingCounterparty: [
+      'किरायेदार चाहिए', 'किरायेदार की तलाश', 'खरीदार चाहिए', 'tenant chahiye',
+    ],
     forSale: ['बिकाऊ', 'बिक्री के लिए', 'for sale', 'सेल में'],
     forRent: ['किराए के लिए', 'रेंट के लिए', 'available on rent'],
     propertyTypes: {

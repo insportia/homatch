@@ -27,13 +27,13 @@
 // property search. An engine that resolves ambiguity in favour of whichever
 // job is running is an engine that always finds something.
 
+import type { ResearchDirection } from '../core/types.ts';
 import {
   LEXICON,
-  RESEARCH_LANGUAGES,
   type PropertyTerm,
+  RESEARCH_LANGUAGES,
   type ResearchLanguage,
 } from '../discovery/lexicon.ts';
-import type { ResearchDirection } from '../core/types.ts';
 
 export interface DirectionVerdict {
   direction: ResearchDirection;
@@ -90,18 +90,63 @@ function normalize(text: string): string {
 }
 
 /**
- * Phrase containment, not word-boundary matching.
+ * Phrase matching that knows `\b` is not an option and containment is not
+ * enough either.
  *
  * `\b` does not work for Georgian, Arabic, Hebrew or Devanagari — it is
  * defined on ASCII word characters, so `\bიყიდება\b` never matches. That
  * exact bug has already been found and fixed twice in this codebase, once in
- * a currency regex and once in an encumbrance regex. Substring containment on
- * a whitespace-normalized string works for every script here.
+ * a currency regex and once in an encumbrance regex.
+ *
+ * But plain containment has the opposite failure, and it was live: the
+ * Russian for "house" is `дом`, the Russian for "nearby" is `ряДОМ`, and
+ * "ищу сантехника рядом с Руставели" — somebody looking for a plumber — was
+ * therefore a text that named a house. Harmless while property nouns only
+ * described a signal; not harmless once they gate whether a bare "ищу"
+ * counts as property demand.
+ *
+ * So the rule is a LEADING boundary, and only for the scripts where it is
+ * true that words do not take letter prefixes:
+ *
+ *   Latin, Cyrillic, Georgian   suffixing. `квартиру` and `daireyi` must
+ *                               still match `квартира`-family and `daire`,
+ *                               so the END is left open and only the START
+ *                               is required to begin a word. `дом` inside
+ *                               `рядом` fails, which is the whole point.
+ *
+ *   Hebrew, Arabic, Devanagari  these attach clitics to the FRONT: `לדירה`
+ *                               is `ל` + `דירה`, and `للبيع` is `لل` + `بيع`.
+ *                               Requiring a leading boundary would refuse the
+ *                               most ordinary way of writing them, so
+ *                               containment stands.
+ *
+ * Getting this backwards in either direction is a silent classification
+ * failure rather than an error, which is why it is spelled out.
  */
+const PREFIXING_SCRIPT = /[֐-׿؀-ۿऀ-ॿ]/;
+const WORD_CHARACTER = /[\p{L}\p{N}]/u;
+
+export function phraseMatches(haystack: string, phrase: string): boolean {
+  if (!phrase) return false;
+
+  // Hebrew, Arabic, Devanagari: containment, because the front of the word is
+  // where the grammar lives.
+  if (PREFIXING_SCRIPT.test(phrase)) return haystack.includes(phrase);
+
+  let from = 0;
+  for (;;) {
+    const at = haystack.indexOf(phrase, from);
+    if (at === -1) return false;
+    const before = at === 0 ? '' : haystack[at - 1];
+    if (!before || !WORD_CHARACTER.test(before)) return true;
+    from = at + 1;
+  }
+}
+
 function countMatches(haystack: string, phrases: readonly string[]): string[] {
   const found: string[] = [];
   for (const phrase of phrases) {
-    if (phrase && haystack.includes(phrase)) found.push(phrase);
+    if (phraseMatches(haystack, phrase)) found.push(phrase);
   }
   return found;
 }
@@ -141,6 +186,8 @@ export function classifyDirection(
   const supplyHits: string[] = [];
   const agencyHits: string[] = [];
   const languagesSeen = new Set<ResearchLanguage>();
+  /** Bare seeking verbs, held until we know whether anything stronger matched. */
+  const weakDemand: Array<{ language: ResearchLanguage; hits: string[] }> = [];
   const terms = new Set<PropertyTerm>();
   /** Property nouns the parent named. Subject, not direction. */
   const inheritedTerms = new Set<PropertyTerm>();
@@ -159,6 +206,18 @@ export function classifyDirection(
     ];
     const agency = countMatches(text, lex.agency);
 
+    /*
+     * "LOOKING FOR A TENANT" IS NOT "LOOKING FOR A FLAT".
+     *
+     * Both open with the same verb and they are opposite sides of the market,
+     * so the counterparty reading is taken FIRST and, when it matches,
+     * `seeking` is not consulted at all for this language. Getting the order
+     * wrong files every landlord advertising for tenants as a tenant looking
+     * for somewhere to live.
+     */
+    const counterparty = countMatches(text, lex.seekingCounterparty);
+    supply.push(...counterparty);
+
     if (demand.length || supply.length) languagesSeen.add(language);
     demandHits.push(...demand);
     supplyHits.push(...supply);
@@ -170,6 +229,39 @@ export function classifyDirection(
         inheritedTerms.add(term);
       }
     }
+
+    /*
+     * The bare seeking verb, held back until we know a property noun is
+     * present. "ищу квартиру в Тбилиси для инвестиций" is a buyer; "ищу
+     * сантехника" is somebody who needs a plumber, and the only thing telling
+     * them apart is the noun. Recorded per language so the attribution stays
+     * right, and skipped entirely when the counterparty reading already
+     * claimed this text.
+     */
+    if (counterparty.length === 0) {
+      const seeking = countMatches(text, lex.seeking);
+      if (seeking.length > 0) {
+        const namesProperty = (Object.keys(lex.propertyTypes) as PropertyTerm[])
+          .some((term) => countMatches(text, lex.propertyTypes[term]).length > 0);
+        if (namesProperty) {
+          languagesSeen.add(language);
+          weakDemand.push({ language, hits: seeking });
+        }
+      }
+    }
+  }
+
+  /*
+   * Weak demand counts only where the phrase table found nothing at all.
+   *
+   * A text that already matched "ვეძებ საყიდლად" needs no help, and adding
+   * the bare verb on top would inflate its confidence for saying one thing
+   * once. This is the floor under the four languages whose natural word order
+   * the contiguous phrases could not reach -- not a second vote for the two
+   * where they could.
+   */
+  if (demandHits.length === 0 && weakDemand.length > 0) {
+    for (const entry of weakDemand) demandHits.push(...entry.hits);
   }
 
   // A stated price or size. On the demand side this is the difference

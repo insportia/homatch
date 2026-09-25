@@ -12,6 +12,11 @@ const json = (data: unknown, status = 200) => new Response(JSON.stringify(data),
   headers: { ...CORS, 'Content-Type': 'application/json' },
 });
 const DEMAND = new Set(['BUY', 'RENT', 'INVEST', 'RELOCATE_BUY', 'RELOCATE_RENT']);
+
+/* How much globally-discovered demand one campaign tick will read. Bounded
+   because this set grows with the whole market rather than with the paid
+   research done for one property. */
+const GLOBAL_DEMAND_LIMIT = 500;
 // Demand intent_type -> the set of properties.transaction_type values ('sale'|'rent'|'investment',
 // normalized) it can legitimately be satisfied by, used ONLY as a fallback when the signal's own
 // classified transaction_type is missing. Sourced from live intent_profiles data: INVEST demand has
@@ -120,10 +125,61 @@ Deno.serve(async (req: Request) => {
       .limit(10000);
     if (legacyError) throw legacyError;
 
-    const signalIds = [...new Set([
+    /*
+     * HOMATCH'S OWN DEMAND, WHICH NOTHING ELSE BRINGS HERE.
+     *
+     * property_signal_candidates is an ACQUISITION link: a row exists because
+     * a discovery job went looking for demand FOR THIS PROPERTY and paid to
+     * find it. Demand that Homatch discovered on its own initiative -- a
+     * forum reader sweeping a board with no property in mind -- is written to
+     * raw_signals and intent_profiles globally and is linked to nothing, so
+     * this matcher never saw a row of it.
+     *
+     * Measured in production, 2026-09-25, property c5c1a6a4: 680 candidate
+     * signals, ZERO of them from Homatch's own discovery, while five
+     * classified forum profiles for the same city sat unread -- one of them a
+     * BUY/Tbilisi/SALE lead at 0.90 confidence against a Tbilisi flat for
+     * sale. The demand half of the product was producing rows nobody read.
+     *
+     * So the MARKET is the second way in, and it is deliberately the only
+     * extra filter applied here: country and city. Every other contradiction
+     * -- transaction, property type, district, bedrooms, budget, freshness --
+     * is already decided below, and deciding any of them twice in two places
+     * is how the two ends up disagreeing.
+     */
+    const marketCity = String(facts?.city || '').trim();
+    const marketCountry = String(facts?.country_code || facts?.country || '').trim();
+
+    /* An operator switch, because this widens what a campaign considers.
+       A missing setting means ON: demand Homatch already paid nothing to
+       find is the cheapest lead in the system, and silently ignoring it was
+       the bug, not the safe default. */
+    const { data: globalSetting } = await db
+      .from('admin_settings').select('value').eq('key', 'matching_include_global_demand').maybeSingle();
+    const includeGlobalDemand = String(globalSetting?.value ?? 'true').replace(/"/g, '') !== 'false';
+
+    let globalRows: any[] = [];
+    if (includeGlobalDemand && marketCity) {
+      let query = db
+        .from('intent_profiles')
+        .select('signal_id')
+        .ilike('city', marketCity)
+        .limit(GLOBAL_DEMAND_LIMIT);
+      /* Same city name in a different country is a different city. */
+      if (marketCountry) query = query.or(`country.is.null,country.eq.${marketCountry}`);
+      const { data, error: globalError } = await query;
+      if (globalError) throw globalError;
+      globalRows = data || [];
+    }
+
+    const linked = new Set([
       ...(candidateRows || []).map((row: any) => row.signal_id),
       ...(legacyRows || []).map((row: any) => row.id),
-    ].filter(Boolean))];
+    ].filter(Boolean));
+    const globalOnly = (globalRows || [])
+      .map((row: any) => row.signal_id)
+      .filter((id: string) => id && !linked.has(id));
+    const signalIds = [...linked, ...new Set(globalOnly)];
     if (!signalIds.length) {
       return json({ success: true, matchesCreated: 0, matchesSkipped: 0, candidateSignals: 0, bestScore: 0, buckets: { '20-49': 0, '50-79': 0, '80-100': 0 } });
     }
@@ -364,6 +420,10 @@ Deno.serve(async (req: Request) => {
       success: true,
       mode: 'PROPERTY_SIGNAL_CANDIDATES',
       candidateSignals: signalIds.length,
+      /* Split out, because "the matcher saw nothing of ours" and "it saw ours
+         and rejected them" are different answers and used to look identical. */
+      acquiredCandidates: linked.size,
+      globalDemandCandidates: globalOnly.length,
       profilesConsidered: Math.min(profiles.length, requested),
       matchesCreated: created,
       matchesSkipped: skipped,

@@ -317,3 +317,62 @@ test('the worker is a cron worker, not a customer surface', () => {
   assert.match(WORKER, /revalidation_worker_token/);
   assert.match(WORKER, /Forbidden.*403|403/);
 });
+
+/* ── convergence: Homatch's own demand reaching the matcher ─────────────── */
+
+test('the matcher reads globally-discovered demand, not only acquired candidates', () => {
+  /*
+   * THE GAP THIS CLOSES. property_signal_candidates records demand somebody
+   * paid to find FOR ONE PROPERTY. Demand Homatch discovers on its own --
+   * a forum board read with no property in mind -- lands in intent_profiles
+   * linked to nothing, so the matcher never saw a row of it.
+   *
+   * Production, 2026-09-25, property c5c1a6a4: 680 acquired candidates, ZERO
+   * from Homatch's own discovery, while five classified forum profiles for
+   * the same city went unread. The demand half was writing rows nobody read.
+   */
+  const c = code(MATCHER);
+  assert.match(c, /from\('intent_profiles'\)[\s\S]{0,160}\.ilike\('city'/,
+    'the matcher never queries the global store by market');
+  // Both ways in, unioned — not the global set replacing the acquired one.
+  assert.match(c, /const signalIds = \[\.\.\.linked, \.\.\.new Set\(globalOnly\)\]/);
+});
+
+test('global demand is bounded and scoped to the property market', () => {
+  /*
+   * The acquired set grows with the research done for one property. The
+   * global set grows with the whole market, so an unbounded read is a
+   * different shape of query wearing the same name.
+   */
+  const c = code(MATCHER);
+  assert.match(c, /\.limit\(GLOBAL_DEMAND_LIMIT\)/);
+  // A city name without a country is a different city somewhere else.
+  assert.match(c, /country\.is\.null,country\.eq\.\$\{marketCountry\}/);
+  // No market, no global read — never a whole-table scan.
+  assert.match(c, /if \(includeGlobalDemand && marketCity\)/);
+});
+
+test('global demand passes the same freshness gate as every other candidate', () => {
+  /*
+   * The failure this forbids: a second way in that skips the seven-day rule,
+   * so unverified evidence becomes a customer-visible match by taking the
+   * other door. The union happens BEFORE the gate, so there is only one door.
+   */
+  const c = code(MATCHER);
+  /* The CALL SITE, not the import. `gateForDelivery` first appears in the
+     import block at the top of the file, which is before everything and so
+     would make this assertion true no matter where the gate actually ran. */
+  const gateCall = c.indexOf('gateForDelivery(db, profile.signal_id');
+  const union = c.indexOf('const signalIds = [...linked');
+  assert.ok(union > 0, 'the union of both candidate sources is gone');
+  assert.ok(gateCall > 0, 'the gate call site is gone');
+  assert.ok(union < gateCall,
+    'global candidates are assembled after the freshness gate runs');
+});
+
+test('the response distinguishes "saw none of ours" from "saw ours and rejected them"', () => {
+  // Zero matches meant both, and they call for opposite fixes.
+  const c = code(MATCHER);
+  assert.match(c, /acquiredCandidates: linked\.size/);
+  assert.match(c, /globalDemandCandidates: globalOnly\.length/);
+});

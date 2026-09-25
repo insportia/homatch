@@ -25,9 +25,13 @@
  *
  *     PRODUCTION CONTAINS THE EXPECTED ARTIFACT FOR EVERY OWED FUNCTION.
  *
- * The API hands back the deployed ORIGINAL TypeScript for the whole import
- * closure, so this is a byte comparison against the revision — not a
- * transpiler problem, and not a hash whose semantics we would have to guess.
+ * That question is asked by comparing the deployed source closure against the
+ * revision, byte for byte. THE REST API DOES NOT YET HAND THAT OVER — see the
+ * correction above ARTIFACT_ROUTES — so today every owed function answers
+ * UNAVAILABLE and the ref stays where it is. That is deliberate. The proof is
+ * written for the evidence it requires rather than bent to the evidence that
+ * happens to be available, and a guard that cannot see is a guard that says
+ * so instead of waving work through.
  *
  *   node scripts/edgeArtifacts.mjs snapshot ai-talk-session comm-agent
  *   node scripts/edgeArtifacts.mjs verify pre.json post.json --since <ms>
@@ -48,15 +52,28 @@ const FUNCTIONS_DIR = 'supabase/functions';
 export const ABSENT = { version: 0, updated_at: 0, absent: true };
 
 /*
- * WHERE THE DEPLOYED FILES COME FROM.
+ * WHERE THE DEPLOYED FILES WOULD COME FROM, AND WHY THEY DO NOT.
  *
- * deploy.yml's own comment recorded this endpoint as "metadata only. No
- * files[]", and that was true when it was written. It is not true now. Rather
- * than trust either observation, ask plainly and then ask once more with the
- * files requested explicitly; whichever answers with files wins, and if
- * neither does the proof says UNAVAILABLE and the ref does not move. The
- * route that worked is printed, so the next person reads a fact instead of
- * rediscovering this.
+ * CORRECTION, 2026-09-25. An earlier version of this comment claimed the
+ * metadata endpoint now returns `files[]`. It does not, and run 36104657682
+ * proved it: all eighteen owed functions came back `files: 0/N` and the proof
+ * correctly refused to advance the ref.
+ *
+ * The claim came from reading a Supabase MCP `get_edge_function` response,
+ * which really does hand back the deployed original TypeScript for the whole
+ * closure. That tool reaches it by some route CI does not have; the REST
+ * Management API this script can reach does not expose it. Measured:
+ *
+ *   GET  /v1/projects/{ref}/functions/{slug}                    no files[]
+ *   GET  /v1/projects/{ref}/functions/{slug}?include_files=true no files[]
+ *   GET  /v1/projects/{ref}/functions/{slug}/body               the deployed
+ *        eszip, which would need a parser this repository does not have
+ *
+ * Both routes are still tried, because asking costs one request and the day
+ * the API grows the field this starts working without anyone noticing it was
+ * waiting. Until then every function is UNAVAILABLE, which is UNPROVEN, which
+ * leaves refs/deployed/edge exactly where it is. That is the failure this is
+ * supposed to have: the alternative is a guard that passes without evidence.
  */
 const ARTIFACT_ROUTES = [
   (ref, name) => `https://api.supabase.com/v1/projects/${ref}/functions/${name}`,
@@ -87,31 +104,41 @@ export async function fetchArtifact(name, { projectRef, token, fetchImpl = fetch
     updated_at: Number(body.updated_at ?? 0),
     status: body.status ?? null,
     /*
-     * KEPT, NOT DISCARDED.
+     * KEPT, AND DIAGNOSTIC ONLY. IT CANNOT BE PROMOTED.
      *
-     * This is a content hash of the deployed bundle: it is stable across
-     * repeated reads of one version and differs between versions (measured on
-     * ai-talk-session, v107 f2fa457b... twice, v114 c9199b71...). It is
-     * DIAGNOSTIC here and not proof, because reproducing it locally would mean
-     * reproducing the CLI's eszip-and-brotli byte for byte, which needs the
-     * same bundler in the same container. See proveArtifact/PROVEN_HASH for
-     * the one place a hash may stand in for the files.
+     * WHAT IT ACTUALLY IS, read out of the pinned CLI (2.117.0) rather than
+     * guessed from the field name. The deploy path bundles in a container,
+     * then:
+     *
+     *   S = read(output.eszip)
+     *   P = concat(CONST_PREFIX, brotli(S, { BROTLI_PARAM_QUALITY: 6 }))
+     *   sha256 = hex(SHA-256(P))                     <- this field
+     *
+     * and uploads P as `application/vnd.denoland.eszip` to
+     * POST /v1/projects/{ref}/functions with sha256 as the `ezbr_sha256`
+     * QUERY PARAMETER. So the value is computed by the CLI and merely stored
+     * by the platform — "ezbr" is eszip-plus-brotli. The CLI's own dedup is
+     * exactly `deployed.ezbr_sha256 === freshly_computed.sha256`, which is
+     * what "No change found in Function: x" means.
+     *
+     * WHY IT STILL CANNOT BE THE PROOF. It is not reproducible. Production
+     * measured it twice over a byte-identical source closure and disagreed
+     * with itself: cartesia-access-token v26 a34394a5... and v27 43428031...,
+     * the same four files, each verified identical to its revision, with no
+     * commit in between touching supabase/ or src/. Seventeen other functions
+     * hashed stably across the same pair of runs, so the bundle is MOSTLY
+     * deterministic — and "mostly" is precisely what a proof may not be.
+     *
+     * An expected hash that a clean checkout cannot reproduce cannot decide
+     * whether production is current, so this is printed and never believed.
      */
     ezbr_sha256: body.ezbr_sha256 ?? null,
     /*
-     * The deployed ORIGINAL TypeScript, when the API supplies it.
+     * The deployed ORIGINAL TypeScript — IF the API ever supplies it.
      *
-     * The comment in deploy.yml records that this endpoint returned metadata
-     * with "No files[]", and that the /body endpoint stored type-stripped
-     * emitted JavaScript. The first half is no longer true: the same field set
-     * now arrives with `files`, carrying the untranspiled source of the whole
-     * dependency closure — verified against production on 2026-09-25 for
-     * ai-talk-session (21 files), research-agent (69), investment-research
-     * (39), verify-synthesis (27), comm-campaign-launch (17), comm-agent (12)
-     * and cartesia-access-token (4), every one byte-identical to its revision.
-     *
-     * null means the API did not give them, which is UNAVAILABLE and therefore
-     * unproven. It is never quietly downgraded to a weaker check.
+     * It does not today; see the correction above ARTIFACT_ROUTES. null means
+     * the API did not give them, which is UNAVAILABLE and therefore unproven.
+     * It is never quietly downgraded to a weaker check.
      */
     files: Array.isArray(body.files)
       ? body.files.map((f) => ({ name: String(f.name), content: String(f.content ?? '') }))

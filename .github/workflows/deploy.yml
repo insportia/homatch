@@ -463,42 +463,6 @@ jobs:
           node scripts/edgeArtifacts.mjs snapshot $(cat "$RUNNER_TEMP/owed.txt") > "$RUNNER_TEMP/pre.json"
           cat "$RUNNER_TEMP/pre.json"
 
-      # ─────────────────────────────────────────────────────────────────
-      # WARM THE EDGE-RUNTIME IMAGE ONCE, BEFORE ANYTHING RACES FOR IT.
-      #
-      # `supabase functions deploy` bundles inside a container, so N parallel
-      # deploys are N simultaneous anonymous pulls of the same image from AWS
-      # ECR Public — which rate-limits per source IP, and a shared GitHub
-      # runner is one IP. Measured: run 36098574958 took 6 `toomanyrequests:
-      # Rate exceeded`, run 36099775881 took 3. The CLI's own retry absorbed
-      # every one of them, so this has never actually broken a deploy; it is
-      # removed because a retry loop against a rate limiter is a coin toss
-      # that costs minutes, not because it caused the red pipeline.
-      #
-      # The tag belongs to the CLI, not to this repository: 2.117.0 asks for
-      # v1.74.3, and writing that number here would leave it silently stale
-      # the first time setup-cli is bumped. So it is read back OUT of the CLI
-      # binary, and if it cannot be found the warm-up is simply skipped.
-      #
-      # Best effort, always. A warm-up that fails must never fail the job or
-      # colour the verdict — the deploy commands and the artifact proof are
-      # the only things allowed to decide anything.
-      # ─────────────────────────────────────────────────────────────────
-      - name: Warm the edge-runtime image
-        if: steps.owed.outputs.count != '0'
-        continue-on-error: true
-        run: |
-          IMAGE=$(strings "$(command -v supabase)" 2>/dev/null \
-            | grep -m1 -oE 'public\.ecr\.aws/supabase/edge-runtime:v[0-9][0-9.]*' || true)
-          if [[ -n "$IMAGE" ]]; then
-            echo "warming $IMAGE"
-            docker pull "$IMAGE" >/dev/null 2>&1 \
-              && echo "warm" \
-              || echo "warm-up pull failed — continuing, the CLI will pull and retry as before"
-          else
-            echo "edge-runtime tag not discoverable from the CLI; skipping warm-up"
-          fi
-
       - name: Deploy functions — JWT required
         if: steps.owed.outputs.count != '0'
         env:
@@ -711,9 +675,22 @@ jobs:
               fi
             ) &
             RUNNING=$((RUNNING + 1))
-            # Two, not eight: see "Warm the edge-runtime image". Each of these
-            # bundles in its own container, and eight at once is eight
-            # simultaneous anonymous ECR pulls from one runner IP.
+            # TWO, NOT EIGHT.
+            #
+            # Each deploy bundles inside its own container, so eight at once
+            # is eight simultaneous anonymous pulls of the same image from
+            # AWS ECR Public, which rate-limits per source IP -- and a shared
+            # runner is one IP. Six "toomanyrequests" in run 36098574958,
+            # three in 36099775881, ZERO in 36104657682 at this setting.
+            #
+            # A warm-up pull used to sit before these loops to make the first
+            # fetch serial. It is gone: it self-skipped every run, because the
+            # image reference is not one string in the CLI binary -- the
+            # registry "public.ecr.aws/supabase/" and the tag
+            # "supabase/edge-runtime:v1.74.3" are stored apart -- and the
+            # measurement above says the bound is doing the work by itself.
+            # Scraping a 95 MB binary for a tag that belongs to the CLI and
+            # not to this repository is not a mechanism worth depending on.
             if (( RUNNING >= 2 )); then wait -n || true; RUNNING=$((RUNNING - 1)); fi
           done
           wait
@@ -821,9 +798,22 @@ jobs:
               fi
             ) &
             RUNNING=$((RUNNING + 1))
-            # Two, not eight: see "Warm the edge-runtime image". Each of these
-            # bundles in its own container, and eight at once is eight
-            # simultaneous anonymous ECR pulls from one runner IP.
+            # TWO, NOT EIGHT.
+            #
+            # Each deploy bundles inside its own container, so eight at once
+            # is eight simultaneous anonymous pulls of the same image from
+            # AWS ECR Public, which rate-limits per source IP -- and a shared
+            # runner is one IP. Six "toomanyrequests" in run 36098574958,
+            # three in 36099775881, ZERO in 36104657682 at this setting.
+            #
+            # A warm-up pull used to sit before these loops to make the first
+            # fetch serial. It is gone: it self-skipped every run, because the
+            # image reference is not one string in the CLI binary -- the
+            # registry "public.ecr.aws/supabase/" and the tag
+            # "supabase/edge-runtime:v1.74.3" are stored apart -- and the
+            # measurement above says the bound is doing the work by itself.
+            # Scraping a 95 MB binary for a tag that belongs to the CLI and
+            # not to this repository is not a mechanism worth depending on.
             if (( RUNNING >= 2 )); then wait -n || true; RUNNING=$((RUNNING - 1)); fi
           done
           wait
@@ -897,21 +887,48 @@ jobs:
           #
           # The earlier note here said the deployed original TypeScript was
           # unobtainable, having ruled out `functions download` (rewrites the
-          # tree), /body (an eszip of type-stripped emitted JavaScript) and
-          # this endpoint ("metadata only ... No files[]"). That last one is
-          # no longer true: the same field set now arrives WITH `files`,
-          # carrying the untranspiled source of the whole import closure.
-          # Measured against production on 2026-09-25 -- ai-talk-session 21
-          # files, research-agent 69, investment-research 39, verify-synthesis
-          # 27, comm-campaign-launch 17, comm-agent 12, cartesia-access-token
-          # 4 -- every file identical to its revision, and a stale v107
-          # artifact correctly reported as differing in exactly the three
-          # files that changed.
+          # tree), /body (an eszip) and this endpoint ("metadata only ... No
+          # files[]").
           #
-          # So the question is now the one that was always meant:
+          # A previous version of THIS comment said that last one had stopped
+          # being true. It had not. Run 36104657682 asked production for all
+          # eighteen owed functions and every one came back with no files at
+          # all -- `files: 0/N`, artifact UNAVAILABLE, nothing proven, ref
+          # untouched. The claim came from a Supabase MCP response, which does
+          # return the deployed source for the whole closure but reaches it by
+          # a route CI does not have. Measured:
+          #
+          #   GET .../functions/<slug>                      no files[]
+          #   GET .../functions/<slug>?include_files=true   no files[]
+          #   GET .../functions/<slug>/body                 the eszip, which
+          #       would need a parser this repository does not carry
+          #
+          # ezbr_sha256 cannot stand in for them either, and it is worth
+          # writing down why, because the field name invites the assumption.
+          # Read out of CLI 2.117.0: the bundler writes output.eszip, the CLI
+          # brotli-compresses it at quality 6, prefixes a constant, takes the
+          # SHA-256 of that, and sends it as the ezbr_sha256 QUERY PARAMETER
+          # of the upload. So the platform stores a number the CLI computed,
+          # and "No change found in Function: x" is precisely that number
+          # matching the one production already holds.
+          #
+          # It is not reproducible. Production disagreed with itself over a
+          # byte-identical source closure: cartesia-access-token v26
+          # a34394a5... and v27 43428031..., the same four files, each
+          # verified identical to its revision, nothing in between touching
+          # supabase/ or src/. Seventeen other functions hashed stably across
+          # the same two runs, so the bundle is MOSTLY deterministic -- which
+          # is exactly what a proof is not allowed to be.
+          #
+          # So the question below is still the one that was always meant:
           #
           #   PRODUCTION CONTAINS THE EXPECTED ARTIFACT FOR EVERY OWED
           #   FUNCTION.
+          #
+          # ...and today it cannot be answered, so it answers UNAVAILABLE and
+          # this step fails. That is the correct failure. The ref does not
+          # move on an unprovable claim, which is the whole reason this
+          # mechanism exists.
           #
           # The old lesson still stands and is now enforced rather than
           # asked for: the CLI's "No change found", its "Deployed Functions",

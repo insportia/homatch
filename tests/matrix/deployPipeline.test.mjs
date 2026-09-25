@@ -534,24 +534,45 @@ test('mutation: ignoring the dependency closure flips case 7 green', () => {
   assert.ok(!isProven(stale), 'a stale _shared dependency is being ignored');
 });
 
-test('the workflow wires the artifact proof, bounded concurrency and a best-effort warm-up', () => {
+test('the workflow bounds deploy concurrency and proves the artifact before the ref', () => {
   const deploy = job('deploy-functions');
 
-  /* Eight simultaneous anonymous ECR pulls from one runner IP. */
+  /*
+   * Eight simultaneous anonymous ECR pulls from one runner IP produced six
+   * rate limits in one run and three in the next. Two produced none.
+   */
   assert.ok(!/RUNNING >= [3-9]/.test(deploy), 'edge deploy concurrency is unbounded again');
   assert.equal((deploy.match(/RUNNING >= 2/g) ?? []).length, 2, 'both deploy loops must be bounded');
 
-  /* The warm-up is an optimisation and must never be able to fail the job or
-     stand in for proof. */
-  const warm = deploy.slice(deploy.indexOf('- name: Warm the edge-runtime image'));
-  assert.match(warm.slice(0, 400), /continue-on-error: true/, 'the warm-up can fail the deploy');
-  assert.ok(!/edge-runtime:v[0-9]+\.[0-9]+\.[0-9]+["'\s]*$/m.test(warm.split('- name:')[1] ?? ''),
+  /*
+   * There is no warm-up step, and there should not be one that hardcodes a
+   * tag: the edge-runtime version belongs to the pinned CLI, not to this
+   * repository, so a literal here goes stale the moment setup-cli is bumped
+   * and nothing says so.
+   */
+  assert.ok(!/- name: Warm the edge-runtime image/.test(deploy), 'the self-skipping warm-up is back');
+  const runnable = deploy.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  assert.ok(!/docker pull .*edge-runtime:v[0-9]/.test(runnable),
     'the edge-runtime tag is hardcoded and will go stale when the CLI is bumped');
 
-  /* And the proof itself still runs, after the deploys, before the ref. */
+  /* The proof runs after the deploys and before the ref can move. */
   const proveAt = deploy.indexOf('- name: Prove it in production');
-  assert.ok(deploy.indexOf('- name: Warm the edge-runtime image') < proveAt);
+  const advanceAt = deploy.indexOf('- name: Advance refs/deployed/edge');
+  assert.ok(proveAt > 0 && advanceAt > proveAt, 'the ref advances before the artifact is proven');
   assert.match(deploy.slice(proveAt), /edgeArtifacts\.mjs verify/);
+});
+
+test('the workflow does not claim the REST API returns deployed files', () => {
+  /*
+   * It does not. Run 36104657682 asked for all eighteen owed functions and
+   * every one came back with none. A comment that says otherwise is worse
+   * than no comment: the next person builds on it, as this one did.
+   */
+  const deploy = job('deploy-functions');
+  assert.ok(!/now arrives WITH `files`/.test(deploy), 'the disproved files[] claim is back in the workflow');
+  const script = readFileSync('scripts/edgeArtifacts.mjs', 'utf8');
+  assert.ok(!/the same field set\s*\n?\s*\*?\s*now arrives with `files`/.test(script),
+    'the disproved files[] claim is back in edgeArtifacts.mjs');
 });
 
 /*

@@ -673,6 +673,31 @@ if (isMain) {
      * Each loop appends "<name> <list>" as it starts an attempt. Absent file
      * means an older workflow produced this run, and the answer is UNKNOWN
      * rather than "not attempted" -- the distinction being the whole point.
+     *
+     * WHAT IT ANSWERED, run 741, 2026-09-25:
+     *
+     *   research-agent UNPROVEN - attempted=yes via the nojwt list
+     *   state=STALE version=161->161 deployment=deduplicated / already-current
+     *   mismatched=market/runtime.ts, adapters/portal/configured.ts,
+     *              adapters/portal/family.ts, adapters/portal/sources.ts
+     *
+     * So it is NOT the run-724 failure. The loop reached the function, the
+     * CLI ran, it exited 0, and Supabase created no new version.
+     *
+     * Every mismatched file lives in src/research-core/ -- OUTSIDE
+     * supabase/functions/research-agent/ -- and that function's own index.ts
+     * was unchanged. The same shape produced every occurrence of this:
+     * match-campaign in 733, investment-research and supply-discovery in 734,
+     * supply-discovery in 735 and 739. A function whose entrypoint is
+     * untouched and whose imported modules changed is the case that goes
+     * stale.
+     *
+     * It is INTERMITTENT rather than absolute -- run 740 shipped the same
+     * kind of change successfully -- so this is a description of the pattern
+     * and not yet a mechanism. It is recorded here rather than worked around,
+     * because a workaround aimed at the wrong mechanism would hide the right
+     * one, and the proof already fails loudly and refuses to advance
+     * refs/deployed/edge, so nothing false is claimed while it happens.
      */
     const attemptedPath = process.env.RUNNER_TEMP
       ? `${process.env.RUNNER_TEMP}/attempted.txt` : null;

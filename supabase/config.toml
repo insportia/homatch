@@ -130,3 +130,9 @@ verify_jwt = false
 # authenticates on demand_discovery_token in admin_settings.
 [functions.demand-discovery]
 verify_jwt = false
+
+# Supply revalidation. A worker tick: no customer, no user JWT, authenticates
+# on revalidation_worker_token -- the same token revalidate-evidence uses,
+# because they are the two halves of one contract.
+[functions.revalidate-supply]
+verify_jwt = false

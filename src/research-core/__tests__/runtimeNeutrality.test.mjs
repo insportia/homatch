@@ -363,6 +363,17 @@ test('the core is consumed only through its deliberate integration points', () =
      * without a network.
      */
     'supabase/functions/demand-discovery/index.ts',
+    /*
+     * SUPPLY REVALIDATION. It builds the same runtime to ask one question of
+     * a page it has already read: is this still here, and does it still say
+     * the same thing.
+     *
+     * It deliberately does NOT re-parse. Deciding here whether the price
+     * moved would mean a second extraction path that could disagree with the
+     * adapter, and two readers of one page is how a field ends up with two
+     * truths. It compares a hash and nothing else.
+     */
+    'supabase/functions/revalidate-supply/index.ts',
   ]);
 
   const roots = ['src', 'supabase/functions', 'official-worker/src'];

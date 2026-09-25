@@ -812,6 +812,11 @@ jobs:
             # raw_signals. Worker-driven, never a browser, authenticated
             # on a private token like every other tick here.
             "demand-discovery"
+            # Supply revalidation. revalidate-evidence asks whether a
+            # demand signal is still there; this asks the same of a
+            # listing, over the same fetch path, and records REMOVED
+            # rather than deleting a row when it has gone.
+            "revalidate-supply"
             # ── Communications: the three that are NOT called by a browser ──
             #
             # These MUST be here rather than in the JWT list, and the

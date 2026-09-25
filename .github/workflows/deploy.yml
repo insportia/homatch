@@ -734,7 +734,29 @@ jobs:
         run: |
           NO_JWT_FUNCTIONS=(
             "classify-signals"
+            # ── THE RETIRED PROVIDERS' FUNCTIONS, WHICH HAVE TO BE SHIPPED ──
+            #
+            # All four answer 423 and reach no provider. They were previously
+            # excused from CI as "hand-deployed; CI route unreviewed", which
+            # had a consequence nobody had had to face until now: a change to
+            # them CANNOT REACH PRODUCTION. Retiring apify-discover in the
+            # repository while production kept running the live Apify code is
+            # exactly the gap the accounting check caught on run 724.
+            #
+            # No JWT, because a 423 stub authenticates nobody and there is
+            # nothing behind it to protect. dataforseo-search has been in this
+            # list on those terms since it was retired.
             "dataforseo-search"
+            "apify-discover"
+            "source-discovery-massive"
+            "source-monitor-public"
+            # The signal classifier. Called by the worker tick with the
+            # service key, never by a browser -- the same shape as
+            # classify-signals directly above it, which has always been here.
+            # It was excused for no reason anybody recorded, and the retry
+            # fix for the 510 permanent ERRORs is worthless in a repository
+            # that production never sees.
+            "classify-signals-v2"
             "payment-webhook"
             "run-matching"
             "social-collect"

@@ -67,18 +67,33 @@ const UNSHIPPED = {
   'seed-discovery-queries': 'writes fixture data; never wanted on a production deploy',
   tests: 'a test harness, not a customer surface',
 
-  // ── Hand-deployed, route into CI not yet reviewed. ───────────────────
+  /* ── Hand-deployed, route into CI not yet reviewed. ─────────────────
+   *
+   * Four names left this list on 2026-09-25, and it is worth saying why
+   * rather than just shortening the list. apify-discover,
+   * source-discovery-massive, source-monitor-public and
+   * classify-signals-v2 were all excused here, which meant exactly what
+   * the first test below says: changes to them could not reach
+   * production.
+   *
+   * That became a real problem the moment the first three were turned
+   * into 423 retirement stubs. The repository said Apify was retired
+   * and production went on running the live Apify code, and nothing
+   * anywhere would have reported the difference -- run 724's upload
+   * accounting caught it only because the functions became OWED and
+   * then matched no deploy loop.
+   *
+   * An entry here is a statement that a function is deliberately not
+   * one merge from production. For an operator tool that is a security
+   * property. For an ordinary function it is a trap.
+   */
   'admin-user360': 'hand-deployed; CI route unreviewed',
-  'apify-discover': 'hand-deployed; CI route unreviewed',
   'browserbase-handoff': 'hand-deployed; CI route unreviewed',
-  'classify-signals-v2': 'hand-deployed; CI route unreviewed',
   'generate-search-profile': 'hand-deployed; CI route unreviewed',
   'outreach-provider-status': 'hand-deployed; CI route unreviewed',
   'outreach-sms-webhook': 'hand-deployed; CI route unreviewed',
   'outreach-unsubscribe': 'hand-deployed; CI route unreviewed',
   'retell-webhook': 'hand-deployed; CI route unreviewed',
-  'source-discovery-massive': 'hand-deployed; CI route unreviewed',
-  'source-monitor-public': 'hand-deployed; CI route unreviewed',
   'system-health': 'hand-deployed; CI route unreviewed',
   'unlock-external-contact': 'hand-deployed; CI route unreviewed',
 };

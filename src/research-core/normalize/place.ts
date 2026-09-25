@@ -32,6 +32,23 @@
 // Missing entries cost a merge opportunity and nothing else: an unknown
 // cross-script pair yields UNKNOWN, which is neutral. So this table can grow
 // from observation, safely, one verified name at a time.
+//
+// VERIFIED IN PRODUCTION, 2026-09-25, on four sources and three scripts.
+// These are real decisions from supply_resolution_decisions, each one past
+// the area check, so the city comparison actually decided something:
+//
+//   realting-com:3707388   tbilisi   vs  place-ge:1317855   თბილისი
+//     -> "same city(0)", RELATED 0.600
+//   estatemarket-ge        Батуми   vs  ss-ge:36826158     Batumi
+//     -> "same city(0)", RELATED 0.450
+//   ss-ge:35804803         Tbilisi   vs  place-ge:1317870   თბილისი
+//     -> "same city(0)", UNRESOLVED 0.050
+//
+// Under the byte-equality rule this replaced, every one of those was a CITY
+// CONFLICT returning DISTINCT at 0.85 confidence -- with "different cities"
+// written into the decision log about two listings in the same city. Latin
+// against Georgian and Latin against Cyrillic both resolve, and none of the
+// pairs reached the merge threshold, which is the other half of being right.
 
 export type PlaceComparison = 'AGREE' | 'CONFLICT' | 'UNKNOWN';
 

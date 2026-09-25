@@ -46,7 +46,7 @@
  * pure, so every case below is tested without touching production.
  */
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 import { importClosure } from './deploy-scope.mjs';
 
@@ -659,6 +659,33 @@ if (isMain) {
       projectRef: process.env.SUPABASE_PROJECT_REF,
       token: process.env.SUPABASE_ACCESS_TOKEN,
     };
+
+    /*
+     * WHICH FUNCTIONS A DEPLOY LOOP ACTUALLY REACHED.
+     *
+     * "version did not move" is reported as "deduplicated / already-current",
+     * and that phrase covers two different events: the CLI ran and chose to
+     * skip, or no loop ever reached the function. They call for opposite
+     * fixes -- one is a CLI behaviour to work around, the other is a name
+     * missing from a hand-maintained list, which is exactly the run-724
+     * failure where an owed function matched neither loop and nobody noticed.
+     *
+     * Each loop appends "<name> <list>" as it starts an attempt. Absent file
+     * means an older workflow produced this run, and the answer is UNKNOWN
+     * rather than "not attempted" -- the distinction being the whole point.
+     */
+    const attemptedPath = process.env.RUNNER_TEMP
+      ? `${process.env.RUNNER_TEMP}/attempted.txt` : null;
+    let attempted = null;
+    if (attemptedPath && existsSync(attemptedPath)) {
+      attempted = new Map(
+        readFileSync(attemptedPath, 'utf8')
+          .split('\n')
+          .map((line) => line.trim().split(/\s+/))
+          .filter((parts) => parts[0])
+          .map((parts) => [parts[0], parts[1] ?? 'unknown']),
+      );
+    }
     const tally = {
       owed: 0, proven: 0, unproven: 0, exact: 0, stale: 0, incomplete: 0, unavailable: 0,
     };
@@ -725,7 +752,14 @@ if (isMain) {
          * it. Path shapes are also the thing that has repeatedly cost a run
          * to rediscover.
          */
+        const reached = attempted === null
+          ? 'attempted=UNKNOWN (this run predates the attempt log)'
+          : attempted.has(name)
+            ? `attempted=yes via the ${attempted.get(name)} list`
+            : 'attempted=NO — no deploy loop reached this function, so it is '
+              + 'owed but missing from both name lists';
         const detail = [
+          reached,
           `state=${proof.state}`,
           `version=${pre[name]?.version ?? 0}->${proof.version}`,
           `deployment=${moved}`,

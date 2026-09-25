@@ -691,6 +691,18 @@ jobs:
             [[ -z "${WANTED[$fn]:-}" ]] && continue
             MATCHED=$((MATCHED + 1))
             (
+              # WHAT WAS ATTEMPTED, recorded before the attempt.
+              #
+              # "Prove it in production" can see that a function's version did
+              # not move, and it reports that as "deduplicated / already-
+              # current" -- but that phrase covers two different events: the
+              # CLI deployed and chose to skip, or this loop never reached the
+              # function at all. The second is the run-724 failure, where a
+              # function owed but present in neither name list was matched by
+              # neither loop and nobody noticed.
+              #
+              # One line per attempt, so the proof can name which it was.
+              echo "$fn jwt" >> "$RUNNER_TEMP/attempted.txt"
               if supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF" 2>&1; then
                 echo "  ✅ $fn"
               else
@@ -849,6 +861,10 @@ jobs:
             [[ -z "${WANTED[$fn]:-}" ]] && continue
             MATCHED=$((MATCHED + 1))
             (
+              # The same record as the JWT loop above, and for the same
+              # reason: a version that did not move is not evidence about
+              # whether a deploy was attempted.
+              echo "$fn nojwt" >> "$RUNNER_TEMP/attempted.txt"
               if supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF" --no-verify-jwt 2>&1; then
                 echo "  ✅ $fn"
               else

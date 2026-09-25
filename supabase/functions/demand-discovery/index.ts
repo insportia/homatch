@@ -250,6 +250,19 @@ async function persist(
     research_direction: signal.direction,
     direction_confidence: signal.directionConfidence,
     /*
+     * A BROKER SAYING "MY CLIENTS ARE LOOKING FOR 2BR FLATS" IS NOT A LEAD.
+     *
+     * Not a rejection on its own -- an agency posting inventory is perfectly
+     * good SUPPLY, and that is most of what a portal is. It disqualifies a
+     * post as DEMAND, where an agency advertising its buyer list is a sales
+     * pitch aimed at sellers. One of those delivered as a buyer costs more
+     * trust than ten missed leads.
+     *
+     * NULL on every row collected before this column existed, and null is
+     * not false: the retired providers never asked the question.
+     */
+    author_is_agency: signal.agencyVoice,
+    /*
      * PENDING, not CLASSIFIED. classifyDirection decided SUPPLY or DEMAND,
      * which is not the same as having extracted a budget, a district and a
      * property type — that is the classifier's job and it runs separately.

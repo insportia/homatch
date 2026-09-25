@@ -40,6 +40,7 @@ const ROUTES = {
   privacy: 'src/pages/PrivacyPage.tsx',
   terms: 'src/pages/TermsPage.tsx',
   verify: 'src/pages/VerifyPage.tsx',
+  expat: 'src/pages/ForExpatsPage.tsx',
 };
 
 test('the page list was actually found', () => {
@@ -160,4 +161,32 @@ test('the document is READ, not filled in', () => {
   // A CALL, not the word: the comment above the removal says "setInterval".
   assert.equal(/setInterval\s*\(/.test(section), false,
     'something in this section still animates on a timer started at mount');
+});
+
+test('every editable page has a section order of its own', () => {
+  /*
+   * Without an entry in ORDERS a slug falls back to the HOME order, so an
+   * admin opening it is shown the home page's sections and can publish them
+   * onto a different page. That is the Pricing failure above, one level up:
+   * it was fixed for seeding and never checked for ordering.
+   */
+  const order = readFileSync('src/site/render/order.ts', 'utf8');
+  for (const { slug } of EDITABLE_PAGES) {
+    assert.match(order, new RegExp(`^\\s*${slug}: `, 'm'),
+      `${slug} has no section order and would inherit the home page's`);
+  }
+});
+
+test('For Expats is editable, and its guidance stays in code', () => {
+  /*
+   * §21 names For Expats as a page Admin must be able to manage. The needs,
+   * the steps and the tools are product logic -- §21 also says not to turn
+   * transactional logic into CMS rows -- so it takes the additive band like
+   * the other coded pages rather than being composed from sections.
+   */
+  const slugs = EDITABLE_PAGES.map(p => p.slug);
+  assert.ok(slugs.includes('expat'), 'For Expats cannot be opened in the editor');
+  const src = readFileSync('src/pages/ForExpatsPage.tsx', 'utf8');
+  assert.match(src, /<PageBlocks slug="expat" \/>/);
+  assert.match(src, /<WhatDoYouNeed/, 'the guidance must not become editable content');
 });

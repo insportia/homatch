@@ -34,6 +34,7 @@ import { TopicIndex } from '@/components/expats/TopicIndex';
 import { WhatCanIBuy } from '@/components/expats/WhatCanIBuy';
 import { WhatChanged } from '@/components/expats/WhatChanged';
 import WhatDoYouNeed from '@/components/expats/WhatDoYouNeed';
+import { PageBlocks } from '@/site/render/PageBlocks';
 import { HeaderSpacer, PublicHeader } from '@/components/home/PublicHeader';
 import { SiteFooter } from '@/components/home/sections/SiteFooter';
 import { useAuth } from '@/contexts/AuthContext';
@@ -164,6 +165,11 @@ export default function ForExpatsPage() {
           <Ecosystem />
         </div>
       </div>
+
+      {/* Whatever an admin has added to this page. Additive: the guidance,
+          the steps and the tools above are product rather than copy, and a
+          page nobody has edited renders byte for byte what shipped. */}
+      <PageBlocks slug="expat" />
 
       <SiteFooter />
     </div>

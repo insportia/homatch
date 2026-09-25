@@ -55,6 +55,20 @@ export interface CollectionRoute {
   url: string;
   /** What the site calls this property type on that page, when it separates. */
   propertyType?: 'APARTMENT' | 'HOUSE' | 'LAND' | 'COMMERCIAL';
+  /**
+   * The market this collection page covers, where a source covers more than
+   * one.
+   *
+   * Absent means "this source has one market and this is it", which is true
+   * of every Georgian site here. An international portal publishes a separate
+   * collection page per country -- realting.com serves /georgia/property and
+   * /montenegro/property -- and without this the adapter would answer a
+   * Montenegro question with Georgian listings and the envelope would throw
+   * every one of them away, reporting a working source as empty.
+   *
+   * ISO-3166 alpha-2, upper case, matching ListingQuery.countryCode.
+   */
+  countryCode?: string;
 }
 
 export interface ConfiguredAdapterOptions {
@@ -94,7 +108,22 @@ export class ConfiguredPortalAdapter implements ListingPortalAdapter {
    */
   supports(query: ListingQuery): boolean {
     if (!this.countries.includes(String(query.countryCode ?? '').toUpperCase())) return false;
-    return this.routes.some((route) => route.transaction === query.transaction);
+    return this.routeFor(query) !== null;
+  }
+
+  /**
+   * The collection page that answers THIS question, or null.
+   *
+   * A route with no countryCode serves every market the adapter claims --
+   * true of a single-market source. A route that names one serves only that
+   * market, so a portal covering eleven countries cannot answer a question
+   * about a twelfth just because it has a sale page somewhere.
+   */
+  private routeFor(query: ListingQuery): CollectionRoute | null {
+    const country = String(query.countryCode ?? '').toUpperCase();
+    return this.routes.find((route) =>
+      route.transaction === query.transaction
+      && (!route.countryCode || route.countryCode.toUpperCase() === country)) ?? null;
   }
 
   handles(url: string): boolean {
@@ -122,12 +151,14 @@ export class ConfiguredPortalAdapter implements ListingPortalAdapter {
     query: ListingQuery,
     context: AdapterContext,
   ): Promise<AdapterOutcome<ListingSearchResult>> {
-    const route = this.routes.find((r) => r.transaction === query.transaction);
+    const route = this.routeFor(query);
     if (!route) {
       return {
         ok: false,
         reason: 'CAPABILITY_NOT_SUPPORTED',
-        detail: `${this.id} publishes no ${query.transaction} collection page`,
+        detail:
+          `${this.id} publishes no ${query.transaction} collection page for `
+          + `${query.countryCode ?? 'that market'}`,
       };
     }
 
@@ -249,7 +280,7 @@ export class ConfiguredPortalAdapter implements ListingPortalAdapter {
          */
         totalAvailable: null,
         truncated: candidates.length > wanted.length,
-        appliedFilters: appliedFilters(query, unevaluated),
+        appliedFilters: appliedFilters(query, unevaluated, Boolean(route.countryCode)),
         /*
          * How many readable listings the envelope removed. A sweep that found
          * forty and kept two is a different event from one that found two,
@@ -418,7 +449,11 @@ export function samePlace(a: string, b: string): boolean {
  * Nothing is listed in `client` that is not applied in withinEnvelope, and a
  * test drives a violating listing through every name on the list.
  */
-function appliedFilters(query: ListingQuery, unevaluated: ReadonlySet<string>): AppliedFilters {
+function appliedFilters(
+  query: ListingQuery,
+  unevaluated: ReadonlySet<string>,
+  countryScoped: boolean,
+): AppliedFilters {
   /*
    * THREE LISTS, NOT A MAP PER CONSTRAINT. Read off the AppliedFilters
    * declaration rather than invented -- an earlier version of this function
@@ -428,9 +463,17 @@ function appliedFilters(query: ListingQuery, unevaluated: ReadonlySet<string>): 
   const client: string[] = [];
   const unsupported: string[] = [];
 
-  // The ONE thing these collection pages genuinely separate. Sale and rent
-  // are different URLs, so the portal really did enforce it.
+  /*
+   * Sale and rent are different URLs, so the portal really did enforce it.
+   *
+   * On an international source the COUNTRY is enforced the same way -- the
+   * collection page for Georgia is a different URL from the one for
+   * Montenegro -- and that is a genuine server-side narrowing rather than
+   * something this adapter did afterwards. Claiming it only where a route
+   * actually names a country keeps the distinction honest.
+   */
   const server = ['transaction'];
+  if (countryScoped) server.push('countryCode');
 
   const record = (constraint: string) => {
     if (unevaluated.has(constraint)) unsupported.push(constraint);

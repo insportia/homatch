@@ -347,20 +347,37 @@ export function extractListing(
   listing.description ??= ogValue(html, 'description');
   if (listing.title) listing.fieldOrigins.title ??= origin(config, 'METADATA');
 
-  // The canonical id, from the URL where the site puts it there.
-  if (!listing.listingId) {
-    const match = config.detailUrl.pattern.exec(url);
-    const fromUrl = match?.[config.detailUrl.idGroup];
-    if (fromUrl) {
-      listing.listingId = fromUrl;
-      /*
-       * DERIVED, not STRUCTURED. The id came out of the URL, which the source
-       * controls but did not publish as data -- recording it as JSON_LD would
-       * inflate structuredQuality for a page that published nothing, and
-       * quality is what decides which of two conflicting observations wins.
-       */
-      listing.fieldOrigins.listingId = origin(config, 'DERIVED');
-    }
+  /*
+   * THE URL'S ID WINS, and it took an international portal to show why.
+   *
+   * This used to take the URL id only when JSON-LD supplied none. realting.com
+   * publishes `"@id": "property1"` on every listing -- a document-local
+   * anchor that the Offer and Product nodes point at, not an identity -- and
+   * the reader dutifully adopted it. Every listing on the site would have
+   * carried the same external_id, so the whole portal would have collapsed
+   * into ONE supply_observation, overwritten on each pass, with a canonical
+   * URL that changed every time and a price that belonged to whichever flat
+   * was read last.
+   *
+   * That is the place.ge agency-id failure wearing different clothes, and the
+   * counter-argument -- "the site published it, so it is data" -- is exactly
+   * what made the first one convincing.
+   *
+   * The URL pattern is the better identity BY CONSTRUCTION. It is not
+   * scraped: someone looked at the source, decided which part of its URLs is
+   * the listing number, and wrote it down in the source config. An @id is
+   * whatever the page's template happened to emit.
+   *
+   * It stays DERIVED rather than JSON_LD. The id came out of the URL, which
+   * the source controls but did not publish as data, and recording it as
+   * structured would inflate structuredQuality for a page that published
+   * nothing -- quality being what decides which of two conflicting
+   * observations wins.
+   */
+  const fromUrl = config.detailUrl.pattern.exec(url)?.[config.detailUrl.idGroup];
+  if (fromUrl) {
+    listing.listingId = fromUrl;
+    listing.fieldOrigins.listingId = origin(config, 'DERIVED');
   }
 
   const nodes = config.strategy === 'OPEN_GRAPH' ? [] : jsonLdNodes(html);

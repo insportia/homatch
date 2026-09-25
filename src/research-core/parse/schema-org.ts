@@ -54,6 +54,48 @@ const PROPERTY_TYPES = [
 
 const ORGANIZATION_TYPES = ['organization', 'realestateagent', 'localbusiness', 'corporation'];
 
+/**
+ * schema.org's word for a property, in the vocabulary the model actually uses.
+ *
+ * WHY THIS IS NOT `typesOf(primary)[0]`.
+ *
+ * That returned the type lowercased -- "apartment" -- while every other path
+ * into this field produces "APARTMENT", because the source configs declare
+ * the vocabulary in capitals. Nothing failed loudly. What happened instead:
+ *
+ *   - a campaign envelope asking for APARTMENT rejected every listing from a
+ *     source whose JSON-LD says Apartment, so a portal appeared to have no
+ *     flats at all;
+ *   - the entity resolver's propertyType CONFLICT rule fired between
+ *     "apartment" and "APARTMENT" and returned DISTINCT at 0.75 confidence,
+ *     so the same flat cross-posted to two sources -- the exact case the
+ *     resolver exists to find -- was declared two different properties, with
+ *     a written-down reason that looked authoritative.
+ *
+ * A value that reads correctly in a report and compares wrongly in code is
+ * the worst shape a field can take.
+ *
+ * TYPES OUTSIDE THE VOCABULARY BECOME NULL rather than being passed through
+ * uppercased. "Residence", "Accommodation", "Suite" and "Room" are real
+ * schema.org types and none of them is one of APARTMENT / HOUSE / LAND /
+ * COMMERCIAL. Uppercasing them would dress a word the model cannot compare
+ * as though it were a term the model knows; absence is checkable, and the
+ * URL's own claim (propertyTypeFromUrl) can still answer.
+ */
+const SCHEMA_PROPERTY_TYPES: Record<string, string> = {
+  apartment: 'APARTMENT',
+  house: 'HOUSE',
+  singlefamilyresidence: 'HOUSE',
+};
+
+function propertyTypeFrom(types: readonly string[]): string | null {
+  for (const type of types) {
+    const mapped = SCHEMA_PROPERTY_TYPES[String(type).toLowerCase()];
+    if (mapped) return mapped;
+  }
+  return null;
+}
+
 /** Signals that an offer is a tenancy rather than a sale. */
 const RENT_HINT = /lease|rent|rental|tenanc|\bper\s*(month|night|day)\b|monthly/i;
 
@@ -86,7 +128,7 @@ export function listingFromJsonLd(
       'listingId',
       readString(primary, 'identifier') ?? readString(primary, 'sku') ?? readString(primary, '@id'),
     );
-    set('propertyType', typesOf(primary)[0] ?? null);
+    set('propertyType', propertyTypeFrom(typesOf(primary)));
     set('yearBuilt', toInt(readNumberLike(primary, 'yearBuilt')));
     set(
       'publishedAt',

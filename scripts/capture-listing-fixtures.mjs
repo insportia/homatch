@@ -81,6 +81,29 @@ const SOURCES = {
     collection: 'https://www.zarayaproperties.com/en/properties-1',
     detailHint: /properties-1\/\d+/i,
   },
+  /*
+   * realting.com -- and the first source here that is not Georgian.
+   *
+   * Its estate sitemaps carry listings in Montenegro, Cambodia, Poland, the
+   * United States, Thailand, Cyprus, Latvia, Turkey, Lithuania and Israel as
+   * well as Georgia. It is in this batch because of that, not despite it: a
+   * discovery network validated only against Georgian portals is a Georgian
+   * scraper with ambitions.
+   *
+   * The collection URL carries the COUNTRY, which is why the adapter had to
+   * learn to pick a route by country as well as by transaction.
+   *
+   * NOT short-term-rental. The site publishes three shapes --
+   * /<country>/property/<id>, /<country>/property-to-rent/<id> and
+   * /<country>/short-term-rental/<id> -- and the third is a nightly rate.
+   * There is no transaction in the model for it, and folding it into RENT
+   * would pool a per-night price with a monthly one and produce a rental
+   * market that does not exist.
+   */
+  'realting.com': {
+    collection: 'https://realting.com/georgia/property',
+    detailHint: /realting\.com\/[a-z-]+\/property\/\d+/i,
+  },
 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

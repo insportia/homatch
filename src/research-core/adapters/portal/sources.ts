@@ -377,8 +377,94 @@ export const HOME_SS_GE: PortalSourceConfig = {
   rentBasis: 'ASKING_RENT',
 };
 
+/**
+ * realting.com — the first source here that is not Georgian.
+ *
+ * WHY IT IS IN THIS BATCH
+ *
+ * Its estate sitemaps carry listings in Montenegro, Cambodia, Poland, the
+ * United States, Thailand, Cyprus, Latvia, Turkey, Lithuania, Israel and
+ * Georgia. It is here BECAUSE of that. Four Georgian portals make a Georgian
+ * scraper; the architecture only earns the word "network" when a source can
+ * answer a question about a market nobody here has looked at.
+ *
+ * It is also the best-published source in the batch. Its detail pages emit
+ * schema.org Apartment, Offer, PostalAddress and QuantitativeValue nodes, so
+ * the generic reader gets the title, price, currency, area, rooms, bedrooms,
+ * year built, country, locality and coordinates with no site-specific rule at
+ * all. The enrich list below is empty and that is the point: a source that
+ * publishes structured data properly should need no patterns.
+ *
+ * THREE URL SHAPES, AND ONLY TWO OF THEM ARE LISTINGS WE CAN MODEL
+ *
+ *   /<country>/property/<id>            a sale
+ *   /<country>/property-to-rent/<id>    a long-term tenancy
+ *   /<country>/short-term-rental/<id>   a NIGHTLY rate
+ *
+ * The third is deliberately unmatched by the pattern below, so those pages
+ * are never treated as listings. The model has SALE and RENT and nothing
+ * else, and folding a per-night price into ASKING_RENT would pool it with
+ * monthly rents and produce a rental market that does not exist — the same
+ * error as a monthly figure landing in the sale field, one level along.
+ *
+ * WHAT IT COST TO ADD, WHICH WAS NOT NOTHING
+ *
+ * Its JSON-LD says `"@id": "property1"` on every listing — a document-local
+ * anchor the Offer and Product nodes point at, not an identity. The reader
+ * preferred that over the URL's id, so this entire portal would have
+ * collapsed into ONE observation, overwritten on every pass. And its
+ * `"@type": "Apartment"` arrived lowercased while every source config
+ * declares the vocabulary in capitals, which would have made a campaign
+ * asking for APARTMENT reject every flat here and made the entity resolver
+ * call one cross-posted flat two properties. Both were framework defects
+ * that four Georgian portals had never provoked.
+ */
+export const REALTING: PortalSourceConfig = {
+  id: 'realting-com',
+  host: 'realting.com',
+  /*
+   * PROPERTY_PORTAL, not a family of its own. The family axis says what KIND
+   * of source this is -- it weights source independence, so two portals
+   * count as less corroboration than a portal and a registry. Geography is
+   * not a kind, and inventing INTERNATIONAL_PORTAL would have split that
+   * weighting on an axis that has nothing to do with whether two sources are
+   * really independent.
+   */
+  family: 'PROPERTY_PORTAL',
+  strategy: 'SCHEMA_ORG',
+  /* The market this source is registered against by default. The adapter
+     carries the full list, and each collection route names its own. */
+  countryCode: 'GE',
+  /*
+   * The languages Homatch can actually run a campaign in. This site also
+   * publishes German, Spanish, Polish and French, and those are not listed
+   * because ResearchLanguage does not have them: the campaign language
+   * system covers ka/en/ru/he/ar/tr/hi, and claiming a language the planner
+   * cannot select would put a coverage number in a report for work no
+   * campaign can commission.
+   */
+  languages: ['en', 'ru'],
+  detailUrl: {
+    pattern: /realting\.com\/[a-z-]+\/property(?:-to-rent)?\/(\d+)/i,
+    idGroup: 1,
+  },
+  transactionFromUrl: [
+    { match: /\/property-to-rent\//i, transaction: 'RENT' },
+    { match: /\/property\/\d+/i, transaction: 'SALE' },
+  ],
+  saleBasis: 'ASKING_SALE_PRICE',
+  rentBasis: 'ASKING_RENT',
+  /*
+   * EMPTY, AND VERIFIED EMPTY. Everything this source publishes comes out of
+   * its schema.org nodes. A rule added here would be a rule reading prose on
+   * a page that already stated the same fact as data, and it would score
+   * lower for it.
+   */
+  enrich: [],
+};
+
 export const PORTAL_SOURCES: readonly PortalSourceConfig[] = [
-  HOME_SS_GE, HOME24_GE, PLACE_GE, ZARAYA,
+  HOME_SS_GE, HOME24_GE, PLACE_GE, ZARAYA, REALTING,
 ];
 
 export function sourceForUrl(url: string): PortalSourceConfig | null {

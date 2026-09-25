@@ -27,9 +27,10 @@ import {
   transactionFromUrl,
 } from '../adapters/portal/family.ts';
 import {
-  HOME24_GE, HOME_SS_GE, PLACE_GE, PORTAL_SOURCES, sourceById, sourceForUrl, ZARAYA,
+  HOME24_GE, HOME_SS_GE, PLACE_GE, PORTAL_SOURCES, REALTING, sourceById, sourceForUrl, ZARAYA,
 } from '../adapters/portal/sources.ts';
 import { ORIGIN_QUALITY } from '../parse/listing.ts';
+import { createPortalRuntime } from '../market/runtime.ts';
 
 const DIR = 'src/research-core/adapters/portal/__fixtures__/';
 const fixture = (name) => readFileSync(`${DIR}${name}`, 'utf8');
@@ -39,18 +40,47 @@ const CAPTURED = {
   home24: 'https://www.home24.ge/ge/property/1079/For-Sale-Flat',
   place: 'https://place.ge/ge/ads/view/1317856',
   zaraya: 'https://www.zarayaproperties.com/properties-1/0001',
+  realting: 'https://realting.com/georgia/property/3820614',
 };
 
 /* ── the framework's shape ─────────────────────────────────────────────── */
 
-test('four sources, three strategies, three families', () => {
+test('the batch is chosen for difference, and is no longer one country', () => {
   // A framework validated against two portals sharing a CMS has not been
   // validated, so the batch was chosen for difference as well as inventory.
-  assert.equal(PORTAL_SOURCES.length, 4);
+  assert.equal(PORTAL_SOURCES.length, 5);
   const strategies = new Set(PORTAL_SOURCES.map((s) => s.strategy));
   assert.deepEqual([...strategies].sort(), ['EMBEDDED_STATE', 'OPEN_GRAPH', 'SCHEMA_ORG']);
   const families = new Set(PORTAL_SOURCES.map((s) => s.family));
   assert.ok(families.size >= 3, `only ${families.size} families in the batch`);
+});
+
+test('at least one source serves a market nobody here has looked at', () => {
+  /*
+   * THE ASSERTION THAT STOPS THIS BECOMING A GEORGIAN SCRAPER.
+   *
+   * Four portals in one country exercise one set of assumptions — one
+   * currency, one script, one address vocabulary, one legal shape — and a
+   * framework that only ever met those has not been shown to generalise. It
+   * took an international source to surface two framework defects that four
+   * Georgian portals never provoked: a JSON-LD @id adopted as an identity,
+   * and a property type that compared wrongly because of its case.
+   *
+   * This is not a test about realting.com. It is a test that the batch keeps
+   * containing something that is not Georgian, whichever source that is.
+   */
+  const runtime = createPortalRuntime();
+  const foreign = runtime.registry.all()
+    .filter((adapter) => adapter.countries.some((c) => c !== 'GE'));
+
+  assert.ok(
+    foreign.length > 0,
+    'every registered adapter serves Georgia only — the network is a scraper',
+  );
+
+  // And it must really be registered for those markets, not merely claim them.
+  const markets = new Set(foreign.flatMap((adapter) => [...adapter.countries]));
+  assert.ok(markets.size >= 2, `only ${markets.size} market(s) across the foreign adapters`);
 });
 
 test('every source declares a price basis, and none claims a transaction', () => {
@@ -215,6 +245,113 @@ test('the place.ge area is not the sidebar\'s, and not the price per sqm', () =>
     assert.notEqual(l.area.value, wrong, `the area is a price-per-sqm figure: ${wrong}`);
   }
   assert.ok(l.area.value > 20 && l.area.value < 400, `implausible flat area ${l.area.value}`);
+});
+
+/* ── realting.com: the international one ───────────────────────────────── */
+
+test('realting yields a complete listing with NO extraction rules at all', () => {
+  /*
+   * The enrich list on this source is empty, and that is the claim being
+   * tested: a site that publishes schema.org properly should need no
+   * site-specific patterns. Everything below comes from its Apartment, Offer
+   * and PostalAddress nodes.
+   *
+   * It is also the standard the other four fall short of. place.ge needs six
+   * hand-written patterns and scores 0.38 for it, because the score measures
+   * how the SOURCE published rather than how hard we worked.
+   */
+  assert.deepEqual(REALTING.enrich, []);
+
+  const r = extractListing(fixture('realting.com.detail.html'), CAPTURED.realting, REALTING);
+  assert.equal(r.ok, true, r.reason);
+  const l = r.listing;
+
+  assert.equal(l.sale.amount, 39900);
+  assert.equal(l.sale.currency, 'USD');
+  assert.equal(l.sale.basis, 'ASKING_SALE_PRICE');
+  assert.deepEqual(l.area, { value: 28, unit: 'sqm' });
+  assert.equal(l.rooms, 1);
+  assert.equal(l.bedrooms, 1);
+  assert.equal(l.yearBuilt, 2026);
+  assert.equal(l.country, 'GE');
+  assert.equal(l.city, 'batumi');
+  assert.equal(l.rent, null, 'a sale listing gained a rent');
+
+  // Every one of those was published as data, not read out of prose.
+  for (const field of ['sale', 'area', 'rooms', 'bedrooms', 'city', 'country']) {
+    assert.equal(l.fieldOrigins[field], 'JSON_LD', `${field} was not structured`);
+  }
+  assert.ok(r.quality > 0.8, `a fully structured source scored ${r.quality}`);
+});
+
+test('the listing id is the URL\'s, not the JSON-LD @id every page shares', () => {
+  /*
+   * THE DEFECT THIS SOURCE EXPOSED.
+   *
+   * realting.com emits `"@id": "property1"` on every listing — a
+   * document-local anchor that its Offer and Product nodes point at. The
+   * reader preferred a published @id over the URL, so the entire portal
+   * would have collapsed into ONE supply_observation: identity is
+   * (source_id, external_id), so every listing would have overwritten the
+   * last, with a canonical URL that changed each pass and a price belonging
+   * to whichever flat was read most recently.
+   *
+   * That is the place.ge agency-id failure in different clothes, and the
+   * argument that made it convincing — "the site published it, so it is
+   * data" — is the same one.
+   */
+  const l = extractListing(fixture('realting.com.detail.html'), CAPTURED.realting, REALTING).listing;
+  assert.equal(l.listingId, '3820614');
+  assert.notEqual(l.listingId, 'property1');
+
+  /*
+   * And it is recorded as URL rather than JSON_LD. The id came out of a URL
+   * the source controls but did not publish as data; calling it structured
+   * would inflate the score that decides which of two conflicting
+   * observations wins.
+   */
+  assert.equal(l.fieldOrigins.listingId, 'URL');
+});
+
+test('a schema.org type reaches the model in the model\'s own vocabulary', () => {
+  /*
+   * THE SECOND DEFECT, and the quieter one. typesOf() returned the type
+   * lowercased — "apartment" — while every source config declares the
+   * vocabulary in capitals. Nothing failed loudly. What happened instead:
+   * a campaign envelope asking for APARTMENT rejected every flat from this
+   * source, and the entity resolver's propertyType CONFLICT rule fired
+   * between "apartment" and "APARTMENT", declaring one cross-posted flat two
+   * different properties at 0.75 confidence with a reason that read like
+   * authority.
+   */
+  const l = extractListing(fixture('realting.com.detail.html'), CAPTURED.realting, REALTING).listing;
+  assert.equal(l.propertyType, 'APARTMENT');
+
+  // The comparison that was silently failing, made explicit.
+  assert.equal(l.propertyType === 'APARTMENT', true);
+  assert.equal(String(l.propertyType), l.propertyType.toUpperCase());
+});
+
+test('a nightly rate is not a tenancy: short-term-rental URLs are not listings', () => {
+  /*
+   * The site publishes three shapes and the model has two transactions.
+   * /<country>/short-term-rental/<id> is a per-night price, and folding it
+   * into RENT would pool it with monthly tenancies and produce a rental
+   * market that does not exist — the same error as a monthly figure landing
+   * in the sale field, one level along.
+   *
+   * So the pattern does not match those pages at all. They are not listings
+   * this adapter has, rather than listings it mislabels.
+   */
+  assert.equal(isDetailUrl('https://realting.com/georgia/property/3820614', REALTING), true);
+  assert.equal(isDetailUrl('https://realting.com/georgia/property-to-rent/3745916', REALTING), true);
+  assert.equal(isDetailUrl('https://realting.com/georgia/short-term-rental/2105258', REALTING), false);
+
+  assert.equal(transactionFromUrl('https://realting.com/georgia/property/3820614', REALTING), 'SALE');
+  assert.equal(
+    transactionFromUrl('https://realting.com/georgia/property-to-rent/3745916', REALTING),
+    'RENT',
+  );
 });
 
 test('a thin source scores lower than a structured one, and the gap is visible', () => {

@@ -32,7 +32,7 @@ import type { AdapterContext, AdapterDocument } from '../discovery/adapter.ts';
 import { PortalRegistry } from '../adapters/portal/types.ts';
 import { SsGeAdapter, SS_GE_HOST } from '../adapters/portal/ss-ge.ts';
 import { ConfiguredPortalAdapter } from '../adapters/portal/configured.ts';
-import { HOME24_GE, PLACE_GE, ZARAYA } from '../adapters/portal/sources.ts';
+import { HOME24_GE, PLACE_GE, REALTING, ZARAYA } from '../adapters/portal/sources.ts';
 
 /**
  * Portals this build knows how to read.
@@ -132,6 +132,44 @@ export const PORTAL_SOURCE_POLICIES: SourcePolicy[] = [
       'carries an id and a title, and deliberately no price: the site writes ' +
       'prices in several formats in running text and a pattern that guessed ' +
       'would produce a market figure that is not one.',
+  },
+  {
+    ...DEFAULT_SOURCE_POLICY,
+    id: 'portal:realting.com',
+    domains: ['realting.com'],
+    hosts: ['realting.com', 'www.realting.com'],
+    sourceFamily: 'realting.com',
+    kind: 'PROPERTY_PORTAL',
+    enabled: true,
+    allowedMethods: ['GET'],
+    /*
+     * ITS ROBOTS.TXT NAMES NO CRAWL-DELAY FOR US.
+     *
+     * It grants Crawl-delay: 0 to facebookexternalhit and states none for
+     * `*`, so this number is OUR restraint rather than their instruction --
+     * one request every five seconds, which is slower than they ask for
+     * because they did not ask.
+     *
+     * What their robots.txt does say matters more: `Disallow: /*?` puts every
+     * query-string URL off limits, with narrow Allow exceptions. Nothing here
+     * fetches one -- canonicalize() strips the query string before the URL is
+     * ever requested, which was written for identity reasons and turns out to
+     * be the same rule.
+     */
+    rate: { concurrency: 1, requestsPerSecond: 0.2, burst: 1 },
+    robots: 'RESPECT',
+    browserRenderingAllowed: false,
+    maxResponseBytes: 4_000_000,
+    timeoutMs: 20_000,
+    cacheTtlMs: 30 * 60 * 1000,
+    cacheStaleMs: 60 * 60 * 1000,
+    visibility: 'PUBLIC',
+    authority: 0.5,
+    notes:
+      'International portal: schema.org Apartment/Offer/PostalAddress on every '
+      + 'detail page, so it needs no extraction rules. Sale and long-term rent '
+      + 'only; its short-term-rental URLs are a nightly rate the model has no '
+      + 'transaction for and the detail pattern does not match them.',
   },
   {
     ...DEFAULT_SOURCE_POLICY,
@@ -346,6 +384,20 @@ export function createPortalRuntime(options: PortalRuntimeOptions = {}): PortalR
    *   livo.ge     not surveyed
    *   place.ge    not surveyed
    *
+   * SURVEYED 2026-09-25, choosing the second batch from the audited list:
+   *
+   *   brokeri.ge  4,006 listing URLs in its sitemap, so the inventory is real
+   *               and permitted. No server-rendered collection page reaches
+   *               them: /services/sale, /services/rent and /areas/vake each
+   *               return ~30KB of marketing markup with ZERO listing links.
+   *               korter.ge's category. It could only be read by fetching
+   *               sitemap URLs one at a time, and a sitemap carries no city
+   *               and no transaction -- 4,006 fetches to find the handful a
+   *               campaign asked for, against a site that gains nothing from
+   *               it. Not implemented, on those grounds rather than technical
+   *               ones.
+   *   realting.com  IMPLEMENTED. See REALTING in sources.ts.
+   *
    * Recorded rather than acted on, deliberately. Adding an adapter here is
    * cheap by design — see the contract in adapters/portal/types.ts — but one
    * written against a guessed page shape cannot be verified without spending a
@@ -391,6 +443,32 @@ export function createPortalRuntime(options: PortalRuntimeOptions = {}): PortalR
       routes: [
         // One route: a developer sells, it does not let.
         { transaction: 'SALE', url: 'https://www.zarayaproperties.com/en/properties-1', propertyType: 'APARTMENT' },
+      ],
+    }))
+    .register(new ConfiguredPortalAdapter({
+      config: REALTING,
+      /*
+       * FOUR MARKETS, EACH WITH ITS OWN COLLECTION PAGE.
+       *
+       * Every URL here was fetched on 2026-09-25 and counted: Georgia 30
+       * detail links, Montenegro 32, Cyprus 31, Turkey 31. None was
+       * constructed by pattern from another — the site could have used any
+       * shape for any of them, and a guessed URL is how an adapter ends up
+       * fetching 404s politely.
+       *
+       * The list is short because it is the list that was verified, not the
+       * list the site could support. Its sitemaps also carry Cambodia,
+       * Poland, the United States, Thailand, Latvia, Lithuania and Israel,
+       * and each of those becomes a route when somebody has actually loaded
+       * the page.
+       */
+      countries: ['GE', 'ME', 'CY', 'TR'],
+      routes: [
+        { transaction: 'SALE', countryCode: 'GE', url: 'https://realting.com/georgia/property' },
+        { transaction: 'RENT', countryCode: 'GE', url: 'https://realting.com/georgia/property-to-rent' },
+        { transaction: 'SALE', countryCode: 'ME', url: 'https://realting.com/montenegro/property' },
+        { transaction: 'SALE', countryCode: 'CY', url: 'https://realting.com/cyprus/property' },
+        { transaction: 'SALE', countryCode: 'TR', url: 'https://realting.com/turkey/property' },
       ],
     }));
 

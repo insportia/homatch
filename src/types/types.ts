@@ -660,6 +660,16 @@ export interface Match {
   match_reasons: string[];
   mismatch_reasons?: string[];
   unlock_price_credits: number;
+  /**
+   * Set when the Find Clients search that produced this match was already
+   * paid for, so revealing it charges nothing.
+   *
+   * The value is the reservation that covered it. The interface needs only
+   * whether it is there, but the id is what makes the claim auditable: a
+   * result shown as "included" can be traced to the reservation that
+   * included it.
+   */
+  unlock_included_reservation_id?: string | null;
   status: MatchStatus;
   mock_mode?: boolean;
   // Whether this match is for an external (non-Homatch) signal

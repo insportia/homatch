@@ -9028,6 +9028,11 @@ const en = {
   campaign_langs_none_reached: 'Nothing could be read in this language on this run.',
   campaign_langs_original_evidence: 'Original, in {{language}}',
   campaign_langs_machine_summary: 'Summary written by Homatch, not by the author',
+
+  /* ── RESULTS THE CAMPAIGN ALREADY PAID FOR ── */
+  matches_included_badge: 'Included',
+  matches_included_hint: 'Your campaign already paid for this result',
+  matches_included_view_btn: 'View contact',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -17974,6 +17979,11 @@ const ka: Partial<Record<TranslationKey, string>> = {
   campaign_langs_none_reached: 'ამ გაშვებაზე ამ ენაზე ვერაფერი წავიკითხეთ.',
   campaign_langs_original_evidence: 'ორიგინალი, {{language}}',
   campaign_langs_machine_summary: 'რეზიუმე დაწერილია Homatch-ის და არა ავტორის მიერ',
+
+  /* ── RESULTS THE CAMPAIGN ALREADY PAID FOR ── */
+  matches_included_badge: 'შედის',
+  matches_included_hint: 'თქვენმა კამპანიამ უკვე გადაიხადა ამ შედეგისთვის',
+  matches_included_view_btn: 'კონტაქტის ნახვა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -26911,6 +26921,11 @@ const ru: Partial<Record<TranslationKey, string>> = {
   campaign_langs_none_reached: 'В этом запуске на этом языке ничего прочитать не удалось.',
   campaign_langs_original_evidence: 'Оригинал, {{language}}',
   campaign_langs_machine_summary: 'Краткое изложение составлено Homatch, а не автором',
+
+  /* ── RESULTS THE CAMPAIGN ALREADY PAID FOR ── */
+  matches_included_badge: 'Включено',
+  matches_included_hint: 'Ваша кампания уже оплатила этот результат',
+  matches_included_view_btn: 'Посмотреть контакт',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -35846,6 +35861,11 @@ const tr: Partial<Record<TranslationKey, string>> = {
   campaign_langs_none_reached: 'Bu çalışmada bu dilde hiçbir şey okunamadı.',
   campaign_langs_original_evidence: 'Orijinal, {{language}}',
   campaign_langs_machine_summary: 'Özet yazarı değil Homatch yazdı',
+
+  /* ── RESULTS THE CAMPAIGN ALREADY PAID FOR ── */
+  matches_included_badge: 'Dahil',
+  matches_included_hint: 'Kampanyanız bu sonucun ücretini zaten ödedi',
+  matches_included_view_btn: 'İletişimi görüntüle',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -44781,6 +44801,11 @@ const ar: Partial<Record<TranslationKey, string>> = {
   campaign_langs_none_reached: 'لم نتمكن من قراءة أي شيء بهذه اللغة في هذا التشغيل.',
   campaign_langs_original_evidence: 'الأصل، {{language}}',
   campaign_langs_machine_summary: 'ملخّص كتبه Homatch وليس صاحب النص',
+
+  /* ── RESULTS THE CAMPAIGN ALREADY PAID FOR ── */
+  matches_included_badge: 'مشمول',
+  matches_included_hint: 'لقد دفعت حملتك بالفعل مقابل هذه النتيجة',
+  matches_included_view_btn: 'عرض جهة الاتصال',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -53716,6 +53741,11 @@ const he: Partial<Record<TranslationKey, string>> = {
   campaign_langs_none_reached: 'בהרצה הזו לא הצלחנו לקרוא דבר בשפה הזו.',
   campaign_langs_original_evidence: 'מקור, {{language}}',
   campaign_langs_machine_summary: 'תקציר שנכתב על ידי Homatch, לא על ידי הכותב',
+
+  /* ── RESULTS THE CAMPAIGN ALREADY PAID FOR ── */
+  matches_included_badge: 'כלול',
+  matches_included_hint: 'הקמפיין שלך כבר שילם עבור תוצאה זו',
+  matches_included_view_btn: 'הצג איש קשר',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

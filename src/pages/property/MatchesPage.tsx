@@ -1,6 +1,6 @@
 import {AlertCircle,
   BedDouble, Bot, CalendarDays,ChevronRight, Clock, DollarSign,ExternalLink, Globe, Loader2, Lock, MapPin, 
-  MessageSquare, Pause, Play, Unlock, User, 
+  Check, MessageSquare, Pause, Play, Unlock, User, 
   Zap, 
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
@@ -121,6 +121,15 @@ function LockedMatchCard({
   const { t } = useLanguage();
   const money = useMoney();
   const cfg = STRENGTH_CONFIG[match.signal_strength] ?? STRENGTH_CONFIG.POTENTIAL;
+  /*
+   * Already paid for by the campaign that found it.
+   *
+   * Read from the reservation id rather than from a price of zero. A zero
+   * price can also mean "we have not worked out what this costs", and the two
+   * must not render the same way -- the whole reason pricing_state exists one
+   * layer down.
+   */
+  const included = Boolean(match.unlock_included_reservation_id) && match.status !== 'UNLOCKED';
   const platformIcon = PLATFORM_ICONS[match.preview_platform ?? 'OTHER'] ?? '·';
   const budgetStr =
     /* An absent bound is not zero: see src/lib/rangeSemantics.ts. This
@@ -143,6 +152,9 @@ function LockedMatchCard({
           )}
           {match.status === 'UNLOCKED' && (
             <span className="text-[13px] font-bold bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded border border-green-500/30">{t('matches_unlocked_badge')}</span>
+          )}
+          {included && (
+            <span className="text-[13px] font-bold bg-green-500/10 text-green-400/90 px-1.5 py-0.5 rounded border border-green-500/20">{t('matches_included_badge')}</span>
           )}
         </div>
       </div>
@@ -189,12 +201,35 @@ function LockedMatchCard({
       {/* Excerpt */}
       {match.preview_excerpt && (
         <div className="rounded-lg bg-background/50 border border-border/50 px-3 py-2">
-          <p className="text-xs text-muted-foreground italic line-clamp-2 blur-[1.5px] select-none">
+          {/*
+            * BLURRED ONLY WHEN SOMETHING IS ACTUALLY BEING SOLD.
+            *
+            * A match carrying unlock_included_reservation_id costs zero
+            * credits to reveal, because the search that produced it was
+            * already paid for. Blurring it anyway charges the customer a
+            * second time in the only currency the interface has left:
+            * making them ask for what they already bought.
+            */}
+          <p
+            className={
+              `text-xs text-muted-foreground italic line-clamp-2${
+                included ? '' : ' blur-[1.5px] select-none'}`
+            }
+          >
             {match.preview_excerpt}
           </p>
           <div className="flex items-center gap-1 mt-1">
-            <Lock className="h-3 w-3 text-muted-foreground/50" />
-            <span className="text-[13px] text-muted-foreground/50">{t('matches_unlock_hint')}</span>
+            {included ? (
+              <>
+                <Check className="h-3 w-3 text-green-400/70" />
+                <span className="text-[13px] text-muted-foreground/70">{t('matches_included_hint')}</span>
+              </>
+            ) : (
+              <>
+                <Lock className="h-3 w-3 text-muted-foreground/50" />
+                <span className="text-[13px] text-muted-foreground/50">{t('matches_unlock_hint')}</span>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -235,14 +270,35 @@ function LockedMatchCard({
             <span className="hidden md:inline">{t('matches_why')}</span>
           </Button>
           {match.status !== 'UNLOCKED' ? (
+            /*
+             * "Unlock · 0.00 CR" was the old button on an included match: an
+             * offer to sell something at no price, which reads as either a
+             * mistake or a trick. It is not a purchase, so it does not get a
+             * purchase's words -- it opens a result the campaign already
+             * bought, and says so.
+             *
+             * The same handler runs. The RPC still charges zero, still writes
+             * the match_unlocks row, and still returns the full signal; what
+             * changes is what the customer is asked for.
+             */
             <Button
               size="sm"
-              className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold h-8 px-4 text-xs gap-1.5"
+              className={
+                included
+                  ? 'bg-secondary text-foreground hover:bg-secondary/80 font-semibold h-8 px-4 text-xs gap-1.5'
+                  : 'bg-primary text-primary-foreground hover:bg-primary/90 font-semibold h-8 px-4 text-xs gap-1.5'
+              }
               onClick={() => onUnlock(match)}
               disabled={unlocking}
             >
-              {unlocking ? <Loader2 className="h-3 w-3 animate-spin" /> : <Unlock className="h-3 w-3" />}
-              <span dir="ltr">{t('matches_unlock_btn')} · {match.unlock_price_credits.toFixed(2)} CR</span>
+              {unlocking
+                ? <Loader2 className="h-3 w-3 animate-spin" />
+                : included ? <Check className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
+              {included ? (
+                <span>{t('matches_included_view_btn')}</span>
+              ) : (
+                <span dir="ltr">{t('matches_unlock_btn')} · {match.unlock_price_credits.toFixed(2)} CR</span>
+              )}
             </Button>
           ) : (
             <>

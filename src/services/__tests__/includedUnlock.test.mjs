@@ -108,6 +108,42 @@ test('no button offers to sell something for 0.00 CR', () => {
   );
 });
 
+test('credits are never rendered with a currency symbol', () => {
+  /*
+   * The admin matches table had a column headed "Price (Credits)" whose
+   * cells rendered $5.00.
+   *
+   * Credits are not money. What one buys depends on the customer's plan,
+   * which is precisely why wallet balance, campaign budget, actual customer
+   * spend and internal COGS are four separate numbers in this system. An
+   * admin reading a dollar sign in that column is reading revenue that does
+   * not exist.
+   */
+  const admin = stripComments(
+    fs.readFileSync(path.join(ROOT, 'src', 'pages', 'admin', 'AdminMatchesPage.tsx'), 'utf8'),
+  );
+  /*
+   * A dollar sign that is NOT the opening of a template placeholder.
+   *
+   * The first version of this test matched a bare /\$/ and failed on
+   * `${Number(x).toFixed(2)} CR` — flagging the interpolation syntax as a
+   * currency symbol. A test that reports the fix as the defect would have
+   * driven the next change in the wrong direction.
+   */
+  const CURRENCY = /\$(?!\{)/;
+
+  const rendered = admin.match(/unlock_price_credits[\s\S]{0,160}/g) ?? [];
+  assert.ok(rendered.length > 0, 'the admin table no longer renders a credit price');
+  for (const fragment of rendered) {
+    assert.doesNotMatch(fragment, CURRENCY, `credits rendered with a currency symbol: ${fragment}`);
+  }
+
+  // The same rule on the customer path.
+  for (const fragment of page.match(/unlock_price_credits[\s\S]{0,160}/g) ?? []) {
+    assert.doesNotMatch(fragment, CURRENCY, `credits rendered as money: ${fragment}`);
+  }
+});
+
 test('the copy does not call it a free unlock', () => {
   /*
    * "Unlock for free" describes a discount. Nothing was discounted: the

@@ -80,7 +80,19 @@ export default function AdminMatchesPage() {
                       </Badge>
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap text-xs text-muted-foreground">
-                      {m.unlock_price_credits != null ? `$${Number(m.unlock_price_credits).toFixed(2)}` : '—'}
+                      {/*
+                        * CREDITS, NOT DOLLARS. The column header says
+                        * "Price (Credits)" and this rendered $5.00 beneath it.
+                        * Credits are not money: what one buys depends on the
+                        * customer's plan, which is the whole reason wallet
+                        * balance, campaign budget, customer spend and internal
+                        * COGS are four separate numbers. An admin reading a
+                        * dollar sign here would be reading revenue that does
+                        * not exist.
+                        */}
+                      {m.unlock_price_credits != null
+                        ? `${Number(m.unlock_price_credits).toFixed(2)} CR`
+                        : '—'}
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap text-xs text-muted-foreground">
                       {m.created_at ? format(new Date(m.created_at), 'MMM d, HH:mm') : '—'}

@@ -36,6 +36,7 @@
 // could hammer somebody.
 
 import type { AdapterContext, AdapterOutcome } from '../../discovery/adapter.ts';
+import { samePlace } from '../../normalize/place.ts';
 import { toSqm } from '../../normalize/area.ts';
 import type { NormalizedListing } from '../../parse/listing.ts';
 import { extractListing, isDetailUrl, transactionFromUrl, type PortalSourceConfig } from './family.ts';
@@ -404,33 +405,16 @@ function outsideRange(value: number, range: { min: number | null; max: number | 
   return false;
 }
 
-/**
- * Two spellings of one place.
+/*
+ * TWO SPELLINGS OF ONE PLACE -- see normalize/place.ts.
  *
- * Georgian portals write Tbilisi as "Tbilisi" and as "თბილისი" on pages
- * otherwise identical, and a comparison that only folded case would drop
- * every Georgian-language listing while reporting the filter as applied --
- * exactly the failure this function exists to prevent, moved one step along.
- *
- * The table holds the spellings the AUDITED sources actually publish. It is a
- * lookup, not a transliterator: a rule that mapped scripts mechanically would
- * eventually equate two real places that merely look alike.
+ * This file used to carry its own alias table. There are now two callers
+ * that have to agree about whether "\u10d7\u10d1\u10d8\u10da\u10d8\u10e1\u10d8" and "Tbilisi" are one
+ * city: this filter, which decides whether a listing answers a query, and
+ * the entity resolver, which decides whether two listings are one property.
+ * Two tables would have drifted, and the drift would show up as a filter
+ * that keeps a listing which the resolver then refuses to match.
  */
-const PLACE_ALIASES: readonly (readonly string[])[] = [
-  ['tbilisi', 'თბილისი', 'тбилиси', 'tiflis'],
-  ['batumi', 'ბათუმი', 'батуми'],
-  ['kutaisi', 'ქუთაისი', 'кутаиси'],
-  ['rustavi', 'რუსთავი', 'рустави'],
-  ['gudauri', 'გუდაური', 'гудаури'],
-  ['bakuriani', 'ბაკურიანი', 'бакуриани'],
-];
-
-export function samePlace(a: string, b: string): boolean {
-  const left = a.trim().toLowerCase();
-  const right = b.trim().toLowerCase();
-  if (left === right) return true;
-  return PLACE_ALIASES.some((names) => names.includes(left) && names.includes(right));
-}
 
 /**
  * What this adapter did with each constraint, for the listings it is

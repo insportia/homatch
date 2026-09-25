@@ -25,7 +25,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { ConfiguredPortalAdapter, samePlace } from '../adapters/portal/configured.ts';
+import { ConfiguredPortalAdapter } from '../adapters/portal/configured.ts';
+import { comparePlaces, samePlace } from '../normalize/place.ts';
 import { HOME24_GE, ZARAYA } from '../adapters/portal/sources.ts';
 
 const DIR = 'src/research-core/adapters/portal/__fixtures__/';
@@ -239,6 +240,32 @@ test('Tbilisi and თბილისი are one city; Tbilisi and Batumi are not
   assert.equal(samePlace('Tbilisi', 'Batumi'), false);
   // Not a transliterator. Two places that merely look alike stay apart.
   assert.equal(samePlace('Vake', 'Vaketili'), false);
+});
+
+test('a comparison across scripts that the table cannot make is UNKNOWN, not a conflict', () => {
+  /*
+   * THE DISTINCTION THE FILTER AND THE RESOLVER BOTH DEPEND ON.
+   *
+   * Within one script, two different names are a real distinction: a portal
+   * writing "Saburtalo" and "Vake" is separating them in its own words.
+   *
+   * Across scripts, an unlisted name tells us about an alphabet and nothing
+   * about a place. Calling that a CONFLICT would let the entity resolver
+   * return DISTINCT because one source writes Georgian and another writes
+   * Latin — destroying precisely the cross-source merge the resolver exists
+   * to find, with an answer that looks safe.
+   */
+  assert.equal(comparePlaces('Saburtalo', '\u10e1\u10d0\u10d1\u10e3\u10e0\u10d7\u10d0\u10da\u10dd'), 'AGREE');
+  assert.equal(comparePlaces('Saburtalo', 'Vake'), 'CONFLICT');
+  assert.equal(comparePlaces('\u10e1\u10d0\u10d1\u10e3\u10e0\u10d7\u10d0\u10da\u10dd', '\u10d5\u10d0\u10d9\u10d4'), 'CONFLICT');
+
+  // Neither is in the table, and they are in different alphabets.
+  assert.equal(comparePlaces('Lisi Lake', '\u10dd\u10e5\u10e0\u10dd\u10e7\u10d0\u10dc\u10d0'), 'UNKNOWN');
+
+  // Absence is not disagreement, and it is not agreement either.
+  assert.equal(comparePlaces(null, 'Vake'), 'UNKNOWN');
+  assert.equal(comparePlaces('', ''), 'UNKNOWN');
+  assert.equal(samePlace(null, null), false);
 });
 
 /* ── the remaining constraints, each against a violating listing ───────── */

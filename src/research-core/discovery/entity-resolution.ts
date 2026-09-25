@@ -46,6 +46,8 @@
 // merge decided by something that cannot be re-derived is a merge nobody can
 // audit.
 
+import { comparePlaces } from '../normalize/place.ts';
+
 export type ResolutionVerdict =
   | 'EXACT_DUPLICATE'
   | 'LIKELY_SAME_ENTITY'
@@ -219,7 +221,24 @@ export function resolve(
     };
   }
 
-  if (conflicts(a.city, b.city)) {
+  /*
+   * A PLACE COMPARISON, NOT A STRING COMPARISON.
+   *
+   * This was `conflicts()` -- case-folded inequality -- and it carried a
+   * latent failure that would have been invisible the first time it fired:
+   * place.ge writes "\u10d7\u10d1\u10d8\u10da\u10d8\u10e1\u10d8" and home.ss.ge writes "Tbilisi". Byte
+   * inequality makes those DIFFERENT CITIES, which returns DISTINCT at 0.85.
+   *
+   * The one case cross-source resolution exists for -- the same flat on a
+   * Georgian-language portal and an English-language one -- would have become
+   * the case it can never find, and DISTINCT is the answer that looks safe.
+   * It has not bitten yet only because the area check runs first and every
+   * cross-source pair so far disagreed on area anyway.
+   *
+   * comparePlaces returns UNKNOWN for a cross-script pair its table cannot
+   * resolve, and UNKNOWN is neither evidence nor contradiction.
+   */
+  if (comparePlaces(a.city, b.city) === 'CONFLICT') {
     say('city conflict', -1, `${a.city} vs ${b.city}`);
     return { verdict: 'DISTINCT', confidence: 0.85, signals, reason: 'different cities' };
   }
@@ -250,7 +269,7 @@ export function resolve(
    * merge later, rather than one record that cannot be taken apart once the
    * evidence justifying it has aged out.
    */
-  if (conflicts(a.district, b.district)) {
+  if (comparePlaces(a.district, b.district) === 'CONFLICT') {
     say('district conflict', -1, `${a.district} vs ${b.district}`);
     return {
       verdict: 'DISTINCT',
@@ -300,10 +319,10 @@ export function resolve(
     say('area agrees', 0.45, `${a.areaSqm} m² and ${b.areaSqm} m² within ${AREA_TOLERANCE * 100}%`);
     score += 0.45;
   }
-  if (agrees(a.district, b.district)) {
+  if (comparePlaces(a.district, b.district) === 'AGREE') {
     say('same district', 0.2, String(a.district));
     score += 0.2;
-  } else if (agrees(a.city, b.city)) {
+  } else if (comparePlaces(a.city, b.city) === 'AGREE') {
     /*
      * RECORDED AT ZERO, BECAUSE IT FIRES ON EVERY PAIR.
      *

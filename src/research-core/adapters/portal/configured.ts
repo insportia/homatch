@@ -358,7 +358,18 @@ interface EnvelopeVerdict {
  * never published, which is the same error facing the other way: inventing a
  * disqualifying fact out of silence.
  */
-function withinEnvelope(query: ListingQuery, listing: NormalizedListing): EnvelopeVerdict {
+/*
+ * EXPORTED so campaign isolation can use THIS predicate rather than a second
+ * one of its own.
+ *
+ * When one fetch serves several campaigns, each campaign's own envelope has
+ * to be re-applied to every listing before that campaign is allowed to see
+ * it. Writing a second filter for that job is how a listing ends up kept by
+ * the adapter and rejected by the planner, or worse, the other way round --
+ * two readers of one listing, which is the same failure this file already
+ * records for two readers of one page.
+ */
+export function withinEnvelope(query: ListingQuery, listing: NormalizedListing): EnvelopeVerdict {
   const unevaluated: string[] = [];
   const reject = (reason: string): EnvelopeVerdict => ({ keep: false, reason, unevaluated });
 

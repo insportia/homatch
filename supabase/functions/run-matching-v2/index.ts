@@ -194,7 +194,10 @@ Deno.serve(async (req: Request) => {
     const globalOnly = (globalRows || [])
       .map((row: any) => row.signal_id)
       .filter((id: string) => id && !linked.has(id));
-    const signalIds = [...linked, ...new Set(globalOnly)];
+    /* Which candidates arrived without an acquisition link, so the insert
+       path knows which ones still owe one. */
+    const globalOnlySignals = new Set<string>(globalOnly);
+    const signalIds = [...linked, ...globalOnlySignals];
     if (!signalIds.length) {
       return json({ success: true, matchesCreated: 0, matchesSkipped: 0, candidateSignals: 0, bestScore: 0, buckets: { '20-49': 0, '50-79': 0, '80-100': 0 } });
     }
@@ -386,6 +389,47 @@ Deno.serve(async (req: Request) => {
       // Stored as the actual combined multiplier applied (price ÷ base), for
       // observability — replaces the old, unrelated 10/3/1 score-tier magic number.
       const appliedMultiplier = base > 0 ? Math.round((price / base) * 100) / 100 : 1;
+
+      /*
+       * RECORD THE ACQUISITION BEFORE CLAIMING THE MATCH.
+       *
+       * reject_non_demand_match() refuses any match whose signal was never
+       * acquired FOR THIS PROPERTY, and it is right to: a match built on a
+       * signal nobody ever went looking for on this property's behalf has no
+       * provenance and no cost attached to it.
+       *
+       * Demand Homatch discovered on its own initiative has no such link,
+       * because no paid query went looking for it. Measured here on
+       * 2026-09-26: eight global profiles reached the scorer, two passed
+       * every gate, and both were refused at insert with
+       * SIGNAL_NOT_SCOPED_TO_PROPERTY -- the pipeline reaching its last step
+       * and a correct guard stopping it.
+       *
+       * So the link is written rather than the guard loosened, and
+       * acquisition_cost_usd is 0 because that is the true incremental cost
+       * of a signal the forum reader had already collected. Writing a
+       * plausible-looking cost instead would put a fabricated number into the
+       * COGS that prices this customer's unlock.
+       */
+      if (globalOnlySignals.has(profile.signal_id)) {
+        const { error: linkError } = await db
+          .from('property_signal_candidates')
+          .upsert({
+            property_id: property.id,
+            signal_id: profile.signal_id,
+            acquisition_cost_usd: 0,
+            metadata: {
+              origin: 'GLOBAL_DEMAND_STORE',
+              detail: 'discovered by Homatch for the market, not acquired for this property',
+              market: { city: marketCity || null },
+            },
+          }, { onConflict: 'property_id,signal_id' });
+        if (linkError) {
+          skipped += 1;
+          errors.push(`LINK_FAILED: ${linkError.message}`);
+          continue;
+        }
+      }
 
       const { error: insertError } = await db.from('matches').insert({
         property_id: property.id,

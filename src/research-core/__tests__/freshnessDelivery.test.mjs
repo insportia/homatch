@@ -334,8 +334,12 @@ test('the matcher reads globally-discovered demand, not only acquired candidates
   const c = code(MATCHER);
   assert.match(c, /from\('intent_profiles'\)[\s\S]{0,160}\.ilike\('city'/,
     'the matcher never queries the global store by market');
-  // Both ways in, unioned — not the global set replacing the acquired one.
-  assert.match(c, /const signalIds = \[\.\.\.linked, \.\.\.new Set\(globalOnly\)\]/);
+  // Both ways in, UNIONED — not the global set replacing the acquired one.
+  // The spelling of the union has changed once already; what must hold is
+  // that the acquired set and the global set both feed the same candidate id
+  // list, so this asserts on that rather than on one expression.
+  assert.match(c, /const signalIds = \[\.\.\.linked, \.\.\.globalOnlySignals\]/);
+  assert.match(c, /const globalOnlySignals = new Set<string>\(globalOnly\)/);
 });
 
 test('global demand is bounded and scoped to the property market', () => {
@@ -377,6 +381,30 @@ test('global demand passes the same freshness gate as every other candidate', ()
   assert.ok(gateCall > 0, 'the gate call site is gone');
   assert.ok(union < gateCall,
     'global candidates are assembled after the freshness gate runs');
+});
+
+test('a global candidate gets an acquisition link before it can become a match', () => {
+  /*
+   * reject_non_demand_match() refuses a match whose signal was never acquired
+   * for that property, and it is right to: no link means no provenance and no
+   * cost. Production, 2026-09-26: eight global profiles reached the scorer,
+   * two passed every gate and both were refused at insert with
+   * SIGNAL_NOT_SCOPED_TO_PROPERTY.
+   *
+   * The link is written rather than the trigger loosened, and the recorded
+   * cost is 0 because that IS the incremental cost of a signal the forum
+   * reader had already collected. A plausible-looking non-zero figure would
+   * land in the COGS that prices the customer's unlock.
+   */
+  const c = code(MATCHER);
+  assert.match(c, /from\('property_signal_candidates'\)[\s\S]{0,200}\.upsert\(/);
+  assert.match(c, /acquisition_cost_usd: 0/);
+  assert.match(c, /origin: 'GLOBAL_DEMAND_STORE'/);
+  // Only the ones that actually lack a link, never a blanket re-link.
+  assert.match(c, /if \(globalOnlySignals\.has\(profile\.signal_id\)\)/);
+  // And written BEFORE the insert the trigger guards, not after it fails.
+  assert.ok(c.indexOf("from('property_signal_candidates')") < c.indexOf("from('matches').insert"),
+    'the acquisition link is written after the match insert it exists to satisfy');
 });
 
 test('the response distinguishes "saw none of ours" from "saw ours and rejected them"', () => {

@@ -76,6 +76,41 @@ export interface CollectionRoute {
    * ISO-3166 alpha-2, upper case, matching ListingQuery.countryCode.
    */
   countryCode?: string;
+  /**
+   * THIS ROUTE'S URL IS A SITEMAP, NOT A BROWSE PAGE.
+   *
+   * home.ge is the case this exists for. Its category pages answer HTTP 200
+   * with ZERO bytes to an identifying agent, so there is no collection page
+   * to read -- but its sitemap carries 17,445 URLs, robots permits them, and
+   * the paths encode the transaction and the property type:
+   * /binebi/iyideba-binebi/ is apartments for sale, and the same sitemap also
+   * carries plumbing services, so the pattern is doing real work rather than
+   * decorating.
+   *
+   * This is not a crawler. One GET of a document the site publishes FOR this
+   * purpose, then the same bounded slice of detail pages any other route
+   * takes. What it must never become is a walk of all 17,445.
+   */
+  sitemap?: {
+    /** Only <loc> entries matching this are listings for this route. */
+    pathPattern: RegExp;
+    /**
+     * Optional slug filter, applied to the URL before anything is fetched.
+     *
+     * home.ge writes the city and district into the slug --
+     * iyideba-bina-4-otakhiani-dzveli-ashenebuli-tbilisi-saburtalo-26565 --
+     * so a Tbilisi question can discard the Batumi URLs for free. Filtering
+     * on a slug is a hint, not a fact: withinEnvelope still judges the
+     * listing on what its page actually says.
+     *
+     * NULL MEANS NO HINT, AND THE SITEMAP IS NOT FILTERED. A city the place
+     * vocabulary does not know has no reliable transliteration, and guessing
+     * one would filter every URL away and report a working source as an empty
+     * market -- strictly worse than reading a wider slice and letting
+     * withinEnvelope do its job.
+     */
+    cityHint?: (city: string) => RegExp | null;
+  };
 }
 
 export interface ConfiguredAdapterOptions {
@@ -206,9 +241,28 @@ export class ConfiguredPortalAdapter implements ListingPortalAdapter {
      * layout. Anchors remain the fallback, and a source that offers both
      * gets the union.
      */
-    const fromList = itemListUrls(collection.body, route.url, this.config);
-    const fromAnchors = detailLinks(collection.body, route.url, this.config);
-    const candidates = [...new Set([...fromList, ...fromAnchors])];
+    let candidates: string[];
+    if (route.sitemap) {
+      /*
+       * A sitemap names its URLs in <loc>, so there is nothing to infer from
+       * layout and neither the ItemList nor the anchor reader applies. The
+       * city hint runs here, before any detail page is fetched, because the
+       * whole point is to not spend 2,000 requests finding the 20 that are in
+       * the right city.
+       */
+      candidates = sitemapUrls(collection.body, route, query, this.config);
+      if (candidates.length === 0) {
+        return {
+          ok: false,
+          reason: 'PARSE_FAILED',
+          detail: `the sitemap carried no URL matching ${route.sitemap.pathPattern}`,
+        };
+      }
+    } else {
+      const fromList = itemListUrls(collection.body, route.url, this.config);
+      const fromAnchors = detailLinks(collection.body, route.url, this.config);
+      candidates = [...new Set([...fromList, ...fromAnchors])];
+    }
     if (candidates.length === 0) {
       /*
        * The collection page answered and carried no listing links. That is a
@@ -533,6 +587,54 @@ function appliedFilters(
   if (query.floor && (query.floor.min !== null || query.floor.max !== null)) unsupported.push('floor');
 
   return { server, client, unsupported };
+}
+
+/**
+ * Listing URLs a SITEMAP publishes, narrowed to one route's inventory.
+ *
+ * Three filters, each doing different work and none of them optional:
+ *
+ *   pathPattern  which of this sitemap's URLs belong to THIS route.
+ *                home.ge's listings sitemap carries sale apartments, rental
+ *                apartments, daily rentals and plumbing services in one file.
+ *
+ *   isDetailUrl  the same check every other reader applies, so a sitemap
+ *                cannot smuggle in a URL whose id the config cannot find.
+ *
+ *   cityHint     an optional slug filter applied BEFORE any fetch. This is a
+ *                hint and is treated as one: it decides what is worth
+ *                reading, never what the listing says. withinEnvelope still
+ *                judges the page on its own content, so a slug that lies
+ *                costs a wasted fetch rather than a wrong observation.
+ *
+ * The result is ordered as the sitemap ordered it and is not deduplicated
+ * across language variants -- home.ge lists /en/, /ru/ and the unprefixed
+ * Georgian path for the same listing, and the route's pathPattern is what
+ * picks one, because fetching a listing three times to learn the same id is
+ * the mistake this would otherwise make quietly.
+ */
+export function sitemapUrls(
+  xml: string,
+  route: CollectionRoute,
+  query: ListingQuery,
+  config: PortalSourceConfig,
+): string[] {
+  const spec = route.sitemap;
+  if (!spec) return [];
+  const hint = query.city && spec.cityHint ? spec.cityHint(query.city) : null;
+
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const match of xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)) {
+    const url = servableUrl(match[1], config);
+    if (!url || seen.has(url)) continue;
+    if (!spec.pathPattern.test(url)) continue;
+    if (!isDetailUrl(url, config)) continue;
+    if (hint && !hint.test(url)) continue;
+    seen.add(url);
+    out.push(url);
+  }
+  return out;
 }
 
 /**

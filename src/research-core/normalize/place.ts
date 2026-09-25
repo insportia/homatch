@@ -160,3 +160,26 @@ export function comparePlaces(a: string | null | undefined, b: string | null | u
 export function samePlace(a: string | null | undefined, b: string | null | undefined): boolean {
   return comparePlaces(a, b) === 'AGREE';
 }
+
+/**
+ * The Latin spelling of a place, for sources that transliterate into a URL.
+ *
+ * home.ge writes its slugs as ...-tbilisi-saburtalo-26565, so a campaign
+ * asking about თბილისი has to reach the same string before its sitemap can
+ * be filtered. Every row of PLACES already carries the Latin form first, so
+ * this reads the table rather than adding a transliteration of its own --
+ * there is exactly one place vocabulary in this core and this is not a
+ * second one.
+ *
+ * Null for a place the table does not know, and null is the honest answer: a
+ * caller that guessed a transliteration would filter a sitemap down to
+ * nothing and report an empty market.
+ */
+export function latinNameFor(place: string | null | undefined): string | null {
+  const needle = norm(place);
+  if (!needle) return null;
+  for (const group of PLACES) {
+    if (group.some((name) => norm(name) === needle)) return group[0];
+  }
+  return null;
+}

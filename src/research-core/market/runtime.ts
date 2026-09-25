@@ -33,8 +33,9 @@ import { PortalRegistry } from '../adapters/portal/types.ts';
 import { SsGeAdapter, SS_GE_HOST } from '../adapters/portal/ss-ge.ts';
 import { ConfiguredPortalAdapter } from '../adapters/portal/configured.ts';
 import {
-  ESTATEMARKET_GE, HOME24_GE, MAKLER_GE, PLACE_GE, REALTING, ZARAYA,
+  ESTATEMARKET_GE, HOME24_GE, HOME_GE, MAKLER_GE, PLACE_GE, REALTING, ZARAYA,
 } from '../adapters/portal/sources.ts';
+import { latinNameFor } from '../normalize/place.ts';
 
 /**
  * Portals this build knows how to read.
@@ -107,6 +108,42 @@ export const PORTAL_SOURCE_POLICIES: SourcePolicy[] = [
       'Publishes schema.org RealEstateListing, Offer, PostalAddress, PropertyValue ' +
       'and a QuantitativeValue in MTK on every detail page - the richest structured ' +
       'data of the eighteen sites audited. robots.txt permits every listing path.',
+  },
+  {
+    ...DEFAULT_SOURCE_POLICY,
+    id: 'portal:home.ge',
+    domains: ['home.ge'],
+    hosts: ['www.home.ge', 'home.ge'],
+    sourceFamily: 'home.ge',
+    kind: 'PROPERTY_PORTAL',
+    enabled: true,
+    allowedMethods: ['GET'],
+    /*
+     * Slower than the others on purpose. This source is read through its
+     * sitemap, so one fetch returns 561KB naming 17,445 URLs, and every
+     * detail page after it is a separate request against a site that gains
+     * nothing from us. One at a time, two seconds apart.
+     */
+    rate: { concurrency: 1, requestsPerSecond: 0.5, burst: 1 },
+    robots: 'RESPECT',
+    browserRenderingAllowed: false,
+    /* The listings sitemap alone is 561KB; the 4MB default would refuse it
+       on a bad day and report a working source as unreadable. */
+    maxResponseBytes: 8_000_000,
+    timeoutMs: 20_000,
+    cacheTtlMs: 30 * 60 * 1000,
+    cacheStaleMs: 2 * 60 * 60 * 1000,
+    visibility: 'PUBLIC',
+    authority: 0.5,
+    notes:
+      'robots.txt permits every listing path and disallows only /plugins/, /libs/, '
+      + '/includes/, /print* and sort parameters. Category pages answer HTTP 200 with '
+      + 'ZERO bytes, so the sitemap is the collection: 17,445 URLs across three child '
+      + 'files, of which 2,164 are sale apartments in each of ka/en/ru. Detail pages '
+      + 'are server-rendered with schema.org Product + Offer, sku equal to the id in '
+      + 'the slug. The Offer price is the site conversion to GEL of a figure the '
+      + 'seller may have quoted in USD (26565: 240300 GEL against "90 000$" in the '
+      + 'description), so it is recorded as GEL and never converted back here.',
   },
   {
     ...DEFAULT_SOURCE_POLICY,
@@ -582,6 +619,18 @@ export function createPortalRuntime(options: PortalRuntimeOptions = {}): PortalR
    * SourceAccessPolicyRegistry above refuses any host without a policy, and
    * that is where the rate, the robots stance and the byte cap live.
    */
+  /*
+   * home.ge spells the city in its slug in Latin, whatever language the page
+   * itself is in: ...-tbilisi-saburtalo-26565. latinNameFor reads the one
+   * place vocabulary this core has rather than transliterating here, and
+   * returns null for a place that table does not know -- in which case the
+   * sitemap is read unfiltered rather than filtered down to nothing.
+   */
+  const homeGeCityHint = (city: string): RegExp | null => {
+    const latin = latinNameFor(city);
+    return latin ? new RegExp(`-${latin}-`, 'i') : null;
+  };
+
   const registry = new PortalRegistry()
     .register(new SsGeAdapter())
     .register(new ConfiguredPortalAdapter({
@@ -598,6 +647,41 @@ export function createPortalRuntime(options: PortalRuntimeOptions = {}): PortalR
       routes: [
         { transaction: 'SALE', url: 'https://place.ge/ge/sakartvelo/bina/iyideba', propertyType: 'APARTMENT' },
         { transaction: 'RENT', url: 'https://place.ge/ge/sakartvelo/bina/qiravdeba', propertyType: 'APARTMENT' },
+      ],
+    }))
+    .register(new ConfiguredPortalAdapter({
+      config: HOME_GE,
+      /*
+       * BOTH ROUTES READ THE SAME SITEMAP, and that is deliberate: one file
+       * carries every listing this site has, and the path pattern is what
+       * separates a sale from a rental. Fetching it twice costs one extra
+       * request and is cached for thirty minutes; splitting the file by hand
+       * would mean guessing which child sitemap holds what.
+       *
+       * The unprefixed Georgian path only. /en/ and /ru/ are the same
+       * listings under different URLs, and taking all three would triple
+       * every fetch to rediscover the same sku.
+       */
+      routes: [
+        {
+          transaction: 'SALE',
+          url: 'https://www.home.ge/files/sitemap/sitemap_listings1.xml',
+          propertyType: 'APARTMENT',
+          sitemap: {
+            pathPattern: /home\.ge\/binebi\/iyideba-binebi\//i,
+            /* The slug spells the city in Latin: ...-tbilisi-saburtalo-26565 */
+            cityHint: homeGeCityHint,
+          },
+        },
+        {
+          transaction: 'RENT',
+          url: 'https://www.home.ge/files/sitemap/sitemap_listings1.xml',
+          propertyType: 'APARTMENT',
+          sitemap: {
+            pathPattern: /home\.ge\/binebi\/qiravdeba-binebi\//i,
+            cityHint: homeGeCityHint,
+          },
+        },
       ],
     }))
     .register(new ConfiguredPortalAdapter({

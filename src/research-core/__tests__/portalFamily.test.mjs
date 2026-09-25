@@ -54,7 +54,13 @@ const CAPTURED = {
 test('the batch is chosen for difference, and is no longer one country', () => {
   // A framework validated against two portals sharing a CMS has not been
   // validated, so the batch was chosen for difference as well as inventory.
-  assert.equal(PORTAL_SOURCES.length, 7);
+  //
+  // Eight since 2026-09-26: home.ge, a P0 portal that had never been
+  // surveyed while five smaller sources were built. It is also the first
+  // source read from a SITEMAP rather than a collection page, because its
+  // category pages answer HTTP 200 with zero bytes -- another shape the
+  // framework had not met.
+  assert.equal(PORTAL_SOURCES.length, 8);
   const strategies = new Set(PORTAL_SOURCES.map((s) => s.strategy));
   assert.deepEqual([...strategies].sort(), ['EMBEDDED_STATE', 'OPEN_GRAPH', 'SCHEMA_ORG']);
   const families = new Set(PORTAL_SOURCES.map((s) => s.family));

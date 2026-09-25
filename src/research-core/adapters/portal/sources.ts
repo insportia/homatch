@@ -670,8 +670,75 @@ export const ESTATEMARKET_GE: PortalSourceConfig = {
   enrich: [],
 };
 
+/**
+ * home.ge — a P0 portal that had never been surveyed.
+ *
+ * WHY IT IS READ FROM A SITEMAP RATHER THAN A BROWSE PAGE.
+ *
+ * Its category pages answer HTTP 200 with ZERO bytes to an identifying agent:
+ * /en/binebi/iyideba-binebi redirects to a trailing slash and then returns
+ * nothing at all. There is no collection page to read. Its sitemap, however,
+ * is published, permitted by robots, and carries 17,445 URLs across three
+ * child files -- so the site states its own inventory, and that is what this
+ * reads. One GET of a document published for the purpose.
+ *
+ * WHAT THE PATHS MEAN, read off the sitemap on 2026-09-25:
+ *
+ *   /binebi/iyideba-binebi/<slug>-<id>.html          apartments for sale, 2,164
+ *   /binebi/qiravdeba-binebi/<slug>-<id>.html        apartments to rent,   864
+ *   /binebi/qiravdeba-binebi-dgiurad/<slug>          daily rentals,        747
+ *
+ * Each appears three times over -- unprefixed, /en/ and /ru/ -- for the same
+ * listing. The routes below take the UNPREFIXED Georgian path only. Taking
+ * all three would fetch every listing three times to discover the same sku,
+ * and the entity resolver would then be asked to clean up a mess this file
+ * created. The same sitemap also carries plumbing services, which is why the
+ * path pattern is doing real work.
+ *
+ * THE PRICE IS THE SITE'S CONVERSION, AND THAT IS WORTH KNOWING.
+ *
+ * Listing 26565 publishes offers.price 240300 with priceCurrency GEL, while
+ * the seller's own description on the same page asks "90 000$" -- a rate of
+ * about 2.67. So the structured price is home.ge's conversion of a figure
+ * quoted in dollars, not the figure the seller wrote. It is recorded as GEL
+ * because GEL is what the Offer states, and because withinEnvelope compares
+ * price only within one currency, a USD envelope will leave these
+ * unevaluated and say so in appliedFilters rather than convert anything here.
+ */
+export const HOME_GE: PortalSourceConfig = {
+  id: 'home-ge',
+  host: 'www.home.ge',
+  family: 'PROPERTY_PORTAL',
+  strategy: 'SCHEMA_ORG',
+  countryCode: 'GE',
+  languages: ['ka', 'en', 'ru'],
+  /* The id is the trailing number of the slug, and it is also the JSON-LD
+     sku -- verified equal on 26565 and 11673. */
+  detailUrl: { pattern: /home\.ge\/(?:[a-z]{2}\/)?[^?#]*-(\d+)\.html/i, idGroup: 1 },
+  transactionFromUrl: [
+    { match: /\/iyideba-/i, transaction: 'SALE' },
+    { match: /\/qiravdeba-/i, transaction: 'RENT' },
+  ],
+  propertyTypeFromUrl: [
+    { match: /\/binebi\//i, type: 'APARTMENT' },
+    { match: /\/saxlebi-agarakebi\//i, type: 'HOUSE' },
+    { match: /\/mitsis-nakvetebi\//i, type: 'LAND' },
+  ],
+  saleBasis: 'ASKING_SALE_PRICE',
+  rentBasis: 'ASKING_RENT',
+  /*
+   * Nothing here. The page publishes a schema.org Product with an Offer
+   * carrying price and priceCurrency, and a name that states transaction,
+   * rooms, condition, city and district in Georgian. The SCHEMA_ORG strategy
+   * reads all of it, and a text rule invented on top would be a second
+   * reader of a page that already answers properly.
+   */
+  enrich: [],
+};
+
 export const PORTAL_SOURCES: readonly PortalSourceConfig[] = [
   HOME_SS_GE, HOME24_GE, PLACE_GE, ZARAYA, REALTING, MAKLER_GE, ESTATEMARKET_GE,
+  HOME_GE,
 ];
 
 export function sourceForUrl(url: string): PortalSourceConfig | null {

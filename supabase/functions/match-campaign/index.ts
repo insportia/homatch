@@ -1,5 +1,11 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { beginExecution, settleExecution, releaseExecution } from '../_shared/billing.ts';
+import {
+  markLanguagesDiscovered,
+  persistCampaignLanguages,
+  readChoice,
+  resolveForRun,
+} from '../_shared/campaignLanguages.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -106,7 +112,9 @@ Deno.serve(async (req: Request) => {
 
     const { data: property, error: propertyError } = await db
       .from('properties')
-      .select('id,user_id,title,matching_status')
+      // country_code decides which languages this market is written in, so a
+      // campaign cannot resolve its search languages without it.
+      .select('id,user_id,title,matching_status,facts:property_facts!property_id(country_code)')
       .eq('id', propertyId)
       .eq('is_deleted', false)
       .maybeSingle();
@@ -147,6 +155,35 @@ Deno.serve(async (req: Request) => {
         campaignId = createdCampaign.id;
       }
     }
+
+    /* ---- search languages ----
+     *
+     * Resolved HERE, on the server, from the CHOICE the client sent rather
+     * than from a conclusion it computed. The same pure function the launch
+     * screen previewed with runs again, so a modified client posting a wider
+     * resolved set under mode EXPLICIT gains nothing -- and the set the
+     * customer saw is the set that runs.
+     *
+     * A request with no choice keeps whatever the campaign already has. That
+     * is what makes a resume a resume: re-deciding from today's market
+     * defaults would turn "the customer chose Hebrew" into "we searched six
+     * languages and billed for them".
+     */
+    const facts = Array.isArray(property.facts) ? property.facts[0] : property.facts;
+    const countryCode = String(facts?.country_code || 'GE');
+
+    const { data: storedCampaign } = await db
+      .from('matching_campaigns')
+      .select('search_language_mode, search_languages_selected, search_languages_resolved, search_languages_discovered')
+      .eq('id', campaignId)
+      .maybeSingle();
+
+    const languages = await resolveForRun(db, {
+      countryCode,
+      choice: readChoice(body.searchLanguages),
+      stored: storedCampaign ?? null,
+    });
+    await persistCampaignLanguages(db, campaignId, languages);
 
     const suppliedKey = String(body.idempotencyKey || crypto.randomUUID());
     const idempotencyKey = `${homatchUser.id}:${suppliedKey}`;
@@ -227,6 +264,14 @@ Deno.serve(async (req: Request) => {
         internal_data: 'READY',
         external_discovery: 'PREFLIGHT',
       },
+      /*
+       * A SNAPSHOT, not a pointer. The campaign's language set can change
+       * before the next run, and "what did this job search in" has to stay
+       * answerable afterwards -- a job reading the campaign column would
+       * answer with today's configuration about last week's work.
+       */
+      search_languages: languages.selection.languages,
+      search_language_mode: languages.selection.mode,
       started_at: startedAt,
     }).select('id').single();
     if (jobError || !createdJob) throw jobError || new Error('Could not create matching job');
@@ -236,6 +281,24 @@ Deno.serve(async (req: Request) => {
       message: 'Matching started from existing Homatch research',
       propertyId,
       campaignId,
+    });
+    /*
+     * The language decision, on the record, before any work is billed.
+     *
+     * `newThisRun` is what makes a continuation cheap and legible: a campaign
+     * that ran Hebrew and English and gains Russian schedules RUSSIAN, and
+     * the event says so. Without it there is no way to tell "the set changed"
+     * from "this language is new", and every edit re-buys everything.
+     */
+    await event(db, jobId, 'SEARCH_LANGUAGES_RESOLVED', {
+      mode: languages.selection.mode,
+      languages: languages.selection.languages,
+      newThisRun: languages.toDiscover,
+      alreadyDiscovered: languages.alreadyDiscovered,
+      fromStoredConfiguration: languages.fromStoredConfiguration,
+      rationale: languages.selection.rationale,
+      warnings: languages.selection.warnings,
+      countryCode,
     });
     await updateJob(db, jobId, {
       status: 'analysing_property',
@@ -422,6 +485,33 @@ Deno.serve(async (req: Request) => {
       costUsd: totalCost,
       paidProviderCalls: Number(externalResult?.processed || 0),
     });
+
+    /* ---- what this run has now bought ----
+     *
+     * Only when external discovery ACTUALLY RAN. Marking a language
+     * discovered after a run that reached no source would make the next
+     * resume skip it, and the customer would have paid for a language that
+     * was never searched -- the precise inverse of the double-billing this
+     * record exists to prevent.
+     *
+     * External discovery is currently gated off in production
+     * (external_discovery_enabled = false, provider_kill_switch = true), so
+     * today this is correctly a no-op and the language set stays unbought.
+     * That is the honest state, not a bug: nothing external has been searched,
+     * so nothing is recorded as searched. */
+    if (externalResult && Number(externalResult?.processed || 0) > 0 && languages.toDiscover.length > 0) {
+      try {
+        await markLanguagesDiscovered(db, campaignId, languages.toDiscover);
+        await event(db, jobId, 'SEARCH_LANGUAGES_DISCOVERED', {
+          languages: languages.toDiscover,
+          message: 'These languages will not be re-discovered on a resume',
+        });
+      } catch (e) {
+        // Bookkeeping must never cost a customer their results. The worst
+        // case is a language re-discovered once, which is a cost, not a loss.
+        console.error(`match-campaign: could not record discovered languages: ${message(e)}`);
+      }
+    }
 
     /* ---- the search includes its results ----
      *

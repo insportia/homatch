@@ -1,38 +1,40 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import {AlertCircle,
+  BedDouble, Bot, CalendarDays,ChevronRight, Clock, DollarSign,ExternalLink, Globe, Loader2, Lock, MapPin, 
+  MessageSquare, Pause, Play, Unlock, User, 
+  Zap, 
+} from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
-import { useLanguage } from '@/contexts/LanguageContext';
-import { rangeShape, formatRange } from '@/lib/rangeSemantics';
-import { AppLayout } from '@/components/layouts/AppLayout';
+import { toast } from 'sonner';
+import { CampaignLaunchPanel } from '@/components/campaign/CampaignLaunchPanel';
+import { LanguageCoveragePanel } from '@/components/campaign/LanguageCoveragePanel';
 import { RouteGuard } from '@/components/common/RouteGuard';
+import { AppLayout } from '@/components/layouts/AppLayout';
+import { CommunityOutreachPanel } from '@/components/matching/CommunityOutreachPanel';
+import { ExternalContactUnlockModal } from '@/components/matching/ExternalContactUnlockModal';
+import { ExternalSitesCard } from '@/components/matching/ExternalSitesCard';
+import { MatchingJobProgress } from '@/components/matching/MatchingJobProgress';
+import {
+  AlertDialog, AlertDialogAction,AlertDialogCancel, AlertDialogContent, 
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+  Dialog, DialogContent, DialogDescription, DialogFooter,DialogHeader, DialogTitle, 
 } from '@/components/ui/dialog';
-import {
-  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
-} from '@/components/ui/alert-dialog';
-import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { formatRange, rangeShape } from '@/lib/rangeSemantics';
 import {
-  Zap, Lock, Unlock, ExternalLink, User, Globe, MapPin, DollarSign,
-  BedDouble, Clock, ChevronRight, Loader2, Play, Pause, AlertCircle,
-  MessageSquare, Bot, CalendarDays,
-} from 'lucide-react';
-import { MatchingJobProgress } from '@/components/matching/MatchingJobProgress';
-import { SearchBudgetOffer } from '@/components/billing/SearchBudgetOffer';
-import { ExternalContactUnlockModal } from '@/components/matching/ExternalContactUnlockModal';
-import { ExternalSitesCard } from '@/components/matching/ExternalSitesCard';
-import { CommunityOutreachPanel } from '@/components/matching/CommunityOutreachPanel';
-import {
-  getMatches, getMatchCounts, nextMatchesCursor, unlockMatch, markMatchPreviewed,
-  getUnlockedMatch, startMatchingCampaign, pauseMatchingCampaign,
-  getCreditAccount,
+  type CampaignSearchLanguageChoice,getCampaignLanguageState,
+  getCreditAccount, getMatchCounts, 
+  getMatches, 
+  getUnlockedMatch, markMatchPreviewed,nextMatchesCursor, pauseMatchingCampaign,startMatchingCampaign, unlockMatch, 
 } from '@/services/api';
-import type { Match, MatchUnlock, CreditAccount } from '@/types/types';
-import { toast } from 'sonner';
+import type { CreditAccount, Match, MatchUnlock } from '@/types/types';
 
 // ── CONSTANTS ─────────────────────────────────────────────────
 
@@ -434,6 +436,9 @@ function MatchesContent() {
 
   // Campaign
   const [campaignActive, setCampaignActive] = useState(false);
+  /* The campaign's resolved search languages, so the coverage panel can
+     name a language that has produced nothing yet rather than omitting it. */
+  const [campaignLanguages, setCampaignLanguages] = useState<string[]>([]);
   const [campaignLoading, setCampaignLoading] = useState(false);
   /* The search does not begin until the customer has said how much it
      may spend. Wallet balance is not campaign budget. */
@@ -457,6 +462,18 @@ function MatchesContent() {
     setHasMore(matchData.length >= MATCHES_PAGE_SIZE);
     // Detect campaign status from match data
     setCampaignActive(matchData.some(m => m.status !== 'ARCHIVED'));
+    /*
+     * The campaign's own search-language configuration, read separately
+     * because it is a FACT ABOUT THE CAMPAIGN and the matches are a fact
+     * about its results. A campaign that has run in Hebrew and produced
+     * nothing must still be able to say it ran in Hebrew.
+     *
+     * Best-effort: a campaign that predates search languages has no stored
+     * set, and the panel renders nothing rather than inventing one.
+     */
+    getCampaignLanguageState(propertyId)
+      .then((state) => setCampaignLanguages(state.resolved))
+      .catch(() => setCampaignLanguages([]));
     setLoading(false);
   }, [propertyId, homatchUser]);
 
@@ -613,12 +630,17 @@ function MatchesContent() {
   }, [navigate, propertyId]);
 
   // Start matching campaign
-  const handleStartMatching = async (authorizedMaxCredits: number | null) => {
+  const handleStartMatching = async (
+    authorizedMaxCredits: number | null,
+    searchLanguages?: CampaignSearchLanguageChoice,
+  ) => {
     if (!propertyId || !homatchUser) return;
     setShowBudget(false);
     setCampaignLoading(true);
     try {
-      const result = await startMatchingCampaign(propertyId, homatchUser.id, authorizedMaxCredits);
+      const result = await startMatchingCampaign(
+        propertyId, homatchUser.id, authorizedMaxCredits, searchLanguages ?? null,
+      );
       if (!result?.jobId) throw new Error('No job ID returned from match-campaign');
       setCampaignActive(true);
       setActiveJobId(result.jobId);
@@ -705,6 +727,23 @@ function MatchesContent() {
             <span className="text-xs text-primary font-medium">{t('matches_matching_active')}</span>
             <span className="text-xs text-muted-foreground ml-auto hidden md:block">{t('matches_start_desc')}</span>
           </div>
+        )}
+
+        {/*
+          * WHICH LANGUAGES THIS CAMPAIGN IS SEARCHING IN, AND WHAT THEY
+          * REACHED.
+          *
+          * Shown on the workspace rather than only in the launch dialog: a
+          * customer who chose three languages a week ago should be able to
+          * see which of them produced anything without opening a settings
+          * screen. Counts only -- no percentage, because there is no honest
+          * denominator for one.
+          */}
+        {campaignActive && propertyId && (
+          <LanguageCoveragePanel
+            propertyId={propertyId}
+            resolvedLanguages={campaignLanguages}
+          />
         )}
 
         {/* Live job progress panel */}
@@ -920,9 +959,10 @@ function MatchesContent() {
             <DialogTitle>{t('matches_start_matching')}</DialogTitle>
             <DialogDescription className="sr-only">{t('budget_choose_title')}</DialogDescription>
           </DialogHeader>
-          <SearchBudgetOffer
+          <CampaignLaunchPanel
+            propertyId={propertyId ?? ''}
             productCode="FIND_CLIENTS"
-            onRun={(authorized) => void handleStartMatching(authorized)}
+            onRun={(authorized, languages) => void handleStartMatching(authorized, languages)}
             running={campaignLoading}
           />
         </DialogContent>

@@ -271,6 +271,35 @@ test('the core is consumed only through its deliberate integration points', () =
      * fetch/ or flow/, the seam has stopped being a seam.
      */
     'src/expats/research/reputation.ts',
+    /*
+     * CAMPAIGN SEARCH LANGUAGES — the fifth seam, and the first one with a
+     * screen behind it.
+     *
+     * A customer picks the languages their campaign searches in, and the
+     * launch screen must preview the resulting set with the SAME function the
+     * server resolves it with: a preview that disagrees with what gets billed
+     * is worse than no preview. That pulls the core into the direction of the
+     * UI for the first time, which is precisely the pressure this list exists
+     * to hold.
+     *
+     * So the screen does not reach the core. src/campaign/searchLanguages.ts
+     * is one file that re-exports the language functions and nothing else,
+     * and SearchLanguagePicker and CampaignLaunchPanel import that. The rule
+     * is not about campaign-languages.ts, which is pure and harmless — it is
+     * about the next component, which would reach in for a fetch primitive
+     * and bypass the network policy without anybody noticing.
+     *
+     * On the server side _shared/campaignLanguages.ts is the same door: it
+     * reads and writes rows, re-resolves the customer's CHOICE rather than
+     * trusting a conclusion the client computed, and holds no discovery
+     * logic. match-campaign is listed because it calls that door.
+     *
+     * If a component appears here instead of the seam, the seam has stopped
+     * being a seam.
+     */
+    'src/campaign/searchLanguages.ts',
+    'supabase/functions/_shared/campaignLanguages.ts',
+    'supabase/functions/match-campaign/index.ts',
   ]);
 
   const roots = ['src', 'supabase/functions', 'official-worker/src'];

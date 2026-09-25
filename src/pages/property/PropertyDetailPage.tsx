@@ -1,32 +1,33 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
-import { useLanguage } from '@/contexts/LanguageContext';
-import { AppLayout } from '@/components/layouts/AppLayout';
-import { RouteGuard } from '@/components/common/RouteGuard';
-import { Button } from '@/components/ui/button';
-import { getProperty, softDeleteProperty, calculateMatchability,
-  startMatchingCampaign, pauseMatchingCampaign,
-  getMatchCounts, getCreditAccount } from '@/services/api';
-import type { Property, CreditAccount } from '@/types/types';
+import {AlertCircle, ArrowLeft, Bath,BedDouble, Bot, 
+  Building2, 
+  CheckCircle2, ChevronRight, ExternalLink, Landmark,Layers,Loader2, Lock, 
+  MapPin, Pause, 
+  Play, Shield, Trash2,TrendingDown, Zap, 
+} from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
+import { CampaignLaunchPanel } from '@/components/campaign/CampaignLaunchPanel';
+import { PrivateImage } from '@/components/common/PrivateImage';
+import { RouteGuard } from '@/components/common/RouteGuard';
+import { AppLayout } from '@/components/layouts/AppLayout';
+import { MatchingJobProgress } from '@/components/matching/MatchingJobProgress';
+import { CanonicalGroupBanner } from '@/components/property/CanonicalGroupBanner';
+import { PropertyTrustBadge } from '@/components/property/PropertyTrustBadge';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
   AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import {
-  MapPin, BedDouble, Bath,
-  Building2, ExternalLink, Zap, ArrowLeft, Trash2,
-  CheckCircle2, AlertCircle, Lock, Layers,
-  Play, Pause, Loader2, ChevronRight, Bot, TrendingDown, Shield, Landmark,
-} from 'lucide-react';
-import { MatchingJobProgress } from '@/components/matching/MatchingJobProgress';
-import { SearchBudgetOffer } from '@/components/billing/SearchBudgetOffer';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { PropertyTrustBadge } from '@/components/property/PropertyTrustBadge';
-import { CanonicalGroupBanner } from '@/components/property/CanonicalGroupBanner';
-import { PrivateImage } from '@/components/common/PrivateImage';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { 
+  type CampaignSearchLanguageChoice, calculateMatchability,getCreditAccount,
+  getMatchCounts, getProperty, pauseMatchingCampaign,softDeleteProperty, 
+  startMatchingCampaign } from '@/services/api';
+import type { CreditAccount, Property } from '@/types/types';
 
 function MatchabilityPanel({ score, improvements }: { score: number; improvements: string[] }) {
   const { t } = useLanguage();
@@ -136,11 +137,16 @@ function CampaignPanel({
   /* Nothing is spent until the customer names the ceiling. */
   const [showBudget, setShowBudget] = useState(false);
 
-  const handleStart = async (authorizedMaxCredits: number | null) => {
+  const handleStart = async (
+    authorizedMaxCredits: number | null,
+    searchLanguages?: CampaignSearchLanguageChoice,
+  ) => {
     setShowBudget(false);
     setLoading(true);
     try {
-      const result = await startMatchingCampaign(propertyId, userId, authorizedMaxCredits);
+      const result = await startMatchingCampaign(
+        propertyId, userId, authorizedMaxCredits, searchLanguages ?? null,
+      );
       if (!result?.jobId) throw new Error('No job ID returned from match-campaign');
       setActive(true);
       setActiveJobId(result.jobId);
@@ -276,9 +282,10 @@ function CampaignPanel({
             <DialogTitle>{t('matches_start_matching')}</DialogTitle>
             <DialogDescription className="sr-only">{t('budget_choose_title')}</DialogDescription>
           </DialogHeader>
-          <SearchBudgetOffer
+          <CampaignLaunchPanel
+            propertyId={propertyId}
             productCode="FIND_CLIENTS"
-            onRun={(authorized) => void handleStart(authorized)}
+            onRun={(authorized, languages) => void handleStart(authorized, languages)}
             running={loading}
           />
         </DialogContent>

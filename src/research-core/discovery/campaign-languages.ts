@@ -503,5 +503,78 @@ export function summariseCoverage(
   };
 }
 
+/* ────────────────────────────────────────────────────────────────────────
+ * The other thing called language, kept apart on purpose
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Whether a discovered person can be TALKED TO, which is not where they were
+ * found.
+ *
+ * WHY THIS IS A SEPARATE FUNCTION IN A SEPARATE SHAPE
+ *
+ * Because merging it with the search languages would be so easy and so
+ * wrong. A Hebrew-speaking investor found in a Hebrew-language forum is an
+ * excellent match for a Georgian-language listing in Tbilisi — the property
+ * does not care what language the buyer reads, and a broker who speaks
+ * English can work with both. Treating "we searched Hebrew sources" as "this
+ * buyer requires Hebrew" would throw away most of the point of searching
+ * several languages at once.
+ *
+ * So a communication requirement is a SEPARATE, EXPLICIT, usually EMPTY
+ * constraint. A campaign that sets none matches across every language, which
+ * is the default and the right one. A broker who genuinely only speaks
+ * Russian can say so, and then it filters — on the person, not on the source.
+ */
+export interface CommunicationRequirement {
+  /**
+   * Languages the customer must be able to communicate in. EMPTY means no
+   * requirement, which is the default and not the same as "all".
+   */
+  required: readonly string[];
+}
+
+export type CommunicationVerdict = 'NO_REQUIREMENT' | 'COMPATIBLE' | 'INCOMPATIBLE' | 'UNKNOWN';
+
+/**
+ * Can this person be communicated with, given the campaign's requirement?
+ *
+ *   NO_REQUIREMENT  the campaign set none. Everything matches.
+ *   COMPATIBLE      a stated language of theirs is one the campaign needs.
+ *   UNKNOWN         a requirement exists and we do not know their languages.
+ *                   NOT the same as incompatible: a person whose languages we
+ *                   never observed has not failed the test, and dropping them
+ *                   silently would hide every lead whose post was too short
+ *                   to detect a language from.
+ *   INCOMPATIBLE    we know their languages and none is required.
+ */
+export function communicationVerdict(
+  requirement: CommunicationRequirement | null | undefined,
+  personLanguages: readonly (string | null | undefined)[],
+): CommunicationVerdict {
+  const required = (requirement?.required ?? [])
+    .map((value) => String(value).trim().toLowerCase())
+    .filter(Boolean);
+  if (required.length === 0) return 'NO_REQUIREMENT';
+
+  const theirs = personLanguages
+    .map((value) => String(value ?? '').trim().toLowerCase())
+    .filter(Boolean);
+  if (theirs.length === 0) return 'UNKNOWN';
+
+  return theirs.some((language) => required.includes(language)) ? 'COMPATIBLE' : 'INCOMPATIBLE';
+}
+
+/**
+ * Should this person be excluded from the results?
+ *
+ * Only on a definite INCOMPATIBLE. UNKNOWN is delivered with the uncertainty
+ * attached rather than dropped, because "we could not tell what language they
+ * write in" is a fact about our reading and not about them.
+ */
+export function excludedByCommunication(verdict: CommunicationVerdict): boolean {
+  return verdict === 'INCOMPATIBLE';
+}
+
 /** Every research language, for callers that need the superset. */
 export const ALL_RESEARCH_LANGUAGES: readonly ResearchLanguage[] = RESEARCH_LANGUAGES;

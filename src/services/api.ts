@@ -4,35 +4,35 @@
 import { supabase } from '@/db/supabase';
 import { startJobBestEffort } from '@/services/backgroundJobs';
 import type {
-  Property,
-  PropertyFacts,
-  PropertyPhoto,
-  PropertyImport,
-  SearchProfile,
   ActivityEvent,
-  Notification,
-  User,
-  UserPreference,
-  SupportedLanguage,
-  TransactionType,
-  PropertyType,
-  MatchingStatus,
-  Match,
-  MatchUnlock,
-  Payment,
+  AdminOverviewStats,
+  AdminProviderCostRow,
+  AdminSetting,
+  CostEvent,
   CreditAccount,
   CreditLedgerEntry,
-  CostEvent,
-  AdminOverviewStats,
-  AdminSetting,
-  ProviderHealth,
-  SpendCapStatus,
-  SpendCapConfig,
-  AdminProviderCostRow,
+  Match,
+  MatchingStatus,
+  MatchUnlock,
+  Notification,
+  Payment,
   PricingConfig,
+  Property,
+  PropertyFacts,
+  PropertyImport,
+  PropertyPhoto,
+  PropertyType,
+  ProviderHealth,
   ResearchProduct,
-  ResearchPurchase,
   ResearchProviderTreasuryRow,
+  ResearchPurchase,
+  SearchProfile,
+  SpendCapConfig,
+  SpendCapStatus,
+  SupportedLanguage,
+  TransactionType,
+  User,
+  UserPreference,
 } from '@/types/types';
 
 // ============================================================
@@ -628,6 +628,19 @@ export async function initiateTopUp(amountUsd: number): Promise<{
 // CAMPAIGNS
 // ============================================================
 
+/**
+ * The search-language decision, as the launch screen hands it over.
+ *
+ * `mode` and `selected` are what the customer did; the RESOLVED set is
+ * computed server-side by the same pure function the UI previewed with, so
+ * the set that runs cannot differ from the set that was shown. Sending only
+ * the resolved list would let a modified client widen its own campaign.
+ */
+export interface CampaignSearchLanguageChoice {
+  mode: 'EXPLICIT' | 'AUTO' | 'ALL';
+  selected: string[];
+}
+
 export async function startMatchingCampaign(
   propertyId: string,
   userId: string,
@@ -640,6 +653,12 @@ export async function startMatchingCampaign(
    * sending it.
    */
   authorizedMaxCredits?: number | null,
+  /*
+   * Which languages to search in. Omitted keeps whatever the campaign already
+   * had -- a resume must not silently re-decide -- and a campaign that has
+   * never had one resolves to the recommendation on the server.
+   */
+  searchLanguages?: CampaignSearchLanguageChoice | null,
 ): Promise<{ jobId: string; campaignId: string } | null> {
   // 1. Upsert campaign record
   let campaignId: string;
@@ -693,6 +712,12 @@ export async function startMatchingCampaign(
       campaignId,
       idempotencyKey,
       ...(authorizedMaxCredits != null ? { authorizedMaxCredits } : {}),
+      /*
+       * The CHOICE, not the conclusion. match-campaign re-runs
+       * resolveCampaignLanguages over it, so a client that posted a wider
+       * resolved set than its mode allows gains nothing.
+       */
+      ...(searchLanguages ? { searchLanguages } : {}),
     },
   }).then(({ data, error }) => {
     if (error) throw new Error(`match-campaign EF error: ${error.message}`);
@@ -757,6 +782,122 @@ async function registerFindClientsJob(jobId: string, propertyId: string): Promis
     resultRef: `/property/${propertyId}/matches`,
   });
 }
+/**
+ * Everything the launch screen needs to show a truthful language choice.
+ *
+ * Three separate facts, and none of them is guessable client-side:
+ *
+ *   countryCode      decides which languages this market is written in
+ *   stored           what this campaign already chose, so a resume opens on
+ *                    the customer's own selection rather than resetting to
+ *                    the recommendation
+ *   discovered       what has already been paid for, so the screen can say
+ *                    "Hebrew is not being bought again" BEFORE the customer
+ *                    commits rather than in the receipt afterwards
+ *
+ * `evidence` drives the AUTO recommendation. It is counted from signals whose
+ * own classified intent is in this market -- see campaign_language_evidence --
+ * because source_registry.country_code was stamped with the requesting
+ * campaign's market by the retired discovery pipeline and cannot be trusted
+ * on its own.
+ */
+export interface CampaignLanguageState {
+  countryCode: string;
+  mode: 'EXPLICIT' | 'AUTO' | 'ALL' | null;
+  selected: string[];
+  resolved: string[];
+  discovered: string[];
+  evidence: Array<{ language: string; knownSources: number; usefulSignals: number }>;
+}
+
+export async function getCampaignLanguageState(propertyId: string): Promise<CampaignLanguageState> {
+  const [{ data: facts }, { data: campaign }] = await Promise.all([
+    supabase.from('property_facts').select('country_code').eq('property_id', propertyId).maybeSingle(),
+    supabase.from('matching_campaigns')
+      .select('search_language_mode, search_languages_selected, search_languages_resolved, search_languages_discovered')
+      .eq('property_id', propertyId)
+      .maybeSingle(),
+  ]);
+
+  const countryCode = String(facts?.country_code || 'GE');
+  const { data: evidenceRows } = await supabase.rpc('campaign_language_evidence', {
+    p_country_code: countryCode,
+  });
+
+  return {
+    countryCode,
+    mode: (campaign?.search_language_mode as CampaignLanguageState['mode']) ?? null,
+    selected: campaign?.search_languages_selected ?? [],
+    resolved: campaign?.search_languages_resolved ?? [],
+    discovered: campaign?.search_languages_discovered ?? [],
+    evidence: Array.isArray(evidenceRows)
+      ? evidenceRows.map((row: { language: string; known_sources: number; useful_signals: number }) => ({
+          language: String(row.language),
+          knownSources: Number(row.known_sources ?? 0),
+          usefulSignals: Number(row.useful_signals ?? 0),
+        }))
+      : [],
+  };
+}
+
+/**
+ * What each language actually reached, for the campaign workspace.
+ *
+ * Counts only. There is no percentage here and no denominator, because a
+ * "coverage %" needs a total of all relevant sources in the world and nobody
+ * can produce one — so the workspace shows attempted, reached, refused, found
+ * and new, which are five numbers a query can defend.
+ *
+ * An EMPTY result means no discovery has run in any language yet, which is
+ * different from every count being zero and is rendered differently.
+ */
+export interface LanguageCoverageRow {
+  language: string;
+  attempted: number;
+  reached: number;
+  blocked: number;
+  signalsFound: number;
+  signalsValid: number;
+  signalsUnique: number;
+  signalsDuplicate: number;
+  signalsStale: number;
+  signalsRevalidated: number;
+  lastRunAt: string | null;
+}
+
+export async function getCampaignLanguageCoverage(propertyId: string): Promise<LanguageCoverageRow[]> {
+  const { data: campaign } = await supabase
+    .from('matching_campaigns')
+    .select('id')
+    .eq('property_id', propertyId)
+    .maybeSingle();
+  if (!campaign?.id) return [];
+
+  const { data, error } = await supabase
+    .from('campaign_language_coverage')
+    .select('language, attempted, reached, blocked, signals_found, signals_valid, signals_unique, signals_duplicate, signals_stale, signals_revalidated, last_run_at')
+    .eq('campaign_id', campaign.id)
+    // The roll-up rows, not the per-run ones: the workspace shows the
+    // campaign, and a customer counting the same source twice because it was
+    // scanned on two runs would be reading a number that means nothing.
+    .is('job_id', null);
+  if (error || !Array.isArray(data)) return [];
+
+  return data.map((row) => ({
+    language: String(row.language),
+    attempted: Number(row.attempted ?? 0),
+    reached: Number(row.reached ?? 0),
+    blocked: Number(row.blocked ?? 0),
+    signalsFound: Number(row.signals_found ?? 0),
+    signalsValid: Number(row.signals_valid ?? 0),
+    signalsUnique: Number(row.signals_unique ?? 0),
+    signalsDuplicate: Number(row.signals_duplicate ?? 0),
+    signalsStale: Number(row.signals_stale ?? 0),
+    signalsRevalidated: Number(row.signals_revalidated ?? 0),
+    lastRunAt: row.last_run_at ? String(row.last_run_at) : null,
+  }));
+}
+
 export async function pauseMatchingCampaign(
   propertyId: string,
   userId: string

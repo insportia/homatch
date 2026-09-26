@@ -238,6 +238,25 @@ export const SURFACES: readonly SurfaceRecord[] = [
       + 'recoverable by the customer.',
   },
   {
+    path: '/property/create',
+    name: 'Create Listing',
+    status: 'LEGACY_DESIGN',
+    customerCritical: true,
+    note: 'THE ONE SCREEN WHERE SOMEBODY TYPES A PROPERTY, and it had never been '
+      + 'measured at any width in any language. /property/add was in the matrix and is '
+      + 'a two-card chooser; this is the 758-line form it leads to, and it was not. '
+      + 'Adding it to the harness route list changed nothing, because the matrix '
+      + 'iterates customerCriticalPaths() -- so a route can sit in the list and be '
+      + 'measured zero times, which is the counted-but-not-measured trap in reverse. '
+      + 'Measured now, and it PASSES the overflow gate at all four widths in all six '
+      + 'locales -- which is worth writing down precisely because it holds zero '
+      + 'break-words and zero min-w-0. It passes because its inputs are full-width and '
+      + 'its labels are short, not because it is guarded, so it is one long Georgian '
+      + 'label away from failing. LEGACY_DESIGN on that basis and on its visual '
+      + 'treatment, to be migrated in its own wave rather than rewritten on the way '
+      + 'past a different task.',
+  },
+  {
     path: '/property/:id/edit',
     name: 'Edit Property',
     status: 'APPROVED_CURRENT_DESIGN',

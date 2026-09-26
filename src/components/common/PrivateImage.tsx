@@ -7,10 +7,22 @@
  * site means four places to get it wrong; this is one place, and it is a
  * drop-in replacement for the <img> that used to be there.
  *
- * While the URL is being minted it renders the fallback rather than an
- * <img> with an empty src, because an empty src makes the browser re-request
- * the current page and log a console error. If the object cannot be read —
- * it is gone, or this person is not allowed it — the fallback simply stays.
+ * While the URL is being minted it renders `pending` rather than an <img> with an
+ * empty src, because an empty src makes the browser re-request the current page and
+ * log a console error. If the object cannot be read — it is gone, this person is not
+ * allowed it, or the host refuses the request — it renders `fallback`.
+ *
+ * THOSE TWO USED TO BE THE SAME NODE, and that was a real defect found in production
+ * rather than a tidiness point. My Properties passed a shimmer as the fallback, and
+ * the one imported property in the database carries an EXTERNAL cover URL from the
+ * portal it was read off. That host does not serve the image to us, so the component
+ * went straight to the failed branch and rendered the shimmer — forever. An owner
+ * looking at their own portfolio saw a photo that was permanently one second away
+ * from appearing.
+ *
+ * `pending` defaults to `fallback`, so every existing caller behaves exactly as it
+ * did; callers that care pass both and can tell a customer the difference between
+ * "loading" and "there is no photo here".
  */
 
 import { useEffect, useState, type ReactNode } from 'react';
@@ -22,12 +34,17 @@ interface PrivateImageProps {
   alt: string;
   className?: string;
   loading?: 'lazy' | 'eager';
-  /** Shown while resolving, and kept if there is nothing to show. */
+  /** Shown when there is nothing to show: no src, or it could not be read. */
   fallback?: ReactNode;
+  /**
+   * Shown while the URL is being minted. Defaults to `fallback`, which is what every
+   * caller got before this existed.
+   */
+  pending?: ReactNode;
 }
 
 export function PrivateImage({
-  src, alt, className, loading = 'lazy', fallback = null,
+  src, alt, className, loading = 'lazy', fallback = null, pending,
 }: PrivateImageProps) {
   const [resolved, setResolved] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -45,7 +62,13 @@ export function PrivateImage({
     return () => { live = false; };
   }, [src]);
 
-  if (!resolved || failed) return <>{fallback}</>;
+  /*
+   * FAILED IS CHECKED FIRST, and there is no src-less pending state: with nothing to
+   * resolve there is nothing to wait for, so an absent src is the empty answer rather
+   * than a permanent spinner.
+   */
+  if (failed || !src) return <>{fallback}</>;
+  if (!resolved) return <>{pending ?? fallback}</>;
 
   return (
     <img

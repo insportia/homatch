@@ -90,6 +90,23 @@ function priceLabel(
   return `${unit}${value.toLocaleString()}`;
 }
 
+/**
+ * AN HONEST PLACEHOLDER. Not a stock photograph of a building that is not theirs,
+ * which would be the most literal possible lie on this page.
+ *
+ * Used for BOTH "there is no photo" and "the photo cannot be shown", because from the
+ * owner's side those are the same situation: there is nothing to look at. What they
+ * must never be confused with is "the photo is still loading".
+ */
+function NoPhoto({ label }: { label: string }) {
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 text-muted-foreground/50">
+      <ImageOff className="h-7 w-7" />
+      <span className="text-[13px] break-words px-2 text-center">{label}</span>
+    </div>
+  );
+}
+
 type PendingAction =
   | { kind: 'DELETE'; property: Property }
   | { kind: 'ARCHIVE'; property: Property }
@@ -138,15 +155,19 @@ function PropertyCard({
             src={cover}
             alt={String(property.title ?? t('prop_untitled'))}
             className="h-full w-full object-cover"
-            fallback={<div className="h-full w-full animate-pulse bg-secondary/60" />}
+            /* Shimmer only while it is genuinely coming. */
+            pending={<div className="h-full w-full animate-pulse bg-secondary/60" />}
+            /*
+             * AND THE HONEST ANSWER WHEN IT IS NOT. The one imported property in
+             * production carries an external cover URL from the portal it was read
+             * off, and that host does not serve it to us -- so this branch is the
+             * common one for imports, not a rare edge. A shimmer here is a photo that
+             * is permanently one second away.
+             */
+            fallback={<NoPhoto label={t('prop_no_photo')} />}
           />
         ) : (
-          /* AN HONEST PLACEHOLDER. Not a stock photograph of a building that is not
-             theirs, which would be the most literal possible lie on this page. */
-          <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 text-muted-foreground/50">
-            <ImageOff className="h-7 w-7" />
-            <span className="text-[13px] break-words px-2 text-center">{t('prop_no_photo')}</span>
-          </div>
+          <NoPhoto label={t('prop_no_photo')} />
         )}
 
         <div className="absolute top-2 start-2 flex flex-wrap gap-1.5 max-w-[calc(100%-1rem)]">

@@ -747,7 +747,14 @@ export default function EditPropertyPage() {
                         src={photo.storage_path ?? photo.public_url}
                         alt={String(photo.original_filename ?? t('prop_photo_alt'))}
                         className="h-full w-full object-cover"
-                        fallback={<div className="h-full w-full animate-pulse bg-secondary/60" />}
+                        pending={<div className="h-full w-full animate-pulse bg-secondary/60" />}
+                        /* A thumbnail that cannot load says so, rather than shimmering
+                           next to a row the owner is trying to reorder. */
+                        fallback={(
+                          <div className="flex h-full w-full items-center justify-center text-muted-foreground/40">
+                            <ImageOff className="h-5 w-5" />
+                          </div>
+                        )}
                       />
                     </div>
                     <div className="min-w-0 flex-1 space-y-0.5">

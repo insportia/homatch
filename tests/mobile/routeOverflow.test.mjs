@@ -111,6 +111,13 @@ const ROUTES = [
    * the edit form hides which number somebody is typing.
    */
   { path: '/property', name: 'my properties', auth: true },
+  /*
+   * THE ACTUAL CREATION FORM, which had never been measured. /property/add is a
+   * two-card chooser and was in this list; /property/create is the 758-line form it
+   * leads to and was not, so the one screen where somebody types a property had no
+   * coverage at any width in any language.
+   */
+  { path: '/property/create', name: 'create listing', auth: true },
   { path: '/property/11111111-1111-4111-8111-111111111111/edit', name: 'edit property', auth: true },
   { path: '/find-property', name: 'find property', auth: true },
   { path: '/dashboard', name: 'dashboard', auth: true },

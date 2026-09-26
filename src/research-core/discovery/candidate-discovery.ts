@@ -257,28 +257,58 @@ export function score(candidate: CandidateLink, objective: DiscoveryObjective): 
     }
   }
 
-  // A country-code domain for the market is a genuine signal and a cheap one.
+  /*
+   * THE GATE: nothing about this candidate names the market, a property business
+   * or an intent.
+   *
+   * Returned here, before the locality and endorsement bonuses below, because
+   * those two are MODIFIERS and a modifier with nothing to modify is how a
+   * supermarket ends up ranked. Being Georgian and being linked from three
+   * portals are both perfectly true of a payments gateway.
+   */
+  if (reasons.length === 0) {
+    return {
+      relevance: 0,
+      rationale:
+        `nothing in ${candidate.domain} or its anchor text names this market, a property `
+        + 'business or an intent. Recorded as a candidate with zero relevance rather than '
+        + 'discarded, because the link is real and the judgement may be wrong.',
+    };
+  }
+
+  /*
+   * A ccTLD IS LOCALITY, NOT RELEVANCE, and it only counts once something else
+   * has spoken.
+   *
+   * MEASURED IN PRODUCTION 2026-09-26. The first version added 0.15 for a `.ge`
+   * domain unconditionally, and the top candidates harvested from seven Georgian
+   * portal home pages were: auto.ge, shop.aversi.ge (a pharmacy), caparol.ge
+   * (paint), epay.ge (a payments gateway), nikorasupermarket.ge and sab.fast.ge
+   * — every one scoring exactly 0.15, every one on the TLD alone, not one of
+   * them a property source.
+   *
+   * A portal's front page links to its ADVERTISERS. That is the actual finding,
+   * and no amount of scoring fixes a seed page whose outbound links are a
+   * shopping centre; but a bonus that fires on nothing else at least stops
+   * dressing a supermarket up as a lead. "Georgian" is not a reason to read a
+   * site — it is a reason to prefer THIS property source over an equivalent one
+   * somewhere else.
+   */
   const ccTld = `.${objective.market.toLowerCase()}`;
   if (candidate.domain.endsWith(ccTld)) {
     relevance += 0.15;
     reasons.push(`a ${ccTld} domain`);
   }
 
-  // Independent endorsement: two permitted sources linking the same host is a
-  // much stronger signal than one doing it twice.
+  /*
+   * Independent endorsement: two permitted sources linking the same host is a
+   * much stronger signal than one doing it twice. Also a modifier, and also
+   * below the gate -- a payments gateway linked from every portal in the country
+   * is a well-linked payments gateway.
+   */
   if (candidate.discoveredFrom.length > 1) {
     relevance += 0.10 * Math.min(3, candidate.discoveredFrom.length - 1);
     reasons.push(`linked from ${candidate.discoveredFrom.length} permitted sources`);
-  }
-
-  if (reasons.length === 0) {
-    return {
-      relevance: 0,
-      rationale:
-        `nothing in ${candidate.domain} or its anchor text names this market, a property ` +
-        'business or an intent. Recorded as a candidate with zero relevance rather than ' +
-        'discarded, because the link is real and the judgement may be wrong.',
-    };
   }
 
   return {

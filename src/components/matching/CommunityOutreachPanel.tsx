@@ -141,16 +141,32 @@ export function CommunityOutreachPanel({ propertyId }: { propertyId: string }) {
   if (!loaded) {
     return (
       <Card className="bg-card border-border border-dashed">
-        <CardContent className="p-5">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-              <Users className="h-5 w-5 text-primary" />
+        <CardContent className="p-4 sm:p-5">
+          {/*
+            * WRAPS AT A PHONE WIDTH, because the call to action did not fit.
+            *
+            * Measured 2026-09-26 at 320px in Georgian: "sazogadoebebis modzebna"
+            * renders a 269px button, and `shrink-0` on a row that also holds a
+            * 40px icon and a two-line heading took the page to 370px and scrolled
+            * it sideways.
+            *
+            * This went unseen because the mobile gate had no `users` stub, so
+            * every signed-in route rendered a "could not load your profile" card
+            * and this panel was never on screen to be measured.
+            *
+            * Stacked below the heading on a phone, beside it from `sm` up.
+            */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                <Users className="h-5 w-5 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-foreground">{t('community_panel_title')}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{t('community_panel_subtitle')}</p>
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-foreground">{t('community_panel_title')}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{t('community_panel_subtitle')}</p>
-            </div>
-            <Button size="sm" onClick={load} disabled={loading} className="shrink-0 gap-1.5">
+            <Button size="sm" onClick={load} disabled={loading} className="w-full sm:w-auto sm:shrink-0 gap-1.5 whitespace-normal h-auto min-h-8 py-1.5">
               {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
               {t('community_find_button')}
             </Button>

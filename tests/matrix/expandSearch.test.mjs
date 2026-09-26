@@ -145,6 +145,33 @@ test('THE RECEIPT is written, or the next expansion re-buys everything', () => {
     'the receipt counts failed reads as read, so an errored source is never retried');
 });
 
+test('a receipt that cannot be written is reported, not swallowed', () => {
+  /*
+   * THE HOUR THIS COST, on 2026-09-26.
+   *
+   * `sources_read` shipped in the same commit as the code writing to it.
+   * Migrations in this repository run only on a manual workflow_dispatch with
+   * `run_migrations` set -- a push never applies one -- so the column did not
+   * exist in production, and `.catch(() => undefined)` swallowed every write.
+   * Expand Search would have looked like it worked: the first expansion excludes
+   * correctly from an empty set, and the second re-buys every source the first
+   * one read.
+   *
+   * The write stays non-fatal, because a bookkeeping row must never fail a search
+   * the customer has already paid for. It just stops being invisible.
+   */
+  const campaign = code(CAMPAIGN);
+  assert.match(campaign, /RECEIPT_WRITE_FAILED/,
+    'a failed receipt write is silent, so a missing column disables Expand Search economics '
+    + 'without anything saying so');
+  const branch = campaign.slice(campaign.indexOf('sources_read: sourcesRead'));
+  const handler = branch.slice(0, branch.indexOf('});') + 3);
+  assert.equal(/catch\(\(\) => undefined\)/.test(handler.split('event(')[0]), false,
+    'the receipt write still discards its error before reporting it');
+  assert.match(handler, /consequence/,
+    'the event does not say what breaks when the receipt is missing');
+});
+
 test('the receipt is INTERNAL and the headroom is CUSTOMER-FACING, in two columns', () => {
   /*
    * discovery_headroom's own comment promises the customer's vocabulary: no

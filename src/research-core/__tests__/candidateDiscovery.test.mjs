@@ -421,6 +421,59 @@ test('the objective is used for ranking and never as a filter', () => {
     'the objective removed candidates instead of reordering them');
 });
 
+test('A GEORGIAN SUPERMARKET IS NOT A PROPERTY SOURCE', () => {
+  /*
+   * MEASURED IN PRODUCTION 2026-09-26, and the reason the scorer has a gate.
+   *
+   * The first version added 0.15 for a `.ge` domain unconditionally. Run against
+   * the home pages of seven Georgian portals, its top candidates were auto.ge,
+   * shop.aversi.ge (a pharmacy), caparol.ge (paint), epay.ge (a payments
+   * gateway), nikorasupermarket.ge and sab.fast.ge — every one scoring exactly
+   * 0.15, every one on the TLD alone, not one of them a property source.
+   *
+   * A ccTLD is LOCALITY. It is a reason to prefer this property source over an
+   * equivalent one elsewhere, never a reason to read a site.
+   */
+  const supermarket = {
+    url: 'https://nikorasupermarket.ge/', host: 'nikorasupermarket.ge',
+    domain: 'nikorasupermarket.ge', anchors: ['Nikora'], linkCount: 1,
+    discoveredFrom: ['https://portal.ge/'], relevance: 0, rationale: '',
+  };
+  const scored = score(supermarket, { market: 'GE', languages: ['ka'], intent: 'BOTH' });
+  assert.equal(scored.relevance, 0, `a supermarket scored ${scored.relevance}`);
+  assert.equal(/\.ge domain/.test(scored.rationale), false,
+    'the locality bonus fired with nothing to modify');
+});
+
+test('being linked from every portal in the country does not make a gateway a source', () => {
+  // The same gate, for the endorsement modifier. A payments provider linked from
+  // four portals is a well-linked payments provider.
+  const gateway = {
+    url: 'https://epay.ge/', host: 'epay.ge', domain: 'epay.ge',
+    anchors: ['epay'], linkCount: 4,
+    discoveredFrom: ['https://a.ge/', 'https://b.ge/', 'https://c.ge/', 'https://d.ge/'],
+    relevance: 0, rationale: '',
+  };
+  const scored = score(gateway, { market: 'GE', languages: ['ka'], intent: 'BOTH' });
+  assert.equal(scored.relevance, 0, `a payments gateway scored ${scored.relevance}`);
+  assert.equal(/linked from 4/.test(scored.rationale), false);
+});
+
+test('both modifiers still apply once the market signal is there', () => {
+  // The gate must not have turned into a wall: a real agency on a .ge domain
+  // linked from two portals should score well above one hit alone.
+  const agency = {
+    url: 'https://agency-tbilisi.ge/', host: 'agency-tbilisi.ge', domain: 'agency-tbilisi.ge',
+    anchors: ['უძრავი ქონების სააგენტო'], linkCount: 2,
+    discoveredFrom: ['https://a.ge/', 'https://b.ge/'], relevance: 0, rationale: '',
+  };
+  const scored = score(agency, { market: 'GE', languages: ['ka'], intent: 'BOTH' });
+  assert.ok(scored.relevance >= 0.6, `a well-endorsed agency scored only ${scored.relevance}`);
+  assert.match(scored.rationale, /estate agency/);
+  assert.match(scored.rationale, /\.ge domain/);
+  assert.match(scored.rationale, /linked from 2 permitted sources/);
+});
+
 test('a market other than GE does not get a Georgian .ge bonus', () => {
   const candidate = {
     url: 'https://agency-tbilisi.ge/', host: 'agency-tbilisi.ge', domain: 'agency-tbilisi.ge',

@@ -815,14 +815,32 @@ function MatchesContent() {
     <AppLayout>
       <div className="max-w-3xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-start justify-between gap-3">
-          <div>
+        {/*
+          * WRAPS, because at 320px in Georgian it did not fit and said nothing.
+          *
+          * Measured 2026-09-26: scrollWidth 394 against a 320 viewport. The action
+          * group is `shrink-0` — correctly, a credits balance and a campaign
+          * toggle must not be squeezed into ellipsis — and the start button keeps
+          * its full label where the pause button hides its own behind
+          * `hidden md:inline`. So on the narrowest supported phone, in the
+          * product's primary language, the whole page scrolled sideways.
+          *
+          * Wrapping lets the actions drop to their own line when there is no room
+          * and keeps them beside the title when there is, which is better than
+          * hiding the label of the one button a new customer needs to find.
+          *
+          * `min-w-0` on the title block is the other half: without it a long
+          * unhyphenated Georgian heading refuses to shrink and pushes the row wide
+          * again from the other side.
+          */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 sm:flex-1">
             <h1 className="text-xl font-semibold text-foreground">{t('matches_title')}</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
               {t('matches_header_summary', { total: String(counts.total), new: String(counts.newCount), strong: String(counts.strongCount) })}
             </p>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
             {/* Credits balance chip */}
             <button
               onClick={() => navigate('/credits')}
@@ -846,7 +864,18 @@ function MatchesContent() {
             ) : (
               <Button
                 size="sm"
-                className="bg-primary text-primary-foreground hover:bg-primary/90 text-xs h-8 gap-1.5 font-semibold"
+                /*
+                 * WRAPS AND SHRINKS, because "shethavsebis dats'q'eba" does not
+                 * fit beside a credits chip on a 320px phone.
+                 *
+                 * shadcn's Button is `whitespace-nowrap` and `h-8` here, so the
+                 * Georgian label could neither wrap nor be clipped: the button
+                 * simply grew, took the action group to 322px inside a 320px
+                 * viewport, and the whole page scrolled sideways. min-h-8 rather
+                 * than h-8 so a two-line label gets a taller button instead of an
+                 * overflowing one.
+                 */
+                className="bg-primary text-primary-foreground hover:bg-primary/90 text-xs min-h-8 h-auto py-1.5 gap-1.5 font-semibold whitespace-normal text-start"
                 onClick={() => setShowBudget(true)}
                 disabled={campaignLoading}
               >
@@ -921,7 +950,22 @@ function MatchesContent() {
 
         {/* Filters */}
         <Tabs value={filter} onValueChange={v => setFilter(v as typeof filter)}>
-          <TabsList className="bg-secondary">
+          {/*
+            * `overflow-x-auto` is the other half of the tabs primitive's
+            * contract, and this screen never held up its end.
+            *
+            * src/components/ui/tabs.tsx deliberately makes triggers `shrink-0` so
+            * a label cannot be squeezed until it runs across its neighbour, and
+            * says so: "Now the row is genuinely wider than the phone,
+            * `overflow-x-auto` has something to do, and the rail scrolls." Without
+            * it, the row is genuinely wider than the phone and nothing scrolls —
+            * the PAGE does.
+            *
+            * Measured at 320px in Georgian: four filters reading ყველა, ახალი,
+            * ძლიერი and გახსნილი, each with a count in brackets. There is no width
+            * at which those four fit across 320px, so the rail has to scroll.
+            */}
+          <TabsList className="bg-secondary max-w-full overflow-x-auto">
             <TabsTrigger value="all">{t('matches_filter_all')} ({counts.total})</TabsTrigger>
             <TabsTrigger value="new">{t('matches_filter_new')} ({counts.newCount})</TabsTrigger>
             <TabsTrigger value="strong">{t('matches_filter_strong')} ({counts.strongCount})</TabsTrigger>
@@ -948,7 +992,10 @@ function MatchesContent() {
           </div>
         ) : filteredMatches.length === 0 ? (
           <Card className="bg-card border-border">
-            <CardContent className="p-12 text-center">
+            {/* p-12 is 96px of padding, which leaves 224px of a 320px phone for a
+                button whose Georgian label is wider than that. Roomy from `sm` up,
+                where there is room to be roomy. */}
+            <CardContent className="p-6 sm:p-12 text-center">
               <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
                 <Zap className="h-6 w-6 text-primary" />
               </div>
@@ -956,7 +1003,7 @@ function MatchesContent() {
               <p className="text-sm text-muted-foreground max-w-xs mx-auto">{t('matches_empty_desc')}</p>
               {!campaignActive && (
                 <Button
-                  className="mt-6 bg-primary text-primary-foreground hover:bg-primary/90"
+                  className="mt-6 max-w-full whitespace-normal h-auto py-2 bg-primary text-primary-foreground hover:bg-primary/90"
                   onClick={() => setShowBudget(true)}
                 >
                   <Play className="h-4 w-4 mr-2" />

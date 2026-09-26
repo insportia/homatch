@@ -356,7 +356,31 @@ async function discover(
     return !domains.some((domain) => host === domain || host.endsWith(`.${domain}`));
   });
 
-  const toInsert = fresh.slice(0, maxInsert);
+  /*
+   * REPORTED IS NOT THE SAME AS RECORDED.
+   *
+   * Everything harvested is reported, including the zero-relevance links, because
+   * "we found this and it looks unpromising" is information and the judgement may
+   * be wrong. But inserting them would pad source_registry with exactly the junk
+   * this programme is supposed to avoid.
+   *
+   * MEASURED 2026-09-26: the first production discover run harvested 14
+   * candidates from seven Georgian portal home pages, of which the top six were a
+   * supermarket, a pharmacy, a paint brand, a payments gateway, a car classifieds
+   * site and a fast-food chain. Writing those as 14 new "sources" would have
+   * turned a registry of 52 into a registry of 66 and made it worse.
+   *
+   * So the floor is on the WRITE, not on the report. A candidate below it stays in
+   * the response with its score and its reason, where a person can disagree with
+   * it, and never becomes a row.
+   */
+  const minRelevance = body.minRelevance != null
+    ? Math.max(0, Math.min(1, Number(body.minRelevance)))
+    : 0.25;
+  const promising = fresh.filter((candidate) => candidate.relevance >= minRelevance);
+  const belowFloor = fresh.length - promising.length;
+
+  const toInsert = promising.slice(0, maxInsert);
   const inserted: Array<{ url: string; relevance: number }> = [];
   const failures: Array<{ url: string; error: string }> = [];
 
@@ -403,17 +427,28 @@ async function discover(
     candidatesFound: candidates.length,
     alreadyKnown: candidates.length - fresh.length,
     newCandidates: fresh.length,
+    minRelevance,
+    /* Found and deliberately not written. Reported so the floor is visible and
+       arguable rather than a silent filter. */
+    belowRelevanceFloor: belowFloor,
     inserted: inserted.length,
     failures,
-    top: toInsert.slice(0, 10).map((candidate) => ({
+    top: promising.slice(0, 10).map((candidate) => ({
       url: candidate.url,
       relevance: candidate.relevance,
       linkedFromDocuments: candidate.discoveredFrom.length,
       why: candidate.rationale.slice(0, 160),
     })),
+    /* What was harvested and rejected, so a bad seed page shows up as a bad seed
+       page instead of as an empty result. */
+    rejected: fresh
+      .filter((candidate) => candidate.relevance < minRelevance)
+      .slice(0, 10)
+      .map((candidate) => ({ url: candidate.url, relevance: candidate.relevance })),
     fetch: runtime.stats(),
     note: 'every row inserted is a link that was present in a document this run fetched, with that '
-      + 'document recorded on the row. Nothing was activated, tiered or given a family.',
+      + 'document recorded on the row. Nothing was activated, tiered or given a family. '
+      + `${belowFloor} candidate(s) scored below ${minRelevance} and were reported but not written.`,
     elapsedMs: Date.now() - started,
   });
 }

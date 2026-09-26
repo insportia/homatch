@@ -538,7 +538,31 @@ Deno.serve(async (req: Request) => {
           ? supply.data.sourcesRead.map((id: unknown) => String(id)).filter(Boolean)
           : [];
         if (sourcesRead.length > 0) {
-          await updateJob(db, jobId, { sources_read: sourcesRead }).catch(() => undefined);
+          /*
+           * NON-FATAL, BUT NEVER SILENT.
+           *
+           * A bookkeeping write must not fail a search the customer has already
+           * paid for, so this does not throw. The first version also did not
+           * REPORT, and that cost an hour: `sources_read` shipped in the same
+           * commit as the code writing to it, migrations in this repository only
+           * run on a manual workflow_dispatch, so the column did not exist in
+           * production and every write was swallowed by `.catch(() =>
+           * undefined)`. Expand Search would have looked like it worked and
+           * quietly re-bought every source on the second expansion.
+           *
+           * So a failure becomes an event. It is still not fatal; it is just no
+           * longer invisible.
+           */
+          await updateJob(db, jobId, { sources_read: sourcesRead }).catch(async (error) => {
+            await event(db, jobId, 'RECEIPT_WRITE_FAILED', {
+              message: 'the sources this sweep read could not be recorded',
+              detail: message(error),
+              /* Named so the consequence is in the log, not inferred from it. */
+              consequence: 'a later Expand Search cannot exclude them and would re-read work '
+                + 'this campaign has already paid for',
+              sourcesRead,
+            }).catch(() => undefined);
+          });
         }
 
         const perSourceRows = Array.isArray(supply.data?.perSource) ? supply.data.perSource : [];

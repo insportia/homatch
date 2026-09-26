@@ -211,7 +211,25 @@ export default function DeveloperSettingsPage() {
                 <div className="space-y-1.5">
                   <Label htmlFor="dev-inv-role">{t('dev_invite_role')}</Label>
                   <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as DevRole)}>
-                    <SelectTrigger id="dev-inv-role" className="w-auto min-w-[11rem]"><SelectValue /></SelectTrigger>
+                    {/*
+                      * BOUNDED, because Radix puts the whole selected item in the
+                      * trigger.
+                      *
+                      * Each SelectItem below renders the role name AND a
+                      * description span, and SelectValue reproduces both. With
+                      * `w-auto` the trigger therefore grew to the width of the
+                      * longest description -- measured 558px inside a 320px
+                      * viewport at 320/ka, which scrolled the page sideways.
+                      *
+                      * Full width on a phone, its old minimum from `sm` up, and
+                      * the value truncates rather than pushing the box open.
+                      */}
+                    <SelectTrigger
+                      id="dev-inv-role"
+                      className="w-full min-w-0 max-w-full sm:w-auto sm:min-w-[11rem] [&>span]:truncate [&>span]:text-start"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
                     <SelectContent className="max-w-sm">
                       {ASSIGNABLE_ROLES.map((r) => (
                         <SelectItem key={r} value={r}>
@@ -262,7 +280,7 @@ export default function DeveloperSettingsPage() {
                               }
                             }}
                           >
-                            <SelectTrigger className="h-8 w-auto min-w-[9rem] text-xs"><SelectValue /></SelectTrigger>
+                            <SelectTrigger className="h-8 w-full min-w-0 max-w-full sm:w-auto sm:min-w-[9rem] text-xs [&>span]:truncate"><SelectValue /></SelectTrigger>
                             <SelectContent>
                               {ASSIGNABLE_ROLES.map((r) => (
                                 <SelectItem key={r} value={r}>{t(`dev_role_${r.toLowerCase()}`)}</SelectItem>

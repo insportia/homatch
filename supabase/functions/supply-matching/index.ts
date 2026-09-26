@@ -229,13 +229,32 @@ Deno.serve(async (req: Request) => {
        * 'თბილისი' -- an equality filter finds about half of them.
        */
       const cityNames = placeNamesFor(demand.city);
+      /*
+       * ILIKE, NOT IN, AND THE REASON IS MEASURED.
+       *
+       * placeNamesFor() returns the canonical spellings this core knows, and they are
+       * all LOWERCASE because that is how the PLACES table stores them:
+       *
+       *   placeNamesFor('Tbilisi') -> ["tbilisi", "თბილისი", "тбилиси", "tiflis"]
+       *
+       * supply_observations holds 'Tbilisi' with a capital T on 12 rows, 'თბილისი' on 8
+       * and 'tbilisi' on 1. Postgres IN is case-SENSITIVE, so `.in('city', names)` matched
+       * 9 of 21 -- and the 12 it dropped included both rows old enough to fail the
+       * publication-age ceiling, which is why a run that should have rejected two
+       * rejected none.
+       *
+       * ilike without a wildcard is an exact case-insensitive match, which is precisely
+       * the comparison wanted. comparePlaces() still decides per row afterwards; this only
+       * has to stop the database hiding rows before the decision is reached.
+       */
+      const cityFilter = cityNames.map((name) => `city.ilike.${name}`).join(',');
       const { data: candidates } = await db
         .from('supply_observations')
         .select('id,city,district,transaction,property_type,sale_amount,sale_currency,'
           + 'rent_amount,rent_currency,area_sqm,rooms,bedrooms,published_at,'
           + 'first_seen_at,last_seen_at,last_verified_at,content_changed_at,expires_at,'
           + 'content_fingerprint,validation_state,failed_checks,adapter_id,source_status')
-        .in('city', cityNames)
+        .or(cityFilter)
         .limit(MAX_CANDIDATES);
 
       totals.candidatesRead += (candidates ?? []).length;

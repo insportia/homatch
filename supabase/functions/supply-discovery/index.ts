@@ -191,7 +191,14 @@ const started = Date.now();
       .select('id,city,detected_language,validation_state,first_seen_at,last_seen_at,'
         + 'last_verified_at,content_changed_at,expires_at,content_fingerprint,failed_checks,'
         + 'published_at')
-      .in('city', placeNamesFor(city))
+      /*
+       * ILIKE rather than IN, for the reason measured in supply-matching: placeNamesFor()
+       * returns lowercase canonical names and this column holds 'Tbilisi' with a capital
+       * T, so a case-sensitive IN silently hid 12 of 21 Tbilisi rows -- and under-reading
+       * the store makes the coverage gate report a gap that is not there and pay to
+       * re-find what it already had.
+       */
+      .or(placeNamesFor(city).map((name) => `city.ilike.${name}`).join(','))
       .eq('transaction', transaction)
       .limit(2000);
 

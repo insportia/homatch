@@ -48,6 +48,7 @@ import {
   disconnectSocialProvider,
   type SocialConnectionCard,
 } from '@/services/social';
+import { CommunityIntelligencePanel } from '@/components/admin/CommunityIntelligencePanel';
 
 /** Platform identity for the card. Icons only where lucide has a real one. */
 const LOOK: Record<string, { label: string; icon: React.ElementType | null; accent: string }> = {
@@ -321,6 +322,16 @@ export default function AdminSocialDiscoveryPage() {
           })}
         </div>
       )}
+
+      {/*
+        * WHAT THE CONNECTIONS ABOVE HAVE ACTUALLY PRODUCED.
+        *
+        * Placed here on purpose: the cards say what each platform COULD reach, and
+        * this says what is in the store. A screen that only ever showed capability
+        * would look identical whether the syncs were working or had returned nothing
+        * for a month.
+        */}
+      <CommunityIntelligencePanel />
 
       {/*
         * Diagnostics, closed. Every capability row with its evidence and the date

@@ -133,3 +133,83 @@ export async function disconnectSocialProvider(provider: string): Promise<void> 
   });
   if (error) throw await edgeError(error);
 }
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Global intelligence over time
+ * ──────────────────────────────────────────────────────────────────────── */
+
+export type IntelligenceWindow =
+  | 'LAST_HOUR' | 'TODAY' | 'YESTERDAY' | 'LAST_24H'
+  | 'THIS_WEEK' | 'LAST_7D' | 'THIS_MONTH' | 'LAST_30D';
+
+/**
+ * Which clock the question is about.
+ *
+ * Surfaced to the operator rather than defaulted, because the two answers are
+ * genuinely different: a channel that posted nothing this week but which we only
+ * read today shows a full DISCOVERED bar and an empty PUBLISHED one, and that
+ * contrast is the finding rather than a glitch.
+ */
+export type IntelligenceClock = 'discovered_at' | 'published_at' | 'last_verified_at';
+
+export interface IntelligencePoint {
+  bucketStart: string;
+  evidence: number;
+  demand: number;
+  supply: number;
+  reference: number;
+  unknown: number;
+  unavailable: number;
+  /** False when this bucket was filled in to keep the series continuous. */
+  fromQuery: boolean;
+}
+
+export interface IntelligenceSeries {
+  window: IntelligenceWindow;
+  bounds: { from: string; to: string; column: IntelligenceClock };
+  bucket: 'HOUR' | 'DAY' | 'WEEK' | 'MONTH';
+  buckets: number;
+  bucketsWithEvidence: number;
+  totals: {
+    evidence: number;
+    demand: number;
+    supply: number;
+    reference: number;
+    unknown: number;
+    unavailable: number;
+  };
+  filters: { platform: string | null; direction: string | null; language: string | null };
+  series: IntelligencePoint[];
+}
+
+/**
+ * Windowed counts of community evidence.
+ *
+ * `tzOffsetMinutes` is read from the operator's own browser and sent, because a
+ * calendar window is LOCAL: a Tbilisi operator at 01:00 asking for "today" does
+ * not mean "since 04:00 yesterday UTC". Dropping it would produce an
+ * off-by-one-day report that looks entirely reasonable.
+ */
+export async function getCommunityIntelligence(request: {
+  window: IntelligenceWindow;
+  column?: IntelligenceClock;
+  bucket?: 'HOUR' | 'DAY' | 'WEEK' | 'MONTH';
+  platform?: string | null;
+  direction?: string | null;
+  language?: string | null;
+}): Promise<IntelligenceSeries> {
+  const { data, error } = await supabase.functions.invoke('community-intelligence', {
+    body: {
+      ...request,
+      /*
+       * getTimezoneOffset() returns minutes to ADD to local time to reach UTC, so
+       * Tbilisi (UTC+4) reports -240. The server wants minutes EAST of UTC, hence
+       * the negation. Getting this backwards moves every calendar boundary by
+       * twice the offset and is invisible in the output.
+       */
+      tzOffsetMinutes: -new Date().getTimezoneOffset(),
+    },
+  });
+  if (error) throw await edgeError(error);
+  return data as IntelligenceSeries;
+}

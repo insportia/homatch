@@ -150,6 +150,14 @@ Deno.serve(async (req: Request) => {
        * only ever increments on success.
        */
       persistenceFailures: 0,
+      /*
+       * Messages we had stored that are no longer on the channel. Counted because
+       * it was structurally always zero before -- planObservation() produced
+       * MARK_UNAVAILABLE and nothing consumed it, so became_unavailable_at was
+       * never written by anything and every report of "no longer there" was a zero
+       * presented as a measurement.
+       */
+      markedUnavailable: 0,
       skippedByCooldown: 0,
     };
 
@@ -459,6 +467,40 @@ async function syncTarget(
       continue;
     }
 
+    /*
+     * MARK_UNAVAILABLE, stated rather than reached by falling through.
+     *
+     * planObservation() has always been able to return this and nothing ever
+     * handled it: the branches below were TOUCH, INSERT, then `else` -- so a
+     * MARK_UNAVAILABLE would have been written as a VERSION, overwriting a row that
+     * is GONE with a fresh copy of text we no longer have. It could not fire from
+     * here yet, because this loop only ever sees messages that ARE present, but a
+     * branch whose correctness depends on an unreachable input is a trap set for
+     * whoever makes it reachable.
+     *
+     * Absence is detected after the loop, where the id range actually read is
+     * known. This branch exists so the shape is honest.
+     */
+    if (plan.action === 'MARK_UNAVAILABLE') {
+      const { error: goneError } = await db.from('raw_signals').update({
+        became_unavailable_at: plan.becameUnavailableAt,
+        last_seen_at: now,
+        validation_state: 'REMOVED',
+        last_revalidation_outcome: 'REMOVED',
+      }).eq('id', existing?.id as string);
+      if (goneError) {
+        writeFailures.push({
+          action: 'MARK_UNAVAILABLE',
+          externalId: `${messageChannel}/${externalId}`,
+          message: goneError.message,
+        });
+        totals.persistenceFailures += 1;
+      } else {
+        totals.persistenceWrites += 1;
+      }
+      continue;
+    }
+
     /* VERSION: same identity, new text. discovered_at is NOT touched — first
        seen means first seen. */
     const { error: updateError } = await db.from('raw_signals').update({
@@ -484,6 +526,87 @@ async function syncTarget(
       versioned += 1;
       totals.changedMessages += 1;
       totals.persistenceWrites += 1;
+    }
+  }
+
+  /*
+   * WHAT WE HELD THAT IS NO LONGER THERE.
+   *
+   * THE RULE THAT KEEPS THIS HONEST: only a message inside the id range this read
+   * ACTUALLY COVERED can be judged absent.
+   *
+   * Telegram's preview serves a window of recent posts. A stored message missing
+   * from today's page is usually not deleted -- it is simply older than the window,
+   * or beyond MAX_PAGES. Marking those unavailable would destroy good evidence
+   * wholesale on the first sync of any channel with history, and it would look like
+   * a working feature while doing it.
+   *
+   * So the range is bounded by what was seen: if this read returned ids 4..20 and
+   * we hold 4, 5, 16, 18, 20 while the page showed everything but 18, then 18 was
+   * deleted -- because 18 sits between two ids we DID see. Anything outside
+   * [min, max] is not judged at all.
+   *
+   * Requires at least two messages: a single message establishes no interval, and
+   * min === max would let one post's absence be inferred from its own presence.
+   */
+  if (collected.length >= 2) {
+    const seenIds = collected
+      .map(({ message }) => Number(message.id))
+      .filter((id) => Number.isFinite(id));
+    const lowest = Math.min(...seenIds);
+    const highest = Math.max(...seenIds);
+    const present = new Set(seenIds.map((id) => `${channel}/${id}`));
+
+    const { data: storedRows } = await db
+      .from('raw_signals')
+      .select('id,external_id')
+      .eq('platform', 'TELEGRAM')
+      .is('became_unavailable_at', null)
+      .like('external_id', `${channel}/%`);
+
+    for (const row of storedRows ?? []) {
+      const externalId = String(row.external_id ?? '');
+      const numeric = Number(externalId.slice(channel.length + 1));
+      /* Outside the covered interval, or present: no claim either way. */
+      if (!Number.isFinite(numeric) || numeric < lowest || numeric > highest) continue;
+      if (present.has(externalId)) continue;
+
+      const plan = planObservation(
+        {
+          id: String(row.id),
+          contentFingerprint: null,
+          contentVersion: 1,
+          lastSeenAt: now,
+          availability: 'AVAILABLE',
+          becameUnavailableAt: null,
+        },
+        { contentFingerprint: '', availability: 'REMOVED' },
+        now,
+      );
+
+      const { error: goneError } = await db.from('raw_signals').update({
+        became_unavailable_at: plan.becameUnavailableAt,
+        last_seen_at: now,
+        /*
+         * REMOVED, and last_verified_at is NOT advanced. We verified that it is
+         * gone, which is not a verification of the evidence -- treating it as one
+         * would make a deleted post the freshest thing in the store.
+         */
+        validation_state: 'REMOVED',
+        last_revalidation_outcome: 'REMOVED',
+      }).eq('id', row.id as string);
+
+      if (goneError) {
+        writeFailures.push({
+          action: 'MARK_UNAVAILABLE',
+          externalId,
+          message: goneError.message,
+        });
+        totals.persistenceFailures += 1;
+      } else {
+        totals.markedUnavailable += 1;
+        totals.persistenceWrites += 1;
+      }
     }
   }
 
@@ -546,6 +669,7 @@ async function syncTarget(
     supply,
     newestSeenId: newestSeen,
     reachedKnownCursor: reachedKnown,
+    markedUnavailable: totals.markedUnavailable,
     ...(persisted ? {} : {
       cursorHeldAt: target.cursor ?? null,
       /* Capped: the diagnosis is the constraint name, and it repeats. */

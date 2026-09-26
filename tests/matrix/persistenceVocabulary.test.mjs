@@ -154,3 +154,86 @@ test('a persistence failure is visible in the outcome, not only in a counter', (
       + 'to find out the sync kept nothing',
   );
 });
+
+/* ────────────────────────────────────────────────────────────────────────
+ * THE FOURTH TRANSITION, WHICH NOTHING PERFORMED
+ *
+ * planObservation() has always been able to return MARK_UNAVAILABLE, and until now
+ * nothing consumed it. Nothing in the repository wrote became_unavailable_at at
+ * all -- community-sync only ever READ it -- so every report of "no longer there"
+ * was a structural zero presented as a measurement, including the one on the new
+ * Admin intelligence panel.
+ *
+ * And the loop's branches were TOUCH, INSERT, then `else`. A MARK_UNAVAILABLE
+ * reaching it would have been written as a VERSION: a row that is GONE overwritten
+ * with a fresh copy of text we no longer have.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/** community-sync with comments stripped, so no assertion can match prose. */
+function syncCode() {
+  const source = readFileSync(join(FUNCTIONS, 'community-sync', 'index.ts'), 'utf8');
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+}
+
+test('MARK_UNAVAILABLE is handled explicitly, never by falling through to VERSION', () => {
+  const code = syncCode();
+  const branch = code.indexOf("plan.action === 'MARK_UNAVAILABLE'");
+  const version = code.indexOf('content_changed_at: now');
+
+  assert.ok(branch > 0, 'the fourth transition must have a branch of its own');
+  assert.ok(version > 0, 'guard: the VERSION path is still here');
+  assert.ok(
+    branch < version,
+    'it has to be decided BEFORE the VERSION path, or the fallthrough is still there',
+  );
+  assert.match(code, /became_unavailable_at: plan\.becameUnavailableAt/);
+});
+
+test('a removed row is REMOVED, and its verification time is not advanced', () => {
+  const code = syncCode();
+  // Sliced to the absence block on purpose: the TOUCH path legitimately advances
+  // last_verified_at, so a whole-file assertion would pass for the wrong reason.
+  const start = code.indexOf('if (collected.length >= 2)');
+  assert.ok(start > 0, 'guard: the absence block is present');
+  const block = code.slice(start, code.indexOf('const persisted =', start));
+  assert.ok(block.length > 0, 'guard: the block was actually located');
+
+  assert.match(block, /validation_state: 'REMOVED'/);
+  assert.match(block, /last_revalidation_outcome: 'REMOVED'/);
+  assert.doesNotMatch(
+    block,
+    /last_verified_at/,
+    'confirming something is GONE is not a verification of the evidence; advancing it '
+      + 'would make a deleted post the freshest thing in the store',
+  );
+});
+
+test('absence is only inferred inside the id range actually read', () => {
+  const code = syncCode();
+  const start = code.indexOf('if (collected.length >= 2)');
+  const block = code.slice(start, code.indexOf('const persisted =', start));
+
+  // Telegram's preview serves a WINDOW. A stored message missing from today's page
+  // is usually older than the window, not deleted -- and marking those unavailable
+  // would wipe good evidence on the first sync of any channel with history.
+  assert.match(block, /Math\.min\(/, 'the low end of the covered interval');
+  assert.match(block, /Math\.max\(/, 'the high end');
+  assert.match(
+    block,
+    /numeric < lowest \|\| numeric > highest/,
+    'anything outside the interval must be skipped rather than judged',
+  );
+  assert.match(
+    code,
+    /if \(collected\.length >= 2\)/,
+    'one message establishes no interval: min === max would let a post be inferred '
+      + 'absent from its own presence',
+  );
+});
+
+test('the count is reported, so a zero can be told from a dead metric', () => {
+  const source = readFileSync(join(FUNCTIONS, 'community-sync', 'index.ts'), 'utf8');
+  assert.match(source, /markedUnavailable: 0,/, 'initialised in totals');
+  assert.match(source, /totals\.markedUnavailable \+= 1/, 'incremented on a real write');
+  assert.match(source, /markedUnavailable: totals\.markedUnavailable/, 'and returned');
+});

@@ -79,6 +79,20 @@ const ROUTES = [
   { path: '/', name: 'home' },
   { path: '/about', name: 'about' },
   { path: '/verify', name: 'verify centre', auth: true },
+  /*
+   * THE PAID VERIFY RESULT, AND IT HAD NEVER BEEN MEASURED EITHER.
+   *
+   * /verify/:id is classified PROTECTED and customer-critical -- it is what somebody
+   * gets for their money -- and this list held no concrete route for it. The resolver's
+   * prefix rule matched `/verify` instead, so the matrix rendered the Verify centre
+   * twice and counted the second as coverage of the result page. Found by DELETING that
+   * prefix rule, which is why it is gone: it turned an unreachable surface into a silent
+   * substitution.
+   *
+   * Measuring it is not modifying it. Verify's behaviour, UI and intelligence are
+   * untouched; the harness simply loads the page it was always supposed to load.
+   */
+  { path: '/verify/22222222-2222-4222-8222-222222222222', name: 'verification case', auth: true },
   { path: '/mortgage', name: 'mortgage' },
   { path: '/investment', name: 'investment' },
   /* FOR EXPATS. Public like its two neighbours, and the one most likely
@@ -430,6 +444,34 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
        */
       if (url.includes('/rest/v1/matches') && url.includes('property_id=in.')) {
         return r.fulfill(json(matchRows(3)));
+      }
+
+      /*
+       * THE DEAL ROOM BEHIND A VERIFY RESULT. VerificationCasePage reads deal_rooms by
+       * id with maybeSingle; with the default empty array it renders its not-found state
+       * and the gate would measure that instead of the screen. Shaped from
+       * DealRoomRecord in services/dealRooms.ts rather than from memory -- a fixture
+       * that guesses is a fixture that tests the guess.
+       */
+      if (url.includes('/rest/v1/deal_rooms')) {
+        const room = {
+          id: '22222222-2222-4222-8222-222222222222',
+          user_id: '77777777-7777-4777-8777-777777777777',
+          cadastral_code: '01.14.15.023.01.500',
+          title: 'ვაკე, აბულაძის ქუჩა 12 — გადამოწმების შედეგი',
+          address: 'თბილისი, ვაკე, აბულაძის ქუჩა 12',
+          verify_job_id: null,
+          verify_snapshot: {},
+          verify_refreshed_at: null,
+          property_type: 'APARTMENT',
+          status: 'ACTIVE',
+          budget: {},
+          created_at: '2026-09-20T10:00:00Z',
+          updated_at: '2026-09-26T10:00:00Z',
+          deleted_at: null,
+        };
+        const single = (r.request().headers()['accept'] ?? '').includes('pgrst.object');
+        return r.fulfill(json(single ? room : [room]));
       }
 
       if (url.includes('/rest/v1/users')) {

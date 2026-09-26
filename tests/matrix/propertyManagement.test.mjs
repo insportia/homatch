@@ -213,18 +213,41 @@ test('My Properties comes before Find Property', () => {
 
 test('Find Property no longer points at the chat, and no longer wears a magnifier', () => {
   const body = code(shell);
-  /* The route it actually goes to. */
-  assert.match(body, /\{ key: 'dnav_find_property', path: '\/find-property', icon: Telescope \}/);
   /*
-   * A LOUPE MEANS "SEARCH THIS TEXT", which is the one thing this destination is not:
-   * it reads a description, proposes a plan and runs deterministic matching. Search is
-   * still imported and still used -- for the dashboard's actual text search box, which
-   * is what a magnifier is for.
+   * MapPinHouse: a house inside a map pin, which is property DISCOVERY specifically.
+   * Telescope was the first replacement and was still wrong -- discovery in the
+   * abstract, saying nothing about property. Both beat a loupe, which means "search
+   * this text" and is the one thing this destination is not.
    */
+  assert.match(body, /\{ key: 'dnav_find_property', path: '\/find-property', icon: MapPinHouse \}/);
   assert.ok(!/'dnav_find_property'[^}]*icon: Search/.test(body),
     'Find Property is back to a magnifying glass');
   assert.ok(!/'dnav_find_property'[^}]*path: '\/ai'/.test(body),
     'Find Property points at the chat assistant again');
+  /* Search is still imported and still used -- on the dashboard's text search box,
+     which is exactly what a magnifier is for. */
+  assert.match(body, /<Search className=/);
+});
+
+test('there is ONE owner destination, not two competing ones', () => {
+  /*
+   * The rail carried both "My Properties" (/property) and "Find a buyer"
+   * (dnav_find_client), and the second pointed at /property/add -- an ADD FORM labelled
+   * as a buyer search. One journey, two destinations, and the wrong one sent an owner
+   * looking for buyers to upload another property.
+   *
+   * Buyer and tenant discovery starts from a property now: the workspace lists them and
+   * Property Details opens one. /property/add is still a route, reached from the
+   * workspace header, which is where adding a property belongs.
+   */
+  const body = code(shell);
+  assert.match(body, /\{ key: 'nav_owner_workspace', path: '\/property', icon: Handshake \}/);
+  assert.ok(!/key: 'dnav_find_client'/.test(body),
+    'the duplicate buyer-search destination is back in the customer rail');
+
+  /* And the add route still exists, so nothing was deleted to achieve the merge. */
+  const routes = readFileSync(join(root, 'src', 'routes.tsx'), 'utf8');
+  assert.match(routes, /path: '\/property\/add'/);
 });
 
 test('the two property destinations do not share an icon', () => {
@@ -233,9 +256,9 @@ test('the two property destinations do not share an icon', () => {
     const match = body.match(new RegExp(`\\{ key: '${key}', path: '[^']+', icon: (\\w+) \\}`));
     return match?.[1] ?? null;
   };
-  const mine = iconOf('nav_my_properties');
+  const mine = iconOf('nav_owner_workspace');
   const find = iconOf('dnav_find_property');
-  assert.ok(mine, 'My Properties has no icon');
+  assert.ok(mine, 'the owner workspace has no icon');
   assert.ok(find, 'Find Property has no icon');
   assert.notEqual(mine, find,
     'ownership and discovery are wearing the same icon at 20px on a phone');
@@ -268,9 +291,29 @@ test('both are in the mobile/RTL matrix', () => {
 
 test('the portfolio never renders a photo it does not have', () => {
   const body = code(portfolio);
-  /* An honest placeholder, not a stock photograph of a building that is not theirs. */
-  assert.match(body, /prop_no_photo/);
+  /*
+   * An honest placeholder, not a stock photograph of a building that is not theirs.
+   * The caption is no longer drawn -- there is no room for one on a 208px thumbnail in
+   * a list row -- but it is still announced, so the fact is not simply taken away from
+   * the people who most need it stated.
+   */
   assert.match(body, /ImageOff/);
+  assert.match(body, /aria-label=\{t\('prop_no_photo'\)\}/,
+    'the no-photo state is not announced to assistive technology');
   assert.ok(!/unsplash|placeholder\.com|via\.placeholder|picsum/i.test(body),
     'the portfolio falls back to a stock image of somebody else\'s property');
+});
+
+test('the property row opens Property Details as a real link', () => {
+  /*
+   * Edit used to be the only way into a property, which made inspecting one
+   * indistinguishable from changing it. A <Link> rather than a div with onClick, so it
+   * is deep-linkable, middle-clickable, refresh-safe and reachable from the keyboard.
+   */
+  const body = code(portfolio);
+  const links = [...body.matchAll(/<Link\s+to=\{`\/property\/\$\{id\}`\}/g)];
+  assert.ok(links.length >= 2,
+    `the row links to Property Details ${links.length} times; desktop and mobile both need it`);
+  assert.ok(!/onClick=\{\(\) => navigate\(`\/property\/\$\{id\}`\)\}/.test(body),
+    'the property opens through a click handler rather than a link');
 });

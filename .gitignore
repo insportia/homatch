@@ -87,3 +87,4 @@ history/*.json
 # the script, because `nul` is a reserved device name on Windows and a `rm nul`
 # in a shared script is the kind of line that behaves differently everywhere.
 nul
+.inspect/

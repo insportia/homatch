@@ -1,52 +1,50 @@
 // src/pages/property/MyPropertiesPage.tsx — MY PROPERTIES.
 //
-// A PROPERTY PORTFOLIO WORKSPACE, not a grid of marketplace cards.
+// A LISTING-MANAGEMENT LIST. Two references, and they are different references:
 //
-// THE FIRST VERSION OF THIS PAGE WAS REJECTED ON SIGHT, AND CORRECTLY.
+//   DENSITY AND MECHANICS come from how a working listing manager behaves. Somebody
+//   with ten properties has to scan and act on them, so a row is a ROW — a thumbnail,
+//   the facts on two lines, a compact status-and-intelligence cluster, three controls.
+//   Not a hero component.
 //
-// It was `max-w-5xl` with `grid-cols-1 sm:grid-cols-2 xl:grid-cols-3`, so an owner with
-// ONE property — which is what production actually holds — got a 250px card marooned in
-// a 1920px canvas with the rest of the screen empty. That is a mobile layout rendered on
-// a desktop, and no amount of shadow, radius or font size fixes it: the information
-// architecture was wrong. A portfolio manager is not a shop window.
+//   VISUAL LANGUAGE comes from the approved Homatch workspaces — Investment, Verify,
+//   Mortgage. The canvas rhythm, the muted-information treatment, the restraint, the
+//   surface hierarchy. Nothing here borrows a marketplace's colours or identity.
 //
-// WHAT CHANGED, AND WHY EACH ONE
+// THIS PAGE HAS BEEN WRONG TWICE, IN OPPOSITE DIRECTIONS, AND BOTH ARE WORTH RECORDING
+// BECAUSE THE SECOND WAS A REACTION TO THE FIRST.
 //
-//   THE CANVAS. max-w-[100rem] with the same px-4 / sm:px-6 / lg:px-8 rhythm the
-//   Investment workspace uses, because that is the approved composition language in this
-//   product and the point of a benchmark is to be used.
+//   FAILURE A: `max-w-5xl` + `sm:grid-cols-2 xl:grid-cols-3`. One property became a
+//   250px tile marooned in a 1920px canvas. A tile grid cannot make a single row look
+//   intentional, so widening the tile would not have helped.
 //
-//   THE UNIT IS A ROW, NOT A TILE. On desktop each property is a full-width panel in
-//   three deliberate columns — imagery, identity, intelligence-and-actions. One property
-//   fills the content width and looks intentional; ten look like a portfolio. A tile
-//   grid cannot do the first of those, which is why it was the wrong unit.
+//   FAILURE B: the correction. A full-width three-column panel 270px tall, one property
+//   consuming almost the entire content width. Balanced with one property and useless
+//   with ten — which is the state that actually matters, and the state the database
+//   does not currently contain. Designing around "production has one row" is what
+//   produced it.
 //
-//   DESKTOP AND MOBILE ARE DIFFERENT COMPOSITIONS, not one layout at two widths. Below
-//   `lg` the panel stacks into a touch-first card: image on top at 16:9, content, then a
-//   compact action row with the secondary actions behind a menu.
+// So the row is built for the TEN-property case and checked at one and three. A row is
+// about 7.5rem tall, which puts four of them on a laptop screen under the header
+// without anything being cramped.
 //
-//   THE HEADER IS A HEADER. Title, the one sentence that says what the page is for, the
-//   primary action, and a filter strip built as real segmented tiles carrying real
-//   counts — not three small pills dropped under a heading.
+// WHAT THE ROW REFUSES TO DO
 //
-//   AND THE INTELLIGENCE IS THE POINT. This is the column that makes the page not a
-//   marketplace: what Homatch is doing for this property and what it has found. The one
-//   property in production has 55 matches, 40 of them new and 10 strong, against a
-//   PAUSED campaign — all real columns, none of them previously visible anywhere on a
-//   portfolio screen.
+// Dedicate a panel to three small numbers. The intelligence is a compact cluster —
+// total, new, strong, and the campaign state — sized to be read at a glance and not to
+// fill space. Deeper intelligence is a click away on the matches screen, which is what
+// progressive disclosure means here.
 //
-// WHAT IS STILL REFUSED
-//
-// A number that is not in the database. matchability_score is null on the production
-// row, so it renders nowhere. A property with no matches says it has none rather than
-// showing three zeros dressed as metrics, and a property with no photo shows an honest
-// placeholder rather than a stock image of a building that is not theirs.
+// And it refuses to show a number that is not in the database. matchability_score is
+// null on the production row so it renders nowhere; no matches renders a phrase rather
+// than three zeros dressed as metrics; no photo renders an honest placeholder rather
+// than a stock image of a building that is not theirs.
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Archive, ArchiveRestore, Building2, Camera, Eye, ImageOff, MapPin, MoreVertical,
-  Pause, Pencil, Play, Plus, Sparkles, Telescope, Trash2, Upload,
+  Pause, Pencil, Play, Plus, Trash2, Upload,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -94,17 +92,25 @@ function priceLabel(
 
 /**
  * AN HONEST PLACEHOLDER. Not a stock photograph of a building that is not theirs,
- * which would be the most literal possible lie on this page.
- *
- * Used for both "there is no photo" and "the photo cannot be shown", because from the
- * owner's side those are the same situation. What they must never be confused with is
- * "the photo is still loading" — see PrivateImage's `pending`.
+ * which would be the most literal possible lie on this page. Used for both "no photo"
+ * and "the photo cannot be shown" — from the owner's side those are the same thing.
+ * What they must never be confused with is "still loading"; see PrivateImage `pending`.
  */
-function NoPhoto({ label }: { label: string }) {
+function NoPhoto({ compact }: { compact?: boolean }) {
+  const { t } = useLanguage();
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-muted-foreground/45">
-      <ImageOff className="h-8 w-8" />
-      <span className="text-[13px] break-words px-3 text-center">{label}</span>
+    /*
+     * The LABEL is still here, for screen readers. On a 208px thumbnail in a list row
+     * there is no room for a caption and an icon says it faster, but "this property has
+     * no photo" is information and dropping it entirely would have taken it away from
+     * the people who most need it stated.
+     */
+    <div
+      className="flex h-full w-full items-center justify-center text-muted-foreground/40"
+      role="img"
+      aria-label={t('prop_no_photo')}
+    >
+      <ImageOff className={compact ? 'h-5 w-5' : 'h-7 w-7'} aria-hidden="true" />
     </div>
   );
 }
@@ -114,27 +120,83 @@ type PendingAction =
   | { kind: 'ARCHIVE'; property: Property }
   | null;
 
-/** One number in the intelligence rail. Muted when it is zero, never hidden. */
-function IntelStat({ value, label, accent }: {
-  value: number; label: string; accent?: boolean;
+/**
+ * The intelligence cluster: four facts on one or two lines.
+ *
+ * Compact on purpose. Three numbers do not earn a panel, and the point of showing them
+ * on a list row is that an owner can tell in one pass which property is worth opening.
+ */
+function IntelCluster({
+  intel, status, archived, dense,
+}: {
+  intel: PortfolioIntelligence | undefined;
+  status: string;
+  archived: boolean;
+  dense?: boolean;
 }) {
+  const { t } = useLanguage();
+  const total = intel?.total ?? 0;
+
   return (
-    <div className="min-w-0">
-      <p
-        className={cn(
-          'text-lg font-semibold leading-tight tabular-nums',
-          value === 0 ? 'text-muted-foreground/50' : accent ? 'text-primary' : 'text-foreground',
+    <div className={cn('min-w-0 space-y-1', dense && 'space-y-0.5')}>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {archived ? (
+          <Badge variant="secondary" className="h-5 gap-1 px-1.5 text-[13px] whitespace-normal">
+            <Archive className="h-3 w-3 shrink-0" />
+            <span className="break-words">{t('prop_state_archived')}</span>
+          </Badge>
+        ) : (
+          <Badge
+            variant={status === 'ACTIVE' ? 'default' : 'secondary'}
+            className="h-5 px-1.5 text-[13px] whitespace-normal"
+          >
+            <span className="break-words">
+              {t(`prop_state_${status.toLowerCase()}` as never)}
+            </span>
+          </Badge>
         )}
-        dir="ltr"
-      >
-        {value}
-      </p>
-      <p className="text-[13px] text-muted-foreground break-words leading-tight">{label}</p>
+      </div>
+
+      {total > 0 ? (
+        /*
+         * ONE LINE, NOT THREE STATS. The total carries the weight; new and strong are
+         * the qualifiers that decide whether it is worth opening today.
+         */
+        <p className="text-[13px] text-muted-foreground break-words leading-snug">
+          <span className="font-semibold text-foreground tabular-nums" dir="ltr">{total}</span>
+          {' '}
+          {t('prop_intel_total')}
+          {(intel?.fresh ?? 0) > 0 && (
+            <>
+              {' · '}
+              <span className="font-semibold text-primary tabular-nums" dir="ltr">
+                {intel?.fresh}
+              </span>
+              {' '}
+              {t('prop_intel_new')}
+            </>
+          )}
+          {(intel?.strong ?? 0) > 0 && (
+            <>
+              {' · '}
+              <span className="font-semibold text-foreground tabular-nums" dir="ltr">
+                {intel?.strong}
+              </span>
+              {' '}
+              {t('prop_intel_strong')}
+            </>
+          )}
+        </p>
+      ) : (
+        <p className="text-[13px] text-muted-foreground/70 break-words leading-snug">
+          {archived ? t('prop_intel_archived') : t('prop_intel_none')}
+        </p>
+      )}
     </div>
   );
 }
 
-function PropertyPanel({
+function PropertyRow({
   property, intel, onAct, onConfirm,
 }: {
   property: Property;
@@ -162,17 +224,8 @@ function PropertyPanel({
   const action = intelligenceActionFor(property.transaction_type as string | null);
   const matches = intel?.total ?? 0;
 
-  /* Real columns, or nothing. A date that cannot be parsed renders nothing rather
-     than "Invalid Date", which is the most common way a timestamp reaches a screen. */
-  const updatedAt = (() => {
-    const raw = property.updated_at as string | null | undefined;
-    if (!raw) return null;
-    const parsed = Date.parse(raw);
-    return Number.isFinite(parsed) ? new Date(parsed).toLocaleDateString() : null;
-  })();
-  const sourceDomain = imported ? ((facts?.source_domain as string | null) ?? null) : null;
-
-  const chips = [
+  /* One muted line rather than a row of chips: chips are bulky and this is a list. */
+  const spec = [
     property.property_type
       ? t(`prop_type_${String(property.property_type).toLowerCase()}` as never) : null,
     property.transaction_type
@@ -180,276 +233,292 @@ function PropertyPanel({
     typeof area === 'number' && area > 0 ? `${area} m²` : null,
     typeof rooms === 'number' && rooms > 0 ? `${rooms} ${t('prop_unit_rooms')}` : null,
     typeof bedrooms === 'number' && bedrooms > 0 ? `${bedrooms} ${t('prop_unit_bedrooms')}` : null,
-  ].filter(Boolean) as string[];
+  ].filter(Boolean).join(' · ');
+
+  const media = (
+    <>
+      {cover ? (
+        <PrivateImage
+          src={cover}
+          alt={String(property.title ?? t('prop_untitled'))}
+          className="absolute inset-0 h-full w-full object-cover"
+          pending={<div className="absolute inset-0 animate-pulse bg-secondary/60" />}
+          fallback={<NoPhoto compact />}
+        />
+      ) : (
+        <NoPhoto compact />
+      )}
+      {imported && (
+        <span className="absolute bottom-1.5 start-1.5 rounded bg-background/85 px-1.5 py-0.5 text-[13px] text-muted-foreground shadow-sm max-w-[calc(100%-0.75rem)]">
+          <span className="break-words">{t('prop_source_imported')}</span>
+        </span>
+      )}
+    </>
+  );
+
+  const menu = (
+    <DropdownMenuContent align="end" className="max-w-[min(18rem,calc(100vw-2rem))]">
+      <DropdownMenuItem asChild>
+        <Link to={`/property/${id}`} className="gap-2">
+          <Eye className="h-4 w-4 shrink-0" />
+          <span className="break-words">{t('prop_action_view')}</span>
+        </Link>
+      </DropdownMenuItem>
+      <DropdownMenuItem asChild>
+        <Link to={`/property/${id}/edit#photos`} className="gap-2">
+          <Camera className="h-4 w-4 shrink-0" />
+          <span className="break-words">{t('prop_action_photos')}</span>
+        </Link>
+      </DropdownMenuItem>
+      <DropdownMenuSeparator />
+      {!archived && status !== 'ACTIVE' && (
+        <DropdownMenuItem className="gap-2" onClick={() => onAct(property, 'PUBLISH')}>
+          <Play className="h-4 w-4 shrink-0" />
+          <span className="break-words">{t('prop_action_activate')}</span>
+        </DropdownMenuItem>
+      )}
+      {!archived && status === 'ACTIVE' && (
+        <DropdownMenuItem className="gap-2" onClick={() => onAct(property, 'PAUSE')}>
+          <Pause className="h-4 w-4 shrink-0" />
+          <span className="break-words">{t('prop_action_pause')}</span>
+        </DropdownMenuItem>
+      )}
+      {archived ? (
+        <DropdownMenuItem className="gap-2" onClick={() => onAct(property, 'UNARCHIVE')}>
+          <ArchiveRestore className="h-4 w-4 shrink-0" />
+          <span className="break-words">{t('prop_action_unarchive')}</span>
+        </DropdownMenuItem>
+      ) : (
+        <DropdownMenuItem className="gap-2" onClick={() => onConfirm({ kind: 'ARCHIVE', property })}>
+          <Archive className="h-4 w-4 shrink-0" />
+          <span className="break-words">{t('prop_action_archive')}</span>
+        </DropdownMenuItem>
+      )}
+      <DropdownMenuSeparator />
+      <DropdownMenuItem
+        className="gap-2 text-destructive focus:text-destructive"
+        onClick={() => onConfirm({ kind: 'DELETE', property })}
+      >
+        <Trash2 className="h-4 w-4 shrink-0" />
+        <span className="break-words">{t('prop_action_delete')}</span>
+      </DropdownMenuItem>
+    </DropdownMenuContent>
+  );
+
+  /* The primary action, and there is exactly one. Matches when there are matches; the
+     contextual find when there are not; nothing at all once archived. */
+  const primary = archived ? null : (
+    /*
+     * h-auto with a MINIMUM, not a fixed h-8. Georgian wraps "მატჩების ნახვა" onto two
+     * lines inside this column and a fixed height clipped the second one -- a button
+     * whose label is cut in half is worse than a taller button.
+     */
+    <Button asChild size="sm" className="h-auto min-h-8 py-1.5 px-3 text-xs min-w-0 whitespace-normal">
+      <Link to={`/property/${id}/matches`}>
+        <span className="break-words min-w-0">
+          {matches > 0
+            ? t('prop_view_matches')
+            : action ? t(`prop_action_${action.toLowerCase()}` as never) : t('prop_view_matches')}
+        </span>
+      </Link>
+    </Button>
+  );
 
   return (
-    <Card className="overflow-hidden border-border bg-card">
-      {/*
-        THE THREE COLUMNS, and they only exist from `lg`. Below that this collapses to
-        one column and the composition genuinely changes rather than shrinking.
-      */}
-      <div className="grid grid-cols-1 lg:grid-cols-[22rem_minmax(0,1fr)_18rem] xl:grid-cols-[26rem_minmax(0,1fr)_20rem]">
-        {/* ── 1. IMAGERY ─────────────────────────────────────────────── */}
-        <div className="relative aspect-[16/9] lg:aspect-auto lg:min-h-[15rem] bg-secondary/40">
-          {cover ? (
-            <PrivateImage
-              src={cover}
-              alt={String(property.title ?? t('prop_untitled'))}
-              className="absolute inset-0 h-full w-full object-cover"
-              pending={<div className="absolute inset-0 animate-pulse bg-secondary/60" />}
-              fallback={<NoPhoto label={t('prop_no_photo')} />}
-            />
-          ) : (
-            <NoPhoto label={t('prop_no_photo')} />
+    <Card className="overflow-hidden border-border bg-card transition-colors hover:border-border/80 hover:bg-secondary/20">
+      {/* ── DESKTOP: one compact row ──────────────────────────────────── */}
+      <div className="hidden lg:grid lg:grid-cols-[13rem_minmax(0,1fr)_16rem] lg:items-stretch">
+        {/*
+          THE PROPERTY OPENS. A real <Link>, spanning the image and the identity, so it
+          is deep-linkable, middle-clickable, refresh-safe and reachable from the
+          keyboard -- not a div with an onClick. Edit was the only way into a property
+          before this, which made inspecting one indistinguishable from changing it.
+          The actions column is deliberately OUTSIDE the link: a menu inside a link is a
+          click that does two things.
+        */}
+        <Link
+          to={`/property/${id}`}
+          className="relative min-h-[7.5rem] bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+          aria-label={String(property.title ?? t('prop_untitled'))}
+        >
+          {media}
+        </Link>
+
+        <Link
+          to={`/property/${id}`}
+          className="min-w-0 px-4 py-3 flex flex-col justify-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+        >
+          <div className="flex items-start justify-between gap-3 min-w-0">
+            <h3 className="text-[15px] font-semibold leading-snug text-foreground break-words [overflow-wrap:anywhere] min-w-0">
+              {String(property.title ?? t('prop_untitled'))}
+            </h3>
+            <div className="shrink-0 text-end">
+              {price ? (
+                <p className="text-lg font-bold leading-tight text-foreground" dir="ltr">{price}</p>
+              ) : (
+                <p className="text-[13px] text-muted-foreground">{t('prop_no_price')}</p>
+              )}
+              {perSqm && (
+                <p className="text-[13px] text-muted-foreground/70 leading-tight" dir="ltr">
+                  {perSqm}/m²
+                </p>
+              )}
+            </div>
+          </div>
+
+          {(city || district) && (
+            <div className="flex items-start gap-1 text-[13px] text-muted-foreground min-w-0">
+              <MapPin className="h-3 w-3 shrink-0 mt-0.5" />
+              <span className="break-words min-w-0">
+                {[district, city].filter(Boolean).join(', ')}
+              </span>
+            </div>
           )}
-          <div className="absolute top-3 start-3 flex flex-wrap gap-1.5 max-w-[calc(100%-1.5rem)]">
-            {archived ? (
-              <Badge variant="secondary" className="gap-1 whitespace-normal shadow-sm">
-                <Archive className="h-3 w-3 shrink-0" />
-                <span className="break-words">{t('prop_state_archived')}</span>
-              </Badge>
-            ) : (
-              <Badge
-                variant={status === 'ACTIVE' ? 'default' : 'secondary'}
-                className="whitespace-normal shadow-sm"
-              >
-                <span className="break-words">
-                  {t(`prop_state_${status.toLowerCase()}` as never)}
-                </span>
-              </Badge>
-            )}
-            {imported && (
-              <Badge variant="outline" className="whitespace-normal bg-background/85 shadow-sm">
-                <span className="break-words">{t('prop_source_imported')}</span>
-              </Badge>
-            )}
+          {spec && (
+            <p className="text-[13px] text-muted-foreground/80 break-words leading-snug">{spec}</p>
+          )}
+        </Link>
+
+        <div className="min-w-0 border-s border-border/60 px-4 py-3 flex flex-col justify-center gap-2.5">
+          <IntelCluster intel={intel} status={status} archived={archived} dense />
+          <div className="flex items-center gap-1.5">
+            {primary}
+            <Button asChild size="sm" variant="outline" className="h-8 w-8 p-0 shrink-0">
+              <Link to={`/property/${id}/edit`}>
+                <Pencil className="h-3.5 w-3.5" />
+                <span className="sr-only">{t('prop_action_edit')}</span>
+              </Link>
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline" className="h-8 w-8 p-0 shrink-0">
+                  <MoreVertical className="h-3.5 w-3.5" />
+                  <span className="sr-only">{t('prop_more_actions')}</span>
+                </Button>
+              </DropdownMenuTrigger>
+              {menu}
+            </DropdownMenu>
           </div>
         </div>
+      </div>
 
-        {/* ── 2. WHAT PROPERTY IS THIS ───────────────────────────────── */}
-        <div className="min-w-0 p-5 lg:p-6 flex flex-col gap-3">
-          <div className="min-w-0 space-y-1">
-            <h3 className="text-base lg:text-lg font-semibold leading-snug text-foreground break-words [overflow-wrap:anywhere]">
+      {/* ── MOBILE: a purpose-built card, not the row squeezed ────────── */}
+      <div className="lg:hidden">
+        <Link to={`/property/${id}`} className="block relative aspect-[16/9] bg-secondary/40">
+          {media}
+        </Link>
+        <CardContent className="p-4 space-y-2.5">
+          <Link to={`/property/${id}`} className="block min-w-0 space-y-1">
+            <h3 className="text-[15px] font-semibold leading-snug text-foreground break-words [overflow-wrap:anywhere]">
               {String(property.title ?? t('prop_untitled'))}
             </h3>
             {(city || district) && (
-              <div className="flex items-start gap-1.5 text-sm text-muted-foreground min-w-0">
-                <MapPin className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+              <div className="flex items-start gap-1 text-[13px] text-muted-foreground min-w-0">
+                <MapPin className="h-3 w-3 shrink-0 mt-0.5" />
                 <span className="break-words min-w-0">
                   {[district, city].filter(Boolean).join(', ')}
                 </span>
               </div>
             )}
-          </div>
+          </Link>
 
-          {/* The price is the largest thing in this column, because it is what an owner
-              checks first and changes most often. */}
-          <div className="min-w-0">
-            {price ? (
-              <p
-                className="text-2xl lg:text-3xl font-bold leading-tight text-foreground break-words"
-                dir="ltr"
-              >
-                {price}
-              </p>
-            ) : (
-              <p className="text-sm text-muted-foreground break-words">{t('prop_no_price')}</p>
-            )}
-            {perSqm && (
-              <p className="text-sm text-muted-foreground break-words" dir="ltr">{perSqm}/m²</p>
-            )}
-          </div>
-
-          <div className="flex flex-wrap gap-1.5 pt-0.5">
-            {chips.map((chip) => (
-              <span
-                key={chip}
-                className="text-[13px] bg-secondary px-2.5 py-1 rounded-full text-muted-foreground max-w-full"
-              >
-                <span className="break-words">{chip}</span>
-              </span>
-            ))}
-          </div>
-
-          {/*
-            WHEN THIS RECORD LAST MOVED, and where it came from.
-            Pushed to the bottom of the column so the panel reads as one block rather
-            than as content floating above dead space -- and it is real: updated_at is
-            a column, and source_domain is the portal an import was read off. A
-            property with neither renders neither, which is why this is a list rather
-            than a fixed footer.
-          */}
-          {(updatedAt || sourceDomain) && (
-            <div className="mt-auto pt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted-foreground/70">
-              {updatedAt && (
-                <span className="break-words">{t('prop_updated', { date: updatedAt })}</span>
+          <div className="flex items-end justify-between gap-3 flex-wrap">
+            <div className="min-w-0">
+              {price ? (
+                <p className="text-xl font-bold leading-tight text-foreground break-words" dir="ltr">
+                  {price}
+                </p>
+              ) : (
+                <p className="text-[13px] text-muted-foreground break-words">{t('prop_no_price')}</p>
               )}
-              {sourceDomain && (
-                <span className="break-words [overflow-wrap:anywhere]">{sourceDomain}</span>
+              {perSqm && (
+                <p className="text-[13px] text-muted-foreground/70 break-words" dir="ltr">
+                  {perSqm}/m²
+                </p>
               )}
             </div>
+          </div>
+
+          {spec && (
+            <p className="text-[13px] text-muted-foreground/80 break-words leading-snug">{spec}</p>
           )}
-        </div>
 
-        {/* ── 3. WHAT HOMATCH IS DOING, AND WHAT TO DO NEXT ──────────── */}
-        <div className="min-w-0 border-t lg:border-t-0 lg:border-s border-border/60 bg-background/40 p-5 lg:p-6 flex flex-col gap-4">
-          <div className="min-w-0 space-y-2.5">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <Sparkles className="h-3.5 w-3.5 text-primary shrink-0" />
-              <span className="text-[13px] font-semibold uppercase tracking-wide text-muted-foreground break-words min-w-0">
-                {t('prop_intel_heading')}
-              </span>
-            </div>
+          <IntelCluster intel={intel} status={status} archived={archived} />
 
-            {matches > 0 ? (
-              <>
-                <div className="grid grid-cols-3 gap-2">
-                  <IntelStat value={intel?.total ?? 0} label={t('prop_intel_total')} />
-                  <IntelStat value={intel?.fresh ?? 0} label={t('prop_intel_new')} accent />
-                  <IntelStat value={intel?.strong ?? 0} label={t('prop_intel_strong')} />
-                </div>
-                {/* A PAUSED campaign with matches waiting is the one combination an owner
-                    most needs told, and it was invisible before this page existed. */}
-                {status !== 'ACTIVE' && !archived && (
-                  <p className="text-[13px] text-muted-foreground break-words">
-                    {t('prop_intel_paused_note')}
-                  </p>
-                )}
-              </>
-            ) : (
-              /* THE HONEST EMPTY STATE. Not three zeros dressed as metrics. */
-              <p className="text-[13px] text-muted-foreground break-words">
-                {archived ? t('prop_intel_archived') : t('prop_intel_none')}
-              </p>
-            )}
+          <div className="flex items-center gap-1.5 pt-0.5">
+            {primary && <div className="flex-1 min-w-0 [&>*]:w-full">{primary}</div>}
+            <Button asChild size="sm" variant="outline" className="h-8 w-8 p-0 shrink-0">
+              <Link to={`/property/${id}/edit`}>
+                <Pencil className="h-3.5 w-3.5" />
+                <span className="sr-only">{t('prop_action_edit')}</span>
+              </Link>
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline" className="h-8 w-8 p-0 shrink-0">
+                  <MoreVertical className="h-3.5 w-3.5" />
+                  <span className="sr-only">{t('prop_more_actions')}</span>
+                </Button>
+              </DropdownMenuTrigger>
+              {menu}
+            </DropdownMenu>
           </div>
-
-          {/*
-            ACTION HIERARCHY, three tiers rather than a stack of equals. PRIMARY is what
-            this property should do next; IMPORTANT is editing it; everything else is
-            behind the menu — reachable, not shouting.
-          */}
-          <div className="mt-auto space-y-2">
-            {!archived && matches > 0 && (
-              <Button asChild size="sm" className="w-full justify-center gap-1.5">
-                <Link to={`/property/${id}/matches`}>
-                  <span className="break-words">{t('prop_view_matches')}</span>
-                </Link>
-              </Button>
-            )}
-            {!archived && matches === 0 && action && (
-              <Button asChild size="sm" className="w-full justify-center gap-1.5">
-                <Link to={`/property/${id}/matches`}>
-                  <Telescope className="h-4 w-4 shrink-0" />
-                  <span className="break-words">
-                    {t(`prop_action_${action.toLowerCase()}` as never)}
-                  </span>
-                </Link>
-              </Button>
-            )}
-            <div className="flex items-center gap-2">
-              <Button asChild size="sm" variant="outline" className="flex-1 gap-1.5 min-w-0">
-                <Link to={`/property/${id}/edit`}>
-                  <Pencil className="h-3.5 w-3.5 shrink-0" />
-                  <span className="break-words min-w-0">{t('prop_action_edit')}</span>
-                </Link>
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button size="sm" variant="outline" className="h-9 w-9 p-0 shrink-0">
-                    <MoreVertical className="h-4 w-4" />
-                    <span className="sr-only">{t('prop_more_actions')}</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="max-w-[min(18rem,calc(100vw-2rem))]">
-                  <DropdownMenuItem asChild>
-                    <Link to={`/property/${id}`} className="gap-2">
-                      <Eye className="h-4 w-4 shrink-0" />
-                      <span className="break-words">{t('prop_action_view')}</span>
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link to={`/property/${id}/edit#photos`} className="gap-2">
-                      <Camera className="h-4 w-4 shrink-0" />
-                      <span className="break-words">{t('prop_action_photos')}</span>
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  {!archived && status !== 'ACTIVE' && (
-                    <DropdownMenuItem className="gap-2" onClick={() => onAct(property, 'PUBLISH')}>
-                      <Play className="h-4 w-4 shrink-0" />
-                      <span className="break-words">{t('prop_action_activate')}</span>
-                    </DropdownMenuItem>
-                  )}
-                  {!archived && status === 'ACTIVE' && (
-                    <DropdownMenuItem className="gap-2" onClick={() => onAct(property, 'PAUSE')}>
-                      <Pause className="h-4 w-4 shrink-0" />
-                      <span className="break-words">{t('prop_action_pause')}</span>
-                    </DropdownMenuItem>
-                  )}
-                  {archived ? (
-                    <DropdownMenuItem
-                      className="gap-2"
-                      onClick={() => onAct(property, 'UNARCHIVE')}
-                    >
-                      <ArchiveRestore className="h-4 w-4 shrink-0" />
-                      <span className="break-words">{t('prop_action_unarchive')}</span>
-                    </DropdownMenuItem>
-                  ) : (
-                    <DropdownMenuItem
-                      className="gap-2"
-                      onClick={() => onConfirm({ kind: 'ARCHIVE', property })}
-                    >
-                      <Archive className="h-4 w-4 shrink-0" />
-                      <span className="break-words">{t('prop_action_archive')}</span>
-                    </DropdownMenuItem>
-                  )}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    className="gap-2 text-destructive focus:text-destructive"
-                    onClick={() => onConfirm({ kind: 'DELETE', property })}
-                  >
-                    <Trash2 className="h-4 w-4 shrink-0" />
-                    <span className="break-words">{t('prop_action_delete')}</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </div>
-        </div>
+        </CardContent>
       </div>
     </Card>
   );
 }
 
-/** A filter tile. Part of the page architecture, not a pill under the title. */
-function FilterTile({
-  active, label, count, onClick,
-}: { active: boolean; label: string; count: number; onClick: () => void }) {
+/**
+ * The filter, as a compact segmented control with its counts inline.
+ *
+ * NOT two large statistic tiles. "1 active, 0 archived" is a small fact and a tile
+ * apiece spent a third of the first screenful saying it.
+ */
+function ViewSwitch({
+  view, counts, onChange,
+}: {
+  view: PortfolioView;
+  counts: { active: number; archived: number };
+  onChange: (next: PortfolioView) => void;
+}) {
+  const { t } = useLanguage();
+  const options: { key: PortfolioView; label: string; count: number }[] = [
+    { key: 'ACTIVE', label: t('prop_tab_active'), count: counts.active },
+    { key: 'ARCHIVED', label: t('prop_tab_archived'), count: counts.archived },
+  ];
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        'min-w-0 flex-1 rounded-xl border px-4 py-3 text-start transition-colors',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-        active
-          ? 'border-primary/60 bg-primary/[0.07]'
-          : 'border-border bg-card hover:border-border/80 hover:bg-secondary/30',
-      )}
-    >
-      <p
-        className={cn(
-          'text-xl font-bold leading-tight tabular-nums',
-          active ? 'text-primary' : 'text-foreground',
-        )}
-        dir="ltr"
-      >
-        {count}
-      </p>
-      <p className="text-[13px] text-muted-foreground break-words leading-tight mt-0.5">{label}</p>
-    </button>
+    <div className="inline-flex flex-wrap items-center gap-1 rounded-lg border border-border bg-card p-1">
+      {options.map((option) => {
+        const active = view === option.key;
+        return (
+          <button
+            key={option.key}
+            type="button"
+            onClick={() => onChange(option.key)}
+            aria-pressed={active}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] transition-colors min-w-0',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+              active
+                ? 'bg-secondary font-medium text-foreground'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <span className="break-words min-w-0">{option.label}</span>
+            <span
+              className={cn(
+                'tabular-nums',
+                active ? 'text-foreground' : 'text-muted-foreground/70',
+              )}
+              dir="ltr"
+            >
+              {option.count}
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -533,53 +602,54 @@ export default function MyPropertiesPage() {
     <RouteGuard>
       <AppLayout>
         {/*
-          THE CANVAS. The same max-w-[100rem] and px rhythm the Investment workspace
-          uses, because that is the approved composition in this product and the point of
-          a benchmark is to be used rather than admired.
+          A WIDE, PREMIUM CANVAS THAT DOES NOT STRETCH ITS CONTENTS. max-w-[90rem] and
+          the px rhythm the approved workspaces use — wide enough to be a workspace,
+          bounded enough that a list row stays a list row.
         */}
-        <div className="mx-auto w-full max-w-[100rem] px-4 py-2 sm:px-6 lg:px-8 space-y-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
-          {/* ── PAGE HEADER ─────────────────────────────────────────── */}
-          <header className="flex items-end justify-between gap-4 flex-wrap border-b border-border/60 pb-5">
-            <div className="min-w-0 space-y-1.5">
-              <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-foreground break-words">
+        <div className="mx-auto w-full max-w-[90rem] px-4 py-2 sm:px-6 lg:px-8 space-y-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+          {/*
+            HEADER. Stacked until sm, and the actions are NOT shrink-0 — that one class
+            overflowed this page at every width in every language, 492px against a 320px
+            viewport in Georgian, because two long labels side by side cannot fit a phone
+            and shrink-0 forbade the container from narrowing to let them wrap.
+          */}
+          <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border/60 pb-4">
+            <div className="min-w-0 space-y-1">
+              <h1 className="text-xl lg:text-2xl font-bold tracking-tight text-foreground break-words">
                 {t('prop_page_title')}
               </h1>
-              <p className="text-sm text-muted-foreground break-words max-w-2xl">
+              <p className="text-[13px] text-muted-foreground break-words max-w-2xl">
                 {t('prop_page_subtitle')}
               </p>
             </div>
-            <div className="flex items-center gap-2 flex-wrap shrink-0">
-              <Button variant="outline" onClick={() => navigate('/property/import')}>
+            <div className="flex w-full items-stretch gap-2 flex-wrap sm:w-auto">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate('/property/import')}
+                className="flex-1 min-w-0 sm:flex-none"
+              >
                 <Upload className="h-4 w-4 me-1.5 shrink-0" />
-                <span className="break-words">{t('prop_import_cta')}</span>
+                <span className="break-words min-w-0">{t('prop_import_cta')}</span>
               </Button>
-              <Button onClick={() => navigate('/property/add')}>
+              <Button
+                size="sm"
+                onClick={() => navigate('/property/add')}
+                className="flex-1 min-w-0 sm:flex-none"
+              >
                 <Plus className="h-4 w-4 me-1.5 shrink-0" />
-                <span className="break-words">{t('prop_add_cta')}</span>
+                <span className="break-words min-w-0">{t('prop_add_cta')}</span>
               </Button>
             </div>
           </header>
 
-          {/* Real counts from the database, and the filter at the same time. */}
-          <div className="flex items-stretch gap-3 flex-wrap sm:flex-nowrap sm:max-w-lg">
-            <FilterTile
-              active={view === 'ACTIVE'}
-              label={t('prop_tab_active')}
-              count={counts.active}
-              onClick={() => setView('ACTIVE')}
-            />
-            <FilterTile
-              active={view === 'ARCHIVED'}
-              label={t('prop_tab_archived')}
-              count={counts.archived}
-              onClick={() => setView('ARCHIVED')}
-            />
-          </div>
+          <ViewSwitch view={view} counts={counts} onChange={setView} />
 
           {loading && (
-            <div className="space-y-4">
-              <Skeleton className="h-64 rounded-xl" />
-              <Skeleton className="h-64 rounded-xl" />
+            <div className="space-y-3">
+              <Skeleton className="h-[7.5rem] rounded-xl" />
+              <Skeleton className="h-[7.5rem] rounded-xl" />
+              <Skeleton className="h-[7.5rem] rounded-xl" />
             </div>
           )}
 
@@ -604,10 +674,10 @@ export default function MyPropertiesPage() {
           */}
           {empty && view === 'ACTIVE' && (
             <Card className="bg-card border-border">
-              <CardContent className="px-6 py-14 text-center space-y-4">
-                <Building2 className="h-12 w-12 mx-auto opacity-25" />
-                <div className="space-y-2">
-                  <p className="text-lg font-semibold text-foreground break-words">
+              <CardContent className="px-6 py-12 text-center space-y-4">
+                <Building2 className="h-10 w-10 mx-auto opacity-25" />
+                <div className="space-y-1.5">
+                  <p className="text-base font-semibold text-foreground break-words">
                     {t('prop_empty_title')}
                   </p>
                   <p className="text-sm text-muted-foreground break-words max-w-lg mx-auto">
@@ -615,11 +685,11 @@ export default function MyPropertiesPage() {
                   </p>
                 </div>
                 <div className="flex items-center justify-center gap-2 flex-wrap pt-1">
-                  <Button onClick={() => navigate('/property/add')}>
+                  <Button size="sm" onClick={() => navigate('/property/add')}>
                     <Plus className="h-4 w-4 me-1.5 shrink-0" />
                     <span className="break-words">{t('prop_add_cta')}</span>
                   </Button>
-                  <Button variant="outline" onClick={() => navigate('/property/import')}>
+                  <Button size="sm" variant="outline" onClick={() => navigate('/property/import')}>
                     <Upload className="h-4 w-4 me-1.5 shrink-0" />
                     <span className="break-words">{t('prop_import_cta')}</span>
                   </Button>
@@ -630,8 +700,8 @@ export default function MyPropertiesPage() {
 
           {empty && view === 'ARCHIVED' && (
             <Card className="bg-card border-border">
-              <CardContent className="px-6 py-14 text-center space-y-3">
-                <Archive className="h-10 w-10 mx-auto opacity-25" />
+              <CardContent className="px-6 py-12 text-center space-y-2">
+                <Archive className="h-9 w-9 mx-auto opacity-25" />
                 <p className="text-sm text-muted-foreground break-words max-w-lg mx-auto">
                   {t('prop_empty_archived')}
                 </p>
@@ -640,9 +710,9 @@ export default function MyPropertiesPage() {
           )}
 
           {properties.length > 0 && (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {properties.map((property) => (
-                <PropertyPanel
+                <PropertyRow
                   key={String(property.id)}
                   property={property}
                   intel={intel.get(String(property.id))}
@@ -650,6 +720,27 @@ export default function MyPropertiesPage() {
                   onConfirm={setPending}
                 />
               ))}
+
+              {/*
+                THE SHORT-LIST CASE, ANSWERED WITH A CONTROL RATHER THAN PADDING.
+                A single 122px row above 600px of nothing is the sparse composition this
+                page was rejected for the first time, and inflating the row to fill the
+                screen is what it was rejected for the second time. So the list ends with
+                the obvious next thing to do, at the same height as a row, and it
+                disappears once there are enough properties for the list to carry itself.
+              */}
+              {view === 'ACTIVE' && properties.length < 4 && (
+                <button
+                  type="button"
+                  onClick={() => navigate('/property/add')}
+                  className="w-full rounded-xl border border-dashed border-border bg-card/40 px-4 py-6 lg:min-h-[7.5rem] text-center transition-colors hover:border-primary/50 hover:bg-primary/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <span className="inline-flex items-center gap-2 text-sm text-muted-foreground min-w-0">
+                    <Plus className="h-4 w-4 shrink-0" />
+                    <span className="break-words min-w-0">{t('prop_add_another')}</span>
+                  </span>
+                </button>
+              )}
             </div>
           )}
         </div>

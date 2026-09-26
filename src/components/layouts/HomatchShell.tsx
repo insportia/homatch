@@ -26,8 +26,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowRight, Bell, CreditCard, LayoutDashboard,
-  Building2, LogOut, Mail, Menu, MessageCircle, MessageSquare, PhoneCall, Radio, Search, Telescope,
-  Settings, ShieldCheck, Sparkles, User as UserIcon, UserSearch, X, Activity,
+  Handshake, LogOut, Mail, MapPinHouse, Menu, MessageCircle, MessageSquare, PhoneCall, Radio, Search,
+  Settings, ShieldCheck, Sparkles, User as UserIcon, X, Activity,
   CircleDollarSign, Coins as CoinsIcon, TrendingUp,
   FileSignature, Globe,
 } from 'lucide-react';
@@ -100,36 +100,46 @@ export const NAV: NavGroup[] = [
     items: [
       { key: 'nav_dashboard', path: '/dashboard', icon: LayoutDashboard },
       /*
-       * MY PROPERTIES SITS BEFORE FIND PROPERTY, and the order is the argument.
+       * ONE OWNER WORKSPACE, WHERE THERE WERE TWO DESTINATIONS FOR ONE JOURNEY.
        *
-       * Everything else in this product starts from a property: matching runs from
-       * one, a campaign is funded against one, Find Clients needs one to exist. An
-       * owner who lands on discovery before their own portfolio is being asked to
-       * look for somebody else's flat before they can see their own.
+       * This rail used to carry BOTH "My Properties" (/property) and "Find a buyer"
+       * (dnav_find_client), and the second pointed at /property/add -- an ADD FORM
+       * labelled as a buyer search. So an owner looking for buyers was sent to upload
+       * another property, and the product appeared to have two competing answers to
+       * one question.
        *
-       * Building2 rather than a house: this is a PORTFOLIO of listings, and it has to
-       * be unmistakable against the Find Property icon two lines down at 20px on a
-       * phone. A house and a telescope cannot be confused; a house and a magnifier
-       * over a house could be.
+       * There is one. Buyer and tenant discovery starts FROM a property: the workspace
+       * lists them, Property Details opens one, and the campaign panel already living
+       * on Property Details is the real matching entry point. Nothing was deleted to
+       * achieve that -- /property/add is still a route and is reached from the
+       * workspace header, where adding a property belongs.
+       *
+       * THE LABEL IS LONG ON PURPOSE. It names all three jobs -- manage my properties,
+       * find a buyer, find a tenant -- and the length is a design problem solved by
+       * letting the row wrap to two lines, not by weakening the meaning to fit.
+       *
+       * Handshake rather than a building or a person: the directive for this icon is
+       * property PLUS matching, and a building alone is the portfolio without the
+       * product while a users glyph alone is a CRM. A handshake is the transaction
+       * these properties exist to reach, and it is unmistakable against MapPinHouse
+       * one line below at 18px.
        */
-      { key: 'nav_my_properties', path: '/property', icon: Building2 },
+      { key: 'nav_owner_workspace', path: '/property', icon: Handshake },
       /*
-       * FIND PROPERTY: the route, and the icon, both changed.
+       * FIND PROPERTY: the other journey, and deliberately not this one.
        *
-       * It pointed at /ai -- the chat assistant -- which could not show a search plan,
-       * could not record whether a requirement was REQUIRED or merely PREFERRED, and
-       * could not return a result. /find-property is the real flow.
+       * I HAVE A PROPERTY -> the workspace above. I NEED A PROPERTY -> here. It pointed
+       * at /ai for a long time, which could not show a search plan, could not record
+       * whether a requirement was REQUIRED or merely PREFERRED, and could not return a
+       * result.
        *
-       * And the magnifying glass is gone. A loupe means "search this text", which is
-       * the one thing this destination is not: it reads a description, proposes a plan
-       * and runs deterministic matching. A telescope is looking for something that is
-       * out there rather than filtering something already on screen, it survives 20px,
-       * and it collides with nothing else in this list -- Radio (active search) is a
-       * tower with waves, Sparkles (live chat) is stars, ScanSearch would have been a
-       * loupe in brackets.
+       * The magnifying glass is gone and is not coming back: a loupe means "search this
+       * text", which is the one thing this destination is not. MapPinHouse is a house
+       * inside a map pin -- property discovery specifically, from the same icon family,
+       * and legible at 18px. Search is still imported and still used, on the dashboard's
+       * actual text search box, which is what a magnifier is for.
        */
-      { key: 'dnav_find_property', path: '/find-property', icon: Telescope },
-      { key: 'dnav_find_client', path: '/property/add', icon: UserSearch },
+      { key: 'dnav_find_property', path: '/find-property', icon: MapPinHouse },
       { key: 'nav_active_search', path: '/active-search', icon: Radio },
     ],
   },
@@ -288,7 +298,15 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
                   key={item.key}
                   to={item.path}
                   aria-current={active ? 'page' : undefined}
-                  className={`relative mt-0.5 flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                  /*
+                   * 14px AND gap-2.5, so the one long label wraps to TWO lines
+                   * rather than three. The owner workspace is named explicitly --
+                   * manage my properties, find a buyer, find a tenant -- and at
+                   * 15px with gap-3 the Georgian broke after the slash and left
+                   * a third line carrying one word, which reads as an accident.
+                   * 14px is a normal navigation size and nothing here is truncated.
+                   */
+                  className={`relative mt-0.5 flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm leading-snug transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                     active
                       // Strong gold with black text. A selected row should be
                       // the most certain thing on the rail, not a tint you
@@ -311,7 +329,16 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
                     strokeWidth={active ? 2.25 : 1.75}
                     aria-hidden="true"
                   />
-                  <span className="min-w-0 flex-1 break-words">{t(item.key)}</span>
+                  {/*
+                    text-wrap: balance, because the owner workspace label is long by
+                    design and the browser distributes it better than a hard break can.
+                    Without it the Georgian broke after the slash and left a single word
+                    alone on a third line, which reads as an accident rather than a
+                    composition. Widening the rail would have fixed it too and would have
+                    changed the PROTECTED dashboard's content width, so it is not on the
+                    table.
+                  */}
+                  <span className="min-w-0 flex-1 break-words [text-wrap:balance]">{t(item.key)}</span>
                 </Link>
               );
             })}

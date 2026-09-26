@@ -40,6 +40,7 @@ import { join } from 'node:path';
 import { createRequire } from 'node:module';
 
 import { SYNTHESIS, STATUS_RESPONSE } from './fixture.mjs';
+import { propertyRows, matchRows } from './propertyFixture.mjs';
 
 const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
@@ -356,6 +357,43 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
        * Found 2026-09-26 by asserting that a panel we had just added to that
        * screen was actually present, and discovering the screen was not.
        */
+      /*
+       * PROPERTIES, AND THE GATE WAS MEASURING THEIR ABSENCE.
+       *
+       * Every un-stubbed /rest/v1 falls through to the empty array below, so /property
+       * rendered its "no properties yet" card at four widths in six locales and this
+       * file called that coverage of My Properties. A centred empty state cannot
+       * overflow; a listing row is the only thing on that page that can, and the row
+       * was never built.
+       *
+       * Same class as the two false-coverage bugs already recorded in this file: every
+       * auth route once measured a "could not load your profile" card, and an admin
+       * route once measured a 404.
+       *
+       * THREE ROWS. One cannot show whether the density is right; ten renders slower
+       * and says nothing the third did not. The fixture's three are adversarial by
+       * construction -- the real production listing, one with every field empty, and
+       * one with a title long enough to wrap twice in Georgian.
+       */
+      if (url.includes('/rest/v1/properties')) {
+        /* The count comes back in content-range, always. Setting it only when a count
+           looked like it was being asked for made the tab read 0 above three listed
+           rows -- a fixture disagreeing with itself is worse than no fixture. */
+        const archived = url.includes('archived_at=not.is.null');
+        const rows = archived ? [] : propertyRows(3);
+        return r.fulfill({
+          status: 206,
+          contentType: 'application/json',
+          headers: {
+            'access-control-allow-origin': '*',
+            'access-control-expose-headers': 'content-range',
+            'content-range': `0-${Math.max(0, rows.length - 1)}/${rows.length}`,
+          },
+          body: JSON.stringify(rows),
+        });
+      }
+      if (url.includes('/rest/v1/matches')) return r.fulfill(json(matchRows(3)));
+
       if (url.includes('/rest/v1/users')) {
         const row = {
           id: '77777777-7777-4777-8777-777777777777',

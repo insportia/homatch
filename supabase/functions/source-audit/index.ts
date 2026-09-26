@@ -59,6 +59,16 @@ import {
   type CandidateClassification,
 } from '../../../src/research-core/discovery/candidate-classification.ts';
 import {
+  auditCommunityAccess,
+  type CommunityAuditResult,
+} from '../../../src/research-core/discovery/community-audit.ts';
+import { PublicPreviewTelegramClient } from '../../../src/research-core/adapters/telegram/preview-client.ts';
+import {
+  advance,
+  type LifecycleState,
+  type SourceLifecycle,
+} from '../../../src/research-core/discovery/source-lifecycle.ts';
+import {
   harvestCandidates,
   summariseHarvest,
   type HarvestSource,
@@ -126,8 +136,11 @@ Deno.serve(async (req: Request) => {
     if (mode === 'classify') return await classify(db, body, started);
     if (mode === 'discover') return await discover(db, body, started);
     if (mode === 'audit') return await audit(db, body, started);
+    if (mode === 'audit-community') return await auditCommunity(db, body, started);
 
-    return json({ error: `unknown mode "${mode}"; expected classify, discover or audit` }, 400);
+    return json({
+      error: `unknown mode "${mode}"; expected classify, discover, audit or audit-community`,
+    }, 400);
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : String(error) }, 500);
   }
@@ -684,4 +697,281 @@ function registrableOf(host: string): string {
     'com.ge', 'org.ge', 'net.ge', 'edu.ge', 'gov.ge', 'co.uk', 'com.tr', 'com.ua', 'co.il',
   ]);
   return TWO_PART.has(lastTwo) ? labels.slice(-3).join('.') : lastTwo;
+}
+
+
+/* ────────────────────────────────────────────────────────────────────────
+ * mode "audit-community" — the same ladder, different evidence
+ * ────────────────────────────────────────────────────────────────────────
+ *
+ * WHY THIS IS NOT mode "audit".
+ *
+ * Every Telegram channel in the registry is correctly ineligible for the website
+ * auditor: classifyRegistryRow('https://t.me/tbilisikvartiri') answers
+ * COMMUNITY_IDENTIFIER with auditable: false. A channel has no sitemap and its
+ * listing paths are not paths, so feeding it to that auditor would manufacture a
+ * confident finding about a shape it does not have. The standing rule was explicit
+ * and it is not being routed around.
+ *
+ * WHAT IS SHARED, WHICH IS THE POINT.
+ *
+ * The LADDER. This mode reads a community surface, hands what it learned to
+ * auditCommunityAccess(), and passes the resulting LifecycleEvidence to the same
+ * advance() every portal goes through. There is one definition of what permits
+ * access in this system, and findingPermitsAccess() is still the only thing that
+ * decides. Nothing was loosened to let Telegram through.
+ *
+ * WHAT IT CANNOT DO.
+ *
+ * Reach a lifecycle it has not earned. advance() promotes to LIVE_TESTED only on
+ * LIVE_FETCH evidence with itemsParsed > 0, and a channel that serves its page
+ * while publishing nothing usable emits no such evidence -- so it stops at
+ * IMPLEMENTED, which is neither live nor blocked. That distinction is the whole
+ * reason access and yield are two separate outputs.
+ */
+async function auditCommunity(
+  db: ReturnType<typeof createClient>,
+  body: Record<string, unknown>,
+  started: number,
+) {
+  const limit = Math.max(1, Math.min(10, Number(body.limit) || 5));
+  const dryRun = body.dryRun === true;
+  const onlyTarget = body.target ? String(body.target) : null;
+
+  /*
+   * Targets whose registry row has not yet earned a live state. Anything already
+   * LIVE_TESTED or PRODUCTIVE is left alone: re-auditing it spends a read to learn
+   * what is written down, and the incremental sync already keeps it honest.
+   *
+   * BLOCKED and RETIRED are excluded because they are decisions. advance() would
+   * refuse them anyway -- a re-audit finding public access IS how a block lifts
+   * legitimately -- but not requesting them at all is the stronger guarantee.
+   */
+  let query = db
+    .from('community_targets')
+    .select('id,external_id,name,platform,readability,source_id,'
+      + 'source:source_registry!source_id(id,name,url,lifecycle,access_finding,source_family,'
+      + 'adapter_id,quality_score,scanned_signal_count)')
+    .eq('platform', 'TELEGRAM')
+    .not('source_id', 'is', null)
+    .limit(limit);
+  if (onlyTarget) query = query.eq('external_id', onlyTarget);
+
+  const { data: targets, error } = await query;
+  if (error) throw error;
+
+  const eligible = (targets ?? []).filter((t: Record<string, unknown>) => {
+    const source = Array.isArray(t.source) ? t.source[0] : t.source;
+    const state = String((source as Record<string, unknown>)?.lifecycle ?? '');
+    return ['DISCOVERED', 'AUDITED', 'IMPLEMENTED', 'FIXTURE_TESTED'].includes(state);
+  });
+
+  if (!eligible.length) {
+    return json({
+      success: true,
+      mode: 'audit-community',
+      audited: 0,
+      targetsConsidered: (targets ?? []).length,
+      note: (targets ?? []).length === 0
+        ? 'no Telegram target carries a source_registry link yet'
+        : 'every linked Telegram source is already past the rungs this mode can establish, '
+          + 'or is BLOCKED/RETIRED, which are decisions rather than findings',
+      elapsedMs: Date.now() - started,
+    });
+  }
+
+  /*
+   * ROBOTS, ONCE, FOR THE ORIGIN. Every channel shares t.me, so this is one
+   * request rather than one per target -- and it is fetched rather than assumed,
+   * because a robots.txt appearing tomorrow has to be able to change the answer.
+   * Measured 2026-09-26: t.me serves no robots.txt at all (404), which RFC 9309
+   * defines as unrestricted.
+   */
+  let robotsStatus: number | null = null;
+  try {
+    const response = await fetch('https://t.me/robots.txt', {
+      headers: { 'User-Agent': 'HomatchResearch/1.0 (+https://homatch.com)' },
+      redirect: 'follow',
+    });
+    robotsStatus = response.status;
+    /* Body is read and discarded: only an explicit disallow would matter, and a
+       404 has no directives to parse. */
+    await response.text().catch(() => '');
+  } catch {
+    /* Left null, which robotsPermits() treats as "not permission". */
+  }
+
+  const client = new PublicPreviewTelegramClient();
+  const results: Array<Record<string, unknown>> = [];
+  let promoted = 0;
+  let blocked = 0;
+  let inconclusive = 0;
+
+  for (const target of eligible) {
+    const source = (Array.isArray(target.source) ? target.source[0] : target.source) as
+      Record<string, unknown>;
+    const channel = String(target.external_id);
+    const adapterId = String(source.adapter_id ?? 'telegram-public-preview');
+
+    let audit: CommunityAuditResult;
+    try {
+      const page = await client.inspectPreview(channel);
+      audit = auditCommunityAccess({
+        page,
+        robots: { status: robotsStatus, disallowed: false },
+        adapterId,
+      });
+    } catch (cause) {
+      /*
+       * A throw here is OUR read failing, not a finding about the source. Reported
+       * and skipped: recording it against the channel would blame somebody else for
+       * our network.
+       */
+      inconclusive += 1;
+      results.push({
+        target: channel,
+        verdict: 'INCONCLUSIVE',
+        finding: null,
+        reason: `the read failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+      });
+      continue;
+    }
+
+    if (audit.verdict === 'INCONCLUSIVE') {
+      inconclusive += 1;
+      results.push({
+        target: channel,
+        verdict: 'INCONCLUSIVE',
+        finding: null,
+        lifecycle: String(source.lifecycle),
+        usableItems: audit.usableItems,
+        reason: audit.reason,
+      });
+      continue;
+    }
+
+    /*
+     * WALK THE LADDER, one piece of evidence at a time, and keep the path. Each
+     * rung is decided by advance() rather than by this function -- so a rung that
+     * is refused stays refused, and the response shows exactly where it stopped.
+     */
+    let state: LifecycleState = {
+      state: String(source.lifecycle) as SourceLifecycle,
+      family: (source.source_family as never) ?? null,
+      finding: (source.access_finding as never) ?? null,
+      adapterId: (source.adapter_id as string | null) ?? null,
+      failureCount: 0,
+      scanned: Number(source.scanned_signal_count ?? 0),
+      useful: 0,
+    };
+    const path: string[] = [state.state];
+    const reasons: string[] = [];
+
+    for (const evidence of audit.evidence) {
+      const step = advance(state, evidence);
+      state = step.state;
+      path.push(step.state.state);
+      reasons.push(`${step.transition.from}->${step.transition.to}: ${step.transition.reason}`);
+      if (step.transition.rejected) break;
+    }
+
+    if (state.state === 'BLOCKED') blocked += 1;
+    else if (state.state !== String(source.lifecycle)) promoted += 1;
+
+    if (!dryRun) {
+      const { error: writeErr } = await db
+        .from('source_registry')
+        .update({
+          lifecycle: state.state,
+          lifecycle_changed_at: new Date().toISOString(),
+          access_finding: state.finding,
+          source_family: state.family,
+          adapter_id: state.adapterId,
+          /*
+           * ACTIVATION IS NOT AUDIT'S DECISION, and that rule is inherited rather
+           * than re-argued: `active` and `priority_tier` say what a source is
+           * WORTH, which stays a judgement for a person. Only the lifecycle, the
+           * finding and the evidence are written here.
+           */
+          priority_rationale:
+            `Community-audited automatically ${today()} over the public preview path: `
+            + `${audit.finding} / ${audit.usableItems} usable item(s). ${audit.reason}. `
+            + `Ladder: ${path.join(' -> ')}. `
+            + `robots.txt for t.me answered ${robotsStatus ?? 'nothing'}`
+            + `${robotsStatus !== null && robotsStatus >= 400 && robotsStatus < 500
+                ? ' (no directives; unrestricted per RFC 9309)' : ''}. `
+            + 'Not tiered and not activated: what a source is worth is a judgement for a person.',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', source.id as string);
+
+      if (writeErr) {
+        results.push({
+          target: channel, verdict: 'WRITE_FAILED',
+          finding: audit.finding, reason: writeErr.message,
+        });
+        continue;
+      }
+
+      /*
+       * The TARGET's readability follows the same evidence, so the two tables
+       * cannot disagree about the same channel. READABLE only where something was
+       * actually read; a public-but-empty channel keeps API_UNAVAILABLE, which is
+       * what the sync already concluded from its own read.
+       */
+      await db.from('community_targets').update({
+        /*
+         * THREE STATES, NOT TWO, because the column has three meanings and
+         * collapsing them is how an empty channel and a walled one become
+         * indistinguishable:
+         *
+         *   READABLE                something was actually read
+         *   AUTHORIZATION_REQUIRED  a membership wall; the surface exists and
+         *                           will not show us. NOT 'API_UNAVAILABLE',
+         *                           which would say the platform offers no
+         *                           route when in fact WE lack standing.
+         *   API_UNAVAILABLE         public, reachable, and this mode gets no
+         *                           content from it -- the empty channel.
+         */
+        readability: audit.usableItems > 0
+          ? 'READABLE'
+          : audit.finding === 'LOGIN_REQUIRED' ? 'AUTHORIZATION_REQUIRED' : 'API_UNAVAILABLE',
+        /* JOIN_REQUIRED is the enum's word for it. We are not a member and are not
+           going to become one; recording that is not the same as requesting it. */
+        membership_state: audit.finding === 'LOGIN_REQUIRED' ? 'JOIN_REQUIRED' : 'PUBLIC',
+        acquisition_mode: 'PUBLIC_WEB',
+        updated_at: new Date().toISOString(),
+      }).eq('id', target.id as string);
+    }
+
+    results.push({
+      target: channel,
+      verdict: 'ESTABLISHED',
+      finding: audit.finding,
+      family: audit.family,
+      usableItems: audit.usableItems,
+      stableIdentity: audit.stableIdentity,
+      lifecycleFrom: String(source.lifecycle),
+      lifecycleTo: state.state,
+      ladder: path,
+      transitions: reasons,
+      reason: audit.reason,
+      ...(dryRun ? { dryRun: true } : {}),
+    });
+  }
+
+  return json({
+    success: true,
+    mode: 'audit-community',
+    audited: results.length,
+    promoted,
+    blocked,
+    inconclusive,
+    robotsStatus,
+    robotsNote: robotsStatus !== null && robotsStatus >= 400 && robotsStatus < 500
+      ? 'no robots.txt is served for t.me, which RFC 9309 defines as unrestricted'
+      : 'robots.txt status recorded as measured',
+    results,
+    elapsedMs: Date.now() - started,
+  });
 }

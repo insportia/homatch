@@ -288,6 +288,22 @@ export class PublicPreviewTelegramClient implements TelegramClient {
     );
   }
 
+  /**
+   * The preview page as it came back, WITHOUT refusing on a bad outcome.
+   *
+   * readHistory() throws for anything but OK, which is right for a reader -- a
+   * caller asking for messages must not receive an empty list when the truth is
+   * "this channel is private". But an AUDITOR needs exactly the outcome it would
+   * have thrown: CHANNEL_PRIVATE is the finding, not an error to handle.
+   *
+   * So this returns the PreviewPage untouched and refuses nothing. It performs the
+   * same single robots-respecting request; it simply does not convert the answer
+   * into an exception.
+   */
+  async inspectPreview(username: string): Promise<PreviewPage> {
+    return await this.read(String(username).trim().replace(/^@/, ''), null);
+  }
+
   async readHistory(
     chatId: string,
     options: { cursor: string | null; limit: number },

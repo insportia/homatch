@@ -59,6 +59,13 @@ import { withoutAlreadyRead } from '../../../src/research-core/discovery/search-
 import { placeNamesFor } from '../../../src/research-core/normalize/place.ts';
 import { assessCoverage, decideSweep } from '../../../src/research-core/discovery/coverage.ts';
 import {
+  ageCeilingMs,
+  describeCeiling,
+  listingContextFrom,
+  resolveAgeCeiling,
+  type AgeCeilingConfig,
+} from '../../../src/research-core/discovery/listing-age-policy.ts';
+import {
   mergesEntity,
   priceRange,
   representative,
@@ -118,22 +125,22 @@ Deno.serve(async (req: Request) => {
  */
 const COVERAGE_FLOOR_PER_LANGUAGE = 3;
 
-/**
- * How old a LISTING may be and still count as coverage.
+/*
+ * HOW OLD A LISTING MAY BE is no longer a constant here.
  *
- * Ninety days, and this number exists because of what the first live Telegram sync
- * found: seven real posts, every one published in October or November 2022, and
- * because a second sync had just re-read and confirmed them, judgeDelivery() called
- * all seven FRESH and deliverable. It was right on its own terms -- the OBSERVATION
- * was minutes old. But "the post is still on the channel" is not "the flat is still
- * available", and without a ceiling one archive sync would report a market as
- * covered and stop the campaign paying to find out what is actually for sale.
+ * It was `90 * 86_400_000`, and the commit that added it said in writing that the
+ * number was a guess at the Tbilisi rental market rather than a measurement. The
+ * guess was fine; freezing it into this one call site was not, because the next
+ * reader had no way to tell a placeholder from a calibrated figure.
  *
- * Separate from the delivery window on purpose. The seven-day window asks how long
- * ago we LOOKED; this asks how long ago the seller SPOKE. A rental advertised three
- * months ago is gone.
+ * It now comes from listing-age-policy.ts, which keys the ceiling by transaction
+ * context, carries the PROVENANCE of every number (ASSUMED / CONFIGURED /
+ * MEASURED), and lets an operator calibrate one market without rewriting any of
+ * this. Ninety days remains the fallback when no context is known, and it says so.
+ *
+ * Still entirely separate from the delivery window: that asks how long ago WE
+ * looked, this asks how long ago the SELLER spoke.
  */
-const MAX_LISTING_AGE_MS = 90 * 86_400_000;
 
 const started = Date.now();
   try {
@@ -188,6 +195,28 @@ const started = Date.now();
       .eq('transaction', transaction)
       .limit(2000);
 
+    /*
+     * THE CEILING FOR THIS CAMPAIGN'S MARKET, resolved from what the campaign
+     * actually states rather than from a number in this file.
+     *
+     * The config row is optional: with nothing configured every ceiling is the
+     * built-in ASSUMED default, which is exactly the behaviour this replaces. The
+     * resolved ceiling and its provenance are echoed in the response, so a skipped
+     * sweep can be explained without anybody guessing which number applied.
+     */
+    const { data: ceilingRow } = await db
+      .from('admin_settings').select('value').eq('key', 'listing_age_ceilings').maybeSingle();
+    const ceilingConfig = (scalar(ceilingRow?.value, null) ?? undefined) as AgeCeilingConfig | undefined;
+
+    const listingContext = listingContextFrom({
+      transaction,
+      propertyType: scope.propertyType,
+    });
+    const ageCeiling = resolveAgeCeiling(listingContext, {
+      market: countryCode,
+      config: ceilingConfig,
+    });
+
     const coverage = assessCoverage(
       (heldRows ?? []).map((row: Record<string, unknown>) => ({
         ref: String(row.id),
@@ -213,7 +242,7 @@ const started = Date.now();
         city,
         languages: scope.languages,
         minPerLanguage: COVERAGE_FLOOR_PER_LANGUAGE,
-        maxPublishedAgeMs: MAX_LISTING_AGE_MS,
+        maxPublishedAgeMs: ageCeilingMs(ageCeiling),
       },
     );
 
@@ -266,6 +295,15 @@ const started = Date.now();
           excluded: coverage.excluded,
           uncounted: coverage.uncounted,
           rationale: coverage.rationale,
+        },
+        /* The ceiling that decided it, and where the number came from. A skipped
+           sweep justified by an unexplained figure is not explainable. */
+        listingAge: {
+          context: ageCeiling.context,
+          days: ageCeiling.days,
+          basis: ageCeiling.basis,
+          fellBack: ageCeiling.fellBack,
+          description: describeCeiling(ageCeiling),
         },
         elapsedMs: Date.now() - started,
       });
@@ -600,6 +638,13 @@ const started = Date.now();
         excluded: coverage.excluded,
         uncounted: coverage.uncounted,
         rationale: coverage.rationale,
+      },
+      listingAge: {
+        context: ageCeiling.context,
+        days: ageCeiling.days,
+        basis: ageCeiling.basis,
+        fellBack: ageCeiling.fellBack,
+        description: describeCeiling(ageCeiling),
       },
       sourcesPermitted: permitted.size,
       /*

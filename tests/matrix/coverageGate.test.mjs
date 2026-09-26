@@ -166,15 +166,24 @@ test('the sweep decision weighs how old the LISTING is, not only how old our loo
   // sync had just confirmed them, judgeDelivery() called all seven FRESH. Without a
   // publication ceiling one archive would report a market as covered and stop the
   // campaign paying to find out what is actually for sale.
+  // The ceiling is no longer a constant in this file: it is resolved per campaign
+  // from listing-age-policy.ts, which carries the provenance of every number. A
+  // hardcoded one must not come back.
+  assert.doesNotMatch(
+    code,
+    /const MAX_LISTING_AGE_MS/,
+    'a frozen ceiling at the call site is what the policy module replaced',
+  );
+  assert.match(code, /resolveAgeCeiling\(listingContext/, 'resolved from the campaign, per market');
   assert.match(
     code,
-    /const MAX_LISTING_AGE_MS = /,
-    'the ceiling has to exist as a named constant at the call site',
+    /maxPublishedAgeMs: ageCeilingMs\(ageCeiling\)/,
+    'and actually passed, or it is documentation rather than a gate',
   );
   assert.match(
     code,
-    /maxPublishedAgeMs: MAX_LISTING_AGE_MS/,
-    'and it has to actually be passed, or it is documentation rather than a gate',
+    /listingContextFrom\(\{/,
+    'the context comes from what the campaign states, not from a guess',
   );
   assert.match(
     code,
@@ -185,5 +194,23 @@ test('the sweep decision weighs how old the LISTING is, not only how old our loo
     code,
     /published_at/,
     'published_at must be in the select list',
+  );
+});
+
+test('the resolved ceiling and its provenance are reported on both paths', () => {
+  // A sweep skipped on the strength of an unexplained number is not explainable.
+  // basis says ASSUMED / CONFIGURED / MEASURED, and today nothing is MEASURED.
+  const reports = code.match(/listingAge: \{/g) ?? [];
+  assert.equal(reports.length, 2, 'the skipped path and the swept path must both report it');
+  assert.match(code, /basis: ageCeiling\.basis/);
+  assert.match(code, /fellBack: ageCeiling\.fellBack/);
+});
+
+test('the ceiling config is read from settings, so an operator can calibrate it', () => {
+  assert.match(code, /eq\('key', 'listing_age_ceilings'\)/);
+  assert.match(
+    code,
+    /config: ceilingConfig/,
+    'a config that is read and not passed would be decoration',
   );
 });

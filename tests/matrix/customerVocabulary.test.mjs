@@ -117,6 +117,33 @@ test('an internal failure enum is not shown as the error a customer reads', () =
   assert.match(body, /mjp_error_fallback/);
 });
 
+test('a freshness enum is never shown to a customer, and absence is not "fresh"', () => {
+  /*
+   * matches.evidence_freshness is written by the seven-day rule and its
+   * values -- NEW_UNVERIFIED, NEEDS_REVALIDATION, FRESH, UNVERIFIABLE -- are
+   * ours. The screen maps them onto translated phrases.
+   *
+   * The second half matters more: the 72 matches created before the column
+   * existed carry null, and the mapper must return null for them. Defaulting
+   * an unknown value to "Recently verified" would be a freshness claim with
+   * nothing behind it, which is the one thing this whole contract exists to
+   * prevent.
+   */
+  const page = SOURCES.find(({ file }) => /MatchesPage\.tsx$/.test(file));
+  assert.ok(page, 'MatchesPage was not scanned');
+  assert.match(page.body, /function freshnessLabel/);
+  assert.match(page.body, /default: return null;/,
+    'an unmapped freshness value falls through to a claim instead of to silence');
+  /* The raw enum must not be interpolated anywhere on a customer surface. */
+  for (const { file, body } of SOURCES) {
+    assert.equal(/\{\s*match\.evidence_freshness\s*\}/.test(body), false,
+      `${file} renders the raw freshness enum`);
+  }
+  // And no invented percentage alongside it.
+  assert.equal(/freshness[^\n]{0,40}%/i.test(page.body), false,
+    'a freshness percentage is being printed, and nothing measures one');
+});
+
 test('the guard is actually looking at customer files', () => {
   /* A filter bug that emptied this list would make every test above pass
      while asserting nothing. */

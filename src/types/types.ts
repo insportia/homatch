@@ -680,6 +680,15 @@ export interface Match {
    * this, so it must not be sold again.
    */
   unlock_included_allowance_id?: string | null;
+  /**
+   * What the seven-day freshness rule concluded about this match's evidence
+   * AT THE MOMENT it was created: NEW_UNVERIFIED, NEEDS_REVALIDATION, FRESH
+   * or UNVERIFIABLE. Stored rather than re-derived, because the timestamps it
+   * was judged on will have moved on by the time anybody asks.
+   *
+   * Null on matches created before the column existed. That is not "fresh".
+   */
+  evidence_freshness?: string | null;
   status: MatchStatus;
   mock_mode?: boolean;
   // Whether this match is for an external (non-Homatch) signal

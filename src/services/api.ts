@@ -426,7 +426,7 @@ export async function getMatches(
   let q = supabase
     .from('matches')
     .select(
-      'id, property_id, campaign_id, signal_id, intent_profile_id, match_score, intent_confidence, signal_strength, match_reasons, mismatch_reasons, unlock_price_credits, unlock_included_reservation_id, unlock_included_allowance_id, status, preview_platform, preview_language, preview_city, preview_budget_min, preview_budget_max, preview_currency, preview_bedrooms, preview_excerpt, preview_recency, created_at, updated_at'
+      'id, property_id, campaign_id, signal_id, intent_profile_id, match_score, intent_confidence, signal_strength, match_reasons, mismatch_reasons, unlock_price_credits, unlock_included_reservation_id, unlock_included_allowance_id, evidence_freshness, status, preview_platform, preview_language, preview_city, preview_budget_min, preview_budget_max, preview_currency, preview_bedrooms, preview_excerpt, preview_recency, created_at, updated_at'
     )
     .eq('property_id', propertyId)
     .neq('status', 'REJECTED')

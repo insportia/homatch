@@ -9050,6 +9050,12 @@ const en = {
 
   /* ── ADMIN SOURCE PRIORITY TIER ── */
   admin_sources_tier: 'Priority',
+
+  /* ── MATCH EVIDENCE FRESHNESS ── */
+  matches_freshness_new: 'Just found',
+  matches_freshness_rechecking: 'Being re-checked',
+  matches_freshness_verified: 'Recently verified',
+  matches_freshness_unconfirmed: 'Could not be re-checked',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -18018,6 +18024,12 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── ADMIN SOURCE PRIORITY TIER ── */
   admin_sources_tier: 'პრიორიტეტი',
+
+  /* ── MATCH EVIDENCE FRESHNESS ── */
+  matches_freshness_new: 'ახლად ნაპოვნი',
+  matches_freshness_rechecking: 'ხელახლა მოწმდება',
+  matches_freshness_verified: 'ბოლოს დადასტურებული',
+  matches_freshness_unconfirmed: 'ვერ შემოწმდა ხელახლა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -26977,6 +26989,12 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── ADMIN SOURCE PRIORITY TIER ── */
   admin_sources_tier: 'Приоритет',
+
+  /* ── MATCH EVIDENCE FRESHNESS ── */
+  matches_freshness_new: 'Только что найдено',
+  matches_freshness_rechecking: 'Проверяется повторно',
+  matches_freshness_verified: 'Недавно подтверждено',
+  matches_freshness_unconfirmed: 'Не удалось перепроверить',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -35934,6 +35952,12 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── ADMIN SOURCE PRIORITY TIER ── */
   admin_sources_tier: 'Öncelik',
+
+  /* ── MATCH EVIDENCE FRESHNESS ── */
+  matches_freshness_new: 'Yeni bulundu',
+  matches_freshness_rechecking: 'Yeniden kontrol ediliyor',
+  matches_freshness_verified: 'Kısa süre önce doğrulandı',
+  matches_freshness_unconfirmed: 'Yeniden kontrol edilemedi',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -44891,6 +44915,12 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── ADMIN SOURCE PRIORITY TIER ── */
   admin_sources_tier: 'الأولوية',
+
+  /* ── MATCH EVIDENCE FRESHNESS ── */
+  matches_freshness_new: 'تم العثور عليه للتو',
+  matches_freshness_rechecking: 'قيد إعادة التحقق',
+  matches_freshness_verified: 'تم التحقق مؤخرًا',
+  matches_freshness_unconfirmed: 'لم يتمكن من إعادة التحقق',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -53848,6 +53878,12 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── ADMIN SOURCE PRIORITY TIER ── */
   admin_sources_tier: 'עדיפות',
+
+  /* ── MATCH EVIDENCE FRESHNESS ── */
+  matches_freshness_new: 'נמצא כרגע',
+  matches_freshness_rechecking: 'נבדק מחדש',
+  matches_freshness_verified: 'אומת לאחרונה',
+  matches_freshness_unconfirmed: 'לא ניתן היה לבדוק מחדש',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

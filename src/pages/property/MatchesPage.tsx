@@ -61,6 +61,32 @@ const PLATFORM_ICONS: Record<string, string> = {
   OTHER: '·',
 };
 
+/**
+ * What the freshness contract concluded, said in customer language.
+ *
+ * matches.evidence_freshness is written by run-matching-v2 from the seven-day
+ * rule: NEW_UNVERIFIED for a first sighting inside its window,
+ * NEEDS_REVALIDATION for one past it, FRESH for one re-read conclusively, and
+ * UNVERIFIABLE where the attempt failed. All four are OUR words.
+ *
+ * An unrecognised or absent value returns null and the badge is not rendered.
+ * The 72 matches created before this column existed carry null, and inventing
+ * a status for them -- or defaulting them to "verified" -- would be a
+ * freshness claim with nothing behind it.
+ */
+function freshnessLabel(
+  t: (key: string) => string,
+  freshness: string | null | undefined,
+): string | null {
+  switch (freshness) {
+    case 'NEW_UNVERIFIED': return t('matches_freshness_new');
+    case 'NEEDS_REVALIDATION': return t('matches_freshness_rechecking');
+    case 'FRESH': return t('matches_freshness_verified');
+    case 'UNVERIFIABLE': return t('matches_freshness_unconfirmed');
+    default: return null;
+  }
+}
+
 function StrengthBars({ strength }: { strength: keyof typeof STRENGTH_CONFIG }) {
   const cfg = STRENGTH_CONFIG[strength];
   return (
@@ -167,6 +193,20 @@ function LockedMatchCard({
           )}
           {included && (
             <span className="text-[13px] font-bold bg-green-500/10 text-green-400/90 px-1.5 py-0.5 rounded border border-green-500/20">{t('matches_included_badge')}</span>
+          )}
+          {/*
+            HOW OLD THIS EVIDENCE IS, in the customer's words.
+            matches.evidence_freshness has been stored since the seven-day
+            rule was wired and never shown, so a search that returned fewer
+            results because findings were awaiting re-checking looked simply
+            thinner. freshnessLabel maps the enum; an unmapped or absent value
+            renders nothing rather than guessing, and there is no percentage
+            anywhere because no measured number backs one.
+          */}
+          {freshnessLabel(t, match.evidence_freshness) && (
+            <span className="text-[13px] text-muted-foreground/70 px-1.5 py-0.5 rounded border border-border/60">
+              {freshnessLabel(t, match.evidence_freshness)}
+            </span>
           )}
         </div>
       </div>

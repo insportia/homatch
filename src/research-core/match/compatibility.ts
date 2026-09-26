@@ -234,6 +234,22 @@ function propertyClass(value: string | null | undefined): string | null {
   return null;
 }
 
+/**
+ * "an apartment", not "a apartment".
+ *
+ * Small, and it reached a customer. The rationale this module builds is rendered
+ * verbatim on the results screen -- that is the whole point of it being a sentence
+ * rather than a score -- so a wrong article is a wrong article in the product, and
+ * APARTMENT is the single most common property class in the corpus.
+ *
+ * Vowel-initial is the only rule needed for the four classes that exist
+ * (APARTMENT, HOUSE, LAND, COMMERCIAL); no attempt is made at the general English
+ * case, which depends on pronunciation rather than spelling.
+ */
+function withArticle(noun: string): string {
+  return `${/^[aeiou]/i.test(noun) ? 'an' : 'a'} ${noun}`;
+}
+
 /** A finite positive number, or null. Zero is not a price or an area. */
 function positive(value: unknown): number | null {
   const n = Number(value);
@@ -411,13 +427,14 @@ function comparePropertyType(demand: DemandSide, supply: SupplySide): DimensionR
   if (wanted.includes(offered)) {
     return {
       dimension: 'PROPERTY_TYPE', verdict: 'AGREE', strength,
-      reason: `they are looking for a ${offered.toLowerCase()}`,
+      reason: `they are looking for ${withArticle(offered.toLowerCase())}`,
     };
   }
   return disagreement(
     'PROPERTY_TYPE',
     strength,
-    `this is a ${offered.toLowerCase()} and they want ${wanted.map((w) => w.toLowerCase()).join(' or ')}`,
+    `this is ${withArticle(offered.toLowerCase())} and they want `
+      + `${wanted.map((w) => w.toLowerCase()).join(' or ')}`,
   );
 }
 

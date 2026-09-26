@@ -387,3 +387,34 @@ test('every dimension is always reported, agreeing or not', () => {
     );
   }
 });
+
+test('the rationale says "an apartment", not "a apartment"', () => {
+  /*
+   * Small, and it reached production. The rationale is rendered verbatim on the results
+   * screen -- that is the point of it being a sentence rather than a score -- and
+   * APARTMENT is the most common property class in the corpus, so this was the most
+   * frequent string in the product.
+   */
+  const result = assessMatch(demand(), supply({ propertyType: 'APARTMENT' }));
+  assert.match(result.rationale, /an apartment/);
+  assert.doesNotMatch(result.rationale, /\ba apartment\b/);
+});
+
+test('a consonant-initial class still takes "a"', () => {
+  // The fix must not have become "an house".
+  const result = assessMatch(
+    demand({ propertyTypes: ['HOUSE'] }),
+    supply({ propertyType: 'HOUSE' }),
+  );
+  assert.match(result.rationale, /a house/);
+  assert.doesNotMatch(result.rationale, /an house/);
+});
+
+test('the article is right in a rejection too, not only in a match', () => {
+  const result = assessMatch(
+    demand({ propertyTypes: ['HOUSE'] }),
+    supply({ propertyType: 'APARTMENT' }),
+  );
+  assert.equal(result.compatibility, 'INCOMPATIBLE');
+  assert.match(result.rationale, /this is an apartment/);
+});

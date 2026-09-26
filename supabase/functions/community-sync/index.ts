@@ -143,6 +143,13 @@ Deno.serve(async (req: Request) => {
       unchangedMessages: 0,
       classificationsRun: 0,
       persistenceWrites: 0,
+      /*
+       * Writes the database REFUSED. Reported next to persistenceWrites because
+       * the two together are the only way to tell "nothing needed writing" from
+       * "nothing could be written", and those look identical from a counter that
+       * only ever increments on success.
+       */
+      persistenceFailures: 0,
       skippedByCooldown: 0,
     };
 
@@ -249,6 +256,10 @@ async function syncTarget(
   let touched = 0;
   let demand = 0;
   let supply = 0;
+  /* What the database refused, with its own words kept. A count alone would say
+     that something is broken without saying what, and the message is the whole
+     diagnosis -- a CHECK violation names the constraint. */
+  const writeFailures: Array<{ action: string; externalId: string; message: string }> = [];
 
   for (const { message, channel: messageChannel } of collected) {
     const text = String(message.text ?? '');
@@ -285,16 +296,32 @@ async function syncTarget(
        * The whole point of the fingerprint. Nothing is classified, no entity is
        * created, nothing is matched — only the timestamps that say we looked.
        */
-      touched += 1;
-      totals.unchangedMessages += 1;
-      await db.from('raw_signals').update({
+      const { error: touchError } = await db.from('raw_signals').update({
         last_seen_at: now,
         /* A conclusive re-read of unchanged content IS a verification. */
         last_verified_at: now,
-        validation_state: 'FRESH',
+        /*
+         * VALID, not 'FRESH'. FRESH is a DeliveryVerdict -- judgeDelivery()'s
+         * answer to "may a customer see this" -- and this column holds a
+         * ValidationState, the answer to "did we re-read it". Writing the first
+         * vocabulary into the second violates raw_signals_validation_state_check
+         * and the row is rejected outright.
+         */
+        validation_state: 'VALID',
         last_revalidation_outcome: 'UNCHANGED_VALID',
       }).eq('id', existing?.id as string);
-      totals.persistenceWrites += 1;
+      if (touchError) {
+        writeFailures.push({
+          action: 'TOUCH',
+          externalId: `${messageChannel}/${externalId}`,
+          message: touchError.message,
+        });
+        totals.persistenceFailures += 1;
+      } else {
+        touched += 1;
+        totals.unchangedMessages += 1;
+        totals.persistenceWrites += 1;
+      }
       continue;
     }
 
@@ -368,16 +395,47 @@ async function syncTarget(
       direction_confidence: verdict.confidence,
       /* HOMATCH, not a vendor: nothing was bought to obtain this. */
       provider: 'HOMATCH',
-      validation_state: 'FRESH',
+      /*
+       * DELIBERATELY NOT SET HERE. An INSERT and a VERSION are in different
+       * verification positions -- a first sighting has verified nothing, a
+       * re-read has -- and raw_signals_verification_coherence_check enforces the
+       * difference. One shared value would be wrong for one of them, so each
+       * path states its own below.
+       */
       content_version: plan.contentVersion,
       classification_status: 'PENDING',
     };
 
     if (plan.action === 'INSERT') {
       const { error: insertError } = await db.from('raw_signals').insert({
-        ...row, discovered_at: now,
+        ...row,
+        discovered_at: now,
+        /*
+         * UNVERIFIED, and last_verified_at NULL. Seeing a post for the first time
+         * is not verifying it -- we have one observation and nothing to compare it
+         * against -- which is the rule firstSighting() states in the research core
+         * and raw_signals_verification_coherence_check enforces in the database.
+         * Stamping `now` here is how every row in a store ends up permanently
+         * "verified" the moment it arrives.
+         */
+        validation_state: 'UNVERIFIED',
+        last_verified_at: null,
       });
-      if (!insertError) {
+      if (insertError) {
+        /*
+         * NEVER SWALLOWED. This counter existed as `if (!insertError)` and
+         * nothing else, so eighteen rejected inserts reported themselves as a
+         * clean run with nothing new to write -- indistinguishable from a
+         * perfectly deduplicated sync. A write that failed is the one thing this
+         * worker must not report as a no-op.
+         */
+        writeFailures.push({
+          action: 'INSERT',
+          externalId: `${messageChannel}/${externalId}`,
+          message: insertError.message,
+        });
+        totals.persistenceFailures += 1;
+      } else {
         inserted += 1;
         totals.newMessages += 1;
         totals.persistenceWrites += 1;
@@ -390,17 +448,45 @@ async function syncTarget(
     const { error: updateError } = await db.from('raw_signals').update({
       ...row,
       content_changed_at: now,
+      /* A re-read that found new text IS a conclusive observation, so unlike the
+         INSERT above this one really has verified something. */
+      validation_state: 'VALID',
+      last_verified_at: now,
       last_revalidation_outcome: 'CHANGED_VALID',
       /* Re-interpretation is wanted, and it reuses the SAME row, so no second
          lead can appear. */
       classification_status: 'PENDING',
     }).eq('id', existing?.id as string);
-    if (!updateError) {
+    if (updateError) {
+      writeFailures.push({
+        action: 'VERSION',
+        externalId: `${messageChannel}/${externalId}`,
+        message: updateError.message,
+      });
+      totals.persistenceFailures += 1;
+    } else {
       versioned += 1;
       totals.changedMessages += 1;
       totals.persistenceWrites += 1;
     }
   }
+
+  /*
+   * THE CURSOR MOVES ONLY IF THE EVIDENCE LANDED.
+   *
+   * The cursor's meaning is "everything up to here is stored", so advancing it
+   * past a message the database refused makes the next tick start above that
+   * message and never look at it again. That is permanent, silent loss of real
+   * evidence -- and it is exactly what the swallowed insert error caused: the read
+   * succeeded, eighteen posts were rejected, and the cursor moved to 31 as though
+   * they had been kept.
+   *
+   * The READ still succeeded, so readability is still earned: the channel is
+   * public and reachable and that is a fact about the target. The failure is OURS,
+   * so it is recorded as our error and the cursor stays where it was.
+   */
+  const persisted = writeFailures.length === 0;
+  const nowIso = new Date().toISOString();
 
   await db.from('community_targets').update({
     readability: 'READABLE',
@@ -409,21 +495,32 @@ async function syncTarget(
     /* Earned by a real read. LOW_SIGNAL and PRODUCTIVE are decided by measured
        yield over time, not by one tick. */
     lifecycle: 'REACHABLE',
-    last_success_at: new Date().toISOString(),
-    last_error_at: null,
-    last_error_code: null,
-    cursor: newestSeen !== null ? String(newestSeen) : target.cursor ?? null,
-    last_seen_external_id: newestSeen !== null ? String(newestSeen) : target.last_seen_external_id ?? null,
+    /* A read we could not store is not a success. */
+    ...(persisted
+      ? { last_success_at: nowIso, last_error_at: null, last_error_code: null }
+      : { last_error_at: nowIso, last_error_code: 'PERSISTENCE_REFUSED' }),
+    ...(persisted
+      ? {
+        cursor: newestSeen !== null ? String(newestSeen) : target.cursor ?? null,
+        last_seen_external_id: newestSeen !== null
+          ? String(newestSeen)
+          : target.last_seen_external_id ?? null,
+      }
+      : {}),
+    /* Counted as read because we did read them. items_read measures acquisition,
+       and inserted/versioned/touched measure what was kept. */
     items_read: Number(target.items_read ?? 0) + collected.length,
     demand_found: Number(target.demand_found ?? 0) + demand,
     supply_found: Number(target.supply_found ?? 0) + supply,
     duplicates_seen: Number(target.duplicates_seen ?? 0) + touched,
-    updated_at: new Date().toISOString(),
+    updated_at: nowIso,
   }).eq('id', target.id);
 
   return {
     target: channel,
-    outcome: 'OK',
+    /* Not 'OK' when nothing could be stored. An operator reading a list of OKs
+       must not have to cross-check a counter to discover the sync kept nothing. */
+    outcome: persisted ? 'OK' : 'PERSISTENCE_REFUSED',
     readability: 'READABLE',
     collected: collected.length,
     inserted,
@@ -433,6 +530,12 @@ async function syncTarget(
     supply,
     newestSeenId: newestSeen,
     reachedKnownCursor: reachedKnown,
+    ...(persisted ? {} : {
+      cursorHeldAt: target.cursor ?? null,
+      /* Capped: the diagnosis is the constraint name, and it repeats. */
+      writeFailures: writeFailures.slice(0, 3),
+      writeFailureCount: writeFailures.length,
+    }),
   };
 }
 

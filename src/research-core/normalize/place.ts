@@ -175,6 +175,30 @@ export function samePlace(a: string | null | undefined, b: string | null | undef
  * caller that guessed a transliteration would filter a sitemap down to
  * nothing and report an empty market.
  */
+/**
+ * Every spelling of a place this core knows, for narrowing a query.
+ *
+ * A coverage check has to ask the database for rows about one city, and
+ * `city = 'Tbilisi'` finds 11 of the 20 Tbilisi rows in production because the
+ * other nine are written 'თბილისი' and 'tbilisi'. The filter therefore has to
+ * carry every spelling, and they must come from THIS table rather than a list
+ * assembled at the call site -- a second vocabulary would drift from this one and
+ * the drift would look like missing data.
+ *
+ * Returns the name as given when the table does not know it, so a caller always
+ * has something to filter on. That narrows to one spelling and finds only exact
+ * matches, which is the same honest outcome comparePlaces() reaches for an
+ * unknown name: no claim either way, and nothing invented.
+ */
+export function placeNamesFor(place: string | null | undefined): string[] {
+  const needle = norm(place);
+  if (!needle) return [];
+  for (const group of PLACES) {
+    if (group.some((name) => norm(name) === needle)) return [...group];
+  }
+  return [String(place)];
+}
+
 export function latinNameFor(place: string | null | undefined): string | null {
   const needle = norm(place);
   if (!needle) return null;

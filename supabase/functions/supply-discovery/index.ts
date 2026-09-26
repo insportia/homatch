@@ -206,7 +206,26 @@ const started = Date.now();
      */
     const { data: ceilingRow } = await db
       .from('admin_settings').select('value').eq('key', 'listing_age_ceilings').maybeSingle();
-    const ceilingConfig = (scalar(ceilingRow?.value, null) ?? undefined) as AgeCeilingConfig | undefined;
+    /*
+     * admin_settings.value is jsonb, so it arrives already parsed -- but a row set
+     * by hand can hold a JSON STRING containing JSON, which arrives as a string.
+     * Parsed defensively and treated as absent when it is neither: a malformed
+     * settings row must leave every ceiling at its built-in default rather than
+     * throwing a campaign's discovery run.
+     */
+    const ceilingConfig: AgeCeilingConfig | undefined = (() => {
+      const raw = ceilingRow?.value;
+      if (raw && typeof raw === 'object') return raw as AgeCeilingConfig;
+      if (typeof raw === 'string') {
+        try {
+          const parsed = JSON.parse(raw);
+          return parsed && typeof parsed === 'object' ? parsed as AgeCeilingConfig : undefined;
+        } catch {
+          return undefined;
+        }
+      }
+      return undefined;
+    })();
 
     const listingContext = listingContextFrom({
       transaction,

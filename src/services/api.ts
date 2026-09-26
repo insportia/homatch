@@ -1678,22 +1678,34 @@ export function calculateMatchability(facts: Partial<PropertyFacts> | null): {
   score: number;
   improvements: string[];
 } {
-  if (!facts) return { score: 0, improvements: ['Complete property details to start matching.'] };
+  /*
+   * THE HINTS ARE i18n KEYS, NOT SENTENCES.
+   *
+   * They were English sentences and they rendered as English sentences -- inside a
+   * Georgian page, next to a Georgian heading, on production. The hardcoded-string audit
+   * did not catch them because they are built in a service and only become visible when
+   * a component interpolates them, which is exactly the shape that slips past a scan for
+   * literals in JSX.
+   *
+   * Returning a key is the same rule discloseBroker follows for the broker label: a
+   * module that cannot know the reader's language must not choose their words.
+   */
+  if (!facts) return { score: 0, improvements: ['prop_hint_complete_details'] };
 
   const checks: { pass: boolean; weight: number; hint?: string }[] = [
     { pass: !!facts.country, weight: 5, hint: undefined },
-    { pass: !!facts.city, weight: 10, hint: 'Add a city to improve matching.' },
-    { pass: !!facts.district, weight: 10, hint: 'Add a district to improve matching precision.' },
-    { pass: !!facts.neighborhood, weight: 5, hint: 'Add a neighborhood for more specific matching.' },
-    { pass: !!facts.total_price, weight: 15, hint: 'Add a price to improve buyer matching.' },
-    { pass: !!facts.area, weight: 10, hint: 'Add the area size to improve matching.' },
-    { pass: !!facts.bedrooms, weight: 8, hint: 'Specify the number of bedrooms.' },
+    { pass: !!facts.city, weight: 10, hint: 'prop_hint_add_city' },
+    { pass: !!facts.district, weight: 10, hint: 'prop_hint_add_district' },
+    { pass: !!facts.neighborhood, weight: 5, hint: 'prop_hint_add_neighborhood' },
+    { pass: !!facts.total_price, weight: 15, hint: 'prop_hint_add_price' },
+    { pass: !!facts.area, weight: 10, hint: 'prop_hint_add_area' },
+    { pass: !!facts.bedrooms, weight: 8, hint: 'prop_hint_add_bedrooms' },
     { pass: !!facts.bathrooms, weight: 4, hint: undefined },
-    { pass: !!facts.description && (facts.description?.length ?? 0) > 50, weight: 12, hint: 'A detailed description helps Homatch find better matches.' },
+    { pass: !!facts.description && (facts.description?.length ?? 0) > 50, weight: 12, hint: 'prop_hint_add_description' },
     { pass: !!facts.new_build !== undefined, weight: 5, hint: undefined },
-    { pass: !!facts.condition, weight: 5, hint: 'Specify the property condition.' },
-    { pass: (facts.parking || facts.elevator || facts.balcony) === true, weight: 5, hint: 'Add amenities to improve match quality.' },
-    { pass: false, weight: 6, hint: 'Add photos to improve match quality.' }, // photos counted externally
+    { pass: !!facts.condition, weight: 5, hint: 'prop_hint_add_condition' },
+    { pass: (facts.parking || facts.elevator || facts.balcony) === true, weight: 5, hint: 'prop_hint_add_amenities' },
+    { pass: false, weight: 6, hint: 'prop_hint_add_photos' }, // photos counted externally
   ];
 
   const maxScore = checks.reduce((s, c) => s + c.weight, 0);

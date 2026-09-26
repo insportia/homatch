@@ -136,3 +136,9 @@ verify_jwt = false
 # because they are the two halves of one contract.
 [functions.revalidate-supply]
 verify_jwt = false
+
+# Candidate source auditing. A worker tick with no customer and no user JWT:
+# it reads DISCOVERED rows, fetches at most five documents per host through the
+# shared runtime, and records what the site is. It enables nothing.
+[functions.source-audit]
+verify_jwt = false

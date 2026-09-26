@@ -817,6 +817,11 @@ jobs:
             # listing, over the same fetch path, and records REMOVED
             # rather than deleting a row when it has gone.
             "revalidate-supply"
+            # Candidate source auditing. The step that had no home in
+            # production: source-lifecycle.ts has modelled
+            # DISCOVERED -> AUDITED since it was written, and the only thing
+            # that ever advanced a source along it was a script on a laptop.
+            "source-audit"
             # ── Communications: the three that are NOT called by a browser ──
             #
             # These MUST be here rather than in the JWT list, and the

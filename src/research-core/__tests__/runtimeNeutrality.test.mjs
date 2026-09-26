@@ -374,6 +374,17 @@ test('the core is consumed only through its deliberate integration points', () =
      * truths. It compares a hash and nothing else.
      */
     'supabase/functions/revalidate-supply/index.ts',
+    /*
+     * CANDIDATE SOURCE AUDITING. It builds the runtime to ask five questions
+     * of a host nobody has characterised yet: what robots permits, what the
+     * sitemap names, and what one detail page publishes.
+     *
+     * The runtime is the reason this is allowed to exist at all. A host with
+     * no SourcePolicy is refused before a request is made, so an auditor
+     * cannot become a general-purpose fetcher pointed at whatever a row
+     * happens to contain.
+     */
+    'supabase/functions/source-audit/index.ts',
   ]);
 
   const roots = ['src', 'supabase/functions', 'official-worker/src'];

@@ -57,6 +57,9 @@ import {
 } from '../../../src/research-core/discovery/search-budget.ts';
 import { withoutAlreadyRead } from '../../../src/research-core/discovery/search-expansion.ts';
 import { placeNamesFor } from '../../../src/research-core/normalize/place.ts';
+import { attributionFrom } from '../../../src/research-core/match/broker-attribution.ts';
+import { isBrokerRole } from '../../../src/research-core/match/broker-identity.ts';
+import { dealKindFrom } from '../../../src/research-core/match/participants.ts';
 import { assessCoverage, decideSweep } from '../../../src/research-core/discovery/coverage.ts';
 import {
   ageCeilingMs,
@@ -898,6 +901,43 @@ async function persist(
     .eq('external_id', externalId)
     .maybeSingle();
 
+  /*
+   * WHO IS OFFERING, read off the listing before it is stored.
+   *
+   * Deterministic and explainable -- a keyword decision with the deciding word
+   * recorded -- and it costs nothing, because the text is already in hand. Null for
+   * most listings, which is the honest answer and leaves PARTICIPANTS honestly
+   * UNKNOWN rather than falsely agreed.
+   */
+  const attribution = attributionFrom({
+    title: listing.title,
+    description: listing.description,
+    canonicalUrl: portalListing.url,
+  });
+
+  /*
+   * A BROKER RECORD IS ONLY CREATED FOR A BROKER, and only when the listing carried
+   * something stable enough to identify a firm by. An owner's mobile number is not
+   * an identity to be stored -- see broker-attribution.ts, which does not even
+   * collect it.
+   */
+  const brokerId = isBrokerRole(attribution.role) && attribution.identity
+    ? await upsertBrokerIntelligence(db, {
+      attribution,
+      role: attribution.role,
+      sourceId: source.id,
+      adapterId: portalListing.portalId,
+      countryCode: listing.country ?? countryCode,
+      city: listing.city,
+      language: detected?.reliable ? detected.language : null,
+      dealKind: dealKindFrom({
+        transaction: listing.rent ? 'RENT' : 'SALE',
+        propertyType: listing.propertyType,
+      }),
+      now,
+    })
+    : null;
+
   const shared = {
     source_id: source.id,
     adapter_id: portalListing.portalId,
@@ -927,6 +967,9 @@ async function persist(
     detected_language: detected?.reliable ? detected.language : null,
     published_at: listing.publishedAt,
     source_status: listing.status,
+    /* Two different facts, and source_status is neither of them. */
+    supply_role: attribution.role,
+    broker_id: brokerId,
     content_fingerprint: fingerprint,
     field_origins: listing.fieldOrigins ?? {},
     structured_quality: Number(structuredQuality(listing).toFixed(3)),
@@ -950,6 +993,16 @@ async function persist(
       expires_at: new Date(Date.parse(now) + DEFAULT_WINDOW_DAYS * 86_400_000).toISOString(),
     }).select('id').single();
     if (error) return null;
+    if (brokerId) {
+      await recordBrokerLineage(db, brokerId, {
+        sourceId: source.id,
+        adapterId: portalListing.portalId,
+        observationId: data.id,
+        canonicalUrl: portalListing.url,
+        keys: attribution.keys,
+        now,
+      });
+    }
     return { id: data.id, isNew: true };
   }
 
@@ -965,7 +1018,209 @@ async function persist(
     ...(changed ? { content_changed_at: now } : {}),
   }).eq('id', existing.id);
   if (error) return null;
+  if (brokerId) {
+    await recordBrokerLineage(db, brokerId, {
+      sourceId: source.id,
+      adapterId: portalListing.portalId,
+      observationId: existing.id,
+      canonicalUrl: portalListing.url,
+      keys: attribution.keys,
+      now,
+    });
+  }
   return { id: existing.id, isNew: false };
+}
+
+/* ------------------------------------------------------------------ *
+ * Broker intelligence                                                *
+ * ------------------------------------------------------------------ */
+
+/**
+ * Find or create the broker record this sighting belongs to, and return its id.
+ *
+ * DEDUP READS EVERY KEY, NOT JUST THE STRONGEST ONE. A firm first seen with a
+ * domain and seen again three weeks later on a different portal with only a phone
+ * number is one firm, and looking up solely by the strongest key of the new
+ * sighting would create a second record. So the lineage table -- which holds every
+ * key of every past sighting -- is searched first, and only if nothing matches is a
+ * new identity minted from the strongest key available.
+ *
+ * NOTHING HERE CAN PRODUCE A DIRECTORY LISTING. There is no column to set: a paid
+ * registration lives in a different table whose owner_user_id this function does
+ * not have and cannot obtain.
+ */
+async function upsertBrokerIntelligence(db: any, input: {
+  attribution: ReturnType<typeof attributionFrom>;
+  role: 'AGENCY' | 'BROKER';
+  sourceId: string;
+  adapterId: string;
+  countryCode: string;
+  city: string | null | undefined;
+  language: string | null;
+  dealKind: string | null;
+  now: string;
+}): Promise<string | null> {
+  const keys = input.attribution.keys;
+  if (!keys.length) return null;
+
+  /* 1. Has any key of this sighting been seen before, on any source? */
+  const orFilter = keys
+    .map((key) => `and(key_kind.eq.${key.kind},natural_key.eq.${key.value})`)
+    .join(',');
+  const { data: known } = await db
+    .from('broker_intelligence_sources')
+    .select('broker_id')
+    .or(orFilter)
+    .limit(1);
+  let brokerId: string | null = known?.[0]?.broker_id ?? null;
+
+  /* 2. Or does a record already carry the strongest key as its own identity? */
+  if (!brokerId) {
+    const strongest = keys[0];
+    const { data: existing } = await db
+      .from('broker_intelligence')
+      .select('id')
+      .eq('key_kind', strongest.kind)
+      .eq('natural_key', strongest.value)
+      .maybeSingle();
+    brokerId = existing?.id ?? null;
+
+    if (!brokerId) {
+      const { data: created, error } = await db.from('broker_intelligence').insert({
+        key_kind: strongest.kind,
+        natural_key: strongest.value,
+        role: input.role,
+        display_name: input.attribution.evidence.displayName ?? null,
+        country_code: input.countryCode,
+        cities: input.city ? [input.city] : [],
+        languages: input.language ? [input.language] : [],
+        deal_kinds: input.dealKind ? [input.dealKind] : [],
+        first_seen_at: input.now,
+        last_seen_at: input.now,
+        /*
+         * A FIRST SIGHTING IS NOT A VERIFICATION, the same rule the observations
+         * follow. We have read a name and a number off one page; we have not
+         * confirmed the firm exists, so last_verified_at stays null and the state
+         * stays UNVERIFIED.
+         */
+        last_verified_at: null,
+        validation_state: 'UNVERIFIED',
+      }).select('id').single();
+      /*
+       * A race on the unique index is not a failure: another worker created the same
+       * firm a millisecond earlier, which is the dedup working. Read it back.
+       */
+      if (error) {
+        const { data: raced } = await db
+          .from('broker_intelligence')
+          .select('id')
+          .eq('key_kind', strongest.kind)
+          .eq('natural_key', strongest.value)
+          .maybeSingle();
+        brokerId = raced?.id ?? null;
+      } else {
+        brokerId = created.id;
+      }
+      if (!brokerId) return null;
+      await refreshBrokerCoverage(db, brokerId, input);
+      return brokerId;
+    }
+  }
+
+  await refreshBrokerCoverage(db, brokerId, input);
+  return brokerId;
+}
+
+/**
+ * Move the freshness clock and widen the coverage arrays.
+ *
+ * last_seen_at moves on every sighting because that is what it means. Cities,
+ * languages and deal kinds are unioned rather than replaced: an agency that works
+ * in Vake and Batumi in Georgian and Russian is all four of those things, and the
+ * most recent listing is not the whole firm. Nothing here touches
+ * last_verified_at -- seeing a name again is not confirming it.
+ */
+async function refreshBrokerCoverage(db: any, brokerId: string, input: {
+  city: string | null | undefined;
+  language: string | null;
+  dealKind: string | null;
+  now: string;
+}) {
+  const { data: current } = await db
+    .from('broker_intelligence')
+    .select('cities,languages,deal_kinds')
+    .eq('id', brokerId)
+    .maybeSingle();
+  if (!current) return;
+
+  const union = (existing: string[] | null, addition: string | null | undefined) => {
+    const list = Array.isArray(existing) ? [...existing] : [];
+    const value = addition ? String(addition) : '';
+    if (value && !list.includes(value)) list.push(value);
+    return list;
+  };
+
+  await db.from('broker_intelligence').update({
+    last_seen_at: input.now,
+    cities: union(current.cities, input.city),
+    languages: union(current.languages, input.language),
+    deal_kinds: union(current.deal_kinds, input.dealKind),
+    updated_at: input.now,
+  }).eq('id', brokerId);
+}
+
+/**
+ * Record WHERE this broker was seen, one row per key per source.
+ *
+ * This is the provenance the product has to be able to show a customer: not "we
+ * know about this agency" but "we read this agency's phone number off this listing
+ * on this portal on this date". It is also what makes source_count derivable
+ * instead of merely asserted, and what lets a later phone-only sighting find a
+ * record that was created from a domain.
+ */
+async function recordBrokerLineage(db: any, brokerId: string, input: {
+  sourceId: string;
+  adapterId: string;
+  observationId: string;
+  canonicalUrl: string;
+  keys: Array<{ kind: string; value: string }>;
+  now: string;
+}) {
+  for (const key of input.keys) {
+    /* Upsert on the declared identity, so a re-read moves last_seen_at and does
+       not accumulate a row per crawl. */
+    await db.from('broker_intelligence_sources').upsert({
+      broker_id: brokerId,
+      source_id: input.sourceId,
+      adapter_id: input.adapterId,
+      observation_id: input.observationId,
+      canonical_url: input.canonicalUrl,
+      key_kind: key.kind,
+      natural_key: key.value,
+      last_seen_at: input.now,
+    }, { onConflict: 'broker_id,source_id,key_kind,natural_key' });
+  }
+
+  /*
+   * COUNTS ARE COUNTED, not incremented. An incremented counter drifts the first
+   * time a write is retried, and these two numbers are shown to customers as "seen
+   * on N sources" -- a number that has to be true.
+   */
+  const { count: observations } = await db
+    .from('supply_observations')
+    .select('id', { count: 'exact', head: true })
+    .eq('broker_id', brokerId);
+  const { data: lineage } = await db
+    .from('broker_intelligence_sources')
+    .select('source_id')
+    .eq('broker_id', brokerId);
+  const sources = new Set((lineage ?? []).map((row: any) => row.source_id)).size;
+
+  await db.from('broker_intelligence').update({
+    observation_count: observations ?? 0,
+    source_count: sources,
+    updated_at: input.now,
+  }).eq('id', brokerId);
 }
 
 async function recordSourceFailure(db: any, sourceId: string, reason: string) {

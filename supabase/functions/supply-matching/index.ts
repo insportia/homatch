@@ -50,6 +50,7 @@ import {
   type SupplySide,
 } from '../../../src/research-core/match/compatibility.ts';
 import { supplyRoleFrom } from '../../../src/research-core/match/participants.ts';
+import { attributionFrom } from '../../../src/research-core/match/broker-attribution.ts';
 import { placeNamesFor } from '../../../src/research-core/normalize/place.ts';
 import { judgeDelivery } from '../../../src/research-core/discovery/revalidation.ts';
 import {
@@ -253,7 +254,8 @@ Deno.serve(async (req: Request) => {
         .select('id,city,district,transaction,property_type,sale_amount,sale_currency,'
           + 'rent_amount,rent_currency,area_sqm,rooms,bedrooms,published_at,'
           + 'first_seen_at,last_seen_at,last_verified_at,content_changed_at,expires_at,'
-          + 'content_fingerprint,validation_state,failed_checks,adapter_id,source_status')
+          + 'content_fingerprint,validation_state,failed_checks,adapter_id,source_status,'
+          + 'supply_role,broker_id,title,description')
         .or(cityFilter)
         .limit(MAX_CANDIDATES);
 
@@ -306,11 +308,32 @@ Deno.serve(async (req: Request) => {
           }
         }
 
+        /*
+         * THE ROLE COMES FROM THE ROLE COLUMN.
+         *
+         * It used to come from `source_status`, which holds AVAILABLE or null and has
+         * never held a role -- so supplyRoleFrom returned null for every row, every one
+         * of the 25 persisted matches carried supply_role null, and PARTICIPANTS was
+         * UNKNOWN on all of them. BROKER and AGENCY were declared participants that had
+         * never once participated.
+         *
+         * `supply_role` is written by discovery from the listing text. It is still null
+         * far more often than not -- most listings do not say who is offering, and
+         * UNKNOWN remains the honest answer for those -- but now it is null because the
+         * listing was silent, not because the matcher was reading the wrong column.
+         *
+         * The fall back to the text is for rows discovered before that column existed:
+         * re-reading their stored title and description costs no network and no credit,
+         * and the alternative is a year of history permanently roleless.
+         */
+        const storedRole = supplyRoleFrom((supplyRow.supply_role as string | null) ?? null);
+        const role = storedRole ?? attributionFrom({
+          title: (supplyRow.title as string | null) ?? null,
+          description: (supplyRow.description as string | null) ?? null,
+        }).role;
+
         const supply: SupplySide = {
-          /* The adapter tells us what KIND of source this is; a portal listing carries
-             no role of its own, so this is null far more often than not and the
-             PARTICIPANTS dimension is honestly UNKNOWN for it. */
-          role: supplyRoleFrom((supplyRow.source_status as string | null) ?? null),
+          role,
           transaction: (supplyRow.transaction as string | null) ?? null,
           city: (supplyRow.city as string | null) ?? null,
           district: (supplyRow.district as string | null) ?? null,

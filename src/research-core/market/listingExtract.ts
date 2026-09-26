@@ -231,7 +231,13 @@ export function fromPageText(
 export function sellerTypeFrom(body: string): SellerType {
   const s = body.toLowerCase();
   if (/დეველოპერ|developer|застройщик|from the builder/.test(s)) return 'DEVELOPER';
-  if (/სააგენტო|agency|broker|რიელტორ|агентств|риелтор/.test(s)) return 'BROKER';
+  /*
+   * BOTH RUSSIAN SPELLINGS, and the English word. `риелтор` was here and `риэлтор`
+   * was not, though the second is at least as common in listing copy, and `realtor`
+   * was missing entirely while `agency` and `broker` were present — so an
+   * English-language agency listing that called itself a realtor came back UNKNOWN.
+   */
+  if (/სააგენტო|agency|broker|realtor|რიელტორ|агентств|риелтор|риэлтор/.test(s)) return 'BROKER';
   if (/მესაკუთრ|owner|собственник|частное лицо/.test(s)) return 'OWNER';
   return 'UNKNOWN';
 }

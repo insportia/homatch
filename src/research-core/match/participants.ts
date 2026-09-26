@@ -30,6 +30,8 @@
 // them apart is what stops "they are both rentals" from being mistaken for a
 // reason to show somebody a flat.
 
+import { foldCase } from '../normalize/script-case.ts';
+
 /** Who is offering. */
 export type SupplyRole =
   /** A private owner selling their own property. */
@@ -131,11 +133,24 @@ export interface RelationshipResult {
 
 /** Normalise whatever a row calls a supply role. Null when it says nothing. */
 export function supplyRoleFrom(value: string | null | undefined): SupplyRole | null {
-  const text = String(value ?? '').trim().toUpperCase();
+  /*
+   * foldCase, NOT toUpperCase. Uppercasing Georgian converts Mkhedruli to Mtavruli,
+   * so every Georgian branch below was unreachable from the day this was written --
+   * `სააგენტ`, `შუამავ`, `მესაკუთრ` and the rest could not match a string that had
+   * just been uppercased. See normalize/script-case.ts.
+   */
+  const text = foldCase(value);
   if (!text) return null;
   if (/DEVELOP|ZASTROY|ЗАСТРОЙ|ДЕВЕЛОП|მშენებ/.test(text)) return 'DEVELOPER';
-  if (/AGENC|AGENT|АГЕНТ|სააგენტ/.test(text)) return 'AGENCY';
-  if (/BROKER|БРОКЕР|შუამავ/.test(text)) return 'BROKER';
+  /*
+   * REALTOR BELONGS HERE. listingExtract.sellerTypeFrom has classified `რიელტორ`
+   * and `риелтор` as a BROKER seller type since it was written, and this function
+   * did not know either word — so a realtor-worded row produced a seller type and
+   * no role, and the role is the half the matcher reads. Both spellings of the
+   * Russian are real and both appear.
+   */
+  if (/AGENC|AGENT|АГЕНТ|РИЕЛТОР|РИЭЛТОР|REALTOR|სააგენტ|რიელტორ/.test(text)) return 'AGENCY';
+  if (/BROKER|БРОКЕР|ПОСРЕДНИК|შუამავ/.test(text)) return 'BROKER';
   if (/LANDLORD|LESSOR|АРЕНДОДАТ|მეპატრონ/.test(text)) return 'LANDLORD';
   if (/SELLER|OWNER|VENDOR|ПРОДАВ|СОБСТВЕН|მესაკუთრ/.test(text)) return 'SELLER';
   return null;
@@ -152,8 +167,9 @@ export function demandRoleFrom(input: {
   intentType?: string | null;
   transactionType?: string | null;
 }): DemandRole | null {
-  const intent = String(input.intentType ?? '').trim().toUpperCase();
-  const transaction = String(input.transactionType ?? '').trim().toUpperCase();
+  /* foldCase: `ქირ` and `ყიდ` below never survived toUpperCase. See script-case.ts. */
+  const intent = foldCase(input.intentType);
+  const transaction = foldCase(input.transactionType);
   const both = `${intent} ${transaction}`;
 
   /* INVEST first: it is more specific than the SALE it implies. */
@@ -169,8 +185,10 @@ export function dealKindFrom(input: {
   transaction?: string | null;
   propertyType?: string | null;
 }): DealKind | null {
-  const transaction = String(input.transaction ?? '').trim().toUpperCase();
-  const type = String(input.propertyType ?? '').trim().toUpperCase();
+  /* foldCase: `ქირავდ`, `იყიდ` and `მიწ` below never survived toUpperCase, which in a
+     Georgian market meant the most common verb on a listing was unreadable. */
+  const transaction = foldCase(input.transaction);
+  const type = foldCase(input.propertyType);
 
   /*
    * PROPERTY TYPE FIRST, for the same reason listing-age-policy.ts reads it first:

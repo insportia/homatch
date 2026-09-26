@@ -207,3 +207,47 @@ test('every deal kind and every supply role is reachable by somebody', () => {
     assert.ok(reachableRoles.has(role), `${role} can serve nobody`);
   }
 });
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Georgian, which none of these functions could read
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/*
+ * THE BUG THESE COVER WAS GREEN FOR AS LONG AS THIS FILE HAS EXISTED.
+ *
+ * All three functions normalised with `.trim().toUpperCase()` and then matched
+ * Georgian patterns. Uppercasing Georgian converts Mkhedruli (the alphabet
+ * everything is written in) to Mtavruli (the all-caps display forms added in
+ * Unicode 11), so `'ქირავდება'.toUpperCase()` is `'ᲥᲘᲠᲐᲕᲓᲔᲑᲐ'` and /ქირავდ/ could
+ * never match it. Every Georgian branch in supplyRoleFrom, demandRoleFrom and
+ * dealKindFrom was unreachable — in a Georgian market, where `ქირავდება` is the
+ * most common word on a rental listing.
+ *
+ * The existing tests all passed because they were written in English and Russian,
+ * the two scripts where uppercasing is harmless.
+ */
+
+test('Georgian supply roles are readable at all', () => {
+  assert.equal(supplyRoleFrom('სააგენტო'), 'AGENCY');
+  assert.equal(supplyRoleFrom('რიელტორი'), 'AGENCY');
+  assert.equal(supplyRoleFrom('შუამავალი'), 'BROKER');
+  assert.equal(supplyRoleFrom('მესაკუთრე'), 'SELLER');
+  assert.equal(supplyRoleFrom('მშენებელი კომპანია'), 'DEVELOPER');
+});
+
+test('Georgian transactions are readable at all', () => {
+  assert.equal(dealKindFrom({ transaction: 'ქირავდება' }), 'RENT');
+  assert.equal(dealKindFrom({ transaction: 'იყიდება' }), 'SALE');
+  assert.equal(dealKindFrom({ transaction: 'იყიდება', propertyType: 'მიწა' }), 'LAND');
+  assert.equal(demandRoleFrom({ transactionType: 'ქირავდება' }), 'TENANT');
+  assert.equal(demandRoleFrom({ transactionType: 'იყიდება' }), 'BUYER');
+});
+
+test('and the all-caps Georgian forms read the same as the ordinary ones', () => {
+  /*
+   * A portal that sets its headings in Mtavruli, or any caller that uppercased
+   * before handing the value over, must not get a different answer.
+   */
+  assert.equal(supplyRoleFrom('ᲡᲐᲐᲒᲔᲜᲢᲝ'), supplyRoleFrom('სააგენტო'));
+  assert.equal(dealKindFrom({ transaction: 'ᲥᲘᲠᲐᲕᲓᲔᲑᲐ' }), 'RENT');
+});

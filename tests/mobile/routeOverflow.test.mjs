@@ -74,6 +74,16 @@ const ROUTES = [
   { path: '/outreach/calls', name: 'AI call center', auth: true },
   { path: '/property/add', name: 'add property', auth: true },
   /*
+   * ADMIN SOCIAL DISCOVERY, the one admin screen in this matrix.
+   *
+   * Admin design is protected and is not being redesigned -- but the community
+   * intelligence panel is NEW markup added to it, and new markup is exactly what
+   * has not been measured at 320px. It puts a five-tile total row, two scrolling
+   * button rails and a thirty-bar chart on one card, which is the densest shape on
+   * any admin screen and the one most likely to widen the page.
+   */
+  { path: '/admin/social-discovery', name: 'admin social discovery', auth: true, admin: true },
+  /*
    * THE SCREEN THE PRODUCT IS SOLD ON, and it was not in this matrix.
    *
    * /property/:id/matches is where a customer meets the locked preview, the
@@ -293,7 +303,13 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
           auth_id: fakeSession().user.id,
           email: 'harness@example.test',
           full_name: 'Harness Customer',
-          is_admin: false,
+          /*
+           * PER ROUTE, not a constant. Admin screens are gated on this, so a
+           * hardcoded false meant an adminOnly route could only ever render its
+           * redirect -- the same class of false coverage that once had every
+           * auth: true route measuring a "could not load your profile" card.
+           */
+          is_admin: route.admin === true,
           role: 'SELLER',
           created_at: new Date().toISOString(),
         };
@@ -307,6 +323,119 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
        * workspace. Every other dev_* table falls through to the empty array
        * below, so the screens render their real empty states.
        */
+      /*
+       * ADMIN SOCIAL DISCOVERY needs two answers or it renders skeletons forever,
+       * and a skeleton has no layout to measure.
+       *
+       * The connection cards come from social-connections?action=status. The shape
+       * below is the honest one this product insists on: CONNECTED but NOT readable,
+       * because an authorized Facebook account can see its groups and Meta has
+       * exposed no supported way to read them since 2024-04-22. That renders the
+       * longest label on the screen -- "MEMBER · API ACCESS UNAVAILABLE" -- which is
+       * exactly the string most likely to overflow at 320px and to mirror badly in
+       * Arabic and Hebrew.
+       */
+      if (url.includes('/functions/v1/social-connections')) {
+        /*
+         * SHAPED FROM SocialConnectionCard IN src/services/social.ts, not from
+         * memory. My first attempt invented the shape and the page died on
+         * `Cannot read properties of undefined (reading 'toLowerCase')` -- it reads
+         * card.status, and my fixture had no status. A fixture that guesses is a
+         * fixture that tests the guess.
+         *
+         * META is CONNECTED and NOT readable on purpose: an authorized Facebook
+         * account can see its groups and Meta has exposed no supported way to read
+         * them since 2024-04-22. That renders the longest label on the screen and
+         * the one most likely to overflow at 320px or mirror badly in RTL.
+         */
+        const card = (over) => ({
+          provider: 'META',
+          platform: 'FACEBOOK',
+          connectMechanism: 'OAUTH',
+          status: 'CONNECTED',
+          statusDetail: 'authorized, and the groups API was removed on 2024-04-22',
+          missingAppCredentials: [],
+          account: { id: 'acct-1', name: 'Homatch Research' },
+          connectionId: 'conn-1',
+          connectedAt: new Date().toISOString(),
+          lastValidatedAt: new Date().toISOString(),
+          lastSuccessAt: null,
+          lastErrorAt: null,
+          lastErrorCode: null,
+          tokenExpiresAt: null,
+          grantedScopes: ['pages_show_list'],
+          surfaces: [
+            {
+              surface: 'COMMUNITY_POSTS', best: 'UNAVAILABLE',
+              modes: [{ mode: 'OFFICIAL_API', availability: 'UNAVAILABLE' }], requires: [],
+            },
+            {
+              surface: 'PAGE_POSTS', best: 'RESTRICTED',
+              modes: [{ mode: 'BUSINESS_API', availability: 'RESTRICTED' }],
+              requires: ['App Review'],
+            },
+          ],
+          targets: { total: 3, readable: 0, memberButUnreadable: 2, joinRequired: 1, enabled: 3 },
+          volume: { itemsRead: 0, commentsRead: 0, demandFound: 0, supplyFound: 0 },
+          ...over,
+        });
+        return r.fulfill(json({
+          cards: [
+            card({}),
+            card({
+              provider: 'TELEGRAM', platform: 'TELEGRAM', connectMechanism: 'CREDENTIALS',
+              status: 'NOT_CONNECTED',
+              statusDetail: 'the public preview needs no account',
+              missingAppCredentials: ['TELEGRAM_BOT_TOKEN'],
+              account: null, connectionId: null, connectedAt: null, lastValidatedAt: null,
+              lastSuccessAt: new Date().toISOString(),
+              grantedScopes: [],
+              surfaces: [{
+                surface: 'COMMUNITY_POSTS', best: 'AVAILABLE',
+                modes: [{ mode: 'PUBLIC_WEB', availability: 'AVAILABLE' }], requires: [],
+              }],
+              targets: { total: 3, readable: 1, memberButUnreadable: 0, joinRequired: 0, enabled: 3 },
+              volume: { itemsRead: 7, commentsRead: 0, demandFound: 1, supplyFound: 3 },
+            }),
+          ],
+          diagnostics: { note: 'harness fixture, shaped from SocialConnectionCard' },
+        }));
+      }
+      /*
+       * The intelligence panel. A DENSE series on purpose: 30 daily buckets is what
+       * LAST_30D produces, and the bar row has to scroll inside itself rather than
+       * widening the page. The totals carry the real production shape -- 7 items, 3
+       * supply, 1 demand, 3 unclassified -- so the tiles hold plausible widths.
+       */
+      if (url.includes('/functions/v1/community-intelligence')) {
+        const start = Date.parse('2026-08-28T00:00:00.000Z');
+        const series = Array.from({ length: 30 }, (_, i) => ({
+          bucketStart: new Date(start + i * 86400000).toISOString(),
+          evidence: i === 29 ? 7 : 0,
+          demand: i === 29 ? 1 : 0,
+          supply: i === 29 ? 3 : 0,
+          reference: 0,
+          unknown: i === 29 ? 3 : 0,
+          unavailable: 0,
+          fromQuery: i === 29,
+        }));
+        return r.fulfill(json({
+          success: true,
+          window: 'LAST_30D',
+          bounds: {
+            from: new Date(start).toISOString(),
+            to: new Date(start + 29 * 86400000).toISOString(),
+            column: 'discovered_at',
+          },
+          bucket: 'DAY',
+          buckets: series.length,
+          bucketsWithEvidence: 1,
+          filters: { platform: null, direction: null, language: null },
+          totals: { evidence: 7, demand: 1, supply: 3, reference: 0, unknown: 3, unavailable: 0 },
+          series,
+          elapsedMs: 12,
+        }));
+      }
       if (url.includes('/rest/v1/dev_members')) {
         return r.fulfill(json([{ workspace_id: DEV_WORKSPACE.id, role: 'OWNER' }]));
       }
@@ -452,6 +581,42 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
             && dl.querySelectorAll('dd').length === 2
             && [...dl.querySelectorAll('dd')].every((dd) => /^\d+$/.test(dd.textContent.trim())),
         ),
+        /*
+         * The community intelligence panel: a five-tile total row of plain integers.
+         * Found by that structure rather than by a translated heading, for the same
+         * reason as above -- the copy differs in all six languages and the point is
+         * to check it in all six.
+         *
+         * Without this, adding an adminOnly route to the matrix would prove only
+         * that SOMETHING rendered at 320px. An admin route can render its redirect,
+         * and a redirect has an excellent scrollWidth.
+         */
+        /*
+         * EXACT, not structural. A connection card above also renders a five-tile
+         * dl of integers, so "some dl with 5 dt" matched the wrong element and would
+         * have reported coverage this panel never had. data-testid is already the
+         * hook this repository uses in admin components, and it changes nothing
+         * visual -- the protected admin design is untouched.
+         */
+        intelPanel: (() => {
+          const dl = document.querySelector('[data-testid="intel-totals"]');
+          if (!dl) return false;
+          return dl.querySelectorAll('dt').length === 5
+            && [...dl.querySelectorAll('dd')].every((dd) => /^\d+$/.test(dd.textContent.trim()));
+        })(),
+        /* The bar row must scroll inside ITSELF: 30 daily buckets, or 720 hourly
+           ones, must never widen the page. */
+        intelChartScrolls: (() => {
+          const box = document.querySelector('[data-testid="intel-series"]');
+          if (!box) return false;
+          const style = getComputedStyle(box);
+          /* Only that it CAN scroll. Whether the series is currently wider than its
+             box is irrelevant -- that is what scrolling is for -- and what matters is
+             that the PAGE did not grow, which the document-level check asserts. */
+          return style.overflowX === 'auto' || style.overflowX === 'scroll';
+        })(),
+        intelBarCount: document
+          .querySelector('[data-testid="intel-series"]')?.querySelectorAll('div').length ?? 0,
       };
     };
 
@@ -482,12 +647,27 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
     (present ? panelSeen : panelMissing).push(label);
   };
 
+  /* The same discipline for the admin intelligence panel. An adminOnly route that
+     renders its redirect would pass every overflow check ever written. */
+  const ADMIN_SOCIAL = '/admin/social-discovery';
+  const intelSeen = [];
+  const intelMissing = [];
+  const intelUnscrollable = [];
+  let intelBars = 0;
+  const noteIntel = (route, label, sample) => {
+    if (route.path !== ADMIN_SOCIAL) return;
+    (sample.intelPanel ? intelSeen : intelMissing).push(label);
+    if (sample.intelPanel && !sample.intelChartScrolls) intelUnscrollable.push(label);
+    intelBars = Math.max(intelBars, sample.intelBarCount ?? 0);
+  };
+
   /* 1. EVERY route at the narrowest width, in Georgian — the combination
         most likely to break, and the one nobody opens by accident. */
   for (const route of ROUTES) {
     const r = await measure(route, 320, 'ka');
     checked.push(`${route.path}@320/ka`);
     notePanel(route, '320/ka', r.expandPanel);
+    noteIntel(route, '320/ka', r);
     if (!r.mounted) { failures.push(`${route.name} (${route.path}) @320 ka: rendered nothing`); continue; }
     if (!r.settled) { failures.push(`${route.name} (${route.path}) @320 ka: layout never settled`); continue; }
     if (r.scrollWidth > r.clientWidth + 1 || r.offenders.length) {
@@ -510,12 +690,21 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
        * and 430 went unchecked on the screen a seller spends the most time on.
        */
       '/property/11111111-1111-4111-8111-111111111111/matches',
+      /*
+       * ADMIN SOCIAL DISCOVERY joins the spread for the same reason the matches
+       * screen did: the community intelligence panel is the newest layout in the
+       * product and the densest on any admin screen -- a five-tile total row, two
+       * scrolling button rails and a thirty-bar chart on one card. 320/ka alone
+       * proved it survives the narrowest width; 360, 390 and 430 were unchecked.
+       */
+      '/admin/social-discovery',
     ].includes(r.path));
   for (const route of SPREAD) {
     for (const width of WIDTHS.filter((w) => w !== 320)) {
       const r = await measure(route, width, 'en');
       checked.push(`${route.path}@${width}/en`);
       notePanel(route, `${width}/en`, r.expandPanel);
+      noteIntel(route, `${width}/en`, r);
       if (!r.settled) { failures.push(`${route.name} (${route.path}) @${width} en: layout never settled`); continue; }
       if (r.scrollWidth > r.clientWidth + 1 || r.offenders.length) {
         failures.push(`${route.name} (${route.path}) @${width} en: scrollWidth=${r.scrollWidth}\n    ${r.offenders.join('\n    ')}`);
@@ -536,6 +725,7 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
       const r = await measure(route, 390, locale);
       checked.push(`${route.path}@390/${locale}`);
       notePanel(route, `390/${locale}`, r.expandPanel);
+      noteIntel(route, `390/${locale}`, r);
       if (!r.settled) {
         failures.push(`${route.name} (${route.path}) @390 ${locale}: layout never settled`);
         continue;
@@ -569,5 +759,30 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
   );
   assert.ok(panelSeen.length >= 6,
     `Expand Search was only measured in ${panelSeen.length} combination(s): ${panelSeen.join(', ')}`);
+
+  /*
+   * THE ADMIN PANEL, held to the same standard. An adminOnly route that rendered
+   * its redirect would satisfy every overflow check in this file, so the panel's
+   * presence is asserted rather than hoped for.
+   */
+  assert.deepEqual(
+    intelMissing, [],
+    'the admin social screen rendered WITHOUT the community intelligence panel, so '
+    + `these combinations proved nothing about it: ${intelMissing.join(', ')}`,
+  );
+  assert.ok(intelSeen.length >= 1,
+    'the community intelligence panel was never measured at all; the admin route is '
+    + 'in the matrix but is not rendering');
+  assert.deepEqual(
+    intelUnscrollable, [],
+    'the intelligence bar row rendered without its own horizontal scroll container, '
+    + `so 30 daily or 720 hourly buckets would widen the page: ${intelUnscrollable.join(', ')}`,
+  );
+  /* And the series was really drawn. An empty scroll box scrolls perfectly. */
+  assert.ok(
+    intelBars >= 20,
+    `the intelligence panel rendered only ${intelBars} bar(s); the fixture supplies 30 `
+    + 'daily buckets, so an empty series means the chart is not being drawn at all',
+  );
   assert.deepEqual(failures, [], `horizontal overflow on real phone viewports:\n${failures.join('\n')}`);
 });

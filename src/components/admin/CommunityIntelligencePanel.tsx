@@ -189,7 +189,13 @@ export function CommunityIntelligencePanel(): React.ReactElement {
 
         {data && (
           <>
-            <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+            {/* The hook the mobile matrix identifies this panel by. A connection card
+                above also renders a five-tile dl, so structure alone is ambiguous and a
+                probe that matched the wrong one would report coverage it never had. */}
+            <dl
+              data-testid="intel-totals"
+              className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"
+            >
               {([
                 ['intel_total_evidence', data.totals.evidence, ''],
                 ['intel_total_demand', data.totals.demand, 'text-sky-600'],
@@ -211,7 +217,7 @@ export function CommunityIntelligencePanel(): React.ReactElement {
               * Scrolls inside itself: thirty days by hour is 720 bars, and the page
               * body must never scroll horizontally at 320px.
               */}
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto" data-testid="intel-series">
               <div className="flex h-40 min-w-full items-end gap-px">
                 {data.series.map((point) => {
                   const height = peak > 0 ? Math.round((point.evidence / peak) * 100) : 0;

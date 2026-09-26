@@ -671,6 +671,12 @@ jobs:
             # identity -- supply_matches has RLS on with zero policies precisely so
             # nothing reaches it without a function that checks who is asking.
             "find-property"
+            # FIND PROPERTY, THE PLANNER. In THIS list for the same reason
+            # find-property is: it writes an intent_profiles row and an
+            # active_search_subscriptions row belonging to ONE customer, so it
+            # needs a real user identity rather than a shared token that only
+            # establishes that the caller knows the token.
+            "find-property-plan"
           )
           # ONLY WHAT IS OWED, AND IN PARALLEL.
           #

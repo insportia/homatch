@@ -96,6 +96,14 @@ const ROUTES = [
    * truncates it into the first turns a disclaimer into a claim.
    */
   { path: '/brokers', name: 'brokers' },
+  /*
+   * FIND PROPERTY. auth, because confirming a plan writes a row that belongs to
+   * an account. Measured at every width because the plan editor is the densest
+   * form in the product on the narrowest screens -- a label, an input and a
+   * strength select per requirement -- and clipping a strength control is not a
+   * cosmetic failure: it is the difference between a preference and a demand.
+   */
+  { path: '/find-property', name: 'find property', auth: true },
   { path: '/dashboard', name: 'dashboard', auth: true },
   { path: '/ai', name: 'AI chat', auth: true },
   { path: '/credits', name: 'credits', auth: true },

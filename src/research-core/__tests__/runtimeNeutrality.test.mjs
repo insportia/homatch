@@ -385,6 +385,22 @@ test('the core is consumed only through its deliberate integration points', () =
      */
     'supabase/functions/find-property/index.ts',
     /*
+     * FIND PROPERTY, THE PLANNER -- and the seam here is the line between what a model
+     * is allowed to decide and what it is not.
+     *
+     * A language model reads the customer's prose. Its output then passes through
+     * normalisePlan(), which recognises every value out of a closed set or discards it
+     * and says so. That function is in the core rather than in this function for the
+     * ordinary reason -- it is tested, it is pure, and the browser needs the same
+     * vocabulary to render the plan editor -- and for one specific to it: it is the only
+     * thing standing between a model's JSON and a database filter. A second copy of it
+     * here would be a second place for a city name to turn into an expression.
+     *
+     * Note what this function does NOT consume: nothing that scores, ranks or compares.
+     * It writes an intent_profiles row and stops. supply-matching does the matching.
+     */
+    'supabase/functions/find-property-plan/index.ts',
+    /*
      * EVIDENCE FRESHNESS — the sixth seam, and the one that decides what a
      * customer is allowed to see.
      *

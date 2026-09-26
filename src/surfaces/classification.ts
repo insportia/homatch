@@ -228,6 +228,20 @@ export const SURFACES: readonly SurfaceRecord[] = [
       + 'a home page rewrite is the easiest way to break every entry point at once.',
   },
   {
+    path: '/find-property',
+    name: 'Find Property',
+    status: 'APPROVED_CURRENT_DESIGN',
+    customerCritical: true,
+    note: 'Built new. The audit found that the "I want to find a property" card on the '
+      + 'dashboard navigated to /ai with a prompt -- it handed the customer to the chat '
+      + 'assistant and hoped -- and that the find-property edge function, which returns '
+      + 'a customer their own results, was called by nothing at all. So there was no '
+      + 'legacy design to migrate and nothing was overwritten. Customer-critical '
+      + 'because the plan step is where REQUIRED, PREFERRED and FLEXIBLE are shown and '
+      + 'corrected: a width that clips a strength control turns "would prefer Vake" '
+      + 'into "must be Vake" and silently narrows somebody\'s search.',
+  },
+  {
     path: '/brokers',
     name: 'Brokers',
     status: 'APPROVED_CURRENT_DESIGN',

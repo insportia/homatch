@@ -89,14 +89,20 @@ export function DashboardIntentPaths() {
   const { lang, isRTL } = useLanguage();
   const copy = COPY[lang] ?? COPY.en;
 
-  const goFindProperty = () => navigate('/ai', {
-    state: {
-      mode: 'find-property',
-      prompt: lang === 'ka'
-        ? 'მინდა ვიპოვო უძრავი ქონება. დამეხმარე მოთხოვნების ჩამოყალიბებაში და შესაბამისი ვარიანტების მოძებნაში.'
-        : 'I want to find a property. Help me define my requirements and find relevant options.',
-    },
-  });
+  /*
+   * THIS USED TO HAND THE CUSTOMER TO THE CHAT AND HOPE.
+   *
+   * It navigated to /ai with a prompt saying "help me define my requirements", which
+   * put somebody who had just said what they wanted into a conversation that could not
+   * show them a search, could not record REQUIRED versus PREFERRED, and could not
+   * return a result -- find-property, the function that returns a customer their own
+   * matches, was called by nothing in the product at all.
+   *
+   * /find-property is that flow: describe, review the plan, then the deterministic
+   * matcher. The description still starts in the customer's own words; it is now read
+   * into something they can correct.
+   */
+  const goFindProperty = () => navigate('/find-property');
 
   return (
     <section className="w-full max-w-5xl mx-auto mb-6 md:mb-8" dir={isRTL ? 'rtl' : 'ltr'}>

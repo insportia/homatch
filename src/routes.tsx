@@ -57,6 +57,7 @@ const ExpatPlanPage = lazyRoute(() => import('./pages/ExpatPlanPage'));
  */
 const InvestmentPage = lazyRoute(() => import('./pages/InvestmentPage'));
 const BrokersPage = lazyRoute(() => import('./pages/BrokersPage'));
+const FindPropertyPage = lazyRoute(() => import('./pages/FindPropertyPage'));
 const VerificationCasePage = lazyRoute(() => import('./pages/VerificationCasePage'));
 const ContractsPage = lazyRoute(() => import('./pages/ContractsPage'));
 const ContractResultPage = lazyRoute(() => import('./pages/ContractResultPage'));
@@ -245,6 +246,14 @@ export const routes: RouteConfig[] = [
    * ACTIVE, currently-paid registrations and cannot reach a discovered firm.
    */
   { name: 'Brokers',           path: '/brokers',                  element: <BrokersPage />,       public: true },
+  /*
+   * FIND PROPERTY. Not public, and the reason is the row it writes rather than
+   * anything it shows: confirming a plan creates an intent_profiles row and an
+   * active_search_subscriptions row that belong to one account, and
+   * find-property's whole ownership boundary is that subscription. There is
+   * nothing to show a visitor who has no search.
+   */
+  { name: 'Find Property',     path: '/find-property',            element: <FindPropertyPage /> },
   /*
    * FOR EXPATS. Public, and more deliberately so than its neighbours: the
    * whole product proposition is that a foreigner who has never heard of

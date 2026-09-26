@@ -68,7 +68,13 @@ export function toMkhedruli(value: string): string {
  * uppercased as before — `а` → `А` is a real and lossless case mapping — so
  * existing uppercase patterns keep working unchanged, and Georgian patterns start
  * working for the first time.
+ *
+ * TAKES `unknown`, NOT `string`. The body was always total over any input -- it begins
+ * with `String(value ?? '')` -- and the narrower signature only meant that callers
+ * normalising genuinely untrusted values (a field off a model's JSON, a request body)
+ * had to cast first. A cast at the boundary of a function whose whole job is to make a
+ * value safe to match against is a cast in exactly the wrong place.
  */
-export function foldCase(value: string | null | undefined): string {
+export function foldCase(value: unknown): string {
   return toMkhedruli(String(value ?? '').trim().toUpperCase());
 }

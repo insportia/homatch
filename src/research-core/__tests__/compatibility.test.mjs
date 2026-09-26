@@ -26,6 +26,10 @@ import {
 
 /** A fully-stated enquiry: a Russian-speaking renter in Saburtalo. */
 const demand = (overrides = {}) => ({
+  /* A role, because a fully-stated enquiry states one. Without it PARTICIPANTS is
+     genuinely UNKNOWN and no pair can ever score 1 -- which is correct behaviour
+     and makes "fully stated" a lie in the fixture. */
+  role: 'TENANT',
   transactionType: 'RENT',
   city: 'Tbilisi',
   district: 'Saburtalo',
@@ -42,6 +46,7 @@ const demand = (overrides = {}) => ({
 
 /** A fully-stated listing: the two-room Saburtalo flat from production. */
 const supply = (overrides = {}) => ({
+  role: 'LANDLORD',
   transaction: 'RENT',
   city: 'Tbilisi',
   district: 'Saburtalo',
@@ -96,8 +101,24 @@ test('a renter is never shown a purchase', () => {
     saleAmount: 90000, saleCurrency: 'USD',
   }));
   assert.equal(result.compatibility, 'INCOMPATIBLE');
-  assert.deepEqual(result.conflicted, ['TRANSACTION']);
-  assert.match(result.rationale, /they want to rent and this is sale/);
+  /*
+   * TWO independent reasons now, and that is an improvement rather than noise. A
+   * TENANT and a SELLER in a SALE deal cannot transact AT ALL -- which is a fact
+   * about the participants -- and separately the transaction types clash. Either
+   * alone rejects the pair; reporting both is what lets a screen explain it as "this
+   * is for sale and you are looking to rent" rather than as a score.
+   */
+  assert.deepEqual(result.conflicted, ['PARTICIPANTS', 'TRANSACTION']);
+  /*
+   * The reason is the DEAL, not the roles, and that is the more precise of the two.
+   * A LANDLORD and a TENANT can transact perfectly well -- it is the SALE deal a
+   * tenant is not in the market for. I asserted /nothing to offer/ first and the
+   * test corrected me.
+   */
+  assert.match(
+    result.dimensions.find((d) => d.dimension === 'PARTICIPANTS').reason,
+    /a tenant is not looking for a sale deal/,
+  );
 });
 
 test('one conflict outranks every agreement, and the score is zero', () => {
@@ -181,6 +202,13 @@ test('an enquiry stating only a city and a transaction is INSUFFICIENT_INFORMATI
   // Not a match and not a contradiction. Two agreements out of seven dimensions is
   // a coincidence, and calling it a match would pair every Tbilisi enquiry with
   // every Tbilisi listing.
+  /*
+   * minAgreements 4, not 3. The enquiry states a transaction and a city, and the ROLE
+   * is derivable from the transaction -- so PARTICIPANTS agrees too and a sparse row
+   * now carries three known agreements rather than two. That is more information than
+   * before, not less, and the floor has to move with it or the test is asserting the
+   * old arithmetic instead of the rule.
+   */
   const result = assessMatch({
     transactionType: 'RENT',
     city: 'Tbilisi',
@@ -189,7 +217,7 @@ test('an enquiry stating only a city and a transaction is INSUFFICIENT_INFORMATI
     budgetMin: null, budgetMax: null, currency: null,
     areaMin: null, areaMax: null,
     bedroomsMin: null, bedroomsMax: null,
-  }, supply(), { minAgreements: 3 });
+  }, supply(), { minAgreements: 4 });
 
   assert.equal(result.compatibility, 'INSUFFICIENT_INFORMATION');
   assert.equal(result.score, 0, 'a score would imply a ranking it has not earned');
@@ -198,14 +226,20 @@ test('an enquiry stating only a city and a transaction is INSUFFICIENT_INFORMATI
 });
 
 test('the default floor is two agreements, and one is not enough', () => {
+  /*
+   * The supply side states NO role here, so PARTICIPANTS is genuinely UNKNOWN and the
+   * transaction is the only thing known to agree. That is the shape this test was
+   * always about: one agreement and a page of silence is a coincidence, not a match.
+   */
   const bare = {
     transactionType: 'RENT',
     city: null, district: null, propertyTypes: null,
     budgetMin: null, budgetMax: null, currency: null,
     areaMin: null, areaMax: null, bedroomsMin: null, bedroomsMax: null,
   };
-  const result = assessMatch(bare, supply());
+  const result = assessMatch(bare, supply({ role: null }));
   assert.equal(result.agreed.length, 1, 'guard: only the transaction is known to agree');
+  assert.ok(result.unknown.includes('PARTICIPANTS'), 'the listing named no role');
   assert.equal(result.compatibility, 'INSUFFICIENT_INFORMATION');
 });
 
@@ -339,9 +373,17 @@ test('every dimension is always reported, agreeing or not', () => {
   const result = assessMatch(demand(), supply());
   assert.deepEqual(
     result.dimensions.map((d) => d.dimension).sort(),
-    ['AREA', 'BEDROOMS', 'CITY', 'DISTRICT', 'PRICE', 'PROPERTY_TYPE', 'TRANSACTION'],
+    ['AREA', 'BEDROOMS', 'CITY', 'DISTRICT', 'PARTICIPANTS', 'PRICE', 'PROPERTY_TYPE',
+      'TRANSACTION'],
+    'PARTICIPANTS joined the roster: who the parties are is a dimension, and a '
+    + 'landlord/buyer pair must be rejected before any price is compared',
   );
   for (const dimension of result.dimensions) {
     assert.ok(dimension.reason.length > 0, `${dimension.dimension} has no reason`);
+    assert.ok(
+      ['REQUIRED', 'PREFERRED', 'FLEXIBLE', 'UNKNOWN'].includes(dimension.strength),
+      `${dimension.dimension} reports no constraint strength, so a caller cannot tell `
+      + 'a hard conflict from a preference miss',
+    );
   }
 });

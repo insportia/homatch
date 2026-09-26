@@ -227,6 +227,9 @@ Deno.serve(async (req: Request) => {
     let rejectedPropertyType = 0;
     let rejectedDistrict = 0;
     let rejectedSelfSourced = 0;
+    /* Already matched on a previous run. Distinct from a rejection: the
+       person qualified, they are simply already in the customer's list. */
+    let alreadyMatched = 0;
     let insertErrors = 0;
     /* Refused for freshness, and what was done about it. Reported so a run
        that delivered nothing because everything was stale is legible. */
@@ -355,14 +358,34 @@ Deno.serve(async (req: Request) => {
         continue;
       }
 
+      /*
+       * ONE PERSON, ONE MATCH -- KEYED ON THE SIGNAL, NOT THE PROFILE.
+       *
+       * This tested intent_profile_id, and that id does not survive
+       * re-classification: classify-signals-v2 DELETES the profile for a
+       * signal and inserts a fresh row, so the same forum post comes back
+       * with a new profile id and the guard sees nothing.
+       *
+       * Measured in production on 2026-09-26. forum.ge post 14328580 -- one
+       * buyer, one post -- ended up with two matches on the same property:
+       * 920dcdea at score 84, already UNLOCKED for 35 credits, and ca13d573
+       * at score 78 offered for another 20. The customer was being invited to
+       * buy the same person twice, which is the one thing dedup exists to
+       * prevent.
+       *
+       * The signal is the person. A profile is this week's reading of what
+       * they said, and it is allowed to change; that a re-read scored 78 where
+       * the first scored 84 is a reason to look at the scorer, not a reason to
+       * sell the lead again.
+       */
       const { data: existing, error: existingError } = await db
         .from('matches')
         .select('id')
         .eq('property_id', property.id)
-        .eq('intent_profile_id', profile.id)
+        .eq('signal_id', profile.signal_id)
         .maybeSingle();
       if (existingError) throw existingError;
-      if (existing) { skipped++; continue; }
+      if (existing) { skipped++; alreadyMatched++; continue; }
 
       const scored = score(property, facts, profile);
       if (scored.score < 20) { skipped++; continue; }
@@ -491,6 +514,7 @@ Deno.serve(async (req: Request) => {
       rejectedPropertyType,
       rejectedDistrict,
       rejectedSelfSourced,
+      alreadyMatched,
       /*
        * Refused because the evidence was not fresh enough to deliver, and how
        * many re-checks that scheduled. A run that produced nothing because

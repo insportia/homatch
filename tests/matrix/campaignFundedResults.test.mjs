@@ -78,6 +78,39 @@ test('an included result is never shown a price or a padlock', () => {
     'the credit price is not conditional on the result being unpaid');
 });
 
+test('the same person is not matched twice to one property', () => {
+  /*
+   * THE DUPLICATE THIS PREVENTS, measured in production 2026-09-26.
+   *
+   * The guard keyed on intent_profile_id, and that id does not survive
+   * re-classification: classify-signals-v2 deletes a signal's profile and
+   * inserts a fresh row, so the same forum post returned with a new id and
+   * the guard matched nothing. forum.ge post 14328580 held two matches on one
+   * property -- one already UNLOCKED for 35 credits, one offered for another
+   * 20.
+   *
+   * The signal is the person. A profile is this week's reading of what they
+   * said and is allowed to change; a re-read scoring 78 where the first
+   * scored 84 is a reason to look at the scorer, not to sell the lead again.
+   */
+  const matcher = readFileSync('supabase/functions/run-matching-v2/index.ts', 'utf8');
+  const body = code(matcher);
+  assert.match(body, /\.eq\('signal_id', profile\.signal_id\)/,
+    'the duplicate guard does not key on the signal');
+  assert.equal(/\.eq\('intent_profile_id', profile\.id\)/.test(body), false,
+    'the guard still keys on the profile id, which changes on every re-classification');
+  /* Reported separately: already-matched is not a rejection. The person
+     qualified, they are simply already in the customer's list. */
+  assert.match(body, /alreadyMatched\+\+/);
+
+  /* And the database enforces it too, so a backfill cannot reintroduce it. */
+  const migration = readFileSync(
+    'supabase/migrations/20260926180000_one_match_per_signal.sql', 'utf8',
+  );
+  assert.match(migration, /create unique index[\s\S]*matches \(property_id, signal_id\)/);
+  assert.match(migration, /where signal_id is not null/);
+});
+
 test('historical unlock records and the charging path are left alone', () => {
   /*
    * Removing the sale is not the same as removing the history. A genuinely

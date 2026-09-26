@@ -94,6 +94,24 @@ Deno.serve(async (req: Request) => {
       .eq('lifecycle', 'DISCOVERED')
       .is('access_finding', null)
       .not('url', 'is', null)
+      /*
+       * NOT EVERY DISCOVERED ROW IS A WEBSITE.
+       *
+       * The 296 Reddit subreddits, the Facebook and Telegram group rows and
+       * nine "Google Search: GE/xx" query placeholders all live in
+       * source_registry with a url. The placeholders point at
+       * https://google.com, and the first production run of this function
+       * audited two of them.
+       *
+       * A source family is what separates a candidate site from a search
+       * strategy or a social surface that needs credentials, so the families
+       * this can characterise are named rather than excluded one pattern at a
+       * time.
+       */
+      .in('source_family', [
+        'PROPERTY_PORTAL', 'CLASSIFIEDS', 'AGENCY_SITE', 'DEVELOPER_SITE',
+        'INVESTMENT_SITE', 'REGIONAL_SITE', 'FORUM',
+      ])
       .order('created_at', { ascending: true })
       .limit(limit);
     if (error) throw error;
@@ -130,11 +148,37 @@ Deno.serve(async (req: Request) => {
        * nobody has written a policy for is reported as such rather than
        * reached anyway.
        */
+      /*
+       * "REFUSED BEFORE WE TRIED" IS NOT A FINDING ABOUT THE SITE.
+       *
+       * The runtime rejects a host with no SourcePolicy, which is the boundary
+       * that stops this being a general-purpose fetcher. A rejection therefore
+       * says something about OUR configuration, not about theirs.
+       *
+       * The first version counted it as a failed read and concluded
+       * UNREACHABLE. Run against production it reached two rows whose url is
+       * https://google.com -- search-query placeholders, not websites -- made
+       * zero network requests, and recorded both as AUDITED / UNREACHABLE.
+       * That is the same fetch-failed-versus-nothing-there confusion this
+       * codebase separates everywhere else, written by the thing that is
+       * supposed to be careful about it.
+       *
+       * So a refusal is counted separately and the caller declines to record
+       * anything at all.
+       */
+      let refusedByPolicy = 0;
+      let attempted = 0;
       const read = async (path: string): Promise<FetchedDocument | null> => {
+        attempted += 1;
         try {
           const page = await runtime.context.fetchDocument(new URL(path, origin).toString());
           return { url: page.url, status: page.status, body: page.body };
-        } catch {
+        } catch (error) {
+          const why = error instanceof Error ? error.message : String(error);
+          /* The allowlist's own refusal, as opposed to a timeout or a reset. */
+          if (/polic|allowlist|not allowed|forbidden host|unknown host/i.test(why)) {
+            refusedByPolicy += 1;
+          }
           return null;
         }
       };
@@ -157,6 +201,26 @@ Deno.serve(async (req: Request) => {
         .filter((u) => !/\.xml(\.gz)?$/i.test(u));
       const candidateDetail = pool.sort((a, b) => b.length - a.length)[0];
       const detail = candidateDetail ? await read(candidateDetail) : null;
+
+      /*
+       * Every read refused by the allowlist means we learned nothing about
+       * this host. Recording a finding here would be recording our own
+       * configuration gap as a fact about somebody's website, so the row is
+       * left exactly as it was -- still DISCOVERED, still unjudged -- and the
+       * response says why, which is actionable: somebody needs to write a
+       * SourcePolicy, or the row is not a website at all.
+       */
+      if (attempted > 0 && refusedByPolicy === attempted) {
+        results.push({
+          name: row.name,
+          access: 'POLICY_MISSING',
+          shape: 'UNKNOWN',
+          recorded: false,
+          detail: `the fetch policy allows no request to ${origin.host}; nothing was read and `
+            + 'nothing was recorded. Either this host needs a SourcePolicy or the row is not a site.',
+        });
+        continue;
+      }
 
       const finding: AuditFinding = auditSource({
         host: origin.host, robots, sitemap, childSitemap, detail,

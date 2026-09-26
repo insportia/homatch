@@ -13,6 +13,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   auditSource,
@@ -185,6 +186,31 @@ test('nothing is guessed when nothing was read', () => {
   assert.deepEqual(finding.jsonLdTypes, []);
   assert.equal(finding.shape, 'UNKNOWN');
   assert.match(finding.evidence, /no detail page read/);
+});
+
+test('the worker refuses to record a finding it did not learn', () => {
+  /*
+   * THE MISTAKE THE AUDITOR ITSELF MADE, on its first production run.
+   *
+   * createPortalRuntime rejects a host with no SourcePolicy -- that boundary is
+   * why this function is allowed to exist. The first version counted such a
+   * rejection as a failed read and concluded UNREACHABLE, so it reached two
+   * rows whose url is https://google.com (search-query placeholders, not
+   * websites), made ZERO network requests, and wrote AUDITED / UNREACHABLE to
+   * both. Our configuration gap, recorded as a fact about somebody's site.
+   *
+   * Asserted on the function rather than the pure module because the pure
+   * module is right: given no documents it already answers UNREACHABLE, and
+   * whether "no documents" means "nobody answered" or "we never asked" is
+   * knowledge only the caller has.
+   */
+  const worker = readFileSync('supabase/functions/source-audit/index.ts', 'utf8');
+  assert.match(worker, /refusedByPolicy/, 'a policy refusal is not distinguished from a dead host');
+  assert.match(worker, /if \(attempted > 0 && refusedByPolicy === attempted\)/);
+  assert.match(worker, /recorded: false/);
+  assert.match(worker, /POLICY_MISSING/);
+  /* And it only looks at rows that are plausibly websites. */
+  assert.match(worker, /\.in\('source_family', \[/);
 });
 
 test('the evidence sentence carries only what was measured', () => {

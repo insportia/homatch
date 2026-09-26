@@ -6,6 +6,10 @@ import {
   readChoice,
   resolveForRun,
 } from '../_shared/campaignLanguages.ts';
+import {
+  planExpansion,
+  type ExpansionPlan,
+} from '../../../src/research-core/discovery/search-expansion.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -174,7 +178,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: storedCampaign } = await db
       .from('matching_campaigns')
-      .select('search_language_mode, search_languages_selected, search_languages_resolved, search_languages_discovered')
+      .select('status_v2, search_language_mode, search_languages_selected, search_languages_resolved, search_languages_discovered')
       .eq('id', campaignId)
       .maybeSingle();
 
@@ -185,7 +189,74 @@ Deno.serve(async (req: Request) => {
     });
     await persistCampaignLanguages(db, campaignId, languages);
 
-    const suppliedKey = String(body.idempotencyKey || crypto.randomUUID());
+    /* ---- expand search ----
+     *
+     * A campaign searching DEEPER rather than again. The first sweep recorded
+     * what it reached (discovery_headroom) and what it read (sources_read), and
+     * this turns those into an exclusion set so the customer buys only work that
+     * has not been done.
+     *
+     * The plan is refused rather than trimmed when there is nothing to sell. In
+     * particular a sweep that recorded no reach at all is NOT read as "you have
+     * seen everything" — see planExpansion, where those are two different
+     * refusals on purpose.
+     *
+     * NOTE ON IDEMPOTENCY. The expansion's key is derived from the campaign, the
+     * job being extended and the exact exclusion set, with no clock and no
+     * random component, and it is fed into the SAME idempotency path every search
+     * uses below. So two clicks find the earlier job and reserve nothing twice,
+     * while a second, genuinely different expansion changes the exclusion set and
+     * is correctly a new purchase.
+     */
+    let expansion: { plan: ExpansionPlan; fromJobId: string } | null = null;
+    if (body.expandFromJobId) {
+      const fromJobId = String(body.expandFromJobId);
+      const { data: previousJob } = await db
+        .from('matching_jobs')
+        .select('id,status,discovery_headroom,campaign_id')
+        .eq('id', fromJobId)
+        .eq('campaign_id', campaignId)
+        .maybeSingle();
+
+      if (!previousJob) {
+        return json({ error: 'That search does not belong to this campaign.', reasonCode: 'UNKNOWN_JOB' }, 404);
+      }
+
+      /* Every sweep of this campaign, not only the one being extended: a
+         campaign expanded twice must not re-read what the first expansion did. */
+      const { data: sweeps } = await db
+        .from('matching_jobs')
+        .select('sources_read,idempotency_key')
+        .eq('campaign_id', campaignId)
+        .not('sources_read', 'is', null);
+
+      const plan = planExpansion({
+        campaignId,
+        previousJobId: fromJobId,
+        previousJobStatus: String(previousJob.status ?? ''),
+        campaignStatus: String(storedCampaign?.status_v2 ?? 'ACTIVE'),
+        headroom: (previousJob.discovery_headroom ?? null) as never,
+        sourcesAlreadyRead: (sweeps ?? []).flatMap((row) => (row.sources_read ?? []) as string[]),
+        priorExpansionKeys: (sweeps ?? [])
+          .map((row) => String(row.idempotency_key ?? ''))
+          .filter((key) => key.includes('expand:')),
+      });
+
+      if (!plan.eligible) {
+        return json({
+          error: 'There is nothing deeper to search for this campaign right now.',
+          reasonCode: plan.refusal,
+          /* The operator's sentence, not the customer's. The client renders its
+             own copy from reasonCode; this is for the log. */
+          detail: plan.rationale,
+        }, 409);
+      }
+      expansion = { plan, fromJobId };
+    }
+
+    const suppliedKey = expansion
+      ? expansion.plan.idempotencyKey
+      : String(body.idempotencyKey || crypto.randomUUID());
     const idempotencyKey = `${homatchUser.id}:${suppliedKey}`;
     const { data: priorJob, error: priorError } = await db
       .from('matching_jobs')
@@ -409,6 +480,15 @@ Deno.serve(async (req: Request) => {
            * would still be held to their subscription's depth.
            */
           funding: grant.funding,
+          /*
+           * AN EXPANSION BUYS NEW WORK ONLY. The sources this campaign has
+           * already paid to read, so the sweep drops them after its own
+           * entitlement gate. Absent on a first search, which is why this is
+           * spread rather than passed as an empty array: an empty array and
+           * "not an expansion" are different requests, and the sweep reports
+           * the difference.
+           */
+          ...(expansion ? { excludeAdapterIds: expansion.plan.excludeSourceIds } : {}),
         }, 120_000);
         supplyResult = supply.data;
 
@@ -439,6 +519,26 @@ Deno.serve(async (req: Request) => {
               moreAvailable: deeper > 0,
             },
           }).catch(() => undefined);
+        }
+
+        /*
+         * THE RECEIPT, in its own column and in internal vocabulary.
+         *
+         * Which sources this sweep actually read, so the next expansion can
+         * exclude exactly them. Deliberately NOT folded into discovery_headroom:
+         * that column's contract is the customer's vocabulary, and an adapter id
+         * in it would be a supplier name one render away from a customer's
+         * screen.
+         *
+         * Written whether or not an entitlement applied. An ungated sweep reads
+         * sources too, and a campaign that started ungated and is later expanded
+         * would otherwise re-buy every one of them.
+         */
+        const sourcesRead = Array.isArray(supply.data?.sourcesRead)
+          ? supply.data.sourcesRead.map((id: unknown) => String(id)).filter(Boolean)
+          : [];
+        if (sourcesRead.length > 0) {
+          await updateJob(db, jobId, { sources_read: sourcesRead }).catch(() => undefined);
         }
 
         const perSourceRows = Array.isArray(supply.data?.perSource) ? supply.data.perSource : [];

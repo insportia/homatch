@@ -13,6 +13,7 @@ import { AppLayout } from '@/components/layouts/AppLayout';
 import { CommunityOutreachPanel } from '@/components/matching/CommunityOutreachPanel';
 import { ExternalContactUnlockModal } from '@/components/matching/ExternalContactUnlockModal';
 import { ExternalSitesCard } from '@/components/matching/ExternalSitesCard';
+import { DeeperSearchPanel } from '@/components/campaign/DeeperSearchPanel';
 import { MatchingJobProgress } from '@/components/matching/MatchingJobProgress';
 import {
   AlertDialog, AlertDialogAction,AlertDialogCancel, AlertDialogContent, 
@@ -32,8 +33,10 @@ import {
   type CampaignSearchLanguageChoice,getCampaignLanguageState,
   getCreditAccount, getMatchCounts, 
   getMatches, 
+  getLastSettledSweep,
   getUnlockedMatch, markMatchPreviewed,nextMatchesCursor, pauseMatchingCampaign,startMatchingCampaign, unlockMatch, 
 } from '@/services/api';
+import type { DiscoveryHeadroom } from '@/campaign/searchExpansion';
 import type { CreditAccount, Match, MatchUnlock } from '@/types/types';
 
 // ── CONSTANTS ─────────────────────────────────────────────────
@@ -553,6 +556,13 @@ function MatchesContent() {
   const [showBudget, setShowBudget] = useState(false);
   const [showPauseConfirm, setShowPauseConfirm] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  /** The last settled sweep, for the Expand Search offer. */
+  const [lastSweep, setLastSweep] = useState<{
+    id: string;
+    status: string;
+    campaign_id: string | null;
+    discovery_headroom: DiscoveryHeadroom | null;
+  } | null>(null);
 
   const loadData = useCallback(async () => {
     if (!propertyId || !homatchUser) return;
@@ -582,6 +592,25 @@ function MatchesContent() {
     getCampaignLanguageState(propertyId)
       .then((state) => setCampaignLanguages(state.resolved))
       .catch(() => setCampaignLanguages([]));
+
+    /*
+     * WHAT THE LAST SEARCH DID NOT REACH.
+     *
+     * The most recent SETTLED sweep, because a running one has not finished
+     * deciding what it read and offering to extend it would sell a source it was
+     * about to read anyway. `discovery_headroom` is the customer-facing column
+     * and is the only one selected here: sources_read is the internal receipt and
+     * the screen has no business holding adapter ids.
+     *
+     * Best-effort. A campaign whose sweeps predate the column has no headroom,
+     * and DeeperSearchPanel renders nothing rather than guessing — which is why
+     * "we recorded nothing" and "there is nothing left" are two different states
+     * in that component and not one.
+     */
+    getLastSettledSweep(propertyId)
+      .then(setLastSweep)
+      .catch(() => setLastSweep(null));
+
     setLoading(false);
   }, [propertyId, homatchUser]);
 
@@ -867,6 +896,26 @@ function MatchesContent() {
                 toast.warning(t('matches_job_partial_toast'));
               }
             }}
+          />
+        )}
+
+        {/*
+          * "Homatch searched N relevant sources. More are available."
+          *
+          * Only after a settled sweep, and only when that sweep recorded
+          * headroom. Renders nothing at all when there is nothing deeper, because
+          * a panel announcing completeness would be noise on every successful
+          * search. No plan name and no pricing route: this is pay-as-you-go
+          * depth, not a subscription gate.
+          */}
+        {propertyId && lastSweep?.campaign_id && !activeJobId && (
+          <DeeperSearchPanel
+            propertyId={propertyId}
+            campaignId={lastSweep.campaign_id}
+            jobId={lastSweep.id}
+            jobStatus={lastSweep.status}
+            headroom={lastSweep.discovery_headroom}
+            onStarted={(newJobId) => setActiveJobId(newJobId)}
           />
         )}
 

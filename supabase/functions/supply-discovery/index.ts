@@ -55,6 +55,7 @@ import {
   withinPriorityCeiling,
   type SearchBudget,
 } from '../../../src/research-core/discovery/search-budget.ts';
+import { withoutAlreadyRead } from '../../../src/research-core/discovery/search-expansion.ts';
 import {
   mergesEntity,
   priceRange,
@@ -238,9 +239,54 @@ Deno.serve(async (req: Request) => {
       ? withinPriorityCeiling(tiered, budget)
       : { eligible: tiered, skipped: [] as Array<{ id: string; reason: string; detail: string }> };
 
+    /*
+     * AN EXPANSION BUYS NEW WORK ONLY.
+     *
+     * When a campaign is searching deeper, the caller names the sources it has
+     * already paid to read and they are dropped here. This runs AFTER the
+     * entitlement gate and never instead of it: an expansion widens what a
+     * customer bought, and it must not be able to reach a source the gate
+     * refused for a reason of its own.
+     *
+     * By id, deliberately, and not by tier arithmetic. A source can be missing
+     * from the first sweep for reasons that have nothing to do with its tier —
+     * DEGRADED that morning, breaker open, UNSUPPORTED for that city — and a
+     * "tier N+1 upwards" rule would never reach it again. What was actually read
+     * is the receipt; the tier is only a budget. See search-expansion.ts.
+     */
+    const excludeAdapterIds: string[] = Array.isArray(body.excludeAdapterIds)
+      ? body.excludeAdapterIds.map((id: unknown) => String(id).trim()).filter(Boolean)
+      : [];
+    const expansion = excludeAdapterIds.length > 0
+      ? withoutAlreadyRead(gate.eligible.map((entry) => ({ id: entry.id, entry })), excludeAdapterIds)
+      : null;
+    const eligible = expansion ? expansion.fresh.map((item) => item.entry) : gate.eligible;
+
     const permitted = new Map<string, SourceRow>();
-    for (const entry of gate.eligible) {
+    for (const entry of eligible) {
       if (entry.row.adapter_id) permitted.set(entry.row.adapter_id, entry.row);
+    }
+
+    /*
+     * An expansion whose exclusion set covers everything left reads nothing, and
+     * that must be reported as such rather than falling back to a full sweep.
+     * Charging for a sweep and then re-reading what the customer already owns is
+     * the exact failure the exclusion exists to prevent, and a silent fallback
+     * would reintroduce it while looking like resilience.
+     */
+    if (expansion && permitted.size === 0) {
+      return json({
+        success: true,
+        sourcesPermitted: 0,
+        observations: 0,
+        expansion: {
+          requested: true,
+          excludedAlreadyRead: expansion.skipped.length,
+          freshSources: 0,
+        },
+        note: 'every source inside this campaign\'s entitlement has already been read by an '
+          + 'earlier sweep, so a deeper search would have bought nothing new. Nothing was fetched.',
+      });
     }
     if (permitted.size === 0) {
       return json({
@@ -398,6 +444,33 @@ Deno.serve(async (req: Request) => {
         sourcesOutsideEntitlement: gate.skipped.length,
         skipped: gate.skipped.slice(0, 10),
       },
+      /*
+       * Only present when the caller asked for an expansion, so its absence
+       * cannot be mistaken for "an expansion that excluded nothing".
+       */
+      ...(expansion ? {
+        expansion: {
+          requested: true,
+          excludedAlreadyRead: expansion.skipped.length,
+          freshSources: permitted.size,
+        },
+      } : {}),
+      /*
+       * WHICH sources this sweep actually read, by adapter id.
+       *
+       * The receipt. A later expansion excludes exactly this set, and without it
+       * the only way to avoid re-buying a source would be to infer it from the
+       * tier, which is wrong in both directions.
+       *
+       * Only OK counts. A source that errored, was UNSUPPORTED for this city or
+       * had its breaker open was not read, so a later expansion is free to try
+       * it again — the customer got nothing from it and should not be told they
+       * already have it. A source that answered OK with zero listings WAS read,
+       * and "there is nothing here" is a real answer worth not paying for twice.
+       */
+      sourcesRead: perSourceReport
+        .filter((row) => row.outcome === 'OK')
+        .map((row) => String(row.adapter)),
       sourcesReached: reached,
       sourcesBlocked: blocked,
       observationsWritten: written.length,

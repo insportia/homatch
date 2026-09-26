@@ -301,6 +301,22 @@ test('the core is consumed only through its deliberate integration points', () =
     'supabase/functions/_shared/campaignLanguages.ts',
     'supabase/functions/match-campaign/index.ts',
     /*
+     * EXPAND SEARCH — the same seam, widened by one file rather than by one
+     * component.
+     *
+     * src/campaign/searchExpansion.ts re-exports exactly one function and two
+     * types, and deliberately NOT planExpansion: whether an expansion may be
+     * sold, and what it excludes, is decided on the server holding the
+     * campaign's real sweep history. A client computing its own answer would be
+     * a second opinion about money.
+     *
+     * supply-discovery needs no new entry: it is already the seventh seam below,
+     * and withoutAlreadyRead — how a deeper sweep drops the sources a campaign
+     * already paid to read, after its own entitlement gate and never instead of
+     * it — is one more function from the core it was already allowed to reach.
+     */
+    'src/campaign/searchExpansion.ts',
+    /*
      * EVIDENCE FRESHNESS — the sixth seam, and the one that decides what a
      * customer is allowed to see.
      *

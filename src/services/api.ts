@@ -3,6 +3,7 @@
 
 import { supabase } from '@/db/supabase';
 import { startJobBestEffort } from '@/services/backgroundJobs';
+import type { DiscoveryHeadroom } from '@/campaign/searchExpansion';
 import type {
   ActivityEvent,
   AdminOverviewStats,
@@ -753,6 +754,120 @@ export async function startMatchingCampaign(
   }
   await registerFindClientsJob(completed.jobId, propertyId);
   return completed;
+}
+
+/**
+ * The most recent SETTLED sweep of a property, and what it did not reach.
+ *
+ * Settled, because a running sweep has not finished deciding which sources it
+ * read, and offering to extend it would sell a source it was about to read
+ * anyway.
+ *
+ * `discovery_headroom` is the only sweep detail selected. The internal receipt —
+ * `sources_read`, which holds adapter ids — is deliberately NOT fetched: the
+ * screen has no business holding supplier names, and the exclusion set is
+ * rebuilt on the server from the campaign's real history rather than posted back
+ * by a client that could be modified.
+ *
+ * Returns null rather than throwing. A property whose sweeps predate the column
+ * has no headroom, and the panel renders nothing instead of guessing.
+ */
+export async function getLastSettledSweep(propertyId: string): Promise<{
+  id: string;
+  status: string;
+  campaign_id: string | null;
+  discovery_headroom: DiscoveryHeadroom | null;
+} | null> {
+  const { data, error } = await supabase
+    .from('matching_jobs')
+    .select('id,status,campaign_id,discovery_headroom')
+    .eq('property_id', propertyId)
+    .not('discovery_headroom', 'is', null)
+    .in('status', ['completed', 'partially_completed', 'failed'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return {
+    id: String(data.id),
+    status: String(data.status ?? ''),
+    campaign_id: data.campaign_id ? String(data.campaign_id) : null,
+    discovery_headroom: (data.discovery_headroom ?? null) as DiscoveryHeadroom | null,
+  };
+}
+
+/**
+ * SEARCH DEEPER, WITHOUT BUYING THE SAME SOURCES AGAIN.
+ *
+ * Continues an existing campaign rather than starting one. The server derives the
+ * exclusion set from what the campaign's sweeps actually read, and derives the
+ * idempotency key from the campaign, the job being extended and that exclusion
+ * set — so the key is NOT passed from here. Two clicks therefore find the earlier
+ * job and reserve nothing twice, and this function cannot accidentally make each
+ * click a new purchase by generating a fresh key the way startMatching does.
+ *
+ * A 409 is not a failure. It is the server declining to sell something, and the
+ * reasonCode says which: nothing deeper exists, nothing was recorded, the first
+ * sweep is still running, or this expansion is already under way. The caller
+ * renders its own copy from that code, so the four are never collapsed into one
+ * apologetic sentence.
+ */
+export async function expandCampaignSearch({
+  propertyId,
+  campaignId,
+  expandFromJobId,
+  authorizedMaxCredits,
+}: {
+  propertyId: string;
+  campaignId: string;
+  expandFromJobId: string;
+  authorizedMaxCredits: number | null;
+}): Promise<{ jobId: string; campaignId: string; idempotent: boolean }> {
+  const { data, error } = await supabase.functions.invoke('match-campaign', {
+    body: {
+      propertyId,
+      campaignId,
+      expandFromJobId,
+      ...(authorizedMaxCredits != null ? { authorizedMaxCredits } : {}),
+    },
+  });
+
+  /*
+   * supabase-js folds a non-2xx into `error` and puts the body out of easy
+   * reach, so the reasonCode the panel needs is read off the response context
+   * before falling back to the message. Without this the customer sees "Edge
+   * Function returned a non-2xx status code" where they should see "every
+   * relevant source has already been searched".
+   */
+  if (error) {
+    const context = (error as { context?: Response })?.context;
+    let reasonCode: string | undefined;
+    let serverMessage: string | undefined;
+    if (context && typeof context.json === 'function') {
+      try {
+        const payload = await context.clone().json();
+        reasonCode = payload?.reasonCode;
+        serverMessage = payload?.error;
+      } catch { /* a body that is not JSON tells us nothing; fall through */ }
+    }
+    const failure = new Error(serverMessage ?? error.message) as Error & { reasonCode?: string };
+    if (reasonCode) failure.reasonCode = reasonCode;
+    throw failure;
+  }
+
+  if (!data?.jobId) throw new Error('match-campaign returned no jobId for the expansion');
+
+  const jobId = String(data.jobId);
+  // The same durable registry entry every search gets, so a deeper search is
+  // watchable from any other page exactly like the first one.
+  await registerFindClientsJob(jobId, propertyId);
+
+  return {
+    jobId,
+    campaignId: String(data.campaignId ?? campaignId),
+    idempotent: data.idempotent === true,
+  };
 }
 
 /**

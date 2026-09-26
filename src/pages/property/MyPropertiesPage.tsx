@@ -162,6 +162,16 @@ function PropertyPanel({
   const action = intelligenceActionFor(property.transaction_type as string | null);
   const matches = intel?.total ?? 0;
 
+  /* Real columns, or nothing. A date that cannot be parsed renders nothing rather
+     than "Invalid Date", which is the most common way a timestamp reaches a screen. */
+  const updatedAt = (() => {
+    const raw = property.updated_at as string | null | undefined;
+    if (!raw) return null;
+    const parsed = Date.parse(raw);
+    return Number.isFinite(parsed) ? new Date(parsed).toLocaleDateString() : null;
+  })();
+  const sourceDomain = imported ? ((facts?.source_domain as string | null) ?? null) : null;
+
   const chips = [
     property.property_type
       ? t(`prop_type_${String(property.property_type).toLowerCase()}` as never) : null,
@@ -217,7 +227,7 @@ function PropertyPanel({
         </div>
 
         {/* ── 2. WHAT PROPERTY IS THIS ───────────────────────────────── */}
-        <div className="min-w-0 p-5 lg:p-6 space-y-3">
+        <div className="min-w-0 p-5 lg:p-6 flex flex-col gap-3">
           <div className="min-w-0 space-y-1">
             <h3 className="text-base lg:text-lg font-semibold leading-snug text-foreground break-words [overflow-wrap:anywhere]">
               {String(property.title ?? t('prop_untitled'))}
@@ -260,6 +270,25 @@ function PropertyPanel({
               </span>
             ))}
           </div>
+
+          {/*
+            WHEN THIS RECORD LAST MOVED, and where it came from.
+            Pushed to the bottom of the column so the panel reads as one block rather
+            than as content floating above dead space -- and it is real: updated_at is
+            a column, and source_domain is the portal an import was read off. A
+            property with neither renders neither, which is why this is a list rather
+            than a fixed footer.
+          */}
+          {(updatedAt || sourceDomain) && (
+            <div className="mt-auto pt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted-foreground/70">
+              {updatedAt && (
+                <span className="break-words">{t('prop_updated', { date: updatedAt })}</span>
+              )}
+              {sourceDomain && (
+                <span className="break-words [overflow-wrap:anywhere]">{sourceDomain}</span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ── 3. WHAT HOMATCH IS DOING, AND WHAT TO DO NEXT ──────────── */}

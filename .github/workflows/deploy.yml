@@ -666,6 +666,11 @@ jobs:
             # user identity to check is_admin against -- a private token would
             # only establish that the caller knows the token.
             "community-intelligence"
+            # FIND PROPERTY, the customer's read of the reverse direction. In THIS list
+            # because it returns one caller's own matches and therefore needs a real user
+            # identity -- supply_matches has RLS on with zero policies precisely so
+            # nothing reaches it without a function that checks who is asking.
+            "find-property"
           )
           # ONLY WHAT IS OWED, AND IN PARALLEL.
           #

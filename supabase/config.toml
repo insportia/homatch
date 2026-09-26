@@ -166,6 +166,11 @@ verify_jwt = false
 [functions.supply-matching]
 verify_jwt = false
 
+# find-property is deliberately ABSENT from this file too, and for the same reason as
+# community-intelligence below: it verifies the JWT, which is the default, so there is
+# nothing to preserve across a manual deploy. It is in the workflow's JWT loop because it
+# returns one caller's own matches.
+#
 # community-intelligence is deliberately ABSENT from this file. These entries exist
 # only to preserve verify_jwt = false across a manual `supabase functions deploy`,
 # and that function verifies the JWT -- which is the default, so there is nothing to

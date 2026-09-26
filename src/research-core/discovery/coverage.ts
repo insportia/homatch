@@ -94,6 +94,16 @@ export interface HeldEvidence {
   /** Source or adapter it came from. Reported, not used as a gate. */
   sourceId: string | null;
   /**
+   * The caller's handle for this row -- an observation id, usually.
+   *
+   * Carried through untouched so the caller can record WHICH evidence answered a
+   * campaign. A skipped sweep still has to write its campaign_supply_references
+   * rows, or the campaign silently has no record of the intelligence it reused and
+   * the reuse becomes unauditable -- which is worse than the duplicate fetch this
+   * gate exists to prevent.
+   */
+  ref?: string;
+  /**
    * The existing freshness record for this row.
    *
    * The full record rather than a summary, because judgeDelivery() needs
@@ -172,6 +182,13 @@ export interface CoverageAssessment {
    * instead of a rescan that re-buys the languages already held.
    */
   sweepLanguages: string[];
+  /**
+   * The refs of the rows that counted toward coverage, in input order.
+   *
+   * Only rows the caller gave a ref for, and only those that were both deliverable
+   * and language-compatible: exactly the evidence the verdict rests on.
+   */
+  countedRefs: string[];
   /** Plain words. Written to the job so a skipped sweep is explainable. */
   rationale: string;
 }
@@ -208,6 +225,7 @@ export function assessCoverage(
      campaign, and conflating the two is how an Arabic campaign gets reported as
      covered by Georgian listings. */
   let deliverableOutsideRequest = 0;
+  const countedRefs: string[] = [];
   let wrongCity = 0;
   let unknownCity = 0;
   let unknownLanguage = 0;
@@ -254,6 +272,7 @@ export function assessCoverage(
     }
     if (Object.prototype.hasOwnProperty.call(deliverableByLanguage, language)) {
       deliverableByLanguage[language] += 1;
+      if (item.ref) countedRefs.push(item.ref);
     } else {
       deliverableOutsideRequest += 1;
     }
@@ -340,6 +359,7 @@ export function assessCoverage(
     deliverableByLanguage,
     excluded,
     uncounted: { wrongCity, unplaceableCity: unknownCity, unknownLanguage },
+    countedRefs,
     gaps,
     sweepLanguages,
     rationale: [

@@ -56,6 +56,8 @@ import {
   type SearchBudget,
 } from '../../../src/research-core/discovery/search-budget.ts';
 import { withoutAlreadyRead } from '../../../src/research-core/discovery/search-expansion.ts';
+import { placeNamesFor } from '../../../src/research-core/normalize/place.ts';
+import { assessCoverage, decideSweep } from '../../../src/research-core/discovery/coverage.ts';
 import {
   mergesEntity,
   priceRange,
@@ -106,7 +108,17 @@ Deno.serve(async (req: Request) => {
     if (!expected || presented !== expected) return json({ error: 'Forbidden' }, 403);
   }
 
-  const started = Date.now();
+  /**
+ * How much deliverable evidence per language makes a sweep unnecessary.
+ *
+ * Three, because one listing is not a comparables set: a customer shown a single
+ * flat has been told nothing about what their property competes against. It is a
+ * product judgement rather than a constant of nature, which is why it sits at the
+ * call site and not inside the coverage module.
+ */
+const COVERAGE_FLOOR_PER_LANGUAGE = 3;
+
+const started = Date.now();
   try {
     const body = await req.json().catch(() => ({}));
     const perSource = Math.max(1, Math.min(10, Number(body.limitPerSource) || 3));
@@ -126,6 +138,131 @@ Deno.serve(async (req: Request) => {
     if ('error' in scope) return json({ error: scope.error }, scope.status);
 
     const { city, transaction, countryCode } = scope;
+
+    /*
+     * DO WE ALREADY KNOW ENOUGH NOT TO GO OUTSIDE?
+     *
+     * The header of this file calls campaign-to-campaign reuse "the entire
+     * economic argument for a discovery network over a per-campaign scraper", and
+     * the reuse it described was real but only ever happened AFTER the fetch: a
+     * campaign in a city Homatch swept an hour ago swept it again and then
+     * discovered the rows were already there. Nothing asked beforehand.
+     *
+     * It is decided HERE rather than in match-campaign because this function owns
+     * the envelope. match-campaign is explicitly forbidden from passing a city --
+     * that would be its opinion of the campaign overriding the campaign -- so it
+     * cannot assess coverage without first acquiring the opinion it must not have.
+     *
+     * THE QUERY IS DELIBERATELY LOOSE AND THE DECISION IS NOT.
+     *
+     * supply_observations.city is unnormalised: one city is held as 'Tbilisi',
+     * 'tbilisi' and 'თბილისი' -- measured in production 2026-09-26 -- so
+     * `city = 'Tbilisi'` matched 11 of 20 Tbilisi rows and would have swept for
+     * the nine it already had. placeNamesFor() supplies every spelling this core
+     * knows, from the same table comparePlaces() decides with, and assessCoverage()
+     * makes the per-row judgement. One vocabulary, used at both ends.
+     */
+    const { data: heldRows } = await db
+      .from('supply_observations')
+      .select('id,city,detected_language,validation_state,first_seen_at,last_seen_at,'
+        + 'last_verified_at,content_changed_at,expires_at,content_fingerprint,failed_checks')
+      .in('city', placeNamesFor(city))
+      .eq('transaction', transaction)
+      .limit(2000);
+
+    const coverage = assessCoverage(
+      (heldRows ?? []).map((row: Record<string, unknown>) => ({
+        ref: String(row.id),
+        city: (row.city as string | null) ?? null,
+        language: (row.detected_language as string | null) ?? null,
+        sourceId: null,
+        freshness: {
+          firstSeenAt: String(row.first_seen_at),
+          lastSeenAt: String(row.last_seen_at),
+          lastVerifiedAt: (row.last_verified_at as string | null) ?? null,
+          contentChangedAt: (row.content_changed_at as string | null) ?? null,
+          expiresAt: (row.expires_at as string | null) ?? null,
+          contentFingerprint: String(row.content_fingerprint ?? ''),
+          validationState: String(row.validation_state ?? 'UNVERIFIED') as never,
+          failedChecks: Number(row.failed_checks ?? 0),
+        },
+      })),
+      {
+        market: countryCode,
+        city,
+        languages: scope.languages,
+        minPerLanguage: COVERAGE_FLOOR_PER_LANGUAGE,
+      },
+    );
+
+    /*
+     * AN OPERATOR SWEEP IS NEVER TOLD IT ALREADY HAS ENOUGH.
+     *
+     * Its whole purpose is filling the store so the first campaign in a city is
+     * not also the one that pays to discover it, and a gate that skipped it would
+     * make the store permanently as thin as it is now. Only a CAMPAIGN can be
+     * answered out of what we hold, so the decision is read but not obeyed here.
+     */
+    const sweep = campaignId
+      ? decideSweep(coverage)
+      : { sweep: true, languages: [], reason: 'operator sweep: the store is being filled on purpose' };
+
+    if (!sweep.sweep) {
+      /*
+       * NOTHING IS READ. But the campaign DID use this evidence, so the references
+       * are still written -- with origin REUSED_EXISTING, which is what actually
+       * happened. Without them a skipped sweep would leave the campaign with no
+       * record of the intelligence that answered it, and unauditable reuse is a
+       * worse outcome than the duplicate fetch this gate prevents.
+       */
+      let recorded = 0;
+      for (const observationId of coverage.countedRefs) {
+        const { error: refError } = await db.from('campaign_supply_references').upsert({
+          campaign_id: campaignId,
+          observation_id: observationId,
+          job_id: jobId,
+          origin: 'REUSED_EXISTING',
+          evidence_freshness: 'NEW_UNVERIFIED',
+        }, { onConflict: 'campaign_id,observation_id', ignoreDuplicates: true });
+        if (!refError) recorded += 1;
+      }
+
+      return json({
+        success: true,
+        /* The saving is real and it is named, so it cannot be confused with a
+           sweep that found nothing. */
+        reusedExistingIntelligence: true,
+        sourcesReached: 0,
+        networkFetches: 0,
+        discovered: 0,
+        reused: coverage.countedRefs.length,
+        referencesRecorded: recorded,
+        city, transaction, countryCode,
+        coverage: {
+          verdict: coverage.verdict,
+          deliverableByLanguage: coverage.deliverableByLanguage,
+          excluded: coverage.excluded,
+          uncounted: coverage.uncounted,
+          rationale: coverage.rationale,
+        },
+        elapsedMs: Date.now() - started,
+      });
+    }
+
+    /*
+     * A PARTIAL campaign sweeps only the languages it is missing, so the half
+     * already paid for is not bought twice. An UNCOVERED one has every requested
+     * language among its gaps, so this narrows to the list it started with -- and a
+     * gap that is not about language at all leaves the list empty, which has to
+     * mean "sweep unscoped" rather than "sweep nothing".
+     *
+     * A SEPARATE VALUE, never an assignment to scope.languages. The envelope is
+     * this file's record of what the CAMPAIGN asked for, and narrowing it in place
+     * would make the echoed-back envelope describe the sweep instead of the
+     * request -- so a customer reading it could not tell a two-language campaign
+     * that reused Georgian from a campaign that only ever wanted Russian.
+     */
+    const sweepLanguages = sweep.languages.length > 0 ? sweep.languages : scope.languages;
 
     /*
      * THE REGISTRY DECIDES, NOT THE ADAPTER LIST.
@@ -314,7 +451,9 @@ Deno.serve(async (req: Request) => {
        */
       price: { min: null, max: null },
       priceCurrency: null,
-      languages: scope.languages,
+      /* THE NARROWED LIST. A PARTIAL campaign fetches only the languages it is
+         missing; scope.languages stays the record of what it asked for. */
+      languages: sweepLanguages,
       limit: perSource,
       rationale: scope.rationale,
     };
@@ -423,7 +562,22 @@ Deno.serve(async (req: Request) => {
         area: scope.area,
         price: null,
         languages: scope.languages,
+        /*
+         * WHAT WAS ACTUALLY SWEPT, beside what was asked for. Identical on a cold
+         * market and shorter when the store already answered part of the request,
+         * and the difference is the whole saving -- invisible if only one of the
+         * two were reported.
+         */
+        languagesSwept: sweepLanguages,
         rationale: scope.rationale,
+      },
+      /* Why this sweep happened at all, in the same words a skipped one reports. */
+      coverage: {
+        verdict: coverage.verdict,
+        deliverableByLanguage: coverage.deliverableByLanguage,
+        excluded: coverage.excluded,
+        uncounted: coverage.uncounted,
+        rationale: coverage.rationale,
       },
       sourcesPermitted: permitted.size,
       /*

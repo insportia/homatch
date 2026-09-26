@@ -58,6 +58,8 @@ const ExpatPlanPage = lazyRoute(() => import('./pages/ExpatPlanPage'));
 const InvestmentPage = lazyRoute(() => import('./pages/InvestmentPage'));
 const BrokersPage = lazyRoute(() => import('./pages/BrokersPage'));
 const FindPropertyPage = lazyRoute(() => import('./pages/FindPropertyPage'));
+const MyPropertiesPage = lazyRoute(() => import('./pages/property/MyPropertiesPage'));
+const EditPropertyPage = lazyRoute(() => import('./pages/property/EditPropertyPage'));
 const VerificationCasePage = lazyRoute(() => import('./pages/VerificationCasePage'));
 const ContractsPage = lazyRoute(() => import('./pages/ContractsPage'));
 const ContractResultPage = lazyRoute(() => import('./pages/ContractResultPage'));
@@ -354,9 +356,20 @@ export const routes: RouteConfig[] = [
   { name: 'Viewings',          path: '/viewings',                 element: <ViewingsPage /> },
   { name: 'Active Search',     path: '/active-search',            element: <ActiveSearchPage /> },
   { name: 'Developer Profile', path: '/developer/:id',            element: <DeveloperProfilePage /> },
+  /*
+   * MY PROPERTIES, and it goes BEFORE the create routes on purpose.
+   *
+   * The product could create a property four ways and show one at /property/:id,
+   * and had no route that answered "what have I got?". An owner with six listings
+   * had six bookmarks. This is the portfolio, and /property/:id/edit is the other
+   * half of it -- declared before /property/:id so the static segment can never be
+   * swallowed by the parameter.
+   */
+  { name: 'My Properties',     path: '/property',                 element: <MyPropertiesPage /> },
   { name: 'Add Property',      path: '/property/add',             element: <AddPropertyPage /> },
   { name: 'Import Property',   path: '/property/import',          element: <URLImportPage /> },
   { name: 'Create Listing',    path: '/property/create',          element: <PrivateListingPage /> },
+  { name: 'Edit Property',     path: '/property/:id/edit',        element: <EditPropertyPage /> },
   { name: 'Property Detail',   path: '/property/:id',             element: <PropertyDetailPage /> },
   { name: 'Property Matches',  path: '/property/:id/matches',     element: <MatchesPage /> },
   // Outreach

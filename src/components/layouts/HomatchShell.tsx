@@ -26,7 +26,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowRight, Bell, CreditCard, LayoutDashboard,
-  LogOut, Mail, Menu, MessageCircle, MessageSquare, PhoneCall, Radio, Search,
+  Building2, LogOut, Mail, Menu, MessageCircle, MessageSquare, PhoneCall, Radio, Search, Telescope,
   Settings, ShieldCheck, Sparkles, User as UserIcon, UserSearch, X, Activity,
   CircleDollarSign, Coins as CoinsIcon, TrendingUp,
   FileSignature, Globe,
@@ -99,7 +99,36 @@ export const NAV: NavGroup[] = [
     key: 'nav_group_workspace',
     items: [
       { key: 'nav_dashboard', path: '/dashboard', icon: LayoutDashboard },
-      { key: 'dnav_find_property', path: '/ai', icon: Search },
+      /*
+       * MY PROPERTIES SITS BEFORE FIND PROPERTY, and the order is the argument.
+       *
+       * Everything else in this product starts from a property: matching runs from
+       * one, a campaign is funded against one, Find Clients needs one to exist. An
+       * owner who lands on discovery before their own portfolio is being asked to
+       * look for somebody else's flat before they can see their own.
+       *
+       * Building2 rather than a house: this is a PORTFOLIO of listings, and it has to
+       * be unmistakable against the Find Property icon two lines down at 20px on a
+       * phone. A house and a telescope cannot be confused; a house and a magnifier
+       * over a house could be.
+       */
+      { key: 'nav_my_properties', path: '/property', icon: Building2 },
+      /*
+       * FIND PROPERTY: the route, and the icon, both changed.
+       *
+       * It pointed at /ai -- the chat assistant -- which could not show a search plan,
+       * could not record whether a requirement was REQUIRED or merely PREFERRED, and
+       * could not return a result. /find-property is the real flow.
+       *
+       * And the magnifying glass is gone. A loupe means "search this text", which is
+       * the one thing this destination is not: it reads a description, proposes a plan
+       * and runs deterministic matching. A telescope is looking for something that is
+       * out there rather than filtering something already on screen, it survives 20px,
+       * and it collides with nothing else in this list -- Radio (active search) is a
+       * tower with waves, Sparkles (live chat) is stars, ScanSearch would have been a
+       * loupe in brackets.
+       */
+      { key: 'dnav_find_property', path: '/find-property', icon: Telescope },
       { key: 'dnav_find_client', path: '/property/add', icon: UserSearch },
       { key: 'nav_active_search', path: '/active-search', icon: Radio },
     ],

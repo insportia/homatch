@@ -109,16 +109,52 @@ test('no admin or developer route is classified as a customer surface', () => {
  * The four that must be migrated, and why
  * ──────────────────────────────────────────────────────────────────────── */
 
-test('the money screen is NEEDS_MIGRATION and says why', () => {
+test('the money screen has been migrated, and its note still names what was wrong', () => {
+  /*
+   * THIS TEST USED TO ASSERT NEEDS_MIGRATION, and that was correct when it was
+   * written: the card carried the Locked/Unlock model for results a campaign had
+   * already paid for. That is now rebuilt -- match_reasons leads the card instead of
+   * a percentage, mismatch_reasons is shown at all for the first time, and
+   * `forSale = !included && !opened` is derived once so every padlock, blur and price
+   * keys off one answer.
+   *
+   * What the test still insists on is the HISTORY. A note that said only "approved"
+   * would let the next person restyle this screen and quietly reintroduce the
+   * double-sell, because nothing would tell them it had ever been there. So the note
+   * must keep naming the defect, and the specific invariant that replaced it is
+   * asserted against the page itself rather than against prose.
+   */
   const matches = SURFACES.find((s) => s.path === '/property/:id/matches');
   assert.ok(matches);
-  assert.equal(matches.status, 'NEEDS_MIGRATION');
+  assert.equal(matches.status, 'APPROVED_CURRENT_DESIGN');
   assert.equal(matches.customerCritical, true);
-  /* The reason has to name the actual defect, or the next person migrates the styling
-     and leaves the double-sell in place. */
-  assert.match(matches.note, /Locked\/Unlock/);
-  assert.match(matches.note, /double-sells/);
-  assert.match(matches.note, /redaction underneath is correct/);
+
+  /* The history, so the defect cannot be reintroduced in ignorance. */
+  assert.match(matches.note, /LockedMatchCard/);
+  assert.match(matches.note, /behind the paywall/);
+  assert.match(matches.note, /redaction underneath is unchanged/);
+  /* And the scope, because the card is what was approved and not the whole shell. */
+  assert.match(matches.note, /Expand Search/);
+
+  /* The invariant itself, read off the page rather than off the note. */
+  const page = readFileSync(
+    join(root, 'src', 'pages', 'property', 'MatchesPage.tsx'), 'utf8',
+  );
+  assert.match(page, /const forSale = !included && !opened;/,
+    'the one boolean that decides whether anything is being sold is gone');
+  /*
+   * THE DECLARATION AND THE CALL SITES, not the word. The page mentions
+   * LockedMatchCard once on purpose, in the comment explaining what it used to be and
+   * why it changed -- and a grep for the bare name fails on that sentence, which is a
+   * test failing on the prose that documents the thing it is guarding. Third time in
+   * this repository.
+   */
+  assert.ok(!/function LockedMatchCard\(/.test(page),
+    'the lock-first component is back');
+  assert.ok(!/<LockedMatchCard/.test(page),
+    'something still renders the lock-first component');
+  assert.match(page, /function MatchCard\(/);
+  assert.match(page, /<MatchCard/);
 });
 
 test('the two AI-facing surfaces are queued for migration', () => {

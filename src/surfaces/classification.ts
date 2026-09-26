@@ -132,14 +132,9 @@ export const SURFACES: readonly SurfaceRecord[] = [
   {
     path: '/property/:id/matches',
     name: 'Property Matches',
-    status: 'NEEDS_MIGRATION',
+    status: 'APPROVED_CURRENT_DESIGN',
     customerCritical: true,
-    note: 'THE ONLY SCREEN WHERE MONEY CHANGES HANDS. Still carries the Locked/Unlock '
-      + 'mental model for results a campaign already paid for, which double-sells an '
-      + 'included match. The redaction underneath is correct and must be preserved; it '
-      + 'is the customer-facing hierarchy that needs rebuilding around relevance, '
-      + 'compatibility, freshness and why-this-matches.',
-  },
+    note: 'THE ONLY SCREEN WHERE MONEY CHANGES HANDS, and the result card has now been rebuilt around relevance rather than around a lock. LockedMatchCard is MatchCard; why-this-matches leads it (match_reasons was stored since matching was built and rendered only inside the post-unlock dialog, so the explanation of relevance sat behind the paywall); mismatch_reasons is shown, having been stored and rendered nowhere at all; then the comparison, the evidence, provenance quietly, then the action. forSale = !included && !opened is derived once and every padlock, blur and price keys off it, which is strictly stronger than the two included-ternaries it replaced -- those still showed a padlock on an already-opened match. The server-side redaction underneath is unchanged and still proven by tests/matrix/unlockBoundary. SCOPE, stated plainly: the RESULT CARD is the approved design. The campaign controls above the list keep their existing treatment, and Expand Search is deliberately untouched because it is a genuine PAYG continuation rather than a second sale of an included result.',  },
   {
     path: '/active-search',
     name: 'Active Search',
@@ -226,6 +221,36 @@ export const SURFACES: readonly SurfaceRecord[] = [
     customerCritical: true,
     note: 'The first thing anybody sees, in six languages. Migrated late and carefully: '
       + 'a home page rewrite is the easiest way to break every entry point at once.',
+  },
+  {
+    path: '/property',
+    name: 'My Properties',
+    status: 'APPROVED_CURRENT_DESIGN',
+    customerCritical: true,
+    note: 'Built new, because the audit found no route answered "what have I got?". The '
+      + 'product could create a property four ways and show one at /property/:id, so an '
+      + 'owner with six listings had six bookmarks and adding a property was a one-way '
+      + 'trip. Cards rather than a table: the functional reference is a listing manager '
+      + 'and those are tables because they were designed for a desk, but a property is a '
+      + 'photograph, a price and a place, and at 320px a table is a horizontal scroll '
+      + 'with the actions off-screen. Customer-critical: this is where a listing is '
+      + 'paused, archived and deleted, and a mis-hit destructive action is not '
+      + 'recoverable by the customer.',
+  },
+  {
+    path: '/property/:id/edit',
+    name: 'Edit Property',
+    status: 'APPROVED_CURRENT_DESIGN',
+    customerCritical: true,
+    note: 'Built new alongside My Properties. property_facts has forty columns, so this '
+      + 'is five collapsible sections rather than one scroll -- basics and price open on '
+      + 'arrival because they are what changes, the rest closed, and the deep-linked one '
+      + 'open regardless so the portfolio menu can land on Photos. Price per square '
+      + 'metre is derived and displayed and has no field, because a third number is a '
+      + 'way to contradict the other two. An imported property says in words that '
+      + 'editing changes the Homatch copy and not the source page, and its provenance '
+      + 'fields are read-only rather than hidden. Customer-critical because it is where '
+      + 'price and address visibility are set.',
   },
   {
     path: '/find-property',

@@ -103,6 +103,15 @@ const ROUTES = [
    * strength select per requirement -- and clipping a strength control is not a
    * cosmetic failure: it is the difference between a preference and a demand.
    */
+  /*
+   * MY PROPERTIES and EDIT PROPERTY. Both auth, both measured at every width: the
+   * portfolio card carries a price, a place and up to five chips in six languages, and
+   * the edit form is the densest layout in the product on the narrowest screen. A
+   * clipped action menu on the portfolio hides Archive and Delete; a clipped label on
+   * the edit form hides which number somebody is typing.
+   */
+  { path: '/property', name: 'my properties', auth: true },
+  { path: '/property/11111111-1111-4111-8111-111111111111/edit', name: 'edit property', auth: true },
   { path: '/find-property', name: 'find property', auth: true },
   { path: '/dashboard', name: 'dashboard', auth: true },
   { path: '/ai', name: 'AI chat', auth: true },

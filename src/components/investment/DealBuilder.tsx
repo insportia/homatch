@@ -43,6 +43,7 @@ import {
   formatValue,
 } from './controls';
 import { intlLocaleFor } from './primitives';
+import { plainInvestmentExplanation } from '@/investment/plainLanguage';
 
 export function DealBuilder({
   strategy,
@@ -203,7 +204,7 @@ function FieldRow({
   marketPresets?: { value: number; labelKey: string }[];
   highlight: boolean;
 }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const labelId = `inv-label-${definition.field}`;
   const entry = (context as Record<string, { value?: string | number; origin?: string } | undefined>)[
     definition.field
@@ -255,9 +256,9 @@ function FieldRow({
         ) : null}
       </div>
 
-      {definition.hintKey ? (
+      {definition.hintKey || plainInvestmentExplanation(definition.labelKey, lang) ? (
         <p className="mb-2.5 max-w-[60ch] text-2xs leading-relaxed text-muted-foreground">
-          {t(definition.hintKey)}
+          {definition.hintKey ? t(definition.hintKey) : plainInvestmentExplanation(definition.labelKey, lang)}
         </p>
       ) : null}
 

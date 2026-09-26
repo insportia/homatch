@@ -12,6 +12,8 @@ import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import type { InvestmentValueOrigin } from '@/investment/types';
+import { Metric as WorkspaceMetric, type FigureKind, type WorkspaceFigure } from '@/components/workspace/primitives';
+import { plainInvestmentExplanation } from '@/investment/plainLanguage';
 
 export * from '@/components/workspace/primitives';
 
@@ -39,5 +41,41 @@ export function OriginChip({ origin, className }: { origin: InvestmentValueOrigi
     >
       {t(key)}
     </span>
+  );
+}
+
+
+export function Metric({
+  labelKey, figure, kind, currency, badge, emphasis = false, decimals, noteKey,
+}: {
+  labelKey: string;
+  figure: WorkspaceFigure;
+  kind: FigureKind;
+  currency?: string;
+  badge?: React.ReactNode;
+  emphasis?: boolean;
+  decimals?: number;
+  noteKey?: string;
+}) {
+  const { lang } = useLanguage();
+  const explanation = noteKey ? undefined : plainInvestmentExplanation(labelKey, lang);
+  return (
+    <div>
+      <WorkspaceMetric
+        labelKey={labelKey}
+        figure={figure}
+        kind={kind}
+        currency={currency}
+        badge={badge}
+        emphasis={emphasis}
+        decimals={decimals}
+        noteKey={noteKey}
+      />
+      {explanation ? (
+        <p className="mt-1.5 max-w-[36ch] text-2xs leading-relaxed text-muted-foreground">
+          {explanation}
+        </p>
+      ) : null}
+    </div>
   );
 }

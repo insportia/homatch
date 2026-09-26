@@ -109,7 +109,7 @@ Deno.serve(async (req: Request) => {
     let query = db
       .from('community_targets')
       .select('id,external_id,name,readability,cursor,last_seen_external_id,'
-        + 'last_checked_at,items_read,demand_found,supply_found,duplicates_seen')
+        + 'last_checked_at,items_read,demand_found,supply_found,duplicates_seen,source_id')
       .eq('platform', 'TELEGRAM')
       .eq('discovery_enabled', true)
       .in('readability', ['READABLE', 'UNVERIFIED'])
@@ -379,6 +379,22 @@ async function syncTarget(
          per-channel identity: message 42 in two channels is two rows. */
       external_id: `${messageChannel}/${externalId}`,
       target_id: target.id,
+      /*
+       * THE ROW'S PATH BACK TO THE REGISTRY, and the reason it is not optional.
+       *
+       * revalidate-evidence resolves a signal's permission to be re-read through
+       * source_registry!source_id. Without it every community signal reaching the
+       * delivery window is queued, answered "source is unregistered and has never
+       * been audited; not requested", and stays permanently UNKNOWN -- not because
+       * the channel is unreadable, but because nothing connected the row to the
+       * registry entry that already existed for it. Measured: 18 rows, 0 with a
+       * source_id, 0 ever verified.
+       *
+       * Null when the target has no registry entry, which is a real state for a
+       * community discovered on its own. What it must never be is null when the
+       * entry exists.
+       */
+      source_id: (target as Record<string, unknown>).source_id ?? null,
       acquisition_mode: 'PUBLIC_WEB',
       parent_external_id: (message.replyToMessageId as string | null) ?? null,
       source_url: evidence.contentUrl,

@@ -33,6 +33,19 @@
 -- The bucket is allowlisted the same way. truncUnit() in the research core does
 -- this too; the check is repeated here because the database must not depend on a
 -- caller having been careful.
+--
+-- A NOTE ON THE LEDGER, so the history reads honestly.
+--
+-- Production shows this function applied TWICE: once as
+-- `community_evidence_timeseries` and once as
+-- `community_evidence_timeseries_enum_cast`. The second was a correction, and it
+-- has no file of its own because this file carries the corrected version -- the
+-- `$3::signal_platform` cast below. Replaying this file alone reaches the same
+-- final state, which is what a migration file is for.
+--
+-- The first attempt compared the enum column against a text parameter and every
+-- call failed with `operator does not exist: signal_platform = text`. Caught by
+-- running it, not by reading it.
 
 create or replace function community_evidence_timeseries(
   p_from timestamptz,

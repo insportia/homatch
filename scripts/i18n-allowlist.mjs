@@ -44,6 +44,13 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   // and a person's name. Turkish spells it the same as English; ka/ru/ar/he
   // carry their own scripts (მარიამი, Мариам, مريم, מרים).
   'admin_talk_lib_name_placeholder',
+  // "Vake, Saburtalo" -- two Tbilisi districts, shown as an example of what to
+  // type in the districts box. Turkish transliterates the CITY (Tiflis, which is
+  // why plan_field_city_placeholder is not flagged) but not the districts: a
+  // Turkish speaker looking at Tbilisi listings reads Vake and Saburtalo. ka/ru/ar/he
+  // all carry their own scripts (ვაკე, Ваке, فاكي, וואקה), so this is a
+  // single-locale collision on two proper nouns.
+  'plan_field_districts_placeholder',
   // "Premium" — Turkish uses the same word for a renovation standard, and it
   // is what a Turkish buyer reads on a spec sheet. ka/ru/ar/he all carry
   // their own forms (პრემიუმი, Премиум, ممتاز, פרימיום).

@@ -284,7 +284,10 @@ function MatchCard({
               key={`${reason}-${index}`}
               className="flex items-start gap-1.5 text-xs text-muted-foreground/80 min-w-0"
             >
-              <span className="text-muted-foreground/60 shrink-0 mt-0.5">&minus;</span>
+              {/* A typographic minus, in an expression rather than as text: it is a glyph
+                  marking a list item, not copy, and the i18n audit is right to want
+                  every bare string routed through t(). */}
+              <span className="text-muted-foreground/60 shrink-0 mt-0.5" aria-hidden="true">{'−'}</span>
               <span className="break-words min-w-0">{reason}</span>
             </li>
           ))}
@@ -429,7 +432,7 @@ function MatchCard({
               {unlocking
                 ? <Loader2 className="h-3 w-3 animate-spin shrink-0" />
                 : <Unlock className="h-3 w-3 shrink-0" />}
-              <span dir="ltr">{t('matches_unlock_btn')} &middot; {match.unlock_price_credits.toFixed(2)} CR</span>
+              <span dir="ltr">{t('matches_unlock_btn')}{' · '}{match.unlock_price_credits.toFixed(2)} CR</span>
             </Button>
           )}
 

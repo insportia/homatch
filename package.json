@@ -29,7 +29,8 @@
     "test:mobile:setup": "node scripts/setup-mobile-test.mjs",
     "test:surfaces": "npm run build:harness && node --test --test-timeout=2400000 tests/browser/commSurfaces.test.mjs",
     "studio:coverage": "node scripts/studio-coverage.mjs",
-    "test:voice": "node --test src/lib/comm/__tests__/georgianCorpus.test.mjs"
+    "test:voice": "node --test src/lib/comm/__tests__/georgianCorpus.test.mjs",
+    "test:matrix": "node scripts/run-full-matrix.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

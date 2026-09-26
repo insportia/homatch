@@ -33,7 +33,20 @@ export default function NotFoundPage() {
 
   return (
     <AppLayout>
-      <div className="mx-auto flex max-w-lg flex-col items-center gap-5 py-16 text-center sm:py-24">
+      {/*
+        * A MARKER THE MOBILE MATRIX CAN SEE IN SIX LANGUAGES.
+        *
+        * A not-found page has an excellent scrollWidth, so an overflow gate passes on it
+        * happily -- which is exactly how the admin route was measured for a while while
+        * rendering this page instead of itself. The matrix has to be able to FAIL on it,
+        * and matching translated copy in six locales is not a detection strategy.
+        *
+        * Changes nothing visual.
+        */}
+      <div
+        data-testid="not-found"
+        className="mx-auto flex max-w-lg flex-col items-center gap-5 py-16 text-center sm:py-24"
+      >
         <div className="grid h-16 w-16 place-items-center rounded-[1.1rem] border border-border bg-secondary">
           <Compass className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
         </div>

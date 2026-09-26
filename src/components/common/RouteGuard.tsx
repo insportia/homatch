@@ -52,7 +52,21 @@ export function RouteGuard({ children, requireAuth = true }: RouteGuardProps) {
    */
   if (requireAuth && session && !homatchUser) {
     return (
-      <div className="mx-auto flex min-h-[60vh] max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
+      /*
+       * A MARKER, for the same reason NotFoundPage has one.
+       *
+       * This card is what every `auth: true` route rendered for a while when the mobile
+       * harness had no `users` stub -- four widths, three locales, and the gate called it
+       * coverage of the dashboard, the credits screen and the matches page. It has a
+       * perfectly good scrollWidth. The matrix has to be able to FAIL on it, and matching
+       * translated copy in six locales is not a detection strategy.
+       *
+       * Changes nothing visual.
+       */
+      <div
+        data-testid="auth-fallback"
+        className="mx-auto flex min-h-[60vh] max-w-md flex-col items-center justify-center gap-4 px-6 text-center"
+      >
         <div className="grid h-14 w-14 place-items-center rounded-[1rem] border border-border bg-secondary">
           <UserX className="h-7 w-7 text-muted-foreground" aria-hidden="true" />
         </div>

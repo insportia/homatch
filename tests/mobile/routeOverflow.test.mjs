@@ -26,6 +26,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+
+/*
+ * The matrix scope is a DECISION, held in one place and shared.
+ *
+ * src/surfaces/classification.ts says which surfaces are customer-critical and why, and
+ * tests/matrix/surfaceAudit.test.mjs keeps it honest. Importing it here means the
+ * acceptance matrix and the migration plan cannot disagree about which screens matter.
+ */
+import { customerCriticalPaths, statusOf } from '../../src/surfaces/classification.ts';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
@@ -39,6 +48,25 @@ const BASE = `http://127.0.0.1:${PORT}`;
 
 /* The widths the product supports. 320 is the floor. */
 const WIDTHS = [320, 360, 390, 430];
+
+/**
+ * Every locale the product ships, not a sample of them.
+ *
+ * Arabic and Hebrew are not interchangeable and neither stands in for the other:
+ * Arabic shapes and joins, so its rendered strings are routinely wider than the Hebrew
+ * equivalent at the same character count. Georgian is unhyphenated and produces the
+ * longest single words. Russian produces the longest phrases. Turkish sits between.
+ */
+const LOCALES = ['ka', 'en', 'ru', 'ar', 'he', 'tr'];
+
+/**
+ * THE FULL 4x6, off by default and run by `npm run test:matrix`.
+ *
+ * 11 customer-critical surfaces x 4 widths x 6 locales is 264 renders, roughly twelve
+ * minutes. The three passes below stay the everyday gate because a gate nobody runs is
+ * not a gate; this is the acceptance matrix, and it is explicit rather than sampled.
+ */
+const FULL_MATRIX = process.env.HOMATCH_FULL_MATRIX === '1';
 
 /**
  * The routes a customer can actually reach, and what each one is for.
@@ -617,6 +645,41 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
         })(),
         intelBarCount: document
           .querySelector('[data-testid="intel-series"]')?.querySelectorAll('div').length ?? 0,
+
+        /*
+         * THE THREE THINGS THAT PASS AN OVERFLOW CHECK WHILE PROVING NOTHING.
+         *
+         * A not-found page, the profile-load error card and the crash fallback all have
+         * excellent scrollWidth. Each has been mistaken for coverage in this very file
+         * already -- the admin route measured a 404, and every auth:true route measured
+         * the profile card for four widths across three locales. Detected by marker
+         * rather than by copy, because the copy differs in all six languages and that is
+         * the whole point of testing six.
+         */
+        notFound: Boolean(document.querySelector('[data-testid="not-found"]')),
+        authFallback: Boolean(document.querySelector('[data-testid="auth-fallback"]')),
+
+        /*
+         * AND THE OTHER WAY TO FAKE A PASS: shrink the type until it fits.
+         *
+         * An overflow "fixed" by rendering Georgian at 9px is not fixed, it is hidden --
+         * and Georgian and Arabic are the two scripts where it would be most tempting.
+         * Only elements carrying real words are measured: an 8px badge with "3" in it is
+         * a legitimate design, a paragraph at 8px is not.
+         */
+        tinyText: (() => {
+          const offenders = [];
+          for (const el of document.querySelectorAll('p, h1, h2, h3, li, dt, dd, label, button, a')) {
+            const text = (el.textContent || '').trim();
+            if (text.length < 12) continue;
+            const size = parseFloat(getComputedStyle(el).fontSize);
+            if (Number.isFinite(size) && size < 11) {
+              offenders.push(`${el.tagName.toLowerCase()}@${size}px "${text.slice(0, 28)}"`);
+            }
+            if (offenders.length >= 4) break;
+          }
+          return offenders;
+        })(),
       };
     };
 
@@ -736,6 +799,67 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
     }
   }
 
+  /*
+   * 4. THE ACCEPTANCE MATRIX: every customer-critical surface, all four widths, all six
+   *    locales. Off unless HOMATCH_FULL_MATRIX=1, because 264 renders is twelve minutes
+   *    and the three passes above are the gate that runs on every change.
+   *
+   *    A parameterised path in the classification (/property/:id/matches) is matched to
+   *    the concrete route this harness already stubs data for, so the matrix measures a
+   *    page with content on it rather than an empty state.
+   */
+  const fullMatrixChecked = [];
+  if (FULL_MATRIX) {
+    const concrete = new Map(ROUTES.map((r) => [r.path, r]));
+    for (const classified of customerCriticalPaths()) {
+      /* The classification names the route pattern; ROUTES holds the concrete path with
+         a real id in it. Fall back to an exact match for unparameterised surfaces. */
+      const route = concrete.get(classified)
+        ?? ROUTES.find((r) => r.path.replace(/\/[0-9a-f-]{36}\//g, '/:id/') === classified)
+        ?? ROUTES.find((r) => classified.split('/:')[0] !== '' && r.path.startsWith(classified.split('/:')[0]));
+      if (!route) {
+        failures.push(`the matrix cannot reach ${classified}: no concrete route in this harness`);
+        continue;
+      }
+      for (const width of WIDTHS) {
+        for (const locale of LOCALES) {
+          const r = await measure(route, width, locale);
+          const label = `${route.path}@${width}/${locale}`;
+          checked.push(label);
+          fullMatrixChecked.push(label);
+          notePanel(route, `${width}/${locale}`, r.expandPanel);
+          noteIntel(route, `${width}/${locale}`, r);
+
+          /*
+           * A REDIRECT, AN AUTH FALLBACK, A 404 OR AN ERROR PAGE MUST FAIL.
+           *
+           * All four have excellent scrollWidth. This is the lesson the admin route
+           * taught: it passed the overflow check while rendering a not-found page, and
+           * only an assertion that the intended content was PRESENT caught it.
+           */
+          if (!r.mounted) {
+            failures.push(`${label}: rendered nothing`);
+            continue;
+          }
+          if (!r.settled) { failures.push(`${label}: layout never settled`); continue; }
+          if (r.notFound) { failures.push(`${label}: rendered a not-found page`); continue; }
+          if (r.authFallback) { failures.push(`${label}: rendered the profile-load error card`); continue; }
+          if (r.scrollWidth > r.clientWidth + 1 || r.offenders.length) {
+            failures.push(`${label}: scrollWidth=${r.scrollWidth} clientWidth=${r.clientWidth}`
+              + `\n    ${r.offenders.join('\n    ')}`);
+          }
+          /*
+           * AND NOT SOLVED BY SHRINKING THE TYPE. An overflow fixed by making Georgian
+           * 9px is not fixed. The floor is 11px for anything carrying real words.
+           */
+          if (r.tinyText?.length) {
+            failures.push(`${label}: text below the legible floor: ${r.tinyText.join(', ')}`);
+          }
+        }
+      }
+    }
+  }
+
   /* Coverage first: a clean run that measured nothing is not a pass. The
      floor is a literal, not derived from ROUTES, so shrinking ROUTES cannot
      shrink the guard along with it. */
@@ -784,5 +908,35 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
     `the intelligence panel rendered only ${intelBars} bar(s); the fixture supplies 30 `
     + 'daily buckets, so an empty series means the chart is not being drawn at all',
   );
+  /*
+   * THE MATRIX MUST HAVE ACTUALLY RUN.
+   *
+   * A skipped fourth pass and a green fourth pass look identical from the outside, and
+   * this file's whole history is of passes that measured the wrong thing. So when the
+   * matrix is requested, its size is asserted: every customer-critical surface, four
+   * widths, six locales, with nothing quietly dropped because a path could not be
+   * resolved to a concrete route.
+   */
+  if (FULL_MATRIX) {
+    const expected = customerCriticalPaths().length * WIDTHS.length * LOCALES.length;
+    console.log(`[matrix] ${fullMatrixChecked.length} of an expected ${expected} combinations`);
+    assert.equal(
+      fullMatrixChecked.length,
+      expected,
+      `the acceptance matrix measured ${fullMatrixChecked.length} combinations and should `
+      + `have measured ${expected} (${customerCriticalPaths().length} surfaces x `
+      + `${WIDTHS.length} widths x ${LOCALES.length} locales)`,
+    );
+    /* And every locale really appeared, so a filter bug cannot silently drop Arabic. */
+    for (const locale of LOCALES) {
+      const seen = fullMatrixChecked.filter((label) => label.endsWith(`/${locale}`)).length;
+      assert.equal(
+        seen,
+        customerCriticalPaths().length * WIDTHS.length,
+        `locale ${locale} was measured ${seen} times, not once per surface per width`,
+      );
+    }
+  }
+
   assert.deepEqual(failures, [], `horizontal overflow on real phone viewports:\n${failures.join('\n')}`);
 });

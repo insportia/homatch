@@ -299,6 +299,18 @@ export class PublicPreviewTelegramClient implements TelegramClient {
    * So this returns the PreviewPage untouched and refuses nothing. It performs the
    * same single robots-respecting request; it simply does not convert the answer
    * into an exception.
+   *
+   * ONE PAGE, DELIBERATELY, and not because paging is hard. An audit establishes two
+   * things -- that the surface answers without credentials, and that what it returns
+   * carries stable platform-native identities. One page settles both. Paging would
+   * spend three requests per target to learn nothing further about PERMISSION, which
+   * is the only question being asked.
+   *
+   * It does mean an audit's item count is a floor rather than a total. Measured on
+   * @tbilisikvartiri, 2026-09-26: one page carries 11 blocks, 6 real and 5 Telegram
+   * service notices; the incremental sync paging three deep found 7 real, the extra
+   * one being an older post outside the first window. Both numbers are correct for
+   * what they measure, and neither is a count of the channel.
    */
   async inspectPreview(username: string): Promise<PreviewPage> {
     return await this.read(String(username).trim().replace(/^@/, ''), null);

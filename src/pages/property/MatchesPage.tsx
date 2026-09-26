@@ -132,7 +132,46 @@ function useMoney() {
     );
   };
 }
-function LockedMatchCard({
+/*
+ * A RESULT, NOT A LOCK.
+ *
+ * This component was called LockedMatchCard and it was built the way that name
+ * suggests: a blurred excerpt, a padlock, and an Unlock button carrying a price. The
+ * customer's first impression of every result was a thing they could not have.
+ *
+ * WHICH IS THE WRONG MODEL FOR MOST OF THEM. A match produced by a campaign the
+ * customer has already paid for is not a locked thing. It was bought. Blurring it and
+ * asking them to unlock it charges them a second time in the only currency an
+ * interface has -- making somebody ask for what they already own. An earlier pass
+ * fixed the WORDS on that button ("Unlock * 0.00 CR" became "View"), and that was a
+ * real fix, but it left the lock as the frame and "already paid for" as an exception
+ * inside it. This inverts that: a result is a result, and a purchase is the exception.
+ *
+ * SO WHAT LEADS THE CARD IS WHY IT IS HERE.
+ *
+ *   1. WHY THIS MATCHES. match_reasons has existed on every match since matching was
+ *      built and was rendered in exactly one place: inside the dialog you reach AFTER
+ *      unlocking. The explanation of relevance was behind the paywall, and what the
+ *      customer got instead was "87%". A percentage is not a reason; the reasons are
+ *      the reasons, and they are free because they are not what is being sold.
+ *   2. WHAT DOES NOT MATCH, named. mismatch_reasons was stored and never shown
+ *      anywhere at all. A result that is wrong in one respect and right in four is
+ *      more useful when the one is stated than when it is averaged into a score.
+ *   3. THE COMPARISON ITSELF -- intent, location, budget, rooms, language, freshness.
+ *   4. THE EVIDENCE: the customer's own words, server-redacted, and blurred ONLY when
+ *      something is genuinely for sale.
+ *   5. PROVENANCE, last and quietly. Which platform a signal came from matters to an
+ *      operator. It is not why a seller should read it.
+ *   6. THE NEXT ACTION.
+ *
+ * WHAT IS STILL SOLD, AND WHERE
+ *
+ * A PAYG match that no campaign covered. That one keeps its price and its padlock,
+ * because there the padlock is true. And Expand Search stays a PAYG continuation:
+ * finding MORE than the campaign covered is a new purchase, which is a different
+ * question from re-selling a result the campaign already found.
+ */
+function MatchCard({
   match,
   onUnlock,
   unlocking,
@@ -150,139 +189,180 @@ function LockedMatchCard({
   const { t } = useLanguage();
   const money = useMoney();
   const cfg = STRENGTH_CONFIG[match.signal_strength] ?? STRENGTH_CONFIG.POTENTIAL;
+
   /*
    * Already paid for by the campaign that found it.
    *
-   * Read from the reservation id rather than from a price of zero. A zero
-   * price can also mean "we have not worked out what this costs", and the two
-   * must not render the same way -- the whole reason pricing_state exists one
-   * layer down.
-   */
-  /*
-   * PAID FOR IS PAID FOR, whichever way the search was funded.
-   *
-   * This tested the reservation alone. A reservation exists for a PAYG run;
-   * an INCLUDED run -- the search a customer's plan already covers -- carries
-   * an allowance instead. So the first search of every month on the FREE
-   * plan, which is the included one, produced results this screen blurred and
-   * offered to sell for 35 credits.
+   * Read from the reservation or allowance id rather than from a price of zero. A
+   * zero price can also mean "we have not worked out what this costs", and the two
+   * must not render the same way -- the whole reason pricing_state exists one layer
+   * down. A reservation covers a PAYG run; an allowance covers an INCLUDED one, so
+   * the first search of every month on the FREE plan needs the second id or it
+   * renders as something to buy.
    */
   const included = (
     Boolean(match.unlock_included_reservation_id)
     || Boolean(match.unlock_included_allowance_id)
   ) && match.status !== 'UNLOCKED';
-  const platformIcon = PLATFORM_ICONS[match.preview_platform ?? 'OTHER'] ?? '·';
+
+  const opened = match.status === 'UNLOCKED';
+
+  /*
+   * THE ONE BOOLEAN THAT DECIDES WHETHER ANYTHING IS BEING SOLD.
+   *
+   * Everything about locks, blur, padlocks and prices keys off this and nothing else,
+   * so there is one answer on the card rather than four places that each decide
+   * separately and can disagree.
+   */
+  const forSale = !included && !opened;
+
   const budgetStr =
-    /* An absent bound is not zero: see src/lib/rangeSemantics.ts. This
-       rendered USD60,000–0 for a buyer who stated no ceiling. */
+    /* An absent bound is not zero: see src/lib/rangeSemantics.ts. This rendered
+       USD60,000-0 for a buyer who stated no ceiling. */
     rangeShape(match.preview_budget_min, match.preview_budget_max).kind !== 'unknown'
       ? money(match.preview_budget_min, match.preview_budget_max, match.preview_currency)
       : null;
 
+  const reasons = (match.match_reasons ?? []).filter(Boolean);
+  const mismatches = (match.mismatch_reasons ?? []).filter(Boolean);
+  const freshness = freshnessLabel(t, match.evidence_freshness);
+
   return (
     <div className={`rounded-xl border ${cfg.bg} p-4 space-y-3`}>
-      {/* Top row */}
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2">
+      {/* ── 1. RELEVANCE, and the state of the result ───────────────────── */}
+      <div className="flex items-start justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2 min-w-0">
           <StrengthBars strength={match.signal_strength} />
-          <span className={`text-xs font-semibold ${cfg.color}`}>{t(cfg.labelKey)}</span>
+          <span className={`text-xs font-semibold ${cfg.color} break-words`}>
+            {t(cfg.labelKey)}
+          </span>
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
           {match.status === 'NEW' && (
-            <span className="text-[13px] font-bold bg-primary text-primary-foreground px-1.5 py-0.5 rounded">{t('matches_new_badge')}</span>
+            <span className="text-[13px] font-bold bg-primary text-primary-foreground px-1.5 py-0.5 rounded whitespace-normal">{t('matches_new_badge')}</span>
           )}
-          {match.status === 'UNLOCKED' && (
-            <span className="text-[13px] font-bold bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded border border-green-500/30">{t('matches_unlocked_badge')}</span>
+          {opened && (
+            <span className="text-[13px] font-bold bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded border border-green-500/30 whitespace-normal">{t('matches_unlocked_badge')}</span>
           )}
           {included && (
-            <span className="text-[13px] font-bold bg-green-500/10 text-green-400/90 px-1.5 py-0.5 rounded border border-green-500/20">{t('matches_included_badge')}</span>
-          )}
-          {/*
-            HOW OLD THIS EVIDENCE IS, in the customer's words.
-            matches.evidence_freshness has been stored since the seven-day
-            rule was wired and never shown, so a search that returned fewer
-            results because findings were awaiting re-checking looked simply
-            thinner. freshnessLabel maps the enum; an unmapped or absent value
-            renders nothing rather than guessing, and there is no percentage
-            anywhere because no measured number backs one.
-          */}
-          {freshnessLabel(t, match.evidence_freshness) && (
-            <span className="text-[13px] text-muted-foreground/70 px-1.5 py-0.5 rounded border border-border/60">
-              {freshnessLabel(t, match.evidence_freshness)}
-            </span>
+            <span className="text-[13px] font-bold bg-green-500/10 text-green-400/90 px-1.5 py-0.5 rounded border border-green-500/20 whitespace-normal">{t('matches_included_badge')}</span>
           )}
         </div>
       </div>
 
-      {/* Preview chips */}
+      {/* ── 2. WHY THIS MATCHES ─────────────────────────────────────────── */}
+      {reasons.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs font-semibold text-foreground break-words">
+            {t('matches_why_this_matches')}
+          </p>
+          <ul className="space-y-0.5">
+            {reasons.slice(0, 4).map((reason, index) => (
+              <li
+                key={`${reason}-${index}`}
+                className="flex items-start gap-1.5 text-xs text-muted-foreground min-w-0"
+              >
+                <Check className="h-3 w-3 text-green-400/80 shrink-0 mt-0.5" />
+                <span className="break-words min-w-0">{reason}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/*
+        WHAT DOES NOT MATCH, SAID OUT LOUD.
+        Stored since matching was built and never rendered anywhere. Naming the one
+        thing that is wrong is more useful than averaging it into a lower score, and
+        it is the difference between a customer trusting the list and wondering what
+        it is not telling them.
+      */}
+      {mismatches.length > 0 && (
+        <ul className="space-y-0.5">
+          {mismatches.slice(0, 3).map((reason, index) => (
+            <li
+              key={`${reason}-${index}`}
+              className="flex items-start gap-1.5 text-xs text-muted-foreground/80 min-w-0"
+            >
+              <span className="text-muted-foreground/60 shrink-0 mt-0.5">&minus;</span>
+              <span className="break-words min-w-0">{reason}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* ── 3. THE COMPARISON: what this buyer is asking for ────────────── */}
       <div className="flex flex-wrap gap-2">
-        {match.preview_platform && (
-          <span className="text-xs bg-secondary px-2 py-0.5 rounded-full text-muted-foreground flex items-center gap-1">
-            <Globe className="h-3 w-3" />
-            {match.preview_platform}
-          </span>
-        )}
-        {match.preview_language && (
-          <span className="text-xs bg-secondary px-2 py-0.5 rounded-full text-muted-foreground">
-            {match.preview_language.toUpperCase()}
-          </span>
-        )}
         {match.preview_city && (
-          <span className="text-xs bg-secondary px-2 py-0.5 rounded-full text-muted-foreground flex items-center gap-1">
-            <MapPin className="h-3 w-3" />
-            {match.preview_city}
+          <span className="text-xs bg-secondary px-2 py-0.5 rounded-full text-muted-foreground flex items-center gap-1 max-w-full">
+            <MapPin className="h-3 w-3 shrink-0" />
+            <span className="break-words min-w-0">{match.preview_city}</span>
           </span>
         )}
         {budgetStr && (
-          <span className="text-xs bg-secondary px-2 py-0.5 rounded-full text-muted-foreground flex items-center gap-1">
-            <DollarSign className="h-3 w-3" />
-            {budgetStr}
+          <span className="text-xs bg-secondary px-2 py-0.5 rounded-full text-muted-foreground flex items-center gap-1 max-w-full">
+            <DollarSign className="h-3 w-3 shrink-0" />
+            <span className="break-words min-w-0">{budgetStr}</span>
           </span>
         )}
         {match.preview_bedrooms && (
-          <span className="text-xs bg-secondary px-2 py-0.5 rounded-full text-muted-foreground flex items-center gap-1">
-            <BedDouble className="h-3 w-3" />
-            {match.preview_bedrooms} {t('matches_bedrooms')}
+          <span className="text-xs bg-secondary px-2 py-0.5 rounded-full text-muted-foreground flex items-center gap-1 max-w-full">
+            <BedDouble className="h-3 w-3 shrink-0" />
+            <span className="break-words min-w-0">{match.preview_bedrooms} {t('matches_bedrooms')}</span>
           </span>
         )}
         {match.preview_recency && (
-          <span className="text-xs bg-secondary px-2 py-0.5 rounded-full text-muted-foreground flex items-center gap-1">
-            <Clock className="h-3 w-3" />
-            {match.preview_recency}
+          <span className="text-xs bg-secondary px-2 py-0.5 rounded-full text-muted-foreground flex items-center gap-1 max-w-full">
+            <Clock className="h-3 w-3 shrink-0" />
+            <span className="break-words min-w-0">{match.preview_recency}</span>
+          </span>
+        )}
+        {/*
+          HOW OLD THIS EVIDENCE IS, in the customer's words, and a DIFFERENT clock
+          from preview_recency above: that one is when the buyer spoke, this one is
+          what the seven-day rule concluded about whether we have re-checked it.
+          freshnessLabel maps the enum; an unmapped or absent value renders nothing
+          rather than guessing, and there is no percentage because no measured number
+          backs one.
+        */}
+        {freshness && (
+          <span className="text-xs px-2 py-0.5 rounded-full text-muted-foreground/70 border border-border/60 max-w-full">
+            <span className="break-words min-w-0">{freshness}</span>
           </span>
         )}
       </div>
 
-      {/* Excerpt */}
+      {/* ── 4. THE EVIDENCE ─────────────────────────────────────────────── */}
       {match.preview_excerpt && (
         <div className="rounded-lg bg-background/50 border border-border/50 px-3 py-2">
           {/*
             * BLURRED ONLY WHEN SOMETHING IS ACTUALLY BEING SOLD.
             *
-            * A match carrying unlock_included_reservation_id costs zero
-            * credits to reveal, because the search that produced it was
-            * already paid for. Blurring it anyway charges the customer a
-            * second time in the only currency the interface has left:
-            * making them ask for what they already bought.
+            * The excerpt is server-REDACTED before it ever reaches this component --
+            * URLs, handles and phone numbers stripped, then capped -- so the blur is
+            * a visual affordance over already-safe text and not the security model.
+            * It is applied only when `forSale`, because blurring a result the
+            * campaign paid for is the second charge described at the top of this
+            * component.
             */}
           <p
             className={
-              `text-xs text-muted-foreground italic line-clamp-2${
-                included ? '' : ' blur-[1.5px] select-none'}`
+              `text-xs text-muted-foreground italic line-clamp-2 break-words${
+                forSale ? ' blur-[1.5px] select-none' : ''}`
             }
           >
             {match.preview_excerpt}
           </p>
-          <div className="flex items-center gap-1 mt-1">
-            {included ? (
+          <div className="flex items-start gap-1 mt-1">
+            {forSale ? (
               <>
-                <Check className="h-3 w-3 text-green-400/70" />
-                <span className="text-[13px] text-muted-foreground/70">{t('matches_included_hint')}</span>
+                <Lock className="h-3 w-3 text-muted-foreground/50 shrink-0 mt-0.5" />
+                <span className="text-[13px] text-muted-foreground/50 break-words">{t('matches_unlock_hint')}</span>
               </>
             ) : (
               <>
-                <Lock className="h-3 w-3 text-muted-foreground/50" />
-                <span className="text-[13px] text-muted-foreground/50">{t('matches_unlock_hint')}</span>
+                <Check className="h-3 w-3 text-green-400/70 shrink-0 mt-0.5" />
+                <span className="text-[13px] text-muted-foreground/70 break-words">{t('matches_included_hint')}</span>
               </>
             )}
           </div>
@@ -298,22 +378,32 @@ function LockedMatchCard({
         </div>
       )}
 
-      {/* Score + Unlock CTA */}
-      <div className="flex items-center justify-between pt-1 border-t border-border/30">
-        <div className="flex items-center gap-3">
-          <div className="text-center">
-            <p className="text-xs text-muted-foreground">{t('matches_score')}</p>
-            <p className={`text-sm font-semibold ${cfg.color}`}>{Math.round(match.match_score)}%</p>
-          </div>
-          <div className="text-center">
-            <p className="text-xs text-muted-foreground">{t('matches_confidence')}</p>
-            <p className="text-sm font-semibold text-foreground">
-              {Math.round((match.intent_confidence ?? 0) * 100)}%
-            </p>
-          </div>
+      {/* ── 5. PROVENANCE, secondary · and 6. THE NEXT ACTION ───────────── */}
+      <div className="flex items-end justify-between gap-2 pt-1 border-t border-border/30 flex-wrap">
+        {/*
+          WHERE IT CAME FROM, AND HOW STRONGLY IT SCORED, both demoted on purpose.
+          Which platform read a signal matters to an operator; it is not why a seller
+          should act. The score is kept because it is a real number the matcher
+          recorded -- and put below the reasons, because a number is what you check
+          after you have been told why, not instead.
+        */}
+        <div className="flex items-center gap-2 text-[13px] text-muted-foreground/70 min-w-0 flex-wrap">
+          {match.preview_platform && (
+            <span className="flex items-center gap-1 max-w-full">
+              <Globe className="h-3 w-3 shrink-0" />
+              <span className="break-words min-w-0">{match.preview_platform}</span>
+            </span>
+          )}
+          {match.preview_language && (
+            <span className="break-words">{match.preview_language.toUpperCase()}</span>
+          )}
+          <span className="break-words" dir="ltr">
+            {t('matches_score')} {Math.round(match.match_score)}%
+          </span>
         </div>
-        <div className="flex items-center gap-1.5">
-          {/* Ask AI why — always available */}
+
+        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+          {/* Ask AI why — always available, on a paid result and an unpaid one alike. */}
           <Button
             size="sm"
             variant="ghost"
@@ -321,41 +411,48 @@ function LockedMatchCard({
             onClick={() => onAskAI(match)}
             title={t('matches_ask_ai_title')}
           >
-            <Bot className="h-3 w-3" />
+            <Bot className="h-3 w-3 shrink-0" />
             <span className="hidden md:inline">{t('matches_why')}</span>
           </Button>
-          {match.status !== 'UNLOCKED' ? (
+
+          {forSale && (
             /*
-             * "Unlock · 0.00 CR" was the old button on an included match: an
-             * offer to sell something at no price, which reads as either a
-             * mistake or a trick. It is not a purchase, so it does not get a
-             * purchase's words -- it opens a result the campaign already
-             * bought, and says so.
-             *
-             * The same handler runs. The RPC still charges zero, still writes
-             * the match_unlocks row, and still returns the full signal; what
-             * changes is what the customer is asked for.
+             * THE ONE PLACE A PURCHASE IS OFFERED. A padlock and a price, because
+             * here both are true: no campaign covered this result.
              */
             <Button
               size="sm"
-              className={
-                included
-                  ? 'bg-secondary text-foreground hover:bg-secondary/80 font-semibold h-8 px-4 text-xs gap-1.5'
-                  : 'bg-primary text-primary-foreground hover:bg-primary/90 font-semibold h-8 px-4 text-xs gap-1.5'
-              }
+              className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold h-8 px-4 text-xs gap-1.5"
               onClick={() => onUnlock(match)}
               disabled={unlocking}
             >
               {unlocking
-                ? <Loader2 className="h-3 w-3 animate-spin" />
-                : included ? <Check className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
-              {included ? (
-                <span>{t('matches_included_view_btn')}</span>
-              ) : (
-                <span dir="ltr">{t('matches_unlock_btn')} · {match.unlock_price_credits.toFixed(2)} CR</span>
-              )}
+                ? <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+                : <Unlock className="h-3 w-3 shrink-0" />}
+              <span dir="ltr">{t('matches_unlock_btn')} &middot; {match.unlock_price_credits.toFixed(2)} CR</span>
             </Button>
-          ) : (
+          )}
+
+          {included && (
+            /*
+             * NOT A PURCHASE AND NOT WORDED LIKE ONE. The same handler runs -- the RPC
+             * charges zero, writes the match_unlocks row and returns the full signal --
+             * but what the customer is asked for is to open a result they own.
+             */
+            <Button
+              size="sm"
+              className="bg-secondary text-foreground hover:bg-secondary/80 font-semibold h-8 px-4 text-xs gap-1.5"
+              onClick={() => onUnlock(match)}
+              disabled={unlocking}
+            >
+              {unlocking
+                ? <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+                : <Check className="h-3 w-3 shrink-0" />}
+              <span className="break-words">{t('matches_included_view_btn')}</span>
+            </Button>
+          )}
+
+          {opened && (
             <>
               <Button
                 size="sm"
@@ -364,7 +461,7 @@ function LockedMatchCard({
                 onClick={() => onChat(match)}
                 title={t('matches_chat_title')}
               >
-                <MessageSquare className="h-3 w-3" />
+                <MessageSquare className="h-3 w-3 shrink-0" />
                 <span className="hidden md:inline">{t('matches_chat_btn')}</span>
               </Button>
               <Button
@@ -374,7 +471,7 @@ function LockedMatchCard({
                 onClick={() => onRequestViewing(match)}
                 title={t('matches_viewing_title')}
               >
-                <CalendarDays className="h-3 w-3" />
+                <CalendarDays className="h-3 w-3 shrink-0" />
                 <span className="hidden md:inline">{t('matches_viewing_btn')}</span>
               </Button>
               <Button
@@ -383,7 +480,7 @@ function LockedMatchCard({
                 className="border border-border text-xs h-8 gap-1.5"
                 onClick={() => onUnlock(match)}
               >
-                <ChevronRight className="h-3 w-3" />
+                <ChevronRight className="h-3 w-3 shrink-0" />
                 <span className="hidden md:inline">{t('matches_details_btn')}</span>
               </Button>
             </>
@@ -1015,7 +1112,7 @@ function MatchesContent() {
         ) : (
           <div className="space-y-3">
             {filteredMatches.map(m => (
-              <LockedMatchCard
+              <MatchCard
                 key={m.id}
                 match={m}
                 onUnlock={handleUnlockClick}

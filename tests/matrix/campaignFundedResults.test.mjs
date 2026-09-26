@@ -68,14 +68,42 @@ test('the column reaches the screen at all', () => {
 
 test('an included result is never shown a price or a padlock', () => {
   const body = code(MATCHES);
-  /* The price string and the blur must both be on the not-included branch. */
+  /*
+   * Both the price and the blur must sit behind `forSale`, the single boolean the
+   * rebuilt card derives once as `!included && !opened`. This previously asserted on
+   * `included ? '' :` and `included ?`, which described the old implementation's
+   * shape; the rule is the same and the check now names the rule.
+   */
   const priced = body.indexOf('matches_unlock_btn');
   const blur = body.indexOf('blur-[1.5px]');
   assert.ok(priced > 0 && blur > 0, 'the priced/blurred branch could not be found');
-  assert.match(body.slice(Math.max(0, blur - 200), blur), /included \? '' :/,
-    'the blur is not conditional on the result being unpaid');
-  assert.match(body.slice(Math.max(0, priced - 400), priced), /included \?/,
-    'the credit price is not conditional on the result being unpaid');
+  assert.match(body, /const forSale = !included && !opened;/,
+    'the card no longer derives one answer for whether anything is being sold');
+  assert.match(body.slice(Math.max(0, blur - 200), blur), /forSale \?/,
+    'the blur is not conditional on something actually being for sale');
+  assert.match(body.slice(Math.max(0, priced - 600), priced), /forSale &&/,
+    'the credit price is not conditional on something actually being for sale');
+});
+
+test('the reasons a match exists are shown before anything is bought', () => {
+  /*
+   * match_reasons has been stored on every match since matching was built, and was
+   * rendered in exactly ONE place: inside the dialog reached AFTER unlocking. The
+   * explanation of relevance was behind the paywall and what the customer got in its
+   * place was a percentage. mismatch_reasons was stored and rendered nowhere at all.
+   *
+   * Neither is what is being sold -- the contact details are -- so both belong on the
+   * card, and this asserts they are on it rather than only in the dialog.
+   */
+  const body = code(MATCHES);
+  const card = body.slice(body.indexOf('function MatchCard('), body.indexOf('function UnlockedMatchDialog('));
+  assert.ok(card.length > 0, 'the match card could not be located');
+  assert.match(card, /match\.match_reasons/,
+    'the card does not show why the match is there');
+  assert.match(card, /match\.mismatch_reasons/,
+    'the card does not say what does not match');
+  assert.match(card, /matches_why_this_matches/,
+    'the reasons are shown without a heading saying what they are');
 });
 
 test('the same person is not matched twice to one property', () => {

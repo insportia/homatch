@@ -72,11 +72,36 @@ test('inclusion is read from the reservation, never from a price of zero', () =>
   );
 });
 
-test('the blur and the padlock are conditional on it', () => {
+test('one boolean decides whether anything is being sold', () => {
   /*
-   * The excerpt blur used to be an unconditional class on the preview. If it
-   * ever becomes unconditional again, a paid-for result goes back behind
-   * frosted glass.
+   * These used to assert on `included ?` appearing near the blur and near the
+   * price, which pinned the SHAPE of the old implementation rather than the rule.
+   * The card was rebuilt around relevance instead of around a lock, and the rule is
+   * now named once:
+   *
+   *   const forSale = !included && !opened;
+   *
+   * Strictly stronger than what it replaced, because it also excludes a result the
+   * customer has ALREADY opened -- which the old `included ?` branches did not, so
+   * an unlocked match still rendered its padlock hint. Asserting the definition and
+   * then asserting that blur and price both key off it is what makes the rule
+   * un-bypassable: there is one answer per card, not four that can disagree.
+   */
+  const decl = page.match(/const forSale = [^;]+;/);
+  assert.ok(decl, 'MatchesPage no longer names the one boolean that decides this');
+  assert.match(decl[0], /!included/, 'forSale does not exclude campaign-funded results');
+  assert.match(decl[0], /!opened/, 'forSale does not exclude results already opened');
+  assert.doesNotMatch(
+    decl[0],
+    /unlock_price_credits/,
+    'whether something is for sale is being inferred from its price',
+  );
+});
+
+test('the blur is applied only when something is genuinely for sale', () => {
+  /*
+   * The excerpt blur used to be an unconditional class on the preview. If it ever
+   * becomes unconditional again, a paid-for result goes back behind frosted glass.
    */
   const blurs = [...page.matchAll(/blur-\[1\.5px\]/g)];
   assert.ok(blurs.length > 0, 'the blur is gone entirely — this test is measuring nothing');
@@ -85,27 +110,41 @@ test('the blur and the padlock are conditional on it', () => {
     const context = page.slice(Math.max(0, match.index - 400), match.index);
     assert.match(
       context,
-      /included \?|!included/,
-      'a blur is applied without asking whether the result was already paid for',
+      /forSale \?|forSale &&/,
+      'a blur is applied without asking whether anything is actually being sold',
     );
   }
 });
 
 test('no button offers to sell something for 0.00 CR', () => {
   /*
-   * The price is still rendered — for results that genuinely cost credits —
-   * so this checks WHERE it is rendered: inside a branch that inclusion
-   * excludes.
+   * The price is still rendered — for results that genuinely cost credits — so this
+   * checks WHERE it is rendered: inside the single branch that only an unpaid,
+   * unopened result reaches.
    */
   const price = page.indexOf('unlock_price_credits.toFixed(2)');
   assert.ok(price > 0, 'the price is no longer rendered at all');
 
-  const surrounding = page.slice(Math.max(0, price - 600), price);
+  const surrounding = page.slice(Math.max(0, price - 800), price);
   assert.match(
     surrounding,
-    /included \?/,
-    'the credit price is rendered without excluding results the campaign paid for',
+    /forSale &&/,
+    'the credit price is rendered outside the for-sale branch',
   );
+});
+
+test('the padlock hint is not shown on a result the customer owns', () => {
+  /*
+   * The hint under the excerpt had two branches keyed on `included`, so an
+   * already-UNLOCKED match -- which is not `included`, because inclusion is
+   * explicitly cleared once a match is unlocked -- fell through to the padlock and
+   * "unlock to see the rest" under text it had already paid to see.
+   */
+  const hint = page.indexOf('matches_unlock_hint');
+  assert.ok(hint > 0, 'the padlock hint is gone entirely');
+  const surrounding = page.slice(Math.max(0, hint - 400), hint);
+  assert.match(surrounding, /forSale \?/,
+    'the padlock hint does not key off forSale');
 });
 
 test('credits are never rendered with a currency symbol', () => {

@@ -173,9 +173,20 @@ test('the full signal is rendered only from an unlock record', () => {
 test('an included match is not blurred, because it was already paid for', () => {
   // Blurring a result the customer has already bought charges them a second time in
   // the only currency the interface has left: making them ask for it again.
+  // The card was rebuilt around relevance rather than around a lock, and the
+  // condition is now the single `forSale` boolean it derives once as
+  // `!included && !opened`. Strictly stronger than the `included ? ...` ternary this
+  // replaces: that one still blurred nothing for an included match but also still
+  // showed a padlock hint on an already-opened one, because an unlocked match is not
+  // `included`.
   assert.match(
     pageSource,
-    /included \? '' : ' blur-\[1\.5px\] select-none'/,
+    /const forSale = !included && !opened;/,
+    'the card no longer derives one answer for whether anything is being sold',
+  );
+  assert.match(
+    pageSource,
+    /forSale \? ' blur-\[1\.5px\] select-none' : ''/,
     'the blur must be conditional on something actually being sold',
   );
   assert.match(pageSource, /unlock_included_reservation_id/);

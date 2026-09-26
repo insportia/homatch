@@ -90,23 +90,50 @@ test('automated group JOINING is never claimed, and joining is not read access',
   assert.match(authorized.evidence, /joining does not create a read mechanism/i);
 });
 
-test('UNVERIFIED is an admission and is never attemptable', () => {
+test('neither UNVERIFIED nor RESTRICTED is ever attemptable', () => {
   /*
-   * Reddit and VK are UNVERIFIED: both publish real APIs, and I could not read
-   * their current terms this session — reddit.com blocks our user agent, which
-   * is itself informative. A matrix that guessed AVAILABLE would have a planner
-   * scheduling jobs against credentials nobody provisioned.
+   * The property that matters, and it is unchanged: nothing a planner can schedule
+   * against credentials nobody provisioned. VK remains UNVERIFIED because its
+   * current method availability has still not been read; Reddit is now RESTRICTED,
+   * which is a stronger statement and equally unattemptable.
    */
   assert.equal(attemptableNow('FORUM', 'COMMUNITY_POSTS'), false);
   assert.equal(attemptableNow('VK', 'COMMUNITY_POSTS'), false);
+});
 
-  const reddit = bestRoute('FORUM', 'COMMUNITY_POSTS');
-  assert.equal(reddit.availability, 'UNVERIFIED');
-  assert.match(reddit.evidence, /blocks our user agent/i,
-    'the reason Reddit could not be verified is not recorded');
-  assert.match(reddit.evidence, /not implemented/i,
-    'the matrix does not say that anonymous scraping was declined');
-  assert.ok(reddit.requires.length > 0, 'nothing is named that would move Reddit forward');
+test('Reddit records a measured robots disallow, not an assumption', () => {
+  /*
+   * MEASURED 2026-09-26. The earlier row said Reddit's position "could not be
+   * read" because they blocked our user agent. They do serve robots.txt, HTTP 200:
+   *
+   *   # Reddit believes in an open internet, but not the misuse of public content.
+   *   User-agent: *
+   *   Disallow: /
+   *
+   * So the PUBLIC_WEB row exists and is UNAVAILABLE on evidence. It has to EXIST
+   * rather than simply be absent, because "nobody built it yet" and "we are asked
+   * not to" look identical in an empty matrix, and only one of them must never be
+   * revisited by somebody feeling productive.
+   */
+  const web = modesFor('FORUM', 'COMMUNITY_POSTS').find((row) => row.mode === 'PUBLIC_WEB');
+  assert.ok(web, 'the declined route must be recorded, not omitted');
+  assert.equal(web.availability, 'UNAVAILABLE');
+  assert.match(web.evidence, /Disallow: \//, 'the actual directive belongs in the evidence');
+  assert.match(web.evidence, /2026-09-26/, 'a capability claim carries the date it was measured');
+  assert.equal(web.liveVerified, true, 'this one WAS checked against the live platform');
+  assert.deepEqual(web.requires, [], 'nothing would unblock it, which is the point');
+});
+
+test('the only sanctioned Reddit route names the human act that would open it', () => {
+  const api = modesFor('FORUM', 'COMMUNITY_POSTS').find((row) => row.mode === 'OFFICIAL_API');
+  assert.ok(api);
+  assert.equal(api.availability, 'RESTRICTED');
+  assert.equal(api.liveVerified, false, 'nothing has been run against it');
+  assert.ok(api.requires.length > 0, 'nothing is named that would move Reddit forward');
+  assert.ok(
+    api.requires.some((r) => /register|app|credential|terms/i.test(r)),
+    'registering an app and accepting terms is an act of agreement, and must be named as one',
+  );
 });
 
 test('the only AVAILABLE surface is one we actually implemented', () => {

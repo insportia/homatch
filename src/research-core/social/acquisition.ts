@@ -266,29 +266,106 @@ export const ACQUISITION_MATRIX: readonly SurfaceCapability[] = [
   },
 
   /* ── REDDIT ────────────────────────────────────────────────────────────── */
+  /*
+   * MEASURED 2026-09-26, and this row is now evidence rather than inference.
+   *
+   * The previous note said Reddit's position "could not be read" because they
+   * blocked our user agent. They do serve robots.txt, and it is unambiguous:
+   *
+   *   # Reddit believes in an open internet, but not the misuse of public content.
+   *   User-agent: *
+   *   Disallow: /
+   *
+   * A blanket disallow for every crawler, with their Public Content Policy linked
+   * beside it. That is not a gap to route around and not a rate limit to wait out
+   * -- it is the answer. So PUBLIC_WEB is recorded as its own row below rather than
+   * being left merely unimplemented, because "nobody has built it yet" and "we are
+   * asked not to" look identical in an empty matrix, and only the second one must
+   * never be revisited by somebody feeling productive.
+   */
+  {
+    platform: 'FORUM', surface: 'COMMUNITY_POSTS', mode: 'PUBLIC_WEB',
+    availability: 'UNAVAILABLE',
+    requires: [],
+    evidence: 'robots.txt at www.reddit.com is "User-agent: * / Disallow: /" — measured '
+      + '2026-09-26, HTTP 200, served with a link to their Public Content Policy. Every '
+      + 'unauthenticated path is disallowed, the .json endpoints included. This core respects '
+      + 'robots, so there is nothing here to implement: reading it would mean defeating a control '
+      + 'the platform states plainly. Not a rate limit, not an outage, and not pending work.',
+    liveVerified: true,
+  },
   {
     platform: 'FORUM', surface: 'COMMUNITY_POSTS', mode: 'OFFICIAL_API',
-    availability: 'UNVERIFIED',
-    requires: ['a registered Reddit app', 'OAuth client credentials', 'a declared use case'],
-    evidence: 'Reddit publishes a documented Data API over OAuth, which is the sanctioned route '
-      + 'and needs client credentials this deployment does not hold. NOT marked AVAILABLE because '
-      + 'the current terms and rate tiers could not be read: reddit.com blocks our user agent '
-      + 'outright, which is itself a signal about automated access. Anonymous .json scraping is '
-      + 'deliberately not implemented — it is the unsanctioned path and their block makes their '
-      + 'position on it plain. An operator provisioning credentials is what moves this row.',
+    availability: 'RESTRICTED',
+    requires: [
+      'a registered Reddit app (reddit.com/prefs/apps)',
+      'OAuth client credentials held by this deployment',
+      'acceptance of the Reddit Data API terms and a declared use case',
+    ],
+    evidence: 'Reddit publishes a documented Data API over OAuth, and with robots.txt disallowing '
+      + 'everything else it is the ONLY sanctioned route to this surface. RESTRICTED rather than '
+      + 'UNVERIFIED because what stands in the way is now known precisely and is not a technical '
+      + 'unknown: registering an application and accepting the API terms is an act of agreement a '
+      + 'person performs, not a credential that can be derived. The adapter is deliberately not '
+      + 'written against it until credentials exist, because an adapter that cannot be run against '
+      + 'the live platform cannot be proven and would sit in the registry looking finished.',
     liveVerified: false,
   },
 
   /* ── VK ────────────────────────────────────────────────────────────────── */
+  /*
+   * MEASURED 2026-09-26, and VK is the interesting one: unlike Reddit it does not
+   * say no, and unlike Telegram it does not say yes either.
+   *
+   *   vk.com/robots.txt   268 lines, HTTP 200, and NO bare "Disallow: /".
+   *                       Selective: *?w=wall, *?w=page, /feed*, /groups?id=,
+   *                       /wall*?reply=, /wall*?thread= and many more.
+   *   vk.com/<community>  302 -> m.vk.com/public<id>, which serves 102,772 bytes
+   *                       HTTP 200 to an identifying agent with no credentials.
+   *   m.vk.com/robots.txt the same selective policy, which matters because it is a
+   *                       DIFFERENT ORIGIN and this core checks robots per origin.
+   *
+   * So the community landing page is genuinely permitted and genuinely served. What
+   * is NOT permitted is the query form needed to page a wall -- `*?w=wall` is
+   * disallowed explicitly -- and the 102KB that does arrive carries only four
+   * `wall_post` markers beside fourteen `login` references and captcha/challenge
+   * scaffolding.
+   *
+   * That is the whole finding: a reader built on this could fetch a landing page and
+   * could not page a community. A community reader that cannot page is not a
+   * community reader, and dressing one up as an adapter would put a row in the
+   * registry that looks finished and yields almost nothing.
+   */
+  {
+    platform: 'VK', surface: 'COMMUNITY_POSTS', mode: 'PUBLIC_WEB',
+    availability: 'RESTRICTED',
+    requires: [
+      'a paging route that robots permits, which *?w=wall is not',
+    ],
+    evidence: 'Measured 2026-09-26. vk.com/robots.txt has no blanket disallow, and a community '
+      + 'URL 302s to m.vk.com and returns HTTP 200 with 102,772 bytes to an identifying agent '
+      + 'holding no credentials — so this is not a login wall and not a robots refusal. But '
+      + '"*?w=wall" IS disallowed on both origins, and that is the form a wall is paged with, so '
+      + 'only the landing page is reachable: 4 wall_post markers against 14 login references and '
+      + 'captcha/challenge scaffolding in the same document. RESTRICTED, and deliberately not '
+      + 'implemented: an adapter that cannot page a community is not a community reader, and it '
+      + 'would sit in the registry looking finished.',
+    liveVerified: true,
+  },
   {
     platform: 'VK', surface: 'COMMUNITY_POSTS', mode: 'OFFICIAL_API',
-    availability: 'UNVERIFIED',
-    requires: ['a VK application', 'a service or group access token'],
+    availability: 'RESTRICTED',
+    requires: [
+      'a VK application registered by a person',
+      'a service or group access token held by this deployment',
+    ],
     evidence: 'VK documents an open API with wall and comment methods for public communities, '
-      + 'which would make it one of the more genuinely readable platforms here. Left UNVERIFIED '
-      + 'rather than AVAILABLE because the current method availability and token requirements have '
-      + 'not been read in this session, and a capability matrix that guesses is worse than one '
-      + 'that admits.',
+      + 'and with the public-web route limited to a landing page it is the only route that could '
+      + 'actually read a community here. RESTRICTED rather than UNVERIFIED because what is missing '
+      + 'is now known precisely: a token. It has NOT been called in this session — no token exists '
+      + 'to call it with — so nothing about its current method availability or rate tiers is '
+      + 'claimed, and liveVerified stays false. An operator provisioning a token is what moves '
+      + 'this row, and only a real call moves liveVerified.',
     liveVerified: false,
   },
 

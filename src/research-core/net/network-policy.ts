@@ -136,6 +136,34 @@ export interface NetworkPolicyOptions {
 }
 
 /**
+ * The host as every check below must see it.
+ *
+ * Two things are stripped, and forgetting the second one was a real hole.
+ *
+ * Brackets: `[::1]` arrives bracketed from `URL.hostname` and no IP parser
+ * wants them.
+ *
+ * THE FQDN ROOT DOT. `localhost.` and `localhost` are the same name — the
+ * trailing dot only says "already absolute" — but `INTERNAL_HOST_EXACT` is a
+ * string set, and `'localhost.'` is not in it. So `http://localhost。/`
+ * (U+3002 IDEOGRAPHIC FULL STOP, which IDNA maps to an ordinary dot) walked
+ * straight past the pre-DNS check, as did `metadata.google.internal.`. Rule 3
+ * still caught both wherever a resolver was configured, which is exactly why
+ * this was worth fixing rather than shrugging at: a defence-in-depth layer
+ * that silently stopped defending would not have announced itself until the
+ * day it was the only layer left.
+ *
+ * Only ONE trailing dot is removed. `host..` is not a legal name, and quietly
+ * repairing it into one would be inventing a host the caller did not ask for.
+ */
+export function canonicalHost(hostname: string): string {
+  const unbracketed = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  return unbracketed.length > 1 && unbracketed.endsWith('.')
+    ? unbracketed.slice(0, -1)
+    : unbracketed;
+}
+
+/**
  * Hostnames that are internal by convention. Blocked before DNS, because in a
  * container these often resolve to something useful to an attacker.
  */
@@ -202,7 +230,7 @@ export class NetworkPolicy {
       return { allowed: false, reason: 'MALFORMED_URL', host: '', addresses: [] };
     }
 
-    const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    const host = canonicalHost(parsed.hostname);
 
     if (!this.allowedSchemes.has(parsed.protocol.toLowerCase())) {
       return {

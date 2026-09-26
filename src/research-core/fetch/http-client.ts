@@ -174,9 +174,29 @@ export class HttpClient {
       identity.fetchUrl,
     );
 
-    if (policy.robots === 'RESPECT' && !options.skipRobots) {
-      await this.assertRobotsAllows(identity.fetchUrl, policy);
-    }
+    /*
+     * robots is checked per ORIGIN, not once per call.
+     *
+     * It used to be checked here alone, for the entry URL, and a redirect
+     * crossing to another host then reached that host's pages without its
+     * robots.txt ever being read. On the portal path every hop is an
+     * allowlisted portal with a policy of its own, so the gap was invisible;
+     * on the candidate-audit path, where an unvetted site chooses the redirect
+     * target, it is the difference between respecting robots and claiming to.
+     *
+     * RobotsChecker caches per origin, so the cost is one extra fetch the
+     * first time a redirect introduces a host we have not asked yet.
+     */
+    const robotsChecked = new Set<string>();
+    const assertRobots = async (target: string): Promise<void> => {
+      if (policy.robots !== 'RESPECT' || options.skipRobots) return;
+      const origin = originOf(target);
+      if (robotsChecked.has(origin)) return;
+      robotsChecked.add(origin);
+      await this.assertRobotsAllows(target, policy);
+    };
+
+    await assertRobots(identity.fetchUrl);
 
     const maxRedirects = policy.redirects.follow ? policy.redirects.max : 0;
     const maxBytes = options.maxBytes ?? policy.maxResponseBytes;
@@ -201,6 +221,9 @@ export class HttpClient {
           ? firstTarget
           : await this.options.networkPolicy.resolveTarget(currentUrl);
       for (const address of target.addresses) contactedAddresses.push(address.address);
+
+      // A redirect that changed origin has not been cleared by robots yet.
+      await assertRobots(currentUrl);
 
       const limitKey = options.limitKey ?? this.limitKeyFor(currentUrl);
       const hopUrl = currentUrl;
@@ -341,6 +364,18 @@ export class HttpClient {
     if (!decision.allowed) {
       throw new RobotsDisallowedError(redactUrl(url), decision.rule);
     }
+  }
+}
+
+/**
+ * Scheme + host + port, which is the scope of one robots.txt. Two ports on one
+ * hostname are two origins and genuinely have two robots files.
+ */
+function originOf(url: string): string {
+  try {
+    return new URL(url).origin.toLowerCase();
+  } catch {
+    return url.toLowerCase();
   }
 }
 

@@ -23,6 +23,7 @@ import {
   pathShape,
   sitemapLocs,
 } from '../discovery/source-audit.ts';
+import { classifyRegistryRow } from '../discovery/candidate-classification.ts';
 
 const doc = (status, body = '') => ({ url: 'https://example.invalid/x', status, body });
 
@@ -205,51 +206,135 @@ test('the worker refuses to record a finding it did not learn', () => {
    * knowledge only the caller has.
    */
   const worker = readFileSync('supabase/functions/source-audit/index.ts', 'utf8');
-  assert.match(worker, /refusedByPolicy/, 'a policy refusal is not distinguished from a dead host');
-  assert.match(worker, /if \(attempted > 0 && refusedByPolicy === attempted\)/);
+
+  /*
+   * THE DEFECT CLASS, not the first mechanism that caused it.
+   *
+   * The original guard grepped for `refusedByPolicy` and for a `source_family`
+   * IN-list, both of which were how the FIRST version happened to be written.
+   * Both are gone: the family filter was itself a bug (it excluded all 314
+   * legacy rows, and would equally have excluded a genuine candidate website,
+   * which also has a null family until it is audited), and refusals are now
+   * returned as data by the candidate path rather than sniffed out of an error
+   * message.
+   *
+   * What must stay true is the CLASS: when the auditor learned nothing about a
+   * host, it records nothing about that host. So the assertion is on the
+   * decision, not on the variable that feeds it.
+   */
+  assert.match(worker, /policyRefusedAll/,
+    'the worker no longer separates "nobody answered" from "we never asked"');
+  assert.match(worker, /if \(policyRefusedAll\)/);
   assert.match(worker, /recorded: false/);
-  assert.match(worker, /POLICY_MISSING/);
-  /* And it only looks at rows that are plausibly websites. */
-  assert.match(worker, /\.in\('source_family', \[/);
+  assert.match(worker, /NETWORK_REFUSED/);
+  /* And the row must be left alone: no update may run on that branch. */
+  const branch = worker.slice(worker.indexOf('if (policyRefusedAll)'));
+  const untilContinue = branch.slice(0, branch.indexOf('continue;'));
+  assert.equal(/\.update\(/.test(untilContinue), false,
+    'the worker writes to the row on the branch where it learned nothing');
+});
+
+test('a row that is not a candidate website is never eligible for the audit', () => {
+  /*
+   * The behavioural half of the same defect class, and the half a source-string
+   * test could never cover. The first production run of this worker audited two
+   * rows whose url is `https://google.com` and recorded both as
+   * AUDITED / UNREACHABLE. Eligibility now comes from classifying the URL, so
+   * the question "would that row have been fetched?" has a real answer here.
+   */
+  const notWebsites = [
+    'https://google.com',
+    'https://www.google.com/search?q=binebi',
+    'https://www.reddit.com/r/Sakartvelo/',
+    'https://t.me/',
+    'https://t.me/tbilisi_real_estate',
+    'https://www.facebook.com/groups/',
+    'https://www.instagram.com/explore/tags/tbilisihousing/',
+    'https://vk.com/tbilisi_community',
+    'tg://join?invite=abc',
+  ];
+  for (const url of notWebsites) {
+    const { auditable, kind } = classifyRegistryRow({ url });
+    assert.equal(auditable, false, `${url} would be fetched by the website auditor (${kind})`);
+  }
+
+  /* And a real candidate website still is eligible, or the guard is vacuous. */
+  assert.equal(classifyRegistryRow({ url: 'https://geplace.com/' }).auditable, true);
 });
 
 test('an empty queue is not reported as a healthy one', () => {
   /*
-   * 314 rows sit in DISCOVERED and every one has a null source_family, so the
-   * worker's family filter excludes all of them: they are the Reddit
-   * subreddits, the social groups and the "Google Search: GE/xx" placeholders
-   * left by the retired provider discovery.
+   * 314 rows sat in DISCOVERED and not one was a candidate website, so the
+   * audit had no input at all: they are the Reddit subreddits, the social group
+   * rows and the "Google Search: GE/xx" placeholders left by the retired
+   * provider discovery.
    *
-   * Reporting "no source is waiting" would read as a healthy queue and hide
-   * the actual state -- the AUDIT half of DISCOVER -> AUDIT exists in
-   * production and has no producer feeding it.
+   * Reporting "no source is waiting" would read as a healthy queue and hide the
+   * actual state. What the worker must report is the COUNT that is waiting and
+   * the classification of what it examined, so the difference between "the
+   * queue is empty" and "the queue is full of things I cannot use" survives.
    */
   const worker = readFileSync('supabase/functions/source-audit/index.ts', 'utf8');
   assert.match(worker, /discoveredRowsUnaudited/);
-  assert.match(worker, /has \s*\n?\s*'no producer|no producer/,
-    'the worker does not say that nothing feeds it');
+  assert.match(worker, /skippedByClassification/,
+    'the worker does not say WHY the rows it examined were unusable');
+  assert.match(worker, /nothing is waiting in DISCOVERED/,
+    'the genuinely-empty case is no longer distinguished from the unusable-rows case');
+  assert.match(worker, /mode "discover"/,
+    'the worker does not name the thing that would fix an empty queue');
 });
 
-test('the SSRF boundary is recorded as the reason new hosts cannot be audited', () => {
+test('the portal path keeps its allowlist and its skipped DNS as ONE decision', () => {
   /*
-   * createPortalRuntime refuses any host without a SourcePolicy, and that
-   * allowlist is the ONLY SSRF protection on this path -- runtime.ts sets
-   * skipDnsResolution: true and justifies it by the list being fixed and
-   * public. So the auditor cannot reach a brand-new candidate host, and the
-   * fix is NOT to widen the allowlist: without DNS resolution and
-   * private-range rejection, a row pointing at a loopback or a cloud metadata
-   * address would be fetched.
+   * This test used to say the auditor COULD NOT reach a new candidate host, and
+   * that the fix was not to widen the allowlist. The first half is no longer
+   * true — src/research-core/net/candidate-host.ts is the second path, and it
+   * resolves DNS and classifies every address. The second half is still the
+   * whole point, and it is what is pinned here.
    *
-   * Asserted so the constraint is not quietly "solved" later by deleting it.
+   * createPortalRuntime sets `skipDnsResolution: true`, which disables the rule
+   * "every resolved address must be public". That is only defensible BECAUSE
+   * `hostAllowlistOnly` closes the path to a fixed set of public portals first.
+   * The two properties hold each other up. Removing the allowlist while leaving
+   * DNS skipped would leave the portal path with no SSRF boundary at all, and it
+   * would look like a cleanup.
+   *
+   * So: both together, or a deliberate edit that has to come here and say why.
    */
-  const worker = readFileSync('supabase/functions/source-audit/index.ts', 'utf8');
-  assert.match(worker, /SSRF/);
-  assert.match(worker, /needs a SourcePolicy before it can be audited/);
-
   const runtime = readFileSync('src/research-core/market/runtime.ts', 'utf8');
   assert.match(runtime, /hostAllowlistOnly: allowlist/);
-  assert.match(runtime, /skipDnsResolution: true/,
-    'the runtime now resolves DNS; the allowlist may no longer be the only boundary');
+  assert.match(runtime, /skipDnsResolution: true/);
+
+  /* And the candidate path must be the opposite of that, in both halves. */
+  const candidate = readFileSync('src/research-core/net/candidate-host.ts', 'utf8');
+  assert.equal(/hostAllowlistOnly:/.test(candidate), false,
+    'the candidate path grew an allowlist, which it cannot have: a candidate is not on a list');
+  assert.match(candidate, /skipDnsResolution: false/,
+    'the candidate path no longer resolves DNS, which removes its only boundary');
+  assert.match(candidate, /allowPrivateNetworks: false/);
+});
+
+test('the auditor reaches an unvetted host over the candidate path, never the portal one', () => {
+  /*
+   * The separation, asserted where it would actually be broken: in the worker.
+   * Auditing through createPortalRuntime was the old behaviour and it is what
+   * made the allowlist the audit's ceiling. Auditing through it now would mean
+   * either that ceiling is back, or that somebody widened the allowlist with
+   * database rows — which is the one change this whole layer exists to prevent.
+   */
+  const worker = readFileSync('supabase/functions/source-audit/index.ts', 'utf8');
+
+  const auditFn = worker.slice(worker.indexOf('async function audit('));
+  assert.match(auditFn, /createCandidateAuditPath\(\{ resolver: new DohResolver\(\) \}\)/,
+    'the audit mode does not use the candidate-host path');
+  assert.equal(/createPortalRuntime\(/.test(auditFn), false,
+    'the audit mode fetches unvetted hosts through the fixed-portal allowlist');
+
+  /* Discovery is the mirror image: it reads only hosts that DO have policies. */
+  const discoverFn = worker.slice(worker.indexOf('async function discover('), worker.indexOf('async function audit('));
+  assert.match(discoverFn, /createPortalRuntime\(\)/);
+  assert.equal(/createCandidateAuditPath/.test(discoverFn), false,
+    'discovery reads implemented portals under the candidate policy, which is the wrong posture');
 });
 
 test('the evidence sentence carries only what was measured', () => {

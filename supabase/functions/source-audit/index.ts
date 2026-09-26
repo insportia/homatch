@@ -117,9 +117,46 @@ Deno.serve(async (req: Request) => {
     if (error) throw error;
 
     if (!candidates?.length) {
+      /*
+       * "NOTHING TO DO" AND "NOTHING I AM ABLE TO DO" ARE DIFFERENT ANSWERS.
+       *
+       * Measured 2026-09-26: 314 rows sit in DISCOVERED and every one has a
+       * NULL source_family, so the family filter above excludes all of them.
+       * They are the Reddit subreddits, the Facebook, Telegram and VK groups
+       * and the "Google Search: GE/xx" query placeholders left by the retired
+       * provider-based discovery. None is a candidate website.
+       *
+       * Reporting that as "no source is waiting" would read as a healthy queue
+       * and hide the real state: the AUDIT half of DISCOVER -> AUDIT now
+       * exists in production and has no producer feeding it.
+       */
+      const { count: discovered } = await db
+        .from('source_registry')
+        .select('id', { count: 'exact', head: true })
+        .eq('lifecycle', 'DISCOVERED')
+        .is('access_finding', null);
+      const waiting = Number(discovered ?? 0);
       return json({
-        success: true, audited: 0,
-        note: 'no DISCOVERED source is waiting for a first audit',
+        success: true,
+        audited: 0,
+        discoveredRowsUnaudited: waiting,
+        note: waiting === 0
+          ? 'nothing is waiting in DISCOVERED'
+          : `${waiting} row(s) sit in DISCOVERED and none carries an auditable `
+            + 'source_family, so none is a candidate website. The audit step has '
+            + 'no producer: nothing in production discovers candidate hosts.',
+        /*
+         * And it could not reach a brand-new host even if something did.
+         * createPortalRuntime refuses any host without a SourcePolicy, and
+         * that allowlist is the ONLY SSRF protection on this path --
+         * skipDnsResolution is true, justified in runtime.ts by the list being
+         * fixed and public. Auditing arbitrary candidate hosts safely needs
+         * DNS resolution with private-range rejection first; widening the
+         * allowlist instead would let a row pointing at a loopback or a cloud
+         * metadata address be fetched.
+         */
+        constraint: 'a candidate host needs a SourcePolicy before it can be audited; '
+          + 'the allowlist is the SSRF boundary and is not widened for auditing',
       });
     }
 

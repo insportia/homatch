@@ -213,6 +213,45 @@ test('the worker refuses to record a finding it did not learn', () => {
   assert.match(worker, /\.in\('source_family', \[/);
 });
 
+test('an empty queue is not reported as a healthy one', () => {
+  /*
+   * 314 rows sit in DISCOVERED and every one has a null source_family, so the
+   * worker's family filter excludes all of them: they are the Reddit
+   * subreddits, the social groups and the "Google Search: GE/xx" placeholders
+   * left by the retired provider discovery.
+   *
+   * Reporting "no source is waiting" would read as a healthy queue and hide
+   * the actual state -- the AUDIT half of DISCOVER -> AUDIT exists in
+   * production and has no producer feeding it.
+   */
+  const worker = readFileSync('supabase/functions/source-audit/index.ts', 'utf8');
+  assert.match(worker, /discoveredRowsUnaudited/);
+  assert.match(worker, /has \s*\n?\s*'no producer|no producer/,
+    'the worker does not say that nothing feeds it');
+});
+
+test('the SSRF boundary is recorded as the reason new hosts cannot be audited', () => {
+  /*
+   * createPortalRuntime refuses any host without a SourcePolicy, and that
+   * allowlist is the ONLY SSRF protection on this path -- runtime.ts sets
+   * skipDnsResolution: true and justifies it by the list being fixed and
+   * public. So the auditor cannot reach a brand-new candidate host, and the
+   * fix is NOT to widen the allowlist: without DNS resolution and
+   * private-range rejection, a row pointing at a loopback or a cloud metadata
+   * address would be fetched.
+   *
+   * Asserted so the constraint is not quietly "solved" later by deleting it.
+   */
+  const worker = readFileSync('supabase/functions/source-audit/index.ts', 'utf8');
+  assert.match(worker, /SSRF/);
+  assert.match(worker, /needs a SourcePolicy before it can be audited/);
+
+  const runtime = readFileSync('src/research-core/market/runtime.ts', 'utf8');
+  assert.match(runtime, /hostAllowlistOnly: allowlist/);
+  assert.match(runtime, /skipDnsResolution: true/,
+    'the runtime now resolves DNS; the allowlist may no longer be the only boundary');
+});
+
 test('the evidence sentence carries only what was measured', () => {
   const finding = auditSource({
     host: 'x.invalid',

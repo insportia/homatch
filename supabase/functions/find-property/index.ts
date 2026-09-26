@@ -34,6 +34,10 @@
 // bought.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import {
+  directoryStandingOf,
+  discloseBroker,
+} from '../../../src/research-core/match/broker-identity.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -132,12 +136,59 @@ Deno.serve(async (req: Request) => {
         + 'observation:supply_observations!observation_id('
         + 'id,city,district,transaction,property_type,sale_amount,sale_currency,'
         + 'rent_amount,rent_currency,area_sqm,rooms,bedrooms,title,canonical_url,'
-        + 'published_at,first_seen_at,last_verified_at,detected_language,adapter_id)')
+        + 'published_at,first_seen_at,last_verified_at,detected_language,adapter_id,'
+        + 'supply_role,broker_id,'
+        /*
+         * THE BROKER, WHEN THERE IS ONE -- from broker_intelligence, which is the
+         * table of firms we FOUND. Note what is not joined and cannot be: this
+         * table has no paid, verified or plan column, so nothing selected here can
+         * be rendered as a commercial relationship with Homatch. The directory is
+         * a different table with a mandatory owner account, read separately below.
+         */
+        + 'broker:broker_intelligence!broker_id('
+        + 'id,role,display_name,key_kind,cities,languages,'
+        + 'first_seen_at,last_seen_at,last_verified_at,validation_state,'
+        + 'observation_count,source_count))')
       .in('intent_profile_id', intentIds)
       .eq('compatibility', 'COMPATIBLE')
       .order('match_score', { ascending: false })
       .limit(limit);
     if (matchError) throw matchError;
+
+    /*
+     * DOES ANY BROKER WE MATCHED ALSO HAPPEN TO BE REGISTERED WITH US?
+     *
+     * Asked of the directory table, once, for the brokers that actually appeared --
+     * and asked in the only direction that is safe. Discovery cannot write a
+     * registration, so the presence of a row here is the ONLY thing that can make a
+     * broker a Homatch listing, and its absence is the answer for every firm we
+     * merely observed.
+     *
+     * Read through broker_directory_public rather than the table, so the
+     * paid-and-current test is the one the view applies and not a filter this file
+     * remembers to repeat.
+     */
+    const brokerIds = [...new Set((matches ?? [])
+      .map((row: Record<string, unknown>) => {
+        const joined: unknown = Array.isArray(row.observation) ? row.observation[0] : row.observation;
+        const observation = (joined ?? null) as Record<string, unknown> | null;
+        return observation?.broker_id ? String(observation.broker_id) : null;
+      })
+      .filter((id): id is string => Boolean(id)))];
+
+    const registered = new Map<string, { paidUntil: string | null }>();
+    if (brokerIds.length) {
+      const { data: listings } = await db
+        .from('broker_directory_public')
+        .select('broker_id,paid_until')
+        .in('broker_id', brokerIds);
+      for (const listing of listings ?? []) {
+        registered.set(String(listing.broker_id), {
+          paidUntil: (listing.paid_until as string | null) ?? null,
+        });
+      }
+    }
+    const now = new Date();
 
     const results = (matches ?? []).map((row: Record<string, unknown>) => {
       const joined: unknown = Array.isArray(row.observation)
@@ -190,6 +241,19 @@ Deno.serve(async (req: Request) => {
             source: observation.adapter_id,
           }
           : null,
+        /*
+         * WHO IS OFFERING, AND WHAT THEY ARE TO HOMATCH.
+         *
+         * Two separate facts and they are reported separately. `role` says an agency
+         * posted this listing. `registeredWithHomatch` says whether that agency has a
+         * current paid directory registration -- and for a firm we found by reading a
+         * portal it is false, always, because a registration requires an account that
+         * discovery does not have.
+         *
+         * The disclosure is a key rather than a sentence: the customer reads this in
+         * six languages and a sentence built here would ship English into all of them.
+         */
+        supply: brokerBlock(observation, registered, now),
       };
     });
 
@@ -215,3 +279,77 @@ Deno.serve(async (req: Request) => {
     return json({ error: error instanceof Error ? error.message : String(error) }, 500);
   }
 });
+
+
+/**
+ * The supply-side block for one result.
+ *
+ * Kept as a function rather than inlined because it is the single place that decides
+ * what a customer is told about a broker, and a rule stated once cannot disagree
+ * with itself. `directoryStandingOf` is the only route to a standing, and it takes a
+ * listing -- so there is no expression here that could reach LISTED_ACTIVE from the
+ * intelligence record alone.
+ */
+function brokerBlock(
+  observation: Record<string, unknown> | null,
+  registered: Map<string, { paidUntil: string | null }>,
+  now: Date,
+) {
+  const role = (observation?.supply_role as string | null) ?? null;
+  const joined: unknown = Array.isArray(observation?.broker)
+    ? (observation?.broker as unknown[])[0]
+    : observation?.broker;
+  const broker = (joined ?? null) as Record<string, unknown> | null;
+
+  if (!broker) {
+    /*
+     * No broker record. Either the listing named nobody -- the common case -- or it
+     * named a private owner, whose phone number is deliberately never collected into
+     * an identity store. `role` may still be SELLER or LANDLORD, which is a fact
+     * about the listing and not a firm we hold a file on.
+     */
+    return { role, broker: null };
+  }
+
+  const listing = registered.get(String(broker.id)) ?? null;
+  const standing = directoryStandingOf(
+    /*
+     * broker_directory_public only emits ACTIVE rows with a current paid_until, so
+     * this says ACTIVE because the view already proved it. paidUntil is passed
+     * through and re-checked rather than assumed: the view was evaluated a few
+     * milliseconds ago and the rule lives in one function, not two.
+     */
+    listing ? { status: 'ACTIVE' as const, paidUntil: listing.paidUntil } : null,
+    now,
+  );
+  const disclosure = discloseBroker(standing);
+
+  return {
+    role,
+    broker: {
+      id: broker.id,
+      role: broker.role,
+      /* Null for most: a phone number is an identity and not a name, and printing
+         the phone number as the firm's name would be inventing one. */
+      name: broker.display_name ?? null,
+      /* WHAT WE KNOW AND HOW WELL. Not a badge -- a count and two dates. */
+      provenance: {
+        identifiedBy: broker.key_kind,
+        seenOnSources: broker.source_count ?? 0,
+        listingsAttributed: broker.observation_count ?? 0,
+        firstSeenAt: broker.first_seen_at ?? null,
+        lastSeenAt: broker.last_seen_at ?? null,
+        lastVerifiedAt: broker.last_verified_at ?? null,
+        validationState: broker.validation_state ?? 'UNVERIFIED',
+      },
+      coverage: {
+        cities: broker.cities ?? [],
+        languages: broker.languages ?? [],
+      },
+      /* The distinction, in the two fields a screen needs and no others. */
+      presentation: disclosure.presentation,
+      labelKey: disclosure.labelKey,
+      registeredWithHomatch: disclosure.registeredWithHomatch,
+    },
+  };
+}

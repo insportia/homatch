@@ -80,6 +80,15 @@ export const TALK_DESTINATIONS: readonly TalkDestination[] = [
   { key: 'verify', path: '/verify', purpose: 'check a property in the public registry: owner, extract, encumbrances' },
   { key: 'mortgage', path: '/mortgage', purpose: 'mortgage and instalment options' },
   { key: 'developers', path: '/developers', purpose: 'developers and their projects' },
+  /*
+   * Added when /brokers landed, and not before, for the same reason Expat was
+   * absent until it existed: offering a destination the router does not register
+   * is advertising a 404. The purpose line names BOTH halves of the page on
+   * purpose -- somebody who asks the assistant for "an agency" is usually asking
+   * to be introduced to one, and the honest answer is that Homatch lists the
+   * firms that registered and shows the rest as what they are.
+   */
+  { key: 'brokers', path: '/brokers', purpose: 'brokers and agencies: the firms listed with Homatch, and how observed firms differ' },
   { key: 'viewings', path: '/viewings', purpose: 'booked and requested property viewings' },
   { key: 'add_property', path: '/property/add', purpose: 'list a property for sale or rent' },
   { key: 'dashboard', path: '/dashboard', purpose: 'their own saved properties, matches and activity' },

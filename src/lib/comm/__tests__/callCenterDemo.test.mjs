@@ -122,9 +122,10 @@ test('THE_NEED_TO_PRODUCT_MAPPING is in the instruction, and picks ONE', () => {
 /* ── The model cannot invent a link ──────────────────────────────────────*/
 
 test('AN_INVENTED_KEY_PRODUCES_NO_BUTTON, not a broken one', () => {
-  // 'expat' was in this list until For Expats shipped; it is a real key now,
-  // which is exactly the drift the resolve-every-path test is there to catch.
-  for (const invented of ['properties', '/properties/tbilisi-vake', 'listings', 'brokers', '', null]) {
+  // 'expat' was in this list until For Expats shipped, and 'brokers' until /brokers
+  // did -- which is exactly the drift the resolve-every-path test is there to catch,
+  // and it caught both. What stays here is what the product genuinely does not have.
+  for (const invented of ['properties', '/properties/tbilisi-vake', 'listings', 'agencies', '', null]) {
     assert.equal(resolveDestination(invented), null, `${invented} resolved to something`);
   }
 });
@@ -184,13 +185,16 @@ test('SERVICES_ARE_OFFERED_ONLY_ONCE_THEY_EXIST', () => {
    * /for-expats/georgia as a public route while this work was in progress,
    * and re-fetching main before committing is what caught it.
    *
-   * Brokers still has no route and is still not offered. The rule is the
-   * same in both directions: a destination exists here only when the router
-   * registers it, which the resolve-every-path test above enforces.
+   * Brokers has now shipped too, and this test caught it the same way -- it was
+   * written to fail the moment a /brokers route appeared, and it did. The rule is
+   * the same in both directions: a destination exists here only when the router
+   * registers it, AND a registered route that belongs in the demo has to be
+   * offered rather than quietly unreachable.
    */
   const keys = TALK_DESTINATIONS.map((d) => d.key);
   assert.ok(keys.includes('expat'), 'For Expats shipped; the demo cannot reach it');
   assert.equal(resolveDestination('expat')?.path, '/for-expats/georgia');
-  assert.ok(!keys.includes('brokers'), 'brokers is offered without a route');
-  assert.ok(!/path: '\/brokers'/.test(ROUTES), 'a broker route exists now; add it to the registry');
+  assert.ok(keys.includes('brokers'), 'the /brokers route shipped; the demo cannot reach it');
+  assert.equal(resolveDestination('brokers')?.path, '/brokers');
+  assert.ok(/path: '\/brokers'/.test(ROUTES), 'brokers is offered without a route');
 });

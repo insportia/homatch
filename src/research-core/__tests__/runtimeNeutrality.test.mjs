@@ -371,6 +371,20 @@ test('the core is consumed only through its deliberate integration points', () =
      */
     'supabase/functions/supply-matching/index.ts',
     /*
+     * FIND PROPERTY, THE READ — and it consumes exactly one seam: the rule that
+     * decides whether a broker is a Homatch registration or a firm we merely found.
+     *
+     * It is a seam rather than two lines of local logic because the answer is
+     * customer-facing and irreversible in the way a wrong badge is: telling somebody
+     * that a company we scraped off a portal is a registered Homatch partner is a
+     * claim about a commercial relationship that does not exist. directoryStandingOf()
+     * is the only function that can return anything but NOT_LISTED, it requires a
+     * registration's own status and paid-until to do it, and discloseBroker() turns
+     * that into the one label a screen may print. A second copy of that rule here
+     * would be a second place for it to be wrong.
+     */
+    'supabase/functions/find-property/index.ts',
+    /*
      * EVIDENCE FRESHNESS — the sixth seam, and the one that decides what a
      * customer is allowed to see.
      *

@@ -153,6 +153,29 @@ const started = Date.now();
     const jobId = body.jobId ? String(body.jobId) : null;
 
     /*
+     * EXISTING INTELLIGENCE FIRST, IN ITS PUREST FORM.
+     *
+     * Every listing already in the store carries the title and description it was
+     * discovered with, and the supply role was always readable from them -- nobody
+     * was reading it. This mode re-reads what we already hold and writes the role
+     * and the broker attribution, with ZERO network fetches and zero credits.
+     *
+     * It is not a convenience for tests. It is the only way the history gets a
+     * role at all: rows discovered before the column existed would otherwise stay
+     * permanently roleless, and PARTICIPANTS would stay UNKNOWN on them forever
+     * for a reason that has nothing to do with what the listing said.
+     *
+     * Attribution only. It cannot fetch, cannot create a campaign, cannot spend,
+     * and cannot touch a directory listing.
+     */
+    if (String(body.mode ?? '') === 'attribute-stored') {
+      return await attributeStored(db, {
+        limit: Math.max(1, Math.min(2000, Number(body.limit) || 500)),
+        onlyMissing: body.onlyMissing !== false,
+      });
+    }
+
+    /*
      * THE CAMPAIGN'S ENVELOPE IS NOT NEGOTIABLE BY THE CALLER.
      *
      * With a campaignId, every constraint below comes from the campaign's own
@@ -1034,6 +1057,121 @@ async function persist(
 /* ------------------------------------------------------------------ *
  * Broker intelligence                                                *
  * ------------------------------------------------------------------ */
+
+/**
+ * Read the supply role off every stored listing, and attribute the brokers.
+ *
+ * NO FETCHES. The counter is reported as zero and is a real zero rather than an
+ * unmeasured one: nothing in this function can reach the network, and the response
+ * says so in the same shape the sweep path uses so the two are comparable.
+ *
+ * Failures are counted per row rather than swallowed. A write that the database
+ * rejects has to show up in the response -- an `if (!error)` that quietly moves on
+ * is how eighteen rejected inserts once looked like a successful run.
+ */
+async function attributeStored(db: any, options: { limit: number; onlyMissing: boolean }) {
+  const startedAt = Date.now();
+  let query = db
+    .from('supply_observations')
+    .select('id,source_id,adapter_id,canonical_url,title,description,city,country_code,'
+      + 'detected_language,transaction,property_type,supply_role,broker_id')
+    .limit(options.limit);
+  /* Re-reading a row whose role is already written changes nothing and costs a write. */
+  if (options.onlyMissing) query = query.is('supply_role', null);
+
+  const { data: rows, error: readError } = await query;
+  if (readError) return json({ error: `read failed: ${readError.message}` }, 500);
+
+  const totals = {
+    read: (rows ?? []).length,
+    roleWritten: 0,
+    roleStillUnknown: 0,
+    brokersLinked: 0,
+    brokersCreated: 0,
+    excludesIntermediaries: 0,
+    writeFailures: [] as string[],
+  };
+  const byRole: Record<string, number> = {};
+  const brokerIdsSeen = new Set<string>();
+
+  for (const row of rows ?? []) {
+    const now = new Date().toISOString();
+    const attribution = attributionFrom({
+      title: (row.title as string | null) ?? null,
+      description: (row.description as string | null) ?? null,
+      canonicalUrl: (row.canonical_url as string | null) ?? null,
+    });
+    if (attribution.excludesIntermediaries) totals.excludesIntermediaries += 1;
+
+    if (!attribution.role) {
+      totals.roleStillUnknown += 1;
+      continue;
+    }
+    byRole[attribution.role] = (byRole[attribution.role] ?? 0) + 1;
+
+    let brokerId: string | null = null;
+    if (isBrokerRole(attribution.role) && attribution.identity) {
+      brokerId = await upsertBrokerIntelligence(db, {
+        attribution,
+        role: attribution.role,
+        sourceId: String(row.source_id),
+        adapterId: String(row.adapter_id ?? 'unknown'),
+        countryCode: String(row.country_code ?? 'GE'),
+        city: (row.city as string | null) ?? null,
+        language: (row.detected_language as string | null) ?? null,
+        dealKind: dealKindFrom({
+          transaction: (row.transaction as string | null) ?? null,
+          propertyType: (row.property_type as string | null) ?? null,
+        }),
+        now,
+      });
+      if (brokerId) {
+        totals.brokersLinked += 1;
+        brokerIdsSeen.add(brokerId);
+      }
+    }
+
+    const { error: writeError } = await db.from('supply_observations').update({
+      supply_role: attribution.role,
+      broker_id: brokerId,
+      updated_at: now,
+    }).eq('id', row.id);
+    if (writeError) {
+      totals.writeFailures.push(`${row.id}: ${writeError.message}`);
+      continue;
+    }
+    totals.roleWritten += 1;
+
+    if (brokerId) {
+      await recordBrokerLineage(db, brokerId, {
+        sourceId: String(row.source_id),
+        adapterId: String(row.adapter_id ?? 'unknown'),
+        observationId: String(row.id),
+        canonicalUrl: String(row.canonical_url ?? ''),
+        keys: attribution.keys,
+        now,
+      });
+    }
+  }
+
+  totals.brokersCreated = brokerIdsSeen.size;
+
+  return json({
+    mode: 'attribute-stored',
+    /* The same shape the sweep path reports, so the claim is comparable. */
+    acquisition: { networkFetches: 0, creditsSpent: 0 },
+    totals,
+    byRole,
+    /*
+     * SAID EXPLICITLY, because the whole point of the separation is that nobody has
+     * to go and check. This path writes to broker_intelligence and to
+     * broker_intelligence_sources. It does not hold an owner_user_id and therefore
+     * cannot write a directory listing at all.
+     */
+    directoryListingsTouched: 0,
+    tookMs: Date.now() - startedAt,
+  });
+}
 
 /**
  * Find or create the broker record this sighting belongs to, and return its id.

@@ -24,12 +24,12 @@
 //
 // HOW THAT IS ENFORCED RATHER THAN PROMISED
 //
-// `DirectoryStanding` is only obtainable from `directoryStandingOf()`, which takes
-// a `DirectoryListing` — a shape that only the registration side can produce,
-// because it requires an owning account and a paid-until instant. There is no
-// function here that turns a `BrokerRecord` into a standing, and `NOT_LISTED` is
-// what you get for a broker you merely know about. A renderer that wants to print
-// "verified" has to hold a paid listing to do it.
+// `DirectoryStanding` is only obtainable from `directoryStandingOf()`, and there is
+// no overload of it that takes a `BrokerRecord`. To get anything other than
+// NOT_LISTED a caller must hold a registration's own status and paid-until — which
+// only the directory table and its public view produce, and which discovery cannot
+// write because a registration requires an owning account. A renderer that wants to
+// print "verified" has to hold a paid listing to do it.
 //
 // AND WHY A NAME IS NOT AN IDENTITY
 //
@@ -268,12 +268,24 @@ export interface BrokerRecord {
  * A registration. Only the paid side of the product can build one of these,
  * because only it has an owning account and a paid-until instant.
  */
-export interface DirectoryListing {
-  brokerId: string | null;
-  /** The account that registered. There is no directory listing without one. */
-  ownerUserId: string;
+export interface DirectoryStandingInput {
   status: 'PENDING_REVIEW' | 'ACTIVE' | 'SUSPENDED' | 'EXPIRED';
   paidUntil: string | null;
+}
+
+export interface DirectoryListing extends DirectoryStandingInput {
+  brokerId: string | null;
+  /**
+   * The account that registered. There is no directory listing without one, and it
+   * is the reason no discovery path can create one: discovery has no user.
+   *
+   * Deliberately NOT part of DirectoryStandingInput. The standing decision does not
+   * need to know WHO registered, only that a registration exists and is current, and
+   * broker_directory_public does not expose the owner to customers. Requiring it here
+   * and not there means a caller reading the public view does not have to invent a
+   * placeholder to ask the question.
+   */
+  ownerUserId: string;
 }
 
 /**
@@ -299,7 +311,7 @@ export type DirectoryStanding =
  * that this stays a pure function and so a test can prove the expiry boundary.
  */
 export function directoryStandingOf(
-  listing: DirectoryListing | null | undefined,
+  listing: DirectoryStandingInput | null | undefined,
   at: Date,
 ): DirectoryStanding {
   if (!listing) return 'NOT_LISTED';

@@ -56,6 +56,7 @@ const ExpatPlanPage = lazyRoute(() => import('./pages/ExpatPlanPage'));
  * enforce that server-side, not by gating this route).
  */
 const InvestmentPage = lazyRoute(() => import('./pages/InvestmentPage'));
+const BrokersPage = lazyRoute(() => import('./pages/BrokersPage'));
 const VerificationCasePage = lazyRoute(() => import('./pages/VerificationCasePage'));
 const ContractsPage = lazyRoute(() => import('./pages/ContractsPage'));
 const ContractResultPage = lazyRoute(() => import('./pages/ContractResultPage'));
@@ -235,6 +236,15 @@ export const routes: RouteConfig[] = [
   // visitor gets the complete analytical product. The Consultant and the
   // market sweep return 401 on their own and the page says so in place.
   { name: 'Investment Intelligence', path: '/investment',         element: <InvestmentPage />,    public: true },
+  /*
+   * BROKERS. Public, and for a reason specific to this page: it exists to state
+   * the difference between a broker who registered with Homatch and a firm we
+   * merely observed while discovering property, and a visitor who meets an
+   * observed firm on a results screen needs to be able to reach the explanation
+   * without an account. It reads broker_directory_public, which emits only
+   * ACTIVE, currently-paid registrations and cannot reach a discovered firm.
+   */
+  { name: 'Brokers',           path: '/brokers',                  element: <BrokersPage />,       public: true },
   /*
    * FOR EXPATS. Public, and more deliberately so than its neighbours: the
    * whole product proposition is that a foreigner who has never heard of

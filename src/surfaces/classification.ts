@@ -228,6 +228,21 @@ export const SURFACES: readonly SurfaceRecord[] = [
       + 'a home page rewrite is the easiest way to break every entry point at once.',
   },
   {
+    path: '/brokers',
+    name: 'Brokers',
+    status: 'APPROVED_CURRENT_DESIGN',
+    customerCritical: true,
+    note: 'Built new rather than migrated: the Broker audit found NO customer-facing '
+      + 'broker surface at all. The only broker code was the developer product\'s '
+      + 'BrokerPanel, which distributes inventory to outside brokers and is a '
+      + 'different thing in a different product. So there is no legacy design here to '
+      + 'preserve and nothing was overwritten. Customer-critical because its whole '
+      + 'purpose is a claim a customer would act on -- whether a firm is registered '
+      + 'with Homatch or merely observed in the market -- and a layout that truncates '
+      + 'the observed label into the registered one costs exactly the trust the page '
+      + 'exists to protect.',
+  },
+  {
     path: '/outreach',
     name: 'Communications',
     status: 'LEGACY_DESIGN',

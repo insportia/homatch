@@ -129,7 +129,19 @@ function LockedMatchCard({
    * must not render the same way -- the whole reason pricing_state exists one
    * layer down.
    */
-  const included = Boolean(match.unlock_included_reservation_id) && match.status !== 'UNLOCKED';
+  /*
+   * PAID FOR IS PAID FOR, whichever way the search was funded.
+   *
+   * This tested the reservation alone. A reservation exists for a PAYG run;
+   * an INCLUDED run -- the search a customer's plan already covers -- carries
+   * an allowance instead. So the first search of every month on the FREE
+   * plan, which is the included one, produced results this screen blurred and
+   * offered to sell for 35 credits.
+   */
+  const included = (
+    Boolean(match.unlock_included_reservation_id)
+    || Boolean(match.unlock_included_allowance_id)
+  ) && match.status !== 'UNLOCKED';
   const platformIcon = PLATFORM_ICONS[match.preview_platform ?? 'OTHER'] ?? '·';
   const budgetStr =
     /* An absent bound is not zero: see src/lib/rangeSemantics.ts. This

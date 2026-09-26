@@ -88,6 +88,70 @@ test('CASE B: a premium plan reaches further down the same ordered list', () => 
   assert.equal(premiumEligible.includes('never-judged'), false);
 });
 
+/* ── PAYG: the plan is a floor, the money is the cap ────────────────────── */
+
+test('a PAYG search is not held to the subscription tier', () => {
+  /*
+   * THE CONFLICT THIS RESOLVES. Homatch sells searches, not subscriptions.
+   * Using the plan's priority_level as a hard CAP made the subscription the
+   * primary discovery product: a FREE-plan customer who had just authorised
+   * credits for a large campaign was still held to P0, with nothing on screen
+   * explaining why. That is a subscription wall in a pay-as-you-go product.
+   */
+  const included = deriveSearchBudget({ ...FIND_CLIENTS_FREE, funding: 'INCLUDED' });
+  const paid = deriveSearchBudget({ ...FIND_CLIENTS_FREE, funding: 'PAYG' });
+
+  assert.equal(included.sourcePriorityCeiling, 0, 'the included search should reach what the plan covers');
+  assert.ok(paid.sourcePriorityCeiling > included.sourcePriorityCeiling,
+    'authorising credits bought no additional reach');
+  assert.match(paid.rationale, /PAYG lifted the plan's P0; budget is the cap/);
+
+  const paidEligible = withinPriorityCeiling(SOURCES, paid).eligible.map((s) => s.id);
+  assert.ok(paidEligible.includes('home24-ge'), 'a P1 source stayed out of a paid search');
+  assert.ok(paidEligible.includes('makler-ge'), 'a P2 source stayed out of a paid search');
+});
+
+test('the money bounds a PAYG search, not the tier gate', () => {
+  /*
+   * Lifting the tier gate must not make a paid search unbounded. The two
+   * bounds that cost something are unchanged and still apply.
+   */
+  const paid = deriveSearchBudget({ ...FIND_CLIENTS_FREE, funding: 'PAYG' });
+  assert.equal(paid.maxInternalCostCents, 200, 'the spend ceiling moved with the tier gate');
+  assert.equal(paid.maxSourceJobs, 3, 'the job bound moved with the tier gate');
+
+  const stop = shouldContinue(paid, {
+    usefulResults: 0, sourceJobsExecuted: 3, internalCostCents: 10,
+  });
+  assert.equal(stop.stop, true);
+  assert.equal(stop.reason, 'JOB_LIMIT_REACHED');
+});
+
+test('experimental sources are closed to everyone, at every budget', () => {
+  /*
+   * NOT a paywall. A P3 source has not been shown to produce useful unique
+   * results, and spending a customer's credits there sells effort rather than
+   * findings. So the PAYG lift stops at P2 — and premium does not reach P3
+   * either, which is what makes it a quality rule rather than a price tier.
+   */
+  for (const ent of [
+    { ...FIND_CLIENTS_FREE, funding: 'PAYG' },
+    { ...FIND_CLIENTS_PREMIUM, funding: 'PAYG' },
+    FIND_CLIENTS_PREMIUM,
+  ]) {
+    const eligible = withinPriorityCeiling(SOURCES, deriveSearchBudget(ent)).eligible.map((s) => s.id);
+    assert.equal(eligible.includes('some-agency'), false, 'a P3 source entered a customer search');
+    assert.equal(eligible.includes('never-judged'), false, 'an untiered source entered a customer search');
+  }
+});
+
+test('silence about funding is read conservatively', () => {
+  /* Inferring "they paid" from an absent field is how every search becomes
+     the widest one. */
+  const unstated = deriveSearchBudget(FIND_CLIENTS_FREE);
+  assert.equal(unstated.sourcePriorityCeiling, 0);
+});
+
 /* ── CASE E — budget exhausted stops cleanly ────────────────────────────── */
 
 test('CASE E: spend at the ceiling stops the search', () => {
@@ -248,6 +312,21 @@ test('the supply sweep actually applies the entitlement ceiling', () => {
   // And the plan comes from the same RPC the billing path uses.
   assert.match(sweep, /billing_entitlements/,
     'the sweep invents a plan instead of reading the one billing resolved');
+});
+
+test('the funding mode reaches the gate from the caller that holds the grant', () => {
+  /*
+   * WIRED, not merely modelled. supply-discovery cannot know how a run was
+   * funded -- only the holder of the ExecutionGrant does -- so if
+   * match-campaign does not pass it, every paid search silently falls back to
+   * the plan's ceiling and the subscription wall is still there.
+   */
+  const sweep = readFileSync('supabase/functions/supply-discovery/index.ts', 'utf8');
+  const campaign = readFileSync('supabase/functions/match-campaign/index.ts', 'utf8');
+  assert.match(campaign, /funding: grant\.funding/, 'the campaign never tells the sweep how it was funded');
+  assert.match(sweep, /body\.funding === 'PAYG'/, 'the sweep ignores the funding the caller passed');
+  /* And an unknown value must not read as PAYG. */
+  assert.match(sweep, /: null,/);
 });
 
 test('an operator sweep is ungated and a campaign sweep is not', () => {

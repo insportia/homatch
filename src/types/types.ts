@@ -670,6 +670,16 @@ export interface Match {
    * included it.
    */
   unlock_included_reservation_id?: string | null;
+  /**
+   * Set when an INCLUDED (allowance-funded) search produced this match, the
+   * way unlock_included_reservation_id is set for a PAYG one.
+   *
+   * Two columns because a reservation id and an allowance id are different id
+   * spaces that the ledger and every audit read separately. Either being
+   * present means the customer has already paid for the search that found
+   * this, so it must not be sold again.
+   */
+  unlock_included_allowance_id?: string | null;
   status: MatchStatus;
   mock_mode?: boolean;
   // Whether this match is for an external (non-Homatch) signal

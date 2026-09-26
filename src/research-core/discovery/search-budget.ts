@@ -59,6 +59,30 @@ export interface Entitlement {
   providerBudgetCeilingCents: number | null;
   /** 0, 1, 2 — and the same axis as source_registry.priority_tier. */
   priorityLevel: number | null;
+  /**
+   * How THIS run is funded, when the caller knows.
+   *
+   * THE RECONCILIATION THIS EXISTS FOR. Homatch's customer model is
+   * pay-as-you-go: a customer buys a search. Using the subscription plan's
+   * priority_level as a hard CAP on which sources that search may read turns
+   * the plan into the primary discovery product and puts an unexplained
+   * subscription wall in front of somebody who has just authorised credits —
+   * a FREE-plan customer paying for a large campaign would still have been
+   * held to P0.
+   *
+   * So the plan's level is a FLOOR, not a ceiling:
+   *
+   *   INCLUDED  this is the search the plan already covers, and the plan's
+   *             own level is what it covers. Nothing extra was authorised.
+   *   PAYG      the customer authorised credits for this specific search, so
+   *             depth is governed by the money they authorised rather than by
+   *             which subscription they hold.
+   *
+   * Absent means the caller did not say, and the conservative reading applies
+   * -- the plan's level -- because inferring "they paid" from silence is the
+   * failure that would make every search the widest one.
+   */
+  funding?: 'INCLUDED' | 'PAYG' | null;
 }
 
 /**
@@ -113,6 +137,16 @@ const UNENTITLED: Omit<SearchBudget, 'rationale'> = {
  * against somebody else's server, and the ceiling that matters to a source
  * operator is requests, not our spend.
  */
+/**
+ * How far a paid search may reach, whatever plan the customer is on.
+ *
+ * P2 — secondary sources with real inventory — and not P3. Experimental
+ * sources have not been shown to yield useful unique results, and charging a
+ * customer for a search that spent its budget there would be selling effort
+ * rather than findings. P3 is closed at every plan and every budget.
+ */
+const PAYG_CEILING = 2;
+
 const TIER_SHAPE: Record<QualityTier, {
   maxSourceJobs: number;
   maxPagesPerSource: number;
@@ -148,7 +182,26 @@ export function deriveSearchBudget(entitlement: Entitlement | null): SearchBudge
    * A null priority_level is not "reach everything". It is a plan nobody has
    * placed on the ladder, so it reaches the critical sources and no further.
    */
-  const ceiling = entitlement.priorityLevel ?? 0;
+  const planLevel = entitlement.priorityLevel ?? 0;
+
+  /*
+   * PAYG RAISES THE FLOOR; THE MONEY IS STILL THE CAP.
+   *
+   * A customer who authorised credits for this search is not asking for their
+   * subscription tier's opinion of how deep to look. So PAYG lifts the tier
+   * gate to PAYG_CEILING and depth is then bounded by the two things that
+   * actually cost something -- maxSourceJobs and maxInternalCostCents -- both
+   * of which are unchanged and both of which still apply.
+   *
+   * NOT to tier 3. Experimental sources are unproven, not merely cheap: a
+   * source nobody has shown to produce useful unique results should not be
+   * charged to a customer at any budget. That is a quality decision and it is
+   * deliberately NOT a paywall -- P3 is closed to everyone, including the
+   * highest plan and the largest campaign.
+   */
+  const ceiling = entitlement.funding === 'PAYG'
+    ? Math.max(planLevel, PAYG_CEILING)
+    : planLevel;
 
   /*
    * A null result_ceiling means the product does not cap results — VERIFY and
@@ -162,7 +215,9 @@ export function deriveSearchBudget(entitlement: Entitlement | null): SearchBudge
   const reasons = [
     `${entitlement.productCode}/${entitlement.planCode}`,
     `tier ${tier}`,
-    `sources up to P${ceiling}`,
+    entitlement.funding === 'PAYG' && ceiling > planLevel
+      ? `sources up to P${ceiling} (PAYG lifted the plan's P${planLevel}; budget is the cap)`
+      : `sources up to P${ceiling}`,
     entitlement.resultCeiling === null
       ? 'no result_ceiling on this product, bounded by jobs'
       : `result_ceiling ${entitlement.resultCeiling}`,

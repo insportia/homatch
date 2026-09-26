@@ -209,6 +209,15 @@ Deno.serve(async (req: Request) => {
             resultCeiling: product.result_ceiling ?? null,
             providerBudgetCeilingCents: ceiling?.provider_budget_ceiling_cents ?? null,
             priorityLevel: product.priority_level ?? null,
+            /*
+             * Passed by the caller that holds the grant, because only it
+             * knows how THIS run was funded. PAYG means the customer
+             * authorised credits for this search, so the plan's tier is a
+             * floor rather than a wall -- see search-budget.ts. Absent is
+             * read conservatively: a sweep nobody told is the plan's own.
+             */
+            funding: body.funding === 'PAYG' ? 'PAYG'
+              : body.funding === 'INCLUDED' ? 'INCLUDED' : null,
           }
           : null);
         entitlementNote = budget.rationale;

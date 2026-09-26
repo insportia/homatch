@@ -397,6 +397,18 @@ Deno.serve(async (req: Request) => {
           campaignId,
           jobId,
           limitPerSource: perSource,
+          /*
+           * HOW THIS RUN WAS FUNDED, which is an authorisation rather than a
+           * narrowing -- the note above forbids passing anything that narrows
+           * the campaign's own envelope, and this widens it.
+           *
+           * Only the holder of the grant knows whether the customer spent
+           * credits on this search or used the one their plan includes, and
+           * supply-discovery needs it to decide whether the plan's tier is a
+           * floor or a ceiling. Without it, a PAYG customer's paid search
+           * would still be held to their subscription's depth.
+           */
+          funding: grant.funding,
         }, 120_000);
         supplyResult = supply.data;
 
@@ -624,13 +636,30 @@ Deno.serve(async (req: Request) => {
      *
      * Scoped to matches created since this job started, so it cannot
      * retroactively make somebody's older, separately-priced matches free. */
-    if (grant.reservationId) {
+    /*
+     * EITHER FUNDING SOURCE COUNTS, and only one of them used to.
+     *
+     * This read `if (grant.reservationId)`, which is present for PAYG runs
+     * only. An INCLUDED run -- the search the customer's plan already covers
+     * -- carries grant.allowanceId and a null reservationId, so the condition
+     * was false and its results were stamped with nothing.
+     *
+     * On the FREE plan, where FIND_CLIENTS includes one search per calendar
+     * month, that made the first search of every month produce results the
+     * screen then blurred and offered to sell for 35 credits. Charging twice
+     * for one thing, which the note below this has always forbidden.
+     */
+    if (grant.reservationId || grant.allowanceId) {
+      const funding = grant.reservationId
+        ? { unlock_included_reservation_id: grant.reservationId }
+        : { unlock_included_allowance_id: grant.allowanceId };
       const { error: includeErr } = await db
         .from('matches')
-        .update({ unlock_included_reservation_id: grant.reservationId })
+        .update(funding)
         .eq('property_id', propertyId)
         .gte('created_at', startedAt)
-        .is('unlock_included_reservation_id', null);
+        .is('unlock_included_reservation_id', null)
+        .is('unlock_included_allowance_id', null);
       if (includeErr) {
         // Loud, because the alternative is silently charging a customer twice.
         console.error('[match-campaign] could not mark results as included', includeErr);

@@ -58,16 +58,28 @@ test('the held-evidence query runs before the registry is even consulted', () =>
 });
 
 test('the city filter carries every known spelling, never one string', () => {
+  /*
+   * This asserted `.in('city', placeNamesFor(city))` and that shape was itself the bug:
+   * placeNamesFor returns lowercase names, the column holds 'Tbilisi', and Postgres IN
+   * is case-sensitive -- so it read 9 of 21 Tbilisi rows. An unwildcarded ilike per
+   * spelling is the correct filter, and tests/matrix/cityFilterCase.test.mjs holds the
+   * full account of how that was found.
+   */
+  assert.match(code, /placeNamesFor\(city\)/, 'every known spelling, not one string');
   assert.match(
     code,
-    /\.in\('city', placeNamesFor\(city\)\)/,
-    "city = 'Tbilisi' matched 11 of 20 Tbilisi rows in production, because the "
-      + "others are written 'tbilisi' and 'თბილისი'",
+    /city\.ilike\./,
+    'case-insensitively, because the vocabulary is lowercase and the column is not',
   );
   assert.doesNotMatch(
     code,
     /\.eq\('city', city\)/,
     'an equality filter on an unnormalised column silently halves the store',
+  );
+  assert.doesNotMatch(
+    code,
+    /\.in\('city'/,
+    'a case-sensitive IN is what hid 12 of 21 rows',
   );
 });
 

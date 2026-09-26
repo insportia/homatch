@@ -843,6 +843,10 @@ jobs:
             # read instead of each causing their own. Driven by pg_cron,
             # owned by no customer, authenticated on a private token.
             "community-sync"
+            # FIND PROPERTY, the reverse matching direction. Driven by a worker tick,
+            # owned by no customer, authenticated on a private token. It reads the
+            # global store and writes supply_matches; it acquires nothing.
+            "supply-matching"
             # ── Communications: the three that are NOT called by a browser ──
             #
             # These MUST be here rather than in the JWT list, and the

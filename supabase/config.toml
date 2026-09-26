@@ -159,6 +159,13 @@ verify_jwt = false
 [functions.community-sync]
 verify_jwt = false
 
+# FIND PROPERTY: the reverse matching direction. A worker tick with no customer and no
+# user JWT -- it reads the global intelligence store, matches against it and writes
+# supply_matches. Authenticated on a private token in admin_settings like every other
+# tick here. It acquires nothing and charges nothing.
+[functions.supply-matching]
+verify_jwt = false
+
 # community-intelligence is deliberately ABSENT from this file. These entries exist
 # only to preserve verify_jwt = false across a manual `supabase functions deploy`,
 # and that function verifies the JWT -- which is the default, so there is nothing to

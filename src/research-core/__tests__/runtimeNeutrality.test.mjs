@@ -357,6 +357,20 @@ test('the core is consumed only through its deliberate integration points', () =
      */
     'supabase/functions/community-intelligence/index.ts',
     /*
+     * FIND PROPERTY -- and the seam that matters most here is assessMatch().
+     *
+     * supply-matching fixes a demand row and iterates supply; run-matching-v2 fixes a
+     * property and iterates demand. Both MUST reach the same verdict about the same
+     * pair, so both call the same comparison. If this worker ever grows its own idea of
+     * what a compatible pair is, the product acquires a flat that matches a buyer whose
+     * buyer does not match the flat -- and nothing would report it.
+     *
+     * It also consumes judgeDelivery() and the listing-age policy rather than
+     * re-deciding freshness, because there are four clocks here and collapsing any two
+     * of them is how a 2022 listing gets shown as current.
+     */
+    'supabase/functions/supply-matching/index.ts',
+    /*
      * EVIDENCE FRESHNESS — the sixth seam, and the one that decides what a
      * customer is allowed to see.
      *

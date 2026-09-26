@@ -9,6 +9,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { CampaignLaunchPanel } from '@/components/campaign/CampaignLaunchPanel';
 import { PrivateImage } from '@/components/common/PrivateImage';
+import { PropertyGallery } from '@/components/property/PropertyGallery';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { MatchingJobProgress } from '@/components/matching/MatchingJobProgress';
@@ -400,23 +401,25 @@ function PropertyDetailContent() {
           </Button>
         </div>
 
-        {/* Cover photo */}
-        <div className="aspect-[16/7] rounded-xl overflow-hidden bg-secondary relative">
-          {/* Either an imported listing's own URL or a path in the private
-              bucket. One component tells them apart and signs the second. */}
-          <PrivateImage
-            src={property.cover_photo_url}
-            alt={property.title ?? t('prop_alt_fallback')}
-            className="w-full h-full object-cover"
-            loading="eager"
-            fallback={(
-              <div className="w-full h-full flex items-center justify-center">
-                <Building2 className="h-12 w-12 text-muted-foreground/20" />
-              </div>
-            )}
+        {/*
+          THE GALLERY, WHICH USED TO BE A COVER AND A ROW OF INERT STAMPS.
+          Every photo the property has -- the photo table first, then the property's own
+          cover key, then an importer's gallery array -- de-duplicated, ordered with the
+          owner's chosen cover leading, with a thumbnail rail, a count and a lightbox.
+          Storage is not reimplemented: PrivateImage is still the one thing that knows a
+          private key from an absolute URL.
+        */}
+        <div className="relative">
+          <PropertyGallery
+            source={{
+              coverPhotoUrl: property.cover_photo_url,
+              photos: property.photos,
+              galleryImages: (facts as { gallery_images?: string[] } | null)?.gallery_images ?? null,
+            }}
+            title={property.title ?? t('prop_alt_fallback')}
           />
           {isPrivate && (
-            <div className={`absolute top-3 ${isRTL ? 'right-3' : 'left-3'}`}>
+            <div className="absolute top-3 start-3 z-10">
               <span className="status-private flex items-center gap-1.5">
                 <Lock className="h-3 w-3" />
                 {t('prop_private_badge')}
@@ -424,24 +427,6 @@ function PropertyDetailContent() {
             </div>
           )}
         </div>
-
-        {/* Photo gallery strip */}
-        {(property.photos?.length ?? 0) > 1 && (
-          <div className="flex gap-2 overflow-x-auto">
-            {property.photos?.map(ph => (
-              <div key={ph.id} className="w-16 h-16 shrink-0 rounded-lg overflow-hidden border border-border">
-                {/* The photo's address is its storage path. `public_url` is
-                    only ever set for an object that really is public, which
-                    none of these are. */}
-                <PrivateImage
-                  src={ph.public_url ?? ph.storage_path}
-                  alt=""
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            ))}
-          </div>
-        )}
 
         {/* Canonical dedup banner */}
         {id && <CanonicalGroupBanner propertyId={id} />}

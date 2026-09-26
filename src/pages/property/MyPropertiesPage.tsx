@@ -627,7 +627,7 @@ export default function MyPropertiesPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => navigate('/property/import')}
-                className="flex-1 min-w-0 sm:flex-none"
+                className="flex-1 min-w-0 sm:flex-none h-auto min-h-9 py-1.5 whitespace-normal text-start"
               >
                 <Upload className="h-4 w-4 me-1.5 shrink-0" />
                 <span className="break-words min-w-0">{t('prop_import_cta')}</span>
@@ -635,7 +635,7 @@ export default function MyPropertiesPage() {
               <Button
                 size="sm"
                 onClick={() => navigate('/property/add')}
-                className="flex-1 min-w-0 sm:flex-none"
+                className="flex-1 min-w-0 sm:flex-none h-auto min-h-9 py-1.5 whitespace-normal text-start"
               >
                 <Plus className="h-4 w-4 me-1.5 shrink-0" />
                 <span className="break-words min-w-0">{t('prop_add_cta')}</span>

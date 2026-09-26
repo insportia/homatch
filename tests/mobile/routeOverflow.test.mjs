@@ -119,6 +119,16 @@ const ROUTES = [
    * coverage at any width in any language.
    */
   { path: '/property/create', name: 'create listing', auth: true },
+  /*
+   * PROPERTY DETAILS, AND IT HAD NEVER BEEN MEASURED.
+   *
+   * /property/:id is classified customer-critical, but this list held no concrete route
+   * for it -- so the resolver below fell through to its prefix rule and matched
+   * `/property`, the owner workspace. The matrix rendered the workspace twice and
+   * counted the second one as coverage of Property Details. That is the fourth time
+   * this file has measured one screen while believing it was measuring another.
+   */
+  { path: '/property/11111111-1111-4111-8111-111111111111', name: 'property details', auth: true },
   { path: '/property/11111111-1111-4111-8111-111111111111/edit', name: 'edit property', auth: true },
   { path: '/find-property', name: 'find property', auth: true },
   { path: '/dashboard', name: 'dashboard', auth: true },
@@ -386,7 +396,18 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
            looked like it was being asked for made the tab read 0 above three listed
            rows -- a fixture disagreeing with itself is worse than no fixture. */
         const archived = url.includes('archived_at=not.is.null');
-        const rows = archived ? [] : propertyRows(3);
+        /*
+         * A SINGLE-ROW READ GETS A SINGLE ROW. Property Details and Edit Property both
+         * ask for `id=eq.<uuid>` with maybeSingle, and PostgREST's object accept header
+         * turns more than one row into an error -- so answering a detail read with the
+         * whole list renders an error card and the matrix measures that instead.
+         */
+        const one = /[?&]id=eq\.([0-9a-f-]{36})/.exec(url);
+        const rows = archived
+          ? []
+          : one
+            ? propertyRows(1).map((row) => ({ ...row, id: one[1] }))
+            : propertyRows(3);
         return r.fulfill({
           status: 206,
           contentType: 'application/json',
@@ -889,9 +910,19 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
     for (const classified of customerCriticalPaths()) {
       /* The classification names the route pattern; ROUTES holds the concrete path with
          a real id in it. Fall back to an exact match for unparameterised surfaces. */
+      /*
+       * THE PREFIX FALLBACK IS GONE, and it was the bug. `/property/:id` has no concrete
+       * route here, so it fell to `r.path.startsWith('/property')` and matched
+       * `/property` -- the owner workspace. The matrix then rendered the workspace, once
+       * as itself and once as Property Details, and reported 24 combinations of coverage
+       * for a screen it had never loaded.
+       *
+       * A surface either has a concrete route in this harness or it is reported as
+       * unreachable. Silently measuring its parent is worse than measuring nothing,
+       * because nothing is visible in the count and a substitution is not.
+       */
       const route = concrete.get(classified)
-        ?? ROUTES.find((r) => r.path.replace(/\/[0-9a-f-]{36}\//g, '/:id/') === classified)
-        ?? ROUTES.find((r) => classified.split('/:')[0] !== '' && r.path.startsWith(classified.split('/:')[0]));
+        ?? ROUTES.find((r) => r.path.replace(/\/[0-9a-f-]{36}/g, '/:id') === classified);
       if (!route) {
         failures.push(`the matrix cannot reach ${classified}: no concrete route in this harness`);
         continue;

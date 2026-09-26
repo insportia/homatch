@@ -130,6 +130,17 @@ export interface PreviewPage {
   nextCursor: string | null;
   /** True when Telegram offered more and we stopped. */
   truncated: boolean;
+  /**
+   * Telegram's own notices on this page: "Channel created", "Channel photo
+   * updated", "The owner of this channel has been inactive for...".
+   *
+   * Counted rather than silently dropped. They carry real data-post ids, so before
+   * they were recognised every one of them persisted as Community Evidence -- nine
+   * of the first eighteen rows -- and a channel that had published nothing at all
+   * reported four pieces of evidence. Reporting the number is what lets an operator
+   * tell a quiet channel from a channel we are misreading.
+   */
+  serviceMessages: number;
   /** Plain words, for the operator and the source registry. */
   detail: string;
 }
@@ -259,7 +270,16 @@ export function parsePreviewPage(html: string, requestedChannel: string): Previe
   const lower = html.toLowerCase();
 
   const fail = (outcome: PreviewOutcome, detail: string): PreviewPage => ({
-    outcome, channel: null, messages: [], nextCursor: null, truncated: false, detail,
+    outcome,
+    channel: null,
+    messages: [],
+    nextCursor: null,
+    truncated: false,
+    /* Zero, because a page that failed before the blocks were walked counted
+       nothing -- not because it contained none. The distinction only matters on the
+       OK and PREVIEW_UNAVAILABLE paths, where the number is measured. */
+    serviceMessages: 0,
+    detail,
   });
 
   if (has(lower, RATE_LIMIT_MARKERS)) {
@@ -326,7 +346,33 @@ export function parsePreviewPage(html: string, requestedChannel: string): Previe
   const counter = firstByClass(html, 'tgme_channel_info_counter');
 
   const messages: PreviewMessage[] = [];
+  /*
+   * Telegram's own bookkeeping, counted and never stored.
+   *
+   * "Channel created", "Channel photo updated", "The owner of this channel has
+   * been inactive for..." are rendered as message blocks carrying real data-post
+   * ids, so every identity check passes and they persist as Community Evidence
+   * like anything else. Measured on the first live run: nine of eighteen rows were
+   * these, and @tbilisiapartments produced FOUR of them and nothing else -- a
+   * channel with no posts at all, reported as four pieces of evidence.
+   *
+   * Telegram labels them itself, so this reads the marker rather than guessing from
+   * the wording: a text heuristic would drop a real listing that happened to
+   * mention a channel photo, and would miss the same notice written in Russian.
+   */
+  let serviceMessages = 0;
   for (const block of blocks) {
+    /*
+     * The whole class TOKEN, not a substring. `service_message` sits beside
+     * `text_not_supported_wrap` and `js-widget_message` in one attribute, and a
+     * loose match here is the same trap that once let `_header_title` match
+     * `_header_title_wrap`.
+     */
+    if (/\sclass="(?:[^"]*\s)?service_message(?:\s[^"]*)?"/i.test(block)) {
+      serviceMessages += 1;
+      continue;
+    }
+
     const post = /data-post="([^"]+)"/i.exec(block)?.[1] ?? '';
     const slash = post.lastIndexOf('/');
     if (slash <= 0) continue;
@@ -380,8 +426,40 @@ export function parsePreviewPage(html: string, requestedChannel: string): Previe
   }
 
   if (messages.length === 0) {
+    /*
+     * A page of nothing but Telegram's own notices is a channel with NO POSTS,
+     * which is a fact about the channel. Calling it MARKUP_UNRECOGNISED would
+     * blame our parser for reading the page correctly and would put a healthy
+     * public channel on the DEGRADED path -- the same confusion as reporting a
+     * permission refusal as an empty source, running the other way.
+     */
+    if (serviceMessages === blocks.length) {
+      return {
+        outcome: 'PREVIEW_UNAVAILABLE',
+        /*
+         * The channel IS reported, unlike every other non-OK outcome. We read it
+         * successfully, and its title and subscriber count are real facts worth
+         * keeping -- the channel is simply empty of posts.
+         */
+        channel: {
+          username: requestedChannel,
+          title: title ? visibleText(title) || null : null,
+          numericIdAvailable: false,
+          participants: parseParticipants(counter ? visibleText(counter) : null),
+          participantsLabel: counter ? (visibleText(counter) || null) : null,
+        },
+        messages: [],
+        nextCursor: null,
+        truncated: false,
+        serviceMessages,
+        detail: `the channel rendered ${blocks.length} block(s) and every one was a Telegram `
+          + 'service notice, so it has published nothing readable. This is a property of the '
+          + 'channel, not a failed read and not a parser problem',
+      };
+    }
     return fail('MARKUP_UNRECOGNISED',
-      `${blocks.length} message block(s) were present and none carried a usable channel/id pair`);
+      `${blocks.length} message block(s) were present, ${serviceMessages} were service notices, `
+      + 'and none of the rest carried a usable channel/id pair');
   }
 
   const moreBefore = /class="[^"]*tme_messages_more[^"]*"[^>]*data-before="(\d+)"/i.exec(html)?.[1]
@@ -403,7 +481,11 @@ export function parsePreviewPage(html: string, requestedChannel: string): Previe
     messages,
     nextCursor: moreBefore,
     truncated: moreBefore !== null,
+    serviceMessages,
     detail: `${messages.length} public post(s) read from the channel preview`
+      + (serviceMessages > 0
+        ? `; ${serviceMessages} Telegram service notice(s) were skipped rather than stored`
+        : '')
       + (moreBefore ? '; Telegram offers older posts' : '; Telegram offered no older posts')
       + '. Comments are not on this surface and were not read.',
   };

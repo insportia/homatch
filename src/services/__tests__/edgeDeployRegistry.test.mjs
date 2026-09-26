@@ -164,9 +164,7 @@ test('every function CI deploys without a JWT declares that in config.toml', () 
    * reason. This is the check that makes it true rather than remembered.
    */
   const config = readFileSync('supabase/config.toml', 'utf8');
-  const declared = new Set(
-    [...config.matchAll(/^\[functions\.([a-z0-9-]+)\]\s*$/gim)].map((m) => m[1]),
-  );
+  const declared = new Set(declaredFalse(config));
   assert.ok(declared.size > 0, 'config.toml declares no functions at all');
 
   const undeclared = noJwt.filter((fn) => !declared.has(fn));
@@ -175,13 +173,49 @@ test('every function CI deploys without a JWT declares that in config.toml', () 
     + 'manual deploy would turn the gateway check back on:\n  - ' + undeclared.join('\n  - '));
 });
 
+/**
+ * The functions config.toml actually declares verify_jwt = FALSE for.
+ *
+ * The value is read, not inferred from the section existing. Both checks here say
+ * "declares verify_jwt = false", and for a while that was true by accident: every
+ * section in the file was a no-JWT declaration, so presence and value agreed.
+ *
+ * They stop agreeing the moment somebody adds a section for a function that DOES
+ * verify its caller -- a harmless, even well-intentioned entry -- and the second
+ * check then fails while naming a function whose config says the opposite of what
+ * the failure message claims. Reading the value keeps the message honest.
+ */
+function declaredFalse(config) {
+  const out = [];
+  let current = null;
+  for (const raw of config.split(/\r?\n/)) {
+    const line = raw.replace(/#.*$/, '').trim();
+    const section = line.match(/^\[functions\.([a-z0-9-]+)\]$/i);
+    if (section) {
+      current = section[1];
+      continue;
+    }
+    /* Any other section header ends this function's block, so a verify_jwt
+       further down the file cannot be attributed to it. */
+    if (/^\[/.test(line)) {
+      current = null;
+      continue;
+    }
+    const value = line.match(/^verify_jwt\s*=\s*(true|false)$/i);
+    if (value && current) {
+      if (value[1].toLowerCase() === 'false') out.push(current);
+      current = null;
+    }
+  }
+  return out;
+}
+
 test('nothing declares verify_jwt = false without CI deploying it that way', () => {
   // The other direction. A config entry for a function CI deploys WITH the
   // JWT check is a trap in the opposite direction: the two deploy paths
   // disagree and which one ran last decides production's behaviour.
   const config = readFileSync('supabase/config.toml', 'utf8');
-  const declared = [...config.matchAll(/^\[functions\.([a-z0-9-]+)\]\s*$/gim)].map((m) => m[1]);
-  const inJwtList = declared.filter((fn) => jwt.includes(fn));
+  const inJwtList = declaredFalse(config).filter((fn) => jwt.includes(fn));
   assert.deepEqual(inJwtList, [],
     'declared verify_jwt = false but deployed by the JWT loop:\n  - ' + inJwtList.join('\n  - '));
 });

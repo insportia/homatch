@@ -660,6 +660,12 @@ jobs:
             "send-message"
             "viewing-request"
             "research-purchase"
+            # Global intelligence reads, called by an admin's browser. It is in
+            # THIS list rather than beside community-sync because it answers
+            # about every customer's evidence at once and therefore needs a real
+            # user identity to check is_admin against -- a private token would
+            # only establish that the caller knows the token.
+            "community-intelligence"
           )
           # ONLY WHAT IS OWED, AND IN PARALLEL.
           #

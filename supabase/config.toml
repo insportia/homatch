@@ -158,3 +158,10 @@ verify_jwt = false
 # admin_settings like every other tick here.
 [functions.community-sync]
 verify_jwt = false
+
+# community-intelligence is deliberately ABSENT from this file. These entries exist
+# only to preserve verify_jwt = false across a manual `supabase functions deploy`,
+# and that function verifies the JWT -- which is the default, so there is nothing to
+# preserve. It is in the workflow's JWT loop because it answers about every
+# customer's evidence at once and needs a real user identity to check is_admin
+# against; a private token would only establish that the caller knows the token.

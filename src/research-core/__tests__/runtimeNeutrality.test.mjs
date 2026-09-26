@@ -347,6 +347,16 @@ test('the core is consumed only through its deliberate integration points', () =
      */
     'supabase/functions/community-sync/index.ts',
     /*
+     * GLOBAL INTELLIGENCE READS — the same seam from the other direction.
+     *
+     * community-intelligence imports timeBounds(), truncUnit() and bucketCount()
+     * and computes no window of its own. The rule it must not reimplement is that
+     * a CALENDAR window is local and a DURATION is not: a second copy that got it
+     * backwards would produce an off-by-one-day report that looks entirely
+     * plausible, and nobody checks a plausible number.
+     */
+    'supabase/functions/community-intelligence/index.ts',
+    /*
      * EVIDENCE FRESHNESS — the sixth seam, and the one that decides what a
      * customer is allowed to see.
      *

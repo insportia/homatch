@@ -37,10 +37,11 @@ function freshness(overrides = {}) {
   };
 }
 
-const held = (language, overrides = {}, city = 'Tbilisi') => ({
+const held = (language, overrides = {}, city = 'Tbilisi', publishedAt = iso(2 * DAY)) => ({
   city,
   language,
   sourceId: 'telegram:tbilisikvartiri',
+  publishedAt,
   freshness: freshness(overrides),
 });
 
@@ -420,4 +421,138 @@ test('with no requested city, the place comparison is skipped rather than failin
   assert.equal(assessment.uncounted.unplaceableCity, 0);
   assert.equal(assessment.verdict, 'PARTIAL', 'covered on language, gapped on the missing city');
   assert.equal(decideSweep(assessment).sweep, true);
+});
+
+/* ────────────────────────────────────────────────────────────────────────
+ * OBSERVATION FRESHNESS IS NOT PUBLICATION AGE
+ *
+ * The finding that produced this section, measured in production 2026-09-26.
+ * The first live Telegram sync stored seven real posts from @tbilisikvartiri:
+ *
+ *   tbilisikvartiri/5   published 2022-10-08   1449 days old   SUPPLY
+ *   tbilisikvartiri/16  published 2022-10-08   1449 days old   SUPPLY
+ *   tbilisikvartiri/20  published 2022-11-27   1399 days old   SUPPLY
+ *
+ * A second sync re-read them, the fingerprints matched, and TOUCH set
+ * validation_state VALID with last_verified_at = now. judgeDelivery() then called
+ * all seven FRESH and deliverable -- correctly, on its own terms: the OBSERVATION
+ * was minutes old.
+ *
+ * But "the post is still on the channel" is not "the flat is still available". A
+ * 32-room hotel advertised in 2022 counted as coverage would stop a campaign
+ * paying to find out what is for sale now, on the strength of an archive.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+const YEAR = 365 * DAY;
+
+test('a post we verified today but published in 2022 is deliverable', () => {
+  // The premise, stated so nothing below reads as a complaint about
+  // judgeDelivery: it is behaving exactly as designed.
+  const decision = judgeDelivery(
+    freshness({ lastVerifiedAt: iso(0), validationState: 'VALID' }),
+    { now: NOW },
+  );
+  assert.equal(decision.verdict, 'FRESH');
+  assert.equal(decision.deliverable, true);
+});
+
+test('without a ceiling, publication age is not considered at all', () => {
+  // Omitting maxPublishedAgeMs must preserve the previous behaviour exactly. A
+  // silent new rule would change every existing caller's answer.
+  const store = [
+    held('ka', {}, 'Tbilisi', '2022-10-08T00:00:00.000Z'),
+    held('ru', {}, 'Tbilisi', '2022-11-27T00:00:00.000Z'),
+  ];
+  const assessment = assessCoverage(store, request({ minPerLanguage: 1 }));
+
+  assert.equal(assessment.verdict, 'COVERED');
+  assert.equal(assessment.uncounted.publishedTooLongAgo, 0);
+});
+
+test('with a ceiling, the 2022 archive is not coverage', () => {
+  const store = [
+    held('ka', {}, 'Tbilisi', '2022-10-08T00:00:00.000Z'),
+    held('ka', {}, 'Tbilisi', '2022-10-08T00:00:00.000Z'),
+    held('ka', {}, 'Tbilisi', '2022-11-27T00:00:00.000Z'),
+    held('ru', {}, 'Tbilisi', '2022-10-11T00:00:00.000Z'),
+  ];
+  const assessment = assessCoverage(
+    store,
+    request({ minPerLanguage: 1, maxPublishedAgeMs: 90 * DAY }),
+  );
+
+  assert.equal(
+    assessment.verdict,
+    'UNCOVERED',
+    'four archived posts must not suppress a sweep for current listings',
+  );
+  assert.equal(assessment.uncounted.publishedTooLongAgo, 4);
+  assert.match(assessment.rationale, /4 published too long ago to be worth showing/);
+  assert.equal(decideSweep(assessment).sweep, true);
+});
+
+test('a row with no stated publication date is never excluded by age', () => {
+  // Absence of a date is not evidence of age. Excluding these would discard most
+  // of what some sources publish on the strength of a guess -- and production
+  // holds plenty: detected_language and published_at are both often null.
+  const store = [held('ka', {}, 'Tbilisi', null), held('ru', {}, 'Tbilisi', undefined)];
+  const assessment = assessCoverage(
+    store,
+    request({ minPerLanguage: 1, maxPublishedAgeMs: 30 * DAY }),
+  );
+
+  assert.equal(assessment.verdict, 'COVERED');
+  assert.equal(assessment.uncounted.publishedTooLongAgo, 0);
+});
+
+test('an unparseable publication date is not excluded either', () => {
+  const store = [held('ka', {}, 'Tbilisi', 'sometime last spring')];
+  const assessment = assessCoverage(
+    store,
+    request({ languages: ['ka'], minPerLanguage: 1, maxPublishedAgeMs: 30 * DAY }),
+  );
+  assert.equal(assessment.uncounted.publishedTooLongAgo, 0);
+  assert.equal(assessment.deliverableByLanguage.ka, 1);
+});
+
+test('the ceiling is a market judgement, not a constant', () => {
+  // A rental posted three months ago is gone; land advertised two years ago may
+  // well still be for sale. Same row, two ceilings, two honest answers.
+  const store = [held('ka', {}, 'Tbilisi', iso(200 * DAY))];
+  const base = request({ languages: ['ka'], minPerLanguage: 1 });
+
+  assert.equal(
+    assessCoverage(store, { ...base, maxPublishedAgeMs: 90 * DAY }).verdict,
+    'UNCOVERED',
+  );
+  assert.equal(
+    assessCoverage(store, { ...base, maxPublishedAgeMs: 2 * YEAR }).verdict,
+    'COVERED',
+  );
+});
+
+test('a recent publication still counts, so the gate is not simply off', () => {
+  const store = [
+    held('ka', {}, 'Tbilisi', iso(3 * DAY)),
+    held('ru', {}, 'Tbilisi', iso(1 * DAY)),
+  ];
+  const assessment = assessCoverage(
+    store,
+    request({ minPerLanguage: 1, maxPublishedAgeMs: 30 * DAY }),
+  );
+  assert.equal(assessment.verdict, 'COVERED');
+  assert.deepEqual(assessment.deliverableByLanguage, { ka: 1, ru: 1 });
+});
+
+test('age is checked after the city, so a wrong-city archive reports as wrong city', () => {
+  // Each row is excluded for ONE reason: the first that applies. A Batumi post from
+  // 2022 in a Tbilisi campaign is a wrong-city row, and reporting it as an age
+  // problem would send an operator looking at the wrong thing.
+  const store = [held('ka', {}, 'Batumi', '2022-10-08T00:00:00.000Z')];
+  const assessment = assessCoverage(
+    store,
+    request({ languages: ['ka'], minPerLanguage: 1, maxPublishedAgeMs: 30 * DAY }),
+  );
+  assert.equal(assessment.uncounted.wrongCity, 1);
+  assert.equal(assessment.uncounted.publishedTooLongAgo, 0);
 });

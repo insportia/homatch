@@ -118,6 +118,23 @@ Deno.serve(async (req: Request) => {
  */
 const COVERAGE_FLOOR_PER_LANGUAGE = 3;
 
+/**
+ * How old a LISTING may be and still count as coverage.
+ *
+ * Ninety days, and this number exists because of what the first live Telegram sync
+ * found: seven real posts, every one published in October or November 2022, and
+ * because a second sync had just re-read and confirmed them, judgeDelivery() called
+ * all seven FRESH and deliverable. It was right on its own terms -- the OBSERVATION
+ * was minutes old. But "the post is still on the channel" is not "the flat is still
+ * available", and without a ceiling one archive sync would report a market as
+ * covered and stop the campaign paying to find out what is actually for sale.
+ *
+ * Separate from the delivery window on purpose. The seven-day window asks how long
+ * ago we LOOKED; this asks how long ago the seller SPOKE. A rental advertised three
+ * months ago is gone.
+ */
+const MAX_LISTING_AGE_MS = 90 * 86_400_000;
+
 const started = Date.now();
   try {
     const body = await req.json().catch(() => ({}));
@@ -165,7 +182,8 @@ const started = Date.now();
     const { data: heldRows } = await db
       .from('supply_observations')
       .select('id,city,detected_language,validation_state,first_seen_at,last_seen_at,'
-        + 'last_verified_at,content_changed_at,expires_at,content_fingerprint,failed_checks')
+        + 'last_verified_at,content_changed_at,expires_at,content_fingerprint,failed_checks,'
+        + 'published_at')
       .in('city', placeNamesFor(city))
       .eq('transaction', transaction)
       .limit(2000);
@@ -176,6 +194,9 @@ const started = Date.now();
         city: (row.city as string | null) ?? null,
         language: (row.detected_language as string | null) ?? null,
         sourceId: null,
+        /* When the SELLER spoke, which is a different question from when we last
+           looked -- and the one an archive of 2022 posts answers badly. */
+        publishedAt: (row.published_at as string | null) ?? null,
         freshness: {
           firstSeenAt: String(row.first_seen_at),
           lastSeenAt: String(row.last_seen_at),
@@ -192,6 +213,7 @@ const started = Date.now();
         city,
         languages: scope.languages,
         minPerLanguage: COVERAGE_FLOOR_PER_LANGUAGE,
+        maxPublishedAgeMs: MAX_LISTING_AGE_MS,
       },
     );
 

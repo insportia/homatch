@@ -160,3 +160,30 @@ test('the per-language floor is a named constant at the call site', () => {
   assert.match(code, /const COVERAGE_FLOOR_PER_LANGUAGE = \d+;/);
   assert.match(code, /minPerLanguage: COVERAGE_FLOOR_PER_LANGUAGE/);
 });
+
+test('the sweep decision weighs how old the LISTING is, not only how old our look was', () => {
+  // The first live Telegram sync stored seven posts from 2022 and, because a second
+  // sync had just confirmed them, judgeDelivery() called all seven FRESH. Without a
+  // publication ceiling one archive would report a market as covered and stop the
+  // campaign paying to find out what is actually for sale.
+  assert.match(
+    code,
+    /const MAX_LISTING_AGE_MS = /,
+    'the ceiling has to exist as a named constant at the call site',
+  );
+  assert.match(
+    code,
+    /maxPublishedAgeMs: MAX_LISTING_AGE_MS/,
+    'and it has to actually be passed, or it is documentation rather than a gate',
+  );
+  assert.match(
+    code,
+    /publishedAt: \(row\.published_at as string \| null\) \?\? null/,
+    'the module cannot weigh a date the query never selected',
+  );
+  assert.match(
+    code,
+    /published_at/,
+    'published_at must be in the select list',
+  );
+});

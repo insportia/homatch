@@ -94,6 +94,22 @@ export interface HeldEvidence {
   /** Source or adapter it came from. Reported, not used as a gate. */
   sourceId: string | null;
   /**
+   * When the AUTHOR published it, as the source stated. Null when none was stated.
+   *
+   * Separate from every timestamp in `freshness`, and the distinction is not
+   * academic. MEASURED IN PRODUCTION, 2026-09-26: the first live Telegram sync
+   * stored seven posts published in October and November 2022 -- 1,399 to 1,449
+   * days old -- and because we had just re-read and confirmed them,
+   * judgeDelivery() called all seven FRESH and deliverable.
+   *
+   * It was right on its own terms: the OBSERVATION was minutes old. But
+   * "the post is still on the channel" is not "the flat is still available", and a
+   * four-year-old rental counted as coverage would stop a campaign paying to find
+   * current listings. Observation freshness and publication age are two different
+   * facts and coverage needs both.
+   */
+  publishedAt?: string | null;
+  /**
    * The caller's handle for this row -- an observation id, usually.
    *
    * Carried through untouched so the caller can record WHICH evidence answered a
@@ -129,6 +145,20 @@ export interface CoverageRequest {
    * module deliberately holds no window of its own.
    */
   policy?: FreshnessPolicy;
+  /**
+   * How old the PUBLICATION may be and still count as coverage, in ms.
+   *
+   * Optional, and omitting it keeps the previous behaviour exactly -- publication
+   * age is then not considered at all, which is the right default for a caller
+   * that has not thought about it rather than a silent new rule.
+   *
+   * Supplied by the caller because it is a market judgement and not a constant: a
+   * Tbilisi rental posted three months ago is gone, a plot of land advertised two
+   * years ago may well still be for sale. A row with no stated publication date is
+   * NOT excluded by this -- absence of a date is not evidence of age, and treating
+   * it as such would discard most of what some sources publish.
+   */
+  maxPublishedAgeMs?: number;
   /** Evaluation time, injectable for tests. */
   now?: number;
 }
@@ -173,6 +203,14 @@ export interface CoverageAssessment {
     wrongCity: number;
     unplaceableCity: number;
     unknownLanguage: number;
+    /**
+     * Deliverable, correctly placed, correctly languaged -- and published too long
+     * ago to be worth showing. Counted separately because it is the one exclusion
+     * that says something about the SOURCE rather than about our data quality: a
+     * channel returning nothing but four-year-old posts is an archive, and an
+     * archive is not a lead supply.
+     */
+    publishedTooLongAgo: number;
   };
   gaps: CoverageGap[];
   /**
@@ -229,6 +267,7 @@ export function assessCoverage(
   let wrongCity = 0;
   let unknownCity = 0;
   let unknownLanguage = 0;
+  let publishedTooLongAgo = 0;
 
   for (const item of held) {
     const decision = judgeDelivery(item.freshness, { now, policy: request.policy });
@@ -254,6 +293,27 @@ export function assessCoverage(
       }
       if (placed === 'UNKNOWN') {
         unknownCity += 1;
+        continue;
+      }
+    }
+
+    /*
+     * IS THE CLAIM STILL WORTH MAKING, not just the observation still warm?
+     *
+     * judgeDelivery() above answered "did we re-read this recently", and for the
+     * seven 2022 Telegram posts measured in production it answered FRESH, because
+     * we had. This asks the other question, and only when the caller has said what
+     * it considers too old -- an absent ceiling means the caller has not decided and
+     * nothing is excluded here.
+     *
+     * A row with NO stated publication date passes: absence of a date is not
+     * evidence of age, and excluding it would discard most of what some sources
+     * publish on the strength of a guess.
+     */
+    if (request.maxPublishedAgeMs !== undefined && item.publishedAt) {
+      const published = Date.parse(item.publishedAt);
+      if (Number.isFinite(published) && now - published > request.maxPublishedAgeMs) {
+        publishedTooLongAgo += 1;
         continue;
       }
     }
@@ -358,7 +418,12 @@ export function assessCoverage(
     verdict,
     deliverableByLanguage,
     excluded,
-    uncounted: { wrongCity, unplaceableCity: unknownCity, unknownLanguage },
+    uncounted: {
+      wrongCity,
+      unplaceableCity: unknownCity,
+      unknownLanguage,
+      publishedTooLongAgo,
+    },
     countedRefs,
     gaps,
     sweepLanguages,
@@ -368,7 +433,7 @@ export function assessCoverage(
         ? `${deliverableOutsideRequest} deliverable item(s) are held in languages this campaign `
           + 'did not request and are not counted as its coverage.'
         : '',
-      describeUncounted(wrongCity, unknownCity, unknownLanguage),
+      describeUncounted(wrongCity, unknownCity, unknownLanguage, publishedTooLongAgo),
     ].filter(Boolean).join(' '),
   };
 }
@@ -400,6 +465,7 @@ function describeUncounted(
   wrongCity: number,
   unplaceableCity: number,
   unknownLanguage: number,
+  publishedTooLongAgo: number,
 ): string {
   const parts: string[] = [];
   if (wrongCity > 0) parts.push(`${wrongCity} for another city`);
@@ -407,6 +473,9 @@ function describeUncounted(
     parts.push(`${unplaceableCity} whose city could not be compared across scripts`);
   }
   if (unknownLanguage > 0) parts.push(`${unknownLanguage} with no recorded language`);
+  if (publishedTooLongAgo > 0) {
+    parts.push(`${publishedTooLongAgo} published too long ago to be worth showing`);
+  }
   return parts.length === 0
     ? ''
     : `Also held but not counted: ${parts.join(', ')}.`;

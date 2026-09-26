@@ -26,7 +26,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowRight, Bell, CreditCard, LayoutDashboard,
-  Handshake, LogOut, Mail, MapPinHouse, Menu, MessageCircle, MessageSquare, PhoneCall, Radio, Search,
+  Handshake, LogOut, Mail, MapPinHouse, Menu, MessageCircle, MessageSquare, PhoneCall, Search,
   Settings, ShieldCheck, Sparkles, User as UserIcon, X, Activity,
   CircleDollarSign, Coins as CoinsIcon, TrendingUp,
   FileSignature, Globe,
@@ -140,7 +140,6 @@ export const NAV: NavGroup[] = [
        * actual text search box, which is what a magnifier is for.
        */
       { key: 'dnav_find_property', path: '/find-property', icon: MapPinHouse },
-      { key: 'nav_active_search', path: '/active-search', icon: Radio },
     ],
   },
   /*

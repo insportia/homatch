@@ -17,6 +17,7 @@ import type { ReactNode } from 'react';
 import React from 'react';
 import { lazyRoute } from '@/lib/lazyRoute';
 import { Navigate } from 'react-router-dom';
+import { FEATURES } from '@/config/features';
 import HomePage from './pages/HomePage';
 
 const LoginPage = lazyRoute(() => import('./pages/auth/LoginPage'));
@@ -354,7 +355,24 @@ export const routes: RouteConfig[] = [
   { name: 'Chat',              path: '/chat',                     element: <ChatPage /> },
   { name: 'Live Chat',         path: '/live-chat',                element: <LiveChatPage /> },
   { name: 'Viewings',          path: '/viewings',                 element: <ViewingsPage /> },
-  { name: 'Active Search',     path: '/active-search',            element: <ActiveSearchPage /> },
+  /*
+   * ACTIVE SEARCH IS DEFERRED, AND THE ROUTE REDIRECTS RATHER THAN 404s.
+   *
+   * The feature asked a customer to understand and switch on an abstract mode before
+   * anything happened. Buyer and tenant discovery is contextual to a property now, so
+   * the honest destination for an old bookmark is the owner workspace -- which is where
+   * their properties, and the find-buyers/find-tenants actions, actually are.
+   *
+   * The page component is still imported and still on disk: this is a deferral, not a
+   * deletion, and `FEATURES.activeSearchUi` is the one edit that brings it back. The
+   * engine underneath it never stopped -- active_search_subscriptions is what
+   * find-property reads to return a customer their own matches.
+   */
+  {
+    name: 'Active Search',
+    path: '/active-search',
+    element: FEATURES.activeSearchUi ? <ActiveSearchPage /> : <Navigate to="/property" replace />,
+  },
   { name: 'Developer Profile', path: '/developer/:id',            element: <DeveloperProfilePage /> },
   /*
    * MY PROPERTIES, and it goes BEFORE the create routes on purpose.

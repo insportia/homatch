@@ -69,7 +69,14 @@ export const TALK_DESTINATIONS: readonly TalkDestination[] = [
    * is what caught it.
    */
   { key: 'expat', path: '/for-expats/georgia', purpose: 'moving to or living in Georgia as a foreigner: residency, costs, practicalities' },
-  { key: 'search', path: '/active-search', purpose: 'start or continue a property search with live matching' },
+  /*
+   * 'search' pointed at /active-search and is gone with it. A destination whose
+   * route now redirects is a dead end: the assistant would offer a button, the
+   * visitor would press it, and they would arrive somewhere else. The two real
+   * property journeys are already here -- 'brokers' and 'find_property' above,
+   * and the owner workspace at /property below.
+   */
+  { key: 'my_properties', path: '/property', purpose: 'their own properties, and finding a buyer or tenant for one of them' },
   { key: 'verify', path: '/verify', purpose: 'check a property in the public registry: owner, extract, encumbrances' },
   { key: 'mortgage', path: '/mortgage', purpose: 'mortgage and instalment options' },
   { key: 'developers', path: '/developers', purpose: 'developers and their projects' },

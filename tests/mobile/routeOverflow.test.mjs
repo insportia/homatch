@@ -128,7 +128,13 @@ const ROUTES = [
   { path: '/activity', name: 'activity', auth: true },
   { path: '/notifications', name: 'notifications', auth: true },
   { path: '/viewings', name: 'viewings', auth: true },
-  { path: '/active-search', name: 'active search', auth: true },
+  /*
+   * /active-search is DEFERRED and now redirects to the owner workspace, so it is
+   * not measured here. A redirect renders a different screen perfectly, which is
+   * exactly the false coverage this file has already been caught by twice -- an
+   * admin route measuring a 404, and every auth route measuring a profile-error
+   * card. Measuring a redirect would be the third.
+   */
   { path: '/outreach', name: 'outreach hub', auth: true },
   { path: '/outreach/email', name: 'email campaigns', auth: true },
   { path: '/outreach/calls', name: 'AI call center', auth: true },

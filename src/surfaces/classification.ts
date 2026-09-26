@@ -139,9 +139,18 @@ export const SURFACES: readonly SurfaceRecord[] = [
     path: '/active-search',
     name: 'Active Search',
     status: 'NEEDS_MIGRATION',
-    customerCritical: true,
-    note: 'Where a customer states what they want, and the natural home of FIND '
-      + 'PROPERTY. Models both sides already but has no composer and no plan view.',
+    customerCritical: false,
+    note: 'DEFERRED 2026-09-26 and hidden behind FEATURES.activeSearchUi. It asked a '
+      + 'customer to understand and switch on an abstract mode before anything would '
+      + 'happen; buyer and tenant discovery is contextual to a property now. The route '
+      + 'still exists and redirects to the owner workspace so old bookmarks land '
+      + 'somewhere true, and the page component is kept on disk because this is a '
+      + 'deferral rather than a deletion. NOT customer-critical any more, and '
+      + 'deliberately OUT of the mobile matrix: what renders there is a redirect, and a '
+      + 'redirect must never be counted as coverage of the screen it replaced. Still '
+      + 'NEEDS_MIGRATION because returning it means redesigning it. The engine beneath '
+      + 'it never stopped -- active_search_subscriptions is the table find-property '
+      + 'reads to return a customer their own matches.',
   },
   {
     path: '/ai',

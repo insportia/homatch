@@ -44,7 +44,6 @@ const navItems = [
   { key: 'nav_ai',            path: '/ai',             icon: Bot,         highlight: true },
   { key: 'nav_chat',          path: '/chat',           icon: MessageSquare },
   { key: 'nav_live_chat',     path: '/live-chat',      icon: Radio },
-  { key: 'nav_active_search', path: '/active-search',  icon: Search },
   { key: 'nav_verify',        path: '/verify',         icon: Shield },
   // CONTRACTS sits next to Verify because that is the pair a buyer uses:
   // check the property, then read the contract for it. It is a product of

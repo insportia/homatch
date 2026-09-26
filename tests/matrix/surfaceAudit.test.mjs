@@ -162,6 +162,26 @@ test('the two AI-facing surfaces are queued for migration', () => {
   assert.equal(statusOf('/active-search'), 'NEEDS_MIGRATION');
 });
 
+test('a deferred surface is classified but is not measured as a customer surface', () => {
+  /*
+   * /active-search is hidden behind FEATURES.activeSearchUi and its route redirects to
+   * the owner workspace. It stays CLASSIFIED -- it is still a route, and a deferred
+   * feature that vanishes from the decision document is one nobody can bring back --
+   * but it must not be customer-critical, because what the matrix would render there is
+   * a redirect, and a redirect is the false coverage this suite has already been caught
+   * by twice.
+   */
+  const deferred = SURFACES.find((s) => s.path === '/active-search');
+  assert.ok(deferred, 'the deferred surface was removed from the classification');
+  assert.equal(deferred.customerCritical, false);
+  assert.match(deferred.note, /DEFERRED/);
+  assert.match(deferred.note, /FEATURES\.activeSearchUi/);
+  /* And the engine underneath is named, so nobody reads this as a deletion. */
+  assert.match(deferred.note, /active_search_subscriptions/);
+
+  assert.equal(customerCriticalPaths().includes('/active-search'), false);
+});
+
 /* ────────────────────────────────────────────────────────────────────────
  * The matrix scope is a decision, not an accident
  * ──────────────────────────────────────────────────────────────────────── */
@@ -178,9 +198,20 @@ test('the customer-critical set is small enough to measure and large enough to m
 });
 
 test('every surface where money or intent is handled is customer-critical', () => {
-  // The four unconditional ones: money changes hands, the customer states what they
-  // want, they read what we found, and the price is quoted.
-  for (const path of ['/property/:id/matches', '/credits', '/active-search', '/pricing']) {
+  /*
+   * The unconditional ones: money changes hands, the customer states what they want,
+   * they manage what they own, they read what we found, and the price is quoted.
+   *
+   * /active-search used to be on this list as the place a customer states what they
+   * want. That job has MOVED rather than disappeared -- /find-property is where a
+   * requirement is described and turned into a search plan, and /property is where an
+   * owner manages listings and starts buyer or tenant discovery. The surface is
+   * deferred; the obligation it carried is not, and it is now carried by two screens
+   * that are both measured.
+   */
+  for (const path of [
+    '/property/:id/matches', '/credits', '/find-property', '/property', '/pricing',
+  ]) {
     const surface = SURFACES.find((s) => s.path === path);
     assert.ok(surface, `${path} is not classified at all`);
     assert.equal(surface.customerCritical, true, `${path} must be in the mobile matrix`);

@@ -419,7 +419,18 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
           body: JSON.stringify(rows),
         });
       }
-      if (url.includes('/rest/v1/matches')) return r.fulfill(json(matchRows(3)));
+      /*
+       * ONLY THE PORTFOLIO'S COUNTING QUERY, which is the one that asks for many
+       * properties at once: property_id=in.(...). The Matches SCREEN reads the same
+       * table with id=eq and needs the full match shape -- preview fields, unlock
+       * price, signal strength, status -- and answering it with these three columns
+       * rendered a broken list with no Expand Search panel, which the gate then
+       * correctly refused. A stub that answers more than it was written for is a
+       * fixture that breaks the screens it was not thinking about.
+       */
+      if (url.includes('/rest/v1/matches') && url.includes('property_id=in.')) {
+        return r.fulfill(json(matchRows(3)));
+      }
 
       if (url.includes('/rest/v1/users')) {
         const row = {

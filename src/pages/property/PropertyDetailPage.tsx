@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { CampaignLaunchPanel } from '@/components/campaign/CampaignLaunchPanel';
 import { PrivateImage } from '@/components/common/PrivateImage';
 import { PropertyGallery } from '@/components/property/PropertyGallery';
+import { intelligenceActionFor } from '@/property/rules';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { MatchingJobProgress } from '@/components/matching/MatchingJobProgress';
@@ -116,6 +117,7 @@ const STRENGTH_COLORS: Record<string, string> = {
 function CampaignPanel({
   propertyId,
   userId,
+  transactionType,
   initialActive,
   matchCounts,
   creditBalance,
@@ -123,6 +125,8 @@ function CampaignPanel({
   onCountsRefresh,
 }: {
   propertyId: string;
+  /** SALE, RENT or INVESTMENT. Decides what this property is looking FOR. */
+  transactionType?: string | null;
   userId: string;
   initialActive: boolean;
   matchCounts: { total: number; newCount: number; strongCount: number };
@@ -175,6 +179,24 @@ function CampaignPanel({
       setLoading(false);
     }
   };
+
+  /*
+   * WHAT THIS PROPERTY IS LOOKING FOR, AND THEREFORE WHAT THE BUTTON SAYS.
+   *
+   * The machinery underneath is unchanged and deliberately so: the same handler, the
+   * same budget dialog, the same CampaignLaunchPanel, the same FIND_CLIENTS product,
+   * the same reserve-settle-release. Only the words change -- "Start matching" is an
+   * abstraction the customer has to translate into their own situation, and a listing
+   * for sale is looking for buyers while a rental is looking for tenants.
+   *
+   * Null for a property whose transaction type is absent or unrecognised -- a real
+   * state for a half-finished import -- and then the generic wording is the honest one
+   * rather than a guess at which half of the market they are in.
+   */
+  const contextual = intelligenceActionFor(transactionType);
+  const startLabel = contextual
+    ? t(`prop_action_${contextual.toLowerCase()}` as never)
+    : t('matches_start_matching');
 
   return (
     <>
@@ -248,10 +270,12 @@ function CampaignPanel({
               size="sm"
               onClick={() => setShowBudget(true)}
               disabled={loading}
-              className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs h-8 gap-1.5"
+              /* h-auto with a minimum: "მყიდველების მოძიება" wraps in this column and a
+                 fixed height clipped the second line. */
+              className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs h-auto min-h-8 py-1.5 gap-1.5 whitespace-normal"
             >
               {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
-              {t('matches_start_matching')}
+              <span className="break-words min-w-0">{startLabel}</span>
             </Button>
           )}
         </div>
@@ -280,7 +304,7 @@ function CampaignPanel({
       <Dialog open={showBudget} onOpenChange={setShowBudget}>
         <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{t('matches_start_matching')}</DialogTitle>
+            <DialogTitle className="break-words">{startLabel}</DialogTitle>
             <DialogDescription className="sr-only">{t('budget_choose_title')}</DialogDescription>
           </DialogHeader>
           <CampaignLaunchPanel
@@ -599,6 +623,7 @@ function PropertyDetailContent() {
             {homatchUser && id && (
               <CampaignPanel
                 propertyId={id}
+                transactionType={property.transaction_type}
                 userId={homatchUser.id}
                 initialActive={property.matching_status === 'ACTIVE'}
                 matchCounts={matchCounts}

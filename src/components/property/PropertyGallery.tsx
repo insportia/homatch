@@ -31,52 +31,16 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { PrivateImage } from '@/components/common/PrivateImage';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
+import { type GallerySource, galleryImages } from '@/property/gallery';
 
-export interface GallerySource {
-  coverPhotoUrl?: string | null;
-  photos?: Array<{
-    id?: string | number;
-    storage_path?: string | null;
-    public_url?: string | null;
-    is_cover?: boolean | null;
-    display_order?: number | null;
-  }> | null;
-  galleryImages?: string[] | null;
-}
-
-/**
- * One ordered, de-duplicated list of image addresses.
- *
- * The cover goes first whether it came from the photo table or from the property row,
- * because the owner chose it and an interface that opens on a different photo is
- * quietly overruling them.
+/*
+ * The source shape and the ordering rule live in src/property/gallery.ts, pure and
+ * testable. They were here first, and a test could not import them: JSX is not
+ * something node's type stripping will parse, so a rule in a .tsx is a rule no test can
+ * reach. Re-exported so a caller still has one import.
  */
-export function galleryImages(source: GallerySource): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  const push = (value: string | null | undefined) => {
-    const key = (value ?? '').trim();
-    if (!key || seen.has(key)) return;
-    seen.add(key);
-    out.push(key);
-  };
-
-  const rows = [...(source.photos ?? [])].sort((a, b) => {
-    /* The cover leads; everything else keeps the order the owner dragged it into. */
-    if (Boolean(a.is_cover) !== Boolean(b.is_cover)) return a.is_cover ? -1 : 1;
-    return Number(a.display_order ?? 0) - Number(b.display_order ?? 0);
-  });
-
-  const cover = rows.find((row) => row.is_cover);
-  if (cover) push(cover.storage_path ?? cover.public_url);
-  else push(source.coverPhotoUrl);
-
-  for (const row of rows) push(row.storage_path ?? row.public_url);
-  push(source.coverPhotoUrl);
-  for (const image of source.galleryImages ?? []) push(image);
-
-  return out;
-}
+export type { GalleryPhoto, GallerySource } from '@/property/gallery';
+export { galleryImages } from '@/property/gallery';
 
 function Empty({ label }: { label: string }) {
   return (

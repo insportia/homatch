@@ -317,6 +317,22 @@ test('the core is consumed only through its deliberate integration points', () =
      */
     'src/campaign/searchExpansion.ts',
     /*
+     * SOCIAL CONNECTIONS — the eighth seam, and it imports two pure tables.
+     *
+     * social/meta-capabilities.ts and social/acquisition.ts are claims about
+     * what Meta, Reddit, VK and Telegram legitimately permit, each row carrying
+     * its evidence and the date the documentation was read. The edge function
+     * reports them to the admin screen and derives a connection's effective
+     * status from them; it implements no capability judgement of its own,
+     * because a second opinion about "may we read this" is exactly the thing
+     * that must not drift.
+     *
+     * Neither module touches a fetch path, a rate limiter, a cache or a source
+     * registry. If this function ever grows its own availability rule, the seam
+     * has stopped being a seam.
+     */
+    'supabase/functions/social-connections/index.ts',
+    /*
      * EVIDENCE FRESHNESS — the sixth seam, and the one that decides what a
      * customer is allowed to see.
      *

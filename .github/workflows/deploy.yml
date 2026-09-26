@@ -822,6 +822,16 @@ jobs:
             # DISCOVERED -> AUDITED since it was written, and the only thing
             # that ever advanced a source along it was a script on a laptop.
             "source-audit"
+            # Social connected accounts. It belongs HERE and not in the JWT list,
+            # and the reason is the OAuth callback: the platform redirects a
+            # browser back to us with no Authorization header, so a gateway that
+            # demanded a JWT would reject every authorization at the last step.
+            #
+            # It is not unauthenticated. `callback` authenticates on the
+            # single-use state row it issued, which is stronger than a header
+            # for that one purpose; every other action reads the Authorization
+            # header itself and answers 401/403 for anyone who is not an admin.
+            "social-connections"
             # ── Communications: the three that are NOT called by a browser ──
             #
             # These MUST be here rather than in the JWT list, and the

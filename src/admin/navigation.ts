@@ -33,7 +33,7 @@ import {Activity, AudioLines, BadgeDollarSign,BarChart3,Bell,Building2, CreditCa
   LayoutDashboard, Mail,
   MessageCircle, MessageSquareWarning, 
   Paintbrush, PhoneCall, Puzzle, Radio, 
-  Receipt, Send, Server, Settings2, ShieldAlert, ShieldCheck, SlidersHorizontal, 
+  Receipt, Send, Server, Settings2, Share2, ShieldAlert, ShieldCheck, SlidersHorizontal, 
   Type, UserSearch, Users, Wrench, Zap, 
 } from 'lucide-react';
 import type { TranslationKey } from '@/i18n/translations';
@@ -114,6 +114,15 @@ export const ADMIN_GROUPS: AdminGroup[] = [
       {
         path: '/admin/sources', labelKey: 'admin_nav_sources', icon: Radio,
         keywords: ['source', 'crawler', 'portal', 'discovery', 'dataforseo', 'serp'],
+      },
+      {
+        /* Connected Social Accounts. One place to authorize an account and see
+           what connecting actually buys -- including the communities we are a
+           member of and cannot read, which is most Facebook groups since the
+           Groups API was removed. */
+        path: '/admin/social-discovery', labelKey: 'admin_nav_social', icon: Share2,
+        keywords: ['social', 'facebook', 'instagram', 'reddit', 'telegram', 'vk',
+          'connect', 'oauth', 'community', 'group', 'meta'],
       },
       {
         path: '/admin/signals', labelKey: 'admin_nav_signals', icon: Activity,

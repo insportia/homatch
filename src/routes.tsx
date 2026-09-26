@@ -144,6 +144,7 @@ const AdminCampaignsPage = lazyRoute(() => import('./pages/admin/AdminCampaignsP
 const AdminOutreachPage = lazyRoute(() => import('./pages/admin/AdminOutreachPage'));
 const AdminMarketsPage = lazyRoute(() => import('./pages/admin/AdminMarketsPage'));
 const AdminSourcesPage = lazyRoute(() => import('./pages/admin/AdminSourcesPage'));
+const AdminSocialDiscoveryPage = lazyRoute(() => import('./pages/admin/AdminSocialDiscoveryPage'));
 const AdminSignalsPage = lazyRoute(() => import('./pages/admin/AdminSignalsPage'));
 const AdminMatchesPage = lazyRoute(() => import('./pages/admin/AdminMatchesPage'));
 const AdminCreditsPage = lazyRoute(() => import('./pages/admin/AdminCreditsPage'));
@@ -446,6 +447,15 @@ export const routes: RouteConfig[] = [
   { name: 'Admin Outreach',    path: '/admin/outreach',           element: adminWrap(<AdminOutreachPage />),    adminOnly: true },
   { name: 'Admin Markets',     path: '/admin/markets',            element: adminWrap(<AdminMarketsPage />),     adminOnly: true },
   { name: 'Admin Sources',     path: '/admin/sources',            element: adminWrap(<AdminSourcesPage />),     adminOnly: true },
+  /* Connected Social Accounts. One place to connect an account and see what
+     connecting actually buys.
+
+     There is deliberately NO callback route here: the platform redirects
+     straight to the edge function, which exchanges the code server-side and
+     then sends the browser back to this page. An authorization code that never
+     enters browser JavaScript cannot be read out of a history entry, a referrer
+     or an extension. */
+  { name: 'Admin Social Discovery', path: '/admin/social-discovery', element: adminWrap(<AdminSocialDiscoveryPage />), adminOnly: true },
   { name: 'Admin Signals',     path: '/admin/signals',            element: adminWrap(<AdminSignalsPage />),     adminOnly: true },
   { name: 'Admin Matches',     path: '/admin/matches',            element: adminWrap(<AdminMatchesPage />),     adminOnly: true },
   { name: 'Admin Credits',     path: '/admin/credits',            element: adminWrap(<AdminCreditsPage />),     adminOnly: true },

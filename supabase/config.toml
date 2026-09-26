@@ -142,3 +142,12 @@ verify_jwt = false
 # shared runtime, and records what the site is. It enables nothing.
 [functions.source-audit]
 verify_jwt = false
+
+# Connected social accounts. The OAuth callback is a browser redirect from the
+# platform and carries no Authorization header, so the gateway must not demand
+# one -- it would reject every authorization at the final step. Not
+# unauthenticated: `callback` authenticates on the single-use state row it
+# issued, and every other action reads the header itself and answers 403 for
+# anyone who is not an admin.
+[functions.social-connections]
+verify_jwt = false

@@ -117,6 +117,54 @@ export async function portfolioCounts(userId: string): Promise<{
   return { active: active ?? 0, archived: archived ?? 0 };
 }
 
+/**
+ * What Homatch has actually found for each of these properties.
+ *
+ * ONE QUERY FOR THE WHOLE PORTFOLIO, not one per card. getMatchCounts() in api.ts
+ * answers for a single property and is right for the property page; asking it forty
+ * times to render a list is forty round trips before the first card settles.
+ *
+ * REJECTED is excluded and NEW is counted separately, which is the same reading
+ * getMatchCounts uses -- two functions answering the same question differently is how
+ * a card and the page it links to end up disagreeing about how many matches there are.
+ *
+ * A property with no entry in the returned map has no matches. That is a real state
+ * and the interface renders it as one; it is not an error and it is not a zero to be
+ * hidden.
+ */
+export interface PortfolioIntelligence {
+  total: number;
+  fresh: number;
+  strong: number;
+}
+
+const STRONG_SIGNALS = ['STRONG', 'VERY_STRONG', 'EXCEPTIONAL'];
+
+export async function portfolioIntelligence(
+  propertyIds: string[],
+): Promise<Map<string, PortfolioIntelligence>> {
+  const found = new Map<string, PortfolioIntelligence>();
+  if (propertyIds.length === 0) return found;
+
+  const { data, error } = await supabase
+    .from('matches')
+    .select('property_id,status,signal_strength')
+    .in('property_id', propertyIds)
+    .neq('status', 'REJECTED')
+    .limit(5000);
+  if (error) throw new Error(error.message);
+
+  for (const row of data ?? []) {
+    const key = String(row.property_id);
+    const entry = found.get(key) ?? { total: 0, fresh: 0, strong: 0 };
+    entry.total += 1;
+    if (row.status === 'NEW') entry.fresh += 1;
+    if (STRONG_SIGNALS.includes(String(row.signal_strength))) entry.strong += 1;
+    found.set(key, entry);
+  }
+  return found;
+}
+
 /** One property, with its facts and every photo. */
 export async function readProperty(id: string): Promise<Property | null> {
   const { data, error } = await supabase

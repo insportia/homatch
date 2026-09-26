@@ -89,6 +89,13 @@ const ROUTES = [
   { path: '/for-expats/plan', name: 'my expat plan', auth: true },
   { path: '/pricing', name: 'pricing' },
   { path: '/developers', name: 'developers' },
+  /*
+   * BROKERS. Public, and measured for a reason specific to it: the page's whole
+   * job is to keep 'listed with Homatch' and 'seen in the market, not registered'
+   * apart, and the second label is the longer one in every language. A width that
+   * truncates it into the first turns a disclaimer into a claim.
+   */
+  { path: '/brokers', name: 'brokers' },
   { path: '/dashboard', name: 'dashboard', auth: true },
   { path: '/ai', name: 'AI chat', auth: true },
   { path: '/credits', name: 'credits', auth: true },

@@ -62,7 +62,10 @@ import {
   auditCommunityAccess,
   type CommunityAuditResult,
 } from '../../../src/research-core/discovery/community-audit.ts';
-import { PublicPreviewTelegramClient } from '../../../src/research-core/adapters/telegram/preview-client.ts';
+import {
+  PublicPreviewTelegramClient,
+  TELEGRAM_PREVIEW_POLICY,
+} from '../../../src/research-core/adapters/telegram/preview-client.ts';
 import {
   advance,
   type LifecycleState,
@@ -811,7 +814,14 @@ async function auditCommunity(
     const source = (Array.isArray(target.source) ? target.source[0] : target.source) as
       Record<string, unknown>;
     const channel = String(target.external_id);
-    const adapterId = String(source.adapter_id ?? 'telegram-public-preview');
+    /*
+     * TELEGRAM_PREVIEW_POLICY.id, not a string I made up. I first wrote
+     * 'telegram-public-preview' from memory and it is not the adapter's id -- which
+     * would have written a name into source_registry.adapter_id that nothing in the
+     * codebase answers to, and the registry would then claim a source was claimed by
+     * an adapter that does not exist.
+     */
+    const adapterId = String(source.adapter_id ?? TELEGRAM_PREVIEW_POLICY.id);
 
     let audit: CommunityAuditResult;
     try {

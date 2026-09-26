@@ -151,3 +151,10 @@ verify_jwt = false
 # anyone who is not an admin.
 [functions.social-connections]
 verify_jwt = false
+
+# Community target sync. A worker tick with no customer and no user JWT: it claims
+# a target with a conditional UPDATE, reads its public preview, and writes
+# Community Evidence into the global store. Authenticated on a private token in
+# admin_settings like every other tick here.
+[functions.community-sync]
+verify_jwt = false

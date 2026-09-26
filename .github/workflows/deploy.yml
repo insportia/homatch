@@ -832,6 +832,11 @@ jobs:
             # for that one purpose; every other action reads the Authorization
             # header itself and answers 401/403 for anyone who is not an admin.
             "social-connections"
+            # Community target sync. The tick that keeps the shared
+            # intelligence store current so that many campaigns reuse one
+            # read instead of each causing their own. Driven by pg_cron,
+            # owned by no customer, authenticated on a private token.
+            "community-sync"
             # ── Communications: the three that are NOT called by a browser ──
             #
             # These MUST be here rather than in the JWT list, and the

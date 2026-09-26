@@ -333,6 +333,20 @@ test('the core is consumed only through its deliberate integration points', () =
      */
     'supabase/functions/social-connections/index.ts',
     /*
+     * COMMUNITY SYNC — the ninth seam, and the one that writes.
+     *
+     * It reaches the Telegram preview client, the Community Evidence
+     * contract, the observation planner, the direction classifier, the
+     * hash and the language detector. Every one of those is a decision the
+     * core owns: what a stable identity is, whether a re-observation is an
+     * edit, which side of the market a sentence is on. The worker owns the
+     * schedule, the lock and the SQL, and no judgement of its own.
+     *
+     * If it ever grows its own identity rule or its own direction verdict,
+     * the seam has stopped being a seam.
+     */
+    'supabase/functions/community-sync/index.ts',
+    /*
      * EVIDENCE FRESHNESS — the sixth seam, and the one that decides what a
      * customer is allowed to see.
      *

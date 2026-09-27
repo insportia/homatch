@@ -3,6 +3,8 @@
 
 import type { DiscoveryHeadroom } from '@/campaign/searchExpansion';
 import { supabase } from '@/db/supabase';
+import { keysetOrFilter, type FeedCursor } from '@/lib/notifications/feed';
+import { signalNotificationsChanged } from '@/lib/notifications/signals';
 import type { PropertyContact } from '@/lib/propertyContact';
 import { startJobBestEffort } from '@/services/backgroundJobs';
 import type {
@@ -433,42 +435,106 @@ export async function getActivityEvents(userId: string, limit = 30): Promise<Act
 export async function getNotifications(
   userId: string,
   limit = 20,
-  options: { unreadOnly?: boolean; before?: string } = {},
+  options: { unreadOnly?: boolean; cursor?: FeedCursor | null } = {},
 ): Promise<Notification[]> {
   /*
    * A PAGE, NOT A TABLE. The shell must never pull somebody thousands of historical
    * notifications to count the four they have not read — the count comes from a
    * head-only query, and this returns a recent page.
    *
-   * `before` is a created_at cursor rather than an offset: an offset shifts under
-   * anything that arrives while somebody is reading, so page two silently repeats a row
-   * and drops another.
+   * KEYSET ON (created_at, id). The cursor used to be created_at alone, and an
+   * aggregated row has its created_at rewritten while two rows written together share
+   * one — so page two silently repeated a row and dropped another. The id breaks every
+   * tie, in the same direction as the order, and the (user_id, created_at desc, id desc)
+   * index serves it.
+   *
+   * Errors are thrown, not swallowed into an empty list: "you have no notifications" and
+   * "we could not load them" are different screens.
    */
   let query = supabase
     .from('notifications')
     .select('*')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
     .limit(limit);
   if (options.unreadOnly) query = query.eq('read', false);
-  if (options.before) query = query.lt('created_at', options.before);
-  const { data } = await query;
-  return Array.isArray(data) ? data : [];
+  if (options.cursor) query = query.or(keysetOrFilter(options.cursor));
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return Array.isArray(data) ? (data as Notification[]) : [];
+}
+
+/**
+ * The unread count, from the database rather than from whatever page is loaded.
+ *
+ * Head-only: no rows cross the wire. Returns null when it could not be read, so a
+ * caller keeps the number it had rather than flashing a false zero.
+ */
+export async function getUnreadNotificationCount(userId: string): Promise<number | null> {
+  const { count, error } = await supabase
+    .from('notifications')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('read', false);
+  if (error) return null;
+  return count ?? 0;
 }
 
 // `read` is the only column a customer may write; the database now grants only
 // that one. Errors are surfaced rather than dropped, so a bell that refuses to
 // clear says why instead of silently staying lit.
 export async function markNotificationRead(id: string) {
-  const { error } = await supabase.from('notifications').update({ read: true }).eq('id', id);
+  const { error } = await supabase.from('notifications').update({ read: true }).eq('id', id).eq('read', false);
   if (error) console.error('markNotificationRead error:', error.message);
+  else signalNotificationsChanged();
   return !error;
 }
 
 export async function markAllNotificationsRead(userId: string) {
-  const { error } = await supabase.from('notifications').update({ read: true }).eq('user_id', userId);
+  // Only unread rows: rewriting read ones is a write and a realtime frame for nothing.
+  const { error } = await supabase.from('notifications').update({ read: true })
+    .eq('user_id', userId).eq('read', false);
   if (error) console.error('markAllNotificationsRead error:', error.message);
+  else signalNotificationsChanged();
   return !error;
+}
+
+/**
+ * Opening a conversation reads its message notifications.
+ *
+ * Through notifications_mark_conversation_read, which checks the caller is a
+ * participant and touches only the caller's own NEW_MESSAGE rows for it. Messages
+ * themselves are untouched: whether a message is SEEN is the chat's receipt, a separate
+ * fact from whether the bell has told you about it.
+ *
+ * If the function is not deployed yet (PGRST202), the same update is made directly —
+ * RLS and the column grant already confine it to the caller's own `read` flags — so a
+ * frontend released ahead of its migration still clears the bell.
+ */
+export async function markConversationNotificationsRead(
+  conversationId: string,
+  userId: string,
+): Promise<boolean> {
+  if (!conversationId || !userId) return false;
+  const { error } = await supabase.rpc('notifications_mark_conversation_read', {
+    p_conversation_id: conversationId,
+  });
+  if (!error) { signalNotificationsChanged(); return true; }
+  if (error.code !== 'PGRST202') {
+    console.error('markConversationNotificationsRead error:', error.message);
+    return false;
+  }
+  const [typed, legacy] = await Promise.all([
+    supabase.from('notifications').update({ read: true })
+      .eq('user_id', userId).eq('read', false).eq('type', 'NEW_MESSAGE').eq('entity_id', conversationId),
+    supabase.from('notifications').update({ read: true })
+      .eq('user_id', userId).eq('read', false)
+      .eq('metadata->>kind', 'NEW_MESSAGE').eq('metadata->>conversation_id', conversationId),
+  ]);
+  const ok = !typed.error && !legacy.error;
+  if (ok) signalNotificationsChanged();
+  return ok;
 }
 
 // ============================================================

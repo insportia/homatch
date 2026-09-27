@@ -41,6 +41,9 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/db/supabase';
 import { cn } from '@/lib/utils';
 import type { Notification } from '@/types/types';
+import { categoryOf, isMessageFor } from '@/lib/notifications/feed';
+import { getActiveConversation } from '@/lib/notifications/signals';
+import { markNotificationRead } from '@/services/api';
 import { notificationHref, notificationMark, notificationText } from './presentation';
 
 /** The card itself. Premium, compact, and one action. */
@@ -53,8 +56,8 @@ function LiveCard({
   onOpen: () => void;
   onDismiss: () => void;
 }) {
-  const { t } = useLanguage();
-  const { title, body } = notificationText(notif, t);
+  const { t, lang } = useLanguage();
+  const { title, body } = notificationText(notif, t, lang);
   const { icon: Icon, tone } = notificationMark(notif);
 
   return (
@@ -141,20 +144,30 @@ export function LiveNotifications() {
            produces one card here — which is what the aggregation was for. */
         if (!notif?.id) return;
 
-        const meta = (notif.metadata ?? {}) as Record<string, unknown>;
-        const kind = typeof meta.kind === 'string' ? meta.kind : '';
-        const conversationId = typeof meta.conversation_id === 'string' ? meta.conversation_id : '';
-
         /*
          * ALREADY LOOKING AT IT. The message is arriving live in the thread below and a
          * card on top of it would cover the composer to say what the screen already
-         * says. The unread state is the server's and is unaffected.
+         * says.
+         *
+         * "Looking at it" is the conversation the thread says it is showing — the chat
+         * opens one from its own list without touching the URL — or, failing that, the
+         * one the URL names. And since the person is reading that conversation right
+         * now, the notification about it is read too: the bell must not stay lit for
+         * a message they watched arrive. Only while the tab is visible — a message that
+         * lands in a background tab has not been seen by anybody. The MESSAGE's own
+         * seen receipt is the chat's business and is not touched here.
          */
-        if (kind === 'NEW_MESSAGE' && conversationId) {
+        if (categoryOf(notif) === 'MESSAGE') {
+          const params = new URLSearchParams(where.current.search);
           const onChat = where.current.pathname.startsWith('/chat');
-          const openConversation = new URLSearchParams(where.current.search).get('conversation')
-            ?? new URLSearchParams(where.current.search).get('c');
-          if (onChat && openConversation === conversationId) return;
+          const open = getActiveConversation()
+            ?? (onChat ? (params.get('conversation') ?? params.get('c')) : null);
+          if (isMessageFor(notif, open)) {
+            if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+              void markNotificationRead(notif.id);
+            }
+            return;
+          }
         }
 
         const href = notificationHref(notif);

@@ -226,10 +226,28 @@ export const SURFACES: readonly SurfaceRecord[] = [
   {
     path: '/',
     name: 'Home',
-    status: 'LEGACY_DESIGN',
+    status: 'APPROVED_CURRENT_DESIGN',
     customerCritical: true,
-    note: 'The first thing anybody sees, in six languages. Migrated late and carefully: '
-      + 'a home page rewrite is the easiest way to break every entry point at once.',
+    note: 'The first thing anybody sees, in six languages. Rebuilt 2026-09 on its own '
+      + 'public scope (.hm-public), with every control routed to a finished page -- see '
+      + 'docs/PUBLIC_ROUTE_MAP.md. Still customer-critical: a home page regression breaks '
+      + 'every entry point at once.',
+  },
+  {
+    path: '/for-buyers',
+    name: 'For buyers and tenants',
+    status: 'APPROVED_CURRENT_DESIGN',
+    customerCritical: false,
+    note: 'The public front door of Find Property, which is authenticated. Exists so the '
+      + 'navigation never sends a visitor with no account to a login bounce.',
+  },
+  {
+    path: '/for-owners',
+    name: 'For owners',
+    status: 'APPROVED_CURRENT_DESIGN',
+    customerCritical: false,
+    note: 'The public front door of the owner workspace (/property), which is '
+      + 'authenticated. Sign-up from here returns to /property/add.',
   },
   {
     path: '/property',

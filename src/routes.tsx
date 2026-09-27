@@ -156,6 +156,7 @@ const AdminCreditsPage = lazyRoute(() => import('./pages/admin/AdminCreditsPage'
 const AdminPaymentsPage = lazyRoute(() => import('./pages/admin/AdminPaymentsPage'));
 const AdminFinancePage = lazyRoute(() => import('./pages/admin/AdminFinancePage'));
 const AdminProvidersPage = lazyRoute(() => import('./pages/admin/AdminProvidersPage'));
+const AdminBrokersPage = lazyRoute(() => import('./pages/admin/AdminBrokersPage'));
 const AdminVerifyCogsPage = lazyRoute(() => import('./pages/admin/AdminVerifyCogsPage'));
 const AdminVoiceAiPage = lazyRoute(() => import('./pages/admin/AdminVoiceAiPage'));
 const AdminPricingPage = lazyRoute(() => import('./pages/admin/AdminPricingPage'));
@@ -506,6 +507,7 @@ export const routes: RouteConfig[] = [
      enters browser JavaScript cannot be read out of a history entry, a referrer
      or an extension. */
   { name: 'Admin Social Discovery', path: '/admin/social-discovery', element: adminWrap(<AdminSocialDiscoveryPage />), adminOnly: true },
+  { name: 'Admin Brokers',     path: '/admin/brokers',            element: adminWrap(<AdminBrokersPage />),     adminOnly: true },
   { name: 'Admin Signals',     path: '/admin/signals',            element: adminWrap(<AdminSignalsPage />),     adminOnly: true },
   { name: 'Admin Matches',     path: '/admin/matches',            element: adminWrap(<AdminMatchesPage />),     adminOnly: true },
   { name: 'Admin Credits',     path: '/admin/credits',            element: adminWrap(<AdminCreditsPage />),     adminOnly: true },

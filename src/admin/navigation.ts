@@ -33,7 +33,7 @@ import {Activity, AudioLines, BadgeDollarSign,BarChart3,Bell,Building2, CreditCa
   LayoutDashboard, Mail,
   MessageCircle, MessageSquareWarning, 
   Paintbrush, PhoneCall, Puzzle, Radio, 
-  Receipt, Send, Server, Settings2, Share2, ShieldAlert, ShieldCheck, SlidersHorizontal, 
+  Receipt, Send, Server, Settings2, Share2, ShieldAlert, ShieldCheck, SlidersHorizontal, Store, 
   Type, UserSearch, Users, Wrench, Zap, 
 } from 'lucide-react';
 import type { TranslationKey } from '@/i18n/translations';
@@ -123,6 +123,14 @@ export const ADMIN_GROUPS: AdminGroup[] = [
         path: '/admin/social-discovery', labelKey: 'admin_nav_social', icon: Share2,
         keywords: ['social', 'facebook', 'instagram', 'reddit', 'telegram', 'vk',
           'connect', 'oauth', 'community', 'group', 'meta'],
+      },
+      {
+        /* The paid broker directory and the brokers discovery observed, side by side
+           and never joined: listings can be reviewed and activated, discovered firms
+           can only be read. */
+        path: '/admin/brokers', labelKey: 'admin_nav_brokers', icon: Store,
+        keywords: ['broker', 'agency', 'agent', 'directory', 'listing', 'realtor',
+          'broker intelligence', 'discovered broker', 'paid until'],
       },
       {
         path: '/admin/signals', labelKey: 'admin_nav_signals', icon: Activity,

@@ -18919,7 +18919,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   notif_kind_account: 'ანგარიში და უსაფრთხოება',
   notif_kind_news: 'სიახლეები',
   notif_cat_expat_plan: 'გადმოსვლის გეგმის შეხსენებები',
-  notif_page_sub: 'მიმოწერა, შესაბამისობები და სიახლეები თქვენს ქონებასა და სერვისებზე.',
+  notif_page_sub: 'მიმოწერა, დამთხვევები და სიახლეები თქვენს ქონებასა და სერვისებზე.',
   notif_list_label: 'თქვენი შეტყობინებები',
   notif_filter_label: 'ფილტრი',
   notif_unread_label: 'წაუკითხავი',

@@ -75,6 +75,7 @@ const PartnersPage = lazyRoute(() => import('./pages/PartnersPage'));
 const PricingPage = lazyRoute(() => import('./pages/PricingPage'));
 const DevelopersPage = lazyRoute(() => import('./pages/DevelopersPage'));
 const AboutPage = lazyRoute(() => import('./pages/AboutPage'));
+const ProductEntryPage = lazyRoute(() => import('./pages/ProductEntryPage'));
 /*
  * HOMATCH FOR DEVELOPERS — the private sales workspace.
  *
@@ -202,6 +203,16 @@ export const routes: RouteConfig[] = [
   // What Homatch is, for somebody who arrived here without seeing the home
   // page first. Product explanation, not a corporate About Us.
   { name: 'About',             path: '/about',                    element: <AboutPage />,         public: true },
+  /*
+   * THE PUBLIC FRONT DOORS OF THE TWO AUTHENTICATED PRODUCTS.
+   *
+   * Find Property and the owner workspace each write rows that belong to an
+   * account, so they stay behind RouteGuard. These pages are what a visitor
+   * with no account reaches instead of a login bounce: what the product does,
+   * and sign-up or log-in that comes out AT the product (src/site/productEntry.ts).
+   */
+  { name: 'For buyers and tenants', path: '/for-buyers',            element: <ProductEntryPage product="find_property" />, public: true },
+  { name: 'For owners',        path: '/for-owners',               element: <ProductEntryPage product="find_client" />, public: true },
   { name: 'Login',             path: '/auth/login',               element: <LoginPage />,         public: true },
   { name: 'Signup',            path: '/auth/signup',              element: <SignupPage />,        public: true },
   { name: 'Auth Callback',     path: '/auth/callback',            element: <AuthCallbackPage />,  public: true },

@@ -15,10 +15,28 @@ import type { SitePageContent, SiteSection } from '../model';
  * produces a stored page that supersedes it; deleting that stored page
  * returns the site to exactly this.
  */
+/*
+ * THE STORY, IN ORDER (2026-09 public redesign)
+ *
+ *   what Homatch is, and the two ways in → the two paths, and the tools
+ *   around them → where demand comes from → check the property → read the
+ *   contract → what a match looks like → plan the money → for
+ *   professionals → start.
+ *
+ * The relative order is the one production's stored home page already has
+ * (a stored page is authoritative about order), so the shipped default and
+ * the live site tell the story the same way.
+ *
+ * AI Calls, Email campaigns and the "Homatch AI" region are no longer home
+ * page sections. They are signed-in tools, not the public story, and the
+ * home page ran to twelve full-height regions. Their types are unregistered
+ * in src/site/registry.ts, so a stored page that still lists them loses them
+ * in normalizePage — the designed path for a retired section — rather than
+ * rendering a component that no longer exists.
+ */
 export const DEFAULT_HOME_ORDER: readonly string[] = [
   'hero', 'action_launcher', 'intelligence_layers', 'verify',
-  'contract_intelligence', 'matching', 'mortgage', 'call_center',
-  'email_campaign', 'homatch_ai', 'developers', 'closing_cta',
+  'contract_intelligence', 'matching', 'mortgage', 'developers', 'closing_cta',
 ];
 
 export const DEFAULT_ABOUT_ORDER: readonly string[] = [

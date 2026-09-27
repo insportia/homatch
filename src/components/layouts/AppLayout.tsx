@@ -9,6 +9,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { parentRouteFor } from '@/lib/backNavigation';
 import { AppHeader } from './AppHeader';
+import { PublicHeader } from '@/components/home/PublicHeader';
+import { SiteFooter } from '@/components/home/sections/SiteFooter';
+import { usePublicNavLinks } from '@/site/publicNav';
 import { HomatchShell } from './HomatchShell';
 import { MobileBottomNav } from './MobileBottomNav';
 
@@ -68,6 +71,7 @@ export function AppLayout({
   useSurfaceTheme('light');
   const { session, status } = useAuth();
   const { pathname } = useLocation();
+  const publicLinks = usePublicNavLinks();
 
   /*
    * ONE BACK BUTTON, DECIDED ONCE.
@@ -84,6 +88,9 @@ export function AppLayout({
    * needs.
    */
   const showBack = !hidePadding && parentRouteFor(pathname) !== null;
+
+  /* Signed out: which header. See the guest branch below. */
+  const keepAppHeader = hidePadding || pathname === '/verify' || pathname.startsWith('/verify/');
 
   /*
    * A FULL-HEIGHT SCREEN IS A DIFFERENT SHELL, NOT THE SAME ONE WITHOUT
@@ -222,7 +229,24 @@ export function AppLayout({
         ? 'flex h-[100dvh] w-full flex-col overflow-hidden bg-background'
         : 'flex min-h-screen w-full flex-col bg-background overflow-x-hidden'}
     >
-      <AppHeader />
+      {/*
+        * ONE PUBLIC HEADER, NOT TWO.
+        *
+        * A signed-out visitor used to meet two different public sites: the
+        * home page's header on /, /about and /pricing, and this layout's
+        * AppHeader -- a different logo lockup, a different menu, different
+        * links -- the moment they opened Mortgage, Investment or Brokers.
+        * Those are public pages, so they now get the public header and
+        * footer, sticky rather than fixed because these pages lay themselves
+        * out below the bar.
+        *
+        * Two exceptions keep AppHeader:
+        *   /verify   Verify is protected, and its header is part of the UI
+        *             that is not changed here (docs/PUBLIC_ROUTE_MAP.md).
+        *   full-height screens (hidePadding) size themselves to the window
+        *             around a 64px bar and would not fit a footer at all.
+        */}
+      {keepAppHeader ? <AppHeader /> : <PublicHeader links={publicLinks} position="sticky" />}
       <main
         className={[
           'min-w-0 flex-1 overflow-x-hidden',
@@ -232,6 +256,7 @@ export function AppLayout({
       >
         {body}
       </main>
+      {!keepAppHeader && <SiteFooter />}
     </div>
     </AssistantProvider>
   );

@@ -40,7 +40,7 @@ export default function DevelopersPage() {
   const headerLinks = usePublicNavLinks();
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-background text-foreground">
+    <div className="hm-public min-h-screen overflow-x-hidden bg-background text-foreground">
       <PublicHeader links={headerLinks} solid />
       <HeaderSpacer />
       {/* `content` may be null — SitePage then renders the shipped order with

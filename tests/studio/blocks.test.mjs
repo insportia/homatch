@@ -398,9 +398,10 @@ test('the navigation and footer are edited once, for the whole site', opts, asyn
     try { await fetch(SITE); break; } catch { await new Promise((r) => setTimeout(r, 250)); }
   }
 
-  /* Wide enough that the PREVIEW pane clears 1024px once the two side
-     panels are subtracted — below that the desktop navigation is correctly
-     not rendered, and there is nothing to click. */
+  /* Wide enough for a desktop preview. The frame renders a 1280px desktop
+     viewport (scaled to the pane when the pane is narrower) — below that
+     width the desktop navigation is correctly not rendered, and there would
+     be nothing to click. */
   const ctx = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
   await ctx.addInitScript(([k, s]) => {
     window.localStorage.setItem(k, JSON.stringify(s));

@@ -3,82 +3,88 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { Button } from '@/components/ui/button';
-import { SceneMedia } from '@/components/home/media/SceneMedia';
-import { useSectionField, useSectionMedia, useFieldProps , useIsEditing , useMediaProps} from '@/site/content';
+import { PAGE } from './primitives';
+import { useSectionField, useFieldProps, useIsEditing } from '@/site/content';
 
 /**
- * REGION 11 — the closing image.
+ * THE CLOSE — one decision, and what it costs.
  *
- * A full-bleed cinematic band under a NEUTRAL black scrim, so the page ends
- * on the register it opened on rather than on a coloured rectangle. The scrim
- * is heavy enough to hold centred type at AA contrast at every width, which
- * is why it is a flat wash plus a vertical gradient rather than a light tint.
+ * The page ends on the one dark surface after the AI Talk stage: a contained
+ * panel rather than a full-bleed photograph, so the page stays one light
+ * composition and the close reads as a deliberate full stop.
+ *
+ * WHAT IT SAYS ABOUT PRICE, AND WHERE THAT COMES FROM
+ *
+ * Only what the Pricing page itself states: pay as you go, no subscription,
+ * and the credit rate. The rate is the same figure PricingPage falls back to
+ * (`creditsPerUsd ?? 10`, rendered through payg_rate_line) — it is not a
+ * price for anything, and no product price is quoted here, because those
+ * live in the catalogue and change without a deploy.
+ *
+ * A signed-in visitor is not offered an account they already have: the
+ * primary action becomes their dashboard. Inside Site Studio the editable
+ * copy is shown instead, so it can be clicked and changed.
  */
+const CREDITS_PER_USD = '10';
+
 export function ClosingCTASection() {
-  const photo = useSectionMedia()('photo');
   const sf = useSectionField();
   const fp = useFieldProps();
-  const mp = useMediaProps();
   const editing = useIsEditing();
-  const { session } = useAuth();
-  const { t, isRTL } = useLanguage();
+  const { status } = useAuth();
+  const { t } = useLanguage();
   const navigate = useNavigate();
+  const signedIn = status === 'AUTHENTICATED';
 
   return (
-    <section className="relative isolate overflow-hidden">
-      <div className="absolute inset-0 saturate-[0.45]" aria-hidden="true" {...mp('photo')}>
-        <SceneMedia
-          scene="closing"
-          alt={photo?.alt ?? ''}
-          sizes="100vw"
-          // The panorama is 2.13:1 and this band is taller than that, so the
-          // crop is vertical: hold the city lights and the terrace, drop the
-          // upper sky.
-          position="46% 58%"
-          positionMobile="58% 62%"
-          overrideUrl={photo?.url}
+    <section className={`${PAGE} pb-16 pt-4 sm:pb-20 lg:pb-24`}>
+      <div className="relative isolate overflow-hidden rounded-[1.75rem] bg-[hsl(var(--pub-night))] px-6 py-12 text-white sm:px-12 sm:py-16 lg:px-16">
+        <div
+          className="pointer-events-none absolute inset-0 -z-10 ltr:[background:radial-gradient(34rem_22rem_at_100%_0%,hsl(var(--gold)/0.18),transparent_70%)] rtl:[background:radial-gradient(34rem_22rem_at_0%_0%,hsl(var(--gold)/0.18),transparent_70%)]"
+          aria-hidden="true"
         />
-        <div className="absolute inset-0 bg-[#0D0D0D]/78" />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0D0D0D] via-[#0D0D0D]/55 to-[#0D0D0D]/70" />
-      </div>
+        <div className="grid items-end gap-10 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,0.75fr)] lg:gap-16">
+          <div className="min-w-0">
+            <h2 className="hm-pub-h2 text-white" {...fp('title')}>{sf('title', 'pub_close_title')}</h2>
+            <p className="mt-4 max-w-[36rem] text-pretty text-[17px] leading-relaxed text-white/75" {...fp('body')}>
+              {sf('body', 'pub_close_body')}
+            </p>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+              <button
+                type="button"
+                onClick={() => navigate(signedIn ? '/dashboard' : '/auth/signup')}
+                className="hm-pub-btn hm-pub-btn--lg bg-white text-[hsl(var(--pub-night))] hover:bg-white/90"
+              >
+                <span {...fp('cta')}>{signedIn && !editing ? t('nav_dashboard') : sf('cta', 'mp_cta_primary')}</span>
+                <ArrowRight className="hm-pub-arrow" strokeWidth={2} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/verify')}
+                className="hm-pub-btn hm-pub-btn--lg border-white/25 bg-transparent text-white hover:border-white/50 hover:bg-white/[0.06]"
+              >
+                <span {...fp('cta_secondary')}>{sf('cta_secondary', 'mp_verify_capability_cta')}</span>
+              </button>
+            </div>
+          </div>
 
-      <div className="relative mx-auto flex min-h-[clamp(24rem,52vh,36rem)] w-full max-w-[90rem] flex-col items-center justify-center px-5 py-20 text-center sm:px-8 lg:px-10">
-        <h2
-          className="max-w-[36rem] text-balance font-semibold leading-[1.06] tracking-[-0.025em] text-white"
-          style={{ fontSize: 'clamp(1.55rem, 6vw, 3.15rem)' }}
-         {...fp('title')}>
-          {sf('title', 'mp_cta_title')}
-        </h2>
-        <p className="mt-5 max-w-[36rem] text-pretty text-[17px] leading-relaxed text-white/85 sm:text-base" {...fp('body')}>
-          {sf('body', 'mp_cta_body')}
-        </p>
-
-        <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
-          <Button
-            className="h-[3.25rem] gap-2.5 rounded-full bg-gold px-8 text-[17px] font-semibold text-[#0D0D0D] hover:bg-white"
-            onClick={() => navigate(session ? '/dashboard' : '/auth/signup')}
-          >
-            {/*
-              * In the editor the STORED label is always what shows.
-              *
-              * On the live site a signed-in visitor sees "Dashboard" instead
-              * of the call to action, which is right for them and wrong for
-              * an admin: they are signed in by definition, so the one label
-              * they can never see is the one they are trying to edit.
-              */}
-            <span {...fp('cta')}>
-              {session && !editing ? t('nav_dashboard') : sf('cta', 'mp_cta_primary')}
-            </span>
-            <ArrowRight className={`h-4 w-4 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
-          </Button>
-          <Button
-            variant="outline"
-            className="h-[3.25rem] rounded-full border-white/30 bg-transparent px-8 text-[17px] text-white hover:bg-white/10 hover:text-white"
-            onClick={() => navigate('/verify')}
-          >
-            <span {...fp('cta_secondary')}>{sf('cta_secondary', 'mp_verify_capability_cta')}</span>
-          </Button>
+          <div className="rounded-2xl border border-white/[0.14] bg-white/[0.04] p-6">
+            <p className="text-[14px] font-semibold text-gold" {...fp('price_label')}>{sf('price_label', 'payg_headline')}</p>
+            <p className="mt-3 font-display text-[1.75rem] font-bold tracking-[-0.01em] text-white">
+              <bdi className="hm-pub-num">{t('payg_rate_line', { credits: CREDITS_PER_USD, usd: '1' })}</bdi>
+            </p>
+            <p className="mt-2 text-pretty text-[15px] leading-relaxed text-white/70" {...fp('price_body')}>
+              {sf('price_body', 'payg_no_subscription')}
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate('/pricing')}
+              className="group mt-4 inline-flex min-h-[2.75rem] items-center gap-1.5 text-[15px] font-semibold text-white underline decoration-gold/60 decoration-[1.5px] underline-offset-4 hover:decoration-gold hm-pub-focus"
+            >
+              <span {...fp('price_cta')}>{sf('price_cta', 'pub_close_pricing')}</span>
+              <ArrowRight className="hm-pub-arrow" strokeWidth={2} aria-hidden="true" />
+            </button>
+          </div>
         </div>
       </div>
     </section>

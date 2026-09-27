@@ -50,6 +50,9 @@ const ORIGIN = 'https://homatch.live';
 const PRIORITY = new Map([
   ['/', '1.0'],
   ['/for-expats/georgia', '0.9'],
+  ['/for-buyers', '0.8'],
+  ['/for-owners', '0.8'],
+  ['/brokers', '0.6'],
   ['/verify', '0.8'],
   ['/mortgage', '0.8'],
   ['/investment', '0.8'],

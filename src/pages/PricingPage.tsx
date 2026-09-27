@@ -73,7 +73,7 @@ export default function PricingPage() {
     .sort((a, b) => a.sort_order - b.sort_order);
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="hm-public min-h-screen bg-background text-foreground">
       <PublicHeader links={headerLinks} solid />
       <HeaderSpacer />
 

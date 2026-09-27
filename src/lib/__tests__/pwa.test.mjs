@@ -609,8 +609,13 @@ test('an offer from the browser erases the memory that contradicts it', () => {
 test('the control is reachable from every surface it should be', () => {
   // A phone is where installing matters most, and where it used to be
   // impossible: the component was `hidden sm:block` and appeared in no menu.
+  //
+  // The desktop header row no longer has room for it in Georgian and Russian
+  // (the public redesign measured the labels colliding at 1440px), so on a
+  // desktop it sits in the site footer, which every public page renders.
   const header = readFileSync('src/components/home/PublicHeader.tsx', 'utf8');
-  assert.match(header, /<InstallApp tone=\{onDark \? 'dark' : 'auto'\} \/>/, 'desktop utility cluster');
+  const footer = readFileSync('src/components/home/sections/SiteFooter.tsx', 'utf8');
+  assert.match(footer, /<InstallApp source="footer" \/>/, 'desktop: the footer utility row');
   assert.match(header, /<InstallApp variant="block" \/>/, 'mobile menu');
   assert.equal(
     /hidden sm:block"><InstallApp/.test(header), false,

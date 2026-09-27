@@ -106,8 +106,11 @@ test('the home page hero has no horizontal overflow at real phone widths', async
           .map((el) => `${el.tagName.toLowerCase()}.${String(el.className).slice(0, 60)} right=${Math.round(el.getBoundingClientRect().right)}`);
 
         const hero = document.querySelector('main section');
-        const talk = [...document.querySelectorAll('div')]
-          .find((d) => String(d.className).includes('aspect-') && /Talk to Mariam/.test(d.textContent || ''));
+        /* The panel is the live region AiTalkPanel renders, found by what it
+           is rather than by a sizing class: its box is a <section> with
+           aria-live, and the aspect ratio only applies from lg up. */
+        const talk = [...document.querySelectorAll('main section[aria-live]')]
+          .find((d) => /Talk to Mariam/.test(d.textContent || ''));
 
         return {
           vw,
@@ -134,16 +137,10 @@ test('the home page hero has no horizontal overflow at real phone widths', async
         `${width}px: horizontal overflow — scrollWidth ${measured.scrollWidth} > clientWidth ${measured.clientWidth}`,
       );
 
-      // Nothing may stick out past the viewport, with one documented exception.
-      //
-      // PublicHeader's mobile menu button (grid h-10 w-10 … lg:hidden,
-      // PublicHeader.tsx:163) sits 8px past the edge at 320px. It predates
-      // this work, it is clipped by an ancestor so it causes no scroll, and
-      // it is on a component this branch does not touch. It is allowed here
-      // by name rather than by loosening the check, so the moment anything
-      // ELSE overflows this test fails.
-      const unexpected = measured.offenders.filter((o) => !o.includes('h-10 w-10 shrink-0 place-items-center'));
-      assert.deepEqual(unexpected, [], `${width}px: elements extend past the viewport`);
+      // Nothing may stick out past the viewport. The one exception this used
+      // to allow by name -- the old header's menu button, 8px past the edge
+      // at 320px -- is gone with the 2026-09 header, so there is none.
+      assert.deepEqual(measured.offenders, [], `${width}px: elements extend past the viewport`);
 
       // §81: AI Talk "must not overflow or dominate entire viewport".
       assert.ok(measured.talkPanel, `${width}px: the AI Talk panel did not render`);

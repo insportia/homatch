@@ -96,7 +96,7 @@ export default function PartnersPage() {
   const headerLinks = usePublicNavLinks();
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-background text-foreground">
+    <div className="hm-public min-h-screen overflow-x-hidden bg-background text-foreground">
       <PublicHeader links={headerLinks} solid />
       <HeaderSpacer />
 
@@ -185,17 +185,17 @@ export default function PartnersPage() {
               <CardContent className="pt-6 space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-muted-foreground">{t('partners_company_label')}</label>
-                    <input value={company} onChange={(e) => setCompany(e.target.value)} className="w-full px-3 py-2 bg-secondary border border-border rounded-[0.6rem] text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-gold focus:ring-2 focus:ring-gold/25" placeholder={t('partners_company_ph')} />
+                    <label htmlFor="partner-company" className="text-xs font-medium text-muted-foreground">{t('partners_company_label')}</label>
+                    <input id="partner-company" name="company" autoComplete="organization" value={company} onChange={(e) => setCompany(e.target.value)} className="w-full min-h-[2.75rem] px-3 py-2 bg-secondary border border-border rounded-[0.6rem] text-base text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-gold focus:ring-2 focus:ring-gold/25" placeholder={t('partners_company_ph')} />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-muted-foreground">{t('partners_email_label')}</label>
-                    <input type="email" required dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-3 py-2 bg-secondary border border-border rounded-[0.6rem] text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-gold focus:ring-2 focus:ring-gold/25" placeholder={t('partners_email_ph')} />
+                    <label htmlFor="partner-email" className="text-xs font-medium text-muted-foreground">{t('partners_email_label')}</label>
+                    <input id="partner-email" name="email" autoComplete="email" type="email" required dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full min-h-[2.75rem] px-3 py-2 bg-secondary border border-border rounded-[0.6rem] text-base text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-gold focus:ring-2 focus:ring-gold/25" placeholder={t('partners_email_ph')} />
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">{t('partners_category_label')}</label>
-                  <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full px-3 py-2 bg-secondary border border-border rounded-[0.6rem] text-sm text-foreground focus:outline-none focus:border-gold focus:ring-2 focus:ring-gold/25">
+                  <label htmlFor="partner-category" className="text-xs font-medium text-muted-foreground">{t('partners_category_label')}</label>
+                  <select id="partner-category" name="category" value={category} onChange={(e) => setCategory(e.target.value)} className="w-full min-h-[2.75rem] px-3 py-2 bg-secondary border border-border rounded-[0.6rem] text-base text-foreground focus:outline-none focus:border-gold focus:ring-2 focus:ring-gold/25">
                     <option value="">{t('partners_category_ph')}</option>
                     <option>{t('partners_cat_option_developer')}</option>
                     <option>{t('partners_cat_option_agency')}</option>
@@ -205,8 +205,8 @@ export default function PartnersPage() {
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">{t('partners_message_label')}</label>
-                  <textarea rows={3} value={message} onChange={(e) => setMessage(e.target.value)} className="w-full px-3 py-2 bg-secondary border border-border rounded-[0.6rem] text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-gold focus:ring-2 focus:ring-gold/25 resize-none" placeholder={t('partners_message_ph')} />
+                  <label htmlFor="partner-message" className="text-xs font-medium text-muted-foreground">{t('partners_message_label')}</label>
+                  <textarea id="partner-message" name="message" rows={3} value={message} onChange={(e) => setMessage(e.target.value)} className="w-full min-h-[2.75rem] px-3 py-2 bg-secondary border border-border rounded-[0.6rem] text-base text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-gold focus:ring-2 focus:ring-gold/25 resize-none" placeholder={t('partners_message_ph')} />
                 </div>
                 <Button type="submit" disabled={submitting} className="w-full bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
                   {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />} {t('partners_send_btn')}

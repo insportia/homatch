@@ -2,6 +2,14 @@
 // Order: en, ka, ru, tr, ar, he. Written per language, not translated line by line:
 // "potential interest", never "buyer found", in every one of them.
 export const NATIVE_STRINGS = {
+  notif_native_demand_body_conversation: [
+    'It fits the requirements you described in a conversation.',
+    'ის შეესაბამება მოთხოვნებს, რომლებიც საუბარში აღწერეთ.',
+    'Он соответствует требованиям, которые вы описали в переписке.',
+    'Bir sohbette belirttiğiniz koşullara uyuyor.',
+    'يتوافق مع المتطلبات التي وصفتها في محادثة.',
+    'הוא מתאים לדרישות שתיארת בשיחה.',
+  ],
   native_section_owner_title: [
     'HOMATCH members who may be interested',
     'HOMATCH-ის წევრები, რომლებიც შესაძლოა დაინტერესდნენ',

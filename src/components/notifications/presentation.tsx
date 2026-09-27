@@ -110,9 +110,14 @@ export function notificationText(
       : { title: t('notif_native_supply_title'), body: t('notif_native_supply_body') };
   }
   if (kind === 'NATIVE_MATCH_DEMAND') {
+    /* A demand read from a conversation was never a plan anybody confirmed; saying so
+       would describe a screen the person never saw. */
+    const body = (notif.metadata as { origin?: string } | null)?.origin === 'CONVERSATION'
+      ? t('notif_native_demand_body_conversation')
+      : t('notif_native_demand_body');
     return grouped > 1
-      ? { title: t('notif_native_demand_many_title', { n: grouped }), body: t('notif_native_demand_body') }
-      : { title: t('notif_native_demand_title'), body: t('notif_native_demand_body') };
+      ? { title: t('notif_native_demand_many_title', { n: grouped }), body }
+      : { title: t('notif_native_demand_title'), body };
   }
 
   /* Typed events with no kind of their own. Without these they fall through to stored

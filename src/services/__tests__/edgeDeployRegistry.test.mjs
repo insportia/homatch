@@ -87,7 +87,6 @@ const UNSHIPPED = {
    * one merge from production. For an operator tool that is a security
    * property. For an ordinary function it is a trap.
    */
-  'admin-user360': 'hand-deployed; CI route unreviewed',
   'browserbase-handoff': 'hand-deployed; CI route unreviewed',
   'generate-search-profile': 'hand-deployed; CI route unreviewed',
   'outreach-provider-status': 'hand-deployed; CI route unreviewed',

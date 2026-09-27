@@ -1,6 +1,7 @@
 // send-message Edge Function
 // POST { conversation_id?, property_id?, recipient_id, body }
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { refuseIfImpersonating } from '../_shared/impersonation.ts';
 import { notify } from '../_shared/notify.ts';
 import { recordIntent } from '../_shared/intent.ts';
 import {
@@ -29,6 +30,11 @@ Deno.serve(async (req) => {
     const jwt = authHeader.replace('Bearer ', '');
     const { data: { user }, error: authErr } = await supabase.auth.getUser(jwt);
     if (authErr || !user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
+    /* An administrator viewing as this account is read-only here: this path
+       writes with the service role, so Postgres never sees the caller's
+       impersonation token and cannot refuse it itself. */
+    const impersonating = await refuseIfImpersonating(supabase, authHeader, corsHeaders);
+    if (impersonating) return impersonating;
 
     /*
      * BOTH COLUMNS, BECAUSE PRODUCTION HAS ALWAYS CHECKED BOTH.

@@ -28,7 +28,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ADMIN_GROUPS, destinationForPath, groupForPath, isFullBleedAdminPath } from '@/admin/navigation';
 import { AdminSearch } from '@/components/admin/AdminSearch';
-import { ImpersonationBannerBar } from '@/components/admin/ImpersonationBannerBar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
@@ -248,7 +247,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           )}
         </div>
 
-        <ImpersonationBannerBar />
         <main className={cn('min-w-0 flex-1', !fullBleed && 'p-4 sm:p-6')}>{children}</main>
       </div>
 

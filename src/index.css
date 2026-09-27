@@ -1468,3 +1468,12 @@
 [data-studio-section] [data-hm-media] * {
   pointer-events: none;
 }
+
+/*
+ * "LOG IN AS USER": the banner takes the top 2.5rem of every screen, so the
+ * page and every sticky header move down by exactly that much rather than
+ * sliding underneath it. Set by ImpersonationBanner, only in a tab that is
+ * impersonating.
+ */
+html[data-impersonating] body { padding-top: 2.5rem; }
+html[data-impersonating] .sticky.top-0 { top: 2.5rem; }

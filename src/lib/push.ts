@@ -1,3 +1,4 @@
+import { isImpersonating } from '@/lib/impersonation';
 import { supabase } from '@/db/supabase';
 import { recordPwaEvent, platformBucket, browserBucket } from '@/lib/engagement';
 import { isStandalone } from '@/lib/pwa';
@@ -42,6 +43,9 @@ const SOFT_STATE = 'homatch_push_soft_state';
 
 /** Does this browser have the three things web push needs? */
 export function pushSupported(): boolean {
+  /* An administrator viewing as somebody must never subscribe THIS browser
+     to that person's notifications. */
+  if (isImpersonating()) return false;
   return typeof window !== 'undefined'
     && 'serviceWorker' in navigator
     && 'PushManager' in window

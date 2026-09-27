@@ -172,6 +172,11 @@ const AppContentPage = lazyRoute(() => import('./pages/admin/AppContentPage'));
 const AdminEngagementPage = lazyRoute(() => import('./pages/admin/AdminEngagementPage'));
 const AdminLiveChatReportsPage = lazyRoute(() => import('./pages/admin/AdminLiveChatReportsPage'));
 const AdminHomePage = lazyRoute(() => import('./pages/admin/AdminHomePage'));
+const AdminIntelligencePage = lazyRoute(() => import('./pages/admin/AdminIntelligencePage'));
+const AdminSupplyMatchesPage = lazyRoute(() => import('./pages/admin/AdminSupplyMatchesPage'));
+const AdminNotificationsPage = lazyRoute(() => import('./pages/admin/AdminNotificationsPage'));
+const AdminAnnouncementsPage = lazyRoute(() => import('./pages/admin/AdminAnnouncementsPage'));
+const AdminAuditLogPage = lazyRoute(() => import('./pages/admin/AdminAuditLogPage'));
 const CommunicationOverviewPage = lazyRoute(() => import('./pages/admin/communication/CommunicationOverviewPage'));
 const CommunicationVoicePage = lazyRoute(() => import('./pages/admin/communication/CommunicationVoicePage'));
 const CommunicationCallCenterPage = lazyRoute(() => import('./pages/admin/communication/CommunicationCallCenterPage'));
@@ -510,6 +515,14 @@ export const routes: RouteConfig[] = [
   { name: 'Admin Brokers',     path: '/admin/brokers',            element: adminWrap(<AdminBrokersPage />),     adminOnly: true },
   { name: 'Admin Signals',     path: '/admin/signals',            element: adminWrap(<AdminSignalsPage />),     adminOnly: true },
   { name: 'Admin Matches',     path: '/admin/matches',            element: adminWrap(<AdminMatchesPage />),     adminOnly: true },
+  /* ADMIN CONTROL CENTRE. Every read and write behind these is an admin_*
+     SQL function that checks is_admin() itself; adminOnly and AdminLayout
+     are the screen's manners, not its authorisation. */
+  { name: 'Admin Supply Matches', path: '/admin/supply-matches',   element: adminWrap(<AdminSupplyMatchesPage />), adminOnly: true },
+  { name: 'Admin Intelligence', path: '/admin/intelligence',       element: adminWrap(<AdminIntelligencePage />), adminOnly: true },
+  { name: 'Admin Notifications', path: '/admin/notifications',     element: adminWrap(<AdminNotificationsPage />), adminOnly: true },
+  { name: 'Admin Announcements', path: '/admin/announcements',     element: adminWrap(<AdminAnnouncementsPage />), adminOnly: true },
+  { name: 'Admin Audit Log',   path: '/admin/audit-log',          element: adminWrap(<AdminAuditLogPage />),    adminOnly: true },
   { name: 'Admin Credits',     path: '/admin/credits',            element: adminWrap(<AdminCreditsPage />),     adminOnly: true },
   { name: 'Admin Payments',    path: '/admin/payments',           element: adminWrap(<AdminPaymentsPage />),    adminOnly: true },
   { name: 'Admin Finance',     path: '/admin/finance',            element: adminWrap(<AdminFinancePage />),     adminOnly: true },

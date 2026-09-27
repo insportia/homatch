@@ -3,10 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { AlertCircle, ArrowRight, Check, FileText } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { SceneMedia } from '@/components/home/media/SceneMedia';
-import { FeatureGlyph } from '@/components/home/FeatureGlyph';
 import { PAGE, SECTION_Y } from './primitives';
 import { useMotion } from '@/hooks/useMotion';
-import { useSectionField, useSectionMedia, useFieldProps, useMediaProps, useSectionIconName } from '@/site/content';
+import { useSectionField, useSectionMedia, useFieldProps, useMediaProps, useSectionIconName, useIsEditing } from '@/site/content';
 import { iconFor } from '@/site/icons';
 
 /**
@@ -26,7 +25,9 @@ export function VerifyShowcaseSection() {
   const sf = useSectionField();
   const fp = useFieldProps();
   const mp = useMediaProps();
-  const { isRTL } = useLanguage();
+  const { t } = useLanguage();
+  const [code, setCode] = useState('');
+  const editing = useIsEditing();
   const navigate = useNavigate();
 
   /*
@@ -92,23 +93,27 @@ export function VerifyShowcaseSection() {
     transition: still ? undefined : 'opacity 520ms cubic-bezier(0.16,1,0.3,1), transform 520ms cubic-bezier(0.16,1,0.3,1)',
   });
 
+  const openVerify = (e: React.FormEvent) => {
+    e.preventDefault();
+    /* In Site Studio the button's label is being edited, and Enter commits
+       the edit -- which is also what submits a form. It must not navigate
+       the editor away. */
+    if (editing) return;
+    const value = code.trim();
+    navigate(value ? `/verify?code=${encodeURIComponent(value)}` : '/verify');
+  };
+
   return (
-    <section id="verify" className={`${PAGE} scroll-mt-20 ${SECTION_Y}`}>
-      <div className="grid gap-9 lg:grid-cols-2 lg:items-center lg:gap-16">
+    <section id="verify" className={`scroll-mt-24 ${SECTION_Y}`}>
+      <div className={`${PAGE} grid gap-10 lg:grid-cols-2 lg:items-center lg:gap-16`}>
         {/* ── The argument ─────────────────────────────────────── */}
         <div className="min-w-0">
-          <div className="flex items-center gap-3.5">
-            <FeatureGlyph name="verify" size={48} className="sm:h-14 sm:w-14" />
-            <p className="min-w-0 text-[14px] font-semibold uppercase tracking-[0.22em] text-gold-ink" {...fp('eyebrow')}>{sf('eyebrow', 'mp_verify_eyebrow')}</p>
-          </div>
+          <p className="hm-pub-eyebrow" {...fp('eyebrow')}>{sf('eyebrow', 'mp_verify_eyebrow')}</p>
 
-          <h2
-            className="mt-6 text-balance font-semibold leading-[1.1] tracking-[-0.025em] text-foreground sm:mt-7"
-            style={{ fontSize: 'clamp(1.4rem, 5.6vw, 2.75rem)' }}
-           {...fp('title')}>
+          <h2 className="hm-pub-h2 mt-4 text-foreground" {...fp('title')}>
             {sf('title', 'mp_verify_show_title')}
           </h2>
-          <p className="mt-4 max-w-[34rem] text-pretty text-[16px] leading-[1.65] text-ink-soft sm:mt-5 sm:text-base sm:leading-[1.7]" {...fp('body')}>
+          <p className="hm-pub-lead mt-4 max-w-[36rem]" {...fp('body')}>
             {sf('body', 'mp_verify_capability_desc')}
           </p>
 
@@ -134,22 +139,32 @@ export function VerifyShowcaseSection() {
             ))}
           </ul>
 
-          <button
-            type="button"
-            onClick={() => navigate('/verify')}
-            className="group mt-7 inline-flex h-12 sm:mt-9 items-center justify-center gap-2.5 rounded-full bg-primary px-6 text-sm font-semibold text-primary-foreground transition-colors duration-300 hover:bg-gold-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none"
-          >
-            <span {...fp('cta')}>{sf('cta', 'mp_verify_capability_cta')}</span>
-            <ArrowRight
-              className={`h-4 w-4 shrink-0 transition-transform duration-300 group-hover:translate-x-1 motion-reduce:transform-none ${isRTL ? 'rotate-180 group-hover:-translate-x-1' : ''}`}
-              strokeWidth={2}
-              aria-hidden="true"
+          {/*
+            * VERIFY IS PUBLIC, SO THE FIELD IS HERE.
+            *
+            * A cadastral code posts straight into the Verification Center's
+            * own reader (/verify?code=…). No account is asked for, because
+            * none is needed; the empty form simply opens Verify.
+            */}
+          <form onSubmit={openVerify} className="mt-8 flex max-w-[34rem] flex-col gap-2.5 sm:flex-row">
+            <label className="sr-only" htmlFor="hm-verify-code">{t('mp_verify_code_label')}</label>
+            <input
+              id="hm-verify-code"
+              value={code}
+              onChange={e => setCode(e.target.value)}
+              placeholder={t('mp_verify_code_placeholder')}
+              inputMode="numeric"
+              className="h-12 w-full min-w-0 shrink-0 rounded-xl sm:w-auto sm:flex-1 border border-[hsl(var(--pub-line-strong))] bg-card px-4 text-[16px] text-foreground shadow-[var(--pub-shadow-sm)] transition-colors placeholder:text-muted-foreground focus:border-foreground/60 focus:outline-none focus:ring-2 focus:ring-gold/30"
             />
-          </button>
+            <button type="submit" className="hm-pub-btn hm-pub-btn--primary hm-pub-btn--lg">
+              <span {...fp('cta')}>{sf('cta', 'mp_verify_capability_cta')}</span>
+              <ArrowRight className="hm-pub-arrow" strokeWidth={2} aria-hidden="true" />
+            </button>
+          </form>
         </div>
 
         {/* ── The report ───────────────────────────────────────── */}
-        <div className="min-w-0 overflow-hidden rounded-[1.1rem] border border-foreground/15 bg-card shadow-hover">
+        <div className="min-w-0 overflow-hidden rounded-[1.375rem] border border-border bg-card shadow-[var(--pub-shadow-lg)]">
           {/*
             * THE PHOTOGRAPH, SEEN RATHER THAN CROPPED.
             *
@@ -185,7 +200,7 @@ export function VerifyShowcaseSection() {
               aria-hidden="true"
             />
             <div className="absolute inset-x-0 bottom-0 p-5">
-              <p className="text-[13px] font-semibold uppercase tracking-[0.2em] text-gold" {...fp('pi_label')}>
+              <p className="hm-pub-label !text-gold" {...fp('pi_label')}>
                 {sf('pi_label', 'mp_result_prop_label')}
               </p>
             </div>
@@ -193,7 +208,7 @@ export function VerifyShowcaseSection() {
 
           <div className="p-5 sm:p-7" ref={panel}>
             <p
-              className="text-[14px] font-semibold uppercase tracking-[0.16em] text-muted-foreground"
+              className="hm-pub-label"
               style={enter(0)}
               {...fp('pi_confirmed')}
             >
@@ -209,7 +224,7 @@ export function VerifyShowcaseSection() {
             </ul>
 
             <p
-              className="mt-6 text-[14px] font-semibold uppercase tracking-[0.16em] text-muted-foreground"
+              className="hm-pub-label mt-6"
               style={enter(4)}
               {...fp('pi_attention')}
             >
@@ -222,8 +237,8 @@ export function VerifyShowcaseSection() {
               </span>
             </p>
 
-            <div className="mt-6 rounded-[0.7rem] bg-primary p-4 text-primary-foreground" style={enter(5)}>
-              <p className="flex items-center gap-2 text-[14px] font-semibold uppercase tracking-[0.16em] text-gold">
+            <div className="mt-6 rounded-xl bg-primary p-4 text-primary-foreground" style={enter(5)}>
+              <p className="hm-pub-label flex items-center gap-2 !text-gold">
                 <NextIcon className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden="true" />
                 <span className="min-w-0" {...fp('pi_next')}>{sf('pi_next', 'mp_result_prop_next')}</span>
               </p>

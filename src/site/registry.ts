@@ -127,76 +127,76 @@ export const SECTION_DEFS: readonly SectionDef[] = [
     themes: [],
     repeatable: false,
     fields: [
-      f('eyebrow', 'studio_f_eyebrow', 'mp_hero_eyebrow'),
+      f('eyebrow', 'studio_f_eyebrow', 'pub_hero_eyebrow'),
       f('brand', 'studio_f_brand', 'brand_name'),
       f('title', 'studio_f_title', 'mp_hero_h1'),
-      f('subtitle', 'studio_f_subtitle', 'mp_hero_h2'),
-      f('body', 'studio_f_body', 'mp_hero_scope', 'textarea'),
-      f('placeholder', 'studio_f_placeholder', 'mp_hero_ai_placeholder'),
+      f('subtitle', 'studio_f_subtitle', 'pub_hero_sub'),
+      f('body', 'studio_f_body', 'pub_hero_body', 'textarea'),
+      /* The two ways in. Each opens the product for somebody signed in and
+         its public entry page for somebody who is not (site/productEntry). */
+      f('cta_find', 'studio_f_cta', 'dnav_find_property'),
+      f('cta_owner', 'studio_f_cta_secondary', 'pub_nav_find_client'),
+      /* Three facts under the buttons. Facts, not figures: there is no
+         count of anything here, and an admin adding one should know that
+         the page was designed not to carry it. */
+      f('fact1', 'pub_hero_fact1', 'pub_hero_fact1'),
+      f('fact2', 'pub_hero_fact2', 'pub_hero_fact2'),
+      f('fact3', 'pub_hero_fact3', 'pub_hero_fact3'),
       // AI TALK sits inside the hero, so its copy belongs to the hero's
       // fields. Its STATE labels deliberately do not: "Listening" is the
       // product reporting a fact about itself, not a message to tune.
+      f('talk_label', 'pub_hero_talk_label', 'pub_hero_talk_label'),
       f('talk_badge', 'talk_badge', 'talk_badge'),
       f('talk_title', 'talk_title', 'talk_title'),
       f('talk_languages', 'talk_languages', 'talk_languages'),
-      /* The invitation and the control under it. The invitation is the one
-         message in the panel written to persuade rather than to report; the
-         states beside it ("Listening", "Microphone blocked") stay out, and
-         say so on the element itself. */
       f('talk_idle_body', 'talk_idle_body', 'talk_idle_body', 'textarea'),
       f('talk_start', 'talk_start', 'talk_start'),
-      /* ASK HOMATCH. The heading over the field, and the three starter
-         questions beneath it -- which are also what gets SENT, so rewriting
-         one changes the conversation it opens. */
-      f('ask_heading', 'ai_title', 'ai_title'),
-      f('ask_q1', 'mp_intent_buy', 'mp_intent_buy', 'textarea'),
-      f('ask_q2', 'mp_intent_price', 'mp_intent_price', 'textarea'),
-      f('ask_q3', 'mp_intent_contract', 'mp_intent_contract', 'textarea'),
     ],
-    media: [{ slot: 'photo', labelKey: 'studio_m_photo' }],
+    media: [],
   },
   {
     type: 'action_launcher',
     labelKey: 'studio_sec_launcher',
-    variants: ['default', 'two_column'],
+    variants: ['default'],
     themes: [],
     repeatable: false,
     fields: [
-      f('eyebrow', 'studio_f_eyebrow', 'mp_launch_eyebrow'),
-      f('title', 'studio_f_title', 'mp_launch_title'),
-      f('body', 'studio_f_body', 'mp_launch_sub', 'textarea'),
-      /* THE SIX TILES. Title, subtext and call to action for each — the
-         menu labels, menu subtext and CTA copy that were hardcoded, and
-         that an admin could see on the page but not change. Each falls
-         back to the reviewed key it always used. */
-      f('tile_verify_t', 'mp_tile_verify_t', 'mp_tile_verify_t'),
-      f('tile_verify_d', 'mp_tile_verify_d', 'mp_tile_verify_d', 'textarea'),
-      f('tile_verify_a', 'mp_launch_verify_go', 'mp_launch_verify_go'),
-      f('tile_contract_t', 'mp_contract_title', 'mp_contract_title'),
-      f('tile_contract_d', 'mp_tile_contract_d', 'mp_tile_contract_d', 'textarea'),
-      f('tile_contract_a', 'mp_contract_cta', 'mp_contract_cta'),
-      f('tile_match_t', 'mp_tile_match_t', 'mp_tile_match_t'),
-      f('tile_match_d', 'mp_tile_match_d', 'mp_tile_match_d', 'textarea'),
-      f('tile_match_a', 'mp_match_cta', 'mp_match_cta'),
-      f('tile_mortgage_t', 'mp_mortgage_title', 'mp_mortgage_title'),
-      f('tile_mortgage_d', 'mp_tile_mortgage_d', 'mp_tile_mortgage_d', 'textarea'),
-      f('tile_mortgage_a', 'mp_mortgage_cta', 'mp_mortgage_cta'),
-      f('tile_calls_t', 'call_center_title', 'call_center_title'),
-      f('tile_calls_d', 'mp_tile_calls_d', 'mp_tile_calls_d', 'textarea'),
-      f('tile_calls_a', 'mp_calls_cta', 'mp_calls_cta'),
-      f('tile_email_t', 'mp_email_title', 'mp_email_title'),
-      f('tile_email_d', 'mp_tile_email_d', 'mp_tile_email_d', 'textarea'),
-      f('tile_email_a', 'mp_email_cta', 'mp_email_cta'),
-    ],
-    /* And the icon on each tile. Unset keeps the drawn glyph the tile
-       shipped with; choosing one replaces it from the curated set. */
-    icons: [
-      { slot: 'tile_verify', labelKey: 'mp_tile_verify_t' },
-      { slot: 'tile_contract', labelKey: 'mp_contract_title' },
-      { slot: 'tile_match', labelKey: 'mp_tile_match_t' },
-      { slot: 'tile_mortgage', labelKey: 'mp_mortgage_title' },
-      { slot: 'tile_calls', labelKey: 'call_center_title' },
-      { slot: 'tile_email', labelKey: 'mp_email_title' },
+      f('eyebrow', 'studio_f_eyebrow', 'pub_paths_eyebrow'),
+      f('title', 'studio_f_title', 'pub_paths_title'),
+      f('body', 'studio_f_body', 'pub_paths_body', 'textarea'),
+      /* THE TWO PATHS. The owner's and the buyer's, each with the three
+         steps the product actually takes, in the same words as the entry
+         pages (/for-owners, /for-buyers). */
+      f('owner_eyebrow', 'pub_owner_eyebrow', 'pub_owner_eyebrow'),
+      f('owner_title', 'pub_owner_title', 'pub_owner_title'),
+      f('owner_s1_t', 'pub_owner_step1_t', 'pub_owner_step1_t'),
+      f('owner_s1_d', 'pub_owner_step1_d', 'pub_owner_step1_d', 'textarea'),
+      f('owner_s2_t', 'pub_owner_step2_t', 'pub_owner_step2_t'),
+      f('owner_s2_d', 'pub_owner_step2_d', 'pub_owner_step2_d', 'textarea'),
+      f('owner_s3_t', 'pub_owner_step3_t', 'pub_owner_step3_t'),
+      f('owner_s3_d', 'pub_owner_step3_d', 'pub_owner_step3_d', 'textarea'),
+      f('owner_cta', 'studio_f_cta', 'pub_paths_owner_cta'),
+      f('buyer_eyebrow', 'pub_buyer_eyebrow', 'pub_buyer_eyebrow'),
+      f('buyer_title', 'pub_buyer_title', 'pub_buyer_title'),
+      f('buyer_s1_t', 'pub_buyer_step1_t', 'pub_buyer_step1_t'),
+      f('buyer_s1_d', 'pub_buyer_step1_d', 'pub_buyer_step1_d', 'textarea'),
+      f('buyer_s2_t', 'pub_buyer_step2_t', 'pub_buyer_step2_t'),
+      f('buyer_s2_d', 'pub_buyer_step2_d', 'pub_buyer_step2_d', 'textarea'),
+      f('buyer_s3_t', 'pub_buyer_step3_t', 'pub_buyer_step3_t'),
+      f('buyer_s3_d', 'pub_buyer_step3_d', 'pub_buyer_step3_d', 'textarea'),
+      f('buyer_cta', 'studio_f_cta', 'pub_paths_buyer_cta'),
+      /* The public tools around a match. */
+      f('index_title', 'pub_index_title', 'pub_index_title'),
+      f('index_verify_t', 'nav_verify', 'nav_verify'),
+      f('index_verify_d', 'pub_navd_verify', 'pub_navd_verify', 'textarea'),
+      f('index_mortgage_t', 'nav_mortgage', 'nav_mortgage'),
+      f('index_mortgage_d', 'pub_navd_mortgage', 'pub_navd_mortgage', 'textarea'),
+      f('index_investment_t', 'nav_investment', 'nav_investment'),
+      f('index_investment_d', 'pub_navd_investment', 'pub_navd_investment', 'textarea'),
+      f('index_expat_t', 'nav_for_expats', 'nav_for_expats'),
+      f('index_expat_d', 'pub_navd_expat', 'pub_navd_expat', 'textarea'),
+      f('index_brokers_t', 'pub_nav_brokers', 'pub_nav_brokers'),
+      f('index_brokers_d', 'pub_navd_brokers', 'pub_navd_brokers', 'textarea'),
     ],
     media: [],
   },
@@ -207,45 +207,21 @@ export const SECTION_DEFS: readonly SectionDef[] = [
     themes: [],
     repeatable: false,
     fields: [
-      f('eyebrow', 'studio_f_eyebrow', 'mp_layers_eyebrow'),
-      f('title', 'studio_f_title', 'mp_layers_title'),
-      f('body', 'studio_f_body', 'mp_layers_sub', 'textarea'),
-      /* THE SEVEN LAYERS. The name of each one and the sentence explaining
-         it -- the section's entire argument, and until now the only part of
-         it nobody could change without a deploy. */
-      f('layer_property', 'mp_layer_property', 'mp_layer_property'),
-      f('layer_property_d', 'mp_layer_property_d', 'mp_layer_property_d', 'textarea'),
-      f('layer_project', 'mp_layer_project', 'mp_layer_project'),
-      f('layer_project_d', 'mp_layer_project_d', 'mp_layer_project_d', 'textarea'),
-      f('layer_location', 'mp_layer_location', 'mp_layer_location'),
-      f('layer_location_d', 'mp_layer_location_d', 'mp_layer_location_d', 'textarea'),
-      f('layer_market', 'mp_layer_market', 'mp_layer_market'),
-      f('layer_market_d', 'mp_layer_market_d', 'mp_layer_market_d', 'textarea'),
-      f('layer_demand', 'mp_layer_demand', 'mp_layer_demand'),
-      f('layer_demand_d', 'mp_layer_demand_d', 'mp_layer_demand_d', 'textarea'),
-      f('layer_contract', 'mp_layer_contract', 'mp_layer_contract'),
-      f('layer_contract_d', 'mp_layer_contract_d', 'mp_layer_contract_d', 'textarea'),
-      f('layer_financing', 'mp_layer_financing', 'mp_layer_financing'),
-      f('layer_financing_d', 'mp_layer_financing_d', 'mp_layer_financing_d', 'textarea'),
-      /* THE BUILDING SCENE. Stage labels, callout labels and the
-         illustrative values shown beside the analysed unit. The animation
-         must not depend on literal English: it plays in six languages, and
-         the demo numbers are an admin's to change. */
-      f('bi_stage_idle', 'bi_stage_idle', 'bi_stage_idle'),
-      f('bi_stage_scan', 'bi_stage_scan', 'bi_stage_scan'),
-      f('bi_stage_floors', 'bi_stage_floors', 'bi_stage_floors'),
-      f('bi_stage_floor', 'bi_stage_floor', 'bi_stage_floor'),
-      f('bi_stage_unit', 'bi_stage_unit', 'bi_stage_unit'),
-      f('bi_stage_done', 'bi_stage_done', 'bi_stage_done'),
-      f('bi_cal_floor', 'bi_cal_floor', 'bi_cal_floor'),
-      f('bi_cal_area', 'bi_cal_area', 'bi_cal_area'),
-      f('bi_cal_rooms', 'bi_cal_rooms', 'bi_cal_rooms'),
-      f('bi_cal_status', 'bi_cal_status', 'bi_cal_status'),
-      f('bi_val_floor', 'bi_val_floor', 'bi_val_floor'),
-      f('bi_val_area', 'bi_val_area', 'bi_val_area'),
-      f('bi_val_rooms', 'bi_val_rooms', 'bi_val_rooms'),
-      f('bi_val_status', 'bi_val_status', 'bi_val_status'),
-      f('bi_note', 'bi_note', 'bi_note'),
+      f('eyebrow', 'studio_f_eyebrow', 'pub_how_eyebrow'),
+      f('title', 'studio_f_title', 'pub_how_title'),
+      f('body', 'studio_f_body', 'pub_how_body', 'textarea'),
+      /* HOW A MATCH IS FOUND: the two sources of demand, the match, and the
+         decision that stays with the person. The last one carries the
+         sentence the product depends on -- potential interest, not a
+         confirmed buyer -- so rewording it deserves care. */
+      f('native_t', 'pub_how_native_t', 'pub_how_native_t'),
+      f('native_d', 'pub_how_native_d', 'pub_how_native_d', 'textarea'),
+      f('external_t', 'pub_how_external_t', 'pub_how_external_t'),
+      f('external_d', 'pub_how_external_d', 'pub_how_external_d', 'textarea'),
+      f('match_t', 'pub_how_match_t', 'pub_how_match_t'),
+      f('match_d', 'pub_how_match_d', 'pub_how_match_d', 'textarea'),
+      f('decide_t', 'pub_how_decide_t', 'pub_how_decide_t'),
+      f('decide_d', 'pub_how_decide_d', 'pub_how_decide_d', 'textarea'),
     ],
     media: [],
   },
@@ -428,7 +404,7 @@ export const SECTION_DEFS: readonly SectionDef[] = [
       f('step3_d', 'mp_ci_step_3_d', 'mp_ci_step_3_d', 'textarea'),
       f('step4_t', 'mp_ci_step_4', 'mp_ci_step_4'),
       f('step4_d', 'mp_ci_step_4_d', 'mp_ci_step_4_d', 'textarea'),
-      f('formats', 'mp_contract_formats', 'mp_contract_formats', 'textarea'),
+      f('formats', 'pub_contract_formats', 'pub_contract_formats', 'textarea'),
     ],
     media: [],
   },
@@ -439,158 +415,47 @@ export const SECTION_DEFS: readonly SectionDef[] = [
     themes: [],
     repeatable: false,
     fields: [
-      f('eyebrow', 'studio_f_eyebrow', 'mp_match_eyebrow'),
+      f('eyebrow', 'studio_f_eyebrow', 'pub_match_eyebrow'),
       f('title', 'studio_f_title', 'mp_match_title'),
-      f('subtitle', 'studio_f_subtitle', 'mp_match_show_title'),
       f('body', 'studio_f_body', 'mp_match_desc', 'textarea'),
-      /* THE FOUR BEATS, and then the shortlist panel: the label over it,
-         the three reasons it gives, the caveat that keeps the claim honest,
-         and the control. All of it was a deploy away until now. */
-      f('beat1', 'mp_match_beat_1', 'mp_match_beat_1'),
-      f('beat2', 'mp_match_beat_2', 'mp_match_beat_2'),
-      f('beat3', 'mp_match_beat_3', 'mp_match_beat_3'),
-      f('beat4', 'mp_match_beat_4', 'mp_match_beat_4'),
+      /* The match card: the label over the reasons, the three reasons, and
+         the caveat that keeps the claim honest. */
       f('why_label', 'mp_result_match_why', 'mp_result_match_why'),
       f('reason1', 'mp_result_match_reason_1', 'mp_result_match_reason_1', 'textarea'),
       f('reason2', 'mp_result_match_reason_2', 'mp_result_match_reason_2', 'textarea'),
       f('reason3', 'mp_result_match_reason_3', 'mp_result_match_reason_3', 'textarea'),
       f('caveat', 'mp_match_caveat', 'mp_match_caveat', 'textarea'),
-      f('cta', 'studio_f_cta', 'mp_match_cta'),
+      f('cta', 'studio_f_cta', 'pub_paths_owner_cta'),
     ],
     media: [],
   },
   {
     type: 'mortgage',
     labelKey: 'studio_sec_mortgage',
-    variants: ['split', 'calculator_focus', 'scenario_compare'],
-    themes: [],
-    repeatable: false,
-    fields: [
-      f('eyebrow', 'studio_f_eyebrow', 'mp_mortgage_eyebrow'),
-      f('title', 'studio_f_title', 'mp_mortgage_show_title'),
-      f('body', 'studio_f_body', 'mp_mortgage_desc', 'textarea'),
-      f('cta', 'studio_f_cta', 'mp_mortgage_cta'),
-      /* The three things the consultant answers, and every label in the
-         scenario panel beside them. The panel's VALUES stay drawn rather
-         than written: a plausible monthly payment on a marketing page is a
-         quote nobody made. */
-      f('p1_t', 'mp_mortgage_point_1', 'mp_mortgage_point_1'),
-      f('p1_d', 'mp_mortgage_point_1_d', 'mp_mortgage_point_1_d', 'textarea'),
-      f('p2_t', 'mp_mortgage_point_2', 'mp_mortgage_point_2'),
-      f('p2_d', 'mp_mortgage_point_2_d', 'mp_mortgage_point_2_d', 'textarea'),
-      f('p3_t', 'mp_mortgage_point_3', 'mp_mortgage_point_3'),
-      f('p3_d', 'mp_mortgage_point_3_d', 'mp_mortgage_point_3_d', 'textarea'),
-      f('scenario', 'mp_mortgage_scenario', 'mp_mortgage_scenario'),
-      f('row_price', 'mp_mortgage_row_price', 'mp_mortgage_row_price'),
-      f('row_down', 'mp_mortgage_row_down', 'mp_mortgage_row_down'),
-      f('row_term', 'mp_mortgage_row_term', 'mp_mortgage_row_term'),
-      f('row_rate', 'mp_mortgage_row_rate', 'mp_mortgage_row_rate'),
-      f('row_result', 'mp_mortgage_row_result', 'mp_mortgage_row_result'),
-      f('note', 'mp_mortgage_note', 'mp_mortgage_note', 'textarea'),
-    ],
-    media: [],
-  },
-  {
-    type: 'call_center',
-    labelKey: 'studio_sec_calls',
-    variants: ['split', 'console_focus', 'workflow_focus'],
-    themes: [],
-    repeatable: false,
-    fields: [
-      f('eyebrow', 'studio_f_eyebrow', 'call_center_title'),
-      f('title', 'studio_f_title', 'mp_cc_title'),
-      f('body', 'studio_f_body', 'mp_cc_sub', 'textarea'),
-      f('cta', 'studio_f_cta', 'mp_calls_cta'),
-      /* What the calls do, the six stages a call passes through, and the
-         labels on the live-call panel. The duration and the waveform are
-         not copy and are not offered. */
-      f('p1_t', 'mp_cc_point_1', 'mp_cc_point_1'),
-      f('p1_d', 'mp_cc_point_1_d', 'mp_cc_point_1_d', 'textarea'),
-      f('p2_t', 'mp_cc_point_2', 'mp_cc_point_2'),
-      f('p2_d', 'mp_cc_point_2_d', 'mp_cc_point_2_d', 'textarea'),
-      f('p3_t', 'mp_cc_point_3', 'mp_cc_point_3'),
-      f('p3_d', 'mp_cc_point_3_d', 'mp_cc_point_3_d', 'textarea'),
-      f('stage1', 'mp_cc_stage_lead', 'mp_cc_stage_lead'),
-      f('stage2', 'mp_calls_stage_2', 'mp_calls_stage_2'),
-      f('stage3', 'mp_cc_stage_talk', 'mp_cc_stage_talk'),
-      f('stage4', 'mp_calls_stage_3', 'mp_calls_stage_3'),
-      f('stage5', 'mp_calls_stage_4', 'mp_calls_stage_4'),
-      f('stage6', 'mp_cc_stage_followup', 'mp_cc_stage_followup'),
-      f('live', 'mp_cc_live', 'mp_cc_live'),
-      f('row_stage', 'mp_cc_row_stage', 'mp_cc_row_stage'),
-      f('row_stage_v', 'mp_calls_stage_3', 'mp_calls_stage_3'),
-      f('row_language', 'mp_cc_row_language', 'mp_cc_row_language'),
-      f('row_language_v', 'mp_cc_row_language_v', 'mp_cc_row_language_v'),
-      f('row_outcome', 'mp_cc_row_outcome', 'mp_cc_row_outcome'),
-      f('row_outcome_v', 'mp_cc_row_outcome_v', 'mp_cc_row_outcome_v'),
-      f('panel_note', 'mp_cc_panel_note', 'mp_cc_panel_note', 'textarea'),
-    ],
-    media: [],
-  },
-  {
-    type: 'email_campaign',
-    labelKey: 'studio_sec_email',
-    variants: ['campaign_builder', 'message_focus', 'workflow'],
-    themes: [],
-    repeatable: false,
-    fields: [
-      f('eyebrow', 'studio_f_eyebrow', 'mp_email_eyebrow'),
-      f('title', 'studio_f_title', 'mp_email_show_title'),
-      f('body', 'studio_f_body', 'mp_email_desc', 'textarea'),
-      f('cta', 'studio_f_cta', 'mp_email_cta'),
-      /* The three points, the builder's field labels and the six stages a
-         campaign passes through. Counts and rates stay absent. */
-      f('p1_t', 'mp_email_point_1', 'mp_email_point_1'),
-      f('p1_d', 'mp_email_point_1_d', 'mp_email_point_1_d', 'textarea'),
-      f('p2_t', 'mp_email_point_2', 'mp_email_point_2'),
-      f('p2_d', 'mp_email_point_2_d', 'mp_email_point_2_d', 'textarea'),
-      f('p3_t', 'mp_email_point_3', 'mp_email_point_3'),
-      f('p3_d', 'mp_email_point_3_d', 'mp_email_point_3_d', 'textarea'),
-      f('field1', 'mp_email_field_1', 'mp_email_field_1'),
-      f('field2', 'mp_email_field_2', 'mp_email_field_2'),
-      f('field3', 'mp_email_field_3', 'mp_email_field_3'),
-      f('field_ai', 'mp_email_field_ai', 'mp_email_field_ai'),
-      f('stage1', 'mp_email_stage_1', 'mp_email_stage_1'),
-      f('stage2', 'mp_email_stage_2', 'mp_email_stage_2'),
-      f('stage3', 'mp_email_stage_3', 'mp_email_stage_3'),
-      f('stage4', 'mp_email_stage_4', 'mp_email_stage_4'),
-      f('stage5', 'mp_email_stage_5', 'mp_email_stage_5'),
-      f('stage6', 'mp_email_stage_6', 'mp_email_stage_6'),
-      f('panel_note', 'mp_email_panel_note', 'mp_email_panel_note', 'textarea'),
-    ],
-    media: [],
-  },
-  {
-    type: 'homatch_ai',
-    labelKey: 'studio_sec_ai',
     variants: ['default'],
     themes: [],
     repeatable: false,
     fields: [
-      f('eyebrow', 'studio_f_eyebrow', 'mp_flow_eyebrow'),
-      f('title', 'studio_f_title', 'mp_flow_title'),
-      f('body', 'studio_f_body', 'mp_flow_sub', 'textarea'),
-      /* THE EIGHT QUESTIONS. Each is the section's argument and its control
-         at once: what is written here is what gets asked. The list beside
-         them -- what a question can reach -- is the other half. */
-      f('intent_label', 'mp_intent_label', 'mp_intent_label'),
-      f('q_buy', 'mp_intent_buy', 'mp_intent_buy', 'textarea'),
-      f('q_price', 'mp_intent_price', 'mp_intent_price', 'textarea'),
-      f('q_contract', 'mp_intent_contract', 'mp_intent_contract', 'textarea'),
-      f('q_sell', 'mp_intent_sell', 'mp_intent_sell', 'textarea'),
-      f('q_finance', 'mp_intent_finance', 'mp_intent_finance', 'textarea'),
-      f('q_district', 'mp_intent_district', 'mp_intent_district', 'textarea'),
-      f('q_rent', 'mp_intent_rent', 'mp_intent_rent', 'textarea'),
-      f('q_platform', 'mp_intent_platform', 'mp_intent_platform', 'textarea'),
-      f('reach_label', 'mp_ai_reach_label', 'mp_ai_reach_label'),
-      f('reach_match', 'mp_match_title', 'mp_match_title'),
-      f('reach_find', 'mp_find_title', 'mp_find_title'),
-      f('reach_verify', 'mp_verify_capability_title', 'mp_verify_capability_title'),
-      f('reach_contract', 'mp_contract_title', 'mp_contract_title'),
-      f('reach_mortgage', 'mp_mortgage_title', 'mp_mortgage_title'),
-      f('reach_calls', 'call_center_title', 'call_center_title'),
-      f('reach_email', 'mp_email_title', 'mp_email_title'),
-      f('reach_dev', 'mp_dev_eyebrow', 'mp_dev_eyebrow'),
+      f('eyebrow', 'studio_f_eyebrow', 'mp_mortgage_eyebrow'),
+      f('title', 'studio_f_title', 'pub_money_title'),
+      f('body', 'studio_f_body', 'pub_money_body', 'textarea'),
+      /* Mortgage and Investment, side by side. What each answers and what
+         it does not; no figures, because a payment on a marketing page is a
+         quote nobody made. */
+      f('m_t', 'mp_mortgage_title', 'mp_mortgage_title'),
+      f('m_d', 'mp_mortgage_desc', 'mp_mortgage_desc', 'textarea'),
+      f('p1_t', 'mp_mortgage_point_1', 'mp_mortgage_point_1'),
+      f('p2_t', 'mp_mortgage_point_2', 'mp_mortgage_point_2'),
+      f('p3_t', 'mp_mortgage_point_3', 'mp_mortgage_point_3'),
+      f('cta', 'studio_f_cta', 'mp_mortgage_cta'),
+      f('note', 'mp_mortgage_note', 'mp_mortgage_note', 'textarea'),
+      f('i_t', 'inv_product_eyebrow', 'inv_product_eyebrow'),
+      f('i_d', 'inv_page_description', 'inv_page_description', 'textarea'),
+      f('i1_t', 'inv_strategy_rental_title', 'inv_strategy_rental_title'),
+      f('i2_t', 'inv_strategy_renovate_title', 'inv_strategy_renovate_title'),
+      f('i3_t', 'inv_strategy_construction_title', 'inv_strategy_construction_title'),
+      f('i_cta', 'studio_f_cta_secondary', 'pub_invest_cta'),
+      f('i_note', 'pub_invest_note', 'pub_invest_note', 'textarea'),
     ],
     media: [],
   },
@@ -601,28 +466,22 @@ export const SECTION_DEFS: readonly SectionDef[] = [
     themes: [],
     repeatable: false,
     fields: [
-      f('eyebrow', 'studio_f_eyebrow', 'mp_dev_eyebrow'),
-      f('title', 'studio_f_title', 'mp_dev_title'),
-      f('body', 'studio_f_body', 'mp_dev_sub', 'textarea'),
-      f('cta', 'studio_f_cta', 'mp_dev_cta'),
-      /* The three arguments, the six stages of the operation, and where the
-         flow arrives. The commercial packaging changes; a deploy per change
-         is what made it go stale. */
-      f('p1_t', 'mp_dev_point_1_title', 'mp_dev_point_1_title'),
-      f('p1_d', 'mp_dev_point_1_desc', 'mp_dev_point_1_desc', 'textarea'),
-      f('p2_t', 'mp_dev_point_2_title', 'mp_dev_point_2_title'),
-      f('p2_d', 'mp_dev_point_2_desc', 'mp_dev_point_2_desc', 'textarea'),
-      f('p3_t', 'mp_dev_point_3_title', 'mp_dev_point_3_title'),
-      f('p3_d', 'mp_dev_point_3_desc', 'mp_dev_point_3_desc', 'textarea'),
-      f('stage1', 'mp_dev_stage_project', 'mp_dev_stage_project'),
-      f('stage2', 'mp_dev_stage_demand', 'mp_dev_stage_demand'),
-      f('stage3', 'mp_dev_stage_people', 'mp_dev_stage_people'),
-      f('stage4', 'mp_dev_stage_calls', 'mp_dev_stage_calls'),
-      f('stage5', 'mp_dev_stage_email', 'mp_dev_stage_email'),
-      f('stage6', 'mp_dev_stage_followup', 'mp_dev_stage_followup'),
-      f('outcome', 'mp_dev_stage_outcome', 'mp_dev_stage_outcome'),
+      f('eyebrow', 'studio_f_eyebrow', 'nav_professional'),
+      f('title', 'studio_f_title', 'pub_pro_title'),
+      f('body', 'studio_f_body', 'pub_pro_body', 'textarea'),
+      /* Brokers, developers, partners: one line each on what their public
+         page is for. */
+      f('brokers_t', 'pub_nav_brokers', 'pub_nav_brokers'),
+      f('brokers_d', 'pub_pro_brokers_d', 'pub_pro_brokers_d', 'textarea'),
+      f('brokers_cta', 'pub_pro_brokers_cta', 'pub_pro_brokers_cta'),
+      f('developers_t', 'mp_nav_developers', 'mp_nav_developers'),
+      f('developers_d', 'pub_pro_developers_d', 'pub_pro_developers_d', 'textarea'),
+      f('developers_cta', 'pub_pro_developers_cta', 'pub_pro_developers_cta'),
+      f('partners_t', 'home_nav_partners', 'home_nav_partners'),
+      f('partners_d', 'pub_pro_partners_d', 'pub_pro_partners_d', 'textarea'),
+      f('partners_cta', 'pub_pro_partners_cta', 'pub_pro_partners_cta'),
     ],
-    media: [{ slot: 'backdrop', labelKey: 'studio_m_photo' }],
+    media: [],
   },
   {
     type: 'closing_cta',
@@ -631,12 +490,17 @@ export const SECTION_DEFS: readonly SectionDef[] = [
     themes: [],
     repeatable: false,
     fields: [
-      f('title', 'studio_f_title', 'mp_cta_title'),
-      f('body', 'studio_f_body', 'mp_cta_body', 'textarea'),
+      f('title', 'studio_f_title', 'pub_close_title'),
+      f('body', 'studio_f_body', 'pub_close_body', 'textarea'),
       f('cta', 'studio_f_cta', 'mp_cta_primary'),
       f('cta_secondary', 'studio_f_cta_secondary', 'mp_verify_capability_cta'),
+      /* The pricing panel. The credit rate itself is not a field: it is the
+         Pricing page's figure, not copy. */
+      f('price_label', 'payg_headline', 'payg_headline'),
+      f('price_body', 'payg_no_subscription', 'payg_no_subscription', 'textarea'),
+      f('price_cta', 'pub_close_pricing', 'pub_close_pricing'),
     ],
-    media: [{ slot: 'photo', labelKey: 'studio_m_photo' }],
+    media: [],
   },
 
   /* ── About ─────────────────────────────────────────────────────── */
@@ -834,23 +698,24 @@ export const SECTION_DEFS: readonly SectionDef[] = [
          that is no longer in the navigation is a control that edits nothing,
          which is the thing the Admin redesign set out to remove. */
       f('nav_find_property', 'dnav_find_property', 'dnav_find_property'),
-      f('nav_find_client', 'dnav_find_client', 'dnav_find_client'),
+      f('nav_find_client', 'pub_nav_find_client', 'pub_nav_find_client'),
       f('nav_verify', 'nav_verify', 'nav_verify'),
-      f('nav_intelligence', 'mp_nav_capabilities', 'mp_nav_capabilities'),
+      f('nav_services', 'pub_nav_services', 'pub_nav_services'),
+      f('nav_intelligence', 'pub_nav_how', 'pub_nav_how'),
+      f('nav_mortgage', 'nav_mortgage', 'nav_mortgage'),
       f('nav_investment', 'nav_investment', 'nav_investment'),
       f('nav_expat', 'nav_for_expats', 'nav_for_expats'),
       f('nav_professional', 'nav_professional', 'nav_professional'),
+      f('nav_brokers', 'pub_nav_brokers', 'pub_nav_brokers'),
       f('nav_developers', 'mp_nav_developers', 'mp_nav_developers'),
       f('nav_partners', 'home_nav_partners', 'home_nav_partners'),
+      f('nav_more', 'pub_nav_more', 'pub_nav_more'),
       f('nav_company', 'nav_company', 'nav_company'),
       f('nav_about', 'nav_about', 'nav_about'),
       f('nav_pricing', 'nav_pricing', 'nav_pricing'),
       f('cta_login', 'nav_login', 'nav_login'),
       f('cta_signup', 'nav_signup', 'nav_signup'),
       f('cta_dashboard', 'nav_dashboard', 'nav_dashboard'),
-      /* The line under the wordmark. The wordmark itself is the logotype and
-         is not offered -- see useNotEditable in the lockup. */
-      f('brand_tagline', 'brand_tagline', 'brand_tagline'),
     ],
     media: [],
   },
@@ -863,17 +728,21 @@ export const SECTION_DEFS: readonly SectionDef[] = [
     fields: [
       f('tagline', 'mp_footer_tagline', 'mp_footer_tagline', 'textarea'),
       f('heading_product', 'mp_footer_product', 'mp_footer_product'),
+      f('heading_professional', 'nav_professional', 'nav_professional'),
       f('heading_company', 'mp_footer_company', 'mp_footer_company'),
       f('heading_legal', 'mp_footer_legal', 'mp_footer_legal'),
+      f('link_find_property', 'dnav_find_property', 'dnav_find_property'),
+      f('link_find_client', 'pub_nav_find_client', 'pub_nav_find_client'),
       f('link_verify', 'nav_verify', 'nav_verify'),
       f('link_contract', 'mp_contract_title', 'mp_contract_title'),
       f('link_mortgage', 'nav_mortgage', 'nav_mortgage'),
-      f('link_ai', 'ai_title', 'ai_title'),
-      f('link_calls', 'call_center_title', 'call_center_title'),
-      f('link_email', 'mp_email_title', 'mp_email_title'),
-      f('link_about', 'nav_about', 'nav_about'),
-      f('link_partners', 'home_nav_partners', 'home_nav_partners'),
+      f('link_investment', 'nav_investment', 'nav_investment'),
+      f('link_expat', 'nav_for_expats', 'nav_for_expats'),
+      f('link_brokers', 'pub_nav_brokers', 'pub_nav_brokers'),
       f('link_developers', 'mp_nav_developers', 'mp_nav_developers'),
+      f('link_partners', 'home_nav_partners', 'home_nav_partners'),
+      f('link_about', 'nav_about', 'nav_about'),
+      f('link_pricing', 'nav_pricing', 'nav_pricing'),
       f('link_privacy', 'home_footer_privacy', 'home_footer_privacy'),
       f('link_terms', 'home_footer_terms', 'home_footer_terms'),
       f('brand_tagline', 'brand_tagline', 'brand_tagline'),
@@ -980,20 +849,40 @@ export function itemsDef(type: string): ItemGroupDef | undefined {
   return BY_TYPE.get(type)?.items;
 }
 
-/** Public routes a link may point at. Kept here rather than derived from
- *  routes.tsx so the validator does not drag every page component into the
- *  editor bundle. */
+/**
+ * Routes a visitor with NO account can open. Kept here rather than derived
+ * from routes.tsx so the validator does not drag every page component into
+ * the editor bundle; tests/matrix/publicNav.test.mjs checks each one is a
+ * real route declared `public: true`.
+ *
+ * This list used to hold /dashboard, /property/add, /outreach/*, /credits,
+ * /contracts and /ai as well -- all behind RouteGuard -- so "public route"
+ * meant "any route a page might link to", and nothing could tell a public
+ * destination from a login bounce.
+ */
 export const PUBLIC_ROUTES: readonly string[] = [
-  '/', '/about', '/verify', '/verify/:id', '/verify/history', '/mortgage', '/partners',
-  // Contracts is a product of its own, so a site page may link straight to it.
-  '/contracts',
-  '/privacy', '/terms', '/ai', '/auth/login', '/auth/signup',
-  '/dashboard', '/property/add', '/outreach/calls', '/outreach/email', '/credits',
+  '/', '/about', '/pricing', '/partners', '/developers', '/brokers',
+  '/verify', '/mortgage', '/investment',
+  '/for-expats', '/for-expats/georgia', '/for-expats/georgia/:slug',
+  // The public front doors of Find Property and the owner workspace.
+  '/for-buyers', '/for-owners',
+  '/privacy', '/terms', '/auth/login', '/auth/signup',
+];
+
+/**
+ * Signed-in destinations a site page may still link to -- a "go to your
+ * dashboard" button, say. Legitimate links, so the link checker accepts
+ * them; kept apart so they are never mistaken for public pages.
+ */
+export const SIGNED_IN_ROUTES: readonly string[] = [
+  '/dashboard', '/find-property', '/property', '/property/add', '/contracts',
+  '/verify/history', '/verify/:id', '/ai', '/credits', '/profile',
+  '/outreach/calls', '/outreach/email',
 ];
 
 /** The rules object normalizePage() needs, assembled from the registry. */
 export const NORMALIZE_RULES = {
   knownTypes: KNOWN_SECTION_TYPES,
   variantsFor,
-  knownRoutes: PUBLIC_ROUTES,
+  knownRoutes: [...PUBLIC_ROUTES, ...SIGNED_IN_ROUTES],
 };

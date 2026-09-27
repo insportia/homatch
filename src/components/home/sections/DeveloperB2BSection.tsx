@@ -1,142 +1,76 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Building2, Mail, MessagesSquare, PhoneCall, Radar, Users } from 'lucide-react';
-import { useLanguage } from '@/contexts/LanguageContext';
-import { SceneMedia } from '@/components/home/media/SceneMedia';
-import { Button } from '@/components/ui/button';
-import { Eyebrow, PAGE, SECTION_Y } from './primitives';
-import { useSectionField, useSectionMedia, useFieldProps , useMediaProps} from '@/site/content';
+import { Link } from 'react-router-dom';
+import { ArrowRight, Building, Handshake, Users } from 'lucide-react';
+import { PAGE, SECTION_Y } from './primitives';
+import { useSectionField, useFieldProps } from '@/site/content';
+import type { TranslationKey } from '@/i18n/translations';
 
 /**
- * REGION 06 — Developer B2B.
+ * REGION — for professionals: brokers, developers, partners.
  *
- * The largest single region on the page, and deliberately black. "Developer
- * workspace — project records and buyer demand" was a row in a directory,
- * which badly under-sold it: for a developer, Homatch is the whole sales and
- * marketing operation, not a filing cabinet.
+ * The section type is still `developers` (its stored identity in Site
+ * Studio), but it no longer argues for one audience with a six-stage
+ * pipeline diagram. Three kinds of professional use Homatch, each has a real
+ * public page, and each card says in one sentence what that page is for.
  *
- * THE FLOW IS THE ARGUMENT
- *
- * Project → demand → people → matching → AI outreach → calls & email →
- * follow-up → opportunity. Every stage in it maps to something the product
- * actually does today; nothing here promises end-to-end automation of a
- * developer's operations, because that is not what this is.
- *
- * Drawn in SVG/CSS with fine gold lines rather than an animation library —
- * the page's performance budget is spent on photography, and the whole
- * diagram respects prefers-reduced-motion by simply not moving.
+ * Brokers is the directory of brokers and agencies with an ACTIVE, PAID
+ * Homatch listing — the page itself (BrokersPage) is another workstream's;
+ * this only links to it, in words that match what it states.
  */
-const STAGES = [
-  { key: 'project', field: 'stage1', icon: Building2, labelKey: 'mp_dev_stage_project' },
-  { key: 'demand', field: 'stage2', icon: Radar, labelKey: 'mp_dev_stage_demand' },
-  { key: 'people', field: 'stage3', icon: Users, labelKey: 'mp_dev_stage_people' },
-  { key: 'calls', field: 'stage4', icon: PhoneCall, labelKey: 'mp_dev_stage_calls' },
-  { key: 'email', field: 'stage5', icon: Mail, labelKey: 'mp_dev_stage_email' },
-  { key: 'followup', field: 'stage6', icon: MessagesSquare, labelKey: 'mp_dev_stage_followup' },
-] as const;
+const CARDS: {
+  key: 'brokers' | 'developers' | 'partners';
+  to: string;
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
+  title: TranslationKey;
+  body: TranslationKey;
+  cta: TranslationKey;
+}[] = [
+  { key: 'brokers', to: '/brokers', icon: Users, title: 'pub_nav_brokers', body: 'pub_pro_brokers_d', cta: 'pub_pro_brokers_cta' },
+  { key: 'developers', to: '/developers', icon: Building, title: 'mp_nav_developers', body: 'pub_pro_developers_d', cta: 'pub_pro_developers_cta' },
+  { key: 'partners', to: '/partners', icon: Handshake, title: 'home_nav_partners', body: 'pub_pro_partners_d', cta: 'pub_pro_partners_cta' },
+];
 
 export function DeveloperB2BSection() {
-  const backdrop = useSectionMedia()('backdrop');
   const sf = useSectionField();
   const fp = useFieldProps();
-  const mp = useMediaProps();
-  const { isRTL } = useLanguage();
-  const navigate = useNavigate();
-
-  const points = [
-    { key: 'p1', title: sf('p1_t', 'mp_dev_point_1_title'), desc: sf('p1_d', 'mp_dev_point_1_desc') },
-    { key: 'p2', title: sf('p2_t', 'mp_dev_point_2_title'), desc: sf('p2_d', 'mp_dev_point_2_desc') },
-    { key: 'p3', title: sf('p3_t', 'mp_dev_point_3_title'), desc: sf('p3_d', 'mp_dev_point_3_desc') },
-  ];
 
   return (
-    <section id="developers" className="relative scroll-mt-20 overflow-hidden bg-[#0D0D0D] text-white">
-      {/* The city, at the bottom of its exposure range: a texture that says
-          "a development, in a real place" without turning the region warm. */}
-      {/* The city, in black and white. At full chroma a Tbilisi sunset behind
-          this much type is both a legibility problem and the single largest
-          source of warm colour on a black-white-gold page; desaturated to
-          nothing and held at a tenth of its exposure it is pure texture. */}
-      <div className="absolute inset-0 saturate-0" aria-hidden="true" {...mp('backdrop')}>
-        <SceneMedia scene="platform" alt={backdrop?.alt ?? ''} sizes="100vw" position="50% 58%" overrideUrl={backdrop?.url} />
-        <div className="absolute inset-0 bg-[#0D0D0D]/90" />
-        <div className="absolute inset-0 bg-gradient-to-b from-[#0D0D0D] via-[#0D0D0D]/78 to-[#0D0D0D]" />
-      </div>
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{ background: 'radial-gradient(70rem 36rem at 20% -10%, hsl(38 88% 54% / 0.16), transparent 66%)' }}
-        aria-hidden="true"
-      />
-
-      <div className={`${PAGE} relative ${SECTION_Y}`}>
-        <div className="grid gap-9 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)] lg:gap-20">
-          <div>
-            <Eyebrow tone="light" {...fp('eyebrow')}>{sf('eyebrow', 'mp_dev_eyebrow')}</Eyebrow>
-            <h2
-              className="mt-5 text-balance font-semibold leading-[1.08] tracking-[-0.025em] text-white"
-              style={{ fontSize: 'clamp(1.4rem, 5.6vw, 3.1rem)' }}
-             {...fp('title')}>
-              {sf('title', 'mp_dev_title')}
-            </h2>
-            <p className="mt-6 max-w-[36rem] text-pretty text-[17px] leading-[1.75] text-white/75 sm:text-base" {...fp('body')}>
-              {sf('body', 'mp_dev_sub')}
-            </p>
-
-            <ul className="mt-10 border-t border-white/15">
-              {points.map(point => (
-                <li key={point.key} className="border-b border-white/15 py-4 sm:py-6">
-                  <h3 className="text-base font-semibold text-white" {...fp(`${point.key}_t`)}>{point.title}</h3>
-                  <p className="mt-2 max-w-[34rem] text-pretty text-sm leading-relaxed text-white/65" {...fp(`${point.key}_d`)}>{point.desc}</p>
-                </li>
-              ))}
-            </ul>
-
-            <Button
-              className="mt-9 h-auto min-h-12 gap-2.5 whitespace-normal rounded-full bg-gold px-6 py-3 text-start text-sm text-primary hover:bg-gold/90 sm:px-7"
-              onClick={() => navigate('/partners')}
-            >
-              <span {...fp('cta')}>{sf('cta', 'mp_dev_cta')}</span>
-              <ArrowRight className={`h-4 w-4 ${isRTL ? 'rotate-180' : ''}`} strokeWidth={1.75} aria-hidden="true" />
-            </Button>
-          </div>
-
-          {/* ── The operation, as a flow ──────────────────────────────
-              A vertical rail on every size: six stages read top-to-bottom
-              the way the work actually happens, and it needs no separate
-              mobile treatment. */}
-          <div className="relative">
-            <ol className="relative">
-              <span
-                className="pointer-events-none absolute start-[1.25rem] top-4 bottom-4 w-px sm:start-[1.4rem] bg-gradient-to-b from-transparent via-gold/45 to-transparent"
-                aria-hidden="true"
-              />
-              {STAGES.map((stage, i) => (
-                <li key={stage.key} className="relative flex items-center gap-4 py-2.5 sm:gap-5 sm:py-3.5">
-                  <span
-                    className="grid h-10 w-10 shrink-0 place-items-center rounded-[0.6rem] border border-white/25 bg-[#111111] text-gold sm:h-11 sm:w-11"
-                    aria-hidden="true"
-                  >
-                    <stage.icon className="h-[18px] w-[18px]" strokeWidth={1.75} />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-white" {...fp(stage.field)}>{sf(stage.field, stage.labelKey)}</p>
-                  </div>
-                  <span className="shrink-0 text-[14px] font-semibold tabular-nums tracking-[0.16em] text-white/35" aria-hidden="true">
-                    {`0${i + 1}`}
-                  </span>
-                </li>
-              ))}
-            </ol>
-
-            {/* Where the flow arrives. */}
-            <div className="mt-6 flex items-center gap-5 rounded-[0.8rem] border border-gold/40 bg-gold/[0.08] px-5 py-4">
-              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[0.6rem] bg-gold text-primary" aria-hidden="true">
-                <Building2 className="h-[18px] w-[18px]" strokeWidth={1.75} />
-              </span>
-              <p className="min-w-0 flex-1 text-sm font-semibold text-white" {...fp('outcome')}>{sf('outcome', 'mp_dev_stage_outcome')}</p>
-            </div>
-          </div>
+    <section id="professionals" className={`${PAGE} scroll-mt-24 ${SECTION_Y}`}>
+      <div className="grid gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-16">
+        <div className="max-w-[34rem]">
+          <p className="hm-pub-eyebrow" {...fp('eyebrow')}>{sf('eyebrow', 'nav_professional')}</p>
+          <h2 className="hm-pub-h2 mt-4 text-foreground" {...fp('title')}>{sf('title', 'pub_pro_title')}</h2>
+          <p className="hm-pub-lead mt-4" {...fp('body')}>{sf('body', 'pub_pro_body')}</p>
         </div>
+
+        <ul className="grid gap-3">
+          {CARDS.map(card => (
+            <li key={card.key}>
+              <Link
+                to={card.to}
+                className="hm-pub-card bg-card hm-pub-card--link group flex items-start gap-4 p-5 sm:items-center sm:p-6"
+              >
+                <span className="hm-pub-icon" aria-hidden="true"><card.icon className="h-5 w-5" strokeWidth={1.8} /></span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[17px] font-semibold text-foreground" {...fp(`${card.key}_t`)}>
+                    {sf(`${card.key}_t`, card.title)}
+                  </span>
+                  <span className="mt-1 block text-pretty text-[15px] leading-relaxed text-ink-soft" {...fp(`${card.key}_d`)}>
+                    {sf(`${card.key}_d`, card.body)}
+                  </span>
+                  <span className="mt-3 inline-flex items-center gap-1.5 text-[14.5px] font-semibold text-foreground group-hover:text-gold-ink sm:hidden">
+                    <span {...fp(`${card.key}_cta`)}>{sf(`${card.key}_cta`, card.cta)}</span>
+                    <ArrowRight className="hm-pub-arrow" strokeWidth={2} aria-hidden="true" />
+                  </span>
+                </span>
+                <span className="hidden shrink-0 items-center gap-1.5 text-[14.5px] font-semibold text-foreground group-hover:text-gold-ink sm:inline-flex" aria-hidden="true">
+                  {sf(`${card.key}_cta`, card.cta)}
+                  <ArrowRight className="hm-pub-arrow" strokeWidth={2} />
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
       </div>
     </section>
   );

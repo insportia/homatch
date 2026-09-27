@@ -1,305 +1,174 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Upload, Sparkles } from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext';
-import { useLanguage } from '@/contexts/LanguageContext';
-import { FeatureGlyph, type GlyphName } from '@/components/home/FeatureGlyph';
-import { PAGE, SECTION_Y } from './primitives';
-import { useSectionField, useFieldProps, useSectionIconName } from '@/site/content';
-import { iconFor } from '@/site/icons';
+import React from 'react';
+import { Link } from 'react-router-dom';
+import { ArrowRight, Globe2, Home, Landmark, Search, ShieldCheck, TrendingUp, Users } from 'lucide-react';
+import { PAGE } from './primitives';
+import { PubSteps } from '@/components/home/publicUi';
+import { useSectionField, useFieldProps } from '@/site/content';
+import { useProductNavigation, type ProductKey } from '@/site/productEntry';
+import type { TranslationKey } from '@/i18n/translations';
 
 /**
- * REGION 02 — the action launcher.
+ * REGION 02 — the two ways in, and everything else Homatch does.
  *
- * THE POINT OF THE WHOLE PAGE
+ * WHAT THIS REPLACED
  *
- * A visitor who has read the hero now knows what Homatch claims. This is
- * where they get to do one of the things it claims. Every tile starts a REAL
- * task on a route that already exists; there is no "learn more", and nothing
- * here stands in for a feature that is not built.
+ * Six equal tiles: Verify, Contracts, Matching, Mortgage, AI Calls, Email.
+ * Equal size said equal importance, and it buried the product. Homatch is a
+ * matching platform with tools around it; a visitor should see the two sides
+ * of a match first, as the two biggest things on the page after the hero, and
+ * then the tools.
  *
- * SIX TILES, ONE SIZE
+ * Every tile used to route a signed-out visitor to /auth/signup through a
+ * `gated()` helper — including Verify, which is public. Now each control goes
+ * where it says: the product entry pages for the two authenticated products
+ * (src/site/productEntry.ts), and the public tools directly.
  *
- * The previous pass had four large tiles and two small ones. Size reads as
- * importance whatever the intent, so the two in the small row looked like
- * accessories to the four above them. They are not: the mortgage consultant
- * and the campaign tools are products people pay to use. Every tile is now
- * the same tile, in a 3 x 2 grid that becomes two columns on a tablet and one
- * on a phone. Difference of treatment happens further down the page, where
- * each capability gets a section shaped around what it actually does.
- *
- * WHERE EACH TILE GOES, AND WHAT IT NEEDS
- *
- *   Verify     /verify?code=…    public. The field posts straight into the
- *                                Verification Center's own code reader.
- *   Contract   /verify           the contract upload lives inside the
- *                                Verification Center and only renders for a
- *                                signed-in account, so a signed-out visitor
- *                                goes to sign-up rather than to a page that
- *                                will not show them the control.
- *   Matching   /property/add     behind RouteGuard.
- *   Mortgage   /mortgage         public; the calculator runs signed out.
- *   Calls      /outreach/calls   behind RouteGuard.
- *   Email      /outreach/email   behind RouteGuard.
- *
- * Homatch AI is not a tile. It is the hero's own interaction and has its own
- * region; these six are what a question to it reaches.
- *
- * There is no "compare properties" tile either. Homatch has no comparison
- * feature, and a launcher that opens onto something that does not exist is
- * worse than a launcher with one fewer tile.
+ * The two cards' steps are the product's actual sequence, in the same words
+ * as the entry pages, because a visitor who reads one and then the other
+ * should meet the same promise.
  */
-export function ActionLauncherSection() {
-  /*
-   * A tile's icon, if one has been chosen.
-   *
-   * Site Studio stores an icon as a NAME from the curated set. Undefined
-   * means nobody has chosen one, and the tile keeps the drawn glyph it
-   * shipped with — so an untouched page is byte for byte what it was.
-   */
-  const iconName = useSectionIconName();
-  const tileIcon = (key: string) => {
-    const chosen = iconName(`tile_${key}`);
-    return chosen ? iconFor(chosen, Sparkles) : undefined;
-  };
+const INDEX: {
+  key: string;
+  to: string;
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
+  title: TranslationKey;
+  desc: TranslationKey;
+}[] = [
+  { key: 'verify', to: '/verify', icon: ShieldCheck, title: 'nav_verify', desc: 'pub_navd_verify' },
+  { key: 'mortgage', to: '/mortgage', icon: Landmark, title: 'nav_mortgage', desc: 'pub_navd_mortgage' },
+  { key: 'investment', to: '/investment', icon: TrendingUp, title: 'nav_investment', desc: 'pub_navd_investment' },
+  { key: 'expat', to: '/for-expats/georgia', icon: Globe2, title: 'nav_for_expats', desc: 'pub_navd_expat' },
+  { key: 'brokers', to: '/brokers', icon: Users, title: 'pub_nav_brokers', desc: 'pub_navd_brokers' },
+];
 
+export function ActionLauncherSection() {
   const sf = useSectionField();
   const fp = useFieldProps();
-  const { session } = useAuth();
-  const { t, isRTL } = useLanguage();
-  const navigate = useNavigate();
-  const [code, setCode] = useState('');
-
-  /** Signed-out visitors go to sign-up for the routes that are truly gated. */
-  const gated = (path: string) => () => navigate(session ? path : '/auth/signup');
-
-  const openVerify = () => {
-    const value = code.trim();
-    navigate(value ? `/verify?code=${encodeURIComponent(value)}` : '/verify');
-  };
 
   return (
-    <section id="start" className={`${PAGE} scroll-mt-20 ${SECTION_Y}`}>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-8">
-        <div className="max-w-[40rem]">
-          <p className="flex items-center gap-2.5 text-[14px] font-semibold uppercase tracking-[0.22em] text-gold-ink" {...fp('eyebrow')}>
-            <span className="h-px w-6 shrink-0 bg-gold" aria-hidden="true" />
-            {sf('eyebrow', 'mp_launch_eyebrow')}
-          </p>
-          <h2
-            className="mt-3.5 text-balance font-semibold leading-[1.1] tracking-[-0.025em] text-foreground"
-            style={{ fontSize: 'clamp(1.4rem, 5.6vw, 2.75rem)' }}
-           {...fp('title')}>
-            {sf('title', 'mp_launch_title')}
-          </h2>
-        </div>
-        <p className="max-w-[22rem] text-pretty text-[16px] leading-[1.6] text-ink-soft sm:text-sm" {...fp('body')}>
-          {sf('body', 'mp_launch_sub')}
-        </p>
+    <section id="start" className={`${PAGE} scroll-mt-24 pb-16 pt-10 sm:pb-20 sm:pt-12 lg:pb-24 lg:pt-14`}>
+      <div className="max-w-[44rem]">
+        <p className="hm-pub-eyebrow" {...fp('eyebrow')}>{sf('eyebrow', 'pub_paths_eyebrow')}</p>
+        <h2 className="hm-pub-h2 mt-4 text-foreground" {...fp('title')}>{sf('title', 'pub_paths_title')}</h2>
+        <p className="hm-pub-lead mt-4" {...fp('body')}>{sf('body', 'pub_paths_body')}</p>
       </div>
 
-      <div className="mt-8 grid gap-3.5 sm:mt-10 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
-        {/* Verify — the one tile with a live field, because it is the one
-            capability whose entry point is public and takes a single value. */}
-        <Tile
-          glyph="verify"
-          field="tile_verify"
-          icon={tileIcon('verify')}
-          title={sf('tile_verify_t', 'mp_tile_verify_t')}
-          desc={sf('tile_verify_d', 'mp_tile_verify_d')}
-          as="div"
-        >
-          <form
-            onSubmit={e => {
-              e.preventDefault();
-              openVerify();
-            }}
-            className="flex flex-col gap-2"
-          >
-            <input
-              value={code}
-              onChange={e => setCode(e.target.value)}
-              placeholder={t('mp_verify_code_placeholder')}
-              aria-label={t('mp_verify_code_label')}
-              inputMode="numeric"
-              className="h-11 w-full min-w-0 rounded-[0.6rem] border border-foreground/[0.22] bg-card px-3.5 text-sm text-foreground transition-colors placeholder:text-muted-foreground/80 focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/25"
-            />
-            <button
-              type="submit"
-              className="group/go inline-flex h-11 w-full items-center justify-center gap-2 rounded-[0.6rem] bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors duration-300 hover:bg-gold-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none"
-            >
-              <span {...fp('tile_verify_a')}>{sf('tile_verify_a', 'mp_launch_verify_go')}</span>
-              <ArrowRight
-                className={`h-4 w-4 shrink-0 transition-transform duration-300 group-hover/go:translate-x-0.5 motion-reduce:transform-none ${isRTL ? 'rotate-180 group-hover/go:-translate-x-0.5' : ''}`}
-                strokeWidth={2}
-                aria-hidden="true"
-              />
-            </button>
-          </form>
-        </Tile>
-
-        <Tile
-          glyph="contract"
-          field="tile_contract"
-          icon={tileIcon('contract')}
-          title={sf('tile_contract_t', 'mp_contract_title')}
-          desc={sf('tile_contract_d', 'mp_tile_contract_d')}
-          onClick={gated('/verify')}
-          action={
-            <span className="inline-flex items-center gap-2">
-              <Upload className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
-              <span {...fp('tile_contract_a')}>{sf('tile_contract_a', 'mp_contract_cta')}</span>
-            </span>
-          }
+      <div className="mt-10 grid gap-5 lg:grid-cols-2 lg:gap-6">
+        <PathCard
+          product="find_client"
+          field="owner"
+          icon={Home}
+          keys={{
+            eyebrow: 'pub_owner_eyebrow',
+            title: 'pub_owner_title',
+            steps: [
+              ['pub_owner_step1_t', 'pub_owner_step1_d'],
+              ['pub_owner_step2_t', 'pub_owner_step2_d'],
+              ['pub_owner_step3_t', 'pub_owner_step3_d'],
+            ],
+            cta: 'pub_paths_owner_cta',
+          }}
         />
-
-        <Tile
-          glyph="matching"
-          field="tile_match"
-          icon={tileIcon('match')}
-          title={sf('tile_match_t', 'mp_tile_match_t')}
-          desc={sf('tile_match_d', 'mp_tile_match_d')}
-          onClick={gated('/property/add')}
-          action={sf('tile_match_a', 'mp_match_cta')}
+        <PathCard
+          product="find_property"
+          field="buyer"
+          icon={Search}
+          keys={{
+            eyebrow: 'pub_buyer_eyebrow',
+            title: 'pub_buyer_title',
+            steps: [
+              ['pub_buyer_step1_t', 'pub_buyer_step1_d'],
+              ['pub_buyer_step2_t', 'pub_buyer_step2_d'],
+              ['pub_buyer_step3_t', 'pub_buyer_step3_d'],
+            ],
+            cta: 'pub_paths_buyer_cta',
+          }}
         />
+      </div>
 
-        <Tile
-          glyph="mortgage"
-          field="tile_mortgage"
-          icon={tileIcon('mortgage')}
-          title={sf('tile_mortgage_t', 'mp_mortgage_title')}
-          desc={sf('tile_mortgage_d', 'mp_tile_mortgage_d')}
-          onClick={() => navigate('/mortgage')}
-          action={sf('tile_mortgage_a', 'mp_mortgage_cta')}
-        />
-
-        <Tile
-          glyph="calls"
-          field="tile_calls"
-          icon={tileIcon('calls')}
-          title={sf('tile_calls_t', 'call_center_title')}
-          desc={sf('tile_calls_d', 'mp_tile_calls_d')}
-          onClick={gated('/outreach/calls')}
-          action={sf('tile_calls_a', 'mp_calls_cta')}
-        />
-
-        <Tile
-          glyph="email"
-          field="tile_email"
-          icon={tileIcon('email')}
-          title={sf('tile_email_t', 'mp_email_title')}
-          desc={sf('tile_email_d', 'mp_tile_email_d')}
-          onClick={gated('/outreach/email')}
-          action={sf('tile_email_a', 'mp_email_cta')}
-        />
+      {/* THE TOOLS AROUND A MATCH. Every one is a public page a visitor can
+          open without an account. */}
+      <div className="mt-14 sm:mt-16">
+        <h3 className="hm-pub-h3 text-foreground" {...fp('index_title')}>{sf('index_title', 'pub_index_title')}</h3>
+        <ul className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {INDEX.map(item => (
+            <li key={item.key}>
+              <Link
+                to={item.to}
+                className="hm-pub-card bg-card hm-pub-card--link group flex h-full flex-row items-start gap-3.5 p-4 lg:flex-col lg:gap-4 lg:p-5"
+              >
+                <span className="hm-pub-icon" aria-hidden="true">
+                  <item.icon className="h-5 w-5" strokeWidth={1.8} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-2 text-[16px] font-semibold text-foreground">
+                    <span {...fp(`index_${item.key}_t`)}>{sf(`index_${item.key}_t`, item.title)}</span>
+                    <ArrowRight className="hm-pub-arrow h-4 w-4 text-muted-foreground group-hover:text-gold-ink" aria-hidden="true" />
+                  </span>
+                  <span className="mt-1 block text-pretty text-[14.5px] leading-snug text-muted-foreground" {...fp(`index_${item.key}_d`)}>
+                    {sf(`index_${item.key}_d`, item.desc)}
+                  </span>
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
       </div>
     </section>
   );
 }
 
-/* ------------------------------------------------------------------ *
- * The tile                                                            *
- *                                                                     *
- * A white card whose WHOLE SURFACE is the control, which is what makes *
- * a launcher feel like a launcher. Verify is the exception: it holds a *
- * field and a submit, so it renders as a plain <div> rather than       *
- * nesting interactive elements inside a button.                       *
- * ------------------------------------------------------------------ */
-
-function Tile({
-  glyph, title, desc, action, onClick, as = 'button', children, field, icon,
+function PathCard({
+  product, field, icon: Glyph, keys,
 }: {
-  glyph: GlyphName;
-  title: string;
-  desc: string;
-  action?: React.ReactNode;
-  onClick?: () => void;
-  as?: 'button' | 'div';
-  children?: React.ReactNode;
-  /** Field-key prefix, so this tile's copy is addressable in the editor. */
-  field?: string;
-  /** A curated icon chosen in Site Studio, replacing the shipped glyph. */
-  icon?: React.ComponentType<{ className?: string; strokeWidth?: number }>;
+  product: ProductKey;
+  field: 'owner' | 'buyer';
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
+  keys: {
+    eyebrow: TranslationKey;
+    title: TranslationKey;
+    steps: [TranslationKey, TranslationKey][];
+    cta: TranslationKey;
+  };
 }) {
-  const { isRTL } = useLanguage();
+  const sf = useSectionField();
   const fp = useFieldProps();
-  const mark = (part: string) => (field ? fp(`${field}_${part}`) : {});
-
-  const body = (
-    <>
-      {/* Glyph and title share a row on a phone, so a tile does not open with
-          60px of picture before its first word; they stack from sm, where
-          there is height to spend on the composition. */}
-      <div className="flex items-center gap-3.5 sm:block">
-        {/* A chosen icon replaces the shipped glyph; with none chosen the
-            tile draws exactly what it always drew. */}
-        {icon ? (
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-[0.9rem] border border-foreground/15 bg-secondary text-foreground transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-[1.04] motion-reduce:transform-none sm:h-14 sm:w-14">
-            {React.createElement(icon, { className: 'h-6 w-6', strokeWidth: 1.75 })}
-          </span>
-        ) : (
-          <FeatureGlyph
-            name={glyph}
-            size={48}
-            className="transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-[1.04] motion-reduce:transform-none sm:h-14 sm:w-14"
-          />
-        )}
-        <h3
-          className="min-w-0 flex-1 text-balance font-semibold leading-[1.2] tracking-[-0.012em] text-foreground sm:mt-5"
-          style={{ fontSize: 'clamp(1.05rem, 1.45vw, 1.3rem)' }}
-          {...mark('t')}
-        >
-          {title}
-        </h3>
-      </div>
-
-      <p
-        className="mt-3 text-pretty text-[16px] leading-[1.6] text-ink-soft sm:mt-2.5 sm:text-[16px] sm:leading-[1.65]"
-        {...mark('d')}
-      >
-        {desc}
-      </p>
-
-      <div className="mt-5 border-t border-foreground/[0.12] pt-4 sm:mt-6 sm:pt-5">
-        {children ?? (
-          <span className="inline-flex items-center gap-2 text-start text-sm font-semibold text-foreground transition-colors duration-300 group-hover:text-gold-ink motion-reduce:transition-none">
-            <span {...mark('a')}>{action}</span>
-            <ArrowRight
-              className={`h-4 w-4 shrink-0 transition-transform duration-300 group-hover:translate-x-1 motion-reduce:transform-none ${isRTL ? 'rotate-180 group-hover:-translate-x-1' : ''}`}
-              strokeWidth={2}
-              aria-hidden="true"
-            />
-          </span>
-        )}
-      </div>
-    </>
-  );
-
-  const shell =
-    'group relative flex h-full flex-col overflow-hidden rounded-[1.1rem] border border-foreground/[0.14] bg-card p-5 text-start transition-[border-color,box-shadow] duration-300 hover:border-foreground/45 hover:shadow-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none sm:p-6';
-
-  /* The gold edge along the top on hover: the one premium detail every tile
-     shares, and the reason the grid reads as a set rather than six cards. */
-  const edge = (
-    <span
-      className="pointer-events-none absolute inset-x-0 top-0 h-[3px] origin-left scale-x-0 bg-gold transition-transform duration-300 group-hover:scale-x-100 motion-reduce:transition-none rtl:origin-right"
-      aria-hidden="true"
-    />
-  );
-
-  if (as === 'div') {
-    return (
-      <div className={shell}>
-        {edge}
-        {body}
-      </div>
-    );
-  }
+  const { openProduct } = useProductNavigation();
 
   return (
-    <button type="button" onClick={onClick} className={shell}>
-      {edge}
-      {body}
-    </button>
+    <article className="hm-pub-card bg-card flex flex-col overflow-hidden">
+      {/* The gold rule is the one ornament: it says "start here" twice. */}
+      <span className="h-[3px] bg-gradient-to-r from-gold via-gold/70 to-transparent rtl:bg-gradient-to-l" aria-hidden="true" />
+      <div className="flex flex-1 flex-col p-5 sm:p-8">
+        <div className="flex items-center gap-3.5">
+          <span className="hm-pub-icon hm-pub-icon--gold" aria-hidden="true">
+            <Glyph className="h-5 w-5" strokeWidth={1.9} />
+          </span>
+          <p className="text-[14px] font-semibold text-gold-ink" {...fp(`${field}_eyebrow`)}>{sf(`${field}_eyebrow`, keys.eyebrow)}</p>
+        </div>
+        <h3 className="hm-pub-h2 mt-5 !text-[clamp(1.4rem,3.2vw,1.9rem)] text-foreground" {...fp(`${field}_title`)}>
+          {sf(`${field}_title`, keys.title)}
+        </h3>
+        <PubSteps
+          className="mt-6"
+          steps={keys.steps.map(([title, body], i) => ({
+            title: sf(`${field}_s${i + 1}_t`, title),
+            body: sf(`${field}_s${i + 1}_d`, body),
+            titleMark: fp(`${field}_s${i + 1}_t`),
+            bodyMark: fp(`${field}_s${i + 1}_d`),
+          }))}
+        />
+        <div className="mt-auto pt-8">
+          <button
+            type="button"
+            onClick={() => openProduct(product)}
+            className="hm-pub-btn hm-pub-btn--primary w-full sm:w-auto"
+          >
+            <span {...fp(`${field}_cta`)}>{sf(`${field}_cta`, keys.cta)}</span>
+            <ArrowRight className="hm-pub-arrow" strokeWidth={2} aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+    </article>
   );
 }

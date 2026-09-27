@@ -36,6 +36,82 @@ import { getSpendCapStatus } from '@/services/api';
 import { readProviderStatus } from '@/services/communications';
 import type { ChannelReadinessRow, ProviderReportRow } from '@/types/communications';
 import type { SpendCapStatus } from '@/types/types';
+import { ErrorNote } from '@/components/admin/control/AdminKit';
+import { humanize } from '@/admin/labels';
+import { getOverviewCounts, type OverviewCounts } from '@/services/adminControl';
+
+/*
+ * PLATFORM AT A GLANCE.
+ *
+ * Counts, each a link to the page that manages what it counts. All of them
+ * come from one admin-only read (admin_overview_counts) and every one is a
+ * count of rows that exist — nothing is estimated, and a source that could
+ * not be read shows the error rather than a zero.
+ */
+function Glance() {
+  const { t } = useLanguage();
+  const [c, setC] = React.useState<OverviewCounts | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    let live = true;
+    getOverviewCounts()
+      .then((r) => { if (live) setC(r); })
+      .catch((e: unknown) => { if (live) setError(e instanceof Error ? e.message : String(e)); });
+    return () => { live = false; };
+  }, []);
+
+  const n = (v: number | null | undefined) => (v == null ? '—' : Number(v).toLocaleString());
+  const cards = c ? [
+    { key: 'properties', label: t('admin_properties_title'), value: n(c.properties.total),
+      detail: t('admin_cc_glance_properties', { active: n(c.properties.active), archived: n(c.properties.archived) }), to: '/admin/properties' },
+    { key: 'users', label: t('admin_nav_users'), value: n(c.users.registered),
+      detail: t('admin_cc_glance_users', { recent: n(c.users.new_7d), admins: n(c.users.admins) }), to: '/admin/users' },
+    { key: 'intel', label: t('admin_cc_intel_title'), value: n(c.intelligence.active),
+      detail: t('admin_cc_glance_intel', { day: n(c.intelligence.last_24h), searches: n(c.effective_demands) }), to: '/admin/intelligence' },
+    { key: 'internal', label: t('admin_cc_glance_internal'), value: n(c.matches.internal),
+      detail: t('admin_cc_glance_internal_detail', { compatible: n(c.matches.internal_compatible) }), to: '/admin/supply-matches?kind=INTERNAL' },
+    { key: 'external', label: t('admin_cc_glance_external'), value: n(c.matches.external),
+      detail: t('admin_cc_glance_external_detail', { legacy: n(c.matches.legacy) }), to: '/admin/supply-matches?kind=EXTERNAL' },
+    { key: 'notifications', label: t('admin_cc_notif_title'), value: n(c.notifications.last_24h),
+      detail: t('admin_cc_glance_notifications', { unread: n(c.notifications.unread), pushed: n(c.notifications.pushed) }), to: '/admin/notifications' },
+    { key: 'announcements', label: t('admin_cc_ann_title'), value: n(c.announcements.published),
+      detail: t('admin_cc_glance_announcements', { drafts: n(c.announcements.draft) }), to: '/admin/announcements' },
+    { key: 'campaigns', label: t('admin_campaigns_title'), value: n(c.campaigns.active),
+      detail: t('admin_cc_glance_campaigns', { paused: n(c.campaigns.paused), total: n(c.campaigns.total) }), to: '/admin/campaigns' },
+    { key: 'billing', label: t('admin_cc_glance_wallets'), value: `${n(c.billing.wallet_balance_credits)} ${t('admin_cc_credits_unit')}`,
+      detail: t('admin_cc_glance_billing', { usd: (Number(c.billing.wallet_balance_credits) / (Number(c.billing.credits_per_usd) || 10)).toFixed(2), payments: n(c.billing.payments_completed_30d) }), to: '/admin/finance' },
+    { key: 'providers', label: t('admin_nav_providers'), value: n(c.providers.total),
+      detail: Object.entries(c.providers.by_status).map(([k, v]) => `${v} ${humanize(k).toLowerCase()}`).join(' · ') || t('admin_cc_none'), to: '/admin/providers' },
+    { key: 'health', label: t('admin_nav_health'),
+      value: c.health.last_checked_at ? new Date(c.health.last_checked_at).toLocaleDateString() : '—',
+      detail: c.health.last_checked_at ? t('admin_cc_glance_health_checked') : t('admin_cc_glance_health_never'), to: '/admin/health' },
+    { key: 'audit', label: t('admin_cc_audit_title'), value: n(c.audit.last_24h),
+      detail: c.impersonation.enabled ? t('admin_cc_glance_imp_on', { open: n(c.impersonation.active_sessions) }) : t('admin_cc_glance_imp_off'), to: '/admin/audit-log' },
+  ] : [];
+
+  return (
+    <section aria-labelledby="admin-home-glance">
+      <h2 id="admin-home-glance" className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        {t('admin_cc_glance_title')}
+      </h2>
+      {error ? <ErrorNote message={error} /> : !c ? (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}</div>
+      ) : (
+        <ul className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {cards.map((card) => (
+            <li key={card.key}>
+              <Link to={card.to} className="block h-full rounded-lg border border-border bg-card p-3 transition-colors hover:bg-accent/50">
+                <p className="truncate text-2xs font-medium text-muted-foreground">{card.label}</p>
+                <p className="mt-1 truncate text-xl font-semibold tabular-nums text-foreground">{card.value}</p>
+                <p className="mt-0.5 line-clamp-2 text-2xs text-muted-foreground">{card.detail}</p>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
 
 /**
  * The five states a row can be in.
@@ -340,6 +416,8 @@ export default function AdminHomePage() {
         <h1 className="font-display text-2xl font-semibold text-foreground">{t('admin_home_title')}</h1>
         <p className="mt-1 text-sm text-muted-foreground">{t('admin_home_subtitle')}</p>
       </header>
+
+      <Glance />
 
       {/* ── Status ─────────────────────────────────────────────────── */}
       <section aria-labelledby="admin-home-status">

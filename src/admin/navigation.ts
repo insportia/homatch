@@ -29,8 +29,8 @@
 // the navigation itself. Knowing the jargon must not be REQUIRED; knowing
 // it must still WORK.
 
-import {Activity, AudioLines, BadgeDollarSign,BarChart3,Bell,Building2, CreditCard,Gauge, Globe, HardDrive, HeartPulse, 
-  LayoutDashboard, Mail,
+import {Activity, AudioLines, BadgeDollarSign,BarChart3,Bell,BellRing,Brain,Building2, CreditCard,Gauge, Globe, Handshake, HardDrive, HeartPulse, 
+  LayoutDashboard, Mail, Megaphone, ScrollText,
   MessageCircle, MessageSquareWarning, 
   Paintbrush, PhoneCall, Puzzle, Radio, 
   Receipt, Send, Server, Settings2, Share2, ShieldAlert, ShieldCheck, SlidersHorizontal, 
@@ -104,8 +104,21 @@ export const ADMIN_GROUPS: AdminGroup[] = [
         keywords: ['campaign', 'matching run', 'search'],
       },
       {
-        path: '/admin/matches', labelKey: 'admin_nav_matches', icon: Puzzle,
-        keywords: ['match', 'unlock', 'result'],
+        /* Native matching: internal pairs of two Homatch accounts, and
+           external pairs found outside Homatch, on separate tabs. */
+        path: '/admin/supply-matches', labelKey: 'admin_cc_nav_matches', icon: Handshake,
+        keywords: ['match', 'pair', 'internal', 'external', 'supply', 'demand', 'native'],
+      },
+      {
+        /* What people said (signals) and what they want now (effective
+           demand). Structure only — never message text. */
+        path: '/admin/intelligence', labelKey: 'admin_cc_nav_intelligence', icon: Brain,
+        keywords: ['intelligence', 'intent', 'signal', 'demand', 'requirement', 'firmness', 'native'],
+      },
+      {
+        /* The older paid-unlock `matches` table, kept and labelled as such. */
+        path: '/admin/matches', labelKey: 'admin_cc_nav_legacy_matches', icon: Puzzle,
+        keywords: ['legacy', 'unlock', 'result', 'old matches'],
       },
       {
         path: '/admin/markets', labelKey: 'admin_nav_markets', icon: Globe,
@@ -176,6 +189,14 @@ export const ADMIN_GROUPS: AdminGroup[] = [
       {
         path: '/admin/outreach', labelKey: 'admin_nav_outreach', icon: Send,
         keywords: ['outreach', 'campaign performance', 'observability', 'sends', 'delivery'],
+      },
+      {
+        path: '/admin/notifications', labelKey: 'admin_cc_nav_notifications', icon: BellRing,
+        keywords: ['notification', 'inbox', 'push', 'delivered', 'read', 'dedupe'],
+      },
+      {
+        path: '/admin/announcements', labelKey: 'admin_cc_nav_announcements', icon: Megaphone,
+        keywords: ['announcement', 'broadcast', 'news', 'publish', 'everyone'],
       },
       {
         path: '/admin/live-chat-reports', labelKey: 'admin_livechat_title', icon: MessageSquareWarning,
@@ -256,6 +277,10 @@ export const ADMIN_GROUPS: AdminGroup[] = [
           'provider', 'routing', 'credential', 'kill switch', 'api key',
           'cartesia', 'vapi', 'meta', 'resend', 'elevenlabs', 'openai',
         ],
+      },
+      {
+        path: '/admin/audit-log', labelKey: 'admin_cc_nav_audit', icon: ScrollText,
+        keywords: ['audit', 'log', 'history', 'who changed', 'impersonation', 'trail'],
       },
       {
         path: '/admin/diagnostics', labelKey: 'admin_nav_diagnostics', icon: Wrench,

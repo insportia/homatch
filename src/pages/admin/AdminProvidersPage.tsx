@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { RefreshCw, CheckCircle2, XCircle, Clock, AlertTriangle, MinusCircle, Power, ShieldOff, Landmark, Lock } from 'lucide-react';
+import { RefreshCw, CheckCircle2, XCircle, Clock, AlertTriangle, MinusCircle, Power, ShieldOff, Landmark, Lock, Archive } from 'lucide-react';
 import { getProviderHealth, getProviderCostBreakdown, getAdminSettings, updateAdminSetting, getResearchProviderTreasury, updateResearchProvider } from '@/services/api';
 import type { ProviderHealth, AdminProviderCostRow, ResearchProviderTreasuryRow } from '@/types/types';
 import { format } from 'date-fns';
@@ -21,6 +21,21 @@ const STATUS_CONFIG = {
   REAL_TEST_PASSED:      { labelKey: 'admin_providers_passed',         color: 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400', icon: CheckCircle2 },
   ERROR:                 { labelKey: 'admin_providers_error',          color: 'bg-destructive/10 text-destructive',           icon: XCircle },
 };
+
+/*
+ * RETIRED, NOT DISABLED.
+ *
+ * DataForSEO and Apify are retired from the Homatch architecture. A disabled
+ * provider is one an admin can enable again; a retired one has no code path
+ * left to enable (supabase/functions/_shared/retiredProviders.ts), so this
+ * screen must not offer a button that looks like it would. Their cards keep
+ * their history -- cost to date, last error, success rate -- and lose the Test
+ * and Enable controls. Every write to provider_disabled_list keeps both names
+ * in it, so no preset and no toggle can take them off the list.
+ */
+const RETIRED_PROVIDERS = ['DATAFORSEO', 'APIFY'];
+const isRetired = (provider: string) => RETIRED_PROVIDERS.includes(provider.toUpperCase());
+const withRetired = (list: readonly string[]) => Array.from(new Set([...list, ...RETIRED_PROVIDERS]));
 
 export default function AdminProvidersPage() {
   const { t } = useLanguage();
@@ -109,8 +124,8 @@ export default function AdminProvidersPage() {
       const next = currentlyDisabled
         ? disabledProviders.filter(p => p !== provider)
         : [...disabledProviders, provider];
-      await updateAdminSetting('provider_disabled_list', next);
-      setDisabledProviders(next);
+      await updateAdminSetting('provider_disabled_list', withRetired(next));
+      setDisabledProviders(withRetired(next));
       toast.success(`${provider} ${currentlyDisabled ? 'enabled' : 'disabled'}`);
     } catch (e: any) {
       toast.error(`Failed to toggle provider: ${e.message}`);
@@ -138,9 +153,9 @@ export default function AdminProvidersPage() {
   // actually read (external_discovery_enabled, provider_kill_switch,
   // provider_disabled_list, external_discovery_strong_score,
   // external_discovery_min_strong_matches) — not a separate, decorative
-  // concept. APIFY is the only provider behind the social-platform scrapers
-  // (Facebook/Telegram/Reddit/Threads); DATAFORSEO is the only one behind web
-  // search — so "web only" concretely means disabling APIFY.
+  // concept. There used to be a third, "web only", which meant disabling APIFY
+  // and keeping DATAFORSEO. Both are retired now, so it would have been the same
+  // as "balanced" under a name that promised something different; it is gone.
   const PRESETS = {
     locked: {
       labelKey: 'admin_providers_preset_locked',
@@ -149,10 +164,6 @@ export default function AdminProvidersPage() {
     balanced: {
       labelKey: 'admin_providers_preset_balanced',
       settings: { external_discovery_enabled: true, provider_kill_switch: false, provider_disabled_list: [] as string[], external_discovery_strong_score: 70, external_discovery_min_strong_matches: 3 },
-    },
-    web_only: {
-      labelKey: 'admin_providers_preset_web_only',
-      settings: { external_discovery_enabled: true, provider_kill_switch: false, provider_disabled_list: ['APIFY'] as string[], external_discovery_strong_score: 70, external_discovery_min_strong_matches: 3 },
     },
   } as const;
 
@@ -163,12 +174,12 @@ export default function AdminProvidersPage() {
       await Promise.all([
         updateAdminSetting('external_discovery_enabled', preset.settings.external_discovery_enabled),
         updateAdminSetting('provider_kill_switch', preset.settings.provider_kill_switch),
-        updateAdminSetting('provider_disabled_list', preset.settings.provider_disabled_list),
+        updateAdminSetting('provider_disabled_list', withRetired(preset.settings.provider_disabled_list)),
         updateAdminSetting('external_discovery_strong_score', preset.settings.external_discovery_strong_score),
         updateAdminSetting('external_discovery_min_strong_matches', preset.settings.external_discovery_min_strong_matches),
       ]);
       setGlobalKillSwitch(preset.settings.provider_kill_switch);
-      setDisabledProviders(preset.settings.provider_disabled_list);
+      setDisabledProviders(withRetired(preset.settings.provider_disabled_list));
       toast.success(t('admin_providers_preset_applied', { name: t(preset.labelKey) }));
     } catch (e: any) {
       toast.error(`Failed to apply preset: ${e.message}`);
@@ -262,23 +273,31 @@ export default function AdminProvidersPage() {
             const successRate = h.success_count + h.failure_count > 0
               ? Math.round((h.success_count / (h.success_count + h.failure_count)) * 100) : null;
             const isDisabled = disabledProviders.includes(h.provider);
+            const retired = isRetired(h.provider);
 
             return (
-              <Card key={h.provider} className={cn('shadow-sm', isDisabled && 'opacity-60 border-dashed')}>
+              <Card key={h.provider} className={cn('shadow-sm', (isDisabled || retired) && 'opacity-60 border-dashed')}>
                 <CardHeader className="pb-2 pt-4">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <CardTitle className="text-sm font-semibold">{h.provider}</CardTitle>
-                      {isDisabled && (
+                      {isDisabled && !retired && (
                         <Badge variant="destructive" className="text-[13px] px-1.5 gap-0.5">
                           <Power className="h-2.5 w-2.5" /> {t('admin_markets_disabled')}
                         </Badge>
                       )}
                     </div>
-                    <div className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${cfg.color}`}>
-                      <Icon className="h-3 w-3 shrink-0" />
-                      <span>{t(cfg.labelKey)}</span>
-                    </div>
+                    {retired ? (
+                      <div className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-muted text-muted-foreground">
+                        <Archive className="h-3 w-3 shrink-0" />
+                        <span>{t('admin_providers_retired')}</span>
+                      </div>
+                    ) : (
+                      <div className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${cfg.color}`}>
+                        <Icon className="h-3 w-3 shrink-0" />
+                        <span>{t(cfg.labelKey)}</span>
+                      </div>
+                    )}
                   </div>
                 </CardHeader>
                 <CardContent className="pb-4 space-y-2">
@@ -306,6 +325,9 @@ export default function AdminProvidersPage() {
                       {t('admin_providers_last_tested')}: {format(new Date(h.last_tested_at), 'MMM d, HH:mm')}
                     </p>
                   )}
+                  {retired ? (
+                    <p className="text-xs text-muted-foreground pt-1 break-words">{t('admin_providers_retired_desc')}</p>
+                  ) : (
                   <div className="flex gap-2 pt-1">
                     <Button
                       variant="outline"
@@ -333,6 +355,7 @@ export default function AdminProvidersPage() {
                       {toggling === h.provider ? '…' : isDisabled ? t('admin_markets_toggle_enable') : t('admin_markets_toggle_disable')}
                     </Button>
                   </div>
+                  )}
                 </CardContent>
               </Card>
             );
@@ -347,14 +370,25 @@ export default function AdminProvidersPage() {
       <p className="text-xs text-muted-foreground -mt-3">{t('admin_providers_treasury_desc')}</p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {treasuryLoading ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />) :
-          treasury.map(p => (
-            <Card key={p.provider_code} className={cn('shadow-sm', !p.enabled && 'opacity-70 border-dashed')}>
+          treasury.map(p => {
+            /* research_providers still holds rows for both retired providers --
+               production had DATAFORSEO enabled=true / ACTIVE on 2026-09-27, a
+               flag nothing executes on. Shown as retired, with no switch. */
+            const retired = isRetired(p.provider_code);
+            return (
+            <Card key={p.provider_code} className={cn('shadow-sm', (!p.enabled || retired) && 'opacity-70 border-dashed')}>
               <CardContent className="p-4 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-sm font-semibold">{p.display_name}</p>
+                  {retired ? (
+                    <Badge variant="outline" className="text-[13px] px-1.5 gap-0.5">
+                      <Archive className="h-2.5 w-2.5 me-1 inline" />{t('admin_providers_retired')}
+                    </Badge>
+                  ) : (
                   <Badge variant="outline" className={cn('text-[13px] px-1.5', p.health_status === 'ACTIVE' ? 'border-green-500/40 text-green-500' : p.health_status === 'LOCKED' ? 'border-destructive/40 text-destructive' : '')}>
                     {p.health_status === 'LOCKED' && <Lock className="h-2.5 w-2.5 me-1 inline" />}{p.health_status}
                   </Badge>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div><p className="text-muted-foreground">{t('admin_providers_billing')}</p><p className="font-medium">{p.billing_model}</p></div>
@@ -363,6 +397,9 @@ export default function AdminProvidersPage() {
                   <div><p className="text-muted-foreground">{t('admin_providers_current_usage')}</p><p className="font-medium">{p.current_usage.toLocaleString()}</p></div>
                 </div>
                 {p.notes && <p className="text-[14px] text-muted-foreground/80 leading-snug">{p.notes}</p>}
+                {retired ? (
+                  <p className="text-xs text-muted-foreground pt-1 break-words">{t('admin_providers_retired_desc')}</p>
+                ) : (
                 <div className="flex items-center gap-2 pt-1">
                   <Switch
                     checked={p.enabled}
@@ -372,9 +409,11 @@ export default function AdminProvidersPage() {
                   />
                   <span className="text-xs text-muted-foreground">{p.enabled ? t('admin_markets_enabled') : t('admin_providers_disabled_kill_switch')}</span>
                 </div>
+                )}
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
       </div>
 
       {/* Communications routing (§54). A section here rather than a new Admin

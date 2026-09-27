@@ -224,3 +224,102 @@ test('BROKER_FINDER is not advertised while it has no execution path', () => {
   assert.deepEqual(enabling.map((fn) => fn.name), [],
     'something enables BROKER_FINDER without an execution path');
 });
+
+/* ────────────────────────────────────────────────────────────────────────
+ * The one way in, and the one reviewer
+ * ──────────────────────────────────────────────────────────────────────── */
+
+const REVIEW = readFileSync(join(
+  root, 'supabase', 'migrations', '20260928300000_broker_directory_review_and_apply.sql',
+), 'utf8');
+
+/** One function's body, from its header to the next `end $$;`. */
+function fnBody(sql, name) {
+  const start = sql.indexOf(`create or replace function public.${name}(`);
+  assert.ok(start > -1, `${name} is not declared`);
+  return sql.slice(start, sql.indexOf('end $$;', start));
+}
+
+test('the registration writer is declared, and it cannot choose its own standing', () => {
+  /*
+   * "When a real registration flow is built, this assertion is the place it gets
+   * declared" -- the edge-function test above. It is a SQL function, not an edge
+   * function, and this is its declaration.
+   *
+   * Its SIGNATURE is the guard: no status, no paid_until and no broker_id argument, so
+   * an applicant cannot publish themselves, pay themselves or claim a discovered firm.
+   */
+  const apply = fnBody(REVIEW, 'broker_directory_apply');
+  const signature = apply.slice(0, apply.indexOf(')\nreturns'));
+  for (const forbidden of [/p_status/, /p_paid/, /p_broker_id/, /p_owner/]) {
+    assert.doesNotMatch(signature, forbidden, `the apply function accepts ${forbidden}`);
+  }
+  assert.match(apply, /v_uid, null, v_name/, 'broker_id is not written as null');
+  assert.match(apply, /'PENDING_REVIEW', null/, 'an application is not PENDING_REVIEW and unpaid');
+  assert.match(apply, /v_uid\s+uuid := auth\.uid\(\)/, 'the owner is not the caller');
+  assert.match(apply, /raise exception 'NOT_AUTHENTICATED'/);
+});
+
+test('every admin broker function checks is_admin() itself', () => {
+  for (const name of [
+    'admin_list_broker_directory', 'admin_list_broker_intelligence', 'admin_set_broker_listing_status',
+  ]) {
+    const body = fnBody(REVIEW, name);
+    assert.match(body, /security definer/);
+    assert.match(body, /set search_path = public, pg_temp/);
+    assert.match(body, /if not public\.is_admin\(\) then\s+raise exception 'FORBIDDEN'/,
+      `${name} does not refuse a non-admin in its own body`);
+  }
+});
+
+test('activation needs a stated future paid-until and a payment basis, and is audited', () => {
+  const body = fnBody(REVIEW, 'admin_set_broker_listing_status');
+  assert.match(body, /p_paid_until is null or p_paid_until <= now\(\)/);
+  assert.match(body, /raise exception 'PAYMENT_BASIS_REQUIRED'/);
+  assert.match(body, /insert into public\.admin_audit_log/);
+  assert.match(body, /'payment_basis', case when p_status = 'ACTIVE' then 'ADMIN_ASSERTED'/,
+    'an admin-stated payment is not labelled as such in the audit row');
+  /* It changes a registration and nothing else. */
+  assert.doesNotMatch(body, /broker_intelligence/, 'the status change reaches discovered brokers');
+});
+
+test('nothing in the review migration turns intelligence into a listing', () => {
+  /*
+   * The admin intelligence read is a SELECT for display. No function inserts into the
+   * listings from intelligence, and no function writes broker_id at all except as null.
+   */
+  const code = REVIEW.replace(/--.*$/gm, '');
+  assert.doesNotMatch(code, /insert into public\.broker_directory_listings[\s\S]{0,400}from public\.broker_intelligence/);
+  assert.doesNotMatch(code, /update public\.broker_directory_listings[\s\S]{0,200}broker_id\s*=/);
+  assert.doesNotMatch(code, /(insert into|update) public\.broker_intelligence/,
+    'the review migration writes discovered brokers');
+});
+
+test('no broker function is callable without signing in', () => {
+  assert.match(REVIEW, /revoke all on function public\.broker_directory_apply\([^)]*\) from public, anon, authenticated;/);
+  /* Comments stripped: the migration explains in prose why nothing goes to anon. */
+  assert.doesNotMatch(REVIEW.replace(/--.*$/gm, ''), /\bto anon\b/, 'a broker function is granted to anon');
+});
+
+test('the admin broker screen offers no action on a discovered firm', () => {
+  const page = readFileSync(join(root, 'src', 'pages', 'admin', 'AdminBrokersPage.tsx'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+  /* Reads intelligence through the admin RPC only; never the tables. */
+  assert.match(page, /rpc\('admin_list_broker_intelligence'/);
+  assert.doesNotMatch(page, /from\('broker_intelligence/);
+  /* Writes only through the audited status function. */
+  const rpcs = [...page.matchAll(/rpc\('([a-z_]+)'/g)].map((m) => m[1]).sort();
+  assert.deepEqual([...new Set(rpcs)], [
+    'admin_list_broker_directory', 'admin_list_broker_intelligence', 'admin_set_broker_listing_status',
+  ]);
+  assert.doesNotMatch(page, /\.from\('broker_directory_listings'\)\.(insert|update|upsert|delete)/);
+});
+
+test('the public page applies only through the apply function', () => {
+  const page = readFileSync(join(root, 'src', 'pages', 'BrokersPage.tsx'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+  assert.match(page, /rpc\('broker_directory_apply'/);
+  assert.doesNotMatch(page, /\.(insert|upsert|update|delete)\(/,
+    'the directory page writes a table directly');
+  assert.doesNotMatch(page, /p_status|p_paid_until/);
+});

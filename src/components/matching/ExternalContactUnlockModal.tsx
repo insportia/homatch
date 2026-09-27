@@ -1,5 +1,18 @@
-// ExternalContactUnlockModal — shown from MatchesPage for external signals
-import React, { useEffect, useState } from 'react';
+// ExternalContactUnlockModal — shown from MatchesPage for external signals.
+//
+// A RESULT IS OPENED AND A CONTACT REVEALED. This dialog said "Unlock Contact",
+// "Confirm Unlock" and, in Georgian, "იბლოკება…" ("is being locked") on the button
+// that opens one, under two padlock icons. The component and its keys keep their
+// internal names; what the customer reads does not use lock language.
+//
+// AN INCLUDED RESULT IS NOT FOR SALE. MatchesPage routes every external signal here
+// before its own included short-circuit, so a result the campaign had already paid
+// for arrived at a price screen reading "0 credits" and a confirm button. With
+// `included`, the preview is skipped and the reveal is requested straight away; the
+// server still decides the price (atomic_external_match_unlock charges zero for an
+// included match) and still redacts until then. Nothing about charging or privacy
+// is decided here.
+import React, { useEffect, useRef, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
@@ -8,7 +21,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import {
-  Lock, Unlock, Phone, Mail, MessageCircle, AlertTriangle, CheckCircle,
+  Eye, UserRound, Phone, Mail, MessageCircle, AlertTriangle, CheckCircle,
   MapPin, DollarSign, Clock, BarChart3, Globe, Coins,
 } from 'lucide-react';
 import { fitTier } from '@/matching/presentation';
@@ -23,11 +36,13 @@ interface Props {
   matchId: string;
   creditBalance: number;
   onUnlocked?: () => void;
+  /** The campaign already paid for this result: reveal it without offering a sale. */
+  included?: boolean;
 }
 
 type Step = 'loading' | 'preview' | 'confirm' | 'revealed' | 'error';
 
-export function ExternalContactUnlockModal({ open, onClose, matchId, creditBalance, onUnlocked }: Props) {
+export function ExternalContactUnlockModal({ open, onClose, matchId, creditBalance, onUnlocked, included = false }: Props) {
   const { t } = useLanguage();
   const [step, setStep] = useState<Step>('loading');
   const [preview, setPreview] = useState<ExternalUnlockPreview | null>(null);
@@ -35,6 +50,12 @@ export function ExternalContactUnlockModal({ open, onClose, matchId, creditBalan
   const [creditsCharged, setCreditsCharged] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
   const [confirming, setConfirming] = useState(false);
+  /*
+   * The parent's onUnlocked unmounts this dialog, and it used to be called the moment
+   * the reveal succeeded -- so the contact the customer had just paid for was on screen
+   * for one frame. It is reported when they close the revealed dialog instead.
+   */
+  const revealedRef = useRef(false);
 
   // Stable idempotency key per match
   const idempotencyKey = `unlock_${matchId}_${Date.now().toString(36)}`;
@@ -50,6 +71,9 @@ export function ExternalContactUnlockModal({ open, onClose, matchId, creditBalan
       .then(({ preview: p }) => {
         if (p.already_unlocked) {
           setStep('revealed');
+        } else if (included) {
+          setPreview(p);
+          void reveal(p);
         } else {
           setPreview(p);
           setStep('preview');
@@ -62,16 +86,18 @@ export function ExternalContactUnlockModal({ open, onClose, matchId, creditBalan
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, matchId]);
 
-  const handleConfirm = async () => {
-    if (!preview) return;
+  const reveal = async (p: ExternalUnlockPreview) => {
     setConfirming(true);
     try {
       const result = await confirmExternalUnlock(matchId, idempotencyKey);
+      const charged = Number(result.credits_charged ?? (included ? 0 : p.customer_price));
       setContact(result.contact ?? null);
-      setCreditsCharged(result.credits_charged ?? preview.customer_price);
+      setCreditsCharged(charged);
       setStep('revealed');
-      onUnlocked?.();
-      toast.success(t('unlock_toast_success', { credits: String(result.credits_charged ?? preview.customer_price) }));
+      revealedRef.current = true;
+      toast.success(charged > 0
+        ? t('unlock_toast_success', { credits: String(charged) })
+        : t('matches_toast_contact_unlocked'));
     } catch (err) {
       const msg = String(err);
       if (msg.includes('Insufficient')) {
@@ -80,20 +106,37 @@ export function ExternalContactUnlockModal({ open, onClose, matchId, creditBalan
         toast.error(msg);
       }
       setConfirming(false);
+      /* With no preview step to fall back to, an included result that will not open
+         says so rather than leaving a spinner. */
+      if (included) { setErrorMsg(t('matches_unlock_failed')); setStep('error'); }
     }
+  };
+
+  const handleConfirm = async () => {
+    if (!preview) return;
+    await reveal(preview);
+  };
+
+  const close = () => {
+    if (revealedRef.current) {
+      revealedRef.current = false;
+      onUnlocked?.();
+      return;
+    }
+    onClose();
   };
 
   const balanceAfter = preview ? creditBalance - preview.customer_price : creditBalance;
   const canAfford = preview ? creditBalance >= preview.customer_price : false;
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) close(); }}>
       <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {step === 'revealed'
-              ? <><Unlock className="h-5 w-5 text-primary" /> {t('unlock_reveal_title')}</>
-              : <><Lock className="h-5 w-5 text-primary" /> {t('unlock_title')}</>
+              ? <><UserRound className="h-5 w-5 text-primary" /> {t('unlock_reveal_title')}</>
+              : <><Eye className="h-5 w-5 text-primary" /> {t('unlock_title')}</>
             }
           </DialogTitle>
           {step === 'preview' && (
@@ -217,7 +260,7 @@ export function ExternalContactUnlockModal({ open, onClose, matchId, creditBalan
         {step === 'revealed' && (
           <div className="space-y-4">
             <div className="flex items-center gap-2 p-3 bg-primary/10 border border-primary/20 rounded-xl">
-              <Unlock className="h-5 w-5 text-primary shrink-0" />
+              <UserRound className="h-5 w-5 text-primary shrink-0" />
               <div>
                 <p className="text-sm font-semibold text-foreground">{t('unlock_contact_revealed')}</p>
                 {creditsCharged > 0 && (
@@ -279,19 +322,19 @@ export function ExternalContactUnlockModal({ open, onClose, matchId, creditBalan
         <DialogFooter>
           {step === 'preview' && preview && (
             <>
-              <Button variant="outline" onClick={onClose} disabled={confirming}>
+              <Button variant="outline" onClick={close} disabled={confirming}>
                 {t('unlock_cancel_btn')}
               </Button>
               <Button onClick={handleConfirm} disabled={confirming || !canAfford}>
                 {confirming
                   ? <><div className="h-4 w-4 rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground animate-spin mr-2" /> {t('unlock_unlocking')}</>
-                  : <><Unlock className="h-4 w-4 mr-2" /> {t('unlock_confirm_btn')}</>
+                  : <><Eye className="h-4 w-4 me-2" /> {t('unlock_confirm_btn')}</>
                 }
               </Button>
             </>
           )}
           {(step === 'revealed' || step === 'error') && (
-            <Button onClick={onClose}>{t('general_close')}</Button>
+            <Button onClick={close}>{t('general_close')}</Button>
           )}
         </DialogFooter>
       </DialogContent>

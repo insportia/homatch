@@ -1,9 +1,9 @@
-// src/pages/BrokersPage.tsx — BROKERS AND AGENCIES.
+// src/pages/BrokersPage.tsx — THE HOMATCH BROKER DIRECTORY.
 //
 // THIS PAGE EXISTS TO MAKE ONE DISTINCTION IMPOSSIBLE TO MISS.
 //
-//   A LISTED BROKER registered with Homatch and pays to appear. We know who they
-//   are because they told us.
+//   A LISTED BROKER applied to Homatch, was reviewed, and has a paid listing that is
+//   currently running. We know who they are because they told us.
 //
 //   AN OBSERVED FIRM is one whose name we read off a public listing while
 //   discovering property. They have no relationship with Homatch, never asked to
@@ -20,31 +20,46 @@
 // paid_until still in the future. The discovered firms live in
 // `broker_intelligence`, which this page does not query at all — it has no
 // paid, verified or plan column to misread, and there is no route from it to
-// this list. A firm reaches this page by registering and paying, or not at all.
+// this list. A firm reaches this page by applying, being approved and paying,
+// or not at all.
+//
+// WHAT CHANGED, AND WHY
+//
+// The first version was generic shadcn cards on the root palette in a narrow
+// column, with no way to search, and it ended in "get in touch" — a dead end,
+// because there was nothing to get in touch through. It is now on the light
+// product ground (PRODUCT_SURFACE, `.hm-product`) -- its own product, not the
+// shell's `.hm-customer` block and not the root palette -- and it filters by
+// market, language and type over the columns the view actually exposes, and it
+// ends in a real application: `broker_directory_apply`, a SECURITY DEFINER
+// function whose signature has no status, no paid_until and no broker_id, so an
+// application is PENDING_REVIEW by construction and cannot link itself to a firm
+// discovery observed. Admin review and a stated paid period are what make it
+// public (/admin/brokers).
 //
 // WHY THE EMPTY STATE SAYS SOMETHING RATHER THAN NOTHING
 //
-// Nobody has registered yet, so the directory is empty — and an empty directory
-// is exactly where the temptation to "helpfully" fill it with the agencies we
-// already know about would bite. The empty state says why it is empty, which is
-// the honest version of the same information and does not imply a roster we do
-// not have.
-//
-// WHERE OBSERVED FIRMS DO APPEAR
-//
-// On your own results, from find-property, labelled with what they are and with
-// the provenance behind them: how many sources we saw them on, how many listings
-// are attributed to them, and when we last actually saw them. Not on this page,
-// because this page is the directory and they are not in it.
+// Production had no listings when this was written. An empty directory is exactly
+// where the temptation to "helpfully" fill it with the agencies we already know
+// about would bite. The empty state says why it is empty and offers the one honest
+// way in, which is applying.
 
+import {
+  ArrowRight, Building2, CalendarClock, CheckCircle2, ClipboardCheck, ExternalLink,
+  Globe, Languages, Loader2, Mail, MapPin, Phone, Radar, Search, Store, X,
+} from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Building2, Globe, Info, MapPin, Phone, ShieldCheck } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Badge } from '@/components/ui/badge';
+import { useNavigate } from 'react-router-dom';
+import { CustomerSurface, PRODUCT_SURFACE } from '@/components/customer/surface';
 import { AppLayout } from '@/components/layouts/AppLayout';
+import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/db/supabase';
+import type { TranslationKey } from '@/i18n/translations';
+import { cn } from '@/lib/utils';
+import { SUPPORTED_LANGUAGES } from '@/types/types';
 
 interface DirectoryRow {
   id: string;
@@ -53,76 +68,387 @@ interface DirectoryRow {
   cities: string[] | null;
   languages: string[] | null;
   contact_phone: string | null;
+  contact_email: string | null;
   website: string | null;
   paid_until: string | null;
 }
 
+interface OwnListing {
+  id: string;
+  display_name: string;
+  status: 'PENDING_REVIEW' | 'ACTIVE' | 'SUSPENDED' | 'EXPIRED';
+  paid_until: string | null;
+  created_at: string;
+}
+
+type RoleFilter = 'ALL' | 'AGENCY' | 'BROKER';
+
+const LANGUAGE_LABEL: Record<string, string> = Object.fromEntries(
+  SUPPORTED_LANGUAGES.map((l) => [l.code, l.nativeLabel]),
+);
+const languageLabel = (code: string) => LANGUAGE_LABEL[code.toLowerCase()] ?? code.toUpperCase();
+
+/** Two letters for the monogram. A logo would be a claim we have not checked. */
+function initials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  const letters = (words.length > 1 ? [words[0], words[1]] : [name.trim()])
+    .map((w) => Array.from(w)[0] ?? '')
+    .join('');
+  return letters.toUpperCase().slice(0, 2) || '·';
+}
+
+function websiteHref(value: string): string {
+  return /^https?:\/\//i.test(value) ? value : `https://${value}`;
+}
+
+/* Native selects, not Radix: a Radix list renders in a portal outside this page's
+   token block, and at 320px a native picker is also the one that fits. */
+const FIELD = 'h-11 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground '
+  + 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+
+const EYEBROW = 'text-2xs font-semibold uppercase tracking-[0.12em] text-[hsl(var(--gold-ink))]';
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * One listing
+ * ───────────────────────────────────────────────────────────────────────── */
+
 /**
- * One registration.
- *
  * The badge here says "listed with Homatch" and it is the only badge on the page,
- * because a row in this list is the only thing that earns it.
+ * because a row in this list is the only thing that earns it. Contact actions are
+ * exactly the ones the listing supplied — none are inferred, and none are proxied.
  */
 function DirectoryCard({ row }: { row: DirectoryRow }) {
   const { t } = useLanguage();
   const roleLabel = row.role === 'AGENCY' ? t('broker_role_agency') : t('broker_role_broker');
   const cities = (row.cities ?? []).filter(Boolean);
   const languages = (row.languages ?? []).filter(Boolean);
+  const action = 'inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-border bg-card px-3 '
+    + 'text-2xs font-semibold text-foreground transition-colors hover:border-[hsl(var(--gold-border))] '
+    + 'hover:text-[hsl(var(--gold-ink))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
   return (
-    <Card className="bg-card border-border">
-      <CardContent className="p-4 space-y-3">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div className="min-w-0 space-y-1">
-            <h3 className="text-base font-semibold text-foreground break-words">
-              {row.display_name}
-            </h3>
-            <p className="text-sm text-muted-foreground break-words">{roleLabel}</p>
-          </div>
-          <Badge className="shrink-0 whitespace-normal gap-1">
-            <ShieldCheck className="h-3 w-3 shrink-0" />
-            <span className="break-words">{t('broker_disclosure_directory')}</span>
-          </Badge>
+    <article className="hm-product-panel flex min-w-0 flex-col p-5">
+      <div className="flex min-w-0 items-start gap-3">
+        <span
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[hsl(var(--gold-soft))] font-display text-sm font-semibold text-[hsl(var(--gold-ink))] ring-1 ring-inset ring-[hsl(var(--gold-border))]"
+          aria-hidden="true"
+        >
+          {initials(row.display_name)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="break-words font-display text-base font-semibold leading-snug text-foreground">
+            {row.display_name}
+          </h3>
+          <p className="mt-0.5 text-2xs text-muted-foreground">{roleLabel}</p>
         </div>
+      </div>
 
+      <p className="mt-3 inline-flex w-fit max-w-full items-center gap-1.5 rounded-full border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] px-2.5 py-1 text-2xs font-semibold text-[hsl(var(--gold-ink))]">
+        <Store className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        <span className="break-words">{t('broker_disclosure_directory')}</span>
+      </p>
+
+      <dl className="mt-4 space-y-2.5 text-sm">
         {cities.length > 0 && (
-          <div className="flex items-start gap-1.5 text-sm text-muted-foreground min-w-0">
-            <MapPin className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-            <span className="break-words min-w-0">{cities.join(', ')}</span>
+          <div className="flex min-w-0 items-start gap-2">
+            <dt className="mt-0.5 shrink-0 text-muted-foreground">
+              <MapPin className="h-4 w-4" aria-hidden="true" />
+              <span className="sr-only">{t('broker_coverage_cities')}</span>
+            </dt>
+            <dd className="min-w-0 break-words text-foreground">{cities.join(' · ')}</dd>
           </div>
         )}
         {languages.length > 0 && (
-          <div className="flex items-start gap-1.5 text-sm text-muted-foreground min-w-0">
-            <Globe className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-            <span className="break-words min-w-0">{languages.join(', ')}</span>
+          <div className="flex min-w-0 items-start gap-2">
+            <dt className="mt-0.5 shrink-0 text-muted-foreground">
+              <Languages className="h-4 w-4" aria-hidden="true" />
+              <span className="sr-only">{t('broker_coverage_languages')}</span>
+            </dt>
+            <dd className="min-w-0 break-words text-foreground">{languages.map(languageLabel).join(' · ')}</dd>
           </div>
         )}
-        {row.contact_phone && (
-          <div className="flex items-start gap-1.5 text-sm text-foreground min-w-0">
-            <Phone className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-            <span className="break-words min-w-0">{row.contact_phone}</span>
-          </div>
-        )}
-        {row.website && (
-          <a
-            href={row.website.startsWith('http') ? row.website : `https://${row.website}`}
-            target="_blank"
-            rel="noopener noreferrer nofollow"
-            className="inline-flex items-start gap-1.5 text-sm text-primary hover:underline min-w-0"
-          >
-            <Globe className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-            <span className="break-words min-w-0">{row.website}</span>
-          </a>
-        )}
-      </CardContent>
-    </Card>
+      </dl>
+
+      {(row.contact_phone || row.contact_email || row.website) && (
+        <div className="mt-auto pt-4">
+        <div className="flex flex-wrap gap-2 border-t border-border pt-4">
+          {row.contact_phone && (
+            <a href={`tel:${row.contact_phone.replace(/[^\d+]/g, '')}`} className={action}>
+              <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span>{t('broker_dir_call')}</span>
+              <span className="sr-only" dir="ltr">{row.contact_phone}</span>
+            </a>
+          )}
+          {row.contact_email && (
+            <a href={`mailto:${row.contact_email}`} className={action}>
+              <Mail className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span>{t('broker_dir_email')}</span>
+            </a>
+          )}
+          {row.website && (
+            <a href={websiteHref(row.website)} target="_blank" rel="noopener noreferrer nofollow" className={action}>
+              <Globe className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span>{t('broker_dir_website')}</span>
+              <ExternalLink className="h-3 w-3 shrink-0 opacity-60" aria-hidden="true" />
+            </a>
+          )}
+        </div>
+        </div>
+      )}
+    </article>
   );
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Applying
+ * ───────────────────────────────────────────────────────────────────────── */
+
+const APPLY_LANGS = SUPPORTED_LANGUAGES.map((l) => l.code);
+
+function ApplySection() {
+  const { t, isRTL } = useLanguage();
+  const { status, session } = useAuth();
+  const navigate = useNavigate();
+  const uid = session?.user?.id ?? null;
+
+  const [mine, setMine] = useState<OwnListing[] | null>(null);
+  const [name, setName] = useState('');
+  const [role, setRole] = useState<'AGENCY' | 'BROKER'>('AGENCY');
+  const [markets, setMarkets] = useState('');
+  const [langs, setLangs] = useState<string[]>([]);
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [website, setWebsite] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  const loadMine = useCallback(async () => {
+    if (!uid) { setMine(null); return; }
+    /*
+     * The owner's own rows, through the owner-reads policy. Filtered by owner
+     * explicitly because the table ALSO has a public policy for current listings,
+     * and without the filter somebody else's active listing would appear under
+     * "Your applications".
+     */
+    const { data } = await supabase
+      .from('broker_directory_listings')
+      .select('id,display_name,status,paid_until,created_at')
+      .eq('owner_user_id', uid)
+      .order('created_at', { ascending: false });
+    setMine((data ?? []) as OwnListing[]);
+  }, [uid]);
+
+  useEffect(() => { void loadMine(); }, [loadMine]);
+
+  const pending = (mine ?? []).some((l) => l.status === 'PENDING_REVIEW');
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (name.trim().length < 2) { setError(t('broker_apply_err_name')); return; }
+    if (!phone.trim() && !email.trim() && !website.trim()) { setError(t('broker_apply_err_contact')); return; }
+    setSaving(true);
+    const { error: rpcError } = await supabase.rpc('broker_directory_apply', {
+      p_display_name: name.trim(),
+      p_role: role,
+      p_cities: markets.split(/[,،\n]/).map((c) => c.trim()).filter(Boolean).slice(0, 20),
+      p_languages: langs,
+      p_contact_phone: phone.trim() || null,
+      p_contact_email: email.trim() || null,
+      p_website: website.trim() || null,
+    });
+    setSaving(false);
+    if (rpcError) {
+      const code = rpcError.message ?? '';
+      setError(
+        code.includes('ALREADY_PENDING') ? t('broker_apply_err_pending')
+          : code.includes('CONTACT_REQUIRED') ? t('broker_apply_err_contact')
+            : code.includes('INVALID_NAME') ? t('broker_apply_err_name')
+              : t('broker_apply_err_generic'),
+      );
+      return;
+    }
+    setSent(true);
+    void loadMine();
+  };
+
+  const toggleLang = (code: string) =>
+    setLangs((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]));
+
+  const label = 'mb-1.5 block text-2xs font-semibold text-foreground';
+
+  return (
+    <section id="apply" className="hm-product-panel scroll-mt-24 p-5 sm:p-7" aria-labelledby="broker-apply-heading">
+      <div className="max-w-2xl">
+        <p className={EYEBROW}>{t('broker_dir_empty_cta')}</p>
+        <h2 id="broker-apply-heading" className="mt-1 font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
+          {t('broker_apply_heading')}
+        </h2>
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{t('broker_apply_intro')}</p>
+      </div>
+
+      {status !== 'AUTHENTICATED' ? (
+        <div className="mt-5 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+          <button
+            type="button"
+            onClick={() => navigate('/auth/login', { state: { from: { pathname: '/brokers' } } })}
+            className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            {t('broker_apply_signin')}
+            <ArrowRight className={cn('h-4 w-4', isRTL && 'rotate-180')} aria-hidden="true" />
+          </button>
+          <p className="text-2xs text-muted-foreground">{t('broker_apply_signin_hint')}</p>
+        </div>
+      ) : (
+        <>
+          {mine && mine.length > 0 && (
+            <div className="mt-5">
+              <h3 className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                {t('broker_mine_heading')}
+              </h3>
+              <ul className="mt-2 divide-y divide-border rounded-lg border border-border">
+                {mine.map((l) => (
+                  <li key={l.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+                    <span className="min-w-0 break-words text-sm font-medium text-foreground">{l.display_name}</span>
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className={cn(
+                        'rounded-full border px-2.5 py-0.5 text-2xs font-semibold',
+                        l.status === 'ACTIVE'
+                          ? 'border-[hsl(var(--success))]/30 bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]'
+                          : 'border-border bg-secondary text-muted-foreground',
+                      )}
+                      >
+                        {t(`broker_status_${l.status}` as TranslationKey)}
+                      </span>
+                      {l.status === 'ACTIVE' && l.paid_until && (
+                        <span className="text-2xs text-muted-foreground">
+                          {t('broker_mine_paid_until', { date: new Date(l.paid_until).toLocaleDateString() })}
+                        </span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {sent ? (
+            <div className="mt-5 flex items-start gap-3 rounded-lg border border-[hsl(var(--success))]/30 bg-[hsl(var(--success))]/5 p-4" role="status">
+              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-[hsl(var(--success))]" aria-hidden="true" />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground">{t('broker_apply_success_title')}</p>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{t('broker_apply_success_body')}</p>
+              </div>
+            </div>
+          ) : pending ? (
+            <p className="mt-5 text-sm text-muted-foreground">{t('broker_apply_err_pending')}</p>
+          ) : (
+            <form onSubmit={submit} className="mt-6 grid gap-4 sm:grid-cols-2" noValidate>
+              <div className="sm:col-span-2">
+                <label htmlFor="broker-name" className={label}>{t('broker_apply_name')}</label>
+                <Input id="broker-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} className="h-11 bg-card" autoComplete="organization" />
+              </div>
+
+              <fieldset className="sm:col-span-2">
+                <legend className={label}>{t('broker_apply_role')}</legend>
+                <div className="inline-flex rounded-lg border border-border bg-secondary p-1">
+                  {(['AGENCY', 'BROKER'] as const).map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      aria-pressed={role === r}
+                      onClick={() => setRole(r)}
+                      className={cn(
+                        'min-h-9 rounded-md px-4 text-2xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                        role === r ? 'bg-card text-foreground shadow-card' : 'text-muted-foreground hover:text-foreground',
+                      )}
+                    >
+                      {r === 'AGENCY' ? t('broker_role_agency') : t('broker_role_broker')}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              <div className="sm:col-span-2">
+                <label htmlFor="broker-markets" className={label}>{t('broker_apply_markets')}</label>
+                <Input id="broker-markets" value={markets} onChange={(e) => setMarkets(e.target.value)} maxLength={400} className="h-11 bg-card" aria-describedby="broker-markets-hint" />
+                <p id="broker-markets-hint" className="mt-1.5 text-2xs text-muted-foreground">{t('broker_apply_markets_hint')}</p>
+              </div>
+
+              <fieldset className="sm:col-span-2">
+                <legend className={label}>{t('broker_apply_languages')}</legend>
+                <div className="flex flex-wrap gap-2">
+                  {APPLY_LANGS.map((code) => {
+                    const on = langs.includes(code);
+                    return (
+                      <button
+                        key={code}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => toggleLang(code)}
+                        className={cn(
+                          'min-h-9 rounded-full border px-3 text-2xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                          on
+                            ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))]'
+                            : 'border-border bg-card text-muted-foreground hover:text-foreground',
+                        )}
+                      >
+                        {languageLabel(code)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+
+              <div>
+                <label htmlFor="broker-phone" className={label}>{t('broker_apply_phone')}</label>
+                <Input id="broker-phone" type="tel" dir="ltr" value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={40} className="h-11 bg-card" autoComplete="tel" />
+              </div>
+              <div>
+                <label htmlFor="broker-email" className={label}>{t('broker_apply_email')}</label>
+                <Input id="broker-email" type="email" dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={200} className="h-11 bg-card" autoComplete="email" />
+              </div>
+              <div className="sm:col-span-2">
+                <label htmlFor="broker-website" className={label}>{t('broker_apply_website')}</label>
+                <Input id="broker-website" type="url" dir="ltr" value={website} onChange={(e) => setWebsite(e.target.value)} maxLength={300} className="h-11 bg-card" autoComplete="url" />
+                <p className="mt-1.5 text-2xs text-muted-foreground">{t('broker_apply_contact_hint')}</p>
+              </div>
+
+              {error && (
+                <p className="text-sm font-medium text-destructive sm:col-span-2" role="alert">{error}</p>
+              )}
+
+              <div className="sm:col-span-2">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-primary px-5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  {saving && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+                  {saving ? t('broker_apply_submitting') : t('broker_apply_submit')}
+                </button>
+              </div>
+            </form>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * The page
+ * ───────────────────────────────────────────────────────────────────────── */
 
 export default function BrokersPage() {
   const { t } = useLanguage();
   const [rows, setRows] = useState<DirectoryRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState('');
+  const [market, setMarket] = useState('');
+  const [language, setLanguage] = useState('');
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>('ALL');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -134,9 +460,9 @@ export default function BrokersPage() {
        */
       const { data } = await supabase
         .from('broker_directory_public')
-        .select('id,display_name,role,cities,languages,contact_phone,website,paid_until')
+        .select('id,display_name,role,cities,languages,contact_phone,contact_email,website,paid_until')
         .order('display_name', { ascending: true })
-        .limit(200);
+        .limit(500);
       setRows((data ?? []) as unknown as DirectoryRow[]);
     } finally {
       setLoading(false);
@@ -145,47 +471,174 @@ export default function BrokersPage() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const empty = useMemo(() => !loading && rows.length === 0, [loading, rows.length]);
+  /* Filter options come from the listings themselves, so no option leads nowhere. */
+  const markets = useMemo(
+    () => [...new Set(rows.flatMap((r) => (r.cities ?? []).map((c) => c.trim()).filter(Boolean)))]
+      .sort((a, b) => a.localeCompare(b)),
+    [rows],
+  );
+  const languages = useMemo(
+    () => [...new Set(rows.flatMap((r) => (r.languages ?? []).map((l) => l.toLowerCase())))].sort(),
+    [rows],
+  );
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLocaleLowerCase();
+    return rows.filter((r) => {
+      if (q && !r.display_name.toLocaleLowerCase().includes(q)) return false;
+      if (market && !(r.cities ?? []).some((c) => c.trim() === market)) return false;
+      if (language && !(r.languages ?? []).some((l) => l.toLowerCase() === language)) return false;
+      if (roleFilter !== 'ALL' && r.role !== roleFilter) return false;
+      return true;
+    });
+  }, [rows, query, market, language, roleFilter]);
+
+  const filtering = Boolean(query.trim() || market || language || roleFilter !== 'ALL');
+  const clear = () => { setQuery(''); setMarket(''); setLanguage(''); setRoleFilter('ALL'); };
+  const empty = !loading && rows.length === 0;
+
+  const scrollToApply = () => {
+    document.getElementById('apply')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const points = [
+    { icon: CalendarClock, title: t('broker_dir_point_paid_title'), body: t('broker_dir_point_paid_body') },
+    { icon: ClipboardCheck, title: t('broker_dir_point_review_title'), body: t('broker_dir_point_review_body') },
+    { icon: Radar, title: t('broker_dir_point_found_title'), body: t('broker_dir_point_found_body') },
+  ];
 
   return (
-    <AppLayout>
-      <div className="max-w-2xl mx-auto space-y-6">
-        <div className="min-w-0 space-y-1">
-          <h1 className="text-xl font-bold text-foreground break-words">
+    <AppLayout noPadding surfaceClass={PRODUCT_SURFACE}>
+      <CustomerSurface className="max-w-6xl space-y-8 pt-6 sm:space-y-10 sm:pt-10">
+        {/* ── Header ─────────────────────────────────────────────────────── */}
+        <header className="max-w-3xl">
+          <p className={EYEBROW}>{t('broker_dir_eyebrow')}</p>
+          <h1 className="mt-2 font-display text-2xl font-semibold leading-tight tracking-[-0.02em] text-foreground sm:text-4xl">
             {t('broker_page_title')}
           </h1>
-          <p className="text-sm text-muted-foreground break-words">
-            {t('broker_page_subtitle')}
+          <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
+            {t('broker_dir_lead')}
           </p>
-        </div>
+        </header>
 
-        <section className="space-y-3">
-          <h2 className="text-base font-semibold text-foreground break-words">
-            {t('broker_directory_heading')}
-          </h2>
+        <ul className="grid gap-3 sm:grid-cols-3">
+          {points.map(({ icon: Icon, title, body }) => (
+            <li key={title} className="hm-product-panel flex min-w-0 items-start gap-3 p-4">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[hsl(var(--gold))]/10 text-[hsl(var(--gold-ink))] ring-1 ring-inset ring-[hsl(var(--gold))]/25" aria-hidden="true">
+                <Icon className="h-[17px] w-[17px]" strokeWidth={1.7} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground">{title}</p>
+                <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">{body}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+
+        {/* ── The directory ──────────────────────────────────────────────── */}
+        <section aria-labelledby="broker-directory-heading" className="space-y-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 id="broker-directory-heading" className="font-display text-lg font-semibold text-foreground sm:text-xl">
+              {t('broker_directory_heading')}
+            </h2>
+            {!loading && rows.length > 0 && (
+              <p className="text-2xs font-medium text-muted-foreground">
+                {t('broker_dir_count', { count: String(filtered.length) })}
+              </p>
+            )}
+          </div>
+
+          {/* Filters only when there is something to filter: a search box over an
+              empty directory is a control that pretends there is a roster. */}
+          {!loading && rows.length > 0 && (
+            <div className="hm-product-panel grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.3fr)_repeat(3,minmax(0,1fr))_auto] lg:items-end">
+              <div className="relative sm:col-span-2 lg:col-span-1">
+                <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                <Input
+                  type="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={t('broker_dir_search_placeholder')}
+                  aria-label={t('broker_dir_search_placeholder')}
+                  className="h-11 bg-card ps-9"
+                />
+              </div>
+              <label className="min-w-0">
+                <span className="sr-only">{t('broker_dir_filter_market')}</span>
+                <select value={market} onChange={(e) => setMarket(e.target.value)} className={FIELD} aria-label={t('broker_dir_filter_market')}>
+                  <option value="">{t('broker_dir_filter_all_markets')}</option>
+                  {markets.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </label>
+              <label className="min-w-0">
+                <span className="sr-only">{t('broker_dir_filter_language')}</span>
+                <select value={language} onChange={(e) => setLanguage(e.target.value)} className={FIELD} aria-label={t('broker_dir_filter_language')}>
+                  <option value="">{t('broker_dir_filter_all_languages')}</option>
+                  {languages.map((l) => <option key={l} value={l}>{languageLabel(l)}</option>)}
+                </select>
+              </label>
+              <label className="min-w-0">
+                <span className="sr-only">{t('broker_dir_filter_role')}</span>
+                <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as RoleFilter)} className={FIELD} aria-label={t('broker_dir_filter_role')}>
+                  <option value="ALL">{t('broker_dir_filter_all_roles')}</option>
+                  <option value="AGENCY">{t('broker_role_agency')}</option>
+                  <option value="BROKER">{t('broker_role_broker')}</option>
+                </select>
+              </label>
+              {filtering && (
+                <button
+                  type="button"
+                  onClick={clear}
+                  className="inline-flex h-11 items-center justify-center gap-1.5 rounded-lg px-3 text-2xs font-semibold text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                  {t('broker_dir_clear_filters')}
+                </button>
+              )}
+            </div>
+          )}
 
           {loading && (
-            <div className="space-y-3">
-              <Skeleton className="h-32 rounded-xl" />
-              <Skeleton className="h-32 rounded-xl" />
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {[0, 1, 2].map((i) => <Skeleton key={i} className="h-52 rounded-[0.875rem]" />)}
             </div>
           )}
 
           {empty && (
-            <Card className="bg-card border-border">
-              <CardContent className="p-5 text-center space-y-2">
-                <Building2 className="h-9 w-9 mx-auto opacity-30" />
-                <p className="text-sm font-medium text-foreground break-words">
-                  {t('broker_directory_empty_title')}
-                </p>
-                <p className="text-sm text-muted-foreground break-words">
-                  {t('broker_directory_empty_body')}
-                </p>
-              </CardContent>
-            </Card>
+            <div className="hm-product-panel px-5 py-10 text-center sm:px-10 sm:py-14">
+              <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))] ring-1 ring-inset ring-[hsl(var(--gold-border))]" aria-hidden="true">
+                <Building2 className="h-5 w-5" strokeWidth={1.7} />
+              </span>
+              <p className="mx-auto mt-4 max-w-md font-display text-base font-semibold text-foreground">
+                {t('broker_directory_empty_title')}
+              </p>
+              <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
+                {t('broker_directory_empty_body')}
+              </p>
+              <button
+                type="button"
+                onClick={scrollToApply}
+                className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-lg border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] px-4 text-sm font-semibold text-[hsl(var(--gold-ink))] transition-colors hover:bg-[hsl(var(--gold-soft))]/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {t('broker_dir_empty_cta')}
+              </button>
+            </div>
           )}
 
-          {rows.map((row) => <DirectoryCard key={row.id} row={row} />)}
+          {!loading && rows.length > 0 && filtered.length === 0 && (
+            <div className="hm-product-panel flex flex-wrap items-center justify-between gap-3 p-5">
+              <p className="text-sm text-muted-foreground">{t('broker_dir_no_results')}</p>
+              <button type="button" onClick={clear} className="text-2xs font-semibold text-[hsl(var(--gold-ink))] hover:underline">
+                {t('broker_dir_clear_filters')}
+              </button>
+            </div>
+          )}
+
+          {filtered.length > 0 && (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {filtered.map((row) => <DirectoryCard key={row.id} row={row} />)}
+            </div>
+          )}
         </section>
 
         {/*
@@ -196,41 +649,30 @@ export default function BrokersPage() {
           * where somebody learns it. So it is written out here, once, in all six
           * languages.
           */}
-        <section className="space-y-3">
-          <h2 className="text-base font-semibold text-foreground break-words">
+        <section aria-labelledby="broker-distinction-heading" className="space-y-4">
+          <h2 id="broker-distinction-heading" className="font-display text-lg font-semibold text-foreground sm:text-xl">
             {t('broker_distinction_heading')}
           </h2>
-          <Card className="bg-card border-border">
-            <CardContent className="p-4 space-y-4">
-              <div className="flex items-start gap-2 min-w-0">
-                <ShieldCheck className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                <div className="min-w-0 space-y-1">
-                  <p className="text-sm font-medium text-foreground break-words">
-                    {t('broker_disclosure_directory')}
-                  </p>
-                  <p className="text-sm text-muted-foreground break-words">
-                    {t('broker_distinction_directory')}
-                  </p>
-                </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="hm-product-panel border-[hsl(var(--gold-border))] flex min-w-0 items-start gap-3 p-5">
+              <Store className="mt-0.5 h-5 w-5 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />
+              <div className="min-w-0 space-y-1">
+                <p className="text-sm font-semibold text-foreground">{t('broker_disclosure_directory')}</p>
+                <p className="text-sm leading-relaxed text-muted-foreground">{t('broker_distinction_directory')}</p>
               </div>
-              <div className="flex items-start gap-2 min-w-0">
-                <Info className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-                <div className="min-w-0 space-y-1">
-                  <p className="text-sm font-medium text-foreground break-words">
-                    {t('broker_disclosure_observed')}
-                  </p>
-                  <p className="text-sm text-muted-foreground break-words">
-                    {t('broker_distinction_observed')}
-                  </p>
-                </div>
+            </div>
+            <div className="hm-product-panel flex min-w-0 items-start gap-3 p-5">
+              <Radar className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <div className="min-w-0 space-y-1">
+                <p className="text-sm font-semibold text-foreground">{t('broker_disclosure_observed')}</p>
+                <p className="text-sm leading-relaxed text-muted-foreground">{t('broker_distinction_observed')}</p>
               </div>
-            </CardContent>
-          </Card>
-          <p className="text-sm text-muted-foreground break-words">
-            {t('broker_register_cta')}
-          </p>
+            </div>
+          </div>
         </section>
-      </div>
+
+        <ApplySection />
+      </CustomerSurface>
     </AppLayout>
   );
 }

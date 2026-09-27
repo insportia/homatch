@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { RouteGuard } from '@/components/common/RouteGuard';
+import { OWNER_SURFACE } from '@/components/customer/surface';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { ContactPhoneField } from '@/components/owner/ContactPhoneField';
 import type { ReviewSavePayload } from '@/components/property/ReviewExtractedProperty';
@@ -228,8 +229,8 @@ function URLImportContent() {
   // Show review form when extraction done
   if (step === 'done' && extractedFacts) {
     return (
-      <AppLayout>
-        <div className="max-w-2xl mx-auto">
+      <AppLayout noPadding surfaceClass={OWNER_SURFACE}>
+        <div className="mx-auto w-full max-w-2xl px-4 py-4 pb-[calc(2rem+env(safe-area-inset-bottom))] sm:px-6">
           <div className="flex items-center gap-3 mb-6">
             <button
               onClick={() => { setStep('idle'); setExtractedFacts(null); }}
@@ -242,7 +243,7 @@ function URLImportContent() {
           </div>
           {/* Above the extracted facts, because it is the one thing the import could
               not have read from the page. */}
-          <div className="rounded-lg border border-border bg-card p-3">
+          <div className="hm-owner-panel p-3">
             <ContactPhoneField
               value={contactPhone}
               onChange={(next) => { setContactPhone(next); setShowPhoneProblem(false); }}
@@ -266,11 +267,15 @@ function URLImportContent() {
   }
 
   return (
-    <AppLayout>
-      <div className="max-w-xl mx-auto space-y-8">
+    /*
+     * Same flow as /property/add and /property/create, so the same dark owner ground.
+     * It was plain AppLayout: a light import step inside a dark product.
+     */
+    <AppLayout noPadding surfaceClass={OWNER_SURFACE}>
+      <div className="mx-auto w-full max-w-xl space-y-8 px-4 py-4 pb-[calc(2rem+env(safe-area-inset-bottom))] sm:px-6">
         {/* Header */}
         <div>
-          <h1 className="text-xl font-semibold text-foreground">{t('import_title')}</h1>
+          <h1 className="font-display text-xl font-semibold leading-tight tracking-[-0.015em] text-foreground">{t('import_title')}</h1>
           <p className="text-sm text-muted-foreground mt-1">
             {t('import_paste_hint')}
           </p>
@@ -340,7 +345,7 @@ function URLImportContent() {
           </div>
         ) : (
           /* Pipeline progress */
-          <div className="rounded-xl border border-border bg-card p-6 space-y-6">
+          <div className="hm-owner-panel p-6 space-y-6">
             <div className="space-y-1">
               <p className="font-medium text-foreground text-sm">{t('import_analysing')}</p>
               <p className="text-xs text-muted-foreground truncate" dir="ltr">{url}</p>

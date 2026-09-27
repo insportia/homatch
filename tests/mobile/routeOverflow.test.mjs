@@ -133,6 +133,9 @@ const ROUTES = [
    * coverage at any width in any language.
    */
   { path: '/property/create', name: 'create listing', auth: true },
+  /* The other way into Owner Add. Classified customer-critical when it joined the dark
+     owner product, so the full matrix measures it rather than trusting the chooser. */
+  { path: '/property/import', name: 'import listing', auth: true },
   /*
    * PROPERTY DETAILS, AND IT HAD NEVER BEEN MEASURED.
    *
@@ -474,6 +477,22 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
         return r.fulfill(json(single ? room : [room]));
       }
 
+      /*
+       * THE BROKER DIRECTORY, WITH LISTINGS IN IT. Production has none, and an empty
+       * state is centred prose that cannot overflow -- the card is what can: a long
+       * unbroken Georgian agency name, three market names, three language names and
+       * three contact actions on one row. Layout fixtures only; these firms do not exist
+       * and nothing here reaches a real directory.
+       */
+      if (url.includes('/rest/v1/broker_directory_public')) {
+        return r.fulfill(json([
+          { id: 'b1', display_name: 'თბილისის უძრავი ქონების სააგენტო „ვაკე-საბურთალო-დიღომი“', role: 'AGENCY',
+            cities: ['თბილისი', 'ბათუმი', 'ქუთაისი'], languages: ['ka', 'en', 'ru'],
+            contact_phone: '+995 555 12 34 56', contact_email: 'hello@example.test', website: 'example.test', paid_until: '2099-01-01T00:00:00Z' },
+          { id: 'b2', display_name: 'Harness Relocation Brokers', role: 'BROKER', cities: ['Tbilisi'],
+            languages: ['en', 'he', 'ar'], contact_phone: null, contact_email: 'desk@example.test', website: null, paid_until: '2099-01-01T00:00:00Z' },
+        ]));
+      }
       if (url.includes('/rest/v1/users')) {
         const row = {
           id: '77777777-7777-4777-8777-777777777777',

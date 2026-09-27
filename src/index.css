@@ -973,6 +973,14 @@
     color: hsl(265 32% 38%);
     border-color: hsl(265 28% 50% / 0.22);
   }
+  /* Inside the dark owner product the root is still data-surface=light, so the rule
+     above painted a light-ground pill (dark violet text) onto navy on /property/add and
+     /property/create. The owner scope gets the dark pill back. */
+  :root[data-surface='light'] .hm-owner .status-private {
+    background: hsl(280 50% 60% / 0.15);
+    color: hsl(280 50% 76%);
+    border-color: hsl(280 50% 60% / 0.3);
+  }
 }
 
 @layer base {

@@ -173,7 +173,7 @@ Deno.serve(async (req) => {
       title: 'New message',
       body: 'You have a new message from a Homatch user.',
       priority: 'HIGH',
-      deepLink: `/chat?c=${convId}`,
+      deepLink: `/chat?conversation=${convId}`,
       entityType: 'conversation',
       entityId: convId,
       dedupeKey: `message:${message.id}`,

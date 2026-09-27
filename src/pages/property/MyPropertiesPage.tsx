@@ -677,7 +677,7 @@ export default function MyPropertiesPage() {
 
           {/* The shared filter rail rather than this page's own segmented control: two
               controls doing the same job is two places to fix a Georgian label. */}
-          <FilterRail
+          <FilterRail<PortfolioView>
             options={[
               { value: 'ACTIVE' as const, label: t('prop_tab_active'), count: counts.active },
               { value: 'ARCHIVED' as const, label: t('prop_tab_archived'), count: counts.archived },

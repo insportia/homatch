@@ -26,18 +26,20 @@
 // only when it begins with a single slash.
 
 import {
-  Bell, Building2, CalendarDays, CheckCircle2, CreditCard, Megaphone, MessageSquare,
-  Phone, Search, Zap,
+  Bell, Building2, CalendarDays, CheckCircle2, ClipboardCheck, CreditCard, Megaphone,
+  MessageSquare, Phone, Search, ShieldCheck, Zap,
 } from 'lucide-react';
 import type React from 'react';
+import {
+  announcementText, categoryOf, kindOf as feedKindOf, safeDeepLink, type NotificationCategory,
+} from '@/lib/notifications/feed';
 import type { Notification } from '@/types/types';
 
 type Translate = (key: string, vars?: Record<string, string | number>) => string;
 
 /** The `metadata.kind` a producer wrote, or ''. */
 function kindOf(notif: Notification): string {
-  const meta = (notif.metadata ?? {}) as Record<string, unknown>;
-  return typeof meta.kind === 'string' ? meta.kind : '';
+  return feedKindOf(notif);
 }
 
 function metaString(notif: Notification, key: string): string {
@@ -53,9 +55,12 @@ function metaString(notif: Notification, key: string): string {
 export function notificationText(
   notif: Notification,
   t: Translate,
+  lang = 'en',
 ): { title: string; body: string } {
   const kind = kindOf(notif);
   const status = metaString(notif, 'status');
+  const meta = (notif.metadata ?? {}) as Record<string, unknown>;
+  const grouped = Number(meta.group_count ?? 1);
 
   if (kind === 'NEW_PROPERTY_MATCH') {
     return { title: t('notif_new_property_match_title'), body: t('notif_new_property_match_body') };
@@ -89,12 +94,25 @@ export function notificationText(
    * AN ANNOUNCEMENT IS THE ONE THING WITH NO KEY.
    *
    * Its text was written by a person at publish time — there is no translation key for
-   * "we added mortgage pre-approval". The row carries the English, the announcement
-   * itself carries every language the operator wrote, and the destination is the
-   * announcement. So the stored text is shown and is the right thing to show.
+   * "we added mortgage pre-approval". The fan-out carries every language the operator
+   * wrote in metadata, so the reader sees their CURRENT language, then English, then
+   * whatever was stored on the row (which is all an older row has).
    */
-  if (notif.type === 'ANNOUNCEMENT') {
-    return { title: notif.title, body: notif.body ?? '' };
+  if (notif.type === 'ANNOUNCEMENT' || kind === 'ANNOUNCEMENT') {
+    return announcementText(notif, lang);
+  }
+
+  /* The two sides of a native match. Grouped rows carry the count; the stored title is
+     English, so the count is rendered from the key instead. */
+  if (kind === 'NATIVE_MATCH_SUPPLY') {
+    return grouped > 1
+      ? { title: t('notif_native_supply_many_title', { n: grouped }), body: t('notif_native_supply_body') }
+      : { title: t('notif_native_supply_title'), body: t('notif_native_supply_body') };
+  }
+  if (kind === 'NATIVE_MATCH_DEMAND') {
+    return grouped > 1
+      ? { title: t('notif_native_demand_many_title', { n: grouped }), body: t('notif_native_demand_body') }
+      : { title: t('notif_native_demand_title'), body: t('notif_native_demand_body') };
   }
 
   /* Typed events with no kind of their own. Without these they fall through to stored
@@ -110,6 +128,12 @@ export function notificationText(
   }
   if (notif.type === 'SEARCH_COMPLETE') {
     return { title: t('notif_search_complete_title'), body: t('notif_search_complete_body') };
+  }
+  if (notif.type === 'VERIFY_COMPLETE') {
+    return { title: t('notif_verify_complete_title'), body: t('notif_verify_complete_body') };
+  }
+  if (notif.type === 'DOCUMENT_ANALYZED') {
+    return { title: t('notif_document_analyzed_title'), body: t('notif_document_analyzed_body') };
   }
 
   return { title: notif.title, body: notif.body ?? '' };
@@ -133,37 +157,40 @@ export interface NotificationMark {
   tone: 'accent' | 'alert' | 'plain';
 }
 
+/** The category's own mark and name. One icon per category, the same everywhere. */
+export const CATEGORY_META: Record<NotificationCategory, {
+  icon: React.ComponentType<{ className?: string }>;
+  labelKey: string;
+}> = {
+  MESSAGE: { icon: MessageSquare, labelKey: 'notif_kind_message' },
+  MATCH: { icon: Zap, labelKey: 'notif_kind_match' },
+  PROPERTY: { icon: Building2, labelKey: 'notif_kind_property' },
+  DISCOVERY: { icon: Search, labelKey: 'notif_kind_discovery' },
+  SERVICE: { icon: ClipboardCheck, labelKey: 'notif_kind_service' },
+  BILLING: { icon: CreditCard, labelKey: 'notif_kind_billing' },
+  ACCOUNT: { icon: ShieldCheck, labelKey: 'notif_kind_account' },
+  NEWS: { icon: Megaphone, labelKey: 'notif_kind_news' },
+};
+
+export function notificationCategory(notif: Notification): NotificationCategory {
+  return categoryOf(notif);
+}
+
 export function notificationMark(notif: Notification): NotificationMark {
   const kind = kindOf(notif);
-  if (kind === 'NEW_MESSAGE') return { icon: MessageSquare, tone: 'accent' };
-  if (kind.startsWith('VIEWING_')) return { icon: CalendarDays, tone: 'plain' };
-  if (kind === 'ANNOUNCEMENT' || notif.type === 'ANNOUNCEMENT') {
-    return { icon: Megaphone, tone: 'plain' };
-  }
+  const category = categoryOf(notif);
 
-  switch (notif.type) {
-    case 'MATCH_FOUND':
-    case 'MATCH_AVAILABLE':
-      return { icon: Zap, tone: 'accent' };
-    case 'PROPERTY_ACTION_REQUIRED':
-      return { icon: Phone, tone: 'accent' };
-    case 'SEARCH_COMPLETE':
-      return { icon: Search, tone: 'plain' };
-    case 'IMPORT_COMPLETED':
-      return { icon: CheckCircle2, tone: 'plain' };
-    case 'IMPORT_FAILED':
-      return { icon: Building2, tone: 'alert' };
-    case 'LOW_CREDITS':
-      return { icon: CreditCard, tone: 'accent' };
-    case 'CREDITS_TOPPED_UP':
-    case 'RESEARCH_PRODUCT_PURCHASED':
-      return { icon: CreditCard, tone: 'plain' };
-    case 'VERIFY_COMPLETE':
-    case 'DOCUMENT_ANALYZED':
-      return { icon: CheckCircle2, tone: 'plain' };
-    default:
-      return { icon: Bell, tone: 'plain' };
+  /* The few that want something from you, or went wrong, earn a role. */
+  if (category === 'MESSAGE') return { icon: MessageSquare, tone: 'accent' };
+  if (kind.startsWith('VIEWING_')) return { icon: CalendarDays, tone: 'plain' };
+  if (notif.type === 'PROPERTY_ACTION_REQUIRED') return { icon: Phone, tone: 'accent' };
+  if (notif.type === 'IMPORT_FAILED') return { icon: Building2, tone: 'alert' };
+  if (notif.type === 'IMPORT_COMPLETED') return { icon: CheckCircle2, tone: 'plain' };
+  if (notif.type === 'LOW_CREDITS') return { icon: CreditCard, tone: 'accent' };
+  if (category === 'MATCH' || category === 'DISCOVERY') {
+    return { icon: CATEGORY_META[category].icon, tone: 'accent' };
   }
+  return { icon: CATEGORY_META[category]?.icon ?? Bell, tone: 'plain' };
 }
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -181,9 +208,10 @@ export function notificationMark(notif: Notification): NotificationMark {
  * somebody a dead tap.
  */
 export function notificationHref(notif: Notification): string | null {
-  const link = typeof notif.deep_link === 'string' ? notif.deep_link : '';
-  /* A single leading slash. "//evil.example" is a protocol-relative URL, not a path. */
-  if (link.startsWith('/') && !link.startsWith('//')) return link;
+  /* A single leading slash — "//evil.example" is a protocol-relative URL, not a path —
+     and the chat's real parameter. See safeDeepLink in lib/notifications/feed.ts. */
+  const link = safeDeepLink(notif.deep_link);
+  if (link) return link;
 
   const kind = kindOf(notif);
   if (kind === 'NEW_MESSAGE') {

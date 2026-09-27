@@ -343,9 +343,11 @@ test('the in-app list goes where the producer said, not where it guesses', () =>
    * that opened, was tapped, and did nothing.
    */
   /* The centre and the module it delegates to — the destination rule moved there when
-     the live toast needed the same answer. */
+     the live toast needed the same answer, and the path check itself into the pure feed
+     module (safeDeepLink) that the chat and the toast share. */
   const page = readFileSync('src/pages/NotificationsPage.tsx', 'utf8')
-    + readFileSync('src/components/notifications/presentation.tsx', 'utf8');
+    + readFileSync('src/components/notifications/presentation.tsx', 'utf8')
+    + readFileSync('src/lib/notifications/feed.ts', 'utf8');
   assert.ok(/notif\.deep_link/.test(page),
     'the notifications list ignores deep_link again and guesses from the type');
   /* And only a path. An absolute URL cannot reach the column, but a restored

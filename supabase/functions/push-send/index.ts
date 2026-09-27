@@ -39,6 +39,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import webpush from 'npm:web-push@3.6.7';
+import { isServiceCaller } from '../_shared/serviceCaller.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -225,6 +226,20 @@ serve(async (req) => {
   /* ── Deliver one existing notification ───────────────────────────────── */
   if (action !== 'deliver' || !body.notificationId) {
     return json({ ok: false, error: 'BAD_REQUEST' }, 400);
+  }
+
+  /*
+   * ONLY HOMATCH MAY ASK FOR A DELIVERY.
+   *
+   * `deliver` had no caller check at all. The platform's JWT gate admits the
+   * anon key, which is in every browser bundle, so anybody could push any
+   * notification id they had seen — early, outside its aggregation window, to
+   * whoever it belonged to. The one legitimate caller is notify() in
+   * _shared/notify.ts, which sends the service key; everything else is
+   * refused before a row is read.
+   */
+  if (!isServiceCaller(req.headers.get('Authorization'), Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))) {
+    return json({ ok: false, error: 'FORBIDDEN' }, 403);
   }
 
   const { data: notif } = await sb.from('notifications')

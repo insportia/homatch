@@ -153,8 +153,19 @@ test('the money screen has been migrated, and its note still names what was wron
     'the lock-first component is back');
   assert.ok(!/<LockedMatchCard/.test(page),
     'something still renders the lock-first component');
-  assert.match(page, /function MatchCard\(/);
-  assert.match(page, /<MatchCard/);
+  /*
+   * MatchCard IS GONE TOO, and deliberately. It was deleted rather than edited because
+   * three redesigns rearranged its children and produced the same screenshot each time:
+   * its appearance came from the shadcn primitives it composed, which resolve to a white
+   * rectangle, grey capsules and a black button on the root light palette.
+   *
+   * <OpportunityCard> replaces it, in its own file, on the premium token block. The
+   * history above is kept for the same reason it was kept before: so the double-sell
+   * cannot be reintroduced by somebody who never knew it existed.
+   */
+  assert.ok(!/function MatchCard\(/.test(page),
+    'the card is back inside the page instead of being its own component');
+  assert.match(page, /<OpportunityCard/);
 });
 
 test('the two AI-facing surfaces are queued for migration', () => {
@@ -225,4 +236,30 @@ test('the RTL-first product stays in the matrix permanently', () => {
   assert.ok(expats);
   assert.equal(expats.customerCritical, true);
   assert.match(expats.note, /Arabic and Hebrew/);
+});
+
+test('the brokers page keeps the record of having been misclassified', () => {
+  /*
+   * /brokers was classified APPROVED_CURRENT_DESIGN while it was generic cards on the
+   * root palette with a dead-end call to action. It has been rebuilt; the note must keep
+   * saying what was wrong, and the page must still be on its own product ground.
+   */
+  const brokers = SURFACES.find((s) => s.path === '/brokers');
+  assert.ok(brokers);
+  assert.match(brokers.note, /WAS CLASSIFIED APPROVED AND WAS NOT/);
+  assert.match(brokers.note, /NEEDS_MIGRATION/);
+  const page = readFileSync(join(root, 'src', 'pages', 'BrokersPage.tsx'), 'utf8');
+  assert.match(page, /surfaceClass=\{PRODUCT_SURFACE\}/);
+  assert.doesNotMatch(page, /from '@\/components\/ui\/card'/, 'the generic Card is back on the directory');
+});
+
+test('owner add is one dark product, both ways in', () => {
+  for (const file of ['PrivateListingPage.tsx', 'URLImportPage.tsx']) {
+    const page = readFileSync(join(root, 'src', 'pages', 'property', file), 'utf8');
+    const layouts = [...page.matchAll(/<AppLayout\b[^>]*>/g)].map((m) => m[0]);
+    assert.ok(layouts.length > 0, `${file} renders no AppLayout`);
+    for (const tag of layouts) {
+      assert.match(tag, /surfaceClass=\{OWNER_SURFACE\}/, `${file} has a layout off the owner surface: ${tag}`);
+    }
+  }
 });

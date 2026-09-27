@@ -117,14 +117,29 @@ function Count({ label, value, note, loading }: {
   label: string; value: number; note?: string | null; loading: boolean;
 }) {
   return (
-    <div className="min-w-0 px-6 py-6 sm:px-7 sm:py-7">
+    /*
+     * ONE FIGURE, LABELLED ABOVE IT.
+     *
+     * The label came second, in body weight, under a 44px number — so the eye met a
+     * figure with no idea what it counted and had to travel back down to find out.
+     * Reading order for a metric is what-it-is then how-much, which is how the approved
+     * analytical surfaces set theirs, and a label belongs at label weight rather than
+     * competing as copy.
+     */
+    <div className="min-w-0 px-5 py-5 sm:px-6 sm:py-6">
+      <p className="text-2xs font-semibold uppercase leading-tight tracking-[0.08em] text-muted-foreground">
+        {label}
+      </p>
       {loading ? (
-        <Skeleton className="h-9 w-14" />
+        <Skeleton className="mt-2 h-9 w-14" />
       ) : (
-        <p className="font-display text-[2.75rem] font-extrabold leading-none tracking-[-0.03em] text-foreground tabular-nums">{value}</p>
+        <p className="mt-2 font-display text-[2.25rem] font-bold leading-none tracking-[-0.03em] text-foreground tabular-nums">
+          {value}
+        </p>
       )}
-      <p className="mt-3 text-sm font-medium leading-snug text-ink-soft">{label}</p>
-      {!loading && note && <p className="mt-1.5 text-sm font-semibold text-success">{note}</p>}
+      {!loading && note && (
+        <p className="mt-2 text-2xs font-semibold text-[hsl(var(--gold-ink))]">{note}</p>
+      )}
     </div>
   );
 }
@@ -137,22 +152,40 @@ function Count({ label, value, note, loading }: {
 function ActionTile({ icon: Icon, title, desc, onClick }: {
   icon: React.ElementType; title: string; desc: string; onClick: () => void;
 }) {
-  const { isRTL } = useLanguage();
+  const { t, isRTL } = useLanguage();
   return (
     <button
       type="button"
       onClick={onClick}
-      className="group flex h-full flex-col items-start p-6 text-start transition-colors hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:p-7"
+      className="group flex h-full flex-col items-start p-5 text-start transition-colors hover:bg-[hsl(var(--gold-soft))]/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:p-6"
     >
-      <span className="grid h-10 w-10 place-items-center rounded-[0.6rem] border border-foreground/15 bg-secondary text-foreground transition-colors duration-300 group-hover:border-gold/70 group-hover:bg-gold-soft group-hover:text-gold-ink motion-reduce:transition-none" aria-hidden="true">
-        <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} />
-      </span>
-      <span className="mt-5 block font-display text-lg font-bold tracking-[-0.012em] text-foreground">{title}</span>
-      <span className="mt-2 block flex-1 text-sm leading-relaxed text-ink-soft">{desc}</span>
-      <ArrowRight
-        className={`mt-4 h-4 w-4 self-end text-muted-foreground transition-transform group-hover:translate-x-1 motion-reduce:transform-none ${isRTL ? 'rotate-180 group-hover:-translate-x-1' : ''}`}
+      {/*
+        NOT A GREY BOX. A ring and a warm wash at a tenth opacity, so the icon is the
+        object rather than its container — four destinations stopped looking identical the
+        moment the box came off. It deepens on hover instead of changing shape.
+      */}
+      <span
+        className="grid h-9 w-9 place-items-center rounded-full bg-[hsl(var(--gold))]/10 ring-1 ring-inset ring-[hsl(var(--gold))]/25 text-[hsl(var(--gold-ink))] transition-colors duration-300 group-hover:bg-[hsl(var(--gold))]/18 group-hover:ring-[hsl(var(--gold))]/45 motion-reduce:transition-none"
         aria-hidden="true"
-      />
+      >
+        <Icon className="h-[17px] w-[17px]" strokeWidth={1.6} />
+      </span>
+      <span className="mt-4 block font-display text-base font-semibold leading-snug tracking-[-0.012em] text-foreground">
+        {title}
+      </span>
+      <span className="mt-1.5 block flex-1 text-2xs leading-relaxed text-muted-foreground">{desc}</span>
+      {/*
+        A CONTAINED ACTION, not an arrow alone in a corner. The tile is the button and
+        always was; nothing said so. This states the destination and the arrow travels
+        with the words rather than away from them.
+      */}
+      <span className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 text-2xs font-semibold text-foreground transition-colors group-hover:border-[hsl(var(--gold-border))] group-hover:text-[hsl(var(--gold-ink))]">
+        {t('db_tile_open')}
+        <ArrowRight
+          className={`h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5 motion-reduce:transform-none ${isRTL ? 'rotate-180 group-hover:-translate-x-0.5' : ''}`}
+          aria-hidden="true"
+        />
+      </span>
     </button>
   );
 }
@@ -464,7 +497,16 @@ function DashboardContent() {
     !loading && !error && data.properties.length === 0 && data.matchTotals.total === 0 && data.verifications.length === 0;
 
   return (
+    /*
+     * THE PANEL HOME, ON THE SHELL'S OWN SURFACE.
+     *
+     * `.hm-customer` is the application shell's premium light block — refined hairlines,
+     * a restrained lift, gold accent relationships, tabular figures. The Dashboard is
+     * part of that shell rather than a product viewport, which is why it wears it and
+     * Matches does not.
+     */
     <AppLayout>
+      <div className="hm-customer -mx-4 -my-6 min-h-[calc(100dvh-4rem)] px-4 py-6 md:-mx-6 md:-my-8 md:px-6 md:py-8">
       <div className="space-y-5 md:space-y-6">
         {/* ── 1. Welcome, with the four counts on the same surface ── */}
         <section className="overflow-hidden rounded-[0.9rem] border border-foreground/15 bg-card shadow-card">
@@ -496,11 +538,13 @@ function DashboardContent() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 divide-x divide-foreground/[0.12] border-t border-border rtl:divide-x-reverse xl:grid-cols-4">
-            <div className="border-b border-foreground/[0.12] xl:border-b-0">
+          {/* A hairline between modules rather than a drawn grid: four cells boxed by
+              rules read as a table of figures, which is what this stopped being. */}
+          <div className="grid grid-cols-2 divide-x divide-border border-t border-border rtl:divide-x-reverse xl:grid-cols-4">
+            <div className="border-b border-border xl:border-b-0">
               <Count label={t('dash_total_properties')} value={data.properties.length} note={weekNote(data.propertiesThisWeek)} loading={loading} />
             </div>
-            <div className="border-b border-foreground/[0.12] xl:border-b-0">
+            <div className="border-b border-border xl:border-b-0">
               <Count
                 label={t('dash_total_matches')}
                 value={data.matchTotals.total}
@@ -714,6 +758,7 @@ function DashboardContent() {
             <ArrowRight className={`h-4 w-4 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
           </Button>
         </div>
+      </div>
       </div>
 
       <AlertDialog open={!!deleteId} onOpenChange={open => !open && setDeleteId(null)}>

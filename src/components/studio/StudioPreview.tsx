@@ -52,13 +52,20 @@ import type { SupportedLanguage } from '@/types/types';
  * number.
  */
 /**
- * The narrowest viewport that is honestly a desktop: the site's own `lg`.
+ * The narrowest viewport that is honestly a desktop: the width at which the
+ * public header shows its desktop navigation (`xl`, 1280).
  *
  * Used as the desktop preview's viewport whenever the pane cannot hold one,
- * because the least scaling is the least blur, and any wider number would
- * scale a 1440px laptop harder for no extra truth.
+ * because the least scaling is the least blur.
+ *
+ * It was the site's `lg` (1024) until the 2026-09 public redesign moved the
+ * header's full row to 1280 — at 1024 the navigation, in Georgian and
+ * Russian, collided with the account buttons. A 1024 preview then rendered
+ * the phone-and-tablet header, and "the desktop preview" stopped showing the
+ * navigation an owner opens the editor to rename. The scaling below is
+ * unchanged; only the width it scales from moved with the site.
  */
-export const DESKTOP_MIN_WIDTH = 1024;
+export const DESKTOP_MIN_WIDTH = 1280;
 
 export const DEVICE_WIDTHS = [
   { key: 'desktop', width: null as number | null, labelKey: 'studio_device_desktop' },
@@ -207,7 +214,7 @@ function PreviewFrame({
     if (doc?.body) doc.body.dataset.hmEditing = editing ? 'on' : 'off';
   }, [editing]);
 
-  return (
+  const frame = (
     <iframe
       ref={ref}
       title={t('studio_preview')}
@@ -235,13 +242,37 @@ function PreviewFrame({
         ...(scale === 1 ? {} : {
           height: height ? `${height}px` : '100%',
           transform: `scale(${scale})`,
-          transformOrigin: rtl ? 'top right' : 'top left',
+          transformOrigin: 'top left',
+          position: 'absolute',
+          top: 0,
+          left: 0,
         }),
         border: 0,
       }}
     >
       {body ? createPortal(children, body) : null}
     </iframe>
+  );
+
+  if (scale === 1 || !width) return frame;
+
+  /*
+   * THE SCALED FRAME TAKES UP ITS SCALED SIZE.
+   *
+   * A transform shrinks what is painted, not the box that is laid out: a
+   * 1280px frame scaled to 0.8 still occupies 1280px in the pane, so the
+   * pane grew a horizontal scrollbar and every scrollIntoView on a selected
+   * section slid the page sideways under the admin's pointer. The wrapper is
+   * the painted size and clips the rest, and the frame is pinned to its
+   * physical top-left so the arithmetic is the same in either direction.
+   */
+  return (
+    <div
+      className="relative shrink-0 overflow-hidden"
+      style={{ width: `${width * scale}px`, height: height ? `${height * scale}px` : '100%' }}
+    >
+      {frame}
+    </div>
   );
 }
 
@@ -358,41 +389,68 @@ export function StudioPreview({
   const selectedIdForScroll = selectedSection?.id ?? null;
   useEffect(() => {
     if (!previewBody || !selectedIdForScroll) return;
-    const el = previewBody.querySelector<HTMLElement>(
-      `[data-studio-section="${selectedIdForScroll}"]`,
-    );
-    const win = el?.ownerDocument.defaultView;
-    if (!el || !win) return;
-
-    const inView = () => {
-      const r = el.getBoundingClientRect();
-      return r.top >= 48 && r.top < win.innerHeight - 80;
-    };
-    // Already on screen: scrolling would yank the page out from under a
-    // click the admin has only just made.
-    if (inView()) return;
-
-    const reduced = win.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    el.scrollIntoView({ block: 'center', behavior: reduced ? 'instant' : 'smooth' });
+    let cancelled = false;
+    const timers: number[] = [];
 
     /*
-     * Then confirm it, twice.
+     * The element may not exist YET.
      *
-     * The page above is full of photographs that finish loading after the
-     * scroll, each one pushing this section further down, so a single
-     * scrollIntoView lands on where the section used to be.
-     *
-     * 'instant', not 'auto': `auto` means "whatever CSS says", and the
-     * site's own stylesheet — cloned into this document with everything
-     * else — sets `scroll-behavior: smooth`. A correction that animates
-     * is not a correction, it is a second animation racing the first.
+     * addSection() selects the new block in the same tick it creates it, and
+     * the iframe renders it a beat later — so the first look at the DOM can
+     * come up empty. Giving up there left a freshly added block off screen
+     * whenever the section above it was tall enough to need real scrolling.
+     * A short retry window covers the render without ever fighting a scroll
+     * the admin has since made themselves.
      */
-    const again = () => {
-      if (!inView()) el.scrollIntoView({ block: 'center', behavior: 'instant' });
+    const find = (tries: number) => {
+      if (cancelled) return;
+      const el = previewBody.querySelector<HTMLElement>(
+        `[data-studio-section="${selectedIdForScroll}"]`,
+      );
+      const win = el?.ownerDocument.defaultView;
+      if (!el || !win) {
+        if (tries > 0) timers.push(window.setTimeout(() => find(tries - 1), 150));
+        return;
+      }
+
+      const inView = () => {
+        const r = el.getBoundingClientRect();
+        /*
+         * "On screen" means a READABLE slice of it is, not that its top edge
+         * has crossed into the last pixels above the fold. A block whose top
+         * sat 2px inside the old `top < innerHeight - 80` window counted as
+         * visible while every word in it was below the fold — exactly where
+         * a block freshly added below a tall section lands.
+         */
+        return r.top >= 48 && r.top + Math.min(r.height, 160) <= win.innerHeight - 24;
+      };
+      // Already on screen: scrolling would yank the page out from under a
+      // click the admin has only just made.
+      if (inView()) return;
+
+      const reduced = win.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      el.scrollIntoView({ block: 'center', behavior: reduced ? 'instant' : 'smooth' });
+
+      /*
+       * Then confirm it, twice.
+       *
+       * The page above is full of photographs that finish loading after the
+       * scroll, each one pushing this section further down, so a single
+       * scrollIntoView lands on where the section used to be.
+       *
+       * 'instant', not 'auto': `auto` means "whatever CSS says", and the
+       * site's own stylesheet — cloned into this document with everything
+       * else — sets `scroll-behavior: smooth`. A correction that animates
+       * is not a correction, it is a second animation racing the first.
+       */
+      const again = () => {
+        if (!cancelled && !inView()) el.scrollIntoView({ block: 'center', behavior: 'instant' });
+      };
+      timers.push(win.setTimeout(again, 600));
+      timers.push(win.setTimeout(again, 1400));
     };
-    const t1 = win.setTimeout(again, 600);
-    const t2 = win.setTimeout(again, 1400);
-    return () => { win.clearTimeout(t1); win.clearTimeout(t2); };
+    find(10);
+    return () => { cancelled = true; timers.forEach(t => clearTimeout(t)); };
   }, [previewBody, selectedIdForScroll]);
 
   const width = useMemo(
@@ -432,8 +490,8 @@ export function StudioPreview({
    * That one was about the phone previews, where scaling a desktop render
    * would have shown a shrunken desktop instead of the real mobile layout.
    * Here the desktop layout IS the thing being asked for, and the frame is
-   * still a real viewport of a real width — 1024 exactly, the narrowest
-   * width that is honestly a desktop, so the scale stays as close to 1 as the
+   * still a real viewport of a real width — DESKTOP_MIN_WIDTH exactly, the
+   * narrowest width that is honestly a desktop, so the scale stays as close to 1 as the
    * pane allows and a wide window still scales by nothing at all.
    */
   const paneRef = useRef<HTMLDivElement>(null);
@@ -481,6 +539,11 @@ export function StudioPreview({
           * somewhere else — the one thing a preview must never do.
           */}
         <LanguageOverride lang={locale as SupportedLanguage} overrides={appContent}>
+          {/* The public site's own presentation scope, as HomePage applies
+              it, so the preview is the page rather than the page on the
+              app's graphite canvas. A wrapper around every section, not
+              between a section and its own wrapper. */}
+          <div className="hm-public min-h-full">
           <SitePage
             slug={slug}
             content={content}
@@ -489,6 +552,7 @@ export function StudioPreview({
             editing
             onSelectMedia={(sectionId, slot) => setMediaTarget(slot ? { sectionId, slot } : null)}
           />
+          </div>
         </LanguageOverride>
         <SectionControls root={sectionRoot} body={previewBody} api={controls} />
         <ItemControls body={previewBody} api={items} revision={content} />

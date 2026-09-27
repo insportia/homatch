@@ -38,8 +38,17 @@
 interface Client {
   rpc(fn: string, args: Record<string, unknown>): Promise<{ data: unknown; error: unknown }>;
   functions: {
-    invoke(name: string, opts: { body: unknown }): Promise<{ data: unknown; error: unknown }>;
+    invoke(
+      name: string,
+      opts: { body: unknown; headers?: Record<string, string> },
+    ): Promise<{ data: unknown; error: unknown }>;
   };
+}
+
+/** The service key, when this runs under Deno with it set; '' otherwise. */
+function readServiceKey(): string {
+  const deno = (globalThis as { Deno?: { env: { get(k: string): string | undefined } } }).Deno;
+  try { return deno?.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''; } catch { return ''; }
 }
 
 export type Priority = 'CRITICAL' | 'HIGH' | 'NORMAL' | 'LOW';
@@ -117,8 +126,16 @@ export async function notify(sb: Client, input: NotifyInput): Promise<string | n
      * Not awaited for its result: a slow push service must not hold up the
      * request that produced the event.
      */
+    /*
+     * The service key is sent EXPLICITLY. push-send refuses `deliver` from
+     * anybody else, and a producer's client is not guaranteed to carry it: a
+     * client built with the caller's Authorization header would forward the
+     * customer's JWT, and the push would be refused as it should be.
+     */
+    const serviceKey = readServiceKey();
     void sb.functions.invoke('push-send', {
       body: { action: 'deliver', notificationId: data },
+      ...(serviceKey ? { headers: { Authorization: `Bearer ${serviceKey}` } } : {}),
     }).catch(() => { /* delivery is best effort; the in-app row is the record */ });
 
     return data;

@@ -418,3 +418,22 @@ test('the article is right in a rejection too, not only in a match', () => {
   assert.equal(result.compatibility, 'INCOMPATIBLE');
   assert.match(result.rationale, /this is an apartment/);
 });
+
+test('a demand stated in rooms is compared with rooms, never with bedrooms', async () => {
+  const { assessMatch } = await import('../match/compatibility.ts');
+  const demand = {
+    intentType: 'BUY', transactionType: 'SALE', city: 'Tbilisi', district: null,
+    propertyTypes: ['APARTMENT'], budgetMin: null, budgetMax: 150000, currency: 'USD',
+    areaMin: null, areaMax: null, bedroomsMin: null, bedroomsMax: null, roomsMin: 3, roomsMax: 3,
+  };
+  const base = {
+    transaction: 'SALE', city: 'Tbilisi', district: null, propertyType: 'APARTMENT',
+    saleAmount: 140000, saleCurrency: 'USD', rentAmount: null, rentCurrency: null, areaSqm: null,
+  };
+  const threeRooms = assessMatch(demand, { ...base, rooms: 3, bedrooms: 2 });
+  assert.ok(threeRooms.agreed.includes('BEDROOMS'), 'a three-room flat did not satisfy a three-room demand');
+  const threeBedrooms = assessMatch(demand, { ...base, rooms: 4, bedrooms: 3 });
+  assert.ok(!threeBedrooms.agreed.includes('BEDROOMS'), 'three bedrooms were read as three rooms');
+  const unknownRooms = assessMatch(demand, { ...base, rooms: null, bedrooms: 2 });
+  assert.ok(unknownRooms.unknown.includes('BEDROOMS'), 'a room count was guessed from bedrooms');
+});

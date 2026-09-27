@@ -43,6 +43,7 @@
 // quietly billed for it would be charging twice for one sweep.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { notify } from '../_shared/notify.ts';
 import {
   assessMatch,
   type DemandSide,
@@ -112,7 +113,17 @@ Deno.serve(async (req: Request) => {
     const dryRun = body.dryRun === true;
     const campaignId = body.campaignId ? String(body.campaignId) : null;
     const onlySignal = body.signalId ? String(body.signalId) : null;
-    const limit = Math.max(1, Math.min(MAX_DEMAND, Number(body.maxDemand) || 10));
+    /*
+     * A TARGETED, NETWORK-ONLY RUN is what native intent asks for: "this person just
+     * stated what they want — is there a Homatch property for it?" It reads no external
+     * supply and writes no external match, so a requirement said in a chat cannot turn
+     * into an acquisition of any kind.
+     */
+    const onlyProfiles: string[] = Array.isArray(body.intentProfileIds)
+      ? (body.intentProfileIds as unknown[]).map(String).filter((id) => /^[0-9a-f-]{36}$/i.test(id)).slice(0, MAX_DEMAND)
+      : [];
+    const nativeOnly = body.nativeOnly === true;
+    const limit = Math.max(1, Math.min(nativeOnly ? 200 : MAX_DEMAND, Number(body.maxDemand) || (nativeOnly ? 200 : 10)));
 
     /*
      * THE DEMAND SIDE, and only what is already allowed to be shown.
@@ -126,17 +137,39 @@ Deno.serve(async (req: Request) => {
       .from('intent_profiles')
       .select('id,signal_id,intent_type,transaction_type,city,district,property_types,'
         + 'bedrooms_min,bedrooms_max,area_min,area_max,budget_min,budget_max,currency,'
-        + 'intent_confidence,country,'
-        + 'signal:raw_signals!signal_id(id,classification_status,platform)')
+        + 'intent_confidence,country,rooms_min,rooms_max,classifier_version,'
+        + 'signal:raw_signals!signal_id(id,classification_status,platform),'
+        /*
+         * WHOSE DEMAND THIS IS, where it is anybody's.
+         *
+         * intent_profiles has no user column — it holds a requirement, not a person —
+         * and the account is on the subscription that watches it. That is the canonical
+         * join and it is the only thing that makes a native match have two identities;
+         * an external demand read off a forum simply has no row here, which is the
+         * honest answer rather than a gap.
+         */
+        + `subscriptions:active_search_subscriptions${nativeOnly ? '!inner' : ''}!intent_id(user_id,is_active,side,search_criteria)`)
       .not('city', 'is', null)
       .order('created_at', { ascending: false })
       .limit(limit * 4);
     if (onlySignal) demandQuery = demandQuery.eq('signal_id', onlySignal);
+    if (onlyProfiles.length) demandQuery = demandQuery.in('id', onlyProfiles);
+    if (nativeOnly) demandQuery = demandQuery.eq('subscriptions.is_active', true);
 
     const { data: demandRows, error: demandError } = await demandQuery;
     if (demandError) throw demandError;
 
     const eligible = (demandRows ?? []).filter((row: Record<string, unknown>) => {
+      /*
+       * A NATIVE DEMAND HAS NOTHING TO CLASSIFY.
+       *
+       * The gate below is right for an external row: a classifier's provisional reading
+       * of a stranger's post must not reach a customer. A plan the customer was shown
+       * and confirmed is not a reading of anything — planToIntentProfile writes
+       * intent_confidence 1 for exactly this reason — and applying the external gate to
+       * it made every demand Find Property persists invisible to this worker.
+       */
+      if (row.signal_id === null || row.signal_id === undefined) return true;
       const signal = Array.isArray(row.signal) ? row.signal[0] : row.signal;
       return String((signal as Record<string, unknown>)?.classification_status ?? '') === 'CLASSIFIED';
     }).slice(0, limit);
@@ -185,6 +218,11 @@ Deno.serve(async (req: Request) => {
       persistenceFailures: 0,
       /* Always zero here, asserted rather than assumed: this worker acquires nothing. */
       networkFetches: 0,
+      /* The Homatch network pass, counted apart from the external one so a run can say
+         which of the two produced what. */
+      nativeCandidatesRead: 0,
+      nativeCompatible: 0,
+      nativePersisted: 0,
     };
 
     for (const row of eligible) {
@@ -205,7 +243,45 @@ Deno.serve(async (req: Request) => {
        * is not derived from a model and it is not a guess about this person; it is the
        * default the product applies until the intake actually asks.
        */
-      const strength: StrengthMap = { DISTRICT: 'PREFERRED' };
+      /*
+       * WHOSE DEMAND THIS IS. Null for an external signal, which is the correct answer
+       * and the reason the native pass below is skipped for it: there is no Homatch
+       * account on a forum post, and inventing one is the single thing this whole
+       * distinction exists to prevent.
+       */
+      const subscriptions = (Array.isArray(demandRow.subscriptions)
+        ? demandRow.subscriptions
+        : demandRow.subscriptions ? [demandRow.subscriptions] : []) as Array<Record<string, unknown>>;
+      const demandUserId = subscriptions.find((sub) => sub.is_active === true)?.user_id as
+        string | undefined ?? null;
+
+      /*
+       * THE FIRMNESS THE PERSON STATED, where they stated one. A native demand carries its
+       * own strength map on the subscription (search_criteria.strength) — REQUIRED,
+       * PREFERRED, FLEXIBLE as the person said it, or as their confirmed plan said it.
+       * Only a demand with no stated strengths falls back to the product default.
+       */
+      const activeSubscription = subscriptions.find((sub) => sub.is_active === true);
+      const criteria = (activeSubscription?.search_criteria ?? {}) as Record<string, unknown>;
+      const planStrength = (): StrengthMap | null => {
+        /* A confirmed Search Plan stores each constraint as { value, strength }. */
+        const map: Record<string, string> = {};
+        const pick = (field: string, dimension: string) => {
+          const entry = criteria[field] as { strength?: string } | null | undefined;
+          if (entry && typeof entry === 'object' && entry.strength && entry.strength !== 'UNKNOWN') {
+            map[dimension] = entry.strength;
+          }
+        };
+        pick('city', 'CITY'); pick('districts', 'DISTRICT'); pick('propertyTypes', 'PROPERTY_TYPE');
+        pick('budget', 'PRICE'); pick('bedrooms', 'BEDROOMS'); pick('areaSqm', 'AREA');
+        return Object.keys(map).length ? map as StrengthMap : null;
+      };
+      const statedStrength = (criteria.strength && typeof criteria.strength === 'object')
+        ? criteria.strength as StrengthMap
+        : planStrength();
+      const strength: StrengthMap = statedStrength && Object.keys(statedStrength).length
+        ? { DISTRICT: 'PREFERRED', ...statedStrength }
+        : { DISTRICT: 'PREFERRED' };
 
       const demand: DemandSide = {
         intentType: (demandRow.intent_type as string | null) ?? null,
@@ -220,6 +296,8 @@ Deno.serve(async (req: Request) => {
         areaMax: demandRow.area_max as number | null,
         bedroomsMin: demandRow.bedrooms_min as number | null,
         bedroomsMax: demandRow.bedrooms_max as number | null,
+        roomsMin: (demandRow.rooms_min as number | null) ?? null,
+        roomsMax: (demandRow.rooms_max as number | null) ?? null,
         strength,
       };
 
@@ -249,7 +327,8 @@ Deno.serve(async (req: Request) => {
        * has to stop the database hiding rows before the decision is reached.
        */
       const cityFilter = cityNames.map((name) => `city.ilike.${name}`).join(',');
-      const { data: candidates } = await db
+      /* A network-only run reads no external supply at all. */
+      const { data: candidates } = nativeOnly ? { data: [] as Record<string, unknown>[] } : await db
         .from('supply_observations')
         .select('id,city,district,transaction,property_type,sale_amount,sale_currency,'
           + 'rent_amount,rent_currency,area_sqm,rooms,bedrooms,published_at,'
@@ -404,6 +483,187 @@ Deno.serve(async (req: Request) => {
           } else {
             totals.persisted += 1;
           }
+        }
+      }
+
+      /* ── THE HOMATCH NETWORK ──────────────────────────────────────────
+       *
+       * The same demand, against properties real accounts own. Only where the demand
+       * itself belongs to an account: an external signal read off a forum has no
+       * Homatch identity, and a match between it and a Homatch property could not offer
+       * either side anybody to talk to.
+       */
+      if (demandUserId) {
+        const { data: nativeRows } = await db
+          .from('properties')
+          .select('id,user_id,homatch_id,title,transaction_type,property_type,'
+            + 'matching_status,archived_at,contact_phone_e164,'
+            + 'facts:property_facts!property_id(city,district,total_price,currency,'
+            + 'area,rooms,bedrooms)')
+          .eq('is_deleted', false)
+          .is('archived_at', null)
+          .eq('matching_status', 'ACTIVE')
+          /*
+           * NOBODY MATCHES THEMSELVES. Filtered here so the work is not done, and
+           * refused again by a CHECK constraint on the table so it cannot be reached by
+           * a path that forgets. An owner who is also searching is an ordinary person,
+           * not an edge case.
+           */
+          .neq('user_id', demandUserId)
+          .limit(MAX_CANDIDATES);
+
+        totals.nativeCandidatesRead += (nativeRows ?? []).length;
+        /* Which properties still fit, so the ones that no longer do stop being shown. */
+        const compatibleProperties: string[] = [];
+
+        for (const candidate of nativeRows ?? []) {
+          const propertyRow = candidate as Record<string, unknown>;
+          const propertyFacts = (Array.isArray(propertyRow.facts)
+            ? propertyRow.facts[0]
+            : propertyRow.facts) as Record<string, unknown> | null | undefined;
+
+          /*
+           * A PROPERTY, SHAPED AS SUPPLY. The same SupplySide the observation path
+           * builds, so assessMatch() cannot treat the two differently. A rent price and
+           * a sale price are the same column on a property and the transaction type
+           * says which, so only one of the two amounts is ever populated — putting the
+           * figure in both would let a rental match a buyer's budget.
+           */
+          const transaction = String(propertyRow.transaction_type ?? '').toUpperCase();
+          const amount = (propertyFacts?.total_price as number | null) ?? null;
+          const amountCurrency = (propertyFacts?.currency as string | null) ?? null;
+          const nativeSupply: SupplySide = {
+            role: supplyRoleFrom('OWNER') ?? 'SELLER',
+            transaction: transaction || null,
+            city: (propertyFacts?.city as string | null) ?? null,
+            district: (propertyFacts?.district as string | null) ?? null,
+            propertyType: (propertyRow.property_type as string | null) ?? null,
+            saleAmount: transaction === 'RENT' ? null : amount,
+            saleCurrency: transaction === 'RENT' ? null : amountCurrency,
+            rentAmount: transaction === 'RENT' ? amount : null,
+            rentCurrency: transaction === 'RENT' ? amountCurrency : null,
+            areaSqm: (propertyFacts?.area as number | null) ?? null,
+            bedrooms: (propertyFacts?.bedrooms as number | null) ?? null,
+            rooms: (propertyFacts?.rooms as number | null) ?? null,
+          };
+
+          const assessment = assessMatch(demand, nativeSupply, { minAgreements: MIN_AGREEMENTS });
+          if (assessment.compatibility !== 'COMPATIBLE') continue;
+          totals.nativeCompatible += 1;
+          if (dryRun) continue;
+
+          /*
+           * ONE ROW PER RELATIONSHIP, FOREVER. The conflict target is the partial unique
+           * index on (intent_profile_id, property_id): a tick that runs every hour
+           * re-evaluates the pair rather than adding a tenth copy of the same flat to
+           * somebody's list.
+           */
+          /*
+           * ONE ROW PER RELATIONSHIP, FOREVER. Through a SQL function because the identity
+           * is a PARTIAL unique index on (intent_profile_id, property_id), and PostgREST
+           * cannot name a predicate in its conflict target — the upsert this replaced
+           * failed on every call. The function does.
+           */
+          const { data: written, error: nativeError } = await db.rpc('upsert_native_match', {
+            p: {
+              intent_profile_id: demandRow.id as string,
+              property_id: propertyRow.id as string,
+              /* Resolved from the owning rows under the service role. Never from a
+                 client — this table has RLS on and no policies. */
+              supply_user_id: propertyRow.user_id as string,
+              demand_user_id: demandUserId,
+              campaign_id: campaignId,
+              compatibility: assessment.compatibility,
+              match_score: assessment.score,
+              demand_role: assessment.roles.demand,
+              supply_role: assessment.roles.supply,
+              deal_kind: assessment.deal,
+              agreed: assessment.agreed,
+              conflicted: assessment.conflicted,
+              preference_misses: assessment.preferenceMisses,
+              unknown_dimensions: assessment.unknown,
+              flexible_dimensions: assessment.flexible,
+              rationale: assessment.rationale,
+              dimensions: assessment.dimensions,
+            },
+          });
+
+          if (nativeError) {
+            totals.persistenceFailures += 1;
+            results.push({ propertyId: propertyRow.id, error: nativeError.message });
+            continue;
+          }
+          totals.nativePersisted += 1;
+
+          /*
+           * BOTH SIDES ARE TOLD, AND NOT THE SAME THING.
+           *
+           * The owner learns there is somebody whose stated requirements fit their
+           * property; the searcher learns there is a property that fits what they
+           * asked for. Neither sentence claims an intention nobody has expressed —
+           * "you have a buyer" is a state that does not exist here.
+           *
+           * The dedupe key is the RELATIONSHIP, so the hourly re-evaluation above tells
+           * nobody a second time; the group key collapses a first sweep that finds nine
+           * into one interruption rather than nine.
+           */
+          const matchId = String(written ?? '');
+          compatibleProperties.push(propertyRow.id as string);
+          if (matchId) {
+            await notify(db, {
+              userId: String(propertyRow.user_id),
+              type: 'MATCH_AVAILABLE',
+              title: 'A Homatch member is looking for something like your property',
+              body: 'Their stated requirements fit this property.',
+              priority: 'NORMAL',
+              deepLink: `/property/${propertyRow.id}/matches`,
+              entityType: 'supply_match',
+              entityId: matchId,
+              dedupeKey: `native-match:${matchId}:supply`,
+              groupKey: `native-match-supply:${propertyRow.id}`,
+              groupWindow: '6 hours',
+              /* A collapsed burst must say how many it collapsed. Without this the
+                 aggregate row keeps the FIRST event's title and the other eight are
+                 invisible — which is worse than nine interruptions, because the
+                 customer does not know there is anything else to look at. */
+              groupTitle: '{n} Homatch members are looking for something like your property',
+              metadata: {
+                kind: 'NATIVE_MATCH_SUPPLY',
+                property_id: propertyRow.id,
+                homatch_id: propertyRow.homatch_id ?? null,
+              },
+            });
+            await notify(db, {
+              userId: demandUserId,
+              type: 'MATCH_AVAILABLE',
+              title: 'A Homatch property may fit what you are looking for',
+              body: String(demandRow.classifier_version ?? '') === 'search-plan-1.0.0'
+                ? 'It fits the plan you confirmed.'
+                : 'It fits the requirements you described.',
+              priority: 'NORMAL',
+              deepLink: '/find-property?view=homatch',
+              entityType: 'supply_match',
+              entityId: matchId,
+              dedupeKey: `native-match:${matchId}:demand`,
+              groupKey: `native-match-demand:${demandRow.id}`,
+              groupWindow: '6 hours',
+              groupTitle: '{n} Homatch properties match your search',
+              metadata: {
+                kind: 'NATIVE_MATCH_DEMAND',
+                origin: String(demandRow.classifier_version ?? '') === 'search-plan-1.0.0' ? 'SEARCH_PLAN' : 'CONVERSATION',
+                property_id: propertyRow.id,
+                homatch_id: propertyRow.homatch_id ?? null,
+              },
+            });
+          }
+        }
+
+        /* A property that no longer fits this demand stops being shown as a match. */
+        if (!dryRun) {
+          await db.rpc('retire_native_matches', {
+            p_intent_profile_id: demandRow.id as string,
+            p_keep: compatibleProperties,
+          });
         }
       }
 

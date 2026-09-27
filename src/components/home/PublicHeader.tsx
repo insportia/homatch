@@ -36,8 +36,12 @@ import type { TranslationKey } from '@/i18n/translations';
 export interface HeaderLink {
   key: string;
   label: string;
-  /** In-page region id, or a router path when it starts with '/'. */
+  /** In-page region id, or a router path when it starts with '/'. Public. */
   target: string;
+  /** Where a signed-in visitor goes instead, when that differs. */
+  signedInTarget?: string;
+  /** One line under the label inside a group's menu. */
+  description?: string;
   /**
    * A group. Present only on the two secondary headings, which are not
    * themselves destinations: seven flat links is what made this header
@@ -56,21 +60,27 @@ export interface HeaderLink {
  * THE NAVIGATION LABELS AN ADMIN MAY REWRITE.
  *
  * Keyed by the link key the pages already use, and valued with the
- * translation key that link already falls back to. A key that is not here --
+ * translation key that link falls back to when nothing is stored. The
+ * STORED override is read under `nav_<key>` — the exact field id the
+ * `site_header` section in src/site/registry.ts offers, so a label saved in
+ * Site Studio is the label this header renders. A key that is not here --
  * the About page's in-page anchors, say -- simply keeps the label the page
  * passed, which is why adding a link in code needs no edit here to work.
  *
  * Must stay in step with the `site_header` fields in src/site/registry.ts;
- * the test beside that file checks that it does.
+ * the tests beside both files check that it does.
  */
 const NAV_FIELDS: Readonly<Record<string, TranslationKey>> = {
   find_property: 'dnav_find_property',
-  find_client: 'dnav_find_client',
+  find_client: 'pub_nav_find_client',
   verify: 'nav_verify',
-  intelligence: 'mp_nav_capabilities',
+  services: 'pub_nav_services',
+  intelligence: 'pub_nav_how',
+  mortgage: 'nav_mortgage',
   investment: 'nav_investment',
   expat: 'nav_for_expats',
   professional: 'nav_professional',
+  brokers: 'pub_nav_brokers',
   developers: 'mp_nav_developers',
   partners: 'home_nav_partners',
   company: 'nav_company',
@@ -79,7 +89,19 @@ const NAV_FIELDS: Readonly<Record<string, TranslationKey>> = {
 };
 
 /** The header, wrapped in whatever the site has stored for its chrome. */
-export function PublicHeader(props: { links: HeaderLink[]; solid?: boolean }) {
+export function PublicHeader(props: {
+  links: HeaderLink[];
+  solid?: boolean;
+  /**
+   * `fixed` is the home page's arrangement: the bar floats over the black
+   * hero and pages lay themselves out underneath it (HeaderSpacer). `sticky`
+   * is for pages that lay themselves out BELOW the bar -- the signed-out
+   * chrome AppLayout puts on Mortgage, Investment and Brokers -- where a
+   * fixed bar would cover the first heading. A sticky header is always the
+   * solid white bar; there is no hero under it to be transparent over.
+   */
+  position?: 'fixed' | 'sticky';
+}) {
   return <ShellScope part="site_header"><HeaderBody {...props} /></ShellScope>;
 }
 
@@ -93,8 +115,14 @@ export function PublicHeader(props: { links: HeaderLink[]; solid?: boolean }) {
  * out of an open menu.
  */
 function NavGroup({
-  link, onDark, go, label,
-}: { link: HeaderLink; onDark: boolean; go: (target: string) => void; label: string }) {
+  link, onDark, go, label, childLabel,
+}: {
+  link: HeaderLink;
+  onDark: boolean;
+  go: (link: HeaderLink) => void;
+  label: string;
+  childLabel: (link: HeaderLink) => string;
+}) {
   const [open, setOpen] = React.useState(false);
   const wrap = React.useRef<HTMLDivElement>(null);
 
@@ -119,7 +147,7 @@ function NavGroup({
         aria-expanded={open}
         aria-haspopup="menu"
         onClick={() => setOpen(v => !v)}
-        className={`relative inline-flex items-center gap-1 whitespace-nowrap [overflow-wrap:normal] text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+        className={`relative inline-flex items-center gap-1 whitespace-nowrap [overflow-wrap:normal] text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 2xl:text-sm ${
           onDark ? 'text-white/75 hover:text-white' : 'text-ink-soft hover:text-foreground'
         }`}
       >
@@ -136,10 +164,15 @@ function NavGroup({
               key={child.key}
               type="button"
               role="menuitem"
-              onClick={() => { setOpen(false); go(child.target); }}
-              className="block w-full whitespace-nowrap px-4 py-2.5 text-start text-sm text-foreground transition-colors hover:bg-muted"
+              onClick={() => { setOpen(false); go(child); }}
+              className="block w-full px-4 py-2.5 text-start transition-colors hover:bg-muted"
             >
-              {child.label}
+              <span className="block whitespace-nowrap text-sm text-foreground">{childLabel(child)}</span>
+              {child.description && (
+                <span className="mt-0.5 block max-w-[16rem] text-[13px] leading-snug text-muted-foreground">
+                  {child.description}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -148,7 +181,11 @@ function NavGroup({
   );
 }
 
-function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boolean }) {
+function HeaderBody({ links, solid = false, position = 'fixed' }: {
+  links: HeaderLink[];
+  solid?: boolean;
+  position?: 'fixed' | 'sticky';
+}) {
   /* Read BEFORE laying out, so the strip never reserves room for a control
      that is about to render nothing. See useInstallState. */
   const installState = useInstallState();
@@ -167,6 +204,8 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const panelRef = React.useRef<HTMLDivElement>(null);
+  const toggleRef = React.useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
@@ -176,18 +215,39 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
   }, []);
 
   // The mobile panel is a full-height overlay; leaving the page scrollable
-  // behind it lets a touch drag move the page under the menu.
+  // behind it lets a touch drag move the page under the menu. While it is
+  // open it behaves as a dialog: focus moves in, Tab stays inside, Escape
+  // closes, and focus returns to the button that opened it.
   useEffect(() => {
     if (!open) return;
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    const focusables = () => Array.from(
+      panelRef.current?.querySelectorAll<HTMLElement>(
+        'button, a[href], input, select, [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter((el) => !el.hasAttribute('disabled'));
+    focusables()[0]?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key === 'Escape') { setOpen(false); return; }
+      if (e.key !== 'Tab') return;
+      const items = focusables();
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      /* The toggle in the bar stays reachable; anything else wraps. */
+      if (!e.shiftKey && active === last) { e.preventDefault(); first.focus(); }
+      else if (e.shiftKey && (active === first || !panelRef.current?.contains(active))) {
+        e.preventDefault();
+        last.focus();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => {
       document.body.style.overflow = previous;
       window.removeEventListener('keydown', onKey);
+      toggleRef.current?.focus();
     };
   }, [open]);
 
@@ -202,12 +262,12 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
   const fp = useFieldProps();
   const notEditable = useNotEditable();
   const labelFor = (link: HeaderLink) => {
-    const field = NAV_FIELDS[link.key];
-    return field ? sf(field, field) : link.label;
+    const fallback = NAV_FIELDS[link.key];
+    return fallback ? sf(`nav_${link.key}`, fallback) : link.label;
   };
-  const markFor = (link: HeaderLink) => (NAV_FIELDS[link.key] ? fp(NAV_FIELDS[link.key]) : {});
+  const markFor = (link: HeaderLink) => (NAV_FIELDS[link.key] ? fp(`nav_${link.key}`) : {});
 
-  const go = (target: string) => {
+  const goTo = (target: string) => {
     setOpen(false);
     if (target.startsWith('/')) {
       navigate(target);
@@ -216,12 +276,25 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
     document.getElementById(target)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  /*
+   * WHERE A LINK GOES DEPENDS ON WHO IS STANDING ON IT.
+   *
+   * "Find a property" and "Find a buyer or tenant" are authenticated
+   * products; a visitor without an account gets the public entry page that
+   * explains the product and carries them through sign-up, and a signed-in
+   * visitor goes straight in. Decided here, from the resolved auth state,
+   * so no page has to know there are two destinations.
+   */
+  const go = (link: HeaderLink) => {
+    goTo(status === 'AUTHENTICATED' && link.signedInTarget ? link.signedInTarget : link.target);
+  };
+
   /* Inverted while the header is still over the hero. */
-  const onDark = !solid && !scrolled && !open;
+  const onDark = position === 'fixed' && !solid && !scrolled && !open;
 
   return (
     <header
-      className={`fixed inset-x-0 top-0 z-50 transition-colors duration-300 motion-reduce:transition-none ${
+      className={`${position === 'sticky' ? 'sticky' : 'fixed inset-x-0'} top-0 z-50 transition-colors duration-300 motion-reduce:transition-none ${
         onDark ? 'border-b border-transparent bg-transparent' : 'border-b border-border bg-background/95 backdrop-blur-md'
       }`}
     >
@@ -236,19 +309,21 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
           className="min-w-0 shrink rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4"
           aria-label={t('home_nav_home_aria')}
         >
-          <HomatchLogo size="md" withTagline={false} tone={onDark ? 'light' : 'dark'} className="sm:hidden" />
-          <HomatchLogo size="md" withTagline tone={onDark ? 'light' : 'dark'} className="hidden sm:flex" />
+          {/* The tagline needs more room than a Georgian navigation row can
+              spare below xl; the wordmark alone is still the whole brand. */}
+          <HomatchLogo size="md" withTagline={false} tone={onDark ? 'light' : 'dark'} className="2xl:hidden" />
+          <HomatchLogo size="md" withTagline tone={onDark ? 'light' : 'dark'} className="hidden 2xl:flex" />
         </button>
 
-        <nav className="mx-auto hidden items-center gap-5 lg:flex xl:gap-7">
+        <nav className="mx-auto hidden items-center gap-3 xl:flex 2xl:gap-4">
           {links.map(link => (link.children && link.children.length > 0 ? (
-            <NavGroup key={link.key} link={link} onDark={onDark} go={go} label={labelFor(link)} />
+            <NavGroup key={link.key} link={link} onDark={onDark} go={go} label={labelFor(link)} childLabel={labelFor} />
           ) : (
             <button
               key={link.key}
               type="button"
-              onClick={() => go(link.target)}
-              className={`relative whitespace-nowrap [overflow-wrap:normal] text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+              onClick={() => go(link)}
+              className={`relative whitespace-nowrap [overflow-wrap:normal] text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 2xl:text-sm ${
                 onDark ? 'text-white/75 hover:text-white' : 'text-ink-soft hover:text-foreground'
               }`}
               {...markFor(link)}
@@ -276,11 +351,19 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
             * control shows the locale the reader is currently in. An admin
             * rewriting either would be writing over a fact.
             */}
+          {/*
+            * No install control in the desktop BAR.
+            *
+            * In Georgian and Russian the row cannot hold the navigation and
+            * an install pill at once — the pill was what pushed the labels
+            * into each other. On a desktop the control lives in the site
+            * footer, which every public page renders; below lg the utility
+            * strip and the menu both carry it.
+            */}
           <div
             className="hidden items-center gap-1.5 sm:flex"
             {...notEditable('SYSTEM_GENERATED')}
           >
-            <InstallApp tone={onDark ? 'dark' : 'auto'} />
             <LanguageSwitcher showGlobe triggerClassName={`h-10 px-2.5 ${onDark ? 'text-white hover:bg-white/10' : ''}`} />
           </div>
 
@@ -322,7 +405,7 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
                   onDark ? 'text-white/75 hover:text-white' : 'text-ink-soft hover:text-foreground'
                 }`}
               >
-                {t('nav_login')}
+                <span {...fp('cta_login')}>{sf('cta_login', 'nav_login')}</span>
               </button>
               <Button
                 size="sm"
@@ -331,17 +414,20 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
                 }`}
                 onClick={() => navigate('/auth/signup')}
               >
-                {t('nav_signup')}
+                <span {...fp('cta_signup')}>{sf('cta_signup', 'nav_signup')}</span>
               </Button>
             </>
           )}
 
           <button
+            ref={toggleRef}
             type="button"
             onClick={() => setOpen(v => !v)}
             aria-expanded={open}
+            aria-haspopup="dialog"
             aria-label={open ? t('mp_nav_menu_close') : t('mp_nav_menu_open')}
-            className={`grid h-10 w-10 shrink-0 place-items-center rounded-full border lg:hidden ${
+            data-hm-menu-toggle
+            className={`grid h-11 w-11 shrink-0 place-items-center rounded-full border xl:hidden ${
               onDark ? 'border-white/35 text-white' : 'border-foreground/25 text-foreground'
             }`}
           >
@@ -355,7 +441,11 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
           The inset clears the home indicator on a modern phone. */}
       {open && (
         <div
-          className="max-h-[calc(100dvh-4.5rem)] overflow-y-auto overscroll-contain border-t border-border bg-background md:max-h-[calc(100dvh-5.5rem)] lg:hidden"
+          ref={panelRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('mp_nav_menu_open')}
+          className="max-h-[calc(100dvh-4.5rem)] overflow-y-auto overscroll-contain border-t border-border bg-background md:max-h-[calc(100dvh-5.5rem)] xl:hidden"
           style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         >
           <nav className={`${PAGE} flex flex-col py-3`}>
@@ -374,10 +464,11 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
                   <button
                     key={child.key}
                     type="button"
-                    onClick={() => go(child.target)}
+                    onClick={() => go(child)}
                     className="block w-full rounded-xl py-3.5 text-start text-[17px] text-foreground transition-colors hover:text-gold"
+                    {...markFor(child)}
                   >
-                    {child.label}
+                    {labelFor(child)}
                   </button>
                 ))}
               </div>
@@ -385,7 +476,7 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
               <button
                 key={link.key}
                 type="button"
-                onClick={() => go(link.target)}
+                onClick={() => go(link)}
                 className="rounded-xl py-3.5 text-start text-[17px] text-foreground transition-colors hover:text-gold"
                 {...markFor(link)}
               >
@@ -394,11 +485,11 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
             )))}
             {authResolved && status === 'UNAUTHENTICATED' && (
               <div className="mt-3 grid grid-cols-2 gap-3 border-t border-border pt-4 sm:hidden">
-                <Button variant="outline" className="h-11 rounded-full border-border bg-transparent" onClick={() => go('/auth/login')}>
-                  {t('nav_login')}
+                <Button variant="outline" className="h-11 rounded-full border-border bg-transparent" onClick={() => goTo('/auth/login')}>
+                  {sf('cta_login', 'nav_login')}
                 </Button>
-                <Button className="h-11 rounded-full" onClick={() => go('/auth/signup')}>
-                  {t('nav_signup')}
+                <Button className="h-11 rounded-full" onClick={() => goTo('/auth/signup')}>
+                  {sf('cta_signup', 'nav_signup')}
                 </Button>
               </div>
             )}
@@ -440,7 +531,7 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
         * about which one is real.
         */}
       {!open && (
-        <div className={`${PAGE} lg:hidden`}>
+        <div className={`${PAGE} xl:hidden`}>
           {/*
             * `inline-flex`, not a full-width row.
             *
@@ -498,5 +589,7 @@ function HeaderBody({ links, solid = false }: { links: HeaderLink[]; solid?: boo
  * with a transparent header over a hero deliberately get none.
  */
 export function HeaderSpacer() {
-  return <div className="h-[8.5rem] md:h-[9.5rem] lg:h-[5.5rem]" aria-hidden="true" />;
+  /* The bar carries the utility strip below xl now, so the tall spacer holds
+     until the strip disappears with the full navigation row. */
+  return <div className="h-[8.5rem] md:h-[9.5rem] xl:h-[5.5rem]" aria-hidden="true" />;
 }

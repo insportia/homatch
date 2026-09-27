@@ -75,6 +75,7 @@ const PartnersPage = lazyRoute(() => import('./pages/PartnersPage'));
 const PricingPage = lazyRoute(() => import('./pages/PricingPage'));
 const DevelopersPage = lazyRoute(() => import('./pages/DevelopersPage'));
 const AboutPage = lazyRoute(() => import('./pages/AboutPage'));
+const ProductEntryPage = lazyRoute(() => import('./pages/ProductEntryPage'));
 /*
  * HOMATCH FOR DEVELOPERS — the private sales workspace.
  *
@@ -156,6 +157,7 @@ const AdminCreditsPage = lazyRoute(() => import('./pages/admin/AdminCreditsPage'
 const AdminPaymentsPage = lazyRoute(() => import('./pages/admin/AdminPaymentsPage'));
 const AdminFinancePage = lazyRoute(() => import('./pages/admin/AdminFinancePage'));
 const AdminProvidersPage = lazyRoute(() => import('./pages/admin/AdminProvidersPage'));
+const AdminBrokersPage = lazyRoute(() => import('./pages/admin/AdminBrokersPage'));
 const AdminVerifyCogsPage = lazyRoute(() => import('./pages/admin/AdminVerifyCogsPage'));
 const AdminVoiceAiPage = lazyRoute(() => import('./pages/admin/AdminVoiceAiPage'));
 const AdminPricingPage = lazyRoute(() => import('./pages/admin/AdminPricingPage'));
@@ -171,6 +173,11 @@ const AppContentPage = lazyRoute(() => import('./pages/admin/AppContentPage'));
 const AdminEngagementPage = lazyRoute(() => import('./pages/admin/AdminEngagementPage'));
 const AdminLiveChatReportsPage = lazyRoute(() => import('./pages/admin/AdminLiveChatReportsPage'));
 const AdminHomePage = lazyRoute(() => import('./pages/admin/AdminHomePage'));
+const AdminIntelligencePage = lazyRoute(() => import('./pages/admin/AdminIntelligencePage'));
+const AdminSupplyMatchesPage = lazyRoute(() => import('./pages/admin/AdminSupplyMatchesPage'));
+const AdminNotificationsPage = lazyRoute(() => import('./pages/admin/AdminNotificationsPage'));
+const AdminAnnouncementsPage = lazyRoute(() => import('./pages/admin/AdminAnnouncementsPage'));
+const AdminAuditLogPage = lazyRoute(() => import('./pages/admin/AdminAuditLogPage'));
 const CommunicationOverviewPage = lazyRoute(() => import('./pages/admin/communication/CommunicationOverviewPage'));
 const CommunicationVoicePage = lazyRoute(() => import('./pages/admin/communication/CommunicationVoicePage'));
 const CommunicationCallCenterPage = lazyRoute(() => import('./pages/admin/communication/CommunicationCallCenterPage'));
@@ -196,6 +203,16 @@ export const routes: RouteConfig[] = [
   // What Homatch is, for somebody who arrived here without seeing the home
   // page first. Product explanation, not a corporate About Us.
   { name: 'About',             path: '/about',                    element: <AboutPage />,         public: true },
+  /*
+   * THE PUBLIC FRONT DOORS OF THE TWO AUTHENTICATED PRODUCTS.
+   *
+   * Find Property and the owner workspace each write rows that belong to an
+   * account, so they stay behind RouteGuard. These pages are what a visitor
+   * with no account reaches instead of a login bounce: what the product does,
+   * and sign-up or log-in that comes out AT the product (src/site/productEntry.ts).
+   */
+  { name: 'For buyers and tenants', path: '/for-buyers',            element: <ProductEntryPage product="find_property" />, public: true },
+  { name: 'For owners',        path: '/for-owners',               element: <ProductEntryPage product="find_client" />, public: true },
   { name: 'Login',             path: '/auth/login',               element: <LoginPage />,         public: true },
   { name: 'Signup',            path: '/auth/signup',              element: <SignupPage />,        public: true },
   { name: 'Auth Callback',     path: '/auth/callback',            element: <AuthCallbackPage />,  public: true },
@@ -506,8 +523,17 @@ export const routes: RouteConfig[] = [
      enters browser JavaScript cannot be read out of a history entry, a referrer
      or an extension. */
   { name: 'Admin Social Discovery', path: '/admin/social-discovery', element: adminWrap(<AdminSocialDiscoveryPage />), adminOnly: true },
+  { name: 'Admin Brokers',     path: '/admin/brokers',            element: adminWrap(<AdminBrokersPage />),     adminOnly: true },
   { name: 'Admin Signals',     path: '/admin/signals',            element: adminWrap(<AdminSignalsPage />),     adminOnly: true },
   { name: 'Admin Matches',     path: '/admin/matches',            element: adminWrap(<AdminMatchesPage />),     adminOnly: true },
+  /* ADMIN CONTROL CENTRE. Every read and write behind these is an admin_*
+     SQL function that checks is_admin() itself; adminOnly and AdminLayout
+     are the screen's manners, not its authorisation. */
+  { name: 'Admin Supply Matches', path: '/admin/supply-matches',   element: adminWrap(<AdminSupplyMatchesPage />), adminOnly: true },
+  { name: 'Admin Intelligence', path: '/admin/intelligence',       element: adminWrap(<AdminIntelligencePage />), adminOnly: true },
+  { name: 'Admin Notifications', path: '/admin/notifications',     element: adminWrap(<AdminNotificationsPage />), adminOnly: true },
+  { name: 'Admin Announcements', path: '/admin/announcements',     element: adminWrap(<AdminAnnouncementsPage />), adminOnly: true },
+  { name: 'Admin Audit Log',   path: '/admin/audit-log',          element: adminWrap(<AdminAuditLogPage />),    adminOnly: true },
   { name: 'Admin Credits',     path: '/admin/credits',            element: adminWrap(<AdminCreditsPage />),     adminOnly: true },
   { name: 'Admin Payments',    path: '/admin/payments',           element: adminWrap(<AdminPaymentsPage />),    adminOnly: true },
   { name: 'Admin Finance',     path: '/admin/finance',            element: adminWrap(<AdminFinancePage />),     adminOnly: true },

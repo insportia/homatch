@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Upload } from 'lucide-react';
 import { ContractDocument } from './ContractDocument';
-import { useAuth } from '@/contexts/AuthContext';
+import { useProductNavigation } from '@/site/productEntry';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { FeatureGlyph } from '@/components/home/FeatureGlyph';
 import { PAGE, SECTION_Y } from './primitives';
@@ -41,9 +40,8 @@ const STEPS = [
 export function ContractIntelligenceSection() {
   const sf = useSectionField();
   const fp = useFieldProps();
-  const { session } = useAuth();
   const { t, isRTL } = useLanguage();
-  const navigate = useNavigate();
+  const { gated } = useProductNavigation();
 
   /*
    * The four steps are a READING AID, not an animation.
@@ -128,7 +126,7 @@ export function ContractIntelligenceSection() {
 
           <button
             type="button"
-            onClick={() => navigate(session ? '/verify' : '/auth/signup')}
+            onClick={() => gated('/contracts')}
             className="group mt-7 inline-flex h-auto min-h-[3rem] items-center justify-center gap-2.5 rounded-full bg-primary px-6 py-3 text-center text-sm font-semibold text-primary-foreground transition-colors duration-300 hover:bg-gold-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none sm:mt-9"
           >
             <Upload className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { HomatchLogo } from '@/components/common/HomatchLogo';
+import { InstallApp } from '@/components/common/InstallApp';
 import { useFieldProps, useNotEditable, useSectionField } from '@/site/content';
 import { ShellScope } from '@/site/render/ShellScope';
 import type { TranslationKey } from '@/i18n/translations';
@@ -142,13 +143,20 @@ function FooterBody() {
 
       <div className="border-t border-border">
         {/* Not editable: a copyright line with a year in it is generated, and
-            an admin editing it would freeze the year. */}
-        <p
-          className={`${PAGE} py-6 text-xs text-muted-foreground`}
+            an admin editing it would freeze the year. The install control
+            beside it names what the BROWSER is offering, and renders nothing
+            when it has nothing to offer — on a desktop this row is where the
+            app can be installed from, since the header has no room for it in
+            Georgian or Russian. */}
+        <div
+          className={`${PAGE} flex flex-wrap items-center justify-between gap-x-6 gap-y-2 py-6`}
           {...notEditable('SYSTEM_GENERATED')}
         >
-          {t('home_footer_copyright', { year: new Date().getFullYear() })}
-        </p>
+          <p className="text-xs text-muted-foreground">
+            {t('home_footer_copyright', { year: new Date().getFullYear() })}
+          </p>
+          <InstallApp source="footer" />
+        </div>
       </div>
     </footer>
   );

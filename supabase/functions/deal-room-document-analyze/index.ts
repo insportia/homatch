@@ -44,6 +44,7 @@ import { documentKind, extractDocxText, DOCX_MIME } from '../../../src/dealroom/
 import { projectVerify } from '../../../src/dealroom/domain/assemble.ts';
 import { crossCheck, toFindingRows } from '../../../src/dealroom/domain/contractCheck.ts';
 import { beginExecution, settleExecution, releaseExecution, serviceClient } from '../_shared/billing.ts';
+import { notify } from '../_shared/notify.ts';
 import {
   buildAnalysisPrompt,
   parseAnalysis,
@@ -515,6 +516,33 @@ serve(async (req) => {
           detail: { clauses: analysis.clauses.length, findings: checked.length } },
       ]);
     } catch { /* history is bookkeeping, not the result */ }
+
+    /*
+     * TOLD ONLY WHEN NOBODY WAS WATCHING.
+     *
+     * The worker path is the durable one: the browser that asked registered a
+     * job and left, and without this the finished analysis waited silently for
+     * them to come back. The interactive path is somebody on the page watching
+     * the result arrive, and telling them what they are looking at is noise.
+     * DOCUMENT_ANALYZED was in the enum and rendered by the centre with no
+     * producer. The dedupe key is the document and the file's hash, so a
+     * re-analysis of a CHANGED file is news and a retried run is not. No
+     * document text or label is copied into the notification.
+     */
+    if (claimsWorker && hmUser?.id) {
+      await notify(svc as never, {
+        userId: hmUser.id,
+        type: 'DOCUMENT_ANALYZED',
+        title: 'Your document has been analysed',
+        body: 'The analysis is ready to read.',
+        priority: 'NORMAL',
+        deepLink: `/verify/${doc.deal_room_id}?tab=documents&doc=${documentId}`,
+        entityType: 'deal_room_document',
+        entityId: documentId,
+        dedupeKey: `document-analyzed:${documentId}:${sha}`,
+        metadata: { kind: 'DOCUMENT_ANALYZED', document_id: documentId, deal_room_id: doc.deal_room_id },
+      });
+    }
 
     return json({
       state: 'DONE',

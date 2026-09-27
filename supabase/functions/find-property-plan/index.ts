@@ -41,6 +41,8 @@
 // understood is worse than one that admits it has not.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { recordIntent } from '../_shared/intent.ts';
+import { requestNativeMatching } from '../_shared/nativeDemand.ts';
 import {
   type PlanDraft,
   normalisePlan,
@@ -199,7 +201,7 @@ Deno.serve(async (req: Request) => {
       if (!text) return json({ error: 'describe what you are looking for' }, 400);
 
       const interpretation = await interpret(text, Deno.env.get('OPENAI_API_KEY'));
-      const { plan, rejected } = normalisePlan(interpretation.draft);
+      const { plan, rejected, rejections } = normalisePlan(interpretation.draft);
 
       return json({
         success: true,
@@ -216,6 +218,9 @@ Deno.serve(async (req: Request) => {
         /* What was thrown away. Surfaced, because a silently narrowed search shows
            somebody results for a question they did not ask. */
         rejected,
+        /* The same discards as keys and values, because the customer reading them is
+           not necessarily reading English. */
+        rejections,
         readiness: planReadiness(plan),
         /* Nothing was written and nothing was charged. */
         persisted: false,
@@ -232,7 +237,7 @@ Deno.serve(async (req: Request) => {
        * and a client is as untrusted as a model. Validating only on the way out would
        * mean the one path that WRITES is the one path that never checked.
        */
-      const { plan, rejected } = normalisePlan((body.plan ?? {}) as PlanDraft);
+      const { plan, rejected, rejections } = normalisePlan((body.plan ?? {}) as PlanDraft);
       const readiness = planReadiness(plan);
       if (!plan || !readiness.ready) {
         return json({
@@ -240,6 +245,7 @@ Deno.serve(async (req: Request) => {
           mode: 'confirm',
           plan,
           rejected,
+          rejections,
           readiness,
           persisted: false,
           charged: { credits: 0 },
@@ -275,11 +281,74 @@ Deno.serve(async (req: Request) => {
         .single();
       if (subError) throw subError;
 
+      /*
+       * THE PLAN BECOMES CANONICAL INTENT, DETERMINISTICALLY.
+       *
+       * Every field below was shown to the customer and confirmed by them — there is
+       * nothing here for a model to read and nothing it could add except uncertainty.
+       * explicit: true and confidence: 1 are the honest values for a requirement
+       * somebody approved, and they are what planToIntentProfile already writes for
+       * intent_confidence, for the same reason.
+       *
+       * The firmness map is the plan's own REQUIRED / PREFERRED / FLEXIBLE, carried
+       * across unchanged: the point of the plan step is that the customer said which of
+       * their requirements were rules, and losing that here would throw away the answer
+       * they gave. UNKNOWN is omitted rather than stored — a dimension nobody was asked
+       * about is absent, which the matcher already reads as REQUIRED by default.
+       */
+      await recordIntent(db, {
+        actorUserId: userId,
+        sourceSurface: 'SEARCH_PLAN',
+        sourceEventId: intent.id,
+        sourceAt: new Date().toISOString(),
+        side: 'DEMAND',
+        act: 'REQUIREMENT',
+        dimension: null,
+        polarity: 'POSITIVE',
+        attribution: 'SELF',
+        explicit: true,
+        confidence: 1,
+        scope: 'SEARCH',
+        intentProfileId: intent.id,
+        constraints: {
+          transactionType: plan.deal === 'INVESTMENT' ? 'SALE' : plan.deal,
+          city: plan.city?.value ?? null,
+          district: plan.districts?.value?.[0] ?? null,
+          districts: plan.districts?.value ?? null,
+          propertyTypes: plan.propertyTypes?.value ?? null,
+          budgetMin: plan.budget?.value.min ?? null,
+          budgetMax: plan.budget?.value.max ?? null,
+          currency: plan.budget?.value.currency ?? null,
+          bedroomsMin: plan.bedrooms?.value.min ?? null,
+          bedroomsMax: plan.bedrooms?.value.max ?? null,
+          areaMin: plan.areaSqm?.value.min ?? null,
+          areaMax: plan.areaSqm?.value.max ?? null,
+        },
+        strength: {
+          ...(plan.city && plan.city.strength !== 'UNKNOWN' ? { CITY: plan.city.strength } : {}),
+          ...(plan.districts && plan.districts.strength !== 'UNKNOWN' ? { DISTRICT: plan.districts.strength } : {}),
+          ...(plan.propertyTypes && plan.propertyTypes.strength !== 'UNKNOWN' ? { PROPERTY_TYPE: plan.propertyTypes.strength } : {}),
+          ...(plan.budget && plan.budget.strength !== 'UNKNOWN' ? { PRICE: plan.budget.strength } : {}),
+          ...(plan.bedrooms && plan.bedrooms.strength !== 'UNKNOWN' ? { BEDROOMS: plan.bedrooms.strength } : {}),
+          ...(plan.areaSqm && plan.areaSqm.strength !== 'UNKNOWN' ? { AREA: plan.areaSqm.strength } : {}),
+        },
+      });
+
+      /*
+       * THE HOMATCH NETWORK, AT ONCE. A confirmed plan is matched against properties real
+       * accounts own straight away — the network pass reads what Homatch already holds and
+       * costs nothing. External discovery remains the separate, explicit PAYG action.
+       */
+      const matching = requestNativeMatching([String(intent.id)]);
+      const runtime = (globalThis as { EdgeRuntime?: { waitUntil(p: Promise<unknown>): void } }).EdgeRuntime;
+      if (runtime?.waitUntil) runtime.waitUntil(matching); else await matching;
+
       return json({
         success: true,
         mode: 'confirm',
         plan,
         rejected,
+        rejections,
         readiness,
         intentId: intent.id,
         subscriptionId: subscription.id,

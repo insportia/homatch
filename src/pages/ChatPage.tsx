@@ -16,6 +16,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { MessageSquare, Send, ArrowLeft, MoreVertical, Phone, MessageCircle, AlertTriangle, CheckCheck, Check, Clock } from 'lucide-react';
 import { getConversations, getMessages, sendMessage, markMessageSeen, shareContactInfo, getContactShare, reportConversation } from '@/services/api3';
 import type { Conversation, Message } from '@/types/phase3';
+import { getActiveConversation, setActiveConversation } from '@/lib/notifications/signals';
+import { markConversationNotificationsRead } from '@/services/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -70,6 +72,8 @@ function MessageThread({ conv, myId, onBack }: { conv: Conversation; myId: strin
   const loadMessages = useCallback(async () => { setLoading(true); try { const msgs = await getMessages(conv.id); setMessages(msgs); for (const m of msgs) if (m.sender_id !== myId && m.status !== 'SEEN') markMessageSeen(m.id).catch(() => {}); } finally { setLoading(false); } }, [conv.id, myId]);
   useEffect(() => { loadMessages(); const channel = supabase.channel(`messages:${conv.id}`).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conv.id}` }, payload => { setMessages(prev => { if (prev.find(m => m.id === payload.new.id)) return prev; const newMsg = payload.new as Message; if (newMsg.sender_id !== myId) markMessageSeen(newMsg.id).catch(() => {}); return [...prev, newMsg]; }); }).subscribe(); return () => { supabase.removeChannel(channel); }; }, [conv.id, myId, loadMessages]);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  /* OPENING A CONVERSATION READS ITS NOTIFICATIONS. The bell must not stay lit for messages somebody is looking at. Only the notification's read flag — the messages' own SEEN receipts are handled above and stay a separate fact. The thread also says which conversation is on screen, so the live toast does not cover the composer to announce a message arriving in it; and it re-reads when the tab comes back into view, because a message that landed in a background tab had not been seen yet. */
+  useEffect(() => { setActiveConversation(conv.id); const read = () => { if (document.visibilityState === 'visible') void markConversationNotificationsRead(conv.id, myId); }; read(); document.addEventListener('visibilitychange', read); return () => { document.removeEventListener('visibilitychange', read); if (getActiveConversation() === conv.id) setActiveConversation(null); }; }, [conv.id, myId]);
   useEffect(() => { getContactShare(conv.id, conv.initiator_id === myId ? conv.recipient_id : conv.initiator_id).then(c => { if (c) setSharedContact({ phone: c.phone ?? '', whatsapp: c.whatsapp ?? '', telegram: c.telegram ?? '' }); }).catch(() => {}); }, [conv.id, conv.initiator_id, conv.recipient_id, myId]);
   const handleSend = async () => { if (!text.trim()) return; setSending(true); const body = text.trim(); setText(''); try { const { message } = await sendMessage(conv.recipient_id === myId ? conv.initiator_id : conv.recipient_id, body, conv.id); setMessages(prev => prev.find(m => m.id === message.id) ? prev : [...prev, message]); } catch { toast.error(t('chat_failed_send')); setText(body); } finally { setSending(false); } };
   const otherUser = conv.other_user; const initials = (otherUser?.full_name ?? otherUser?.email ?? '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
@@ -81,7 +85,8 @@ function MessageThread({ conv, myId, onBack }: { conv: Conversation; myId: strin
 
 export default function ChatPage() {
   const { homatchUser } = useAuth(); const { t } = useLanguage(); const location = useLocation(); const [convs, setConvs] = useState<Conversation[]>([]); const [loading, setLoading] = useState(true); const [activeConv, setActiveConv] = useState<Conversation | null>(null);
-  const requestedConversationId = new URLSearchParams(location.search).get('conversation');
+  /* `conversation` is the parameter; `c` is what message notifications carried before the link was corrected, and those rows still exist. */
+  const requestedConversationId = new URLSearchParams(location.search).get('conversation') ?? new URLSearchParams(location.search).get('c');
   const load = useCallback(async () => { if (!homatchUser) return; setLoading(true); try { setConvs(await getConversations(homatchUser.id)); } finally { setLoading(false); } }, [homatchUser]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { if (!requestedConversationId || loading) return; const requested = convs.find(c => c.id === requestedConversationId); if (requested) setActiveConv(requested); }, [requestedConversationId, convs, loading]);

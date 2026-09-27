@@ -1,11 +1,11 @@
 // ============================================================
 // HOMATCH — Shared provider implementations for Edge Functions
-// DataForSEO · Apify · OpenAI (all with mock fallbacks)
+// OpenAI (with a mock fallback). DataForSEO and Apify are retired.
 // ============================================================
 
 import type {
-  SearchProvider, SearchQuery, SearchProviderResponse,
-  SocialCollectorProvider, SocialCollectRequest, SocialCollectResponse,
+  SearchProvider,
+  SocialCollectorProvider,
   AIProvider, AIClassifyRequest, AIIntentResult,
 } from './provider_types.ts';
 
@@ -17,214 +17,13 @@ function env(key: string): string {
   return Deno.env.get(key) ?? '';
 }
 
-// ── DATAFORSEO ────────────────────────────────────────────────
-
-export class DataForSEOProvider implements SearchProvider {
-  name = 'DATAFORSEO';
-  private login = env('DATAFORSEO_LOGIN');
-  private password = env('DATAFORSEO_PASSWORD');
-
-  isConfigured() {
-    return !!(this.login && this.password);
-  }
-
-  async search(queries: SearchQuery[]): Promise<SearchProviderResponse> {
-    if (!this.isConfigured()) {
-      return this._mock(queries);
-    }
-
-    const tasks = queries.map(q => ({
-      keyword: q.q,
-      language_code: q.language ?? 'en',
-      location_code: 21831, // Georgia default
-      device: 'desktop',
-    }));
-
-    const auth = btoa(`${this.login}:${this.password}`);
-    const res = await fetch(
-      'https://api.dataforseo.com/v3/serp/google/organic/live/advanced',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Basic ${auth}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(tasks),
-      }
-    );
-
-    if (!res.ok) {
-      throw new Error(`DataForSEO error: ${res.status} ${await res.text()}`);
-    }
-
-    const json = await res.json();
-    const results = [];
-
-    for (const task of json.tasks ?? []) {
-      for (const item of task.result?.[0]?.items ?? []) {
-        if (item.type === 'organic') {
-          results.push({
-            title: item.title ?? '',
-            url: item.url ?? '',
-            snippet: item.description ?? '',
-            publishedAt: item.timestamp,
-            domain: item.domain,
-          });
-        }
-      }
-    }
-
-    const costUsd = (json.tasks ?? []).reduce(
-      (sum: number, t: { cost?: number }) => sum + (t.cost ?? 0),
-      0
-    );
-
-    return {
-      results,
-      costUsd,
-      provider: 'DATAFORSEO',
-      cacheHit: false,
-      requestId: json.tasks?.[0]?.id,
-    };
-  }
-
-  private _mock(queries: SearchQuery[]): SearchProviderResponse {
-    return {
-      results: queries.map((q, i) => ({
-        title: `[MOCK] Search result for: ${q.q}`,
-        url: `https://example.com/result-${i}`,
-        snippet: `Mock result for query: ${q.q}`,
-        publishedAt: new Date().toISOString(),
-        domain: 'example.com',
-      })),
-      costUsd: 0,
-      provider: 'DATAFORSEO_MOCK',
-      cacheHit: false,
-    };
-  }
-}
-
-// ── APIFY SOCIAL COLLECTOR ────────────────────────────────────
-
-export class ApifyProvider implements SocialCollectorProvider {
-  name = 'APIFY';
-  private token = env('APIFY_API_TOKEN');
-
-  private actorId(platform: string): string {
-    const map: Record<string, string> = {
-      FACEBOOK: env('APIFY_FACEBOOK_ACTOR_ID'),
-      TELEGRAM: env('APIFY_TELEGRAM_ACTOR_ID'),
-      INSTAGRAM: env('APIFY_INSTAGRAM_ACTOR_ID'),
-      VK: env('APIFY_VK_ACTOR_ID'),
-    };
-    return map[platform] ?? '';
-  }
-
-  isConfigured() {
-    return !!this.token;
-  }
-
-  async collect(req: SocialCollectRequest): Promise<SocialCollectResponse> {
-    const actorId = this.actorId(req.platform);
-    if (!this.isConfigured() || !actorId) {
-      return this._mock(req);
-    }
-
-    // Build input per platform
-    const input = this._buildInput(req);
-
-    // Run actor synchronously (shorter runs for collection jobs)
-    const runRes = await fetch(
-      `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${this.token}&maxItems=${req.maxItems ?? 50}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-        signal: AbortSignal.timeout(60_000),
-      }
-    );
-
-    if (!runRes.ok) {
-      throw new Error(`Apify error: ${runRes.status} ${await runRes.text()}`);
-    }
-
-    const items: Record<string, unknown>[] = await runRes.json();
-    const posts = items.map(item => this._normalizeItem(item, req.platform));
-
-    return {
-      posts,
-      costUsd: 0, // Apify charges via usage credits, tracked separately
-      provider: 'APIFY',
-      cacheHit: false,
-    };
-  }
-
-  private _buildInput(req: SocialCollectRequest): Record<string, unknown> {
-    switch (req.platform) {
-      case 'FACEBOOK':
-        return { startUrls: [{ url: req.sourceUrl }], maxPosts: req.maxItems ?? 50 };
-      case 'TELEGRAM':
-        return { channelOrGroupUrl: req.sourceUrl, maxMessages: req.maxItems ?? 100 };
-      case 'INSTAGRAM':
-        return { directUrls: [req.sourceUrl], resultsLimit: req.maxItems ?? 50 };
-      case 'VK':
-        return { startUrls: [{ url: req.sourceUrl }], maxPosts: req.maxItems ?? 50 };
-      default:
-        return {};
-    }
-  }
-
-  private _normalizeItem(
-    item: Record<string, unknown>,
-    platform: string
-  ) {
-    return {
-      externalId: String(item.id ?? item.postId ?? item.messageId ?? Math.random()),
-      text: String(item.text ?? item.caption ?? item.message ?? ''),
-      authorName: String(item.authorName ?? item.username ?? item.from?.name ?? ''),
-      authorUrl: String(item.authorUrl ?? item.profileUrl ?? item.from?.url ?? ''),
-      publishedAt: String(item.publishedAt ?? item.timestamp ?? item.date ?? ''),
-      sourceUrl: String(item.url ?? item.postUrl ?? ''),
-      platform,
-    };
-  }
-
-  private _mock(req: SocialCollectRequest): SocialCollectResponse {
-    const mockTexts: Record<string, string[]> = {
-      FACEBOOK: [
-        'Looking for 2-bedroom apartment in Vake district, budget $150k-200k',
-        'Ищу квартиру в Тбилиси, 2 комнаты, до $180,000, желательно новостройка',
-        'ვეძებ ბინას ვაკეში, 2 ოთახიანი, $150 000-მდე',
-      ],
-      TELEGRAM: [
-        'Need apartment Tbilisi Saburtalo area, 2-3 rooms, rent $800-1000',
-        'ვიყიდი ბინას სабуртالოში, 3 ოთახიანი',
-        'Куплю квартиру в центре Тбилиси 2-3 комнаты до 200к',
-      ],
-      INSTAGRAM: [
-        'Looking to relocate to Tbilisi, need furnished 1BR apartment for rent',
-      ],
-      VK: [
-        'Ищем квартиру в Тбилиси для покупки, 2-3 комнаты, бюджет до $200k',
-      ],
-    };
-    const texts = mockTexts[req.platform] ?? [`Mock post from ${req.platform}`];
-    return {
-      posts: texts.map((text, i) => ({
-        externalId: `mock-${req.platform}-${i}`,
-        text,
-        authorName: `mock_user_${i}`,
-        authorUrl: `https://${req.platform.toLowerCase()}.com/mock_user_${i}`,
-        publishedAt: new Date(Date.now() - i * 3600_000).toISOString(),
-        sourceUrl: req.sourceUrl,
-        platform: req.platform,
-      })),
-      costUsd: 0,
-      provider: 'APIFY_MOCK',
-      cacheHit: false,
-    };
-  }
-}
+// ── DATAFORSEO AND APIFY: RETIRED ─────────────────────────────
+//
+// DataForSEOProvider and ApifyProvider lived here. Both providers are retired
+// from the Homatch architecture (see ./retiredProviders.ts), and the classes
+// were removed rather than disabled: a class that can still build a request is
+// one constructor call from spending money. social-collect, their last
+// importer, now answers 423 retired without constructing anything.
 
 // ── OPENAI AI PROVIDER ────────────────────────────────────────
 

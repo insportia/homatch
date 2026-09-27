@@ -165,10 +165,13 @@ export const SECTION_DEFS: readonly SectionDef[] = [
       f('eyebrow', 'studio_f_eyebrow', 'mp_launch_eyebrow'),
       f('title', 'studio_f_title', 'mp_launch_title'),
       f('body', 'studio_f_body', 'mp_launch_sub', 'textarea'),
-      /* THE SIX TILES. Title, subtext and call to action for each — the
+      /* THE NINE TILES. Title, subtext and call to action for each — the
          menu labels, menu subtext and CTA copy that were hardcoded, and
          that an admin could see on the page but not change. Each falls
          back to the reviewed key it always used. */
+      f('tile_findprop_t', 'mp_tile_findprop_t', 'mp_tile_findprop_t'),
+      f('tile_findprop_d', 'mp_tile_findprop_d', 'mp_tile_findprop_d', 'textarea'),
+      f('tile_findprop_a', 'mp_tile_findprop_a', 'mp_tile_findprop_a'),
       f('tile_verify_t', 'mp_tile_verify_t', 'mp_tile_verify_t'),
       f('tile_verify_d', 'mp_tile_verify_d', 'mp_tile_verify_d', 'textarea'),
       f('tile_verify_a', 'mp_launch_verify_go', 'mp_launch_verify_go'),
@@ -187,16 +190,25 @@ export const SECTION_DEFS: readonly SectionDef[] = [
       f('tile_email_t', 'mp_email_title', 'mp_email_title'),
       f('tile_email_d', 'mp_tile_email_d', 'mp_tile_email_d', 'textarea'),
       f('tile_email_a', 'mp_email_cta', 'mp_email_cta'),
+      f('tile_invest_t', 'mp_tile_invest_t', 'mp_tile_invest_t'),
+      f('tile_invest_d', 'mp_tile_invest_d', 'mp_tile_invest_d', 'textarea'),
+      f('tile_invest_a', 'mp_tile_invest_a', 'mp_tile_invest_a'),
+      f('tile_expat_t', 'mp_tile_expat_t', 'mp_tile_expat_t'),
+      f('tile_expat_d', 'mp_tile_expat_d', 'mp_tile_expat_d', 'textarea'),
+      f('tile_expat_a', 'mp_tile_expat_a', 'mp_tile_expat_a'),
     ],
     /* And the icon on each tile. Unset keeps the drawn glyph the tile
        shipped with; choosing one replaces it from the curated set. */
     icons: [
+      { slot: 'tile_findprop', labelKey: 'mp_tile_findprop_t' },
       { slot: 'tile_verify', labelKey: 'mp_tile_verify_t' },
       { slot: 'tile_contract', labelKey: 'mp_contract_title' },
       { slot: 'tile_match', labelKey: 'mp_tile_match_t' },
       { slot: 'tile_mortgage', labelKey: 'mp_mortgage_title' },
       { slot: 'tile_calls', labelKey: 'call_center_title' },
       { slot: 'tile_email', labelKey: 'mp_email_title' },
+      { slot: 'tile_invest', labelKey: 'mp_tile_invest_t' },
+      { slot: 'tile_expat', labelKey: 'mp_tile_expat_t' },
     ],
     media: [],
   },
@@ -487,6 +499,28 @@ export const SECTION_DEFS: readonly SectionDef[] = [
       f('row_rate', 'mp_mortgage_row_rate', 'mp_mortgage_row_rate'),
       f('row_result', 'mp_mortgage_row_result', 'mp_mortgage_row_result'),
       f('note', 'mp_mortgage_note', 'mp_mortgage_note', 'textarea'),
+    ],
+    media: [],
+  },
+  {
+    type: 'brokers',
+    labelKey: 'studio_sec_brokers',
+    variants: ['default'],
+    themes: [],
+    repeatable: false,
+    fields: [
+      f('eyebrow', 'studio_f_eyebrow', 'home_brokers_eyebrow'),
+      f('title', 'studio_f_title', 'home_brokers_title'),
+      f('body', 'studio_f_body', 'home_brokers_body', 'textarea'),
+      f('p1_t', 'home_brokers_p1_t', 'home_brokers_p1_t'),
+      f('p1_d', 'home_brokers_p1_d', 'home_brokers_p1_d', 'textarea'),
+      f('p2_t', 'home_brokers_p2_t', 'home_brokers_p2_t'),
+      f('p2_d', 'home_brokers_p2_d', 'home_brokers_p2_d', 'textarea'),
+      f('p3_t', 'home_brokers_p3_t', 'home_brokers_p3_t'),
+      f('p3_d', 'home_brokers_p3_d', 'home_brokers_p3_d', 'textarea'),
+      f('cta', 'studio_f_cta', 'home_brokers_cta'),
+      f('panel', 'home_brokers_panel_label', 'home_brokers_panel_label'),
+      f('footnote', 'home_brokers_footnote', 'home_brokers_footnote', 'textarea'),
     ],
     media: [],
   },
@@ -834,12 +868,15 @@ export const SECTION_DEFS: readonly SectionDef[] = [
          that is no longer in the navigation is a control that edits nothing,
          which is the thing the Admin redesign set out to remove. */
       f('nav_find_property', 'dnav_find_property', 'dnav_find_property'),
-      f('nav_find_client', 'dnav_find_client', 'dnav_find_client'),
+      f('nav_find_client', 'pub_nav_find_client', 'pub_nav_find_client'),
       f('nav_verify', 'nav_verify', 'nav_verify'),
-      f('nav_intelligence', 'mp_nav_capabilities', 'mp_nav_capabilities'),
+      f('nav_services', 'pub_nav_services', 'pub_nav_services'),
+      f('nav_intelligence', 'pub_nav_how', 'pub_nav_how'),
+      f('nav_mortgage', 'nav_mortgage', 'nav_mortgage'),
       f('nav_investment', 'nav_investment', 'nav_investment'),
       f('nav_expat', 'nav_for_expats', 'nav_for_expats'),
       f('nav_professional', 'nav_professional', 'nav_professional'),
+      f('nav_brokers', 'pub_nav_brokers', 'pub_nav_brokers'),
       f('nav_developers', 'mp_nav_developers', 'mp_nav_developers'),
       f('nav_partners', 'home_nav_partners', 'home_nav_partners'),
       f('nav_company', 'nav_company', 'nav_company'),
@@ -984,16 +1021,28 @@ export function itemsDef(type: string): ItemGroupDef | undefined {
  *  routes.tsx so the validator does not drag every page component into the
  *  editor bundle. */
 export const PUBLIC_ROUTES: readonly string[] = [
-  '/', '/about', '/verify', '/verify/:id', '/verify/history', '/mortgage', '/partners',
-  // Contracts is a product of its own, so a site page may link straight to it.
-  '/contracts',
-  '/privacy', '/terms', '/ai', '/auth/login', '/auth/signup',
-  '/dashboard', '/property/add', '/outreach/calls', '/outreach/email', '/credits',
+  '/', '/about', '/pricing', '/partners', '/developers', '/brokers',
+  '/verify', '/mortgage', '/investment',
+  '/for-expats', '/for-expats/georgia', '/for-expats/georgia/:slug',
+  // The public front doors of Find Property and the owner workspace.
+  '/for-buyers', '/for-owners',
+  '/privacy', '/terms', '/auth/login', '/auth/signup',
+];
+
+/**
+ * Signed-in destinations a site page may still link to -- a "go to your
+ * dashboard" button, say. Legitimate links, so the link checker accepts
+ * them; kept apart so they are never mistaken for public pages.
+ */
+export const SIGNED_IN_ROUTES: readonly string[] = [
+  '/dashboard', '/find-property', '/property', '/property/add', '/contracts',
+  '/verify/history', '/verify/:id', '/ai', '/credits', '/profile',
+  '/outreach/calls', '/outreach/email',
 ];
 
 /** The rules object normalizePage() needs, assembled from the registry. */
 export const NORMALIZE_RULES = {
   knownTypes: KNOWN_SECTION_TYPES,
   variantsFor,
-  knownRoutes: PUBLIC_ROUTES,
+  knownRoutes: [...PUBLIC_ROUTES, ...SIGNED_IN_ROUTES],
 };

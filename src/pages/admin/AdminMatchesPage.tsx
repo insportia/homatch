@@ -39,8 +39,14 @@ export default function AdminMatchesPage() {
   return (
     <div className="space-y-4 max-w-5xl">
       <div>
-        <h1 className="text-xl font-bold">{t('admin_matches_title')}</h1>
+        {/* The paid-unlock `matches` table from before native matching. The
+            live pairs — internal and external — are /admin/supply-matches. */}
+        <h1 className="text-xl font-bold">{t('admin_cc_legacy_matches_title')}</h1>
         <p className="text-sm text-muted-foreground mt-0.5">{t('admin_matches_subtitle', { count: items.length })}</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {t('admin_cc_legacy_matches_note')}{' '}
+          <a href="/admin/supply-matches" className="text-primary hover:underline">{t('admin_cc_matches_title')}</a>
+        </p>
       </div>
       <Card>
         <CardContent className="p-0">

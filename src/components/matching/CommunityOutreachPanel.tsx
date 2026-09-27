@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Users, ExternalLink, Sparkles, Loader2, Copy, CheckCircle2, Lock,
+  Users, ExternalLink, Sparkles, Loader2, Copy, CheckCircle2,
   ChevronDown, ChevronUp, Image as ImageIcon, Send,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
@@ -47,8 +47,6 @@ export function CommunityOutreachPanel({ propertyId }: { propertyId: string }) {
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [items, setItems] = useState<RankedCommunity[]>([]);
-  const [lockedCount, setLockedCount] = useState(0);
-  const [plan, setPlan] = useState<'FREE' | 'PLUS' | 'PRO'>('FREE');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [postLang, setPostLang] = useState<SupportedLanguage>(lang);
   const [drafts, setDrafts] = useState<Record<string, { content: string; generating: boolean }>>({});
@@ -89,8 +87,6 @@ export function CommunityOutreachPanel({ propertyId }: { propertyId: string }) {
       });
       if (error) { const msg = await error?.context?.text(); throw new Error(msg ?? error.message); }
       setItems(Array.isArray(data?.ranked) ? data.ranked : []);
-      setLockedCount(data?.locked_count ?? 0);
-      setPlan(data?.plan ?? 'FREE');
       setLoaded(true);
     } catch {
       toast.error(t('community_load_error'));
@@ -279,17 +275,6 @@ export function CommunityOutreachPanel({ propertyId }: { propertyId: string }) {
           </div>
         )}
 
-        {lockedCount > 0 && (
-          <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 flex items-center gap-3">
-            <Lock className="h-4 w-4 text-primary shrink-0" />
-            <p className="text-xs text-foreground flex-1">
-              {t('community_upsell').replace('{count}', String(lockedCount))}
-            </p>
-          </div>
-        )}
-        {plan === 'FREE' && lockedCount === 0 && items.length > 0 && (
-          <p className="text-[14px] text-muted-foreground text-center">{t('community_free_plan_note')}</p>
-        )}
       </CardContent>
     </Card>
   );

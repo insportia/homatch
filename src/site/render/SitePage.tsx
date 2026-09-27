@@ -13,6 +13,7 @@ import { VerifyShowcaseSection } from '@/components/home/sections/VerifyShowcase
 import { ContractIntelligenceSection } from '@/components/home/sections/ContractIntelligenceSection';
 import { MatchingShowcaseSection } from '@/components/home/sections/MatchingShowcaseSection';
 import { MortgageSection } from '@/components/home/sections/MortgageSection';
+import { BrokersSection } from '@/components/home/sections/BrokersSection';
 import { CallCenterSection } from '@/components/home/sections/CallCenterSection';
 import { EmailCampaignsSection } from '@/components/home/sections/EmailCampaignsSection';
 import { AISection } from '@/components/home/sections/AISection';
@@ -63,6 +64,7 @@ const COMPONENTS: Record<string, React.ComponentType> = {
   contract_intelligence: ContractIntelligenceSection,
   matching: MatchingShowcaseSection,
   mortgage: MortgageSection,
+  brokers: BrokersSection,
   call_center: CallCenterSection,
   email_campaign: EmailCampaignsSection,
   homatch_ai: AISection,

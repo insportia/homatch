@@ -34,7 +34,7 @@ export default function TermsPage() {
   const headerLinks = usePublicNavLinks();
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
+    <div className="hm-public min-h-screen bg-background text-foreground flex flex-col">
       <PublicHeader links={headerLinks} solid />
       <HeaderSpacer />
 

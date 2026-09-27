@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { deriveAuthStatus, hasPersistedSession, type AuthStatus } from '@/auth/authStatus';
 import { supabase } from '@/db/supabase';
+import { ReadOnlyImpersonationError, isImpersonating } from '@/lib/impersonation';
 import { claimAnonymousWork } from '@/services/anonymousSession';
 import type { Session, User as SupaUser } from '@supabase/supabase-js';
 import type { User } from '@/types/types';
@@ -76,6 +77,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSupaUser(s?.user ?? null);
       if (s?.user) {
         fetchHomatchUser(s.user.id);
+        /* An administrator viewing as somebody must not hand THIS browser's
+           anonymous work to the account they are looking at. */
+        if (isImpersonating()) return;
         /* WHATEVER THEY DID BEFORE SIGNING IN IS THEIRS NOW.
          *
          * This is the single moment an account exists to hand anonymous work
@@ -144,6 +148,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    /* While viewing as somebody, "sign out" means stop viewing — never a
+       sign-out of the customer's own devices. The banner's Exit does the
+       server-side end; this only drops the tab back to the admin. */
+    if (isImpersonating()) {
+      window.dispatchEvent(new CustomEvent('homatch:impersonation-exit'));
+      return;
+    }
     await supabase.auth.signOut();
     setHomatchUser(null);
   };
@@ -159,6 +170,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updatePassword = async (newPassword: string) => {
+    if (isImpersonating()) return { error: new ReadOnlyImpersonationError().message };
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) return { error: error.message };
     return { error: null };

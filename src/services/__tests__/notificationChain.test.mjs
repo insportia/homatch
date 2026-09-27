@@ -35,7 +35,17 @@ const ROOT = process.cwd();
 const readSource = (...parts) =>
   fs.readFileSync(path.join(ROOT, ...parts), 'utf8').split('\r\n').join('\n');
 
-const page = readSource('src', 'pages', 'NotificationsPage.tsx');
+/*
+ * THE CENTRE AND THE MODULE IT DELEGATES TO, read as one.
+ *
+ * What a notification says, what it looks like and where it goes moved into
+ * components/notifications/presentation.tsx once the live toast needed the same answers
+ * — a second copy of "which icon does a message get" is how the toast and the list start
+ * disagreeing about the same row. The rules below are about the RULES, not about which
+ * file holds them, so both are read.
+ */
+const page = readSource('src', 'pages', 'NotificationsPage.tsx')
+  + readSource('src', 'components', 'notifications', 'presentation.tsx');
 const unlock = readSource('supabase', 'functions', 'atomic-unlock', 'index.ts');
 const translations = readSource('src', 'i18n', 'translations.ts');
 const grant = readSource('supabase', 'migrations', '20260911200000_notifications_read_only_flag.sql');
@@ -117,9 +127,11 @@ test('every alert with a producer renders in the viewer language', () => {
 });
 
 test('typed alerts have somewhere to go when tapped', () => {
-  const handler = page.slice(page.indexOf('const handleNotifClick'));
+  /* The destination decision is notificationHref() now — one function, so the live card
+     and the list cannot send the same row to two different places. */
+  const routing = page.slice(page.indexOf('export function notificationHref'));
   for (const t of ['LOW_CREDITS', 'CREDITS_TOPPED_UP', 'RESEARCH_PRODUCT_PURCHASED']) {
-    assert.match(handler.slice(0, 1500), new RegExp(`'${t}'`), `${t} must route somewhere`);
+    assert.match(routing.slice(0, 2000), new RegExp(`'${t}'`), `${t} must route somewhere`);
   }
 });
 

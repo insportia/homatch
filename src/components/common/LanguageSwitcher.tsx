@@ -45,7 +45,7 @@ export function LanguageSwitcher({ compact = false, showGlobe = false, triggerCl
         <Button
           variant="ghost"
           size="sm"
-          className={`gap-1.5 text-muted-foreground hover:text-foreground h-8 px-2 font-medium text-xs ${triggerClassName}`}
+          className={`gap-1.5 whitespace-nowrap text-muted-foreground hover:text-foreground h-8 px-2 font-medium text-xs ${triggerClassName}`}
         >
           {showGlobe && <Globe className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />}
           <span className="uppercase tracking-wide">{lang}</span>

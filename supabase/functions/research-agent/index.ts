@@ -11,6 +11,7 @@ import {
   type WatchdogState,
 } from '../_shared/verifyWatchdog.ts';
 import { pricingStateForDerivedCost } from '../_shared/providerCost.ts';
+import { notify } from '../_shared/notify.ts';
 import { recordSourceVersions } from '../../../src/verify/intelligence/sourceStore.ts';
 import { registryExtractFor, applyRegistryExtract } from '../../../src/verify/intelligence/registryOverlay.ts';
 import { compactOfficialContext } from '../../../src/verify/intelligence/officialContext.ts';
@@ -3529,7 +3530,39 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
   // And what each official source looked like, so the next run can tell
   // whether re-reading it would say anything new.
   await recordOfficialSourceVersions(sb, { id: j.id, query: j.query, user_id: j.user_id }, result);
+  // And the person who asked is told it is ready, in case they left. After
+  // everything above, and outside it: a notification is a side effect of a
+  // saved report and can never fail one.
+  if (!finished?.error) await notifyVerificationReady(sb, j);
   return finished;
+}
+
+/*
+ * A VERIFICATION TAKES MINUTES, AND PEOPLE LEAVE.
+ *
+ * VERIFY_COMPLETE was in the enum and rendered by the centre, and nothing ever
+ * produced it: somebody who closed the tab learned their report was ready only
+ * by coming back to look. This is the one place a verification becomes
+ * COMPLETE, so it is the one place that says so.
+ *
+ * Only for a signed-in owner — an anonymous run has nobody to address. The
+ * dedupe key is the job, so a re-finalised job tells nobody twice. No subject
+ * text is copied: the code or address somebody verified stays on the job.
+ */
+async function notifyVerificationReady(sb: any, j: any): Promise<void> {
+  if (!j?.user_id || !j?.id) return;
+  await notify(sb, {
+    userId: j.user_id,
+    type: 'VERIFY_COMPLETE',
+    title: 'Your verification is ready',
+    body: 'The report has finished and is ready to read.',
+    priority: 'HIGH',
+    deepLink: `/verify?job=${j.id}`,
+    entityType: 'research_job',
+    entityId: j.id,
+    dedupeKey: `verify-complete:${j.id}`,
+    metadata: { kind: 'VERIFY_COMPLETE', job_id: j.id },
+  });
 }
 
 async function advance(sb: any, k: string, m: string, j: any, l: string): Promise<any> {

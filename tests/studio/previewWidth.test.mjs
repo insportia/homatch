@@ -43,8 +43,13 @@ const ROOT = process.cwd();
 const PORT = 4337;
 const BASE = `http://127.0.0.1:${PORT}`;
 
-/** The site's own `lg` breakpoint. Below this it is not a desktop. */
-const DESKTOP_BREAKPOINT = 1024;
+/**
+ * The width at which the public site is a desktop: where the public header
+ * shows its full navigation row (`xl`). It was `lg` (1024) until the 2026-09
+ * public redesign; below 1280 the header is the phone-and-tablet one, and the
+ * navigation this file checks for is correctly not rendered.
+ */
+const DESKTOP_BREAKPOINT = 1280;
 
 function findChrome() {
   if (process.env.PLAYWRIGHT_CHROME && existsSync(process.env.PLAYWRIGHT_CHROME)) {

@@ -1,22 +1,22 @@
+import { Bell, BellOff, Loader2, Send } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Bell, BellOff, Loader2, Send } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/db/supabase';
-import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
-import {
-  NOTIFICATION_CATEGORIES, DEFAULT_PREFERENCES,
-  getNotificationPreferences, saveNotificationPreferences,
-  type NotificationPreferences, type NotificationCategory,
-} from '@/services/notificationPreferences';
-import {
-  pushPermission, pushSupported, subscribeToPush, unsubscribeFromPush,
-  hasPushSubscription, loadVapidPublicKey, markSoftPromptShown, dismissSoftPrompt,
+import {dismissSoftPrompt,
+  hasPushSubscription, loadVapidPublicKey, markSoftPromptShown, 
   type PushPermission,
+  pushPermission, pushSupported, subscribeToPush, unsubscribeFromPush,
 } from '@/lib/push';
+import {DEFAULT_PREFERENCES,
+  getNotificationPreferences, 
+  NOTIFICATION_CATEGORIES, type NotificationCategory,
+  type NotificationPreferences, saveNotificationPreferences,
+} from '@/services/notificationPreferences';
 
 /**
  * WHAT HOMATCH IS ALLOWED TO INTERRUPT YOU FOR.

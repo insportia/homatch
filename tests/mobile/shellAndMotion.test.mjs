@@ -215,7 +215,9 @@ test('the install control is visible, reachable and does not delete itself', opt
     await menuButton.click();
     await page.waitForTimeout(700);
 
-    const shown = page.locator('button:visible').filter({ hasText: /Install app/i });
+    /* Inside the menu DIALOG: the footer carries its own copy of the
+       control, and "any visible one" would measure that instead. */
+    const shown = page.getByRole('dialog').locator('button:visible').filter({ hasText: /Install app/i });
     assert.ok(await shown.count() > 0,
       `the mobile menu offers no way to install the app at ${width}px`);
 
@@ -296,7 +298,7 @@ test('refusing the browser dialog is "not now", never "never again"', opts, asyn
   await page.getByRole('button', { name: /open menu/i }).first().click();
   await page.waitForTimeout(700);
 
-  const button = page.locator('button:visible').filter({ hasText: /Install app/i }).first();
+  const button = page.getByRole('dialog').locator('button:visible').filter({ hasText: /Install app/i }).first();
   await button.scrollIntoViewIfNeeded();
   await button.click();
   await page.waitForTimeout(900);
@@ -506,7 +508,10 @@ test('the motion on a phone is big enough for a person to see', opts, async (t) 
            that overshoots by up to 240px starts sampling after it has
            already begun -- which is how this measured 7px one run and 18px
            the next. */
-        await page.evaluate((n) => window.scrollTo(0, n), Math.max(0, top - 800));
+        /* INSTANT, because the site sets `scroll-behavior: smooth` on
+           :root; a plain scrollTo animates, and the step loop then starts
+           from wherever the animation had got to. */
+        await page.evaluate((n) => window.scrollTo({ top: n, behavior: 'instant' }), Math.max(0, top - 800));
         await page.waitForTimeout(250);
         const seen = await sample(page, '[data-motion-probe]', 26, 32);
         if (!seen) failures.push(`${width}: the reveal wrapper vanished`);

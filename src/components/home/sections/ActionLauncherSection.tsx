@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Upload, Sparkles } from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext';
+import { ArrowRight, Compass, Globe2, TrendingUp, Upload, Sparkles } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useProductNavigation } from '@/site/productEntry';
 import { FeatureGlyph, type GlyphName } from '@/components/home/FeatureGlyph';
 import { PAGE, SECTION_Y } from './primitives';
 import { useSectionField, useFieldProps, useSectionIconName } from '@/site/content';
@@ -43,7 +43,13 @@ import { iconFor } from '@/site/icons';
  *   Email      /outreach/email   behind RouteGuard.
  *
  * Homatch AI is not a tile. It is the hero's own interaction and has its own
- * region; these six are what a question to it reaches.
+ * region; these are what a question to it reaches.
+ *
+ * THREE TILES JOINED THE SIX, because the products exist and the launcher is
+ * where the page says so: Find Property (the AI search plan), Investment and
+ * For Expats. Find Property and Find Buyers are authenticated; a signed-out
+ * visitor gets the public entry page that explains the product and carries
+ * them through sign-up (/for-buyers, /for-owners) instead of a login bounce.
  *
  * There is no "compare properties" tile either. Homatch has no comparison
  * feature, and a launcher that opens onto something that does not exist is
@@ -65,13 +71,20 @@ export function ActionLauncherSection() {
 
   const sf = useSectionField();
   const fp = useFieldProps();
-  const { session } = useAuth();
   const { t, isRTL } = useLanguage();
   const navigate = useNavigate();
   const [code, setCode] = useState('');
 
-  /** Signed-out visitors go to sign-up for the routes that are truly gated. */
-  const gated = (path: string) => () => navigate(session ? path : '/auth/signup');
+  /* Signed-out visitors go through sign-up for the routes that are truly
+     gated — and come back to the tile's destination afterwards, not the
+     dashboard. useProductNavigation remembers the return path. */
+  const { signedIn, gated: gate } = useProductNavigation();
+  const gated = (path: string) => () => gate(path);
+
+  /** The two matching products: the product for an account, its public entry
+      page for a visitor — never a login screen with no explanation. */
+  const entry = (signedInPath: string, publicEntry: string) => () =>
+    navigate(signedIn ? signedInPath : publicEntry);
 
   const openVerify = () => {
     const value = code.trim();
@@ -99,6 +112,19 @@ export function ActionLauncherSection() {
       </div>
 
       <div className="mt-8 grid gap-3.5 sm:mt-10 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
+        {/* Find Property — describe what you want, confirm the plan, and the
+            matching runs. The first tile because it is the first question a
+            visitor arrives with. */}
+        <Tile
+          glyph="property"
+          field="tile_findprop"
+          icon={tileIcon('findprop') ?? Compass}
+          title={sf('tile_findprop_t', 'mp_tile_findprop_t')}
+          desc={sf('tile_findprop_d', 'mp_tile_findprop_d')}
+          onClick={entry('/find-property', '/for-buyers')}
+          action={sf('tile_findprop_a', 'mp_tile_findprop_a')}
+        />
+
         {/* Verify — the one tile with a live field, because it is the one
             capability whose entry point is public and takes a single value. */}
         <Tile
@@ -144,7 +170,7 @@ export function ActionLauncherSection() {
           icon={tileIcon('contract')}
           title={sf('tile_contract_t', 'mp_contract_title')}
           desc={sf('tile_contract_d', 'mp_tile_contract_d')}
-          onClick={gated('/verify')}
+          onClick={gated('/contracts')}
           action={
             <span className="inline-flex items-center gap-2">
               <Upload className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
@@ -159,7 +185,7 @@ export function ActionLauncherSection() {
           icon={tileIcon('match')}
           title={sf('tile_match_t', 'mp_tile_match_t')}
           desc={sf('tile_match_d', 'mp_tile_match_d')}
-          onClick={gated('/property/add')}
+          onClick={entry('/property', '/for-owners')}
           action={sf('tile_match_a', 'mp_match_cta')}
         />
 
@@ -191,6 +217,29 @@ export function ActionLauncherSection() {
           desc={sf('tile_email_d', 'mp_tile_email_d')}
           onClick={gated('/outreach/email')}
           action={sf('tile_email_a', 'mp_email_cta')}
+        />
+
+        {/* Investment — the analytics workspace. Public page; the analysis
+            itself runs signed in. */}
+        <Tile
+          glyph="mortgage"
+          field="tile_invest"
+          icon={tileIcon('invest') ?? TrendingUp}
+          title={sf('tile_invest_t', 'mp_tile_invest_t')}
+          desc={sf('tile_invest_d', 'mp_tile_invest_d')}
+          onClick={() => navigate('/investment')}
+          action={sf('tile_invest_a', 'mp_tile_invest_a')}
+        />
+
+        {/* For Expats — buying and settling in Georgia from abroad. */}
+        <Tile
+          glyph="ai"
+          field="tile_expat"
+          icon={tileIcon('expat') ?? Globe2}
+          title={sf('tile_expat_t', 'mp_tile_expat_t')}
+          desc={sf('tile_expat_d', 'mp_tile_expat_d')}
+          onClick={() => navigate('/for-expats/georgia')}
+          action={sf('tile_expat_a', 'mp_tile_expat_a')}
         />
       </div>
     </section>

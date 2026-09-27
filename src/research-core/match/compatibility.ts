@@ -151,6 +151,13 @@ export interface DemandSide {
   areaMax: number | null;
   bedroomsMin: number | null;
   bedroomsMax: number | null;
+  /**
+   * Rooms counted with the living room ("3 ოთახიანი", "трёхкомнатная", "3 חדרים").
+   * Compared only with a listing's own room count — never converted to bedrooms, because
+   * the conversion is a convention that differs by market and a wrong one hides flats.
+   */
+  roomsMin?: number | null;
+  roomsMax?: number | null;
   /** Per-dimension constraint strength. Absent entries are REQUIRED. */
   strength?: StrengthMap;
 }
@@ -602,17 +609,28 @@ export function assessMatch(
       positive(demand.areaMin), positive(demand.areaMax), 'm²',
       strengthOf(demand, 'AREA'),
     ),
-    compareRange(
-      'BEDROOMS',
-      /* bedrooms where stated, else rooms: a listing that says "2 rooms" and
-         nothing about bedrooms is still informative, and refusing to use it would
-         discard most of what Georgian portals publish. */
-      positive(supply.bedrooms) ?? positive(supply.rooms),
-      positive(demand.bedroomsMin),
-      positive(demand.bedroomsMax),
-      'bedrooms',
-      strengthOf(demand, 'BEDROOMS'),
-    ),
+    /* A demand stated in ROOMS is compared with rooms, and only with rooms. */
+    (positive(demand.bedroomsMin) === null && positive(demand.bedroomsMax) === null
+      && (positive(demand.roomsMin) !== null || positive(demand.roomsMax) !== null))
+      ? compareRange(
+        'BEDROOMS',
+        positive(supply.rooms),
+        positive(demand.roomsMin),
+        positive(demand.roomsMax),
+        'rooms',
+        strengthOf(demand, 'BEDROOMS'),
+      )
+      : compareRange(
+        'BEDROOMS',
+        /* bedrooms where stated, else rooms: a listing that says "2 rooms" and
+           nothing about bedrooms is still informative, and refusing to use it would
+           discard most of what Georgian portals publish. */
+        positive(supply.bedrooms) ?? positive(supply.rooms),
+        positive(demand.bedroomsMin),
+        positive(demand.bedroomsMax),
+        'bedrooms',
+        strengthOf(demand, 'BEDROOMS'),
+      ),
   ];
 
   const agreed = dimensions.filter((d) => d.verdict === 'AGREE').map((d) => d.dimension);

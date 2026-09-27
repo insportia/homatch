@@ -1,7 +1,18 @@
 // send-message Edge Function
 // POST { conversation_id?, property_id?, recipient_id, body }
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { refuseIfImpersonating } from '../_shared/impersonation.ts';
 import { notify } from '../_shared/notify.ts';
+import { recordIntent } from '../_shared/intent.ts';
+import {
+  projectActor,
+  projectPropertyInterest,
+  recordDemandFrom,
+  requestNativeMatching,
+} from '../_shared/nativeDemand.ts';
+import {
+  attributionOf, readingsOf,
+} from '../../../src/research-core/intent/interpret.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -19,6 +30,11 @@ Deno.serve(async (req) => {
     const jwt = authHeader.replace('Bearer ', '');
     const { data: { user }, error: authErr } = await supabase.auth.getUser(jwt);
     if (authErr || !user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
+    /* An administrator viewing as this account is read-only here: this path
+       writes with the service role, so Postgres never sees the caller's
+       impersonation token and cannot refuse it itself. */
+    const impersonating = await refuseIfImpersonating(supabase, authHeader, corsHeaders);
+    if (impersonating) return impersonating;
 
     /*
      * BOTH COLUMNS, BECAUSE PRODUCTION HAS ALWAYS CHECKED BOTH.
@@ -60,22 +76,38 @@ Deno.serve(async (req) => {
       }
       isFirstContact = !supplied.first_contact_email_sent;
     } else {
-      let query = supabase.from('conversations').select('id,first_contact_email_sent')
-        .or(`and(initiator_id.eq.${sender.id},recipient_id.eq.${recipient_id}),and(initiator_id.eq.${recipient_id},recipient_id.eq.${sender.id})`);
-      query = property_id ? query.eq('property_id', property_id) : query.is('property_id', null);
-      const { data: existing } = await query.limit(1).maybeSingle();
-      if (existing) {
-        convId = existing.id;
-        isFirstContact = !existing.first_contact_email_sent;
-      } else {
-        const { data: newConv, error: convErr } = await supabase.from('conversations').insert({
-          initiator_id: sender.id, recipient_id, property_id: property_id || null, status: 'ACTIVE',
-        }).select('id').single();
-        if (convErr) throw convErr;
-        convId = newConv.id;
-        isFirstContact = true;
+      /*
+       * ONE CONVERSATION PER PAIR AND PROPERTY, decided by the database. This was a
+       * select followed by an insert, so two taps at once made two conversations — and
+       * A→B and B→A about the same flat were two conversations as well. ensure_conversation()
+       * is insert-or-return on the unordered pair.
+       */
+      const { data: ensured, error: convErr } = await supabase.rpc('ensure_conversation', {
+        p_initiator: sender.id, p_recipient: recipient_id, p_property: property_id || null,
+      });
+      if (convErr || !ensured) throw convErr ?? new Error('conversation not created');
+      convId = String(ensured);
+      const { data: current } = await supabase.from('conversations')
+        .select('first_contact_email_sent,status').eq('id', convId).maybeSingle();
+      if (current?.status === 'BLOCKED') {
+        return new Response(JSON.stringify({ error: 'Cannot send message' }), { status: 403, headers: corsHeaders });
       }
+      isFirstContact = !current?.first_contact_email_sent;
     }
+
+    /*
+     * WHICH PROPERTY THIS CONVERSATION IS ABOUT, read once.
+     *
+     * From the conversation rather than from the request: a caller supplying a
+     * property_id for a conversation that is about a different property would otherwise
+     * be attaching somebody's words to a listing they never mentioned.
+     */
+    const { data: conversationRow } = await supabase
+      .from('conversations').select('property_id,property:properties!property_id(user_id)')
+      .eq('id', convId).maybeSingle();
+    const propertyContext = (conversationRow?.property_id as string | null) ?? null;
+    const propertyJoin = conversationRow?.property as { user_id?: string } | Array<{ user_id?: string }> | null;
+    const propertyOwner = (Array.isArray(propertyJoin) ? propertyJoin[0] : propertyJoin)?.user_id ?? null;
 
     const now = new Date().toISOString();
     const { data: message, error: msgErr } = await supabase.from('messages').insert({
@@ -87,24 +119,126 @@ Deno.serve(async (req) => {
     await supabase.from('message_receipts').upsert({ message_id: message.id, user_id: recipient_id, status: 'DELIVERED' }, { onConflict: 'message_id,user_id' });
     await supabase.from('messages').update({ status: 'DELIVERED', delivered_at: now }).eq('id', message.id);
 
-    if (isFirstContact) {
-      /* No group key. Collapsing human messages into "4 new messages"
-         hides the four people who wrote. The dedupe key is the MESSAGE, so a
-         retried request cannot tell somebody twice. The deep link is the
-         conversation itself rather than a list to search. */
-      await notify(supabase, {
-        userId: recipient_id,
-        type: 'MATCH_FOUND',
-        title: 'New message',
-        body: 'You have a new message from a Homatch user.',
-        priority: 'HIGH',
-        deepLink: `/chat?c=${convId}`,
-        entityType: 'conversation',
-        entityId: convId,
-        dedupeKey: `message:${message.id}`,
-        metadata: { conversation_id: convId, sender_id: sender.id, kind: 'NEW_MESSAGE' },
-      });
+    /*
+     * WHAT THIS MESSAGE MEANT, WHERE THE CONVERSATION KNOWS WHAT IT IS ABOUT.
+     *
+     * conversations.property_id is a column. Which property somebody means when they
+     * write "is this still available" is therefore not a question for a language model,
+     * and asking one would be slower, dearer and less certain than reading the row.
+     *
+     * So the split is: the COLUMN decides what the message is about, and the
+     * deterministic reader decides what was said about it — interest, a withdrawal, a
+     * complaint about a dimension, a question. One message can say several of those and
+     * each becomes its own signal, which is why readingsOf returns a list.
+     *
+     * Attribution is read from the text rather than assumed: somebody writing "my sister
+     * is interested" in a property conversation has not expressed their own interest,
+     * and validate() refuses to let that become one.
+     */
+    /* The owner writing about their own property is answering, not expressing interest. */
+    const intentWork: Promise<unknown>[] = [];
+    if (propertyContext && propertyOwner !== sender.id) {
+      const readings = readingsOf(body);
+      const attribution = attributionOf(body);
+      for (const reading of readings) {
+        await recordIntent(supabase, {
+          actorUserId: sender.id,
+          sourceSurface: 'PRIVATE_MESSAGE',
+          sourceEventId: message.id,
+          sourceAt: message.created_at ?? now,
+          side: 'PROPERTY_INTEREST',
+          act: reading.act,
+          dimension: reading.dimension,
+          polarity: reading.polarity,
+          attribution,
+          /* Said, not deduced: these readings come from the words themselves. */
+          explicit: true,
+          /*
+           * NOT 1. The property is certain because a column says so; what the sentence
+           * MEANT is a reading of a person's words and carries the uncertainty that
+           * comes with that. Writing 1 here would claim the same certainty for both.
+           */
+          confidence: 0.8,
+          scope: 'PROPERTY',
+          propertyId: propertyContext,
+          conversationId: convId,
+          constraints: {},
+          strength: {},
+        });
+      }
+      /* How this person now stands towards the property, as a native relationship. */
+      intentWork.push(projectPropertyInterest(supabase, sender.id, propertyContext, convId ?? null));
+    } else if (!propertyContext) {
+      /*
+       * A PRIVATE CONVERSATION ABOUT NO PROPERTY can still carry the author's own search —
+       * "I'm looking for a 2-bedroom in Vake, up to 180k" said to an agent. The same
+       * reader, the same gate, the same projection as the common room: the author's own
+       * words only, matched against the Homatch network only, charged nothing.
+       */
+      intentWork.push((async () => {
+        const outcome = await recordDemandFrom(supabase, {
+          surface: 'PRIVATE_MESSAGE',
+          eventId: message.id,
+          revision: '',
+          actorUserId: sender.id,
+          sourceAt: message.created_at ?? now,
+          text: body,
+          conversationId: convId ?? null,
+        });
+        if (outcome.demand === 'RECORDED' || outcome.demand === 'WITHDRAWN_SEARCH') {
+          const projection = await projectActor(supabase, sender.id);
+          await requestNativeMatching(projection.active);
+        }
+      })());
     }
+    /* After the response where the runtime allows it: a message is never slowed down by
+       the reading of it. */
+    const settle = Promise.allSettled(intentWork);
+    const runtime = (globalThis as { EdgeRuntime?: { waitUntil(p: Promise<unknown>): void } }).EdgeRuntime;
+    if (runtime?.waitUntil) runtime.waitUntil(settle); else await settle;
+
+    /*
+     * EVERY MESSAGE, NOT ONLY THE FIRST.
+     *
+     * This used to sit inside `if (isFirstContact)`, and isFirstContact is
+     * `!first_contact_email_sent` — a flag about an EMAIL, set the first time anybody
+     * writes in a conversation. So the second message and every message after it told
+     * nobody: a customer who replied, then followed up, then asked again was silent from
+     * the bell's point of view. The email flag keeps its meaning; this is a different
+     * decision and now makes it separately.
+     *
+     * No group key. Collapsing human messages into "4 new messages" hides the four
+     * people who wrote. The dedupe key is the MESSAGE, so a retried request — a dropped
+     * response, a double tap — cannot tell somebody twice. The deep link is the
+     * conversation itself rather than a list to search.
+     *
+     * The sender is never told about their own message: notify() is called with
+     * recipient_id and nothing else.
+     */
+    await notify(supabase, {
+      userId: recipient_id,
+      type: 'NEW_MESSAGE',
+      title: 'New message',
+      body: 'You have a new message from a Homatch user.',
+      priority: 'HIGH',
+      deepLink: `/chat?conversation=${convId}`,
+      entityType: 'conversation',
+      entityId: convId,
+      dedupeKey: `message:${message.id}`,
+      /*
+       * WHAT THE INTERFACE RENDERS FROM. `kind` picks the translation, and the sender
+       * and the property let the notification say who wrote and about what. No message
+       * BODY here: a notification row is readable by its recipient, but it also travels
+       * into a push payload and a preview of somebody's words does not need to live in
+       * two places to be delivered once.
+       */
+      metadata: {
+        conversation_id: convId,
+        sender_id: sender.id,
+        property_id: property_id || null,
+        kind: 'NEW_MESSAGE',
+      },
+    });
 
     return new Response(JSON.stringify({ message: { ...message, status: 'DELIVERED', delivered_at: now }, conversation_id: convId, first_contact: isFirstContact }), { headers: corsHeaders });
   } catch (err) {

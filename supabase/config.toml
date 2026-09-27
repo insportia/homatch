@@ -166,6 +166,11 @@ verify_jwt = false
 [functions.supply-matching]
 verify_jwt = false
 
+# The common room, read once by a worker tick. Authenticated on a private token held in
+# admin_settings rather than on a user JWT, because no customer calls it.
+[functions.ingest-live-chat]
+verify_jwt = false
+
 # find-property is deliberately ABSENT from this file too, and for the same reason as
 # community-intelligence below: it verifies the JWT, which is the default, so there is
 # nothing to preserve across a manual deploy. It is in the workflow's JWT loop because it

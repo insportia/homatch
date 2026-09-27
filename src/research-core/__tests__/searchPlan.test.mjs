@@ -282,6 +282,55 @@ test('no plan is never ready', () => {
   assert.equal(planReadiness(null).ready, false);
 });
 
+/* ────────────────────────────────────────────────────────────────────────
+ * Every discard is sayable
+ * ──────────────────────────────────────────────────────────────────────── */
+
+test('a discard reaches both lists or neither', () => {
+  /*
+   * THE TWO AUDIENCES OF ONE FACT. The sentence is for whoever reads a log; the key and
+   * value are for the customer, who is not necessarily reading English. A discard that
+   * reached only the sentence would be untranslatable on screen, and one that reached
+   * only the key would be invisible to an operator — so the counts are held equal here
+   * rather than by remembering to push twice.
+   */
+  const drafts = [
+    { ...base, city: 'Tbilisi or Batumi' },
+    { ...base, districts: ['Vake', 'Saburtalo, Vera'] },
+    { ...base, propertyTypes: ['APARTMENT', 'houseboat'] },
+    { ...base, budgetMax: 1, currency: 'BTC' },
+    { ...base, budgetMin: 150000, budgetMax: 100000 },
+    { ...base, languages: ['ka', 'jp'] },
+    { ...base, countryCode: 'GEORGIA' },
+    { goal: 'teleportation', originalText: 'somewhere' },
+  ];
+  for (const draft of drafts) {
+    const { rejected, rejections } = normalisePlan(draft);
+    assert.ok(rejected.length > 0, `nothing was discarded from ${JSON.stringify(draft)}`);
+    assert.equal(rejections.length, rejected.length,
+      `${rejections.length} keys for ${rejected.length} sentences: ${JSON.stringify(draft)}`);
+  }
+});
+
+test('a rejection carries a key and the customer own word, never a reason', () => {
+  /* A comma is what placeOf actually refuses — one string holding two places, which is
+     what a model asked for a list sometimes returns. */
+  const { rejections } = normalisePlan({ ...base, districts: ['near a metro, and a park'] });
+  assert.equal(rejections.length, 1);
+  const [only] = rejections;
+  assert.match(only.key, /^plan_dropped_[a-z_]+$/);
+  /* The VALUE is what they said. An English explanation here would be the same defect
+     one layer down: a sentence nobody can translate, arriving as data. */
+  assert.equal(only.value, 'near a metro, and a park');
+  assert.doesNotMatch(only.value, /is not|recognis|unsupported/i);
+});
+
+test('a plan with nothing wrong discards nothing, in both lists', () => {
+  const { rejected, rejections } = normalisePlan({ ...base, districts: ['Vake'] });
+  assert.deepEqual(rejected, []);
+  assert.deepEqual(rejections, []);
+});
+
 test('normalising is deterministic', () => {
   const draft = { ...base, districts: ['Vake'], budgetMax: 150000, currency: 'BTC' };
   assert.deepEqual(normalisePlan(draft), normalisePlan(draft));

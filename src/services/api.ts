@@ -1,9 +1,12 @@
 // HOMATCH — API layer (frontend data access)
 // All Supabase queries go through this file.
 
-import { supabase } from '@/db/supabase';
-import { startJobBestEffort } from '@/services/backgroundJobs';
 import type { DiscoveryHeadroom } from '@/campaign/searchExpansion';
+import { supabase } from '@/db/supabase';
+import { keysetOrFilter, type FeedCursor } from '@/lib/notifications/feed';
+import { signalNotificationsChanged } from '@/lib/notifications/signals';
+import type { PropertyContact } from '@/lib/propertyContact';
+import { startJobBestEffort } from '@/services/backgroundJobs';
 import type {
   ActivityEvent,
   AdminOverviewStats,
@@ -113,7 +116,19 @@ export interface CreatePropertyInput {
   title?: string;
   transactionType?: TransactionType;
   propertyType?: PropertyType;
+  /**
+   * THE CONTACT NUMBER, AND IT IS NOT OPTIONAL.
+   *
+   * Required in the type so a call site cannot forget it, and required again by a
+   * database trigger so a request that skips this layer entirely still cannot create a
+   * property nobody can be reached on. Read through readContactPhone(), which is the
+   * only thing that decides what a typed number means.
+   */
+  contact: PropertyContact;
 }
+
+/** The distinct failure the database raises when a property arrives with no number. */
+export const CONTACT_PHONE_REQUIRED = 'HM002';
 
 export async function createProperty(input: CreatePropertyInput): Promise<string | null> {
   const { data, error } = await supabase
@@ -125,6 +140,9 @@ export async function createProperty(input: CreatePropertyInput): Promise<string
       transaction_type: input.transactionType ?? null,
       property_type: input.propertyType ?? null,
       matching_status: 'DRAFT',
+      ...input.contact,
+      /* homatch_id is deliberately absent. A trigger assigns it and discards anything
+         sent — a customer does not choose their own reference. */
     })
     .select('id')
     .maybeSingle();
@@ -133,6 +151,30 @@ export async function createProperty(input: CreatePropertyInput): Promise<string
     return null;
   }
   return data?.id ?? null;
+}
+
+/**
+ * Set or replace the number this property is reached on.
+ *
+ * Separate from updateProperty() because it is a different decision with a different
+ * authorisation story, and because it must never be reachable from a bulk edit that
+ * happens to carry the field.
+ *
+ * It does NOT touch the account-level phone. A property's contact and an account's
+ * contact are two facts about two different things — an owner listing a flat for their
+ * mother is the ordinary case, not the exotic one — and writing one from the other would
+ * quietly replace a number somebody chose.
+ */
+export async function setPropertyContact(
+  propertyId: string,
+  contact: PropertyContact,
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('properties')
+    .update(contact)
+    .eq('id', propertyId);
+  if (error) console.error('setPropertyContact error:', error.message);
+  return !error;
 }
 
 /**
@@ -390,29 +432,109 @@ export async function getActivityEvents(userId: string, limit = 30): Promise<Act
 // NOTIFICATIONS
 // ============================================================
 
-export async function getNotifications(userId: string, limit = 20): Promise<Notification[]> {
-  const { data } = await supabase
+export async function getNotifications(
+  userId: string,
+  limit = 20,
+  options: { unreadOnly?: boolean; cursor?: FeedCursor | null } = {},
+): Promise<Notification[]> {
+  /*
+   * A PAGE, NOT A TABLE. The shell must never pull somebody thousands of historical
+   * notifications to count the four they have not read — the count comes from a
+   * head-only query, and this returns a recent page.
+   *
+   * KEYSET ON (created_at, id). The cursor used to be created_at alone, and an
+   * aggregated row has its created_at rewritten while two rows written together share
+   * one — so page two silently repeated a row and dropped another. The id breaks every
+   * tie, in the same direction as the order, and the (user_id, created_at desc, id desc)
+   * index serves it.
+   *
+   * Errors are thrown, not swallowed into an empty list: "you have no notifications" and
+   * "we could not load them" are different screens.
+   */
+  let query = supabase
     .from('notifications')
     .select('*')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
     .limit(limit);
-  return Array.isArray(data) ? data : [];
+  if (options.unreadOnly) query = query.eq('read', false);
+  if (options.cursor) query = query.or(keysetOrFilter(options.cursor));
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return Array.isArray(data) ? (data as Notification[]) : [];
+}
+
+/**
+ * The unread count, from the database rather than from whatever page is loaded.
+ *
+ * Head-only: no rows cross the wire. Returns null when it could not be read, so a
+ * caller keeps the number it had rather than flashing a false zero.
+ */
+export async function getUnreadNotificationCount(userId: string): Promise<number | null> {
+  const { count, error } = await supabase
+    .from('notifications')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('read', false);
+  if (error) return null;
+  return count ?? 0;
 }
 
 // `read` is the only column a customer may write; the database now grants only
 // that one. Errors are surfaced rather than dropped, so a bell that refuses to
 // clear says why instead of silently staying lit.
 export async function markNotificationRead(id: string) {
-  const { error } = await supabase.from('notifications').update({ read: true }).eq('id', id);
+  const { error } = await supabase.from('notifications').update({ read: true }).eq('id', id).eq('read', false);
   if (error) console.error('markNotificationRead error:', error.message);
+  else signalNotificationsChanged();
   return !error;
 }
 
 export async function markAllNotificationsRead(userId: string) {
-  const { error } = await supabase.from('notifications').update({ read: true }).eq('user_id', userId);
+  // Only unread rows: rewriting read ones is a write and a realtime frame for nothing.
+  const { error } = await supabase.from('notifications').update({ read: true })
+    .eq('user_id', userId).eq('read', false);
   if (error) console.error('markAllNotificationsRead error:', error.message);
+  else signalNotificationsChanged();
   return !error;
+}
+
+/**
+ * Opening a conversation reads its message notifications.
+ *
+ * Through notifications_mark_conversation_read, which checks the caller is a
+ * participant and touches only the caller's own NEW_MESSAGE rows for it. Messages
+ * themselves are untouched: whether a message is SEEN is the chat's receipt, a separate
+ * fact from whether the bell has told you about it.
+ *
+ * If the function is not deployed yet (PGRST202), the same update is made directly —
+ * RLS and the column grant already confine it to the caller's own `read` flags — so a
+ * frontend released ahead of its migration still clears the bell.
+ */
+export async function markConversationNotificationsRead(
+  conversationId: string,
+  userId: string,
+): Promise<boolean> {
+  if (!conversationId || !userId) return false;
+  const { error } = await supabase.rpc('notifications_mark_conversation_read', {
+    p_conversation_id: conversationId,
+  });
+  if (!error) { signalNotificationsChanged(); return true; }
+  if (error.code !== 'PGRST202') {
+    console.error('markConversationNotificationsRead error:', error.message);
+    return false;
+  }
+  const [typed, legacy] = await Promise.all([
+    supabase.from('notifications').update({ read: true })
+      .eq('user_id', userId).eq('read', false).eq('type', 'NEW_MESSAGE').eq('entity_id', conversationId),
+    supabase.from('notifications').update({ read: true })
+      .eq('user_id', userId).eq('read', false)
+      .eq('metadata->>kind', 'NEW_MESSAGE').eq('metadata->>conversation_id', conversationId),
+  ]);
+  const ok = !typed.error && !legacy.error;
+  if (ok) signalNotificationsChanged();
+  return ok;
 }
 
 // ============================================================

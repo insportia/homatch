@@ -1,30 +1,34 @@
 // Private listing creation — 7-step progressive form
-import React, { useState, useCallback } from 'react';
+
+import {AlertCircle,
+  ArrowLeft, ArrowRight, Building2, 
+  CheckCircle2, Lock,Star, Upload, X, 
+} from 'lucide-react';
+import React, { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
-import { useLanguage } from '@/contexts/LanguageContext';
-import { AppLayout } from '@/components/layouts/AppLayout';
+import { toast } from 'sonner';
 import { RouteGuard } from '@/components/common/RouteGuard';
+import { OWNER_SURFACE } from '@/components/customer/surface';
+import { AppLayout } from '@/components/layouts/AppLayout';
+import { ContactPhoneField } from '@/components/owner/ContactPhoneField';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { toast } from 'sonner';
-import {
-  createProperty, upsertPropertyFacts, addPropertyPhoto,
-  uploadPropertyPhoto, createSearchProfile,
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
+import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { readContactPhone } from '@/lib/propertyContact';
+import {addPropertyPhoto,
+  createProperty, createSearchProfile,
   logActivity, updateProperty,
+  uploadPropertyPhoto, upsertPropertyFacts, 
 } from '@/services/api';
 import type { PropertyFacts } from '@/types/types';
 import { GE_LOCATIONS } from '@/types/types';
-import {
-  ArrowLeft, ArrowRight, Upload, X, Star, Lock,
-  CheckCircle2, Building2, AlertCircle,
-} from 'lucide-react';
 
 const MAX_PHOTOS = 5;
 
@@ -144,6 +148,18 @@ function PrivateListingContent() {
   const [saving, setSaving] = useState(false);
   const [lastPriceField, setLastPriceField] = useState<'total' | 'sqm' | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  /*
+   * THE NUMBER THIS PROPERTY IS REACHED ON.
+   *
+   * Kept as the raw text rather than as a parsed contact: the owner is mid-typing for
+   * most of this field's life, and re-parsing on every keystroke is what lets the field
+   * show its reading back. The parse that matters happens once, at submit.
+   *
+   * `showPhoneProblem` stays false until a submit is attempted, so nobody is told their
+   * number is wrong while they are still writing the third digit of it.
+   */
+  const [contactPhone, setContactPhone] = useState('');
+  const [showPhoneProblem, setShowPhoneProblem] = useState(false);
 
   const set = (key: keyof FormState, value: string | boolean) =>
     setForm(f => ({ ...f, [key]: value }));
@@ -222,6 +238,21 @@ function PrivateListingContent() {
     if (!form.city) errs.city = t('private_err_city_required');
     if (!form.area) errs.area = t('private_err_area_required');
     if (!form.totalPrice && !form.pricePerSqm) errs.price = t('private_err_price_required');
+    /*
+     * THE SAME READING THE DATABASE WILL APPLY. A BEFORE INSERT trigger refuses a
+     * property with no contact number whatever sends it, so this is not the enforcement
+     * — it is the difference between a sentence about a phone number and a failed save
+     * with no explanation.
+     */
+    const reading = readContactPhone(contactPhone, form.country || 'GE');
+    if (!reading.contact) {
+      setShowPhoneProblem(true);
+      errs.contactPhone = t(
+        reading.problem === 'NO_COUNTRY' ? 'contact_phone_needs_country'
+          : reading.problem === 'UNREACHABLE' ? 'contact_phone_unreachable'
+            : 'contact_phone_required',
+      );
+    }
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -232,9 +263,16 @@ function PrivateListingContent() {
     if (saving) return;   // prevent duplicate submit
     setSaving(true);
     try {
+      /* validateStep7 already refused an unreadable number; this cannot be null here,
+         and the fallback exists so a future edit to the guard cannot silently create a
+         property with no contact. */
+      const reading = readContactPhone(contactPhone, form.country || 'GE');
+      if (!reading.contact) { setShowPhoneProblem(true); return; }
+
       const propId = await createProperty({
         userId: homatchUser.id,
         sourceType: 'PRIVATE_LISTING',
+        contact: reading.contact,
         title: form.title || t('private_default_title', {
           type: t(PROPERTY_TYPE_KEYS[form.propertyType] ?? 'prop_type_other'),
           city: form.city || t('private_default_city_fallback'),
@@ -335,13 +373,19 @@ function PrivateListingContent() {
   ];
 
   return (
-    <AppLayout>
-      <div className="max-w-xl mx-auto space-y-6">
+    /*
+     * OWNER ADD IS ONE DARK PRODUCT. This page rendered plain AppLayout on the root
+     * light palette, so an owner stepped from the navy chooser at /property/add into a
+     * light form halfway through adding a property. It wears the same OWNER_SURFACE as
+     * the chooser, the portfolio and Edit Property; the form itself is unchanged.
+     */
+    <AppLayout noPadding surfaceClass={OWNER_SURFACE}>
+      <div className="mx-auto w-full max-w-xl space-y-6 px-4 py-4 pb-[calc(2rem+env(safe-area-inset-bottom))] sm:px-6">
         {/* Header */}
         <div className="space-y-1">
           <div className="flex items-center gap-3">
             <span className="status-private">{t('prop_private_badge')}</span>
-            <h1 className="text-lg font-semibold text-foreground">{t('private_title')}</h1>
+            <h1 className="font-display text-xl font-semibold leading-tight tracking-[-0.015em] text-foreground">{t('private_title')}</h1>
           </div>
           <p className="text-sm text-muted-foreground">{t('private_subtitle')}</p>
         </div>
@@ -358,7 +402,7 @@ function PrivateListingContent() {
         </div>
 
         {/* Step forms */}
-        <div className="rounded-xl border border-border bg-card p-5" dir={isRTL ? 'rtl' : 'ltr'}>
+        <div className="hm-owner-panel p-5" dir={isRTL ? 'rtl' : 'ltr'}>
 
           {/* Step 1: Property basics */}
           {step === 1 && (
@@ -379,7 +423,7 @@ function PrivateListingContent() {
                     <SelectTrigger className="bg-secondary border-border h-10">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className="bg-card border-border">
+                    <SelectContent className="hm-owner bg-card border-border">
                       <SelectItem value="SALE">{t('prop_transaction_sale')}</SelectItem>
                       <SelectItem value="RENT">{t('prop_transaction_rent')}</SelectItem>
                       <SelectItem value="INVESTMENT">{t('prop_transaction_investment')}</SelectItem>
@@ -392,7 +436,7 @@ function PrivateListingContent() {
                     <SelectTrigger className="bg-secondary border-border h-10">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className="bg-card border-border">
+                    <SelectContent className="hm-owner bg-card border-border">
                       {['APARTMENT','HOUSE','VILLA','COMMERCIAL','LAND','STUDIO','PENTHOUSE','OTHER'].map(v => (
                         <SelectItem key={v} value={v}>{t(PROPERTY_TYPE_KEYS[v])}</SelectItem>
                       ))}
@@ -413,7 +457,7 @@ function PrivateListingContent() {
                     <SelectTrigger className="bg-secondary border-border h-10">
                       <SelectValue placeholder={t('private_select_city_ph')} />
                     </SelectTrigger>
-                    <SelectContent className="bg-card border-border">
+                    <SelectContent className="hm-owner bg-card border-border">
                       <SelectItem value="none">—</SelectItem>
                       {GE_LOCATIONS.map(l => <SelectItem key={l.city} value={l.city}>{l.city}</SelectItem>)}
                     </SelectContent>
@@ -429,7 +473,7 @@ function PrivateListingContent() {
                     <SelectTrigger className="bg-secondary border-border h-10">
                       <SelectValue placeholder={t('private_select_district_ph')} />
                     </SelectTrigger>
-                    <SelectContent className="bg-card border-border">
+                    <SelectContent className="hm-owner bg-card border-border">
                       <SelectItem value="none">—</SelectItem>
                       {cityDistricts.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
                     </SelectContent>
@@ -463,7 +507,7 @@ function PrivateListingContent() {
                   <Label>{t('form_currency')}</Label>
                   <Select value={form.currency} onValueChange={v => set('currency', v)}>
                     <SelectTrigger className="bg-secondary border-border h-10"><SelectValue /></SelectTrigger>
-                    <SelectContent className="bg-card border-border">
+                    <SelectContent className="hm-owner bg-card border-border">
                       <SelectItem value="USD">USD</SelectItem>
                       <SelectItem value="GEL">GEL</SelectItem>
                       <SelectItem value="EUR">EUR</SelectItem>
@@ -506,7 +550,7 @@ function PrivateListingContent() {
                   <Label>{t('form_condition')}</Label>
                   <Select value={form.condition || 'none'} onValueChange={v => set('condition', v === 'none' ? '' : v)}>
                     <SelectTrigger className="bg-secondary border-border h-10"><SelectValue placeholder={t('private_select_generic_ph')} /></SelectTrigger>
-                    <SelectContent className="bg-card border-border">
+                    <SelectContent className="hm-owner bg-card border-border">
                       <SelectItem value="none">—</SelectItem>
                       {Object.entries(CONDITION_KEYS).map(([v, key]) => (
                         <SelectItem key={v} value={v}>{t(key)}</SelectItem>
@@ -518,7 +562,7 @@ function PrivateListingContent() {
                   <Label>{t('form_building_type')}</Label>
                   <Select value={form.buildingType || 'none'} onValueChange={v => set('buildingType', v === 'none' ? '' : v)}>
                     <SelectTrigger className="bg-secondary border-border h-10"><SelectValue placeholder={t('private_select_generic_ph')} /></SelectTrigger>
-                    <SelectContent className="bg-card border-border">
+                    <SelectContent className="hm-owner bg-card border-border">
                       <SelectItem value="none">—</SelectItem>
                       {Object.entries(BUILDING_TYPE_KEYS).map(([v, key]) => (
                         <SelectItem key={v} value={v}>{t(key)}</SelectItem>
@@ -642,7 +686,7 @@ function PrivateListingContent() {
                 <Label>{t('private_photo_visibility')}</Label>
                 <Select value={form.photoVisibility} onValueChange={v => set('photoVisibility', v)}>
                   <SelectTrigger className="bg-secondary border-border h-10"><SelectValue /></SelectTrigger>
-                  <SelectContent className="bg-card border-border">
+                  <SelectContent className="hm-owner bg-card border-border">
                     <SelectItem value="PRIVATE">{t('private_visibility_private')}</SelectItem>
                     <SelectItem value="AUTHENTICATED">{t('private_visibility_auth')}</SelectItem>
                     <SelectItem value="PUBLIC">{t('private_visibility_public')}</SelectItem>
@@ -654,7 +698,7 @@ function PrivateListingContent() {
                 <Label>{t('private_address_visibility')}</Label>
                 <Select value={form.addressVisibility} onValueChange={v => set('addressVisibility', v)}>
                   <SelectTrigger className="bg-secondary border-border h-10"><SelectValue /></SelectTrigger>
-                  <SelectContent className="bg-card border-border">
+                  <SelectContent className="hm-owner bg-card border-border">
                     <SelectItem value="CITY_ONLY">{t('private_address_city')}</SelectItem>
                     <SelectItem value="FULL">{t('private_address_full')}</SelectItem>
                     <SelectItem value="HIDDEN">{t('private_address_hidden')}</SelectItem>
@@ -698,6 +742,22 @@ function PrivateListingContent() {
                   </div>
                 ))}
               </div>
+              {/*
+                THE ONE FIELD THAT IS NOT A SUMMARY.
+                It sits in the review step because this is where an owner is already
+                checking what they are about to create, and because it is the last place
+                a missing number can be caught with a sentence rather than a save error.
+              */}
+              <div className="rounded-lg border border-border bg-card p-3">
+                <ContactPhoneField
+                  value={contactPhone}
+                  onChange={(next) => { setContactPhone(next); setShowPhoneProblem(false); }}
+                  defaultCountry={form.country || 'GE'}
+                  accountPhone={homatchUser?.phone ?? null}
+                  showProblem={showPhoneProblem}
+                />
+              </div>
+
               <div className="flex items-center gap-2 mt-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
                 <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
                 <p className="text-xs text-muted-foreground">

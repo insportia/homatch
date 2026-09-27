@@ -131,12 +131,24 @@ test('the page is on the shared canvas, not the light app surface', () => {
   const page = read('src/pages/MortgagePage.tsx');
   assert.ok(page.includes('hm-workspace hm-workspace-canvas'));
   assert.ok(!page.includes("useSurfaceTheme('light')"));
-  // Both class names resolve to the same declarations, so Investment
-  // and Verify keep working while new code uses the neutral name.
+  /*
+   * ONE DECLARATION, SEVERAL NAMES. `.hm-invest` is what Investment and Verify were born
+   * with, `.hm-workspace` the neutral rename, and the customer products later joined that
+   * same selector list rather than copying the values: `.hm-discovery` for matching and
+   * discovery, `.hm-owner` for the property portfolio and its flow.
+   *
+   * This asserts the ALIASING rather than the exact membership — a sixth product may
+   * join, and joining is the intended way to add one. The failure worth catching is a
+   * SECOND declaration of these values, because then a border colour has two homes and
+   * the surfaces drift apart. That is what the count below is for.
+   */
   const css = read('src/index.css').replace(/\r\n/g, '\n');
-  for (const pair of ['.hm-invest,\n  .hm-workspace {', '.hm-invest-panel,\n  .hm-workspace-panel {']) {
-    assert.ok(css.includes(pair), `missing alias: ${pair}`);
+  for (const name of ['.hm-invest', '.hm-workspace', '.hm-invest-panel', '.hm-workspace-panel']) {
+    assert.ok(css.includes(name), `missing alias: ${name}`);
   }
+  const declarations = (css.match(/--shadow-hover: 0 18px 46px/g) ?? []).length;
+  assert.equal(declarations, 1,
+    `the dark surface is declared ${declarations} times; the aliases have been copied apart`);
 });
 
 /* ── Honesty ────────────────────────────────────────────────────── */

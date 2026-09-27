@@ -130,6 +130,18 @@ export interface PlanDraft {
   originalLanguage?: unknown;
 }
 
+/**
+ * One discarded thing, in a form six languages can say.
+ *
+ * `key` is an i18n key and `value` is the customer's own word for what was dropped —
+ * never a sentence, never a reason in English. The sentence in `rejected` is the same
+ * fact written for an operator.
+ */
+export interface PlanRejection {
+  key: string;
+  value: string;
+}
+
 export interface NormalisedPlan {
   plan: SearchPlan | null;
   /**
@@ -138,8 +150,13 @@ export interface NormalisedPlan {
    * Returned rather than logged, because a silently narrowed search is the worst
    * outcome here: the customer said something, it was dropped, and they are shown
    * results for a question they did not ask. The interface surfaces these.
+   *
+   * These sentences are ENGLISH and stay English: they are operator copy, and several
+   * things already read them. What a customer sees comes from `rejections`.
    */
   rejected: string[];
+  /** The same discards, as keys and values, for an interface with six languages. */
+  rejections: PlanRejection[];
 }
 
 /**
@@ -247,6 +264,12 @@ const LANGUAGES: readonly string[] = ['en', 'ka', 'ru', 'tr', 'ar', 'he'];
  */
 export function normalisePlan(draft: PlanDraft): NormalisedPlan {
   const rejected: string[] = [];
+  const rejections: PlanRejection[] = [];
+  /* Written together, so a discard cannot reach one list and not the other. */
+  const drop = (sentence: string, key: string, value: string) => {
+    rejected.push(sentence);
+    rejections.push({ key, value });
+  };
 
   const goalText = foldCase(scalarText(draft.goal)).replace(/[\s-]+/g, '_');
   const goal = GOAL_FROM[goalText] ?? null;
@@ -259,13 +282,15 @@ export function normalisePlan(draft: PlanDraft): NormalisedPlan {
     return {
       plan: null,
       rejected: [`goal ${JSON.stringify(String(draft.goal ?? ''))} is not one of ${SEARCH_GOALS.join(', ')}`],
+      rejections: [{ key: 'plan_dropped_goal', value: String(draft.goal ?? '') }],
     };
   }
 
   const countryRaw = String(draft.countryCode ?? 'GE').trim().toUpperCase();
   const countryCode = /^[A-Z]{2}$/.test(countryRaw) ? countryRaw : 'GE';
   if (countryCode !== countryRaw) {
-    rejected.push(`country ${JSON.stringify(countryRaw)} is not a two-letter code; using GE`);
+    drop(`country ${JSON.stringify(countryRaw)} is not a two-letter code; using GE`,
+      'plan_dropped_country', countryRaw);
   }
 
   /* ── city ── */
@@ -273,7 +298,8 @@ export function normalisePlan(draft: PlanDraft): NormalisedPlan {
   if (draft.city !== null && draft.city !== undefined && String(draft.city).trim() !== '') {
     const name = placeOf(draft.city);
     if (name) city = { value: name, strength: strengthOf(draft.cityStrength, 'REQUIRED') };
-    else rejected.push(`city ${JSON.stringify(String(draft.city))} is not a place name`);
+    else drop(`city ${JSON.stringify(String(draft.city))} is not a place name`,
+      'plan_dropped_city', String(draft.city));
   }
 
   /* ── districts ── */
@@ -284,7 +310,8 @@ export function normalisePlan(draft: PlanDraft): NormalisedPlan {
     for (const entry of districtList.slice(0, 8)) {
       const name = placeOf(entry);
       if (name) names.push(name);
-      else rejected.push(`district ${JSON.stringify(String(entry))} is not a place name`);
+      else drop(`district ${JSON.stringify(String(entry))} is not a place name`,
+        'plan_dropped_district', String(entry));
     }
     if (names.length) {
       /*
@@ -308,7 +335,10 @@ export function normalisePlan(draft: PlanDraft): NormalisedPlan {
         ? text as PlanPropertyType
         : null;
       if (kind && !kinds.includes(kind)) kinds.push(kind);
-      else if (!kind) rejected.push(`property type ${JSON.stringify(String(entry))} is not recognised`);
+      else if (!kind) {
+        drop(`property type ${JSON.stringify(String(entry))} is not recognised`,
+          'plan_dropped_type', String(entry));
+      }
     }
     if (kinds.length) {
       propertyTypes = { value: kinds, strength: strengthOf(draft.propertyTypesStrength, 'REQUIRED') };
@@ -323,7 +353,8 @@ export function normalisePlan(draft: PlanDraft): NormalisedPlan {
     const currencyRaw = String(draft.currency ?? 'USD').trim().toUpperCase();
     const currency = PLAN_CURRENCIES.includes(currencyRaw) ? currencyRaw : 'USD';
     if (currency !== currencyRaw) {
-      rejected.push(`currency ${JSON.stringify(currencyRaw)} is not quoted in this market; using USD`);
+      drop(`currency ${JSON.stringify(currencyRaw)} is not quoted in this market; using USD`,
+        'plan_dropped_currency', currencyRaw);
     }
     /*
      * A RANGE THAT RUNS BACKWARDS IS NOT A RANGE. Swapped rather than dropped, because
@@ -331,7 +362,8 @@ export function normalisePlan(draft: PlanDraft): NormalisedPlan {
      * `rejected` so the swap is visible rather than quietly assumed.
      */
     if (min !== null && max !== null && min > max) {
-      rejected.push(`budget ${min}-${max} runs backwards; read as ${max}-${min}`);
+      drop(`budget ${min}-${max} runs backwards; read as ${max}-${min}`,
+        'plan_dropped_budget', `${max}-${min}`);
       budget = {
         value: { min: max, max: min, currency },
         strength: strengthOf(draft.budgetStrength, 'REQUIRED'),
@@ -366,7 +398,9 @@ export function normalisePlan(draft: PlanDraft): NormalisedPlan {
   for (const entry of Array.isArray(draft.languages) ? draft.languages.slice(0, 6) : []) {
     const code = (scalarText(entry) ?? '').trim().toLowerCase();
     if (LANGUAGES.includes(code) && !languages.includes(code)) languages.push(code);
-    else if (!LANGUAGES.includes(code)) rejected.push(`language ${JSON.stringify(code)} is not supported`);
+    else if (!LANGUAGES.includes(code)) {
+      drop(`language ${JSON.stringify(code)} is not supported`, 'plan_dropped_language', code);
+    }
   }
 
   const originalText = String(draft.originalText ?? '').slice(0, 4000);
@@ -389,6 +423,7 @@ export function normalisePlan(draft: PlanDraft): NormalisedPlan {
       originalLanguage,
     },
     rejected,
+    rejections,
   };
 }
 

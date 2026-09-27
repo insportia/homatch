@@ -26,6 +26,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { refuseIfImpersonating } from '../_shared/impersonation.ts';
 import { getPaymentProvider } from '../_shared/payment_provider.ts';
 
 const CORS = {
@@ -60,6 +61,11 @@ serve(async (req) => {
 
     const { data: { user }, error: authErr } = await supabaseUser.auth.getUser();
     if (authErr || !user) return json({ error: 'Invalid session' }, 401);
+    /* An administrator viewing as this account is read-only here: this path
+       writes with the service role, so Postgres never sees the caller's
+       impersonation token and cannot refuse it itself. */
+    const impersonating = await refuseIfImpersonating(supabaseAdmin, authHeader, CORS);
+    if (impersonating) return impersonating;
 
     const { data: hmUser } = await supabaseAdmin
       .from('users').select('id, email').eq('auth_id', user.id).maybeSingle();

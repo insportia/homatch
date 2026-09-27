@@ -109,168 +109,31 @@ export async function logCostEvent(ctx: JobContext, event: {
   });
 }
 
-// ── 1. discoverMarketSources ───────────────────────────────────────────────
+// ── 1 & 2. discoverMarketSources / collectSourceUpdates — RETIRED ──────────
+//
+// These were the DataForSEO source discovery and the Apify incremental
+// collection. Both providers are retired from the Homatch architecture, so both
+// jobs are hard-retired rather than left as unwired implementations: they return
+// immediately, make no network call, write no cost_event and touch no table.
+// The previous implementations remain in version control. Nothing that either
+// of them wrote in the past is changed.
 
-export async function discoverMarketSources(ctx: JobContext): Promise<JobResult> {
-  const start = Date.now();
-  const errors: string[] = [];
-  let processed = 0; let skipped_cap = 0;
-
-  const { data: markets } = await ctx.supabase
-    .from('markets').select('*').eq('enabled', true);
-
-  for (const market of markets ?? []) {
-    const allowed = await isProviderAllowed(ctx, 'DATAFORSEO');
-    if (!allowed) { skipped_cap++; continue; }
-
-    try {
-      await withRetry(async () => {
-        // Check QueryPack cache first — shared search, do not repeat
-        const cacheKey = `discover:${market.country_code}`;
-        const { data: existing } = await ctx.supabase.from('query_packs')
-          .select('id').eq('market_id', market.id).eq('cache_key', cacheKey)
-          .gte('expires_at', new Date().toISOString()).maybeSingle();
-        if (existing) { console.log(`[discover] cache hit for market ${market.country_code}`); return; }
-
-        const login = Deno.env.get('DATAFORSEO_LOGIN');
-        const pwd = Deno.env.get('DATAFORSEO_PASSWORD');
-        const provider = (login && pwd) ? 'DATAFORSEO' : 'MOCK';
-        let results: any[] = [];
-
-        if (provider === 'DATAFORSEO') {
-          const creds = btoa(`${login}:${pwd}`);
-          const r = await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced', {
-            method: 'POST',
-            headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify([{ language_code: 'en', location_name: market.country_name, keyword: `real estate buy rent ${market.country_name} site:facebook.com OR site:t.me OR site:vk.com`, depth: 10 }]),
-          });
-          const json = await r.json();
-          results = json?.tasks?.[0]?.result?.[0]?.items ?? [];
-          await logCostEvent(ctx, { provider: 'DATAFORSEO', operation: 'discover_sources', cost_usd: 0.003, success: r.ok });
-        } else {
-          console.log(`[discover] MOCK — DATAFORSEO not configured for market ${market.country_code}`);
-          await logCostEvent(ctx, { provider: 'DATAFORSEO', operation: 'discover_sources', cost_usd: 0, success: true, cache_hit: false });
-        }
-
-        // Upsert discovered sources into source_registry
-        for (const item of results) {
-          if (!item.url) continue;
-          const platform = detectPlatform(item.url);
-          if (!platform) continue;
-          await ctx.supabase.from('source_registry').upsert({
-            url: item.url, platform, display_name: item.title,
-            market_id: market.id, active: true, quality_score: 5.0,
-            discovered_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-          }, { onConflict: 'url', ignoreDuplicates: true });
-        }
-
-        // Cache the query pack
-        const expires = new Date(); expires.setHours(expires.getHours() + 24);
-        await ctx.supabase.from('query_packs').upsert({
-          market_id: market.id, cache_key: cacheKey,
-          expires_at: expires.toISOString(), updated_at: new Date().toISOString(),
-        }, { onConflict: 'cache_key' });
-
-        processed++;
-      });
-    } catch (e: any) { errors.push(`market ${market.country_code}: ${e.message}`); }
-  }
-
-  return { job: 'discoverMarketSources', success: errors.length === 0, processed, errors, skipped_cap, duration_ms: Date.now() - start };
-}
-
-function detectPlatform(url: string): string | null {
-  if (url.includes('facebook.com')) return 'FACEBOOK';
-  if (url.includes('t.me') || url.includes('telegram')) return 'TELEGRAM';
-  if (url.includes('vk.com')) return 'VK';
-  if (url.includes('instagram.com')) return 'INSTAGRAM';
-  return null;
-}
-
-// ── 2. collectSourceUpdates ────────────────────────────────────────────────
-
-export async function collectSourceUpdates(ctx: JobContext): Promise<JobResult> {
-  const start = Date.now();
-  const errors: string[] = [];
-  let processed = 0; let skipped_cap = 0;
-
-  const { data: sources } = await ctx.supabase
-    .from('source_registry').select('*').eq('active', true).order('last_collected_at', { ascending: true, nullsFirst: true }).limit(20);
-
-  for (const source of sources ?? []) {
-    const allowed = await isProviderAllowed(ctx, 'APIFY');
-    if (!allowed) { skipped_cap++; continue; }
-
-    try {
-      await withRetry(async () => {
-        const token = Deno.env.get('APIFY_API_TOKEN');
-        const actorId = getActorId(source.platform);
-
-        if (!token || !actorId) {
-          console.log(`[collect] MOCK — Apify not configured for ${source.platform}`);
-          await logCostEvent(ctx, { provider: 'APIFY', operation: `collect_${source.platform}`, cost_usd: 0, success: true, cache_hit: false });
-          return;
-        }
-
-        // Only collect NEW content since last_collected_at (incremental monitoring)
-        const since = source.last_collected_at ?? new Date(Date.now() - 7 * 86400000).toISOString();
-
-        const runRes = await fetch(`https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${token}&memory=256&maxItems=50`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ startUrls: [{ url: source.url }], since, maxItems: 50 }),
-        });
-
-        const items = runRes.ok ? await runRes.json() : [];
-        const costPerRun = 0.05;
-        await logCostEvent(ctx, { provider: 'APIFY', operation: `collect_${source.platform}`, cost_usd: costPerRun, success: runRes.ok });
-
-        for (const item of Array.isArray(items) ? items : []) {
-          const text = item.text ?? item.message ?? item.body ?? '';
-          if (!text || text.length < 20) continue;
-
-          // Deduplicate by external ID + fingerprint
-          const externalId = item.id ?? item.postId ?? item.messageId ?? null;
-          const fingerprint = await hashText(text.slice(0, 200));
-
-          const { data: dup } = await ctx.supabase.from('raw_signals')
-            .select('id').or(`external_id.eq.${externalId},content_fingerprint.eq.${fingerprint}`)
-            .maybeSingle();
-          if (dup) continue;
-
-          await ctx.supabase.from('raw_signals').insert({
-            source_id: source.id, platform: source.platform,
-            raw_text: text, external_id: externalId, content_fingerprint: fingerprint,
-            language: item.language ?? null, author_id: item.authorId ?? null,
-            source_url: item.url ?? source.url,
-            classification_status: 'PENDING',
-            discovered_at: item.createdAt ?? new Date().toISOString(),
-          });
-        }
-
-        // Update last_collected_at
-        await ctx.supabase.from('source_registry').update({ last_collected_at: new Date().toISOString() }).eq('id', source.id);
-        processed++;
-      });
-    } catch (e: any) { errors.push(`source ${source.id}: ${e.message}`); }
-  }
-
-  return { job: 'collectSourceUpdates', success: errors.length === 0, processed, errors, skipped_cap, duration_ms: Date.now() - start };
-}
-
-function getActorId(platform: string): string | null {
-  const map: Record<string, string | undefined> = {
-    FACEBOOK: Deno.env.get('APIFY_FACEBOOK_ACTOR_ID'),
-    TELEGRAM: Deno.env.get('APIFY_TELEGRAM_ACTOR_ID'),
-    INSTAGRAM: Deno.env.get('APIFY_INSTAGRAM_ACTOR_ID'),
-    VK: Deno.env.get('APIFY_VK_ACTOR_ID'),
+function retiredJob(job: string, provider: 'DATAFORSEO' | 'APIFY'): JobResult {
+  return {
+    job,
+    success: false,
+    processed: 0,
+    errors: [`PROVIDER_RETIRED: ${provider}`],
+    duration_ms: 0,
   };
-  return map[platform] ?? null;
 }
 
-async function hashText(text: string): Promise<string> {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+export async function discoverMarketSources(_ctx: JobContext): Promise<JobResult> {
+  return retiredJob('discoverMarketSources', 'DATAFORSEO');
+}
+
+export async function collectSourceUpdates(_ctx: JobContext): Promise<JobResult> {
+  return retiredJob('collectSourceUpdates', 'APIFY');
 }
 
 // ── 3. classifyCandidateSignals ────────────────────────────────────────────

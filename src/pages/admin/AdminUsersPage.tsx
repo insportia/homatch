@@ -9,6 +9,8 @@ import { getAdminUsers } from '@/services/api';
 import type { AdminUserRow, AdminUsersResult } from '@/services/api';
 import { format } from 'date-fns';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { labelFor } from '@/admin/labels';
+import { searchUsers, type UserSearchRow } from '@/services/adminControl';
 
 /**
  * ADMIN USERS.
@@ -55,17 +57,35 @@ export default function AdminUsersPage() {
     return () => { alive = false; };
   }, []);
 
+  /*
+   * THE SEARCH RUNS IN THE DATABASE.
+   *
+   * It used to filter the two hundred rows already on screen, so an account
+   * older than the two-hundredth did not exist here. admin_search_users looks
+   * at every account — by name, email, username, id, phone digits, or the
+   * six-digit reference of a property they own.
+   */
+  const [hits, setHits] = useState<UserSearchRow[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  useEffect(() => {
+    const term = q.trim();
+    if (term.length < 2) { setHits(null); setSearchError(null); return; }
+    let alive = true;
+    setSearching(true);
+    const timer = window.setTimeout(() => {
+      searchUsers(term, 50)
+        .then(r => { if (alive) { setHits(r); setSearchError(null); } })
+        .catch(e => { if (alive) { setHits([]); setSearchError(e instanceof Error ? e.message : String(e)); } })
+        .finally(() => { if (alive) setSearching(false); });
+    }, 250);
+    return () => { alive = false; window.clearTimeout(timer); };
+  }, [q]);
+
   const rows: AdminUserRow[] = result?.rows ?? [];
   const totals = result?.totals;
 
-  const filtered = rows.filter(u => {
-    if (!showOrphans && !u.registered) return false;
-    if (!q) return true;
-    const needle = q.toLowerCase();
-    return u.email?.toLowerCase().includes(needle)
-        || u.full_name?.toLowerCase().includes(needle)
-        || u.username?.toLowerCase().includes(needle);
-  });
+  const filtered = rows.filter(u => showOrphans || u.registered);
 
   return (
     <div className="max-w-6xl space-y-4">
@@ -104,10 +124,47 @@ export default function AdminUsersPage() {
 
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input className="pl-9" placeholder={t('admin_users_search_placeholder')}
+        <Input className="pl-9" placeholder={t('admin_cc_user_search_placeholder')}
                value={q} onChange={e => setQ(e.target.value)} />
       </div>
 
+      {searchError && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3">
+          <p className="text-sm font-semibold text-red-400">{t('admin_users_load_failed')}</p>
+          <p className="mt-1 break-words text-xs text-muted-foreground">{searchError}</p>
+        </div>
+      )}
+
+      {hits !== null ? (
+        <Card>
+          <CardContent className="p-0">
+            {searching ? (
+              <div className="space-y-2 p-3">{[0, 1, 2].map(i => <Skeleton key={i} className="h-10 w-full" />)}</div>
+            ) : hits.length === 0 ? (
+              <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t('admin_users_empty')}</p>
+            ) : (
+              <ul>
+                {hits.map(u => (
+                  <li key={u.id} className="border-t border-border first:border-0">
+                    <a href={`/admin/user360?user=${u.id}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 hover:bg-muted/30">
+                      <span className="min-w-[12rem] flex-1">
+                        <span className="block truncate text-sm font-medium">{u.full_name || u.email}</span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {u.email}{u.username ? ` · @${u.username}` : ''}{u.phone_hint ? ` · ${u.phone_hint}` : ''}
+                        </span>
+                      </span>
+                      <Badge variant="outline" className="text-xs">
+                        {labelFor(t, 'matchedBy', u.matched_by)}{u.property_reference ? ` #${u.property_reference}` : ''}
+                      </Badge>
+                      {u.is_admin && <Badge variant="default" className="gap-1 text-xs"><Shield className="h-3 w-3" />{t('admin_users_admin_badge')}</Badge>}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      ) : (
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -133,7 +190,7 @@ export default function AdminUsersPage() {
                     u.registered ? '' : 'opacity-60'
                   }`}>
                     <td className="px-4 py-2.5">
-                      <div className="max-w-[240px] truncate font-medium">{u.email}</div>
+                      <a href={`/admin/user360?user=${u.id}`} className="block max-w-[240px] truncate font-medium hover:underline">{u.email}</a>
                       {u.full_name && (
                         <div className="max-w-[240px] truncate text-xs text-muted-foreground">{u.full_name}</div>
                       )}
@@ -185,6 +242,7 @@ export default function AdminUsersPage() {
           </div>
         </CardContent>
       </Card>
+      )}
     </div>
   );
 }

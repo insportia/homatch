@@ -56,7 +56,7 @@ export function HeroSection() {
           image keeps working. Nothing in the left column moved, the band's own
           height is unchanged, and the panel reserves its space before any
           voice code loads (§133). */}
-      <div className="absolute inset-0 hidden lg:block" aria-hidden="true">
+      <div className="absolute inset-0 hidden xl:block" aria-hidden="true">
         {/* The plate runs well past the wipe's opaque end, so the image's own
             left edge never shows as a seam. Desaturated a little: the sunset
             is the one warm object on a black-white-gold page, and at full
@@ -97,9 +97,9 @@ export function HeroSection() {
             is now the grid that owns the band's height. Every field keeps its
             useFieldProps binding, so the hero stays editable in place in Site
             Studio exactly as it was. */}
-        <div className="grid min-h-[clamp(27rem,68vh,40rem)] items-center gap-8 lg:grid-cols-[minmax(0,46rem)_minmax(0,1fr)] lg:gap-10">
+        <div className="grid min-h-[clamp(27rem,68vh,40rem)] items-center gap-8 xl:grid-cols-[minmax(0,46rem)_minmax(0,1fr)] xl:gap-10">
           {/* pt covers the fixed header; the black band itself starts at y=0. */}
-          <div className="flex max-w-[46rem] flex-col justify-center pb-11 pt-[9.75rem] sm:pb-16 sm:pt-[11rem] lg:pb-20 lg:pt-[9rem]">
+          <div className="flex max-w-[46rem] flex-col justify-center pb-11 pt-[9.75rem] sm:pb-16 sm:pt-[11rem] xl:pb-20 xl:pt-[9rem]">
           <p className="flex items-center gap-2.5 text-[14px] font-semibold uppercase tracking-[0.22em] text-gold" {...fp('eyebrow')}>
             <span className="h-px w-6 shrink-0 bg-gold" aria-hidden="true" />
             {sf('eyebrow', 'mp_hero_eyebrow')}
@@ -167,8 +167,8 @@ export function HeroSection() {
           {/* AI TALK. A marketing demonstration of what Homatch understands,
               not a second assistant: HomatchAsk above is still AI Chat, on its
               own route, unchanged (§26). */}
-          <div className="pb-11 sm:pb-16 lg:pb-20 lg:pt-[9rem]">
-            <AiTalkPanel className="mx-auto max-w-[26rem] lg:mx-0 lg:max-w-none" />
+          <div className="pb-11 sm:pb-16 xl:pb-20 xl:pt-[9rem]">
+            <AiTalkPanel className="mx-auto max-w-[26rem] xl:mx-0 xl:max-w-none" />
           </div>
         </div>
       </div>

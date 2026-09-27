@@ -1,22 +1,25 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { AlertCircle, ArrowLeft, ArrowRight, CheckCircle2, ExternalLink, Loader2 } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
-import { useLanguage } from '@/contexts/LanguageContext';
-import { AppLayout } from '@/components/layouts/AppLayout';
+import { toast } from 'sonner';
 import { RouteGuard } from '@/components/common/RouteGuard';
+import { OWNER_SURFACE } from '@/components/customer/surface';
+import { AppLayout } from '@/components/layouts/AppLayout';
+import { ContactPhoneField } from '@/components/owner/ContactPhoneField';
+import type { ReviewSavePayload } from '@/components/property/ReviewExtractedProperty';
+import { ReviewExtractedProperty } from '@/components/property/ReviewExtractedProperty';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/db/supabase';
+import { readContactPhone } from '@/lib/propertyContact';
 import {
-  createImport, createProperty, upsertPropertyFacts,
-  createSearchProfile, logActivity, updateProperty
+  createImport, createProperty, 
+  createSearchProfile, logActivity, updateProperty, upsertPropertyFacts
 } from '@/services/api';
 import type { PropertyFacts } from '@/types/types';
-import { ArrowRight, CheckCircle2, AlertCircle, Loader2, ExternalLink, ArrowLeft } from 'lucide-react';
-import { ReviewExtractedProperty } from '@/components/property/ReviewExtractedProperty';
-import type { ReviewSavePayload } from '@/components/property/ReviewExtractedProperty';
 
 type PipelineStep = 'idle' | 'validating' | 'fetching' | 'extracting' | 'normalizing' | 'done' | 'error';
 
@@ -163,6 +166,11 @@ function URLImportContent() {
 
   const savingRef = useRef(false);
   const [saving, setSaving] = useState(false);
+  /* The one thing the import could not read: a number this owner agrees to be called on.
+     The seller's number on the source page, where there was one, belongs to whoever
+     published that listing and is not a commitment by the person importing it. */
+  const [contactPhone, setContactPhone] = useState('');
+  const [showPhoneProblem, setShowPhoneProblem] = useState(false);
 
   const handleSave = async (facts: ReviewSavePayload, title: string) => {
     if (!homatchUser) return;
@@ -172,9 +180,24 @@ function URLImportContent() {
     setSaving(true);
     try {
       const { transaction_type, property_type, ...pureFactFields } = facts;
+
+      /* The same reading the database will apply. Refusing here turns a failed insert
+         into a sentence about a phone number. */
+      const reading = readContactPhone(contactPhone, facts.country_code || facts.country || 'GE');
+      if (!reading.contact) {
+        setShowPhoneProblem(true);
+        toast.error(t(
+          reading.problem === 'NO_COUNTRY' ? 'contact_phone_needs_country'
+            : reading.problem === 'UNREACHABLE' ? 'contact_phone_unreachable'
+              : 'contact_phone_required',
+        ));
+        return;
+      }
+
       const propertyId = await createProperty({
         userId: homatchUser.id,
         sourceType: 'URL_IMPORT',
+        contact: reading.contact,
         title: title || (facts.city ? `Property in ${facts.city}` : 'Imported Property'),
         transactionType: transaction_type,
         propertyType: property_type,
@@ -206,8 +229,8 @@ function URLImportContent() {
   // Show review form when extraction done
   if (step === 'done' && extractedFacts) {
     return (
-      <AppLayout>
-        <div className="max-w-2xl mx-auto">
+      <AppLayout noPadding surfaceClass={OWNER_SURFACE}>
+        <div className="mx-auto w-full max-w-2xl px-4 py-4 pb-[calc(2rem+env(safe-area-inset-bottom))] sm:px-6">
           <div className="flex items-center gap-3 mb-6">
             <button
               onClick={() => { setStep('idle'); setExtractedFacts(null); }}
@@ -218,6 +241,18 @@ function URLImportContent() {
             </button>
             <h1 className="text-lg font-semibold text-foreground">{t('import_review_title')}</h1>
           </div>
+          {/* Above the extracted facts, because it is the one thing the import could
+              not have read from the page. */}
+          <div className="hm-owner-panel p-3">
+            <ContactPhoneField
+              value={contactPhone}
+              onChange={(next) => { setContactPhone(next); setShowPhoneProblem(false); }}
+              defaultCountry={extractedFacts?.country_code || extractedFacts?.country || 'GE'}
+              accountPhone={homatchUser?.phone ?? null}
+              showProblem={showPhoneProblem}
+            />
+          </div>
+
           <ReviewExtractedProperty
             facts={extractedFacts}
             title={extractedTitle}
@@ -232,11 +267,15 @@ function URLImportContent() {
   }
 
   return (
-    <AppLayout>
-      <div className="max-w-xl mx-auto space-y-8">
+    /*
+     * Same flow as /property/add and /property/create, so the same dark owner ground.
+     * It was plain AppLayout: a light import step inside a dark product.
+     */
+    <AppLayout noPadding surfaceClass={OWNER_SURFACE}>
+      <div className="mx-auto w-full max-w-xl space-y-8 px-4 py-4 pb-[calc(2rem+env(safe-area-inset-bottom))] sm:px-6">
         {/* Header */}
         <div>
-          <h1 className="text-xl font-semibold text-foreground">{t('import_title')}</h1>
+          <h1 className="font-display text-xl font-semibold leading-tight tracking-[-0.015em] text-foreground">{t('import_title')}</h1>
           <p className="text-sm text-muted-foreground mt-1">
             {t('import_paste_hint')}
           </p>
@@ -306,7 +345,7 @@ function URLImportContent() {
           </div>
         ) : (
           /* Pipeline progress */
-          <div className="rounded-xl border border-border bg-card p-6 space-y-6">
+          <div className="hm-owner-panel p-6 space-y-6">
             <div className="space-y-1">
               <p className="font-medium text-foreground text-sm">{t('import_analysing')}</p>
               <p className="text-xs text-muted-foreground truncate" dir="ltr">{url}</p>

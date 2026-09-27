@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { BackgroundWorkPanel } from '@/components/admin/control/BackgroundWorkPanel';
 
 interface ProviderSnapshot {
   status: string;
@@ -355,6 +356,7 @@ export default function AdminHealthPage() {
           )}
         </CardContent>
       </Card>
+      <BackgroundWorkPanel />
     </div>
   );
 }

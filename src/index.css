@@ -686,8 +686,22 @@
    * nobody sees, and a single missed one would silently drop a page back
    * onto the light palette mid-scroll.
    * ------------------------------------------------------------------ */
+  /*
+   * FOUR NAMES, ONE DECLARATION.
+   *
+   * `.hm-invest` is the name Investment and Verify were born with; `.hm-workspace` is
+   * what it was renamed to; `.hm-discovery` is the matching and discovery product and
+   * `.hm-owner` the owner's portfolio and its flow. They are aliases on purpose — a
+   * second copy of these values is a second place to change a border colour, and the
+   * whole point of a design system is that the surface moves together.
+   *
+   * Their COMPOSITIONS stay different. A portfolio row is not an opportunity card and
+   * neither is an analytical module; what they share is the ground they are drawn on.
+   */
   .hm-invest,
-  .hm-workspace {
+  .hm-workspace,
+  .hm-discovery,
+  .hm-owner {
     --background: 218 32% 7%;    /* #0C1119 — deep navy ink            */
     --foreground: 214 26% 93%;
     --card: 218 28% 10%;
@@ -736,11 +750,175 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* ── THE CUSTOMER APPLICATION'S OWN SURFACE ───────────────────────
+   *
+   * Not `.hm-workspace`. That block is the ANALYTICAL surface — a deep navy
+   * instrument panel that Investment and Mortgage wear because their job is
+   * reading numbers in a focused setting. Wrapping the customer application in
+   * it was how the last pass turned "stop using generic primitives" into
+   * "everything is dark", and inheriting one product's surface everywhere is
+   * the same mistake as inheriting the root palette everywhere.
+   *
+   * This takes the premium GRAMMAR — the gold relationships, the hairline, the
+   * restrained lift, tabular figures, the panel radius — and states it against a
+   * LIGHT ground, because the customer panel is somewhere people work rather
+   * than somewhere they read a report.
+   *
+   * Scoped, so nothing inherits it by accident: Admin, Verify, the public site
+   * and every unmigrated page are untouched.
+   */
+  .hm-customer {
+    /* 96% -> 94%. The root palette records reaching 93% by the same route: two shades
+       off white is not a canvas, it is white with a rounding error. These panels also
+       carry a shadow, so they need one step less separation than the root's cards. */
+    --background: 220 14% 94%;   /* the canvas a white panel sits on */
+    --foreground: 224 12% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 12% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 12% 10%;
+
+    /* Black stays the fill for the rare heavy control. The customer layer's own
+       primary action is gold-on-gold-soft, which carries at 5.6:1 and does not
+       shout the way a filled black rectangle does. */
+    --primary: 224 14% 9%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 14% 94%;
+    --secondary-foreground: 224 12% 14%;
+    --muted: 220 14% 94%;
+    /* Ink, not grey. Most of a working screen is "supporting" copy. */
+    --muted-foreground: 220 9% 34%;
+    --accent: 220 14% 92%;
+    --accent-foreground: 224 12% 12%;
+
+    --destructive: 0 66% 44%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Lighter than the root's hairline, because these panels also carry a
+       shadow; two separations at full strength read as a box. */
+    --border: 220 13% 88%;
+    --input: 220 13% 84%;
+    --ring: 38 88% 40%;
+
+    --gold: 38 88% 54%;
+    --gold-hover: 38 88% 47%;
+    --gold-ink: 34 90% 31%;      /* 5.6:1 on white — the only gold that carries text */
+    --gold-soft: 41 88% 94%;     /* quieter than the root's, for a control ground */
+    --gold-border: 38 60% 72%;
+
+    --success: 152 54% 28%;
+    --warning: 32 78% 36%;
+    --info: 214 62% 34%;
+
+    --shadow-card: 0 1px 2px hsl(220 20% 10% / 0.04), 0 4px 16px hsl(220 20% 10% / 0.04);
+    --shadow-hover: 0 2px 4px hsl(220 20% 10% / 0.06), 0 12px 28px hsl(220 20% 10% / 0.08);
+
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    /* A column of prices whose digits are different widths cannot be scanned. */
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── A PRODUCT VIEWPORT ───────────────────────────────────────────
+   *
+   * The counterpart to `.hm-customer`, and the reason the shell's theme cannot
+   * leak into a service page: a product opts INTO this and gets a neutral,
+   * high-craft ground rather than the shell's palette.
+   *
+   * Deliberately accent-free. Matches, Find Property, the owner workspace and
+   * Broker are different products with different jobs, and which colour carries
+   * their primary action is their decision. The shell supplies the frame; it
+   * does not supply the skin.
+   *
+   * What it DOES supply is the quality floor every customer surface owes the
+   * reader: ink that is ink rather than grey, a hairline that reads as a drawn
+   * line, a panel that sits on the page, tabular figures, and a radius and
+   * spacing logic shared with the rest of the application.
+   */
+  .hm-product {
+    --background: 220 13% 95%;
+    --foreground: 224 12% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 12% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 12% 10%;
+
+    /* The product's own action colour: near-black ink, used at CONTROL size with
+       real padding. The rejected screenshot's fault was not that a button was
+       dark, it was that a full-width black rectangle was the loudest object on
+       a result card. */
+    --primary: 224 16% 12%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 13% 93%;
+    --secondary-foreground: 224 12% 14%;
+    --muted: 220 13% 93%;
+    --muted-foreground: 220 9% 34%;
+    --accent: 220 13% 91%;
+    --accent-foreground: 224 12% 12%;
+
+    --destructive: 0 66% 44%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 13% 87%;
+    --input: 220 13% 83%;
+    --ring: 224 16% 24%;
+
+    --success: 152 54% 28%;
+    --warning: 32 78% 36%;
+    --info: 214 62% 34%;
+
+    --shadow-card: 0 1px 2px hsl(220 20% 10% / 0.04);
+    --shadow-hover: 0 1px 3px hsl(220 20% 10% / 0.07), 0 8px 22px hsl(220 20% 10% / 0.06);
+
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* One module on a product page. A hairline and the faintest lift — enough for a
+     white panel to sit on a light ground, not enough to read as a floating card. */
+  .hm-product-panel {
+    background-color: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.75rem;
+    box-shadow: var(--shadow-card);
+  }
+
+  /* The light source, at a twentieth of the analytical surface's strength: on a
+     light ground the same wash reads as a stain rather than as depth. */
+  .hm-customer-canvas {
+    background-image: radial-gradient(
+      ellipse 120% 60% at 50% -10%,
+      hsl(38 88% 54% / 0.05) 0%,
+      transparent 60%
+    );
+  }
+
+  /* One module. A hairline AND a restrained two-layer lift, which is what makes a
+     white panel sit on a light canvas rather than merge with it — the single
+     thing a dark surface gets for free and a light one has to earn. */
+  .hm-customer-panel {
+    background-color: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.875rem;
+    box-shadow: var(--shadow-card);
+  }
+
+  /* The module that is currently the answer to the question just asked. */
+  .hm-customer-focus {
+    border-color: hsl(var(--gold-border));
+    box-shadow: inset 0 1px 0 0 hsl(var(--gold) / 0.35), var(--shadow-hover);
+  }
+
   /* One faint warm wash from the top so the canvas has a light source
      rather than reading as an unlit rectangle. Decorative, and the only
      decorative gradient on the surface. */
   .hm-invest-canvas,
-  .hm-workspace-canvas {
+  .hm-workspace-canvas,
+  .hm-discovery-canvas,
+  .hm-owner-canvas {
     background-image: radial-gradient(
       ellipse 120% 60% at 50% -10%,
       hsl(38 92% 56% / 0.07) 0%,
@@ -752,7 +930,9 @@
      than a shadow: shadows on a near-black ground are invisible, and the
      thing that actually reads as an edge is a one-pixel lift in value. */
   .hm-invest-panel,
-  .hm-workspace-panel {
+  .hm-workspace-panel,
+  .hm-discovery-panel,
+  .hm-owner-panel {
     background-color: hsl(var(--card));
     border: 1px solid hsl(var(--border));
     border-radius: 1rem;
@@ -761,7 +941,9 @@
   /* The gold hairline above a module that is currently the answer to the
      question just asked. */
   .hm-invest-focus,
-  .hm-workspace-focus {
+  .hm-workspace-focus,
+  .hm-discovery-focus,
+  .hm-owner-focus {
     box-shadow: inset 0 1px 0 0 hsl(var(--gold) / 0.55), var(--shadow-hover);
     border-color: hsl(var(--gold-border));
   }
@@ -790,6 +972,14 @@
     background: hsl(265 30% 50% / 0.10);
     color: hsl(265 32% 38%);
     border-color: hsl(265 28% 50% / 0.22);
+  }
+  /* Inside the dark owner product the root is still data-surface=light, so the rule
+     above painted a light-ground pill (dark violet text) onto navy on /property/add and
+     /property/create. The owner scope gets the dark pill back. */
+  :root[data-surface='light'] .hm-owner .status-private {
+    background: hsl(280 50% 60% / 0.15);
+    color: hsl(280 50% 76%);
+    border-color: hsl(280 50% 60% / 0.3);
   }
 }
 
@@ -1277,4 +1467,369 @@
    element inside it answers to nothing. */
 [data-studio-section] [data-hm-media] * {
   pointer-events: none;
+}
+
+/*
+ * "LOG IN AS USER": the banner takes the top 2.5rem of every screen, so the
+ * page and every sticky header move down by exactly that much rather than
+ * sliding underneath it. Set by ImpersonationBanner, only in a tab that is
+ * impersonating.
+ */
+html[data-impersonating] body { padding-top: 2.5rem; }
+html[data-impersonating] .sticky.top-0 { top: 2.5rem; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   THE PUBLIC SITE — `.hm-public`
+   ══════════════════════════════════════════════════════════════════════
+
+   The public website's own presentation system. It is NOT the customer
+   app's light scope (.hm-customer) nor the dark product scopes (.hm-owner,
+   .hm-discovery): those are working surfaces, dense and tuned for reading
+   numbers. This is the page somebody meets before they have an account, and
+   it has a different job — say clearly what Homatch is, and get out of the
+   way of the two things a visitor came to do.
+
+   WHY IT REDEFINES THE SHARED TOKENS RATHER THAN INVENTING NEW ONES
+
+   Every public section is written against the shadcn tokens (--background,
+   --card, --border, --foreground, --ink-soft). Redefining them inside this
+   scope means a section that has not been touched still lands on the right
+   ground, and a Site Studio preview that wraps the same components in the
+   same class shows exactly what the site will.
+
+   THE PALETTE
+
+   White ground, not the app's graphite canvas: a marketing page on grey
+   reads as a dashboard. Ink is a near-black with a trace of blue so it does
+   not go brown next to gold. Gold stays a signal — a rule, an index number,
+   a focus ring, the hover edge — and carries text only as --gold-ink.
+   Hairlines are 1px at 88% lightness: visible, never heavy.                */
+@layer base {
+  .hm-public {
+    --background: 0 0% 100%;
+    --foreground: 224 24% 9%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 24% 9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 24% 9%;
+    --primary: 224 26% 10%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 20% 96.5%;
+    --secondary-foreground: 224 24% 9%;
+    --muted: 220 20% 96.5%;
+    --muted-foreground: 220 9% 38%;
+    --accent: 220 20% 95%;
+    --accent-foreground: 224 24% 9%;
+    --border: 220 14% 88%;
+    --input: 220 13% 82%;
+    --ring: 36 85% 42%;
+    --ink-soft: 222 10% 30%;
+    --gold: 38 88% 54%;
+    --gold-hover: 38 88% 47%;
+    --gold-ink: 34 90% 31%;
+    --gold-soft: 41 90% 95%;
+    --gold-border: 38 72% 58%;
+
+    /* The public site's own additions. */
+    --pub-band: 220 25% 98%;          /* the alternate section ground      */
+    --pub-line-strong: 220 12% 78%;   /* a control's border                */
+    --pub-night: 226 24% 7%;          /* the one dark stage (AI Talk)      */
+    --pub-radius: 1rem;
+    --pub-radius-lg: 1.375rem;
+    --pub-shadow-sm: 0 1px 2px hsl(224 30% 10% / 0.05);
+    --pub-shadow-md: 0 1px 2px hsl(224 30% 10% / 0.05), 0 12px 32px -18px hsl(224 30% 10% / 0.22);
+    --pub-shadow-lg: 0 2px 4px hsl(224 30% 10% / 0.04), 0 28px 60px -30px hsl(224 30% 10% / 0.35);
+
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
+}
+
+@layer components {
+  /* ── Buttons ─────────────────────────────────────────────────────────
+     Three weights and one geometry. Contained, 44px minimum so a thumb
+     can find them, a radius that reads as a control rather than a pill
+     badge. Every state is drawn: hover, pressed, keyboard focus, disabled.
+     Text wraps rather than truncates — a Georgian label is long, and an
+     ellipsis on a call to action is a sentence nobody can finish. */
+  .hm-pub-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+    padding: 0.625rem 1.125rem;
+    border-radius: 0.75rem;
+    border: 1px solid transparent;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    line-height: 1.25;
+    text-align: center;
+    text-decoration: none;
+    /* Break between words, and inside one only when it cannot fit at all:
+       "დარეგისტრირება" split as "დარეგისტრირე / ბა" is not a label. */
+    overflow-wrap: break-word;
+    word-break: normal;
+    cursor: pointer;
+    transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease,
+      box-shadow 180ms ease, transform 120ms ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .hm-pub-btn:focus-visible {
+    outline: 2px solid hsl(var(--gold));
+    outline-offset: 2px;
+  }
+  .hm-pub-btn:active:not(:disabled):not([aria-disabled='true']) {
+    transform: translateY(1px);
+  }
+  .hm-pub-btn:disabled,
+  .hm-pub-btn[aria-disabled='true'] {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+  .hm-pub-btn--lg {
+    min-height: 3.125rem;
+    padding: 0.75rem 1.375rem;
+    font-size: 1rem;
+    border-radius: 0.875rem;
+  }
+  .hm-pub-btn--primary {
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.1), 0 1px 2px hsl(224 30% 8% / 0.24);
+  }
+  .hm-pub-btn--primary:hover:not(:disabled) {
+    background-color: hsl(224 20% 19%);
+  }
+  .hm-pub-btn--primary:active:not(:disabled) {
+    background-color: hsl(224 28% 5%);
+  }
+  .hm-pub-btn--secondary {
+    background-color: hsl(var(--card));
+    color: hsl(var(--foreground));
+    border-color: hsl(var(--pub-line-strong));
+    box-shadow: var(--pub-shadow-sm);
+  }
+  .hm-pub-btn--secondary:hover:not(:disabled) {
+    border-color: hsl(var(--foreground) / 0.55);
+    background-color: hsl(var(--secondary));
+  }
+  .hm-pub-btn--secondary:active:not(:disabled) {
+    background-color: hsl(var(--accent));
+  }
+  .hm-pub-btn--tertiary {
+    min-height: 2.75rem;
+    padding-inline: 0.125rem;
+    color: hsl(var(--foreground));
+    background: transparent;
+    text-decoration: underline;
+    text-decoration-color: hsl(var(--gold) / 0.55);
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 0.3em;
+  }
+  .hm-pub-btn--tertiary:hover:not(:disabled) {
+    color: hsl(var(--gold-ink));
+    text-decoration-color: hsl(var(--gold-ink));
+  }
+  /* The one arrow every forward control shares; it moves on hover and turns
+     round in a right-to-left language. */
+  .hm-pub-arrow {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+    transition: transform 180ms ease;
+  }
+  .hm-pub-btn:hover .hm-pub-arrow,
+  .group:hover .hm-pub-arrow {
+    transform: translateX(3px);
+  }
+  [dir='rtl'] .hm-pub-arrow {
+    transform: scaleX(-1);
+  }
+  [dir='rtl'] .hm-pub-btn:hover .hm-pub-arrow,
+  [dir='rtl'] .group:hover .hm-pub-arrow {
+    transform: scaleX(-1) translateX(3px);
+  }
+
+  /* ── Type ────────────────────────────────────────────────────────── */
+  .hm-pub-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.625rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: hsl(var(--gold-ink));
+  }
+  .hm-pub-eyebrow::before {
+    content: '';
+    width: 1.25rem;
+    height: 1px;
+    flex-shrink: 0;
+    background: hsl(var(--gold));
+  }
+  /* Letter-spacing pulls Arabic apart at the joins, and uppercasing Georgian
+     turns it into Mtavruli, which is a display face rather than a label. */
+  :lang(ka) .hm-pub-eyebrow,
+  :lang(ar) .hm-pub-eyebrow,
+  :lang(he) .hm-pub-eyebrow {
+    letter-spacing: 0.01em;
+    text-transform: none;
+    font-size: 0.875rem;
+  }
+  /* A small label inside a card: "Why Homatch connected it". */
+  .hm-pub-label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.35;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+  }
+  :lang(ka) .hm-pub-label,
+  :lang(ar) .hm-pub-label,
+  :lang(he) .hm-pub-label {
+    letter-spacing: 0;
+    text-transform: none;
+    font-size: 0.84rem;
+  }
+  .hm-pub-h1 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.06;
+    text-wrap: balance;
+    font-size: clamp(2.1rem, 7.2vw, 4.25rem);
+  }
+  .hm-pub-h2 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    line-height: 1.12;
+    text-wrap: balance;
+    font-size: clamp(1.625rem, 4.4vw, 2.75rem);
+  }
+  .hm-pub-h3 {
+    font-family: var(--font-display);
+    font-weight: 650;
+    letter-spacing: -0.012em;
+    line-height: 1.25;
+    font-size: 1.1875rem;
+  }
+  /* Georgian, Arabic and Hebrew set at the same size look larger and sit
+     taller; negative tracking made them collide. */
+  :lang(ka) :is(.hm-pub-h1, .hm-pub-h2, .hm-pub-h3),
+  :lang(ar) :is(.hm-pub-h1, .hm-pub-h2, .hm-pub-h3),
+  :lang(he) :is(.hm-pub-h1, .hm-pub-h2, .hm-pub-h3) {
+    letter-spacing: 0;
+    line-height: 1.22;
+  }
+  /* "გადაწყვეტილებები" is one sixteen-letter word; the scale is set so it
+     fits the narrowest column it meets (320px phone, the 1024px split). */
+  :lang(ka) .hm-pub-h1 { font-size: clamp(1.6rem, 3.9vw, 3.4rem); }
+  :lang(ka) .hm-pub-h2 { font-size: clamp(1.5rem, 4vw, 2.4rem); }
+  .hm-pub-lead {
+    font-size: 1.0625rem;
+    line-height: 1.7;
+    color: hsl(var(--ink-soft));
+    text-wrap: pretty;
+  }
+
+  /* ── Surfaces ────────────────────────────────────────────────────── */
+  .hm-pub-card {
+    position: relative;
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--pub-radius-lg);
+    background-color: hsl(var(--card));
+    box-shadow: var(--pub-shadow-sm);
+  }
+  .hm-pub-card--link {
+    transition: border-color 200ms ease, box-shadow 200ms ease;
+  }
+  .hm-pub-card--link:hover {
+    border-color: hsl(var(--foreground) / 0.3);
+    box-shadow: var(--pub-shadow-md);
+  }
+  .hm-pub-card--link:focus-visible,
+  .hm-pub-focus:focus-visible {
+    outline: 2px solid hsl(var(--gold));
+    outline-offset: 3px;
+  }
+  .hm-pub-band {
+    background-color: hsl(var(--pub-band));
+    border-block: 1px solid hsl(var(--border));
+  }
+  /* A square that holds an icon: the page's one icon treatment. */
+  .hm-pub-icon {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 0.75rem;
+    border: 1px solid hsl(var(--border));
+    background: linear-gradient(180deg, hsl(0 0% 100%), hsl(var(--secondary)));
+    color: hsl(var(--foreground));
+  }
+  .hm-pub-icon--gold {
+    border-color: hsl(var(--gold-border) / 0.6);
+    background: hsl(var(--gold-soft));
+    color: hsl(var(--gold-ink));
+  }
+  /* Numbers and codes inside right-to-left copy keep their own direction. */
+  .hm-pub-num {
+    unicode-bidi: isolate;
+    direction: ltr;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── The mobile menu ─────────────────────────────────────────────── */
+  .hm-pub-sheet {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-inline-start: env(safe-area-inset-left);
+    padding-inline-end: env(safe-area-inset-right);
+    animation: hm-pub-sheet-in 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  [dir='rtl'] .hm-pub-sheet {
+    animation-name: hm-pub-sheet-in-rtl;
+  }
+  .hm-pub-scrim {
+    animation: hm-pub-fade-in 200ms ease;
+  }
+  @keyframes hm-pub-sheet-in {
+    from { transform: translateX(24px); opacity: 0; }
+    to { transform: none; opacity: 1; }
+  }
+  @keyframes hm-pub-sheet-in-rtl {
+    from { transform: translateX(-24px); opacity: 0; }
+    to { transform: none; opacity: 1; }
+  }
+  @keyframes hm-pub-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hm-pub-btn,
+    .hm-pub-arrow,
+    .hm-pub-card--link {
+      transition: none;
+    }
+    .hm-pub-btn:hover .hm-pub-arrow,
+    .group:hover .hm-pub-arrow,
+    .hm-pub-btn:active:not(:disabled) {
+      transform: none;
+    }
+    [dir='rtl'] .hm-pub-btn:hover .hm-pub-arrow,
+    [dir='rtl'] .group:hover .hm-pub-arrow {
+      transform: scaleX(-1);
+    }
+    .hm-pub-sheet,
+    .hm-pub-scrim {
+      animation: none;
+    }
+  }
 }

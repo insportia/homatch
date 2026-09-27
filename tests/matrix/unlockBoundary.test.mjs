@@ -145,13 +145,20 @@ test('the cap is 120, and it is a real cap rather than a suggestion', () => {
 
 test('the blur is applied to the preview excerpt, never to the full signal', () => {
   // The distinction between a visual affordance and a paywall opened with F12.
-  const blurred = pageSource.indexOf('blur-[1.5px]');
+  // The card is its own component now; the blur moved with it, and the page hands it the
+  // one boolean that turns it on.
+  const cardSource = readFileSync(
+    join(root, 'src', 'components', 'customer', 'OpportunityCard.tsx'), 'utf8');
+  const blurred = cardSource.indexOf('blur-[1.5px]');
   assert.ok(blurred > 0, 'guard: the locked preview is still blurred');
 
-  // The blurred element's content must be preview_excerpt. Sliced tightly so a
+  // The blurred element's content must be the preview excerpt. Sliced tightly so a
   // later unrelated field cannot satisfy this by accident.
-  const region = pageSource.slice(blurred, blurred + 260);
-  assert.match(region, /match\.preview_excerpt/, 'the blur must cover the redacted excerpt');
+  const region = cardSource.slice(Math.max(0, blurred - 200), blurred + 260);
+  assert.match(region, /excerptObscured/, 'the blur is no longer conditional');
+  assert.match(region, /SourceQuote/, 'the blur must cover the source quote');
+  assert.match(pageSource, /excerpt=\{match\.preview_excerpt\}/,
+    'the card is given something other than the redacted excerpt');
   assert.doesNotMatch(
     region,
     /full_signal_text|original_text|contact/,
@@ -184,9 +191,10 @@ test('an included match is not blurred, because it was already paid for', () => 
     /const forSale = !included && !opened;/,
     'the card no longer derives one answer for whether anything is being sold',
   );
+  /* The class lives in the card component now and the page hands it the decision. */
   assert.match(
     pageSource,
-    /forSale \? ' blur-\[1\.5px\] select-none' : ''/,
+    /excerptObscured=\{forSale\}/,
     'the blur must be conditional on something actually being sold',
   );
   assert.match(pageSource, /unlock_included_reservation_id/);

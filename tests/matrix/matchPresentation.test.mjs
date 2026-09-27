@@ -384,6 +384,33 @@ test('both generations of formatRecency are understood', () => {
   assert.deepEqual(recencyParts('  12D AGO '), { key: 'match_recency_days', count: 12 });
 });
 
+test('a day count nobody can read becomes months, and then years', () => {
+  /*
+   * MEASURED ON PRODUCTION, on a real customer's matches, in Georgian: "6309 დღის წინ",
+   * on a card asking 35 credits for the contact details. Six thousand three hundred and
+   * nine days. Nobody reads that as seventeen years.
+   *
+   * The number was not wrong — raw_signals.published_at for that row is 2009-06-18, and
+   * the matcher's arithmetic is exact. These are genuinely old forum threads rather than
+   * broken timestamps, which is why the age is still shown rather than suppressed: it is
+   * the most decision-relevant fact about a lead. Only the unit changed.
+   */
+  assert.deepEqual(recencyParts('6309d ago'), { key: 'match_recency_years', count: 17 });
+  assert.deepEqual(recencyParts('4468d ago'), { key: 'match_recency_years', count: 12 });
+  assert.deepEqual(recencyParts('888d ago'), { key: 'match_recency_years', count: 2 });
+  assert.deepEqual(recencyParts('122d ago'), { key: 'match_recency_months', count: 4 });
+  assert.deepEqual(recencyParts('99d ago'), { key: 'match_recency_months', count: 3 });
+  /* Below the months threshold a day count is still the most useful unit: "8 days ago"
+     says something "0 months ago" does not. */
+  assert.deepEqual(recencyParts('59d ago'), { key: 'match_recency_days', count: 59 });
+  assert.deepEqual(recencyParts('8d ago'), { key: 'match_recency_days', count: 8 });
+  /* No unit ever rounds to zero, which would read as "just now" on a year-old signal. */
+  for (const days of [60, 61, 100, 364, 365, 729, 730, 1000, 6309]) {
+    const parsed = recencyParts(`${days}d ago`);
+    assert.ok(parsed && parsed.count >= 1, `${days}d rounded to ${parsed?.count}`);
+  }
+});
+
 test('a label neither matcher wrote returns null so the stored text still shows', () => {
   /* An unparsed label is still true. Inventing a duration for it, or hiding when somebody
      spoke, would not be. */
@@ -396,7 +423,10 @@ test('a label neither matcher wrote returns null so the stored text still shows'
 
 test('the recency wording exists in all six locales', () => {
   const bundles = read('src', 'i18n', 'translations.ts');
-  for (const key of ['match_recency_minutes', 'match_recency_hours', 'match_recency_days']) {
+  for (const key of [
+    'match_recency_minutes', 'match_recency_hours', 'match_recency_days',
+    'match_recency_months', 'match_recency_years',
+  ]) {
     const hits = bundles.match(new RegExp(`^  ${key}:`, 'gm')) ?? [];
     assert.equal(hits.length, 6, `${key} is defined in ${hits.length} bundles, not 6`);
   }

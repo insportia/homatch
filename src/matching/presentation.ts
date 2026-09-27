@@ -239,9 +239,33 @@ export function recencyParts(
     case 'min':
     case 'm': return { key: 'match_recency_minutes', count };
     case 'h': return { key: 'match_recency_hours', count };
-    case 'd': return { key: 'match_recency_days', count };
+    case 'd': return scaleDays(count);
     default: return null;
   }
+}
+
+/**
+ * Days, in the unit somebody can actually read.
+ *
+ * FOUND ON PRODUCTION, on a real customer's matches, in Georgian: "6309 დღის წინ".
+ * Six thousand three hundred and nine days. Nobody parses that as seventeen years, and
+ * that particular card was asking 35 credits for the contact details.
+ *
+ * The number is NOT wrong and it is not hidden. raw_signals.published_at for that row is
+ * 2009-06-18 and the matcher's arithmetic is exact — these are genuinely old forum
+ * threads, not bad timestamps, which was worth checking before writing this. So the age
+ * stays on the card; it is the single most decision-relevant fact about a lead. What
+ * changes is the unit, so that the fact arrives.
+ *
+ * The thresholds are chosen so the label rounds to something with meaning rather than
+ * precision nobody needs: below two months, days; below two years, months; after that,
+ * years. "4 months ago" and "17 years ago" are both more honest to a reader than the day
+ * count that produced them, because a reader can act on them.
+ */
+function scaleDays(days: number): { key: string; count: number } {
+  if (days >= 730) return { key: 'match_recency_years', count: Math.round(days / 365) };
+  if (days >= 60) return { key: 'match_recency_months', count: Math.round(days / 30) };
+  return { key: 'match_recency_days', count: days };
 }
 
 /**

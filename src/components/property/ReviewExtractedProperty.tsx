@@ -313,7 +313,7 @@ export function ReviewExtractedProperty({
           <Label className="text-sm font-medium">{t('form_transaction_type')}</Label>
           <Select value={transactionType} onValueChange={setTransactionType}>
             <SelectTrigger className="bg-secondary border-border h-10"><SelectValue /></SelectTrigger>
-            <SelectContent className="bg-card border-border">
+            <SelectContent className="hm-owner bg-card border-border">
               <SelectItem value="SALE">{t('prop_transaction_sale')}</SelectItem>
               <SelectItem value="RENT">{t('prop_transaction_rent')}</SelectItem>
               <SelectItem value="INVESTMENT">{t('prop_transaction_investment')}</SelectItem>
@@ -324,7 +324,7 @@ export function ReviewExtractedProperty({
           <Label className="text-sm font-medium">{t('form_property_type')}</Label>
           <Select value={propertyType} onValueChange={setPropertyType}>
             <SelectTrigger className="bg-secondary border-border h-10"><SelectValue /></SelectTrigger>
-            <SelectContent className="bg-card border-border">
+            <SelectContent className="hm-owner bg-card border-border">
               {['APARTMENT','HOUSE','VILLA','COMMERCIAL','LAND','STUDIO','PENTHOUSE','TOWNHOUSE','OTHER'].map(v => (
                 <SelectItem key={v} value={v}>{t(PROPERTY_TYPE_KEYS[v])}</SelectItem>
               ))}
@@ -430,7 +430,7 @@ export function ReviewExtractedProperty({
               <SelectTrigger className="bg-secondary border-border h-10">
                 <SelectValue>{CURRENCIES.includes(currency) ? currency : currency}</SelectValue>
               </SelectTrigger>
-              <SelectContent className="bg-card border-border">
+              <SelectContent className="hm-owner bg-card border-border">
                 {CURRENCIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                 {!CURRENCIES.includes(currency) && (
                   <SelectItem value="OTHER">{currency}</SelectItem>

@@ -8,6 +8,7 @@ import React, { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { RouteGuard } from '@/components/common/RouteGuard';
+import { OWNER_SURFACE } from '@/components/customer/surface';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { ContactPhoneField } from '@/components/owner/ContactPhoneField';
 import { Button } from '@/components/ui/button';
@@ -372,13 +373,19 @@ function PrivateListingContent() {
   ];
 
   return (
-    <AppLayout>
-      <div className="max-w-xl mx-auto space-y-6">
+    /*
+     * OWNER ADD IS ONE DARK PRODUCT. This page rendered plain AppLayout on the root
+     * light palette, so an owner stepped from the navy chooser at /property/add into a
+     * light form halfway through adding a property. It wears the same OWNER_SURFACE as
+     * the chooser, the portfolio and Edit Property; the form itself is unchanged.
+     */
+    <AppLayout noPadding surfaceClass={OWNER_SURFACE}>
+      <div className="mx-auto w-full max-w-xl space-y-6 px-4 py-4 pb-[calc(2rem+env(safe-area-inset-bottom))] sm:px-6">
         {/* Header */}
         <div className="space-y-1">
           <div className="flex items-center gap-3">
             <span className="status-private">{t('prop_private_badge')}</span>
-            <h1 className="text-lg font-semibold text-foreground">{t('private_title')}</h1>
+            <h1 className="font-display text-xl font-semibold leading-tight tracking-[-0.015em] text-foreground">{t('private_title')}</h1>
           </div>
           <p className="text-sm text-muted-foreground">{t('private_subtitle')}</p>
         </div>
@@ -395,7 +402,7 @@ function PrivateListingContent() {
         </div>
 
         {/* Step forms */}
-        <div className="rounded-xl border border-border bg-card p-5" dir={isRTL ? 'rtl' : 'ltr'}>
+        <div className="hm-owner-panel p-5" dir={isRTL ? 'rtl' : 'ltr'}>
 
           {/* Step 1: Property basics */}
           {step === 1 && (
@@ -416,7 +423,7 @@ function PrivateListingContent() {
                     <SelectTrigger className="bg-secondary border-border h-10">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className="bg-card border-border">
+                    <SelectContent className="hm-owner bg-card border-border">
                       <SelectItem value="SALE">{t('prop_transaction_sale')}</SelectItem>
                       <SelectItem value="RENT">{t('prop_transaction_rent')}</SelectItem>
                       <SelectItem value="INVESTMENT">{t('prop_transaction_investment')}</SelectItem>
@@ -429,7 +436,7 @@ function PrivateListingContent() {
                     <SelectTrigger className="bg-secondary border-border h-10">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className="bg-card border-border">
+                    <SelectContent className="hm-owner bg-card border-border">
                       {['APARTMENT','HOUSE','VILLA','COMMERCIAL','LAND','STUDIO','PENTHOUSE','OTHER'].map(v => (
                         <SelectItem key={v} value={v}>{t(PROPERTY_TYPE_KEYS[v])}</SelectItem>
                       ))}
@@ -450,7 +457,7 @@ function PrivateListingContent() {
                     <SelectTrigger className="bg-secondary border-border h-10">
                       <SelectValue placeholder={t('private_select_city_ph')} />
                     </SelectTrigger>
-                    <SelectContent className="bg-card border-border">
+                    <SelectContent className="hm-owner bg-card border-border">
                       <SelectItem value="none">—</SelectItem>
                       {GE_LOCATIONS.map(l => <SelectItem key={l.city} value={l.city}>{l.city}</SelectItem>)}
                     </SelectContent>
@@ -466,7 +473,7 @@ function PrivateListingContent() {
                     <SelectTrigger className="bg-secondary border-border h-10">
                       <SelectValue placeholder={t('private_select_district_ph')} />
                     </SelectTrigger>
-                    <SelectContent className="bg-card border-border">
+                    <SelectContent className="hm-owner bg-card border-border">
                       <SelectItem value="none">—</SelectItem>
                       {cityDistricts.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
                     </SelectContent>
@@ -500,7 +507,7 @@ function PrivateListingContent() {
                   <Label>{t('form_currency')}</Label>
                   <Select value={form.currency} onValueChange={v => set('currency', v)}>
                     <SelectTrigger className="bg-secondary border-border h-10"><SelectValue /></SelectTrigger>
-                    <SelectContent className="bg-card border-border">
+                    <SelectContent className="hm-owner bg-card border-border">
                       <SelectItem value="USD">USD</SelectItem>
                       <SelectItem value="GEL">GEL</SelectItem>
                       <SelectItem value="EUR">EUR</SelectItem>
@@ -543,7 +550,7 @@ function PrivateListingContent() {
                   <Label>{t('form_condition')}</Label>
                   <Select value={form.condition || 'none'} onValueChange={v => set('condition', v === 'none' ? '' : v)}>
                     <SelectTrigger className="bg-secondary border-border h-10"><SelectValue placeholder={t('private_select_generic_ph')} /></SelectTrigger>
-                    <SelectContent className="bg-card border-border">
+                    <SelectContent className="hm-owner bg-card border-border">
                       <SelectItem value="none">—</SelectItem>
                       {Object.entries(CONDITION_KEYS).map(([v, key]) => (
                         <SelectItem key={v} value={v}>{t(key)}</SelectItem>
@@ -555,7 +562,7 @@ function PrivateListingContent() {
                   <Label>{t('form_building_type')}</Label>
                   <Select value={form.buildingType || 'none'} onValueChange={v => set('buildingType', v === 'none' ? '' : v)}>
                     <SelectTrigger className="bg-secondary border-border h-10"><SelectValue placeholder={t('private_select_generic_ph')} /></SelectTrigger>
-                    <SelectContent className="bg-card border-border">
+                    <SelectContent className="hm-owner bg-card border-border">
                       <SelectItem value="none">—</SelectItem>
                       {Object.entries(BUILDING_TYPE_KEYS).map(([v, key]) => (
                         <SelectItem key={v} value={v}>{t(key)}</SelectItem>
@@ -679,7 +686,7 @@ function PrivateListingContent() {
                 <Label>{t('private_photo_visibility')}</Label>
                 <Select value={form.photoVisibility} onValueChange={v => set('photoVisibility', v)}>
                   <SelectTrigger className="bg-secondary border-border h-10"><SelectValue /></SelectTrigger>
-                  <SelectContent className="bg-card border-border">
+                  <SelectContent className="hm-owner bg-card border-border">
                     <SelectItem value="PRIVATE">{t('private_visibility_private')}</SelectItem>
                     <SelectItem value="AUTHENTICATED">{t('private_visibility_auth')}</SelectItem>
                     <SelectItem value="PUBLIC">{t('private_visibility_public')}</SelectItem>
@@ -691,7 +698,7 @@ function PrivateListingContent() {
                 <Label>{t('private_address_visibility')}</Label>
                 <Select value={form.addressVisibility} onValueChange={v => set('addressVisibility', v)}>
                   <SelectTrigger className="bg-secondary border-border h-10"><SelectValue /></SelectTrigger>
-                  <SelectContent className="bg-card border-border">
+                  <SelectContent className="hm-owner bg-card border-border">
                     <SelectItem value="CITY_ONLY">{t('private_address_city')}</SelectItem>
                     <SelectItem value="FULL">{t('private_address_full')}</SelectItem>
                     <SelectItem value="HIDDEN">{t('private_address_hidden')}</SelectItem>

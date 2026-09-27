@@ -249,21 +249,29 @@ export const SURFACES: readonly SurfaceRecord[] = [
   {
     path: '/property/create',
     name: 'Create Listing',
-    status: 'LEGACY_DESIGN',
+    status: 'APPROVED_CURRENT_DESIGN',
     customerCritical: true,
-    note: 'THE ONE SCREEN WHERE SOMEBODY TYPES A PROPERTY, and it had never been '
-      + 'measured at any width in any language. /property/add was in the matrix and is '
-      + 'a two-card chooser; this is the 758-line form it leads to, and it was not. '
-      + 'Adding it to the harness route list changed nothing, because the matrix '
-      + 'iterates customerCriticalPaths() -- so a route can sit in the list and be '
-      + 'measured zero times, which is the counted-but-not-measured trap in reverse. '
-      + 'Measured now, and it PASSES the overflow gate at all four widths in all six '
-      + 'locales -- which is worth writing down precisely because it holds zero '
-      + 'break-words and zero min-w-0. It passes because its inputs are full-width and '
-      + 'its labels are short, not because it is guarded, so it is one long Georgian '
-      + 'label away from failing. LEGACY_DESIGN on that basis and on its visual '
-      + 'treatment, to be migrated in its own wave rather than rewritten on the way '
-      + 'past a different task.',
+    note: 'THE ONE SCREEN WHERE SOMEBODY TYPES A PROPERTY. It rendered plain AppLayout on '
+      + 'the root light palette, so an owner stepped from the dark navy chooser at '
+      + '/property/add into a light form mid-flow -- the only light screen in the owner '
+      + 'product. It now wears OWNER_SURFACE like the portfolio, the chooser and Edit '
+      + 'Property, its step card is an hm-owner-panel, and its select lists carry the '
+      + 'owner scope into their portal so an opened dropdown is not a light fragment. '
+      + 'The form logic is unchanged, the contact phone included. Measured at four '
+      + 'widths in six locales; it passes because its inputs are full-width and its '
+      + 'labels are short, so a long Georgian label is still the thing to watch.',
+  },
+  {
+    path: '/property/import',
+    name: 'Import Property',
+    status: 'APPROVED_CURRENT_DESIGN',
+    customerCritical: true,
+    note: 'The other half of Owner Add, and it had the same defect as /property/create: '
+      + 'plain AppLayout, so the import step and its review were light inside the dark '
+      + 'owner flow. Now on OWNER_SURFACE with owner panels; the extraction pipeline, '
+      + 'the review form and the required contact phone are unchanged. Customer-critical '
+      + 'because the review step is where extracted facts are confirmed before a '
+      + 'listing exists, and a clipped field there is a wrong fact saved.',
   },
   {
     path: '/property/:id/edit',
@@ -299,15 +307,19 @@ export const SURFACES: readonly SurfaceRecord[] = [
     name: 'Brokers',
     status: 'APPROVED_CURRENT_DESIGN',
     customerCritical: true,
-    note: 'Built new rather than migrated: the Broker audit found NO customer-facing '
-      + 'broker surface at all. The only broker code was the developer product\'s '
-      + 'BrokerPanel, which distributes inventory to outside brokers and is a '
-      + 'different thing in a different product. So there is no legacy design here to '
-      + 'preserve and nothing was overwritten. Customer-critical because its whole '
-      + 'purpose is a claim a customer would act on -- whether a firm is registered '
-      + 'with Homatch or merely observed in the market -- and a layout that truncates '
-      + 'the observed label into the registered one costs exactly the trust the page '
-      + 'exists to protect.',
+    note: 'THIS WAS CLASSIFIED APPROVED AND WAS NOT. The first build rendered shadcn Card '
+      + 'and Badge on the root palette in a 672px column, had no search or filter, and '
+      + 'ended in "get in touch" with nothing to get in touch through -- by this file\'s '
+      + 'own definitions that is NEEDS_MIGRATION, and the broker audit '
+      + '(docs/BROKER_PRODUCT.md) recorded it as such. Rebuilt on PRODUCT_SURFACE '
+      + '(.hm-product, its own product ground, not the shell\'s .hm-customer): '
+      + 'market/language/type filters over the columns broker_directory_public exposes, '
+      + 'contact actions only as the listing supplies them, a dignified empty state, and '
+      + 'a real application through broker_directory_apply, which can only create a '
+      + 'PENDING_REVIEW row. Still reads the paid view and never broker_intelligence. '
+      + 'Customer-critical because its whole purpose is a claim a customer would act on '
+      + '-- whether a firm is listed with Homatch or merely observed -- and a layout that '
+      + 'truncates the observed label into the listed one costs exactly that trust.',
   },
   {
     path: '/outreach',

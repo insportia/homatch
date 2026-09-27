@@ -98,72 +98,88 @@ test('one boolean decides whether anything is being sold', () => {
   );
 });
 
+/* The card is its own component now — src/components/customer/OpportunityCard.tsx — so
+   the rendering and the decision live in two files. Both are read. */
+const CARD = stripComments(fs.readFileSync(
+  path.join(ROOT, 'src', 'components', 'customer', 'OpportunityCard.tsx'), 'utf8'));
+
 test('the blur is applied only when something is genuinely for sale', () => {
   /*
-   * The excerpt blur used to be an unconditional class on the preview. If it ever
-   * becomes unconditional again, a paid-for result goes back behind frosted glass.
+   * The excerpt blur was once an unconditional class on the preview. If it ever becomes
+   * unconditional again, a paid-for result goes back behind frosted glass.
+   *
+   * It now crosses a component boundary: the page decides `forSale` and hands it over as
+   * `excerptObscured`, and the card is the only thing that owns the class. So the rule is
+   * checked in two halves, which is what it now is.
    */
-  const blurs = [...page.matchAll(/blur-\[1\.5px\]/g)];
+  const blurs = [...CARD.matchAll(/blur-\[1\.5px\]/g)];
   assert.ok(blurs.length > 0, 'the blur is gone entirely — this test is measuring nothing');
-
-  for (const match of blurs) {
-    const context = page.slice(Math.max(0, match.index - 400), match.index);
-    assert.match(
-      context,
-      /forSale \?|forSale &&/,
-      'a blur is applied without asking whether anything is actually being sold',
-    );
+  for (const hit of blurs) {
+    const context = CARD.slice(Math.max(0, hit.index - 200), hit.index);
+    assert.match(context, /excerptObscured/,
+      'a blur is applied without asking whether anything is actually being sold');
   }
+  assert.match(page, /excerptObscured=\{forSale\}/,
+    'the page no longer passes its one for-sale decision to the card');
 });
-
-/*
- * The TRUE branch of the card's one for-sale decision.
- *
- * Asserting that `forSale` merely appears somewhere above the price is not the rule: in
- * `forSale ? A : B` that is satisfied whether the price is in A or in B, and B is the
- * branch a customer who has already paid reaches. So this extracts the true branch and
- * the checks below ask whether the price is INSIDE it. Written this way after the card was
- * rebuilt from `forSale && <priced/>` into a ternary and the looser check went on passing
- * for the wrong reason.
- */
-function forSaleBranch() {
-  const at = page.indexOf('{forSale ? (');
-  assert.ok(at > 0, 'the card no longer decides once whether anything is being sold');
-  const open = page.indexOf('(', at + 1);
-  const close = page.indexOf(') : (', open);
-  assert.ok(close > open, 'the for-sale branch could not be delimited');
-  return page.slice(open, close);
-}
 
 test('no button offers to sell something for 0.00 CR', () => {
   /*
-   * The price is still rendered — for results that genuinely cost credits — so this
-   * checks WHERE it is rendered: inside the single branch that only an unpaid, unopened
-   * result reaches.
+   * THE SIMPLEST FORM THIS RULE HAS EVER HAD, because the lock model is gone: no result
+   * card carries a price at all. Every card offers the same action, and the sale — when
+   * there is one — happens in the confirmation dialog, which shows the balance, the price
+   * and what the balance becomes.
+   *
+   * Written twice before against "which branch is the price in", and both times that was
+   * satisfiable by the price sitting in the wrong one.
    */
-  const occurrences = [...page.matchAll(/unlock_price_credits\.toFixed\(2\)/g)];
-  assert.ok(occurrences.length > 0, 'the price is no longer rendered at all');
-  assert.ok(forSaleBranch().includes('unlock_price_credits.toFixed(2)'),
-    'the credit price is rendered outside the for-sale branch');
+  const card = CARD;
+  assert.doesNotMatch(card, /unlock_price_credits/,
+    'a price is back on the result card');
+  assert.doesNotMatch(card, /\bCR\b/,
+    'a credit amount is back on the result card');
+
+  /* And the sale still exists where it belongs. */
+  assert.match(page, /unlock_price_credits/,
+    'the sale was deleted rather than moved');
+  assert.match(page, /matches_confirm_unlock_btn/,
+    'the confirmation that authorises a purchase is gone');
 });
 
-test('the padlock hint is not shown on a result the customer owns', () => {
+test('the price and the padlock never reach a result the customer owns', () => {
   /*
-   * The hint under the excerpt once had two branches keyed on `included`, so an
-   * already-UNLOCKED match -- which is not `included`, because inclusion is explicitly
-   * cleared once a match is unlocked -- fell through to "unlock to see the rest" under
+   * The old card had a hint line under the excerpt keyed on `included`, so an
+   * already-UNLOCKED match — which is not `included`, because inclusion is explicitly
+   * cleared once a match is unlocked — fell through to "unlock to see the rest" under
    * text it had already paid to see.
    *
-   * It now exists in one branch only, and the companion line for an owned result is gone
-   * rather than rewritten: an unblurred excerpt needs no note.
+   * The rebuilt card has no hint line at all: a blurred quote sits directly above an
+   * action that names its price, which says the same thing without a sentence. So the
+   * rule is now checked where it actually lives — one boolean, derived once, gating both
+   * the blur and the price.
    */
-  const hint = page.indexOf('matches_unlock_hint');
-  assert.ok(hint > 0, 'the hint explaining the blur is gone entirely');
-  const surrounding = page.slice(Math.max(0, hint - 400), hint);
-  assert.match(surrounding, /forSale \?|forSale &&/,
-    'the hint does not key off forSale');
+  assert.match(page, /const forSale = !included && !opened;/,
+    'the card no longer derives one answer for whether anything is being sold');
   assert.ok(!page.includes('matches_included_hint'),
     'the owned-result hint is back under an excerpt that is not blurred');
+
+  /*
+   * THE SHORT-CIRCUIT, which is the whole rule now.
+   *
+   * Taking the price off the card routed every result through one handler, and that
+   * handler opens the purchase confirmation. An included match would have met a dialog
+   * reading "price 0.00 CR — confirm": the second charge, in a new place. It now calls the
+   * RPC and opens, without ever offering a sale.
+   */
+  const at = page.indexOf('const included = Boolean(match.unlock_included_reservation_id)');
+  assert.ok(at > 0, 'the included short-circuit is gone from the open handler');
+  /* To the end of the branch, not a fixed window: 900 characters ran past the closing
+     brace and swallowed the PAYG path, whose confirmation is the correct one. */
+  const branch = page.slice(at, page.indexOf('setPendingUnlock(match);', at));
+  assert.match(branch, /if \(included\) \{/, 'the short-circuit is not taken');
+  assert.match(branch, /unlockMatch\(match\.id\)/, 'an included result no longer opens');
+  assert.doesNotMatch(branch, /setShowUnlockConfirm\(true\)/,
+    'an included result is still sent to the purchase confirmation');
 });
 
 test('credits are never rendered with a currency symbol', () => {

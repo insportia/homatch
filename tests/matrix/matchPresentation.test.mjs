@@ -119,34 +119,53 @@ test('the headline is a key, and the unknown case has a key of its own', () => {
   }
 });
 
-test('the headline says what the signal recorded, and nothing it did not', () => {
-  /* Ten cards reading "A buyer looking for a property like yours" is not a list. The
-     variants exist so a headline can distinguish one match from the next — but only from
-     facts that are present, because a variant naming a city we do not have renders
-     "looking in undefined". */
-  assert.equal(headlineKey('BUYER', { city: true, rooms: true }), 'match_headline_buyer_rooms_city');
-  assert.equal(headlineKey('BUYER', { city: true }), 'match_headline_buyer_city');
-  assert.equal(headlineKey('BUYER', { rooms: true }), 'match_headline_buyer');
-  assert.equal(headlineKey('BUYER', {}), 'match_headline_buyer');
-  assert.equal(headlineKey(null, { city: true }), 'match_headline_generic_city');
-  /* Rooms with no city falls back rather than dropping the city placeholder: "a
-     3-bedroom" with no place is a worse headline than the general one. */
-  assert.equal(headlineKey('TENANT', { rooms: true }), 'match_headline_tenant');
-});
+test('the headline names a possibility, not somebody’s status', () => {
+  /*
+   * It said "A buyer looking for a 3-bedroom in Tbilisi". The first two words were a claim
+   * the product cannot support: what was found is a person who wrote something compatible
+   * with this property, sometimes years ago, who has agreed to nothing.
+   *
+   * The DIRECTION is safe — it comes from the property's transaction type rather than from
+   * the person — so the key still varies by counterpart. The identity does not, and the
+   * city and room-count variants are gone: those were facts, and they belong in the facts
+   * row rather than inside a sentence that also named who somebody was.
+   */
+  assert.equal(headlineKey('BUYER'), 'match_headline_buyer');
+  assert.equal(headlineKey('TENANT'), 'match_headline_tenant');
+  assert.equal(headlineKey('INVESTOR'), 'match_headline_investor');
+  assert.equal(headlineKey(null), 'match_headline_generic');
 
-test('every headline variant exists in all six locales', () => {
   const bundles = read('src', 'i18n', 'translations.ts');
-  const keys = new Set();
   for (const counterpart of ['BUYER', 'TENANT', 'INVESTOR', null]) {
-    for (const known of [{}, { city: true }, { city: true, rooms: true }]) {
-      keys.add(headlineKey(counterpart, known));
-    }
-  }
-  for (const key of keys) {
+    const key = headlineKey(counterpart);
     const hits = bundles.match(new RegExp(`^  ${key}:`, 'gm')) ?? [];
     assert.equal(hits.length, 6, `${key} is defined in ${hits.length} bundles, not 6`);
   }
 });
+
+test('no locale calls a discovered person a buyer', () => {
+  /*
+   * THE CLAIM AUDIT, IN ALL SIX. The correction is semantic, not Georgian-only: every
+   * bundle has to describe interest rather than assert an identity, and a word-for-word
+   * translation of one language's hedge is how the other five end up sounding translated.
+   *
+   * Checked against the words that assert a completed transaction. "Interested in buying"
+   * passes; "buyer" does not.
+   */
+  const bundles = read('src', 'i18n', 'translations.ts');
+  const FORBIDDEN = [
+    /^  match_headline_\w+: '[^']*\bbuyers?\b/im,
+    /^  match_headline_\w+: '[^']*\btenants?\b/im,
+    /^  match_headline_\w+: '[^']*მყიდველ/m,
+    /^  match_headline_\w+: '[^']*მოიჯარ/m,
+    /^  match_headline_\w+: '[^']*Покупател/m,
+  ];
+  for (const pattern of FORBIDDEN) {
+    assert.ok(!pattern.test(bundles),
+      `a headline asserts an identity the evidence does not support: ${pattern}`);
+  }
+});
+
 
 /* ────────────────────────────────────────────────────────────────────────
  * The count on the card
@@ -257,47 +276,67 @@ test('the match card does not tint its own surface by strength', () => {
    against legitimate code — the score inside the AI prompt, and the "top up" button in the
    unlock dialog — which is exactly why they are scoped to the component under test. */
 function matchCardSource() {
-  const page = code(read('src', 'pages', 'property', 'MatchesPage.tsx'));
-  const from = page.indexOf('function MatchCard({');
-  const to = page.indexOf('function UnlockedMatchDialog({');
-  assert.ok(from !== -1 && to > from, 'MatchCard could not be located');
-  return page.slice(from, to);
+  /*
+   * ITS OWN FILE NOW. MatchCard was deleted rather than edited: three redesigns
+   * rearranged its children and produced the same screenshot each time, because its
+   * appearance came from the primitives it composed — shadcn's Card, Badge and Button,
+   * which on the root light palette resolve to a white rectangle, grey capsules and a
+   * black filled button.
+   */
+  return code(read('src', 'components', 'customer', 'OpportunityCard.tsx'));
 }
 
-test('the card does not put a raw confidence percentage in front of the customer', () => {
+test('the card shows no raw confidence figure at all', () => {
   const card = matchCardSource();
-  /* Once, and it has to be inside the evidence disclosure. 87% is a number nobody can act
-     on differently from 84%, and it was the loudest thing in the card's footer. */
-  const occurrences = card.match(/Math\.round\(match\.match_score\)/g) ?? [];
-  assert.equal(occurrences.length, 1,
-    `the card renders match_score ${occurrences.length} times; once, in the drawer`);
-  const at = card.indexOf('Math.round(match.match_score)');
-  const disclosure = card.indexOf('match_why_disclosure');
-  assert.ok(disclosure !== -1 && at > disclosure,
-    'the score is rendered before the "Why this match?" disclosure');
+  /*
+   * STRICTER THAN BEFORE. The old assertion allowed the score once, inside a disclosure.
+   * The collapsed card no longer has a disclosure — every matched dimension, the
+   * provenance and the score moved to the detail view — so the right assertion is that
+   * the number is not on the card in any form. 87% is a figure nobody can act on
+   * differently from 84%.
+   */
+  assert.doesNotMatch(card, /match_score/, 'a raw score is back on the collapsed card');
+  assert.doesNotMatch(card, /match_found_on/, 'the platform is back on the collapsed card');
 });
 
-test('the card leads with who this is, not with how it scored', () => {
+test('the card leads with who this is', () => {
   const card = matchCardSource();
-  /* The RENDER site, not the derivation: the key is computed with the other derived
-     values near the top of the component and what has to lead is where it is shown. */
-  const headline = card.indexOf('{t(headline,');
-  const score = card.indexOf('Math.round(match.match_score)');
-  const provenance = card.indexOf('match_found_on');
-  assert.ok(headline !== -1, 'the card has no counterpart headline');
-  assert.ok(headline < score, 'the score appears before the headline');
-  assert.ok(headline < provenance, 'the platform appears before the headline');
+  const headline = card.indexOf('{headline}');
+  const facts = card.indexOf('shown.map');
+  /* `<SourceQuote`, not `SourceQuote`: the bare name also matches the import at the top
+     of the file, which is above everything and would fail this for the wrong reason. */
+  const excerpt = card.indexOf('<SourceQuote');
+  assert.ok(headline > 0, 'the card has no headline');
+  assert.ok(headline < facts, 'the facts row appears before the headline');
+  assert.ok(headline < excerpt, 'the source excerpt appears before the headline');
 });
 
-test('the card offers labelled actions, not a row of bare icons', () => {
+test('the card refuses the primitives that produced the rejected look', () => {
+  /*
+   * THE ROOT CAUSE, AS A GUARD. Card, Badge and Button are written in terms of the root
+   * palette's tokens, so on a customer page they resolve to a white rounded rectangle, a
+   * grey capsule and a black filled button no matter what is put inside them. Importing
+   * any of the three back into this component would reproduce the rejected screenshot
+   * whatever else changed.
+   */
+  const source = read('src', 'components', 'customer', 'OpportunityCard.tsx');
+  for (const forbidden of [
+    '@/components/ui/card',
+    '@/components/ui/badge',
+    '@/components/ui/button',
+  ]) {
+    assert.ok(!source.includes(forbidden), `${forbidden} is back in the opportunity card`);
+  }
+});
+
+test('the card offers one labelled action and a menu, not a row of bare icons', () => {
   const card = matchCardSource();
-  /* Four icon-only buttons, each with its label behind `hidden md:inline`, which means
-     that on every phone this product supports a customer had to press one to learn what
-     it did. */
-  assert.ok(!card.includes('hidden md:inline'),
-    'a button label is hidden below md again');
-  assert.ok(card.includes('DropdownMenu'),
-    'the secondary actions are not behind one labelled menu');
+  /* Four icon-only buttons, each with its label behind `hidden md:inline`, which meant
+     that on every phone this product supports a customer had to press one to find out
+     what it did. */
+  assert.ok(!card.includes('hidden md:inline'), 'a button label is hidden below md again');
+  assert.ok(card.includes('CardAction'), 'the single labelled action is gone');
+  assert.ok(card.includes('overflow'), 'the secondary actions have no overflow home');
 });
 
 test('the wallet balance is gone from the matches HEADER and kept where it is load-bearing', () => {
@@ -313,8 +352,11 @@ test('the wallet balance is gone from the matches HEADER and kept where it is lo
    * Twice this test was written against the whole file and twice it failed on legitimate
    * code; a claim about a region has to be checked against that region.
    */
-  const from = page.indexOf('max-w-[90rem] mx-auto');
-  const to = page.indexOf('FEATURES.matchesCampaignOperatorControls');
+  /* The header is now <CustomerPageHeader>, which takes an eyebrow, a title and a count
+     and has no slot a balance could occupy. The region is checked anyway, because the
+     rule is about the region rather than about one component. */
+  const from = page.indexOf('<CustomerPageHeader');
+  const to = page.indexOf('<FilterRail');
   assert.ok(from !== -1 && to > from, 'the matches header could not be located');
   const header = page.slice(from, to);
 
@@ -365,8 +407,56 @@ test('the page is not a phone column on a desktop', () => {
   const page = code(read('src', 'pages', 'property', 'MatchesPage.tsx'));
   assert.ok(!page.includes('max-w-3xl'),
     'the matches page is back to a 768px column inside a 1920px canvas');
-  assert.ok(/grid gap-3 lg:grid-cols-2/.test(page),
+  assert.ok(/grid gap-2\.5 md:grid-cols-2/.test(page),
     'the match list does not become columns on a desktop');
+});
+
+test('a product page picks its own ground, and the shell is never one of them', () => {
+  /*
+   * THE BOUNDARY, AS A GUARD, AND IT REPLACES THE OPPOSITE ASSERTION.
+   *
+   * This used to require that the customer pages all wore one shared premium canvas. That
+   * requirement was the defect: `AppLayout surfaceClass` wraps everything a layout renders
+   * for a page, so handing it the SHELL's token block made the shell's palette the skin of
+   * every product inside it — which is how Matches came out gold.
+   *
+   * Three scopes now, and no page may inherit another's:
+   *
+   *   .hm-customer   the application shell and the Dashboard
+   *   .hm-discovery  the matching and discovery product
+   *   .hm-product    a neutral ground for products that want one
+   */
+  const SHELL = 'hm-customer';
+
+  for (const [file, expected] of [
+    ['src/pages/property/MatchesPage.tsx', 'DISCOVERY_SURFACE'],
+    ['src/pages/FindPropertyPage.tsx', 'DISCOVERY_SURFACE'],
+  ]) {
+    const source = code(read(...file.split('/')));
+    assert.match(source, new RegExp(`surfaceClass=\\{${expected}\\}`),
+      `${file} is not on its own product surface`);
+    assert.ok(!source.includes(SHELL),
+      `${file} wears the application shell's token block`);
+  }
+
+  /* The shell's block belongs to the shell and to the panel home. */
+  const surface = read('src', 'components', 'customer', 'surface.tsx');
+  assert.match(surface, /hm-discovery hm-discovery-canvas/,
+    'the discovery product has no surface of its own');
+  assert.ok(!/export const \w*SURFACE = '[^']*hm-customer/.test(surface),
+    'a product surface constant hands out the shell theme');
+
+  /*
+   * AND THE PRIMITIVES DO NOT CHOOSE A COLOUR. They read --primary, so the same component
+   * is gold on the discovery workspace and ink on a light product ground. A primitive that
+   * named gold directly would carry the shell's palette wherever it was used, which is the
+   * same leak one layer down.
+   */
+  for (const file of ['surface.tsx', 'OpportunityCard.tsx', 'SearchComposer.tsx']) {
+    const source = code(read('src', 'components', 'customer', file));
+    assert.ok(!source.includes('--gold'),
+      `${file} names the shell's accent instead of reading --primary`);
+  }
 });
 
 /* ────────────────────────────────────────────────────────────────────────

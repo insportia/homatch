@@ -858,6 +858,11 @@ jobs:
             # owned by no customer, authenticated on a private token. It reads the
             # global store and writes supply_matches; it acquires nothing.
             "supply-matching"
+            # NATIVE INTENT, the common room read once. A worker tick on a private
+            # token: it reads live_chat_messages past a cursor, records what people
+            # actually said, and withdraws what an edit or a deletion made untrue. No
+            # browser calls it and it acquires nothing.
+            "ingest-live-chat"
             # ── Communications: the three that are NOT called by a browser ──
             #
             # These MUST be here rather than in the JWT list, and the

@@ -401,6 +401,33 @@ test('the core is consumed only through its deliberate integration points', () =
      */
     'supabase/functions/find-property-plan/index.ts',
     /*
+     * NATIVE INTENT — the newest seam, and the rule it must not reimplement is who a
+     * sentence is about.
+     *
+     * Both of these read intent/interpret.ts for the same four judgements: whose intent
+     * a sentence expresses, what kind of thing was said, how firmly it was meant, and
+     * how wide it reaches. Each of those, decided locally and differently, produces a
+     * specific customer-facing harm — the worst being an owner told that somebody is
+     * personally interested in their property when that person was talking about their
+     * brother.
+     *
+     * They own their own plumbing and no judgement. send-message reads the property from
+     * a column and the meaning from the shared reader; ingest-live-chat owns a cursor, a
+     * batch and a gate before an expensive call, and asks the same reader the same
+     * questions.
+     *
+     * Neither touches a fetch path, a rate limiter, a cache or a source registry. If
+     * either grows its own attribution rule, the seam has stopped being a seam.
+     */
+    /*
+     * _shared/intent.ts is the door itself: the one place a surface says what it
+     * understood, and the one place validate() decides whether that may become trusted
+     * state. It reaches validate() and nothing else in the core.
+     */
+    'supabase/functions/_shared/intent.ts',
+    'supabase/functions/send-message/index.ts',
+    'supabase/functions/ingest-live-chat/index.ts',
+    /*
      * EVIDENCE FRESHNESS — the sixth seam, and the one that decides what a
      * customer is allowed to see.
      *

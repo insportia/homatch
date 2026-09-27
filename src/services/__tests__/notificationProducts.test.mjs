@@ -141,6 +141,11 @@ const TYPES = new Set([
      called a deadline, and a single type would eventually be sent with the
      wrong wording. */
   'EXPAT_TASK_DUE', 'EXPAT_DEADLINE_DUE',
+  /* Added by 20260927120000_notification_types_and_announcements.sql, for four events
+     that were borrowing MATCH_FOUND. A message, a viewing request and a match wearing
+     one type is a list that cannot say which of them happened — and it also meant
+     turning off automated matching silenced a human being trying to reach you. */
+  'NEW_MESSAGE', 'PROPERTY_ACTION_REQUIRED', 'SEARCH_COMPLETE', 'ANNOUNCEMENT',
 ]);
 
 test('every event type is one the database will accept', () => {
@@ -337,7 +342,10 @@ test('the in-app list goes where the producer said, not where it guesses', () =>
    * every match that went through the canonical path became a notification
    * that opened, was tapped, and did nothing.
    */
-  const page = readFileSync('src/pages/NotificationsPage.tsx', 'utf8');
+  /* The centre and the module it delegates to — the destination rule moved there when
+     the live toast needed the same answer. */
+  const page = readFileSync('src/pages/NotificationsPage.tsx', 'utf8')
+    + readFileSync('src/components/notifications/presentation.tsx', 'utf8');
   assert.ok(/notif\.deep_link/.test(page),
     'the notifications list ignores deep_link again and guesses from the type');
   /* And only a path. An absolute URL cannot reach the column, but a restored

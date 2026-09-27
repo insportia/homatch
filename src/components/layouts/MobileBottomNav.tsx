@@ -57,8 +57,15 @@ export function MobileBottomNav() {
          survives. A stable hook, because a Tailwind class is a styling
          decision and a test should not break when one changes. */
       data-mobile-nav
-      className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-card border-t border-border" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-      <div className="flex items-center justify-around h-16">
+      /*
+        CHROME, NOT A PANEL. A hard top border and an opaque card ground made this read as
+        a block stuck to the bottom of the page. A hairline at a third of its strength
+        plus a blurred translucent ground lets the content scroll UNDER it, which is what
+        tells somebody there is more below.
+      */
+      className="md:hidden fixed bottom-0 inset-x-0 z-50 border-t border-border/40 bg-card/85 backdrop-blur-xl"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+      <div className="flex items-stretch justify-around h-[3.75rem]">
         {items.map(item => {
           const active = isActive(item.path);
           return (
@@ -66,36 +73,43 @@ export function MobileBottomNav() {
               key={item.path}
               to={item.path}
               aria-current={active ? 'page' : undefined}
-              className="relative flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-0.5"
+              className="group relative flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-1 px-0.5 pt-1.5 focus-visible:outline-none"
             >
-              {/* The same gold bar the desktop rail draws beside an active
-                  row, turned on its side. Previously the only signal was
-                  foreground-vs-muted text, which on a phone in daylight is
-                  not a signal. */}
-              {active && (
-                <span className="absolute inset-x-3 top-0 h-1 rounded-b-full bg-gold" aria-hidden="true" />
-              )}
-              <item.icon
-                className={`h-5 w-5 ${
-                  item.highlight
-                    ? 'text-primary'
-                    : active
-                    ? 'text-gold-ink'
-                    : 'text-muted-foreground'
+              {/*
+                THE MARK IS BEHIND THE ICON, which is where the thumb goes.
+                It was a bar pinned to the bar's own top edge — against the content above
+                it, at the far end of the tap target from the thing being tapped. A soft
+                gold pill behind the live icon is found without being looked for.
+              */}
+              <span
+                aria-hidden="true"
+                className={`flex h-7 w-12 items-center justify-center rounded-full transition-colors ${
+                  active && !item.highlight ? 'bg-gold-soft' : ''
                 }`}
-              />
+              >
+                <item.icon
+                  className={`h-[1.15rem] w-[1.15rem] ${
+                    item.highlight
+                      ? 'text-primary'
+                      : active
+                      ? 'text-gold-ink'
+                      : 'text-muted-foreground'
+                  }`}
+                  strokeWidth={active ? 2.1 : 1.75}
+                />
+              </span>
               <span
                 /* Georgian nav words are long and unhyphenated. At 320px
                    each of five slots is about 64px, which none of them
                    fit, so the label used to escape the bar. It truncates
                    instead — the icon above it carries the meaning — and
                    steps down one size only at the narrowest widths. */
-                className={`w-full truncate text-center text-[12px] leading-tight sm:text-[13px] font-medium ${
+                className={`w-full truncate text-center text-[12px] leading-tight sm:text-[13px] ${
                   item.highlight
-                    ? 'text-primary'
+                    ? 'font-semibold text-primary'
                     : active
-                    ? 'text-gold-ink'
-                    : 'text-muted-foreground'
+                    ? 'font-semibold text-foreground'
+                    : 'font-medium text-muted-foreground'
                 }`}
               >
                 {t(item.key)}

@@ -99,7 +99,17 @@ export type NotificationType =
   | 'CREDITS_TOPPED_UP'
   | 'RESEARCH_PRODUCT_PURCHASED'
   | 'VERIFY_COMPLETE'
-  | 'DOCUMENT_ANALYZED';
+  | 'DOCUMENT_ANALYZED'
+  /*
+   * THE FOUR THAT WERE BEING BORROWED. A message emitted MATCH_FOUND, and so did a
+   * viewing request — the type is what a client keys an icon, a route and a translation
+   * off, so three events wearing one type is a list that cannot say what happened. The
+   * enum in the database gained these in the same change.
+   */
+  | 'NEW_MESSAGE'
+  | 'PROPERTY_ACTION_REQUIRED'
+  | 'SEARCH_COMPLETE'
+  | 'ANNOUNCEMENT';
 export type ConditionType = 'NEW' | 'GOOD' | 'NEEDS_RENOVATION' | 'UNDER_CONSTRUCTION';
 export type BuildingType = 'PANEL' | 'BRICK' | 'MONOLITH' | 'WOOD' | 'OTHER';
 export type HeatingType = 'CENTRAL' | 'GAS' | 'ELECTRIC' | 'NONE' | 'OTHER';
@@ -332,6 +342,19 @@ export interface Market {
 
 export interface Property {
   id: string;
+  /**
+   * THE PERMANENT SIX-DIGIT REFERENCE, and the one a person says out loud.
+   *
+   * `id` stays the uuid every foreign key in the schema points at. This is the second
+   * identity, whose only job is to be readable: assigned server-side by a trigger, never
+   * chosen by a client, and restored by a second trigger if an update tries to move it.
+   * So it is never in an update signature — there is nothing a client could send that
+   * would change it.
+   *
+   * Optional in the type because a row read before the backfill, or a projection that did
+   * not select it, genuinely does not have one.
+   */
+  homatch_id?: number | null;
   user_id: string;
   source_type: PropertySourceType;
   title?: string;
@@ -341,6 +364,23 @@ export interface Property {
   matchability_score?: number;
   cover_photo_url?: string;
   is_deleted: boolean;
+  /**
+   * THE CONTACT NUMBER, IN THREE PARTS, AND OWNER-VISIBLE ONLY.
+   *
+   * The properties SELECT policy is `user_id = get_user_id()`, so these reach nobody but
+   * the owner — not another customer, not the public site, not an anonymous request.
+   * Disclosure to an authorised match happens through a function that decides whether
+   * they may have it, never by widening this.
+   *
+   * Mandatory on a NEW property and enforced by a BEFORE INSERT trigger rather than by
+   * this form or this type: properties are written by a direct insert under RLS, so a
+   * client-side rule is something a client can skip.
+   */
+  contact_phone_e164?: string | null;
+  /** What the owner typed, kept so a refused number can be shown back unaltered. */
+  contact_phone_raw?: string | null;
+  /** The ISO country the parse resolved to, so a local number can be re-read. */
+  contact_phone_country?: string | null;
   created_at: string;
   updated_at: string;
   // Joined relations

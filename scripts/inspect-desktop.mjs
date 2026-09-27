@@ -14,6 +14,14 @@
 //   node scripts/inspect-desktop.mjs                 1, 3 and 10 at 1440x900
 //   node scripts/inspect-desktop.mjs --counts 3      just the density case
 //   node scripts/inspect-desktop.mjs --width 1920 --lang ka
+//   node scripts/inspect-desktop.mjs --route /find-property --stage plan --counts 1
+//   node scripts/inspect-desktop.mjs --route /find-property --stage refine    the fields
+//   node scripts/inspect-desktop.mjs --route /find-property --stage unread    model down
+//   node scripts/inspect-desktop.mjs --route /find-property --stage results   what it found
+//
+// `--stage plan` drives Find Property past its composer: it types a real description in
+// the screenshot's own language and sends it, because the plan stage is reachable only
+// through the composer and a screenshot of an empty textarea says nothing about it.
 //
 // It reports measurements as well as writing PNGs, so "the row is too tall" is a number
 // rather than an impression: row height, rows visible above the fold, the share of the
@@ -39,6 +47,7 @@ const WIDTH = Number(arg('width', 1440));
 const HEIGHT = Number(arg('height', 900));
 const LANG = arg('lang', 'en');
 const ROUTE = arg('route', '/property');
+const STAGE = arg('stage', null);
 const COUNTS = arg('counts', '1,3,10').split(',').map((n) => Number(n.trim())).filter(Boolean);
 const OUT = join(ROOT, '.inspect');
 
@@ -93,6 +102,9 @@ if (!bundled) {
  */
 const { propertyRows, matchRows, matchDetailRows } = await import(
   pathToFileURL(join(ROOT, 'tests', 'mobile', 'propertyFixture.mjs')).href
+);
+const { planDraft, planUnread, searchResults, DESCRIPTIONS } = await import(
+  pathToFileURL(join(ROOT, 'tests', 'mobile', 'planFixture.mjs')).href
 );
 
 /** The same fake session the mobile harness uses. */
@@ -251,12 +263,74 @@ for (const count of COUNTS) {
       });
     }
     if (url.includes('/rest/v1/')) return r.fulfill(json([]));
+    /*
+     * THE PLAN, IN THE SHAPE THE SERVER DECLARES. `{}` here was not a neutral stub: the
+     * page reads `response.plan` and falls back to an empty BUY plan when it is absent,
+     * so every screenshot of this stage was a screenshot of the fallback. The customer's
+     * own text is echoed back, as the real function does.
+     */
+    if (url.includes('/functions/v1/find-property-plan')) {
+      let typed = '';
+      try { typed = JSON.parse(r.request().postData() ?? '{}').text ?? ''; } catch { /* none */ }
+      /*
+       * `--stage unread` is the model being unreachable — `interpreted: false`, no plan,
+       * the customer's words intact. It is a real state the page renders rather than an
+       * error, and no fixture reaches it by accident.
+       */
+      return r.fulfill(json(
+        STAGE === 'unread' ? planUnread(typed) : planDraft(typed, LANG),
+      ));
+    }
+    /*
+     * `--stage results` is what the matcher found. `{}` made `state` undefined, which the
+     * page reads as NO_ACTIVE_SEARCH — so the screen the whole discovery flow ends at was
+     * the one screen the harness always answered with an empty state.
+     */
+    if (url.includes('/functions/v1/find-property')) {
+      return r.fulfill(json(STAGE === 'results' ? searchResults(count) : { success: true, results: [], state: 'NO_ACTIVE_SEARCH', searches: 0, note: null }));
+    }
     if (url.includes('/functions/v1/')) return r.fulfill(json({}));
     return r.fulfill(json({}));
   });
 
   await page.goto(`${BASE}${ROUTE}`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(2200);
+
+  /*
+   * THE PLAN STAGE IS BEHIND THE COMPOSER, so it is reached the way a customer reaches
+   * it: type the description, press Enter. Filling the textarea through Playwright fires
+   * the input event React listens to, so the send affordance enables itself rather than
+   * being forced.
+   */
+  if (STAGE === 'plan' || STAGE === 'refine' || STAGE === 'unread') {
+    const description = DESCRIPTIONS[LANG] ?? DESCRIPTIONS.en;
+    await page.locator('textarea').first().fill(description);
+    await page.keyboard.press('Enter');
+    /*
+     * Wait for the summary itself, scoped to its own surface. A fixed pause that is too
+     * short screenshots the composer and reports it as the plan; a bare `dl` matched a
+     * hidden list elsewhere in the shell and waited fifteen seconds for it to appear.
+     */
+    await page.locator('.hm-discovery-focus dl').first()
+      .waitFor({ state: 'visible', timeout: 15000 });
+    await page.waitForTimeout(600);
+  }
+
+  /*
+   * THE FIELDS BEHIND THE PLAN. `--stage refine` is `plan` plus the one control that
+   * opens the editor — the second button in the summary's action row, found by position
+   * rather than by label so it works in all six languages.
+   */
+  if (STAGE === 'refine') {
+    await page.locator('.hm-discovery-focus button').nth(1).click();
+    /* Scoped to the editor panel: the shell's own AI field is an input with a
+       placeholder too, and it is hidden at this width. */
+    await page.locator('.hm-discovery-panel input').first()
+      .waitFor({ state: 'visible', timeout: 10000 });
+    /* The editor opens below the fold on a phone, and the screenshot is the viewport. */
+    await page.locator('.hm-discovery-panel input').first().scrollIntoViewIfNeeded();
+    await page.waitForTimeout(400);
+  }
 
   const measured = await page.evaluate(() => {
     const canvas = document.querySelector('[class*="max-w-["]');
@@ -283,7 +357,8 @@ for (const count of COUNTS) {
     };
   });
 
-  const file = join(OUT, `${ROUTE.replace(/\W+/g, '-')}-${count}-${WIDTH}x${HEIGHT}-${LANG}.png`);
+  const name = `${ROUTE.replace(/\W+/g, '-')}${STAGE ? `-${STAGE}` : ''}`;
+  const file = join(OUT, `${name}-${count}-${WIDTH}x${HEIGHT}-${LANG}.png`);
   await page.screenshot({ path: file, fullPage: false });
   report.push({ count, ...measured, file });
   await ctx.close();

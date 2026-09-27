@@ -153,8 +153,19 @@ test('the money screen has been migrated, and its note still names what was wron
     'the lock-first component is back');
   assert.ok(!/<LockedMatchCard/.test(page),
     'something still renders the lock-first component');
-  assert.match(page, /function MatchCard\(/);
-  assert.match(page, /<MatchCard/);
+  /*
+   * MatchCard IS GONE TOO, and deliberately. It was deleted rather than edited because
+   * three redesigns rearranged its children and produced the same screenshot each time:
+   * its appearance came from the shadcn primitives it composed, which resolve to a white
+   * rectangle, grey capsules and a black button on the root light palette.
+   *
+   * <OpportunityCard> replaces it, in its own file, on the premium token block. The
+   * history above is kept for the same reason it was kept before: so the double-sell
+   * cannot be reintroduced by somebody who never knew it existed.
+   */
+  assert.ok(!/function MatchCard\(/.test(page),
+    'the card is back inside the page instead of being its own component');
+  assert.match(page, /<OpportunityCard/);
 });
 
 test('the two AI-facing surfaces are queued for migration', () => {

@@ -1,30 +1,33 @@
 // Private listing creation — 7-step progressive form
-import React, { useState, useCallback } from 'react';
+
+import {AlertCircle,
+  ArrowLeft, ArrowRight, Building2, 
+  CheckCircle2, Lock,Star, Upload, X, 
+} from 'lucide-react';
+import React, { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
-import { useLanguage } from '@/contexts/LanguageContext';
-import { AppLayout } from '@/components/layouts/AppLayout';
+import { toast } from 'sonner';
 import { RouteGuard } from '@/components/common/RouteGuard';
+import { AppLayout } from '@/components/layouts/AppLayout';
+import { ContactPhoneField } from '@/components/owner/ContactPhoneField';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { toast } from 'sonner';
-import {
-  createProperty, upsertPropertyFacts, addPropertyPhoto,
-  uploadPropertyPhoto, createSearchProfile,
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
+import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { readContactPhone } from '@/lib/propertyContact';
+import {addPropertyPhoto,
+  createProperty, createSearchProfile,
   logActivity, updateProperty,
+  uploadPropertyPhoto, upsertPropertyFacts, 
 } from '@/services/api';
 import type { PropertyFacts } from '@/types/types';
 import { GE_LOCATIONS } from '@/types/types';
-import {
-  ArrowLeft, ArrowRight, Upload, X, Star, Lock,
-  CheckCircle2, Building2, AlertCircle,
-} from 'lucide-react';
 
 const MAX_PHOTOS = 5;
 
@@ -144,6 +147,18 @@ function PrivateListingContent() {
   const [saving, setSaving] = useState(false);
   const [lastPriceField, setLastPriceField] = useState<'total' | 'sqm' | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  /*
+   * THE NUMBER THIS PROPERTY IS REACHED ON.
+   *
+   * Kept as the raw text rather than as a parsed contact: the owner is mid-typing for
+   * most of this field's life, and re-parsing on every keystroke is what lets the field
+   * show its reading back. The parse that matters happens once, at submit.
+   *
+   * `showPhoneProblem` stays false until a submit is attempted, so nobody is told their
+   * number is wrong while they are still writing the third digit of it.
+   */
+  const [contactPhone, setContactPhone] = useState('');
+  const [showPhoneProblem, setShowPhoneProblem] = useState(false);
 
   const set = (key: keyof FormState, value: string | boolean) =>
     setForm(f => ({ ...f, [key]: value }));
@@ -222,6 +237,21 @@ function PrivateListingContent() {
     if (!form.city) errs.city = t('private_err_city_required');
     if (!form.area) errs.area = t('private_err_area_required');
     if (!form.totalPrice && !form.pricePerSqm) errs.price = t('private_err_price_required');
+    /*
+     * THE SAME READING THE DATABASE WILL APPLY. A BEFORE INSERT trigger refuses a
+     * property with no contact number whatever sends it, so this is not the enforcement
+     * — it is the difference between a sentence about a phone number and a failed save
+     * with no explanation.
+     */
+    const reading = readContactPhone(contactPhone, form.country || 'GE');
+    if (!reading.contact) {
+      setShowPhoneProblem(true);
+      errs.contactPhone = t(
+        reading.problem === 'NO_COUNTRY' ? 'contact_phone_needs_country'
+          : reading.problem === 'UNREACHABLE' ? 'contact_phone_unreachable'
+            : 'contact_phone_required',
+      );
+    }
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -232,9 +262,16 @@ function PrivateListingContent() {
     if (saving) return;   // prevent duplicate submit
     setSaving(true);
     try {
+      /* validateStep7 already refused an unreadable number; this cannot be null here,
+         and the fallback exists so a future edit to the guard cannot silently create a
+         property with no contact. */
+      const reading = readContactPhone(contactPhone, form.country || 'GE');
+      if (!reading.contact) { setShowPhoneProblem(true); return; }
+
       const propId = await createProperty({
         userId: homatchUser.id,
         sourceType: 'PRIVATE_LISTING',
+        contact: reading.contact,
         title: form.title || t('private_default_title', {
           type: t(PROPERTY_TYPE_KEYS[form.propertyType] ?? 'prop_type_other'),
           city: form.city || t('private_default_city_fallback'),
@@ -698,6 +735,22 @@ function PrivateListingContent() {
                   </div>
                 ))}
               </div>
+              {/*
+                THE ONE FIELD THAT IS NOT A SUMMARY.
+                It sits in the review step because this is where an owner is already
+                checking what they are about to create, and because it is the last place
+                a missing number can be caught with a sentence rather than a save error.
+              */}
+              <div className="rounded-lg border border-border bg-card p-3">
+                <ContactPhoneField
+                  value={contactPhone}
+                  onChange={(next) => { setContactPhone(next); setShowPhoneProblem(false); }}
+                  defaultCountry={form.country || 'GE'}
+                  accountPhone={homatchUser?.phone ?? null}
+                  showProblem={showPhoneProblem}
+                />
+              </div>
+
               <div className="flex items-center gap-2 mt-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
                 <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
                 <p className="text-xs text-muted-foreground">

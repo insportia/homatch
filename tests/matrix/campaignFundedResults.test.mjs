@@ -83,23 +83,20 @@ test('an included result is never shown a price or a padlock', () => {
   assert.match(body, /const forSale = !included && !opened;/,
     'the card no longer derives one answer for whether anything is being sold');
 
-  const at = body.indexOf('{forSale ? (');
-  assert.ok(at > 0, 'the one for-sale decision could not be found');
-  const open = body.indexOf('(', at + 1);
-  const close = body.indexOf(') : (', open);
-  assert.ok(close > open, 'the for-sale branch could not be delimited');
-  const trueBranch = body.slice(open, close);
-  const falseBranch = body.slice(close, body.indexOf('DropdownMenu', close));
-
-  assert.ok(trueBranch.includes('matches_unlock_btn'),
-    'the priced button is not inside the for-sale branch');
-  assert.ok(!falseBranch.includes('unlock_price_credits'),
-    'a result the campaign already paid for is being shown a price');
-
-  const blur = body.indexOf('blur-[1.5px]');
-  assert.ok(blur > 0, 'the blur is gone entirely — this test is measuring nothing');
-  assert.match(body.slice(Math.max(0, blur - 200), blur), /forSale \?/,
+  /*
+   * ONE CONDITIONAL LEFT, because the card no longer sells anything. The blur still keys
+   * off the same boolean — it reflects the server-side redaction, which is a real access
+   * rule and stays — and the price and the purchase wording are gone from the card
+   * entirely rather than confined to a branch.
+   */
+  assert.match(body, /excerptObscured=\{forSale\}/,
     'the blur is not conditional on something actually being for sale');
+
+  const card = code(readFileSync('src/components/customer/OpportunityCard.tsx', 'utf8'));
+  assert.doesNotMatch(card, /unlock_price_credits/, 'a price is back on the card');
+  assert.doesNotMatch(card, /matches_unlock_btn/, 'purchase wording is back on the card');
+  assert.match(body, /actionLabel=\{t\('match_view_btn'\)\}/,
+    'the action is no longer the same on every result');
 });
 
 test('the reasons a match exists are shown before anything is bought', () => {
@@ -113,31 +110,35 @@ test('the reasons a match exists are shown before anything is bought', () => {
    * card, and this asserts they are on it rather than only in the dialog.
    */
   const body = code(MATCHES);
-  const card = body.slice(body.indexOf('function MatchCard('), body.indexOf('function UnlockedMatchDialog('));
-  assert.ok(card.length > 0, 'the match card could not be located');
-  assert.match(card, /match\.match_reasons/,
+  /*
+   * match_reasons no longer reaches the card as a list. It reaches it as a SENTENCE —
+   * matchFacets() collapses the eleven literals onto at most three nouns and whyLineFor()
+   * turns them into one line — because a checklist of the matcher's own vocabulary was
+   * the thing the customer read first and understood least.
+   *
+   * What this test has always been about is the boundary, not the widget: the explanation
+   * of relevance must be FREE, and only the contact details sold. So it asserts that the
+   * reasons are read on the page and handed to the card outside any purchase branch.
+   */
+  assert.match(body, /matchFacets\(match\.match_reasons\)/,
     'the card does not show why the match is there');
-  assert.match(card, /match\.mismatch_reasons/,
-    'the card does not say what does not match');
+  assert.match(body, /whyLine=\{whyLineFor\(match\)\}/,
+    'the fit sentence is not handed to the card');
+  assert.doesNotMatch(body, /forSale \?[^;]{0,120}whyLine/,
+    'the explanation of relevance has been put behind the purchase');
 
   /*
-   * WHERE THE EXPLANATION SITS CHANGED; WHETHER IT IS FREE DID NOT.
+   * WHAT THE EXPLANATION LOOKS LIKE CHANGED; WHETHER IT IS FREE DID NOT.
    *
-   * The visual rebuild moved the reasons off the front of the card, because a customer
-   * read "Transaction intent matches / Country matches / City matches" before they read
-   * who the person was. They are now one click away behind a control labelled "Why this
-   * match?", and a COUNT of how much agrees is on the card unopened. Both are free: the
-   * disclosure opens without a charge, which is the rule this test exists for — the
-   * explanation of relevance must not be what is sold. The contact details are.
+   * It was a checklist in the matcher's own words — "Transaction intent matches",
+   * "Country matches", "City matches" — read before the customer reached who the person
+   * was, and then a count that said how much agreed without saying what. It is now one
+   * sentence naming at most three facets, on the collapsed card, costing nothing. The
+   * complete dimension-by-dimension account lives in the detail view, which also costs
+   * nothing to open. Only the contact details are sold.
    */
-  assert.match(card, /match_why_disclosure/,
-    'the reasons are shown without a control saying what they are');
-  assert.match(card, /match_fit_summary/,
-    'nothing on the unopened card says how much agrees');
-  const disclosure = card.indexOf('match_why_disclosure');
-  const priced = card.indexOf('matches_unlock_btn');
-  assert.ok(priced === -1 || disclosure < priced || card.indexOf('showEvidence') < priced,
-    'the explanation is gated behind the purchase again');
+  assert.match(body, /match_why_line/,
+    'nothing on the unopened card says what agrees');
 });
 
 test('the same person is not matched twice to one property', () => {
@@ -180,7 +181,15 @@ test('historical unlock records and the charging path are left alone', () => {
    * chargeable, or the fix becomes "everything is free".
    */
   const body = code(MATCHES);
-  assert.match(body, /onUnlock/, 'the reveal handler was removed rather than the sale');
-  assert.match(body, /matches_unlock_btn/,
-    'the priced branch was deleted, so an unfunded match can no longer be sold');
+  assert.match(body, /handleUnlockClick/, 'the reveal handler was removed rather than the sale');
+  /*
+   * The sale moved to the confirmation dialog — a card no longer carries a price — but it
+   * still EXISTS. Removing it would make the fix "everything is free", which is the other
+   * way to get this wrong.
+   */
+  assert.match(body, /unlockMatch\(/, 'the charging call is gone');
+  assert.match(body, /matches_confirm_unlock_btn/,
+    'the confirmation that authorises a real purchase was deleted');
+  assert.match(body, /balanceAfter/,
+    'the customer is no longer told what their balance becomes');
 });

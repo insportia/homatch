@@ -686,8 +686,22 @@
    * nobody sees, and a single missed one would silently drop a page back
    * onto the light palette mid-scroll.
    * ------------------------------------------------------------------ */
+  /*
+   * FOUR NAMES, ONE DECLARATION.
+   *
+   * `.hm-invest` is the name Investment and Verify were born with; `.hm-workspace` is
+   * what it was renamed to; `.hm-discovery` is the matching and discovery product and
+   * `.hm-owner` the owner's portfolio and its flow. They are aliases on purpose — a
+   * second copy of these values is a second place to change a border colour, and the
+   * whole point of a design system is that the surface moves together.
+   *
+   * Their COMPOSITIONS stay different. A portfolio row is not an opportunity card and
+   * neither is an analytical module; what they share is the ground they are drawn on.
+   */
   .hm-invest,
-  .hm-workspace {
+  .hm-workspace,
+  .hm-discovery,
+  .hm-owner {
     --background: 218 32% 7%;    /* #0C1119 — deep navy ink            */
     --foreground: 214 26% 93%;
     --card: 218 28% 10%;
@@ -736,11 +750,175 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* ── THE CUSTOMER APPLICATION'S OWN SURFACE ───────────────────────
+   *
+   * Not `.hm-workspace`. That block is the ANALYTICAL surface — a deep navy
+   * instrument panel that Investment and Mortgage wear because their job is
+   * reading numbers in a focused setting. Wrapping the customer application in
+   * it was how the last pass turned "stop using generic primitives" into
+   * "everything is dark", and inheriting one product's surface everywhere is
+   * the same mistake as inheriting the root palette everywhere.
+   *
+   * This takes the premium GRAMMAR — the gold relationships, the hairline, the
+   * restrained lift, tabular figures, the panel radius — and states it against a
+   * LIGHT ground, because the customer panel is somewhere people work rather
+   * than somewhere they read a report.
+   *
+   * Scoped, so nothing inherits it by accident: Admin, Verify, the public site
+   * and every unmigrated page are untouched.
+   */
+  .hm-customer {
+    /* 96% -> 94%. The root palette records reaching 93% by the same route: two shades
+       off white is not a canvas, it is white with a rounding error. These panels also
+       carry a shadow, so they need one step less separation than the root's cards. */
+    --background: 220 14% 94%;   /* the canvas a white panel sits on */
+    --foreground: 224 12% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 12% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 12% 10%;
+
+    /* Black stays the fill for the rare heavy control. The customer layer's own
+       primary action is gold-on-gold-soft, which carries at 5.6:1 and does not
+       shout the way a filled black rectangle does. */
+    --primary: 224 14% 9%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 14% 94%;
+    --secondary-foreground: 224 12% 14%;
+    --muted: 220 14% 94%;
+    /* Ink, not grey. Most of a working screen is "supporting" copy. */
+    --muted-foreground: 220 9% 34%;
+    --accent: 220 14% 92%;
+    --accent-foreground: 224 12% 12%;
+
+    --destructive: 0 66% 44%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Lighter than the root's hairline, because these panels also carry a
+       shadow; two separations at full strength read as a box. */
+    --border: 220 13% 88%;
+    --input: 220 13% 84%;
+    --ring: 38 88% 40%;
+
+    --gold: 38 88% 54%;
+    --gold-hover: 38 88% 47%;
+    --gold-ink: 34 90% 31%;      /* 5.6:1 on white — the only gold that carries text */
+    --gold-soft: 41 88% 94%;     /* quieter than the root's, for a control ground */
+    --gold-border: 38 60% 72%;
+
+    --success: 152 54% 28%;
+    --warning: 32 78% 36%;
+    --info: 214 62% 34%;
+
+    --shadow-card: 0 1px 2px hsl(220 20% 10% / 0.04), 0 4px 16px hsl(220 20% 10% / 0.04);
+    --shadow-hover: 0 2px 4px hsl(220 20% 10% / 0.06), 0 12px 28px hsl(220 20% 10% / 0.08);
+
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    /* A column of prices whose digits are different widths cannot be scanned. */
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── A PRODUCT VIEWPORT ───────────────────────────────────────────
+   *
+   * The counterpart to `.hm-customer`, and the reason the shell's theme cannot
+   * leak into a service page: a product opts INTO this and gets a neutral,
+   * high-craft ground rather than the shell's palette.
+   *
+   * Deliberately accent-free. Matches, Find Property, the owner workspace and
+   * Broker are different products with different jobs, and which colour carries
+   * their primary action is their decision. The shell supplies the frame; it
+   * does not supply the skin.
+   *
+   * What it DOES supply is the quality floor every customer surface owes the
+   * reader: ink that is ink rather than grey, a hairline that reads as a drawn
+   * line, a panel that sits on the page, tabular figures, and a radius and
+   * spacing logic shared with the rest of the application.
+   */
+  .hm-product {
+    --background: 220 13% 95%;
+    --foreground: 224 12% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 12% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 12% 10%;
+
+    /* The product's own action colour: near-black ink, used at CONTROL size with
+       real padding. The rejected screenshot's fault was not that a button was
+       dark, it was that a full-width black rectangle was the loudest object on
+       a result card. */
+    --primary: 224 16% 12%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 13% 93%;
+    --secondary-foreground: 224 12% 14%;
+    --muted: 220 13% 93%;
+    --muted-foreground: 220 9% 34%;
+    --accent: 220 13% 91%;
+    --accent-foreground: 224 12% 12%;
+
+    --destructive: 0 66% 44%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 13% 87%;
+    --input: 220 13% 83%;
+    --ring: 224 16% 24%;
+
+    --success: 152 54% 28%;
+    --warning: 32 78% 36%;
+    --info: 214 62% 34%;
+
+    --shadow-card: 0 1px 2px hsl(220 20% 10% / 0.04);
+    --shadow-hover: 0 1px 3px hsl(220 20% 10% / 0.07), 0 8px 22px hsl(220 20% 10% / 0.06);
+
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* One module on a product page. A hairline and the faintest lift — enough for a
+     white panel to sit on a light ground, not enough to read as a floating card. */
+  .hm-product-panel {
+    background-color: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.75rem;
+    box-shadow: var(--shadow-card);
+  }
+
+  /* The light source, at a twentieth of the analytical surface's strength: on a
+     light ground the same wash reads as a stain rather than as depth. */
+  .hm-customer-canvas {
+    background-image: radial-gradient(
+      ellipse 120% 60% at 50% -10%,
+      hsl(38 88% 54% / 0.05) 0%,
+      transparent 60%
+    );
+  }
+
+  /* One module. A hairline AND a restrained two-layer lift, which is what makes a
+     white panel sit on a light canvas rather than merge with it — the single
+     thing a dark surface gets for free and a light one has to earn. */
+  .hm-customer-panel {
+    background-color: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.875rem;
+    box-shadow: var(--shadow-card);
+  }
+
+  /* The module that is currently the answer to the question just asked. */
+  .hm-customer-focus {
+    border-color: hsl(var(--gold-border));
+    box-shadow: inset 0 1px 0 0 hsl(var(--gold) / 0.35), var(--shadow-hover);
+  }
+
   /* One faint warm wash from the top so the canvas has a light source
      rather than reading as an unlit rectangle. Decorative, and the only
      decorative gradient on the surface. */
   .hm-invest-canvas,
-  .hm-workspace-canvas {
+  .hm-workspace-canvas,
+  .hm-discovery-canvas,
+  .hm-owner-canvas {
     background-image: radial-gradient(
       ellipse 120% 60% at 50% -10%,
       hsl(38 92% 56% / 0.07) 0%,
@@ -752,7 +930,9 @@
      than a shadow: shadows on a near-black ground are invisible, and the
      thing that actually reads as an edge is a one-pixel lift in value. */
   .hm-invest-panel,
-  .hm-workspace-panel {
+  .hm-workspace-panel,
+  .hm-discovery-panel,
+  .hm-owner-panel {
     background-color: hsl(var(--card));
     border: 1px solid hsl(var(--border));
     border-radius: 1rem;
@@ -761,7 +941,9 @@
   /* The gold hairline above a module that is currently the answer to the
      question just asked. */
   .hm-invest-focus,
-  .hm-workspace-focus {
+  .hm-workspace-focus,
+  .hm-discovery-focus,
+  .hm-owner-focus {
     box-shadow: inset 0 1px 0 0 hsl(var(--gold) / 0.55), var(--shadow-hover);
     border-color: hsl(var(--gold-border));
   }

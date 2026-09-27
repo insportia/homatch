@@ -1,19 +1,34 @@
 import React from 'react';
 import { useLocation } from 'react-router-dom';
-import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
+import { AssistantProvider } from '@/components/assistant/AssistantContext';
+import { AssistantDrawer } from '@/components/assistant/AssistantDrawer';
+import { AIFloatingButton } from '@/components/common/AIFloatingButton';
 import { SmartBack } from '@/components/common/SmartBack';
+import { LiveNotifications } from '@/components/notifications/LiveNotifications';
+import { useAuth } from '@/contexts/AuthContext';
+import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 import { parentRouteFor } from '@/lib/backNavigation';
 import { AppHeader } from './AppHeader';
 import { HomatchShell } from './HomatchShell';
 import { MobileBottomNav } from './MobileBottomNav';
-import { AIFloatingButton } from '@/components/common/AIFloatingButton';
-import { AssistantProvider } from '@/components/assistant/AssistantContext';
-import { AssistantDrawer } from '@/components/assistant/AssistantDrawer';
-import { useAuth } from '@/contexts/AuthContext';
 
 interface AppLayoutProps {
   children: React.ReactNode;
   noPadding?: boolean;
+  /**
+   * A class applied to a wrapper around EVERYTHING this layout renders for the page —
+   * the back control included.
+   *
+   * It exists because of a visible seam. A page that opts into the premium token block
+   * (`hm-workspace`) wraps its own content, but the back control is rendered by this
+   * layout, OUTSIDE that wrapper, so it kept the root light palette: a grey band with a
+   * white pill sitting above a deep navy canvas. The canvas looked like a rectangle
+   * dropped onto the old design rather than like the page.
+   *
+   * Opt-in and additive: with nothing passed, no wrapper element is created at all and
+   * every existing page renders exactly as before.
+   */
+  surfaceClass?: string;
   /**
    * A screen that fills the window and manages its own scrolling — the
    * assistant. Removes the shell's padding AND makes the shell a fixed
@@ -28,7 +43,12 @@ interface AppLayoutProps {
 // carry the same two intents — so the block would never mount, and rendering
 // it would duplicate the actions. The component file is left dormant rather
 // than deleted, the same way CasesPage was.
-export function AppLayout({ children, noPadding = false, hidePadding = false }: AppLayoutProps) {
+export function AppLayout({
+  children,
+  noPadding = false,
+  hidePadding = false,
+  surfaceClass,
+}: AppLayoutProps) {
   /*
    * THE SURFACE BELONGS TO THE SHELL, NOT TO EACH PAGE.
    *
@@ -81,14 +101,26 @@ export function AppLayout({ children, noPadding = false, hidePadding = false }: 
    * no scroll of its own, and owns its bottom spacing — which is how it
    * can also use h-full instead of guessing at the header height.
    */
+  /*
+   * THE BACK CONTROL STAYS OUTSIDE THE PAGE'S SURFACE.
+   *
+   * It belongs to the shell — it is navigation, not content — and it is styled for the
+   * shell's palette. Wrapping it in a product's token block made it render dark-on-dark
+   * inside the navy discovery surface: a navigation control you have to hunt for.
+   *
+   * Only the page's own children get the surface class, which is also what makes the
+   * boundary real: a product chooses its ground and the frame around it does not move.
+   */
   const body = (
     <>
       {showBack && (
-        <div className={noPadding ? 'px-4 pb-4 pt-4 md:px-6' : 'pb-4'}>
+        <div className={noPadding ? 'px-4 pb-3 pt-3 md:px-6' : 'pb-4'}>
           <SmartBack />
         </div>
       )}
-      {children}
+      {/* No wrapper unless one was asked for: an extra div changes flex behaviour under
+          hidePadding, and no existing page should pay for a knob it does not use. */}
+      {surfaceClass ? <div className={surfaceClass}>{children}</div> : children}
     </>
   );
 
@@ -174,6 +206,9 @@ export function AppLayout({ children, noPadding = false, hidePadding = false }: 
         <MobileBottomNav />
         <AIFloatingButton />
         <AssistantDrawer />
+        {/* The other half of the bell. It has counted live since it was written; this is
+            what makes the count something somebody notices. Renders nothing itself. */}
+        <LiveNotifications />
       </AssistantProvider>
     );
   }

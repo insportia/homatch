@@ -41,28 +41,30 @@
 // display_order; cover writes is_cover AND properties.cover_photo_url so the
 // portfolio can render a cover without joining photos.
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
 import {
   AlertCircle, ArrowLeft, Camera, ChevronDown, ChevronUp, ExternalLink, ImageOff,
   Loader2, MapPin, Save, Star, Trash2, Upload,
 } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { toast } from 'sonner';
+import { PrivateImage } from '@/components/common/PrivateImage';
+import { RouteGuard } from '@/components/common/RouteGuard';
+import { OWNER_SURFACE } from '@/components/customer/surface';
+import { AppLayout } from '@/components/layouts/AppLayout';
+import { ContactPhoneField, PropertyReference } from '@/components/owner/ContactPhoneField';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { toast } from 'sonner';
-import { AppLayout } from '@/components/layouts/AppLayout';
-import { RouteGuard } from '@/components/common/RouteGuard';
-import { PrivateImage } from '@/components/common/PrivateImage';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import type { Property, PropertyPhoto } from '@/types/types';
-import { uploadPropertyPhoto } from '@/services/api';
+import { readContactPhone } from '@/lib/propertyContact';
+import { setPropertyContact, uploadPropertyPhoto } from '@/services/api';
 import {
   allPhotos,
   attachPhoto,
@@ -73,6 +75,7 @@ import {
   reorderPhotos,
   savePropertyEdits,
 } from '@/services/propertyManagement';
+import type { Property, PropertyPhoto } from '@/types/types';
 
 const PROPERTY_TYPES = [
   'APARTMENT', 'HOUSE', 'VILLA', 'COMMERCIAL', 'LAND', 'OFFICE',
@@ -82,7 +85,7 @@ const TRANSACTIONS = ['SALE', 'RENT', 'INVESTMENT'] as const;
 const CURRENCIES = ['USD', 'GEL', 'EUR'] as const;
 const ADDRESS_VISIBILITY = ['FULL', 'CITY_ONLY', 'HIDDEN'] as const;
 
-type SectionKey = 'basics' | 'price' | 'location' | 'description' | 'photos';
+type SectionKey = 'basics' | 'price' | 'location' | 'contact' | 'description' | 'photos';
 
 /** A collapsible section. Open state is the caller's so a deep link can set it. */
 function Section({
@@ -159,12 +162,23 @@ export default function EditPropertyPage() {
   const [address, setAddress] = useState('');
   const [addressVisibility, setAddressVisibility] = useState<string>('CITY_ONLY');
   const [description, setDescription] = useState('');
+  /*
+   * THE NUMBER, AS THE OWNER WROTE IT.
+   *
+   * Loaded from contact_phone_raw rather than from the canonical form, so an owner who
+   * typed "+995 555 12 34 56" sees that again instead of the compacted version — and so
+   * a number we could not parse is still shown back to them unaltered. The canonical form
+   * is what gets stored, and the field says so as they type.
+   */
+  const [contactPhone, setContactPhone] = useState('');
+  const [showPhoneProblem, setShowPhoneProblem] = useState(false);
 
   const deepLink = (typeof window !== 'undefined' ? window.location.hash : '').replace('#', '');
   const [open, setOpen] = useState<Record<SectionKey, boolean>>({
     basics: true,
     price: true,
     location: deepLink === 'location',
+    contact: deepLink === 'contact',
     description: deepLink === 'description',
     photos: deepLink === 'photos',
   });
@@ -212,6 +226,8 @@ export default function EditPropertyPage() {
       setAddress(String(f?.address ?? ''));
       setAddressVisibility(String(f?.address_visibility ?? 'CITY_ONLY'));
       setDescription(String(f?.description ?? ''));
+      setContactPhone(String(row.contact_phone_raw ?? row.contact_phone_e164 ?? ''));
+      setShowPhoneProblem(false);
     } catch (error) {
       setFailed(error instanceof Error ? error.message : String(error));
     } finally {
@@ -287,6 +303,33 @@ export default function EditPropertyPage() {
           addressVisibility: addressVisibility as 'FULL' | 'CITY_ONLY' | 'HIDDEN',
         },
       });
+      /*
+       * THE NUMBER IS SAVED SEPARATELY, AND ONLY WHEN IT CHANGED.
+       *
+       * Separate because setting a property's contact is a different decision from
+       * editing its price, with a different authorisation story — and because a bulk
+       * edit that happened to carry the column must not be able to move it.
+       *
+       * Only when changed, so opening the edit screen and saving a title cannot rewrite
+       * a number the owner did not touch. An unreadable number blocks the save of the
+       * number and not of the rest: the owner keeps their price change and is told which
+       * field to fix.
+       */
+      const typed = contactPhone.trim();
+      const stored = String(property?.contact_phone_raw ?? property?.contact_phone_e164 ?? '').trim();
+      if (typed !== stored) {
+        const reading = readContactPhone(typed, city.trim() ? undefined : 'GE');
+        if (reading.contact) {
+          await setPropertyContact(id, reading.contact);
+        } else if (typed) {
+          setShowPhoneProblem(true);
+          toast.error(t(
+            reading.problem === 'NO_COUNTRY' ? 'contact_phone_needs_country'
+              : 'contact_phone_unreachable',
+          ));
+        }
+      }
+
       toast.success(t('prop_saved'));
       await load();
     } catch (error) {
@@ -377,8 +420,8 @@ export default function EditPropertyPage() {
   if (loading) {
     return (
       <RouteGuard>
-        <AppLayout>
-          <div className="max-w-2xl mx-auto space-y-4">
+        <AppLayout noPadding surfaceClass={OWNER_SURFACE}>
+          <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-4 sm:px-6">
             <Skeleton className="h-10 rounded-lg" />
             <Skeleton className="h-40 rounded-xl" />
             <Skeleton className="h-40 rounded-xl" />
@@ -391,8 +434,8 @@ export default function EditPropertyPage() {
   if (failed || !property) {
     return (
       <RouteGuard>
-        <AppLayout>
-          <div className="max-w-2xl mx-auto space-y-4">
+        <AppLayout noPadding surfaceClass={OWNER_SURFACE}>
+          <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-4 sm:px-6">
             <Card className="bg-card border-border">
               <CardContent className="p-6 text-center space-y-3">
                 <AlertCircle className="h-9 w-9 mx-auto opacity-40" />
@@ -413,8 +456,13 @@ export default function EditPropertyPage() {
 
   return (
     <RouteGuard>
-      <AppLayout>
-        <div className="max-w-2xl mx-auto space-y-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))]">
+      <AppLayout noPadding surfaceClass={OWNER_SURFACE}>
+        {/*
+          The editing step of the owner flow, on the owner surface. Every field,
+          validation rule, photo control and save path is untouched — what changes is
+          that a customer editing a property no longer crosses a theme boundary.
+        */}
+        <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:px-6">
           <div className="flex items-start justify-between gap-2 flex-wrap">
             <div className="min-w-0 space-y-1">
               <h1 className="text-xl font-bold text-foreground break-words">
@@ -423,6 +471,9 @@ export default function EditPropertyPage() {
               <p className="text-sm text-muted-foreground break-words [overflow-wrap:anywhere]">
                 {String(property.title ?? t('prop_untitled'))}
               </p>
+              {/* Quiet, copyable, and with no control beside it: there is nothing an
+                  owner can do to this number, which is the point of it. */}
+              <PropertyReference id={property.homatch_id} />
             </div>
             <Button variant="ghost" size="sm" onClick={() => navigate('/property')}>
               <ArrowLeft className="h-4 w-4 me-1.5 shrink-0" />
@@ -663,6 +714,27 @@ export default function EditPropertyPage() {
                 </SelectContent>
               </Select>
             </Field>
+          </Section>
+
+          {/* ── CONTACT ─────────────────────────────────────────────────── */}
+          {/*
+            Managed where every other property field is managed. The number reaches
+            nobody but this owner until an authorised match asks for it through a
+            function that decides whether they may have it.
+          */}
+          <Section
+            id="section-contact"
+            title={t('contact_phone_label')}
+            open={open.contact}
+            onToggle={() => toggle('contact')}
+          >
+            <ContactPhoneField
+              value={contactPhone}
+              onChange={(next) => { setContactPhone(next); setShowPhoneProblem(false); }}
+              defaultCountry="GE"
+              accountPhone={homatchUser?.phone ?? null}
+              showProblem={showPhoneProblem}
+            />
           </Section>
 
           {/* ── DESCRIPTION ─────────────────────────────────────────────── */}

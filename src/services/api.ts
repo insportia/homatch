@@ -1,9 +1,10 @@
 // HOMATCH — API layer (frontend data access)
 // All Supabase queries go through this file.
 
-import { supabase } from '@/db/supabase';
-import { startJobBestEffort } from '@/services/backgroundJobs';
 import type { DiscoveryHeadroom } from '@/campaign/searchExpansion';
+import { supabase } from '@/db/supabase';
+import type { PropertyContact } from '@/lib/propertyContact';
+import { startJobBestEffort } from '@/services/backgroundJobs';
 import type {
   ActivityEvent,
   AdminOverviewStats,
@@ -113,7 +114,19 @@ export interface CreatePropertyInput {
   title?: string;
   transactionType?: TransactionType;
   propertyType?: PropertyType;
+  /**
+   * THE CONTACT NUMBER, AND IT IS NOT OPTIONAL.
+   *
+   * Required in the type so a call site cannot forget it, and required again by a
+   * database trigger so a request that skips this layer entirely still cannot create a
+   * property nobody can be reached on. Read through readContactPhone(), which is the
+   * only thing that decides what a typed number means.
+   */
+  contact: PropertyContact;
 }
+
+/** The distinct failure the database raises when a property arrives with no number. */
+export const CONTACT_PHONE_REQUIRED = 'HM002';
 
 export async function createProperty(input: CreatePropertyInput): Promise<string | null> {
   const { data, error } = await supabase
@@ -125,6 +138,9 @@ export async function createProperty(input: CreatePropertyInput): Promise<string
       transaction_type: input.transactionType ?? null,
       property_type: input.propertyType ?? null,
       matching_status: 'DRAFT',
+      ...input.contact,
+      /* homatch_id is deliberately absent. A trigger assigns it and discards anything
+         sent — a customer does not choose their own reference. */
     })
     .select('id')
     .maybeSingle();
@@ -133,6 +149,30 @@ export async function createProperty(input: CreatePropertyInput): Promise<string
     return null;
   }
   return data?.id ?? null;
+}
+
+/**
+ * Set or replace the number this property is reached on.
+ *
+ * Separate from updateProperty() because it is a different decision with a different
+ * authorisation story, and because it must never be reachable from a bulk edit that
+ * happens to carry the field.
+ *
+ * It does NOT touch the account-level phone. A property's contact and an account's
+ * contact are two facts about two different things — an owner listing a flat for their
+ * mother is the ordinary case, not the exotic one — and writing one from the other would
+ * quietly replace a number somebody chose.
+ */
+export async function setPropertyContact(
+  propertyId: string,
+  contact: PropertyContact,
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('properties')
+    .update(contact)
+    .eq('id', propertyId);
+  if (error) console.error('setPropertyContact error:', error.message);
+  return !error;
 }
 
 /**
@@ -390,13 +430,29 @@ export async function getActivityEvents(userId: string, limit = 30): Promise<Act
 // NOTIFICATIONS
 // ============================================================
 
-export async function getNotifications(userId: string, limit = 20): Promise<Notification[]> {
-  const { data } = await supabase
+export async function getNotifications(
+  userId: string,
+  limit = 20,
+  options: { unreadOnly?: boolean; before?: string } = {},
+): Promise<Notification[]> {
+  /*
+   * A PAGE, NOT A TABLE. The shell must never pull somebody thousands of historical
+   * notifications to count the four they have not read — the count comes from a
+   * head-only query, and this returns a recent page.
+   *
+   * `before` is a created_at cursor rather than an offset: an offset shifts under
+   * anything that arrives while somebody is reading, so page two silently repeats a row
+   * and drops another.
+   */
+  let query = supabase
     .from('notifications')
     .select('*')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .limit(limit);
+  if (options.unreadOnly) query = query.eq('read', false);
+  if (options.before) query = query.lt('created_at', options.before);
+  const { data } = await query;
   return Array.isArray(data) ? data : [];
 }
 

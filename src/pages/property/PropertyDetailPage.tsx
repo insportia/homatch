@@ -1,20 +1,24 @@
 import {AlertCircle, ArrowLeft, Bath,BedDouble, Bot, 
-  Building2, 
+  Building2, Camera, 
   CheckCircle2, ChevronRight, ExternalLink, Landmark,Layers,Loader2, Lock, 
-  MapPin, Pause, 
-  Play, Shield, Trash2,TrendingDown, Zap, 
+  MapPin, Pause, Pencil, Phone,
+  Play, Shield, Trash2,TrendingDown, Zap 
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { CampaignLaunchPanel } from '@/components/campaign/CampaignLaunchPanel';
 import { PrivateImage } from '@/components/common/PrivateImage';
-import { PropertyGallery } from '@/components/property/PropertyGallery';
-import { intelligenceActionFor } from '@/property/rules';
 import { RouteGuard } from '@/components/common/RouteGuard';
+import { OWNER_SURFACE } from '@/components/customer/surface';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { MatchingJobProgress } from '@/components/matching/MatchingJobProgress';
+import { PropertyReference } from '@/components/owner/ContactPhoneField';
+import {
+  FactLine, IntelLine, OWNER_ICON, OWNER_PRIMARY, OWNER_SECONDARY,
+} from '@/components/owner/portfolio';
 import { CanonicalGroupBanner } from '@/components/property/CanonicalGroupBanner';
+import { PropertyGallery } from '@/components/property/PropertyGallery';
 import { PropertyTrustBadge } from '@/components/property/PropertyTrustBadge';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
@@ -23,12 +27,19 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { formatMoney, intlLocaleFor } from '@/components/workspace/primitives';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { placeName } from '@/lib/placeNames';
+import { hasContactReadiness } from '@/lib/propertyContact';
+import { cn } from '@/lib/utils';
+import { intelligenceActionFor } from '@/property/rules';
 import { 
   type CampaignSearchLanguageChoice, calculateMatchability,getCreditAccount,
   getMatchCounts, getProperty, pauseMatchingCampaign,softDeleteProperty, 
   startMatchingCampaign } from '@/services/api';
+import type { PortfolioIntelligence } from '@/services/propertyManagement';
+import { portfolioIntelligence } from '@/services/propertyManagement';
 import type { CreditAccount, Property } from '@/types/types';
 
 function MatchabilityPanel({ score, improvements }: { score: number; improvements: string[] }) {
@@ -347,9 +358,19 @@ function CampaignPanel({
 function PropertyDetailContent() {
   const { id } = useParams<{ id: string }>();
   const { homatchUser } = useAuth();
-  const { t, isRTL } = useLanguage();
+  const { t, lang, isRTL } = useLanguage();
   const navigate = useNavigate();
   const [property, setProperty] = useState<Property | null>(null);
+  /*
+   * WHAT HOMATCH KNOWS ABOUT THIS ONE PROPERTY.
+   *
+   * The same call the portfolio list makes, scoped to a single id, rather than a second
+   * counting query written here — one definition of what a match count is, and it already
+   * reads `property_id=in.` so a list of one costs the same round trip.
+   *
+   * Best-effort: a details page that cannot reach the counts still shows the property.
+   */
+  const [intel, setIntel] = useState<PortfolioIntelligence | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [showDelete, setShowDelete] = useState(false);
   const [matchCounts, setMatchCounts] = useState({ total: 0, newCount: 0, strongCount: 0 });
@@ -363,6 +384,11 @@ function PropertyDetailContent() {
       getCreditAccount(homatchUser.id),
     ]);
     setProperty(prop);
+    /* The counts, best-effort and separate: a details page that cannot reach them still
+       shows the property, and the intelligence panel reports zero rather than guessing. */
+    portfolioIntelligence([String(id)])
+      .then((byId) => setIntel(byId.get(String(id))))
+      .catch(() => setIntel(undefined));
     setMatchCounts(counts);
     setCreditAccount(credits);
     setLoading(false);
@@ -379,8 +405,8 @@ function PropertyDetailContent() {
 
   if (loading) {
     return (
-      <AppLayout>
-        <div className="max-w-3xl mx-auto space-y-4 animate-pulse">
+      <AppLayout noPadding surfaceClass={OWNER_SURFACE}>
+        <div className="mx-auto w-full max-w-[72rem] space-y-4 px-4 py-4 animate-pulse sm:px-6 lg:px-8">
           <div className="h-48 md:h-64 rounded-xl bg-muted" />
           <div className="h-6 bg-muted rounded w-1/2" />
           <div className="h-4 bg-muted rounded w-1/3" />
@@ -391,8 +417,8 @@ function PropertyDetailContent() {
 
   if (!property) {
     return (
-      <AppLayout>
-        <div className="max-w-xl mx-auto text-center py-20">
+      <AppLayout noPadding surfaceClass={OWNER_SURFACE}>
+        <div className="mx-auto w-full max-w-xl px-4 py-20 text-center">
           <p className="text-muted-foreground">{t('prop_not_found')}</p>
           <Button onClick={() => navigate('/dashboard')} className="mt-4 bg-primary text-primary-foreground">
             {t('prop_back_to_dashboard')}
@@ -405,29 +431,77 @@ function PropertyDetailContent() {
   const facts = property.facts;
   const isPrivate = property.source_type === 'PRIVATE_LISTING';
   const { score, improvements } = calculateMatchability(facts ?? null);
-  const locationParts = [facts?.neighborhood, facts?.district, facts?.city, facts?.region].filter(Boolean).join(', ');
+  /* In the reader's script, through the same layer the portfolio uses. */
+  const locationParts = [
+    placeName(facts?.neighborhood, lang),
+    placeName(facts?.district, lang),
+    placeName(facts?.city, lang),
+    facts?.region,
+  ].filter(Boolean).join(', ');
+
+  const locale = intlLocaleFor(lang);
+  const money = (value: number, currency: string) =>
+    formatMoney(value, currency || 'USD', locale, { decimals: 0, narrowSymbol: true });
+
+  /* The facts that decide a property, only where each one is real. */
+  const headFacts = [
+    property.property_type
+      ? { label: t('prop_fact_type'), value: t(`prop_type_${String(property.property_type).toLowerCase()}` as never) }
+      : null,
+    property.transaction_type
+      ? { label: t('prop_fact_deal'), value: t(`prop_txn_${String(property.transaction_type).toLowerCase()}` as never) }
+      : null,
+    facts?.area ? { label: t('prop_fact_area'), value: `${facts.area} m²` } : null,
+    facts?.rooms ? { label: t('prop_unit_rooms'), value: String(facts.rooms) } : null,
+    facts?.bedrooms ? { label: t('prop_unit_bedrooms'), value: String(facts.bedrooms) } : null,
+  ].filter(Boolean) as Array<{ label: string; value: string }>;
+
+  /*
+   * The contextual action. Matches when there are matches; otherwise the discovery this
+   * property's transaction type actually supports — a rental has no buyers, so offering
+   * to find them is offering something that cannot succeed.
+   */
+  const action = intelligenceActionFor(property.transaction_type as string | null);
+  /* A historical property with no number keeps everything except the ability to start a
+     NEW search. Nothing is archived, nothing is fabricated, nothing is deleted. */
+  const contactReady = hasContactReadiness(property);
+
+  const ownerAction = (intel?.total ?? 0) > 0
+    ? t('prop_view_matches')
+    : action ? t(`prop_action_${action.toLowerCase()}` as never) : t('prop_view_matches');
 
   return (
-    <AppLayout>
-      <div className="max-w-3xl mx-auto space-y-6">
+    /*
+     * `.hm-owner` — the established dark block, the same one the portfolio wears. A
+     * customer opening a property from that list should not cross a theme boundary
+     * doing it.
+     *
+     * 72rem rather than a 768px column: this page has a gallery, a facts grid and a side
+     * rail, and three of those in a phone-width strip is the composition the workspace
+     * was rebuilt to stop doing.
+     */
+    <AppLayout noPadding surfaceClass={OWNER_SURFACE}>
+      <div className="mx-auto w-full max-w-[72rem] space-y-5 px-4 py-4 pb-[calc(2rem+env(safe-area-inset-bottom))] sm:px-6 lg:px-8">
         {/* Back + actions */}
         <div className="flex items-center justify-between gap-4">
+          {/* Both were words with handlers. The one that leaves the page and the one
+              that destroys a property are the two that most need to look like controls. */}
           <button
-            onClick={() => navigate('/dashboard')}
-            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+            type="button"
+            onClick={() => navigate('/property')}
+            className={OWNER_SECONDARY}
           >
-            <ArrowLeft className={`h-4 w-4 ${isRTL ? 'rotate-180' : ''}`} />
-            {t('nav_dashboard')}
+            <ArrowLeft className={`h-3.5 w-3.5 shrink-0 ${isRTL ? 'rotate-180' : ''}`} />
+            <span className="break-words text-start">{t('prop_page_title')}</span>
           </button>
-          <Button
-            variant="ghost"
-            size="sm"
+          <button
+            type="button"
             onClick={() => setShowDelete(true)}
-            className="text-destructive hover:text-destructive hover:bg-destructive/10 h-8 gap-1.5"
+            aria-label={t('prop_delete')}
+            className={`${OWNER_ICON} hover:border-destructive/60 hover:text-destructive`}
           >
-            <Trash2 className="h-4 w-4" />
-            {t('prop_delete')}
-          </Button>
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
         </div>
 
         {/*
@@ -438,23 +512,129 @@ function PropertyDetailContent() {
           Storage is not reimplemented: PrivateImage is still the one thing that knows a
           private key from an absolute URL.
         */}
-        <div className="relative">
-          <PropertyGallery
-            source={{
-              coverPhotoUrl: property.cover_photo_url,
-              photos: property.photos,
-              galleryImages: (facts as { gallery_images?: string[] } | null)?.gallery_images ?? null,
-            }}
-            title={property.title ?? t('prop_alt_fallback')}
-          />
-          {isPrivate && (
-            <div className="absolute top-3 start-3 z-10">
-              <span className="status-private flex items-center gap-1.5">
-                <Lock className="h-3 w-3" />
-                {t('prop_private_badge')}
-              </span>
+        {/*
+          ── THE FIRST SCREEN: PHOTOGRAPH AND IDENTITY, SIDE BY SIDE ──
+          A gallery across 72rem is 460px tall and pushes the property's own price and
+          facts below the fold, which is a control centre whose first screen is one
+          photograph. At lg the image takes the width a landscape cover reads at and the
+          identity sits beside it; below lg they stack, which is the right order on a
+          phone anyway.
+        */}
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] lg:items-start">
+          <div className="relative min-w-0">
+            <PropertyGallery
+              source={{
+                coverPhotoUrl: property.cover_photo_url,
+                photos: property.photos,
+                galleryImages: (facts as { gallery_images?: string[] } | null)?.gallery_images ?? null,
+              }}
+              title={property.title ?? t('prop_alt_fallback')}
+            />
+            {isPrivate && (
+              <div className="absolute top-3 start-3 z-10">
+                <span className="status-private flex items-center gap-1.5">
+                  <Lock className="h-3 w-3" />
+                  {t('prop_private_badge')}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* ── IDENTITY ─────────────────────────────────────────────── */}
+          <div className="min-w-0 space-y-4">
+            <div className="min-w-0 space-y-2">
+              <h1 className="font-display text-xl font-semibold leading-tight tracking-[-0.015em] text-foreground [overflow-wrap:anywhere]">
+                {property.title ?? (isPrivate ? t('prop_title_private_fallback') : t('prop_title_imported_fallback'))}
+              </h1>
+              {locationParts && (
+                <p className="flex min-w-0 items-center gap-1.5 text-2xs text-muted-foreground">
+                  <MapPin className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--primary))]" aria-hidden="true" />
+                  <span className="break-words">{locationParts}</span>
+                </p>
+              )}
+              {/* The permanent reference, quiet and selectable. */}
+              <PropertyReference id={property.homatch_id} />
             </div>
-          )}
+
+            {/*
+              THE PRICE IS A NUMBER, NOT A CARD. It was one of three bordered tiles
+              captioned PRICE / PER M² / AREA — a container each for one figure, which
+              made the most important number on the page the same size as the least.
+            */}
+            <div className="min-w-0">
+              {facts?.total_price ? (
+                <>
+                  <p className="font-display text-2xl font-bold leading-none tracking-[-0.02em] text-foreground tabular-nums" dir="ltr">
+                    {money(Number(facts.total_price), String(facts.currency ?? 'USD'))}
+                  </p>
+                  {facts?.price_per_sqm ? (
+                    <p className="mt-1.5 text-2xs text-muted-foreground tabular-nums" dir="ltr">
+                      {money(Number(facts.price_per_sqm), String(facts.currency ?? 'USD'))}/m²
+                    </p>
+                  ) : null}
+                </>
+              ) : (
+                <p className="text-2xs text-muted-foreground">{t('prop_no_price')}</p>
+              )}
+            </div>
+
+            {/* The facts that decide a property, as values rather than tiles. */}
+            <FactLine items={headFacts} />
+
+            {/* ── HOMATCH INTELLIGENCE AND THE ONE ACTION ─────────────── */}
+            <div className="hm-owner-panel space-y-2.5 p-3.5">
+              <IntelLine
+                total={intel?.total ?? 0}
+                fresh={intel?.fresh ?? 0}
+                strong={intel?.strong ?? 0}
+              />
+              {/*
+                A SEARCH CANNOT START WITHOUT SOMEWHERE TO SEND PEOPLE.
+                Where the property has no contact number the same control says the one
+                thing that has to happen first and goes to the field that does it. The
+                action is not disabled and nothing is hidden — a disabled button with a
+                tooltip is a puzzle, and this is a sentence.
+              */}
+              {contactReady ? (
+                <Link to={`/property/${id}/matches`} className={cn(OWNER_PRIMARY, 'w-full')}>
+                  <span className="break-words text-center leading-snug">{ownerAction}</span>
+                </Link>
+              ) : (
+                <>
+                  <Link to={`/property/${id}/edit#contact`} className={cn(OWNER_PRIMARY, 'w-full')}>
+                    <Phone className="h-3.5 w-3.5 shrink-0" />
+                    <span className="break-words text-center leading-snug">
+                      {t('contact_phone_add')}
+                    </span>
+                  </Link>
+                  <p className="break-words text-2xs leading-relaxed text-muted-foreground">
+                    {t('contact_phone_missing_body')}
+                  </p>
+                </>
+              )}
+              <div className="flex items-center gap-1.5">
+                <Link to={`/property/${id}/edit`} className={cn(OWNER_SECONDARY, 'flex-1')}>
+                  <Pencil className="h-3.5 w-3.5 shrink-0" />
+                  <span className="break-words text-start">{t('prop_action_edit')}</span>
+                </Link>
+                <Link to={`/property/${id}/edit#photos`} className={OWNER_ICON} aria-label={t('prop_action_photos')}>
+                  <Camera className="h-3.5 w-3.5" />
+                </Link>
+              </div>
+            </div>
+
+            {facts?.source_url && (
+              <a
+                href={facts.source_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-2xs text-[hsl(var(--primary))] hover:underline"
+              >
+                <ExternalLink className="h-3 w-3 shrink-0" />
+                {t('prop_source_link')}
+              </a>
+            )}
+          </div>
         </div>
 
         {/* Canonical dedup banner */}
@@ -463,56 +643,6 @@ function PropertyDetailContent() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {/* Main info */}
           <div className="md:col-span-2 space-y-5">
-            {/* Title & location */}
-            <div>
-              <h1 className="text-xl font-semibold text-foreground">
-                {property.title ?? (isPrivate ? t('prop_title_private_fallback') : t('prop_title_imported_fallback'))}
-              </h1>
-              {locationParts && (
-                <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1.5">
-                  <MapPin className="h-4 w-4 shrink-0" />
-                  {locationParts}
-                </p>
-              )}
-              {facts?.source_url && (
-                <a
-                  href={facts.source_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-primary hover:underline flex items-center gap-1 mt-1.5"
-                >
-                  <ExternalLink className="h-3 w-3" />
-                  {t('prop_source_link')}
-                </a>
-              )}
-            </div>
-
-            {/* Key metrics */}
-            <div className="grid grid-cols-3 gap-3">
-              {facts?.total_price && (
-                <div className="rounded-lg border border-border bg-card p-3">
-                  <p className="text-xs text-muted-foreground mb-1">{t('prop_price_label')}</p>
-                  <p className="font-semibold text-foreground text-sm" dir="ltr">
-                    {Number(facts.total_price).toLocaleString()} {facts.currency}
-                  </p>
-                </div>
-              )}
-              {facts?.price_per_sqm && (
-                <div className="rounded-lg border border-border bg-card p-3">
-                  <p className="text-xs text-muted-foreground mb-1">{t('prop_per_sqm_label')}</p>
-                  <p className="font-semibold text-foreground text-sm" dir="ltr">
-                    {Number(facts.price_per_sqm).toLocaleString()} {facts.currency}
-                  </p>
-                </div>
-              )}
-              {facts?.area && (
-                <div className="rounded-lg border border-border bg-card p-3">
-                  <p className="text-xs text-muted-foreground mb-1">{t('prop_area_label')}</p>
-                  <p className="font-semibold text-foreground text-sm" dir="ltr">{facts.area} m²</p>
-                </div>
-              )}
-            </div>
-
             {/* Facts */}
             <div className="rounded-xl border border-border bg-card p-4">
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">{t('prop_details_label')}</h3>

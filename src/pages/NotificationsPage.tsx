@@ -1,90 +1,304 @@
-import React, { useEffect, useState } from 'react';
-import { NotificationSettings } from '@/components/notifications/NotificationSettings';
+// THE NOTIFICATION CENTRE.
+//
+// WHAT IT REPLACES was a working list that had never been designed. Three hundred
+// characters of JSX on one line, a `NOTIF_CONFIG` map assigning `text-green-400`,
+// `text-yellow-400` and `text-destructive` per type — six accent colours in one list, which
+// is the badge soup this design language keeps removing — a 2px unread dot, and every item
+// rendered at whatever the root palette happened to be. It told the truth and looked like
+// a debug view.
+//
+// WHAT IT IS NOW is the light premium shell it belongs to, and three decisions:
+//
+//   THE LIST IS FILTERED, NOT CATEGORISED. Unread and All. A category rail over eight
+//   notification types would be filter complexity in a list most people have twelve rows
+//   in; the type is legible from the mark and the sentence.
+//
+//   READ IS AN ACT, NOT AN ARRIVAL. Opening this page does not mark anything read —
+//   walking past your post is not opening it. A row becomes read when it is tapped, or
+//   when somebody asks for all of them at once. That keeps the bell and this list
+//   agreeing, which is the one contradiction a notification centre must not have.
+//
+//   ONE ACCENT, TWO ROLES. Gold marks the things that want something from you — a
+//   message, a match, a property that cannot proceed. Everything else is quiet. See
+//   presentation.tsx, where that decision lives once for this page and the live card
+//   both.
+//
+// WHAT IT DOES NOT DO
+//
+//   Load everything. A recent page, then more on request, by created_at cursor — an
+//   offset shifts under anything arriving while somebody reads.
+//
+//   Trust a stored URL. Destinations come from notificationHref(), which follows a path
+//   and never an absolute address. A list of things the platform told you is the most
+//   trusted surface there is and the worst place for an open redirect.
+
+import { Bell, CheckCheck, Loader2 } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
+import { RouteGuard } from '@/components/common/RouteGuard';
+import { AppLayout } from '@/components/layouts/AppLayout';
+import { NotificationSettings } from '@/components/notifications/NotificationSettings';
+import {
+  notificationAge, notificationHref, notificationMark, notificationText,
+} from '@/components/notifications/presentation';
+import { intlLocaleFor } from '@/components/workspace/primitives';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { AppLayout } from '@/components/layouts/AppLayout';
-import { RouteGuard } from '@/components/common/RouteGuard';
-import { Button } from '@/components/ui/button';
-import { getNotifications, markNotificationRead, markAllNotificationsRead } from '@/services/api';
+import { cn } from '@/lib/utils';
+import {
+  getNotifications, markAllNotificationsRead, markNotificationRead,
+} from '@/services/api';
 import type { Notification } from '@/types/types';
-import { Bell, CheckCheck, Zap, CreditCard, PauseCircle, MessageSquare, CalendarDays } from 'lucide-react';
-import { toast } from 'sonner';
 
-const NOTIF_CONFIG: Record<string, { icon: React.ElementType; color: string; bg: string }> = {
-  IMPORT_COMPLETED: { icon: Bell, color: 'text-green-400', bg: 'bg-green-400/10' }, IMPORT_FAILED: { icon: Bell, color: 'text-destructive', bg: 'bg-destructive/10' }, MATCHING_STARTED: { icon: Zap, color: 'text-primary', bg: 'bg-primary/10' }, MATCHING_PAUSED: { icon: PauseCircle, color: 'text-muted-foreground', bg: 'bg-secondary' }, MATCH_FOUND: { icon: Zap, color: 'text-yellow-400', bg: 'bg-yellow-400/10' }, MATCH_AVAILABLE: { icon: Zap, color: 'text-yellow-400', bg: 'bg-yellow-400/10' }, CREDITS_TOPPED_UP: { icon: CreditCard, color: 'text-green-400', bg: 'bg-green-400/10' }, LOW_CREDITS: { icon: CreditCard, color: 'text-yellow-400', bg: 'bg-yellow-400/10' }, RESEARCH_PRODUCT_PURCHASED: { icon: CreditCard, color: 'text-green-400', bg: 'bg-green-400/10' }, VERIFY_COMPLETE: { icon: Bell, color: 'text-primary', bg: 'bg-primary/10' }, DOCUMENT_ANALYZED: { icon: Bell, color: 'text-primary', bg: 'bg-primary/10' }, DEFAULT: { icon: Bell, color: 'text-muted-foreground', bg: 'bg-secondary' },
-};
-// Maps a notification's stable `type` + `metadata.kind` (never its stored
-// English `title`/`body`, which are a write-time fallback only — e.g. for a
-// future push notification — and would otherwise freeze every notification
-// in whatever language the backend happened to write it in) to translation
-// keys, so the list always renders in the *viewer's* current language.
-// A row that predates this mapping, or matches nothing below, still shows
-// its original stored title/body rather than an empty item.
-function localizedNotifText(notif: Notification, t: (key: string, vars?: Record<string, string | number>) => string): { title: string; body: string } {
-  const meta = (notif.metadata ?? {}) as Record<string, unknown>;
-  const kind = typeof meta.kind === 'string' ? meta.kind : '';
-  const status = typeof meta.status === 'string' ? meta.status : '';
+const PAGE = 25;
 
-  if (kind === 'NEW_PROPERTY_MATCH') return { title: t('notif_new_property_match_title'), body: t('notif_new_property_match_body') };
-  if (kind === 'NEW_SIGNAL_MATCH') return { title: t('notif_new_signal_match_title'), body: t('notif_new_signal_match_body') };
-  if (kind === 'NEW_MESSAGE') return { title: t('notif_new_message_title'), body: t('notif_new_message_body') };
-  if (kind === 'VIEWING_REQUEST') return { title: t('notif_viewing_request_title'), body: t('notif_viewing_request_body') };
-  if (kind === 'VIEWING_UPDATE') {
-    const statusKey: Record<string, string> = {
-      ACCEPTED: 'notif_viewing_accepted_title', DECLINED: 'notif_viewing_declined_title',
-      RESCHEDULE_PROPOSED: 'notif_viewing_reschedule_title', CANCELLED: 'notif_viewing_cancelled_title',
-      COMPLETED: 'notif_viewing_completed_title',
-    };
-    const statusWordKey: Record<string, string> = {
-      ACCEPTED: 'view_status_accepted', DECLINED: 'view_status_declined',
-      RESCHEDULE_PROPOSED: 'view_status_reschedule', CANCELLED: 'view_status_cancelled',
-      COMPLETED: 'view_status_completed',
-    };
-    const title = t(statusKey[status] ?? 'notif_viewing_update_title');
-    const body = t('notif_viewing_status_body', { status: t(statusWordKey[status] ?? 'view_status_pending') });
-    return { title, body };
-  }
-  // Typed alerts with no `kind` of their own. Without these they fell through
-  // to the stored English title/body, which is exactly the freezing-in-one-
-  // language problem the mapping above exists to avoid.
-  if (notif.type === 'LOW_CREDITS') return { title: t('notif_low_credits_title'), body: t('notif_low_credits_body') };
-  if (notif.type === 'RESEARCH_PRODUCT_PURCHASED') return { title: t('notif_research_purchased_title'), body: t('notif_research_purchased_body') };
+type Filter = 'UNREAD' | 'ALL';
 
-  return { title: notif.title, body: notif.body ?? '' };
+/** One notification, as a row somebody reads rather than a record somebody parses. */
+function NotifRow({
+  notif,
+  onOpen,
+}: {
+  notif: Notification;
+  onOpen: (notif: Notification) => void;
+}) {
+  const { t, lang } = useLanguage();
+  const { title, body } = notificationText(notif, t);
+  const { icon: Icon, tone } = notificationMark(notif);
+  const age = notificationAge(notif.created_at, t, intlLocaleFor(lang));
+
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(notif)}
+      className={cn(
+        'flex w-full items-start gap-3 border-b border-border/70 px-4 py-3.5 text-start',
+        'transition-colors last:border-0 hover:bg-[hsl(var(--secondary))]/50',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[hsl(var(--ring))]',
+        /* Unread is a ground, not a dot. A 2px circle at the end of a row is a legend
+           nobody was given; a tinted row is read without being explained. */
+        !notif.read && 'bg-[hsl(var(--gold-soft))]/45',
+      )}
+    >
+      <span
+        className={cn(
+          'grid h-8 w-8 shrink-0 place-items-center rounded-full ring-1 ring-inset',
+          tone === 'accent'
+            ? 'bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))] ring-[hsl(var(--gold-border))]'
+            : tone === 'alert'
+              ? 'bg-[hsl(var(--destructive))]/10 text-[hsl(var(--destructive))] ring-[hsl(var(--destructive))]/25'
+              : 'bg-[hsl(var(--secondary))] text-muted-foreground ring-border',
+        )}
+        aria-hidden="true"
+      >
+        <Icon className="h-4 w-4" />
+      </span>
+
+      <span className="min-w-0 flex-1 space-y-0.5">
+        <span className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+          <span
+            className={cn(
+              'min-w-0 break-words font-display text-2xs',
+              notif.read ? 'font-medium text-foreground/80' : 'font-semibold text-foreground',
+            )}
+          >
+            {title}
+          </span>
+          {/* The age, on the title's own line rather than as a third paragraph. */}
+          <span className="shrink-0 text-2xs text-muted-foreground/80">{age}</span>
+        </span>
+        {body ? (
+          <span className="line-clamp-2 block break-words text-2xs text-muted-foreground">
+            {body}
+          </span>
+        ) : null}
+      </span>
+    </button>
+  );
 }
 
-function NotifItem({ notif, onRead, onClick }: { notif: Notification; onRead: (id: string) => void; onClick: (notif: Notification) => void }) {
-  const { t } = useLanguage();
-  const meta = (notif.metadata ?? {}) as Record<string, unknown>; const kind = typeof meta.kind === 'string' ? meta.kind : ''; const base = NOTIF_CONFIG[notif.type ?? 'DEFAULT'] ?? NOTIF_CONFIG.DEFAULT; const cfg = kind === 'NEW_MESSAGE' ? { ...base, icon: MessageSquare } : kind.startsWith('VIEWING_') ? { ...base, icon: CalendarDays } : base; const Icon = cfg.icon;
-  const { title, body } = localizedNotifText(notif, t);
-  const timeAgo = (dateStr: string) => { const diff = Date.now() - new Date(dateStr).getTime(); const m = Math.floor(diff / 60000), h = Math.floor(m / 60), d = Math.floor(h / 24); if (d > 0) return t('time_days_ago', { n: d }); if (h > 0) return t('time_hours_ago', { n: h }); if (m > 0) return t('time_minutes_ago', { n: m }); return t('time_just_now'); };
-  return <button type="button" className={`w-full flex items-start gap-3 px-4 py-3.5 border-b border-border/50 last:border-0 transition-colors text-start hover:bg-secondary/30 ${!notif.read ? 'bg-primary/5' : ''}`} onClick={() => { if (!notif.read) onRead(notif.id); onClick(notif); }}><span className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${cfg.bg}`}><Icon className={`h-4 w-4 ${cfg.color}`} /></span><span className="flex-1 min-w-0"><span className={`block text-sm break-words ${notif.read ? 'text-muted-foreground' : 'text-foreground font-medium'}`}>{title}</span>{body && <span className="block text-xs text-muted-foreground/70 mt-0.5 line-clamp-2 break-words">{body}</span>}<span className="block text-xs text-muted-foreground/40 mt-1">{timeAgo(notif.created_at)}</span></span>{!notif.read && <span className="w-2 h-2 rounded-full bg-primary shrink-0 mt-1.5" />}</button>;
-}
 function NotificationsContent() {
-  const { homatchUser } = useAuth(); const { t } = useLanguage(); const navigate = useNavigate(); const [notifications, setNotifications] = useState<Notification[]>([]); const [loading, setLoading] = useState(true);
-  useEffect(() => { if (!homatchUser) return; getNotifications(homatchUser.id, 30).then(data => { setNotifications(data); }).catch(() => { toast.error(t('notif_load_error')); }).finally(() => setLoading(false)); }, [homatchUser, t]);
-  const handleRead = async (id: string) => { await markNotificationRead(id); setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n)); }; const handleReadAll = async () => { if (!homatchUser) return; await markAllNotificationsRead(homatchUser.id); setNotifications(prev => prev.map(n => ({ ...n, read: true }))); };
+  const { homatchUser } = useAuth();
+  const { t } = useLanguage();
+  const navigate = useNavigate();
+
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [filter, setFilter] = useState<Filter>('ALL');
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [exhausted, setExhausted] = useState(false);
+
+  const userId = homatchUser?.id ?? null;
+
+  const load = useCallback(async (which: Filter) => {
+    if (!userId) return;
+    setLoading(true);
+    try {
+      const rows = await getNotifications(userId, PAGE, { unreadOnly: which === 'UNREAD' });
+      setNotifications(rows);
+      setExhausted(rows.length < PAGE);
+    } catch {
+      toast.error(t('notif_load_error'));
+    } finally {
+      setLoading(false);
+    }
+  }, [userId, t]);
+
+  useEffect(() => { void load(filter); }, [load, filter]);
+
+  const more = async () => {
+    if (!userId || loadingMore || exhausted) return;
+    const oldest = notifications[notifications.length - 1]?.created_at;
+    if (!oldest) return;
+    setLoadingMore(true);
+    try {
+      const rows = await getNotifications(userId, PAGE, {
+        unreadOnly: filter === 'UNREAD',
+        before: oldest,
+      });
+      setNotifications((prev) => [...prev, ...rows]);
+      setExhausted(rows.length < PAGE);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
   /*
-   * WHERE A NOTIFICATION GOES WHEN IT IS TAPPED.
+   * TAPPING A ROW IS WHAT READS IT.
    *
-   * The producer already decided, and said so in deep_link. Reading it here
-   * is not a convenience: notify_emit does not write property_id, so the
-   * fallback below — which routes a match by property_id — quietly stopped
-   * finding one for every event that went through the canonical path. The
-   * notification arrived, was clickable, and did nothing.
-   *
-   * The fallback stays for the rows written before deep_link existed. It can
-   * be removed when those have aged out; there is no rush, and guessing
-   * wrongly which day that is costs somebody a dead tap.
-   *
-   * Only a path is followed. An absolute URL cannot reach the column, but a
-   * restored row or a direct database write could carry one, and navigate()
-   * with an off-site address is an open redirect out of a list of things the
-   * platform told you.
+   * Not arriving on the page, and not scrolling past. The optimistic update keeps the row
+   * where it is rather than making it vanish out from under the tap in the Unread filter
+   * — the list is refiltered the next time it loads, which is the less startling moment.
    */
-  const handleNotifClick = (notif: Notification) => { const link = typeof notif.deep_link === 'string' ? notif.deep_link : ''; if (link.startsWith('/') && !link.startsWith('//')) { navigate(link); return; } const meta = (notif.metadata ?? {}) as Record<string, unknown>; const kind = typeof meta.kind === 'string' ? meta.kind : ''; if (kind === 'NEW_MESSAGE') { const id = typeof meta.conversation_id === 'string' ? meta.conversation_id : ''; navigate(id ? `/chat?conversation=${encodeURIComponent(id)}` : '/chat'); return; } if (kind === 'VIEWING_REQUEST' || kind === 'VIEWING_UPDATE') { const id = typeof meta.viewing_request_id === 'string' ? meta.viewing_request_id : ''; navigate(id ? `/viewings?request=${encodeURIComponent(id)}` : '/viewings'); return; } if (notif.type === 'MATCH_AVAILABLE' || notif.type === 'MATCH_FOUND') { const propId = notif.property_id ?? (typeof meta.property_id === 'string' ? meta.property_id : undefined); if (propId) navigate(`/property/${propId}/matches`); return; } if (notif.type === 'CREDITS_TOPPED_UP' || notif.type === 'LOW_CREDITS' || notif.type === 'RESEARCH_PRODUCT_PURCHASED') { navigate('/credits'); return; } if (notif.property_id) navigate(`/property/${notif.property_id}`); };
-  const unread = notifications.filter(n => !n.read).length;
-  return <AppLayout><div className="max-w-2xl mx-auto space-y-6"><div className="flex items-start justify-between gap-3 flex-wrap"><div className="min-w-0"><h1 className="text-xl font-semibold text-foreground break-words">{t('notif_title')}</h1>{unread > 0 && <p className="text-sm text-muted-foreground mt-0.5">{t('notif_unread_count', { n: unread })}</p>}</div>{unread > 0 && <Button variant="ghost" size="sm" onClick={handleReadAll} className="gap-1.5 text-sm text-muted-foreground hover:text-foreground border border-border"><CheckCheck className="h-4 w-4 shrink-0" />{t('notif_mark_all_read')}</Button>}</div><div className="rounded-xl border border-border bg-card overflow-hidden">{loading ? <div className="p-6 space-y-3">{[...Array(4)].map((_, i) => <div key={i} className="flex gap-3 items-start"><div className="w-8 h-8 rounded-full bg-muted shrink-0 animate-pulse" /><div className="flex-1 space-y-1.5"><div className="h-3.5 bg-muted rounded animate-pulse w-2/3" /><div className="h-3 bg-muted rounded animate-pulse w-1/3" /></div></div>)}</div> : notifications.length === 0 ? <div className="p-12 text-center space-y-3"><Bell className="h-8 w-8 text-muted-foreground/20 mx-auto mb-1" /><p className="text-sm text-muted-foreground">{t('empty_no_notifications_title')}</p><p className="text-xs text-muted-foreground/60">{t('empty_no_notifications_desc')}</p></div> : notifications.map(n => <NotifItem key={n.id} notif={n} onRead={handleRead} onClick={handleNotifClick} />)}</div><NotificationSettings /></div></AppLayout>;
+  const open = (notif: Notification) => {
+    if (!notif.read) {
+      setNotifications((prev) => prev.map((n) => (n.id === notif.id ? { ...n, read: true } : n)));
+      void markNotificationRead(notif.id);
+    }
+    const href = notificationHref(notif);
+    if (href) navigate(href);
+  };
+
+  const readAll = async () => {
+    if (!userId) return;
+    await markAllNotificationsRead(userId);
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  };
+
+  const unread = useMemo(() => notifications.filter((n) => !n.read).length, [notifications]);
+
+  return (
+    <AppLayout>
+      {/*
+        THE LIGHT PREMIUM SHELL, which is where notifications belong: they are part of
+        the application chrome rather than a product page, and the Dashboard beside them
+        wears the same block. See src/index.css for the token note.
+      */}
+      <div className="hm-customer -mx-4 -my-6 min-h-[calc(100dvh-4rem)] px-4 py-6 md:-mx-6 md:-my-8 md:px-6 md:py-8">
+        <div className="mx-auto w-full max-w-2xl space-y-4">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div className="min-w-0 space-y-1">
+              <h1 className="break-words font-display text-xl font-semibold tracking-[-0.015em] text-foreground">
+                {t('notif_title')}
+              </h1>
+              {unread > 0 && (
+                <p className="break-words text-2xs text-muted-foreground">
+                  {t('notif_unread_count', { n: unread })}
+                </p>
+              )}
+            </div>
+            {unread > 0 && (
+              <button
+                type="button"
+                onClick={() => { void readAll(); }}
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-2xs font-semibold text-foreground transition-colors hover:border-[hsl(var(--ring))]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+              >
+                <CheckCheck className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span className="break-words text-start">{t('notif_mark_all_read')}</span>
+              </button>
+            )}
+          </div>
+
+          {/* Two filters, not eight categories. */}
+          <div className="flex items-center gap-1.5">
+            {(['ALL', 'UNREAD'] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setFilter(value)}
+                aria-pressed={filter === value}
+                className={cn(
+                  'inline-flex min-h-8 items-center rounded-full border px-3 text-2xs font-semibold transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]',
+                  filter === value
+                    ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))]'
+                    : 'border-border bg-card text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {t(value === 'ALL' ? 'notif_filter_all' : 'notif_filter_unread')}
+              </button>
+            ))}
+          </div>
+
+          <div className="overflow-hidden rounded-2xl border border-border bg-card">
+            {loading ? (
+              <div className="space-y-3 p-4">
+                {[0, 1, 2, 3].map((row) => (
+                  <div key={row} className="flex items-start gap-3">
+                    <div className="h-8 w-8 shrink-0 animate-pulse rounded-full bg-[hsl(var(--secondary))]" />
+                    <div className="flex-1 space-y-1.5">
+                      <div className="h-3 w-2/3 animate-pulse rounded bg-[hsl(var(--secondary))]" />
+                      <div className="h-3 w-1/3 animate-pulse rounded bg-[hsl(var(--secondary))]" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : notifications.length === 0 ? (
+              <div className="flex flex-col items-start gap-2 px-5 py-8">
+                <span
+                  className="grid h-9 w-9 place-items-center rounded-full bg-[hsl(var(--secondary))] text-muted-foreground ring-1 ring-inset ring-border"
+                  aria-hidden="true"
+                >
+                  <Bell className="h-4 w-4" />
+                </span>
+                <p className="break-words font-display text-sm font-semibold text-foreground">
+                  {t(filter === 'UNREAD' ? 'notif_empty_unread' : 'empty_no_notifications_title')}
+                </p>
+                <p className="max-w-prose break-words text-2xs leading-relaxed text-muted-foreground">
+                  {t('empty_no_notifications_desc')}
+                </p>
+              </div>
+            ) : (
+              notifications.map((notif) => (
+                <NotifRow key={notif.id} notif={notif} onOpen={open} />
+              ))
+            )}
+          </div>
+
+          {!loading && notifications.length > 0 && !exhausted && (
+            <button
+              type="button"
+              onClick={() => { void more(); }}
+              disabled={loadingMore}
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-2xs font-semibold text-foreground transition-colors hover:border-[hsl(var(--ring))]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:opacity-60"
+            >
+              {loadingMore && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />}
+              <span className="break-words text-start">{t('notif_load_more')}</span>
+            </button>
+          )}
+
+          <NotificationSettings />
+        </div>
+      </div>
+    </AppLayout>
+  );
 }
-export default function NotificationsPage() { return <RouteGuard><NotificationsContent /></RouteGuard>; }
+
+export default function NotificationsPage() {
+  return (
+    <RouteGuard>
+      <NotificationsContent />
+    </RouteGuard>
+  );
+}

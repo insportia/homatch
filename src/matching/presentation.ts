@@ -97,33 +97,26 @@ export function counterpartFor(transactionType: string | null | undefined): Coun
  * property" is true of every match, and it is a better thing to show than a confident
  * guess about a person whose intent was never recorded.
  */
-export function headlineKey(
-  counterpart: Counterpart | null,
-  known: { city?: boolean; rooms?: boolean } = {},
-): string {
+export function headlineKey(counterpart: Counterpart | null): string {
   const who = counterpart ? counterpart.toLowerCase() : 'generic';
   /*
-   * TEN IDENTICAL HEADLINES IS NOT A LIST.
+   * IT NAMES A POSSIBILITY, NOT A PERSON'S STATUS.
    *
-   * The first version returned one key per counterpart, and a screenshot of ten matches
-   * was ten cards each reading "A buyer looking for a property like yours". True of all
-   * of them, useful about none of them — the kind of repetition that makes a page read as
-   * generated, and it pushed the only distinguishing facts down a line where they were
-   * competing with a headline that said nothing.
+   * This said "A buyer looking for a 3-bedroom in Tbilisi", and the first two words were
+   * a claim the product cannot support. What was found is a DISCOVERED INTENT SIGNAL: a
+   * person who wrote something compatible with this property. They are not a buyer. They
+   * have not agreed to anything, may have bought elsewhere in the seventeen years since
+   * some of these were posted, and calling them a buyer sets an expectation the evidence
+   * does not carry.
    *
-   * So the headline carries what the signal actually stated. Three shapes, and which one
-   * is used depends on what was RECORDED rather than on what would read nicely: a variant
-   * naming a city we do not have is a variant that renders "looking in undefined".
+   * So the line describes potential interest and the DIRECTION of it — buying, renting,
+   * investing — which the property's own transaction type establishes and which is
+   * therefore safe to say. The counterpart enum keeps its internal names; only the
+   * customer wording changes.
    *
-   * ROOMS WITHOUT A CITY FALLS BACK TO THE BASE FORM. "A buyer looking for a 3-bedroom",
-   * with no place, is a worse headline than the general one — bedroom counts mean
-   * something next to a location and very little on their own.
-   *
-   * Still keys, still never concatenation. Each variant is written per language with its
-   * own word order; `{{rooms}}` and `{{city}}` go where that language puts them.
+   * The city and the room count moved to the facts row, where they are facts rather than
+   * part of an identity claim.
    */
-  if (known.city && known.rooms) return `match_headline_${who}_rooms_city`;
-  if (known.city) return `match_headline_${who}_city`;
   return `match_headline_${who}`;
 }
 
@@ -199,6 +192,61 @@ const REASON_KEYS: Readonly<Record<string, string>> = {
 };
 
 /**
+ * WHAT AGREED, AS THREE NOUNS RATHER THAN A CHECKLIST.
+ *
+ * The card said "Matches on 5 points". A count is not a reason — it tells somebody how
+ * much agreement there was without telling them what agreed, which is the half that
+ * decides whether a lead is worth opening.
+ *
+ * So the eleven agreement literals collapse onto SIX FACETS, and the card says "Fits your
+ * property on location, type and budget." Four separate location reasons (country, city,
+ * district, broadly-compatible) are one fact to a reader; listing them four times is the
+ * checklist dump this replaces.
+ *
+ * Order is fixed and meaningful — deal, location, type, budget, size, needs — so two
+ * cards never phrase the same agreement differently. Deduplicated, because a match with
+ * country AND city AND district agreement has agreed about ONE thing: where.
+ *
+ * The hedge contributes nothing, for the same reason agreementCount() will not count it.
+ */
+const REASON_FACETS: Readonly<Record<string, string>> = {
+  'transaction intent matches': 'match_facet_deal',
+  'country matches': 'match_facet_location',
+  'city matches': 'match_facet_location',
+  'location broadly compatible': 'match_facet_location',
+  'district/neighborhood matches': 'match_facet_location',
+  'property type matches': 'match_facet_type',
+  'budget compatible': 'match_facet_budget',
+  'budget near range': 'match_facet_budget',
+  'area compatible': 'match_facet_size',
+  'description/needs overlap': 'match_facet_needs',
+};
+
+const FACET_ORDER = [
+  'match_facet_deal',
+  'match_facet_location',
+  'match_facet_type',
+  'match_facet_budget',
+  'match_facet_size',
+  'match_facet_needs',
+] as const;
+
+/**
+ * The facets a match agreed on, deduplicated and in a fixed order.
+ *
+ * Empty when nothing recognised agreed — a real state for the earliest matches, and the
+ * card then says nothing rather than asserting a fit it cannot name.
+ */
+export function matchFacets(reasons: readonly string[] | null | undefined): string[] {
+  const found = new Set<string>();
+  for (const reason of reasons ?? []) {
+    const facet = REASON_FACETS[String(reason ?? '').trim().toLowerCase()];
+    if (facet) found.add(facet);
+  }
+  return FACET_ORDER.filter((facet) => found.has(facet));
+}
+
+/**
  * The i18n key for one stored reason, or null when we have never seen the phrase.
  *
  * Null rather than a guess, and the caller then shows the raw phrase. A reason we cannot
@@ -266,6 +314,56 @@ function scaleDays(days: number): { key: string; count: number } {
   if (days >= 730) return { key: 'match_recency_years', count: Math.round(days / 365) };
   if (days >= 60) return { key: 'match_recency_months', count: Math.round(days / 30) };
   return { key: 'match_recency_days', count: days };
+}
+
+/**
+ * A matching dimension, as the word the customer used for it.
+ *
+ * `agreed`, `conflicted` and `preference_misses` are arrays of the MatchDimension enum —
+ * CITY, DISTRICT, PROPERTY_TYPE, PRICE — and a card that printed them showed a Georgian
+ * customer "DISTRICT". They are the same six things the search plan asks about, so the
+ * plan's own labels are the translation, already written in six languages.
+ *
+ * Null for a dimension with no customer-facing name. The caller shows the raw token
+ * rather than dropping it: an English word is a smaller failure than a missing one.
+ */
+const DIMENSION_KEYS: Readonly<Record<string, string>> = {
+  TRANSACTION: 'plan_row_goal',
+  CITY: 'plan_field_city',
+  DISTRICT: 'plan_field_districts',
+  PROPERTY_TYPE: 'plan_field_types',
+  PRICE: 'plan_field_budget',
+  AREA: 'plan_field_area',
+  BEDROOMS: 'plan_row_bedrooms',
+};
+
+export function dimensionKey(dimension: string | null | undefined): string | null {
+  return DIMENSION_KEYS[String(dimension ?? '').trim().toUpperCase()] ?? null;
+}
+
+/**
+ * The same units, from a timestamp instead of a label.
+ *
+ * Matches carry a preformatted "6309d ago"; a discovered listing carries an ISO date. Two
+ * inputs, one scale — because "4 months ago" has to mean the same thing on both screens,
+ * and a second rounding rule written next to a second screen is how they stop meaning the
+ * same thing.
+ *
+ * Null for a listing whose publication date nobody recorded, which is a real state: the
+ * card says nothing about age rather than implying it is fresh.
+ */
+export function recencyFromDate(
+  iso: string | null | undefined,
+  now: number = Date.now(),
+): { key: string; count: number } | null {
+  if (!iso) return null;
+  const published = Date.parse(String(iso));
+  if (!Number.isFinite(published)) return null;
+  const days = Math.floor((now - published) / 86_400_000);
+  /* A future timestamp is bad data, not a fresh listing, and "-3 days ago" is worse than
+     saying nothing. Today and yesterday both read as days, which is what they are. */
+  if (days < 0) return null;
+  return scaleDays(days);
 }
 
 /**

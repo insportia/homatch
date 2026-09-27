@@ -40,54 +40,72 @@
 // than three zeros dressed as metrics; no photo renders an honest placeholder rather
 // than a stock image of a building that is not theirs.
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
 import {
   Archive, ArchiveRestore, Building2, Camera, Eye, ImageOff, MapPin, MoreVertical,
-  Pause, Pencil, Play, Plus, Trash2, Upload,
+  Pause, Pencil, Phone, Play, Plus, Trash2, Upload,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
+import { PrivateImage } from '@/components/common/PrivateImage';
+import { RouteGuard } from '@/components/common/RouteGuard';
+import {CustomerPageHeader, CustomerSurface, FilterRail, 
+  OWNER_SURFACE, QuietAction,
+} from '@/components/customer/surface';
+import { AppLayout } from '@/components/layouts/AppLayout';
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  FactLine, IntelLine, MediaWell, Money, OWNER_ICON, OWNER_PRIMARY, SourceMark, StatusMark,
+} from '@/components/owner/portfolio';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { toast } from 'sonner';
-import { AppLayout } from '@/components/layouts/AppLayout';
-import { RouteGuard } from '@/components/common/RouteGuard';
-import { PrivateImage } from '@/components/common/PrivateImage';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Skeleton } from '@/components/ui/skeleton';
+import { formatMoney, intlLocaleFor } from '@/components/workspace/primitives';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { placeName } from '@/lib/placeNames';
+import { hasContactReadiness } from '@/lib/propertyContact';
 import { cn } from '@/lib/utils';
-import type { Property } from '@/types/types';
 import {
-  type PortfolioIntelligence,
-  type PortfolioView,
   archiveProperty,
   deleteProperty,
   intelligenceActionFor,
   isImported,
   listPortfolio,
+  type PortfolioIntelligence,
+  type PortfolioView,
   portfolioCounts,
   portfolioIntelligence,
   setPublication,
   unarchiveProperty,
 } from '@/services/propertyManagement';
+import type { Property } from '@/types/types';
 
 /** A price, or nothing. Never a zero standing in for "not priced yet". */
+/*
+ * THE CANONICAL FORMATTER, NOT A TEMPLATE STRING.
+ *
+ * This glued the currency COLUMN onto a locale-formatted number, so a Georgian page read
+ * "USD213,840" while the match cards beside it read "$220,000". formatMoney knows where a
+ * symbol goes in each language and narrowSymbol asks for "$" rather than "US$".
+ */
 function priceLabel(
-  amount: number | null | undefined, currency: string | null | undefined,
+  amount: number | null | undefined,
+  currency: string | null | undefined,
+  locale: string,
 ): string | null {
   if (amount === null || amount === undefined) return null;
   const value = Number(amount);
   if (!Number.isFinite(value) || value <= 0) return null;
-  return `${currency ?? ''}${value.toLocaleString()}`;
+  return formatMoney(value, currency ?? 'USD', locale, { decimals: 0, narrowSymbol: true });
 }
 
 /**
@@ -196,6 +214,26 @@ function IntelCluster({
   );
 }
 
+/**
+ * The one thing this property cannot do yet, and the tap that fixes it.
+ *
+ * Gold, because it is the accent this family uses for "act on this", and one line,
+ * because an owner with nine other properties does not need a card about it. Absent
+ * entirely on a property that has a number — the useful signal is the exception.
+ */
+function ContactNeeded({ id }: { id: string }) {
+  const { t } = useLanguage();
+  return (
+    <Link
+      to={`/property/${id}/edit#contact`}
+      className="inline-flex min-h-8 min-w-0 items-center gap-1.5 text-2xs font-semibold text-[hsl(var(--gold-ink))] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+    >
+      <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      <span className="break-words text-start">{t('contact_phone_add')}</span>
+    </Link>
+  );
+}
+
 function PropertyRow({
   property, intel, onAct, onConfirm,
 }: {
@@ -204,17 +242,20 @@ function PropertyRow({
   onAct: (property: Property, action: 'PUBLISH' | 'PAUSE' | 'UNARCHIVE') => void;
   onConfirm: (pending: PendingAction) => void;
 }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
+  const locale = intlLocaleFor(lang);
   const facts = (Array.isArray(property.facts) ? property.facts[0] : property.facts) as
     Record<string, unknown> | null | undefined;
 
   const id = String(property.id);
   const cover = (property.cover_photo_url as string | null)
     ?? (facts?.cover_image as string | null) ?? null;
-  const price = priceLabel(facts?.total_price as number | null, facts?.currency as string | null);
-  const perSqm = priceLabel(facts?.price_per_sqm as number | null, facts?.currency as string | null);
-  const city = (facts?.city as string | null) ?? null;
-  const district = (facts?.district as string | null) ?? null;
+  const price = priceLabel(facts?.total_price as number | null, facts?.currency as string | null, locale);
+  const perSqm = priceLabel(facts?.price_per_sqm as number | null, facts?.currency as string | null, locale);
+  /* In the reader's script. "Krtsanisi, Tbilisi" sat on a Georgian page under a Georgian
+     property title, beside match cards that had already been fixed to say თბილისი. */
+  const city = placeName(facts?.city as string | null, lang) || null;
+  const district = placeName(facts?.district as string | null, lang) || null;
   const area = facts?.area as number | null;
   const rooms = facts?.rooms as number | null;
   const bedrooms = facts?.bedrooms as number | null;
@@ -236,25 +277,44 @@ function PropertyRow({
   ].filter(Boolean).join(' · ');
 
   const media = (
-    <>
+    <MediaWell hasMedia={Boolean(cover)}>
       {cover ? (
         <PrivateImage
           src={cover}
           alt={String(property.title ?? t('prop_untitled'))}
           className="absolute inset-0 h-full w-full object-cover"
-          pending={<div className="absolute inset-0 animate-pulse bg-secondary/60" />}
-          fallback={<NoPhoto compact />}
+          pending={<div className="absolute inset-0 animate-pulse bg-[hsl(var(--secondary))]" />}
+          fallback={null}
         />
-      ) : (
-        <NoPhoto compact />
-      )}
-      {imported && (
-        <span className="absolute bottom-1.5 start-1.5 rounded bg-background/85 px-1.5 py-0.5 text-[13px] text-muted-foreground shadow-sm max-w-[calc(100%-0.75rem)]">
-          <span className="break-words">{t('prop_source_imported')}</span>
-        </span>
-      )}
-    </>
+      ) : null}
+      {imported && <SourceMark label={t('prop_source_imported')} />}
+    </MediaWell>
   );
+
+  /* A historical property keeps every action except starting a NEW search; the line
+     below says so where the absence has a consequence, and says nothing anywhere else. */
+  const contactReady = hasContactReadiness(property);
+
+  /* Labelled values rather than one middot-joined grey sentence. Only what is real. */
+  const factItems = [
+    /* First, because it is the value somebody scanning for a specific property is
+       scanning for. Same label, same column, every row. */
+    property.homatch_id
+      ? { label: t('prop_reference_label'), value: String(property.homatch_id) }
+      : null,
+    property.property_type
+      ? { label: t('prop_fact_type'), value: t(`prop_type_${String(property.property_type).toLowerCase()}` as never) }
+      : null,
+    property.transaction_type
+      ? { label: t('prop_fact_deal'), value: t(`prop_txn_${String(property.transaction_type).toLowerCase()}` as never) }
+      : null,
+    typeof area === 'number' && area > 0
+      ? { label: t('prop_fact_area'), value: `${area} m²` } : null,
+    typeof rooms === 'number' && rooms > 0
+      ? { label: t('prop_unit_rooms'), value: String(rooms) } : null,
+    typeof bedrooms === 'number' && bedrooms > 0
+      ? { label: t('prop_unit_bedrooms'), value: String(bedrooms) } : null,
+  ].filter(Boolean) as Array<{ label: string; value: string }>;
 
   const menu = (
     <DropdownMenuContent align="end" className="max-w-[min(18rem,calc(100vw-2rem))]">
@@ -305,40 +365,63 @@ function PropertyRow({
     </DropdownMenuContent>
   );
 
-  /* The primary action, and there is exactly one. Matches when there are matches; the
-     contextual find when there are not; nothing at all once archived. */
-  const primary = archived ? null : (
-    /*
-     * h-auto with a MINIMUM, not a fixed h-8. Georgian wraps "მატჩების ნახვა" onto two
-     * lines inside this column and a fixed height clipped the second one -- a button
-     * whose label is cut in half is worse than a taller button.
-     */
-    <Button asChild size="sm" className="h-auto min-h-8 py-1.5 px-3 text-xs min-w-0 whitespace-normal">
-      <Link to={`/property/${id}/matches`}>
-        <span className="break-words min-w-0">
-          {matches > 0
-            ? t('prop_view_matches')
-            : action ? t(`prop_action_${action.toLowerCase()}` as never) : t('prop_view_matches')}
-        </span>
+  /* One contextual primary: matches when there are matches, the contextual discovery
+     when there are none, nothing once archived. */
+  const primaryLabel = matches > 0
+    ? t('prop_view_matches')
+    : action ? t(`prop_action_${action.toLowerCase()}` as never) : t('prop_view_matches');
+
+  /*
+   * THE PRIMARY GETS ITS OWN LINE.
+   *
+   * Measured at 1440 in Georgian: "დაინტერესებული ადამიანების პოვნა" beside two 36px icon
+   * controls in a 17rem column wrapped to three lines and clipped the last one. A button
+   * whose label is cut in half is worse than a taller button, and this product has long
+   * labels by design — the workspace is named in full and its actions are named in full.
+   */
+  const actions = (
+    <div className="flex flex-col gap-1.5">
+      {!archived && (
+        <Link to={`/property/${id}/matches`} className={cn(OWNER_PRIMARY, 'w-full')}>
+          <span className="break-words text-center leading-snug">{primaryLabel}</span>
+        </Link>
+      )}
+      <div className="flex items-center gap-1.5">
+      <Link to={`/property/${id}/edit`} className={OWNER_ICON} aria-label={t('prop_action_edit')}>
+        <Pencil className="h-3.5 w-3.5" />
       </Link>
-    </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button type="button" className={OWNER_ICON} aria-label={t('prop_more_actions')}>
+            <MoreVertical className="h-3.5 w-3.5" />
+          </button>
+        </DropdownMenuTrigger>
+        {menu}
+      </DropdownMenu>
+      </div>
+    </div>
   );
 
+  const place = [district, city].filter(Boolean).join(', ');
+
   return (
-    <Card className="overflow-hidden border-border bg-card transition-colors hover:border-border/80 hover:bg-secondary/20">
-      {/* ── DESKTOP: one compact row ──────────────────────────────────── */}
-      <div className="hidden lg:grid lg:grid-cols-[13rem_minmax(0,1fr)_16rem] lg:items-stretch">
+    /*
+     * A ROW, NOT A CARD. `overflow-hidden` so the media meets the frame, and the whole
+     * thing lifts on hover rather than tinting — a list of properties should respond like
+     * a list.
+     */
+    <article className="hm-owner-panel overflow-hidden transition-shadow hover:shadow-[var(--shadow-hover)]">
+      {/* ── DESKTOP: media · identity · intelligence · actions ────────── */}
+      <div className="hidden lg:grid lg:grid-cols-[13.5rem_minmax(0,1fr)_17rem] lg:items-stretch">
         {/*
-          THE PROPERTY OPENS. A real <Link>, spanning the image and the identity, so it
-          is deep-linkable, middle-clickable, refresh-safe and reachable from the
-          keyboard -- not a div with an onClick. Edit was the only way into a property
-          before this, which made inspecting one indistinguishable from changing it.
-          The actions column is deliberately OUTSIDE the link: a menu inside a link is a
-          click that does two things.
+          THE PROPERTY OPENS. A real <Link> spanning the media and the identity, so it is
+          deep-linkable, middle-clickable, refresh-safe and reachable from the keyboard.
+          The actions column is deliberately outside it: a menu inside a link is a click
+          that does two things.
         */}
         <Link
           to={`/property/${id}`}
-          className="relative min-h-[7.5rem] bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+          className="relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[hsl(var(--ring))]"
           aria-label={String(property.title ?? t('prop_untitled'))}
         >
           {media}
@@ -346,135 +429,79 @@ function PropertyRow({
 
         <Link
           to={`/property/${id}`}
-          className="min-w-0 px-4 py-3 flex flex-col justify-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+          className="flex min-w-0 flex-col justify-center gap-2 px-5 py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[hsl(var(--ring))]"
         >
-          <div className="flex items-start justify-between gap-3 min-w-0">
-            <h3 className="text-[15px] font-semibold leading-snug text-foreground break-words [overflow-wrap:anywhere] min-w-0">
-              {String(property.title ?? t('prop_untitled'))}
-            </h3>
-            <div className="shrink-0 text-end">
-              {price ? (
-                <p className="text-lg font-bold leading-tight text-foreground" dir="ltr">{price}</p>
-              ) : (
-                <p className="text-[13px] text-muted-foreground">{t('prop_no_price')}</p>
-              )}
-              {perSqm && (
-                <p className="text-[13px] text-muted-foreground/70 leading-tight" dir="ltr">
-                  {perSqm}/m²
+          <div className="flex items-start justify-between gap-4 min-w-0">
+            <div className="min-w-0 space-y-1">
+              <h3 className="font-display text-[0.9375rem] font-semibold leading-snug tracking-[-0.01em] text-foreground [overflow-wrap:anywhere]">
+                {String(property.title ?? t('prop_untitled'))}
+              </h3>
+              {place && (
+                <p className="flex min-w-0 items-center gap-1.5 text-2xs text-muted-foreground">
+                  <MapPin className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />
+                  <span className="truncate">{place}</span>
                 </p>
               )}
             </div>
-          </div>
-
-          {(city || district) && (
-            <div className="flex items-start gap-1 text-[13px] text-muted-foreground min-w-0">
-              <MapPin className="h-3 w-3 shrink-0 mt-0.5" />
-              <span className="break-words min-w-0">
-                {[district, city].filter(Boolean).join(', ')}
-              </span>
+            <div className="shrink-0 text-end">
+              <Money price={price} perSqm={perSqm} none={t('prop_no_price')} />
             </div>
-          )}
-          {spec && (
-            <p className="text-[13px] text-muted-foreground/80 break-words leading-snug">{spec}</p>
-          )}
+          </div>
+          <FactLine items={factItems} />
         </Link>
 
-        <div className="min-w-0 border-s border-border/60 px-4 py-3 flex flex-col justify-center gap-2.5">
-          <IntelCluster intel={intel} status={status} archived={archived} dense />
-          <div className="flex items-center gap-1.5">
-            {primary}
-            <Button asChild size="sm" variant="outline" className="h-8 w-8 p-0 shrink-0">
-              <Link to={`/property/${id}/edit`}>
-                <Pencil className="h-3.5 w-3.5" />
-                <span className="sr-only">{t('prop_action_edit')}</span>
-              </Link>
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="sm" variant="outline" className="h-8 w-8 p-0 shrink-0">
-                  <MoreVertical className="h-3.5 w-3.5" />
-                  <span className="sr-only">{t('prop_more_actions')}</span>
-                </Button>
-              </DropdownMenuTrigger>
-              {menu}
-            </DropdownMenu>
-          </div>
+        <div className="flex min-w-0 flex-col justify-center gap-2.5 border-s border-border px-5 py-4">
+          <StatusMark status={status} archived={archived} />
+          <IntelLine
+            total={intel?.total ?? 0}
+            fresh={intel?.fresh ?? 0}
+            strong={intel?.strong ?? 0}
+          />
+          {!contactReady && <ContactNeeded id={id} />}
+          {actions}
         </div>
       </div>
 
-      {/* ── MOBILE: a purpose-built card, not the row squeezed ────────── */}
+      {/* ── MOBILE: the same parts, stacked ───────────────────────────── */}
       <div className="lg:hidden">
-        <Link to={`/property/${id}`} className="block relative aspect-[16/9] bg-secondary/40">
+        <Link to={`/property/${id}`} className="block">
           {media}
         </Link>
-        <CardContent className="p-4 space-y-2.5">
-          <Link to={`/property/${id}`} className="block min-w-0 space-y-1">
-            <h3 className="text-[15px] font-semibold leading-snug text-foreground break-words [overflow-wrap:anywhere]">
+        <div className="space-y-3 p-4">
+          <Link to={`/property/${id}`} className="block min-w-0 space-y-1.5">
+            <h3 className="font-display text-[0.9375rem] font-semibold leading-snug tracking-[-0.01em] text-foreground [overflow-wrap:anywhere]">
               {String(property.title ?? t('prop_untitled'))}
             </h3>
-            {(city || district) && (
-              <div className="flex items-start gap-1 text-[13px] text-muted-foreground min-w-0">
-                <MapPin className="h-3 w-3 shrink-0 mt-0.5" />
-                <span className="break-words min-w-0">
-                  {[district, city].filter(Boolean).join(', ')}
-                </span>
-              </div>
+            {place && (
+              <p className="flex min-w-0 items-center gap-1.5 text-2xs text-muted-foreground">
+                <MapPin className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />
+                <span className="truncate">{place}</span>
+              </p>
             )}
           </Link>
 
-          <div className="flex items-end justify-between gap-3 flex-wrap">
-            <div className="min-w-0">
-              {price ? (
-                <p className="text-xl font-bold leading-tight text-foreground break-words" dir="ltr">
-                  {price}
-                </p>
-              ) : (
-                <p className="text-[13px] text-muted-foreground break-words">{t('prop_no_price')}</p>
-              )}
-              {perSqm && (
-                <p className="text-[13px] text-muted-foreground/70 break-words" dir="ltr">
-                  {perSqm}/m²
-                </p>
-              )}
-            </div>
+          <div className="flex items-end justify-between gap-3">
+            <Money price={price} perSqm={perSqm} none={t('prop_no_price')} />
+            <StatusMark status={status} archived={archived} />
           </div>
 
-          {spec && (
-            <p className="text-[13px] text-muted-foreground/80 break-words leading-snug">{spec}</p>
-          )}
+          <FactLine items={factItems} />
 
-          <IntelCluster intel={intel} status={status} archived={archived} />
-
-          <div className="flex items-center gap-1.5 pt-0.5">
-            {primary && <div className="flex-1 min-w-0 [&>*]:w-full">{primary}</div>}
-            <Button asChild size="sm" variant="outline" className="h-8 w-8 p-0 shrink-0">
-              <Link to={`/property/${id}/edit`}>
-                <Pencil className="h-3.5 w-3.5" />
-                <span className="sr-only">{t('prop_action_edit')}</span>
-              </Link>
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="sm" variant="outline" className="h-8 w-8 p-0 shrink-0">
-                  <MoreVertical className="h-3.5 w-3.5" />
-                  <span className="sr-only">{t('prop_more_actions')}</span>
-                </Button>
-              </DropdownMenuTrigger>
-              {menu}
-            </DropdownMenu>
+          <div className="border-t border-border pt-3 space-y-2.5">
+            <IntelLine
+              total={intel?.total ?? 0}
+              fresh={intel?.fresh ?? 0}
+              strong={intel?.strong ?? 0}
+            />
+            {!contactReady && <ContactNeeded id={id} />}
+            {actions}
           </div>
-        </CardContent>
+        </div>
       </div>
-    </Card>
+    </article>
   );
 }
 
-/**
- * The filter, as a compact segmented control with its counts inline.
- *
- * NOT two large statistic tiles. "1 active, 0 archived" is a small fact and a tile
- * apiece spent a third of the first screenful saying it.
- */
 function ViewSwitch({
   view, counts, onChange,
 }: {
@@ -600,71 +627,90 @@ export default function MyPropertiesPage() {
 
   return (
     <RouteGuard>
-      <AppLayout>
+      {/*
+        `.hm-product`, which is neither the shell's block nor the discovery product's.
+        A property-management workspace wants a quiet light ground and no accent of its
+        own; what it takes from the shared system is the quality floor — ink that is ink,
+        a hairline that reads as a line, tabular figures — and nothing about its palette.
+      */}
+      <AppLayout noPadding surfaceClass={OWNER_SURFACE}>
         {/*
-          A WIDE, PREMIUM CANVAS THAT DOES NOT STRETCH ITS CONTENTS. max-w-[90rem] and
-          the px rhythm the approved workspaces use — wide enough to be a workspace,
-          bounded enough that a list row stays a list row.
+          A WIDE CANVAS THAT DOES NOT STRETCH ITS CONTENTS. max-w-[90rem] and the px
+          rhythm the approved workspaces use — wide enough to be a workspace, bounded
+          enough that a list row stays a list row.
         */}
-        <div className="mx-auto w-full max-w-[90rem] px-4 py-2 sm:px-6 lg:px-8 space-y-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+        <div className="mx-auto w-full max-w-[90rem] px-4 py-4 sm:px-6 lg:px-8 space-y-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
           {/*
             HEADER. Stacked until sm, and the actions are NOT shrink-0 — that one class
             overflowed this page at every width in every language, 492px against a 320px
             viewport in Georgian, because two long labels side by side cannot fit a phone
             and shrink-0 forbade the container from narrowing to let them wrap.
           */}
-          <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border/60 pb-4">
-            <div className="min-w-0 space-y-1">
-              <h1 className="text-xl lg:text-2xl font-bold tracking-tight text-foreground break-words">
-                {t('prop_page_title')}
-              </h1>
-              <p className="text-[13px] text-muted-foreground break-words max-w-2xl">
-                {t('prop_page_subtitle')}
-              </p>
-            </div>
-            <div className="flex w-full items-stretch gap-2 flex-wrap sm:w-auto">
-              <Button
-                variant="outline"
-                size="sm"
+          {/*
+            The approved workspace name is long by design and keeps its two lines; the
+            subtitle moves into the header's own count slot so the title block is two
+            elements rather than three. The actions are the product's own controls — an
+            outlined secondary and a filled primary at control size — not a black shadcn
+            rectangle beside a grey one.
+          */}
+          <header className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-start sm:justify-between">
+            <CustomerPageHeader
+              title={t('prop_page_title')}
+              count={t('prop_page_subtitle')}
+            />
+            <div className="flex w-full items-stretch gap-2 sm:w-auto sm:shrink-0">
+              <QuietAction
+                icon={Upload}
                 onClick={() => navigate('/property/import')}
-                className="flex-1 min-w-0 sm:flex-none h-auto min-h-9 py-1.5 whitespace-normal text-start"
-              >
-                <Upload className="h-4 w-4 me-1.5 shrink-0" />
-                <span className="break-words min-w-0">{t('prop_import_cta')}</span>
-              </Button>
-              <Button
-                size="sm"
+                label={t('prop_import_cta')}
+              />
+              <button
+                type="button"
                 onClick={() => navigate('/property/add')}
-                className="flex-1 min-w-0 sm:flex-none h-auto min-h-9 py-1.5 whitespace-normal text-start"
+                className="inline-flex min-h-9 min-w-0 items-center justify-center gap-1.5 rounded-lg bg-[hsl(var(--primary))] px-3.5 py-1.5 text-2xs font-semibold text-[hsl(var(--primary-foreground))] transition-colors hover:bg-[hsl(var(--primary))]/88 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2"
               >
-                <Plus className="h-4 w-4 me-1.5 shrink-0" />
-                <span className="break-words min-w-0">{t('prop_add_cta')}</span>
-              </Button>
+                <Plus className="h-3.5 w-3.5 shrink-0" />
+                <span className="break-words text-start">{t('prop_add_cta')}</span>
+              </button>
             </div>
           </header>
 
-          <ViewSwitch view={view} counts={counts} onChange={setView} />
+          {/* The shared filter rail rather than this page's own segmented control: two
+              controls doing the same job is two places to fix a Georgian label. */}
+          <FilterRail
+            options={[
+              { value: 'ACTIVE' as const, label: t('prop_tab_active'), count: counts.active },
+              { value: 'ARCHIVED' as const, label: t('prop_tab_archived'), count: counts.archived },
+            ]}
+            value={view}
+            onChange={setView}
+            ariaLabel={t('prop_tab_active')}
+          />
 
           {loading && (
-            <div className="space-y-3">
-              <Skeleton className="h-[7.5rem] rounded-xl" />
-              <Skeleton className="h-[7.5rem] rounded-xl" />
-              <Skeleton className="h-[7.5rem] rounded-xl" />
+            /* Three rows at the height a row actually is, so the page does not resize
+               under the reader when the data lands. */
+            <div className="space-y-2.5">
+              <Skeleton className="h-[8.25rem] rounded-xl" />
+              <Skeleton className="h-[8.25rem] rounded-xl" />
+              <Skeleton className="h-[8.25rem] rounded-xl" />
             </div>
           )}
 
           {failed && (
-            <Card className="bg-card border-border">
-              <CardContent className="p-6 space-y-2 text-center">
-                <p className="text-sm font-medium text-foreground break-words">
-                  {t('prop_load_failed')}
-                </p>
-                <p className="text-[13px] text-muted-foreground break-words">{failed}</p>
-                <Button size="sm" variant="outline" onClick={() => void load()}>
-                  <span className="break-words">{t('prop_retry')}</span>
-                </Button>
-              </CardContent>
-            </Card>
+            <div className="hm-owner-panel p-5 text-center">
+              <p className="font-display text-base font-semibold text-foreground break-words">
+                {t('prop_load_failed')}
+              </p>
+              <p className="mx-auto mt-1 max-w-[46ch] text-2xs text-muted-foreground break-words">
+                {failed}
+              </p>
+              {/* The way out of a failure is the one control on the screen that has to be
+                  unmistakable. */}
+              <div className="mt-3 flex justify-center">
+                <QuietAction onClick={() => void load()} label={t('prop_retry')} />
+              </div>
+            </div>
           )}
 
           {/*

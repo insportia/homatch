@@ -287,7 +287,10 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
       <nav aria-label={t('dnav_aria')} className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
         {NAV.map((group, gi) => (
           <div key={group.key} className={gi ? 'mt-5' : ''}>
-            <p className="px-3 pb-1.5 text-[13px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            {/* A section label, at the weight of a label. tracking-[0.14em] on Georgian
+                small caps was spacing a script that does not have small caps; 0.08em
+                still separates the group without stretching the word. */}
+            <p className="px-3 pb-1 text-[13px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/90">
               {t(group.key)}
             </p>
             {group.items.map(item => {
@@ -305,27 +308,35 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
                    * a third line carrying one word, which reads as an accident.
                    * 14px is a normal navigation size and nothing here is truncated.
                    */
-                  className={`relative mt-0.5 flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm leading-snug transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                  className={`relative mt-0.5 flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm leading-snug transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                     active
-                      // Strong gold with black text. A selected row should be
-                      // the most certain thing on the rail, not a tint you
-                      // have to look for.
-                      ? 'bg-gold font-semibold text-primary'
-                      : 'text-ink-soft hover:bg-gold-soft hover:text-foreground'
+                      /*
+                       * QUIET GOLD, NOT SATURATED GOLD.
+                       *
+                       * This was `bg-gold` with black semibold text — the brand's primary
+                       * CTA treatment, spent on a navigation state. Next to the rebuilt
+                       * customer pages it became the highest-contrast object on the
+                       * screen, which is the rail shouting over the results.
+                       *
+                       * Four agreeing signals carry it instead: the bar, the ground, the
+                       * ink and the weight. None of them alone, all of them together.
+                       */
+                      ? 'bg-gold-soft font-semibold text-[hsl(var(--gold-ink))]'
+                      : 'text-ink-soft hover:bg-gold-soft/60 hover:text-foreground'
                   }`}
                 >
-                  {/* The active marker is a full-height gold bar rather than a
-                      2px hairline: at a glance the eye finds the bar, not a
-                      faint tint difference between two greys. */}
+                  {/* The marker the eye actually finds. Gold now rather than black,
+                      because the ground it sits on is quiet and a black bar on a pale
+                      gold ground reads as a defect rather than as emphasis. */}
                   {active && (
                     <span
-                      className="absolute inset-y-1.5 start-0 w-1 rounded-full bg-primary"
+                      className="absolute inset-y-1.5 start-0 w-[3px] rounded-full bg-[hsl(var(--gold))]"
                       aria-hidden="true"
                     />
                   )}
                   <item.icon
-                    className={`h-[18px] w-[18px] shrink-0 ${active ? 'text-primary' : 'text-muted-foreground'}`}
-                    strokeWidth={active ? 2.25 : 1.75}
+                    className={`h-[18px] w-[18px] shrink-0 ${active ? 'text-[hsl(var(--gold-ink))]' : 'text-muted-foreground'}`}
+                    strokeWidth={active ? 2.1 : 1.75}
                     aria-hidden="true"
                   />
                   {/*

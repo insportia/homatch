@@ -40,14 +40,27 @@ export interface SearchPlan {
   originalLanguage: string | null;
 }
 
+/** One discarded thing, in a form the interface can say in six languages. */
+export interface PlanRejection {
+  key: string;
+  value: string;
+}
+
 export interface PlanResponse {
   success: boolean;
   /** Whether the model actually read the text. False is a real, displayable state. */
   interpreted: boolean;
   note: string | null;
   plan: SearchPlan | null;
-  /** What the server discarded from the draft, in plain words. */
+  /** What the server discarded from the draft, in plain words. English, for operators. */
   rejected: string[];
+  /**
+   * The same discards, as an i18n key and the customer's own value.
+   *
+   * Optional because a production server that has not been redeployed yet sends only
+   * `rejected`, and a customer on that build must still be told what was dropped.
+   */
+  rejections?: PlanRejection[];
   readiness: { ready: boolean; missingKeys: string[] };
   persisted: boolean;
   charged: { credits: number };

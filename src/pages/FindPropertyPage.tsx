@@ -38,30 +38,37 @@
 // does not move the page when it grows: the textarea has a min-height and the layout
 // reserves its space rather than reflowing around it.
 
+import { ArrowLeft, Building2, Check, Loader2, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
+import { RouteGuard } from '@/components/common/RouteGuard';
+import { DiscoveryState, ListingCard } from '@/components/customer/ListingCard';
+import { HomatchSearchComposer, HowItWorks } from '@/components/customer/SearchComposer';
 import {
-  ArrowLeft, Building2, Check, Clock, DollarSign, Info, Loader2, MapPin, Search, Sparkles,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+  type PlanRowData, SearchPlanSummary,
+} from '@/components/customer/SearchPlanSummary';
+import {
+  CardAction, CustomerPageHeader, CustomerSurface, DISCOVERY_SURFACE, QuietAction,
+} from '@/components/customer/surface';
+import { AppLayout } from '@/components/layouts/AppLayout';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { toast } from 'sonner';
-import { AppLayout } from '@/components/layouts/AppLayout';
-import { RouteGuard } from '@/components/common/RouteGuard';
+import { Skeleton } from '@/components/ui/skeleton';
+import { formatMoney, intlLocaleFor, isolate } from '@/components/workspace/primitives';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { placeName } from '@/lib/placeNames';
+import { dimensionKey, recencyFromDate } from '@/matching/presentation';
 import {
   type ConstraintStrength,
-  type FindPropertyResult,
-  type SearchGoal,
-  type SearchPlan,
   confirmPlan,
+  type FindPropertyResult,
+  type PlanRejection,
   planFromDescription,
   readResults,
+  type SearchGoal,
+  type SearchPlan,
 } from '@/services/findProperty';
 
 const GOALS: readonly SearchGoal[] = ['BUY', 'RENT', 'SHORT_STAY', 'INVEST', 'COMMERCIAL', 'LAND'];
@@ -98,9 +105,9 @@ const EXAMPLE_KEYS = [
  * before it spends anything, which is the whole argument for the plan step existing.
  */
 const HOW_IT_WORKS = [
-  { icon: Sparkles, titleKey: 'plan_step_read_title', bodyKey: 'plan_step_read_body' },
-  { icon: Check, titleKey: 'plan_step_check_title', bodyKey: 'plan_step_check_body' },
-  { icon: Clock, titleKey: 'plan_step_search_title', bodyKey: 'plan_step_search_body' },
+  { titleKey: 'plan_step_read_title', bodyKey: 'plan_step_read_body' },
+  { titleKey: 'plan_step_check_title', bodyKey: 'plan_step_check_body' },
+  { titleKey: 'plan_step_search_title', bodyKey: 'plan_step_search_body' },
 ] as const;
 const STRENGTHS: readonly ConstraintStrength[] = ['REQUIRED', 'PREFERRED', 'FLEXIBLE'];
 
@@ -119,7 +126,7 @@ function StrengthPicker({
   const { t } = useLanguage();
   return (
     <div className="flex items-center gap-2 min-w-0">
-      <span className="text-[13px] text-muted-foreground shrink-0 break-words">{label}</span>
+      <span className="shrink-0 break-words text-2xs text-muted-foreground">{label}</span>
       <Select value={value} onValueChange={(next) => onChange(next as ConstraintStrength)}>
         <SelectTrigger className="h-8 text-xs w-auto min-w-[8.5rem]">
           <SelectValue />
@@ -136,126 +143,109 @@ function StrengthPicker({
   );
 }
 
-/** One result, with the broker disclosed for what they are. */
+/**
+ * One result, formatted for the reader and disclosed for what it is.
+ *
+ * This component decides NOTHING about the result. It formats: money through
+ * formatMoney, places through placeName, age through the same scale Matches uses, and
+ * the broker's label through the key the server sent. Every judgement — the order, the
+ * rationale, what counts as a preference miss, what a broker is to Homatch — was made
+ * before this ran.
+ */
 function ResultCard({ result }: { result: FindPropertyResult }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const listing = result.listing;
   const broker = result.supply?.broker ?? null;
   if (!listing) return null;
 
+  const locale = intlLocaleFor(lang);
+  const place = [placeName(listing.district, lang), placeName(listing.city, lang)]
+    .filter(Boolean).join(', ');
   const price = listing.price.amount !== null
-    ? `${listing.price.currency ?? ''}${Number(listing.price.amount).toLocaleString()}`
+    ? isolate(formatMoney(
+      Number(listing.price.amount),
+      listing.price.currency ?? 'USD',
+      locale,
+      { decimals: 0, narrowSymbol: true },
+    ))
     : null;
 
+  /*
+   * HOW OLD, NOT WHEN. A listing's publication date matters as an age — "4 months ago"
+   * is actionable and "18/05/2025" is arithmetic homework — and the scale is the one
+   * Matches already uses, so the same gap reads the same on both screens. No date
+   * recorded means no line: an absent fact is not a fresh one.
+   */
+  const age = recencyFromDate(result.freshness.publishedAt);
+  const freshness = age ? t(age.key as never, { count: String(age.count) }) : null;
+
+  /*
+   * A DIMENSION IS NOT A WORD. `preference_misses` holds MatchDimension enum values, and
+   * the card printed them: a Georgian customer read "DISTRICT". They name the same things
+   * the search plan asks about, so the plan's labels translate them. An unmapped
+   * dimension keeps its raw token rather than disappearing — an English word is a smaller
+   * failure than a missing one.
+   */
+  const misses = (result.preferenceMisses ?? []).map((dimension) => {
+    const key = dimensionKey(dimension);
+    return key ? t(key as never) : dimension;
+  });
+
   return (
-    <Card className="bg-card border-border">
-      <CardContent className="p-4 space-y-3">
-        <div className="min-w-0 space-y-1">
-          <h3 className="text-sm font-semibold text-foreground break-words">
-            {listing.title ?? t('plan_result_untitled')}
-          </h3>
-          {/* WHY THIS MATCHES, first. The matcher's own rationale, not a percentage. */}
-          {result.whyThisMatches && (
-            <p className="text-xs text-muted-foreground break-words">{result.whyThisMatches}</p>
-          )}
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          {listing.city && (
-            <span className="text-xs bg-secondary px-2 py-0.5 rounded-full text-muted-foreground flex items-center gap-1 max-w-full">
-              <MapPin className="h-3 w-3 shrink-0" />
-              <span className="break-words min-w-0">
-                {listing.district ? `${listing.district}, ${listing.city}` : listing.city}
-              </span>
-            </span>
-          )}
-          {price && (
-            <span className="text-xs bg-secondary px-2 py-0.5 rounded-full text-muted-foreground flex items-center gap-1 max-w-full">
-              <DollarSign className="h-3 w-3 shrink-0" />
-              <span className="break-words min-w-0" dir="ltr">{price}</span>
-            </span>
-          )}
-          {listing.rooms !== null && (
-            <span className="text-xs bg-secondary px-2 py-0.5 rounded-full text-muted-foreground max-w-full">
-              <span className="break-words min-w-0">{listing.rooms} {t('plan_rooms')}</span>
-            </span>
-          )}
-          {listing.areaSqm !== null && (
-            <span className="text-xs bg-secondary px-2 py-0.5 rounded-full text-muted-foreground max-w-full">
-              <span className="break-words min-w-0" dir="ltr">{listing.areaSqm} m²</span>
-            </span>
-          )}
-          {/* PUBLICATION FRESHNESS -- when the seller spoke, not when we looked. */}
-          {result.freshness.publishedAt && (
-            <span className="text-xs px-2 py-0.5 rounded-full text-muted-foreground/70 border border-border/60 flex items-center gap-1 max-w-full">
-              <Clock className="h-3 w-3 shrink-0" />
-              <span className="break-words min-w-0">
-                {new Date(result.freshness.publishedAt).toLocaleDateString()}
-              </span>
-            </span>
-          )}
-        </div>
-
-        {/* What did not match, named rather than averaged into the score. */}
-        {(result.preferenceMisses?.length ?? 0) > 0 && (
-          <p className="text-xs text-muted-foreground/80 break-words">
-            {t('plan_result_preference_miss')}: {result.preferenceMisses?.join(', ')}
-          </p>
-        )}
-
-        {/*
-          WHO IS OFFERING, AND WHAT THEY ARE TO HOMATCH.
-          Two separate facts, reported separately. `registeredWithHomatch` is false for
-          every firm we found by reading a portal, because a registration requires an
-          account discovery does not have. The label is a key, translated.
-        */}
-        {broker && (
-          <div className="rounded-lg border border-border/50 bg-background/50 px-3 py-2 space-y-1">
-            <div className="flex items-start gap-1.5 min-w-0">
-              <Info className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
-              <span className="text-[13px] text-muted-foreground break-words min-w-0">
-                {broker.name ?? t('broker_no_name')} · {t(broker.labelKey as never)}
-              </span>
-            </div>
-            <p className="text-[13px] text-muted-foreground/70 break-words">
-              {t('broker_provenance_sources', { count: String(broker.provenance.seenOnSources) })}
-              {' · '}
-              {t('broker_provenance_listings', { count: String(broker.provenance.listingsAttributed) })}
-            </p>
-          </div>
-        )}
-
-        {/* Provenance, last and quietly. Which adapter read it is an operator's fact. */}
-        <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/30 flex-wrap">
-          <span className="text-[13px] text-muted-foreground/70 break-words">
-            {listing.source ?? ''}
-          </span>
-          {listing.url && (
-            <a
-              href={listing.url}
-              target="_blank"
-              rel="noopener noreferrer nofollow"
-              className="text-xs text-primary hover:underline break-words"
-            >
-              {t('plan_result_open')}
-            </a>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+    <ListingCard
+      headline={listing.title ?? t('plan_result_untitled')}
+      freshness={freshness}
+      source={listing.source}
+      facts={{
+        place: place || null,
+        price,
+        rooms: listing.rooms !== null ? `${listing.rooms} ${t('plan_rooms')}` : null,
+        area: listing.areaSqm !== null ? isolate(`${listing.areaSqm} m²`) : null,
+      }}
+      whyLine={result.whyThisMatches}
+      missesLabel={t('plan_result_preference_miss')}
+      misses={misses}
+      /*
+        TWO FACTS, REPORTED SEPARATELY. `registeredWithHomatch` is false for every firm
+        found by reading a portal, because a registration requires an account discovery
+        does not have. The label is the server's key, translated here and composed
+        nowhere.
+      */
+      broker={broker ? {
+        name: broker.name ?? t('broker_no_name'),
+        standing: t(broker.labelKey as never),
+        provenance: `${t('broker_provenance_sources', { count: String(broker.provenance.seenOnSources) })} · ${t('broker_provenance_listings', { count: String(broker.provenance.listingsAttributed) })}`,
+      } : null}
+      actionLabel={t('plan_result_open')}
+      href={listing.url}
+    />
   );
 }
 
 export default function FindPropertyPage() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const [stage, setStage] = useState<Stage>('DESCRIBE');
   const [text, setText] = useState('');
   const [reading, setReading] = useState(false);
   const [interpreted, setInterpreted] = useState(true);
   const [plan, setPlan] = useState<SearchPlan | null>(null);
   const [rejected, setRejected] = useState<string[]>([]);
+  /*
+   * THE SAME DISCARDS, TRANSLATABLE. `rejected` is the server's operator sentence —
+   * `district "somewhere near a metro" is not a place name` — and putting that in a
+   * Georgian page is putting English diagnostics where the product's own copy goes.
+   * These carry a key and the customer's own word instead. Empty against a server that
+   * has not been redeployed, which is why the sentences are still rendered as a fallback.
+   */
+  const [rejections, setRejections] = useState<PlanRejection[]>([]);
   const [missingKeys, setMissingKeys] = useState<string[]>([]);
   const [confirming, setConfirming] = useState(false);
+  /*
+   * THE FORM IS CLOSED UNTIL SOMEBODY WANTS IT.
+   * Open by default only when there was nothing to read back — a reading that did not
+   * happen has no statement to make, so the fields are the honest first screen.
+   */
+  const [refining, setRefining] = useState(false);
   const [results, setResults] = useState<FindPropertyResult[]>([]);
   const [resultState, setResultState] = useState<'NO_ACTIVE_SEARCH' | 'SEARCHING' | 'HAS_RESULTS'>('NO_ACTIVE_SEARCH');
   const [loadingResults, setLoadingResults] = useState(true);
@@ -289,7 +279,9 @@ export default function FindPropertyPage() {
     try {
       const response = await planFromDescription(description);
       setInterpreted(response.interpreted);
+      setRefining(!response.interpreted);
       setRejected(response.rejected ?? []);
+      setRejections(response.rejections ?? []);
       setMissingKeys(response.readiness?.missingKeys ?? []);
       /*
        * A PLAN EITHER WAY. When the model could not read the text there is no draft, so
@@ -324,6 +316,7 @@ export default function FindPropertyPage() {
       if (!response.success) {
         setMissingKeys(response.readiness?.missingKeys ?? []);
         setRejected(response.rejected ?? []);
+        setRejections(response.rejections ?? []);
         toast.error(t('plan_not_ready'));
         return;
       }
@@ -337,197 +330,341 @@ export default function FindPropertyPage() {
 
   const goalLabel = (goal: SearchGoal) => t(`plan_goal_${goal.toLowerCase()}` as never);
 
+  /*
+   * THE PLAN, AS LINES OF A STATEMENT.
+   *
+   * Every row comes from a field the planner actually returned. A field it did not return
+   * produces no row — not "Any city", which would be a claim about the search that nobody
+   * made, and not an empty row, which would look like a defect.
+   *
+   * UNKNOWN strength produces no strength word. It is the matcher's confidence in its own
+   * reading, not a promise to the customer, and showing it as one would be a lie about
+   * what the search will do.
+   */
+  const planRows = useMemo<PlanRowData[]>(() => {
+    if (!plan) return [];
+    const locale = intlLocaleFor(lang);
+    /*
+     * AN AMOUNT CARRIES ITS OWN DIRECTION — isolate(), beside the money formatter, so
+     * this screen and the results below it treat a number the same way. The phrase
+     * builders take what they are given.
+     */
+    const iso = isolate;
+    const money = (value: number, currency: string) =>
+      iso(formatMoney(value, currency || 'USD', locale, { decimals: 0, narrowSymbol: true }));
+    const firmness = (strength: string) => (strength === 'UNKNOWN' ? null : strength);
+    /*
+     * A RANGE IS A PHRASE, NOT TWO STRINGS. "Up to" is a preposition in English and a
+     * suffix in Georgian — `${label} ${amount}` produced "მდე $150,000", which is not a
+     * sentence anybody would write. The key carries the placeholder and each language
+     * puts it where it belongs.
+     */
+    const upTo = (value: string) => t('plan_value_upto', { value });
+    const from = (value: string) => t('plan_value_from', { value });
+    const rows: PlanRowData[] = [
+      /* A summary states; the editor below asks. Two different labels for one field. */
+      { label: t('plan_row_goal'), value: goalLabel(plan.goal) },
+    ];
+
+    if (plan.city?.value) {
+      rows.push({
+        label: t('plan_field_city'),
+        /* In the reader's script, through the same layer the rest of the product uses. */
+        value: placeName(plan.city.value, lang),
+        strength: firmness(plan.city.strength),
+      });
+    }
+    if (plan.districts?.value.length) {
+      rows.push({
+        label: t('plan_field_districts'),
+        value: plan.districts.value.map((name) => placeName(name, lang)).join(' · '),
+        strength: firmness(plan.districts.strength),
+      });
+    }
+    if (plan.propertyTypes?.value.length) {
+      rows.push({
+        label: t('plan_field_types'),
+        value: plan.propertyTypes.value
+          .map((type) => t(`prop_type_${type.toLowerCase()}` as never))
+          .join(' · '),
+        strength: firmness(plan.propertyTypes.strength),
+      });
+    }
+    if (plan.budget) {
+      const { min, max, currency } = plan.budget.value;
+      /* Three shapes, because a budget with only a ceiling is not the same statement as a
+         budget with only a floor, and neither is a range. */
+      const value = min !== null && max !== null
+        ? `${money(min, currency)} – ${money(max, currency)}`
+        : max !== null
+          ? upTo(money(max, currency))
+          : min !== null
+            ? from(money(min, currency))
+            : null;
+      if (value) {
+        rows.push({
+          label: t('plan_field_budget'),
+          value,
+          strength: firmness(plan.budget.strength),
+        });
+      }
+    }
+    if (plan.bedrooms) {
+      const { min, max } = plan.bedrooms.value;
+      const value = min !== null && max !== null && max !== min
+        ? iso(`${min}–${max}`)
+        : min !== null ? iso(`${min}+`) : max !== null ? upTo(iso(String(max))) : null;
+      if (value) {
+        rows.push({
+          label: t('plan_row_bedrooms'),
+          value,
+          strength: firmness(plan.bedrooms.strength),
+        });
+      }
+    }
+    if (plan.areaSqm) {
+      const { min, max } = plan.areaSqm.value;
+      const value = min !== null && max !== null && max !== min
+        ? iso(`${min}–${max} m²`)
+        : min !== null
+          ? iso(`${min}+ m²`)
+          : max !== null ? upTo(iso(`${max} m²`)) : null;
+      if (value) {
+        rows.push({
+          label: t('plan_field_area'),
+          value,
+          strength: firmness(plan.areaSqm.strength),
+        });
+      }
+    }
+    return rows;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan, lang, t]);
+
   const header = useMemo(() => (
-    <div className="min-w-0 space-y-1">
-      <h1 className="text-xl font-bold text-foreground break-words">{t('plan_page_title')}</h1>
-      <p className="text-sm text-muted-foreground break-words">{t('plan_page_subtitle')}</p>
-    </div>
+    <CustomerPageHeader title={t('plan_page_title')} count={t('plan_page_subtitle')} />
   ), [t]);
 
   return (
     <RouteGuard>
-      <AppLayout>
-        {/*
-          max-w-2xl WAS 672px OF A 1920px SCREEN, for every stage including the results.
-          The composer and the plan editor still want a reading width and get one below —
-          a 1440px-wide textarea is nobody's idea of an improvement — but a list of
-          properties does not, and it is now a grid inside this wider page.
-        */}
-        <div className="max-w-[90rem] mx-auto space-y-6 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+      {/*
+        The premium canvas, hosted by the layout so the back control shares it — see
+        AppLayout's surfaceClass note. max-w-2xl on the root light palette was the old
+        shell: a 672px column of white form inside a 1920px grey page.
+      */}
+      <AppLayout noPadding surfaceClass={DISCOVERY_SURFACE}>
+        <CustomerSurface className="space-y-5">
           {header}
 
           {/* ── DESCRIBE ─────────────────────────────────────────────────── */}
           {stage === 'DESCRIBE' && (
-            /* A reading width, centred. The stage is one paragraph of writing; giving it
-               1440px would make it harder to use, not more impressive. */
-            <div className="mx-auto w-full max-w-3xl space-y-4">
-              <Card className="bg-card border-border">
-                <CardContent className="p-4 sm:p-6 space-y-4">
-                  <div className="space-y-1.5 min-w-0">
-                    <label
-                      htmlFor="find-property-composer"
-                      className="text-base font-semibold text-foreground break-words block"
-                    >
-                      {t('plan_composer_label')}
-                    </label>
-                    <p className="text-sm text-muted-foreground break-words">
-                      {t('plan_composer_hint')}
-                    </p>
-                  </div>
+            /* A reading width, centred. This stage is one paragraph of writing; 1440px of
+               textarea would make it harder to use, not more impressive. */
+            /* Left-aligned, not centred: the header sits at the start of the canvas and a
+               centred composer under a left-aligned title reads as two unrelated blocks.
+               The workspace surfaces align everything to one left edge. */
+            <div className="w-full max-w-2xl space-y-5">
+              <HomatchSearchComposer
+                value={text}
+                onChange={setText}
+                onSubmit={describe}
+                busy={reading}
+                placeholder={t('plan_composer_placeholder')}
+                hint={t('plan_composer_needs_text')}
+                readyHint={t('plan_composer_ready')}
+                submitLabel={t('plan_composer_cta')}
+                suggestionsLabel={t('plan_examples_label')}
+                suggestions={EXAMPLE_KEYS.map((key) => ({ key, text: t(key) }))}
+                composerRef={composer}
+              />
 
-                  {/*
-                    A PLAIN GROWING TEXTAREA, and deliberately not a chat.
-                    min-h reserves its space so the page does not jump as it grows, dir is
-                    inherited so Arabic and Hebrew need no special case, and there is no
-                    typing indicator because nothing is typing.
-                  */}
-                  <textarea
-                    id="find-property-composer"
-                    ref={composer}
-                    value={text}
-                    onChange={(event) => setText(event.target.value)}
-                    rows={5}
-                    className="w-full min-h-[9rem] resize-y rounded-lg border border-border bg-background px-3 py-2.5 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary break-words"
-                    placeholder={t('plan_composer_placeholder')}
-                  />
-
-                  {/* ── SOMETHING TO START FROM ──────────────────────────────
-                    A chip fills the composer; it does not submit. Nobody should have to
-                    guess what a free-text field accepts, and the alternative to showing
-                    them is that they type three keywords into the one interface that is
-                    worse at keywords than a filter form would be. */}
-                  <div className="space-y-2">
-                    <p className="text-[13px] font-medium text-muted-foreground break-words">
-                      {t('plan_examples_label')}
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {EXAMPLE_KEYS.map((key) => (
-                        <button
-                          key={key}
-                          type="button"
-                          onClick={() => {
-                            setText(t(key));
-                            composer.current?.focus();
-                          }}
-                          className="rounded-full border border-border bg-secondary/60 px-3 py-1.5 text-start text-[13px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary max-w-full"
-                        >
-                          <span className="break-words line-clamp-2">{t(key)}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between gap-3 flex-wrap border-t border-border/50 pt-3">
-                    {/*
-                      A DISABLED BUTTON THAT SAYS WHY IT IS DISABLED.
-                      It was disabled on arrival with nothing next to it, which reads as a
-                      broken page rather than as a form waiting for input.
-                    */}
-                    <p className="text-[13px] text-muted-foreground/70 break-words min-w-0">
-                      {text.trim() ? t('plan_composer_ready') : t('plan_composer_needs_text')}
-                    </p>
-                    <Button
-                      onClick={describe}
-                      disabled={!text.trim() || reading}
-                      className="h-auto min-h-10 py-2 gap-1.5 whitespace-normal text-start font-semibold"
-                    >
-                      {reading
-                        ? <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-                        : <Sparkles className="h-4 w-4 shrink-0" />}
-                      <span className="break-words">{t('plan_composer_cta')}</span>
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* ── WHAT HAPPENS NEXT ────────────────────────────────────────
-                The empty state stops being empty. Three steps, and the middle one is the
-                argument for this product over a chat box: you see what was understood and
-                correct it before anything is spent. */}
-              <div className="grid gap-3 sm:grid-cols-3">
-                {HOW_IT_WORKS.map(({ icon: StepIcon, titleKey, bodyKey }, index) => (
-                  <div
-                    key={titleKey}
-                    className="rounded-xl border border-border bg-card/60 p-3.5 space-y-1.5 min-w-0"
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[13px] font-semibold text-primary">
-                        {index + 1}
-                      </span>
-                      <StepIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    </div>
-                    <p className="text-sm font-medium text-foreground break-words">{t(titleKey)}</p>
-                    <p className="text-[13px] text-muted-foreground break-words leading-snug">
-                      {t(bodyKey)}
-                    </p>
-                  </div>
-                ))}
+              <div className="hm-discovery-panel p-3.5">
+                <p className="mb-2.5 text-2xs font-medium uppercase tracking-[0.1em] text-muted-foreground/70">
+                  {t('plan_how_it_works')}
+                </p>
+                <HowItWorks
+                  steps={HOW_IT_WORKS.map(({ titleKey, bodyKey }) => ({
+                    key: titleKey,
+                    title: t(titleKey),
+                    body: t(bodyKey),
+                  }))}
+                />
               </div>
             </div>
           )}
 
           {/* ── PLAN ─────────────────────────────────────────────────────── */}
           {stage === 'PLAN' && plan && (
-            /* The plan is a form to read and correct, so it keeps a reading width too. */
-            <div className="mx-auto w-full max-w-3xl space-y-4">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <h2 className="text-base font-semibold text-foreground break-words">
-                  {t('plan_review_title')}
-                </h2>
-                <Button variant="ghost" size="sm" onClick={() => setStage('DESCRIBE')}>
-                  <ArrowLeft className="h-4 w-4 me-1.5 shrink-0" />
-                  <span className="break-words">{t('plan_edit_description')}</span>
-                </Button>
-              </div>
+            /*
+              A READING WIDTH, ALIGNED WITH THE COMPOSER IT CAME FROM.
+              This stage is a short statement plus a form behind one control. The previous
+              build was six stacked cards of labelled Selects and Inputs at 672px — which
+              is a filter form, and a filter form is the thing this product exists to
+              replace. The plan is now something you READ, and the fields that produced it
+              are one tap away for the times the reading was wrong.
+            */
+            <div className="w-full max-w-5xl space-y-4">
+              {/*
+                ONE HEADING. The page header says what page this is and the summary below
+                names itself; a third title between them ("Your search") pushed the first
+                real fact 40px further down a 390px screen and said nothing the next line
+                did not. Back to your own words is a different correction from changing a
+                field — it re-reads the sentence — so it keeps its own row.
+              */}
+              <QuietAction
+                label={t('plan_edit_description')}
+                icon={ArrowLeft}
+                onClick={() => setStage('DESCRIBE')}
+              />
 
               {/*
-                SAID WHEN IT IS TRUE, AND ONLY THEN. A reading that did not happen is
-                not presented as one, and the customer is told to fill the form in
-                rather than left wondering why every field is empty.
+                SAID WHEN IT IS TRUE, AND ONLY THEN. A reading that did not happen is not
+                presented as one — the summary below carries only what is really in the
+                plan, and the fields open by themselves so nobody is left wondering why.
               */}
               {!interpreted && (
-                <Card className="bg-card border-border">
-                  <CardContent className="p-3">
-                    <p className="text-sm text-muted-foreground break-words">
-                      {t('plan_not_interpreted')}
-                    </p>
-                  </CardContent>
-                </Card>
+                <div className="hm-discovery-panel px-4 py-3">
+                  <p className="break-words text-2xs leading-relaxed text-muted-foreground">
+                    {t('plan_not_interpreted')}
+                  </p>
+                </div>
               )}
 
-              {/* What the server discarded. Never silent. */}
-              {rejected.length > 0 && (
-                <Card className="bg-card border-border">
-                  <CardContent className="p-3 space-y-1">
-                    <p className="text-sm font-medium text-foreground break-words">
-                      {t('plan_rejected_title')}
-                    </p>
-                    <ul className="space-y-0.5">
-                      {rejected.slice(0, 6).map((reason, index) => (
-                        <li key={`${reason}-${index}`} className="text-[13px] text-muted-foreground break-words">
-                          {reason}
-                        </li>
+              {/*
+                THE READING AND THE WORDS IT CAME FROM, SIDE BY SIDE.
+                One column on a phone — the answer first, the source under it. From lg
+                they are two, because the one thing somebody does on this screen is
+                compare them, and a 1440px canvas with 700px of nothing in it was a phone
+                layout that had been stretched rather than composed.
+              */}
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:items-start">
+              <SearchPlanSummary
+                title={t('plan_understood_title')}
+                rows={planRows}
+                languages={plan.languages}
+                languagesLabel={t('plan_languages_label')}
+                note={
+                  /*
+                    WHAT WAS DISCARDED AND WHAT IS STILL MISSING, inside the plan rather
+                    than beside it. Both are the server's own words about this reading, and
+                    neither is ever silent — a constraint that was dropped without saying
+                    so is how a customer ends up believing a search covers something it
+                    does not.
+                  */
+                  rejected.length > 0 || missingKeys.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {rejected.length > 0 && (
+                        <>
+                          <p className="break-words text-2xs font-semibold text-foreground">
+                            {t('plan_rejected_title')}
+                          </p>
+                          <ul className="space-y-0.5">
+                            {/*
+                              TRANSLATED WHERE THE SERVER SENT A KEY, and the operator
+                              sentence otherwise. The fallback is not defensive habit: a
+                              production build that has not been redeployed sends only the
+                              English sentence, and showing nothing in that case would
+                              hide a discard — which is the one thing this block exists to
+                              prevent. dir="auto" so the customer's own quoted word takes
+                              its own direction inside either.
+                            */}
+                            {(rejections.length > 0
+                              ? rejections.slice(0, 6).map((entry, index) => ({
+                                key: `${entry.key}-${index}`,
+                                text: t(entry.key as never, { value: entry.value }),
+                              }))
+                              : rejected.slice(0, 6).map((reason, index) => ({
+                                key: `${reason}-${index}`,
+                                text: reason,
+                              }))
+                            ).map((line) => (
+                              <li
+                                key={line.key}
+                                dir="auto"
+                                className="break-words text-2xs text-muted-foreground"
+                              >
+                                {line.text}
+                              </li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
+                      {missingKeys.map((key) => (
+                        <p key={key} className="break-words text-2xs text-[hsl(var(--gold-ink))]">
+                          {t(key as never)}
+                        </p>
                       ))}
-                    </ul>
-                  </CardContent>
-                </Card>
-              )}
+                    </div>
+                  ) : null
+                }
+                /* The absence of a price is a product decision, so it is stated —
+                   under the control it is about. */
+                footnote={t('plan_run_free')}
+                actions={
+                  <>
+                    <CardAction
+                      label={t('plan_run_cta')}
+                      onClick={run}
+                      disabled={confirming}
+                      busy={confirming
+                        ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                        : null}
+                    />
+                    {/* The form is not gone. The control says what it opens rather than
+                        "Edit", because what somebody wants here is to fix one thing. */}
+                    <QuietAction
+                      label={refining ? t('plan_refine_hide') : t('plan_refine')}
+                      icon={SlidersHorizontal}
+                      onClick={() => setRefining((open) => !open)}
+                    />
+                  </>
+                }
+              />
 
-              <Card className="bg-card border-border">
-                <CardContent className="p-4 space-y-4">
+              <div className="space-y-3">
+                {/*
+                  WHAT THEY ACTUALLY WROTE, unedited and in their own script. Not a
+                  decoration for the empty half of the screen: a reading is only checkable
+                  against its source, and `dir="auto"` lets a Latin sentence inside an RTL
+                  page keep its own direction.
+                */}
+                {plan.originalText && (
+                  <div className="hm-discovery-panel px-4 py-3.5">
+                    <p className="text-2xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                      {t('plan_your_words')}
+                    </p>
+                    <p dir="auto" className="mt-1.5 break-words text-2xs leading-relaxed text-foreground/90">
+                      {plan.originalText}
+                    </p>
+                  </div>
+                )}
+
+              </div>
+              </div>
+
+              {/* ── THE SAME FIELDS, FOR THE TIMES THE READING WAS WRONG ────── */}
+              {refining && (
+                /* Form fields do not get wider just because the page did: a 1000px text
+                   input is harder to fill in than a 500px one. The editor keeps the width
+                   of the summary column it corrects. */
+                <div className="hm-discovery-panel w-full max-w-2xl space-y-4 p-4">
+                  <p className="text-2xs font-medium uppercase tracking-[0.1em] text-muted-foreground/70">
+                    {t('plan_refine')}
+                  </p>
+
                   {/* Goal */}
                   <div className="space-y-1.5">
-                    <span className="text-sm font-medium text-foreground break-words block">
+                    <span className="block break-words text-2xs text-muted-foreground">
                       {t('plan_field_goal')}
                     </span>
                     <Select
                       value={plan.goal}
                       onValueChange={(next) => setPlan({ ...plan, goal: next as SearchGoal })}
                     >
-                      <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="h-9 text-2xs"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {GOALS.map((goal) => (
-                          <SelectItem key={goal} value={goal} className="text-sm">
+                          <SelectItem key={goal} value={goal} className="text-2xs">
                             {goalLabel(goal)}
                           </SelectItem>
                         ))}
@@ -537,7 +674,7 @@ export default function FindPropertyPage() {
 
                   {/* City */}
                   <div className="space-y-1.5">
-                    <span className="text-sm font-medium text-foreground break-words block">
+                    <span className="block break-words text-2xs text-muted-foreground">
                       {t('plan_field_city')}
                     </span>
                     <Input
@@ -549,7 +686,7 @@ export default function FindPropertyPage() {
                           : null,
                       })}
                       placeholder={t('plan_field_city_placeholder')}
-                      className="h-9 text-sm"
+                      className="h-9 text-2xs"
                     />
                     {plan.city && (
                       <StrengthPicker
@@ -562,7 +699,7 @@ export default function FindPropertyPage() {
 
                   {/* Districts */}
                   <div className="space-y-1.5">
-                    <span className="text-sm font-medium text-foreground break-words block">
+                    <span className="block break-words text-2xs text-muted-foreground">
                       {t('plan_field_districts')}
                     </span>
                     <Input
@@ -578,7 +715,7 @@ export default function FindPropertyPage() {
                         });
                       }}
                       placeholder={t('plan_field_districts_placeholder')}
-                      className="h-9 text-sm"
+                      className="h-9 text-2xs"
                     />
                     {plan.districts && (
                       <StrengthPicker
@@ -591,10 +728,22 @@ export default function FindPropertyPage() {
 
                   {/* Budget */}
                   <div className="space-y-1.5">
-                    <span className="text-sm font-medium text-foreground break-words block">
+                    <span className="block break-words text-2xs text-muted-foreground">
                       {t('plan_field_budget')}
                     </span>
-                    <div className="flex items-center gap-2 flex-wrap">
+                    {/*
+                      TWO FIELDS THAT SAY WHICH IS WHICH EVEN WHEN THEY ARE FULL.
+                      The floor and the ceiling were two bare inputs carrying "From" and
+                      "Up to" as placeholders — so the moment a number was typed the field
+                      stopped saying what the number meant, and a plan with only a ceiling
+                      showed one filled box beside one empty one with no way to tell which
+                      end had been set.
+                    */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="space-y-1">
+                        <span className="block break-words text-2xs text-muted-foreground/80">
+                          {t('plan_field_budget_min')}
+                        </span>
                       <Input
                         type="number"
                         inputMode="numeric"
@@ -613,9 +762,13 @@ export default function FindPropertyPage() {
                             },
                           });
                         }}
-                        placeholder={t('plan_field_budget_min')}
-                        className="h-9 text-sm flex-1 min-w-[6rem]"
+                        className="h-9 w-full text-2xs"
                       />
+                      </label>
+                      <label className="space-y-1">
+                        <span className="block break-words text-2xs text-muted-foreground/80">
+                          {t('plan_field_budget_max')}
+                        </span>
                       <Input
                         type="number"
                         inputMode="numeric"
@@ -634,9 +787,9 @@ export default function FindPropertyPage() {
                             },
                           });
                         }}
-                        placeholder={t('plan_field_budget_max')}
-                        className="h-9 text-sm flex-1 min-w-[6rem]"
+                        className="h-9 w-full text-2xs"
                       />
+                      </label>
                     </div>
                     {plan.budget && (
                       <StrengthPicker
@@ -649,7 +802,7 @@ export default function FindPropertyPage() {
 
                   {/* Bedrooms */}
                   <div className="space-y-1.5">
-                    <span className="text-sm font-medium text-foreground break-words block">
+                    <span className="block break-words text-2xs text-muted-foreground">
                       {t('plan_field_bedrooms')}
                     </span>
                     <Input
@@ -667,7 +820,7 @@ export default function FindPropertyPage() {
                         });
                       }}
                       placeholder={t('plan_field_bedrooms_placeholder')}
-                      className="h-9 text-sm"
+                      className="h-9 text-2xs"
                     />
                     {plan.bedrooms && (
                       <StrengthPicker
@@ -677,55 +830,34 @@ export default function FindPropertyPage() {
                       />
                     )}
                   </div>
-
-                  {/* What is still needed, by key. */}
-                  {missingKeys.length > 0 && (
-                    <ul className="space-y-0.5">
-                      {missingKeys.map((key) => (
-                        <li key={key} className="text-[13px] text-muted-foreground break-words">
-                          {t(key as never)}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-
-                  <Button onClick={run} disabled={confirming} className="w-full">
-                    {confirming
-                      ? <Loader2 className="h-4 w-4 me-1.5 animate-spin shrink-0" />
-                      : <Search className="h-4 w-4 me-1.5 shrink-0" />}
-                    <span className="break-words">{t('plan_run_cta')}</span>
-                  </Button>
-                  {/* The absence of a price is a product decision, so it is stated. */}
-                  <p className="text-[13px] text-muted-foreground/70 text-center break-words">
-                    {t('plan_run_free')}
-                  </p>
-                </CardContent>
-              </Card>
+                </div>
+              )}
             </div>
           )}
 
           {/* ── RESULTS ──────────────────────────────────────────────────── */}
           {stage === 'RESULTS' && (
             <div className="space-y-4">
-              {/* The heading row and the three no-result states keep a reading width: a
-                  centred "nothing has matched yet" card stretched across 1440px is the
+              {/* The heading row and the no-result states keep a reading width: a
+                  "nothing has matched yet" panel stretched across 1440px is the
                   over-correction, not the fix. Only the grid of properties below uses the
                   full page. */}
-              <div className="mx-auto w-full max-w-3xl flex items-center justify-between gap-2 flex-wrap">
-                <h2 className="text-base font-semibold text-foreground break-words">
+              <div className="flex w-full max-w-3xl flex-wrap items-center justify-between gap-2">
+                <h2 className="min-w-0 break-words font-display text-base font-semibold tracking-[-0.01em] text-foreground">
                   {t('plan_results_title')}
                 </h2>
-                <Button variant="ghost" size="sm" onClick={() => setStage('DESCRIBE')}>
-                  <Search className="h-4 w-4 me-1.5 shrink-0" />
-                  <span className="break-words">{t('plan_new_search')}</span>
-                </Button>
+                <QuietAction
+                  label={t('plan_new_search')}
+                  icon={Search}
+                  onClick={() => setStage('DESCRIBE')}
+                />
               </div>
 
               {loadingResults && (
                 <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
-                  <Skeleton className="h-32 rounded-xl" />
-                  <Skeleton className="h-32 rounded-xl" />
-                  <Skeleton className="h-32 rounded-xl" />
+                  <Skeleton className="h-32 rounded-2xl" />
+                  <Skeleton className="h-32 rounded-2xl" />
+                  <Skeleton className="h-32 rounded-2xl" />
                 </div>
               )}
 
@@ -735,52 +867,50 @@ export default function FindPropertyPage() {
                 next actions, and an empty list cannot tell them apart.
               */}
               {!loadingResults && resultState === 'SEARCHING' && (
-                <Card className="mx-auto w-full max-w-3xl bg-card border-border">
-                  <CardContent className="p-5 text-center space-y-2">
-                    <Building2 className="h-9 w-9 mx-auto opacity-30" />
-                    <p className="text-sm font-medium text-foreground break-words">
-                      {t('plan_state_searching_title')}
-                    </p>
-                    <p className="text-sm text-muted-foreground break-words">
-                      {t('plan_state_searching_body')}
-                    </p>
-                  </CardContent>
-                </Card>
+                <div className="w-full max-w-3xl">
+                  <DiscoveryState
+                    icon={Building2}
+                    title={t('plan_state_searching_title')}
+                    body={t('plan_state_searching_body')}
+                  />
+                </div>
               )}
 
               {!loadingResults && resultState === 'NO_ACTIVE_SEARCH' && (
-                <Card className="mx-auto w-full max-w-3xl bg-card border-border">
-                  <CardContent className="p-5 text-center space-y-2">
-                    <Search className="h-9 w-9 mx-auto opacity-30" />
-                    <p className="text-sm text-muted-foreground break-words">
-                      {t('plan_state_none')}
-                    </p>
-                    <Button size="sm" onClick={() => setStage('DESCRIBE')}>
-                      <span className="break-words">{t('plan_composer_cta')}</span>
-                    </Button>
-                  </CardContent>
-                </Card>
+                <div className="w-full max-w-3xl">
+                  <DiscoveryState
+                    icon={Search}
+                    title={t('plan_state_none')}
+                    action={(
+                      <QuietAction
+                        label={t('plan_composer_cta')}
+                        icon={Sparkles}
+                        onClick={() => setStage('DESCRIBE')}
+                      />
+                    )}
+                  />
+                </div>
               )}
 
               {!loadingResults && resultState === 'HAS_RESULTS' && (
                 <>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <Badge variant="secondary" className="gap-1 whitespace-normal">
-                      <Check className="h-3 w-3 shrink-0" />
-                      <span className="break-words">{t('plan_results_included')}</span>
-                    </Badge>
-                  </div>
+                  {/* A line, not a capsule. "Included in your search" is a sentence about
+                      what these cost, and a badge is a category. */}
+                  <p className="flex items-center gap-1.5 text-2xs text-muted-foreground">
+                    <Check className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--gold-ink))]" />
+                    <span className="break-words">{t('plan_results_included')}</span>
+                  </p>
                   {/* Properties, in columns from lg. One result occupies one column and
                       the rest of the row stays empty, which is what a list with one thing
                       in it should look like. */}
-                  <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3 items-start">
+                  <div className="grid items-start gap-3 lg:grid-cols-2 2xl:grid-cols-3">
                     {results.map((result) => <ResultCard key={result.id} result={result} />)}
                   </div>
                 </>
               )}
             </div>
           )}
-        </div>
+        </CustomerSurface>
       </AppLayout>
     </RouteGuard>
   );

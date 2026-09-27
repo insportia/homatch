@@ -50,17 +50,40 @@ export interface WorkspaceFigure {
  * engine keeps the precision internally regardless — this is display
  * rounding, applied once, at the edge.
  */
+/**
+ * An amount, as its own island of direction.
+ *
+ * FSI … PDI. A formatted price is digits, a currency symbol and separators — weak
+ * characters, which take their order from whatever sentence surrounds them. Inside a
+ * Hebrew or Arabic line that produced "עד$150,000", the preposition on the wrong side of
+ * the money with the space between them swallowed; inside a Georgian one the amount has
+ * to stay put so "-მდე" can attach to it. An isolate says: read this as a unit, in its
+ * own direction, wherever it lands.
+ *
+ * Applied once, where a number becomes a string.
+ */
+export function isolate(text: string): string {
+  return `\u2068${text}\u2069`;
+}
+
 export function formatMoney(
   value: number,
   currency: string,
   locale: string,
-  options: { compact?: boolean; decimals?: number } = {},
+  options: { compact?: boolean; decimals?: number; narrowSymbol?: boolean } = {},
 ): string {
   const decimals = options.decimals ?? 0;
   try {
     return new Intl.NumberFormat(locale, {
       style: 'currency',
       currency,
+      /*
+       * `narrowSymbol` renders USD as "$" rather than "US$" in the locales that
+       * disambiguate it. Opt-in, so the analytical surfaces that already ship keep the
+       * longer form they were reviewed with; the customer surfaces ask for it because
+       * "220 000 US$" on a match card reads as a machine wrote it.
+       */
+      ...(options.narrowSymbol ? { currencyDisplay: 'narrowSymbol' as const } : {}),
       maximumFractionDigits: decimals,
       minimumFractionDigits: 0,
       ...(options.compact && Math.abs(value) >= 10000

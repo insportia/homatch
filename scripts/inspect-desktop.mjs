@@ -48,6 +48,10 @@ const HEIGHT = Number(arg('height', 900));
 const LANG = arg('lang', 'en');
 const ROUTE = arg('route', '/property');
 const STAGE = arg('stage', null);
+/* `--native 1` answers my_native_matches with HOMATCH members and properties, so the
+   native relationship panel can be looked at; without it the panel correctly renders
+   nothing. */
+const NATIVE = arg('native', '0') === '1';
 const COUNTS = arg('counts', '1,3,10').split(',').map((n) => Number(n.trim())).filter(Boolean);
 const OUT = join(ROOT, '.inspect');
 
@@ -140,6 +144,28 @@ const FLAT_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 36">'
   + '<rect x="26" y="12" width="16" height="24" fill="#8d95a1"/>'
   + '<rect x="46" y="24" width="12" height="12" fill="#6d7583"/>'
   + '</svg>';
+
+/** Two real-account relationships per side, as my_native_matches returns them. */
+function nativeRows(route) {
+  const owner = route.startsWith('/property');
+  const base = {
+    property_id: '11111111-1111-4111-8111-111111111111', homatch_id: 482913,
+    property_title: 'ორსაძინებლიანი ბინა კრწანისში', deal_kind: 'SALE',
+    has_conversation: false, updated_at: new Date().toISOString(),
+    city: 'Tbilisi', district: 'Krtsanisi', property_type: 'APARTMENT', transaction_type: 'SALE',
+    price: 210000, currency: 'USD', area: 85, rooms: 3, bedrooms: 2,
+  };
+  return [
+    { ...base, kind: 'MATCH', id: 'aaaaaaaa-0000-4000-8000-000000000001', role: owner ? 'OWNER' : 'SEEKER',
+      counterparty_name: 'ნინო', match_score: 0.91,
+      agreed: ['PARTICIPANTS', 'TRANSACTION', 'CITY', 'DISTRICT', 'PROPERTY_TYPE', 'PRICE', 'BEDROOMS'],
+      preference_misses: [], state: 'MATCHED', viewing_requested: false },
+    { ...base, kind: 'RELATIONSHIP', id: 'aaaaaaaa-0000-4000-8000-000000000002', role: owner ? 'OWNER' : 'SEEKER',
+      counterparty_name: 'Giorgi', match_score: null, agreed: [], preference_misses: [],
+      state: 'INTERESTED', viewing_requested: true, homatch_id: 517204,
+      property_title: 'სამოთახიანი ბინა ვაკეში', district: 'Vake', price: 185000 },
+  ];
+}
 
 mkdirSync(OUT, { recursive: true });
 
@@ -261,6 +287,15 @@ for (const count of COUNTS) {
         headers: { 'access-control-allow-origin': '*' },
         body: FLAT_SVG,
       });
+    }
+    if (url.includes('/rest/v1/rpc/my_native_matches')) {
+      return r.fulfill(json(NATIVE ? nativeRows(ROUTE) : []));
+    }
+    if (url.includes('/rest/v1/rpc/open_native_conversation')) {
+      return r.fulfill(json('88888888-8888-4888-8888-888888888888'));
+    }
+    if (url.includes('/rest/v1/rpc/reveal_native_contact')) {
+      return r.fulfill(json({ phone: '+995555000111', reason: null }));
     }
     if (url.includes('/rest/v1/')) return r.fulfill(json([]));
     /*

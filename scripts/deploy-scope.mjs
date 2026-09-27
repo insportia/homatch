@@ -60,12 +60,26 @@ export const COMPONENTS = ['frontend', 'edge', 'worker', 'migrations'];
 const git = (...args) => execFileSync('git', args,
   { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
 
+/**
+ * Functions CI must never deploy, and therefore must never OWE.
+ *
+ * src/services/__tests__/edgeDeployRegistry.test.mjs declares both:
+ * impersonate-user mints a session as another customer and is "deployed
+ * deliberately or not at all"; unlock-external-contact is hand-deployed.
+ * Neither name appears in either of deploy.yml's deploy lists — on purpose —
+ * so leaving them in the owed set made run 36328705484's accounting fail
+ * (owed 31, matched 29) although every listed function had reached a deploy
+ * command. Owed is what CI is responsible for; these two are not.
+ */
+export const HAND_DEPLOYED = ['impersonate-user', 'unlock-external-contact'];
+
 /** Every deployable edge function: a directory with an index.ts. */
 export function edgeFunctionNames(root = ROOT) {
   const dir = join(root, FUNCTIONS_DIR);
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
     .filter((name) => !name.startsWith('_'))
+    .filter((name) => !HAND_DEPLOYED.includes(name))
     .filter((name) => existsSync(join(dir, name, 'index.ts')))
     .sort();
 }

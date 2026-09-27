@@ -39,7 +39,11 @@ const BASE = `http://127.0.0.1:${PORT}`;
 
 /* Every customer route that carries, or can carry, a form. */
 const ROUTES = [
-  '/', '/about', '/pricing', '/mortgage', '/investment',
+  /* /partners and /find-property carry real forms (the partner inquiry, the
+     search composer). They were added when the 2026-09 home page stopped
+     carrying three assistant fields, so the gate measures more forms rather
+     than lowering its floor. */
+  '/', '/about', '/pricing', '/mortgage', '/investment', '/partners', '/find-property',
   '/auth/login', '/auth/signup', '/auth/reset-password',
   '/dashboard', '/ai', '/credits', '/profile', '/activity', '/notifications',
   '/viewings', '/active-search', '/verify', '/property/add',

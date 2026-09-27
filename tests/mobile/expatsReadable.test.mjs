@@ -446,8 +446,13 @@ test('FOR EXPATS navigation goes where it says', opts, async (t) => {
     }
     assert.equal(census.topicLinks.length, TOPIC_SLUGS.length, 'the topic index lost a topic');
 
+    /* The site's own chrome is not this product's navigation: the public
+       footer is a site map of real anchors, and one of them is For Expats
+       itself. Only the links the page body offers are counted here. */
     const internal = await page.evaluate(() =>
-      [...document.querySelectorAll('a[href^="/"]')].map((a) => a.getAttribute('href')));
+      [...document.querySelectorAll('a[href^="/"]')]
+        .filter((a) => !a.closest('header, footer'))
+        .map((a) => a.getAttribute('href')));
     await ctx.close();
 
     /*

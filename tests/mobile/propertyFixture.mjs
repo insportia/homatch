@@ -115,3 +115,138 @@ export function matchRows(count = 3) {
   }
   return rows;
 }
+
+/*
+ * MATCHES AS THE MATCHES PAGE ACTUALLY READS THEM, which is a different query from the
+ * one above.
+ *
+ * matchRows() answers portfolioIntelligence: three columns, enough to count. getMatches()
+ * selects twenty-six, and a card built from the three-column shape renders a headline with
+ * no city, no budget, no excerpt and no reasons — which is not a card anybody can judge by
+ * looking at it. Visual QA against that fixture would have been QA of a fixture.
+ *
+ * FOUR STATES, DELIBERATELY, because each one is a different card:
+ *
+ *   NEW and INCLUDED       carries an allowance id, so no price, no blur, and a View
+ *                          button. This is the state the old card charged for twice.
+ *   PREVIEWED and FOR SALE the only state where a price and a blur are honest.
+ *   UNLOCKED               opened, so the chat and viewing actions exist.
+ *   POTENTIAL with a gap   a mismatch_reasons entry, which was stored since matching was
+ *                          built and rendered nowhere at all until the rebuild.
+ *
+ * The reason strings are the matcher's own literals, copied from run-matching-v2's
+ * score(). A fixture that invents friendlier ones would hide exactly the fault this
+ * rebuild exists to fix.
+ */
+const MATCH_STATES = [
+  {
+    signal_strength: 'EXCEPTIONAL',
+    status: 'NEW',
+    match_score: 92,
+    included: true,
+    reasons: ['Transaction intent matches', 'Country matches', 'City matches', 'Property type matches', 'Budget compatible'],
+    mismatches: [],
+    preview_city: 'Tbilisi',
+    preview_budget_min: 220000,
+    preview_budget_max: 280000,
+    preview_bedrooms: 3,
+    preview_recency: '2d ago',
+    preview_platform: 'GOOGLE',
+    preview_language: 'ka',
+    evidence_freshness: 'FRESH',
+    preview_excerpt: 'ვეძებ სამ საძინებლიან ბინას ვაკეში ან საბურთალოზე, ბიუჯეტი 250 ათასამდე, აუცილებლად პარკინგით.',
+  },
+  {
+    signal_strength: 'GOOD',
+    status: 'PREVIEWED',
+    match_score: 71,
+    included: false,
+    reasons: ['Transaction intent matches', 'City matches', 'Budget near range'],
+    mismatches: ['Property type differs'],
+    preview_city: 'Tbilisi',
+    preview_budget_min: 180000,
+    preview_budget_max: null,
+    preview_bedrooms: 2,
+    preview_recency: '8d ago',
+    preview_platform: 'FACEBOOK',
+    preview_language: 'ru',
+    evidence_freshness: 'NEEDS_REVALIDATION',
+    preview_excerpt: 'Ищу квартиру в Тбилиси, район не принципиален, бюджет от 180 тысяч, желательно с ремонтом.',
+  },
+  {
+    signal_strength: 'VERY_STRONG',
+    status: 'UNLOCKED',
+    match_score: 84,
+    included: false,
+    reasons: ['Transaction intent matches', 'Country matches', 'City matches', 'District/neighborhood matches', 'Area compatible', 'Description/needs overlap'],
+    mismatches: [],
+    preview_city: 'Tbilisi',
+    preview_budget_min: 240000,
+    preview_budget_max: 300000,
+    preview_bedrooms: 4,
+    preview_recency: '3h ago',
+    preview_platform: 'TELEGRAM',
+    preview_language: 'en',
+    evidence_freshness: 'FRESH',
+    preview_excerpt: 'Relocating to Tbilisi in the autumn, looking to buy a four-bedroom in Vake, up to 300k, parking essential.',
+  },
+  {
+    signal_strength: 'POTENTIAL',
+    status: 'NEW',
+    match_score: 44,
+    included: false,
+    reasons: ['Transaction intent partially known', 'Country matches'],
+    mismatches: ['City differs', 'Budget differs'],
+    preview_city: 'Batumi',
+    preview_budget_min: null,
+    preview_budget_max: 90000,
+    preview_bedrooms: null,
+    preview_recency: '34d ago',
+    preview_platform: 'WEBSITE',
+    preview_language: 'tr',
+    evidence_freshness: 'UNVERIFIABLE',
+    preview_excerpt: 'Batum\'da deniz manzaralı, bütçem 90 bin dolara kadar, acele etmiyorum.',
+  },
+];
+
+/** N matches in the shape getMatches() selects, cycling the four states. */
+export function matchDetailRows(count = 3, propertyId = idFor(0)) {
+  const rows = [];
+  for (let index = 0; index < count; index += 1) {
+    const state = MATCH_STATES[index % MATCH_STATES.length];
+    rows.push({
+      id: `aaaaaaaa-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      property_id: propertyId,
+      campaign_id: 'bbbbbbbb-0000-4000-8000-000000000001',
+      signal_id: `cccccccc-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      intent_profile_id: `dddddddd-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      match_score: state.match_score,
+      intent_confidence: 0.8,
+      signal_strength: state.signal_strength,
+      match_reasons: state.reasons,
+      mismatch_reasons: state.mismatches,
+      unlock_price_credits: state.included ? 0 : 4.5,
+      unlock_included_reservation_id: null,
+      /* An ALLOWANCE rather than a reservation: the first search of every month on the
+         FREE plan is covered this way, and reading only the reservation id is what made
+         those results render as something to buy. */
+      unlock_included_allowance_id: state.included
+        ? 'eeeeeeee-0000-4000-8000-000000000001'
+        : null,
+      evidence_freshness: state.evidence_freshness,
+      status: state.status,
+      preview_platform: state.preview_platform,
+      preview_language: state.preview_language,
+      preview_city: state.preview_city,
+      preview_budget_min: state.preview_budget_min,
+      preview_budget_max: state.preview_budget_max,
+      preview_currency: 'USD',
+      preview_bedrooms: state.preview_bedrooms,
+      preview_excerpt: state.preview_excerpt,
+      preview_recency: state.preview_recency,
+      created_at: '2026-09-24T10:00:00Z',
+      updated_at: '2026-09-26T10:00:00Z',
+    });
+  }
+  return rows;
+}

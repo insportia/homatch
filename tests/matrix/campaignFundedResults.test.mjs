@@ -69,20 +69,37 @@ test('the column reaches the screen at all', () => {
 test('an included result is never shown a price or a padlock', () => {
   const body = code(MATCHES);
   /*
-   * Both the price and the blur must sit behind `forSale`, the single boolean the
-   * rebuilt card derives once as `!included && !opened`. This previously asserted on
-   * `included ? '' :` and `included ?`, which described the old implementation's
-   * shape; the rule is the same and the check now names the rule.
+   * Both the price and the blur must sit behind `forSale`, the single boolean the card
+   * derives once as `!included && !opened`.
+   *
+   * THIS CHECK HAS NOW BEEN REWRITTEN TWICE FOR THE SAME REASON, so it is finally written
+   * against the rule instead of the shape. It first asserted on `included ? '' :`, then on
+   * text appearing some number of characters before the price — and that second form
+   * survived the card being rebuilt from `forSale && <priced/>` into `forSale ? A : B`
+   * without noticing, because "forSale appears above the price" is true no matter which
+   * branch the price ended up in. B is the branch a customer who has already paid reaches.
+   * So: extract the true branch, and look inside it.
    */
-  const priced = body.indexOf('matches_unlock_btn');
-  const blur = body.indexOf('blur-[1.5px]');
-  assert.ok(priced > 0 && blur > 0, 'the priced/blurred branch could not be found');
   assert.match(body, /const forSale = !included && !opened;/,
     'the card no longer derives one answer for whether anything is being sold');
+
+  const at = body.indexOf('{forSale ? (');
+  assert.ok(at > 0, 'the one for-sale decision could not be found');
+  const open = body.indexOf('(', at + 1);
+  const close = body.indexOf(') : (', open);
+  assert.ok(close > open, 'the for-sale branch could not be delimited');
+  const trueBranch = body.slice(open, close);
+  const falseBranch = body.slice(close, body.indexOf('DropdownMenu', close));
+
+  assert.ok(trueBranch.includes('matches_unlock_btn'),
+    'the priced button is not inside the for-sale branch');
+  assert.ok(!falseBranch.includes('unlock_price_credits'),
+    'a result the campaign already paid for is being shown a price');
+
+  const blur = body.indexOf('blur-[1.5px]');
+  assert.ok(blur > 0, 'the blur is gone entirely — this test is measuring nothing');
   assert.match(body.slice(Math.max(0, blur - 200), blur), /forSale \?/,
     'the blur is not conditional on something actually being for sale');
-  assert.match(body.slice(Math.max(0, priced - 600), priced), /forSale &&/,
-    'the credit price is not conditional on something actually being for sale');
 });
 
 test('the reasons a match exists are shown before anything is bought', () => {
@@ -102,8 +119,25 @@ test('the reasons a match exists are shown before anything is bought', () => {
     'the card does not show why the match is there');
   assert.match(card, /match\.mismatch_reasons/,
     'the card does not say what does not match');
-  assert.match(card, /matches_why_this_matches/,
-    'the reasons are shown without a heading saying what they are');
+
+  /*
+   * WHERE THE EXPLANATION SITS CHANGED; WHETHER IT IS FREE DID NOT.
+   *
+   * The visual rebuild moved the reasons off the front of the card, because a customer
+   * read "Transaction intent matches / Country matches / City matches" before they read
+   * who the person was. They are now one click away behind a control labelled "Why this
+   * match?", and a COUNT of how much agrees is on the card unopened. Both are free: the
+   * disclosure opens without a charge, which is the rule this test exists for — the
+   * explanation of relevance must not be what is sold. The contact details are.
+   */
+  assert.match(card, /match_why_disclosure/,
+    'the reasons are shown without a control saying what they are');
+  assert.match(card, /match_fit_summary/,
+    'nothing on the unopened card says how much agrees');
+  const disclosure = card.indexOf('match_why_disclosure');
+  const priced = card.indexOf('matches_unlock_btn');
+  assert.ok(priced === -1 || disclosure < priced || card.indexOf('showEvidence') < priced,
+    'the explanation is gated behind the purchase again');
 });
 
 test('the same person is not matched twice to one property', () => {

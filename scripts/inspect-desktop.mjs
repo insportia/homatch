@@ -91,7 +91,7 @@ if (!bundled) {
  * ERR_UNSUPPORTED_ESM_URL_SCHEME -- node reads "C:" as a protocol. The same trap as
  * turning a file: URL back into a path, in the other direction.
  */
-const { propertyRows, matchRows } = await import(
+const { propertyRows, matchRows, matchDetailRows } = await import(
   pathToFileURL(join(ROOT, 'tests', 'mobile', 'propertyFixture.mjs')).href
 );
 
@@ -177,6 +177,23 @@ for (const count of COUNTS) {
     if (url.includes('/auth/v1/token')) return r.fulfill(json(fakeSession()));
     if (url.includes('/rest/v1/properties')) {
       /*
+       * ONE ROW WHEN ONE ROW WAS ASKED FOR, AND THE TEST FOR THAT IS THE FILTER.
+       *
+       * readProperty() uses maybeSingle(), and postgrest-js 2.x does NOT set
+       * Accept: application/vnd.pgrst.object+json for maybeSingle -- that is single()'s
+       * header. maybeSingle asks for an ordinary array and then rejects it client-side if
+       * it holds more than one row. So an accept-header test matched nothing, the stub
+       * answered a by-id read with all ten fixture rows, and readProperty threw.
+       *
+       * What that looked like was a product bug: the Matches heading fell back to
+       * "Matches" and every card to "Someone interested in a property like yours", which
+       * is precisely the generic wording the counterpart work exists to avoid. It was the
+       * fixture. `id=eq.` is what a by-id read actually looks like, so that is the test.
+       */
+      if (/[?&]id=eq\./.test(url)) {
+        return r.fulfill(json(propertyRows(1)));
+      }
+      /*
        * THE COUNT COMES BACK IN A HEADER, ALWAYS. The first version of this stub only
        * set content-range when it thought a count was being asked for, and the tab read
        * "Current 0" above three listed rows -- a fixture disagreeing with itself, which
@@ -195,7 +212,19 @@ for (const count of COUNTS) {
         body: JSON.stringify(rows),
       });
     }
-    if (url.includes('/rest/v1/matches')) return r.fulfill(json(matchRows(count)));
+    if (url.includes('/rest/v1/matches')) {
+      /*
+       * TWO QUERIES, TWO SHAPES, told apart by a column name.
+       *
+       * portfolioIntelligence selects three columns and counts them; getMatches selects
+       * twenty-six and renders them. `preview_platform` appears only in the second, so it
+       * is the discriminator -- and answering the card query with the counting shape is
+       * how a match card ends up with no city, no budget and no reasons, which is a
+       * screenshot of the fixture rather than of the product.
+       */
+      const detailed = url.includes('preview_platform');
+      return r.fulfill(json(detailed ? matchDetailRows(count) : matchRows(count)));
+    }
     if (url.includes('/rest/v1/users')) {
       const row = {
         id: '77777777-7777-4777-8777-777777777777',
@@ -232,6 +261,9 @@ for (const count of COUNTS) {
   const measured = await page.evaluate(() => {
     const canvas = document.querySelector('[class*="max-w-["]');
     const region = canvas?.parentElement ?? null;
+    /* A card is something with a heading in it. On the owner workspace those are rows in
+       a stack; on Matches they are cells in a grid, and `rowsAboveFold` counts whichever
+       it finds -- so on a grid page the number is cards visible, not rows. */
     const rows = [...document.querySelectorAll('[class*="rounded-xl"], [data-slot="card"]')]
       .filter((el) => el.querySelector('h3'));
     const first = rows[0]?.getBoundingClientRect();

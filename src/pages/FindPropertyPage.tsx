@@ -65,6 +65,43 @@ import {
 } from '@/services/findProperty';
 
 const GOALS: readonly SearchGoal[] = ['BUY', 'RENT', 'SHORT_STAY', 'INVEST', 'COMMERCIAL', 'LAND'];
+
+/*
+ * FOUR SENTENCES SOMEBODY CAN START FROM.
+ *
+ * The page was a heading, a label, an empty box and a button that was already disabled.
+ * Nothing on it said what the box accepts, so the first thing a customer had to do was
+ * guess the format of a free-text field — and the usual guess is two or three keywords,
+ * which is the one input this page is worse at than a filter form.
+ *
+ * These are i18n KEYS, and the sentences behind them are written per language rather than
+ * translated word for word: how a Georgian describes a flat hunt is not an English
+ * sentence with Georgian words in it. Each one is a complete, specific request, because a
+ * vague example teaches vagueness.
+ *
+ * They fill the composer rather than submitting: the point is to show the SHAPE of a good
+ * description and then let somebody edit it into their own.
+ */
+const EXAMPLE_KEYS = [
+  'plan_example_family',
+  'plan_example_rent',
+  'plan_example_invest',
+  'plan_example_relocate',
+] as const;
+
+/*
+ * WHAT WILL HAPPEN, BEFORE IT HAPPENS.
+ *
+ * Three steps, on the first screen, because "type something and press a button" tells a
+ * customer nothing about what they are agreeing to. The middle step is the one worth
+ * advertising: this product shows you its reading of your words and lets you correct it
+ * before it spends anything, which is the whole argument for the plan step existing.
+ */
+const HOW_IT_WORKS = [
+  { icon: Sparkles, titleKey: 'plan_step_read_title', bodyKey: 'plan_step_read_body' },
+  { icon: Check, titleKey: 'plan_step_check_title', bodyKey: 'plan_step_check_body' },
+  { icon: Clock, titleKey: 'plan_step_search_title', bodyKey: 'plan_step_search_body' },
+] as const;
 const STRENGTHS: readonly ConstraintStrength[] = ['REQUIRED', 'PREFERRED', 'FLEXIBLE'];
 
 type Stage = 'DESCRIBE' | 'PLAN' | 'RESULTS';
@@ -310,52 +347,129 @@ export default function FindPropertyPage() {
   return (
     <RouteGuard>
       <AppLayout>
-        <div className="max-w-2xl mx-auto space-y-6 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+        {/*
+          max-w-2xl WAS 672px OF A 1920px SCREEN, for every stage including the results.
+          The composer and the plan editor still want a reading width and get one below —
+          a 1440px-wide textarea is nobody's idea of an improvement — but a list of
+          properties does not, and it is now a grid inside this wider page.
+        */}
+        <div className="max-w-[90rem] mx-auto space-y-6 pb-[calc(1rem+env(safe-area-inset-bottom))]">
           {header}
 
           {/* ── DESCRIBE ─────────────────────────────────────────────────── */}
           {stage === 'DESCRIBE' && (
-            <Card className="bg-card border-border">
-              <CardContent className="p-4 space-y-3">
-                <label
-                  htmlFor="find-property-composer"
-                  className="text-sm font-medium text-foreground break-words block"
-                >
-                  {t('plan_composer_label')}
-                </label>
-                {/*
-                  A PLAIN GROWING TEXTAREA, and deliberately not a chat.
-                  min-h reserves its space so the page does not jump as it grows, dir is
-                  inherited so Arabic and Hebrew need no special case, and there is no
-                  typing indicator because nothing is typing.
-                */}
-                <textarea
-                  id="find-property-composer"
-                  ref={composer}
-                  value={text}
-                  onChange={(event) => setText(event.target.value)}
-                  rows={4}
-                  className="w-full min-h-[7rem] resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary break-words"
-                  placeholder={t('plan_composer_placeholder')}
-                />
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <p className="text-[13px] text-muted-foreground/70 break-words min-w-0">
-                    {t('plan_composer_hint')}
-                  </p>
-                  <Button onClick={describe} disabled={!text.trim() || reading} size="sm">
-                    {reading
-                      ? <Loader2 className="h-4 w-4 me-1.5 animate-spin shrink-0" />
-                      : <Sparkles className="h-4 w-4 me-1.5 shrink-0" />}
-                    <span className="break-words">{t('plan_composer_cta')}</span>
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+            /* A reading width, centred. The stage is one paragraph of writing; giving it
+               1440px would make it harder to use, not more impressive. */
+            <div className="mx-auto w-full max-w-3xl space-y-4">
+              <Card className="bg-card border-border">
+                <CardContent className="p-4 sm:p-6 space-y-4">
+                  <div className="space-y-1.5 min-w-0">
+                    <label
+                      htmlFor="find-property-composer"
+                      className="text-base font-semibold text-foreground break-words block"
+                    >
+                      {t('plan_composer_label')}
+                    </label>
+                    <p className="text-sm text-muted-foreground break-words">
+                      {t('plan_composer_hint')}
+                    </p>
+                  </div>
+
+                  {/*
+                    A PLAIN GROWING TEXTAREA, and deliberately not a chat.
+                    min-h reserves its space so the page does not jump as it grows, dir is
+                    inherited so Arabic and Hebrew need no special case, and there is no
+                    typing indicator because nothing is typing.
+                  */}
+                  <textarea
+                    id="find-property-composer"
+                    ref={composer}
+                    value={text}
+                    onChange={(event) => setText(event.target.value)}
+                    rows={5}
+                    className="w-full min-h-[9rem] resize-y rounded-lg border border-border bg-background px-3 py-2.5 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary break-words"
+                    placeholder={t('plan_composer_placeholder')}
+                  />
+
+                  {/* ── SOMETHING TO START FROM ──────────────────────────────
+                    A chip fills the composer; it does not submit. Nobody should have to
+                    guess what a free-text field accepts, and the alternative to showing
+                    them is that they type three keywords into the one interface that is
+                    worse at keywords than a filter form would be. */}
+                  <div className="space-y-2">
+                    <p className="text-[13px] font-medium text-muted-foreground break-words">
+                      {t('plan_examples_label')}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {EXAMPLE_KEYS.map((key) => (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => {
+                            setText(t(key));
+                            composer.current?.focus();
+                          }}
+                          className="rounded-full border border-border bg-secondary/60 px-3 py-1.5 text-start text-[13px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary max-w-full"
+                        >
+                          <span className="break-words line-clamp-2">{t(key)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 flex-wrap border-t border-border/50 pt-3">
+                    {/*
+                      A DISABLED BUTTON THAT SAYS WHY IT IS DISABLED.
+                      It was disabled on arrival with nothing next to it, which reads as a
+                      broken page rather than as a form waiting for input.
+                    */}
+                    <p className="text-[13px] text-muted-foreground/70 break-words min-w-0">
+                      {text.trim() ? t('plan_composer_ready') : t('plan_composer_needs_text')}
+                    </p>
+                    <Button
+                      onClick={describe}
+                      disabled={!text.trim() || reading}
+                      className="h-auto min-h-10 py-2 gap-1.5 whitespace-normal text-start font-semibold"
+                    >
+                      {reading
+                        ? <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                        : <Sparkles className="h-4 w-4 shrink-0" />}
+                      <span className="break-words">{t('plan_composer_cta')}</span>
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* ── WHAT HAPPENS NEXT ────────────────────────────────────────
+                The empty state stops being empty. Three steps, and the middle one is the
+                argument for this product over a chat box: you see what was understood and
+                correct it before anything is spent. */}
+              <div className="grid gap-3 sm:grid-cols-3">
+                {HOW_IT_WORKS.map(({ icon: StepIcon, titleKey, bodyKey }, index) => (
+                  <div
+                    key={titleKey}
+                    className="rounded-xl border border-border bg-card/60 p-3.5 space-y-1.5 min-w-0"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[13px] font-semibold text-primary">
+                        {index + 1}
+                      </span>
+                      <StepIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    </div>
+                    <p className="text-sm font-medium text-foreground break-words">{t(titleKey)}</p>
+                    <p className="text-[13px] text-muted-foreground break-words leading-snug">
+                      {t(bodyKey)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
 
           {/* ── PLAN ─────────────────────────────────────────────────────── */}
           {stage === 'PLAN' && plan && (
-            <div className="space-y-4">
+            /* The plan is a form to read and correct, so it keeps a reading width too. */
+            <div className="mx-auto w-full max-w-3xl space-y-4">
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <h2 className="text-base font-semibold text-foreground break-words">
                   {t('plan_review_title')}
@@ -593,7 +707,11 @@ export default function FindPropertyPage() {
           {/* ── RESULTS ──────────────────────────────────────────────────── */}
           {stage === 'RESULTS' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
+              {/* The heading row and the three no-result states keep a reading width: a
+                  centred "nothing has matched yet" card stretched across 1440px is the
+                  over-correction, not the fix. Only the grid of properties below uses the
+                  full page. */}
+              <div className="mx-auto w-full max-w-3xl flex items-center justify-between gap-2 flex-wrap">
                 <h2 className="text-base font-semibold text-foreground break-words">
                   {t('plan_results_title')}
                 </h2>
@@ -604,7 +722,8 @@ export default function FindPropertyPage() {
               </div>
 
               {loadingResults && (
-                <div className="space-y-3">
+                <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+                  <Skeleton className="h-32 rounded-xl" />
                   <Skeleton className="h-32 rounded-xl" />
                   <Skeleton className="h-32 rounded-xl" />
                 </div>
@@ -616,7 +735,7 @@ export default function FindPropertyPage() {
                 next actions, and an empty list cannot tell them apart.
               */}
               {!loadingResults && resultState === 'SEARCHING' && (
-                <Card className="bg-card border-border">
+                <Card className="mx-auto w-full max-w-3xl bg-card border-border">
                   <CardContent className="p-5 text-center space-y-2">
                     <Building2 className="h-9 w-9 mx-auto opacity-30" />
                     <p className="text-sm font-medium text-foreground break-words">
@@ -630,7 +749,7 @@ export default function FindPropertyPage() {
               )}
 
               {!loadingResults && resultState === 'NO_ACTIVE_SEARCH' && (
-                <Card className="bg-card border-border">
+                <Card className="mx-auto w-full max-w-3xl bg-card border-border">
                   <CardContent className="p-5 text-center space-y-2">
                     <Search className="h-9 w-9 mx-auto opacity-30" />
                     <p className="text-sm text-muted-foreground break-words">
@@ -651,7 +770,12 @@ export default function FindPropertyPage() {
                       <span className="break-words">{t('plan_results_included')}</span>
                     </Badge>
                   </div>
-                  {results.map((result) => <ResultCard key={result.id} result={result} />)}
+                  {/* Properties, in columns from lg. One result occupies one column and
+                      the rest of the row stays empty, which is what a list with one thing
+                      in it should look like. */}
+                  <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3 items-start">
+                    {results.map((result) => <ResultCard key={result.id} result={result} />)}
+                  </div>
                 </>
               )}
             </div>

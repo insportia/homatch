@@ -34,10 +34,51 @@ export interface FeatureFlags {
    * The page component is kept on disk rather than deleted, for the same reason.
    */
   activeSearchUi: boolean;
+
+  /**
+   * The outbound-publication block on the Matches workspace: the community-outreach
+   * panel that drafts a post for Facebook groups and Telegram channels, and the card of
+   * links out to Georgian portals.
+   *
+   * DEFERRED 2026-09-27. Both were on a screen whose subject is "who wants this
+   * property", and both answered a different question -- "where else could I advertise
+   * it" -- above the answer to the first one. A customer scrolling to their matches read
+   * two publication CTAs before the first match. The work they do is real and the AI
+   * drafting is good; it belongs somewhere it is the subject, not in front of results.
+   *
+   * WHAT IS STILL RUNNING. `community_outreach_*`, the drafting edge function, the
+   * translated post copy and the portal registry are untouched, and the components stay
+   * on disk. This hides two panels on one page.
+   */
+  matchesOutboundPublication: boolean;
+
+  /**
+   * The campaign OPERATOR controls on the Matches workspace: the wallet-balance chip in
+   * its header, the pulsing "matching is active" banner, and the per-language coverage
+   * table.
+   *
+   * DEFERRED 2026-09-27, and this one needs the distinction stated precisely, because
+   * hiding the wrong half would break the product.
+   *
+   * HIDDEN: the wallet balance (a number about the ACCOUNT, in the header of a screen
+   * about a PROPERTY -- and the unlock dialog already shows the balance at the moment it
+   * is about to change, which is where a balance is load-bearing); the green pulsing
+   * status banner, which reported a state the customer had not asked to think about and
+   * was derived from "some match is not archived" rather than from the campaign; and the
+   * language-coverage counts, which are how an operator audits reach.
+   *
+   * NOT HIDDEN, and must never be folded into this flag: starting a search, the budget
+   * authorisation dialog, pausing a running search, live job progress, and Expand
+   * Search. Those are how a customer gets matches at all and how they stay in control of
+   * what is spent.
+   */
+  matchesCampaignOperatorControls: boolean;
 }
 
 export const FEATURES: FeatureFlags = {
   activeSearchUi: false,
+  matchesOutboundPublication: false,
+  matchesCampaignOperatorControls: false,
 };
 
 /** Read a flag by name. A helper so call sites read as a question. */

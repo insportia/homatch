@@ -116,35 +116,54 @@ test('the blur is applied only when something is genuinely for sale', () => {
   }
 });
 
+/*
+ * The TRUE branch of the card's one for-sale decision.
+ *
+ * Asserting that `forSale` merely appears somewhere above the price is not the rule: in
+ * `forSale ? A : B` that is satisfied whether the price is in A or in B, and B is the
+ * branch a customer who has already paid reaches. So this extracts the true branch and
+ * the checks below ask whether the price is INSIDE it. Written this way after the card was
+ * rebuilt from `forSale && <priced/>` into a ternary and the looser check went on passing
+ * for the wrong reason.
+ */
+function forSaleBranch() {
+  const at = page.indexOf('{forSale ? (');
+  assert.ok(at > 0, 'the card no longer decides once whether anything is being sold');
+  const open = page.indexOf('(', at + 1);
+  const close = page.indexOf(') : (', open);
+  assert.ok(close > open, 'the for-sale branch could not be delimited');
+  return page.slice(open, close);
+}
+
 test('no button offers to sell something for 0.00 CR', () => {
   /*
    * The price is still rendered — for results that genuinely cost credits — so this
-   * checks WHERE it is rendered: inside the single branch that only an unpaid,
-   * unopened result reaches.
+   * checks WHERE it is rendered: inside the single branch that only an unpaid, unopened
+   * result reaches.
    */
-  const price = page.indexOf('unlock_price_credits.toFixed(2)');
-  assert.ok(price > 0, 'the price is no longer rendered at all');
-
-  const surrounding = page.slice(Math.max(0, price - 800), price);
-  assert.match(
-    surrounding,
-    /forSale &&/,
-    'the credit price is rendered outside the for-sale branch',
-  );
+  const occurrences = [...page.matchAll(/unlock_price_credits\.toFixed\(2\)/g)];
+  assert.ok(occurrences.length > 0, 'the price is no longer rendered at all');
+  assert.ok(forSaleBranch().includes('unlock_price_credits.toFixed(2)'),
+    'the credit price is rendered outside the for-sale branch');
 });
 
 test('the padlock hint is not shown on a result the customer owns', () => {
   /*
-   * The hint under the excerpt had two branches keyed on `included`, so an
-   * already-UNLOCKED match -- which is not `included`, because inclusion is
-   * explicitly cleared once a match is unlocked -- fell through to the padlock and
-   * "unlock to see the rest" under text it had already paid to see.
+   * The hint under the excerpt once had two branches keyed on `included`, so an
+   * already-UNLOCKED match -- which is not `included`, because inclusion is explicitly
+   * cleared once a match is unlocked -- fell through to "unlock to see the rest" under
+   * text it had already paid to see.
+   *
+   * It now exists in one branch only, and the companion line for an owned result is gone
+   * rather than rewritten: an unblurred excerpt needs no note.
    */
   const hint = page.indexOf('matches_unlock_hint');
-  assert.ok(hint > 0, 'the padlock hint is gone entirely');
+  assert.ok(hint > 0, 'the hint explaining the blur is gone entirely');
   const surrounding = page.slice(Math.max(0, hint - 400), hint);
-  assert.match(surrounding, /forSale \?/,
-    'the padlock hint does not key off forSale');
+  assert.match(surrounding, /forSale \?|forSale &&/,
+    'the hint does not key off forSale');
+  assert.ok(!page.includes('matches_included_hint'),
+    'the owned-result hint is back under an excerpt that is not blurred');
 });
 
 test('credits are never rendered with a currency symbol', () => {

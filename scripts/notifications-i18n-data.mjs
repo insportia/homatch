@@ -35,6 +35,18 @@ export const NOTIFICATION_STRINGS = {
   ],
   notif_kind_news: ['News', 'სიახლეები', 'Новости', 'Duyurular', 'الأخبار', 'חדשות'],
 
+  /* The preference switch for FOR EXPATS reminders. push-send files them under
+     `expat_plan` and the settings screen renders `notif_cat_${key}`, but the key was
+     never written — the screen showed the raw key to every customer. */
+  notif_cat_expat_plan: [
+    'Relocation plan reminders',
+    'გადმოსვლის გეგმის შეხსენებები',
+    'Напоминания по плану переезда',
+    'Taşınma planı hatırlatmaları',
+    'تذكيرات خطة الانتقال',
+    'תזכורות לתוכנית המעבר',
+  ],
+
   /* ── The centre itself ────────────────────────────────────────────── */
 
   notif_page_sub: [

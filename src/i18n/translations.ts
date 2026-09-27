@@ -9488,6 +9488,9 @@ const en = {
   notif_native_demand_title: 'A Homatch property matches your search',
   notif_native_demand_many_title: '{{n}} Homatch properties match your search',
   notif_native_demand_body: 'It fits the plan you confirmed.',
+
+  /* ── HOMATCH NOTIFICATION CENTER ──────────────────────────────────── */
+  notif_cat_expat_plan: 'Relocation plan reminders',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -18890,6 +18893,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   notif_native_demand_title: 'Homatch-ზე თქვენს ძიებას ქონება შეესაბამება',
   notif_native_demand_many_title: 'თქვენს ძიებას {{n}} ქონება შეესაბამება',
   notif_native_demand_body: 'ის თქვენ მიერ დადასტურებულ გეგმას შეესაბამება.',
+
+  /* ── HOMATCH NOTIFICATION CENTER ──────────────────────────────────── */
+  notif_cat_expat_plan: 'გადმოსვლის გეგმის შეხსენებები',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -28283,6 +28289,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   notif_native_demand_title: 'Объект на Homatch подходит под ваш поиск',
   notif_native_demand_many_title: 'Объектов, подходящих под ваш поиск: {{n}}',
   notif_native_demand_body: 'Он соответствует подтверждённому вами плану.',
+
+  /* ── HOMATCH NOTIFICATION CENTER ──────────────────────────────────── */
+  notif_cat_expat_plan: 'Напоминания по плану переезда',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -37674,6 +37683,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   notif_native_demand_title: 'Bir Homatch mülkü aramanızla eşleşiyor',
   notif_native_demand_many_title: '{{n}} Homatch mülkü aramanızla eşleşiyor',
   notif_native_demand_body: 'Onayladığınız plana uyuyor.',
+
+  /* ── HOMATCH NOTIFICATION CENTER ──────────────────────────────────── */
+  notif_cat_expat_plan: 'Taşınma planı hatırlatmaları',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -47065,6 +47077,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   notif_native_demand_title: 'عقار على Homatch يطابق بحثك',
   notif_native_demand_many_title: 'عقارات على Homatch تطابق بحثك: {{n}}',
   notif_native_demand_body: 'إنه يناسب الخطة التي أكدتها.',
+
+  /* ── HOMATCH NOTIFICATION CENTER ──────────────────────────────────── */
+  notif_cat_expat_plan: 'تذكيرات خطة الانتقال',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -56456,6 +56471,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   notif_native_demand_title: 'נכס ב-Homatch מתאים לחיפוש שלכם',
   notif_native_demand_many_title: 'נכסים ב-Homatch שמתאימים לחיפוש שלכם: {{n}}',
   notif_native_demand_body: 'הוא מתאים לתוכנית שאישרתם.',
+
+  /* ── HOMATCH NOTIFICATION CENTER ──────────────────────────────────── */
+  notif_cat_expat_plan: 'תזכורות לתוכנית המעבר',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

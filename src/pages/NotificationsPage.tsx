@@ -129,7 +129,7 @@ function NotifRow({
 
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-1.5 text-2xs leading-5 text-muted-foreground">
-            <span className="min-w-0 truncate font-medium uppercase tracking-[0.06em]">
+            <span className="min-w-0 truncate font-medium">
               {t(CATEGORY_META[category].labelKey as Parameters<typeof t>[0])}
             </span>
             <span aria-hidden="true">·</span>

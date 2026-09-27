@@ -345,7 +345,17 @@ function MatchCard({
         sale. */}
       {match.preview_excerpt && (
         <div className="space-y-1">
+          {/*
+            dir="auto" BECAUSE THIS PARAGRAPH IS NOT IN THE PAGE'S LANGUAGE.
+            The excerpt is whatever the person wrote — Turkish, Russian, English — sitting
+            inside an Arabic or Hebrew page, and it inherited the page's RTL. Measured at
+            1440 in Arabic: "Batum'da deniz manzaralı…etmiyorum." rendered with its full
+            stop at the START of the line and the ellipsis on the wrong end. dir="auto"
+            lets the browser take direction from the first strong character, which is the
+            one thing that is always right here.
+          */}
           <p
+            dir="auto"
             className={`text-sm italic text-muted-foreground break-words line-clamp-2${
               forSale ? ' blur-[1.5px] select-none' : ''}`}
           >
@@ -576,7 +586,8 @@ function UnlockedMatchDialog({
             <div className="space-y-1.5">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('matches_full_signal')}</p>
               <div className="rounded-lg bg-secondary/50 border border-border p-3">
-                <p className="text-sm text-foreground whitespace-pre-wrap">{unlock.full_signal_text}</p>
+                {/* The person's own words, in their own language and therefore their own direction. */}
+                <p dir="auto" className="text-sm text-foreground whitespace-pre-wrap break-words">{unlock.full_signal_text}</p>
               </div>
             </div>
           )}
@@ -585,7 +596,7 @@ function UnlockedMatchDialog({
           {unlock.full_intent_json?.translated_text && (
             <div className="space-y-1.5">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('matches_translation')}</p>
-              <p className="text-sm text-muted-foreground italic">{unlock.full_intent_json.translated_text}</p>
+              <p dir="auto" className="text-sm text-muted-foreground italic break-words">{unlock.full_intent_json.translated_text}</p>
             </div>
           )}
 

@@ -1,5 +1,6 @@
 // unlock-external-contact — authenticated external match reveal
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { refuseIfImpersonating } from '../_shared/impersonation.ts';
 const corsHeaders={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type'};
 const respond=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{...corsHeaders,'Content-Type':'application/json'}});
 Deno.serve(async(req)=>{
@@ -9,6 +10,7 @@ Deno.serve(async(req)=>{
   const authHeader=req.headers.get('Authorization'); if(!authHeader) return respond({error:'Unauthorized'},401);
   const supabase=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
   const {data:{user},error:authErr}=await supabase.auth.getUser(authHeader.replace(/^Bearer\s+/i,'')); if(authErr||!user) return respond({error:'Unauthorized'},401);
+  const impersonating=await refuseIfImpersonating(supabase,authHeader,corsHeaders); if(impersonating) return impersonating; // an admin viewing as this account is read-only
   const {data:actor}=await supabase.from('users').select('id').eq('auth_id',user.id).maybeSingle(); if(!actor) return respond({error:'User not found'},404);
   const {match_id,confirm}=await req.json(); if(!match_id) return respond({error:'match_id required'},400);
   const {data:match}=await supabase.from('matches').select('id,match_score,signal_strength,intent_confidence,unlock_price_credits,status,signal_id,intent_profile_id,preview_platform,preview_language,preview_city,preview_budget_min,preview_budget_max,preview_currency,preview_bedrooms,preview_excerpt,preview_recency').eq('id',match_id).maybeSingle();

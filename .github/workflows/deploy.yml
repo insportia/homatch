@@ -677,6 +677,18 @@ jobs:
             # needs a real user identity rather than a shared token that only
             # establishes that the caller knows the token.
             "find-property-plan"
+            # ADMIN CONTROL CENTRE. Both were deployed by hand and never
+            # registered, so the fixes to them could not reach production:
+            #   admin-user360     its user search interpolated the typed text
+            #                     into a PostgREST filter; it now calls
+            #                     admin_search_users under the admin's token.
+            #   impersonate-user  "Log in as user" recorded a row and changed
+            #                     nothing; it now mints a short-lived,
+            #                     read-only session (access token only).
+            # Both authenticate the caller and check is_admin themselves and
+            # are verify_jwt=true in production today.
+            "admin-user360"
+            "impersonate-user"
           )
           # ONLY WHAT IS OWED, AND IN PARALLEL.
           #

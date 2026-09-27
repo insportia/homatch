@@ -7,6 +7,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { notify } from '../_shared/notify.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { refuseIfImpersonating } from '../_shared/impersonation.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -38,6 +39,11 @@ serve(async (req) => {
     // Verify session
     const { data: { user }, error: authErr } = await supabaseUser.auth.getUser();
     if (authErr || !user) return json({ error: 'Invalid session' }, 401);
+    /* An administrator viewing as this account is read-only here: this path
+       writes with the service role, so Postgres never sees the caller's
+       impersonation token and cannot refuse it itself. */
+    const impersonating = await refuseIfImpersonating(supabaseAdmin, authHeader, CORS);
+    if (impersonating) return impersonating;
 
     // Get homatch user
     const { data: hmUser } = await supabaseAdmin

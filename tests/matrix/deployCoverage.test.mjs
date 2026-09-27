@@ -243,7 +243,7 @@ test('every function the frontend calls by name is deployed', () => {
     .sort();
 
   /*
-   * Six older functions are called from the frontend and deployed by hand.
+   * Four older functions are called from the frontend and deployed by hand.
    * They ARE live — they answer in production today — so failing on them would
    * block every release for a debt this branch did not create. They are
    * printed instead, because the alternative is that nobody ever finds out
@@ -257,7 +257,7 @@ test('every function the frontend calls by name is deployed', () => {
    * and removed from this allowance.
    */
   const PRE_EXISTING_HAND_DEPLOYED = new Set([
-    'admin-user360', 'classify-signals-v2', 'impersonate-user',
+    'classify-signals-v2',
     'outreach-provider-status', 'seed-demo-matches', 'system-health',
   ]);
 

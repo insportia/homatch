@@ -62,12 +62,27 @@ serve(async (req) => {
     }
 
     // ── search_users ──────────────────────────────────────────
+    /*
+     * THE TYPED TEXT IS A VALUE, NEVER QUERY SYNTAX.
+     *
+     * This used to build `.or(\`email.ilike.%${q}%,full_name.ilike.%${q}%\`)`,
+     * which put the operator's text inside a PostgREST filter expression: a
+     * comma or a parenthesis in the box added clauses to the query. The search
+     * is now admin_search_users, a SQL function that takes the text as a
+     * parameter, escapes LIKE wildcards, and checks is_admin() itself. It is
+     * called under the ADMIN's own token, so the database makes the decision
+     * a second time rather than trusting this function's check alone.
+     */
     if (action === 'search_users') {
-      const q = String(body.query ?? '').trim();
-      const { data: users } = await serviceClient.from('users')
-        .select('id,auth_id,email,full_name,avatar_url,is_admin,created_at')
-        .or(`email.ilike.%${q}%,full_name.ilike.%${q}%`)
-        .order('created_at', { ascending: false }).limit(50);
+      const q = String(body.query ?? '').trim().slice(0, 200);
+      const asCaller = createClient(
+        Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!,
+        { global: { headers: { Authorization: authHeader } } },
+      );
+      const { data: users, error: searchErr } = await asCaller.rpc('admin_search_users', { p_query: q, p_limit: 50 });
+      if (searchErr) {
+        return new Response(JSON.stringify({ error: 'Search failed' }), { status: 500, headers: corsHeaders });
+      }
       return new Response(JSON.stringify({ users: users ?? [] }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
@@ -77,7 +92,9 @@ serve(async (req) => {
       if (!target_user_id) return new Response(JSON.stringify({ error: 'target_user_id required' }), { status: 400, headers: corsHeaders });
 
       const [userRes, propertiesRes, campaignsRes, listsRes, creditRes, ledgerRes, aiRes, costRes] = await Promise.all([
-        serviceClient.from('users').select('*').eq('id', target_user_id).maybeSingle(),
+        /* Named columns, not '*': the phone number is reported as present or
+           absent here and is only ever read back through an audited reveal. */
+        serviceClient.from('users').select('id,auth_id,email,full_name,nickname,username,avatar_url,is_admin,plan,preferred_language,created_at,updated_at,phone').eq('id', target_user_id).maybeSingle(),
         // NOTE: properties has no `status` column — the lifecycle field is `matching_status`.
         serviceClient.from('properties').select('id,title,property_type,transaction_type,matching_status,created_at').eq('user_id', target_user_id).order('created_at', { ascending: false }).limit(20),
         serviceClient.from('outreach_campaigns').select('id,name,campaign_type,status,created_at,audience_count,cost_estimate_usd').eq('owner_id', target_user_id).order('created_at', { ascending: false }).limit(20),
@@ -106,7 +123,9 @@ serve(async (req) => {
         : null;
 
       return new Response(JSON.stringify({
-        user: userRes.data,
+        user: userRes.data
+          ? (({ phone, ...rest }: Record<string, unknown>) => ({ ...rest, has_phone: typeof phone === 'string' && phone.trim() !== '' }))(userRes.data as Record<string, unknown>)
+          : null,
         properties: propertiesRes.data ?? [],
         campaigns: campaignsRes.data ?? [],
         contact_lists: listsRes.data ?? [],

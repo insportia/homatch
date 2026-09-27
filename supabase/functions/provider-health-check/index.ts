@@ -1,7 +1,17 @@
 // provider-health-check — tests a single provider and updates provider_health table
 // Called by Admin UI "Run Test" button. Returns real status — never marks mock as real.
+//
+// RETIRED PROVIDERS ARE REPORTED, NOT TESTED. DataForSEO and Apify are retired
+// from the Homatch architecture. This function used to send a live DataForSEO
+// SERP query and a live Apify account request whenever an admin pressed "Test"
+// -- a billed call to DataForSEO on every press, to a provider nothing may use.
+// They now answer RETIRED before any request is built, and the stored row says
+// RETIRED so the admin screen stops showing a months-old REAL_TEST_PASSED as if
+// the provider were available. Their success/failure counters are left as
+// they were: they are history, and a report is not a test.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { isRetiredProvider, retiredReason } from '../_shared/retiredProviders.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -26,6 +36,21 @@ serve(async (req: Request) => {
   const { provider } = await req.json();
   if (!provider) return new Response(JSON.stringify({ error: 'provider required' }), { status: 400, headers: corsHeaders });
 
+  const upper = String(provider).toUpperCase();
+  if (isRetiredProvider(upper)) {
+    const now = new Date().toISOString();
+    await supabase.from('provider_health').upsert({
+      provider: upper,
+      status: 'RETIRED',
+      last_error: null,
+      latency_ms: null,
+      updated_at: now,
+    }, { onConflict: 'provider' });
+    return new Response(JSON.stringify({
+      provider: upper, status: 'RETIRED', retired: true, latency_ms: null, error: null, note: retiredReason(upper),
+    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
   const start = Date.now();
   let status = 'NOT_CONFIGURED';
   let lastError: string | null = null;
@@ -33,30 +58,6 @@ serve(async (req: Request) => {
 
   try {
     switch (provider.toUpperCase()) {
-      case 'DATAFORSEO': {
-        const login = Deno.env.get('DATAFORSEO_LOGIN');
-        const pwd = Deno.env.get('DATAFORSEO_PASSWORD');
-        if (!login || !pwd) { status = 'NOT_CONFIGURED'; break; }
-        const creds = btoa(`${login}:${pwd}`);
-        const r = await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced', {
-          method: 'POST',
-          headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify([{ language_code: 'en', location_code: 1000, keyword: 'test ping', depth: 1 }]),
-        });
-        success = r.status < 500;
-        status = success ? 'REAL_TEST_PASSED' : 'ERROR';
-        if (!success) lastError = `HTTP ${r.status}`;
-        break;
-      }
-      case 'APIFY': {
-        const token = Deno.env.get('APIFY_API_TOKEN');
-        if (!token) { status = 'NOT_CONFIGURED'; break; }
-        const r = await fetch(`https://api.apify.com/v2/users/me?token=${token}`);
-        success = r.ok;
-        status = success ? 'REAL_TEST_PASSED' : 'ERROR';
-        if (!success) lastError = `HTTP ${r.status}`;
-        break;
-      }
       case 'ZENROWS': {
         const key = Deno.env.get('ZENROWS_API_KEY');
         if (!key) { status = 'NOT_CONFIGURED'; break; }

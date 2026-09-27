@@ -78,7 +78,7 @@ function Glance() {
       detail: t('admin_cc_glance_announcements', { drafts: n(c.announcements.draft) }), to: '/admin/announcements' },
     { key: 'campaigns', label: t('admin_campaigns_title'), value: n(c.campaigns.active),
       detail: t('admin_cc_glance_campaigns', { paused: n(c.campaigns.paused), total: n(c.campaigns.total) }), to: '/admin/campaigns' },
-    { key: 'billing', label: t('admin_cc_glance_wallets'), value: `${n(c.billing.wallet_balance_credits)} ${t('admin_cc_credits_unit')}`,
+    { key: 'billing', label: `${t('admin_cc_glance_wallets')} (${t('admin_cc_credits_unit')})`, value: n(Math.round(Number(c.billing.wallet_balance_credits))),
       detail: t('admin_cc_glance_billing', { usd: (Number(c.billing.wallet_balance_credits) / (Number(c.billing.credits_per_usd) || 10)).toFixed(2), payments: n(c.billing.payments_completed_30d) }), to: '/admin/finance' },
     { key: 'providers', label: t('admin_nav_providers'), value: n(c.providers.total),
       detail: Object.entries(c.providers.by_status).map(([k, v]) => `${v} ${humanize(k).toLowerCase()}`).join(' · ') || t('admin_cc_none'), to: '/admin/providers' },

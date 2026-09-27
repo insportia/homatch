@@ -167,3 +167,14 @@ end $$;
 
 revoke all on function public.admin_impersonation_sessions(integer) from public, anon;
 grant execute on function public.admin_impersonation_sessions(integer) to authenticated;
+
+-- ── the switch, present and OFF ─────────────────────────────────────────
+-- impersonate-user refuses to start unless admin_impersonation_enabled is
+-- true. The row did not exist, so the Settings page (which lists existing
+-- rows) had nothing to show and the only way to turn the feature on was SQL.
+-- It is created OFF; turning it on remains a deliberate, audited
+-- admin_set_setting call. An existing value is never overwritten.
+insert into public.admin_settings (key, value, description)
+values ('admin_impersonation_enabled', 'false'::jsonb,
+        'Allows administrators to "Log in as user": a short-lived, read-only session as the customer, audited at start and end. Off unless deliberately enabled.')
+on conflict (key) do nothing;

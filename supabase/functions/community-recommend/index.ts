@@ -118,31 +118,19 @@ serve(async (req) => {
     ).auth.getUser();
     if (authErr || !user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
 
-    const { data: profileRow } = await supabase.from('users').select('id,plan').eq('auth_id', user.id).maybeSingle();
+    const { data: profileRow } = await supabase.from('users').select('id').eq('auth_id', user.id).maybeSingle();
     if (!profileRow) return new Response(JSON.stringify({ error: 'User profile not found' }), { status: 404, headers: corsHeaders });
     const ownerId = profileRow.id;
 
-    // Freemium gate: free plan sees a capped number of communities per
-    // property; a paid plan sees the full ranked list. Enforced here
-    // (server-side) rather than trusting a client-supplied limit.
+    // NO PLAN GATE. Homatch is pay-as-you-go: there is no Free, Premium or VIP tier, and
+    // a ranked list of communities is not a billable product. This used to cap a "FREE"
+    // plan at seven communities and hide the rest behind an upgrade prompt — a
+    // subscription gate on a platform that no longer has subscriptions. Everybody sees
+    // the same ranked list, bounded only by what is worth showing.
     //
-    // The plan now comes from billing_current_plan() rather than users.plan.
-    // users.plan is a MIRROR kept in sync by subscription_apply_plan, and the
-    // subscription row is the truth; reading the mirror would go stale the
-    // moment a membership lapsed between the sweeper running and the mirror
-    // being rewritten. The old `plan === 'FREE' ? … : …` test also happened to
-    // treat VIP and PREMIUM identically only because neither string equals
-    // 'FREE' -- correct by accident rather than by intent.
-    //
-    // This feature does NOT charge credits and is not the Broker Finder
-    // product. It ranks communities and posting venues, which is a different
-    // thing from finding an evidenced broker contact.
-    const { data: currentPlan } = await supabase.rpc('billing_current_plan', { p_user_id: ownerId });
-    const plan = String(currentPlan ?? profileRow.plan ?? 'FREE');
-
-    const FREE_COMMUNITY_LIMIT = 7;
-    const PAID_COMMUNITY_LIMIT = 100;
-    const maxAllowed = plan === 'FREE' ? FREE_COMMUNITY_LIMIT : PAID_COMMUNITY_LIMIT;
+    // This feature does NOT charge credits and is not the Broker Finder product.
+    const COMMUNITY_LIMIT = 100;
+    const maxAllowed = COMMUNITY_LIMIT;
 
     const { property_id } = await req.json();
     if (!property_id) return new Response(JSON.stringify({ error: 'property_id required' }), { status: 400, headers: corsHeaders });
@@ -230,8 +218,6 @@ serve(async (req) => {
       total: ranked.length,
       ranked_total: rankedTotal,
       locked_count: lockedCount,
-      plan,
-      free_limit: FREE_COMMUNITY_LIMIT,
       source: 'internal_index',
       external_disabled: !discoveryEnabled,
     }), {

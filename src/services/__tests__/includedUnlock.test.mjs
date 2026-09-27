@@ -234,3 +234,21 @@ test('the copy does not call it a free unlock', () => {
     assert.doesNotMatch(value, /0\.00|0 CR/i, `"${value}" quotes a price of zero`);
   }
 });
+
+test('an included EXTERNAL result opens without a price screen either', () => {
+  /*
+   * handleUnlockClick sends every external signal to ExternalContactUnlockModal BEFORE
+   * its own included short-circuit, so the short-circuit above never saw them: a
+   * campaign-funded external result arrived at "price 0 credits — Confirm". The page now
+   * tells the modal the result is included, and the modal requests the reveal straight
+   * from the preview without rendering a price. The server still sets the price.
+   */
+  const modal = stripComments(fs.readFileSync(
+    path.join(ROOT, 'src', 'components', 'matching', 'ExternalContactUnlockModal.tsx'), 'utf8'));
+  assert.match(page, /included=\{Boolean\(externalUnlockMatch\.unlock_included_reservation_id\)/,
+    'the page does not tell the reveal dialog that a result is included');
+  assert.match(modal, /\} else if \(included\) \{\s*setPreview\(p\);\s*void reveal\(p\);/,
+    'an included external result is still shown a price and a confirm button');
+  /* The charge is whatever the server says it was, and a zero is not announced as a charge. */
+  assert.match(modal, /toast\.success\(charged > 0/);
+});

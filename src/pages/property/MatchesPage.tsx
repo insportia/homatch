@@ -1,6 +1,6 @@
 import {
   AlertCircle, Bot, CalendarDays, Check, ExternalLink, Loader2, MessageSquare,
-  Pause, Play, Search, Unlock, User, Zap,
+  Eye, Pause, Play, Search, User, Zap,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -198,7 +198,7 @@ function UnlockedMatchDialog({
       <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-2xl bg-card border-border overflow-y-auto max-h-[90dvh]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Unlock className="h-4 w-4 text-primary" />
+            <Eye className="h-4 w-4 text-primary" />
             {t('matches_unlocked_dialog_title')}
           </DialogTitle>
           <DialogDescription>
@@ -1039,7 +1039,7 @@ function MatchesContent() {
           <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-md bg-card border-border">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <Unlock className="h-4 w-4 text-primary" />
+                <Eye className="h-4 w-4 text-primary" />
                 {t('matches_unlock_confirm')}
               </DialogTitle>
               <DialogDescription>
@@ -1107,7 +1107,7 @@ function MatchesContent() {
                   {unlockLoading ? (
                     <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
                   ) : (
-                    <Unlock className="h-4 w-4 mr-1.5" />
+                    <Eye className="h-4 w-4 mr-1.5" />
                   )}
                   <span dir="ltr">{t('matches_confirm_unlock_btn', { price: unlockPrice.toFixed(2) })}</span>
                 </Button>
@@ -1132,6 +1132,8 @@ function MatchesContent() {
           open={true}
           matchId={externalUnlockMatch.id}
           creditBalance={Number(creditAccount?.balance ?? 0)}
+          included={Boolean(externalUnlockMatch.unlock_included_reservation_id)
+            || Boolean(externalUnlockMatch.unlock_included_allowance_id)}
           onClose={() => setExternalUnlockMatch(null)}
           onUnlocked={() => {
             setMatches(prev =>

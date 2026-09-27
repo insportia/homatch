@@ -51,7 +51,7 @@
 --
 -- Idempotent: create or replace throughout; grants restated.
 
-begin;
+-- (runs inside the migration runner's own transaction)
 
 /* ---------------- apply (the one owner-side writer) ---------------- */
 
@@ -321,4 +321,4 @@ grant execute on function public.admin_list_broker_directory() to authenticated;
 grant execute on function public.admin_list_broker_intelligence(integer) to authenticated;
 grant execute on function public.admin_set_broker_listing_status(uuid, text, timestamptz, text) to authenticated;
 
-commit;
+-- (committed by the migration runner)

@@ -60,8 +60,12 @@ test('the native pass runs only for a demand that belongs to an account', () => 
   assert.match(worker, /if \(demandUserId\) \{/,
     'the native pass no longer checks that the demand belongs to somebody');
   const nativeBlock = worker.slice(worker.indexOf('if (demandUserId) {'));
-  assert.ok(nativeBlock.includes("source_kind: 'INTERNAL_HOMATCH'"),
+  assert.ok(nativeBlock.includes("rpc('upsert_native_match'"),
     'the native pass is not the block guarded by demandUserId');
+  /* The function writes only the internal kind — the external path cannot reach it. */
+  const pipeline = read('supabase', 'migrations', '20260928010000_native_intent_pipeline.sql');
+  assert.match(pipeline, /'INTERNAL_HOMATCH',\s*nullif\(p->>'campaign_id'/,
+    'the native write function does not fix the row as INTERNAL_HOMATCH');
 });
 
 test('the two identities come from the owning rows, never from the request', () => {
@@ -203,7 +207,12 @@ test('the same constraint semantics decide a native pair', () => {
 
 test('a re-run updates the relationship rather than adding one', () => {
   const nativeBlock = worker.slice(worker.indexOf('if (demandUserId) {'));
-  assert.match(nativeBlock, /onConflict: 'intent_profile_id,property_id'/,
+  /* Through a SQL function that names the partial index's predicate: PostgREST cannot,
+     and the upsert this replaced failed on every call. */
+  assert.match(nativeBlock, /rpc\('upsert_native_match'/,
+    'the native write does not go through the predicate-aware function');
+  const pipeline = read('supabase', 'migrations', '20260928010000_native_intent_pipeline.sql');
+  assert.match(pipeline, /on conflict \(intent_profile_id, property_id\) where property_id is not null/,
     'the native write has no conflict target, so every tick writes another row');
   assert.match(migration, /create unique index if not exists supply_matches_native_key/,
     'the relationship has no identity in the database');

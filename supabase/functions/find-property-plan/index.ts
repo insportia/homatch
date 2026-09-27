@@ -42,6 +42,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { recordIntent } from '../_shared/intent.ts';
+import { requestNativeMatching } from '../_shared/nativeDemand.ts';
 import {
   type PlanDraft,
   normalisePlan,
@@ -332,6 +333,15 @@ Deno.serve(async (req: Request) => {
           ...(plan.areaSqm && plan.areaSqm.strength !== 'UNKNOWN' ? { AREA: plan.areaSqm.strength } : {}),
         },
       });
+
+      /*
+       * THE HOMATCH NETWORK, AT ONCE. A confirmed plan is matched against properties real
+       * accounts own straight away — the network pass reads what Homatch already holds and
+       * costs nothing. External discovery remains the separate, explicit PAYG action.
+       */
+      const matching = requestNativeMatching([String(intent.id)]);
+      const runtime = (globalThis as { EdgeRuntime?: { waitUntil(p: Promise<unknown>): void } }).EdgeRuntime;
+      if (runtime?.waitUntil) runtime.waitUntil(matching); else await matching;
 
       return json({
         success: true,

@@ -154,6 +154,22 @@ export function resolveEffectiveIntent(signals: readonly SignalRow[]): Effective
   for (const signal of live) {
     if (signal.side !== 'DEMAND' && signal.side !== 'SUPPLY') continue;
     /*
+     * "I found one, I'm not looking any more" ENDS A SEARCH — the search it names, or,
+     * when it names no transaction, every search this person stated in conversation.
+     * A search they confirmed on the Find Property screen is theirs to stop there; a
+     * chat sentence does not reach into a plan somebody built deliberately.
+     */
+    if (signal.act === 'REJECTION' && signal.scope !== 'PROPERTY') {
+      const transaction = String(signal.constraints.transactionType ?? '').toUpperCase();
+      for (const [key, demand] of [...demands.entries()]) {
+        if (demand.actorUserId !== signal.actorUserId || demand.side !== signal.side) continue;
+        if (demand.intentProfileId) continue;
+        const demandTransaction = String(demand.constraints.transactionType ?? '').toUpperCase();
+        if (!transaction || transaction === demandTransaction) demands.delete(key);
+      }
+      continue;
+    }
+    /*
      * ONLY A STATEMENT OF WANTS BUILDS A REQUIREMENT. A question is engagement and a
      * complaint is feedback; neither says what somebody is looking for, and letting
      * either through would create a search out of a sentence that named no requirements.

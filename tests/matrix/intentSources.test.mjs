@@ -133,9 +133,16 @@ test('the door validates before it writes', () => {
   assert.match(door, /validate\(/, 'the gate is gone');
   assert.match(door, /if \(!intent\) return/,
     'a candidate that failed validation is still written');
-  /* And the identity is the source event, so reprocessing is harmless. */
-  assert.match(door, /onConflict: 'source_surface,source_event_id,side,act,dimension'/,
+  /* And the identity is the source event and its revision, so reprocessing is harmless.
+     Plain columns only: PostgREST cannot target the expression index this once named. */
+  assert.match(door, /onConflict: 'source_surface,source_event_id,source_revision,side,act,dimension_key'/,
     'the write has no conflict target, so reprocessing a message duplicates it');
+  const identity = read('supabase', 'migrations', '20260928010000_native_intent_pipeline.sql');
+  assert.match(identity,
+    /intent_signals_identity_key\s+on public\.intent_signals \(source_surface, source_event_id, source_revision, side, act, dimension_key\)/,
+    'the conflict target the writer names is not the unique index the table has');
+  assert.match(identity, /drop index if exists public\.intent_signals_source_key/,
+    'the expression index that made every upsert fail is still there');
 });
 
 test('no source event body reaches the intent layer', () => {
@@ -248,13 +255,14 @@ test('nothing asks a model what a column already says', () => {
 test('the expensive step is gated and incremental', () => {
   const worker = FUNCTIONS.get('ingest-live-chat');
   /* A cursor, so a popular room is not re-read from the beginning every tick. */
-  assert.match(worker, /\.gt\('seq', cursor\)/,
+  assert.match(worker, /\.gt\('seq', seqCursor\)/,
     'the worker re-reads the whole room on every message');
-  /* And a gate, so "good morning" is not sent to a model to be told it is not a flat. */
-  assert.match(worker, /statesRequirements\(text\)/,
-    'every message reaches the model regardless of whether it states anything');
-  assert.match(worker, /effective !== 'SELF'/,
-    'somebody else words are sent to the model as though they were the author own');
+  /* No model at all: the reading is deterministic, and there is nothing expensive to gate. */
+  assert.ok(!/functions\.invoke\(|openai|OPENAI_API_KEY/i.test(worker),
+    'the chat reader calls a model');
+  const pipeline = code(read('supabase', 'functions', '_shared', 'nativeDemand.ts'));
+  assert.match(pipeline, /effective !== 'SELF'/,
+    'somebody else words are read as though they were the author own');
 });
 
 test('an edited or deleted message withdraws what was derived from it', () => {

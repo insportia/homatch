@@ -9458,6 +9458,28 @@ const en = {
   matches_freshness_rechecking: 'Being re-checked',
   matches_freshness_verified: 'Recently verified',
   matches_freshness_unconfirmed: 'Could not be re-checked',
+
+  /* ── HOMATCH NATIVE RELATIONSHIPS ────────────────────────────────────────── */
+  native_section_owner_title: 'HOMATCH members who may be interested',
+  native_section_owner_hint: 'Their stated requirements fit this property, or they asked about it. This is potential interest, not a confirmed buyer or tenant.',
+  native_section_seeker_title: 'HOMATCH properties that may fit',
+  native_section_seeker_hint: 'Listed by HOMATCH members. They fit the requirements you described; nothing here was charged.',
+  native_error_load: 'These results could not be loaded right now.',
+  native_kind_match: 'Requirements fit',
+  native_kind_interest: 'Expressed interest',
+  native_kind_viewing: 'Requested a viewing',
+  native_member_fallback: 'HOMATCH member',
+  native_property_fallback: 'HOMATCH property',
+  native_property_ref: 'Property ID',
+  native_fits_on: 'Fits on: {{list}}',
+  native_fact_bedrooms: '{{n}} bedrooms',
+  native_fact_rooms: '{{n}} rooms',
+  native_action_message: 'Message',
+  native_action_call: 'Call',
+  native_call_number_label: 'Contact number:',
+  native_call_not_shared: 'They haven\'t shared a phone number. Send them a message instead.',
+  native_call_no_number: 'No contact number is available for this property.',
+  native_error_action: 'This action is not available right now.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -18830,6 +18852,28 @@ const ka: Partial<Record<TranslationKey, string>> = {
   matches_freshness_rechecking: 'ხელახლა მოწმდება',
   matches_freshness_verified: 'ბოლოს დადასტურებული',
   matches_freshness_unconfirmed: 'ვერ შემოწმდა ხელახლა',
+
+  /* ── HOMATCH NATIVE RELATIONSHIPS ────────────────────────────────────────── */
+  native_section_owner_title: 'HOMATCH-ის წევრები, რომლებიც შესაძლოა დაინტერესდნენ',
+  native_section_owner_hint: 'მათ მიერ დასახელებული მოთხოვნები ამ ქონებას ემთხვევა, ან მის შესახებ იკითხეს. ეს პოტენციური ინტერესია და არა დადასტურებული მყიდველი ან მოიჯარე.',
+  native_section_seeker_title: 'HOMATCH-ის ქონება, რომელიც შესაძლოა მოგერგოთ',
+  native_section_seeker_hint: 'განთავსებულია HOMATCH-ის წევრების მიერ. ისინი თქვენ მიერ აღწერილ მოთხოვნებს შეესაბამება; ამისთვის არაფერი ჩამოგეჭრათ.',
+  native_error_load: 'ამ შედეგების ჩატვირთვა ახლა ვერ მოხერხდა.',
+  native_kind_match: 'მოთხოვნები ემთხვევა',
+  native_kind_interest: 'გამოხატა ინტერესი',
+  native_kind_viewing: 'მოითხოვა დათვალიერება',
+  native_member_fallback: 'HOMATCH-ის წევრი',
+  native_property_fallback: 'HOMATCH-ის ქონება',
+  native_property_ref: 'ქონების ID',
+  native_fits_on: 'ემთხვევა: {{list}}',
+  native_fact_bedrooms: '{{n}} საძინებელი',
+  native_fact_rooms: '{{n}} ოთახი',
+  native_action_message: 'მიწერა',
+  native_action_call: 'დარეკვა',
+  native_call_number_label: 'საკონტაქტო ნომერი:',
+  native_call_not_shared: 'ტელეფონის ნომერი ჯერ არ გაუზიარებიათ — მიწერეთ შეტყობინება.',
+  native_call_no_number: 'ამ ქონებისთვის საკონტაქტო ნომერი მითითებული არ არის.',
+  native_error_action: 'ეს მოქმედება ახლა ხელმისაწვდომი არ არის.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -28193,6 +28237,28 @@ const ru: Partial<Record<TranslationKey, string>> = {
   matches_freshness_rechecking: 'Проверяется повторно',
   matches_freshness_verified: 'Недавно подтверждено',
   matches_freshness_unconfirmed: 'Не удалось перепроверить',
+
+  /* ── HOMATCH NATIVE RELATIONSHIPS ────────────────────────────────────────── */
+  native_section_owner_title: 'Участники HOMATCH, которых может заинтересовать ваш объект',
+  native_section_owner_hint: 'Их требования совпадают с этим объектом, или они о нём спрашивали. Это возможный интерес, а не подтверждённый покупатель или арендатор.',
+  native_section_seeker_title: 'Объекты HOMATCH, которые могут вам подойти',
+  native_section_seeker_hint: 'Размещены участниками HOMATCH. Они соответствуют описанным вами требованиям; за это ничего не списано.',
+  native_error_load: 'Сейчас не удалось загрузить эти результаты.',
+  native_kind_match: 'Требования совпадают',
+  native_kind_interest: 'Проявил(а) интерес',
+  native_kind_viewing: 'Запросил(а) просмотр',
+  native_member_fallback: 'Участник HOMATCH',
+  native_property_fallback: 'Объект HOMATCH',
+  native_property_ref: 'ID объекта',
+  native_fits_on: 'Совпадает: {{list}}',
+  native_fact_bedrooms: 'Спален: {{n}}',
+  native_fact_rooms: 'Комнат: {{n}}',
+  native_action_message: 'Написать',
+  native_action_call: 'Позвонить',
+  native_call_number_label: 'Контактный номер:',
+  native_call_not_shared: 'Собеседник ещё не поделился номером. Напишите ему сообщение.',
+  native_call_no_number: 'Для этого объекта контактный номер не указан.',
+  native_error_action: 'Это действие сейчас недоступно.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -37554,6 +37620,28 @@ const tr: Partial<Record<TranslationKey, string>> = {
   matches_freshness_rechecking: 'Yeniden kontrol ediliyor',
   matches_freshness_verified: 'Kısa süre önce doğrulandı',
   matches_freshness_unconfirmed: 'Yeniden kontrol edilemedi',
+
+  /* ── HOMATCH NATIVE RELATIONSHIPS ────────────────────────────────────────── */
+  native_section_owner_title: 'İlgilenebilecek HOMATCH üyeleri',
+  native_section_owner_hint: 'Belirttikleri koşullar bu mülkle örtüşüyor ya da mülk hakkında bilgi istediler. Bu olası bir ilgidir; kesinleşmiş bir alıcı veya kiracı değildir.',
+  native_section_seeker_title: 'Size uygun olabilecek HOMATCH mülkleri',
+  native_section_seeker_hint: 'HOMATCH üyeleri tarafından yayınlandı. Belirttiğiniz koşullara uyuyorlar; bunun için ücret alınmadı.',
+  native_error_load: 'Bu sonuçlar şu anda yüklenemedi.',
+  native_kind_match: 'Koşullar örtüşüyor',
+  native_kind_interest: 'İlgi gösterdi',
+  native_kind_viewing: 'Görüntüleme talep etti',
+  native_member_fallback: 'HOMATCH üyesi',
+  native_property_fallback: 'HOMATCH mülkü',
+  native_property_ref: 'Mülk No.',
+  native_fits_on: 'Örtüşen: {{list}}',
+  native_fact_bedrooms: '{{n}} yatak odası',
+  native_fact_rooms: '{{n}} oda',
+  native_action_message: 'Mesaj gönder',
+  native_action_call: 'Ara',
+  native_call_number_label: 'İletişim numarası:',
+  native_call_not_shared: 'Henüz telefon numarası paylaşmadılar. Bunun yerine mesaj gönderin.',
+  native_call_no_number: 'Bu mülk için iletişim numarası yok.',
+  native_error_action: 'Bu işlem şu anda kullanılamıyor.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -46915,6 +47003,28 @@ const ar: Partial<Record<TranslationKey, string>> = {
   matches_freshness_rechecking: 'قيد إعادة التحقق',
   matches_freshness_verified: 'تم التحقق مؤخرًا',
   matches_freshness_unconfirmed: 'لم يتمكن من إعادة التحقق',
+
+  /* ── HOMATCH NATIVE RELATIONSHIPS ────────────────────────────────────────── */
+  native_section_owner_title: 'أعضاء في HOMATCH قد يهتمون بعقارك',
+  native_section_owner_hint: 'تتوافق متطلباتهم المعلنة مع هذا العقار، أو استفسروا عنه. هذا اهتمام محتمل، وليس مشتريًا أو مستأجرًا مؤكدًا.',
+  native_section_seeker_title: 'عقارات على HOMATCH قد تناسبك',
+  native_section_seeker_hint: 'نشرها أعضاء في HOMATCH، وتتوافق مع المتطلبات التي وصفتها؛ ولم يُخصم أي رصيد مقابل ذلك.',
+  native_error_load: 'تعذّر تحميل هذه النتائج الآن.',
+  native_kind_match: 'المتطلبات متوافقة',
+  native_kind_interest: 'أبدى اهتمامًا',
+  native_kind_viewing: 'طلب معاينة',
+  native_member_fallback: 'عضو في HOMATCH',
+  native_property_fallback: 'عقار على HOMATCH',
+  native_property_ref: 'رقم العقار',
+  native_fits_on: 'يتوافق في: {{list}}',
+  native_fact_bedrooms: 'غرف النوم: {{n}}',
+  native_fact_rooms: 'الغرف: {{n}}',
+  native_action_message: 'مراسلة',
+  native_action_call: 'اتصال',
+  native_call_number_label: 'رقم التواصل:',
+  native_call_not_shared: 'لم يشارك رقم هاتفه بعد. أرسل له رسالة بدلًا من ذلك.',
+  native_call_no_number: 'لا يتوفر رقم تواصل لهذا العقار.',
+  native_error_action: 'هذا الإجراء غير متاح حاليًا.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -56276,6 +56386,28 @@ const he: Partial<Record<TranslationKey, string>> = {
   matches_freshness_rechecking: 'נבדק מחדש',
   matches_freshness_verified: 'אומת לאחרונה',
   matches_freshness_unconfirmed: 'לא ניתן היה לבדוק מחדש',
+
+  /* ── HOMATCH NATIVE RELATIONSHIPS ────────────────────────────────────────── */
+  native_section_owner_title: 'חברי HOMATCH שעשויים להתעניין',
+  native_section_owner_hint: 'הדרישות שהם ציינו מתאימות לנכס הזה, או שהם שאלו עליו. זו התעניינות אפשרית, לא קונה או שוכר מאושר.',
+  native_section_seeker_title: 'נכסים ב-HOMATCH שעשויים להתאים לך',
+  native_section_seeker_hint: 'פורסמו על ידי חברי HOMATCH. הם מתאימים לדרישות שתיארת; לא חויבת על כך.',
+  native_error_load: 'לא ניתן לטעון את התוצאות האלה כרגע.',
+  native_kind_match: 'הדרישות מתאימות',
+  native_kind_interest: 'הביע/ה עניין',
+  native_kind_viewing: 'ביקש/ה לראות את הנכס',
+  native_member_fallback: 'חבר/ת HOMATCH',
+  native_property_fallback: 'נכס ב-HOMATCH',
+  native_property_ref: 'מזהה נכס',
+  native_fits_on: 'מתאים ב: {{list}}',
+  native_fact_bedrooms: '{{n}} חדרי שינה',
+  native_fact_rooms: '{{n}} חדרים',
+  native_action_message: 'שליחת הודעה',
+  native_action_call: 'התקשרות',
+  native_call_number_label: 'מספר ליצירת קשר:',
+  native_call_not_shared: 'עדיין לא שיתפו מספר טלפון. אפשר לשלוח הודעה במקום.',
+  native_call_no_number: 'אין מספר ליצירת קשר עבור הנכס הזה.',
+  native_error_action: 'הפעולה הזו לא זמינה כרגע.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

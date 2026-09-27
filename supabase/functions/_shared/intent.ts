@@ -58,10 +58,11 @@ export interface RecordResult {
 /**
  * Record one thing a surface understood.
  *
- * Idempotent on (surface, event, side, act, dimension): reprocessing a message — a worker
- * retry, a realtime frame delivered twice, a backfill over a room — finds the row it
- * already wrote. The conflict target is the partial unique index, so this is a database
- * guarantee rather than a check somebody remembered to write.
+ * Idempotent on (surface, event, revision, side, act, dimension): reprocessing a message —
+ * a worker retry, a realtime frame delivered twice, a backfill over a room — finds the row
+ * it already wrote. The conflict target is a plain-column unique index (dimension_key is
+ * a generated column), because PostgREST can only name columns; the expression index
+ * this replaced made every write fail with a conflict-target error.
  *
  * Failure is swallowed in the same way notify() swallows its own, and for the same
  * reason: the message was already sent, the viewing was already requested, the plan was
@@ -71,6 +72,8 @@ export interface RecordResult {
 export async function recordIntent(
   sb: Client,
   candidate: IntentCandidate,
+  /** Which version of the source this is a reading of. '' for the original. */
+  sourceRevision = '',
 ): Promise<RecordResult> {
   const { intent, rejected } = validate(candidate);
   if (!intent) return { id: null, rejected };
@@ -82,6 +85,7 @@ export async function recordIntent(
         actor_user_id: intent.actorUserId,
         source_surface: intent.sourceSurface,
         source_event_id: intent.sourceEventId,
+        source_revision: sourceRevision,
         source_at: intent.sourceAt,
         side: intent.side,
         act: intent.act,
@@ -97,7 +101,7 @@ export async function recordIntent(
         constraints: intent.constraints,
         strength: intent.strength,
         updated_at: new Date().toISOString(),
-      }, { onConflict: 'source_surface,source_event_id,side,act,dimension' })
+      }, { onConflict: 'source_surface,source_event_id,source_revision,side,act,dimension_key' })
       .select('id')
       .maybeSingle();
 
@@ -125,9 +129,12 @@ export async function withdrawIntentFor(
   sourceSurface: string,
   sourceEventId: string,
   reason: 'SOURCE_EDITED' | 'SOURCE_DELETED',
+  /** The revision now current. Its own readings are left standing when it is re-read. */
+  exceptRevision?: string,
 ): Promise<void> {
   try {
-    await sb
+    // deno-lint-ignore no-explicit-any
+    let query: any = (sb as unknown as { from(t: string): any })
       .from('intent_signals')
       .update({
         withdrawn_at: new Date().toISOString(),
@@ -135,7 +142,12 @@ export async function withdrawIntentFor(
         updated_at: new Date().toISOString(),
       })
       .eq('source_surface', sourceSurface)
-      .eq('source_event_id', sourceEventId);
+      .eq('source_event_id', sourceEventId)
+      /* Only what still stands. A second pass must not move the withdrawal time of a
+         reading that was already withdrawn, or the audit trail loses when it happened. */
+      .is('withdrawn_at', null);
+    if (exceptRevision !== undefined) query = query.neq('source_revision', exceptRevision);
+    await query;
   } catch {
     /* Same reasoning as above: the edit already happened. */
   }

@@ -43,6 +43,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { DiscoveryState, ListingCard } from '@/components/customer/ListingCard';
+import { NativeMatchesPanel } from '@/components/matching/NativeMatchesPanel';
 import { HomatchSearchComposer, HowItWorks } from '@/components/customer/SearchComposer';
 import {
   type PlanRowData, SearchPlanSummary,
@@ -490,6 +491,10 @@ export default function FindPropertyPage() {
                   }))}
                 />
               </div>
+
+              {/* Somebody whose requirements were read from a conversation has no plan on
+                  this screen yet and still has results — they are shown here too. */}
+              <NativeMatchesPanel role="SEEKER" />
             </div>
           )}
 
@@ -852,6 +857,11 @@ export default function FindPropertyPage() {
                   onClick={() => setStage('DESCRIBE')}
                 />
               </div>
+
+              {/* Properties HOMATCH members listed that fit this person's requirements —
+                  from the plan they confirmed or from what they said in a conversation.
+                  Renders nothing when there are none. */}
+              <NativeMatchesPanel role="SEEKER" className="w-full max-w-3xl" />
 
               {loadingResults && (
                 <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">

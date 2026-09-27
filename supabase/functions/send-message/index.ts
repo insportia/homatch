@@ -4,6 +4,12 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { notify } from '../_shared/notify.ts';
 import { recordIntent } from '../_shared/intent.ts';
 import {
+  projectActor,
+  projectPropertyInterest,
+  recordDemandFrom,
+  requestNativeMatching,
+} from '../_shared/nativeDemand.ts';
+import {
   attributionOf, readingsOf,
 } from '../../../src/research-core/intent/interpret.ts';
 
@@ -64,21 +70,23 @@ Deno.serve(async (req) => {
       }
       isFirstContact = !supplied.first_contact_email_sent;
     } else {
-      let query = supabase.from('conversations').select('id,first_contact_email_sent')
-        .or(`and(initiator_id.eq.${sender.id},recipient_id.eq.${recipient_id}),and(initiator_id.eq.${recipient_id},recipient_id.eq.${sender.id})`);
-      query = property_id ? query.eq('property_id', property_id) : query.is('property_id', null);
-      const { data: existing } = await query.limit(1).maybeSingle();
-      if (existing) {
-        convId = existing.id;
-        isFirstContact = !existing.first_contact_email_sent;
-      } else {
-        const { data: newConv, error: convErr } = await supabase.from('conversations').insert({
-          initiator_id: sender.id, recipient_id, property_id: property_id || null, status: 'ACTIVE',
-        }).select('id').single();
-        if (convErr) throw convErr;
-        convId = newConv.id;
-        isFirstContact = true;
+      /*
+       * ONE CONVERSATION PER PAIR AND PROPERTY, decided by the database. This was a
+       * select followed by an insert, so two taps at once made two conversations — and
+       * A→B and B→A about the same flat were two conversations as well. ensure_conversation()
+       * is insert-or-return on the unordered pair.
+       */
+      const { data: ensured, error: convErr } = await supabase.rpc('ensure_conversation', {
+        p_initiator: sender.id, p_recipient: recipient_id, p_property: property_id || null,
+      });
+      if (convErr || !ensured) throw convErr ?? new Error('conversation not created');
+      convId = String(ensured);
+      const { data: current } = await supabase.from('conversations')
+        .select('first_contact_email_sent,status').eq('id', convId).maybeSingle();
+      if (current?.status === 'BLOCKED') {
+        return new Response(JSON.stringify({ error: 'Cannot send message' }), { status: 403, headers: corsHeaders });
       }
+      isFirstContact = !current?.first_contact_email_sent;
     }
 
     /*
@@ -89,8 +97,11 @@ Deno.serve(async (req) => {
      * be attaching somebody's words to a listing they never mentioned.
      */
     const { data: conversationRow } = await supabase
-      .from('conversations').select('property_id').eq('id', convId).maybeSingle();
+      .from('conversations').select('property_id,property:properties!property_id(user_id)')
+      .eq('id', convId).maybeSingle();
     const propertyContext = (conversationRow?.property_id as string | null) ?? null;
+    const propertyJoin = conversationRow?.property as { user_id?: string } | Array<{ user_id?: string }> | null;
+    const propertyOwner = (Array.isArray(propertyJoin) ? propertyJoin[0] : propertyJoin)?.user_id ?? null;
 
     const now = new Date().toISOString();
     const { data: message, error: msgErr } = await supabase.from('messages').insert({
@@ -118,7 +129,9 @@ Deno.serve(async (req) => {
      * is interested" in a property conversation has not expressed their own interest,
      * and validate() refuses to let that become one.
      */
-    if (propertyContext) {
+    /* The owner writing about their own property is answering, not expressing interest. */
+    const intentWork: Promise<unknown>[] = [];
+    if (propertyContext && propertyOwner !== sender.id) {
       const readings = readingsOf(body);
       const attribution = attributionOf(body);
       for (const reading of readings) {
@@ -147,7 +160,36 @@ Deno.serve(async (req) => {
           strength: {},
         });
       }
+      /* How this person now stands towards the property, as a native relationship. */
+      intentWork.push(projectPropertyInterest(supabase, sender.id, propertyContext, convId ?? null));
+    } else if (!propertyContext) {
+      /*
+       * A PRIVATE CONVERSATION ABOUT NO PROPERTY can still carry the author's own search —
+       * "I'm looking for a 2-bedroom in Vake, up to 180k" said to an agent. The same
+       * reader, the same gate, the same projection as the common room: the author's own
+       * words only, matched against the Homatch network only, charged nothing.
+       */
+      intentWork.push((async () => {
+        const outcome = await recordDemandFrom(supabase, {
+          surface: 'PRIVATE_MESSAGE',
+          eventId: message.id,
+          revision: '',
+          actorUserId: sender.id,
+          sourceAt: message.created_at ?? now,
+          text: body,
+          conversationId: convId ?? null,
+        });
+        if (outcome.demand === 'RECORDED' || outcome.demand === 'WITHDRAWN_SEARCH') {
+          const projection = await projectActor(supabase, sender.id);
+          await requestNativeMatching(projection.active);
+        }
+      })());
     }
+    /* After the response where the runtime allows it: a message is never slowed down by
+       the reading of it. */
+    const settle = Promise.allSettled(intentWork);
+    const runtime = (globalThis as { EdgeRuntime?: { waitUntil(p: Promise<unknown>): void } }).EdgeRuntime;
+    if (runtime?.waitUntil) runtime.waitUntil(settle); else await settle;
 
     /*
      * EVERY MESSAGE, NOT ONLY THE FIRST.

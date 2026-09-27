@@ -428,6 +428,14 @@ test('the core is consumed only through its deliberate integration points', () =
     'supabase/functions/send-message/index.ts',
     'supabase/functions/ingest-live-chat/index.ts',
     /*
+     * _shared/nativeDemand.ts is the pipeline every conversational surface shares: the
+     * deterministic constraint reader, the plan gate and the effective-state resolver,
+     * so the common room, a private message and an AI conversation cannot each grow a
+     * reading of their own. It reaches intent/*, discovery/search-plan.ts and nothing
+     * with a network path.
+     */
+    'supabase/functions/_shared/nativeDemand.ts',
+    /*
      * EVIDENCE FRESHNESS — the sixth seam, and the one that decides what a
      * customer is allowed to see.
      *

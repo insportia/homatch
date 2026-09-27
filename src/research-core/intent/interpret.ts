@@ -102,8 +102,19 @@ export type Firmness = 'REQUIRED' | 'PREFERRED' | 'FLEXIBLE';
  */
 function hasPhrase(haystack: string, phrase: string): boolean {
   const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  /*
+   * ARABIC AND HEBREW WRITE SOME WORDS ONTO THE NEXT ONE.
+   *
+   * "and", "in", "to", "the" are single letters prefixed to the word they govern —
+   * "وأبحث" is "and I am looking", "בוואקה" is "in Vake". A letter-boundary test on the
+   * bare phrase would miss every one of them, so a phrase in either script may be
+   * preceded by up to two of that script's clitic letters and nothing else.
+   */
+  const clitics = /^[\u0600-\u06FF]/.test(phrase)
+    ? '(?:[وفبلك]{1,2})?'
+    : /^[\u0590-\u05FF]/.test(phrase) ? '(?:[והשבלמכ]{1,2})?' : '';
   try {
-    return new RegExp(`(?<!\\p{L})${escaped}(?!\\p{L})`, 'iu').test(haystack);
+    return new RegExp(`(?<!\\p{L})${clitics}${escaped}(?!\\p{L})`, 'iu').test(haystack);
   } catch {
     /* A runtime without lookbehind. Fall back to containment, which is wrong in the
        "дом in рядом" direction but never silently matches nothing. */
@@ -138,7 +149,13 @@ const THIRD_PARTY_MARKERS: readonly string[] = [
   'my friend', 'my brother', 'my sister', 'my colleague', 'a friend of mine',
   'someone i know', 'my client', 'my mother', 'my father', 'my parents',
   /* tr */
-  'arkadaşım', 'kardeşim', 'bir tanıdığım',
+  'arkadaşım', 'kardeşim', 'bir tanıdığım', 'annem', 'babam', 'müşterim', 'birisi arıyor',
+  /* ar — my friend / my brother / my sister / my colleague / my client / somebody */
+  'صديقي', 'صديق لي', 'أخي', 'اخي', 'أختي', 'اختي', 'زميلي', 'قريبي', 'أحد معارفي',
+  'موكلي', 'عميلي', 'والدي', 'والدتي', 'أمي', 'أبي', 'شخص يبحث', 'أحدهم يبحث',
+  /* he — my friend / my brother / my sister / my client / my parents / somebody */
+  'חבר שלי', 'חברה שלי', 'אחי', 'אחותי', 'מכר שלי', 'הלקוח שלי', 'לקוח שלי',
+  'אבא שלי', 'אמא שלי', 'ההורים שלי', 'קולגה שלי', 'מישהו מחפש',
 ];
 
 /**
@@ -159,7 +176,19 @@ const SELF_MARKERS: readonly string[] = [
   'i am interested', "i'm interested", 'interested in', 'i am selling', "i'm selling",
   'i will buy', 'i will rent',
   /* tr */
-  'arıyorum', 'istiyorum', 'satıyorum', 'kiralıyorum', 'ilgileniyorum',
+  'arıyorum', 'istiyorum', 'satıyorum', 'kiralıyorum', 'ilgileniyorum', 'arıyoruz',
+  /* ka / ru / en — the household "we" is the author speaking for their own purchase */
+  'ვეძებთ', 'გვინდა', 'გვჭირდება', 'мы ищем', 'нам нужна', 'нам нужен',
+  'we are looking', "we're looking", 'we want', 'we need',
+  /* ar — I am looking for / I want / I need / I will buy / I am interested */
+  'أبحث عن', 'ابحث عن', 'أبحث', 'نبحث عن', 'أريد', 'اريد', 'أحتاج', 'احتاج', 'نحتاج',
+  'أرغب', 'ارغب', 'سأشتري', 'سأستأجر', 'أبيع', 'أؤجر', 'أنا مهتم', 'أنا مهتمة', 'يهمني',
+  /* he — I am looking / I want / I need / I will buy / I will rent / I am interested */
+  'אני מחפש', 'אני מחפשת', 'מחפש', 'מחפשת', 'אנחנו מחפשים', 'אני רוצה', 'אני צריך',
+  'אני צריכה', 'אקנה', 'אשכור', 'אני מעוניין', 'אני מעוניינת', 'אני מוכר', 'אני מוכרת',
+  /* "I can go to 180" — a first-person statement of what the author can do, in each language */
+  'შემიძლია', 'შემეძლება', 'могу', 'смогу', 'i can', 'i could', "i can go", 'yapabilirim',
+  'ödeyebilirim', 'أستطيع', 'يمكنني', 'بإمكاني', 'אני יכול', 'אני יכולה',
 ];
 
 /**
@@ -212,6 +241,11 @@ const NEGATIVE_MARKERS: readonly string[] = [
   'no longer', 'not interested', 'not anymore', 'not any more', 'never mind', 'cancel',
   /* tr */
   'artık', 'ilgilenmiyorum', 'istemiyorum', 'iptal',
+  /* ar — no longer / not interested / I do not want / cancel */
+  'لم أعد', 'لم يعد', 'لست مهتما', 'لست مهتمًا', 'لست مهتمة', 'غير مهتم', 'غير مهتمة',
+  'لا أريد', 'لا يهمني', 'ألغي', 'إلغاء', 'الغاء',
+  /* he — no longer / not interested / not relevant any more / I do not want / cancelling */
+  'כבר לא', 'לא מעוניין', 'לא מעוניינת', 'לא רלוונטי', 'לא רוצה', 'מבטל', 'מבטלת',
 ];
 
 /** Saying they like this particular thing. */
@@ -220,6 +254,8 @@ const INTEREST_MARKERS: readonly string[] = [
   /* ru */ 'интересует', 'нравится', 'хочу посмотреть',
   /* en */ 'interested', 'i like it', 'i like this', 'want to see', 'want to view',
   /* tr */ 'ilgileniyorum', 'beğendim', 'görmek istiyorum',
+  /* ar */ 'يعجبني', 'أعجبني', 'اعجبني', 'تعجبني', 'أعجبتني', 'مهتم', 'مهتمة', 'أود رؤية', 'أريد رؤية', 'أريد مشاهدة',
+  /* he */ 'מעוניין', 'מעוניינת', 'מוצא חן', 'מוצאת חן', 'אהבתי', 'רוצה לראות', 'אשמח לראות',
 ];
 
 /** Asking a question. Worth recording; worth nothing as evidence of commitment. */
@@ -228,7 +264,11 @@ const INQUIRY_MARKERS: readonly string[] = [
   'რა ღირს', 'რამდენია', 'ჯერ კიდევ იყიდება', 'ჯერ კიდევ ხელმისაწვდომია', 'შესაძლებელია',
   /* ru */ 'сколько стоит', 'какая цена', 'ещё продаётся', 'еще продается', 'актуально',
   /* en */ 'how much', 'what is the price', 'still available', 'is it still',
-  /* tr */ 'ne kadar', 'fiyatı ne', 'hâlâ satılık',
+  /* tr */ 'ne kadar', 'fiyatı ne', 'hâlâ satılık', 'hala satılık', 'hâlâ müsait',
+  /* ar */ 'كم السعر', 'كم سعر', 'ما السعر', 'ما هو السعر', 'بكم', 'هل لا يزال', 'هل ما زال',
+  'هل ما زالت', 'هل لا تزال',
+  /* he */ 'כמה עולה', 'כמה זה עולה', 'כמה היא עולה', 'מה המחיר', 'עדיין רלוונטי', 'עדיין זמין', 'עדיין זמינה',
+  'עדיין למכירה', 'עדיין פנוי', 'עדיין פנויה',
 ];
 
 /** Saying they will transact. Stronger than interest and rarer than either. */
@@ -238,6 +278,8 @@ const TRANSACTION_MARKERS: readonly string[] = [
   /* ru */ 'куплю', 'сниму', 'готов купить', 'готова купить',
   /* en */ 'i will buy', 'i will rent', 'ready to buy', 'ready to proceed',
   /* tr */ 'satın alacağım', 'kiralayacağım', 'hazırım',
+  /* ar */ 'سأشتري', 'سأستأجر', 'جاهز للشراء', 'جاهزة للشراء', 'مستعد للشراء', 'مستعدة للشراء',
+  /* he */ 'אקנה', 'אשכור', 'מוכן לקנות', 'מוכנה לקנות', 'מוכן לחתום', 'מוכנה לחתום',
 ];
 
 /**
@@ -254,6 +296,9 @@ const OBJECTION_MARKERS: ReadonlyArray<readonly [IntentDimension, readonly strin
     /* ru */ 'дорого', 'дороговато', 'слишком дорого', 'не по бюджету',
     /* en */ 'expensive', 'too expensive', 'over budget', 'pricey', 'too much money',
     /* tr */ 'pahalı', 'çok pahalı', 'bütçemi aşıyor',
+    /* ar */ 'غالي', 'غالية', 'غالي جدا', 'السعر مرتفع', 'سعرها مرتفع', 'فوق ميزانيتي',
+    'أعلى من ميزانيتي',
+    /* he */ 'יקר', 'יקרה', 'יקר מדי', 'יקרה מדי', 'מעל התקציב', 'מעל התקציב שלי',
   ]],
   ['AREA', [
     /* ka — it is small / too small */
@@ -261,6 +306,8 @@ const OBJECTION_MARKERS: ReadonlyArray<readonly [IntentDimension, readonly strin
     /* ru */ 'маленькая', 'слишком маленькая', 'тесно',
     /* en */ 'too small', 'quite small', 'cramped',
     /* tr */ 'küçük', 'çok küçük',
+    /* ar */ 'صغيرة', 'صغيرة جدا', 'صغير جدا', 'ضيقة',
+    /* he */ 'קטנה', 'קטנה מדי', 'קטן מדי', 'צפופה',
   ]],
   ['DISTRICT', [
     /* ka — the district does not suit me / far */
@@ -268,6 +315,8 @@ const OBJECTION_MARKERS: ReadonlyArray<readonly [IntentDimension, readonly strin
     /* ru */ 'район не нравится', 'далеко',
     /* en */ 'wrong area', 'too far', 'bad location',
     /* tr */ 'çok uzak', 'konum kötü',
+    /* ar */ 'بعيدة جدا', 'بعيد جدا', 'المنطقة لا تعجبني', 'الموقع سيء',
+    /* he */ 'רחוק מדי', 'רחוקה מדי', 'מיקום גרוע', 'השכונה לא מתאימה',
   ]],
 ];
 
@@ -333,9 +382,11 @@ export function polarityOf(text: string): Polarity {
 const REQUIRED_MARKERS: readonly string[] = [
   /* ka — necessarily / it is necessary / only / must */
   'აუცილებლად', 'აუცილებელია', 'მხოლოდ', 'უნდა იყოს', 'სხვა არ',
-  /* ru */ 'обязательно', 'только', 'строго', '必须',
+  /* ru */ 'обязательно', 'только', 'строго',
   /* en */ 'must', 'must be', 'only', 'definitely', 'strictly', 'required',
   /* tr */ 'kesinlikle', 'mutlaka', 'sadece',
+  /* ar — necessarily / only / must */ 'ضروري', 'بالضرورة', 'فقط', 'يجب أن', 'لازم',
+  /* he — must / only / necessarily / mandatory */ 'חייב', 'חייבת', 'רק', 'בהכרח', 'חובה',
 ];
 
 const PREFERRED_MARKERS: readonly string[] = [
@@ -344,6 +395,8 @@ const PREFERRED_MARKERS: readonly string[] = [
   /* ru */ 'желательно', 'предпочитаю', 'лучше', 'по возможности',
   /* en */ 'prefer', 'preferably', 'ideally', 'would like', 'nice to have',
   /* tr */ 'tercihen', 'tercih ederim', 'ideal olarak',
+  /* ar — preferably / I prefer / if possible */ 'يفضل', 'ويفضل', 'أفضل', 'من الأفضل', 'إن أمكن', 'ان أمكن',
+  /* he — preferably / I prefer / desirable / if possible */ 'עדיף', 'מעדיף', 'מעדיפה', 'רצוי', 'אם אפשר',
 ];
 
 const FLEXIBLE_MARKERS: readonly string[] = [
@@ -352,6 +405,8 @@ const FLEXIBLE_MARKERS: readonly string[] = [
   /* ru */ 'не важно', 'неважно', 'любой', 'любая', 'без разницы',
   /* en */ 'does not matter', "doesn't matter", 'any', 'flexible', 'no preference',
   /* tr */ 'fark etmez', 'önemli değil', 'esnek',
+  /* ar — it does not matter / flexible / no difference */ 'لا يهم', 'مرن', 'مرنة', 'لا فرق',
+  /* he — does not matter / flexible / not important */ 'לא משנה', 'גמיש', 'גמישה', 'לא חשוב',
 ];
 
 /**
@@ -420,7 +475,10 @@ export function scopeOf(
   const body = String(text ?? '');
   /* "this flat", "this one" — a demonstrative with no property context is still about
      something specific, but we do not know what, so it cannot be promoted to GENERAL. */
-  const demonstratives = ['ეს ბინა', 'ეს ქონება', 'эта квартира', 'this flat', 'this apartment', 'this property'];
+  const demonstratives = [
+    'ეს ბინა', 'ეს ქონება', 'эта квартира', 'this flat', 'this apartment', 'this property',
+    'bu daire', 'bu ev', 'هذه الشقة', 'هذا العقار', 'הדירה הזאת', 'הדירה הזו', 'הנכס הזה',
+  ];
   if (hasAny(body, demonstratives)) return 'PROPERTY';
   if (context.intentProfileId) return 'SEARCH';
   return 'GENERAL';

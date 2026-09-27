@@ -113,7 +113,17 @@ Deno.serve(async (req: Request) => {
     const dryRun = body.dryRun === true;
     const campaignId = body.campaignId ? String(body.campaignId) : null;
     const onlySignal = body.signalId ? String(body.signalId) : null;
-    const limit = Math.max(1, Math.min(MAX_DEMAND, Number(body.maxDemand) || 10));
+    /*
+     * A TARGETED, NETWORK-ONLY RUN is what native intent asks for: "this person just
+     * stated what they want — is there a Homatch property for it?" It reads no external
+     * supply and writes no external match, so a requirement said in a chat cannot turn
+     * into an acquisition of any kind.
+     */
+    const onlyProfiles: string[] = Array.isArray(body.intentProfileIds)
+      ? (body.intentProfileIds as unknown[]).map(String).filter((id) => /^[0-9a-f-]{36}$/i.test(id)).slice(0, MAX_DEMAND)
+      : [];
+    const nativeOnly = body.nativeOnly === true;
+    const limit = Math.max(1, Math.min(nativeOnly ? 200 : MAX_DEMAND, Number(body.maxDemand) || (nativeOnly ? 200 : 10)));
 
     /*
      * THE DEMAND SIDE, and only what is already allowed to be shown.
@@ -127,7 +137,7 @@ Deno.serve(async (req: Request) => {
       .from('intent_profiles')
       .select('id,signal_id,intent_type,transaction_type,city,district,property_types,'
         + 'bedrooms_min,bedrooms_max,area_min,area_max,budget_min,budget_max,currency,'
-        + 'intent_confidence,country,'
+        + 'intent_confidence,country,rooms_min,rooms_max,classifier_version,'
         + 'signal:raw_signals!signal_id(id,classification_status,platform),'
         /*
          * WHOSE DEMAND THIS IS, where it is anybody's.
@@ -138,11 +148,13 @@ Deno.serve(async (req: Request) => {
          * an external demand read off a forum simply has no row here, which is the
          * honest answer rather than a gap.
          */
-        + 'subscriptions:active_search_subscriptions!intent_id(user_id,is_active,side)')
+        + `subscriptions:active_search_subscriptions${nativeOnly ? '!inner' : ''}!intent_id(user_id,is_active,side,search_criteria)`)
       .not('city', 'is', null)
       .order('created_at', { ascending: false })
       .limit(limit * 4);
     if (onlySignal) demandQuery = demandQuery.eq('signal_id', onlySignal);
+    if (onlyProfiles.length) demandQuery = demandQuery.in('id', onlyProfiles);
+    if (nativeOnly) demandQuery = demandQuery.eq('subscriptions.is_active', true);
 
     const { data: demandRows, error: demandError } = await demandQuery;
     if (demandError) throw demandError;
@@ -243,7 +255,33 @@ Deno.serve(async (req: Request) => {
       const demandUserId = subscriptions.find((sub) => sub.is_active === true)?.user_id as
         string | undefined ?? null;
 
-      const strength: StrengthMap = { DISTRICT: 'PREFERRED' };
+      /*
+       * THE FIRMNESS THE PERSON STATED, where they stated one. A native demand carries its
+       * own strength map on the subscription (search_criteria.strength) — REQUIRED,
+       * PREFERRED, FLEXIBLE as the person said it, or as their confirmed plan said it.
+       * Only a demand with no stated strengths falls back to the product default.
+       */
+      const activeSubscription = subscriptions.find((sub) => sub.is_active === true);
+      const criteria = (activeSubscription?.search_criteria ?? {}) as Record<string, unknown>;
+      const planStrength = (): StrengthMap | null => {
+        /* A confirmed Search Plan stores each constraint as { value, strength }. */
+        const map: Record<string, string> = {};
+        const pick = (field: string, dimension: string) => {
+          const entry = criteria[field] as { strength?: string } | null | undefined;
+          if (entry && typeof entry === 'object' && entry.strength && entry.strength !== 'UNKNOWN') {
+            map[dimension] = entry.strength;
+          }
+        };
+        pick('city', 'CITY'); pick('districts', 'DISTRICT'); pick('propertyTypes', 'PROPERTY_TYPE');
+        pick('budget', 'PRICE'); pick('bedrooms', 'BEDROOMS'); pick('areaSqm', 'AREA');
+        return Object.keys(map).length ? map as StrengthMap : null;
+      };
+      const statedStrength = (criteria.strength && typeof criteria.strength === 'object')
+        ? criteria.strength as StrengthMap
+        : planStrength();
+      const strength: StrengthMap = statedStrength && Object.keys(statedStrength).length
+        ? { DISTRICT: 'PREFERRED', ...statedStrength }
+        : { DISTRICT: 'PREFERRED' };
 
       const demand: DemandSide = {
         intentType: (demandRow.intent_type as string | null) ?? null,
@@ -258,6 +296,8 @@ Deno.serve(async (req: Request) => {
         areaMax: demandRow.area_max as number | null,
         bedroomsMin: demandRow.bedrooms_min as number | null,
         bedroomsMax: demandRow.bedrooms_max as number | null,
+        roomsMin: (demandRow.rooms_min as number | null) ?? null,
+        roomsMax: (demandRow.rooms_max as number | null) ?? null,
         strength,
       };
 
@@ -287,7 +327,8 @@ Deno.serve(async (req: Request) => {
        * has to stop the database hiding rows before the decision is reached.
        */
       const cityFilter = cityNames.map((name) => `city.ilike.${name}`).join(',');
-      const { data: candidates } = await db
+      /* A network-only run reads no external supply at all. */
+      const { data: candidates } = nativeOnly ? { data: [] as Record<string, unknown>[] } : await db
         .from('supply_observations')
         .select('id,city,district,transaction,property_type,sale_amount,sale_currency,'
           + 'rent_amount,rent_currency,area_sqm,rooms,bedrooms,published_at,'
@@ -472,6 +513,8 @@ Deno.serve(async (req: Request) => {
           .limit(MAX_CANDIDATES);
 
         totals.nativeCandidatesRead += (nativeRows ?? []).length;
+        /* Which properties still fit, so the ones that no longer do stop being shown. */
+        const compatibleProperties: string[] = [];
 
         for (const candidate of nativeRows ?? []) {
           const propertyRow = candidate as Record<string, unknown>;
@@ -515,16 +558,20 @@ Deno.serve(async (req: Request) => {
            * re-evaluates the pair rather than adding a tenth copy of the same flat to
            * somebody's list.
            */
-          const { data: written, error: nativeError } = await db
-            .from('supply_matches')
-            .upsert({
+          /*
+           * ONE ROW PER RELATIONSHIP, FOREVER. Through a SQL function because the identity
+           * is a PARTIAL unique index on (intent_profile_id, property_id), and PostgREST
+           * cannot name a predicate in its conflict target — the upsert this replaced
+           * failed on every call. The function does.
+           */
+          const { data: written, error: nativeError } = await db.rpc('upsert_native_match', {
+            p: {
               intent_profile_id: demandRow.id as string,
               property_id: propertyRow.id as string,
               /* Resolved from the owning rows under the service role. Never from a
                  client — this table has RLS on and no policies. */
               supply_user_id: propertyRow.user_id as string,
               demand_user_id: demandUserId,
-              source_kind: 'INTERNAL_HOMATCH',
               campaign_id: campaignId,
               compatibility: assessment.compatibility,
               match_score: assessment.score,
@@ -538,10 +585,8 @@ Deno.serve(async (req: Request) => {
               flexible_dimensions: assessment.flexible,
               rationale: assessment.rationale,
               dimensions: assessment.dimensions,
-              updated_at: new Date().toISOString(),
-            }, { onConflict: 'intent_profile_id,property_id' })
-            .select('id')
-            .maybeSingle();
+            },
+          });
 
           if (nativeError) {
             totals.persistenceFailures += 1;
@@ -562,7 +607,8 @@ Deno.serve(async (req: Request) => {
            * nobody a second time; the group key collapses a first sweep that finds nine
            * into one interruption rather than nine.
            */
-          const matchId = String((written as Record<string, unknown> | null)?.id ?? '');
+          const matchId = String(written ?? '');
+          compatibleProperties.push(propertyRow.id as string);
           if (matchId) {
             await notify(db, {
               userId: String(propertyRow.user_id),
@@ -590,10 +636,12 @@ Deno.serve(async (req: Request) => {
             await notify(db, {
               userId: demandUserId,
               type: 'MATCH_AVAILABLE',
-              title: 'A Homatch property matches your search',
-              body: 'It fits the plan you confirmed.',
+              title: 'A Homatch property may fit what you are looking for',
+              body: String(demandRow.classifier_version ?? '') === 'search-plan-1.0.0'
+                ? 'It fits the plan you confirmed.'
+                : 'It fits the requirements you described.',
               priority: 'NORMAL',
-              deepLink: '/find-property',
+              deepLink: '/find-property?view=homatch',
               entityType: 'supply_match',
               entityId: matchId,
               dedupeKey: `native-match:${matchId}:demand`,
@@ -602,11 +650,20 @@ Deno.serve(async (req: Request) => {
               groupTitle: '{n} Homatch properties match your search',
               metadata: {
                 kind: 'NATIVE_MATCH_DEMAND',
+                origin: String(demandRow.classifier_version ?? '') === 'search-plan-1.0.0' ? 'SEARCH_PLAN' : 'CONVERSATION',
                 property_id: propertyRow.id,
                 homatch_id: propertyRow.homatch_id ?? null,
               },
             });
           }
+        }
+
+        /* A property that no longer fits this demand stops being shown as a match. */
+        if (!dryRun) {
+          await db.rpc('retire_native_matches', {
+            p_intent_profile_id: demandRow.id as string,
+            p_keep: compatibleProperties,
+          });
         }
       }
 

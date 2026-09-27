@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { NativeMatchesPanel } from '@/components/matching/NativeMatchesPanel';
 import { toast } from 'sonner';
 import type { DiscoveryHeadroom } from '@/campaign/searchExpansion';
 import { CampaignLaunchPanel } from '@/components/campaign/CampaignLaunchPanel';
@@ -824,6 +825,11 @@ function MatchesContent() {
           onChange={(next) => setFilter(next)}
           ariaLabel={t('matches_filter_all')}
         />
+
+        {/* HOMATCH members whose requirements fit this property, or who asked about it.
+            Two real accounts on both sides — the one kind of result that offers Message
+            and Call. Renders nothing when there is nobody. */}
+        {propertyId ? <NativeMatchesPanel propertyId={propertyId} role="OWNER" className="hm-discovery-panel" /> : null}
 
         <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_17rem]">
           <div className="min-w-0">

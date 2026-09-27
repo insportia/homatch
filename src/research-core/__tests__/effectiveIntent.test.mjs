@@ -290,3 +290,72 @@ test('two people are two people', () => {
 test('nothing said produces nothing claimed', () => {
   assert.deepEqual(resolveEffectiveIntent([]), { demands: [], properties: [] });
 });
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Ending a search, and keeping two apart
+ * ──────────────────────────────────────────────────────────────────────── */
+
+test('"I am not looking any more" ends the conversational search it names', () => {
+  const { demands } = resolveEffectiveIntent([
+    signal({ constraints: { transactionType: 'SALE', city: 'Tbilisi', budgetMax: 150000 } }),
+    signal({
+      act: 'REJECTION', polarity: 'NEGATIVE', sourceAt: '2026-09-05T10:00:00.000Z',
+      constraints: { transactionType: 'SALE' },
+    }),
+  ]);
+  assert.equal(demands.length, 0);
+});
+
+test('a withdrawal that names no transaction ends every conversational search, and no plan', () => {
+  const { demands } = resolveEffectiveIntent([
+    signal({ constraints: { transactionType: 'SALE', city: 'Tbilisi' } }),
+    signal({ constraints: { transactionType: 'RENT', city: 'Batumi' } }),
+    signal({ intentProfileId: 'plan-1', scope: 'SEARCH', constraints: { transactionType: 'SALE', city: 'Tbilisi' } }),
+    signal({ act: 'REJECTION', polarity: 'NEGATIVE', sourceAt: '2026-09-09T10:00:00.000Z', constraints: {} }),
+  ]);
+  assert.deepEqual(demands.map((d) => d.intentProfileId), ['plan-1'],
+    'a chat sentence reached into a plan the customer confirmed on a screen');
+});
+
+test('a later requirement after a withdrawal starts a new search', () => {
+  const { demands } = resolveEffectiveIntent([
+    signal({ constraints: { transactionType: 'SALE', city: 'Tbilisi', budgetMax: 150000 } }),
+    signal({ act: 'REJECTION', polarity: 'NEGATIVE', sourceAt: '2026-09-05T10:00:00.000Z', constraints: {} }),
+    signal({ sourceAt: '2026-09-10T10:00:00.000Z', constraints: { transactionType: 'SALE', city: 'Batumi' } }),
+  ]);
+  assert.equal(demands.length, 1);
+  assert.equal(demands[0].constraints.city, 'Batumi');
+  assert.equal(demands[0].constraints.budgetMax, undefined, 'the withdrawn search leaked into the new one');
+});
+
+test('buying a flat and renting a shop are two searches for one person', () => {
+  const { demands } = resolveEffectiveIntent([
+    signal({ constraints: { transactionType: 'SALE', city: 'Tbilisi', propertyTypes: ['APARTMENT'] } }),
+    signal({ constraints: { transactionType: 'RENT', city: 'Tbilisi', propertyTypes: ['COMMERCIAL'] } }),
+  ]);
+  assert.equal(demands.length, 2);
+  assert.deepEqual(demands.map((d) => d.constraints.transactionType).sort(), ['RENT', 'SALE']);
+});
+
+test('rejecting one property does not end the search', () => {
+  const { demands, properties } = resolveEffectiveIntent([
+    signal({ constraints: { transactionType: 'SALE', city: 'Tbilisi' } }),
+    signal({
+      side: 'PROPERTY_INTEREST', act: 'REJECTION', polarity: 'NEGATIVE', scope: 'PROPERTY',
+      propertyId: PROPERTY, sourceAt: '2026-09-05T10:00:00.000Z',
+    }),
+  ]);
+  assert.equal(demands.length, 1);
+  assert.equal(properties[0].state, 'REJECTED');
+});
+
+test('a budget raised in chat refines the budget and keeps the rooms and the place', () => {
+  const { demands } = resolveEffectiveIntent([
+    signal({ constraints: { transactionType: 'SALE', city: 'Tbilisi', districts: ['Vake'], roomsMin: 3, budgetMax: 150000, currency: 'USD' } }),
+    signal({ sourceAt: '2026-09-03T10:00:00.000Z', constraints: { transactionType: 'SALE', budgetMax: 180000, currency: 'USD' } }),
+  ]);
+  assert.equal(demands.length, 1);
+  assert.equal(demands[0].constraints.budgetMax, 180000);
+  assert.deepEqual(demands[0].constraints.districts, ['Vake']);
+  assert.equal(demands[0].constraints.roomsMin, 3);
+});

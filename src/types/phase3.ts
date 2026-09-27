@@ -100,6 +100,14 @@ export interface ExternalContactUnlock {
 
 export interface ExternalUnlockPreview {
   match_score: number;
+  /**
+   * The matcher's recorded grade, which unlock-external-contact has always returned in
+   * this payload and this interface never declared — so the modal could not reach it and
+   * led with the raw score instead. Optional because a match created before the column
+   * existed has none, and fitTier() answers POSSIBLE for an absent value rather than
+   * guessing.
+   */
+  signal_strength?: string | null;
   lead_type: LeadType;
   lead_label: string;
   is_confirmed: boolean;

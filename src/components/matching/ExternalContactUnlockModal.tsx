@@ -11,6 +11,7 @@ import {
   Lock, Unlock, Phone, Mail, MessageCircle, AlertTriangle, CheckCircle,
   MapPin, DollarSign, Clock, BarChart3, Globe, Coins,
 } from 'lucide-react';
+import { fitTier } from '@/matching/presentation';
 import { previewExternalUnlock, confirmExternalUnlock } from '@/services/api3';
 import type { ExternalUnlockPreview } from '@/types/phase3';
 import { toast } from 'sonner';
@@ -119,12 +120,21 @@ export function ExternalContactUnlockModal({ open, onClose, matchId, creditBalan
         {/* Preview */}
         {step === 'preview' && preview && (
           <div className="space-y-4">
-            {/* Lead type + score */}
+            {/*
+              A WORD, NOT A NUMBER IN A CIRCLE.
+              This led with "87" at text-lg in the product's own primary colour — a raw
+              confidence figure as the largest thing on a purchase screen, and a number
+              nobody can act on differently from 84. The same three words the match card
+              uses; the score keeps its secondary line, where a figure is something you
+              check after you have been told the verdict rather than instead.
+            */}
             <div className="flex items-center gap-3 p-3 bg-secondary rounded-xl">
-              <div className="h-12 w-12 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
-                <span className="text-lg font-bold text-primary">{preview.match_score}</span>
-              </div>
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 space-y-1">
+                <span className="inline-flex max-w-full rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
+                  <span className="break-words">
+                    {t(`match_fit_${fitTier(preview.signal_strength).toLowerCase()}`)}
+                  </span>
+                </span>
                 <div className="flex items-center gap-2 flex-wrap">
                   <Badge
                     variant="outline"

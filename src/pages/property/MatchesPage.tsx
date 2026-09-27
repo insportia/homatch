@@ -616,16 +616,28 @@ function UnlockedMatchDialog({
             </div>
           )}
 
-          {/* Match reasons */}
+          {/*
+            THE SAME TRANSLATION THE CARD DOES, ON THE SCREEN SOMEBODY PAID TO REACH.
+            These are matcher literals from a closed set of sixteen, written in English by
+            run-matching-v2 and stored on the row. The card learned to say them in the
+            reader's language; leaving this dialog in English would mean the free preview
+            spoke Georgian and the paid result did not.
+          */}
           {match.match_reasons?.length > 0 && (
             <div className="space-y-1.5">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('matches_reasons')}</p>
               <div className="flex flex-wrap gap-1.5">
-                {match.match_reasons.map((r, i) => (
-                  <span key={i} className="text-xs bg-green-500/10 border border-green-500/20 text-green-400 px-2 py-0.5 rounded-full">
-                    {r}
-                  </span>
-                ))}
+                {match.match_reasons.map((reason, index) => {
+                  const key = reasonKey(reason);
+                  return (
+                    <span
+                      key={`${reason}-${index}`}
+                      className="text-xs bg-green-500/10 border border-green-500/20 text-green-400 px-2 py-0.5 rounded-full max-w-full"
+                    >
+                      <span className="break-words">{key ? t(key) : reason}</span>
+                    </span>
+                  );
+                })}
               </div>
             </div>
           )}

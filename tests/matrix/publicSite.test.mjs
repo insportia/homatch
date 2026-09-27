@@ -85,7 +85,7 @@ test('public site 3: the two products are never an authenticated dead end for a 
   assert.equal(resolve('/property/add')?.public, false);
 
   // And the header actually picks between the two by auth state.
-  assert.match(HEADER, /signedIn && link\.signedInTarget \? link\.signedInTarget : link\.target/);
+  assert.match(HEADER, /status === 'AUTHENTICATED' && link\.signedInTarget \? link\.signedInTarget : link\.target/);
 });
 
 test('public site 4: sign-up from an entry page comes back to the product, not the dashboard', () => {
@@ -110,7 +110,10 @@ test('public site 5: the home launcher no longer sends public tools through sign
   const launcher = read('src/components/home/sections/ActionLauncherSection.tsx');
   const code = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
   assert.ok(!/auth\/signup/.test(code(launcher)), 'the launcher routes to sign-up directly again');
-  assert.match(launcher, /to: '\/verify'/);
+  // Verify is public: the code field goes straight to /verify, signed in or not.
+  assert.match(launcher, /navigate\(value \? `\/verify\?code=\$\{encodeURIComponent\(value\)\}` : '\/verify'\)/);
+  // Gated tiles remember the return path through sign-up instead of dead-ending.
+  assert.match(launcher, /useProductNavigation\(\)/);
   const verify = read('src/components/home/sections/VerifyShowcaseSection.tsx');
   assert.ok(!/auth\/signup/.test(code(verify)), 'Verify is public and must not ask for an account');
   const contract = read('src/components/home/sections/ContractIntelligenceSection.tsx');
@@ -194,40 +197,44 @@ test('public site 9: every public-site string exists in all six bundles, as the 
 /* ── The mobile menu ──────────────────────────────────────────────── */
 
 test('public site 10: the mobile menu is a real modal dialog', () => {
+  /*
+   * The menu is the shipped header's full-width panel under the bar, not a
+   * portalled side sheet — but while it is open it must still BEHAVE as a
+   * dialog: named, focus moved in, Tab trapped, Escape out, focus returned,
+   * and the page behind held still.
+   */
   assert.match(HEADER, /role="dialog"/);
   assert.match(HEADER, /aria-modal="true"/);
-  assert.match(HEADER, /aria-labelledby=\{titleId\}/);
+  assert.match(HEADER, /aria-label=\{t\('mp_nav_menu_open'\)\}/);
   // The control that opens it says what it opens and whether it is open.
   assert.match(HEADER, /aria-haspopup="dialog"/);
   assert.match(HEADER, /aria-expanded=\{open\}/);
   assert.match(HEADER, /data-hm-menu-toggle/);
   // Initial focus, Escape, the trap, and focus returned to the toggle.
-  assert.match(HEADER, /closeButton\.current\?\.focus\(\)/);
+  assert.match(HEADER, /focusables\(\)\[0\]\?\.focus\(\)/);
   assert.match(HEADER, /e\.key === 'Escape'/);
   assert.match(HEADER, /e\.key !== 'Tab'/);
-  assert.match(HEADER, /toggle\.current\?\.focus\(\)/);
-  // The page behind does not scroll, and a tap outside closes it.
-  assert.match(HEADER, /doc\.body\.style\.overflow = 'hidden'/);
-  assert.match(HEADER, /hm-pub-scrim[\s\S]{0,120}onClick=\{\(\) => onClose\(true\)\}/);
-  // Portalled: the header's backdrop blur would otherwise contain it.
-  assert.match(HEADER, /createPortal\(/);
+  assert.match(HEADER, /toggleRef\.current\?\.focus\(\)/);
+  // The page behind does not scroll while the menu is open.
+  assert.match(HEADER, /document\.body\.style\.overflow = 'hidden'/);
+  // And the panel scrolls itself without dragging the page under it.
+  assert.match(HEADER, /overscroll-contain/);
 });
 
 test('public site 11: the menu respects safe areas, thumbs and both reading directions', () => {
-  const css = read('src/index.css');
-  const sheet = css.slice(css.indexOf('.hm-pub-sheet {'), css.indexOf('}', css.indexOf('.hm-pub-sheet {')));
-  for (const edge of ['top', 'bottom', 'left', 'right']) {
-    assert.match(sheet, new RegExp(`env\\(safe-area-inset-${edge}\\)`), `the sheet ignores the ${edge} safe area`);
-  }
-  // 44px controls: the toggle, the close button, every row.
+  // The panel clears the home indicator on a modern phone.
+  assert.match(HEADER, /env\(safe-area-inset-bottom\)/, 'the panel ignores the bottom safe area');
+  // 44px controls: the toggle, every row, and both auth buttons.
   assert.match(HEADER, /h-11 w-11/);
-  assert.match(css, /\.hm-pub-btn \{[\s\S]*?min-height: 2\.75rem;/);
-  // The sheet opens from the END side, which is the left in Arabic and Hebrew.
-  assert.match(HEADER, /absolute inset-y-0 end-0/);
-  assert.match(css, /\[dir='rtl'\] \.hm-pub-arrow \{\s*transform: scaleX\(-1\);/);
-  // Signed out: log in and sign up; signed in: account and dashboard. Never both.
-  assert.match(HEADER, /status === 'UNAUTHENTICATED' && \(/);
-  assert.match(HEADER, /\{signedIn && \(/);
+  assert.match(HEADER, /rounded-xl py-3\.5 text-start text-\[17px\]/);
+  assert.match(HEADER, /h-11 rounded-full/);
+  // Direction-safe: rows align to the reading start, dropdowns to the
+  // logical edge, and the group chevron needs no mirroring (it points down).
+  assert.match(HEADER, /text-start/);
+  assert.match(HEADER, /ltr:start-0 rtl:end-0/);
+  // Signed out: log in and sign up; signed in: the dashboard. Never both.
+  assert.match(HEADER, /authResolved && status === 'UNAUTHENTICATED' && \(/);
+  assert.match(HEADER, /status === 'AUTHENTICATED' \? \(/);
 });
 
 test('public site 12: the public components use logical, direction-safe spacing', () => {
@@ -252,13 +259,21 @@ test('public site 12: the public components use logical, direction-safe spacing'
   }
 });
 
-test('public site 13: the public scope is its own, not a customer-app scope', () => {
+test('public site 13: the public pages borrow no customer-app scope', () => {
+  /*
+   * The home page renders on the app's own default light tokens — that IS
+   * its design — so it carries no scope class at all. The product entry
+   * pages carry `.hm-public`, their own scope. What neither may do is
+   * borrow a signed-in surface's scope and inherit a redesign by accident.
+   */
   const home = read('src/pages/HomePage.tsx');
-  assert.match(home, /className="hm-public /);
+  const entry = read('src/pages/ProductEntryPage.tsx');
   for (const scope of ['hm-customer', 'hm-owner', 'hm-discovery']) {
     assert.ok(!home.includes(scope), `the home page borrows ${scope}`);
     assert.ok(!HEADER.includes(scope), `the public header borrows ${scope}`);
+    assert.ok(!entry.includes(scope), `the entry pages borrow ${scope}`);
   }
+  assert.match(entry, /hm-public/);
   assert.match(read('src/index.css'), /\.hm-public \{/);
 });
 
@@ -269,14 +284,16 @@ test('public site 14: every header label an admin can rewrite is read under the 
    * so a saved rewrite never showed. Field key and registry key are now the
    * same string, for every link.
    */
-  const fields = HEADER.slice(HEADER.indexOf('const NAV_FIELDS'), HEADER.indexOf('/** The icons'));
+  const block = HEADER.slice(HEADER.indexOf('const NAV_FIELDS'));
+  const fields = block.slice(0, block.indexOf('};'));
   const keys = [...fields.matchAll(/^\s{2}([a-z_]+): '/gm)].map((m) => m[1]);
-  assert.ok(keys.length >= 14);
+  assert.ok(keys.length >= 14, `only ${keys.length} NAV_FIELDS entries found`);
+  // The header renders every declared link's label from its stored field.
   assert.match(HEADER, /sf\(`nav_\$\{link\.key\}`, fallback\)/);
   for (const key of keys) {
     assert.ok(REGISTRY.includes(`f('nav_${key}'`), `nav_${key} is read by the header but not offered in Site Studio`);
   }
-  for (const cta of ['cta_login', 'cta_signup', 'cta_dashboard', 'nav_more']) {
+  for (const cta of ['cta_login', 'cta_signup', 'cta_dashboard']) {
     assert.ok(HEADER.includes(`sf('${cta}'`), `${cta} is offered in Site Studio but the header ignores it`);
   }
 });

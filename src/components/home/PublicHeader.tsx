@@ -1,76 +1,74 @@
-import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import {
-  ArrowRight, Building2, ChevronDown, ChevronRight, Home, Menu, Search, ShieldCheck, X,
-} from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { ChevronDown, Menu, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { Button } from '@/components/ui/button';
 import { HomatchLogo } from '@/components/common/HomatchLogo';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
-import { InstallApp } from '@/components/common/InstallApp';
+import { InstallApp, useInstallState, hasInstallAction } from '@/components/common/InstallApp';
 import { PAGE } from '@/components/home/sections/primitives';
 import { useFieldProps, useNotEditable, useSectionField } from '@/site/content';
 import { ShellScope } from '@/site/render/ShellScope';
-import { updateMyProfile } from '@/services/api';
-import { SUPPORTED_LANGUAGES } from '@/types/types';
 import type { TranslationKey } from '@/i18n/translations';
 
 /**
- * THE PUBLIC HEADER.
+ * REGION 01 — the header.
  *
- * One header for every public page — home, About, Pricing, Partners,
- * Developers, the legal pages, the Expat guide, the two product entry pages,
- * and (through AppLayout) the public tools a signed-out visitor can use.
+ * Quiet by design: no border and no background at the top of the page, so the
+ * hero reads as one uninterrupted composition; a hairline and a white wash
+ * fade in only once the page has scrolled under it.
  *
- * WHAT CHANGED, AND WHY
+ * IT SITS ON BLACK UNTIL IT DOESN'T
  *
- * The header used to be transparent over a black hero and flip to white on
- * scroll. The home page is white now, so there is one tone, and the whole
- * `onDark` machinery — which threaded a colour decision through every
- * control — is gone. `solid` is still accepted so no page has to change, and
- * means what it always meant: the header is opaque from the top.
+ * The hero is a black band, so at the top of the page every control here is
+ * white-on-transparent. Past the hero the header becomes a white bar and the
+ * same controls flip to near-black. One `scrolled` flag drives both, which is
+ * why the tone is threaded through rather than set per element.
  *
- * At 1440px the desktop row used to render eight links, an install chip,
- * a language control and two account buttons in one line, and in Georgian
- * the labels ran into each other. The navigation is now three links and three
- * groups (src/site/publicNav.ts), and the full row appears only from 1280px,
- * where it fits in every language. Below that the menu button opens a sheet.
+ * Spacing and type carry
+ * the hierarchy — the navigation has no pills, and there is exactly one
+ * filled control.
  *
- * THE MOBILE MENU IS A DIALOG
- *
- * It was a panel that pushed down under the bar. It is now a modal sheet:
- * role="dialog" with aria-modal, labelled, focus moved into it on open,
- * trapped while open, returned to the menu button on close; Escape, the
- * scrim and the close button all dismiss it; the page behind does not
- * scroll; the safe-area insets are respected. It is portalled out of the
- * header because the header's backdrop blur makes it the containing block
- * for anything `position: fixed` inside it, which is how a full-screen sheet
- * ends up the height of a 64px bar.
+ * Every destination is a route that exists: the reference's six centre links
+ * map onto three in-page regions and three real pages.
  */
 export interface HeaderLink {
   key: string;
   label: string;
   /** In-page region id, or a router path when it starts with '/'. Public. */
   target: string;
-  /** Where a signed-in visitor goes instead. See src/site/publicNav.ts. */
+  /** Where a signed-in visitor goes instead, when that differs. */
   signedInTarget?: string;
-  /** One line under the label inside a group. */
+  /** One line under the label inside a group's menu. */
   description?: string;
-  /** A group. Not itself a destination. */
+  /**
+   * A group. Present only on the two secondary headings, which are not
+   * themselves destinations: seven flat links is what made this header
+   * crowd, and hierarchy is the fix that smaller text was standing in for.
+   */
   children?: HeaderLink[];
 }
 
 /**
+ * @param solid  Forces the opaque white bar from the top of the page. The
+ *               transparent state only works over a full-bleed black hero;
+ *               on a page that opens on white it renders the logo and the
+ *               navigation white on white, which is how a header disappears.
+ */
+/**
  * THE NAVIGATION LABELS AN ADMIN MAY REWRITE.
  *
- * Keyed by link key; the value is the translation key the label falls back
- * to. The Site Studio field for a link is `nav_<key>`, and the `site_header`
- * block in src/site/registry.ts declares exactly these — the test beside that
- * file checks that the two agree. (The previous version read the field under
- * the TRANSLATION key, so an admin's rewrite of "Find a property" was stored
- * under nav_find_property and read back under dnav_find_property: saved, and
- * never shown.)
+ * Keyed by the link key the pages already use, and valued with the
+ * translation key that link falls back to when nothing is stored. The
+ * STORED override is read under `nav_<key>` — the exact field id the
+ * `site_header` section in src/site/registry.ts offers, so a label saved in
+ * Site Studio is the label this header renders. A key that is not here --
+ * the About page's in-page anchors, say -- simply keeps the label the page
+ * passed, which is why adding a link in code needs no edit here to work.
+ *
+ * Must stay in step with the `site_header` fields in src/site/registry.ts;
+ * the tests beside both files check that it does.
  */
 const NAV_FIELDS: Readonly<Record<string, TranslationKey>> = {
   find_property: 'dnav_find_property',
@@ -90,122 +88,92 @@ const NAV_FIELDS: Readonly<Record<string, TranslationKey>> = {
   pricing: 'nav_pricing',
 };
 
-/** The icons of the three primary rows in the mobile menu. */
-const PRIMARY_ICON: Record<string, React.ComponentType<{ className?: string; strokeWidth?: number }>> = {
-  find_property: Search,
-  find_client: Home,
-  verify: ShieldCheck,
-};
-
 /** The header, wrapped in whatever the site has stored for its chrome. */
 export function PublicHeader(props: {
   links: HeaderLink[];
-  /** Accepted for compatibility; the header is always opaque now. */
   solid?: boolean;
   /**
-   * `sticky` inside AppLayout, whose pages lay themselves out below the bar;
-   * `fixed` (the default) on the public pages, which add a HeaderSpacer.
+   * `fixed` is the home page's arrangement: the bar floats over the black
+   * hero and pages lay themselves out underneath it (HeaderSpacer). `sticky`
+   * is for pages that lay themselves out BELOW the bar -- the signed-out
+   * chrome AppLayout puts on Mortgage, Investment and Brokers -- where a
+   * fixed bar would cover the first heading. A sticky header is always the
+   * solid white bar; there is no hero under it to be transparent over.
    */
   position?: 'fixed' | 'sticky';
 }) {
   return <ShellScope part="site_header"><HeaderBody {...props} /></ShellScope>;
 }
 
-/* ------------------------------------------------------------------ *
- * Desktop: a group that opens onto its destinations                   *
- * ------------------------------------------------------------------ */
-
 /**
- * A disclosure, not an ARIA menu. A menu promises arrow-key roving and
- * type-ahead; this is a short list of links, and links are what assistive
- * technology should announce. It closes on Escape (focus returns to the
- * button), on a click outside, and on choosing something.
+ * A secondary heading that opens onto its destinations.
+ *
+ * Not a mega-menu: two items, no columns, no imagery. It exists so that
+ * About, Pricing, For developers and Partners stop competing with the product
+ * for the widest row in the header, and it closes on Escape, on outside
+ * click and on choosing something — the three ways a person expects to get
+ * out of an open menu.
  */
 function NavGroup({
-  sections, label, labelMark, go, align = 'start',
+  link, onDark, go, label, childLabel,
 }: {
-  /** One or more headed lists. "More" holds two: professional and company. */
-  sections: { key: string; label: string; links: HeaderLink[] }[];
-  label: string;
-  labelMark: object;
+  link: HeaderLink;
+  onDark: boolean;
   go: (link: HeaderLink) => void;
-  align?: 'start' | 'end';
+  label: string;
+  childLabel: (link: HeaderLink) => string;
 }) {
-  const [open, setOpen] = useState(false);
-  const wrap = useRef<HTMLDivElement>(null);
-  const button = useRef<HTMLButtonElement>(null);
-  const panelId = useId();
+  const [open, setOpen] = React.useState(false);
+  const wrap = React.useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (!open) return undefined;
-    const doc = wrap.current?.ownerDocument ?? document;
     const onDown = (e: MouseEvent) => {
       if (wrap.current && !wrap.current.contains(e.target as Node)) setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setOpen(false); button.current?.focus(); }
-    };
-    const onFocus = (e: FocusEvent) => {
-      if (wrap.current && !wrap.current.contains(e.target as Node)) setOpen(false);
-    };
-    doc.addEventListener('mousedown', onDown);
-    doc.addEventListener('keydown', onKey);
-    doc.addEventListener('focusin', onFocus);
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
     return () => {
-      doc.removeEventListener('mousedown', onDown);
-      doc.removeEventListener('keydown', onKey);
-      doc.removeEventListener('focusin', onFocus);
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
     };
   }, [open]);
 
   return (
     <div ref={wrap} className="relative">
       <button
-        ref={button}
         type="button"
         aria-expanded={open}
-        aria-controls={panelId}
+        aria-haspopup="menu"
         onClick={() => setOpen(v => !v)}
-        className={`inline-flex h-10 items-center gap-1 whitespace-nowrap rounded-lg px-2.5 text-[15px] font-medium transition-colors hm-pub-focus ${
-          open ? 'bg-secondary text-foreground' : 'text-ink-soft hover:bg-secondary hover:text-foreground'
+        className={`relative inline-flex items-center gap-1 whitespace-nowrap [overflow-wrap:normal] text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 2xl:text-sm ${
+          onDark ? 'text-white/75 hover:text-white' : 'text-ink-soft hover:text-foreground'
         }`}
       >
-        <span {...labelMark}>{label}</span>
-        <ChevronDown
-          className={`h-4 w-4 opacity-70 transition-transform motion-reduce:transition-none ${open ? 'rotate-180' : ''}`}
-          aria-hidden="true"
-        />
+        {label}
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
       </button>
       {open && (
         <div
-          id={panelId}
-          className={`absolute top-full z-50 mt-2 w-[21rem] rounded-2xl border border-border bg-card p-2 shadow-[var(--pub-shadow-lg)] ${
-            align === 'end' ? 'end-0' : 'start-0'
-          }`}
+          role="menu"
+          className="absolute top-full z-50 mt-2 min-w-[11rem] overflow-hidden rounded-xl border border-border bg-background py-1 shadow-lg ltr:start-0 rtl:end-0"
         >
-          {sections.map((section, i) => (
-            <div key={section.key} className={i > 0 ? 'mt-1 border-t border-border pt-1' : ''}>
-              <p className="hm-pub-label px-3 pb-1 pt-2">{section.label}</p>
-              <ul>
-                {section.links.map(child => (
-                  <li key={child.key}>
-                    <button
-                      type="button"
-                      onClick={() => { setOpen(false); go(child); }}
-                      className="group flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-start transition-colors hover:bg-secondary hm-pub-focus"
-                    >
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-[15px] font-semibold text-foreground">{child.label}</span>
-                        {child.description && (
-                          <span className="mt-0.5 block text-[13.5px] leading-snug text-muted-foreground">{child.description}</span>
-                        )}
-                      </span>
-                      <ArrowRight className="hm-pub-arrow mt-1 text-muted-foreground group-hover:text-gold-ink" aria-hidden="true" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
+          {link.children?.map(child => (
+            <button
+              key={child.key}
+              type="button"
+              role="menuitem"
+              onClick={() => { setOpen(false); go(child); }}
+              className="block w-full px-4 py-2.5 text-start transition-colors hover:bg-muted"
+            >
+              <span className="block whitespace-nowrap text-sm text-foreground">{childLabel(child)}</span>
+              {child.description && (
+                <span className="mt-0.5 block max-w-[16rem] text-[13px] leading-snug text-muted-foreground">
+                  {child.description}
+                </span>
+              )}
+            </button>
           ))}
         </div>
       )}
@@ -213,476 +181,398 @@ function NavGroup({
   );
 }
 
-/* ------------------------------------------------------------------ *
- * Mobile: the language, chosen in place                               *
- * ------------------------------------------------------------------ */
-
-/**
- * The six languages as buttons rather than a dropdown.
- *
- * A dropdown inside a modal sheet is a second layer of overlay with its own
- * focus rules, portalled outside the trap; six buttons are one tap and are
- * all visible at once, which is the point of a language control somebody
- * opened a menu to find.
- */
-function LanguageGrid() {
-  const { lang, setLang, t } = useLanguage();
-  const { homatchUser } = useAuth();
-  return (
-    <fieldset>
-      <legend className="mb-2 text-[13px] font-semibold text-muted-foreground">{t('nav_language')}</legend>
-      <div className="grid grid-cols-3 gap-2">
-        {SUPPORTED_LANGUAGES.map(l => {
-          const active = l.code === lang;
-          return (
-            <button
-              key={l.code}
-              type="button"
-              lang={l.code}
-              aria-pressed={active}
-              onClick={() => {
-                setLang(l.code);
-                if (homatchUser?.id && homatchUser.preferred_language !== l.code) {
-                  void updateMyProfile(homatchUser.id, { preferred_language: l.code });
-                }
-              }}
-              className={`min-h-[2.75rem] rounded-xl border px-2 text-[14px] font-medium transition-colors hm-pub-focus ${
-                active
-                  ? 'border-foreground bg-foreground text-background'
-                  : 'border-border bg-card text-foreground hover:border-foreground/40'
-              }`}
-            >
-              {l.nativeLabel}
-            </button>
-          );
-        })}
-      </div>
-    </fieldset>
-  );
-}
-
-/* ------------------------------------------------------------------ *
- * The bar                                                             *
- * ------------------------------------------------------------------ */
-
-function HeaderBody({
-  links, position = 'fixed',
-}: { links: HeaderLink[]; solid?: boolean; position?: 'fixed' | 'sticky' }) {
-  const { status } = useAuth();
+function HeaderBody({ links, solid = false, position = 'fixed' }: {
+  links: HeaderLink[];
+  solid?: boolean;
+  position?: 'fixed' | 'sticky';
+}) {
+  /* Read BEFORE laying out, so the strip never reserves room for a control
+     that is about to render nothing. See useInstallState. */
+  const installState = useInstallState();
+  const canOfferApp = hasInstallAction(installState);
+  const { session, status } = useAuth();
   /*
-   * While the answer is UNKNOWN this header shows neither the account button
-   * nor Login/Register. `session` alone cannot tell "nobody is signed in"
-   * from "we have not looked yet", and offering Register to somebody with an
-   * account is the worse of the two mistakes. A visitor with no persisted
-   * token resolves to UNAUTHENTICATED on the first frame, so a real guest
-   * still sees the real buttons immediately.
+   * Same rule as AppLayout: while the answer is UNKNOWN this header shows
+   * neither the account button nor Login/Register. `session` alone cannot
+   * tell "nobody is signed in" from "we have not looked yet", and offering
+   * Register to somebody with an account is the worse of the two mistakes.
+   * A visitor with no persisted token resolves to UNAUTHENTICATED on the
+   * first frame, so a real guest still sees the real buttons immediately.
    */
   const authResolved = status !== 'UNKNOWN';
-  const signedIn = status === 'AUTHENTICATED';
   const { t } = useLanguage();
   const navigate = useNavigate();
-  const location = useLocation();
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const toggle = useRef<HTMLButtonElement>(null);
-  const headerRef = useRef<HTMLElement>(null);
+  const panelRef = React.useRef<HTMLDivElement>(null);
+  const toggleRef = React.useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 4);
+    const onScroll = () => setScrolled(window.scrollY > 12);
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  /* Leaving the page closes the menu, whichever way it was left. */
-  useEffect(() => { setOpen(false); }, [location.pathname]);
+  // The mobile panel is a full-height overlay; leaving the page scrollable
+  // behind it lets a touch drag move the page under the menu. While it is
+  // open it behaves as a dialog: focus moves in, Tab stays inside, Escape
+  // closes, and focus returns to the button that opened it.
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const focusables = () => Array.from(
+      panelRef.current?.querySelectorAll<HTMLElement>(
+        'button, a[href], input, select, [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter((el) => !el.hasAttribute('disabled'));
+    focusables()[0]?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setOpen(false); return; }
+      if (e.key !== 'Tab') return;
+      const items = focusables();
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      /* The toggle in the bar stays reachable; anything else wraps. */
+      if (!e.shiftKey && active === last) { e.preventDefault(); first.focus(); }
+      else if (e.shiftKey && (active === first || !panelRef.current?.contains(active))) {
+        e.preventDefault();
+        last.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = previous;
+      window.removeEventListener('keydown', onKey);
+      toggleRef.current?.focus();
+    };
+  }, [open]);
 
-  const sf = useSectionField();
-  const fp = useFieldProps();
-  const notEditable = useNotEditable();
   /*
    * A label the admin has rewritten, else the reviewed copy for that key,
    * else whatever the page passed.
+   *
+   * `sf` cannot return undefined -- with no override it returns t(key) -- so
+   * the third branch exists only for the links this block does not declare.
    */
+  const sf = useSectionField();
+  const fp = useFieldProps();
+  const notEditable = useNotEditable();
   const labelFor = (link: HeaderLink) => {
     const fallback = NAV_FIELDS[link.key];
     return fallback ? sf(`nav_${link.key}`, fallback) : link.label;
   };
   const markFor = (link: HeaderLink) => (NAV_FIELDS[link.key] ? fp(`nav_${link.key}`) : {});
 
-  const close = useCallback((restoreFocus = true) => {
-    setOpen(false);
-    if (restoreFocus) window.requestAnimationFrame(() => toggle.current?.focus());
-  }, []);
-
   const goTo = (target: string) => {
     setOpen(false);
     if (target.startsWith('/')) {
-      const [path, hash] = target.split('#');
       navigate(target);
-      if (hash && (path === '' || path === '/' || path === location.pathname)) {
-        window.setTimeout(() => {
-          document.getElementById(hash)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 60);
-      }
       return;
     }
     document.getElementById(target)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
-  const go = (link: HeaderLink) => goTo(signedIn && link.signedInTarget ? link.signedInTarget : link.target);
-  const hrefFor = (link: HeaderLink) => {
-    const target = signedIn && link.signedInTarget ? link.signedInTarget : link.target;
-    return target.startsWith('/') ? target : `/#${target}`;
+
+  /*
+   * WHERE A LINK GOES DEPENDS ON WHO IS STANDING ON IT.
+   *
+   * "Find a property" and "Find a buyer or tenant" are authenticated
+   * products; a visitor without an account gets the public entry page that
+   * explains the product and carries them through sign-up, and a signed-in
+   * visitor goes straight in. Decided here, from the resolved auth state,
+   * so no page has to know there are two destinations.
+   */
+  const go = (link: HeaderLink) => {
+    goTo(status === 'AUTHENTICATED' && link.signedInTarget ? link.signedInTarget : link.target);
   };
 
-  const primary = links.filter(l => !l.children?.length);
-  const groups = links.filter(l => l.children?.length);
-
-  const isFixed = position === 'fixed';
+  /* Inverted while the header is still over the hero. */
+  const onDark = position === 'fixed' && !solid && !scrolled && !open;
 
   return (
     <header
-      ref={headerRef}
-      className={`hm-public ${isFixed ? 'fixed inset-x-0 top-0' : 'sticky top-0'} z-50 border-b transition-[border-color,box-shadow,background-color] duration-200 motion-reduce:transition-none ${
-        scrolled || !isFixed
-          ? 'border-border bg-background/95 shadow-[0_1px_0_hsl(var(--border)),0_8px_24px_-20px_hsl(224_30%_10%/0.35)] backdrop-blur-md'
-          : 'border-transparent bg-background'
+      className={`${position === 'sticky' ? 'sticky' : 'fixed inset-x-0'} top-0 z-50 transition-colors duration-300 motion-reduce:transition-none ${
+        onDark ? 'border-b border-transparent bg-transparent' : 'border-b border-border bg-background/95 backdrop-blur-md'
       }`}
     >
-      <div className={`${PAGE} flex h-16 items-center gap-3 xl:h-[4.5rem] xl:gap-6`}>
-        <Link
-          to="/"
-          onClick={() => { setOpen(false); if (location.pathname === '/') window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-          className="min-w-0 shrink rounded-lg hm-pub-focus"
+      <div className={`${PAGE} flex h-[4.5rem] items-center gap-3 sm:gap-6 md:h-[5.5rem]`}>
+        <button
+          type="button"
+          onClick={() => {
+            setOpen(false);
+            navigate('/');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          className="min-w-0 shrink rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4"
           aria-label={t('home_nav_home_aria')}
         >
-          <HomatchLogo size="md" withTagline={false} tone="dark" />
-        </Link>
+          {/* The tagline needs more room than a Georgian navigation row can
+              spare below xl; the wordmark alone is still the whole brand. */}
+          <HomatchLogo size="md" withTagline={false} tone={onDark ? 'light' : 'dark'} className="2xl:hidden" />
+          <HomatchLogo size="md" withTagline tone={onDark ? 'light' : 'dark'} className="hidden 2xl:flex" />
+        </button>
 
-        <nav aria-label={t('pub_nav_aria')} className="mx-auto hidden items-center gap-0.5 xl:flex">
-          {primary.map(link => (
-            <Link
+        <nav className="mx-auto hidden items-center gap-3 xl:flex 2xl:gap-4">
+          {links.map(link => (link.children && link.children.length > 0 ? (
+            <NavGroup key={link.key} link={link} onDark={onDark} go={go} label={labelFor(link)} childLabel={labelFor} />
+          ) : (
+            <button
               key={link.key}
-              to={hrefFor(link)}
-              onClick={(e) => { e.preventDefault(); go(link); }}
-              aria-current={location.pathname === hrefFor(link) ? 'page' : undefined}
-              className="inline-flex h-10 items-center whitespace-nowrap rounded-lg px-2.5 text-[15px] font-medium text-ink-soft transition-colors hover:bg-secondary hover:text-foreground aria-[current=page]:text-foreground hm-pub-focus"
+              type="button"
+              onClick={() => go(link)}
+              className={`relative whitespace-nowrap [overflow-wrap:normal] text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 2xl:text-sm ${
+                onDark ? 'text-white/75 hover:text-white' : 'text-ink-soft hover:text-foreground'
+              }`}
+              {...markFor(link)}
             >
-              <span {...markFor(link)}>{labelFor(link)}</span>
-            </Link>
-          ))}
-          {/*
-            * Services opens on its own; the professional and company groups
-            * share one "More" control on a desktop row. Six languages
-            * disagree about how long a word is, and in Georgian and Russian
-            * six controls did not fit beside the account buttons at 1440px.
-            * The mobile sheet has the room, and lists each group under its
-            * own heading.
-            */}
-          {groups.filter(g => g.key === 'services').map(group => (
-            <NavGroup
-              key={group.key}
-              sections={[{ key: group.key, label: labelFor(group), links: (group.children ?? []).map(c => ({ ...c, label: labelFor(c) })) }]}
-              label={labelFor(group)}
-              labelMark={markFor(group)}
-              go={go}
-            />
-          ))}
-          {groups.some(g => g.key !== 'services') && (
-            <NavGroup
-              sections={groups.filter(g => g.key !== 'services').map(group => ({
-                key: group.key,
-                label: labelFor(group),
-                links: (group.children ?? []).map(c => ({ ...c, label: labelFor(c) })),
-              }))}
-              label={sf('nav_more', 'pub_nav_more')}
-              labelMark={fp('nav_more')}
-              go={go}
-              align="end"
-            />
-          )}
+              {labelFor(link)}
+            </button>
+          )))}
         </nav>
 
-        <div className="ms-auto flex items-center gap-2 xl:ms-0">
+        {/*
+          * TWO GROUPS, NOT ONE ROW OF LEFTOVERS.
+          *
+          * Install and language are utilities; sign in and sign up are the
+          * account. They used to share one gap, so the eye read five
+          * equally weighted controls and the row sprawled. A hairline
+          * between the groups costs one pixel and does the work that
+          * spacing alone could not.
+          */}
+        <div className="ms-auto flex items-center gap-2.5 lg:ms-0">
           {/*
-            * Neither of these is copy. Install names what the BROWSER is
-            * offering, and the language control shows the locale the reader
-            * is in. An admin rewriting either would be writing over a fact.
+            * Neither of these is copy.
+            *
+            * Install names what the BROWSER is offering — install it, or open
+            * the copy already installed, or nothing at all — and the language
+            * control shows the locale the reader is currently in. An admin
+            * rewriting either would be writing over a fact.
             */}
-          <div className="flex shrink-0 items-center gap-1" {...notEditable('SYSTEM_GENERATED')}>
-            <LanguageSwitcher showGlobe compact triggerClassName="h-10 min-w-[2.75rem] shrink-0 whitespace-nowrap px-2.5 text-[13px] text-ink-soft" />
+          {/*
+            * No install control in the desktop BAR.
+            *
+            * In Georgian and Russian the row cannot hold the navigation and
+            * an install pill at once — the pill was what pushed the labels
+            * into each other. On a desktop the control lives in the site
+            * footer, which every public page renders; below lg the utility
+            * strip and the menu both carry it.
+            */}
+          <div
+            className="hidden items-center gap-1.5 sm:flex"
+            {...notEditable('SYSTEM_GENERATED')}
+          >
+            <LanguageSwitcher showGlobe triggerClassName={`h-10 px-2.5 ${onDark ? 'text-white hover:bg-white/10' : ''}`} />
           </div>
 
-          {signedIn ? (
-            <Link
-              to="/dashboard"
-              className="hm-pub-btn hm-pub-btn--primary hidden whitespace-nowrap !min-h-[2.5rem] !py-2 sm:inline-flex"
+          {/*
+            * No language control in the phone BAR.
+            *
+            * It used to sit here as well, which left the bar carrying a
+            * wordmark, a language code and a menu button in 320px — the
+            * squeeze this header was accused of. The utility strip below
+            * owns language now, at a comfortable size, beside Install.
+            */}
+
+          <span
+            className={`hidden h-6 w-px sm:block ${onDark ? 'bg-white/20' : 'bg-border'}`}
+            aria-hidden="true"
+          />
+
+          {status === 'AUTHENTICATED' ? (
+            <Button
+              size="sm"
+              className={`h-10 whitespace-nowrap rounded-full px-5 text-[16px] font-semibold ${
+                onDark ? 'bg-gold text-[#0D0D0D] hover:bg-white' : ''
+              }`}
+              onClick={() => navigate('/dashboard')}
             >
               <span {...fp('cta_dashboard')}>{sf('cta_dashboard', 'nav_dashboard')}</span>
-            </Link>
+            </Button>
           ) : !authResolved ? (
             /* Not yet known. A same-sized placeholder holds the row open so
-               nothing shifts when the answer lands. */
-            <div className="hidden h-10 w-[9rem] shrink-0 sm:block" aria-hidden="true" />
+               nothing shifts when the answer lands, and no call to action is
+               offered to somebody who may already have an account. */
+            <div className="h-10 w-[7.5rem] shrink-0" aria-hidden="true" />
           ) : (
             <>
-              <Link
-                to="/auth/login"
-                className="hidden h-10 items-center whitespace-nowrap rounded-lg px-3 text-[15px] font-medium text-foreground transition-colors hover:bg-secondary xl:inline-flex hm-pub-focus"
+              <button
+                type="button"
+                onClick={() => navigate('/auth/login')}
+                className={`hidden whitespace-nowrap text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:inline ${
+                  onDark ? 'text-white/75 hover:text-white' : 'text-ink-soft hover:text-foreground'
+                }`}
               >
                 <span {...fp('cta_login')}>{sf('cta_login', 'nav_login')}</span>
-              </Link>
-              <Link
-                to="/auth/signup"
-                className="hm-pub-btn hm-pub-btn--primary hidden whitespace-nowrap !min-h-[2.5rem] !py-2 sm:inline-flex"
+              </button>
+              <Button
+                size="sm"
+                className={`hidden h-10 whitespace-nowrap rounded-full px-5 text-[16px] font-semibold sm:inline-flex ${
+                  onDark ? 'bg-gold text-[#0D0D0D] hover:bg-white' : ''
+                }`}
+                onClick={() => navigate('/auth/signup')}
               >
                 <span {...fp('cta_signup')}>{sf('cta_signup', 'nav_signup')}</span>
-              </Link>
+              </Button>
             </>
           )}
 
           <button
-            ref={toggle}
+            ref={toggleRef}
             type="button"
-            data-hm-menu-toggle
-            onClick={() => setOpen(true)}
+            onClick={() => setOpen(v => !v)}
             aria-expanded={open}
             aria-haspopup="dialog"
-            aria-label={t('mp_nav_menu_open')}
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-border bg-card text-foreground transition-colors hover:border-foreground/40 xl:hidden hm-pub-focus"
+            aria-label={open ? t('mp_nav_menu_close') : t('mp_nav_menu_open')}
+            data-hm-menu-toggle
+            className={`grid h-11 w-11 shrink-0 place-items-center rounded-full border xl:hidden ${
+              onDark ? 'border-white/35 text-white' : 'border-foreground/25 text-foreground'
+            }`}
           >
-            <Menu className="h-5 w-5" strokeWidth={1.9} aria-hidden="true" />
+            {open ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
           </button>
         </div>
       </div>
 
+      {/* Scroll-safe: five links plus the utility area is taller than a
+          320x568 screen, and the panel must not trap what it cannot show.
+          The inset clears the home indicator on a modern phone. */}
       {open && (
-        <MenuSheet
-          host={headerRef.current?.ownerDocument?.body ?? null}
-          onClose={close}
-          primary={primary}
-          groups={groups}
-          labelFor={labelFor}
-          markFor={markFor}
-          hrefFor={hrefFor}
-          go={go}
-          authResolved={authResolved}
-          status={status}
-          goTo={goTo}
-        />
+        <div
+          ref={panelRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('mp_nav_menu_open')}
+          className="max-h-[calc(100dvh-4.5rem)] overflow-y-auto overscroll-contain border-t border-border bg-background md:max-h-[calc(100dvh-5.5rem)] xl:hidden"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        >
+          <nav className={`${PAGE} flex flex-col py-3`}>
+            {/*
+              * A group is a HEADING with its items under it, not a second
+              * menu to open. There is already a menu open; making somebody
+              * tap twice to reach About is the crowding problem moved
+              * rather than solved, and the sheet has room a header does not.
+              */}
+            {links.map(link => (link.children && link.children.length > 0 ? (
+              <div key={link.key} className="mt-2 border-t border-border pt-2">
+                <p className="px-1 py-1 text-[13px] font-medium uppercase tracking-wide text-muted-foreground">
+                  {labelFor(link)}
+                </p>
+                {link.children.map(child => (
+                  <button
+                    key={child.key}
+                    type="button"
+                    onClick={() => go(child)}
+                    className="block w-full rounded-xl py-3.5 text-start text-[17px] text-foreground transition-colors hover:text-gold"
+                    {...markFor(child)}
+                  >
+                    {labelFor(child)}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <button
+                key={link.key}
+                type="button"
+                onClick={() => go(link)}
+                className="rounded-xl py-3.5 text-start text-[17px] text-foreground transition-colors hover:text-gold"
+                {...markFor(link)}
+              >
+                {labelFor(link)}
+              </button>
+            )))}
+            {authResolved && status === 'UNAUTHENTICATED' && (
+              <div className="mt-3 grid grid-cols-2 gap-3 border-t border-border pt-4 sm:hidden">
+                <Button variant="outline" className="h-11 rounded-full border-border bg-transparent" onClick={() => goTo('/auth/login')}>
+                  {sf('cta_login', 'nav_login')}
+                </Button>
+                <Button className="h-11 rounded-full" onClick={() => goTo('/auth/signup')}>
+                  {sf('cta_signup', 'nav_signup')}
+                </Button>
+              </div>
+            )}
+
+            {/*
+              * THE UTILITY AREA.
+              *
+              * Install used to be `hidden sm:block` and appeared nowhere in
+              * this menu, so on a phone there was no way to install the app
+              * at all — the one place it matters most. It is a filled block
+              * here rather than a pill, because it is the only action in
+              * this area and should look like one.
+              *
+              * The language switcher repeats here deliberately. It is in the
+              * bar too, but somebody who has opened the menu is looking for
+              * settings, and this is where they will look.
+              */}
+            <div className="mt-4 space-y-3 border-t border-border pt-4" {...notEditable('SYSTEM_GENERATED')}>
+              <InstallApp variant="block" />
+              <div className="flex items-center justify-between gap-3 rounded-[0.9rem] border border-border px-4 py-2.5">
+                <span className="text-[15px] font-medium text-ink-soft">{t('nav_language')}</span>
+                <LanguageSwitcher showGlobe triggerClassName="h-9 px-2.5" />
+              </div>
+            </div>
+          </nav>
+        </div>
+      )}
+
+      {/*
+        * THE MOBILE UTILITY STRIP.
+        *
+        * Language and Install/Open, as ONE component rather than two controls
+        * pushed to opposite edges of a bar. It sits under the header on a
+        * phone, where the bar itself has room for the logo, the language code
+        * and the menu and nothing more.
+        *
+        * Hidden while the menu is open, because the menu carries its own copy
+        * of both and two live install buttons on one screen is a question
+        * about which one is real.
+        */}
+      {!open && (
+        <div className={`${PAGE} xl:hidden`}>
+          {/*
+            * `inline-flex`, not a full-width row.
+            *
+            * When the app control has nothing to offer -- an unsupported
+            * browser, already running as the installed app, or an explicit
+            * "don't show me this again" -- it renders nothing, and a
+            * full-width strip was left drawing a divider and a wide empty
+            * rectangle next to the language chip. That is the blank field.
+            * Sized to its contents, the strip is simply a language control
+            * when that is all there is.
+            */}
+          <div
+            {...notEditable('SYSTEM_GENERATED')}
+            className={`mb-2 inline-flex max-w-full items-center gap-2 rounded-[0.9rem] border p-1.5 ${
+              canOfferApp ? 'flex w-full' : ''
+            } ${
+              onDark
+                ? 'border-white/15 bg-white/[0.07] backdrop-blur-sm'
+                : 'border-border bg-card/95 backdrop-blur-sm'
+            }`}
+          >
+            <LanguageSwitcher
+              showGlobe
+              compact
+              triggerClassName={`h-10 shrink-0 px-3 ${onDark ? 'text-white hover:bg-white/10' : ''}`}
+            />
+            {canOfferApp && (
+              <>
+                <span
+                  className={`h-5 w-px shrink-0 ${onDark ? 'bg-white/20' : 'bg-border'}`}
+                  aria-hidden="true"
+                />
+                {/* Takes the rest of the row, so a long Georgian or Russian
+                    label has somewhere to go instead of squeezing the code. */}
+                <InstallApp tone={onDark ? 'dark' : 'auto'} className="min-w-0 flex-1" />
+              </>
+            )}
+          </div>
+        </div>
       )}
     </header>
-  );
-}
-
-/* ------------------------------------------------------------------ *
- * The sheet                                                           *
- * ------------------------------------------------------------------ */
-
-const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-function MenuSheet({
-  host, onClose, primary, groups, labelFor, markFor, hrefFor, go, authResolved, status, goTo,
-}: {
-  host: HTMLElement | null;
-  onClose: (restoreFocus?: boolean) => void;
-  primary: HeaderLink[];
-  groups: HeaderLink[];
-  labelFor: (link: HeaderLink) => string;
-  markFor: (link: HeaderLink) => object;
-  hrefFor: (link: HeaderLink) => string;
-  go: (link: HeaderLink) => void;
-  authResolved: boolean;
-  status: string;
-  goTo: (target: string) => void;
-}) {
-  const { t } = useLanguage();
-  const panel = useRef<HTMLDivElement>(null);
-  const closeButton = useRef<HTMLButtonElement>(null);
-  const titleId = useId();
-  const sf = useSectionField();
-  const fp = useFieldProps();
-  const notEditable = useNotEditable();
-
-  /* Initial focus, scroll lock, Escape, the focus trap and the breakpoint. */
-  useEffect(() => {
-    const doc = panel.current?.ownerDocument ?? document;
-    const win = doc.defaultView ?? window;
-    closeButton.current?.focus();
-
-    const html = doc.documentElement;
-    const previous = { body: doc.body.style.overflow, html: html.style.overflow };
-    doc.body.style.overflow = 'hidden';
-    html.style.overflow = 'hidden';
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onClose(true);
-        return;
-      }
-      if (e.key !== 'Tab' || !panel.current) return;
-      const active = doc.activeElement as HTMLElement | null;
-      /* Another dialog (the install instructions) may be on top of this
-         one; its focus is its own business. */
-      if (active && !panel.current.contains(active) && active.closest('[role="dialog"]')) return;
-      const items = [...panel.current.querySelectorAll<HTMLElement>(FOCUSABLE)]
-        .filter(el => el.offsetParent !== null || el === doc.activeElement);
-      if (items.length === 0) return;
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (!active || !panel.current.contains(active)) {
-        e.preventDefault();
-        first.focus();
-      } else if (e.shiftKey && active === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && active === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-    /* The sheet is a phone-and-tablet control; at the desktop breakpoint the
-       full navigation is back in the bar and the sheet has no reason to be. */
-    const wide = win.matchMedia('(min-width: 1280px)');
-    const onWide = () => { if (wide.matches) onClose(false); };
-    doc.addEventListener('keydown', onKey);
-    wide.addEventListener?.('change', onWide);
-    return () => {
-      doc.body.style.overflow = previous.body;
-      html.style.overflow = previous.html;
-      doc.removeEventListener('keydown', onKey);
-      wide.removeEventListener?.('change', onWide);
-    };
-  }, [onClose]);
-
-  if (!host) return null;
-
-  const signedIn = status === 'AUTHENTICATED';
-
-  return createPortal(
-    <div className="hm-public fixed inset-0 z-[55] xl:hidden" style={{ background: 'transparent' }}>
-      <div
-        className="hm-pub-scrim absolute inset-0 bg-[hsl(224_30%_8%/0.42)] backdrop-blur-[2px]"
-        onClick={() => onClose(true)}
-        aria-hidden="true"
-      />
-      <div
-        ref={panel}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        className="hm-pub-sheet absolute inset-y-0 end-0 flex w-full max-w-[26rem] flex-col bg-background shadow-[var(--pub-shadow-lg)] sm:border-s sm:border-border"
-      >
-        <div className="flex h-16 shrink-0 items-center justify-between gap-3 border-b border-border px-5">
-          <h2 id={titleId} className="text-[15px] font-semibold text-foreground">{t('pub_menu_title')}</h2>
-          <button
-            ref={closeButton}
-            type="button"
-            onClick={() => onClose(true)}
-            aria-label={t('mp_nav_menu_close')}
-            className="grid h-11 w-11 place-items-center rounded-xl border border-border bg-card text-foreground transition-colors hover:border-foreground/40 hm-pub-focus"
-          >
-            <X className="h-5 w-5" strokeWidth={1.9} aria-hidden="true" />
-          </button>
-        </div>
-
-        <nav aria-label={t('pub_nav_aria')} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-6 pt-4">
-          {/* The three things a visitor came to do, as rows big enough to be
-              the first thing a thumb finds. */}
-          <ul className="space-y-2">
-            {primary.map(link => {
-              const Glyph = PRIMARY_ICON[link.key] ?? Building2;
-              return (
-                <li key={link.key}>
-                  <Link
-                    to={hrefFor(link)}
-                    onClick={(e) => { e.preventDefault(); go(link); }}
-                    className="group flex min-h-[3.5rem] items-center gap-3.5 rounded-2xl border border-border bg-card px-3.5 py-2.5 text-start transition-colors hover:border-foreground/35 hm-pub-focus"
-                  >
-                    <span className="hm-pub-icon h-10 w-10" aria-hidden="true">
-                      <Glyph className="h-[18px] w-[18px]" strokeWidth={1.8} />
-                    </span>
-                    <span className="min-w-0 flex-1 text-[16.5px] font-semibold leading-snug text-foreground" {...markFor(link)}>
-                      {labelFor(link)}
-                    </span>
-                    <ChevronRight className="hm-pub-arrow text-muted-foreground" aria-hidden="true" />
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-
-          {/* A group is a HEADING with its items under it, not a second menu
-              to open: there is already a menu open. */}
-          {groups.map(group => (
-            <section key={group.key} className="mt-6" aria-labelledby={`${titleId}-${group.key}`}>
-              <h3
-                id={`${titleId}-${group.key}`}
-                className="hm-pub-label px-1"
-                {...markFor(group)}
-              >
-                {labelFor(group)}
-              </h3>
-              <ul className="mt-1.5 divide-y divide-border rounded-2xl border border-border bg-card">
-                {group.children?.map(child => (
-                  <li key={child.key}>
-                    <Link
-                      to={hrefFor(child)}
-                      onClick={(e) => { e.preventDefault(); go(child); }}
-                      className="group flex min-h-[3.25rem] items-center gap-3 px-4 py-2.5 text-start transition-colors first:rounded-t-2xl last:rounded-b-2xl hover:bg-secondary hm-pub-focus"
-                    >
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-[15.5px] font-medium leading-snug text-foreground" {...markFor(child)}>
-                          {labelFor(child)}
-                        </span>
-                        {child.description && (
-                          <span className="mt-0.5 block text-[13px] leading-snug text-muted-foreground">{child.description}</span>
-                        )}
-                      </span>
-                      <ChevronRight className="hm-pub-arrow h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
-
-          <div className="mt-7 space-y-4" {...notEditable('SYSTEM_GENERATED')}>
-            <LanguageGrid />
-            <InstallApp variant="block" />
-          </div>
-        </nav>
-
-        {/* THE ACCOUNT. Pinned to the bottom so it is never scrolled away,
-            and exactly one pair of actions for whichever state is true. */}
-        {authResolved && (
-          <div className="shrink-0 border-t border-border bg-background px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4">
-            {authResolved && status === 'UNAUTHENTICATED' && (
-              <div className="grid gap-2.5 min-[30rem]:grid-cols-2">
-                <button type="button" className="hm-pub-btn hm-pub-btn--secondary w-full" onClick={() => goTo('/auth/login')}>
-                  <span {...fp('cta_login')}>{sf('cta_login', 'nav_login')}</span>
-                </button>
-                <button type="button" className="hm-pub-btn hm-pub-btn--primary w-full" onClick={() => goTo('/auth/signup')}>
-                  <span {...fp('cta_signup')}>{sf('cta_signup', 'nav_signup')}</span>
-                </button>
-              </div>
-            )}
-            {signedIn && (
-              <div className="grid gap-2.5 min-[30rem]:grid-cols-2">
-                <button type="button" className="hm-pub-btn hm-pub-btn--secondary w-full" onClick={() => goTo('/profile')}>
-                  {t('nav_profile')}
-                </button>
-                <button type="button" className="hm-pub-btn hm-pub-btn--primary w-full" onClick={() => goTo('/dashboard')}>
-                  <span {...fp('cta_dashboard')}>{sf('cta_dashboard', 'nav_dashboard')}</span>
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>,
-    host,
   );
 }
 
@@ -690,9 +580,16 @@ function MenuSheet({
  * The room the fixed header occupies, given back to the page.
  *
  * The header is `position: fixed`, so every page's first element starts at
- * y=0 underneath it. A page with a fixed header gets a spacer the height of
- * the bar; the bar is 64px, and 72px from the desktop breakpoint.
+ * y=0 underneath it — measured at 390px, `<main>` on both the home page and
+ * Pricing began at 0 under a 73px bar. The hero gets away with it because it
+ * is a full-bleed black band designed to sit behind a transparent header; a
+ * white page does not, and its first heading was partly covered.
+ *
+ * So a page with a solid header gets a spacer the height of the header. Pages
+ * with a transparent header over a hero deliberately get none.
  */
 export function HeaderSpacer() {
-  return <div className="h-16 xl:h-[4.5rem]" aria-hidden="true" />;
+  /* The bar carries the utility strip below xl now, so the tall spacer holds
+     until the strip disappears with the full navigation row. */
+  return <div className="h-[8.5rem] md:h-[9.5rem] xl:h-[5.5rem]" aria-hidden="true" />;
 }

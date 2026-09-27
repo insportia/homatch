@@ -3,6 +3,7 @@ import { ArrowRight, Upload } from 'lucide-react';
 import { ContractDocument } from './ContractDocument';
 import { useProductNavigation } from '@/site/productEntry';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { FeatureGlyph } from '@/components/home/FeatureGlyph';
 import { PAGE, SECTION_Y } from './primitives';
 import { useSectionField, useFieldProps } from '@/site/content';
 
@@ -39,7 +40,7 @@ const STEPS = [
 export function ContractIntelligenceSection() {
   const sf = useSectionField();
   const fp = useFieldProps();
-  const { t } = useLanguage();
+  const { t, isRTL } = useLanguage();
   const { gated } = useProductNavigation();
 
   /*
@@ -54,25 +55,31 @@ export function ContractIntelligenceSection() {
   const [step, setStep] = useState(0);
 
   return (
-    <section id="contract" className={`hm-pub-band scroll-mt-24 ${SECTION_Y}`}>
-      <div className={`${PAGE} grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,30rem)] lg:items-center lg:gap-16`}>
+    <section id="contract" className={`${PAGE} scroll-mt-20 border-t border-border ${SECTION_Y}`}>
+      <div className="grid gap-9 lg:grid-cols-[minmax(0,1fr)_minmax(0,30rem)] lg:items-center lg:gap-16">
         {/* ── The argument ─────────────────────────────────────── */}
         <div className="min-w-0">
-          <p className="hm-pub-eyebrow" {...fp('eyebrow')}>
-            {sf('eyebrow', 'mp_contract_title')}
-          </p>
+          <div className="flex items-center gap-3.5">
+            <FeatureGlyph name="contract" size={48} className="sm:h-14 sm:w-14" />
+            <p className="min-w-0 text-[14px] font-semibold uppercase tracking-[0.22em] text-gold-ink" {...fp('eyebrow')}>
+              {sf('eyebrow', 'mp_contract_title')}
+            </p>
+          </div>
 
-          <h2 className="hm-pub-h2 mt-4 text-foreground" {...fp('title')}>
+          <h2
+            className="mt-6 text-balance font-semibold leading-[1.1] tracking-[-0.025em] text-foreground sm:mt-7"
+            style={{ fontSize: 'clamp(1.4rem, 5.6vw, 2.75rem)' }}
+           {...fp('title')}>
             {sf('title', 'mp_ci_title')}
           </h2>
-          <p className="hm-pub-lead mt-4 max-w-[36rem]" {...fp('body')}>
+          <p className="mt-4 max-w-[34rem] text-pretty text-[16px] leading-[1.65] text-ink-soft sm:mt-5 sm:text-base sm:leading-[1.7]" {...fp('body')}>
             {sf('body', 'mp_ci_sub')}
           </p>
 
           {/* The four steps are the control. Each is a real button, so the
               whole simulation is reachable by keyboard and readable with no
               animation at all. */}
-          <ol className="mt-7 grid gap-px overflow-hidden rounded-2xl border border-border bg-border sm:mt-9">
+          <ol className="mt-7 grid gap-px overflow-hidden rounded-[0.9rem] border border-foreground/[0.14] bg-foreground/10 sm:mt-9">
             {STEPS.map((s, i) => {
               const on = i === step;
               return (
@@ -117,26 +124,21 @@ export function ContractIntelligenceSection() {
             })}
           </ol>
 
-          {/*
-            * CONTRACTS IS ITS OWN PRODUCT NOW, AT /contracts.
-            *
-            * This used to open /verify for somebody signed in and /auth/signup
-            * for everybody else -- the Verification Center no longer holds the
-            * upload, and sign-up then dropped the visitor on the dashboard. A
-            * contract is private to an account, so signed out it is still
-            * sign-up first; but sign-up now comes back HERE, to the product.
-            */}
           <button
             type="button"
             onClick={() => gated('/contracts')}
-            className="hm-pub-btn hm-pub-btn--primary mt-8"
+            className="group mt-7 inline-flex h-auto min-h-[3rem] items-center justify-center gap-2.5 rounded-full bg-primary px-6 py-3 text-center text-sm font-semibold text-primary-foreground transition-colors duration-300 hover:bg-gold-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none sm:mt-9"
           >
             <Upload className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden="true" />
             <span {...fp('cta')}>{sf('cta', 'mp_contract_cta')}</span>
-            <ArrowRight className="hm-pub-arrow" strokeWidth={2} aria-hidden="true" />
+            <ArrowRight
+              className={`h-4 w-4 shrink-0 transition-transform duration-300 group-hover:translate-x-1 motion-reduce:transform-none ${isRTL ? 'rotate-180 group-hover:-translate-x-1' : ''}`}
+              strokeWidth={2}
+              aria-hidden="true"
+            />
           </button>
-          <p className="mt-3 max-w-[30rem] text-[13.5px] leading-relaxed text-muted-foreground" {...fp('formats')}>
-            {sf('formats', 'pub_contract_formats')}
+          <p className="mt-3 max-w-[30rem] text-xs leading-relaxed text-muted-foreground" {...fp('formats')}>
+            {sf('formats', 'mp_contract_formats')}
           </p>
         </div>
 

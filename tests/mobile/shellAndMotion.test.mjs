@@ -192,13 +192,8 @@ test('the install control is visible, reachable and does not delete itself', opt
      * That is how `bg-white/12`, which names no Tailwind rule and generates
      * nothing, shipped as a fully transparent button.
      */
-    /*
-     * The utility strip under the header is gone (2026-09 public redesign);
-     * outside the menu the control now lives in the site footer, which every
-     * public page renders.
-     */
-    const strip = page.locator('footer button:visible').filter({ hasText: /Install app/i }).first();
-    assert.ok(await strip.count() > 0, `no install control in the page footer at ${width}px`);
+    const strip = page.locator('button:visible').filter({ hasText: /Install app/i }).first();
+    assert.ok(await strip.count() > 0, `no install control on the utility strip at ${width}px`);
     const stripLook = await strip.evaluate((el) => {
       const cs = getComputedStyle(el);
       return { background: cs.backgroundColor, color: cs.color };
@@ -220,8 +215,8 @@ test('the install control is visible, reachable and does not delete itself', opt
     await menuButton.click();
     await page.waitForTimeout(700);
 
-    /* Inside the menu DIALOG: the footer's control is still in the page
-       behind it, and "the first visible one" would measure that instead. */
+    /* Inside the menu DIALOG: the footer carries its own copy of the
+       control, and "any visible one" would measure that instead. */
     const shown = page.getByRole('dialog').locator('button:visible').filter({ hasText: /Install app/i });
     assert.ok(await shown.count() > 0,
       `the mobile menu offers no way to install the app at ${width}px`);
@@ -498,11 +493,7 @@ test('the motion on a phone is big enough for a person to see', opts, async (t) 
     {
       const { ctx, page } = await open();
       const top = await page.evaluate(() => {
-        /* A PAGE section -- one Reveal wraps. `main section` also matched the
-           AI Talk panel, which is a <section> inside the hero and has no
-           Reveal of its own; at 320px the redesigned hero puts it below the
-           fold, and its parent measured 0px of travel. */
-        const sec = [...document.querySelectorAll('main > * > section')]
+        const sec = [...document.querySelectorAll('main section')]
           .find((s) => s.getBoundingClientRect().top > window.innerHeight * 1.4);
         if (!sec) return null;
         // Reveal wraps the section from OUTSIDE, so the wrapper is the parent.
@@ -517,11 +508,9 @@ test('the motion on a phone is big enough for a person to see', opts, async (t) 
            that overshoots by up to 240px starts sampling after it has
            already begun -- which is how this measured 7px one run and 18px
            the next. */
-        /* INSTANT, because the site sets `scroll-behavior: smooth` on :root.
-           A plain scrollTo animates, the 250ms below does not cover a long
-           jump, and the step loop then starts from wherever the animation
-           had got to -- on the taller 2026-09 hero at 320px that was 370px
-           short, and the reveal was never reached. */
+        /* INSTANT, because the site sets `scroll-behavior: smooth` on
+           :root; a plain scrollTo animates, and the step loop then starts
+           from wherever the animation had got to. */
         await page.evaluate((n) => window.scrollTo({ top: n, behavior: 'instant' }), Math.max(0, top - 800));
         await page.waitForTimeout(250);
         const seen = await sample(page, '[data-motion-probe]', 26, 32);
@@ -535,19 +524,37 @@ test('the motion on a phone is big enough for a person to see', opts, async (t) 
       await ctx.close();
     }
 
-    /* 2. How matching works is all on the phone.
-          The animated building and its seven layers were retired with the
-          2026-09 public redesign; the region is now a four-part diagram
-          (two sources of demand, the match, the decision), and on a phone
-          every part of it has to be on the page, not in a desktop-only
-          column. */
+    /* 2. The building's findings, and its layer story. */
     {
       const { ctx, page } = await open();
       await page.evaluate(() => document.querySelector('#intelligence')
         ?.scrollIntoView({ block: 'center', behavior: 'instant' }));
-      const nodes = await page.evaluate(() => [...document.querySelectorAll('#intelligence h3')]
+      const finding = await sample(page, '#intelligence dl > div', 70);
+      if (!finding) failures.push(`${width}: the building reports no findings`);
+      else if (finding.travel < MOTION_FLOOR_PX) {
+        failures.push(`${width}: a building finding arrives with ${finding.travel}px of travel`);
+      }
+
+      /* The seven layers and their explanation used to live inside a
+         `hidden lg:grid` container, so a phone visitor got the drawing and
+         four numbers and never learned what the section was arguing. */
+      const rows = await page.evaluate(() => [...document.querySelectorAll('#intelligence li button')]
         .filter((e) => e.getBoundingClientRect().width > 0).length);
-      if (nodes < 4) failures.push(`${width}: only ${nodes} of the four matching steps are on the phone`);
+      if (rows < 7) failures.push(`${width}: only ${rows} of the seven layers are on the phone`);
+
+      const panel = await page.evaluate(() => [...document.querySelectorAll('#intelligence p')]
+        .some((e) => e.getBoundingClientRect().width > 0 && (e.textContent || '').includes(' / ')));
+      if (!panel) failures.push(`${width}: the active layer has no explanation on the phone`);
+
+      /* And it moves on its own: the highlight used to walk only from lg up. */
+      const walked = await page.evaluate(async () => {
+        const lit = () => document.querySelector('#intelligence [aria-current="true"] span:last-child')
+          ?.textContent?.trim() ?? null;
+        const a = lit();
+        await new Promise((r) => setTimeout(r, 4200));
+        return a !== lit();
+      });
+      if (!walked) failures.push(`${width}: the layer highlight does not advance on a phone`);
       await ctx.close();
     }
 
@@ -582,13 +589,106 @@ test('the motion on a phone is big enough for a person to see', opts, async (t) 
 });
 
 /*
- * ── THE BUILDING AND THE WORDS ─────────────────────────────────────────
+ * ── THE BUILDING AND THE WORDS ARE ONE THING ────────────────────────────
  *
- * A test lived here that pinned the animated building scene beside its
- * finding on a phone. The scene (BuildingScene.tsx) was retired with the
- * 2026-09 public redesign; "How matching works" replaced it, and the check
- * above asserts that all of that region is on a phone.
+ * The owner's report was "the visual animation and explanatory text are not
+ * synchronized", and the cause was structural rather than cosmetic: the
+ * building kept its own clock (a phase sequence, a pointer, and a timer that
+ * walked the floors on a phone) while the section beside it ran a SECOND
+ * timer walking the seven intelligence layers and the sentence explaining
+ * them. Two clocks, never started together. Within a few seconds the drawing
+ * was lighting floor 5 while the paragraph talked about Contract.
+ *
+ * The building now takes the floor as a prop. This asserts the consequence:
+ * the layer number, the layer's name and the lit storey advance on the same
+ * tick, because they are the same number.
+ *
+ * It also pins the composition the owner asked for — drawing and finding
+ * SIDE BY SIDE on a phone, not a full-width tower with the text below the
+ * fold — at the widths where it is hardest.
  */
+test('on a phone the building stands beside its finding, and they move together', opts, async (t) => {
+  if (skipReason) assert.fail(`shell gate could not run: ${skipReason}`);
+  const { chromium } = resolvePlaywright();
+  const browser = await serve(t, chromium);
+  const failures = [];
+
+  for (const [width, lang] of [[390, 'ka'], [320, 'ka'], [375, 'en']]) {
+    const ctx = await browser.newContext({
+      viewport: { width, height: 840 }, isMobile: true, hasTouch: true,
+      reducedMotion: 'no-preference',
+    });
+    await ctx.addInitScript((l) => window.localStorage.setItem('homatch_lang', l), lang);
+    const page = await ctx.newPage();
+    await stub(page);
+    await page.goto(BASE, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(1600);
+    await page.evaluate(() => document.querySelector('#intelligence')
+      ?.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    await page.waitForTimeout(1200);
+
+    const read = () => page.evaluate(() => {
+      const svg = [...document.querySelectorAll('#intelligence svg[role="img"]')]
+        .find((e) => e.getBoundingClientRect().width > 0);
+      /* The pair is the nearest ancestor laid out as two grid tracks. */
+      let row = svg;
+      while (row && row !== document.body) {
+        if (getComputedStyle(row).gridTemplateColumns.split(' ').filter(Boolean).length === 2) break;
+        row = row.parentElement;
+      }
+      if (!row || row === document.body) return null;
+      const cols = [...row.children].map((e) => Math.round(e.getBoundingClientRect().width));
+      const ps = [...row.children[1].querySelectorAll('p')].map((e) => e.textContent.trim());
+      return {
+        cols,
+        counter: ps[0] ?? null,
+        title: ps[1] ?? null,
+        /* The first callout is the storey, read off the LIT floor. If the
+           drawing and the words disagree, this disagrees with the counter. */
+        storey: [...document.querySelectorAll('#intelligence dl dd')]
+          .filter((e) => e.getBoundingClientRect().width > 0)[0]?.textContent?.trim() ?? null,
+        clipped: [...document.querySelectorAll('#intelligence *')]
+          .filter((e) => e.children.length === 0 && e.scrollWidth > e.clientWidth + 1).length,
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      };
+    });
+
+    const first = await read();
+    if (!first) {
+      failures.push(`${width}/${lang}: the building and its finding are not side by side`);
+      await ctx.close();
+      continue;
+    }
+
+    /* Both columns have to be usable: a drawing under ~100px stops resolving
+       into floors, and Georgian under ~140px starts breaking mid-word. */
+    const [drawing, words] = first.cols;
+    if (drawing < 100) failures.push(`${width}/${lang}: the building is ${drawing}px — too narrow to read as a building`);
+    if (words < 140) failures.push(`${width}/${lang}: the finding has ${words}px — Georgian will break mid-word`);
+    if (words <= drawing) failures.push(`${width}/${lang}: the text column (${words}px) is not wider than the drawing (${drawing}px)`);
+    if (first.clipped) failures.push(`${width}/${lang}: ${first.clipped} clipped elements`);
+    if (first.overflow) failures.push(`${width}/${lang}: ${first.overflow}px of horizontal overflow`);
+
+    /* The counter says which layer; the storey says which floor is lit. One
+       number produces both, so they must agree — before and after it moves. */
+    const agree = (s) => s && s.counter && s.storey
+      && s.counter.startsWith(String(Number(s.storey)).padStart(2, '0'));
+    if (!agree(first)) {
+      failures.push(`${width}/${lang}: layer ${first.counter} is lit on floor ${first.storey}`);
+    }
+
+    await page.waitForTimeout(3600);
+    const later = await read();
+    if (!later || later.title === first.title) {
+      failures.push(`${width}/${lang}: the story did not advance on its own`);
+    } else if (!agree(later)) {
+      failures.push(`${width}/${lang}: after advancing, layer ${later.counter} is lit on floor ${later.storey}`);
+    }
+    await ctx.close();
+  }
+
+  assert.deepEqual(failures, [], failures.join('\n'));
+});
 
 /*
  * ── THE APP AFFORDANCE DOES NOT COME AND GO ─────────────────────────────
@@ -650,11 +750,7 @@ test('the app affordance is present where it belongs, absent where it does not',
       await page.waitForTimeout(2200);
 
       const found = await page.evaluate(() => {
-        /* The header row has no install control since the 2026-09 public
-           redesign; outside the menu it lives in the footer's utility row,
-           which is what this now measures for the same defects. */
-        const row = document.querySelector('[data-hm-footer-utility]');
-        const app = [...(row?.querySelectorAll('[aria-label]') ?? [])]
+        const app = [...document.querySelectorAll('header [aria-label]')]
           .filter((e) => e.getBoundingClientRect().height > 0)
           .find((e) => /Homatch/i.test(e.getAttribute('aria-label') || '')
             && !/home page/i.test(e.getAttribute('aria-label') || '')
@@ -666,7 +762,7 @@ test('the app affordance is present where it belongs, absent where it does not',
          * compared two different boxes once the control was gone, and read
          * as a 14px jump that nobody would ever see.
          */
-        const header = row;
+        const header = document.querySelector('header');
         /*
          * And the hole, tested directly: the divider is a hairline, `h-5
          * w-px`. One still standing when the control beside it has gone is
@@ -701,15 +797,7 @@ test('the app affordance is present where it belongs, absent where it does not',
         failures.push(`${state} @${width}: the control is ${found.h}px tall`);
       }
 
-      /*
-       * The same row whether or not "not now" was pressed -- that was the
-       * original defect. The installed app is compared no longer: the row is
-       * now the FOOTER's last line, not a fixed header a person watches while
-       * switching between app and site, and with nothing to offer it is
-       * correctly one line shorter (the hairline check above still catches a
-       * hole left where the control was).
-       */
-      if (found.rowH && state !== 'standalone') {
+      if (found.rowH) {
         const key = `@${width}`;
         const before = seen.get(key);
         if (before === undefined) seen.set(key, found.rowH);

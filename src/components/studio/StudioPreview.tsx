@@ -389,41 +389,68 @@ export function StudioPreview({
   const selectedIdForScroll = selectedSection?.id ?? null;
   useEffect(() => {
     if (!previewBody || !selectedIdForScroll) return;
-    const el = previewBody.querySelector<HTMLElement>(
-      `[data-studio-section="${selectedIdForScroll}"]`,
-    );
-    const win = el?.ownerDocument.defaultView;
-    if (!el || !win) return;
-
-    const inView = () => {
-      const r = el.getBoundingClientRect();
-      return r.top >= 48 && r.top < win.innerHeight - 80;
-    };
-    // Already on screen: scrolling would yank the page out from under a
-    // click the admin has only just made.
-    if (inView()) return;
-
-    const reduced = win.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    el.scrollIntoView({ block: 'center', behavior: reduced ? 'instant' : 'smooth' });
+    let cancelled = false;
+    const timers: number[] = [];
 
     /*
-     * Then confirm it, twice.
+     * The element may not exist YET.
      *
-     * The page above is full of photographs that finish loading after the
-     * scroll, each one pushing this section further down, so a single
-     * scrollIntoView lands on where the section used to be.
-     *
-     * 'instant', not 'auto': `auto` means "whatever CSS says", and the
-     * site's own stylesheet — cloned into this document with everything
-     * else — sets `scroll-behavior: smooth`. A correction that animates
-     * is not a correction, it is a second animation racing the first.
+     * addSection() selects the new block in the same tick it creates it, and
+     * the iframe renders it a beat later — so the first look at the DOM can
+     * come up empty. Giving up there left a freshly added block off screen
+     * whenever the section above it was tall enough to need real scrolling.
+     * A short retry window covers the render without ever fighting a scroll
+     * the admin has since made themselves.
      */
-    const again = () => {
-      if (!inView()) el.scrollIntoView({ block: 'center', behavior: 'instant' });
+    const find = (tries: number) => {
+      if (cancelled) return;
+      const el = previewBody.querySelector<HTMLElement>(
+        `[data-studio-section="${selectedIdForScroll}"]`,
+      );
+      const win = el?.ownerDocument.defaultView;
+      if (!el || !win) {
+        if (tries > 0) timers.push(window.setTimeout(() => find(tries - 1), 150));
+        return;
+      }
+
+      const inView = () => {
+        const r = el.getBoundingClientRect();
+        /*
+         * "On screen" means a READABLE slice of it is, not that its top edge
+         * has crossed into the last pixels above the fold. A block whose top
+         * sat 2px inside the old `top < innerHeight - 80` window counted as
+         * visible while every word in it was below the fold — exactly where
+         * a block freshly added below a tall section lands.
+         */
+        return r.top >= 48 && r.top + Math.min(r.height, 160) <= win.innerHeight - 24;
+      };
+      // Already on screen: scrolling would yank the page out from under a
+      // click the admin has only just made.
+      if (inView()) return;
+
+      const reduced = win.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      el.scrollIntoView({ block: 'center', behavior: reduced ? 'instant' : 'smooth' });
+
+      /*
+       * Then confirm it, twice.
+       *
+       * The page above is full of photographs that finish loading after the
+       * scroll, each one pushing this section further down, so a single
+       * scrollIntoView lands on where the section used to be.
+       *
+       * 'instant', not 'auto': `auto` means "whatever CSS says", and the
+       * site's own stylesheet — cloned into this document with everything
+       * else — sets `scroll-behavior: smooth`. A correction that animates
+       * is not a correction, it is a second animation racing the first.
+       */
+      const again = () => {
+        if (!cancelled && !inView()) el.scrollIntoView({ block: 'center', behavior: 'instant' });
+      };
+      timers.push(win.setTimeout(again, 600));
+      timers.push(win.setTimeout(again, 1400));
     };
-    const t1 = win.setTimeout(again, 600);
-    const t2 = win.setTimeout(again, 1400);
-    return () => { win.clearTimeout(t1); win.clearTimeout(t2); };
+    find(10);
+    return () => { cancelled = true; timers.forEach(t => clearTimeout(t)); };
   }, [previewBody, selectedIdForScroll]);
 
   const width = useMemo(

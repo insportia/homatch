@@ -40,11 +40,29 @@ const migrations = parseMigrations();
 console.log(`\nmigrations ${migrations.length} in repo; latest:`);
 for (const m of migrations.slice(-3)) console.log(`  ${m.file}`);
 
-/* Generated-map freshness. */
+/* Generated-map freshness. A commit that merely CONTAINS the maps must not
+   read as stale, so staleness means: a map INPUT changed since the stamp
+   (or the stamp's commit is unknown to this checkout). */
+const MAP_INPUTS = ['src/routes.tsx', 'src/pages', 'src/site', 'supabase',
+  '.github/workflows/deploy.yml', 'scripts/deploy-scope.mjs',
+  'scripts/claude/lib.mjs', 'scripts/claude/repo-map.mjs', 'tests/matrix'];
 const mapHead = readStampHead(join(ROOT, 'docs/claude/generated/ROUTE_MAP.md'));
-if (!mapHead) console.log('\nmaps    NOT GENERATED — run: npm run homatch:map');
-else if (mapHead !== head) console.log(`\nmaps    STALE (generated at ${mapHead}, HEAD ${head}) — run: npm run homatch:map`);
-else console.log('\nmaps    fresh (docs/claude/generated/*)');
+if (!mapHead) {
+  console.log('\nmaps    NOT GENERATED — run: npm run homatch:map');
+} else if (mapHead === head) {
+  console.log('\nmaps    fresh (docs/claude/generated/*)');
+} else if (!git('rev-parse', '--verify', `${mapHead}^{commit}`)) {
+  console.log(`\nmaps    UNKNOWN BASE (stamp ${mapHead} not in this checkout) — run: npm run homatch:map`);
+} else {
+  // Diff against the working tree, so uncommitted input edits count too.
+  const changedInputs = git('diff', '--name-only', mapHead, '--', ...MAP_INPUTS)
+    .split('\n').filter(Boolean);
+  if (changedInputs.length === 0) {
+    console.log(`\nmaps    fresh (inputs unchanged since stamp ${mapHead})`);
+  } else {
+    console.log(`\nmaps    STALE (${changedInputs.length} input(s) changed since ${mapHead}) — run: npm run homatch:map`);
+  }
+}
 
 const statePath = join(ROOT, 'docs/claude/PROJECT_STATE.md');
 if (existsSync(statePath)) {

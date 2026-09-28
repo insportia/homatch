@@ -57,6 +57,21 @@ hooks, or skills), watcher/auto-index/UI off, index confined to this repo via
 `CBM_ALLOWED_ROOT`. The `.mcp.json` it writes is machine-specific and
 gitignored. Containers here are ephemeral: rerun `homatch:cbm` in a fresh one.
 
+**Fresh-container bootstrap — decision.** Claude Cloud's setup script lives
+in the environment's settings (cloud environment menu → Edit → Setup script),
+not in a repository file, so there is no repo-side mechanism that runs when a
+fresh container is created — and this layer deliberately does not invent one
+(no SessionStart auto-installer: it would run network installs for every
+contributor on every session). The explicit command stays the workflow:
+`npm run homatch:cbm` is idempotent (skips the download when the binary
+exists, re-registers only a missing `.mcp.json`, reindexes), and a failure
+leaves the repository untouched. To automate it for cloud sessions, add this
+single line to the environment's Setup script yourself:
+
+```bash
+npm run homatch:cbm || true
+```
+
 What it is good at here (verified): BM25 symbol search (`search_graph`),
 callers/callees (`trace_path --function-name X --direction inbound`), diff
 impact (`detect_changes`), file outlines, read-only Cypher (`query_graph`).

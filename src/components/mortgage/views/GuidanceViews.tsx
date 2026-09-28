@@ -72,15 +72,15 @@ export function BeforeYouSignView() {
           const isOpen = open === topic.id;
           const askKey = SIGNING_ASK[topic.id];
           return (
-            {/*
-              * WHITE, NOT GREY. This accordion was a grey band on a grey
-              * body with two grey boxed cards inside — the disabled-looking
-              * composition the visual direction explicitly rejects. Now:
-              * a white row with a drawn hairline; the OPEN state earns the
-              * gold start-bar and a lift; the expanded content is an
-              * editorial sheet — ink typography, one fine divider, two
-              * columns separated by whitespace rather than boxes.
-              */}
+            /*
+             * WHITE, NOT GREY. This accordion was a grey band on a grey
+             * body with two grey boxed cards inside — the disabled-looking
+             * composition the visual direction explicitly rejects. Now:
+             * a white row with a drawn hairline; the OPEN state earns the
+             * gold start-bar and a lift; the expanded content is an
+             * editorial sheet — ink typography, one fine divider, two
+             * columns separated by whitespace rather than boxes.
+             */
             <li
               key={topic.id}
               className={cn(

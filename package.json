@@ -30,7 +30,17 @@
     "test:surfaces": "npm run build:harness && node --test --test-timeout=2400000 tests/browser/commSurfaces.test.mjs",
     "studio:coverage": "node scripts/studio-coverage.mjs",
     "test:voice": "node --test src/lib/comm/__tests__/georgianCorpus.test.mjs",
-    "test:matrix": "node scripts/run-full-matrix.mjs"
+    "test:matrix": "node scripts/run-full-matrix.mjs",
+    "homatch:context": "node scripts/claude/context.mjs",
+    "homatch:scope": "node scripts/claude/changed-scope.mjs",
+    "homatch:map": "node scripts/claude/repo-map.mjs",
+    "homatch:test:affected": "node scripts/claude/affected-tests.mjs",
+    "homatch:migrations": "node scripts/claude/migrations-check.mjs",
+    "homatch:check": "npx tsgo -p tsconfig.check.json && npm run i18n:check && npm run i18n:keys && node scripts/claude/affected-tests.mjs --run",
+    "homatch:check:full": "npx tsgo -p tsconfig.check.json && npm run lint && npm run i18n:all && npm test && npm run test:matrix && npm run test:studio && npm run test:a11y",
+    "homatch:deploy:scope": "node scripts/deploy-scope.mjs",
+    "homatch:security": "npm audit --audit-level=high",
+    "homatch:cbm": "bash scripts/claude/cbm-setup.sh"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

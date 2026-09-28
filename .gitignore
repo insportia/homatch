@@ -88,3 +88,7 @@ history/*.json
 # in a shared script is the kind of line that behaves differently everywhere.
 nul
 .inspect/
+
+# Machine-specific MCP registration written by scripts/claude/cbm-setup.sh
+# (absolute paths + CBM_ALLOWED_ROOT for this checkout; never committed).
+.mcp.json

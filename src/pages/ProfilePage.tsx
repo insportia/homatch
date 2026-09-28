@@ -394,7 +394,7 @@ function ProfileContent() {
                     <div key={p.id} className="flex items-center justify-between py-2 text-xs gap-2">
                       <div className="min-w-0">
                         <p className="text-foreground break-words">${p.amount_usd.toFixed(2)} — {t(PAYMENT_STATUS_KEY[p.status] ?? 'payment_status_pending')}</p>
-                        <p className="text-muted-foreground/70">{new Date(p.created_at).toLocaleDateString()}</p>
+                        <p className="text-muted-foreground">{new Date(p.created_at).toLocaleDateString()}</p>
                       </div>
                       {p.receipt_url && (
                         <a href={p.receipt_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1 shrink-0">

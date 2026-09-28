@@ -67,7 +67,7 @@ export function Kpi({ labelKey, value, sub, accent, loading, icon: Icon }: KpiPr
           <p data-kpi-label className="min-w-0 flex-1 text-[13px] font-medium uppercase leading-[1.25] tracking-wide text-muted-foreground [overflow-wrap:anywhere]">
             {t(labelKey as TKey)}
           </p>
-          {Icon ? <Icon className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', accent ? 'text-gold-ink' : 'text-muted-foreground/60')} aria-hidden="true" /> : null}
+          {Icon ? <Icon className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', accent ? 'text-gold-ink' : 'text-muted-foreground')} aria-hidden="true" /> : null}
         </div>
         {loading ? (
           <Skeleton className="mt-auto h-7 w-20" />

@@ -572,7 +572,9 @@ export default function EmailCampaignsPage() {
             <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Card key={i}><CardContent className="p-4"><Skeleton className="h-12 w-full" /></CardContent></Card>)}</div>
           ) : visible.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
-              <Mail className="h-10 w-10 text-muted-foreground/40" />
+              <span className="grid h-11 w-11 place-items-center rounded-full bg-gold/10 ring-1 ring-inset ring-gold/25 text-gold-ink" aria-hidden="true">
+                <Mail className="h-5 w-5" />
+              </span>
               <p className="text-sm font-medium">{t('email_empty_title')}</p>
               <p className="text-xs text-muted-foreground max-w-xs">{t('email_empty_desc')}</p>
               <Button size="sm" onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4 me-2" />{t('email_new_campaign')}</Button>
@@ -594,7 +596,9 @@ export default function EmailCampaignsPage() {
                   <Card key={c.id} className="hover:border-foreground/25 transition-colors">
                     <CardContent className="p-4">
                       <div className="flex items-center gap-3 min-w-0">
-                        <Mail className="h-8 w-8 shrink-0 text-muted-foreground/50" />
+                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-gold/30 bg-gold/[0.06] text-gold-ink" aria-hidden="true">
+                          <Mail className="h-4 w-4" />
+                        </span>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-medium text-sm truncate">{c.name}</span>
@@ -697,7 +701,7 @@ export default function EmailCampaignsPage() {
               <ul className="divide-y rounded-lg border bg-card">
                 {replies.map((c) => (
                   <li key={c.id} className="flex min-w-0 items-center gap-3 px-3 py-2.5">
-                    <Mail className="h-4 w-4 shrink-0 text-muted-foreground/60" aria-hidden="true" />
+                    <Mail className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                     <div className="min-w-0 flex-1">
                       <div className="flex min-w-0 items-center gap-2">
                         <span className="truncate text-sm font-medium">
@@ -862,7 +866,7 @@ export default function EmailCampaignsPage() {
                   <p><span className="font-medium text-foreground">{t('email_reply_to')}:</span> {previewCampaign.reply_to}</p>
                 )}
               </div>
-              <div className="rounded-lg bg-secondary/50 border border-border p-4 max-h-80 overflow-y-auto">
+              <div className="rounded-lg bg-card border border-border shadow-card p-4 max-h-80 overflow-y-auto">
                 {previewCampaign?.html_body
                   ? <div className="text-sm text-foreground" dangerouslySetInnerHTML={{ __html: previewCampaign.html_body }} />
                   : <p className="text-sm text-foreground whitespace-pre-wrap">{previewCampaign?.text_body || t('email_preview_empty')}</p>}

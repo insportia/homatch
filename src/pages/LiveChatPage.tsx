@@ -302,7 +302,9 @@ export default function LiveChatPage() {
               ))
             ) : visibleMessages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full gap-3 text-center py-16">
-                <MessageSquare className="h-10 w-10 text-muted-foreground/40" />
+                <span className="grid h-11 w-11 place-items-center rounded-full bg-gold/10 ring-1 ring-inset ring-gold/25 text-gold-ink" aria-hidden="true">
+                  <MessageSquare className="h-5 w-5" />
+                </span>
                 <p className="text-sm font-medium text-foreground">{t('live_chat_empty')}</p>
                 <p className="text-xs text-muted-foreground">{t('live_chat_empty_desc')}</p>
               </div>
@@ -327,7 +329,7 @@ export default function LiveChatPage() {
                       <div className={cn('max-w-[75%] group', isMine && 'flex flex-col items-end')}>
                         {!isMine && <p className="text-[14px] font-medium text-muted-foreground mb-0.5 px-1">{author?.nickname ?? t('live_chat_unknown_user')}</p>}
                         {replySource && !isDeleted && (
-                          <div className="text-[13px] text-muted-foreground border-l-2 border-primary/40 pl-1.5 mb-1 truncate max-w-[220px]">
+                          <div className="text-[13px] text-muted-foreground border-l-2 border-gold pl-1.5 mb-1 truncate max-w-[220px]">
                             {profiles[replySource.user_id]?.nickname ?? '…'}: {replySource.body.slice(0, 60)}
                           </div>
                         )}

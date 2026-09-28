@@ -46,10 +46,11 @@
 
 import {
   ArrowRight, Building2, CalendarClock, CheckCircle2, ClipboardCheck, ExternalLink,
-  Globe, Languages, Loader2, Mail, MapPin, Phone, Radar, Search, Store, X,
+  Globe, Languages, LayoutDashboard, Loader2, Mail, MapPin, Phone, Radar, Search, Store, X,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { listMyDiscoveredBrokers, recordBrokerProfileEvent, type DiscoveredBroker } from '@/services/brokers';
 import { CustomerSurface, PRODUCT_SURFACE } from '@/components/customer/surface';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { Input } from '@/components/ui/input';
@@ -76,8 +77,9 @@ interface DirectoryRow {
 interface OwnListing {
   id: string;
   display_name: string;
-  status: 'PENDING_REVIEW' | 'ACTIVE' | 'SUSPENDED' | 'EXPIRED';
+  status: 'PENDING_REVIEW' | 'APPROVED' | 'NEEDS_CHANGES' | 'REJECTED' | 'ACTIVE' | 'SUSPENDED' | 'EXPIRED';
   paid_until: string | null;
+  review_note: string | null;
   created_at: string;
 }
 
@@ -137,7 +139,12 @@ function DirectoryCard({ row }: { row: DirectoryRow }) {
         </span>
         <div className="min-w-0 flex-1">
           <h3 className="break-words font-display text-base font-semibold leading-snug text-foreground">
-            {row.display_name}
+            <Link
+              to={`/brokers/${row.id}`}
+              className="rounded-sm hover:text-[hsl(var(--gold-ink))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {row.display_name}
+            </Link>
           </h3>
           <p className="mt-0.5 text-2xs text-muted-foreground">{roleLabel}</p>
         </div>
@@ -173,20 +180,34 @@ function DirectoryCard({ row }: { row: DirectoryRow }) {
         <div className="mt-auto pt-4">
         <div className="flex flex-wrap gap-2 border-t border-border pt-4">
           {row.contact_phone && (
-            <a href={`tel:${row.contact_phone.replace(/[^\d+]/g, '')}`} className={action}>
+            <a
+              href={`tel:${row.contact_phone.replace(/[^\d+]/g, '')}`}
+              onClick={() => recordBrokerProfileEvent(row.id, 'PHONE_CLICK', 'directory')}
+              className={action}
+            >
               <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               <span>{t('broker_dir_call')}</span>
               <span className="sr-only" dir="ltr">{row.contact_phone}</span>
             </a>
           )}
           {row.contact_email && (
-            <a href={`mailto:${row.contact_email}`} className={action}>
+            <a
+              href={`mailto:${row.contact_email}`}
+              onClick={() => recordBrokerProfileEvent(row.id, 'EMAIL_CLICK', 'directory')}
+              className={action}
+            >
               <Mail className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               <span>{t('broker_dir_email')}</span>
             </a>
           )}
           {row.website && (
-            <a href={websiteHref(row.website)} target="_blank" rel="noopener noreferrer nofollow" className={action}>
+            <a
+              href={websiteHref(row.website)}
+              target="_blank"
+              rel="noopener noreferrer nofollow"
+              onClick={() => recordBrokerProfileEvent(row.id, 'WEBSITE_CLICK', 'directory')}
+              className={action}
+            >
               <Globe className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               <span>{t('broker_dir_website')}</span>
               <ExternalLink className="h-3 w-3 shrink-0 opacity-60" aria-hidden="true" />
@@ -219,6 +240,10 @@ function ApplySection() {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [website, setWebsite] = useState('');
+  const [about, setAbout] = useState('');
+  const [contactPerson, setContactPerson] = useState('');
+  const [dealKinds, setDealKinds] = useState<string[]>([]);
+  const [propertyTypes, setPropertyTypes] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [sent, setSent] = useState(false);
@@ -233,7 +258,7 @@ function ApplySection() {
      */
     const { data } = await supabase
       .from('broker_directory_listings')
-      .select('id,display_name,status,paid_until,created_at')
+      .select('id,display_name,status,paid_until,review_note,created_at')
       .eq('owner_user_id', uid)
       .order('created_at', { ascending: false });
     setMine((data ?? []) as OwnListing[]);
@@ -257,6 +282,10 @@ function ApplySection() {
       p_contact_phone: phone.trim() || null,
       p_contact_email: email.trim() || null,
       p_website: website.trim() || null,
+      p_about: about.trim() || null,
+      p_contact_person: contactPerson.trim() || null,
+      p_deal_kinds: dealKinds,
+      p_property_types: propertyTypes,
     });
     setSaving(false);
     if (rpcError) {
@@ -326,7 +355,19 @@ function ApplySection() {
                           {t('broker_mine_paid_until', { date: new Date(l.paid_until).toLocaleDateString() })}
                         </span>
                       )}
+                      <Link
+                        to="/broker"
+                        className="inline-flex items-center gap-1 text-2xs font-semibold text-[hsl(var(--gold-ink))] hover:underline"
+                      >
+                        <LayoutDashboard className="h-3.5 w-3.5" aria-hidden="true" />
+                        {t('broker_mine_open_crm')}
+                      </Link>
                     </span>
+                    {/* The reviewer's words, when there are any: the applicant
+                        edits and resubmits with them in view. */}
+                    {(l.status === 'NEEDS_CHANGES' || l.status === 'REJECTED') && l.review_note && (
+                      <p className="w-full text-2xs leading-relaxed text-muted-foreground">{l.review_note}</p>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -415,6 +456,75 @@ function ApplySection() {
                 <p className="mt-1.5 text-2xs text-muted-foreground">{t('broker_apply_contact_hint')}</p>
               </div>
 
+              <div className="sm:col-span-2">
+                <label htmlFor="broker-person" className={label}>{t('broker_apply_contact_person')}</label>
+                <Input id="broker-person" value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} maxLength={120} className="h-11 bg-card" autoComplete="name" />
+              </div>
+
+              {/* SALE / RENT focus and property types: the profile's
+                  specialization, as chips so an empty choice stays honest. */}
+              <fieldset>
+                <legend className={label}>{t('broker_apply_deal_kinds')}</legend>
+                <div className="flex flex-wrap gap-2">
+                  {(['SALE', 'RENT'] as const).map((dk) => {
+                    const on = dealKinds.includes(dk);
+                    return (
+                      <button
+                        key={dk}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => setDealKinds((prev) => (on ? prev.filter((v) => v !== dk) : [...prev, dk]))}
+                        className={cn(
+                          'min-h-9 rounded-full border px-3 text-2xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                          on
+                            ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))]'
+                            : 'border-border bg-card text-muted-foreground hover:text-foreground',
+                        )}
+                      >
+                        {dk === 'SALE' ? t('broker_deal_sale') : t('broker_deal_rent')}
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+              <fieldset>
+                <legend className={label}>{t('broker_apply_property_types')}</legend>
+                <div className="flex flex-wrap gap-2">
+                  {(['APARTMENT', 'HOUSE', 'LAND', 'COMMERCIAL'] as const).map((pt) => {
+                    const on = propertyTypes.includes(pt);
+                    return (
+                      <button
+                        key={pt}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => setPropertyTypes((prev) => (on ? prev.filter((v) => v !== pt) : [...prev, pt]))}
+                        className={cn(
+                          'min-h-9 rounded-full border px-3 text-2xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                          on
+                            ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))]'
+                            : 'border-border bg-card text-muted-foreground hover:text-foreground',
+                        )}
+                      >
+                        {t(`broker_ptype_${pt.toLowerCase()}` as TranslationKey)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+
+              <div className="sm:col-span-2">
+                <label htmlFor="broker-about" className={label}>{t('broker_apply_about')}</label>
+                <textarea
+                  id="broker-about"
+                  value={about}
+                  onChange={(e) => setAbout(e.target.value)}
+                  maxLength={4000}
+                  rows={4}
+                  className="w-full rounded-lg border border-input bg-card px-3 py-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+                <p className="mt-1.5 text-2xs text-muted-foreground">{t('broker_apply_about_hint')}</p>
+              </div>
+
               {error && (
                 <p className="text-sm font-medium text-destructive sm:col-span-2" role="alert">{error}</p>
               )}
@@ -434,6 +544,191 @@ function ApplySection() {
         </>
       )}
     </section>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Found for you — the private, persistent discovery library
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Everything here is USER-SPECIFIC: list_my_discovered_brokers scopes to the
+ * authenticated account server-side. These firms are market intelligence with
+ * provenance and freshness — the card says broker_disclosure_observed and
+ * nothing that could read as registration, verification or partnership.
+ * The library outlives the campaign that built it: rows never disappear when
+ * a campaign ends, and a broker rediscovered later stays one row.
+ */
+
+type IntentFilter = 'ALL' | 'SELL' | 'RENT_OUT' | 'BUY' | 'RENT';
+
+const INTENT_KEY: Record<Exclude<IntentFilter, 'ALL'>, TranslationKey> = {
+  SELL: 'broker_found_intent_sell' as TranslationKey,
+  RENT_OUT: 'broker_found_intent_rent_out' as TranslationKey,
+  BUY: 'broker_found_intent_buy' as TranslationKey,
+  RENT: 'broker_found_intent_rent' as TranslationKey,
+};
+
+function FoundForYouSection() {
+  const { t } = useLanguage();
+  const { status } = useAuth();
+  const [rows, setRows] = useState<DiscoveredBroker[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [intent, setIntent] = useState<IntentFilter>('ALL');
+  const [city, setCity] = useState('');
+
+  useEffect(() => {
+    if (status !== 'AUTHENTICATED') { setRows(null); return; }
+    let cancelled = false;
+    listMyDiscoveredBrokers()
+      .then((data) => { if (!cancelled) setRows(data); })
+      .catch(() => { if (!cancelled) { setRows([]); setFailed(true); } });
+    return () => { cancelled = true; };
+  }, [status]);
+
+  /* Signed out: the section simply is not there. A public visitor must never
+     see a scraped-firm roster. */
+  if (status !== 'AUTHENTICATED' || rows === null) return null;
+
+  const cities = [...new Set(rows.flatMap((r) => r.cities ?? []))].sort((a, b) => a.localeCompare(b));
+  const filtered = rows.filter((r) => {
+    if (intent !== 'ALL' && r.first_intent !== intent) return false;
+    if (city && !(r.cities ?? []).includes(city)) return false;
+    return true;
+  });
+
+  return (
+    <section aria-labelledby="broker-found-heading" className="space-y-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <div className="min-w-0">
+          <h2 id="broker-found-heading" className="font-display text-lg font-semibold text-foreground sm:text-xl">
+            {t('broker_found_heading')}
+          </h2>
+          <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            {t('broker_found_lead')}
+          </p>
+        </div>
+        {rows.length > 0 && (
+          <p className="text-2xs font-medium text-muted-foreground">
+            {t('broker_dir_count', { count: String(filtered.length) })}
+          </p>
+        )}
+      </div>
+
+      {failed && <p className="text-sm text-muted-foreground">{t('broker_found_error')}</p>}
+
+      {!failed && rows.length === 0 && (
+        <div className="hm-product-panel flex min-w-0 items-start gap-3 p-5">
+          <Radar className="mt-0.5 h-5 w-5 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />
+          <p className="text-sm leading-relaxed text-muted-foreground">{t('broker_found_empty')}</p>
+        </div>
+      )}
+
+      {rows.length > 0 && (
+        <>
+          <div className="hm-product-panel flex flex-wrap items-center gap-2 p-3">
+            {(['ALL', 'SELL', 'RENT_OUT', 'BUY', 'RENT'] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={intent === value}
+                onClick={() => setIntent(value)}
+                className={cn(
+                  'min-h-9 rounded-full border px-3 text-2xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  intent === value
+                    ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))]'
+                    : 'border-border bg-card text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {value === 'ALL' ? t('broker_found_intent_all') : t(INTENT_KEY[value])}
+              </button>
+            ))}
+            {cities.length > 1 && (
+              <select
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                className={cn(FIELD, 'ms-auto h-9 w-auto min-w-[9rem]')}
+                aria-label={t('broker_dir_filter_market')}
+              >
+                <option value="">{t('broker_dir_filter_all_markets')}</option>
+                {cities.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            )}
+          </div>
+
+          {filtered.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t('broker_dir_no_results')}</p>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {filtered.map((row) => <DiscoveredCard key={row.id} row={row} />)}
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+function DiscoveredCard({ row }: { row: DiscoveredBroker }) {
+  const { t } = useLanguage();
+  const name = row.display_name?.trim() || t('broker_found_unnamed');
+  const cities = (row.cities ?? []).filter(Boolean);
+  const languages = (row.languages ?? []).filter(Boolean);
+
+  return (
+    <article className="hm-product-panel flex min-w-0 flex-col p-5">
+      <div className="flex min-w-0 items-start gap-3">
+        <span
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-secondary font-display text-sm font-semibold text-muted-foreground ring-1 ring-inset ring-border"
+          aria-hidden="true"
+        >
+          {initials(name)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="break-words font-display text-base font-semibold leading-snug text-foreground">{name}</h3>
+          <p className="mt-0.5 text-2xs text-muted-foreground">
+            {row.role === 'AGENCY' ? t('broker_role_agency') : t('broker_role_broker')}
+          </p>
+        </div>
+      </div>
+
+      {/* The identity boundary, on every card: observed, not registered. */}
+      <p className="mt-3 inline-flex w-fit max-w-full items-center gap-1.5 rounded-full border border-border bg-secondary px-2.5 py-1 text-2xs font-semibold text-muted-foreground">
+        <Radar className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        <span className="break-words">{t('broker_disclosure_observed')}</span>
+      </p>
+
+      <dl className="mt-4 space-y-2 text-sm">
+        {cities.length > 0 && (
+          <div className="flex min-w-0 items-start gap-2">
+            <dt className="mt-0.5 shrink-0 text-muted-foreground">
+              <MapPin className="h-4 w-4" aria-hidden="true" />
+              <span className="sr-only">{t('broker_coverage_cities')}</span>
+            </dt>
+            <dd className="min-w-0 break-words text-foreground">{cities.join(' · ')}</dd>
+          </div>
+        )}
+        {languages.length > 0 && (
+          <div className="flex min-w-0 items-start gap-2">
+            <dt className="mt-0.5 shrink-0 text-muted-foreground">
+              <Languages className="h-4 w-4" aria-hidden="true" />
+              <span className="sr-only">{t('broker_coverage_languages')}</span>
+            </dt>
+            <dd className="min-w-0 break-words text-foreground">{languages.map(languageLabel).join(' · ')}</dd>
+          </div>
+        )}
+      </dl>
+
+      {/* Provenance: why it is in THIS library, and how alive the evidence is. */}
+      <div className="mt-auto space-y-1 border-t border-border pt-3 text-2xs text-muted-foreground">
+        {row.first_intent && (
+          <p>{t('broker_found_via', { context: t(INTENT_KEY[row.first_intent]) })}</p>
+        )}
+        <p>
+          {t('broker_found_first_seen', { date: new Date(row.discovered_at).toLocaleDateString() })}
+          {row.source_count > 0 ? ` · ${t('broker_found_sources', { count: String(row.source_count) })}` : ''}
+        </p>
+      </div>
+    </article>
   );
 }
 
@@ -642,6 +937,10 @@ export default function BrokersPage() {
             </div>
           )}
         </section>
+
+        {/* ── Found for you: the signed-in user's PRIVATE discovery library.
+               External firms, never partners, never public. ─────────────── */}
+        <FoundForYouSection />
 
         {/*
           * THE DISTINCTION, STATED IN WORDS AND NOT ONLY IMPLIED BY LAYOUT.

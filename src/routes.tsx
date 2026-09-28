@@ -58,6 +58,8 @@ const ExpatPlanPage = lazyRoute(() => import('./pages/ExpatPlanPage'));
  */
 const InvestmentPage = lazyRoute(() => import('./pages/InvestmentPage'));
 const BrokersPage = lazyRoute(() => import('./pages/BrokersPage'));
+const BrokerProfilePage = lazyRoute(() => import('./pages/BrokerProfilePage'));
+const BrokerCrmPage = lazyRoute(() => import('./pages/BrokerCrmPage'));
 const FindPropertyPage = lazyRoute(() => import('./pages/FindPropertyPage'));
 const MyPropertiesPage = lazyRoute(() => import('./pages/property/MyPropertiesPage'));
 const EditPropertyPage = lazyRoute(() => import('./pages/property/EditPropertyPage'));
@@ -266,6 +268,18 @@ export const routes: RouteConfig[] = [
    * ACTIVE, currently-paid registrations and cannot reach a discovered firm.
    */
   { name: 'Brokers',           path: '/brokers',                  element: <BrokersPage />,       public: true },
+  /*
+   * A PUBLIC BROKER PROFILE. Public exactly as far as broker_directory_public
+   * reaches: the page reads the view, so a pending, suspended or lapsed
+   * registration — and every discovered firm — is a not-found here.
+   */
+  { name: 'Broker Profile',    path: '/brokers/:id',              element: <BrokerProfilePage />, public: true },
+  /*
+   * THE BROKER'S OWN DESK. Authenticated: everything on it is the owner's
+   * registration and the owner's engagement numbers, both owner-scoped
+   * server-side (RLS on the listing row; the stats RPC checks the owner).
+   */
+  { name: 'Broker CRM',        path: '/broker',                   element: <BrokerCrmPage /> },
   /*
    * FIND PROPERTY. Not public, and the reason is the row it writes rather than
    * anything it shows: confirming a plan creates an intent_profiles row and an

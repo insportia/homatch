@@ -177,9 +177,12 @@ export function mortgagePresetsFor(field: string, context: PresetContext): Mortg
 
     case 'recurringMonthlyExtra': {
       if (!positive(payment)) return steps(RECURRING_EXTRA_STEPS, 'EXAMPLE');
+      // Each chip says what choosing it MEANS: zero is "no monthly extra",
+      // anything else is added every month on top of the required payment.
       return [0, 0.1, 0.25, 0.5].map((share) => ({
         value: round(payment * share),
         kind: 'EXAMPLE' as const,
+        noteKey: share === 0 ? 'mortgage_preset_no_recurring' : 'mortgage_preset_recurring_each_month',
       }));
     }
 

@@ -48,6 +48,7 @@ export function EarlyRepaymentView({
           <NumberField
             field="extraPaymentAmount"
             labelKey="mortgage_label_extra_amount"
+            hintKey="mortgage_label_extra_amount_hint"
             kind="money"
             currency={currency}
             value={draft.extraPaymentAmount}
@@ -96,6 +97,30 @@ export function EarlyRepaymentView({
           titleKey="mortgage_mod_early_result_title"
           subtitleKey="mortgage_mod_early_result_sub"
         >
+          {/* WHAT THEY CHOSE, read back as one sentence, so nobody has to
+              decode four controls to remember the scenario they built. */}
+          {draft.extraPaymentAmount !== null && draft.extraPaymentMonth !== null ? (
+            <div className="mb-4 max-w-[64ch] rounded-xl border border-border bg-card px-4 py-3.5 shadow-card">
+              <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                {t('mortgage_early_choice_title')}
+              </p>
+              <p className="mt-1.5 text-[15px] leading-relaxed text-foreground">
+                {t(
+                  draft.recurringMonthlyExtra ? 'mortgage_early_choice_with_recurring' : 'mortgage_early_choice_once',
+                  {
+                    when: draft.extraPaymentMonth % 12 === 0
+                      ? t('mortgage_early_choice_when_years', { n: draft.extraPaymentMonth / 12 })
+                      : t('mortgage_early_choice_when_months', { n: draft.extraPaymentMonth }),
+                    amount: formatMoney(draft.extraPaymentAmount, currency, locale),
+                    ...(draft.recurringMonthlyExtra
+                      ? { extra: formatMoney(draft.recurringMonthlyExtra, currency, locale) }
+                      : {}),
+                  },
+                )}
+              </p>
+            </div>
+          ) : null}
+
           {/* THE SENTENCE FIRST. What this plan does, in the user's numbers,
               before any table asks to be read. */}
           <p className="max-w-[64ch] rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] px-4 py-3.5 text-[15px] leading-relaxed text-[hsl(var(--gold-ink))]">
@@ -169,6 +194,11 @@ export function EarlyRepaymentView({
                   amount: formatMoney(draft.knownEarlyRepaymentFeeFlat ?? 0, currency, locale),
                 })
               : t('mortgage_early_fee_not_included')}
+          </p>
+          {/* The one honest legal boundary: this models the calculator's
+              assumption, not every bank's contract. */}
+          <p className="mt-2 max-w-[64ch] text-2xs leading-relaxed text-muted-foreground">
+            {t('mortgage_early_bank_terms_note')}
           </p>
         </Module>
       ) : null}

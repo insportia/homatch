@@ -161,12 +161,14 @@ function CampaignPanel({
   const handleStart = async (
     authorizedMaxCredits: number | null,
     searchLanguages?: CampaignSearchLanguageChoice,
+    discoverBrokers?: boolean,
   ) => {
     setShowBudget(false);
     setLoading(true);
     try {
       const result = await startMatchingCampaign(
         propertyId, userId, authorizedMaxCredits, searchLanguages ?? null,
+        discoverBrokers === true,
       );
       if (!result?.jobId) throw new Error('No job ID returned from match-campaign');
       setActive(true);
@@ -326,7 +328,7 @@ function CampaignPanel({
           <CampaignLaunchPanel
             propertyId={propertyId}
             productCode="FIND_CLIENTS"
-            onRun={(authorized, languages) => void handleStart(authorized, languages)}
+            onRun={(authorized, languages, discoverBrokers) => void handleStart(authorized, languages, discoverBrokers)}
             running={loading}
           />
         </DialogContent>

@@ -17,7 +17,8 @@ import type { SitePageContent, SiteSection } from '../model';
  */
 export const DEFAULT_HOME_ORDER: readonly string[] = [
   'hero', 'action_launcher', 'intelligence_layers', 'verify',
-  'contract_intelligence', 'matching', 'mortgage', 'call_center',
+  'contract_intelligence', 'matching', 'find_property', 'mortgage',
+  'investment', 'expats', 'call_center',
   'email_campaign', 'homatch_ai', 'brokers', 'developers', 'closing_cta',
 ];
 

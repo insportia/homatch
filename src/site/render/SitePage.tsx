@@ -13,6 +13,9 @@ import { VerifyShowcaseSection } from '@/components/home/sections/VerifyShowcase
 import { ContractIntelligenceSection } from '@/components/home/sections/ContractIntelligenceSection';
 import { MatchingShowcaseSection } from '@/components/home/sections/MatchingShowcaseSection';
 import { MortgageSection } from '@/components/home/sections/MortgageSection';
+import {
+  ExpatsStorySection, FindPropertyStorySection, InvestmentStorySection,
+} from '@/components/home/sections/ProductStorySections';
 import { BrokersSection } from '@/components/home/sections/BrokersSection';
 import { CallCenterSection } from '@/components/home/sections/CallCenterSection';
 import { EmailCampaignsSection } from '@/components/home/sections/EmailCampaignsSection';
@@ -63,7 +66,10 @@ const COMPONENTS: Record<string, React.ComponentType> = {
   verify: VerifyShowcaseSection,
   contract_intelligence: ContractIntelligenceSection,
   matching: MatchingShowcaseSection,
+  find_property: FindPropertyStorySection,
   mortgage: MortgageSection,
+  investment: InvestmentStorySection,
+  expats: ExpatsStorySection,
   brokers: BrokersSection,
   call_center: CallCenterSection,
   email_campaign: EmailCampaignsSection,

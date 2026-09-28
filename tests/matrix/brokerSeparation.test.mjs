@@ -309,8 +309,12 @@ test('the admin broker screen offers no action on a discovered firm', () => {
   assert.doesNotMatch(page, /from\('broker_intelligence/);
   /* Writes only through the audited status function. */
   const rpcs = [...page.matchAll(/rpc\('([a-z_]+)'/g)].map((m) => m[1]).sort();
+  /* The two commerce RPCs joined the page with the broker catalogue panel:
+     both configure PRODUCTS, neither can touch a discovered firm. */
   assert.deepEqual([...new Set(rpcs)], [
-    'admin_list_broker_directory', 'admin_list_broker_intelligence', 'admin_set_broker_listing_status',
+    'admin_configure_broker_product', 'admin_list_broker_directory',
+    'admin_list_broker_intelligence', 'admin_set_broker_listing_status',
+    'broker_discovery_pricing',
   ]);
   assert.doesNotMatch(page, /\.from\('broker_directory_listings'\)\.(insert|update|upsert|delete)/);
 });

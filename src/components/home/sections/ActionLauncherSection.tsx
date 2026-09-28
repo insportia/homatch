@@ -118,6 +118,7 @@ export function ActionLauncherSection() {
         <Tile
           glyph="property"
           field="tile_findprop"
+          iconTone="ink"
           icon={tileIcon('findprop') ?? Compass}
           title={sf('tile_findprop_t', 'mp_tile_findprop_t')}
           desc={sf('tile_findprop_d', 'mp_tile_findprop_d')}
@@ -224,6 +225,7 @@ export function ActionLauncherSection() {
         <Tile
           glyph="mortgage"
           field="tile_invest"
+          iconTone="ink"
           icon={tileIcon('invest') ?? TrendingUp}
           title={sf('tile_invest_t', 'mp_tile_invest_t')}
           desc={sf('tile_invest_d', 'mp_tile_invest_d')}
@@ -235,6 +237,7 @@ export function ActionLauncherSection() {
         <Tile
           glyph="ai"
           field="tile_expat"
+          iconTone="ink"
           icon={tileIcon('expat') ?? Globe2}
           title={sf('tile_expat_t', 'mp_tile_expat_t')}
           desc={sf('tile_expat_d', 'mp_tile_expat_d')}
@@ -256,7 +259,7 @@ export function ActionLauncherSection() {
  * ------------------------------------------------------------------ */
 
 function Tile({
-  glyph, title, desc, action, onClick, as = 'button', children, field, icon,
+  glyph, title, desc, action, onClick, as = 'button', children, field, icon, iconTone = 'default',
 }: {
   glyph: GlyphName;
   title: string;
@@ -269,6 +272,13 @@ function Tile({
   field?: string;
   /** A curated icon chosen in Site Studio, replacing the shipped glyph. */
   icon?: React.ComponentType<{ className?: string; strokeWidth?: number }>;
+  /**
+   * 'ink' is the first-class treatment: deep ink square, gold stroke — the
+   * homepage's own black-and-gold identity. The default pale square made the
+   * three tiles that ship with a lucide icon read as disabled next to the
+   * drawn glyphs; 'ink' puts them on equal footing without recoloring the set.
+   */
+  iconTone?: 'default' | 'ink';
 }) {
   const { isRTL } = useLanguage();
   const fp = useFieldProps();
@@ -283,7 +293,13 @@ function Tile({
         {/* A chosen icon replaces the shipped glyph; with none chosen the
             tile draws exactly what it always drew. */}
         {icon ? (
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-[0.9rem] border border-foreground/15 bg-secondary text-foreground transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-[1.04] motion-reduce:transform-none sm:h-14 sm:w-14">
+          <span
+            className={`grid h-12 w-12 shrink-0 place-items-center rounded-[0.9rem] transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-[1.04] motion-reduce:transform-none sm:h-14 sm:w-14 ${
+              iconTone === 'ink'
+                ? 'border border-foreground/85 bg-[#101114] text-gold shadow-[0_10px_24px_-14px_rgba(10,10,12,0.7)]'
+                : 'border border-foreground/15 bg-secondary text-foreground'
+            }`}
+          >
             {React.createElement(icon, { className: 'h-6 w-6', strokeWidth: 1.75 })}
           </span>
         ) : (

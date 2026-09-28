@@ -164,7 +164,17 @@ export async function planFromDescription(text: string): Promise<PlanResponse> {
 }
 
 /** Turn the plan the customer approved into a real, running search. */
-export async function confirmPlan(plan: SearchPlan): Promise<PlanResponse> {
+export async function confirmPlan(
+  plan: SearchPlan,
+  options?: {
+    /*
+     * The customer's explicit broker/agency discovery opt-in. Travels beside
+     * the plan rather than inside it: it is an execution choice, and the
+     * server stores it on the subscription while the plan stays a plan.
+     */
+    discoverBrokers?: boolean;
+  },
+): Promise<PlanResponse> {
   /*
    * THE PLAN IS SENT FLATTENED, in the same draft shape the server normalises. The
    * server re-normalises whatever arrives -- it does not trust this call any more than
@@ -194,6 +204,7 @@ export async function confirmPlan(plan: SearchPlan): Promise<PlanResponse> {
       languages: plan.languages,
       originalText: plan.originalText,
       originalLanguage: plan.originalLanguage,
+      ...(options?.discoverBrokers === true ? { discoverBrokers: true } : {}),
     },
   };
   const { data, error } = await supabase.functions.invoke('find-property-plan', { body });

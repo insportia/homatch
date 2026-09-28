@@ -618,6 +618,7 @@ function MatchesContent() {
   const handleStartMatching = async (
     authorizedMaxCredits: number | null,
     searchLanguages?: CampaignSearchLanguageChoice,
+    discoverBrokers?: boolean,
   ) => {
     if (!propertyId || !homatchUser) return;
     setShowBudget(false);
@@ -625,6 +626,7 @@ function MatchesContent() {
     try {
       const result = await startMatchingCampaign(
         propertyId, homatchUser.id, authorizedMaxCredits, searchLanguages ?? null,
+        discoverBrokers === true,
       );
       if (!result?.jobId) throw new Error('No job ID returned from match-campaign');
       setCampaignActive(true);
@@ -1170,7 +1172,7 @@ function MatchesContent() {
           <CampaignLaunchPanel
             propertyId={propertyId ?? ''}
             productCode="FIND_CLIENTS"
-            onRun={(authorized, languages) => void handleStartMatching(authorized, languages)}
+            onRun={(authorized, languages, discoverBrokers) => void handleStartMatching(authorized, languages, discoverBrokers)}
             running={campaignLoading}
           />
         </DialogContent>

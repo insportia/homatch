@@ -71,6 +71,7 @@ import {
   type SearchGoal,
   type SearchPlan,
 } from '@/services/findProperty';
+import { brokerDiscoveryPricing, type BrokerDiscoveryPricing } from '@/services/brokers';
 
 const GOALS: readonly SearchGoal[] = ['BUY', 'RENT', 'SHORT_STAY', 'INVEST', 'COMMERCIAL', 'LAND'];
 
@@ -241,6 +242,15 @@ export default function FindPropertyPage() {
   const [rejections, setRejections] = useState<PlanRejection[]>([]);
   const [missingKeys, setMissingKeys] = useState<string[]>([]);
   const [confirming, setConfirming] = useState(false);
+  /* OPTIONAL broker/agency discovery for this search — explicit opt-in with
+     the catalogue price shown, never a silent extra charge. */
+  const [discoverBrokers, setDiscoverBrokers] = useState(false);
+  const [brokerPricing, setBrokerPricing] = useState<BrokerDiscoveryPricing | null>(null);
+  useEffect(() => {
+    let alive = true;
+    brokerDiscoveryPricing().then((p) => { if (alive) setBrokerPricing(p); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
   /*
    * THE FORM IS CLOSED UNTIL SOMEBODY WANTS IT.
    * Open by default only when there was nothing to read back — a reading that did not
@@ -313,7 +323,7 @@ export default function FindPropertyPage() {
     if (!plan) return;
     setConfirming(true);
     try {
-      const response = await confirmPlan(plan);
+      const response = await confirmPlan(plan, { discoverBrokers });
       if (!response.success) {
         setMissingKeys(response.readiness?.missingKeys ?? []);
         setRejected(response.rejected ?? []);
@@ -473,22 +483,36 @@ export default function FindPropertyPage() {
             /* Left-aligned, not centred: the header sits at the start of the canvas and a
                centred composer under a left-aligned title reads as two unrelated blocks.
                The workspace surfaces align everything to one left edge. */
-            <div className="w-full max-w-2xl space-y-5">
-              <HomatchSearchComposer
-                value={text}
-                onChange={setText}
-                onSubmit={describe}
-                busy={reading}
-                placeholder={t('plan_composer_placeholder')}
-                hint={t('plan_composer_needs_text')}
-                readyHint={t('plan_composer_ready')}
-                submitLabel={t('plan_composer_cta')}
-                suggestionsLabel={t('plan_examples_label')}
-                suggestions={EXAMPLE_KEYS.map((key) => ({ key, text: t(key) }))}
-                composerRef={composer}
-              />
+            /*
+              THE WORKSPACE, NOT A FLOATING FORM. On a laptop this stage used to
+              be a 672px column beside a metre of empty canvas. The composer
+              keeps its reading width — a 1440px textarea is worse to write in —
+              but the stage now composes: writing on the left, "how it works"
+              as a companion column on the right, inside a ~1200px workspace.
+              On a phone nothing changes: one column, same order.
+            */
+            <div className="w-full max-w-[76rem] gap-6 space-y-5 lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:items-start lg:space-y-0">
+              <div className="space-y-5">
+                <HomatchSearchComposer
+                  value={text}
+                  onChange={setText}
+                  onSubmit={describe}
+                  busy={reading}
+                  placeholder={t('plan_composer_placeholder')}
+                  hint={t('plan_composer_needs_text')}
+                  readyHint={t('plan_composer_ready')}
+                  submitLabel={t('plan_composer_cta')}
+                  suggestionsLabel={t('plan_examples_label')}
+                  suggestions={EXAMPLE_KEYS.map((key) => ({ key, text: t(key) }))}
+                  composerRef={composer}
+                />
 
-              <div className="hm-discovery-panel p-3.5">
+                {/* Somebody whose requirements were read from a conversation has no plan on
+                    this screen yet and still has results — they are shown here too. */}
+                <NativeMatchesPanel role="SEEKER" />
+              </div>
+
+              <div className="hm-discovery-panel p-4 lg:p-5">
                 <p className="mb-2.5 text-2xs font-medium uppercase tracking-[0.1em] text-muted-foreground/70">
                   {t('plan_how_it_works')}
                 </p>
@@ -500,10 +524,6 @@ export default function FindPropertyPage() {
                   }))}
                 />
               </div>
-
-              {/* Somebody whose requirements were read from a conversation has no plan on
-                  this screen yet and still has results — they are shown here too. */}
-              <NativeMatchesPanel role="SEEKER" />
             </div>
           )}
 
@@ -517,7 +537,7 @@ export default function FindPropertyPage() {
               replace. The plan is now something you READ, and the fields that produced it
               are one tap away for the times the reading was wrong.
             */
-            <div className="w-full max-w-5xl space-y-4">
+            <div className="w-full max-w-[76rem] space-y-4">
               {/*
                 ONE HEADING. The page header says what page this is and the summary below
                 names itself; a third title between them ("Your search") pushed the first
@@ -636,6 +656,28 @@ export default function FindPropertyPage() {
               />
 
               <div className="space-y-3">
+                {/* The optional discovery choice, beside the plan it extends. */}
+                {brokerPricing?.active && (
+                  <label className="hm-discovery-panel flex cursor-pointer items-start gap-2.5 px-4 py-3.5">
+                    <input
+                      type="checkbox"
+                      checked={discoverBrokers}
+                      onChange={(e) => setDiscoverBrokers(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 accent-[hsl(var(--gold))]"
+                    />
+                    <span className="min-w-0 text-sm leading-snug">
+                      <span className="font-medium text-foreground">{t('campaign_broker_opt_label')}</span>
+                      <span className="mt-0.5 block text-2xs leading-relaxed text-muted-foreground">
+                        {brokerPricing.charging && brokerPricing.unitCredits > 0
+                          ? t('campaign_broker_opt_price', { credits: brokerPricing.unitCredits.toFixed(2) })
+                          : t('campaign_broker_opt_free')}
+                        {' '}
+                        {t('campaign_broker_opt_dedup')}
+                      </span>
+                    </span>
+                  </label>
+                )}
+
                 {/*
                   WHAT THEY ACTUALLY WROTE, unedited and in their own script. Not a
                   decoration for the empty half of the screen: a reading is only checkable

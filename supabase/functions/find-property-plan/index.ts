@@ -276,6 +276,13 @@ Deno.serve(async (req: Request) => {
           is_active: true,
           /* The plan itself, kept so the search can be shown and edited later. */
           search_criteria: plan as unknown as Record<string, unknown>,
+          /*
+           * OPTIONAL BROKER DISCOVERY, read off the raw body rather than the
+           * normalised plan: it is an execution choice, not a search
+           * criterion. Strictly === true — absence means OFF, and OFF means
+           * no broker delivery and no broker charge, ever.
+           */
+          discover_brokers: (body.plan as Record<string, unknown> | undefined)?.discoverBrokers === true,
         })
         .select('id')
         .single();

@@ -92,7 +92,7 @@ Deno.serve(async (req: Request) => {
      */
     const { data: subscriptions, error: subError } = await db
       .from('active_search_subscriptions')
-      .select('id,intent_id,search_criteria,is_active,created_at')
+      .select('id,intent_id,search_criteria,is_active,created_at,discover_brokers')
       .eq('user_id', userId)
       .eq('side', 'SUPPLY')
       .eq('is_active', true)
@@ -256,6 +256,47 @@ Deno.serve(async (req: Request) => {
         supply: brokerBlock(observation, registered, now),
       };
     });
+
+    /*
+     * BROKER DISCOVERY, when — and only when — this search opted in.
+     *
+     * The brokers in these results were attributed while listings were read;
+     * they already exist as global intelligence. What the opt-in buys is the
+     * PERSISTENT, user-owned copy of that relationship, delivered through the
+     * one function that can charge for it. broker_discovery_deliver dedupes on
+     * (user, broker), so re-reading results, retries, and later searches that
+     * surface the same firm all cost nothing — only genuinely new brokers do.
+     */
+    const optedIn = (subscriptions ?? []).some(
+      (s: Record<string, unknown>) => s.discover_brokers === true,
+    );
+    if (optedIn) {
+      const brokerIds = [...new Set((matches ?? [])
+        .map((row: Record<string, unknown>) => {
+          const joined: unknown = Array.isArray(row.observation)
+            ? (row.observation as unknown[])[0]
+            : row.observation;
+          const observation = (joined ?? null) as Record<string, unknown> | null;
+          return observation?.broker_id ? String(observation.broker_id) : null;
+        })
+        .filter((id): id is string => Boolean(id)))];
+      if (brokerIds.length) {
+        const goal = String(
+          ((subscriptions ?? []).find((s: Record<string, unknown>) => s.discover_brokers === true)
+            ?.search_criteria as Record<string, unknown> | null)?.goal ?? 'BUY',
+        ).toUpperCase();
+        const { error: deliverError } = await db.rpc('broker_discovery_deliver', {
+          p_user_id: userId,
+          p_broker_ids: brokerIds,
+          p_campaign_id: null,
+          p_intent: goal === 'RENT' || goal === 'SHORT_STAY' ? 'RENT' : 'BUY',
+          p_context: { source: 'find-property' },
+        });
+        /* A delivery problem must not break the results the customer already
+           paid nothing extra for; it is logged and the next read retries. */
+        if (deliverError) console.error('broker_discovery_deliver failed:', deliverError.message);
+      }
+    }
 
     return json({
       success: true,

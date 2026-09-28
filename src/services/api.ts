@@ -782,6 +782,13 @@ export async function startMatchingCampaign(
    * never had one resolves to the recommendation on the server.
    */
   searchLanguages?: CampaignSearchLanguageChoice | null,
+  /*
+   * OPTIONAL broker/agency discovery for this campaign. The flag is only the
+   * customer's opt-in; delivery and any charge happen server-side in
+   * broker_discovery_deliver, which dedupes per (user, broker) forever.
+   * Omitted keeps whatever the campaign already had, like searchLanguages.
+   */
+  discoverBrokers?: boolean,
 ): Promise<{ jobId: string; campaignId: string } | null> {
   // 1. Upsert campaign record
   let campaignId: string;
@@ -796,7 +803,10 @@ export async function startMatchingCampaign(
     // leaves the engine and the UI disagreeing about whether it is running.
     const { error: campErr } = await supabase
       .from('matching_campaigns')
-      .update({ status_v2: 'ACTIVE' })
+      .update({
+        status_v2: 'ACTIVE',
+        ...(discoverBrokers === undefined ? {} : { discover_brokers: discoverBrokers === true }),
+      })
       .eq('id', existing.id);
     if (campErr) throw new Error(`Could not activate the campaign: ${campErr.message}`);
 
@@ -810,7 +820,12 @@ export async function startMatchingCampaign(
   } else {
     const { data, error: insertErr } = await supabase
       .from('matching_campaigns')
-      .insert({ property_id: propertyId, user_id: userId, status_v2: 'ACTIVE' })
+      .insert({
+        property_id: propertyId,
+        user_id: userId,
+        status_v2: 'ACTIVE',
+        discover_brokers: discoverBrokers === true,
+      })
       .select('id')
       .single();
     if (insertErr || !data) {

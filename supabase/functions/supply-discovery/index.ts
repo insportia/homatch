@@ -572,6 +572,10 @@ const started = Date.now();
 
     const perSourceReport: Record<string, unknown>[] = [];
     const written: string[] = [];
+    /* Brokers attributed while this sweep read listings — the raw material of
+       the campaign's optional broker discovery. Global intelligence either
+       way; delivered to the OWNER only when the campaign opted in. */
+    const brokersSeen = new Set<string>();
     let reached = 0;
     let blocked = 0;
     let discovered = 0;
@@ -612,6 +616,7 @@ const started = Date.now();
         if (!result) continue;
         rows.push(result.id);
         written.push(result.id);
+        if (result.brokerId) brokersSeen.add(result.brokerId);
         if (result.isNew) discovered += 1; else reused += 1;
 
         if (campaignId) {
@@ -659,10 +664,47 @@ const started = Date.now();
      */
     const resolution = await resolveMarket(db, countryCode, city, transaction);
 
+    /*
+     * OPTIONAL BROKER DISCOVERY — the campaign's explicit opt-in, honoured
+     * after the sweep so it inherits the sweep's own market context: these
+     * brokers were attributed on listings inside the campaign's envelope,
+     * which is what makes them relevant rather than "brokers in Tbilisi".
+     *
+     * All dedup and all charging live in broker_discovery_deliver: a broker
+     * the owner already holds is never re-delivered and never re-charged,
+     * whichever campaign or retry surfaces it again. OFF (the default) means
+     * this block never runs and nothing broker-shaped is spent.
+     */
+    let brokerDiscovery: Record<string, unknown> | null = null;
+    if (campaignId && brokersSeen.size > 0) {
+      const { data: campaignRow } = await db
+        .from('matching_campaigns')
+        .select('user_id,discover_brokers')
+        .eq('id', campaignId)
+        .maybeSingle();
+      if (campaignRow?.discover_brokers === true && campaignRow.user_id) {
+        const { data: delivery, error: deliverError } = await db.rpc('broker_discovery_deliver', {
+          p_user_id: campaignRow.user_id,
+          p_broker_ids: [...brokersSeen],
+          p_campaign_id: campaignId,
+          p_intent: transaction === 'RENT' ? 'RENT_OUT' : 'SELL',
+          p_context: { source: 'supply-discovery', city, transaction },
+        });
+        if (deliverError) {
+          console.error('broker_discovery_deliver failed:', deliverError.message);
+          brokerDiscovery = { error: deliverError.message };
+        } else {
+          brokerDiscovery = delivery as Record<string, unknown>;
+        }
+      }
+    }
+
     return json({
       success: true,
       city, transaction, countryCode,
       campaignId,
+      /* Null unless the campaign opted in AND this sweep saw brokers. */
+      brokerDiscovery,
       /*
        * The envelope, echoed back. A run whose scope cannot be read off its
        * own result is a run nobody can reproduce or audit later.
@@ -907,7 +949,7 @@ async function persist(
   source: SourceRow,
   portalListing: any,
   countryCode: string,
-): Promise<{ id: string; isNew: boolean } | null> {
+): Promise<{ id: string; isNew: boolean; brokerId: string | null } | null> {
   const listing = portalListing.listing;
   const externalId = portalListing.externalId;
   if (!externalId) return null;
@@ -1026,7 +1068,7 @@ async function persist(
         now,
       });
     }
-    return { id: data.id, isNew: true };
+    return { id: data.id, isNew: true, brokerId };
   }
 
   /*
@@ -1051,7 +1093,7 @@ async function persist(
       now,
     });
   }
-  return { id: existing.id, isNew: false };
+  return { id: existing.id, isNew: false, brokerId };
 }
 
 /* ------------------------------------------------------------------ *

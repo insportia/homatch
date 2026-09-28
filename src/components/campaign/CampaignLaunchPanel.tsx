@@ -22,6 +22,8 @@ import {
   type SearchLanguageValue,
 } from '@/components/campaign/SearchLanguagePicker';
 import { Separator } from '@/components/ui/separator';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { brokerDiscoveryPricing, type BrokerDiscoveryPricing } from '@/services/brokers';
 import {
   type CampaignLanguageState,
   type CampaignSearchLanguageChoice,
@@ -36,11 +38,25 @@ export function CampaignLaunchPanel({
 }: {
   propertyId: string;
   productCode: string;
-  onRun: (authorizedMaxCredits: number | null, languages: CampaignSearchLanguageChoice) => void;
+  onRun: (
+    authorizedMaxCredits: number | null,
+    languages: CampaignSearchLanguageChoice,
+    discoverBrokers?: boolean,
+  ) => void;
   running?: boolean;
 }) {
+  const { t } = useLanguage();
   const [state, setState] = useState<CampaignLanguageState | null>(null);
   const [languages, setLanguages] = useState<SearchLanguageValue>(DEFAULT_SEARCH_LANGUAGES);
+  /* OPTIONAL broker/agency discovery. Strictly opt-in, priced from the
+     catalogue and shown before launch — never a silent extra spend. */
+  const [discoverBrokers, setDiscoverBrokers] = useState(false);
+  const [brokerPricing, setBrokerPricing] = useState<BrokerDiscoveryPricing | null>(null);
+  useEffect(() => {
+    let alive = true;
+    brokerDiscoveryPricing().then((p) => { if (alive) setBrokerPricing(p); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   /*
    * A RESUME OPENS ON THE CUSTOMER'S OWN CHOICE.
@@ -83,6 +99,27 @@ export function CampaignLaunchPanel({
         alreadyDiscovered={state?.discovered}
       />
 
+      {brokerPricing?.active && (
+        <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-card p-3">
+          <input
+            type="checkbox"
+            checked={discoverBrokers}
+            onChange={(e) => setDiscoverBrokers(e.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-[hsl(var(--gold))]"
+          />
+          <span className="min-w-0 text-sm leading-snug">
+            <span className="font-medium text-foreground">{t('campaign_broker_opt_label')}</span>
+            <span className="mt-0.5 block text-2xs leading-relaxed text-muted-foreground">
+              {brokerPricing.charging && brokerPricing.unitCredits > 0
+                ? t('campaign_broker_opt_price', { credits: brokerPricing.unitCredits.toFixed(2) })
+                : t('campaign_broker_opt_free')}
+              {' '}
+              {t('campaign_broker_opt_dedup')}
+            </span>
+          </span>
+        </label>
+      )}
+
       <Separator />
 
       <SearchBudgetOffer
@@ -102,7 +139,7 @@ export function CampaignLaunchPanel({
           // ignores them; sending them anyway keeps the payload the same
           // shape in every mode.
           selected: languages.selected,
-        })}
+        }, discoverBrokers)}
         running={running}
       />
     </div>

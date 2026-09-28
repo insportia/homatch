@@ -48,6 +48,7 @@ const FIELD: Readonly<Record<string, TranslationKey>> = {
   link_calls: 'call_center_title',
   link_email: 'mp_email_title',
   link_about: 'nav_about',
+  link_contact: 'nav_contact',
   link_partners: 'home_nav_partners',
   link_developers: 'mp_nav_developers',
   link_privacy: 'home_footer_privacy',
@@ -88,6 +89,7 @@ function FooterBody() {
       field: 'heading_company',
       links: [
         { key: 'link_about', path: '/about' },
+        { key: 'link_contact', path: '/contact' },
         { key: 'link_partners', path: '/partners' },
         { key: 'link_developers', path: '/developers' },
       ],

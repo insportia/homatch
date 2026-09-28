@@ -321,6 +321,7 @@ export function StudioPreview({
 
 
 
+  const { t } = useLanguage();
   const selectedSection = content.sections.find((x) => x.id === selectedId) ?? null;
   const def = selectedSection ? sectionDef(selectedSection.type) : undefined;
 
@@ -544,6 +545,33 @@ export function StudioPreview({
               app's graphite canvas. A wrapper around every section, not
               between a section and its own wrapper. */}
           <div className="hm-public min-h-full">
+          {/*
+           * THE EMPTY CANVAS, SAID OUT LOUD.
+           *
+           * Pages like Partners, Privacy or Verify are written in code and
+           * carry only an ADDITIVE content band (see PageBlocks): until an
+           * admin adds a block, their stored page has zero sections. That
+           * used to render here as a silent white rectangle — which reads as
+           * "the editor is broken", not "there is nothing to edit yet". An
+           * empty page now states what it is and what to do about it, and a
+           * page that is genuinely composed of sections (home, about) never
+           * shows this because its seed is never empty.
+           */}
+          {content.sections.length === 0 ? (
+            <div className="flex min-h-[70vh] items-center justify-center px-6">
+              <div className="max-w-md rounded-2xl border border-foreground/15 bg-card p-8 text-center shadow-hover">
+                <p className="font-display text-lg font-semibold text-foreground">
+                  {t('studio_empty_page_title')}
+                </p>
+                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                  {t('studio_empty_page_body')}
+                </p>
+                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                  {t('studio_empty_page_hint')}
+                </p>
+              </div>
+            </div>
+          ) : (
           <SitePage
             slug={slug}
             content={content}
@@ -552,6 +580,7 @@ export function StudioPreview({
             editing
             onSelectMedia={(sectionId, slot) => setMediaTarget(slot ? { sectionId, slot } : null)}
           />
+          )}
           </div>
         </LanguageOverride>
         <SectionControls root={sectionRoot} body={previewBody} api={controls} />

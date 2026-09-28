@@ -98,8 +98,13 @@ export function AboutWhatSection() {
     { key: 'mortgage', field: 'cap_mortgage', glyph: 'mortgage' as const, icon: Calculator, title: 'mp_mortgage_title', desc: 'about_cap_mortgage', to: '/mortgage' },
     { key: 'calls', field: 'cap_calls', glyph: 'calls' as const, icon: PhoneCall, title: 'call_center_title', desc: 'about_cap_calls', to: '/outreach/calls' },
     { key: 'email', field: 'cap_email', glyph: 'email' as const, icon: Mail, title: 'mp_email_title', desc: 'about_cap_email', to: '/outreach/email' },
-    { key: 'find', field: 'cap_find', glyph: 'property' as const, icon: Search, title: 'mp_find_title', desc: 'about_cap_find', to: '/ai' },
+    { key: 'find', field: 'cap_find', glyph: 'findprop' as const, icon: Search, title: 'mp_tile_findprop_t', desc: 'about_cap_find', to: '/find-property' },
     { key: 'ai', field: 'cap_ai', glyph: 'ai' as const, icon: Sparkles, title: 'ai_title', desc: 'about_cap_ai', to: '/ai' },
+    /* The three products the ecosystem grew in 2026-09, so the About grid
+       names everything the footer and launcher do. */
+    { key: 'invest', field: 'cap_invest', glyph: 'invest' as const, icon: Calculator, title: 'mp_tile_invest_t', desc: 'about_cap_invest', to: '/investment' },
+    { key: 'brokers', field: 'cap_brokers', glyph: 'matching' as const, icon: UserSearch, title: 'broker_page_title', desc: 'about_cap_brokers', to: '/brokers' },
+    { key: 'expat', field: 'cap_expat', glyph: 'expat' as const, icon: Search, title: 'mp_tile_expat_t', desc: 'about_cap_expat', to: '/for-expats/georgia' },
   ] as const;
 
   return (

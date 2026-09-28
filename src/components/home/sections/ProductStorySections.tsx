@@ -100,7 +100,7 @@ export function FindPropertyStorySection() {
       <div className="grid gap-9 lg:grid-cols-2 lg:items-center lg:gap-16">
         <div className="min-w-0">
           <div className="flex items-center gap-3.5">
-            <FeatureGlyph name="property" size={48} className="sm:h-14 sm:w-14" />
+            <FeatureGlyph name="findprop" size={48} className="sm:h-14 sm:w-14" />
             <p className="min-w-0 text-[14px] font-semibold uppercase tracking-[0.22em] text-gold-ink" {...fp('eyebrow')}>
               {sf('eyebrow', 'mp_fp_eyebrow')}
             </p>
@@ -190,7 +190,7 @@ export function InvestmentStorySection() {
       <div className="grid gap-9 lg:grid-cols-2 lg:items-center lg:gap-16">
         <div className="min-w-0 lg:order-2">
           <div className="flex items-center gap-3.5">
-            <FeatureGlyph name="matching" size={48} className="sm:h-14 sm:w-14" />
+            <FeatureGlyph name="invest" size={48} className="sm:h-14 sm:w-14" />
             <p className="min-w-0 text-[14px] font-semibold uppercase tracking-[0.22em] text-gold-ink" {...fp('eyebrow')}>
               {sf('eyebrow', 'mp_inv_eyebrow')}
             </p>
@@ -272,7 +272,7 @@ export function ExpatsStorySection() {
       <div className="grid gap-9 lg:grid-cols-2 lg:items-center lg:gap-16">
         <div className="min-w-0">
           <div className="flex items-center gap-3.5">
-            <FeatureGlyph name="ai" size={48} className="sm:h-14 sm:w-14" />
+            <FeatureGlyph name="expat" size={48} className="sm:h-14 sm:w-14" />
             <p className="min-w-0 text-[14px] font-semibold uppercase tracking-[0.22em] text-gold-ink" {...fp('eyebrow')}>
               {sf('eyebrow', 'mp_ex_eyebrow')}
             </p>

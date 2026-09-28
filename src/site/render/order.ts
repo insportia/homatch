@@ -73,6 +73,7 @@ const ORDERS: Readonly<Record<string, readonly string[]>> = {
   /* The guidance, the steps and the tools are product, not copy.
      This is the band an admin adds to. */
   expat: CONTENT_ONLY,
+  contact: CONTENT_ONLY,
   shell: SHELL_ORDER,
 };
 

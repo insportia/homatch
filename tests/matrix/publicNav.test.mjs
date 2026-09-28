@@ -22,7 +22,7 @@ const ROUTES = readFileSync('src/routes.tsx', 'utf8');
 
 /** The link keys, in the order the file declares them. */
 function orderedKeys() {
-  return [...NAV.matchAll(/key: '([a-z_]+)'/g)].map((m) => m[1]);
+  return [...NAV.matchAll(/key: '([a-z0-9_]+)'/g)].map((m) => m[1]);
 }
 
 test('nav 1: no page declares a navigation of its own any more', () => {
@@ -57,7 +57,7 @@ test('nav 2: the two matching actions lead, and Expat is primary without leading
 
   const expat = keys.indexOf('expat');
   assert.ok(expat > 1, 'Expat should not take a leading slot on a public page');
-  const groups = ['professional', 'company'].map((k) => keys.indexOf(k));
+  const groups = ['b2b', 'company'].map((k) => keys.indexOf(k));
   assert.ok(groups.every((g) => g > expat), 'Expat must stay primary, above the grouped items');
 });
 
@@ -75,7 +75,7 @@ test('nav 3: the secondary destinations are grouped, not competing for the row',
      developers and Partners are real destinations that are not what a
      visitor came to do, so they cost one control each instead of four. */
   assert.match(NAV, /key: 'company'[\s\S]*?children:/, 'Company is not a group');
-  assert.match(NAV, /key: 'professional'[\s\S]*?children:/, 'For professionals is not a group');
+  assert.match(NAV, /key: 'b2b'[\s\S]*?children:/, 'B2B is not a group');
   for (const child of ['about', 'pricing', 'developers', 'partners']) {
     assert.ok(NAV.includes(`key: '${child}'`), `${child} is missing from the navigation`);
   }
@@ -98,7 +98,7 @@ test('nav 4: every destination is a route that exists', () => {
 test('nav 5: a group is never itself a destination', () => {
   /* Clicking "Company" should open the group, not navigate somewhere that
      happens to be first in it. */
-  for (const group of ['company', 'professional']) {
+  for (const group of ['company', 'b2b']) {
     const block = NAV.slice(NAV.indexOf(`key: '${group}'`));
     const target = block.match(/target: '([^']*)'/);
     assert.equal(target?.[1], '', `${group} has a destination of its own`);
@@ -116,7 +116,7 @@ test('nav 6: every label an admin may rewrite is offered in the Studio registry'
   const registry = readFileSync('src/site/registry.ts', 'utf8');
   const fields = header.slice(header.indexOf('const NAV_FIELDS'), header.indexOf('/** The header,'));
 
-  for (const key of ['find_property', 'find_client', 'expat', 'investment', 'pricing', 'company', 'professional']) {
+  for (const key of ['find_property', 'find_client', 'expat', 'investment', 'pricing', 'company', 'b2b']) {
     assert.ok(fields.includes(`${key}:`), `${key} is not admin-editable in NAV_FIELDS`);
     assert.ok(registry.includes(`f('nav_${key}'`), `nav_${key} is not offered in the Studio registry`);
   }

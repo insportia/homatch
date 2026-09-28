@@ -79,12 +79,13 @@ const NAV_FIELDS: Readonly<Record<string, TranslationKey>> = {
   mortgage: 'nav_mortgage',
   investment: 'nav_investment',
   expat: 'nav_for_expats',
-  professional: 'nav_professional',
+  b2b: 'nav_b2b',
   brokers: 'pub_nav_brokers',
   developers: 'mp_nav_developers',
   partners: 'home_nav_partners',
   company: 'nav_company',
   about: 'nav_about',
+  contact: 'nav_contact',
   pricing: 'nav_pricing',
 };
 

@@ -41,6 +41,7 @@ const ROUTES = {
   terms: 'src/pages/TermsPage.tsx',
   verify: 'src/pages/VerifyPage.tsx',
   expat: 'src/pages/ForExpatsPage.tsx',
+  contact: 'src/pages/ContactPage.tsx',
 };
 
 test('the page list was actually found', () => {

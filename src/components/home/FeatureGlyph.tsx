@@ -32,7 +32,10 @@ export type GlyphName =
   | 'property'
   | 'mortgage'
   | 'calls'
-  | 'email';
+  | 'email'
+  | 'findprop'
+  | 'invest'
+  | 'expat';
 
 interface Palette {
   /** The tile behind the art. */
@@ -54,6 +57,13 @@ const PALETTES: Record<GlyphName, Palette> = {
   mortgage: { tile: '#E6EEFF', base: '#2C63E8', deep: '#173C9B' },
   calls: { tile: '#DEF3F3', base: '#0E9C9C', deep: '#076767' },
   email: { tile: '#FFE7EF', base: '#DB2F6E', deep: '#8E1442' },
+  /* The three products added in 2026-09: each gets a hue no neighbour holds.
+     Sky for the search, plum for the analysis, copper for the journey —
+     chosen against this table, not against a brand book, so the launcher
+     grid stays a set of distinct personalities. */
+  findprop: { tile: '#E2F1FB', base: '#2088CC', deep: '#0E5583' },
+  invest: { tile: '#F4E9F8', base: '#9A3FBC', deep: '#642180' },
+  expat: { tile: '#F8ECE0', base: '#C06A32', deep: '#7E3F16' },
 };
 
 /** Drawn on a 64 × 64 grid, inside a tile the component supplies. */
@@ -190,6 +200,57 @@ const ART: Record<GlyphName, (p: Palette) => React.ReactNode> = {
         <path d="M51.5 8.5v13" />
         <path d="M59 13v4" />
       </g>
+    </>
+  ),
+
+  /* A home being searched for: the house, and the lens still reading it. */
+  findprop: p => (
+    <>
+      <path d="M11 27 L26 15 L41 27 V47a2.5 2.5 0 0 1-2.5 2.5h-25A2.5 2.5 0 0 1 11 47z" fill={p.base} />
+      <path d="M26 15 L41 27 H35.5 L26 19.4 L16.5 27 H11z" fill={p.deep} />
+      <rect x="21.5" y="35" width="9" height="14.5" rx="1.6" fill="#FFFFFF" />
+      <circle cx="43.5" cy="38.5" r="10.5" fill="#FFFFFF" opacity="0.92" />
+      <circle cx="43.5" cy="38.5" r="10.5" fill="none" stroke={p.deep} strokeWidth="4.6" />
+      <path d="M51 46 L58.5 53.5" stroke={p.deep} strokeWidth="6" strokeLinecap="round" />
+      <circle cx="43.5" cy="38.5" r="3.4" fill={p.base} />
+    </>
+  ),
+
+  /* The analysis: three measured columns and the line they resolve into. */
+  invest: p => (
+    <>
+      <rect x="11" y="36" width="9" height="17" rx="2" fill={p.base} opacity="0.55" />
+      <rect x="25" y="28" width="9" height="25" rx="2" fill={p.base} opacity="0.8" />
+      <rect x="39" y="19" width="9" height="34" rx="2" fill={p.base} />
+      <path
+        d="M13 26 C22 24 28 18 36 13.5"
+        fill="none"
+        stroke={p.deep}
+        strokeWidth="4.4"
+        strokeLinecap="round"
+      />
+      <path d="M37.5 7.5 L48 9.5 L41 17.5z" fill={p.deep} />
+      <circle cx="54" cy="44" r="8" fill={p.deep} />
+      <path d="M54 40.2v7.6M50.2 44h7.6" stroke="#FFFFFF" strokeWidth="2.8" strokeLinecap="round" />
+    </>
+  ),
+
+  /* The journey: a globe, and the pin where it lands. */
+  expat: p => (
+    <>
+      <circle cx="28" cy="32" r="18" fill={p.base} />
+      <g stroke="#FFFFFF" strokeWidth="2.6" fill="none" opacity="0.9">
+        <ellipse cx="28" cy="32" rx="8.2" ry="18" />
+        <path d="M11.5 26h33M11.5 38h33" />
+      </g>
+      <circle cx="28" cy="32" r="18" fill="none" stroke={p.deep} strokeWidth="3.4" />
+      <path
+        d="M47 24c6.4 0 11 4.8 11 10.6C58 42.8 47 54 47 54S36 42.8 36 34.6C36 28.8 40.6 24 47 24z"
+        fill={p.deep}
+        stroke="#FFFFFF"
+        strokeWidth="3"
+      />
+      <circle cx="47" cy="34.5" r="4" fill="#FFFFFF" />
     </>
   ),
 };

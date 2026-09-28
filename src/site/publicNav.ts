@@ -96,8 +96,15 @@ export function publicNav({ onHome = false }: { onHome?: boolean } = {}): Public
       ],
     },
     {
-      key: 'professional',
-      labelKey: 'nav_professional',
+      /*
+       * B2B, not "professionals": the group names the RELATIONSHIP (business
+       * to business), and its children are the two business audiences —
+       * brokers and developers — with the partner programme beside them.
+       * The label is the term "B2B" in every locale on purpose; it is
+       * industry vocabulary, not a sentence to translate.
+       */
+      key: 'b2b',
+      labelKey: 'nav_b2b',
       target: '',
       children: [
         { key: 'brokers', labelKey: 'pub_nav_brokers', descKey: 'pub_navd_brokers', target: '/brokers' },
@@ -111,6 +118,8 @@ export function publicNav({ onHome = false }: { onHome?: boolean } = {}): Public
       target: '',
       children: [
         { key: 'about', labelKey: 'nav_about', descKey: 'pub_navd_about', target: '/about' },
+        /* Immediately after About, by explicit product requirement. */
+        { key: 'contact', labelKey: 'nav_contact', descKey: 'pub_navd_contact', target: '/contact' },
         { key: 'pricing', labelKey: 'nav_pricing', descKey: 'pub_navd_pricing', target: '/pricing' },
       ],
     },

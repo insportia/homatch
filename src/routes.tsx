@@ -77,6 +77,7 @@ const PartnersPage = lazyRoute(() => import('./pages/PartnersPage'));
 const PricingPage = lazyRoute(() => import('./pages/PricingPage'));
 const DevelopersPage = lazyRoute(() => import('./pages/DevelopersPage'));
 const AboutPage = lazyRoute(() => import('./pages/AboutPage'));
+const ContactPage = lazyRoute(() => import('./pages/ContactPage'));
 const ProductEntryPage = lazyRoute(() => import('./pages/ProductEntryPage'));
 /*
  * HOMATCH FOR DEVELOPERS — the private sales workspace.
@@ -205,6 +206,11 @@ export const routes: RouteConfig[] = [
   // What Homatch is, for somebody who arrived here without seeing the home
   // page first. Product explanation, not a corporate About Us.
   { name: 'About',             path: '/about',                    element: <AboutPage />,         public: true },
+  /*
+   * CONTACT. Public, and real: the form persists through contact_submit and
+   * rings the admins' notification centre — never a "sent" toast over nothing.
+   */
+  { name: 'Contact',           path: '/contact',                  element: <ContactPage />,       public: true },
   /*
    * THE PUBLIC FRONT DOORS OF THE TWO AUTHENTICATED PRODUCTS.
    *

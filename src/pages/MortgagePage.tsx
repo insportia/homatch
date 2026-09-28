@@ -52,6 +52,7 @@ import { DetailsSection } from '@/components/mortgage/DetailsSection';
 import { FinancingPictureView } from '@/components/mortgage/FinancingPictureView';
 import { AffordabilityView } from '@/components/mortgage/views/AffordabilityView';
 import { EarlyRepaymentView, RefinancingView } from '@/components/mortgage/views/PlanViews';
+import { SummaryView } from '@/components/mortgage/SummaryView';
 import { OffersView } from '@/components/mortgage/views/OffersView';
 import { ProgramsView } from '@/components/mortgage/views/ProgramsView';
 import { BeforeYouSignView } from '@/components/mortgage/views/GuidanceViews';
@@ -254,6 +255,7 @@ export default function MortgagePage() {
                       currency={currency}
                       context={presetContext}
                       termMonths={input.termMonths}
+                      monthlyPayment={result.monthlyPayment}
                     />
                   ) : null}
 
@@ -273,7 +275,15 @@ export default function MortgagePage() {
 
                   {topic === 'AFFORDABILITY' ? (
                     affordability ? (
-                      <AffordabilityView affordability={affordability} ptiRule={ptiRule} ltvRule={ltvRule} />
+                      <AffordabilityView
+                        affordability={affordability}
+                        ptiRule={ptiRule}
+                        ltvRule={ltvRule}
+                        propertyPrice={input?.propertyPrice ?? null}
+                        downPayment={input?.downPayment ?? null}
+                        loanAmount={result.loanAmount}
+                        currency={currency}
+                      />
                     ) : (
                       <AdvancedInputs
                         draft={draft}
@@ -304,6 +314,9 @@ export default function MortgagePage() {
                       nominalRatePercent={draft.nominalAnnualRatePercent}
                       currency={currency}
                       loading={!rulesReady}
+                      loanAmount={result.loanAmount}
+                      amortizingMonths={input ? input.termMonths - (input.gracePeriodMonths ?? 0) : null}
+                      onSwitchCurrency={(next) => set('currency', next)}
                     />
                   ) : null}
                 </ToolShelf>
@@ -331,6 +344,17 @@ export default function MortgagePage() {
                 />
 
                 {picture ? <FinancingPictureView picture={picture} /> : null}
+
+                {/* ── The live summary: one scenario, one answer ── */}
+                {input ? (
+                  <SummaryView
+                    input={input}
+                    result={result}
+                    affordability={affordability}
+                    earlyRepayment={earlyRepayment}
+                    subsidyMatch={subsidyMatches[0] ?? null}
+                  />
+                ) : null}
 
                 <div className="flex flex-wrap items-center gap-3">
                   <button

@@ -35,27 +35,40 @@ function RatioCard({
   titleKey,
   explainKey,
   acronymKey,
+  leadKey,
   value,
   limit,
   within,
   rule,
   locale,
+  breakdown,
 }: {
   titleKey: string;
   explainKey: string;
   /** The industry's name for the same thing, said after the plain one. */
   acronymKey: string;
+  /** The personalized opening sentence — THE USER'S number, in words. */
+  leadKey: string;
   value: number | null;
   limit: number | null;
   within: boolean | null;
   rule: { officialSourceUrl: string; sourceAuthority: string; lastVerifiedAt: string } | null;
   locale: string;
+  /** The three inputs the ratio is made of, so nobody has to hunt them. */
+  breakdown?: Array<{ labelKey: string; value: number }> & { currency?: string };
 }) {
   const { t } = useLanguage();
 
   return (
     <div className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5">
       <h3 className="font-display text-base font-semibold text-foreground">{t(titleKey)}</h3>
+      {/* YOUR SITUATION, before any threshold: the sentence a person can
+          repeat to someone else. */}
+      {value !== null ? (
+        <p className="mt-2 max-w-[52ch] text-[15px] font-medium leading-relaxed text-foreground">
+          {t(leadKey, { p: formatPercent(value, locale, 1) })}
+        </p>
+      ) : null}
       <p className="mt-1.5 max-w-[48ch] text-sm leading-relaxed text-muted-foreground">{t(explainKey)}</p>
       {/* THE PLAIN SENTENCE LEADS AND THE ACRONYM FOLLOWS. A borrower
           who has never met "PTI" learns nothing from a heading that
@@ -124,6 +137,19 @@ function RatioCard({
         </div>
       ) : null}
 
+      {breakdown && breakdown.length ? (
+        <div className="mt-4 rounded-lg border border-border px-3 py-1">
+          {breakdown.map((row) => (
+            <div key={row.labelKey} className="flex items-baseline justify-between gap-3 border-b border-border py-2 text-sm last:border-0">
+              <span className="text-muted-foreground">{t(row.labelKey)}</span>
+              <span className="tabular-nums text-foreground" dir="ltr">
+                {row.value.toLocaleString(locale)}{breakdown.currency ? ` ${breakdown.currency}` : ''}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       {rule ? (
         <p className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs text-muted-foreground">
           <span>{rule.sourceAuthority}</span>
@@ -151,10 +177,18 @@ export function AffordabilityView({
   affordability,
   ptiRule,
   ltvRule,
+  propertyPrice,
+  downPayment,
+  loanAmount,
+  currency,
 }: {
   affordability: AffordabilityResult;
   ptiRule: MortgageRule<PtiLimitRuleData> | null;
   ltvRule: MortgageRule<LtvLimitRuleData> | null;
+  propertyPrice: number | null;
+  downPayment: number | null;
+  loanAmount: number | null;
+  currency: string;
 }) {
   const { t, lang } = useLanguage();
   const locale = intlLocaleFor(lang);
@@ -171,6 +205,7 @@ export function AffordabilityView({
           titleKey="mortgage_afford_pti_title"
           explainKey="mortgage_afford_pti_explain"
           acronymKey="mortgage_afford_pti_acronym"
+          leadKey="mortgage_afford_pti_lead"
           value={affordability.ptiPercent}
           limit={ptiRule?.data.maxPtiPercent ?? null}
           within={affordability.ptiWithinPublishedLimit}
@@ -181,7 +216,20 @@ export function AffordabilityView({
           titleKey="mortgage_afford_ltv_title"
           explainKey="mortgage_afford_ltv_explain"
           acronymKey="mortgage_afford_ltv_acronym"
+          leadKey="mortgage_afford_ltv_lead"
           value={affordability.ltvPercent}
+          breakdown={
+            propertyPrice !== null && downPayment !== null && loanAmount !== null
+              ? Object.assign(
+                  [
+                    { labelKey: 'mortgage_label_property_price', value: propertyPrice },
+                    { labelKey: 'mortgage_label_down_payment', value: downPayment },
+                    { labelKey: 'mortgage_result_loan_amount', value: loanAmount },
+                  ],
+                  { currency },
+                )
+              : undefined
+          }
           limit={ltvRule?.data.maxLtvPercent ?? null}
           within={affordability.ltvWithinPublishedLimit}
           rule={ltvRule}

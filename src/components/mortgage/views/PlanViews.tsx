@@ -22,6 +22,7 @@ export function EarlyRepaymentView({
   currency,
   context,
   termMonths,
+  monthlyPayment,
 }: {
   draft: FinancingDraft;
   set: (field: DraftField, value: number | string | null) => void;
@@ -29,6 +30,8 @@ export function EarlyRepaymentView({
   currency: string;
   context: PresetContext;
   termMonths: number;
+  /** The scenario's own monthly payment, for the before/with pair. */
+  monthlyPayment: number;
 }) {
   const { t, lang } = useLanguage();
   const locale = intlLocaleFor(lang);
@@ -93,7 +96,49 @@ export function EarlyRepaymentView({
           titleKey="mortgage_mod_early_result_title"
           subtitleKey="mortgage_mod_early_result_sub"
         >
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          {/* THE SENTENCE FIRST. What this plan does, in the user's numbers,
+              before any table asks to be read. */}
+          <p className="max-w-[64ch] rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] px-4 py-3.5 text-[15px] leading-relaxed text-[hsl(var(--gold-ink))]">
+            {t('mortgage_early_lead', {
+              months: result.monthsSaved,
+              saved: formatMoney(result.interestSaved, currency, locale),
+            })}
+          </p>
+
+          {/* BEFORE / WITH, side by side, both from the same simulator. */}
+          <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+              <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                {t('mortgage_early_before_title')}
+              </p>
+              <div className="mt-2">
+                <StatRow labelKey="mortgage_result_monthly_label" value={monthlyPayment} kind="money" currency={currency} />
+                <StatRow labelKey="mortgage_early_payoff_label" value={result.baselinePayoffMonth} kind="months" />
+                <StatRow labelKey="mortgage_result_total_interest" value={result.baselineTotalInterest} kind="money" currency={currency} />
+                <StatRow labelKey="mortgage_early_total_label" value={result.baselineTotalCost} kind="money" currency={currency} />
+              </div>
+            </div>
+            <div className="relative overflow-hidden rounded-xl border border-[hsl(var(--gold-border))] bg-card p-4 shadow-hover">
+              <span className="absolute inset-y-0 start-0 w-[3px] bg-gold" aria-hidden="true" />
+              <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-[hsl(var(--gold-ink))]">
+                {t('mortgage_early_with_title')}
+              </p>
+              <div className="mt-2">
+                <StatRow labelKey="mortgage_result_monthly_label" value={monthlyPayment} kind="money" currency={currency} />
+                <StatRow labelKey="mortgage_early_payoff_label" value={result.newPayoffMonth} kind="months" />
+                <StatRow labelKey="mortgage_result_total_interest" value={result.totalInterestWithExtra} kind="money" currency={currency} />
+                <StatRow labelKey="mortgage_early_total_label" value={result.totalCostWithExtra} kind="money" currency={currency} />
+                <StatRow
+                  labelKey="mortgage_early_delta_label"
+                  value={Math.max(0, result.baselineTotalCost - result.totalCostWithExtra)}
+                  kind="money"
+                  currency={currency}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-6 sm:grid-cols-3">
             <Metric
               labelKey="mortgage_early_interest_saved"
               figure={fig(result.interestSaved)}
@@ -107,12 +152,6 @@ export function EarlyRepaymentView({
               figure={fig(result.newPayoffMonth)}
               kind="months"
               noteKey="mortgage_early_new_payoff_note"
-            />
-            <Metric
-              labelKey="mortgage_early_total_cost"
-              figure={fig(result.totalCostWithExtra)}
-              kind="money"
-              currency={currency}
             />
           </div>
 

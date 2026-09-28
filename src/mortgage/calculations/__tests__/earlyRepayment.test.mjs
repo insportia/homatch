@@ -46,3 +46,23 @@ test('calculateEarlyRepayment: rejects an out-of-range extraPaymentMonth rather 
   assert.throws(() => calculateEarlyRepayment(baseInput(), { extraPaymentAmount: 1000, extraPaymentMonth: 0 }));
   assert.throws(() => calculateEarlyRepayment(baseInput(), { extraPaymentAmount: 1000, extraPaymentMonth: 999 }));
 });
+
+test('baseline side is exposed and consistent with the saving figures', () => {
+  const r = calculateEarlyRepayment(baseInput(), { extraPaymentAmount: 20000, extraPaymentMonth: 12 });
+  assert.equal(r.baselinePayoffMonth, 240);
+  assert.equal(r.monthsSaved, r.baselinePayoffMonth - r.newPayoffMonth);
+  assert.equal(Math.round((r.baselineTotalInterest - r.totalInterestWithExtra) * 100) / 100, r.interestSaved);
+  // no fee entered -> not included, and the totals never assume zero fee silently
+  assert.equal(r.earlyRepaymentFeeIncluded, false);
+  assert.ok(r.baselineTotalCost > r.totalCostWithExtra, 'paying early costs less overall');
+});
+
+test('a known fee is included in the with-plan total, and only then', () => {
+  const base = baseInput();
+  const noFee = calculateEarlyRepayment(base, { extraPaymentAmount: 20000, extraPaymentMonth: 12 });
+  const fee = calculateEarlyRepayment(base, { extraPaymentAmount: 20000, extraPaymentMonth: 12, knownEarlyRepaymentFeeFlat: 400 });
+  assert.equal(fee.earlyRepaymentFeeIncluded, true);
+  assert.equal(Math.round((fee.totalCostWithExtra - noFee.totalCostWithExtra) * 100) / 100, 400);
+  // the baseline is fee-free either way: the fee belongs to the plan, not to doing nothing
+  assert.equal(fee.baselineTotalCost, noFee.baselineTotalCost);
+});

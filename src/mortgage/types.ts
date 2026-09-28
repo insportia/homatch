@@ -129,6 +129,12 @@ export interface EarlyRepaymentResult {
   interestSaved: number;
   totalCostWithExtra: number;
   earlyRepaymentFeeIncluded: boolean;
+  /* The do-nothing side, from the SAME simulator, so a before/with pair on
+   * screen can never disagree by methodology. */
+  baselinePayoffMonth: number;
+  baselineTotalInterest: number;
+  baselineTotalCost: number; // loanAmount + baseline interest + baseline recurring known costs
+  totalInterestWithExtra: number;
 }
 
 export interface RefinancingInput {

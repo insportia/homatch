@@ -84,5 +84,9 @@ export function calculateEarlyRepayment(baseInput: MortgageInput, extra: EarlyRe
     interestSaved: roundCurrency(baseline.totalInterest - withExtra.totalInterest),
     totalCostWithExtra,
     earlyRepaymentFeeIncluded: feeIncluded,
+    baselinePayoffMonth: baseline.payoffMonth,
+    baselineTotalInterest: baseline.totalInterest,
+    baselineTotalCost: roundCurrency(loanAmount + baseline.totalInterest + baseline.totalKnownRecurringCosts),
+    totalInterestWithExtra: withExtra.totalInterest,
   };
 }

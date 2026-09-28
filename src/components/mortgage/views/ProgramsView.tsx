@@ -39,6 +39,7 @@ import { cn } from '@/lib/utils';
 import { Module, formatMoney, formatPercent, intlLocaleFor } from '@/components/workspace/primitives';
 import { SourceBadge, YesNoField, ChipField } from '@/components/workspace/controls';
 import { AskHomatch } from '../askConsultant';
+import { computeMonthlyPayment } from '@/mortgage/calculations';
 import {
   computeSubsidyBenefit,
   criterionRole,
@@ -88,6 +89,9 @@ export function ProgramsView({
   nominalRatePercent,
   currency,
   loading,
+  loanAmount,
+  amortizingMonths,
+  onSwitchCurrency,
 }: {
   programs: MortgageRule<SubsidyProgramRuleData>[];
   matches: SubsidyMatch[];
@@ -98,6 +102,12 @@ export function ProgramsView({
   currency: string;
   /** True while the knowledge base is still being read. */
   loading?: boolean;
+  /** The scenario the comparison is computed on. */
+  loanAmount?: number | null;
+  amortizingMonths?: number | null;
+  /** Explicit user action: recalculate the SAME scenario in the programme's
+   * currency. Never called automatically. */
+  onSwitchCurrency?: (currency: string) => void;
 }) {
   const { t, lang } = useLanguage();
   const locale = intlLocaleFor(lang);
@@ -220,6 +230,45 @@ export function ProgramsView({
                     })}
                   </p>
                 ) : null}
+
+                {/* WITHOUT vs WITH, in money. Both payments come from the
+                    product's own computeMonthlyPayment — two rates through
+                    one formula — and the total is that difference over the
+                    subsidy period. An estimate, and labelled as one. */}
+                {benefit.effectiveBorrowerRatePercent !== null
+                  && nominalRatePercent !== null
+                  && typeof loanAmount === 'number' && loanAmount > 0
+                  && typeof amortizingMonths === 'number' && amortizingMonths > 0
+                  && months !== null ? (() => {
+                    const without = computeMonthlyPayment(loanAmount, nominalRatePercent, amortizingMonths);
+                    const withProgram = computeMonthlyPayment(loanAmount, benefit.effectiveBorrowerRatePercent, amortizingMonths);
+                    const period = Math.min(months, amortizingMonths);
+                    const saving = Math.max(0, Math.round((without - withProgram) * period * 100) / 100);
+                    return (
+                      <div className="mt-3 rounded-lg border border-[hsl(var(--gold-border))] bg-card p-3">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <p className="text-2xs uppercase tracking-[0.12em] text-muted-foreground">{t('mortgage_subsidy_compare_without')}</p>
+                            <p className="mt-0.5 font-display text-lg font-semibold tabular-nums text-foreground" dir="ltr">
+                              {formatMoney(without, programCurrency, locale)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-2xs uppercase tracking-[0.12em] text-[hsl(var(--gold-ink))]">{t('mortgage_subsidy_compare_with')}</p>
+                            <p className="mt-0.5 font-display text-lg font-semibold tabular-nums text-foreground" dir="ltr">
+                              {formatMoney(withProgram, programCurrency, locale)}
+                            </p>
+                          </div>
+                        </div>
+                        <p className="mt-2 text-2xs leading-relaxed text-muted-foreground">
+                          {t('mortgage_subsidy_compare_saving', {
+                            amount: formatMoney(saving, programCurrency, locale),
+                            months: period,
+                          })}
+                        </p>
+                      </div>
+                    );
+                  })() : null}
 
                 {/* The reduction itself is the "what the state covers"
                     fact above. Repeating it here put the same sentence on
@@ -381,6 +430,18 @@ export function ProgramsView({
                   <p className="mt-3 text-2xs font-medium leading-relaxed">
                     {say(match.nextStep, programCurrency)}
                   </p>
+                ) : null}
+
+                {/* The one legitimate shortcut: nothing is converted until
+                    the person presses it. */}
+                {match.currencyMismatch && onSwitchCurrency && programCurrency ? (
+                  <button
+                    type="button"
+                    onClick={() => onSwitchCurrency(programCurrency)}
+                    className="mt-3 inline-flex min-h-11 items-center rounded-xl border border-[hsl(var(--gold-border))] bg-card px-5 text-sm font-semibold text-foreground shadow-card transition-colors hover:bg-[hsl(var(--gold-soft))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {t('mortgage_subsidy_switch_currency', { currency: programCurrency })}
+                  </button>
                 ) : null}
 
                 {match.verdict === 'LIKELY_MATCH' ? (

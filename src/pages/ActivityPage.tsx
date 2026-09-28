@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { AppLayout } from '@/components/layouts/AppLayout';
+import { PageHero } from '@/components/customer/surface';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { getActivityEvents } from '@/services/api';
 import { activityLabelKey } from '@/lib/activityPresentation';
@@ -125,7 +126,7 @@ function ActivityContent() {
           wears it: white cards on the light canvas, gold accents. */}
       <div className="hm-customer -mx-4 -my-6 min-h-[calc(100dvh-4rem)] px-4 py-6 md:-mx-6 md:-my-8 md:px-6 md:py-8">
       <div className="max-w-2xl mx-auto space-y-6">
-        <h1 className="font-display text-2xl font-semibold tracking-[-0.015em] text-foreground">{t('activity_title')}</h1>
+        <PageHero compact title={t('activity_title')} />
 
         <div className="rounded-[0.9rem] border border-foreground/15 bg-card shadow-card">
           {loading ? (

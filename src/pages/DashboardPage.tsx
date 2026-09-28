@@ -507,13 +507,16 @@ function DashboardContent() {
         {/* ── 1. Welcome, with the four counts on the same surface ── */}
         <section className="overflow-hidden rounded-[0.9rem] border border-foreground/15 bg-card shadow-card">
           <div className="grid md:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
-            <div className="flex flex-col justify-center p-7 md:p-9 lg:p-11">
-              <h1 className="text-balance text-2xl font-bold tracking-[-0.022em] text-foreground sm:text-3xl lg:text-4xl">
+            {/* The navy structural greeting — the same frame the approved
+                Mortgage hero wears. The four counts below stay on white. */}
+            <div className="flex flex-col justify-center bg-[#0C1119] p-7 text-white md:p-9 lg:p-11">
+              <h1 className="text-balance font-display text-2xl font-bold tracking-[-0.022em] text-white sm:text-3xl lg:text-4xl">
                 {firstName ? t('dash_welcome_back_name', { name: firstName }) : t('dash_welcome_back')}
               </h1>
-              <p className="mt-4 max-w-xl text-pretty text-lg leading-relaxed text-ink-soft">
+              <p className="mt-4 max-w-xl text-pretty text-lg leading-relaxed text-white/80">
                 {t('db_welcome_sub')}
               </p>
+              <span className="mt-6 block h-[3px] w-16 rounded-full bg-[hsl(38_92%_56%)]" aria-hidden="true" />
             </div>
 
             {/* The reference's banner image. Same approved photograph as the
@@ -522,7 +525,7 @@ function DashboardContent() {
             <div className="relative hidden min-h-[15rem] md:block lg:min-h-[17rem]">
               <SceneMedia scene="hero" alt="" sizes="(min-width:1024px) 40vw, 45vw" position="58% 44%" />
               <div className="absolute inset-0 bg-[hsl(30_8%_8%/0.18)]" aria-hidden="true" />
-              <div className="absolute inset-y-0 start-0 w-16 bg-gradient-to-r from-card to-transparent rtl:bg-gradient-to-l" aria-hidden="true" />
+              <div className="absolute inset-y-0 start-0 w-16 bg-gradient-to-r from-[#0C1119] to-transparent rtl:bg-gradient-to-l" aria-hidden="true" />
               <figure className="absolute inset-0 flex items-end p-7 lg:p-8">
                 <div className="flex gap-3.5">
                   <span className="w-px shrink-0 self-stretch bg-gold" aria-hidden="true" />

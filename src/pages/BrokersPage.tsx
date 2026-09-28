@@ -511,14 +511,16 @@ export default function BrokersPage() {
     <AppLayout noPadding surfaceClass={PRODUCT_SURFACE}>
       <CustomerSurface className="max-w-6xl space-y-8 pt-6 sm:space-y-10 sm:pt-10">
         {/* ── Header ─────────────────────────────────────────────────────── */}
-        <header className="max-w-3xl">
-          <p className={EYEBROW}>{t('broker_dir_eyebrow')}</p>
-          <h1 className="mt-2 font-display text-2xl font-semibold leading-tight tracking-[-0.02em] text-foreground sm:text-4xl">
+        {/* The navy structural header — the directory's dark frame. */}
+        <header className="overflow-hidden rounded-2xl bg-[#0C1119] px-5 py-6 text-white shadow-hover sm:px-9 sm:py-8">
+          <p className="text-[13px] font-semibold uppercase tracking-[0.18em] text-[hsl(38_92%_60%)]">{t('broker_dir_eyebrow')}</p>
+          <h1 className="mt-2 font-display text-3xl font-bold leading-tight tracking-[-0.02em] text-white sm:text-4xl">
             {t('broker_page_title')}
           </h1>
-          <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
+          <p className="mt-3 max-w-3xl text-[15px] leading-relaxed text-white/80 sm:text-base">
             {t('broker_dir_lead')}
           </p>
+          <span className="mt-5 block h-[3px] w-16 rounded-full bg-[hsl(38_92%_56%)]" aria-hidden="true" />
         </header>
 
         <ul className="grid gap-3 sm:grid-cols-3">

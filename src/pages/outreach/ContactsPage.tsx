@@ -109,18 +109,19 @@ export default function ContactsPage() {
   return (
     <CommsWorkspace product={product}
       header={
-        <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end justify-between gap-3 overflow-hidden rounded-2xl bg-[#0C1119] px-5 py-5 text-white shadow-hover sm:px-7 sm:py-6">
           <div className="min-w-0">
             {/* "AI Calls > Contacts", not "Communications > Contacts". The
                 category is what somebody already knows; the product is the
                 thing they need to be sure of before they act on a row. */}
-            <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-gold-ink">
+            <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[hsl(38_92%_60%)]">
               {t(channel ? CHANNEL_TITLE_KEY[channel] : 'comms_workspace')}
             </p>
-            <h1 className="mt-0.5 text-xl font-semibold leading-tight sm:text-2xl">{t('comms_nav_contacts')}</h1>
-            <p className="mt-1 max-w-[46rem] text-sm leading-snug text-muted-foreground [overflow-wrap:anywhere]">
+            <h1 className="mt-0.5 font-display text-2xl font-bold leading-tight tracking-[-0.02em] text-white sm:text-3xl">{t('comms_nav_contacts')}</h1>
+            <p className="mt-1 max-w-[46rem] text-[15px] leading-relaxed text-white/80 [overflow-wrap:anywhere]">
               {t('comms_contacts_sub')}
             </p>
+            <span className="mt-3.5 block h-[3px] w-14 rounded-full bg-[hsl(38_92%_56%)]" aria-hidden="true" />
           </div>
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <Button size="sm" className="h-8 gap-1.5" onClick={() => setAdding(true)}>

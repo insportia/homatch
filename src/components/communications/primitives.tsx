@@ -296,21 +296,26 @@ export function PageHeader({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3">
+    /* The navy structural header, same DNA as the approved Mortgage hero:
+       dark frame, gold eyebrow, white title — then white workspace below. */
+    <div className="flex flex-wrap items-end justify-between gap-3 overflow-hidden rounded-2xl bg-[#0C1119] px-5 py-5 text-white shadow-hover sm:px-7 sm:py-6">
       <div className="min-w-0">
         {eyebrow ? (
-          <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-gold-ink">{eyebrow}</p>
+          <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[hsl(38_92%_60%)]">{eyebrow}</p>
         ) : null}
-        <h1 className="truncate text-xl font-semibold">{title}</h1>
-        {subtitle ? <p className="mt-0.5 text-sm text-muted-foreground">{subtitle}</p> : null}
+        <h1 className="truncate font-display text-2xl font-bold tracking-[-0.02em] text-white">{title}</h1>
+        {subtitle ? <p className="mt-1 max-w-[58ch] text-[15px] leading-relaxed text-white/80">{subtitle}</p> : null}
+        <span className="mt-3.5 block h-[3px] w-14 rounded-full bg-[hsl(38_92%_56%)]" aria-hidden="true" />
       </div>
       <div className="flex flex-wrap items-center gap-2">
         {children}
         {secondary ? (
-          <Button size="sm" variant="outline" onClick={secondary.onClick}>{secondary.label}</Button>
+          <Button size="sm" variant="outline" className="border-white/40 bg-white text-[#0C1119] hover:bg-white/90" onClick={secondary.onClick}>{secondary.label}</Button>
         ) : null}
         {primary ? (
-          <Button size="sm" onClick={primary.onClick} disabled={primary.busy}>
+          /* Inside the navy frame, the primary action is the gold one — a
+             near-black button on near-black ground would vanish. */
+          <Button size="sm" className="border-0 bg-[hsl(38_92%_54%)] font-bold text-[#161309] hover:bg-[hsl(38_92%_60%)]" onClick={primary.onClick} disabled={primary.busy}>
             {/* §80: a mutation button shows progress and cannot be double-fired. */}
             {primary.busy ? <Loader2 className="me-1.5 h-3.5 w-3.5 animate-spin" /> : null}
             {primary.label}

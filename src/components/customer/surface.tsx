@@ -431,3 +431,36 @@ export function CardAction({
     </div>
   );
 }
+
+/**
+ * The navy structural header — the approved Mortgage hero, promoted.
+ * Deep ink ground, gold eyebrow, white title, a gold hairline of light.
+ * Structure only: the WORK always happens on white below it.
+ */
+export function PageHero({ eyebrow, title, subtitle, actions, compact = false }: {
+  eyebrow?: string | null;
+  title: string;
+  subtitle?: string | null;
+  actions?: React.ReactNode;
+  compact?: boolean;
+}) {
+  return (
+    <header className={`overflow-hidden rounded-2xl bg-[#0C1119] text-white shadow-hover ${compact ? 'px-5 py-5 sm:px-7 sm:py-6' : 'px-5 py-6 sm:px-9 sm:py-8'}`}>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          {eyebrow ? (
+            <p className="text-[13px] font-semibold uppercase tracking-[0.18em] text-[hsl(38_92%_60%)]">{eyebrow}</p>
+          ) : null}
+          <h1 className={`mt-1.5 font-display font-bold leading-tight tracking-[-0.02em] text-white ${compact ? 'text-2xl sm:text-3xl' : 'text-3xl sm:text-4xl'}`}>
+            {title}
+          </h1>
+          {subtitle ? (
+            <p className="mt-2 max-w-[58ch] text-[15px] leading-relaxed text-white/80 sm:text-base">{subtitle}</p>
+          ) : null}
+          <span className="mt-4 block h-[3px] w-16 rounded-full bg-[hsl(38_92%_56%)]" aria-hidden="true" />
+        </div>
+        {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
+      </div>
+    </header>
+  );
+}

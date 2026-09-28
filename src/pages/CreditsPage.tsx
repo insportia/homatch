@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { AppLayout } from '@/components/layouts/AppLayout';
+import { PageHero } from '@/components/customer/surface';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -222,20 +223,21 @@ function CreditsContent() {
   return (
     <AppLayout>
       <div className="max-w-2xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-semibold text-foreground">{t('credits_title')}</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">{t('credits_topup_desc', { min: (minCents / 100).toFixed(2).replace(/\.00$/, ''), credits: String(ent.creditsPerUsd || 10) })}</p>
-          </div>
-          <Button
-            onClick={() => setShowTopUp(true)}
-            className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold h-9 shrink-0"
-          >
-            <Zap className="h-4 w-4 mr-1.5" />
-            {t('credits_topup_btn')}
-          </Button>
-        </div>
+        {/* The navy structural header, gold CTA inside it. */}
+        <PageHero
+          compact
+          title={t('credits_title')}
+          subtitle={t('credits_topup_desc', { min: (minCents / 100).toFixed(2).replace(/\.00$/, ''), credits: String(ent.creditsPerUsd || 10) })}
+          actions={(
+            <Button
+              onClick={() => setShowTopUp(true)}
+              className="h-11 shrink-0 border-0 bg-[hsl(38_92%_54%)] px-5 font-bold text-[#161309] hover:bg-[hsl(38_92%_60%)]"
+            >
+              <Zap className="h-4 w-4 mr-1.5" />
+              {t('credits_topup_btn')}
+            </Button>
+          )}
+        />
 
         {/*
           The result of a card setup takes precedence over the offer: somebody

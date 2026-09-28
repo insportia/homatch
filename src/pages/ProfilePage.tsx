@@ -245,11 +245,10 @@ function ProfileContent() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6 pb-16">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        {/* Premium-light icon tile: gold hairline on a warm wash, never
-            bg-primary/10 — see the customer surface grammar. */}
-        <div className="w-16 h-16 rounded-full border border-gold/30 bg-gold/[0.06] flex items-center justify-center text-xl font-semibold text-gold-ink shrink-0 overflow-hidden">
+      {/* The navy structural header: identity as the page's dark frame,
+          the account WORK on white below. */}
+      <header className="flex items-center gap-4 overflow-hidden rounded-2xl bg-[#0C1119] px-5 py-5 text-white shadow-hover sm:px-7">
+        <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-full bg-[hsl(38_92%_56%)]/15 text-xl font-semibold text-[hsl(38_92%_60%)] ring-1 ring-inset ring-[hsl(38_92%_56%)]/40">
           {homatchUser.avatar_url ? (
             <img src={homatchUser.avatar_url} alt="" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
           ) : (
@@ -257,10 +256,11 @@ function ProfileContent() {
           )}
         </div>
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold text-foreground truncate">{nickname || fullName || homatchUser.email}</h1>
-          <p className="text-sm text-muted-foreground truncate">{homatchUser.email}</p>
+          <h1 className="truncate font-display text-2xl font-bold tracking-[-0.02em] text-white">{nickname || fullName || homatchUser.email}</h1>
+          <p className="truncate text-[15px] text-white/75">{homatchUser.email}</p>
+          <span className="mt-2.5 block h-[3px] w-14 rounded-full bg-[hsl(38_92%_56%)]" aria-hidden="true" />
         </div>
-      </div>
+      </header>
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="grid grid-cols-3 bg-secondary border border-border w-full">

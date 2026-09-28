@@ -122,16 +122,16 @@ export default function WhatsAppPage() {
             <span className="mt-3.5 block h-[3px] w-14 rounded-full bg-[hsl(38_92%_56%)]" aria-hidden="true" />
           </div>
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <Button size="sm" className="h-8" onClick={() => navigate('/outreach/whatsapp/campaigns/new')}>
+            <Button size="sm" className="h-8 bg-[hsl(38_92%_54%)] font-bold text-[#161309] hover:bg-[hsl(38_92%_60%)]" onClick={() => navigate('/outreach/whatsapp/campaigns/new')}>
               {t('comms_wa_new_campaign')}
             </Button>
-            <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => navigate('/outreach/whatsapp/inbox')}>
+            <Button size="sm" className="h-8 gap-1.5 border border-white/40 bg-white text-[#0C1119] hover:bg-white/90" onClick={() => navigate('/outreach/whatsapp/inbox')}>
               {t('comm_open_inbox')}
               {/* 99+, not 9+: a shared inbox genuinely reaches three digits,
                   and "9+" on 240 waiting conversations is not information. */}
               <UnreadBadge count={unread} cap={99} />
             </Button>
-            <Button variant="ghost" size="sm" className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground" onClick={() => navigate('/outreach/whatsapp/templates')}>
+            <Button variant="ghost" size="sm" className="h-8 px-2 text-xs text-white/75 hover:bg-white/10 hover:text-white" onClick={() => navigate('/outreach/whatsapp/templates')}>
               {t('comm_templates')}
             </Button>
           </div>

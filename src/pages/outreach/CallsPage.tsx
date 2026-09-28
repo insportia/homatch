@@ -162,17 +162,20 @@ export default function CallsPage() {
             </p>
             <span className="mt-3.5 block h-[3px] w-14 rounded-full bg-[hsl(38_92%_56%)]" aria-hidden="true" />
           </div>
+          {/* Inside the navy frame the light-theme button variants are
+              illegible, so each control carries the in-frame grammar:
+              gold primary, white secondary, white-on-navy quiet. */}
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <Button size="sm" className="h-8" onClick={() => navigate('/outreach/calls/campaigns/new')}>
+            <Button size="sm" className="h-8 bg-[hsl(38_92%_54%)] font-bold text-[#161309] hover:bg-[hsl(38_92%_60%)]" onClick={() => navigate('/outreach/calls/campaigns/new')}>
               {t('comms_calls_new_campaign')}
             </Button>
-            <Button variant="outline" size="sm" className="h-8" onClick={() => navigate('/outreach/campaigns?channel=AI_CALL')}>
+            <Button size="sm" className="h-8 border border-white/40 bg-white text-[#0C1119] hover:bg-white/90" onClick={() => navigate('/outreach/campaigns?channel=AI_CALL')}>
               {t('comm_campaigns_title')}
             </Button>
-            <Button variant="ghost" size="sm" className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground" onClick={() => navigate('/outreach/agents')}>
+            <Button variant="ghost" size="sm" className="h-8 px-2 text-xs text-white/75 hover:bg-white/10 hover:text-white" onClick={() => navigate('/outreach/agents')}>
               {t('comms_create_agent')}
             </Button>
-            <Button variant="ghost" size="sm" className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground" onClick={() => navigate('/outreach/contacts/import')}>
+            <Button variant="ghost" size="sm" className="h-8 px-2 text-xs text-white/75 hover:bg-white/10 hover:text-white" onClick={() => navigate('/outreach/contacts/import')}>
               {t('comms_import_contacts')}
             </Button>
           </div>

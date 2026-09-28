@@ -163,7 +163,7 @@ export default function CommunicationsOverviewPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Button size="sm" className="h-8" onClick={() => navigate('/outreach/campaigns/new')}>
+            <Button size="sm" className="h-8 bg-[hsl(38_92%_54%)] font-bold text-[#161309] hover:bg-[hsl(38_92%_60%)]" onClick={() => navigate('/outreach/campaigns/new')}>
               {t('comm_new_campaign')}
             </Button>
           </div>

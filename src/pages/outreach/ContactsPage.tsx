@@ -124,18 +124,18 @@ export default function ContactsPage() {
             <span className="mt-3.5 block h-[3px] w-14 rounded-full bg-[hsl(38_92%_56%)]" aria-hidden="true" />
           </div>
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <Button size="sm" className="h-8 gap-1.5" onClick={() => setAdding(true)}>
+            <Button size="sm" className="h-8 gap-1.5 bg-[hsl(38_92%_54%)] font-bold text-[#161309] hover:bg-[hsl(38_92%_60%)]" onClick={() => setAdding(true)}>
               <UserPlus className="h-3.5 w-3.5" aria-hidden="true" />
               {t('comms_contact_add')}
             </Button>
-            <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => navigate(channelPath(channel, '/contacts/import'))}>
+            <Button size="sm" className="h-8 gap-1.5 border border-white/40 bg-white text-[#0C1119] hover:bg-white/90" onClick={() => navigate(channelPath(channel, '/contacts/import'))}>
               <Upload className="h-3.5 w-3.5" aria-hidden="true" />
               {t('comms_import_contacts')}
             </Button>
             {/* Back into THIS product's lists, not the shared page. An action
                 that leaves the product is the same leak as a menu that does. */}
             <Button
-              variant="outline" size="sm" className="h-8"
+              size="sm" className="h-8 border border-white/40 bg-white text-[#0C1119] hover:bg-white/90"
               onClick={() => navigate(channel === 'EMAIL' ? channelPath(channel, '/lists') : '/outreach/contact-lists')}
             >
               {t('comms_contacts_lists')}

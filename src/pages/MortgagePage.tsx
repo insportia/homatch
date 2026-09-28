@@ -204,21 +204,23 @@ export default function MortgagePage() {
           */}
         <div className="hm-customer hm-customer-canvas min-h-[calc(100vh-4rem)]">
           <div className="mx-auto w-full max-w-[64rem] space-y-8 px-4 py-8 sm:px-6 sm:py-10">
-            {/* ── A. The name ── */}
-            <header>
-              <p className="text-2xs font-semibold uppercase tracking-[0.18em] text-[hsl(var(--gold-ink))]">
-                {t('mortgage_product_eyebrow')}
-              </p>
-              <h1 className="mt-1.5 font-display text-2xl font-semibold leading-tight text-foreground sm:text-3xl">
-                {t('mortgage_page_title')}
-              </h1>
-              {/* THE PROMISE, NOT A DESCRIPTION.
-                  Five fields is a small ask, and somebody looking at them
-                  should already know they are about to get more back than
-                  a payment figure. Two lines, and then the form. */}
-              <p className="mt-2 max-w-[62ch] text-sm leading-relaxed text-muted-foreground">
-                {t('mortgage_opening_promise')}
-              </p>
+            {/* ── A. The name — DARK STRUCTURAL FRAMING.
+                The navy band is the product's frame: deep ink ground, white
+                title, gold eyebrow and a hairline of gold light. The WORK
+                happens on the white panels below it. */}
+            <header className="overflow-hidden rounded-2xl bg-[#0C1119] px-5 py-6 text-white shadow-hover sm:px-9 sm:py-10">
+              <div className="relative">
+                <p className="text-[13px] font-semibold uppercase tracking-[0.18em] text-[hsl(38_92%_60%)]">
+                  {t('mortgage_product_eyebrow')}
+                </p>
+                <h1 className="mt-2 font-display text-3xl font-bold leading-tight tracking-[-0.02em] text-white sm:text-4xl">
+                  {t('mortgage_page_title')}
+                </h1>
+                <p className="mt-2.5 max-w-[58ch] text-[15px] leading-relaxed text-white/80 sm:text-base">
+                  {t('mortgage_opening_promise')}
+                </p>
+                <span className="mt-5 block h-[3px] w-16 rounded-full bg-[hsl(38_92%_56%)]" aria-hidden="true" />
+              </div>
             </header>
 
             {/* ── B. The calculator ── */}

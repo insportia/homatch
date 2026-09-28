@@ -808,7 +808,9 @@
     /* A drawn line, not a wash — the border now carries the separation the
        grey canvas used to fake. */
     --border: 40 12% 84%;
-    --input: 40 12% 80%;
+    /* The FIELD FILL (workspace controls paint bg-input): crisp white on the
+       light surfaces; the drawn line is border-border. */
+    --input: 0 0% 100%;
     --ring: 38 88% 40%;
 
     --gold: 38 88% 54%;
@@ -872,7 +874,7 @@
     --destructive-foreground: 0 0% 100%;
 
     --border: 40 12% 84%;
-    --input: 40 12% 80%;
+    --input: 0 0% 100%;
     --ring: 224 16% 24%;
 
     --success: 152 54% 28%;

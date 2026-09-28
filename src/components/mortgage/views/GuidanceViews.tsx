@@ -72,54 +72,79 @@ export function BeforeYouSignView() {
           const isOpen = open === topic.id;
           const askKey = SIGNING_ASK[topic.id];
           return (
-            <li key={topic.id} className="overflow-hidden rounded-xl border border-border bg-[hsl(var(--secondary))]">
+            {/*
+              * WHITE, NOT GREY. This accordion was a grey band on a grey
+              * body with two grey boxed cards inside — the disabled-looking
+              * composition the visual direction explicitly rejects. Now:
+              * a white row with a drawn hairline; the OPEN state earns the
+              * gold start-bar and a lift; the expanded content is an
+              * editorial sheet — ink typography, one fine divider, two
+              * columns separated by whitespace rather than boxes.
+              */}
+            <li
+              key={topic.id}
+              className={cn(
+                'relative overflow-hidden rounded-xl border bg-card transition-all',
+                isOpen
+                  ? 'border-[hsl(var(--gold-border))] shadow-hover'
+                  : 'border-border hover:border-foreground/30',
+              )}
+            >
+              {isOpen && (
+                <span className="absolute inset-y-0 start-0 w-[3px] bg-gold" aria-hidden="true" />
+              )}
               <button
                 type="button"
                 onClick={() => setOpen(isOpen ? null : topic.id)}
                 aria-expanded={isOpen}
                 aria-controls={`sign-${topic.id}`}
-                className="flex w-full items-start justify-between gap-3 px-4 py-3.5 text-start"
+                className="group flex w-full items-start justify-between gap-3 px-5 py-4 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
               >
                 <span className="min-w-0">
-                  <span className="block text-sm font-semibold text-foreground">{t(topic.titleKey)}</span>
-                  <span className="mt-0.5 block text-2xs leading-relaxed text-muted-foreground">
+                  <span className="block text-[15px] font-semibold leading-snug text-foreground">{t(topic.titleKey)}</span>
+                  <span className="mt-1 block text-[13px] leading-relaxed text-muted-foreground">
                     {t(topic.summaryKey)}
                   </span>
                 </span>
-                <ChevronDown
+                <span
                   className={cn(
-                    'mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform',
-                    isOpen && 'rotate-180',
+                    'mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full ring-1 ring-inset transition-all',
+                    isOpen
+                      ? 'bg-gold/15 ring-gold/40 text-gold-ink'
+                      : 'ring-border text-foreground/60 group-hover:ring-foreground/30 group-hover:text-foreground',
                   )}
                   aria-hidden="true"
-                />
+                >
+                  <ChevronDown className={cn('h-4 w-4 transition-transform', isOpen && 'rotate-180')} />
+                </span>
               </button>
 
               {isOpen ? (
-                <div id={`sign-${topic.id}`} className="space-y-4 border-t border-border px-4 py-4">
-                  <p className="max-w-[64ch] text-sm leading-relaxed text-muted-foreground">{t(topic.whatKey)}</p>
+                <div id={`sign-${topic.id}`} className="space-y-5 border-t border-border px-5 pb-5 pt-4">
+                  <p className="max-w-[64ch] text-[15px] leading-relaxed text-foreground/85">{t(topic.whatKey)}</p>
 
                   <div>
                     <p className="text-2xs font-semibold uppercase tracking-[0.14em] text-[hsl(var(--gold-ink))]">
                       {t('mortgage_sign_why_label')}
                     </p>
-                    <p className="mt-1 max-w-[64ch] text-sm leading-relaxed text-foreground">{t(topic.whyKey)}</p>
+                    <p className="mt-1.5 max-w-[64ch] text-[15px] leading-relaxed text-foreground">{t(topic.whyKey)}</p>
                   </div>
 
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-lg border border-border p-3.5">
-                      <p className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  {/* Two reading columns, divided by a rule — not two more boxes. */}
+                  <div className="grid gap-5 border-t border-border pt-4 sm:grid-cols-2 sm:gap-8">
+                    <div>
+                      <p className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-[0.12em] text-[hsl(var(--gold-ink))]">
                         <MessageCircleQuestion className="h-3.5 w-3.5" aria-hidden="true" />
                         {t('mortgage_sign_ask_label')}
                       </p>
-                      <p className="mt-1.5 text-sm leading-relaxed text-foreground">{t(topic.askKey)}</p>
+                      <p className="mt-2 text-[15px] leading-relaxed text-foreground">{t(topic.askKey)}</p>
                     </div>
-                    <div className="rounded-lg border border-border p-3.5">
-                      <p className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                    <div>
+                      <p className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-[0.12em] text-[hsl(var(--gold-ink))]">
                         <FileSearch className="h-3.5 w-3.5" aria-hidden="true" />
                         {t('mortgage_sign_check_label')}
                       </p>
-                      <p className="mt-1.5 text-sm leading-relaxed text-foreground">{t(topic.checkKey)}</p>
+                      <p className="mt-2 text-[15px] leading-relaxed text-foreground">{t(topic.checkKey)}</p>
                     </div>
                   </div>
 
@@ -192,13 +217,20 @@ export function ChecklistView({ input, result, breakdown }: ChecklistContext) {
                   const isKnown = state?.status === 'KNOWN';
                   const isOpen = open === item.id;
                   return (
-                    <li key={item.id} className="rounded-xl border border-border bg-[hsl(var(--secondary))]">
+                    <li
+                      key={item.id}
+                      className={cn(
+                        'relative overflow-hidden rounded-xl border bg-card transition-all',
+                        isOpen ? 'border-[hsl(var(--gold-border))] shadow-hover' : 'border-border hover:border-foreground/30',
+                      )}
+                    >
+                      {isOpen && <span className="absolute inset-y-0 start-0 w-[3px] bg-gold" aria-hidden="true" />}
                       <button
                         type="button"
                         onClick={() => setOpen(isOpen ? null : item.id)}
                         aria-expanded={isOpen}
                         aria-controls={`check-${item.id}`}
-                        className="flex w-full items-start gap-3 px-4 py-3 text-start"
+                        className="flex w-full items-start gap-3 px-4 py-3 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                       >
                         <span className="min-w-0 flex-1">
                           <span className="block text-sm font-medium text-foreground">{t(item.labelKey)}</span>

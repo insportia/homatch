@@ -34,7 +34,7 @@ const NAV_CLEARANCE = 'pb-[calc(4.75rem+env(safe-area-inset-bottom))] md:pb-3';
 type EvidenceStatus = 'VERIFIED' | 'HOMATCH_DATA' | 'FOUND_ONLINE' | 'CONFLICTING' | 'UNVERIFIED';
 const EVIDENCE_CFG: Record<EvidenceStatus, { color: string; labelKey: string }> = {
   VERIFIED:     { color: 'bg-green-500/15 text-green-400 border-green-500/25',   labelKey: 'evidence_verified' },
-  HOMATCH_DATA: { color: 'bg-primary/10 text-primary border-primary/20',          labelKey: 'evidence_homatch_data' },
+  HOMATCH_DATA: { color: 'bg-gold/10 text-gold-ink border-gold/30',               labelKey: 'evidence_homatch_data' },
   FOUND_ONLINE: { color: 'bg-blue-500/10 text-blue-400 border-blue-500/20',       labelKey: 'evidence_found_online' },
   CONFLICTING:  { color: 'bg-amber-500/10 text-amber-400 border-amber-500/20',    labelKey: 'evidence_conflicting' },
   UNVERIFIED:   { color: 'bg-muted text-muted-foreground border-border',          labelKey: 'evidence_unverified' },
@@ -67,7 +67,7 @@ function ResearchCard({
 }) {
   const { t } = useLanguage();
   return (
-    <Card className="border-primary/20 bg-primary/5 mt-2">
+    <Card className="mt-2 border-[hsl(var(--gold-border))] bg-card shadow-card">
       <CardHeader className="pb-2 pt-4">
         <CardTitle className="flex flex-wrap items-center gap-2">
           <Star className="h-4 w-4 text-primary" />
@@ -148,7 +148,7 @@ function EmptyState({ onPrompt }: { onPrompt: (p: string) => void }) {
      */
     <div className="flex min-h-full flex-col items-center px-5 py-8 text-center sm:px-8">
       <div className="my-auto flex w-full max-w-2xl flex-col items-center">
-      <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
+      <div className="mb-4 grid h-14 w-14 place-items-center rounded-full bg-gold/10 ring-1 ring-inset ring-gold/25 text-gold-ink">
         <Sparkles className="h-7 w-7 text-primary" />
       </div>
       <h2 className="text-lg font-semibold text-foreground mb-1">{t('ai_title')}</h2>
@@ -167,7 +167,7 @@ function EmptyState({ onPrompt }: { onPrompt: (p: string) => void }) {
             >
               <Icon className="h-4 w-4 text-primary shrink-0" />
               <span className="text-base text-muted-foreground transition-colors group-hover:text-foreground">{label}</span>
-              <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/40 ms-auto rtl:rotate-180" />
+              <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground ms-auto rtl:rotate-180" />
             </button>
           );
         })}
@@ -211,7 +211,7 @@ function MessageBubble({
      */
     <div className={`flex gap-3 ${isUser ? 'justify-end' : ''}`}>
       {!isUser && (
-        <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+        <div className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md border border-gold/30 bg-gold/[0.06] text-gold-ink">
           <Bot className="h-4 w-4 text-primary" />
         </div>
       )}
@@ -350,13 +350,13 @@ function AIPageInner() {
   if (!session && anonLimitReached) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center px-5 py-8 text-center min-h-[60vh] sm:p-8">
-        <div className="mb-5 grid h-16 w-16 place-items-center rounded-[1rem] border border-foreground/15 bg-secondary">
+        <div className="mb-5 grid h-16 w-16 place-items-center rounded-full bg-gold/10 ring-1 ring-inset ring-gold/25 text-gold-ink">
           <Bot className="h-8 w-8 text-gold-ink" />
         </div>
         <h2 className="text-xl font-semibold text-foreground mb-2">{t('ai_sign_in_prompt')}</h2>
         <p className="text-sm text-muted-foreground mb-6 max-w-xs leading-relaxed">{t('ai_sign_in_desc')}</p>
         {input && (
-          <p className="text-xs text-muted-foreground/60 mb-4 max-w-xs italic">"{input}"</p>
+          <p className="text-xs text-muted-foreground mb-4 max-w-xs italic">"{input}"</p>
         )}
         <div className="flex flex-col sm:flex-row gap-3">
           <Button className="h-11 rounded-full px-6 font-semibold"
@@ -410,12 +410,12 @@ function AIPageInner() {
                 onClick={() => { loadConversation(conv.id); setSidebarOpen(false); }}
                 className={`w-full text-start p-2.5 rounded-lg text-sm transition-colors truncate ${
                   activeConvId === conv.id
-                    ? 'bg-primary/10 text-foreground font-medium'
+                    ? 'bg-gold/10 text-foreground font-medium'
                     : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
                 }`}
               >
                 <div className="truncate">{conv.title}</div>
-                <div className="text-[13px] text-muted-foreground/60 mt-0.5">
+                <div className="text-[13px] text-muted-foreground mt-0.5">
                   {formatDistanceToNow(conv.updatedAt, { addSuffix: true })}
                 </div>
               </button>
@@ -468,7 +468,7 @@ function AIPageInner() {
               )}
               {streaming && !streamContent && (
                 <div className="flex gap-3">
-                  <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                  <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-gold/30 bg-gold/[0.06] text-gold-ink">
                     <Loader2 className="h-4 w-4 text-primary animate-spin" />
                   </div>
                   <div className="rounded-2xl rounded-ss-sm border border-border bg-card px-4 py-3">
@@ -499,7 +499,7 @@ function AIPageInner() {
 
         {insufficientCredits && (
           <div className="mx-auto w-full max-w-2xl px-4 pb-2">
-            <div className="rounded-xl border border-primary/30 bg-primary/5 px-4 py-3.5">
+            <div className="rounded-xl border border-[hsl(var(--gold-border))] bg-gold/[0.05] px-4 py-3.5">
               <p className="text-sm leading-relaxed text-foreground">{t('ai_out_of_credits')}</p>
               <button
                 type="button"
@@ -588,7 +588,7 @@ function AIPageInner() {
               </Button>
             )}
           </div>
-          <p className="text-center text-[13px] text-muted-foreground/50 mt-2">
+          <p className="text-center text-[13px] text-muted-foreground mt-2">
             {t('ai_disclaimer')}
           </p>
         </div>

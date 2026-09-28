@@ -768,15 +768,23 @@
    * and every unmigrated page are untouched.
    */
   .hm-customer {
-    /* 96% -> 94%. The root palette records reaching 93% by the same route: two shades
-       off white is not a canvas, it is white with a rounding error. These panels also
-       carry a shadow, so they need one step less separation than the root's cards. */
-    --background: 220 14% 94%;   /* the canvas a white panel sits on */
-    --foreground: 224 12% 10%;
+    /*
+     * THE CANVAS IS WARM AND NEARLY WHITE — NOT GREY.
+     *
+     * The cool 220-hue 94% canvas read as a disabled application: every
+     * white panel sat in a field of pale grey, every secondary fill echoed
+     * the same grey inside the panel, and the whole surface converged on
+     * one washed-out value. Separation now comes from the border and the
+     * shadow, not from tinting a third of the screen grey. The few
+     * remaining tints are WARM (the gold family's hue), so even the quiet
+     * parts of the screen read as the brand, never as slate.
+     */
+    --background: 42 38% 97%;    /* warm near-white the panels sit on */
+    --foreground: 224 14% 9%;
     --card: 0 0% 100%;
-    --card-foreground: 224 12% 10%;
+    --card-foreground: 224 14% 9%;
     --popover: 0 0% 100%;
-    --popover-foreground: 224 12% 10%;
+    --popover-foreground: 224 14% 9%;
 
     /* Black stays the fill for the rare heavy control. The customer layer's own
        primary action is gold-on-gold-soft, which carries at 5.6:1 and does not
@@ -784,21 +792,23 @@
     --primary: 224 14% 9%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 14% 94%;
-    --secondary-foreground: 224 12% 14%;
-    --muted: 220 14% 94%;
+    /* A whisper of warmth, no longer a grey slab: these are INNER fills on
+       white, and at 94%-cool they were the grey-on-grey look itself. */
+    --secondary: 42 30% 96%;
+    --secondary-foreground: 224 14% 12%;
+    --muted: 42 30% 96%;
     /* Ink, not grey. Most of a working screen is "supporting" copy. */
-    --muted-foreground: 220 9% 34%;
-    --accent: 220 14% 92%;
-    --accent-foreground: 224 12% 12%;
+    --muted-foreground: 222 12% 30%;
+    --accent: 42 32% 94%;
+    --accent-foreground: 224 14% 10%;
 
     --destructive: 0 66% 44%;
     --destructive-foreground: 0 0% 100%;
 
-    /* Lighter than the root's hairline, because these panels also carry a
-       shadow; two separations at full strength read as a box. */
-    --border: 220 13% 88%;
-    --input: 220 13% 84%;
+    /* A drawn line, not a wash — the border now carries the separation the
+       grey canvas used to fake. */
+    --border: 40 12% 84%;
+    --input: 40 12% 80%;
     --ring: 38 88% 40%;
 
     --gold: 38 88% 54%;
@@ -811,8 +821,8 @@
     --warning: 32 78% 36%;
     --info: 214 62% 34%;
 
-    --shadow-card: 0 1px 2px hsl(220 20% 10% / 0.04), 0 4px 16px hsl(220 20% 10% / 0.04);
-    --shadow-hover: 0 2px 4px hsl(220 20% 10% / 0.06), 0 12px 28px hsl(220 20% 10% / 0.08);
+    --shadow-card: 0 1px 2px hsl(35 25% 15% / 0.05), 0 6px 20px hsl(35 25% 15% / 0.06);
+    --shadow-hover: 0 2px 4px hsl(35 25% 15% / 0.07), 0 14px 32px hsl(35 25% 15% / 0.10);
 
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
@@ -837,12 +847,12 @@
    * spacing logic shared with the rest of the application.
    */
   .hm-product {
-    --background: 220 13% 95%;
-    --foreground: 224 12% 10%;
+    --background: 42 34% 97%;
+    --foreground: 224 14% 9%;
     --card: 0 0% 100%;
-    --card-foreground: 224 12% 10%;
+    --card-foreground: 224 14% 9%;
     --popover: 0 0% 100%;
-    --popover-foreground: 224 12% 10%;
+    --popover-foreground: 224 14% 9%;
 
     /* The product's own action colour: near-black ink, used at CONTROL size with
        real padding. The rejected screenshot's fault was not that a button was
@@ -851,18 +861,18 @@
     --primary: 224 16% 12%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 13% 93%;
-    --secondary-foreground: 224 12% 14%;
-    --muted: 220 13% 93%;
-    --muted-foreground: 220 9% 34%;
-    --accent: 220 13% 91%;
-    --accent-foreground: 224 12% 12%;
+    --secondary: 42 28% 96%;
+    --secondary-foreground: 224 14% 12%;
+    --muted: 42 28% 96%;
+    --muted-foreground: 222 12% 30%;
+    --accent: 42 30% 94%;
+    --accent-foreground: 224 14% 10%;
 
     --destructive: 0 66% 44%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 13% 87%;
-    --input: 220 13% 83%;
+    --border: 40 12% 84%;
+    --input: 40 12% 80%;
     --ring: 224 16% 24%;
 
     --success: 152 54% 28%;

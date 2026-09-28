@@ -48,15 +48,26 @@ export function __resetNavigationCountForTests(): void {
  */
 const PARENTS: ReadonlyArray<readonly [RegExp, string | ((m: RegExpMatchArray) => string)]> = [
   [/^\/verify\/[^/]+$/, '/verify'],
+  [/^\/contracts\/[^/]+$/, '/contracts'],
   [/^\/property\/([^/]+)\/matches$/, (m) => `/property/${m[1]}`],
-  [/^\/property\/(?:add|import|create)$/, '/dashboard'],
-  [/^\/property\/[^/]+$/, '/dashboard'],
+  [/^\/property\/(?:add|import|create)$/, '/property'],
+  /* A property belongs to the owner workspace, not the dashboard — the page's
+     own back control already said so and the shell used to disagree. */
+  [/^\/property\/[^/]+$/, '/property'],
   [/^\/deal-rooms\/[^/]+$/, '/deal-rooms'],
+  /* Two-level communications screens go to their own list, not the hub. */
+  [/^\/outreach\/campaigns\/new$/, '/outreach/campaigns'],
+  [/^\/outreach\/contacts\/import$/, '/outreach/contacts'],
+  [/^\/outreach\/(agents|contacts)\/[^/]+$/, (m) => `/outreach/${m[1]}`],
+  [/^\/outreach\/(calls|whatsapp|email)\/(?:campaigns\/new|contacts\/import)$/, (m) => `/outreach/${m[1]}`],
+  [/^\/outreach\/(calls|whatsapp|email)\/[^/]+$/, (m) => `/outreach/${m[1]}`],
   [/^\/outreach\/[^/]+$/, '/outreach'],
   [/^\/developer\/[^/]+$/, '/dashboard'],
+  [/^\/for-expats\/georgia\/[^/]+$/, '/for-expats/georgia'],
+  [/^\/for-expats\/plan$/, '/for-expats/georgia'],
   /* A single-level product screen belongs to the dashboard. Listed after the
      nested patterns so /outreach/email is not caught by /outreach. */
-  [/^\/(?:ai|chat|live-chat|activity|notifications|credits|profile|viewings|active-search|outreach|deal-rooms)$/, '/dashboard'],
+  [/^\/(?:ai|chat|live-chat|activity|notifications|credits|profile|viewings|active-search|outreach|deal-rooms|mortgage|investment|brokers)$/, '/dashboard'],
 ];
 
 /**

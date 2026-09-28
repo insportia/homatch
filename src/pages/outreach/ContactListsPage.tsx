@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Upload, FileText, CheckCircle, AlertCircle, Users, Download, Trash2, Plus, Loader2 } from 'lucide-react';
-import { AppLayout } from '@/components/layouts/AppLayout';
 import { CommsWorkspace } from '@/components/communications/CommsWorkspace';
+import { StatusBadge } from '@/components/communications/primitives';
 import {
   CHANNEL_TITLE_KEY, useCommsChannel, useCommsProduct,
 } from '@/components/communications/channel';
@@ -16,7 +16,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/db/supabase';
-import { ContactList, ContactListStatus } from '@/types/types';
+import { ContactList } from '@/types/types';
 import { toast } from 'sonner';
 import { parseCsv } from '@/lib/csv';
 
@@ -30,14 +30,6 @@ interface ImportPreview {
   missing_email: number;
   missing_phone: number;
 }
-
-const STATUS_BADGE: Record<ContactListStatus, { label: string; class: string }> = {
-  PENDING:   { label: 'Pending',   class: 'bg-muted text-muted-foreground' },
-  ANALYZING: { label: 'Analyzing', class: 'bg-yellow-500/10 text-yellow-700' },
-  READY:     { label: 'Ready',     class: 'bg-green-500/10 text-green-700' },
-  FAILED:    { label: 'Failed',    class: 'bg-red-500/10 text-red-700' },
-  ARCHIVED:  { label: 'Archived',  class: 'bg-muted text-muted-foreground' },
-};
 
 type TKey = Parameters<ReturnType<typeof useLanguage>['t']>[0];
 
@@ -249,7 +241,7 @@ export default function ContactListsPage() {
                 </p>
               ) : null}
               <h1 className="text-xl font-semibold flex items-center gap-2">
-                <Users className="h-5 w-5 text-primary" />
+                <Users className="h-5 w-5 text-gold-ink" />
                 {t('contacts_title')}
               </h1>
               <p className="text-sm text-muted-foreground mt-0.5">{t('contacts_subtitle')}</p>
@@ -274,7 +266,9 @@ export default function ContactListsPage() {
             </div>
           ) : lists.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
-              <FileText className="h-10 w-10 text-muted-foreground/40" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gold/10 ring-1 ring-inset ring-gold/25 text-gold-ink">
+                <FileText className="h-6 w-6" aria-hidden="true" />
+              </div>
               <p className="text-sm font-medium">{t('contacts_empty_title')}</p>
               <p className="text-xs text-muted-foreground max-w-xs">{t('contacts_empty_desc')}</p>
               <Button size="sm" onClick={() => setCreateOpen(true)}>
@@ -284,16 +278,17 @@ export default function ContactListsPage() {
           ) : (
             <div className="space-y-3">
               {lists.map((list) => {
-                const sb = STATUS_BADGE[list.import_status] ?? STATUS_BADGE.PENDING;
                 return (
-                  <Card key={list.id} className="hover:border-primary/30 transition-colors">
+                  <Card key={list.id} className="hover:border-foreground/25 transition-colors">
                     <CardContent className="p-4">
                       <div className="flex items-start gap-3">
-                        <FileText className="h-8 w-8 text-muted-foreground/50 shrink-0 mt-0.5" />
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-gold/30 bg-gold/[0.06] text-gold-ink mt-0.5">
+                          <FileText className="h-4 w-4" aria-hidden="true" />
+                        </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-medium text-sm truncate">{list.name}</span>
-                            <Badge className={`text-[13px] px-1.5 ${sb.class}`}>{sb.label}</Badge>
+                            <StatusBadge status={list.import_status} />
                             {list.source_format && <Badge variant="outline" className="text-[13px] px-1.5">{list.source_format}</Badge>}
                           </div>
                           {list.description && <p className="text-xs text-muted-foreground mt-0.5 truncate">{list.description}</p>}

@@ -11,7 +11,6 @@ import { supabase } from '@/db/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
@@ -20,7 +19,7 @@ import { getCreditAccount, getCreditLedger, getMyPayments, updateMyProfile } fro
 import type { CreditAccount, CreditLedgerEntry, LedgerType, Payment, PaymentStatus } from '@/types/types';
 import { toast } from 'sonner';
 import {
-  User as UserIcon, Mail, Phone, Calendar, Shield, Zap, CreditCard, Lock,
+  User as UserIcon, Mail, Calendar, Zap, CreditCard, Lock,
   Loader2, Save, ExternalLink, CheckCircle2, KeyRound, Chrome, UserX,
 } from 'lucide-react';
 
@@ -248,7 +247,9 @@ function ProfileContent() {
     <div className="max-w-2xl mx-auto space-y-6 pb-16">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <div className="w-16 h-16 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-xl font-semibold text-primary shrink-0 overflow-hidden">
+        {/* Premium-light icon tile: gold hairline on a warm wash, never
+            bg-primary/10 — see the customer surface grammar. */}
+        <div className="w-16 h-16 rounded-full border border-gold/30 bg-gold/[0.06] flex items-center justify-center text-xl font-semibold text-gold-ink shrink-0 overflow-hidden">
           {homatchUser.avatar_url ? (
             <img src={homatchUser.avatar_url} alt="" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
           ) : (
@@ -270,9 +271,9 @@ function ProfileContent() {
 
         {/* ── Overview ─────────────────────────────────────────── */}
         <TabsContent value="overview" className="mt-4 space-y-4">
-          <Card className="border-border bg-card">
+          <Card className="rounded-[0.9rem] border-foreground/15 bg-card shadow-card">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2"><UserIcon className="h-4 w-4 text-primary" /> {t('profile_section_details')}</CardTitle>
+              <CardTitle className="text-sm flex items-center gap-2"><UserIcon className="h-4 w-4 text-gold-ink" /> {t('profile_section_details')}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -302,13 +303,10 @@ function ProfileContent() {
             </CardContent>
           </Card>
 
-          <Card className="border-border bg-card">
+          {/* Account facts: registration date, sign-in method, language.
+              No plan row — HOMATCH is pay-as-you-go and has no plans. */}
+          <Card className="rounded-[0.9rem] border-foreground/15 bg-card shadow-card">
             <CardContent className="pt-4 space-y-3 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground flex items-center gap-1.5"><Shield className="h-3.5 w-3.5" /> {t('profile_field_plan')}</span>
-                <Badge variant="outline" className="uppercase text-[13px]">{homatchUser.plan || t('profile_plan_free')}</Badge>
-              </div>
-              <Separator className="bg-border" />
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" /> {t('profile_field_registered')}</span>
                 <span className="text-foreground">{registeredAt}</span>
@@ -340,14 +338,14 @@ function ProfileContent() {
 
         {/* ── Billing ──────────────────────────────────────────── */}
         <TabsContent value="billing" className="mt-4 space-y-4">
-          <Card className="border-primary/20 bg-primary/5">
+          <Card className="rounded-[0.9rem] border-gold/30 bg-gold/[0.06] shadow-card">
             <CardContent className="p-5 flex items-center justify-between">
               <div>
                 <p className="text-xs text-muted-foreground mb-1">{t('credits_balance')}</p>
                 {billingLoading ? (
                   <div className="h-8 w-24 bg-muted rounded animate-pulse" />
                 ) : (
-                  <p className="text-3xl font-semibold text-primary">{balance.toFixed(2)}</p>
+                  <p className="text-3xl font-semibold tabular-nums text-foreground">{balance.toFixed(2)}</p>
                 )}
               </div>
               <Button size="sm" onClick={() => navigate('/credits')} className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90">
@@ -356,7 +354,7 @@ function ProfileContent() {
             </CardContent>
           </Card>
 
-          <Card className="border-border bg-card">
+          <Card className="rounded-[0.9rem] border-foreground/15 bg-card shadow-card">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm">{t('credits_ledger_title')}</CardTitle>
             </CardHeader>
@@ -370,7 +368,8 @@ function ProfileContent() {
                   {ledger.map((e, i) => (
                     <div key={e.id ?? i} className="flex items-center justify-between py-2 text-xs gap-2">
                       <span className="text-muted-foreground break-words">{t(LEDGER_TYPE_KEY[e.type] ?? 'credits_type_adjustment')}</span>
-                      <span className={`shrink-0 ${e.amount < 0 ? 'text-destructive font-medium' : 'text-green-400 font-medium'}`}>
+                      {/* green-600, not green-400: this ledger now sits on a white card. */}
+                      <span className={`shrink-0 ${e.amount < 0 ? 'text-destructive font-medium' : 'text-green-600 font-medium'}`}>
                         {e.amount < 0 ? '' : '+'}{e.amount.toFixed(2)} CR
                       </span>
                     </div>
@@ -380,9 +379,9 @@ function ProfileContent() {
             </CardContent>
           </Card>
 
-          <Card className="border-border bg-card">
+          <Card className="rounded-[0.9rem] border-foreground/15 bg-card shadow-card">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2"><CreditCard className="h-4 w-4 text-primary" /> {t('profile_payment_history')}</CardTitle>
+              <CardTitle className="text-sm flex items-center gap-2"><CreditCard className="h-4 w-4 text-gold-ink" /> {t('profile_payment_history')}</CardTitle>
             </CardHeader>
             <CardContent className="pt-0">
               {billingLoading ? (
@@ -412,9 +411,9 @@ function ProfileContent() {
 
         {/* ── Security ─────────────────────────────────────────── */}
         <TabsContent value="security" className="mt-4 space-y-4">
-          <Card className="border-border bg-card">
+          <Card className="rounded-[0.9rem] border-foreground/15 bg-card shadow-card">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2"><Lock className="h-4 w-4 text-primary" /> {t('profile_section_password')}</CardTitle>
+              <CardTitle className="text-sm flex items-center gap-2"><Lock className="h-4 w-4 text-gold-ink" /> {t('profile_section_password')}</CardTitle>
             </CardHeader>
             <CardContent>
               {hasEmailAuth ? (
@@ -452,7 +451,7 @@ function ProfileContent() {
             </CardContent>
           </Card>
 
-          <Card className="border-border bg-card">
+          <Card className="rounded-[0.9rem] border-foreground/15 bg-card shadow-card">
             <CardContent className="pt-4">
               <Button variant="ghost" size="sm" className="text-xs text-destructive hover:text-destructive border border-border" onClick={() => { signOut(); navigate('/'); }}>
                 {t('nav_logout')}
@@ -469,7 +468,11 @@ export default function ProfilePage() {
   return (
     <RouteGuard>
       <AppLayout>
-        <ProfileContent />
+        {/* The shell's premium light block, worn the same way the dashboard
+            wears it: white cards on the light canvas, gold accents. */}
+        <div className="hm-customer -mx-4 -my-6 min-h-[calc(100dvh-4rem)] px-4 py-6 md:-mx-6 md:-my-8 md:px-6 md:py-8">
+          <ProfileContent />
+        </div>
       </AppLayout>
     </RouteGuard>
   );

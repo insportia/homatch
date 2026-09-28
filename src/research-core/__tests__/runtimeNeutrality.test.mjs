@@ -463,6 +463,13 @@ test('the core is consumed only through its deliberate integration points', () =
      */
     'supabase/functions/_shared/evidenceFreshness.ts',
     'supabase/functions/run-matching-v2/index.ts',
+    /*
+     * The legacy matcher consumes exactly one core module —
+     * match/demand-freshness.ts — so that "how old may demand be" has one
+     * definition across v1, v2 and supply-matching instead of three. It
+     * touches no fetch path and no flow-control primitive.
+     */
+    'supabase/functions/run-matching/index.ts',
     'supabase/functions/revalidate-evidence/index.ts',
     /*
      * SUPPLY DISCOVERY — the seventh seam, and the widest.

@@ -128,7 +128,7 @@ export function FinancingPictureView({ picture }: { picture: FinancingPicture })
   ];
 
   return (
-    <div className="hm-workspace-panel overflow-hidden">
+    <div className="hm-customer-panel overflow-hidden">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
         <div className="min-w-0">
           <h2 className="font-display text-lg font-semibold text-foreground">{t('mortgage_pic_title')}</h2>

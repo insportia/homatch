@@ -127,9 +127,15 @@ test('mortgage never reaches into Investment for a component', () => {
   }
 });
 
-test('the page is on the shared canvas, not the light app surface', () => {
+test('the page is on the customer premium-light surface', () => {
+  /* The consultant moved from the dark analytical navy to the customer
+     family's light ground — a deliberate product decision, not drift: a
+     dark instrument panel inside the light shell read as a different
+     product. What still matters here is that it uses a SHARED scope, not
+     ad-hoc colors of its own. */
   const page = read('src/pages/MortgagePage.tsx');
-  assert.ok(page.includes('hm-workspace hm-workspace-canvas'));
+  assert.ok(page.includes('hm-customer hm-customer-canvas'));
+  assert.ok(!page.includes('hm-workspace hm-workspace-canvas'));
   assert.ok(!page.includes("useSurfaceTheme('light')"));
   /*
    * ONE DECLARATION, SEVERAL NAMES. `.hm-invest` is what Investment and Verify were born

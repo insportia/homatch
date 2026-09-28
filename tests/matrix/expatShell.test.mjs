@@ -19,26 +19,31 @@ const PAGES = [
   'src/pages/ExpatPlanPage.tsx',
 ];
 
-test('expat 1: every Expat page renders the Homatch header and footer', () => {
-  for (const page of PAGES) {
-    const src = readFileSync(page, 'utf8');
-    assert.match(src, /<PublicHeader links=\{headerLinks\}/, `${page} has no Homatch header`);
-    assert.match(src, /<SiteFooter \/>/, `${page} has no Homatch footer`);
-    assert.match(src, /usePublicNavLinks\(\)/, `${page} is not using the one navigation`);
-  }
-});
-
-test('expat 2: the header is solid, because these heroes are not black', () => {
+test('expat 1: every Expat page renders inside the shared shell', () => {
   /*
-   * PublicHeader's transparent state only works over a full-bleed black
-   * hero; ExpatHero is a light workspace canvas, so transparent would render
-   * the logo and the navigation white on white — which is how a header
-   * disappears.
+   * These pages used to hand-roll PublicHeader + SiteFooter, which was an
+   * improvement over the bare fragments they started as — but it also
+   * meant a SIGNED-IN customer opening Expats from the sidebar fell out of
+   * the product shell entirely: no sidebar, no way back. AppLayout gives
+   * both audiences the right chrome: the customer shell when signed in,
+   * the sticky public header and footer when not.
    */
   for (const page of PAGES) {
     const src = readFileSync(page, 'utf8');
-    assert.match(src, /<PublicHeader links=\{headerLinks\} solid \/>/, `${page} would render an invisible header`);
-    assert.match(src, /<HeaderSpacer \/>/, `${page} would render content under the fixed header`);
+    assert.match(src, /<AppLayout noPadding>/, `${page} is not inside the shared shell`);
+    assert.doesNotMatch(src, /<PublicHeader/, `${page} must not hand-roll a second header`);
+    assert.doesNotMatch(src, /<SiteFooter/, `${page} must not hand-roll a second footer`);
+  }
+});
+
+test('expat 2: the loading and missing states keep the shell too', () => {
+  /* A skeleton with no chrome is how the mobile sweep once recorded
+     "rendered nothing" at 320px. Every early return wears the layout. */
+  for (const page of ['src/pages/ExpatPlanPage.tsx', 'src/pages/ExpatTopicPage.tsx']) {
+    const src = readFileSync(page, 'utf8');
+    const returns = src.split('return (').length - 1;
+    const shells = src.split('<AppLayout noPadding>').length - 1;
+    assert.ok(shells >= 2, `${page}: early-return states must render inside AppLayout as well (${shells})`);
   }
 });
 

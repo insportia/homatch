@@ -8,6 +8,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { notify } from '../_shared/notify.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { judgeDemandFreshness } from '../../../src/research-core/match/demand-freshness.ts';
 
 // ── MATCHING ENGINE (inlined — shared imports not supported in bundler) ──
 
@@ -284,9 +285,21 @@ serve(async (req) => {
         // Compute recency
         const signal = Array.isArray(profile.signal) ? profile.signal[0] : profile.signal;
         const publishedAt = signal?.published_at ? new Date(signal.published_at) : null;
-        const recencyHours = publishedAt
+
+        /* ANCIENT DEMAND NEVER BECOMES A MATCH — same policy as v2. The
+           signal row stays; only active-match creation is refused. */
+        const demandFreshness = judgeDemandFreshness(signal?.published_at ?? null, {
+          transaction: profile.transaction_type,
+        });
+        if (!demandFreshness.eligible) { matchesSkipped++; continue; }
+
+        /* An undated post used to be INVENTED as 72 hours old, which bought
+           it recency scoring, a fresher price and a fake "3d ago" label.
+           Unknown is unknown: no recency credit, the conservative price
+           band, and no label. */
+        const recencyHours = publishedAt && !Number.isNaN(publishedAt.getTime())
           ? (Date.now() - publishedAt.getTime()) / 3_600_000
-          : 72;
+          : Number.POSITIVE_INFINITY;
 
         const sourceQuality =
           (signal?.source as { quality_score?: number } | null)?.quality_score ?? 5;
@@ -337,7 +350,7 @@ serve(async (req) => {
           ? `${profile.bedrooms_min}${profile.bedrooms_max ? `–${profile.bedrooms_max}` : '+'}`
           : null;
 
-        const recencyLabel = formatRecency(recencyHours);
+        const recencyLabel = Number.isFinite(recencyHours) ? formatRecency(recencyHours) : null;
 
         // Insert match
         const { error: matchErr } = await supabase.from('matches').insert({
@@ -414,7 +427,7 @@ async function notifyNewMatches(
     await notify(supabase, {
       userId,
       type: 'MATCH_AVAILABLE',
-      title: `New ${m.signal_strength} match found`,
+      title: 'New match found',
       body: 'A strong buyer intent matched your property.',
       priority: 'NORMAL',
       deepLink: `/property/${m.property_id}/matches`,

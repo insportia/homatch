@@ -29,17 +29,20 @@ const BOTTOM_INSET = 'pb-[calc(0.75rem+env(safe-area-inset-bottom))]';
 const NAV_CLEARANCE = 'pb-[calc(4.75rem+env(safe-area-inset-bottom))] md:pb-3';
 
 // ── Evidence status badge ──────────────────────────────────────
+// The chip is customer-facing, so the label is a translation key, never the
+// backend enum's raw English shouting.
 type EvidenceStatus = 'VERIFIED' | 'HOMATCH_DATA' | 'FOUND_ONLINE' | 'CONFLICTING' | 'UNVERIFIED';
-const EVIDENCE_CFG: Record<EvidenceStatus, { color: string; label: string }> = {
-  VERIFIED:     { color: 'bg-green-500/15 text-green-400 border-green-500/25',   label: 'VERIFIED' },
-  HOMATCH_DATA: { color: 'bg-primary/10 text-primary border-primary/20',          label: 'HOMATCH DATA' },
-  FOUND_ONLINE: { color: 'bg-blue-500/10 text-blue-400 border-blue-500/20',       label: 'FOUND ONLINE' },
-  CONFLICTING:  { color: 'bg-amber-500/10 text-amber-400 border-amber-500/20',    label: 'CONFLICTING' },
-  UNVERIFIED:   { color: 'bg-muted text-muted-foreground border-border',          label: 'UNVERIFIED' },
+const EVIDENCE_CFG: Record<EvidenceStatus, { color: string; labelKey: string }> = {
+  VERIFIED:     { color: 'bg-green-500/15 text-green-400 border-green-500/25',   labelKey: 'evidence_verified' },
+  HOMATCH_DATA: { color: 'bg-primary/10 text-primary border-primary/20',          labelKey: 'evidence_homatch_data' },
+  FOUND_ONLINE: { color: 'bg-blue-500/10 text-blue-400 border-blue-500/20',       labelKey: 'evidence_found_online' },
+  CONFLICTING:  { color: 'bg-amber-500/10 text-amber-400 border-amber-500/20',    labelKey: 'evidence_conflicting' },
+  UNVERIFIED:   { color: 'bg-muted text-muted-foreground border-border',          labelKey: 'evidence_unverified' },
 };
 function EvidenceBadge({ status }: { status: EvidenceStatus }) {
+  const { t } = useLanguage();
   const cfg = EVIDENCE_CFG[status] ?? EVIDENCE_CFG.UNVERIFIED;
-  return <span className={`text-[13px] px-1.5 py-0.5 rounded border font-medium ${cfg.color}`}>{cfg.label}</span>;
+  return <span className={`text-[13px] px-1.5 py-0.5 rounded border font-medium ${cfg.color}`}>{t(cfg.labelKey)}</span>;
 }
 
 // ── Research result card (parsed from streaming assistant message) ────────────

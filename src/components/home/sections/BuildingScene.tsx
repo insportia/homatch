@@ -166,7 +166,7 @@ export function BuildingScene({
         io.disconnect();
         // Slow enough to follow: building, scan, floors, floor, unit, done.
         timers = Array.from({ length: LAST }, (_, i) => window.setTimeout(
-          () => setPhase(i + 1), 400 + i * 1250,
+          () => setPhase(i + 1), 250 + i * 650,
         ));
       }
       // A quarter of it visible is a reader arriving, not a reader passing.
@@ -516,7 +516,7 @@ export function BuildingScene({
             style={{
               opacity: unitPicked ? 1 : 0,
               transform: unitPicked ? 'none' : 'translateY(20px)',
-              transition: still ? undefined : `opacity 520ms cubic-bezier(0.16,1,0.3,1) ${i * 140}ms, transform 520ms cubic-bezier(0.16,1,0.3,1) ${i * 140}ms`,
+              transition: still ? undefined : `opacity 420ms cubic-bezier(0.16,1,0.3,1) ${i * 90}ms, transform 420ms cubic-bezier(0.16,1,0.3,1) ${i * 90}ms`,
             }}
           >
             <dt className="text-[13px] uppercase tracking-[0.14em] text-white/45" {...(fields?.callout?.(i) ?? {})}>

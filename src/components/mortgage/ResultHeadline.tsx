@@ -37,7 +37,7 @@ export function ResultHeadline({
   const m = (value: number) => formatMoney(value, currency, locale);
 
   return (
-    <section id="result" className="hm-workspace-panel hm-workspace-focus p-5 sm:p-7">
+    <section id="result" className="hm-customer-panel hm-customer-focus p-5 sm:p-7">
       <p className="text-2xs font-semibold uppercase tracking-[0.14em] text-[hsl(var(--gold-ink))]">
         {t('mortgage_result_eyebrow')}
       </p>

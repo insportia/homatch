@@ -104,7 +104,7 @@ export function ContractDocument({ copy, fields }: { copy: DocumentCopy; fields?
       // 1..LAST, a beat apart. Slow enough to read, short enough to finish
       // before somebody scrolls past.
       timers = Array.from({ length: LAST }, (_, i) => window.setTimeout(
-        () => setPhase(i + 1), 260 + i * 1150,
+        () => setPhase(i + 1), 200 + i * 600,
       ));
     };
 
@@ -161,7 +161,7 @@ export function ContractDocument({ copy, fields }: { copy: DocumentCopy; fields?
             */}
           {!still && !done && (
             <span
-              className="pointer-events-none absolute inset-x-0 z-10 h-24 transition-transform duration-[1100ms] ease-[cubic-bezier(0.4,0,0.2,1)]"
+              className="pointer-events-none absolute inset-x-0 z-10 h-24 transition-transform duration-[750ms] ease-[cubic-bezier(0.4,0,0.2,1)]"
               style={{
                 top: 0,
                 transform: `translateY(${[0, 30, 100, 172, 262][Math.min(phase, 4)]}px)`,

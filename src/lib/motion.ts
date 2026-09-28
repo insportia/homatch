@@ -80,8 +80,11 @@ export function revealShape(level: MotionLevel): RevealShape {
    * still one quiet rise rather than a bounce, and it is actually perceptible
    * while scrolling.
    */
-  if (level === 'simplified') return { distance: 18, duration: 480, stagger: 45 };
-  return { distance: 22, duration: 520, stagger: 70 };
+  /* 360/400ms, down from 480/520. At half a second a person scrolling at
+     reading speed reached content that was still fading in — the reveal
+     must finish BEFORE the eye arrives, or it reads as lag, not polish. */
+  if (level === 'simplified') return { distance: 16, duration: 360, stagger: 40 };
+  return { distance: 20, duration: 400, stagger: 60 };
 }
 
 /**

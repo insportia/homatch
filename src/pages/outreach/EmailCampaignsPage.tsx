@@ -47,18 +47,8 @@ import { OutreachCampaign, ContactList } from '@/types/types';
 import { toast } from 'sonner';
 import { useOutreachProviderStatus } from '@/hooks/useOutreachProviderStatus';
 import { listConversations, listEmailSends } from '@/services/communications';
+import { StatusBadge } from '@/components/communications/primitives';
 import type { CommConversation, CommSend } from '@/types/communications';
-
-const STATUS_STYLES: Record<string, string> = {
-  DRAFT:     'bg-muted text-muted-foreground',
-  READY:     'bg-blue-500/10 text-blue-700',
-  SCHEDULED: 'bg-purple-500/10 text-purple-700',
-  RUNNING:   'bg-green-500/10 text-green-700',
-  PAUSED:    'bg-yellow-500/10 text-yellow-700',
-  COMPLETED: 'bg-green-700/10 text-green-800',
-  CANCELLED: 'bg-red-500/10 text-red-700',
-  FAILED:    'bg-red-500/10 text-red-700',
-};
 
 /** The tabs, and which statuses each one owns. Every status has a home. */
 const TABS = [
@@ -516,7 +506,7 @@ export default function EmailCampaignsPage() {
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="min-w-0">
             <h1 className="flex items-center gap-2 text-xl font-semibold">
-              <Mail className="h-5 w-5 text-primary" />
+              <Mail className="h-5 w-5 text-gold-ink" />
               {t('email_campaigns_title')}
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">{t('email_campaigns_subtitle')}</p>
@@ -529,7 +519,7 @@ export default function EmailCampaignsPage() {
     >
         <div className="space-y-5">
 
-          <Alert variant={providerStatus?.email?.real ? 'default' : undefined} className={providerStatus?.email?.real ? 'border-green-500/40 bg-green-500/5' : ''}>
+          <Alert variant={providerStatus?.email?.real ? 'default' : undefined} className={providerStatus?.email?.real ? 'border-emerald-500/30 bg-emerald-500/[0.06]' : ''}>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription className="text-xs">
               {/* "Checking" is only true while the request is in flight.
@@ -601,14 +591,14 @@ export default function EmailCampaignsPage() {
                 const launchable = !isLegacy && !['COMPLETED', 'CANCELLED', 'SCHEDULED'].includes(c.status) && !!c.contact_list_id;
 
                 return (
-                  <Card key={c.id} className="hover:border-primary/30 transition-colors">
+                  <Card key={c.id} className="hover:border-foreground/25 transition-colors">
                     <CardContent className="p-4">
                       <div className="flex items-center gap-3 min-w-0">
                         <Mail className="h-8 w-8 shrink-0 text-muted-foreground/50" />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-medium text-sm truncate">{c.name}</span>
-                            <Badge className={`text-[13px] px-1.5 ${STATUS_STYLES[c.status] ?? STATUS_STYLES.DRAFT}`}>{c.status}</Badge>
+                            <StatusBadge status={c.status} />
                             {partial && (
                               <Badge className="text-[13px] px-1.5 bg-yellow-500/10 text-yellow-700">{t('email_partially_failed')}</Badge>
                             )}
@@ -631,8 +621,10 @@ export default function EmailCampaignsPage() {
                           {isLegacy && (
                             <p className="text-[13px] text-orange-700 mt-1">{t('email_legacy_mock_note')}</p>
                           )}
+                          {/* The stored error is a provider message, not a
+                              sentence for the person who wrote the campaign. */}
                           {c.status === 'FAILED' && c.last_send_error && (
-                            <p className="text-[13px] text-red-700 mt-1">{c.last_send_error}</p>
+                            <p className="text-[13px] text-red-700 mt-1">{t('email_send_error_generic')}</p>
                           )}
 
                           <div className="flex gap-4 mt-1 text-[14px] text-muted-foreground flex-wrap">
@@ -759,7 +751,6 @@ export default function EmailCampaignsPage() {
                          Asking the database again for something already in
                          memory is how a list becomes N+1 queries. */
                       const campaign = campaigns.find((c) => c.id === row.campaign_id);
-                      const failed = ['FAILED', 'BOUNCED', 'COMPLAINED'].includes(row.status);
                       return (
                         <tr key={row.id} className="align-middle">
                           <td className="max-w-[14rem] truncate px-3 py-2">{row.recipient_email ?? '—'}</td>
@@ -767,12 +758,7 @@ export default function EmailCampaignsPage() {
                             {campaign?.name ?? '—'}
                           </td>
                           <td className="px-3 py-2">
-                            <Badge
-                              variant="outline"
-                              className={`text-[13px] ${failed ? 'border-red-500/40 text-red-700' : ''}`}
-                            >
-                              {row.status}
-                            </Badge>
+                            <StatusBadge status={row.status} />
                           </td>
                           <td className="whitespace-nowrap px-3 py-2 text-end text-[13px] tabular-nums text-muted-foreground">
                             {row.sent_at
@@ -856,7 +842,7 @@ export default function EmailCampaignsPage() {
           <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-lg">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <Eye className="h-4 w-4 text-primary" />
+                <Eye className="h-4 w-4 text-gold-ink" />
                 {previewCampaign?.name}
               </DialogTitle>
             </DialogHeader>

@@ -278,8 +278,15 @@ export default function LiveChatPage() {
 
   return (
     <RouteGuard>
-      <AppLayout noPadding>
-        <div className="mx-auto flex h-[calc(100dvh-4rem)] w-full max-w-3xl flex-col overflow-hidden md:h-[calc(100dvh-5rem)]">
+      {/*
+       * hidePadding, like /ai: the shell becomes a fixed-height flex column
+       * (window minus the real header), so h-full below is the space that is
+       * actually left — no header-height guess, and none of the shell's
+       * pb-24 bottom padding, which on a self-sized screen was pure overflow
+       * that made the whole page scroll behind the composer.
+       */}
+      <AppLayout hidePadding>
+        <div className="mx-auto flex h-full w-full max-w-3xl flex-col overflow-hidden">
           <div className="flex items-center gap-2 px-4 py-3 border-b border-border shrink-0">
             <Radio className="h-5 w-5 text-primary" />
             <div className="flex-1 min-w-0">
@@ -368,7 +375,14 @@ export default function LiveChatPage() {
             <div ref={bottomRef} />
           </div>
 
-          <div className="px-4 py-3 border-t border-border shrink-0">
+          {/*
+            * The composer clears two fixed things at once on a phone: the
+            * 4rem bottom tab bar (this page is always signed-in, so the bar
+            * always exists) and the home indicator inset beneath it. From md
+            * the bar is gone and the ordinary 0.75rem remains. Same clearance
+            * as AIPage's NAV_CLEARANCE.
+            */}
+          <div className="px-4 pt-3 pb-[calc(4.75rem+env(safe-area-inset-bottom))] md:pb-3 border-t border-border shrink-0">
             {(replyTo || editingId) && (
               <div className="flex items-center justify-between gap-2 mb-2 px-2.5 py-1.5 rounded-lg bg-secondary/60 text-xs">
                 <span className="truncate text-muted-foreground">

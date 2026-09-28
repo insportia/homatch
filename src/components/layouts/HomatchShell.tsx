@@ -29,7 +29,7 @@ import {
   Handshake, LogOut, Mail, MapPinHouse, Menu, MessageCircle, MessageSquare, PhoneCall, Search,
   Settings, ShieldCheck, Sparkles, User as UserIcon, X, Activity,
   CircleDollarSign, Coins as CoinsIcon, TrendingUp,
-  FileSignature, Globe,
+  FileSignature, Globe, Briefcase,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -140,6 +140,14 @@ export const NAV: NavGroup[] = [
        * actual text search box, which is what a magnifier is for.
        */
       { key: 'dnav_find_property', path: '/find-property', icon: MapPinHouse },
+      /*
+       * THE BROKER DIRECTORY, previously reachable only through the public
+       * site. It is a working tool — find a professional for your market and
+       * language — and a signed-in customer had no way to discover it existed.
+       * This is /brokers the directory, not /partners the marketing page,
+       * which stays public-only (see ALSO GONE above).
+       */
+      { key: 'pub_nav_brokers', path: '/brokers', icon: Briefcase },
     ],
   },
   /*

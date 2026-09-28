@@ -133,7 +133,7 @@ export function ConsultantPanel({ brief }: { brief: ConsultantBrief | null }) {
   }, [brief, t]);
 
   return (
-    <section id="consultant" className="hm-workspace-panel p-5 sm:p-7">
+    <section id="consultant" className="hm-customer-panel p-5 sm:p-7">
       <div className="flex items-center gap-2">
         <Sparkles className="h-4 w-4 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />
         <h2 className="font-display text-lg font-semibold text-foreground">

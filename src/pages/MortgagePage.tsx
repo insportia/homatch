@@ -192,7 +192,17 @@ export default function MortgagePage() {
     <AppLayout noPadding>
       <PageMeta title={t('mortgage_page_title')} description={t('mortgage_page_subtitle')} />
       <MortgageAskProvider>
-        <div className="hm-workspace hm-workspace-canvas min-h-[calc(100vh-4rem)]">
+        {/*
+          * PREMIUM LIGHT, NOT THE ANALYTICAL NAVY.
+          *
+          * The consultant used to wear .hm-workspace — a dark instrument
+          * panel inside the light customer shell, which read as a different
+          * product the moment it opened. The customer family (Dashboard,
+          * Credits, Profile, Communications) is light; the mortgage
+          * consultant is part of that family, and every mortgage component
+          * speaks in tokens, so the same markup carries on the light ground.
+          */}
+        <div className="hm-customer hm-customer-canvas min-h-[calc(100vh-4rem)]">
           <div className="mx-auto w-full max-w-[64rem] space-y-8 px-4 py-8 sm:px-6 sm:py-10">
             {/* ── A. The name ── */}
             <header>

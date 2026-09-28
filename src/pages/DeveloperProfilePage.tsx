@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { canGoBackInApp } from '@/lib/backNavigation';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { RouteGuard } from '@/components/common/RouteGuard';
@@ -132,7 +133,7 @@ export default function DeveloperProfilePage() {
           <div className="max-w-2xl mx-auto text-center py-16">
             <Building2 className="h-12 w-12 text-muted-foreground/30 mx-auto mb-4" />
             <p className="text-muted-foreground">{t('developer_not_found')}</p>
-            <Button variant="secondary" className="mt-4" onClick={() => navigate(-1)}>
+            <Button variant="secondary" className="mt-4" onClick={() => (canGoBackInApp() ? navigate(-1) : navigate('/developers', { replace: true }))}>
               <ArrowLeft className="h-4 w-4 mr-2" /> {t('dev_go_back')}
             </Button>
           </div>
@@ -154,7 +155,7 @@ export default function DeveloperProfilePage() {
         <div className="max-w-2xl mx-auto space-y-6">
           {/* Back + title */}
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => navigate(-1)}>
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => (canGoBackInApp() ? navigate(-1) : navigate('/developers', { replace: true }))}>
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div className="flex-1 min-w-0">

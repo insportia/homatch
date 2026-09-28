@@ -47,7 +47,40 @@ void recordStandaloneSession();
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   const register = () => {
-    void navigator.serviceWorker.register('/sw.js').catch(() => {
+    void navigator.serviceWorker.register('/sw.js').then((reg) => {
+      /*
+       * THE UPDATE PATH, WHICH USED TO NOT EXIST.
+       *
+       * sw.js is stamped per build, so every deploy is a worker update. The
+       * new worker installs and activates on its own (install() calls
+       * skipWaiting); what the page owes the customer is (a) noticing, and
+       * (b) offering a reload instead of forcing one under unsaved work.
+       * SwUpdateToast listens for this event and shows the offer.
+       */
+      const announce = () => window.dispatchEvent(new Event('homatch:sw-update-ready'));
+      reg.addEventListener('updatefound', () => {
+        const incoming = reg.installing;
+        if (!incoming) return;
+        incoming.addEventListener('statechange', () => {
+          // "installed" with an existing controller = an UPDATE, not the
+          // first install of the worker on this device.
+          if (incoming.state === 'installed' && navigator.serviceWorker.controller) announce();
+        });
+      });
+
+      /* A PWA resumed from memory can sit for days without a navigation,
+         which is the one thing that used to trigger an update check. Ask
+         explicitly when the app comes back to the foreground, at most once
+         per interval. */
+      const CHECK_EVERY_MS = 15 * 60 * 1000;
+      let lastCheck = Date.now();
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState !== 'visible') return;
+        if (Date.now() - lastCheck < CHECK_EVERY_MS) return;
+        lastCheck = Date.now();
+        void reg.update().catch(() => {});
+      });
+    }).catch(() => {
       // An unregistered worker costs installability, not correctness. The
       // app runs exactly as before, so this is not worth an error to the
       // customer.

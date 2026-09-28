@@ -29,11 +29,13 @@
  *   to the browser's dinosaur.
  */
 
-/* Bumped when the worker's own behaviour changes, not when the app does:
-   the activate handler deletes every cache whose name does not start with
-   the current VERSION, so a worker that has learned to handle push must
-   not serve a shell cached by one that had not. */
-const VERSION = 'homatch-v2-push';
+/* Stamped per BUILD (vite.config.ts replaces __BUILD__), not bumped by
+   hand. A byte-identical worker across deploys meant an installed app
+   never fired `updatefound` and could run a stale bundle until the person
+   deleted and reinstalled it. Every deploy now: new worker installs, the
+   shell precache refreshes, activate deletes every previous build's caches
+   (the prefix check below), and the page offers a one-tap reload. */
+const VERSION = 'homatch-__BUILD__';
 const SHELL = `${VERSION}-shell`;
 const ASSETS = `${VERSION}-assets`;
 

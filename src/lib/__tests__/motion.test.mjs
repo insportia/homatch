@@ -83,7 +83,13 @@ test('a reveal on a phone is shorter and smaller, but still visible', () => {
      which ran correctly and which nobody could see. A reveal that is not
      perceptible is not restraint, it is a static page with extra work. */
   assert.ok(simple.distance >= 14, `a ${simple.distance}px rise is not perceptible on a phone`);
-  assert.ok(simple.duration >= 450, `${simple.duration}ms is too brief to read as movement`);
+  /* 320, down from 450. The old floor guarded a 10px travel that needed
+     every millisecond to register; at 16px the movement itself is legible
+     and the constraint flipped — at ~480ms a person scrolling reached
+     content that was still fading in. Fast-but-visible is the premium
+     band: 320–420ms. */
+  assert.ok(simple.duration >= 320, `${simple.duration}ms is too brief to read as movement`);
+  assert.ok(full.duration <= 420, `${full.duration}ms is slow enough to lag a normal scroll`);
 });
 
 test('durations scale down but never collapse except at none', () => {

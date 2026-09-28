@@ -26,7 +26,7 @@ export default function OutreachHubPage() {
         <div className="max-w-3xl mx-auto space-y-6">
           <div>
             <h1 className="text-xl font-semibold flex items-center gap-2">
-              <Megaphone className="h-5 w-5 text-primary" />
+              <Megaphone className="h-5 w-5 text-gold-ink" />
               {t('outreach_title')}
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">{t('outreach_subtitle')}</p>
@@ -37,12 +37,12 @@ export default function OutreachHubPage() {
             <AlertDescription className="text-xs">{t('outreach_all_disabled_banner')}</AlertDescription>
           </Alert>
 
-          <Card className="cursor-pointer hover:border-primary/40 transition-colors bg-primary/5 border-primary/20"
+          <Card className="cursor-pointer hover:border-foreground/25 transition-colors border-gold/30 bg-gold/[0.04]"
             onClick={() => navigate('/outreach/insights')}>
             <CardContent className="p-4">
               <div className="flex items-center gap-4 min-w-0">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                  <BarChart3 className="h-5 w-5 text-primary" />
+                <div className="h-10 w-10 rounded-lg border border-gold/30 bg-gold/[0.06] text-gold-ink flex items-center justify-center shrink-0">
+                  <BarChart3 className="h-5 w-5" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <span className="font-medium text-sm">{t('outreach_insights_title')}</span>
@@ -55,12 +55,12 @@ export default function OutreachHubPage() {
 
           <div className="grid grid-cols-1 gap-3">
             {channels.map(({ icon: Icon, labelKey, descKey, path, badge }) => (
-              <Card key={path} className="cursor-pointer hover:border-primary/40 transition-colors"
+              <Card key={path} className="cursor-pointer hover:border-foreground/25 transition-colors"
                 onClick={() => navigate(path)}>
                 <CardContent className="p-4">
                   <div className="flex items-center gap-4 min-w-0">
-                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                      <Icon className="h-5 w-5 text-primary" />
+                    <div className="h-10 w-10 rounded-lg border border-gold/30 bg-gold/[0.06] text-gold-ink flex items-center justify-center shrink-0">
+                      <Icon className="h-5 w-5" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">

@@ -53,6 +53,7 @@ import {
 import type { ResearchJobRecord } from '@/types/types';
 import { checkLabel } from '@/components/verify/VerifyCheckList';
 import type { ActivityEvent, Property } from '@/types/types';
+import { activityLabelKey } from '@/lib/activityPresentation';
 import { PrivateImage } from '@/components/common/PrivateImage';
 import { toast } from 'sonner';
 
@@ -94,8 +95,9 @@ function EmptyState({ icon: Icon, title, hint, action }: {
 }) {
   return (
     <div className="px-5 py-10 text-center">
-      <span className="mx-auto grid h-11 w-11 place-items-center rounded-[0.6rem] border border-foreground/15 bg-secondary text-muted-foreground" aria-hidden="true">
-        <Icon className="h-5 w-5" strokeWidth={1.75} />
+      {/* Same grammar as the action tiles: a warm ring, not a grey box. */}
+      <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-[hsl(var(--gold))]/10 ring-1 ring-inset ring-[hsl(var(--gold))]/25 text-[hsl(var(--gold-ink))]" aria-hidden="true">
+        <Icon className="h-5 w-5" strokeWidth={1.6} />
       </span>
       <p className="mt-3 text-sm font-medium text-foreground">{title}</p>
       {hint && <p className="mx-auto mt-1.5 max-w-xs text-xs leading-relaxed text-muted-foreground">{hint}</p>}
@@ -266,7 +268,9 @@ function PropertyRow({ property, run, onOpen, onDelete }: {
   const facts = property.facts;
   const location = [facts?.district, facts?.city].filter(Boolean).join(', ');
   const running = !!run && isMatchingJobLive(run.status);
-  const score = running ? run.progress : (property.matchability_score ?? 0);
+  /* matchability_score is null in production (see MyPropertiesPage): showing
+     "0%" labelled "best match score" invents a metric. No score, no figure. */
+  const score = running ? run.progress : property.matchability_score ?? null;
 
   return (
     <div className="group flex items-center gap-3 px-5 py-3.5">
@@ -310,12 +314,14 @@ function PropertyRow({ property, run, onOpen, onDelete }: {
           </span>
         </span>
 
-        <span className="hidden shrink-0 text-end sm:block">
-          <span className="block text-sm font-semibold tabular-nums text-foreground">{score}%</span>
-          <span className="block text-[13px] uppercase tracking-wider text-muted-foreground">
-            {running ? t('dash_label_ai_progress') : t('dash_label_best_match')}
+        {score != null && (
+          <span className="hidden shrink-0 text-end sm:block">
+            <span className="block text-sm font-semibold tabular-nums text-foreground">{score}%</span>
+            <span className="block text-[13px] uppercase tracking-wider text-muted-foreground">
+              {running ? t('dash_label_ai_progress') : t('dash_label_best_match')}
+            </span>
           </span>
-        </span>
+        )}
       </button>
 
       <button
@@ -370,33 +376,19 @@ function VerificationRow({ record, onOpen }: { record: ResearchJobRecord; onOpen
   );
 }
 
-const ACTIVITY_LABEL: Record<string, string> = {
-  PROPERTY_ADDED: 'activity_property_added',
-  IMPORT_STARTED: 'activity_import_started',
-  IMPORT_COMPLETED: 'activity_import_completed',
-  IMPORT_FAILED: 'activity_import_failed',
-  PRIVATE_LISTING_CREATED: 'activity_private_created',
-  MATCHING_STARTED: 'activity_matching_started',
-  MATCHING_PAUSED: 'activity_matching_paused',
-  PROPERTY_DELETED: 'activity_property_deleted',
-  MATCH_AVAILABLE: 'activity_match_available',
-  MATCH_UNLOCKED: 'activity_match_unlocked',
-  CREDITS_TOPPED_UP: 'activity_credits_topped_up',
-  CREDITS_CHARGED: 'activity_credits_charged',
-  CAMPAIGN_PAUSED: 'activity_campaign_paused',
-  CAMPAIGN_RESUMED: 'activity_campaign_resumed',
-};
-
+/* The label map lives in src/lib/activityPresentation.ts, shared with the
+   Activity page, so the two surfaces never disagree about an event's words —
+   or about which rows are feed entries at all (telemetry and unmapped types
+   return null there and are filtered out, never rendered as a raw enum). */
 function ActivityRow({ event }: { event: ActivityEvent }) {
   const { t } = useLanguage();
-  const key = ACTIVITY_LABEL[event.event_type];
+  const key = activityLabelKey(event.event_type);
+  if (!key) return null;
   return (
     <li className="flex items-start gap-3 px-5 py-3">
       <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gold-ink" aria-hidden="true" />
       <span className="min-w-0 flex-1">
-        {/* An unmapped event_type is a raw enum value, not prose — showing it
-            verbatim beats hiding an activity the user's account really has. */}
-        <span className="block text-sm text-foreground">{key ? t(key) : event.event_type}</span>
+        <span className="block text-sm text-foreground">{t(key)}</span>
         <span className="block text-xs text-muted-foreground">{new Date(event.created_at).toLocaleString()}</span>
       </span>
     </li>
@@ -476,8 +468,12 @@ function DashboardContent() {
       hierarchy the last pass just built. */
   const primaryActions = [
     { key: 'ai', icon: Sparkles, title: t('db_qa_ai_title'), desc: t('db_qa_ai_desc'), path: '/ai' },
-    { key: 'client', icon: UserSearch, title: t('db_qa_client_title'), desc: t('db_qa_client_desc'), path: '/property/add' },
-    { key: 'property', icon: Search, title: t('db_qa_property_title'), desc: t('db_qa_property_desc'), path: '/ai' },
+    /* "Find interested people" is the owner workspace's job — sending it to the
+       add-property FORM was the exact mislink HomatchShell's nav notes record
+       removing. And "find a property" is the discovery product, not the
+       assistant. Each tile now opens the product it names. */
+    { key: 'client', icon: UserSearch, title: t('db_qa_client_title'), desc: t('db_qa_client_desc'), path: '/property' },
+    { key: 'property', icon: Search, title: t('db_qa_property_title'), desc: t('db_qa_property_desc'), path: '/find-property' },
     { key: 'verify', icon: ShieldCheck, title: t('db_qa_verify_title'), desc: t('db_qa_verify_desc'), path: '/verify' },
   ];
 
@@ -611,14 +607,16 @@ function DashboardContent() {
                   {t('db_onboard_body')}
                 </p>
                 <div className="mt-7 flex flex-wrap gap-3">
+                  {/* The button names the action it performs. The old pair said
+                      "find interested people" and opened the add-property FORM. */}
                   <Button className="h-11 gap-2 rounded-full px-6 text-sm" onClick={() => navigate('/property/add')}>
-                    {t('db_qa_client_title')}
+                    {t('nav_add_property')}
                     <ArrowRight className={`h-4 w-4 ${isRTL ? 'rotate-180' : ''}`} aria-hidden="true" />
                   </Button>
                   <Button
                     variant="outline"
                     className="h-11 gap-2 rounded-full border-border bg-transparent px-6 text-sm"
-                    onClick={() => navigate('/ai')}
+                    onClick={() => navigate('/find-property')}
                   >
                     {t('db_qa_property_title')}
                   </Button>
@@ -655,12 +653,27 @@ function DashboardContent() {
                 <div className="border-t border-foreground/[0.12]">
                   <CardHead
                     title={t('db_properties_title')}
-                    action={<LinkAction label={t('nav_add_property')} onClick={() => navigate('/property/add')} />}
+                    action={(
+                      <span className="flex items-center gap-3">
+                        <LinkAction label={t('nav_add_property')} onClick={() => navigate('/property/add')} />
+                        {/* The canonical owner workspace is one step away, always. */}
+                        <LinkAction label={t('db_properties_all')} onClick={() => navigate('/property')} />
+                      </span>
+                    )}
                   />
                   {loading ? (
                     <div className="space-y-3 p-5">{[0, 1].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>
                   ) : data.properties.length === 0 ? (
-                    <EmptyState icon={Building2} title={t('db_properties_empty')} hint={t('db_properties_empty_hint')} />
+                    <EmptyState
+                      icon={Building2}
+                      title={t('db_properties_empty')}
+                      hint={t('db_properties_empty_hint')}
+                      action={(
+                        <Button size="sm" className="h-9 rounded-full px-4 text-xs" onClick={() => navigate('/property/add')}>
+                          {t('nav_add_property')}
+                        </Button>
+                      )}
+                    />
                   ) : (
                     <div className="divide-y divide-foreground/[0.12]">
                       {data.properties.slice(0, 5).map(property => (
@@ -718,8 +731,8 @@ function DashboardContent() {
             </div>
 
             <div className="flex min-w-0 flex-col items-center justify-center p-6 text-center sm:p-8">
-              <span className="grid h-12 w-12 place-items-center rounded-[0.6rem] border border-foreground/15 bg-secondary text-foreground" aria-hidden="true">
-                <CircleDollarSign className="h-5 w-5" strokeWidth={1.75} />
+              <span className="grid h-12 w-12 place-items-center rounded-full bg-[hsl(var(--gold))]/10 ring-1 ring-inset ring-[hsl(var(--gold))]/25 text-[hsl(var(--gold-ink))]" aria-hidden="true">
+                <CircleDollarSign className="h-5 w-5" strokeWidth={1.6} />
               </span>
               <h2 className="mt-4 text-sm font-semibold text-foreground">{t('db_mortgage_title')}</h2>
               <p className="mt-2 max-w-xs text-pretty text-xs leading-relaxed text-muted-foreground">{t('db_mortgage_body')}</p>
@@ -733,11 +746,11 @@ function DashboardContent() {
               <CardHead title={t('db_activity_title')} action={<LinkAction label={t('nav_activity')} onClick={() => navigate('/activity')} />} />
               {loading ? (
                 <div className="space-y-3 p-5">{[0, 1, 2].map(i => <Skeleton key={i} className="h-9 w-full" />)}</div>
-              ) : data.activity.length === 0 ? (
+              ) : data.activity.every(e => activityLabelKey(e.event_type) === null) ? (
                 <EmptyState icon={Zap} title={t('empty_no_activity_title')} hint={t('empty_no_activity_desc')} />
               ) : (
                 <ul className="divide-y divide-foreground/[0.12]">
-                  {data.activity.slice(0, 5).map(event => <ActivityRow key={event.id} event={event} />)}
+                  {data.activity.filter(e => activityLabelKey(e.event_type) !== null).slice(0, 5).map(event => <ActivityRow key={event.id} event={event} />)}
                 </ul>
               )}
             </div>

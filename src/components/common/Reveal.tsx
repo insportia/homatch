@@ -91,7 +91,11 @@ export function Reveal({
        * plays across content the eye is actually on. The 0.6 shortcut above
        * is the same idea from the other direction, and the two agree.
        */
-    }, { rootMargin: '0px 0px -30% 0px', threshold: 0.02 });
+    /* -12%, up from -30%. The old line fired a third of a screen from the
+       bottom, late enough that a normal scroll outran it and sections were
+       still appearing under the reader. Early trigger, short duration:
+       motion you only half-see is the premium kind. */
+    }, { rootMargin: '0px 0px -12% 0px', threshold: 0.02 });
 
     io.observe(el);
     return () => io.disconnect();

@@ -179,7 +179,10 @@ export function AssistantDrawer() {
           <div ref={bottomRef} />
         </div>
 
-        <div className="flex items-end gap-2 border-t px-4 py-3">
+        {/* On a phone the sheet reaches the bottom edge, so the composer adds
+            the home-indicator inset (0 on hardware without one) to its own
+            0.75rem — otherwise the send button sits under the indicator. */}
+        <div className="flex items-end gap-2 border-t px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}

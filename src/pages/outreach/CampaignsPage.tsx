@@ -202,7 +202,17 @@ export default function CampaignsPage() {
                           {c.paused_reason ? (
                             <span className="mt-0.5 flex items-center gap-1 text-[13px] text-muted-foreground">
                               <ShieldAlert className="h-3 w-3 shrink-0" aria-hidden="true" />
-                              <span className="truncate">{c.paused_reason}</span>
+                              {/* paused_reason is server prose or a code, in
+                                  English only. The spend-cap pause is the one
+                                  we can name precisely; the rest get a
+                                  sentence, never the raw value. */}
+                              <span className="truncate">
+                                {c.compliance_state === 'CAMPAIGN_SPEND_CAP'
+                                  ? t(c.campaign_type === 'EMAIL' ? 'email_blocked_spend_cap'
+                                    : c.campaign_type === 'SMS' ? 'sms_blocked_spend_cap'
+                                    : 'call_blocked_spend_cap')
+                                  : t('campaign_paused_generic')}
+                              </span>
                             </span>
                           ) : null}
                         </td>

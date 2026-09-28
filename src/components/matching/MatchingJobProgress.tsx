@@ -298,9 +298,8 @@ export function MatchingJobProgress({ jobId, propertyId, onComplete }: Props) {
             </span>
           )}
         </div>
-        <span className="text-xs text-muted-foreground shrink-0 font-mono">
-          {job.id.slice(0, 8)}…
-        </span>
+        {/* No UUID fragment on a customer screen: the status text and the
+            progress bar say everything a customer can act on. */}
       </div>
 
       {/* Progress bar */}

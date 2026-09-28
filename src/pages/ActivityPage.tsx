@@ -4,6 +4,8 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { getActivityEvents } from '@/services/api';
+import { activityLabelKey } from '@/lib/activityPresentation';
+import { notificationAge } from '@/components/notifications/presentation';
 import type { ActivityEvent } from '@/types/types';
 import {
   PlusCircle, Upload, CheckCircle2, XCircle, Lock,
@@ -30,89 +32,70 @@ const EVENT_ICONS: Record<string, React.ElementType> = {
   CAMPAIGN_RESUMED:        Play,
 };
 
+/* Tones picked for the premium-light canvas: the -400 shades this page wore
+   on the dark surface all but vanish on white cards. */
 const EVENT_COLOR: Record<string, string> = {
-  PROPERTY_ADDED:          'text-primary',
+  PROPERTY_ADDED:          'text-gold-ink',
   IMPORT_STARTED:          'text-muted-foreground',
-  IMPORT_COMPLETED:        'text-green-400',
+  IMPORT_COMPLETED:        'text-green-600',
   IMPORT_FAILED:           'text-destructive',
-  PRIVATE_LISTING_CREATED: 'text-purple-400',
-  MATCHING_STARTED:        'text-primary',
+  PRIVATE_LISTING_CREATED: 'text-purple-600',
+  MATCHING_STARTED:        'text-gold-ink',
   MATCHING_PAUSED:         'text-muted-foreground',
   PROPERTY_DELETED:        'text-destructive',
   // Part 2
-  MATCH_AVAILABLE:         'text-yellow-400',
-  MATCH_UNLOCKED:          'text-green-400',
-  CREDITS_TOPPED_UP:       'text-green-400',
+  MATCH_AVAILABLE:         'text-gold-ink',
+  MATCH_UNLOCKED:          'text-green-600',
+  CREDITS_TOPPED_UP:       'text-green-600',
   CREDITS_CHARGED:         'text-muted-foreground',
   CAMPAIGN_PAUSED:         'text-muted-foreground',
-  CAMPAIGN_RESUMED:        'text-primary',
+  CAMPAIGN_RESUMED:        'text-gold-ink',
 };
 
 function ActivityItem({ event }: { event: ActivityEvent }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const Icon = EVENT_ICONS[event.event_type] ?? Activity;
   const color = EVENT_COLOR[event.event_type] ?? 'text-muted-foreground';
 
-  const labelMap: Record<string, string> = {
-    PROPERTY_ADDED:          t('activity_property_added'),
-    IMPORT_STARTED:          t('activity_import_started'),
-    IMPORT_COMPLETED:        t('activity_import_completed'),
-    IMPORT_FAILED:           t('activity_import_failed'),
-    PRIVATE_LISTING_CREATED: t('activity_private_created'),
-    MATCHING_STARTED:        t('activity_matching_started'),
-    MATCHING_PAUSED:         t('activity_matching_paused'),
-    PROPERTY_DELETED:        t('activity_property_deleted'),
-    // Part 2
-    MATCH_AVAILABLE:         t('activity_match_available'),
-    MATCH_UNLOCKED:          t('activity_match_unlocked'),
-    CREDITS_TOPPED_UP:       t('activity_credits_topped_up'),
-    CREDITS_CHARGED:         t('activity_credits_charged'),
-    CAMPAIGN_PAUSED:         t('activity_campaign_paused'),
-    CAMPAIGN_RESUMED:        t('activity_campaign_resumed'),
-  };
+  /* The shared map. The parent already filtered null rows out, so this only
+     guards against being rendered outside that list. */
+  const labelKey = activityLabelKey(event.event_type);
+  if (!labelKey) return null;
 
-  // Human-readable metadata summary
+  // Human-readable metadata summary — localized, and only for facts a
+  // customer acts on. The raw signal-strength metric was an internal number
+  // dressed as prose and is deliberately not shown.
   const metaSummary = (() => {
     const m = event.metadata as Record<string, unknown> | null;
     if (!m) return null;
-    if (event.event_type === 'MATCH_AVAILABLE' && m.signal_strength) {
-      return `Signal: ${m.signal_strength}`;
-    }
     if (event.event_type === 'MATCH_UNLOCKED' && m.credits_charged) {
-      return `${Number(m.credits_charged).toFixed(2)} credits charged`;
+      return t('act_detail_credits_charged', { n: Number(m.credits_charged).toFixed(2) });
     }
     if (event.event_type === 'CREDITS_TOPPED_UP' && m.credits_added) {
-      return `+${m.credits_added} credits · Balance: ${Number(m.new_balance ?? 0).toFixed(2)}`;
+      return t('act_detail_credits_added', {
+        n: String(m.credits_added),
+        balance: Number(m.new_balance ?? 0).toFixed(2),
+      });
     }
     return null;
   })();
 
-  const timeAgo = (dateStr: string) => {
-    const diff = Date.now() - new Date(dateStr).getTime();
-    const m = Math.floor(diff / 60000);
-    const h = Math.floor(m / 60);
-    const d = Math.floor(h / 24);
-    if (d > 0) return `${d}d ago`;
-    if (h > 0) return `${h}h ago`;
-    if (m > 0) return `${m}m ago`;
-    return 'just now';
-  };
-
   return (
     <div className="flex items-start gap-3 py-3 border-b border-border/50 last:border-0">
-      <div className="shrink-0 w-7 h-7 rounded-full bg-secondary flex items-center justify-center mt-0.5">
+      <div className="shrink-0 w-7 h-7 rounded-full border border-gold/30 bg-gold/[0.06] flex items-center justify-center mt-0.5">
         <Icon className={`h-3.5 w-3.5 ${color}`} />
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm text-foreground font-medium">
-          {labelMap[event.event_type] ?? event.event_type}
+          {t(labelKey)}
         </p>
         {metaSummary && (
           <p className="text-xs text-muted-foreground mt-0.5">{metaSummary}</p>
         )}
       </div>
       <span className="text-xs text-muted-foreground/60 shrink-0 mt-0.5">
-        {timeAgo(event.created_at)}
+        {/* The same localized relative age the notification list uses. */}
+        {notificationAge(event.created_at, t, lang)}
       </span>
     </div>
   );
@@ -132,12 +115,19 @@ function ActivityContent() {
       .finally(() => setLoading(false));
   }, [homatchUser, t]);
 
+  /* Telemetry rows (page opens, per-turn counters) and event types this build
+     has no words for are not feed entries — see activityLabelKey. */
+  const feedEvents = events.filter(e => activityLabelKey(e.event_type) !== null);
+
   return (
     <AppLayout>
+      {/* The shell's premium light block, worn the same way the dashboard
+          wears it: white cards on the light canvas, gold accents. */}
+      <div className="hm-customer -mx-4 -my-6 min-h-[calc(100dvh-4rem)] px-4 py-6 md:-mx-6 md:-my-8 md:px-6 md:py-8">
       <div className="max-w-2xl mx-auto space-y-6">
-        <h1 className="text-xl font-semibold text-foreground">{t('activity_title')}</h1>
+        <h1 className="font-display text-2xl font-semibold tracking-[-0.015em] text-foreground">{t('activity_title')}</h1>
 
-        <div className="rounded-xl border border-border bg-card">
+        <div className="rounded-[0.9rem] border border-foreground/15 bg-card shadow-card">
           {loading ? (
             <div className="p-6 space-y-3">
               {[...Array(5)].map((_, i) => (
@@ -150,7 +140,7 @@ function ActivityContent() {
                 </div>
               ))}
             </div>
-          ) : events.length === 0 ? (
+          ) : feedEvents.length === 0 ? (
             <div className="p-12 text-center space-y-3">
               <Activity className="h-8 w-8 text-muted-foreground/20 mx-auto mb-1" />
               <p className="text-sm text-muted-foreground">{t('empty_no_activity_title')}</p>
@@ -158,10 +148,11 @@ function ActivityContent() {
             </div>
           ) : (
             <div className="p-4">
-              {events.map(e => <ActivityItem key={e.id} event={e} />)}
+              {feedEvents.map(e => <ActivityItem key={e.id} event={e} />)}
             </div>
           )}
         </div>
+      </div>
       </div>
     </AppLayout>
   );

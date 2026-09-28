@@ -100,7 +100,8 @@ export default function CommunicationsBillingPage() {
 
       const result = await startTopUp({ packCode: pack.code });
       if (result?.checkoutUrl) { window.location.href = result.checkoutUrl; return; }
-      toast.error(result?.error ?? t('comm_billing_topup_failed'));
+      // result.error is a server code, not a sentence for the customer.
+      toast.error(t('comm_billing_topup_failed'));
     } catch {
       toast.error(t('comm_billing_topup_failed'));
     } finally {

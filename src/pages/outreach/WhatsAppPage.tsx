@@ -183,7 +183,7 @@ export default function WhatsAppPage() {
                     <div><dt className="text-muted-foreground">{t('comm_wa_tier')}</dt><dd className="font-medium">{account.messaging_tier}</dd></div>
                   ) : null}
                   {account.verification_state ? (
-                    <div><dt className="text-muted-foreground">{t('comm_wa_verification')}</dt><dd className="font-medium">{account.verification_state}</dd></div>
+                    <div><dt className="text-muted-foreground">{t('comm_wa_verification')}</dt><dd className="font-medium"><StatusBadge status={account.verification_state} /></dd></div>
                   ) : null}
                   <div>
                     <dt className="text-muted-foreground">{t('comm_wa_webhook')}</dt>

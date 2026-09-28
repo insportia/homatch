@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/db/supabase';
+import { StatusBadge } from '@/components/communications/primitives';
 
 interface CampaignRow {
   id: string;
@@ -131,7 +132,7 @@ export default function OutreachInsightsPage() {
         <div className="max-w-3xl mx-auto space-y-6">
           <div>
             <h1 className="text-xl font-semibold flex items-center gap-2">
-              <BarChart3 className="h-5 w-5 text-primary" />
+              <BarChart3 className="h-5 w-5 text-gold-ink" />
               {t('outreach_insights_title')}
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">{t('outreach_insights_subtitle')}</p>
@@ -145,7 +146,7 @@ export default function OutreachInsightsPage() {
                 {statTiles.map(({ icon: Icon, labelKey, value }) => (
                   <Card key={labelKey}>
                     <CardContent className="p-4">
-                      <Icon className="h-4 w-4 text-primary mb-2" />
+                      <Icon className="h-4 w-4 text-gold-ink mb-2" />
                       <p className="text-2xl font-semibold text-foreground">{value}</p>
                       <p className="text-[14px] text-muted-foreground mt-0.5">{t(labelKey as Parameters<typeof t>[0])}</p>
                     </CardContent>
@@ -156,7 +157,7 @@ export default function OutreachInsightsPage() {
               <Card>
                 <CardContent className="p-4 sm:p-5 space-y-3">
                   <p className="text-sm font-semibold flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4 text-primary" />{t('insights_campaigns_title')}
+                    <TrendingUp className="h-4 w-4 text-gold-ink" />{t('insights_campaigns_title')}
                   </p>
                   {campaigns.length === 0 ? (
                     <p className="text-xs text-muted-foreground py-2">{t('insights_campaigns_none')}</p>
@@ -167,8 +168,9 @@ export default function OutreachInsightsPage() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <p className="text-sm font-medium truncate">{c.name}</p>
-                              <Badge variant="outline" className="text-2xs px-1 py-0">{c.campaign_type}</Badge>
-                              <Badge variant="outline" className="text-2xs px-1 py-0">{c.status}</Badge>
+                              {/* comm_channel_* covers every campaign_type value (AI_CALL/SMS/EMAIL/WHATSAPP). */}
+                              <Badge variant="outline" className="text-2xs px-1 py-0">{t(`comm_channel_${c.campaign_type.toLowerCase()}`)}</Badge>
+                              <StatusBadge status={c.status} />
                             </div>
                             <p className="text-[14px] text-muted-foreground mt-0.5">
                               {c.sent_count ?? 0} {t('insights_metric_sent')} · {c.open_count ?? 0} {t('insights_metric_opened')} · {c.reply_count ?? 0} {t('insights_metric_replies')}
@@ -184,7 +186,7 @@ export default function OutreachInsightsPage() {
               <Card>
                 <CardContent className="p-4 sm:p-5 space-y-3">
                   <p className="text-sm font-semibold flex items-center gap-2">
-                    <PhoneCall className="h-4 w-4 text-primary" />{t('insights_hot_leads_title')}
+                    <PhoneCall className="h-4 w-4 text-gold-ink" />{t('insights_hot_leads_title')}
                   </p>
                   {recentCalls.length === 0 ? (
                     <p className="text-xs text-muted-foreground py-2">{t('insights_hot_leads_none')}</p>
@@ -199,9 +201,12 @@ export default function OutreachInsightsPage() {
                                 <span className="text-[14px] text-muted-foreground truncate">— {c.outreach_campaigns.properties.title}</span>
                               )}
                             </div>
-                            <p className="text-[14px] text-muted-foreground mt-0.5 truncate">
-                              {c.status}{c.duration_sec ? ` · ${Math.round(c.duration_sec / 60)}m` : ''}{c.summary ? ` · ${c.summary}` : ''}
-                            </p>
+                            <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+                              <StatusBadge status={c.status} />
+                              <p className="text-[14px] text-muted-foreground truncate">
+                                {c.duration_sec ? `${Math.round(c.duration_sec / 60)}m` : ''}{c.summary ? `${c.duration_sec ? ' · ' : ''}${c.summary}` : ''}
+                              </p>
+                            </div>
                           </div>
                         </div>
                       ))}

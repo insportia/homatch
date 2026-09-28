@@ -51,6 +51,7 @@ import {
   type SupplySide,
 } from '../../../src/research-core/match/compatibility.ts';
 import { supplyRoleFrom } from '../../../src/research-core/match/participants.ts';
+import { judgeDemandFreshness } from '../../../src/research-core/match/demand-freshness.ts';
 import { attributionFrom } from '../../../src/research-core/match/broker-attribution.ts';
 import { placeNamesFor } from '../../../src/research-core/normalize/place.ts';
 import { judgeDelivery } from '../../../src/research-core/discovery/revalidation.ts';
@@ -336,12 +337,17 @@ Deno.serve(async (req: Request) => {
           + 'content_fingerprint,validation_state,failed_checks,adapter_id,source_status,'
           + 'supply_role,broker_id,title,description')
         .or(cityFilter)
+        /* Newest publications first, undated at the end. With a hard cap of
+           MAX_CANDIDATES rows, an UNORDERED read let ancient rows crowd out
+           this week's listings — the 500 examined were whichever the planner
+           returned, not the freshest supply. */
+        .order('published_at', { ascending: false, nullsFirst: false })
         .limit(MAX_CANDIDATES);
 
       totals.candidatesRead += (candidates ?? []).length;
       totals.reusedFromStore += (candidates ?? []).length;
 
-      const assessments: Array<{ observationId: string; assessment: ReturnType<typeof assessMatch>; ageDays: number; ageBasis: string }> = [];
+      const assessments: Array<{ observationId: string; assessment: ReturnType<typeof assessMatch>; ageDays: number | null; ageBasis: string; freshnessFactor: number }> = [];
 
       for (const candidate of candidates ?? []) {
         const supplyRow = candidate as Record<string, unknown>;
@@ -379,13 +385,23 @@ Deno.serve(async (req: Request) => {
           config: ceilingConfig,
         });
         const publishedAt = supplyRow.published_at as string | null;
+        let listingAgeDays: number | null = null;
         if (publishedAt) {
           const published = Date.parse(publishedAt);
-          if (Number.isFinite(published) && Date.now() - published > ageCeilingMs(ceiling)) {
-            totals.rejectedPublicationAge += 1;
-            continue;
+          if (Number.isFinite(published)) {
+            if (Date.now() - published > ageCeilingMs(ceiling)) {
+              totals.rejectedPublicationAge += 1;
+              continue;
+            }
+            listingAgeDays = Math.max(0, Math.floor((Date.now() - published) / 86_400_000));
           }
         }
+        /* Missing date ≠ evidence of age (coverage.ts) — but it is not
+           evidence of freshness either. Undated supply keeps eligibility
+           and takes the same flat decay demand signals take. */
+        const supplyFreshness = judgeDemandFreshness(publishedAt, {
+          transaction: (supplyRow.transaction as string | null) ?? null,
+        });
 
         /*
          * THE ROLE COMES FROM THE ROLE COLUMN.
@@ -435,13 +451,22 @@ Deno.serve(async (req: Request) => {
           assessments.push({
             observationId: String(supplyRow.id),
             assessment,
-            ageDays: ceiling.days,
+            /* The listing's own age. This column used to be written as the
+               CEILING (the limit, not the fact), which made every row claim
+               the same age. Null means the source carried no readable date. */
+            ageDays: listingAgeDays,
             ageBasis: ceiling.basis,
+            freshnessFactor: supplyFreshness.factor,
           });
         }
       }
 
-      assessments.sort((a, b) => b.assessment.score - a.assessment.score);
+      /* Rank by compatibility DECAYED BY AGE, so a perfect-fit stale listing
+         sits below a good-fit fresh one. find-property then orders by the
+         stored match_score, so the customer sees the same order. */
+      const rankedScore = (e: (typeof assessments)[number]) =>
+        Math.round(e.assessment.score * e.freshnessFactor * 100) / 100;
+      assessments.sort((a, b) => rankedScore(b) - rankedScore(a));
 
       /*
        * PERSIST ONLY THE COMPATIBLE ONES. There is no product reason to store every
@@ -456,7 +481,7 @@ Deno.serve(async (req: Request) => {
             observation_id: entry.observationId,
             campaign_id: campaignId,
             compatibility: entry.assessment.compatibility,
-            match_score: entry.assessment.score,
+            match_score: rankedScore(entry),
             demand_role: entry.assessment.roles.demand,
             supply_role: entry.assessment.roles.supply,
             deal_kind: entry.assessment.deal,
@@ -641,7 +666,7 @@ Deno.serve(async (req: Request) => {
                 ? 'It fits the plan you confirmed.'
                 : 'It fits the requirements you described.',
               priority: 'NORMAL',
-              deepLink: '/find-property?view=homatch',
+              deepLink: '/find-property',
               entityType: 'supply_match',
               entityId: matchId,
               dedupeKey: `native-match:${matchId}:demand`,

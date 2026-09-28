@@ -11,6 +11,11 @@
 // real translation). Add a key here only when that's a deliberate decision,
 // never to silence a real missing translation.
 export const ALLOW_DUPLICATE_KEYS = new Set([
+  /* "Email" is the channel's name in the Georgian UI on purpose — the
+     sidebar and rail already say "Email კამპანიები", and the terminology
+     contract keeps globally recognized channel names (Email/SMS/WhatsApp)
+     in Latin rather than awkwardly Georgianized. */
+  'comm_channel_email',
   /* ── HOMATCH ADMIN ─────────────────────────────────────────────
    *
    * Four invariants, all of them names of things rather than words

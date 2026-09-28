@@ -17,6 +17,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/db/supabase';
 import { OutreachCampaign, ContactList } from '@/types/types';
 import { toast } from 'sonner';
+import { StatusBadge } from '@/components/communications/primitives';
 import { useOutreachProviderStatus } from '@/hooks/useOutreachProviderStatus';
 
 export default function SmsCampaignsPage() {
@@ -101,7 +102,13 @@ export default function SmsCampaignsPage() {
         toast.error(data.reason === 'PROVIDER_KILL_SWITCH_ACTIVE' ? t('sms_blocked_kill_switch') : t('sms_blocked_spend_cap'));
         return;
       }
-      toast.success(`${t('sms_launch_success')}: ${data?.sent ?? 0} ${t('sms_sent')}${data?.failed ? `, ${data.failed} failed` : ''}`);
+      /* One localised sentence. The old template glued a raw English
+         "failed" onto a Georgian toast. */
+      toast.success(
+        data?.failed
+          ? t('sms_launch_result_partial', { sent: data?.sent ?? 0, failed: data.failed })
+          : t('sms_launch_result_ok', { sent: data?.sent ?? 0 }),
+      );
       load();
     } catch (err) {
       toast.error(t('sms_launch_error'));
@@ -117,7 +124,7 @@ export default function SmsCampaignsPage() {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h1 className="text-xl font-semibold flex items-center gap-2">
-                <MessageSquare className="h-5 w-5 text-primary" />
+                <MessageSquare className="h-5 w-5 text-gold-ink" />
                 {t('sms_campaigns_title')}
               </h1>
               <p className="text-sm text-muted-foreground mt-0.5">{t('sms_campaigns_subtitle')}</p>
@@ -147,7 +154,7 @@ export default function SmsCampaignsPage() {
             <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Card key={i}><CardContent className="p-4"><Skeleton className="h-12 w-full" /></CardContent></Card>)}</div>
           ) : campaigns.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
-              <MessageSquare className="h-10 w-10 text-muted-foreground/40" />
+              <span className="grid h-11 w-11 place-items-center rounded-full bg-gold/10 ring-1 ring-inset ring-gold/25 text-gold-ink" aria-hidden="true"><MessageSquare className="h-5 w-5" strokeWidth={1.6} /></span>
               <p className="text-sm font-medium">{t('sms_empty_title')}</p>
               <p className="text-xs text-muted-foreground max-w-xs">{t('sms_empty_desc')}</p>
               <Button size="sm" onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4 me-2" />{t('sms_new_campaign')}</Button>
@@ -155,14 +162,14 @@ export default function SmsCampaignsPage() {
           ) : (
             <div className="space-y-3">
               {campaigns.map((c) => (
-                <Card key={c.id} className="hover:border-primary/30 transition-colors">
+                <Card key={c.id} className="transition-colors hover:border-foreground/25">
                   <CardContent className="p-4">
                     <div className="flex items-start gap-3 min-w-0">
-                      <MessageSquare className="h-8 w-8 shrink-0 text-muted-foreground/50 mt-0.5" />
+                      <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-md border border-gold/30 bg-gold/[0.06] text-gold-ink" aria-hidden="true"><MessageSquare className="h-4 w-4" strokeWidth={1.6} /></span>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium text-sm truncate">{c.name}</span>
-                          <Badge variant="outline" className="text-[13px] px-1.5">{c.status}</Badge>
+                          <StatusBadge status={c.status} />
                         </div>
                         {c.sms_template && <p className="text-xs text-muted-foreground truncate mt-0.5">{c.sms_template}</p>}
                         <div className="flex gap-4 mt-1 text-[14px] text-muted-foreground">

@@ -14,16 +14,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Zap, TrendingUp, TrendingDown, CreditCard, ArrowUpRight,
-  ArrowDownRight, Clock, Loader2, ExternalLink, Info, Search,
-  Send, MessageCircle, ShoppingCart, Lock, Unlock, Sparkles, Gift,
+  ArrowDownRight, Clock, Loader2, ExternalLink, Info,
+  ShoppingCart, Lock, Unlock, Sparkles, Gift,
 } from 'lucide-react';
-import { getCreditAccount, getCreditLedger, getResearchProducts, getMyResearchPurchases } from '@/services/api';
+import { getCreditAccount, getCreditLedger } from '@/services/api';
 import { getCatalogue, getMyCreditLots, startTopUp, formatCredits, confirmCardSetup } from '@/services/billing';
 import { CardActivationCard, CardActivationResult } from '@/components/billing/CardActivationOffer';
 import { useEntitlements } from '@/hooks/useEntitlements';
 import type { CreditLot, TopupPack, FirstTopupPromo } from '@/types/billing';
-import { purchaseResearchProduct } from '@/services/api3';
-import type { CreditAccount, CreditLedgerEntry, LedgerType, ResearchProduct, ResearchPurchase } from '@/types/types';
+import type { CreditAccount, CreditLedgerEntry, LedgerType } from '@/types/types';
 import { toast } from 'sonner';
 
 // Top-up amounts come from topup_packs, not from this file. The old
@@ -64,10 +63,6 @@ const LEDGER_TYPE_CONFIG: Record<LedgerType, { labelKey: string; icon: React.Ele
   REDENOMINATION:    { labelKey: 'credits_type_redenomination',   icon: TrendingUp,     color: 'text-muted-foreground' },
 };
 
-const PRODUCT_ICON: Record<string, React.ElementType> = {
-  TELEGRAM: Send, FACEBOOK: MessageCircle, GOOGLE: Search,
-};
-
 function LedgerRow({ entry }: { entry: CreditLedgerEntry }) {
   const { t } = useLanguage();
   const cfg = LEDGER_TYPE_CONFIG[entry.type] ?? LEDGER_TYPE_CONFIG.ADMIN_ADJUSTMENT;
@@ -84,9 +79,6 @@ function LedgerRow({ entry }: { entry: CreditLedgerEntry }) {
         </div>
         <div className="min-w-0">
           <p className="text-sm font-medium text-foreground break-words">{t(cfg.labelKey)}</p>
-          {entry.reference && (
-            <p className="text-xs text-muted-foreground truncate">{entry.reference}</p>
-          )}
           <p className="text-xs text-muted-foreground/60 flex items-center gap-1 mt-0.5">
             <Clock className="h-3 w-3" />
             {new Date(entry.created_at).toLocaleString()}
@@ -120,9 +112,6 @@ function CreditsContent() {
   const [lots, setLots] = useState<CreditLot[]>([]);
   const [topUpLoading, setTopUpLoading] = useState(false);
   const [topUpResult, setTopUpResult] = useState<{ mock?: boolean; checkoutUrl?: string } | null>(null);
-  const [products, setProducts] = useState<ResearchProduct[]>([]);
-  const [purchases, setPurchases] = useState<ResearchPurchase[]>([]);
-  const [purchasing, setPurchasing] = useState<string | null>(null);
   /* The outcome of a card setup the customer has just returned from. */
   const [activation, setActivation] = useState<{
     failed: boolean; granted: boolean; credits: number;
@@ -132,17 +121,13 @@ function CreditsContent() {
   const loadData = useCallback(async () => {
     if (!homatchUser) return;
     setLoading(true);
-    const [account, entries, prods, myPurchases, myLots] = await Promise.all([
+    const [account, entries, myLots] = await Promise.all([
       getCreditAccount(homatchUser.id),
       getCreditLedger(homatchUser.id),
-      getResearchProducts(),
-      getMyResearchPurchases(),
       getMyCreditLots(homatchUser.id),
     ]);
     setCreditAccount(account);
     setLedger(entries);
-    setProducts(prods.filter(p => p.enabled));
-    setPurchases(myPurchases);
     setLots(myLots);
     // The offer itself is server-defined: amounts, the bonus rule and the
     // minimum all come from topup_packs / promotions / admin_settings.
@@ -226,19 +211,6 @@ function CreditsContent() {
     }
   };
 
-  const handlePurchase = async (code: string) => {
-    setPurchasing(code);
-    try {
-      await purchaseResearchProduct(code);
-      toast.success(t('research_purchase_success'));
-      loadData();
-    } catch (e: any) {
-      toast.error(e?.message === 'Insufficient credits' ? t('research_purchase_insufficient') : t('research_purchase_failed'));
-    } finally {
-      setPurchasing(null);
-    }
-  };
-
   const balance = Number(creditAccount?.balance ?? 0);
   const totalSpent = ledger
     .filter(e => e.amount < 0)
@@ -308,8 +280,8 @@ function CreditsContent() {
                   </p>
                 )}
               </div>
-              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
-                <Zap className="h-8 w-8 text-primary" />
+              <div className="grid h-16 w-16 place-items-center rounded-full bg-gold/10 ring-1 ring-inset ring-gold/25 text-gold-ink">
+                <Zap className="h-8 w-8" strokeWidth={1.6} />
               </div>
             </div>
           </CardContent>
@@ -337,50 +309,9 @@ function CreditsContent() {
           </Card>
         </div>
 
-        {/* Research products */}
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-              {t('research_products_title')}
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">{t('research_products_desc')}</p>
-          </CardHeader>
-          <CardContent className="pt-0 space-y-2">
-            {loading ? (
-              Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-16 bg-muted rounded-lg animate-pulse" />)
-            ) : (
-              products.map(p => {
-                const Icon = PRODUCT_ICON[p.category] ?? Search;
-                const priceUsd = (p.price_cents / 100).toFixed(2);
-                const active = purchases.find(pu => pu.product_code === p.code && pu.status === 'ACTIVE');
-                return (
-                  <div key={p.code} className="flex items-center gap-3 p-3 rounded-lg border border-border">
-                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                      <Icon className="h-4 w-4 text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{p.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        ${priceUsd} · {t('research_vat_included')}
-                        {active && <span className="ms-1.5 text-primary">· {active.units_remaining.toLocaleString()} {t('research_units_remaining')}</span>}
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="shrink-0 text-xs gap-1.5"
-                      disabled={purchasing === p.code || balance < p.price_cents / 100}
-                      onClick={() => handlePurchase(p.code)}
-                    >
-                      {purchasing === p.code ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShoppingCart className="h-3.5 w-3.5" />}
-                      {t('research_purchase_btn')}
-                    </Button>
-                  </div>
-                );
-              })
-            )}
-          </CardContent>
-        </Card>
+        {/* The research-product catalogue (Telegram/Facebook/Google packages)
+            that sat here belonged to the retired provider era. PAYG is the
+            only model; historical purchases stay in the ledger below. */}
         {/* Where the balance came from.
             Purchased credits never expire and survive a cancelled membership;
             membership and bonus credits carry their own expiry. Showing one

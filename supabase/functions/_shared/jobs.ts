@@ -341,7 +341,7 @@ export async function sendNotifications(ctx: JobContext): Promise<JobResult> {
         userId,
         type: 'MATCH_AVAILABLE',
         title: 'New match found',
-        body: `A new ${match.signal_strength} match is available for ${match.properties?.title ?? 'your property'}.`,
+        body: `A new match is available for ${match.properties?.title ?? 'your property'}.`,
         priority: 'NORMAL',
         deepLink: `/property/${match.property_id}/matches`,
         entityType: 'match',

@@ -76,9 +76,40 @@ function threeDecoders(): Plugin {
   };
 }
 
+/**
+ * THE SERVICE WORKER CHANGES WITH EVERY BUILD, ON PURPOSE.
+ *
+ * public/sw.js used to ship byte-identical across deploys, so an installed
+ * PWA never saw `updatefound` and a resumed app could run last month's
+ * bundle forever — the only way out was deleting and reinstalling the app.
+ * Stamping the VERSION placeholder with a per-build id makes every deploy
+ * a real worker update: the new worker installs, refreshes the shell
+ * precache, activates (install() calls skipWaiting), and its activate
+ * handler drops every previous build's caches. The page then offers a
+ * one-tap reload (SwUpdateToast) instead of forcing one mid-form.
+ */
+function stampServiceWorker(): Plugin {
+  const buildId = (process.env.VERCEL_GIT_COMMIT_SHA || '').slice(0, 8)
+    || Date.now().toString(36);
+  return {
+    name: 'homatch-stamp-sw',
+    apply: 'build',
+    /* The worker source lives OUTSIDE public/ precisely so the publicDir
+       copy cannot overwrite the stamped output (it did: the copy lands
+       after closeBundle under rolldown-vite). It is emitted as a build
+       asset instead, already stamped. Dev never registers a worker
+       (main.tsx guards on PROD), so no dev middleware is needed. */
+    generateBundle() {
+      const src = fs.readFileSync(path.resolve(__dirname, 'src/serviceWorker/sw.source.js'), 'utf8');
+      this.emitFile({ type: 'asset', fileName: 'sw.js', source: src.replaceAll('__BUILD__', buildId) });
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [
     react(),
+    stampServiceWorker(),
     threeDecoders(),
     svgr({
       svgrOptions: {

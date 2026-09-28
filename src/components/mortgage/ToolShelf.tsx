@@ -100,7 +100,7 @@ export function ToolShelf({
           {/* What this tool still needs, by name. A tool that opens and
               shows nothing is worse than one that says what is missing. */}
           {missingRequirements(TOPICS[open], state).length ? (
-            <p className="hm-workspace-panel px-5 py-6 text-sm text-muted-foreground">
+            <p className="hm-customer-panel px-5 py-6 text-sm text-muted-foreground">
               {t('mortgage_topic_needs')}{' '}
               <span className="text-foreground">
                 {missingRequirements(TOPICS[open], state).map((key) => t(key)).join(', ')}

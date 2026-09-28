@@ -147,7 +147,7 @@ export function SimpleCalculator({
   };
 
   return (
-    <section id="calculator" className="hm-workspace-panel p-5 sm:p-7">
+    <section id="calculator" className="hm-customer-panel p-5 sm:p-7">
       <div className="grid gap-5 sm:grid-cols-2">
         {/* ── Currency ── */}
         <Field

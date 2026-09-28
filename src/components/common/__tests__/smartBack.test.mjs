@@ -23,13 +23,15 @@ test('a property matches list falls back to that same property', () => {
   assert.equal(parentRouteFor('/property/p-1/matches'), '/property/p-1');
 });
 
-test('a property detail falls back to the dashboard', () => {
-  assert.equal(parentRouteFor('/property/p-1'), '/dashboard');
+test('a property detail falls back to the owner workspace', () => {
+  // The page's own back control always said /property; the shell now
+  // agrees instead of pulling the same person to /dashboard.
+  assert.equal(parentRouteFor('/property/p-1'), '/property');
 });
 
-test('the property creation flows fall back to the dashboard', () => {
+test('the property creation flows fall back to the owner workspace', () => {
   for (const p of ['/property/add', '/property/import', '/property/create']) {
-    assert.equal(parentRouteFor(p), '/dashboard', p);
+    assert.equal(parentRouteFor(p), '/property', p);
   }
 });
 

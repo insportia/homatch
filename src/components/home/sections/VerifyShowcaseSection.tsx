@@ -76,7 +76,7 @@ export function VerifyShowcaseSection() {
         if (!e.isIntersecting) continue;
         io.disconnect();
         timers = Array.from({ length: STEPS }, (_, i) => window.setTimeout(
-          () => setStep(i + 1), 300 + i * 620,
+          () => setStep(i + 1), 200 + i * 420,
         ));
       }
     }, { threshold: 0.3 });

@@ -17,15 +17,16 @@ import { getProperties } from '@/services/api';
 import { Community, CommunityPlatform, Property } from '@/types/types';
 import { toast } from 'sonner';
 
-const PLATFORM_COLORS: Record<CommunityPlatform, string> = {
-  TELEGRAM: 'bg-blue-500/10 text-blue-600 border-blue-200',
-  FACEBOOK: 'bg-indigo-500/10 text-indigo-600 border-indigo-200',
-  VK: 'bg-sky-500/10 text-sky-600 border-sky-200',
-  REDDIT: 'bg-orange-500/10 text-orange-600 border-orange-200',
-  LINKEDIN: 'bg-blue-700/10 text-blue-700 border-blue-300',
-  WHATSAPP: 'bg-green-500/10 text-green-600 border-green-200',
-  THREADS: 'bg-purple-500/10 text-purple-600 border-purple-200',
-  OTHER: 'bg-muted text-muted-foreground border-border',
+/** Brand names, cased the way the brands case them — never the raw enum. */
+const PLATFORM_NAMES: Record<string, string> = {
+  TELEGRAM: 'Telegram',
+  FACEBOOK: 'Facebook',
+  VK: 'VK',
+  REDDIT: 'Reddit',
+  LINKEDIN: 'LinkedIn',
+  WHATSAPP: 'WhatsApp',
+  THREADS: 'Threads',
+  INSTAGRAM: 'Instagram',
 };
 
 export default function CommunitiesPage() {
@@ -121,7 +122,7 @@ export default function CommunitiesPage() {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h1 className="text-xl font-semibold flex items-center gap-2">
-                <Globe className="h-5 w-5 text-primary" />
+                <Globe className="h-5 w-5 text-gold-ink" />
                 {t('comm_title')}
               </h1>
               <p className="text-sm text-muted-foreground mt-0.5">{t('comm_subtitle')}</p>
@@ -151,7 +152,7 @@ export default function CommunitiesPage() {
               <SelectContent>
                 <SelectItem value="all">{t('comm_all_platforms')}</SelectItem>
                 {(['TELEGRAM','FACEBOOK','VK','REDDIT','LINKEDIN','THREADS','OTHER'] as CommunityPlatform[]).map((p) => (
-                  <SelectItem key={p} value={p}>{p}</SelectItem>
+                  <SelectItem key={p} value={p}>{PLATFORM_NAMES[p] ?? t('comm_platform_other')}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -178,19 +179,21 @@ export default function CommunitiesPage() {
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
-              <Globe className="h-10 w-10 text-muted-foreground/40" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gold/10 ring-1 ring-inset ring-gold/25 text-gold-ink">
+                <Globe className="h-6 w-6" aria-hidden="true" />
+              </div>
               <p className="text-sm font-medium">{t('comm_empty_title')}</p>
               <p className="text-xs text-muted-foreground max-w-xs">{t('comm_empty_desc')}</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {filtered.map((c) => (
-                <Card key={c.id} className="hover:border-primary/40 transition-colors">
+                <Card key={c.id} className="hover:border-foreground/25 transition-colors">
                   <CardHeader className="p-4 pb-2">
                     <div className="flex items-start justify-between gap-2">
                       <CardTitle className="text-sm font-medium text-balance leading-snug">{c.name}</CardTitle>
-                      <Badge variant="outline" className={`text-[13px] shrink-0 ${PLATFORM_COLORS[c.platform as CommunityPlatform] ?? ''}`}>
-                        {c.platform}
+                      <Badge variant="outline" className="text-[13px] shrink-0 text-muted-foreground">
+                        {PLATFORM_NAMES[c.platform] ?? t('comm_platform_other')}
                       </Badge>
                     </div>
                     {c.description && <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{c.description}</p>}

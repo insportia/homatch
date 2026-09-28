@@ -18,6 +18,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { canGoBackInApp } from '@/lib/backNavigation';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -111,8 +112,14 @@ export default function ContactProfilePage() {
   return (
     <CommsWorkspace product="contacts">
         <div className="space-y-4">
-          <Button variant="ghost" size="sm" onClick={() => navigate('/outreach/contact-lists')}>
-            <ArrowLeft className="me-1.5 h-3.5 w-3.5 rtl:rotate-180" />{t('comm_contact_lists')}
+          {/* One step back to wherever the contact was opened from; the
+              contacts LIST (not contact-lists) is the fallback parent. */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => (canGoBackInApp() ? navigate(-1) : navigate('/outreach/contacts', { replace: true }))}
+          >
+            <ArrowLeft className="me-1.5 h-3.5 w-3.5 rtl:rotate-180" />{t('comms_nav_contacts')}
           </Button>
 
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -145,7 +152,6 @@ export default function ContactProfilePage() {
                 {contact.suppressed ? t('comm_contact_suppressed_note')
                   : contact.do_not_contact ? t('comm_contact_dnc_note')
                   : t('comm_contact_unsubscribed_note')}
-                {contact.suppressed_reason ? ` ${contact.suppressed_reason}` : ''}
               </AlertDescription>
             </Alert>
           ) : null}
@@ -197,7 +203,14 @@ export default function ContactProfilePage() {
 
               <h3 className="mb-1.5 mt-4 text-xs font-medium">{t('comm_contact_compliance')}</h3>
               <ul className="space-y-1 text-[13px]">
-                <Flag labelKey="comm_flag_consent" value={contact.consent_status} />
+                <Flag
+                  labelKey="comm_flag_consent"
+                  value={t(
+                    contact.consent_status === 'OPTED_IN' ? 'comm_consent_opted_in'
+                    : contact.consent_status === 'OPTED_OUT' ? 'comm_status_opted_out'
+                    : 'comm_consent_unknown',
+                  )}
+                />
                 <Flag labelKey="comm_flag_dnc" value={contact.do_not_contact ? t('comm_yes') : t('comm_no')} />
                 <Flag labelKey="comm_flag_do_not_call" value={contact.do_not_call ? t('comm_yes') : t('comm_no')} />
                 <Flag labelKey="comm_flag_whatsapp_optout" value={contact.whatsapp_opted_out ? t('comm_yes') : t('comm_no')} />

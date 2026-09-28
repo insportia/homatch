@@ -47,7 +47,7 @@ function Section({ id, titleKey, descriptionKey, summary, complete, open, onTogg
     /* The id was taken as a prop and never applied, so `aria-controls`
        pointed at nothing and no link could reach a section. Found by
        opening the deployed page rather than by reading this file. */
-    <section id={id} className="hm-workspace-panel overflow-hidden">
+    <section id={id} className="hm-customer-panel overflow-hidden">
       <button
         type="button"
         onClick={onToggle}

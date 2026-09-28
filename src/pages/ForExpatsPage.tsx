@@ -35,8 +35,7 @@ import { WhatCanIBuy } from '@/components/expats/WhatCanIBuy';
 import { WhatChanged } from '@/components/expats/WhatChanged';
 import WhatDoYouNeed from '@/components/expats/WhatDoYouNeed';
 import { PageBlocks } from '@/site/render/PageBlocks';
-import { HeaderSpacer, PublicHeader } from '@/components/home/PublicHeader';
-import { SiteFooter } from '@/components/home/sections/SiteFooter';
+import { AppLayout } from '@/components/layouts/AppLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cityName, EXPAT_CITIES } from '@/expats/geography';
@@ -53,7 +52,6 @@ import {
   listTopics,
   type RentalCommunity,
 } from '@/services/expats';
-import { usePublicNavLinks } from '@/site/publicNav';
 
 export default function ForExpatsPage() {
   const { t, lang } = useLanguage();
@@ -90,10 +88,10 @@ export default function ForExpatsPage() {
     };
   }, [tbilisi.nameKa, tbilisi.nameEn]);
 
-  const headerLinks = usePublicNavLinks();
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-background text-foreground">
+    <AppLayout noPadding>
+      <div className="overflow-x-hidden bg-background text-foreground">
       <PageMeta title={t('expat_meta_title')} description={t('expat_meta_description')} />
       <ExpatSeo path="/for-expats/georgia" />
 
@@ -108,8 +106,6 @@ export default function ForExpatsPage() {
         * state only works over a full-bleed black hero, and on white it
         * renders the logo white on white.
         */}
-      <PublicHeader links={headerLinks} solid />
-      <HeaderSpacer />
 
       <ExpatHero />
 
@@ -171,8 +167,8 @@ export default function ForExpatsPage() {
           page nobody has edited renders byte for byte what shipped. */}
       <PageBlocks slug="expat" />
 
-      <SiteFooter />
     </div>
+    </AppLayout>
   );
 }
 

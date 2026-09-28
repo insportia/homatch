@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import IntersectObserver from '@/components/common/IntersectObserver';
+import { SwUpdateToast } from '@/components/common/SwUpdateToast';
 import { Toaster } from '@/components/ui/sonner';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { LanguageProvider, useLanguage } from '@/contexts/LanguageContext';
@@ -73,5 +74,5 @@ class ErrorBoundary extends React.Component<{children:React.ReactNode},EBState>{
  */
 const RouteFallback: React.FC = () => <div className="min-h-[50vh]" aria-busy="true" />;
 
-const App:React.FC=()=> <Router><LanguageProvider><ImpersonationBanner/><AuthProvider><JobsProvider><DeveloperWorkspaceProvider><NavigationCounter/><ScrollToTop/><DomMutationGuard/><IntersectObserver/><ErrorBoundary><Suspense fallback={<RouteFallback/>}><Routes>{routes.map((route,index)=><Route key={index} path={route.path} element={route.element}/>) }<Route path="*" element={<NotFoundPage/>}/></Routes></Suspense></ErrorBoundary><JobIndicator/><Toaster richColors position="top-right"/></DeveloperWorkspaceProvider></JobsProvider></AuthProvider></LanguageProvider></Router>;
+const App:React.FC=()=> <Router><LanguageProvider><ImpersonationBanner/><AuthProvider><JobsProvider><DeveloperWorkspaceProvider><NavigationCounter/><ScrollToTop/><DomMutationGuard/><IntersectObserver/><ErrorBoundary><Suspense fallback={<RouteFallback/>}><Routes>{routes.map((route,index)=><Route key={index} path={route.path} element={route.element}/>) }<Route path="*" element={<NotFoundPage/>}/></Routes></Suspense></ErrorBoundary><JobIndicator/><SwUpdateToast/><Toaster richColors position="top-right"/></DeveloperWorkspaceProvider></JobsProvider></AuthProvider></LanguageProvider></Router>;
 export default App;

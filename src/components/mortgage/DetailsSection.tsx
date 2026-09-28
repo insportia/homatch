@@ -38,7 +38,7 @@ function Drawer({
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="hm-workspace-panel overflow-hidden">
+    <div className="hm-customer-panel overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -80,7 +80,7 @@ export function DetailsSection({
 
       {/* ── The real cost, in two lines ── */}
       {breakdown ? (
-        <div className="hm-workspace-panel p-5 sm:p-6">
+        <div className="hm-customer-panel p-5 sm:p-6">
           <div className="flex flex-wrap items-baseline gap-x-8 gap-y-3">
             <div>
               <p className="text-2xs uppercase tracking-[0.12em] text-muted-foreground">

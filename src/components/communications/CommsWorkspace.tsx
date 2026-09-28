@@ -234,7 +234,12 @@ export function CommsWorkspace({
 
   return (
     <RouteGuard>
-      <AppLayout noPadding>
+      {/* The premium-light customer ground. Communications is part of the
+          SHELL family (like the Dashboard and the account pages), which is
+          why it wears the shell's own block — inlined, not exported as a
+          surface constant, because product pages (Matches, Find Property)
+          must never be handed this theme (see matchPresentation guard). */}
+      <AppLayout noPadding surfaceClass="hm-customer hm-customer-canvas min-h-[calc(100dvh-4rem)]">
         <div className="mx-auto flex w-full max-w-[1680px] gap-0 px-3 py-4 sm:px-4 md:gap-6 md:px-6 md:py-6">
           {/* ── The rail, from md up ─────────────────────────────────────── */}
           {railless ? null : (

@@ -49,7 +49,7 @@ import {
   type PlanRowData, SearchPlanSummary,
 } from '@/components/customer/SearchPlanSummary';
 import {
-  CardAction, CustomerPageHeader, CustomerSurface, DISCOVERY_SURFACE, QuietAction,
+  CardAction, CustomerSurface, DISCOVERY_SURFACE, QuietAction,
 } from '@/components/customer/surface';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { Input } from '@/components/ui/input';
@@ -442,8 +442,17 @@ export default function FindPropertyPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plan, lang, t]);
 
+  /* The page's own header, not the shared list-page one: on a screen whose
+     whole subject is "describe what you are looking for", a text-base h1
+     glued to the top bar read as a stray label. Intentional top offset,
+     a title at title size, the subtitle at reading size. */
   const header = useMemo(() => (
-    <CustomerPageHeader title={t('plan_page_title')} count={t('plan_page_subtitle')} />
+    <header className="mb-5 pt-4 sm:pt-8">
+      <h1 className="font-display text-xl font-semibold leading-tight text-foreground sm:text-2xl">
+        {t('plan_page_title')}
+      </h1>
+      <p className="mt-1.5 text-sm font-medium text-muted-foreground">{t('plan_page_subtitle')}</p>
+    </header>
   ), [t]);
 
   return (

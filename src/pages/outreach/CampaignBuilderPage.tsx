@@ -17,7 +17,7 @@ import {
   ShieldCheck, CalendarClock, Eye, Check, X, Minus,
 } from 'lucide-react';
 import { CommsWorkspace } from '@/components/communications/CommsWorkspace';
-import { useCommsChannel, useCommsProduct } from '@/components/communications/channel';
+import { useCommsChannel, productForChannel } from '@/components/communications/channel';
 import { buildLaunchChecklist } from '@/lib/comm/launchChecklist';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -31,7 +31,7 @@ import { supabase } from '@/db/supabase';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
-  LoadingBlock, ErrorState, ComplianceBadge, formatUsd,
+  LoadingBlock, ErrorState, ComplianceBadge, StatusBadge, formatUsd,
 } from '@/components/communications/primitives';
 import {
   createCampaign, updateCampaign, getCampaign, previewLaunch, launchCampaign,
@@ -104,6 +104,9 @@ export default function CampaignBuilderPage() {
    * the cross-channel hub where choosing IS the job. There the step stays.
    */
   const lockedChannel = useCommsChannel();
+  /* The rail must match the product the route says we are in — a builder
+     opened at /outreach/whatsapp/... highlighting Calls is a wrong answer. */
+  const product = productForChannel(lockedChannel);
   const STEPS = lockedChannel
     ? (ALL_STEPS.filter((x) => x !== 'channel') as unknown as typeof ALL_STEPS)
     : ALL_STEPS;
@@ -264,14 +267,14 @@ export default function CampaignBuilderPage() {
   }, [campaignId, navigate, t]);
 
   if (loading) {
-    return <CommsWorkspace product="calls"><div><LoadingBlock rows={6} /></div></CommsWorkspace>;
+    return <CommsWorkspace product={product}><div><LoadingBlock rows={6} /></div></CommsWorkspace>;
   }
 
   const isCall = draft.campaign_type === 'AI_CALL';
   const isWhatsApp = draft.campaign_type === 'WHATSAPP';
 
   return (
-    <CommsWorkspace product="calls">
+    <CommsWorkspace product={product}>
         <div className="space-y-4">
           <Button variant="ghost" size="sm" onClick={() => navigate('/outreach/campaigns')}>
             <ArrowLeft className="me-1.5 h-3.5 w-3.5 rtl:rotate-180" />{t('comm_campaigns_title')}
@@ -480,7 +483,7 @@ export default function CampaignBuilderPage() {
                               <span className="block truncate text-xs font-medium">{tpl.name}</span>
                               <span className="line-clamp-2 text-[13px] text-muted-foreground">{tpl.body_text}</span>
                             </span>
-                            <Badge variant="outline" className="shrink-0 text-[13px]">{tpl.status}</Badge>
+                            <StatusBadge status={tpl.status} />
                           </button>
                         </li>
                       );

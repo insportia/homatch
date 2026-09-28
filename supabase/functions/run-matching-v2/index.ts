@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   FRESHNESS_COLUMNS, gateForDelivery, loadFreshnessPolicy,
 } from '../_shared/evidenceFreshness.ts';
+import { judgeDemandFreshness } from '../../../src/research-core/match/demand-freshness.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -234,6 +235,7 @@ Deno.serve(async (req: Request) => {
     /* Refused for freshness, and what was done about it. Reported so a run
        that delivered nothing because everything was stale is legible. */
     let rejectedStaleEvidence = 0;
+    let rejectedAncientDemand = 0;
     let queuedRevalidations = 0;
     const staleReasons: Record<string, number> = {};
     let best = 0;
@@ -389,7 +391,24 @@ Deno.serve(async (req: Request) => {
 
       const scored = score(property, facts, profile);
       if (scored.score < 20) { skipped++; continue; }
-      const strength = scored.score >= 90 ? 'EXCEPTIONAL' : scored.score >= 80 ? 'VERY_STRONG' : scored.score >= 65 ? 'STRONG' : scored.score >= 50 ? 'GOOD' : 'POTENTIAL';
+
+      /* DEMAND FRESHNESS — the gate this pipeline was missing. judgeDelivery
+         above asks "is our EVIDENCE current?"; this asks "is the DEMAND
+         current?" — how long ago the person actually posted. A 2009 forum
+         post scored 100 on compatibility and sold for 35 credits before this
+         existed. Ancient demand never becomes an active match (the signal
+         row itself is untouched — history keeps it); merely old demand keeps
+         eligibility but decays in score, so it ranks below this week's.
+         An unreadable date is a flat penalty, never "fresh" (policy in
+         research-core/match/demand-freshness.ts). */
+      const demandFreshness = judgeDemandFreshness(signal.published_at, {
+        transaction: profile.transaction_type,
+      });
+      if (!demandFreshness.eligible) { skipped++; rejectedAncientDemand++; continue; }
+      const finalScore = Math.max(0, Math.min(100, Math.round(scored.score * demandFreshness.factor)));
+      if (finalScore < 20) { skipped++; rejectedAncientDemand++; continue; }
+
+      const strength = finalScore >= 90 ? 'EXCEPTIONAL' : finalScore >= 80 ? 'VERY_STRONG' : finalScore >= 65 ? 'STRONG' : finalScore >= 50 ? 'GOOD' : 'POTENTIAL';
       const published = signal.published_at ? new Date(signal.published_at) : null;
       const publishedMs = published && !Number.isNaN(published.getTime()) ? published.getTime() : null;
       const recency = publishedMs !== null ? formatRecency((Date.now() - publishedMs) / 3600000) : null;
@@ -460,7 +479,7 @@ Deno.serve(async (req: Request) => {
         campaign_id: campaignId || null,
         signal_id: profile.signal_id,
         intent_profile_id: profile.id,
-        match_score: scored.score,
+        match_score: finalScore,
         intent_confidence: Number(profile.intent_confidence || 0),
         signal_strength: strength,
         match_reasons: scored.reasons,
@@ -523,6 +542,7 @@ Deno.serve(async (req: Request) => {
        * the second is a market.
        */
       rejectedStaleEvidence,
+      rejectedAncientDemand,
       queuedRevalidations,
       staleReasons,
       insertErrors,

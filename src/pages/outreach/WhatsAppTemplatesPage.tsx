@@ -35,6 +35,14 @@ type TKey = Parameters<ReturnType<typeof useLanguage>['t']>[0];
 const CATEGORIES = ['MARKETING', 'UTILITY', 'AUTHENTICATION'] as const;
 const LANGUAGES = ['ka', 'en', 'ru', 'tr', 'ar', 'he'] as const;
 
+/**
+ * Meta's rejection_reason is sometimes a sentence and sometimes an enum code
+ * like INVALID_FORMAT. Only the sentence is worth showing to a customer.
+ */
+function isHumanReason(reason: string): boolean {
+  return reason.length <= 160 && /[a-z]/.test(reason) && reason.includes(' ');
+}
+
 export default function WhatsAppTemplatesPage() {
   const { t, lang: language } = useLanguage();
   const navigate = useNavigate();
@@ -123,7 +131,10 @@ export default function WhatsAppTemplatesPage() {
                           </p>
                           <p className="mt-1.5 line-clamp-2 whitespace-pre-wrap text-xs text-muted-foreground">{tpl.body_text}</p>
                           {tpl.rejection_reason ? (
-                            <p className="mt-1 text-[13px] text-red-500">{tpl.rejection_reason}</p>
+                            <p className="mt-1 text-[13px] text-red-700 dark:text-red-400">
+                              {t('comm_wa_template_rejected_body')}
+                              {isHumanReason(tpl.rejection_reason) ? ` ${tpl.rejection_reason}` : ''}
+                            </p>
                           ) : null}
                         </div>
                         <Button

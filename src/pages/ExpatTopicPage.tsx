@@ -26,8 +26,7 @@ import { Link, Navigate, useParams } from 'react-router-dom';
 import PageMeta from '@/components/common/PageMeta';
 import { type Crumb, ExpatBreadcrumbs, ExpatSeo } from '@/components/expats/ExpatSeo';
 import { SourcedFact } from '@/components/expats/Provenance';
-import { HeaderSpacer, PublicHeader } from '@/components/home/PublicHeader';
-import { SiteFooter } from '@/components/home/sections/SiteFooter';
+import { AppLayout } from '@/components/layouts/AppLayout';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { judgeFreshness } from '@/expats/types';
 import {
@@ -37,7 +36,6 @@ import {
   localiseTopic,
   type TopicFact,
 } from '@/services/expats';
-import { usePublicNavLinks } from '@/site/publicNav';
 
 /** The handoffs a topic can carry, by the domain it belongs to. */
 const DOMAIN_HANDOFF: Record<string, { to: string; key: string }[]> = {
@@ -57,7 +55,6 @@ export default function ExpatTopicPage() {
   /* At the top, never after an early return: this component returns a
      redirect and two placeholder states above, and a hook called past one
      of them changes the hook order between renders. */
-  const headerLinks = usePublicNavLinks();
 
 
   const [topic, setTopic] = React.useState<ExpatTopic | null>(null);
@@ -88,16 +85,19 @@ export default function ExpatTopicPage() {
 
   if (state === 'LOADING') {
     return (
+      <AppLayout noPadding>
       <div className="mx-auto w-full max-w-[52rem] px-5 py-16">
         <div className="h-4 w-32 animate-pulse rounded bg-muted" />
         <div className="mt-6 h-10 w-3/4 animate-pulse rounded bg-muted" />
         <div className="mt-4 h-24 animate-pulse rounded bg-muted" />
       </div>
+      </AppLayout>
     );
   }
 
   if (state === 'MISSING' || !topic) {
     return (
+      <AppLayout noPadding>
       <div className="mx-auto w-full max-w-[52rem] px-5 py-20">
         <h1 className="font-display text-2xl font-semibold text-foreground">
           {t('expat_topic_missing_title')}
@@ -111,6 +111,7 @@ export default function ExpatTopicPage() {
           {t('expat_topic_back')}
         </Link>
       </div>
+      </AppLayout>
     );
   }
 
@@ -129,14 +130,13 @@ export default function ExpatTopicPage() {
 
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-background text-foreground">
+    <AppLayout noPadding>
+      <div className="overflow-x-hidden bg-background text-foreground">
       {/*
         * Part of Homatch, and now visibly so. This page rendered a bare
         * fragment: a visitor arriving from a search result had no header,
         * no footer and no way into the rest of the product.
         */}
-      <PublicHeader links={headerLinks} solid />
-      <HeaderSpacer />
 
       <PageMeta title={`${content.title} — Homatch`} description={content.summary} />
       <ExpatSeo
@@ -272,7 +272,7 @@ export default function ExpatTopicPage() {
         </Link>
       </article>
 
-      <SiteFooter />
     </div>
+    </AppLayout>
   );
 }

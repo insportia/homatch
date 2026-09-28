@@ -98,7 +98,10 @@ async function loadTopMatches(properties: Property[], topPropertyId: string | nu
 }
 
 export async function loadDashboardSummary(userId: string): Promise<DashboardSummary> {
-  const properties = await getProperties(userId);
+  // 100, not the default 20: the banner presents properties.length as "total
+  // properties", and a portfolio of 21 must not read as 20. A hundred covers
+  // every real account today without a second counting query.
+  const properties = await getProperties(userId, undefined, 100);
   const ids = properties.map(p => p.id);
   const sinceMs = Date.now() - WEEK_MS;
 

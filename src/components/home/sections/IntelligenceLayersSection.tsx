@@ -241,16 +241,25 @@ export function IntelligenceLayersSection() {
               >
                 {sf(`layer_${LAYERS[active].key}`, LAYERS[active].label)}
               </p>
-              {/* The finding, clamped so a long Georgian sentence cannot push
-                  the row taller than the drawing beside it and make the page
-                  jump on every tick. The whole sentence is directly below. */}
-              <p
-                className="mt-2 line-clamp-4 text-pretty text-[14px] leading-[1.5] text-white/65"
-                {...fp(`layer_${LAYERS[active].key}_d`)}
-              >
-                {sf(`layer_${LAYERS[active].key}_d`, LAYERS[active].desc)}
-              </p>
+              {/* The full sentence lives in the accordion row DIRECTLY under
+                  this pair — at the point it belongs to — so the caption
+                  carries only the index and the name and the fold stays
+                  shallow. */}
             </div>
+          </div>
+
+          {/*
+            * THE SEVEN POINTS, ATTACHED TO THE BUILDING.
+            *
+            * They used to sit at the very bottom of the section, under the
+            * callouts, a note and a second copy of the active layer's text —
+            * a disconnected stack of blocks a full screen away from the
+            * drawing they control. Now they are the next thing after the
+            * pair: tap a floor, the building above answers, and the active
+            * row opens its own explanation in place.
+            */}
+          <div className="mt-4">
+            <LayerList active={active} onPick={setActive} expand />
           </div>
 
           {/* The four things the analysis actually read off the building.
@@ -265,7 +274,7 @@ export function IntelligenceLayersSection() {
                 style={{
                   opacity: found ? 1 : 0,
                   transform: found ? 'none' : 'translateY(20px)',
-                  transition: `opacity 520ms cubic-bezier(0.16,1,0.3,1) ${i * 140}ms, transform 520ms cubic-bezier(0.16,1,0.3,1) ${i * 140}ms`,
+                  transition: `opacity 420ms cubic-bezier(0.16,1,0.3,1) ${i * 90}ms, transform 420ms cubic-bezier(0.16,1,0.3,1) ${i * 90}ms`,
                 }}
               >
                 <dt
@@ -286,12 +295,6 @@ export function IntelligenceLayersSection() {
 
           <p className="mt-3 text-[13px] leading-relaxed text-white/40">{buildingCopy.note}</p>
 
-          <div className="mt-6">
-            <LayerPanel active={active} />
-          </div>
-          <div className="mt-6">
-            <LayerList active={active} onPick={setActive} />
-          </div>
         </div>
 
         {/* Three columns from lg: the picture, the floors, and the floor you
@@ -331,7 +334,11 @@ export function IntelligenceLayersSection() {
  * bar rather than only a colour shift: a shift in text colour is the kind of
  * signal that survives a design review and not daylight.
  */
-function LayerList({ active, onPick }: { active: number; onPick: (i: number) => void }) {
+function LayerList({ active, onPick, expand = false }: {
+  active: number; onPick: (i: number) => void;
+  /** Mobile: the active row opens its own explanation in place. */
+  expand?: boolean;
+}) {
   const sf = useSectionField();
   const fp = useFieldProps();
   return (
@@ -371,6 +378,14 @@ function LayerList({ active, onPick }: { active: number; onPick: (i: number) => 
                 {...fp(`layer_${layer.key}`)}
               >
                 {sf(`layer_${layer.key}`, layer.label)}
+                {expand && on && (
+                  <span
+                    className="mt-1.5 block text-pretty text-[14px] font-normal leading-[1.55] text-white/65"
+                    {...fp(`layer_${layer.key}_d`)}
+                  >
+                    {sf(`layer_${layer.key}_d`, layer.desc)}
+                  </span>
+                )}
               </span>
             </button>
           </li>

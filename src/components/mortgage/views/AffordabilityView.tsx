@@ -54,7 +54,7 @@ function RatioCard({
   const { t } = useLanguage();
 
   return (
-    <div className="rounded-xl border border-border bg-[hsl(var(--secondary))] p-4 sm:p-5">
+    <div className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5">
       <h3 className="font-display text-base font-semibold text-foreground">{t(titleKey)}</h3>
       <p className="mt-1.5 max-w-[48ch] text-sm leading-relaxed text-muted-foreground">{t(explainKey)}</p>
       {/* THE PLAIN SENTENCE LEADS AND THE ACRONYM FOLLOWS. A borrower

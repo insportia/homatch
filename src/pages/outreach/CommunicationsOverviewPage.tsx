@@ -284,7 +284,7 @@ export default function CommunicationsOverviewPage() {
                     onClick={() => navigate(`/outreach/campaigns?open=${c.id}`)}
                     className="flex w-full min-w-0 items-center gap-3 rounded-lg border bg-card p-3 text-start transition-colors hover:border-foreground/25"
                   >
-                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md border bg-muted/60 text-muted-foreground">
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-gold/30 bg-gold/[0.06] text-gold-ink">
                       {c.campaign_type === 'WHATSAPP'
                         ? <MessageCircle className="h-4 w-4" aria-hidden="true" />
                         : <PhoneCall className="h-4 w-4" aria-hidden="true" />}

@@ -93,7 +93,7 @@ function ActivityItem({ event }: { event: ActivityEvent }) {
           <p className="text-xs text-muted-foreground mt-0.5">{metaSummary}</p>
         )}
       </div>
-      <span className="text-xs text-muted-foreground/60 shrink-0 mt-0.5">
+      <span className="text-xs text-muted-foreground shrink-0 mt-0.5">
         {/* The same localized relative age the notification list uses. */}
         {notificationAge(event.created_at, t, lang)}
       </span>
@@ -142,9 +142,11 @@ function ActivityContent() {
             </div>
           ) : feedEvents.length === 0 ? (
             <div className="p-12 text-center space-y-3">
-              <Activity className="h-8 w-8 text-muted-foreground/20 mx-auto mb-1" />
+              <span className="mx-auto mb-1 grid h-11 w-11 place-items-center rounded-full bg-gold/10 ring-1 ring-inset ring-gold/25 text-gold-ink" aria-hidden="true">
+                <Activity className="h-5 w-5" />
+              </span>
               <p className="text-sm text-muted-foreground">{t('empty_no_activity_title')}</p>
-              <p className="text-xs text-muted-foreground/60">{t('empty_no_activity_desc')}</p>
+              <p className="text-xs text-muted-foreground">{t('empty_no_activity_desc')}</p>
             </div>
           ) : (
             <div className="p-4">

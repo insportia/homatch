@@ -110,7 +110,7 @@ export function ScheduleView({
             same rows rather than one rendering that scrolls sideways. */}
         <ul className="space-y-2 sm:hidden">
           {rows.map((row) => (
-            <li key={row.month} className="rounded-xl border border-border bg-[hsl(var(--secondary))] p-3.5">
+            <li key={row.month} className="rounded-xl border border-border bg-card p-3.5 shadow-card">
               <div className="flex items-baseline justify-between gap-2">
                 <span className="text-sm font-medium text-foreground">
                   {t('mortgage_schedule_month', { n: row.month })}

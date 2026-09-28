@@ -79,7 +79,7 @@ function LedgerRow({ entry }: { entry: CreditLedgerEntry }) {
         </div>
         <div className="min-w-0">
           <p className="text-sm font-medium text-foreground break-words">{t(cfg.labelKey)}</p>
-          <p className="text-xs text-muted-foreground/60 flex items-center gap-1 mt-0.5">
+          <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
             <Clock className="h-3 w-3" />
             {new Date(entry.created_at).toLocaleString()}
           </p>
@@ -256,7 +256,7 @@ function CreditsContent() {
         )}
 
         {/* Balance card */}
-        <Card className="border-primary/20 bg-primary/5">
+        <Card className="border-[hsl(var(--gold-border))] bg-card shadow-card">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -264,7 +264,7 @@ function CreditsContent() {
                 {loading ? (
                   <div className="h-10 w-32 bg-muted rounded animate-pulse" />
                 ) : (
-                  <p className="text-4xl font-semibold text-primary" dir="ltr">{balance.toFixed(2)}</p>
+                  <p className="text-4xl font-semibold tabular-nums text-foreground" dir="ltr">{balance.toFixed(2)}</p>
                 )}
                 <p className="text-xs text-muted-foreground mt-1">{t('credits_balance_unit')}</p>
                 {/* A credit's dollar value, from the server, so this line
@@ -386,8 +386,8 @@ function CreditsContent() {
         </Card>
 
         {/* Pricing info */}
-        <div className="rounded-lg border border-border/50 bg-secondary/30 p-4 flex items-start gap-3">
-          <Info className="h-4 w-4 text-muted-foreground/60 shrink-0 mt-0.5" />
+        <div className="flex items-start gap-3 rounded-lg border border-[hsl(var(--gold-border))] bg-gold/[0.04] p-4">
+          <Info className="h-4 w-4 shrink-0 mt-0.5 text-gold-ink" />
           <div className="space-y-1">
             <p className="text-xs text-muted-foreground font-medium">{t('credits_pricing_title')}</p>
             <p className="text-xs text-muted-foreground/70">{t('credits_pricing_desc')}</p>
@@ -409,7 +409,7 @@ function CreditsContent() {
           {topUpResult ? (
             /* Mock result */
             <div className="space-y-4 py-2">
-              <div className="rounded-lg bg-secondary/50 border border-border p-4 space-y-2">
+              <div className="rounded-lg border border-border bg-card p-4 space-y-2 shadow-card">
                 <p className="text-sm font-medium text-foreground">{t('credits_mock_session_created')}</p>
                 <p className="text-xs text-muted-foreground">{t('credits_topup_mock_note')}</p>
                 {topUpResult.checkoutUrl && (
@@ -445,8 +445,8 @@ function CreditsContent() {
                         onClick={() => setSelectedPack(pack.code)}
                         className={`relative rounded-lg border py-2.5 text-sm font-semibold transition-all ${
                           selected
-                            ? 'border-primary bg-primary/10 text-primary'
-                            : 'border-border bg-secondary text-foreground hover:border-primary/50'
+                            ? 'border-[hsl(var(--gold-border))] bg-gold/10 text-foreground shadow-card'
+                            : 'border-border bg-card text-foreground hover:border-foreground/30'
                         }`}
                         dir="ltr"
                       >
@@ -477,7 +477,7 @@ function CreditsContent() {
                   ? Math.min((pack.credits * promo.bonus_match_bps) / 10000, Number(promo.max_bonus_credits))
                   : 0;
                 return (
-                  <div className="rounded-lg bg-secondary/50 border border-border p-3 space-y-1">
+                  <div className="rounded-lg border border-border bg-card p-3 space-y-1 shadow-card">
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">{t('credits_amount_label')}</span>
                       <span className="font-medium text-foreground" dir="ltr">

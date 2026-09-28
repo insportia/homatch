@@ -230,8 +230,8 @@ test('the Georgian mortgage page says what it means, on a phone', opts, async (t
     for (let pass = 0; pass < 3; pass += 1) {
       const opened = await page.evaluate(() => {
         const nodes = [
-          ...document.querySelectorAll('.hm-workspace button[aria-expanded="false"]'),
-          ...document.querySelectorAll('.hm-workspace details:not([open]) > summary'),
+          ...document.querySelectorAll('.hm-customer button[aria-expanded="false"], .hm-workspace button[aria-expanded="false"]'),
+          ...document.querySelectorAll('.hm-customer details:not([open]) > summary, .hm-workspace details:not([open]) > summary'),
         ];
         for (const node of nodes) node.click();
         return nodes.length;

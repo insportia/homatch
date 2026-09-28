@@ -228,7 +228,7 @@ export function ConsultantPanel({ brief }: { brief: ConsultantBrief | null }) {
           onChange={(event) => setValue(event.target.value)}
           placeholder={t('mortgage_consultant_placeholder')}
           aria-label={t('mortgage_consultant_placeholder')}
-          className="min-h-12 w-full min-w-0 rounded-xl border border-border bg-[hsl(var(--input))] px-4 text-base text-foreground outline-none transition-colors focus:border-[hsl(var(--gold-border))]"
+          className="min-h-12 w-full min-w-0 rounded-xl border border-border bg-[hsl(var(--input))] px-4 text-base text-foreground outline-none transition-colors focus:border-[hsl(var(--gold-border))] focus:ring-2 focus:ring-gold/20"
         />
         {streaming ? (
           <button

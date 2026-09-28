@@ -47,7 +47,7 @@ function Field({
     <div>
       <label
         htmlFor={id}
-        className="mb-2 block text-sm font-medium text-foreground"
+        className="mb-2 block text-[15px] font-semibold text-foreground"
       >
         {label}
       </label>
@@ -63,7 +63,7 @@ function Field({
 
 const INPUT_CLASS =
   'min-h-12 w-full min-w-0 rounded-xl border border-border bg-[hsl(var(--input))] px-4 text-base ' +
-  'text-foreground outline-none transition-colors focus:border-[hsl(var(--gold-border))]';
+  'text-foreground shadow-card outline-none transition-colors focus:border-[hsl(var(--gold-border))] focus:ring-2 focus:ring-gold/20';
 
 export function SimpleCalculator({
   draft,
@@ -303,7 +303,7 @@ export function SimpleCalculator({
           id="mtg-calculate"
           type="button"
           onClick={press}
-          className="mt-6 min-h-12 w-full rounded-xl bg-[hsl(var(--gold))] px-6 text-base font-semibold text-[hsl(var(--primary-foreground))] transition-colors hover:bg-[hsl(var(--gold-hover))] sm:w-auto"
+          className="mt-6 min-h-12 w-full rounded-xl bg-[hsl(var(--gold))] px-8 text-base font-bold text-[#161309] shadow-card transition-colors hover:bg-[hsl(var(--gold-hover))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:w-auto"
         >
           {t('mortgage_calculate')}
         </button>

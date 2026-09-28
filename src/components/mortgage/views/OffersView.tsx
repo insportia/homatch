@@ -56,7 +56,7 @@ function OfferEditor({
   const patch = (next: Partial<MortgageOffer>) => onChange({ ...offer, ...next });
 
   return (
-    <div className="rounded-xl border border-border bg-[hsl(var(--secondary))] p-4 sm:p-5">
+    <div className="rounded-xl border border-border bg-card p-4 shadow-card sm:p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
         <span className="text-2xs font-semibold uppercase tracking-[0.14em] text-[hsl(var(--gold-ink))]">
           {t('mortgage_offer_n', { n: index + 1 })}
@@ -247,7 +247,7 @@ export function OffersView({
           {/* Cards on a phone. */}
           <div className="space-y-3 lg:hidden">
             {comparison.rows.map((row, index) => (
-              <div key={index} className="rounded-xl border border-border bg-[hsl(var(--secondary))] p-4">
+              <div key={index} className="rounded-xl border border-border bg-card p-4 shadow-card">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <span className="font-display text-base font-semibold text-foreground">
                     {row.offer.offerName}

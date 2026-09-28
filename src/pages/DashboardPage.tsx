@@ -654,7 +654,9 @@ function DashboardContent() {
                   <CardHead
                     title={t('db_properties_title')}
                     action={(
-                      <span className="flex items-center gap-3">
+                      /* Wraps: two actions side by side overflowed 390px in
+                         Russian and Turkish (the matrix caught it). */
+                      <span className="flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-0.5">
                         <LinkAction label={t('nav_add_property')} onClick={() => navigate('/property/add')} />
                         {/* The canonical owner workspace is one step away, always. */}
                         <LinkAction label={t('db_properties_all')} onClick={() => navigate('/property')} />

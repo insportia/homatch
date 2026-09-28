@@ -50,7 +50,7 @@ export function TermsView({
                 'w-full rounded-xl border p-4 text-start transition-colors',
                 row.isSelected
                   ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))]'
-                  : 'border-border bg-[hsl(var(--secondary))] hover:border-[hsl(var(--gold-border))]',
+                  : 'border-border bg-card hover:border-[hsl(var(--gold-border))]',
               )}
             >
               <div className="flex flex-wrap items-baseline justify-between gap-2">

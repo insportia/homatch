@@ -9,16 +9,17 @@
     "test": "npm run test:build && node --test test/*.test.mjs"
   },
   "dependencies": {
+    "@google-cloud/speech": "^7.2.0",
     "express": "^5.1.0",
     "pdf-parse": "^1.1.1",
     "playwright": "1.55.0",
+    "telegram": "2.26.22",
     "tsx": "^4.19.2",
-    "@google-cloud/speech": "^7.2.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "20.19.43",
-    "typescript": "^5.9.2",
-    "@types/ws": "^8.5.13"
+    "@types/ws": "^8.5.13",
+    "typescript": "^5.9.2"
   }
 }

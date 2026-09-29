@@ -255,14 +255,20 @@ function AIPageInner() {
   const {
     messages, streaming, streamContent, conversations, activeConvId,
     sendMessage, cancelStream, resetChat, loadConversations,
-    loadConversation, newConversation, setPageContext,
+    loadConversation, newConversation, pageContext, setPageContext,
     anonLimitReached, suggestedReplies, suggestedActions, lastWebChecked, lastSources, insufficientCredits,
   } = useAIChat();
 
   // Inject page context and auto-send prompt when navigated with state
   useEffect(() => {
-    const ctx = location.state as { context?: PageContext; prompt?: string } | undefined;
-    if (ctx?.context) setPageContext(ctx.context);
+    const ctx = location.state as { context?: PageContext & Record<string, unknown>; prompt?: string } | undefined;
+    if (ctx?.context) {
+      // Normalize the legacy sender shape {type, id, title} (fields beside
+      // `data` instead of inside it) so page context actually survives the
+      // trip to the edge function whichever page sent it.
+      const { type, data, ...rest } = ctx.context;
+      setPageContext({ type, data: { ...(data ?? {}), ...rest } });
+    }
     if (ctx?.prompt && !didAutoSend.current && session) {
       didAutoSend.current = true;
       sendMessage(ctx.prompt);
@@ -507,7 +513,11 @@ function AIPageInner() {
               {/* TYPE B, visually the opposite of a reply: solid navy,
                   gold arrow, navigates to a real product, spends nothing. */}
               {!streaming && (
-                <ServiceActions actions={suggestedActions} className="ps-10" />
+                <ServiceActions
+                  actions={suggestedActions}
+                  className="ps-10"
+                  context={{ propertyId: typeof pageContext.data?.propertyId === 'string' ? pageContext.data.propertyId : null }}
+                />
               )}
               <div ref={bottomRef} />
             </div>

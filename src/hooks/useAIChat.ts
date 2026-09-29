@@ -161,7 +161,13 @@ export function useAIChat() {
       functionUrl: `${SUPABASE_URL}/functions/v1/homatch-ai`,
       requestBody: {
         messages: efMessages,
-        context: pageContext.type !== 'general' ? pageContext.data : undefined,
+        /* The WHOLE context, type included. This used to send only `.data`,
+       * and the property pages navigate here with {type:'property', id,
+       * title} — no `.data` at all — so the edge function received
+       * `undefined` and the model answered about "this apartment" without
+       * ever seeing which apartment. Internal-first starts with actually
+       * delivering the internal context. */
+      context: pageContext.type !== 'general' ? { type: pageContext.type, ...(pageContext.data ?? {}) } : undefined,
         conversationId: convId && convId !== 'guest' ? convId : undefined,
         // Proves which anonymous session this belongs to. Never an id the
         // client picked: the server decides what this token owns.

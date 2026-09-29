@@ -719,7 +719,7 @@ function PropertyDetailContent() {
                 className="w-full gap-2 bg-primary text-primary-foreground hover:bg-primary/90 justify-start h-auto min-h-9 py-2 whitespace-normal text-start"
                 onClick={() => navigate('/ai', {
                   state: {
-                    context: { type: 'property', id, title: property.title ?? t('prop_title_generic_fallback') },
+                    context: { type: 'property', data: { propertyId: id, title: property.title ?? t('prop_title_generic_fallback'), price: facts?.total_price ?? null, currency: facts?.currency ?? null, location: locationParts || null, transactionType: property.transaction_type ?? null, propertyType: property.property_type ?? null } },
                     prompt: `${t('prop_ai_about_prompt_base', { title: property.title ?? '' })} ${locationParts ? t('prop_ai_in_location', { location: locationParts }) : ''}`.trim(),
                   },
                 })}
@@ -732,7 +732,7 @@ function PropertyDetailContent() {
                 className="w-full gap-2 border-border justify-start h-auto min-h-9 py-2 whitespace-normal text-start"
                 onClick={() => navigate('/ai', {
                   state: {
-                    context: { type: 'property', id, title: property.title ?? t('prop_title_generic_fallback') },
+                    context: { type: 'property', data: { propertyId: id, title: property.title ?? t('prop_title_generic_fallback'), price: facts?.total_price ?? null, currency: facts?.currency ?? null, location: locationParts || null, transactionType: property.transaction_type ?? null, propertyType: property.property_type ?? null } },
                     prompt: `${t('prop_ai_cheaper_prompt_base', { title: property.title ?? '' })} ${facts?.total_price ? t('prop_ai_listed_at', { price: Number(facts.total_price).toLocaleString(), currency: facts.currency ?? '' }) : ''}`.trim(),
                   },
                 })}

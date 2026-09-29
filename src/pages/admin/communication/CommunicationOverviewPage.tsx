@@ -15,6 +15,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { TranslationKey } from '@/i18n/translations';
 import { getAiTalkVoice } from '@/services/communications';
+import { supabase } from '@/db/supabase';
 import { CommunicationShell } from './CommunicationShell';
 import { useCommStatus, type Verdict, VerdictBadge, verdictOf } from './status';
 
@@ -153,6 +154,72 @@ export default function CommunicationOverviewPage() {
           to="/admin/communication/whatsapp"
         />
       </div>
+
+      <AiRoutingDebug />
     </CommunicationShell>
+  );
+}
+
+/* ── HOMATCH AI ROUTING — why a response behaved the way it did ──────────
+ * One row per assistant turn, straight from ai_routing_events: the
+ * validated intent label and web mode the model actually followed, what
+ * internal context was on the table, real web-search count, actions
+ * returned, latency, and whether internal retrieval FAILED (which is a
+ * different fact from "the customer has no data"). Admin-only via RLS;
+ * customers never see routing internals. */
+function AiRoutingDebug() {
+  const { t } = useLanguage();
+  const [rows, setRows] = React.useState<any[] | null>(null);
+  React.useEffect(() => {
+    let live = true;
+    void supabase.from('ai_routing_events')
+      .select('id,created_at,locale,intent,web_mode,internal_used,internal_failed,web_calls,internal_counts,action_ids,latency_ms')
+      .order('created_at', { ascending: false }).limit(50)
+      .then(({ data }) => { if (live) setRows(data ?? []); });
+    return () => { live = false; };
+  }, []);
+  return (
+    <Card>
+      <CardContent className="p-4 sm:p-5">
+        <h2 className="font-display text-base font-semibold text-foreground">{t('admin_air_title')}</h2>
+        <p className="mb-3 text-[13px] text-muted-foreground">{t('admin_air_sub')}</p>
+        {rows === null ? null : rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t('admin_air_empty')}</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[13px]">
+              <thead>
+                <tr className="text-start text-muted-foreground">
+                  <th className="pe-3 text-start">{t('admin_air_when')}</th>
+                  <th className="pe-3 text-start">{t('admin_air_intent')}</th>
+                  <th className="pe-3 text-start">{t('admin_air_mode')}</th>
+                  <th className="pe-3 text-start">{t('admin_air_web')}</th>
+                  <th className="pe-3 text-start">{t('admin_air_internal')}</th>
+                  <th className="pe-3 text-start">{t('admin_air_actions')}</th>
+                  <th className="text-end">{t('admin_air_latency')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.id} className="border-t border-border align-top">
+                    <td className="py-1.5 pe-3 whitespace-nowrap">{new Date(r.created_at).toLocaleString()}</td>
+                    <td className="pe-3">{r.intent ?? '—'}<span className="text-muted-foreground"> · {r.locale}</span></td>
+                    <td className="pe-3 font-mono">{r.web_mode}</td>
+                    <td className="pe-3 tabular-nums" dir="ltr">{r.web_calls}</td>
+                    <td className="pe-3">
+                      {r.internal_failed
+                        ? <span className="font-semibold text-destructive">{t('admin_air_failed')}</span>
+                        : `${r.internal_used ? '✓' : '—'} p${r.internal_counts?.properties ?? 0} m${r.internal_counts?.matches ?? 0} v${r.internal_counts?.verifications ?? 0}${r.internal_counts?.pageContext ? ` · ${r.internal_counts.pageContext}` : ''}`}
+                    </td>
+                    <td className="pe-3 font-mono">{(r.action_ids ?? []).join(', ') || '—'}</td>
+                    <td className="text-end tabular-nums" dir="ltr">{r.latency_ms != null ? `${r.latency_ms}ms` : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

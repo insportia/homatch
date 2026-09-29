@@ -50,6 +50,7 @@ export const SERVICE_ACTION_CATALOGUE = Object.freeze({
   FIND_PROPERTY: { route: '/find-property', labelKey: 'ai_action_find_property' },
   FIND_BUYERS_TENANTS: { route: '/property', labelKey: 'ai_action_find_buyers' },
   BROKERS: { route: '/brokers', labelKey: 'ai_action_brokers' },
+  META_ADS: { route: '/outreach/meta/create', labelKey: 'ai_action_meta_ads' },
 } as const);
 
 export type ServiceActionId = keyof typeof SERVICE_ACTION_CATALOGUE;
@@ -81,6 +82,30 @@ export function parseServiceActions(raw: unknown): ServiceAction[] {
  * Kept beside the catalogue so the two cannot drift: the IDs the model is
  * offered are generated from the same object the validator accepts.
  */
+/**
+ * CONTEXT TRAVELS, BUT ONLY THROUGH CODE.
+ *
+ * When the conversation already knows which property it is about, the chip's
+ * destination carries that forward — the person should never re-enter what
+ * HOMATCH already knows. The mapping is deterministic and lives here: the
+ * model still returns bare IDs, and only routes that actually PARSE a query
+ * parameter receive one (MetaAdsCreatePage reads ?property=, VerifyPage reads
+ * ?code= for a cadastral code). Everything else navigates to the product's
+ * own start, which reads shared context through its own flow.
+ */
+export function routeForAction(
+  action: ServiceAction,
+  context?: { propertyId?: string | null; cadastralCode?: string | null },
+): string {
+  if (action.id === 'META_ADS' && context?.propertyId) {
+    return `${action.route}?property=${encodeURIComponent(context.propertyId)}`;
+  }
+  if (action.id === 'VERIFY' && context?.cadastralCode) {
+    return `${action.route}?code=${encodeURIComponent(context.cadastralCode)}`;
+  }
+  return action.route;
+}
+
 export const SERVICE_ACTIONS_INSTRUCTION = [
   'SERVICE ACTIONS',
   'In the same JSON block, also return "suggested_actions": an array of 0 to 3 service IDs, ONLY',

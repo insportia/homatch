@@ -12,9 +12,16 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
-import type { ServiceAction } from '@/lib/ai/serviceActions';
+import { routeForAction, type ServiceAction } from '@/lib/ai/serviceActions';
 
-export function ServiceActions({ actions, className }: { actions: ServiceAction[]; className?: string }) {
+export function ServiceActions({ actions, className, context }: {
+  actions: ServiceAction[];
+  className?: string;
+  /** Deterministic context the destination may carry forward (the person
+   *  never re-enters what HOMATCH already knows). Mapped in code by
+   *  routeForAction — the model never writes a destination. */
+  context?: { propertyId?: string | null; cadastralCode?: string | null };
+}) {
   const navigate = useNavigate();
   const { t } = useLanguage();
   if (actions.length === 0) return null;
@@ -27,7 +34,7 @@ export function ServiceActions({ actions, className }: { actions: ServiceAction[
         <button
           key={action.id}
           type="button"
-          onClick={() => navigate(action.route)}
+          onClick={() => navigate(routeForAction(action, context))}
           className="group inline-flex min-h-10 max-w-full items-center gap-1.5 rounded-full bg-[#0C1119] px-4 py-2 text-start text-sm font-semibold text-white shadow-card transition-colors hover:bg-[#1a2231] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2"
         >
           <span className="block break-words">{t(action.labelKey as never)}</span>

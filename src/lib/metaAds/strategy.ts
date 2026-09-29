@@ -70,7 +70,7 @@ export interface StrategyInput {
   currency: string;
   specialAdCategories: string[];
   creatives: CreativeRef[];
-  destination: { type: 'META_FORM' | 'WEBSITE' | 'HOMATCH_PAGE'; url?: string };
+  destination: { type: 'META_FORM' | 'WEBSITE' | 'HOMATCH_PAGE' | 'MESSAGING' | 'ON_POST'; url?: string };
   audienceExternalId?: string | null;
   countryCode?: string;               // default market
   placementsMode: 'RECOMMENDED' | 'CUSTOM';

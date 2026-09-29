@@ -119,7 +119,7 @@ export async function strategyInputFor(sb: Sb, uid: string, c: any, settings: Me
   if (c.audience_id) {
     const { data: aud } = await sb.from('meta_audiences').select('external_audience_id,sync_status,user_id')
       .eq('id', c.audience_id).maybeSingle();
-    if (!aud || aud.user_id !== uid) return { error: 'audience not found' };
+    if (!aud || aud.user_id !== uid) return { error: 'AUDIENCE_NOT_FOUND' };
     if (aud.sync_status !== 'READY') return { error: 'AUDIENCE_NOT_READY' };
     audienceExternalId = aud.external_audience_id;
   }
@@ -163,6 +163,20 @@ export async function configFingerprint(sb: Sb, c: any): Promise<string> {
   });
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(material));
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * The lead form a campaign may use: the one named in its destination only if
+ * it is among THIS customer's discovered forms (the draft is browser-written),
+ * otherwise their selected form.
+ */
+async function ownedFormId(sb: Sb, uid: string, requested: unknown, selected: { external_id?: string } | null): Promise<string | null> {
+  if (typeof requested === 'string' && requested) {
+    const { data } = await sb.from('meta_assets').select('external_id')
+      .eq('user_id', uid).eq('kind', 'LEAD_FORM').eq('external_id', requested).maybeSingle();
+    return data?.external_id ?? null;
+  }
+  return selected?.external_id ?? null;
 }
 
 /* ── PREFLIGHT ──────────────────────────────────────────────────────── */
@@ -231,7 +245,7 @@ export async function runPreflight(sb: Sb, uid: string, c: any, settings: MetaSe
   const destinationUrl = c.destination?.url ?? null;
   const ctx: Partial<LaunchContext> = {
     pageId: page?.external_id ?? '', instagramUserId: ig?.external_id ?? null,
-    pixelId: pixel?.external_id ?? null, leadFormId: c.destination?.formId ?? form?.external_id ?? null,
+    pixelId: pixel?.external_id ?? null, leadFormId: await ownedFormId(sb, uid, c.destination?.formId, form),
     messagingApp: (c.destination?.messagingApp as MessagingApp) ?? null,
     whatsappNumber: wa?.external_id ?? null, websiteUrl: destinationUrl,
   };
@@ -370,7 +384,7 @@ export async function publishCampaign(sb: Sb, uid: string, c: any, plan: TypedCa
     pageId: page.external_id,
     instagramUserId: ig?.external_id ?? null,
     pixelId: pixel?.external_id ?? null,
-    leadFormId: c.destination?.formId ?? form?.external_id ?? null,
+    leadFormId: await ownedFormId(sb, uid, c.destination?.formId, form),
     messagingApp: (c.destination?.messagingApp as MessagingApp) ?? (goal === 'MESSAGES' ? 'MESSENGER' : null),
     whatsappNumber: wa?.external_id ?? null,
     countries: settings.defaultCountries,

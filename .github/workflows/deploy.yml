@@ -689,14 +689,6 @@ jobs:
             # edgeDeployRegistry.test.mjs keeps it "deployed deliberately or
             # not at all" -- never one merge from production.
             "admin-user360"
-            # META ADS. The one customer-facing gateway for the whole product:
-            # status, guided connection, plan preview, preflight, launch (the
-            # only path that touches the ads ledger), pause/resume/sync,
-            # leads export/import, audiences, admin probes. It resolves the
-            # caller's profile from the JWT and re-checks is_admin for the
-            # admin actions, so the gateway JWT check is the correct outer
-            # gate — the browser is the only intended caller.
-            "meta-ads-api"
           )
           # ONLY WHAT IS OWED, AND IN PARALLEL.
           #
@@ -884,6 +876,15 @@ jobs:
             # deduplicated by key, and unverified payloads are stored but
             # never processed.
             "meta-webhooks"
+            # META ADS orchestrator. Moved here from the JWT list when it gained
+            # a second caller: the homatch-meta-ads-maintenance cron (status and
+            # spend sync, stuck-launch recovery, lead-webhook retry), which has
+            # no user JWT. The function authenticates every request itself —
+            # a customer through auth.getUser on the Authorization header (401
+            # without one), the cron only for action=maintenance with the
+            # private meta_ads_maintenance_token — and re-checks is_admin for
+            # admin actions. config.toml says the same.
+            "meta-ads-api"
             # Community target sync. The tick that keeps the shared
             # intelligence store current so that many campaigns reuse one
             # read instead of each causing their own. Driven by pg_cron,

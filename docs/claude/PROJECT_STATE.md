@@ -1,6 +1,6 @@
 # PROJECT STATE
 
-last_updated: 2026-09-28
+last_updated: 2026-09-29
 maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
@@ -42,3 +42,29 @@ MATTERS right now, verify against the live systems, not this file)
   `partners_cat2_desc`.
 - Dormant billing-v2 "plan" machinery exists in code but is NOT product
   truth: HOMATCH is PAYG-only (see BILLING.md).
+
+## Meta Ads (branch claude/homatch-discovery-engine-rqdnza, 2026-09-29)
+
+- Production runs Meta Ads in MOCK: `META_APP_ID` / `META_APP_SECRET` are not
+  set as Edge secrets. The only production "connection" is a mock one (mock_
+  assets, "TEST Page"); 4 DRAFT campaigns, 0 launches, 0 leads, 0 webhooks.
+- Branch adds: per-goal Graph payloads (`src/lib/metaAds/payload.ts`), launch
+  engine (`meta-ads-api/engine.ts`), signed OAuth state, header-only tokens +
+  appsecret_proof, optional token sealing (`META_TOKEN_ENCRYPTION_KEY`),
+  webhook signature-before-dedupe, maintenance cron, stepped builder.
+  Migration `20260930120000_meta_ads_live_readiness.sql` NOT applied.
+- OPEN MONEY DECISION (do not launch paid campaigns before it is made): the
+  ledger reserves the ad budget from the customer's HOMATCH balance, while
+  campaigns run on the customer's OWN ad account, which Meta bills directly.
+  Either HOMATCH charges only the fee (customer-billed ad account), or ads
+  run on a HOMATCH-owned ad account — not both.
+
+## Discovery engine (same branch)
+
+- Telegram MTProto gateway in the official worker (token-only
+  `/telegram/*`), `WorkerTelegramClient`, community-sync MTPROTO mode,
+  source discovery, canonical 30-day freshness policy
+  (`src/research-core/discovery/freshness-policy.ts`). Not yet wired into
+  matching/campaigns; no migration yet; worker needs `TELEGRAM_API_ID`,
+  `TELEGRAM_API_HASH`, `TELEGRAM_SESSION`, `TELEGRAM_ENABLED` in Railway.
+

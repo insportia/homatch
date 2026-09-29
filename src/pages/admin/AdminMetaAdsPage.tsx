@@ -244,11 +244,37 @@ function CampaignDrill({ c }: { c: any }) {
     const { data } = await supabase.from('meta_optimization_decisions').select('*').eq('campaign_id', c.id);
     return data ?? [];
   }, [c.id]);
+  const { rows: ledger } = useRows(async () => {
+    const { data } = await supabase.from('meta_ads_ledger').select('entry_type,amount_cents,created_at').eq('campaign_id', c.id).order('created_at');
+    return data ?? [];
+  }, [c.id]);
+  const { rows: leadCount } = useRows(async () => {
+    const { count } = await supabase.from('meta_leads').select('id', { count: 'exact', head: true }).eq('campaign_id', c.id);
+    return [{ n: count ?? 0 }];
+  }, [c.id]);
+  const [syncing, setSyncing] = useState(false);
+  const adminSync = async () => {
+    setSyncing(true);
+    try {
+      const { error } = await supabase.functions.invoke('meta-ads-api', { body: { action: 'admin_sync', campaignId: c.id } });
+      if (error) throw error;
+      toast.success(t('admin_mads_synced'));
+    } catch { toast.error(t('admin_mads_sync_failed')); } finally { setSyncing(false); }
+  };
+  const sum = (type: string) => ledger.filter((l: any) => l.entry_type === type).reduce((n: number, l: any) => n + Number(l.amount_cents), 0);
   return (
     <div className="mt-3 space-y-2 border-t border-border pt-3 text-[13px]">
       <p><b>{t('admin_mads_user')}</b> {c.user_id} · <b>{t('admin_mads_property')}</b> {c.property_id ?? '—'} · <b>{t('admin_mads_objective')}</b> {c.objective ?? '—'} · <b>{t('admin_mads_plan')}</b> {c.plan_version ?? '—'} · <b>{t('admin_mads_external')}</b> {c.external_campaign_id ?? '—'} · <b>{t('admin_mads_launch_key')}</b> {c.launch_idempotency_key ?? '—'}</p>
-      <p><b>{t('admin_mads_preflight')}</b> {c.preflight?.status ?? '—'} {c.preflight?.checks?.map((ch: any) => `${ch.ok ? '✓' : '✗'}${ch.key}`).join(' ')}</p>
-      <p><b>{t('admin_mads_placements')}</b> {JSON.stringify(c.placements)} · <b>{t('admin_mads_spend')}</b> {money(c.spend_cents)} · <b>{t('admin_mads_error')}</b> {c.last_error?.key ?? '—'}</p>
+      <p><b>{t('admin_mads_preflight')}</b> {c.preflight?.status ?? '—'} {c.preflight?.checks?.map((ch: any) => `${ch.state === 'WARNING' ? '!' : ch.ok ? '✓' : '✗'}${ch.key}${ch.detail && !ch.ok ? `(${ch.detail})` : ''}`).join(' ')}</p>
+      <p><b>{t('admin_mads_placements')}</b> {JSON.stringify(c.placements)} · <b>{t('admin_mads_destination')}</b> {JSON.stringify(c.destination)} · <b>{t('admin_mads_spend')}</b> {money(c.spend_cents)} · <b>{t('admin_mads_error')}</b> {c.last_error?.key ?? '—'}{c.last_error?.code ? ` (${c.last_error.code})` : ''}{c.last_error?.detail ? ` — ${c.last_error.detail}` : ''}</p>
+      <p><b>{t('admin_mads_timeline')}</b> {t('admin_mads_created')} {new Date(c.created_at).toLocaleString()} · {t('admin_mads_launched')} {c.launched_at ? new Date(c.launched_at).toLocaleString() : '—'} · {t('admin_mads_synced_at')} {c.last_synced_at ? new Date(c.last_synced_at).toLocaleString() : '—'} · {t('admin_mads_settled')} {c.settled_at ? new Date(c.settled_at).toLocaleString() : '—'}</p>
+      <p><b>{t('admin_mads_money')}</b> {t('admin_mads_reserved')} {money(-sum('RESERVE'))} · {t('admin_mads_fee')} {money(-sum('HOMATCH_FEE'))} · {t('admin_mads_released')} {money(sum('RELEASE'))} · {t('admin_mads_meta_spend')} {money(-sum('META_SPEND'))} · {t('admin_mads_refunded')} {money(sum('REFUND'))} · {t('admin_mads_leads')} {leadCount[0]?.n ?? 0}</p>
+      {c.last_error?.review && <p className="break-words"><b>{t('admin_mads_review_feedback')}</b> {JSON.stringify(c.last_error.review)}</p>}
+      {c.external_campaign_id && (
+        <Button size="sm" variant="outline" onClick={adminSync} disabled={syncing} className="gap-1.5">
+          <RefreshCw className={syncing ? 'h-3.5 w-3.5 animate-spin' : 'h-3.5 w-3.5'} />{t('admin_mads_sync_now')}
+        </Button>
+      )}
       <div>
         <b>{t('admin_mads_topology')}</b>
         {rows.length === 0 ? <span className="text-muted-foreground"> — {t('admin_mads_not_published')}</span> : (
@@ -274,7 +300,10 @@ function CampaignDrill({ c }: { c: any }) {
 function Connections() {
   const { t } = useLanguage();
   const { rows, loading } = useRows(async () => {
-    const { data: conns } = await supabase.from('meta_connections').select('*').order('updated_at', { ascending: false }).limit(200);
+    // Explicit columns: the single-use OAuth nonce is never pulled into Admin.
+    const { data: conns } = await supabase.from('meta_connections')
+      .select('id,user_id,status,granted_scopes,declined_scopes,token_expires_at,last_checked_at,last_error,updated_at')
+      .order('updated_at', { ascending: false }).limit(200);
     const { data: assets } = await supabase.from('meta_assets').select('user_id,kind,name,external_id,selected');
     return (conns ?? []).map((c: any) => ({
       ...c,
@@ -288,6 +317,7 @@ function Connections() {
         <Card key={c.id}>
           <p className="text-sm"><b>{c.user_id}</b> · {c.status} · {t('admin_mads_scopes')}: {c.granted_scopes?.join(', ') || '—'}
             {c.token_expires_at ? ` · token exp ${new Date(c.token_expires_at).toLocaleDateString()}` : ''}
+            {c.declined_scopes?.length ? ` · ${t('admin_mads_declined')}: ${c.declined_scopes.join(', ')}` : ''}
             {c.last_error ? ` · err ${c.last_error}` : ''}</p>
           <p className="mt-1 text-[13px] text-muted-foreground">
             {c.assets.map((a: any) => `${a.selected ? '★' : ''}${a.kind}:${a.name ?? a.external_id}`).join(' · ') || t('admin_mads_no_assets')}
@@ -466,7 +496,8 @@ function Settings() {
   const { t } = useLanguage();
   const { rows, loading, reload } = useRows(async () => {
     const { data } = await supabase.from('admin_settings').select('*').like('key', 'meta_ads_%').order('key');
-    return data ?? [];
+    // Worker/cron tokens are credentials, not settings: never rendered here.
+    return (data ?? []).filter((s: any) => !/token|secret/i.test(String(s.key)));
   });
   const save = async (key: string, value: unknown) => {
     const { error } = await supabase.from('admin_settings').update({ value }).eq('key', key);

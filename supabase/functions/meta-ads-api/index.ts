@@ -457,6 +457,10 @@ Deno.serve(async (req) => {
         if (!settings.aiAssistEnabled || !llmAvailable()) return json({ error: 'AI_UNAVAILABLE', code: 'AI_UNAVAILABLE' }, 503);
         const { data: c } = await sb.from('meta_campaigns').select('*').eq('id', body.campaignId).eq('user_id', uid).maybeSingle();
         if (!c) return json({ error: 'not found' }, 404);
+        // Model calls cost money: at most 30 suggestions per customer per hour.
+        const { count: recent } = await sb.from('meta_funnel_events').select('id', { count: 'exact', head: true })
+          .eq('user_id', uid).like('event', 'ai_copy_%').gte('created_at', new Date(Date.now() - 3_600_000).toISOString());
+        if ((recent ?? 0) >= 30) return json({ error: 'AI_RATE_LIMITED', code: 'AI_RATE_LIMITED' }, 429);
         const op = String(body.op ?? 'GENERATE');
         if (!['GENERATE', 'IMPROVE', 'SHORTEN', 'PROFESSIONAL', 'ALTERNATIVES', 'TRANSLATE'].includes(op)) return json({ error: 'bad op' }, 400);
         const language = String(body.language ?? 'ka').slice(0, 5);
@@ -752,7 +756,10 @@ const COPY_SYSTEM = [
 async function copyContext(sb: any, uid: string, c: any): Promise<Record<string, unknown>> {
   const ctx: Record<string, unknown> = { offer: c.offer ?? null };
   if (c.property_id) {
-    const { data: prop } = await sb.from('properties').select('id,title,transaction_type,property_type,user_id').eq('id', c.property_id).maybeSingle();
+    // property_id is the six-digit HOMATCH id; older drafts may hold the row uuid.
+    const byHomatchId = /^\d{6}$/.test(String(c.property_id));
+    const { data: prop } = await sb.from('properties').select('id,title,transaction_type,property_type,user_id')
+      .eq(byHomatchId ? 'homatch_id' : 'id', byHomatchId ? Number(c.property_id) : c.property_id).maybeSingle();
     if (prop && prop.user_id === uid) {
       const { data: facts } = await sb.from('property_facts')
         .select('city,district,neighborhood,total_price,currency,area,rooms,bedrooms,floor,total_floors,condition,furnished,parking,balcony,view,new_build')

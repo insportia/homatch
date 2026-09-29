@@ -75,7 +75,7 @@ export default function MetaAdsCampaignPage() {
             subtitle={c.daily_budget_cents ? `${money(c.daily_budget_cents)}/day · ${c.duration_days}d` : undefined}
             actions={
               <>
-                {c.status === 'ACTIVE' && (
+                {['ACTIVE', 'META_REVIEW', 'SUBMITTED'].includes(c.status) && (
                   <button type="button" onClick={() => act('pause')} disabled={busy !== null}
                     className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-white/40 bg-white px-3.5 text-2xs font-semibold text-[#0C1119] hover:bg-white/90">
                     {busy === 'pause' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Pause className="h-3.5 w-3.5" />}{t('mads_pause')}
@@ -87,7 +87,7 @@ export default function MetaAdsCampaignPage() {
                     {busy === 'resume' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}{t('mads_resume')}
                   </button>
                 )}
-                {c.external_status && (
+                {c.external_campaign_id && (
                   <button type="button" onClick={() => act('sync')} disabled={busy !== null}
                     className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-white/25 px-3.5 text-2xs font-medium text-white/85 hover:bg-white/10">
                     <RefreshCw className={busy === 'sync' ? 'h-3.5 w-3.5 animate-spin' : 'h-3.5 w-3.5'} />{t('mads_sync')}
@@ -95,6 +95,12 @@ export default function MetaAdsCampaignPage() {
                 )}
               </>
             } />
+
+          {String(c.external_campaign_id ?? '').startsWith('mock_') && (
+            <div className="rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] px-4 py-2.5 text-[13px] text-[hsl(var(--gold-ink))]">{t('madsb_campaign_mock')}</div>
+          )}
+
+          <LifecycleStrip status={c.status} />
 
           <div className="flex flex-wrap items-center gap-2">
             <CampaignStatusChip status={c.status} />
@@ -104,7 +110,11 @@ export default function MetaAdsCampaignPage() {
               </span>
             )}
             {c.last_error?.key && <span className="text-[13px] text-destructive">{t(c.last_error.key as never)}</span>}
+            {c.last_synced_at && (
+              <span className="text-2xs text-muted-foreground">{t('madsb_last_synced', { when: new Date(c.last_synced_at).toLocaleString() })}</span>
+            )}
           </div>
+          <p className="max-w-3xl text-[13px] leading-relaxed text-muted-foreground">{t(`madsb_status_explain_${c.status.toLowerCase()}` as never)}</p>
 
           <section className="rounded-2xl border border-border bg-card p-5 shadow-card">
             <h2 className="mb-3 font-display text-base font-semibold text-foreground">{t('mads_results_title')}</h2>
@@ -147,5 +157,27 @@ export default function MetaAdsCampaignPage() {
         </div>
       </AppLayout>
     </RouteGuard>
+  );
+}
+
+/**
+ * Where the campaign is, in the order it actually travels. HOMATCH's own
+ * check and Meta's review are separate steps, and ACTIVE only lights up when
+ * Meta reports delivery — never because our own write succeeded.
+ */
+const LIFECYCLE = ['READY', 'SUBMITTED', 'META_REVIEW', 'ACTIVE', 'COMPLETED'] as const;
+function LifecycleStrip({ status }: { status: string }) {
+  const { t } = useLanguage();
+  const off = ['REJECTED', 'FAILED', 'PAUSED', 'ARCHIVED'].includes(status);
+  const at = LIFECYCLE.indexOf(status as never);
+  return (
+    <ol className="flex flex-wrap items-center gap-1.5 text-2xs" aria-label={t('madsb_lifecycle_label')}>
+      {LIFECYCLE.map((s, i) => (
+        <li key={s} className={`rounded-full border px-2.5 py-1 ${i <= at && !off ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] font-semibold text-foreground' : 'border-border text-muted-foreground'}`}>
+          {t(`madsb_lifecycle_${s.toLowerCase()}` as never)}
+        </li>
+      ))}
+      {off && <li className="rounded-full border border-destructive/30 bg-destructive/10 px-2.5 py-1 font-semibold text-destructive">{t(`mads_status_${status.toLowerCase()}` as never)}</li>}
+    </ol>
   );
 }

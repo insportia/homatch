@@ -15,6 +15,7 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   'madsb_msg_messenger',
   'madsb_msg_instagram',
   'madsb_msg_whatsapp',
+  'admin_disc_kpi_telegram',
   /* "Email" is the channel's name in the Georgian UI on purpose — the
      sidebar and rail already say "Email კამპანიები", and the terminology
      contract keeps globally recognized channel names (Email/SMS/WhatsApp)

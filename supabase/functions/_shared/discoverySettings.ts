@@ -26,6 +26,10 @@ export interface DiscoverySettings {
   campaignMaxCredits: number | null;
   sourceJobMaxAttempts: number;
   sourceJobLeaseSeconds: number;
+  /** May a campaign queue its own Telegram/forum source jobs for a gap? */
+  campaignSourceDiscoveryEnabled: boolean;
+  /** How long an asynchronous campaign may wait for its source jobs. */
+  campaignDiscoveryMinutes: number;
 }
 
 export const DISCOVERY_SETTING_KEYS = [
@@ -42,6 +46,8 @@ export const DISCOVERY_SETTING_KEYS = [
   'campaign_max_credits',
   'discovery_job_max_attempts',
   'discovery_job_lease_seconds',
+  'campaign_source_discovery_enabled',
+  'campaign_discovery_minutes',
 ] as const;
 
 const unquote = (v: unknown) => (typeof v === 'string' ? v.replace(/^"|"$/g, '') : v);
@@ -75,6 +81,10 @@ export function parseDiscoverySettings(rows: Array<{ key: string; value: unknown
     campaignMaxCredits: max,
     sourceJobMaxAttempts: num(m.get('discovery_job_max_attempts'), 4, 1, 10),
     sourceJobLeaseSeconds: num(m.get('discovery_job_lease_seconds'), 180, 30, 1800),
+    campaignSourceDiscoveryEnabled: bool(m.get('campaign_source_discovery_enabled'), false),
+    /* Capped below the 60-minute reservation TTL, so a reservation is never
+       swept out from under a campaign that is still running. */
+    campaignDiscoveryMinutes: num(m.get('campaign_discovery_minutes'), 30, 5, 45),
   };
 }
 

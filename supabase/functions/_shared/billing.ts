@@ -138,6 +138,20 @@ export async function beginExecution(
      * estimate without asking.
      */
     requireFullBudget?: boolean;
+    /**
+     * false = never fund this run from a plan's included allowance. HOMATCH is
+     * PAYG-only (docs/claude/BILLING.md); the allowance path is dormant plan
+     * machinery, and a caller that has moved to PAYG says so here rather than
+     * relying on every plan row holding zero.
+     */
+    allowIncluded?: boolean;
+    /**
+     * The customer's authorised budget IS the ceiling: reserve it in full
+     * (bounded by the balance) instead of capping it at the per-run estimate.
+     * For products where the customer sets a campaign budget and settlement
+     * charges actual usage and releases the rest.
+     */
+    budgetIsCeiling?: boolean;
     metadata?: Record<string, unknown>;
   },
 ): Promise<ExecutionGrant> {
@@ -167,7 +181,7 @@ export async function beginExecution(
   const priorityLevel = n(product.priority_level);
 
   // 1. Included allowance. Costs the customer nothing and holds nothing.
-  if (n(product.included_remaining) > 0) {
+  if (opts.allowIncluded !== false && n(product.included_remaining) > 0) {
     const { data: allowanceId, error } = await sb.rpc('billing_claim_allowance', {
       p_user_id: opts.userId, p_product_code: opts.productCode, p_job_ref: opts.jobRef ?? null,
     });
@@ -224,10 +238,12 @@ export async function beginExecution(
   const minViable = budgetRules.minViableBudgetCredits;
 
   const authorized = opts.authorizedMaxCredits != null
-    ? round2(Math.min(opts.authorizedMaxCredits, balance, estMax))
+    ? round2(Math.min(opts.authorizedMaxCredits, balance, opts.budgetIsCeiling ? Number.POSITIVE_INFINITY : estMax))
     : round2(Math.min(estMax, balance));
 
-  const partial = authorized < estMax;
+  const partial = opts.budgetIsCeiling
+    ? opts.authorizedMaxCredits != null && authorized < opts.authorizedMaxCredits
+    : authorized < estMax;
 
   if (partial && opts.requireFullBudget) {
     return {

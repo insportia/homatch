@@ -8,6 +8,8 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { notify } from '../_shared/notify.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { refuseIfImpersonating } from '../_shared/impersonation.ts';
+import { loadDiscoverySettings } from '../_shared/discoverySettings.ts';
+import { judgeActiveDemand } from '../../../src/research-core/discovery/freshness-policy.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -60,7 +62,7 @@ serve(async (req) => {
       .from('matches')
       .select(`
         id, property_id, signal_id, intent_profile_id,
-        unlock_price_credits, status,
+        unlock_price_credits, status, demand_published_at,
         properties!property_id(user_id)
       `)
       .eq('id', matchId)
@@ -71,6 +73,31 @@ serve(async (req) => {
     const propOwner = (match.properties as { user_id?: string })?.user_id;
     if (propOwner !== userId) {
       return json({ error: 'You do not own this property' }, 403);
+    }
+
+    /*
+     * NEVER SELL DEMAND THAT IS NO LONGER CURRENT.
+     *
+     * A match is priced as a potentially interested person who is looking
+     * NOW. Once the person's post is older than the active-demand window
+     * (discovery_freshness_policy, 30 days by default) or has no readable
+     * date, it is history -- the customer may still see it, but paying to
+     * open it would be paying for something the product no longer claims.
+     * An already-opened match is not affected: re-opening costs nothing.
+     */
+    const { data: priorUnlock } = await supabaseAdmin
+      .from('match_unlocks').select('id').eq('match_id', match.id).maybeSingle();
+    if (!priorUnlock) {
+      const { freshness } = await loadDiscoverySettings(supabaseAdmin);
+      const verdict = judgeActiveDemand(match.demand_published_at ?? null, { policy: freshness });
+      if (!verdict.eligible) {
+        return json({
+          error: 'This person posted too long ago to count as current demand, so it cannot be opened.',
+          reasonCode: 'DEMAND_NOT_CURRENT',
+          ageDays: verdict.ageDays,
+          maxDays: verdict.maxDays,
+        }, 409);
+      }
     }
 
     // The price is only used for the INSUFFICIENT_CREDITS response and the

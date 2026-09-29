@@ -1,7 +1,9 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { beginExecution, settleExecution, releaseExecution } from '../_shared/billing.ts';
+import { beginExecution, releaseExecution } from '../_shared/billing.ts';
+import { loadDiscoverySettings } from '../_shared/discoverySettings.ts';
+import { claimJobTransition, finalizeCampaignJob } from '../_shared/campaignRun.ts';
+import { queueCampaignSourceJobs } from '../_shared/campaignSources.ts';
 import {
-  markLanguagesDiscovered,
   persistCampaignLanguages,
   readChoice,
   resolveForRun,
@@ -290,17 +292,45 @@ Deno.serve(async (req: Request) => {
      * untouched revenue line for revealing one contact. Whether the search
      * charge and the per-contact charge should be consolidated is a product
      * decision, and it is deliberately NOT made here. */
+    /*
+     * PAY-AS-YOU-GO, WITH A CAMPAIGN BUDGET THE CUSTOMER SETS.
+     *
+     * The budget is a CEILING: it is reserved in full, settlement charges what
+     * the run actually used, and the rest is released. It may not be below the
+     * campaign minimum (50 Credits by default), because a smaller budget buys
+     * a search that cannot cover the sources worth reading. No plan allowance
+     * funds a campaign -- HOMATCH is PAYG-only.
+     */
+    const discovery = await loadDiscoverySettings(db);
+    const requestedBudget = body.authorizedMaxCredits != null
+      ? Number(body.authorizedMaxCredits)
+      : discovery.campaignDefaultCredits;
+    if (!Number.isFinite(requestedBudget) || requestedBudget < discovery.campaignMinCredits) {
+      return json({
+        error: `A campaign budget starts at ${discovery.campaignMinCredits} Credits.`,
+        reasonCode: 'BELOW_CAMPAIGN_MINIMUM',
+        minBudgetCredits: discovery.campaignMinCredits,
+      }, 400);
+    }
+    if (discovery.campaignMaxCredits !== null && requestedBudget > discovery.campaignMaxCredits) {
+      return json({
+        error: `A campaign budget is at most ${discovery.campaignMaxCredits} Credits.`,
+        reasonCode: 'ABOVE_CAMPAIGN_MAXIMUM',
+        maxBudgetCredits: discovery.campaignMaxCredits,
+      }, 400);
+    }
     const grant = await beginExecution(db, {
       userId: homatchUser.id,
       productCode: 'FIND_CLIENTS',
       idempotencyKey: `findclients:${idempotencyKey}`,
       jobRef: propertyId,
-      // Present when the customer accepted a best-effort budget smaller than
-      // the estimate ("search with my 10 Credits"). Absent means "as much of
-      // the estimate as the balance covers".
-      authorizedMaxCredits: body.authorizedMaxCredits != null
-        ? Number(body.authorizedMaxCredits) : undefined,
-      metadata: { campaignId, propertyId },
+      authorizedMaxCredits: requestedBudget,
+      allowIncluded: false,
+      budgetIsCeiling: true,
+      /* A balance below the budget is refused, not quietly shrunk: the
+         customer chose this ceiling and is told if it cannot be reserved. */
+      requireFullBudget: true,
+      metadata: { campaignId, propertyId, campaignBudgetCredits: requestedBudget },
     });
     grantRef = grant;
 
@@ -344,9 +374,11 @@ Deno.serve(async (req: Request) => {
       search_languages: languages.selection.languages,
       search_language_mode: languages.selection.mode,
       started_at: startedAt,
+      /* So the discovery driver can settle this run after the request ends. */
+      billing_grant: grant,
     }).select('id').single();
     if (jobError || !createdJob) throw jobError || new Error('Could not create matching job');
-    jobId = createdJob.id;
+    jobId = String(createdJob.id);
 
     await event(db, jobId, 'JOB_STARTED', {
       message: 'Matching started from existing Homatch research',
@@ -377,14 +409,11 @@ Deno.serve(async (req: Request) => {
       current_step: 'Loading previously collected buyer signals',
     });
 
+    /* Retired-provider settings (external_discovery_enabled,
+       provider_kill_switch, ...) are no longer read: the paid external
+       consumer they governed could only ever claim DATAFORSEO or APIFY. */
     const settingKeys = [
-      'external_discovery_enabled',
-      'provider_kill_switch',
-      'provider_disabled_list',
-      'external_discovery_strong_score',
       'external_discovery_min_strong_matches',
-      'external_discovery_fresh_hours',
-      'external_discovery_max_jobs_per_property_tick',
       'supply_discovery_for_campaigns',
       'supply_discovery_limit_per_source',
     ];
@@ -394,20 +423,14 @@ Deno.serve(async (req: Request) => {
       .in('key', settingKeys);
     if (settingsError) throw settingsError;
     const settings = Object.fromEntries((settingRows || []).map((row: any) => [row.key, scalar(row.value, null)]));
-    const externalEnabled = settings.external_discovery_enabled === true;
-    const killSwitch = settings.provider_kill_switch !== false;
-    const disabledProviders = Array.isArray(settings.provider_disabled_list)
-      ? settings.provider_disabled_list.map((value: unknown) => String(value).toUpperCase())
-      : [];
-    const externalControlled = externalEnabled && !killSwitch;
 
     await updateJob(db, jobId, {
       status: 'classifying',
       progress: 30,
-      current_step: 'Scoring existing real buyer signals',
+      current_step: 'Scoring current buyer and tenant demand already in Homatch',
       provider_results: {
         internal_data: 'LIVE',
-        external_discovery: externalControlled ? 'CONTROLLED' : 'LOCKED',
+        source_discovery: 'PENDING',
       },
     });
     await event(db, jobId, 'INTERNAL_MATCHING_START', {
@@ -554,7 +577,7 @@ Deno.serve(async (req: Request) => {
            * longer invisible.
            */
           await updateJob(db, jobId, { sources_read: sourcesRead }).catch(async (error) => {
-            await event(db, jobId, 'RECEIPT_WRITE_FAILED', {
+            await event(db, jobId!, 'RECEIPT_WRITE_FAILED', {
               message: 'the sources this sweep read could not be recorded',
               detail: message(error),
               /* Named so the consequence is in the log, not inferred from it. */
@@ -596,254 +619,114 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const strongScore = Number(settings.external_discovery_strong_score || 70);
-    const minStrong = Number(settings.external_discovery_min_strong_matches || 3);
-    const freshHours = Number(settings.external_discovery_fresh_hours || 24);
-    const freshSince = new Date(Date.now() - Math.max(1, freshHours) * 3_600_000).toISOString();
-    const { count: strongCount, error: strongError } = await db
-      .from('matches')
-      .select('id', { count: 'exact', head: true })
-      .eq('property_id', propertyId)
-      .gte('match_score', strongScore)
-      .gte('created_at', freshSince);
-    if (strongError) throw strongError;
+    /*
+     * GAP DISCOVERY.
+     *
+     * Internal matching above only creates matches on demand inside the
+     * active window. When that produced fewer than the target, the campaign
+     * asks its sources -- public Telegram channels and groups through the
+     * official worker, and the forum readers -- for current demand, and the
+     * run continues asynchronously: the discovery driver executes the source
+     * jobs, classifies what they collected, matches again and settles.
+     *
+     * DATAFORSEO and APIFY are retired and are never queued here. The old
+     * paid-provider consumer this replaced could only ever claim them.
+     */
+    const freshFromInternal = Number(internal.data?.matchesCreated || 0);
+    const target = Math.max(1, Number(settings.external_discovery_min_strong_matches || 3));
+    const sourcesAvailable = discovery.campaignSourceDiscoveryEnabled
+      && (discovery.telegramEnabled || discovery.forumDiscoveryEnabled);
 
-    let externalResult: any = null;
-    if (Number(strongCount || 0) >= minStrong) {
-      await event(db, jobId, 'EXTERNAL_DISCOVERY_NOT_NEEDED', {
-        message: 'Internal results reached the strong-match target; no paid provider call was needed',
-        strongMatches: Number(strongCount || 0),
-        required: minStrong,
-      });
-    } else if (!externalControlled) {
-      await event(db, jobId, 'EXTERNAL_DISCOVERY_LOCKED', {
-        message: 'External discovery stayed locked; no paid provider call was made',
-        externalDiscoveryEnabled: externalEnabled,
-        providerKillSwitch: killSwitch,
-        disabledProviders,
-        strongMatches: Number(strongCount || 0),
-        required: minStrong,
-      });
-    } else {
-      await updateJob(db, jobId, {
-        status: 'searching_sources',
-        progress: 65,
-        current_step: 'Controlled external discovery: budget and claim checks',
-      });
-      await event(db, jobId, 'EXTERNAL_DISCOVERY_START', {
-        message: 'Internal results were insufficient; starting controlled queue consumer',
-        strongMatches: Number(strongCount || 0),
-        required: minStrong,
-      });
-      // The authorised budget, in the provider's own unit. wallet_reserve
-      // worked this out from what the credits buy at THIS plan's member rate,
-      // so the same 10 Credits authorises more underlying discovery on Premium
-      // than on Free. The worker must not spend past it.
-      const budgetCents = Number(grant.providerBudgetCeilingCents ?? 0);
-      const maxSpendUsd = budgetCents > 0 ? budgetCents / 100 : null;
-
-      // A smaller budget should produce a deliberately SCOPED search, not a
-      // full one interrupted half way. Fewer, highest-yield jobs rather than a
-      // broad sweep that runs out of money mid-sweep.
-      const configuredMax = Math.min(25, Math.max(1, Number(settings.external_discovery_max_jobs_per_property_tick || 10)));
-      const maxJobs = grant.partialBudget
-        ? Math.max(1, Math.min(configuredMax, Math.floor(configuredMax / 2)))
-        : configuredMax;
-
-      const external = await invoke(baseUrl, serviceKey, 'discovery-queue-worker', {
-        mode: 'execute',
+    if (freshFromInternal < target && sourcesAvailable) {
+      const queued = await queueCampaignSourceJobs(db, {
+        jobId: jobId!,
         propertyId,
-        campaignId,
-        limit: maxJobs,
-        // A hard ceiling, enforced inside the worker before each provider call.
-        maxSpendUsd,
-        qualityTier: grant.qualityTier,
-      }, 330_000);
-      externalResult = external.data;
-      await event(db, jobId, external.status === 423 ? 'EXTERNAL_DISCOVERY_LOCKED' : 'EXTERNAL_DISCOVERY_COMPLETE', {
-        message: external.status === 423
-          ? 'Controlled consumer blocked the provider call'
-          : `Controlled consumer processed ${Number(external.data?.processed || 0)} queue jobs`,
-        processed: Number(external.data?.processed || 0),
-        completed: Array.isArray(external.data?.completed) ? external.data.completed.length : 0,
-        failures: Array.isArray(external.data?.failures) ? external.data.failures.length : 0,
-        blocked: external.data?.blocked === true,
-        reason: external.data?.reason || null,
-        budgetExhausted: external.data?.budgetExhausted === true,
-        spentUsd: Number(external.data?.spentUsd || 0),
-        authorizedSpendUsd: maxSpendUsd,
+        languages: languages.selection.languages,
+        telegram: discovery.telegramEnabled,
+        forum: discovery.forumDiscoveryEnabled,
+        countryCode: countryCode || 'GE',
       });
+      if (queued.length > 0) {
+        const deadline = new Date(Date.now() + discovery.campaignDiscoveryMinutes * 60_000).toISOString();
+        await updateJob(db, jobId!, {
+          status: 'searching_sources',
+          progress: 45,
+          current_step: 'Searching Telegram and forums for current demand',
+          discovery_deadline_at: deadline,
+          query_packs_created: queued.length,
+          provider_results: { internal_data: 'DONE', source_discovery: 'QUEUED' },
+        });
+        await event(db, jobId!, 'SOURCE_DISCOVERY_QUEUED', {
+          message: `Queued ${queued.length} source searches for current demand`,
+          sources: queued,
+          freshFromInternal,
+          target,
+          deadline,
+          providerCostUsd: 0,
+        });
+        return json({
+          success: true,
+          async: true,
+          jobId,
+          campaignId,
+          status: 'searching_sources',
+          billing: {
+            funding: grant.funding,
+            creditsAuthorized: grant.authorizedMaxCredits,
+            partialBudget: grant.partialBudget,
+          },
+        }, 202);
+      }
     }
 
-    await updateJob(db, jobId, {
+    await event(db, jobId!, sourcesAvailable ? 'SOURCE_DISCOVERY_NOT_NEEDED' : 'SOURCE_DISCOVERY_OFF', {
+      message: sourcesAvailable
+        ? 'Current internal demand reached the target; no source search was needed'
+        : 'Source discovery is switched off; the campaign used current Homatch demand only',
+      freshFromInternal,
+      target,
+      telegramEnabled: discovery.telegramEnabled,
+      forumDiscoveryEnabled: discovery.forumDiscoveryEnabled,
+      campaignSourceDiscoveryEnabled: discovery.campaignSourceDiscoveryEnabled,
+    });
+
+    const mayFinish = await claimJobTransition(db, jobId!, ['classifying', 'analysing_property', 'queued'], {
       status: 'ranking',
       progress: 90,
       current_step: 'Finalising ranked matches',
     });
+    if (!mayFinish) {
+      return json({ success: true, jobId, campaignId, status: 'ranking', note: 'already being finalised' });
+    }
 
-    const [candidateCountResult, matchCountResult, costResult] = await Promise.all([
-      db.from('property_signal_candidates').select('signal_id', { count: 'exact', head: true }).eq('property_id', propertyId),
-      db.from('matches').select('id', { count: 'exact', head: true }).eq('property_id', propertyId),
-      db.from('cost_events').select('cost_usd').eq('property_id', propertyId).gte('timestamp', startedAt),
-    ]);
-    if (candidateCountResult.error) throw candidateCountResult.error;
-    if (matchCountResult.error) throw matchCountResult.error;
-    if (costResult.error) throw costResult.error;
-    const totalCost = (costResult.data || []).reduce((sum: number, row: any) => sum + Number(row.cost_usd || 0), 0);
-    const totalMatches = Number(matchCountResult.count || 0);
-    const candidateSignals = Number(candidateCountResult.count || internal.data?.candidateSignals || 0);
-    const profilesConsidered = Number(internal.data?.profilesConsidered || 0);
-    const skipped = Number(internal.data?.matchesSkipped || 0);
-
-    const noResultsReason = totalMatches === 0
-      ? (!externalControlled ? 'NO_INTERNAL_MATCHES_EXTERNAL_LOCKED' : 'NO_QUALIFIED_DEMAND_FOUND')
-      : null;
-    await updateJob(db, jobId, {
-      status: totalMatches > 0 ? 'completed' : 'partially_completed',
-      progress: 100,
-      current_step: totalMatches > 0
-        ? `Completed with ${totalMatches} ranked matches`
-        : 'Completed without a qualified demand match',
-      signals_collected: candidateSignals,
-      signals_classified: profilesConsidered,
-      signals_rejected: skipped,
-      candidates_after_filter: totalMatches,
-      matches_created: totalMatches,
-      matches_found: totalMatches,
-      queries_run: Number(externalResult?.processed || 0),
-      tiers_run: 1,
-      cost_usd_total: totalCost,
-      failure_reason: noResultsReason,
-      completed_at: new Date().toISOString(),
+    const result = await finalizeCampaignJob(db, {
+      id: jobId!, property_id: propertyId, campaign_id: campaignId, started_at: startedAt,
+    }, grant, discovery.freshness, {
+      internal: {
+        candidateSignals: Number(internal.data?.candidateSignals || 0),
+        profilesConsidered: Number(internal.data?.profilesConsidered || 0),
+        rejectedStaleDemand: Number(internal.data?.rejectedAncientDemand || 0),
+        rejectedStaleEvidence: Number(internal.data?.rejectedStaleEvidence || 0),
+      },
+      noResultsReason: sourcesAvailable ? 'NO_CURRENT_DEMAND_FOUND' : 'NO_CURRENT_DEMAND_SOURCES_OFF',
     });
-    await event(db, jobId, 'JOB_COMPLETE', {
-      message: `Matching completed with ${totalMatches} real matches`,
-      totalMatches,
-      candidateSignals,
-      costUsd: totalCost,
-      paidProviderCalls: Number(externalResult?.processed || 0),
-    });
-
-    /* ---- what this run has now bought ----
-     *
-     * Only when external discovery ACTUALLY RAN. Marking a language
-     * discovered after a run that reached no source would make the next
-     * resume skip it, and the customer would have paid for a language that
-     * was never searched -- the precise inverse of the double-billing this
-     * record exists to prevent.
-     *
-     * External discovery is currently gated off in production
-     * (external_discovery_enabled = false, provider_kill_switch = true), so
-     * today this is correctly a no-op and the language set stays unbought.
-     * That is the honest state, not a bug: nothing external has been searched,
-     * so nothing is recorded as searched. */
-    if (externalResult && Number(externalResult?.processed || 0) > 0 && languages.toDiscover.length > 0) {
-      try {
-        await markLanguagesDiscovered(db, campaignId, languages.toDiscover);
-        await event(db, jobId, 'SEARCH_LANGUAGES_DISCOVERED', {
-          languages: languages.toDiscover,
-          message: 'These languages will not be re-discovered on a resume',
-        });
-      } catch (e) {
-        // Bookkeeping must never cost a customer their results. The worst
-        // case is a language re-discovered once, which is a cost, not a loss.
-        console.error(`match-campaign: could not record discovered languages: ${message(e)}`);
-      }
-    }
-
-    /* ---- the search includes its results ----
-     *
-     * A Find Clients search is a billed execution. Charging again to reveal
-     * what it found would be charging twice for one thing, so every match this
-     * job produced is stamped with the reservation that paid for it and
-     * atomic_match_unlock reveals those for zero.
-     *
-     * Scoped to matches created since this job started, so it cannot
-     * retroactively make somebody's older, separately-priced matches free. */
-    /*
-     * EITHER FUNDING SOURCE COUNTS, and only one of them used to.
-     *
-     * This read `if (grant.reservationId)`, which is present for PAYG runs
-     * only. An INCLUDED run -- the search the customer's plan already covers
-     * -- carries grant.allowanceId and a null reservationId, so the condition
-     * was false and its results were stamped with nothing.
-     *
-     * On the FREE plan, where FIND_CLIENTS includes one search per calendar
-     * month, that made the first search of every month produce results the
-     * screen then blurred and offered to sell for 35 credits. Charging twice
-     * for one thing, which the note below this has always forbidden.
-     */
-    if (grant.reservationId || grant.allowanceId) {
-      const funding = grant.reservationId
-        ? { unlock_included_reservation_id: grant.reservationId }
-        : { unlock_included_allowance_id: grant.allowanceId };
-      const { error: includeErr } = await db
-        .from('matches')
-        .update(funding)
-        .eq('property_id', propertyId)
-        .gte('created_at', startedAt)
-        .is('unlock_included_reservation_id', null)
-        .is('unlock_included_allowance_id', null);
-      if (includeErr) {
-        // Loud, because the alternative is silently charging a customer twice.
-        console.error('[match-campaign] could not mark results as included', includeErr);
-        await event(db, jobId, 'INCLUDE_MARK_FAILED', { message: includeErr.message });
-      }
-    }
-
-    /* ---- settle on what the pipeline actually spent ----
-     *
-     * totalCost is summed from cost_events written by the providers this run
-     * actually called, so a search that found its answer in existing Homatch
-     * data costs the customer far less than one that had to go out and buy
-     * fresh discovery. That is the reuse economics working as intended. */
-    let creditsCharged = 0;
-    try {
-      const settled = await settleExecution(db, grant, {
-        provider: 'homatch_matching',
-        providerOperation: 'find_clients_search',
-        providerRequestId: jobId ?? undefined,
-        searchCount: Number(externalResult?.processed || 0),
-        durationMs: Date.now() - new Date(startedAt).getTime(),
-        rawProviderCostCents: totalCost * 100,
-        metadata: {
-          quality_tier: grant.qualityTier,
-          result_ceiling: grant.resultCeiling,
-          matches: totalMatches,
-          candidate_signals: candidateSignals,
-        },
-      }, totalMatches > 0 ? 'SUCCESS' : 'PARTIAL');
-      creditsCharged = settled.chargedCredits;
-    } catch (e) {
-      console.error('[match-campaign] settle failed; sweeper will reconcile', e);
-    }
 
     return json({
       success: true,
       jobId,
       campaignId,
-      status: totalMatches > 0 ? 'completed' : 'partially_completed',
+      status: result.status,
       billing: {
         funding: grant.funding,
-        planCode: grant.planCode,
-        qualityTier: grant.qualityTier,
-        resultCeiling: grant.resultCeiling,
-        creditsCharged,
+        creditsCharged: result.creditsCharged,
         creditsAuthorized: grant.authorizedMaxCredits,
-        // True when the customer chose to search with less than the estimate.
         partialBudget: grant.partialBudget,
-        // Results of a paid search are included; revealing them costs nothing.
         resultsIncluded: !!grant.reservationId,
       },
-      matchesCreated: totalMatches,
-      candidateSignals,
-      costUsd: totalCost,
-      externalDiscovery: externalControlled ? (externalResult || { skipped: true }) : { locked: true },
-      /*
-       * Stated as disabled rather than omitted. A caller that sees no supply
-       * field cannot tell whether the scan found nothing or never ran, and
-       * those are opposite facts about the market.
-       */
+      matchesCreated: result.freshMatches,
+      stillCurrentFromEarlier: result.stillCurrentFromEarlier,
+      activeWindowDays: discovery.freshness.activeMaxDays,
+      costUsd: result.costUsd,
       supplyComparables: settings.supply_discovery_for_campaigns === true
         ? (supplyResult || { failed: true })
         : { enabled: false },

@@ -8,7 +8,8 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { notify } from '../_shared/notify.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { judgeDemandFreshness } from '../../../src/research-core/match/demand-freshness.ts';
+import { judgeActiveDemand } from '../../../src/research-core/discovery/freshness-policy.ts';
+import { loadDiscoverySettings } from '../_shared/discoverySettings.ts';
 
 // ── MATCHING ENGINE (inlined — shared imports not supported in bundler) ──
 
@@ -177,6 +178,8 @@ serve(async (req) => {
   );
 
   try {
+    /* The canonical active-demand window, read once per run (see v2). */
+    const activeDemandPolicy = (await loadDiscoverySettings(supabase)).freshness;
     const {
       propertyId,
       campaignId,
@@ -286,10 +289,12 @@ serve(async (req) => {
         const signal = Array.isArray(profile.signal) ? profile.signal[0] : profile.signal;
         const publishedAt = signal?.published_at ? new Date(signal.published_at) : null;
 
-        /* ANCIENT DEMAND NEVER BECOMES A MATCH — same policy as v2. The
-           signal row stays; only active-match creation is refused. */
-        const demandFreshness = judgeDemandFreshness(signal?.published_at ?? null, {
-          transaction: profile.transaction_type,
+        /* DEMAND OUTSIDE THE ACTIVE WINDOW NEVER BECOMES A MATCH — the same
+           canonical 30-day rule as v2. The signal row stays; only
+           active-match creation is refused. */
+        const demandFreshness = judgeActiveDemand(signal?.published_at ?? null, {
+          policy: activeDemandPolicy,
+          source: signal?.platform ?? null,
         });
         if (!demandFreshness.eligible) { matchesSkipped++; continue; }
 
@@ -358,6 +363,7 @@ serve(async (req) => {
           campaign_id: snapshot.campaign_id ?? null,
           signal_id: signal?.id ?? null,
           intent_profile_id: profile.id,
+          demand_published_at: signal?.published_at ?? null,
           match_score: result.matchScore,
           intent_confidence: result.intentConfidence,
           signal_strength: result.signalStrength,

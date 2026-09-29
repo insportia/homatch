@@ -164,6 +164,12 @@ Deno.serve(async (req: Request) => {
     if (!settings.telegramEnabled && !force) {
       return json({ success: true, skipped: 'TELEGRAM_DISCOVERY_DISABLED', mode: settings.telegramMode, elapsedMs: Date.now() - started });
     }
+    /* The schedule has its own switch on top: Telegram may be on for campaigns
+       while background refresh stays off. A campaign's source job calls with
+       source 'campaign' and is governed by telegramEnabled alone. */
+    if (body.source === 'cron' && !settings.backgroundRefreshEnabled && !force) {
+      return json({ success: true, skipped: 'BACKGROUND_REFRESH_DISABLED', mode: settings.telegramMode, elapsedMs: Date.now() - started });
+    }
     const client = makeClient(settings, trace);
 
     if (action === 'health') {

@@ -125,6 +125,13 @@ export const ADMIN_GROUPS: AdminGroup[] = [
         keywords: ['market', 'city', 'country', 'region'],
       },
       {
+        /* Is Find Buyers / Find Tenants discovery working right now: Telegram
+           health, switches, source queue, labels, current demand, campaigns. */
+        path: '/admin/discovery', labelKey: 'admin_nav_discovery', icon: Radio,
+        keywords: ['discovery', 'telegram', 'mtproto', 'queue', 'freshness', '30 days', 'campaign',
+          'find buyers', 'find tenants', 'classifier', 'demand'],
+      },
+      {
         path: '/admin/sources', labelKey: 'admin_nav_sources', icon: Radio,
         keywords: ['source', 'crawler', 'portal', 'discovery', 'dataforseo', 'serp'],
       },

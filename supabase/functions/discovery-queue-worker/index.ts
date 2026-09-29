@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { isRetiredProvider, retiredReason, RETIRED_PROVIDERS } from '../_shared/retiredProviders.ts';
+import { drive, adminStop, adminRetry } from './driver.ts';
 
 // DATAFORSEO AND APIFY ARE RETIRED, AND THIS WORKER CAN NO LONGER REACH THEM.
 //
@@ -46,10 +47,21 @@ Deno.serve(async (req: Request) => {
   const db = createClient(baseUrl, serviceKey);
 
   try {
-    if (!(await isAuthorized(req, db, serviceKey))) return json({ error: 'Internal only' }, 403);
     const body = await req.json().catch(() => ({}));
     const mode = String(body.mode || 'execute').toLowerCase();
+    /* The control center's two actions. A signed-in ADMIN, nothing else; they
+       never reach the provider paths below. */
+    if (mode === 'admin_stop' || mode === 'admin_retry') {
+      if (!(await isAdminCaller(req, db))) return json({ error: 'Admin only' }, 403);
+      return json(mode === 'admin_stop'
+        ? await adminStop(db, String(body.jobId || ''))
+        : await adminRetry(db, String(body.jobId || '')));
+    }
+    if (!(await isAuthorized(req, db, serviceKey))) return json({ error: 'Internal only' }, 403);
     if (mode === 'health' || mode === 'audit') return json(await audit(db));
+    /* The campaign discovery driver (see driver.ts): source jobs for
+       TELEGRAM / TELEGRAM_SOURCES / FORUM, then classify, match, settle. */
+    if (mode === 'drive') return json(await drive(db, baseUrl, serviceKey, body));
     if (mode === 'reconcile') {
       // Reconcile re-read already-paid Apify datasets through the Apify API.
       // Apify is retired, so there is nothing it may call.
@@ -63,11 +75,25 @@ Deno.serve(async (req: Request) => {
   }
 });
 
+async function isAdminCaller(req: Request, db: any) {
+  const bearer = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+  if (!bearer) return false;
+  const { data: auth } = await db.auth.getUser(bearer);
+  if (!auth?.user) return false;
+  const { data: user } = await db.from('users').select('is_admin').eq('auth_id', auth.user.id).maybeSingle();
+  return user?.is_admin === true;
+}
+
 async function isAuthorized(req: Request, db: any, serviceKey: string) {
   const bearer = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
   if (serviceKey && bearer === serviceKey) return true;
+  const presented = req.headers.get('x-cron-token') || '';
+  if (!presented) return false;
   const expected = await setting(db, 'continuous_worker_token', '');
-  return !!expected && req.headers.get('x-cron-token') === String(expected);
+  if (expected && presented === String(expected)) return true;
+  /* The driver schedule's own token (homatch-discovery-driver). */
+  const driverToken = await setting(db, 'discovery_driver_token', '');
+  return !!driverToken && presented === String(driverToken);
 }
 
 async function audit(db: any) {

@@ -721,6 +721,13 @@ export interface Match {
    */
   unlock_included_allowance_id?: string | null;
   /**
+   * When the person behind this match originally posted. The 30-day
+   * active-demand rule is applied to it on screen and by atomic-unlock:
+   * older (or undated) demand is shown as history and cannot be opened.
+   * Absent until migration 20260930130000 is applied.
+   */
+  demand_published_at?: string | null;
+  /**
    * What the seven-day freshness rule concluded about this match's evidence
    * AT THE MOMENT it was created: NEW_UNVERIFIED, NEEDS_REVALIDATION, FRESH
    * or UNVERIFIABLE. Stored rather than re-derived, because the timestamps it

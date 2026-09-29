@@ -50,9 +50,11 @@ import {
   getLastSettledSweep,getMatchCounts, 
   getMatches, 
   getUnlockedMatch, markMatchPreviewed,nextMatchesCursor, pauseMatchingCampaign,startMatchingCampaign, unlockMatch, 
+  campaignStartErrorKey,
 } from '@/services/api';
 import { readProperty } from '@/services/propertyManagement';
 import type { CreditAccount, Match, MatchUnlock, Property, PropertyFacts } from '@/types/types';
+import { isHistoryMatch } from '@/matching/currentDemand';
 
 // ── CONSTANTS ─────────────────────────────────────────────────
 
@@ -460,6 +462,123 @@ function MatchesContent() {
     return m.status !== 'REJECTED';
   });
 
+  /*
+   * CURRENT DEMAND vs HISTORY -- the 30-day active-demand rule, applied where
+   * matches are shown. A match made when the person's post was current does
+   * not stay "current" forever: once the post is older than the window (or
+   * has no readable date) it moves to an earlier section, is never presented
+   * as someone looking now, and cannot be opened for a price (atomic-unlock
+   * refuses it with DEMAND_NOT_CURRENT). Contacts already opened stay usable.
+   *
+   * A row read before the migration has no demand_published_at key at all;
+   * that is "not known yet", not "undated", so it keeps today's behaviour.
+   */
+  const isHistory = (m: Match) => isHistoryMatch(m);
+  const currentMatches = filteredMatches.filter((m) => !isHistory(m));
+  const historyMatches = filteredMatches.filter(isHistory);
+  const [showHistory, setShowHistory] = useState(false);
+
+  const renderMatchCard = (match: Match, history: boolean) => {
+                  const tier = fitTier(match.signal_strength);
+                  const included = (
+                    Boolean(match.unlock_included_reservation_id)
+                    || Boolean(match.unlock_included_allowance_id)
+                  ) && match.status !== 'UNLOCKED';
+                  const opened = match.status === 'UNLOCKED';
+                  const forSale = !included && !opened;
+                  const parsed = recencyParts(match.preview_recency);
+                  const budgetStr = rangeShape(match.preview_budget_min, match.preview_budget_max).kind !== 'unknown'
+                    ? money(match.preview_budget_min, match.preview_budget_max, match.preview_currency)
+                    : null;
+                  const headline = headlineKey(counterpart);
+                  return (
+                    <OpportunityCard
+                      key={match.id}
+                      strengthTier={tier}
+                      strengthLabel={t(`match_fit_${tier.toLowerCase()}`)}
+                      headline={t(headline)}
+                      freshness={parsed ? t(parsed.key, { count: String(parsed.count) }) : match.preview_recency}
+                      /*
+                       * "UNLOCKED" WAS NOT A FACT ABOUT THE RESULT. It described the
+                       * customer's purchase history and it only made sense inside the
+                       * lock model. What is useful is whether they already have the
+                       * contact details, which is the same row in the database said as a
+                       * thing about the opportunity rather than about a transaction.
+                       */
+                      state={
+                        history
+                          ? { label: t('matches_history_badge', { days: '30' }), tone: 'owned' }
+                          : match.status === 'NEW'
+                          ? { label: t('matches_new_badge'), tone: 'new' }
+                          : opened
+                            ? { label: t('match_state_contacted'), tone: 'owned' }
+                            : included
+                              ? { label: t('matches_included_badge'), tone: 'owned' }
+                              : null
+                      }
+                      /* The city and the rooms are facts, and they live here now rather
+                         than inside a sentence that also claimed who somebody was. */
+                      facts={{
+                        /* In the reader's script. A quoted post stays in its own language;
+                           a city name is a place the reader's language has a word for. */
+                        city: placeName(match.preview_city, lang),
+                        budget: budgetStr,
+                        bedrooms: match.preview_bedrooms,
+                        propertyType: propertyTypeLabel,
+                      }}
+                      whyLine={whyLineFor(match)}
+                      excerpt={match.preview_excerpt}
+                      excerptLabel={t('match_original_post')}
+                      excerptObscured={forSale}
+                      /*
+                       * ONE ACTION, THE SAME ON EVERY CARD.
+                       *
+                       * It used to read "Unlock · 4.50 CR" on some cards and "View" on
+                       * others, so the list sorted itself visually into things you owned
+                       * and things you did not — a shop window rather than a set of
+                       * opportunities.
+                       *
+                       * The price did not disappear; it moved to where a price belongs.
+                       * handleUnlockClick opens the detail flow, and for a result nothing
+                       * has paid for that flow shows the price, the balance and what the
+                       * balance becomes, and waits for a confirmation. Nothing is charged
+                       * by pressing this.
+                       */
+                      actionLabel={t('match_view_btn')}
+                      onAction={() => (history
+                        ? toast.info(t('matches_history_body', { days: '30' }))
+                        : handleUnlockClick(match))}
+                      actionBusy={unlockLoading && pendingUnlock?.id === match.id}
+                      overflow={
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button type="button" aria-label={t('match_more_btn')}>
+                              <OverflowGlyph />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="max-w-[min(18rem,calc(100vw-2rem))]">
+                            <DropdownMenuItem className="gap-2" onClick={() => handleAskAI(match)}>
+                              <Bot className="h-4 w-4 shrink-0" />
+                              <span className="break-words">{t('matches_ask_ai_title')}</span>
+                            </DropdownMenuItem>
+                            {opened && (
+                              <>
+                                <DropdownMenuItem className="gap-2" onClick={() => handleChat(match)}>
+                                  <MessageSquare className="h-4 w-4 shrink-0" />
+                                  <span className="break-words">{t('matches_chat_btn')}</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem className="gap-2" onClick={() => handleRequestViewing(match)}>
+                                  <CalendarDays className="h-4 w-4 shrink-0" />
+                                  <span className="break-words">{t('matches_viewing_btn')}</span>
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      }
+                    />
+                  );
+  };
   const handleUnlockClick = async (match: Match) => {
     // External signals → Phase 3 ExternalContactUnlockModal
     if (match.is_external && !match.is_homatch_user) {
@@ -494,7 +613,9 @@ function MatchesContent() {
       const result = await unlockMatch(match.id);
       setUnlockLoading(false);
       if (!result.success) {
-        toast.error(result.error ?? t('matches_unlock_failed'));
+        toast.error(result.errorCode === 'DEMAND_NOT_CURRENT'
+          ? t('matches_history_body', { days: '30' })
+          : (result.error ?? t('matches_unlock_failed')));
         return;
       }
       setMatches(prev => prev.map(m => m.id === match.id ? { ...m, status: 'UNLOCKED' } : m));
@@ -526,7 +647,12 @@ function MatchesContent() {
     setUnlockLoading(false);
 
     if (!result.success) {
-      setUnlockError({ msg: result.error ?? t('matches_unlock_failed'), code: result.errorCode });
+      setUnlockError({
+        msg: result.errorCode === 'DEMAND_NOT_CURRENT'
+          ? t('matches_history_body', { days: '30' })
+          : (result.error ?? t('matches_unlock_failed')),
+        code: result.errorCode,
+      });
       if (result.errorCode === 'INSUFFICIENT_CREDITS') {
         setShowUnlockConfirm(false);
       }
@@ -633,7 +759,7 @@ function MatchesContent() {
       setActiveJobId(result.jobId);
       toast.success(t('matches_campaign_started_toast'));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : t('matches_start_failed'));
+      { const refused = campaignStartErrorKey(e); toast.error(refused ? t(refused.key, refused.vars) : t('matches_start_failed')); }
     } finally {
       setCampaignLoading(false);
     }
@@ -860,103 +986,18 @@ function MatchesContent() {
                * reader should always see that another opportunity begins below.
                */
               <div className="grid gap-2.5 md:grid-cols-2 2xl:grid-cols-3">
-                {filteredMatches.map((match) => {
-                  const tier = fitTier(match.signal_strength);
-                  const included = (
-                    Boolean(match.unlock_included_reservation_id)
-                    || Boolean(match.unlock_included_allowance_id)
-                  ) && match.status !== 'UNLOCKED';
-                  const opened = match.status === 'UNLOCKED';
-                  const forSale = !included && !opened;
-                  const parsed = recencyParts(match.preview_recency);
-                  const budgetStr = rangeShape(match.preview_budget_min, match.preview_budget_max).kind !== 'unknown'
-                    ? money(match.preview_budget_min, match.preview_budget_max, match.preview_currency)
-                    : null;
-                  const headline = headlineKey(counterpart);
-                  return (
-                    <OpportunityCard
-                      key={match.id}
-                      strengthTier={tier}
-                      strengthLabel={t(`match_fit_${tier.toLowerCase()}`)}
-                      headline={t(headline)}
-                      freshness={parsed ? t(parsed.key, { count: String(parsed.count) }) : match.preview_recency}
-                      /*
-                       * "UNLOCKED" WAS NOT A FACT ABOUT THE RESULT. It described the
-                       * customer's purchase history and it only made sense inside the
-                       * lock model. What is useful is whether they already have the
-                       * contact details, which is the same row in the database said as a
-                       * thing about the opportunity rather than about a transaction.
-                       */
-                      state={
-                        match.status === 'NEW'
-                          ? { label: t('matches_new_badge'), tone: 'new' }
-                          : opened
-                            ? { label: t('match_state_contacted'), tone: 'owned' }
-                            : included
-                              ? { label: t('matches_included_badge'), tone: 'owned' }
-                              : null
-                      }
-                      /* The city and the rooms are facts, and they live here now rather
-                         than inside a sentence that also claimed who somebody was. */
-                      facts={{
-                        /* In the reader's script. A quoted post stays in its own language;
-                           a city name is a place the reader's language has a word for. */
-                        city: placeName(match.preview_city, lang),
-                        budget: budgetStr,
-                        bedrooms: match.preview_bedrooms,
-                        propertyType: propertyTypeLabel,
-                      }}
-                      whyLine={whyLineFor(match)}
-                      excerpt={match.preview_excerpt}
-                      excerptLabel={t('match_original_post')}
-                      excerptObscured={forSale}
-                      /*
-                       * ONE ACTION, THE SAME ON EVERY CARD.
-                       *
-                       * It used to read "Unlock · 4.50 CR" on some cards and "View" on
-                       * others, so the list sorted itself visually into things you owned
-                       * and things you did not — a shop window rather than a set of
-                       * opportunities.
-                       *
-                       * The price did not disappear; it moved to where a price belongs.
-                       * handleUnlockClick opens the detail flow, and for a result nothing
-                       * has paid for that flow shows the price, the balance and what the
-                       * balance becomes, and waits for a confirmation. Nothing is charged
-                       * by pressing this.
-                       */
-                      actionLabel={t('match_view_btn')}
-                      onAction={() => handleUnlockClick(match)}
-                      actionBusy={unlockLoading && pendingUnlock?.id === match.id}
-                      overflow={
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button type="button" aria-label={t('match_more_btn')}>
-                              <OverflowGlyph />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="max-w-[min(18rem,calc(100vw-2rem))]">
-                            <DropdownMenuItem className="gap-2" onClick={() => handleAskAI(match)}>
-                              <Bot className="h-4 w-4 shrink-0" />
-                              <span className="break-words">{t('matches_ask_ai_title')}</span>
-                            </DropdownMenuItem>
-                            {opened && (
-                              <>
-                                <DropdownMenuItem className="gap-2" onClick={() => handleChat(match)}>
-                                  <MessageSquare className="h-4 w-4 shrink-0" />
-                                  <span className="break-words">{t('matches_chat_btn')}</span>
-                                </DropdownMenuItem>
-                                <DropdownMenuItem className="gap-2" onClick={() => handleRequestViewing(match)}>
-                                  <CalendarDays className="h-4 w-4 shrink-0" />
-                                  <span className="break-words">{t('matches_viewing_btn')}</span>
-                                </DropdownMenuItem>
-                              </>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      }
-                    />
-                  );
-                })}
+                {currentMatches.map((match) => renderMatchCard(match, false))}
+                {historyMatches.length > 0 && (
+                  <div className="md:col-span-2 2xl:col-span-3">
+                    <button type="button" onClick={() => setShowHistory((v) => !v)} aria-expanded={showHistory}
+                      className="flex w-full items-center justify-between gap-3 rounded-lg border border-border/60 px-3.5 py-2.5 text-start text-sm text-muted-foreground hover:text-foreground">
+                      <span>{t('matches_history_title', { count: String(historyMatches.length), days: '30' })}</span>
+                      <span aria-hidden="true">{showHistory ? '−' : '+'}</span>
+                    </button>
+                    {showHistory && <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{t('matches_history_body', { days: '30' })}</p>}
+                  </div>
+                )}
+                {showHistory && historyMatches.map((match) => renderMatchCard(match, true))}
                 {hasMore && (
                   <div className="md:col-span-2 2xl:col-span-3">
                     <QuietAction
@@ -1005,7 +1046,7 @@ function MatchesContent() {
                   if (job.matches_created > 0) {
                     toast.success(t('matches_job_complete_toast', { count: String(job.matches_created) }));
                     loadData();
-                  } else if (job.status === 'partially_completed') {
+                  } else if (job.status === 'partially_completed' || job.status === 'budget_reached') {
                     toast.warning(t('matches_job_partial_toast'));
                   }
                 }}

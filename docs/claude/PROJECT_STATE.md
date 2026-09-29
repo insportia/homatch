@@ -61,10 +61,33 @@ MATTERS right now, verify against the live systems, not this file)
 
 ## Discovery engine (same branch)
 
-- Telegram MTProto gateway in the official worker (token-only
-  `/telegram/*`), `WorkerTelegramClient`, community-sync MTPROTO mode,
-  source discovery, canonical 30-day freshness policy
-  (`src/research-core/discovery/freshness-policy.ts`). Not yet wired into
-  matching/campaigns; no migration yet; worker needs `TELEGRAM_API_ID`,
-  `TELEGRAM_API_HASH`, `TELEGRAM_SESSION`, `TELEGRAM_ENABLED` in Railway.
-
+- Telegram MTProto gateway in the official worker (token-only `/telegram/*`),
+  `WorkerTelegramClient`, community-sync MTPROTO mode, source discovery.
+  Worker needs `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_SESSION`,
+  `TELEGRAM_ENABLED` in Railway (homatch-official-worker only).
+- ONE active-demand rule: `discovery_freshness_policy` (30 days; 0–7 / 8–14 /
+  15–30 bands; undated ineligible) via `judgeActiveDemand`, applied by
+  run-matching-v2, run-matching, the Matches screen (older demand is a
+  collapsed history section) and atomic-unlock (`DEMAND_NOT_CURRENT`, 409).
+  `matches.demand_published_at` carries the date. The 7-day
+  `evidence_delivery_window_days` is a different rule (have we seen the post
+  recently) and stays.
+- Structured gates in run-matching-v2 (`research-core/match/structured-gates.ts`):
+  city across scripts (place table), budget across currencies (fx_rates only —
+  production holds NO GEL/USD rate yet, so cross-currency budgets are UNKNOWN,
+  never guessed), bedrooms. Market query reads every city spelling.
+- Campaigns: PAYG-only (`allowIncluded:false`), budget is a ceiling, 50-Credit
+  minimum. Gap discovery queues TELEGRAM / TELEGRAM_SOURCES / FORUM source jobs
+  and finishes asynchronously via the discovery driver
+  (`discovery-queue-worker` mode `drive`, cron `homatch-discovery-driver`).
+  One ending for both paths: `_shared/campaignRun.ts` counts ONLY new matches
+  on current demand created by this run.
+- Classifier: nine-label taxonomy + classifier-version fingerprint cache
+  (`research-core/discovery/signal-taxonomy.ts`); agency posts labelled
+  BROKER_AGENCY and routed to broker review, never matches.
+- Admin: `/admin/discovery` (RPC `admin_discovery_overview`; stop/retry via
+  the driver with an admin session).
+- Migration `20260930130000_discovery_engine_queue_freshness_campaigns.sql`
+  NOT applied. Every new switch defaults OFF. Applying it also cancels the
+  6,557 dead APIFY/DATAFORSEO PENDING rows (history kept) and sets FIND_CLIENTS
+  to PAYG-only with a 50-Credit minimum — billing changes that need approval.

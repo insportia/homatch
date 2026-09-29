@@ -332,7 +332,9 @@ test('the matcher reads globally-discovered demand, not only acquired candidates
    * the same city went unread. The demand half was writing rows nobody read.
    */
   const c = code(MATCHER);
-  assert.match(c, /from\('intent_profiles'\)[\s\S]{0,160}\.ilike\('city'/,
+  /* By market, in every spelling of the city (structured-gates.ts
+     marketCitySpellings): 'Tbilisi' alone never reached 'თბილისი'. */
+  assert.match(c, /from\('intent_profiles'\)[\s\S]{0,160}city\.ilike\./,
     'the matcher never queries the global store by market');
   // Both ways in, UNIONED — not the global set replacing the acquired one.
   // The spelling of the union has changed once already; what must hold is

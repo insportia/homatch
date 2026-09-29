@@ -32,14 +32,18 @@ const API = readFileSync('src/services/api.ts', 'utf8');
 
 const code = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
-test('a campaign stamps its results whichever way the search was funded', () => {
-  const body = code(CAMPAIGN);
-  assert.match(body, /if \(grant\.reservationId \|\| grant\.allowanceId\)/,
-    'an allowance-funded search still leaves its results unstamped');
-  assert.match(body, /unlock_included_allowance_id: grant\.allowanceId/);
+test('a campaign stamps its results from the reservation that paid for them', () => {
+  /* A campaign is PAYG-only now: no plan allowance can fund one, so the
+     allowance half of the original defect cannot recur -- and the stamp is
+     written from the reservation in the one campaign ending both paths use.
+     Older allowance-stamped results keep their stamp and the screen still
+     honours either column (next test). */
+  assert.match(code(CAMPAIGN), /allowIncluded: false/, 'a plan allowance can fund a campaign again');
+  const run = code(readFileSync('supabase/functions/_shared/campaignRun.ts', 'utf8'));
+  assert.match(run, /unlock_included_reservation_id: grant\.reservationId/);
   // And it must not overwrite a stamp that is already there.
-  assert.match(body, /\.is\('unlock_included_reservation_id', null\)/);
-  assert.match(body, /\.is\('unlock_included_allowance_id', null\)/);
+  assert.match(run, /\.is\('unlock_included_reservation_id', null\)/);
+  assert.match(run, /\.is\('unlock_included_allowance_id', null\)/);
 });
 
 test('the results screen treats either funding source as paid', () => {

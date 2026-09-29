@@ -73,14 +73,20 @@ export function BudgetStep({ campaign, status, patch, totals, pricing }: {
             className="rounded-full border border-border px-3 py-1 text-[13px] text-muted-foreground hover:border-[hsl(var(--gold-border))]">{t('madsb_n_days', { n: String(v) })}</button>
         ))}
       </div>
-      <FinancialSummary totals={totals} pricing={pricing} />
+      <FinancialSummary totals={totals} pricing={pricing} billing={status?.settings.budgetBilling} />
     </StepShell>
   );
 }
 
 /** The premium money card, used in the budget step, the side rail and review. */
-export function FinancialSummary({ totals, pricing, compact }: { totals: Totals | null; pricing: boolean; compact?: boolean }) {
+export function FinancialSummary({ totals, pricing, compact, billing }: {
+  totals: Totals | null; pricing: boolean; compact?: boolean;
+  /* Who pays Meta for the budget. The default (the customer's own ad
+     account) is said plainly: Meta bills that account, HOMATCH never holds it. */
+  billing?: 'CUSTOMER_AD_ACCOUNT' | 'HOMATCH_WALLET';
+}) {
   const { t } = useLanguage();
+  const viaWallet = billing === 'HOMATCH_WALLET';
   return (
     <div className="overflow-hidden rounded-2xl bg-[#0C1119] text-white shadow-hover ring-1 ring-[hsl(38_60%_40%)]/25">
       <div className="flex items-center justify-between gap-2 border-b border-white/10 px-5 py-3">
@@ -96,7 +102,7 @@ export function FinancialSummary({ totals, pricing, compact }: { totals: Totals 
               <dt className="text-sm font-medium text-white/90">{t('madsb_money_media')}</dt>
               <dd className="text-base font-semibold" dir="ltr">{money(totals.mediaCents)}</dd>
             </div>
-            {!compact && <p className="mt-0.5 text-2xs leading-relaxed text-white/55">{t('madsb_money_media_d')}</p>}
+            {!compact && <p className="mt-0.5 text-2xs leading-relaxed text-white/55">{t(viaWallet ? 'madsb_money_media_d' : 'madsb_money_media_d_customer')}</p>}
           </div>
           <div>
             <div className="flex items-baseline justify-between gap-3">
@@ -113,7 +119,7 @@ export function FinancialSummary({ totals, pricing, compact }: { totals: Totals 
       )}
       {!compact && (
         <p className="flex items-start gap-2 border-t border-white/10 bg-white/[0.03] px-5 py-3 text-2xs leading-relaxed text-white/60">
-          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />{t('madsb_money_note')}
+          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />{t(viaWallet ? 'madsb_money_note' : 'madsb_money_note_customer')}
         </p>
       )}
     </div>

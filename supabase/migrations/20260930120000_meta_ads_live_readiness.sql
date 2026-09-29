@@ -119,7 +119,12 @@ revoke execute on function public.meta_creatives_guard() from public, anon, auth
 insert into public.admin_settings (key, value) values
   ('meta_ads_maintenance_token', to_jsonb(encode(extensions.gen_random_bytes(24), 'hex'))),
   ('meta_ads_whatsapp_enabled', 'false'::jsonb),
-  ('meta_ads_default_countries', '["GE"]'::jsonb)
+  ('meta_ads_default_countries', '["GE"]'::jsonb),
+  /* Who pays Meta for the ad budget. CUSTOMER_AD_ACCOUNT: the campaign runs on
+     the customer's own ad account, Meta bills it directly, and HOMATCH holds
+     only its fee. HOMATCH_WALLET: the budget is held in the HOMATCH balance
+     (only for campaigns run on an ad account HOMATCH pays). Never both. */
+  ('meta_ads_budget_billing', '"CUSTOMER_AD_ACCOUNT"'::jsonb)
 on conflict (key) do nothing;
 
 -- 6 ─ the scheduled pass

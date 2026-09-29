@@ -7,6 +7,7 @@ import { buildPlan } from '../strategy.ts';
 import {
   GOAL_SPECS, adSetParams, creativeParams, campaignParams, adParams, missingRequirements, placementTargeting,
   checkMedia, nameRatio, recommendedPlacements, mapMetaStatus, settlement, isHttpsUrl,
+  feeOnlySettlement, launchCharge, parseBudgetBilling,
 } from '../payload.ts';
 
 const plan = (over = {}) => buildPlan({
@@ -151,4 +152,19 @@ test('settlement: reserve back, real spend out, unspent fee refunded, spend neve
   assert.deepEqual(settlement(3500, 315, 2000), { releaseCents: 3500, spendCents: 2000, feeRefundCents: 135 });
   assert.deepEqual(settlement(3500, 315, 9999), { releaseCents: 3500, spendCents: 3500, feeRefundCents: 0 });
   assert.deepEqual(settlement(3500, 315, 0), { releaseCents: 3500, spendCents: 0, feeRefundCents: 315 });
+});
+
+test('billing model: the default never charges the customer twice for the same ad budget', () => {
+  assert.equal(parseBudgetBilling(undefined), 'CUSTOMER_AD_ACCOUNT');
+  assert.equal(parseBudgetBilling('"HOMATCH_WALLET"'), 'HOMATCH_WALLET');
+  const totals = { mediaCents: 3500, feeCents: 315 };
+  /* Meta bills the customer's ad account for the budget; HOMATCH takes its fee only. */
+  assert.deepEqual(launchCharge(totals, 'CUSTOMER_AD_ACCOUNT'), { reserveCents: 0, feeCents: 315, requiredCents: 315 });
+  assert.deepEqual(launchCharge(totals, 'HOMATCH_WALLET'), { reserveCents: 3500, feeCents: 315, requiredCents: 3815 });
+});
+
+test('fee-only settlement refunds the fee on the budget Meta did not spend', () => {
+  assert.deepEqual(feeOnlySettlement(3500, 315, 2000), { releaseCents: 0, spendCents: 2000, feeRefundCents: 135 });
+  assert.deepEqual(feeOnlySettlement(3500, 315, 9999), { releaseCents: 0, spendCents: 3500, feeRefundCents: 0 });
+  assert.deepEqual(feeOnlySettlement(3500, 315, 0), { releaseCents: 0, spendCents: 0, feeRefundCents: 315 });
 });

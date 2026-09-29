@@ -52,6 +52,8 @@ export interface MetaStatus {
     goalsEnabled: string[]; leadImportEnabled: boolean; audienceCreationEnabled: boolean;
     retargetingEnabled: boolean; aiAssistEnabled: boolean; publishingEnabled: boolean;
     whatsappEnabled?: boolean; countries?: string[];
+    /** Who pays Meta for the ad budget. Absent from an older server = the customer's ad account. */
+    budgetBilling?: 'CUSTOMER_AD_ACCOUNT' | 'HOMATCH_WALLET';
   };
 }
 export const getMetaStatus = () => call<MetaStatus>('status');

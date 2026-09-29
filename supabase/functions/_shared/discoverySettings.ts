@@ -71,7 +71,9 @@ export function parseDiscoverySettings(rows: Array<{ key: string; value: unknown
     freshness: parseActiveDemandPolicy(m.get('discovery_freshness_policy')),
     telegramEnabled: bool(m.get('telegram_discovery_enabled'), false),
     telegramMode: unquote(m.get('telegram_integration_mode')) === 'PUBLIC_PREVIEW' ? 'PUBLIC_PREVIEW' : 'MTPROTO_USER',
-    telegramAutoEnableSources: bool(m.get('telegram_source_auto_enable'), true),
+    /* Off unless an operator turns it on: a discovered community is audited
+       automatically but only switched on by a person. */
+    telegramAutoEnableSources: bool(m.get('telegram_source_auto_enable'), false),
     telegramMinRelevance: num(m.get('telegram_source_min_relevance'), 0.2, 0, 1),
     backgroundRefreshEnabled: bool(m.get('discovery_background_refresh_enabled'), false),
     forumDiscoveryEnabled: bool(m.get('forum_discovery_enabled'), false),

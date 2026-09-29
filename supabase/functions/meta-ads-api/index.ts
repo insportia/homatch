@@ -10,7 +10,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   buildPlan, validatePlanInput, computeTotals, canTransition, type MetaGoal,
 } from '../../../src/lib/metaAds/strategy.ts';
-import { GOAL_SPECS, missingRequirements, recommendedPlacements } from '../../../src/lib/metaAds/payload.ts';
+import { GOAL_SPECS, launchCharge, missingRequirements, recommendedPlacements } from '../../../src/lib/metaAds/payload.ts';
 import { hashIdentifierRows, csvSafeCell, normalizeEmail, normalizePhone } from '../../../src/lib/metaAds/hashing.ts';
 // Static, not `await import(...)`: the deploy prover walks static imports to
 // compare the shipped bundle against this revision's closure.
@@ -107,6 +107,7 @@ Deno.serve(async (req) => {
             audienceCreationEnabled: settings.audienceCreationEnabled, retargetingEnabled: settings.retargetingEnabled,
             aiAssistEnabled: settings.aiAssistEnabled && llmAvailable(), publishingEnabled: settings.publishingEnabled,
             whatsappEnabled: settings.whatsappEnabled, countries: settings.defaultCountries,
+            budgetBilling: settings.budgetBilling,
           },
         });
       }
@@ -351,11 +352,16 @@ Deno.serve(async (req) => {
         const plan = c.plan;
         const dailyFromPlan = plan.adSets.reduce((s: number, a: { dailyBudgetCents: number }) => s + Number(a.dailyBudgetCents), 0);
         const totals = computeTotals(dailyFromPlan, Number(c.duration_days), settings.feePercent);
+        /* What HOMATCH itself holds. With the customer's own ad account (the
+           default) that is the fee alone: Meta bills the ad budget to that
+           account directly, and holding it here as well would be a second
+           charge for the same money. */
+        const charge = launchCharge(totals, settings.budgetBilling);
         if (mode === 'REAL') {
           const { data: wallet } = await sb.from('meta_wallet_balances').select('available_cents').eq('user_id', uid).maybeSingle();
-          if ((wallet?.available_cents ?? 0) < totals.totalCents) {
+          if ((wallet?.available_cents ?? 0) < charge.requiredCents) {
             await sb.from('meta_campaigns').update({ status: 'PAYMENT_REQUIRED' }).eq('id', c.id);
-            return json({ error: 'INSUFFICIENT_FUNDS', code: 'INSUFFICIENT_FUNDS', totals }, 402);
+            return json({ error: 'INSUFFICIENT_FUNDS', code: 'INSUFFICIENT_FUNDS', totals, requiredCents: charge.requiredCents, budgetBilling: settings.budgetBilling }, 402);
           }
         }
         const claimed = await sb.from('meta_campaigns')
@@ -367,8 +373,8 @@ Deno.serve(async (req) => {
         // MOCK never touches customer money.
         if (mode === 'REAL') {
           for (const row of [
-            { entry_type: 'RESERVE', amount_cents: -totals.mediaCents, idempotency_key: `${idem}:reserve` },
-            { entry_type: 'HOMATCH_FEE', amount_cents: -totals.feeCents, idempotency_key: `${idem}:fee` },
+            { entry_type: 'RESERVE', amount_cents: -charge.reserveCents, idempotency_key: `${idem}:reserve` },
+            { entry_type: 'HOMATCH_FEE', amount_cents: -charge.feeCents, idempotency_key: `${idem}:fee` },
           ]) {
             if (row.amount_cents === 0) continue;
             const r = await sb.from('meta_ads_ledger').insert({ user_id: uid, currency: c.currency, campaign_id: c.id, ...row });
@@ -396,13 +402,13 @@ Deno.serve(async (req) => {
             });
           } catch { /* best effort */ }
           await sb.from('meta_funnel_events').insert({ event: 'published', user_id: uid });
-          await audit(sb, uid, 'META_CAMPAIGN_LAUNCH', c.id, { totals, mode, externalCampaignId: external.campaignId });
-          return json({ ok: true, status: after.status ?? 'SUBMITTED', totals, mode, externalCampaignId: external.campaignId });
+          await audit(sb, uid, 'META_CAMPAIGN_LAUNCH', c.id, { totals, charge, budgetBilling: settings.budgetBilling, mode, externalCampaignId: external.campaignId });
+          return json({ ok: true, status: after.status ?? 'SUBMITTED', totals, charge, budgetBilling: settings.budgetBilling, mode, externalCampaignId: external.campaignId });
         } catch (err) {
           if (mode === 'REAL') {
             for (const row of [
-              { entry_type: 'RELEASE', amount_cents: totals.mediaCents, idempotency_key: `${idem}:release` },
-              { entry_type: 'REFUND', amount_cents: totals.feeCents, idempotency_key: `${idem}:feerefund` },
+              { entry_type: 'RELEASE', amount_cents: charge.reserveCents, idempotency_key: `${idem}:release` },
+              { entry_type: 'REFUND', amount_cents: charge.feeCents, idempotency_key: `${idem}:feerefund` },
             ]) {
               if (row.amount_cents === 0) continue;
               await sb.from('meta_ads_ledger').insert({ user_id: uid, currency: c.currency, campaign_id: c.id, ...row });

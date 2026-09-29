@@ -459,4 +459,32 @@ export const META_ADS_BUILDER_STRINGS = {
   admin_mads_declined: ["declined", "უარყოფილი", "отклонено", "reddedildi", "مرفوض", "נדחה"],
   // AI rate limit
   madsb_ai_rate_limited: ["You have asked HOMATCH AI for many suggestions in the last hour. Please try again a little later.", "ბოლო ერთ საათში HOMATCH AI-ს ბევრი შემოთავაზება სთხოვეთ. გთხოვთ, ცოტა მოგვიანებით სცადოთ.", "За последний час вы запросили у HOMATCH AI много предложений. Попробуйте чуть позже.", "Son bir saatte HOMATCH AI'dan çok sayıda öneri istediniz. Lütfen biraz sonra tekrar deneyin.", "لقد طلبت من HOMATCH AI اقتراحات كثيرة خلال الساعة الأخيرة. يُرجى المحاولة مرة أخرى بعد قليل.", "ביקשתם מ-HOMATCH AI הרבה הצעות בשעה האחרונה. נסו שוב מעט מאוחר יותר."],
+  // Budget billed by Meta to the customer's own ad account (the default model).
+  madsb_money_media_d_customer: [
+    "Paid to Meta for showing your ads, billed by Meta to your ad account's payment method. HOMATCH does not hold it.",
+    "Meta-ს ეხდება რეკლამის ჩვენებისთვის და Meta მას თქვენი სარეკლამო ანგარიშის გადახდის მეთოდიდან ჩამოჭრის. HOMATCH ამ თანხას არ ინახავს.",
+    "Оплачивается Meta за показ рекламы и списывается Meta со способа оплаты вашего рекламного аккаунта. HOMATCH эти деньги не удерживает.",
+    "Reklamlarınızın gösterimi için Meta'ya ödenir ve Meta tarafından reklam hesabınızın ödeme yönteminden tahsil edilir. HOMATCH bu tutarı tutmaz.",
+    "يُدفع لـ Meta مقابل عرض إعلاناتك، وتحصّله Meta من وسيلة الدفع في حسابك الإعلاني. لا تحتفظ HOMATCH بهذا المبلغ.",
+    "משולם ל-Meta על הצגת המודעות שלך, ו-Meta מחייבת אותו מאמצעי התשלום של חשבון המודעות שלך. HOMATCH לא מחזיקה בסכום הזה.",
+  ],
+  madsb_money_note_customer: [
+    "Calculated by HOMATCH. Meta bills the advertising budget to your ad account; HOMATCH charges only its service fee from your balance.",
+    "გამოთვლილია HOMATCH-ის მიერ. სარეკლამო ბიუჯეტს Meta თქვენს სარეკლამო ანგარიშს ჩამოჭრის; HOMATCH თქვენი ბალანსიდან მხოლოდ მომსახურების საკომისიოს იღებს.",
+    "Рассчитано HOMATCH. Рекламный бюджет Meta списывает с вашего рекламного аккаунта; HOMATCH берёт с вашего баланса только сервисный сбор.",
+    "HOMATCH tarafından hesaplandı. Reklam bütçesini Meta reklam hesabınızdan tahsil eder; HOMATCH bakiyenizden yalnızca hizmet bedelini alır.",
+    "محسوب بواسطة HOMATCH. تحصّل Meta الميزانية الإعلانية من حسابك الإعلاني، ولا تخصم HOMATCH من رصيدك سوى رسوم الخدمة.",
+    "חושב על ידי HOMATCH. את תקציב הפרסום Meta מחייבת מחשבון המודעות שלך; HOMATCH גובה מהיתרה שלך רק את דמי השירות.",
+  ],
+  madsb_confirm_note_customer: [
+    "The total is the most this campaign can cost you. Meta bills the advertising budget to your ad account; HOMATCH charges only its fee now and refunds the fee on any budget Meta does not spend. Meta then reviews the ad; approval is Meta's decision.",
+    "ჯამი არის მაქსიმალური თანხა, რაც ეს კამპანია შეიძლება დაგიჯდეთ. სარეკლამო ბიუჯეტს Meta თქვენს სარეკლამო ანგარიშს ჩამოჭრის; HOMATCH ახლა მხოლოდ თავის საკომისიოს იღებს და აბრუნებს საკომისიოს იმ ბიუჯეტზე, რომელსაც Meta არ დახარჯავს. შემდეგ Meta რეკლამას განიხილავს; დამტკიცების გადაწყვეტილებას Meta იღებს.",
+    "Итог — максимум, во что вам может обойтись эта кампания. Рекламный бюджет Meta списывает с вашего рекламного аккаунта; HOMATCH сейчас берёт только свой сбор и возвращает сбор за бюджет, который Meta не потратит. Затем Meta проверяет рекламу; решение об одобрении принимает Meta.",
+    "Toplam, bu kampanyanın size en fazla maliyetidir. Reklam bütçesini Meta reklam hesabınızdan tahsil eder; HOMATCH şimdi yalnızca kendi bedelini alır ve Meta'nın harcamadığı bütçenin bedelini iade eder. Ardından Meta reklamı inceler; onay kararı Meta'ya aittir.",
+    "الإجمالي هو أقصى ما قد تكلفك هذه الحملة. تحصّل Meta الميزانية الإعلانية من حسابك الإعلاني، وتخصم HOMATCH الآن رسومها فقط وتعيد الرسوم عن أي ميزانية لا تنفقها Meta. ثم تراجع Meta الإعلان؛ وقرار الموافقة يعود إلى Meta.",
+    "הסכום הכולל הוא המקסימום שהקמפיין הזה יכול לעלות לך. את תקציב הפרסום Meta מחייבת מחשבון המודעות שלך; HOMATCH גובה עכשיו רק את דמי השירות שלה ומחזירה את הדמים על כל תקציב ש-Meta לא תנצל. לאחר מכן Meta בודקת את המודעה; ההחלטה על אישור היא של Meta.",
+  ],
+  madsb_charged_now: [
+    "Charged by HOMATCH now", "HOMATCH ახლა ჩამოგეჭრებათ", "HOMATCH спишет сейчас", "HOMATCH'in şimdi tahsil edeceği", "ما تخصمه HOMATCH الآن", "HOMATCH תגבה עכשיו",
+  ],
 };

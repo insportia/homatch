@@ -29,6 +29,7 @@ import {
   GOAL_SPECS, adSetParams, adParams, campaignParams, creativeParams, missingRequirements, mapMetaStatus,
   settlement, checkMedia, recommendedPlacements, PLACEMENTS, isHttpsUrl,
   type LaunchContext, type LaunchCreative, type MessagingApp, type Placement,
+  feeOnlySettlement, launchCharge, parseBudgetBilling, type BudgetBilling,
 } from '../../../src/lib/metaAds/payload.ts';
 import {
   graph, graphAll, MetaApiError, metaMode, openToken, uploadImage, uploadVideo, mockExternalId,
@@ -54,6 +55,8 @@ export interface MetaSettings {
   aiAssistEnabled: boolean;
   whatsappEnabled: boolean;
   defaultCountries: string[];
+  /** Who pays Meta for the ad budget (payload.ts BudgetBilling). */
+  budgetBilling: BudgetBilling;
 }
 
 export async function loadSettings(sb: Sb): Promise<MetaSettings> {
@@ -80,6 +83,9 @@ export async function loadSettings(sb: Sb): Promise<MetaSettings> {
     aiAssistEnabled: b('meta_ads_ai_assist_enabled', true),
     whatsappEnabled: b('meta_ads_whatsapp_enabled', false),
     defaultCountries: Array.isArray(countries) && countries.length ? countries.map(String) : ['GE'],
+    /* Default: Meta bills the customer's own ad account, HOMATCH holds only
+       its fee. Reserving the budget too would charge the customer twice. */
+    budgetBilling: parseBudgetBilling(m.get('meta_ads_budget_billing')),
   };
 }
 
@@ -315,7 +321,10 @@ export async function runPreflight(sb: Sb, uid: string, c: any, settings: MetaSe
   const totals = computeTotals(input.strategy.dailyBudgetCents, input.strategy.durationDays, settings.feePercent);
   const { data: wallet } = await sb.from('meta_wallet_balances').select('available_cents').eq('user_id', uid).maybeSingle();
   const available = Number(wallet?.available_cents ?? 0);
-  add('balance', available >= totals.totalCents ? 'READY' : 'WARNING', available >= totals.totalCents ? undefined : `SHORT_${totals.totalCents - available}`);
+  /* Only what HOMATCH itself will hold must be in the balance: with the
+     customer's own ad account that is the fee, and Meta bills the budget. */
+  const required = launchCharge(totals, settings.budgetBilling).requiredCents;
+  add('balance', available >= required ? 'READY' : 'WARNING', available >= required ? undefined : `SHORT_${required - available}`);
 
   return finish(sb, uid, c, checks, input.strategy, settings, manualReview, cats);
 }
@@ -532,9 +541,30 @@ export async function settleCampaign(sb: Sb, c: any, actualSpendCents: number) {
   const reserve = -(rows ?? []).filter((r: any) => r.entry_type === 'RESERVE').reduce((s: number, r: any) => s + Number(r.amount_cents), 0);
   const fee = -(rows ?? []).filter((r: any) => r.entry_type === 'HOMATCH_FEE').reduce((s: number, r: any) => s + Number(r.amount_cents), 0);
   const released = (rows ?? []).some((r: any) => String(r.idempotency_key ?? '').endsWith(':release'));
-  if (reserve <= 0 || released) return null;
-  const s = settlement(reserve, fee, actualSpendCents);
   const base = { user_id: c.user_id, currency: c.currency, campaign_id: c.id };
+
+  /* CUSTOMER_AD_ACCOUNT: Meta billed the customer's ad account, nothing was
+     reserved here. Only the fee is reconciled, against the PLANNED budget. */
+  if (reserve <= 0) {
+    const feeSettled = (rows ?? []).some((r: any) => String(r.idempotency_key ?? '').endsWith(':settle:feerefund'));
+    if (fee <= 0 || feeSettled || c.settled_at) return null;
+    const daily = Array.isArray(c.plan?.adSets)
+      ? c.plan.adSets.reduce((n: number, a: { dailyBudgetCents: number }) => n + Number(a.dailyBudgetCents), 0) : 0;
+    const planned = computeTotals(daily, Number(c.duration_days), 0).mediaCents;
+    const f = feeOnlySettlement(planned, fee, actualSpendCents);
+    if (f.feeRefundCents > 0) {
+      const { error } = await sb.from('meta_ads_ledger').insert({
+        ...base, entry_type: 'REFUND', amount_cents: f.feeRefundCents,
+        idempotency_key: `${c.id}:settle:feerefund`, note: 'fee on budget Meta did not spend',
+      });
+      if (error && !String(error.message).includes('duplicate')) throw error;
+    }
+    await sb.from('meta_campaigns').update({ settled_at: new Date().toISOString() }).eq('id', c.id);
+    return f;
+  }
+
+  if (released) return null;
+  const s = settlement(reserve, fee, actualSpendCents);
   const inserts = [
     { ...base, entry_type: 'RELEASE', amount_cents: s.releaseCents, idempotency_key: `${c.id}:settle:release`, note: 'campaign closed' },
     ...(s.spendCents > 0 ? [{ ...base, entry_type: 'META_SPEND', amount_cents: -s.spendCents, idempotency_key: `${c.id}:settle:spend`, note: 'Meta-reported spend' }] : []),

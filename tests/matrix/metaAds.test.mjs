@@ -143,3 +143,19 @@ test('lookalike and autopilot ship gated OFF', () => {
   assert.match(migration, /'meta_ads_lookalike_enabled',\s*'false'::jsonb/);
   assert.match(migration, /'meta_ads_autopilot_enabled',\s*'false'::jsonb/);
 });
+
+test('a campaign on the customer\'s own ad account is never charged twice for the same budget', () => {
+  const index = read('supabase/functions/meta-ads-api/index.ts');
+  const engine = read('supabase/functions/meta-ads-api/engine.ts');
+  const payload = read('src/lib/metaAds/payload.ts');
+  /* The default model: Meta bills the ad account, HOMATCH holds its fee. */
+  assert.match(payload, /: 'CUSTOMER_AD_ACCOUNT';\n\}/, 'an unset billing model must default to the customer ad account');
+  assert.match(payload, /\{ reserveCents: 0, feeCents: totals\.feeCents, requiredCents: totals\.feeCents \}/);
+  /* Launch and preflight both size the HOMATCH hold from the billing model. */
+  assert.match(index, /const charge = launchCharge\(totals, settings\.budgetBilling\)/);
+  assert.match(index, /amount_cents: -charge\.reserveCents/);
+  assert.doesNotMatch(index, /amount_cents: -totals\.mediaCents/, 'the full budget is reserved regardless of who bills it');
+  assert.match(engine, /launchCharge\(totals, settings\.budgetBilling\)\.requiredCents/);
+  /* Fee-only settlement refunds the fee on what Meta did not spend. */
+  assert.match(engine, /feeOnlySettlement\(planned, fee, actualSpendCents\)/);
+});

@@ -58,7 +58,7 @@ update public.discovery_query_queue
        cancel_reason = 'PROVIDER_RETIRED',
        finished_at = coalesce(finished_at, now()),
        last_error = coalesce(last_error, 'PROVIDER_RETIRED: the provider is retired and is never called')
- where status = 'PENDING'
+ where status in ('PENDING', 'PROCESSING')
    and upper(coalesce(provider, '')) in ('APIFY', 'DATAFORSEO');
 
 /*
@@ -83,6 +83,21 @@ security definer
 set search_path to ''
 as $function$
 begin
+  /* A job whose campaign already ended -- completed, failed, stopped, or out
+     of budget -- is not recovered, it is cancelled: its reservation has been
+     settled or released, and running it now would be unfunded work. */
+  update public.discovery_query_queue q
+     set status = 'CANCELLED',
+         cancel_reason = 'CAMPAIGN_ENDED',
+         finished_at = now(),
+         lease_expires_at = null,
+         claim_token = null
+    from public.matching_jobs j
+   where j.id = q.matching_job_id
+     and q.status in ('PROCESSING', 'PENDING', 'RETRY_WAIT')
+     and (q.status <> 'PROCESSING' or (q.lease_expires_at is not null and q.lease_expires_at < now()))
+     and j.status::text in ('completed','partially_completed','failed','cancelled','paused','budget_reached');
+
   update public.discovery_query_queue q
      set status = case when q.attempts >= p_max_attempts then 'FAILED' else 'RETRY_WAIT' end,
          last_error = 'LEASE_EXPIRED: the worker holding this job stopped before finishing',
@@ -103,7 +118,7 @@ begin
      where q.status in ('PENDING', 'RETRY_WAIT')
        and coalesce(q.next_attempt_at, now()) <= now()
        and upper(coalesce(q.provider, '')) in ('TELEGRAM', 'FORUM', 'TELEGRAM_SOURCES')
-       and (j.id is null or j.status::text not in ('completed','partially_completed','failed','cancelled','paused'))
+       and (j.id is null or j.status::text not in ('completed','partially_completed','failed','cancelled','paused','budget_reached'))
      order by q.priority desc, q.created_at asc
      for update of q skip locked
      limit greatest(1, least(p_limit, 25))
@@ -130,7 +145,9 @@ create or replace function public.finish_discovery_source_job(
   p_claim_token uuid,
   p_outcome text,
   p_result_count integer default 0,
-  p_cost_usd numeric default 0,
+  /* NULL = the caller did not measure it. Recorded as unknown, never as 0
+     (BILLING.md: unknown COGS is never silently zero). */
+  p_cost_usd numeric default null,
   p_error text default null,
   p_retry_seconds integer default null,
   p_max_attempts integer default 4,
@@ -162,7 +179,8 @@ begin
   update public.discovery_query_queue
      set status = v_status,
          result_count = greatest(0, coalesce(p_result_count, 0)),
-         actual_cost_usd = coalesce(actual_cost_usd, 0) + greatest(0, coalesce(p_cost_usd, 0)),
+         actual_cost_usd = case when p_cost_usd is null then actual_cost_usd
+                                else coalesce(actual_cost_usd, 0) + greatest(0, p_cost_usd) end,
          last_error = case when v_status in ('DONE') then null else left(coalesce(p_error, last_error), 500) end,
          next_attempt_at = case when v_status = 'RETRY_WAIT'
            then now() + make_interval(secs => greatest(15, least(coalesce(p_retry_seconds, 60), 3600))) else next_attempt_at end,
@@ -172,6 +190,7 @@ begin
          claim_token = null,
          cancel_reason = case when v_status in ('CANCELLED', 'BUDGET_REACHED') then coalesce(p_error, v_status) else cancel_reason end,
          metadata = coalesce(metadata, '{}'::jsonb) || coalesce(p_metadata, '{}'::jsonb)
+                    || case when p_cost_usd is null then '{"cost_unknown": true}'::jsonb else '{}'::jsonb end
    where id = p_job_id;
   return v_status;
 end;
@@ -221,7 +240,7 @@ insert into public.admin_settings (key, value) values
       'undatedEligible', false, 'futureSkewHours', 24)),
   ('telegram_discovery_enabled', 'false'::jsonb),
   ('telegram_integration_mode', '"MTPROTO_USER"'::jsonb),
-  ('telegram_source_auto_enable', 'true'::jsonb),
+  ('telegram_source_auto_enable', 'false'::jsonb),
   ('telegram_source_min_relevance', '0.2'::jsonb),
   ('discovery_background_refresh_enabled', 'false'::jsonb),
   ('forum_discovery_enabled', 'false'::jsonb),
@@ -234,7 +253,13 @@ insert into public.admin_settings (key, value) values
   ('campaign_discovery_minutes', '30'::jsonb),
   ('search_budget_presets_find_clients', '[50, 100, 200, 500]'::jsonb),
   ('search_budget_recommended_find_clients', '50'::jsonb),
-  ('discovery_driver_token', to_jsonb(encode(extensions.gen_random_bytes(24), 'hex')))
+  ('discovery_driver_token', to_jsonb(encode(extensions.gen_random_bytes(24), 'hex'))),
+  /* The three worker tokens the new schedules present. Production already
+     holds all three; seeding them here keeps a fresh environment from sending
+     a 403 every tick. on conflict leaves an existing token untouched. */
+  ('community_sync_token', to_jsonb(encode(extensions.gen_random_bytes(24), 'hex'))),
+  ('demand_discovery_token', to_jsonb(encode(extensions.gen_random_bytes(24), 'hex'))),
+  ('classify_signals_token', to_jsonb(encode(extensions.gen_random_bytes(24), 'hex')))
 on conflict (key) do nothing;
 
 /*

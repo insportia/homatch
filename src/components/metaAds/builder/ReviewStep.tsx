@@ -145,7 +145,7 @@ export function ReviewStep({ campaign, status, creatives, totals, pricing, recom
         ]} />
       </div>
 
-      <FinancialSummary totals={totals} pricing={pricing} />
+      <FinancialSummary totals={totals} pricing={pricing} billing={status?.settings.budgetBilling} />
 
       <div className="rounded-2xl border border-[hsl(var(--gold-border))]/60 bg-[hsl(var(--gold-soft))]/60 p-4">
         <p className="flex items-center gap-2 text-sm font-semibold text-foreground"><Wand2 className="h-4 w-4 text-[hsl(var(--gold-ink))]" />{t('madsb_handles_title')}</p>

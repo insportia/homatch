@@ -438,6 +438,41 @@ export function mapMetaStatus(input: {
  * Integer cents; spend is clamped to the reserve (Meta overdelivery beyond the
  * authorised budget is HOMATCH's cost, never the customer's).
  */
+/**
+ * Who pays Meta for the ads themselves.
+ *
+ *   CUSTOMER_AD_ACCOUNT  the campaign runs on the customer's own ad account
+ *                        and Meta bills that account directly. HOMATCH holds
+ *                        and charges ONLY its fee; reserving the ad budget as
+ *                        well would charge the customer twice.
+ *   HOMATCH_WALLET       the ad budget is held in the HOMATCH Meta Ads balance
+ *                        (for campaigns run on an ad account HOMATCH pays).
+ */
+export type BudgetBilling = 'CUSTOMER_AD_ACCOUNT' | 'HOMATCH_WALLET';
+
+export function parseBudgetBilling(value: unknown): BudgetBilling {
+  return String(value ?? '').replace(/"/g, '') === 'HOMATCH_WALLET' ? 'HOMATCH_WALLET' : 'CUSTOMER_AD_ACCOUNT';
+}
+
+/** What HOMATCH itself takes from the balance at launch, per billing model. */
+export function launchCharge(totals: { mediaCents: number; feeCents: number }, billing: BudgetBilling) {
+  return billing === 'HOMATCH_WALLET'
+    ? { reserveCents: totals.mediaCents, feeCents: totals.feeCents, requiredCents: totals.mediaCents + totals.feeCents }
+    : { reserveCents: 0, feeCents: totals.feeCents, requiredCents: totals.feeCents };
+}
+
+/**
+ * Settlement when Meta billed the customer's own ad account: nothing was
+ * reserved, so only the fee is reconciled -- refunded in proportion to the
+ * planned budget Meta did not spend.
+ */
+export function feeOnlySettlement(plannedMediaCents: number, feeCents: number, actualSpendCents: number) {
+  const planned = Math.max(0, Math.round(plannedMediaCents));
+  const spend = Math.max(0, Math.min(Math.round(actualSpendCents), planned));
+  const feeRefund = planned > 0 ? Math.floor((feeCents * (planned - spend)) / planned) : 0;
+  return { releaseCents: 0, spendCents: spend, feeRefundCents: feeRefund };
+}
+
 export function settlement(reservedMediaCents: number, feeCents: number, actualSpendCents: number) {
   const spend = Math.max(0, Math.min(Math.round(actualSpendCents), reservedMediaCents));
   const unspent = reservedMediaCents - spend;

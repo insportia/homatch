@@ -354,7 +354,7 @@ export default function MetaAdsCreatePage() {
               <p className="mb-2 text-sm font-semibold text-foreground">{t('mads_step_preview')}</p>
               {previewPanel}
             </div>
-            <FinancialSummary totals={preview?.totals ?? null} pricing={pricing} compact />
+            <FinancialSummary totals={preview?.totals ?? null} pricing={pricing} compact billing={status?.settings.budgetBilling} />
           </aside>
         </div>
       </div>
@@ -402,10 +402,14 @@ export default function MetaAdsCreatePage() {
               <div className="flex justify-between"><dt>{t('madsb_money_media')}</dt><dd dir="ltr">{money(preview.totals.mediaCents)}</dd></div>
               <div className="flex justify-between"><dt>{t('madsb_money_fee', { pct: String(preview.totals.feePercent) })}</dt><dd dir="ltr">{money(preview.totals.feeCents)}</dd></div>
               <div className="flex justify-between border-t border-border pt-1 text-base font-bold"><dt>{t('madsb_money_total_max')}</dt><dd dir="ltr">{money(preview.totals.totalCents)}</dd></div>
+              {/* What HOMATCH itself takes from the balance now. With the customer's own
+                  ad account that is the fee alone -- Meta bills the budget directly. */}
+              <div className="flex justify-between"><dt>{t('madsb_charged_now')}</dt><dd dir="ltr">{money(status?.settings.budgetBilling === 'HOMATCH_WALLET' ? preview.totals.totalCents : preview.totals.feeCents)}</dd></div>
               <div className="flex justify-between text-muted-foreground"><dt>{t('mads_confirm_balance')}</dt><dd dir="ltr">{money(status?.wallet?.available_cents ?? 0)}</dd></div>
             </dl>
           )}
-          <p className="text-[13px] leading-relaxed text-muted-foreground">{t(status?.mode === 'MOCK' ? 'madsb_confirm_mock' : 'madsb_confirm_note')}</p>
+          <p className="text-[13px] leading-relaxed text-muted-foreground">{t(status?.mode === 'MOCK' ? 'madsb_confirm_mock'
+            : status?.settings.budgetBilling === 'HOMATCH_WALLET' ? 'madsb_confirm_note' : 'madsb_confirm_note_customer')}</p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmOpen(false)}>{t('general_cancel')}</Button>
             <Button onClick={doLaunch} disabled={running} className="bg-[hsl(var(--gold))] font-bold text-[#161309] hover:bg-[hsl(var(--gold-hover))]">

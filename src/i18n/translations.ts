@@ -11139,6 +11139,12 @@ const en = {
   /* ── DISCOVERY ENGINE ── */
   match_reason_bedrooms: 'Your bedrooms fit what they need',
   match_gap_bedrooms: 'One bedroom off what they asked for',
+
+  /* ── META ADS CAMPAIGN BUILDER ── */
+  madsb_money_media_d_customer: 'Paid to Meta for showing your ads, billed by Meta to your ad account\'s payment method. HOMATCH does not hold it.',
+  madsb_money_note_customer: 'Calculated by HOMATCH. Meta bills the advertising budget to your ad account; HOMATCH charges only its service fee from your balance.',
+  madsb_confirm_note_customer: 'The total is the most this campaign can cost you. Meta bills the advertising budget to your ad account; HOMATCH charges only its fee now and refunds the fee on any budget Meta does not spend. Meta then reviews the ad; approval is Meta\'s decision.',
+  madsb_charged_now: 'Charged by HOMATCH now',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -22192,6 +22198,12 @@ const ka: Partial<Record<TranslationKey, string>> = {
   /* ── DISCOVERY ENGINE ── */
   match_reason_bedrooms: 'თქვენი საძინებლების რაოდენობა შეესაბამება მის საჭიროებას',
   match_gap_bedrooms: 'ერთი საძინებლით განსხვავდება მოთხოვნისგან',
+
+  /* ── META ADS CAMPAIGN BUILDER ── */
+  madsb_money_media_d_customer: 'Meta-ს ეხდება რეკლამის ჩვენებისთვის და Meta მას თქვენი სარეკლამო ანგარიშის გადახდის მეთოდიდან ჩამოჭრის. HOMATCH ამ თანხას არ ინახავს.',
+  madsb_money_note_customer: 'გამოთვლილია HOMATCH-ის მიერ. სარეკლამო ბიუჯეტს Meta თქვენს სარეკლამო ანგარიშს ჩამოჭრის; HOMATCH თქვენი ბალანსიდან მხოლოდ მომსახურების საკომისიოს იღებს.',
+  madsb_confirm_note_customer: 'ჯამი არის მაქსიმალური თანხა, რაც ეს კამპანია შეიძლება დაგიჯდეთ. სარეკლამო ბიუჯეტს Meta თქვენს სარეკლამო ანგარიშს ჩამოჭრის; HOMATCH ახლა მხოლოდ თავის საკომისიოს იღებს და აბრუნებს საკომისიოს იმ ბიუჯეტზე, რომელსაც Meta არ დახარჯავს. შემდეგ Meta რეკლამას განიხილავს; დამტკიცების გადაწყვეტილებას Meta იღებს.',
+  madsb_charged_now: 'HOMATCH ახლა ჩამოგეჭრებათ',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -33236,6 +33248,12 @@ const ru: Partial<Record<TranslationKey, string>> = {
   /* ── DISCOVERY ENGINE ── */
   match_reason_bedrooms: 'Количество спален подходит под их запрос',
   match_gap_bedrooms: 'На одну спальню отличается от запроса',
+
+  /* ── META ADS CAMPAIGN BUILDER ── */
+  madsb_money_media_d_customer: 'Оплачивается Meta за показ рекламы и списывается Meta со способа оплаты вашего рекламного аккаунта. HOMATCH эти деньги не удерживает.',
+  madsb_money_note_customer: 'Рассчитано HOMATCH. Рекламный бюджет Meta списывает с вашего рекламного аккаунта; HOMATCH берёт с вашего баланса только сервисный сбор.',
+  madsb_confirm_note_customer: 'Итог — максимум, во что вам может обойтись эта кампания. Рекламный бюджет Meta списывает с вашего рекламного аккаунта; HOMATCH сейчас берёт только свой сбор и возвращает сбор за бюджет, который Meta не потратит. Затем Meta проверяет рекламу; решение об одобрении принимает Meta.',
+  madsb_charged_now: 'HOMATCH спишет сейчас',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -44278,6 +44296,12 @@ const tr: Partial<Record<TranslationKey, string>> = {
   /* ── DISCOVERY ENGINE ── */
   match_reason_bedrooms: 'Yatak odası sayınız ihtiyaçlarına uyuyor',
   match_gap_bedrooms: 'İstediklerinden bir yatak odası farklı',
+
+  /* ── META ADS CAMPAIGN BUILDER ── */
+  madsb_money_media_d_customer: 'Reklamlarınızın gösterimi için Meta\'ya ödenir ve Meta tarafından reklam hesabınızın ödeme yönteminden tahsil edilir. HOMATCH bu tutarı tutmaz.',
+  madsb_money_note_customer: 'HOMATCH tarafından hesaplandı. Reklam bütçesini Meta reklam hesabınızdan tahsil eder; HOMATCH bakiyenizden yalnızca hizmet bedelini alır.',
+  madsb_confirm_note_customer: 'Toplam, bu kampanyanın size en fazla maliyetidir. Reklam bütçesini Meta reklam hesabınızdan tahsil eder; HOMATCH şimdi yalnızca kendi bedelini alır ve Meta\'nın harcamadığı bütçenin bedelini iade eder. Ardından Meta reklamı inceler; onay kararı Meta\'ya aittir.',
+  madsb_charged_now: 'HOMATCH\'in şimdi tahsil edeceği',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -55320,6 +55344,12 @@ const ar: Partial<Record<TranslationKey, string>> = {
   /* ── DISCOVERY ENGINE ── */
   match_reason_bedrooms: 'عدد غرف النوم لديك يناسب احتياجهم',
   match_gap_bedrooms: 'يختلف بغرفة نوم واحدة عما طلبوه',
+
+  /* ── META ADS CAMPAIGN BUILDER ── */
+  madsb_money_media_d_customer: 'يُدفع لـ Meta مقابل عرض إعلاناتك، وتحصّله Meta من وسيلة الدفع في حسابك الإعلاني. لا تحتفظ HOMATCH بهذا المبلغ.',
+  madsb_money_note_customer: 'محسوب بواسطة HOMATCH. تحصّل Meta الميزانية الإعلانية من حسابك الإعلاني، ولا تخصم HOMATCH من رصيدك سوى رسوم الخدمة.',
+  madsb_confirm_note_customer: 'الإجمالي هو أقصى ما قد تكلفك هذه الحملة. تحصّل Meta الميزانية الإعلانية من حسابك الإعلاني، وتخصم HOMATCH الآن رسومها فقط وتعيد الرسوم عن أي ميزانية لا تنفقها Meta. ثم تراجع Meta الإعلان؛ وقرار الموافقة يعود إلى Meta.',
+  madsb_charged_now: 'ما تخصمه HOMATCH الآن',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -66362,6 +66392,12 @@ const he: Partial<Record<TranslationKey, string>> = {
   /* ── DISCOVERY ENGINE ── */
   match_reason_bedrooms: 'מספר חדרי השינה שלך מתאים לצורך שלהם',
   match_gap_bedrooms: 'חדר שינה אחד שונה ממה שביקשו',
+
+  /* ── META ADS CAMPAIGN BUILDER ── */
+  madsb_money_media_d_customer: 'משולם ל-Meta על הצגת המודעות שלך, ו-Meta מחייבת אותו מאמצעי התשלום של חשבון המודעות שלך. HOMATCH לא מחזיקה בסכום הזה.',
+  madsb_money_note_customer: 'חושב על ידי HOMATCH. את תקציב הפרסום Meta מחייבת מחשבון המודעות שלך; HOMATCH גובה מהיתרה שלך רק את דמי השירות.',
+  madsb_confirm_note_customer: 'הסכום הכולל הוא המקסימום שהקמפיין הזה יכול לעלות לך. את תקציב הפרסום Meta מחייבת מחשבון המודעות שלך; HOMATCH גובה עכשיו רק את דמי השירות שלה ומחזירה את הדמים על כל תקציב ש-Meta לא תנצל. לאחר מכן Meta בודקת את המודעה; ההחלטה על אישור היא של Meta.',
+  madsb_charged_now: 'HOMATCH תגבה עכשיו',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

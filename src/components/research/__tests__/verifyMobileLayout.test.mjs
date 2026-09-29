@@ -111,14 +111,15 @@ test('the Verify header and primary action fit narrow screens without horizontal
   // on a phone. `min-w-0 flex-1` let the title column shrink to 114px instead
   // of letting the action wrap, which broke "gadamowmebis centri" mid-word
   // across five lines at 320px. basis-full makes the actions wrap first.
-  assert.match(verifySource, /className="flex flex-wrap items-start justify-between gap-x-3 gap-y-3"/);
+  // The header became the product's navy identity band; the wrap behaviour it guards is unchanged.
+  assert.match(verifySource, /className="flex flex-wrap items-start justify-between gap-x-3 gap-y-3 [^"]*bg-\[#0C1119\]/);
   assert.match(verifySource, /className="min-w-0 basis-full sm:basis-auto sm:flex-1"/);
   assert.match(verifySource, /className="min-w-0 basis-full sm:basis-auto sm:flex-1"/);
   // The desktop step grew with the readability pass (2xl -> 3xl) and the
   // weight moved to semibold with the display face. The MOBILE step is the
   // part this test is actually guarding — it shares a row with two buttons
   // at 320px — so text-xl stays pinned here deliberately.
-  assert.match(verifySource, /text-xl sm:text-3xl font-semibold break-words/);
+  assert.match(verifySource, /text-xl sm:text-3xl font-display font-bold break-words/);
   // Search input + button stack under sm, side by side above it.
   assert.match(verifySource, /className="flex flex-col gap-2 sm:flex-row"/);
   /*

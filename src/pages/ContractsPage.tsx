@@ -107,16 +107,19 @@ export default function ContractsPage() {
     <AppLayout noPadding>
       <div className="hm-invest hm-invest-canvas min-h-[calc(100vh-4rem)]">
         <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6 pb-24 sm:px-6 lg:px-8">
-          <header className="space-y-2">
-            <div className="flex items-center gap-2">
-              <FileSignature className="h-5 w-5 shrink-0 text-primary sm:h-6 sm:w-6" aria-hidden="true" />
-              <h1 className="min-w-0 break-words text-xl font-semibold sm:text-3xl">
+          {/* The document product's navy identity band; the upload and the
+              analysis below it read on white. */}
+          <header className="overflow-hidden rounded-2xl bg-[#0C1119] px-5 py-6 text-white shadow-hover sm:px-7">
+            <div className="flex items-center gap-2.5">
+              <FileSignature className="h-5 w-5 shrink-0 text-[hsl(38_92%_60%)] sm:h-6 sm:w-6" aria-hidden="true" />
+              <h1 className="min-w-0 break-words font-display text-xl font-bold text-white sm:text-3xl">
                 {t('ct_page_title')}
               </h1>
             </div>
-            <p className="measure min-w-0 break-words text-base text-ink-soft">
+            <p className="measure mt-2 min-w-0 break-words text-[15px] leading-relaxed text-white/80">
               {t('ct_page_subtitle')}
             </p>
+            <span className="mt-4 block h-[3px] w-14 rounded-full bg-[hsl(38_92%_56%)]" aria-hidden="true" />
           </header>
 
           {linkedProperty ? (

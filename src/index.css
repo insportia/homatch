@@ -698,7 +698,6 @@
    * Their COMPOSITIONS stay different. A portfolio row is not an opportunity card and
    * neither is an analytical module; what they share is the ground they are drawn on.
    */
-  .hm-invest,
   .hm-workspace,
   .hm-discovery,
   .hm-owner {
@@ -747,6 +746,62 @@
     /* Tabular figures everywhere on this surface. A column of prices whose
        digits are different widths cannot be scanned, and scanning a column
        of prices is most of what anybody does here. */
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── THE ANALYTICAL PRODUCTS' MIXED SURFACE ───────────────────────
+   *
+   * `.hm-invest` used to be an alias of the dark instrument panel above,
+   * which made Verify, Contracts and Investment CONTINUOUS navy: header,
+   * cards, evidence, tables — all one dark field. The approved system is
+   * mixed — navy frames, white working surfaces — and Mortgage proved the
+   * same Module/StatRow primitives carry it on a light ground.
+   *
+   * So the alias is split: the three reading-heavy products now get the
+   * customer light craft as their GROUND, and each page draws its own deep
+   * navy structural band (identity, summary, CTA) on top of it. The other
+   * three names above stay the protected dark contracts they always were.
+   */
+  .hm-invest {
+    --background: 42 38% 97%;
+    --foreground: 224 14% 9%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 14% 9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 14% 9%;
+    --primary: 224 14% 9%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 42 30% 96%;
+    --secondary-foreground: 224 14% 12%;
+    --muted: 42 30% 96%;
+    --muted-foreground: 222 12% 30%;
+    --accent: 42 32% 94%;
+    --accent-foreground: 224 14% 10%;
+    --destructive: 0 66% 44%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 40 12% 84%;
+    --input: 0 0% 100%;
+    --ring: 38 88% 40%;
+    --success: 152 54% 28%;
+    --warning: 32 78% 36%;
+    --info: 214 62% 34%;
+    --gold: 38 88% 54%;
+    --gold-ink: 34 90% 31%;
+    --gold-soft: 41 88% 94%;
+    --gold-hover: 38 88% 47%;
+    --gold-border: 38 60% 72%;
+    --sand: 42 30% 96%;
+    --ink-soft: 222 12% 30%;
+    --chart-1: 38 88% 44%;
+    --chart-2: 214 62% 40%;
+    --chart-3: 152 54% 32%;
+    --chart-4: 268 42% 48%;
+    --chart-5: 14 70% 44%;
+    --shadow-card: 0 1px 2px hsl(35 25% 15% / 0.05), 0 6px 20px hsl(35 25% 15% / 0.06);
+    --shadow-hover: 0 2px 4px hsl(35 25% 15% / 0.07), 0 14px 32px hsl(35 25% 15% / 0.10);
+
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
     font-variant-numeric: tabular-nums;
   }
 

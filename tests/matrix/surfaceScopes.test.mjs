@@ -38,7 +38,11 @@ const read = (...parts) => readFileSync(join(root, ...parts), 'utf8');
 const css = read('src', 'index.css').replace(/\r\n/g, '\n');
 
 /** The names that share the dark declaration. */
-const DARK_ALIASES = ['.hm-invest', '.hm-workspace', '.hm-discovery', '.hm-owner'];
+/* `.hm-invest` left this list on 2026-09-29: Verify, Contracts and Investment
+   moved to the MIXED system (navy frames on a light working ground), so their
+   scope now carries the customer light tokens while the three names below
+   remain the protected dark contracts. */
+const DARK_ALIASES = ['.hm-workspace', '.hm-discovery', '.hm-owner'];
 
 /* ────────────────────────────────────────────────────────────────────────
  * One palette
@@ -54,7 +58,7 @@ test('the dark surface is declared exactly once', () => {
 });
 
 test('every dark product name is on that one declaration', () => {
-  const block = css.slice(css.indexOf('.hm-invest,'), css.indexOf('--shadow-hover: 0 18px 46px'));
+  const block = css.slice(css.indexOf('.hm-workspace,'), css.indexOf('--shadow-hover: 0 18px 46px'));
   for (const alias of DARK_ALIASES) {
     assert.ok(block.includes(`${alias},`) || block.includes(`${alias} {`),
       `${alias} is not on the shared dark declaration`);
@@ -74,7 +78,7 @@ test('the shared dark rule carries tokens, not layout', () => {
    * A token block may set custom properties and the three properties that make a surface
    * a surface: its colour, its ink and its numerals.
    */
-  const start = css.indexOf('.hm-invest,');
+  const start = css.indexOf('.hm-workspace,');
   const block = css.slice(start, css.indexOf('}', css.indexOf('--shadow-hover: 0 18px 46px')));
   const declarations = [...block.matchAll(/^\s{4}([a-z-]+):/gm)].map((m) => m[1]);
   const ALLOWED = new Set(['background-color', 'color', 'font-variant-numeric']);

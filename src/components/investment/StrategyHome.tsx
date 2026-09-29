@@ -37,16 +37,19 @@ export function StrategyHome({
 
   return (
     <div className="mx-auto w-full max-w-[72rem] px-5 py-12 sm:py-16">
-      <header className="mb-10 max-w-[44rem]">
-        <p className="mb-3 text-2xs font-semibold uppercase tracking-[0.18em] text-[hsl(var(--gold-ink))]">
+      {/* NAVY IDENTITY, LIGHT WORKSPACE: the band is the product's one
+          structural dark element; the strategy cards below read on white. */}
+      <header className="mb-8 overflow-hidden rounded-2xl bg-[#0C1119] px-5 py-6 text-white shadow-hover sm:px-8 sm:py-8">
+        <p className="text-2xs font-semibold uppercase tracking-[0.18em] text-[hsl(38_92%_60%)]">
           {t('inv_product_eyebrow')}
         </p>
-        <h1 className="font-display text-3xl font-semibold leading-tight text-foreground sm:text-4xl">
+        <h1 className="mt-2 font-display text-3xl font-bold leading-tight text-white sm:text-4xl">
           {t('inv_home_title')}
         </h1>
-        <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+        <p className="mt-3 max-w-[44rem] text-base leading-relaxed text-white/80">
           {t('inv_home_body')}
         </p>
+        <span className="mt-4 block h-[3px] w-16 rounded-full bg-[hsl(38_92%_56%)]" aria-hidden="true" />
       </header>
 
       <div className="grid gap-4 md:grid-cols-2">

@@ -125,12 +125,14 @@ export default function InvestmentPage() {
       <PageMeta title={t(definition.titleKey)} description={t(definition.descriptionKey)} />
       <div className="hm-invest hm-invest-canvas min-h-[calc(100vh-4rem)]">
         <div className="mx-auto w-full max-w-[100rem] px-4 py-6 sm:px-6 lg:px-8">
-          <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          {/* The product's NAVY IDENTITY BAND: the one structural dark
+              element over the light analytical workspace below it. */}
+          <header className="mb-6 flex flex-wrap items-center justify-between gap-3 overflow-hidden rounded-2xl bg-[#0C1119] px-4 py-4 text-white shadow-hover sm:px-6">
             <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"
                 onClick={() => selectStrategy(null)}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:border-[hsl(var(--gold-border))] hover:text-foreground"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/25 text-white/85 transition-colors hover:bg-white/10 hover:text-white"
                 aria-label={t('inv_back_to_strategies')}
               >
                 <ArrowLeft
@@ -139,10 +141,10 @@ export default function InvestmentPage() {
                 />
               </button>
               <div className="min-w-0">
-                <p className="text-2xs font-semibold uppercase tracking-[0.18em] text-[hsl(var(--gold-ink))]">
+                <p className="text-2xs font-semibold uppercase tracking-[0.18em] text-[hsl(38_92%_60%)]">
                   {t('inv_product_eyebrow')}
                 </p>
-                <h1 className="truncate font-display text-xl font-semibold text-foreground sm:text-2xl">
+                <h1 className="truncate font-display text-xl font-bold text-white sm:text-2xl">
                   {t(definition.titleKey)}
                 </h1>
               </div>
@@ -153,7 +155,7 @@ export default function InvestmentPage() {
                 type="button"
                 onClick={() => setEvidenceOpen((open) => !open)}
                 aria-expanded={evidenceOpen}
-                className="flex min-h-11 items-center gap-2 rounded-full border border-border px-4 text-xs text-muted-foreground transition-colors hover:border-[hsl(var(--gold-border))] hover:text-foreground"
+                className="flex min-h-11 items-center gap-2 rounded-full border border-white/25 px-4 text-xs text-white/80 transition-colors hover:bg-white/10 hover:text-white"
               >
                 <Search className="h-3.5 w-3.5" aria-hidden="true" />
                 {t('inv_market_toggle')}
@@ -161,7 +163,7 @@ export default function InvestmentPage() {
               <button
                 type="button"
                 onClick={reset}
-                className="flex min-h-11 items-center gap-2 rounded-full border border-border px-4 text-xs text-muted-foreground transition-colors hover:border-[hsl(var(--gold-border))] hover:text-foreground"
+                className="flex min-h-11 items-center gap-2 rounded-full border border-white/25 px-4 text-xs text-white/80 transition-colors hover:bg-white/10 hover:text-white"
               >
                 <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
                 {t('inv_start_over')}

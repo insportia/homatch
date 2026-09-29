@@ -18,7 +18,9 @@ function rig(code, opts = {}) {
   const g = buildProcedural(a.procedural.kind, a, slotColors(a, null, null));
   const doors = [];
   let changes = 0;
-  const rt = new LivingRuntime({ reducedMotion: !!opts.reduced, maxLights: opts.maxLights ?? 8, onDoor: (id, b) => doors.push([id, b]), onChange: () => { changes += 1; } });
+  const scene = new THREE.Scene();
+  scene.add(g);
+  const rt = new LivingRuntime({ reducedMotion: !!opts.reduced, maxLights: opts.maxLights ?? 3, lightParent: scene, onDoor: (id, b) => doors.push([id, b]), onChange: () => { changes += 1; } });
   rt.register('obj:x', g, validateInteractions(g.userData.interactions), a.capabilities, { objectId: 'x', doorId: opts.doorId });
   return { a, g, rt, doors, changes: () => changes };
 }
@@ -72,16 +74,21 @@ test('reversing half-way turns back from where it is, never jumping', () => {
   assert.equal(state(rt, 'obj:x:door-1'), 'CLOSED');
 });
 
-test('a switch lights a real light within the budget, and a flush switches itself off', () => {
+test('a switched-on lamp is lit by a pooled light at the lamp; the pool never changes size, and a flush switches itself off', () => {
   const lamp = rig('dev/floor-lamp');
-  const light = lamp.g.getObjectByName('ix:shade').children.find((c) => c.isPointLight);
-  assert.ok(light, 'a point light exists from the start (switching never changes the light count)');
-  assert.equal(light.intensity, 0);
+  lamp.g.updateMatrixWorld(true);
+  assert.deepEqual(lamp.rt.poolState().map((l) => l.intensity), [0, 0, 0], 'three pooled lights, all dark while nothing is on');
   lamp.rt.act('obj:x:lamp', 'TURN_ON', 0);
   lamp.rt.step(1000);
-  assert.ok(light.intensity > 1);
+  const lit = lamp.rt.poolState().filter((l) => l.intensity > 1);
+  const shade = lamp.g.getObjectByName('ix:shade').getWorldPosition(new THREE.Vector3());
+  assert.equal(lit.length, 1);
+  assert.ok(Math.hypot(lit[0].position[0] - shade.x, lit[0].position[1] - shade.y, lit[0].position[2] - shade.z) < 1e-6, 'at the lamp');
+  assert.equal(lamp.rt.poolState().length, 3, 'the pool is the same size on and off');
   const none = rig('dev/floor-lamp', { maxLights: 0 });
-  assert.ok(!none.g.getObjectByName('ix:shade').children.some((c) => c.isPointLight), 'over budget: glow only');
+  none.rt.act('obj:x:lamp', 'TURN_ON', 0);
+  none.rt.step(1000);
+  assert.equal(none.rt.poolState().length, 0, 'no budget: the shade only glows');
   const wc = rig('dev/toilet');
   assert.ok(wc.rt.act('obj:x:flush', 'FLUSH', 0));
   wc.rt.step(600);
@@ -176,4 +183,22 @@ test('a piece without the capability does not get the interaction', () => {
   const rt = new LivingRuntime({ reducedMotion: false, maxLights: 4, onDoor: () => {}, onChange: () => {} });
   rt.register('obj:y', g, validateInteractions(g.userData.interactions), ['MOVABLE'], { objectId: 'y' });
   assert.equal(rt.size, 0);
+});
+
+test('the pool lights the sources nearest the visitor', () => {
+  const scene = new THREE.Scene();
+  const rt = new LivingRuntime({ reducedMotion: true, maxLights: 1, lightParent: scene, onDoor: () => {}, onChange: () => {} });
+  const at = (x) => { const n = new THREE.Group(); n.name = 'ix:fixture'; n.position.set(x, 2.6, 0); n.add(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.05, 0.2), new THREE.MeshStandardMaterial())); scene.add(n); return n; };
+  const spec = [{ id: 'ceiling', kind: 'SWITCH', role: 'LIGHT', durationMs: 300, effects: [{ id: 'light', type: 'LIGHT', part: 'fixture', color: '#ffe2bd', intensity: 5, distance: 5 }] }];
+  rt.register('light:a', at(0), spec, null, { objectId: null });
+  rt.register('light:b', at(10), spec, null, { objectId: null });
+  scene.updateMatrixWorld(true);
+  rt.act('light:a:ceiling', 'TURN_ON', 0);
+  rt.act('light:b:ceiling', 'TURN_ON', 0);
+  rt.setFocus(new THREE.Vector3(9, 1.6, 0));
+  rt.step(10);
+  assert.equal(rt.poolState()[0].position[0], 10, 'standing by b, b is lit');
+  rt.setFocus(new THREE.Vector3(1, 1.6, 0));
+  rt.step(20);
+  assert.equal(rt.poolState()[0].position[0], 0, 'walked over to a: the light follows');
 });

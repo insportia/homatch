@@ -8,8 +8,12 @@
 //   · a TRANSITION captures where every part and effect is right now and
 //     eases to the target state over that state's duration — time-based,
 //     reversible half-way, never a jump (reduced motion: instant)
-//   · EFFECTS are light (a real point light, within a fixed budget so a
-//     switch never recompiles shaders), glow, screen, heat, water, steam
+//   · EFFECTS are light, glow, screen, heat, water, steam. Light is a POOL:
+//     a few real point lights (by quality tier), given each frame to the
+//     switched-on sources nearest the visitor; every other source keeps its
+//     glow. Every light costs every pixel in a forward renderer, so twelve
+//     room lights would halve the frame rate; the pool never changes size,
+//     so a switch never recompiles a shader
 //   · automatic follow-ons (brewing → ready, flushing → idle) run on the
 //     clock, not on frames
 //
@@ -39,7 +43,8 @@ interface EffectRig {
   spec: EffectSpec;
   node: THREE.Object3D;
   mats: Array<{ mat: THREE.MeshStandardMaterial; opacity: number; emissive: THREE.Color; emissiveIntensity: number }>;
-  light: THREE.PointLight | null;
+  /** A light source (LIGHT effects): lit by a pooled point light when near enough. */
+  source: boolean;
   baseScaleY: number;
   level: number;
 }
@@ -94,8 +99,10 @@ const lerpN = (a: number, b: number, t: number) => a + (b - a) * t;
 
 export interface LivingOptions {
   reducedMotion: boolean;
-  /** Real point lights allowed in the scene (quality tier). */
+  /** Real point lights in the pool (quality tier). */
   maxLights: number;
+  /** Where the pool's lights live (the scene). Without it, light sources only glow. */
+  lightParent?: THREE.Object3D;
   onDoor: (doorId: string, blocks: boolean) => void;
   onChange: () => void;
 }
@@ -103,12 +110,57 @@ export interface LivingOptions {
 export class LivingRuntime {
   private entries = new Map<string, LiveEntry>();
   private seatSets = new Map<string, SeatSet>();
-  private lightsUsed = 0;
+  private pool: THREE.PointLight[] = [];
+  private focus = new THREE.Vector3();
+  private lightsDirty = true;
 
   private opts: LivingOptions;
 
   constructor(opts: LivingOptions) {
     this.opts = opts;
+    if (opts.lightParent) {
+      for (let i = 0; i < opts.maxLights; i += 1) {
+        const l = new THREE.PointLight(0xffffff, 0, 6, 2);
+        l.castShadow = false;
+        opts.lightParent.add(l);
+        this.pool.push(l);
+      }
+    }
+  }
+
+  /** Where the visitor is: the pool lights the switched-on sources nearest to here. */
+  setFocus(p: THREE.Vector3) {
+    if (p.distanceToSquared(this.focus) < 0.25) return;
+    this.focus.copy(p);
+    this.lightsDirty = true;
+  }
+
+  /** Give the pool's lights to the brightest-nearest sources that are on. */
+  private assignLights() {
+    if (!this.lightsDirty || !this.pool.length) return;
+    this.lightsDirty = false;
+    const lit: Array<{ fx: EffectRig; at: THREE.Vector3; d: number }> = [];
+    for (const e of this.entries.values()) {
+      for (const fx of e.effects.values()) {
+        if (!fx.source || fx.level < 0.01) continue;
+        const at = fx.node.getWorldPosition(new THREE.Vector3());
+        lit.push({ fx, at, d: at.distanceToSquared(this.focus) });
+      }
+    }
+    lit.sort((a, b) => a.d - b.d);
+    this.pool.forEach((l, i) => {
+      const x = lit[i];
+      if (!x) { l.intensity = 0; return; }
+      l.position.copy(x.at);
+      l.color.set(x.fx.spec.color);
+      l.distance = x.fx.spec.distance ?? 6;
+      l.intensity = x.fx.spec.intensity * x.fx.level;
+    });
+  }
+
+  /** Diagnostics and QA: how the pool is lit. */
+  poolState(): Array<{ intensity: number; position: [number, number, number] }> {
+    return this.pool.map((l) => ({ intensity: l.intensity, position: [l.position.x, l.position.y, l.position.z] }));
   }
 
   get size(): number { return this.entries.size; }
@@ -185,22 +237,13 @@ export class LivingRuntime {
         mats.push({ mat: s, opacity: s.opacity, emissive: s.emissive.clone(), emissiveIntensity: s.emissiveIntensity });
       }
     });
-    let light: THREE.PointLight | null = null;
-    if (spec.type === 'LIGHT' && this.lightsUsed < this.opts.maxLights) {
-      // Present from the start at zero: switching changes intensity, never the light count.
-      light = new THREE.PointLight(spec.color, 0, spec.distance ?? 6, 2);
-      light.castShadow = false;
-      node.add(light);
-      this.lightsUsed += 1;
-    }
-    return { spec, node, mats, light, baseScaleY: node.scale.y, level: 0 };
+    return { spec, node, mats, source: spec.type === 'LIGHT', baseScaleY: node.scale.y, level: 0 };
   }
 
   /** Forget everything registered for one object (or, with null, for the space itself). */
   clear(objectId: string | null) {
     for (const [key, e] of this.entries) {
       if (e.objectId !== objectId) continue;
-      for (const fx of e.effects.values()) if (fx.light) { fx.light.removeFromParent(); fx.light.dispose(); this.lightsUsed -= 1; }
       this.entries.delete(key);
     }
     if (objectId) this.seatSets.delete(objectId);
@@ -262,6 +305,7 @@ export class LivingRuntime {
   /** One frame. True while anything is moving or waiting to move on. */
   step(now: number): boolean {
     let busy = false;
+    this.assignLights();
     for (const e of this.entries.values()) {
       if (e.target) {
         const raw = e.duration <= 0 ? 1 : Math.min(1, Math.max(0, (now - e.start) / e.duration));
@@ -277,6 +321,7 @@ export class LivingRuntime {
         busy = true;
       }
     }
+    this.assignLights();
     return busy;
   }
 
@@ -331,7 +376,7 @@ export class LivingRuntime {
             m.mat.emissiveIntensity = m.emissiveIntensity;
           }
         }
-        if (fx.light) fx.light.intensity = spec.intensity * level;
+        if (fx.source) this.lightsDirty = true;
         break;
       }
       case 'WATER':
@@ -458,9 +503,9 @@ export class LivingRuntime {
   }
 
   dispose() {
-    for (const e of this.entries.values()) for (const fx of e.effects.values()) fx.light?.dispose();
+    for (const l of this.pool) { l.removeFromParent(); l.dispose(); }
+    this.pool = [];
     this.entries.clear();
     this.seatSets.clear();
-    this.lightsUsed = 0;
   }
 }

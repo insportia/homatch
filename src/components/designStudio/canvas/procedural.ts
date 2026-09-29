@@ -20,6 +20,7 @@
 // Cupboards are hollow, with shelves, so opening one shows an inside.
 
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { CatalogAsset, ProceduralKind } from '@/lib/designStudio/catalog';
 import type { InteractionSpec } from '@/lib/designStudio/interactions';
 
@@ -152,6 +153,33 @@ function seatsAlong(W: number, perSeat: number, eye: number, z: number, pitch = 
   };
 }
 
+/**
+ * The boxes of a piece that never move, merged into one mesh per material:
+ * a sofa of eight boxes draws as one or two, not eight. Moving parts
+ * (`ix:` groups) and the parts inside them are left exactly as built.
+ */
+function mergeStatic(g: THREE.Group) {
+  const groups = new Map<string, THREE.Mesh[]>();
+  for (const child of g.children) {
+    const m = child as THREE.Mesh;
+    if (!m.isMesh || Array.isArray(m.material)) continue;
+    const key = `${(m.material as THREE.Material).uuid}|${m.geometry.index ? 1 : 0}`;
+    const list = groups.get(key) ?? [];
+    list.push(m);
+    groups.set(key, list);
+  }
+  for (const list of groups.values()) {
+    if (list.length < 2) continue;
+    const geos = list.map((m) => { m.updateMatrix(); return m.geometry.clone().applyMatrix4(m.matrix); });
+    const merged = mergeGeometries(geos, false);
+    geos.forEach((x) => x.dispose());
+    if (!merged) continue;
+    const mesh = new THREE.Mesh(merged, list[0].material);
+    for (const m of list) { g.remove(m); m.geometry.dispose(); }
+    g.add(mesh);
+  }
+}
+
 export function buildProcedural(kind: ProceduralKind, asset: CatalogAsset, colors: SlotColors): THREE.Group {
   const g = new THREE.Group();
   const specs: InteractionSpec[] = [];
@@ -161,7 +189,14 @@ export function buildProcedural(kind: ProceduralKind, asset: CatalogAsset, color
   const H = asset.heightM;
   const c = (slot: string, fallback: string) => colors[slot] ?? fallback;
   const slot = (id: string) => asset.materialSlots.find((s) => s.id === id);
-  const mat = (id: string, fallback: string) => material(c(id, fallback), slot(id)?.roughness ?? 0.8, slot(id)?.metalness ?? 0);
+  // One material per slot per piece: every box of the body shares it (fewer state changes, and mergeable).
+  const slotMats = new Map<string, THREE.MeshStandardMaterial>();
+  const mat = (id: string, fallback: string) => {
+    const key = `${id}|${fallback}`;
+    let m = slotMats.get(key);
+    if (!m) { m = material(c(id, fallback), slot(id)?.roughness ?? 0.8, slot(id)?.metalness ?? 0); slotMats.set(key, m); }
+    return m;
+  };
   const chrome = material('#c9ccd0', 0.2, 0.9);
 
   switch (kind) {
@@ -656,6 +691,7 @@ export function buildProcedural(kind: ProceduralKind, asset: CatalogAsset, color
     default:
       g.add(box(W, H, D, 0, 0, 0, material('#cccccc')));
   }
+  mergeStatic(g);
   g.traverse((o) => {
     const m = o as THREE.Mesh;
     if (!m.isMesh) return;

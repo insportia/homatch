@@ -404,3 +404,36 @@ test('the scene debug hook exists only in the QA harness build', () => {
     }
   }
 });
+
+test('reconstruction reads pictures as the caller, is JWT-verified and shipped, and never writes geometry or a design', () => {
+  const fn = read('supabase/functions/design-studio-reconstruct/index.ts');
+  assert.match(fn, /caller\.from\('ds_reconstructions'\)/, 'the reconstruction is read as the caller (RLS decides)');
+  assert.match(fn, /sniffType\(/, 'pictures are checked by their bytes');
+  assert.match(fn, /BILLING_CONFIRMATION_REQUIRED/, 'refuses rather than charging if billing is switched on early');
+  assert.ok(!/from\('ds_spatial_sources'\)\.insert|from\('ds_versions'\)\.insert|rpc\('ds_create_floorplan_source'/.test(fn), 'the reader never builds geometry or a design');
+  assert.ok(!/\[functions\.design-studio-reconstruct\][\s\S]{0,40}verify_jwt\s*=\s*false/.test(read('supabase/config.toml')), 'JWT verification stays on');
+  assert.match(read('.github/workflows/deploy.yml'), /"design-studio-reconstruct"/);
+});
+
+test('the browser and the server read reconstructions with byte-identical code', () => {
+  assert.equal(read('src/lib/designStudio/reconstructRead.ts').replace(/\r\n/g, '\n'), read('supabase/functions/_shared/designStudio/reconstructRead.ts').replace(/\r\n/g, '\n'));
+});
+
+test('what a picture became stays private: public snapshots strip provenance', () => {
+  assert.match(read('supabase/migrations/20260930094000_design_studio_shares.sql'), /o - 'provenance'/);
+});
+
+test('reconstructed pieces carry provenance, and only the customer confirms them', () => {
+  assert.match(read('src/lib/designStudio/operations.ts'), /if \(meta\.origin === 'USER'\) current = confirmEdited/);
+  assert.match(read('src/lib/designStudio/aiPlan.ts'), /!o\.provenance\?\.confirmed/);
+});
+
+test('light is a fixed pool, never a light per lamp (every forward-rendered light costs every pixel)', () => {
+  const rt = read('src/components/designStudio/canvas/livingRuntime.ts');
+  assert.equal((rt.match(/new THREE\.PointLight\(/g) ?? []).length, 1, 'point lights are created once, for the pool');
+  assert.match(read('src/components/designStudio/canvas/SceneController.ts'), /maxLights: quality\.tier === 'HIGH' \? 4/);
+});
+
+test('mobile: the walking thumb is physically on the left in every language', () => {
+  assert.match(read('src/components/designStudio/workspace/WalkthroughOverlay.tsx'), /absolute bottom-0 left-0 top-28/);
+});

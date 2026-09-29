@@ -246,7 +246,9 @@ export class SceneController {
 
     this.living = new LivingRuntime({
       reducedMotion: this.reducedMotion,
-      maxLights: quality.tier === 'HIGH' ? 12 : quality.tier === 'BALANCED' ? 8 : 4,
+      // Measured: each forward-rendered light costs every pixel; four nearest lights look the same as twelve.
+      maxLights: quality.tier === 'HIGH' ? 4 : quality.tier === 'BALANCED' ? 3 : 2,
+      lightParent: this.scene,
       onDoor: (doorId, blocks) => { if (this.walk) setDoorClosed(this.walk.model, doorId, blocks); },
       onChange: () => { if (this.aimed) this.onAimChange?.(this.hintFor(this.aimed)); this.requestRender(); },
     });
@@ -278,6 +280,7 @@ export class SceneController {
       if (t >= 1) this.transition = null;
       moving = true;
     }
+    this.living.setFocus(this.walk ? this.camera.position : this.controls.target);
     if (this.living.step(now)) { moving = true; this.refreshAimBox(); }
     if (this.stepEnvironment(now)) moving = true;
     if (this.walk) {

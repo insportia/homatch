@@ -11130,6 +11130,17 @@ const en = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_ai_skip_wrong_room: 'Left out: {{what}} — it is not meant for {{room}}',
   ds_ai_dropped: 'HOMATCH left out {{n}} suggestions that did not suit these rooms or what you keep.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_enter: 'Walk through',
+  ds_walk_exit: 'Exit walkthrough',
+  ds_walk_title: 'Walkthrough',
+  ds_walk_reset: 'Back to the entrance',
+  ds_walk_rooms: 'Go to a room',
+  ds_walk_joystick: 'Walk: drag to move',
+  ds_walk_help_keys: 'W A S D or arrows to walk · drag to look · Esc to leave',
+  ds_walk_unavailable: 'The walkthrough could not find a place to stand in this space.',
+  ds_walk_needs_rooms: 'Walking through needs room outlines, which this space does not have.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -22174,6 +22185,17 @@ const ka: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_ai_skip_wrong_room: 'გამოტოვებულია: {{what}} — „{{room}}“-ისთვის არ არის განკუთვნილი',
   ds_ai_dropped: 'HOMATCH-მა გამოტოვა {{n}} შეთავაზება, რომელიც ამ ოთახებს ან თქვენს შენარჩუნებულს არ შეესაბამებოდა.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_enter: 'შიგნით გავლა',
+  ds_walk_exit: 'გასვლა',
+  ds_walk_title: 'გავლა',
+  ds_walk_reset: 'შესასვლელთან დაბრუნება',
+  ds_walk_rooms: 'ოთახში გადასვლა',
+  ds_walk_joystick: 'გავლა: გადაათრიეთ სამოძრაოდ',
+  ds_walk_help_keys: 'W A S D ან ისრები სავალად · გადაათრიეთ სახედად · Esc გასასვლელად',
+  ds_walk_unavailable: 'გავლისთვის ამ სივრცეში დასადგომი ადგილი ვერ მოიძებნა.',
+  ds_walk_needs_rooms: 'შიგნით გავლას ოთახების კონტურები სჭირდება, რაც ამ სივრცეს არ აქვს.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -33209,6 +33231,17 @@ const ru: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_ai_skip_wrong_room: 'Не добавлено: {{what}} — не предназначено для «{{room}}»',
   ds_ai_dropped: 'HOMATCH убрал предложения ({{n}}), которые не подходят этим комнатам или тому, что вы сохранили.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_enter: 'Пройтись',
+  ds_walk_exit: 'Выйти',
+  ds_walk_title: 'Прогулка',
+  ds_walk_reset: 'К входу',
+  ds_walk_rooms: 'Перейти в комнату',
+  ds_walk_joystick: 'Ходьба: потяните, чтобы двигаться',
+  ds_walk_help_keys: 'W A S D или стрелки — идти · перетаскивание — смотреть · Esc — выйти',
+  ds_walk_unavailable: 'Для прогулки в этом пространстве не нашлось места, где встать.',
+  ds_walk_needs_rooms: 'Для прогулки нужны контуры комнат, которых у этого пространства нет.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -44242,6 +44275,17 @@ const tr: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_ai_skip_wrong_room: 'Eklenmedi: {{what}} — {{room}} için uygun değil',
   ds_ai_dropped: 'HOMATCH, bu odalara veya koruduklarınıza uymayan {{n}} öneriyi dışarıda bıraktı.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_enter: 'İçinde dolaş',
+  ds_walk_exit: 'Dolaşmadan çık',
+  ds_walk_title: 'İç gezinti',
+  ds_walk_reset: 'Girişe dön',
+  ds_walk_rooms: 'Bir odaya git',
+  ds_walk_joystick: 'Yürü: hareket etmek için sürükleyin',
+  ds_walk_help_keys: 'Yürümek için W A S D veya oklar · bakmak için sürükleyin · çıkmak için Esc',
+  ds_walk_unavailable: 'İç gezinti bu alanda durulacak bir yer bulamadı.',
+  ds_walk_needs_rooms: 'İçinde dolaşmak oda sınırlarını gerektirir; bu alanda bunlar yok.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -55275,6 +55319,17 @@ const ar: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_ai_skip_wrong_room: 'لم يُضَف: {{what}} — غير مخصص لـ{{room}}',
   ds_ai_dropped: 'استبعدت HOMATCH ‏{{n}} من الاقتراحات لا تناسب هذه الغرف أو ما تُبقيه.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_enter: 'تجوّل في الداخل',
+  ds_walk_exit: 'إنهاء الجولة',
+  ds_walk_title: 'جولة داخلية',
+  ds_walk_reset: 'العودة إلى المدخل',
+  ds_walk_rooms: 'الانتقال إلى غرفة',
+  ds_walk_joystick: 'المشي: اسحب للتحرك',
+  ds_walk_help_keys: 'W A S D أو الأسهم للمشي · اسحب للنظر · Esc للخروج',
+  ds_walk_unavailable: 'لم تجد الجولة مكانًا للوقوف في هذه المساحة.',
+  ds_walk_needs_rooms: 'يتطلب التجوّل مخططات الغرف، وهي غير متوفرة لهذه المساحة.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -66308,6 +66363,17 @@ const he: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_ai_skip_wrong_room: 'לא נוסף: {{what}} — לא מיועד ל{{room}}',
   ds_ai_dropped: 'HOMATCH השמיטה {{n}} הצעות שלא התאימו לחדרים האלה או למה שאתם שומרים.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_enter: 'סיור פנימי',
+  ds_walk_exit: 'יציאה מהסיור',
+  ds_walk_title: 'סיור',
+  ds_walk_reset: 'חזרה לכניסה',
+  ds_walk_rooms: 'מעבר לחדר',
+  ds_walk_joystick: 'הליכה: גררו כדי לזוז',
+  ds_walk_help_keys: 'W A S D או חיצים להליכה · גררו כדי להסתכל · Esc ליציאה',
+  ds_walk_unavailable: 'הסיור לא מצא מקום לעמוד בו במרחב הזה.',
+  ds_walk_needs_rooms: 'סיור פנימי דורש קווי מתאר של חדרים, ולמרחב הזה אין כאלה.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

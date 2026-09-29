@@ -1,0 +1,137 @@
+// WALKING THROUGH THE REAL GEOMETRY.
+//
+// The walkthrough camera is a body of radius BODY_RADIUS_M at eye height,
+// moving in plan. What stops it is exactly what stands in the space:
+//
+//   · every wall, as solid slabs between its door openings (windows are
+//     solid: you look through them, you do not walk through them)
+//   · every placed floor piece taller than a rug (from the current design)
+//   · the space itself: the body must stay in a room or in a doorway
+//
+// A blocked move slides along the obstacle instead of stopping dead, and a
+// long step is taken in small sub-steps so nothing can be tunnelled through.
+// Deterministic and pure; the renderer only asks where the body may go.
+
+import type { CatalogAsset } from './catalog.ts';
+import type { ObjectInstance } from './designState.ts';
+import { footprint, type Obb } from './placement.ts';
+import { pointInPolygon, wallFrame, type Point, type SpaceModel } from './space.ts';
+
+export const EYE_HEIGHT_M = 1.6;
+export const BODY_RADIUS_M = 0.22;
+/** Pieces lower than this are stepped over (rugs, low platforms). */
+export const STEP_OVER_M = 0.3;
+const SUBSTEP_M = 0.08;
+const DOORWAY_REACH_M = 0.45;
+
+export interface WalkModel {
+  space: SpaceModel;
+  walls: Obb[];
+  furniture: Obb[];
+  doors: Point[];
+  radius: number;
+}
+
+/** The solid parts of every wall, and every piece in the way. */
+export function buildWalkModel(space: SpaceModel, objects: ObjectInstance[], assets: Map<string, CatalogAsset>): WalkModel {
+  const walls: Obb[] = [];
+  for (const wall of space.walls) {
+    const m = wall.mesh;
+    const f = wallFrame(m);
+    // Extend each end by half the thickness so corners are closed.
+    const ext = m.thicknessM / 2;
+    const doors = m.openings.filter((o) => o.kind === 'DOOR')
+      .map((o) => [o.offsetM - o.widthM / 2, o.offsetM + o.widthM / 2] as const)
+      .sort((a, b) => a[0] - b[0]);
+    let from = -ext;
+    const pieces: Array<[number, number]> = [];
+    for (const [a, b] of doors) {
+      if (a > from) pieces.push([from, a]);
+      from = Math.max(from, b);
+    }
+    if (f.length + ext > from) pieces.push([from, f.length + ext]);
+    for (const [a, b] of pieces) {
+      if (b - a < 0.01) continue;
+      const mid = (a + b) / 2;
+      walls.push({
+        cx: m.start.x + f.dir.x * mid,
+        cy: m.start.y + f.dir.y * mid,
+        hw: (b - a) / 2,
+        hd: m.thicknessM / 2,
+        angle: f.angle,
+      });
+    }
+  }
+
+  const furniture: Obb[] = [];
+  for (const o of objects) {
+    const a = assets.get(o.assetId);
+    if (!a || a.placement !== 'FLOOR' || a.heightM < STEP_OVER_M) continue;
+    furniture.push(footprint(a, { x: o.position.x, y: o.position.z }, o.rotationY));
+  }
+
+  return { space, walls, furniture, doors: space.doors.map((d) => d.centre), radius: BODY_RADIUS_M };
+}
+
+/** Distance from a point to an oriented box (0 inside). */
+export function distanceToObb(p: Point, b: Obb): number {
+  const dx = p.x - b.cx;
+  const dy = p.y - b.cy;
+  const c = Math.cos(b.angle);
+  const s = Math.sin(b.angle);
+  const lx = dx * c + dy * s;
+  const ly = -dx * s + dy * c;
+  const qx = Math.max(Math.abs(lx) - b.hw, 0);
+  const qy = Math.max(Math.abs(ly) - b.hd, 0);
+  return Math.hypot(qx, qy);
+}
+
+/** The room a point stands in; a doorway counts as the space too. */
+export function inSpace(model: WalkModel, p: Point): boolean {
+  if (model.space.rooms.some((r) => pointInPolygon(p, r.polygon))) return true;
+  return model.doors.some((d) => Math.hypot(d.x - p.x, d.y - p.y) <= DOORWAY_REACH_M);
+}
+
+export function isFree(model: WalkModel, p: Point): boolean {
+  if (!inSpace(model, p)) return false;
+  for (const w of model.walls) if (distanceToObb(p, w) < model.radius) return false;
+  for (const f of model.furniture) if (distanceToObb(p, f) < model.radius) return false;
+  return true;
+}
+
+/**
+ * Move the body by `delta`, as far as the space allows. Blocked on both
+ * axes it stays where it is; blocked on one it slides along the other.
+ */
+export function move(model: WalkModel, from: Point, delta: Point): Point {
+  const length = Math.hypot(delta.x, delta.y);
+  if (length === 0) return from;
+  const steps = Math.max(1, Math.ceil(length / SUBSTEP_M));
+  let p = from;
+  for (let i = 0; i < steps; i += 1) {
+    const dx = delta.x / steps;
+    const dy = delta.y / steps;
+    const full = { x: p.x + dx, y: p.y + dy };
+    if (isFree(model, full)) { p = full; continue; }
+    const alongX = { x: p.x + dx, y: p.y };
+    if (Math.abs(dx) > 1e-9 && isFree(model, alongX)) { p = alongX; continue; }
+    const alongY = { x: p.x, y: p.y + dy };
+    if (Math.abs(dy) > 1e-9 && isFree(model, alongY)) { p = alongY; continue; }
+    break;
+  }
+  return p;
+}
+
+/** The nearest free point to `p` (searching outward in rings), or null. */
+export function nearestFree(model: WalkModel, p: Point, maxRadius = 2): Point | null {
+  if (isFree(model, p)) return p;
+  for (let r = 0.1; r <= maxRadius; r += 0.1) {
+    const n = Math.max(8, Math.round((2 * Math.PI * r) / 0.1));
+    for (let i = 0; i < n; i += 1) {
+      const a = (i / n) * Math.PI * 2;
+      const q = { x: p.x + Math.cos(a) * r, y: p.y + Math.sin(a) * r };
+      if (isFree(model, q)) return q;
+    }
+  }
+  return null;
+}

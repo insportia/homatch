@@ -417,6 +417,7 @@ async function main() {
     await checkpoint5(browser);
     await checkpoint6(browser);
     await checkpoint7(browser);
+    await checkpoint8(browser);
   } finally {
     await browser.close().catch(() => {});
     server.kill();
@@ -509,6 +510,99 @@ function qaCatalogMaterials() {
     m('dev/floor-natural-oak', 'Natural oak (concept)', 'FLOOR', ['FLOOR'], '#b48b5e', 0.7),
     m('dev/floor-walnut', 'Walnut (concept)', 'FLOOR', ['FLOOR'], '#6d4b36', 0.65),
   ];
+}
+
+/* ── Checkpoint 8: the walkthrough ────────────────────────────────── */
+
+async function checkpoint8(browser) {
+  const { store, project, version } = await seededStore();
+  // The design being walked: a sofa in the living room, a bed in the bedroom.
+  version.state.objects = [
+    { instanceId: 'sofa-1', assetId: 'dev/sofa-3', roomId: 'r-living', position: { x: 3, y: 0, z: 1.2 }, rotationY: 0, materialVariant: null, colorOverride: null, locked: false },
+    { instanceId: 'bed-1', assetId: 'dev/bed-double', roomId: 'r-bed', position: { x: 8, y: 0, z: 5.9 }, rotationY: Math.PI, materialVariant: null, colorOverride: null, locked: false },
+  ];
+  const errors = [];
+  const ctx = await openContext(browser, { width: 1440, height: 900, lang: 'en' });
+  const page = await ctx.newPage();
+  await wire(page, store, errors);
+  await page.goto(`${BASE}/design-studio/${project.id}`, { waitUntil: 'domcontentloaded' });
+  await page.locator('main canvas').waitFor({ timeout: 25000 });
+  await page.waitForTimeout(800);
+  const status = page.getByRole('button', { name: 'Exit walkthrough' }).first();
+  const where = () => page.locator('p[aria-live="polite"]').filter({ hasText: 'Walkthrough' }).textContent();
+
+  await page.getByRole('button', { name: 'Walk through' }).click();
+  await status.waitFor({ timeout: 10000 });
+  check('walk: enters at the entrance, in the hall', (await where())?.includes('Hall'), await where());
+  check('walk: the canvas is the whole workspace (panels step aside)', !(await page.getByRole('complementary', { name: 'Inspector' }).isVisible()));
+  check('walk: the rooms are offered in the order a visitor meets them', (await page.getByRole('navigation', { name: 'Go to a room' }).getByRole('button').first().textContent()) === 'Hall');
+  await page.screenshot({ path: path.join(OUT, 'cp8-entry-1440-en.png') });
+
+  // Walk forward into the apartment for a while: never outside a room.
+  await page.keyboard.down('KeyW');
+  await page.waitForTimeout(2500);
+  await page.keyboard.up('KeyW');
+  await page.waitForTimeout(200);
+  check('walk: after walking, still inside the apartment', /Walkthrough · \S/.test((await where()) ?? ''), await where());
+
+  await page.getByRole('navigation', { name: 'Go to a room' }).getByRole('button', { name: 'Living room' }).click();
+  await page.waitForTimeout(400);
+  check('walk: a room from the tour takes you there', (await where())?.includes('Living room'), await where());
+  await page.screenshot({ path: path.join(OUT, 'cp8-living-1440-en.png') });
+
+  // Walk hard into walls for a long time: walls hold.
+  await page.keyboard.down('KeyA');
+  await page.keyboard.down('KeyW');
+  await page.waitForTimeout(4000);
+  await page.keyboard.up('KeyW');
+  await page.keyboard.up('KeyA');
+  await page.waitForTimeout(200);
+  check('walk: walls hold — pressing into them never leaves the apartment', /Walkthrough · \S/.test((await where()) ?? ''), await where());
+
+  // Look around by dragging.
+  const box = await page.locator('main canvas').boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 300, box.y + box.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await page.screenshot({ path: path.join(OUT, 'cp8-look-1440-en.png') });
+
+  await page.getByRole('button', { name: 'Back to the entrance' }).click();
+  await page.waitForTimeout(300);
+  check('walk: back to the entrance', (await where())?.includes('Hall'), await where());
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(400);
+  check('walk: Esc leaves; the workspace is back', !(await status.isVisible()) && await page.getByRole('complementary', { name: 'Inspector' }).isVisible());
+  check('walk: walking changed nothing in the design', store.db.ds_versions.find((v) => v.id === version.id).revision === 0);
+
+  // The walkthrough route opens straight in, and leaving returns to the project.
+  await page.goto(`${BASE}/design-studio/${project.id}/walkthrough`, { waitUntil: 'domcontentloaded' });
+  await status.waitFor({ timeout: 25000 });
+  check('route: /walkthrough opens at eye level', (await where())?.includes('Hall'));
+  await status.click();
+  await page.waitForURL(new RegExp(`/design-studio/${project.id}$`), { timeout: 10000 });
+  check('route: leaving returns to the project', page.url().endsWith(`/design-studio/${project.id}`));
+  await ctx.close();
+
+  // Phone, Hebrew (RTL): joystick walking.
+  const phone = await openContext(browser, { width: 390, height: 844, lang: 'he' });
+  const p2 = await phone.newPage();
+  await wire(p2, store, errors);
+  await p2.goto(`${BASE}/design-studio/${project.id}/walkthrough`, { waitUntil: 'domcontentloaded' });
+  const stick = p2.getByRole('application', { name: 'הליכה: גררו כדי לזוז' });
+  await stick.waitFor({ timeout: 25000 });
+  const s2 = await stick.boundingBox();
+  await p2.mouse.move(s2.x + s2.width / 2, s2.y + s2.height / 2);
+  await p2.mouse.down();
+  await p2.mouse.move(s2.x + s2.width / 2, s2.y + 4, { steps: 4 });
+  await p2.waitForTimeout(1500);
+  await p2.mouse.up();
+  const whereHe = await p2.locator('p[aria-live="polite"]').filter({ hasText: 'סיור' }).textContent();
+  check('phone he: the joystick walks, and stays inside', /סיור · \S/.test(whereHe ?? ''), whereHe);
+  check('phone he: the walkthrough fits', (await overflowX(p2)) <= 0);
+  await p2.screenshot({ path: path.join(OUT, 'cp8-walk-390-he.png') });
+  await phone.close();
+  check('no page errors (checkpoint 8)', errors.length === 0, errors.join('\n        '));
 }
 
 /* ── Checkpoint 7: the AI designer ──────────────────────────────── */

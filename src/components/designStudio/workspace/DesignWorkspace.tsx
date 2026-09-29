@@ -18,7 +18,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
-  AlertTriangle, Armchair, ArrowLeft, Check, ChevronDown, CloudOff, Columns2, Info, Layers, LayoutGrid, Loader2, Maximize, Palette as PaletteIcon,
+  AlertTriangle, Armchair, ArrowLeft, Check, ChevronDown, CloudOff, Columns2, Footprints, Info, Layers, LayoutGrid, Loader2, Maximize, Palette as PaletteIcon,
   PanelLeftClose, PanelLeftOpen, Redo2, Scan, Sparkles, SquareDashed, Sun, Undo2,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -27,6 +27,8 @@ import type { CatalogAsset, CatalogMaterial, Palette } from '@/lib/designStudio/
 import type { DesignState, LockSet, ObjectInstance } from '@/lib/designStudio/designState';
 import { planToOperations } from '@/lib/designStudio/aiPlan';
 import { critique } from '@/lib/designStudio/grammar';
+import { buildWalkModel } from '@/lib/designStudio/navigation';
+import { entryShot, roomGraph, roomShot, tourOrder } from '@/lib/designStudio/cameraDirector';
 import { requestDesign, type DesignBrief } from '@/services/designStudio/ai';
 import type { Operation, OperationContext, Rejection } from '@/lib/designStudio/operations';
 import {
@@ -56,6 +58,7 @@ import { developerUnitModelUrl, loadGltf, loadGltfWithNodes } from '../canvas/mo
 import { isModelAnalysis, modelParts, partRoles, type ModelPart } from '@/lib/designStudio/modelParts';
 import { FurniturePanel } from './FurniturePanel';
 import { AiDesignPanel, type AiProposalItem } from './AiDesignPanel';
+import { WalkthroughOverlay } from './WalkthroughOverlay';
 import { Inspector } from './Inspector';
 import { ObjectControls, PartControls, SurfaceControls } from './EditControls';
 import { PlanNavigator } from './PlanNavigator';
@@ -73,6 +76,9 @@ export interface DesignWorkspaceProps {
   onReload: () => Promise<void> | void;
   /** Floor-plan spaces: change the measurements the geometry was built from. */
   onRecalibrate?: () => void;
+  /** Open straight into the walkthrough (the /walkthrough route). */
+  startWalkthrough?: boolean;
+  onWalkthroughExit?: () => void;
 }
 
 /** The camera, remembered per project across version switches, so A and B are seen from the same place. */
@@ -186,7 +192,7 @@ function SaveIndicator({ status, onRetry }: { status: SaveStatus; onRetry: () =>
 }
 
 function Editor({
-  bundle, source, version, catalog, onReload, onRecalibrate,
+  bundle, source, version, catalog, onReload, onRecalibrate, startWalkthrough, onWalkthroughExit,
 }: DesignWorkspaceProps & {
   version: DesignVersionRecord;
   catalog: { assets: CatalogAsset[]; materials: CatalogMaterial[]; palettes: Palette[] };
@@ -608,7 +614,60 @@ function Editor({
     focusRoom(roomId);
   }, [focusRoom]);
 
+  // ── Walkthrough: the current design, at eye level, inside real walls ──
+  const [walking, setWalking] = useState(false);
+  const [walkRoom, setWalkRoom] = useState<string | null>(null);
+  const [canvasReady, setCanvasReady] = useState(false);
+  const walkModel = useRef<ReturnType<typeof buildWalkModel> | null>(null);
+  const tour = useMemo(() => (space ? tourOrder(space, roomGraph(space)) : []), [space]);
+  const touch = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches;
+
+  const aspect = () => controllerRef.current?.camera.aspect ?? 16 / 9;
+  const enterWalk = useCallback((roomId?: string | null) => {
+    const c = controllerRef.current;
+    if (!c || !space) return;
+    setPreviewing(null);
+    const model = buildWalkModel(space, state.objects, assets);
+    walkModel.current = model;
+    const pose = roomId ? roomShot(space, model, roomId, aspect()) : entryShot(space, model, aspect());
+    if (!pose) { toast.error(t('ds_walk_unavailable')); return; }
+    setSelection(null);
+    setSheet(null);
+    c.enterWalkthrough(model, pose, setWalkRoom);
+    setWalking(true);
+  }, [space, state.objects, assets, t]);
+
+  const exitWalk = useCallback(() => {
+    controllerRef.current?.exitWalkthrough();
+    setWalking(false);
+    setWalkRoom(null);
+    onWalkthroughExit?.();
+  }, [onWalkthroughExit]);
+
+  const walkToRoom = useCallback((roomId: string) => {
+    const c = controllerRef.current;
+    if (!c || !space || !walkModel.current) return;
+    const pose = roomShot(space, walkModel.current, roomId, aspect());
+    if (pose) c.walkTo(pose);
+  }, [space]);
+
+  const resetWalk = useCallback(() => {
+    const c = controllerRef.current;
+    if (!c || !space || !walkModel.current) return;
+    const pose = entryShot(space, walkModel.current, aspect());
+    if (pose) c.walkTo(pose);
+  }, [space]);
+
+  // The /walkthrough route: in as soon as the canvas can take it.
+  const autoWalked = useRef(false);
+  useEffect(() => {
+    if (!startWalkthrough || autoWalked.current || !canvasReady || !space) return;
+    autoWalked.current = true;
+    enterWalk(null);
+  }, [startWalkthrough, canvasReady, space, enterWalk]);
+
   const onPick = useCallback((target: PickTarget | null) => {
+    if (controllerRef.current?.walking) return;
     setSelection(target);
     if (target && isPhoneLayout()) setSheet('INSPECTOR');
   }, []);
@@ -617,6 +676,11 @@ function Editor({
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
       if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+      // Walking: the keys move the visitor; only Escape leaves.
+      if (controllerRef.current?.walking) {
+        if (e.key === 'Escape') exitWalk();
+        return;
+      }
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
       if (mod && key === 'z') { e.preventDefault(); if (e.shiftKey) session.redo(); else session.undo(); return; }
@@ -631,7 +695,7 @@ function Editor({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [session, selectedObject, removeSelected, rotateSelected, duplicateSelected]);
+  }, [session, selectedObject, removeSelected, rotateSelected, duplicateSelected, exitWalk]);
 
   const loadModel = useMemo(() => {
     if (space) return undefined;
@@ -891,12 +955,23 @@ function Editor({
           <button type="button" className={cn(TOOL_BUTTON, 'hidden md:inline-flex')} disabled={!activeRoomId} onClick={() => activeRoomId && focusRoom(activeRoomId)} aria-label={t('ds_view_room')}>
             <Scan className="h-4 w-4" aria-hidden="true" /><span className="hidden 2xl:inline">{t('ds_view_room')}</span>
           </button>
+          <button
+            type="button"
+            className={cn(TOOL_BUTTON, walking && 'bg-white/10 text-white')}
+            disabled={!space}
+            aria-pressed={walking}
+            onClick={() => (walking ? exitWalk() : enterWalk(activeRoomId))}
+            aria-label={t(walking ? 'ds_walk_exit' : 'ds_walk_enter')}
+            title={space ? t('ds_walk_enter') : t('ds_walk_needs_rooms')}
+          >
+            <Footprints className="h-4 w-4" aria-hidden="true" /><span className="hidden xl:inline">{t(walking ? 'ds_walk_exit' : 'ds_walk_enter')}</span>
+          </button>
         </div>
       </header>
 
       <div className="flex min-h-0 flex-1">
         {/* ── Left: mode rail + library panel ─────────────────────── */}
-        <nav aria-label={t('ds_panel_modes')} className="hidden w-14 shrink-0 flex-col items-center gap-1 border-e border-white/10 py-2 lg:flex">
+        <nav aria-label={t('ds_panel_modes')} className={cn('hidden w-14 shrink-0 flex-col items-center gap-1 border-e border-white/10 py-2', !walking && 'lg:flex')}>
           {MODES.filter((m) => !m.needsSpace || space).map((m) => ({ ...m, labelKey: modeLabel(m.id) })).map((m) => (
             <button
               key={m.id}
@@ -922,7 +997,7 @@ function Editor({
             {panelOpen ? <PanelLeftClose className="h-4 w-4 rtl:rotate-180" aria-hidden="true" /> : <PanelLeftOpen className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />}
           </button>
         </nav>
-        {panelOpen ? (
+        {panelOpen && !walking ? (
           <aside aria-label={t(modeLabel(mode))} className="hidden w-[18rem] shrink-0 flex-col bg-white text-[#0C1119] lg:flex">
             <h2 className="shrink-0 border-b border-[#E4E6EA] px-4 py-3 font-display text-[15px] font-semibold">
               {t(modeLabel(mode))}
@@ -938,13 +1013,25 @@ function Editor({
             loadModel={loadModel}
             selection={selection}
             onPick={onPick}
-            onReady={(c) => { controllerRef.current = c; c.applyDesign(state, assets, materials); }}
+            onReady={(c) => { controllerRef.current = c; c.applyDesign(state, assets, materials); setCanvasReady(true); }}
             onModelError={() => setModelFailed(true)}
             roomLabel={(id) => names.get(id) ?? ''}
             onDropAsset={(code, point) => { const a = assets.get(code); if (a) addAsset(a, point); }}
-            objectDrag={objectDrag}
+            objectDrag={walking ? undefined : objectDrag}
             initialCamera={initialCamera}
           />
+          {walking && space ? (
+            <WalkthroughOverlay
+              roomName={walkRoom ? names.get(walkRoom) ?? null : null}
+              rooms={tour.map((id) => ({ id, name: names.get(id) ?? '' }))}
+              currentRoomId={walkRoom}
+              touch={touch || isPhoneLayout()}
+              onRoom={walkToRoom}
+              onReset={resetWalk}
+              onExit={exitWalk}
+              onStick={(x, y) => controllerRef.current?.setWalkStick(x, y)}
+            />
+          ) : null}
           {previewing != null && ai?.items[previewing] ? (
             <div role="status" className="absolute inset-x-3 top-14 z-10 mx-auto flex max-w-lg flex-wrap items-center gap-2 rounded-lg bg-[#0C1119] px-3 py-2 text-[14px] text-white shadow-lg ring-1 ring-white/10">
               <Sparkles className="h-4 w-4 shrink-0 text-[hsl(38_92%_62%)]" aria-hidden="true" />
@@ -958,7 +1045,7 @@ function Editor({
               {t('ds_model_failed')}
             </div>
           ) : null}
-          {space ? (
+          {space && !walking ? (
             <PlanNavigator
               space={space}
               activeRoomId={activeRoomId}
@@ -968,13 +1055,13 @@ function Editor({
               className="absolute bottom-3 start-3 w-32 sm:w-44 lg:bottom-4"
             />
           ) : null}
-          <p className="pointer-events-none absolute end-3 top-3 hidden max-w-[22rem] rounded-md bg-white/80 px-2.5 py-1 text-end text-2xs leading-snug text-[#4A5263] ring-1 ring-black/5 backdrop-blur lg:block">
+          {walking ? null : <p className="pointer-events-none absolute end-3 top-3 hidden max-w-[22rem] rounded-md bg-white/80 px-2.5 py-1 text-end text-2xs leading-snug text-[#4A5263] ring-1 ring-black/5 backdrop-blur lg:block">
             {t('ds_preview_note')}
-          </p>
+          </p>}
         </main>
 
         {/* ── Right: the inspector ─────────────────────────────────── */}
-        <aside aria-label={t('ds_inspector')} className="hidden w-[19rem] shrink-0 overflow-y-auto border-s border-white/10 bg-white text-[#0C1119] lg:block">
+        <aside aria-label={t('ds_inspector')} className={cn('hidden w-[19rem] shrink-0 overflow-y-auto border-s border-white/10 bg-white text-[#0C1119]', !walking && 'lg:block')}>
           {inspector}
         </aside>
       </div>
@@ -1012,7 +1099,7 @@ function Editor({
       ) : null}
 
       {/* ── Phone: the canvas is the screen; panels are sheets ─────── */}
-      <nav aria-label={t('ds_panel_modes')} className="grid shrink-0 auto-cols-fr grid-flow-col border-t border-white/10 bg-[#0C1119] pb-[env(safe-area-inset-bottom)] lg:hidden">
+      <nav aria-label={t('ds_panel_modes')} className={cn('grid shrink-0 auto-cols-fr grid-flow-col border-t border-white/10 bg-[#0C1119] pb-[env(safe-area-inset-bottom)] lg:hidden', walking && 'hidden')}>
         {[...MODES.filter((m) => (m.id === 'ROOMS' || m.id === 'FURNITURE' || m.id === 'MATERIALS' || m.id === 'LIGHTING' || m.id === 'AI') && (!m.needsSpace || space)).map((m) => ({ ...m, labelKey: modeLabel(m.id) })),
           { id: 'INSPECTOR' as const, labelKey: 'ds_inspector_short', icon: Info }].map((m) => (
           <button

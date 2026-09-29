@@ -12,7 +12,7 @@
 // (RouteGuard, DesignStudioGate) and its toolbar leads back to the launcher.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { DesignStudioGate } from '@/components/designStudio/DesignStudioGate';
@@ -49,6 +49,10 @@ type Stage = 'PROJECT' | 'SOURCE' | 'VERSION' | 'READY';
 function ProjectLoader() {
   useSurfaceTheme('light');
   const { projectId = '', versionId } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  // /design-studio/:projectId/walkthrough opens the head version at eye level.
+  const walkthroughRoute = location.pathname.endsWith('/walkthrough');
   const { homatchUser } = useAuth();
   const { t } = useLanguage();
   const [bundle, setBundle] = useState<ProjectBundle | null | undefined>(undefined);
@@ -249,6 +253,8 @@ function ProjectLoader() {
       initialVersionId={versionId ?? bundle.project.head_version_id}
       onReload={load}
       onRecalibrate={resolution.source.kind === 'FLOORPLAN_SCENE' ? () => { void startRecalibration(resolution.source!); } : undefined}
+      startWalkthrough={walkthroughRoute}
+      onWalkthroughExit={walkthroughRoute ? () => navigate(`/design-studio/${projectId}`, { replace: true }) : undefined}
     />
   );
 }

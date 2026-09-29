@@ -23,6 +23,8 @@ import type { QualityProfile } from '@/lib/designStudio/quality';
 import type { CatalogAsset, CatalogMaterial } from '@/lib/designStudio/catalog';
 import type { DesignState, ObjectInstance } from '@/lib/designStudio/designState';
 import { PAINTABLE_ROLES, type PartRole } from '@/lib/designStudio/modelParts';
+import { EYE_HEIGHT_M, move as walkMove, type WalkModel } from '@/lib/designStudio/navigation';
+import { roomContaining, type Point } from '@/lib/designStudio/space';
 import { buildProcedural, slotColors } from './procedural';
 
 export type PickTarget =
@@ -43,7 +45,15 @@ interface PartMaterial {
   original: { color: THREE.Color; map: THREE.Texture | null; roughness: number; metalness: number };
 }
 
-export type ViewMode = 'OVERVIEW' | 'TOP' | 'ROOM';
+export type ViewMode = 'OVERVIEW' | 'TOP' | 'ROOM' | 'WALK';
+
+/** A place to stand and a direction to look, in plan metres (from the Camera Director). */
+export interface WalkPose { position: Point; target: Point; fov: number }
+
+const WALK_SPEED_M_S = 1.4;
+const TURN_RAD_S = 1.9;
+const LOOK_RAD_PER_PX = 0.005;
+const WALK_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 
 export interface CameraSnapshot {
   position: [number, number, number];
@@ -115,6 +125,19 @@ export class SceneController {
   private selectionOutline: THREE.Object3D | null = null;
   private hoverOutline: THREE.Object3D | null = null;
   private view: ViewMode = 'OVERVIEW';
+  private walk: {
+    model: WalkModel;
+    pos: Point;
+    yaw: number;
+    pitch: number;
+    keys: Set<string>;
+    stick: { x: number; y: number };
+    last: number;
+    saved: CameraSnapshot;
+    room: string | null;
+    onRoom?: (roomId: string | null) => void;
+    drag: { id: number; x: number; y: number } | null;
+  } | null = null;
 
   constructor(mount: HTMLElement, quality: QualityProfile, options: { reducedMotion?: boolean } = {}) {
     this.mount = mount;
@@ -179,8 +202,12 @@ export class SceneController {
       if (t >= 1) this.transition = null;
       moving = true;
     }
-    // update() returns true while damping is still moving the camera.
-    if (this.controls.update()) moving = true;
+    if (this.walk) {
+      if (this.stepWalk(now)) moving = true;
+    } else if (this.controls.update()) {
+      // update() returns true while damping is still moving the camera.
+      moving = true;
+    }
     this.updateCutaway();
     this.renderer.render(this.scene, this.camera);
     for (const fn of this.listeners) fn();
@@ -906,9 +933,177 @@ export class SceneController {
     this.moveCamera(new THREE.Vector3(...s.position), new THREE.Vector3(...s.target), animate);
   }
 
+  // ── Walkthrough ─────────────────────────────────────────────────────
+  //
+  // Eye height, the current design, real walls: the body moves only where
+  // navigation.ts allows (walls, door gaps, furniture). Rendering runs
+  // continuously only while the visitor is moving or looking around.
+
+  get walking(): boolean {
+    return !!this.walk;
+  }
+
+  enterWalkthrough(model: WalkModel, pose: WalkPose, onRoom?: (roomId: string | null) => void) {
+    if (this.walk) this.exitWalkthrough();
+    const saved = this.snapshot();
+    this.transition = null;
+    this.controls.enabled = false;
+    this.setCutaway(false);
+    this.setCeilings(true);
+    this.view = 'WALK';
+    this.walk = {
+      model, pos: pose.position, yaw: Math.atan2(pose.target.y - pose.position.y, pose.target.x - pose.position.x), pitch: -0.06,
+      keys: new Set(), stick: { x: 0, y: 0 }, last: performance.now(), saved, room: null, onRoom, drag: null,
+    };
+    this.camera.fov = pose.fov;
+    this.camera.updateProjectionMatrix();
+    window.addEventListener('keydown', this.onWalkKey);
+    window.addEventListener('keyup', this.onWalkKey);
+    window.addEventListener('blur', this.clearWalkInput);
+    const el = this.renderer.domElement;
+    el.addEventListener('pointerdown', this.onLookDown);
+    el.addEventListener('pointermove', this.onLookMove);
+    el.addEventListener('pointerup', this.onLookUp);
+    el.addEventListener('pointercancel', this.onLookUp);
+    this.placeWalkCamera();
+    this.reportRoom();
+    this.requestRender();
+  }
+
+  exitWalkthrough() {
+    const w = this.walk;
+    if (!w) return;
+    this.walk = null;
+    window.removeEventListener('keydown', this.onWalkKey);
+    window.removeEventListener('keyup', this.onWalkKey);
+    window.removeEventListener('blur', this.clearWalkInput);
+    const el = this.renderer.domElement;
+    el.removeEventListener('pointerdown', this.onLookDown);
+    el.removeEventListener('pointermove', this.onLookMove);
+    el.removeEventListener('pointerup', this.onLookUp);
+    el.removeEventListener('pointercancel', this.onLookUp);
+    this.controls.enabled = true;
+    this.setCutaway(true);
+    this.setCeilings(false);
+    this.view = 'OVERVIEW';
+    this.restore(w.saved, false);
+  }
+
+  /** Stand somewhere else (a room from the tour, or back at the entry). */
+  walkTo(pose: WalkPose) {
+    const w = this.walk;
+    if (!w) return;
+    w.pos = pose.position;
+    w.yaw = Math.atan2(pose.target.y - pose.position.y, pose.target.x - pose.position.x);
+    w.pitch = -0.06;
+    this.camera.fov = pose.fov;
+    this.camera.updateProjectionMatrix();
+    this.placeWalkCamera();
+    this.reportRoom();
+    this.requestRender();
+  }
+
+  /** The on-screen joystick: x strafes, y walks (up = forward), each −1…1. */
+  setWalkStick(x: number, y: number) {
+    if (!this.walk) return;
+    this.walk.stick = { x: Math.max(-1, Math.min(1, x)), y: Math.max(-1, Math.min(1, y)) };
+    this.walk.last = performance.now();
+    this.requestRender();
+  }
+
+  walkPosition(): Point | null {
+    return this.walk ? { ...this.walk.pos } : null;
+  }
+
+  private onWalkKey = (e: KeyboardEvent) => {
+    const w = this.walk;
+    if (!w || !WALK_KEYS.has(e.code)) return;
+    const el = e.target as HTMLElement | null;
+    if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+    e.preventDefault();
+    if (e.type === 'keydown') {
+      if (!w.keys.size) w.last = performance.now();
+      w.keys.add(e.code);
+    } else {
+      w.keys.delete(e.code);
+    }
+    this.requestRender();
+  };
+
+  private clearWalkInput = () => {
+    if (!this.walk) return;
+    this.walk.keys.clear();
+    this.walk.stick = { x: 0, y: 0 };
+  };
+
+  private onLookDown = (e: PointerEvent) => {
+    if (!this.walk || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    this.walk.drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    this.renderer.domElement.setPointerCapture?.(e.pointerId);
+  };
+
+  private onLookMove = (e: PointerEvent) => {
+    const w = this.walk;
+    if (!w?.drag || w.drag.id !== e.pointerId) return;
+    const dx = e.clientX - w.drag.x;
+    const dy = e.clientY - w.drag.y;
+    w.drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    w.yaw -= dx * LOOK_RAD_PER_PX;
+    w.pitch = Math.max(-0.9, Math.min(0.6, w.pitch - dy * LOOK_RAD_PER_PX));
+    this.placeWalkCamera();
+    this.requestRender();
+  };
+
+  private onLookUp = (e: PointerEvent) => {
+    if (this.walk?.drag?.id === e.pointerId) this.walk.drag = null;
+  };
+
+  private placeWalkCamera() {
+    const w = this.walk;
+    if (!w) return;
+    this.camera.position.set(w.pos.x, EYE_HEIGHT_M, -w.pos.y);
+    const cp = Math.cos(w.pitch);
+    this.camera.lookAt(w.pos.x + Math.cos(w.yaw) * cp, EYE_HEIGHT_M + Math.sin(w.pitch), -(w.pos.y + Math.sin(w.yaw) * cp));
+  }
+
+  private reportRoom() {
+    const w = this.walk;
+    if (!w || !this.space) return;
+    const room = roomContaining(this.space, w.pos);
+    if (room !== w.room) {
+      w.room = room;
+      w.onRoom?.(room);
+    }
+  }
+
+  /** One frame of walking. Returns true while input is active (keep drawing). */
+  private stepWalk(now: number): boolean {
+    const w = this.walk!;
+    const dt = Math.min(0.05, Math.max(0, (now - w.last) / 1000));
+    w.last = now;
+    const k = (code: string) => (w.keys.has(code) ? 1 : 0);
+    const forward = k('KeyW') + k('ArrowUp') - k('KeyS') - k('ArrowDown') - w.stick.y;
+    const strafe = k('KeyD') - k('KeyA') + w.stick.x;
+    const turn = k('ArrowRight') + k('KeyE') - k('ArrowLeft') - k('KeyQ');
+    const active = forward !== 0 || strafe !== 0 || turn !== 0;
+    if (!active) return false;
+    w.yaw -= turn * TURN_RAD_S * dt;
+    const f = { x: Math.cos(w.yaw), y: Math.sin(w.yaw) };
+    const r = { x: Math.sin(w.yaw), y: -Math.cos(w.yaw) };
+    let mx = f.x * forward + r.x * strafe;
+    let my = f.y * forward + r.y * strafe;
+    const len = Math.hypot(mx, my);
+    if (len > 1) { mx /= len; my /= len; }
+    w.pos = walkMove(w.model, w.pos, { x: mx * WALK_SPEED_M_S * dt, y: my * WALK_SPEED_M_S * dt });
+    this.placeWalkCamera();
+    this.reportRoom();
+    return true;
+  }
+
   // ── Teardown ────────────────────────────────────────────────────────
 
   dispose() {
+    if (this.walk) this.exitWalkthrough();
     this.disposed = true;
     this.resizeObserver.disconnect();
     this.controls.removeEventListener('change', this.requestRender);

@@ -75,3 +75,40 @@ export function oneBedroomScene() {
   if (!scene) throw new Error(`fixture does not build: ${JSON.stringify(validation.problems)}`);
   return scene;
 }
+
+const asset = (code, category, w, d, h, over = {}) => ({
+  id: `id-${code}`, code, name: code, category, subcategory: null, roomKinds: [], styleTags: [], colorTags: [],
+  materialTags: [], widthM: w, depthM: d, heightM: h, placement: 'FLOOR', anchor: 'WALL', clearanceM: 0,
+  procedural: { kind: 'CABINET' }, modelKey: null, lods: [], triangles: null, textureBytes: null, thumbnailKey: null,
+  materialSlots: [], variants: [], dominantColors: [], provenance: 'HOMATCH_DEV_PLACEHOLDER', isPlaceholder: true,
+  active: true, ...over,
+});
+
+export function testAssets() {
+  return new Map([
+    asset('dev/sofa-3', 'SOFA', 2.2, 0.95, 0.82, {
+      clearanceM: 0.9, procedural: { kind: 'SOFA' },
+      variants: [{ id: 'sand', name: 'Sand', colors: { body: '#d8c8b0' } }],
+    }),
+    asset('dev/sofa-2', 'SOFA', 1.7, 0.9, 0.82, { clearanceM: 0.8, procedural: { kind: 'SOFA' } }),
+    asset('dev/sofa-xl', 'SOFA', 3.4, 1.0, 0.82, { procedural: { kind: 'SOFA' } }),
+    asset('dev/coffee-table', 'TABLE', 1.1, 0.6, 0.42, { anchor: 'CENTRE', procedural: { kind: 'TABLE' } }),
+    asset('dev/rug-large', 'RUG', 2.4, 1.7, 0.01, { anchor: 'CENTRE', procedural: { kind: 'RUG' } }),
+    asset('dev/bed-double', 'BED', 1.6, 2.05, 0.95, { clearanceM: 0.6, procedural: { kind: 'BED' } }),
+    asset('dev/wardrobe', 'WARDROBE', 1.8, 0.6, 2.2, { clearanceM: 0.8 }),
+    asset('dev/kitchen-run', 'KITCHEN', 2.4, 0.62, 0.9, { clearanceM: 1.0 }),
+    asset('dev/retired', 'SOFA', 2.0, 0.9, 0.8, { active: false }),
+  ].map((a) => [a.code, a]));
+}
+
+export function testMaterials() {
+  const m = (id, appliesTo, baseColor) => ({
+    id, code: id, name: id, category: appliesTo.includes('FLOOR') ? 'FLOOR' : 'WALL', appliesTo, styleTags: [],
+    colorFamily: null, pbr: { baseColor, roughness: 0.6, metalness: 0 }, thumbnailKey: null,
+    provenance: 'HOMATCH_DEV_PLACEHOLDER', isPlaceholder: true, active: true,
+  });
+  return new Map([
+    ['m-oak', m('m-oak', ['FLOOR'], '#b48b5e')],
+    ['m-warm-white', m('m-warm-white', ['WALL', 'CEILING'], '#f2eee6')],
+  ]);
+}

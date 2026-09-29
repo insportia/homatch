@@ -20,6 +20,9 @@ import {
 } from '@/lib/designStudio/space';
 import { sliceWall, type WallSlab } from '@/lib/floorplan/slabs';
 import type { QualityProfile } from '@/lib/designStudio/quality';
+import type { CatalogAsset, CatalogMaterial } from '@/lib/designStudio/catalog';
+import type { DesignState, ObjectInstance } from '@/lib/designStudio/designState';
+import { buildProcedural, slotColors } from './procedural';
 
 export type PickTarget =
   | { kind: 'surface'; id: string; roomId: string | null }
@@ -79,6 +82,12 @@ export class SceneController {
   private surfaceMaterials = new Map<string, THREE.MeshStandardMaterial>();
   private ceilingMeshes: THREE.Mesh[] = [];
   private wallBodies: THREE.Mesh[] = [];
+  /** Everything drawn for one wall, so the cutaway can hide it as a unit. */
+  private wallParts = new Map<string, { start: { x: number; y: number }; end: { x: number; y: number }; meshes: THREE.Object3D[] }>();
+  private cutawayEnabled = true;
+  private cutawayKey = '';
+  /** How far around the look-at point walls count as "in front of what I am looking at". */
+  private focusRadius = 0;
   private raycaster = new THREE.Raycaster();
 
   private transition: {
@@ -156,10 +165,51 @@ export class SceneController {
     }
     // update() returns true while damping is still moving the camera.
     if (this.controls.update()) moving = true;
+    this.updateCutaway();
     this.renderer.render(this.scene, this.camera);
     for (const fn of this.listeners) fn();
     if (moving) this.requestRender();
   };
+
+  /**
+   * THE CUTAWAY. A wall standing between the camera and what it looks at is
+   * hidden (its thin edge lines stay), the way an architectural model is cut
+   * open — otherwise the nearest wall would hide the very room being
+   * designed. Off in walkthrough, where walls are walls.
+   */
+  setCutaway(enabled: boolean) {
+    this.cutawayEnabled = enabled;
+    this.cutawayKey = '';
+    this.requestRender();
+  }
+
+  private updateCutaway() {
+    if (!this.wallParts.size) return;
+    const cam = { x: this.camera.position.x, y: -this.camera.position.z };
+    const tgt = { x: this.controls.target.x, y: -this.controls.target.z };
+    const key = `${this.cutawayEnabled}|${this.focusRadius}|${cam.x.toFixed(2)},${cam.y.toFixed(2)}|${tgt.x.toFixed(2)},${tgt.y.toFixed(2)}`;
+    if (key === this.cutawayKey) return;
+    this.cutawayKey = key;
+    const cross = (o: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) =>
+      (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+    const intersects = (p1: { x: number; y: number }, p2: { x: number; y: number }, q1: { x: number; y: number }, q2: { x: number; y: number }) =>
+      cross(p1, p2, q1) * cross(p1, p2, q2) < 0 && cross(q1, q2, p1) * cross(q1, q2, p2) < 0;
+    const distanceToSegment = (p: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) => {
+      const dx = b.x - a.x; const dy = b.y - a.y;
+      const len2 = dx * dx + dy * dy || 1;
+      const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2));
+      return Math.hypot(p.x - (a.x + dx * t), p.y - (a.y + dy * t));
+    };
+    for (const part of this.wallParts.values()) {
+      // In front = the camera and the look-at point are on opposite sides of
+      // the wall's line, and the wall is either on the sight line or within
+      // the focused area (a room's own walls, when a room is focused).
+      const opposite = cross(part.start, part.end, cam) * cross(part.start, part.end, tgt) < 0;
+      const hide = this.cutawayEnabled && opposite
+        && (intersects(cam, tgt, part.start, part.end) || distanceToSegment(tgt, part.start, part.end) < this.focusRadius);
+      for (const m of part.meshes) m.visible = !hide;
+    }
+  }
 
   /** Called after every drawn frame (overlay labels follow the camera). */
   onFrame(fn: () => void): () => void {
@@ -230,6 +280,8 @@ export class SceneController {
     this.surfaceMaterials.clear();
     this.ceilingMeshes = [];
     this.wallBodies = [];
+    this.wallParts.clear();
+    this.cutawayKey = '';
     this.space = space;
 
     const extent = Math.max(space.extent.width, space.extent.depth);
@@ -296,6 +348,8 @@ export class SceneController {
     const topMat = new THREE.MeshStandardMaterial({ color: TONE.wallTop, roughness: 1 });
     const edgeMat = new THREE.LineBasicMaterial({ color: TONE.wallEdge, transparent: true, opacity: 0.55 });
     for (const wall of space.walls) {
+      const parts: THREE.Object3D[] = [];
+      this.wallParts.set(wall.id, { start: wall.mesh.start, end: wall.mesh.end, meshes: parts });
       const slabs = sliceWall(wall.mesh);
       for (const slab of slabs) {
         if (slab.lengthM <= 0 || slab.heightM <= 0) continue;
@@ -309,6 +363,7 @@ export class SceneController {
         mesh.receiveShadow = this.quality.shadows;
         this.spaceGroup.add(mesh);
         this.wallBodies.push(mesh);
+        parts.push(mesh);
         // Crisp architectural edges: the drawn line that makes a model read as a plan.
         const edges = new THREE.LineSegments(new THREE.EdgesGeometry(box, 30), edgeMat);
         edges.position.copy(mesh.position);
@@ -334,6 +389,7 @@ export class SceneController {
           face.userData = { pick: { kind: 'surface', id: seg.surfaceId, roomId: seg.roomId } } satisfies PickData;
           this.spaceGroup.add(face);
           register(seg.surfaceId, face);
+          parts.push(face);
         }
       }
     }
@@ -393,6 +449,8 @@ export class SceneController {
     this.raycaster.setFromCamera(ndc, this.camera);
     const hits = this.raycaster.intersectObjects([this.spaceGroup, this.modelGroup, this.objectsGroup], true);
     for (const hit of hits) {
+      // Hidden things (cut-away walls, ceilings seen from above) are not there to be clicked.
+      if (!hit.object.visible) continue;
       let o: THREE.Object3D | null = hit.object;
       while (o) {
         if (!o.visible) break;
@@ -509,10 +567,139 @@ export class SceneController {
     this.requestRender();
   }
 
-  // ── Objects (design layer) ──────────────────────────────────────────
+  // ── The design layer ────────────────────────────────────────────────
 
   readonly objectsGroup = new THREE.Group();
   readonly objectsById = new Map<string, THREE.Object3D>();
+  private objectSignature = new Map<string, string>();
+
+  /**
+   * Draw a design state: surface colours and materials, placed objects and
+   * lighting. Objects are diffed by instance, so a move updates a transform
+   * and only a changed asset/colour rebuilds geometry.
+   */
+  applyDesign(state: DesignState, assets: Map<string, CatalogAsset>, materials: Map<string, CatalogMaterial>) {
+    for (const [id, m] of this.surfaceMaterials) {
+      const a = state.surfaces[id];
+      const mat = a?.materialId ? materials.get(a.materialId) : undefined;
+      const color = a?.color ?? mat?.pbr.baseColor ?? null;
+      const finishRoughness = a?.finish === 'GLOSS' ? 0.25 : a?.finish === 'SATIN' ? 0.55 : a?.finish === 'MATTE' ? 0.95 : undefined;
+      m.color.set(color ?? (m.userData.baseColor as number));
+      m.roughness = finishRoughness ?? mat?.pbr.roughness ?? 0.9;
+      m.metalness = mat?.pbr.metalness ?? 0;
+      m.needsUpdate = true;
+    }
+
+    const live = new Set<string>();
+    for (const obj of state.objects) {
+      live.add(obj.instanceId);
+      const asset = assets.get(obj.assetId);
+      const sig = `${obj.assetId}|${obj.materialVariant ?? ''}|${obj.colorOverride ?? ''}`;
+      let node = this.objectsById.get(obj.instanceId);
+      if (!node || this.objectSignature.get(obj.instanceId) !== sig) {
+        if (node) this.disposeObject(obj.instanceId);
+        node = this.buildObject(obj, asset);
+        this.objectsById.set(obj.instanceId, node);
+        this.objectSignature.set(obj.instanceId, sig);
+        this.objectsGroup.add(node);
+      }
+      this.placeNode(node, obj.position.x, obj.position.z, obj.rotationY, obj.position.y);
+      this.restoreEmissive(node);
+      node.userData = { pick: { kind: 'object', id: obj.instanceId, roomId: obj.roomId } } satisfies PickData;
+    }
+    for (const id of [...this.objectsById.keys()]) if (!live.has(id)) this.disposeObject(id);
+
+    this.setLighting(state.lighting);
+    this.requestRender();
+  }
+
+  private buildObject(obj: ObjectInstance, asset: CatalogAsset | undefined): THREE.Object3D {
+    if (asset?.procedural) {
+      return buildProcedural(asset.procedural.kind, asset, slotColors(asset, obj.materialVariant, obj.colorOverride));
+    }
+    // A real model loads asynchronously (catalogue models arrive with the
+    // licensed library); until then — or when an asset is missing — a
+    // labelled neutral block holds its footprint so the design never breaks.
+    const w = asset?.widthM ?? 0.6;
+    const d = asset?.depthM ?? 0.6;
+    const h = asset?.heightM ?? 0.6;
+    const g = new THREE.Group();
+    const m = new THREE.Mesh(
+      new THREE.BoxGeometry(w, h, d),
+      new THREE.MeshStandardMaterial({ color: 0xc9ccd2, roughness: 0.9, transparent: true, opacity: 0.75 }),
+    );
+    m.position.y = h / 2;
+    g.add(m);
+    return g;
+  }
+
+  private placeNode(node: THREE.Object3D, planX: number, planY: number, rotation: number, elevation = 0) {
+    node.position.set(planX, elevation, -planY);
+    node.rotation.set(0, rotation, 0);
+  }
+
+  private disposeObject(id: string) {
+    const node = this.objectsById.get(id);
+    if (!node) return;
+    node.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      mesh.geometry?.dispose();
+      const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
+      if (Array.isArray(mat)) mat.forEach((x) => x.dispose()); else mat?.dispose();
+    });
+    this.objectsGroup.remove(node);
+    this.objectsById.delete(id);
+    this.objectSignature.delete(id);
+  }
+
+  private restoreEmissive(node: THREE.Object3D) {
+    node.traverse((o) => {
+      const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+      if (m?.userData?.baseEmissive === undefined) return;
+      m.emissive.setHex(m.userData.baseEmissive as number);
+      m.emissiveIntensity = (m.userData.baseEmissiveIntensity as number | undefined) ?? 1;
+    });
+  }
+
+  /** Move an object's drawing without touching the design (live drag feedback). */
+  previewObject(instanceId: string, at: { x: number; y: number }, rotation: number, valid: boolean) {
+    const node = this.objectsById.get(instanceId);
+    if (!node) return;
+    this.placeNode(node, at.x, at.y, rotation);
+    node.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      const m = mesh.material as THREE.MeshStandardMaterial | undefined;
+      if (!m || !('emissive' in m)) return;
+      if (m.userData.baseEmissive === undefined) {
+        m.userData.baseEmissive = m.emissive.getHex();
+        m.userData.baseEmissiveIntensity = m.emissiveIntensity;
+      }
+      m.emissive.setHex(valid ? (m.userData.baseEmissive as number) : 0xb3261e);
+      m.emissiveIntensity = valid ? (m.userData.baseEmissiveIntensity as number) : 0.35;
+    });
+    this.setSelection({ kind: 'object', id: instanceId, roomId: null });
+  }
+
+  /** Stop the camera from orbiting while an object is being dragged. */
+  setOrbitEnabled(enabled: boolean) {
+    this.controls.enabled = enabled;
+  }
+
+  /** A downscaled still of the current view, for version thumbnails. */
+  captureThumbnail(maxWidth = 480): string | null {
+    try {
+      this.renderer.render(this.scene, this.camera);
+      const src = this.renderer.domElement;
+      const scale = Math.min(1, maxWidth / src.width);
+      const out = document.createElement('canvas');
+      out.width = Math.round(src.width * scale);
+      out.height = Math.round(src.height * scale);
+      out.getContext('2d')?.drawImage(src, 0, 0, out.width, out.height);
+      return out.toDataURL('image/webp', 0.8);
+    } catch {
+      return null;
+    }
+  }
 
   // ── Camera ──────────────────────────────────────────────────────────
 
@@ -556,6 +743,7 @@ export class SceneController {
     const d = this.distanceFor(radius) * 0.95;
     const pos = new THREE.Vector3(target.x + d * 0.45, d * 0.78, target.z + d * 0.55);
     this.view = 'OVERVIEW';
+    this.focusRadius = 0;
     this.setCeilings(false);
     this.moveCamera(pos, target, animate);
   }
@@ -568,6 +756,7 @@ export class SceneController {
     // Straight down would lock OrbitControls' azimuth; a hair of tilt keeps it usable.
     const pos = new THREE.Vector3(target.x, d, target.z + 0.001);
     this.view = 'TOP';
+    this.focusRadius = 0;
     this.setCeilings(false);
     this.moveCamera(pos, target, animate);
   }
@@ -581,6 +770,7 @@ export class SceneController {
     const d = this.distanceFor(radius) * 0.9;
     const pos = new THREE.Vector3(cx + d * 0.42, Math.max(3.6, d * 0.72), -cy + d * 0.55);
     this.view = 'ROOM';
+    this.focusRadius = radius;
     this.setCeilings(false);
     this.moveCamera(pos, target, animate);
   }

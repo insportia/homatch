@@ -319,6 +319,7 @@ async function main() {
 
     check('no page errors (checkpoint 1)', errors.length === 0, errors.join('\n        '));
     await checkpoint2(browser);
+    await checkpoint3(browser);
   } finally {
     await browser.close().catch(() => {});
     server.kill();
@@ -365,7 +366,189 @@ export async function seededStore() {
   store.db.ds_projects.push(project);
   store.db.ds_spatial_sources.push(source);
   store.db.ds_versions.push(version);
+  store.db.ds_catalog_assets.push(...qaCatalogAssets());
+  store.db.ds_catalog_materials.push(...qaCatalogMaterials());
+  store.db.ds_palettes.push(
+    { id: 'pal-1', code: 'warm-neutral', name: 'Warm neutral', colors: ['#f2eee6', '#e2d3b9', '#cdb28b', '#9c7a55', '#4a3f36'], tags: [], sort: 10, active: true },
+    { id: 'pal-2', code: 'scandinavian', name: 'Scandinavian', colors: ['#f8f8f6', '#e6e2dc', '#cdb28b', '#8c8f95', '#2e3a52'], tags: [], sort: 20, active: true },
+  );
   return { store, project, source, version };
+}
+
+/* A few rows shaped exactly like the development seed (20260930091000). */
+function qaCatalogAssets() {
+  const row = (code, name, category, w, d, h, kind, over = {}) => ({
+    id: `asset-${code}`, code, name, category, subcategory: null, room_kinds: ['LIVING'], style_tags: ['contemporary'],
+    color_tags: ['neutral'], material_tags: ['fabric'], width_m: w, depth_m: d, height_m: h, placement: 'FLOOR',
+    anchor: 'WALL', clearance_m: 0, procedural: { kind }, model_key: null, lods: [], triangles: null, texture_bytes: null,
+    thumbnail_key: null, material_slots: [{ id: 'body', defaultColor: '#cfc6b8' }, { id: 'legs', defaultColor: '#3b3128' }],
+    variants: [], dominant_colors: [], provenance: 'HOMATCH_DEV_PLACEHOLDER', is_placeholder: true, active: true, ...over,
+  });
+  return [
+    row('dev/sofa-3', 'Three-seat sofa', 'SOFA', 2.2, 0.95, 0.82, 'SOFA', { clearance_m: 0.9,
+      variants: [{ id: 'sand', name: 'Sand', colors: { body: '#d8c8b0' } }, { id: 'charcoal', name: 'Charcoal', colors: { body: '#4a4d52' } }] }),
+    row('dev/sofa-2', 'Two-seat sofa', 'SOFA', 1.7, 0.9, 0.82, 'SOFA', { clearance_m: 0.8 }),
+    row('dev/coffee-table', 'Coffee table', 'TABLE', 1.1, 0.6, 0.42, 'TABLE', { anchor: 'CENTRE',
+      material_slots: [{ id: 'top', defaultColor: '#9c7a55' }, { id: 'legs', defaultColor: '#6d5238' }] }),
+    row('dev/rug-large', 'Large rug', 'RUG', 2.4, 1.7, 0.01, 'RUG', { anchor: 'CENTRE' }),
+    row('dev/bed-double', 'Double bed', 'BED', 1.6, 2.05, 0.95, 'BED', { room_kinds: ['BEDROOM'],
+      material_slots: [{ id: 'body', defaultColor: '#a88b6c' }, { id: 'linen', defaultColor: '#efeae2' }] }),
+    row('dev/floor-lamp', 'Floor lamp', 'LIGHTING', 0.4, 0.4, 1.6, 'LAMP', { anchor: 'FREE',
+      material_slots: [{ id: 'body', defaultColor: '#2b2d31' }, { id: 'shade', defaultColor: '#f1ebe0' }] }),
+  ];
+}
+
+function qaCatalogMaterials() {
+  const m = (code, name, category, appliesTo, baseColor, roughness = 0.9) => ({
+    id: `mat-${code}`, code, name, category, applies_to: appliesTo, style_tags: [], color_family: null,
+    pbr: { baseColor, roughness, metalness: 0 }, thumbnail_key: null, provenance: 'HOMATCH_DEV_PLACEHOLDER',
+    is_placeholder: true, active: true,
+  });
+  return [
+    m('dev/paint-warm-white', 'Warm white paint', 'WALL', ['WALL', 'CEILING'], '#f2eee6'),
+    m('dev/paint-sage', 'Sage paint', 'WALL', ['WALL'], '#b6bfa7'),
+    m('dev/floor-natural-oak', 'Natural oak (concept)', 'FLOOR', ['FLOOR'], '#b48b5e', 0.7),
+    m('dev/floor-walnut', 'Walnut (concept)', 'FLOOR', ['FLOOR'], '#6d4b36', 0.65),
+  ];
+}
+
+/* ── Checkpoint 3: editing, undo/redo, autosave ─────────────────────── */
+
+async function checkpoint3(browser) {
+  const { store, project, version } = await seededStore();
+  const v = () => store.db.ds_versions.find((x) => x.id === version.id);
+  const errors = [];
+  const ctx = await openContext(browser, { width: 1440, height: 900, lang: 'en' });
+  const page = await ctx.newPage();
+  await wire(page, store, errors);
+  await page.goto(`${BASE}/design-studio/${project.id}`, { waitUntil: 'domcontentloaded' });
+  await page.locator('main canvas').waitFor({ timeout: 25000 });
+  await page.waitForTimeout(800);
+  const inspector = page.getByRole('complementary', { name: 'Inspector' });
+  const modes = page.getByRole('navigation', { name: 'Design tools' }).first();
+
+  // Add a sofa to the living room from the library.
+  await page.getByRole('list', { name: 'Rooms' }).getByRole('button', { name: /Living room/ }).click();
+  await modes.getByRole('button', { name: 'Furniture' }).click();
+  await page.getByRole('searchbox', { name: /Search: warm beige sofa/ }).fill('sofa');
+  check('library: natural search finds sofas only', (await page.getByRole('list', { name: 'Furniture' }).getByRole('listitem').count()) === 2);
+  check('library: concept blocks are labelled as such', await page.getByText(/HOMATCH concept blocks/).isVisible());
+  await page.getByRole('button', { name: 'Add Three-seat sofa' }).click();
+  await page.waitForTimeout(400);
+  check('add: inspector switches to the new piece', await inspector.getByRole('heading', { name: 'Three-seat sofa' }).isVisible());
+  check('add: auto-placement found a clean spot', await inspector.getByText('Fits here').isVisible());
+  await page.waitForTimeout(1800);
+  check('autosave: the piece is persisted in the version state', v().state.objects?.length === 1 && v().state.objects[0].assetId === 'dev/sofa-3');
+  check('autosave: the database revision advanced', v().revision >= 1);
+  check('autosave: the operation was appended to history', store.db.ds_version_events.length >= 1);
+  check('save status says Saved', await page.getByRole('status').filter({ hasText: 'Saved' }).isVisible());
+  await page.screenshot({ path: path.join(OUT, 'cp3-added-sofa-1440-en.png') });
+
+  // Replace with a two-seat sofa, rotate, then undo both.
+  await inspector.getByRole('button', { name: 'Replace' }).click();
+  check('replace: library narrows to the same category with fit checks', await page.getByText('Replacing: Three-seat sofa').isVisible());
+  await page.getByRole('list', { name: 'Furniture' }).getByRole('listitem').filter({ hasText: 'Two-seat sofa' }).getByRole('button', { name: 'Use' }).click();
+  await page.waitForTimeout(300);
+  check('replace: the same instance now shows the new piece', await inspector.getByRole('heading', { name: 'Two-seat sofa' }).isVisible());
+  // Turning a wall-backed sofa 90° would push it into the wall: refused, and nothing enters history.
+  const objectsBefore = JSON.stringify(v().state.objects);
+  await inspector.getByRole('button', { name: 'Rotate 90° clockwise' }).click();
+  await page.waitForTimeout(300);
+  check('rotate into a wall is refused with a reason', await page.getByText('That would go through a wall.').first().isVisible());
+  await page.keyboard.press('Control+z');
+  await page.waitForTimeout(300);
+  check('undo: one step back restores the original sofa', await inspector.getByRole('heading', { name: 'Three-seat sofa' }).isVisible());
+  void objectsBefore;
+  await page.keyboard.press('Control+Shift+z');
+  await page.waitForTimeout(300);
+  check('redo: forward again replaces it', await inspector.getByRole('heading', { name: 'Two-seat sofa' }).isVisible());
+
+  // Variant and colour on the object.
+  await page.keyboard.press('Control+z');
+  await page.waitForTimeout(200);
+  check('undo again: back to the three-seat sofa', await inspector.getByRole('heading', { name: 'Three-seat sofa' }).isVisible());
+  await inspector.getByRole('button', { name: 'Sand' }).click();
+  await page.waitForTimeout(1700);
+  check('finish: variant stored on the instance', v().state.objects[0].materialVariant === 'sand');
+
+  // Keep the sofa: it refuses to be removed.
+  await inspector.getByRole('button', { name: 'Keep as is' }).click();
+  check('keep: remove is disabled for a kept piece', await inspector.getByRole('button', { name: 'Remove' }).isDisabled());
+  await inspector.getByRole('button', { name: 'Allow changes' }).click();
+
+  // Floor material for the living room.
+  await modes.getByRole('button', { name: 'Materials' }).click();
+  await page.getByRole('list', { name: 'Rooms' }).count();
+  const aside = page.getByRole('complementary', { name: 'Materials' });
+  if (await aside.getByText('Choose a room to dress').isVisible().catch(() => false)) await aside.getByRole('button', { name: 'Living room' }).click();
+  await aside.getByRole('button', { name: 'Natural oak (concept)' }).click();
+  await aside.getByRole('button', { name: 'Sage paint' }).click();
+  await page.waitForTimeout(1700);
+  const surfaces = v().state.surfaces ?? {};
+  check('materials: living room floor is natural oak', surfaces['floor:r-living']?.materialId === 'mat-dev/floor-natural-oak');
+  const livingWalls = Object.keys(surfaces).filter((k) => k.startsWith('wall:') && k.endsWith(':r-living'));
+  check('materials: every living-room wall face got the paint, no other room', livingWalls.length === 4
+    && Object.keys(surfaces).filter((k) => k.startsWith('wall:') && !k.endsWith(':r-living')).length === 0, JSON.stringify(Object.keys(surfaces)));
+  await page.screenshot({ path: path.join(OUT, 'cp3-materials-1440-en.png') });
+
+  // Colour scope on one wall: preview counts before applying to all walls.
+  await modes.getByRole('button', { name: 'Rooms' }).click();
+  await page.getByRole('list', { name: 'Rooms' }).getByRole('button', { name: /Bedroom/ }).click();
+  await inspector.getByRole('button', { name: 'Wall 1' }).click();
+  const allWalls = inspector.getByRole('radio', { name: /All walls \(\d+\)/ });
+  check('scope: the count of an apartment-wide change is shown before it happens', await allWalls.isVisible());
+  await inspector.getByRole('radio', { name: /All walls in Bedroom/ }).check();
+  await inspector.getByRole('button', { name: /Warm neutral #e2d3b9/ }).click();
+  await page.waitForTimeout(1700);
+  const bedWalls = Object.entries(v().state.surfaces).filter(([k]) => k.endsWith(':r-bed'));
+  check('scope: one action painted every bedroom wall face', bedWalls.length >= 4 && bedWalls.every(([, s]) => s.color === '#e2d3b9'));
+  await page.keyboard.press('Control+z');
+  await page.waitForTimeout(1700);
+  check('scope: one undo restores every one of them', Object.entries(v().state.surfaces).filter(([k]) => k.endsWith(':r-bed')).every(([, s]) => !s.color));
+
+  // Lighting.
+  await modes.getByRole('button', { name: 'Lighting' }).click();
+  await page.getByRole('radio', { name: 'Evening' }).click();
+  await page.getByRole('radio', { name: 'Warm' }).click();
+  await page.waitForTimeout(1700);
+  check('lighting: time of day and colour persisted', v().state.lighting.timeOfDay === 'EVENING' && v().state.lighting.temperature === 'WARM');
+  await page.screenshot({ path: path.join(OUT, 'cp3-evening-1440-en.png') });
+
+  // Drag a piece from the library onto the canvas.
+  await modes.getByRole('button', { name: 'Furniture' }).click();
+  await page.getByRole('searchbox').fill('lamp');
+  const before = v().state.objects.length;
+  const canvasBox = await page.locator('main canvas').boundingBox();
+  await page.getByRole('list', { name: 'Furniture' }).getByRole('listitem').first()
+    .dragTo(page.locator('main canvas'), { targetPosition: { x: canvasBox.width * 0.45, y: canvasBox.height * 0.5 } });
+  await page.waitForTimeout(1800);
+  check('drag & drop: a library piece dropped on the floor is placed', v().state.objects.length === before + 1, `${before} -> ${v().state.objects.length}`);
+
+  // A conflicting save from elsewhere is detected, not overwritten.
+  v().revision += 5;
+  await page.keyboard.press('Escape');
+  await modes.getByRole('button', { name: 'Lighting' }).click();
+  await page.getByRole('radio', { name: 'Night' }).click();
+  await page.waitForTimeout(1800);
+  check('conflict: a stale save is reported, not written', await page.getByRole('status').filter({ hasText: 'Changed in another window' }).isVisible()
+    && v().state.lighting.timeOfDay !== 'NIGHT');
+  await page.screenshot({ path: path.join(OUT, 'cp3-conflict-1440-en.png') });
+  await ctx.close();
+
+  // Phone: add from the furniture sheet.
+  const phone = await openContext(browser, { width: 390, height: 844, lang: 'en' });
+  const p2 = await phone.newPage();
+  await wire(p2, store, errors);
+  await p2.goto(`${BASE}/design-studio/${project.id}`, { waitUntil: 'domcontentloaded' });
+  await p2.locator('main canvas').waitFor({ timeout: 25000 });
+  await p2.waitForTimeout(600);
+  await p2.getByRole('navigation', { name: 'Design tools' }).last().getByRole('button', { name: 'Furniture' }).click();
+  await p2.waitForTimeout(500);
+  await p2.screenshot({ path: path.join(OUT, 'cp3-furniture-sheet-390-en.png') });
+  check('phone: furniture opens as a sheet with the library', await p2.getByRole('dialog').getByRole('searchbox').isVisible());
+  check('phone: no overflow', (await overflowX(p2)) <= 0);
+  await phone.close();
+  check('no page errors (checkpoint 3)', errors.length === 0, errors.join('\n        '));
 }
 
 async function checkpoint2(browser) {
@@ -425,7 +608,7 @@ async function checkpoint2(browser) {
     check(`${lang} ${width}: the canvas dominates (${Math.round(share * 100)}% of the screen)`, share > (width < 1024 ? 0.7 : 0.45));
     await page.screenshot({ path: path.join(OUT, `cp2-workspace-${width}-${lang}.png`) });
     if (width < 1024) {
-      await page.locator('div.lg\\:hidden button').first().click();
+      await page.locator('nav.lg\\:hidden button').first().click();
       await page.waitForTimeout(600);
       await page.screenshot({ path: path.join(OUT, `cp2-rooms-sheet-${width}-${lang}.png`) });
       const sheetButtons = await page.getByRole('dialog').getByRole('button').count();

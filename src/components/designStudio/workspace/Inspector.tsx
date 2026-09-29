@@ -14,6 +14,8 @@ export interface InspectorProps {
   selection: PickTarget | null;
   onSelect: (target: PickTarget) => void;
   onFocusRoom: (roomId: string) => void;
+  /** Heading for a selected object (asset name, room). */
+  objectHeading?: { eyebrow: string; title: string };
   /** Controls for the selected thing, contributed by the editing layer. */
   children?: React.ReactNode;
 }
@@ -43,7 +45,7 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
  * trusted. A room → that room. A surface → which surface, in which room.
  * An object → that object. Only controls that apply to the selection appear.
  */
-export function Inspector({ source, space, names, selection, onSelect, onFocusRoom, children }: InspectorProps) {
+export function Inspector({ source, space, names, selection, onSelect, onFocusRoom, objectHeading, children }: InspectorProps) {
   const { t } = useLanguage();
   const label = provenanceLabel(source);
   const state = source.geometry_state;
@@ -163,6 +165,15 @@ export function Inspector({ source, space, names, selection, onSelect, onFocusRo
         <div className="px-4 py-3 text-[14px] leading-relaxed text-[#4A5263]">
           {t(source.editability === 'VISUAL_MODEL' ? 'ds_editability_visual_body' : 'ds_editability_unclassified_body')}
         </div>
+      </div>
+    );
+  }
+
+  if (selection.kind === 'object') {
+    return (
+      <div>
+        {objectHeading ? <Heading eyebrow={objectHeading.eyebrow} title={objectHeading.title} /> : null}
+        <div className="px-4 py-3">{children}</div>
       </div>
     );
   }

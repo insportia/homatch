@@ -266,3 +266,43 @@ export async function developerCurrentPins(unitIds: string[]): Promise<Record<st
   }));
   return out;
 }
+
+export type SaveResult =
+  | { ok: true; revision: number }
+  | { ok: false; reason: 'CONFLICT' | 'OFFLINE' | 'FAILED'; serverRevision?: number };
+
+/**
+ * Save a version's design state IF nobody else saved it since `expectedRevision`.
+ * The database advances the revision itself; a stale save matches no row and
+ * is reported as a conflict rather than silently overwriting newer work.
+ */
+export async function saveVersionState(
+  versionId: string, state: Record<string, unknown>, expectedRevision: number, changeSummary?: unknown[],
+): Promise<SaveResult> {
+  try {
+    const patch: Record<string, unknown> = { state };
+    if (changeSummary) patch.change_summary = changeSummary;
+    const { data, error } = await supabase
+      .from('ds_versions').update(patch).eq('id', versionId).eq('revision', expectedRevision)
+      .select('revision');
+    if (error) return { ok: false, reason: 'FAILED' };
+    const rows = (data ?? []) as Array<{ revision: number }>;
+    if (rows.length === 1) return { ok: true, revision: rows[0].revision };
+    const { data: current } = await supabase.from('ds_versions').select('revision').eq('id', versionId).maybeSingle();
+    return { ok: false, reason: 'CONFLICT', serverRevision: (current as { revision?: number } | null)?.revision };
+  } catch {
+    // fetch() throws on a network failure; the database answered nothing.
+    return { ok: false, reason: 'OFFLINE' };
+  }
+}
+
+/** Append the operations that produced a revision — the audit trail, never rewritten. */
+export async function appendVersionEvents(
+  events: Array<{ versionId: string; userId: string; revision: number; origin: 'USER' | 'AI' | 'SYSTEM'; ops: unknown[] }>,
+): Promise<void> {
+  if (events.length === 0) return;
+  const { error } = await supabase.from('ds_version_events').insert(events.map((e) => ({
+    version_id: e.versionId, user_id: e.userId, revision: e.revision, origin: e.origin, ops: e.ops,
+  })));
+  if (error) throw new Error(error.message);
+}

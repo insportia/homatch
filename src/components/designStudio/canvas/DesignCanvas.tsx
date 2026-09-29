@@ -14,6 +14,15 @@ export interface DesignCanvasProps {
   onModelError?: () => void;
   /** Room names over the floor, following the camera. */
   roomLabel?: (roomId: string) => string;
+  /** A catalogue piece dropped from the library at a screen point. */
+  onDropAsset?: (code: string, point: { x: number; y: number } | null) => void;
+  /** Direct manipulation: dragging a placed piece across the floor. */
+  objectDrag?: {
+    canDrag: (instanceId: string) => boolean;
+    onMove: (instanceId: string, point: { x: number; y: number }) => { at: { x: number; y: number }; rotation: number; valid: boolean } | null;
+    onDrop: (instanceId: string, point: { x: number; y: number }) => void;
+    onCancel: (instanceId: string) => void;
+  };
   className?: string;
 }
 
@@ -24,7 +33,7 @@ export interface DesignCanvasProps {
  * through props.
  */
 export function DesignCanvas({
-  space, loadModel, selection, onPick, onReady, onModelError, roomLabel, className,
+  space, loadModel, selection, onPick, onReady, onModelError, roomLabel, onDropAsset, objectDrag, className,
 }: DesignCanvasProps) {
   const { t } = useLanguage();
   const mountRef = useRef<HTMLDivElement | null>(null);
@@ -33,6 +42,10 @@ export function DesignCanvas({
   const [webglMissing, setWebglMissing] = useState(false);
   const onPickRef = useRef(onPick);
   onPickRef.current = onPick;
+  const dragRef = useRef(objectDrag);
+  dragRef.current = objectDrag;
+  const onDropRef = useRef(onDropAsset);
+  onDropRef.current = onDropAsset;
 
   // One controller per mount.
   useEffect(() => {
@@ -52,20 +65,76 @@ export function DesignCanvas({
 
     /* A tap selects; a drag is the camera. Distinguished by distance and time. */
     let down: { x: number; y: number; t: number } | null = null;
+    /* A press on a movable piece is a drag of that piece, not of the camera. */
+    let dragging: { id: string; started: boolean } | null = null;
     const el = controller.renderer.domElement;
-    const onDown = (e: PointerEvent) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; };
+    const onDown = (e: PointerEvent) => {
+      down = { x: e.clientX, y: e.clientY, t: performance.now() };
+      if (e.button !== 0 || !dragRef.current) return;
+      const hit = controller.pick(e.clientX, e.clientY);
+      if (hit?.target.kind === 'object' && dragRef.current.canDrag(hit.target.id)) {
+        dragging = { id: hit.target.id, started: false };
+        controller.setOrbitEnabled(false);
+        el.setPointerCapture(e.pointerId);
+      }
+    };
     const onUp = (e: PointerEvent) => {
       if (!down) return;
       const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
       const quick = performance.now() - down.t < 450;
       down = null;
+      if (dragging) {
+        const d = dragging;
+        dragging = null;
+        controller.setOrbitEnabled(true);
+        if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+        if (d.started) {
+          const p = controller.floorPoint(e.clientX, e.clientY);
+          if (p) dragRef.current?.onDrop(d.id, p);
+          else dragRef.current?.onCancel(d.id);
+          return;
+        }
+      }
       if (moved > 6 || !quick) return;
       const hit = controller.pick(e.clientX, e.clientY);
       onPickRef.current(hit?.target ?? null);
     };
+    const onDragMove = (e: PointerEvent) => {
+      if (!dragging || !down) return;
+      if (!dragging.started && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 6) return;
+      if (!dragging.started) {
+        dragging.started = true;
+        onPickRef.current({ kind: 'object', id: dragging.id, roomId: null });
+      }
+      const p = controller.floorPoint(e.clientX, e.clientY);
+      const preview = p ? dragRef.current?.onMove(dragging.id, p) : null;
+      if (preview) controller.previewObject(dragging.id, preview.at, preview.rotation, preview.valid);
+    };
+    const onCancelDrag = () => {
+      if (!dragging) return;
+      controller.setOrbitEnabled(true);
+      dragRef.current?.onCancel(dragging.id);
+      dragging = null;
+    };
+    el.addEventListener('pointermove', onDragMove);
+    el.addEventListener('pointercancel', onCancelDrag);
+    const onDragOver = (e: DragEvent) => {
+      if (e.dataTransfer?.types.includes('application/x-homatch-asset')) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+      }
+    };
+    const onDrop = (e: DragEvent) => {
+      const code = e.dataTransfer?.getData('application/x-homatch-asset');
+      if (!code) return;
+      e.preventDefault();
+      onDropRef.current?.(code, controller.floorPoint(e.clientX, e.clientY));
+    };
+    el.addEventListener('dragover', onDragOver);
+    el.addEventListener('drop', onDrop);
     let hoverQueued = false;
     const onMove = (e: PointerEvent) => {
-      if (e.pointerType !== 'mouse' || down || hoverQueued) return;
+      if (e.pointerType !== 'mouse' || down || dragging || hoverQueued) return;
       hoverQueued = true;
       requestAnimationFrame(() => {
         hoverQueued = false;
@@ -86,6 +155,10 @@ export function DesignCanvas({
       el.removeEventListener('pointerup', onUp);
       el.removeEventListener('pointermove', onMove);
       el.removeEventListener('pointerleave', onLeave);
+      el.removeEventListener('pointermove', onDragMove);
+      el.removeEventListener('pointercancel', onCancelDrag);
+      el.removeEventListener('dragover', onDragOver);
+      el.removeEventListener('drop', onDrop);
       controller.dispose();
       controllerRef.current = null;
     };

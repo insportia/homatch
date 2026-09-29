@@ -1,50 +1,73 @@
 // HOMATCH DESIGN STUDIO — THE WORKSPACE.
 //
 //   ┌──────────────────────────────────────────────────────────────┐
-//   │ toolbar: back · project · version · truth · views · status   │
+//   │ toolbar: back · project · version · truth · undo/redo · save │
 //   ├───────┬───────────────┬──────────────────────┬───────────────┤
 //   │ modes │ library panel │     3D CANVAS        │   inspector   │
 //   │ rail  │ (changes with │  plan navigator ↙    │ (what am I    │
-//   │       │  the mode)    │  view controls ↓     │   editing?)   │
+//   │       │  the mode)    │                      │   editing?)   │
 //   └───────┴───────────────┴──────────────────────┴───────────────┘
 //
 // The canvas is the product; everything else supports it. Below lg the
 // panels leave the page and become sheets over a full-screen canvas.
+//
+// Every edit goes through useDesignSession → the one operation validator →
+// deterministic application → undo stack → debounced, conflict-checked save.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
 import {
-  ArrowLeft, Box as BoxIcon, Info, LayoutGrid, Maximize, PanelLeftClose, PanelLeftOpen, Scan, SquareDashed,
+  AlertTriangle, Armchair, ArrowLeft, Check, CloudOff, Info, Layers, LayoutGrid, Loader2, Maximize, Palette as PaletteIcon,
+  PanelLeftClose, PanelLeftOpen, Redo2, Scan, SquareDashed, Sun, Undo2,
 } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { buildSpaceModel, type SpaceModel } from '@/lib/designStudio/space';
-import { provenanceLabel, type Rejection } from '@/lib/designStudio/spatialSource';
-import type { CanonicalSpace, SpatialSourceRecord } from '@/lib/designStudio/types';
+import type { CatalogAsset, CatalogMaterial, Palette } from '@/lib/designStudio/catalog';
+import type { DesignState, ObjectInstance } from '@/lib/designStudio/designState';
+import type { Operation, OperationContext, Rejection } from '@/lib/designStudio/operations';
+import {
+  autoPlace, blocks, evaluatePlacement, quantise, roomOf, snapToWall, type PlacementIssue,
+} from '@/lib/designStudio/placement';
+import {
+  buildSpaceModel, ceilingSurfaceId, floorSurfaceId, roomContaining, surfacesOfRoom, type SpaceModel,
+} from '@/lib/designStudio/space';
+import { provenanceLabel, type Rejection as SourceRejection } from '@/lib/designStudio/spatialSource';
+import type { CanonicalSpace, DesignVersionRecord, SpatialSourceRecord } from '@/lib/designStudio/types';
 import { NavGlyphIcon } from '@/components/layouts/NavGlyph';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
-import type { ProjectBundle } from '@/services/designStudio/projects';
+import { assetsByCode, listAssets, listMaterials, listPalettes } from '@/services/designStudio/catalog';
+import { getVersion, type ProjectBundle } from '@/services/designStudio/projects';
 import { cn } from '@/lib/utils';
 import { DesignCanvas } from '../canvas/DesignCanvas';
 import type { PickTarget, SceneController } from '../canvas/SceneController';
 import { developerUnitModelUrl, loadGltf } from '../canvas/modelLoader';
+import { FurniturePanel } from './FurniturePanel';
 import { Inspector } from './Inspector';
+import { ObjectControls, SurfaceControls } from './EditControls';
 import { PlanNavigator } from './PlanNavigator';
 import { RoomsPanel } from './RoomsPanel';
+import { LightingPanel, MaterialList, Swatch } from './SurfacePanels';
 import { roomNames } from './labels';
+import { useDesignSession, type SaveStatus } from './useDesignSession';
 
 export interface DesignWorkspaceProps {
   bundle: ProjectBundle;
   source: SpatialSourceRecord;
-  rejected: Rejection[];
+  rejected: SourceRejection[];
   freshnessUnchecked: boolean;
   initialVersionId: string | null;
   onReload: () => void;
 }
 
-type LeftMode = 'ROOMS';
+type LeftMode = 'ROOMS' | 'FURNITURE' | 'MATERIALS' | 'COLORS' | 'LIGHTING';
 
-const MODES: Array<{ id: LeftMode; labelKey: string; icon: React.ComponentType<{ className?: string }> }> = [
+const MODES: Array<{ id: LeftMode; labelKey: string; icon: React.ComponentType<{ className?: string }>; needsSpace?: boolean }> = [
   { id: 'ROOMS', labelKey: 'ds_panel_rooms', icon: LayoutGrid },
+  { id: 'FURNITURE', labelKey: 'ds_panel_furniture', icon: Armchair, needsSpace: true },
+  { id: 'MATERIALS', labelKey: 'ds_panel_materials', icon: Layers, needsSpace: true },
+  { id: 'COLORS', labelKey: 'ds_panel_colors', icon: PaletteIcon },
+  { id: 'LIGHTING', labelKey: 'ds_panel_lighting', icon: Sun },
 ];
 
 const TOOL_BUTTON =
@@ -52,28 +75,296 @@ const TOOL_BUTTON =
   + 'hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)] '
   + 'disabled:pointer-events-none disabled:opacity-40';
 
-export function DesignWorkspace({ bundle, source, initialVersionId }: DesignWorkspaceProps) {
+/** Below lg the panels are sheets; above it they are columns and a sheet must never open. */
+const isPhoneLayout = () => typeof window !== 'undefined' && !!window.matchMedia?.('(max-width: 1023px)').matches;
+
+const REJECTION_KEY: Record<string, string> = {
+  PLACEMENT_BLOCKED: 'ds_reject_op_placement',
+  OBJECT_LOCKED: 'ds_reject_op_kept',
+  CATEGORY_LOCKED: 'ds_reject_op_category_locked',
+  UNKNOWN_ASSET: 'ds_reject_op_asset',
+  INACTIVE_ASSET: 'ds_reject_op_asset',
+  MATERIAL_NOT_FOR_SURFACE: 'ds_reject_op_material',
+  TOO_MANY_OBJECTS: 'ds_reject_op_too_many',
+};
+
+/** Loads the version's design state and the catalogue, then hands over to the editor. */
+export function DesignWorkspace(props: DesignWorkspaceProps) {
   const { t } = useLanguage();
+  const versions = props.bundle.versions.filter((v) => v.source_id === props.source.id);
+  const summary = versions.find((v) => v.id === props.initialVersionId) ?? versions[versions.length - 1] ?? null;
+  const [version, setVersion] = useState<DesignVersionRecord | null>(null);
+  const [catalog, setCatalog] = useState<{ assets: CatalogAsset[]; materials: CatalogMaterial[]; palettes: Palette[] } | null>(null);
+  const [failed, setFailed] = useState(false);
+  const summaryId = summary?.id ?? null;
+
+  useEffect(() => {
+    if (!summaryId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const full = await getVersion(summaryId);
+        if (!full) throw new Error('missing');
+        const objects = (full.state as { objects?: Array<{ assetId: string }> }).objects;
+        const codes = Array.isArray(objects) ? objects.map((o) => o.assetId) : [];
+        const [browse, referenced, materials, palettes] = await Promise.all([
+          listAssets({ limit: 500 }), assetsByCode(codes), listMaterials(), listPalettes(),
+        ]);
+        const byCode = new Map<string, CatalogAsset>();
+        for (const a of [...browse, ...referenced]) byCode.set(a.code, a);
+        if (!cancelled) {
+          setVersion(full);
+          setCatalog({ assets: [...byCode.values()], materials, palettes });
+        }
+      } catch {
+        if (!cancelled) setFailed(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [summaryId]);
+
+  if (failed || !summary) {
+    return <div role="alert" className="grid h-[100dvh] place-items-center bg-[#0C1119] px-6 text-center text-white/85">{t('ds_error_load')}</div>;
+  }
+  if (!version || !catalog) {
+    return (
+      <div className="grid h-[100dvh] place-items-center bg-[#0C1119] text-white">
+        <span className="inline-flex items-center gap-2 text-[15px]"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />{t('ds_loading_materials')}</span>
+      </div>
+    );
+  }
+  return <Editor key={version.id} {...props} version={version} catalog={catalog} />;
+}
+
+function SaveIndicator({ status, onRetry }: { status: SaveStatus; onRetry: () => void }) {
+  const { t } = useLanguage();
+  const map: Record<SaveStatus, { key: string; icon: React.ReactNode; tone: string }> = {
+    SAVED: { key: 'ds_save_saved', icon: <Check className="h-3.5 w-3.5" aria-hidden="true" />, tone: 'text-white/60' },
+    UNSAVED: { key: 'ds_save_unsaved', icon: <span className="h-1.5 w-1.5 rounded-full bg-[hsl(38_92%_62%)]" aria-hidden="true" />, tone: 'text-white/75' },
+    SAVING: { key: 'ds_save_saving', icon: <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />, tone: 'text-white/75' },
+    OFFLINE: { key: 'ds_save_offline', icon: <CloudOff className="h-3.5 w-3.5" aria-hidden="true" />, tone: 'text-[hsl(38_92%_70%)]' },
+    FAILED: { key: 'ds_save_failed', icon: <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />, tone: 'text-[hsl(0_80%_75%)]' },
+    CONFLICT: { key: 'ds_save_conflict', icon: <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />, tone: 'text-[hsl(0_80%_75%)]' },
+  };
+  const s = map[status];
+  return (
+    <span role="status" aria-live="polite" className={cn('inline-flex items-center gap-1.5 whitespace-nowrap px-1 text-[13px]', s.tone)}>
+      {s.icon}
+      <span className="hidden sm:inline">{t(s.key)}</span>
+      {status === 'FAILED' || status === 'OFFLINE' ? (
+        <button type="button" onClick={onRetry} className="ms-1 underline underline-offset-2 hover:text-white">{t('ds_action_retry')}</button>
+      ) : null}
+    </span>
+  );
+}
+
+function Editor({
+  bundle, source, version, catalog, onReload,
+}: DesignWorkspaceProps & {
+  version: DesignVersionRecord;
+  catalog: { assets: CatalogAsset[]; materials: CatalogMaterial[]; palettes: Palette[] };
+}) {
+  const { t } = useLanguage();
+  const { homatchUser } = useAuth();
   const controllerRef = useRef<SceneController | null>(null);
 
   const space: SpaceModel | null = useMemo(() => {
     const canonical = source.canonical as CanonicalSpace | null;
     return canonical?.scene ? buildSpaceModel(canonical.scene) : null;
   }, [source]);
-
   const names = useMemo(() => (space ? roomNames(space, t) : new Map<string, string>()), [space, t]);
+  const assets = useMemo(() => new Map(catalog.assets.map((a) => [a.code, a])), [catalog.assets]);
+  const materials = useMemo(() => new Map(catalog.materials.map((m) => [m.id, m])), [catalog.materials]);
+  const ctx: OperationContext = useMemo(() => ({ space, assets, materials }), [space, assets, materials]);
+  const estimated = source.geometry_state === 'ESTIMATED';
+
+  const session = useDesignSession({
+    versionId: version.id,
+    userId: homatchUser?.id ?? version.user_id,
+    initialState: version.state,
+    initialRevision: version.revision,
+    ctx,
+  });
+  const state = session.state;
+
   const [selection, setSelection] = useState<PickTarget | null>(null);
   const [mode, setMode] = useState<LeftMode>('ROOMS');
   const [panelOpen, setPanelOpen] = useState(true);
-  const [sheet, setSheet] = useState<'library' | 'inspector' | null>(null);
+  const [sheet, setSheet] = useState<LeftMode | 'INSPECTOR' | null>(null);
+  const [replacing, setReplacing] = useState<string | null>(null);
   const [modelFailed, setModelFailed] = useState(false);
 
-  const versions = bundle.versions.filter((v) => v.source_id === source.id);
-  const version = versions.find((v) => v.id === initialVersionId) ?? versions[versions.length - 1] ?? null;
-  const label = provenanceLabel(source);
+  // Draw every state the session produces.
+  useEffect(() => {
+    controllerRef.current?.applyDesign(state, assets, materials);
+  }, [state, assets, materials]);
 
+  const label = provenanceLabel(source);
+  const selectedObject = selection?.kind === 'object' ? state.objects.find((o) => o.instanceId === selection.id) ?? null : null;
   const activeRoomId = selection?.kind === 'room' ? selection.id
-    : selection && 'roomId' in selection ? selection.roomId : null;
+    : selectedObject ? selectedObject.roomId
+      : selection && 'roomId' in selection ? selection.roomId : null;
+  const activeRoom = space && activeRoomId ? roomOf(space, activeRoomId) : null;
+
+  const recentColors = useMemo(() => {
+    const seen: string[] = [];
+    for (const o of [...state.objects].reverse()) if (o.colorOverride && !seen.includes(o.colorOverride)) seen.push(o.colorOverride);
+    for (const s of Object.values(state.surfaces).reverse()) if (s.color && !seen.includes(s.color)) seen.push(s.color);
+    return [...state.palette.filter((c) => !seen.includes(c)), ...seen].slice(0, 10);
+  }, [state]);
+
+  const rejectionMessage = useCallback((r: Rejection) => {
+    if (r.code === 'PLACEMENT_BLOCKED' && r.placement?.some((i) => i.code === 'THROUGH_WALL')) return t('ds_issue_through_wall');
+    if (r.code === 'PLACEMENT_BLOCKED' && r.placement?.some((i) => i.code === 'OUTSIDE_ROOM')) return t('ds_issue_outside');
+    return t(REJECTION_KEY[r.code] ?? 'ds_reject_op_generic');
+  }, [t]);
+
+  const run = useCallback((ops: Operation[], labelKey: string): boolean => {
+    const result = session.apply(ops, t(labelKey));
+    if (!result.ok) {
+      toast.error(rejectionMessage(result.rejection));
+      controllerRef.current?.applyDesign(session.state, assets, materials);
+      return false;
+    }
+    return true;
+  }, [session, t, rejectionMessage, assets, materials]);
+
+  // ── Placement helpers ──────────────────────────────────────────────
+
+  const newId = (asset: CatalogAsset) => `${asset.code.split('/').pop()}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+
+  const targetRoomFor = useCallback((asset: CatalogAsset) => {
+    if (!space) return null;
+    if (activeRoom) return activeRoom;
+    const fitting = space.rooms.filter((r) => asset.roomKinds.includes(r.kind)).sort((a, b) => b.areaM2 - a.areaM2);
+    return fitting[0] ?? [...space.rooms].sort((a, b) => b.areaM2 - a.areaM2)[0] ?? null;
+  }, [space, activeRoom]);
+
+  const addAsset = useCallback((asset: CatalogAsset, point?: { x: number; y: number } | null) => {
+    if (!space) return;
+    const pctx = { space, assets, objects: state.objects };
+    const room = point ? roomOf(space, roomContaining(space, point)) : targetRoomFor(asset);
+    if (!room) {
+      toast.error(t('ds_add_no_room'));
+      return;
+    }
+    let placed: { at: { x: number; y: number }; rotation: number } | null = null;
+    if (point) {
+      const snapped = snapToWall(pctx, asset, point, 0, room.id);
+      const candidate = snapped.snapped ? snapped : quantise(point, 0);
+      placed = blocks(evaluatePlacement(pctx, asset, candidate.at, candidate.rotation, room.id))
+        ? autoPlace(pctx, asset, room)
+        : candidate;
+    } else {
+      placed = autoPlace(pctx, asset, room);
+    }
+    if (!placed) {
+      // The chosen room cannot take it; say so rather than dropping it somewhere else.
+      toast.error(t('ds_add_no_space', { room: names.get(room.id) ?? '' }));
+      return;
+    }
+    const object: ObjectInstance = {
+      instanceId: newId(asset), assetId: asset.code, roomId: room.id,
+      position: { x: placed.at.x, y: 0, z: placed.at.y }, rotationY: placed.rotation,
+      materialVariant: null, colorOverride: null, locked: false,
+    };
+    if (run([{ type: 'ADD_OBJECT', object }], 'ds_label_add')) {
+      setSelection({ kind: 'object', id: object.instanceId, roomId: room.id });
+      setSheet(null);
+    }
+  }, [space, assets, state.objects, targetRoomFor, names, run, t]);
+
+  const findingsFor = useCallback((obj: ObjectInstance): PlacementIssue[] => {
+    const asset = assets.get(obj.assetId);
+    if (!space || !asset) return [];
+    return evaluatePlacement({ space, assets, objects: state.objects }, asset, { x: obj.position.x, y: obj.position.z }, obj.rotationY, obj.roomId, obj.instanceId);
+  }, [space, assets, state.objects]);
+
+  // ── Direct manipulation on the canvas ──────────────────────────────
+
+  const dragPreview = useRef<{ at: { x: number; y: number }; rotation: number; roomId: string | null; valid: boolean } | null>(null);
+  const objectDrag = useMemo(() => (space ? {
+    canDrag: (id: string) => {
+      const o = state.objects.find((x) => x.instanceId === id);
+      return !!o && !o.locked && !state.locks.layout && assets.get(o.assetId)?.placement === 'FLOOR';
+    },
+    onMove: (id: string, p: { x: number; y: number }) => {
+      const o = state.objects.find((x) => x.instanceId === id);
+      const asset = o ? assets.get(o.assetId) : undefined;
+      if (!o || !asset) return null;
+      const roomId = roomContaining(space, p);
+      const pctx = { space, assets, objects: state.objects };
+      const s = roomId ? snapToWall(pctx, asset, p, o.rotationY, roomId) : { at: p, rotation: o.rotationY, snapped: false };
+      const q = s.snapped ? s : quantise(s.at, s.rotation);
+      const valid = !!roomId && !blocks(evaluatePlacement(pctx, asset, q.at, q.rotation, roomId, id));
+      dragPreview.current = { at: q.at, rotation: q.rotation, roomId, valid };
+      return { at: q.at, rotation: q.rotation, valid };
+    },
+    onDrop: (id: string) => {
+      const o = state.objects.find((x) => x.instanceId === id);
+      const p = dragPreview.current;
+      dragPreview.current = null;
+      if (!o || !p) return;
+      if (!p.valid) {
+        toast.error(t('ds_issue_through_wall'));
+        controllerRef.current?.applyDesign(state, assets, materials);
+        return;
+      }
+      const ops: Operation[] = [];
+      if (Math.abs(p.rotation - o.rotationY) > 1e-6) ops.push({ type: 'ROTATE_OBJECT', instanceId: id, rotationY: p.rotation });
+      ops.push({ type: 'MOVE_OBJECT', instanceId: id, position: { x: p.at.x, y: 0, z: p.at.y }, roomId: p.roomId });
+      run(ops, 'ds_label_move');
+    },
+    onCancel: () => {
+      dragPreview.current = null;
+      controllerRef.current?.applyDesign(state, assets, materials);
+    },
+  } : undefined), [space, state, assets, materials, run, t]);
+
+  // ── Object actions ─────────────────────────────────────────────────
+
+  const rotateSelected = useCallback((delta: number) => {
+    if (!selectedObject) return;
+    run([{ type: 'ROTATE_OBJECT', instanceId: selectedObject.instanceId, rotationY: quantise({ x: 0, y: 0 }, selectedObject.rotationY + delta).rotation }], 'ds_label_rotate');
+  }, [selectedObject, run]);
+
+  const duplicateSelected = useCallback(() => {
+    if (!selectedObject || !space) return;
+    const asset = assets.get(selectedObject.assetId);
+    const room = roomOf(space, selectedObject.roomId);
+    if (!asset || !room) return;
+    const placed = autoPlace({ space, assets, objects: state.objects }, asset, room);
+    if (!placed) { toast.error(t('ds_add_no_space', { room: names.get(room.id) ?? '' })); return; }
+    const object: ObjectInstance = {
+      ...selectedObject, instanceId: newId(asset), locked: false,
+      position: { x: placed.at.x, y: 0, z: placed.at.y }, rotationY: placed.rotation,
+    };
+    if (run([{ type: 'ADD_OBJECT', object }], 'ds_label_duplicate')) setSelection({ kind: 'object', id: object.instanceId, roomId: room.id });
+  }, [selectedObject, space, assets, state.objects, run, names, t]);
+
+  const removeSelected = useCallback(() => {
+    if (!selectedObject) return;
+    if (run([{ type: 'REMOVE_OBJECT', instanceId: selectedObject.instanceId }], 'ds_label_remove')) setSelection(null);
+  }, [selectedObject, run]);
+
+  const replaceWith = useCallback((asset: CatalogAsset) => {
+    if (!replacing) return;
+    if (run([{ type: 'REPLACE_OBJECT', instanceId: replacing, assetId: asset.code }], 'ds_label_replace')) {
+      setSelection({ kind: 'object', id: replacing, roomId: activeRoomId });
+      setReplacing(null);
+      setSheet(null);
+    }
+  }, [replacing, run, activeRoomId]);
+
+  const replacingObject = replacing ? state.objects.find((o) => o.instanceId === replacing) ?? null : null;
+  const fitAt = useCallback((asset: CatalogAsset): 'FITS' | 'WARN' | 'NO' => {
+    if (!space || !replacingObject) return 'NO';
+    const issues = evaluatePlacement({ space, assets, objects: state.objects }, asset,
+      { x: replacingObject.position.x, y: replacingObject.position.z }, replacingObject.rotationY, replacingObject.roomId, replacingObject.instanceId);
+    return blocks(issues) ? 'NO' : issues.length ? 'WARN' : 'FITS';
+  }, [space, replacingObject, assets, state.objects]);
+
+  // ── Selection, camera, keyboard ────────────────────────────────────
 
   const focusRoom = useCallback((roomId: string) => {
     const room = space?.rooms.find((r) => r.id === roomId);
@@ -87,8 +378,28 @@ export function DesignWorkspace({ bundle, source, initialVersionId }: DesignWork
 
   const onPick = useCallback((target: PickTarget | null) => {
     setSelection(target);
-    if (target && window.matchMedia?.('(max-width: 1023px)').matches) setSheet('inspector');
+    if (target && isPhoneLayout()) setSheet('INSPECTOR');
   }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+      const mod = e.ctrlKey || e.metaKey;
+      const key = e.key.toLowerCase();
+      if (mod && key === 'z') { e.preventDefault(); if (e.shiftKey) session.redo(); else session.undo(); return; }
+      if (mod && key === 'y') { e.preventDefault(); session.redo(); return; }
+      if (mod && key === 'd') { e.preventDefault(); duplicateSelected(); return; }
+      if (mod) return;
+      if (e.key === 'Escape') { setSelection(null); setReplacing(null); }
+      else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedObject) { e.preventDefault(); removeSelected(); }
+      else if (key === 'r' && selectedObject) rotateSelected(e.shiftKey ? -Math.PI / 12 : Math.PI / 12);
+      else if (key === 'f') controllerRef.current?.frameAll();
+      else if (key === 't') controllerRef.current?.topView();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [session, selectedObject, removeSelected, rotateSelected, duplicateSelected]);
 
   const loadModel = useMemo(() => {
     if (space) return undefined;
@@ -107,28 +418,77 @@ export function DesignWorkspace({ bundle, source, initialVersionId }: DesignWork
     };
   }, [space, source]);
 
-  // Keyboard: Escape clears, F frames everything, T looks from above.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const el = e.target as HTMLElement | null;
-      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
-      if (e.key === 'Escape') setSelection(null);
-      else if (e.key === 'f' || e.key === 'F') controllerRef.current?.frameAll();
-      else if (e.key === 't' || e.key === 'T') controllerRef.current?.topView();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  // ── Panels ─────────────────────────────────────────────────────────
 
-  const library = (
-    <RoomsPanel
-      space={space}
-      names={names}
-      state={source.geometry_state}
-      activeRoomId={activeRoomId}
-      onRoom={(id) => { selectRoom(id); setSheet(null); }}
-    />
-  );
+  const roomLabelFor = activeRoom ? names.get(activeRoom.id) ?? null : null;
+
+  const panel = (m: LeftMode) => {
+    switch (m) {
+      case 'ROOMS':
+        return (
+          <RoomsPanel space={space} names={names} state={source.geometry_state} activeRoomId={activeRoomId}
+            onRoom={(id) => { selectRoom(id); setSheet(null); }} />
+        );
+      case 'FURNITURE':
+        return (
+          <FurniturePanel
+            assets={catalog.assets.filter((a) => a.active)}
+            roomKind={activeRoom?.kind ?? null}
+            roomName={roomLabelFor}
+            replacing={replacingObject ? { name: assets.get(replacingObject.assetId)?.name ?? '', category: assets.get(replacingObject.assetId)?.category ?? '' } : null}
+            fit={fitAt}
+            onAdd={(a) => addAsset(a)}
+            onReplace={replaceWith}
+            onCancelReplace={() => setReplacing(null)}
+          />
+        );
+      case 'MATERIALS':
+        return (
+          <RoomMaterials
+            space={space} room={activeRoom} roomName={roomLabelFor} state={state} materials={catalog.materials} names={names}
+            onPickRoom={selectRoom}
+            onApply={(ids, materialId) => run([{ type: 'ASSIGN_MATERIAL', surfaceIds: ids, materialId }], 'ds_label_material')}
+          />
+        );
+      case 'COLORS':
+        return (
+          <div className="space-y-4 px-4 py-4">
+            <div>
+              <p className="mb-2 text-[14px] font-medium text-[#0C1119]">{t('ds_colors_project')}</p>
+              {state.palette.length ? (
+                <div className="flex flex-wrap gap-2">{state.palette.map((c) => <Swatch key={c} color={c} label={c} onClick={() => {}} size="sm" />)}</div>
+              ) : <p className="text-[13px] text-[#4A5263]">{t('ds_colors_project_empty')}</p>}
+            </div>
+            <ul className="space-y-2">
+              {catalog.palettes.map((p) => (
+                <li key={p.code} className="rounded-lg border border-[#E4E6EA] p-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[14px] font-medium text-[#0C1119]">{p.name}</p>
+                    <button type="button" onClick={() => run([{ type: 'APPLY_PALETTE', palette: p.colors }], 'ds_label_palette')}
+                      className="h-8 rounded-md border border-[#D5D9E0] px-2.5 text-[13px] font-medium text-[#0C1119] hover:bg-[#F4F5F7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]">
+                      {t('ds_action_use_palette')}
+                    </button>
+                  </div>
+                  <div className="mt-2 flex gap-1.5">{p.colors.map((c) => <span key={c} className="h-6 flex-1 rounded ring-1 ring-black/10" style={{ backgroundColor: c }} aria-hidden="true" />)}</div>
+                </li>
+              ))}
+            </ul>
+            <p className="text-[13px] leading-relaxed text-[#4A5263]">{t('ds_colors_hint')}</p>
+          </div>
+        );
+      case 'LIGHTING':
+        return (
+          <LightingPanel
+            key={`${state.lighting.timeOfDay}-${state.lighting.temperature}-${state.lighting.interiorIntensity}`}
+            lighting={state.lighting}
+            locked={state.locks.lighting || state.lighting.locked}
+            onChange={(l) => run([{ type: 'SET_LIGHTING', lighting: l }], 'ds_label_lighting')}
+          />
+        );
+    }
+  };
+
+  const objectAsset = selectedObject ? assets.get(selectedObject.assetId) : undefined;
   const inspector = (
     <Inspector
       source={source}
@@ -137,13 +497,51 @@ export function DesignWorkspace({ bundle, source, initialVersionId }: DesignWork
       selection={selection}
       onSelect={setSelection}
       onFocusRoom={focusRoom}
-    />
+      objectHeading={selectedObject ? {
+        eyebrow: selectedObject.roomId ? names.get(selectedObject.roomId) ?? '' : t('ds_inspector_object'),
+        title: objectAsset?.name ?? t('ds_asset_missing'),
+      } : undefined}
+    >
+      {selectedObject ? (
+        <ObjectControls
+          object={selectedObject}
+          asset={objectAsset}
+          issues={findingsFor(selectedObject)}
+          estimated={estimated}
+          palettes={catalog.palettes}
+          recentColors={recentColors}
+          locked={state.locks.layout && state.locks.furniture}
+          onRotate={rotateSelected}
+          onReplace={() => { setReplacing(selectedObject.instanceId); setMode('FURNITURE'); setPanelOpen(true); if (isPhoneLayout()) setSheet('FURNITURE'); }}
+          onDuplicate={duplicateSelected}
+          onRemove={removeSelected}
+          onToggleLock={() => run([{ type: selectedObject.locked ? 'UNLOCK_OBJECT' : 'LOCK_OBJECT', instanceId: selectedObject.instanceId }], selectedObject.locked ? 'ds_label_unkeep' : 'ds_label_keep')}
+          onVariant={(v) => run([{ type: 'SET_OBJECT_VARIANT', instanceId: selectedObject.instanceId, variant: v }], 'ds_label_finish')}
+          onColor={(c) => run([{ type: 'SET_OBJECT_COLOR', instanceId: selectedObject.instanceId, color: c }], 'ds_label_color')}
+        />
+      ) : selection?.kind === 'surface' && space ? (
+        <SurfaceControls
+          key={selection.id}
+          surfaceId={selection.id}
+          space={space}
+          state={state}
+          materials={catalog.materials}
+          palettes={catalog.palettes}
+          recentColors={recentColors}
+          roomName={selection.roomId ? names.get(selection.roomId) ?? '' : ''}
+          onMaterial={(ids, id) => run([{ type: 'ASSIGN_MATERIAL', surfaceIds: ids, materialId: id }], 'ds_label_material')}
+          onColor={(ids, c) => run([{ type: 'SET_SURFACE_COLOR', surfaceIds: ids, color: c }], 'ds_label_color')}
+        />
+      ) : null}
+    </Inspector>
   );
+
+  const versionName = version.name;
 
   return (
     <div className="flex h-[100dvh] flex-col bg-[#0C1119] text-white">
       {/* ── Toolbar ──────────────────────────────────────────────── */}
-      <header className="flex h-14 shrink-0 items-center gap-2 border-b border-white/10 px-2 sm:px-3">
+      <header className="flex h-14 shrink-0 items-center gap-1.5 border-b border-white/10 px-2 sm:gap-2 sm:px-3">
         <Link to="/design-studio" aria-label={t('ds_back_to_projects')} className={TOOL_BUTTON}>
           <ArrowLeft className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
         </Link>
@@ -152,40 +550,36 @@ export function DesignWorkspace({ bundle, source, initialVersionId }: DesignWork
         </span>
         <div className="min-w-0 flex-1 sm:flex-none">
           <p className="truncate font-display text-[15px] font-semibold leading-tight">{bundle.project.name}</p>
-          <p className="truncate text-2xs leading-tight text-white/60 sm:hidden">{version?.name}</p>
+          <p className="truncate text-2xs leading-tight text-white/60 sm:hidden">{versionName}</p>
         </div>
-        {version ? (
-          <span className="hidden shrink-0 rounded-md border border-white/15 px-2 py-1 text-[13px] text-white/80 sm:inline">
-            {version.name}
-          </span>
-        ) : null}
+        <span className="hidden shrink-0 rounded-md border border-white/15 px-2 py-1 text-[13px] text-white/80 sm:inline">{versionName}</span>
         <span
-          className={cn(
-            'hidden shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[13px] md:inline-flex',
-            source.geometry_state === 'ESTIMATED' ? 'bg-[hsl(38_92%_54%)]/15 text-[hsl(38_92%_70%)]' : 'bg-white/5 text-white/70',
-          )}
-          title={t(source.geometry_state === 'ESTIMATED' ? 'ds_truth_estimated' : 'ds_truth_known')}
+          className={cn('hidden shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[13px] xl:inline-flex',
+            estimated ? 'bg-[hsl(38_92%_54%)]/15 text-[hsl(38_92%_70%)]' : 'bg-white/5 text-white/70')}
+          title={t(estimated ? 'ds_truth_estimated' : 'ds_truth_known')}
         >
           {t(label.originKey)} · {t(label.geometryKey)}
         </span>
-        <div className="ms-auto flex items-center gap-1">
-          <button type="button" className={TOOL_BUTTON} onClick={() => controllerRef.current?.frameAll()} aria-label={t('ds_view_overview')}>
-            <Maximize className="h-4 w-4" aria-hidden="true" />
-            <span className="hidden xl:inline">{t('ds_view_overview')}</span>
+        <div className="ms-auto flex items-center gap-0.5 sm:gap-1">
+          <button type="button" className={TOOL_BUTTON} onClick={session.undo} disabled={!session.canUndo} aria-label={t('ds_action_undo')} title={`${t('ds_action_undo')} (Ctrl+Z)`}>
+            <Undo2 className="h-4 w-4 rtl:-scale-x-100" aria-hidden="true" />
           </button>
-          <button type="button" className={TOOL_BUTTON} onClick={() => controllerRef.current?.topView()} aria-label={t('ds_view_top')}>
-            <SquareDashed className="h-4 w-4" aria-hidden="true" />
-            <span className="hidden xl:inline">{t('ds_view_top')}</span>
+          <button type="button" className={TOOL_BUTTON} onClick={session.redo} disabled={!session.canRedo} aria-label={t('ds_action_redo')} title={`${t('ds_action_redo')} (Ctrl+Shift+Z)`}>
+            <Redo2 className="h-4 w-4 rtl:-scale-x-100" aria-hidden="true" />
           </button>
-          <button
-            type="button"
-            className={TOOL_BUTTON}
-            disabled={!activeRoomId}
-            onClick={() => activeRoomId && focusRoom(activeRoomId)}
-            aria-label={t('ds_view_room')}
-          >
-            <Scan className="h-4 w-4" aria-hidden="true" />
-            <span className="hidden xl:inline">{t('ds_view_room')}</span>
+          <SaveIndicator status={session.status} onRetry={() => { void session.saveNow(); }} />
+          {session.status === 'CONFLICT' ? (
+            <button type="button" onClick={onReload} className="rounded-md bg-white/10 px-2 py-1 text-[13px] font-medium hover:bg-white/15">{t('ds_action_load_latest')}</button>
+          ) : null}
+          <span className="mx-1 hidden h-6 w-px bg-white/10 md:block" aria-hidden="true" />
+          <button type="button" className={cn(TOOL_BUTTON, 'hidden md:inline-flex')} onClick={() => controllerRef.current?.frameAll()} aria-label={t('ds_view_overview')}>
+            <Maximize className="h-4 w-4" aria-hidden="true" /><span className="hidden 2xl:inline">{t('ds_view_overview')}</span>
+          </button>
+          <button type="button" className={cn(TOOL_BUTTON, 'hidden md:inline-flex')} onClick={() => controllerRef.current?.topView()} aria-label={t('ds_view_top')}>
+            <SquareDashed className="h-4 w-4" aria-hidden="true" /><span className="hidden 2xl:inline">{t('ds_view_top')}</span>
+          </button>
+          <button type="button" className={cn(TOOL_BUTTON, 'hidden md:inline-flex')} disabled={!activeRoomId} onClick={() => activeRoomId && focusRoom(activeRoomId)} aria-label={t('ds_view_room')}>
+            <Scan className="h-4 w-4" aria-hidden="true" /><span className="hidden 2xl:inline">{t('ds_view_room')}</span>
           </button>
         </div>
       </header>
@@ -193,7 +587,7 @@ export function DesignWorkspace({ bundle, source, initialVersionId }: DesignWork
       <div className="flex min-h-0 flex-1">
         {/* ── Left: mode rail + library panel ─────────────────────── */}
         <nav aria-label={t('ds_panel_modes')} className="hidden w-14 shrink-0 flex-col items-center gap-1 border-e border-white/10 py-2 lg:flex">
-          {MODES.map((m) => (
+          {MODES.filter((m) => !m.needsSpace || space).map((m) => (
             <button
               key={m.id}
               type="button"
@@ -215,30 +609,30 @@ export function DesignWorkspace({ bundle, source, initialVersionId }: DesignWork
             className="mt-auto grid h-10 w-10 place-items-center rounded-lg text-white/60 hover:bg-white/5 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]"
             aria-label={t(panelOpen ? 'ds_panel_collapse' : 'ds_panel_expand')}
           >
-            {panelOpen
-              ? <PanelLeftClose className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
-              : <PanelLeftOpen className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />}
+            {panelOpen ? <PanelLeftClose className="h-4 w-4 rtl:rotate-180" aria-hidden="true" /> : <PanelLeftOpen className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />}
           </button>
         </nav>
         {panelOpen ? (
-          <aside aria-label={t(MODES.find((m) => m.id === mode)?.labelKey ?? 'ds_panel_rooms')} className="hidden w-[17rem] shrink-0 flex-col overflow-y-auto bg-white text-[#0C1119] lg:flex">
-            <h2 className="border-b border-[#E4E6EA] px-4 py-3 font-display text-[15px] font-semibold">
+          <aside aria-label={t(MODES.find((m) => m.id === mode)?.labelKey ?? 'ds_panel_rooms')} className="hidden w-[18rem] shrink-0 flex-col bg-white text-[#0C1119] lg:flex">
+            <h2 className="shrink-0 border-b border-[#E4E6EA] px-4 py-3 font-display text-[15px] font-semibold">
               {t(MODES.find((m) => m.id === mode)?.labelKey ?? 'ds_panel_rooms')}
             </h2>
-            {library}
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">{panel(mode)}</div>
           </aside>
         ) : null}
 
         {/* ── Center: the canvas ──────────────────────────────────── */}
-        <main className="relative min-w-0 flex-1 bg-[#E9EBEE]">
+        <main className="relative min-w-0 flex-1 bg-[#DFE3E8]">
           <DesignCanvas
             space={space}
             loadModel={loadModel}
             selection={selection}
             onPick={onPick}
-            onReady={(c) => { controllerRef.current = c; }}
+            onReady={(c) => { controllerRef.current = c; c.applyDesign(state, assets, materials); }}
             onModelError={() => setModelFailed(true)}
             roomLabel={(id) => names.get(id) ?? ''}
+            onDropAsset={(code, point) => { const a = assets.get(code); if (a) addAsset(a, point); }}
+            objectDrag={objectDrag}
           />
           {modelFailed ? (
             <div role="alert" className="absolute inset-x-4 top-4 mx-auto max-w-md rounded-lg bg-white px-4 py-3 text-[14px] text-[#0C1119] shadow-md ring-1 ring-black/10">
@@ -252,7 +646,7 @@ export function DesignWorkspace({ bundle, source, initialVersionId }: DesignWork
               names={names}
               onRoom={selectRoom}
               label={t('ds_plan_navigator')}
-              className="absolute bottom-20 start-3 w-36 sm:w-44 lg:bottom-4"
+              className="absolute bottom-3 start-3 w-32 sm:w-44 lg:bottom-4"
             />
           ) : null}
           <p className="pointer-events-none absolute end-3 top-3 hidden max-w-[22rem] rounded-md bg-white/80 px-2.5 py-1 text-end text-2xs leading-snug text-[#4A5263] ring-1 ring-black/5 backdrop-blur lg:block">
@@ -261,37 +655,99 @@ export function DesignWorkspace({ bundle, source, initialVersionId }: DesignWork
         </main>
 
         {/* ── Right: the inspector ─────────────────────────────────── */}
-        <aside aria-label={t('ds_inspector')} className="hidden w-[18.5rem] shrink-0 overflow-y-auto border-s border-white/10 bg-white text-[#0C1119] lg:block">
+        <aside aria-label={t('ds_inspector')} className="hidden w-[19rem] shrink-0 overflow-y-auto border-s border-white/10 bg-white text-[#0C1119] lg:block">
           {inspector}
         </aside>
       </div>
 
       {/* ── Phone: the canvas is the screen; panels are sheets ─────── */}
-      <div className="flex shrink-0 items-stretch justify-around border-t border-white/10 bg-[#0C1119] pb-[env(safe-area-inset-bottom)] lg:hidden">
-        <button type="button" onClick={() => setSheet('library')} className="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[13px] text-white/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[hsl(38_92%_56%)]">
-          <LayoutGrid className="h-5 w-5" aria-hidden="true" />
-          {t('ds_panel_rooms')}
-        </button>
-        <button type="button" onClick={() => controllerRef.current?.frameAll()} className="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[13px] text-white/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[hsl(38_92%_56%)]">
-          <BoxIcon className="h-5 w-5" aria-hidden="true" />
-          {t('ds_view_overview')}
-        </button>
-        <button type="button" onClick={() => setSheet('inspector')} className="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[13px] text-white/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[hsl(38_92%_56%)]">
-          <Info className="h-5 w-5" aria-hidden="true" />
-          {t('ds_inspector')}
-        </button>
-      </div>
-      <Drawer open={sheet !== null} onOpenChange={(open) => { if (!open) setSheet(null); }}>
-        <DrawerContent className="max-h-[70dvh] bg-white text-[#0C1119] lg:hidden">
+      <nav aria-label={t('ds_panel_modes')} className="grid shrink-0 grid-cols-5 border-t border-white/10 bg-[#0C1119] pb-[env(safe-area-inset-bottom)] lg:hidden">
+        {[...MODES.filter((m) => (m.id === 'ROOMS' || m.id === 'FURNITURE' || m.id === 'MATERIALS' || m.id === 'LIGHTING') && (!m.needsSpace || space)),
+          { id: 'INSPECTOR' as const, labelKey: 'ds_inspector_short', icon: Info }].map((m) => (
+          <button
+            key={m.id}
+            type="button"
+            onClick={() => setSheet(m.id)}
+            className="flex min-h-14 flex-col items-center justify-center gap-0.5 px-1 text-[13px] leading-tight text-white/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[hsl(38_92%_56%)]"
+          >
+            <m.icon className="h-5 w-5" aria-hidden="true" />
+            <span className="max-w-full truncate">{t(m.labelKey)}</span>
+          </button>
+        ))}
+      </nav>
+      <Drawer open={sheet !== null && isPhoneLayout()} onOpenChange={(open) => { if (!open) setSheet(null); }}>
+        <DrawerContent className="max-h-[72dvh] bg-white text-[#0C1119] lg:hidden">
           <DrawerHeader className="sr-only">
-            <DrawerTitle>{t(sheet === 'library' ? 'ds_panel_rooms' : 'ds_inspector')}</DrawerTitle>
+            <DrawerTitle>{t(sheet === 'INSPECTOR' ? 'ds_inspector' : MODES.find((m) => m.id === sheet)?.labelKey ?? 'ds_inspector')}</DrawerTitle>
             <DrawerDescription>{t('ds_brand')}</DrawerDescription>
           </DrawerHeader>
-          <div className="overflow-y-auto pb-[env(safe-area-inset-bottom)]">
-            {sheet === 'library' ? library : inspector}
+          <div className="flex min-h-0 flex-col overflow-y-auto pb-[env(safe-area-inset-bottom)]">
+            {sheet === 'INSPECTOR' ? inspector : sheet ? panel(sheet) : null}
           </div>
         </DrawerContent>
       </Drawer>
+    </div>
+  );
+}
+
+/** Floor, walls and ceiling of one room, dressed from the materials library. */
+function RoomMaterials({
+  space, room, roomName, state, materials, names, onPickRoom, onApply,
+}: {
+  space: SpaceModel | null;
+  room: ReturnType<typeof roomOf>;
+  roomName: string | null;
+  state: DesignState;
+  materials: CatalogMaterial[];
+  names: Map<string, string>;
+  onPickRoom: (roomId: string) => void;
+  onApply: (surfaceIds: string[], materialId: string | null) => void;
+}) {
+  const { t } = useLanguage();
+  if (!space) return null;
+  if (!room) {
+    return (
+      <div className="px-4 py-4">
+        <p className="text-[14px] text-[#4A5263]">{t('ds_materials_pick_room')}</p>
+        <ul className="mt-3 space-y-1">
+          {space.rooms.map((r) => (
+            <li key={r.id}>
+              <button type="button" onClick={() => onPickRoom(r.id)} className="w-full rounded-md px-2.5 py-2 text-start text-[14px] text-[#0C1119] hover:bg-[#F4F5F7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]">
+                {names.get(r.id)}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+  const walls = surfacesOfRoom(space, room.id).filter((s) => s.kind === 'WALL').map((s) => s.id);
+  const floorId = floorSurfaceId(room.id);
+  const ceilingId = ceilingSurfaceId(room.id);
+  const hasCeiling = space.surfaces.some((s) => s.id === ceilingId);
+  const wallMaterial = walls.length && walls.every((id) => state.surfaces[id]?.materialId === state.surfaces[walls[0]]?.materialId)
+    ? state.surfaces[walls[0]]?.materialId ?? null : null;
+  return (
+    <div className="space-y-5 px-4 py-4">
+      <p className="text-[14px] text-[#4A5263]">{t('ds_materials_for_room', { room: roomName ?? '' })}</p>
+      <section>
+        <h3 className="mb-2 text-[14px] font-medium text-[#0C1119]">{t('ds_surface_floor')}</h3>
+        <MaterialList materials={materials.filter((m) => m.appliesTo.includes('FLOOR'))} current={state.surfaces[floorId]?.materialId ?? null}
+          onPick={(m) => onApply([floorId], m.id)} onReset={state.surfaces[floorId]?.materialId ? () => onApply([floorId], null) : undefined} />
+      </section>
+      <section>
+        <h3 className="mb-2 text-[14px] font-medium text-[#0C1119]">{t('ds_materials_walls_n', { n: String(walls.length) })}</h3>
+        <MaterialList materials={materials.filter((m) => m.appliesTo.includes('WALL'))} current={wallMaterial}
+          onPick={(m) => onApply(walls, m.id)} onReset={wallMaterial ? () => onApply(walls, null) : undefined} />
+      </section>
+      {hasCeiling ? (
+        <section>
+          <h3 className="mb-2 text-[14px] font-medium text-[#0C1119]">{t('ds_surface_ceiling')}</h3>
+          <MaterialList materials={materials.filter((m) => m.appliesTo.includes('CEILING'))} current={state.surfaces[ceilingId]?.materialId ?? null}
+            onPick={(m) => onApply([ceilingId], m.id)} />
+        </section>
+      ) : null}
+      <p className="text-[13px] leading-relaxed text-[#4A5263]">{t('ds_materials_note')}</p>
     </div>
   );
 }

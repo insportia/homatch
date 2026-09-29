@@ -18,9 +18,15 @@ export interface ObjectInstance {
   instanceId: string;
   assetId: string;
   roomId: string | null;
-  /** Metres, space coordinates: x/z on the floor plane, y up. */
+  /**
+   * Metres, in PLAN coordinates: x = plan x, z = plan y (not negated), y =
+   * height above the floor. The renderer maps (x, z) to world (x, -z).
+   */
   position: Vec3;
-  /** Rotation about the vertical axis, radians, counter-clockwise from +x. */
+  /**
+   * Radians counter-clockwise in plan from +x. The asset's front is its
+   * local +y (plan), so rotation 0 faces "up the drawing".
+   */
   rotationY: number;
   materialVariant: string | null;
   colorOverride: string | null;
@@ -83,5 +89,25 @@ export function emptyDesignState(): DesignState {
       layout: false, furniture: false, walls: false, floor: false,
       kitchen: false, colors: false, lighting: false,
     },
+  };
+}
+
+/**
+ * A stored state brought up to the current schema: missing parts get their
+ * defaults, unknown parts are dropped. A design saved by an older build
+ * always opens.
+ */
+export function normalizeDesignState(raw: unknown): DesignState {
+  const base = emptyDesignState();
+  if (!raw || typeof raw !== 'object') return base;
+  const r = raw as Partial<DesignState>;
+  return {
+    schema: DESIGN_STATE_SCHEMA,
+    objects: Array.isArray(r.objects) ? r.objects.filter((o) => o && typeof o.instanceId === 'string' && typeof o.assetId === 'string') : [],
+    surfaces: r.surfaces && typeof r.surfaces === 'object' ? r.surfaces : {},
+    lighting: { ...base.lighting, ...(r.lighting ?? {}) },
+    palette: Array.isArray(r.palette) ? r.palette : [],
+    styleCode: typeof r.styleCode === 'string' ? r.styleCode : null,
+    locks: { ...base.locks, ...(r.locks ?? {}) },
   };
 }

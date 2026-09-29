@@ -347,6 +347,19 @@ test('the core is consumed only through its deliberate integration points', () =
      */
     'supabase/functions/community-sync/index.ts',
     /*
+     * The same seam's source-discovery half: the multilingual public-chat
+     * searches and the measured audit (telegram-sources.ts) decide which
+     * communities are worth reading; the file only registers and records.
+     */
+    'supabase/functions/community-sync/sourceDiscovery.ts',
+    /*
+     * DISCOVERY SETTINGS — the one reader of the canonical active-demand
+     * freshness policy. It parses the admin setting through
+     * parseActiveDemandPolicy() so no function holds its own copy of "how old
+     * may demand be".
+     */
+    'supabase/functions/_shared/discoverySettings.ts',
+    /*
      * GLOBAL INTELLIGENCE READS — the same seam from the other direction.
      *
      * community-intelligence imports timeBounds(), truncUnit() and bucketCount()

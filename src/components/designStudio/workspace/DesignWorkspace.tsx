@@ -19,12 +19,15 @@ import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   AlertTriangle, Armchair, ArrowLeft, Check, ChevronDown, CloudOff, Columns2, Info, Layers, LayoutGrid, Loader2, Maximize, Palette as PaletteIcon,
-  PanelLeftClose, PanelLeftOpen, Redo2, Scan, SquareDashed, Sun, Undo2,
+  PanelLeftClose, PanelLeftOpen, Redo2, Scan, Sparkles, SquareDashed, Sun, Undo2,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { CatalogAsset, CatalogMaterial, Palette } from '@/lib/designStudio/catalog';
-import type { DesignState, ObjectInstance } from '@/lib/designStudio/designState';
+import type { DesignState, LockSet, ObjectInstance } from '@/lib/designStudio/designState';
+import { planToOperations } from '@/lib/designStudio/aiPlan';
+import { critique } from '@/lib/designStudio/grammar';
+import { requestDesign, type DesignBrief } from '@/services/designStudio/ai';
 import type { Operation, OperationContext, Rejection } from '@/lib/designStudio/operations';
 import {
   autoPlace, blocks, evaluatePlacement, quantise, roomOf, snapToWall, type PlacementIssue,
@@ -38,7 +41,7 @@ import { NavGlyphIcon } from '@/components/layouts/NavGlyph';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { assetsByCode, listAssets, listMaterials, listPalettes } from '@/services/designStudio/catalog';
 import {
-  createSavedView, createVersion, deleteSavedView, getVersion, listSavedViews, renameVersion, setHeadVersion,
+  createSavedView, createVersion, deleteSavedView, DesignStudioError, getVersion, listSavedViews, renameVersion, setHeadVersion,
   setVersionArchived, type ProjectBundle, type SavedView,
 } from '@/services/designStudio/projects';
 import { saveVersionThumbnail, signedUrls } from '@/services/designStudio/files';
@@ -52,6 +55,7 @@ import { VersionsTray } from './VersionsTray';
 import { developerUnitModelUrl, loadGltf, loadGltfWithNodes } from '../canvas/modelLoader';
 import { isModelAnalysis, modelParts, partRoles, type ModelPart } from '@/lib/designStudio/modelParts';
 import { FurniturePanel } from './FurniturePanel';
+import { AiDesignPanel, type AiProposalItem } from './AiDesignPanel';
 import { Inspector } from './Inspector';
 import { ObjectControls, PartControls, SurfaceControls } from './EditControls';
 import { PlanNavigator } from './PlanNavigator';
@@ -74,7 +78,7 @@ export interface DesignWorkspaceProps {
 /** The camera, remembered per project across version switches, so A and B are seen from the same place. */
 const cameraMemory = new Map<string, CameraSnapshot>();
 
-type LeftMode = 'ROOMS' | 'FURNITURE' | 'MATERIALS' | 'COLORS' | 'LIGHTING';
+type LeftMode = 'ROOMS' | 'FURNITURE' | 'MATERIALS' | 'COLORS' | 'LIGHTING' | 'AI';
 
 const MODES: Array<{ id: LeftMode; labelKey: string; icon: React.ComponentType<{ className?: string }>; needsSpace?: boolean }> = [
   { id: 'ROOMS', labelKey: 'ds_panel_rooms', icon: LayoutGrid },
@@ -82,7 +86,16 @@ const MODES: Array<{ id: LeftMode; labelKey: string; icon: React.ComponentType<{
   { id: 'MATERIALS', labelKey: 'ds_panel_materials', icon: Layers, needsSpace: true },
   { id: 'COLORS', labelKey: 'ds_panel_colors', icon: PaletteIcon },
   { id: 'LIGHTING', labelKey: 'ds_panel_lighting', icon: Sun },
+  { id: 'AI', labelKey: 'ds_panel_ai', icon: Sparkles, needsSpace: true },
 ];
+
+const AI_ERROR_KEY: Record<string, string> = {
+  DS_AI_DESIGN_UNAVAILABLE: 'ds_ai_error_unavailable',
+  DS_AI_RATE_LIMITED: 'ds_ai_error_rate',
+  DS_AI_BILLING_CONFIRMATION_REQUIRED: 'ds_ai_error_billing',
+  DS_AI_NO_SPACE_MODEL: 'ds_ai_error_space',
+  DS_AI_DESIGN_EMPTY: 'ds_ai_error_empty',
+};
 
 const TOOL_BUTTON =
   'inline-flex h-9 items-center justify-center gap-1.5 rounded-lg px-2.5 text-[14px] font-medium text-white/85 transition-colors '
@@ -187,7 +200,9 @@ function Editor({
     return canonical?.scene ? buildSpaceModel(canonical.scene) : null;
   }, [source]);
   const names = useMemo(() => (space ? roomNames(space, t) : new Map<string, string>()), [space, t]);
-  const assets = useMemo(() => new Map(catalog.assets.map((a) => [a.code, a])), [catalog.assets]);
+  // Pieces an AI proposal names that the first catalogue page did not include.
+  const [extraAssets, setExtraAssets] = useState<CatalogAsset[]>([]);
+  const assets = useMemo(() => new Map([...catalog.assets, ...extraAssets].map((a) => [a.code, a])), [catalog.assets, extraAssets]);
   const materials = useMemo(() => new Map(catalog.materials.map((m) => [m.id, m])), [catalog.materials]);
   // An uploaded model: the server's analysis, and the parts it identified.
   const modelAnalysis = useMemo(
@@ -254,10 +269,24 @@ function Editor({
     return () => clearTimeout(timer);
   }, [session.status, homatchUser, projectId, version.id]);
 
-  // Draw every state the session produces.
+  // ── AI designer: proposals, preview, accept ────────────────────────
+  const [ai, setAi] = useState<{ jobId: string; basis: DesignState; items: AiProposalItem[]; dropped: number } | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState<number | null>(null);
+
+  // Draw every state the session produces — or, while previewing, the
+  // proposal, which is never written into the design until accepted.
   useEffect(() => {
-    controllerRef.current?.applyDesign(state, assets, materials);
-  }, [state, assets, materials]);
+    const proposed = previewing != null ? ai?.items[previewing]?.proposal.state : undefined;
+    controllerRef.current?.applyDesign(proposed ?? state, assets, materials);
+  }, [state, assets, materials, previewing, ai]);
+  // Any real change ends a preview: the customer is editing again.
+  const lastState = useRef(state);
+  useEffect(() => {
+    if (lastState.current !== state) setPreviewing(null);
+    lastState.current = state;
+  }, [state]);
 
   const label = provenanceLabel(source);
   const selectedObject = selection?.kind === 'object' ? state.objects.find((o) => o.instanceId === selection.id) ?? null : null;
@@ -288,6 +317,85 @@ function Editor({
     }
     return true;
   }, [session, t, rejectionMessage, assets, materials]);
+
+  const generate = useCallback(async (brief: DesignBrief) => {
+    if (!space) return;
+    setAiBusy(true);
+    setAiError(null);
+    try {
+      await session.saveNow();
+      const { jobId, plan } = await requestDesign(version.id, brief);
+      const wanted = [...new Set(plan.alternatives.flatMap((a) => a.rooms.flatMap((r) => r.furniture)))].filter((c) => !assets.has(c));
+      let all = assets;
+      if (wanted.length) {
+        const more = await assetsByCode(wanted);
+        setExtraAssets((x) => [...x, ...more]);
+        all = new Map([...assets, ...more.map((a) => [a.code, a] as const)]);
+      }
+      const basis = session.state;
+      const items = plan.alternatives.map((alt, i) => {
+        const proposal = planToOperations(alt, {
+          state: basis, space, ctx: { ...ctx, assets: all }, assets: all, materials: catalog.materials, idPrefix: `ai-${jobId.slice(0, 8)}-${i + 1}`,
+        });
+        return { alt, proposal, notes: critique(proposal.state, space, all, alt.rooms.map((r) => r.roomId)) };
+      });
+      setAi({ jobId, basis, items, dropped: Object.values(plan.dropped ?? {}).reduce((a, b) => a + b, 0) });
+    } catch (e) {
+      setAiError(t(AI_ERROR_KEY[e instanceof DesignStudioError ? e.code : ''] ?? 'ds_ai_error_generic'));
+    } finally {
+      setAiBusy(false);
+    }
+  }, [space, session, version.id, assets, ctx, catalog.materials, t]);
+
+  /** A proposal as it applies to the design NOW (the customer may have edited since it was made). */
+  const freshProposal = useCallback((i: number) => {
+    if (!ai || !space) return null;
+    const item = ai.items[i];
+    if (!item) return null;
+    return session.state === ai.basis ? item.proposal : planToOperations(item.alt, {
+      state: session.state, space, ctx, assets, materials: catalog.materials, idPrefix: `ai-${ai.jobId.slice(0, 8)}-${i + 1}`,
+    });
+  }, [ai, space, session.state, ctx, assets, catalog.materials]);
+
+  const applyAi = useCallback((i: number) => {
+    const proposal = freshProposal(i);
+    if (!ai || !proposal) return;
+    if (!proposal.ops.length) { toast.error(t('ds_ai_nothing_left')); return; }
+    const r = session.apply(proposal.ops, t('ds_label_ai'), 'AI', ai.jobId);
+    if (!r.ok) { toast.error(rejectionMessage(r.rejection)); return; }
+    setPreviewing(null);
+    setAi(null);
+    toast.success(t('ds_ai_applied'));
+  }, [freshProposal, ai, session, t, rejectionMessage]);
+
+  const saveAiVersion = useCallback(async (i: number) => {
+    const proposal = freshProposal(i);
+    if (!ai || !proposal || !homatchUser) return;
+    const item = ai.items[i];
+    setBusy(true);
+    try {
+      await session.saveNow();
+      const created = await createVersion({
+        userId: homatchUser.id, projectId, sourceId: source.id, parentId: version.id, origin: 'AI', jobId: ai.jobId,
+        name: uniqueVersionName(item.alt.title, versions.map((v) => v.name)),
+        state: copyState(proposal.state) as unknown as Record<string, unknown>,
+        styleTags: item.alt.styleCode ? [item.alt.styleCode] : [],
+        changeSummary: [{ kind: 'AI_PROPOSAL', jobId: ai.jobId, ...proposal.summary }],
+      });
+      const c = controllerRef.current;
+      if (c) cameraMemory.set(projectId, c.snapshot());
+      await onReload();
+      navigate(`/design-studio/${projectId}/design/${created.id}`);
+    } catch {
+      toast.error(t('ds_error_generic'));
+    } finally {
+      setBusy(false);
+    }
+  }, [freshProposal, ai, homatchUser, session, projectId, source.id, version.id, versions, onReload, navigate, t]);
+
+  const setKeep = useCallback((key: keyof LockSet, value: boolean) => {
+    run([{ type: 'SET_LOCKS', locks: { [key]: value } }], value ? 'ds_label_keep' : 'ds_label_unkeep');
+  }, [run]);
 
   // ── Placement helpers ──────────────────────────────────────────────
 
@@ -631,6 +739,26 @@ function Editor({
             <p className="text-[13px] leading-relaxed text-[#4A5263]">{t('ds_colors_hint')}</p>
           </div>
         );
+      case 'AI':
+        return (
+          <AiDesignPanel
+            locks={state.locks}
+            activeRoom={activeRoom ? { id: activeRoom.id, name: names.get(activeRoom.id) ?? '' } : null}
+            names={names}
+            assets={assets}
+            busy={aiBusy}
+            error={aiError}
+            items={ai?.items ?? null}
+            dropped={ai?.dropped ?? 0}
+            previewing={previewing}
+            onKeep={setKeep}
+            onGenerate={(brief) => { void generate(brief); }}
+            onPreview={(i) => { setPreviewing(i); if (i != null) setSheet(null); }}
+            onApply={applyAi}
+            onSaveVersion={(i) => { void saveAiVersion(i); }}
+            onDiscard={() => { setPreviewing(null); setAi(null); }}
+          />
+        );
       case 'LIGHTING':
         return (
           <LightingPanel
@@ -817,6 +945,14 @@ function Editor({
             objectDrag={objectDrag}
             initialCamera={initialCamera}
           />
+          {previewing != null && ai?.items[previewing] ? (
+            <div role="status" className="absolute inset-x-3 top-14 z-10 mx-auto flex max-w-lg flex-wrap items-center gap-2 rounded-lg bg-[#0C1119] px-3 py-2 text-[14px] text-white shadow-lg ring-1 ring-white/10">
+              <Sparkles className="h-4 w-4 shrink-0 text-[hsl(38_92%_62%)]" aria-hidden="true" />
+              <span className="min-w-0 flex-1">{t('ds_ai_previewing', { title: ai.items[previewing].alt.title })}</span>
+              <button type="button" onClick={() => applyAi(previewing)} className="h-8 rounded-md bg-white px-2.5 text-[13px] font-semibold text-[#0C1119] hover:bg-white/90">{t('ds_ai_apply')}</button>
+              <button type="button" onClick={() => setPreviewing(null)} className="h-8 rounded-md px-2.5 text-[13px] font-medium text-white/85 ring-1 ring-white/25 hover:bg-white/10">{t('ds_ai_stop_preview')}</button>
+            </div>
+          ) : null}
           {modelFailed ? (
             <div role="alert" className="absolute inset-x-4 top-4 mx-auto max-w-md rounded-lg bg-white px-4 py-3 text-[14px] text-[#0C1119] shadow-md ring-1 ring-black/10">
               {t('ds_model_failed')}
@@ -876,8 +1012,8 @@ function Editor({
       ) : null}
 
       {/* ── Phone: the canvas is the screen; panels are sheets ─────── */}
-      <nav aria-label={t('ds_panel_modes')} className="grid shrink-0 grid-cols-5 border-t border-white/10 bg-[#0C1119] pb-[env(safe-area-inset-bottom)] lg:hidden">
-        {[...MODES.filter((m) => (m.id === 'ROOMS' || m.id === 'FURNITURE' || m.id === 'MATERIALS' || m.id === 'LIGHTING') && (!m.needsSpace || space)).map((m) => ({ ...m, labelKey: modeLabel(m.id) })),
+      <nav aria-label={t('ds_panel_modes')} className="grid shrink-0 auto-cols-fr grid-flow-col border-t border-white/10 bg-[#0C1119] pb-[env(safe-area-inset-bottom)] lg:hidden">
+        {[...MODES.filter((m) => (m.id === 'ROOMS' || m.id === 'FURNITURE' || m.id === 'MATERIALS' || m.id === 'LIGHTING' || m.id === 'AI') && (!m.needsSpace || space)).map((m) => ({ ...m, labelKey: modeLabel(m.id) })),
           { id: 'INSPECTOR' as const, labelKey: 'ds_inspector_short', icon: Info }].map((m) => (
           <button
             key={m.id}

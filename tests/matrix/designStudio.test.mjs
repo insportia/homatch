@@ -262,3 +262,46 @@ test('model furniture can be hidden, never moved', () => {
   assert.match(ops, /SET_PART_HIDDEN/);
   assert.ok(!/MOVE_PART|ROTATE_PART/.test(ops), 'model parts can be moved: they were modelled in place');
 });
+
+/* ── The AI designer (checkpoint 7) ─────────────────────────────── */
+
+test('the AI designer returns a validated plan and never writes a design', () => {
+  const fn = read('supabase/functions/design-studio-ai/index.ts');
+  assert.match(fn, /refuseIfImpersonating\(/);
+  assert.match(fn, /caller\.from\('ds_versions'\)/, 'the version is not read as the caller');
+  assert.match(fn, /validatePlan\(raw, ctx, brief\)/, 'the model output is not validated');
+  assert.ok(!/from\('ds_versions'\)\.(insert|update|upsert)|from\('ds_version_events'\)/.test(fn), 'the AI function writes a design');
+  assert.match(fn, /BILLING_CONFIRMATION_REQUIRED/, 'an enabled billing switch could become a charge without confirmation');
+  assert.match(fn, /recordUnbilledUsage\(/, 'AI design is not metered');
+  assert.ok(!/rpc\(['"](charge|debit|reserve|settle)/i.test(fn.replace(/\/\/.*$/gm, '')), 'AI design charges');
+  assert.match(fn, /strict: true/, 'the model is not held to the schema');
+  assert.match(read('.github/workflows/deploy.yml'), /"design-studio-ai"/);
+});
+
+test('style codes and plan shape stay in step between server and browser', () => {
+  const server = read('supabase/functions/_shared/designStudio/aiPlan.ts');
+  const grammar = read('src/lib/designStudio/grammar.ts');
+  const codes = (src) => src.match(/STYLE_CODES = \[([^\]]+)\]/)[1].replace(/\s/g, '');
+  assert.equal(codes(grammar), codes(server));
+  const client = read('src/lib/designStudio/aiPlan.ts');
+  for (const field of ['roomId', 'wallColor', 'wallMaterial', 'floorMaterial', 'clearFurniture', 'furniture']) {
+    assert.match(server, new RegExp(`${field}: `), `server plan lacks ${field}`);
+    assert.match(client, new RegExp(`${field}: `), `browser plan lacks ${field}`);
+  }
+});
+
+test('an AI proposal reaches a design only through the operation validator, as AI with its job', () => {
+  const conv = read('src/lib/designStudio/aiPlan.ts');
+  assert.match(conv, /validateOperation\(working, op, input\.ctx\)/);
+  assert.match(conv, /autoPlace\(/, 'AI furniture is not placed by the deterministic engine');
+  assert.ok(!/SET_LOCKS/.test(conv), 'a proposal can change what the customer keeps');
+  const ws = read('src/components/designStudio/workspace/DesignWorkspace.tsx');
+  assert.match(ws, /session\.apply\(proposal\.ops, t\('ds_label_ai'\), 'AI', ai\.jobId\)/);
+  assert.match(ws, /origin: 'AI', jobId: ai\.jobId/);
+});
+
+test('AI copy never quotes a price', () => {
+  const src = read('scripts/design-studio-i18n-data-7.mjs');
+  assert.ok(!/[$€₾]\s?\d|\d\s?(GEL|USD|EUR)\b/.test(src), 'AI copy states a price');
+  assert.ok(!/\block|\bunlock/i.test(src.split('\n').filter((l) => l.includes("'")).map((l) => l.split("'")[1] ?? '').join(' ')), 'lock words in customer copy');
+});

@@ -169,6 +169,7 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   'prop_price_sqm', // Turkish "/m²"
   'ds_area_m2', // Design Studio: "{{value}} m²" — the unit is the same in Turkish
   'ds_area_estimated', 'ds_length_m', 'ds_length_estimated', // Design Studio units: identical in Turkish
+  'ds_style_japandi', // Design Studio: "Japandi" is the style's own name in Turkish too
   'matches_platform', // Turkish "Platform" is a standard loanword
   // Turkish "Bonus" is the ordinary Turkish word, spelled identically. ka/ru/
   // ar/he all carry their own distinct forms for this key.

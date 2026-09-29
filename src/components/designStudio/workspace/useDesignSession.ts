@@ -23,7 +23,7 @@ export interface DesignSession {
   canUndo: boolean;
   canRedo: boolean;
   lastLabel: string | null;
-  apply: (ops: Operation[], label: string, origin?: Transaction['origin']) => { ok: true } | { ok: false; rejection: Rejection; index: number };
+  apply: (ops: Operation[], label: string, origin?: Transaction['origin'], jobId?: string | null) => { ok: true } | { ok: false; rejection: Rejection; index: number };
   undo: () => void;
   redo: () => void;
   saveNow: () => Promise<void>;
@@ -51,7 +51,7 @@ export function useDesignSession(input: {
   const revisionRef = useRef(input.initialRevision);
   const dirtyRef = useRef(false);
   const savingRef = useRef(false);
-  const pendingEvents = useRef<Array<{ origin: Transaction['origin']; ops: Operation[] }>>([]);
+  const pendingEvents = useRef<Array<{ origin: Transaction['origin']; ops: Operation[]; jobId?: string | null }>>([]);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ctxRef = useRef(input.ctx);
   ctxRef.current = input.ctx;
@@ -70,7 +70,7 @@ export function useDesignSession(input: {
       pendingEvents.current = pendingEvents.current.slice(events.length);
       // The audit trail is best-effort: a failed append never loses the design itself.
       appendVersionEvents(events.map((e) => ({
-        versionId: input.versionId, userId: input.userId, revision: result.revision, origin: e.origin, ops: e.ops,
+        versionId: input.versionId, userId: input.userId, revision: result.revision, origin: e.origin, ops: e.ops, jobId: e.jobId,
       }))).catch(() => { /* reported by the next save attempt's status, never blocking the design */ });
       setStatus(dirtyRef.current ? 'UNSAVED' : 'SAVED');
       if (dirtyRef.current) schedule();
@@ -88,25 +88,25 @@ export function useDesignSession(input: {
     timer.current = setTimeout(() => { void save(); }, AUTOSAVE_DELAY_MS);
   }, [save]);
 
-  const markChanged = useCallback((next: DesignState, origin: Transaction['origin'], ops: Operation[]) => {
+  const markChanged = useCallback((next: DesignState, origin: Transaction['origin'], ops: Operation[], jobId?: string | null) => {
     setState(next);
     stateRef.current = next;
     dirtyRef.current = true;
-    pendingEvents.current.push({ origin, ops });
+    pendingEvents.current.push({ origin, ops, jobId });
     setStatus((s) => (s === 'CONFLICT' ? s : 'UNSAVED'));
     schedule();
     input.onApplied?.(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schedule]);
 
-  const apply = useCallback<DesignSession['apply']>((ops, label, origin = 'USER') => {
+  const apply = useCallback<DesignSession['apply']>((ops, label, origin = 'USER', jobId = null) => {
     const result = applyTransaction(stateRef.current, ops, ctxRef.current, {
       id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`, label, origin,
     });
     if (!result.ok) return { ok: false, rejection: result.rejection, index: result.index };
     setHistory(record(historyRef.current, result.transaction));
     setLastLabel(label);
-    markChanged(result.state, origin, ops);
+    markChanged(result.state, origin, ops, jobId);
     return { ok: true };
   }, [markChanged]);
 

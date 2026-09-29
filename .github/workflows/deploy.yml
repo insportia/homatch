@@ -527,6 +527,12 @@ jobs:
             #                             and records an UPLOADED_MODEL
             #                             source. No AI, nothing billable.
             "design-studio-model"
+            #   design-studio-ai         asks the model for a design PLAN in
+            #                             a fixed schema and returns only what
+            #                             validatePlan() keeps. It never writes
+            #                             a design. Metered, unpriced; refuses
+            #                             if billing is switched on early.
+            "design-studio-ai"
             # Object storage. storage-sign is the ONLY runtime anywhere that
             # holds an R2 credential: it authorises the caller in Postgres
             # under that caller's own token and hands back a short-lived

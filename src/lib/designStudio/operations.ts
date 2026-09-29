@@ -225,8 +225,11 @@ export function validateOperation(state: DesignState, op: Operation, ctx: Operat
       }
       return null;
     }
-    case 'SET_LOCKS':
-      return op.locks && typeof op.locks === 'object' ? null : { code: 'MALFORMED' };
+    case 'SET_LOCKS': {
+      if (!op.locks || typeof op.locks !== 'object') return { code: 'MALFORMED' };
+      const known = new Set(Object.keys(state.locks));
+      return Object.entries(op.locks).every(([k, v]) => known.has(k) && typeof v === 'boolean') ? null : { code: 'MALFORMED', detail: 'locks' };
+    }
     case 'APPLY_PALETTE':
       if (locks.colors) return { code: 'CATEGORY_LOCKED', detail: 'colors' };
       return Array.isArray(op.palette) && op.palette.length <= 12 && op.palette.every((c) => HEX.test(c)) ? null : { code: 'BAD_COLOR' };

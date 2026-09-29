@@ -305,11 +305,13 @@ export async function saveVersionState(
 
 /** Append the operations that produced a revision — the audit trail, never rewritten. */
 export async function appendVersionEvents(
-  events: Array<{ versionId: string; userId: string; revision: number; origin: 'USER' | 'AI' | 'SYSTEM'; ops: unknown[] }>,
+  events: Array<{ versionId: string; userId: string; revision: number; origin: 'USER' | 'AI' | 'SYSTEM'; ops: unknown[]; jobId?: string | null }>,
 ): Promise<void> {
   if (events.length === 0) return;
   const { error } = await supabase.from('ds_version_events').insert(events.map((e) => ({
     version_id: e.versionId, user_id: e.userId, revision: e.revision, origin: e.origin, ops: e.ops,
+    // An AI change names the AI job that proposed it (the database checks it).
+    ...(e.origin === 'AI' && e.jobId ? { job_id: e.jobId } : {}),
   })));
   if (error) throw new Error(error.message);
 }
@@ -332,6 +334,8 @@ export async function createVersion(input: {
   styleTags?: string[];
   changeSummary?: unknown[];
   makeHead?: boolean;
+  /** AI versions: the SUCCEEDED AI job whose proposal this is. */
+  jobId?: string | null;
 }): Promise<DesignVersionRecord> {
   const { data, error } = await supabase
     .from('ds_versions')
@@ -345,6 +349,7 @@ export async function createVersion(input: {
       state: input.state,
       style_tags: input.styleTags ?? [],
       change_summary: input.changeSummary ?? [],
+      ...(input.origin === 'AI' && input.jobId ? { job_id: input.jobId } : {}),
     })
     .select('*')
     .single();

@@ -288,7 +288,12 @@
    * that was positively established, destructive still means a real problem,
    * amber still means incomplete. Recolouring those gold would make the page
    * prettier and the report less true. */
-  .verify-report [class*='rounded-'][class*='border'] {
+  /* An element that DECLARES its own background utility keeps it: this
+     blanket used to out-rank single-class utilities (0,3,0 vs 0,1,0), so a
+     deliberately navy action button inside the report was silently forced
+     white — white label on white pill. The rule's job is the undeclared
+     middle-grey cards, not controls that already chose their color. */
+  .verify-report [class*='rounded-'][class*='border']:not([class*='bg-']) {
     background-color: hsl(var(--card));
   }
   /* A border you can actually see, rather than one you infer. */

@@ -269,7 +269,9 @@ test('PRIMARY_PALETTE_BLACK_WHITE_GOLD is scoped to the report', () => {
   const block = css.slice(css.indexOf('.verify-report'), css.indexOf('/* ── DARK'));
   assert.ok(block.length > 0);
   // Cards get a visible border and a white ground inside the report...
-  assert.match(css, /\.verify-report \[class\*='rounded-'\]\[class\*='border'\] \{\s*\n\s*background-color: hsl\(var\(--card\)\);/);
+  // Guarded: an element that declares its own bg-* utility keeps it — the
+  // unguarded blanket force-whitened deliberately navy controls (JOB 3).
+  assert.match(css, /\.verify-report \[class\*='rounded-'\]\[class\*='border'\]:not\(\[class\*='bg-'\]\) \{\s*\n\s*background-color: hsl\(var\(--card\)\);/);
   assert.match(css, /border-color: hsl\(0 0% 7% \/ 0\.14\)/);
   // ...gold is a rule, never a text fill on white...
   assert.match(css, /\.verify-report \.premium-rule/);

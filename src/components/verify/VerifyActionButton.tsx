@@ -69,19 +69,19 @@ export function VerifyActionButton({ to, icon, label }: VerifyActionButtonProps)
         // Full width on a phone: two half-width buttons with two-line labels
         // read worse than two full-width ones. Side by side from sm upward.
         'sm:w-auto sm:flex-1',
-        // Investment's control language, and the gold is a hover edge rather
-        // than a fill — on this ground a gold fill has nowhere near the
-        // contrast to carry text.
-        'rounded-full border-border bg-transparent',
-        'transition-colors hover:border-[hsl(var(--gold-border))] hover:bg-transparent hover:text-foreground',
+        // The HOMATCH action language: solid navy, white label, gold icon
+        // and arrow. A next step is a real destination, and it dresses like
+        // one — never a colorless hairline that reads as disabled.
+        'rounded-full border-transparent bg-[#0C1119] text-white shadow-card',
+        'transition-colors hover:bg-[#1a2231] hover:text-white',
       ].join(' ')}
     >
       <Link to={to} className="flex min-w-0 items-center gap-3 text-start">
-        <span className="shrink-0" aria-hidden="true">{icon}</span>
+        <span className="shrink-0 text-[hsl(38_92%_60%)]" aria-hidden="true">{icon}</span>
         <span className="min-w-0 flex-1 break-words text-[15px] font-semibold leading-snug">
           {label}
         </span>
-        <ArrowRight className="h-4 w-4 shrink-0 rtl:rotate-180" aria-hidden="true" />
+        <ArrowRight className="h-4 w-4 shrink-0 text-[hsl(38_92%_60%)] rtl:rotate-180" aria-hidden="true" />
       </Link>
     </Button>
   );

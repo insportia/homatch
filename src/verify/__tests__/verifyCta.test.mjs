@@ -89,8 +89,9 @@ test('CTA_INVESTMENT_MORTGAGE_VISUAL_PARITY: siblings, not a primary and a secon
   // so the two cannot drift apart or imply an order of preference.
   assert.ok(!/variant\?:/.test(src), 'a variant prop is how they diverged');
   assert.match(src, /variant="outline"/);
-  assert.match(src, /rounded-full border-border bg-transparent/);
-  assert.match(src, /hover:border-\[hsl\(var\(--gold-border\)\)\]/);
+  // The one treatment is the HOMATCH action pill: solid navy, gold glyphs.
+  assert.match(src, /rounded-full border-transparent bg-\[#0C1119\] text-white/);
+  assert.match(src, /text-\[hsl\(38_92%_60%\)\]/);
 
   const next = read('src', 'components', 'verify', 'NextStepsCard.tsx');
   assert.ok(!/variant=/.test(next), 'neither call to action may be styled differently');

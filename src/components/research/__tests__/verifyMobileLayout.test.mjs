@@ -121,7 +121,7 @@ test('the Verify header and primary action fit narrow screens without horizontal
   // at 320px — so text-xl stays pinned here deliberately.
   assert.match(verifySource, /text-xl sm:text-3xl font-display font-bold break-words/);
   // Search input + button stack under sm, side by side above it.
-  assert.match(verifySource, /className="flex flex-col gap-2 sm:flex-row"/);
+  assert.match(verifySource, /className="flex flex-col gap-2\.5 sm:flex-row"/);
   /*
    * The input fills the row FROM sm, and not before.
    *
@@ -131,8 +131,11 @@ test('the Verify header and primary action fit narrow screens without horizontal
    * input's HEIGHT, overriding the field height and collapsing it to
    * 32px against a 44px fingertip. Measured in a real browser at 390px.
    */
-  assert.match(verifySource, /<Input className="min-w-0 sm:flex-1"/);
-  assert.match(verifySource, /<Button className="w-full sm:w-auto shrink-0" onClick=\{\(\)=>run\(\)\}/);
+  // The premium field keeps the same axis discipline: min-w-0 first, the
+  // row growth only FROM sm, and an explicit h-12 so no flex-basis can
+  // collapse it below the fingertip target.
+  assert.match(verifySource, /<Input className="min-w-0 sm:flex-1 h-12 rounded-xl/);
+  assert.match(verifySource, /<Button className="w-full sm:w-auto shrink-0 h-12 rounded-xl bg-\[hsl\(38_92%_54%\)\][^"]*" onClick=\{\(\)=>run\(\)\}/);
 });
 
 test('long cadastral codes, evidence text and errors wrap instead of overflowing', () => {

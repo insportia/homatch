@@ -50,7 +50,7 @@ export function ContractList({
   if (items.length === 0) {
     return (
       <div className="rounded-xl border border-border bg-card px-5 py-8 text-center">
-        <FileText className="mx-auto h-8 w-8 text-muted-foreground" aria-hidden="true" />
+        <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[hsl(var(--gold-soft))] ring-1 ring-[hsl(var(--gold-border))]/60" aria-hidden="true"><FileText className="h-6 w-6 text-foreground" /></span>
         <p className="mt-2 font-medium text-foreground">{emptyTitle}</p>
         <p className="mx-auto mt-1 max-w-md break-words text-sm leading-relaxed text-ink-soft">
           {emptyHint}
@@ -70,7 +70,7 @@ export function ContractList({
             <button
               type="button"
               onClick={() => navigate(`/contracts/${c.id}`)}
-              className="flex w-full min-w-0 items-center gap-3 rounded-xl border border-border bg-card p-4 text-start transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:p-5"
+              className="group flex w-full min-w-0 items-center gap-3 rounded-xl border border-border bg-card p-4 text-start transition-colors hover:border-[hsl(var(--gold-border))]/70 hover:bg-[hsl(var(--gold-soft))]/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:p-5"
             >
               <div className="min-w-0 flex-1 space-y-1">
                 <p className="min-w-0 break-words font-medium text-foreground">
@@ -105,7 +105,7 @@ export function ContractList({
               </div>
 
               <ChevronRight
-                className="h-5 w-5 shrink-0 text-muted-foreground"
+                className="h-5 w-5 shrink-0 text-foreground/70 transition-colors group-hover:text-[hsl(var(--gold-ink))]"
                 aria-hidden="true"
               />
             </button>

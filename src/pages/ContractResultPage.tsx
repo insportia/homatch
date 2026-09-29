@@ -250,7 +250,7 @@ export default function ContractResultPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="min-w-0 max-w-full"
+                  className="min-w-0 max-w-full border-foreground/30 font-semibold text-foreground"
                   onClick={() => navigate(`/contracts/${newer.id}`)}
                 >
                   <ArrowLeft className="me-1.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -261,7 +261,7 @@ export default function ContractResultPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="ms-auto min-w-0 max-w-full"
+                  className="ms-auto min-w-0 max-w-full border-foreground/30 font-semibold text-foreground"
                   onClick={() => navigate(`/contracts/${older.id}`)}
                 >
                   <span className="min-w-0 truncate">{t('ct_next')}</span>

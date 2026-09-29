@@ -43,6 +43,24 @@ test('the dropzone CTA is a real primary action (navy pill, gold detail)', () =>
   assert.ok(s.includes('border-foreground/30'), 'the resting border is drawn from ink, not the pale token');
 });
 
+test('the report blanket never overrides a declared background again', () => {
+  // Root cause of white-on-white action buttons: this scoped rule out-ranked
+  // single utility classes and force-whitened everything bordered.
+  const css = read('src/index.css');
+  assert.ok(css.includes(".verify-report [class*='rounded-'][class*='border']:not([class*='bg-'])"));
+  assert.ok(!/\.verify-report \[class\*='rounded-'\]\[class\*='border'\]\s*\{/.test(css),
+    'the unguarded blanket selector came back');
+});
+
+test('report next steps and ask-AI are navy actions with gold glyphs', () => {
+  const btn = read('src/components/verify/VerifyActionButton.tsx');
+  assert.ok(btn.includes('bg-[#0C1119]'));
+  assert.ok(btn.includes('text-[hsl(38_92%_60%)]'));
+  const page = read('src/pages/VerifyPage.tsx');
+  assert.ok(/verify_ask_ai_button[\s\S]{0,600}/.test(page));
+  assert.ok(page.includes('bg-[#0C1119] px-5 text-white'), 'ask-AI reverted to a pale outline');
+});
+
 test('research progress is gold on an ink track, not translucent navy', () => {
   const s = read('src/components/verify/ResearchStream.tsx');
   assert.ok(s.includes('bg-[hsl(38_92%_54%)]'));

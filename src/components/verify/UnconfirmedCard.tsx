@@ -63,7 +63,7 @@ export function UnconfirmedCard({ items }: { items: UnconfirmedItem[] }) {
             >
               <Icon
                 className={`mt-0.5 h-4 w-4 shrink-0 ${
-                  isMaterial ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'
+                  isMaterial ? 'text-amber-700 dark:text-amber-400' : 'text-[hsl(var(--gold-ink))]'
                 }`}
                 aria-hidden="true"
               />

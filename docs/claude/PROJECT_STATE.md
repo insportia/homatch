@@ -53,11 +53,12 @@ MATTERS right now, verify against the live systems, not this file)
   appsecret_proof, optional token sealing (`META_TOKEN_ENCRYPTION_KEY`),
   webhook signature-before-dedupe, maintenance cron, stepped builder.
   Migration `20260930120000_meta_ads_live_readiness.sql` NOT applied.
-- OPEN MONEY DECISION (do not launch paid campaigns before it is made): the
-  ledger reserves the ad budget from the customer's HOMATCH balance, while
-  campaigns run on the customer's OWN ad account, which Meta bills directly.
-  Either HOMATCH charges only the fee (customer-billed ad account), or ads
-  run on a HOMATCH-owned ad account — not both.
+- MONEY MODEL (code default, confirm before any paid launch):
+  `meta_ads_budget_billing` = CUSTOMER_AD_ACCOUNT — the campaign runs on the
+  customer's own ad account, Meta bills the budget there, HOMATCH holds only
+  its fee (refunded on unspent budget). HOMATCH_WALLET holds the budget in the
+  HOMATCH balance and is only correct for an ad account HOMATCH pays. Never
+  both.
 
 ## Discovery engine (same branch)
 

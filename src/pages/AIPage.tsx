@@ -148,8 +148,8 @@ function EmptyState({ onPrompt }: { onPrompt: (p: string) => void }) {
      */
     <div className="flex min-h-full flex-col items-center px-5 py-8 text-center sm:px-8">
       <div className="my-auto flex w-full max-w-2xl flex-col items-center">
-      <div className="mb-4 grid h-14 w-14 place-items-center rounded-full bg-gold/10 ring-1 ring-inset ring-gold/25 text-gold-ink">
-        <Sparkles className="h-7 w-7 text-primary" />
+      <div className="mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-[#0C1119] ring-1 ring-inset ring-[hsl(38_92%_56%)]/45 shadow-card">
+        <Sparkles className="h-7 w-7 text-[hsl(38_92%_60%)]" />
       </div>
       <h2 className="text-lg font-semibold text-foreground mb-1">{t('ai_title')}</h2>
       <p className="text-sm text-muted-foreground mb-6 max-w-xs">
@@ -163,11 +163,13 @@ function EmptyState({ onPrompt }: { onPrompt: (p: string) => void }) {
               key={labelKey}
               type="button"
               onClick={() => onPrompt(label)}
-              className="flex items-center gap-3 rounded-xl border border-border bg-card p-3 text-start transition-colors hover:border-primary/40 hover:bg-secondary/50 group"
+              className="group flex items-center gap-3 rounded-xl border border-border bg-card p-3 text-start shadow-card transition-colors hover:border-[hsl(var(--gold-border))] hover:shadow-hover"
             >
-              <Icon className="h-4 w-4 text-primary shrink-0" />
-              <span className="text-base text-muted-foreground transition-colors group-hover:text-foreground">{label}</span>
-              <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground ms-auto rtl:rotate-180" />
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[hsl(var(--gold-soft))] ring-1 ring-inset ring-[hsl(var(--gold-border))]/50">
+                <Icon className="h-4 w-4 text-[hsl(var(--gold-ink))]" />
+              </span>
+              <span className="text-base font-medium text-foreground">{label}</span>
+              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-colors ms-auto rtl:rotate-180 group-hover:text-[hsl(var(--gold-ink))]" />
             </button>
           );
         })}
@@ -211,8 +213,8 @@ function MessageBubble({
      */
     <div className={`flex gap-3 ${isUser ? 'justify-end' : ''}`}>
       {!isUser && (
-        <div className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md border border-gold/30 bg-gold/[0.06] text-gold-ink">
-          <Bot className="h-4 w-4 text-primary" />
+        <div className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md bg-[#0C1119] ring-1 ring-inset ring-[hsl(38_92%_56%)]/45">
+          <Bot className="h-4 w-4 text-[hsl(38_92%_60%)]" />
         </div>
       )}
       <div className={`max-w-[80%] ${isUser ? '' : 'flex-1 min-w-0'}`}>
@@ -427,21 +429,25 @@ function AIPageInner() {
       {/* Main chat area */}
       <div className="flex-1 min-w-0 flex flex-col">
         {/* Chat header */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-background/95 backdrop-blur-sm shrink-0">
+        {/* The AI product's navy identity strip: gold intelligence mark,
+            white name, and the REAL Beta status restyled as a gold-outline
+            chip instead of a grey pill. Same structural grammar as Live
+            Chat and Private Messages; the conversation reads on white. */}
+        <div className="flex shrink-0 items-center gap-3 bg-[#0C1119] px-4 py-3 text-white">
           <Button
             variant="ghost" size="sm"
-            className="md:hidden h-8 w-8 p-0 text-muted-foreground"
+            className="md:hidden h-8 w-8 p-0 text-white/75 hover:bg-white/10 hover:text-white"
             onClick={() => setSidebarOpen(v => !v)}
           >
             <MessageSquare className="h-4 w-4" />
           </Button>
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            <Bot className="h-5 w-5 text-primary shrink-0" />
-            <h1 className="truncate text-sm font-semibold text-foreground">{t('ai_title')}</h1>
-            <Badge variant="secondary" className="text-[13px] px-1.5 py-0 shrink-0">{t('ai_beta_badge')}</Badge>
+            <Sparkles className="h-5 w-5 shrink-0 text-[hsl(38_92%_60%)]" />
+            <h1 className="truncate text-sm font-semibold text-white">{t('ai_title')}</h1>
+            <span className="shrink-0 rounded-full border border-[hsl(38_92%_56%)]/50 bg-[hsl(38_92%_56%)]/[0.12] px-2 py-0.5 text-[13px] font-semibold uppercase tracking-[0.08em] text-[hsl(38_92%_62%)]">{t('ai_beta_badge')}</span>
           </div>
           {messages.length > 0 && (
-            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-white/75 hover:bg-white/10 hover:text-white"
               onClick={handleNewChat} title={t('ai_new_chat')}>
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
@@ -468,8 +474,8 @@ function AIPageInner() {
               )}
               {streaming && !streamContent && (
                 <div className="flex gap-3">
-                  <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-gold/30 bg-gold/[0.06] text-gold-ink">
-                    <Loader2 className="h-4 w-4 text-primary animate-spin" />
+                  <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-[#0C1119] ring-1 ring-inset ring-[hsl(38_92%_56%)]/45">
+                    <Loader2 className="h-4 w-4 animate-spin text-[hsl(38_92%_60%)]" />
                   </div>
                   <div className="rounded-2xl rounded-ss-sm border border-border bg-card px-4 py-3">
                     <div className="flex gap-1.5 items-center">
@@ -563,10 +569,13 @@ function AIPageInner() {
                  * screen was accused of. Autosize still grows the field for
                  * what is typed; this only stops the empty state being cut.
                  */
+                /* CRISP WHITE, not the canvas's own tint: bg-secondary on
+                   the warm canvas was a field you could not find. A real
+                   border, a lift, and a gold focus ring say "type here". */
                 'max-h-[9.5rem] min-h-[4.5rem] sm:min-h-[2.75rem] flex-1 resize-none rounded-[1.25rem] border '
-                + 'border-border bg-secondary px-4 py-3 text-base leading-[1.5] '
+                + 'border-[hsl(var(--border))] bg-card px-4 py-3 text-base leading-[1.5] text-foreground shadow-card '
                 + 'placeholder:text-muted-foreground focus-visible:outline-none '
-                + 'focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60'
+                + 'focus-visible:border-[hsl(var(--gold-border))] focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:opacity-60'
               }
             />
             {streaming ? (
@@ -581,7 +590,10 @@ function AIPageInner() {
               <Button
                 onClick={handleSend} disabled={!input.trim()}
                 aria-label={t('ai_send')}
-                className="h-11 w-11 shrink-0 rounded-full bg-primary p-0 text-primary-foreground hover:bg-primary/90"
+                /* GOLD WHEN IT CAN SEND, honestly grey when it cannot. The
+                   old black circle at disabled-opacity read as a dead grey
+                   button even while enabled on the warm canvas. */
+                className="h-11 w-11 shrink-0 rounded-full bg-[hsl(var(--gold))] p-0 text-[#161309] shadow-card hover:bg-[hsl(var(--gold-hover))] disabled:bg-[hsl(var(--secondary))] disabled:text-[hsl(var(--muted-foreground))] disabled:opacity-100 disabled:shadow-none"
               >
                 {/* The paper plane points along the text direction. */}
                 <Send className="h-5 w-5 rtl:-scale-x-100" />

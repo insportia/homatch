@@ -101,9 +101,9 @@ function toneFor(maturity: SectionMaturity): string {
     case 'PARTIAL':
       return 'text-amber-600 dark:text-amber-400';
     case 'UNAVAILABLE':
-      return 'text-muted-foreground/60';
+      return 'text-muted-foreground';
     case 'PENDING':
-      return 'text-muted-foreground/40';
+      return 'text-muted-foreground';
     default:
       return 'text-primary';
   }
@@ -175,7 +175,7 @@ export function ResearchSections({ sections }: ResearchSectionsProps) {
       aria-label={t('verify_sections_title')}
       className="rounded-2xl border border-border bg-card/40 p-4 sm:p-5 space-y-3"
     >
-      <p className="text-2xs uppercase tracking-wider text-muted-foreground/70">
+      <p className="text-2xs uppercase tracking-wider text-muted-foreground">
         {t('verify_sections_title')}
       </p>
       <ul className="space-y-2.5">

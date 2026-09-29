@@ -121,7 +121,7 @@ export function UtilitiesCard({ utilities }: { utilities?: UtilitiesLike | null 
           return (
             <li
               key={String(r.key)}
-              className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 rounded-xl border border-border bg-background/40 p-3"
+              className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 rounded-xl border border-border bg-card p-3"
             >
               <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
               <span className="min-w-0 flex-1 basis-full break-words text-sm font-medium text-foreground sm:basis-0">

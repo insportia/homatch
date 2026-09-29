@@ -141,10 +141,12 @@ export default function ContractsPage() {
                   type="button"
                   aria-pressed={type === opt.id}
                   onClick={() => setType(opt.id)}
-                  className={`min-h-9 min-w-0 rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                  className={`min-h-9 min-w-0 rounded-full border px-3.5 py-1.5 text-sm transition-colors ${
                     type === opt.id
-                      ? 'border-primary bg-primary/10 text-foreground'
-                      : 'border-border bg-card text-muted-foreground hover:bg-accent/40'
+                      /* Selected must be unmistakable: solid navy with white
+                         text, never a pale tint that reads as disabled. */
+                      ? 'border-[#0C1119] bg-[#0C1119] font-semibold text-white shadow-card'
+                      : 'border-border bg-card text-foreground/80 hover:border-[hsl(var(--gold-border))] hover:text-foreground'
                   }`}
                 >
                   <span className="break-words">{t(opt.labelKey)}</span>

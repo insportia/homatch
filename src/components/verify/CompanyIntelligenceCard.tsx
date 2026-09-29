@@ -239,7 +239,7 @@ export function CompanyIntelligenceCard({
 
         {/* ---- COMPANY-LEVEL obligations ---- */}
         {encumbrances.length ? (
-          <div className="min-w-0 space-y-2 rounded-xl border border-border bg-background/40 p-3">
+          <div className="min-w-0 space-y-2 rounded-xl border border-border bg-card p-3">
             <p className="text-2xs uppercase tracking-wide text-muted-foreground">
               {t('verify_co_company_obligations')}
             </p>

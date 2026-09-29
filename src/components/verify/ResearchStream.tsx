@@ -111,7 +111,7 @@ export function ResearchStream({
           <p className="tabular-nums text-lg font-semibold leading-none">{pct}%</p>
           {/* Labelled honestly: this is an estimate, and the number beside it
               is not — one is guessed, the other is measured. */}
-          <p className="text-2xs uppercase tracking-wider text-muted-foreground/70 mt-1">
+          <p className="text-2xs uppercase tracking-wider text-muted-foreground mt-1">
             {t('verify_progress_estimated')}
           </p>
         </div>
@@ -119,7 +119,7 @@ export function ResearchStream({
 
       <div>
         <div
-          className="h-1.5 w-full rounded-full bg-primary/15 overflow-hidden"
+          className="h-1.5 w-full rounded-full bg-foreground/10 overflow-hidden"
           role="progressbar"
           aria-valuenow={pct}
           aria-valuemin={0}
@@ -127,7 +127,7 @@ export function ResearchStream({
           aria-label={t('verify_progress_estimated')}
         >
           <div
-            className="h-full rounded-full bg-primary/70 transition-all duration-1000 ease-out"
+            className="h-full rounded-full bg-[hsl(38_92%_54%)] transition-all duration-1000 ease-out"
             style={{ width: `${pct}%` }}
           />
         </div>
@@ -145,10 +145,10 @@ export function ResearchStream({
               i === 0 ? 'opacity-100' : i === 1 ? 'opacity-70' : 'opacity-40'
             }`}
           >
-            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/70" aria-hidden="true" />
+            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(38_92%_54%)]" aria-hidden="true" />
             <span className="min-w-0">
               <span className="block text-sm break-words">{t(k)}</span>
-              <span className="block text-2xs uppercase tracking-wider text-muted-foreground/60 break-words">
+              <span className="block text-2xs font-semibold uppercase tracking-wider text-[hsl(var(--gold-ink))]/80 break-words">
                 {PHASE_TAG[phase]}
               </span>
             </span>
@@ -159,8 +159,8 @@ export function ResearchStream({
       {/* WHAT WE ACTUALLY KNOW SO FAR. Every row here was persisted by the
           research itself; none of it is implied by the stage we reached. */}
       {facts.length > 0 && (
-        <div className="rounded-xl border border-border/60 bg-background/40 p-3 sm:p-4">
-          <p className="text-2xs uppercase tracking-wider text-muted-foreground/70 mb-2">
+        <div className="rounded-xl border border-border bg-card p-3 sm:p-4">
+          <p className="text-2xs uppercase tracking-wider text-muted-foreground mb-2">
             {t('verify_stream_found_so_far')}
           </p>
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">

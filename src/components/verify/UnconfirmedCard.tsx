@@ -59,7 +59,7 @@ export function UnconfirmedCard({ items }: { items: UnconfirmedItem[] }) {
           return (
             <li
               key={item.key}
-              className="flex min-w-0 gap-2.5 rounded-xl border border-border bg-background/40 p-3"
+              className="flex min-w-0 gap-2.5 rounded-xl border border-border bg-card p-3"
             >
               <Icon
                 className={`mt-0.5 h-4 w-4 shrink-0 ${

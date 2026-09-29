@@ -125,7 +125,7 @@ export function VerifyLinkedContracts({
               <button
                 type="button"
                 onClick={() => navigate(`/contracts/${r.id}`)}
-                className="flex w-full min-w-0 items-center gap-3 rounded-xl border border-border bg-background/40 p-3 text-start transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex w-full min-w-0 items-center gap-3 rounded-xl border border-border bg-card p-3 text-start transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <FileSignature className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
 

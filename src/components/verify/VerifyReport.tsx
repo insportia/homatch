@@ -1040,10 +1040,13 @@ const PriceBar: React.FC<{ m: MarketBlock }> = ({ m }) => {
           {m.qualityFactors.map((q, i) => (
             <span
               key={i}
-              className={`rounded-full border px-2 py-0.5 text-2xs break-words ${
+              className={`rounded-full border px-2.5 py-0.5 text-2xs font-medium break-words ${
                 q.direction === 'SUPPORTS_PREMIUM'
-                  ? 'border-border text-foreground/80'
-                  : 'border-dashed border-border text-muted-foreground'
+                  /* A factor that supports the asking price is a finding,
+                     not furniture: gold-soft, like every other evidence
+                     chip in the system. */
+                  ? 'border-[hsl(var(--gold-border))]/60 bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))]'
+                  : 'border-dashed border-foreground/25 text-foreground/70'
               }`}
             >
               {readable(q.factor)}

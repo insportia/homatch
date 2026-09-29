@@ -65,7 +65,7 @@ function Item({
       className={`min-w-0 rounded-xl border p-3 ${
         tone === 'attention'
           ? 'border-amber-500/40 bg-amber-500/5'
-          : 'border-border bg-background/40'
+          : 'border-border bg-card'
       }`}
     >
       <p className="min-w-0 break-words text-sm font-medium text-foreground">{label}</p>

@@ -113,7 +113,10 @@ export function DropZone({
           busy ? 'cursor-wait' : 'cursor-pointer',
           over
             ? 'border-gold bg-gold-soft'
-            : 'border-border bg-secondary/40 hover:border-gold/60 hover:bg-gold-soft/40',
+            /* The resting border is drawn from the ink, not from the pale
+               border token: a dashed hairline on a cream page read as a
+               disabled area, and this is the page's PRIMARY action. */
+            : 'border-foreground/30 bg-card hover:border-gold/70 hover:bg-gold-soft/40',
         ].join(' ')}
         style={{
           transition: level === 'none'
@@ -133,8 +136,8 @@ export function DropZone({
         </span>
 
         {!busy && (
-          <span className="inline-flex items-center gap-2 rounded-full border border-foreground/15 bg-card px-4 py-2 text-sm font-semibold">
-            <Upload className="h-4 w-4" aria-hidden="true" />
+          <span className="inline-flex items-center gap-2 rounded-full bg-[#0C1119] px-4.5 py-2 text-sm font-semibold text-white shadow-card transition-colors group-hover:bg-[#1a2231]">
+            <Upload className="h-4 w-4 text-[hsl(38_92%_60%)]" aria-hidden="true" />
             {t('dr_docs_upload')}
           </span>
         )}

@@ -79,7 +79,7 @@ export function EvidenceSources({ groups }: { groups: EvidenceGroup[] }) {
               {group.rows.map((row, i) => (
                 <li
                   key={`${row.claim}-${i}`}
-                  className="min-w-0 rounded-xl border border-border bg-background/40 p-3"
+                  className="min-w-0 rounded-xl border border-border bg-card p-3"
                 >
                   <p className="min-w-0 break-words text-sm leading-relaxed text-foreground">{row.claim}</p>
                   {/* Wraps rather than competing: the source name and date

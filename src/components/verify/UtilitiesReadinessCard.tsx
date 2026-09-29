@@ -74,7 +74,7 @@ function toneFor(r: UtilityReadiness): StatusTone {
 function Established({ f }: { f: UtilityFinding }) {
   const { t } = useLanguage();
   return (
-    <div className="min-w-0 rounded-xl border border-border bg-background/40 p-4">
+    <div className="min-w-0 rounded-xl border border-border bg-card p-4">
       {/* The name owns its line on a phone; the status wraps under it rather
           than competing with it for width. */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">

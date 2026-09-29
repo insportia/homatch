@@ -1,0 +1,188 @@
+// HOMATCH DESIGN STUDIO — read a customer's floor plan.
+//
+// POST { floorplanId }  (the caller's JWT; they must own the plan)
+//
+// 1. The plan row is read AS THE CALLER, so RLS decides whose it is.
+// 2. The file is read from R2 by its key and checked by its BYTES: it must
+//    really be a PNG, JPEG or WebP within the size limit, whatever the
+//    browser declared. Its pixel size comes from its own header.
+// 3. The drawing is read by the model into a structured PROPOSAL (every
+//    element UNVERIFIED, scale evidence kept as signals, nothing invented).
+// 4. The proposal is written onto ds_floorplans; the customer reviews it and
+//    HOMATCH's deterministic generator builds geometry from what they keep.
+//
+// It never writes geometry, never creates a spatial source and never marks
+// anything verified. Money: DS_FLOORPLAN_READ is registered, measured and
+// NOT priced (see 20260930093000). While design_studio_billing_enabled is
+// false the run is recorded as unbilled usage; if the switch is turned on
+// before the confirmation flow is wired, this refuses rather than charging.
+
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { recordUnbilledUsage, serviceClient } from '../_shared/billing.ts';
+import { refuseIfImpersonating } from '../_shared/impersonation.ts';
+import { getObject, headObject } from '../_shared/objectStore.ts';
+import { imageSize, SCHEMA, sniffType, SYSTEM, validateReading } from '../_shared/designStudio/floorplanRead.ts';
+
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+const PRODUCT = 'DS_FLOORPLAN_READ';
+const MAX_BYTES = 25 * 1024 * 1024;
+const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+const MODEL = Deno.env.get('OPENAI_DS_FLOORPLAN_MODEL') || Deno.env.get('OPENAI_FLOORPLAN_MODEL') || Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
+const USD_IN = Number(Deno.env.get('OPENAI_USD_PER_MTOK_IN') || '0');
+const USD_OUT = Number(Deno.env.get('OPENAI_USD_PER_MTOK_OUT') || '0');
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
+
+function textOf(payload: any): string {
+  if (typeof payload?.output_text === 'string') return payload.output_text;
+  const parts = payload?.output?.flatMap((o: any) => o?.content ?? []) ?? [];
+  return parts.map((p: any) => p?.text ?? '').join('').trim();
+}
+
+function base64(bytes: Uint8Array): string {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+  const authHeader = req.headers.get('Authorization') ?? '';
+  if (!authHeader) return json({ error: 'UNAUTHENTICATED' }, 401);
+
+  const caller = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
+    global: { headers: { Authorization: authHeader } },
+  });
+  const { data: auth } = await caller.auth.getUser();
+  if (!auth?.user) return json({ error: 'UNAUTHENTICATED' }, 401);
+
+  const admin = serviceClient();
+  // This function writes with the service role, so an impersonated session may not drive it.
+  const refused = await refuseIfImpersonating(admin, authHeader, CORS);
+  if (refused) return refused;
+
+  let body: { floorplanId?: string };
+  try { body = await req.json(); } catch { return json({ error: 'BAD_REQUEST' }, 400); }
+  if (!body.floorplanId || typeof body.floorplanId !== 'string') return json({ error: 'BAD_REQUEST' }, 400);
+
+  // RLS decides ownership: a plan that is not the caller's reads as not found.
+  const { data: plan } = await caller.from('ds_floorplans')
+    .select('id, project_id, user_id, object_key, status').eq('id', body.floorplanId).maybeSingle();
+  if (!plan) return json({ error: 'NOT_FOUND' }, 404);
+  if (plan.status === 'INTERPRETING') return json({ error: 'ALREADY_RUNNING' }, 409);
+  const expectedPrefix = `users/${plan.user_id}/design-studio-floorplans/${plan.project_id}/`;
+  if (!String(plan.object_key).startsWith(expectedPrefix)) return json({ error: 'INVALID_KEY' }, 400);
+
+  const { data: billingOn } = await admin.rpc('billing_setting_bool', { p_key: 'design_studio_billing_enabled', p_default: false });
+  if (billingOn === true) {
+    // Pricing is a product decision still to be made; the confirmation flow
+    // is wired with it. Until then an enabled switch must not become a charge.
+    return json({ error: 'BILLING_CONFIRMATION_REQUIRED' }, 409);
+  }
+
+  const fail = async (reason: string, jobId?: string) => {
+    await admin.from('ds_floorplans').update({ status: 'FAILED', interpretation_error: reason }).eq('id', plan.id);
+    if (jobId) await admin.from('ds_jobs').update({ status: 'FAILED', error: reason, finished_at: new Date().toISOString() }).eq('id', jobId);
+    return json({ state: 'FAILED', reason }, 422);
+  };
+
+  const { data: job } = await admin.from('ds_jobs').insert({
+    user_id: plan.user_id, project_id: plan.project_id, kind: 'FLOORPLAN_INTERPRET', status: 'RUNNING',
+    input: { floorplanId: plan.id }, model: MODEL, started_at: new Date().toISOString(),
+  }).select('id').single();
+  const jobId = (job as { id?: string } | null)?.id;
+
+  // ── The bytes, checked ─────────────────────────────────────────────
+  const facts = await headObject(plan.object_key);
+  if (!facts.exists) return fail('FILE_MISSING', jobId);
+  if ((facts.size ?? 0) > MAX_BYTES) return fail('FILE_TOO_LARGE', jobId);
+  const res = await getObject(plan.object_key);
+  if (!res.ok) return fail('FILE_UNREADABLE', jobId);
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  if (bytes.length > MAX_BYTES) return fail('FILE_TOO_LARGE', jobId);
+  const type = sniffType(bytes.subarray(0, 64));
+  if (!type || !IMAGE_TYPES.has(type)) return fail('NOT_A_SUPPORTED_IMAGE', jobId);
+  const size = imageSize(bytes.subarray(0, Math.min(bytes.length, 256 * 1024)));
+  if (!size || size.width < 64 || size.height < 64 || size.width > 20000 || size.height > 20000) return fail('IMAGE_SIZE_UNREADABLE', jobId);
+
+  await admin.from('ds_floorplans').update({
+    status: 'INTERPRETING', interpretation_error: null, image_width: size.width, image_height: size.height,
+    sha256: await sha256Hex(bytes),
+  }).eq('id', plan.id);
+
+  const apiKey = Deno.env.get('OPENAI_API_KEY');
+  if (!apiKey) return fail('READING_UNAVAILABLE', jobId);
+
+  const started = Date.now();
+  let payload: any = null;
+  try {
+    const r = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: MODEL,
+        input: [
+          { role: 'system', content: SYSTEM },
+          {
+            role: 'user',
+            content: [
+              { type: 'input_text', text: `Read this floor plan. The image is ${size.width} by ${size.height} pixels; give every coordinate in those pixels. Report only what the drawing shows.` },
+              { type: 'input_image', image_url: `data:${type};base64,${base64(bytes)}` },
+            ],
+          },
+        ],
+        text: { format: { type: 'json_schema', name: 'ds_floor_plan', strict: false, schema: SCHEMA } },
+        reasoning: { effort: 'medium' },
+      }),
+    });
+    payload = r.ok ? await r.json() : null;
+  } catch {
+    payload = null;
+  }
+  const text = payload ? textOf(payload) : '';
+  if (!text) return fail('READING_FAILED', jobId);
+  let raw: unknown;
+  try { raw = JSON.parse(text); } catch { return fail('READING_BAD_SHAPE', jobId); }
+
+  const reading = validateReading(raw, size.width, size.height, plan.object_key);
+  await admin.from('ds_floorplans').update({
+    status: 'INTERPRETED',
+    interpretation: { doc: reading.doc, dimensionStrings: reading.dimensionStrings, readVersion: reading.readVersion },
+    interpretation_model: MODEL,
+    interpretation_error: null,
+  }).eq('id', plan.id);
+
+  // ── What it cost: measured, never charged while unpriced ───────────
+  const inTok = Number(payload?.usage?.input_tokens ?? 0);
+  const outTok = Number(payload?.usage?.output_tokens ?? 0);
+  const ratesKnown = USD_IN > 0 && USD_OUT > 0;
+  const cents = ratesKnown ? Math.ceil(((inTok / 1e6) * USD_IN + (outTok / 1e6) * USD_OUT) * 100) : null;
+  try {
+    const { data: ent } = await admin.rpc('billing_entitlements', { p_user_id: plan.user_id });
+    const planCode = String((ent as { plan_code?: string } | null)?.plan_code ?? 'FREE').toUpperCase();
+    await recordUnbilledUsage(admin, { userId: plan.user_id, productCode: PRODUCT, planCode, jobRef: jobId ?? plan.id }, {
+      provider: 'openai', providerOperation: 'responses', model: MODEL, inputTokens: inTok, outputTokens: outTok,
+      durationMs: Date.now() - started, aiCostCents: cents ?? undefined,
+      // Unknown cost is recorded as unknown, not as zero.
+      metadata: { floorplan_id: plan.id, cost_known: ratesKnown },
+    });
+  } catch { /* a missing measurement never fails a reading that succeeded */ }
+  if (jobId) {
+    await admin.from('ds_jobs').update({
+      status: 'SUCCEEDED', finished_at: new Date().toISOString(), cost_cents: cents,
+      output: { walls: reading.doc.walls.length, rooms: reading.doc.rooms.length, doors: reading.doc.doors.length, windows: reading.doc.windows.length, dimensions: reading.dimensionStrings.length, dropped: reading.dropped },
+    }).eq('id', jobId);
+  }
+
+  return json({ state: 'INTERPRETED', counts: { walls: reading.doc.walls.length, rooms: reading.doc.rooms.length, doors: reading.doc.doors.length, windows: reading.doc.windows.length } });
+});

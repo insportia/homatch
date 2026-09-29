@@ -66,6 +66,8 @@ export interface DesignWorkspaceProps {
   freshnessUnchecked: boolean;
   initialVersionId: string | null;
   onReload: () => Promise<void> | void;
+  /** Floor-plan spaces: change the measurements the geometry was built from. */
+  onRecalibrate?: () => void;
 }
 
 /** The camera, remembered per project across version switches, so A and B are seen from the same place. */
@@ -170,7 +172,7 @@ function SaveIndicator({ status, onRetry }: { status: SaveStatus; onRetry: () =>
 }
 
 function Editor({
-  bundle, source, version, catalog, onReload,
+  bundle, source, version, catalog, onReload, onRecalibrate,
 }: DesignWorkspaceProps & {
   version: DesignVersionRecord;
   catalog: { assets: CatalogAsset[]; materials: CatalogMaterial[]; palettes: Palette[] };
@@ -611,6 +613,7 @@ function Editor({
       selection={selection}
       onSelect={setSelection}
       onFocusRoom={focusRoom}
+      onRecalibrate={onRecalibrate}
       objectHeading={selectedObject ? {
         eyebrow: selectedObject.roomId ? names.get(selectedObject.roomId) ?? '' : t('ds_inspector_object'),
         title: objectAsset?.name ?? t('ds_asset_missing'),

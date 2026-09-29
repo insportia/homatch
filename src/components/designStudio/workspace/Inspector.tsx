@@ -14,6 +14,8 @@ export interface InspectorProps {
   selection: PickTarget | null;
   onSelect: (target: PickTarget) => void;
   onFocusRoom: (roomId: string) => void;
+  /** Floor-plan spaces: change the measurements. */
+  onRecalibrate?: () => void;
   /** Heading for a selected object (asset name, room). */
   objectHeading?: { eyebrow: string; title: string };
   /** Controls for the selected thing, contributed by the editing layer. */
@@ -45,7 +47,7 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
  * trusted. A room → that room. A surface → which surface, in which room.
  * An object → that object. Only controls that apply to the selection appear.
  */
-export function Inspector({ source, space, names, selection, onSelect, onFocusRoom, objectHeading, children }: InspectorProps) {
+export function Inspector({ source, space, names, selection, onSelect, onFocusRoom, onRecalibrate, objectHeading, children }: InspectorProps) {
   const { t } = useLanguage();
   const label = provenanceLabel(source);
   const state = source.geometry_state;
@@ -54,6 +56,7 @@ export function Inspector({ source, space, names, selection, onSelect, onFocusRo
     const indoor = space?.rooms.filter((r) => !r.outdoor) ?? [];
     const area = indoor.reduce((sum, r) => sum + r.areaM2, 0);
     const prov = source.provenance as Record<string, unknown>;
+    const typicalCeiling = (source.canonical as { ceilingSource?: string } | null)?.ceilingSource === 'TYPICAL';
     const devContext = source.kind === 'DEVELOPER_UNIT'
       ? [prov.project_name, prov.building_name, prov.floor_level != null ? t('ds_floor_n', { n: String(prov.floor_level) }) : null,
         prov.unit_number ? t('ds_unit_n', { n: String(prov.unit_number) }) : null].filter(Boolean).join(' · ')
@@ -67,13 +70,29 @@ export function Inspector({ source, space, names, selection, onSelect, onFocusRo
             <Row label={t('ds_inspector_dimensions')} value={t(label.geometryKey)} />
             {space ? <Row label={t('ds_inspector_rooms')} value={String(space.rooms.length)} /> : null}
             {space && area > 0 ? <Row label={t('ds_inspector_indoor_area')} value={formatArea(area, state, t)} /> : null}
-            {space ? <Row label={t('ds_inspector_ceiling')} value={formatLength(space.ceilingHeightM, state, t)} /> : null}
+            {space ? (
+              <Row
+                label={t('ds_inspector_ceiling')}
+                value={typicalCeiling
+                  ? `${formatLength(space.ceilingHeightM, 'ESTIMATED', t)} · ${t('ds_inspector_ceiling_typical')}`
+                  : formatLength(space.ceilingHeightM, state, t)}
+              />
+            ) : null}
             {label.editabilityKey ? <Row label={t('ds_inspector_editability')} value={t(label.editabilityKey)} /> : null}
           </dl>
           <p className="mt-3 flex gap-2 rounded-md bg-[#F4F5F7] px-3 py-2.5 text-[13px] leading-relaxed text-[#4A5263]">
             <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             {t(state === 'ESTIMATED' ? 'ds_truth_estimated' : 'ds_truth_known')}
           </p>
+          {onRecalibrate ? (
+            <button
+              type="button"
+              onClick={onRecalibrate}
+              className="mt-3 inline-flex h-9 w-full items-center justify-center rounded-lg border border-[#D5D9E0] text-[14px] font-medium text-[#0C1119] hover:bg-[#F4F5F7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]"
+            >
+              {t(state === 'VERIFIED' ? 'ds_fp_change_measurements' : 'ds_fp_calibrate')}
+            </button>
+          ) : null}
           {!space ? <p className="mt-3 text-[13px] text-[#4A5263]">{t('ds_rooms_unavailable_model')}</p> : null}
           <p className="mt-4 text-[14px] text-[#4A5263]">{t('ds_inspector_hint')}</p>
         </div>

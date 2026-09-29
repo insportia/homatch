@@ -115,6 +115,8 @@ export function createStore(seed = {}) {
       change_summary: [], thumbnail_key: null, archived_at: null, created_at: now(), updated_at: now(), ...r }),
     ds_version_events: (r) => ({ id: randomUUID(), created_at: now(), ...r }),
     ds_saved_views: (r) => ({ id: randomUUID(), sort: 0, room_id: null, created_at: now(), updated_at: now(), ...r }),
+    ds_floorplans: (r) => ({ id: randomUUID(), status: 'UPLOADED', interpretation: null, interpretation_error: null,
+      corrections: [], created_at: now(), updated_at: now(), ...r }),
   };
 
   function handle(table, method, url, body) {
@@ -178,7 +180,7 @@ export function createStore(seed = {}) {
     return null;
   }
 
-  return { db, handle, rpc, objects: new Map(), signerCalls: [] };
+  return { db, handle, rpc, objects: new Map(), signerCalls: [], readings: [], readingDoc: null };
 }
 
 export async function wire(page, store, errors) {
@@ -221,6 +223,16 @@ export async function wire(page, store, errors) {
       if (!String(body.key).startsWith('users/hm1/')) return json({ error: 'NOT_OWNER' }, 403);
       const verb = body.action === 'WRITE' ? 'put' : 'get';
       return json({ url: `https://r2.qa.test/${verb}/${encodeURIComponent(body.key)}`, expiresAt: new Date(Date.now() + 600000).toISOString(), key: body.key });
+    }
+    /* A stand-in for design-studio-floorplan: the stored object must exist
+       under the caller's key; the reading is a fixed proposal (no scale). */
+    if (url.pathname.includes('/functions/v1/design-studio-floorplan')) {
+      const body = JSON.parse(req.postData() || '{}');
+      store.readings.push(body);
+      const plan = store.db.ds_floorplans.find((f) => f.id === body.floorplanId);
+      if (!plan || !store.objects.has(plan.object_key)) return json({ error: 'NOT_FOUND' }, 404);
+      Object.assign(plan, { status: 'INTERPRETED', interpretation: { doc: store.readingDoc, dimensionStrings: [], readVersion: 'qa-1' } });
+      return json({ ok: true, status: 'INTERPRETED' });
     }
     if (url.pathname.includes('/auth/v1/user')) return json(fakeSession().user);
     if (url.pathname.includes('/auth/v1/token')) return json(fakeSession());
@@ -345,6 +357,7 @@ async function main() {
     await checkpoint2(browser);
     await checkpoint3(browser);
     await checkpoint4(browser);
+    await checkpoint5(browser);
   } finally {
     await browser.close().catch(() => {});
     server.kill();
@@ -435,6 +448,141 @@ function qaCatalogMaterials() {
     m('dev/floor-natural-oak', 'Natural oak (concept)', 'FLOOR', ['FLOOR'], '#b48b5e', 0.7),
     m('dev/floor-walnut', 'Walnut (concept)', 'FLOOR', ['FLOOR'], '#6d4b36', 0.65),
   ];
+}
+
+/* ── Checkpoint 5: a customer's floor plan, from file to space ───── */
+
+/** What the reader proposes for the one-bedroom drawing: geometry, no scale, no ceiling. */
+async function readingWithoutScale() {
+  const { oneBedroomDoc } = await import('../../src/lib/designStudio/__tests__/fixtures.mjs');
+  const doc = oneBedroomDoc();
+  return {
+    ...doc, detectedScale: null, scaleConfidence: 0, scaleEvidence: null, ceilingHeight: null, ceilingHeightSource: null,
+    walls: doc.walls.map((w) => ({ ...w, state: 'DETECTED', confidence: 0.8 })),
+    doors: doc.doors.map((d) => ({ ...d, state: 'DETECTED', confidence: 0.8 })),
+    windows: doc.windows.map((w) => ({ ...w, state: 'DETECTED', confidence: 0.8 })),
+    rooms: doc.rooms.map((r) => ({ ...r, statedAreaM2: null, state: 'DETECTED', confidence: 0.8 })),
+    extractionConfidence: 0.8,
+  };
+}
+
+async function checkpoint5(browser) {
+  const store = createStore();
+  store.readingDoc = await readingWithoutScale();
+  const errors = [];
+  const ctx = await openContext(browser, { width: 1440, height: 900, lang: 'en' });
+  const page = await ctx.newPage();
+  await wire(page, store, errors);
+
+  // A real PNG to upload: a screenshot of a blank page is a valid image.
+  const png = await page.screenshot({ clip: { x: 0, y: 0, width: 400, height: 300 } });
+
+  await page.goto(`${BASE}/design-studio`, { waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: 'Use floor plan' }).first().click();
+  await page.waitForURL(/\/design-studio\/[0-9a-f-]{36}\?start=floorplan$/, { timeout: 15000 });
+  await page.getByRole('heading', { name: 'Upload your floor plan' }).waitFor({ timeout: 15000 });
+  const project = store.db.ds_projects[0];
+  check('launcher: a floor-plan project is created and the flow opens at once', !!project && project.name === 'My floor plan');
+  await page.screenshot({ path: path.join(OUT, 'cp5-upload-1440-en.png') });
+
+  // Refused before upload: wrong type.
+  await page.locator('input[type=file]').setInputFiles({ name: 'plan.txt', mimeType: 'text/plain', buffer: Buffer.from('not a plan') });
+  await page.getByRole('alert').filter({ hasText: 'PNG, JPEG, WebP or PDF' }).waitFor({ timeout: 5000 });
+  check('upload: a non-image is refused in the browser, nothing is stored', store.objects.size === 0 && store.db.ds_floorplans.length === 0);
+
+  await page.locator('input[type=file]').setInputFiles({ name: 'plan.png', mimeType: 'image/png', buffer: png });
+  await page.getByRole('heading', { name: 'Check what HOMATCH read' }).waitFor({ timeout: 20000 });
+  const plan = store.db.ds_floorplans[0];
+  check('upload: bytes went to R2 under the project floor-plan category',
+    !!plan && plan.object_key.startsWith(`users/hm1/design-studio-floorplans/${project.id}/`) && store.objects.has(plan.object_key), plan?.object_key);
+  check('upload: the row holds a key and metadata only', !!plan && plan.mime === 'image/png' && plan.bytes === png.length
+    && /^[0-9a-f]{64}$/.test(plan.sha256) && plan.image_width === 400 && !('body' in plan));
+  check('reading: requested once for the stored plan', store.readings.length === 1 && store.readings[0].floorplanId === plan.id);
+  check('review: the counts of what was read are stated', await page.getByText('Read: 7 walls, 5 doors, 3 windows, 4 rooms.').isVisible());
+  await page.screenshot({ path: path.join(OUT, 'cp5-review-1440-en.png') });
+
+  // Correct one room type, then continue.
+  const kinds = page.getByRole('combobox', { name: 'Room type' });
+  check('review: one room-type control per room', (await kinds.count()) === 4);
+  await kinds.nth(3).selectOption('STORAGE').catch(async () => { await kinds.nth(3).selectOption({ index: 1 }); });
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByRole('heading', { name: 'How big is it?' }).waitFor();
+  // No printed scale: door symbols alone give a weak estimate, stated as one.
+  check('size: without a printed scale the size is an estimate, with its uncertainty',
+    await page.getByText('estimated the size from the drawing itself (about ±15%)', { exact: false }).isVisible());
+  check('size: the state is Estimated until the customer measures', await page.getByText('Estimated dimensions').first().isVisible());
+  check('size: nothing is built before the customer chooses', store.db.ds_spatial_sources.length === 0);
+
+  await page.getByLabel('Total area of the apartment (m²)').fill('70');
+  await page.getByText('Calibrated dimensions').first().waitFor({ timeout: 5000 });
+  check('size: one real measurement calibrates', await page.getByText('Scaled from your measurement.').isVisible());
+  await page.screenshot({ path: path.join(OUT, 'cp5-size-1440-en.png') });
+  await page.getByRole('button', { name: 'Create 3D space' }).click();
+  await page.locator('main canvas').waitFor({ timeout: 25000 });
+  await page.waitForTimeout(1000);
+
+  const source = store.db.ds_spatial_sources[0];
+  check('build: one READY floor-plan source, CALIBRATED, generated by HOMATCH',
+    store.db.ds_spatial_sources.length === 1 && source.kind === 'FLOORPLAN_SCENE' && source.geometry_state === 'CALIBRATED'
+    && source.floorplan_id === plan.id && source.generator_version === source.canonical.generatorVersion);
+  check('build: the scale comes from the measurement (70 m² → 0.01 m/px)', Math.abs(source.canonical.metresPerPx - 0.01) < 0.0005, String(source.canonical.metresPerPx));
+  check('build: the customer\'s room correction reached the geometry',
+    JSON.stringify(source.canonical.scene).includes('STORAGE'));
+  check('build: the review is kept with the plan', plan.corrections.length === 1 && plan.corrections[0].anchors[0].kind === 'TOTAL_AREA');
+  check('build: the project points at the new space', store.db.ds_projects[0].active_source_id === source.id);
+  check('workspace: opens on the new space with an Original version',
+    store.db.ds_versions.some((v) => v.source_id === source.id && v.origin === 'ORIGINAL'));
+  check('workspace: the dimensions are labelled calibrated', await page.getByText('Calibrated dimensions').first().isVisible());
+  check('workspace: the start parameter is gone', !page.url().includes('start='));
+  check('workspace: an unmeasured ceiling is labelled as typical, not stated as fact',
+    source.canonical.ceilingSource === 'TYPICAL' && await page.getByText(/typical, not measured/).isVisible());
+  await page.screenshot({ path: path.join(OUT, 'cp5-workspace-1440-en.png') });
+
+  // Recalibrate: a second measurement that agrees verifies the dimensions.
+  const head = store.db.ds_versions.find((v) => v.source_id === source.id);
+  await page.getByRole('button', { name: 'Calibrate dimensions' }).click();
+  await page.getByRole('heading', { name: 'How big is it?' }).waitFor({ timeout: 10000 });
+  check('recalibrate: opens on the measurements already given', (await page.getByLabel('Total area of the apartment (m²)').inputValue()) === '70');
+  await page.getByLabel('Total area of the apartment (m²)').fill('72.8');
+  await page.getByRole('button', { name: 'Update the 3D space' }).click();
+  await page.locator('main canvas').waitFor({ timeout: 25000 });
+  await page.waitForTimeout(1000);
+  const next = store.db.ds_spatial_sources.find((s) => s.id !== source.id);
+  check('recalibrate: a new source; the earlier one is superseded, not changed',
+    !!next && next.status === 'READY' && source.status === 'SUPERSEDED' && Math.abs(source.canonical.metresPerPx - 0.01) < 0.0005);
+  const carried = store.db.ds_versions.find((v) => v.source_id === next?.id && v.origin === 'RESTORE');
+  check('recalibrate: the design is carried to the new geometry as a new version with lineage',
+    !!carried && carried.parent_id === head.id && store.db.ds_projects[0].head_version_id === carried.id);
+  check('recalibrate: the earlier version stays on the geometry it was made on',
+    store.db.ds_versions.find((v) => v.id === head.id)?.source_id === source.id);
+  await ctx.close();
+
+  // The same flow lays out on a phone and in Hebrew (RTL).
+  const phone = await openContext(browser, { width: 390, height: 844, lang: 'he' });
+  const p2 = await phone.newPage();
+  const store2 = createStore();
+  store2.readingDoc = await readingWithoutScale();
+  await wire(p2, store2, errors);
+  await p2.goto(`${BASE}/design-studio`, { waitUntil: 'domcontentloaded' });
+  await p2.getByRole('button', { name: 'שימוש בתוכנית קומה' }).first().click().catch(async () => {
+    await p2.locator('button', { has: p2.locator('svg.lucide-file-image') }).first().click();
+  });
+  await p2.locator('input[type=file]').waitFor({ state: 'attached', timeout: 15000 });
+  check('phone RTL: the upload step fits', (await overflowX(p2)) <= 0);
+  await p2.locator('input[type=file]').setInputFiles({ name: 'plan.png', mimeType: 'image/png', buffer: png });
+  await p2.getByRole('combobox').first().waitFor({ timeout: 20000 });
+  check('phone RTL: the review step fits', (await overflowX(p2)) <= 0);
+  // The drawing loads, then settles to the screen width: poll rather than race it.
+  let planBox = null;
+  for (let i = 0; i < 30; i += 1) {
+    planBox = await p2.locator('svg').filter({ has: p2.locator('polygon, line') }).first().boundingBox();
+    if (planBox && planBox.width <= 390 && planBox.width > 200) break;
+    await p2.waitForTimeout(200);
+  }
+  check('phone RTL: the whole drawing is visible, scaled to the screen', !!planBox && planBox.width <= 390 && planBox.x >= 0, JSON.stringify(planBox));
+  await p2.screenshot({ path: path.join(OUT, 'cp5-review-390-he.png'), fullPage: true });
+  await phone.close();
+  check('no page errors (checkpoint 5)', errors.length === 0, errors.join('\n        '));
 }
 
 /* ── Checkpoint 4: versions, compare, saved views, thumbnails ──────── */

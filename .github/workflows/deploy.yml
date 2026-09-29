@@ -513,6 +513,14 @@ jobs:
             "developer-buyer-document"
             "developer-document-extract"
             "developer-floorplan-extract"
+            # HOMATCH DESIGN STUDIO. Browser-facing, JWT-verified, and acting
+            # only on the caller's own rows (RLS reads as the caller).
+            #   design-studio-floorplan  checks an uploaded plan by its bytes
+            #                             and writes an AI reading onto
+            #                             ds_floorplans as a PROPOSAL. It
+            #                             never builds geometry or marks
+            #                             anything verified. Metered, unpriced.
+            "design-studio-floorplan"
             # Object storage. storage-sign is the ONLY runtime anywhere that
             # holds an R2 credential: it authorises the caller in Postgres
             # under that caller's own token and hands back a short-lived

@@ -99,6 +99,8 @@ export interface CanonicalSpace {
   metresPerPx: number | null;
   /** Relative uncertainty of the scale (0.15 = ±15%), null when exact. */
   scaleUncertainty: number | null;
+  /** Where the ceiling height came from; TYPICAL means nobody measured it. */
+  ceilingSource?: 'CUSTOMER' | 'DRAWING' | 'TYPICAL' | 'DEVELOPER';
   scene: GeneratedScene;
 }
 

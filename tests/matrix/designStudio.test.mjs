@@ -184,3 +184,38 @@ test('an upload commit declares the type the signer requires', () => {
 test('the migration leaves transactions to the runner', () => {
   assert.ok(!/^\s*(BEGIN|COMMIT)\s*;/im.test(MIGRATION));
 });
+
+/* ── The customer floor plan (checkpoint 5) ─────────────────────── */
+
+test('the floor-plan reader treats the upload as untrusted and stores only a proposal', () => {
+  const fn = read('supabase/functions/design-studio-floorplan/index.ts');
+  assert.match(fn, /refuseIfImpersonating\(/, 'an impersonating admin could spend reading on a customer');
+  assert.match(fn, /caller\.from\('ds_floorplans'\)/, 'the plan row is not read as the caller (RLS decides ownership)');
+  assert.match(fn, /startsWith\(expectedPrefix\)/, 'the object key is not checked against the caller and project');
+  assert.match(fn, /sniffType\(bytes/, 'the file type is trusted from the name or header instead of its bytes');
+  assert.match(fn, /imageSize\(bytes/, 'the image dimensions are not read from the bytes');
+  assert.match(fn, /MAX_BYTES/, 'no size limit');
+  assert.ok(!/ds_spatial_sources/.test(fn), 'the reader writes geometry: a reading is a proposal, not a space');
+  assert.ok(!/evaluateGate/.test(fn), 'the reader reuses the Developer gate');
+  assert.match(fn, /recordUnbilledUsage\(/, 'reading is not metered');
+  const code = fn.replace(/\/\/.*$/gm, '');
+  assert.ok(!/rpc\(['"](charge|debit|reserve|settle)\w*/i.test(code), 'reading charges before billing is confirmed');
+});
+
+test('the customer path creates geometry only through the checking RPC', () => {
+  const svc = read('src/services/designStudio/floorplans.ts');
+  assert.match(svc, /rpc\('ds_create_floorplan_source'/);
+  assert.ok(!/from\('ds_spatial_sources'\)\.(insert|update|upsert)/.test(svc), 'the browser writes a spatial source directly');
+  assert.match(svc, /isEvalSupported: false/, 'pdf.js may evaluate code from an uploaded PDF');
+  assert.match(MIGRATION, /DS_CALIBRATION_REQUIRED|anchors/, 'the database does not check the truth claim of a calibrated source');
+});
+
+test('an unmeasured ceiling is recorded as typical, never as a fact', () => {
+  const flow = read('src/components/designStudio/FloorPlanFlow.tsx');
+  assert.match(flow, /ceilingM \? 'CUSTOMER' : doc\.ceilingHeight \? 'DRAWING' : 'TYPICAL'/);
+  assert.match(read('src/components/designStudio/workspace/Inspector.tsx'), /ds_inspector_ceiling_typical/);
+});
+
+test('the reader is deployed with JWT verification like every signed-in function', () => {
+  assert.match(read('.github/workflows/deploy.yml'), /design-studio-floorplan/);
+});

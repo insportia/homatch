@@ -19,7 +19,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   AlertTriangle, Armchair, ArrowLeft, Check, ChevronDown, CloudOff, Columns2, Footprints, Info, Layers, LayoutGrid, Loader2, Maximize, Palette as PaletteIcon,
-  PanelLeftClose, PanelLeftOpen, Redo2, Scan, Sparkles, SquareDashed, Sun, Undo2,
+  PanelLeftClose, PanelLeftOpen, Redo2, Scan, Share2, Sparkles, SquareDashed, Sun, Undo2,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -59,6 +59,7 @@ import { isModelAnalysis, modelParts, partRoles, type ModelPart } from '@/lib/de
 import { FurniturePanel } from './FurniturePanel';
 import { AiDesignPanel, type AiProposalItem } from './AiDesignPanel';
 import { WalkthroughOverlay } from './WalkthroughOverlay';
+import { ShareDialog } from './ShareDialog';
 import { Inspector } from './Inspector';
 import { ObjectControls, PartControls, SurfaceControls } from './EditControls';
 import { PlanNavigator } from './PlanNavigator';
@@ -616,6 +617,7 @@ function Editor({
 
   // ── Walkthrough: the current design, at eye level, inside real walls ──
   const [walking, setWalking] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [walkRoom, setWalkRoom] = useState<string | null>(null);
   const [canvasReady, setCanvasReady] = useState(false);
   const walkModel = useRef<ReturnType<typeof buildWalkModel> | null>(null);
@@ -736,6 +738,7 @@ function Editor({
     ? 'ds_panel_parts' : MODES.find((m) => m.id === id)?.labelKey ?? 'ds_panel_rooms');
 
   const roomLabelFor = activeRoom ? names.get(activeRoom.id) ?? null : null;
+  const roomLabel = useCallback((id: string) => names.get(id) ?? '', [names]);
 
   const panel = (m: LeftMode) => {
     switch (m) {
@@ -955,6 +958,9 @@ function Editor({
           <button type="button" className={cn(TOOL_BUTTON, 'hidden md:inline-flex')} disabled={!activeRoomId} onClick={() => activeRoomId && focusRoom(activeRoomId)} aria-label={t('ds_view_room')}>
             <Scan className="h-4 w-4" aria-hidden="true" /><span className="hidden 2xl:inline">{t('ds_view_room')}</span>
           </button>
+          <button type="button" className={TOOL_BUTTON} disabled={!space} onClick={() => setShareOpen(true)} aria-label={t('ds_share_title')} title={space ? t('ds_share_title') : t('ds_share_error_source')}>
+            <Share2 className="h-4 w-4" aria-hidden="true" /><span className="hidden xl:inline">{t('ds_share_short')}</span>
+          </button>
           <button
             type="button"
             className={cn(TOOL_BUTTON, walking && 'bg-white/10 text-white')}
@@ -1015,13 +1021,24 @@ function Editor({
             onPick={onPick}
             onReady={(c) => { controllerRef.current = c; c.applyDesign(state, assets, materials); setCanvasReady(true); }}
             onModelError={() => setModelFailed(true)}
-            roomLabel={(id) => names.get(id) ?? ''}
+            roomLabel={walking ? undefined : roomLabel}
             onDropAsset={(code, point) => { const a = assets.get(code); if (a) addAsset(a, point); }}
             objectDrag={walking ? undefined : objectDrag}
             initialCamera={initialCamera}
           />
           {walking && space ? (
             <WalkthroughOverlay
+              labels={{
+                title: t('ds_walk_title'), reset: t('ds_walk_reset'), exit: t('ds_walk_exit'), rooms: t('ds_walk_rooms'),
+                joystick: t('ds_walk_joystick'), helpKeys: t('ds_walk_help_keys'),
+              }}
+              actions={space ? (
+                <button type="button" onClick={() => setShareOpen(true)} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px] font-medium text-white/85 ring-1 ring-white/20 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]">
+                  <Share2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span className="hidden lg:inline">{t('ds_share_walkthrough')}</span>
+                  <span className="sr-only lg:hidden">{t('ds_share_walkthrough')}</span>
+                </button>
+              ) : null}
               roomName={walkRoom ? names.get(walkRoom) ?? null : null}
               rooms={tour.map((id) => ({ id, name: names.get(id) ?? '' }))}
               currentRoomId={walkRoom}
@@ -1083,6 +1100,16 @@ function Editor({
           onView={(view) => controllerRef.current?.restore(view.camera)}
           onDeleteView={(id) => { void removeView(id); }}
           onClose={() => setTrayOpen(false)}
+        />
+      ) : null}
+      {shareOpen ? (
+        <ShareDialog
+          projectId={projectId}
+          versionId={version.id}
+          versionName={versionName}
+          versionNames={new Map(versions.map((v) => [v.id, v.name]))}
+          beforeCreate={() => session.saveNow()}
+          onClose={() => setShareOpen(false)}
         />
       ) : null}
       {compareOpen ? (

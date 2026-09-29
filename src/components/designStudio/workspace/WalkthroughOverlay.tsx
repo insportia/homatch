@@ -4,15 +4,31 @@
 // visitor meets them (the Camera Director's tour), back to the entry, and
 // out. Desktop walks with W A S D / arrows and looks by dragging; touch
 // walks with the joystick and looks by dragging anywhere else.
+//
+// Used by the editor and by the public share viewer, so it takes its words
+// as props rather than from the app's language context.
 
 import React, { useRef, useState } from 'react';
-import { Footprints, RotateCcw, X } from 'lucide-react';
-import { useLanguage } from '@/contexts/LanguageContext';
+import { Footprints, Maximize, Pause, Play, RotateCcw, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+export interface WalkthroughLabels {
+  title: string;
+  reset: string;
+  exit: string;
+  rooms: string;
+  joystick: string;
+  helpKeys: string;
+  tourPlay?: string;
+  tourPause?: string;
+  fullscreen?: string;
+}
+
 export function WalkthroughOverlay({
-  roomName, rooms, currentRoomId, touch, onRoom, onReset, onExit, onStick,
+  labels, roomName, rooms, currentRoomId, touch, onRoom, onReset, onExit, onStick,
+  touring, onTour, onFullscreen, actions,
 }: {
+  labels: WalkthroughLabels;
   roomName: string | null;
   rooms: Array<{ id: string; name: string }>;
   currentRoomId: string | null;
@@ -21,27 +37,47 @@ export function WalkthroughOverlay({
   onReset: () => void;
   onExit: () => void;
   onStick: (x: number, y: number) => void;
+  /** Guided tour, when offered. */
+  touring?: boolean;
+  onTour?: () => void;
+  /** Fullscreen, only where the browser allows it. */
+  onFullscreen?: () => void;
+  /** Extra buttons (the editor's Share). */
+  actions?: React.ReactNode;
 }) {
-  const { t } = useLanguage();
+  const quiet = 'inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px] font-medium text-white/85 ring-1 ring-white/20 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]';
   return (
     <>
       <div className="pointer-events-none absolute inset-x-3 top-3 z-10 flex flex-col items-stretch gap-2">
-        <div className="pointer-events-auto mx-auto flex w-full max-w-2xl items-center gap-2 rounded-xl bg-[#0C1119]/90 px-3 py-2 text-white shadow-lg ring-1 ring-white/10 backdrop-blur">
+        <div className="pointer-events-auto mx-auto flex w-full max-w-2xl items-center gap-1.5 rounded-xl bg-[#0C1119]/90 px-3 py-2 text-white shadow-lg ring-1 ring-white/10 backdrop-blur sm:gap-2">
           <Footprints className="h-4 w-4 shrink-0 text-[hsl(38_92%_62%)]" aria-hidden="true" />
           <p className="min-w-0 flex-1 truncate text-[14px]" aria-live="polite">
-            <span className="font-semibold">{t('ds_walk_title')}</span>
+            <span className="font-semibold">{labels.title}</span>
             {roomName ? <span className="text-white/75"> · {roomName}</span> : null}
           </p>
-          <button type="button" onClick={onReset} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px] font-medium text-white/85 ring-1 ring-white/20 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]">
+          {onTour && labels.tourPlay && labels.tourPause ? (
+            <button type="button" onClick={onTour} aria-pressed={!!touring} className={quiet} aria-label={touring ? labels.tourPause : labels.tourPlay}>
+              {touring ? <Pause className="h-3.5 w-3.5" aria-hidden="true" /> : <Play className="h-3.5 w-3.5 rtl:-scale-x-100" aria-hidden="true" />}
+              <span className="hidden sm:inline">{touring ? labels.tourPause : labels.tourPlay}</span>
+            </button>
+          ) : null}
+          <button type="button" onClick={onReset} className={quiet} aria-label={labels.reset}>
             <RotateCcw className="h-3.5 w-3.5 rtl:-scale-x-100" aria-hidden="true" />
-            <span className="hidden sm:inline">{t('ds_walk_reset')}</span>
+            <span className="hidden md:inline">{labels.reset}</span>
           </button>
+          {onFullscreen && labels.fullscreen ? (
+            <button type="button" onClick={onFullscreen} className={quiet} aria-label={labels.fullscreen}>
+              <Maximize className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          ) : null}
+          {actions}
           <button type="button" onClick={onExit} className="inline-flex h-8 items-center gap-1.5 rounded-md bg-white px-2.5 text-[13px] font-semibold text-[#0C1119] hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]">
             <X className="h-3.5 w-3.5" aria-hidden="true" />
-            {t('ds_walk_exit')}
+            <span className="hidden sm:inline">{labels.exit}</span>
+            <span className="sr-only sm:hidden">{labels.exit}</span>
           </button>
         </div>
-        <nav aria-label={t('ds_walk_rooms')} className="pointer-events-auto mx-auto flex max-w-full gap-1.5 overflow-x-auto pb-1">
+        <nav aria-label={labels.rooms} className="pointer-events-auto mx-auto flex max-w-full gap-1.5 overflow-x-auto pb-1">
           {rooms.map((r) => (
             <button
               key={r.id}
@@ -57,10 +93,10 @@ export function WalkthroughOverlay({
         </nav>
       </div>
       {touch ? (
-        <Joystick label={t('ds_walk_joystick')} onChange={onStick} />
+        <Joystick label={labels.joystick} onChange={onStick} />
       ) : (
         <p className="pointer-events-none absolute bottom-3 start-1/2 z-10 -translate-x-1/2 rounded-md bg-[#0C1119]/80 px-3 py-1.5 text-[13px] text-white/90 rtl:translate-x-1/2">
-          {t('ds_walk_help_keys')}
+          {labels.helpKeys}
         </p>
       )}
     </>

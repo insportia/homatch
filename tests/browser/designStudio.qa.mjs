@@ -14,12 +14,15 @@
 // Exit code 1 on any failed check. Screenshots are written to QA_OUT (a temp
 // directory by default), never into the repository.
 
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+
+const createHashSync = (text) => createHash('sha256').update(text).digest('hex');
+const randomToken = () => randomBytes(32).toString('base64url');
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const PORT = 4193;
@@ -37,6 +40,7 @@ const findChrome = () => [
 const { chromium } = createRequire(import.meta.url)('playwright-core');
 
 let failures = 0;
+const ok = (name) => console.log(`  ok   ${name}`);
 const check = (name, ok, detail = '') => {
   console.log(`${ok ? '  ok  ' : '  FAIL'} ${name}${ok || !detail ? '' : `\n        ${detail}`}`);
   if (!ok) failures += 1;
@@ -77,6 +81,8 @@ export function createStore(seed = {}) {
     ds_palettes: [],
     ds_floorplans: [],
     ds_jobs: [],
+    ds_shares: [],
+    ds_published_designs: [],
     ...seed,
   };
 
@@ -127,6 +133,10 @@ export function createStore(seed = {}) {
     if (method === 'GET') {
       let out = rows.filter((r) => matches(r, fs));
       if (table === 'ds_projects' && (url.searchParams.get('select') || '').includes('sources:')) out = out.map(withProjectEmbeds);
+      if (table === 'ds_shares') {
+        out = out.map(({ token_hash, ...r }) => ({ ...r, published: (({ version_id, created_at }) => ({ version_id, created_at }))(db.ds_published_designs.find((p) => p.id === r.published_id) ?? {}) }))
+          .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+      }
       return { status: 200, body: out };
     }
     if (method === 'POST') {
@@ -178,6 +188,51 @@ export function createStore(seed = {}) {
       db.ds_spatial_sources.push(source);
       return source.id;
     }
+    if (name === 'ds_create_share') {
+      const version = db.ds_versions.find((v) => v.id === args.p_version_id);
+      if (!version) return { __error: 'DS_VERSION_NOT_OWNED' };
+      const stateText = JSON.stringify(version.state);
+      const hash = createHashSync(stateText);
+      let pub = db.ds_published_designs.find((p) => p.version_id === version.id && p.state_hash === hash);
+      if (!pub) {
+        pub = { id: randomUUID(), project_id: version.project_id, user_id: 'hm1', version_id: version.id, source_id: version.source_id,
+          state: JSON.parse(stateText), state_hash: hash, title: db.ds_projects.find((p) => p.id === version.project_id)?.name ?? 'Home', created_at: now() };
+        db.ds_published_designs.push(pub);
+      }
+      const token = randomToken();
+      const share = { id: randomUUID(), token_hash: createHashSync(token), token_hint: token.slice(-4), published_id: pub.id,
+        project_id: version.project_id, user_id: 'hm1', share_type: args.p_share_type, label: args.p_label ?? null,
+        expires_at: args.p_expires_at ?? null, revoked_at: null, created_at: now(), last_viewed_at: null, view_count: 0 };
+      db.ds_shares.push(share);
+      return { id: share.id, token };
+    }
+    if (name === 'ds_revoke_share') {
+      const share = db.ds_shares.find((x) => x.id === args.p_share_id);
+      if (share && !share.revoked_at) share.revoked_at = now();
+      return null;
+    }
+    if (name === 'ds_public_share') {
+      const token = String(args.p_token ?? '');
+      if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return { status: 'NOT_FOUND' };
+      const share = db.ds_shares.find((x) => x.token_hash === createHashSync(token));
+      if (!share) return { status: 'NOT_FOUND' };
+      if (share.revoked_at) return { status: 'REVOKED' };
+      if (share.expires_at && Date.parse(share.expires_at) <= Date.now()) return { status: 'EXPIRED' };
+      const pub = db.ds_published_designs.find((p) => p.id === share.published_id);
+      const src = db.ds_spatial_sources.find((x) => x.id === pub?.source_id);
+      if (!pub || !src?.canonical?.scene) return { status: 'UNAVAILABLE' };
+      share.view_count += 1;
+      share.last_viewed_at = now();
+      const codes = new Set((pub.state.objects ?? []).map((o) => o.assetId));
+      const mats = new Set(Object.values(pub.state.surfaces ?? {}).map((x) => x.materialId).filter(Boolean));
+      return {
+        status: 'ACTIVE', shareType: share.share_type, title: pub.title, sharedAt: pub.created_at,
+        geometryState: src.canonical.geometryState, ceilingSource: src.canonical.ceilingSource ?? null,
+        scene: src.canonical.scene, state: pub.state,
+        assets: db.ds_catalog_assets.filter((a) => codes.has(a.code)).map(({ id, model_key, ...a }) => ({ id, ...a })),
+        materials: db.ds_catalog_materials.filter((m) => mats.has(m.id)),
+      };
+    }
     return null;
   }
 
@@ -185,6 +240,8 @@ export function createStore(seed = {}) {
 }
 
 export async function wire(page, store, errors) {
+  // Every Supabase request this page makes (the public viewer is held to one).
+  page.apiCalls = [];
   page.on('pageerror', (e) => errors.push(String(e).slice(0, 300)));
   page.on('console', (m) => {
     const txt = m.text();
@@ -293,7 +350,12 @@ export async function wire(page, store, errors) {
     if (url.pathname.includes('/auth/v1/user')) return json(fakeSession().user);
     if (url.pathname.includes('/auth/v1/token')) return json(fakeSession());
     const rpc = url.pathname.match(/\/rest\/v1\/rpc\/([a-z0-9_]+)/i);
-    if (rpc) return json(store.rpc(rpc[1], JSON.parse(req.postData() || '{}')));
+    if (url.hostname.includes('supabase')) page.apiCalls.push(`${req.method()} ${url.pathname}`);
+    if (rpc) {
+      const result = store.rpc(rpc[1], JSON.parse(req.postData() || '{}'));
+      if (result && result.__error) return json({ message: result.__error, code: 'P0001' }, 400);
+      return json(result);
+    }
     const rest = url.pathname.match(/\/rest\/v1\/([a-z0-9_]+)/i);
     if (!rest) return json({});
     const wantsOne = (req.headers().accept || '').includes('vnd.pgrst.object');
@@ -312,6 +374,15 @@ export async function startServer() {
   for (let i = 0; i < 120; i += 1) {
     try { await fetch(BASE); break; } catch { await new Promise((r) => setTimeout(r, 250)); }
   }
+  // On Windows the spawned shell is not the server: kill the whole tree, or
+  // an orphaned preview keeps the port and serves a stale build next run.
+  const kill = server.kill.bind(server);
+  server.kill = () => {
+    if (process.platform === 'win32' && server.pid) {
+      try { spawnSync('taskkill', ['/pid', String(server.pid), '/T', '/F'], { stdio: 'ignore' }); return true; } catch { /* fall through */ }
+    }
+    return kill();
+  };
   return server;
 }
 
@@ -418,6 +489,7 @@ async function main() {
     await checkpoint6(browser);
     await checkpoint7(browser);
     await checkpoint8(browser);
+    await checkpoint8Share(browser);
   } finally {
     await browser.close().catch(() => {});
     server.kill();
@@ -603,6 +675,152 @@ async function checkpoint8(browser) {
   await p2.screenshot({ path: path.join(OUT, 'cp8-walk-390-he.png') });
   await phone.close();
   check('no page errors (checkpoint 8)', errors.length === 0, errors.join('\n        '));
+}
+
+/* ── Checkpoint 8: public share links ─────────────────────────────── */
+
+async function anonymousContext(browser, { width, height, lang }) {
+  // A visitor with no HOMATCH session at all.
+  const ctx = await browser.newContext({ viewport: { width, height }, reducedMotion: 'reduce', hasTouch: width < 768, isMobile: width < 768 });
+  if (lang) await ctx.addInitScript((l) => window.localStorage.setItem('homatch_lang', l), lang);
+  return ctx;
+}
+
+async function checkpoint8Share(browser) {
+  const { store, project, version } = await seededStore();
+  version.state.objects = [
+    { instanceId: 'sofa-1', assetId: 'dev/sofa-3', roomId: 'r-living', position: { x: 3, y: 0, z: 1.2 }, rotationY: 0, materialVariant: null, colorOverride: null, locked: false },
+  ];
+  const errors = [];
+  const ctx = await openContext(browser, { width: 1440, height: 900, lang: 'en' });
+  await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: BASE });
+  const page = await ctx.newPage();
+  await wire(page, store, errors);
+  await page.goto(`${BASE}/design-studio/${project.id}`, { waitUntil: 'domcontentloaded' });
+  await page.locator('main canvas').waitFor({ timeout: 25000 });
+
+  // Owner: create two links.
+  await page.getByRole('button', { name: 'Share this design' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Share this design' });
+  await dialog.getByRole('textbox', { name: 'Name (only you see it)' }).fill('For my parents');
+  await dialog.getByRole('combobox', { name: 'Link works' }).selectOption({ label: 'For 30 days' });
+  await dialog.getByRole('button', { name: 'Create link' }).click();
+  const first = dialog.getByRole('listitem', { name: 'For my parents' });
+  await first.getByRole('textbox', { name: 'Link' }).waitFor({ timeout: 10000 });
+  const url1 = await first.getByRole('textbox', { name: 'Link' }).inputValue();
+  check('owner: a link is a /w/ address with a 43-character token', new RegExp(`^${BASE}/w/[A-Za-z0-9_-]{43}$`).test(url1), url1);
+  check('owner: the database keeps a hash, never the token', store.db.ds_shares.length === 1 && !JSON.stringify(store.db.ds_shares).includes(url1.slice(-43)));
+  await first.getByRole('button', { name: 'Copy link' }).click();
+  await first.getByRole('button', { name: 'Copied' }).waitFor();
+  check('owner: copy puts the link on the clipboard', (await page.evaluate(() => navigator.clipboard.readText())) === url1);
+  check('owner: the link is shown as active, with its expiry', await first.getByText('Active').isVisible() && await first.getByText(/until /).isVisible());
+  await dialog.getByRole('button', { name: 'Create link' }).click();
+  await page.waitForTimeout(600);
+  const url2 = await dialog.getByRole('listitem').first().getByRole('textbox', { name: 'Link' }).inputValue();
+  check('owner: another link is independent', url2 !== url1 && store.db.ds_shares.length === 2);
+  check('owner: two links, one frozen snapshot (nothing duplicated)', store.db.ds_published_designs.length === 1);
+  check('owner: Web Share is offered only where the browser has it', (await dialog.getByRole('button', { name: 'Send' }).count()) === (await page.evaluate(() => typeof navigator.share === 'function') ? 2 : 0));
+  await page.screenshot({ path: path.join(OUT, 'cp8-share-dialog-1440-en.png') });
+  await dialog.getByRole('button', { name: 'Close' }).click();
+
+  // Later edits never reach an existing link.
+  await page.getByRole('navigation', { name: 'Design tools' }).first().getByRole('button', { name: 'Lighting' }).click();
+  await page.getByRole('radio', { name: 'Night' }).click();
+  await page.waitForTimeout(1800);
+  check('frozen: the version changed after sharing', store.db.ds_versions.find((v) => v.id === version.id).state.lighting.timeOfDay === 'NIGHT');
+  check('frozen: the shared snapshot did not', store.db.ds_published_designs[0].state.lighting.timeOfDay === 'DAY');
+
+  // Visitor, desktop, no account.
+  const anon = await anonymousContext(browser, { width: 1440, height: 900 });
+  const v = await anon.newPage();
+  await wire(v, store, errors);
+  const html = await (await v.request.get(url1)).text();
+  check('public page: generic preview metadata, nothing private in the HTML', /og:title/.test(html) && /noindex/.test(html) && !html.includes('Vake') && !html.includes(project.id));
+  await v.goto(url1, { waitUntil: 'domcontentloaded' });
+  await v.getByRole('button', { name: 'Enter walkthrough' }).waitFor({ timeout: 25000 });
+  check('visitor: the shared home opens without an account, with its title', await v.getByRole('heading', { name: 'Two-bedroom apartment, Vake' }).isVisible());
+  check('visitor: no editor anywhere', (await v.getByRole('navigation', { name: 'Design tools' }).count()) === 0
+    && (await v.getByText(/AI designer|Inspector|Versions|Undo/).count()) === 0);
+  await v.screenshot({ path: path.join(OUT, 'cp8-public-cover-1440-en.png') });
+  await v.getByRole('button', { name: 'Enter walkthrough' }).click();
+  const whereV = () => v.locator('p[aria-live="polite"]').filter({ hasText: 'Walkthrough' }).textContent();
+  await v.getByRole('button', { name: 'Overview' }).waitFor();
+  check('visitor: enters at the entrance', (await whereV())?.includes('Hall'), await whereV());
+  await v.getByRole('button', { name: 'Guided tour' }).click();
+  await v.waitForTimeout(3500);
+  const toured = await whereV();
+  check('visitor: the guided tour moves through the rooms', !!toured && !toured.includes('Hall'), toured);
+  await v.getByRole('button', { name: 'Pause tour' }).click();
+  await v.getByRole('navigation', { name: 'Go to a room' }).getByRole('button', { name: 'Living room' }).click();
+  await v.waitForTimeout(300);
+  check('visitor: room navigation', (await whereV())?.includes('Living room'));
+  await v.keyboard.down('KeyW'); await v.waitForTimeout(1500); await v.keyboard.up('KeyW');
+  check('visitor: walks and stays inside', /Walkthrough · \S/.test((await whereV()) ?? ''));
+  await v.screenshot({ path: path.join(OUT, 'cp8-public-walk-1440-en.png') });
+  check('visitor: the page only ever called the one public function',
+    v.apiCalls.length > 0 && v.apiCalls.every((c) => c === 'POST /rest/v1/rpc/ds_public_share'), v.apiCalls.join(', '));
+  await v.reload({ waitUntil: 'domcontentloaded' });
+  await v.getByRole('button', { name: 'Enter walkthrough' }).waitFor({ timeout: 25000 });
+  ok('visitor: reloading the link works');
+
+  // Revocation is per link.
+  await page.getByRole('button', { name: 'Share this design' }).click();
+  await page.getByRole('dialog').getByRole('listitem', { name: 'For my parents' }).getByRole('button', { name: 'Revoke link' }).click();
+  await page.getByRole('dialog').getByRole('listitem', { name: 'For my parents' }).getByText('Revoked').waitFor();
+  await v.reload({ waitUntil: 'domcontentloaded' });
+  await v.getByRole('heading', { name: 'This link is no longer shared' }).waitFor({ timeout: 15000 });
+  ok('revoke: the revoked link stops at once, with a clean page');
+  await v.goto(url2, { waitUntil: 'domcontentloaded' });
+  await v.getByRole('button', { name: 'Enter walkthrough' }).waitFor({ timeout: 25000 });
+  ok('revoke: the other link keeps working');
+
+  // Expired and unknown.
+  store.db.ds_shares.find((x) => url2.endsWith(x.token_hint) && !x.revoked_at).expires_at = new Date(Date.now() - 1000).toISOString();
+  await v.reload({ waitUntil: 'domcontentloaded' });
+  await v.getByRole('heading', { name: 'This link has expired' }).waitFor({ timeout: 15000 });
+  ok('expiry: an expired link says so');
+  await v.goto(`${BASE}/w/${'A'.repeat(43)}`, { waitUntil: 'domcontentloaded' });
+  await v.getByRole('heading', { name: 'This link does not open anything' }).waitFor({ timeout: 15000 });
+  ok('not found: a guessed link finds nothing');
+  await v.screenshot({ path: path.join(OUT, 'cp8-public-notfound-1440-en.png') });
+  await anon.close();
+
+  // Visitor, phone, Hebrew (RTL), touch: joystick and language.
+  const fresh = await page.evaluate(() => 0);
+  void fresh;
+  await page.getByRole('dialog').getByRole('button', { name: 'Create link' }).click();
+  await page.waitForTimeout(600);
+  const url3 = await page.getByRole('dialog').getByRole('listitem').first().getByRole('textbox', { name: 'Link' }).inputValue();
+  await ctx.close();
+  const phone = await anonymousContext(browser, { width: 390, height: 844, lang: 'he' });
+  const p = await phone.newPage();
+  await wire(p, store, errors);
+  await p.goto(url3, { waitUntil: 'domcontentloaded' });
+  await p.getByRole('button', { name: 'כניסה לסיור' }).waitFor({ timeout: 25000 });
+  check('phone he: the page speaks Hebrew, right to left', (await p.evaluate(() => document.documentElement.dir)) === 'rtl');
+  check('phone he: the cover fits', (await overflowX(p)) <= 0);
+  await p.screenshot({ path: path.join(OUT, 'cp8-public-cover-390-he.png') });
+  await p.getByRole('button', { name: 'כניסה לסיור' }).click();
+  const stick = p.getByRole('application', { name: 'הליכה: גררו כדי לזוז' });
+  await stick.waitFor();
+  const sb = await stick.boundingBox();
+  await p.mouse.move(sb.x + sb.width / 2, sb.y + sb.height / 2);
+  await p.mouse.down();
+  await p.mouse.move(sb.x + sb.width / 2, sb.y + 4, { steps: 4 });
+  await p.waitForTimeout(1200);
+  await p.mouse.up();
+  check('phone he: joystick walking stays inside', /סיור · \S/.test((await p.locator('p[aria-live="polite"]').filter({ hasText: 'סיור' }).textContent()) ?? ''));
+  check('phone he: the walkthrough fits', (await overflowX(p)) <= 0);
+  await p.screenshot({ path: path.join(OUT, 'cp8-public-walk-390-he.png') });
+  await p.setViewportSize({ width: 844, height: 390 });
+  await p.waitForTimeout(500);
+  check('phone he: turning the phone keeps the walkthrough usable', (await overflowX(p)) <= 0 && await stick.isVisible());
+  await p.getByRole('button', { name: 'מבט כללי' }).click();
+  await p.getByRole('combobox', { name: 'שפה' }).selectOption('en');
+  await p.getByRole('button', { name: 'Enter walkthrough' }).waitFor();
+  ok('phone: a visitor can switch language without an account');
+  await phone.close();
+  check('no page errors (checkpoint 8 share)', errors.length === 0, errors.join('\n        '));
 }
 
 /* ── Checkpoint 7: the AI designer ──────────────────────────────── */

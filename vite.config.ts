@@ -106,9 +106,31 @@ function stampServiceWorker(): Plugin {
   };
 }
 
+/**
+ * HOMATCH DESIGN STUDIO — PUBLIC SHARE LINKS.
+ *
+ * /w/<token> is a separate, small page (share.html) so anonymous visitors
+ * never load the signed-in application. Vercel rewrites it in production
+ * (vercel.json); this does the same for vite dev and vite preview.
+ */
+function shareViewerRewrite(): Plugin {
+  const rewrite = (req: { url?: string }, _res: unknown, next: () => void) => {
+    if (req.url && /^\/w\/[A-Za-z0-9_-]{43}\/?(\?.*)?$/.test(req.url)) req.url = '/share.html';
+    next();
+  };
+  return {
+    name: 'homatch:share-viewer-rewrite',
+    // First in the stack: the HTML fallback would otherwise answer a page
+    // request (Accept: text/html) with index.html before this runs.
+    configureServer(server) { server.middlewares.stack.unshift({ route: '', handle: rewrite as never }); },
+    configurePreviewServer(server) { server.middlewares.stack.unshift({ route: '', handle: rewrite as never }); },
+  };
+}
+
 export default defineConfig({
   plugins: [
     react(),
+    shareViewerRewrite(),
     stampServiceWorker(),
     threeDecoders(),
     svgr({
@@ -122,6 +144,14 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+    },
+  },
+  build: {
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'index.html'),
+        share: path.resolve(__dirname, 'share.html'),
+      },
     },
   },
   optimizeDeps: {

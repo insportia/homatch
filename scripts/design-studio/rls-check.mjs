@@ -14,11 +14,14 @@
 // It proves the migration's behaviour; it is not a substitute for applying
 // the migration through the deploy workflow.
 import { PGlite } from '@electric-sql/pglite';
+import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 
 const MIGRATION = process.argv[2];
 const STORAGE_MIGRATION = process.argv[3] ?? null;
-const db = new PGlite();
+const SHARES_MIGRATION = process.argv[4] ?? null;
+const db = new PGlite({ extensions: { pgcrypto } });
 let failures = 0;
 const ok = (name) => console.log(`  ok   ${name}`);
 const bad = (name, detail) => { failures++; console.log(`  FAIL ${name}\n       ${detail}`); };
@@ -36,6 +39,8 @@ await db.exec(`
   alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
   alter default privileges in schema public grant execute on functions to anon, authenticated, service_role;
   create schema auth; grant usage on schema auth to anon, authenticated, service_role;
+  create schema extensions; create extension pgcrypto schema extensions;
+  grant usage on schema extensions to anon, authenticated, service_role;
   create function auth.uid() returns uuid language sql stable as $$
     select nullif(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid $$;
   create function auth.role() returns text language sql stable as $$
@@ -301,6 +306,105 @@ if (STORAGE_MIGRATION) {
       r.v === expected ? ok(`storage: ${name}`) : bad(`storage: ${name}`, `got ${r.v}`);
     } catch (e) { bad(`storage: ${name}`, e.message); }
   }
+}
+
+// ── public share links
+if (SHARES_MIGRATION) {
+  await db.exec(fs.readFileSync(SHARES_MIGRATION, 'utf8'));
+  await db.exec(fs.readFileSync(SHARES_MIGRATION, 'utf8'));
+  ok('shares: migration applies and re-applies');
+
+  const scene = { schema: 1, geometryState: 'CALIBRATED', scene: { floors: [{ id: 'r1', kind: 'LIVING', areaM2: 20 }], walls: [] } };
+  const src = await as('service', (tx) => one(tx, `insert into ds_spatial_sources (project_id,user_id,kind,status,geometry_state,editability,floorplan_id,canonical)
+    values ($1,$2,'FLOORPLAN_SCENE','READY','CALIBRATED','GENERATED',$3,$4) returning id`, [pA.id, UA, f.id, JSON.stringify(scene)]));
+  const ver = await as(A, (tx) => one(tx, `insert into ds_versions (project_id,user_id,source_id,name,origin,state)
+    values ($1,$2,$3,'Warm','USER',$4) returning id`, [pA.id, UA, src.id, JSON.stringify({ schema: 1, objects: [], surfaces: {}, palette: ['#f2eee6'] })]));
+  const create = (who, versionId, type = 'WALKTHROUGH', label = null, expires = null) =>
+    as(who, (tx) => one(tx, 'select public.ds_create_share($1,$2,$3,$4) as r', [versionId, type, label, expires])).then((x) => x.r);
+  const view = (token) => as('anon', (tx) => one(tx, 'select public.ds_public_share($1) as r', [token])).then((x) => x.r);
+
+  const first = await create(A, ver.id, 'WALKTHROUGH', 'For my parents');
+  /^[A-Za-z0-9_-]{43}$/.test(first.token) ? ok('share: a 256-bit URL-safe token (43 chars)') : bad('share token', first.token);
+  const row = await db.query('select * from ds_shares where id=$1', [first.id]);
+  const stored = row.rows[0];
+  stored.token_hash === createHash('sha256').update(first.token).digest('hex') && stored.token_hint === first.token.slice(-4)
+    && !JSON.stringify(stored).includes(first.token)
+    ? ok('share: only the token hash (and a 4-character hint) is stored') : bad('share storage', JSON.stringify(stored));
+
+  const many = [];
+  for (let i = 0; i < 50; i += 1) many.push(await create(A, ver.id));
+  const tokens = new Set([first.token, ...many.map((m) => m.token)]);
+  const snaps = await db.query('select count(*)::int n from ds_published_designs where version_id=$1', [ver.id]);
+  tokens.size === 51 ? ok('share: 51 links for one version, all different') : bad('unique', String(tokens.size));
+  snaps.rows[0].n === 1 ? ok('share: 51 links reference ONE frozen snapshot (nothing duplicated)') : bad('dedupe', String(snaps.rows[0].n));
+
+  const pub = await view(first.token);
+  pub.status === 'ACTIVE' && pub.shareType === 'WALKTHROUGH' && pub.state.palette[0] === '#f2eee6' && pub.scene.floors[0].id === 'r1'
+    ? ok('public: anyone with the link gets the presentation') : bad('public read', JSON.stringify(pub).slice(0, 200));
+  const text = JSON.stringify(pub);
+  const leaks = [pA.id, UA, A, ver.id, src.id, f.id, first.id, 'For my parents', 'user_id', 'project_id', 'object_key'].filter((x) => text.includes(x));
+  leaks.length === 0 ? ok('public: no ids, owner, project, label or storage key in the payload') : bad('leak', leaks.join(', '));
+
+  await expectError('public: anon cannot read the share table', 'permission denied', () => as('anon', (tx) => tx.query('select * from ds_shares')));
+  await expectError('public: anon cannot read snapshots', 'permission denied', () => as('anon', (tx) => tx.query('select * from ds_published_designs')));
+  await expectError('public: anon cannot create a link', 'permission denied', () => as('anon', (tx) => tx.query("select public.ds_create_share($1,'WALKTHROUGH')", [ver.id])));
+  await expectError('public: anon cannot revoke a link', 'permission denied', () => as('anon', (tx) => tx.query('select public.ds_revoke_share($1)', [first.id])));
+  await expectError('public: anon cannot read a version', 'permission denied', () => as('anon', (tx) => tx.query('select * from ds_versions')));
+  await expectError('public: anon cannot write a version', 'permission denied', () => as('anon', (tx) => tx.query("update ds_versions set name='x'")));
+  await expectError('public: anon cannot start an AI job', 'permission denied', () => as('anon', (tx) => tx.query("insert into ds_jobs (user_id,kind) values ($1,'AI_DESIGN')", [UA])));
+
+  await expectError('owner: another customer cannot share A\'s version', 'DS_VERSION_NOT_OWNED', () => create(B, ver.id));
+  await expectError('owner: another customer cannot revoke A\'s link', 'DS_SHARE_NOT_OWNED', () => as(B, (tx) => tx.query('select public.ds_revoke_share($1)', [first.id])));
+  const bSees = await as(B, (tx) => tx.query('select id from ds_shares'));
+  bSees.rows.length === 0 ? ok('owner: another customer cannot list A\'s links') : bad('enumerate', String(bSees.rows.length));
+  const aSees = await as(A, (tx) => tx.query('select id, view_count from ds_shares where project_id=$1', [pA.id]));
+  aSees.rows.length === 51 ? ok('owner: the owner lists their links') : bad('owner list', String(aSees.rows.length));
+  aSees.rows.find((r) => r.id === first.id)?.view_count === 1 ? ok('owner: views are counted') : bad('views', JSON.stringify(aSees.rows.find((r) => r.id === first.id)));
+  await expectError('owner: a link cannot be edited directly', 'permission denied', () => as(A, (tx) => tx.query('update ds_shares set expires_at=null where id=$1', [first.id])));
+
+  // Frozen: later edits never reach an existing link.
+  await as(A, (tx) => tx.query('update ds_versions set state=$2 where id=$1', [ver.id, JSON.stringify({ schema: 1, objects: [], surfaces: {}, palette: ['#000000'] })]));
+  (await view(first.token)).state.palette[0] === '#f2eee6' ? ok('frozen: editing the version does not change an existing link') : bad('frozen', 'changed');
+  const newer = await create(A, ver.id);
+  const newerView = await view(newer.token);
+  const snaps2 = await db.query('select count(*)::int n from ds_published_designs where version_id=$1', [ver.id]);
+  newerView.state.palette[0] === '#000000' && snaps2.rows[0].n === 2
+    ? ok('frozen: a new link shares the newer design as a new snapshot') : bad('newer', JSON.stringify(newerView.state));
+  const ver2 = await as(A, (tx) => one(tx, `insert into ds_versions (project_id,user_id,source_id,name,origin,state)
+    values ($1,$2,$3,'Other','USER','{"schema":1,"palette":["#123456"]}') returning id`, [pA.id, UA, src.id]));
+  const other = await create(A, ver2.id, 'DESIGN');
+  const otherView = await view(other.token);
+  otherView.shareType === 'DESIGN' && otherView.state.palette[0] === '#123456' ? ok('share: links for different versions show their own version') : bad('versions', JSON.stringify(otherView));
+
+  // Revocation is per link.
+  await as(A, (tx) => tx.query('select public.ds_revoke_share($1)', [first.id]));
+  (await view(first.token)).status === 'REVOKED' ? ok('revoke: the revoked link stops at once') : bad('revoke', 'still active');
+  (await view(many[0].token)).status === 'ACTIVE' ? ok('revoke: other links to the same design keep working') : bad('revoke scope', 'other revoked');
+  await expectError('revoke: a revoked link cannot be revived', 'DS_SHARE_IMMUTABLE', () => as('service', (tx) => tx.query('update ds_shares set revoked_at=null where id=$1', [first.id])));
+
+  // Expiry.
+  await expectError('expiry: a past expiry is refused', 'DS_SHARE_EXPIRY', () => create(A, ver.id, 'WALKTHROUGH', null, '2000-01-01T00:00:00Z'));
+  const soon = await create(A, ver.id, 'WALKTHROUGH', null, new Date(Date.now() + 1500).toISOString());
+  (await view(soon.token)).status === 'ACTIVE' ? ok('expiry: active until it expires') : bad('expiry active', 'not active');
+  await new Promise((r) => setTimeout(r, 1800));
+  (await view(soon.token)).status === 'EXPIRED' ? ok('expiry: expired links say so') : bad('expiry', 'still active');
+
+  // Guessing.
+  (await view('A'.repeat(43))).status === 'NOT_FOUND' ? ok('guess: a random token finds nothing') : bad('guess', 'found');
+  (await view(first.token.slice(0, 42))).status === 'NOT_FOUND' && (await view("x' or 1=1 --")).status === 'NOT_FOUND'
+    ? ok('guess: malformed tokens find nothing') : bad('malformed', 'found');
+
+  // Immutability and what may be shared.
+  await expectError('snapshot: a frozen design cannot be changed, even by the service', 'DS_SNAPSHOT_IMMUTABLE', () =>
+    as('service', (tx) => tx.query("update ds_published_designs set title='x'")));
+  await expectError('share: a developer-scene version is not published by customer link', 'DS_SHARE_SOURCE_UNSUPPORTED', () => create(A, v1.id));
+  await as('service', (tx) => tx.query(`insert into ds_catalog_assets (code,name,category,room_kinds,width_m,depth_m,height_m,model_key,provenance,is_placeholder,active)
+    values ('lic/sofa','Licensed sofa','SOFA','{LIVING}',2,1,0.8,'catalog/lic-sofa.glb','LICENSED',false,true)`));
+  const lic = await as(A, (tx) => one(tx, `insert into ds_versions (project_id,user_id,source_id,name,origin,state)
+    values ($1,$2,$3,'Licensed','USER','{"schema":1,"objects":[{"assetId":"lic/sofa"}]}') returning id`, [pA.id, UA, src.id]));
+  await expectError('share: a design with licensed models is not published by link', 'DS_SHARE_ASSET_NOT_PUBLIC', () => create(A, lic.id));
+  await as(A, (tx) => tx.query('update ds_versions set archived_at=now() where id=$1', [ver2.id]));
+  await expectError('share: an archived version cannot be shared', 'DS_VERSION_NOT_OWNED', () => create(A, ver2.id));
 }
 
 // ── cascade

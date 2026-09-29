@@ -137,6 +137,7 @@ export class SceneController {
     room: string | null;
     onRoom?: (roomId: string | null) => void;
     drag: { id: number; x: number; y: number } | null;
+    glide: { from: Point; fromYaw: number; to: Point; toYaw: number; start: number; duration: number } | null;
   } | null = null;
 
   constructor(mount: HTMLElement, quality: QualityProfile, options: { reducedMotion?: boolean } = {}) {
@@ -953,7 +954,7 @@ export class SceneController {
     this.view = 'WALK';
     this.walk = {
       model, pos: pose.position, yaw: Math.atan2(pose.target.y - pose.position.y, pose.target.x - pose.position.x), pitch: -0.06,
-      keys: new Set(), stick: { x: 0, y: 0 }, last: performance.now(), saved, room: null, onRoom, drag: null,
+      keys: new Set(), stick: { x: 0, y: 0 }, last: performance.now(), saved, room: null, onRoom, drag: null, glide: null,
     };
     this.camera.fov = pose.fov;
     this.camera.updateProjectionMatrix();
@@ -989,24 +990,40 @@ export class SceneController {
     this.restore(w.saved, false);
   }
 
-  /** Stand somewhere else (a room from the tour, or back at the entry). */
-  walkTo(pose: WalkPose) {
+  /**
+   * Stand somewhere else (a room from the tour, or back at the entry). With
+   * a duration the visitor glides there — a straight path between two free
+   * points of the same space (the guided tour); without, it is a cut.
+   */
+  walkTo(pose: WalkPose, durationMs = 0) {
     const w = this.walk;
     if (!w) return;
-    w.pos = pose.position;
-    w.yaw = Math.atan2(pose.target.y - pose.position.y, pose.target.x - pose.position.x);
-    w.pitch = -0.06;
+    const toYaw = Math.atan2(pose.target.y - pose.position.y, pose.target.x - pose.position.x);
     this.camera.fov = pose.fov;
     this.camera.updateProjectionMatrix();
-    this.placeWalkCamera();
-    this.reportRoom();
+    w.pitch = -0.06;
+    if (durationMs > 0 && !this.reducedMotion) {
+      w.glide = { from: { ...w.pos }, fromYaw: w.yaw, to: pose.position, toYaw, start: performance.now(), duration: durationMs };
+    } else {
+      w.glide = null;
+      w.pos = pose.position;
+      w.yaw = toYaw;
+      this.placeWalkCamera();
+      this.reportRoom();
+    }
     this.requestRender();
+  }
+
+  /** True while a glide is under way (the guided tour waits for it). */
+  get gliding(): boolean {
+    return !!this.walk?.glide;
   }
 
   /** The on-screen joystick: x strafes, y walks (up = forward), each −1…1. */
   setWalkStick(x: number, y: number) {
     if (!this.walk) return;
     this.walk.stick = { x: Math.max(-1, Math.min(1, x)), y: Math.max(-1, Math.min(1, y)) };
+    if (x || y) this.walk.glide = null;
     this.walk.last = performance.now();
     this.requestRender();
   }
@@ -1023,6 +1040,7 @@ export class SceneController {
     e.preventDefault();
     if (e.type === 'keydown') {
       if (!w.keys.size) w.last = performance.now();
+      w.glide = null;
       w.keys.add(e.code);
     } else {
       w.keys.delete(e.code);
@@ -1081,6 +1099,17 @@ export class SceneController {
     const w = this.walk!;
     const dt = Math.min(0.05, Math.max(0, (now - w.last) / 1000));
     w.last = now;
+    if (w.glide) {
+      const g = w.glide;
+      const t = Math.min(1, (now - g.start) / g.duration);
+      const k = ease(t);
+      w.pos = { x: g.from.x + (g.to.x - g.from.x) * k, y: g.from.y + (g.to.y - g.from.y) * k };
+      w.yaw = g.fromYaw + Math.atan2(Math.sin(g.toYaw - g.fromYaw), Math.cos(g.toYaw - g.fromYaw)) * k;
+      if (t >= 1) w.glide = null;
+      this.placeWalkCamera();
+      this.reportRoom();
+      return true;
+    }
     const k = (code: string) => (w.keys.has(code) ? 1 : 0);
     const forward = k('KeyW') + k('ArrowUp') - k('KeyS') - k('ArrowDown') - w.stick.y;
     const strafe = k('KeyD') - k('KeyA') + w.stick.x;

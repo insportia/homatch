@@ -305,3 +305,49 @@ test('AI copy never quotes a price', () => {
   assert.ok(!/[$€₾]\s?\d|\d\s?(GEL|USD|EUR)\b/.test(src), 'AI copy states a price');
   assert.ok(!/\block|\bunlock/i.test(src.split('\n').filter((l) => l.includes("'")).map((l) => l.split("'")[1] ?? '').join(' ')), 'lock words in customer copy');
 });
+
+/* ── Public share links (checkpoint 8) ──────────────────────────── */
+
+const SHARES = read('supabase/migrations/20260930094000_design_studio_shares.sql');
+
+test('share tokens are random, hashed at rest, and returned only once', () => {
+  assert.match(SHARES, /extensions\.gen_random_bytes\(32\)/, 'a token is not 256 random bits');
+  assert.match(SHARES, /token_hash\s+text NOT NULL UNIQUE/);
+  assert.ok(!/\btoken\s+text\b/i.test(SHARES.replace(/--.*$/gm, '')), 'a plaintext token column exists');
+  assert.match(SHARES, /encode\(extensions\.digest\(p_token, 'sha256'\), 'hex'\)/, 'the public lookup is not by hash');
+});
+
+test('the public can read exactly one function; everything else is closed', () => {
+  assert.match(SHARES, /GRANT EXECUTE ON FUNCTION public\.ds_public_share\(text\) TO anon, authenticated;/);
+  assert.match(SHARES, /REVOKE ALL ON FUNCTION public\.ds_create_share\(uuid, text, text, timestamptz\) FROM public, anon;/);
+  assert.match(SHARES, /REVOKE ALL ON FUNCTION public\.ds_revoke_share\(uuid\) FROM public, anon;/);
+  assert.match(SHARES, /REVOKE ALL ON public\.ds_published_designs, public\.ds_shares FROM anon, authenticated;/);
+  // The public payload names no owner, project, version, source or storage key.
+  const payload = SHARES.slice(SHARES.indexOf("RETURN jsonb_build_object(\n    'status', 'ACTIVE'"));
+  for (const leak of ["'projectId'", "'userId'", "'versionId'", "'sourceId'", 'model_key', 'object_key', 'thumbnail_key', 'label']) {
+    assert.ok(!payload.slice(0, payload.indexOf('END $$')).includes(leak), `the public payload exposes ${leak}`);
+  }
+});
+
+test('a link freezes a snapshot; snapshots are shared, never copied per link', () => {
+  assert.match(SHARES, /CONSTRAINT ds_published_once UNIQUE \(version_id, state_hash\)/);
+  assert.match(SHARES, /RAISE EXCEPTION 'DS_SNAPSHOT_IMMUTABLE'/);
+  assert.match(SHARES, /ON CONFLICT \(version_id, state_hash\) DO NOTHING/);
+});
+
+test('the public viewer is its own small page, not the signed-in app', () => {
+  const files = [...walk('src/share'), 'src/components/designStudio/workspace/WalkthroughOverlay.tsx'];
+  for (const file of files) {
+    const src = read(file);
+    for (const banned of ['@/db/supabase', '@/contexts/', '@/i18n/translations', '@/services/', 'react-router']) {
+      assert.ok(!src.includes(banned), `${file} pulls ${banned} into the public bundle`);
+    }
+  }
+  const vercel = JSON.parse(read('vercel.json'));
+  const rewrites = vercel.rewrites.map((r) => r.source);
+  assert.ok(rewrites.indexOf('/w/:token') > -1 && rewrites.indexOf('/w/:token') < rewrites.indexOf('/((?!assets/).*)'), '/w/ is not rewritten to share.html before the app');
+  const html = read('share.html');
+  assert.match(html, /noindex/);
+  assert.match(html, /src="\/src\/share\/main\.tsx"/);
+  assert.match(read('vite.config.ts'), /share: path\.resolve\(__dirname, 'share\.html'\)/);
+});

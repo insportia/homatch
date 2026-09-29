@@ -1,0 +1,152 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { chooseQuality, readDeviceSignals } from '@/lib/designStudio/quality';
+import type { SpaceModel } from '@/lib/designStudio/space';
+import { SceneController, type PickTarget } from './SceneController';
+
+export interface DesignCanvasProps {
+  space: SpaceModel | null;
+  /** Loads a model for sources that are a model rather than generated geometry. */
+  loadModel?: (controller: SceneController) => Promise<void>;
+  selection: PickTarget | null;
+  onPick: (target: PickTarget | null) => void;
+  onReady?: (controller: SceneController) => void;
+  onModelError?: () => void;
+  /** Room names over the floor, following the camera. */
+  roomLabel?: (roomId: string) => string;
+  className?: string;
+}
+
+/**
+ * The canvas: owns a SceneController for its lifetime, turns pointer input
+ * into picks (a tap selects, a drag orbits), and draws room names over the
+ * floor. Everything else — what is selected, what the design is — comes in
+ * through props.
+ */
+export function DesignCanvas({
+  space, loadModel, selection, onPick, onReady, onModelError, roomLabel, className,
+}: DesignCanvasProps) {
+  const { t } = useLanguage();
+  const mountRef = useRef<HTMLDivElement | null>(null);
+  const labelsRef = useRef<HTMLDivElement | null>(null);
+  const controllerRef = useRef<SceneController | null>(null);
+  const [webglMissing, setWebglMissing] = useState(false);
+  const onPickRef = useRef(onPick);
+  onPickRef.current = onPick;
+
+  // One controller per mount.
+  useEffect(() => {
+    const mount = mountRef.current;
+    if (!mount) return undefined;
+    let controller: SceneController;
+    try {
+      const probe = document.createElement('canvas');
+      if (!probe.getContext('webgl2') && !probe.getContext('webgl')) throw new Error('no webgl');
+      const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+      controller = new SceneController(mount, chooseQuality(readDeviceSignals()), { reducedMotion: reduced });
+    } catch {
+      setWebglMissing(true);
+      return undefined;
+    }
+    controllerRef.current = controller;
+
+    /* A tap selects; a drag is the camera. Distinguished by distance and time. */
+    let down: { x: number; y: number; t: number } | null = null;
+    const el = controller.renderer.domElement;
+    const onDown = (e: PointerEvent) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; };
+    const onUp = (e: PointerEvent) => {
+      if (!down) return;
+      const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
+      const quick = performance.now() - down.t < 450;
+      down = null;
+      if (moved > 6 || !quick) return;
+      const hit = controller.pick(e.clientX, e.clientY);
+      onPickRef.current(hit?.target ?? null);
+    };
+    let hoverQueued = false;
+    const onMove = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse' || down || hoverQueued) return;
+      hoverQueued = true;
+      requestAnimationFrame(() => {
+        hoverQueued = false;
+        const hit = controller.pick(e.clientX, e.clientY);
+        controller.setHover(hit?.target ?? null);
+        el.style.cursor = hit ? 'pointer' : 'grab';
+      });
+    };
+    const onLeave = () => controller.setHover(null);
+    el.addEventListener('pointerdown', onDown);
+    el.addEventListener('pointerup', onUp);
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerleave', onLeave);
+
+    onReady?.(controller);
+    return () => {
+      el.removeEventListener('pointerdown', onDown);
+      el.removeEventListener('pointerup', onUp);
+      el.removeEventListener('pointermove', onMove);
+      el.removeEventListener('pointerleave', onLeave);
+      controller.dispose();
+      controllerRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // The space (or model) this canvas shows.
+  useEffect(() => {
+    const controller = controllerRef.current;
+    if (!controller) return;
+    if (space) controller.loadSpace(space);
+    else if (loadModel) loadModel(controller).catch(() => onModelError?.());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [space, loadModel]);
+
+  useEffect(() => {
+    controllerRef.current?.setSelection(selection);
+  }, [selection]);
+
+  // Room labels, repositioned after every drawn frame.
+  useEffect(() => {
+    const controller = controllerRef.current;
+    const layer = labelsRef.current;
+    if (!controller || !layer || !space || !roomLabel) return undefined;
+    layer.replaceChildren();
+    const nodes = space.rooms.map((room) => {
+      const node = document.createElement('span');
+      node.className = 'ds-room-label pointer-events-none absolute left-0 top-0 whitespace-nowrap rounded-md bg-white/90 '
+        + 'px-2 py-0.5 text-[13px] font-medium text-[#0C1119] shadow-sm ring-1 ring-black/5';
+      node.textContent = roomLabel(room.id);
+      layer.appendChild(node);
+      return { room, node };
+    });
+    const place = () => {
+      for (const { room, node } of nodes) {
+        const p = controller.project(room.centroid, 0.05);
+        if (!p) { node.style.display = 'none'; continue; }
+        node.style.display = '';
+        node.style.transform = `translate(${Math.round(p.x)}px, ${Math.round(p.y)}px) translate(-50%, -50%)`;
+      }
+    };
+    place();
+    const off = controller.onFrame(place);
+    return () => { off(); layer.replaceChildren(); };
+  }, [space, roomLabel]);
+
+  return (
+    <div className={className ?? 'relative h-full w-full'}>
+      <div
+        ref={mountRef}
+        className="absolute inset-0"
+        role="application"
+        aria-label={t('ds_canvas_label')}
+        aria-roledescription={t('ds_canvas_role')}
+      />
+      <div ref={labelsRef} className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true" />
+      {webglMissing ? (
+        <div className="absolute inset-0 grid place-items-center bg-[#E9EBEE] px-6 text-center">
+          <p className="max-w-sm text-[15px] text-[#0C1119]">{t('ds_webgl_missing')}</p>
+        </div>
+      ) : null}
+    </div>
+  );
+}

@@ -317,7 +317,8 @@ async function main() {
       await ctx.close();
     }
 
-    check('no page errors', errors.length === 0, errors.join('\n        '));
+    check('no page errors (checkpoint 1)', errors.length === 0, errors.join('\n        '));
+    await checkpoint2(browser);
   } finally {
     await browser.close().catch(() => {});
     server.kill();
@@ -325,6 +326,114 @@ async function main() {
   console.log(`\nscreenshots: ${OUT}`);
   console.log(failures ? `${failures} FAILED` : 'ALL PASSED');
   process.exit(failures ? 1 : 0);
+}
+
+/* ── Checkpoint 2: the workspace on a floor-plan space ───────────── */
+
+export async function seededStore() {
+  const { oneBedroomScene } = await import('../../src/lib/designStudio/__tests__/fixtures.mjs');
+  const { DS_GENERATOR_VERSION } = await import('../../src/lib/designStudio/engine.ts');
+  const store = createStore();
+  const now = new Date().toISOString();
+  const project = {
+    id: '11111111-1111-4111-8111-111111111111', user_id: 'hm1', name: 'Two-bedroom apartment, Vake',
+    property_id: 'prop-1', dev_unit_id: null, active_source_id: '22222222-2222-4222-8222-222222222222',
+    head_version_id: '33333333-3333-4333-8333-333333333333', status: 'ACTIVE', thumbnail_key: null,
+    created_at: now, updated_at: now, archived_at: null,
+  };
+  const source = {
+    id: project.active_source_id, project_id: project.id, user_id: 'hm1', kind: 'FLOORPLAN_SCENE',
+    status: 'READY', geometry_state: 'ESTIMATED', editability: 'GENERATED', dev_unit_id: null, upstream: null,
+    floorplan_id: 'fp-1', model_object_key: null, model_sha256: null, model_bytes: null, model_mime: null,
+    canonical: {
+      schema: 1, units: 'm', generatorVersion: DS_GENERATOR_VERSION, geometryState: 'ESTIMATED',
+      metresPerPx: 0.01, scaleUncertainty: 0.12, scene: oneBedroomScene(),
+    },
+    calibration: null, generator_version: DS_GENERATOR_VERSION, provenance: { origin: 'CUSTOMER_FLOORPLAN' },
+    failure: null, supersedes_id: null, created_at: now,
+  };
+  const version = {
+    id: project.head_version_id, project_id: project.id, user_id: 'hm1', source_id: source.id,
+    parent_id: null, name: 'Original', origin: 'ORIGINAL',
+    state: {
+      schema: 1, objects: [], surfaces: {}, palette: [], styleCode: null, locks: {},
+      lighting: { timeOfDay: 'DAY', temperature: 'NEUTRAL', interiorIntensity: 0.6, locked: false },
+    },
+    state_schema: 1, revision: 0, style_tags: [], change_summary: [],
+    thumbnail_key: null, archived_at: null, created_at: now, updated_at: now,
+  };
+  store.db.ds_projects.push(project);
+  store.db.ds_spatial_sources.push(source);
+  store.db.ds_versions.push(version);
+  return { store, project, source, version };
+}
+
+async function checkpoint2(browser) {
+  const { store, project } = await seededStore();
+  const errors = [];
+  let ctx = await openContext(browser, { width: 1440, height: 900, lang: 'en' });
+  let page = await ctx.newPage();
+  await wire(page, store, errors);
+  await page.goto(`${BASE}/design-studio/${project.id}`, { waitUntil: 'domcontentloaded' });
+  await page.locator('canvas').first().waitFor({ timeout: 25000 });
+  await page.waitForTimeout(1200);
+  check('workspace: a WebGL canvas fills the centre', await page.evaluate(() => {
+    const c = document.querySelector('main canvas');
+    return !!c && c.clientWidth > 700 && c.clientHeight > 600;
+  }));
+  check('workspace: no global rail (full-viewport tool)', (await page.locator('nav a[href="/for-expats/georgia"]').count()) === 0);
+  check('workspace: estimated dimensions are said out loud', await page.getByText('Estimated dimensions').first().isVisible());
+  check('workspace: rooms listed in the reader language', await page.getByRole('button', { name: /Bedroom/ }).first().isVisible());
+  check('workspace: estimated areas carry ≈', await page.getByText(/≈ 42 m²/).first().isVisible());
+  check('workspace: plan navigator present', await page.getByRole('navigation', { name: 'Plan navigator' }).isVisible());
+  const labels = await page.locator('.ds-room-label').allInnerTexts();
+  check('workspace: room names drawn over the floor', labels.includes('Living room') && labels.includes('Bathroom'), JSON.stringify(labels));
+  await page.screenshot({ path: path.join(OUT, 'cp2-workspace-1440-en.png') });
+
+  await page.getByRole('list', { name: 'Rooms' }).getByRole('button', { name: /Living room/ }).click();
+  await page.waitForTimeout(900);
+  const inspector = page.getByRole('complementary', { name: 'Inspector' });
+  check('select room: inspector names the room', await inspector.getByRole('heading', { name: 'Living room' }).isVisible());
+  check('select room: inspector lists its surfaces', await inspector.getByRole('button', { name: 'Floor' }).isVisible());
+  await page.screenshot({ path: path.join(OUT, 'cp2-room-1440-en.png') });
+  await inspector.getByRole('button', { name: 'Floor' }).click();
+  check('select surface: inspector says which surface, in which room', await inspector.getByText('Select Living room').isVisible());
+
+  // Canvas picking: after focusing the living room, the middle of the screen is inside it.
+  const box = await page.locator('main canvas').boundingBox();
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForTimeout(300);
+  const heading = await inspector.getByRole('heading').first().innerText();
+  check('canvas click selects something in the space', /Floor|Wall|Ceiling|Living room/.test(heading), heading);
+  await page.keyboard.press('Escape');
+  check('Escape clears the selection', await page.getByText('Select a room, a wall or the floor to design it.').isVisible());
+  check('desktop workspace: no overflow', (await overflowX(page)) <= 0);
+  await ctx.close();
+
+  for (const [lang, width, height] of [['en', 390, 844], ['ar', 390, 844], ['ka', 1440, 900], ['he', 1280, 800]]) {
+    ctx = await openContext(browser, { width, height, lang });
+    page = await ctx.newPage();
+    await wire(page, store, errors);
+    await page.goto(`${BASE}/design-studio/${project.id}`, { waitUntil: 'domcontentloaded' });
+    await page.locator('canvas').first().waitFor({ timeout: 25000 });
+    await page.waitForTimeout(900);
+    check(`${lang} ${width}: no overflow`, (await overflowX(page)) <= 0);
+    const share = await page.evaluate(() => {
+      const c = document.querySelector('main canvas');
+      return c ? (c.clientWidth * c.clientHeight) / (window.innerWidth * window.innerHeight) : 0;
+    });
+    check(`${lang} ${width}: the canvas dominates (${Math.round(share * 100)}% of the screen)`, share > (width < 1024 ? 0.7 : 0.45));
+    await page.screenshot({ path: path.join(OUT, `cp2-workspace-${width}-${lang}.png`) });
+    if (width < 1024) {
+      await page.locator('div.lg\\:hidden button').first().click();
+      await page.waitForTimeout(600);
+      await page.screenshot({ path: path.join(OUT, `cp2-rooms-sheet-${width}-${lang}.png`) });
+      const sheetButtons = await page.getByRole('dialog').getByRole('button').count();
+      check(`${lang} ${width}: rooms open as a sheet`, sheetButtons >= 4, String(sheetButtons));
+    }
+    await ctx.close();
+  }
+  check('no page errors (checkpoint 2)', errors.length === 0, errors.join('\n        '));
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(import.meta.filename)) {

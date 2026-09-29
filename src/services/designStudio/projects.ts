@@ -239,3 +239,30 @@ export async function listLauncherProperties(userId: string): Promise<LauncherPr
     };
   });
 }
+
+/** One version with its full design state. */
+export async function getVersion(versionId: string): Promise<DesignVersionRecord | null> {
+  const { data, error } = await supabase.from('ds_versions').select('*').eq('id', versionId).maybeSingle();
+  if (error) fail(error);
+  return (data as DesignVersionRecord | null) ?? null;
+}
+
+/**
+ * What each developer unit publishes TODAY, read through the same public
+ * dt_unit_scene() any viewer uses: the pin, or null when nothing is
+ * published. Feeds the resolver's staleness check; a unit whose read fails
+ * is left out (unchecked), never guessed.
+ */
+export async function developerCurrentPins(unitIds: string[]): Promise<Record<string, { scene_id: string; version: string } | null>> {
+  if (unitIds.length === 0) return {};
+  const out: Record<string, { scene_id: string; version: string } | null> = {};
+  await Promise.all([...new Set(unitIds)].map(async (id) => {
+    // Called directly (not through loadUnitScene) so a failed READ stays
+    // 'unchecked' instead of being mistaken for 'no longer published'.
+    const { data, error } = await supabase.rpc('dt_unit_scene', { p_unit_id: id });
+    if (error) return;
+    const scene = data as { id?: string; version?: number | string; error?: string } | null;
+    out[id] = scene && !scene.error && scene.id ? { scene_id: scene.id, version: String(scene.version) } : null;
+  }));
+  return out;
+}

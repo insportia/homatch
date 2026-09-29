@@ -15,10 +15,10 @@
 // deterministic application → undo stack → debounced, conflict-checked save.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
-  AlertTriangle, Armchair, ArrowLeft, Check, CloudOff, Info, Layers, LayoutGrid, Loader2, Maximize, Palette as PaletteIcon,
+  AlertTriangle, Armchair, ArrowLeft, Check, ChevronDown, CloudOff, Columns2, Info, Layers, LayoutGrid, Loader2, Maximize, Palette as PaletteIcon,
   PanelLeftClose, PanelLeftOpen, Redo2, Scan, SquareDashed, Sun, Undo2,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -37,10 +37,18 @@ import type { CanonicalSpace, DesignVersionRecord, SpatialSourceRecord } from '@
 import { NavGlyphIcon } from '@/components/layouts/NavGlyph';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { assetsByCode, listAssets, listMaterials, listPalettes } from '@/services/designStudio/catalog';
-import { getVersion, type ProjectBundle } from '@/services/designStudio/projects';
+import {
+  createSavedView, createVersion, deleteSavedView, getVersion, listSavedViews, renameVersion, setHeadVersion,
+  setVersionArchived, type ProjectBundle, type SavedView,
+} from '@/services/designStudio/projects';
+import { saveVersionThumbnail, signedUrls } from '@/services/designStudio/files';
+import { copyState, uniqueVersionName } from '@/lib/designStudio/versioning';
+import { normalizeDesignState } from '@/lib/designStudio/designState';
 import { cn } from '@/lib/utils';
 import { DesignCanvas } from '../canvas/DesignCanvas';
-import type { PickTarget, SceneController } from '../canvas/SceneController';
+import type { CameraSnapshot, PickTarget, SceneController } from '../canvas/SceneController';
+import { CompareView } from './CompareView';
+import { VersionsTray } from './VersionsTray';
 import { developerUnitModelUrl, loadGltf } from '../canvas/modelLoader';
 import { FurniturePanel } from './FurniturePanel';
 import { Inspector } from './Inspector';
@@ -57,8 +65,11 @@ export interface DesignWorkspaceProps {
   rejected: SourceRejection[];
   freshnessUnchecked: boolean;
   initialVersionId: string | null;
-  onReload: () => void;
+  onReload: () => Promise<void> | void;
 }
+
+/** The camera, remembered per project across version switches, so A and B are seen from the same place. */
+const cameraMemory = new Map<string, CameraSnapshot>();
 
 type LeftMode = 'ROOMS' | 'FURNITURE' | 'MATERIALS' | 'COLORS' | 'LIGHTING';
 
@@ -193,6 +204,45 @@ function Editor({
   const [sheet, setSheet] = useState<LeftMode | 'INSPECTOR' | null>(null);
   const [replacing, setReplacing] = useState<string | null>(null);
   const [modelFailed, setModelFailed] = useState(false);
+  const navigate = useNavigate();
+  const [trayOpen, setTrayOpen] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [views, setViews] = useState<SavedView[]>([]);
+  const [thumbs, setThumbs] = useState<Map<string, string>>(new Map());
+  const [busy, setBusy] = useState(false);
+  const projectId = bundle.project.id;
+  const versions = useMemo(() => bundle.versions.filter((v) => v.source_id === source.id), [bundle.versions, source.id]);
+  const initialCamera = useMemo(() => cameraMemory.get(projectId) ?? null, [projectId]);
+
+  // Remember the view on the way out (version switch, compare, leaving).
+  useEffect(() => () => {
+    const c = controllerRef.current;
+    if (c) cameraMemory.set(projectId, c.snapshot());
+  }, [projectId]);
+
+  useEffect(() => {
+    listSavedViews(projectId).then(setViews).catch(() => { /* views are an aid, not the design */ });
+  }, [projectId]);
+
+  useEffect(() => {
+    const keys = versions.map((v) => v.thumbnail_key).filter((k): k is string => !!k);
+    if (keys.length) signedUrls(keys).then(setThumbs).catch(() => {});
+  }, [versions]);
+
+  /* A thumbnail of this version after it saves: at most once a minute, best effort. */
+  const lastThumb = useRef(0);
+  useEffect(() => {
+    if (session.status !== 'SAVED' || !homatchUser) return undefined;
+    if (Date.now() - lastThumb.current < 60_000) return undefined;
+    const timer = setTimeout(async () => {
+      const c = controllerRef.current;
+      if (!c) return;
+      lastThumb.current = Date.now();
+      const image = await c.captureThumbnail();
+      if (image) await saveVersionThumbnail({ accountId: homatchUser.id, projectId, versionId: version.id, image });
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [session.status, homatchUser, projectId, version.id]);
 
   // Draw every state the session produces.
   useEffect(() => {
@@ -230,6 +280,70 @@ function Editor({
   }, [session, t, rejectionMessage, assets, materials]);
 
   // ── Placement helpers ──────────────────────────────────────────────
+
+  // ── Versions ───────────────────────────────────────────────────────
+
+  const openVersion = useCallback(async (id: string) => {
+    if (id === version.id) return;
+    await session.saveNow();
+    const c = controllerRef.current;
+    if (c) cameraMemory.set(projectId, c.snapshot());
+    await setHeadVersion(projectId, id).catch(() => {});
+    navigate(`/design-studio/${projectId}/design/${id}`);
+  }, [version.id, session, projectId, navigate]);
+
+  const forkVersion = useCallback(async (fromId: string, origin: 'DUPLICATE' | 'BRANCH') => {
+    if (!homatchUser) return;
+    setBusy(true);
+    try {
+      await session.saveNow();
+      const from = fromId === version.id ? session.state : normalizeDesignState((await getVersion(fromId))?.state);
+      const fromName = versions.find((v) => v.id === fromId)?.name ?? version.name;
+      const base = origin === 'DUPLICATE' ? t('ds_version_copy_of', { name: fromName }) : t('ds_version_new_direction');
+      const created = await createVersion({
+        userId: homatchUser.id, projectId, sourceId: source.id, parentId: fromId, origin,
+        name: uniqueVersionName(base, versions.map((v) => v.name)),
+        state: copyState(from) as unknown as Record<string, unknown>,
+      });
+      const c = controllerRef.current;
+      if (c) cameraMemory.set(projectId, c.snapshot());
+      await onReload();
+      navigate(`/design-studio/${projectId}/design/${created.id}`);
+    } catch {
+      toast.error(t('ds_error_generic'));
+    } finally {
+      setBusy(false);
+    }
+  }, [homatchUser, session, version, versions, t, projectId, source.id, onReload, navigate]);
+
+  const renameOne = useCallback(async (id: string, name: string) => {
+    try { await renameVersion(id, name); await onReload(); } catch { toast.error(t('ds_error_generic')); }
+  }, [onReload, t]);
+
+  const archiveOne = useCallback(async (id: string) => {
+    try { await setVersionArchived(id, true); await onReload(); } catch { toast.error(t('ds_error_generic')); }
+  }, [onReload, t]);
+
+  const saveView = useCallback(async (name: string) => {
+    const c = controllerRef.current;
+    if (!c || !homatchUser) return;
+    try {
+      const created = await createSavedView({
+        userId: homatchUser.id, projectId, name, camera: c.snapshot(), roomId: activeRoomId, sort: views.length,
+      });
+      setViews((v) => [...v, created]);
+    } catch { toast.error(t('ds_error_generic')); }
+  }, [homatchUser, projectId, activeRoomId, views.length, t]);
+
+  const removeView = useCallback(async (id: string) => {
+    try { await deleteSavedView(id); setViews((v) => v.filter((x) => x.id !== id)); } catch { toast.error(t('ds_error_generic')); }
+  }, [t]);
+
+  const openCompare = () => {
+    const c = controllerRef.current;
+    if (c) cameraMemory.set(projectId, c.snapshot());
+    setCompareOpen(true);
+  };
 
   const newId = (asset: CatalogAsset) => `${asset.code.split('/').pop()}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 
@@ -536,7 +650,8 @@ function Editor({
     </Inspector>
   );
 
-  const versionName = version.name;
+  // From the refreshed project list, so a rename shows at once.
+  const versionName = versions.find((v) => v.id === version.id)?.name ?? version.name;
 
   return (
     <div className="flex h-[100dvh] flex-col bg-[#0C1119] text-white">
@@ -550,9 +665,18 @@ function Editor({
         </span>
         <div className="min-w-0 flex-1 sm:flex-none">
           <p className="truncate font-display text-[15px] font-semibold leading-tight">{bundle.project.name}</p>
-          <p className="truncate text-2xs leading-tight text-white/60 sm:hidden">{versionName}</p>
+          <button type="button" onClick={() => setTrayOpen((o) => !o)} aria-expanded={trayOpen} className="block max-w-full truncate text-2xs leading-tight text-white/60 underline decoration-white/30 underline-offset-2 sm:hidden">{versionName}</button>
         </div>
-        <span className="hidden shrink-0 rounded-md border border-white/15 px-2 py-1 text-[13px] text-white/80 sm:inline">{versionName}</span>
+        <button
+          type="button"
+          onClick={() => setTrayOpen((o) => !o)}
+          aria-expanded={trayOpen}
+          aria-label={t('ds_versions_open', { name: versionName })}
+          className="hidden shrink-0 items-center gap-1 rounded-md border border-white/15 px-2 py-1 text-[13px] text-white/85 hover:border-white/30 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)] sm:inline-flex"
+        >
+          {versionName}
+          <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', trayOpen && 'rotate-180')} aria-hidden="true" />
+        </button>
         <span
           className={cn('hidden shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[13px] xl:inline-flex',
             estimated ? 'bg-[hsl(38_92%_54%)]/15 text-[hsl(38_92%_70%)]' : 'bg-white/5 text-white/70')}
@@ -572,6 +696,10 @@ function Editor({
             <button type="button" onClick={onReload} className="rounded-md bg-white/10 px-2 py-1 text-[13px] font-medium hover:bg-white/15">{t('ds_action_load_latest')}</button>
           ) : null}
           <span className="mx-1 hidden h-6 w-px bg-white/10 md:block" aria-hidden="true" />
+          <button type="button" className={cn(TOOL_BUTTON, 'hidden md:inline-flex')} disabled={versions.filter((v) => !v.archived_at).length < 2}
+            onClick={openCompare} aria-label={t('ds_action_compare')}>
+            <Columns2 className="h-4 w-4" aria-hidden="true" /><span className="hidden 2xl:inline">{t('ds_action_compare')}</span>
+          </button>
           <button type="button" className={cn(TOOL_BUTTON, 'hidden md:inline-flex')} onClick={() => controllerRef.current?.frameAll()} aria-label={t('ds_view_overview')}>
             <Maximize className="h-4 w-4" aria-hidden="true" /><span className="hidden 2xl:inline">{t('ds_view_overview')}</span>
           </button>
@@ -633,6 +761,7 @@ function Editor({
             roomLabel={(id) => names.get(id) ?? ''}
             onDropAsset={(code, point) => { const a = assets.get(code); if (a) addAsset(a, point); }}
             objectDrag={objectDrag}
+            initialCamera={initialCamera}
           />
           {modelFailed ? (
             <div role="alert" className="absolute inset-x-4 top-4 mx-auto max-w-md rounded-lg bg-white px-4 py-3 text-[14px] text-[#0C1119] shadow-md ring-1 ring-black/10">
@@ -659,6 +788,38 @@ function Editor({
           {inspector}
         </aside>
       </div>
+
+      {trayOpen ? (
+        <VersionsTray
+          versions={versions}
+          currentId={version.id}
+          thumbnails={thumbs}
+          views={views}
+          busy={busy}
+          onOpen={(id) => { void openVersion(id); }}
+          onDuplicate={(id) => { void forkVersion(id, 'DUPLICATE'); }}
+          onBranch={(id) => { void forkVersion(id, 'BRANCH'); }}
+          onRename={(id, name) => { void renameOne(id, name); }}
+          onArchive={(id) => { void archiveOne(id); }}
+          onCompare={openCompare}
+          onSaveView={(name) => { void saveView(name); }}
+          onView={(view) => controllerRef.current?.restore(view.camera)}
+          onDeleteView={(id) => { void removeView(id); }}
+          onClose={() => setTrayOpen(false)}
+        />
+      ) : null}
+      {compareOpen ? (
+        <CompareView
+          space={space}
+          versions={versions.filter((v) => !v.archived_at)}
+          leftId={version.id}
+          assets={assets}
+          materials={materials}
+          camera={cameraMemory.get(projectId) ?? null}
+          loadModel={loadModel}
+          onClose={() => setCompareOpen(false)}
+        />
+      ) : null}
 
       {/* ── Phone: the canvas is the screen; panels are sheets ─────── */}
       <nav aria-label={t('ds_panel_modes')} className="grid shrink-0 grid-cols-5 border-t border-white/10 bg-[#0C1119] pb-[env(safe-area-inset-bottom)] lg:hidden">

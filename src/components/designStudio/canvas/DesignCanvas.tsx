@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { chooseQuality, readDeviceSignals } from '@/lib/designStudio/quality';
 import type { SpaceModel } from '@/lib/designStudio/space';
-import { SceneController, type PickTarget } from './SceneController';
+import { SceneController, type CameraSnapshot, type PickTarget } from './SceneController';
 
 export interface DesignCanvasProps {
   space: SpaceModel | null;
@@ -23,6 +23,8 @@ export interface DesignCanvasProps {
     onDrop: (instanceId: string, point: { x: number; y: number }) => void;
     onCancel: (instanceId: string) => void;
   };
+  /** Where the camera should be once the space is built (same view across versions). */
+  initialCamera?: CameraSnapshot | null;
   className?: string;
 }
 
@@ -33,8 +35,9 @@ export interface DesignCanvasProps {
  * through props.
  */
 export function DesignCanvas({
-  space, loadModel, selection, onPick, onReady, onModelError, roomLabel, onDropAsset, objectDrag, className,
+  space, loadModel, selection, onPick, onReady, onModelError, roomLabel, onDropAsset, objectDrag, initialCamera, className,
 }: DesignCanvasProps) {
+  const initialCameraRef = useRef(initialCamera);
   const { t } = useLanguage();
   const mountRef = useRef<HTMLDivElement | null>(null);
   const labelsRef = useRef<HTMLDivElement | null>(null);
@@ -169,8 +172,14 @@ export function DesignCanvas({
   useEffect(() => {
     const controller = controllerRef.current;
     if (!controller) return;
-    if (space) controller.loadSpace(space);
-    else if (loadModel) loadModel(controller).catch(() => onModelError?.());
+    if (space) {
+      controller.loadSpace(space);
+      if (initialCameraRef.current) controller.restore(initialCameraRef.current, false);
+    } else if (loadModel) {
+      loadModel(controller)
+        .then(() => { if (initialCameraRef.current) controller.restore(initialCameraRef.current, false); })
+        .catch(() => onModelError?.());
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [space, loadModel]);
 

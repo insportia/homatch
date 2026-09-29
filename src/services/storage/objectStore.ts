@@ -143,8 +143,12 @@ export async function uploadObject(
 
   // Ask the server what actually landed. A PUT returning 200 proves a PUT
   // returned 200.
+  // `commit` is authorised as a WRITE, and the signer's content gate refuses a
+  // WRITE with no declared type for every category that restricts types
+  // (MIME_REQUIRED → 415). Declaring the same type as the sign step is what
+  // lets a completed upload be committed at all.
   const committed = await callSigner<{ key: string; size: number | null }>({
-    op: 'commit', key,
+    op: 'commit', key, contentType, byteSize: file.size,
   });
   return { key: committed.key, size: committed.size };
 }
@@ -173,6 +177,7 @@ export async function deleteObject(key: string): Promise<void> {
 const EXT_BY_MIME: Record<string, string> = {
   'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/avif': 'avif',
   'image/heic': 'heic', 'image/gif': 'gif', 'application/pdf': 'pdf',
+  'model/gltf-binary': 'glb', 'model/gltf+json': 'gltf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
   'text/plain': 'txt', 'audio/mpeg': 'mp3', 'video/mp4': 'mp4',

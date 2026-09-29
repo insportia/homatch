@@ -56,6 +56,7 @@ const CATEGORIES = [
   'property-photos', 'deal-room-documents', 'developer-documents',
   'developer-media', 'mortgage-documents', 'mortgage-offer-documents',
   'expat-attachments', 'generated-reports', 'voice-auditions', 'site-assets',
+  'design-studio-floorplans', 'design-studio-models', 'design-studio-thumbnails',
 ];
 
 interface Filters {

@@ -139,6 +139,48 @@ test('SECURITY DEFINER functions pin search_path and revoke from named roles', (
   }
 });
 
+/* ── Storage: the existing R2 path, nothing parallel ─────────────── */
+
+test('Design Studio files use the existing account-scoped R2 categories', () => {
+  const keys = read('supabase/functions/_shared/storage/keys.ts');
+  for (const cat of ['design-studio-floorplans', 'design-studio-models', 'design-studio-thumbnails']) {
+    assert.match(keys, new RegExp(`'${cat}': owned\\(`), `${cat} is not an owned account category`);
+  }
+  for (const file of ['supabase/functions/_shared/storage/keys.ts', 'src/services/storage/objectStore.ts']) {
+    assert.match(read(file), /'model\/gltf-binary': 'glb'/, `${file} gives a GLB no extension`);
+  }
+  const files = read('src/services/designStudio/files.ts');
+  assert.match(files, /from '@\/services\/storage\/objectStore'/, 'Design Studio uploads bypass the shared storage client');
+  assert.ok(!/storage\.from\(/.test(files), 'Design Studio writes to a Supabase bucket instead of R2');
+});
+
+test('no Design Studio code stores bytes in a database row', () => {
+  for (const file of DS_SOURCES) {
+    const src = read(file);
+    assert.ok(!/toDataURL\(/.test(src), `${file} builds a data URL (bytes that could end up in a row)`);
+  }
+  const all = [MIGRATION, read('supabase/migrations/20260930091000_design_studio_dev_catalog.sql')].join('\n');
+  assert.ok(!/\bbytea\b/i.test(all), 'a Design Studio table stores binary data');
+});
+
+test('storage_authorize is re-created verbatim plus only the Design Studio branch', () => {
+  const extract = (sql) => {
+    const start = sql.indexOf('create or replace function public.storage_authorize(p_key text, p_action text)');
+    return sql.slice(start, sql.indexOf('$fn$;', start) + 5);
+  };
+  const before = extract(read('supabase/migrations/20260918213458_storage_account_scope_and_explorer.sql'));
+  const after = extract(read('supabase/migrations/20260930092000_design_studio_storage_categories.sql'));
+  const branchStart = after.indexOf('    -- HOMATCH Design Studio:');
+  const branchEnd = after.indexOf("    if v_cat not in ('property-photos'");
+  assert.ok(branchStart > 0 && branchEnd > branchStart, 'the Design Studio branch is missing or misplaced');
+  assert.equal(after.slice(0, branchStart) + after.slice(branchEnd), before, 'storage_authorize changed beyond the Design Studio branch');
+});
+
+test('an upload commit declares the type the signer requires', () => {
+  const store = read('src/services/storage/objectStore.ts');
+  assert.match(store, /op: 'commit', key, contentType, byteSize: file\.size/);
+});
+
 test('the migration leaves transactions to the runner', () => {
   assert.ok(!/^\s*(BEGIN|COMMIT)\s*;/im.test(MIGRATION));
 });

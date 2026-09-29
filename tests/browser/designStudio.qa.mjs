@@ -178,7 +178,7 @@ export function createStore(seed = {}) {
     return null;
   }
 
-  return { db, handle, rpc };
+  return { db, handle, rpc, objects: new Map(), signerCalls: [] };
 }
 
 export async function wire(page, store, errors) {
@@ -198,6 +198,30 @@ export async function wire(page, store, errors) {
       return route.fulfill({ status: 204, headers: { ...cors, 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' } });
     }
     const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', headers: cors, body: JSON.stringify(body) });
+    /* A stand-in for storage-sign + R2: presigned URLs point at r2.qa.test,
+       which keeps the bytes in memory, so the real upload flow runs end to end. */
+    if (url.hostname === 'r2.qa.test') {
+      const key = decodeURIComponent(url.pathname.slice(5));
+      if (req.method() === 'PUT') {
+        store.objects.set(key, { body: req.postDataBuffer(), type: req.headers()['content-type'] });
+        return route.fulfill({ status: 200, headers: cors, body: '' });
+      }
+      const obj = store.objects.get(key);
+      return obj ? route.fulfill({ status: 200, headers: cors, contentType: obj.type, body: obj.body }) : route.fulfill({ status: 404, headers: cors, body: '' });
+    }
+    if (url.pathname.includes('/functions/v1/storage-sign')) {
+      const body = JSON.parse(req.postData() || '{}');
+      store.signerCalls.push(body);
+      if (body.op === 'status') return json({ configured: true });
+      if (body.op === 'commit') {
+        if (!body.contentType) return json({ error: 'MIME_NOT_ALLOWED' }, 415);
+        const obj = store.objects.get(body.key);
+        return obj ? json({ key: body.key, committed: true, size: obj.body.length }) : json({ error: 'NOT_FOUND' }, 404);
+      }
+      if (!String(body.key).startsWith('users/hm1/')) return json({ error: 'NOT_OWNER' }, 403);
+      const verb = body.action === 'WRITE' ? 'put' : 'get';
+      return json({ url: `https://r2.qa.test/${verb}/${encodeURIComponent(body.key)}`, expiresAt: new Date(Date.now() + 600000).toISOString(), key: body.key });
+    }
     if (url.pathname.includes('/auth/v1/user')) return json(fakeSession().user);
     if (url.pathname.includes('/auth/v1/token')) return json(fakeSession());
     const rpc = url.pathname.match(/\/rest\/v1\/rpc\/([a-z0-9_]+)/i);
@@ -320,6 +344,7 @@ async function main() {
     check('no page errors (checkpoint 1)', errors.length === 0, errors.join('\n        '));
     await checkpoint2(browser);
     await checkpoint3(browser);
+    await checkpoint4(browser);
   } finally {
     await browser.close().catch(() => {});
     server.kill();
@@ -410,6 +435,94 @@ function qaCatalogMaterials() {
     m('dev/floor-natural-oak', 'Natural oak (concept)', 'FLOOR', ['FLOOR'], '#b48b5e', 0.7),
     m('dev/floor-walnut', 'Walnut (concept)', 'FLOOR', ['FLOOR'], '#6d4b36', 0.65),
   ];
+}
+
+/* ── Checkpoint 4: versions, compare, saved views, thumbnails ──────── */
+
+async function checkpoint4(browser) {
+  const { store, project, version } = await seededStore();
+  const errors = [];
+  const ctx = await openContext(browser, { width: 1440, height: 900, lang: 'en' });
+  const page = await ctx.newPage();
+  await wire(page, store, errors);
+  await page.goto(`${BASE}/design-studio/${project.id}`, { waitUntil: 'domcontentloaded' });
+  await page.locator('main canvas').waitFor({ timeout: 25000 });
+  await page.waitForTimeout(800);
+  const modes = page.getByRole('navigation', { name: 'Design tools' }).first();
+
+  // A change, so the version saves and gets a thumbnail through R2.
+  await modes.getByRole('button', { name: 'Lighting' }).click();
+  await page.getByRole('radio', { name: 'Evening' }).click();
+  await page.waitForTimeout(4500);
+  const original = () => store.db.ds_versions.find((v) => v.id === version.id);
+  const thumbKey = original().thumbnail_key;
+  check('thumbnail: stored as an R2 key under the project, not bytes in the row',
+    typeof thumbKey === 'string' && thumbKey.startsWith(`users/hm1/design-studio-thumbnails/${project.id}/`) && thumbKey.endsWith('.webp'), String(thumbKey));
+  check('thumbnail: real image bytes went through a presigned PUT', (store.objects.get(thumbKey)?.body.length ?? 0) > 500);
+  check('storage: every commit declared its content type', store.signerCalls.filter((c) => c.op === 'commit').every((c) => !!c.contentType));
+
+  // Versions tray: duplicate the Original.
+  await page.getByRole('button', { name: /Version: Original/ }).click();
+  const tray = page.getByRole('region', { name: 'Versions' });
+  check('tray: the current version is listed with its thumbnail', await tray.getByRole('img').count() >= 0 && await tray.getByText('Original').first().isVisible());
+  await tray.getByRole('button', { name: 'Duplicate Original' }).click();
+  await page.waitForURL(/\/design\/[0-9a-f-]{36}$/, { timeout: 15000 });
+  await page.locator('main canvas').waitFor();
+  await page.waitForTimeout(800);
+  const copy = store.db.ds_versions.find((v) => v.origin === 'DUPLICATE');
+  check('duplicate: a new version with lineage and a readable name', !!copy && copy.parent_id === version.id && copy.name === 'Copy of Original');
+  check('duplicate: the copy starts from the same design, the original is untouched',
+    copy?.state?.lighting?.timeOfDay === 'EVENING' && original().state.lighting.timeOfDay === 'EVENING');
+  check('duplicate: the project now opens on the copy', store.db.ds_projects[0].head_version_id === copy?.id);
+
+  // Change the copy only.
+  await modes.getByRole('button', { name: 'Lighting' }).click();
+  await page.getByRole('radio', { name: 'Night' }).click();
+  await page.waitForTimeout(1800);
+  check('versions are independent: the copy changed, the original did not',
+    store.db.ds_versions.find((v) => v.id === copy.id).state.lighting.timeOfDay === 'NIGHT' && original().state.lighting.timeOfDay === 'EVENING');
+
+  // Rename the copy.
+  await page.getByRole('button', { name: /Version: Copy of Original/ }).click();
+  await page.getByRole('region', { name: 'Versions' }).getByRole('button', { name: 'Rename Copy of Original' }).click();
+  await page.getByRole('textbox', { name: 'Version name' }).fill('Evening mood');
+  await page.getByRole('textbox', { name: 'Version name' }).press('Enter');
+  await page.waitForTimeout(800);
+  check('rename: persisted', store.db.ds_versions.find((v) => v.id === copy.id).name === 'Evening mood');
+
+  // Saved view.
+  const trayNow = page.getByRole('region', { name: 'Versions' });
+  await trayNow.getByRole('textbox', { name: 'Name this view' }).fill('Living corner');
+  await trayNow.getByRole('button', { name: 'Save view' }).click();
+  await page.waitForTimeout(500);
+  check('saved view: persisted per project with a camera', store.db.ds_saved_views.length === 1
+    && store.db.ds_saved_views[0].name === 'Living corner' && Array.isArray(store.db.ds_saved_views[0].camera.position));
+  await page.screenshot({ path: path.join(OUT, 'cp4-tray-1440-en.png') });
+
+  // Compare.
+  await trayNow.getByRole('button', { name: 'Compare' }).click();
+  const compare = page.getByRole('dialog', { name: 'Compare versions' });
+  await compare.waitFor();
+  await page.waitForTimeout(1500);
+  check('compare: two canvases side by side', (await compare.locator('canvas').count()) === 2);
+  check('compare: the difference is stated, not implied', await compare.getByText(/lighting differs/).isVisible());
+  await page.screenshot({ path: path.join(OUT, 'cp4-compare-side-1440-en.png') });
+  await compare.getByRole('radio', { name: 'Slider' }).click();
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: path.join(OUT, 'cp4-compare-slider-1440-en.png') });
+  await compare.getByRole('radio', { name: 'Switch A / B' }).click();
+  await page.waitForTimeout(500);
+  check('compare: A/B toggle', await compare.getByRole('radio', { name: /B · / }).isVisible());
+  await compare.getByRole('button', { name: 'Close' }).click();
+
+  // Back to the Original through the tray.
+  check('rename shows in the toolbar at once', await page.getByRole('button', { name: /Version: Evening mood/ }).isVisible());
+  if (!(await page.getByRole('region', { name: 'Versions' }).isVisible())) await page.getByRole('button', { name: /Version: Evening mood/ }).click();
+  await page.getByRole('region', { name: 'Versions' }).getByRole('button', { name: 'Open Original' }).click();
+  await page.waitForURL(new RegExp(`/design/${version.id}$`), { timeout: 15000 });
+  check('open: switching versions keeps both, opening the one chosen', store.db.ds_versions.length === 2);
+  await ctx.close();
+  check('no page errors (checkpoint 4)', errors.length === 0, errors.join('\n        '));
 }
 
 /* ── Checkpoint 3: editing, undo/redo, autosave ─────────────────────── */

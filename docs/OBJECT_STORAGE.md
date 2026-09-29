@@ -136,7 +136,10 @@ and is reunited with the object only in a `Content-Disposition` header.
 
 Categories: `property-photos`, `deal-room-documents`, `developer-documents`,
 `developer-media`, `mortgage-documents`, `expat-attachments`,
-`generated-reports`. An unlisted one is refused, not defaulted.
+`generated-reports`, and for HOMATCH Design Studio `design-studio-floorplans`,
+`design-studio-models` (glTF/GLB) and `design-studio-thumbnails` (entity =
+the `ds_projects` row; owner only, Admin read-only). An unlisted one is
+refused, not defaulted.
 
 **Registering creates nothing.** A prefix in object storage is a substring of
 a key, not a directory, so there is nothing to make until the first upload.

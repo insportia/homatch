@@ -9,7 +9,7 @@
 // project dependency. Run it without touching the lockfile:
 //
 //   npm i --no-save @electric-sql/pglite@0.3
-//   node scripts/design-studio/rls-check.mjs supabase/migrations/20260930090000_design_studio_foundation.sql
+//   node scripts/design-studio/rls-check.mjs //     supabase/migrations/20260930090000_design_studio_foundation.sql //     supabase/migrations/20260930092000_design_studio_storage_categories.sql
 //
 // It proves the migration's behaviour; it is not a substitute for applying
 // the migration through the deploy workflow.
@@ -17,6 +17,7 @@ import { PGlite } from '@electric-sql/pglite';
 import fs from 'node:fs';
 
 const MIGRATION = process.argv[2];
+const STORAGE_MIGRATION = process.argv[3] ?? null;
 const db = new PGlite();
 let failures = 0;
 const ok = (name) => console.log(`  ok   ${name}`);
@@ -228,6 +229,31 @@ await expectError('a placeholder must be marked as one', 'ds_catalog_assets_shap
 // ── jobs
 await expectError('customers cannot create jobs', 'row-level security', () => as(A, (tx) =>
   tx.query(`insert into ds_jobs (user_id, kind) values ($1,'AI_DESIGN')`, [UA])));
+
+// ── object storage (the R2 authorisation function, Design Studio branch)
+if (STORAGE_MIGRATION) {
+  await db.exec(fs.readFileSync(STORAGE_MIGRATION, 'utf8'));
+  const pB2 = await as(B, (tx) => one(tx, `insert into ds_projects (user_id,name) values ($1,'B2') returning id`, [UB]));
+  const key = (acct, cat, proj) => `users/${acct}/${cat}/${proj}/00000000-0000-4000-8000-000000000001.glb`;
+  const verdict = (who, k, action) => as(who, (tx) => one(tx, 'select public.storage_authorize($1,$2) as v', [k, action]));
+  const cases = [
+    [B, key(UB, 'design-studio-models', pB2.id), 'WRITE', 'ALLOW', 'the owner may upload into their own project'],
+    [B, key(UB, 'design-studio-thumbnails', pB2.id), 'READ', 'ALLOW', 'the owner may read their own thumbnails'],
+    [A, key(UB, 'design-studio-models', pB2.id), 'READ', 'NOT_OWNER', 'another customer may not read it'],
+    [A, key(UA, 'design-studio-models', pB2.id), 'WRITE', 'NOT_OWNER', 'another customer may not write into it under their own account'],
+    [ADM, key(UB, 'design-studio-floorplans', pB2.id), 'READ', 'ALLOW', 'Admin may read'],
+    [ADM, key(UB, 'design-studio-floorplans', pB2.id), 'DELETE', 'NOT_OWNER', 'Admin may not delete a customer file'],
+    [B, `users/${UB}/design-studio-models/not-a-uuid/x.glb`, 'WRITE', 'INVALID_KEY', 'a malformed key is refused'],
+    [B, `users/${UB}/design-studio-unknown/${pB2.id}/x.glb`, 'WRITE', 'INVALID_KEY', 'an unlisted category is refused'],
+    ['anon', key(UB, 'design-studio-models', pB2.id), 'READ', 'UNAUTHENTICATED', 'anonymous callers are refused'],
+  ];
+  for (const [who, k, action, expected, name] of cases) {
+    try {
+      const r = await verdict(who, k, action);
+      r.v === expected ? ok(`storage: ${name}`) : bad(`storage: ${name}`, `got ${r.v}`);
+    } catch (e) { bad(`storage: ${name}`, e.message); }
+  }
+}
 
 // ── cascade
 await as(A, (tx) => tx.query(`delete from ds_projects where id=$1`, [pA.id]));

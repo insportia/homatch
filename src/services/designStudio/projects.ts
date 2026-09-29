@@ -306,3 +306,117 @@ export async function appendVersionEvents(
   })));
   if (error) throw new Error(error.message);
 }
+
+// ── Versions ───────────────────────────────────────────────────────────
+
+/**
+ * A new version: a copy of a design state (never of geometry) with its
+ * lineage. Used for "duplicate", "new direction from here" and AI-created
+ * alternatives. The source version is left exactly as it was.
+ */
+export async function createVersion(input: {
+  userId: string;
+  projectId: string;
+  sourceId: string;
+  parentId: string | null;
+  name: string;
+  origin: 'USER' | 'AI' | 'DUPLICATE' | 'BRANCH' | 'RESTORE';
+  state: Record<string, unknown>;
+  styleTags?: string[];
+  changeSummary?: unknown[];
+  makeHead?: boolean;
+}): Promise<DesignVersionRecord> {
+  const { data, error } = await supabase
+    .from('ds_versions')
+    .insert({
+      project_id: input.projectId,
+      user_id: input.userId,
+      source_id: input.sourceId,
+      parent_id: input.parentId,
+      name: input.name.trim().slice(0, 80),
+      origin: input.origin,
+      state: input.state,
+      style_tags: input.styleTags ?? [],
+      change_summary: input.changeSummary ?? [],
+    })
+    .select('*')
+    .single();
+  if (error) fail(error);
+  const version = data as DesignVersionRecord;
+  if (input.makeHead !== false) await setHeadVersion(input.projectId, version.id);
+  return version;
+}
+
+export async function setHeadVersion(projectId: string, versionId: string): Promise<void> {
+  const { error } = await supabase.from('ds_projects').update({ head_version_id: versionId }).eq('id', projectId);
+  if (error) fail(error);
+}
+
+export async function renameVersion(versionId: string, name: string): Promise<void> {
+  const { error } = await supabase.from('ds_versions').update({ name: name.trim().slice(0, 80) }).eq('id', versionId);
+  if (error) fail(error);
+}
+
+/** Archive hides a version from the working list; it is never deleted here. */
+export async function setVersionArchived(versionId: string, archived: boolean): Promise<void> {
+  const { error } = await supabase
+    .from('ds_versions').update({ archived_at: archived ? new Date().toISOString() : null }).eq('id', versionId);
+  if (error) fail(error);
+}
+
+export interface VersionEvent {
+  id: string;
+  revision: number;
+  origin: 'USER' | 'AI' | 'SYSTEM';
+  ops: Array<{ type: string }>;
+  created_at: string;
+}
+
+/** The recorded operations of a version, newest first. */
+export async function listVersionEvents(versionId: string, limit = 100): Promise<VersionEvent[]> {
+  const { data, error } = await supabase
+    .from('ds_version_events').select('id, revision, origin, ops, created_at')
+    .eq('version_id', versionId).order('created_at', { ascending: false }).limit(limit);
+  if (error) fail(error);
+  return (data ?? []) as VersionEvent[];
+}
+
+// ── Saved views ────────────────────────────────────────────────────────
+
+export interface SavedView {
+  id: string;
+  project_id: string;
+  name: string;
+  camera: { position: [number, number, number]; target: [number, number, number]; fov: number };
+  room_id: string | null;
+  sort: number;
+  created_at: string;
+}
+
+export async function listSavedViews(projectId: string): Promise<SavedView[]> {
+  const { data, error } = await supabase
+    .from('ds_saved_views').select('id, project_id, name, camera, room_id, sort, created_at')
+    .eq('project_id', projectId).order('sort').order('created_at');
+  if (error) fail(error);
+  return (data ?? []) as SavedView[];
+}
+
+export async function createSavedView(input: {
+  userId: string; projectId: string; name: string; camera: SavedView['camera']; roomId: string | null; sort: number;
+}): Promise<SavedView> {
+  const { data, error } = await supabase
+    .from('ds_saved_views')
+    .insert({
+      user_id: input.userId, project_id: input.projectId, name: input.name.trim().slice(0, 60),
+      camera: input.camera, room_id: input.roomId, sort: input.sort,
+    })
+    .select('id, project_id, name, camera, room_id, sort, created_at')
+    .single();
+  if (error) fail(error);
+  return data as SavedView;
+}
+
+export async function deleteSavedView(viewId: string): Promise<void> {
+  const { error } = await supabase.from('ds_saved_views').delete().eq('id', viewId);
+  if (error) fail(error);
+}

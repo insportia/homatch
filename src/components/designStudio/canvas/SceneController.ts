@@ -685,19 +685,19 @@ export class SceneController {
     this.controls.enabled = enabled;
   }
 
-  /** A downscaled still of the current view, for version thumbnails. */
-  captureThumbnail(maxWidth = 480): string | null {
+  /** A downscaled WebP still of the current view, for version thumbnails. */
+  captureThumbnail(maxWidth = 480): Promise<Blob | null> {
     try {
       this.renderer.render(this.scene, this.camera);
       const src = this.renderer.domElement;
       const scale = Math.min(1, maxWidth / src.width);
       const out = document.createElement('canvas');
-      out.width = Math.round(src.width * scale);
-      out.height = Math.round(src.height * scale);
+      out.width = Math.max(1, Math.round(src.width * scale));
+      out.height = Math.max(1, Math.round(src.height * scale));
       out.getContext('2d')?.drawImage(src, 0, 0, out.width, out.height);
-      return out.toDataURL('image/webp', 0.8);
+      return new Promise((resolve) => out.toBlob((blob) => resolve(blob), 'image/webp', 0.82));
     } catch {
-      return null;
+      return Promise.resolve(null);
     }
   }
 

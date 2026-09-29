@@ -11,7 +11,7 @@
 // canvas, which is the product. It stays inside the signed-in application
 // (RouteGuard, DesignStudioGate) and its toolbar leads back to the launcher.
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { RouteGuard } from '@/components/common/RouteGuard';
@@ -50,17 +50,21 @@ function ProjectLoader() {
   const [failed, setFailed] = useState(false);
   const [stage, setStage] = useState<Stage>('PROJECT');
 
+  // A reload of an open project (rename, archive, new version) refreshes the
+  // data behind the workspace without taking it down and putting it back.
+  const loaded = useRef(false);
   const load = useCallback(async () => {
     setFailed(false);
-    setStage('PROJECT');
+    if (!loaded.current) setStage('PROJECT');
     try {
       const next = await getProject(projectId);
       if (next) {
-        setStage('SOURCE');
+        if (!loaded.current) setStage('SOURCE');
         const units = next.sources.filter((s) => s.kind === 'DEVELOPER_UNIT' && s.dev_unit_id).map((s) => s.dev_unit_id as string);
         setCurrent(await developerCurrentPins(units));
       }
       setBundle(next);
+      loaded.current = true;
     } catch {
       setFailed(true);
     }

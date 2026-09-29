@@ -37,6 +37,7 @@ import {
   type LauncherProperty, type ProjectListItem,
 } from '@/services/designStudio/projects';
 import { resolveSpatialSource } from '@/lib/designStudio/spatialSource';
+import { signedUrls } from '@/services/designStudio/files';
 import { SUPPORTED_GENERATORS } from '@/lib/designStudio/engine';
 import { cn } from '@/lib/utils';
 
@@ -84,6 +85,7 @@ function Launcher() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [thumbs, setThumbs] = useState<Map<string, string>>(new Map());
 
   const userId = homatchUser?.id ?? '';
 
@@ -99,6 +101,12 @@ function Launcher() {
   }, [userId, view]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Version thumbnails live in R2; a short-lived URL is minted to show them.
+  useEffect(() => {
+    const keys = (projects ?? []).map((p) => p.thumbnail_key).filter((k): k is string => !!k);
+    if (keys.length) signedUrls(keys).then(setThumbs).catch(() => {});
+  }, [projects]);
 
   const preselectedProperty = params.get('property');
   useEffect(() => {
@@ -261,6 +269,7 @@ function Launcher() {
               <ProjectRow
                 key={project.id}
                 project={project}
+                thumbUrl={project.thumbnail_key ? thumbs.get(project.thumbnail_key) ?? null : null}
                 locale={lang}
                 onArchive={() => changeStatus(project.id, project.status === 'ACTIVE' ? 'ARCHIVED' : 'ACTIVE')}
               />
@@ -291,8 +300,8 @@ function Launcher() {
 }
 
 function ProjectRow({
-  project, locale, onArchive,
-}: { project: ProjectListItem; locale: string; onArchive: () => void }) {
+  project, thumbUrl, locale, onArchive,
+}: { project: ProjectListItem; thumbUrl: string | null; locale: string; onArchive: () => void }) {
   const { t } = useLanguage();
   /* The project is usually named after its property; repeating the title
      under itself would say the same thing twice. */
@@ -312,7 +321,9 @@ function ProjectRow({
         aria-hidden="true"
         tabIndex={-1}
       >
-        {project.property?.cover_photo_url ? (
+        {thumbUrl ? (
+          <img src={thumbUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+        ) : project.property?.cover_photo_url ? (
           <img src={project.property.cover_photo_url} alt="" className="h-full w-full object-cover opacity-90" loading="lazy" />
         ) : (
           <RoomSketch className="h-full w-full p-1.5" />

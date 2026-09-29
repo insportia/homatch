@@ -1,114 +1,113 @@
 // META ADS — the orchestrator. Every consequential Meta Ads action lands
-// here: capability status, asset selection, plan preview, preflight,
-// LAUNCH (the only path that can move money), pause/resume, sync, lead
-// export/import, audience terms + creation, deposits, funnel events and
-// the admin probe. The browser edits drafts through RLS; everything that
-// talks to Meta or to the ledger happens in this file under service role,
-// behind the admin kill switches, with idempotency keys.
+// here: capability status, connection, asset discovery and selection, plan
+// preview, preflight, LAUNCH (the only path that can move money), pause /
+// resume, sync, lead export/import, audiences, inline AI copy, deposits,
+// funnel events, the admin probe, and the scheduled maintenance pass. The
+// browser edits drafts through RLS; everything that talks to Meta or to the
+// ledger happens here under service role, behind the admin kill switches,
+// with idempotency keys. The Meta-facing work itself is in engine.ts.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
-  buildPlan, validatePlanInput, computeTotals, classifySpecialAdCategories,
-  canTransition, STRATEGY_VERSION, GOAL_TO_OBJECTIVE, type StrategyInput,
+  buildPlan, validatePlanInput, computeTotals, canTransition, type MetaGoal,
 } from '../../../src/lib/metaAds/strategy.ts';
+import { GOAL_SPECS, missingRequirements, recommendedPlacements } from '../../../src/lib/metaAds/payload.ts';
 import { hashIdentifierRows, csvSafeCell, normalizeEmail, normalizePhone } from '../../../src/lib/metaAds/hashing.ts';
 // Static, not `await import(...)`: the deploy prover walks static imports to
-// compare the shipped bundle against this revision's closure, and a dynamic
-// import made the deployed artifact carry a module the prover could not see.
+// compare the shipped bundle against this revision's closure.
 import { getPaymentProvider } from '../_shared/payment_provider.ts';
 import {
-  metaMode, graph, MetaApiError, oauthStartUrl, mockExternalId, capabilityMatrix,
+  metaMode, graph, graphAll, MetaApiError, oauthStartUrl, mockExternalId, capabilityMatrix, signOAuthState,
+  sealToken, scrubText, REQUIRED_SCOPES_BY_GOAL,
 } from '../_shared/metaAds.ts';
+import { ingestLead } from '../_shared/metaLeads.ts';
+import { callLlm, llmAvailable } from '../_shared/comm/llm.ts';
+import {
+  loadSettings, userToken, selectedAsset, pageToken, strategyInputFor, limitsOf, configFingerprint,
+  runPreflight, publishCampaign, syncCampaign, settleCampaign,
+} from './engine.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-token',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
-async function setting(sb: any, key: string): Promise<unknown> {
-  const { data } = await sb.from('admin_settings').select('value').eq('key', key).maybeSingle();
-  return data?.value;
-}
-const asBool = (v: unknown, d: boolean) => (typeof v === 'boolean' ? v : d);
-const asNum = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
-
-async function userToken(sb: any, userId: string): Promise<string | null> {
-  const { data: conn } = await sb.from('meta_connections')
-    .select('id,status').eq('user_id', userId).maybeSingle();
-  if (!conn || conn.status !== 'CONNECTED') return null;
-  const { data: tok } = await sb.from('meta_tokens')
-    .select('access_token,expires_at').eq('connection_id', conn.id).maybeSingle();
-  if (!tok) return null;
-  if (tok.expires_at && new Date(tok.expires_at) < new Date()) {
-    await sb.from('meta_connections').update({ status: 'EXPIRED' }).eq('id', conn.id);
-    return null;
-  }
-  return tok.access_token as string;
-}
-
-async function selectedAsset(sb: any, userId: string, kind: string) {
-  const { data } = await sb.from('meta_assets').select('*')
-    .eq('user_id', userId).eq('kind', kind).eq('selected', true).maybeSingle();
-  return data ?? null;
-}
-
 async function audit(sb: any, actorId: string | null, action: string, target: string, meta: unknown) {
   try {
     await sb.from('admin_audit_log').insert({
-      admin_id: actorId, action, target_type: 'META_ADS', target_id: target,
-      details: meta ?? {},
+      admin_id: actorId, action, target_type: 'META_ADS', target_id: target, details: meta ?? {},
     });
   } catch { /* best effort */ }
 }
 
+const ASSET_KINDS = ['BUSINESS', 'PAGE', 'INSTAGRAM', 'AD_ACCOUNT', 'PIXEL', 'LEAD_FORM', 'WHATSAPP'];
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+  const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+  const body = await req.json().catch(() => ({}));
+  const action = String(body.action ?? '');
+  const mode = metaMode();
+
+  /* ── SCHEDULED MAINTENANCE (cron token, no user) ─────────────────────── */
+  const cronToken = req.headers.get('x-cron-token');
+  if (cronToken) {
+    const { data: tokenRow } = await sb.from('admin_settings').select('value').eq('key', 'meta_ads_maintenance_token').maybeSingle();
+    const expected = String(tokenRow?.value ?? '').replace(/^"|"$/g, '');
+    if (!expected || cronToken !== expected || action !== 'maintenance') return json({ error: 'Forbidden' }, 403);
+    return json(await maintenance(sb, mode));
+  }
+
   const authHeader = req.headers.get('Authorization');
   if (!authHeader) return json({ error: 'Unauthorized' }, 401);
   const userClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!,
     { global: { headers: { Authorization: authHeader } } });
-  const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-  const body = await req.json().catch(() => ({}));
-  const action = String(body.action ?? '');
-
   const { data: { user } } = await userClient.auth.getUser();
   if (!user) return json({ error: 'Invalid session' }, 401);
   const { data: me } = await sb.from('users').select('id,is_admin,email').eq('auth_id', user.id).maybeSingle();
   if (!me) return json({ error: 'User not found' }, 404);
   const uid = me.id as string;
-  const mode = metaMode();
+  const settings = await loadSettings(sb);
 
-  if (asBool(await setting(sb, 'meta_ads_enabled'), true) === false && !me.is_admin) {
-    return json({ error: 'META_ADS_DISABLED', code: 'META_ADS_DISABLED' }, 503);
-  }
+  if (!settings.enabled && !me.is_admin) return json({ error: 'META_ADS_DISABLED', code: 'META_ADS_DISABLED' }, 503);
 
   try {
     switch (action) {
-      /* ── STATUS: the one call the workspace boots from ─────────────── */
+      /* ── STATUS: the one call the workspace and builder boot from ───── */
       case 'status': {
         const [{ data: conn }, { data: assets }, { data: wallet }] = await Promise.all([
-          sb.from('meta_connections').select('status,granted_scopes,token_expires_at,last_error,meta_user_external_id').eq('user_id', uid).maybeSingle(),
-          sb.from('meta_assets').select('id,kind,external_id,name,selected,status').eq('user_id', uid).order('kind'),
+          sb.from('meta_connections').select('status,granted_scopes,declined_scopes,token_expires_at,last_checked_at,meta_user_external_id').eq('user_id', uid).maybeSingle(),
+          sb.from('meta_assets').select('id,kind,external_id,name,selected,status,parent_external_id,capabilities').eq('user_id', uid).order('kind').order('name'),
           sb.from('meta_wallet_balances').select('*').eq('user_id', uid).maybeSingle(),
         ]);
-        const settings = {
-          feePercent: asNum(await setting(sb, 'meta_ads_fee_percent'), 9),
-          minDurationDays: asNum(await setting(sb, 'meta_ads_min_duration_days'), 2),
-          minDailyCents: asNum(await setting(sb, 'meta_ads_daily_budget_min_cents'), 200),
-          maxDailyCents: asNum(await setting(sb, 'meta_ads_daily_budget_max_cents'), 100000000),
-          goalsEnabled: (await setting(sb, 'meta_ads_goals_enabled')) ?? ['LEADS_ON_META'],
-          leadImportEnabled: asBool(await setting(sb, 'meta_ads_lead_import_enabled'), true),
-          audienceCreationEnabled: asBool(await setting(sb, 'meta_ads_audience_creation_enabled'), true),
-          retargetingEnabled: asBool(await setting(sb, 'meta_ads_retargeting_enabled'), true),
-          aiAssistEnabled: asBool(await setting(sb, 'meta_ads_ai_assist_enabled'), true),
-          publishingEnabled: asBool(await setting(sb, 'meta_ads_publishing_enabled'), true),
-        };
+        const granted: string[] = conn?.granted_scopes ?? [];
+        const missingScopes = [...new Set(Object.values(REQUIRED_SCOPES_BY_GOAL).flat())].filter((s) => !granted.includes(s));
+        const expiresAt = conn?.token_expires_at ? Date.parse(conn.token_expires_at) : NaN;
+        const health = !conn || conn.status === 'DISCONNECTED' ? 'NOT_CONNECTED'
+          : conn.status === 'EXPIRED' || (Number.isFinite(expiresAt) && expiresAt < Date.now()) ? 'TOKEN_EXPIRED'
+          : conn.status === 'REVOKED' ? 'REVOKED'
+          : conn.status === 'ERROR' ? 'ERROR'
+          : missingScopes.length ? 'PERMISSION_MISSING'
+          : 'CONNECTED';
         return json({
-          mode, connection: conn ?? { status: 'DISCONNECTED' }, assets: assets ?? [],
+          mode,
+          connection: conn
+            ? { status: conn.status, health, granted_scopes: granted, missing_scopes: missingScopes,
+              token_expires_at: conn.token_expires_at, last_checked_at: conn.last_checked_at }
+            : { status: 'DISCONNECTED', health: 'NOT_CONNECTED', granted_scopes: [], missing_scopes: [] },
+          // Asset capabilities carry account status/currency, never a token.
+          assets: (assets ?? []).map((a: any) => ({ ...a, capabilities: a.capabilities ?? {} })),
           wallet: wallet ?? { available_cents: 0, reserved_cents: 0, spent_cents: 0, fees_cents: 0, deposited_cents: 0, currency: 'USD' },
-          settings,
+          settings: {
+            feePercent: settings.feePercent, minDurationDays: settings.minDurationDays,
+            minDailyCents: settings.minDailyCents, maxDailyCents: settings.maxDailyCents,
+            goalsEnabled: settings.goalsEnabled, leadImportEnabled: settings.leadImportEnabled,
+            audienceCreationEnabled: settings.audienceCreationEnabled, retargetingEnabled: settings.retargetingEnabled,
+            aiAssistEnabled: settings.aiAssistEnabled && llmAvailable(), publishingEnabled: settings.publishingEnabled,
+            whatsappEnabled: settings.whatsappEnabled, countries: settings.defaultCountries,
+          },
         });
       }
 
@@ -116,33 +115,28 @@ Deno.serve(async (req) => {
       case 'oauth_start': {
         await sb.from('meta_funnel_events').insert({ event: 'meta_ads_authenticated', user_id: uid });
         if (mode === 'MOCK') return json({ mode, mockConnect: true });
-        // State binds the callback to this HOMATCH user, HMAC-signed with
-        // the app secret so it cannot be forged or replayed for another uid.
         const nonce = crypto.randomUUID();
         await sb.from('meta_connections').upsert(
-          { user_id: uid, status: 'DISCONNECTED', last_error: nonce }, { onConflict: 'user_id' });
-        const state = btoa(JSON.stringify({ uid, nonce }));
-        return json({ mode, url: oauthStartUrl(state) });
+          { user_id: uid, oauth_nonce: nonce, oauth_started_at: new Date().toISOString() },
+          { onConflict: 'user_id' });
+        return json({ mode, url: oauthStartUrl(await signOAuthState({ uid, nonce })) });
       }
 
       case 'oauth_mock_connect': {
-        // The sanctioned MOCK path (adapter has no credentials). Everything
-        // it creates is unmistakably labelled TEST/mock_ and Admin shows
-        // the integration mode; no metric is ever synthesized.
+        // The sanctioned MOCK path (adapter has no credentials). Everything it
+        // creates is unmistakably TEST/mock_, and no money ever moves in MOCK.
         if (mode !== 'MOCK') return json({ error: 'REAL mode active' }, 400);
         const { data: conn } = await sb.from('meta_connections').upsert({
           user_id: uid, status: 'CONNECTED', meta_user_external_id: mockExternalId('user'),
-          granted_scopes: ['ads_management', 'leads_retrieval'], last_error: null,
+          granted_scopes: [...new Set(Object.values(REQUIRED_SCOPES_BY_GOAL).flat())], last_error: null,
           last_checked_at: new Date().toISOString(),
         }, { onConflict: 'user_id' }).select('id').single();
         await sb.from('meta_tokens').upsert({ connection_id: conn.id, access_token: `mock_${crypto.randomUUID()}` });
-        const seed = [
-          { kind: 'BUSINESS', name: 'TEST Business' },
-          { kind: 'PAGE', name: 'TEST Page' },
-          { kind: 'INSTAGRAM', name: 'TEST Instagram' },
-          { kind: 'AD_ACCOUNT', name: 'TEST Ad Account' },
-        ];
-        for (const a of seed) {
+        for (const a of [
+          { kind: 'BUSINESS', name: 'TEST Business' }, { kind: 'PAGE', name: 'TEST Page' },
+          { kind: 'INSTAGRAM', name: 'TEST Instagram' }, { kind: 'AD_ACCOUNT', name: 'TEST Ad Account' },
+          { kind: 'PIXEL', name: 'TEST Pixel' }, { kind: 'LEAD_FORM', name: 'TEST Lead form' },
+        ]) {
           await sb.from('meta_assets').upsert({
             user_id: uid, kind: a.kind, external_id: mockExternalId(a.kind.toLowerCase()),
             name: a.name, selected: true, capabilities: { mock: true },
@@ -152,61 +146,174 @@ Deno.serve(async (req) => {
         return json({ ok: true, mode });
       }
 
+      case 'disconnect': {
+        const { data: conn } = await sb.from('meta_connections').select('id').eq('user_id', uid).maybeSingle();
+        if (!conn) return json({ ok: true });
+        const token = await userToken(sb, uid);
+        if (mode === 'REAL' && token) {
+          try { await graph('/me/permissions', { token, method: 'DELETE', attempts: 1 }); } catch { /* revoke best-effort */ }
+        }
+        await sb.from('meta_tokens').delete().eq('connection_id', conn.id);
+        await sb.from('meta_connections').update({ status: 'DISCONNECTED', granted_scopes: [], token_expires_at: null }).eq('id', conn.id);
+        await sb.from('meta_assets').update({ selected: false }).eq('user_id', uid);
+        await audit(sb, uid, 'META_DISCONNECT', uid, {});
+        return json({ ok: true });
+      }
+
       case 'assets_refresh': {
         const token = await userToken(sb, uid);
         if (!token) return json({ error: 'NOT_CONNECTED', code: 'NOT_CONNECTED' }, 400);
         if (mode === 'MOCK') return json({ ok: true, mode });
         const auditCtx = { sb, userId: uid };
         const [biz, pages, accts] = await Promise.all([
-          graph('/me/businesses?fields=id,name', { token, audit: auditCtx }),
-          graph('/me/accounts?fields=id,name,instagram_business_account{id,username}', { token, audit: auditCtx }),
-          graph('/me/adaccounts?fields=id,name,account_status,currency,business', { token, audit: auditCtx }),
+          graphAll('/me/businesses?fields=id,name&limit=100', { token, audit: auditCtx }),
+          graphAll('/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&limit=100', { token, audit: auditCtx }),
+          graphAll('/me/adaccounts?fields=id,name,account_status,currency,business,disable_reason&limit=100', { token, audit: auditCtx }),
         ]);
-        const up = async (kind: string, external_id: string, name: string, parent?: string, raw?: unknown) =>
+        const up = (kind: string, external_id: string, name: string, parent?: string | null, capabilities?: unknown) =>
           sb.from('meta_assets').upsert({
             user_id: uid, kind, external_id, name, parent_external_id: parent ?? null,
-            raw: raw ?? null, updated_at: new Date().toISOString(),
+            capabilities: capabilities ?? {}, status: 'ACTIVE', updated_at: new Date().toISOString(),
           }, { onConflict: 'user_id,kind,external_id' });
-        for (const b of (biz.data as any[] ?? [])) await up('BUSINESS', b.id, b.name);
-        for (const p of (pages.data as any[] ?? [])) {
-          await up('PAGE', p.id, p.name);
+        const seen: Record<string, string[]> = {};
+        const mark = (kind: string, id: string) => { (seen[kind] ??= []).push(id); };
+        for (const b of biz as any[]) { await up('BUSINESS', b.id, b.name); mark('BUSINESS', b.id); }
+        for (const p of pages as any[]) {
+          await up('PAGE', p.id, p.name); mark('PAGE', p.id);
           if (p.instagram_business_account) {
-            await up('INSTAGRAM', p.instagram_business_account.id,
-              p.instagram_business_account.username ?? 'Instagram', p.id);
+            await up('INSTAGRAM', p.instagram_business_account.id, p.instagram_business_account.username ?? 'Instagram', p.id);
+            mark('INSTAGRAM', p.instagram_business_account.id);
+          }
+          // Lead forms live on the Page and are read with its token, which is
+          // used here and discarded — never stored.
+          if (p.access_token) {
+            try {
+              const forms = await graphAll(`/${p.id}/leadgen_forms?fields=id,name,status,locale&limit=100`, { token: p.access_token }, 2);
+              for (const f of forms as any[]) {
+                if (String(f.status) !== 'ACTIVE') continue;
+                await up('LEAD_FORM', f.id, f.name, p.id, { locale: f.locale ?? null });
+                mark('LEAD_FORM', f.id);
+              }
+            } catch { /* the page may not allow lead forms; not fatal */ }
           }
         }
-        for (const a of (accts.data as any[] ?? [])) {
-          await up('AD_ACCOUNT', a.id, a.name, a.business?.id, { account_status: a.account_status, currency: a.currency });
+        for (const a of accts as any[]) {
+          await up('AD_ACCOUNT', a.id, a.name, a.business?.id, { account_status: a.account_status, currency: a.currency, disable_reason: a.disable_reason ?? null });
+          mark('AD_ACCOUNT', a.id);
+          try {
+            const pixels = await graphAll(`/${a.id}/adspixels?fields=id,name,last_fired_time&limit=100`, { token, audit: auditCtx }, 2);
+            for (const px of pixels as any[]) {
+              await up('PIXEL', px.id, px.name, a.id, { last_fired_time: px.last_fired_time ?? null });
+              mark('PIXEL', px.id);
+            }
+          } catch { /* no pixel access is a state, not an error */ }
         }
-        return json({ ok: true });
+        // Assets no longer granted are marked, not deleted.
+        for (const kind of ['BUSINESS', 'PAGE', 'INSTAGRAM', 'AD_ACCOUNT', 'PIXEL', 'LEAD_FORM']) {
+          const ids = seen[kind] ?? [];
+          let q = sb.from('meta_assets').update({ status: 'UNAVAILABLE', selected: false }).eq('user_id', uid).eq('kind', kind);
+          if (ids.length) q = q.not('external_id', 'in', `(${ids.map((i) => `"${i}"`).join(',')})`);
+          await q;
+        }
+        await sb.from('meta_connections').update({ last_checked_at: new Date().toISOString() }).eq('user_id', uid);
+        return json({ ok: true, counts: Object.fromEntries(Object.entries(seen).map(([k, v]) => [k, v.length])) });
       }
 
       case 'select_asset': {
         const { kind, assetId } = body;
-        if (!['BUSINESS', 'PAGE', 'INSTAGRAM', 'AD_ACCOUNT', 'PIXEL'].includes(kind)) return json({ error: 'bad kind' }, 400);
+        if (!ASSET_KINDS.includes(kind)) return json({ error: 'bad kind' }, 400);
+        const { data: asset } = await sb.from('meta_assets').select('*').eq('user_id', uid).eq('id', assetId).eq('kind', kind).maybeSingle();
+        if (!asset || asset.status === 'UNAVAILABLE') return json({ error: 'asset not found' }, 404);
         await sb.from('meta_assets').update({ selected: false }).eq('user_id', uid).eq('kind', kind);
-        const { error } = await sb.from('meta_assets').update({ selected: true })
-          .eq('user_id', uid).eq('id', assetId).eq('kind', kind);
-        if (error) return json({ error: 'asset not found' }, 404);
-        return json({ ok: true });
+        await sb.from('meta_assets').update({ selected: true }).eq('id', asset.id);
+        let subscribed: boolean | null = null;
+        // A selected Page is subscribed to leadgen webhooks, or leads never arrive.
+        if (kind === 'PAGE' && mode === 'REAL') {
+          const token = await userToken(sb, uid);
+          if (token) {
+            try {
+              const pt = await pageToken(token, asset.external_id, { sb, userId: uid });
+              if (pt) {
+                await graph(`/${asset.external_id}/subscribed_apps`, { token: pt, method: 'POST', body: { subscribed_fields: 'leadgen' }, attempts: 1 });
+                subscribed = true;
+              }
+            } catch { subscribed = false; }
+            await sb.from('meta_assets').update({ capabilities: { ...(asset.capabilities ?? {}), leadgen_subscribed: subscribed } }).eq('id', asset.id);
+          }
+        }
+        return json({ ok: true, leadgenSubscribed: subscribed });
+      }
+
+      case 'create_lead_form': {
+        // Guided Instant Form: name, privacy policy, standard fields. Meta
+        // requires a privacy-policy URL on every lead form.
+        const page = await selectedAsset(sb, uid, 'PAGE');
+        if (!page) return json({ error: 'NO_PAGE', code: 'NO_PAGE' }, 400);
+        const name = String(body.name ?? '').trim().slice(0, 100);
+        const privacyUrl = String(body.privacyPolicyUrl ?? '').trim();
+        if (!name) return json({ error: 'NAME_REQUIRED', code: 'NAME_REQUIRED' }, 400);
+        if (!/^https:\/\//.test(privacyUrl)) return json({ error: 'PRIVACY_URL_REQUIRED', code: 'PRIVACY_URL_REQUIRED' }, 400);
+        const allowed = ['FULL_NAME', 'EMAIL', 'PHONE'];
+        const fields = (Array.isArray(body.fields) ? body.fields : allowed).map(String).filter((f: string) => allowed.includes(f));
+        if (!fields.length) return json({ error: 'FIELDS_REQUIRED' }, 400);
+        let externalId: string;
+        if (mode === 'MOCK') externalId = mockExternalId('form');
+        else {
+          const token = await userToken(sb, uid);
+          if (!token) return json({ error: 'NOT_CONNECTED', code: 'NOT_CONNECTED' }, 400);
+          const pt = await pageToken(token, page.external_id, { sb, userId: uid });
+          if (!pt) return json({ error: 'meta_err_permission', code: 'PAGE_TOKEN_UNAVAILABLE' }, 400);
+          const created = await graph(`/${page.external_id}/leadgen_forms`, {
+            token: pt, method: 'POST', audit: { sb, userId: uid },
+            body: {
+              name,
+              questions: fields.map((type: string) => ({ type })),
+              privacy_policy: { url: privacyUrl, link_text: String(body.privacyLinkText ?? 'Privacy policy').slice(0, 70) },
+              locale: String(body.locale ?? 'en_US'),
+              follow_up_action_url: String(body.followUpUrl ?? privacyUrl),
+            },
+          });
+          externalId = String(created.id);
+        }
+        await sb.from('meta_assets').update({ selected: false }).eq('user_id', uid).eq('kind', 'LEAD_FORM');
+        const { data: asset } = await sb.from('meta_assets').upsert({
+          user_id: uid, kind: 'LEAD_FORM', external_id: externalId, name, parent_external_id: page.external_id,
+          selected: true, status: 'ACTIVE', capabilities: { fields, created_by_homatch: true, mock: mode === 'MOCK' },
+        }, { onConflict: 'user_id,kind,external_id' }).select('id,external_id,name').single();
+        await audit(sb, uid, 'META_LEAD_FORM_CREATE', externalId, { fields });
+        return json({ ok: true, form: asset, mode });
       }
 
       /* ── PLAN + PREFLIGHT ──────────────────────────────────────────── */
       case 'plan_preview': {
-        const input = await strategyInputFor(sb, uid, body.campaignId);
+        const { data: c } = await sb.from('meta_campaigns').select('*').eq('id', body.campaignId).eq('user_id', uid).maybeSingle();
+        if (!c) return json({ error: 'not found' }, 404);
+        const input = await strategyInputFor(sb, uid, c, settings);
         if ('error' in input) return json(input, 400);
-        const limits = await budgetLimits(sb);
-        const issues = validatePlanInput(input.strategy, limits);
-        const feePercent = asNum(await setting(sb, 'meta_ads_fee_percent'), 9);
-        const totals = computeTotals(input.strategy.dailyBudgetCents, input.strategy.durationDays, feePercent);
+        const issues = validatePlanInput(input.strategy, limitsOf(settings));
+        const totals = computeTotals(input.strategy.dailyBudgetCents, input.strategy.durationDays, settings.feePercent);
         const plan = issues.length === 0 ? buildPlan(input.strategy) : null;
+        const [page, ig, pixel, form] = await Promise.all([
+          selectedAsset(sb, uid, 'PAGE'), selectedAsset(sb, uid, 'INSTAGRAM'), selectedAsset(sb, uid, 'PIXEL'), selectedAsset(sb, uid, 'LEAD_FORM'),
+        ]);
+        const goal = c.goal as MetaGoal;
+        const { data: crs } = await sb.from('meta_creatives').select('media').eq('campaign_id', c.id);
+        const hasVideo = (crs ?? []).some((cr: any) => String(cr.media?.[0]?.mime ?? '').startsWith('video'));
         return json({
           issues, totals,
+          requirements: missingRequirements(goal, {
+            pageId: page?.external_id ?? '', instagramUserId: ig?.external_id ?? null, pixelId: pixel?.external_id ?? null,
+            leadFormId: c.destination?.formId ?? form?.external_id ?? null, messagingApp: c.destination?.messagingApp ?? null,
+            whatsappNumber: null, websiteUrl: c.destination?.url ?? null,
+          }),
+          goalSpec: { ...GOAL_SPECS[goal] },
+          recommendedPlacements: recommendedPlacements({ hasInstagram: !!ig, hasVideo, goal }),
           summary: plan ? {
             adSetCount: plan.adSets.length,
             creativeCount: plan.adSets.reduce((n, s) => n + s.creativeIds.length, 0),
             specialAdCategories: plan.specialAdCategories,
             placementsMode: plan.placements.mode,
+            objective: plan.objective,
           } : null,
         });
       }
@@ -214,140 +321,99 @@ Deno.serve(async (req) => {
       case 'preflight': {
         const { data: c } = await sb.from('meta_campaigns').select('*').eq('id', body.campaignId).eq('user_id', uid).maybeSingle();
         if (!c) return json({ error: 'not found' }, 404);
-        const input = await strategyInputFor(sb, uid, c.id);
-        if ('error' in input) return json(input, 400);
-        const limits = await budgetLimits(sb);
-        const checks: Array<{ key: string; ok: boolean; detail?: string }> = [];
-        const planIssues = validatePlanInput(input.strategy, limits);
-        checks.push({ key: 'plan', ok: planIssues.length === 0, detail: planIssues.map(i => i.code).join(',') || undefined });
-        // Connection + assets the launch will need.
-        const token = await userToken(sb, uid);
-        checks.push({ key: 'connection', ok: !!token });
-        const page = await selectedAsset(sb, uid, 'PAGE');
-        const acct = await selectedAsset(sb, uid, 'AD_ACCOUNT');
-        checks.push({ key: 'page_selected', ok: !!page });
-        checks.push({ key: 'ad_account_selected', ok: !!acct });
-        // Creatives: content rules, deterministic (an LLM never gates).
-        const { data: creatives } = await sb.from('meta_creatives').select('*').eq('campaign_id', c.id);
-        const BANNED = /(guaranteed profit|guaranteed roi|შემოსავალი გარანტირებულია|100% гарант)/i;
-        let creativeOk = (creatives ?? []).length > 0;
-        let manualReview = false;
-        for (const cr of creatives ?? []) {
-          const text = `${cr.headline}\n${cr.primary_text}`;
-          const flags: string[] = [];
-          if (BANNED.test(text)) flags.push('CLAIM_GUARANTEE');
-          if (cr.destination_url && !String(cr.destination_url).startsWith('https://')) flags.push('URL_NOT_HTTPS');
-          if ((cr.media ?? []).length === 0) flags.push('NO_MEDIA');
-          const status = flags.includes('CLAIM_GUARANTEE') ? 'MANUAL_REVIEW'
-            : flags.length ? 'NEEDS_CHANGES' : 'READY';
-          if (status !== 'READY') creativeOk = false;
-          if (status === 'MANUAL_REVIEW') manualReview = true;
-          await sb.from('meta_creatives').update({
-            safety_status: status, safety: { flags, checked_at: new Date().toISOString() },
-          }).eq('id', cr.id);
-          if (status === 'MANUAL_REVIEW') {
-            await sb.from('meta_moderation_cases').insert({
-              user_id: uid, campaign_id: c.id, creative_id: cr.id,
-              reason: flags.join(','), severity: 'HIGH', findings: { flags }, status: 'OPEN',
-            });
-          }
+        if (!['DRAFT', 'CONNECTION_REQUIRED', 'CREATIVE_REQUIRED', 'AUDIENCE_REQUIRED', 'PREFLIGHT_REQUIRED', 'NEEDS_CHANGES', 'READY', 'PAYMENT_REQUIRED', 'FAILED', 'REJECTED'].includes(c.status)) {
+          return json({ error: 'ALREADY_LAUNCHED', code: 'ALREADY_LAUNCHED', status: c.status }, 409);
         }
-        checks.push({ key: 'creatives', ok: creativeOk });
-        // Policy classification is recomputed here, never trusted from the client.
-        const cats = classifySpecialAdCategories({
-          isProperty: !!c.property_id || !!(c.offer && c.offer.isProperty !== false),
-          dealKind: c.offer?.dealKind ?? (c.property_id ? 'SALE' : 'OTHER'),
-        });
-        checks.push({ key: 'policy_classified', ok: true, detail: cats.join(',') || 'NONE' });
-        const allOk = checks.every(ch => ch.ok);
-        const status = manualReview ? 'MANUAL_REVIEW' : allOk ? 'READY' : 'NEEDS_CHANGES';
-        const plan = allOk ? buildPlan(input.strategy) : null;
-        await sb.from('meta_campaigns').update({
-          special_ad_categories: cats,
-          objective: GOAL_TO_OBJECTIVE[c.goal as keyof typeof GOAL_TO_OBJECTIVE] ?? null,
-          preflight: { status, checks, checked_at: new Date().toISOString() },
-          plan, plan_version: plan ? STRATEGY_VERSION : null,
-          status,
-        }).eq('id', c.id);
-        await sb.from('meta_funnel_events').insert({ event: 'preflight_completed', user_id: uid });
-        return json({ status, checks });
+        return json(await runPreflight(sb, uid, c, settings, mode));
       }
 
       /* ── LAUNCH: the only door to money and Meta ───────────────────── */
       case 'launch': {
-        if (!asBool(await setting(sb, 'meta_ads_publishing_enabled'), true)) {
-          return json({ error: 'PUBLISHING_DISABLED', code: 'PUBLISHING_DISABLED' }, 503);
-        }
+        if (!settings.publishingEnabled) return json({ error: 'PUBLISHING_DISABLED', code: 'PUBLISHING_DISABLED' }, 503);
         const idem = String(body.idempotencyKey ?? '');
         if (!/^[0-9a-f-]{36}$/.test(idem)) return json({ error: 'idempotencyKey required' }, 400);
         const { data: c } = await sb.from('meta_campaigns').select('*').eq('id', body.campaignId).eq('user_id', uid).maybeSingle();
         if (!c) return json({ error: 'not found' }, 404);
-        // Retried launch with the same key returns the same outcome.
         if (c.launch_idempotency_key === idem && c.external_campaign_id) {
-          return json({ ok: true, already: true, status: c.status });
+          return json({ ok: true, already: true, status: c.status, mode });
         }
         if (c.status !== 'READY' || c.preflight?.status !== 'READY') {
           return json({ error: 'NOT_READY', code: 'NOT_READY', status: c.status }, 409);
         }
-        if (!canTransition(c.status, 'LAUNCHING')) return json({ error: 'BAD_TRANSITION' }, 409);
-        const feePercent = asNum(await setting(sb, 'meta_ads_fee_percent'), 9);
-        const totals = computeTotals(c.daily_budget_cents, c.duration_days, feePercent);
-        const { data: wallet } = await sb.from('meta_wallet_balances').select('available_cents').eq('user_id', uid).maybeSingle();
-        if ((wallet?.available_cents ?? 0) < totals.totalCents) {
-          await sb.from('meta_campaigns').update({ status: 'PAYMENT_REQUIRED' }).eq('id', c.id);
-          return json({ error: 'INSUFFICIENT_FUNDS', code: 'INSUFFICIENT_FUNDS', totals }, 402);
+        if (!settings.goalsEnabled.includes(c.goal)) return json({ error: 'GOAL_DISABLED', code: 'GOAL_DISABLED' }, 409);
+        // What was checked is what launches: any edit since preflight → check again.
+        if ((await configFingerprint(sb, c)) !== c.preflight?.fingerprint || !c.plan) {
+          await sb.from('meta_campaigns').update({ status: 'PREFLIGHT_REQUIRED' }).eq('id', c.id);
+          return json({ error: 'PREFLIGHT_STALE', code: 'PREFLIGHT_STALE' }, 409);
         }
-        // Reserve media + take the fee, atomically enough: ledger inserts
-        // are idempotent on the launch key, so a crashed retry cannot
-        // double-charge.
+        if (!canTransition(c.status, 'LAUNCHING')) return json({ error: 'BAD_TRANSITION' }, 409);
+        // Charged from the FROZEN plan — the same numbers Meta receives.
+        const plan = c.plan;
+        const dailyFromPlan = plan.adSets.reduce((s: number, a: { dailyBudgetCents: number }) => s + Number(a.dailyBudgetCents), 0);
+        const totals = computeTotals(dailyFromPlan, Number(c.duration_days), settings.feePercent);
+        if (mode === 'REAL') {
+          const { data: wallet } = await sb.from('meta_wallet_balances').select('available_cents').eq('user_id', uid).maybeSingle();
+          if ((wallet?.available_cents ?? 0) < totals.totalCents) {
+            await sb.from('meta_campaigns').update({ status: 'PAYMENT_REQUIRED' }).eq('id', c.id);
+            return json({ error: 'INSUFFICIENT_FUNDS', code: 'INSUFFICIENT_FUNDS', totals }, 402);
+          }
+        }
         const claimed = await sb.from('meta_campaigns')
-          .update({ status: 'LAUNCHING', launch_idempotency_key: idem })
+          .update({ status: 'LAUNCHING', launch_idempotency_key: idem, launched_at: new Date().toISOString() })
           .eq('id', c.id).eq('status', 'READY').is('launch_idempotency_key', null)
           .select('id').maybeSingle();
         if (!claimed.data) return json({ error: 'LAUNCH_IN_PROGRESS', code: 'LAUNCH_IN_PROGRESS' }, 409);
-        const r1 = await sb.from('meta_ads_ledger').insert({
-          user_id: uid, entry_type: 'RESERVE', amount_cents: -totals.mediaCents,
-          currency: c.currency, campaign_id: c.id, idempotency_key: `${idem}:reserve`,
-        });
-        const r2 = await sb.from('meta_ads_ledger').insert({
-          user_id: uid, entry_type: 'HOMATCH_FEE', amount_cents: -totals.feeCents,
-          currency: c.currency, campaign_id: c.id, idempotency_key: `${idem}:fee`,
-        });
-        if (r1.error && !String(r1.error.message).includes('duplicate')) throw r1.error;
-        if (r2.error && !String(r2.error.message).includes('duplicate')) throw r2.error;
+
+        // MOCK never touches customer money.
+        if (mode === 'REAL') {
+          for (const row of [
+            { entry_type: 'RESERVE', amount_cents: -totals.mediaCents, idempotency_key: `${idem}:reserve` },
+            { entry_type: 'HOMATCH_FEE', amount_cents: -totals.feeCents, idempotency_key: `${idem}:fee` },
+          ]) {
+            if (row.amount_cents === 0) continue;
+            const r = await sb.from('meta_ads_ledger').insert({ user_id: uid, currency: c.currency, campaign_id: c.id, ...row });
+            if (r.error && !String(r.error.message).includes('duplicate')) throw r.error;
+          }
+        }
         await sb.from('meta_funnel_events').insert({ event: 'launch_requested', user_id: uid });
         try {
-          const external = await publishCampaign(sb, uid, c, mode);
+          const external = await publishCampaign(sb, uid, c, plan, mode, settings);
           await sb.from('meta_campaigns').update({
-            external_campaign_id: external.campaignId,
-            external_status: external.status,
-            status: mode === 'MOCK' ? 'SUBMITTED' : 'META_REVIEW',
-            last_synced_at: new Date().toISOString(), last_error: null,
+            external_campaign_id: external.campaignId, external_status: external.status,
+            status: 'SUBMITTED', last_synced_at: new Date().toISOString(), last_error: null,
           }).eq('id', c.id);
-          await sb.rpc('notify_emit', {
-            p_user_id: uid, p_type: 'META_CAMPAIGN_STATUS',
-            p_title: 'Meta Ads', p_body: 'CAMPAIGN_SUBMITTED',
-            p_deep_link: `/outreach/meta/campaigns/${c.id}`,
-          }).catch?.(() => {});
+          let after: Record<string, unknown> = { status: 'SUBMITTED' };
+          if (mode === 'REAL') {
+            try {
+              const { data: fresh } = await sb.from('meta_campaigns').select('*').eq('id', c.id).single();
+              after = await syncCampaign(sb, fresh, mode);
+            } catch { /* the scheduled sync will catch up */ }
+          }
+          try {
+            await sb.rpc('notify_emit', {
+              p_user_id: uid, p_type: 'META_CAMPAIGN_STATUS', p_title: 'Meta Ads',
+              p_body: 'CAMPAIGN_SUBMITTED', p_deep_link: `/outreach/meta/campaigns/${c.id}`,
+            });
+          } catch { /* best effort */ }
           await sb.from('meta_funnel_events').insert({ event: 'published', user_id: uid });
-          await audit(sb, uid, 'META_CAMPAIGN_LAUNCH', c.id, { totals, mode });
-          return json({ ok: true, status: mode === 'MOCK' ? 'SUBMITTED' : 'META_REVIEW', totals, mode });
+          await audit(sb, uid, 'META_CAMPAIGN_LAUNCH', c.id, { totals, mode, externalCampaignId: external.campaignId });
+          return json({ ok: true, status: after.status ?? 'SUBMITTED', totals, mode, externalCampaignId: external.campaignId });
         } catch (err) {
-          // Publication failed after the hold: give the money back and say so.
-          await sb.from('meta_ads_ledger').insert({
-            user_id: uid, entry_type: 'RELEASE', amount_cents: totals.mediaCents,
-            currency: c.currency, campaign_id: c.id, idempotency_key: `${idem}:release`,
-          });
-          await sb.from('meta_ads_ledger').insert({
-            user_id: uid, entry_type: 'REFUND', amount_cents: totals.feeCents,
-            currency: c.currency, campaign_id: c.id, idempotency_key: `${idem}:feerefund`,
-          });
+          if (mode === 'REAL') {
+            for (const row of [
+              { entry_type: 'RELEASE', amount_cents: totals.mediaCents, idempotency_key: `${idem}:release` },
+              { entry_type: 'REFUND', amount_cents: totals.feeCents, idempotency_key: `${idem}:feerefund` },
+            ]) {
+              if (row.amount_cents === 0) continue;
+              await sb.from('meta_ads_ledger').insert({ user_id: uid, currency: c.currency, campaign_id: c.id, ...row });
+            }
+          }
           const norm = err instanceof MetaApiError ? err.normalized : null;
           await sb.from('meta_campaigns').update({
-            status: 'FAILED', launch_idempotency_key: null,
-            last_error: norm ? { key: norm.customerKey, code: norm.code } : { key: 'meta_err_generic' },
+            status: 'FAILED', launch_idempotency_key: null, external_campaign_id: null,
+            last_error: norm ? { key: norm.customerKey, code: norm.code, detail: scrubText(norm.rawMessage).slice(0, 200) } : { key: 'meta_err_generic' },
           }).eq('id', c.id);
-          return json({ error: norm?.customerKey ?? 'meta_err_generic', code: 'LAUNCH_FAILED' }, 502);
+          return json({ error: norm?.customerKey ?? 'meta_err_generic', code: 'LAUNCH_FAILED', detail: norm?.rawMessage ? scrubText(norm.rawMessage).slice(0, 200) : null }, 502);
         }
       }
 
@@ -355,52 +421,73 @@ Deno.serve(async (req) => {
         const { data: c } = await sb.from('meta_campaigns').select('*').eq('id', body.campaignId).eq('user_id', uid).maybeSingle();
         if (!c) return json({ error: 'not found' }, 404);
         const to = action === 'pause' ? 'PAUSED' : action === 'resume' ? 'ACTIVE' : 'ARCHIVED';
-        if (!canTransition(c.status, to)) return json({ error: 'BAD_TRANSITION', from: c.status }, 409);
-        if (mode === 'REAL' && c.external_campaign_id && to !== 'ARCHIVED') {
+        const launched = !!c.external_campaign_id;
+        const from = c.status;
+        const allowed = to === 'PAUSED' ? ['SUBMITTED', 'META_REVIEW', 'ACTIVE'].includes(from)
+          : to === 'ACTIVE' ? from === 'PAUSED'
+          : canTransition(from, 'ARCHIVED') || ['PAUSED', 'COMPLETED', 'REJECTED', 'FAILED'].includes(from);
+        if (!allowed) return json({ error: 'BAD_TRANSITION', from }, 409);
+        if (mode === 'REAL' && launched && !String(c.external_campaign_id).startsWith('mock_')) {
           const token = await userToken(sb, uid);
-          if (!token) return json({ error: 'NOT_CONNECTED' }, 400);
+          if (!token) return json({ error: 'NOT_CONNECTED', code: 'NOT_CONNECTED' }, 400);
           await graph(`/${c.external_campaign_id}`, {
-            token, method: 'POST', body: { status: to === 'PAUSED' ? 'PAUSED' : 'ACTIVE' },
+            token, method: 'POST', body: { status: to === 'ARCHIVED' ? 'ARCHIVED' : to === 'PAUSED' ? 'PAUSED' : 'ACTIVE' },
             audit: { sb, userId: uid, campaignId: c.id },
           });
         }
-        await sb.from('meta_campaigns').update({ status: to }).eq('id', c.id);
+        // Resume is not "ACTIVE" until Meta says so: set review, then read Meta.
+        await sb.from('meta_campaigns').update({ status: to === 'ACTIVE' ? 'META_REVIEW' : to }).eq('id', c.id);
+        let result: Record<string, unknown> = { status: to === 'ACTIVE' ? 'META_REVIEW' : to };
+        if (mode === 'REAL' && launched && to !== 'ARCHIVED') {
+          const { data: fresh } = await sb.from('meta_campaigns').select('*').eq('id', c.id).single();
+          result = await syncCampaign(sb, fresh, mode);
+        }
         await audit(sb, uid, `META_CAMPAIGN_${to}`, c.id, {});
-        return json({ ok: true, status: to });
+        return json({ ok: true, ...result });
       }
 
       case 'sync': {
         const { data: c } = await sb.from('meta_campaigns').select('*').eq('id', body.campaignId).eq('user_id', uid).maybeSingle();
         if (!c?.external_campaign_id) return json({ error: 'not launched' }, 400);
-        if (mode === 'MOCK') {
-          // No fake numbers, ever: MOCK sync confirms the mock object and
-          // reports that no delivery data exists.
-          await sb.from('meta_campaigns').update({ last_synced_at: new Date().toISOString(), external_status: 'ACTIVE' }).eq('id', c.id);
-          return json({ ok: true, mode, results: null });
-        }
-        const token = await userToken(sb, uid);
-        if (!token) return json({ error: 'NOT_CONNECTED' }, 400);
-        const auditCtx = { sb, userId: uid, campaignId: c.id };
-        const info = await graph(`/${c.external_campaign_id}?fields=status,effective_status`, { token, audit: auditCtx });
-        const insights = await graph(`/${c.external_campaign_id}/insights?fields=spend,impressions,reach,clicks,actions&date_preset=maximum`, { token, audit: auditCtx });
-        const row = (insights.data as any[])?.[0] ?? null;
-        const results = row ? {
-          spend: row.spend, impressions: row.impressions, reach: row.reach,
-          clicks: row.clicks, actions: row.actions, fetched_at: new Date().toISOString(),
-        } : null;
-        const spendCents = row ? Math.round(parseFloat(row.spend ?? '0') * 100) : c.spend_cents;
-        await sb.from('meta_campaigns').update({
-          external_status: info.effective_status ?? info.status,
-          results, spend_cents: spendCents, last_synced_at: new Date().toISOString(),
-          status: info.effective_status === 'ACTIVE' ? 'ACTIVE' : c.status,
-        }).eq('id', c.id);
-        return json({ ok: true, results, external_status: info.effective_status ?? info.status });
+        return json(await syncCampaign(sb, c, mode));
+      }
+
+      /* ── INLINE AI COPY: suggestions only, never written for the user ── */
+      case 'ai_copy': {
+        if (!settings.aiAssistEnabled || !llmAvailable()) return json({ error: 'AI_UNAVAILABLE', code: 'AI_UNAVAILABLE' }, 503);
+        const { data: c } = await sb.from('meta_campaigns').select('*').eq('id', body.campaignId).eq('user_id', uid).maybeSingle();
+        if (!c) return json({ error: 'not found' }, 404);
+        const op = String(body.op ?? 'GENERATE');
+        if (!['GENERATE', 'IMPROVE', 'SHORTEN', 'PROFESSIONAL', 'ALTERNATIVES', 'TRANSLATE'].includes(op)) return json({ error: 'bad op' }, 400);
+        const language = String(body.language ?? 'ka').slice(0, 5);
+        const context = await copyContext(sb, uid, c);
+        const current = {
+          primaryText: String(body.current?.primaryText ?? '').slice(0, 2200),
+          headline: String(body.current?.headline ?? '').slice(0, 255),
+          description: String(body.current?.description ?? '').slice(0, 255),
+        };
+        const notes = String(body.notes ?? '').slice(0, 600);
+        const result = await callLlm({
+          system: COPY_SYSTEM,
+          user: JSON.stringify({ op, targetLanguage: language, goal: c.goal, destinationType: c.destination?.type ?? null, context, current, notes }),
+          json: true, maxTokens: 700, timeoutMs: 25_000,
+        });
+        const parsed = (result.parsed ?? {}) as { variants?: Array<Record<string, unknown>> };
+        const variants = (parsed.variants ?? []).slice(0, 3).map((v) => ({
+          primaryText: String(v.primaryText ?? '').slice(0, 2200),
+          headline: String(v.headline ?? '').slice(0, 255),
+          description: String(v.description ?? '').slice(0, 255),
+        })).filter((v) => v.primaryText || v.headline)
+          .filter((v) => !/(guaranteed|გარანტირებულ|гарантир|garantili|مضمون|מובטח)/i.test(`${v.primaryText} ${v.headline}`));
+        if (!result.ok || variants.length === 0) return json({ error: 'AI_NO_RESULT', code: 'AI_NO_RESULT' }, 502);
+        await sb.from('meta_funnel_events').insert({ event: `ai_copy_${op.toLowerCase()}`, user_id: uid });
+        return json({ variants, usage: { inputTokens: result.inputTokens, outputTokens: result.outputTokens, model: result.model } });
       }
 
       /* ── MONEY ─────────────────────────────────────────────────────── */
       case 'deposit_checkout': {
         const provider = getPaymentProvider();
-        const amountCents = Math.round(asNum(body.amountCents, 0));
+        const amountCents = Math.round(Number(body.amountCents) || 0);
         if (amountCents < 500) return json({ error: 'MIN_DEPOSIT', minCents: 500 }, 400);
         const idem = crypto.randomUUID();
         const checkout = await provider.createCheckout({
@@ -411,13 +498,15 @@ Deno.serve(async (req) => {
           metadata: { user_id: uid, domain: 'META_ADS', idempotency_key: idem, amount_cents: String(amountCents) },
           description: 'HOMATCH Meta Ads balance',
         } as never);
-        await sb.from('payments').insert({
-          user_id: uid, amount_cents: amountCents, currency: 'USD', status: 'PENDING',
-          provider: (provider as { name?: string }).name ?? 'provider',
-          provider_id: checkout.providerCheckoutId, meta: { domain: 'META_ADS', idempotency_key: idem },
-        }).catch?.(() => {});
+        try {
+          await sb.from('payments').insert({
+            user_id: uid, amount_cents: amountCents, currency: 'USD', status: 'PENDING',
+            provider: (provider as { name?: string }).name ?? 'provider',
+            provider_id: checkout.providerCheckoutId, meta: { domain: 'META_ADS', idempotency_key: idem },
+          });
+        } catch { /* the webhook is the source of truth */ }
         await sb.from('meta_funnel_events').insert({ event: 'checkout_started', user_id: uid });
-        return json({ url: checkout.url });
+        return json({ url: checkout.checkoutUrl, mock: checkout.mock });
       }
 
       /* ── LEADS ─────────────────────────────────────────────────────── */
@@ -447,9 +536,7 @@ Deno.serve(async (req) => {
       }
 
       case 'lead_import': {
-        if (!asBool(await setting(sb, 'meta_ads_lead_import_enabled'), true)) {
-          return json({ error: 'IMPORT_DISABLED' }, 503);
-        }
+        if (!settings.leadImportEnabled) return json({ error: 'IMPORT_DISABLED' }, 503);
         const rows = Array.isArray(body.rows) ? body.rows.slice(0, 10000) : [];
         if (body.consent !== true) return json({ error: 'CONSENT_REQUIRED', code: 'CONSENT_REQUIRED' }, 400);
         if (rows.length === 0) return json({ error: 'EMPTY' }, 400);
@@ -499,9 +586,7 @@ Deno.serve(async (req) => {
       }
 
       case 'audience_create': {
-        if (!asBool(await setting(sb, 'meta_ads_audience_creation_enabled'), true)) {
-          return json({ error: 'AUDIENCES_DISABLED' }, 503);
-        }
+        if (!settings.audienceCreationEnabled) return json({ error: 'AUDIENCES_DISABLED' }, 503);
         const acct = await selectedAsset(sb, uid, 'AD_ACCOUNT');
         if (!acct) return json({ error: 'NO_AD_ACCOUNT', code: 'NO_AD_ACCOUNT' }, 400);
         const { data: terms } = await sb.from('meta_audience_terms').select('accepted_at')
@@ -510,11 +595,7 @@ Deno.serve(async (req) => {
         const name = String(body.name ?? '').trim().slice(0, 80);
         const source = String(body.source ?? '');
         if (!name) return json({ error: 'NAME_REQUIRED' }, 400);
-        if (!['UPLOADED_LIST', 'HOMATCH_LEADS', 'CAMPAIGN_LEADS'].includes(source)) {
-          return json({ error: 'SOURCE_UNSUPPORTED' }, 400);
-        }
-        // Collect the people this audience is made of — always the owner's
-        // own rows, never anyone else's.
+        if (!['UPLOADED_LIST', 'HOMATCH_LEADS', 'CAMPAIGN_LEADS'].includes(source)) return json({ error: 'SOURCE_UNSUPPORTED' }, 400);
         let q = sb.from('meta_leads').select('fields').eq('user_id', uid);
         if (source === 'UPLOADED_LIST') q = q.eq('source', 'IMPORT');
         if (source === 'CAMPAIGN_LEADS' && body.campaignId) q = q.eq('campaign_id', body.campaignId);
@@ -531,50 +612,38 @@ Deno.serve(async (req) => {
         }).select('id').single();
         if (audErr) return json({ error: 'NAME_TAKEN' }, 409);
         if (mode === 'MOCK') {
-          await sb.from('meta_audiences').update({
-            external_audience_id: mockExternalId('aud'), sync_status: 'READY',
-          }).eq('id', aud.id);
+          await sb.from('meta_audiences').update({ external_audience_id: mockExternalId('aud'), sync_status: 'READY' }).eq('id', aud.id);
           return json({ ok: true, audienceId: aud.id, mode, accepted: hashed.accepted, rejected: hashed.rejected });
         }
         const token = await userToken(sb, uid);
         if (!token) return json({ error: 'NOT_CONNECTED' }, 400);
         try {
           const created = await graph(`/${acct.external_id}/customaudiences`, {
-            token, method: 'POST',
-            body: { name, subtype: 'CUSTOM', customer_file_source: 'USER_PROVIDED_ONLY' },
+            token, method: 'POST', body: { name, subtype: 'CUSTOM', customer_file_source: 'USER_PROVIDED_ONLY' },
             audit: { sb, userId: uid },
           });
           await graph(`/${created.id}/users`, {
-            token, method: 'POST',
-            body: { payload: { schema: hashed.schema, data: hashed.rows } },
-            audit: { sb, userId: uid },
+            token, method: 'POST', body: { payload: { schema: hashed.schema, data: hashed.rows } }, audit: { sb, userId: uid },
           });
-          await sb.from('meta_audiences').update({
-            external_audience_id: String(created.id), sync_status: 'READY',
-          }).eq('id', aud.id);
+          await sb.from('meta_audiences').update({ external_audience_id: String(created.id), sync_status: 'READY' }).eq('id', aud.id);
           return json({ ok: true, audienceId: aud.id, accepted: hashed.accepted, rejected: hashed.rejected });
         } catch (err) {
           const norm = err instanceof MetaApiError ? err.normalized : null;
-          await sb.from('meta_audiences').update({
-            sync_status: 'FAILED', last_error: norm?.customerKey ?? 'meta_err_generic',
-          }).eq('id', aud.id);
+          await sb.from('meta_audiences').update({ sync_status: 'FAILED', last_error: norm?.customerKey ?? 'meta_err_generic' }).eq('id', aud.id);
           return json({ error: norm?.customerKey ?? 'meta_err_generic' }, 502);
         }
       }
 
       /* ── FUNNEL + ADMIN ───────────────────────────────────────────── */
       case 'funnel': {
-        const ev = String(body.event ?? '');
-        await sb.from('meta_funnel_events').insert({ event: ev, user_id: uid }).catch?.(() => {});
+        try { await sb.from('meta_funnel_events').insert({ event: String(body.event ?? '').slice(0, 80), user_id: uid }); } catch { /* fine */ }
         return json({ ok: true });
       }
 
       case 'admin_adjust': {
-        // Audited manual ledger adjustment — the ONLY non-service write
-        // path into the ads ledger, admin-gated and reason-required.
         if (!me.is_admin) return json({ error: 'forbidden' }, 403);
         const target = String(body.targetUserId ?? '');
-        const amount = Math.round(asNum(body.amountCents, 0));
+        const amount = Math.round(Number(body.amountCents) || 0);
         const reason = String(body.reason ?? '').trim();
         if (!target || amount === 0 || !reason) return json({ error: 'target, amount, reason required' }, 400);
         const { error } = await sb.from('meta_ads_ledger').insert({
@@ -588,14 +657,23 @@ Deno.serve(async (req) => {
 
       case 'admin_test_connection': {
         if (!me.is_admin) return json({ error: 'forbidden' }, 403);
-        const rows = capabilityMatrix(mode);
         return json({
           mode,
           secretsConfigured: mode === 'REAL',
           webhookVerifyTokenConfigured: !!Deno.env.get('META_WEBHOOK_VERIFY_TOKEN'),
-          capabilities: rows,
+          tokenEncryptionConfigured: !!Deno.env.get('META_TOKEN_ENCRYPTION_KEY'),
+          redirectUriConfigured: !!Deno.env.get('META_OAUTH_REDIRECT'),
+          capabilities: capabilityMatrix(mode),
           checkedAt: new Date().toISOString(),
         });
+      }
+
+      case 'admin_sync': {
+        if (!me.is_admin) return json({ error: 'forbidden' }, 403);
+        const { data: c } = await sb.from('meta_campaigns').select('*').eq('id', body.campaignId).maybeSingle();
+        if (!c?.external_campaign_id) return json({ error: 'not launched' }, 400);
+        await audit(sb, uid, 'META_ADMIN_SYNC', c.id, {});
+        return json(await syncCampaign(sb, c, mode));
       }
 
       default:
@@ -605,153 +683,83 @@ Deno.serve(async (req) => {
     if (err instanceof MetaApiError) {
       return json({ error: err.normalized.customerKey, code: err.normalized.code }, 502);
     }
-    console.error('[meta-ads-api]', action, err);
+    console.error('[meta-ads-api]', action, scrubText(err instanceof Error ? err.message : String(err)));
     return json({ error: 'internal' }, 500);
   }
 });
 
-/* ── helpers ───────────────────────────────────────────────────────── */
+/* ── MAINTENANCE: the scheduled pass ─────────────────────────────────── */
 
-async function budgetLimits(sb: any) {
-  const g = async (k: string, d: number) => {
-    const { data } = await sb.from('admin_settings').select('value').eq('key', k).maybeSingle();
-    return typeof data?.value === 'number' ? data.value : d;
-  };
-  return {
-    minDurationDays: await g('meta_ads_min_duration_days', 2),
-    minDailyCents: await g('meta_ads_daily_budget_min_cents', 200),
-    maxDailyCents: await g('meta_ads_daily_budget_max_cents', 100000000),
-  };
-}
-
-async function strategyInputFor(sb: any, uid: string, campaignId: string):
-  Promise<{ strategy: StrategyInput } | { error: string }> {
-  const { data: c } = await sb.from('meta_campaigns').select('*').eq('id', campaignId).eq('user_id', uid).maybeSingle();
-  if (!c) return { error: 'campaign not found' };
-  const { data: creatives } = await sb.from('meta_creatives')
-    .select('id,kind,safety_status,media').eq('campaign_id', c.id);
-  let audienceExternalId: string | null = null;
-  if (c.audience_id) {
-    const { data: aud } = await sb.from('meta_audiences').select('external_audience_id,sync_status,user_id')
-      .eq('id', c.audience_id).maybeSingle();
-    if (!aud || aud.user_id !== uid) return { error: 'audience not found' };
-    if (aud.sync_status !== 'READY') return { error: 'AUDIENCE_NOT_READY' };
-    audienceExternalId = aud.external_audience_id;
+async function maintenance(sb: any, mode: 'REAL' | 'MOCK') {
+  const report = { synced: 0, syncFailed: 0, recovered: 0, leadsRetried: 0, expired: 0 };
+  // 1. Status + spend for everything that is live at Meta.
+  const { data: live } = await sb.from('meta_campaigns').select('*')
+    .in('status', ['SUBMITTED', 'META_REVIEW', 'ACTIVE', 'PAUSED'])
+    .not('external_campaign_id', 'is', null)
+    .order('last_synced_at', { ascending: true, nullsFirst: true }).limit(25);
+  for (const c of live ?? []) {
+    try { await syncCampaign(sb, c, mode); report.synced += 1; } catch { report.syncFailed += 1; }
   }
-  const cats = classifySpecialAdCategories({
-    isProperty: !!c.property_id || !!(c.offer && c.offer.isProperty !== false),
-    dealKind: c.offer?.dealKind ?? (c.property_id ? 'SALE' : 'OTHER'),
-  });
-  return {
-    strategy: {
-      goal: c.goal,
-      dailyBudgetCents: Number(c.daily_budget_cents ?? 0),
-      durationDays: Number(c.duration_days ?? 0),
-      currency: c.currency,
-      specialAdCategories: cats,
-      creatives: (creatives ?? []).map((cr: any) => ({
-        id: cr.id, kind: cr.kind,
-        ready: (cr.media ?? []).length > 0 && cr.safety_status !== 'BLOCKED',
-      })),
-      destination: c.destination ?? { type: c.goal === 'LEADS_ON_META' ? 'META_FORM' : 'WEBSITE' },
-      audienceExternalId,
-      placementsMode: c.placements?.mode === 'CUSTOM' ? 'CUSTOM' : 'RECOMMENDED',
-      customPlacements: c.placements?.list ?? [],
-    },
-  };
-}
-
-/** Creates the campaign tree at Meta (REAL) or as clearly-mock externals.
- *  v26 requirements are encoded here once: is_adset_budget_sharing_enabled
- *  on the campaign, explicit advantage_audience on special-category sets. */
-async function publishCampaign(sb: any, uid: string, c: any, mode: 'REAL' | 'MOCK') {
-  const plan = c.plan;
-  if (!plan) throw new Error('no plan');
-  if (mode === 'MOCK') {
-    const campaignId = mockExternalId('camp');
-    for (const set of plan.adSets) {
-      const setId = mockExternalId('adset');
-      await sb.from('meta_ad_entities').insert({
-        campaign_id: c.id, kind: 'AD_SET', external_id: setId,
-        name: `TEST ${set.key}`, status: 'ACTIVE', config: set,
-      });
-      for (const crId of set.creativeIds) {
-        await sb.from('meta_ad_entities').insert({
-          campaign_id: c.id, kind: 'AD', external_id: mockExternalId('ad'),
-          name: `TEST ad ${crId.slice(0, 6)}`, status: 'ACTIVE', config: { creativeId: crId },
-        });
-      }
+  // 2. A launch that died mid-flight: never leave money reserved against nothing.
+  const cutoff = new Date(Date.now() - 15 * 60_000).toISOString();
+  const { data: stuck } = await sb.from('meta_campaigns').select('*').eq('status', 'LAUNCHING').lt('updated_at', cutoff).limit(10);
+  for (const c of stuck ?? []) {
+    if (c.external_campaign_id) {
+      await sb.from('meta_campaigns').update({ status: 'SUBMITTED' }).eq('id', c.id);
+      try { await syncCampaign(sb, { ...c, status: 'SUBMITTED' }, mode); } catch { /* next pass */ }
+    } else {
+      await settleCampaign(sb, c, 0);
+      await sb.from('meta_campaigns').update({ status: 'FAILED', launch_idempotency_key: null, last_error: { key: 'meta_err_generic', code: 'LAUNCH_INTERRUPTED' } }).eq('id', c.id);
     }
-    return { campaignId, status: 'ACTIVE' };
+    report.recovered += 1;
   }
-  const token = await userToken(sb, uid);
-  if (!token) throw new Error('NOT_CONNECTED');
-  const acct = await selectedAsset(sb, uid, 'AD_ACCOUNT');
-  const page = await selectedAsset(sb, uid, 'PAGE');
-  if (!acct || !page) throw new Error('ASSETS_MISSING');
-  const auditCtx = { sb, userId: uid, campaignId: c.id };
-  const camp = await graph(`/${acct.external_id}/campaigns`, {
-    token, method: 'POST', audit: auditCtx,
-    body: {
-      name: c.name || `HOMATCH ${c.goal}`,
-      objective: plan.objective,
-      status: 'PAUSED',
-      special_ad_categories: plan.specialAdCategories,
-      is_adset_budget_sharing_enabled: false,
-    },
-  });
-  const end = new Date(Date.now() + c.duration_days * 86400000).toISOString();
-  for (const set of plan.adSets) {
-    const targeting: Record<string, unknown> = {
-      geo_locations: { countries: ['GE'] },
-      targeting_automation: { advantage_audience: set.advantageAudience ? 1 : 0 },
-    };
-    if (plan.audienceExternalId) targeting.custom_audiences = [{ id: plan.audienceExternalId }];
-    const adset = await graph(`/${acct.external_id}/adsets`, {
-      token, method: 'POST', audit: auditCtx,
-      body: {
-        name: `HOMATCH ${set.key}`, campaign_id: camp.id,
-        daily_budget: set.dailyBudgetCents, billing_event: 'IMPRESSIONS',
-        optimization_goal: plan.objective === 'OUTCOME_LEADS' ? 'LEAD_GENERATION' : 'LINK_CLICKS',
-        bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
-        end_time: end, status: 'PAUSED', targeting,
-      },
-    });
-    await sb.from('meta_ad_entities').insert({
-      campaign_id: c.id, kind: 'AD_SET', external_id: String(adset.id), name: `HOMATCH ${set.key}`, config: set,
-    });
-    for (const crId of set.creativeIds) {
-      const { data: cr } = await sb.from('meta_creatives').select('*').eq('id', crId).maybeSingle();
-      if (!cr) continue;
-      const creative = await graph(`/${acct.external_id}/adcreatives`, {
-        token, method: 'POST', audit: auditCtx,
-        body: {
-          name: `HOMATCH creative ${crId.slice(0, 6)}`,
-          object_story_spec: {
-            page_id: page.external_id,
-            link_data: {
-              message: cr.primary_text, name: cr.headline,
-              link: cr.destination_url ?? 'https://www.homatch.live',
-              call_to_action: { type: cr.cta ?? 'LEARN_MORE' },
-            },
-          },
-        },
-      });
-      const ad = await graph(`/${acct.external_id}/ads`, {
-        token, method: 'POST', audit: auditCtx,
-        body: { name: cr.headline || 'HOMATCH ad', adset_id: adset.id, creative: { creative_id: creative.id }, status: 'PAUSED' },
-      });
-      await sb.from('meta_ad_entities').insert({
-        campaign_id: c.id, kind: 'CREATIVE', external_id: String(creative.id), config: { creativeId: crId },
-      });
-      await sb.from('meta_ad_entities').insert({
-        campaign_id: c.id, kind: 'AD', external_id: String(ad.id), config: { creativeId: crId },
-      });
-      await sb.from('meta_creatives').update({ external_creative_id: String(creative.id) }).eq('id', crId);
+  // 3. Signed lead webhooks that failed to ingest (owner token hiccup etc.).
+  const { data: failed } = await sb.from('meta_webhook_events').select('id,payload,error')
+    .eq('signature_ok', true).is('processed_at', null).not('error', 'is', null)
+    .gt('created_at', new Date(Date.now() - 3 * 86_400_000).toISOString()).limit(25);
+  for (const ev of failed ?? []) {
+    if (ev.payload?.field !== 'leadgen' || !ev.payload?.value?.leadgen_id || ev.error === 'LEAD_SYNC_DISABLED') continue;
+    try {
+      const r = await ingestLead(sb, ev.payload.value);
+      await sb.from('meta_webhook_events').update({ processed_at: new Date().toISOString(), error: r.note }).eq('id', ev.id);
+      report.leadsRetried += 1;
+    } catch (err) {
+      await sb.from('meta_webhook_events').update({ error: scrubText(err instanceof Error ? err.message : String(err)).slice(0, 400) }).eq('id', ev.id);
     }
   }
-  // Everything created PAUSED, then the campaign is switched on once, so a
-  // partial failure never leaves a half-built tree spending money.
-  await graph(`/${camp.id}`, { token, method: 'POST', body: { status: 'ACTIVE' }, audit: auditCtx });
-  return { campaignId: String(camp.id), status: 'IN_PROCESS' };
+  // 4. Tokens past expiry become EXPIRED, so the UI asks to reconnect.
+  const { data: tokens } = await sb.from('meta_tokens').select('connection_id').lt('expires_at', new Date().toISOString());
+  for (const t of tokens ?? []) {
+    const { data: u } = await sb.from('meta_connections').update({ status: 'EXPIRED' }).eq('id', t.connection_id).eq('status', 'CONNECTED').select('id');
+    report.expired += (u ?? []).length;
+  }
+  return { ok: true, mode, ...report };
+}
+
+/* ── COPY CONTEXT ────────────────────────────────────────────────────── */
+
+const COPY_SYSTEM = [
+  'You write Meta (Facebook/Instagram) ad copy for HOMATCH customers — property owners, agents and small businesses in Georgia.',
+  'Write in the requested targetLanguage. Be specific to the offer; use only facts present in context or current text or notes.',
+  'Never invent prices, sizes, locations, amenities, discounts or deadlines. Never promise results, returns, approval or guaranteed income.',
+  'For housing, never mention or target protected characteristics (race, religion, family status, disability, sex, age).',
+  'primaryText: up to ~3 short lines; headline: up to 40 characters; description: optional, up to 30 characters.',
+  'op GENERATE: write fresh copy. IMPROVE: improve current. SHORTEN: shorter version of current. PROFESSIONAL: more professional tone of current.',
+  'ALTERNATIVES: three different angles. TRANSLATE: translate current faithfully to targetLanguage.',
+  'Reply with JSON only: {"variants":[{"primaryText":"","headline":"","description":""}]} — 1 variant, or 3 for ALTERNATIVES.',
+].join('\n');
+
+async function copyContext(sb: any, uid: string, c: any): Promise<Record<string, unknown>> {
+  const ctx: Record<string, unknown> = { offer: c.offer ?? null };
+  if (c.property_id) {
+    const { data: prop } = await sb.from('properties').select('id,title,transaction_type,property_type,user_id').eq('id', c.property_id).maybeSingle();
+    if (prop && prop.user_id === uid) {
+      const { data: facts } = await sb.from('property_facts')
+        .select('city,district,neighborhood,total_price,currency,area,rooms,bedrooms,floor,total_floors,condition,furnished,parking,balcony,view,new_build')
+        .eq('property_id', prop.id).maybeSingle();
+      // The contact phone and exact address are never sent to a model.
+      ctx.property = { title: prop.title, transaction: prop.transaction_type, type: prop.property_type, ...(facts ?? {}) };
+    }
+  }
+  return ctx;
 }

@@ -8,6 +8,8 @@
 // stand-ins that prove placement, collision and versioning. They are shown
 // as concept blocks, never as products, and carry no brand and no price.
 
+import { DEFAULT_CAPABILITIES, validateCapabilities, validateInteractions, type AssetCapability, type InteractionSpec } from './interactions.ts';
+
 export type AssetPlacement = 'FLOOR' | 'WALL' | 'CEILING' | 'SURFACE';
 export type AssetAnchor = 'WALL' | 'CENTRE' | 'CORNER' | 'FREE';
 export type Provenance = 'HOMATCH_DEV_PLACEHOLDER' | 'HOMATCH_OWNED' | 'LICENSED' | 'PARTNER';
@@ -15,7 +17,8 @@ export type Provenance = 'HOMATCH_DEV_PLACEHOLDER' | 'HOMATCH_OWNED' | 'LICENSED
 /** The procedural shapes the development set is built from. */
 export type ProceduralKind =
   | 'SOFA' | 'ARMCHAIR' | 'TABLE' | 'ROUND_TABLE' | 'CABINET' | 'SHELF' | 'BED' | 'RUG'
-  | 'LAMP' | 'PLANT' | 'CHAIR' | 'STOOL' | 'KITCHEN_RUN' | 'VANITY' | 'PLANTER' | 'WARDROBE';
+  | 'LAMP' | 'PLANT' | 'CHAIR' | 'STOOL' | 'KITCHEN_RUN' | 'VANITY' | 'PLANTER' | 'WARDROBE'
+  | 'DRESSER' | 'FRIDGE';
 
 export interface MaterialSlot {
   /** 'body', 'legs', 'cushion', 'top'… */
@@ -53,6 +56,10 @@ export interface CatalogAsset {
   provenance: Provenance;
   isPlaceholder: boolean;
   active: boolean;
+  /** What the design may do with it (move, rotate, replace, hide, open…). */
+  capabilities: AssetCapability[];
+  /** Parts that open and close in the walkthrough, and how (declared for models; concept blocks generate theirs). */
+  interactions: InteractionSpec[];
 }
 
 export interface Pbr {
@@ -124,6 +131,8 @@ export function assetFromRow(r: Record<string, unknown>): CatalogAsset {
     provenance: r.provenance as Provenance,
     isPlaceholder: !!r.is_placeholder,
     active: !!r.active,
+    capabilities: r.capabilities === undefined ? [...DEFAULT_CAPABILITIES] : validateCapabilities(r.capabilities),
+    interactions: validateInteractions(r.interactions),
   };
 }
 

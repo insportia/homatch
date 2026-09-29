@@ -252,6 +252,12 @@ CREATE TABLE IF NOT EXISTS public.ds_catalog_assets (
   clearance_m    numeric(4,2) NOT NULL DEFAULT 0 CHECK (clearance_m >= 0 AND clearance_m <= 3),
   -- Procedural shape for placeholders ({kind:'SOFA',...}); NULL for real models.
   procedural     jsonb,
+  -- What the design may do with the piece, and the parts that open in the
+  -- walkthrough (hinge/slide specs; a model names its parts ix:<id>).
+  capabilities   text[] NOT NULL DEFAULT '{MOVABLE,ROTATABLE,REPLACEABLE}'
+                   CHECK (capabilities <@ ARRAY['MOVABLE','ROTATABLE','REPLACEABLE','HIDEABLE','OPENABLE','SLIDABLE','INTERACTIVE']::text[]),
+  interactions   jsonb NOT NULL DEFAULT '[]'::jsonb
+                   CHECK (jsonb_typeof(interactions) = 'array' AND jsonb_array_length(interactions) <= 24),
   model_key      text,
   model_sha256   text,
   model_bytes    bigint,

@@ -31,9 +31,9 @@ export function shareStatus(s: Pick<ShareRecord, 'revoked_at' | 'expires_at'>, n
   return 'ACTIVE';
 }
 
-/** The public address of a link: the walkthrough lives at /w/<token>. */
-export function shareUrl(token: string, origin = window.location.origin): string {
-  return `${origin}/w/${token}`;
+/** The public address of a link: a walkthrough at /w/<token>, a design presentation at /d/<token>. */
+export function shareUrl(token: string, type: ShareType = 'WALKTHROUGH', origin = window.location.origin): string {
+  return `${origin}/${type === 'DESIGN' ? 'd' : 'w'}/${token}`;
 }
 
 export async function listShares(projectId: string): Promise<ShareRecord[]> {

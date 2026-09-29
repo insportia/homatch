@@ -5,6 +5,7 @@
   "installCommand": "pnpm install --frozen-lockfile",
   "rewrites": [
     { "source": "/w/:token", "destination": "/share.html" },
+    { "source": "/d/:token", "destination": "/share.html" },
     { "source": "/((?!assets/).*)", "destination": "/index.html" }
   ],
   "headers": [
@@ -15,7 +16,7 @@
       ]
     },
     {
-      "source": "/w/(.*)",
+      "source": "/(w|d)/(.*)",
       "headers": [
         { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
         { "key": "Referrer-Policy", "value": "no-referrer" },

@@ -280,3 +280,25 @@ export function quantise(at: Point, rotation: number): { at: Point; rotation: nu
   const r = Math.round(rotation / step) * step;
   return { at: { x: Math.round(at.x * 20) / 20, y: Math.round(at.y * 20) / 20 }, rotation: Math.round(r * 1e6) / 1e6 };
 }
+
+/**
+ * Line a piece up with its neighbours: when its centre comes within
+ * `tolerance` of another piece's centre line in the same room (along x or
+ * along y), it takes that line. Independent per axis, so a chair can line up
+ * with the table on one axis and stay free on the other. Callers still
+ * validate the result; holding the override key skips this entirely.
+ */
+export function alignToNeighbours(
+  ctx: PlacementContext, at: Point, roomId: string | null, instanceId?: string, tolerance = 0.08,
+): { at: Point; alignedX: boolean; alignedY: boolean } {
+  let bestX: { d: number; v: number } | null = null;
+  let bestY: { d: number; v: number } | null = null;
+  for (const o of ctx.objects) {
+    if (o.instanceId === instanceId || o.roomId !== roomId) continue;
+    const dx = Math.abs(o.position.x - at.x);
+    const dy = Math.abs(o.position.z - at.y);
+    if (dx > 1e-6 && dx <= tolerance && (!bestX || dx < bestX.d)) bestX = { d: dx, v: o.position.x };
+    if (dy > 1e-6 && dy <= tolerance && (!bestY || dy < bestY.d)) bestY = { d: dy, v: o.position.z };
+  }
+  return { at: { x: bestX?.v ?? at.x, y: bestY?.v ?? at.y }, alignedX: !!bestX, alignedY: !!bestY };
+}

@@ -490,6 +490,8 @@ async function main() {
     await checkpoint7(browser);
     await checkpoint8(browser);
     await checkpoint8Share(browser);
+    await checkpoint9(browser);
+    await checkpoint10(browser);
   } finally {
     await browser.close().catch(() => {});
     server.kill();
@@ -563,6 +565,10 @@ function qaCatalogAssets() {
     row('dev/rug-large', 'Large rug', 'RUG', 2.4, 1.7, 0.01, 'RUG', { anchor: 'CENTRE' }),
     row('dev/bed-double', 'Double bed', 'BED', 1.6, 2.05, 0.95, 'BED', { room_kinds: ['BEDROOM'],
       material_slots: [{ id: 'body', defaultColor: '#a88b6c' }, { id: 'linen', defaultColor: '#efeae2' }] }),
+    row('dev/wardrobe-2', 'Two-door wardrobe', 'WARDROBE', 1.2, 0.6, 2.2, 'WARDROBE', { room_kinds: ['BEDROOM'], capabilities: ['MOVABLE', 'ROTATABLE', 'REPLACEABLE', 'OPENABLE', 'INTERACTIVE'],
+      material_slots: [{ id: 'body', defaultColor: '#ebe7e0' }] }),
+    row('dev/fridge', 'Refrigerator', 'KITCHEN', 0.6, 0.65, 1.85, 'FRIDGE', { room_kinds: ['KITCHEN'], capabilities: ['MOVABLE', 'ROTATABLE', 'REPLACEABLE', 'OPENABLE', 'INTERACTIVE'],
+      material_slots: [{ id: 'body', defaultColor: '#e8e9ea' }] }),
     // Longer than any room in the fixture: it can never be placed.
     row('dev/sofa-run', 'Modular sofa run', 'SOFA', 7.5, 1.0, 0.82, 'SOFA'),
     row('dev/floor-lamp', 'Floor lamp', 'LIGHTING', 0.4, 0.4, 1.6, 'LAMP', { anchor: 'FREE',
@@ -677,6 +683,324 @@ async function checkpoint8(browser) {
   check('no page errors (checkpoint 8)', errors.length === 0, errors.join('\n        '));
 }
 
+/* ── Checkpoint 10: interaction, direct manipulation, photos ─────── */
+
+const scene = (page, fn, arg) => page.evaluate(([f, a]) => {
+  const c = window.__dsScene;
+  return new Function('c', 'a', `return (${f})(c, a);`)(c, a);
+}, [fn.toString(), arg]);
+
+const is2560 = (z) => !!z && z.width === 2560 && z.height === 1440;
+
+async function checkpoint10(browser) {
+  const { jpegSize } = await import('../../src/lib/designStudio/exportFiles.ts');
+  const { store, project, version } = await seededStore();
+  version.state.objects = [
+    { instanceId: 'sofa-1', assetId: 'dev/sofa-3', roomId: 'r-living', position: { x: 3, y: 0, z: 2.0 }, rotationY: 0, materialVariant: null, colorOverride: null, locked: false },
+    { instanceId: 'table-1', assetId: 'dev/coffee-table', roomId: 'r-living', position: { x: 4.6, y: 0, z: 4.2 }, rotationY: 0, materialVariant: null, colorOverride: null, locked: false },
+    { instanceId: 'wardrobe-1', assetId: 'dev/wardrobe-2', roomId: 'r-bed', position: { x: 9.6, y: 0, z: 5.2 }, rotationY: Math.PI / 2, materialVariant: null, colorOverride: null, locked: false },
+    { instanceId: 'fridge-1', assetId: 'dev/fridge', roomId: 'r-living', position: { x: 0.5, y: 0, z: 6.4 }, rotationY: 0, materialVariant: null, colorOverride: null, locked: false },
+  ];
+  const errors = [];
+  const ctx = await openContext(browser, { width: 1440, height: 900, lang: 'en' });
+  const page = await ctx.newPage();
+  await wire(page, store, errors);
+  await page.goto(`${BASE}/design-studio/${project.id}`, { waitUntil: 'domcontentloaded' });
+  await page.locator('main canvas').waitFor({ timeout: 25000 });
+  await page.waitForTimeout(1000);
+  const v = () => store.db.ds_versions.find((x) => x.id === version.id);
+  const states = () => scene(page, (c) => Object.fromEntries(c.interactiveStates().map((x) => [x.key, x.open])));
+  const where = () => page.locator('p[aria-live="polite"]').filter({ hasText: 'Walkthrough' }).textContent();
+
+  // ── Walkthrough: things that open.
+  await page.getByRole('button', { name: 'Walk through' }).click();
+  await page.getByRole('button', { name: 'Exit walkthrough' }).first().waitFor();
+  const start = await states();
+  check('walk: doors, windows and furniture parts are interactive', start['door:d-bed'] === true && start['window:win-bed'] === false
+    && start['obj:wardrobe-1:door-1'] === false && start['obj:wardrobe-1:door-2'] === false && start['obj:fridge-1:door'] === false, JSON.stringify(start));
+
+  // Stand in the living room facing the bedroom door.
+  await scene(page, (c) => c.walkTo({ position: { x: 5.2, y: 5.0 }, target: { x: 7.5, y: 5.0 }, fov: 60 }));
+  await scene(page, (c) => c.debugAim('door:d-bed'));
+  const hint = page.getByRole('status').filter({ hasText: 'Door' });
+  await hint.waitFor();
+  check('walk: pointing at a door says what it is and what will happen', await hint.getByRole('button', { name: 'Close' }).isVisible());
+  await hint.getByRole('button', { name: 'Close' }).click();
+  await page.waitForTimeout(1100);
+  check('walk: the door closes (animated, then closed)', (await states())['door:d-bed'] === false);
+  await page.screenshot({ path: path.join(OUT, 'cp10-door-closed-1440-en.png') });
+  await page.keyboard.down('KeyW'); await page.waitForTimeout(1500); await page.keyboard.up('KeyW');
+  check('walk: a closed door cannot be walked through', (await where())?.includes('Living room'), await where());
+  // Open it with the keyboard: E opens what is straight ahead.
+  await page.keyboard.press('KeyE');
+  await page.waitForTimeout(1100);
+  check('walk: E opens the door straight ahead', (await states())['door:d-bed'] === true);
+  await page.keyboard.down('KeyW'); await page.waitForTimeout(2200); await page.keyboard.up('KeyW');
+  check('walk: through the open door into the bedroom', (await where())?.includes('Bedroom'), await where());
+
+  // A window, a wardrobe, the refrigerator.
+  for (const [key, role] of [['window:win-bed', 'Window'], ['obj:wardrobe-1:door-1', 'Wardrobe'], ['obj:fridge-1:door', 'Refrigerator']]) {
+    await scene(page, (c, k) => c.debugAim(k), key);
+    const h = page.getByRole('status').filter({ hasText: role });
+    await h.getByRole('button', { name: 'Open' }).click();
+    await page.waitForTimeout(1000);
+    const open = (await states())[key];
+    await h.getByRole('button', { name: 'Close' }).click();
+    await page.waitForTimeout(1000);
+    check(`walk: ${role.toLowerCase()} opens and closes`, open === true && (await states())[key] === false);
+  }
+  await scene(page, (c) => c.debugAim('obj:wardrobe-1:door-2'));
+  await page.getByRole('status').filter({ hasText: 'Wardrobe' }).getByRole('button', { name: 'Open' }).click();
+  await scene(page, (c) => c.walkTo({ position: { x: 8.2, y: 5.2 }, target: { x: 9.6, y: 5.2 }, fov: 60 }));
+  await page.waitForTimeout(900);
+  await page.screenshot({ path: path.join(OUT, 'cp10-wardrobe-open-1440-en.png') });
+
+  // A photo from inside the walkthrough.
+  const [photo] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), page.getByRole('button', { name: 'Photo' }).click()]);
+  const photoBytes = (await import('node:fs')).readFileSync(await photo.path());
+  check('photo: the walkthrough view as a 2560 × 1440 JPEG', is2560(jpegSize(new Uint8Array(photoBytes))), `${photo.suggestedFilename()} ${photoBytes.length} ${JSON.stringify(jpegSize(new Uint8Array(photoBytes)))} ${photoBytes.subarray(0, 4).toString('hex')}`);
+  check('walk: opening things never changed the design', v().revision === 0 && store.db.ds_version_events.length === 0);
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Walk through' }).click();
+  await page.getByRole('button', { name: 'Exit walkthrough' }).first().waitFor();
+  const again = await states();
+  check('walk: every visit starts from the design’s own state', again['door:d-bed'] === true && again['obj:wardrobe-1:door-2'] === false);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(400);
+
+  // ── Design mode: grab, turn, place.
+  const project2 = (x, y, h = 0.4) => scene(page, (c, a) => {
+    const p = c.project({ x: a.x, y: a.y }, a.h);
+    const r = c.renderer.domElement.getBoundingClientRect();
+    return p ? { x: r.left + p.x, y: r.top + p.y } : null;
+  }, { x, y, h });
+  await page.keyboard.press('KeyT');
+  await page.waitForTimeout(700);
+  const sofaAt = await project2(3, 2.0);
+  await page.mouse.click(sofaAt.x, sofaAt.y);
+  await page.waitForTimeout(400);
+  check('design: clicking the sofa selects it, with the handle to turn it', await page.getByRole('complementary', { name: 'Inspector' }).getByText('Three-seat sofa').isVisible()
+    && !!(await scene(page, (c) => c.rotateHandleScreen())));
+  // Turn it a quarter by dragging the handle around the sofa.
+  const knob = await scene(page, (c) => c.rotateHandleScreen());
+  const centre = await project2(3, 2.0, 0.03);
+  const vx = knob.x - centre.x; const vy = knob.y - centre.y;
+  await page.mouse.move(knob.x, knob.y);
+  await page.mouse.down();
+  for (let i = 1; i <= 8; i += 1) {
+    const a = (i / 8) * (Math.PI / 2);
+    await page.mouse.move(centre.x + vx * Math.cos(a) - vy * Math.sin(a), centre.y + vx * Math.sin(a) + vy * Math.cos(a));
+  }
+  await page.mouse.up();
+  await page.waitForTimeout(1800);
+  const rot = v().state.objects.find((o) => o.instanceId === 'sofa-1').rotationY;
+  const step = Math.PI / 12;
+  check('design: dragging the ring turns the sofa, snapped to 15°', Math.abs(rot) > 0.5 && Math.abs(rot / step - Math.round(rot / step)) < 1e-4, String(rot));
+  check('design: one turn is one saved step', store.db.ds_version_events.filter((e) => e.ops.some((o) => o.type === 'ROTATE_OBJECT')).length === 1);
+  await page.keyboard.press('Control+z');
+  await page.waitForTimeout(1600);
+  check('design: undo puts it back', v().state.objects.find((o) => o.instanceId === 'sofa-1').rotationY === 0);
+  await page.keyboard.press('Control+Shift+z');
+  await page.waitForTimeout(1600);
+  check('design: redo turns it again', Math.abs(v().state.objects.find((o) => o.instanceId === 'sofa-1').rotationY - rot) < 1e-9);
+
+  // Move with the keyboard (the accessible path).
+  const before = { ...v().state.objects.find((o) => o.instanceId === 'sofa-1').position };
+  await page.keyboard.press('ArrowUp');
+  await page.waitForTimeout(1600);
+  const after = v().state.objects.find((o) => o.instanceId === 'sofa-1').position;
+  check('design: arrow keys nudge the selected piece 5 cm', Math.abs(after.z - before.z - 0.05) < 1e-9 && after.x === before.x);
+
+  // Drag free with Alt: no grid.
+  const tableAt = await project2(4.6, 4.2);
+  const target = await project2(4.23, 4.93, 0.2);
+  await page.mouse.move(tableAt.x, tableAt.y);
+  await page.keyboard.down('Alt');
+  await page.mouse.down();
+  await page.mouse.move(tableAt.x + 10, tableAt.y + 5, { steps: 3 });
+  await page.mouse.move(target.x, target.y, { steps: 8 });
+  await page.mouse.up();
+  await page.keyboard.up('Alt');
+  await page.waitForTimeout(1600);
+  const table = v().state.objects.find((o) => o.instanceId === 'table-1').position;
+  const onGrid = (n) => Math.abs(n * 20 - Math.round(n * 20)) < 1e-6;
+  check('design: holding Alt places freely (off the 5 cm grid)', !(onGrid(table.x) && onGrid(table.z)) && Math.abs(table.x - 4.23) < 0.3, JSON.stringify(table));
+
+  // Into a wall: refused, nothing moves.
+  const wallAt = await project2(6.0, 3.0);
+  const tableNow = await project2(table.x, table.z);
+  const posBefore = JSON.stringify(v().state.objects.find((o) => o.instanceId === 'table-1').position);
+  await page.mouse.move(tableNow.x, tableNow.y);
+  await page.mouse.down();
+  await page.mouse.move(tableNow.x + 10, tableNow.y, { steps: 3 });
+  await page.mouse.move(wallAt.x, wallAt.y, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(1600);
+  check('design: a piece dropped into a wall is refused, not half-placed', JSON.stringify(v().state.objects.find((o) => o.instanceId === 'table-1').position) === posBefore);
+  await page.screenshot({ path: path.join(OUT, 'cp10-design-1440-en.png') });
+
+  // Photos from the design view.
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Download this design' }).click();
+  const dl = page.getByRole('dialog', { name: 'Download this design' });
+  const [viewPhoto] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), dl.getByRole('button', { name: 'This view' }).click()]);
+  const vb = new Uint8Array((await import('node:fs')).readFileSync(await viewPhoto.path()));
+  check('photo: this view as a 2560 × 1440 JPEG', is2560(jpegSize(vb)) && viewPhoto.suggestedFilename().endsWith('-view.jpg'));
+  await dl.getByRole('combobox', { name: 'Room to photograph' }).selectOption({ label: 'Bedroom' });
+  const [roomPhoto] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), dl.getByRole('button', { name: 'Room photo' }).click()]);
+  const rb = new Uint8Array((await import('node:fs')).readFileSync(await roomPhoto.path()));
+  check('photo: a Camera Director room shot as a JPEG, named for the room', is2560(jpegSize(rb)) && roomPhoto.suggestedFilename().endsWith('-bedroom.jpg'));
+  (await import('node:fs')).copyFileSync(await roomPhoto.path(), path.join(OUT, 'cp10-room-photo.jpg'));
+  await dl.getByRole('button', { name: 'Close' }).click();
+
+  // ── A visitor opens a door; the design does not change; reload restores it.
+  await page.getByRole('button', { name: 'Share this design' }).click();
+  const share = page.getByRole('dialog', { name: 'Share this design' });
+  await share.getByRole('radio', { name: /Walkthrough/ }).click();
+  await share.getByRole('button', { name: 'Create link' }).click();
+  const url = await share.getByRole('listitem').first().getByRole('textbox', { name: 'Link' }).inputValue();
+  await ctx.close();
+  const revision = v().revision;
+  const phone = await anonymousContext(browser, { width: 390, height: 844, lang: 'en' });
+  const p = await phone.newPage();
+  await wire(p, store, errors);
+  await p.goto(url, { waitUntil: 'domcontentloaded' });
+  await p.getByRole('button', { name: 'Enter walkthrough' }).click();
+  await p.getByRole('application', { name: 'Walk: drag to move' }).waitFor();
+  await scene(p, (c) => c.walkTo({ position: { x: 5.2, y: 5.0 }, target: { x: 7.5, y: 5.0 }, fov: 60 }));
+  await scene(p, (c) => c.debugAim('door:d-bed'));
+  await p.getByRole('status').filter({ hasText: 'Door' }).getByRole('button', { name: 'Close' }).tap();
+  await p.waitForTimeout(1100);
+  const visitorClosed = await scene(p, (c) => c.interactiveStates().find((x) => x.key === 'door:d-bed').open);
+  check('visitor: can close a door on a phone', visitorClosed === false);
+  check('visitor: the design is untouched; only the public function was called', v().revision === revision && p.apiCalls.every((c) => c === 'POST /rest/v1/rpc/ds_public_share'));
+  await p.screenshot({ path: path.join(OUT, 'cp10-visitor-door-390-en.png') });
+  await p.reload({ waitUntil: 'domcontentloaded' });
+  await p.getByRole('button', { name: 'Enter walkthrough' }).click();
+  await p.getByRole('application', { name: 'Walk: drag to move' }).waitFor();
+  const reloaded = await scene(p, (c) => c.interactiveStates().find((x) => x.key === 'door:d-bed').open);
+  check('visitor: a reload starts from the shared design (door open again)', reloaded === true);
+  check('visitor: controls fit on the phone', (await overflowX(p)) <= 0);
+  await phone.close();
+  check('no page errors (checkpoint 10)', errors.length === 0, errors.join('\n        '));
+}
+
+/* ── Checkpoint 9: design presentation links and downloads ──────── */
+
+/** Entries of a stored ZIP: name and bytes, read from the central directory. */
+function readZip(buf) {
+  const v = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  const end = buf.length - 22;
+  if (v.getUint32(end, true) !== 0x06054b50) return null;
+  const n = v.getUint16(end + 10, true);
+  let at = v.getUint32(end + 16, true);
+  const out = [];
+  for (let i = 0; i < n; i += 1) {
+    const nameLen = v.getUint16(at + 28, true);
+    const local = v.getUint32(at + 42, true);
+    const size = v.getUint32(at + 20, true);
+    const name = new TextDecoder().decode(buf.subarray(at + 46, at + 46 + nameLen));
+    const lName = v.getUint16(local + 26, true);
+    out.push({ name, data: buf.subarray(local + 30 + lName, local + 30 + lName + size) });
+    at += 46 + nameLen;
+  }
+  return out;
+}
+
+async function checkpoint9(browser) {
+  const { jpegSize } = await import('../../src/lib/designStudio/exportFiles.ts');
+  const { store, project, version } = await seededStore();
+  version.state.objects = [
+    { instanceId: 'sofa-1', assetId: 'dev/sofa-3', roomId: 'r-living', position: { x: 3, y: 0, z: 1.2 }, rotationY: 0, materialVariant: null, colorOverride: null, locked: false },
+    { instanceId: 'bed-1', assetId: 'dev/bed-double', roomId: 'r-bed', position: { x: 8, y: 0, z: 5.9 }, rotationY: Math.PI, materialVariant: null, colorOverride: null, locked: false },
+  ];
+  const walls = store.db.ds_spatial_sources[0] ? null : null;
+  void walls;
+  version.state.palette = ['#f2eee6', '#b6bfa7'];
+  const errors = [];
+  const ctx = await openContext(browser, { width: 1440, height: 900, lang: 'en' });
+  const page = await ctx.newPage();
+  await wire(page, store, errors);
+  await page.goto(`${BASE}/design-studio/${project.id}`, { waitUntil: 'domcontentloaded' });
+  await page.locator('main canvas').waitFor({ timeout: 25000 });
+  await page.waitForTimeout(800);
+
+  // Downloads: images.
+  await page.getByRole('button', { name: 'Download this design' }).click();
+  const dl = page.getByRole('dialog', { name: 'Download this design' });
+  check('download: only the options that work are offered (no 3D file button)',
+    (await dl.getByRole('button').filter({ hasText: /3D/ }).count()) === 0 && await dl.getByText(/A 3D file is not offered/).isVisible());
+  await page.screenshot({ path: path.join(OUT, 'cp9-download-1440-en.png') });
+  const [zipDl] = await Promise.all([page.waitForEvent('download', { timeout: 120000 }), dl.getByRole('button', { name: /Design images/ }).click()]);
+  const zipPath = path.join(OUT, zipDl.suggestedFilename());
+  await zipDl.saveAs(zipPath);
+  const zip = readZip(new Uint8Array((await import('node:fs')).readFileSync(zipPath)));
+  const sizes = (zip ?? []).map((e) => jpegSize(e.data));
+  check('images: a real ZIP of JPEGs named after the design', zipDl.suggestedFilename() === 'homatch-two-bedroom-apartment-vake-original-images.zip' && !!zip, zipDl.suggestedFilename());
+  check('images: overview, plan and each of the 4 rooms', zip?.length === 6
+    && zip[0].name === '01-overview.jpg' && zip[1].name === '02-plan.jpg' && zip.some((e) => e.name.endsWith('living-room.jpg')), (zip ?? []).map((e) => e.name).join(' '));
+  check('images: every image is 2560 × 1440', sizes.every((z) => z && z.width === 2560 && z.height === 1440), JSON.stringify(sizes));
+  check('images: the renders are not blank (real content, varied bytes)', (zip ?? []).every((e) => e.data.length > 20000), (zip ?? []).map((e) => e.data.length).join(','));
+
+  // Downloads: presentation.
+  const [pdfDl] = await Promise.all([page.waitForEvent('download', { timeout: 180000 }), dl.getByRole('button', { name: /Presentation/ }).click()]);
+  const pdfPath = path.join(OUT, pdfDl.suggestedFilename());
+  await pdfDl.saveAs(pdfPath);
+  const pdf = (await import('node:fs')).readFileSync(pdfPath);
+  const text = pdf.toString('latin1');
+  const pages = Number(/\/Type \/Pages \/Count (\d+)/.exec(text)?.[1]);
+  check('presentation: a real PDF with a cover, the 4 rooms and the plan', text.startsWith('%PDF-1.4') && pages === 6, String(pages));
+  check('presentation: titled with the project and the version it was made from', text.includes('/Title (Two-bedroom apartment, Vake - Original)'));
+  const images = [...text.matchAll(/\/Width (\d+) \/Height (\d+)/g)].map((m) => `${m[1]}x${m[2]}`);
+  check('presentation: each page is a full-resolution image page', images.length === 6 && images.every((x) => x === '1754x1240'), images.join(','));
+  check('download: the design itself was not changed by exporting', store.db.ds_versions.find((v) => v.id === version.id).revision === 0);
+  await dl.getByRole('button', { name: 'Close' }).click();
+
+  // A design presentation link.
+  await page.getByRole('button', { name: 'Share this design' }).click();
+  const share = page.getByRole('dialog', { name: 'Share this design' });
+  check('share: the toolbar opens on a design presentation link', (await share.getByRole('radio', { name: /Design presentation/ }).getAttribute('aria-checked')) === 'true');
+  await share.getByRole('button', { name: 'Create link' }).click();
+  const input = share.getByRole('listitem').first().getByRole('textbox', { name: 'Link' });
+  await input.waitFor({ timeout: 10000 });
+  const designUrl = await input.inputValue();
+  check('share: a design presentation lives at /d/', new RegExp(`^${BASE}/d/[A-Za-z0-9_-]{43}$`).test(designUrl), designUrl);
+  await ctx.close();
+
+  const anon = await anonymousContext(browser, { width: 1440, height: 900 });
+  const v = await anon.newPage();
+  await wire(v, store, errors);
+  await v.goto(designUrl, { waitUntil: 'domcontentloaded' });
+  const details = v.getByRole('complementary', { name: 'Design details' });
+  await details.waitFor({ timeout: 25000 });
+  check('design page: the home, its palette and rooms, no account', await details.getByRole('heading', { name: 'Two-bedroom apartment, Vake' }).isVisible()
+    && (await details.getByRole('navigation', { name: 'Go to a room' }).getByRole('button').count()) === 5);
+  await details.getByRole('button', { name: 'Living room' }).click();
+  await v.waitForTimeout(600);
+  check('design page: a room shows its furniture', await details.getByText('Three-seat sofa').isVisible());
+  check('design page: no editor, no AI, no versions', (await v.getByText(/AI designer|Inspector|Undo|Versions/).count()) === 0);
+  await v.screenshot({ path: path.join(OUT, 'cp9-design-share-1440-en.png') });
+  await details.getByRole('button', { name: 'Walk through this room' }).click();
+  await v.getByRole('button', { name: 'Overview' }).waitFor();
+  check('design page: walking into the room chosen', (await v.locator('p[aria-live="polite"]').filter({ hasText: 'Walkthrough' }).textContent())?.includes('Living room'));
+  await v.getByRole('button', { name: 'Overview' }).click();
+  await details.waitFor();
+  check('design page: leaving the walkthrough returns to the presentation', await details.isVisible());
+  check('design page: only the public function was called', v.apiCalls.every((c) => c === 'POST /rest/v1/rpc/ds_public_share'), v.apiCalls.join(', '));
+  await anon.close();
+
+  const phone = await anonymousContext(browser, { width: 390, height: 844, lang: 'ar' });
+  const p = await phone.newPage();
+  await wire(p, store, errors);
+  await p.goto(designUrl, { waitUntil: 'domcontentloaded' });
+  const pd = p.getByRole('complementary', { name: 'تفاصيل التصميم' });
+  await pd.waitFor({ timeout: 25000 });
+  check('design page phone ar: right to left, and it fits', (await p.evaluate(() => document.documentElement.dir)) === 'rtl' && (await overflowX(p)) <= 0);
+  await p.screenshot({ path: path.join(OUT, 'cp9-design-share-390-ar.png') });
+  await phone.close();
+  check('no page errors (checkpoint 9)', errors.length === 0, errors.join('\n        '));
+}
+
 /* ── Checkpoint 8: public share links ─────────────────────────────── */
 
 async function anonymousContext(browser, { width, height, lang }) {
@@ -702,6 +1026,7 @@ async function checkpoint8Share(browser) {
   // Owner: create two links.
   await page.getByRole('button', { name: 'Share this design' }).click();
   const dialog = page.getByRole('dialog', { name: 'Share this design' });
+  await dialog.getByRole('radio', { name: /Walkthrough/ }).click();
   await dialog.getByRole('textbox', { name: 'Name (only you see it)' }).fill('For my parents');
   await dialog.getByRole('combobox', { name: 'Link works' }).selectOption({ label: 'For 30 days' });
   await dialog.getByRole('button', { name: 'Create link' }).click();

@@ -8,12 +8,13 @@
 // the same collision-safe walkthrough.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Footprints, Globe, Loader2 } from 'lucide-react';
+import { Footprints, Globe, Home, Loader2 } from 'lucide-react';
 import { SceneController } from '@/components/designStudio/canvas/SceneController';
 import { WalkthroughOverlay } from '@/components/designStudio/workspace/WalkthroughOverlay';
 import { assetFromRow, materialFromRow, type CatalogAsset, type CatalogMaterial } from '@/lib/designStudio/catalog';
 import { entryShot, roomGraph, roomShot, tourOrder } from '@/lib/designStudio/cameraDirector';
 import { normalizeDesignState, type DesignState } from '@/lib/designStudio/designState';
+import { summarizeDesign } from '@/lib/designStudio/designSummary';
 import { buildWalkModel, type WalkModel } from '@/lib/designStudio/navigation';
 import { chooseQuality, readDeviceSignals } from '@/lib/designStudio/quality';
 import { buildSpaceModel, type SpaceModel } from '@/lib/designStudio/space';
@@ -40,9 +41,9 @@ interface SharePayload {
   materials: Array<Record<string, unknown>>;
 }
 
-/** /w/<token>, or ?w=<token> where a host has no rewrite (local preview). */
+/** /w/<token> (walkthrough) or /d/<token> (design), or ?w=<token> where a host has no rewrite. */
 export function tokenFromLocation(loc: Pick<Location, 'pathname' | 'search'> = window.location): string | null {
-  const m = /^\/w\/([A-Za-z0-9_-]{43})\/?$/.exec(loc.pathname);
+  const m = /^\/[wd]\/([A-Za-z0-9_-]{43})\/?$/.exec(loc.pathname);
   if (m) return m[1];
   const q = new URLSearchParams(loc.search).get('w');
   return q && /^[A-Za-z0-9_-]{43}$/.test(q) ? q : null;
@@ -146,6 +147,9 @@ function Presentation({ data, say, picker }: { data: SharePayload; say: (k: stri
   const [walking, setWalking] = useState(false);
   const [room, setRoom] = useState<string | null>(null);
   const [touring, setTouring] = useState(false);
+  // What the visitor points at. Opening things here is temporary: it never
+  // reaches the shared design, and a reload starts from the frozen state.
+  const [aim, setAim] = useState<{ role: string; open: boolean } | null>(null);
 
   const space: SpaceModel = useMemo(() => buildSpaceModel(data.scene), [data.scene]);
   const state: DesignState = useMemo(() => normalizeDesignState(data.state), [data.state]);
@@ -185,25 +189,37 @@ function Presentation({ data, say, picker }: { data: SharePayload; say: (k: stri
     controller.applyDesign(state, assets, materials);
     controller.frameAll(false);
     controllerRef.current = controller;
+    if (import.meta.env.MODE === 'harness') (window as unknown as { __dsScene?: SceneController }).__dsScene = controller;
     walkRef.current = buildWalkModel(space, state.objects, assets);
     return () => { controller.dispose(); controllerRef.current = null; };
   }, [space, state, assets, materials]);
 
   const aspect = () => controllerRef.current?.camera.aspect ?? 16 / 9;
-  const enter = () => {
+  const isDesign = data.shareType === 'DESIGN';
+  const summary = useMemo(() => summarizeDesign(state, space, assets, materials), [state, space, assets, materials]);
+  const [focus, setFocus] = useState<string | null>(null);
+  const focusOn = (id: string | null) => {
+    setFocus(id);
+    const c = controllerRef.current;
+    const r = id ? space.rooms.find((x) => x.id === id) : null;
+    if (c) { if (r) c.focusRoom(r); else c.frameAll(); }
+  };
+  const enter = (roomId: string | null = null) => {
     const c = controllerRef.current;
     const walk = walkRef.current;
     if (!c || !walk) return;
-    const pose = entryShot(space, walk, aspect());
+    const pose = roomId ? roomShot(space, walk, roomId, aspect()) : entryShot(space, walk, aspect());
     if (!pose) return;
-    c.enterWalkthrough(walk, pose, setRoom);
+    c.enterWalkthrough(walk, pose, setRoom, setAim);
     setWalking(true);
   };
   const leave = () => {
     controllerRef.current?.exitWalkthrough();
-    controllerRef.current?.frameAll();
+    const r = focus ? space.rooms.find((x) => x.id === focus) : null;
+    if (r) controllerRef.current?.focusRoom(r); else controllerRef.current?.frameAll();
     setWalking(false);
     setTouring(false);
+    setAim(null);
   };
   const goRoom = (id: string, glide = 0) => {
     const c = controllerRef.current;
@@ -245,7 +261,11 @@ function Presentation({ data, say, picker }: { data: SharePayload; say: (k: stri
             title: say('ds_walk_title'), reset: say('ds_walk_reset'), exit: say('share_overview'), rooms: say('ds_walk_rooms'),
             joystick: say('ds_walk_joystick'), helpKeys: say('share_help_keys'),
             tourPlay: say('share_tour_play'), tourPause: say('share_tour_pause'), fullscreen: say('share_fullscreen'),
+            open: say('share_open'), close: say('share_close'),
+            roles: { DOOR: say('share_ix_door'), WINDOW: say('share_ix_window'), WARDROBE: say('share_ix_wardrobe'), CABINET: say('share_ix_cabinet'), DRAWER: say('share_ix_drawer'), APPLIANCE: say('share_ix_appliance') },
           }}
+          aim={aim}
+          onInteract={() => controllerRef.current?.toggleAimed()}
           roomName={room ? names.get(room) ?? null : null}
           rooms={tour.map((id) => ({ id, name: names.get(id) ?? '' }))}
           currentRoomId={room}
@@ -258,13 +278,24 @@ function Presentation({ data, say, picker }: { data: SharePayload; say: (k: stri
           onTour={() => setTouring((v) => !v)}
           onFullscreen={canFullscreen ? () => { void document.documentElement.requestFullscreen?.().catch(() => {}); } : undefined}
         />
+      ) : webgl && isDesign ? (
+        <DesignPanel
+          title={data.title}
+          estimated={data.geometryState === 'ESTIMATED'}
+          say={say}
+          rooms={tour.map((id) => ({ id, name: names.get(id) ?? '' }))}
+          summary={summary}
+          focus={focus}
+          onFocus={focusOn}
+          onWalk={(id) => enter(id)}
+        />
       ) : webgl ? (
         <div className="absolute inset-x-0 bottom-0 flex justify-center bg-gradient-to-t from-[#0C1119] via-[#0C1119]/85 to-transparent px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-24">
           <div className="w-full max-w-xl text-center">
             <p className="text-2xs font-semibold uppercase tracking-[0.18em] text-[hsl(38_92%_62%)]">{say('share_brand_line')}</p>
             <h1 className="mt-2 font-display text-3xl font-semibold leading-tight sm:text-4xl">{data.title}</h1>
             {data.geometryState === 'ESTIMATED' ? <p className="mt-2 text-[14px] text-white/65">{say('share_estimated')}</p> : null}
-            <button type="button" onClick={enter}
+            <button type="button" onClick={() => enter()}
               className="mt-6 inline-flex h-12 items-center justify-center gap-2 rounded-full bg-white px-7 text-[16px] font-semibold text-[#0C1119] shadow-lg hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]">
               <Footprints className="h-5 w-5" aria-hidden="true" />{say('share_enter')}
             </button>
@@ -299,5 +330,82 @@ function LanguagePicker({ lang, onLang, label }: { lang: ShareLang; onLang: (l: 
         {SHARE_LANGS.map((l) => <option key={l} value={l}>{LANG_NAMES[l]}</option>)}
       </select>
     </label>
+  );
+}
+
+/**
+ * THE DESIGN PRESENTATION: the home in 3D (drag to turn), each room's
+ * finishes and furniture, and a way in at eye level. Nothing can be edited.
+ */
+function DesignPanel({
+  title, estimated, say, rooms, summary, focus, onFocus, onWalk,
+}: {
+  title: string;
+  estimated: boolean;
+  say: (k: string) => string;
+  rooms: Array<{ id: string; name: string }>;
+  summary: ReturnType<typeof summarizeDesign>;
+  focus: string | null;
+  onFocus: (id: string | null) => void;
+  onWalk: (roomId: string | null) => void;
+}) {
+  const room = focus ? summary.rooms.find((r) => r.roomId === focus) : null;
+  const finish = (label: string, f: { color: string | null; materialName: string | null } | null) => (
+    <div className="flex items-center gap-2 text-[14px]">
+      <span className="w-20 shrink-0 text-white/60">{label}</span>
+      {f?.color ? <span className="h-5 w-5 shrink-0 rounded ring-1 ring-white/25" style={{ backgroundColor: f.color }} aria-hidden="true" /> : null}
+      <span className="min-w-0 truncate">{f ? (f.materialName ?? f.color) : say('share_unchanged')}</span>
+    </div>
+  );
+  return (
+    <aside
+      aria-label={say('share_details')}
+      className="absolute inset-x-0 bottom-0 max-h-[52dvh] overflow-y-auto rounded-t-2xl bg-[#0C1119]/92 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 ring-1 ring-white/10 backdrop-blur md:top-16 md:bottom-4 md:end-4 md:start-auto md:max-h-none md:w-[22rem] md:rounded-2xl"
+    >
+      <p className="text-2xs font-semibold uppercase tracking-[0.18em] text-[hsl(38_92%_62%)]">{say('share_brand_line')}</p>
+      <h1 className="mt-1 font-display text-2xl font-semibold leading-tight">{title}</h1>
+      {estimated ? <p className="mt-1 text-[13px] text-white/60">{say('share_estimated')}</p> : null}
+      {summary.palette.length ? (
+        <div className="mt-3">
+          <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-white/55">{say('share_palette')}</p>
+          <div className="mt-1.5 flex gap-1" aria-hidden="true">
+            {summary.palette.map((c) => <span key={c} className="h-5 flex-1 rounded ring-1 ring-white/20" style={{ backgroundColor: c }} />)}
+          </div>
+        </div>
+      ) : null}
+      <nav aria-label={say('ds_walk_rooms')} className="mt-4 flex flex-wrap gap-1.5">
+        <button type="button" onClick={() => onFocus(null)} aria-pressed={!focus}
+          className={cn('inline-flex h-8 items-center gap-1 rounded-full px-3 text-[13px] font-medium ring-1', !focus ? 'bg-white text-[#0C1119] ring-white' : 'text-white ring-white/25 hover:bg-white/10')}>
+          <Home className="h-3.5 w-3.5" aria-hidden="true" />{say('share_whole_home')}
+        </button>
+        {rooms.map((r) => (
+          <button key={r.id} type="button" onClick={() => onFocus(r.id)} aria-pressed={focus === r.id}
+            className={cn('h-8 rounded-full px-3 text-[13px] font-medium ring-1', focus === r.id ? 'bg-white text-[#0C1119] ring-white' : 'text-white ring-white/25 hover:bg-white/10')}>
+            {r.name}
+          </button>
+        ))}
+      </nav>
+      {room ? (
+        <section className="mt-4 space-y-2" aria-label={rooms.find((r) => r.id === room.roomId)?.name}>
+          {finish(say('share_walls'), room.walls)}
+          {finish(say('share_floor'), room.floor)}
+          <div className="text-[14px]">
+            <p className="text-white/60">{say('share_furniture')}</p>
+            {room.furniture.length ? (
+              <ul className="mt-1 space-y-0.5">
+                {room.furniture.map((f) => <li key={f.name}>{f.count > 1 ? `${f.name} × ${f.count}` : f.name}</li>)}
+              </ul>
+            ) : <p className="mt-1 text-white/50">{say('share_no_furniture')}</p>}
+          </div>
+        </section>
+      ) : (
+        <p className="mt-4 text-[13px] text-white/55">{say('share_design_hint')}</p>
+      )}
+      <button type="button" onClick={() => onWalk(room ? room.roomId : null)}
+        className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-white text-[15px] font-semibold text-[#0C1119] hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]">
+        <Footprints className="h-4 w-4" aria-hidden="true" />{say(room ? 'share_walk_room' : 'share_enter')}
+      </button>
+      <p className="mt-3 text-2xs text-white/45">{say('share_preview_note')}</p>
+    </aside>
   );
 }

@@ -23,8 +23,9 @@ import type { QualityProfile } from '@/lib/designStudio/quality';
 import type { CatalogAsset, CatalogMaterial } from '@/lib/designStudio/catalog';
 import type { DesignState, ObjectInstance } from '@/lib/designStudio/designState';
 import { PAINTABLE_ROLES, type PartRole } from '@/lib/designStudio/modelParts';
-import { EYE_HEIGHT_M, move as walkMove, type WalkModel } from '@/lib/designStudio/navigation';
-import { roomContaining, type Point } from '@/lib/designStudio/space';
+import { EYE_HEIGHT_M, move as walkMove, setDoorClosed, type WalkModel } from '@/lib/designStudio/navigation';
+import { motionAt, toggleMotion, validateInteractions, type InteractionSpec, type Motion } from '@/lib/designStudio/interactions';
+import { roomContaining, wallFrame, type Point } from '@/lib/designStudio/space';
 import { buildProcedural, slotColors } from './procedural';
 
 export type PickTarget =
@@ -33,6 +34,8 @@ export type PickTarget =
   | { kind: 'room'; id: string }
   /** An identified piece of furniture inside an uploaded model. */
   | { kind: 'part'; id: string }
+  /** The rotate handle around a selected piece. */
+  | { kind: 'handle'; id: string }
   | { kind: 'model' };
 
 /** How an uploaded model is shown upright and at metre scale; the file itself is never changed. */
@@ -53,6 +56,23 @@ export interface WalkPose { position: Point; target: Point; fov: number }
 const WALK_SPEED_M_S = 1.4;
 const TURN_RAD_S = 1.9;
 const LOOK_RAD_PER_PX = 0.005;
+/** How close a visitor must be to open something (metres from the eye). */
+const REACH_M = 3.2;
+
+/** What the visitor is pointing at: shown as a quiet hint, never a game icon. */
+export interface AimHint { role: InteractionSpec['role']; open: boolean }
+
+interface Interactive {
+  key: string;
+  node: THREE.Object3D;
+  spec: InteractionSpec;
+  base: number;
+  value: number;
+  motion: Motion | null;
+  doorId: string | null;
+  objectId: string | null;
+}
+
 const WALK_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 
 export interface CameraSnapshot {
@@ -125,6 +145,13 @@ export class SceneController {
   private selectionOutline: THREE.Object3D | null = null;
   private hoverOutline: THREE.Object3D | null = null;
   private view: ViewMode = 'OVERVIEW';
+  /** Parts that open and close: floor-plan doors and windows, catalogue parts. Walkthrough state only. */
+  private interactives = new Map<string, Interactive>();
+  private aimed: Interactive | null = null;
+  private aimBox: THREE.Box3Helper | null = null;
+  private aimQueued = false;
+  private lastPointer: { x: number; y: number } | null = null;
+  private onAimChange?: (hint: AimHint | null) => void;
   private walk: {
     model: WalkModel;
     pos: Point;
@@ -176,7 +203,7 @@ export class SceneController {
     this.controls.addEventListener('change', this.requestRender);
 
     this.buildLighting();
-    this.scene.add(this.spaceGroup, this.modelGroup, this.objectsGroup, this.overlayGroup);
+    this.scene.add(this.spaceGroup, this.modelGroup, this.objectsGroup, this.overlayGroup, this.handleGroup);
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(mount);
@@ -203,6 +230,7 @@ export class SceneController {
       if (t >= 1) this.transition = null;
       moving = true;
     }
+    if (this.stepInteractives(now)) moving = true;
     if (this.walk) {
       if (this.stepWalk(now)) moving = true;
     } else if (this.controls.update()) {
@@ -438,6 +466,8 @@ export class SceneController {
       }
     }
 
+    this.buildOpenings(space);
+
     this.sun.target.position.set(space.extent.width / 2, 0, -space.extent.depth / 2);
     this.sun.position.set(space.extent.width / 2 + 6, 14, -space.extent.depth / 2 + 8);
     const s = Math.max(space.extent.width, space.extent.depth);
@@ -553,7 +583,7 @@ export class SceneController {
       -((clientY - rect.top) / rect.height) * 2 + 1,
     );
     this.raycaster.setFromCamera(ndc, this.camera);
-    const hits = this.raycaster.intersectObjects([this.spaceGroup, this.modelGroup, this.objectsGroup], true);
+    const hits = this.raycaster.intersectObjects([this.handleGroup, this.spaceGroup, this.modelGroup, this.objectsGroup], true);
     for (const hit of hits) {
       // Hidden things (cut-away walls, ceilings seen from above) are not there to be clicked.
       if (!hit.object.visible) continue;
@@ -740,6 +770,7 @@ export class SceneController {
       node.userData = { pick: { kind: 'object', id: obj.instanceId, roomId: obj.roomId } } satisfies PickData;
     }
     for (const id of [...this.objectsById.keys()]) if (!live.has(id)) this.disposeObject(id);
+    if (this.handleFor) this.updateHandle();
 
     this.setLighting(state.lighting);
     this.requestRender();
@@ -747,7 +778,11 @@ export class SceneController {
 
   private buildObject(obj: ObjectInstance, asset: CatalogAsset | undefined): THREE.Object3D {
     if (asset?.procedural) {
-      return buildProcedural(asset.procedural.kind, asset, slotColors(asset, obj.materialVariant, obj.colorOverride));
+      const node = buildProcedural(asset.procedural.kind, asset, slotColors(asset, obj.materialVariant, obj.colorOverride));
+      // A concept block's moving parts come with it; a model declares them.
+      const specs = validateInteractions(node.userData.interactions ?? asset.interactions);
+      this.registerParts(obj.instanceId, node, specs);
+      return node;
     }
     // A real model loads asynchronously (catalogue models arrive with the
     // licensed library); until then — or when an asset is missing — a
@@ -773,6 +808,8 @@ export class SceneController {
   private disposeObject(id: string) {
     const node = this.objectsById.get(id);
     if (!node) return;
+    for (const [key, ix] of this.interactives) if (ix.objectId === id) this.interactives.delete(key);
+    if (this.aimed?.objectId === id) this.setAim(null);
     node.traverse((o) => {
       const mesh = o as THREE.Mesh;
       mesh.geometry?.dispose();
@@ -809,6 +846,7 @@ export class SceneController {
       m.emissive.setHex(valid ? (m.userData.baseEmissive as number) : 0xb3261e);
       m.emissiveIntensity = valid ? (m.userData.baseEmissiveIntensity as number) : 0.35;
     });
+    if (this.handleFor === instanceId) this.updateHandle();
     this.setSelection({ kind: 'object', id: instanceId, roomId: null });
   }
 
@@ -934,6 +972,310 @@ export class SceneController {
     this.moveCamera(new THREE.Vector3(...s.position), new THREE.Vector3(...s.target), animate);
   }
 
+  // ── The rotate handle ───────────────────────────────────────────────
+  //
+  // A gold ring on the floor around the selected piece, with a grip. Dragging
+  // it turns the piece (the canvas previews, the design commits one
+  // ROTATE_OBJECT on release). It follows the piece and hides while walking.
+
+  private handleGroup = new THREE.Group();
+  private handleFor: string | null = null;
+
+  showRotateHandle(instanceId: string | null) {
+    this.handleFor = instanceId;
+    this.updateHandle();
+  }
+
+  private updateHandle() {
+    for (const c of [...this.handleGroup.children]) {
+      this.handleGroup.remove(c);
+      c.traverse((o) => { const m = o as THREE.Mesh; m.geometry?.dispose(); (m.material as THREE.Material | undefined)?.dispose(); });
+    }
+    const node = this.handleFor ? this.objectsById.get(this.handleFor) : null;
+    if (!node || this.walk) { this.requestRender(); return; }
+    const box = new THREE.Box3().setFromObject(node);
+    const size = box.getSize(new THREE.Vector3());
+    const r = Math.max(size.x, size.z) / 2 + 0.3;
+    const pick = { pick: { kind: 'handle', id: this.handleFor! } } satisfies PickData;
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(r, 0.022, 8, 72),
+      new THREE.MeshBasicMaterial({ color: TONE.select, transparent: true, opacity: 0.9, depthTest: false }),
+    );
+    // A wider, invisible band makes the ring easy to grab with a finger.
+    const grip = new THREE.Mesh(
+      new THREE.TorusGeometry(r, 0.14, 6, 48),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+    );
+    const knob = new THREE.Mesh(
+      new THREE.SphereGeometry(0.09, 16, 12),
+      new THREE.MeshBasicMaterial({ color: TONE.select, depthTest: false }),
+    );
+    for (const m of [ring, grip]) { m.rotation.x = -Math.PI / 2; m.renderOrder = 20; m.userData = pick; }
+    knob.userData = pick;
+    knob.renderOrder = 21;
+    // The grip sits in front of the piece (its local -z in the world).
+    const front = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), node.rotation.y);
+    knob.position.set(front.x * r, 0, front.z * r);
+    const g = new THREE.Group();
+    g.position.set(node.position.x, node.position.y + 0.03, node.position.z);
+    g.add(ring, grip, knob);
+    this.handleGroup.add(g);
+    this.requestRender();
+  }
+
+  // ── Interactive parts (walkthrough only; never part of the design) ───
+
+  /** Doors and windows of a floor-plan space, as hinged parts in their openings. */
+  private buildOpenings(space: SpaceModel) {
+    for (const key of [...this.interactives.keys()]) if (!this.interactives.get(key)!.objectId) this.interactives.delete(key);
+    const leafMat = new THREE.MeshStandardMaterial({ color: 0xece7df, roughness: 0.7 });
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0xf4f4f2, roughness: 0.5 });
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0xcfe0ea, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.28 });
+    this.track(leafMat); this.track(frameMat); this.track(glassMat);
+    for (const wall of space.walls) {
+      const f = wallFrame(wall.mesh);
+      for (const o of wall.mesh.openings) {
+        const jamb = { x: wall.mesh.start.x + f.dir.x * (o.offsetM - o.widthM / 2), y: wall.mesh.start.y + f.dir.y * (o.offsetM - o.widthM / 2) };
+        // Swing toward a room (the left face when it looks into one).
+        const intoLeft = wall.segments.some((seg) => seg.side === 'L' && o.offsetM >= seg.from - 0.05 && o.offsetM <= seg.to + 0.05);
+        const sign = intoLeft ? 1 : -1;
+        const pivot = new THREE.Group();
+        pivot.name = `ix:${o.id}`;
+        pivot.position.set(jamb.x, o.sillM, -jamb.y);
+        pivot.rotation.y = f.angle;
+        const w = o.widthM;
+        const h = o.heightM;
+        if (o.kind === 'DOOR') {
+          const leaf = new THREE.Mesh(this.track(new THREE.BoxGeometry(w - 0.02, h - 0.02, 0.04)), leafMat);
+          leaf.position.set(w / 2, h / 2, 0);
+          leaf.castShadow = this.quality.shadows;
+          pivot.add(leaf);
+          const handle = new THREE.Mesh(this.track(new THREE.BoxGeometry(0.12, 0.02, 0.08)), frameMat);
+          handle.position.set(w - 0.1, 1.0, 0);
+          pivot.add(handle);
+        } else {
+          const t = 0.05;
+          for (const [bw, bh, x, y] of [[w, t, w / 2, t / 2], [w, t, w / 2, h - t / 2], [t, h, t / 2, h / 2], [t, h, w - t / 2, h / 2]]) {
+            const bar = new THREE.Mesh(this.track(new THREE.BoxGeometry(bw, bh, 0.05)), frameMat);
+            bar.position.set(x, y, 0);
+            pivot.add(bar);
+          }
+          const glass = new THREE.Mesh(this.track(new THREE.PlaneGeometry(w - 2 * t, h - 2 * t)), glassMat);
+          glass.position.set(w / 2, h / 2, 0);
+          pivot.add(glass);
+        }
+        this.spaceGroup.add(pivot);
+        const spec: InteractionSpec = o.kind === 'DOOR'
+          ? { id: o.id, kind: 'HINGED', role: 'DOOR', axis: 'y', open: 1.5 * sign, durationMs: 900, initiallyOpen: true }
+          : { id: o.id, kind: 'HINGED', role: 'WINDOW', axis: 'y', open: 1.1 * sign, durationMs: 800 };
+        this.addInteractive(`${o.kind === 'DOOR' ? 'door' : 'window'}:${o.id}`, pivot, spec, o.kind === 'DOOR' ? o.id : null, null);
+      }
+    }
+  }
+
+  private registerParts(objectId: string, node: THREE.Object3D, specs: InteractionSpec[]) {
+    for (const spec of specs) {
+      const part = node.getObjectByName(`ix:${spec.id}`);
+      if (part) this.addInteractive(`obj:${objectId}:${spec.id}`, part, spec, null, objectId);
+    }
+  }
+
+  private addInteractive(key: string, node: THREE.Object3D, spec: InteractionSpec, doorId: string | null, objectId: string | null) {
+    const base = spec.kind === 'HINGED' ? node.rotation[spec.axis] : node.position[spec.axis];
+    const ix: Interactive = { key, node, spec, base, value: spec.initiallyOpen ? 1 : 0, motion: null, doorId, objectId };
+    this.applyPart(ix);
+    this.interactives.set(key, ix);
+  }
+
+  private applyPart(ix: Interactive) {
+    if (ix.spec.kind === 'HINGED') ix.node.rotation[ix.spec.axis] = ix.base + ix.value * ix.spec.open;
+    else ix.node.position[ix.spec.axis] = ix.base + ix.value * ix.spec.open;
+    ix.node.updateMatrixWorld(true);
+  }
+
+  private stepInteractives(now: number): boolean {
+    let moving = false;
+    for (const ix of this.interactives.values()) {
+      if (!ix.motion) continue;
+      const m = motionAt(ix.motion, now);
+      ix.value = m.value;
+      this.applyPart(ix);
+      if (m.done) ix.motion = null; else moving = true;
+    }
+    if (moving && this.aimed) this.refreshAimBox();
+    return moving;
+  }
+
+  /** Open or close one part (walkthrough only). Doors change what can be walked through. */
+  toggleInteractive(key: string): boolean {
+    const ix = this.interactives.get(key);
+    if (!ix || !this.walk) return false;
+    const target: 0 | 1 = ix.value > 0.5 || ix.motion?.to === 1 ? 0 : 1;
+    if (ix.motion && ix.motion.to !== target) { /* reversing mid-way is fine */ }
+    ix.motion = toggleMotion(ix.value, target, ix.spec.durationMs, performance.now(), this.reducedMotion);
+    if (ix.doorId && this.walk) setDoorClosed(this.walk.model, ix.doorId, target === 0);
+    this.onAimChange?.(this.aimed ? { role: this.aimed.spec.role, open: (this.aimed.motion?.to ?? this.aimed.value) >= 0.5 } : null);
+    this.requestRender();
+    return true;
+  }
+
+  /** Every part back to where the design has it: nothing a visitor opened survives. */
+  private resetInteractives() {
+    for (const ix of this.interactives.values()) {
+      ix.motion = null;
+      ix.value = ix.spec.initiallyOpen ? 1 : 0;
+      this.applyPart(ix);
+    }
+    this.setAim(null);
+  }
+
+  /** The keys and states of the parts (for tests and diagnostics). */
+  interactiveStates(): Array<{ key: string; role: string; open: boolean }> {
+    return [...this.interactives.values()].map((ix) => ({ key: ix.key, role: ix.spec.role, open: (ix.motion?.to ?? ix.value) >= 0.5 }));
+  }
+
+  private interactiveAt(clientX: number, clientY: number): Interactive | null {
+    if (!this.interactives.size) return null;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    this.raycaster.setFromCamera(ndc, this.camera);
+    this.raycaster.far = REACH_M;
+    const hits = this.raycaster.intersectObjects([this.spaceGroup, this.objectsGroup, this.modelGroup], true);
+    this.raycaster.far = Infinity;
+    for (const hit of hits) {
+      // The nearest solid thing decides: a part behind a wall is not reachable.
+      for (let o: THREE.Object3D | null = hit.object; o; o = o.parent) {
+        if (o.name.startsWith('ix:')) {
+          for (const ix of this.interactives.values()) if (ix.node === o) return ix;
+        }
+      }
+      if ((hit.object as THREE.Mesh).isMesh && (hit.object as THREE.Mesh).material && !((hit.object as THREE.Mesh).material as THREE.Material).transparent) return null;
+    }
+    return null;
+  }
+
+  private setAim(ix: Interactive | null) {
+    if (this.aimed === ix) return;
+    this.aimed = ix;
+    if (this.aimBox) { this.overlayGroup.remove(this.aimBox); this.aimBox.geometry.dispose(); (this.aimBox.material as THREE.Material).dispose(); this.aimBox = null; }
+    if (ix) {
+      this.aimBox = new THREE.Box3Helper(new THREE.Box3().setFromObject(ix.node), new THREE.Color(TONE.select));
+      (this.aimBox.material as THREE.LineBasicMaterial).transparent = true;
+      (this.aimBox.material as THREE.LineBasicMaterial).opacity = 0.7;
+      this.overlayGroup.add(this.aimBox);
+    }
+    this.renderer.domElement.style.cursor = ix ? 'pointer' : (this.walk ? 'grab' : '');
+    this.onAimChange?.(ix ? { role: ix.spec.role, open: (ix.motion?.to ?? ix.value) >= 0.5 } : null);
+    this.requestRender();
+  }
+
+  private refreshAimBox() {
+    if (this.aimBox && this.aimed) this.aimBox.box.setFromObject(this.aimed.node);
+  }
+
+  /** Aim at the screen centre (keyboard) or at the pointer, at most once a frame. */
+  private queueAim() {
+    if (this.aimQueued) return;
+    this.aimQueued = true;
+    requestAnimationFrame(() => {
+      this.aimQueued = false;
+      if (!this.walk) return;
+      const rect = this.renderer.domElement.getBoundingClientRect();
+      const p = this.lastPointer ?? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      this.setAim(this.interactiveAt(p.x, p.y));
+    });
+  }
+
+  /** QA harness: aim at a part by key, as if the visitor pointed at it. */
+  debugAim(key: string): boolean {
+    const ix = this.interactives.get(key);
+    if (!ix || !this.walk) return false;
+    this.setAim(ix);
+    return true;
+  }
+
+  /** Where the rotate handle's grip is on screen (QA and accessibility tooling). */
+  rotateHandleScreen(): { x: number; y: number } | null {
+    const knob = this.handleGroup.children[0]?.children[2];
+    if (!knob) return null;
+    const p = knob.getWorldPosition(new THREE.Vector3()).project(this.camera);
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    return { x: rect.left + ((p.x + 1) / 2) * rect.width, y: rect.top + ((1 - p.y) / 2) * rect.height };
+  }
+
+  /** The part the visitor is aiming at, opened or closed (E, Enter, Space, or the hint's button). */
+  toggleAimed(): boolean {
+    return this.aimed ? this.toggleInteractive(this.aimed.key) : false;
+  }
+
+  // ── Stills for export ───────────────────────────────────────────────
+  //
+  // A high-resolution JPEG of one view: the overview, the plan from above,
+  // or an eye-level Camera Director shot (ceilings on, no cutaway — the room
+  // as a person standing in it sees it). The live view is restored exactly.
+
+  async renderStill(
+    view: { kind: 'OVERVIEW' | 'TOP' | 'CURRENT' } | { kind: 'EYE'; pose: WalkPose },
+    width: number, height: number, quality = 0.92,
+  ): Promise<Blob | null> {
+    // The current view is taken exactly as it is — in the walkthrough too.
+    if (this.walk && view.kind !== 'CURRENT') return null;
+    const current = view.kind === 'CURRENT';
+    const saved = this.snapshot();
+    const size = this.renderer.getSize(new THREE.Vector2());
+    const ratio = this.renderer.getPixelRatio();
+    const aspect = this.camera.aspect;
+    const cutaway = this.cutawayEnabled;
+    const focus = this.focusRadius;
+    const viewMode = this.view;
+    try {
+      this.transition = null;
+      this.renderer.setPixelRatio(1);
+      this.renderer.setSize(width, height, false);
+      this.camera.aspect = width / height;
+      this.camera.updateProjectionMatrix();
+      if (view.kind === 'EYE') {
+        this.cutawayEnabled = false;
+        this.setCeilings(true);
+        this.camera.fov = view.pose.fov;
+        this.camera.position.set(view.pose.position.x, EYE_HEIGHT_M, -view.pose.position.y);
+        this.camera.lookAt(view.pose.target.x, EYE_HEIGHT_M - 0.15, -view.pose.target.y);
+      } else if (!current) {
+        this.cutawayEnabled = true;
+        this.camera.fov = 45;
+        if (view.kind === 'TOP') this.topView(false); else this.frameAll(false);
+      }
+      this.camera.updateProjectionMatrix();
+      this.cutawayKey = '';
+      this.updateCutaway();
+      this.renderer.render(this.scene, this.camera);
+      const out = document.createElement('canvas');
+      out.width = width;
+      out.height = height;
+      const ctx = out.getContext('2d');
+      if (!ctx) return null;
+      ctx.drawImage(this.renderer.domElement, 0, 0, width, height);
+      return await new Promise<Blob | null>((resolve) => out.toBlob((b) => resolve(b), 'image/jpeg', quality));
+    } catch {
+      return null;
+    } finally {
+      this.renderer.setPixelRatio(ratio);
+      this.renderer.setSize(size.x, size.y, false);
+      this.camera.aspect = aspect;
+      this.cutawayEnabled = cutaway;
+      this.focusRadius = focus;
+      this.view = viewMode;
+      if (!current) {
+        this.setCeilings(false);
+        this.restore(saved, false);
+      } else {
+        this.camera.updateProjectionMatrix();
+      }
+      this.cutawayKey = '';
+      this.requestRender();
+    }
+  }
+
   // ── Walkthrough ─────────────────────────────────────────────────────
   //
   // Eye height, the current design, real walls: the body moves only where
@@ -944,7 +1286,7 @@ export class SceneController {
     return !!this.walk;
   }
 
-  enterWalkthrough(model: WalkModel, pose: WalkPose, onRoom?: (roomId: string | null) => void) {
+  enterWalkthrough(model: WalkModel, pose: WalkPose, onRoom?: (roomId: string | null) => void, onAim?: (hint: AimHint | null) => void) {
     if (this.walk) this.exitWalkthrough();
     const saved = this.snapshot();
     this.transition = null;
@@ -958,6 +1300,12 @@ export class SceneController {
     };
     this.camera.fov = pose.fov;
     this.camera.updateProjectionMatrix();
+    this.onAimChange = onAim;
+    this.lastPointer = null;
+    // Doors start as the design shows them: closed doors block from the first step.
+    for (const ix of this.interactives.values()) if (ix.doorId) setDoorClosed(model, ix.doorId, ix.value < 0.5);
+    this.renderer.domElement.style.cursor = 'grab';
+    this.updateHandle();
     window.addEventListener('keydown', this.onWalkKey);
     window.addEventListener('keyup', this.onWalkKey);
     window.addEventListener('blur', this.clearWalkInput);
@@ -987,6 +1335,9 @@ export class SceneController {
     this.setCutaway(true);
     this.setCeilings(false);
     this.view = 'OVERVIEW';
+    this.resetInteractives();
+    this.onAimChange = undefined;
+    this.renderer.domElement.style.cursor = '';
     this.restore(w.saved, false);
   }
 
@@ -1034,7 +1385,20 @@ export class SceneController {
 
   private onWalkKey = (e: KeyboardEvent) => {
     const w = this.walk;
-    if (!w || !WALK_KEYS.has(e.code)) return;
+    if (!w) return;
+    if ((e.code === 'KeyE' || e.code === 'Enter' || e.code === 'Space') && e.type === 'keydown') {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+      // Enter and Space already press a focused button; E never does.
+      if (el && e.code !== 'KeyE' && /^(BUTTON|A)$/.test(el.tagName)) return;
+      e.preventDefault();
+      this.lastPointer = null;
+      const rect = this.renderer.domElement.getBoundingClientRect();
+      this.setAim(this.interactiveAt(rect.left + rect.width / 2, rect.top + rect.height / 2));
+      this.toggleAimed();
+      return;
+    }
+    if (!WALK_KEYS.has(e.code)) return;
     const el = e.target as HTMLElement | null;
     if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
     e.preventDefault();
@@ -1054,14 +1418,22 @@ export class SceneController {
     this.walk.stick = { x: 0, y: 0 };
   };
 
+  private tap: { id: number; x: number; y: number; t: number } | null = null;
+
   private onLookDown = (e: PointerEvent) => {
     if (!this.walk || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    this.tap = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now() };
     this.walk.drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
     this.renderer.domElement.setPointerCapture?.(e.pointerId);
   };
 
   private onLookMove = (e: PointerEvent) => {
     const w = this.walk;
+    if (w && e.pointerType === 'mouse' && !w.drag) {
+      // Hover: point at something that opens, and it says so.
+      this.lastPointer = { x: e.clientX, y: e.clientY };
+      this.queueAim();
+    }
     if (!w?.drag || w.drag.id !== e.pointerId) return;
     const dx = e.clientX - w.drag.x;
     const dy = e.clientY - w.drag.y;
@@ -1074,6 +1446,16 @@ export class SceneController {
 
   private onLookUp = (e: PointerEvent) => {
     if (this.walk?.drag?.id === e.pointerId) this.walk.drag = null;
+    // A tap (short, barely moved) opens or closes what it lands on.
+    const t = this.tap;
+    this.tap = null;
+    if (!this.walk || !t || t.id !== e.pointerId) return;
+    if (performance.now() - t.t > 350 || Math.hypot(e.clientX - t.x, e.clientY - t.y) > 8) return;
+    const hit = this.interactiveAt(e.clientX, e.clientY);
+    if (hit) {
+      this.setAim(hit);
+      this.toggleInteractive(hit.key);
+    }
   };
 
   private placeWalkCamera() {
@@ -1126,6 +1508,8 @@ export class SceneController {
     w.pos = walkMove(w.model, w.pos, { x: mx * WALK_SPEED_M_S * dt, y: my * WALK_SPEED_M_S * dt });
     this.placeWalkCamera();
     this.reportRoom();
+    this.lastPointer = null;
+    this.queueAim();
     return true;
   }
 

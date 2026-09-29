@@ -14,7 +14,7 @@ import {
 const ASSET_COLUMNS =
   'id, code, name, category, subcategory, room_kinds, style_tags, color_tags, material_tags, width_m, depth_m, height_m, '
   + 'placement, anchor, clearance_m, procedural, model_key, lods, triangles, texture_bytes, thumbnail_key, material_slots, '
-  + 'variants, dominant_colors, provenance, is_placeholder, active';
+  + 'variants, dominant_colors, provenance, is_placeholder, active, capabilities, interactions';
 
 export interface AssetFilter {
   category?: string | null;

@@ -10,12 +10,12 @@ export const DS_STRINGS_8 = {
   ds_walk_rooms: ['Go to a room', 'ოთახში გადასვლა', 'Перейти в комнату', 'Bir odaya git', 'الانتقال إلى غرفة', 'מעבר לחדר'],
   ds_walk_joystick: ['Walk: drag to move', 'გავლა: გადაათრიეთ სამოძრაოდ', 'Ходьба: потяните, чтобы двигаться', 'Yürü: hareket etmek için sürükleyin', 'المشي: اسحب للتحرك', 'הליכה: גררו כדי לזוז'],
   ds_walk_help_keys: [
-    'W A S D or arrows to walk · drag to look · Esc to leave',
-    'W A S D ან ისრები სავალად · გადაათრიეთ სახედად · Esc გასასვლელად',
-    'W A S D или стрелки — идти · перетаскивание — смотреть · Esc — выйти',
-    'Yürümek için W A S D veya oklar · bakmak için sürükleyin · çıkmak için Esc',
-    'W A S D أو الأسهم للمشي · اسحب للنظر · Esc للخروج',
-    'W A S D או חיצים להליכה · גררו כדי להסתכל · Esc ליציאה',
+    'W A S D or arrows to walk · drag to look · tap or E to open · Esc to leave',
+    'W A S D ან ისრები სავალად · გადაათრიეთ სახედად · შეეხეთ ან E გასახსნელად · Esc გასასვლელად',
+    'W A S D или стрелки — идти · перетаскивание — смотреть · касание или E — открыть · Esc — выйти',
+    'Yürümek için W A S D veya oklar · bakmak için sürükleyin · açmak için dokunun veya E · çıkmak için Esc',
+    'W A S D أو الأسهم للمشي · اسحب للنظر · المس أو E للفتح · Esc للخروج',
+    'W A S D או חיצים להליכה · גררו כדי להסתכל · הקישו או E כדי לפתוח · Esc ליציאה',
   ],
   ds_walk_unavailable: [
     'The walkthrough could not find a place to stand in this space.',

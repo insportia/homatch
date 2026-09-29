@@ -22,6 +22,8 @@ import { DS_STRINGS_6 } from './design-studio-i18n-data-6.mjs';
 import { DS_STRINGS_7 } from './design-studio-i18n-data-7.mjs';
 import { DS_STRINGS_8 } from './design-studio-i18n-data-8.mjs';
 import { DS_STRINGS_9 } from './design-studio-i18n-data-9.mjs';
+import { DS_STRINGS_10 } from './design-studio-i18n-data-10.mjs';
+import { DS_STRINGS_11 } from './design-studio-i18n-data-11.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FILE = path.join(__dirname, '..', 'src', 'i18n', 'translations.ts');
@@ -29,7 +31,7 @@ const LANGS = ['en', 'ka', 'ru', 'tr', 'ar', 'he'];
 
 /* Every Design Studio data file, merged. A key defined twice across files is
    FATAL below rather than last-one-wins. */
-const SOURCES = [DS_STRINGS_1, DS_STRINGS_2, DS_STRINGS_3, DS_STRINGS_4, DS_STRINGS_5, DS_STRINGS_6, DS_STRINGS_7, DS_STRINGS_8, DS_STRINGS_9];
+const SOURCES = [DS_STRINGS_1, DS_STRINGS_2, DS_STRINGS_3, DS_STRINGS_4, DS_STRINGS_5, DS_STRINGS_6, DS_STRINGS_7, DS_STRINGS_8, DS_STRINGS_9, DS_STRINGS_10, DS_STRINGS_11];
 const STRINGS = {};
 const duplicates = [];
 for (const source of SOURCES) {

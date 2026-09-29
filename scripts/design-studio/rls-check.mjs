@@ -10,6 +10,8 @@
 //
 //   npm i --no-save @electric-sql/pglite@0.3
 //   node scripts/design-studio/rls-check.mjs //     supabase/migrations/20260930090000_design_studio_foundation.sql //     supabase/migrations/20260930092000_design_studio_storage_categories.sql
+//     supabase/migrations/20260930094000_design_studio_shares.sql
+//     supabase/migrations/20260930091000_design_studio_dev_catalog.sql
 //
 // It proves the migration's behaviour; it is not a substitute for applying
 // the migration through the deploy workflow.
@@ -21,6 +23,7 @@ import fs from 'node:fs';
 const MIGRATION = process.argv[2];
 const STORAGE_MIGRATION = process.argv[3] ?? null;
 const SHARES_MIGRATION = process.argv[4] ?? null;
+const CATALOG_SEED = process.argv[5] ?? null;
 const db = new PGlite({ extensions: { pgcrypto } });
 let failures = 0;
 const ok = (name) => console.log(`  ok   ${name}`);
@@ -279,6 +282,24 @@ await expectError('a placeholder must be marked as one', 'ds_catalog_assets_shap
   tx.query(`insert into ds_catalog_assets (code,name,category,width_m,depth_m,height_m,provenance,is_placeholder)
     values ('x/z','x','SOFA',1,1,1,'LICENSED',true)`)));
 
+// ── capabilities and interactions (what a piece may do; how its parts open)
+const caps = await db.query(`select capabilities, interactions from ds_catalog_assets where code='dev/sofa'`);
+caps.rows[0].capabilities.join() === 'MOVABLE,ROTATABLE,REPLACEABLE' && Array.isArray(caps.rows[0].interactions) && caps.rows[0].interactions.length === 0
+  ? ok('catalog: a piece moves, turns and swaps by default, and opens nothing') : bad('capability defaults', JSON.stringify(caps.rows[0]));
+await expectError('catalog: an unknown capability is refused', 'check constraint', () => as(ADM, (tx) =>
+  tx.query(`update ds_catalog_assets set capabilities = '{MOVABLE,FLY}' where code='dev/sofa'`)));
+await expectError('catalog: interactions must be a list', 'check constraint', () => as(ADM, (tx) =>
+  tx.query(`update ds_catalog_assets set interactions = '{"kind":"HINGED"}' where code='dev/sofa'`)));
+if (CATALOG_SEED) {
+  await db.exec(fs.readFileSync(CATALOG_SEED, 'utf8'));
+  await db.exec(fs.readFileSync(CATALOG_SEED, 'utf8'));
+  const seeded = await db.query(`select code, capabilities from ds_catalog_assets where code in ('dev/fridge','dev/wardrobe-2','dev/kitchen-run','dev/sofa-3') order by code`);
+  const by = Object.fromEntries(seeded.rows.map((r) => [r.code, r.capabilities]));
+  const opens = (c) => (by[c] ?? []).filter((x) => x === 'OPENABLE').length === 1;
+  opens('dev/fridge') && opens('dev/wardrobe-2') && opens('dev/kitchen-run') && by['dev/sofa-3'] && !by['dev/sofa-3'].includes('OPENABLE')
+    ? ok('seed: applies twice; fridge, wardrobe and kitchen open once-marked, a sofa does not') : bad('seed capabilities', JSON.stringify(by));
+}
+
 // ── jobs
 await expectError('customers cannot create jobs', 'permission denied', () => as(A, (tx) =>
   tx.query(`insert into ds_jobs (user_id, kind) values ($1,'AI_DESIGN')`, [UA])));
@@ -405,6 +426,13 @@ if (SHARES_MIGRATION) {
   await expectError('share: a design with licensed models is not published by link', 'DS_SHARE_ASSET_NOT_PUBLIC', () => create(A, lic.id));
   await as(A, (tx) => tx.query('update ds_versions set archived_at=now() where id=$1', [ver2.id]));
   await expectError('share: an archived version cannot be shared', 'DS_VERSION_NOT_OWNED', () => create(A, ver2.id));
+
+  const withSofa = await as(A, (tx) => one(tx, `insert into ds_versions (project_id,user_id,source_id,name,origin,state)
+    values ($1,$2,$3,'Sofa','USER',$4) returning id`, [pA.id, UA, src.id, JSON.stringify({ schema: 1, objects: [{ instanceId: 'o1', assetId: 'dev/sofa' }], surfaces: {}, palette: [] })]));
+  const sofaPub = await view((await create(A, withSofa.id)).token);
+  const sa = (sofaPub.assets ?? []).find((a) => a.code === 'dev/sofa');
+  sa && Array.isArray(sa.capabilities) && sa.capabilities.includes('MOVABLE') && Array.isArray(sa.interactions)
+    ? ok('public: shared pieces carry their capabilities and interactions') : bad('payload capabilities', JSON.stringify(sofaPub.assets));
 }
 
 // ── cascade

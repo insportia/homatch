@@ -278,7 +278,8 @@ BEGIN
         'room_kinds', a.room_kinds, 'style_tags', a.style_tags, 'color_tags', a.color_tags, 'material_tags', a.material_tags,
         'width_m', a.width_m, 'depth_m', a.depth_m, 'height_m', a.height_m, 'placement', a.placement, 'anchor', a.anchor,
         'clearance_m', a.clearance_m, 'procedural', a.procedural, 'material_slots', a.material_slots, 'variants', a.variants,
-        'dominant_colors', a.dominant_colors, 'provenance', a.provenance, 'is_placeholder', a.is_placeholder, 'active', true))
+        'dominant_colors', a.dominant_colors, 'provenance', a.provenance, 'is_placeholder', a.is_placeholder, 'active', true,
+        'capabilities', a.capabilities, 'interactions', a.interactions))
         FROM public.ds_catalog_assets a WHERE a.code = ANY (coalesce(v_codes, '{}'))), '[]'::jsonb),
     'materials', coalesce((
       SELECT jsonb_agg(jsonb_build_object(

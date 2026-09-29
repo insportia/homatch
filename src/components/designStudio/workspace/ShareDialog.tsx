@@ -10,7 +10,7 @@ import { Check, Copy, ExternalLink, Link2, Loader2, Share2, X } from 'lucide-rea
 import { useLanguage } from '@/contexts/LanguageContext';
 import { DesignStudioError } from '@/services/designStudio/projects';
 import {
-  createShare, listShares, revokeShare, shareStatus, shareUrl, type ShareRecord,
+  createShare, listShares, revokeShare, shareStatus, shareUrl, type ShareRecord, type ShareType,
 } from '@/services/designStudio/shares';
 import { cn } from '@/lib/utils';
 
@@ -28,7 +28,7 @@ const ERROR_KEY: Record<string, string> = {
 };
 
 export function ShareDialog({
-  projectId, versionId, versionName, versionNames, beforeCreate, onClose,
+  projectId, versionId, versionName, versionNames, beforeCreate, initialType = 'WALKTHROUGH', onClose,
 }: {
   projectId: string;
   versionId: string;
@@ -36,11 +36,14 @@ export function ShareDialog({
   versionNames: Map<string, string>;
   /** Save pending edits first: a link freezes the version as stored. */
   beforeCreate: () => Promise<void>;
+  /** Which kind of link the dialog starts on. */
+  initialType?: ShareType;
   onClose: () => void;
 }) {
   const { t } = useLanguage();
   const [shares, setShares] = useState<ShareRecord[] | null>(null);
   const [label, setLabel] = useState('');
+  const [type, setType] = useState<ShareType>(initialType);
   const [expiry, setExpiry] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +62,7 @@ export function ShareDialog({
     try {
       await beforeCreate();
       const expiresAt = expiry ? new Date(Date.now() + expiry * 86400_000).toISOString() : null;
-      const r = await createShare({ versionId, type: 'WALKTHROUGH', label: label.trim() || null, expiresAt });
+      const r = await createShare({ versionId, type, label: label.trim() || null, expiresAt });
       setFresh((m) => new Map(m).set(r.id, r.token));
       setLabel('');
       refresh();
@@ -106,6 +109,15 @@ export function ShareDialog({
 
         <div className="overflow-y-auto px-5 py-4">
           <div className="space-y-3 rounded-xl border border-[#E4E6EA] p-3">
+            <div role="radiogroup" aria-label={t('ds_share_type')} className="grid grid-cols-2 gap-1.5">
+              {(['WALKTHROUGH', 'DESIGN'] as const).map((k) => (
+                <button key={k} type="button" role="radio" aria-checked={type === k} onClick={() => setType(k)}
+                  className={cn('rounded-lg border px-3 py-2 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]', type === k ? 'border-[#0C1119] bg-[#F4F5F7]' : 'border-[#E4E6EA] hover:bg-[#F8F9FA]')}>
+                  <span className="block text-[14px] font-semibold">{t(k === 'DESIGN' ? 'ds_share_type_design' : 'ds_share_type_walkthrough')}</span>
+                  <span className="mt-0.5 block text-2xs leading-snug text-[#4A5263]">{t(k === 'DESIGN' ? 'ds_share_type_design_body' : 'ds_share_type_walkthrough_body')}</span>
+                </button>
+              ))}
+            </div>
             <label className="block text-[13px] font-medium">
               {t('ds_share_label')}
               <input value={label} onChange={(e) => setLabel(e.target.value.slice(0, 60))} maxLength={60} placeholder={t('ds_share_label_placeholder')}
@@ -138,7 +150,7 @@ export function ShareDialog({
               {shares.map((s) => {
                 const status = shareStatus(s);
                 const token = fresh.get(s.id);
-                const url = token ? shareUrl(token) : null;
+                const url = token ? shareUrl(token, s.share_type) : null;
                 const vName = s.published?.version_id ? versionNames.get(s.published.version_id) : null;
                 return (
                   <li key={s.id} aria-label={s.label ?? `…${s.token_hint}`} className="rounded-xl border border-[#E4E6EA] p-3">
@@ -146,7 +158,7 @@ export function ShareDialog({
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[14px] font-medium">{s.label ?? t('ds_share_unnamed', { hint: s.token_hint })}</p>
                         <p className="text-2xs text-[#4A5263]">
-                          {[vName, t('ds_share_created', { date: fmt(s.created_at) }), t('ds_share_views', { n: String(s.view_count) }),
+                          {[t(s.share_type === 'DESIGN' ? 'ds_share_type_design' : 'ds_share_type_walkthrough'), vName, t('ds_share_created', { date: fmt(s.created_at) }), t('ds_share_views', { n: String(s.view_count) }),
                             s.expires_at && status === 'ACTIVE' ? t('ds_share_expires', { date: fmt(s.expires_at) }) : null].filter(Boolean).join(' · ')}
                         </p>
                       </div>

@@ -17,6 +17,10 @@ import type { DesignState, LightingState, LockSet, ObjectInstance, SurfaceAssign
 import { blocks, evaluatePlacement, type PlacementIssue } from './placement.ts';
 import { parseSurfaceId, type SpaceModel } from './space.ts';
 import { HIDEABLE_ROLES, PAINTABLE_ROLES, type PartRole } from './modelParts.ts';
+import { DEFAULT_CAPABILITIES, type AssetCapability } from './interactions.ts';
+
+/** What a catalogue piece allows; a piece that declares nothing allows the ordinary edits. */
+const can = (asset: CatalogAsset, capability: AssetCapability) => (asset.capabilities ?? DEFAULT_CAPABILITIES).includes(capability);
 
 export type Operation =
   | { type: 'ADD_OBJECT'; object: ObjectInstance }
@@ -44,7 +48,7 @@ export type OperationType = Operation['type'];
 export type RejectionCode =
   | 'UNKNOWN_OPERATION' | 'MALFORMED' | 'UNKNOWN_OBJECT' | 'DUPLICATE_OBJECT' | 'UNKNOWN_ASSET' | 'INACTIVE_ASSET'
   | 'UNKNOWN_SURFACE' | 'UNKNOWN_MATERIAL' | 'MATERIAL_NOT_FOR_SURFACE' | 'BAD_COLOR' | 'OBJECT_LOCKED'
-  | 'CATEGORY_LOCKED' | 'PLACEMENT_BLOCKED' | 'NO_SPACE_MODEL' | 'TOO_MANY_OBJECTS';
+  | 'CATEGORY_LOCKED' | 'PLACEMENT_BLOCKED' | 'NO_SPACE_MODEL' | 'TOO_MANY_OBJECTS' | 'NOT_ALLOWED_FOR_ASSET';
 
 export interface Rejection {
   code: RejectionCode;
@@ -144,6 +148,7 @@ export function validateOperation(state: DesignState, op: Operation, ctx: Operat
       if ('code' in r) return r;
       const asset = ctx.assets.get(r.assetId);
       if (!asset) return { code: 'UNKNOWN_ASSET', detail: r.assetId };
+      if (!can(asset, 'MOVABLE')) return { code: 'NOT_ALLOWED_FOR_ASSET', detail: 'MOVABLE' };
       return placementCheck(asset, op.position.x, op.position.z, r.rotationY, op.roomId, r.instanceId);
     }
     case 'ROTATE_OBJECT': {
@@ -152,11 +157,14 @@ export function validateOperation(state: DesignState, op: Operation, ctx: Operat
       if ('code' in r) return r;
       const asset = ctx.assets.get(r.assetId);
       if (!asset) return { code: 'UNKNOWN_ASSET', detail: r.assetId };
+      if (!can(asset, 'ROTATABLE')) return { code: 'NOT_ALLOWED_FOR_ASSET', detail: 'ROTATABLE' };
       return placementCheck(asset, r.position.x, r.position.z, op.rotationY, r.roomId, r.instanceId);
     }
     case 'REPLACE_OBJECT': {
       const r = objectOp(op.instanceId, 'FURNITURE');
       if ('code' in r) return r;
+      const current = ctx.assets.get(r.assetId);
+      if (current && !can(current, 'REPLACEABLE')) return { code: 'NOT_ALLOWED_FOR_ASSET', detail: 'REPLACEABLE' };
       const asset = ctx.assets.get(op.assetId);
       if (!asset) return { code: 'UNKNOWN_ASSET', detail: op.assetId };
       if (!asset.active) return { code: 'INACTIVE_ASSET', detail: op.assetId };

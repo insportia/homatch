@@ -5,6 +5,7 @@
 //
 //   · every wall, as solid slabs between its door openings (windows are
 //     solid: you look through them, you do not walk through them)
+//   · a CLOSED door fills its opening; an open one leaves it free
 //   · every placed floor piece taller than a rug (from the current design)
 //   · the space itself: the body must stay in a room or in a doorway
 //
@@ -29,15 +30,27 @@ export interface WalkModel {
   walls: Obb[];
   furniture: Obb[];
   doors: Point[];
+  /** Each door opening's leaf, as the solid it becomes when the door is closed. */
+  doorways: Map<string, Obb>;
+  /** Doors currently closed (walkthrough state, never the design's). */
+  closedDoors: Set<string>;
   radius: number;
 }
 
 /** The solid parts of every wall, and every piece in the way. */
 export function buildWalkModel(space: SpaceModel, objects: ObjectInstance[], assets: Map<string, CatalogAsset>): WalkModel {
   const walls: Obb[] = [];
+  const doorways = new Map<string, Obb>();
   for (const wall of space.walls) {
     const m = wall.mesh;
     const f = wallFrame(m);
+    for (const o of m.openings) {
+      if (o.kind !== 'DOOR') continue;
+      doorways.set(o.id, {
+        cx: m.start.x + f.dir.x * o.offsetM, cy: m.start.y + f.dir.y * o.offsetM,
+        hw: o.widthM / 2, hd: Math.max(m.thicknessM / 2, 0.03), angle: f.angle,
+      });
+    }
     // Extend each end by half the thickness so corners are closed.
     const ext = m.thicknessM / 2;
     const doors = m.openings.filter((o) => o.kind === 'DOOR')
@@ -70,7 +83,7 @@ export function buildWalkModel(space: SpaceModel, objects: ObjectInstance[], ass
     furniture.push(footprint(a, { x: o.position.x, y: o.position.z }, o.rotationY));
   }
 
-  return { space, walls, furniture, doors: space.doors.map((d) => d.centre), radius: BODY_RADIUS_M };
+  return { space, walls, furniture, doors: space.doors.map((d) => d.centre), doorways, closedDoors: new Set(), radius: BODY_RADIUS_M };
 }
 
 /** Distance from a point to an oriented box (0 inside). */
@@ -96,7 +109,17 @@ export function isFree(model: WalkModel, p: Point): boolean {
   if (!inSpace(model, p)) return false;
   for (const w of model.walls) if (distanceToObb(p, w) < model.radius) return false;
   for (const f of model.furniture) if (distanceToObb(p, f) < model.radius) return false;
+  for (const id of model.closedDoors) {
+    const leaf = model.doorways.get(id);
+    if (leaf && distanceToObb(p, leaf) < model.radius) return false;
+  }
   return true;
+}
+
+/** Close or open a door for walking (the leaf blocks its opening while closed). */
+export function setDoorClosed(model: WalkModel, doorId: string, closed: boolean): void {
+  if (!model.doorways.has(doorId)) return;
+  if (closed) model.closedDoors.add(doorId); else model.closedDoors.delete(doorId);
 }
 
 /**

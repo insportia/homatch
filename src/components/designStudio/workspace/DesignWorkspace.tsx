@@ -18,7 +18,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
-  AlertTriangle, Armchair, ArrowLeft, Check, ChevronDown, CloudOff, Columns2, Footprints, Info, Layers, LayoutGrid, Loader2, Maximize, Palette as PaletteIcon,
+  AlertTriangle, Armchair, ArrowLeft, Camera, Check, ChevronDown, CloudOff, Columns2, Download, Footprints, Info, Layers, LayoutGrid, Loader2, Maximize, Palette as PaletteIcon,
   PanelLeftClose, PanelLeftOpen, Redo2, Scan, Share2, Sparkles, SquareDashed, Sun, Undo2,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -32,7 +32,7 @@ import { entryShot, roomGraph, roomShot, tourOrder } from '@/lib/designStudio/ca
 import { requestDesign, type DesignBrief } from '@/services/designStudio/ai';
 import type { Operation, OperationContext, Rejection } from '@/lib/designStudio/operations';
 import {
-  autoPlace, blocks, evaluatePlacement, quantise, roomOf, snapToWall, type PlacementIssue,
+  alignToNeighbours, autoPlace, blocks, evaluatePlacement, quantise, roomOf, snapToWall, type PlacementIssue,
 } from '@/lib/designStudio/placement';
 import {
   buildSpaceModel, ceilingSurfaceId, floorSurfaceId, roomContaining, surfacesOfRoom, type SpaceModel,
@@ -60,6 +60,15 @@ import { FurniturePanel } from './FurniturePanel';
 import { AiDesignPanel, type AiProposalItem } from './AiDesignPanel';
 import { WalkthroughOverlay } from './WalkthroughOverlay';
 import { ShareDialog } from './ShareDialog';
+import { DownloadDialog } from './DownloadDialog';
+import { download } from './exportRender';
+import { fileSlug } from '@/lib/designStudio/exportFiles';
+
+/** The words for what can be opened in the walkthrough. */
+const IX_ROLES = (t: (k: string) => string): Record<string, string> => ({
+  DOOR: t('ds_ix_door'), WINDOW: t('ds_ix_window'), WARDROBE: t('ds_ix_wardrobe'),
+  CABINET: t('ds_ix_cabinet'), DRAWER: t('ds_ix_drawer'), APPLIANCE: t('ds_ix_appliance'),
+});
 import { Inspector } from './Inspector';
 import { ObjectControls, PartControls, SurfaceControls } from './EditControls';
 import { PlanNavigator } from './PlanNavigator';
@@ -120,6 +129,7 @@ const REJECTION_KEY: Record<string, string> = {
   INACTIVE_ASSET: 'ds_reject_op_asset',
   MATERIAL_NOT_FOR_SURFACE: 'ds_reject_op_material',
   TOO_MANY_OBJECTS: 'ds_reject_op_too_many',
+  NOT_ALLOWED_FOR_ASSET: 'ds_reject_op_not_allowed',
 };
 
 /** Loads the version's design state and the catalogue, then hands over to the editor. */
@@ -527,14 +537,26 @@ function Editor({
       const o = state.objects.find((x) => x.instanceId === id);
       return !!o && !o.locked && !state.locks.layout && assets.get(o.assetId)?.placement === 'FLOOR';
     },
-    onMove: (id: string, p: { x: number; y: number }) => {
+    onMove: (id: string, p: { x: number; y: number }, free: boolean) => {
       const o = state.objects.find((x) => x.instanceId === id);
       const asset = o ? assets.get(o.assetId) : undefined;
       if (!o || !asset) return null;
       const roomId = roomContaining(space, p);
       const pctx = { space, assets, objects: state.objects };
-      const s = roomId ? snapToWall(pctx, asset, p, o.rotationY, roomId) : { at: p, rotation: o.rotationY, snapped: false };
-      const q = s.snapped ? s : quantise(s.at, s.rotation);
+      // Snapping helps without trapping: the wall, then a neighbour's line,
+      // then a 5 cm grid — and the override key (Alt) places freely. Either
+      // way an invalid spot (through a wall, outside the room) is refused.
+      let q: { at: { x: number; y: number }; rotation: number };
+      if (free) q = { at: p, rotation: o.rotationY };
+      else {
+        const s = roomId ? snapToWall(pctx, asset, p, o.rotationY, roomId) : { at: p, rotation: o.rotationY, snapped: false };
+        if (s.snapped) q = s;
+        else {
+          const aligned = alignToNeighbours(pctx, s.at, roomId, id);
+          const g = quantise(aligned.at, s.rotation);
+          q = { at: { x: aligned.alignedX ? aligned.at.x : g.at.x, y: aligned.alignedY ? aligned.at.y : g.at.y }, rotation: g.rotation };
+        }
+      }
       const valid = !!roomId && !blocks(evaluatePlacement(pctx, asset, q.at, q.rotation, roomId, id));
       dragPreview.current = { at: q.at, rotation: q.rotation, roomId, valid };
       return { at: q.at, rotation: q.rotation, valid };
@@ -559,6 +581,41 @@ function Editor({
       controllerRef.current?.applyDesign(state, assets, materials);
     },
   } : undefined), [space, state, assets, materials, run, t]);
+
+  // Turning a piece by its handle: previewed live, committed once on release.
+  const objectRotate = useMemo(() => (space ? {
+    canRotate: (id: string) => {
+      const o = state.objects.find((x) => x.instanceId === id);
+      const a = o ? assets.get(o.assetId) : undefined;
+      return !!o && !!a && !o.locked && !state.locks.layout && a.placement === 'FLOOR' && (a.capabilities ?? ['ROTATABLE']).includes('ROTATABLE');
+    },
+    pose: (id: string) => {
+      const o = state.objects.find((x) => x.instanceId === id);
+      return o ? { at: { x: o.position.x, y: o.position.z }, rotation: o.rotationY } : null;
+    },
+    onRotate: (id: string, rotation: number, free: boolean) => {
+      const o = state.objects.find((x) => x.instanceId === id);
+      const a = o ? assets.get(o.assetId) : undefined;
+      const r = free ? rotation : quantise({ x: 0, y: 0 }, rotation).rotation;
+      const valid = !!o && !!a && !blocks(evaluatePlacement({ space, assets, objects: state.objects }, a, { x: o.position.x, y: o.position.z }, r, o.roomId, id));
+      return { rotation: r, valid };
+    },
+    onRotateEnd: (id: string, rotation: number, valid: boolean) => {
+      const o = state.objects.find((x) => x.instanceId === id);
+      if (!o || Math.abs(rotation - o.rotationY) < 1e-6) { controllerRef.current?.applyDesign(state, assets, materials); return; }
+      if (!valid) { toast.error(t('ds_issue_through_wall')); controllerRef.current?.applyDesign(state, assets, materials); return; }
+      run([{ type: 'ROTATE_OBJECT', instanceId: id, rotationY: rotation }], 'ds_label_rotate');
+    },
+    onCancel: () => { controllerRef.current?.applyDesign(state, assets, materials); },
+  } : undefined), [space, state, assets, materials, run, t]);
+
+  /** Arrow keys nudge the selected piece 5 cm (1 cm with Shift) — the accessible alternative to dragging. */
+  const nudgeSelected = useCallback((dx: number, dy: number) => {
+    if (!selectedObject) return;
+    const p = { x: selectedObject.position.x + dx, y: selectedObject.position.z + dy };
+    const roomId = space ? roomContaining(space, p) ?? selectedObject.roomId : selectedObject.roomId;
+    run([{ type: 'MOVE_OBJECT', instanceId: selectedObject.instanceId, position: { x: p.x, y: selectedObject.position.y, z: p.y }, roomId }], 'ds_label_move');
+  }, [selectedObject, space, run]);
 
   // ── Object actions ─────────────────────────────────────────────────
 
@@ -617,8 +674,11 @@ function Editor({
 
   // ── Walkthrough: the current design, at eye level, inside real walls ──
   const [walking, setWalking] = useState(false);
-  const [shareOpen, setShareOpen] = useState(false);
+  const versionNameRef = useRef(version.name);
+  const [shareOpen, setShareOpen] = useState<false | 'WALKTHROUGH' | 'DESIGN'>(false);
+  const [downloadOpen, setDownloadOpen] = useState(false);
   const [walkRoom, setWalkRoom] = useState<string | null>(null);
+  const [walkAim, setWalkAim] = useState<{ role: string; open: boolean } | null>(null);
   const [canvasReady, setCanvasReady] = useState(false);
   const walkModel = useRef<ReturnType<typeof buildWalkModel> | null>(null);
   const tour = useMemo(() => (space ? tourOrder(space, roomGraph(space)) : []), [space]);
@@ -635,14 +695,25 @@ function Editor({
     if (!pose) { toast.error(t('ds_walk_unavailable')); return; }
     setSelection(null);
     setSheet(null);
-    c.enterWalkthrough(model, pose, setWalkRoom);
+    c.enterWalkthrough(model, pose, setWalkRoom, setWalkAim);
     setWalking(true);
   }, [space, state.objects, assets, t]);
+
+  /** A still of exactly what is on screen (walkthrough or design view), downloaded as a JPEG. */
+  const takePhoto = useCallback(async () => {
+    const c = controllerRef.current;
+    if (!c) return;
+    const blob = await c.renderStill({ kind: 'CURRENT' }, 2560, 1440);
+    if (!blob) { toast.error(t('ds_export_error')); return; }
+    const name = `homatch-${fileSlug(bundle.project.name)}-${fileSlug(versionNameRef.current, 'version')}-${Date.now().toString(36)}.jpg`;
+    download(new Uint8Array(await blob.arrayBuffer()), name, 'image/jpeg');
+  }, [bundle.project.name, t]);
 
   const exitWalk = useCallback(() => {
     controllerRef.current?.exitWalkthrough();
     setWalking(false);
     setWalkRoom(null);
+    setWalkAim(null);
     onWalkthroughExit?.();
   }, [onWalkthroughExit]);
 
@@ -692,12 +763,22 @@ function Editor({
       if (e.key === 'Escape') { setSelection(null); setReplacing(null); }
       else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedObject) { e.preventDefault(); removeSelected(); }
       else if (key === 'r' && selectedObject) rotateSelected(e.shiftKey ? -Math.PI / 12 : Math.PI / 12);
+      else if (selectedObject && e.key.startsWith('Arrow')) {
+        e.preventDefault();
+        const step = e.shiftKey ? 0.01 : 0.05;
+        // Plan +y is "up the drawing"; on screen the camera decides, so arrows
+        // move in plan axes: up/down along y, left/right along x.
+        if (e.key === 'ArrowUp') nudgeSelected(0, step);
+        else if (e.key === 'ArrowDown') nudgeSelected(0, -step);
+        else if (e.key === 'ArrowLeft') nudgeSelected(-step, 0);
+        else if (e.key === 'ArrowRight') nudgeSelected(step, 0);
+      }
       else if (key === 'f') controllerRef.current?.frameAll();
       else if (key === 't') controllerRef.current?.topView();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [session, selectedObject, removeSelected, rotateSelected, duplicateSelected, exitWalk]);
+  }, [session, selectedObject, removeSelected, rotateSelected, duplicateSelected, exitWalk, nudgeSelected]);
 
   const loadModel = useMemo(() => {
     if (space) return undefined;
@@ -856,6 +937,8 @@ function Editor({
       } : undefined}
     >
       {selectedObject ? (
+        <>
+        {objectRotate?.canRotate(selectedObject.instanceId) ? <p className="mb-3 hidden rounded-md bg-[#F4F5F7] px-2.5 py-2 text-[13px] leading-relaxed text-[#4A5263] lg:block">{t('ds_hint_manipulate')}</p> : null}
         <ObjectControls
           object={selectedObject}
           asset={objectAsset}
@@ -872,6 +955,7 @@ function Editor({
           onVariant={(v) => run([{ type: 'SET_OBJECT_VARIANT', instanceId: selectedObject.instanceId, variant: v }], 'ds_label_finish')}
           onColor={(c) => run([{ type: 'SET_OBJECT_COLOR', instanceId: selectedObject.instanceId, color: c }], 'ds_label_color')}
         />
+        </>
       ) : selection?.kind === 'part' ? (
         <PartControls
           hidden={state.hiddenParts.includes(selection.id)}
@@ -901,6 +985,7 @@ function Editor({
 
   // From the refreshed project list, so a rename shows at once.
   const versionName = versions.find((v) => v.id === version.id)?.name ?? version.name;
+  versionNameRef.current = versionName;
 
   return (
     <div className="flex h-[100dvh] flex-col bg-[#0C1119] text-white">
@@ -958,7 +1043,10 @@ function Editor({
           <button type="button" className={cn(TOOL_BUTTON, 'hidden md:inline-flex')} disabled={!activeRoomId} onClick={() => activeRoomId && focusRoom(activeRoomId)} aria-label={t('ds_view_room')}>
             <Scan className="h-4 w-4" aria-hidden="true" /><span className="hidden 2xl:inline">{t('ds_view_room')}</span>
           </button>
-          <button type="button" className={TOOL_BUTTON} disabled={!space} onClick={() => setShareOpen(true)} aria-label={t('ds_share_title')} title={space ? t('ds_share_title') : t('ds_share_error_source')}>
+          <button type="button" className={cn(TOOL_BUTTON, 'hidden sm:inline-flex')} disabled={!space || walking} onClick={() => { setSelection(null); setDownloadOpen(true); }} aria-label={t('ds_export_title')} title={t('ds_export_title')}>
+            <Download className="h-4 w-4" aria-hidden="true" /><span className="hidden 2xl:inline">{t('ds_export_short')}</span>
+          </button>
+          <button type="button" className={TOOL_BUTTON} disabled={!space} onClick={() => setShareOpen('DESIGN')} aria-label={t('ds_share_title')} title={space ? t('ds_share_title') : t('ds_share_error_source')}>
             <Share2 className="h-4 w-4" aria-hidden="true" /><span className="hidden xl:inline">{t('ds_share_short')}</span>
           </button>
           <button
@@ -1024,6 +1112,7 @@ function Editor({
             roomLabel={walking ? undefined : roomLabel}
             onDropAsset={(code, point) => { const a = assets.get(code); if (a) addAsset(a, point); }}
             objectDrag={walking ? undefined : objectDrag}
+            objectRotate={walking ? undefined : objectRotate}
             initialCamera={initialCamera}
           />
           {walking && space ? (
@@ -1031,13 +1120,23 @@ function Editor({
               labels={{
                 title: t('ds_walk_title'), reset: t('ds_walk_reset'), exit: t('ds_walk_exit'), rooms: t('ds_walk_rooms'),
                 joystick: t('ds_walk_joystick'), helpKeys: t('ds_walk_help_keys'),
+                open: t('ds_walk_open'), close: t('ds_walk_close'), roles: IX_ROLES(t),
               }}
+              aim={walkAim}
+              onInteract={() => controllerRef.current?.toggleAimed()}
               actions={space ? (
-                <button type="button" onClick={() => setShareOpen(true)} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px] font-medium text-white/85 ring-1 ring-white/20 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]">
+                <>
+                <button type="button" onClick={() => { void takePhoto(); }} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px] font-medium text-white/85 ring-1 ring-white/20 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]">
+                  <Camera className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span className="hidden lg:inline">{t('ds_walk_photo')}</span>
+                  <span className="sr-only lg:hidden">{t('ds_walk_photo')}</span>
+                </button>
+                <button type="button" onClick={() => setShareOpen('WALKTHROUGH')} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px] font-medium text-white/85 ring-1 ring-white/20 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]">
                   <Share2 className="h-3.5 w-3.5" aria-hidden="true" />
                   <span className="hidden lg:inline">{t('ds_share_walkthrough')}</span>
                   <span className="sr-only lg:hidden">{t('ds_share_walkthrough')}</span>
                 </button>
+                </>
               ) : null}
               roomName={walkRoom ? names.get(walkRoom) ?? null : null}
               rooms={tour.map((id) => ({ id, name: names.get(id) ?? '' }))}
@@ -1102,6 +1201,20 @@ function Editor({
           onClose={() => setTrayOpen(false)}
         />
       ) : null}
+      {downloadOpen && space ? (
+        <DownloadDialog
+          controller={controllerRef.current}
+          space={space}
+          state={state}
+          assets={assets}
+          materials={materials}
+          names={names}
+          projectName={bundle.project.name}
+          versionName={versionName}
+          estimated={estimated}
+          onClose={() => setDownloadOpen(false)}
+        />
+      ) : null}
       {shareOpen ? (
         <ShareDialog
           projectId={projectId}
@@ -1109,6 +1222,7 @@ function Editor({
           versionName={versionName}
           versionNames={new Map(versions.map((v) => [v.id, v.name]))}
           beforeCreate={() => session.saveNow()}
+          initialType={shareOpen}
           onClose={() => setShareOpen(false)}
         />
       ) : null}

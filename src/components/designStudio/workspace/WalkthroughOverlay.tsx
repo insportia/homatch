@@ -20,13 +20,17 @@ export interface WalkthroughLabels {
   joystick: string;
   helpKeys: string;
   tourPlay?: string;
+  /** The interaction hint: what is in reach, and the words to open or close it. */
+  open?: string;
+  close?: string;
+  roles?: Record<string, string>;
   tourPause?: string;
   fullscreen?: string;
 }
 
 export function WalkthroughOverlay({
   labels, roomName, rooms, currentRoomId, touch, onRoom, onReset, onExit, onStick,
-  touring, onTour, onFullscreen, actions,
+  touring, onTour, onFullscreen, actions, aim, onInteract,
 }: {
   labels: WalkthroughLabels;
   roomName: string | null;
@@ -44,6 +48,9 @@ export function WalkthroughOverlay({
   onFullscreen?: () => void;
   /** Extra buttons (the editor's Share). */
   actions?: React.ReactNode;
+  /** What the visitor is pointing at (a door, a wardrobe…), if anything. */
+  aim?: { role: string; open: boolean } | null;
+  onInteract?: () => void;
 }) {
   const quiet = 'inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px] font-medium text-white/85 ring-1 ring-white/20 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]';
   return (
@@ -92,6 +99,15 @@ export function WalkthroughOverlay({
           ))}
         </nav>
       </div>
+      {aim && onInteract && labels.open && labels.close ? (
+        <div className={cn('pointer-events-auto absolute z-10 flex items-center gap-2 rounded-full bg-[#0C1119]/85 py-1.5 pe-1.5 ps-3.5 text-[14px] text-white shadow-lg ring-1 ring-white/15 backdrop-blur', touch ? 'bottom-44 start-1/2 -translate-x-1/2 rtl:translate-x-1/2' : 'bottom-14 start-1/2 -translate-x-1/2 rtl:translate-x-1/2')}
+          role="status" aria-live="polite">
+          <span>{labels.roles?.[aim.role] ?? ''}</span>
+          <button type="button" onClick={onInteract} className="h-8 rounded-full bg-white px-3.5 text-[13px] font-semibold text-[#0C1119] hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]">
+            {aim.open ? labels.close : labels.open}
+          </button>
+        </div>
+      ) : null}
       {touch ? (
         <Joystick label={labels.joystick} onChange={onStick} />
       ) : (

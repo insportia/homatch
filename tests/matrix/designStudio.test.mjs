@@ -351,3 +351,55 @@ test('the public viewer is its own small page, not the signed-in app', () => {
   assert.match(html, /src="\/src\/share\/main\.tsx"/);
   assert.match(read('vite.config.ts'), /share: path\.resolve\(__dirname, 'share\.html'\)/);
 });
+
+test('the /d/ design link is rewritten to the viewer like /w/', () => {
+  const vercel = JSON.parse(read('vercel.json'));
+  const rewrites = vercel.rewrites.map((r) => r.source);
+  assert.ok(rewrites.indexOf('/d/:token') > -1 && rewrites.indexOf('/d/:token') < rewrites.indexOf('/((?!assets/).*)'), '/d/ is not rewritten to share.html before the app');
+  assert.match(read('src/services/designStudio/shares.ts'), /'DESIGN' \? 'd' : 'w'|\/d\//);
+});
+
+test('what a piece may do is declared on the asset and enforced by the operations', () => {
+  assert.match(MIGRATION, /capabilities\s+text\[\] NOT NULL DEFAULT '\{MOVABLE,ROTATABLE,REPLACEABLE\}'/);
+  assert.match(MIGRATION, /interactions\s+jsonb NOT NULL DEFAULT '\[\]'/);
+  const ops = read('src/lib/designStudio/operations.ts');
+  for (const cap of ['MOVABLE', 'ROTATABLE', 'REPLACEABLE']) assert.match(ops, new RegExp(`'${cap}'`), `operations do not check ${cap}`);
+  assert.match(ops, /NOT_ALLOWED_FOR_ASSET/);
+});
+
+test('opening doors and cupboards is visitor-only: never an operation, never saved', () => {
+  const ops = read('src/lib/designStudio/operations.ts');
+  assert.ok(!/TOGGLE|OPEN_PART|INTERACT/.test(ops), 'an open/close state leaked into the design operations');
+  const scene = read('src/components/designStudio/canvas/SceneController.ts');
+  assert.match(scene, /resetInteractives\(\)/);
+  for (const file of ['src/share/ShareViewer.tsx', 'src/components/designStudio/canvas/SceneController.ts']) {
+    const src = read(file);
+    assert.ok(!/(ds_create_share|saveVersion|applyOperations)\([^)]*interactiveStates/.test(src), `${file} persists walkthrough state`);
+  }
+  // Motion is time-based and runs in the render loop, not through React state.
+  assert.match(read('src/lib/designStudio/interactions.ts'), /export function motionAt/);
+  assert.match(scene, /stepInteractives\(/);
+});
+
+test('closed doors block the walk; open ones let you through', () => {
+  const nav = read('src/lib/designStudio/navigation.ts');
+  assert.match(nav, /closedDoors/);
+  assert.match(nav, /export function setDoorClosed/);
+});
+
+test('downloads are images and a PDF; no 3D file is offered and the walkthrough is not downloadable', () => {
+  const dialog = read('src/components/designStudio/workspace/DownloadDialog.tsx');
+  assert.ok(!/\.(glb|gltf|obj|fbx|usdz)['"`]/i.test(dialog), 'a 3D file format is offered for download');
+  assert.ok(!/walkthrough.*\.(mp4|webm|zip)/i.test(dialog), 'the walkthrough is offered as a download');
+  assert.match(dialog, /images\.zip/);
+  assert.match(dialog, /presentation\.pdf/);
+});
+
+test('the scene debug hook exists only in the QA harness build', () => {
+  for (const file of [...DS_SOURCES, ...walk('src/share')]) {
+    const src = read(file);
+    for (const line of src.split('\n').filter((l) => l.includes('__dsScene'))) {
+      assert.match(line, /import\.meta\.env\.MODE === 'harness'/, `${file} exposes the scene outside the harness build`);
+    }
+  }
+});

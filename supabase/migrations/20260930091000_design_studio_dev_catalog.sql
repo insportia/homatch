@@ -94,7 +94,7 @@ VALUES
    '[{"id":"body","defaultColor":"#b39a7c","roughness":0.7},{"id":"linen","defaultColor":"#eef0f2","roughness":1}]',
    '[]', '{#b39a7c}', 'HOMATCH_DEV_PLACEHOLDER', true, true),
   ('dev/bedside', 'Bedside table', 'STORAGE', 'BEDSIDE', '{BEDROOM}', '{contemporary,minimal}', '{wood}', '{wood}',
-   0.45, 0.40, 0.50, 'FLOOR', 'WALL', 0.00, '{"kind":"CABINET"}',
+   0.45, 0.40, 0.50, 'FLOOR', 'WALL', 0.00, '{"kind":"DRESSER"}',
    '[{"id":"body","defaultColor":"#9c7a55","roughness":0.6}]',
    '[]', '{#9c7a55}', 'HOMATCH_DEV_PLACEHOLDER', true, true),
   ('dev/wardrobe-2', 'Two-door wardrobe', 'WARDROBE', NULL, '{BEDROOM,HALL}', '{contemporary,minimal}', '{white}', '{wood}',
@@ -107,7 +107,7 @@ VALUES
    '[{"id":"oak","name":"Oak","colors":{"body":"#bfa07a"}},{"id":"graphite","name":"Graphite","colors":{"body":"#3d4046"}}]',
    '{#ebe7e0}', 'HOMATCH_DEV_PLACEHOLDER', true, true),
   ('dev/dresser', 'Chest of drawers', 'STORAGE', 'DRESSER', '{BEDROOM}', '{classic,contemporary}', '{wood}', '{wood}',
-   1.20, 0.50, 0.80, 'FLOOR', 'WALL', 0.70, '{"kind":"CABINET"}',
+   1.20, 0.50, 0.80, 'FLOOR', 'WALL', 0.70, '{"kind":"DRESSER"}',
    '[{"id":"body","defaultColor":"#8e6f50","roughness":0.6}]',
    '[]', '{#8e6f50}', 'HOMATCH_DEV_PLACEHOLDER', true, true),
   -- Dining
@@ -165,6 +165,25 @@ VALUES
    '[{"id":"pot","defaultColor":"#b8735a","roughness":0.9},{"id":"leaves","defaultColor":"#5f7a4f","roughness":0.9}]',
    '[]', '{#5f7a4f}', 'HOMATCH_DEV_PLACEHOLDER', true, true)
 ON CONFLICT (code) DO NOTHING;
+
+-- A concept refrigerator, and the pieces whose parts open in the walkthrough
+-- (their hinges and slides are generated with the concept block itself).
+INSERT INTO public.ds_catalog_assets
+  (code, name, category, subcategory, room_kinds, style_tags, color_tags, material_tags,
+   width_m, depth_m, height_m, placement, anchor, clearance_m, procedural, material_slots,
+   variants, dominant_colors, provenance, is_placeholder, active, capabilities)
+VALUES
+  ('dev/fridge', 'Refrigerator', 'KITCHEN', 'APPLIANCE', '{KITCHEN}', '{contemporary,minimal}', '{white}', '{metal}',
+   0.60, 0.65, 1.85, 'FLOOR', 'WALL', 1.00, '{"kind":"FRIDGE"}',
+   '[{"id":"body","defaultColor":"#e8e9ea","roughness":0.35,"metalness":0.2}]',
+   '[{"id":"steel","name":"Steel","colors":{"body":"#b9bcc0"}},{"id":"black","name":"Black","colors":{"body":"#2b2d31"}}]',
+   '{#e8e9ea}', 'HOMATCH_DEV_PLACEHOLDER', true, true, '{MOVABLE,ROTATABLE,REPLACEABLE,OPENABLE,INTERACTIVE}')
+ON CONFLICT (code) DO NOTHING;
+
+UPDATE public.ds_catalog_assets
+   SET capabilities = capabilities || ARRAY['OPENABLE','INTERACTIVE']
+ WHERE code IN ('dev/wardrobe-2','dev/wardrobe-3','dev/kitchen-run','dev/kitchen-island','dev/vanity','dev/dresser','dev/bedside')
+   AND NOT ('OPENABLE' = ANY (capabilities));
 
 -- Materials: colour + finish only. No texture files, so nothing here claims
 -- to reproduce a real product's grain or pattern.

@@ -19,8 +19,17 @@ export interface DesignCanvasProps {
   /** Direct manipulation: dragging a placed piece across the floor. */
   objectDrag?: {
     canDrag: (instanceId: string) => boolean;
-    onMove: (instanceId: string, point: { x: number; y: number }) => { at: { x: number; y: number }; rotation: number; valid: boolean } | null;
+    /** `free`: the override key is held — no snapping, still no invalid spot. */
+    onMove: (instanceId: string, point: { x: number; y: number }, free: boolean) => { at: { x: number; y: number }; rotation: number; valid: boolean } | null;
     onDrop: (instanceId: string, point: { x: number; y: number }) => void;
+    onCancel: (instanceId: string) => void;
+  };
+  /** Direct manipulation: turning a selected piece by its rotate handle. */
+  objectRotate?: {
+    canRotate: (instanceId: string) => boolean;
+    pose: (instanceId: string) => { at: { x: number; y: number }; rotation: number } | null;
+    onRotate: (instanceId: string, rotation: number, free: boolean) => { rotation: number; valid: boolean };
+    onRotateEnd: (instanceId: string, rotation: number, valid: boolean) => void;
     onCancel: (instanceId: string) => void;
   };
   /** Where the camera should be once the space is built (same view across versions). */
@@ -35,8 +44,10 @@ export interface DesignCanvasProps {
  * through props.
  */
 export function DesignCanvas({
-  space, loadModel, selection, onPick, onReady, onModelError, roomLabel, onDropAsset, objectDrag, initialCamera, className,
+  space, loadModel, selection, onPick, onReady, onModelError, roomLabel, onDropAsset, objectDrag, objectRotate, initialCamera, className,
 }: DesignCanvasProps) {
+  const rotateRef = useRef(objectRotate);
+  rotateRef.current = objectRotate;
   const initialCameraRef = useRef(initialCamera);
   const { t } = useLanguage();
   const mountRef = useRef<HTMLDivElement | null>(null);
@@ -65,16 +76,31 @@ export function DesignCanvas({
       return undefined;
     }
     controllerRef.current = controller;
+    // The QA harness drives the scene directly; production builds drop this.
+    if (import.meta.env.MODE === 'harness') (window as unknown as { __dsScene?: SceneController }).__dsScene = controller;
 
     /* A tap selects; a drag is the camera. Distinguished by distance and time. */
     let down: { x: number; y: number; t: number } | null = null;
     /* A press on a movable piece is a drag of that piece, not of the camera. */
     let dragging: { id: string; started: boolean } | null = null;
+    /* A press on the rotate handle turns the piece. */
+    let rotating: { id: string; startAngle: number; startRotation: number; centre: { x: number; y: number }; last: { rotation: number; valid: boolean } | null } | null = null;
     const el = controller.renderer.domElement;
     const onDown = (e: PointerEvent) => {
       down = { x: e.clientX, y: e.clientY, t: performance.now() };
-      if (e.button !== 0 || !dragRef.current) return;
+      if (e.button !== 0) return;
       const hit = controller.pick(e.clientX, e.clientY);
+      if (hit?.target.kind === 'handle' && rotateRef.current?.canRotate(hit.target.id)) {
+        const pose = rotateRef.current.pose(hit.target.id);
+        const p = controller.floorPoint(e.clientX, e.clientY);
+        if (pose && p) {
+          rotating = { id: hit.target.id, startAngle: Math.atan2(p.y - pose.at.y, p.x - pose.at.x), startRotation: pose.rotation, centre: pose.at, last: null };
+          controller.setOrbitEnabled(false);
+          el.setPointerCapture(e.pointerId);
+          return;
+        }
+      }
+      if (!dragRef.current) return;
       if (hit?.target.kind === 'object' && dragRef.current.canDrag(hit.target.id)) {
         dragging = { id: hit.target.id, started: false };
         controller.setOrbitEnabled(false);
@@ -86,6 +112,16 @@ export function DesignCanvas({
       const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
       const quick = performance.now() - down.t < 450;
       down = null;
+      if (rotating) {
+        const r = rotating;
+        rotating = null;
+        controller.setOrbitEnabled(true);
+        if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+        // One turn, one step: the release commits, the preview frames do not.
+        if (r.last) rotateRef.current?.onRotateEnd(r.id, r.last.rotation, r.last.valid);
+        else rotateRef.current?.onCancel(r.id);
+        return;
+      }
       if (dragging) {
         const d = dragging;
         dragging = null;
@@ -103,6 +139,17 @@ export function DesignCanvas({
       onPickRef.current(hit?.target ?? null);
     };
     const onDragMove = (e: PointerEvent) => {
+      if (rotating) {
+        const p = controller.floorPoint(e.clientX, e.clientY);
+        if (!p) return;
+        const angle = Math.atan2(p.y - rotating.centre.y, p.x - rotating.centre.x);
+        const res = rotateRef.current?.onRotate(rotating.id, rotating.startRotation + (angle - rotating.startAngle), e.altKey);
+        if (res) {
+          rotating.last = res;
+          controller.previewObject(rotating.id, rotating.centre, res.rotation, res.valid);
+        }
+        return;
+      }
       if (!dragging || !down) return;
       if (!dragging.started && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 6) return;
       if (!dragging.started) {
@@ -110,10 +157,16 @@ export function DesignCanvas({
         onPickRef.current({ kind: 'object', id: dragging.id, roomId: null });
       }
       const p = controller.floorPoint(e.clientX, e.clientY);
-      const preview = p ? dragRef.current?.onMove(dragging.id, p) : null;
+      const preview = p ? dragRef.current?.onMove(dragging.id, p, e.altKey) : null;
       if (preview) controller.previewObject(dragging.id, preview.at, preview.rotation, preview.valid);
     };
     const onCancelDrag = () => {
+      if (rotating) {
+        controller.setOrbitEnabled(true);
+        rotateRef.current?.onCancel(rotating.id);
+        rotating = null;
+        return;
+      }
       if (!dragging) return;
       controller.setOrbitEnabled(true);
       dragRef.current?.onCancel(dragging.id);
@@ -137,13 +190,13 @@ export function DesignCanvas({
     el.addEventListener('drop', onDrop);
     let hoverQueued = false;
     const onMove = (e: PointerEvent) => {
-      if (e.pointerType !== 'mouse' || down || dragging || hoverQueued) return;
+      if (e.pointerType !== 'mouse' || down || dragging || rotating || hoverQueued) return;
       hoverQueued = true;
       requestAnimationFrame(() => {
         hoverQueued = false;
         const hit = controller.pick(e.clientX, e.clientY);
         controller.setHover(hit?.target ?? null);
-        el.style.cursor = hit ? 'pointer' : 'grab';
+        el.style.cursor = hit?.target.kind === 'handle' ? 'ew-resize' : hit ? 'pointer' : 'grab';
       });
     };
     const onLeave = () => controller.setHover(null);
@@ -185,6 +238,8 @@ export function DesignCanvas({
 
   useEffect(() => {
     controllerRef.current?.setSelection(selection);
+    const id = selection?.kind === 'object' ? selection.id : null;
+    controllerRef.current?.showRotateHandle(id && rotateRef.current?.canRotate(id) ? id : null);
   }, [selection]);
 
   // Room labels, repositioned after every drawn frame.

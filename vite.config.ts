@@ -109,13 +109,13 @@ function stampServiceWorker(): Plugin {
 /**
  * HOMATCH DESIGN STUDIO — PUBLIC SHARE LINKS.
  *
- * /w/<token> is a separate, small page (share.html) so anonymous visitors
+ * /w/<token> and /d/<token> are a separate, small page (share.html) so anonymous visitors
  * never load the signed-in application. Vercel rewrites it in production
  * (vercel.json); this does the same for vite dev and vite preview.
  */
 function shareViewerRewrite(): Plugin {
   const rewrite = (req: { url?: string }, _res: unknown, next: () => void) => {
-    if (req.url && /^\/w\/[A-Za-z0-9_-]{43}\/?(\?.*)?$/.test(req.url)) req.url = '/share.html';
+    if (req.url && /^\/[wd]\/[A-Za-z0-9_-]{43}\/?(\?.*)?$/.test(req.url)) req.url = '/share.html';
     next();
   };
   return {

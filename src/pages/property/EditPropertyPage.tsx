@@ -320,7 +320,16 @@ export default function EditPropertyPage() {
       if (typed !== stored) {
         const reading = readContactPhone(typed, city.trim() ? undefined : 'GE');
         if (reading.contact) {
-          await setPropertyContact(id, reading.contact);
+          /* The return value IS the outcome. Ignoring it is how a Postgres
+           * column-privilege refusal became "saved" on screen while the
+           * number stayed unchanged — the save must never claim more than
+           * the database accepted. */
+          const contactSaved = await setPropertyContact(id, reading.contact);
+          if (!contactSaved) {
+            toast.error(t('contact_phone_save_failed'));
+            await load();
+            return;
+          }
         } else if (typed) {
           setShowPhoneProblem(true);
           toast.error(t(

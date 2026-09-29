@@ -320,7 +320,7 @@ function CampaignPanel({
 
       {/* The ceiling is chosen before anything is spent. */}
       <Dialog open={showBudget} onOpenChange={setShowBudget}>
-        <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md">
+        <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md max-h-[85dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="break-words">{startLabel}</DialogTitle>
             <DialogDescription className="sr-only">{t('budget_choose_title')}</DialogDescription>

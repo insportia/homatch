@@ -1045,7 +1045,7 @@ function MatchesContent() {
       {/* Unlock Confirmation Dialog */}
       {showUnlockConfirm && pendingUnlock && (
         <Dialog open onOpenChange={open => { if (!open) { setShowUnlockConfirm(false); setPendingUnlock(null); } }}>
-          <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-md bg-card border-border">
+          <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-md bg-card border-border max-h-[85dvh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Eye className="h-4 w-4 text-primary" />

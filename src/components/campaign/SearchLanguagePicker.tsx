@@ -146,8 +146,8 @@ export function SearchLanguagePicker({
               // 44px minimum: this is a phone control before it is a desktop one.
               'flex min-h-11 cursor-pointer items-start gap-2.5 rounded-lg border p-2.5 transition-colors',
               value.mode === mode
-                ? 'border-primary/50 bg-primary/5'
-                : 'border-border/60 hover:border-border',
+                ? 'border-[#0C1119] bg-[hsl(var(--gold-soft))]/70 shadow-card'
+                : 'border-border bg-card hover:border-[hsl(var(--gold-border))]',
             )}
           >
             <input

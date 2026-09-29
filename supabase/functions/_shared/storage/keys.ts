@@ -372,6 +372,35 @@ export function checkContent(
   return { ok: true };
 }
 
+/**
+ * May what ACTUALLY ARRIVED stay at this key?
+ *
+ * checkContent() judges what the browser said it would send. A presigned PUT
+ * binds neither the body length nor the Content-Type header, so whoever
+ * holds the URL can send something larger, or labelled differently, than
+ * was declared. At commit the object's real size and stored type are read
+ * back from R2 and judged by the same category policy — and, where the key
+ * carries an extension chosen from the declared type, the stored type must
+ * be the one that extension was chosen for (a `.png` key holds a PNG
+ * label, not `application/pdf` or `text/html`).
+ *
+ * `size: null` means R2 did not report one; that is not a pass.
+ */
+export function checkArrived(
+  parsed: ParsedKey, facts: { size: number | null; contentType: string | null },
+): ContentVerdict {
+  if (typeof facts.size !== 'number') return { ok: false, reason: 'BAD_SIZE' };
+  const verdict = checkContent(parsed, facts.contentType ?? undefined, facts.size);
+  if (!verdict.ok) return verdict;
+  const mime = (facts.contentType ?? '').split(';')[0].trim().toLowerCase();
+  const rawExt = /\.([a-z0-9]{2,5})$/i.exec(parsed.rest)?.[1]?.toLowerCase();
+  const keyExt = rawExt === 'jpeg' ? 'jpg' : rawExt;
+  const mimeExt = EXT_BY_MIME[mime];
+  if (keyExt && mimeExt && keyExt !== mimeExt) return { ok: false, reason: 'MIME_NOT_ALLOWED' };
+  if (keyExt && !mimeExt && KNOWN_EXTENSIONS.has(keyExt)) return { ok: false, reason: 'MIME_NOT_ALLOWED' };
+  return { ok: true };
+}
+
 /** Extension chosen from the declared type, never from the uploaded name. */
 const EXT_BY_MIME: Record<string, string> = {
   'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/avif': 'avif',
@@ -381,6 +410,9 @@ const EXT_BY_MIME: Record<string, string> = {
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
   'text/plain': 'txt', 'audio/mpeg': 'mp3', 'video/mp4': 'mp4',
 };
+
+/** Extensions HOMATCH itself gives keys: one of these on a key names the type it must hold. */
+const KNOWN_EXTENSIONS = new Set(Object.values(EXT_BY_MIME));
 
 /**
  * Build an account-scoped key.

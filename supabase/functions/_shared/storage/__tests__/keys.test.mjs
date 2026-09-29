@@ -17,7 +17,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  ACCOUNT_CATEGORIES, KeyError, NAMESPACES, accountKey, checkContent,
+  ACCOUNT_CATEGORIES, KeyError, NAMESPACES, accountKey, checkArrived, checkContent,
   keyForLegacyObject, parseKey, requirementFor,
 } from '../keys.ts';
 
@@ -242,4 +242,54 @@ test('no bucket is used in the code without rules in this map', () => {
   const missing = [...referenced].filter((b) => !declared.has(b)).sort();
   assert.deepEqual(missing, [], `buckets with no authorisation rules: ${missing.join(', ')}`);
   assert.ok(referenced.size >= 5, `expected to find bucket literals, found ${referenced.size}`);
+});
+
+/* ── What arrived, judged at commit ─────────────────────────────────── */
+// A presigned PUT binds neither the body length nor the Content-Type, so the
+// declared values checked at signing are a promise. Commit judges the facts.
+
+test('commit: an upload that is what it said it was is kept', () => {
+  const photo = parseKey(`users/${ACC}/property-photos/${ENT}/${OBJ}.jpg`);
+  assert.equal(checkArrived(photo, { size: 2048, contentType: 'image/jpeg' }).ok, true);
+  const model = parseKey(`users/${ACC}/design-studio-models/${ENT}/${OBJ}.glb`);
+  assert.equal(checkArrived(model, { size: 5 * 1024 * 1024, contentType: 'model/gltf-binary' }).ok, true);
+});
+
+test('commit: bytes larger than the category allows are refused, whatever was declared', () => {
+  const plan = parseKey(`users/${ACC}/design-studio-floorplans/${ENT}/${OBJ}.png`);
+  assert.equal(checkArrived(plan, { size: 25 * 1024 * 1024 + 1, contentType: 'image/png' }).reason, 'TOO_LARGE');
+  const model = parseKey(`users/${ACC}/design-studio-models/${ENT}/${OBJ}.glb`);
+  assert.equal(checkArrived(model, { size: 101 * 1024 * 1024, contentType: 'model/gltf-binary' }).reason, 'TOO_LARGE');
+});
+
+test('commit: a stored type the category refuses is refused', () => {
+  const photo = parseKey(`users/${ACC}/property-photos/${ENT}/${OBJ}.jpg`);
+  assert.equal(checkArrived(photo, { size: 10, contentType: 'text/html' }).reason, 'MIME_NOT_ALLOWED');
+  assert.equal(checkArrived(photo, { size: 10, contentType: null }).reason, 'MIME_REQUIRED');
+  assert.equal(checkArrived(photo, { size: 10, contentType: 'application/octet-stream' }).reason, 'MIME_NOT_ALLOWED');
+});
+
+test('commit: the stored type must be the one the key was named for', () => {
+  // A .png key holding a JPEG label, or a PDF under a .jpg key, in a
+  // category that would otherwise accept both.
+  const doc = parseKey(`users/${ACC}/deal-room-documents/${ENT}/${OBJ}.jpg`);
+  assert.equal(checkArrived(doc, { size: 10, contentType: 'application/pdf' }).reason, 'MIME_NOT_ALLOWED');
+  const img = parseKey(`users/${ACC}/property-photos/${ENT}/${OBJ}.png`);
+  assert.equal(checkArrived(img, { size: 10, contentType: 'image/jpeg' }).reason, 'MIME_NOT_ALLOWED');
+  // A charset parameter or a .jpeg spelling does not defeat an honest upload.
+  const txt = parseKey(`users/${ACC}/deal-room-documents/${ENT}/${OBJ}.txt`);
+  assert.equal(checkArrived(txt, { size: 10, contentType: 'text/plain; charset=utf-8' }).ok, true);
+});
+
+test('commit: no reported size is not a pass', () => {
+  const photo = parseKey(`users/${ACC}/property-photos/${ENT}/${OBJ}.jpg`);
+  assert.equal(checkArrived(photo, { size: null, contentType: 'image/jpeg' }).reason, 'BAD_SIZE');
+});
+
+test('storage-sign judges the arrived facts at commit and removes a refused object', () => {
+  const src = readFileSync('supabase/functions/storage-sign/index.ts', 'utf8');
+  const commit = src.slice(src.indexOf("if (op === 'commit')"), src.indexOf("if (op === 'exists')"));
+  assert.match(commit, /checkArrived\(parsed, \{ size: facts\.size, contentType: facts\.contentType \}\)/);
+  assert.ok(commit.indexOf('checkArrived(') < commit.indexOf("lifecycle: 'ACTIVE'"), 'the object is activated before it is judged');
+  assert.match(commit, /await deleteObject\(objectKey\)/, 'a refused object is left in the bucket');
 });

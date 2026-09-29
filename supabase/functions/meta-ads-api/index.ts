@@ -11,6 +11,10 @@ import {
   canTransition, STRATEGY_VERSION, GOAL_TO_OBJECTIVE, type StrategyInput,
 } from '../../../src/lib/metaAds/strategy.ts';
 import { hashIdentifierRows, csvSafeCell, normalizeEmail, normalizePhone } from '../../../src/lib/metaAds/hashing.ts';
+// Static, not `await import(...)`: the deploy prover walks static imports to
+// compare the shipped bundle against this revision's closure, and a dynamic
+// import made the deployed artifact carry a module the prover could not see.
+import { getPaymentProvider } from '../_shared/payment_provider.ts';
 import {
   metaMode, graph, MetaApiError, oauthStartUrl, mockExternalId, capabilityMatrix,
 } from '../_shared/metaAds.ts';
@@ -395,7 +399,6 @@ Deno.serve(async (req) => {
 
       /* ── MONEY ─────────────────────────────────────────────────────── */
       case 'deposit_checkout': {
-        const { getPaymentProvider } = await import('../_shared/payment_provider.ts');
         const provider = getPaymentProvider();
         const amountCents = Math.round(asNum(body.amountCents, 0));
         if (amountCents < 500) return json({ error: 'MIN_DEPOSIT', minCents: 500 }, 400);

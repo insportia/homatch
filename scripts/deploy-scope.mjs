@@ -96,7 +96,13 @@ export function edgeFunctionNames(root = ROOT) {
 export function importClosure(entry, root = ROOT) {
   const seen = new Set();
   const stack = [resolve(root, entry)];
-  const IMPORT = /(?:from|import)\s*['"](\.[^'"]+)['"]/g;
+  /* Three shapes reach the bundle and so must reach the closure:
+   *   from './x'          (static import / re-export)
+   *   import './x'        (bare side-effect import)
+   *   import('./x')       (dynamic import — Deno's bundler resolves it
+   *                        statically, so the artifact carries it; missing
+   *                        it here made a real deploy read as UNPROVEN). */
+  const IMPORT = /(?:from|import)\s*\(?\s*['"](\.[^'"]+)['"]/g;
 
   while (stack.length) {
     const file = stack.pop();

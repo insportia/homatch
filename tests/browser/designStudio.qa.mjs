@@ -308,8 +308,10 @@ export async function wire(page, store, errors) {
       const refs = recon.reference_ids.map((id) => store.db.ds_floorplans.find((f) => f.id === id));
       if (refs.some((r) => !r || r.purpose !== 'REFERENCE' || !store.objects.has(r.object_key))) return json({ state: 'FAILED', reason: 'FILE_MISSING' }, 422);
       const { validateReconstruction, planDocument, RECON_VERSION } = await import('../../supabase/functions/_shared/designStudio/reconstructRead.ts');
-      const { recon: reading } = validateReconstruction(store.reconAnswer, refs.length);
-      Object.assign(refs[0], { status: 'INTERPRETED', interpretation: { doc: planDocument(reading, refs[0].object_key), dimensionStrings: [], readVersion: RECON_VERSION } });
+      const plan = recon.plan_source_id ? store.db.ds_spatial_sources.find((x) => x.id === recon.plan_source_id) : null;
+      const planRoomIds = plan ? plan.canonical.scene.floors.map((x) => x.id) : [];
+      const { recon: reading } = validateReconstruction(plan ? store.reconPlanAnswer : store.reconAnswer, refs.length, { usesPlan: !!plan, planRoomIds });
+      if (!plan) Object.assign(refs[0], { status: 'INTERPRETED', interpretation: { doc: planDocument(reading, refs[0].object_key), dimensionStrings: [], readVersion: RECON_VERSION } });
       Object.assign(recon, { status: 'READ', analysis: reading, model: 'qa-fixture' });
       return json({ state: 'READ', counts: { rooms: reading.rooms.length, objects: reading.objects.length } });
     }
@@ -430,7 +432,7 @@ async function main() {
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
   // QA_ONLY=11 runs one checkpoint (while iterating); the release run is all of them.
   if (process.env.QA_ONLY) {
-    try { await ({ 11: checkpoint11, 10: checkpoint10 })[process.env.QA_ONLY](browser); } finally { await browser.close().catch(() => {}); server.kill(); }
+    try { await ({ 11: checkpoint11, '11b': checkpoint11b, 10: checkpoint10 })[process.env.QA_ONLY](browser); } finally { await browser.close().catch(() => {}); server.kill(); }
     console.log(failures ? `${failures} FAILED` : 'ALL PASSED');
     process.exit(failures ? 1 : 0);
   }
@@ -524,6 +526,7 @@ async function main() {
     await checkpoint9(browser);
     await checkpoint10(browser);
     await checkpoint11(browser);
+    await checkpoint11b(browser);
   } finally {
     await browser.close().catch(() => {});
     server.kill();
@@ -954,6 +957,65 @@ async function checkpoint11(browser) {
   await vctx.close();
 
   check('no page errors (checkpoint 11)', errors.length === 0, errors.join('\n        '));
+}
+
+/* ── Checkpoint 11b: a floor plan the customer has, furnished from two pictures ──
+ *
+ * The floor plan gives the walls and rooms; the pictures give the furniture,
+ * floors and walls. The reader is told the plan's rooms and places pieces in
+ * them; no second plan is made, and the design lands on the SAME space. */
+async function checkpoint11b(browser) {
+  const { seedRows } = await import('../../src/lib/designStudio/__tests__/seedCatalog.mjs');
+  const picture = path.join(ROOT, 'tests/fixtures/design-studio/isometric-apartment.jpg');
+  const { store, project, source } = await seededStore();
+  const seed = seedRows();
+  store.db.ds_catalog_assets = seed.assets;
+  store.db.ds_catalog_materials = seed.materials;
+  store.reconPlanAnswer = {
+    view: 'INTERIOR', scaleConfidence: 0.5, scaleEvidence: null, ceilingHeightM: null, rooms: [], openings: [],
+    objects: [
+      { key: 'sofa', type: 'SOFA', label: 'grey three-seat sofa', room: 'r-living', at: [0.6, 3.5], facingDeg: 90, widthM: 2.2, depthM: 0.95, heightM: 0.82, color: '#8b8f94', material: 'fabric', style: null, confidence: 0.8, basis: 'OBSERVED', seenIn: [0, 1] },
+      { key: 'table', type: 'COFFEE_TABLE', label: 'oak coffee table', room: 'r-living', at: [2.0, 3.5], facingDeg: 0, widthM: 1.1, depthM: 0.6, heightM: 0.42, color: '#a88b6c', material: 'oak', style: null, confidence: 0.7, basis: 'OBSERVED', seenIn: [0] },
+      { key: 'bed', type: 'BED_DOUBLE', label: 'double bed', room: 'r-bed', at: [8.0, 5.9], facingDeg: 180, widthM: 1.6, depthM: 2.05, heightM: 0.95, color: '#a88b6c', material: 'oak', style: null, confidence: 0.8, basis: 'OBSERVED', seenIn: [1] },
+    ],
+    surfaces: [{ room: 'r-living', part: 'FLOOR', color: '#c9a27a', material: 'oak', confidence: 0.7 }],
+    palette: ['#8b8f94', '#c9a27a'], styleWords: ['scandinavian'],
+    cameras: [{ image: 0, kind: 'EYE', at: [5.5, 1.0], heightM: 1.5, yawDeg: 300, pitchDeg: -8, fovDeg: 65, confidence: 0.5 }],
+    unknowns: [],
+  };
+  const errors = [];
+  const ctx = await openContext(browser, { width: 1440, height: 900, lang: 'en' });
+  const page = await ctx.newPage();
+  await wire(page, store, errors);
+  await page.goto(`${BASE}/design-studio/${project.id}`, { waitUntil: 'domcontentloaded' });
+  await page.locator('main canvas').waitFor({ timeout: 25000 });
+  await page.getByTestId('ds-furnish-pictures').click();
+  await page.getByTestId('recon-pick').waitFor();
+  check('plan + pictures: the floor plan is offered as the walls and rooms (on by default)', await page.getByRole('checkbox', { name: /Use my floor plan/ }).isChecked());
+  await page.getByTestId('recon-input').setInputFiles([picture, picture]);
+  check('pictures: several at once', (await page.getByRole('img', { name: /Picture [12]/ }).count()) === 2);
+  await page.getByTestId('recon-read').click();
+  await page.getByTestId('recon-review').waitFor({ timeout: 30000 });
+  const rec = store.db.ds_reconstructions.at(-1);
+  check('plan + pictures: one reading of both pictures, against the customer\'s plan', rec.reference_ids.length === 2 && rec.plan_source_id === source.id && rec.analysis.usesPlan === true);
+  check('plan + pictures: no second plan is made from the pictures', store.db.ds_floorplans.filter((x) => x.purpose === 'REFERENCE').every((x) => x.status === 'UPLOADED'));
+  check('review: no rooms to correct (the plan has them); both pictures can be compared', (await page.getByText('Rooms', { exact: true }).count()) === 0
+    && (await page.getByRole('button', { name: 'Picture 2' }).count()) === 1);
+  await page.screenshot({ path: path.join(OUT, 'cp11b-review-1440-en.png'), fullPage: true });
+  const sources = store.db.ds_spatial_sources.length;
+  await page.getByTestId('recon-build').click();
+  await page.locator('main canvas').waitFor({ timeout: 40000 });
+  await page.waitForTimeout(1000);
+  const head = store.db.ds_versions.find((v) => v.id === store.db.ds_projects.find((p) => p.id === project.id).head_version_id);
+  check('plan + pictures: the design lands on the SAME space (no new geometry)', store.db.ds_spatial_sources.length === sources && head.source_id === source.id);
+  check('plan + pictures: pieces in the plan\'s own rooms, where they were seen', head.name === 'From your pictures'
+    && head.state.objects.find((o) => o.provenance.ref === 'sofa')?.roomId === 'r-living' && head.state.objects.find((o) => o.provenance.ref === 'bed')?.roomId === 'r-bed');
+  check('plan + pictures: a piece seen in both pictures is one piece', head.state.objects.filter((o) => o.provenance.detectedType === 'SOFA').length === 1
+    && head.state.objects.find((o) => o.provenance.ref === 'sofa').provenance.images.length === 2);
+  check('plan + pictures: floors dressed from the pictures', Object.keys(head.state.surfaces).some((k) => k.startsWith('floor:r-living')));
+  await page.screenshot({ path: path.join(OUT, 'cp11b-built-1440-en.png') });
+  check('no page errors (checkpoint 11b)', errors.length === 0, errors.join('\n        '));
+  await ctx.close();
 }
 
 /* A few rows shaped exactly like the development seed (20260930091000). */

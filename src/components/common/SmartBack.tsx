@@ -46,8 +46,10 @@ export function SmartBack({ fallback, label, className = '' }: SmartBackProps) {
       onClick={onClick}
       aria-label={text}
       className={
-        'inline-flex min-h-[44px] items-center gap-2 rounded-full border border-border bg-card ps-3 pe-4 '
-        + 'text-sm font-medium text-ink-soft transition-colors hover:border-foreground/30 hover:text-foreground '
+        /* Structural ink, matching the navy chrome above it — never a pale
+           pill floating between the dark shell and the product content. */
+        'inline-flex min-h-[44px] items-center gap-2 rounded-full bg-[#0C1119] ps-3 pe-4 shadow-card '
+        + 'text-sm font-medium text-white transition-colors hover:bg-[#1a2231] '
         + 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 '
         + className
       }

@@ -63,7 +63,7 @@ export function MobileBottomNav() {
         plus a blurred translucent ground lets the content scroll UNDER it, which is what
         tells somebody there is more below.
       */
-      className="md:hidden fixed bottom-0 inset-x-0 z-50 border-t border-border/40 bg-card/85 backdrop-blur-xl"
+      className="md:hidden fixed bottom-0 inset-x-0 z-50 border-t border-white/10 bg-[#0C1119]/[0.96] backdrop-blur-xl"
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
       <div className="flex items-stretch justify-around h-[3.75rem]">
         {items.map(item => {
@@ -84,16 +84,16 @@ export function MobileBottomNav() {
               <span
                 aria-hidden="true"
                 className={`flex h-7 w-12 items-center justify-center rounded-full transition-colors ${
-                  active && !item.highlight ? 'bg-gold-soft' : ''
+                  active && !item.highlight ? 'bg-[hsl(38_92%_56%)]/[0.18]' : ''
                 }`}
               >
                 <item.icon
                   className={`h-[1.15rem] w-[1.15rem] ${
                     item.highlight
-                      ? 'text-primary'
+                      ? 'text-[hsl(38_92%_60%)]'
                       : active
-                      ? 'text-gold-ink'
-                      : 'text-muted-foreground'
+                      ? 'text-[hsl(38_92%_60%)]'
+                      : 'text-white/60'
                   }`}
                   strokeWidth={active ? 2.1 : 1.75}
                 />
@@ -106,10 +106,10 @@ export function MobileBottomNav() {
                    steps down one size only at the narrowest widths. */
                 className={`w-full truncate text-center text-[12px] leading-tight sm:text-[13px] ${
                   item.highlight
-                    ? 'font-semibold text-primary'
+                    ? 'font-semibold text-white/90'
                     : active
-                    ? 'font-semibold text-foreground'
-                    : 'font-medium text-muted-foreground'
+                    ? 'font-semibold text-white'
+                    : 'font-medium text-white/60'
                 }`}
               >
                 {t(item.key)}

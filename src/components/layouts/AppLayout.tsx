@@ -182,7 +182,7 @@ export function AppLayout({
         <aside className="fixed inset-y-0 start-0 z-40 hidden h-[100dvh] w-[18rem] border-e border-sidebar-border bg-sidebar lg:block" aria-hidden="true" />
         <div className={`min-w-0 lg:ps-[18rem] ${hidePadding ? 'flex h-[100dvh] flex-col' : ''}`}>
           <header
-            className={`z-30 border-b border-border bg-background/95 ${hidePadding ? 'shrink-0' : 'sticky top-0'}`}
+            className={`z-30 border-b border-white/10 bg-[#0C1119]/[0.97] ${hidePadding ? 'shrink-0' : 'sticky top-0'}`}
             aria-hidden="true"
           >
             <div className="flex h-16 items-center gap-2 px-3 sm:gap-3 sm:px-4 md:h-20 md:px-6 lg:px-8" />

@@ -485,8 +485,13 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
           * Search, language, notifications, credits, add-property, install.
           * No product links: those live in the rail, once.
           */}
+        {/* THE SHELL'S OWN NAVY. The pages' structural bands (PageHero, the
+            dashboard welcome, the comms frames) established deep navy as the
+            product's structure colour; the chrome now speaks the same
+            language instead of sitting above it as a pale legacy strip.
+            White carries the content, gold marks the one high-value action. */}
         <header
-          className={`z-30 border-b border-border bg-background/[0.92] backdrop-blur-md ${
+          className={`z-30 border-b border-white/10 bg-[#0C1119]/[0.97] text-white backdrop-blur-md ${
             hidePadding ? 'shrink-0' : 'sticky top-0'
           }`}
         >
@@ -495,7 +500,7 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
               type="button"
               onClick={() => setDrawerOpen(true)}
               aria-label={t('dnav_open')}
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-border text-foreground lg:hidden"
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/25 text-white transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]/60 lg:hidden"
             >
               <Menu className="h-4 w-4" />
             </button>
@@ -517,23 +522,23 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
                 type="button"
                 onClick={() => navigate('/credits')}
                 aria-label={t('db_credits_aria')}
-                className="flex h-10 min-w-0 shrink items-center gap-1.5 rounded-full border border-foreground/20 px-2.5 text-foreground transition-colors hover:border-gold hover:bg-gold-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:gap-2 sm:px-3"
+                className="flex h-10 min-w-0 shrink items-center gap-1.5 rounded-full border border-white/25 px-2.5 text-white transition-colors hover:border-[hsl(38_92%_56%)]/70 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]/60 sm:gap-2 sm:px-3"
               >
-                <CoinsIcon className="h-4 w-4 shrink-0 text-gold-ink" strokeWidth={1.75} aria-hidden="true" />
+                <CoinsIcon className="h-4 w-4 shrink-0 text-[hsl(38_92%_60%)]" strokeWidth={1.75} aria-hidden="true" />
                 <span className="min-w-0 truncate text-sm font-semibold tabular-nums leading-none">
                   {credits === null ? '—' : credits.toFixed(1)}
                 </span>
-                <span className="hidden text-[13px] text-muted-foreground lg:inline">{t('nav_credits')}</span>
+                <span className="hidden text-[13px] text-white/60 lg:inline">{t('nav_credits')}</span>
               </button>
 
-              <div className="hidden sm:block"><InstallApp compact /></div>
-              <LanguageSwitcher showGlobe triggerClassName="h-10 rounded-full px-2.5" />
+              <div className="hidden sm:block"><InstallApp compact tone="dark" /></div>
+              <LanguageSwitcher showGlobe triggerClassName="h-10 rounded-full border border-white/25 px-2.5 text-white/85 hover:bg-white/10 hover:text-white" />
 
               <button
                 type="button"
                 onClick={() => navigate('/notifications')}
                 aria-label={t('notif_title')}
-                className="relative grid h-10 w-10 place-items-center rounded-full border border-foreground/20 text-foreground transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="relative grid h-10 w-10 place-items-center rounded-full border border-white/25 text-white transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]/60"
               >
                 <Bell className="h-4 w-4" aria-hidden="true" />
                 <UnreadBadge
@@ -543,11 +548,11 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
                 />
               </button>
 
-              <Button className="hidden h-10 gap-2 rounded-full px-4 text-sm sm:inline-flex" onClick={() => navigate('/property/add')}>
+              <Button className="hidden h-10 gap-2 rounded-full bg-[hsl(38_92%_54%)] px-4 text-sm font-bold text-[#161309] hover:bg-[hsl(38_92%_60%)] sm:inline-flex" onClick={() => navigate('/property/add')}>
                 <span className="text-base leading-none" aria-hidden="true">+</span>
                 <span className="hidden md:inline">{t('nav_add_property')}</span>
               </Button>
-              <Button size="icon" className="h-10 w-10 rounded-full sm:hidden" onClick={() => navigate('/property/add')} aria-label={t('nav_add_property')}>
+              <Button size="icon" className="h-10 w-10 rounded-full bg-[hsl(38_92%_54%)] font-bold text-[#161309] hover:bg-[hsl(38_92%_60%)] sm:hidden" onClick={() => navigate('/property/add')} aria-label={t('nav_add_property')}>
                 <span className="text-lg leading-none" aria-hidden="true">+</span>
               </Button>
             </div>
@@ -597,13 +602,13 @@ function TopbarAsk() {
       }}
       className="relative flex items-center"
     >
-      <Search className="pointer-events-none absolute start-4 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+      <Search className="pointer-events-none absolute start-4 h-4 w-4 text-white/55" aria-hidden="true" />
       <input
         value={value}
         onChange={e => setValue(e.target.value)}
         placeholder={t('db_search_placeholder')}
         aria-label={t('db_search_submit')}
-        className="h-11 w-full rounded-full border border-foreground/[0.18] bg-card ps-11 pe-4 text-sm text-foreground placeholder:text-muted-foreground/70 focus:border-ring/50 focus:outline-none focus:ring-2 focus:ring-ring/25"
+        className="h-11 w-full rounded-full border border-white/[0.16] bg-white/[0.07] ps-11 pe-4 text-sm text-white placeholder:text-white/55 focus:border-[hsl(38_92%_56%)]/60 focus:outline-none focus:ring-2 focus:ring-[hsl(38_92%_56%)]/25"
       />
     </form>
   );

@@ -12,6 +12,7 @@
 //   node scripts/design-studio/rls-check.mjs //     supabase/migrations/20260930090000_design_studio_foundation.sql //     supabase/migrations/20260930092000_design_studio_storage_categories.sql
 //     supabase/migrations/20260930094000_design_studio_shares.sql
 //     supabase/migrations/20260930091000_design_studio_dev_catalog.sql
+//     supabase/migrations/20260930095000_design_studio_reconstruction.sql
 //
 // It proves the migration's behaviour; it is not a substitute for applying
 // the migration through the deploy workflow.
@@ -24,6 +25,7 @@ const MIGRATION = process.argv[2];
 const STORAGE_MIGRATION = process.argv[3] ?? null;
 const SHARES_MIGRATION = process.argv[4] ?? null;
 const CATALOG_SEED = process.argv[5] ?? null;
+const RECON_MIGRATION = process.argv[6] ?? null;
 const db = new PGlite({ extensions: { pgcrypto } });
 let failures = 0;
 const ok = (name) => console.log(`  ok   ${name}`);
@@ -284,8 +286,8 @@ await expectError('a placeholder must be marked as one', 'ds_catalog_assets_shap
 
 // ── capabilities and interactions (what a piece may do; how its parts open)
 const caps = await db.query(`select capabilities, interactions from ds_catalog_assets where code='dev/sofa'`);
-caps.rows[0].capabilities.join() === 'MOVABLE,ROTATABLE,REPLACEABLE' && Array.isArray(caps.rows[0].interactions) && caps.rows[0].interactions.length === 0
-  ? ok('catalog: a piece moves, turns and swaps by default, and opens nothing') : bad('capability defaults', JSON.stringify(caps.rows[0]));
+caps.rows[0].capabilities.join() === 'MOVABLE,ROTATABLE,REPLACEABLE,DUPLICATABLE' && Array.isArray(caps.rows[0].interactions) && caps.rows[0].interactions.length === 0
+  ? ok('catalog: a piece moves, turns, swaps and duplicates by default, and opens nothing') : bad('capability defaults', JSON.stringify(caps.rows[0]));
 await expectError('catalog: an unknown capability is refused', 'check constraint', () => as(ADM, (tx) =>
   tx.query(`update ds_catalog_assets set capabilities = '{MOVABLE,FLY}' where code='dev/sofa'`)));
 await expectError('catalog: interactions must be a list', 'check constraint', () => as(ADM, (tx) =>
@@ -433,6 +435,68 @@ if (SHARES_MIGRATION) {
   const sa = (sofaPub.assets ?? []).find((a) => a.code === 'dev/sofa');
   sa && Array.isArray(sa.capabilities) && sa.capabilities.includes('MOVABLE') && Array.isArray(sa.interactions)
     ? ok('public: shared pieces carry their capabilities and interactions') : bad('payload capabilities', JSON.stringify(sofaPub.assets));
+
+  // A piece read from the owner's picture keeps its provenance in the design, never in a public link.
+  const withProv = await as(A, (tx) => one(tx, `insert into ds_versions (project_id,user_id,source_id,name,origin,state)
+    values ($1,$2,$3,'From picture','USER',$4) returning id`, [pA.id, UA, src.id, JSON.stringify({ schema: 1, objects: [
+      { instanceId: 'p1', assetId: 'dev/sofa', provenance: { source: 'IMAGE_RECONSTRUCTION', ref: 'sofa', images: ['secret-ref-id-1'], confidence: 0.8 } },
+    ], surfaces: {}, palette: [] })]));
+  const provPub = await view((await create(A, withProv.id)).token);
+  const provText = JSON.stringify(provPub);
+  !JSON.stringify(provPub.state).includes('provenance') && !provText.includes('secret-ref-id-1') && provPub.state.objects.length === 1
+    ? ok('public: a shared design never carries where its pieces came from') : bad('provenance leak', provText.slice(0, 300));
+}
+
+// ── reconstruction from pictures
+if (RECON_MIGRATION) {
+  await db.exec(fs.readFileSync(RECON_MIGRATION, 'utf8'));
+  await db.exec(fs.readFileSync(RECON_MIGRATION, 'utf8'));
+  ok('reconstruction: migration applies and re-applies');
+  const pR = await as(A, (tx) => one(tx, `insert into ds_projects (user_id,name) values ($1,'Pictures') returning id`, [UA]));
+  const pRB = await as(B, (tx) => one(tx, `insert into ds_projects (user_id,name) values ($1,'B pictures') returning id`, [UB]));
+  const refKey = (u, p, n) => `users/${u}/design-studio-floorplans/${p}/0000000${n}-0000-4000-8000-000000000001.jpg`;
+  const ref1 = await as(A, (tx) => one(tx, `insert into ds_floorplans (project_id,user_id,object_key,mime,bytes,purpose)
+    values ($1,$2,$3,'image/jpeg',1000,'REFERENCE') returning id, status, purpose`, [pR.id, UA, refKey(UA, pR.id, 1)]));
+  ref1.purpose === 'REFERENCE' && ref1.status === 'UPLOADED' ? ok('reconstruction: the owner uploads a reference picture') : bad('ref insert', JSON.stringify(ref1));
+  const refB = await as(B, (tx) => one(tx, `insert into ds_floorplans (project_id,user_id,object_key,mime,bytes,purpose)
+    values ($1,$2,$3,'image/jpeg',1000,'REFERENCE') returning id`, [pRB.id, UB, refKey(UB, pRB.id, 2)]));
+  const plan = await as(A, (tx) => one(tx, `insert into ds_floorplans (project_id,user_id,object_key,mime,bytes)
+    values ($1,$2,$3,'image/png',1000) returning id, purpose`, [pR.id, UA, refKey(UA, pR.id, 3).replace('.jpg', '.png')]));
+  plan.purpose === 'PLAN' ? ok('reconstruction: a floor plan is still a PLAN by default') : bad('purpose default', plan.purpose);
+  await expectError('reconstruction: a picture cannot be turned into a plan afterwards', 'DS_SERVER_FIELD', () => as(A, (tx) =>
+    tx.query(`update ds_floorplans set purpose='PLAN' where id=$1`, [ref1.id])));
+  await expectError("reconstruction: another customer's picture cannot be used", 'DS_REFERENCE_NOT_OWNED', () => as(A, (tx) =>
+    tx.query(`insert into ds_reconstructions (project_id,user_id,reference_ids) values ($1,$2,$3)`, [pR.id, UA, [ref1.id, refB.id]])));
+  await expectError('reconstruction: a floor plan is not a reference picture', 'DS_REFERENCE_NOT_OWNED', () => as(A, (tx) =>
+    tx.query(`insert into ds_reconstructions (project_id,user_id,reference_ids) values ($1,$2,$3)`, [pR.id, UA, [plan.id]])));
+  await expectError('reconstruction: at most six pictures', 'DS_TOO_MANY_REFERENCES', () => as(A, (tx) =>
+    tx.query(`insert into ds_reconstructions (project_id,user_id,reference_ids) values ($1,$2,$3)`, [pR.id, UA, Array(7).fill(ref1.id)])));
+  const rec = await as(A, (tx) => one(tx, `insert into ds_reconstructions (project_id,user_id,reference_ids,status,analysis)
+    values ($1,$2,$3,'READ','{"rooms":[]}') returning id, status, analysis`, [pR.id, UA, [ref1.id]]));
+  rec.status === 'QUEUED' && rec.analysis === null ? ok("reconstruction: a browser cannot claim a reading (status and analysis are the server's)") : bad('recon insert', JSON.stringify(rec));
+  await expectError('reconstruction: the analysis is written only by the server', 'DS_SERVER_FIELD', () => as(A, (tx) =>
+    tx.query(`update ds_reconstructions set analysis='{"rooms":[1]}' where id=$1`, [rec.id])));
+  await expectError('reconstruction: the browser cannot mark a reading as read', 'DS_SERVER_FIELD', () => as(A, (tx) =>
+    tx.query(`update ds_reconstructions set status='READ' where id=$1`, [rec.id])));
+  const seenB = await as(B, (tx) => tx.query(`select id from ds_reconstructions where id=$1`, [rec.id]));
+  seenB.rows.length === 0 ? ok('reconstruction: another customer cannot see it') : bad('recon rls', 'visible');
+  await as('service', (tx) => tx.query(`update ds_reconstructions set status='READ', analysis='{"rooms":[]}' where id=$1`, [rec.id]));
+  await as(A, (tx) => tx.query(`update ds_reconstructions set corrections='{"rejected":["plant"]}' where id=$1`, [rec.id]));
+  ok('reconstruction: the owner records corrections');
+  const srcR = await as('service', (tx) => one(tx, `insert into ds_spatial_sources (project_id,user_id,kind,status,geometry_state,editability,floorplan_id,canonical)
+    values ($1,$2,'FLOORPLAN_SCENE','READY','ESTIMATED','GENERATED',$3,'{"schema":1}') returning id`, [pR.id, UA, ref1.id]));
+  const verR = await as(A, (tx) => one(tx, `insert into ds_versions (project_id,user_id,source_id,name) values ($1,$2,$3,'Rebuilt') returning id`, [pR.id, UA, srcR.id]));
+  const srcRB = await as('service', (tx) => one(tx, `insert into ds_spatial_sources (project_id,user_id,kind,status,geometry_state,editability,floorplan_id,canonical)
+    values ($1,$2,'FLOORPLAN_SCENE','READY','ESTIMATED','GENERATED',$3,'{"schema":1}') returning id`, [pRB.id, UB, refB.id]));
+  const verB = await as(B, (tx) => one(tx, `insert into ds_versions (project_id,user_id,source_id,name) values ($1,$2,$3,'B') returning id`, [pRB.id, UB, srcRB.id]));
+  await as(A, (tx) => tx.query(`update ds_reconstructions set status='BUILT', built_source_id=$2, built_version_id=$3 where id=$1`, [rec.id, srcR.id, verR.id]));
+  ok('reconstruction: the owner records what was built from it');
+  await expectError("reconstruction: it cannot point at someone else's version", 'DS_VERSION_NOT_OWNED', () => as(A, (tx) =>
+    tx.query(`update ds_reconstructions set built_version_id=$2 where id=$1`, [rec.id, verB.id])));
+  await expectError("reconstruction: it cannot point at someone else's geometry", 'DS_SOURCE_NOT_OWNED', () => as(A, (tx) =>
+    tx.query(`update ds_reconstructions set built_source_id=$2 where id=$1`, [rec.id, srcRB.id])));
+  await expectError('reconstruction: a customer cannot write a RECONSTRUCT job', 'permission denied', () => as(A, (tx) =>
+    tx.query(`insert into ds_jobs (user_id,kind) values ($1,'RECONSTRUCT')`, [UA])));
 }
 
 // ── cascade

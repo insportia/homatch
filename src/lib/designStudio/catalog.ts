@@ -18,7 +18,7 @@ export type Provenance = 'HOMATCH_DEV_PLACEHOLDER' | 'HOMATCH_OWNED' | 'LICENSED
 export type ProceduralKind =
   | 'SOFA' | 'ARMCHAIR' | 'TABLE' | 'ROUND_TABLE' | 'CABINET' | 'SHELF' | 'BED' | 'RUG'
   | 'LAMP' | 'PLANT' | 'CHAIR' | 'STOOL' | 'KITCHEN_RUN' | 'VANITY' | 'PLANTER' | 'WARDROBE'
-  | 'DRESSER' | 'FRIDGE';
+  | 'DRESSER' | 'FRIDGE' | 'RECLINER' | 'TV_UNIT' | 'SHOWER' | 'TOILET' | 'BATH' | 'CURTAIN' | 'BLIND' | 'WASHER';
 
 export interface MaterialSlot {
   /** 'body', 'legs', 'cushion', 'top'… */

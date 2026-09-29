@@ -1,9 +1,10 @@
 -- ═══════════════════════════════════════════════════════════════════════
--- HOMATCH DESIGN STUDIO — the two operations that cost HOMATCH money,
+-- HOMATCH DESIGN STUDIO — the operations that cost HOMATCH money,
 -- REGISTERED AND MEASURED, NOT PRICED.
 --
 --   DS_FLOORPLAN_READ   an AI reading of a customer's floor plan
 --   DS_AI_DESIGN        an AI design plan (intent → structured operations)
+--   DS_RECONSTRUCT      reading a customer's pictures of a home into a scene
 --
 -- Same pattern as AI_CHAT_RESPONSE (20260919152038): nobody knows yet what
 -- one of these costs, so each is registered with its measurement ON and its
@@ -35,13 +36,17 @@ insert into public.billable_products (
   ('DS_AI_DESIGN', 'Design Studio AI design plan', 'VARIABLE', true,
    0, 0, 3000, 'PER_UNIT', true, false, 0, 121,
    jsonb_build_object('estimate_spread_bps', 5000,
-     'scope_note', 'Measured before priced. One AI design plan: intent to structured, validated operations.'))
+     'scope_note', 'Measured before priced. One AI design plan: intent to structured, validated operations.')),
+  ('DS_RECONSTRUCT', 'Design Studio reconstruction from images', 'VARIABLE', true,
+   0, 0, 3000, 'PER_UNIT', true, false, 0, 122,
+   jsonb_build_object('estimate_spread_bps', 5000,
+     'scope_note', 'Measured before priced. One reading of up to six pictures of a home into a structured scene.'))
 on conflict (code) do nothing;
 
 insert into public.product_plan_entitlements (product_code, plan_code, included_per_period, period, quality_tier)
 select pc.code, p.code, 0, 'CALENDAR_MONTH', p.quality_tier
 from public.billing_plans p
-cross join (values ('DS_FLOORPLAN_READ'), ('DS_AI_DESIGN')) as pc(code)
+cross join (values ('DS_FLOORPLAN_READ'), ('DS_AI_DESIGN'), ('DS_RECONSTRUCT')) as pc(code)
 on conflict (product_code, plan_code) do nothing;
 
 insert into public.admin_settings (key, value, description) values

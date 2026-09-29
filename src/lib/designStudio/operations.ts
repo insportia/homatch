@@ -388,7 +388,20 @@ export function applyTransaction(
     current = result.state;
     inverse.unshift(...result.inverse);
   }
+  // A piece HOMATCH read from a picture becomes the customer's own the moment they edit it.
+  if (meta.origin === 'USER') current = confirmEdited(current, ops);
   return { ok: true, state: current, transaction: { ...meta, ops, inverse } };
+}
+
+const EDITS = new Set<OperationType>(['MOVE_OBJECT', 'ROTATE_OBJECT', 'REPLACE_OBJECT', 'SET_OBJECT_COLOR', 'SET_OBJECT_VARIANT', 'LOCK_OBJECT']);
+
+function confirmEdited(state: DesignState, ops: Operation[]): DesignState {
+  const ids = new Set(ops.filter((o) => EDITS.has(o.type)).map((o) => (o as { instanceId: string }).instanceId));
+  if (!ids.size) return state;
+  return {
+    ...state,
+    objects: state.objects.map((o) => (ids.has(o.instanceId) && o.provenance && !o.provenance.confirmed ? { ...o, provenance: { ...o.provenance, confirmed: true } } : o)),
+  };
 }
 
 /**

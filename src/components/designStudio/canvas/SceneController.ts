@@ -23,8 +23,15 @@ import type { QualityProfile } from '@/lib/designStudio/quality';
 import type { CatalogAsset, CatalogMaterial } from '@/lib/designStudio/catalog';
 import type { DesignState, ObjectInstance } from '@/lib/designStudio/designState';
 import { PAINTABLE_ROLES, type PartRole } from '@/lib/designStudio/modelParts';
-import { EYE_HEIGHT_M, move as walkMove, setDoorClosed, type WalkModel } from '@/lib/designStudio/navigation';
-import { motionAt, toggleMotion, validateInteractions, type InteractionSpec, type Motion } from '@/lib/designStudio/interactions';
+import { EYE_HEIGHT_M, doorsOnRoute, findPath, nearestFree, setDoorClosed, type WalkModel } from '@/lib/designStudio/navigation';
+import {
+  easeInOut as easeInOutCubic, isActiveState, validateInteractions, type ActionCode, type InteractionRole, type InteractionSpec,
+} from '@/lib/designStudio/interactions';
+import {
+  DEFAULT_SETTINGS, REACH_M, canWalk, look, normalizeSettings, postureTransition, stepBody, wishVelocity,
+  type PlayerSettings, type Posture,
+} from '@/lib/designStudio/player';
+import { LivingRuntime, type LiveEntry } from './livingRuntime';
 import { roomContaining, wallFrame, type Point } from '@/lib/designStudio/space';
 import { buildProcedural, slotColors } from './procedural';
 
@@ -53,27 +60,51 @@ export type ViewMode = 'OVERVIEW' | 'TOP' | 'ROOM' | 'WALK';
 /** A place to stand and a direction to look, in plan metres (from the Camera Director). */
 export interface WalkPose { position: Point; target: Point; fov: number }
 
-const WALK_SPEED_M_S = 1.4;
-const TURN_RAD_S = 1.9;
-const LOOK_RAD_PER_PX = 0.005;
-/** How close a visitor must be to open something (metres from the eye). */
-const REACH_M = 3.2;
-
 /** What the visitor is pointing at: shown as a quiet hint, never a game icon. */
-export interface AimHint { role: InteractionSpec['role']; open: boolean }
+export interface AimHint { role: InteractionRole; open: boolean; actions: ActionCode[] }
 
-interface Interactive {
-  key: string;
-  node: THREE.Object3D;
-  spec: InteractionSpec;
-  base: number;
-  value: number;
-  motion: Motion | null;
-  doorId: string | null;
-  objectId: string | null;
+/** The walkthrough's time of day. */
+export type TimeOfDayEnv = 'DAY' | 'SUNSET' | 'EVENING' | 'NIGHT';
+
+interface LightRig {
+  sun: number; sunColor: THREE.Color; sunPos: THREE.Vector3; hemi: number;
+  interior: number; interiorColor: THREE.Color; background: THREE.Color;
 }
 
-const WALK_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+/**
+ * A design-preview lighting setup for a time of day and an interior light
+ * colour. Not a lux calculation, and never presented as one.
+ */
+function lightRig(l: { timeOfDay: TimeOfDayEnv; temperature: 'WARM' | 'NEUTRAL' | 'COOL'; interiorIntensity: number }): LightRig {
+  const kelvin = l.temperature === 'WARM' ? 0xffd8a8 : l.temperature === 'COOL' ? 0xdfe9ff : 0xfff3e2;
+  const day = l.timeOfDay === 'DAY' ? 1 : l.timeOfDay === 'SUNSET' ? 0.62 : l.timeOfDay === 'EVENING' ? 0.4 : 0.07;
+  const sunColor = l.timeOfDay === 'SUNSET' ? 0xff9a5a : l.timeOfDay === 'EVENING' ? 0xffc59a : l.timeOfDay === 'NIGHT' ? 0x9fb4e0 : 0xffffff;
+  // The sun lowers toward the horizon through the evening; at night it is the moon's cool fill.
+  const sunPos = l.timeOfDay === 'DAY' ? [8, 14, 6] : l.timeOfDay === 'SUNSET' ? [14, 3.5, 4] : l.timeOfDay === 'EVENING' ? [12, 5, 8] : [-6, 12, -8];
+  const bg = l.timeOfDay === 'NIGHT' ? 0x1c2230 : l.timeOfDay === 'EVENING' ? 0x4a4f66 : l.timeOfDay === 'SUNSET' ? 0xe9b48a : TONE.background;
+  return {
+    sun: 1.5 * day,
+    sunColor: new THREE.Color(sunColor),
+    sunPos: new THREE.Vector3(sunPos[0], sunPos[1], sunPos[2]),
+    hemi: 0.3 + 1.05 * day,
+    interior: (1 - day) * 1.3 * Math.max(0, Math.min(1, l.interiorIntensity)) + 0.1,
+    interiorColor: new THREE.Color(kelvin),
+    background: new THREE.Color(bg),
+  };
+}
+
+const WALK_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+
+/** What the walkthrough tells the page: where you are, what you aim at, how you stand, and when to show the menu. */
+export interface WalkCallbacks {
+  onRoom?: (roomId: string | null) => void;
+  onAim?: (hint: AimHint | null) => void;
+  onSeat?: (posture: 'SIT' | 'LIE' | null) => void;
+  onPosture?: (posture: Posture) => void;
+  /** Esc (or the mouse released by Esc): open the walkthrough menu. */
+  onMenu?: () => void;
+  onLock?: (locked: boolean) => void;
+}
 
 export interface CameraSnapshot {
   position: [number, number, number];
@@ -145,13 +176,7 @@ export class SceneController {
   private selectionOutline: THREE.Object3D | null = null;
   private hoverOutline: THREE.Object3D | null = null;
   private view: ViewMode = 'OVERVIEW';
-  /** Parts that open and close: floor-plan doors and windows, catalogue parts. Walkthrough state only. */
-  private interactives = new Map<string, Interactive>();
-  private aimed: Interactive | null = null;
-  private aimBox: THREE.Box3Helper | null = null;
-  private aimQueued = false;
-  private lastPointer: { x: number; y: number } | null = null;
-  private onAimChange?: (hint: AimHint | null) => void;
+  private ceilingsShown = false;
   private walk: {
     model: WalkModel;
     pos: Point;
@@ -163,14 +188,28 @@ export class SceneController {
     saved: CameraSnapshot;
     room: string | null;
     onRoom?: (roomId: string | null) => void;
-    drag: { id: number; x: number; y: number } | null;
-    glide: { from: Point; fromYaw: number; to: Point; toYaw: number; start: number; duration: number } | null;
+    glide: {
+      from: Point; fromYaw: number; to: Point; toYaw: number;
+      fromEye: number; toEye: number; fromPitch: number; toPitch: number;
+      start: number; duration: number;
+    } | null;
+    /** Eye height: standing, or lower when sitting or lying down. */
+    eye: number;
+    seated: { objectId: string; posture: 'SIT' | 'LIE'; returnTo: Point } | null;
+    /** Plan velocity (m/s): a body speeds up and slows down. */
+    vel: Point;
+    /** Shift (or a full push of the stick): a brisk walk. */
+    brisk: boolean;
+    posture: Posture;
+    /** A route being walked for the visitor (Live Here). */
+    route: { points: Point[]; i: number; doors: Set<string>; face: Point; done: (arrived: boolean) => void; stuck?: number } | null;
   } | null = null;
 
   constructor(mount: HTMLElement, quality: QualityProfile, options: { reducedMotion?: boolean } = {}) {
     this.mount = mount;
     this.quality = quality;
     this.reducedMotion = !!options.reducedMotion;
+    this.baseReducedMotion = this.reducedMotion;
 
     this.renderer = new THREE.WebGLRenderer({ antialias: quality.antialias, alpha: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality.maxPixelRatio));
@@ -202,8 +241,14 @@ export class SceneController {
     this.controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
     this.controls.addEventListener('change', this.requestRender);
 
+    this.living = new LivingRuntime({
+      reducedMotion: this.reducedMotion,
+      maxLights: quality.tier === 'HIGH' ? 12 : quality.tier === 'BALANCED' ? 8 : 4,
+      onDoor: (doorId, blocks) => { if (this.walk) setDoorClosed(this.walk.model, doorId, blocks); },
+      onChange: () => { if (this.aimed) this.onAimChange?.(this.hintFor(this.aimed)); this.requestRender(); },
+    });
     this.buildLighting();
-    this.scene.add(this.spaceGroup, this.modelGroup, this.objectsGroup, this.overlayGroup, this.handleGroup);
+    this.scene.add(this.spaceGroup, this.fixturesGroup, this.modelGroup, this.objectsGroup, this.overlayGroup, this.handleGroup);
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(mount);
@@ -230,7 +275,8 @@ export class SceneController {
       if (t >= 1) this.transition = null;
       moving = true;
     }
-    if (this.stepInteractives(now)) moving = true;
+    if (this.living.step(now)) { moving = true; this.refreshAimBox(); }
+    if (this.stepEnvironment(now)) moving = true;
     if (this.walk) {
       if (this.stepWalk(now)) moving = true;
     } else if (this.controls.update()) {
@@ -313,18 +359,12 @@ export class SceneController {
   }
 
   /**
-   * A design-preview lighting setup: the time of day and the colour of the
-   * interior light. Not a lux calculation, and never presented as one.
+   * The design's own lighting (time of day, interior light colour). In the
+   * walkthrough a visitor's time of day overrides it until they leave.
    */
-  setLighting(l: { timeOfDay: 'DAY' | 'EVENING' | 'NIGHT'; temperature: 'WARM' | 'NEUTRAL' | 'COOL'; interiorIntensity: number }) {
-    const kelvinColor = l.temperature === 'WARM' ? 0xffd8a8 : l.temperature === 'COOL' ? 0xdfe9ff : 0xfff3e2;
-    const day = l.timeOfDay === 'DAY' ? 1 : l.timeOfDay === 'EVENING' ? 0.45 : 0.08;
-    this.sun.intensity = 1.5 * day;
-    this.sun.color.set(l.timeOfDay === 'EVENING' ? 0xffc59a : 0xffffff);
-    this.hemi.intensity = 0.35 + 1.0 * day;
-    this.interior.color.set(kelvinColor);
-    this.interior.intensity = (1 - day) * 1.6 * Math.max(0, Math.min(1, l.interiorIntensity)) + 0.1;
-    this.scene.background = new THREE.Color(l.timeOfDay === 'NIGHT' ? 0x1c2230 : l.timeOfDay === 'EVENING' ? 0xd9d2cb : TONE.background);
+  setLighting(l: { timeOfDay: TimeOfDayEnv; temperature: 'WARM' | 'NEUTRAL' | 'COOL'; interiorIntensity: number }) {
+    this.designLighting = { timeOfDay: l.timeOfDay, temperature: l.temperature, interiorIntensity: l.interiorIntensity };
+    if (!this.envTween) this.applyRig(lightRig({ ...l, timeOfDay: this.envOverride ?? l.timeOfDay }));
     this.requestRender();
   }
 
@@ -781,7 +821,7 @@ export class SceneController {
       const node = buildProcedural(asset.procedural.kind, asset, slotColors(asset, obj.materialVariant, obj.colorOverride));
       // A concept block's moving parts come with it; a model declares them.
       const specs = validateInteractions(node.userData.interactions ?? asset.interactions);
-      this.registerParts(obj.instanceId, node, specs);
+      this.living.register(`obj:${obj.instanceId}`, node, specs, asset.capabilities, { objectId: obj.instanceId });
       return node;
     }
     // A real model loads asynchronously (catalogue models arrive with the
@@ -808,8 +848,9 @@ export class SceneController {
   private disposeObject(id: string) {
     const node = this.objectsById.get(id);
     if (!node) return;
-    for (const [key, ix] of this.interactives) if (ix.objectId === id) this.interactives.delete(key);
+    this.living.clear(id);
     if (this.aimed?.objectId === id) this.setAim(null);
+    if (this.walk?.seated?.objectId === id) this.standUp();
     node.traverse((o) => {
       const mesh = o as THREE.Mesh;
       mesh.geometry?.dispose();
@@ -899,7 +940,9 @@ export class SceneController {
   }
 
   private setCeilings(visible: boolean) {
+    this.ceilingsShown = visible;
     for (const c of this.ceilingMeshes) c.visible = visible;
+    this.fixturesGroup.visible = visible;
   }
 
   frameAll(animate = true) {
@@ -1023,29 +1066,57 @@ export class SceneController {
     this.requestRender();
   }
 
-  // ── Interactive parts (walkthrough only; never part of the design) ───
+  // ── The living engine (walkthrough only; never part of the design) ───
+  //
+  // Floor-plan doors, windows, balcony doors and room lights are registered
+  // here; catalogue pieces register what they declare as they are built.
+  // The LivingRuntime performs every one of them the same way.
 
-  /** Doors and windows of a floor-plan space, as hinged parts in their openings. */
+  private living: LivingRuntime;
+  private fixturesGroup = new THREE.Group();
+
+  /** Doors, windows and balcony doors of a floor-plan space, and a ceiling light in every indoor room. */
   private buildOpenings(space: SpaceModel) {
-    for (const key of [...this.interactives.keys()]) if (!this.interactives.get(key)!.objectId) this.interactives.delete(key);
+    this.living.clear(null);
+    this.clearGroup(this.fixturesGroup);
     const leafMat = new THREE.MeshStandardMaterial({ color: 0xece7df, roughness: 0.7 });
     const frameMat = new THREE.MeshStandardMaterial({ color: 0xf4f4f2, roughness: 0.5 });
     const glassMat = new THREE.MeshStandardMaterial({ color: 0xcfe0ea, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.28 });
     this.track(leafMat); this.track(frameMat); this.track(glassMat);
+    const outdoor = new Set(space.rooms.filter((r) => r.outdoor).map((r) => r.id));
     for (const wall of space.walls) {
       const f = wallFrame(wall.mesh);
       for (const o of wall.mesh.openings) {
         const jamb = { x: wall.mesh.start.x + f.dir.x * (o.offsetM - o.widthM / 2), y: wall.mesh.start.y + f.dir.y * (o.offsetM - o.widthM / 2) };
+        const at = (seg: { from: number; to: number }) => o.offsetM >= seg.from - 0.05 && o.offsetM <= seg.to + 0.05;
         // Swing toward a room (the left face when it looks into one).
-        const intoLeft = wall.segments.some((seg) => seg.side === 'L' && o.offsetM >= seg.from - 0.05 && o.offsetM <= seg.to + 0.05);
+        const intoLeft = wall.segments.some((seg) => seg.side === 'L' && at(seg) && !outdoor.has(seg.roomId));
         const sign = intoLeft ? 1 : -1;
+        // A door between a room and a balcony or terrace slides, glazed.
+        const balcony = o.kind === 'DOOR' && wall.segments.some((seg) => at(seg) && outdoor.has(seg.roomId));
         const pivot = new THREE.Group();
         pivot.name = `ix:${o.id}`;
         pivot.position.set(jamb.x, o.sillM, -jamb.y);
         pivot.rotation.y = f.angle;
         const w = o.widthM;
         const h = o.heightM;
-        if (o.kind === 'DOOR') {
+        const glazed = (panelW: number, x0: number) => {
+          const t = 0.05;
+          for (const [bw, bh, x, y] of [[panelW, t, x0 + panelW / 2, t / 2], [panelW, t, x0 + panelW / 2, h - t / 2], [t, h, x0 + t / 2, h / 2], [t, h, x0 + panelW - t / 2, h / 2]]) {
+            const bar = new THREE.Mesh(this.track(new THREE.BoxGeometry(bw, bh, 0.05)), frameMat);
+            bar.position.set(x, y, 0);
+            pivot.add(bar);
+          }
+          const glass = new THREE.Mesh(this.track(new THREE.PlaneGeometry(panelW - 2 * t, h - 2 * t)), glassMat);
+          glass.position.set(x0 + panelW / 2, h / 2, 0);
+          pivot.add(glass);
+        };
+        let spec: InteractionSpec;
+        if (balcony) {
+          glazed(w * 0.52, w * 0.02);
+          // Slides along the wall, behind the fixed half.
+          spec = { id: o.id, kind: 'SLIDING', role: 'BALCONY_DOOR', axis: 'x', open: w * 0.46, durationMs: 1100 };
+        } else if (o.kind === 'DOOR') {
           const leaf = new THREE.Mesh(this.track(new THREE.BoxGeometry(w - 0.02, h - 0.02, 0.04)), leafMat);
           leaf.position.set(w / 2, h / 2, 0);
           leaf.castShadow = this.quality.shadows;
@@ -1053,119 +1124,114 @@ export class SceneController {
           const handle = new THREE.Mesh(this.track(new THREE.BoxGeometry(0.12, 0.02, 0.08)), frameMat);
           handle.position.set(w - 0.1, 1.0, 0);
           pivot.add(handle);
+          spec = { id: o.id, kind: 'HINGED', role: 'DOOR', axis: 'y', open: 1.5 * sign, durationMs: 900, initiallyOpen: true };
         } else {
-          const t = 0.05;
-          for (const [bw, bh, x, y] of [[w, t, w / 2, t / 2], [w, t, w / 2, h - t / 2], [t, h, t / 2, h / 2], [t, h, w - t / 2, h / 2]]) {
-            const bar = new THREE.Mesh(this.track(new THREE.BoxGeometry(bw, bh, 0.05)), frameMat);
-            bar.position.set(x, y, 0);
-            pivot.add(bar);
-          }
-          const glass = new THREE.Mesh(this.track(new THREE.PlaneGeometry(w - 2 * t, h - 2 * t)), glassMat);
-          glass.position.set(w / 2, h / 2, 0);
-          pivot.add(glass);
+          glazed(w, 0);
+          spec = { id: o.id, kind: 'HINGED', role: 'WINDOW', axis: 'y', open: 1.1 * sign, durationMs: 800 };
         }
         this.spaceGroup.add(pivot);
-        const spec: InteractionSpec = o.kind === 'DOOR'
-          ? { id: o.id, kind: 'HINGED', role: 'DOOR', axis: 'y', open: 1.5 * sign, durationMs: 900, initiallyOpen: true }
-          : { id: o.id, kind: 'HINGED', role: 'WINDOW', axis: 'y', open: 1.1 * sign, durationMs: 800 };
-        this.addInteractive(`${o.kind === 'DOOR' ? 'door' : 'window'}:${o.id}`, pivot, spec, o.kind === 'DOOR' ? o.id : null, null);
+        const prefix = o.kind === 'DOOR' ? 'door' : 'window';
+        this.living.register(prefix, pivot, [spec], null, { objectId: null, doorId: () => (o.kind === 'DOOR' ? o.id : null) });
       }
     }
-  }
-
-  private registerParts(objectId: string, node: THREE.Object3D, specs: InteractionSpec[]) {
-    for (const spec of specs) {
-      const part = node.getObjectByName(`ix:${spec.id}`);
-      if (part) this.addInteractive(`obj:${objectId}:${spec.id}`, part, spec, null, objectId);
+    // A ceiling light in every indoor room: switchable, and on by itself after dark.
+    const fixtureMat = this.track(new THREE.MeshStandardMaterial({ color: 0xf6f3ee, roughness: 0.6 }));
+    for (const room of space.rooms) {
+      if (room.outdoor) continue;
+      const node = new THREE.Group();
+      node.name = 'ix:fixture';
+      node.position.set(room.centroid.x, space.ceilingHeightM - 0.035, -room.centroid.y);
+      const disc = new THREE.Mesh(this.track(new THREE.CylinderGeometry(0.16, 0.19, 0.05, 28)), fixtureMat);
+      node.add(disc);
+      this.fixturesGroup.add(node);
+      const reach = Math.max(3, Math.hypot(room.bounds.maxX - room.bounds.minX, room.bounds.maxY - room.bounds.minY));
+      this.living.register(`light:${room.id}`, node, [{
+        id: 'ceiling', kind: 'SWITCH', role: 'LIGHT', durationMs: 350,
+        effects: [{ id: 'light', type: 'LIGHT', part: 'fixture', color: '#ffe2bd', intensity: Math.min(9, 2.2 + room.areaM2 * 0.22), distance: reach * 1.1 }],
+      }], null, { objectId: null });
     }
+    this.fixturesGroup.visible = this.ceilingsShown;
   }
 
-  private addInteractive(key: string, node: THREE.Object3D, spec: InteractionSpec, doorId: string | null, objectId: string | null) {
-    const base = spec.kind === 'HINGED' ? node.rotation[spec.axis] : node.position[spec.axis];
-    const ix: Interactive = { key, node, spec, base, value: spec.initiallyOpen ? 1 : 0, motion: null, doorId, objectId };
-    this.applyPart(ix);
-    this.interactives.set(key, ix);
-  }
+  /** What the pointer rests on: a machine's part, or a whole piece (for seats and one-machine pieces). */
+  private aimed: { entry: LiveEntry | null; objectId: string | null; node: THREE.Object3D } | null = null;
+  private aimBox: THREE.Box3Helper | null = null;
+  private aimQueued = false;
+  private lastPointer: { x: number; y: number } | null = null;
+  private onAimChange?: (hint: AimHint | null) => void;
+  private onSeatChange?: (posture: 'SIT' | 'LIE' | null) => void;
 
-  private applyPart(ix: Interactive) {
-    if (ix.spec.kind === 'HINGED') ix.node.rotation[ix.spec.axis] = ix.base + ix.value * ix.spec.open;
-    else ix.node.position[ix.spec.axis] = ix.base + ix.value * ix.spec.open;
-    ix.node.updateMatrixWorld(true);
-  }
-
-  private stepInteractives(now: number): boolean {
-    let moving = false;
-    for (const ix of this.interactives.values()) {
-      if (!ix.motion) continue;
-      const m = motionAt(ix.motion, now);
-      ix.value = m.value;
-      this.applyPart(ix);
-      if (m.done) ix.motion = null; else moving = true;
-    }
-    if (moving && this.aimed) this.refreshAimBox();
-    return moving;
-  }
-
-  /** Open or close one part (walkthrough only). Doors change what can be walked through. */
-  toggleInteractive(key: string): boolean {
-    const ix = this.interactives.get(key);
-    if (!ix || !this.walk) return false;
-    const target: 0 | 1 = ix.value > 0.5 || ix.motion?.to === 1 ? 0 : 1;
-    if (ix.motion && ix.motion.to !== target) { /* reversing mid-way is fine */ }
-    ix.motion = toggleMotion(ix.value, target, ix.spec.durationMs, performance.now(), this.reducedMotion);
-    if (ix.doorId && this.walk) setDoorClosed(this.walk.model, ix.doorId, target === 0);
-    this.onAimChange?.(this.aimed ? { role: this.aimed.spec.role, open: (this.aimed.motion?.to ?? this.aimed.value) >= 0.5 } : null);
-    this.requestRender();
-    return true;
-  }
-
-  /** Every part back to where the design has it: nothing a visitor opened survives. */
-  private resetInteractives() {
-    for (const ix of this.interactives.values()) {
-      ix.motion = null;
-      ix.value = ix.spec.initiallyOpen ? 1 : 0;
-      this.applyPart(ix);
-    }
-    this.setAim(null);
-  }
-
-  /** The keys and states of the parts (for tests and diagnostics). */
-  interactiveStates(): Array<{ key: string; role: string; open: boolean }> {
-    return [...this.interactives.values()].map((ix) => ({ key: ix.key, role: ix.spec.role, open: (ix.motion?.to ?? ix.value) >= 0.5 }));
-  }
-
-  private interactiveAt(clientX: number, clientY: number): Interactive | null {
-    if (!this.interactives.size) return null;
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
-    this.raycaster.setFromCamera(ndc, this.camera);
-    this.raycaster.far = REACH_M;
-    const hits = this.raycaster.intersectObjects([this.spaceGroup, this.objectsGroup, this.modelGroup], true);
-    this.raycaster.far = Infinity;
-    for (const hit of hits) {
-      // The nearest solid thing decides: a part behind a wall is not reachable.
-      for (let o: THREE.Object3D | null = hit.object; o; o = o.parent) {
-        if (o.name.startsWith('ix:')) {
-          for (const ix of this.interactives.values()) if (ix.node === o) return ix;
-        }
-      }
-      if ((hit.object as THREE.Mesh).isMesh && (hit.object as THREE.Mesh).material && !((hit.object as THREE.Mesh).material as THREE.Material).transparent) return null;
+  private objectIdOf(node: THREE.Object3D): string | null {
+    for (let o: THREE.Object3D | null = node; o; o = o.parent) {
+      const pick = (o.userData as PickData | undefined)?.pick;
+      if (pick?.kind === 'object') return pick.id;
+      if (o === this.objectsGroup) return null;
     }
     return null;
   }
 
-  private setAim(ix: Interactive | null) {
-    if (this.aimed === ix) return;
-    this.aimed = ix;
+  private targetAt(clientX: number, clientY: number): { entry: LiveEntry | null; objectId: string | null; node: THREE.Object3D } | null {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    this.raycaster.setFromCamera(ndc, this.camera);
+    this.raycaster.far = REACH_M;
+    const hits = this.raycaster.intersectObjects([this.spaceGroup, this.fixturesGroup, this.objectsGroup, this.modelGroup], true);
+    this.raycaster.far = Infinity;
+    for (const hit of hits) {
+      if (!hit.object.visible) continue;
+      const entry = this.living.entryForPart(hit.object);
+      const objectId = entry?.objectId ?? this.objectIdOf(hit.object);
+      if (entry) return { entry, objectId, node: [...entry.parts.values()][0].node };
+      if (objectId) {
+        const own = this.living.entriesOf(objectId);
+        const seats = this.living.seatsOf(objectId);
+        if (own.length === 1 || seats) {
+          return { entry: own.length === 1 ? own[0] : null, objectId, node: this.objectsById.get(objectId) ?? hit.object };
+        }
+        return null;
+      }
+      // The nearest solid thing decides: a part behind a wall is not reachable.
+      const mat = (hit.object as THREE.Mesh).material as THREE.Material | undefined;
+      if ((hit.object as THREE.Mesh).isMesh && mat && !mat.transparent) return null;
+    }
+    return null;
+  }
+
+  /** The actions on offer for a target, in the order a person would reach for them. */
+  private actionsFor(t: { entry: LiveEntry | null; objectId: string | null }): ActionCode[] {
+    const out: ActionCode[] = [];
+    if (t.entry) out.push(...this.living.actions(t.entry));
+    const seats = t.objectId ? this.living.seatsOf(t.objectId) : undefined;
+    if (seats && !this.walk?.seated) {
+      if (seats.seats.some((s) => s.posture === 'SIT')) out.push('SIT');
+      if (seats.seats.some((s) => s.posture === 'LIE')) out.push('LIE_DOWN');
+    }
+    return [...new Set(out)];
+  }
+
+  private hintFor(t: { entry: LiveEntry | null; objectId: string | null } | null): AimHint | null {
+    if (!t) return null;
+    const actions = this.actionsFor(t);
+    if (!actions.length) return null;
+    const seats = t.objectId ? this.living.seatsOf(t.objectId) : undefined;
+    const role: InteractionRole = t.entry?.machine.role ?? (seats?.seats.some((s) => s.posture === 'LIE') ? 'BED' : 'SEAT');
+    const state = t.entry ? (t.entry.target ?? t.entry.state) : null;
+    return { role, open: t.entry ? isActiveState(t.entry.machine, state!) : false, actions };
+  }
+
+  private setAim(t: { entry: LiveEntry | null; objectId: string | null; node: THREE.Object3D } | null) {
+    const same = this.aimed && t && this.aimed.entry === t.entry && this.aimed.objectId === t.objectId;
+    if (same || (!this.aimed && !t)) return;
+    this.aimed = t && this.hintFor(t) ? t : null;
     if (this.aimBox) { this.overlayGroup.remove(this.aimBox); this.aimBox.geometry.dispose(); (this.aimBox.material as THREE.Material).dispose(); this.aimBox = null; }
-    if (ix) {
-      this.aimBox = new THREE.Box3Helper(new THREE.Box3().setFromObject(ix.node), new THREE.Color(TONE.select));
+    if (this.aimed) {
+      this.aimBox = new THREE.Box3Helper(new THREE.Box3().setFromObject(this.aimed.node), new THREE.Color(TONE.select));
       (this.aimBox.material as THREE.LineBasicMaterial).transparent = true;
-      (this.aimBox.material as THREE.LineBasicMaterial).opacity = 0.7;
+      (this.aimBox.material as THREE.LineBasicMaterial).opacity = 0.55;
       this.overlayGroup.add(this.aimBox);
     }
-    this.renderer.domElement.style.cursor = ix ? 'pointer' : (this.walk ? 'grab' : '');
-    this.onAimChange?.(ix ? { role: ix.spec.role, open: (ix.motion?.to ?? ix.value) >= 0.5 } : null);
+    this.renderer.domElement.style.cursor = this.aimed ? 'pointer' : (this.walk ? 'grab' : '');
+    this.onAimChange?.(this.hintFor(this.aimed));
     this.requestRender();
   }
 
@@ -1182,16 +1248,253 @@ export class SceneController {
       if (!this.walk) return;
       const rect = this.renderer.domElement.getBoundingClientRect();
       const p = this.lastPointer ?? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-      this.setAim(this.interactiveAt(p.x, p.y));
+      this.setAim(this.targetAt(p.x, p.y));
     });
   }
 
-  /** QA harness: aim at a part by key, as if the visitor pointed at it. */
-  debugAim(key: string): boolean {
-    const ix = this.interactives.get(key);
-    if (!ix || !this.walk) return false;
-    this.setAim(ix);
+  /**
+   * Do something with what the visitor is aiming at (a hint button, E, a
+   * tap). Without an action, the first one on offer.
+   */
+  performAimed(action?: ActionCode): boolean {
+    const t = this.aimed;
+    if (!t || !this.walk) return false;
+    const code = action ?? this.actionsFor(t)[0];
+    if (!code) return false;
+    let done = false;
+    if ((code === 'SIT' || code === 'LIE_DOWN') && t.objectId) done = this.sitOn(t.objectId, code === 'SIT' ? 'SIT' : 'LIE');
+    else if (t.entry) done = this.living.act(t.entry.key, code);
+    if (done) this.onAimChange?.(this.hintFor(this.aimed));
+    this.requestRender();
+    return done;
+  }
+
+  /** The old name, kept for the overlay's single-button path. */
+  toggleAimed(): boolean {
+    return this.performAimed();
+  }
+
+  /** Take the first action a machine offers (QA and tests). Walkthrough only. */
+  toggleInteractive(key: string): boolean {
+    const e = this.living.get(key);
+    if (!e || !this.walk) return false;
+    const code = this.living.actions(e)[0];
+    const ok = code ? this.living.act(key, code) : false;
+    this.requestRender();
+    return ok;
+  }
+
+  /** Take a named action on a machine (Live Here, QA). Walkthrough only. */
+  act(key: string, action: ActionCode): boolean {
+    if (!this.walk) return false;
+    const ok = this.living.act(key, action);
+    if (ok && this.aimed?.entry?.key === key) this.onAimChange?.(this.hintFor(this.aimed));
+    this.requestRender();
+    return ok;
+  }
+
+  /** Every part back to where the design has it: nothing a visitor opened survives. */
+  private resetInteractives() {
+    this.living.reset();
+    this.setAim(null);
+  }
+
+  /** Every machine's key, role and state (Live Here, tests and diagnostics). */
+  interactiveStates(): Array<{
+    key: string; role: InteractionRole; state: string; open: boolean; objectId: string | null;
+    actions: ActionCode[]; allActions: ActionCode[]; at: Point; outdoor: boolean;
+  }> {
+    return this.living.states().map((s) => {
+      const e = this.living.get(s.key)!;
+      const at = this.entryPoint(e);
+      return {
+        ...s, objectId: e.objectId, actions: this.living.actions(e),
+        allActions: [...new Set(e.machine.transitions.map((t) => t.action))],
+        at, outdoor: this.isOutdoor(at),
+      };
+    });
+  }
+
+  /** Where an entry is in plan (its first part's centre). */
+  private entryPoint(e: LiveEntry): Point {
+    const node = [...e.parts.values()][0]?.node;
+    const c = node ? new THREE.Box3().setFromObject(node).getCenter(new THREE.Vector3()) : new THREE.Vector3();
+    return { x: c.x, y: -c.z };
+  }
+
+  private isOutdoor(p: Point): boolean {
+    if (!this.space) return false;
+    const id = roomContaining(this.space, p);
+    return !!id && !!this.space.rooms.find((r) => r.id === id)?.outdoor;
+  }
+
+  /** Pieces a visitor can sit or lie on: object id and postures. */
+  seatables(): Array<{ objectId: string; postures: Array<'SIT' | 'LIE'>; at: Point; outdoor: boolean }> {
+    const out: Array<{ objectId: string; postures: Array<'SIT' | 'LIE'>; at: Point; outdoor: boolean }> = [];
+    for (const [id, node] of this.objectsById) {
+      const s = this.living.seatsOf(id);
+      if (!s) continue;
+      const at = { x: node.position.x, y: -node.position.z };
+      out.push({ objectId: id, postures: [...new Set(s.seats.map((a) => a.posture))], at, outdoor: this.isOutdoor(at) });
+    }
+    return out;
+  }
+
+  // ── Walking somewhere on purpose (Live Here) ───────────────────────
+  //
+  // A real route over the free space (never through a wall), walked at a
+  // person's pace, turning to face the way; a closed door on the way is
+  // opened as the visitor reaches it. Any step or look by the visitor takes
+  // over at once.
+
+  /** Walk to stand in front of a machine's part or a piece, facing it. Resolves true on arrival. */
+  approach(target: { key?: string; objectId?: string }): Promise<boolean> {
+    const w = this.walk;
+    if (!w) return Promise.resolve(false);
+    if (w.seated) this.standUp();
+    let at: Point | null = null;
+    let stand: Point | null = null;
+    if (target.objectId && this.objectsById.has(target.objectId)) {
+      const pose = this.objectPose(target.objectId)!;
+      at = { x: pose.x, y: pose.y };
+      const front = { x: -Math.sin(pose.rotation), y: Math.cos(pose.rotation) };
+      stand = { x: at.x + front.x * (pose.depth / 2 + 0.7), y: at.y + front.y * (pose.depth / 2 + 0.7) };
+    }
+    const e = target.key ? this.living.get(target.key) : undefined;
+    if (e) {
+      at = this.entryPoint(e);
+      if (!stand) {
+        const d = Math.hypot(w.pos.x - at.x, w.pos.y - at.y) || 1;
+        stand = { x: at.x + ((w.pos.x - at.x) / d) * 0.95, y: at.y + ((w.pos.y - at.y) / d) * 0.95 };
+      }
+    }
+    if (!at || !stand) return Promise.resolve(false);
+    return this.startRoute(stand, at);
+  }
+
+  /** Walk (a real route) to a Camera Director pose — the guided tour. Without a route, a cut. */
+  routeTo(pose: WalkPose): Promise<boolean> {
+    const w = this.walk;
+    if (!w) return Promise.resolve(false);
+    if (w.seated) this.standUp();
+    this.camera.fov = pose.fov;
+    this.camera.updateProjectionMatrix();
+    return this.startRoute(pose.position, pose.target).then((ok) => {
+      if (!ok && this.walk && !this.walk.route) this.walkTo(pose);
+      return ok;
+    });
+  }
+
+  private startRoute(stand: Point, face: Point): Promise<boolean> {
+    const w = this.walk;
+    if (!w) return Promise.resolve(false);
+    if (w.route) this.cancelRoute(false);
+    const goal = nearestFree(w.model, stand, 1.5);
+    const route = goal ? findPath(w.model, w.pos, goal, { throughDoors: true }) : null;
+    if (!route) return Promise.resolve(false);
+    const doors = new Set(doorsOnRoute(w.model, w.pos, route));
+    return new Promise((resolve) => {
+      w.route = { points: route, i: 0, doors, face, done: resolve };
+      w.vel = { x: 0, y: 0 };
+      w.glide = null;
+      this.requestRender();
+    });
+  }
+
+  /** True while the visitor is being walked somewhere (tour, Live Here). */
+  get routing(): boolean {
+    return !!this.walk?.route;
+  }
+
+  private cancelRoute(arrived = false) {
+    const w = this.walk;
+    if (!w?.route) return;
+    const done = w.route.done;
+    w.route = null;
+    done(arrived);
+  }
+
+  /** One frame of a route: walk toward the next point; open a closed door ahead. */
+  private stepRoute(dt: number): boolean {
+    const w = this.walk!;
+    const r = w.route!;
+    for (const id of r.doors) {
+      const leaf = w.model.doorways.get(id);
+      if (!leaf || !w.model.closedDoors.has(id)) { r.doors.delete(id); continue; }
+      if (Math.hypot(leaf.cx - w.pos.x, leaf.cy - w.pos.y) < 1.4) {
+        const e = [...this.living.all()].find((x) => x.doorId === id);
+        if (e) this.living.act(e.key, 'OPEN');
+        r.doors.delete(id);
+      }
+    }
+    const target = r.points[r.i];
+    if (!target) {
+      // Arrived: turn to face what we came for.
+      const yaw = Math.atan2(r.face.y - w.pos.y, r.face.x - w.pos.x);
+      this.glideTo(w.pos, yaw, w.eye, -0.18, 450);
+      this.cancelRoute(true);
+      return true;
+    }
+    const dx = target.x - w.pos.x;
+    const dy = target.y - w.pos.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 0.12) { r.i += 1; return true; }
+    // Turn toward the way at a comfortable rate, then walk.
+    const want = Math.atan2(dy, dx);
+    const turn = Math.atan2(Math.sin(want - w.yaw), Math.cos(want - w.yaw));
+    w.yaw += Math.sign(turn) * Math.min(Math.abs(turn), 2.4 * dt);
+    const speed = Math.min(1, dist / 0.5) * 1.2 * this.settings.speed;
+    const wish = { x: (dx / dist) * speed, y: (dy / dist) * speed };
+    const before = w.pos;
+    const body = stepBody(w.model, w.pos, w.vel, Math.abs(turn) > 1.2 ? { x: 0, y: 0 } : wish, dt);
+    w.pos = body.pos;
+    w.vel = body.vel;
+    // Held by a door still swinging: wait, the route continues when it is open.
+    if (Math.hypot(w.pos.x - before.x, w.pos.y - before.y) < 1e-4 && Math.abs(turn) < 0.2 && r.doors.size === 0 && !this.living.step(performance.now())) {
+      r.stuck = (r.stuck ?? 0) + dt;
+      if (r.stuck > 2.5) { this.cancelRoute(false); return false; }
+    } else {
+      r.stuck = 0;
+    }
+    this.placeWalkCamera();
+    this.reportRoom();
     return true;
+  }
+
+  /** Attach the page's walkthrough callbacks (the overlay mounts after the walk begins). */
+  setWalkCallbacks(on: WalkCallbacks) {
+    const w = this.walk;
+    if (!w) return;
+    w.onRoom = on.onRoom;
+    this.onAimChange = on.onAim;
+    this.onSeatChange = on.onSeat;
+    this.onMenu = on.onMenu;
+    this.onLockChange = on.onLock;
+    this.onPostureChange = on.onPosture;
+    on.onRoom?.(w.room);
+    on.onAim?.(this.hintFor(this.aimed));
+    on.onPosture?.(w.posture);
+    on.onLock?.(this.pointerLocked);
+  }
+
+  /** QA harness: aim at a machine by key, or at a piece by id, as if the visitor pointed at it. */
+  debugAim(key: string): boolean {
+    if (!this.walk) return false;
+    const e = this.living.get(key);
+    if (e) { this.setAim({ entry: e, objectId: e.objectId, node: [...e.parts.values()][0].node }); return !!this.aimed; }
+    const node = this.objectsById.get(key);
+    if (!node) return false;
+    const own = this.living.entriesOf(key);
+    this.setAim({ entry: own.length === 1 ? own[0] : null, objectId: key, node });
+    return !!this.aimed;
+  }
+
+  /** Where a plan point (at a height) is on screen; null when behind the camera. */
+  screenOf(p: { x: number; y: number }, height = 1): { x: number; y: number } | null {
+    const v = new THREE.Vector3(p.x, height, -p.y).project(this.camera);
+    if (v.z > 1) return null;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    return { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height };
   }
 
   /** Where the rotate handle's grip is on screen (QA and accessibility tooling). */
@@ -1203,9 +1506,144 @@ export class SceneController {
     return { x: rect.left + ((p.x + 1) / 2) * rect.width, y: rect.top + ((1 - p.y) / 2) * rect.height };
   }
 
-  /** The part the visitor is aiming at, opened or closed (E, Enter, Space, or the hint's button). */
-  toggleAimed(): boolean {
-    return this.aimed ? this.toggleInteractive(this.aimed.key) : false;
+  /** The plan position and facing of a piece (Live Here walks the visitor to it). */
+  objectPose(id: string): { x: number; y: number; rotation: number; depth: number } | null {
+    const node = this.objectsById.get(id);
+    if (!node) return null;
+    const box = new THREE.Box3().setFromObject(node);
+    const size = box.getSize(new THREE.Vector3());
+    return { x: node.position.x, y: -node.position.z, rotation: node.rotation.y, depth: Math.min(size.x, size.z) };
+  }
+
+  // ── Sitting and lying down ────────────────────────────────────────
+
+  /** Sit or lie on a piece: the view glides to its seat; any step stands up again. */
+  sitOn(objectId: string, posture: 'SIT' | 'LIE'): boolean {
+    const w = this.walk;
+    const set = this.living.seatsOf(objectId);
+    if (!w || !set) return false;
+    const anchors = set.seats.filter((s) => s.posture === posture);
+    if (!anchors.length) return false;
+    // The nearest seat of that kind (a three-seat sofa has three).
+    const seats = anchors.map((a) => this.living.worldSeat(set, a));
+    seats.sort((a, b) => Math.hypot(a.x - w.pos.x, a.y - w.pos.y) - Math.hypot(b.x - w.pos.x, b.y - w.pos.y));
+    const s = seats[0];
+    w.seated = { objectId, posture, returnTo: w.seated?.returnTo ?? { ...w.pos } };
+    w.vel = { x: 0, y: 0 };
+    this.setPosture(postureTransition(w.posture, posture));
+    this.glideTo({ x: s.x, y: s.y }, s.yaw, s.eye, s.pitch, posture === 'LIE' ? 1300 : 900);
+    this.setAim(null);
+    this.onSeatChange?.(posture);
+    return true;
+  }
+
+  /** Back on your feet where you were standing. */
+  standUp(): boolean {
+    const w = this.walk;
+    if (!w?.seated) return false;
+    const back = w.seated.returnTo;
+    w.seated = null;
+    this.setPosture(postureTransition(w.posture, 'STAND'));
+    this.glideTo(back, w.yaw, EYE_HEIGHT_M, -0.06, 700);
+    this.onSeatChange?.(null);
+    return true;
+  }
+
+  get seatedPosture(): 'SIT' | 'LIE' | null {
+    return this.walk?.seated?.posture ?? null;
+  }
+
+  /** Sit or lie on the aimed piece, or stand up (the overlay's Stand up). */
+  standIfSeated(): boolean {
+    return this.standUp();
+  }
+
+  private glideTo(to: Point, toYaw: number, toEye: number, toPitch: number, durationMs: number) {
+    const w = this.walk;
+    if (!w) return;
+    if (durationMs > 0 && !this.reducedMotion) {
+      w.glide = { from: { ...w.pos }, fromYaw: w.yaw, to, toYaw, fromEye: w.eye, toEye, fromPitch: w.pitch, toPitch, start: performance.now(), duration: durationMs };
+    } else {
+      w.glide = null;
+      w.pos = to; w.yaw = toYaw; w.eye = toEye; w.pitch = toPitch;
+      this.setPosture(postureTransition(w.posture, 'ARRIVED'));
+      this.placeWalkCamera();
+      this.reportRoom();
+    }
+    this.requestRender();
+  }
+
+  // ── The environment: time of day ─────────────────────────────────
+
+  private envOverride: TimeOfDayEnv | null = null;
+  private envTween: { from: LightRig; to: LightRig; start: number; duration: number } | null = null;
+  private designLighting: { timeOfDay: TimeOfDayEnv; temperature: 'WARM' | 'NEUTRAL' | 'COOL'; interiorIntensity: number } | null = null;
+
+  /**
+   * The walkthrough's time of day (temporary, never saved). Light eases to
+   * it, and room lights come on after dark unless the visitor switched them.
+   */
+  setEnvironment(timeOfDay: TimeOfDayEnv | null, animate = true) {
+    this.envOverride = timeOfDay;
+    const base = this.designLighting ?? { timeOfDay: 'DAY' as const, temperature: 'NEUTRAL' as const, interiorIntensity: 0.6 };
+    const to = lightRig({ ...base, timeOfDay: timeOfDay ?? base.timeOfDay });
+    if (animate && !this.reducedMotion) {
+      this.envTween = { from: this.currentRig(), to, start: performance.now(), duration: 1400 };
+    } else {
+      this.envTween = null;
+      this.applyRig(to);
+    }
+    this.followDaylight(timeOfDay ?? base.timeOfDay);
+    this.requestRender();
+  }
+
+  get environment(): TimeOfDayEnv {
+    return this.envOverride ?? this.designLighting?.timeOfDay ?? 'DAY';
+  }
+
+  private followDaylight(tod: TimeOfDayEnv) {
+    if (!this.walk) return;
+    const dark = tod === 'EVENING' || tod === 'NIGHT';
+    for (const e of this.living.all()) {
+      if (e.machine.role !== 'LIGHT' || e.objectId || e.touched) continue;
+      this.living.force(e.key, dark ? 'ON' : 'OFF');
+    }
+  }
+
+  private currentRig(): LightRig {
+    return {
+      sun: this.sun.intensity, sunColor: this.sun.color.clone(), sunPos: this.sun.position.clone(),
+      hemi: this.hemi.intensity, interior: this.interior.intensity, interiorColor: this.interior.color.clone(),
+      background: (this.scene.background as THREE.Color | null)?.clone() ?? new THREE.Color(TONE.background),
+    };
+  }
+
+  private applyRig(r: LightRig) {
+    this.sun.intensity = r.sun;
+    this.sun.color.copy(r.sunColor);
+    this.sun.position.copy(r.sunPos);
+    this.hemi.intensity = r.hemi;
+    this.interior.intensity = r.interior;
+    this.interior.color.copy(r.interiorColor);
+    this.scene.background = r.background.clone();
+  }
+
+  private stepEnvironment(now: number): boolean {
+    const tw = this.envTween;
+    if (!tw) return false;
+    const t = Math.min(1, (now - tw.start) / tw.duration);
+    const k = ease(t);
+    this.applyRig({
+      sun: tw.from.sun + (tw.to.sun - tw.from.sun) * k,
+      sunColor: tw.from.sunColor.clone().lerp(tw.to.sunColor, k),
+      sunPos: tw.from.sunPos.clone().lerp(tw.to.sunPos, k),
+      hemi: tw.from.hemi + (tw.to.hemi - tw.from.hemi) * k,
+      interior: tw.from.interior + (tw.to.interior - tw.from.interior) * k,
+      interiorColor: tw.from.interiorColor.clone().lerp(tw.to.interiorColor, k),
+      background: tw.from.background.clone().lerp(tw.to.background, k),
+    });
+    if (t >= 1) this.envTween = null;
+    return true;
   }
 
   // ── Stills for export ───────────────────────────────────────────────
@@ -1286,7 +1724,13 @@ export class SceneController {
     return !!this.walk;
   }
 
-  enterWalkthrough(model: WalkModel, pose: WalkPose, onRoom?: (roomId: string | null) => void, onAim?: (hint: AimHint | null) => void) {
+  /**
+   * Enter the apartment as a person: eye height, the current design, real
+   * walls. Desktop looks with the mouse (captured on a click, released with
+   * Esc, which opens the menu) or by dragging; touch looks by dragging the
+   * right of the screen while the overlay's left-thumb stick walks.
+   */
+  enterWalkthrough(model: WalkModel, pose: WalkPose, on: WalkCallbacks = {}) {
     if (this.walk) this.exitWalkthrough();
     const saved = this.snapshot();
     this.transition = null;
@@ -1296,24 +1740,32 @@ export class SceneController {
     this.view = 'WALK';
     this.walk = {
       model, pos: pose.position, yaw: Math.atan2(pose.target.y - pose.position.y, pose.target.x - pose.position.x), pitch: -0.06,
-      keys: new Set(), stick: { x: 0, y: 0 }, last: performance.now(), saved, room: null, onRoom, drag: null, glide: null,
+      keys: new Set(), stick: { x: 0, y: 0 }, last: performance.now(), saved, room: null, onRoom: on.onRoom, glide: null,
+      eye: EYE_HEIGHT_M, seated: null, vel: { x: 0, y: 0 }, brisk: false, posture: 'STANDING', route: null,
     };
+    this.onSeatChange = on.onSeat;
+    this.onMenu = on.onMenu;
+    this.onLockChange = on.onLock;
+    this.onPostureChange = on.onPosture;
     this.camera.fov = pose.fov;
     this.camera.updateProjectionMatrix();
-    this.onAimChange = onAim;
+    this.onAimChange = on.onAim;
     this.lastPointer = null;
     // Doors start as the design shows them: closed doors block from the first step.
-    for (const ix of this.interactives.values()) if (ix.doorId) setDoorClosed(model, ix.doorId, ix.value < 0.5);
+    for (const e of this.living.all()) if (e.doorId) setDoorClosed(model, e.doorId, !!e.machine.states.get(e.target ?? e.state)?.blocks);
+    this.followDaylight(this.environment);
     this.renderer.domElement.style.cursor = 'grab';
     this.updateHandle();
     window.addEventListener('keydown', this.onWalkKey);
     window.addEventListener('keyup', this.onWalkKey);
     window.addEventListener('blur', this.clearWalkInput);
+    document.addEventListener('pointerlockchange', this.onLockEvent);
+    document.addEventListener('mousemove', this.onLockedMouse);
     const el = this.renderer.domElement;
     el.addEventListener('pointerdown', this.onLookDown);
     el.addEventListener('pointermove', this.onLookMove);
     el.addEventListener('pointerup', this.onLookUp);
-    el.addEventListener('pointercancel', this.onLookUp);
+    el.addEventListener('pointercancel', this.onLookCancel);
     this.placeWalkCamera();
     this.reportRoom();
     this.requestRender();
@@ -1322,21 +1774,32 @@ export class SceneController {
   exitWalkthrough() {
     const w = this.walk;
     if (!w) return;
+    if (w.route) { const done = w.route.done; w.route = null; done(false); }
     this.walk = null;
+    this.leavingLock = true;
+    if (document.pointerLockElement === this.renderer.domElement) document.exitPointerLock?.();
     window.removeEventListener('keydown', this.onWalkKey);
     window.removeEventListener('keyup', this.onWalkKey);
     window.removeEventListener('blur', this.clearWalkInput);
+    document.removeEventListener('pointerlockchange', this.onLockEvent);
+    document.removeEventListener('mousemove', this.onLockedMouse);
     const el = this.renderer.domElement;
     el.removeEventListener('pointerdown', this.onLookDown);
     el.removeEventListener('pointermove', this.onLookMove);
     el.removeEventListener('pointerup', this.onLookUp);
-    el.removeEventListener('pointercancel', this.onLookUp);
+    el.removeEventListener('pointercancel', this.onLookCancel);
+    this.gestures.clear();
     this.controls.enabled = true;
     this.setCutaway(true);
     this.setCeilings(false);
     this.view = 'OVERVIEW';
     this.resetInteractives();
     this.onAimChange = undefined;
+    this.onSeatChange = undefined;
+    this.onMenu = undefined;
+    this.onLockChange = undefined;
+    this.onPostureChange = undefined;
+    if (this.envOverride) this.setEnvironment(null, false);
     this.renderer.domElement.style.cursor = '';
     this.restore(w.saved, false);
   }
@@ -1349,20 +1812,12 @@ export class SceneController {
   walkTo(pose: WalkPose, durationMs = 0) {
     const w = this.walk;
     if (!w) return;
-    const toYaw = Math.atan2(pose.target.y - pose.position.y, pose.target.x - pose.position.x);
+    if (w.seated) { w.seated = null; this.onSeatChange?.(null); this.setPosture('STANDING'); }
+    w.vel = { x: 0, y: 0 };
     this.camera.fov = pose.fov;
     this.camera.updateProjectionMatrix();
-    w.pitch = -0.06;
-    if (durationMs > 0 && !this.reducedMotion) {
-      w.glide = { from: { ...w.pos }, fromYaw: w.yaw, to: pose.position, toYaw, start: performance.now(), duration: durationMs };
-    } else {
-      w.glide = null;
-      w.pos = pose.position;
-      w.yaw = toYaw;
-      this.placeWalkCamera();
-      this.reportRoom();
-    }
-    this.requestRender();
+    const toYaw = Math.atan2(pose.target.y - pose.position.y, pose.target.x - pose.position.x);
+    this.glideTo(pose.position, toYaw, EYE_HEIGHT_M, -0.06, durationMs);
   }
 
   /** True while a glide is under way (the guided tour waits for it). */
@@ -1374,96 +1829,310 @@ export class SceneController {
   setWalkStick(x: number, y: number) {
     if (!this.walk) return;
     this.walk.stick = { x: Math.max(-1, Math.min(1, x)), y: Math.max(-1, Math.min(1, y)) };
-    if (x || y) this.walk.glide = null;
-    this.walk.last = performance.now();
+    if (x || y) this.walk.glide = this.walk.seated ? this.walk.glide : null;
     this.requestRender();
+  }
+
+  /** Touch look from the overlay (a drag that began over the stick zone). */
+  lookBy(dxPx: number, dyPx: number) {
+    const w = this.walk;
+    if (!w) return;
+    const next = look(w.yaw, w.pitch, dxPx, dyPx, this.settings);
+    w.yaw = next.yaw; w.pitch = next.pitch;
+    this.placeWalkCamera();
+    this.lastPointer = null;
+    this.queueAim();
+    this.requestRender();
+  }
+
+  /** Interact with whatever is at a screen point (a tap the overlay received). */
+  tapAt(clientX: number, clientY: number): boolean {
+    if (!this.walk) return false;
+    const hit = this.targetAt(clientX, clientY);
+    if (!hit) return false;
+    this.setAim(hit);
+    return this.performAimed();
   }
 
   walkPosition(): Point | null {
     return this.walk ? { ...this.walk.pos } : null;
   }
 
+  /** Where the visitor is and how (tests, Live Here). */
+  playerState(): { pos: Point; yaw: number; pitch: number; eye: number; posture: Posture; speed: number; locked: boolean } | null {
+    const w = this.walk;
+    if (!w) return null;
+    return { pos: { ...w.pos }, yaw: w.yaw, pitch: w.pitch, eye: w.eye, posture: w.posture, speed: Math.hypot(w.vel.x, w.vel.y), locked: this.pointerLocked };
+  }
+
+  // ── Settings ──────────────────────────────────────────────────────
+
+  private settings: PlayerSettings = DEFAULT_SETTINGS;
+  private baseReducedMotion = false;
+
+  setPlayerSettings(s: Partial<PlayerSettings>) {
+    this.settings = normalizeSettings({ ...this.settings, ...s });
+    this.reducedMotion = this.baseReducedMotion || this.settings.reducedMotion;
+    this.living.setReducedMotion(this.reducedMotion);
+  }
+
+  // ── Input ─────────────────────────────────────────────────────────
+
+  private onMenu?: () => void;
+  private onLockChange?: (locked: boolean) => void;
+  private onPostureChange?: (posture: Posture) => void;
+  private pointerLocked = false;
+  private lockUnavailable = false;
+  private leavingLock = false;
+
+  private setPosture(p: Posture) {
+    const w = this.walk;
+    if (!w || w.posture === p) return;
+    w.posture = p;
+    this.onPostureChange?.(p);
+  }
+
+  /** Capture the mouse for looking (desktop). Must be called from a click. */
+  lockPointer(): boolean {
+    const el = this.renderer.domElement as HTMLCanvasElement & { requestPointerLock?: () => Promise<void> | void };
+    if (!this.walk || this.lockUnavailable || !el.requestPointerLock) return false;
+    try {
+      const r = el.requestPointerLock();
+      if (r && typeof (r as Promise<void>).catch === 'function') (r as Promise<void>).catch(() => { this.lockUnavailable = true; });
+      return true;
+    } catch {
+      this.lockUnavailable = true;
+      return false;
+    }
+  }
+
+  private onLockEvent = () => {
+    const locked = document.pointerLockElement === this.renderer.domElement;
+    if (locked === this.pointerLocked) return;
+    this.pointerLocked = locked;
+    this.renderer.domElement.style.cursor = locked ? 'none' : (this.walk ? 'grab' : '');
+    this.lastPointer = null;
+    this.onLockChange?.(locked);
+    // Esc released the mouse: the menu opens (unless we are leaving on purpose).
+    if (!locked && this.walk && !this.leavingLock) this.onMenu?.();
+    this.leavingLock = false;
+    this.queueAim();
+  };
+
+  /** Release the mouse without opening the menu (the menu's own buttons). */
+  releasePointer() {
+    if (document.pointerLockElement !== this.renderer.domElement) return;
+    this.leavingLock = true;
+    document.exitPointerLock?.();
+  }
+
   private onWalkKey = (e: KeyboardEvent) => {
     const w = this.walk;
     if (!w) return;
+    const el = e.target as HTMLElement | null;
+    const typing = !!el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+    if (typing) return;
+    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { w.brisk = e.type === 'keydown'; return; }
+    if (e.type === 'keydown' && e.code === 'Escape') {
+      // Locked, the browser takes Esc to release the mouse (and we open the menu then).
+      if (!this.pointerLocked) { e.preventDefault(); this.onMenu?.(); }
+      return;
+    }
     if ((e.code === 'KeyE' || e.code === 'Enter' || e.code === 'Space') && e.type === 'keydown') {
-      const el = e.target as HTMLElement | null;
-      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
       // Enter and Space already press a focused button; E never does.
       if (el && e.code !== 'KeyE' && /^(BUTTON|A)$/.test(el.tagName)) return;
       e.preventDefault();
-      this.lastPointer = null;
-      const rect = this.renderer.domElement.getBoundingClientRect();
-      this.setAim(this.interactiveAt(rect.left + rect.width / 2, rect.top + rect.height / 2));
-      this.toggleAimed();
+      if (!this.aimed || this.pointerLocked) {
+        this.lastPointer = null;
+        const rect = this.renderer.domElement.getBoundingClientRect();
+        this.setAim(this.targetAt(rect.left + rect.width / 2, rect.top + rect.height / 2));
+      }
+      this.performAimed();
       return;
     }
     if (!WALK_KEYS.has(e.code)) return;
-    const el = e.target as HTMLElement | null;
-    if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
     e.preventDefault();
     if (e.type === 'keydown') {
       if (!w.keys.size) w.last = performance.now();
-      w.glide = null;
       w.keys.add(e.code);
     } else {
       w.keys.delete(e.code);
     }
+    w.brisk = e.shiftKey;
     this.requestRender();
   };
 
   private clearWalkInput = () => {
     if (!this.walk) return;
     this.walk.keys.clear();
+    this.walk.brisk = false;
     this.walk.stick = { x: 0, y: 0 };
   };
 
-  private tap: { id: number; x: number; y: number; t: number } | null = null;
+  /**
+   * One pointer's gesture on the canvas. Starting on a part that opens by
+   * hand (a door, a drawer, a sliding door) and dragging moves the part;
+   * starting anywhere else and dragging looks around; a short press
+   * without movement interacts with what it lands on (or, on empty space
+   * with a mouse, captures the mouse for looking).
+   */
+  private gestures = new Map<number, {
+    x: number; y: number; t: number; lastX: number; lastY: number; moved: number; locked: boolean; mouse: boolean;
+    part: { key: string; t0: number; dir: { x: number; y: number }; lenSq: number; lastT: number; lastAt: number; fling: number } | null;
+    scrubbing: boolean; total: { x: number; y: number };
+  }>();
+
+  /** The screen direction a two-state part travels as it opens, and how far (px). */
+  private scrubAxis(key: string): { dir: { x: number; y: number }; lenSq: number; t0: number } | null {
+    const e = this.living.get(key);
+    if (!e || !this.living.canScrub(e)) return null;
+    const node = [...e.parts.values()][0]?.node;
+    if (!node) return null;
+    const t0 = this.living.progress(e);
+    const at = (t: number) => {
+      this.living.scrubTo(key, t);
+      const c = new THREE.Box3().setFromObject(node).getCenter(new THREE.Vector3()).project(this.camera);
+      const rect = this.renderer.domElement.getBoundingClientRect();
+      return { x: ((c.x + 1) / 2) * rect.width, y: ((1 - c.y) / 2) * rect.height };
+    };
+    const a = at(0);
+    const b = at(1);
+    this.living.scrubTo(key, t0);
+    let dir = { x: b.x - a.x, y: b.y - a.y };
+    let lenSq = dir.x * dir.x + dir.y * dir.y;
+    // Seen edge-on a part barely moves on screen; a sensible minimum keeps it draggable.
+    if (lenSq < 90 * 90) {
+      const len = Math.sqrt(lenSq) || 1;
+      dir = lenSq > 1 ? { x: (dir.x / len) * 90, y: (dir.y / len) * 90 } : { x: 90, y: 0 };
+      lenSq = 90 * 90;
+    }
+    return { dir, lenSq, t0 };
+  }
+
+  private beginGesture(id: number, x: number, y: number, mouse: boolean) {
+    const locked = this.pointerLocked && mouse;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const px = locked ? rect.left + rect.width / 2 : x;
+    const py = locked ? rect.top + rect.height / 2 : y;
+    const hit = this.targetAt(px, py);
+    let part: NonNullable<ReturnType<typeof this.gestures.get>>['part'] = null;
+    if (hit?.entry && this.living.canScrub(hit.entry)) {
+      const axis = this.scrubAxis(hit.entry.key);
+      if (axis) part = { key: hit.entry.key, ...axis, lastT: axis.t0, lastAt: performance.now(), fling: 0 };
+    }
+    this.gestures.set(id, { x, y, t: performance.now(), lastX: x, lastY: y, moved: 0, locked, mouse, part, scrubbing: false, total: { x: 0, y: 0 } });
+  }
+
+  private moveGesture(id: number, dx: number, dy: number) {
+    const g = this.gestures.get(id);
+    const w = this.walk;
+    if (!g || !w) return;
+    g.moved += Math.hypot(dx, dy);
+    g.total = { x: g.total.x + dx, y: g.total.y + dy };
+    if (g.part && g.moved > 6) {
+      // The part is in the visitor's hand: it follows the drag exactly.
+      g.scrubbing = true;
+      const p = g.part;
+      const t = Math.max(0, Math.min(1, p.t0 + (g.total.x * p.dir.x + g.total.y * p.dir.y) / p.lenSq));
+      const now = performance.now();
+      if (now > p.lastAt) p.fling = ((t - p.lastT) / (now - p.lastAt)) * 1000;
+      p.lastT = t;
+      p.lastAt = now;
+      this.living.scrubTo(p.key, t);
+      this.refreshAimBox();
+      this.requestRender();
+      return;
+    }
+    if (g.part) return;
+    if (w.route && g.moved > 6) this.cancelRoute(false);
+    const next = look(w.yaw, w.pitch, dx, dy, this.settings);
+    w.yaw = next.yaw;
+    w.pitch = next.pitch;
+    this.placeWalkCamera();
+    this.requestRender();
+  }
+
+  private endGesture(id: number, x: number, y: number) {
+    const g = this.gestures.get(id);
+    this.gestures.delete(id);
+    if (!g || !this.walk) return;
+    if (g.scrubbing && g.part) {
+      this.living.scrubEnd(g.part.key, g.part.fling);
+      this.requestRender();
+      return;
+    }
+    const quick = performance.now() - g.t < 450 && g.moved < 8;
+    if (!quick) return;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const px = g.locked ? rect.left + rect.width / 2 : x;
+    const py = g.locked ? rect.top + rect.height / 2 : y;
+    const hit = this.targetAt(px, py);
+    if (hit) {
+      this.setAim(hit);
+      this.performAimed();
+      return;
+    }
+    // A click on empty space captures the mouse for looking (desktop).
+    if (g.mouse && !g.locked) this.lockPointer();
+  }
 
   private onLookDown = (e: PointerEvent) => {
     if (!this.walk || (e.pointerType === 'mouse' && e.button !== 0)) return;
-    this.tap = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now() };
-    this.walk.drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
-    this.renderer.domElement.setPointerCapture?.(e.pointerId);
+    this.beginGesture(e.pointerId, e.clientX, e.clientY, e.pointerType === 'mouse');
+    if (!this.pointerLocked) this.renderer.domElement.setPointerCapture?.(e.pointerId);
   };
 
   private onLookMove = (e: PointerEvent) => {
     const w = this.walk;
-    if (w && e.pointerType === 'mouse' && !w.drag) {
-      // Hover: point at something that opens, and it says so.
-      this.lastPointer = { x: e.clientX, y: e.clientY };
-      this.queueAim();
+    if (!w) return;
+    if (e.pointerType === 'mouse' && this.pointerLocked) return; // handled as raw mouse movement
+    const g = this.gestures.get(e.pointerId);
+    if (!g) {
+      if (e.pointerType === 'mouse') {
+        // Hover: point at something that can be used, and it says so.
+        this.lastPointer = { x: e.clientX, y: e.clientY };
+        this.queueAim();
+      }
+      return;
     }
-    if (!w?.drag || w.drag.id !== e.pointerId) return;
-    const dx = e.clientX - w.drag.x;
-    const dy = e.clientY - w.drag.y;
-    w.drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
-    w.yaw -= dx * LOOK_RAD_PER_PX;
-    w.pitch = Math.max(-0.9, Math.min(0.6, w.pitch - dy * LOOK_RAD_PER_PX));
+    const dx = e.clientX - g.lastX;
+    const dy = e.clientY - g.lastY;
+    g.lastX = e.clientX;
+    g.lastY = e.clientY;
+    this.moveGesture(e.pointerId, dx, dy);
+  };
+
+  /** Raw mouse movement while the mouse is captured: look (or drag a part being held). */
+  private onLockedMouse = (e: MouseEvent) => {
+    if (!this.walk || !this.pointerLocked) return;
+    const held = [...this.gestures.entries()].find(([, g]) => g.locked);
+    if (held) { this.moveGesture(held[0], e.movementX, e.movementY); return; }
+    const w = this.walk;
+    const next = look(w.yaw, w.pitch, e.movementX, e.movementY, this.settings);
+    w.yaw = next.yaw;
+    w.pitch = next.pitch;
     this.placeWalkCamera();
+    this.lastPointer = null;
+    this.queueAim();
     this.requestRender();
   };
 
   private onLookUp = (e: PointerEvent) => {
-    if (this.walk?.drag?.id === e.pointerId) this.walk.drag = null;
-    // A tap (short, barely moved) opens or closes what it lands on.
-    const t = this.tap;
-    this.tap = null;
-    if (!this.walk || !t || t.id !== e.pointerId) return;
-    if (performance.now() - t.t > 350 || Math.hypot(e.clientX - t.x, e.clientY - t.y) > 8) return;
-    const hit = this.interactiveAt(e.clientX, e.clientY);
-    if (hit) {
-      this.setAim(hit);
-      this.toggleInteractive(hit.key);
-    }
+    this.endGesture(e.pointerId, e.clientX, e.clientY);
+  };
+
+  private onLookCancel = (e: PointerEvent) => {
+    const g = this.gestures.get(e.pointerId);
+    this.gestures.delete(e.pointerId);
+    if (g?.scrubbing && g.part) this.living.scrubEnd(g.part.key, 0);
   };
 
   private placeWalkCamera() {
     const w = this.walk;
     if (!w) return;
-    this.camera.position.set(w.pos.x, EYE_HEIGHT_M, -w.pos.y);
+    this.camera.position.set(w.pos.x, w.eye, -w.pos.y);
     const cp = Math.cos(w.pitch);
-    this.camera.lookAt(w.pos.x + Math.cos(w.yaw) * cp, EYE_HEIGHT_M + Math.sin(w.pitch), -(w.pos.y + Math.sin(w.yaw) * cp));
+    this.camera.lookAt(w.pos.x + Math.cos(w.yaw) * cp, w.eye + Math.sin(w.pitch), -(w.pos.y + Math.sin(w.yaw) * cp));
   }
 
   private reportRoom() {
@@ -1476,39 +2145,53 @@ export class SceneController {
     }
   }
 
-  /** One frame of walking. Returns true while input is active (keep drawing). */
+  /** One frame of walking. Returns true while the body is moving or input is active (keep drawing). */
   private stepWalk(now: number): boolean {
     const w = this.walk!;
     const dt = Math.min(0.05, Math.max(0, (now - w.last) / 1000));
     w.last = now;
     if (w.glide) {
       const g = w.glide;
-      const t = Math.min(1, (now - g.start) / g.duration);
-      const k = ease(t);
+      const t = g.duration <= 0 ? 1 : Math.min(1, (now - g.start) / g.duration);
+      const k = easeInOutCubic(t);
       w.pos = { x: g.from.x + (g.to.x - g.from.x) * k, y: g.from.y + (g.to.y - g.from.y) * k };
       w.yaw = g.fromYaw + Math.atan2(Math.sin(g.toYaw - g.fromYaw), Math.cos(g.toYaw - g.fromYaw)) * k;
-      if (t >= 1) w.glide = null;
+      w.eye = g.fromEye + (g.toEye - g.fromEye) * k;
+      w.pitch = g.fromPitch + (g.toPitch - g.fromPitch) * k;
+      if (t >= 1) {
+        w.glide = null;
+        this.setPosture(postureTransition(w.posture, 'ARRIVED'));
+      }
       this.placeWalkCamera();
       this.reportRoom();
       return true;
     }
     const k = (code: string) => (w.keys.has(code) ? 1 : 0);
-    const forward = k('KeyW') + k('ArrowUp') - k('KeyS') - k('ArrowDown') - w.stick.y;
-    const strafe = k('KeyD') - k('KeyA') + w.stick.x;
-    const turn = k('ArrowRight') + k('KeyE') - k('ArrowLeft') - k('KeyQ');
-    const active = forward !== 0 || strafe !== 0 || turn !== 0;
-    if (!active) return false;
-    w.yaw -= turn * TURN_RAD_S * dt;
-    const f = { x: Math.cos(w.yaw), y: Math.sin(w.yaw) };
-    const r = { x: Math.sin(w.yaw), y: -Math.cos(w.yaw) };
-    let mx = f.x * forward + r.x * strafe;
-    let my = f.y * forward + r.y * strafe;
-    const len = Math.hypot(mx, my);
-    if (len > 1) { mx /= len; my /= len; }
-    w.pos = walkMove(w.model, w.pos, { x: mx * WALK_SPEED_M_S * dt, y: my * WALK_SPEED_M_S * dt });
+    const input = {
+      forward: Math.max(-1, Math.min(1, k('KeyW') + k('ArrowUp') - k('KeyS') - k('ArrowDown') - w.stick.y)),
+      strafe: Math.max(-1, Math.min(1, k('KeyD') + k('ArrowRight') - k('KeyA') - k('ArrowLeft') + w.stick.x)),
+      // A full push of the stick is a brisk walk, like Shift on a keyboard.
+      brisk: w.brisk || Math.hypot(w.stick.x, w.stick.y) > 0.96,
+    };
+    const wantsToMove = input.forward !== 0 || input.strafe !== 0;
+    if (w.route) {
+      if (wantsToMove) this.cancelRoute(false);
+      else return this.stepRoute(dt);
+    }
+    // Seated, a step means getting up first.
+    if (!canWalk(w.posture)) {
+      if (wantsToMove && (w.posture === 'SEATED' || w.posture === 'LYING')) this.standUp();
+      return wantsToMove;
+    }
+    const wish = wishVelocity(input, w.yaw, this.settings);
+    const moving = Math.hypot(w.vel.x, w.vel.y) > 1e-3;
+    if (!wantsToMove && !moving) return false;
+    const body = stepBody(w.model, w.pos, w.vel, wish, dt);
+    w.pos = body.pos;
+    w.vel = body.vel;
     this.placeWalkCamera();
     this.reportRoom();
-    this.lastPointer = null;
+    this.lastPointer = this.pointerLocked ? null : this.lastPointer;
     this.queueAim();
     return true;
   }
@@ -1526,6 +2209,8 @@ export class SceneController {
     this.clearGroup(this.spaceGroup);
     this.clearGroup(this.modelGroup);
     this.clearGroup(this.objectsGroup);
+    this.clearGroup(this.fixturesGroup);
+    this.living.dispose();
     for (const d of this.disposables) d.dispose();
     this.listeners.clear();
     this.renderer.dispose();

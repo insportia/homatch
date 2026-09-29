@@ -90,6 +90,10 @@ CREATE TABLE IF NOT EXISTS public.ds_floorplans (
   interpretation_error text,
   corrections          jsonb NOT NULL DEFAULT '[]'::jsonb
                          CHECK (jsonb_typeof(corrections) = 'array'),
+  -- PLAN: a drawn floor plan. REFERENCE: a picture of the home (a render, a
+  -- photo) read by the reconstruction; its reading is an estimated plan in
+  -- the same document shape, so review, calibration and geometry are shared.
+  purpose              text NOT NULL DEFAULT 'PLAN' CHECK (purpose IN ('PLAN','REFERENCE')),
   created_at           timestamptz NOT NULL DEFAULT now(),
   updated_at           timestamptz NOT NULL DEFAULT now()
 );
@@ -252,10 +256,14 @@ CREATE TABLE IF NOT EXISTS public.ds_catalog_assets (
   clearance_m    numeric(4,2) NOT NULL DEFAULT 0 CHECK (clearance_m >= 0 AND clearance_m <= 3),
   -- Procedural shape for placeholders ({kind:'SOFA',...}); NULL for real models.
   procedural     jsonb,
-  -- What the design may do with the piece, and the parts that open in the
-  -- walkthrough (hinge/slide specs; a model names its parts ix:<id>).
-  capabilities   text[] NOT NULL DEFAULT '{MOVABLE,ROTATABLE,REPLACEABLE}'
-                   CHECK (capabilities <@ ARRAY['MOVABLE','ROTATABLE','REPLACEABLE','HIDEABLE','OPENABLE','SLIDABLE','INTERACTIVE']::text[]),
+  -- What the design may do with the piece and what it offers a visitor
+  -- (sit, switch, open…), and how its living parts behave in the walkthrough
+  -- (hinges, slides, switches, state machines, seats; a model names its
+  -- parts ix:<id>). The walkthrough performs only what is declared AND permitted.
+  capabilities   text[] NOT NULL DEFAULT '{MOVABLE,ROTATABLE,REPLACEABLE,DUPLICATABLE}'
+                   CHECK (capabilities <@ ARRAY['MOVABLE','ROTATABLE','REPLACEABLE','DUPLICATABLE','HIDEABLE',
+                     'OPENABLE','SLIDABLE','SITTABLE','LIEABLE','SWITCHABLE','DIMMABLE','PICKABLE','PLACEABLE',
+                     'POURABLE','DRINKABLE','COOKABLE','WASHABLE','INTERACTIVE']::text[]),
   interactions   jsonb NOT NULL DEFAULT '[]'::jsonb
                    CHECK (jsonb_typeof(interactions) = 'array' AND jsonb_array_length(interactions) <= 24),
   model_key      text,
@@ -340,7 +348,7 @@ CREATE TABLE IF NOT EXISTS public.ds_jobs (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id     uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
   project_id  uuid REFERENCES public.ds_projects(id) ON DELETE CASCADE,
-  kind        text NOT NULL CHECK (kind IN ('FLOORPLAN_INTERPRET','MODEL_INGEST','AI_DESIGN','RENDER')),
+  kind        text NOT NULL CHECK (kind IN ('FLOORPLAN_INTERPRET','MODEL_INGEST','AI_DESIGN','RENDER','RECONSTRUCT')),
   status      text NOT NULL DEFAULT 'QUEUED'
                 CHECK (status IN ('QUEUED','RUNNING','SUCCEEDED','FAILED','CANCELLED')),
   input       jsonb NOT NULL DEFAULT '{}'::jsonb,
@@ -465,6 +473,7 @@ BEGIN
        OR NEW.user_id IS DISTINCT FROM OLD.user_id
        OR NEW.object_key IS DISTINCT FROM OLD.object_key
        OR NEW.mime IS DISTINCT FROM OLD.mime
+       OR NEW.purpose IS DISTINCT FROM OLD.purpose
        OR NEW.bytes IS DISTINCT FROM OLD.bytes
        OR NEW.sha256 IS DISTINCT FROM OLD.sha256
        OR NEW.status IS DISTINCT FROM OLD.status

@@ -360,7 +360,7 @@ test('the /d/ design link is rewritten to the viewer like /w/', () => {
 });
 
 test('what a piece may do is declared on the asset and enforced by the operations', () => {
-  assert.match(MIGRATION, /capabilities\s+text\[\] NOT NULL DEFAULT '\{MOVABLE,ROTATABLE,REPLACEABLE\}'/);
+  assert.match(MIGRATION, /capabilities\s+text\[\] NOT NULL DEFAULT '\{MOVABLE,ROTATABLE,REPLACEABLE,DUPLICATABLE\}'/);
   assert.match(MIGRATION, /interactions\s+jsonb NOT NULL DEFAULT '\[\]'/);
   const ops = read('src/lib/designStudio/operations.ts');
   for (const cap of ['MOVABLE', 'ROTATABLE', 'REPLACEABLE']) assert.match(ops, new RegExp(`'${cap}'`), `operations do not check ${cap}`);
@@ -378,7 +378,8 @@ test('opening doors and cupboards is visitor-only: never an operation, never sav
   }
   // Motion is time-based and runs in the render loop, not through React state.
   assert.match(read('src/lib/designStudio/interactions.ts'), /export function motionAt/);
-  assert.match(scene, /stepInteractives\(/);
+  assert.match(scene, /this\.living\.step\(now\)/);
+  assert.match(read('src/components/designStudio/canvas/livingRuntime.ts'), /easeInOut\(raw\)/);
 });
 
 test('closed doors block the walk; open ones let you through', () => {

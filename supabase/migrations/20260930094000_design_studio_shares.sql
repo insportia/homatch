@@ -146,6 +146,7 @@ DECLARE
   v_source    record;
   v_project   record;
   v_hash      text;
+  v_state     jsonb;
   v_published uuid;
   v_token     text;
   v_share     uuid;
@@ -182,9 +183,15 @@ BEGIN
    WHERE user_id = v_uid AND created_at > now() - interval '1 hour';
   IF v_recent >= 500 THEN RAISE EXCEPTION 'DS_SHARE_RATE_LIMITED'; END IF;
 
-  v_hash := encode(extensions.digest(v_version.state::text, 'sha256'), 'hex');
+  -- The public snapshot carries the design, not how it was made: where a
+  -- piece came from (reference picture ids, match scores) stays private.
+  v_state := CASE WHEN jsonb_typeof(v_version.state->'objects') = 'array'
+    THEN jsonb_set(v_version.state, '{objects}',
+      coalesce((SELECT jsonb_agg(o - 'provenance' ORDER BY n) FROM jsonb_array_elements(v_version.state->'objects') WITH ORDINALITY AS x(o, n)), '[]'::jsonb))
+    ELSE v_version.state END;
+  v_hash := encode(extensions.digest(v_state::text, 'sha256'), 'hex');
   INSERT INTO public.ds_published_designs (project_id, user_id, version_id, source_id, state, state_hash, title)
-  VALUES (v_version.project_id, v_uid, v_version.id, v_version.source_id, v_version.state, v_hash, left(v_project.name, 80))
+  VALUES (v_version.project_id, v_uid, v_version.id, v_version.source_id, v_state, v_hash, left(v_project.name, 80))
   ON CONFLICT (version_id, state_hash) DO NOTHING;
   SELECT id INTO v_published FROM public.ds_published_designs WHERE version_id = v_version.id AND state_hash = v_hash;
 

@@ -122,7 +122,8 @@ export function planToOperations(
     const before = ops.length;
 
     if (plan.clearFurniture) {
-      for (const obj of working.objects.filter((o) => o.roomId === room.id && !o.locked)) {
+      // Locked pieces, and pieces the customer confirmed from their own picture, stay.
+      for (const obj of working.objects.filter((o) => o.roomId === room.id && !o.locked && !o.provenance?.confirmed)) {
         if (attempt({ type: 'REMOVE_OBJECT', instanceId: obj.instanceId }, { roomId: room.id, what: 'CLEAR', code: obj.assetId })) summary.removed += 1;
       }
     }

@@ -25,8 +25,8 @@ import { SHARE_LANGS, SHARE_STRINGS, type ShareLang } from './strings';
 const LANG_KEY = 'homatch_lang';
 const RTL = new Set<ShareLang>(['ar', 'he']);
 const LANG_NAMES: Record<ShareLang, string> = { en: 'English', ka: 'ქართული', ru: 'Русский', tr: 'Türkçe', ar: 'العربية', he: 'עברית' };
-const TOUR_STEP_MS = 7000;
-const TOUR_GLIDE_MS = 2400;
+/** How long the guided tour lingers in each room before walking on. */
+const TOUR_DWELL_MS = 3500;
 
 type Status = 'REVOKED' | 'EXPIRED' | 'NOT_FOUND' | 'UNAVAILABLE' | 'ERROR';
 
@@ -86,7 +86,10 @@ const KIND_KEY: Record<string, string> = {
 
 export function ShareViewer() {
   const [lang, setLang] = useState<ShareLang>(initialLang);
-  const say = useCallback((k: string) => SHARE_STRINGS[lang][k] ?? SHARE_STRINGS.en[k] ?? k, [lang]);
+  const say = useCallback((k: string, vars?: Record<string, string | number>) => {
+    const text = SHARE_STRINGS[lang][k] ?? SHARE_STRINGS.en[k] ?? k;
+    return vars ? text.replace(/\{\{(\w+)\}\}/g, (m, name: string) => (name in vars ? String(vars[name]) : m)) : text;
+  }, [lang]);
   const token = useMemo(() => tokenFromLocation(), []);
   const [load, setLoad] = useState<{ phase: 'LOADING' } | { phase: 'STATE'; status: Status } | { phase: 'READY'; data: SharePayload }>({ phase: 'LOADING' });
   const [attempt, setAttempt] = useState(0);
@@ -147,9 +150,9 @@ function Presentation({ data, say, picker }: { data: SharePayload; say: (k: stri
   const [walking, setWalking] = useState(false);
   const [room, setRoom] = useState<string | null>(null);
   const [touring, setTouring] = useState(false);
-  // What the visitor points at. Opening things here is temporary: it never
-  // reaches the shared design, and a reload starts from the frozen state.
-  const [aim, setAim] = useState<{ role: string; open: boolean } | null>(null);
+  // Everything a visitor does inside (opening, switching, sitting) is
+  // temporary: it never reaches the shared design, and a reload starts from
+  // the frozen state. The overlay and the scene own it.
 
   const space: SpaceModel = useMemo(() => buildSpaceModel(data.scene), [data.scene]);
   const state: DesignState = useMemo(() => normalizeDesignState(data.state), [data.state]);
@@ -210,7 +213,7 @@ function Presentation({ data, say, picker }: { data: SharePayload; say: (k: stri
     if (!c || !walk) return;
     const pose = roomId ? roomShot(space, walk, roomId, aspect()) : entryShot(space, walk, aspect());
     if (!pose) return;
-    c.enterWalkthrough(walk, pose, setRoom, setAim);
+    c.enterWalkthrough(walk, pose);
     setWalking(true);
   };
   const leave = () => {
@@ -219,24 +222,41 @@ function Presentation({ data, say, picker }: { data: SharePayload; say: (k: stri
     if (r) controllerRef.current?.focusRoom(r); else controllerRef.current?.frameAll();
     setWalking(false);
     setTouring(false);
-    setAim(null);
   };
-  const goRoom = (id: string, glide = 0) => {
+  const goRoom = (id: string) => {
     const c = controllerRef.current;
     const walk = walkRef.current;
     if (!c || !walk) return;
     const pose = roomShot(space, walk, id, aspect());
-    if (pose) c.walkTo(pose, glide);
+    // Chosen from the room chips: walked there along a real route.
+    if (pose) void c.routeTo(pose);
   };
 
   // The guided tour: the Camera Director's rooms, in the order a visitor
-  // meets them, gliding from one shot to the next. Any input takes over.
+  // meets them. The visitor is WALKED there along a real route (through
+  // doors, never walls), pauses to look, and moves on. Any step or look
+  // by the visitor takes over.
   useEffect(() => {
     if (!touring || !walking) return undefined;
+    let cancelled = false;
     let i = Math.max(0, tour.indexOf(room ?? '') + 1);
-    const step = () => { goRoom(tour[i % tour.length], TOUR_GLIDE_MS); i += 1; };
-    step();
-    const timer = setInterval(step, TOUR_STEP_MS);
+    const run = async () => {
+      while (!cancelled) {
+        const c = controllerRef.current;
+        const walk = walkRef.current;
+        const id = tour[i % tour.length];
+        i += 1;
+        const pose = c && walk && id ? roomShot(space, walk, id, aspect()) : null;
+        if (!c || !pose) return;
+        const arrived = await c.routeTo(pose);
+        if (cancelled) return;
+        // Taken over by the visitor mid-way: the tour ends there.
+        if (!arrived && !c.walking) return;
+        if (!arrived && c.playerState()?.speed) { setTouring(false); return; }
+        await new Promise((r) => setTimeout(r, TOUR_DWELL_MS));
+      }
+    };
+    void run();
     const stop = (e: Event) => {
       if (e instanceof KeyboardEvent && !['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) return;
       setTouring(false);
@@ -244,7 +264,7 @@ function Presentation({ data, say, picker }: { data: SharePayload; say: (k: stri
     window.addEventListener('keydown', stop);
     mountRef.current?.addEventListener('pointerdown', stop);
     const mount = mountRef.current;
-    return () => { clearInterval(timer); window.removeEventListener('keydown', stop); mount?.removeEventListener('pointerdown', stop); };
+    return () => { cancelled = true; window.removeEventListener('keydown', stop); mount?.removeEventListener('pointerdown', stop); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [touring, walking, tour]);
 
@@ -257,23 +277,15 @@ function Presentation({ data, say, picker }: { data: SharePayload; say: (k: stri
 
       {walking ? (
         <WalkthroughOverlay
-          labels={{
-            title: say('ds_walk_title'), reset: say('ds_walk_reset'), exit: say('share_overview'), rooms: say('ds_walk_rooms'),
-            joystick: say('ds_walk_joystick'), helpKeys: say('share_help_keys'),
-            tourPlay: say('share_tour_play'), tourPause: say('share_tour_pause'), fullscreen: say('share_fullscreen'),
-            open: say('share_open'), close: say('share_close'),
-            roles: { DOOR: say('share_ix_door'), WINDOW: say('share_ix_window'), WARDROBE: say('share_ix_wardrobe'), CABINET: say('share_ix_cabinet'), DRAWER: say('share_ix_drawer'), APPLIANCE: say('share_ix_appliance') },
-          }}
-          aim={aim}
-          onInteract={() => controllerRef.current?.toggleAimed()}
-          roomName={room ? names.get(room) ?? null : null}
+          controller={controllerRef.current}
+          tr={say}
           rooms={tour.map((id) => ({ id, name: names.get(id) ?? '' }))}
-          currentRoomId={room}
           touch={touch || window.innerWidth < 768}
+          onRoomChange={setRoom}
           onRoom={(id) => { setTouring(false); goRoom(id); }}
           onReset={() => { setTouring(false); const c = controllerRef.current; const w = walkRef.current; const p = w ? entryShot(space, w, aspect()) : null; if (c && p) c.walkTo(p); }}
           onExit={leave}
-          onStick={(x, y) => controllerRef.current?.setWalkStick(x, y)}
+          exitLabel={say('share_overview')}
           touring={touring}
           onTour={() => setTouring((v) => !v)}
           onFullscreen={canFullscreen ? () => { void document.documentElement.requestFullscreen?.().catch(() => {}); } : undefined}

@@ -158,3 +158,102 @@ export function nearestFree(model: WalkModel, p: Point, maxRadius = 2): Point | 
   }
   return null;
 }
+
+// ── Finding a way ─────────────────────────────────────────────────────
+//
+// For the guided moments (Live Here): a walkable route from where the
+// visitor stands to where something is used, on a 15 cm grid over the free
+// space, shortened to straight runs that stay free. Closed doors can be
+// treated as open (`throughDoors`) — the walker opens them on the way.
+
+const GRID_M = 0.15;
+
+function segmentFree(model: WalkModel, a: Point, b: Point): boolean {
+  const len = Math.hypot(b.x - a.x, b.y - a.y);
+  const steps = Math.max(1, Math.ceil(len / 0.05));
+  for (let i = 1; i <= steps; i += 1) {
+    const t = i / steps;
+    if (!isFree(model, { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t })) return false;
+  }
+  return true;
+}
+
+/** A route (list of points, start excluded) or null when there is none. */
+export function findPath(model: WalkModel, from: Point, to: Point, options: { throughDoors?: boolean; maxCells?: number } = {}): Point[] | null {
+  const closed = model.closedDoors;
+  if (options.throughDoors) model.closedDoors = new Set();
+  try {
+    const goal = nearestFree(model, to, 1.2);
+    if (!goal || !isFree(model, from)) return null;
+    if (segmentFree(model, from, goal)) return [goal];
+    const key = (i: number, j: number) => `${i},${j}`;
+    const cell = (p: Point) => [Math.round((p.x - from.x) / GRID_M), Math.round((p.y - from.y) / GRID_M)] as const;
+    const at = (i: number, j: number): Point => ({ x: from.x + i * GRID_M, y: from.y + j * GRID_M });
+    const [gi, gj] = cell(goal);
+    const open: Array<{ i: number; j: number; f: number; g: number }> = [{ i: 0, j: 0, f: 0, g: 0 }];
+    const came = new Map<string, string>();
+    const best = new Map<string, number>([[key(0, 0), 0]]);
+    const max = options.maxCells ?? 40000;
+    let visited = 0;
+    let found: string | null = null;
+    while (open.length && visited < max) {
+      let k = 0;
+      for (let x = 1; x < open.length; x += 1) if (open[x].f < open[k].f) k = x;
+      const cur = open.splice(k, 1)[0];
+      visited += 1;
+      if (Math.abs(cur.i - gi) <= 1 && Math.abs(cur.j - gj) <= 1) { found = key(cur.i, cur.j); break; }
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+        const ni = cur.i + di;
+        const nj = cur.j + dj;
+        const nk = key(ni, nj);
+        const g = cur.g + Math.hypot(di, dj);
+        if (g >= (best.get(nk) ?? Infinity)) continue;
+        if (!isFree(model, at(ni, nj))) continue;
+        // No cutting corners: a diagonal step needs both sides of it free.
+        if (di !== 0 && dj !== 0 && (!isFree(model, at(cur.i + di, cur.j)) || !isFree(model, at(cur.i, cur.j + dj))
+          || !isFree(model, { x: from.x + (cur.i + di / 2) * GRID_M, y: from.y + (cur.j + dj / 2) * GRID_M }))) continue;
+        best.set(nk, g);
+        came.set(nk, key(cur.i, cur.j));
+        open.push({ i: ni, j: nj, g, f: g + Math.hypot(gi - ni, gj - nj) });
+      }
+    }
+    if (!found) return null;
+    const cells: Point[] = [];
+    for (let c: string | undefined = found; c && c !== key(0, 0); c = came.get(c)) {
+      const [i, j] = c.split(',').map(Number);
+      cells.unshift(at(i, j));
+    }
+    cells.push(goal);
+    // Straighten: keep only the points where a straight free run has to turn.
+    const out: Point[] = [];
+    let anchor = from;
+    for (let i = 0; i < cells.length; i += 1) {
+      const next = cells[i + 1];
+      if (next && segmentFree(model, anchor, next)) continue;
+      out.push(cells[i]);
+      anchor = cells[i];
+    }
+    return out;
+  } finally {
+    model.closedDoors = closed;
+  }
+}
+
+/** Closed doors a route passes through (the walker opens them on the way). */
+export function doorsOnRoute(model: WalkModel, from: Point, route: Point[]): string[] {
+  const hits = new Set<string>();
+  let a = from;
+  for (const b of route) {
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    const steps = Math.max(1, Math.ceil(len / 0.05));
+    for (let i = 0; i <= steps; i += 1) {
+      const p = { x: a.x + ((b.x - a.x) * i) / steps, y: a.y + ((b.y - a.y) * i) / steps };
+      for (const id of model.closedDoors) {
+        const leaf = model.doorways.get(id);
+        if (leaf && distanceToObb(p, leaf) < model.radius + 0.05) hits.add(id);
+      }
+    }
+    a = b;
+  }
+  return [...hits];
+}

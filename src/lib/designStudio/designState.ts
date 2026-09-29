@@ -13,6 +13,29 @@ export const DESIGN_STATE_SCHEMA = 1 as const;
 
 export interface Vec3 { x: number; y: number; z: number }
 
+/**
+ * Where a piece came from, when it was not placed by hand: read from the
+ * customer's reference images and matched to the catalogue. `confirmed`
+ * becomes true once the customer confirms or edits it — AI then leaves it
+ * alone, and a re-read never silently overwrites it.
+ */
+export interface ObjectProvenance {
+  source: 'IMAGE_RECONSTRUCTION';
+  /** The reconstruction's own key for what was seen. */
+  ref: string;
+  label: string;
+  detectedType: string;
+  /** Reference image ids it was seen in. */
+  images: string[];
+  confidence: number;
+  basis: 'OBSERVED' | 'INFERRED';
+  /** 0..1 catalogue match score. */
+  match: number;
+  /** The catalogue piece is the closest HOMATCH has, not the thing itself. */
+  approximate: boolean;
+  confirmed: boolean;
+}
+
 /** One placed catalogue asset. `assetId` is a catalogue code, never a file. */
 export interface ObjectInstance {
   instanceId: string;
@@ -31,6 +54,26 @@ export interface ObjectInstance {
   materialVariant: string | null;
   colorOverride: string | null;
   locked: boolean;
+  provenance?: ObjectProvenance;
+}
+
+function normalizeProvenance(raw: unknown): ObjectProvenance | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const p = raw as Record<string, unknown>;
+  if (p.source !== 'IMAGE_RECONSTRUCTION' || typeof p.ref !== 'string') return undefined;
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0);
+  return {
+    source: 'IMAGE_RECONSTRUCTION',
+    ref: p.ref.slice(0, 40),
+    label: typeof p.label === 'string' ? p.label.slice(0, 80) : '',
+    detectedType: typeof p.detectedType === 'string' ? p.detectedType.slice(0, 24) : 'OTHER',
+    images: Array.isArray(p.images) ? p.images.filter((x): x is string => typeof x === 'string').slice(0, 12) : [],
+    confidence: num(p.confidence),
+    basis: p.basis === 'OBSERVED' ? 'OBSERVED' : 'INFERRED',
+    match: num(p.match),
+    approximate: p.approximate !== false,
+    confirmed: p.confirmed === true,
+  };
 }
 
 /**
@@ -106,7 +149,13 @@ export function normalizeDesignState(raw: unknown): DesignState {
   const r = raw as Partial<DesignState>;
   return {
     schema: DESIGN_STATE_SCHEMA,
-    objects: Array.isArray(r.objects) ? r.objects.filter((o) => o && typeof o.instanceId === 'string' && typeof o.assetId === 'string') : [],
+    objects: Array.isArray(r.objects)
+      ? r.objects.filter((o) => o && typeof o.instanceId === 'string' && typeof o.assetId === 'string').map((o) => {
+        const provenance = normalizeProvenance(o.provenance);
+        const { provenance: _drop, ...rest } = o;
+        return provenance ? { ...rest, provenance } : rest;
+      })
+      : [],
     surfaces: r.surfaces && typeof r.surfaces === 'object' ? r.surfaces : {},
     lighting: { ...base.lighting, ...(r.lighting ?? {}) },
     palette: Array.isArray(r.palette) ? r.palette : [],

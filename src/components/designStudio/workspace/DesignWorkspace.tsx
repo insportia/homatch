@@ -64,11 +64,6 @@ import { DownloadDialog } from './DownloadDialog';
 import { download } from './exportRender';
 import { fileSlug } from '@/lib/designStudio/exportFiles';
 
-/** The words for what can be opened in the walkthrough. */
-const IX_ROLES = (t: (k: string) => string): Record<string, string> => ({
-  DOOR: t('ds_ix_door'), WINDOW: t('ds_ix_window'), WARDROBE: t('ds_ix_wardrobe'),
-  CABINET: t('ds_ix_cabinet'), DRAWER: t('ds_ix_drawer'), APPLIANCE: t('ds_ix_appliance'),
-});
 import { Inspector } from './Inspector';
 import { ObjectControls, PartControls, SurfaceControls } from './EditControls';
 import { PlanNavigator } from './PlanNavigator';
@@ -678,7 +673,6 @@ function Editor({
   const [shareOpen, setShareOpen] = useState<false | 'WALKTHROUGH' | 'DESIGN'>(false);
   const [downloadOpen, setDownloadOpen] = useState(false);
   const [walkRoom, setWalkRoom] = useState<string | null>(null);
-  const [walkAim, setWalkAim] = useState<{ role: string; open: boolean } | null>(null);
   const [canvasReady, setCanvasReady] = useState(false);
   const walkModel = useRef<ReturnType<typeof buildWalkModel> | null>(null);
   const tour = useMemo(() => (space ? tourOrder(space, roomGraph(space)) : []), [space]);
@@ -695,7 +689,7 @@ function Editor({
     if (!pose) { toast.error(t('ds_walk_unavailable')); return; }
     setSelection(null);
     setSheet(null);
-    c.enterWalkthrough(model, pose, setWalkRoom, setWalkAim);
+    c.enterWalkthrough(model, pose);
     setWalking(true);
   }, [space, state.objects, assets, t]);
 
@@ -713,7 +707,6 @@ function Editor({
     controllerRef.current?.exitWalkthrough();
     setWalking(false);
     setWalkRoom(null);
-    setWalkAim(null);
     onWalkthroughExit?.();
   }, [onWalkthroughExit]);
 
@@ -721,7 +714,7 @@ function Editor({
     const c = controllerRef.current;
     if (!c || !space || !walkModel.current) return;
     const pose = roomShot(space, walkModel.current, roomId, aspect());
-    if (pose) c.walkTo(pose);
+    if (pose) void c.routeTo(pose);
   }, [space]);
 
   const resetWalk = useCallback(() => {
@@ -749,11 +742,8 @@ function Editor({
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
       if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
-      // Walking: the keys move the visitor; only Escape leaves.
-      if (controllerRef.current?.walking) {
-        if (e.key === 'Escape') exitWalk();
-        return;
-      }
+      // Walking: the keys belong to the visitor (Esc opens the walkthrough menu).
+      if (controllerRef.current?.walking) return;
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
       if (mod && key === 'z') { e.preventDefault(); if (e.shiftKey) session.redo(); else session.undo(); return; }
@@ -1117,13 +1107,10 @@ function Editor({
           />
           {walking && space ? (
             <WalkthroughOverlay
-              labels={{
-                title: t('ds_walk_title'), reset: t('ds_walk_reset'), exit: t('ds_walk_exit'), rooms: t('ds_walk_rooms'),
-                joystick: t('ds_walk_joystick'), helpKeys: t('ds_walk_help_keys'),
-                open: t('ds_walk_open'), close: t('ds_walk_close'), roles: IX_ROLES(t),
-              }}
-              aim={walkAim}
-              onInteract={() => controllerRef.current?.toggleAimed()}
+              controller={controllerRef.current}
+              tr={t}
+              exitLabel={t('ds_walk_exit')}
+              onRoomChange={setWalkRoom}
               actions={space ? (
                 <>
                 <button type="button" onClick={() => { void takePhoto(); }} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px] font-medium text-white/85 ring-1 ring-white/20 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]">
@@ -1138,14 +1125,11 @@ function Editor({
                 </button>
                 </>
               ) : null}
-              roomName={walkRoom ? names.get(walkRoom) ?? null : null}
               rooms={tour.map((id) => ({ id, name: names.get(id) ?? '' }))}
-              currentRoomId={walkRoom}
               touch={touch || isPhoneLayout()}
               onRoom={walkToRoom}
               onReset={resetWalk}
               onExit={exitWalk}
-              onStick={(x, y) => controllerRef.current?.setWalkStick(x, y)}
             />
           ) : null}
           {previewing != null && ai?.items[previewing] ? (

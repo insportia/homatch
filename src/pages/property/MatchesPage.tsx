@@ -17,6 +17,7 @@ import {CustomerSurface,
 } from '@/components/customer/surface';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { CommunityOutreachPanel } from '@/components/matching/CommunityOutreachPanel';
+import { LeadStateControl } from '@/components/broker/LeadStateControl';
 import { ExternalContactUnlockModal } from '@/components/matching/ExternalContactUnlockModal';
 import { ExternalSitesCard } from '@/components/matching/ExternalSitesCard';
 import { MatchingJobProgress } from '@/components/matching/MatchingJobProgress';
@@ -307,6 +308,8 @@ function UnlockedMatchDialog({
               </Button>
             )}
           </div>
+
+          <LeadStateControl matchId={match.id} />
 
           <p className="text-[13px] text-muted-foreground/50">
             {t('matches_charged_credits', { credits: String(unlock.credits_charged) })} · {t('matches_unlocked_on', { date: new Date(unlock.created_at).toLocaleString() })}

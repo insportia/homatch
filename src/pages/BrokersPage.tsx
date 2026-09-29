@@ -668,6 +668,17 @@ function FoundForYouSection() {
   );
 }
 
+/* The contact the customer paid for, as a safe link. Only http(s), t.me and
+   tel: targets are ever produced; anything else renders as plain text. */
+function contactHref(kind: string, key: string): string | null {
+  const k = key.trim();
+  if (kind === 'TELEGRAM' && /^[A-Za-z0-9_]{4,64}$/.test(k)) return `https://t.me/${k}`;
+  if (kind === 'PHONE' && /^\+?[0-9 ()-]{6,24}$/.test(k)) return `tel:${k.replace(/[^0-9+]/g, '')}`;
+  if (kind === 'DOMAIN' && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(k)) return `https://${k}`;
+  if (kind === 'PROFILE_URL' && /^https?:\/\//i.test(k)) return k;
+  return null;
+}
+
 function DiscoveredCard({ row }: { row: DiscoveredBroker }) {
   const { t } = useLanguage();
   const name = row.display_name?.trim() || t('broker_found_unnamed');
@@ -714,6 +725,22 @@ function DiscoveredCard({ row }: { row: DiscoveredBroker }) {
               <span className="sr-only">{t('broker_coverage_languages')}</span>
             </dt>
             <dd className="min-w-0 break-words text-foreground">{languages.map(languageLabel).join(' · ')}</dd>
+          </div>
+        )}
+        {row.natural_key && (
+          <div className="flex min-w-0 items-start gap-2">
+            <dt className="mt-0.5 shrink-0 text-muted-foreground">
+              <Globe className="h-4 w-4" aria-hidden="true" />
+              <span className="sr-only">{t('broker_dir_website')}</span>
+            </dt>
+            <dd className="min-w-0 break-all text-foreground" dir="ltr">
+              {(() => {
+                const href = contactHref(row.key_kind, row.natural_key);
+                return href
+                  ? <a href={href} target="_blank" rel="noopener noreferrer nofollow" className="font-medium text-[hsl(var(--gold-ink))] underline-offset-2 hover:underline">{row.natural_key}</a>
+                  : row.natural_key;
+              })()}
+            </dd>
           </div>
         )}
       </dl>

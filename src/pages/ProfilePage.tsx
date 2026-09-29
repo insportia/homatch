@@ -39,6 +39,8 @@ const LEDGER_TYPE_KEY: Record<LedgerType, string> = {
   EXPIRATION: 'credits_type_expiration',
   REVERSAL: 'credits_type_reversal',
   REDENOMINATION: 'credits_type_redenomination',
+  BROKER_DISCOVERY: 'credits_type_broker_discovery',
+  BROKER_DIRECTORY_LISTING: 'credits_type_broker_listing',
 };
 const PAYMENT_STATUS_KEY: Record<PaymentStatus, string> = {
   PENDING: 'payment_status_pending',

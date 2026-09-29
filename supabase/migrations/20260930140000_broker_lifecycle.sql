@@ -118,6 +118,7 @@ as $$
 declare
   v_admin uuid;
   v_reason text := nullif(btrim(coalesce(p_reason, '')), '');
+  v_rows integer;
 begin
   if not public.is_admin() then raise exception 'FORBIDDEN'; end if;
   if p_user_id is null or p_suspend is null then raise exception 'INVALID_ARGUMENT'; end if;
@@ -130,8 +131,9 @@ begin
          suspension_reason = case when p_suspend then v_reason else null end,
          updated_at = now()
    where id = p_user_id;
+  get diagnostics v_rows = row_count;
   perform set_config('homatch.account_rpc', '', true);
-  if not found then raise exception 'USER_NOT_FOUND'; end if;
+  if v_rows = 0 then raise exception 'USER_NOT_FOUND'; end if;
   insert into public.admin_audit_log (admin_id, target_id, action, entity_type, entity_id, metadata)
   values (coalesce(v_admin, '00000000-0000-0000-0000-000000000000'::uuid), p_user_id,
           case when p_suspend then 'USER_SUSPENDED' else 'USER_UNSUSPENDED' end,
@@ -381,6 +383,8 @@ begin
   end if;
   return v_id;
 end $$;
+revoke all on function public.broker_directory_apply(text, text, text[], text[], text, text, text, text, text, text[], text[], text[], integer, text) from public, anon;
+grant execute on function public.broker_directory_apply(text, text, text[], text[], text, text, text, text, text, text[], text[], text[], integer, text) to authenticated;
 
 -- ── 3. VERIFICATION ──────────────────────────────────────────────────────
 
@@ -1049,3 +1053,28 @@ begin
 end $$;
 revoke all on function public.admin_broker_detail(uuid) from public, anon;
 grant execute on function public.admin_broker_detail(uuid) to authenticated;
+
+/* Admin: the verification queue (and every other verification state on
+   request), with how many documents each profile sent and whether the owner's
+   account is suspended. */
+create or replace function public.admin_list_broker_verification(p_state text default 'PENDING')
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path to 'public', 'pg_temp'
+as $$
+begin
+  if not public.is_admin() then raise exception 'FORBIDDEN'; end if;
+  return (select coalesce(jsonb_agg(x order by x.submitted_at desc nulls last), '[]'::jsonb) from (
+    select l.id, l.display_name, l.role, l.status, l.verification_state, l.verification_note,
+           l.verification_submitted_at as submitted_at, l.verified_at, l.created_at,
+           u.email as owner_email, u.id as owner_id, (u.suspended_at is not null) as owner_suspended,
+           (select count(*) from public.broker_verification_documents d where d.listing_id = l.id)::int as documents
+      from public.broker_directory_listings l
+      left join public.users u on u.auth_id = l.owner_user_id
+     where p_state is null or l.verification_state = p_state
+     limit 500) x);
+end $$;
+revoke all on function public.admin_list_broker_verification(text) from public, anon;
+grant execute on function public.admin_list_broker_verification(text) to authenticated;

@@ -17,6 +17,8 @@ export interface DiscoveredBroker {
   role: 'AGENCY' | 'BROKER';
   display_name: string | null;
   key_kind: string;
+  /** The public contact key the firm itself published (site, profile, Telegram, phone). Returned only to the customer who paid for this discovery. */
+  natural_key: string | null;
   country_code: string;
   cities: string[];
   languages: string[];

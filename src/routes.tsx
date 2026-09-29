@@ -60,6 +60,7 @@ const InvestmentPage = lazyRoute(() => import('./pages/InvestmentPage'));
 const BrokersPage = lazyRoute(() => import('./pages/BrokersPage'));
 const BrokerProfilePage = lazyRoute(() => import('./pages/BrokerProfilePage'));
 const BrokerCrmPage = lazyRoute(() => import('./pages/BrokerCrmPage'));
+const BrokerOnboardingPage = lazyRoute(() => import('./pages/BrokerOnboardingPage'));
 const FindPropertyPage = lazyRoute(() => import('./pages/FindPropertyPage'));
 const MyPropertiesPage = lazyRoute(() => import('./pages/property/MyPropertiesPage'));
 const EditPropertyPage = lazyRoute(() => import('./pages/property/EditPropertyPage'));
@@ -291,6 +292,8 @@ export const routes: RouteConfig[] = [
    * server-side (RLS on the listing row; the stats RPC checks the owner).
    */
   { name: 'Broker CRM',        path: '/broker',                   element: <BrokerCrmPage /> },
+  /* Create or edit the professional's ONE profile (broker_profile_save). */
+  { name: 'Broker Onboarding', path: '/broker/onboarding',        element: <BrokerOnboardingPage /> },
   /*
    * FIND PROPERTY. Not public, and the reason is the row it writes rather than
    * anything it shows: confirming a plan creates an intent_profiles row and an

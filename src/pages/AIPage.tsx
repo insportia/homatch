@@ -4,7 +4,6 @@ import { AppLayout } from '@/components/layouts/AppLayout';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAIChat, type PageContext } from '@/hooks/useAIChat';
 import { useAuth } from '@/contexts/AuthContext';
@@ -530,7 +529,6 @@ function AIPageInner() {
           </div>
         )}
 
-        <Separator />
 
         {/*
           * THE COMPOSER.
@@ -559,7 +557,12 @@ function AIPageInner() {
           * The bar only exists for somebody signed in, which is why this
           * asks rather than always reserving the room.
           */}
-        <div className={`shrink-0 px-5 pt-3 sm:px-4 ${session ? NAV_CLEARANCE : BOTTOM_INSET}`}>
+        {/* THE COMPOSER DOCK IS STRUCTURE, NOT CANVAS. On the warm
+            canvas the composer zone still read as the pale ground it sat
+            on. It now wears the same navy as the identity strip, so the
+            white conversation is framed by structure top and bottom and
+            the crisp white field is unmissable inside it. */}
+        <div className={`shrink-0 bg-[#0C1119] px-5 pt-3 sm:px-4 ${session ? NAV_CLEARANCE : BOTTOM_INSET}`}>
           <div className="mx-auto flex max-w-2xl items-end gap-2">
             <textarea
               ref={inputRef}
@@ -584,17 +587,17 @@ function AIPageInner() {
                 /* CRISP WHITE, not the canvas's own tint: bg-secondary on
                    the warm canvas was a field you could not find. A real
                    border, a lift, and a gold focus ring say "type here". */
-                'max-h-[9.5rem] min-h-[4.5rem] sm:min-h-[2.75rem] flex-1 resize-none rounded-[1.25rem] border '
-                + 'border-[hsl(var(--border))] bg-card px-4 py-3 text-base leading-[1.5] text-foreground shadow-card '
-                + 'placeholder:text-muted-foreground focus-visible:outline-none '
-                + 'focus-visible:border-[hsl(var(--gold-border))] focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:opacity-60'
+                'max-h-[9.5rem] min-h-[4.5rem] sm:min-h-[2.75rem] flex-1 resize-none rounded-[1.25rem] '
+                + 'bg-white px-4 py-3 text-base leading-[1.5] text-[#16181d] '
+                + 'placeholder:text-[#5b6472] focus-visible:outline-none '
+                + 'focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)] disabled:opacity-60'
               }
             />
             {streaming ? (
               <Button
                 variant="ghost" onClick={cancelStream}
                 aria-label={t('ai_stop')}
-                className="h-11 w-11 shrink-0 rounded-full border border-border p-0 text-muted-foreground hover:text-destructive"
+                className="h-11 w-11 shrink-0 rounded-full border border-white/30 p-0 text-white/80 hover:bg-white/10 hover:text-white"
               >
                 <StopCircle className="h-5 w-5" />
               </Button>
@@ -605,14 +608,14 @@ function AIPageInner() {
                 /* GOLD WHEN IT CAN SEND, honestly grey when it cannot. The
                    old black circle at disabled-opacity read as a dead grey
                    button even while enabled on the warm canvas. */
-                className="h-11 w-11 shrink-0 rounded-full bg-[hsl(var(--gold))] p-0 text-[#161309] shadow-card hover:bg-[hsl(var(--gold-hover))] disabled:bg-[hsl(var(--secondary))] disabled:text-[hsl(var(--muted-foreground))] disabled:opacity-100 disabled:shadow-none"
+                className="h-11 w-11 shrink-0 rounded-full bg-[hsl(38_92%_54%)] p-0 text-[#161309] hover:bg-[hsl(38_92%_60%)] disabled:bg-white/[0.14] disabled:text-white/50 disabled:opacity-100"
               >
                 {/* The paper plane points along the text direction. */}
                 <Send className="h-5 w-5 rtl:-scale-x-100" />
               </Button>
             )}
           </div>
-          <p className="text-center text-[13px] text-muted-foreground mt-2">
+          <p className="mt-2 text-center text-[13px] text-white/60">
             {t('ai_disclaimer')}
           </p>
         </div>

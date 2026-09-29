@@ -49,7 +49,7 @@ import {
   type PlanRowData, SearchPlanSummary,
 } from '@/components/customer/SearchPlanSummary';
 import {
-  CardAction, CustomerSurface, DISCOVERY_SURFACE, QuietAction,
+  CardAction, CustomerSurface, DISCOVERY_SURFACE, PageHero, QuietAction,
 } from '@/components/customer/surface';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { Input } from '@/components/ui/input';
@@ -452,17 +452,17 @@ export default function FindPropertyPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plan, lang, t]);
 
-  /* The page's own header, not the shared list-page one: on a screen whose
-     whole subject is "describe what you are looking for", a text-base h1
-     glued to the top bar read as a stray label. Intentional top offset,
-     a title at title size, the subtitle at reading size. */
+  /* The product's navy identity band — structure, not workspace. The whole
+     flow below it (describe, plan, results) happens on white; this is the
+     one dark object on the page and it says which product you are in. */
   const header = useMemo(() => (
-    <header className="mb-5 pt-4 sm:pt-8">
-      <h1 className="font-display text-xl font-semibold leading-tight text-foreground sm:text-2xl">
-        {t('plan_page_title')}
-      </h1>
-      <p className="mt-1.5 text-sm font-medium text-muted-foreground">{t('plan_page_subtitle')}</p>
-    </header>
+    <div className="pt-4 sm:pt-6">
+      <PageHero
+        compact
+        title={t('plan_page_title')}
+        subtitle={t('plan_page_subtitle')}
+      />
+    </div>
   ), [t]);
 
   return (

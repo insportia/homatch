@@ -49,8 +49,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { PrivateImage } from '@/components/common/PrivateImage';
 import { RouteGuard } from '@/components/common/RouteGuard';
-import {CustomerPageHeader, CustomerSurface, FilterRail, 
-  OWNER_SURFACE, QuietAction,
+import {CustomerSurface, EmptyState, FilterRail,
+  OWNER_SURFACE, PageHero, QuietAction,
 } from '@/components/customer/surface';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import {
@@ -62,7 +62,6 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -653,27 +652,34 @@ export default function MyPropertiesPage() {
             outlined secondary and a filled primary at control size — not a black shadcn
             rectangle beside a grey one.
           */}
-          <header className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-start sm:justify-between">
-            <CustomerPageHeader
-              title={t('prop_page_title')}
-              count={t('prop_page_subtitle')}
-            />
-            <div className="flex w-full items-stretch gap-2 sm:w-auto sm:shrink-0">
-              <QuietAction
-                icon={Upload}
-                onClick={() => navigate('/property/import')}
-                label={t('prop_import_cta')}
-              />
-              <button
-                type="button"
-                onClick={() => navigate('/property/add')}
-                className="inline-flex min-h-9 min-w-0 items-center justify-center gap-1.5 rounded-lg bg-[hsl(var(--primary))] px-3.5 py-1.5 text-2xs font-semibold text-[hsl(var(--primary-foreground))] transition-colors hover:bg-[hsl(var(--primary))]/88 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2"
-              >
-                <Plus className="h-3.5 w-3.5 shrink-0" />
-                <span className="break-words text-start">{t('prop_add_cta')}</span>
-              </button>
-            </div>
-          </header>
+          {/* The workspace's navy identity band. In-frame grammar: ONE gold
+              primary (add a property — the action everything else depends
+              on), one white secondary beside it. The list below is white. */}
+          <PageHero
+            compact
+            title={t('prop_page_title')}
+            subtitle={t('prop_page_subtitle')}
+            actions={
+              <>
+                <button
+                  type="button"
+                  onClick={() => navigate('/property/import')}
+                  className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-white/40 bg-white px-3.5 py-1.5 text-2xs font-semibold text-[#0C1119] transition-colors hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]"
+                >
+                  <Upload className="h-3.5 w-3.5 shrink-0" />
+                  <span className="break-words text-start">{t('prop_import_cta')}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate('/property/add')}
+                  className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg bg-[hsl(38_92%_54%)] px-3.5 py-1.5 text-2xs font-bold text-[#161309] transition-colors hover:bg-[hsl(38_92%_60%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+                >
+                  <Plus className="h-3.5 w-3.5 shrink-0" />
+                  <span className="break-words text-start">{t('prop_add_cta')}</span>
+                </button>
+              </>
+            }
+          />
 
           {/* The shared filter rail rather than this page's own segmented control: two
               controls doing the same job is two places to fix a Georgian label. */}
@@ -719,18 +725,12 @@ export default function MyPropertiesPage() {
             from a property, so until there is one there is nothing to match.
           */}
           {empty && view === 'ACTIVE' && (
-            <Card className="bg-card border-border">
-              <CardContent className="px-6 py-12 text-center space-y-4">
-                <Building2 className="h-10 w-10 mx-auto opacity-25" />
-                <div className="space-y-1.5">
-                  <p className="text-base font-semibold text-foreground break-words">
-                    {t('prop_empty_title')}
-                  </p>
-                  <p className="text-sm text-muted-foreground break-words max-w-lg mx-auto">
-                    {t('prop_empty_body')}
-                  </p>
-                </div>
-                <div className="flex items-center justify-center gap-2 flex-wrap pt-1">
+            <EmptyState
+              icon={Building2}
+              title={t('prop_empty_title')}
+              body={t('prop_empty_body')}
+              actions={
+                <>
                   <Button size="sm" onClick={() => navigate('/property/add')}>
                     <Plus className="h-4 w-4 me-1.5 shrink-0" />
                     <span className="break-words">{t('prop_add_cta')}</span>
@@ -739,20 +739,13 @@ export default function MyPropertiesPage() {
                     <Upload className="h-4 w-4 me-1.5 shrink-0" />
                     <span className="break-words">{t('prop_import_cta')}</span>
                   </Button>
-                </div>
-              </CardContent>
-            </Card>
+                </>
+              }
+            />
           )}
 
           {empty && view === 'ARCHIVED' && (
-            <Card className="bg-card border-border">
-              <CardContent className="px-6 py-12 text-center space-y-2">
-                <Archive className="h-9 w-9 mx-auto opacity-25" />
-                <p className="text-sm text-muted-foreground break-words max-w-lg mx-auto">
-                  {t('prop_empty_archived')}
-                </p>
-              </CardContent>
-            </Card>
+            <EmptyState icon={Archive} body={t('prop_empty_archived')} />
           )}
 
           {properties.length > 0 && (

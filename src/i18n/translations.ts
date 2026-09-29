@@ -379,7 +379,7 @@ const en = {
   nav_mortgage: 'Mortgage',
   nav_pricing_page: 'Pricing',
   studio_page_partners: 'Partners',
-  nav_chat: 'Messages',
+  nav_chat: 'Private Messages',
   nav_viewings: 'Viewings',
   nav_active_search: 'Alerts',
   nav_credits: 'Credits',
@@ -2083,7 +2083,7 @@ const en = {
   // ── Missing t() Key Fixes (viewings, developer profile, trust badge, chat/active-search titles, notifications) ──────────────────────────────────────────────
   active_search_title: 'Active Search',
   active_search_empty: 'No active searches yet.',
-  chat_title: 'Messages',
+  chat_title: 'Private Messages',
   chat_empty: 'No conversations yet',
   chat_empty_desc: 'Start a conversation by opening a result',
   canon_found_on: 'Found on {count} sites',
@@ -10664,7 +10664,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   nav_mortgage: 'იპოთეკა',
   nav_pricing_page: 'ფასები',
   studio_page_partners: 'პარტნიორები',
-  nav_chat: 'შეტყობინებები',
+  nav_chat: 'პირადი შეტყობინებები',
   nav_viewings: 'ნახვები',
   nav_active_search: 'გაფრთხილებები',
   nav_credits: 'კრედიტები',
@@ -12302,7 +12302,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   // ── Missing t() Key Fixes (viewings, developer profile, trust badge, chat/active-search titles, notifications) ──────────────────────────────────────────────
   active_search_title: 'აქტიური ძებნა',
   active_search_empty: 'აქტიური ძებნა ჯერ არ არის.',
-  chat_title: 'შეტყობინებები',
+  chat_title: 'პირადი შეტყობინებები',
   chat_empty: 'საუბრები ჯერ არ არის',
   chat_empty_desc: 'საუბრის დასაწყებად გახსენით შედეგი',
   canon_found_on: 'მოიძებნა {count} საიტზე',
@@ -20858,7 +20858,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   verify_result_failed: 'Эта проверка не была завершена.',
   // Navigation
   nav_dashboard: 'Панель',
-  nav_chat: 'Сообщения',
+  nav_chat: 'Личные сообщения',
   nav_viewings: 'Просмотры',
   nav_active_search: 'Оповещения',
   nav_credits: 'Кредиты',
@@ -22491,7 +22491,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   // ── Missing t() Key Fixes (viewings, developer profile, trust badge, chat/active-search titles, notifications) ──────────────────────────────────────────────
   active_search_title: 'Активный поиск',
   active_search_empty: 'Активных поисков пока нет.',
-  chat_title: 'Сообщения',
+  chat_title: 'Личные сообщения',
   chat_empty: 'Пока нет бесед',
   chat_empty_desc: 'Откройте результат, чтобы начать разговор',
   canon_found_on: 'Найдено на {count} сайтах',
@@ -31048,7 +31048,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   verify_result_failed: 'Bu doğrulama tamamlanamadı.',
   // Navigation
   nav_dashboard: 'Panel',
-  nav_chat: 'Mesajlar',
+  nav_chat: 'Özel Mesajlar',
   nav_viewings: 'Geziler',
   nav_active_search: 'Uyarılar',
   nav_credits: 'Krediler',
@@ -32679,7 +32679,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   // ── Missing t() Key Fixes (viewings, developer profile, trust badge, chat/active-search titles, notifications) ──────────────────────────────────────────────
   active_search_title: 'Aktif Arama',
   active_search_empty: 'Henüz aktif arama yok.',
-  chat_title: 'Mesajlar',
+  chat_title: 'Özel Mesajlar',
   chat_empty: 'Henüz sohbet yok',
   chat_empty_desc: 'Bir sonucu açarak sohbet başlatın',
   canon_found_on: '{count} sitede bulundu',
@@ -41236,7 +41236,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   verify_result_failed: 'لم يكتمل هذا التحقّق.',
   // Navigation
   nav_dashboard: 'لوحة التحكم',
-  nav_chat: 'الرسائل',
+  nav_chat: 'الرسائل الخاصة',
   nav_viewings: 'المعاينات',
   nav_active_search: 'التنبيهات',
   nav_credits: 'الرصيد',
@@ -42867,7 +42867,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   // ── Missing t() Key Fixes (viewings, developer profile, trust badge, chat/active-search titles, notifications) ──────────────────────────────────────────────
   active_search_title: 'البحث النشط',
   active_search_empty: 'لا توجد عمليات بحث نشطة بعد.',
-  chat_title: 'الرسائل',
+  chat_title: 'الرسائل الخاصة',
   chat_empty: 'لا توجد محادثات بعد',
   chat_empty_desc: 'ابدأ محادثة بفتح نتيجة',
   canon_found_on: 'تم العثور عليه في {count} مواقع',
@@ -51424,7 +51424,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   verify_result_failed: 'האימות הזה לא הסתיים.',
   // Navigation
   nav_dashboard: 'לוח בקרה',
-  nav_chat: 'הודעות',
+  nav_chat: 'הודעות פרטיות',
   nav_viewings: 'ביקורים',
   nav_active_search: 'התראות',
   nav_credits: 'קרדיטים',
@@ -53055,7 +53055,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   // ── Missing t() Key Fixes (viewings, developer profile, trust badge, chat/active-search titles, notifications) ──────────────────────────────────────────────
   active_search_title: 'חיפוש פעיל',
   active_search_empty: 'אין עדיין חיפושים פעילים.',
-  chat_title: 'הודעות',
+  chat_title: 'הודעות פרטיות',
   chat_empty: 'אין עדיין שיחות',
   chat_empty_desc: 'התחילו שיחה על ידי פתיחת תוצאה',
   canon_found_on: 'נמצא ב-{count} אתרים',

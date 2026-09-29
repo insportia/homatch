@@ -433,6 +433,52 @@ export function CardAction({
 }
 
 /**
+ * An empty state that still belongs to the brand.
+ *
+ * WHAT IT REPLACES, everywhere it is adopted: a lucide glyph at `opacity-25`
+ * floating over centred grey text — the washed-out "nothing here" that reads
+ * as a broken page. Nothing about an empty portfolio is disabled: it is the
+ * moment the product asks for its first real input, so the mark wears the
+ * approved gold-soft chip (the same treatment Investment's strategy cards
+ * use) and the actions below it are real controls.
+ */
+export function EmptyState({
+  icon: Icon,
+  title,
+  body,
+  actions,
+  className,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title?: string | null;
+  body?: string | null;
+  actions?: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        'rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-6 py-12 text-center shadow-card',
+        className,
+      )}
+    >
+      <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[hsl(var(--gold-soft))] ring-1 ring-inset ring-[hsl(var(--gold-border))]/60">
+        <Icon className="h-6 w-6 text-[hsl(var(--gold-ink))]" aria-hidden="true" />
+      </span>
+      {title ? (
+        <p className="mt-4 font-display text-base font-semibold text-foreground break-words">{title}</p>
+      ) : null}
+      {body ? (
+        <p className="mx-auto mt-1.5 max-w-lg text-sm text-muted-foreground break-words">{body}</p>
+      ) : null}
+      {actions ? (
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">{actions}</div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
  * The navy structural header — the approved Mortgage hero, promoted.
  * Deep ink ground, gold eyebrow, white title, a gold hairline of light.
  * Structure only: the WORK always happens on white below it.
@@ -459,7 +505,11 @@ export function PageHero({ eyebrow, title, subtitle, actions, compact = false }:
           ) : null}
           <span className="mt-4 block h-[3px] w-16 rounded-full bg-[hsl(38_92%_56%)]" aria-hidden="true" />
         </div>
-        {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
+        {/* NOT shrink-0: two Georgian labels side by side cannot fit a 390px
+            band, and shrink-0 forbade the row from narrowing — the gold
+            action clipped at the frame's edge. min-w-0 + the outer wrap let
+            the actions take their own full-width line instead. */}
+        {actions ? <div className="flex min-w-0 flex-wrap items-center gap-2">{actions}</div> : null}
       </div>
     </header>
   );

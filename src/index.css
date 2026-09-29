@@ -687,20 +687,18 @@
    * onto the light palette mid-scroll.
    * ------------------------------------------------------------------ */
   /*
-   * FOUR NAMES, ONE DECLARATION.
+   * ONE NAME LEFT ON THE DARK PANEL.
    *
-   * `.hm-invest` is the name Investment and Verify were born with; `.hm-workspace` is
-   * what it was renamed to; `.hm-discovery` is the matching and discovery product and
-   * `.hm-owner` the owner's portfolio and its flow. They are aliases on purpose — a
-   * second copy of these values is a second place to change a border colour, and the
-   * whole point of a design system is that the surface moves together.
-   *
-   * Their COMPOSITIONS stay different. A portfolio row is not an opportunity card and
-   * neither is an analytical module; what they share is the ground they are drawn on.
+   * `.hm-workspace` is the deep analytical instrument panel; today its only
+   * wearers are the Expats bands (ExpatHero, CostOfLiving, WhatCanIBuy),
+   * which are deliberate dark showcases inside a light page. `.hm-discovery`
+   * and `.hm-owner` used to alias it, but the approved customer system is
+   * MIXED — navy structural framing over crisp white working surfaces — so
+   * both moved to the light declaration below (2026-09-29), the same split
+   * `.hm-invest` made first. Each of their pages draws its own navy identity
+   * band; the WORK happens on white.
    */
-  .hm-workspace,
-  .hm-discovery,
-  .hm-owner {
+  .hm-workspace {
     --background: 218 32% 7%;    /* #0C1119 — deep navy ink            */
     --foreground: 214 26% 93%;
     --card: 218 28% 10%;
@@ -759,10 +757,17 @@
    *
    * So the alias is split: the three reading-heavy products now get the
    * customer light craft as their GROUND, and each page draws its own deep
-   * navy structural band (identity, summary, CTA) on top of it. The other
-   * three names above stay the protected dark contracts they always were.
+   * navy structural band (identity, summary, CTA) on top of it.
+   *
+   * `.hm-discovery` (Find Property, Matches) and `.hm-owner` (the property
+   * portfolio and its flows) joined this light declaration on 2026-09-29 by
+   * explicit mandate: their full-dark dominance was the same defect the
+   * first split fixed. Only `.hm-workspace` (the Expats bands) remains a
+   * dark contract.
    */
-  .hm-invest {
+  .hm-invest,
+  .hm-discovery,
+  .hm-owner {
     --background: 42 38% 97%;
     --foreground: 224 14% 9%;
     --card: 0 0% 100%;
@@ -1040,14 +1045,8 @@
     color: hsl(265 32% 38%);
     border-color: hsl(265 28% 50% / 0.22);
   }
-  /* Inside the dark owner product the root is still data-surface=light, so the rule
-     above painted a light-ground pill (dark violet text) onto navy on /property/add and
-     /property/create. The owner scope gets the dark pill back. */
-  :root[data-surface='light'] .hm-owner .status-private {
-    background: hsl(280 50% 60% / 0.15);
-    color: hsl(280 50% 76%);
-    border-color: hsl(280 50% 60% / 0.3);
-  }
+  /* The owner scope moved to the light ground (2026-09-29), so the light
+     pill above is now correct inside it and no dark restore is needed. */
 }
 
 @layer base {

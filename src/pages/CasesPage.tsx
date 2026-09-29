@@ -527,7 +527,9 @@ export default function CasesPage() {
               : cases.length === 0
                 ? (
                   <div className="text-center py-12 text-muted-foreground">
-                    <Briefcase className="h-10 w-10 mx-auto opacity-30" />
+                    <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-[hsl(var(--gold-soft))] ring-1 ring-inset ring-[hsl(var(--gold-border))]/60" aria-hidden="true">
+                      <Briefcase className="h-5 w-5 text-[hsl(var(--gold-ink))]" />
+                    </span>
                     <p className="mt-2 font-medium">{t('cases_empty_title')}</p>
                     <p className="text-sm">{t('cases_empty_desc')}</p>
                   </div>

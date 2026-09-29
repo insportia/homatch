@@ -374,7 +374,9 @@ function CreditsContent() {
               </div>
             ) : ledger.length === 0 ? (
               <div className="py-8 text-center">
-                <CreditCard className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+                <span className="mx-auto flex mb-2 h-10 w-10 items-center justify-center rounded-xl bg-[hsl(var(--gold-soft))] ring-1 ring-inset ring-[hsl(var(--gold-border))]/60" aria-hidden="true">
+                  <CreditCard className="h-5 w-5 text-[hsl(var(--gold-ink))]" />
+                </span>
                 <p className="text-sm text-muted-foreground">{t('credits_ledger_empty')}</p>
               </div>
             ) : (

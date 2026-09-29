@@ -28,8 +28,15 @@ this file says what each surface looks like and which primitives it uses.
 
 - HOMEPAGE + public marketing: black/gold storytelling (see
   PROTECTED_SURFACES.md).
-- OWNER: full dark navy.
-- DISCOVERY (Matches / Find Property): dark discovery contract.
+- OWNER + DISCOVERY (My Properties / Property Detail / Matches / Find
+  Property): MIXED system since 2026-09-29 by explicit mandate — the
+  `.hm-owner` / `.hm-discovery` scopes carry the customer light tokens,
+  each page draws its own navy structural band (PageHero / identity
+  strip), and the working surfaces are crisp white. Verify, Contracts and
+  Investment (`.hm-invest`) made the same move earlier the same day. The
+  only remaining dark instrument-panel scope is `.hm-workspace` (Expats
+  bands). Guarded by tests/matrix/surfaceScopes.test.mjs and
+  legacyPaleGuard.test.mjs.
 - VERIFY: report-first, deterministic content; no decorative rework.
 - Entry pages (`/for-buyers`, `/for-owners`, product entry): `.hm-public`
   white scope.

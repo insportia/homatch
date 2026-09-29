@@ -438,7 +438,9 @@ export default function EditPropertyPage() {
           <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-4 sm:px-6">
             <Card className="bg-card border-border">
               <CardContent className="p-6 text-center space-y-3">
-                <AlertCircle className="h-9 w-9 mx-auto opacity-40" />
+                <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-[hsl(var(--gold-soft))] ring-1 ring-inset ring-[hsl(var(--gold-border))]/60" aria-hidden="true">
+                  <AlertCircle className="h-5 w-5 text-[hsl(var(--gold-ink))]" />
+                </span>
                 <p className="text-sm text-muted-foreground break-words">
                   {failed ?? t('prop_edit_not_found')}
                 </p>
@@ -800,7 +802,9 @@ export default function EditPropertyPage() {
 
             {photos.length === 0 && (
               <div className="rounded-lg border border-dashed border-border px-4 py-6 text-center space-y-1.5">
-                <ImageOff className="h-7 w-7 mx-auto opacity-30" />
+                <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-[hsl(var(--gold-soft))] ring-1 ring-inset ring-[hsl(var(--gold-border))]/60" aria-hidden="true">
+                  <ImageOff className="h-5 w-5 text-[hsl(var(--gold-ink))]" />
+                </span>
                 <p className="text-[13px] text-muted-foreground break-words">
                   {t('prop_photo_empty')}
                 </p>

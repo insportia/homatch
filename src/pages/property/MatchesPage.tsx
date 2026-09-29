@@ -12,8 +12,8 @@ import { DeeperSearchPanel } from '@/components/campaign/DeeperSearchPanel';
 import { LanguageCoveragePanel } from '@/components/campaign/LanguageCoveragePanel';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { OpportunityCard, OverflowGlyph } from '@/components/customer/OpportunityCard';
-import {CustomerPageHeader, CustomerSurface, 
-  DISCOVERY_SURFACE, FilterRail, QuietAction,
+import {CustomerSurface,
+  DISCOVERY_SURFACE, EmptyState, FilterRail, PageHero, QuietAction,
 } from '@/components/customer/surface';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { CommunityOutreachPanel } from '@/components/matching/CommunityOutreachPanel';
@@ -812,14 +812,19 @@ function MatchesContent() {
           line, a property line, a counts line, a full-width button and a tab rail. The
           property is now the eyebrow, the counts are a 13px suffix, and the campaign
           control has left the header entirely. */}
-        <CustomerPageHeader
-          eyebrow={propertyLabel}
-          title={t(titleKey)}
-          count={t('matches_count_line', {
-            total: String(counts.total),
-            new: String(counts.newCount),
-          })}
-        />
+        {/* The discovery product's navy identity band: which property, what
+            this screen finds for it, how many. The results read on white. */}
+        <div className="pt-4 sm:pt-5">
+          <PageHero
+            compact
+            eyebrow={propertyLabel}
+            title={t(titleKey)}
+            subtitle={t('matches_count_line', {
+              total: String(counts.total),
+              new: String(counts.newCount),
+            })}
+          />
+        </div>
 
         <FilterRail
           options={filters}
@@ -842,15 +847,11 @@ function MatchesContent() {
                 ))}
               </div>
             ) : filteredMatches.length === 0 ? (
-              <div className="hm-discovery-panel px-5 py-10 text-center">
-                <Search className="mx-auto mb-3 h-7 w-7 text-muted-foreground/40" />
-                <p className="font-display text-base font-semibold text-foreground">
-                  {t('matches_empty')}
-                </p>
-                <p className="mx-auto mt-1 max-w-[36ch] text-2xs text-muted-foreground">
-                  {t('matches_empty_desc')}
-                </p>
-              </div>
+              <EmptyState
+                icon={Search}
+                title={t('matches_empty')}
+                body={t('matches_empty_desc')}
+              />
             ) : (
               /*
                * TWO COLUMNS FROM md, THREE FROM 2xl. A card is ~240px tall now, so a

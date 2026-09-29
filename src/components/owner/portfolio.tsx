@@ -164,23 +164,29 @@ export function Money({ price, perSqm, none }: {
  * as three counters in capsules. Rendered only from values that exist.
  */
 export function IntelLine({
-  total, fresh, strong,
+  total, fresh, strong, onDark = false,
 }: {
   total: number; fresh: number; strong: number;
+  /** Inside a navy structural band the tokens resolve to ink-on-white, so the
+      band's own ink is explicit: white counts, gold for the fresh ones. */
+  onDark?: boolean;
 }) {
   const { t } = useLanguage();
+  const quiet = onDark ? 'text-white/75' : 'text-muted-foreground';
+  const loud = onDark ? 'text-white' : 'text-foreground';
+  const fresh_ = onDark ? 'text-[hsl(38_92%_60%)]' : 'text-[hsl(var(--gold-ink))]';
   if (total <= 0) {
-    return <p className="text-2xs text-muted-foreground">{t('prop_intel_none')}</p>;
+    return <p className={`text-2xs ${quiet}`}>{t('prop_intel_none')}</p>;
   }
   return (
-    <p className="text-2xs leading-snug text-muted-foreground">
-      <span className="font-display text-sm font-bold text-foreground tabular-nums" dir="ltr">{total}</span>
+    <p className={`text-2xs leading-snug ${quiet}`}>
+      <span className={`font-display text-sm font-bold tabular-nums ${loud}`} dir="ltr">{total}</span>
       {' '}
       {t('prop_intel_total')}
       {fresh > 0 && (
         <>
           {' · '}
-          <span className="font-semibold text-[hsl(var(--gold-ink))] tabular-nums" dir="ltr">{fresh}</span>
+          <span className={`font-semibold tabular-nums ${fresh_}`} dir="ltr">{fresh}</span>
           {' '}
           {t('prop_intel_new')}
         </>
@@ -188,7 +194,7 @@ export function IntelLine({
       {strong > 0 && (
         <>
           {' · '}
-          <span className="font-semibold text-foreground tabular-nums" dir="ltr">{strong}</span>
+          <span className={`font-semibold tabular-nums ${loud}`} dir="ltr">{strong}</span>
           {' '}
           {t('prop_intel_strong')}
         </>
@@ -216,7 +222,9 @@ const CONTROL = 'inline-flex min-h-9 items-center justify-center gap-1.5 rounded
 export const OWNER_PRIMARY = cn(
   CONTROL,
   'border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] px-3 text-[hsl(var(--gold-ink))]',
-  'hover:border-[hsl(var(--gold))] hover:bg-[hsl(var(--gold))] hover:text-[hsl(var(--primary-foreground))]',
+  /* Dark ink on the hover's solid gold. The token said primary-foreground,
+     which on the light scope is WHITE — white on gold is unreadable. */
+  'hover:border-[hsl(var(--gold))] hover:bg-[hsl(var(--gold))] hover:text-[#161309]',
 );
 
 /** A contained icon control. Two grey squares became two controls with a real hit area. */

@@ -360,7 +360,9 @@ export default function ActiveSearchPage() {
                 : demandSubs.length === 0
                   ? (
                     <div className="text-center py-10 text-muted-foreground">
-                      <Search className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                      <span className="mx-auto flex mb-3 h-11 w-11 items-center justify-center rounded-xl bg-[hsl(var(--gold-soft))] ring-1 ring-inset ring-[hsl(var(--gold-border))]/60" aria-hidden="true">
+                        <Search className="h-5 w-5 text-[hsl(var(--gold-ink))]" />
+                      </span>
                       <p className="text-sm">{t('active_search_empty')}</p>
                       <p className="text-xs mt-1">{t('as_empty_demand_hint')}</p>
                     </div>
@@ -382,7 +384,9 @@ export default function ActiveSearchPage() {
                 : supplySubs.length === 0
                   ? (
                     <div className="text-center py-10 text-muted-foreground">
-                      <Home className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                      <span className="mx-auto flex mb-3 h-11 w-11 items-center justify-center rounded-xl bg-[hsl(var(--gold-soft))] ring-1 ring-inset ring-[hsl(var(--gold-border))]/60" aria-hidden="true">
+                        <Home className="h-5 w-5 text-[hsl(var(--gold-ink))]" />
+                      </span>
                       <p className="text-sm">{t('active_search_empty')}</p>
                       <p className="text-xs mt-1">{t('as_empty_supply_hint')}</p>
                     </div>

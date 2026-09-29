@@ -287,11 +287,13 @@ export default function LiveChatPage() {
        */}
       <AppLayout hidePadding>
         <div className="mx-auto flex h-full w-full max-w-3xl flex-col overflow-hidden">
-          <div className="flex items-center gap-2 px-4 py-3 border-b border-border shrink-0">
-            <Radio className="h-5 w-5 text-primary" />
+          {/* The product's navy identity strip — structure over the white
+              conversation workspace, same grammar as every other family. */}
+          <div className="flex shrink-0 items-center gap-2.5 bg-[#0C1119] px-4 py-3 text-white">
+            <Radio className="h-5 w-5 text-[hsl(38_92%_60%)]" />
             <div className="flex-1 min-w-0">
-              <h1 className="text-base font-semibold">{t('live_chat_title')}</h1>
-              <p className="text-[14px] text-muted-foreground">{t('live_chat_subtitle')}</p>
+              <h1 className="text-base font-semibold text-white">{t('live_chat_title')}</h1>
+              <p className="text-[13px] text-white/70">{t('live_chat_subtitle')}</p>
             </div>
           </div>
 

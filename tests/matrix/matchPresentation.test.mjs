@@ -352,10 +352,11 @@ test('the wallet balance is gone from the matches HEADER and kept where it is lo
    * Twice this test was written against the whole file and twice it failed on legitimate
    * code; a claim about a region has to be checked against that region.
    */
-  /* The header is now <CustomerPageHeader>, which takes an eyebrow, a title and a count
-     and has no slot a balance could occupy. The region is checked anyway, because the
-     rule is about the region rather than about one component. */
-  const from = page.indexOf('<CustomerPageHeader');
+  /* The header is now the navy <PageHero> band (2026-09-29 mixed-system
+     mandate), which takes an eyebrow, a title and a subtitle and has no slot
+     a balance could occupy. The region is checked anyway, because the rule
+     is about the region rather than about one component. */
+  const from = page.indexOf('<PageHero');
   const to = page.indexOf('<FilterRail');
   assert.ok(from !== -1 && to > from, 'the matches header could not be located');
   const header = page.slice(from, to);
@@ -452,11 +453,22 @@ test('a product page picks its own ground, and the shell is never one of them', 
    * named gold directly would carry the shell's palette wherever it was used, which is the
    * same leak one layer down.
    */
-  for (const file of ['surface.tsx', 'OpportunityCard.tsx', 'SearchComposer.tsx']) {
+  for (const file of ['OpportunityCard.tsx', 'SearchComposer.tsx']) {
     const source = code(read('src', 'components', 'customer', file));
     assert.ok(!source.includes('--gold'),
       `${file} names the shell's accent instead of reading --primary`);
   }
+
+  /* surface.tsx is allowed the gold FAMILY in exactly two places: PageHero
+     (the navy structural band, whose gold is the brand's own bar) and
+     EmptyState (the approved gold-soft chip). Ambient primitives — cards,
+     rails, actions — still read --primary, so the check walks everything
+     BEFORE EmptyState's declaration. */
+  const surfaceCode = code(read('src', 'components', 'customer', 'surface.tsx'));
+  const ambient = surfaceCode.slice(0, surfaceCode.indexOf('export function EmptyState'));
+  assert.ok(ambient.length > 0, 'EmptyState left surface.tsx');
+  assert.ok(!ambient.includes('--gold'),
+    "an ambient customer primitive names the shell's accent instead of reading --primary");
 });
 
 /* ────────────────────────────────────────────────────────────────────────

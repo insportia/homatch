@@ -15,7 +15,7 @@ import { AppLayout } from '@/components/layouts/AppLayout';
 import { MatchingJobProgress } from '@/components/matching/MatchingJobProgress';
 import { PropertyReference } from '@/components/owner/ContactPhoneField';
 import {
-  FactLine, IntelLine, OWNER_ICON, OWNER_PRIMARY, OWNER_SECONDARY,
+  FactLine, IntelLine, OWNER_ICON, OWNER_SECONDARY,
 } from '@/components/owner/portfolio';
 import { CanonicalGroupBanner } from '@/components/property/CanonicalGroupBanner';
 import { PropertyGallery } from '@/components/property/PropertyGallery';
@@ -583,9 +583,14 @@ function PropertyDetailContent() {
             {/* The facts that decide a property, as values rather than tiles. */}
             <FactLine items={headFacts} />
 
-            {/* ── HOMATCH INTELLIGENCE AND THE ONE ACTION ─────────────── */}
-            <div className="hm-owner-panel space-y-2.5 p-3.5">
+            {/* ── HOMATCH INTELLIGENCE AND THE ONE ACTION ───────────────
+                The discovery CTA's navy framing: the single dark object in
+                the identity column, so "find the people for this property"
+                reads as the product's own act, not one row among the facts.
+                Everything else on the page stays on white. */}
+            <div className="space-y-2.5 overflow-hidden rounded-2xl bg-[#0C1119] p-4 text-white shadow-hover">
               <IntelLine
+                onDark
                 total={intel?.total ?? 0}
                 fresh={intel?.fresh ?? 0}
                 strong={intel?.strong ?? 0}
@@ -598,28 +603,28 @@ function PropertyDetailContent() {
                 tooltip is a puzzle, and this is a sentence.
               */}
               {contactReady ? (
-                <Link to={`/property/${id}/matches`} className={cn(OWNER_PRIMARY, 'w-full')}>
+                <Link to={`/property/${id}/matches`} className="inline-flex min-h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-[hsl(38_92%_54%)] px-3 py-1.5 text-2xs font-bold text-[#161309] transition-colors hover:bg-[hsl(38_92%_60%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70">
                   <span className="break-words text-center leading-snug">{ownerAction}</span>
                 </Link>
               ) : (
                 <>
-                  <Link to={`/property/${id}/edit#contact`} className={cn(OWNER_PRIMARY, 'w-full')}>
+                  <Link to={`/property/${id}/edit#contact`} className="inline-flex min-h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-[hsl(38_92%_54%)] px-3 py-1.5 text-2xs font-bold text-[#161309] transition-colors hover:bg-[hsl(38_92%_60%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70">
                     <Phone className="h-3.5 w-3.5 shrink-0" />
                     <span className="break-words text-center leading-snug">
                       {t('contact_phone_add')}
                     </span>
                   </Link>
-                  <p className="break-words text-2xs leading-relaxed text-muted-foreground">
+                  <p className="break-words text-2xs leading-relaxed text-white/75">
                     {t('contact_phone_missing_body')}
                   </p>
                 </>
               )}
               <div className="flex items-center gap-1.5">
-                <Link to={`/property/${id}/edit`} className={cn(OWNER_SECONDARY, 'flex-1')}>
+                <Link to={`/property/${id}/edit`} className="inline-flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/40 bg-white px-3 py-1.5 text-2xs font-semibold text-[#0C1119] transition-colors hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]">
                   <Pencil className="h-3.5 w-3.5 shrink-0" />
                   <span className="break-words text-start">{t('prop_action_edit')}</span>
                 </Link>
-                <Link to={`/property/${id}/edit#photos`} className={OWNER_ICON} aria-label={t('prop_action_photos')}>
+                <Link to={`/property/${id}/edit#photos`} className="inline-flex min-h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/25 text-white/85 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]" aria-label={t('prop_action_photos')}>
                   <Camera className="h-3.5 w-3.5" />
                 </Link>
               </div>

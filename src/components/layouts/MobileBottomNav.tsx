@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { LayoutDashboard, FileSignature, Shield, Sparkles, Bot } from 'lucide-react';
+import { NavGlyphIcon, type NavGlyphName } from './NavGlyph';
 
 /*
  * FIVE SLOTS, ORDERED BY WHAT A PHONE IS ACTUALLY FOR.
@@ -35,12 +35,15 @@ import { LayoutDashboard, FileSignature, Shield, Sparkles, Bot } from 'lucide-re
  * The result reads as a product bar rather than a feature bar — the two
  * intelligence products a buyer actually came for, flanking the assistant.
  */
-const items = [
-  { key: 'nav_dashboard',  path: '/dashboard',  icon: LayoutDashboard },
-  { key: 'nav_verify',     path: '/verify',     icon: Shield },
-  { key: 'nav_ai',         path: '/ai',         icon: Bot, highlight: true },
-  { key: 'nav_contracts',  path: '/contracts',  icon: FileSignature },
-  { key: 'nav_live_chat',  path: '/live-chat',  icon: Sparkles },
+/* Same drawn glyph family as the sidebar (NavGlyph.tsx) — one semantic
+   icon per product across the whole shell, adapted to this bar's own
+   geometry and color hierarchy rather than wearing the rail's tile. */
+const items: Array<{ key: string; path: string; glyph: NavGlyphName; highlight?: boolean }> = [
+  { key: 'nav_dashboard',  path: '/dashboard',  glyph: 'dashboard' },
+  { key: 'nav_verify',     path: '/verify',     glyph: 'verify' },
+  { key: 'nav_ai',         path: '/ai',         glyph: 'ai', highlight: true },
+  { key: 'nav_contracts',  path: '/contracts',  glyph: 'contracts' },
+  { key: 'nav_live_chat',  path: '/live-chat',  glyph: 'live_chat' },
 ];
 
 export function MobileBottomNav() {
@@ -87,15 +90,16 @@ export function MobileBottomNav() {
                   active && !item.highlight ? 'bg-[hsl(38_92%_56%)]/[0.18]' : ''
                 }`}
               >
-                <item.icon
-                  className={`h-[1.15rem] w-[1.15rem] ${
+                <NavGlyphIcon
+                  name={item.glyph}
+                  className={`h-[1.2rem] w-[1.2rem] ${
                     item.highlight
                       ? 'text-[hsl(38_92%_60%)]'
                       : active
                       ? 'text-[hsl(38_92%_60%)]'
                       : 'text-white/60'
                   }`}
-                  strokeWidth={active ? 2.1 : 1.75}
+                  strokeWidth={active ? 2 : 1.75}
                 />
               </span>
               <span

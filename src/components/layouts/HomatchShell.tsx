@@ -25,11 +25,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  ArrowRight, Bell, CreditCard, LayoutDashboard,
-  Handshake, LogOut, Mail, MapPinHouse, Menu, MessageCircle, MessageSquare, PhoneCall, Search,
-  Settings, ShieldCheck, Sparkles, User as UserIcon, X, Activity,
-  CircleDollarSign, Coins as CoinsIcon, TrendingUp,
-  FileSignature, Globe, Briefcase,
+  ArrowRight, Bell, CreditCard, LogOut, Menu, Search,
+  Settings, User as UserIcon, X, Activity,
+  Coins as CoinsIcon,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -38,6 +36,7 @@ import { getCreditAccount } from '@/services/api';
 import { Button } from '@/components/ui/button';
 import { HomatchLogo } from '@/components/common/HomatchLogo';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
+import { NavGlyph, type NavGlyphName } from './NavGlyph';
 import { InstallApp } from '@/components/common/InstallApp';
 import { UnreadBadge } from '@/components/common/UnreadBadge';
 import {
@@ -48,7 +47,9 @@ import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
 interface NavItem {
   key: string;
   path: string;
-  icon: React.ElementType;
+  /* The item's glyph in the customer navigation's own drawn family — one
+     unified navy/gold language for the rail (see NavGlyph.tsx). */
+  glyph: NavGlyphName;
 }
 
 interface NavGroup {
@@ -98,7 +99,7 @@ export const NAV: NavGroup[] = [
   {
     key: 'nav_group_workspace',
     items: [
-      { key: 'nav_dashboard', path: '/dashboard', icon: LayoutDashboard },
+      { key: 'nav_dashboard', path: '/dashboard', glyph: 'dashboard' },
       /*
        * ONE OWNER WORKSPACE, WHERE THERE WERE TWO DESTINATIONS FOR ONE JOURNEY.
        *
@@ -118,13 +119,13 @@ export const NAV: NavGroup[] = [
        * find a buyer, find a tenant -- and the length is a design problem solved by
        * letting the row wrap to two lines, not by weakening the meaning to fit.
        *
-       * Handshake rather than a building or a person: the directive for this icon is
-       * property PLUS matching, and a building alone is the portfolio without the
-       * product while a users glyph alone is a CRM. A handshake is the transaction
-       * these properties exist to reach, and it is unmistakable against MapPinHouse
-       * one line below at 18px.
+       * The glyph is a house carrying a gold check (NavGlyph 'properties'): the
+       * directive for this icon is property PLUS matching, and a building alone
+       * is the portfolio without the product while a people glyph alone is a
+       * CRM. The gold accent marks the outcome these properties exist to reach,
+       * and it is unmistakable against the search lens one line below at 18px.
        */
-      { key: 'nav_owner_workspace', path: '/property', icon: Handshake },
+      { key: 'nav_owner_workspace', path: '/property', glyph: 'properties' },
       /*
        * FIND PROPERTY: the other journey, and deliberately not this one.
        *
@@ -133,13 +134,14 @@ export const NAV: NavGroup[] = [
        * whether a requirement was REQUIRED or merely PREFERRED, and could not return a
        * result.
        *
-       * The magnifying glass is gone and is not coming back: a loupe means "search this
-       * text", which is the one thing this destination is not. MapPinHouse is a house
-       * inside a map pin -- property discovery specifically, from the same icon family,
-       * and legible at 18px. Search is still imported and still used, on the dashboard's
-       * actual text search box, which is what a magnifier is for.
+       * A bare magnifying glass is gone and is not coming back: a loupe alone means
+       * "search this text", which is the one thing this destination is not. NavGlyph
+       * 'find_property' draws a house with a gold lens over it -- property discovery
+       * specifically, from the same drawn family, and legible at 18px. Search (lucide)
+       * is still imported and still used, on the dashboard's actual text search box,
+       * which is what a bare magnifier is for.
        */
-      { key: 'dnav_find_property', path: '/find-property', icon: MapPinHouse },
+      { key: 'dnav_find_property', path: '/find-property', glyph: 'find_property' },
       /*
        * THE BROKER DIRECTORY, previously reachable only through the public
        * site. It is a working tool — find a professional for your market and
@@ -147,7 +149,7 @@ export const NAV: NavGroup[] = [
        * This is /brokers the directory, not /partners the marketing page,
        * which stays public-only (see ALSO GONE above).
        */
-      { key: 'pub_nav_brokers', path: '/brokers', icon: Briefcase },
+      { key: 'pub_nav_brokers', path: '/brokers', glyph: 'brokers' },
     ],
   },
   /*
@@ -167,25 +169,25 @@ export const NAV: NavGroup[] = [
    */
   {
     key: 'nav_group_expats',
-    items: [{ key: 'nav_for_expats', path: '/for-expats/georgia', icon: Globe }],
+    items: [{ key: 'nav_for_expats', path: '/for-expats/georgia', glyph: 'expats' }],
   },
   {
     key: 'nav_group_intelligence',
     items: [
-      { key: 'nav_verify', path: '/verify', icon: ShieldCheck },
-      { key: 'nav_contracts', path: '/contracts', icon: FileSignature },
-      { key: 'nav_mortgage', path: '/mortgage', icon: CircleDollarSign },
-      { key: 'nav_investment', path: '/investment', icon: TrendingUp },
+      { key: 'nav_verify', path: '/verify', glyph: 'verify' },
+      { key: 'nav_contracts', path: '/contracts', glyph: 'contracts' },
+      { key: 'nav_mortgage', path: '/mortgage', glyph: 'mortgage' },
+      { key: 'nav_investment', path: '/investment', glyph: 'investment' },
     ],
   },
   {
     key: 'nav_group_comms',
     items: [
-      { key: 'call_center_title', path: '/outreach/calls', icon: PhoneCall },
-      { key: 'comm_channel_whatsapp', path: '/outreach/whatsapp', icon: MessageCircle },
-      { key: 'dnav_email', path: '/outreach/email', icon: Mail },
-      { key: 'nav_live_chat', path: '/live-chat', icon: Sparkles },
-      { key: 'nav_chat', path: '/chat', icon: MessageSquare },
+      { key: 'call_center_title', path: '/outreach/calls', glyph: 'calls' },
+      { key: 'comm_channel_whatsapp', path: '/outreach/whatsapp', glyph: 'whatsapp' },
+      { key: 'dnav_email', path: '/outreach/email', glyph: 'email' },
+      { key: 'nav_live_chat', path: '/live-chat', glyph: 'live_chat' },
+      { key: 'nav_chat', path: '/chat', glyph: 'chat' },
     ],
   },
 ];
@@ -316,7 +318,7 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
                    * a third line carrying one word, which reads as an accident.
                    * 14px is a normal navigation size and nothing here is truncated.
                    */
-                  className={`relative mt-0.5 flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm leading-snug transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                  className={`group relative mt-0.5 flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm leading-snug transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                     active
                       /*
                        * QUIET GOLD, NOT SATURATED GOLD.
@@ -342,11 +344,7 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
                       aria-hidden="true"
                     />
                   )}
-                  <item.icon
-                    className={`h-[18px] w-[18px] shrink-0 ${active ? 'text-[hsl(var(--gold-ink))]' : 'text-muted-foreground'}`}
-                    strokeWidth={active ? 2.1 : 1.75}
-                    aria-hidden="true"
-                  />
+                  <NavGlyph name={item.glyph} active={active} />
                   {/*
                     text-wrap: balance, because the owner workspace label is long by
                     design and the browser distributes it better than a hard break can.

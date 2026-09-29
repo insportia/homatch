@@ -214,18 +214,18 @@ test('My Properties comes before Find Property', () => {
 test('Find Property no longer points at the chat, and no longer wears a magnifier', () => {
   const body = code(shell);
   /*
-   * MapPinHouse: a house inside a map pin, which is property DISCOVERY specifically.
-   * Telescope was the first replacement and was still wrong -- discovery in the
-   * abstract, saying nothing about property. Both beat a loupe, which means "search
-   * this text" and is the one thing this destination is not.
+   * The rail now uses the drawn NavGlyph family (2026-09-29): 'find_property'
+   * is a house with a gold lens over it -- property discovery specifically.
+   * A bare loupe means "search this text" and is the one thing this
+   * destination is not, so no bare Search icon may return here.
    */
-  assert.match(body, /\{ key: 'dnav_find_property', path: '\/find-property', icon: MapPinHouse \}/);
+  assert.match(body, /\{ key: 'dnav_find_property', path: '\/find-property', glyph: 'find_property' \}/);
   assert.ok(!/'dnav_find_property'[^}]*icon: Search/.test(body),
     'Find Property is back to a magnifying glass');
   assert.ok(!/'dnav_find_property'[^}]*path: '\/ai'/.test(body),
     'Find Property points at the chat assistant again');
-  /* Search is still imported and still used -- on the dashboard's text search box,
-     which is exactly what a magnifier is for. */
+  /* Search (lucide) is still imported and still used -- on the dashboard's text
+     search box, which is exactly what a bare magnifier is for. */
   assert.match(body, /<Search className=/);
 });
 
@@ -241,7 +241,7 @@ test('there is ONE owner destination, not two competing ones', () => {
    * workspace header, which is where adding a property belongs.
    */
   const body = code(shell);
-  assert.match(body, /\{ key: 'nav_owner_workspace', path: '\/property', icon: Handshake \}/);
+  assert.match(body, /\{ key: 'nav_owner_workspace', path: '\/property', glyph: 'properties' \}/);
   assert.ok(!/key: 'dnav_find_client'/.test(body),
     'the duplicate buyer-search destination is back in the customer rail');
 
@@ -252,22 +252,22 @@ test('there is ONE owner destination, not two competing ones', () => {
 
 test('the two property destinations do not share an icon', () => {
   const body = code(shell);
-  const iconOf = (key) => {
-    const match = body.match(new RegExp(`\\{ key: '${key}', path: '[^']+', icon: (\\w+) \\}`));
+  const glyphOf = (key) => {
+    const match = body.match(new RegExp(`\\{ key: '${key}', path: '[^']+', glyph: '(\\w+)' \\}`));
     return match?.[1] ?? null;
   };
-  const mine = iconOf('nav_owner_workspace');
-  const find = iconOf('dnav_find_property');
-  assert.ok(mine, 'the owner workspace has no icon');
-  assert.ok(find, 'Find Property has no icon');
+  const mine = glyphOf('nav_owner_workspace');
+  const find = glyphOf('dnav_find_property');
+  assert.ok(mine, 'the owner workspace has no glyph');
+  assert.ok(find, 'Find Property has no glyph');
   assert.notEqual(mine, find,
     'ownership and discovery are wearing the same icon at 20px on a phone');
 
   /* And neither collides with anything else in the list. */
-  const icons = [...body.matchAll(/icon: (\w+) \}/g)].map((m) => m[1]);
-  for (const icon of [mine, find]) {
-    assert.equal(icons.filter((name) => name === icon).length, 1,
-      `${icon} is used by more than one destination`);
+  const glyphs = [...body.matchAll(/glyph: '(\w+)' \}/g)].map((m) => m[1]);
+  for (const glyph of [mine, find]) {
+    assert.equal(glyphs.filter((name) => name === glyph).length, 1,
+      `${glyph} is used by more than one destination`);
   }
 });
 

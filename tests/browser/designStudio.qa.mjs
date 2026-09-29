@@ -83,6 +83,7 @@ export function createStore(seed = {}) {
     ds_jobs: [],
     ds_shares: [],
     ds_published_designs: [],
+    ds_reconstructions: [],
     ...seed,
   };
 
@@ -123,7 +124,9 @@ export function createStore(seed = {}) {
     ds_version_events: (r) => ({ id: randomUUID(), created_at: now(), ...r }),
     ds_saved_views: (r) => ({ id: randomUUID(), sort: 0, room_id: null, created_at: now(), updated_at: now(), ...r }),
     ds_floorplans: (r) => ({ id: randomUUID(), status: 'UPLOADED', interpretation: null, interpretation_error: null,
-      corrections: [], created_at: now(), updated_at: now(), ...r }),
+      corrections: [], purpose: 'PLAN', created_at: now(), updated_at: now(), ...r }),
+    ds_reconstructions: (r) => ({ id: randomUUID(), plan_source_id: null, corrections: {}, built_source_id: null, built_version_id: null,
+      created_at: now(), updated_at: now(), ...r, status: 'QUEUED', analysis: null, model: null, error: null }),
   };
 
   function handle(table, method, url, body) {
@@ -191,7 +194,8 @@ export function createStore(seed = {}) {
     if (name === 'ds_create_share') {
       const version = db.ds_versions.find((v) => v.id === args.p_version_id);
       if (!version) return { __error: 'DS_VERSION_NOT_OWNED' };
-      const stateText = JSON.stringify(version.state);
+      const publicState = { ...version.state, objects: (version.state.objects ?? []).map(({ provenance, ...o }) => o) };
+      const stateText = JSON.stringify(publicState);
       const hash = createHashSync(stateText);
       let pub = db.ds_published_designs.find((p) => p.version_id === version.id && p.state_hash === hash);
       if (!pub) {
@@ -236,7 +240,7 @@ export function createStore(seed = {}) {
     return null;
   }
 
-  return { db, handle, rpc, objects: new Map(), signerCalls: [], readings: [], readingDoc: null, modelChecks: [], aiRequests: [], aiAnswer: null };
+  return { db, handle, rpc, objects: new Map(), signerCalls: [], readings: [], readingDoc: null, modelChecks: [], aiRequests: [], aiAnswer: null, reconRequests: [], reconAnswer: null };
 }
 
 export async function wire(page, store, errors) {
@@ -291,6 +295,23 @@ export async function wire(page, store, errors) {
       if (!plan || !store.objects.has(plan.object_key)) return json({ error: 'NOT_FOUND' }, 404);
       Object.assign(plan, { status: 'INTERPRETED', interpretation: { doc: store.readingDoc, dimensionStrings: [], readVersion: 'qa-1' } });
       return json({ ok: true, status: 'INTERPRETED' });
+    }
+    /* A stand-in for design-studio-reconstruct: every picture must exist in
+       "R2" under the caller's key; the MODEL'S ANSWER is the acceptance
+       fixture (store.reconAnswer), and the REAL validator and plan builder
+       turn it into the analysis and the floor-plan proposal, as the server does. */
+    if (url.pathname.includes('/functions/v1/design-studio-reconstruct')) {
+      const body = JSON.parse(req.postData() || '{}');
+      store.reconRequests.push(body);
+      const recon = store.db.ds_reconstructions.find((r) => r.id === body.reconstructionId);
+      if (!recon) return json({ error: 'NOT_FOUND' }, 404);
+      const refs = recon.reference_ids.map((id) => store.db.ds_floorplans.find((f) => f.id === id));
+      if (refs.some((r) => !r || r.purpose !== 'REFERENCE' || !store.objects.has(r.object_key))) return json({ state: 'FAILED', reason: 'FILE_MISSING' }, 422);
+      const { validateReconstruction, planDocument, RECON_VERSION } = await import('../../supabase/functions/_shared/designStudio/reconstructRead.ts');
+      const { recon: reading } = validateReconstruction(store.reconAnswer, refs.length);
+      Object.assign(refs[0], { status: 'INTERPRETED', interpretation: { doc: planDocument(reading, refs[0].object_key), dimensionStrings: [], readVersion: RECON_VERSION } });
+      Object.assign(recon, { status: 'READ', analysis: reading, model: 'qa-fixture' });
+      return json({ state: 'READ', counts: { rooms: reading.rooms.length, objects: reading.objects.length } });
     }
     /* A stand-in for design-studio-model that runs the REAL inspector on the
        bytes the browser put in "R2", and records the source like the server. */
@@ -386,12 +407,16 @@ export async function startServer() {
   return server;
 }
 
-export async function openContext(browser, { width, height, lang }) {
-  const ctx = await browser.newContext({ viewport: { width, height }, reducedMotion: 'reduce' });
+/* The walkthrough's first-time controls are dismissed in every context except the ones that test them. */
+const SEEN_TUTORIAL = () => { window.localStorage.setItem('hm_walk_tutorial_v1_desktop', 'hidden'); window.localStorage.setItem('hm_walk_tutorial_v1_touch', 'hidden'); };
+
+export async function openContext(browser, { width, height, lang, tutorial = false, touch = false, motion = 'reduce' }) {
+  const ctx = await browser.newContext({ viewport: { width, height }, reducedMotion: motion, hasTouch: touch, isMobile: touch });
   await ctx.addInitScript(([k, s, l]) => {
     window.localStorage.setItem(k, JSON.stringify(s));
     window.localStorage.setItem('homatch_lang', l);
   }, ['sb-stubproj-auth-token', fakeSession(), lang]);
+  if (!tutorial) await ctx.addInitScript(SEEN_TUTORIAL);
   return ctx;
 }
 
@@ -403,6 +428,12 @@ export { BASE, OUT, check, findChrome, chromium };
 async function main() {
   const server = await startServer();
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
+  // QA_ONLY=11 runs one checkpoint (while iterating); the release run is all of them.
+  if (process.env.QA_ONLY) {
+    try { await ({ 11: checkpoint11, 10: checkpoint10 })[process.env.QA_ONLY](browser); } finally { await browser.close().catch(() => {}); server.kill(); }
+    console.log(failures ? `${failures} FAILED` : 'ALL PASSED');
+    process.exit(failures ? 1 : 0);
+  }
   try {
     const store = createStore();
     const errors = [];
@@ -492,6 +523,7 @@ async function main() {
     await checkpoint8Share(browser);
     await checkpoint9(browser);
     await checkpoint10(browser);
+    await checkpoint11(browser);
   } finally {
     await browser.close().catch(() => {});
     server.kill();
@@ -545,6 +577,383 @@ export async function seededStore() {
     { id: 'pal-2', code: 'scandinavian', name: 'Scandinavian', colors: ['#f8f8f6', '#e6e2dc', '#cdb28b', '#8c8f95', '#2e3a52'], tags: [], sort: 20, active: true },
   );
   return { store, project, source, version };
+}
+
+
+/* ── Checkpoint 11: THE ACCEPTANCE PICTURE → an editable home you can live in ──
+ *
+ * The real isometric apartment render the customer supplied goes through the
+ * real flow: upload, reading (the model's answer is the hand-authored
+ * acceptance fixture; everything after it is the real code), review with
+ * corrections, build, reference tools, direct editing — then the living
+ * walkthrough on the rebuilt apartment: walking with a body, doors that
+ * block, sitting, the kitchen, the bed, Live Here on the balcony, time of
+ * day, the menu, a photo, dragging a door by hand, mobile two-thumb control,
+ * and a public link that stays temporary. */
+async function checkpoint11(browser) {
+  const fs = await import('node:fs');
+  const { seedRows } = await import('../../src/lib/designStudio/__tests__/seedCatalog.mjs');
+  const { referenceCamera } = await import('../../src/lib/designStudio/reconstruction.ts');
+  const { validateReconstruction } = await import('../../src/lib/designStudio/reconstructRead.ts');
+  const { jpegSize } = await import('../../src/lib/designStudio/exportFiles.ts');
+  const fixture = JSON.parse(fs.readFileSync(path.join(ROOT, 'src/lib/designStudio/__tests__/fixtures/isometric-apartment.recon.json'), 'utf8'));
+  const picture = path.join(ROOT, 'tests/fixtures/design-studio/isometric-apartment.jpg');
+  const seed = seedRows();
+  const store = createStore({ ds_catalog_assets: seed.assets, ds_catalog_materials: seed.materials });
+  store.reconAnswer = fixture;
+  const errors = [];
+
+  // ── 1. The launcher: a picture is a way in.
+  let ctx = await openContext(browser, { width: 1440, height: 900, lang: 'en' });
+  let page = await ctx.newPage();
+  await wire(page, store, errors);
+  await page.goto(`${BASE}/design-studio`, { waitUntil: 'domcontentloaded' });
+  await page.getByTestId('ds-start-image').click();
+  await page.getByTestId('recon-pick').waitFor({ timeout: 20000 });
+  const project = store.db.ds_projects.at(-1);
+  check('picture: "Start from a picture" creates a project and opens the reading flow', !!project && project.name === 'My home from pictures');
+  await page.screenshot({ path: path.join(OUT, 'cp11-pick-1440-en.png') });
+
+  // ── 2. Upload the acceptance render and read it.
+  await page.getByTestId('recon-input').setInputFiles(picture);
+  await page.getByTestId('recon-read').click();
+  await page.getByTestId('recon-review').waitFor({ timeout: 30000 });
+  const ref = store.db.ds_floorplans.find((f) => f.purpose === 'REFERENCE');
+  const rec = store.db.ds_reconstructions.at(-1);
+  check('picture: stored as the owner\'s REFERENCE (never as a floor plan), in their own folder',
+    !!ref && ref.object_key.startsWith(`users/hm1/design-studio-floorplans/${project.id}/`) && store.objects.has(ref.object_key), ref?.object_key);
+  check('picture: one reading of the picture, in the customer\'s language', store.reconRequests.length === 1 && store.reconRequests[0].language === 'en');
+  check('reading: stored as structured scene data (rooms, openings, pieces, surfaces, cameras)',
+    rec?.status === 'READ' && rec.analysis.rooms.length === 7 && rec.analysis.openings.length === 12 && rec.analysis.objects.length === 36 && rec.analysis.cameras.length === 1);
+  check('reading: the plan rides on the picture\'s row as an UNVERIFIED floor-plan proposal',
+    ref.status === 'INTERPRETED' && ref.interpretation.doc.rooms.length === 6 && ref.interpretation.doc.balconies.length === 1
+    && ref.interpretation.doc.rooms.every((r) => r.state === 'UNVERIFIED'));
+  check('review: the home is sketched from above', await page.getByTestId('recon-sketch').isVisible());
+  check('review: every piece is listed', (await page.locator('[data-piece]').count()) === 36);
+  await page.getByTestId('recon-reference').waitFor({ timeout: 10000 }).catch(() => {});
+  check('review: the reference picture is shown', await page.getByTestId('recon-reference').isVisible());
+  check('review: artwork is honestly "not in the catalogue"', (await page.locator('[data-piece="artwork"]').innerText()).includes('Not in the HOMATCH catalogue yet'));
+  const pieceTexts = await page.locator('[data-piece]').allInnerTexts();
+  check('review: approximations are called approximations', pieceTexts.some((x) => x.includes('(approximate)')) && pieceTexts.some((x) => x.includes('HOMATCH piece:')));
+  check('review: counts', (await page.getByTestId('recon-counts').innerText()).includes('7 rooms'));
+  check('review 1440: no horizontal overflow', (await overflowX(page)) <= 0);
+  await page.screenshot({ path: path.join(OUT, 'cp11-review-1440-en.png'), fullPage: true });
+
+  // Corrections: leave the window plant out; choose a different sofa.
+  await page.locator('[data-piece="plant-window"]').getByRole('button', { name: 'Leave out' }).click();
+  await page.locator('[data-piece="sofa"]').getByRole('combobox', { name: 'HOMATCH piece' }).selectOption('dev/sofa-2');
+  check('review: a corrected piece says it is the customer\'s choice', (await page.locator('[data-piece="sofa"]').innerText()).includes('HOMATCH piece: Two-seat sofa'));
+
+  // ── 3. Build.
+  await page.getByTestId('recon-build').click();
+  await page.locator('main canvas').waitFor({ timeout: 40000 });
+  await page.waitForTimeout(1200);
+  const source = store.db.ds_spatial_sources.find((s) => s.project_id === project.id && s.kind === 'FLOORPLAN_SCENE');
+  const version = store.db.ds_versions.find((v) => v.project_id === project.id);
+  const v = () => store.db.ds_versions.find((x) => x.id === version.id);
+  check('build: real geometry from the shared generator, honestly ESTIMATED',
+    !!source && source.geometry_state === 'ESTIMATED' && source.canonical.scene.floors.length === 7 && source.floorplan_id === ref.id);
+  check('build: the design is the space\'s first version, named for its pictures', version?.origin === 'ORIGINAL' && version.name === 'From your pictures'
+    && store.db.ds_projects.find((p) => p.id === project.id).head_version_id === version.id);
+  const objs = version.state.objects;
+  check('build: pieces placed as catalogue assets, each with its provenance', objs.length >= 30 && objs.every((o) => o.provenance?.source === 'IMAGE_RECONSTRUCTION' && o.provenance.images[0] === ref.id), String(objs.length));
+  check('build: the customer\'s corrections were kept', !objs.some((o) => o.provenance.ref === 'plant-window') && objs.find((o) => o.provenance.ref === 'sofa')?.assetId === 'dev/sofa-2');
+  check('build: floors and walls dressed as seen', Object.keys(version.state.surfaces).length > 10);
+  check('build: the reading is marked built, pointing at what was built', rec.status === 'BUILT' && rec.built_source_id === source.id && rec.built_version_id === version.id);
+  await page.screenshot({ path: path.join(OUT, 'cp11-built-1440-en.png') });
+
+  // ── 4. Reference tools.
+  await page.getByTestId('ds-reference').click();
+  await page.getByTestId('reference-panel').waitFor();
+  await page.getByTestId('reference-match').click();
+  await page.waitForTimeout(900);
+  const snap = await scene(page, (c) => c.snapshot());
+  const want = referenceCamera(validateReconstruction(fixture, 1).recon, 0, 1);
+  check('reference: Match reference view puts the camera where the picture was taken (estimated)',
+    Math.hypot(snap.position[0] - want.position[0], snap.position[1] - want.position[1], snap.position[2] - want.position[2]) < 0.05, JSON.stringify(snap.position));
+  await page.getByTestId('reference-overlay-toggle').click();
+  check('reference: the picture can overlay the model (and does not block it)', await page.getByTestId('reference-overlay').isVisible()
+    && (await page.getByTestId('reference-overlay').evaluate((el) => getComputedStyle(el).pointerEvents)) === 'none');
+  await page.screenshot({ path: path.join(OUT, 'cp11-reference-overlay-1440-en.png') });
+  await page.getByTestId('reference-overlay-toggle').click();
+  await page.screenshot({ path: path.join(OUT, 'cp11-reference-match-1440-en.png') });
+  await page.getByTestId('reference-panel').getByRole('button', { name: 'Close' }).click();
+
+  // ── 5. Direct editing of a reconstructed piece: select, nudge (one step), provenance confirmed.
+  // From above, so no wall stands between the camera and the piece.
+  await scene(page, (c) => c.topView(false));
+  await page.waitForTimeout(400);
+  const sofa = objs.find((o) => o.provenance.ref === 'sofa');
+  const at = await scene(page, (c, p) => c.screenOf({ x: p.x, y: p.z }, 0.4), sofa.position);
+  await page.mouse.click(at.x, at.y);
+  await page.getByTestId('object-provenance').waitFor({ timeout: 5000 });
+  check('edit: a reconstructed piece says it came from the picture', (await page.getByTestId('object-provenance').innerText()).includes('From your picture'));
+  const before = v().state.objects.find((o) => o.instanceId === sofa.instanceId).position.z;
+  await page.keyboard.press('ArrowUp');
+  await page.waitForTimeout(2600);
+  const moved = v().state.objects.find((o) => o.instanceId === sofa.instanceId);
+  check('edit: a nudge moves it through a canonical operation and confirms it as the customer\'s', Math.abs(moved.position.z - before - 0.05) < 1e-6 && moved.provenance.confirmed === true);
+  await page.keyboard.press('Escape');
+
+  // ── 6. The living walkthrough on the rebuilt apartment.
+  const designBefore = JSON.stringify(v().state);
+  const kitchen = objs.find((o) => o.assetId === 'dev/kitchen-run');
+  const fridge = objs.find((o) => o.assetId === 'dev/fridge');
+  const bed = objs.find((o) => o.provenance.detectedType === 'BED_DOUBLE' && o.roomId === 'r-bed2');
+  await page.getByRole('button', { name: 'Walk through' }).click();
+  await page.getByRole('button', { name: 'Exit walkthrough' }).first().waitFor();
+  const states = () => scene(page, (c) => Object.fromEntries(c.interactiveStates().map((x) => [x.key, x.state])));
+  const player = () => scene(page, (c) => c.playerState());
+  const s0 = await states();
+  check('walk: doors, balcony doors, windows, room lights and pieces are all living parts',
+    s0['door:d-lobby-door'] === 'OPEN' && s0['door:d-living-balcony'] === 'CLOSED' && s0['window:win-living-glass'] === 'CLOSED'
+    && Object.keys(s0).some((k) => k.startsWith('light:')) && s0[`obj:${fridge.instanceId}:door`] === 'CLOSED' && s0[`obj:${kitchen.instanceId}:coffee`] === 'IDLE',
+    JSON.stringify(Object.keys(s0).slice(0, 12)));
+
+  // A body that walks: speeds up, stops, and does not go through walls.
+  await scene(page, (c) => c.walkTo({ position: { x: 3.1, y: 5.9 }, target: { x: 3.1, y: 8 }, fov: 60 }));
+  await page.keyboard.down('KeyW');
+  await page.waitForTimeout(90);
+  const early = await player();
+  await page.waitForTimeout(700);
+  const cruising = await player();
+  await page.keyboard.up('KeyW');
+  check('walk: a body accelerates like a person (not instantly at full pace)', early.speed < cruising.speed && cruising.speed > 1 && cruising.speed < 1.6,
+    `${early.speed.toFixed(2)} → ${cruising.speed.toFixed(2)}`);
+  await page.waitForTimeout(700);
+  check('walk: and comes to rest', (await player()).speed === 0);
+  // A clear spot (clear of the sofa, the plant and the armchairs), facing the bedroom wall.
+  await scene(page, (c) => c.walkTo({ position: { x: 2.6, y: 5.55 }, target: { x: 9, y: 5.55 }, fov: 60 }));
+  check('walk: standing somewhere free to start', (await player()).pos.x === 2.6);
+  await page.keyboard.down('KeyW'); await page.waitForTimeout(2500); await page.keyboard.up('KeyW');
+  await page.waitForTimeout(500);
+  const atWall = (await player()).pos;
+  check('walk: walked up to the living-room / bedroom wall, and it holds', atWall.x > 4.0 && atWall.x < 4.6, JSON.stringify(atWall));
+  await page.keyboard.down('ShiftLeft'); await page.keyboard.down('KeyS'); await page.waitForTimeout(700);
+  const brisk = await player();
+  await page.keyboard.up('KeyS'); await page.keyboard.up('ShiftLeft');
+  check('walk: Shift is a brisk walk, still a walk', brisk.speed > 1.5 && brisk.speed <= 2.3, brisk.speed.toFixed(2));
+  await page.waitForTimeout(600);
+
+  // A door: close it, it blocks; open it, walk through.
+  await scene(page, (c) => c.walkTo({ position: { x: 3.4, y: 7.4 }, target: { x: 6, y: 7.4 }, fov: 60 }));
+  await scene(page, (c) => c.debugAim('door:d-lobby-door'));
+  const doorHint = page.getByTestId('walk-hint');
+  await doorHint.getByRole('button', { name: 'Close' }).click();
+  await page.waitForTimeout(300);
+  check('door: closes on its hinge (state machine)', (await states())['door:d-lobby-door'] === 'CLOSED');
+  await page.keyboard.down('KeyW'); await page.waitForTimeout(1600); await page.keyboard.up('KeyW');
+  await page.waitForTimeout(500);
+  check('door: a closed door blocks the body', (await player()).pos.x < 4.6, JSON.stringify((await player()).pos));
+  await scene(page, (c) => c.debugAim('door:d-lobby-door'));
+  await doorHint.getByRole('button', { name: 'Open' }).click();
+  await page.waitForTimeout(300);
+  await page.keyboard.down('KeyW'); await page.waitForTimeout(1800); await page.keyboard.up('KeyW');
+  await page.waitForTimeout(500);
+  check('door: open, walked through into the lobby', (await player()).pos.x > 4.8, JSON.stringify((await player()).pos));
+
+  // Sit on the rebuilt sofa, look around seated, stand up.
+  await scene(page, (c, id) => c.approach({ objectId: id }), sofa.instanceId);
+  for (let i = 0; i < 40 && (await scene(page, (c) => c.routing)); i += 1) await page.waitForTimeout(250);
+  await scene(page, (c, id) => c.debugAim(id), sofa.instanceId);
+  await doorHint.getByRole('button', { name: 'Sit' }).click();
+  await page.waitForTimeout(600);
+  const seated = await player();
+  check('sofa: SIT moves the eye to a seat anchor (seated eye height)', seated.posture === 'SEATED' && Math.abs(seated.eye - 1.12) < 0.02, JSON.stringify(seated));
+  await page.mouse.move(700, 450); await page.mouse.down(); await page.mouse.move(820, 450, { steps: 6 }); await page.mouse.up();
+  check('sofa: looking around while seated', Math.abs((await player()).yaw - seated.yaw) > 0.1);
+  await page.screenshot({ path: path.join(OUT, 'cp11-seated-1440-en.png') });
+  await doorHint.getByRole('button', { name: 'Stand up' }).click();
+  await page.waitForTimeout(600);
+  check('sofa: STAND UP returns to standing, at standing height', (await player()).posture === 'STANDING' && Math.abs((await player()).eye - 1.6) < 0.01);
+
+  // The kitchen: fridge, coffee.
+  await scene(page, (c, k) => c.debugAim(k), `obj:${fridge.instanceId}:door`);
+  await doorHint.getByRole('button', { name: 'Open' }).click();
+  await page.waitForTimeout(300);
+  check('fridge: the matched refrigerator opens (its own authored hinge)', (await states())[`obj:${fridge.instanceId}:door`] === 'OPEN');
+  await doorHint.getByRole('button', { name: 'Close' }).click();
+  await scene(page, (c, k) => c.debugAim(k), `obj:${kitchen.instanceId}:coffee`);
+  await doorHint.getByRole('button', { name: 'Make coffee' }).click();
+  await page.waitForTimeout(400);
+  check('coffee: brewed and ready', (await states())[`obj:${kitchen.instanceId}:coffee`] === 'READY');
+  await doorHint.getByRole('button', { name: 'Drink' }).click();
+  await page.waitForTimeout(1200);
+  check('coffee: drunk, and the cup is back', (await states())[`obj:${kitchen.instanceId}:coffee`] === 'IDLE');
+
+  // The bed: mess it, lie down, get up, make it.
+  await scene(page, (c, id) => c.debugAim(id), bed.instanceId);
+  check('bed: offers what a bed can do', await doorHint.getByRole('button', { name: 'Mess up the bed' }).isVisible()
+    && await doorHint.getByRole('button', { name: 'Sit' }).isVisible() && await doorHint.getByRole('button', { name: 'Lie down' }).isVisible());
+  await doorHint.getByRole('button', { name: 'Mess up the bed' }).click();
+  await page.waitForTimeout(300);
+  check('bed: slept in', (await states())[`obj:${bed.instanceId}:bedding`] === 'MESSY');
+  await scene(page, (c, id) => c.debugAim(id), bed.instanceId);
+  await doorHint.getByRole('button', { name: 'Lie down' }).click();
+  await page.waitForTimeout(600);
+  check('bed: lying down (low eye, looking along the bed)', (await player()).posture === 'LYING' && (await player()).eye < 1);
+  await page.screenshot({ path: path.join(OUT, 'cp11-lying-1440-en.png') });
+  await doorHint.getByRole('button', { name: 'Stand up' }).click();
+  await page.waitForTimeout(500);
+  await scene(page, (c, id) => c.debugAim(id), bed.instanceId);
+  await doorHint.getByRole('button', { name: 'Make the bed' }).click();
+  await page.waitForTimeout(300);
+  check('bed: made again', (await states())[`obj:${bed.instanceId}:bedding`] === 'MADE');
+
+  // Live Here: relax on the balcony — walked there, the balcony door opened, a chair outside.
+  await scene(page, (c) => c.walkTo({ position: { x: 3.1, y: 5.9 }, target: { x: 3.1, y: 3 }, fov: 60 }));
+  await page.getByTestId('walk-live').click();
+  const list = page.getByTestId('live-list');
+  await list.waitFor();
+  const offered = await list.locator('[data-experience]').evaluateAll((els) => els.map((e) => e.getAttribute('data-experience')));
+  check('live here: offers what this home can do', ['balcony', 'coffee', 'dinner', 'kitchen', 'tv', 'evening', 'rest'].every((x) => offered.includes(x)), offered.join(','));
+  await list.locator('[data-experience="balcony"]').click();
+  const card = page.getByTestId('live-card');
+  for (let i = 0; i < 60 && (await card.getAttribute('data-status')) !== 'READY'; i += 1) await page.waitForTimeout(250);
+  check('live here: walked to the balcony door along a real route', (await card.getAttribute('data-status')) === 'READY');
+  await card.getByTestId('live-act').click();
+  await page.waitForTimeout(400);
+  check('live here: the balcony door slides open', (await states())['door:d-living-balcony'] === 'OPEN');
+  // Next: walked out to a chair on the balcony, and offered to sit.
+  for (let i = 0; i < 80; i += 1) {
+    if ((await card.getAttribute('data-status').catch(() => null)) === 'READY' && (await card.getByTestId('live-act').innerText().catch(() => '')) === 'Sit') break;
+    await page.waitForTimeout(250);
+  }
+  await card.getByTestId('live-act').click();
+  await page.waitForTimeout(800);
+  const outside = await player();
+  check('live here: sitting on the balcony, outside', outside.posture === 'SEATED' && outside.pos.y < 1.8, JSON.stringify(outside));
+  await page.screenshot({ path: path.join(OUT, 'cp11-balcony-1440-en.png') });
+  await page.keyboard.down('KeyW'); await page.waitForTimeout(100); await page.keyboard.up('KeyW');
+  await page.waitForTimeout(800);
+
+  // Time of day: night, the room lights come on.
+  await page.getByTestId('walk-time').click();
+  await page.getByRole('dialog', { name: 'Time of day' }).locator('[data-env="NIGHT"]').click();
+  await page.waitForTimeout(500);
+  const lit = Object.entries(await states()).filter(([k]) => k.startsWith('light:'));
+  check('night: room lights come on by themselves', lit.length === 6 && lit.every(([, st]) => st === 'ON'), JSON.stringify(lit));
+  await page.screenshot({ path: path.join(OUT, 'cp11-night-1440-en.png') });
+
+  // Esc: the menu; settings; controls.
+  await page.keyboard.press('Escape');
+  const menu = page.getByRole('dialog', { name: 'Paused' });
+  await menu.waitFor();
+  await menu.getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('switch', { name: 'Invert vertical look' }).check();
+  await page.getByRole('button', { name: 'Done' }).click();
+  check('settings: remembered for this visitor', (await page.evaluate(() => JSON.parse(localStorage.getItem('hm_walk_settings_v1') || '{}').invertY)) === true);
+  await page.getByRole('dialog', { name: 'Paused' }).getByRole('button', { name: 'Resume' }).click();
+  await page.waitForTimeout(300);
+  check('menu: Resume captures the mouse again for looking', (await player()).locked === true);
+  await scene(page, (c) => c.releasePointer());
+  await page.waitForTimeout(200);
+  await page.getByTestId('walk-controls').click();
+  check('controls: the key shapes can be opened again', await page.getByTestId('tutorial-desktop').isVisible());
+  await page.getByTestId('tutorial-ok').click();
+
+  // A photo from inside, then keep going.
+  const [photo] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), page.getByRole('button', { name: 'Photo' }).click()]);
+  check('photo: a 2560 × 1440 JPEG of the current view', is2560(jpegSize(new Uint8Array(fs.readFileSync(await photo.path())))));
+
+  // Drag a wardrobe door by hand.
+  const wardrobe = objs.find((o) => o.provenance.ref === 'bed1-wardrobe');
+  await scene(page, (c) => c.setEnvironment('DAY', false));
+  await scene(page, (c, id) => c.approach({ objectId: id }), wardrobe.instanceId);
+  for (let i = 0; i < 60 && (await scene(page, (c) => c.routing)); i += 1) await page.waitForTimeout(250);
+  await page.waitForTimeout(700);
+  const doorKey = `obj:${wardrobe.instanceId}:door-1`;
+  const grab = await scene(page, (c, k) => { const s = c.interactiveStates().find((x) => x.key === k); return s ? c.screenOf(s.at, 1.2) : null; }, doorKey);
+  let dragged = false;
+  if (grab) {
+    for (const dx of [260, -260]) {
+      await page.mouse.move(grab.x, grab.y); await page.mouse.down();
+      await page.mouse.move(grab.x + dx, grab.y, { steps: 10 }); await page.mouse.up();
+      await page.waitForTimeout(900);
+      if ((await states())[doorKey] === 'OPEN') { dragged = true; break; }
+    }
+  }
+  check('hand: a wardrobe door dragged open by its handle', dragged, JSON.stringify(grab));
+  await page.screenshot({ path: path.join(OUT, 'cp11-dragged-1440-en.png') });
+
+  // Leaving puts every visitor change back.
+  await page.getByRole('button', { name: 'Exit walkthrough' }).first().click();
+  await page.waitForTimeout(500);
+  check('walk: the design itself was never changed by living in it', JSON.stringify(v().state) === designBefore);
+  await ctx.close();
+
+  // ── 7. First time on desktop: the controls, then gone for good.
+  ctx = await openContext(browser, { width: 1440, height: 900, lang: 'en', tutorial: true });
+  page = await ctx.newPage();
+  await wire(page, store, errors);
+  await page.goto(`${BASE}/design-studio/${project.id}/walkthrough`, { waitUntil: 'domcontentloaded' });
+  await page.getByTestId('tutorial-desktop').waitFor({ timeout: 30000 });
+  check('first time: W A S D, mouse, click, Shift and Esc are shown as keys', (await page.getByTestId('tutorial-desktop').locator('kbd').count()) >= 7);
+  await page.screenshot({ path: path.join(OUT, 'cp11-tutorial-1440-en.png') });
+  await page.getByTestId('tutorial-hide').click();
+  check('first time: "Don\'t show again" is kept', (await page.evaluate(() => localStorage.getItem('hm_walk_tutorial_v1_desktop'))) === 'hidden');
+  await ctx.close();
+
+  // ── 8. A phone, in Arabic (RTL): two thumbs at once.
+  ctx = await openContext(browser, { width: 390, height: 844, lang: 'ar', tutorial: true, touch: true });
+  page = await ctx.newPage();
+  await wire(page, store, errors);
+  await page.goto(`${BASE}/design-studio/${project.id}/walkthrough`, { waitUntil: 'domcontentloaded' });
+  await page.getByTestId('tutorial-touch').waitFor({ timeout: 30000 });
+  check('phone: the thumbs tutorial (left walks, right looks, tap to use)', await page.getByTestId('tutorial-touch').isVisible());
+  await page.screenshot({ path: path.join(OUT, 'cp11-tutorial-390-ar.png') });
+  await page.getByTestId('tutorial-ok').click();
+  await scene(page, (c) => c.walkTo({ position: { x: 3.1, y: 5.0 }, target: { x: 3.1, y: 8 }, fov: 70 }));
+  const p0 = await player();
+  const cdp = await page.context().newCDPSession(page);
+  const touch = (type, points) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: points });
+  const L = { x: 70, y: 640 };
+  const R = { x: 300, y: 420 };
+  await touch('touchStart', [{ x: L.x, y: L.y, id: 1 }]);
+  await touch('touchMove', [{ x: L.x, y: L.y - 10, id: 1 }]);
+  await touch('touchStart', [{ x: L.x, y: L.y - 10, id: 1 }, { x: R.x, y: R.y, id: 2 }]);
+  for (let i = 1; i <= 12; i += 1) {
+    await touch('touchMove', [{ x: L.x, y: L.y - 44, id: 1 }, { x: R.x - i * 8, y: R.y, id: 2 }]);
+    await page.waitForTimeout(60);
+  }
+  await page.waitForTimeout(300);
+  const p1 = await player();
+  await touch('touchEnd', []);
+  check('phone: left thumb walks while the right thumb looks — at the same time',
+    Math.hypot(p1.pos.x - p0.pos.x, p1.pos.y - p0.pos.y) > 0.2 && Math.abs(p1.yaw - p0.yaw) > 0.1, `${JSON.stringify(p0)} → ${JSON.stringify(p1)}`);
+  await page.waitForTimeout(600);
+  await scene(page, (c, k) => c.debugAim(k), `obj:${fridge.instanceId}:door`);
+  const phoneHint = page.getByTestId('walk-hint');
+  await phoneHint.locator('[data-action="OPEN"]').tap();
+  await page.waitForTimeout(300);
+  check('phone: the contextual action opens the fridge by touch', (await states())[`obj:${fridge.instanceId}:door`] === 'OPEN');
+  check('phone 390 ar: right-to-left, nothing overflows', (await page.evaluate(() => document.documentElement.dir)) === 'rtl' && (await overflowX(page)) <= 0);
+  await page.screenshot({ path: path.join(OUT, 'cp11-walk-390-ar.png') });
+  await ctx.close();
+
+  // ── 9. Review in Hebrew at 390, and the public walkthrough of the rebuilt home.
+  const token = store.rpc('ds_create_share', { p_version_id: version.id, p_share_type: 'WALKTHROUGH', p_label: null, p_expires_at: null }).token;
+  const pub = store.db.ds_published_designs.at(-1);
+  check('share: the public snapshot carries no provenance (reference picture ids stay private)', !JSON.stringify(pub.state).includes('provenance') && !JSON.stringify(pub.state).includes(ref.id));
+  const vctx = await anonymousContext(browser, { width: 1440, height: 900, lang: 'en' });
+  const vp = await vctx.newPage();
+  await wire(vp, store, errors);
+  await vp.goto(`${BASE}/w/${token}`, { waitUntil: 'domcontentloaded' });
+  await vp.getByRole('button', { name: 'Enter walkthrough' }).click();
+  await vp.getByTestId('walk-hint').or(vp.getByTestId('walk-live')).first().waitFor({ timeout: 20000 });
+  await scene(vp, (c, k) => c.debugAim(k), `obj:${fridge.instanceId}:door`);
+  await vp.getByTestId('walk-hint').getByRole('button', { name: 'Open' }).click();
+  await vp.waitForTimeout(300);
+  const vstates = () => scene(vp, (c) => Object.fromEntries(c.interactiveStates().map((x) => [x.key, x.state])));
+  check('visitor: can open the rebuilt fridge', (await vstates())[`obj:${fridge.instanceId}:door`] === 'OPEN');
+  await vp.reload({ waitUntil: 'domcontentloaded' });
+  await vp.getByRole('button', { name: 'Enter walkthrough' }).click();
+  await vp.waitForTimeout(800);
+  check('visitor: a reload starts from the frozen design (nothing a visitor did was kept)', (await vstates())[`obj:${fridge.instanceId}:door`] === 'CLOSED');
+  check('visitor: only the public function was ever called', vp.apiCalls.every((c) => c === 'POST /rest/v1/rpc/ds_public_share'), vp.apiCalls.join(', '));
+  await vctx.close();
+
+  check('no page errors (checkpoint 11)', errors.length === 0, errors.join('\n        '));
 }
 
 /* A few rows shaped exactly like the development seed (20260930091000). */
@@ -648,9 +1057,14 @@ async function checkpoint8(browser) {
   await page.getByRole('button', { name: 'Back to the entrance' }).click();
   await page.waitForTimeout(300);
   check('walk: back to the entrance', (await where())?.includes('Hall'), await where());
+  // Esc pauses (and, with the mouse captured, releases it): the menu offers the way out.
   await page.keyboard.press('Escape');
+  const paused = page.getByRole('dialog', { name: 'Paused' });
+  await paused.waitFor({ timeout: 3000 });
+  check('walk: Esc opens the walkthrough menu', await paused.getByRole('button', { name: 'Resume' }).isVisible());
+  await paused.getByRole('button', { name: 'Exit walkthrough' }).click();
   await page.waitForTimeout(400);
-  check('walk: Esc leaves; the workspace is back', !(await status.isVisible()) && await page.getByRole('complementary', { name: 'Inspector' }).isVisible());
+  check('walk: leaving from the menu; the workspace is back', !(await status.isVisible()) && await page.getByRole('complementary', { name: 'Inspector' }).isVisible());
   check('walk: walking changed nothing in the design', store.db.ds_versions.find((v) => v.id === version.id).revision === 0);
 
   // The walkthrough route opens straight in, and leaving returns to the project.
@@ -736,6 +1150,7 @@ async function checkpoint10(browser) {
   await page.waitForTimeout(1100);
   check('walk: E opens the door straight ahead', (await states())['door:d-bed'] === true);
   await page.keyboard.down('KeyW'); await page.waitForTimeout(2200); await page.keyboard.up('KeyW');
+  await page.waitForTimeout(600); // a body eases to a stop
   check('walk: through the open door into the bedroom', (await where())?.includes('Bedroom'), await where());
 
   // A window, a wardrobe, the refrigerator.
@@ -761,11 +1176,12 @@ async function checkpoint10(browser) {
   check('photo: the walkthrough view as a 2560 × 1440 JPEG', is2560(jpegSize(new Uint8Array(photoBytes))), `${photo.suggestedFilename()} ${photoBytes.length} ${JSON.stringify(jpegSize(new Uint8Array(photoBytes)))} ${photoBytes.subarray(0, 4).toString('hex')}`);
   check('walk: opening things never changed the design', v().revision === 0 && store.db.ds_version_events.length === 0);
   await page.keyboard.press('Escape');
+  await page.getByRole('dialog', { name: 'Paused' }).getByRole('button', { name: 'Exit walkthrough' }).click();
   await page.getByRole('button', { name: 'Walk through' }).click();
   await page.getByRole('button', { name: 'Exit walkthrough' }).first().waitFor();
   const again = await states();
   check('walk: every visit starts from the design’s own state', again['door:d-bed'] === true && again['obj:wardrobe-1:door-2'] === false);
-  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Exit walkthrough' }).first().click();
   await page.waitForTimeout(400);
 
   // ── Design mode: grab, turn, place.
@@ -1003,10 +1419,11 @@ async function checkpoint9(browser) {
 
 /* ── Checkpoint 8: public share links ─────────────────────────────── */
 
-async function anonymousContext(browser, { width, height, lang }) {
+async function anonymousContext(browser, { width, height, lang, tutorial = false }) {
   // A visitor with no HOMATCH session at all.
   const ctx = await browser.newContext({ viewport: { width, height }, reducedMotion: 'reduce', hasTouch: width < 768, isMobile: width < 768 });
   if (lang) await ctx.addInitScript((l) => window.localStorage.setItem('homatch_lang', l), lang);
+  if (!tutorial) await ctx.addInitScript(SEEN_TUTORIAL);
   return ctx;
 }
 
@@ -1077,8 +1494,9 @@ async function checkpoint8Share(browser) {
   check('visitor: the guided tour moves through the rooms', !!toured && !toured.includes('Hall'), toured);
   await v.getByRole('button', { name: 'Pause tour' }).click();
   await v.getByRole('navigation', { name: 'Go to a room' }).getByRole('button', { name: 'Living room' }).click();
-  await v.waitForTimeout(300);
-  check('visitor: room navigation', (await whereV())?.includes('Living room'));
+  // Chosen rooms are WALKED to along a real route, not cut to.
+  for (let i = 0; i < 40 && !(await whereV())?.includes('Living room'); i += 1) await v.waitForTimeout(250);
+  check('visitor: room navigation (walked there)', (await whereV())?.includes('Living room'));
   await v.keyboard.down('KeyW'); await v.waitForTimeout(1500); await v.keyboard.up('KeyW');
   check('visitor: walks and stays inside', /Walkthrough · \S/.test((await whereV()) ?? ''));
   await v.screenshot({ path: path.join(OUT, 'cp8-public-walk-1440-en.png') });

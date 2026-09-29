@@ -17,6 +17,7 @@ export interface InspectorProps {
   onFocusRoom: (roomId: string) => void;
   /** Floor-plan spaces: change the measurements. */
   onRecalibrate?: () => void;
+  onFurnishFromPictures?: () => void;
   /** Uploaded models: the server's analysis and the parts it identified. */
   model?: ModelAnalysisSummary | null;
   parts?: ModelPart[];
@@ -64,7 +65,7 @@ const EDITABILITY_BODY: Record<ModelAnalysisSummary['editability'], string> = {
 
 const approxM = (n: number) => `≈ ${(Math.round(n * 10) / 10).toLocaleString(undefined, { maximumFractionDigits: 1 })} m`;
 
-export function Inspector({ source, space, names, selection, onSelect, onFocusRoom, onRecalibrate, model, parts = [], objectHeading, children }: InspectorProps) {
+export function Inspector({ source, space, names, selection, onSelect, onFocusRoom, onRecalibrate, onFurnishFromPictures, model, parts = [], objectHeading, children }: InspectorProps) {
   const { t } = useLanguage();
   const label = provenanceLabel(source);
   const state = source.geometry_state;
@@ -116,6 +117,16 @@ export function Inspector({ source, space, names, selection, onSelect, onFocusRo
               className="mt-3 inline-flex h-9 w-full items-center justify-center rounded-lg border border-[#D5D9E0] text-[14px] font-medium text-[#0C1119] hover:bg-[#F4F5F7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]"
             >
               {t(state === 'VERIFIED' ? 'ds_fp_change_measurements' : 'ds_fp_calibrate')}
+            </button>
+          ) : null}
+          {onFurnishFromPictures ? (
+            <button
+              type="button"
+              onClick={onFurnishFromPictures}
+              data-testid="ds-furnish-pictures"
+              className="mt-2 inline-flex h-9 w-full items-center justify-center rounded-lg border border-[#D5D9E0] text-[14px] font-medium text-[#0C1119] hover:bg-[#F4F5F7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]"
+            >
+              {t('ds_recon_furnish')}
             </button>
           ) : null}
           {!space && !model ? <p className="mt-3 text-[13px] text-[#4A5263]">{t('ds_rooms_unavailable_model')}</p> : null}

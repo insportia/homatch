@@ -199,6 +199,13 @@ export function WalkthroughOverlay(props: WalkthroughOverlayProps) {
                   {tr(`ds_act_${a}`)}
                 </button>
               ))}
+              {/* Seated and reaching for something (the TV from the sofa): getting up stays one tap away. */}
+              {seated ? (
+                <button type="button" onClick={() => c?.standIfSeated()} data-action="STAND_UP"
+                  className={cn('h-8 shrink-0 rounded-full px-3 text-[13px] font-medium text-white ring-1 ring-white/30 hover:bg-white/10', ring)}>
+                  {tr('ds_act_STAND_UP')}
+                </button>
+              ) : null}
             </>
           ) : (
             <>
@@ -429,7 +436,8 @@ function StickZone({ controller, label }: { controller: SceneController | null; 
 
   return (
     <div ref={zone} role="application" aria-label={label} data-testid="stick-zone"
-      className="absolute bottom-0 start-0 top-28 z-10 w-[45%] touch-none select-none"
+      // Physically LEFT in every language (RTL too): thumbs, like games, do not mirror.
+      className="absolute bottom-0 left-0 top-28 z-10 w-[45%] touch-none select-none"
       onPointerDown={(e) => {
         if (active.current) return;
         active.current = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), moved: 0 };
@@ -440,7 +448,7 @@ function StickZone({ controller, label }: { controller: SceneController | null; 
       <div ref={base} className="pointer-events-none absolute hidden h-28 w-28 place-items-center rounded-full bg-[#0C1119]/30 ring-1 ring-white/35 backdrop-blur-sm" style={{ display: 'none' }}>
         <div ref={knob} className="h-12 w-12 rounded-full bg-white/85 shadow-md" />
       </div>
-      <span aria-hidden="true" className="pointer-events-none absolute bottom-6 start-6 h-16 w-16 rounded-full ring-1 ring-white/25" />
+      <span aria-hidden="true" className="pointer-events-none absolute bottom-6 left-6 h-16 w-16 rounded-full ring-1 ring-white/25" />
     </div>
   );
 }
@@ -540,7 +548,7 @@ function LiveCard({ live, tr, touch }: { live: ReturnType<typeof useLiveHere>; t
   const step = r.step;
   const actionLabel = (a: ActionCode) => tr(`ds_act_${a}`);
   return (
-    <div className={cn('pointer-events-auto absolute end-3 z-20 w-72 max-w-[calc(100%-1.5rem)] rounded-2xl bg-[#0C1119]/92 p-4 text-white shadow-xl ring-1 ring-white/10 backdrop-blur',
+    <div className={cn('pointer-events-auto absolute end-3 z-20 w-72 max-w-[calc(100%-1.5rem)] rounded-2xl bg-[#0C1119]/95 p-4 text-white shadow-xl ring-1 ring-white/10 backdrop-blur',
       touch ? 'top-28' : 'bottom-16')} role="status" aria-live="polite" data-testid="live-card" data-status={r.status}>
       <p className="flex items-center gap-2 text-[13px] font-semibold text-[hsl(38_92%_62%)]"><Sparkles className="h-4 w-4" aria-hidden="true" />{tr(r.exp.titleKey)}</p>
       {r.status === 'FINISHED' ? (

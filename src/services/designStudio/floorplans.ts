@@ -134,8 +134,9 @@ export async function interpretFloorPlan(floorplanId: string): Promise<void> {
 }
 
 export async function latestFloorPlan(projectId: string): Promise<FloorPlanRecord | null> {
+  // A drawn plan only: pictures of the home (REFERENCE) are read by the reconstruction, not here.
   const { data, error } = await supabase.from('ds_floorplans').select('*')
-    .eq('project_id', projectId).order('created_at', { ascending: false }).limit(1);
+    .eq('project_id', projectId).eq('purpose', 'PLAN').order('created_at', { ascending: false }).limit(1);
   if (error) throw new DesignStudioError('DS_REQUEST_FAILED', error.message);
   return ((data ?? [])[0] as FloorPlanRecord | undefined) ?? null;
 }

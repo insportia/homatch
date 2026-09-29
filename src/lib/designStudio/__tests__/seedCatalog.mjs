@@ -67,3 +67,14 @@ export function seedAssets() {
 export function seedMaterials() {
   return rows('ds_catalog_materials').map((r, i) => materialFromRow({ id: `mat-${i}`, ...r }));
 }
+
+/** The seed rows as the database returns them (browser QA serves these). */
+export function seedRows() {
+  return {
+    assets: rows('ds_catalog_assets').map((r, i) => ({
+      id: `seed-${i}`, subcategory: null, lods: [], model_key: null, triangles: null, texture_bytes: null, thumbnail_key: null,
+      interactions: [], placement: 'FLOOR', anchor: 'WALL', clearance_m: 0, ...r,
+    })),
+    materials: rows('ds_catalog_materials').map((r, i) => ({ id: `mat-${i}`, thumbnail_key: null, ...r })),
+  };
+}

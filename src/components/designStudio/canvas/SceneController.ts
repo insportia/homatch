@@ -93,6 +93,9 @@ function lightRig(l: { timeOfDay: TimeOfDayEnv; temperature: 'WARM' | 'NEUTRAL' 
   };
 }
 
+/** How long a hover aim lingers over bare floor (time to reach the hint with the mouse). */
+const AIM_LINGER_MS = 1200;
+
 const WALK_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 
 /** What the walkthrough tells the page: where you are, what you aim at, how you stand, and when to show the menu. */
@@ -202,7 +205,7 @@ export class SceneController {
     brisk: boolean;
     posture: Posture;
     /** A route being walked for the visitor (Live Here). */
-    route: { points: Point[]; i: number; doors: Set<string>; face: Point; done: (arrived: boolean) => void; stuck?: number } | null;
+    route: { points: Point[]; i: number; doors: Set<string>; face: Point; faceHeight: number; done: (arrived: boolean) => void; stuck?: number } | null;
   } | null = null;
 
   constructor(mount: HTMLElement, quality: QualityProfile, options: { reducedMotion?: boolean } = {}) {
@@ -1134,6 +1137,43 @@ export class SceneController {
         this.living.register(prefix, pivot, [spec], null, { objectId: null, doorId: () => (o.kind === 'DOOR' ? o.id : null) });
       }
     }
+    // A balcony or terrace edge with no wall is a railing: glass, a top rail,
+    // posts — so standing outside looks and feels bounded (the walk model
+    // already keeps the body on the balcony's floor).
+    const railMat = this.track(new THREE.MeshStandardMaterial({ color: 0x2b2d31, roughness: 0.45, metalness: 0.4 }));
+    const railGlass = this.track(new THREE.MeshStandardMaterial({ color: 0xcfe0ea, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.22 }));
+    const onWall = (a: Point, b: Point) => space.walls.some((w) => {
+      const s = w.mesh.start; const e = w.mesh.end;
+      const len = Math.hypot(e.x - s.x, e.y - s.y) || 1;
+      const dist = (p: Point) => Math.abs((e.x - s.x) * (s.y - p.y) - (s.x - p.x) * (e.y - s.y)) / len;
+      const along = (p: Point) => ((p.x - s.x) * (e.x - s.x) + (p.y - s.y) * (e.y - s.y)) / (len * len);
+      const m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      return dist(a) < 0.08 && dist(b) < 0.08 && along(m) > 0 && along(m) < 1;
+    });
+    for (const room of space.rooms) {
+      if (!room.outdoor) continue;
+      for (let i = 0; i < room.polygon.length; i += 1) {
+        const a = room.polygon[i];
+        const b = room.polygon[(i + 1) % room.polygon.length];
+        const len = Math.hypot(b.x - a.x, b.y - a.y);
+        if (len < 0.3 || onWall(a, b)) continue;
+        const rail = new THREE.Group();
+        rail.position.set(a.x, 0, -a.y);
+        rail.rotation.y = Math.atan2(b.y - a.y, b.x - a.x);
+        const glass = new THREE.Mesh(this.track(new THREE.BoxGeometry(len, 0.95, 0.02)), railGlass);
+        glass.position.set(len / 2, 0.52, 0);
+        const top = new THREE.Mesh(this.track(new THREE.BoxGeometry(len, 0.05, 0.06)), railMat);
+        top.position.set(len / 2, 1.02, 0);
+        rail.add(glass, top);
+        const posts = Math.max(2, Math.round(len / 1.5) + 1);
+        for (let k = 0; k < posts; k += 1) {
+          const post = new THREE.Mesh(this.track(new THREE.BoxGeometry(0.04, 1.0, 0.04)), railMat);
+          post.position.set((len * k) / (posts - 1), 0.5, 0);
+          rail.add(post);
+        }
+        this.spaceGroup.add(rail);
+      }
+    }
     // A ceiling light in every indoor room: switchable, and on by itself after dark.
     const fixtureMat = this.track(new THREE.MeshStandardMaterial({ color: 0xf6f3ee, roughness: 0.6 }));
     for (const room of space.rooms) {
@@ -1248,9 +1288,19 @@ export class SceneController {
       if (!this.walk) return;
       const rect = this.renderer.domElement.getBoundingClientRect();
       const p = this.lastPointer ?? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-      this.setAim(this.targetAt(p.x, p.y));
+      const hit = this.targetAt(p.x, p.y);
+      // A hovering mouse on its way to the hint's buttons crosses bare floor:
+      // the aim lingers briefly so the button is still there when it arrives.
+      if (!hit && this.lastPointer && this.aimed) {
+        if (this.aimClear === null) this.aimClear = window.setTimeout(() => { this.aimClear = null; this.setAim(null); }, AIM_LINGER_MS);
+        return;
+      }
+      if (this.aimClear !== null) { window.clearTimeout(this.aimClear); this.aimClear = null; }
+      this.setAim(hit);
     });
   }
+
+  private aimClear: number | null = null;
 
   /**
    * Do something with what the visitor is aiming at (a hint button, E, a
@@ -1354,22 +1404,26 @@ export class SceneController {
     if (w.seated) this.standUp();
     let at: Point | null = null;
     let stand: Point | null = null;
+    let height = 0.8;
     if (target.objectId && this.objectsById.has(target.objectId)) {
       const pose = this.objectPose(target.objectId)!;
       at = { x: pose.x, y: pose.y };
+      height = new THREE.Box3().setFromObject(this.objectsById.get(target.objectId)!).getCenter(new THREE.Vector3()).y;
       const front = { x: -Math.sin(pose.rotation), y: Math.cos(pose.rotation) };
       stand = { x: at.x + front.x * (pose.depth / 2 + 0.7), y: at.y + front.y * (pose.depth / 2 + 0.7) };
     }
     const e = target.key ? this.living.get(target.key) : undefined;
     if (e) {
       at = this.entryPoint(e);
+      const node = [...e.parts.values()][0]?.node;
+      if (node) height = new THREE.Box3().setFromObject(node).getCenter(new THREE.Vector3()).y;
       if (!stand) {
         const d = Math.hypot(w.pos.x - at.x, w.pos.y - at.y) || 1;
         stand = { x: at.x + ((w.pos.x - at.x) / d) * 0.95, y: at.y + ((w.pos.y - at.y) / d) * 0.95 };
       }
     }
     if (!at || !stand) return Promise.resolve(false);
-    return this.startRoute(stand, at);
+    return this.startRoute(stand, at, height);
   }
 
   /** Walk (a real route) to a Camera Director pose — the guided tour. Without a route, a cut. */
@@ -1379,13 +1433,13 @@ export class SceneController {
     if (w.seated) this.standUp();
     this.camera.fov = pose.fov;
     this.camera.updateProjectionMatrix();
-    return this.startRoute(pose.position, pose.target).then((ok) => {
+    return this.startRoute(pose.position, pose.target, EYE_HEIGHT_M - 0.25).then((ok) => {
       if (!ok && this.walk && !this.walk.route) this.walkTo(pose);
       return ok;
     });
   }
 
-  private startRoute(stand: Point, face: Point): Promise<boolean> {
+  private startRoute(stand: Point, face: Point, faceHeight: number): Promise<boolean> {
     const w = this.walk;
     if (!w) return Promise.resolve(false);
     if (w.route) this.cancelRoute(false);
@@ -1394,7 +1448,7 @@ export class SceneController {
     if (!route) return Promise.resolve(false);
     const doors = new Set(doorsOnRoute(w.model, w.pos, route));
     return new Promise((resolve) => {
-      w.route = { points: route, i: 0, doors, face, done: resolve };
+      w.route = { points: route, i: 0, doors, face, faceHeight, done: resolve };
       w.vel = { x: 0, y: 0 };
       w.glide = null;
       this.requestRender();
@@ -1429,9 +1483,12 @@ export class SceneController {
     }
     const target = r.points[r.i];
     if (!target) {
-      // Arrived: turn to face what we came for.
+      // Arrived: stop, and look at what we came for (its middle, not over it).
+      w.vel = { x: 0, y: 0 };
       const yaw = Math.atan2(r.face.y - w.pos.y, r.face.x - w.pos.x);
-      this.glideTo(w.pos, yaw, w.eye, -0.18, 450);
+      const dist = Math.max(0.3, Math.hypot(r.face.x - w.pos.x, r.face.y - w.pos.y));
+      const pitch = Math.max(-0.9, Math.min(0.35, Math.atan2(r.faceHeight - w.eye, dist)));
+      this.glideTo(w.pos, yaw, w.eye, pitch, 450);
       this.cancelRoute(true);
       return true;
     }

@@ -33,6 +33,8 @@ const CORS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 const PRODUCT = 'DS_RECONSTRUCT';
+/** The customer's language for the plain words the reading returns (labels, room names, what could not be seen). */
+const LANGUAGES: Record<string, string> = { en: 'English', ka: 'Georgian', ru: 'Russian', tr: 'Turkish', ar: 'Arabic', he: 'Hebrew' };
 const MAX_BYTES = 12 * 1024 * 1024;
 const MAX_TOTAL = 36 * 1024 * 1024;
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
@@ -76,7 +78,7 @@ serve(async (req) => {
   const refused = await refuseIfImpersonating(admin, authHeader, CORS);
   if (refused) return refused;
 
-  let body: { reconstructionId?: string };
+  let body: { reconstructionId?: string; language?: string };
   try { body = await req.json(); } catch { return json({ error: 'BAD_REQUEST' }, 400); }
   if (!body.reconstructionId || typeof body.reconstructionId !== 'string') return json({ error: 'BAD_REQUEST' }, 400);
 
@@ -149,7 +151,11 @@ serve(async (req) => {
   const intro = images.length === 1
     ? 'Here is one picture of the home.'
     : `Here are ${images.length} pictures of the SAME home, numbered 0 to ${images.length - 1} in order. Merge what they show into one home.`;
-  const content: any[] = [{ type: 'input_text', text: `${intro} Rebuild it as structured data in the plan frame.${planRooms.length ? `\n\n${planContext(planRooms)}` : ''}` }];
+  const language = LANGUAGES[String(body.language ?? 'en')] ?? 'English';
+  const content: any[] = [{
+    type: 'input_text',
+    text: `${intro} Rebuild it as structured data in the plan frame. Write every label, room label and unknown in ${language}; keep every code (kinds, types) exactly as listed.${planRooms.length ? `\n\n${planContext(planRooms)}` : ''}`,
+  }];
   images.forEach((img, i) => {
     content.push({ type: 'input_text', text: `Picture ${i} (${img.width} x ${img.height} px):` });
     content.push({ type: 'input_image', image_url: `data:${img.type};base64,${base64(img.bytes)}` });

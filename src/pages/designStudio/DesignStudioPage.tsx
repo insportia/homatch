@@ -15,7 +15,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Archive, ArchiveRestore, ArrowRight, Box, FileImage, Loader2, MoreHorizontal, Search, X } from 'lucide-react';
+import { Archive, ArchiveRestore, ArrowRight, Box, FileImage, Loader2, MoreHorizontal, Search, X, ImagePlus } from 'lucide-react';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { PRODUCT_SURFACE } from '@/components/customer/surface';
@@ -169,12 +169,15 @@ function Launcher() {
   }, [navigate, t, userId]);
 
   /* A project for a drawing or a model the customer has: its flow opens at once. */
-  const startFrom = useCallback(async (kind: 'floorplan' | 'model') => {
+  const startFrom = useCallback(async (kind: 'floorplan' | 'model' | 'image') => {
     if (!userId) return;
     setBusy(true);
     setActionError(null);
     try {
-      const project = await createProject({ userId, name: t(kind === 'model' ? 'ds_default_project_model' : 'ds_default_project_floorplan') });
+      const project = await createProject({
+        userId,
+        name: t(kind === 'model' ? 'ds_default_project_model' : kind === 'image' ? 'ds_default_project_image' : 'ds_default_project_floorplan'),
+      });
       navigate(`/design-studio/${project.id}?start=${kind}`);
     } catch (error) {
       setActionError(t(errorKey(error)));
@@ -220,6 +223,10 @@ function Launcher() {
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
                 {t('ds_action_choose_property')}
                 <ArrowRight className={cn('h-4 w-4', 'rtl:rotate-180')} aria-hidden="true" />
+              </button>
+              <button type="button" className={QUIET_BUTTON} disabled={busy} onClick={() => { void startFrom('image'); }} data-testid="ds-start-image">
+                <ImagePlus className="h-4 w-4" aria-hidden="true" />
+                {t('ds_action_start_image')}
               </button>
               <button type="button" className={QUIET_BUTTON} disabled={busy} onClick={() => { void startFrom('model'); }} aria-describedby="ds-formats">
                 <Box className="h-4 w-4" aria-hidden="true" />

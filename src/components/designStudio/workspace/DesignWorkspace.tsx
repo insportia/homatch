@@ -19,7 +19,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   AlertTriangle, Armchair, ArrowLeft, Camera, Check, ChevronDown, CloudOff, Columns2, Download, Footprints, Info, Layers, LayoutGrid, Loader2, Maximize, Palette as PaletteIcon,
-  PanelLeftClose, PanelLeftOpen, Redo2, Scan, Share2, Sparkles, SquareDashed, Sun, Undo2,
+  PanelLeftClose, PanelLeftOpen, Redo2, Scan, Share2, Sparkles, SquareDashed, Sun, Undo2, Image as ImageIcon,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -61,6 +61,7 @@ import { AiDesignPanel, type AiProposalItem } from './AiDesignPanel';
 import { WalkthroughOverlay } from './WalkthroughOverlay';
 import { ShareDialog } from './ShareDialog';
 import { DownloadDialog } from './DownloadDialog';
+import { ReferencePanel, useReconstructionFor } from './ReferencePanel';
 import { download } from './exportRender';
 import { fileSlug } from '@/lib/designStudio/exportFiles';
 
@@ -81,6 +82,8 @@ export interface DesignWorkspaceProps {
   onReload: () => Promise<void> | void;
   /** Floor-plan spaces: change the measurements the geometry was built from. */
   onRecalibrate?: () => void;
+  /** Floor-plan spaces: read pictures of a home to furnish and dress this plan. */
+  onFurnishFromPictures?: () => void;
   /** Open straight into the walkthrough (the /walkthrough route). */
   startWalkthrough?: boolean;
   onWalkthroughExit?: () => void;
@@ -198,7 +201,7 @@ function SaveIndicator({ status, onRetry }: { status: SaveStatus; onRetry: () =>
 }
 
 function Editor({
-  bundle, source, version, catalog, onReload, onRecalibrate, startWalkthrough, onWalkthroughExit,
+  bundle, source, version, catalog, onReload, onRecalibrate, onFurnishFromPictures, startWalkthrough, onWalkthroughExit,
 }: DesignWorkspaceProps & {
   version: DesignVersionRecord;
   catalog: { assets: CatalogAsset[]; materials: CatalogMaterial[]; palettes: Palette[] };
@@ -672,6 +675,9 @@ function Editor({
   const versionNameRef = useRef(version.name);
   const [shareOpen, setShareOpen] = useState<false | 'WALKTHROUGH' | 'DESIGN'>(false);
   const [downloadOpen, setDownloadOpen] = useState(false);
+  // The pictures this design was read from (if it was): shown on request, never over the whole view.
+  const reference = useReconstructionFor(bundle.project.id, source);
+  const [referenceOpen, setReferenceOpen] = useState(false);
   const [walkRoom, setWalkRoom] = useState<string | null>(null);
   const [canvasReady, setCanvasReady] = useState(false);
   const walkModel = useRef<ReturnType<typeof buildWalkModel> | null>(null);
@@ -919,6 +925,7 @@ function Editor({
       onSelect={setSelection}
       onFocusRoom={focusRoom}
       onRecalibrate={onRecalibrate}
+      onFurnishFromPictures={onFurnishFromPictures}
       model={modelAnalysis}
       parts={parts}
       objectHeading={selectedObject ? {
@@ -928,6 +935,15 @@ function Editor({
     >
       {selectedObject ? (
         <>
+        {selectedObject.provenance ? (
+          <p className="mb-2 flex flex-wrap items-center gap-1.5 text-[13px] text-[#4A5263]" data-testid="object-provenance">
+            <span className="rounded bg-[#F4F5F7] px-1.5 py-0.5">{t('ds_recon_from_picture')}</span>
+            {selectedObject.provenance.approximate && !selectedObject.provenance.confirmed ? (
+              <span className="rounded bg-[hsl(38_92%_94%)] px-1.5 py-0.5 text-[#6B4A0B]">{t('ds_recon_approx_badge')}</span>
+            ) : null}
+            <span className="truncate">{selectedObject.provenance.label}</span>
+          </p>
+        ) : null}
         {objectRotate?.canRotate(selectedObject.instanceId) ? <p className="mb-3 hidden rounded-md bg-[#F4F5F7] px-2.5 py-2 text-[13px] leading-relaxed text-[#4A5263] lg:block">{t('ds_hint_manipulate')}</p> : null}
         <ObjectControls
           object={selectedObject}
@@ -1033,6 +1049,11 @@ function Editor({
           <button type="button" className={cn(TOOL_BUTTON, 'hidden md:inline-flex')} disabled={!activeRoomId} onClick={() => activeRoomId && focusRoom(activeRoomId)} aria-label={t('ds_view_room')}>
             <Scan className="h-4 w-4" aria-hidden="true" /><span className="hidden 2xl:inline">{t('ds_view_room')}</span>
           </button>
+          {reference ? (
+            <button type="button" className={TOOL_BUTTON} disabled={walking} aria-pressed={referenceOpen} onClick={() => setReferenceOpen((v) => !v)} aria-label={t('ds_recon_reference')} title={t('ds_recon_reference')} data-testid="ds-reference">
+              <ImageIcon className="h-4 w-4" aria-hidden="true" /><span className="hidden xl:inline">{t('ds_recon_reference')}</span>
+            </button>
+          ) : null}
           <button type="button" className={cn(TOOL_BUTTON, 'hidden sm:inline-flex')} disabled={!space || walking} onClick={() => { setSelection(null); setDownloadOpen(true); }} aria-label={t('ds_export_title')} title={t('ds_export_title')}>
             <Download className="h-4 w-4" aria-hidden="true" /><span className="hidden 2xl:inline">{t('ds_export_short')}</span>
           </button>
@@ -1131,6 +1152,9 @@ function Editor({
               onReset={resetWalk}
               onExit={exitWalk}
             />
+          ) : null}
+          {reference && referenceOpen && !walking ? (
+            <ReferencePanel data={reference} source={source} controller={controllerRef.current} onClose={() => setReferenceOpen(false)} />
           ) : null}
           {previewing != null && ai?.items[previewing] ? (
             <div role="status" className="absolute inset-x-3 top-14 z-10 mx-auto flex max-w-lg flex-wrap items-center gap-2 rounded-lg bg-[#0C1119] px-3 py-2 text-[14px] text-white shadow-lg ring-1 ring-white/10">

@@ -25,6 +25,7 @@ import type { CanonicalSpace, SpatialSourceRecord, UpstreamPin } from '@/lib/des
 import { normalizeDesignState } from '@/lib/designStudio/designState';
 import { rebaseDesign } from '@/lib/designStudio/scale';
 import { FloorPlanFlow } from '@/components/designStudio/FloorPlanFlow';
+import { ReconstructionFlow } from '@/components/designStudio/ReconstructionFlow';
 import { ModelImportFlow } from '@/components/designStudio/ModelImportFlow';
 import { getFloorPlan, type FloorPlanRecord } from '@/services/designStudio/floorplans';
 import {
@@ -66,6 +67,10 @@ function ProjectLoader() {
   );
   /* A customer's own 3D model (launcher or no-space panel). */
   const [modelFlow, setModelFlow] = useState(() => params.get('start') === 'model');
+  /* Pictures of a home read into a design (launcher, no-space panel, or "furnish from pictures"). */
+  const [reconFlow, setReconFlow] = useState<null | { planSource: SpatialSourceRecord | null }>(
+    () => (params.get('start') === 'image' ? { planSource: null } : null),
+  );
 
   // A reload of an open project (rename, archive, new version) refreshes the
   // data behind the workspace without taking it down and putting it back.
@@ -179,6 +184,20 @@ function ProjectLoader() {
     await load();
   }, [bundle, load, clearStart]);
 
+  const onReconBuilt = useCallback(async (sourceId: string) => {
+    if (!bundle) return;
+    try {
+      await setActiveSource(bundle.project.id, sourceId);
+    } catch {
+      setFailed(true);
+      return;
+    }
+    setReconFlow(null);
+    clearStart();
+    loaded.current = false;
+    await load();
+  }, [bundle, load, clearStart]);
+
   const startRecalibration = useCallback(async (source: SpatialSourceRecord) => {
     if (!source.floorplan_id) return;
     const plan = await getFloorPlan(source.floorplan_id).catch(() => null);
@@ -201,6 +220,18 @@ function ProjectLoader() {
     );
   }
 
+  if (bundle && homatchUser && reconFlow) {
+    return (
+      <ReconstructionFlow
+        userId={homatchUser.id}
+        projectId={bundle.project.id}
+        planSource={reconFlow.planSource}
+        onBuilt={(id) => { void onReconBuilt(id); }}
+        onCancel={() => { setReconFlow(null); clearStart(); }}
+      />
+    );
+  }
+
   if (bundle && homatchUser && modelFlow) {
     return (
       <ModelImportFlow
@@ -216,7 +247,7 @@ function ProjectLoader() {
   if (bundle && resolution && !resolution.source) {
     return (
       <div className="h-[100dvh]">
-        <NoSpacePanel project={bundle.project} rejected={resolution.rejected} onChanged={load} onFloorPlan={() => setFlow({ recalibrate: null, from: null })} onModel={() => setModelFlow(true)} />
+        <NoSpacePanel project={bundle.project} rejected={resolution.rejected} onChanged={load} onFloorPlan={() => setFlow({ recalibrate: null, from: null })} onModel={() => setModelFlow(true)} onImage={() => setReconFlow({ planSource: null })} />
       </div>
     );
   }
@@ -253,6 +284,7 @@ function ProjectLoader() {
       initialVersionId={versionId ?? bundle.project.head_version_id}
       onReload={load}
       onRecalibrate={resolution.source.kind === 'FLOORPLAN_SCENE' ? () => { void startRecalibration(resolution.source!); } : undefined}
+      onFurnishFromPictures={resolution.source.kind === 'FLOORPLAN_SCENE' ? () => setReconFlow({ planSource: resolution.source! }) : undefined}
       startWalkthrough={walkthroughRoute}
       onWalkthroughExit={walkthroughRoute ? () => navigate(`/design-studio/${projectId}`, { replace: true }) : undefined}
     />

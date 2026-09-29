@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Box, FileImage, Loader2, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Box, FileImage, Loader2, RefreshCw, ImagePlus } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { Rejection } from '@/lib/designStudio/spatialSource';
 import type { DesignProjectRecord } from '@/lib/designStudio/types';
@@ -22,8 +22,8 @@ const REASON_KEY: Record<Rejection['reason'], string> = {
  * 3D room here would be a claim about the property that nothing supports.
  */
 export function NoSpacePanel({
-  project, rejected, onChanged, onFloorPlan, onModel,
-}: { project: DesignProjectRecord; rejected: Rejection[]; onChanged: () => void; onFloorPlan: () => void; onModel: () => void }) {
+  project, rejected, onChanged, onFloorPlan, onModel, onImage,
+}: { project: DesignProjectRecord; rejected: Rejection[]; onChanged: () => void; onFloorPlan: () => void; onModel: () => void; onImage?: () => void }) {
   const { t } = useLanguage();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
@@ -88,6 +88,12 @@ export function NoSpacePanel({
             >
               {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <RefreshCw className="h-4 w-4" aria-hidden="true" />}
               {t('ds_action_use_updated_apartment')}
+            </button>
+          ) : null}
+          {onImage ? (
+            <button type="button" onClick={onImage} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-border px-4 text-[15px] font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <ImagePlus className="h-4 w-4" aria-hidden="true" />
+              {t('ds_action_start_image')}
             </button>
           ) : null}
           <button type="button" onClick={onModel} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-border px-4 text-[15px] font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">

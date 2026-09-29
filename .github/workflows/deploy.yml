@@ -689,6 +689,14 @@ jobs:
             # edgeDeployRegistry.test.mjs keeps it "deployed deliberately or
             # not at all" -- never one merge from production.
             "admin-user360"
+            # META ADS. The one customer-facing gateway for the whole product:
+            # status, guided connection, plan preview, preflight, launch (the
+            # only path that touches the ads ledger), pause/resume/sync,
+            # leads export/import, audiences, admin probes. It resolves the
+            # caller's profile from the JWT and re-checks is_admin for the
+            # admin actions, so the gateway JWT check is the correct outer
+            # gate — the browser is the only intended caller.
+            "meta-ads-api"
           )
           # ONLY WHAT IS OWED, AND IN PARALLEL.
           #
@@ -861,6 +869,21 @@ jobs:
             # for that one purpose; every other action reads the Authorization
             # header itself and answers 401/403 for anyone who is not an admin.
             "social-connections"
+            # META ADS OAuth callback. Same shape as social-connections and
+            # for the same reason: Meta redirects the customer's browser back
+            # with ?code&state and no Authorization header, so a gateway JWT
+            # check would reject every connection at the last step. It
+            # authenticates on the single-use state nonce it issued and
+            # exchanges the code server-side; tokens land in meta_tokens,
+            # which no browser can read.
+            "meta-oauth"
+            # META ADS webhooks. Called by Meta's servers (GET hub.challenge
+            # verification, POST leadgen/status changes), which present no
+            # JWT. Every POST is verified against X-Hub-Signature-256 with
+            # the app secret before anything is processed, events are
+            # deduplicated by key, and unverified payloads are stored but
+            # never processed.
+            "meta-webhooks"
             # Community target sync. The tick that keeps the shared
             # intelligence store current so that many campaigns reuse one
             # read instead of each causing their own. Driven by pg_cron,

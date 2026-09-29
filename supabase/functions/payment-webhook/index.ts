@@ -149,6 +149,33 @@ async function handleTopup(
 
   if (!userId) return { error: 'Missing user_id in session metadata', providerCheckoutId };
 
+  /* ── META ADS DEPOSIT — a different economy, not Credits. ─────────────
+   * A checkout stamped domain=META_ADS funds the customer's Ads Balance:
+   * one immutable DEPOSIT row in meta_ads_ledger, idempotent on the
+   * checkout's key, and NO credits are minted. Everything below this
+   * branch stays the Credits path it always was. */
+  if (metadata.domain === 'META_ADS') {
+    const paidMeta = Number(session.amount_total ?? metadata.amount_cents ?? 0);
+    if (!Number.isFinite(paidMeta) || paidMeta <= 0) {
+      return { error: 'No payable amount on session', providerCheckoutId };
+    }
+    const { error: depErr } = await sb.from('meta_ads_ledger').insert({
+      user_id: userId, entry_type: 'DEPOSIT', amount_cents: Math.round(paidMeta),
+      currency: String(session.currency ?? 'usd').toUpperCase(),
+      provider_ref: providerCheckoutId, idempotency_key: `metaads:${idempotencyKey}`,
+    });
+    if (depErr && !String(depErr.message).includes('duplicate')) {
+      return { error: 'META_ADS deposit ledger insert failed', providerCheckoutId };
+    }
+    await sb.from('payments').update({ status: 'COMPLETED' })
+      .eq('provider_id', providerCheckoutId).eq('user_id', userId);
+    await sb.rpc('notify_emit', {
+      p_user_id: userId, p_type: 'META_ADS_BALANCE', p_title: 'Meta Ads',
+      p_body: 'DEPOSIT_RECEIVED', p_deep_link: '/outreach/meta',
+    }).catch?.(() => {});
+    return { received: true, processed: !depErr, domain: 'META_ADS', paymentRef: providerCheckoutId };
+  }
+
   // The amount PAID is the source of truth, not what the checkout request said
   // it would be. `amount_cents` in metadata is only a fallback for providers
   // that do not report a total.

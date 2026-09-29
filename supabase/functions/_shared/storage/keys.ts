@@ -183,6 +183,14 @@ export const NAMESPACES: Record<string, NamespaceRules> = {
     READ: ADMIN, WRITE: ADMIN, DELETE: ADMIN, content: AUDIO,
     note: 'Recordings of real people. Staff only, as the live policy has it.',
   },
+  'meta-ads-media': {
+    legacyBucket: 'meta-ads-media', shape: 'OWNER',
+    READ: AUTHED, WRITE: AUTHED, DELETE: AUTHED, content: MEDIA,
+    note: 'Ad creatives, sender-prefixed (userId/uuid.ext). Private bucket; '
+      + 'the live storage policies bind INSERT to the owner prefix and '
+      + 'SELECT to owner-or-admin, and the bucket itself caps files at 50MB '
+      + 'with image/jpeg,png,webp + video/mp4,quicktime only.',
+  },
 
   // ── System namespaces ─────────────────────────────────────────────────
   'site-assets': {

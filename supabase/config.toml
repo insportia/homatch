@@ -152,6 +152,17 @@ verify_jwt = false
 [functions.social-connections]
 verify_jwt = false
 
+# Meta redirects the customer's browser back with ?code&state and no
+# Authorization header; the function authenticates on its single-use
+# state nonce instead.
+[functions.meta-oauth]
+verify_jwt = false
+
+# Called by Meta's servers; every POST is verified against
+# X-Hub-Signature-256 with the app secret before processing.
+[functions.meta-webhooks]
+verify_jwt = false
+
 # Community target sync. A worker tick with no customer and no user JWT: it claims
 # a target with a conditional UPDATE, reads its public preview, and writes
 # Community Evidence into the global store. Authenticated on a private token in

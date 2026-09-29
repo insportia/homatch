@@ -3,7 +3,7 @@ import {AlertCircle, ArrowLeft, Bath,BedDouble, Bot,
   CheckCircle2, ChevronRight, ExternalLink, Landmark,Layers,Loader2, Lock, 
   MapPin, Pause, Pencil, Phone,
   Play, Shield, Trash2,TrendingDown, Zap 
-} from 'lucide-react';
+, Megaphone } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -626,6 +626,10 @@ function PropertyDetailContent() {
                 </Link>
                 <Link to={`/property/${id}/edit#photos`} className="inline-flex min-h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/25 text-white/85 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]" aria-label={t('prop_action_photos')}>
                   <Camera className="h-3.5 w-3.5" />
+                </Link>
+                {/* PATH A into Meta Ads: this property, already selected. */}
+                <Link to={`/outreach/meta/create?property=${id}`} className="inline-flex min-h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/25 text-white/85 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]" aria-label={t('mads_property_cta')} title={t('mads_property_cta')}>
+                  <Megaphone className="h-3.5 w-3.5" />
                 </Link>
               </div>
             </div>

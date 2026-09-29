@@ -16,6 +16,25 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
      contract keeps globally recognized channel names (Email/SMS/WhatsApp)
      in Latin rather than awkwardly Georgianized. */
   'comm_channel_email',
+  /* ── META ADS ─────────────────────────────────────────────────
+     Brand and product names Meta itself does not localize: the product
+     is called "Meta Ads" in every locale (nav, admin nav, property CTA),
+     the eyebrow is "Facebook · Instagram", and placement names
+     (Facebook Feed, Instagram Stories, Reels…) are Meta's own product
+     names, used verbatim by Georgian/Russian/Turkish speakers. */
+  'nav_meta_ads',
+  'admin_nav_meta_ads',
+  'mads_eyebrow',
+  'mads_property_cta',
+  'mads_conn_instagram',
+  'mads_pl_facebook_feed',
+  'mads_pl_instagram_feed',
+  'mads_pl_facebook_stories',
+  'mads_pl_instagram_stories',
+  'mads_pl_instagram_reels',
+  /* Turkish for "plan" is "plan" — a real cross-language coincidence,
+     not a missing translation (admin campaign-drill label). */
+  'admin_mads_plan',
   /* ── HOMATCH ADMIN ─────────────────────────────────────────────
    *
    * Four invariants, all of them names of things rather than words

@@ -185,6 +185,7 @@ export const NAV: NavGroup[] = [
     items: [
       { key: 'call_center_title', path: '/outreach/calls', glyph: 'calls' },
       { key: 'comm_channel_whatsapp', path: '/outreach/whatsapp', glyph: 'whatsapp' },
+      { key: 'nav_meta_ads', path: '/outreach/meta', glyph: 'meta_ads' },
       { key: 'dnav_email', path: '/outreach/email', glyph: 'email' },
       { key: 'nav_live_chat', path: '/live-chat', glyph: 'live_chat' },
       { key: 'nav_chat', path: '/chat', glyph: 'chat' },

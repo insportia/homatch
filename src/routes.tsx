@@ -119,6 +119,10 @@ const StudioProjectPage = lazyRoute(() => import('./pages/developer/StudioProjec
 const StudioFloorPlanPage = lazyRoute(() => import('./pages/developer/StudioFloorPlanPage'));
 // Outreach pages
 const OutreachHubPage = lazyRoute(() => import('./pages/outreach/OutreachHubPage'));
+const MetaAdsPage = lazyRoute(() => import('./pages/outreach/MetaAdsPage'));
+const MetaAdsCreatePage = lazyRoute(() => import('./pages/outreach/MetaAdsCreatePage'));
+const MetaAdsCampaignPage = lazyRoute(() => import('./pages/outreach/MetaAdsCampaignPage'));
+const AdminMetaAdsPage = lazyRoute(() => import('./pages/admin/AdminMetaAdsPage'));
 const CommunitiesPage = lazyRoute(() => import('./pages/outreach/CommunitiesPage'));
 const ContactListsPage = lazyRoute(() => import('./pages/outreach/ContactListsPage'));
 const EmailCampaignsPage = lazyRoute(() => import('./pages/outreach/EmailCampaignsPage'));
@@ -464,6 +468,12 @@ export const routes: RouteConfig[] = [
   { name: 'Contacts',          path: '/outreach/contacts',        element: <ContactsPage /> },
   { name: 'Import Contacts',   path: '/outreach/contacts/import', element: <ContactImportPage />, visible: false },
   { name: 'Contact',           path: '/outreach/contacts/:id',    element: <ContactProfilePage />, visible: false },
+  { name: 'Meta Ads',          path: '/outreach/meta',            element: <MetaAdsPage /> },
+  /* The create flow is PUBLIC on purpose: a visitor can understand the
+     process and shape a draft; identity is required the moment anything
+     persists or connects (the page itself gates those actions). */
+  { name: 'Meta Ads Create',   path: '/outreach/meta/create',     element: <MetaAdsCreatePage />, public: true },
+  { name: 'Meta Ads Campaign', path: '/outreach/meta/campaigns/:id', element: <MetaAdsCampaignPage />, visible: false },
   { name: 'WhatsApp',          path: '/outreach/whatsapp',        element: <WhatsAppPage /> },
   { name: 'WhatsApp Inbox',    path: '/outreach/whatsapp/inbox',  element: <WhatsAppInboxPage /> },
   { name: 'WhatsApp Templates', path: '/outreach/whatsapp/templates', element: <WhatsAppTemplatesPage />, visible: false },
@@ -532,6 +542,7 @@ export const routes: RouteConfig[] = [
   { name: 'Admin Properties',  path: '/admin/properties',         element: adminWrap(<AdminPropertiesPage />),  adminOnly: true },
   { name: 'Admin Campaigns',   path: '/admin/campaigns',          element: adminWrap(<AdminCampaignsPage />),   adminOnly: true },
   { name: 'Admin Outreach',    path: '/admin/outreach',           element: adminWrap(<AdminOutreachPage />),    adminOnly: true },
+  { name: 'Admin Meta Ads',    path: '/admin/meta-ads',           element: adminWrap(<AdminMetaAdsPage />),     adminOnly: true },
   { name: 'Admin Markets',     path: '/admin/markets',            element: adminWrap(<AdminMarketsPage />),     adminOnly: true },
   { name: 'Admin Sources',     path: '/admin/sources',            element: adminWrap(<AdminSourcesPage />),     adminOnly: true },
   /* Connected Social Accounts. One place to connect an account and see what

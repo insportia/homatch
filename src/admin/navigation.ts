@@ -199,6 +199,10 @@ export const ADMIN_GROUPS: AdminGroup[] = [
         keywords: ['outreach', 'campaign performance', 'observability', 'sends', 'delivery'],
       },
       {
+        path: '/admin/meta-ads', labelKey: 'admin_nav_meta_ads', icon: Megaphone,
+        keywords: ['meta', 'facebook', 'instagram', 'ads', 'leads', 'audiences', 'moderation', 'ledger'],
+      },
+      {
         path: '/admin/notifications', labelKey: 'admin_cc_nav_notifications', icon: BellRing,
         keywords: ['notification', 'inbox', 'push', 'delivered', 'read', 'dedupe'],
       },

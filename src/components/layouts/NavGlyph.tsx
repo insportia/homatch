@@ -21,7 +21,7 @@ import React from 'react';
 export type NavGlyphName =
   | 'dashboard' | 'properties' | 'find_property' | 'brokers' | 'expats'
   | 'verify' | 'contracts' | 'mortgage' | 'investment'
-  | 'calls' | 'whatsapp' | 'email' | 'live_chat' | 'chat'
+  | 'calls' | 'whatsapp' | 'email' | 'live_chat' | 'chat' | 'meta_ads'
   | 'ai' | 'activity' | 'notifications' | 'credits' | 'profile';
 
 const GOLD = 'hsl(38 92% 58%)';
@@ -120,6 +120,13 @@ const GLYPHS: Record<NavGlyphName, React.ReactNode> = {
     <>
       <path d="M12 4a8 8 0 0 1 0 16 8.2 8.2 0 0 1-3.6-.8L4.4 20l.9-3.8A8 8 0 0 1 12 4z" {...S} />
       <path d="M9.3 9.6c.4-1 1.4-1 1.8-.1l.4.9-.8 1a5.8 5.8 0 0 0 2 1.9l1-.7.9.4c.9.5.8 1.5-.2 1.8-2.6.9-6.3-2.7-5.1-5.2z" fill={GOLD} stroke="none" />
+    </>
+  ),
+  /* Meta Ads: the megaphone, with the gold burst that is the ad itself. */
+  meta_ads: (
+    <>
+      <path d="M5 10v4h3l7 4V6l-7 4H5z" {...S} />
+      <path d="M18.5 9.2l2-1.2M18.5 14.8l2 1.2M19 12h2.6" stroke={GOLD} strokeWidth="1.9" strokeLinecap="round" />
     </>
   ),
   /* Email campaigns: the envelope, sent. */

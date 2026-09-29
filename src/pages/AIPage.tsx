@@ -444,8 +444,9 @@ function AIPageInner() {
           </Button>
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <Sparkles className="h-5 w-5 shrink-0 text-[hsl(38_92%_60%)]" />
+            {/* The Beta badge is gone by explicit instruction (2026-09-29):
+                the product name stands on its own. */}
             <h1 className="truncate text-sm font-semibold text-white">{t('ai_title')}</h1>
-            <span className="shrink-0 rounded-full border border-[hsl(38_92%_56%)]/50 bg-[hsl(38_92%_56%)]/[0.12] px-2 py-0.5 text-[13px] font-semibold uppercase tracking-[0.08em] text-[hsl(38_92%_62%)]">{t('ai_beta_badge')}</span>
           </div>
           {messages.length > 0 && (
             <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-white/75 hover:bg-white/10 hover:text-white"

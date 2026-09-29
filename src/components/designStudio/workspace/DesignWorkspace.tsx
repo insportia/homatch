@@ -49,10 +49,11 @@ import { DesignCanvas } from '../canvas/DesignCanvas';
 import type { CameraSnapshot, PickTarget, SceneController } from '../canvas/SceneController';
 import { CompareView } from './CompareView';
 import { VersionsTray } from './VersionsTray';
-import { developerUnitModelUrl, loadGltf } from '../canvas/modelLoader';
+import { developerUnitModelUrl, loadGltf, loadGltfWithNodes } from '../canvas/modelLoader';
+import { isModelAnalysis, modelParts, partRoles, type ModelPart } from '@/lib/designStudio/modelParts';
 import { FurniturePanel } from './FurniturePanel';
 import { Inspector } from './Inspector';
-import { ObjectControls, SurfaceControls } from './EditControls';
+import { ObjectControls, PartControls, SurfaceControls } from './EditControls';
 import { PlanNavigator } from './PlanNavigator';
 import { RoomsPanel } from './RoomsPanel';
 import { LightingPanel, MaterialList, Swatch } from './SurfacePanels';
@@ -188,7 +189,11 @@ function Editor({
   const names = useMemo(() => (space ? roomNames(space, t) : new Map<string, string>()), [space, t]);
   const assets = useMemo(() => new Map(catalog.assets.map((a) => [a.code, a])), [catalog.assets]);
   const materials = useMemo(() => new Map(catalog.materials.map((m) => [m.id, m])), [catalog.materials]);
-  const ctx: OperationContext = useMemo(() => ({ space, assets, materials }), [space, assets, materials]);
+  // An uploaded model: the server's analysis, and the parts it identified.
+  const modelAnalysis = useMemo(
+    () => (source.kind === 'UPLOADED_MODEL' && isModelAnalysis(source.canonical) ? source.canonical : null), [source]);
+  const parts = useMemo(() => modelParts(modelAnalysis), [modelAnalysis]);
+  const ctx: OperationContext = useMemo(() => ({ space, assets, materials, parts: partRoles(parts) }), [space, assets, materials, parts]);
   const estimated = source.geometry_state === 'ESTIMATED';
 
   const session = useDesignSession({
@@ -199,6 +204,9 @@ function Editor({
     ctx,
   });
   const state = session.state;
+  // The latest state, for work that finishes asynchronously (a model loading).
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   const [selection, setSelection] = useState<PickTarget | null>(null);
   const [mode, setMode] = useState<LeftMode>('ROOMS');
@@ -530,17 +538,48 @@ function Editor({
         controller.setModel(await loadGltf(current.url, controller.renderer));
         return;
       }
+      if (source.kind === 'UPLOADED_MODEL' && source.model_object_key) {
+        const url = (await signedUrls([source.model_object_key], 1800)).get(source.model_object_key);
+        if (!url) throw new Error('unsigned');
+        const { scene, nodes } = await loadGltfWithNodes(url, controller.renderer, parts.map((p) => p.node));
+        const bindings = parts.flatMap((p) => {
+          const object = nodes.get(p.node);
+          return object ? [{ id: p.id, role: p.role, object }] : [];
+        });
+        controller.setModel(scene, {
+          transform: modelAnalysis ? { scale: modelAnalysis.normalization.scale, upAxis: modelAnalysis.normalization.upAxis } : undefined,
+          parts: bindings,
+        });
+        controller.applyDesign(stateRef.current, assets, materials);
+        return;
+      }
       throw new Error('unsupported');
     };
-  }, [space, source]);
+  }, [space, source, parts, modelAnalysis, assets, materials]);
 
   // ── Panels ─────────────────────────────────────────────────────────
+
+  /** A model has parts, not rooms; the first panel is named for what it lists. */
+  const modeLabel = (id: LeftMode) => (id === 'ROOMS' && !space && modelAnalysis
+    ? 'ds_panel_parts' : MODES.find((m) => m.id === id)?.labelKey ?? 'ds_panel_rooms');
 
   const roomLabelFor = activeRoom ? names.get(activeRoom.id) ?? null : null;
 
   const panel = (m: LeftMode) => {
     switch (m) {
       case 'ROOMS':
+        if (!space && modelAnalysis) {
+          return (
+            <ModelPartsPanel
+              parts={parts}
+              editability={modelAnalysis.editability}
+              hidden={state.hiddenParts}
+              selectedId={selection && (selection.kind === 'surface' || selection.kind === 'part') ? selection.id : null}
+              onSelect={(p) => { setSelection(p.role === 'FURNITURE' ? { kind: 'part', id: p.id } : { kind: 'surface', id: p.id, roomId: null }); setSheet(isPhoneLayout() ? 'INSPECTOR' : null); }}
+              onToggleHidden={(p, hide) => run([{ type: 'SET_PART_HIDDEN', partId: p.id, hidden: hide }], hide ? 'ds_label_hide' : 'ds_label_show')}
+            />
+          );
+        }
         return (
           <RoomsPanel space={space} names={names} state={source.geometry_state} activeRoomId={activeRoomId}
             onRoom={(id) => { selectRoom(id); setSheet(null); }} />
@@ -614,6 +653,8 @@ function Editor({
       onSelect={setSelection}
       onFocusRoom={focusRoom}
       onRecalibrate={onRecalibrate}
+      model={modelAnalysis}
+      parts={parts}
       objectHeading={selectedObject ? {
         eyebrow: selectedObject.roomId ? names.get(selectedObject.roomId) ?? '' : t('ds_inspector_object'),
         title: objectAsset?.name ?? t('ds_asset_missing'),
@@ -636,11 +677,21 @@ function Editor({
           onVariant={(v) => run([{ type: 'SET_OBJECT_VARIANT', instanceId: selectedObject.instanceId, variant: v }], 'ds_label_finish')}
           onColor={(c) => run([{ type: 'SET_OBJECT_COLOR', instanceId: selectedObject.instanceId, color: c }], 'ds_label_color')}
         />
-      ) : selection?.kind === 'surface' && space ? (
+      ) : selection?.kind === 'part' ? (
+        <PartControls
+          hidden={state.hiddenParts.includes(selection.id)}
+          locked={state.locks.layout || state.locks.furniture}
+          onToggle={() => {
+            const hide = !state.hiddenParts.includes(selection.id);
+            run([{ type: 'SET_PART_HIDDEN', partId: selection.id, hidden: hide }], hide ? 'ds_label_hide' : 'ds_label_show');
+          }}
+        />
+      ) : selection?.kind === 'surface' && (space || selection.id.startsWith('part:')) ? (
         <SurfaceControls
           key={selection.id}
           surfaceId={selection.id}
           space={space}
+          parts={parts}
           state={state}
           materials={catalog.materials}
           palettes={catalog.palettes}
@@ -718,7 +769,7 @@ function Editor({
       <div className="flex min-h-0 flex-1">
         {/* ── Left: mode rail + library panel ─────────────────────── */}
         <nav aria-label={t('ds_panel_modes')} className="hidden w-14 shrink-0 flex-col items-center gap-1 border-e border-white/10 py-2 lg:flex">
-          {MODES.filter((m) => !m.needsSpace || space).map((m) => (
+          {MODES.filter((m) => !m.needsSpace || space).map((m) => ({ ...m, labelKey: modeLabel(m.id) })).map((m) => (
             <button
               key={m.id}
               type="button"
@@ -744,9 +795,9 @@ function Editor({
           </button>
         </nav>
         {panelOpen ? (
-          <aside aria-label={t(MODES.find((m) => m.id === mode)?.labelKey ?? 'ds_panel_rooms')} className="hidden w-[18rem] shrink-0 flex-col bg-white text-[#0C1119] lg:flex">
+          <aside aria-label={t(modeLabel(mode))} className="hidden w-[18rem] shrink-0 flex-col bg-white text-[#0C1119] lg:flex">
             <h2 className="shrink-0 border-b border-[#E4E6EA] px-4 py-3 font-display text-[15px] font-semibold">
-              {t(MODES.find((m) => m.id === mode)?.labelKey ?? 'ds_panel_rooms')}
+              {t(modeLabel(mode))}
             </h2>
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">{panel(mode)}</div>
           </aside>
@@ -826,7 +877,7 @@ function Editor({
 
       {/* ── Phone: the canvas is the screen; panels are sheets ─────── */}
       <nav aria-label={t('ds_panel_modes')} className="grid shrink-0 grid-cols-5 border-t border-white/10 bg-[#0C1119] pb-[env(safe-area-inset-bottom)] lg:hidden">
-        {[...MODES.filter((m) => (m.id === 'ROOMS' || m.id === 'FURNITURE' || m.id === 'MATERIALS' || m.id === 'LIGHTING') && (!m.needsSpace || space)),
+        {[...MODES.filter((m) => (m.id === 'ROOMS' || m.id === 'FURNITURE' || m.id === 'MATERIALS' || m.id === 'LIGHTING') && (!m.needsSpace || space)).map((m) => ({ ...m, labelKey: modeLabel(m.id) })),
           { id: 'INSPECTOR' as const, labelKey: 'ds_inspector_short', icon: Info }].map((m) => (
           <button
             key={m.id}
@@ -842,7 +893,7 @@ function Editor({
       <Drawer open={sheet !== null && isPhoneLayout()} onOpenChange={(open) => { if (!open) setSheet(null); }}>
         <DrawerContent className="max-h-[72dvh] bg-white text-[#0C1119] lg:hidden">
           <DrawerHeader className="sr-only">
-            <DrawerTitle>{t(sheet === 'INSPECTOR' ? 'ds_inspector' : MODES.find((m) => m.id === sheet)?.labelKey ?? 'ds_inspector')}</DrawerTitle>
+            <DrawerTitle>{t(sheet === 'INSPECTOR' || !sheet ? 'ds_inspector' : modeLabel(sheet))}</DrawerTitle>
             <DrawerDescription>{t('ds_brand')}</DrawerDescription>
           </DrawerHeader>
           <div className="flex min-h-0 flex-col overflow-y-auto pb-[env(safe-area-inset-bottom)]">
@@ -912,6 +963,71 @@ function RoomMaterials({
         </section>
       ) : null}
       <p className="text-[13px] leading-relaxed text-[#4A5263]">{t('ds_materials_note')}</p>
+    </div>
+  );
+}
+
+const PART_ROLE_KEY: Record<ModelPart['role'], string> = {
+  FLOOR: 'ds_surface_floor', WALL: 'ds_surface_wall', CEILING: 'ds_surface_ceiling',
+  DOOR: 'ds_part_door', WINDOW: 'ds_part_window', FURNITURE: 'ds_part_furniture',
+};
+
+/** The parts HOMATCH identified in an uploaded model, grouped by what they are. */
+function ModelPartsPanel({
+  parts, editability, hidden, selectedId, onSelect, onToggleHidden,
+}: {
+  parts: ModelPart[];
+  editability: 'FULLY_STRUCTURED' | 'PARTIALLY_STRUCTURED' | 'VISUAL_MODEL';
+  hidden: string[];
+  selectedId: string | null;
+  onSelect: (part: ModelPart) => void;
+  onToggleHidden: (part: ModelPart, hidden: boolean) => void;
+}) {
+  const { t } = useLanguage();
+  if (editability === 'VISUAL_MODEL' || parts.length === 0) {
+    return <p className="px-4 py-4 text-[14px] leading-relaxed text-[#4A5263]">{t('ds_editability_visual_body')}</p>;
+  }
+  const groups: Array<ModelPart['role']> = ['WALL', 'FLOOR', 'CEILING', 'FURNITURE', 'DOOR', 'WINDOW'];
+  return (
+    <div className="space-y-4 px-4 py-4">
+      <p className="text-[14px] leading-relaxed text-[#4A5263]">{t('ds_parts_intro')}</p>
+      {groups.map((role) => {
+        const list = parts.filter((p) => p.role === role);
+        if (!list.length) return null;
+        const editable = role === 'WALL' || role === 'FLOOR' || role === 'CEILING' || role === 'FURNITURE';
+        return (
+          <section key={role}>
+            <h3 className="mb-1.5 text-2xs font-semibold uppercase tracking-[0.12em] text-[#4A5263]">{t(PART_ROLE_KEY[role])} · {list.length}</h3>
+            <ul className="space-y-1">
+              {list.map((p, i) => {
+                const isHidden = hidden.includes(p.id);
+                return (
+                  <li key={p.id} className={cn('flex items-center gap-1 rounded-md', selectedId === p.id && 'bg-[#F4F5F7]')}>
+                    <button
+                      type="button"
+                      disabled={!editable || isHidden}
+                      onClick={() => onSelect(p)}
+                      className="min-w-0 flex-1 truncate rounded-md px-2.5 py-2 text-start text-[14px] text-[#0C1119] hover:bg-[#F4F5F7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)] disabled:cursor-default disabled:text-[#4A5263] disabled:hover:bg-transparent"
+                    >
+                      {t(PART_ROLE_KEY[role])} {i + 1}{isHidden ? ' · ' + t('ds_part_hidden') : ''}
+                    </button>
+                    {role === 'FURNITURE' ? (
+                      <button
+                        type="button"
+                        onClick={() => onToggleHidden(p, !isHidden)}
+                        className="h-8 shrink-0 rounded-md border border-[#D5D9E0] px-2 text-[13px] font-medium text-[#0C1119] hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]"
+                      >
+                        {t(isHidden ? 'ds_part_show' : 'ds_part_hide')}
+                      </button>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        );
+      })}
+      <p className="text-[13px] leading-relaxed text-[#4A5263]">{t('ds_mi_cannot_add')}</p>
     </div>
   );
 }

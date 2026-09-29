@@ -521,6 +521,12 @@ jobs:
             #                             never builds geometry or marks
             #                             anything verified. Metered, unpriced.
             "design-studio-floorplan"
+            #   design-studio-model      reads an uploaded glTF back from R2
+            #                             by its bytes, refuses anything
+            #                             external, undecodable or too heavy,
+            #                             and records an UPLOADED_MODEL
+            #                             source. No AI, nothing billable.
+            "design-studio-model"
             # Object storage. storage-sign is the ONLY runtime anywhere that
             # holds an R2 credential: it authorises the caller in Postgres
             # under that caller's own token and hands back a short-lived

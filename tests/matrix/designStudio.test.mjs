@@ -227,3 +227,38 @@ test('table privileges are explicit and sources/jobs are read-only to customers'
   assert.match(MIGRATION, /DS_VERIFICATION_DISAGREES/, 'VERIFIED is not checked against the geometry');
   assert.match(MIGRATION, /DS_OBJECT_KEY_INVALID/, 'a floor-plan row may point at any object');
 });
+
+/* ── The customer's own 3D model (checkpoint 6) ──────────────────── */
+
+test('the model importer reads the bytes back and decides on the server', () => {
+  const fn = read('supabase/functions/design-studio-model/index.ts');
+  assert.match(fn, /refuseIfImpersonating\(/, 'an impersonating admin could import into a customer project');
+  assert.match(fn, /caller\.from\('ds_projects'\)/, 'the project is not read as the caller (RLS decides ownership)');
+  assert.match(fn, /key\.startsWith\(prefix\)/, 'the object key is not checked against the caller and project');
+  assert.match(fn, /inspectModel\(bytes\)/, 'the model is not inspected from its bytes');
+  assert.match(fn, /geometry_state: 'ESTIMATED'/, 'an uploaded model claims measured dimensions');
+  assert.ok(!/recordUnbilledUsage|charge|debit/i.test(fn.replace(/\/\/.*$/gm, '')), 'model inspection is billed');
+  assert.ok(!/openai|anthropic/i.test(fn), 'model inspection calls an AI provider');
+  assert.match(read('.github/workflows/deploy.yml'), /"design-studio-model"/);
+});
+
+test('the inspector refuses external resources and unknown decoders', () => {
+  const src = read('supabase/functions/_shared/designStudio/modelInspect.ts');
+  assert.match(src, /refuse\('EXTERNAL_RESOURCE'/);
+  assert.match(src, /refuse\('UNSUPPORTED_EXTENSION'/);
+  assert.ok(!/\bfetch\(/.test(src), 'the inspector fetches something a model points at');
+});
+
+test('the browser only offers glTF and uploads through the shared R2 client', () => {
+  const svc = read('src/services/designStudio/models.ts');
+  assert.match(svc, /category: 'design-studio-models'/);
+  assert.match(svc, /OTHER_FORMATS/, 'other formats are not refused by name');
+  assert.ok(!/storage\.from\(/.test(svc), 'models are written to a Supabase bucket instead of R2');
+  assert.match(read('supabase/functions/_shared/storage/keys.ts'), /const DS_MODEL: ContentPolicy = \{ mime: \['model\/gltf-binary', 'model\/gltf\+json'\], maxBytes: 100 \* MB \}/);
+});
+
+test('model furniture can be hidden, never moved', () => {
+  const ops = read('src/lib/designStudio/operations.ts');
+  assert.match(ops, /SET_PART_HIDDEN/);
+  assert.ok(!/MOVE_PART|ROTATE_PART/.test(ops), 'model parts can be moved: they were modelled in place');
+});

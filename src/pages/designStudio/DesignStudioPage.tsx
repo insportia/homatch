@@ -168,14 +168,14 @@ function Launcher() {
     }
   }, [navigate, t, userId]);
 
-  /* A project for a drawing the customer has: the floor-plan flow opens at once. */
-  const startFromFloorPlan = useCallback(async () => {
+  /* A project for a drawing or a model the customer has: its flow opens at once. */
+  const startFrom = useCallback(async (kind: 'floorplan' | 'model') => {
     if (!userId) return;
     setBusy(true);
     setActionError(null);
     try {
-      const project = await createProject({ userId, name: t('ds_default_project_floorplan') });
-      navigate(`/design-studio/${project.id}?start=floorplan`);
+      const project = await createProject({ userId, name: t(kind === 'model' ? 'ds_default_project_model' : 'ds_default_project_floorplan') });
+      navigate(`/design-studio/${project.id}?start=${kind}`);
     } catch (error) {
       setActionError(t(errorKey(error)));
       setBusy(false);
@@ -221,17 +221,16 @@ function Launcher() {
                 {t('ds_action_choose_property')}
                 <ArrowRight className={cn('h-4 w-4', 'rtl:rotate-180')} aria-hidden="true" />
               </button>
-              {/* Honest until the ingestion pipelines exist: visible, labelled, not clickable. */}
-              <button type="button" className={QUIET_BUTTON} disabled aria-describedby="ds-soon">
+              <button type="button" className={QUIET_BUTTON} disabled={busy} onClick={() => { void startFrom('model'); }} aria-describedby="ds-formats">
                 <Box className="h-4 w-4" aria-hidden="true" />
                 {t('ds_action_upload_model')}
               </button>
-              <button type="button" className={QUIET_BUTTON} disabled={busy} onClick={() => { void startFromFloorPlan(); }}>
+              <button type="button" className={QUIET_BUTTON} disabled={busy} onClick={() => { void startFrom('floorplan'); }}>
                 <FileImage className="h-4 w-4" aria-hidden="true" />
                 {t('ds_action_use_floorplan')}
               </button>
             </div>
-            <p id="ds-soon" className="mt-2.5 text-[13px] text-white/55">{t('ds_model_import_not_yet')}</p>
+            <p id="ds-formats" className="mt-2.5 text-[13px] text-white/55">{t('ds_mi_formats_note')}</p>
 
             {actionError ? (
               <p role="alert" className="mt-4 rounded-lg border border-[hsl(0_66%_60%)]/40 bg-[hsl(0_66%_44%)]/15 px-3 py-2 text-sm text-white">

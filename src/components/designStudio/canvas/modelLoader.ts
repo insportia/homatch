@@ -31,6 +31,41 @@ export async function loadGltf(url: string, renderer: THREE.WebGLRenderer): Prom
   }
 }
 
+/**
+ * A glTF with its objects indexed by glTF node, so the parts the server's
+ * model inspector identified (by node index) can be found in the scene.
+ */
+export async function loadGltfWithNodes(
+  url: string, renderer: THREE.WebGLRenderer, wanted: number[],
+): Promise<{ scene: THREE.Object3D; nodes: Map<number, THREE.Object3D> }> {
+  const loader = new GLTFLoader();
+  const draco = new DRACOLoader();
+  draco.setDecoderPath('/three/draco/');
+  loader.setDRACOLoader(draco);
+  const ktx2 = new KTX2Loader();
+  ktx2.setTranscoderPath('/three/basis/');
+  ktx2.detectSupport(renderer);
+  loader.setKTX2Loader(ktx2);
+  loader.setMeshoptDecoder(MeshoptDecoder);
+  try {
+    const gltf = await loader.loadAsync(url);
+    // The parser caches each node's object and the scene is built from that
+    // cache, so this is the very object in the scene. (parser.associations
+    // cannot be used: instances of a shared mesh share one mapping entry.)
+    const inScene = new Set<THREE.Object3D>();
+    gltf.scene.traverse((o) => inScene.add(o));
+    const nodes = new Map<number, THREE.Object3D>();
+    await Promise.all(wanted.map(async (index) => {
+      const object = await gltf.parser.getDependency('node', index).catch(() => null) as THREE.Object3D | null;
+      if (object && inScene.has(object)) nodes.set(index, object);
+    }));
+    return { scene: gltf.scene, nodes };
+  } finally {
+    draco.dispose();
+    ktx2.dispose();
+  }
+}
+
 /** The geometry URL of a developer unit's CURRENT publication, or null. */
 export async function developerUnitModelUrl(unitId: string): Promise<{ url: string; sceneId: string; version: string } | null> {
   const { loadUnitScene, assetUrl } = await import('@/services/developer/twin');

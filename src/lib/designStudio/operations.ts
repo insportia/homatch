@@ -16,6 +16,7 @@ import { HEX, type CatalogAsset, type CatalogMaterial } from './catalog.ts';
 import type { DesignState, LightingState, LockSet, ObjectInstance, SurfaceAssignment } from './designState.ts';
 import { blocks, evaluatePlacement, type PlacementIssue } from './placement.ts';
 import { parseSurfaceId, type SpaceModel } from './space.ts';
+import { HIDEABLE_ROLES, PAINTABLE_ROLES, type PartRole } from './modelParts.ts';
 
 export type Operation =
   | { type: 'ADD_OBJECT'; object: ObjectInstance }
@@ -34,7 +35,9 @@ export type Operation =
   | { type: 'SET_LIGHTING'; lighting: Partial<Omit<LightingState, 'locked'>> }
   | { type: 'SET_LOCKS'; locks: Partial<LockSet> }
   | { type: 'APPLY_PALETTE'; palette: string[] }
-  | { type: 'SET_STYLE'; styleCode: string | null };
+  | { type: 'SET_STYLE'; styleCode: string | null }
+  /** Uploaded models: hide or show an identified furniture part. */
+  | { type: 'SET_PART_HIDDEN'; partId: string; hidden: boolean };
 
 export type OperationType = Operation['type'];
 
@@ -51,6 +54,8 @@ export interface Rejection {
 
 export interface OperationContext {
   space: SpaceModel | null;
+  /** Uploaded models: the parts the server identified, by `part:<node>` id. */
+  parts?: Map<string, PartRole>;
   assets: Map<string, CatalogAsset>;
   materials: Map<string, CatalogMaterial>;
 }
@@ -94,6 +99,14 @@ export function validateOperation(state: DesignState, op: Operation, ctx: Operat
     if (!Array.isArray(ids) || ids.length === 0) return { code: 'MALFORMED', detail: 'surfaceIds' };
     const known = new Set(ctx.space?.surfaces.map((s) => s.id) ?? []);
     for (const id of ids) {
+      if (typeof id === 'string' && id.startsWith('part:')) {
+        const role = ctx.parts?.get(id);
+        if (!role || !PAINTABLE_ROLES.has(role)) return { code: 'UNKNOWN_SURFACE', detail: id };
+        if (state.surfaces[id]?.locked) return { code: 'OBJECT_LOCKED', detail: id };
+        if (role === 'FLOOR' && locks.floor) return { code: 'CATEGORY_LOCKED', detail: 'floor' };
+        if (role === 'WALL' && locks.walls) return { code: 'CATEGORY_LOCKED', detail: 'walls' };
+        continue;
+      }
       const parsed = parseSurfaceId(id);
       if (!parsed || !known.has(id)) return { code: 'UNKNOWN_SURFACE', detail: id };
       if (state.surfaces[id]?.locked) return { code: 'OBJECT_LOCKED', detail: id };
@@ -170,7 +183,7 @@ export function validateOperation(state: DesignState, op: Operation, ctx: Operat
       const m = ctx.materials.get(op.materialId);
       if (!m || !m.active) return { code: 'UNKNOWN_MATERIAL', detail: op.materialId };
       for (const id of op.surfaceIds) {
-        const kind = parseSurfaceId(id)!.kind;
+        const kind = (id.startsWith('part:') ? ctx.parts!.get(id)! : parseSurfaceId(id)!.kind) as 'FLOOR' | 'WALL' | 'CEILING';
         if (!m.appliesTo.includes(kind)) return { code: 'MATERIAL_NOT_FOR_SURFACE', detail: `${m.code} → ${kind}` };
       }
       return null;
@@ -192,6 +205,14 @@ export function validateOperation(state: DesignState, op: Operation, ctx: Operat
         if (value.color != null && !HEX.test(value.color)) return { code: 'BAD_COLOR' };
         if (value.materialId != null && !ctx.materials.get(value.materialId)?.active) return { code: 'UNKNOWN_MATERIAL', detail: value.materialId };
       }
+      return null;
+    }
+    case 'SET_PART_HIDDEN': {
+      if (typeof op.partId !== 'string' || typeof op.hidden !== 'boolean') return { code: 'MALFORMED' };
+      const role = ctx.parts?.get(op.partId);
+      if (!role || !HIDEABLE_ROLES.has(role)) return { code: 'UNKNOWN_OBJECT', detail: op.partId };
+      if (locks.layout) return { code: 'CATEGORY_LOCKED', detail: 'layout' };
+      if (locks.furniture) return { code: 'CATEGORY_LOCKED', detail: 'furniture' };
       return null;
     }
     case 'SET_LIGHTING': {
@@ -318,6 +339,13 @@ export function applyOperation(state: DesignState, op: Operation): { state: Desi
       return { state: { ...state, palette: [...op.palette] }, inverse: [{ type: 'APPLY_PALETTE', palette: [...state.palette] }] };
     case 'SET_STYLE':
       return { state: { ...state, styleCode: op.styleCode }, inverse: [{ type: 'SET_STYLE', styleCode: state.styleCode }] };
+    case 'SET_PART_HIDDEN': {
+      const was = state.hiddenParts.includes(op.partId);
+      const hiddenParts = op.hidden
+        ? (was ? state.hiddenParts : [...state.hiddenParts, op.partId])
+        : state.hiddenParts.filter((p) => p !== op.partId);
+      return { state: { ...state, hiddenParts }, inverse: [{ type: 'SET_PART_HIDDEN', partId: op.partId, hidden: was }] };
+    }
   }
 }
 

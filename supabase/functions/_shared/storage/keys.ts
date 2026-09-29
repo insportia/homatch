@@ -90,7 +90,7 @@ const DS_FLOORPLAN: ContentPolicy = {
   mime: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'],
   maxBytes: 25 * MB,
 };
-const DS_MODEL: ContentPolicy = { mime: ['model/gltf-binary', 'model/gltf+json'], maxBytes: 200 * MB };
+const DS_MODEL: ContentPolicy = { mime: ['model/gltf-binary', 'model/gltf+json'], maxBytes: 100 * MB };
 const DS_THUMBNAIL: ContentPolicy = { mime: ['image/webp', 'image/jpeg', 'image/png'], maxBytes: 2 * MB };
 const ANY_SMALL: ContentPolicy = { mime: ['*'], maxBytes: 25 * MB };
 

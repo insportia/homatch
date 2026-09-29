@@ -4,6 +4,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { parseSurfaceId, type SpaceModel } from '@/lib/designStudio/space';
 import { provenanceLabel } from '@/lib/designStudio/spatialSource';
 import type { SpatialSourceRecord } from '@/lib/designStudio/types';
+import type { ModelAnalysisSummary, ModelPart } from '@/lib/designStudio/modelParts';
 import type { PickTarget } from '../canvas/SceneController';
 import { formatArea, formatLength } from './labels';
 
@@ -16,6 +17,9 @@ export interface InspectorProps {
   onFocusRoom: (roomId: string) => void;
   /** Floor-plan spaces: change the measurements. */
   onRecalibrate?: () => void;
+  /** Uploaded models: the server's analysis and the parts it identified. */
+  model?: ModelAnalysisSummary | null;
+  parts?: ModelPart[];
   /** Heading for a selected object (asset name, room). */
   objectHeading?: { eyebrow: string; title: string };
   /** Controls for the selected thing, contributed by the editing layer. */
@@ -47,7 +51,20 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
  * trusted. A room → that room. A surface → which surface, in which room.
  * An object → that object. Only controls that apply to the selection appear.
  */
-export function Inspector({ source, space, names, selection, onSelect, onFocusRoom, onRecalibrate, objectHeading, children }: InspectorProps) {
+const PART_ROLE_KEY: Record<ModelPart['role'], string> = {
+  FLOOR: 'ds_surface_floor', WALL: 'ds_surface_wall', CEILING: 'ds_surface_ceiling',
+  DOOR: 'ds_part_door', WINDOW: 'ds_part_window', FURNITURE: 'ds_part_furniture',
+};
+
+const EDITABILITY_BODY: Record<ModelAnalysisSummary['editability'], string> = {
+  FULLY_STRUCTURED: 'ds_mi_class_full_body',
+  PARTIALLY_STRUCTURED: 'ds_mi_class_partial_body',
+  VISUAL_MODEL: 'ds_editability_visual_body',
+};
+
+const approxM = (n: number) => `≈ ${(Math.round(n * 10) / 10).toLocaleString(undefined, { maximumFractionDigits: 1 })} m`;
+
+export function Inspector({ source, space, names, selection, onSelect, onFocusRoom, onRecalibrate, model, parts = [], objectHeading, children }: InspectorProps) {
   const { t } = useLanguage();
   const label = provenanceLabel(source);
   const state = source.geometry_state;
@@ -79,7 +96,15 @@ export function Inspector({ source, space, names, selection, onSelect, onFocusRo
               />
             ) : null}
             {label.editabilityKey ? <Row label={t('ds_inspector_editability')} value={t(label.editabilityKey)} /> : null}
+            {model ? (
+              <Row
+                label={t('ds_inspector_size')}
+                value={`${approxM(model.normalization.sizeM[0])} × ${approxM(model.normalization.sizeM[2])}`}
+              />
+            ) : null}
+            {model ? <Row label={t('ds_inspector_height')} value={approxM(model.normalization.sizeM[1])} /> : null}
           </dl>
+          {model ? <p className="mt-3 text-[13px] leading-relaxed text-[#4A5263]">{t(EDITABILITY_BODY[model.editability])}</p> : null}
           <p className="mt-3 flex gap-2 rounded-md bg-[#F4F5F7] px-3 py-2.5 text-[13px] leading-relaxed text-[#4A5263]">
             <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             {t(state === 'ESTIMATED' ? 'ds_truth_estimated' : 'ds_truth_known')}
@@ -93,7 +118,7 @@ export function Inspector({ source, space, names, selection, onSelect, onFocusRo
               {t(state === 'VERIFIED' ? 'ds_fp_change_measurements' : 'ds_fp_calibrate')}
             </button>
           ) : null}
-          {!space ? <p className="mt-3 text-[13px] text-[#4A5263]">{t('ds_rooms_unavailable_model')}</p> : null}
+          {!space && !model ? <p className="mt-3 text-[13px] text-[#4A5263]">{t('ds_rooms_unavailable_model')}</p> : null}
           <p className="mt-4 text-[14px] text-[#4A5263]">{t('ds_inspector_hint')}</p>
         </div>
       </div>
@@ -155,6 +180,18 @@ export function Inspector({ source, space, names, selection, onSelect, onFocusRo
     );
   }
 
+  if (selection.kind === 'surface' || selection.kind === 'part') {
+    const part = parts.find((p) => p.id === selection.id);
+    if (part) {
+      return (
+        <div>
+          <Heading eyebrow={t('ds_part_of_model')} title={t(PART_ROLE_KEY[part.role])} />
+          <div className="px-4 py-3">{children}</div>
+        </div>
+      );
+    }
+  }
+
   if (selection.kind === 'surface') {
     const parsed = parseSurfaceId(selection.id);
     if (!parsed) return null;
@@ -182,7 +219,7 @@ export function Inspector({ source, space, names, selection, onSelect, onFocusRo
       <div>
         <Heading eyebrow={t('ds_inspector_space')} title={t('ds_inspector_model')} />
         <div className="px-4 py-3 text-[14px] leading-relaxed text-[#4A5263]">
-          {t(source.editability === 'VISUAL_MODEL' ? 'ds_editability_visual_body' : 'ds_editability_unclassified_body')}
+          {t(model ? EDITABILITY_BODY[model.editability] : source.editability === 'VISUAL_MODEL' ? 'ds_editability_visual_body' : 'ds_editability_unclassified_body')}
         </div>
       </div>
     );

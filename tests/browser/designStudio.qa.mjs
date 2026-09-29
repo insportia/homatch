@@ -180,7 +180,7 @@ export function createStore(seed = {}) {
     return null;
   }
 
-  return { db, handle, rpc, objects: new Map(), signerCalls: [], readings: [], readingDoc: null };
+  return { db, handle, rpc, objects: new Map(), signerCalls: [], readings: [], readingDoc: null, modelChecks: [] };
 }
 
 export async function wire(page, store, errors) {
@@ -233,6 +233,35 @@ export async function wire(page, store, errors) {
       if (!plan || !store.objects.has(plan.object_key)) return json({ error: 'NOT_FOUND' }, 404);
       Object.assign(plan, { status: 'INTERPRETED', interpretation: { doc: store.readingDoc, dimensionStrings: [], readVersion: 'qa-1' } });
       return json({ ok: true, status: 'INTERPRETED' });
+    }
+    /* A stand-in for design-studio-model that runs the REAL inspector on the
+       bytes the browser put in "R2", and records the source like the server. */
+    if (url.pathname.includes('/functions/v1/design-studio-model')) {
+      const body = JSON.parse(req.postData() || '{}');
+      const project = store.db.ds_projects.find((p) => p.id === body.projectId);
+      if (!project) return json({ error: 'NOT_FOUND' }, 404);
+      if (!String(body.key).startsWith(`users/hm1/design-studio-models/${project.id}/`)) return json({ error: 'INVALID_KEY' }, 400);
+      const obj = store.objects.get(body.key);
+      if (!obj) return json({ state: 'FAILED', reason: 'FILE_MISSING' }, 422);
+      const { createHash } = await import('node:crypto');
+      const sha = createHash('sha256').update(obj.body).digest('hex');
+      const same = store.db.ds_spatial_sources.find((x) => x.project_id === project.id && x.kind === 'UPLOADED_MODEL' && x.model_sha256 === sha && x.status === 'READY');
+      if (same) return json({ state: 'READY', sourceId: same.id, reused: true });
+      const { inspectModel } = await import('../../supabase/functions/_shared/designStudio/modelInspect.ts');
+      const result = inspectModel(new Uint8Array(obj.body));
+      store.modelChecks.push({ key: body.key, ok: result.ok, reason: result.reason ?? null });
+      if (!result.ok) return json({ state: 'FAILED', reason: result.reason, detail: result.detail ?? null }, 422);
+      const source = {
+        id: randomUUID(), project_id: project.id, user_id: 'hm1', kind: 'UPLOADED_MODEL', status: 'READY',
+        geometry_state: 'ESTIMATED', editability: result.analysis.editability, dev_unit_id: null, upstream: null,
+        floorplan_id: null, model_object_key: body.key, model_sha256: sha,
+        model_bytes: obj.body.length, model_mime: result.analysis.stats.container === 'GLB' ? 'model/gltf-binary' : 'model/gltf+json',
+        canonical: result.analysis, calibration: null, generator_version: result.analysis.inspectVersion,
+        provenance: { origin: 'CUSTOMER_MODEL', filename: body.filename ?? null }, failure: null, supersedes_id: null,
+        created_at: new Date().toISOString(),
+      };
+      store.db.ds_spatial_sources.push(source);
+      return json({ state: 'READY', sourceId: source.id, editability: result.analysis.editability, warnings: result.analysis.warnings });
     }
     if (url.pathname.includes('/auth/v1/user')) return json(fakeSession().user);
     if (url.pathname.includes('/auth/v1/token')) return json(fakeSession());
@@ -295,7 +324,8 @@ async function main() {
       JSON.stringify(railOrder));
     check('rail: Design Studio is the active item', await page.locator('nav a[href="/design-studio"][aria-current="page"]').count() === 1);
     check('launcher: three ways in are shown', (await page.getByRole('button', { name: /Choose my property|Upload 3D model|Use floor plan/ }).count()) === 3);
-    check('launcher: import buttons are honestly disabled', await page.getByRole('button', { name: 'Upload 3D model' }).isDisabled());
+    check('launcher: all three ways in are usable, and the model formats are stated', await page.getByRole('button', { name: 'Upload 3D model' }).isEnabled()
+      && await page.getByText(/3D models: glTF/).isVisible());
     check('launcher: empty projects state', await page.getByText('No design projects yet').isVisible());
     check('desktop: no horizontal overflow', (await overflowX(page)) <= 0);
     await page.screenshot({ path: path.join(OUT, 'cp1-launcher-1440-en.png') });
@@ -358,6 +388,7 @@ async function main() {
     await checkpoint3(browser);
     await checkpoint4(browser);
     await checkpoint5(browser);
+    await checkpoint6(browser);
   } finally {
     await browser.close().catch(() => {});
     server.kill();
@@ -448,6 +479,149 @@ function qaCatalogMaterials() {
     m('dev/floor-natural-oak', 'Natural oak (concept)', 'FLOOR', ['FLOOR'], '#b48b5e', 0.7),
     m('dev/floor-walnut', 'Walnut (concept)', 'FLOOR', ['FLOOR'], '#6d4b36', 0.65),
   ];
+}
+
+/* ── Checkpoint 6: a customer's own 3D model ─────────────────────── */
+
+/** A GLB assembled byte by byte: one box mesh, instanced by named nodes. */
+function qaGlb({ names, size, nodes: placed = null, externalBuffer = false }) {
+  const [x, y, z] = placed ? [1, 1, 1] : size;
+  const positions = new Float32Array([0, 0, 0, x, 0, 0, x, y, 0, 0, y, 0, 0, 0, z, x, 0, z, x, y, z, 0, y, z]);
+  const indices = new Uint16Array([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 2, 3, 7, 2, 7, 6, 1, 2, 6, 1, 6, 5, 0, 3, 7, 0, 7, 4]);
+  const bin = Buffer.concat([Buffer.from(positions.buffer), Buffer.from(indices.buffer)]);
+  const json = {
+    asset: { version: '2.0', generator: 'HOMATCH QA' },
+    scene: 0,
+    scenes: [{ nodes: (placed ?? names).map((_, i) => i) }],
+    nodes: placed
+      ? placed.map(({ name, t = [0, 0, 0], s }) => ({ name, mesh: 0, translation: t, scale: s }))
+      : names.map((name) => ({ name, mesh: 0 })),
+    meshes: [{ primitives: [{ attributes: { POSITION: 0 }, indices: 1, material: 0 }] }],
+    materials: [{ name: 'Plaster', pbrMetallicRoughness: { baseColorFactor: [0.85, 0.83, 0.8, 1], metallicFactor: 0, roughnessFactor: 0.9 } }],
+    accessors: [
+      { bufferView: 0, componentType: 5126, count: 8, type: 'VEC3', min: [0, 0, 0], max: [x, y, z] },
+      { bufferView: 1, componentType: 5123, count: 36, type: 'SCALAR' },
+    ],
+    bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: 96, target: 34962 }, { buffer: 0, byteOffset: 96, byteLength: 72, target: 34963 }],
+    buffers: [{ byteLength: bin.length }],
+  };
+  if (externalBuffer) {
+    json.buffers = [{ byteLength: bin.length, uri: 'https://example.invalid/model.bin' }];
+    return Buffer.from(JSON.stringify(json));
+  }
+  const pad = (b, fill) => Buffer.concat([b, Buffer.alloc((4 - (b.length % 4)) % 4, fill)]);
+  const j = pad(Buffer.from(JSON.stringify(json)), 0x20);
+  const b = pad(bin, 0);
+  const head = Buffer.alloc(12);
+  head.writeUInt32LE(0x46546c67, 0); head.writeUInt32LE(2, 4); head.writeUInt32LE(12 + 8 + j.length + 8 + b.length, 8);
+  const jh = Buffer.alloc(8); jh.writeUInt32LE(j.length, 0); jh.writeUInt32LE(0x4e4f534a, 4);
+  const bh = Buffer.alloc(8); bh.writeUInt32LE(b.length, 0); bh.writeUInt32LE(0x004e4942, 4);
+  return Buffer.concat([head, jh, j, bh, b]);
+}
+
+async function checkpoint6(browser) {
+  const { store } = await seededStore();
+  const errors = [];
+  const ctx = await openContext(browser, { width: 1440, height: 900, lang: 'en' });
+  const page = await ctx.newPage();
+  await wire(page, store, errors);
+  const projectsBefore = store.db.ds_projects.length;
+
+  await page.goto(`${BASE}/design-studio`, { waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: 'Upload 3D model' }).first().click();
+  await page.waitForURL(/\/design-studio\/[0-9a-f-]{36}\?start=model$/, { timeout: 15000 });
+  await page.getByRole('heading', { name: 'Upload your 3D model' }).waitFor({ timeout: 15000 });
+  const project = store.db.ds_projects[projectsBefore];
+  check('launcher: a model project is created and the import opens at once', !!project && project.name === 'My 3D model');
+  const sourcesBefore = store.db.ds_spatial_sources.length;
+
+  // Another format: refused in the browser, before anything is uploaded.
+  const objectsBefore = store.objects.size;
+  await page.locator('input[type=file]').setInputFiles({ name: 'flat.obj', mimeType: 'text/plain', buffer: Buffer.from('v 0 0 0') });
+  await page.getByRole('alert').filter({ hasText: 'HOMATCH opens glTF models' }).waitFor({ timeout: 5000 });
+  check('import: an OBJ is refused by name, nothing uploaded', store.objects.size === objectsBefore);
+
+  // A .gltf that reaches outside itself: refused by the server's inspection.
+  await page.locator('input[type=file]').setInputFiles({ name: 'linked.gltf', mimeType: 'model/gltf+json', buffer: qaGlb({ names: ['Floor', 'Wall'], size: [8, 2.7, 6], externalBuffer: true }) });
+  await page.getByRole('alert').filter({ hasText: 'refers to separate files' }).waitFor({ timeout: 15000 });
+  check('import: external resources are refused by the server, no space created',
+    store.modelChecks.at(-1)?.reason === 'EXTERNAL_RESOURCE' && store.db.ds_spatial_sources.length === sourcesBefore);
+
+  // A real, structured model exported in centimetres.
+  // An 8 × 6 m room drawn in centimetres: floor, four walls, a sofa, a ceiling.
+  const glb = qaGlb({ nodes: [
+    { name: 'Floor_Living', s: [800, 10, 600] },
+    { name: 'Wall_N', s: [800, 270, 12] },
+    { name: 'Wall_E', t: [788, 0, 0], s: [12, 270, 600] },
+    { name: 'Wall_S', t: [0, 0, 588], s: [800, 270, 12] },
+    { name: 'Wall_W', s: [12, 270, 600] },
+    { name: 'Sofa', t: [300, 10, 420], s: [220, 85, 95] },
+    { name: 'Ceiling', t: [0, 260, 0], s: [800, 10, 600] },
+  ] });
+  await page.locator('input[type=file]').setInputFiles({ name: 'apartment.glb', mimeType: 'model/gltf-binary', buffer: glb });
+  await page.getByRole('heading', { name: 'What HOMATCH found' }).waitFor({ timeout: 20000 });
+  const source = store.db.ds_spatial_sources.at(-1);
+  check('import: bytes went to R2 under the project model category',
+    !!source && source.model_object_key.startsWith(`users/hm1/design-studio-models/${project.id}/`) && source.model_object_key.endsWith('.glb')
+    && store.objects.get(source.model_object_key)?.body.length === glb.length);
+  check('import: the storage commit declared the model type', store.signerCalls.some((c) => c.op === 'commit' && c.contentType === 'model/gltf-binary'));
+  check('import: an immutable UPLOADED_MODEL source, classified, dimensions estimated',
+    source.kind === 'UPLOADED_MODEL' && source.editability === 'FULLY_STRUCTURED' && source.geometry_state === 'ESTIMATED' && /^[0-9a-f]{64}$/.test(source.model_sha256));
+  check('import: centimetres detected and normalised by a stored transform, the file untouched',
+    source.canonical.normalization.scale === 0.01 && store.objects.get(source.model_object_key).body.equals(glb));
+  check('result: the classification is stated', await page.getByText('Structured model').first().isVisible());
+  check('result: what can be edited is listed with counts', await page.getByText('paint and dress what was identified — walls: 4, floors: 1, ceilings: 1').isVisible()
+    && await page.getByText('hide furniture that was modelled in (pieces: 1)').isVisible());
+  check('result: what cannot be done is said', await page.getByText(/needs room outlines, which a model file does not carry/).isVisible());
+  check('result: the unit correction is stated', await page.getByText('The model was drawn in centimetres; HOMATCH shows it in metres.').isVisible());
+  check('result: size in metres, marked approximate', await page.getByText('≈ 8 × 6 m · 2.7 m').isVisible());
+  await page.screenshot({ path: path.join(OUT, 'cp6-result-1440-en.png'), fullPage: true });
+
+  await page.getByRole('button', { name: 'Open in the workspace' }).click();
+  await page.locator('main canvas').waitFor({ timeout: 25000 });
+  await page.waitForTimeout(1500);
+  check('workspace: the project now opens on the model', store.db.ds_projects.find((p) => p.id === project.id).active_source_id === source.id);
+  const version = () => store.db.ds_versions.find((v) => v.source_id === source.id);
+  check('workspace: an Original version on the model', version()?.origin === 'ORIGINAL');
+  const partsPanel = page.getByRole('complementary', { name: 'Parts' });
+  check('workspace: a model lists parts, not rooms', await partsPanel.isVisible());
+  check('workspace: no catalogue furniture mode on a model (it needs room outlines)',
+    (await page.getByRole('navigation', { name: 'Design tools' }).first().getByRole('button', { name: 'Furniture' }).count()) === 0);
+
+  // Paint every identified wall in one step.
+  await partsPanel.getByRole('button', { name: 'Wall 1' }).click();
+  const inspector = page.getByRole('complementary', { name: 'Inspector' });
+  check('inspector: says what is selected', await inspector.getByText('Part of your model').isVisible());
+  await inspector.getByRole('radio', { name: /All walls \(4\)/ }).check();
+  await inspector.getByRole('button', { name: /Warm neutral #e2d3b9/ }).click();
+  await page.waitForTimeout(1800);
+  const walls = ['part:1', 'part:2', 'part:3', 'part:4'];
+  check('paint: all four identified walls, one step, saved', walls.every((id) => version().state.surfaces[id]?.color === '#e2d3b9'));
+  await page.screenshot({ path: path.join(OUT, 'cp6-painted-1440-en.png') });
+
+  // Hide the modelled-in sofa, then undo.
+  await partsPanel.getByRole('button', { name: 'Hide' }).click();
+  await page.waitForTimeout(1800);
+  check('hide: the sofa is hidden and saved', JSON.stringify(version().state.hiddenParts) === '["part:5"]');
+  await page.screenshot({ path: path.join(OUT, 'cp6-hidden-1440-en.png') });
+  await page.keyboard.press('Control+z');
+  await page.waitForTimeout(1800);
+  check('hide: undo brings it back', version().state.hiddenParts.length === 0);
+  await ctx.close();
+
+  // Phone, Georgian: the result card fits.
+  const phone = await openContext(browser, { width: 390, height: 844, lang: 'ka' });
+  const p2 = await phone.newPage();
+  await wire(p2, store, errors);
+  await p2.goto(`${BASE}/design-studio/${project.id}?start=model`, { waitUntil: 'domcontentloaded' });
+  await p2.locator('input[type=file]').waitFor({ state: 'attached', timeout: 15000 });
+  await p2.locator('input[type=file]').setInputFiles({ name: 'apartment.glb', mimeType: 'model/gltf-binary', buffer: glb });
+  await p2.getByRole('button', { name: 'სამუშაო სივრცეში გახსნა' }).waitFor({ timeout: 20000 });
+  check('phone ka: the same file is recognised, not duplicated', store.db.ds_spatial_sources.filter((x) => x.model_sha256 === source.model_sha256).length === 1);
+  check('phone ka: the result fits', (await overflowX(p2)) <= 0);
+  await p2.screenshot({ path: path.join(OUT, 'cp6-result-390-ka.png'), fullPage: true });
+  await phone.close();
+  check('no page errors (checkpoint 6)', errors.length === 0, errors.join('\n        '));
 }
 
 /* ── Checkpoint 5: a customer's floor plan, from file to space ───── */

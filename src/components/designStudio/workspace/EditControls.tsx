@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { Copy, Lock, Replace, RotateCcw, RotateCw, Trash2, Unlock } from 'lucide-react';
+import { Copy, Eye, EyeOff, Lock, Replace, RotateCcw, RotateCw, Trash2, Unlock } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { CatalogAsset, CatalogMaterial, Palette } from '@/lib/designStudio/catalog';
 import type { DesignState, ObjectInstance } from '@/lib/designStudio/designState';
 import type { PlacementIssue } from '@/lib/designStudio/placement';
 import { parseSurfaceId, type SpaceModel } from '@/lib/designStudio/space';
+import type { ModelPart } from '@/lib/designStudio/modelParts';
 import { cn } from '@/lib/utils';
 import { ColorPicker, MaterialList, Swatch } from './SurfacePanels';
 
@@ -148,11 +149,13 @@ export type SurfaceScope = 'ONE' | 'ROOM' | 'ALL';
  * "All walls (17)". A mass change is one step and undoes as one.
  */
 export function SurfaceControls({
-  surfaceId, space, state, materials, palettes, recentColors, roomName,
+  surfaceId, space, parts = [], state, materials, palettes, recentColors, roomName,
   onMaterial, onColor,
 }: {
   surfaceId: string;
-  space: SpaceModel;
+  space: SpaceModel | null;
+  /** Uploaded models: the identified parts, so `part:<node>` surfaces can be dressed too. */
+  parts?: ModelPart[];
   state: DesignState;
   materials: CatalogMaterial[];
   palettes: Palette[];
@@ -162,18 +165,27 @@ export function SurfaceControls({
   onColor: (surfaceIds: string[], color: string | null) => void;
 }) {
   const { t } = useLanguage();
-  const parsed = parseSurfaceId(surfaceId);
+  const part = parts.find((p) => p.id === surfaceId) ?? null;
+  const parsed = useMemo((): { kind: 'FLOOR' | 'WALL' | 'CEILING'; roomId: string | null } | null => {
+    if (part) return part.role === 'FLOOR' || part.role === 'WALL' || part.role === 'CEILING' ? { kind: part.role, roomId: null } : null;
+    const p = parseSurfaceId(surfaceId);
+    return p && space ? { kind: p.kind, roomId: p.roomId } : null;
+  }, [part, space, surfaceId]);
   const [scope, setScope] = useState<SurfaceScope>('ONE');
 
   const scoped = useMemo(() => {
     if (!parsed) return { ONE: [surfaceId], ROOM: [surfaceId], ALL: [surfaceId] };
-    const sameKind = space.surfaces.filter((s) => s.kind === parsed.kind);
+    // A model part has no room: this one, or every identified part like it.
+    if (part) {
+      return { ONE: [surfaceId], ROOM: [surfaceId], ALL: parts.filter((p) => p.role === part.role).map((p) => p.id) };
+    }
+    const sameKind = (space?.surfaces ?? []).filter((s) => s.kind === parsed.kind);
     return {
       ONE: [surfaceId],
       ROOM: sameKind.filter((s) => s.roomId === parsed.roomId).map((s) => s.id),
       ALL: sameKind.map((s) => s.id),
     };
-  }, [parsed, space, surfaceId]);
+  }, [parsed, part, parts, space, surfaceId]);
   if (!parsed) return null;
 
   const kind = parsed.kind;
@@ -188,7 +200,7 @@ export function SurfaceControls({
         <p className="mb-1 text-2xs font-semibold uppercase tracking-[0.12em] text-[#4A5263]">{t('ds_scope_label')}</p>
         {([
           ['ONE', t('ds_scope_this', { n: String(scoped.ONE.length) })],
-          ...(kind === 'WALL' ? [['ROOM', t('ds_scope_room', { kind: kindWord, room: roomName, n: String(scoped.ROOM.length) })]] : []),
+          ...(kind === 'WALL' && !part ? [['ROOM', t('ds_scope_room', { kind: kindWord, room: roomName, n: String(scoped.ROOM.length) })]] : []),
           ['ALL', t('ds_scope_all', { kind: kindWord, n: String(scoped.ALL.length) })],
         ] as Array<[SurfaceScope, string]>).map(([value, label]) => (
           <label key={value} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[14px] text-[#0C1119] hover:bg-[#F4F5F7]">
@@ -215,6 +227,26 @@ export function SurfaceControls({
           onReset={current?.color ? () => onColor(ids, null) : undefined}
         />
       </Section>
+    </div>
+  );
+}
+
+/** An identified piece of furniture inside an uploaded model: it can be hidden, not moved. */
+export function PartControls({ hidden, locked, onToggle }: { hidden: boolean; locked: boolean; onToggle: () => void }) {
+  const { t } = useLanguage();
+  return (
+    <div className="space-y-3">
+      <p className="text-[14px] leading-relaxed text-[#4A5263]">{t('ds_part_furniture_body')}</p>
+      <button
+        type="button"
+        onClick={onToggle}
+        disabled={locked}
+        className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-[#D5D9E0] text-[14px] font-medium text-[#0C1119] hover:bg-[#F4F5F7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)] disabled:opacity-50"
+      >
+        {hidden ? <Eye className="h-4 w-4" aria-hidden="true" /> : <EyeOff className="h-4 w-4" aria-hidden="true" />}
+        {t(hidden ? 'ds_part_show' : 'ds_part_hide')}
+      </button>
+      {locked ? <p className="text-[13px] text-[#4A5263]">{t('ds_reject_op_category_locked')}</p> : null}
     </div>
   );
 }

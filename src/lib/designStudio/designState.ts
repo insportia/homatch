@@ -75,6 +75,8 @@ export interface DesignState {
   palette: string[];
   styleCode: string | null;
   locks: LockSet;
+  /** Uploaded models only: identified furniture parts the customer has hidden (`part:<node>`). */
+  hiddenParts: string[];
 }
 
 export function emptyDesignState(): DesignState {
@@ -89,6 +91,7 @@ export function emptyDesignState(): DesignState {
       layout: false, furniture: false, walls: false, floor: false,
       kitchen: false, colors: false, lighting: false,
     },
+    hiddenParts: [],
   };
 }
 
@@ -109,5 +112,8 @@ export function normalizeDesignState(raw: unknown): DesignState {
     palette: Array.isArray(r.palette) ? r.palette : [],
     styleCode: typeof r.styleCode === 'string' ? r.styleCode : null,
     locks: { ...base.locks, ...(r.locks ?? {}) },
+    hiddenParts: Array.isArray(r.hiddenParts)
+      ? [...new Set(r.hiddenParts.filter((p): p is string => typeof p === 'string' && /^part:\d{1,6}$/.test(p)))].slice(0, 5000)
+      : [],
   };
 }

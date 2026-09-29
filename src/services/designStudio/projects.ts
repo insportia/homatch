@@ -158,6 +158,13 @@ export async function getSource(sourceId: string): Promise<SpatialSourceRecord |
   return data ? summarySource(data as unknown as Record<string, unknown>) : null;
 }
 
+/** One source with its canonical payload (a model's analysis, a plan's geometry). */
+export async function getSourceFull(sourceId: string): Promise<SpatialSourceRecord | null> {
+  const { data, error } = await supabase.from('ds_spatial_sources').select('*').eq('id', sourceId).maybeSingle();
+  if (error) fail(error);
+  return (data as SpatialSourceRecord | null) ?? null;
+}
+
 /**
  * Pin a published developer apartment as this project's space. Returns the
  * source id; idempotent for the same published version.

@@ -22,8 +22,8 @@ const REASON_KEY: Record<Rejection['reason'], string> = {
  * 3D room here would be a claim about the property that nothing supports.
  */
 export function NoSpacePanel({
-  project, rejected, onChanged, onFloorPlan,
-}: { project: DesignProjectRecord; rejected: Rejection[]; onChanged: () => void; onFloorPlan: () => void }) {
+  project, rejected, onChanged, onFloorPlan, onModel,
+}: { project: DesignProjectRecord; rejected: Rejection[]; onChanged: () => void; onFloorPlan: () => void; onModel: () => void }) {
   const { t } = useLanguage();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
@@ -90,7 +90,7 @@ export function NoSpacePanel({
               {t('ds_action_use_updated_apartment')}
             </button>
           ) : null}
-          <button type="button" disabled className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-border px-4 text-[15px] font-medium text-foreground disabled:cursor-not-allowed disabled:opacity-50">
+          <button type="button" onClick={onModel} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-border px-4 text-[15px] font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <Box className="h-4 w-4" aria-hidden="true" />
             {t('ds_action_upload_model')}
           </button>
@@ -99,7 +99,7 @@ export function NoSpacePanel({
             {t('ds_action_use_floorplan')}
           </button>
         </div>
-        <p className="mt-2.5 text-[13px] text-muted-foreground">{t('ds_model_import_not_yet')}</p>
+        <p className="mt-2.5 text-[13px] text-muted-foreground">{t('ds_mi_formats_note')}</p>
         {error ? <p role="alert" className="mt-4 text-sm text-destructive">{t('ds_error_generic')}</p> : null}
       </div>
     </div>

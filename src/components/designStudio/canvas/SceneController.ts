@@ -22,13 +22,26 @@ import { sliceWall, type WallSlab } from '@/lib/floorplan/slabs';
 import type { QualityProfile } from '@/lib/designStudio/quality';
 import type { CatalogAsset, CatalogMaterial } from '@/lib/designStudio/catalog';
 import type { DesignState, ObjectInstance } from '@/lib/designStudio/designState';
+import { PAINTABLE_ROLES, type PartRole } from '@/lib/designStudio/modelParts';
 import { buildProcedural, slotColors } from './procedural';
 
 export type PickTarget =
   | { kind: 'surface'; id: string; roomId: string | null }
   | { kind: 'object'; id: string; roomId: string | null }
   | { kind: 'room'; id: string }
+  /** An identified piece of furniture inside an uploaded model. */
+  | { kind: 'part'; id: string }
   | { kind: 'model' };
+
+/** How an uploaded model is shown upright and at metre scale; the file itself is never changed. */
+export interface ModelTransform { scale: number; upAxis: 'Y' | 'Z' }
+
+export interface ModelPartBinding { id: string; role: PartRole; object: THREE.Object3D }
+
+interface PartMaterial {
+  material: THREE.MeshStandardMaterial;
+  original: { color: THREE.Color; map: THREE.Texture | null; roughness: number; metalness: number };
+}
 
 export type ViewMode = 'OVERVIEW' | 'TOP' | 'ROOM';
 
@@ -83,6 +96,9 @@ export class SceneController {
   private ceilingMeshes: THREE.Mesh[] = [];
   private wallBodies: THREE.Mesh[] = [];
   /** Everything drawn for one wall, so the cutaway can hide it as a unit. */
+  private partMeshes = new Map<string, THREE.Mesh[]>();
+  private partMaterials = new Map<string, PartMaterial[]>();
+  private partRoots = new Map<string, THREE.Object3D>();
   private wallParts = new Map<string, { start: { x: number; y: number }; end: { x: number; y: number }; meshes: THREE.Object3D[] }>();
   private cutawayEnabled = true;
   private cutawayKey = '';
@@ -405,9 +421,19 @@ export class SceneController {
     this.requestRender();
   }
 
-  /** A model source (developer apartment, uploaded GLB): shown as given. */
-  setModel(object: THREE.Object3D) {
+  /**
+   * A model source (developer apartment, uploaded GLB). An uploaded model
+   * is turned upright, scaled to metres and stood on the floor at the
+   * origin (the stored transform, never an edit of the file). Identified
+   * parts get their own materials so they can be dressed or hidden; every
+   * other mesh stays exactly as modelled.
+   */
+  setModel(object: THREE.Object3D, options: { transform?: ModelTransform; parts?: ModelPartBinding[] } = {}) {
     this.clearGroup(this.modelGroup);
+    this.partMeshes.clear();
+    this.partMaterials.clear();
+    this.partRoots.clear();
+    this.ceilingMeshes = [];
     object.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (mesh.isMesh) {
@@ -416,9 +442,61 @@ export class SceneController {
         mesh.userData = { ...mesh.userData, pick: { kind: 'model' } } satisfies PickData & Record<string, unknown>;
       }
     });
-    this.modelGroup.add(object);
+
+    for (const part of options.parts ?? []) {
+      const paintable = PAINTABLE_ROLES.has(part.role);
+      const pick: PickTarget = paintable ? { kind: 'surface', id: part.id, roomId: null } : part.role === 'FURNITURE' ? { kind: 'part', id: part.id } : { kind: 'model' };
+      const meshes: THREE.Mesh[] = [];
+      const materials: PartMaterial[] = [];
+      part.object.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        meshes.push(mesh);
+        mesh.userData = { ...mesh.userData, pick } satisfies PickData & Record<string, unknown>;
+        if (!paintable) return;
+        const list = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        const own = list.map((m) => {
+          const std = (m as THREE.MeshStandardMaterial).isMeshStandardMaterial
+            ? (m as THREE.MeshStandardMaterial).clone()
+            : new THREE.MeshStandardMaterial({ color: (m as THREE.MeshBasicMaterial).color ?? 0xdddddd });
+          this.track(std);
+          materials.push({ material: std, original: { color: std.color.clone(), map: std.map, roughness: std.roughness, metalness: std.metalness } });
+          return std;
+        });
+        mesh.material = Array.isArray(mesh.material) ? own : own[0];
+      });
+      this.partMeshes.set(part.id, meshes);
+      if (materials.length) this.partMaterials.set(part.id, materials);
+      // Only furniture can be hidden by the customer; a ceiling is lifted
+      // off for the view from outside, exactly as a floor-plan space's is.
+      if (part.role === 'FURNITURE') this.partRoots.set(part.id, part.object);
+      if (part.role === 'CEILING') this.ceilingMeshes.push(...meshes);
+    }
+
+    let root: THREE.Object3D = object;
+    const tf = options.transform;
+    if (tf) {
+      const upright = new THREE.Group();
+      upright.add(object);
+      if (tf.upAxis === 'Z') object.rotation.x = -Math.PI / 2;
+      upright.scale.setScalar(tf.scale > 0 && Number.isFinite(tf.scale) ? tf.scale : 1);
+      upright.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(upright);
+      if (!box.isEmpty()) {
+        const centre = box.getCenter(new THREE.Vector3());
+        upright.position.set(-centre.x, -box.min.y, -centre.z);
+      }
+      root = upright;
+    }
+    this.modelGroup.add(root);
+    this.setCeilings(false);
     this.frameObject(this.modelGroup, false);
     this.requestRender();
+  }
+
+  /** The identified parts that exist in the loaded model. */
+  partIds(): string[] {
+    return [...this.partMeshes.keys()];
   }
 
   // ── Surfaces ────────────────────────────────────────────────────────
@@ -499,11 +577,12 @@ export class SceneController {
     if (!target) return;
     const ids = target.kind === 'surface' ? [target.id] : target.kind === 'room' ? [floorSurfaceId(target.id)] : [];
     for (const id of ids) {
-      const m = this.surfaceMaterials.get(id);
-      if (!m) continue;
-      this.tinted.set(m, { color: m.emissive.getHex(), intensity: m.emissiveIntensity });
-      m.emissive.setHex(TONE.select);
-      m.emissiveIntensity = strength;
+      const list = this.surfaceMaterials.has(id) ? [this.surfaceMaterials.get(id)!] : (this.partMaterials.get(id) ?? []).map((p) => p.material);
+      for (const m of list) {
+        this.tinted.set(m, { color: m.emissive.getHex(), intensity: m.emissiveIntensity });
+        m.emissive.setHex(TONE.select);
+        m.emissiveIntensity = strength;
+      }
     }
   }
 
@@ -511,7 +590,7 @@ export class SceneController {
     if (!target) return null;
     // Surfaces are outlined where they are visible (depth-tested); objects
     // keep their box on top so a selected sofa behind a wall can be found.
-    const onTop = target.kind === 'object' || target.kind === 'model';
+    const onTop = target.kind === 'object' || target.kind === 'model' || target.kind === 'part';
     const material = new THREE.LineBasicMaterial({ color, depthTest: !onTop, transparent: true, opacity: 0.95 });
     const group = new THREE.Group();
     group.renderOrder = 10;
@@ -522,8 +601,8 @@ export class SceneController {
       edges.renderOrder = 10;
       group.add(edges);
     };
-    if (target.kind === 'surface') {
-      for (const mesh of this.surfaceMeshes.get(target.id) ?? []) addEdges(mesh);
+    if (target.kind === 'surface' || target.kind === 'part') {
+      for (const mesh of this.surfaceMeshes.get(target.id) ?? this.partMeshes.get(target.id) ?? []) addEdges(mesh);
     } else if (target.kind === 'room') {
       for (const mesh of this.surfaceMeshes.get(floorSurfaceId(target.id)) ?? []) addEdges(mesh);
     } else if (target.kind === 'object') {
@@ -579,6 +658,31 @@ export class SceneController {
    * and only a changed asset/colour rebuilds geometry.
    */
   applyDesign(state: DesignState, assets: Map<string, CatalogAsset>, materials: Map<string, CatalogMaterial>) {
+    // Model parts: a colour or material replaces the modelled finish (and
+    // its texture) for the preview; removing it brings the original back.
+    for (const [id, list] of this.partMaterials) {
+      const a = state.surfaces[id];
+      const mat = a?.materialId ? materials.get(a.materialId) : undefined;
+      const color = a?.color ?? mat?.pbr.baseColor ?? null;
+      const finishRoughness = a?.finish === 'GLOSS' ? 0.25 : a?.finish === 'SATIN' ? 0.55 : a?.finish === 'MATTE' ? 0.95 : undefined;
+      for (const { material: m, original } of list) {
+        if (color) {
+          m.color.set(color);
+          m.map = null;
+          m.roughness = finishRoughness ?? mat?.pbr.roughness ?? 0.9;
+          m.metalness = mat?.pbr.metalness ?? 0;
+        } else {
+          m.color.copy(original.color);
+          m.map = original.map;
+          m.roughness = original.roughness;
+          m.metalness = original.metalness;
+        }
+        m.needsUpdate = true;
+      }
+    }
+    const hidden = new Set(state.hiddenParts ?? []);
+    for (const [id, node] of this.partRoots) node.visible = !hidden.has(id);
+
     for (const [id, m] of this.surfaceMaterials) {
       const a = state.surfaces[id];
       const mat = a?.materialId ? materials.get(a.materialId) : undefined;

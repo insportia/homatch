@@ -25,6 +25,7 @@ import type { CanonicalSpace, SpatialSourceRecord, UpstreamPin } from '@/lib/des
 import { normalizeDesignState } from '@/lib/designStudio/designState';
 import { rebaseDesign } from '@/lib/designStudio/scale';
 import { FloorPlanFlow } from '@/components/designStudio/FloorPlanFlow';
+import { ModelImportFlow } from '@/components/designStudio/ModelImportFlow';
 import { getFloorPlan, type FloorPlanRecord } from '@/services/designStudio/floorplans';
 import {
   createOriginalVersion, createVersion, developerCurrentPins, getProject, getVersion, setActiveSource, setHeadVersion,
@@ -59,6 +60,8 @@ function ProjectLoader() {
   const [flow, setFlow] = useState<null | { recalibrate: FloorPlanRecord | null; from: SpatialSourceRecord | null }>(
     () => (params.get('start') === 'floorplan' ? { recalibrate: null, from: null } : null),
   );
+  /* A customer's own 3D model (launcher or no-space panel). */
+  const [modelFlow, setModelFlow] = useState(() => params.get('start') === 'model');
 
   // A reload of an open project (rename, archive, new version) refreshes the
   // data behind the workspace without taking it down and putting it back.
@@ -158,6 +161,20 @@ function ProjectLoader() {
     await load();
   }, [bundle, homatchUser, flow, load, clearStart]);
 
+  const onModelImported = useCallback(async (sourceId: string) => {
+    if (!bundle) return;
+    try {
+      await setActiveSource(bundle.project.id, sourceId);
+    } catch {
+      setFailed(true);
+      return;
+    }
+    setModelFlow(false);
+    clearStart();
+    loaded.current = false;
+    await load();
+  }, [bundle, load, clearStart]);
+
   const startRecalibration = useCallback(async (source: SpatialSourceRecord) => {
     if (!source.floorplan_id) return;
     const plan = await getFloorPlan(source.floorplan_id).catch(() => null);
@@ -180,10 +197,22 @@ function ProjectLoader() {
     );
   }
 
+  if (bundle && homatchUser && modelFlow) {
+    return (
+      <ModelImportFlow
+        userId={homatchUser.id}
+        projectId={bundle.project.id}
+        projectName={bundle.project.name}
+        onDone={(id) => { void onModelImported(id); }}
+        onCancel={() => { setModelFlow(false); clearStart(); }}
+      />
+    );
+  }
+
   if (bundle && resolution && !resolution.source) {
     return (
       <div className="h-[100dvh]">
-        <NoSpacePanel project={bundle.project} rejected={resolution.rejected} onChanged={load} onFloorPlan={() => setFlow({ recalibrate: null, from: null })} />
+        <NoSpacePanel project={bundle.project} rejected={resolution.rejected} onChanged={load} onFloorPlan={() => setFlow({ recalibrate: null, from: null })} onModel={() => setModelFlow(true)} />
       </div>
     );
   }

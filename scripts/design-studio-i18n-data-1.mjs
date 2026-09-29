@@ -150,8 +150,8 @@ export const DS_STRINGS_1 = {
   ds_geometry_estimated: ['Estimated dimensions', 'სავარაუდო ზომები', 'Примерные размеры', 'Tahmini ölçüler', 'أبعاد تقديرية', 'מידות משוערות'],
   ds_geometry_calibrated: ['Calibrated dimensions', 'დაკალიბრებული ზომები', 'Откалиброванные размеры', 'Kalibre edilmiş ölçüler', 'أبعاد معايَرة', 'מידות מכוילות'],
   ds_geometry_verified: ['Verified dimensions', 'დადასტურებული ზომები', 'Подтверждённые размеры', 'Doğrulanmış ölçüler', 'أبعاد موثّقة', 'מידות מאומתות'],
-  ds_editability_full: ['Objects editable', 'ობიექტები რედაქტირებადია', 'Объекты редактируются', 'Nesneler düzenlenebilir', 'العناصر قابلة للتعديل', 'ניתן לערוך אובייקטים'],
-  ds_editability_partial: ['Some objects editable', 'ზოგიერთი ობიექტი რედაქტირებადია', 'Часть объектов редактируется', 'Bazı nesneler düzenlenebilir', 'بعض العناصر قابلة للتعديل', 'ניתן לערוך חלק מהאובייקטים'],
+  ds_editability_full: ['Structured model', 'სტრუქტურირებული მოდელი', 'Структурированная модель', 'Yapılandırılmış model', 'نموذج منظَّم', 'מודל מובנה'],
+  ds_editability_partial: ['Partly structured model', 'ნაწილობრივ სტრუქტურირებული მოდელი', 'Частично структурированная модель', 'Kısmen yapılandırılmış model', 'نموذج منظَّم جزئيًا', 'מודל מובנה חלקית'],
   ds_editability_visual: ['Visual model — contents not separable', 'ვიზუალური მოდელი — შიგთავსი არ იყოფა', 'Визуальная модель — содержимое не разделяется', 'Görsel model — içerik ayrılamaz', 'نموذج مرئي — لا يمكن فصل محتوياته', 'מודל חזותי — לא ניתן להפריד את התוכן'],
 
   ds_loading_preparing_space: ['Preparing space', 'სივრცე მზადდება', 'Подготовка пространства', 'Alan hazırlanıyor', 'جارٍ تجهيز المساحة', 'מכינים את המרחב'],

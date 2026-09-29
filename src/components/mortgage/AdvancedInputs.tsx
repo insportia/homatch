@@ -152,6 +152,24 @@ export function AdvancedInputs({
           onChange={(v) => set('originationFeePercent', v)}
           context={context}
         />
+        {/* The percent alone hides the real price of the fee; the amount in
+           money is what a person actually pays at signing, so it is computed
+           from the SAME loan amount the engine uses — and when that amount is
+           not yet known, the line says so instead of guessing. */}
+        {draft.originationFeePercent !== null && draft.originationFeePercent > 0 && (
+          <p className="text-[13px] leading-snug text-foreground/80">
+            {loanAmount !== null && loanAmount > 0 ? (
+              <>
+                {t('mortgage_origination_fee_amount')}{' '}
+                <span className="font-semibold text-foreground">
+                  {formatMoney(Math.round((loanAmount * draft.originationFeePercent) / 100), currency, locale)}
+                </span>
+              </>
+            ) : (
+              t('mortgage_origination_fee_amount_pending')
+            )}
+          </p>
+        )}
         <NumberField
           field="monthlyFeeFlat"
           labelKey="mortgage_label_monthly_fee"

@@ -57,6 +57,32 @@ test('baseline side is exposed and consistent with the saving figures', () => {
   assert.ok(r.baselineTotalCost > r.totalCostWithExtra, 'paying early costs less overall');
 });
 
+test('scenario A (keep the term, lower the payment) is real math, not a restyled copy of scenario B', () => {
+  const r = calculateEarlyRepayment(baseInput(), { extraPaymentAmount: 20000, extraPaymentMonth: 12 });
+  assert.ok(r.keepTerm, 'a mid-loan partial extra must produce a keep-term scenario');
+  assert.ok(r.baselineMonthlyPayment > 0);
+  assert.ok(r.keepTerm.newMonthlyPayment < r.baselineMonthlyPayment, 'the recast payment must drop');
+  assert.ok(r.keepTerm.monthlySaved > 0);
+  assert.ok(Math.abs((r.baselineMonthlyPayment - r.keepTerm.newMonthlyPayment) - r.keepTerm.monthlySaved) < 0.01);
+  // Keeping the money longer costs more interest than shortening the term,
+  // but still less than doing nothing — the ordering that makes the two
+  // options a real trade-off rather than a duplicated number.
+  assert.ok(r.keepTerm.totalInterest < r.baselineTotalInterest);
+  assert.ok(r.keepTerm.totalInterest > r.totalInterestWithExtra);
+  assert.ok(Math.abs((r.baselineTotalInterest - r.keepTerm.totalInterest) - r.keepTerm.interestSaved) < 0.01);
+});
+
+test('scenario A honors the same fee-honesty rule as scenario B', () => {
+  const noFee = calculateEarlyRepayment(baseInput(), { extraPaymentAmount: 20000, extraPaymentMonth: 12 });
+  const fee = calculateEarlyRepayment(baseInput(), { extraPaymentAmount: 20000, extraPaymentMonth: 12, knownEarlyRepaymentFeeFlat: 400 });
+  assert.equal(Math.round((fee.keepTerm.totalCost - noFee.keepTerm.totalCost) * 100) / 100, 400);
+});
+
+test('scenario A disappears honestly when the extra clears the whole loan', () => {
+  const r = calculateEarlyRepayment(baseInput(), { extraPaymentAmount: 200000, extraPaymentMonth: 12 });
+  assert.equal(r.keepTerm, null);
+});
+
 test('a known fee is included in the with-plan total, and only then', () => {
   const base = baseInput();
   const noFee = calculateEarlyRepayment(base, { extraPaymentAmount: 20000, extraPaymentMonth: 12 });

@@ -123,12 +123,34 @@ export interface EarlyRepaymentInput {
   knownEarlyRepaymentFeeFlat?: number;
 }
 
+/** The OTHER common bank outcome of the same extra payment: the term stays,
+ * the required monthly payment is recast on the reduced principal. Computed
+ * from the ONE-TIME extra only — a recurring extra with a monthly recast is
+ * not a product any bank here offers, and inventing one would be a lie. */
+export interface EarlyRepaymentKeepTerm {
+  /** The recast required payment from the month after the extra. */
+  newMonthlyPayment: number;
+  /** baseline payment − recast payment. */
+  monthlySaved: number;
+  totalInterest: number;
+  /** baseline total interest − keep-term total interest. */
+  interestSaved: number;
+  /** loanAmount + interest + known recurring costs (+ fee when included). */
+  totalCost: number;
+}
+
 export interface EarlyRepaymentResult {
   newPayoffMonth: number;
   monthsSaved: number;
   interestSaved: number;
   totalCostWithExtra: number;
   earlyRepaymentFeeIncluded: boolean;
+  /** Scenario A (keep the term, lower the payment); null when the extra
+   * clears the loan or lands in the final month, where a recast payment
+   * has no months left to apply to. */
+  keepTerm: EarlyRepaymentKeepTerm | null;
+  /** The scheduled payment both scenarios are compared against. */
+  baselineMonthlyPayment: number;
   /* The do-nothing side, from the SAME simulator, so a before/with pair on
    * screen can never disagree by methodology. */
   baselinePayoffMonth: number;

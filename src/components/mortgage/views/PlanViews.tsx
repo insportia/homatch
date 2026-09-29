@@ -130,8 +130,12 @@ export function EarlyRepaymentView({
             })}
           </p>
 
-          {/* BEFORE / WITH, side by side, both from the same simulator. */}
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          {/* ONE decision, THREE connected columns from the SAME simulator:
+              the loan as scheduled, then the two things a bank actually does
+              with an early repayment — keep the term and lower the payment,
+              or keep the payment and shorten the term. Neither option is
+              declared "better"; the numbers carry the trade-off. */}
+          <div className="mt-5 grid gap-4 lg:grid-cols-3">
             <div className="rounded-xl border border-border bg-card p-4 shadow-card">
               <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                 {t('mortgage_early_before_title')}
@@ -143,14 +147,37 @@ export function EarlyRepaymentView({
                 <StatRow labelKey="mortgage_early_total_label" value={result.baselineTotalCost} kind="money" currency={currency} />
               </div>
             </div>
+            {result.keepTerm ? (
+              <div className="relative overflow-hidden rounded-xl border border-[hsl(var(--gold-border))] bg-card p-4 shadow-hover">
+                <span className="absolute inset-y-0 start-0 w-[3px] bg-gold" aria-hidden="true" />
+                <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-[hsl(var(--gold-ink))]">
+                  {t('mortgage_early_scenario_a_title')}
+                </p>
+                <div className="mt-2">
+                  <StatRow labelKey="mortgage_result_monthly_label" value={result.keepTerm.newMonthlyPayment} kind="money" currency={currency} />
+                  <StatRow labelKey="mortgage_early_monthly_saved" value={Math.max(0, result.keepTerm.monthlySaved)} kind="money" currency={currency} />
+                  <StatRow labelKey="mortgage_early_payoff_label" value={result.baselinePayoffMonth} kind="months" />
+                  <StatRow labelKey="mortgage_result_total_interest" value={result.keepTerm.totalInterest} kind="money" currency={currency} />
+                  <StatRow labelKey="mortgage_early_total_label" value={result.keepTerm.totalCost} kind="money" currency={currency} />
+                  <StatRow
+                    labelKey="mortgage_early_delta_label"
+                    value={Math.max(0, result.baselineTotalCost - result.keepTerm.totalCost)}
+                    kind="money"
+                    currency={currency}
+                  />
+                </div>
+                <p className="mt-2 text-2xs leading-relaxed text-muted-foreground">{t('mortgage_early_keepterm_note')}</p>
+              </div>
+            ) : null}
             <div className="relative overflow-hidden rounded-xl border border-[hsl(var(--gold-border))] bg-card p-4 shadow-hover">
               <span className="absolute inset-y-0 start-0 w-[3px] bg-gold" aria-hidden="true" />
               <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-[hsl(var(--gold-ink))]">
-                {t('mortgage_early_with_title')}
+                {t('mortgage_early_scenario_b_title')}
               </p>
               <div className="mt-2">
                 <StatRow labelKey="mortgage_result_monthly_label" value={monthlyPayment} kind="money" currency={currency} />
                 <StatRow labelKey="mortgage_early_payoff_label" value={result.newPayoffMonth} kind="months" />
+                <StatRow labelKey="mortgage_early_months_saved" value={result.monthsSaved} kind="months" />
                 <StatRow labelKey="mortgage_result_total_interest" value={result.totalInterestWithExtra} kind="money" currency={currency} />
                 <StatRow labelKey="mortgage_early_total_label" value={result.totalCostWithExtra} kind="money" currency={currency} />
                 <StatRow

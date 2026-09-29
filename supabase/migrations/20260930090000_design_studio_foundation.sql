@@ -22,8 +22,10 @@
 --
 --   ESTIMATED   proportions read from a drawing; scale inferred, not known
 --   CALIBRATED  the customer supplied a real-world anchor (area, a wall)
---   VERIFIED    trusted source data (published developer geometry) or
---               enough agreeing anchors
+--   VERIFIED    trusted source data (published developer geometry), or at
+--               least two independent customer measurements that agree
+--               with the built geometry — checked by the database against
+--               the geometry itself, not taken on the browser's word
 --
 -- These are Design Studio's own states. The Developer floor-plan gate
 -- (evaluateGate) is untouched and stays exactly as strict as it was.
@@ -340,12 +342,19 @@ CREATE TABLE IF NOT EXISTS public.ds_jobs (
   error       text,
   model       text,
   billing     jsonb,
-  cost_cents  integer,
+  -- Measured provider cost in cents; fractional (cheap AI runs cost less
+  -- than a cent). NULL means unknown, never zero.
+  cost_cents  numeric(12,4) CHECK (cost_cents IS NULL OR cost_cents >= 0),
   created_at  timestamptz NOT NULL DEFAULT now(),
   started_at  timestamptz,
   finished_at timestamptz
 );
 CREATE INDEX IF NOT EXISTS idx_ds_jobs_user ON public.ds_jobs(user_id, created_at DESC);
+
+-- A version or an operation record that says "AI" names the AI job whose
+-- proposal the customer accepted; without one the claim is refused.
+ALTER TABLE public.ds_versions ADD COLUMN IF NOT EXISTS job_id uuid REFERENCES public.ds_jobs(id) ON DELETE SET NULL;
+ALTER TABLE public.ds_version_events ADD COLUMN IF NOT EXISTS job_id uuid REFERENCES public.ds_jobs(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_ds_jobs_status ON public.ds_jobs(kind, status, created_at DESC);
 
 -- ═══════════════════════════════════════════════════════════════════════
@@ -434,6 +443,13 @@ BEGIN
                     WHERE p.id = NEW.project_id AND p.user_id = NEW.user_id) THEN
       RAISE EXCEPTION 'DS_PROJECT_NOT_OWNED';
     END IF;
+    -- The key the browser reports must be the owner's own upload for this
+    -- project (users/<user>/design-studio-floorplans/<project>/<file>).
+    IF left(NEW.object_key, char_length('users/' || NEW.user_id::text || '/design-studio-floorplans/' || NEW.project_id::text || '/'))
+         <> 'users/' || NEW.user_id::text || '/design-studio-floorplans/' || NEW.project_id::text || '/'
+       OR position('..' in NEW.object_key) > 0 THEN
+      RAISE EXCEPTION 'DS_OBJECT_KEY_INVALID';
+    END IF;
     NEW.status := 'UPLOADED';
     NEW.interpretation := NULL;
     NEW.interpretation_model := NULL;
@@ -502,6 +518,21 @@ BEGIN
       SELECT 1 FROM public.ds_versions v WHERE v.id = NEW.parent_id AND v.project_id = NEW.project_id) THEN
       RAISE EXCEPTION 'DS_VERSION_MISMATCH';
     END IF;
+    IF auth.role() <> 'service_role' THEN
+      -- ORIGINAL is the untouched starting point of a space: one per source.
+      IF NEW.origin = 'ORIGINAL' AND EXISTS (
+        SELECT 1 FROM public.ds_versions v WHERE v.source_id = NEW.source_id AND v.origin = 'ORIGINAL') THEN
+        RAISE EXCEPTION 'DS_ORIGIN_NOT_ALLOWED';
+      END IF;
+      -- AI: only with the customer's own finished AI job behind it.
+      IF NEW.origin = 'AI' AND NOT EXISTS (
+        SELECT 1 FROM public.ds_jobs j
+         WHERE j.id = NEW.job_id AND j.user_id = NEW.user_id AND j.project_id = NEW.project_id
+           AND j.kind = 'AI_DESIGN' AND j.status = 'SUCCEEDED') THEN
+        RAISE EXCEPTION 'DS_ORIGIN_NOT_ALLOWED';
+      END IF;
+      IF NEW.origin <> 'AI' THEN NEW.job_id := NULL; END IF;
+    END IF;
     RETURN NEW;
   END IF;
 
@@ -509,7 +540,8 @@ BEGIN
      OR NEW.user_id IS DISTINCT FROM OLD.user_id
      OR NEW.source_id IS DISTINCT FROM OLD.source_id
      OR NEW.parent_id IS DISTINCT FROM OLD.parent_id
-     OR NEW.origin IS DISTINCT FROM OLD.origin THEN
+     OR NEW.origin IS DISTINCT FROM OLD.origin
+     OR NEW.job_id IS DISTINCT FROM OLD.job_id THEN
     RAISE EXCEPTION 'DS_VERSION_IDENTITY_IMMUTABLE';
   END IF;
   IF NEW.state IS DISTINCT FROM OLD.state THEN
@@ -535,6 +567,15 @@ BEGIN
                     WHERE v.id = NEW.version_id AND v.user_id = NEW.user_id) THEN
       RAISE EXCEPTION 'DS_VERSION_NOT_OWNED';
     END IF;
+    -- SYSTEM is the server's; AI needs the customer's finished AI job.
+    IF NEW.origin = 'SYSTEM' THEN RAISE EXCEPTION 'DS_ORIGIN_NOT_ALLOWED'; END IF;
+    IF NEW.origin = 'AI' AND NOT EXISTS (
+      SELECT 1 FROM public.ds_jobs j
+       WHERE j.id = NEW.job_id AND j.user_id = NEW.user_id
+         AND j.kind = 'AI_DESIGN' AND j.status = 'SUCCEEDED') THEN
+      RAISE EXCEPTION 'DS_ORIGIN_NOT_ALLOWED';
+    END IF;
+    IF NEW.origin = 'USER' THEN NEW.job_id := NULL; END IF;
   ELSE
     IF NOT EXISTS (SELECT 1 FROM public.ds_projects p
                     WHERE p.id = NEW.project_id AND p.user_id = NEW.user_id) THEN
@@ -718,6 +759,27 @@ REVOKE ALL ON public.ds_projects, public.ds_floorplans, public.ds_spatial_source
   public.ds_catalog_assets, public.ds_catalog_materials, public.ds_styles,
   public.ds_palettes, public.ds_jobs FROM anon;
 
+-- Signed-in customers: exactly the verbs the policies above describe, so a
+-- change to the platform's default privileges cannot widen them. Sources
+-- and jobs are written only by ds_* functions and edge functions.
+REVOKE ALL ON public.ds_projects, public.ds_floorplans, public.ds_spatial_sources,
+  public.ds_versions, public.ds_version_events, public.ds_saved_views,
+  public.ds_catalog_assets, public.ds_catalog_materials, public.ds_styles,
+  public.ds_palettes, public.ds_jobs FROM authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.ds_projects TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.ds_floorplans TO authenticated;
+GRANT SELECT ON public.ds_spatial_sources TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.ds_versions TO authenticated;
+GRANT SELECT, INSERT ON public.ds_version_events TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.ds_saved_views TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.ds_catalog_assets, public.ds_catalog_materials,
+  public.ds_styles, public.ds_palettes TO authenticated;
+GRANT SELECT ON public.ds_jobs TO authenticated;
+GRANT ALL ON public.ds_projects, public.ds_floorplans, public.ds_spatial_sources,
+  public.ds_versions, public.ds_version_events, public.ds_saved_views,
+  public.ds_catalog_assets, public.ds_catalog_materials, public.ds_styles,
+  public.ds_palettes, public.ds_jobs TO service_role;
+
 -- ═══════════════════════════════════════════════════════════════════════
 -- SOURCE CREATION
 -- ═══════════════════════════════════════════════════════════════════════
@@ -816,6 +878,11 @@ DECLARE
   v_uid     uuid := public.auth_user_id();
   v_plan    record;
   v_anchors integer;
+  v_anchor  jsonb;
+  v_scene   jsonb;
+  v_have    numeric;
+  v_ratio   numeric;
+  v_targets text[] := '{}';
   v_source  uuid;
 BEGIN
   IF v_uid IS NULL THEN RAISE EXCEPTION 'DS_AUTH_REQUIRED'; END IF;
@@ -837,8 +904,43 @@ BEGIN
   IF p_geometry_state = 'CALIBRATED' AND v_anchors < 1 THEN
     RAISE EXCEPTION 'DS_CALIBRATION_REQUIRED';
   END IF;
-  IF p_geometry_state = 'VERIFIED' AND v_anchors < 2 THEN
-    RAISE EXCEPTION 'DS_VERIFICATION_REQUIRED';
+  IF p_geometry_state = 'VERIFIED' THEN
+    -- Two or more measurements of different things, each agreeing with the
+    -- geometry being stored (within 3.5% in scale; areas compare by their
+    -- square root). A browser cannot claim agreement it does not have.
+    v_scene := p_canonical->'scene';
+    IF v_anchors < 2 OR v_scene IS NULL THEN RAISE EXCEPTION 'DS_VERIFICATION_REQUIRED'; END IF;
+    FOR v_anchor IN SELECT a FROM jsonb_array_elements(p_calibration->'anchors') AS a LOOP
+      v_have := NULL;
+      IF v_anchor->>'kind' = 'TOTAL_AREA' THEN
+        SELECT sum((f->>'areaM2')::numeric) INTO v_have
+          FROM jsonb_array_elements(v_scene->'floors') f
+         WHERE coalesce((f->>'outdoor')::boolean, false) = false;
+        v_ratio := CASE WHEN v_have > 0 AND (v_anchor->>'valueM2')::numeric > 0
+                        THEN sqrt((v_anchor->>'valueM2')::numeric / v_have) END;
+        v_targets := array_append(v_targets, 'TOTAL');
+      ELSIF v_anchor->>'kind' = 'ROOM_AREA' THEN
+        SELECT (f->>'areaM2')::numeric INTO v_have
+          FROM jsonb_array_elements(v_scene->'floors') f WHERE f->>'id' = v_anchor->>'roomId' LIMIT 1;
+        v_ratio := CASE WHEN v_have > 0 AND (v_anchor->>'valueM2')::numeric > 0
+                        THEN sqrt((v_anchor->>'valueM2')::numeric / v_have) END;
+        v_targets := array_append(v_targets, 'ROOM:' || coalesce(v_anchor->>'roomId', ''));
+      ELSIF v_anchor->>'kind' = 'WALL_LENGTH' THEN
+        SELECT (w->>'lengthM')::numeric INTO v_have
+          FROM jsonb_array_elements(v_scene->'walls') w WHERE w->>'id' = v_anchor->>'wallId' LIMIT 1;
+        v_ratio := CASE WHEN v_have > 0 AND (v_anchor->>'valueM')::numeric > 0
+                        THEN (v_anchor->>'valueM')::numeric / v_have END;
+        v_targets := array_append(v_targets, 'WALL:' || coalesce(v_anchor->>'wallId', ''));
+      ELSE
+        RAISE EXCEPTION 'DS_VERIFICATION_REQUIRED';
+      END IF;
+      IF v_ratio IS NULL OR abs(v_ratio - 1) > 0.035 THEN
+        RAISE EXCEPTION 'DS_VERIFICATION_DISAGREES';
+      END IF;
+    END LOOP;
+    IF (SELECT count(DISTINCT t) FROM unnest(v_targets) t) < 2 THEN
+      RAISE EXCEPTION 'DS_VERIFICATION_REQUIRED';
+    END IF;
   END IF;
 
   UPDATE public.ds_spatial_sources
@@ -851,7 +953,8 @@ BEGIN
   VALUES
     (v_plan.project_id, v_uid, 'FLOORPLAN_SCENE', 'READY', p_geometry_state, 'GENERATED',
      p_floorplan_id, p_canonical, p_calibration, left(coalesce(p_generator_version, ''), 40),
-     jsonb_build_object('origin', 'CUSTOMER_FLOORPLAN'))
+     jsonb_build_object('origin', 'CUSTOMER_FLOORPLAN', 'verified_by',
+       CASE WHEN p_geometry_state = 'VERIFIED' THEN 'CUSTOMER_MEASUREMENTS' END))
   RETURNING id INTO v_source;
 
   RETURN v_source;

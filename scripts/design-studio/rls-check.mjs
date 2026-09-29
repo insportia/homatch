@@ -115,7 +115,7 @@ await expectError('anon cannot call the attach function', 'permission denied', (
   tx.query(`select ds_attach_developer_unit($1,'50000000-0000-0000-0000-000000000001')`, [pA.id])));
 
 // ── sources: never inserted by a browser
-await expectError('A cannot insert a source row directly', 'row-level security', () => as(A, (tx) =>
+await expectError('A cannot insert a source row directly', 'permission denied', () => as(A, (tx) =>
   tx.query(`insert into ds_spatial_sources (project_id,user_id,kind,geometry_state,upstream)
     values ($1,$2,'DEVELOPER_UNIT','VERIFIED','{}')`, [pA.id, UA])));
 
@@ -140,8 +140,8 @@ const pB = await as(B, (tx) => one(tx, `insert into ds_projects (user_id,name) v
 const sB = await as(B, (tx) => one(tx, `select ds_attach_developer_unit($1,'50000000-0000-0000-0000-000000000001') as id`, [pB.id]));
 await expectError('A cannot point their project at B\'s source', 'DS_SOURCE_MISMATCH', () => as(A, (tx) =>
   tx.query(`update ds_projects set active_source_id=$1 where id=$2`, [sB.id, pA.id])));
-const srcUpd = await as(A, (tx) => tx.query(`update ds_spatial_sources set geometry_state='ESTIMATED' where id=$1`, [s1.id]));
-srcUpd.affectedRows === 0 ? ok('A cannot edit a source row') : bad('source immutable', 'updated');
+await expectError('A cannot edit a source row', 'permission denied', () => as(A, (tx) =>
+  tx.query(`update ds_spatial_sources set geometry_state='ESTIMATED' where id=$1`, [s1.id])));
 await expectError('even service_role-free definer paths cannot mutate a READY source', 'DS_SOURCE_IMMUTABLE', () =>
   db.transaction(async (tx) => {
     await tx.query(`select set_config('request.jwt.claims', '{"role":"authenticated"}', true)`);
@@ -170,8 +170,23 @@ await expectError('state larger than 1 MB is refused', 'check constraint', () =>
 // ── events (append-only)
 await as(A, (tx) => tx.query(`insert into ds_version_events (version_id,user_id,revision,origin,ops) values ($1,$2,1,'USER','[]')`, [v1.id, UA]));
 ok('A appends an operation event');
-const evUpd = await as(A, (tx) => tx.query(`update ds_version_events set ops='[1]'`));
-evUpd.affectedRows === 0 ? ok('events cannot be rewritten') : bad('append-only', 'updated');
+await expectError('events cannot be rewritten', 'permission denied', () => as(A, (tx) =>
+  tx.query(`update ds_version_events set ops='[1]'`)));
+await expectError('a browser cannot write a SYSTEM event', 'DS_ORIGIN_NOT_ALLOWED', () => as(A, (tx) =>
+  tx.query(`insert into ds_version_events (version_id,user_id,revision,origin,ops) values ($1,$2,1,'SYSTEM','[]')`, [v1.id, UA])));
+await expectError('an AI event needs a finished AI job', 'DS_ORIGIN_NOT_ALLOWED', () => as(A, (tx) =>
+  tx.query(`insert into ds_version_events (version_id,user_id,revision,origin,ops) values ($1,$2,1,'AI','[]')`, [v1.id, UA])));
+const aiJob = await as('service', (tx) => one(tx, `insert into ds_jobs (user_id,project_id,kind,status) values ($1,$2,'AI_DESIGN','SUCCEEDED') returning id`, [UA, pA.id]));
+await as(A, (tx) => tx.query(`insert into ds_version_events (version_id,user_id,revision,origin,ops,job_id) values ($1,$2,1,'AI','[]',$3)`, [v1.id, UA, aiJob.id]));
+ok('an AI event with the customer\'s own finished AI job is recorded');
+await expectError('a second ORIGINAL for the same space is refused', 'DS_ORIGIN_NOT_ALLOWED', () => as(A, (tx) =>
+  tx.query(`insert into ds_versions (project_id,user_id,source_id,name,origin) values ($1,$2,$3,'x','ORIGINAL')`, [pA.id, UA, s1.id])));
+await expectError('an AI version needs a finished AI job', 'DS_ORIGIN_NOT_ALLOWED', () => as(A, (tx) =>
+  tx.query(`insert into ds_versions (project_id,user_id,source_id,name,origin) values ($1,$2,$3,'x','AI')`, [pA.id, UA, s1.id])));
+const aiV = await as(A, (tx) => one(tx, `insert into ds_versions (project_id,user_id,source_id,name,origin,job_id) values ($1,$2,$3,'Idea','AI',$4) returning job_id`, [pA.id, UA, s1.id, aiJob.id]));
+aiV.job_id === aiJob.id ? ok('an AI version names the job that proposed it') : bad('ai version', JSON.stringify(aiV));
+const userV = await as(A, (tx) => one(tx, `insert into ds_versions (project_id,user_id,source_id,name,origin,job_id) values ($1,$2,$3,'Mine','USER',$4) returning job_id`, [pA.id, UA, s1.id, aiJob.id]));
+userV.job_id === null ? ok('a user version cannot borrow an AI job reference') : bad('user version job', JSON.stringify(userV));
 await expectError('B cannot append to A\'s version', 'row-level security', () => as(B, (tx) =>
   tx.query(`insert into ds_version_events (version_id,user_id,revision,origin,ops) values ($1,$2,1,'USER','[]')`, [v1.id, UA])));
 await expectError('B cannot append to A\'s version under her own id', 'DS_VERSION_NOT_OWNED', () => as(B, (tx) =>
@@ -184,8 +199,15 @@ await expectError('B cannot save a view into A\'s project', 'DS_PROJECT_NOT_OWNE
   tx.query(`insert into ds_saved_views (project_id,user_id,name,camera) values ($1,$2,'x','{}')`, [pA.id, UB])));
 
 // ── floor plans
+await expectError('a floor-plan row cannot point at someone else\'s object', 'DS_OBJECT_KEY_INVALID', () => as(A, (tx) =>
+  tx.query(`insert into ds_floorplans (project_id,user_id,object_key,mime,bytes) values ($1,$2,$3,'image/png',1000)`,
+    [pA.id, UA, `users/${UB}/design-studio-floorplans/${pA.id}/x.png`])));
+await expectError('a floor-plan key cannot climb out of its folder', 'DS_OBJECT_KEY_INVALID', () => as(A, (tx) =>
+  tx.query(`insert into ds_floorplans (project_id,user_id,object_key,mime,bytes) values ($1,$2,$3,'image/png',1000)`,
+    [pA.id, UA, `users/${UA}/design-studio-floorplans/${pA.id}/../../x.png`])));
 const f = await as(A, (tx) => one(tx, `insert into ds_floorplans (project_id,user_id,object_key,mime,bytes,status,interpretation)
-  values ($1,$2,'k','image/png',1000,'INTERPRETED','{"x":1}') returning id, status, interpretation`, [pA.id, UA]));
+  values ($1,$2,$3,'image/png',1000,'INTERPRETED','{"x":1}') returning id, status, interpretation`,
+  [pA.id, UA, `users/${UA}/design-studio-floorplans/${pA.id}/plan.png`]));
 f.status === 'UPLOADED' && f.interpretation === null ? ok('a browser cannot insert an interpretation') : bad('fp', JSON.stringify(f));
 await expectError('a browser cannot write the interpretation', 'DS_SERVER_FIELD', () => as(A, (tx) =>
   tx.query(`update ds_floorplans set interpretation='{}' where id=$1`, [f.id])));
@@ -200,10 +222,30 @@ await expectError('CALIBRATED needs an anchor', 'DS_CALIBRATION_REQUIRED', () =>
   tx.query(`select ds_create_floorplan_source($1,'{"schema":1}','CALIBRATED','{"anchors":[]}','ds-1')`, [f.id])));
 await expectError('VERIFIED needs two anchors', 'DS_VERIFICATION_REQUIRED', () => as(A, (tx) =>
   tx.query(`select ds_create_floorplan_source($1,'{"schema":1}','VERIFIED','{"anchors":[{}]}','ds-1')`, [f.id])));
+// VERIFIED is checked against the geometry being stored.
+const scene = JSON.stringify({ schema: 1, scene: {
+  floors: [{ id: 'r1', areaM2: 40, outdoor: false }, { id: 'r2', areaM2: 30, outdoor: false }, { id: 'b', areaM2: 5, outdoor: true }],
+  walls: [{ id: 'w1', lengthM: 10 }],
+} });
+const anchors = (list) => JSON.stringify({ anchors: list });
+await expectError('VERIFIED with two anchors on the same thing is refused', 'DS_VERIFICATION_REQUIRED', () => as(A, (tx) =>
+  tx.query(`select ds_create_floorplan_source($1,$2,'VERIFIED',$3,'ds-1')`, [f.id, scene,
+    anchors([{ kind: 'TOTAL_AREA', valueM2: 70 }, { kind: 'TOTAL_AREA', valueM2: 70 }])])));
+await expectError('VERIFIED with measurements that disagree with the geometry is refused', 'DS_VERIFICATION_DISAGREES', () => as(A, (tx) =>
+  tx.query(`select ds_create_floorplan_source($1,$2,'VERIFIED',$3,'ds-1')`, [f.id, scene,
+    anchors([{ kind: 'TOTAL_AREA', valueM2: 70 }, { kind: 'WALL_LENGTH', wallId: 'w1', valueM: 12 }])])));
+await expectError('VERIFIED naming a wall that does not exist is refused', 'DS_VERIFICATION_DISAGREES', () => as(A, (tx) =>
+  tx.query(`select ds_create_floorplan_source($1,$2,'VERIFIED',$3,'ds-1')`, [f.id, scene,
+    anchors([{ kind: 'TOTAL_AREA', valueM2: 70 }, { kind: 'WALL_LENGTH', wallId: 'nope', valueM: 10 }])])));
+const ver = await as(A, (tx) => one(tx, `select ds_create_floorplan_source($1,$2,'VERIFIED',$3,'ds-1') as id`, [f.id, scene,
+  anchors([{ kind: 'TOTAL_AREA', valueM2: 71 }, { kind: 'ROOM_AREA', roomId: 'r1', valueM2: 40.5 }, { kind: 'WALL_LENGTH', wallId: 'w1', valueM: 10.1 }])]));
+const verRow = await as(A, (tx) => one(tx, `select geometry_state, provenance from ds_spatial_sources where id=$1`, [ver.id]));
+verRow.geometry_state === 'VERIFIED' && verRow.provenance.verified_by === 'CUSTOMER_MEASUREMENTS'
+  ? ok('agreeing measurements of different things verify, and say so') : bad('verified', JSON.stringify(verRow));
 const cal = await as(A, (tx) => one(tx, `select ds_create_floorplan_source($1,'{"schema":1}','CALIBRATED','{"anchors":[{}]}','ds-1') as id`, [f.id]));
 const states = await as(A, (tx) => tx.query(`select id, status from ds_spatial_sources where floorplan_id=$1`, [f.id]));
 const map = Object.fromEntries(states.rows.map((r) => [r.id, r.status]));
-map[est.id] === 'SUPERSEDED' && map[cal.id] === 'READY'
+map[est.id] === 'SUPERSEDED' && map[ver.id] === 'SUPERSEDED' && map[cal.id] === 'READY'
   ? ok('recalibration supersedes, never overwrites') : bad('supersede', JSON.stringify(map));
 await expectError('B cannot generate geometry from A\'s plan', 'DS_FLOORPLAN_NOT_OWNED', () => as(B, (tx) =>
   tx.query(`select ds_create_floorplan_source($1,'{"schema":1}','ESTIMATED',null,'ds-1')`, [f.id])));
@@ -211,6 +253,12 @@ await expectError('B cannot generate geometry from A\'s plan', 'DS_FLOORPLAN_NOT
 // ── payload constraint (even service_role)
 await expectError('a READY source must carry its payload', 'ds_sources_payload', () => as('service', (tx) =>
   tx.query(`insert into ds_spatial_sources (project_id,user_id,kind,geometry_state) values ($1,$2,'UPLOADED_MODEL','ESTIMATED')`, [pA.id, UA])));
+
+// ── privileges are explicit
+await expectError('a browser cannot insert a job', 'permission denied', () => as(A, (tx) =>
+  tx.query(`insert into ds_jobs (user_id,kind) values ($1,'AI_DESIGN')`, [UA])));
+await expectError('a browser cannot delete a version', 'permission denied', () => as(A, (tx) =>
+  tx.query(`delete from ds_versions where id=$1`, [v1.id])));
 
 // ── catalog
 await as(ADM, (tx) => tx.query(`insert into ds_catalog_assets (code,name,category,width_m,depth_m,height_m,provenance,is_placeholder,procedural,active)
@@ -227,7 +275,7 @@ await expectError('a placeholder must be marked as one', 'ds_catalog_assets_shap
     values ('x/z','x','SOFA',1,1,1,'LICENSED',true)`)));
 
 // ── jobs
-await expectError('customers cannot create jobs', 'row-level security', () => as(A, (tx) =>
+await expectError('customers cannot create jobs', 'permission denied', () => as(A, (tx) =>
   tx.query(`insert into ds_jobs (user_id, kind) values ($1,'AI_DESIGN')`, [UA])));
 
 // ── object storage (the R2 authorisation function, Design Studio branch)

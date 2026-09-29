@@ -219,3 +219,11 @@ test('an unmeasured ceiling is recorded as typical, never as a fact', () => {
 test('the reader is deployed with JWT verification like every signed-in function', () => {
   assert.match(read('.github/workflows/deploy.yml'), /design-studio-floorplan/);
 });
+
+test('table privileges are explicit and sources/jobs are read-only to customers', () => {
+  assert.match(MIGRATION, /REVOKE ALL ON [^;]*public\.ds_jobs FROM authenticated;/);
+  assert.match(MIGRATION, /GRANT SELECT ON public\.ds_spatial_sources TO authenticated;/);
+  assert.match(MIGRATION, /GRANT SELECT ON public\.ds_jobs TO authenticated;/);
+  assert.match(MIGRATION, /DS_VERIFICATION_DISAGREES/, 'VERIFIED is not checked against the geometry');
+  assert.match(MIGRATION, /DS_OBJECT_KEY_INVALID/, 'a floor-plan row may point at any object');
+});

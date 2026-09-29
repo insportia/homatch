@@ -19,6 +19,7 @@ import {
 import { formatDistanceToNow } from 'date-fns';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { SuggestedReplies } from '@/components/ai/SuggestedReplies';
+import { ServiceActions, WebContextLine } from '@/components/ai/ServiceActions';
 
 /*
  * The composer sits at the bottom of the window, which on a modern phone
@@ -256,7 +257,7 @@ function AIPageInner() {
     messages, streaming, streamContent, conversations, activeConvId,
     sendMessage, cancelStream, resetChat, loadConversations,
     loadConversation, newConversation, setPageContext,
-    anonLimitReached, suggestedReplies, insufficientCredits,
+    anonLimitReached, suggestedReplies, suggestedActions, lastWebChecked, lastSources, insufficientCredits,
   } = useAIChat();
 
   // Inject page context and auto-send prompt when navigated with state
@@ -491,12 +492,22 @@ function AIPageInner() {
                   quieter than it, and only once it is finished — a chip
                   beside a half-written sentence belongs to an answer
                   nobody has read yet. */}
+              {/* Honest freshness first: shown only when this turn really
+                  searched, with the evidence one tap away. */}
+              {!streaming && (
+                <WebContextLine webChecked={lastWebChecked} sources={lastSources} className="ps-10" />
+              )}
               {!streaming && suggestedReplies.length > 0 && (
                 <SuggestedReplies
                   replies={suggestedReplies}
                   onSelect={(text) => { void sendMessage(text); }}
                   className="ps-10"
                 />
+              )}
+              {/* TYPE B, visually the opposite of a reply: solid navy,
+                  gold arrow, navigates to a real product, spends nothing. */}
+              {!streaming && (
+                <ServiceActions actions={suggestedActions} className="ps-10" />
               )}
               <div ref={bottomRef} />
             </div>

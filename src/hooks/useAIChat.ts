@@ -5,6 +5,7 @@ import { supabase } from '@/db/supabase';
 import { ensureAnonymousSession } from '@/services/anonymousSession';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { parseSuggestedReplies, type SuggestedReply } from '@/lib/ai/suggestedReplies';
+import { parseServiceActions, type ServiceAction } from '@/lib/ai/serviceActions';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -51,6 +52,12 @@ export function useAIChat() {
    * belonged to is already scrolling away. Repopulated only when the
    * new answer is complete. */
   const [suggestedReplies, setSuggestedReplies] = useState<SuggestedReply[]>([]);
+  /* TYPE B chips: validated navigation toward real products, shown with
+     the finished answer they belong to. Distinct state, distinct UI. */
+  const [suggestedActions, setSuggestedActions] = useState<ServiceAction[]>([]);
+  /* True only when the server said this turn actually searched the web. */
+  const [lastWebChecked, setLastWebChecked] = useState(false);
+  const [lastSources, setLastSources] = useState<Array<{ title: string; url: string }>>([]);
   /* What the last answer cost, when the server chose to say. Never
      computed here: the browser is not allowed an opinion about money. */
   const [lastBilling, setLastBilling] = useState<ChatBilling | null>(null);
@@ -133,6 +140,9 @@ export function useAIChat() {
     setStreamContent('');
     // The previous answer's chips belong to the previous answer.
     setSuggestedReplies([]);
+    setSuggestedActions([]);
+    setLastWebChecked(false);
+    setLastSources([]);
     setInsufficientCredits(false);
     abortRef.current = new AbortController();
 
@@ -142,6 +152,9 @@ export function useAIChat() {
     /* Held until the answer is finished. Chips that appear beside a
        half-written sentence are chips for an answer nobody has read. */
     let pendingReplies: SuggestedReply[] = [];
+    let pendingActions: ServiceAction[] = [];
+    let pendingWebChecked = false;
+    let pendingSources: Array<{ title: string; url: string }> = [];
     let pendingBilling: ChatBilling | null = null;
 
     await sendStreamRequest({
@@ -186,6 +199,15 @@ export function useAIChat() {
         const replies = parseSuggestedReplies(payload?.suggestedReplies);
         if (replies.length) pendingReplies = replies;
 
+        pendingActions = parseServiceActions(payload?.suggestedActions);
+        pendingWebChecked = payload?.webChecked === true;
+        pendingSources = Array.isArray(payload?.sources)
+          ? (payload.sources as Array<{ title?: unknown; url?: unknown }>)
+              .filter((x) => typeof x?.url === 'string')
+              .slice(0, 6)
+              .map((x) => ({ title: String(x.title ?? x.url), url: String(x.url) }))
+          : [];
+
         const billing = payload?.billing as ChatBilling | undefined;
         if (billing && typeof billing.chargedCredits === 'number') {
           pendingBilling = {
@@ -208,6 +230,9 @@ export function useAIChat() {
         setStreaming(false);
         // Only now: the answer they belong to is on screen and finished.
         setSuggestedReplies(pendingReplies);
+        setSuggestedActions(pendingActions);
+        setLastWebChecked(pendingWebChecked);
+        setLastSources(pendingWebChecked ? pendingSources : []);
         if (pendingBilling) setLastBilling(pendingBilling);
         if (convId && convId !== 'guest' && allMessages.length === 1) {
           await supabase.from('ai_conversations').update({ title: userText.slice(0, 60) }).eq('id', convId);
@@ -283,6 +308,6 @@ export function useAIChat() {
   return {
     messages, streaming, streamContent, conversations, activeConvId, pageContext, setPageContext,
     sendMessage, cancelStream, resetChat, loadConversations, loadConversation, newConversation,
-    anonLimitReached, suggestedReplies, lastBilling, insufficientCredits,
+    anonLimitReached, suggestedReplies, suggestedActions, lastWebChecked, lastSources, lastBilling, insufficientCredits,
   };
 }

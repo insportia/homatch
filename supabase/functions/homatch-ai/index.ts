@@ -26,6 +26,7 @@ import {
   SUGGESTED_REPLIES_INSTRUCTION,
 } from '../../../src/lib/ai/identity.ts';
 import { parseSuggestedReplies } from '../../../src/lib/ai/suggestedReplies.ts';
+import { parseServiceActions, SERVICE_ACTIONS_INSTRUCTION } from '../../../src/lib/ai/serviceActions.ts';
 import {
   beginExecution, recordUnbilledUsage, releaseExecution, settleExecution, type ExecutionGrant,
 } from '../_shared/billing.ts';
@@ -71,18 +72,18 @@ function sourcesOf(p: any): any[] {
 
 // ── Rate-limit-exceeded message, localized without a second AI call ────────
 const RATE_LIMIT_MESSAGES: Record<Locale, (limit: number) => string> = {
-  en: limit => `You've reached today's AI Chat limit (${limit} messages). It resets at midnight UTC — or upgrade your plan for a higher daily limit.`,
-  ka: limit => `დღევანდელი AI ჩატის ლიმიტი ამოწურულია (${limit} შეტყობინება). ლიმიტი განახლდება UTC შუაღამისას — ან განაახლეთ თქვენი გეგმა უფრო მაღალი დღიური ლიმიტისთვის.`,
-  ru: limit => `Вы достигли сегодняшнего лимита AI Chat (${limit} сообщений). Лимит обновится в полночь по UTC — либо перейдите на более высокий тарифный план.`,
-  tr: limit => `Bugünkü AI Sohbet limitinize ulaştınız (${limit} mesaj). Limit UTC gece yarısında sıfırlanır — veya daha yüksek bir günlük limit için planınızı yükseltin.`,
-  ar: limit => `لقد وصلت إلى الحد اليومي لمحادثة الذكاء الاصطناعي (${limit} رسالة). يُعاد ضبط الحد عند منتصف الليل بتوقيت UTC — أو يمكنك ترقية باقتك للحصول على حد يومي أعلى.`,
-  he: limit => `הגעתם למכסת הצ'אט היומית של הבינה המלאכותית (${limit} הודעות). המכסה מתאפסת בחצות לפי UTC — או שדרגו את התוכנית שלכם למכסה יומית גבוהה יותר.`,
+  en: limit => `You've reached today's AI Chat limit (${limit} messages). It resets at midnight UTC.`,
+  ka: limit => `დღევანდელი AI ჩატის ლიმიტი ამოწურულია (${limit} შეტყობინება). ლიმიტი განახლდება UTC შუაღამისას.`,
+  ru: limit => `Вы достигли сегодняшнего лимита AI Chat (${limit} сообщений). Лимит обновится в полночь по UTC.`,
+  tr: limit => `Bugünkü AI Sohbet limitinize ulaştınız (${limit} mesaj). Limit UTC gece yarısında sıfırlanır.`,
+  ar: limit => `لقد وصلت إلى الحد اليومي لمحادثة الذكاء الاصطناعي (${limit} رسالة). يُعاد ضبط الحد عند منتصف الليل بتوقيت UTC.`,
+  he: limit => `הגעתם למכסת הצ'אט היומית של הבינה המלאכותית (${limit} הודעות). המכסה מתאפסת בחצות לפי UTC.`,
 };
 
 // ── Intent-to-lead extraction instruction, appended to the system prompt ──
 const LEAD_EXTRACTION_INSTRUCTION = `
 After your visible reply to the user, on a new line, append exactly ONE fenced code block \`\`\`json ... \`\`\` (nothing after it) containing a single JSON object with this exact shape — use null for anything not stated, never invent a value:
-{"intent_detected": boolean, "transaction_type": "BUY"|"SELL"|"RENT_OUT"|"RENT_IN"|"INVEST"|null, "property_type": string|null, "location": string|null, "budget_min": number|null, "budget_max": number|null, "currency": string|null, "bedrooms": number|null, "timeline": string|null, "contact_name": string|null, "contact_phone": string|null, "contact_email": string|null, "confidence": number, "suggested_replies": string[]}
+{"intent_detected": boolean, "transaction_type": "BUY"|"SELL"|"RENT_OUT"|"RENT_IN"|"INVEST"|null, "property_type": string|null, "location": string|null, "budget_min": number|null, "budget_max": number|null, "currency": string|null, "bedrooms": number|null, "timeline": string|null, "contact_name": string|null, "contact_phone": string|null, "contact_email": string|null, "confidence": number, "suggested_replies": string[], "suggested_actions": string[]}
 Set "intent_detected": true only if the user expressed a genuine intention to buy, sell, rent out, rent, or invest in property (not just idle research or a general question), OR shared their own contact info (phone/email/name) for follow-up. "confidence" is your 0-1 confidence in that assessment. This JSON block is removed before the user sees your answer — it must never replace or duplicate your visible reply, and it must always be present even when intent_detected is false.`;
 
 interface LeadExtraction {
@@ -101,6 +102,7 @@ interface LeadExtraction {
   confidence?: number;
   /** Untrusted. Never reaches a browser without parseSuggestedReplies(). */
   suggested_replies?: unknown;
+  suggested_actions?: unknown;
 }
 
 const TRAILING_JSON_BLOCK_RE = /```json\s*([\s\S]*?)```\s*$/i;
@@ -421,10 +423,14 @@ Explain match scores only from supplied real match factors. If no match exists, 
 WHAT YOU ARE. A knowledgeable property adviser, not a cadastral lookup form. Talk comfortably and at length about anything a person buying, selling, renting or investing in property actually deals with: specific properties and projects, developers and their track record, neighbourhoods and what living there is like, prices and how to read them, comparisons between options, contracts and what to watch for in them, mortgages and financing, the mechanics of a transaction, taxes and fees, timing, negotiation, and the follow-up questions that come out of any of it. A question about whether a district is good for a family, or whether to buy now or wait, is squarely your subject. Answer it like someone who knows the market, not like a form that failed to validate.
 ${HOMATCH_CONVERSATION_STYLE}
 ${SUGGESTED_REPLIES_INSTRUCTION}
+${SERVICE_ACTIONS_INSTRUCTION}
 SOMETHING GENUINELY UNRELATED AND SUBSTANTIAL — a recipe, a maths problem, code, medical advice: do not write it out, and do not lecture about scope either. One friendly sentence that this is not what you are here for, then offer the nearest thing you CAN do. Never produce an error, never quote a policy, never say "outside my scope" or "I can only". This is about somebody asking you to DO a large unrelated job; an ordinary human aside, a joke, a complaint or a swear word is not that, and is covered by the style rules above.
 WHAT HOMATCH CAN ACTUALLY DO FOR THEM. These are the real products, with the real place each one starts. Never describe a capability Homatch does not have, and never name a destination that is not on this list.
   Verify (/verify) — deep research on ONE specific property across official registries and public sources, returned as a buyer's report: who owns it, mortgages and restrictions, whether the developer is real, whether the price makes sense.
-  Contract Intelligence (/verify) — upload a purchase or rental contract and Homatch reads it and explains what it actually says: obligations, risks, financial terms, deadlines. It starts from the same Verification Centre.
+  Contract Intelligence (/contracts) — upload a purchase or rental contract and Homatch reads it and explains what it actually says: obligations, risks, financial terms, deadlines.
+  Find Property (/find-property) — describe what they are looking for in plain words; Homatch turns it into an editable search plan and then actually searches. The right destination for "find me a flat".
+  Investment Analysis (/investment) — the structured investment workflows: renovate-and-sell, buy-from-developer, public listings, investment value of a specific property.
+  Brokers (/brokers) — the broker directory: find a professional by market and language.
   Find buyers or tenants (/property/add) — add a property and Homatch finds people already expressing intent that fits it.
   Mortgage (/mortgage) — the real monthly payment and total cost, including the fees a bank quote leaves out.
   Email Campaigns (/outreach/email) and AI Call Center (/outreach/calls) — reaching a list of leads you already have. Only relevant to somebody who is actually doing outreach.
@@ -639,6 +645,14 @@ PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
        sends the value verbatim as the next user turn; it never treats
        one as an instruction, and neither does anything downstream. */
     suggestedReplies,
+    /* Same wall as replies, other side: bare catalogue IDs from the model,
+       validated here against src/lib/ai/serviceActions.ts. A chip built
+       from these NAVIGATES to a real product and never says or spends
+       anything; the product's own screen states any price. */
+    suggestedActions: parseServiceActions(lead?.suggested_actions),
+    /* True only when this turn actually called web search — what lets the
+       UI say "checked now" without ever pretending. */
+    webChecked: searchCount > 0,
     sources: sourcesOf(p2),
     researchMode: 'DB_FIRST_PUBLIC_WEB',
     paidProvidersUsed: false,

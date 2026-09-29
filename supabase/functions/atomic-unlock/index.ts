@@ -50,10 +50,13 @@ serve(async (req) => {
     // Get homatch user
     const { data: hmUser } = await supabaseAdmin
       .from('users')
-      .select('id')
+      .select('id,suspended_at')
       .eq('auth_id', user.id)
       .maybeSingle();
     if (!hmUser) return json({ error: 'User not found' }, 404);
+    /* A suspended account keeps what it already bought (re-opening costs
+       nothing and is checked below) but cannot buy anything new. */
+    const suspended = Boolean(hmUser.suspended_at);
 
     const userId = hmUser.id;
 
@@ -87,6 +90,9 @@ serve(async (req) => {
      */
     const { data: priorUnlock } = await supabaseAdmin
       .from('match_unlocks').select('id').eq('match_id', match.id).maybeSingle();
+    if (!priorUnlock && suspended) {
+      return json({ error: 'This account is suspended.', reasonCode: 'ACCOUNT_SUSPENDED' }, 403);
+    }
     if (!priorUnlock) {
       const { freshness } = await loadDiscoverySettings(supabaseAdmin);
       const verdict = judgeActiveDemand(match.demand_published_at ?? null, { policy: freshness });

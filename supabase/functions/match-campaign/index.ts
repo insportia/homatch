@@ -109,13 +109,16 @@ Deno.serve(async (req: Request) => {
       authenticatedAuthId = authData.user.id;
     }
 
-    let userQuery = db.from('users').select('id,is_admin');
+    let userQuery = db.from('users').select('id,is_admin,suspended_at');
     userQuery = serviceInvocation
       ? userQuery.eq('id', String(body.userId || ''))
       : userQuery.eq('auth_id', authenticatedAuthId);
     const { data: homatchUser, error: userError } = await userQuery.maybeSingle();
     if (userError) throw userError;
     if (!homatchUser) return json({ error: 'Homatch user not found' }, 403);
+    if (homatchUser.suspended_at) {
+      return json({ error: 'This account is suspended.', reasonCode: 'ACCOUNT_SUSPENDED' }, 403);
+    }
 
     const { data: property, error: propertyError } = await db
       .from('properties')

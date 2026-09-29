@@ -251,3 +251,24 @@ test('and the all-caps Georgian forms read the same as the ordinary ones', () =>
   assert.equal(supplyRoleFrom('ᲡᲐᲐᲒᲔᲜᲢᲝ'), supplyRoleFrom('სააგენტო'));
   assert.equal(dealKindFrom({ transaction: 'ᲥᲘᲠᲐᲕᲓᲔᲑᲐ' }), 'RENT');
 });
+
+/* ── native HOMATCH properties: who listed it decides the supply role ─── */
+test('a rental listed by its owner is LANDLORD supply, so a tenant can transact with it', async () => {
+  const { nativeSupplyRole, canTransact } = await import('../match/participants.ts');
+  assert.equal(nativeSupplyRole('RENT', 'OWNER'), 'LANDLORD');
+  assert.equal(nativeSupplyRole('rent', null), 'LANDLORD');
+  assert.equal(canTransact('TENANT', nativeSupplyRole('RENT', 'OWNER'), 'RENT').verdict, 'CAN_TRANSACT');
+  /* The old hard-coded SELLER could not. */
+  assert.notEqual(canTransact('TENANT', 'SELLER', 'RENT').verdict, 'CAN_TRANSACT');
+});
+
+test('a sale listed by its owner stays SELLER; a broker or agency listing keeps its professional role', async () => {
+  const { nativeSupplyRole, canTransact } = await import('../match/participants.ts');
+  assert.equal(nativeSupplyRole('SALE', 'OWNER'), 'SELLER');
+  assert.equal(nativeSupplyRole('SALE', 'BROKER'), 'BROKER');
+  assert.equal(nativeSupplyRole('RENT', 'AGENCY'), 'AGENCY');
+  assert.equal(canTransact('TENANT', nativeSupplyRole('RENT', 'BROKER'), 'RENT').verdict, 'CAN_TRANSACT');
+  assert.equal(canTransact('BUYER', nativeSupplyRole('SALE', 'AGENCY'), 'SALE').verdict, 'CAN_TRANSACT');
+  assert.notEqual(canTransact('BUYER', nativeSupplyRole('RENT', 'OWNER'), 'SALE').verdict, 'CAN_TRANSACT',
+    'a buyer and a landlord still cannot transact');
+});

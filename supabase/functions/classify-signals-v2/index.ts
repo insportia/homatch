@@ -199,7 +199,26 @@ Deno.serve(async(req:Request)=>{
   }catch(e){console.error('classification chunk',e);const why=String((e as any)?.message||e).slice(0,300);for(const s of chunk){const tried=((s as any).classification_attempts||0)+1;const exhausted=tried>=MAX_ATTEMPTS;await db.from('raw_signals').update({classification_status:exhausted?'ERROR':'PENDING',classification_error_kind:exhausted?'ATTEMPTS_EXHAUSTED':'BATCH_FAILED',classification_attempts:tried,classification_last_error:why}).eq('id',s.id);if(exhausted)errors++;else retried++;}}}
   if(totalCostUsd>0)await db.from('cost_events').insert({provider:'OPENAI',operation_type:'CLASSIFY_SIGNALS_V2',market,units:aiSignals.length,cost_usd:totalCostUsd,success:errors<Math.max(1,aiSignals.length),cache_hit:false});
   if(cacheHits>0)await db.from('cost_events').insert({provider:'OPENAI',operation_type:'CLASSIFY_SIGNALS_V2',market,units:cacheHits,cost_usd:0,success:true,cache_hit:true});
-  return json({success:true,processed:signals.length,classified,filteredOut,deterministicFiltered,modelOmitted,cacheHits,errors,retried,totalCostUsd,classifierVersion:CLASSIFIER_VERSION,labels});
+  /*
+   * AN AGENCY SPEAKING GOES TO BROKER REVIEW, NOT NOWHERE.
+   *
+   * BROKER_AGENCY verdicts are kept out of matching above. Each one becomes a
+   * Broker Review item (one per signal) carrying what the post itself
+   * published -- platform, source, public author identity, city, language,
+   * publication date, confidence -- so an admin can record the firm in broker
+   * intelligence. Never demand, never a match.
+   */
+  let brokerReviewQueued=0;
+  const batchIds=signals.map((s:any)=>s.id);
+  if(batchIds.length){
+    const {data:agencyRows}=await db.from('raw_signals').select('id,platform,source_url,author_public_name,author_public_url,language,published_at,intent_json').in('id',batchIds).eq('intent_json->>discoveryLabel','BROKER_AGENCY');
+    const items=((agencyRows||[]) as any[]).map((r)=>({signal_id:r.id,platform:r.platform??null,source_url:r.source_url??null,author_public_name:r.author_public_name??null,author_public_url:r.author_public_url??null,city:r.intent_json?.city??null,language:r.language??r.intent_json?.language??null,published_at:r.published_at??null,confidence:Number.isFinite(Number(r.intent_json?.intentConfidence))?Number(r.intent_json.intentConfidence):null}));
+    if(items.length){
+      const {error:queueError}=await db.from('broker_review_items').upsert(items,{onConflict:'signal_id',ignoreDuplicates:true});
+      if(!queueError)brokerReviewQueued=items.length;
+    }
+  }
+  return json({success:true,processed:signals.length,classified,filteredOut,deterministicFiltered,modelOmitted,cacheHits,errors,retried,totalCostUsd,classifierVersion:CLASSIFIER_VERSION,labels,brokerReviewQueued});
  }catch(e){return json({error:e instanceof Error?e.message:String(e)},500)}
 });
 

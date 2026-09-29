@@ -66,7 +66,7 @@ Deno.serve(async (req) => {
     { global: { headers: { Authorization: authHeader } } });
   const { data: { user } } = await userClient.auth.getUser();
   if (!user) return json({ error: 'Invalid session' }, 401);
-  const { data: me } = await sb.from('users').select('id,is_admin,email').eq('auth_id', user.id).maybeSingle();
+  const { data: me } = await sb.from('users').select('id,is_admin,email,suspended_at').eq('auth_id', user.id).maybeSingle();
   if (!me) return json({ error: 'User not found' }, 404);
   const uid = me.id as string;
   const settings = await loadSettings(sb);
@@ -331,6 +331,7 @@ Deno.serve(async (req) => {
       /* ── LAUNCH: the only door to money and Meta ───────────────────── */
       case 'launch': {
         if (!settings.publishingEnabled) return json({ error: 'PUBLISHING_DISABLED', code: 'PUBLISHING_DISABLED' }, 503);
+        if (me.suspended_at) return json({ error: 'ACCOUNT_SUSPENDED', code: 'ACCOUNT_SUSPENDED' }, 403);
         const idem = String(body.idempotencyKey ?? '');
         if (!/^[0-9a-f-]{36}$/.test(idem)) return json({ error: 'idempotencyKey required' }, 400);
         const { data: c } = await sb.from('meta_campaigns').select('*').eq('id', body.campaignId).eq('user_id', uid).maybeSingle();

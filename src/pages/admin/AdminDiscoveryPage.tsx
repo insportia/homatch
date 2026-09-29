@@ -18,6 +18,7 @@ import { Switch } from '@/components/ui/switch';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { intlLocaleFor } from '@/components/workspace/primitives';
+import { statusLabel } from '@/components/matching/MatchingJobProgress';
 import {
   DISCOVERY_SWITCHES, getDiscoveryOverview, retryCampaignSources, setDiscoverySwitch, settingOn, stopCampaignJob,
   type DiscoveryOverview, type DiscoverySwitch,
@@ -148,7 +149,7 @@ export default function AdminDiscoveryPage() {
                 </dl>
               ) : <p className="text-xs text-muted-foreground">{t('admin_disc_tg_never_d')}</p>}
               <div className="mt-3 overflow-x-auto">
-                <table className="w-full min-w-[26rem] text-xs">
+                <table className="w-full text-xs">
                   <thead><tr className="text-start text-muted-foreground">
                     <th className="py-1 text-start font-medium">{t('admin_disc_col_state')}</th>
                     <th className="py-1 text-end font-medium">{t('admin_disc_col_targets')}</th>
@@ -172,12 +173,12 @@ export default function AdminDiscoveryPage() {
 
             <Panel title={t('admin_disc_queue')}>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[22rem] text-xs">
+                <table className="w-full text-xs">
                   <thead><tr className="text-muted-foreground">
                     <th className="py-1 text-start font-medium">{t('admin_disc_col_provider')}</th>
                     <th className="py-1 text-start font-medium">{t('admin_disc_col_state')}</th>
                     <th className="py-1 text-end font-medium">{t('admin_disc_col_jobs')}</th>
-                    <th className="py-1 text-end font-medium">{t('admin_disc_col_last')}</th>
+                    <th className="hidden py-1 text-end font-medium sm:table-cell">{t('admin_disc_col_last')}</th>
                   </tr></thead>
                   <tbody>
                     {data.queue.map((q, i) => (
@@ -185,7 +186,7 @@ export default function AdminDiscoveryPage() {
                         <td className="py-1.5">{q.provider}</td>
                         <td className="py-1.5">{q.status}</td>
                         <td className="py-1.5 text-end tabular-nums">{q.jobs}</td>
-                        <td className="py-1.5 text-end">{when(q.last_activity, locale)}</td>
+                        <td className="hidden py-1.5 text-end sm:table-cell">{when(q.last_activity, locale)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -208,7 +209,36 @@ export default function AdminDiscoveryPage() {
           </div>
 
           <Panel title={t('admin_disc_jobs')}>
-            <div className="overflow-x-auto">
+            {/* Phones: one card per campaign, actions always in reach. */}
+            <ul className="space-y-2.5 sm:hidden">
+              {data.jobs.length === 0 && <li className="text-xs text-muted-foreground">{t('admin_disc_none')}</li>}
+              {data.jobs.map((j) => (
+                <li key={j.id} className="rounded-xl border border-border p-3 text-xs">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="font-semibold text-foreground">{statusLabel(j.status, t as never)}</span>
+                    <span className="shrink-0 text-muted-foreground">{when(j.started_at, locale)}</span>
+                  </div>
+                  {j.failure_reason && <p className="mt-0.5 break-words text-muted-foreground">{j.failure_reason}</p>}
+                  <p className="mt-1 break-words text-muted-foreground">{j.current_step ?? '—'}</p>
+                  <dl className="mt-2 grid grid-cols-2 gap-1">
+                    <dt className="text-muted-foreground">{t('admin_disc_col_fresh')}</dt><dd className="text-end tabular-nums">{j.fresh_matches_created}</dd>
+                    <dt className="text-muted-foreground">{t('admin_disc_col_budget')}</dt><dd className="text-end tabular-nums">{j.budget_credits ?? '—'}</dd>
+                    <dt className="text-muted-foreground">{t('admin_disc_col_sources')}</dt><dd className="break-words text-end" dir="ltr">{Object.entries(j.source_jobs ?? {}).map(([st, n]) => `${st} ${n}`).join(' · ') || '—'}</dd>
+                  </dl>
+                  {(j.status === 'searching_sources' || RUNNING.has(j.status)) && (
+                    <div className="mt-2 flex flex-wrap justify-end gap-1.5">
+                      {j.status === 'searching_sources' && (
+                        <Button size="sm" variant="outline" className="h-8 gap-1" disabled={busy === `retry:${j.id}`}
+                          onClick={() => void act(j.id, 'retry')}><RotateCcw className="h-3.5 w-3.5" />{t('admin_disc_retry')}</Button>
+                      )}
+                      <Button size="sm" variant="outline" className="h-8 gap-1 text-destructive" disabled={busy === `stop:${j.id}`}
+                        onClick={() => void act(j.id, 'stop')}><Square className="h-3.5 w-3.5" />{t('admin_disc_stop')}</Button>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+            <div className="hidden overflow-x-auto sm:block">
               <table className="w-full min-w-[44rem] text-xs">
                 <thead><tr className="text-muted-foreground">
                   <th className="py-1 text-start font-medium">{t('admin_disc_col_started')}</th>
@@ -223,7 +253,7 @@ export default function AdminDiscoveryPage() {
                   {data.jobs.map((j) => (
                     <tr key={j.id} className="border-t border-border/60 align-top">
                       <td className="py-1.5 whitespace-nowrap">{when(j.started_at, locale)}</td>
-                      <td className="py-1.5">{j.status}{j.failure_reason ? <span className="block text-muted-foreground">{j.failure_reason}</span> : null}</td>
+                      <td className="py-1.5">{statusLabel(j.status, t as never)}{j.failure_reason ? <span className="block text-muted-foreground">{j.failure_reason}</span> : null}</td>
                       <td className="py-1.5 max-w-[16rem] break-words text-muted-foreground">{j.current_step ?? '—'}</td>
                       <td className="py-1.5 text-end tabular-nums">{j.fresh_matches_created}</td>
                       <td className="py-1.5 text-end tabular-nums">{j.budget_credits ?? '—'}</td>

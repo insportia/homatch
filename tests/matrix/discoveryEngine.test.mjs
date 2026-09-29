@@ -112,3 +112,52 @@ test('Telegram costs nothing per request and the classifier never pays twice for
   assert.match(CLASSIFY, /reusableVerdict\(/);
   assert.match(CLASSIFY, /cache_hit:true/);
 });
+
+test('each schedule checks its switch in SQL, so it is inert whatever function version is live', () => {
+  const schedules = MIGRATION.slice(MIGRATION.indexOf('-- ── 7. SCHEDULES'));
+  for (const [fn, key] of [
+    ['discovery-queue-worker', 'campaign_source_discovery_enabled'],
+    ['community-sync', 'discovery_background_refresh_enabled'],
+    ['demand-discovery', 'forum_discovery_enabled'],
+    ['classify-signals-v2', 'classifier_schedule_enabled'],
+  ]) {
+    const at = schedules.indexOf(`functions/v1/${fn}'`);
+    const cmd = schedules.slice(at, schedules.indexOf('$cron$', at));
+    assert.match(cmd, new RegExp(`where [\\s\\S]*key = '${key}'\\) = 'true'`), `${fn} fires without checking ${key}`);
+  }
+});
+
+test('the demand-date backfill does not make old matches look recently changed', () => {
+  const at = MIGRATION.indexOf('set demand_published_at = r.published_at');
+  const before = MIGRATION.slice(Math.max(0, at - 400), at);
+  const after = MIGRATION.slice(at, at + 400);
+  assert.match(before, /alter table public\.matches disable trigger trg_matches_updated;/);
+  assert.match(after, /alter table public\.matches enable trigger trg_matches_updated;/);
+});
+
+test('freshness is judged on the demand\'s own publication date, never on updated_at or created_at', () => {
+  const current = read('src/matching/currentDemand.ts');
+  assert.match(current, /judgeActiveDemand\(row\.demand_published_at/);
+  assert.doesNotMatch(current, /judgeActiveDemand\([^)]*(updated_at|created_at)/);
+  assert.match(UNLOCK, /judgeActiveDemand\(match\.demand_published_at/);
+  assert.doesNotMatch(RUN, /judgeActiveDemand\([^)]*(updated_at|created_at)/);
+  assert.match(V2, /demand_published_at: signal\.published_at/);
+});
+
+test('the queue columns production already had are declared by the repository', () => {
+  for (const col of ['claimed_at timestamptz', 'claim_token uuid', 'estimated_cost_usd numeric', 'finished_at timestamptz', 'actual_cost_usd numeric']) {
+    assert.ok(MIGRATION.includes(`add column if not exists ${col}`), col);
+  }
+});
+
+test('cross-currency budgets use only current, dated rates', () => {
+  /* The match writer never fetches: rates arrive from the orchestrators and
+     are re-validated. */
+  assert.match(V2, /ratesFromPayload\(fxRates\)/);
+  assert.doesNotMatch(V2, /NBG_RATES_URL/);
+  assert.match(CAMPAIGN, /fxRates,/);
+  assert.match(DRIVER, /fxRates: await fetchCurrentFx\(\)/);
+  const gates = read('src/research-core/match/structured-gates.ts');
+  assert.match(gates, /FX_TABLE_MAX_AGE_DAYS = 7/);
+  assert.match(gates, /FX_NBG_MAX_AGE_DAYS = 3/);
+});

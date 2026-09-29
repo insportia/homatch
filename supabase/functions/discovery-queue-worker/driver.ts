@@ -30,6 +30,7 @@ import {
   type CampaignJobRef,
 } from '../_shared/campaignRun.ts';
 import { executeSourceJob } from '../_shared/campaignSources.ts';
+import { fetchCurrentFx } from '../_shared/fx.ts';
 
 const OPEN_SOURCE_STATES = ['PENDING', 'PROCESSING', 'RETRY_WAIT'];
 const STUCK_AFTER_MS = 12 * 60_000;
@@ -163,6 +164,7 @@ async function advanceCampaigns(db: any, baseUrl: string, serviceKey: string, se
       await updateJob(db, row.id, { status: 'ranking', progress: 90, current_step: 'Matching current demand against your property' });
       const matched = await invokeFunction(baseUrl, serviceKey, 'run-matching-v2', {
         propertyId: row.property_id, campaignId: row.campaign_id, intentProfileBatchSize: 5000,
+        fxRates: await fetchCurrentFx(),
       }, 150_000);
       if (matched.data?.error) throw new Error(String(matched.data.error));
 

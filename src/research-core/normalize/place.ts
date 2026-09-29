@@ -156,6 +156,24 @@ export function comparePlaces(a: string | null | undefined, b: string | null | u
   return leftScript === rightScript ? 'CONFLICT' : 'UNKNOWN';
 }
 
+/** How many leading PLACES rows are cities; every later row is a Tbilisi district. */
+const CITY_ROWS = 8;
+const TBILISI_ROW = 0;
+
+/**
+ * What a name is, as far as this table knows: its canonical Latin key, whether
+ * it is a city or a district, and the city it belongs to. Null for a name the
+ * table does not know -- which a caller must treat as unknown, never as a
+ * different place.
+ */
+export function resolvePlace(name: string | null | undefined):
+  { key: string; kind: 'CITY' | 'DISTRICT'; cityKey: string } | null {
+  const row = INDEX.get(norm(name));
+  if (row === undefined) return null;
+  const kind = row < CITY_ROWS ? 'CITY' : 'DISTRICT';
+  return { key: PLACES[row][0], kind, cityKey: PLACES[kind === 'CITY' ? row : TBILISI_ROW][0] };
+}
+
 /** True only when two names are the same place. UNKNOWN is not agreement. */
 export function samePlace(a: string | null | undefined, b: string | null | undefined): boolean {
   return comparePlaces(a, b) === 'AGREE';

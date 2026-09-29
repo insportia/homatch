@@ -205,6 +205,8 @@ test('the core is consumed only through its deliberate integration points', () =
     'supabase/functions/atomic-unlock/index.ts',
     'supabase/functions/classify-signals-v2/index.ts',
     'src/matching/currentDemand.ts',
+    'supabase/functions/_shared/fx.ts',
+    'supabase/functions/_shared/__tests__/campaignMoney.test.mjs',
     // The Verify market lane and the seed it is built from.
     'src/verify/marketLane.ts',
     'src/verify/researchSeed.ts',

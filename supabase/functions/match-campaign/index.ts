@@ -3,6 +3,7 @@ import { beginExecution, releaseExecution } from '../_shared/billing.ts';
 import { loadDiscoverySettings } from '../_shared/discoverySettings.ts';
 import { claimJobTransition, finalizeCampaignJob } from '../_shared/campaignRun.ts';
 import { queueCampaignSourceJobs } from '../_shared/campaignSources.ts';
+import { fetchCurrentFx } from '../_shared/fx.ts';
 import {
   persistCampaignLanguages,
   readChoice,
@@ -437,9 +438,13 @@ Deno.serve(async (req: Request) => {
       message: 'Using deduplicated signals already paid for and stored in Homatch',
     });
 
+    /* Official exchange rates for the budget gate, fetched here so the
+       match writer never has to (best effort; null leaves FX unknown). */
+    const fxRates = await fetchCurrentFx();
     const internal = await invoke(baseUrl, serviceKey, 'run-matching-v2', {
       propertyId,
       campaignId,
+      fxRates,
       intentProfileBatchSize: 5000,
     }, 180_000);
     if (internal.data?.error) throw new Error(String(internal.data.error));

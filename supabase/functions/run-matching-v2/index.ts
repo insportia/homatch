@@ -5,7 +5,8 @@ import {
 import { judgeActiveDemand } from '../../../src/research-core/discovery/freshness-policy.ts';
 import { loadDiscoverySettings } from '../_shared/discoverySettings.ts';
 import {
-  bedroomsGate, budgetGate, cityGate, converterFromRates, marketCitySpellings, type GateVerdict,
+  bedroomsGate, budgetGate, cityGate, converterFrom, marketCitySpellings, ratesFromPayload, ratesFromTable,
+  type GateVerdict,
 } from '../../../src/research-core/match/structured-gates.ts';
 
 const CORS = {
@@ -49,7 +50,7 @@ Deno.serve(async (req: Request) => {
   }
   if (!authorized) return json({ error: 'Internal only' }, 403);
   try {
-    const { propertyId, campaignId, intentProfileBatchSize = 1500 } = await req.json();
+    const { propertyId, campaignId, intentProfileBatchSize = 1500, fxRates = null } = await req.json();
     if (!propertyId) return json({ error: 'propertyId required' }, 400);
 
     const { data: property, error: propertyError } = await db
@@ -223,7 +224,11 @@ Deno.serve(async (req: Request) => {
        comparison UNKNOWN -- never a guessed conversion. */
     const { data: fxRows } = await db.from('fx_rates')
       .select('base_currency,quote_currency,rate,effective_from').is('effective_to', null);
-    const fx = converterFromRates((fxRows ?? []) as never);
+    /* Official NBG rates, fetched by the caller (_shared/fx.ts) and passed in
+       -- this writer never fetches. Re-validated here: dated, current, sane.
+       Absent or stale rates leave cross-currency budgets UNKNOWN. */
+    const nbg = ratesFromPayload(fxRates);
+    const fx = converterFrom(ratesFromTable((fxRows ?? []) as never), nbg);
 
     const requested = Math.min(5000, Math.max(1, Number(intentProfileBatchSize) || 1500));
     const profiles: any[] = [];
@@ -596,6 +601,8 @@ Deno.serve(async (req: Request) => {
       /* Refused because the PERSON posted outside the active-demand window. */
       rejectedAncientDemand,
       activeDemandWindowDays: activeDemandPolicy.activeMaxDays,
+      /* Whether cross-currency budgets could be compared on this run. */
+      fxSource: nbg ? 'NBG' : 'NONE',
       queuedRevalidations,
       staleReasons,
       insertErrors,

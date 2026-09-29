@@ -34,6 +34,20 @@
 
 -- ── 1. THE QUEUE ─────────────────────────────────────────────────────────
 
+/*
+ * SCHEMA DRIFT, DECLARED. These five columns exist in production (added by
+ * hand in August; 20260829170000 and 20260829153000 already use them) but no
+ * migration ever declared them, so a rebuild from the repository could not
+ * create them. Declared here with production's own types; a no-op in
+ * production. See supabase/replay/before/20260829170000.sql.
+ */
+alter table public.discovery_query_queue
+  add column if not exists claimed_at timestamptz,
+  add column if not exists claim_token uuid,
+  add column if not exists estimated_cost_usd numeric,
+  add column if not exists finished_at timestamptz,
+  add column if not exists actual_cost_usd numeric;
+
 alter table public.discovery_query_queue
   add column if not exists matching_job_id uuid references public.matching_jobs(id) on delete set null,
   add column if not exists lease_expires_at timestamptz,
@@ -203,12 +217,23 @@ grant execute on function public.finish_discovery_source_job(uuid, uuid, text, i
 
 alter table public.matches add column if not exists demand_published_at timestamptz;
 
+/*
+ * The backfill copies a fact the match already rested on; it does not change
+ * the match. So it must not move matches.updated_at: a two-year-old match
+ * must not look recently changed because this migration touched its row.
+ * The updated_at trigger is disabled for this one statement only, inside the
+ * runner's transaction (a failure rolls the disable back with everything
+ * else). Freshness is judged on demand_published_at -- the person's own
+ * publication date -- and never on updated_at or created_at.
+ */
+alter table public.matches disable trigger trg_matches_updated;
 update public.matches m
    set demand_published_at = r.published_at
   from public.raw_signals r
  where r.id = m.signal_id
    and m.demand_published_at is null
    and r.published_at is not null;
+alter table public.matches enable trigger trg_matches_updated;
 
 create index if not exists matches_property_demand_published_idx
   on public.matches(property_id, demand_published_at desc);
@@ -370,8 +395,11 @@ on conflict (provider_id) do nothing;
 
 -- ── 7. SCHEDULES ─────────────────────────────────────────────────────────
 --
--- Every function below checks its own admin switch before doing anything, so
--- these schedules are inert until an operator turns the matching switch on.
+-- Inert until switched on, TWICE over: each cron command checks its admin
+-- switch in SQL before it calls anything (so it is inert whatever version of
+-- the function happens to be deployed), and each function checks the same
+-- switch again. The driver also runs while a campaign is still mid-flight,
+-- so switching campaign discovery off never strands a reservation.
 
 do $$
 begin
@@ -388,7 +416,8 @@ begin
         'x-cron-token', (select value #>> '{}' from public.admin_settings where key = 'discovery_driver_token')),
       body := '{"mode":"drive","source":"cron"}'::jsonb,
       timeout_milliseconds := 55000
-    );
+    )
+    where ((select value #>> '{}' from public.admin_settings where key = 'campaign_source_discovery_enabled') = 'true' or exists (select 1 from public.matching_jobs where discovery_deadline_at is not null and status::text in ('searching_sources','classifying','ranking')));
     $cron$
   );
 
@@ -405,7 +434,8 @@ begin
         'x-cron-token', (select value #>> '{}' from public.admin_settings where key = 'community_sync_token')),
       body := '{"action":"sync","source":"cron","maxTargets":5}'::jsonb,
       timeout_milliseconds := 55000
-    );
+    )
+    where (select value #>> '{}' from public.admin_settings where key = 'telegram_discovery_enabled') = 'true' and (select value #>> '{}' from public.admin_settings where key = 'discovery_background_refresh_enabled') = 'true';
     $cron$
   );
 
@@ -422,7 +452,8 @@ begin
         'x-cron-token', (select value #>> '{}' from public.admin_settings where key = 'demand_discovery_token')),
       body := '{"source":"cron","maxThreads":3}'::jsonb,
       timeout_milliseconds := 55000
-    );
+    )
+    where (select value #>> '{}' from public.admin_settings where key = 'forum_discovery_enabled') = 'true' and (select value #>> '{}' from public.admin_settings where key = 'discovery_background_refresh_enabled') = 'true';
     $cron$
   );
 
@@ -439,7 +470,8 @@ begin
         'x-cron-token', (select value #>> '{}' from public.admin_settings where key = 'classify_signals_token')),
       body := '{"source":"cron","batchSize":100}'::jsonb,
       timeout_milliseconds := 55000
-    );
+    )
+    where (select value #>> '{}' from public.admin_settings where key = 'classifier_schedule_enabled') = 'true';
     $cron$
   );
 end $$;

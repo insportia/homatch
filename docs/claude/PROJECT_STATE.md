@@ -92,3 +92,17 @@ MATTERS right now, verify against the live systems, not this file)
   NOT applied. Every new switch defaults OFF. Applying it also cancels the
   6,557 dead APIFY/DATAFORSEO PENDING rows (history kept) and sets FIND_CLIENTS
   to PAYG-only with a 50-Credit minimum — billing changes that need approval.
+- FX: run-matching-v2 never fetches. match-campaign / the discovery driver
+  fetch official NBG rates (_shared/fx.ts, 4s, best effort) and pass them in;
+  the writer re-validates (<= 3 days old). fx_rates rows count only when
+  dated within 7 days. No rate = cross-currency budget UNKNOWN (never a
+  rejection). Same-currency matching never depends on FX.
+- Pre-migration production snapshot (2026-09-29): 74 matches, 0 within 30
+  days, 69 older, 5 undated; 14 opened (11 stale + 3 undated) — all stay
+  accessible. Dry run of both migrations in a rolled-back transaction on
+  production: PASS (6,557 retired rows -> CANCELLED, 69 matches dated,
+  updated_at moved on 0 rows, 14 unlocks intact, 5 crons, all switches off).
+- Railway courteous-success also contains a pre-existing
+  `homatch-official-worker-v2` service (not created by this workstream; never
+  use it). The canonical worker has NO Telegram variables.
+

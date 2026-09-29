@@ -182,7 +182,8 @@ for (const [width, height] of [[1440, 900], [390, 844]]) {
       const { page } = await boot(t, { width, height, lang });
       await page.goto(`${BASE}/broker`, { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('#desk-portfolio', { timeout: 20000 });
-      await check(page, lang, width, 'desk', failures, ['Nino Beridze Realty', '104233', '120.50', 'Giorgi — 2BR Vake']);
+      await check(page, lang, width, 'desk', failures, ['Nino Beridze Realty', '104233', '120.50']);
+      if (await page.inputValue('#cl-s1') !== 'Giorgi — 2BR Vake') failures.push(`desk ${lang} ${width}: private client label not shown`);
 
       await page.goto(`${BASE}/broker/onboarding`, { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('#onb-name', { timeout: 20000 });

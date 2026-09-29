@@ -106,3 +106,36 @@ MATTERS right now, verify against the live systems, not this file)
   `homatch-official-worker-v2` service (not created by this workstream; never
   use it). The canonical worker has NO Telegram variables.
 
+
+## Brokers (same branch, 2026-09-29)
+
+Migration `20260930140000_broker_lifecycle.sql` (NOT yet applied at time of
+writing; apply after the Meta and Discovery migrations, via MCP
+`apply_migration` name `broker_lifecycle`).
+
+- Account: `users.account_type` PERSONAL/BROKER/AGENCY, `suspended_at`,
+  `suspension_reason` — server-set only (trigger resets them unless
+  service_role or GUC `homatch.account_rpc`). Signup "I'm a professional"
+  routes to `/broker/onboarding`.
+- One profile per owner (`broker_directory_listings`, unique owner, DRAFT
+  status). `broker_profile_save` / `broker_complete_onboarding` /
+  `broker_directory_submit` / `broker_directory_purchase(idempotency key)`.
+- Verification UNVERIFIED/PENDING/VERIFIED/REJECTED/SUSPENDED: private bucket
+  `broker-verification`, `admin_set_broker_verification` (audited, notifies).
+- Leads: `matches.lead_state` NEW→REVIEWED→CONTACTED→IN_PROGRESS→WON/CLOSED;
+  contact states need a `match_unlocks` row (`set_match_lead_state`).
+- Broker Review: classify-signals-v2 queues BROKER_AGENCY posts into
+  `broker_review_items`; admin ACCEPT writes `broker_intelligence` only from
+  a public identity (never invents one).
+- Suspension blocks new unlocks, campaigns, Meta launch, directory purchase;
+  already-paid contacts stay readable.
+- Native supply role: properties carry `listed_by_role`; supply-matching uses
+  `nativeSupplyRole` (rentals → LANDLORD, broker listings → BROKER/AGENCY).
+- UI: `/broker` desk, `/broker/onboarding`, lead status in the opened-contact
+  dialog, Admin → Brokers Verification + Broker Review tabs + detail dialog.
+- LIMITATION: agency TEAMS (members under an agency) are not implemented;
+  `agency_listing_id` exists for later. An agent joins as an individual broker.
+- Pre-existing, not ours: `tests/browser/developerAcceptance.test.mjs` fails
+  UNIT_UI / MOBILE_INTERACTIVE ("unit drawer did not open") on clean
+  origin/main too (reproduced 2026-09-29). Developer digital twin is protected
+  — left untouched.

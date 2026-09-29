@@ -43,6 +43,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useSurfaceTheme } from '@/hooks/useSurfaceTheme';
+import { designStudioEnabled } from '@/lib/designStudio/access';
 
 interface NavItem {
   key: string;
@@ -50,6 +51,9 @@ interface NavItem {
   /* The item's glyph in the customer navigation's own drawn family — one
      unified navy/gold language for the rail (see NavGlyph.tsx). */
   glyph: NavGlyphName;
+  /* Presented only while this product is switched on for the viewer (see
+     src/lib/designStudio/access.ts). Absent = always presented. */
+  gate?: 'designStudio';
 }
 
 interface NavGroup {
@@ -171,6 +175,16 @@ export const NAV: NavGroup[] = [
     key: 'nav_group_expats',
     items: [{ key: 'nav_for_expats', path: '/for-expats/georgia', glyph: 'expats' }],
   },
+  /*
+   * HOMATCH DESIGN STUDIO, directly below For Expats and above the
+   * intelligence tools. Its own group because it is its own kind of work:
+   * not analysing a property, but designing the inside of one. Gated while
+   * it is being built; the group disappears entirely when its item is hidden.
+   */
+  {
+    key: 'nav_group_design',
+    items: [{ key: 'nav_design_studio', path: '/design-studio', glyph: 'design_studio', gate: 'designStudio' }],
+  },
   {
     key: 'nav_group_intelligence',
     items: [
@@ -263,6 +277,14 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
     };
   }, [drawerOpen]);
 
+  const showDesignStudio = designStudioEnabled(homatchUser);
+  const nav = NAV
+    .map(group => ({
+      ...group,
+      items: group.items.filter(item => item.gate !== 'designStudio' || showDesignStudio),
+    }))
+    .filter(group => group.items.length > 0);
+
   const isActive = (path: string) =>
     location.pathname === path || location.pathname.startsWith(`${path}/`);
 
@@ -296,7 +318,7 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
         * wrap now instead of being cut.
         */}
       <nav aria-label={t('dnav_aria')} className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
-        {NAV.map((group, gi) => (
+        {nav.map((group, gi) => (
           <div key={group.key} className={gi ? 'mt-5' : ''}>
             {/* A section label, at the weight of a label. tracking-[0.14em] on Georgian
                 small caps was spacing a script that does not have small caps; 0.08em

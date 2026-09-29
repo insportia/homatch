@@ -34,6 +34,8 @@ import { placeName } from '@/lib/placeNames';
 import { hasContactReadiness } from '@/lib/propertyContact';
 import { cn } from '@/lib/utils';
 import { intelligenceActionFor } from '@/property/rules';
+import { designStudioEnabled } from '@/lib/designStudio/access';
+import { NavGlyphIcon } from '@/components/layouts/NavGlyph';
 import { 
   type CampaignSearchLanguageChoice, calculateMatchability,getCreditAccount,
   getMatchCounts, getProperty, pauseMatchingCampaign,softDeleteProperty, 
@@ -761,6 +763,19 @@ function PropertyDetailContent() {
                   })}
                 >
                   <Landmark className="h-4 w-4 shrink-0 text-primary" /> {t('dash_calculate_mortgage_property')}
+                </Button>
+              )}
+              {/* HOMATCH Design Studio, carrying this property so nobody searches for it
+                  again. The owner's own property only, and only while the product is
+                  switched on for them. */}
+              {id && homatchUser && property.user_id === homatchUser.id && designStudioEnabled(homatchUser) && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full gap-2 border-border justify-start h-auto min-h-9 py-2 whitespace-normal text-start"
+                  onClick={() => navigate(`/design-studio?property=${encodeURIComponent(id)}`)}
+                >
+                  <NavGlyphIcon name="design_studio" className="h-4 w-4 shrink-0 text-primary" /> {t('ds_open_in_design_studio')}
                 </Button>
               )}
             </div>

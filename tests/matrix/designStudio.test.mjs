@@ -1,0 +1,144 @@
+// HOMATCH DESIGN STUDIO — the seams that must not move.
+//
+// Source-level guards, in the style of the rest of tests/matrix. The
+// behaviour of the migration itself is proven against a real Postgres by
+// scripts/design-studio/rls-check.mjs; these assertions keep the shape of
+// the product honest as other workstreams edit the shared files.
+
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const ROOT = process.cwd();
+const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
+const MIGRATION = read('supabase/migrations/20260930090000_design_studio_foundation.sql');
+
+function walk(rel, out = []) {
+  const abs = path.join(ROOT, rel);
+  if (!fs.existsSync(abs)) return out;
+  for (const entry of fs.readdirSync(abs, { withFileTypes: true })) {
+    const child = `${rel}/${entry.name}`;
+    if (entry.isDirectory()) walk(child, out);
+    else if (/\.(tsx?|mjs)$/.test(entry.name) && !child.includes('__tests__')) out.push(child);
+  }
+  return out;
+}
+const DS_SOURCES = [
+  ...walk('src/lib/designStudio'),
+  ...walk('src/services/designStudio'),
+  ...walk('src/components/designStudio'),
+  ...walk('src/pages/designStudio'),
+];
+
+/* ── Navigation ──────────────────────────────────────────────────── */
+
+test('Design Studio sits directly below For Expats and above Intelligence', () => {
+  const shell = read('src/components/layouts/HomatchShell.tsx');
+  const nav = shell.slice(shell.indexOf('export const NAV'));
+  const expats = nav.indexOf('nav_group_expats');
+  const design = nav.indexOf('nav_group_design');
+  const intelligence = nav.indexOf('nav_group_intelligence');
+  assert.ok(expats > -1 && design > -1 && intelligence > -1);
+  assert.ok(expats < design && design < intelligence, 'Design Studio is not between For Expats and Intelligence');
+  assert.match(nav, /\{ key: 'nav_design_studio', path: '\/design-studio', glyph: 'design_studio', gate: 'designStudio' \}/);
+});
+
+test('the rail hides gated items and any group left empty', () => {
+  const shell = read('src/components/layouts/HomatchShell.tsx');
+  assert.match(shell, /designStudioEnabled\(homatchUser\)/);
+  assert.match(shell, /\.filter\(group => group\.items\.length > 0\)/);
+  assert.match(shell, /\{nav\.map\(\(group, gi\) =>/, 'the rail still renders the unfiltered NAV');
+});
+
+test('Design Studio has its own drawn glyph, not a generic icon', () => {
+  const glyphs = read('src/components/layouts/NavGlyph.tsx');
+  assert.match(glyphs, /'design_studio'/);
+  const body = glyphs.slice(glyphs.indexOf('design_studio: ('), glyphs.indexOf('design_studio: (') + 600);
+  assert.match(body, /fill=\{GOLD\}/, 'the glyph has no gold accent');
+});
+
+/* ── Feature flag ───────────────────────────────────────────────── */
+
+test('the feature is OFF by default and every entry point is gated', () => {
+  assert.match(read('src/config/features.ts'), /designStudio: false,/);
+  const access = read('src/lib/designStudio/access.ts');
+  assert.match(access, /FEATURES\.designStudio/);
+  assert.match(access, /VITE_FEATURE_DESIGN_STUDIO === 'on'/);
+  for (const page of ['src/pages/designStudio/DesignStudioPage.tsx', 'src/pages/designStudio/DesignStudioWorkspacePage.tsx']) {
+    const src = read(page);
+    assert.match(src, /<RouteGuard>/, `${page} is not signed-in only`);
+    assert.match(src, /<DesignStudioGate>/, `${page} is not gated`);
+  }
+});
+
+test('routes are registered, lazy, and not public', () => {
+  const routes = read('src/routes.tsx');
+  assert.match(routes, /const DesignStudioPage = lazyRoute\(/);
+  assert.match(routes, /const DesignStudioWorkspacePage = lazyRoute\(/);
+  for (const p of ["'/design-studio'", "'/design-studio/:projectId'", "'/design-studio/:projectId/design/:versionId'", "'/design-studio/:projectId/walkthrough'"]) {
+    const line = routes.split('\n').find((l) => l.includes(`path: ${p},`));
+    assert.ok(line, `route ${p} missing`);
+    assert.match(line, /public: false/, `route ${p} is public`);
+  }
+});
+
+/* ── Separation from the Developer Digital Twin ─────────────────── */
+
+test('Design Studio code never writes developer tables or calls studio services', () => {
+  for (const file of DS_SOURCES) {
+    const src = read(file);
+    assert.ok(!/from\(['"](dt|dev)_/.test(src), `${file} queries a dt_/dev_ table directly`);
+    assert.ok(!/services\/developer\/studio/.test(src), `${file} imports the Studio authoring service`);
+    assert.ok(!/rpc\(['"]dt_studio_/.test(src), `${file} calls a Studio authoring RPC`);
+  }
+});
+
+test('the migration never writes dt_* or dev_* and reads developer geometry only through dt_unit_scene', () => {
+  const statements = MIGRATION.replace(/--.*$/gm, '');
+  assert.ok(!/\b(insert\s+into|update|delete\s+from)\s+public\.(dt|dev)_/i.test(statements),
+    'the Design Studio migration writes a developer table');
+  assert.match(statements, /public\.dt_unit_scene\(p_unit_id\)/);
+  assert.ok(!/\bdt_scene_versions\b/.test(statements), 'reads unpublished developer versions directly');
+});
+
+test('Design Studio never calls the Developer floor-plan gate', () => {
+  for (const file of DS_SOURCES) {
+    const src = read(file);
+    assert.ok(!/evaluateGate\s*\(|import[^;]*evaluateGate/.test(src),
+      `${file} reuses the Developer gate instead of its own confidence logic`);
+  }
+});
+
+/* ── Schema discipline ──────────────────────────────────────────── */
+
+const TABLES = ['ds_projects', 'ds_floorplans', 'ds_spatial_sources', 'ds_versions', 'ds_version_events',
+  'ds_saved_views', 'ds_catalog_assets', 'ds_catalog_materials', 'ds_styles', 'ds_palettes', 'ds_jobs'];
+
+test('every Design Studio table has RLS enabled and anon revoked', () => {
+  for (const table of TABLES) {
+    assert.match(MIGRATION, new RegExp(`ALTER TABLE public\\.${table}\\s+ENABLE ROW LEVEL SECURITY`), `${table} has no RLS`);
+  }
+  const revoke = MIGRATION.match(/REVOKE ALL ON ([^;]+) FROM anon;/);
+  assert.ok(revoke, 'no table-level anon revoke');
+  for (const table of TABLES) assert.ok(revoke[1].includes(`public.${table}`), `${table} not revoked from anon`);
+});
+
+test('spatial sources have no customer write policy', () => {
+  const policies = [...MIGRATION.matchAll(/CREATE POLICY (\w+) ON public\.ds_spatial_sources\s+FOR (\w+)/g)];
+  const customerWrites = policies.filter(([, name, op]) => op !== 'SELECT' && !name.endsWith('_service'));
+  assert.deepEqual(customerWrites.map(([, n]) => n), [], 'a browser could assert geometry truth by inserting a row');
+});
+
+test('SECURITY DEFINER functions pin search_path and revoke from named roles', () => {
+  const defs = [...MIGRATION.matchAll(/CREATE OR REPLACE FUNCTION public\.(ds_\w+)\(([^)]*)\)[\s\S]*?(?=\$\$;|END \$\$;)/g)];
+  assert.ok(defs.length >= 6);
+  for (const [block, name] of defs) {
+    if (/SECURITY DEFINER/.test(block)) assert.match(block, /SET search_path TO ''/, `${name} leaves search_path open`);
+    assert.match(MIGRATION, new RegExp(`REVOKE ALL ON FUNCTION public\\.${name}\\([^)]*\\) FROM public, anon`), `${name} not revoked from anon`);
+  }
+});
+
+test('the migration leaves transactions to the runner', () => {
+  assert.ok(!/^\s*(BEGIN|COMMIT)\s*;/im.test(MIGRATION));
+});

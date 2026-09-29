@@ -65,6 +65,10 @@ const PARENTS: ReadonlyArray<readonly [RegExp, string | ((m: RegExpMatchArray) =
   [/^\/developer\/[^/]+$/, '/dashboard'],
   [/^\/for-expats\/georgia\/[^/]+$/, '/for-expats/georgia'],
   [/^\/for-expats\/plan$/, '/for-expats/georgia'],
+  /* A design project, a version inside it and its walkthrough all return to
+     the Design Studio launcher; the launcher itself belongs to the dashboard. */
+  [/^\/design-studio\/[^/]+(?:\/.*)?$/, '/design-studio'],
+  [/^\/design-studio$/, '/dashboard'],
   /* A single-level product screen belongs to the dashboard. Listed after the
      nested patterns so /outreach/email is not caught by /outreach. */
   [/^\/(?:ai|chat|live-chat|activity|notifications|credits|profile|viewings|active-search|outreach|deal-rooms|mortgage|investment|brokers)$/, '/dashboard'],

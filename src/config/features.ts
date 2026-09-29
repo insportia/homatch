@@ -73,12 +73,29 @@ export interface FeatureFlags {
    * what is spent.
    */
   matchesCampaignOperatorControls: boolean;
+
+  /**
+   * HOMATCH Design Studio: its navigation entry, its routes and the "Open in Design
+   * Studio" actions on property screens.
+   *
+   * OFF WHILE IT IS BEING BUILT, which makes it the opposite of the flags above: those
+   * hide something finished that was deferred, this one hides something unfinished that
+   * is not yet ready to be shown. It turns on for everybody when this is `true`.
+   *
+   * Before that, it is reachable only for AUTHORISED TESTING — see
+   * `designStudioEnabled()` in src/lib/designStudio/access.ts: signed-in admins, and any
+   * build made with VITE_FEATURE_DESIGN_STUDIO=on (a local or preview build, never the
+   * production environment). The data itself is protected by RLS either way; the flag
+   * decides what is presented, not who may read what.
+   */
+  designStudio: boolean;
 }
 
 export const FEATURES: FeatureFlags = {
   activeSearchUi: false,
   matchesOutboundPublication: false,
   matchesCampaignOperatorControls: false,
+  designStudio: false,
 };
 
 /** Read a flag by name. A helper so call sites read as a question. */

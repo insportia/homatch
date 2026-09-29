@@ -149,7 +149,8 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        main: path.resolve(__dirname, 'index.html'),
+        // Keyed "index" so the app's entry chunk keeps its index-*.js name.
+        index: path.resolve(__dirname, 'index.html'),
         share: path.resolve(__dirname, 'share.html'),
       },
     },

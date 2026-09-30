@@ -12161,6 +12161,10 @@ const en = {
   broker_bar_become_body: 'Create your professional profile, get verified, list your properties and find buyers and tenants for your clients.',
   broker_bar_become_cta: 'Create professional profile',
   broker_bar_learn_more: 'What is the difference?',
+
+  /* ── WORKSTREAM B FINAL HARDENING ── */
+  broker_found_evidence: 'Seen on',
+  broker_directory_empty_compact: 'No broker or agency has a current paid Homatch listing yet.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -24236,6 +24240,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   broker_bar_become_body: 'შექმენით პროფესიული პროფილი, გაიარეთ ვერიფიკაცია, განათავსეთ ქონება და იპოვეთ მყიდველები და მოიჯარეები თქვენი კლიენტებისთვის.',
   broker_bar_become_cta: 'პროფესიული პროფილის შექმნა',
   broker_bar_learn_more: 'რა განსხვავებაა?',
+
+  /* ── WORKSTREAM B FINAL HARDENING ── */
+  broker_found_evidence: 'ნანახია',
+  broker_directory_empty_compact: 'ჯერ არცერთ ბროკერს ან სააგენტოს არ აქვს მოქმედი ფასიანი Homatch-ის განცხადება.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -36302,6 +36310,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   broker_bar_become_body: 'Создайте профессиональный профиль, пройдите проверку, разместите объекты и находите покупателей и арендаторов для своих клиентов.',
   broker_bar_become_cta: 'Создать профессиональный профиль',
   broker_bar_learn_more: 'В чём разница?',
+
+  /* ── WORKSTREAM B FINAL HARDENING ── */
+  broker_found_evidence: 'Замечено на',
+  broker_directory_empty_compact: 'Пока ни у одного брокера или агентства нет действующего платного размещения в Homatch.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -48366,6 +48378,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   broker_bar_become_body: 'Profesyonel profilinizi oluşturun, doğrulanın, mülklerinizi listeleyin ve müşterileriniz için alıcı ve kiracı bulun.',
   broker_bar_become_cta: 'Profesyonel profil oluştur',
   broker_bar_learn_more: 'Fark nedir?',
+
+  /* ── WORKSTREAM B FINAL HARDENING ── */
+  broker_found_evidence: 'Görüldüğü yer',
+  broker_directory_empty_compact: 'Henüz hiçbir emlakçı veya ajansın geçerli ücretli Homatch listelemesi yok.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -60430,6 +60446,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   broker_bar_become_body: 'أنشئ ملفك المهني، واحصل على التحقق، وأدرج عقاراتك، وابحث عن مشترين ومستأجرين لعملائك.',
   broker_bar_become_cta: 'إنشاء ملف مهني',
   broker_bar_learn_more: 'ما الفرق؟',
+
+  /* ── WORKSTREAM B FINAL HARDENING ── */
+  broker_found_evidence: 'شوهد على',
+  broker_directory_empty_compact: 'لا يوجد حتى الآن وسيط أو وكالة لديهم إدراج مدفوع ساري في Homatch.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -72494,6 +72514,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   broker_bar_become_body: 'צרו פרופיל מקצועי, עברו אימות, פרסמו נכסים ומצאו קונים ושוכרים עבור הלקוחות שלכם.',
   broker_bar_become_cta: 'יצירת פרופיל מקצועי',
   broker_bar_learn_more: 'מה ההבדל?',
+
+  /* ── WORKSTREAM B FINAL HARDENING ── */
+  broker_found_evidence: 'נראה ב־',
+  broker_directory_empty_compact: 'עדיין לאף מתווך או סוכנות אין רישום בתשלום פעיל ב-Homatch.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

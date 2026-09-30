@@ -243,4 +243,16 @@ export const WORKSTREAM_B_FINAL_STRINGS = {
     'تحتاج النماذج الفورية إلى أذونات Meta التالية: leads_retrieval وpages_manage_ads وpages_manage_metadata. اختر هدف موقع ويب أو رسائل، أو اطلب من HOMATCH تفعيل النماذج الفورية.',
     'טפסים מיידיים דורשים את הרשאות Meta leads_retrieval, ‏pages_manage_ads ו-pages_manage_metadata. בחרו מטרה של אתר או הודעות, או בקשו מ-HOMATCH להפעיל טפסים מיידיים.',
   ],
+  // ── /brokers ─────────────────────────────────────────────────────────────
+  broker_found_evidence: [
+    'Seen on', 'ნანახია', 'Замечено на', 'Görüldüğü yer', 'شوهد على', 'נראה ב־',
+  ],
+  broker_directory_empty_compact: [
+    'No broker or agency has a current paid Homatch listing yet.',
+    'ჯერ არცერთ ბროკერს ან სააგენტოს არ აქვს მოქმედი ფასიანი Homatch-ის განცხადება.',
+    'Пока ни у одного брокера или агентства нет действующего платного размещения в Homatch.',
+    'Henüz hiçbir emlakçı veya ajansın geçerli ücretli Homatch listelemesi yok.',
+    'لا يوجد حتى الآن وسيط أو وكالة لديهم إدراج مدفوع ساري في Homatch.',
+    'עדיין לאף מתווך או סוכנות אין רישום בתשלום פעיל ב-Homatch.',
+  ],
 };

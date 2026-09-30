@@ -197,11 +197,32 @@ function scrub(v: unknown): unknown {
  * written before the key existed are still read, and resealed on next write.
  */
 async function tokenKey(): Promise<CryptoKey | null> {
-  const raw = Deno.env.get('META_TOKEN_ENCRYPTION_KEY');
+  const raw = (Deno.env.get('META_TOKEN_ENCRYPTION_KEY') ?? '').trim();
   if (!raw) return null;
-  const bytes = Uint8Array.from(atob(raw), (c) => c.charCodeAt(0));
+  let bytes: Uint8Array;
+  /* Not base64 is the same as not configured: never a crash, never plaintext. */
+  try { bytes = Uint8Array.from(atob(raw), (c) => c.charCodeAt(0)); } catch { return null; }
   if (bytes.length < 32) return null;
   return await crypto.subtle.importKey('raw', bytes.slice(0, 32), 'AES-GCM', false, ['encrypt', 'decrypt']);
+}
+
+/**
+ * Is the token key usable? Booleans only — the key, its length and its bytes
+ * are never returned. `roundTrip` seals and opens a throwaway probe with it.
+ */
+export async function tokenKeyStatus(): Promise<{ present: boolean; valid: boolean; roundTrip: boolean }> {
+  const present = !!(Deno.env.get('META_TOKEN_ENCRYPTION_KEY') ?? '').trim();
+  const key = await tokenKey();
+  if (!key) return { present, valid: false, roundTrip: false };
+  try {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const probe = new TextEncoder().encode(crypto.randomUUID());
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, probe);
+    const pt = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct));
+    return { present, valid: true, roundTrip: pt.length === probe.length && pt.every((b, i) => b === probe[i]) };
+  } catch {
+    return { present, valid: true, roundTrip: false };
+  }
 }
 
 const b64 = (u: Uint8Array) => btoa(String.fromCharCode(...u));
@@ -228,6 +249,9 @@ export async function sealToken(token: string): Promise<string> {
 
 export async function openToken(stored: string | null | undefined): Promise<string | null> {
   if (!stored) return null;
+  /* A test-mode (MOCK) token is never a credential once Meta is live: the
+     connection reads as "reconnect required", never as a false Connected. */
+  if (stored.startsWith('mock_') && metaMode() === 'REAL') return null;
   if (!stored.startsWith('enc:v1:')) return stored;
   const key = await tokenKey();
   if (!key) return null;

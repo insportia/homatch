@@ -87,10 +87,12 @@ export function PlacementsStep({ campaign, status, creatives, recommended, patch
   );
 }
 
-export function ReviewStep({ campaign, status, creatives, totals, pricing, recommended, preflight, running, onPreflight, onLaunch, canLaunch, onEdit, strategy = null, strategyLoading = false, strategyFailed = false }: {
+export function ReviewStep({ campaign, status, creatives, totals, pricing, recommended, preflight, running, onPreflight, onLaunch, canLaunch, launchHint = null, onEdit, strategy = null, strategyLoading = false, strategyFailed = false }: {
   campaign: MetaCampaignRow; status: MetaStatus | null; creatives: MetaCreativeRow[]; totals: Totals | null; pricing: boolean;
   recommended: Placement[]; preflight: PreflightResult | null; running: boolean;
   onPreflight: () => void; onLaunch: () => void; canLaunch: boolean; onEdit: (step: string) => void;
+  /** Why Launch is unavailable (an i18n key), shown beside it. */
+  launchHint?: string | null;
   strategy?: StrategyPreview | null; strategyLoading?: boolean; strategyFailed?: boolean;
 }) {
   const { t, lang } = useLanguage();
@@ -206,11 +208,12 @@ export function ReviewStep({ campaign, status, creatives, totals, pricing, recom
           <Button onClick={onPreflight} disabled={running} className="border border-white/40 bg-white text-[#0C1119] hover:bg-white/90">
             {running ? <Loader2 className="h-4 w-4 animate-spin" /> : t(preflight ? 'madsb_preflight_again' : 'mads_run_preflight')}
           </Button>
-          <Button onClick={onLaunch} disabled={!canLaunch || running}
+          <Button onClick={onLaunch} disabled={!canLaunch || running} aria-describedby={launchHint ? 'mm-b-launch-hint' : undefined}
             className="bg-[hsl(38_92%_54%)] font-bold text-[#161309] hover:bg-[hsl(38_92%_60%)] disabled:bg-white/[0.14] disabled:text-white/50 disabled:opacity-100">
             {t('mads_launch')}
           </Button>
         </div>
+        {launchHint && <p id="mm-b-launch-hint" data-mm-launch-hint="" className="mt-2 text-[13px] font-medium text-[hsl(38_92%_66%)]">{t(launchHint as never)}</p>}
         <p className="mt-3 text-2xs leading-relaxed text-white/60">{t('mads_meta_review_note')}</p>
       </div>
     </StepShell>

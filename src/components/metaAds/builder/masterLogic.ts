@@ -25,6 +25,18 @@ export function isHousingCampaign(c: {
   return cats.includes('HOUSING');
 }
 
+/**
+ * When HOMATCH shows its (non-blocking) broad-audience recommendation: a single
+ * gender, or an age range noticeably tighter than Meta's 18–65+. Advice only —
+ * the customer's choice is saved and sent as chosen. Housing ads never get
+ * here: Meta itself fixes their ages and gender.
+ */
+export const NARROW_AGE_MIN_OVER = 25;
+export const NARROW_AGE_MAX_UNDER = 55;
+export function isNarrowAudience(a: { ageMin: number; ageMax: number; gender: string }): boolean {
+  return a.gender !== 'ALL' || a.ageMin > NARROW_AGE_MIN_OVER || a.ageMax < NARROW_AGE_MAX_UNDER;
+}
+
 /* ── STRATEGY COPY ───────────────────────────────────────────────────── */
 
 /** Every StrategyReason the engine can emit (strategy.ts). */

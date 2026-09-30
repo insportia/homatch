@@ -408,7 +408,8 @@ export interface RecommendationRow {
 }
 export interface CampaignDetail {
   campaign: MetaCampaignRow & { summary?: { facts: Array<{ code: string; params: Record<string, string | number | null>; confidence?: string }>; evidence: string } | null;
-    strategy?: StrategySummaryRow | null; ad_set_count?: number; last_error_key?: string | null; insights_synced_at?: string | null; summary_at?: string | null };
+    strategy?: StrategySummaryRow | null; ad_set_count?: number; last_error_key?: string | null; insights_synced_at?: string | null; summary_at?: string | null;
+    requested_start_at?: string | null; meta_start_time?: string | null };
   kpis: KpisRow | null;
   evidence: string;
   analysis: null | {

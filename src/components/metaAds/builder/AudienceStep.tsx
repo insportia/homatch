@@ -1,12 +1,16 @@
 // WHO SEES THE AD — places, ages, gender, and (when the customer has one) a
 // retargeting audience. Saved to the draft's `targeting` (TargetingIntentRow).
 //
-// A property ad is a Housing ad at Meta: ages and gender are fixed to all
-// adults of every gender and a city radius is at least 25 km. The controls
-// are then shown LOCKED, with one calm sentence saying why, instead of
-// letting the customer choose something HOMATCH would have to override.
+// Ages and gender are the customer's choice. Broad (18–65+, everyone) is
+// HOMATCH's RECOMMENDATION, not a rule: narrowing is allowed and saved as
+// chosen, and a small non-blocking note says why broad usually works better.
+//
+// The one real restriction is Meta's: a property ad is in its Housing ad
+// category, where Meta requires all adults 18–65+ of every gender (and a city
+// radius of at least 25 km). Only then are the values fixed, shown as plain
+// values with that reason — not as disabled controls or a lock.
 import React from 'react';
-import { Lock, MapPin, Users, X } from 'lucide-react';
+import { Lightbulb, MapPin, Users, X } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import {
@@ -15,7 +19,7 @@ import {
 import type { LocationChoiceRow, MetaAudienceRow, MetaCampaignRow, MetaStatus, TargetingIntentRow } from '@/services/metaAds';
 import { ChoiceCard, StepShell } from './ui';
 import { LocationPicker, regionName } from './LocationPicker';
-import { addLocation, isHousingCampaign, locationId } from './masterLogic';
+import { addLocation, isHousingCampaign, isNarrowAudience, locationId } from './masterLogic';
 
 const RADII = [10, CITY_RADIUS_KM_DEFAULT, HOUSING_MIN_RADIUS_KM, 40, 60, CITY_RADIUS_KM_MAX];
 const AGES = Array.from({ length: META_AGE_MAX - META_AGE_MIN + 1 }, (_, i) => META_AGE_MIN + i);
@@ -112,48 +116,62 @@ export function AudienceStep({ campaign, status, audiences, patch }: {
       <section aria-labelledby="mm-b-who" className="space-y-2.5">
         <h3 id="mm-b-who" className="flex items-center gap-2 text-sm font-semibold text-foreground">
           <Users className="h-4 w-4 text-[hsl(var(--gold-ink))]" aria-hidden />{t('mm_b_who_title')}
-          {housing && <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-px text-2xs font-medium text-muted-foreground"><Lock className="h-3 w-3" aria-hidden />{t('mm_b_locked')}</span>}
         </h3>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <fieldset className="min-w-0" disabled={housing}>
-            <legend className="mb-1 text-[13px] font-medium text-foreground">{t('mm_b_age_label')}</legend>
-            <div className="flex items-center gap-2">
-              <label className="min-w-0 flex-1">
-                <span className="sr-only">{t('mm_b_age_min')}</span>
-                <select value={ageMin} onChange={(e) => { const v = Number(e.target.value); save({ ageMin: v, ageMax: Math.max(v, ageMax) }); }}
-                  className="h-10 w-full rounded-xl border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))] disabled:opacity-60">
-                  {AGES.map((a) => <option key={a} value={a}>{ageLabel(a)}</option>)}
-                </select>
-              </label>
-              <span className="text-muted-foreground" aria-hidden>–</span>
-              <label className="min-w-0 flex-1">
-                <span className="sr-only">{t('mm_b_age_max')}</span>
-                <select value={ageMax} onChange={(e) => { const v = Number(e.target.value); save({ ageMax: v, ageMin: Math.min(v, ageMin) }); }}
-                  className="h-10 w-full rounded-xl border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))] disabled:opacity-60">
-                  {AGES.map((a) => <option key={a} value={a}>{ageLabel(a)}</option>)}
-                </select>
-              </label>
-            </div>
-          </fieldset>
-          <div className="min-w-0">
-            <p id="mm-b-gender" className="mb-1 text-[13px] font-medium text-foreground">{t('mm_b_gender_label')}</p>
-            <div role="group" aria-labelledby="mm-b-gender" className="flex flex-wrap gap-1.5">
-              {GENDERS.map((g) => (
-                <button key={g} type="button" aria-pressed={gender === g} disabled={housing} onClick={() => save({ gender: g })}
-                  className={cn('h-10 rounded-xl border px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))] disabled:cursor-not-allowed',
-                    gender === g ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] font-semibold text-foreground' : 'border-border text-muted-foreground',
-                    housing && gender !== g && 'opacity-50')}>
-                  {t(`mm_b_gender_${g}`)}
-                </button>
-              ))}
-            </div>
+        {housing ? (
+          /* Meta's Housing category fixes these; say so once, as fact. */
+          <div data-mm-housing-rule="">
+            <p className="text-sm font-medium text-foreground">
+              {t('mm_b_age_range', { min: String(META_AGE_MIN), max: `${META_AGE_MAX}+` })} · {t('mm_b_gender_ALL')}
+            </p>
+            <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">{t('mm_b_housing_rule')}</p>
           </div>
-        </div>
-        {housing && (
-          <div data-mm-housing-lock="" className="flex items-start gap-2.5 rounded-xl border border-border bg-[hsl(var(--secondary))]/50 px-3.5 py-3 text-[13px] leading-relaxed text-muted-foreground">
-            <Lock className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden />
-            <span>{t('mm_b_housing_lock')}</span>
-          </div>
+        ) : (
+          <>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <fieldset className="min-w-0">
+                <legend className="mb-1 text-[13px] font-medium text-foreground">{t('mm_b_age_label')}</legend>
+                <div className="flex items-center gap-2">
+                  <label className="min-w-0 flex-1">
+                    <span className="sr-only">{t('mm_b_age_min')}</span>
+                    <select value={ageMin} onChange={(e) => { const v = Number(e.target.value); save({ ageMin: v, ageMax: Math.max(v, ageMax) }); }}
+                      className="h-10 w-full rounded-xl border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">
+                      {AGES.map((a) => <option key={a} value={a}>{ageLabel(a)}</option>)}
+                    </select>
+                  </label>
+                  <span className="text-muted-foreground" aria-hidden>–</span>
+                  <label className="min-w-0 flex-1">
+                    <span className="sr-only">{t('mm_b_age_max')}</span>
+                    <select value={ageMax} onChange={(e) => { const v = Number(e.target.value); save({ ageMax: v, ageMin: Math.min(v, ageMin) }); }}
+                      className="h-10 w-full rounded-xl border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">
+                      {AGES.map((a) => <option key={a} value={a}>{ageLabel(a)}</option>)}
+                    </select>
+                  </label>
+                </div>
+              </fieldset>
+              <div className="min-w-0">
+                <p id="mm-b-gender" className="mb-1 text-[13px] font-medium text-foreground">{t('mm_b_gender_label')}</p>
+                <div role="group" aria-labelledby="mm-b-gender" className="flex flex-wrap gap-1.5">
+                  {GENDERS.map((g) => (
+                    <button key={g} type="button" aria-pressed={gender === g} onClick={() => save({ gender: g })}
+                      className={cn('h-10 rounded-xl border px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]',
+                        gender === g ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] font-semibold text-foreground' : 'border-border text-muted-foreground hover:text-foreground')}>
+                      {t(`mm_b_gender_${g}`)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            {/* Advice, never a block: the choice above stays exactly as made. */}
+            {isNarrowAudience({ ageMin, ageMax, gender }) && (
+              <div data-mm-audience-rec="" role="note" className="flex items-start gap-2.5 rounded-xl border border-[hsl(var(--gold-border))]/50 bg-[hsl(var(--gold-soft))]/50 px-3.5 py-2.5 text-[13px] leading-relaxed">
+                <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden />
+                <span className="min-w-0">
+                  <span className="block font-semibold text-foreground">{t('mm_b_rec_title')}</span>
+                  <span className="text-muted-foreground">{t('mm_b_rec_narrow')}</span>
+                </span>
+              </div>
+            )}
+          </>
         )}
       </section>
 

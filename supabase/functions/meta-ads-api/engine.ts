@@ -34,7 +34,7 @@ import {
   GOAL_SPECS, adSetParams, adParams, campaignParams, creativeParams, missingRequirements, mapMetaStatus,
   settlement, checkMedia, recommendedPlacements, PLACEMENTS, isHttpsUrl,
   type LaunchContext, type LaunchCreative, type MessagingApp, type Placement,
-  launchCharge, parseBudgetBilling, type BudgetBilling,
+  launchCharge, launchStartTime, parseBudgetBilling, type BudgetBilling,
 } from '../../../src/lib/metaAds/payload.ts';
 import {
   graph, graphAll, MetaApiError, metaMode, openToken, uploadImage, uploadVideo, mockExternalId,
@@ -475,7 +475,7 @@ export async function publishCampaign(sb: Sb, uid: string, c: any, plan: TypedCa
   ]);
   if (!acct || !page) throw new MetaApiError(400, { error: { message: 'ASSETS_MISSING', code: 100 } });
   const goal = c.goal as MetaGoal;
-  const start = new Date(Date.now() + 5 * 60_000);
+  const start = launchStartTime(Date.now(), c.start_at ?? null);
   const ctx: LaunchContext = {
     pageId: page.external_id,
     instagramUserId: ig?.external_id ?? null,
@@ -564,7 +564,7 @@ export async function publishCampaign(sb: Sb, uid: string, c: any, plan: TypedCa
     }
     // The one act that starts delivery.
     await graph(`/${campaignId}`, { token, method: 'POST', body: { status: 'ACTIVE' }, audit: auditCtx });
-    return { campaignId, status: 'SUBMITTED' };
+    return { campaignId, status: 'SUBMITTED', requestedStartAt: ctx.startTime };
   } catch (err) {
     // Tear down what was created, so a retry never leaves orphans at Meta.
     for (const id of created) {
@@ -588,12 +588,14 @@ export async function syncCampaign(sb: Sb, c: any, mode: MetaMode) {
     return { ok: false, reason: 'NOT_CONNECTED' };
   }
   const auditCtx = { sb, userId: c.user_id, campaignId: c.id };
-  const info = await graph(`/${c.external_campaign_id}?fields=status,effective_status,stop_time`, { token, audit: auditCtx });
+  const info = await graph(`/${c.external_campaign_id}?fields=status,effective_status,start_time,stop_time`, { token, audit: auditCtx });
   const ads = await graphAll(`/${c.external_campaign_id}/ads?fields=id,effective_status,ad_review_feedback`, { token, audit: auditCtx }, 3);
   const insights = await graph(`/${c.external_campaign_id}/insights?fields=spend,impressions,reach,clicks,actions&date_preset=maximum`, { token, audit: auditCtx });
   const row = (insights.data as any[])?.[0] ?? null;
 
-  const endTime = c.launched_at ? Date.parse(c.launched_at) + Number(c.duration_days) * 86_400_000 + 10 * 60_000 : NaN;
+  // From the start HOMATCH requested (older launches: launched_at), never from local time alone.
+  const startedFrom = c.plan?.requestedStartAt ?? c.launched_at;
+  const endTime = startedFrom ? Date.parse(startedFrom) + Number(c.duration_days) * 86_400_000 + 10 * 60_000 : NaN;
   const verdict = mapMetaStatus({
     campaign: String(info.effective_status ?? info.status ?? ''),
     ads: ads.map((a) => String(a.effective_status ?? '')),
@@ -606,10 +608,14 @@ export async function syncCampaign(sb: Sb, c: any, mode: MetaMode) {
     }).eq('campaign_id', c.id).eq('kind', 'AD').eq('external_id', String(ad.id));
   }
 
-  const results = row ? {
-    spend: row.spend, impressions: row.impressions, reach: row.reach,
-    clicks: row.clicks, actions: row.actions, fetched_at: new Date().toISOString(),
-  } : null;
+  /* Meta's own start time is kept apart from HOMATCH's requested one
+     (plan.requestedStartAt): what was asked for vs what Meta holds. */
+  const results = {
+    ...(row ? { spend: row.spend, impressions: row.impressions, reach: row.reach, clicks: row.clicks, actions: row.actions } : {}),
+    meta_start_time: info.start_time ?? null,
+    fetched_at: new Date().toISOString(),
+    has_delivery: !!row,
+  };
   const spendCents = row ? Math.round(parseFloat(row.spend ?? '0') * 100) : Number(c.spend_cents ?? 0);
   const review = ads.map((a) => a.ad_review_feedback).find(Boolean) ?? null;
 

@@ -4,9 +4,9 @@
 // only), Campaign Guard, billing and data freshness. Every number comes from
 // campaignDetail(); a section without data says so instead of inventing one.
 // Deep links: ?tab=performance|placements|audience|creatives|leads|optimization|integrity.
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Megaphone } from 'lucide-react';
+import { ArrowLeft, Check, Megaphone } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { RouteGuard } from '@/components/common/RouteGuard';
@@ -30,6 +30,7 @@ import { LeadsFunnelSection } from '@/components/metaAds/campaign/LeadsFunnelSec
 import { OptimizationSection } from '@/components/metaAds/campaign/OptimizationSection';
 import { IntegritySection, SuspendedBanner } from '@/components/metaAds/campaign/IntegritySection';
 import { BillingSection } from '@/components/metaAds/campaign/BillingSection';
+import { LiveDot, LiveStatusCard } from '@/components/metaAds/campaign/LiveStatusCard';
 
 export const CAMPAIGN_TABS = [
   'overview', 'performance', 'placements', 'audience', 'geo', 'time', 'creatives', 'leads', 'optimization', 'integrity', 'billing',
@@ -63,6 +64,18 @@ export default function MetaAdsCampaignPage() {
   }, [id]);
   useEffect(() => { void load(); }, [load]);
   const refresh = useCallback(() => { void load(true); }, [load]);
+
+  /* While the campaign is live at Meta, re-read what the backend holds every
+     minute (a database read — Meta itself is synced every 15 minutes),
+     and at once when the tab comes back. Never a local status change. */
+  const liveNow = !!d && ['SUBMITTED', 'META_REVIEW', 'ACTIVE', 'PAUSED'].includes(d.campaign.status);
+  useEffect(() => {
+    if (!liveNow) return undefined;
+    const tick = () => { if (document.visibilityState === 'visible') void load(true); };
+    const id = window.setInterval(tick, 60_000);
+    document.addEventListener('visibilitychange', tick);
+    return () => { window.clearInterval(id); document.removeEventListener('visibilitychange', tick); };
+  }, [liveNow, load]);
 
   const fmt = useMemo(() => makeFmt(lang, d?.campaign.currency || 'USD'), [lang, d?.campaign.currency]);
 
@@ -119,6 +132,7 @@ export default function MetaAdsCampaignPage() {
             {c.special_ad_categories?.length > 0 && <Chip>{t('mads_housing_note')}</Chip>}
           </div>
           <LifecycleStrip status={c.status} />
+          <LiveStatusCard t={t} fmt={fmt} d={d} />
           <ProvenanceNote t={t} fmt={fmt} provenance={d.provenance} />
 
           {suspended && tab !== 'integrity' && <SuspendedBanner t={t} />}
@@ -154,21 +168,58 @@ export default function MetaAdsCampaignPage() {
  * Where the campaign is, in the order it actually travels. HOMATCH's own
  * check and Meta's review are separate steps, and ACTIVE only lights up when
  * Meta reports delivery — never because our own write succeeded.
+ *
+ * Motion is quiet and only on the CURRENT step: a soft pulse while Meta is
+ * reviewing or delivering, still when paused, none once completed; the first
+ * time this page sees the campaign turn ACTIVE, one soft ring. All of it is
+ * motion-safe, so reduced motion gets the same states without movement.
  */
 const LIFECYCLE = ['READY', 'SUBMITTED', 'META_REVIEW', 'ACTIVE', 'COMPLETED'] as const;
-function LifecycleStrip({ status }: { status: string }) {
+export function LifecycleStrip({ status }: { status: string }) {
   const { t } = useLanguage();
-  const off = ['REJECTED', 'FAILED', 'PAUSED', 'ARCHIVED'].includes(status);
-  const at = LIFECYCLE.indexOf(status as never);
+  const failed = ['REJECTED', 'FAILED', 'ARCHIVED'].includes(status);
+  const paused = status === 'PAUSED';
+  // Paused sits on the ACTIVE step, dormant.
+  const at = paused ? LIFECYCLE.indexOf('ACTIVE') : LIFECYCLE.indexOf(status as never);
+  const done = status === 'COMPLETED';
+
+  /* One soft ring, once, when this page watches the campaign become ACTIVE. */
+  const seen = useRef(status);
+  const [activated, setActivated] = useState(false);
+  useEffect(() => {
+    if (status === 'ACTIVE' && seen.current !== 'ACTIVE') {
+      setActivated(true);
+      const id = window.setTimeout(() => setActivated(false), 1600);
+      seen.current = status;
+      return () => window.clearTimeout(id);
+    }
+    seen.current = status;
+    return undefined;
+  }, [status]);
+
   return (
-    <ol className="flex flex-wrap items-center gap-1.5 text-2xs" aria-label={t('madsb_lifecycle_label')}>
-      {LIFECYCLE.map((s, i) => (
-        <li key={s} aria-current={i === at && !off ? 'step' : undefined}
-          className={`rounded-full border px-2.5 py-1 ${i <= at && !off ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] font-semibold text-foreground' : 'border-border text-muted-foreground'}`}>
-          {t(`madsb_lifecycle_${s.toLowerCase()}`)}
-        </li>
-      ))}
-      {off && <li className="rounded-full border border-destructive/30 bg-destructive/10 px-2.5 py-1 font-semibold text-destructive">{t(`mads_status_${status.toLowerCase()}`)}</li>}
+    <ol className="flex flex-wrap items-center gap-1.5 text-2xs" aria-label={t('madsb_lifecycle_label')} data-mm-lifecycle={status}>
+      {LIFECYCLE.map((s, i) => {
+        const current = i === at && !failed;
+        const complete = !failed && (i < at || (done && i === at));
+        return (
+          <li key={s} aria-current={current ? 'step' : undefined} data-mm-step={current ? 'current' : complete ? 'done' : 'future'}
+            className={[
+              'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 transition-colors',
+              current && !done ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] font-semibold text-foreground shadow-sm'
+                : complete ? 'border-[hsl(var(--gold-border))]/60 bg-[hsl(var(--gold-soft))]/60 text-foreground'
+                  : 'border-border text-muted-foreground',
+              current && paused ? 'opacity-70' : '',
+              current && activated ? 'motion-safe:animate-[mm-activate_1.4s_ease-out_1]' : '',
+            ].join(' ')}>
+            {complete && <Check className="h-3 w-3 text-[hsl(152_54%_32%)]" aria-hidden="true" />}
+            {current && !done && <LiveDot status={status} />}
+            {t(`madsb_lifecycle_${s.toLowerCase()}`)}
+          </li>
+        );
+      })}
+      {paused && <li className="rounded-full border border-border bg-[hsl(var(--secondary))] px-2.5 py-1 font-semibold text-muted-foreground">{t('mads_status_paused')}</li>}
+      {failed && <li className="rounded-full border border-destructive/30 bg-destructive/10 px-2.5 py-1 font-semibold text-destructive">{t(`mads_status_${status.toLowerCase()}`)}</li>}
     </ol>
   );
 }

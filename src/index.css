@@ -1904,3 +1904,14 @@ html[data-impersonating] .sticky.top-0 { top: 2.5rem; }
     }
   }
 }
+
+/* Meta Ads live status (campaign detail). Used through motion-safe: only, so
+   prefers-reduced-motion gets a still state. */
+@keyframes mm-indeterminate {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(310%); }
+}
+@keyframes mm-activate {
+  0% { box-shadow: 0 0 0 0 hsl(152 60% 42% / 0.45); }
+  100% { box-shadow: 0 0 0 10px hsl(152 60% 42% / 0); }
+}

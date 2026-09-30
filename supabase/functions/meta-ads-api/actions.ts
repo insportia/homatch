@@ -58,6 +58,9 @@ function publicCampaign(c: any) {
     last_synced_at: c.last_synced_at, insights_synced_at: c.insights_synced_at, external_status: c.external_status,
     last_error_key: c.last_error?.key ?? null, strategy: c.plan?.strategy ?? null, plan_version: c.plan_version,
     ad_set_count: Array.isArray(c.plan?.adSets) ? c.plan.adSets.length : 0,
+    // HOMATCH's requested start vs the start Meta reports (engine.syncCampaign).
+    requested_start_at: c.plan?.requestedStartAt ?? null,
+    meta_start_time: c.results?.meta_start_time ?? null,
   };
 }
 

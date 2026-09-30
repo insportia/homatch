@@ -519,6 +519,9 @@ Deno.serve(async (req) => {
           await sb.from('meta_campaigns').update({
             external_campaign_id: external.campaignId, external_status: external.status,
             status: 'SUBMITTED', last_synced_at: new Date().toISOString(), last_error: null,
+            // HOMATCH's requested start (server clock + 1 min, or the customer's schedule).
+            // Meta's own start and delivery state come back through sync.
+            ...('requestedStartAt' in external && external.requestedStartAt ? { plan: { ...plan, requestedStartAt: external.requestedStartAt } } : {}),
           }).eq('id', c.id);
           let after: Record<string, unknown> = { status: 'SUBMITTED' };
           if (mode === 'REAL') {

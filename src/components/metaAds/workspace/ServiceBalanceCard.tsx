@@ -16,7 +16,7 @@ export const MIN_DEPOSIT_CENTS = 500;
 
 export function ServiceBalanceCard({ rows, feePercent }: { rows: ServiceBalanceRow[]; feePercent?: number | null }) {
   const { t, lang } = useLanguage();
-  const balanceExplanation = serviceBalanceExplanation(lang, feePercent);
+  const balanceCopy = serviceBalanceCopy(lang, feePercent);
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState('50');
   const [busy, setBusy] = useState(false);
@@ -41,7 +41,7 @@ export function ServiceBalanceCard({ rows, feePercent }: { rows: ServiceBalanceR
       </h2>
 
       {rows.length === 0 ? (
-        <p className="mt-3 text-sm text-white/75">{t('mm_w_bal_empty')}</p>
+        <p className="mt-3 text-sm text-white/75">{balanceCopy.empty}</p>
       ) : (
         <div className="mt-3 space-y-4">
           {rows.map(r => (
@@ -60,10 +60,10 @@ export function ServiceBalanceCard({ rows, feePercent }: { rows: ServiceBalanceR
         </div>
       )}
 
-      {feePercent != null && <p className="mt-3 text-[13px] text-white/70">{t('mm_w_bal_fee', { percent: feePercent })}</p>}
+      {feePercent != null && <p className="mt-3 text-[13px] text-white/70">{balanceCopy.feeLabel}</p>}
 
       <p className="mt-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[13px] leading-relaxed text-white/80">
-        {balanceExplanation}
+        {balanceCopy.card}
       </p>
 
       <Button onClick={() => setOpen(true)}
@@ -72,18 +72,19 @@ export function ServiceBalanceCard({ rows, feePercent }: { rows: ServiceBalanceR
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-sm">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[calc(100dvh-2rem)] max-w-[calc(100%-2rem)] flex-col overflow-hidden p-0 md:max-w-sm">
+          <DialogHeader className="shrink-0 px-6 pt-6">
             <DialogTitle>{t('mads_add_funds')}</DialogTitle>
-            <DialogDescription>{balanceExplanation}</DialogDescription>
+            <DialogDescription>{balanceCopy.dialog}</DialogDescription>
           </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pb-4">
           <label className="flex items-center gap-2" dir="ltr">
             <span className="text-lg font-bold" aria-hidden="true">$</span>
             <Input inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} aria-label={t('mads_add_funds')} />
           </label>
           <p className="text-[13px] text-muted-foreground">{t('mm_w_bal_min')}</p>
-          <p className="text-[13px] leading-relaxed text-muted-foreground">{balanceExplanation}</p>
-          <DialogFooter>
+          </div>
+          <DialogFooter className="shrink-0 border-t bg-background px-6 py-4">
             <Button variant="outline" onClick={() => setOpen(false)}>{t('general_cancel')}</Button>
             <Button onClick={deposit} disabled={busy}>
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : t('mads_deposit_go')}
@@ -108,27 +109,43 @@ function Line({ label, value, hint }: { label: string; value: string; hint?: str
 }
 
 
-function serviceBalanceExplanation(lang: string, feePercent?: number | null): string {
+function serviceBalanceCopy(lang: string, feePercent?: number | null) {
   const pct = feePercent ?? 9;
-  if (pct === 0) {
-    const zero: Record<string, string> = {
-      en: 'This balance is only for HOMATCH service fees. Your service fee is 0%, so no HOMATCH top-up is required for Meta Ads. Meta charges the advertising budget directly to your connected ad account.',
-      ka: 'ეს ბალანსი მხოლოდ HOMATCH-ის მომსახურების საკომისიოსთვისაა. თქვენი მომსახურების საკომისიო 0%-ია, ამიტომ Meta Ads-ისთვის HOMATCH ბალანსის შევსება არ გჭირდებათ. სარეკლამო ბიუჯეტს Meta პირდაპირ თქვენს დაკავშირებულ სარეკლამო ანგარიშს ჩამოაჭრის.',
-      ru: 'Этот баланс предназначен только для комиссии HOMATCH. Ваша комиссия — 0%, поэтому пополнять баланс HOMATCH для Meta Ads не нужно. Рекламный бюджет Meta списывает напрямую с подключённого рекламного аккаунта.',
-      tr: 'Bu bakiye yalnızca HOMATCH hizmet bedeli içindir. Hizmet bedeliniz %0 olduğundan Meta Ads için HOMATCH bakiyesine para eklemeniz gerekmez. Reklam bütçesini Meta doğrudan bağlı reklam hesabınızdan tahsil eder.',
-      ar: 'هذا الرصيد مخصص فقط لرسوم خدمة HOMATCH. رسوم خدمتك 0%، لذلك لا تحتاج إلى شحن رصيد HOMATCH لإعلانات Meta. تخصم Meta ميزانية الإعلان مباشرةً من حسابك الإعلاني المرتبط.',
-      he: 'היתרה הזו מיועדת רק לדמי השירות של HOMATCH. דמי השירות שלכם הם 0%, ולכן אין צורך להטעין את יתרת HOMATCH עבור Meta Ads. Meta מחייבת את תקציב הפרסום ישירות מחשבון המודעות המחובר.',
-    };
-    return zero[lang] ?? zero.en;
-  }
   const exampleFee = (100 * pct / 100).toLocaleString(undefined, { maximumFractionDigits: 2 });
-  const copy: Record<string, string> = {
-    en: `This balance is only for the HOMATCH service fee — it is not your Meta advertising budget. Meta charges the ad budget directly to your connected ad account. Example: if your advertising budget is $100 and your service fee is ${pct}%, you need $\${exampleFee} in your HOMATCH balance. Unused funds stay in your HOMATCH balance for future campaigns and are not withdrawable as cash.`,
-    ka: `ეს ბალანსი მხოლოდ HOMATCH-ის მომსახურების საკომისიოსთვისაა და არ წარმოადგენს Meta-ს სარეკლამო ბიუჯეტს. სარეკლამო ბიუჯეტს Meta პირდაპირ თქვენს დაკავშირებულ სარეკლამო ანგარიშს ჩამოაჭრის. მაგალითი: თუ თქვენი სარეკლამო ბიუჯეტია $100 და მომსახურების საკომისიო ${pct}%-ია, HOMATCH-ის ბალანსზე უნდა გქონდეთ $\${exampleFee}. გამოუყენებელი თანხა რჩება HOMATCH-ის ბალანსზე მომავალი კამპანიებისთვის და ნაღდ ფულად ვერ გაიტანთ.`,
-    ru: `Этот баланс предназначен только для комиссии HOMATCH и не является рекламным бюджетом Meta. Meta списывает рекламный бюджет напрямую с подключённого рекламного аккаунта. Пример: если рекламный бюджет — $100, а комиссия — ${pct}%, на балансе HOMATCH нужно $\${exampleFee}. Неиспользованные средства остаются на балансе HOMATCH для будущих кампаний и не выводятся наличными.`,
-    tr: `Bu bakiye yalnızca HOMATCH hizmet bedeli içindir; Meta reklam bütçeniz değildir. Meta reklam bütçesini doğrudan bağlı reklam hesabınızdan tahsil eder. Örnek: reklam bütçeniz $100 ve hizmet bedeliniz %${pct} ise HOMATCH bakiyenizde $\${exampleFee} bulunmalıdır. Kullanılmayan tutar gelecekteki kampanyalar için HOMATCH bakiyenizde kalır ve nakit olarak çekilemez.`,
-    ar: `هذا الرصيد مخصص فقط لرسوم خدمة HOMATCH وليس ميزانية إعلانات Meta. تخصم Meta ميزانية الإعلان مباشرةً من حسابك الإعلاني المرتبط. مثال: إذا كانت ميزانية الإعلان $100 ورسوم الخدمة ${pct}%، فيجب أن يتوفر $\${exampleFee} في رصيد HOMATCH. يبقى المبلغ غير المستخدم في رصيد HOMATCH للحملات المستقبلية ولا يمكن سحبه نقدًا.`,
-    he: `היתרה הזו מיועדת רק לדמי השירות של HOMATCH ואינה תקציב הפרסום ב-Meta. Meta מחייבת את תקציב הפרסום ישירות מחשבון המודעות המחובר. לדוגמה: אם תקציב הפרסום הוא $100 ודמי השירות הם ${pct}%, צריכים להיות $\${exampleFee} ביתרת HOMATCH. סכום שלא נוצל נשאר ביתרת HOMATCH לקמפיינים עתידיים ואינו ניתן למשיכה במזומן.`,
+
+  const ka = pct === 0 ? {
+    empty: 'HOMATCH-ის მომსახურების ბალანსზე თანხის დამატება არ გჭირდებათ.',
+    feeLabel: 'HOMATCH-ის მომსახურების საკომისიო: 0%',
+    card: 'თქვენთვის HOMATCH-ის მომსახურების საკომისიო 0%-ია. Meta-ს სარეკლამო ბიუჯეტს Meta პირდაპირ თქვენს დაკავშირებულ სარეკლამო ანგარიშს ჩამოაჭრის.',
+    dialog: 'თქვენთვის HOMATCH-ის მომსახურების საკომისიო 0%-ია, ამიტომ ამ ბალანსის შევსება Meta Ads-ის გასაშვებად საჭირო არ არის.',
+  } : {
+    empty: 'ბალანსი ჯერ არ შეგივსიათ. თანხა დაგჭირდებათ მხოლოდ HOMATCH-ის მომსახურების საკომისიოს გადასახდელად.',
+    feeLabel: `HOMATCH-ის მომსახურების საკომისიო: ${pct}%`,
+    card: `ეს ბალანსი გამოიყენება მხოლოდ HOMATCH-ის მომსახურების საკომისიოსთვის. Meta-ს სარეკლამო ბიუჯეტი აქედან არ იხარჯება. მაგალითად, თუ სარეკლამო ბიუჯეტია $100, HOMATCH-ის ${pct}% მომსახურების საკომისიო არის $\${exampleFee}.`,
+    dialog: `შეავსეთ მხოლოდ HOMATCH-ის მომსახურების საკომისიოს ბალანსი. მაგალითად, $100 სარეკლამო ბიუჯეტზე ${pct}% საკომისიო არის $\${exampleFee}. Meta-ს $100 სარეკლამო ბიუჯეტს Meta პირდაპირ თქვენს დაკავშირებულ სარეკლამო ანგარიშს ჩამოაჭრის. გამოუყენებელი თანხა დარჩება HOMATCH-ის ბალანსზე მომავალი კამპანიებისთვის და ნაღდ ფულად ვერ გაიტანთ.`,
   };
-  return copy[lang] ?? copy.en;
+
+  if (lang === 'ka') return ka;
+
+  const zero: Record<string, ReturnType<typeof serviceBalanceCopyFallback>> = {
+    en: serviceBalanceCopyFallback('No top-up is required for the HOMATCH service balance.', 'HOMATCH service fee: 0%', 'Your HOMATCH service fee is 0%. Meta charges the advertising budget directly to your connected ad account.', 'Your HOMATCH service fee is 0%, so no HOMATCH service-balance top-up is required.'),
+    ru: serviceBalanceCopyFallback('Пополнять баланс HOMATCH не требуется.', 'Комиссия HOMATCH: 0%', 'Ваша комиссия HOMATCH — 0%. Рекламный бюджет Meta списывает напрямую с подключённого рекламного аккаунта.', 'Ваша комиссия HOMATCH — 0%, поэтому пополнять этот баланс для Meta Ads не требуется.'),
+    tr: serviceBalanceCopyFallback('HOMATCH hizmet bakiyesine para eklemeniz gerekmez.', 'HOMATCH hizmet bedeli: %0', 'HOMATCH hizmet bedeliniz %0. Meta reklam bütçesini doğrudan bağlı reklam hesabınızdan tahsil eder.', 'HOMATCH hizmet bedeliniz %0 olduğundan bu bakiyeyi Meta Ads için doldurmanız gerekmez.'),
+    ar: serviceBalanceCopyFallback('لا تحتاج إلى شحن رصيد خدمة HOMATCH.', 'رسوم خدمة HOMATCH: 0%', 'رسوم خدمة HOMATCH لديك 0%. تخصم Meta ميزانية الإعلان مباشرةً من حسابك الإعلاني المرتبط.', 'رسوم خدمة HOMATCH لديك 0%، لذلك لا يلزم شحن هذا الرصيد لإعلانات Meta.'),
+    he: serviceBalanceCopyFallback('אין צורך להטעין את יתרת השירות של HOMATCH.', 'דמי השירות של HOMATCH: 0%', 'דמי השירות של HOMATCH עבורכם הם 0%. Meta מחייבת את תקציב הפרסום ישירות מחשבון המודעות המחובר.', 'דמי השירות של HOMATCH עבורכם הם 0%, ולכן אין צורך להטעין את היתרה עבור Meta Ads.'),
+  };
+  if (pct === 0) return zero[lang] ?? zero.en;
+
+  const standard: Record<string, ReturnType<typeof serviceBalanceCopyFallback>> = {
+    en: serviceBalanceCopyFallback('Your balance is empty. Add funds only to cover the HOMATCH service fee.', `HOMATCH service fee: ${pct}%`, `This balance is only for the HOMATCH service fee; Meta ad spend is not taken from it. Example: with a $100 ad budget, the ${pct}% HOMATCH service fee is $\${exampleFee}.`, `Add only the HOMATCH service-fee amount. Example: for a $100 ad budget, a ${pct}% service fee is $\${exampleFee}. Meta charges the $100 ad budget directly to your connected ad account. Unused funds remain in your HOMATCH balance for future campaigns and cannot be withdrawn as cash.`),
+    ru: serviceBalanceCopyFallback('Баланс пуст. Пополните его только для оплаты комиссии HOMATCH.', `Комиссия HOMATCH: ${pct}%`, `Этот баланс используется только для комиссии HOMATCH; рекламный бюджет Meta отсюда не списывается. Пример: при бюджете $100 комиссия HOMATCH ${pct}% составляет $\${exampleFee}.`, `Пополните только сумму комиссии HOMATCH. Пример: при рекламном бюджете $100 комиссия ${pct}% составляет $\${exampleFee}. Meta списывает рекламные $100 напрямую с подключённого рекламного аккаунта. Неиспользованные средства остаются на балансе HOMATCH для будущих кампаний и не выводятся наличными.`),
+    tr: serviceBalanceCopyFallback('Bakiyeniz boş. Yalnızca HOMATCH hizmet bedelini karşılamak için para ekleyin.', `HOMATCH hizmet bedeli: %${pct}`, `Bu bakiye yalnızca HOMATCH hizmet bedeli içindir; Meta reklam harcaması buradan alınmaz. Örnek: $100 reklam bütçesinde %${pct} HOMATCH hizmet bedeli $\${exampleFee} olur.`, `Yalnızca HOMATCH hizmet bedeli tutarını ekleyin. Örnek: $100 reklam bütçesinde %${pct} hizmet bedeli $\${exampleFee} olur. Meta $100 reklam bütçesini doğrudan bağlı reklam hesabınızdan tahsil eder. Kullanılmayan tutar gelecekteki kampanyalar için HOMATCH bakiyenizde kalır ve nakit çekilemez.`),
+    ar: serviceBalanceCopyFallback('رصيدك فارغ. أضف أموالاً فقط لتغطية رسوم خدمة HOMATCH.', `رسوم خدمة HOMATCH: ${pct}%`, `هذا الرصيد مخصص فقط لرسوم خدمة HOMATCH؛ ولا تُخصم منه ميزانية إعلانات Meta. مثال: عند ميزانية إعلانية قدرها $100، تكون رسوم HOMATCH بنسبة ${pct}% هي $\${exampleFee}.`, `أضف فقط مبلغ رسوم خدمة HOMATCH. مثال: عند ميزانية إعلانية قدرها $100، تكون الرسوم بنسبة ${pct}% هي $\${exampleFee}. تخصم Meta ميزانية الإعلان البالغة $100 مباشرةً من حسابك الإعلاني المرتبط. يبقى المبلغ غير المستخدم في رصيد HOMATCH للحملات المستقبلية ولا يمكن سحبه نقدًا.`),
+    he: serviceBalanceCopyFallback('היתרה ריקה. הוסיפו כסף רק לכיסוי דמי השירות של HOMATCH.', `דמי השירות של HOMATCH: ${pct}%`, `היתרה הזו משמשת רק לדמי השירות של HOMATCH; תקציב הפרסום של Meta אינו נגבה ממנה. לדוגמה: בתקציב פרסום של $100, דמי שירות של ${pct}% הם $\${exampleFee}.`, `הוסיפו רק את סכום דמי השירות של HOMATCH. לדוגמה: בתקציב פרסום של $100, דמי שירות של ${pct}% הם $\${exampleFee}. Meta מחייבת את תקציב הפרסום בסך $100 ישירות מחשבון המודעות המחובר. סכום שלא נוצל נשאר ביתרת HOMATCH לקמפיינים עתידיים ואינו ניתן למשיכה במזומן.`),
+  };
+  return standard[lang] ?? standard.en;
+}
+
+function serviceBalanceCopyFallback(empty: string, feeLabel: string, card: string, dialog: string) {
+  return { empty, feeLabel, card, dialog };
 }

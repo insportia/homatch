@@ -463,7 +463,8 @@ async function main() {
 
     await page.getByRole('button', { name: 'Choose my property' }).click();
     await page.getByRole('dialog').waitFor();
-    check('picker: lists the customer\'s properties', await page.getByText('Two-bedroom apartment, Vake').isVisible());
+    // The list loads after the dialog opens: wait for the row rather than racing it.
+    check('picker: lists the customer\'s properties', await page.getByText('Two-bedroom apartment, Vake').waitFor({ timeout: 10000 }).then(() => true, () => false));
     await page.screenshot({ path: path.join(OUT, 'cp1-picker-1440-en.png') });
     await page.getByRole('dialog').getByRole('button', { name: 'Start designing' }).first().click();
     await page.waitForURL(/\/design-studio\/[0-9a-f-]{36}$/);

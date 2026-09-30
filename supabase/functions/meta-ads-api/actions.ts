@@ -28,10 +28,14 @@ import { analyzeCampaign, QUALIFIED, VIEWED } from './intelligence.ts';
 import { lifecycleEvent } from './monitor.ts';
 
 type Sb = any;
+const rpcErr = (m: string) => (String(m ?? '').match(/\b(FORBIDDEN|REASON_REQUIRED|PERCENT_INVALID|BAD_KIND|USER_NOT_FOUND)\b/)?.[1] ?? 'FAILED');
 type Json = (b: unknown, s?: number) => Response;
 
 export interface ActionCtx {
-  sb: Sb; uid: string; me: { id: string; is_admin?: boolean; email?: string | null };
+  sb: Sb;
+  /** The caller's own session: database RBAC functions check THIS identity. */
+  userClient?: Sb;
+  uid: string; me: { id: string; is_admin?: boolean; email?: string | null };
   body: Record<string, any>; action: string; settings: MetaSettings; mode: MetaMode; json: Json;
   audit: (sb: Sb, actorId: string | null, action: string, target: string, meta: unknown) => Promise<void>;
 }
@@ -459,27 +463,35 @@ export async function handleAction(x: ActionCtx): Promise<Response | null> {
           sb.from('meta_fee_policies').select('*').eq('user_id', target).maybeSingle(),
           sb.from('meta_fee_policy_audit').select('*').eq('user_id', target).order('created_at', { ascending: false }).limit(50),
         ]);
-        return json({ policy: policy ?? { kind: 'STANDARD_PERCENT', percent: null }, standardPercent: settings.feePercent, audit: audit ?? [] });
+        const { data: effective } = await sb.rpc('meta_effective_fee_percent', { p_user: target });
+        return json({ policy: policy ?? { kind: 'STANDARD_PERCENT', percent: null }, standardPercent: settings.feePercent,
+          effectivePercent: effective ?? null, audit: audit ?? [] });
       }
 
       case 'admin_fee_policy_set': {
-        if (!me.is_admin) return json({ error: 'forbidden' }, 403);
-        const target = String(body.targetUserId ?? '');
-        const kind = String(body.kind ?? '');
-        const reason = String(body.reason ?? '').trim().slice(0, 500);
-        if (!UUID.test(target)) return json({ error: 'targetUserId required' }, 400);
-        if (!['STANDARD_PERCENT', 'FEE_EXEMPT', 'CUSTOM_PERCENT'].includes(kind)) return json({ error: 'bad kind' }, 400);
-        if (reason.length < 3) return json({ error: 'REASON_REQUIRED', code: 'REASON_REQUIRED' }, 400);
-        const percent = kind === 'CUSTOM_PERCENT' ? Number(body.percent) : null;
-        if (kind === 'CUSTOM_PERCENT' && !(Number.isFinite(percent) && percent! >= 0 && percent! <= 100)) return json({ error: 'PERCENT_INVALID', code: 'PERCENT_INVALID' }, 400);
-        const { data: prev } = await sb.from('meta_fee_policies').select('kind,percent').eq('user_id', target).maybeSingle();
-        const next = { kind, percent };
-        const { error } = await sb.from('meta_fee_policies').upsert({ user_id: target, kind, percent, reason, set_by: uid, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
-        if (error) throw error;
-        await sb.from('meta_fee_policy_audit').insert({ user_id: target, admin_user_id: uid, previous: prev ?? null, next, reason });
-        await x.audit(sb, uid, 'META_FEE_POLICY_SET', target, { previous: prev ?? null, next, reason });
+        /* The canonical path: admin_set_meta_fee_policy() under the ADMIN's own
+           session checks the role, validates, writes the policy, its history
+           and the audit log in one transaction. */
+        if (!me.is_admin || !x.userClient) return json({ error: 'forbidden' }, 403);
+        const { data, error } = await x.userClient.rpc('admin_set_meta_fee_policy', {
+          p_user: String(body.targetUserId ?? ''), p_kind: String(body.kind ?? ''),
+          p_percent: body.kind === 'CUSTOM_PERCENT' ? Number(body.percent) : null, p_reason: String(body.reason ?? ''),
+        });
+        if (error) return json({ error: rpcErr(error.message), code: rpcErr(error.message) }, rpcErr(error.message) === 'FORBIDDEN' ? 403 : 400);
         // Applies to launches and plan changes from now on; live campaigns keep the percent they launched with.
-        return json({ ok: true, policy: next });
+        return json({ ok: true, ...(data as Record<string, unknown>) });
+      }
+
+      case 'admin_customer_finance': {
+        if (!me.is_admin || !x.userClient) return json({ error: 'forbidden' }, 403);
+        const target = String(body.targetUserId ?? '');
+        if (!UUID.test(target)) return json({ error: 'targetUserId required' }, 400);
+        const [{ data, error }, quote] = await Promise.all([
+          x.userClient.rpc('admin_meta_customer_finance', { p_user: target }),
+          x.userClient.rpc('meta_service_fee_quote', { p_user: target, p_planned_media_cents: 10000 }),
+        ]);
+        if (error) return json({ error: rpcErr(error.message) }, rpcErr(error.message) === 'FORBIDDEN' ? 403 : 500);
+        return json({ ...(data as Record<string, unknown>), standardPercent: settings.feePercent, sampleQuote: quote.data ?? null });
       }
 
       /* ── ADMIN: NOTIFICATION + AI ECONOMICS ─────────────────────────── */

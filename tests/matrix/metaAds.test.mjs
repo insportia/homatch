@@ -53,7 +53,11 @@ test('the 9% fee lives in admin_settings alone — code always reads the setting
   // resolver, and it falls back to settings.feePercent, never a literal.
   const feeUses = api.match(/customerFeePercent\(sb, uid, settings\)/g) ?? [];
   assert.ok(feeUses.length >= 2, 'launch and preview both use the canonical fee resolver');
-  assert.match(engine, /effectiveFeePercent\([^)]*settings\.feePercent\)/, 'the resolver falls back to the canonical setting');
+  // The resolver is the database function; it falls back to the same setting.
+  assert.match(engine, /rpc\('meta_effective_fee_percent'/, 'the edge asks the canonical fee function');
+  const finance = read('supabase/migrations/20261002110000_meta_ads_finance_control.sql');
+  assert.match(finance, /key = 'meta_ads_fee_percent'/, 'the canonical fee function reads the standard setting');
+  assert.doesNotMatch(finance, /\b9(\.0+)?\s*\/\s*100\b/, 'no literal 9% in the fee function');
   // The frontend never hardcodes a percent either: the wizard renders the
   // percent it was given by `status`.
   const create = read('src/pages/outreach/MetaAdsCreatePage.tsx');

@@ -118,11 +118,20 @@ export async function loadSettings(sb: Sb): Promise<MetaSettings> {
   };
 }
 
-/** The service-fee percent for this customer: the admin policy, or standard. */
-export async function customerFeePercent(sb: Sb, userId: string, settings: MetaSettings): Promise<number> {
-  const { data } = await sb.from('meta_fee_policies').select('kind,percent').eq('user_id', userId).maybeSingle();
-  return effectiveFeePercent(data ? { kind: data.kind, percent: data.percent } as FeePolicy : null, settings.feePercent);
+/**
+ * The service-fee percent for this customer — from the ONE canonical source,
+ * the database (meta_effective_fee_percent: the admin policy over the standard
+ * setting). Never guessed: if it cannot be read, the caller fails.
+ * `settings.feePercent` is the same standard setting, kept for display.
+ */
+export async function customerFeePercent(sb: Sb, userId: string, _settings?: MetaSettings): Promise<number> {
+  const { data, error } = await sb.rpc('meta_effective_fee_percent', { p_user: userId });
+  if (error || data == null || !Number.isFinite(Number(data))) throw new Error('FEE_POLICY_UNAVAILABLE');
+  return Number(data);
 }
+
+/** Reference implementation the database mirrors (tests compare them). */
+export const feePercentFromPolicy = (policy: FeePolicy | null, standardPercent: number) => effectiveFeePercent(policy, standardPercent);
 
 /* ── TOKENS + ASSETS ────────────────────────────────────────────────── */
 

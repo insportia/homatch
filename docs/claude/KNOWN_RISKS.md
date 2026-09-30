@@ -82,3 +82,20 @@ Runs #845 and #848 both left meta-oauth STALE (version unchanged, index.ts misma
 other owed functions in the same run moved and proved. A single-function dispatch
 (`redeploy=meta-oauth`, runs #846/#849) proved it exact both times. The artifact proof caught it;
 until the cause is known, redeploy meta-oauth on its own when the proof flags it.
+
+## Entry bundle ratchet at 6.5MB (moved 2026-09-30, owner-approved)
+
+`tests/browser/accessibilityAudit.test.mjs` fails the Validate job — and so
+blocks every edge deploy — when the Vite entry chunk passes its ceiling. The
+Meta Ads master release (PR #18) took it from under 6MB to 6.21MB with ~330KB of
+translation source; the owner approved moving the ceiling to 6.5MB for that
+release only. `src/i18n/translations.ts` (all six languages, synchronous
+import in LanguageContext) is ~3.9MB of the entry.
+
+- The move is not headroom: the next growth needs its own owner decision.
+- Follow-up (dedicated, after this release): load English + the active
+  language up front, others on demand; then lower the ceiling to the new
+  measurement.
+- Watch-out seen during this release: Vercel auto-deploys `main` even when the
+  Validate job fails, so a failed deploy run can leave a NEW frontend live
+  against OLD edge functions. Check both after every main merge.

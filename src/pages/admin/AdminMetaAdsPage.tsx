@@ -443,26 +443,17 @@ function Moderation() {
 function Finance() {
   const { t } = useLanguage();
   const [userFilter, setUserFilter] = useState('');
-  const { rows, loading, reload } = useRows(async () => {
+  const { rows, loading } = useRows(async () => {
     let q = supabase.from('meta_ads_ledger').select('*').order('created_at', { ascending: false }).limit(300);
     if (userFilter) q = q.eq('user_id', userFilter);
     const { data } = await q; return data ?? [];
   }, [userFilter]);
-  const adjust = async () => {
-    const user = window.prompt('User id:'); if (!user) return;
-    const amount = Number(window.prompt('Amount in cents (positive = credit, negative = debit):') ?? '');
-    const reason = window.prompt('Reason (required, audited):') ?? '';
-    if (!Number.isFinite(amount) || amount === 0 || !reason.trim()) { toast.error(t('admin_mads_adjust_required')); return; }
-    const { data, error } = await supabase.functions.invoke('meta-ads-api', {
-      body: { action: 'admin_adjust', targetUserId: user, amountCents: Math.round(amount), reason },
-    });
-    if (error || (data as any)?.error) toast.error(t('admin_mads_action_failed')); else { toast.success(t('admin_mads_saved')); reload(); }
-  };
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">
         <Input placeholder={t('admin_mads_filter_user_ph')} value={userFilter} onChange={e => setUserFilter(e.target.value)} className="max-w-sm font-mono" />
-        <Button size="sm" variant="outline" onClick={adjust}>{t('admin_mads_manual_adjust')}</Button>
+        {/* Adjustments live with the customer (Fees & finance): direction, reason and balance before/after, audited. */}
+        <p className="self-center text-2xs text-muted-foreground">{t('mm_a_fin_adjust_where')}</p>
       </div>
       {loading ? <Skeleton className="h-40 rounded-2xl" /> : (
         <Card>

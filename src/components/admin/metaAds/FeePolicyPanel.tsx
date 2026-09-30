@@ -14,6 +14,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { searchUsers, type UserSearchRow } from '@/services/adminControl';
 import { adminFeePolicyGet, adminFeePolicySet } from '@/services/metaAds';
+import { CustomerFinancePanel } from './CustomerFinancePanel';
 import { errorText, MIN_REASON, Panel } from './kit';
 
 type Kind = 'STANDARD_PERCENT' | 'FEE_EXEMPT' | 'CUSTOM_PERCENT';
@@ -46,6 +47,7 @@ export function FeePolicyPanel() {
   const [reason, setReason] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [financeVersion, setFinanceVersion] = useState(0);
 
   const search = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -83,6 +85,7 @@ export function FeePolicyPanel() {
       toast.success(t('mm_a_fee_saved'));
       setConfirming(false);
       await load(user.id);
+      setFinanceVersion((v) => v + 1);
     } catch (err) {
       toast.error(t('mm_a_act_failed', { error: errorText(err) }));
     } finally { setSaving(false); }
@@ -129,7 +132,8 @@ export function FeePolicyPanel() {
       {user && (loading && !data ? <Skeleton className="h-40 rounded-2xl" /> : data && (
         <Panel title={t('mm_a_fee_selected', { who: user.email ?? user.id })}>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm" aria-live="polite">
-            <b className="text-base">{t('mm_a_fee_effective', { percent: effectivePercent(data.policy, data.standardPercent) })}</b>
+            {/* The server's canonical number (meta_effective_fee_percent); the local rule only if an older server omits it. */}
+            <b className="text-base">{t('mm_a_fee_effective', { percent: data.effectivePercent ?? effectivePercent(data.policy, data.standardPercent) })}</b>
             <span className="text-muted-foreground">{t('mm_a_fee_standard', { percent: data.standardPercent })}</span>
             <IdChip id={user.id} />
           </div>
@@ -179,6 +183,8 @@ export function FeePolicyPanel() {
           )}
         </Panel>
       ))}
+
+      {user && data && <CustomerFinancePanel key={`${user.id}:${financeVersion}`} userId={user.id} />}
 
       <Confirm
         open={confirming}

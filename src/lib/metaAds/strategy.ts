@@ -383,7 +383,10 @@ export function computeTotals(
   dailyBudgetCents: number, durationDays: number, feePercent: number,
 ): CampaignTotals {
   const mediaCents = Math.round(dailyBudgetCents) * Math.round(durationDays);
-  const feeCents = Math.round((mediaCents * feePercent) / 100);
+  // Exact integer maths in basis points (percent to 2 decimals): the same
+  // number the database quote gives (meta_service_fee_quote), half-up.
+  const bp = Math.round(feePercent * 100);
+  const feeCents = Math.round((mediaCents * bp) / 10000);
   return { mediaCents, feeCents, totalCents: mediaCents + feeCents, feePercent };
 }
 

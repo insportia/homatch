@@ -635,16 +635,48 @@ export class SceneController {
       // Hidden things (cut-away walls, ceilings seen from above) are not there to be clicked.
       if (!hit.object.visible) continue;
       let o: THREE.Object3D | null = hit.object;
+      let target: PickTarget | null = null;
       while (o) {
         if (!o.visible) break;
         const data = o.userData as Partial<PickData>;
-        if (data.pick) return { target: data.pick, point: hit.point.clone() };
+        if (data.pick) { target = data.pick; break; }
         o = o.parent;
       }
+      if (target && target.kind !== 'surface') return { target, point: hit.point.clone() };
+      // A floor, wall or ceiling was reached first. A piece is a solid thing to the eye even
+      // where it is built of separate boxes: if the ray passed through a piece's outline on
+      // its way, that piece is what was clicked (a sofa's seat-to-back gap is still the sofa).
+      if (target) return this.pieceAlong(hit.distance) ?? { target, point: hit.point.clone() };
       // A wall body (structure) stops the ray: whatever is behind it is hidden.
-      if (this.wallBodies.includes(hit.object as THREE.Mesh)) return null;
+      if (this.wallBodies.includes(hit.object as THREE.Mesh)) return this.pieceAlong(hit.distance);
     }
-    return null;
+    return this.pieceAlong(Infinity);
+  }
+
+  /** Each piece's world outline, for picking; rebuilt only after pieces move. */
+  private pickBoxes: Map<string, THREE.Box3> | null = null;
+
+  private pieceAlong(limit: number): { target: PickTarget; point: THREE.Vector3 } | null {
+    if (!this.pickBoxes) {
+      this.pickBoxes = new Map();
+      for (const [id, node] of this.objectsById) {
+        if (!node.visible) continue;
+        node.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(node);
+        if (!box.isEmpty()) this.pickBoxes.set(id, box);
+      }
+    }
+    const ray = this.raycaster.ray;
+    const at = new THREE.Vector3();
+    let best: { id: string; d: number; point: THREE.Vector3 } | null = null;
+    for (const [id, box] of this.pickBoxes) {
+      if (!ray.intersectBox(box, at)) continue;
+      const d = at.distanceTo(ray.origin);
+      if (d < limit && (!best || d < best.d)) best = { id, d, point: at.clone() };
+    }
+    if (!best) return null;
+    const pick = (this.objectsById.get(best.id)?.userData as Partial<PickData> | undefined)?.pick;
+    return pick ? { target: pick, point: best.point } : null;
   }
 
   /** Project a plan point to screen pixels, or null when it is behind the camera. */
@@ -848,6 +880,7 @@ export class SceneController {
   }
 
   private placeNode(node: THREE.Object3D, planX: number, planY: number, rotation: number, elevation = 0) {
+    this.pickBoxes = null;
     node.position.set(planX, elevation, -planY);
     node.rotation.set(0, rotation, 0);
   }
@@ -855,6 +888,7 @@ export class SceneController {
   private disposeObject(id: string) {
     const node = this.objectsById.get(id);
     if (!node) return;
+    this.pickBoxes = null;
     this.living.clear(id);
     if (this.aimed?.objectId === id) this.setAim(null);
     if (this.walk?.seated?.objectId === id) this.standUp();

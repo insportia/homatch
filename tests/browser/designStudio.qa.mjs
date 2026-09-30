@@ -698,6 +698,56 @@ async function checkpoint11(browser) {
   await page.screenshot({ path: path.join(OUT, 'cp11-reference-match-1440-en.png') });
   await page.getByTestId('reference-panel').getByRole('button', { name: 'Close' }).click();
 
+  // ── 4b. Picking from the ordinary oblique overview (not only from above).
+  // For each piece, sample its on-screen box and keep the points where THE PIECE is what
+  // is visible there (a wall in front of it is correctly the wall). Clicking any of those
+  // points must select the piece: never the floor under it, never a gap between its boxes.
+  await scene(page, (c) => c.frameAll(false));
+  await page.waitForTimeout(500);
+  const pickable = objs;
+  const picks = await scene(page, (c, ids) => {
+    const r = c.renderer.domElement.getBoundingClientRect();
+    const out = [];
+    for (const id of ids) {
+      const node = c.objectsById.get(id);
+      if (!node) continue;
+      node.updateMatrixWorld(true);
+      // The piece's screen box, from its world box corners.
+      const V = node.position.constructor;
+      const pts = [];
+      node.traverse((m) => {
+        if (!m.isMesh || !m.visible) return;
+        m.geometry.computeBoundingBox();
+        const b = m.geometry.boundingBox;
+        for (const x of [b.min.x, b.max.x]) for (const y of [b.min.y, b.max.y]) for (const z of [b.min.z, b.max.z]) {
+          const p = new V(x, y, z).applyMatrix4(m.matrixWorld).project(c.camera);
+          pts.push([r.left + ((p.x + 1) / 2) * r.width, r.top + ((1 - p.y) / 2) * r.height]);
+        }
+      });
+      const xs = pts.map((p) => p[0]); const ys = pts.map((p) => p[1]);
+      let visible = 0; let right = 0; const wrong = [];
+      for (let i = 1; i < 8; i += 1) for (let j = 1; j < 8; j += 1) {
+        const x = Math.min(...xs) + ((Math.max(...xs) - Math.min(...xs)) * i) / 8;
+        const y = Math.min(...ys) + ((Math.max(...ys) - Math.min(...ys)) * j) / 8;
+        // What is actually visible at this pixel: the first visible mesh the ray meets.
+        const ndc = { x: ((x - r.left) / r.width) * 2 - 1, y: -((y - r.top) / r.height) * 2 + 1 };
+        c.raycaster.setFromCamera(ndc, c.camera);
+        const first = c.raycaster.intersectObjects([c.objectsGroup, c.spaceGroup], true).find((h) => h.object.visible);
+        let o = first?.object ?? null;
+        while (o && o !== node) o = o.parent;
+        if (o !== node) continue;
+        visible += 1;
+        const got = c.pick(x, y);
+        if (got?.target.kind === 'object' && got.target.id === id) right += 1; else wrong.push(got ? `${got.target.kind}:${got.target.id ?? ''}` : 'nothing');
+      }
+      out.push({ id, visible, right, wrong: wrong.slice(0, 3) });
+    }
+    return out;
+  }, pickable.map((o) => o.instanceId));
+  const seen = picks.filter((p) => p.visible > 0);
+  check('pick: from the oblique overview, every visible point of a piece selects that piece (not the floor, not a gap)',
+    seen.length >= 8 && seen.every((p) => p.right === p.visible), JSON.stringify(seen.filter((p) => p.right !== p.visible).concat([{ seen: seen.length }])));
+
   // ── 5. Direct editing of a reconstructed piece: select, nudge (one step), provenance confirmed.
   // From above, so no wall stands between the camera and the piece.
   await scene(page, (c) => c.topView(false));

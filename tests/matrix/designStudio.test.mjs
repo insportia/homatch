@@ -197,7 +197,7 @@ test('the floor-plan reader treats the upload as untrusted and stores only a pro
   assert.match(fn, /MAX_BYTES/, 'no size limit');
   assert.ok(!/ds_spatial_sources/.test(fn), 'the reader writes geometry: a reading is a proposal, not a space');
   assert.ok(!/evaluateGate/.test(fn), 'the reader reuses the Developer gate');
-  assert.match(fn, /recordUnbilledUsage\(/, 'reading is not metered');
+  assert.match(fn, /meterAiCall\(admin,/, 'reading is not metered');
   const code = fn.replace(/\/\/.*$/gm, '');
   assert.ok(!/rpc\(['"](charge|debit|reserve|settle)\w*/i.test(code), 'reading charges before billing is confirmed');
 });
@@ -273,7 +273,7 @@ test('the AI designer returns a validated plan and never writes a design', () =>
   assert.match(fn, /validatePlan\(raw, ctx, brief\)/, 'the model output is not validated');
   assert.ok(!/from\('ds_versions'\)\.(insert|update|upsert)|from\('ds_version_events'\)/.test(fn), 'the AI function writes a design');
   assert.match(fn, /BILLING_CONFIRMATION_REQUIRED/, 'an enabled billing switch could become a charge without confirmation');
-  assert.match(fn, /recordUnbilledUsage\(/, 'AI design is not metered');
+  assert.match(fn, /meterAiCall\(admin,/, 'AI design is not metered');
   assert.ok(!/rpc\(['"](charge|debit|reserve|settle)/i.test(fn.replace(/\/\/.*$/gm, '')), 'AI design charges');
   assert.match(fn, /strict: true/, 'the model is not held to the schema');
   assert.match(read('supabase/functions/design-studio-reconstruct/index.ts'), /route === 'design'\) return handleDesign\(req\)/);
@@ -513,4 +513,34 @@ test('the browser deletes only through the server, and a deleting project is gon
   assert.match(page, /ds_action_delete_permanent/);
   assert.match(page, /typed\.trim\(\) === project\.name\.trim\(\)/, 'deleting needs the typed name');
   assert.match(page, /resumePendingDeletions\(userId\)/, 'an interrupted deletion is never finished');
+});
+
+test('a Design Studio AI call is priced from the book, and an unknown cost is never written as zero', () => {
+  // The handlers used to price from two environment rates that were never
+  // set, so every job landed as ai_cost_cents 0 / landed 0: a silent zero
+  // that reads as "free" in finance. The price book is the one source.
+  const dir = 'supabase/functions/design-studio-reconstruct';
+  for (const file of ['reconstruct.ts', 'floorplan.ts', 'design.ts']) {
+    const src = read(`${dir}/${file}`);
+    assert.doesNotMatch(src, /OPENAI_USD_PER_MTOK/, `${file} must not price from environment rates`);
+    assert.doesNotMatch(src, /recordUnbilledUsage/, `${file} must meter through metering.ts, not write usage itself`);
+    assert.match(src, /meterAiCall\(admin,/, `${file} must meter its AI call`);
+  }
+  const meter = read(`${dir}/metering.ts`);
+  assert.match(meter, /rpc\('ds_ai_cost_evidence'/, 'the meter prices through the canonical book');
+  assert.match(meter, /aiCostCents: cost\.aiCents \?\? undefined/, 'an unpriced call leaves the cost unknown');
+  assert.match(meter, /pricingState: cost\.pricingState/, 'the meter states how the cost was obtained');
+  assert.match(meter, /cached_tokens/, 'cached input is priced at the cached rate, not as fresh input');
+
+  const billing = read('supabase/functions/_shared/billing.ts');
+  assert.match(billing, /\.\.\.\(usage\.pricingState \? \{ pricing_state: usage\.pricingState \} : \{\}\)/,
+    'recordUnbilledUsage writes pricing_state only when the caller states it, so other writers are unchanged');
+
+  const mig = read('supabase/migrations/20261001190000_design_studio_cogs_evidence.sql');
+  assert.match(mig, /if v_in is null or v_out is null then[\s\S]{0,120}'UNPRICED', 'ai_cost_cents', null/,
+    'a missing rate is UNPRICED with a null cost');
+  assert.match(mig, /REVOKE ALL ON FUNCTION public\.ds_ai_cost_evidence[^;]*FROM PUBLIC, anon, authenticated/);
+  assert.match(mig, /finance_design_studio_economics[\s\S]{0,200}perform public\.finance_require_admin\(\)/,
+    'the economics report is admin-only');
+  assert.match(mig, /filter \(where p\)/, 'statistics are over priced samples only');
 });

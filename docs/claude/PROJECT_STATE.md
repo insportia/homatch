@@ -60,6 +60,20 @@ MATTERS right now, verify against the live systems, not this file)
   refuses unless storage is empty, writes an ids-only tombstone and cascades.
   Billing/usage rows are never touched. Interrupted deletions resume on the
   owner's next launcher visit.
+- Fidelity (`ds-recon-2`, branch `feat/design-studio-finish`): the model traces
+  every room/opening/piece in picture pixels; `sourceCamera.ts` fits each
+  picture's camera (orthographic or perspective) and the plan is unprojected
+  from the pixels (geometry `PIXELS`, else `ESTIMATE`). Match Reference View
+  uses that fitted camera. A pictures reconstruction is labelled "From your
+  pictures" (`20261001180000` sets `provenance.origin` from the plan's purpose).
+- AI COGS (`20261001190000`): the handlers priced from unset env rates, so every
+  job was written as a silent 0. Now `metering.ts` prices through
+  `ds_ai_cost_evidence` (the price book) and writes
+  `usage_events.pricing_state` = ESTIMATED, or UNPRICED with a null cost.
+  `finance_design_studio_economics` feeds Admin → Finance → Products
+  (statistics over priced samples only; the candidate price is planning-only
+  and sets nothing). Measured sample: gpt-5.6-luna 3,839 in / 10,606 out =
+  1.3495¢ raw, 1.5924¢ landed.
 - Living engine: `canvas/livingRuntime.ts` runs every interaction (declared by
   assets, permitted by capabilities); lights are a pool of 4/3/2 per tier
   (12 per-lamp lights halved the frame rate — measured).

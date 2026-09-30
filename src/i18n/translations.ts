@@ -12184,6 +12184,28 @@ const en = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_truth_estimated_pictures: 'Dimensions are estimated from your pictures. Anything that depends on size is based on this estimate until you calibrate it.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_fin_title: 'Design Studio AI economics',
+  ds_fin_hint: 'Variable AI cost per job from real samples, last 90 days. Unpriced jobs are counted but never averaged as zero. Fixed costs are in the Fixed costs tab.',
+  ds_fin_no_samples: 'No Design Studio AI jobs in this period.',
+  ds_fin_samples: 'Priced / samples',
+  ds_fin_tokens: 'Avg tokens in / out',
+  ds_fin_avg_ai: 'Avg raw AI',
+  ds_fin_avg_landed: 'Avg landed',
+  ds_fin_median: 'Median',
+  ds_fin_candidate: 'Candidate price (credits)',
+  ds_fin_credits_eq: '= ${{usd}} (10 credits = $1)',
+  ds_fin_planning_only: 'Planning only: this sets no price. 30% margin is the safety floor; 70%+ and 75–85% are planning targets.',
+  ds_fin_basis: 'Cost basis',
+  ds_fin_margin: 'Margin',
+  ds_fin_markup: 'Markup',
+  ds_fin_scenario_100: 'A $100 customer',
+  ds_fin_scenario_cell: '{{jobs}} jobs · ${{profit}} profit',
+  ds_fin_below_floor: 'Below 30% floor',
+  ds_fin_above_floor: 'Above floor',
+  ds_fin_above_70: '70%+ target',
+  ds_fin_in_band: 'In 75–85% band',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -24282,6 +24304,28 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_truth_estimated_pictures: 'ზომები თქვენი სურათებიდანაა შეფასებული. ყველაფერი, რაც ზომაზეა დამოკიდებული, ამ შეფასებას ეყრდნობა, სანამ არ დააკალიბრებთ.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_fin_title: 'Design Studio — AI ეკონომიკა',
+  ds_fin_hint: 'AI-ს ცვლადი ხარჯი ერთ სამუშაოზე რეალური ნიმუშებიდან, ბოლო 90 დღე. ფასის არმქონე სამუშაოები ითვლება, მაგრამ ნულად არასოდეს საშუალოვდება. ფიქსირებული ხარჯები ფიქსირებული ხარჯების ჩანართშია.',
+  ds_fin_no_samples: 'ამ პერიოდში Design Studio-ს AI სამუშაოები არ ყოფილა.',
+  ds_fin_samples: 'ფასიანი / ნიმუშები',
+  ds_fin_tokens: 'საშ. ტოკენები შემ. / გამ.',
+  ds_fin_avg_ai: 'საშ. AI (ნედლი)',
+  ds_fin_avg_landed: 'საშ. სრული',
+  ds_fin_median: 'მედიანა',
+  ds_fin_candidate: 'საცდელი ფასი (კრედიტები)',
+  ds_fin_credits_eq: '= ${{usd}} (10 კრედიტი = $1)',
+  ds_fin_planning_only: 'მხოლოდ დაგეგმვისთვის: ეს ფასს არ ადგენს. 30% მარჟა უსაფრთხოების ზღვარია; 70%+ და 75–85% დაგეგმვის მიზნებია.',
+  ds_fin_basis: 'ხარჯის საფუძველი',
+  ds_fin_margin: 'მარჟა',
+  ds_fin_markup: 'ნამატი',
+  ds_fin_scenario_100: '$100-იანი მომხმარებელი',
+  ds_fin_scenario_cell: '{{jobs}} სამუშაო · ${{profit}} მოგება',
+  ds_fin_below_floor: '30%-იან ზღვარს ქვემოთ',
+  ds_fin_above_floor: 'ზღვარს ზემოთ',
+  ds_fin_above_70: '70%+ მიზანი',
+  ds_fin_in_band: '75–85% დიაპაზონში',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -36371,6 +36415,28 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_truth_estimated_pictures: 'Размеры оценены по вашим картинкам. Всё, что зависит от размеров, опирается на эту оценку, пока вы не откалибруете.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_fin_title: 'Экономика ИИ Design Studio',
+  ds_fin_hint: 'Переменная стоимость ИИ за задачу по реальным выборкам за 90 дней. Задачи без цены учитываются, но никогда не усредняются как ноль. Постоянные расходы — во вкладке постоянных расходов.',
+  ds_fin_no_samples: 'За этот период задач ИИ Design Studio не было.',
+  ds_fin_samples: 'С ценой / выборки',
+  ds_fin_tokens: 'Ср. токены вход / выход',
+  ds_fin_avg_ai: 'Ср. ИИ (сырая)',
+  ds_fin_avg_landed: 'Ср. полная',
+  ds_fin_median: 'Медиана',
+  ds_fin_candidate: 'Пробная цена (кредиты)',
+  ds_fin_credits_eq: '= ${{usd}} (10 кредитов = $1)',
+  ds_fin_planning_only: 'Только для планирования: цена не устанавливается. Маржа 30% — нижний предел безопасности; 70%+ и 75–85% — плановые цели.',
+  ds_fin_basis: 'База затрат',
+  ds_fin_margin: 'Маржа',
+  ds_fin_markup: 'Наценка',
+  ds_fin_scenario_100: 'Клиент на $100',
+  ds_fin_scenario_cell: '{{jobs}} задач · ${{profit}} прибыли',
+  ds_fin_below_floor: 'Ниже порога 30%',
+  ds_fin_above_floor: 'Выше порога',
+  ds_fin_above_70: 'Цель 70%+',
+  ds_fin_in_band: 'В диапазоне 75–85%',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -48458,6 +48524,28 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_truth_estimated_pictures: 'Ölçüler görsellerinizden tahmin edildi. Boyuta bağlı her şey, kalibre edene kadar bu tahmine dayanır.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_fin_title: 'Design Studio yapay zekâ ekonomisi',
+  ds_fin_hint: 'Son 90 günün gerçek örneklerinden iş başına değişken yapay zekâ maliyeti. Fiyatlandırılmamış işler sayılır ama asla sıfır olarak ortalamaya katılmaz. Sabit maliyetler Sabit maliyetler sekmesindedir.',
+  ds_fin_no_samples: 'Bu dönemde Design Studio yapay zekâ işi yok.',
+  ds_fin_samples: 'Fiyatlı / örnek',
+  ds_fin_tokens: 'Ort. token giriş / çıkış',
+  ds_fin_avg_ai: 'Ort. ham yapay zekâ',
+  ds_fin_avg_landed: 'Ort. toplam',
+  ds_fin_median: 'Medyan',
+  ds_fin_candidate: 'Aday fiyat (kredi)',
+  ds_fin_credits_eq: '= ${{usd}} (10 kredi = 1 $)',
+  ds_fin_planning_only: 'Yalnızca planlama: bu bir fiyat belirlemez. %30 marj güvenlik tabanıdır; %70+ ve %75–85 planlama hedefleridir.',
+  ds_fin_basis: 'Maliyet esası',
+  ds_fin_margin: 'Marj',
+  ds_fin_markup: 'Kâr oranı',
+  ds_fin_scenario_100: '100 $ harcayan müşteri',
+  ds_fin_scenario_cell: '{{jobs}} iş · {{profit}} $ kâr',
+  ds_fin_below_floor: '%30 tabanın altında',
+  ds_fin_above_floor: 'Tabanın üstünde',
+  ds_fin_above_70: '%70+ hedef',
+  ds_fin_in_band: '%75–85 aralığında',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -60545,6 +60633,28 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_truth_estimated_pictures: 'الأبعاد مقدّرة من صورك. كل ما يعتمد على الحجم يستند إلى هذا التقدير حتى تقوم بالمعايرة.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_fin_title: 'اقتصاديات الذكاء الاصطناعي في Design Studio',
+  ds_fin_hint: 'تكلفة الذكاء الاصطناعي المتغيرة لكل مهمة من عينات حقيقية خلال آخر 90 يومًا. تُحتسب المهام غير المسعّرة لكنها لا تُحسب صفرًا في المتوسط أبدًا. التكاليف الثابتة في تبويب التكاليف الثابتة.',
+  ds_fin_no_samples: 'لا توجد مهام ذكاء اصطناعي في Design Studio خلال هذه الفترة.',
+  ds_fin_samples: 'مسعّرة / عينات',
+  ds_fin_tokens: 'متوسط الرموز دخول / خروج',
+  ds_fin_avg_ai: 'متوسط الذكاء الاصطناعي الخام',
+  ds_fin_avg_landed: 'متوسط التكلفة الكاملة',
+  ds_fin_median: 'الوسيط',
+  ds_fin_candidate: 'السعر المرشّح (أرصدة)',
+  ds_fin_credits_eq: '= ${{usd}} (10 أرصدة = 1$)',
+  ds_fin_planning_only: 'للتخطيط فقط: لا يحدد هذا أي سعر. هامش 30% هو حد الأمان الأدنى؛ و70%+ و75–85% أهداف تخطيطية.',
+  ds_fin_basis: 'أساس التكلفة',
+  ds_fin_margin: 'الهامش',
+  ds_fin_markup: 'نسبة الإضافة',
+  ds_fin_scenario_100: 'عميل بـ 100$',
+  ds_fin_scenario_cell: '{{jobs}} مهمة · ربح {{profit}}$',
+  ds_fin_below_floor: 'أقل من حد 30%',
+  ds_fin_above_floor: 'فوق الحد الأدنى',
+  ds_fin_above_70: 'هدف 70%+',
+  ds_fin_in_band: 'ضمن نطاق 75–85%',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -72632,6 +72742,28 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_truth_estimated_pictures: 'המידות מוערכות מהתמונות שלך. כל מה שתלוי בגודל מבוסס על ההערכה הזו עד שתכייל.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_fin_title: 'כלכלת ה-AI של Design Studio',
+  ds_fin_hint: 'עלות AI משתנה לכל משימה מדגימות אמיתיות, 90 הימים האחרונים. משימות ללא תמחור נספרות אך לעולם אינן ממוצעות כאפס. עלויות קבועות נמצאות בלשונית העלויות הקבועות.',
+  ds_fin_no_samples: 'אין משימות AI של Design Studio בתקופה זו.',
+  ds_fin_samples: 'מתומחרות / דגימות',
+  ds_fin_tokens: 'ממוצע טוקנים קלט / פלט',
+  ds_fin_avg_ai: 'ממוצע AI גולמי',
+  ds_fin_avg_landed: 'ממוצע עלות כוללת',
+  ds_fin_median: 'חציון',
+  ds_fin_candidate: 'מחיר מועמד (קרדיטים)',
+  ds_fin_credits_eq: '= ${{usd}} (10 קרדיטים = $1)',
+  ds_fin_planning_only: 'לתכנון בלבד: זה לא קובע מחיר. מרווח 30% הוא רצפת הבטיחות; 70%+ ו-75–85% הם יעדי תכנון.',
+  ds_fin_basis: 'בסיס עלות',
+  ds_fin_margin: 'מרווח',
+  ds_fin_markup: 'תוספת',
+  ds_fin_scenario_100: 'לקוח של $100',
+  ds_fin_scenario_cell: '{{jobs}} משימות · רווח ${{profit}}',
+  ds_fin_below_floor: 'מתחת לרצפת 30%',
+  ds_fin_above_floor: 'מעל הרצפה',
+  ds_fin_above_70: 'יעד 70%+',
+  ds_fin_in_band: 'בטווח 75–85%',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

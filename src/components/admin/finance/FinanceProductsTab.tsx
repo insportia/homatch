@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
 import { getFinanceProducts, getVerifyDeepDive, num } from '@/services/finance';
 import { Money, Pill, TableWrap, Empty, UnpricedBadge, SectionTitle, LoadError } from './FinanceKit';
+import { DesignStudioEconomicsCard } from './DesignStudioEconomicsCard';
 
 /** Per-product unit economics, plus the Verify stage breakdown. */
 interface ProductJson {
@@ -135,6 +136,8 @@ export function FinanceProductsTab() {
           </CardContent>
         </Card>
       )}
+
+      <DesignStudioEconomicsCard />
     </div>
   );
 }

@@ -177,6 +177,10 @@ export function categoryOf(row: FeedRow): NotificationCategory {
   if (type === 'VERIFY_COMPLETE' || type === 'DOCUMENT_ANALYZED' || type.startsWith('EXPAT_')
     || type.startsWith('CAMPAIGN_') || type.startsWith('WHATSAPP_')) return 'SERVICE';
 
+  /* Meta Ads rows are a service; their own finer category is metaCategoryOf below. The
+     service balance is money, and is filed with money. */
+  if (isMetaRow(row)) return metaCategoryOf(row) === 'BILLING' ? 'BILLING' : 'SERVICE';
+
   return 'ACCOUNT';
 }
 
@@ -255,4 +259,72 @@ export function announcementText(row: FeedRow, lang: string): { title: string; b
     title: pick(meta.title_i18n, code) || row.title || '',
     body: pick(meta.body_i18n, code) || (row.body ?? ''),
   };
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Meta Ads rows
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/*
+ * META ADS NOTIFICATIONS ARE ORDINARY ROWS IN THE ONE FEED.
+ *
+ * The meta-ads-api notifier and the lead intake write them through notify_emit like
+ * everything else, with their title and body already rendered in the recipient's
+ * language server-side, and metadata that says what they are:
+ *
+ *   kind      META_EVENT | META_BRIEF | META_LEAD
+ *   category  CAMPAIGN | LEADS | BILLING | GUARD | SYSTEM
+ *   severity  INFO | IMPORTANT | CRITICAL
+ *
+ * The Meta category is a finer filter INSIDE the feed's own categories, never a second
+ * feed. A lead row is LEADS whatever its metadata says; a row missing a category is
+ * filed from its type, so an older or partial row still lands somewhere sensible.
+ */
+
+export const META_NOTIFICATION_TYPES = [
+  'META_CAMPAIGN_STATUS', 'META_GUARD', 'META_RECOMMENDATION', 'META_ADS_BALANCE', 'META_LEAD',
+] as const;
+
+export type MetaNotificationType = typeof META_NOTIFICATION_TYPES[number];
+
+export type MetaCategory = 'CAMPAIGN' | 'LEADS' | 'BILLING' | 'GUARD' | 'SYSTEM';
+
+export const META_CATEGORIES: readonly MetaCategory[] = ['CAMPAIGN', 'LEADS', 'BILLING', 'GUARD', 'SYSTEM'];
+
+export type MetaSeverity = 'INFO' | 'IMPORTANT' | 'CRITICAL';
+
+export function isMetaRow(row: FeedRow): boolean {
+  const type = String(row.type ?? '');
+  if ((META_NOTIFICATION_TYPES as readonly string[]).includes(type)) return true;
+  const kind = kindOf(row);
+  return kind === 'META_EVENT' || kind === 'META_BRIEF' || kind === 'META_LEAD';
+}
+
+/** The Meta category a row is filed under, or null for a row that is not Meta Ads. */
+export function metaCategoryOf(row: FeedRow): MetaCategory | null {
+  if (!isMetaRow(row)) return null;
+  const type = String(row.type ?? '');
+  if (type === 'META_LEAD' || kindOf(row) === 'META_LEAD') return 'LEADS';
+  const stored = metaString(row, 'category').toUpperCase();
+  if ((META_CATEGORIES as readonly string[]).includes(stored)) return stored as MetaCategory;
+  if (type === 'META_GUARD') return 'GUARD';
+  if (type === 'META_ADS_BALANCE') return 'BILLING';
+  return 'CAMPAIGN';
+}
+
+/** The severity a Meta row declares; INFO when it declares none. Null for non-Meta rows. */
+export function metaSeverityOf(row: FeedRow): MetaSeverity | null {
+  if (!isMetaRow(row)) return null;
+  const s = metaString(row, 'severity').toUpperCase();
+  return s === 'CRITICAL' || s === 'IMPORTANT' ? s : 'INFO';
+}
+
+/**
+ * The PostgREST filters that select one Meta category on the server, so paging stays
+ * a keyset over exactly the rows shown rather than a client-side filter over pages that
+ * can come back empty. Every producer writes metadata.category (META_LEAD rows carry
+ * LEADS), and metaCategoryOf re-checks each row on the client.
+ */
+export function metaCategoryFilter(category: MetaCategory): { types: readonly string[]; category: MetaCategory } {
+  return { types: category === 'LEADS' ? META_NOTIFICATION_TYPES : META_NOTIFICATION_TYPES.filter((t) => t !== 'META_LEAD'), category };
 }

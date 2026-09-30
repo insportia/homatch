@@ -146,6 +146,9 @@ const TYPES = new Set([
      one type is a list that cannot say which of them happened — and it also meant
      turning off automated matching silenced a human being trying to reach you. */
   'NEW_MESSAGE', 'PROPERTY_ACTION_REQUIRED', 'SEARCH_COMPLETE', 'ANNOUNCEMENT',
+  /* META ADS: 20260929170000_meta_ads_v1.sql (lead, campaign status, balance) and
+     20261002100000_meta_ads_master.sql (Guard, recommendation). */
+  'META_LEAD', 'META_CAMPAIGN_STATUS', 'META_ADS_BALANCE', 'META_GUARD', 'META_RECOMMENDATION',
 ]);
 
 test('every event type is one the database will accept', () => {
@@ -172,7 +175,12 @@ test('every notification decides whether it is worth an interruption', () => {
   const allowed = new Set(["'CRITICAL'", "'HIGH'", "'NORMAL'", "'LOW'"]);
   for (const { file, fields } of CALLS) {
     assert.ok(fields.priority, `${file} leaves priority to the default instead of choosing`);
-    assert.ok(allowed.has(fields.priority), `${file} sets priority ${fields.priority}`);
+    /* A literal, or a conditional that chooses between literals (the Meta Ads
+       router picks by severity and channel) — never an opaque variable. */
+    const literals = [...fields.priority.matchAll(/[?:]\s*('[A-Z]+')/g)].map((m) => m[1]);
+    const conditional = /\?/.test(fields.priority) && literals.length >= 2 && literals.every((l) => allowed.has(l))
+      && !/[A-Za-z_]\w*\s*\[/.test(fields.priority);
+    assert.ok(allowed.has(fields.priority) || conditional, `${file} sets priority ${fields.priority}`);
   }
 });
 

@@ -148,7 +148,7 @@ export async function graph(path: string, opts: GraphOptions): Promise<Record<st
        app, expired session). The connection must stop saying CONNECTED, so
        the next status call asks the owner to reconnect instead of failing
        every action one by one. */
-    if (lastErr.normalized.code === 190 && opts.audit?.userId) {
+    if (lastErr.normalized.code === '190' && opts.audit?.userId) {
       try {
         await (opts.audit.sb as unknown as { from: (t: string) => any }).from('meta_connections')
           .update({ status: 'EXPIRED', last_error: 'TOKEN_INVALIDATED' })

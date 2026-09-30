@@ -11,6 +11,11 @@
 //   security, News — as a mark and a small label, which is how a reader tells a message
 //   from a payment at a glance without a rail of eight tabs over a list of twelve rows.
 //
+//   META ADS ROWS get one finer filter — Campaign, Leads, Billing, Guard, System — shown
+//   only to somebody who has any, applied on the server so paging stays a keyset over
+//   exactly what is shown. Their text is already localized by the notifier; the row adds
+//   a severity badge in words (CRITICAL destructive, IMPORTANT gold, INFO quiet).
+//
 //   READ IS AN ACT, NOT AN ARRIVAL. Opening this page does not mark anything read. A row
 //   becomes read when it is opened, when its own "mark as read" is pressed, when its
 //   conversation is opened in the chat, or when somebody asks for all of them at once.
@@ -50,15 +55,18 @@ import { RouteGuard } from '@/components/common/RouteGuard';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { NotificationSettings } from '@/components/notifications/NotificationSettings';
 import {
-  CATEGORY_META, notificationAge, notificationCategory, notificationHref, notificationMark,
-  notificationText,
+  CATEGORY_META, META_CATEGORY_LABEL, metaNotificationInfo, notificationAge, notificationCategory,
+  notificationHref, notificationMark, notificationText,
 } from '@/components/notifications/presentation';
 import { intlLocaleFor } from '@/components/workspace/primitives';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/db/supabase';
 import { useNotificationCount } from '@/hooks/useNotificationCount';
-import { cursorAfter, isAfterCursor, mergeFeed, type FeedCursor } from '@/lib/notifications/feed';
+import {
+  cursorAfter, isAfterCursor, keysetOrFilter, META_CATEGORIES, META_NOTIFICATION_TYPES, metaCategoryFilter,
+  metaCategoryOf, mergeFeed, type FeedCursor, type MetaCategory,
+} from '@/lib/notifications/feed';
 import { cn } from '@/lib/utils';
 import {
   getNotifications, markAllNotificationsRead, markNotificationRead,
@@ -68,6 +76,40 @@ import type { Notification } from '@/types/types';
 const PAGE = 25;
 
 type Filter = 'UNREAD' | 'ALL';
+
+/*
+ * ONE PAGE OF THE FEED, OPTIONALLY NARROWED TO ONE META ADS CATEGORY.
+ *
+ * Without a category this is the canonical getNotifications. With one, the same keyset
+ * query gains a server-side filter on the Meta type and metadata.category — filtering a
+ * loaded page on the client would return pages that are empty while older matching rows
+ * exist, and "load more" would look broken. Same order, same cursor, same table.
+ */
+async function fetchPage(
+  userId: string,
+  options: { unreadOnly: boolean; cursor?: FeedCursor | null; metaCategory: MetaCategory | null },
+): Promise<Notification[]> {
+  if (!options.metaCategory) {
+    return getNotifications(userId, PAGE, { unreadOnly: options.unreadOnly, cursor: options.cursor });
+  }
+  const f = metaCategoryFilter(options.metaCategory);
+  let query = supabase
+    .from('notifications')
+    .select('*')
+    .eq('user_id', userId)
+    .in('type', f.types as string[])
+    .eq('metadata->>category', f.category)
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(PAGE);
+  if (options.unreadOnly) query = query.eq('read', false);
+  if (options.cursor) query = query.or(keysetOrFilter(options.cursor));
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  const rows = Array.isArray(data) ? (data as Notification[]) : [];
+  /* The server filtered; the client's own rule is the last word on what is shown. */
+  return rows.filter((n) => metaCategoryOf(n) === options.metaCategory);
+}
 
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1 focus-visible:ring-offset-[hsl(var(--background))]';
 
@@ -85,6 +127,7 @@ function NotifRow({
   const { title, body } = notificationText(notif, t, lang);
   const { icon: Icon, tone } = notificationMark(notif);
   const category = notificationCategory(notif);
+  const meta = metaNotificationInfo(notif);
   const age = notificationAge(notif.created_at, t, intlLocaleFor(lang));
   const unread = !notif.read;
 
@@ -128,12 +171,30 @@ function NotifRow({
         </span>
 
         <span className="min-w-0 flex-1">
-          <span className="flex min-w-0 items-center gap-1.5 text-2xs leading-5 text-muted-foreground">
+          <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-2xs leading-5 text-muted-foreground">
             <span className="min-w-0 truncate font-medium">
-              {t(CATEGORY_META[category].labelKey as Parameters<typeof t>[0])}
+              {t((meta ? meta.categoryKey : CATEGORY_META[category].labelKey) as Parameters<typeof t>[0])}
             </span>
             <span aria-hidden="true">·</span>
             <span className="shrink-0 tabular-nums">{age}</span>
+            {meta && (
+              /* Severity in words as well as colour: colour alone is not an accessible state. */
+              <span
+                className={cn(
+                  'ms-1 inline-flex shrink-0 items-center rounded-full border px-1.5 text-2xs leading-4',
+                  meta.severity === 'CRITICAL'
+                    ? 'border-[hsl(var(--destructive))]/30 bg-[hsl(var(--destructive))]/10 font-semibold text-[hsl(var(--destructive))]'
+                    : meta.severity === 'IMPORTANT'
+                      ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] font-semibold text-[hsl(var(--gold-ink))]'
+                      : 'border-border bg-[hsl(var(--secondary))] font-medium text-muted-foreground',
+                )}
+              >
+                <span aria-hidden="true">{t(meta.severityKey as Parameters<typeof t>[0])}</span>
+                <span className="sr-only">
+                  {t('mm_n_severity_sr', { level: t(meta.severityKey as Parameters<typeof t>[0]) })}
+                </span>
+              </span>
+            )}
             {unread && <span className="sr-only">, {t('notif_unread_label')}</span>}
           </span>
           <span
@@ -208,6 +269,9 @@ function NotificationsContent() {
   const [exhausted, setExhausted] = useState(false);
   const [markingAll, setMarkingAll] = useState(false);
   const [cursor, setCursor] = useState<FeedCursor | null>(null);
+  /* A finer filter for Meta Ads rows, offered only to somebody who has any. */
+  const [metaCategory, setMetaCategory] = useState<MetaCategory | null>(null);
+  const [hasMeta, setHasMeta] = useState(false);
 
   const userId = homatchUser?.id ?? null;
   /* The live handlers read these through refs: re-subscribing to realtime on every
@@ -219,15 +283,30 @@ function NotificationsContent() {
   cursorRef.current = cursor;
   const exhaustedRef = useRef(exhausted);
   exhaustedRef.current = exhausted;
+  const metaCategoryRef = useRef(metaCategory);
+  metaCategoryRef.current = metaCategory;
   const generation = useRef(0);
 
-  const load = useCallback(async (which: Filter) => {
+  /* Whether this account has any Meta Ads notification at all — head-only, one row. */
+  useEffect(() => {
+    if (!userId) return;
+    let live = true;
+    void supabase
+      .from('notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .in('type', META_NOTIFICATION_TYPES as unknown as string[])
+      .then(({ count }) => { if (live) setHasMeta((count ?? 0) > 0); });
+    return () => { live = false; };
+  }, [userId]);
+
+  const load = useCallback(async (which: Filter, category: MetaCategory | null) => {
     if (!userId) return;
     const gen = ++generation.current;
     setLoading(true);
     setFailed(false);
     try {
-      const page = await getNotifications(userId, PAGE, { unreadOnly: which === 'UNREAD' });
+      const page = await fetchPage(userId, { unreadOnly: which === 'UNREAD', metaCategory: category });
       if (gen !== generation.current) return;
       setRows(page);
       setCursor(cursorAfter(page));
@@ -240,7 +319,7 @@ function NotificationsContent() {
     }
   }, [userId]);
 
-  useEffect(() => { void load(filter); }, [load, filter]);
+  useEffect(() => { void load(filter, metaCategory); }, [load, filter, metaCategory]);
 
   /* The first page again, merged rather than replaced — so whatever older pages somebody
      already loaded stay where they are. Silent: recovery is not a loading screen. */
@@ -248,7 +327,9 @@ function NotificationsContent() {
     if (!userId) return;
     const gen = generation.current;
     try {
-      const page = await getNotifications(userId, PAGE, { unreadOnly: filterRef.current === 'UNREAD' });
+      const page = await fetchPage(userId, {
+        unreadOnly: filterRef.current === 'UNREAD', metaCategory: metaCategoryRef.current,
+      });
       if (gen !== generation.current) return;
       setRows((prev) => mergeFeed(prev, page));
       setFailed(false);
@@ -263,6 +344,8 @@ function NotificationsContent() {
         if (!present) {
           /* Unread view: a row that arrives already read does not belong in it. */
           if (filterRef.current === 'UNREAD' && incoming.read) return prev;
+          /* A Meta category view: only rows of that category belong in it. */
+          if (metaCategoryRef.current && metaCategoryOf(incoming) !== metaCategoryRef.current) return prev;
           /* Beyond the loaded range: it will arrive with its page. An aggregate whose
              time was bumped is newer than the cursor and so is taken now. */
           if (!exhaustedRef.current && isAfterCursor(incoming, cursorRef.current) && !isInsert) return prev;
@@ -275,7 +358,12 @@ function NotificationsContent() {
       .channel(`notif-center-${userId}`)
       .on('postgres_changes', {
         event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}`,
-      }, (payload) => { const n = payload.new as Notification; if (n?.id) accept(n, true); })
+      }, (payload) => {
+        const n = payload.new as Notification;
+        if (!n?.id) return;
+        if (metaCategoryOf(n)) setHasMeta(true);
+        accept(n, true);
+      })
       .on('postgres_changes', {
         event: 'UPDATE', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}`,
       }, (payload) => { const n = payload.new as Notification; if (n?.id) accept(n, false); })
@@ -297,7 +385,7 @@ function NotificationsContent() {
     const gen = generation.current;
     setLoadingMore(true);
     try {
-      const page = await getNotifications(userId, PAGE, { unreadOnly: filter === 'UNREAD', cursor });
+      const page = await fetchPage(userId, { unreadOnly: filter === 'UNREAD', cursor, metaCategory });
       if (gen !== generation.current) return;
       setRows((prev) => mergeFeed(prev, page));
       if (page.length) setCursor(cursorAfter(page));
@@ -401,6 +489,35 @@ function NotificationsContent() {
             ))}
           </div>
 
+          {(hasMeta || metaCategory) && (
+            /* Meta Ads rows, one category at a time. It wraps rather than scrolls: six
+               chips on a 390px screen are two lines, not a sideways rail. */
+            <div role="group" aria-label={t('mm_n_cat_label')} className="flex flex-wrap gap-1.5">
+              {([null, ...META_CATEGORIES] as const).map((value) => (
+                <button
+                  key={value ?? 'all'}
+                  type="button"
+                  onClick={() => setMetaCategory(value)}
+                  aria-pressed={metaCategory === value}
+                  className={cn(
+                    'inline-flex min-h-9 max-w-full items-center rounded-full border px-3 text-2xs font-semibold transition-colors motion-reduce:transition-none',
+                    FOCUS,
+                    metaCategory === value
+                      ? 'border-foreground bg-foreground text-background'
+                      : 'border-border bg-card text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  <span className="min-w-0 break-words text-start">
+                    {t((value ? META_CATEGORY_LABEL[value] : 'mm_n_cat_all') as Parameters<typeof t>[0])}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          <p className="sr-only" aria-live="polite">
+            {metaCategory && !loading && !failed ? t('mm_n_filter_count', { n: rows.length }) : ''}
+          </p>
+
           <section
             aria-label={t('notif_list_label')}
             aria-busy={loading}
@@ -414,7 +531,7 @@ function NotificationsContent() {
                 <p className="max-w-prose break-words text-2xs leading-relaxed text-muted-foreground">{t('notif_load_error_body')}</p>
                 <button
                   type="button"
-                  onClick={() => { void load(filter); }}
+                  onClick={() => { void load(filter, metaCategory); }}
                   className={cn(
                     'mt-1 inline-flex min-h-10 items-center gap-1.5 rounded-full border border-border bg-card px-4 text-2xs font-semibold text-foreground hover:bg-[hsl(var(--secondary))]',
                     FOCUS,
@@ -433,11 +550,15 @@ function NotificationsContent() {
                   <Bell className="h-4 w-4" />
                 </span>
                 <p className="break-words font-display text-sm font-semibold text-foreground">
-                  {t(filter === 'UNREAD' ? 'notif_empty_unread' : 'empty_no_notifications_title')}
+                  {metaCategory
+                    ? t('mm_n_filter_empty')
+                    : t(filter === 'UNREAD' ? 'notif_empty_unread' : 'empty_no_notifications_title')}
                 </p>
-                <p className="max-w-prose break-words text-2xs leading-relaxed text-muted-foreground">
-                  {t(filter === 'UNREAD' ? 'empty_no_notifications_desc' : 'notif_empty_all_desc')}
-                </p>
+                {!metaCategory && (
+                  <p className="max-w-prose break-words text-2xs leading-relaxed text-muted-foreground">
+                    {t(filter === 'UNREAD' ? 'empty_no_notifications_desc' : 'notif_empty_all_desc')}
+                  </p>
+                )}
               </div>
             ) : (
               <ul>

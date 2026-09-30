@@ -267,3 +267,41 @@ writing; apply after the Meta and Discovery migrations, via MCP
 - Deploys: push runs fail on Workstream A's `design-studio-ai` (402 function cap). Workstream B
   functions ship by `workflow_dispatch` with `redeploy=<list>`; no cap workaround exists in
   this repo and Design Studio is not touched from Workstream B.
+
+## Phase 1 release (2026-09-30 10:21 UTC) — main 924776b (PR #14)
+- Vercel production READY on 924776b (dpl_AKtYPXtuJRXwxuTjB6DkdetGAKYk); live bundle inspected:
+  new /brokers (evidence links, no navy hero, no distinction block), current-demand counters,
+  TEST_MODE_TOKEN copy, six-locale strings. refs/deployed/frontend advanced by run #848.
+- Edge: community-sync v16 + meta-ads-api v12 PROVEN_EXACT (#848); meta-oauth v11 PROVEN_EXACT
+  (#849, single-function dispatch); meta-webhooks unchanged since its #845 proof.
+- Meta: REAL, secrets present, tokenKeyCheck valid/roundTrip true; old test connection now
+  ERROR/TEST_MODE_TOKEN. Ready for the owner's first real Connect Meta.
+- Property 244486: 14 current / 0 new / 9 strong (STRONG+VERY_STRONG+EXCEPTIONAL) — one rule
+  in header, cards, Matches, Insights.
+
+## Meta Ads master (in progress on claude/homatch-discovery-engine-rqdnza, NOT yet on main)
+
+Phase 2 (Universal Discovery) is blocked until this is live and proven.
+
+- Migration `20261002100000_meta_ads_master.sql` — written, proven idempotent on
+  the local fixture, NOT applied to production. Production pre-check: none of its
+  tables exist, 0 meta_leads rows (the status remap is a no-op), 5 campaigns
+  (3 DRAFT, 1 NEEDS_CHANGES, 1 PAYMENT_REQUIRED), 0 launched.
+- Edge (meta-ads-api): `engine.ts` (v2 strategy, targeting, creative advice,
+  fee policy, 3-day settlement grace), `lifecycle.ts` (write-through
+  pause/resume/end/edit), `monitor.ts` (deterministic 15-min cycle: Guard →
+  insights → analysis → events; lead backfill; duplicate scans every 6 h;
+  briefs at 08:00 local), `actions.ts` (geo search, strategy preview, drill-down,
+  dashboard, recommendations, premium lead forms, admin Guard/fees/economics),
+  `notifier.ts` (canonical events → notify() → push-send → email via Resend).
+- Shared: metaLeads attribution + localized notify(); notifyEmail; push-send
+  meta_* categories; outreach_providers parameter properties made explicit
+  (behaviour-neutral, needed for node type-stripping tests).
+- Fixed in passing: `_shared/metaAds.ts` 190 check compared string to number,
+  so invalidated tokens never marked the connection EXPIRED.
+- UI: four slices (builder, campaign drill-down, workspace/leads/balance,
+  admin + notification center) with i18n data files spliced by
+  `scripts/meta-master-i18n-apply.mjs`.
+- Remaining: gates, production migration apply, one rollout (meta-ads-api,
+  meta-webhooks, push-send + frontend), PROVEN_EXACT proof, non-spending
+  acceptance, final report. No paid Meta actions; owner performs first launch.

@@ -1,17 +1,16 @@
 // WHERE PEOPLE GO — a destination step shaped by the goal, never just "URL".
 import React, { useMemo, useState } from 'react';
 import { FileText, Globe, MessageCircle, Instagram, Loader2, Plus, Radio, ThumbsUp, Home } from 'lucide-react';
-import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { GOAL_SPECS } from '@/lib/metaAds/payload';
 import type { MetaGoal } from '@/lib/metaAds/strategy';
-import { createLeadForm, selectMetaAsset, type MetaCampaignRow, type MetaStatus } from '@/services/metaAds';
+import { selectMetaAsset, type MetaCampaignRow, type MetaStatus } from '@/services/metaAds';
 import { ChoiceCard, StepShell, VerdictBadge } from './ui';
 import { selectedAsset, urlProblem } from './steps';
+import { LeadFormBuilder } from './LeadFormBuilder';
 
 export function DestinationStep({ campaign, status, patch, reloadStatus, propertyUrl }: {
   campaign: MetaCampaignRow; status: MetaStatus | null;
@@ -19,7 +18,7 @@ export function DestinationStep({ campaign, status, patch, reloadStatus, propert
   reloadStatus: () => Promise<void>;
   propertyUrl: string | null;
 }) {
-  const { t, lang } = useLanguage();
+  const { t } = useLanguage();
   const goal = campaign.goal as MetaGoal;
   const spec = GOAL_SPECS[goal];
   const page = selectedAsset(status, 'PAGE');
@@ -30,7 +29,7 @@ export function DestinationStep({ campaign, status, patch, reloadStatus, propert
 
   return (
     <StepShell eyebrow={t(`mads_goal_${goal.toLowerCase()}` as never)} title={t('madsb_dest_title')} lead={t(`madsb_dest_lead_${goal.toLowerCase()}` as never)}>
-      {spec.needsLeadForm && <LeadFormPicker status={status} campaign={campaign} setDest={setDest} reloadStatus={reloadStatus} lang={lang} />}
+      {spec.needsLeadForm && <LeadFormPicker status={status} campaign={campaign} setDest={setDest} reloadStatus={reloadStatus} />}
       {spec.needsWebsiteUrl && <WebsiteDestination campaign={campaign} setDest={setDest} propertyUrl={goal === 'PROMOTE' ? propertyUrl : null} />}
       {spec.needsPixel && <PixelPicker status={status} reloadStatus={reloadStatus} event={spec.pixelEvent} />}
       {spec.needsMessagingApp && (
@@ -122,10 +121,10 @@ function PixelPicker({ status, reloadStatus, event }: { status: MetaStatus | nul
   );
 }
 
-function LeadFormPicker({ status, campaign, setDest, reloadStatus, lang }: {
+function LeadFormPicker({ status, campaign, setDest, reloadStatus }: {
   status: MetaStatus | null; campaign: MetaCampaignRow;
   setDest: (p: Partial<NonNullable<MetaCampaignRow['destination']>>, immediate?: boolean) => void;
-  reloadStatus: () => Promise<void>; lang: string;
+  reloadStatus: () => Promise<void>;
 }) {
   const { t } = useLanguage();
   const page = selectedAsset(status, 'PAGE');
@@ -133,27 +132,7 @@ function LeadFormPicker({ status, campaign, setDest, reloadStatus, lang }: {
     && (!page || !a.parent_external_id || a.parent_external_id === page.external_id)), [status, page]);
   const chosen = campaign.destination?.formId ?? forms.find((f) => f.selected)?.external_id ?? null;
   const [creating, setCreating] = useState(false);
-  const [name, setName] = useState('');
-  const [privacy, setPrivacy] = useState('');
-  const [fields, setFields] = useState<Array<'FULL_NAME' | 'EMAIL' | 'PHONE'>>(['FULL_NAME', 'PHONE', 'EMAIL']);
-  const [busy, setBusy] = useState(false);
-
-  const create = async () => {
-    setBusy(true);
-    try {
-      const locale = { ka: 'ka_GE', ru: 'ru_RU', tr: 'tr_TR', ar: 'ar_AR', he: 'he_IL' }[lang] ?? 'en_US';
-      const r = await createLeadForm({ name: name.trim(), privacyPolicyUrl: privacy.trim(), fields, locale });
-      await reloadStatus();
-      setDest({ type: 'META_FORM', formId: r.form.external_id }, true);
-      setCreating(false);
-      toast.success(t('madsb_form_created'));
-    } catch (e: any) {
-      const code = String(e?.code ?? '');
-      toast.error(t(code === 'PRIVACY_URL_REQUIRED' ? 'madsb_form_privacy_required'
-        : code === 'INSTANT_FORMS_PERMISSION_REQUIRED' ? 'madsb_instant_forms_permission'
-          : String(e?.message ?? '').startsWith('meta_err') ? e.message : 'mads_load_failed'));
-    } finally { setBusy(false); }
-  };
+  const formPermissionsMissing = status?.mode === 'REAL' && status?.connection?.instant_forms_available === false;
 
   return (
     <div className="space-y-3">
@@ -169,30 +148,17 @@ function LeadFormPicker({ status, campaign, setDest, reloadStatus, lang }: {
               ))}
             </div>
           )}
+          {formPermissionsMissing && (
+            <p role="status" className="rounded-xl border border-[hsl(var(--gold-border))]/70 bg-[hsl(var(--gold-soft))] px-3.5 py-2.5 text-[13px] leading-relaxed text-foreground">{t('mm_b_lf_permission')}</p>
+          )}
           {!creating ? (
             <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => setCreating(true)}>
-              <Plus className="h-3.5 w-3.5" />{t('madsb_form_create')}
+              <Plus className="h-3.5 w-3.5" />{t('mm_b_lf_open')}
             </Button>
           ) : (
-            <div className="space-y-2.5 rounded-xl border border-border bg-[hsl(var(--secondary))]/40 p-3.5">
-              <Input placeholder={t('madsb_form_name_ph')} value={name} onChange={(e) => setName(e.target.value)} maxLength={100} />
-              <Input dir="ltr" inputMode="url" placeholder={t('madsb_form_privacy_ph')} value={privacy} onChange={(e) => setPrivacy(e.target.value)} />
-              <p className="text-2xs text-muted-foreground">{t('madsb_form_privacy_why')}</p>
-              <div className="flex flex-wrap gap-4">
-                {(['FULL_NAME', 'PHONE', 'EMAIL'] as const).map((f) => (
-                  <label key={f} className="flex items-center gap-2 text-sm">
-                    <Checkbox checked={fields.includes(f)} onCheckedChange={(v) => setFields((cur) => (v ? [...new Set([...cur, f])] : cur.filter((x) => x !== f)))} />
-                    {t(`madsb_form_field_${f.toLowerCase()}` as never)}
-                  </label>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <Button type="button" size="sm" onClick={create} disabled={busy || !name.trim() || !/^https:\/\//.test(privacy) || fields.length === 0}>
-                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : t('madsb_form_create_go')}
-                </Button>
-                <Button type="button" size="sm" variant="ghost" onClick={() => setCreating(false)}>{t('general_cancel')}</Button>
-              </div>
-            </div>
+            <LeadFormBuilder propertyId={campaign.property_id}
+              onCreated={async (externalId) => { await reloadStatus(); setDest({ type: 'META_FORM', formId: externalId }, true); setCreating(false); }}
+              onCancel={() => setCreating(false)} />
           )}
           <p className={cn('text-[13px] leading-relaxed text-muted-foreground')}>{t('madsb_form_delivery')}</p>
         </>

@@ -11,6 +11,14 @@
 // real translation). Add a key here only when that's a deliberate decision,
 // never to silence a real missing translation.
 export const ALLOW_DUPLICATE_KEYS = new Set([
+  // Meta placements and the product name, as Meta itself labels them in every locale.
+  'mm_c_pl_MARKETPLACE',
+  'mm_c_pl_MESSENGER',
+  'mm_c_pl_AUDIENCE_NETWORK',
+  'mm_n_meta_title',
+  // A unit, and a word Turkish shares with English.
+  'mm_b_loc_radius_km',
+  'mm_c_col_segment',
   // Meta Ads messaging destinations: product names Meta itself does not translate.
   'madsb_msg_messenger',
   'madsb_msg_instagram',

@@ -297,15 +297,17 @@ export function adSetParams(
   campaignId: string,
 ): Record<string, unknown> {
   const spec = GOAL_SPECS[goal];
-  const targeting: Record<string, unknown> = {
-    geo_locations: { countries: ctx.countries.length ? ctx.countries : ['GE'] },
-    // Special Ad Categories restrict age/gender narrowing; 18+ is always allowed.
-    age_min: 18,
-    targeting_automation: { advantage_audience: set.advantageAudience ? 1 : 0 },
-  };
+  /* The plan's own targeting for this ad set (strategy v2: the customer's
+     places, ages and gender, already made legal for the ad's category).
+     A v1 plan has none and keeps its original market-wide spec. */
+  const targeting: Record<string, unknown> = set.targeting
+    ? { ...set.targeting }
+    : { geo_locations: { countries: ctx.countries.length ? ctx.countries : ['GE'] }, age_min: 18 };
+  targeting.targeting_automation = { advantage_audience: set.advantageAudience ? 1 : 0 };
   if (plan.audienceExternalId) targeting.custom_audiences = [{ id: plan.audienceExternalId }];
-  if (plan.placements.mode === 'CUSTOM') {
-    const p = placementTargeting(plan.placements.list);
+  const placementList = plan.placements.mode === 'CUSTOM' ? plan.placements.list : (set.placements ?? null);
+  if (placementList && placementList.length) {
+    const p = placementTargeting(placementList);
     if (p) Object.assign(targeting, p);
   }
 

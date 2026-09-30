@@ -23,8 +23,12 @@ import { ingestLead } from '../_shared/metaLeads.ts';
 import { callLlm, llmAvailable } from '../_shared/comm/llm.ts';
 import {
   loadSettings, userToken, selectedAsset, pageToken, strategyInputFor, limitsOf, configFingerprint,
-  runPreflight, publishCampaign, syncCampaign, propertyAuthorized,
+  runPreflight, publishCampaign, syncCampaign, propertyAuthorized, customerFeePercent, withoutInstagram, finalizeSettlement,
+  type MetaSettings,
 } from './engine.ts';
+import { handleAction } from './actions.ts';
+import { readManagedState, setApproved, LifecycleError, assertNotSuspended } from './lifecycle.ts';
+import { monitorCampaign, monitorUser, maybeScanDuplicates, lifecycleEvent, runBriefs, emptyMonitorReport } from './monitor.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -44,6 +48,13 @@ async function audit(sb: any, actorId: string | null, action: string, target: st
 
 const ASSET_KINDS = ['BUSINESS', 'PAGE', 'INSTAGRAM', 'AD_ACCOUNT', 'PIXEL', 'LEAD_FORM', 'WHATSAPP'];
 
+function ownUrl(v: unknown, fallback: string): string {
+  try {
+    const u = new URL(String(v ?? ''));
+    return u.protocol === 'https:' && (u.hostname === 'www.homatch.live' || u.hostname === 'homatch.live') ? u.toString() : fallback;
+  } catch { return fallback; }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
@@ -59,7 +70,7 @@ Deno.serve(async (req) => {
        secret is ever read into this function or any admin screen. */
     const { data: tokenOk } = await sb.rpc('meta_ads_maintenance_token_ok', { p_token: cronToken });
     if (tokenOk !== true || action !== 'maintenance') return json({ error: 'Forbidden' }, 403);
-    return json(await maintenance(sb, mode));
+    return json(await maintenance(sb, mode, await loadSettings(sb)));
   }
 
   const authHeader = req.headers.get('Authorization');
@@ -76,14 +87,19 @@ Deno.serve(async (req) => {
   if (!settings.enabled && !me.is_admin) return json({ error: 'META_ADS_DISABLED', code: 'META_ADS_DISABLED' }, 503);
 
   try {
+    const handled = await handleAction({ sb, uid, me, body, action, settings, mode, json, audit });
+    if (handled) return handled;
     switch (action) {
       /* ── STATUS: the one call the workspace and builder boot from ───── */
       case 'status': {
-        const [{ data: conn }, { data: assets }, { data: wallet }] = await Promise.all([
+        const [{ data: conn }, { data: assets }, { data: wallet }, { data: service }, { data: guardAccounts }] = await Promise.all([
           sb.from('meta_connections').select('id,status,granted_scopes,declined_scopes,token_expires_at,last_checked_at,meta_user_external_id,oauth_nonce,oauth_started_at,last_error').eq('user_id', uid).maybeSingle(),
           sb.from('meta_assets').select('id,kind,external_id,name,selected,status,parent_external_id,capabilities').eq('user_id', uid).order('kind').order('name'),
           sb.from('meta_wallet_balances').select('*').eq('user_id', uid).maybeSingle(),
+          sb.from('meta_service_balances').select('currency,available_cents,deposited_cents,reserved_service_cents,consumed_service_cents,released_cents').eq('user_id', uid),
+          sb.from('meta_guard_accounts').select('ad_account_external_id,status,active_strikes,active_warnings,suspended_at').eq('user_id', uid),
         ]);
+        const feePercent = await customerFeePercent(sb, uid, settings);
         const granted: string[] = conn?.granted_scopes ?? [];
         /* Health asks for the BASE set only; Instant Forms' extra permissions
            are reported per goal (instant_forms_available), never as a broken
@@ -121,8 +137,11 @@ Deno.serve(async (req) => {
           // Asset capabilities carry account status/currency, never a token.
           assets: (assets ?? []).map((a: any) => ({ ...a, capabilities: a.capabilities ?? {} })),
           wallet: wallet ?? { available_cents: 0, reserved_cents: 0, spent_cents: 0, fees_cents: 0, deposited_cents: 0, currency: 'USD' },
+          // DEPOSIT / AVAILABLE / RESERVED / CONSUMED / RELEASED, per currency.
+          serviceBalance: service ?? [],
+          guard: { accounts: guardAccounts ?? [], maxStrikes: settings.guardPolicy.maxStrikes, enabled: settings.guardEnabled },
           settings: {
-            feePercent: settings.feePercent, minDurationDays: settings.minDurationDays,
+            feePercent, standardFeePercent: settings.feePercent, minDurationDays: settings.minDurationDays,
             minDailyCents: settings.minDailyCents, maxDailyCents: settings.maxDailyCents,
             goalsEnabled: settings.goalsEnabled, leadImportEnabled: settings.leadImportEnabled,
             audienceCreationEnabled: settings.audienceCreationEnabled, retargetingEnabled: settings.retargetingEnabled,
@@ -364,16 +383,18 @@ Deno.serve(async (req) => {
         const input = await strategyInputFor(sb, uid, c, settings);
         if ('error' in input) return json(input, 400);
         const issues = validatePlanInput(input.strategy, limitsOf(settings));
-        const totals = computeTotals(input.strategy.dailyBudgetCents, input.strategy.durationDays, settings.feePercent);
-        const plan = issues.length === 0 ? buildPlan(input.strategy) : null;
+        const feePercent = await customerFeePercent(sb, uid, settings);
+        const totalsForCustomer = computeTotals(input.strategy.dailyBudgetCents, input.strategy.durationDays, feePercent);
+        let plan = issues.length === 0 ? buildPlan(input.strategy, settings.strategyParams) : null;
         const [page, ig, pixel, form] = await Promise.all([
           selectedAsset(sb, uid, 'PAGE'), selectedAsset(sb, uid, 'INSTAGRAM'), selectedAsset(sb, uid, 'PIXEL'), selectedAsset(sb, uid, 'LEAD_FORM'),
         ]);
+        if (plan && !ig) plan = withoutInstagram(plan);
         const goal = c.goal as MetaGoal;
         const { data: crs } = await sb.from('meta_creatives').select('media').eq('campaign_id', c.id);
         const hasVideo = (crs ?? []).some((cr: any) => String(cr.media?.[0]?.mime ?? '').startsWith('video'));
         return json({
-          issues, totals,
+          issues, totals: totalsForCustomer, feePercent, strategy: plan?.strategy ?? null,
           requirements: missingRequirements(goal, {
             pageId: page?.external_id ?? '', instagramUserId: ig?.external_id ?? null, pixelId: pixel?.external_id ?? null,
             leadFormId: c.destination?.formId ?? form?.external_id ?? null, messagingApp: c.destination?.messagingApp ?? null,
@@ -431,10 +452,15 @@ Deno.serve(async (req) => {
           return json({ error: 'PREFLIGHT_STALE', code: 'PREFLIGHT_STALE' }, 409);
         }
         if (!canTransition(c.status, 'LAUNCHING')) return json({ error: 'BAD_TRANSITION' }, 409);
-        // Charged from the FROZEN plan — the same numbers Meta receives.
+        // Campaign Guard: a suspended ad account launches nothing new through HOMATCH.
+        const launchAcct = await selectedAsset(sb, uid, 'AD_ACCOUNT');
+        await assertNotSuspended(sb, uid, launchAcct?.external_id ?? null);
+        // Charged from the FROZEN plan — the same numbers Meta receives —
+        // at this customer's service-fee policy (standard, custom or exempt).
         const plan = c.plan;
         const dailyFromPlan = plan.adSets.reduce((s: number, a: { dailyBudgetCents: number }) => s + Number(a.dailyBudgetCents), 0);
-        const totals = computeTotals(dailyFromPlan, Number(c.duration_days), settings.feePercent);
+        const feePercent = await customerFeePercent(sb, uid, settings);
+        const totals = computeTotals(dailyFromPlan, Number(c.duration_days), feePercent);
         /* What HOMATCH itself holds. With the customer's own ad account (the
            default) that is the fee alone: Meta bills the ad budget to that
            account directly, and holding it here as well would be a second
@@ -448,7 +474,7 @@ Deno.serve(async (req) => {
           }
         }
         const claimed = await sb.from('meta_campaigns')
-          .update({ status: 'LAUNCHING', launch_idempotency_key: idem, launched_at: new Date().toISOString() })
+          .update({ status: 'LAUNCHING', launch_idempotency_key: idem, launched_at: new Date().toISOString(), fee_percent: feePercent })
           .eq('id', c.id).eq('status', 'READY').is('launch_idempotency_key', null)
           .select('id').maybeSingle();
         if (!claimed.data) return json({ error: 'LAUNCH_IN_PROGRESS', code: 'LAUNCH_IN_PROGRESS' }, 409);
@@ -484,20 +510,19 @@ Deno.serve(async (req) => {
             try {
               const { data: fresh } = await sb.from('meta_campaigns').select('*').eq('id', c.id).single();
               after = await syncCampaign(sb, fresh, mode);
-            } catch { /* the scheduled sync will catch up */ }
+              // The configuration Guard protects: exactly what Meta now holds.
+              const token = await userToken(sb, uid);
+              if (token) await setApproved(sb, fresh, await readManagedState(token, fresh, { sb, userId: uid, campaignId: c.id }));
+            } catch { /* the scheduled sync adopts the baseline on its first pass */ }
           }
-          try {
-            await sb.rpc('notify_emit', {
-              p_user_id: uid, p_type: 'META_CAMPAIGN_STATUS', p_title: 'Meta Ads',
-              p_body: 'CAMPAIGN_SUBMITTED', p_deep_link: `/outreach/meta/campaigns/${c.id}`,
-            });
-          } catch { /* best effort */ }
+          try { await lifecycleEvent(sb, c, 'CAMPAIGN_LIFECYCLE', 'SUBMITTED', `launch:${idem}`, settings); } catch { /* best effort */ }
           await sb.from('meta_funnel_events').insert({ event: 'published', user_id: uid });
           await audit(sb, uid, 'META_CAMPAIGN_LAUNCH', c.id, { totals, charge, budgetBilling: settings.budgetBilling, mode, externalCampaignId: external.campaignId });
           return json({ ok: true, status: after.status ?? 'SUBMITTED', totals, charge, budgetBilling: settings.budgetBilling, mode, externalCampaignId: external.campaignId });
         } catch (err) {
           if (mode === 'REAL') await refundAttempt(sb, c, idem);
           const norm = err instanceof MetaApiError ? err.normalized : null;
+          try { await lifecycleEvent(sb, c, 'LAUNCH_FAILED', norm?.customerKey ?? 'meta_err_generic', `launchfail:${idem}`, settings); } catch { /* best effort */ }
           await sb.from('meta_campaigns').update({
             status: 'FAILED', launch_idempotency_key: null, external_campaign_id: null,
             last_error: norm ? { key: norm.customerKey, code: norm.code, detail: scrubText(norm.rawMessage).slice(0, 200) } : { key: 'meta_err_generic' },
@@ -506,7 +531,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      case 'pause': case 'resume': case 'archive': {
+      case 'archive': {
         const { data: c } = await sb.from('meta_campaigns').select('*').eq('id', body.campaignId).eq('user_id', uid).maybeSingle();
         if (!c) return json({ error: 'not found' }, 404);
         const to = action === 'pause' ? 'PAUSED' : action === 'resume' ? 'ACTIVE' : 'ARCHIVED';
@@ -586,8 +611,9 @@ Deno.serve(async (req) => {
         const idem = crypto.randomUUID();
         const checkout = await provider.createCheckout({
           amountCents, currency: 'USD',
-          successUrl: String(body.successUrl ?? 'https://www.homatch.live/outreach/meta?deposit=ok'),
-          cancelUrl: String(body.cancelUrl ?? 'https://www.homatch.live/outreach/meta?deposit=cancel'),
+          // Only HOMATCH's own origin: a checkout never redirects anywhere else.
+          successUrl: ownUrl(body.successUrl, 'https://www.homatch.live/outreach/meta?deposit=ok'),
+          cancelUrl: ownUrl(body.cancelUrl, 'https://www.homatch.live/outreach/meta?deposit=cancel'),
           customerEmail: me.email,
           metadata: { user_id: uid, domain: 'META_ADS', idempotency_key: idem, amount_cents: String(amountCents) },
           description: 'HOMATCH Meta Ads balance',
@@ -774,6 +800,7 @@ Deno.serve(async (req) => {
         return json({ error: `unknown action: ${action}` }, 400);
     }
   } catch (err) {
+    if (err instanceof LifecycleError) return json({ error: err.code, code: err.code, ...err.extra }, err.status);
     if (err instanceof MetaApiError) {
       return json({ error: err.normalized.customerKey, code: err.normalized.code }, 502);
     }
@@ -784,15 +811,54 @@ Deno.serve(async (req) => {
 
 /* ── MAINTENANCE: the scheduled pass ─────────────────────────────────── */
 
-async function maintenance(sb: any, mode: 'REAL' | 'MOCK') {
-  const report = { synced: 0, syncFailed: 0, recovered: 0, leadsRetried: 0, expired: 0, testTokensRetired: 0 };
-  // 1. Status + spend for everything that is live at Meta.
+/* The cron call times out at 55 s; the pass stops starting new campaign
+   cycles after this much wall time and the rest go first next pass (they
+   are ordered by last_synced_at). */
+const MAINTENANCE_BUDGET_MS = 40_000;
+
+async function maintenance(sb: any, mode: 'REAL' | 'MOCK', settings: MetaSettings) {
+  const started = Date.now();
+  const inBudget = () => Date.now() - started < MAINTENANCE_BUDGET_MS;
+  const report = { synced: 0, syncFailed: 0, recovered: 0, leadsRetried: 0, expired: 0, testTokensRetired: 0, settled: 0, briefs: 0, briefEmails: 0 };
+  const monitor = emptyMonitorReport();
+  const LIVE = ['SUBMITTED', 'META_REVIEW', 'ACTIVE', 'PAUSED'];
+  // 1. Status + spend for everything that is live at Meta, then the
+  //    deterministic monitoring cycle (Guard, insights, analysis, events).
   const { data: live } = await sb.from('meta_campaigns').select('*')
-    .in('status', ['SUBMITTED', 'META_REVIEW', 'ACTIVE', 'PAUSED'])
+    .in('status', LIVE)
     .not('external_campaign_id', 'is', null)
     .order('last_synced_at', { ascending: true, nullsFirst: true }).limit(25);
+  const accounts = new Map<string, { userId: string; account: string }>();
+  const users = new Set<string>();
   for (const c of live ?? []) {
+    if (!inBudget()) break;
+    const before = c.status;
     try { await syncCampaign(sb, c, mode); report.synced += 1; } catch { report.syncFailed += 1; }
+    try {
+      const { data: fresh } = await sb.from('meta_campaigns').select('*').eq('id', c.id).single();
+      if (!fresh) continue;
+      users.add(fresh.user_id);
+      if (fresh.ad_account_external_id) accounts.set(`${fresh.user_id}:${fresh.ad_account_external_id}`, { userId: fresh.user_id, account: fresh.ad_account_external_id });
+      if (LIVE.includes(fresh.status) || fresh.status === 'REJECTED') await monitorCampaign(sb, fresh, settings, mode, monitor);
+      if (!LIVE.includes(fresh.status) && LIVE.includes(before) && fresh.status !== 'REJECTED') {
+        await lifecycleEvent(sb, fresh, 'CAMPAIGN_STOPPED', fresh.status, `stopped:${fresh.id}:${fresh.status}`, settings);
+      }
+    } catch (err) {
+      monitor.errors += 1;
+      console.error('[meta-ads-api] monitor', c.id, scrubText(err instanceof Error ? err.message : String(err)));
+    }
+  }
+  // 1b. Account-level state (Guard suspension, balance) and throttled duplicate scans.
+  for (const u of users) { if (inBudget()) { try { await monitorUser(sb, u, settings, monitor); } catch { monitor.errors += 1; } } }
+  if (mode === 'REAL') {
+    for (const a of accounts.values()) { if (inBudget()) await maybeScanDuplicates(sb, a.userId, a.account, settings, monitor); }
+  }
+  // 1c. Ended campaigns whose settlement grace has passed: final spend, then settle.
+  const { data: ended } = await sb.from('meta_campaigns').select('*').in('status', ['COMPLETED', 'REJECTED', 'ARCHIVED'])
+    .is('settled_at', null).not('ended_at', 'is', null).lt('ended_at', new Date(Date.now() - 3 * 86_400_000).toISOString()).limit(10);
+  for (const c of ended ?? []) {
+    if (!inBudget()) break;
+    try { if ((await finalizeSettlement(sb, c, mode)).settled) report.settled += 1; } catch { report.syncFailed += 1; }
   }
   // 2. A launch that died mid-flight: never leave money reserved against nothing.
   const cutoff = new Date(Date.now() - 15 * 60_000).toISOString();
@@ -850,7 +916,11 @@ async function maintenance(sb: any, mode: 'REAL' | 'MOCK') {
   /* Base64 of 32+ bytes and an AES-GCM seal/open round trip — booleans only. */
   const keyStatus = await tokenKeyStatus();
   const tokenKeyCheck = { valid: keyStatus.valid, roundTrip: keyStatus.roundTrip };
-  return { ok: true, mode, configured, tokenKeyCheck, ...report };
+  // 6. Daily / weekly briefs: evaluated in the first pass of each hour.
+  if (new Date().getUTCMinutes() < 15 && inBudget()) {
+    try { await runBriefs(sb, report); } catch (err) { console.error('[meta-ads-api] briefs', scrubText(err instanceof Error ? err.message : String(err))); }
+  }
+  return { ok: true, mode, configured, tokenKeyCheck, ...report, monitor, elapsedMs: Date.now() - started };
 }
 
 /* ── COPY CONTEXT ────────────────────────────────────────────────────── */

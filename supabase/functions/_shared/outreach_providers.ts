@@ -87,7 +87,8 @@ export class MockSmsAdapter {
 // ── Resend Email Adapter (real, only reached when enabled) ────
 export class ResendEmailAdapter {
   readonly provider: EmailProvider = 'RESEND';
-  constructor(private apiKey: string) {}
+  private apiKey: string;
+  constructor(apiKey: string) { this.apiKey = apiKey; }
 
   async send(params: SendEmailParams): Promise<EmailSendResult> {
     try {
@@ -124,7 +125,12 @@ export class ResendEmailAdapter {
 // ── Twilio SMS Adapter (real, only reached when enabled) ───────
 export class TwilioSmsAdapter {
   readonly provider: SmsProvider = 'TWILIO';
-  constructor(private accountSid: string, private authToken: string, private fromNumber: string) {}
+  private accountSid: string;
+  private authToken: string;
+  private fromNumber: string;
+  constructor(accountSid: string, authToken: string, fromNumber: string) {
+    this.accountSid = accountSid; this.authToken = authToken; this.fromNumber = fromNumber;
+  }
 
   async send(params: SendSmsParams): Promise<SmsSendResult> {
     try {
@@ -149,7 +155,12 @@ export class TwilioSmsAdapter {
 // ── Retell Voice Adapter (real, only reached when enabled) ─────
 export class RetellAdapter {
   readonly provider: VoiceProvider = 'RETELL';
-  constructor(private apiKey: string, private agentId: string, private fromNumber: string) {}
+  private apiKey: string;
+  private agentId: string;
+  private fromNumber: string;
+  constructor(apiKey: string, agentId: string, fromNumber: string) {
+    this.apiKey = apiKey; this.agentId = agentId; this.fromNumber = fromNumber;
+  }
 
   async initiateCall(params: InitiateCallParams): Promise<CallInitResult> {
     try {

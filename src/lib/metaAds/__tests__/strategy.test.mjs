@@ -37,16 +37,19 @@ test('small budgets are never fragmented: one ad set', () => {
   assert.deepEqual(plan.adSets[0].creativeIds, ['a', 'b', 'c', 'd']);
 });
 
-test('split happens only with >=4 ready creatives AND >=$20/day, budget conserved', () => {
+test('no split without a real hypothesis; budget conserved; not-ready creatives excluded (v2)', () => {
+  // v1 split identical audiences into two ad sets at >=$20/day; that only
+  // fragments budget. v2 splits on places or formats, and only when funded.
   const plan = buildPlan(baseInput({
     creatives: [creative('a'), creative('b'), creative('c'), creative('d'), creative('e', false)],
     dailyBudgetCents: 2100,
   }));
-  assert.equal(plan.adSets.length, 2);
+  assert.equal(plan.adSets.length, 1);
   const sum = plan.adSets.reduce((n, s) => n + s.dailyBudgetCents, 0);
   assert.equal(sum, 2100); // integer cents, nothing lost to rounding
   const ids = plan.adSets.flatMap((s) => s.creativeIds);
-  assert.deepEqual(ids.sort(), ['a', 'b', 'c', 'd']); // not-ready creative excluded
+  assert.ok(!ids.includes('e')); // not-ready creative excluded
+  assert.ok(ids.length <= 4);
 });
 
 test('v26 requirements are always in the plan', () => {

@@ -2,9 +2,8 @@
 // goals, budgets, creatives, leads and audiences in human words; every
 // technical decision (objectives, topology, policy categories, hashing)
 // lives behind the meta-ads-api boundary. Complexity belongs to HOMATCH.
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { RouteGuard } from '@/components/common/RouteGuard';
@@ -13,56 +12,42 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import {
-  Megaphone, Plus, Users, Bookmark, Link2, CircleHelp, RefreshCw, Download, Upload,
-  CheckCircle2, Circle, Loader2, ChevronRight, Wallet,
-} from 'lucide-react';
+import { Megaphone, Plus, Bookmark, CircleHelp, Loader2, ChevronRight, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { AccountPanel, RETURN_KEY } from '@/components/metaAds/builder/AccountPanel';
+import { CampaignStatusChip } from '@/components/metaAds/workspace/CampaignStatusChip';
+import { GlobalDashboard } from '@/components/metaAds/workspace/GlobalDashboard';
+import { GuardBanner } from '@/components/metaAds/workspace/GuardBanner';
+import { LeadsCenter } from '@/components/metaAds/workspace/LeadsCenter';
+import { ServiceBalanceCard } from '@/components/metaAds/workspace/ServiceBalanceCard';
 import {
-  getMetaStatus, startMetaOAuth, mockConnect, refreshMetaAssets, selectMetaAsset, EDITABLE_STATUSES,
-  listMetaCampaigns, listMetaLeads, updateMetaLead, exportLeadsCsv, importLeads,
-  listAudiences, acceptAudienceTerms, createAudience, depositCheckout, listHelp, money,
-  type MetaStatus, type MetaCampaignRow, type MetaLeadRow, type MetaAudienceRow,
+  getMetaStatus, refreshMetaAssets, EDITABLE_STATUSES,
+  listMetaCampaigns, importLeads,
+  listAudiences, acceptAudienceTerms, createAudience, listHelp, money,
+  type MetaStatus, type MetaCampaignRow, type MetaAudienceRow,
 } from '@/services/metaAds';
 
-type Tab = 'overview' | 'campaigns' | 'leads' | 'audiences' | 'connections' | 'help';
+type Tab = 'overview' | 'campaigns' | 'leads' | 'balance' | 'audiences' | 'connections' | 'help';
+const TABS: Tab[] = ['overview', 'campaigns', 'leads', 'balance', 'audiences', 'connections', 'help'];
 
-const STATUS_TONE: Record<string, string> = {
-  ACTIVE: 'bg-[hsl(152_54%_28%)]/10 text-[hsl(152_54%_26%)] border-[hsl(152_40%_40%)]/30',
-  META_REVIEW: 'bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))] border-[hsl(var(--gold-border))]/60',
-  SUBMITTED: 'bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))] border-[hsl(var(--gold-border))]/60',
-  PAUSED: 'bg-[hsl(var(--secondary))] text-muted-foreground border-border',
-  DRAFT: 'bg-card text-muted-foreground border-border',
-  READY: 'bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))] border-[hsl(var(--gold-border))]/60',
-  NEEDS_CHANGES: 'bg-[hsl(32_78%_36%)]/10 text-[hsl(32_78%_32%)] border-[hsl(32_78%_36%)]/30',
-  REJECTED: 'bg-destructive/10 text-destructive border-destructive/30',
-  FAILED: 'bg-destructive/10 text-destructive border-destructive/30',
-  COMPLETED: 'bg-[hsl(var(--secondary))] text-foreground border-border',
-};
-
-export function CampaignStatusChip({ status }: { status: string }) {
-  const { t } = useLanguage();
-  return (
-    <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[13px] font-semibold',
-      STATUS_TONE[status] ?? 'bg-card text-muted-foreground border-border')}>
-      {t(`mads_status_${status.toLowerCase()}` as never)}
-    </span>
-  );
-}
+/* The chip moved to the workspace folder; kept exported here for the
+   campaign drill-down, which imports it from this page. */
+export { CampaignStatusChip };
 
 export default function MetaAdsPage() {
-  const { homatchUser } = useAuth();
   const { t, lang } = useLanguage();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const tab = (params.get('tab') as Tab) || 'overview';
+  const rawTab = params.get('tab') as Tab | null;
+  const tab: Tab = rawTab && TABS.includes(rawTab) ? rawTab : 'overview';
   const setTab = (next: Tab) => setParams(prev => { prev.set('tab', next); return prev; }, { replace: true });
 
   const [status, setStatus] = useState<MetaStatus | null>(null);
   const [campaigns, setCampaigns] = useState<MetaCampaignRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [importOpen, setImportOpen] = useState(false);
+  const [leadsReload, setLeadsReload] = useState(0);
 
   const boot = useCallback(async () => {
     setLoading(true);
@@ -94,6 +79,8 @@ export default function MetaAdsPage() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const connected = status?.connection?.status === 'CONNECTED';
+  const serviceBalance = status?.serviceBalance ?? [];
+  const feePercent = status?.settings.feePercent ?? null;
 
   return (
     <RouteGuard>
@@ -122,11 +109,15 @@ export default function MetaAdsPage() {
             </div>
           )}
 
+          {/* Guard: calm, and only when an ad account is on WATCH or SUSPENDED. */}
+          <GuardBanner guard={status?.guard} />
+
           <FilterRail<Tab>
             options={[
               { value: 'overview', label: t('mads_tab_overview') },
               { value: 'campaigns', label: t('mads_tab_campaigns'), count: campaigns.length },
               { value: 'leads', label: t('mads_tab_leads') },
+              { value: 'balance', label: t('mm_w_tab_balance') },
               { value: 'audiences', label: t('mads_tab_audiences') },
               { value: 'connections', label: t('mads_tab_connections') },
               { value: 'help', label: t('mads_tab_help') },
@@ -139,11 +130,20 @@ export default function MetaAdsPage() {
           {loading ? (
             <div className="space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-24 rounded-2xl" />)}</div>
           ) : tab === 'overview' ? (
-            <OverviewTab status={status} campaigns={campaigns} onDeposit={boot} onCreate={() => navigate('/outreach/meta/create')} />
+            <div className="grid gap-4 lg:grid-cols-3">
+              <div className="min-w-0 lg:col-span-2"><GlobalDashboard goals={status?.settings.goalsEnabled} /></div>
+              <div className="min-w-0"><ServiceBalanceCard rows={serviceBalance} feePercent={feePercent} /></div>
+            </div>
           ) : tab === 'campaigns' ? (
             <CampaignsTab campaigns={campaigns} onCreate={() => navigate('/outreach/meta/create')} />
           ) : tab === 'leads' ? (
-            <LeadsTab campaigns={campaigns} importEnabled={status?.settings.leadImportEnabled ?? true} />
+            <>
+              <LeadsCenter campaigns={campaigns} importEnabled={status?.settings.leadImportEnabled ?? true}
+                onImport={() => setImportOpen(true)} reloadKey={leadsReload} />
+              <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} onDone={() => setLeadsReload(n => n + 1)} />
+            </>
+          ) : tab === 'balance' ? (
+            <BalanceTab status={status} />
           ) : tab === 'audiences' ? (
             <AudiencesTab enabled={status?.settings.audienceCreationEnabled ?? true} connected={connected}
               campaigns={campaigns} onRetarget={(audienceId) => navigate(`/outreach/meta/create?audience=${audienceId}`)} />
@@ -158,90 +158,30 @@ export default function MetaAdsPage() {
   );
 }
 
-/* ── OVERVIEW ─────────────────────────────────────────────────────────── */
+/* ── BALANCE ──────────────────────────────────────────────────────────── */
 
-function OverviewTab({ status, campaigns, onDeposit, onCreate }: {
-  status: MetaStatus | null; campaigns: MetaCampaignRow[]; onDeposit: () => void; onCreate: () => void;
-}) {
+function BalanceTab({ status }: { status: MetaStatus | null }) {
   const { t } = useLanguage();
-  const [depositOpen, setDepositOpen] = useState(false);
-  const [amount, setAmount] = useState('50');
-  const [busy, setBusy] = useState(false);
   const wallet = status?.wallet;
-  const active = campaigns.filter(c => ['ACTIVE', 'META_REVIEW', 'SUBMITTED'].includes(c.status)).length;
-
-  const deposit = async () => {
-    const cents = Math.round(parseFloat(amount) * 100);
-    if (!Number.isFinite(cents) || cents < 500) { toast.error(t('mads_deposit_min')); return; }
-    setBusy(true);
-    try {
-      const { url } = await depositCheckout(cents);
-      window.location.href = url;
-    } catch (e: any) {
-      toast.error(t('mads_deposit_unavailable'));
-      setBusy(false);
-    }
-  };
-
+  /* The ad-budget wallet matters only when HOMATCH pays Meta for the budget;
+     otherwise the customer's own ad account pays and only the service
+     balance applies. */
+  const showAdWallet = status?.settings.budgetBilling === 'HOMATCH_WALLET' && wallet;
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      {/* Ads balance — the separate money domain, fully visible. */}
-      <div className="overflow-hidden rounded-2xl bg-[#0C1119] p-5 text-white shadow-hover">
-        <p className="flex items-center gap-2 text-[13px] font-semibold uppercase tracking-[0.14em] text-[hsl(38_92%_60%)]">
-          <Wallet className="h-4 w-4" />{t('mads_balance_title')}
-        </p>
-        <p className="mt-3 font-display text-3xl font-bold tabular-nums" dir="ltr">
-          {money(wallet?.available_cents ?? 0)}
-        </p>
-        <dl className="mt-3 space-y-1 text-[13px] text-white/75 tabular-nums">
-          <div className="flex justify-between"><dt>{t('mads_balance_reserved')}</dt><dd dir="ltr">{money(wallet?.reserved_cents ?? 0)}</dd></div>
-          <div className="flex justify-between"><dt>{t('mads_balance_spent')}</dt><dd dir="ltr">{money(wallet?.spent_cents ?? 0)}</dd></div>
-          <div className="flex justify-between"><dt>{t('mads_balance_fees')}</dt><dd dir="ltr">{money(wallet?.fees_cents ?? 0)}</dd></div>
-        </dl>
-        <Button onClick={() => setDepositOpen(true)}
-          className="mt-4 w-full bg-[hsl(38_92%_54%)] font-bold text-[#161309] hover:bg-[hsl(38_92%_60%)]">
-          {t('mads_add_funds')}
-        </Button>
-      </div>
-
-      <div className="rounded-2xl border border-border bg-card p-5 shadow-card lg:col-span-2">
-        <p className="text-[13px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t('mads_overview_now')}</p>
-        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <Stat label={t('mads_stat_active')} value={String(active)} />
-          <Stat label={t('mads_stat_total')} value={String(campaigns.length)} />
-          <Stat label={t('mads_stat_fee')} value={`${status?.settings.feePercent ?? 9}%`} />
+    <div className="grid gap-4 lg:grid-cols-2">
+      <ServiceBalanceCard rows={status?.serviceBalance ?? []} feePercent={status?.settings.feePercent ?? null} />
+      {showAdWallet && (
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-card">
+          <p className="flex items-center gap-2 text-[13px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            <Wallet className="h-4 w-4" aria-hidden="true" />{t('mads_balance_title')}
+          </p>
+          <p className="mt-3 font-display text-3xl font-bold tabular-nums" dir="ltr">{money(wallet.available_cents, wallet.currency || 'USD')}</p>
+          <dl className="mt-3 space-y-1 text-[13px] text-muted-foreground tabular-nums">
+            <div className="flex justify-between gap-3"><dt>{t('mads_balance_reserved')}</dt><dd dir="ltr">{money(wallet.reserved_cents, wallet.currency || 'USD')}</dd></div>
+            <div className="flex justify-between gap-3"><dt>{t('mads_balance_spent')}</dt><dd dir="ltr">{money(wallet.spent_cents, wallet.currency || 'USD')}</dd></div>
+          </dl>
         </div>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Button onClick={onCreate} className="gap-1.5"><Plus className="h-4 w-4" />{t('mads_create_cta')}</Button>
-        </div>
-        <p className="mt-4 max-w-[60ch] text-[13px] leading-relaxed text-muted-foreground">{t('mads_overview_hint')}</p>
-      </div>
-
-      <Dialog open={depositOpen} onOpenChange={setDepositOpen}>
-        <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-sm">
-          <DialogHeader><DialogTitle>{t('mads_add_funds')}</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">{t('mads_deposit_desc')}</p>
-          <div className="flex items-center gap-2">
-            <span className="text-lg font-bold">$</span>
-            <Input inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} dir="ltr" />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDepositOpen(false)}>{t('general_cancel')}</Button>
-            <Button onClick={deposit} disabled={busy}>
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : t('mads_deposit_go')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-border bg-[hsl(var(--secondary))] px-3 py-2.5">
-      <p className="text-2xs text-muted-foreground">{label}</p>
-      <p className="font-display text-xl font-bold tabular-nums">{value}</p>
+      )}
     </div>
   );
 }
@@ -278,100 +218,7 @@ function CampaignsTab({ campaigns, onCreate }: { campaigns: MetaCampaignRow[]; o
   );
 }
 
-/* ── LEADS ────────────────────────────────────────────────────────────── */
-
-function LeadsTab({ campaigns, importEnabled }: { campaigns: MetaCampaignRow[]; importEnabled: boolean }) {
-  const { t } = useLanguage();
-  const [leads, setLeads] = useState<MetaLeadRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<'ALL' | string>('ALL');
-  const [search, setSearch] = useState('');
-  const [importOpen, setImportOpen] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      setLeads(await listMetaLeads({ status: statusFilter === 'ALL' ? undefined : statusFilter, search }));
-    } catch { toast.error(t('mads_load_failed')); }
-    finally { setLoading(false); }
-  }, [statusFilter, search, t]);
-  useEffect(() => { load(); }, [load]);
-
-  const doExport = async () => {
-    try {
-      const { csv, rows } = await exportLeadsCsv({ status: statusFilter === 'ALL' ? undefined : statusFilter });
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `homatch-meta-leads-${new Date().toISOString().slice(0, 10)}.csv`;
-      a.click();
-      URL.revokeObjectURL(a.href);
-      toast.success(t('mads_export_done', { count: String(rows) }));
-    } catch { toast.error(t('mads_export_failed')); }
-  };
-
-  const STATUSES = ['NEW', 'CONTACTED', 'INTERESTED', 'NOT_INTERESTED', 'CLOSED'];
-
-  return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <Input placeholder={t('mads_leads_search')} value={search} onChange={e => setSearch(e.target.value)} className="max-w-xs" />
-        <FilterRail options={[{ value: 'ALL', label: t('mads_filter_all') }, ...STATUSES.map(s => ({ value: s, label: t(`mads_lead_${s.toLowerCase()}` as never) }))]}
-          value={statusFilter} onChange={setStatusFilter} ariaLabel={t('mads_tab_leads')} />
-        <div className="ms-auto flex gap-2">
-          <Button variant="outline" size="sm" onClick={doExport} className="gap-1.5"><Download className="h-3.5 w-3.5" />{t('mads_export')}</Button>
-          {importEnabled && (
-            <Button variant="outline" size="sm" onClick={() => setImportOpen(true)} className="gap-1.5"><Upload className="h-3.5 w-3.5" />{t('mads_import')}</Button>
-          )}
-        </div>
-      </div>
-
-      {loading ? <Skeleton className="h-40 rounded-2xl" /> : leads.length === 0 ? (
-        <EmptyState icon={Users} title={t('mads_leads_empty_title')} body={t('mads_leads_empty_body')} />
-      ) : (
-        <div className="space-y-2">
-          {leads.map(l => <LeadRow key={l.id} lead={l} onChanged={load} />)}
-        </div>
-      )}
-
-      <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} onDone={load} />
-    </div>
-  );
-}
-
-function LeadRow({ lead, onChanged }: { lead: MetaLeadRow; onChanged: () => void }) {
-  const { t } = useLanguage();
-  const f = lead.fields ?? {};
-  const name = (f.full_name ?? f.name ?? '') as string;
-  const contact = [f.email, f.phone_number ?? f.phone].filter(Boolean).join(' · ');
-  const STATUSES = ['NEW', 'CONTACTED', 'INTERESTED', 'NOT_INTERESTED', 'CLOSED'];
-  return (
-    <div className="rounded-2xl border border-border bg-card px-4 py-3 shadow-card">
-      <div className="flex flex-wrap items-center gap-2">
-        <p className="min-w-0 flex-1 truncate font-semibold text-foreground">{name || t('mads_lead_unnamed')}</p>
-        <span className="text-2xs text-muted-foreground">{new Date(lead.received_at).toLocaleDateString()}</span>
-        <span className={cn('rounded-full border px-2 py-0.5 text-[13px] font-medium',
-          lead.source === 'IMPORT' ? 'border-border bg-[hsl(var(--secondary))] text-muted-foreground'
-            : 'border-[hsl(var(--gold-border))]/60 bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))]')}>
-          {t(lead.source === 'IMPORT' ? 'mads_source_import' : 'mads_source_meta')}
-        </span>
-      </div>
-      {contact && <p className="mt-0.5 truncate text-sm text-muted-foreground" dir="ltr">{contact}</p>}
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {STATUSES.map(s => (
-          <button key={s} type="button"
-            onClick={async () => { await updateMetaLead(lead.id, { status: s }).catch(() => toast.error(t('mads_load_failed'))); onChanged(); }}
-            className={cn('rounded-full border px-2.5 py-1 text-[13px] transition-colors',
-              lead.status === s
-                ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] font-semibold text-[hsl(var(--gold-ink))]'
-                : 'border-border bg-card text-muted-foreground hover:border-[hsl(var(--gold-border))]')}>
-            {t(`mads_lead_${s.toLowerCase()}` as never)}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
+/* ── LEADS: import (the Leads Center lives in components/metaAds/workspace) ── */
 
 function ImportDialog({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
   const { t } = useLanguage();

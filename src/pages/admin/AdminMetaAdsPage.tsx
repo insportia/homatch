@@ -2,7 +2,9 @@
 // campaigns with their REAL external topology, connections, leads,
 // audiences, moderation, money, errors, funnel and every kill switch.
 // Reads ride the is_admin RLS policies; the only writes are moderation
-// decisions, settings values and audited manual ledger adjustments.
+// decisions, settings values and audited manual ledger adjustments — plus the
+// Campaign Guard acts and per-customer fee policies, which go through the
+// meta-ads-api admin actions (reason required, audited server-side).
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/db/supabase';
@@ -14,15 +16,25 @@ import { RefreshCw, Loader2, ShieldAlert, CheckCircle2, XCircle } from 'lucide-r
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { money } from '@/services/metaAds';
+import { EconomicsPanel } from '@/components/admin/metaAds/EconomicsPanel';
+import { FeePolicyPanel } from '@/components/admin/metaAds/FeePolicyPanel';
+import { GuardPanel } from '@/components/admin/metaAds/GuardPanel';
+import { Textarea } from '@/components/ui/textarea';
 
 type Tab = 'overview' | 'campaigns' | 'connections' | 'leads' | 'audiences'
-  | 'moderation' | 'finance' | 'errors' | 'settings';
+  | 'moderation' | 'finance' | 'errors' | 'guard' | 'fees' | 'economics' | 'settings';
 
 const KILL_SWITCHES = [
   'meta_ads_enabled', 'meta_ads_publishing_enabled', 'meta_ads_lead_sync_enabled',
   'meta_ads_lead_import_enabled', 'meta_ads_audience_creation_enabled',
   'meta_ads_retargeting_enabled', 'meta_ads_lookalike_enabled',
   'meta_ads_autopilot_enabled', 'meta_ads_ai_assist_enabled',
+  'meta_ads_guard_enabled', 'meta_ads_ai_summary_enabled',
+];
+/* Parameter objects: code defaults apply when {}. Edited as JSON, saved only
+   when the text parses to a plain object. */
+const JSON_OBJECT_SETTINGS = [
+  'meta_ads_strategy_params', 'meta_ads_analysis_params', 'meta_ads_guard_policy',
 ];
 const NUMERIC_SETTINGS = [
   'meta_ads_fee_percent', 'meta_ads_min_duration_days',
@@ -44,6 +56,8 @@ export default function AdminMetaAdsPage() {
           { value: 'connections', label: t('admin_mads_tab_connections') }, { value: 'leads', label: t('admin_mads_tab_leads') },
           { value: 'audiences', label: t('admin_mads_tab_audiences') }, { value: 'moderation', label: t('admin_mads_tab_moderation') },
           { value: 'finance', label: t('admin_mads_tab_finance') }, { value: 'errors', label: t('admin_mads_tab_errors') },
+          { value: 'guard', label: t('mm_a_tab_guard') }, { value: 'fees', label: t('mm_a_tab_fees') },
+          { value: 'economics', label: t('mm_a_tab_economics') },
           { value: 'settings', label: t('admin_mads_tab_settings') },
         ]}
         value={tab} onChange={setTab} ariaLabel="Meta Ads admin" />
@@ -55,6 +69,9 @@ export default function AdminMetaAdsPage() {
       {tab === 'moderation' && <Moderation />}
       {tab === 'finance' && <Finance />}
       {tab === 'errors' && <MetaErrors />}
+      {tab === 'guard' && <GuardPanel />}
+      {tab === 'fees' && <FeePolicyPanel />}
+      {tab === 'economics' && <EconomicsPanel />}
       {tab === 'settings' && <Settings />}
     </div>
   );
@@ -269,7 +286,7 @@ function CampaignDrill({ c }: { c: any }) {
       <p><b>{t('admin_mads_preflight')}</b> {c.preflight?.status ?? '—'} {c.preflight?.checks?.map((ch: any) => `${ch.state === 'WARNING' ? '!' : ch.ok ? '✓' : '✗'}${ch.key}${ch.detail && !ch.ok ? `(${ch.detail})` : ''}`).join(' ')}</p>
       <p><b>{t('admin_mads_placements')}</b> {JSON.stringify(c.placements)} · <b>{t('admin_mads_destination')}</b> {JSON.stringify(c.destination)} · <b>{t('admin_mads_spend')}</b> {money(c.spend_cents)} · <b>{t('admin_mads_error')}</b> {c.last_error?.key ?? '—'}{c.last_error?.code ? ` (${c.last_error.code})` : ''}{c.last_error?.detail ? ` — ${c.last_error.detail}` : ''}</p>
       <p><b>{t('admin_mads_timeline')}</b> {t('admin_mads_created')} {new Date(c.created_at).toLocaleString()} · {t('admin_mads_launched')} {c.launched_at ? new Date(c.launched_at).toLocaleString() : '—'} · {t('admin_mads_synced_at')} {c.last_synced_at ? new Date(c.last_synced_at).toLocaleString() : '—'} · {t('admin_mads_settled')} {c.settled_at ? new Date(c.settled_at).toLocaleString() : '—'}</p>
-      <p><b>{t('admin_mads_money')}</b> {t('admin_mads_reserved')} {money(-sum('RESERVE'))} · {t('admin_mads_fee')} {money(-sum('HOMATCH_FEE'))} · {t('admin_mads_released')} {money(sum('RELEASE'))} · {t('admin_mads_meta_spend')} {money(-sum('META_SPEND'))} · {t('admin_mads_refunded')} {money(sum('REFUND'))} · {t('admin_mads_leads')} {leadCount[0]?.n ?? 0}</p>
+      <p><b>{t('admin_mads_money')}</b> {t('admin_mads_reserved')} {money(-sum('RESERVE'))} · {t('admin_mads_fee')} {money(-sum('HOMATCH_FEE'))} · {t('admin_mads_released')} {money(sum('RELEASE'))} · {t('admin_mads_meta_spend')} {money(-sum('META_SPEND'))} · {t('mm_a_released')} {money(sum('FEE_RELEASE') + sum('REFUND'))} · {t('admin_mads_leads')} {leadCount[0]?.n ?? 0}</p>
       {c.last_error?.review && <p className="break-words"><b>{t('admin_mads_review_feedback')}</b> {JSON.stringify(c.last_error.review)}</p>}
       {c.external_campaign_id && (
         <Button size="sm" variant="outline" onClick={adminSync} disabled={syncing} className="gap-1.5">
@@ -519,16 +536,44 @@ function Settings() {
                 onClick={() => save(s.key, s.value !== true)}>
                 {s.value === true ? t('admin_mads_enabled') : t('admin_mads_disabled')}
               </Button>
+            ) : JSON_OBJECT_SETTINGS.includes(s.key) ? (
+              <JsonObjectSetting settingKey={s.key} value={s.value} onSave={(v) => save(s.key, v)} />
             ) : NUMERIC_SETTINGS.includes(s.key) ? (
-              <Input className="w-32 font-mono" dir="ltr" defaultValue={String(s.value)}
+              <Input className="w-32 font-mono" dir="ltr" aria-label={s.key} defaultValue={String(s.value)}
                 onBlur={e => { const n = Number(e.target.value); if (Number.isFinite(n)) save(s.key, n); }} />
             ) : (
-              <Input className="w-72 font-mono" dir="ltr" defaultValue={JSON.stringify(s.value)}
+              <Input className="w-full max-w-72 font-mono sm:w-72" dir="ltr" aria-label={s.key} defaultValue={JSON.stringify(s.value)}
                 onBlur={e => { try { save(s.key, JSON.parse(e.target.value)); } catch { toast.error(t('admin_mads_invalid_json')); } }} />
             )}
           </div>
         </Card>
       ))}
+    </div>
+  );
+}
+
+/** A JSON-object setting: parsed and checked before anything is written. */
+function JsonObjectSetting({ settingKey, value, onSave }: { settingKey: string; value: unknown; onSave: (v: Record<string, unknown>) => void }) {
+  const { t } = useLanguage();
+  const [text, setText] = useState(() => JSON.stringify(value ?? {}, null, 2));
+  const [problem, setProblem] = useState<string | null>(null);
+  const id = `mm-setting-${settingKey}`;
+  const submit = () => {
+    let parsed: unknown;
+    try { parsed = JSON.parse(text); } catch { setProblem(t('admin_mads_invalid_json')); return; }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) { setProblem(t('mm_a_json_object_required')); return; }
+    setProblem(null);
+    onSave(parsed as Record<string, unknown>);
+  };
+  return (
+    <div className="w-full min-w-0 space-y-1.5 sm:w-96">
+      <Textarea id={id} aria-label={settingKey} dir="ltr" rows={5} className="font-mono text-2xs" value={text}
+        onChange={e => { setText(e.target.value); setProblem(null); }}
+        aria-invalid={problem !== null} aria-describedby={`${id}-hint`} />
+      <p id={`${id}-hint`} className={cn('text-2xs', problem ? 'text-destructive' : 'text-muted-foreground')} role={problem ? 'alert' : undefined}>
+        {problem ?? t('mm_a_json_hint')}
+      </p>
+      <Button size="sm" variant="outline" onClick={submit}>{t('mm_a_save')}</Button>
     </div>
   );
 }

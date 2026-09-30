@@ -580,3 +580,22 @@ test("the customer's original picture is kept, never replaced by the analysis co
   const mig = read('supabase/migrations/20261001210000_design_studio_original_source.sql');
   assert.match(mig, /OR NEW\.original_key IS DISTINCT FROM OLD\.original_key/, 'the original is immutable');
 });
+
+test('a measured picture: optional evidence, read through the server\'s own validator, never a blocker', () => {
+  const svc = read('src/services/designStudio/reconstructions.ts');
+  const measure = svc.slice(svc.indexOf('export async function measurePicture'), svc.indexOf('export async function uploadReference'));
+  assert.match(measure, /catch \{\s*return null;\s*\}/, 'measuring never blocks an upload');
+  const up = svc.slice(svc.indexOf('export async function uploadReference'));
+  assert.match(up, /\.catch\(\(\) => null\)/, 'a failed plan-view upload leaves the picture plain');
+  assert.match(up, /picture_geometry: planView \? measured!\.frame : null/, 'a frame is stored only with its plan view');
+  const fn = read('supabase/functions/design-studio-reconstruct/reconstruct.ts');
+  assert.match(fn, /const frame = readFrame\(ref\.picture_geometry\)/, 'the stored frame is re-validated by the server');
+  assert.match(fn, /key\.startsWith\(prefix\)/, 'the plan view must be under the project prefix');
+  assert.match(fn, /frames: planRooms\.length \? \[\] : frames/, 'the customer\'s own floor plan wins over a measured picture');
+  const mig = read('supabase/migrations/20261002200000_design_studio_picture_frame.sql');
+  assert.match(mig, /OR NEW\.picture_geometry IS DISTINCT FROM OLD\.picture_geometry/, 'the measured frame is immutable');
+  assert.match(mig, /\(plan_view_key IS NULL\) = \(picture_geometry IS NULL\)/, 'both or neither');
+  // The trust threshold is unchanged; with a frame, its number is the outline agreement.
+  const rr = read('src/lib/designStudio/reconstructRead.ts');
+  assert.match(rr, /rms: outlineError\(f\.frame, al, rooms\.map/);
+});

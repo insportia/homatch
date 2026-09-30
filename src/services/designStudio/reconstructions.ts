@@ -15,6 +15,8 @@ import { uploadDesignFile } from './files';
 import type { FloorPlanRecord } from './floorplans';
 import { DesignStudioError, setHeadVersion } from './projects';
 import type { DesignVersionRecord } from '@/lib/designStudio/types';
+import type { PictureFrame } from '@/lib/designStudio/pictureFrame';
+import { measureFrame, renderPlanView } from '@/lib/designStudio/pictureGeometry';
 
 export const REFERENCE_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const;
 export const MAX_REFERENCE_INPUT_BYTES = 40 * 1024 * 1024;
@@ -79,6 +81,50 @@ export async function prepareReferenceImage(file: File): Promise<{ blob: Blob; m
   }
 }
 
+/** The picture is measured at this size: plenty for its straight lines, quick on a phone. */
+const MEASURE_EDGE_PX = 1280;
+
+/**
+ * An isometric cut-away's own camera and outline, measured from its pixels,
+ * and its top-down plan view (pictureGeometry.ts). Null for anything else — a
+ * photo, a busy background — and on any failure: measuring never blocks an upload.
+ */
+export async function measurePicture(image: Blob): Promise<{ frame: PictureFrame; view: Blob } | null> {
+  let bitmap: ImageBitmap | null = null;
+  try {
+    bitmap = await createImageBitmap(image);
+    const scale = Math.min(1, MEASURE_EDGE_PX / Math.max(bitmap.width, bitmap.height));
+    const w = Math.max(64, Math.round(bitmap.width * scale));
+    const h = Math.max(64, Math.round(bitmap.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return null;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    const rgba = ctx.getImageData(0, 0, w, h).data;
+    const grey = new Uint8Array(w * h);
+    for (let i = 0; i < grey.length; i += 1) grey[i] = Math.round(0.299 * rgba[i * 4] + 0.587 * rgba[i * 4 + 1] + 0.114 * rgba[i * 4 + 2]);
+    const frame = measureFrame(grey, w, h);
+    if (!frame) return null;
+    const pixels = renderPlanView(rgba, w, h, frame);
+    const out = document.createElement('canvas');
+    out.width = frame.view.width;
+    out.height = frame.view.height;
+    const octx = out.getContext('2d');
+    if (!octx) return null;
+    octx.putImageData(new ImageData(pixels, frame.view.width, frame.view.height), 0, 0);
+    const view = await new Promise<Blob | null>((resolve) => out.toBlob(resolve, 'image/jpeg', 0.9));
+    return view ? { frame, view } : null;
+  } catch {
+    return null;
+  } finally {
+    bitmap?.close();
+  }
+}
+
 /**
  * Upload one picture of the home as a reference (never as a floor plan).
  * The customer's ORIGINAL is always kept, unchanged; when it is bigger than
@@ -100,6 +146,14 @@ export async function uploadReference(input: { userId: string; projectId: string
     })).key
     : key;
   const analysisSha = await sha256Hex(prepared.blob);
+  // What the picture itself says about its geometry, and its plan view: optional evidence.
+  const measured = await measurePicture(prepared.blob);
+  const planView = measured
+    ? await uploadDesignFile({
+      accountId: input.userId, projectId: input.projectId, category: 'design-studio-floorplans',
+      file: measured.view, contentType: 'image/jpeg', originalFilename: 'plan-view.jpg', purpose: 'DS_REFERENCE_PLAN_VIEW',
+    }).then((r) => r.key).catch(() => null)
+    : null;
   const { data, error } = await supabase.from('ds_floorplans').insert({
     original_key: original,
     original_mime: input.file.type.toLowerCase(),
@@ -107,6 +161,8 @@ export async function uploadReference(input: { userId: string; projectId: string
     original_sha256: derived ? await sha256Hex(input.file) : analysisSha,
     original_width: prepared.originalWidth,
     original_height: prepared.originalHeight,
+    plan_view_key: planView,
+    picture_geometry: planView ? measured!.frame : null,
     project_id: input.projectId,
     user_id: input.userId,
     object_key: key,

@@ -30,6 +30,7 @@ const DELETE_MIGRATION = process.argv[7] ?? null;
 const ORIGIN_MIGRATION = process.argv[8] ?? null;
 const SHARE_ORIGIN_MIGRATION = process.argv[9] ?? null;
 const ORIGINAL_MIGRATION = process.argv[10] ?? null;
+const FRAME_MIGRATION = process.argv[11] ?? null;
 const db = new PGlite({ extensions: { pgcrypto } });
 let failures = 0;
 const ok = (name) => console.log(`  ok   ${name}`);
@@ -675,6 +676,37 @@ if (ORIGINAL_MIGRATION) {
       values ($1,$2,$3,'image/jpeg',1000,'REFERENCE',$4,'image/jpeg',50000000)`, [pX.id, UA, k('c.jpg'), k('c-orig.jpg')])));
   const legacy = await as(A, (tx) => one(tx, `insert into ds_floorplans (project_id,user_id,object_key,mime,bytes,purpose) values ($1,$2,$3,'image/jpeg',1000,'REFERENCE') returning original_key`, [pX.id, UA, k('d.jpg')]));
   legacy.original_key === null ? ok('original: a row without one stays "not recorded" (nothing guessed)') : bad('original legacy', JSON.stringify(legacy));
+}
+
+if (FRAME_MIGRATION) {
+  await db.exec(fs.readFileSync(FRAME_MIGRATION, 'utf8'));
+  await db.exec(fs.readFileSync(FRAME_MIGRATION, 'utf8'));
+  ok('frame: migration applies and re-applies');
+  const pF = await as(A, (tx) => one(tx, `insert into ds_projects (user_id,name) values ($1,'Frames') returning id`, [UA]));
+  const k = (f) => `users/${UA}/design-studio-floorplans/${pF.id}/${f}`;
+  const geo = JSON.stringify({ v: 1, width: 1280, height: 998, footprint: [[0, 0], [1, 0], [1, 1]] });
+  const row = await as(A, (tx) => one(tx, `insert into ds_floorplans (project_id,user_id,object_key,mime,bytes,purpose,plan_view_key,picture_geometry)
+    values ($1,$2,$3,'image/jpeg',1000,'REFERENCE',$4,$5::jsonb) returning id, plan_view_key, picture_geometry`, [pF.id, UA, k('a.jpg'), k('a-plan.jpg'), geo]));
+  row.plan_view_key === k('a-plan.jpg') && row.picture_geometry?.v === 1 ? ok('frame: the owner records a measured frame and its plan view') : bad('frame insert', JSON.stringify(row));
+  await expectError('frame: a plan view outside the project prefix is refused', 'DS_OBJECT_KEY_INVALID', () => as(A, (tx) =>
+    tx.query(`insert into ds_floorplans (project_id,user_id,object_key,mime,bytes,purpose,plan_view_key,picture_geometry)
+      values ($1,$2,$3,'image/jpeg',1000,'REFERENCE',$4,$5::jsonb)`, [pF.id, UA, k('b.jpg'), `users/${UB}/design-studio-floorplans/${pF.id}/x.jpg`, geo])));
+  await expectError('frame: a plan view without its frame is refused', 'ds_floorplans_picture_geometry_check', () => as(A, (tx) =>
+    tx.query(`insert into ds_floorplans (project_id,user_id,object_key,mime,bytes,purpose,plan_view_key) values ($1,$2,$3,'image/jpeg',1000,'REFERENCE',$4)`, [pF.id, UA, k('c.jpg'), k('c-plan.jpg')])));
+  await expectError('frame: an unknown frame version is refused', 'ds_floorplans_picture_geometry_check', () => as(A, (tx) =>
+    tx.query(`insert into ds_floorplans (project_id,user_id,object_key,mime,bytes,purpose,plan_view_key,picture_geometry) values ($1,$2,$3,'image/jpeg',1000,'REFERENCE',$4,'{"v":2}'::jsonb)`, [pF.id, UA, k('d.jpg'), k('d-plan.jpg')])));
+  await expectError('frame: an oversized frame is refused', 'ds_floorplans_picture_geometry_check', () => as(A, (tx) =>
+    tx.query(`insert into ds_floorplans (project_id,user_id,object_key,mime,bytes,purpose,plan_view_key,picture_geometry) values ($1,$2,$3,'image/jpeg',1000,'REFERENCE',$4,$5::jsonb)`,
+      [pF.id, UA, k('e.jpg'), k('e-plan.jpg'), JSON.stringify({ v: 1, pad: 'x'.repeat(20000) })])));
+  await expectError('frame: the measured frame never changes', 'DS_SERVER_FIELD', () => as(A, (tx) =>
+    tx.query(`update ds_floorplans set picture_geometry='{"v":1,"other":true}'::jsonb where id=$1`, [row.id])));
+  await expectError('frame: the plan view never changes', 'DS_SERVER_FIELD', () => as(A, (tx) =>
+    tx.query(`update ds_floorplans set plan_view_key=$2 where id=$1`, [row.id, k('z.jpg')])));
+  const plain = await as(A, (tx) => one(tx, `insert into ds_floorplans (project_id,user_id,object_key,mime,bytes,purpose) values ($1,$2,$3,'image/jpeg',1000,'REFERENCE') returning plan_view_key, picture_geometry`, [pF.id, UA, k('f.jpg')]));
+  plain.plan_view_key === null && plain.picture_geometry === null ? ok('frame: a picture that was not measured stays plain') : bad('frame plain', JSON.stringify(plain));
+  // Someone else's rows stay invisible (RLS unchanged).
+  const seen = await as(B, (tx) => tx.query(`select id from ds_floorplans where id=$1`, [row.id]));
+  seen.rows.length === 0 ? ok('frame: another user cannot see the frame') : bad('frame rls', 'visible to B');
 }
 
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nALL PASSED');

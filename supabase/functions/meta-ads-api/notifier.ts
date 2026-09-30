@@ -95,7 +95,7 @@ export async function processConditions(sb: Sb, campaign: { id: string; user_id:
       missing_cycles: r.next.missingCycles, reminders: r.next.reminders,
       resolved_at: r.next.state === 'RESOLVED' ? (prevRow?.resolved_at ?? now) : null,
     };
-    const { data: saved, error } = await sb.from('meta_events').upsert(row, { onConflict: 'key' }).select('id').single();
+    const { data: saved, error } = await sb.from('meta_events').upsert(row, { onConflict: 'user_id,key' }).select('id').single();
     if (error) throw error;
     if (!r.notify) continue;
 
@@ -114,7 +114,9 @@ export async function processConditions(sb: Sb, campaign: { id: string; user_id:
     let analysis: string | null = null;
     let summaryId: string | null = null;
     if (r.mayUseAi && opts.aiEnabled && row.severity !== 'INFO' && channels.includes('EMAIL')) {
-      const s = await aiSummary(sb, { purpose: 'EVENT', fingerprint: `${type}:${row.evidence_fingerprint}`, locale: recipient.locale, userId, campaignId: campaign?.id ?? null,
+      // Scoped to this customer and campaign, and to the exact facts: a cached
+      // text is never reused for anyone else's numbers.
+      const s = await aiSummary(sb, { purpose: 'EVENT', fingerprint: `${userId}:${campaign?.id ?? '-'}:${type}:${row.evidence_fingerprint}:${factsHash(row.facts)}`, locale: recipient.locale, userId, campaignId: campaign?.id ?? null,
         trigger: `${type}:${r.transition}`, facts: { type, transition: r.transition, severity: row.severity, evidence: row.evidence, facts: row.facts } });
       if (s) { analysis = s.text; summaryId = s.id; stats.aiCalls += s.generated ? 1 : 0; }
     }
@@ -146,6 +148,13 @@ export async function processConditions(sb: Sb, campaign: { id: string; user_id:
     }
   }
   return stats;
+}
+
+function factsHash(facts: unknown): string {
+  const t = JSON.stringify(facts ?? {});
+  let h = 2166136261;
+  for (let i = 0; i < t.length; i += 1) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return (h >>> 0).toString(16);
 }
 
 function paramsOf(facts: Record<string, unknown>, locale: Locale): Record<string, string | number | null> {

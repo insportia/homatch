@@ -12,6 +12,7 @@
 //  10 no lead PII or secret reaches a title, body or email
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 globalThis.Deno = { env: { get: (k) => ({ SUPABASE_URL: 'https://x.supabase.co' })[k] } };
 
@@ -22,7 +23,7 @@ const { detect } = await import('../../../../src/lib/metaAds/detect.ts');
 const { buildBrief } = await import('../../../../src/lib/metaAds/events.ts');
 
 const UNIQUE = {
-  meta_events: ['key'],
+  meta_events: ['user_id', 'key'],
   meta_event_notifications: ['event_id', 'transition', 'evidence_fingerprint'],
   notification_deliveries: ['notification_id', 'channel'],
   meta_ai_summaries: ['purpose', 'fingerprint', 'locale'],
@@ -258,4 +259,22 @@ test('briefs: 08:00 local, weekly on Mondays, daily only when opted in; totals n
   const lines = briefLines(b, 'ka');
   assert.ok(lines.some((l) => l.includes('ლიდები')));
   assert.ok(lines.every((l) => !/\{\{/.test(l)), 'every placeholder filled');
+});
+
+test('user-level events are per customer: two low balances are two events and two notifications', async () => {
+  const seed = users();
+  seed.notification_preferences.push({ user_id: 'u2', categories: {}, push_enabled: true, email_enabled: true });
+  const db = fakeDb(seed);
+  const low = { type: 'SERVICE_BALANCE_LOW', subject: 'balance', severity: 'IMPORTANT', actionRequired: true, evidence: { short: true },
+    facts: { shortfallMinor: 500, currency: 'USD' }, deepLink: '/outreach/meta?tab=overview' };
+  const a = await processConditions(db, null, 'u1', [low], ['SERVICE_BALANCE_LOW'], opts(0));
+  const b = await processConditions(db, null, 'u2', [low], ['SERVICE_BALANCE_LOW'], opts(0));
+  assert.equal(a.notifications + b.notifications, 2);
+  assert.deepEqual(db.tables.meta_events.map((e) => e.user_id).sort(), ['u1', 'u2'], 'neither row overwrote the other');
+  assert.deepEqual(db.tables.notifications.map((n) => n.user_id).sort(), ['u1', 'u2']);
+});
+
+test('an AI summary is cached per customer, campaign and exact facts', () => {
+  const src = readFileSync(new URL('../notifier.ts', import.meta.url), 'utf8');
+  assert.match(src, /fingerprint: `\$\{userId\}:\$\{campaign\?\.id \?\? '-'\}:\$\{type\}:\$\{row\.evidence_fingerprint\}:\$\{factsHash\(row\.facts\)\}`/);
 });

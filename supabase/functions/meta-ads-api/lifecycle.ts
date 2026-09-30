@@ -228,6 +228,10 @@ async function available(sb: Sb, userId: string, currency: string): Promise<numb
 export async function changePlan(sb: Sb, c: any, settings: MetaSettings, change: { dailyBudgetCents?: number; durationDays?: number },
   ctx: { actor: Actor; actorUserId?: string | null; key?: string | null; commit: boolean; op?: 'EDIT_BUDGET' | 'EDIT_DURATION' | 'APPLY_RECOMMENDATION' }) {
   if (!LIVE.includes(c.status)) throw new LifecycleError('BAD_TRANSITION', 409, { from: c.status });
+  /* The fee delta below is the whole money story only when Meta bills the
+     customer's own ad account. With the budget held in the HOMATCH wallet a
+     change would also have to move the media reserve — not offered. */
+  if (settings.budgetBilling !== 'CUSTOMER_AD_ACCOUNT') throw new LifecycleError('EDIT_NOT_AVAILABLE_FOR_BILLING_MODEL', 409);
   await assertNotSuspended(sb, c.user_id, c.ad_account_external_id);
   if (c.guard_state === 'LOCKED_FOR_REVIEW' && ctx.actor !== 'ADMIN') throw new LifecycleError('CAMPAIGN_UNDER_REVIEW', 409);
 

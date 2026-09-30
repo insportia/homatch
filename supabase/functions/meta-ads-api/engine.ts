@@ -203,7 +203,7 @@ export async function configFingerprint(sb: Sb, c: any): Promise<string> {
   const material = JSON.stringify({
     goal: c.goal, daily: c.daily_budget_cents, days: c.duration_days, currency: c.currency,
     destination: c.destination, placements: c.placements, audience: c.audience_id,
-    offer: c.offer, property: c.property_id,
+    offer: c.offer, property: c.property_id, targeting: c.targeting ?? null,
     creatives: (creatives ?? []).map((cr: any) => [cr.id, cr.headline, cr.primary_text, cr.description ?? '', cr.cta, cr.media]),
   });
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(material));
@@ -663,7 +663,8 @@ export async function settleCampaign(sb: Sb, c: any, actualSpendCents: number) {
   const reserve = -sum((r) => r.entry_type === 'RESERVE')
     - sum((r) => r.entry_type === 'RELEASE' && !isSettle(r) && key(r).endsWith(':release'));
   const fee = -sum((r) => r.entry_type === 'HOMATCH_FEE')
-    - sum((r) => r.entry_type === 'REFUND' && !isSettle(r) && key(r).endsWith(':feerefund'));
+    - sum((r) => r.entry_type === 'REFUND' && !isSettle(r) && key(r).endsWith(':feerefund'))
+    - sum((r) => r.entry_type === 'FEE_RELEASE' && !isSettle(r));
   const released = (rows ?? []).some((r: any) => key(r) === `${c.id}:settle:release`);
   const base = { user_id: c.user_id, currency: c.currency, campaign_id: c.id };
 
@@ -681,7 +682,9 @@ export async function settleCampaign(sb: Sb, c: any, actualSpendCents: number) {
     }
     const planned = plannedMediaCents(Number(c.daily_budget_cents ?? 0), Number(c.duration_days ?? 0));
     const pct = c.fee_percent != null && Number.isFinite(Number(c.fee_percent)) ? Number(c.fee_percent)
-      : planned > 0 ? Math.round((held / planned) * 10000) / 100 : 0;
+      : planned > 0 ? Math.round((held / planned) * 10000) / 100 : null;
+    // No percent and no plan to derive it from: never settle on a guess.
+    if (pct == null) return null;
     const f = settleServiceFee({ heldFeeCents: held, plannedMediaCents: planned, spentMediaCents: actualSpendCents, feePercent: pct });
     if (f.releaseCents > 0) {
       const { error } = await sb.from('meta_ads_ledger').insert({

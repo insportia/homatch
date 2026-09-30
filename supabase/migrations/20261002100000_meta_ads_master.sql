@@ -2,10 +2,9 @@
 -- operations, insights history, recommendations, summaries, timeline, Guard,
 -- lead forms, lead attribution, fee policies, and the service balance.
 --
--- Additive except two constraints widened (ledger entry types, lead
--- statuses, funnel events) and one view hardened (meta_wallet_balances now
--- runs with the caller's rights: it previously ran as its owner, so any
--- signed-in account could read every customer's balance).
+-- Additive except three constraints widened (ledger entry types, lead
+-- statuses, funnel events) and two guard triggers tightened (campaign status
+-- and launched-campaign fields; lead attribution is server-owned).
 
 -- ── 1. CAMPAIGNS: targeting + the managed mapping + cached analysis ──────
 alter table public.meta_campaigns
@@ -55,6 +54,7 @@ begin
     new.approved_state := null; new.approved_version := 0; new.guard_state := 'OK';
     new.ended_at := null; new.insights_synced_at := null; new.health := null;
     new.summary := null; new.summary_facts_key := null; new.summary_at := null;
+    new.objective := null; new.special_ad_categories := '{}'; new.last_error := null; new.last_synced_at := null;
     return new;
   end if;
   if new.external_campaign_id is distinct from old.external_campaign_id
@@ -80,22 +80,38 @@ begin
      or new.health is distinct from old.health
      or new.summary is distinct from old.summary
      or new.summary_facts_key is distinct from old.summary_facts_key
-     or new.summary_at is distinct from old.summary_at then
+     or new.summary_at is distinct from old.summary_at
+     or new.objective is distinct from old.objective
+     or new.special_ad_categories is distinct from old.special_ad_categories
+     or new.last_error is distinct from old.last_error
+     or new.last_synced_at is distinct from old.last_synced_at then
     raise exception 'META_ADS_SERVER_FIELD';
   end if;
   -- Once submitted to Meta, money, goal, destination and audience change only
   -- through the server's write-through (edit budget / edit duration).
-  if old.status in ('LAUNCHING','SUBMITTED','META_REVIEW','ACTIVE','PAUSED','COMPLETED')
+  -- (Currency too: every ledger row of the campaign is in its currency.)
+  if (old.launched_at is not null or old.external_campaign_id is not null
+      or old.status in ('LAUNCHING','SUBMITTED','META_REVIEW','ACTIVE','PAUSED','COMPLETED'))
      and (new.daily_budget_cents is distinct from old.daily_budget_cents
           or new.duration_days is distinct from old.duration_days
           or new.goal is distinct from old.goal
           or new.destination is distinct from old.destination
-          or new.targeting is distinct from old.targeting) then
+          or new.targeting is distinct from old.targeting
+          or new.currency is distinct from old.currency
+          or new.audience_id is distinct from old.audience_id
+          or new.placements is distinct from old.placements
+          or new.property_id is distinct from old.property_id
+          or new.offer is distinct from old.offer
+          or new.start_at is distinct from old.start_at) then
     raise exception 'META_ADS_LAUNCHED_LOCKED';
   end if;
-  if new.status is distinct from old.status and new.status not in
-     ('DRAFT','CONNECTION_REQUIRED','CREATIVE_REQUIRED','AUDIENCE_REQUIRED',
-      'PREFLIGHT_REQUIRED','ARCHIVED') then
+  -- The browser moves only a campaign that never reached Meta, and only
+  -- between draft states. A launched campaign leaves its live state through
+  -- the server (pause / end / archive), which acts at Meta first.
+  if new.status is distinct from old.status and (
+       old.launched_at is not null or old.external_campaign_id is not null
+       or old.status in ('LAUNCHING','SUBMITTED','META_REVIEW','ACTIVE','PAUSED','COMPLETED','ARCHIVED')
+       or new.status not in ('DRAFT','CONNECTION_REQUIRED','CREATIVE_REQUIRED','AUDIENCE_REQUIRED','PREFLIGHT_REQUIRED','ARCHIVED')) then
     raise exception 'META_ADS_CLIENT_STATUS';
   end if;
   new.updated_at := now();
@@ -112,7 +128,7 @@ create index if not exists meta_ad_entities_external_idx on public.meta_ad_entit
 -- ── 3. OPERATIONS: every HOMATCH write to Meta, for write-through + origin ──
 create table if not exists public.meta_operations (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null,
+  user_id uuid not null references public.users(id) on delete cascade,
   campaign_id uuid references public.meta_campaigns(id) on delete cascade,
   op text not null check (op in ('LAUNCH','PAUSE','RESUME','END','EDIT_BUDGET','EDIT_DURATION','PAUSE_AD','RESUME_AD',
                                  'GUARD_PAUSE_DUPLICATE','GUARD_PAUSE_CAMPAIGN','ACCEPT_EXTERNAL','RESTORE_CONFIG','APPLY_RECOMMENDATION')),
@@ -138,7 +154,7 @@ comment on table public.meta_operations is
 create table if not exists public.meta_insights (
   id bigint generated always as identity primary key,
   campaign_id uuid not null references public.meta_campaigns(id) on delete cascade,
-  user_id uuid not null,
+  user_id uuid not null references public.users(id) on delete cascade,
   level text not null check (level in ('campaign','adset','ad')),
   object_external_id text not null default '',
   day date,
@@ -173,7 +189,7 @@ revoke all on public.meta_insights from anon;
 create table if not exists public.meta_recommendations (
   id uuid primary key default gen_random_uuid(),
   campaign_id uuid not null references public.meta_campaigns(id) on delete cascade,
-  user_id uuid not null,
+  user_id uuid not null references public.users(id) on delete cascade,
   type text not null,
   affected text not null,
   window_current text not null,
@@ -206,7 +222,7 @@ revoke all on public.meta_recommendations from anon;
 create table if not exists public.meta_campaign_events (
   id uuid primary key default gen_random_uuid(),
   campaign_id uuid not null references public.meta_campaigns(id) on delete cascade,
-  user_id uuid not null,
+  user_id uuid not null references public.users(id) on delete cascade,
   kind text not null,
   customer_key text not null,
   params jsonb not null default '{}'::jsonb,
@@ -223,7 +239,7 @@ revoke all on public.meta_campaign_events from anon;
 -- ── 7. GUARD ─────────────────────────────────────────────────────────────
 create table if not exists public.meta_guard_accounts (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null,
+  user_id uuid not null references public.users(id) on delete cascade,
   ad_account_external_id text not null,
   status text not null default 'ACTIVE' check (status in ('ACTIVE','WATCH','SUSPENDED')),
   active_strikes integer not null default 0,
@@ -242,7 +258,7 @@ revoke all on public.meta_guard_accounts from anon;
 
 create table if not exists public.meta_guard_incidents (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null,
+  user_id uuid not null references public.users(id) on delete cascade,
   ad_account_external_id text not null,
   campaign_id uuid references public.meta_campaigns(id) on delete set null,
   action text not null check (action in ('MANUAL_PAUSE','MANUAL_RESUME','MATERIAL_EDIT','STRUCTURAL_EDIT','POSSIBLE_DUPLICATE','CONFIRMED_DUPLICATE','CONTROL_ACCESS_CHANGE')),
@@ -297,7 +313,7 @@ revoke all on public.meta_guard_admin_actions from anon;
 -- ── 8. LEAD FORMS ────────────────────────────────────────────────────────
 create table if not exists public.meta_lead_forms (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null,
+  user_id uuid not null references public.users(id) on delete cascade,
   page_external_id text not null,
   meta_form_id text,
   name text not null,
@@ -329,6 +345,29 @@ alter table public.meta_leads add constraint meta_leads_status_check
   check (status in ('NEW','CONTACTED','QUALIFIED','VIEWING','NEGOTIATING','WON','LOST'));
 create index if not exists meta_leads_campaign_idx on public.meta_leads (campaign_id, received_at desc);
 
+-- Lead identity and attribution are server-owned; the owner edits only the pipeline (status, note).
+create or replace function public.meta_leads_guard()
+returns trigger language plpgsql security definer set search_path to 'public' as $$
+begin
+  if auth.role() = 'service_role' then return new; end if;
+  if new.fields is distinct from old.fields
+     or new.external_lead_id is distinct from old.external_lead_id
+     or new.source is distinct from old.source
+     or new.campaign_id is distinct from old.campaign_id
+     or new.user_id is distinct from old.user_id
+     or new.form_external_id is distinct from old.form_external_id
+     or new.received_at is distinct from old.received_at
+     or new.ad_external_id is distinct from old.ad_external_id
+     or new.adset_external_id is distinct from old.adset_external_id
+     or new.property_id is distinct from old.property_id
+     or new.answers is distinct from old.answers
+     or new.meta_created_time is distinct from old.meta_created_time then
+    raise exception 'META_ADS_SERVER_FIELD';
+  end if;
+  new.updated_at := now();
+  return new;
+end $$;
+
 -- ── 10. FEE POLICIES (HOMATCH commercial terms only) ─────────────────────
 create table if not exists public.meta_fee_policies (
   user_id uuid primary key,
@@ -347,7 +386,7 @@ revoke all on public.meta_fee_policies from anon;
 
 create table if not exists public.meta_fee_policy_audit (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null,
+  user_id uuid not null references public.users(id) on delete cascade,
   admin_user_id uuid not null,
   previous jsonb,
   next jsonb not null,
@@ -366,7 +405,7 @@ alter table public.meta_ads_ledger add constraint meta_ads_ledger_entry_type_che
 comment on column public.meta_ads_ledger.entry_type is
   'HOMATCH_FEE reserves the service fee; FEE_RELEASE (and legacy REFUND) returns unused fee to the AVAILABLE HOMATCH balance — never to cash. WITHDRAWAL is unused: advertising balance is non-refundable.';
 
--- The caller's rights, so the ledger's own RLS (own rows, or admin) applies.
+-- Already security_invoker since 20260929200000; restated so the invariant sits next to its sibling view.
 alter view public.meta_wallet_balances set (security_invoker = true);
 
 create or replace view public.meta_service_balances with (security_invoker = true) as
@@ -407,7 +446,8 @@ values ('meta_ads_strategy_params', '{}'::jsonb),
        ('meta_ads_ai_summary_enabled', 'true'::jsonb)
 on conflict (key) do nothing;
 
--- MESSAGES (Messenger / Instagram Direct) is end-to-end supported now; WhatsApp stays behind its own switch.
+-- MESSAGES (Messenger / Instagram Direct) is end-to-end supported now and the owner asked for it to be
+-- fixed and offered (Meta Ads master brief); Admin can still switch it off. WhatsApp stays behind its own switch.
 update public.admin_settings
    set value = (select to_jsonb(array(select distinct x from jsonb_array_elements_text(value || '["MESSAGES"]'::jsonb) as t(x))))
  where key = 'meta_ads_goals_enabled' and not (value ? 'MESSAGES');
@@ -422,8 +462,8 @@ alter type public.notification_type add value if not exists 'META_RECOMMENDATION
 -- it last notified. A stable condition updates last_seen_at and nothing else.
 create table if not exists public.meta_events (
   id uuid primary key default gen_random_uuid(),
-  key text not null unique,
-  user_id uuid not null,
+  key text not null,
+  user_id uuid not null references public.users(id) on delete cascade,
   campaign_id uuid references public.meta_campaigns(id) on delete cascade,
   type text not null,
   category text not null check (category in ('CAMPAIGN','LEADS','BILLING','GUARD','SYSTEM')),
@@ -439,7 +479,8 @@ create table if not exists public.meta_events (
   last_notified_at timestamptz,
   missing_cycles integer not null default 0,
   reminders integer not null default 0,
-  resolved_at timestamptz
+  resolved_at timestamptz,
+  unique (user_id, key)
 );
 create index if not exists meta_events_user_idx on public.meta_events (user_id, state, last_seen_at desc);
 create index if not exists meta_events_campaign_idx on public.meta_events (campaign_id, state);
@@ -452,7 +493,7 @@ revoke all on public.meta_events from anon;
 create table if not exists public.meta_event_notifications (
   id uuid primary key default gen_random_uuid(),
   event_id uuid not null references public.meta_events(id) on delete cascade,
-  user_id uuid not null,
+  user_id uuid not null references public.users(id) on delete cascade,
   transition text not null check (transition in ('OPEN','ESCALATED','UPDATED','RESOLVED','REMINDER','BRIEF')),
   severity text not null,
   evidence_fingerprint text not null,
@@ -496,7 +537,7 @@ revoke all on public.meta_ai_summaries from anon;
 create table if not exists public.notification_deliveries (
   id uuid primary key default gen_random_uuid(),
   notification_id uuid,
-  user_id uuid not null,
+  user_id uuid not null references public.users(id) on delete cascade,
   channel text not null check (channel in ('IN_APP','PUSH','EMAIL')),
   status text not null check (status in ('QUEUED','SENT','FAILED','SKIPPED')),
   reason text,
@@ -520,7 +561,7 @@ comment on column public.notification_preferences.email_enabled is
 -- ── 18. BRIEFS ───────────────────────────────────────────────────────────
 create table if not exists public.meta_briefs (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null,
+  user_id uuid not null references public.users(id) on delete cascade,
   period text not null check (period in ('DAILY','WEEKLY')),
   period_key text not null,
   fingerprint text not null,
@@ -535,3 +576,12 @@ drop policy if exists meta_briefs_own on public.meta_briefs;
 create policy meta_briefs_own on public.meta_briefs for select to authenticated
   using (user_id = public.auth_user_id() or public.is_admin());
 revoke all on public.meta_briefs from anon;
+
+-- ── 19. GRANTS: server-owned tables are read-only to signed-in users ─────
+-- RLS already refuses these writes; the explicit revoke is the repo convention.
+revoke insert, update, delete, truncate on
+  public.meta_operations, public.meta_insights, public.meta_recommendations, public.meta_campaign_events,
+  public.meta_guard_accounts, public.meta_guard_incidents, public.meta_guard_evidence, public.meta_guard_admin_actions,
+  public.meta_lead_forms, public.meta_fee_policies, public.meta_fee_policy_audit, public.meta_events,
+  public.meta_event_notifications, public.meta_ai_summaries, public.notification_deliveries, public.meta_briefs
+  from authenticated;

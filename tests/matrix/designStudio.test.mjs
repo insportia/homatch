@@ -462,3 +462,55 @@ test('the three AI readings share one deployed function, because the project is 
     assert.ok(!fs.existsSync(path.join(ROOT, 'supabase/functions', gone)), `${gone} came back as its own function`);
   }
 });
+
+/* ── Permanent project deletion ───────────────────────────────────── */
+
+test('permanent deletion is a server lifecycle, not a hidden row', () => {
+  const sql = read('supabase/migrations/20261001130000_design_studio_project_deletion.sql');
+  assert.ok(!/^\s*(BEGIN|COMMIT)\s*;/im.test(sql), 'the migration runner owns the transaction');
+  // The browser can no longer delete the row (that would orphan every upload).
+  assert.match(sql, /DROP POLICY IF EXISTS ds_projects_delete ON public\.ds_projects;/);
+  assert.match(sql, /REVOKE DELETE ON public\.ds_projects FROM authenticated;/);
+  // Begin: the owner only, as themselves; shares revoked in the same step.
+  const begin = sql.slice(sql.indexOf('FUNCTION public.ds_project_delete_begin'), sql.indexOf('FUNCTION public.ds_project_delete_finish'));
+  assert.match(begin, /public\.auth_user_id\(\)/);
+  assert.match(begin, /v_project\.user_id <> v_me THEN\s+RAISE EXCEPTION 'DS_NOT_FOUND'/, 'a non-owner (admins included) must read it as not found');
+  assert.match(begin, /UPDATE public\.ds_shares SET revoked_at = now\(\)/);
+  // Finish: service only, and only once storage is empty; a tombstone keeps ids.
+  const finish = sql.slice(sql.indexOf('FUNCTION public.ds_project_delete_finish'));
+  assert.match(finish, /auth\.role\(\) IS DISTINCT FROM 'service_role' THEN RAISE EXCEPTION 'DS_SERVICE_ONLY'/);
+  assert.match(finish, /lifecycle IN \('ACTIVE', 'PENDING'\)[\s\S]*DS_STORAGE_NOT_EMPTY/);
+  assert.match(finish, /INSERT INTO public\.ds_project_tombstones/);
+  assert.match(sql, /GRANT EXECUTE ON FUNCTION public\.ds_project_delete_finish\(uuid\) TO service_role;/);
+  assert.ok(!/GRANT EXECUTE ON FUNCTION public\.ds_project_delete_finish\(uuid\) TO [^;]*authenticated/.test(sql));
+  // Money and audit rows are never touched.
+  assert.ok(!/usage_events|credit_|wallet|ledger_entries|billing_/i.test(sql.replace(/--.*$/gm, '')), 'deletion must not touch billing or usage rows');
+});
+
+test('the delete route asks the bucket, deletes storage first, and finishes only as the service', () => {
+  const route = read('supabase/functions/design-studio-reconstruct/project.ts');
+  assert.match(read('supabase/functions/design-studio-reconstruct/index.ts'), /route === 'project-delete'\) return handleProjectDelete\(req\)/);
+  assert.match(route, /refuseIfImpersonating\(/, 'an impersonated session could delete a customer\'s project');
+  assert.match(route, /caller\.rpc\('ds_project_delete_begin'/, 'ownership must be decided by the database, as the caller');
+  assert.match(route, /CONFIRMATION_MISMATCH/, 'the typed name is checked on the server too');
+  assert.match(route, /listObjects\(prefix\)/, 'objects nothing wrote a row for would be left behind');
+  assert.match(route, /await deleteObject\(entry\.key\)/);
+  assert.match(route, /'design-studio-floorplans', 'design-studio-models', 'design-studio-thumbnails'/);
+  assert.match(route, /admin\.rpc\('ds_project_delete_finish'/);
+  assert.ok(route.indexOf("deleteObject(") < route.indexOf("ds_project_delete_finish'"), 'rows must not go before the files');
+});
+
+test('the browser deletes only through the server, and a deleting project is gone everywhere', () => {
+  const svc = read('src/services/designStudio/projects.ts');
+  assert.match(svc, /invoke\('design-studio-reconstruct\/project-delete'/);
+  assert.match(svc, /\.is\('deleting_at', null\)/, 'a project being deleted still shows in the list');
+  assert.match(svc, /deleting_at\) return null/, 'an old project URL still opens a project being deleted');
+  const direct = walk('src').filter((f) => /\.(ts|tsx)$/.test(f))
+    .filter((f) => /from\('ds_projects'\)[\s\S]{0,40}\.delete\(/.test(read(f)));
+  assert.deepEqual(direct, [], 'something deletes the project row from the browser');
+  const page = read('src/pages/designStudio/DesignStudioPage.tsx');
+  assert.match(page, /ds_action_rename/);
+  assert.match(page, /ds_action_delete_permanent/);
+  assert.match(page, /typed\.trim\(\) === project\.name\.trim\(\)/, 'deleting needs the typed name');
+  assert.match(page, /resumePendingDeletions\(userId\)/, 'an interrupted deletion is never finished');
+});

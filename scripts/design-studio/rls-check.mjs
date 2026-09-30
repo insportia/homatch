@@ -26,6 +26,7 @@ const STORAGE_MIGRATION = process.argv[3] ?? null;
 const SHARES_MIGRATION = process.argv[4] ?? null;
 const CATALOG_SEED = process.argv[5] ?? null;
 const RECON_MIGRATION = process.argv[6] ?? null;
+const DELETE_MIGRATION = process.argv[7] ?? null;
 const db = new PGlite({ extensions: { pgcrypto } });
 let failures = 0;
 const ok = (name) => console.log(`  ok   ${name}`);
@@ -499,11 +500,102 @@ if (RECON_MIGRATION) {
     tx.query(`insert into ds_jobs (user_id,kind) values ($1,'RECONSTRUCT')`, [UA])));
 }
 
-// ── cascade
-await as(A, (tx) => tx.query(`delete from ds_projects where id=$1`, [pA.id]));
-const left = await db.query(`select (select count(*) from ds_versions where project_id=$1)::int v,
-  (select count(*) from ds_spatial_sources where project_id=$1)::int s`, [pA.id]);
-left.rows[0].v === 0 && left.rows[0].s === 0 ? ok('deleting a project removes its versions and sources') : bad('cascade', JSON.stringify(left.rows[0]));
+// ── permanent deletion (server-authorised, storage first, tombstoned)
+if (DELETE_MIGRATION) {
+  // Only the columns ds_project_delete_finish reads; production's table is richer.
+  await db.exec(`create table if not exists public.storage_objects (id uuid primary key default gen_random_uuid(),
+    object_key text not null, entity_type text, entity_id uuid, lifecycle text not null default 'ACTIVE', deleted_at timestamptz);
+    grant all on public.storage_objects to service_role;`);
+  await db.exec(fs.readFileSync(DELETE_MIGRATION, 'utf8'));
+  await db.exec(fs.readFileSync(DELETE_MIGRATION, 'utf8'));
+  ok('deletion: migration applies and re-applies');
+
+  const pD = await as(A, (tx) => one(tx, `insert into ds_projects (user_id,name) values ($1,'Doomed') returning id`, [UA]));
+  const pKeep = await as(B, (tx) => one(tx, `insert into ds_projects (user_id,name) values ($1,'Keep') returning id`, [UB]));
+  const srcD = await as('service', (tx) => one(tx, `insert into ds_spatial_sources (project_id,user_id,kind,status,geometry_state,editability,canonical)
+    values ($1,$2,'FLOORPLAN_SCENE','READY','ESTIMATED','GENERATED','{"schema":1}') returning id`, [pD.id, UA]));
+  const verD = await as(A, (tx) => one(tx, `insert into ds_versions (project_id,user_id,source_id,name) values ($1,$2,$3,'V') returning id`, [pD.id, UA, srcD.id]));
+  const jobD = await as('service', (tx) => one(tx, `insert into ds_jobs (user_id,project_id,kind,status) values ($1,$2,'AI_DESIGN','SUCCEEDED') returning id`, [UA, pD.id]));
+  const pub = await as('service', (tx) => one(tx, `insert into ds_published_designs (project_id,user_id,version_id,source_id,state,state_hash,title)
+    values ($1,$2,$3,$4,'{}',repeat('a',64),'Doomed') returning id`, [pD.id, UA, verD.id, srcD.id]));
+  const token = 'doomedShareToken_'.padEnd(43, 'x'); // the shape ds_public_share accepts
+  await as('service', (tx) => tx.query(`insert into ds_shares (token_hash,token_hint,published_id,project_id,user_id,share_type)
+    values (encode(extensions.digest($1,'sha256'),'hex'),'0001',$2,$3,$4,'WALKTHROUGH')`, [token, pub.id, pD.id, UA]));
+  const key = (n) => `users/${UA}/design-studio-floorplans/${pD.id}/0000000${n}-0000-4000-8000-000000000001.jpg`;
+  await as('service', (tx) => tx.query(`insert into storage_objects (object_key,entity_type,entity_id,lifecycle) values
+    ($1,'ds_project',$2,'ACTIVE'), ($3,null,null,'PENDING')`, [key(1), pD.id, key(2)]));
+
+  await expectError("deletion: another customer cannot begin deleting A's project", 'DS_NOT_FOUND', () => as(B, (tx) =>
+    tx.query(`select ds_project_delete_begin($1)`, [pD.id])));
+  await expectError("deletion: an admin cannot delete a customer's project either", 'DS_NOT_FOUND', () => as(ADM, (tx) =>
+    tx.query(`select ds_project_delete_begin($1)`, [pD.id])));
+  await expectError('deletion: the owner cannot delete the row from the browser (storage would be orphaned)', 'permission denied', () => as(A, (tx) =>
+    tx.query(`delete from ds_projects where id=$1`, [pD.id])));
+  await expectError('deletion: the browser cannot mark a project deleting itself', 'DS_SERVER_FIELD', () => as(A, (tx) =>
+    tx.query(`update ds_projects set deleting_at=now() where id=$1`, [pD.id])));
+  !['REVOKED', 'NOT_FOUND'].includes((await as('anon', (tx) => one(tx, `select ds_public_share($1) as r`, [token]))).r.status)
+    ? ok('deletion: before deleting, the share link is live') : bad('share live', 'revoked early');
+
+  const begun = await as(A, (tx) => one(tx, `select ds_project_delete_begin($1) as r`, [pD.id]));
+  begun.r.sharesRevoked === 1 ? ok('deletion: beginning revokes every share at once') : bad('begin', JSON.stringify(begun.r));
+  (await as('anon', (tx) => one(tx, `select ds_public_share($1) as r`, [token]))).r.status === 'REVOKED'
+    ? ok('deletion: the old share link exposes nothing (REVOKED)') : bad('share after begin', 'still live');
+  await expectError('deletion: a project being deleted cannot be renamed or edited', 'DS_PROJECT_DELETING', () => as(A, (tx) =>
+    tx.query(`update ds_projects set name='Saved?' where id=$1`, [pD.id])));
+  await expectError('deletion: nothing new can be added to a project being deleted (a version)', 'DS_PROJECT_DELETING', () => as(A, (tx) =>
+    tx.query(`insert into ds_versions (project_id,user_id,source_id,name) values ($1,$2,$3,'Late')`, [pD.id, UA, srcD.id])));
+  await expectError('deletion: ...nor a saved view', 'DS_PROJECT_DELETING', () => as(A, (tx) =>
+    tx.query(`insert into ds_saved_views (project_id,user_id,name,camera) values ($1,$2,'Late','{}')`, [pD.id, UA])));
+  await expectError('deletion: ...nor an existing version edited', 'DS_PROJECT_DELETING', () => as(A, (tx) =>
+    tx.query(`update ds_versions set name='Late' where id=$1`, [verD.id])));
+  await as(A, (tx) => tx.query(`select ds_project_delete_begin($1)`, [pD.id]));
+  ok('deletion: beginning again (a retry) resumes rather than failing');
+  const pSwitch = await as(A, (tx) => one(tx, `insert into ds_projects (user_id,name) values ($1,'Switch') returning id`, [UA]));
+  const guc = await as(A, async (tx) => { await tx.query(`select ds_project_delete_begin($1)`, [pSwitch.id]);
+    return one(tx, `select coalesce(current_setting('homatch.ds_project_deleting', true), '') as v`); });
+  guc.v === '' ? ok('deletion: the internal switch is cleared before the call returns') : bad('guc', guc.v);
+  await expectError('deletion: the browser cannot finish a deletion (service only)', 'permission denied', () => as(A, (tx) =>
+    tx.query(`select ds_project_delete_finish($1)`, [pD.id])));
+  await expectError('deletion: finishing is refused while an upload is still ACTIVE', 'DS_STORAGE_NOT_EMPTY', () => as('service', (tx) =>
+    tx.query(`select ds_project_delete_finish($1)`, [pD.id])));
+  await as('service', (tx) => tx.query(`update storage_objects set lifecycle='DELETED', deleted_at=now() where object_key=$1`, [key(1)]));
+  await expectError('deletion: ...and while a row-less PENDING upload under its prefix remains', 'DS_STORAGE_NOT_EMPTY', () => as('service', (tx) =>
+    tx.query(`select ds_project_delete_finish($1)`, [pD.id])));
+  await as('service', (tx) => tx.query(`update storage_objects set lifecycle='DELETED', deleted_at=now() where object_key=$1`, [key(2)]));
+  const running = await as('service', (tx) => one(tx, `insert into ds_jobs (user_id,project_id,kind,status,started_at) values ($1,$2,'RECONSTRUCT','RUNNING',now()) returning id`, [UA, pD.id]));
+  await expectError('deletion: finishing waits for a job still at work', 'DS_JOBS_ACTIVE', () => as('service', (tx) =>
+    tx.query(`select ds_project_delete_finish($1)`, [pD.id])));
+  await as('service', (tx) => tx.query(`update ds_jobs set started_at = now() - interval '20 minutes' where id=$1`, [running.id]));
+  ok('deletion: (a job silent for 20 minutes is treated as dead)');
+
+  const done = await as('service', (tx) => one(tx, `select ds_project_delete_finish($1) as r`, [pD.id]));
+  done.r.state === 'DELETED' && done.r.counts.versions === 1 && done.r.counts.shares === 1 && done.r.counts.jobs === 2
+    ? ok('deletion: finishing deletes the project once storage is empty') : bad('finish', JSON.stringify(done.r));
+  const gone = await db.query(`select (select count(*) from ds_projects where id=$1)::int p, (select count(*) from ds_versions where project_id=$1)::int v,
+    (select count(*) from ds_spatial_sources where project_id=$1)::int s, (select count(*) from ds_shares where project_id=$1)::int sh,
+    (select count(*) from ds_published_designs where project_id=$1)::int pub, (select count(*) from ds_jobs where project_id=$1)::int j,
+    (select count(*) from storage_objects where object_key like $2)::int kept`, [pD.id, `users/${UA}/design-studio-%/${pD.id}/%`]);
+  const g = gone.rows[0];
+  g.p + g.v + g.s + g.sh + g.pub + g.j === 0 ? ok('deletion: versions, sources, shares, snapshots and jobs are all gone') : bad('cascade', JSON.stringify(g));
+  g.kept === 2 ? ok('deletion: the storage rows stay, DELETED, as the audit of what was removed') : bad('storage audit', JSON.stringify(g));
+  const tomb = await as('service', (tx) => one(tx, `select user_id, job_ids, counts from ds_project_tombstones where project_id=$1`, [pD.id]));
+  tomb && tomb.user_id === UA && tomb.job_ids.includes(jobD.id) && tomb.job_ids.includes(running.id) && !JSON.stringify(tomb).includes('Doomed')
+    ? ok('deletion: a tombstone keeps ids and counts only, so kept usage rows still resolve') : bad('tombstone', JSON.stringify(tomb));
+  (await as(A, (tx) => tx.query(`select * from ds_project_tombstones`))).rows.length === 0
+    ? ok('deletion: a customer cannot read tombstones') : bad('tombstone rls', 'visible');
+  (await as('anon', (tx) => one(tx, `select ds_public_share($1) as r`, [token]))).r.status === 'NOT_FOUND'
+    ? ok('deletion: afterwards the share link is simply not found') : bad('share after finish', 'still resolves');
+  (await as('service', (tx) => one(tx, `select ds_project_delete_finish($1) as r`, [pD.id]))).r.state === 'ALREADY_DELETED'
+    ? ok('deletion: finishing twice is harmless') : bad('finish twice', 'failed');
+  (await db.query(`select count(*)::int n from ds_projects where id=$1`, [pKeep.id])).rows[0].n === 1
+    ? ok("deletion: another customer's project is untouched") : bad('collateral', 'B project gone');
+} else {
+  // ── cascade (before permanent deletion existed, the owner deleted the row directly)
+  await as(A, (tx) => tx.query(`delete from ds_projects where id=$1`, [pA.id]));
+  const left = await db.query(`select (select count(*) from ds_versions where project_id=$1)::int v,
+    (select count(*) from ds_spatial_sources where project_id=$1)::int s`, [pA.id]);
+  left.rows[0].v === 0 && left.rows[0].s === 0 ? ok('deleting a project removes its versions and sources') : bad('cascade', JSON.stringify(left.rows[0]));
+}
 
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nALL PASSED');
 process.exit(failures ? 1 : 0);

@@ -12100,6 +12100,15 @@ const en = {
   admin_mads_saved: 'Saved.',
   admin_mads_adjust_required: 'A user, a non-zero amount and a reason are required.',
   admin_mads_invalid_json: 'That value is not valid JSON.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_rename_title: 'Rename project',
+  ds_rename_label: 'Project name',
+  ds_action_delete_permanent: 'Delete permanently',
+  ds_delete_title: 'Delete this project permanently?',
+  ds_delete_body: 'This removes the project, every version, the pictures, plans and models you uploaded, its renders and thumbnails, and turns off every link you shared. It cannot be undone.',
+  ds_delete_confirm_label: 'To confirm, type the project name: {{name}}',
+  ds_delete_error: 'The deletion did not finish. The project is already hidden and its links are off; try again to complete it.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -24114,6 +24123,15 @@ const ka: Partial<Record<TranslationKey, string>> = {
   admin_mads_saved: 'შენახულია.',
   admin_mads_adjust_required: 'საჭიროა მომხმარებელი, ნულისგან განსხვავებული თანხა და მიზეზი.',
   admin_mads_invalid_json: 'ეს მნიშვნელობა სწორი JSON არ არის.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_rename_title: 'პროექტის სახელის შეცვლა',
+  ds_rename_label: 'პროექტის სახელი',
+  ds_action_delete_permanent: 'სამუდამოდ წაშლა',
+  ds_delete_title: 'წავშალოთ ეს პროექტი სამუდამოდ?',
+  ds_delete_body: 'ეს წაშლის პროექტს, ყველა ვერსიას, თქვენ მიერ ატვირთულ სურათებს, გეგმებსა და მოდელებს, რენდერებსა და მინიატურებს, და გათიშავს ყველა გაზიარებულ ბმულს. ამის გაუქმება შეუძლებელია.',
+  ds_delete_confirm_label: 'დასადასტურებლად ჩაწერეთ პროექტის სახელი: {{name}}',
+  ds_delete_error: 'წაშლა ვერ დასრულდა. პროექტი უკვე დამალულია და ბმულები გათიშულია; სცადეთ ხელახლა დასასრულებლად.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -36119,6 +36137,15 @@ const ru: Partial<Record<TranslationKey, string>> = {
   admin_mads_saved: 'Сохранено.',
   admin_mads_adjust_required: 'Нужны пользователь, ненулевая сумма и причина.',
   admin_mads_invalid_json: 'Это значение не является корректным JSON.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_rename_title: 'Переименовать проект',
+  ds_rename_label: 'Название проекта',
+  ds_action_delete_permanent: 'Удалить навсегда',
+  ds_delete_title: 'Удалить этот проект навсегда?',
+  ds_delete_body: 'Будут удалены проект, все версии, загруженные вами картинки, планы и модели, его рендеры и миниатюры, а все ссылки, которыми вы поделились, перестанут работать. Это нельзя отменить.',
+  ds_delete_confirm_label: 'Для подтверждения введите название проекта: {{name}}',
+  ds_delete_error: 'Удаление не завершилось. Проект уже скрыт, а ссылки отключены; попробуйте ещё раз, чтобы завершить.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -48122,6 +48149,15 @@ const tr: Partial<Record<TranslationKey, string>> = {
   admin_mads_saved: 'Kaydedildi.',
   admin_mads_adjust_required: 'Bir kullanıcı, sıfırdan farklı bir tutar ve bir gerekçe gereklidir.',
   admin_mads_invalid_json: 'Bu değer geçerli bir JSON değil.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_rename_title: 'Projeyi yeniden adlandır',
+  ds_rename_label: 'Proje adı',
+  ds_action_delete_permanent: 'Kalıcı olarak sil',
+  ds_delete_title: 'Bu proje kalıcı olarak silinsin mi?',
+  ds_delete_body: 'Bu işlem projeyi, tüm sürümleri, yüklediğiniz görselleri, planları ve modelleri, render ve küçük resimlerini kaldırır ve paylaştığınız tüm bağlantıları kapatır. Geri alınamaz.',
+  ds_delete_confirm_label: 'Onaylamak için proje adını yazın: {{name}}',
+  ds_delete_error: 'Silme işlemi tamamlanmadı. Proje zaten gizlendi ve bağlantıları kapatıldı; tamamlamak için tekrar deneyin.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -60125,6 +60161,15 @@ const ar: Partial<Record<TranslationKey, string>> = {
   admin_mads_saved: 'تم الحفظ.',
   admin_mads_adjust_required: 'يلزم مستخدم ومبلغ غير صفري وسبب.',
   admin_mads_invalid_json: 'هذه القيمة ليست JSON صالحًا.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_rename_title: 'إعادة تسمية المشروع',
+  ds_rename_label: 'اسم المشروع',
+  ds_action_delete_permanent: 'حذف نهائي',
+  ds_delete_title: 'هل تريد حذف هذا المشروع نهائيًا؟',
+  ds_delete_body: 'سيؤدي هذا إلى حذف المشروع وكل إصداراته والصور والمخططات والنماذج التي رفعتها وصوره المعروضة ومصغّراته، وإيقاف كل رابط شاركته. لا يمكن التراجع عن ذلك.',
+  ds_delete_confirm_label: 'للتأكيد، اكتب اسم المشروع: {{name}}',
+  ds_delete_error: 'لم يكتمل الحذف. المشروع مخفي بالفعل وروابطه متوقفة؛ حاول مرة أخرى لإكماله.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -72128,6 +72173,15 @@ const he: Partial<Record<TranslationKey, string>> = {
   admin_mads_saved: 'נשמר.',
   admin_mads_adjust_required: 'נדרשים משתמש, סכום שאינו אפס וסיבה.',
   admin_mads_invalid_json: 'הערך הזה אינו JSON תקין.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_rename_title: 'שינוי שם הפרויקט',
+  ds_rename_label: 'שם הפרויקט',
+  ds_action_delete_permanent: 'מחיקה לצמיתות',
+  ds_delete_title: 'למחוק את הפרויקט הזה לצמיתות?',
+  ds_delete_body: 'פעולה זו מסירה את הפרויקט, כל גרסה, התמונות, התוכניות והמודלים שהעליתם, את ההדמיות והתמונות הממוזערות שלו, ומשביתה כל קישור ששיתפתם. לא ניתן לבטל זאת.',
+  ds_delete_confirm_label: 'לאישור, הקלידו את שם הפרויקט: {{name}}',
+  ds_delete_error: 'המחיקה לא הושלמה. הפרויקט כבר מוסתר והקישורים שלו כבויים; נסו שוב כדי להשלים אותה.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

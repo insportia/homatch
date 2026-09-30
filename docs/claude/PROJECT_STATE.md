@@ -51,6 +51,15 @@ MATTERS right now, verify against the live systems, not this file)
   the reading's plan rides on the first picture's row so the shared floor-plan
   generator builds it (ESTIMATED until calibrated). Pieces carry `provenance`;
   public share snapshots strip it.
+- Permanent project deletion (`20261001130000`): never from the browser (the
+  direct DELETE is revoked — it would orphan every R2 upload). The route
+  `design-studio-reconstruct/project-delete` begins as the owner
+  (`ds_project_delete_begin`: hides, freezes, revokes all shares), deletes
+  everything under the project's three R2 prefixes (listed from the bucket),
+  marks storage rows DELETED, then `ds_project_delete_finish` (service only)
+  refuses unless storage is empty, writes an ids-only tombstone and cascades.
+  Billing/usage rows are never touched. Interrupted deletions resume on the
+  owner's next launcher visit.
 - Living engine: `canvas/livingRuntime.ts` runs every interaction (declared by
   assets, permitted by capabilities); lights are a pool of 4/3/2 per tier
   (12 per-lamp lights halved the frame rate — measured).

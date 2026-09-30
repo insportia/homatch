@@ -119,6 +119,8 @@ export interface DesignProjectRecord {
   created_at: string;
   updated_at: string;
   archived_at: string | null;
+  /** Set by the server while a permanent deletion runs; such a project is gone for its owner. */
+  deleting_at?: string | null;
 }
 
 export type VersionOrigin = 'ORIGINAL' | 'USER' | 'AI' | 'DUPLICATE' | 'BRANCH' | 'RESTORE';

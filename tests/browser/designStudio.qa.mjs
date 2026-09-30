@@ -288,6 +288,15 @@ export async function wire(page, store, errors) {
     }
     /* A stand-in for design-studio-reconstruct/floorplan: the stored object must exist
        under the caller's key; the reading is a fixed proposal (no scale). */
+    if (url.pathname.endsWith('/functions/v1/design-studio-reconstruct/project-delete')) {
+      const body = JSON.parse(req.postData() || '{}');
+      const target = store.db.ds_projects.find((x) => x.id === body.projectId && x.user_id === 'hm1');
+      if (!target) return json({ error: 'NOT_FOUND' }, 404);
+      if (!target.deleting_at && body.confirmName !== target.name) return json({ error: 'CONFIRMATION_MISMATCH' }, 400);
+      (store.deletes ??= []).push(body);
+      store.db.ds_projects = store.db.ds_projects.filter((x) => x.id !== target.id);
+      return json({ state: 'DELETED', sharesRevoked: 0, objectsRemoved: 0 });
+    }
     if (url.pathname.endsWith('/functions/v1/design-studio-reconstruct/floorplan')) {
       const body = JSON.parse(req.postData() || '{}');
       store.readings.push(body);
@@ -432,7 +441,7 @@ async function main() {
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
   // QA_ONLY=11 runs one checkpoint (while iterating); the release run is all of them.
   if (process.env.QA_ONLY) {
-    try { await ({ 11: checkpoint11, '11b': checkpoint11b, 10: checkpoint10 })[process.env.QA_ONLY](browser); } finally { await browser.close().catch(() => {}); server.kill(); }
+    try { await ({ 11: checkpoint11, '11b': checkpoint11b, 12: checkpoint12, 10: checkpoint10 })[process.env.QA_ONLY](browser); } finally { await browser.close().catch(() => {}); server.kill(); }
     console.log(failures ? `${failures} FAILED` : 'ALL PASSED');
     process.exit(failures ? 1 : 0);
   }
@@ -528,6 +537,7 @@ async function main() {
     await checkpoint10(browser);
     await checkpoint11(browser);
     await checkpoint11b(browser);
+    await checkpoint12(browser);
   } finally {
     await browser.close().catch(() => {});
     server.kill();
@@ -1016,6 +1026,61 @@ async function checkpoint11b(browser) {
   check('plan + pictures: floors dressed from the pictures', Object.keys(head.state.surfaces).some((k) => k.startsWith('floor:r-living')));
   await page.screenshot({ path: path.join(OUT, 'cp11b-built-1440-en.png') });
   check('no page errors (checkpoint 11b)', errors.length === 0, errors.join('\n        '));
+  await ctx.close();
+}
+
+/* ── Checkpoint 12: the project menu — rename, and permanent deletion ──
+ *
+ * Deleting is the server's job (see project.ts); the browser's part is a
+ * menu entry, a typed-name confirmation, and a list and a URL that no longer
+ * show the project afterwards. */
+async function checkpoint12(browser) {
+  const { store, project } = await seededStore();
+  const errors = [];
+  const ctx = await openContext(browser, { width: 1440, height: 900, lang: 'en' });
+  const page = await ctx.newPage();
+  await wire(page, store, errors);
+  await page.goto(`${BASE}/design-studio`, { waitUntil: 'domcontentloaded' });
+  await page.getByRole('link', { name: project.name }).first().waitFor({ timeout: 25000 });
+
+  const openMenu = async (name) => {
+    await page.getByRole('button', { name: `Actions for ${name}` }).click();
+    await page.getByRole('menu').waitFor();
+  };
+  await openMenu(project.name);
+  check('menu: Rename, Archive and Delete permanently', (await page.getByRole('menuitem', { name: 'Rename' }).count()) === 1
+    && (await page.getByRole('menuitem', { name: 'Archive' }).count()) === 1
+    && (await page.getByRole('menuitem', { name: 'Delete permanently' }).count()) === 1);
+  await page.screenshot({ path: path.join(OUT, 'cp12-menu-1440-en.png') });
+  await page.getByRole('menuitem', { name: 'Rename' }).click();
+  await page.getByTestId('ds-rename-input').fill('Vake flat, redesigned');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await page.getByRole('link', { name: 'Vake flat, redesigned' }).first().waitFor({ timeout: 10000 });
+  check('rename: the new name is saved and listed', store.db.ds_projects.find((p) => p.id === project.id)?.name === 'Vake flat, redesigned');
+
+  await openMenu('Vake flat, redesigned');
+  await page.getByRole('menuitem', { name: 'Delete permanently' }).click();
+  await page.getByTestId('ds-delete-dialog').waitFor();
+  const submit = page.getByTestId('ds-delete-submit');
+  check('delete: says what is removed and that it cannot be undone', await page.getByText(/cannot be undone/).isVisible());
+  check('delete: nothing happens until the exact name is typed', await submit.isDisabled());
+  await page.getByTestId('ds-delete-confirm').fill('Vake flat, redesign');
+  check('delete: a near-miss name is still refused', await submit.isDisabled());
+  await page.getByTestId('ds-delete-confirm').fill('Vake flat, redesigned');
+  check('delete: the exact name enables it', await submit.isEnabled());
+  await page.screenshot({ path: path.join(OUT, 'cp12-delete-confirm-1440-en.png') });
+  await submit.click();
+  await page.getByTestId('ds-delete-dialog').waitFor({ state: 'detached', timeout: 10000 });
+  check('delete: the server route is asked, with the typed name', store.deletes?.length === 1
+    && store.deletes[0].projectId === project.id && store.deletes[0].confirmName === 'Vake flat, redesigned');
+  check('delete: gone from Active', (await page.getByRole('link', { name: 'Vake flat, redesigned' }).count()) === 0);
+  await page.getByRole('tab', { name: 'Archived' }).click();
+  await page.waitForTimeout(500);
+  check('delete: and not in Archived', (await page.getByRole('link', { name: 'Vake flat, redesigned' }).count()) === 0);
+  await page.goto(`${BASE}/design-studio/${project.id}`, { waitUntil: 'domcontentloaded' });
+  check('delete: the old project URL shows nothing of it', await page.getByText('This design project does not exist or is not yours.')
+    .waitFor({ timeout: 15000 }).then(() => true, () => false));
+  check('no page errors (checkpoint 12)', errors.length === 0, errors.join('\n        '));
   await ctx.close();
 }
 

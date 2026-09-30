@@ -653,5 +653,76 @@ if (DELETE_MIGRATION) {
   left.rows[0].v === 0 && left.rows[0].s === 0 ? ok('deleting a project removes its versions and sources') : bad('cascade', JSON.stringify(left.rows[0]));
 }
 
+// ── Design Studio catalogue import (DS_CATALOG_MIGRATION) ───────────────
+const CATALOG_MIGRATION = process.env.DS_CATALOG_MIGRATION ?? null;
+if (CATALOG_MIGRATION) {
+  await db.exec(fs.readFileSync(CATALOG_MIGRATION, 'utf8'));
+  await db.exec(fs.readFileSync(CATALOG_MIGRATION, 'utf8'));
+  ok('catalogue: migration applies and re-applies');
+  const H = (n) => `hma_${String(n).padStart(26, '0')}`;
+  const V = `hmv_${'1'.repeat(26)}`;
+  const key = (d, h = H(1), area = 'materials', f = 'textures/a_diff_1k.jpg') => `design-studio/catalog/${d}/${area}/${h}/${V}/${f}`;
+  const verdict = (who, k, action) => as(who, (tx) => one(tx, 'select public.storage_authorize($1,$2) as v', [k, action])).then((r) => r.v);
+  const expectVerdict = async (name, who, k, action, want) => { const v = await verdict(who, k, action); if (v === want) ok(name); else bad(name, `got ${v}, want ${want}`); };
+  await expectVerdict('catalogue: anyone reads a PUBLIC object', 'anon', key('public'), 'READ', 'ALLOW');
+  await expectVerdict('catalogue: a stranger may not read a LICENSED object', 'anon', key('licensed'), 'READ', 'UNAUTHENTICATED');
+  await expectVerdict('catalogue: a signed-in user reads a LICENSED object', A, key('licensed'), 'READ', 'ALLOW');
+  await expectVerdict('catalogue: a customer may not read a RESTRICTED source', A, key('restricted', H(1), 'models', 'x.blend'), 'READ', 'NOT_ADMIN');
+  await expectVerdict('catalogue: staff read a RESTRICTED source', ADM, key('restricted', H(1), 'models', 'x.blend'), 'READ', 'ALLOW');
+  await expectVerdict('catalogue: nobody writes by signing, not even staff', ADM, key('public'), 'WRITE', 'NOT_ADMIN');
+  await expectVerdict('catalogue: nobody deletes by signing', ADM, key('public'), 'DELETE', 'NOT_ADMIN');
+  await expectVerdict('catalogue: an unknown delivery class is refused', 'anon', key('open'), 'READ', 'INVALID_KEY');
+  await expectVerdict('catalogue: a malformed asset id is refused', 'anon', `design-studio/catalog/public/materials/hma_x/${V}/a.jpg`, 'READ', 'INVALID_KEY');
+  await expectVerdict('catalogue: other namespaces are unchanged (diagnostics stays staff-only)', A, 'diagnostics/x.txt', 'READ', 'NOT_ADMIN');
+
+  const imp = (n, extra = {}) => ({ homatch_asset_id: H(n), source_provider: 'polyhaven', source_asset_id: `asset_${n}`, source_type: 'textures', kind: 'MATERIAL',
+    canonical_category: 'MATERIAL.WOOD', canonical_subcategory: 'FLOOR_BOARDS', display_name: `Wood ${n}`, source_asset: {}, policy: 'p', license_class: 'CC0', ...extra });
+  const insertImport = (r) => as('service', (tx) => tx.query(`insert into ds_catalog_imports (homatch_asset_id, source_provider, source_asset_id, source_type, kind, canonical_category, canonical_subcategory, display_name, source_asset, policy, license_class, state)
+    values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, [r.homatch_asset_id, r.source_provider, r.source_asset_id, r.source_type, r.kind, r.canonical_category, r.canonical_subcategory, r.display_name, r.source_asset, r.policy, r.license_class, r.state ?? 'QUEUED']));
+  await insertImport(imp(1));
+  await insertImport(imp(2, { license_class: 'ROYALTY_FREE', source_provider: 'blendkit', source_type: 'models', kind: 'MODEL' }));
+  await insertImport(imp(3, { license_class: 'UNKNOWN', state: 'DISCOVERED' }));
+  ok('catalogue: the importer records assets');
+  await expectError('catalogue: one provider asset is one row (no duplicates)', 'duplicate key', () => insertImport(imp(9, { source_asset_id: 'asset_1' })));
+  await expectError('catalogue: an UNKNOWN licence can never be READY', 'ds_catalog_imports_ready_licensed', () => as('service', (tx) => tx.query(`update ds_catalog_imports set state='READY' where homatch_asset_id=$1`, [H(3)])));
+  await expectError('catalogue: a REJECT can never be READY', 'ds_catalog_imports_ready_licensed', () => as('service', (tx) => tx.query(`update ds_catalog_imports set state='READY', quality_tier='REJECT' where homatch_asset_id=$1`, [H(1)])));
+
+  const insertFile = (h, d, k = key(d, h)) => as('service', (tx) => tx.query(`insert into ds_catalog_files (object_key, homatch_asset_id, version_id, variant, role, resolution, rel_path, delivery, bytes, md5, sha256, content_type)
+    values ($1,$2,$3,'SOURCE','BASE_COLOR','1k','textures/a_diff_1k.jpg',$4,10,$5,$6,'image/jpeg')`, [k, h, V, d, 'a'.repeat(32), 'b'.repeat(64)]));
+  await insertFile(H(1), 'public');
+  ok('catalogue: a CC0 object is filed public');
+  await expectError('catalogue: a non-CC0 asset is never filed public', 'DS_CATALOG_NOT_PUBLIC', () => insertFile(H(2), 'public'));
+  await insertFile(H(2), 'licensed');
+  ok('catalogue: a Royalty-Free runtime derivative can be filed licensed');
+  await expectError('catalogue: the delivery column and the key can never disagree', 'ds_catalog_files_delivery_key', () => insertFile(H(1), 'licensed', key('public', H(1), 'materials', 'x.jpg')));
+
+  // Claims: leased, bounded, resumable.
+  const claimed = await as('service', (tx) => tx.query(`select homatch_asset_id, state, attempts, lease_owner from ds_catalog_claim('run-1', 10, 60)`));
+  if (claimed.rows.length === 2 && claimed.rows.every((r) => r.state === 'DOWNLOADING' && r.attempts === 1 && r.lease_owner === 'run-1')) ok('catalogue: QUEUED assets are claimed with a lease and an attempt');
+  else bad('claim', JSON.stringify(claimed.rows));
+  const again = await as('service', (tx) => tx.query(`select homatch_asset_id from ds_catalog_claim('run-2', 10, 60)`));
+  if (again.rows.length === 0) ok('catalogue: a leased asset is not claimed twice'); else bad('double claim', JSON.stringify(again.rows));
+  await as('service', (tx) => tx.query(`update ds_catalog_imports set lease_until = now() - interval '1 minute' where homatch_asset_id=$1`, [H(1)]));
+  const resumed = await as('service', (tx) => tx.query(`select homatch_asset_id, attempts from ds_catalog_claim('run-3', 10, 60)`));
+  if (resumed.rows.length === 1 && resumed.rows[0].homatch_asset_id === H(1) && resumed.rows[0].attempts === 2) ok('catalogue: an interrupted asset is resumed when its lease expires');
+  else bad('resume', JSON.stringify(resumed.rows));
+  await as('service', (tx) => tx.query(`update ds_catalog_imports set lease_until = now() - interval '1 minute', attempts = max_attempts where homatch_asset_id=$1`, [H(1)]));
+  await as('service', (tx) => tx.query(`select * from ds_catalog_claim('run-4', 10, 60)`));
+  const failed = await as('service', (tx) => one(tx, `select state from ds_catalog_imports where homatch_asset_id=$1`, [H(1)]));
+  if (failed.state === 'FAILED') ok('catalogue: retries are bounded (out of attempts → FAILED)'); else bad('bounded', failed.state);
+
+  // The machinery is staff-only; the resolver hands out ids, never paths.
+  const seen = await as(A, (tx) => tx.query(`select 1 from ds_catalog_imports`));
+  if (seen.rows.length === 0) ok('catalogue: customers cannot read the import machinery'); else bad('imports rls', `${seen.rows.length} rows`);
+  await expectError('catalogue: customers cannot write catalogue files', 'permission denied', () => as(A, (tx) => tx.query(`insert into ds_catalog_files (object_key, homatch_asset_id, version_id, variant, role, rel_path, delivery, bytes, md5, sha256, content_type) values ($1,$2,$3,'SOURCE','BASE_COLOR','y.jpg','public',1,$4,$5,'image/jpeg')`, [key('public', H(1), 'materials', 'y.jpg'), H(1), V, 'a'.repeat(32), 'b'.repeat(64)])));
+  await as('service', (tx) => tx.query(`insert into ds_catalog_materials (id, code, name, category, pbr, provenance, homatch_asset_id, source_provider, source_asset_id, source_files_hash, canonical_category, canonical_subcategory, version_id, normalized_name, search_aliases, quality_state, license_class)
+    values ('30000000-0000-0000-0000-000000000001',$1,'Light Oak Wood Planks','WOOD','{}'::jsonb,'LICENSED',$1,'polyhaven','asset_1','fh','MATERIAL.WOOD','FLOOR_BOARDS',$2,'light-oak-wood-planks',ARRAY['oak','light','floor','wood'],'READY','CC0')`, [H(1), V]));
+  const res = await as(A, (tx) => tx.query(`select * from ds_catalog_resolve('MATERIAL', ARRAY['wood','oak','light','floor'], 5)`));
+  if (res.rows.length === 1 && res.rows[0].homatch_asset_id === H(1) && res.rows[0].score > 0 && !Object.keys(res.rows[0]).some((k) => /key|path|url/.test(k))) ok('catalogue: the resolver returns canonical ids by meaning, never a path');
+  else bad('resolve', JSON.stringify(res.rows));
+  await expectError('catalogue: an imported row carries its whole identity or none', 'ds_catalog_materials_identity_check', () =>
+    as('service', (tx) => tx.query(`insert into ds_catalog_materials (code, name, category, pbr, provenance, homatch_asset_id) values ('x-partial','X','WOOD','{}'::jsonb,'LICENSED',$1)`, [H(7)])));
+}
+
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nALL PASSED');
 process.exit(failures ? 1 : 0);

@@ -293,3 +293,23 @@ test('storage-sign judges the arrived facts at commit and removes a refused obje
   assert.ok(commit.indexOf('checkArrived(') < commit.indexOf("lifecycle: 'ACTIVE'"), 'the object is activated before it is judged');
   assert.match(commit, /await deleteObject\(objectKey\)/, 'a refused object is left in the bucket');
 });
+
+test('design-studio catalogue: the delivery class in the key decides who reads; nobody writes by signing', () => {
+  const k = (d, area = 'materials', f = 'textures/a_diff_1k.jpg') => `design-studio/catalog/${d}/${area}/hma_74qrxm0k6fd2rspqtw5sa2s5q7/hmv_8v8jx8yhnq9jrdbndw0nce4sda/${f}`;
+  const read = (key) => requirementFor(parseKey(key), 'READ').kind;
+  assert.equal(read(k('public')), 'ANYONE', 'CC0 content that shared-design visitors load');
+  assert.equal(read(k('licensed', 'models', 'x.glb')), 'AUTHENTICATED', 'runtime derivatives a licence allows in-app');
+  assert.equal(read(k('restricted', 'models', 'x.blend')), 'ADMIN', 'provider source packages are never delivered');
+  for (const d of ['public', 'licensed', 'restricted']) {
+    assert.equal(requirementFor(parseKey(k(d)), 'WRITE').kind, 'ADMIN');
+    assert.equal(requirementFor(parseKey(k(d)), 'DELETE').kind, 'ADMIN');
+  }
+  for (const bad of [
+    'design-studio/other/x.jpg',
+    'design-studio/catalog/materials/hma_74qrxm0k6fd2rspqtw5sa2s5q7/hmv_8v8jx8yhnq9jrdbndw0nce4sda/a.jpg',
+    k('open'),
+    'design-studio/catalog/public/models/not-an-id/hmv_8v8jx8yhnq9jrdbndw0nce4sda/a.jpg',
+    k('public', 'secrets'),
+    k('public', 'models', 'a/b/c/d/e.jpg'),
+  ]) assert.throws(() => parseKey(bad), KeyError, bad);
+});

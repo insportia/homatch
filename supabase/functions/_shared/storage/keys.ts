@@ -93,6 +93,29 @@ const DS_FLOORPLAN: ContentPolicy = {
 const DS_MODEL: ContentPolicy = { mime: ['model/gltf-binary', 'model/gltf+json'], maxBytes: 100 * MB };
 const DS_THUMBNAIL: ContentPolicy = { mime: ['image/webp', 'image/jpeg', 'image/png'], maxBytes: 2 * MB };
 const ANY_SMALL: ContentPolicy = { mime: ['*'], maxBytes: 25 * MB };
+// The Design Studio catalogue (licensed CC0 assets): glTF bundles, texture
+// maps, HDRIs, KTX2 variants, thumbnails and the provenance snapshot.
+const DS_CATALOG: ContentPolicy = {
+  mime: ['model/gltf+json', 'model/gltf-binary', 'application/octet-stream', 'image/jpeg', 'image/png', 'image/webp', 'image/ktx2', 'image/vnd.radiance', 'application/json'],
+  maxBytes: 100 * MB,
+};
+/** The only keys the catalogue namespace holds (catalogSource.ts CATALOG_KEY): design-studio/catalog/<delivery>/<area>/<hma>/<hmv>/<file>. */
+const DS_CATALOG_KEY = /^catalog\/(public|licensed|restricted)\/(models|materials|hdri|thumbnails|metadata)\/hma_[0-9a-z]{26}\/hmv_[0-9a-z]{26}\/(?:[A-Za-z0-9_-][A-Za-z0-9_.-]*\/){0,3}[A-Za-z0-9_-][A-Za-z0-9_.-]*$/;
+/**
+ * Who may read a catalogue object is its DELIVERY CLASS, written into the key
+ * by the importer from the asset's licence: public (anyone: CC0 and
+ * previews), licensed (signed-in users: runtime derivatives a licence allows
+ * in-app), restricted (staff: provider source packages). No rule written for
+ * one class can open another, and nobody writes here by signing.
+ */
+const catalogue = (read: 'ANYONE' | 'AUTHENTICATED' | 'ADMIN'): CategoryRules => ({
+  READ: { kind: read }, WRITE: { kind: 'ADMIN' }, DELETE: { kind: 'ADMIN' }, content: DS_CATALOG, entityRequired: false, entityType: 'ds_catalog',
+});
+export const CATALOG_DELIVERY: Record<string, CategoryRules> = {
+  public: catalogue('ANYONE'),
+  licensed: catalogue('AUTHENTICATED'),
+  restricted: catalogue('ADMIN'),
+};
 
 export interface CategoryRules {
   READ: Requirement;
@@ -221,6 +244,12 @@ export const NAMESPACES: Record<string, NamespaceRules> = {
     READ: ADMIN, WRITE: ADMIN, DELETE: ADMIN, content: ANY_SMALL,
     note: 'Evidence for Verify/Research. Nothing persists here yet.',
   },
+  'design-studio': {
+    legacyBucket: '', shape: 'FLAT',
+    // A floor only: the key's delivery class decides (CATALOG_DELIVERY).
+    READ: ADMIN, WRITE: ADMIN, DELETE: ADMIN, content: DS_CATALOG,
+    note: 'Design Studio catalogue: design-studio/catalog/<public|licensed|restricted>/<area>/<hma>/<hmv>/<file>. Nothing personal lives here.',
+  },
   diagnostics: {
     legacyBucket: '', shape: 'FLAT',
     READ: ADMIN, WRITE: ADMIN, DELETE: ADMIN, content: ANY_SMALL,
@@ -327,6 +356,12 @@ export function parseKey(key: string): ParsedKey {
       entityType: categoryRules.entityType,
       content: categoryRules.content,
     };
+  }
+
+  if (namespace === 'design-studio') {
+    if (!DS_CATALOG_KEY.test(base.rest)) throw new KeyError('design-studio keys are catalogue keys');
+    const delivery = rest[1];
+    return { ...base, category: `catalog-${delivery}`, categoryRules: CATALOG_DELIVERY[delivery], entityType: 'ds_catalog', content: DS_CATALOG };
   }
 
   if (rules.shape === 'OWNER' || rules.shape === 'WORKSPACE') {

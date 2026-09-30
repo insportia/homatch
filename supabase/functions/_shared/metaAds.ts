@@ -24,6 +24,10 @@
 
 import { normalizeMetaError, type NormalizedMetaError } from '../../../src/lib/metaAds/errors.ts';
 import { META_API_VERSION } from '../../../src/lib/metaAds/strategy.ts';
+import {
+  buildOAuthDialogUrl, META_LOGIN_CONFIG_ID_DEFAULT, signState, verifyState, verifySignedRequest,
+  type SignedRequestPayload,
+} from '../../../src/lib/metaAds/oauth.ts';
 
 export type MetaMode = 'REAL' | 'MOCK';
 
@@ -239,58 +243,72 @@ export async function openToken(stored: string | null | undefined): Promise<stri
 /* ── OAUTH ──────────────────────────────────────────────────────────── */
 
 /**
- * What campaign management, lead retrieval, the lead-webhook subscription
- * and messaging destinations need — nothing speculative.
- *   pages_manage_metadata   subscribing the Page to leadgen webhooks
- *   pages_manage_ads        lead forms and page-backed ads
+ * LEAST PRIVILEGE. Every permission below is tied to a Graph call HOMATCH
+ * actually makes; nothing is requested "because it may be useful".
+ *
+ * BASE (every goal) — the Facebook Login for Business configuration:
+ *   ads_management         POST act_/campaigns, /adsets, /adcreatives, /ads,
+ *                          /adimages, /advideos, /customaudiences; status
+ *                          changes; GET act_/instagram_accounts (Instagram
+ *                          placements without instagram_basic)
+ *   ads_read               GET campaign status + /insights (maintenance sync),
+ *                          GET act_ account_status / funding (preflight)
+ *   business_management    GET /me/businesses; business-owned assets
+ *   pages_show_list        GET /me/accounts (the Page picker)
+ *   pages_read_engagement  GET /{page}?fields=access_token (page token for
+ *                          page-backed creatives)
+ *
+ * INSTANT FORMS ONLY (goal LEADS_ON_META) — not in the base configuration;
+ * the goal is unavailable until they are granted:
+ *   pages_manage_ads       POST /{page}/leadgen_forms, GET /{page}/leadgen_forms
+ *   pages_manage_metadata  POST /{page}/subscribed_apps (leadgen webhook)
+ *   leads_retrieval        GET /{leadgen_id}?fields=field_data (_shared/metaLeads.ts)
+ *
+ * instagram_basic is NOT used: Instagram accounts come from the ad account.
  */
-export const OAUTH_SCOPES = [
-  'ads_management', 'ads_read', 'business_management',
-  'pages_show_list', 'pages_read_engagement', 'leads_retrieval',
-  'pages_manage_ads', 'pages_manage_metadata', 'instagram_basic',
-].join(',');
+export const BASE_SCOPES = ['ads_management', 'ads_read', 'business_management', 'pages_show_list', 'pages_read_engagement'];
+export const INSTANT_FORM_SCOPES = ['leads_retrieval', 'pages_manage_ads', 'pages_manage_metadata'];
+
+/** Legacy (non-configuration) dialog only: the base set. */
+export const OAUTH_SCOPES = BASE_SCOPES.join(',');
 
 export const REQUIRED_SCOPES_BY_GOAL: Record<string, string[]> = {
-  LEADS_ON_META: ['ads_management', 'pages_show_list', 'leads_retrieval', 'pages_manage_ads'],
-  LEADS_ON_WEBSITE: ['ads_management', 'pages_show_list'],
-  SITE_REGISTRATIONS: ['ads_management', 'pages_show_list'],
-  PROMOTE: ['ads_management', 'pages_show_list'],
-  ENGAGEMENT: ['ads_management', 'pages_show_list'],
-  MESSAGES: ['ads_management', 'pages_show_list'],
+  LEADS_ON_META: [...BASE_SCOPES, ...INSTANT_FORM_SCOPES],
+  LEADS_ON_WEBSITE: BASE_SCOPES,
+  SITE_REGISTRATIONS: BASE_SCOPES,
+  PROMOTE: BASE_SCOPES,
+  ENGAGEMENT: BASE_SCOPES,
+  MESSAGES: BASE_SCOPES,
 };
 
-const STATE_TTL_MS = 15 * 60_000;
+export const hasScopes = (granted: string[] | null | undefined, needed: string[]) =>
+  needed.every((s) => (granted ?? []).includes(s));
 
-/** state = base64url(payload).hmac — bound to the user and the nonce, expiring. */
-export async function signOAuthState(payload: { uid: string; nonce: string }): Promise<string> {
-  const body = btoa(JSON.stringify({ ...payload, exp: Date.now() + STATE_TTL_MS }))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  return `${body}.${await hmacHex(metaAppSecret(), body)}`;
+/** The Facebook Login for Business configuration the dialog uses. The
+ *  production configuration issues a system-user access token; the secret
+ *  META_LOGIN_CONFIG_ID can point at another one without a code change. */
+export function metaLoginConfigId(): string {
+  return (Deno.env.get('META_LOGIN_CONFIG_ID') ?? META_LOGIN_CONFIG_ID_DEFAULT).trim();
 }
 
-export async function verifyOAuthState(state: string): Promise<{ uid: string; nonce: string } | null> {
-  const [body, sig] = String(state ?? '').split('.');
-  if (!body || !sig || !metaAppSecret()) return null;
-  const expected = await hmacHex(metaAppSecret(), body);
-  if (!timingSafeEqual(expected, sig)) return null;
-  try {
-    const parsed = JSON.parse(atob(body.replace(/-/g, '+').replace(/_/g, '/')));
-    if (typeof parsed.exp !== 'number' || parsed.exp < Date.now()) return null;
-    return { uid: String(parsed.uid ?? ''), nonce: String(parsed.nonce ?? '') };
-  } catch {
-    return null;
-  }
+/** state = base64url(payload).hmac — bound to the user and the nonce, expiring. */
+export function signOAuthState(payload: { uid: string; nonce: string }): Promise<string> {
+  return signState(metaAppSecret(), payload);
+}
+
+export function verifyOAuthState(state: string): Promise<{ uid: string; nonce: string } | null> {
+  return verifyState(metaAppSecret(), state);
 }
 
 export function oauthStartUrl(state: string): string {
-  const q = new URLSearchParams({
-    client_id: metaAppId(),
-    redirect_uri: metaRedirectUri(),
+  return buildOAuthDialogUrl({
+    apiVersion: META_API_VERSION,
+    appId: metaAppId(),
+    redirectUri: metaRedirectUri(),
     state,
-    scope: OAUTH_SCOPES,
-    response_type: 'code',
+    configId: metaLoginConfigId(),
+    scopes: OAUTH_SCOPES,
   });
-  return `https://www.facebook.com/${META_API_VERSION}/dialog/oauth?${q}`;
 }
 
 async function tokenCall(params: Record<string, string>): Promise<Record<string, unknown>> {
@@ -310,13 +328,23 @@ async function tokenCall(params: Record<string, string>): Promise<Record<string,
 }
 
 export async function exchangeCodeForToken(code: string): Promise<{ token: string; expiresIn: number | null }> {
-  const short = await tokenCall({
+  const first = await tokenCall({
     client_id: metaAppId(), client_secret: metaAppSecret(), redirect_uri: metaRedirectUri(), code,
   });
-  // Upgrade to a long-lived (~60 day) user token immediately.
+  /* A Login for Business configuration returns a business-integration
+     system-user token: it is already long-lived (no expires_in unless the
+     configuration sets one) and is never passed through fb_exchange_token,
+     which applies to short-lived USER tokens only. */
+  if (metaLoginConfigId()) {
+    return {
+      token: String(first.access_token),
+      expiresIn: typeof first.expires_in === 'number' && first.expires_in > 0 ? first.expires_in : null,
+    };
+  }
+  // Legacy Facebook Login: upgrade to a long-lived (~60 day) user token.
   const long = await tokenCall({
     grant_type: 'fb_exchange_token', client_id: metaAppId(), client_secret: metaAppSecret(),
-    fb_exchange_token: String(short.access_token),
+    fb_exchange_token: String(first.access_token),
   });
   return {
     token: String(long.access_token),
@@ -326,21 +354,10 @@ export async function exchangeCodeForToken(code: string): Promise<{ token: strin
 
 /* ── SIGNED REQUESTS (deauthorize / data deletion callbacks) ────────── */
 
-export async function parseSignedRequest(signed: string): Promise<{ user_id?: string } | null> {
-  const [sig, payload] = String(signed ?? '').split('.');
-  if (!sig || !payload || !metaAppSecret()) return null;
-  const expected = await crypto.subtle.sign(
-    'HMAC',
-    await crypto.subtle.importKey('raw', new TextEncoder().encode(metaAppSecret()), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']),
-    new TextEncoder().encode(payload),
-  );
-  const expectedB64 = b64(new Uint8Array(expected)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  if (!timingSafeEqual(expectedB64, sig)) return null;
-  try {
-    return JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
-  } catch {
-    return null;
-  }
+/** Meta's signed_request, verified against the app secret (HMAC-SHA256,
+ *  algorithm checked, user_id required). Null for anything else. */
+export function parseSignedRequest(signed: string): Promise<SignedRequestPayload | null> {
+  return verifySignedRequest(metaAppSecret(), signed);
 }
 
 /* ── WEBHOOK SIGNATURE ─────────────────────────────────────────────── */

@@ -12,20 +12,26 @@ import type { TranslationKey } from '@/i18n/translations';
 import { brokerErrorKey } from '@/components/broker/errors';
 import { BrokerRpcError, LEAD_STATES, LEAD_TRANSITIONS, setMatchLeadState, type LeadState } from '@/services/brokerDesk';
 
-export function LeadStateControl({ matchId }: { matchId: string }) {
+export function LeadStateControl({ matchId, initialState, onChanged }: {
+  matchId: string;
+  /** Already known (the pipeline board read it): no per-card query. */
+  initialState?: LeadState;
+  onChanged?: (next: LeadState) => void;
+}) {
   const { t } = useLanguage();
-  const [state, setState] = useState<LeadState | null>(null);
+  const [state, setState] = useState<LeadState | null>(initialState ?? null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (initialState) return;
     let cancelled = false;
     void supabase.from('matches').select('lead_state').eq('id', matchId).maybeSingle()
       .then(({ data, error: e }) => {
         if (!cancelled && !e && data) setState((data as { lead_state: LeadState }).lead_state);
       });
     return () => { cancelled = true; };
-  }, [matchId]);
+  }, [matchId, initialState]);
 
   if (!state) return null;
 
@@ -36,6 +42,7 @@ export function LeadStateControl({ matchId }: { matchId: string }) {
     setError(null);
     try {
       await setMatchLeadState(matchId, next);
+      onChanged?.(next);
     } catch (e) {
       setState(prev);
       setError(t(brokerErrorKey(e instanceof BrokerRpcError ? e.code : 'UNKNOWN')));

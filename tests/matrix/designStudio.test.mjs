@@ -562,3 +562,9 @@ test('a design rebuilt from pictures never tells anyone it was drawn from a floo
   assert.match(dl, /fromPictures \? 'ds_export_truth_estimated_pictures' : 'ds_export_truth_estimated'/);
   assert.match(read('src/components/designStudio/workspace/DesignWorkspace.tsx'), /fromPictures=\{label\.originKey === 'ds_source_pictures'\}/);
 });
+
+test('"matched to your picture\'s camera" is said only for a camera the reading trusted', () => {
+  const panel = read('src/components/designStudio/workspace/ReferencePanel.tsx');
+  assert.match(panel, /fit\.rms <= FIT_TRUST \? 'ds_recon_matched_view' : 'ds_recon_approx_view'/);
+  assert.match(read('src/lib/designStudio/reconstructRead.ts'), /export const FIT_TRUST = 0\.025;/);
+});

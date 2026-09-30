@@ -12209,6 +12209,9 @@ const en = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_export_truth_estimated_pictures: 'Sizes are approximate: the space was rebuilt from pictures.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_recon_approx_view: 'Aligned approximately with your picture\'s camera (about {{error}}% of its height off). The rebuilt layout is an estimate — use Overlay to compare.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -24332,6 +24335,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_export_truth_estimated_pictures: 'ზომები მიახლოებითია: სივრცე სურათებიდანაა აღდგენილი.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_recon_approx_view: 'დაახლოებით შეთანხმებულია თქვენი სურათის კამერასთან (სიმაღლის დაახლ. {{error}}%-ის სხვაობით). აღდგენილი განლაგება შეფასებაა — შესადარებლად გამოიყენეთ გადაფარვა.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -36446,6 +36452,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_export_truth_estimated_pictures: 'Размеры приблизительные: пространство восстановлено по картинкам.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_recon_approx_view: 'Приблизительно совмещено с камерой вашей картинки (расхождение около {{error}}% её высоты). Восстановленная планировка — оценка: сравните через наложение.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -48558,6 +48567,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_export_truth_estimated_pictures: 'Ölçüler yaklaşıktır: alan görsellerden yeniden oluşturuldu.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_recon_approx_view: 'Görselinizin kamerasıyla yaklaşık olarak hizalandı (yüksekliğinin yaklaşık %{{error}} kadar sapma). Yeniden oluşturulan yerleşim bir tahmindir — karşılaştırmak için Üst üste bindir özelliğini kullanın.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -60670,6 +60682,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_export_truth_estimated_pictures: 'الأحجام تقريبية: أُعيد بناء المساحة من الصور.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_recon_approx_view: 'محاذاة تقريبية مع كاميرا صورتك (فارق يقارب {{error}}% من ارتفاعها). التخطيط المُعاد بناؤه تقدير — استخدم التراكب للمقارنة.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -72782,6 +72797,9 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_export_truth_estimated_pictures: 'המידות משוערות: המרחב שוחזר מתמונות.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_recon_approx_view: 'מיושר בקירוב למצלמה של התמונה שלך (סטייה של כ-{{error}}% מגובהה). הפריסה המשוחזרת היא הערכה — השתמש ב„שכבה” להשוואה.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

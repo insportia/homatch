@@ -11,4 +11,12 @@ export const DS_STRINGS_17 = {
     'الأحجام تقريبية: أُعيد بناء المساحة من الصور.',
     'המידות משוערות: המרחב שוחזר מתמונות.',
   ],
+  ds_recon_approx_view: [
+    "Aligned approximately with your picture's camera (about {{error}}% of its height off). The rebuilt layout is an estimate — use Overlay to compare.",
+    'დაახლოებით შეთანხმებულია თქვენი სურათის კამერასთან (სიმაღლის დაახლ. {{error}}%-ის სხვაობით). აღდგენილი განლაგება შეფასებაა — შესადარებლად გამოიყენეთ გადაფარვა.',
+    'Приблизительно совмещено с камерой вашей картинки (расхождение около {{error}}% её высоты). Восстановленная планировка — оценка: сравните через наложение.',
+    'Görselinizin kamerasıyla yaklaşık olarak hizalandı (yüksekliğinin yaklaşık %{{error}} kadar sapma). Yeniden oluşturulan yerleşim bir tahmindir — karşılaştırmak için Üst üste bindir özelliğini kullanın.',
+    'محاذاة تقريبية مع كاميرا صورتك (فارق يقارب {{error}}% من ارتفاعها). التخطيط المُعاد بناؤه تقدير — استخدم التراكب للمقارنة.',
+    'מיושר בקירוב למצלמה של התמונה שלך (סטייה של כ-{{error}}% מגובהה). הפריסה המשוחזרת היא הערכה — השתמש ב„שכבה” להשוואה.',
+  ],
 };

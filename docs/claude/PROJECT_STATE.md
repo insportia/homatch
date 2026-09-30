@@ -310,3 +310,18 @@ Phase 2 (Universal Discovery) is blocked until this is live and proven.
   (6.21MB > 6MB) so edge was not deployed while Vercel served the new frontend.
   Ceiling moved to 6.5MB (owner-approved, PR #20). Follow-up: per-language
   lazy loading of translations, then lower the ceiling.
+- 2026-09-30: Admin financial control (PR #20). Migration
+  `20261002110000_meta_ads_finance_control.sql` applied to production (MCP name
+  `meta_ads_finance_control`); function bodies, columns, constraints and
+  policies fingerprint-identical to the fixture; anon has no execute.
+  The fee has one server-side home, `meta_effective_fee_percent` (policy over
+  `admin_settings.meta_ads_fee_percent` = 9), used by the edge; no frontend
+  fee literal (tested). Adjustments only via `admin_meta_adjust_balance`
+  (ledger ADJUSTMENT + immutable `meta_finance_adjustments` + admin audit;
+  overdraft and self-adjust refused). The ledger guard now also covers
+  ADJUSTMENT and WITHDRAWAL debits.
+  The owner-operator admin account has FEE_EXEMPT, set through
+  `admin_set_meta_fee_policy` under that admin's own identity (a self-set by
+  the only admin, audited). No email address is anywhere in code.
+  Production acceptance ran as a rolled-back transaction, and all 10 proofs
+  passed. Nothing persisted except the exemption.

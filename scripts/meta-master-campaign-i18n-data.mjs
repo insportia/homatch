@@ -790,4 +790,6 @@ export const META_MASTER_CAMPAIGN_STRINGS = {
     "HOMATCH يوصي؛ لا يتغيّر شيء دون تأكيدك. وحده Campaign Guard يمكنه الإيقاف تلقائيًا — عند العثور على حملة مكرّرة أو تغيير جوهري تم خارج HOMATCH.",
     "HOMATCH ממליץ; שום דבר לא משתנה בלי האישור שלכם. רק Campaign Guard יכול להשהות בעצמו — כשהוא מוצא קמפיין כפול או שינוי משמעותי שנעשה מחוץ ל-HOMATCH.",
   ],
+  // A plain fact (paused, in review, data updated) — neither good nor bad.
+  mm_hstate_STATE: ["Status", "მდგომარეობა", "Состояние", "Durum", "الحالة", "מצב"],
 };

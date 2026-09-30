@@ -264,8 +264,9 @@ export function recommend(r: RecommendInput, p: AnalysisParams = DEFAULT_ANALYSI
 
   if (!atLeast(ev, 'EARLY_SIGNAL')) {
     // Paused cannot collect: say so instead of "wait for more data".
+    const paused = r.status === 'PAUSED';
     return [{ ...base, type: 'COLLECT_DATA', affected: 'campaign', metric: 'COST_PER_RESULT', baseline: null, candidate: null,
-      confidence: ev, reasonCodes: [r.status === 'PAUSED' ? 'PAUSED_NOT_COLLECTING' : 'NOT_ENOUGH_RESULTS_YET'], actionable: false }];
+      confidence: ev, reasonCodes: [paused ? 'PAUSED_NOT_COLLECTING' : 'NOT_ENOUGH_RESULTS_YET'], actionable: false }];
   }
 
   const classes = classifyCreatives(r.goal, r.ads, p);

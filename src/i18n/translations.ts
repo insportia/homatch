@@ -13101,6 +13101,9 @@ const en = {
   mm_a_api_p_CRITICAL: 'Critical',
   mm_a_api_p_THROTTLED: 'Throttled',
   mm_a_api_policy: 'HOMATCH slows down before Meta does: at 50% results are read half as often, at 75% only campaign status is read, at 90% status every fifth minute, and while Meta asks to wait nothing is called for that account.',
+
+  /* ── META ADS MASTER — CAMPAIGN ── */
+  mm_hstate_STATE: 'Status',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -26116,6 +26119,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mm_a_api_p_CRITICAL: 'კრიტიკული',
   mm_a_api_p_THROTTLED: 'შეზღუდული',
   mm_a_api_policy: 'HOMATCH ანელებს მიმართვებს Meta-მდე: 50%-ზე შედეგები ორჯერ ნაკლებად იკითხება, 75%-ზე მხოლოდ კამპანიის სტატუსი, 90%-ზე სტატუსი ყოველ მეხუთე წუთს, ხოლო სანამ Meta ლოდინს ითხოვს, ამ ანგარიშზე მიმართვა არ ხდება.',
+
+  /* ── META ADS MASTER — CAMPAIGN ── */
+  mm_hstate_STATE: 'მდგომარეობა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -39122,6 +39128,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mm_a_api_p_CRITICAL: 'Критическая',
   mm_a_api_p_THROTTLED: 'Ограничено',
   mm_a_api_policy: 'HOMATCH замедляется раньше Meta: при 50% результаты читаются вдвое реже, при 75% — только статус кампании, при 90% — статус каждую пятую минуту, а пока Meta просит подождать, к аккаунту не обращаемся.',
+
+  /* ── META ADS MASTER — CAMPAIGN ── */
+  mm_hstate_STATE: 'Состояние',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -52126,6 +52135,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mm_a_api_p_CRITICAL: 'Kritik',
   mm_a_api_p_THROTTLED: 'Kısıtlandı',
   mm_a_api_policy: 'HOMATCH, Meta\'dan önce yavaşlar: %50\'de sonuçlar yarı sıklıkla okunur, %75\'te yalnızca kampanya durumu, %90\'da durum her beşinci dakikada okunur; Meta beklemeyi istediği sürece o hesap için çağrı yapılmaz.',
+
+  /* ── META ADS MASTER — CAMPAIGN ── */
+  mm_hstate_STATE: 'Durum',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -65130,6 +65142,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mm_a_api_p_CRITICAL: 'حرج',
   mm_a_api_p_THROTTLED: 'مُقيّد',
   mm_a_api_policy: 'يُبطئ HOMATCH قبل Meta: عند 50% تُقرأ النتائج بنصف الوتيرة، وعند 75% تُقرأ حالة الحملة فقط، وعند 90% الحالة كل خمس دقائق، وطالما طلبت Meta الانتظار لا يتم أي استدعاء لذلك الحساب.',
+
+  /* ── META ADS MASTER — CAMPAIGN ── */
+  mm_hstate_STATE: 'الحالة',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -78134,6 +78149,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   mm_a_api_p_CRITICAL: 'קריטי',
   mm_a_api_p_THROTTLED: 'מוגבל',
   mm_a_api_policy: 'HOMATCH מאט לפני Meta: ב-50% התוצאות נקראות בחצי מהתדירות, ב-75% נקרא רק סטטוס הקמפיין, ב-90% הסטטוס כל דקה חמישית, וכל עוד Meta מבקשת להמתין לא נשלחות קריאות לחשבון הזה.',
+
+  /* ── META ADS MASTER — CAMPAIGN ── */
+  mm_hstate_STATE: 'מצב',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

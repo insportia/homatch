@@ -319,10 +319,13 @@ test('the admin broker screen offers no action on a discovered firm', () => {
   assert.doesNotMatch(page, /\.from\('broker_directory_listings'\)\.(insert|update|upsert|delete)/);
 });
 
-test('the public page applies only through the apply function', () => {
+test('the public page applies only through the canonical onboarding', () => {
+  /* One way in: /brokers carries no form of its own; a professional goes to
+     /broker/onboarding (broker_profile_save → broker_directory_submit). */
   const page = readFileSync(join(root, 'src', 'pages', 'BrokersPage.tsx'), 'utf8')
     .replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
-  assert.match(page, /rpc\('broker_directory_apply'/);
+  assert.match(page, /navigate\('\/broker\/onboarding'\)/);
+  assert.doesNotMatch(page, /rpc\(/, 'the directory page calls an RPC to apply');
   assert.doesNotMatch(page, /\.(insert|upsert|update|delete)\(/,
     'the directory page writes a table directly');
   assert.doesNotMatch(page, /p_status|p_paid_until/);

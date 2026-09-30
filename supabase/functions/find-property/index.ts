@@ -96,7 +96,11 @@ Deno.serve(async (req: Request) => {
       .eq('user_id', userId)
       .eq('side', 'SUPPLY')
       .eq('is_active', true)
-      .not('intent_id', 'is', null);
+      .not('intent_id', 'is', null)
+      /* One search only, when asked (a broker's per-client view). The filter
+         is ANDed with user_id above, so another account's id matches nothing. */
+      .match(typeof body.subscriptionId === 'string' && /^[0-9a-f-]{36}$/i.test(body.subscriptionId)
+        ? { id: body.subscriptionId } : {});
     if (subError) throw subError;
 
     const intentIds = [...new Set((subscriptions ?? [])
@@ -197,6 +201,7 @@ Deno.serve(async (req: Request) => {
       const observation = (joined ?? null) as Record<string, unknown> | null;
       return {
         id: row.id,
+        intentId: row.intent_profile_id,
         /* 0..1 as the matcher recorded it. Never rescaled to a percentage here: a
            number invented for display is a number nobody can trace. */
         score: Number(row.match_score ?? 0),

@@ -4,20 +4,24 @@
 // delivery totals from the one KPI source. A row without data is left out;
 // before Meta reports delivery there are no zeros, just "waiting".
 //
-// Freshness is the real schedule: pg_cron `homatch-meta-ads-maintenance`
-// re-reads every live campaign from Meta at :00/:15/:30/:45 (UTC), so the next
-// check is the next quarter hour — a clock time, never a countdown.
+// Freshness is the real schedule (pg_cron): `homatch-meta-ads-status-sync`
+// reads each live campaign's status at Meta every minute (paused: every fifth
+// minute), and `homatch-meta-ads-maintenance` refreshes insights, Guard and
+// analysis every 15 minutes. The next check is shown as a clock time from that
+// schedule — never a countdown.
 import React, { useEffect, useRef, useState } from 'react';
 import type { CampaignDetail } from '@/services/metaAds';
 import type { Fmt, T } from './shared';
 
-export const SYNC_EVERY_MINUTES = 15;
+export const STATUS_EVERY_MINUTES = 1;
+export const STATUS_EVERY_MINUTES_PAUSED = 5;
+export const INSIGHTS_EVERY_MINUTES = 15;
 const LIVE = ['SUBMITTED', 'META_REVIEW', 'ACTIVE'];
 const HUMAN_META_STATUS = ['ACTIVE', 'PAUSED', 'IN_PROCESS', 'WITH_ISSUES', 'ARCHIVED'];
 
-/** The next run of the every-15-minutes maintenance job after `nowMs`. */
-export function nextScheduledSync(nowMs: number): Date {
-  const step = SYNC_EVERY_MINUTES * 60_000;
+/** The next run of an every-N-minutes cron job after `nowMs`. */
+export function nextRun(nowMs: number, everyMinutes: number): Date {
+  const step = everyMinutes * 60_000;
   return new Date(Math.floor(nowMs / step) * step + step);
 }
 
@@ -88,7 +92,9 @@ export function LiveStatusCard({ t, fmt, d }: { t: T; fmt: Fmt; d: CampaignDetai
   const startFrom = c.requested_start_at ?? c.launched_at ?? null;
   const endAt = startFrom && c.duration_days ? new Date(Date.parse(startFrom) + Number(c.duration_days) * 86_400_000).toISOString() : null;
   const live = LIVE.includes(c.status);
-  const next = live ? nextScheduledSync(Date.now()) : null;
+  const watched = live || c.status === 'PAUSED';
+  const next = watched ? nextRun(Date.now(), c.status === 'PAUSED' ? STATUS_EVERY_MINUTES_PAUSED : STATUS_EVERY_MINUTES) : null;
+  const insightsAt = c.insights_synced_at ?? d.provenance?.insightsSyncedAt ?? null;
 
   const rows: Array<[string, React.ReactNode, string?]> = [
     ...(metaStatus ? [[t('mm_c_live_meta_status'), HUMAN_META_STATUS.includes(metaStatus) ? t(`mm_c_meta_status_${metaStatus}`) : metaStatus] as [string, React.ReactNode]] : []),
@@ -98,6 +104,7 @@ export function LiveStatusCard({ t, fmt, d }: { t: T; fmt: Fmt; d: CampaignDetai
     ...(c.daily_budget_cents ? [[t('mm_c_live_budget'), t('mm_c_live_budget_v', { amount: fmt.money(c.daily_budget_cents), days: c.duration_days ?? '—' })] as [string, React.ReactNode]] : []),
     ...(endAt ? [[t('mm_c_live_ends'), fmt.dateTime(endAt)] as [string, React.ReactNode]] : []),
     ...(c.last_synced_at ? [[t('mm_c_live_synced'), fmt.rel(c.last_synced_at) ?? '—', fmt.dateTime(c.last_synced_at)] as [string, React.ReactNode, string]] : []),
+    ...(insightsAt ? [[t('mm_c_live_insights'), fmt.rel(insightsAt) ?? '—', fmt.dateTime(insightsAt)] as [string, React.ReactNode, string]] : []),
     ...(next ? [[t('mm_c_live_next'), t('mm_c_live_next_v', { time: next.toLocaleTimeString(fmt.lang, { hour: '2-digit', minute: '2-digit' }) })] as [string, React.ReactNode]] : []),
   ];
 

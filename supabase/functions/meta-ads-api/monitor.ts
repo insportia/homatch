@@ -14,6 +14,7 @@ import { resultOf } from '../../../src/lib/metaAds/kpi.ts';
 import { BRIEF_LINES, BRIEF_TITLE, EMAIL_CTA, EMAIL_FOOTER, EMAIL_NEXT, EMAIL_WHY, EMAIL_ANALYSIS, RTL, t6, type Locale } from '../../../src/lib/metaAds/messages.ts';
 import { scrubPii } from '../../../src/lib/metaAds/events.ts';
 import type { GuardDecision, ExternalAction } from '../../../src/lib/metaAds/guard.ts';
+import { classifyStatusChange, statusChangeEvent, HOMATCH_COMMAND_OPS, COMMAND_ECHO_MINUTES } from '../../../src/lib/metaAds/statusChange.ts';
 import { notify } from '../_shared/notify.ts';
 import { renderNotificationEmail, sendNotificationEmail } from '../_shared/notifyEmail.ts';
 import { graphAll, type MetaMode } from '../_shared/metaAds.ts';
@@ -22,6 +23,7 @@ import { userToken, type MetaSettings } from './engine.ts';
 import { readManagedState, isAccessError } from './lifecycle.ts';
 import { guardCampaign, scanDuplicates } from './guardSync.ts';
 import { insightsDue, syncInsights } from './insightsSync.ts';
+import { allowance, type Pressure } from '../../../src/lib/metaAds/rateLimit.ts';
 import { analyzeCampaign, persistRecommendations, scoreAppliedRecommendations } from './intelligence.ts';
 import { processConditions, recipientFor, type CycleStats } from './notifier.ts';
 
@@ -52,7 +54,7 @@ function add(r: MonitorReport, s: CycleStats) {
 }
 
 /** A Guard decision, as the customer-facing canonical event it implies. */
-export function guardCondition(c: { id: string }, d: { action: ExternalAction; decision: GuardDecision; incidentId: string }): Condition | null {
+export function guardCondition(c: { id: string }, d: { action: ExternalAction; decision: GuardDecision; incidentId: string; items?: Array<{ field: string }> }): Condition | null {
   const lvl = d.decision.level;
   if (lvl === 'REVIEW_REQUIRED' || lvl === 'NONE') return null; // an admin looks first — no alarm on a maybe
   if (lvl === 'STRIKE') {
@@ -63,12 +65,19 @@ export function guardCondition(c: { id: string }, d: { action: ExternalAction; d
     return { type: 'GUARD_WARNING', subject: `incident:${d.incidentId}`, occurrence: d.incidentId, severity: 'IMPORTANT',
       evidence: { action: d.action }, deepLink: link(c.id, 'integrity') };
   }
-  return { type: 'EXTERNAL_MODIFICATION', subject: `incident:${d.incidentId}`, occurrence: d.incidentId,
-    severity: d.decision.action === 'PAUSE_CAMPAIGN' ? 'IMPORTANT' : 'INFO', evidence: { action: d.action }, deepLink: link(c.id, 'integrity') };
+  /* A pause or resume outside HOMATCH is told once, by the status change the
+     same reconciliation saw (statusChange.ts); the incident is still kept. */
+  if ((d.action === 'MANUAL_PAUSE' || d.action === 'MANUAL_RESUME') && d.decision.action !== 'PAUSE_CAMPAIGN') return null;
+  const fields = new Set((d.items ?? []).map((i) => i.field));
+  const type = d.action === 'MATERIAL_EDIT' && (fields.has('daily_budget') || fields.has('lifetime_budget')) ? 'CAMPAIGN_BUDGET_CHANGED_OUTSIDE'
+    : d.action === 'MATERIAL_EDIT' && (fields.has('end_time') || fields.has('start_time')) ? 'CAMPAIGN_SCHEDULE_CHANGED_OUTSIDE'
+      : 'EXTERNAL_MODIFICATION';
+  return { type, subject: `incident:${d.incidentId}`, occurrence: d.incidentId,
+    severity: d.decision.action === 'PAUSE_CAMPAIGN' || type !== 'EXTERNAL_MODIFICATION' ? 'IMPORTANT' : 'INFO', evidence: { action: d.action }, deepLink: link(c.id, 'integrity') };
 }
 
 /** One campaign, one deterministic cycle. `c` is the row as it is AFTER syncCampaign. */
-export async function monitorCampaign(sb: Sb, c: any, settings: MetaSettings, mode: MetaMode, report: MonitorReport, now = Date.now()) {
+export async function monitorCampaign(sb: Sb, c: any, settings: MetaSettings, mode: MetaMode, report: MonitorReport, now = Date.now(), pressure: Pressure = 'NORMAL') {
   report.campaigns += 1;
   const conditions: Condition[] = [];
   const real = mode === 'REAL' && c.external_campaign_id && !String(c.external_campaign_id).startsWith('mock_');
@@ -91,7 +100,8 @@ export async function monitorCampaign(sb: Sb, c: any, settings: MetaSettings, mo
   }
 
   // 2. Insights: normalized daily + breakdown rows, at most every 30 minutes.
-  if (real && token && connectionOk && insightsDue(c)) {
+  // Insights only while Meta reports room for them (rateLimit.allowance); status never waits on this.
+  if (real && token && connectionOk && allowance(pressure, new Date(now).getUTCMinutes()).insights && insightsDue(c)) {
     try { report.insightRows += (await syncInsights(sb, c, token)).rows; } catch (err) {
       if (isAccessError(err)) connectionOk = false; else report.errors += 1;
     }
@@ -160,6 +170,27 @@ export async function lifecycleEvent(sb: Sb, c: any, type: 'CAMPAIGN_LIFECYCLE' 
     type, subject: 'campaign', occurrence, severity, actionRequired: type === 'LAUNCH_FAILED',
     evidence: { what }, facts: { what }, deepLink: link(c.id),
   }], [], { aiEnabled: settings.aiSummaryEnabled });
+}
+
+/**
+ * A status change seen at reconciliation, told once. `before` is the status
+ * HOMATCH held before this sync; `c` is the row after it. The same status on
+ * the next pass is not a change, so nothing repeats (and the event key
+ * carries the transition and sync time, so a replay cannot double it).
+ */
+export async function statusChangeNotice(sb: Sb, c: any, before: string, settings: MetaSettings, now = Date.now()) {
+  const since = new Date(now - COMMAND_ECHO_MINUTES * 60_000).toISOString();
+  const { data: ops, error: opsErr } = await sb.from('meta_operations').select('op').eq('campaign_id', c.id).in('op', HOMATCH_COMMAND_OPS).gte('requested_at', since).limit(1);
+  const endAt = Date.parse(c.plan?.requestedStartAt ?? c.launched_at ?? '') + Number(c.duration_days ?? 0) * 86_400_000;
+  const change = classifyStatusChange(before, c.status, { homatchCommandRecently: opsErr ? null : (ops ?? []).length > 0, endTimePassed: Number.isFinite(endAt) && now > endAt });
+  const ev = statusChangeEvent(change);
+  if (!change || !ev) return { conditions: 0, notifications: 0, aiCalls: 0, emails: 0, pushEligible: 0, change };
+  const stats = await processConditions(sb, c, c.user_id, [{
+    type: ev.type, subject: 'campaign', occurrence: `${change.from}>${change.to}@${c.last_synced_at ?? now}`,
+    severity: ev.severity, evidence: { from: change.from, to: change.to, provenance: change.provenance },
+    facts: { state: change.to, what: change.to }, deepLink: link(c.id),
+  }], [], { aiEnabled: settings.aiSummaryEnabled });
+  return { ...stats, change };
 }
 
 /**

@@ -3,7 +3,7 @@
 // "What HOMATCH handles" lists only work this codebase actually performs for
 // the chosen goal (payload.ts, engine.ts, meta-webhooks, the maintenance
 // cron). A line is added here only when the code behind it exists.
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { CheckCircle2, Loader2, ShieldCheck, Wand2, XCircle, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -87,7 +87,33 @@ export function PlacementsStep({ campaign, status, creatives, recommended, patch
   );
 }
 
-export function ReviewStep({ campaign, status, creatives, totals, pricing, recommended, preflight, running, onPreflight, onLaunch, canLaunch, launchHint = null, onEdit, strategy = null, strategyLoading = false, strategyFailed = false }: {
+/**
+ * The campaign's HOMATCH name: prefilled with a suggestion, editable here and
+ * later on the campaign page. A display name only — not part of what the
+ * HOMATCH check approves, so editing it never asks for a new check.
+ */
+export function CampaignNameField({ value, suggestion, onSave }: { value: string; suggestion: string; onSave: (name: string) => void }) {
+  const { t } = useLanguage();
+  const [draft, setDraft] = useState(value || suggestion);
+  useEffect(() => { setDraft(value || suggestion); }, [value, suggestion]);
+  const clean = draft.replace(/\s+/g, ' ').trim();
+  const invalid = clean.length < 3 || clean.length > 120;
+  const commit = () => { if (!invalid && clean !== value) onSave(clean); };
+  return (
+    <div className="rounded-xl border border-border p-3.5" data-mm-name-field="">
+      <label htmlFor="mm-b-name" className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t('mm_b_name_label')}</label>
+      <input id="mm-b-name" value={draft} maxLength={120} onChange={(e) => setDraft(e.target.value)} onBlur={commit}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }}
+        aria-invalid={invalid} aria-describedby="mm-b-name-note" dir="auto"
+        className="mt-1.5 h-10 w-full rounded-xl border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]" />
+      <p id="mm-b-name-note" className="mt-1.5 text-2xs leading-relaxed text-muted-foreground">{t('mm_b_name_note')}</p>
+    </div>
+  );
+}
+
+export function ReviewStep({ campaign, status, creatives, totals, pricing, recommended, preflight, running, onPreflight, onLaunch, canLaunch, launchHint = null, onEdit, strategy = null, strategyLoading = false, strategyFailed = false, nameSuggestion = '', onName }: {
+  /** The suggested HOMATCH name and where an edited one is saved. */
+  nameSuggestion?: string; onName?: (name: string) => void;
   campaign: MetaCampaignRow; status: MetaStatus | null; creatives: MetaCreativeRow[]; totals: Totals | null; pricing: boolean;
   recommended: Placement[]; preflight: PreflightResult | null; running: boolean;
   onPreflight: () => void; onLaunch: () => void; canLaunch: boolean; onEdit: (step: string) => void;
@@ -130,6 +156,7 @@ export function ReviewStep({ campaign, status, creatives, totals, pricing, recom
 
   return (
     <StepShell eyebrow={t('madsb_step_review')} title={t('madsb_review_title')} lead={t('madsb_review_lead')}>
+      {onName && <div className="mb-3"><CampaignNameField value={campaign.name ?? ''} suggestion={nameSuggestion} onSave={onName} /></div>}
       <div className="grid gap-3 md:grid-cols-2">
         <Block title={t('madsb_review_campaign')} step="goal" rows={[
           [t('madsb_review_objective'), t(`mads_goal_${goal.toLowerCase()}` as never)],

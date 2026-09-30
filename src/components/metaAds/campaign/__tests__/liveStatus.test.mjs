@@ -8,12 +8,24 @@ const read = (p) => readFileSync(new URL(`../../../../../${p}`, import.meta.url)
 const card = read('src/components/metaAds/campaign/LiveStatusCard.tsx');
 const page = read('src/pages/outreach/MetaAdsCampaignPage.tsx');
 
-test('the next check is the real */15 schedule, as a clock time', () => {
-  // Same arithmetic as nextScheduledSync, kept honest against the cron.
-  assert.match(card, /export const SYNC_EVERY_MINUTES = 15;/);
+test('the next check is the real schedule, as a clock time', () => {
+  // Status every minute (paused every 5), insights every 15 — kept honest against the cron jobs.
+  assert.match(card, /export const STATUS_EVERY_MINUTES = 1;/);
+  assert.match(card, /export const STATUS_EVERY_MINUTES_PAUSED = 5;/);
   assert.match(card, /Math\.floor\(nowMs \/ step\) \* step \+ step/);
-  const cron = read('supabase/migrations/20260930120000_meta_ads_live_readiness.sql') + read('supabase/migrations/20261001120000_workstream_b_final_hardening.sql');
-  assert.match(cron, /homatch-meta-ads-maintenance[\s\S]{0,200}\*\/15 \* \* \* \*/, 'the schedule the card describes');
+  const cron = read('supabase/migrations/20261001120000_workstream_b_final_hardening.sql');
+  assert.match(cron, /homatch-meta-ads-maintenance[\s\S]{0,200}\*\/15 \* \* \* \*/);
+  const status = read('supabase/migrations/20261002120000_meta_ads_status_sync_cron.sql');
+  assert.match(status, /'homatch-meta-ads-status-sync',\s*'\* \* \* \* \*'/);
+  assert.match(status, /"action":"status_sync"/);
+  const index = read('supabase/functions/meta-ads-api/index.ts');
+  assert.match(index, /minute % 5 === 0 \? \['SUBMITTED', 'META_REVIEW', 'ACTIVE', 'PAUSED'\] : \['SUBMITTED', 'META_REVIEW', 'ACTIVE'\]/);
+  assert.match(index, /last_synced_at\.lt\.\$\{fresh\}/, 'skips a campaign synced in the last 50 seconds');
+  // Grouped per ad account: two light reads (campaigns + ads), no insights.
+  const engine = read('supabase/functions/meta-ads-api/engine.ts');
+  const recon = engine.slice(engine.indexOf('export async function reconcileAccountStatuses'), engine.indexOf('export async function applyStatus'));
+  assert.match(recon, /\/campaigns\?fields=id,status,effective_status&filtering=[\s\S]{0,300}\/ads\?fields=id,campaign_id,effective_status&filtering=/, 'two light reads');
+  assert.doesNotMatch(recon, /insights/, 'no insights on the every-minute pass');
   assert.doesNotMatch(card, /setInterval\([^)]*,\s*1000\)/, 'no second-by-second countdown');
 });
 

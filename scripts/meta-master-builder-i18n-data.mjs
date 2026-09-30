@@ -1140,4 +1140,14 @@ export const META_MASTER_BUILDER_STRINGS = {
     "رسوم خدمة HOMATCH لديك 0%، لذلك لا تحتاج هذه الحملة إلى رصيد HOMATCH. تخصم Meta ميزانية الإعلان مباشرةً من حسابك الإعلاني المرتبط.",
     "דמי השירות של HOMATCH עבורכם הם 0%, ולכן אין צורך ביתרת HOMATCH לקמפיין הזה. Meta מחייבת את תקציב הפרסום ישירות מחשבון המודעות המחובר.",
   ],
+  // ── Campaign name on review ───────────────────────────────────────────
+  mm_b_name_label: ["Campaign name", "კამპანიის სახელი", "Название кампании", "Kampanya adı", "اسم الحملة", "שם הקמפיין"],
+  mm_b_name_note: [
+    "Shown in HOMATCH so you can recognise the campaign. You can change it later; it doesn't affect the check or delivery.",
+    "ჩანს HOMATCH-ში, რომ კამპანია მარტივად იცნოთ. შეგიძლიათ მოგვიანებით შეცვალოთ; ის არ მოქმედებს შემოწმებასა და ჩვენებაზე.",
+    "Отображается в HOMATCH, чтобы вы узнавали кампанию. Его можно изменить позже; на проверку и показы оно не влияет.",
+    "Kampanyayı tanıyabilmeniz için HOMATCH'te gösterilir. Daha sonra değiştirebilirsiniz; kontrolü veya yayını etkilemez.",
+    "يظهر في HOMATCH لتتعرّف على الحملة. يمكنك تغييره لاحقًا؛ ولا يؤثر على الفحص أو العرض.",
+    "מוצג ב-HOMATCH כדי שתזהו את הקמפיין. אפשר לשנות אותו אחר כך; הוא לא משפיע על הבדיקה או על ההצגה.",
+  ],
 };

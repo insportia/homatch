@@ -18,7 +18,7 @@ import {
   EVENT_META, DEFAULT_PREFERENCES, eventKey, evidenceFingerprint, transition, route, scrubPii,
   type Condition, type EventState, type Preferences, type Severity, type Transition,
 } from '../../../src/lib/metaAds/events.ts';
-import { renderEvent, normLocale, RTL, EMAIL_CTA, EMAIL_WHY, EMAIL_ANALYSIS, EMAIL_NEXT, EMAIL_FOOTER, t6, type Locale } from '../../../src/lib/metaAds/messages.ts';
+import { renderEvent, normLocale, RTL, EMAIL_CTA, EMAIL_WHY, EMAIL_ANALYSIS, EMAIL_NEXT, EMAIL_FOOTER, t6, stateWord, CAMPAIGN_FALLBACK, type Locale } from '../../../src/lib/metaAds/messages.ts';
 
 type Sb = any;
 
@@ -28,7 +28,7 @@ export interface Recipient { userId: string; locale: Locale; prefs: Preferences;
 
 export async function recipientFor(sb: Sb, userId: string): Promise<Recipient> {
   const [{ data: u }, { data: p }, { data: subs }] = await Promise.all([
-    sb.from('users').select('email,language,preferred_language').eq('id', userId).maybeSingle(),
+    sb.from('users').select('email,preferred_language').eq('id', userId).maybeSingle(),
     sb.from('notification_preferences').select('categories,push_enabled,email_enabled').eq('user_id', userId).maybeSingle(),
     sb.from('push_subscriptions').select('id').eq('user_id', userId).is('revoked_at', null).limit(1),
   ]);
@@ -36,7 +36,7 @@ export async function recipientFor(sb: Sb, userId: string): Promise<Recipient> {
   const flag = (k: string, d: boolean) => (typeof cat[k] === 'boolean' ? cat[k] : d);
   return {
     userId,
-    locale: normLocale(u?.preferred_language ?? u?.language),
+    locale: normLocale(u?.preferred_language),
     prefs: {
       push: p?.push_enabled !== false,
       email: p?.email_enabled !== false,
@@ -109,7 +109,8 @@ export async function processConditions(sb: Sb, campaign: { id: string; user_id:
     });
     if (hErr) { if (String(hErr.message).includes('duplicate')) continue; throw hErr; }
 
-    const params = { campaign: scrubPii(String(campaign?.name ?? '')), ...paramsOf(row.facts, recipient.locale) };
+    // A campaign without a name yet reads as "your campaign", never a blank.
+    const params = { campaign: scrubPii(String(campaign?.name ?? '').trim() || t6(CAMPAIGN_FALLBACK, recipient.locale)), ...paramsOf(row.facts, recipient.locale) };
     const words = renderEvent(type, r.transition, recipient.locale, params);
     let analysis: string | null = null;
     let summaryId: string | null = null;
@@ -121,7 +122,7 @@ export async function processConditions(sb: Sb, campaign: { id: string; user_id:
       if (s) { analysis = s.text; summaryId = s.id; stats.aiCalls += s.generated ? 1 : 0; }
     }
     const notificationId = await notify(sb, {
-      userId, type: type.startsWith('GUARD') || type === 'EXTERNAL_MODIFICATION' ? 'META_GUARD' : type === 'NEW_RECOMMENDATION' ? 'META_RECOMMENDATION'
+      userId, type: type.startsWith('GUARD') || type === 'EXTERNAL_MODIFICATION' || type === 'CAMPAIGN_BUDGET_CHANGED_OUTSIDE' || type === 'CAMPAIGN_SCHEDULE_CHANGED_OUTSIDE' ? 'META_GUARD' : type === 'NEW_RECOMMENDATION' ? 'META_RECOMMENDATION'
         : type === 'SERVICE_BALANCE_LOW' ? 'META_ADS_BALANCE' : 'META_CAMPAIGN_STATUS',
       title: scrubPii(words.title), body: scrubPii(words.body),
       // Push-routed events interrupt by severity; in-app-only ones never push.
@@ -165,7 +166,9 @@ function paramsOf(facts: Record<string, unknown>, locale: Locale): Record<string
   }
   if (typeof facts.n === 'number') out.n = facts.n;
   if (typeof facts.of === 'number') out.of = facts.of;
-  if (typeof facts.what === 'string') out.what = facts.what;
+  // Status codes become words in the recipient's language (": SUBMITTED" was the bug).
+  if (typeof facts.what === 'string') out.what = stateWord(facts.what, locale) ?? facts.what;
+  if (typeof facts.state === 'string') out.state = stateWord(facts.state, locale) ?? facts.state;
   return out;
 }
 

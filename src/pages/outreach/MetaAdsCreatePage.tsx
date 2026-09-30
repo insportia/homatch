@@ -34,7 +34,7 @@ import type { MetaGoal } from '@/lib/metaAds/strategy';
 import { creativeAdvice } from '@/lib/metaAds/creativeAdvice';
 import {
   getMetaStatus, createMetaDraft, getMetaCampaign, latestOpenDraft, listCreatives, planPreview, runPreflight,
-  launchCampaign, listAudiences, trackFunnel, money, EDITABLE_STATUSES,
+  launchCampaign, listAudiences, trackFunnel, money, EDITABLE_STATUSES, updateMetaDraft,
   type MetaStatus, type MetaCampaignRow, type MetaCreativeRow, type MetaAudienceRow, type PreflightResult, type PlanPreview,
 } from '@/services/metaAds';
 import { useMetaDraft } from '@/components/metaAds/builder/useMetaDraft';
@@ -49,7 +49,7 @@ import { PlacementsStep, ReviewStep } from '@/components/metaAds/builder/ReviewS
 import { AudienceStep } from '@/components/metaAds/builder/AudienceStep';
 import { regionName } from '@/components/metaAds/builder/LocationPicker';
 import { useStrategyPreview } from '@/components/metaAds/builder/useStrategyPreview';
-import { adviceBlocks, destinationForGoal } from '@/components/metaAds/builder/masterLogic';
+import { adviceBlocks, defaultCampaignName, destinationForGoal } from '@/components/metaAds/builder/masterLogic';
 
 const DRAFT_KEY = 'homatch_meta_ads_prelogin_draft';
 
@@ -243,6 +243,14 @@ export default function MetaAdsCreatePage() {
       : preflight.status === 'MANUAL_REVIEW' ? 'mm_b_launch_in_review'
         : preflight.status !== 'READY' ? 'mm_b_launch_needs_fixes' : null;
   const returnTo = `/outreach/meta/create?draft=${campaign.id}&step=account`;
+  /* The HOMATCH name: a suggestion from what is advertised, the goal and the
+     month; an edit is saved as is (not part of the check's fingerprint). */
+  const advertised = properties.find((p) => (p.homatch_id ? String(p.homatch_id) : p.id) === campaign.property_id)?.title ?? null;
+  const nameSuggestion = defaultCampaignName({ subject: advertised, goalLabel: t(`mads_goal_${String(campaign.goal).toLowerCase()}` as never), lang });
+  const saveName = (name: string) => {
+    setCampaign({ ...campaign, name } as MetaCampaignRow);
+    void updateMetaDraft(campaign.id, { name }).catch(() => toast.error(t('mm_c_name_failed')));
+  };
 
   const doPreflight = async () => {
     setRunning(true);
@@ -259,6 +267,8 @@ export default function MetaAdsCreatePage() {
   const doLaunch = async () => {
     setRunning(true);
     try {
+      // An untouched name field launches with the suggestion it showed.
+      if (!campaign.name?.trim()) await updateMetaDraft(campaign.id, { name: nameSuggestion }).catch(() => undefined);
       await launchCampaign(campaign.id, launchKey.current);
       toast.success(t('madsb_submitted_to_meta'));
       navigate(`/outreach/meta/campaigns/${campaign.id}`);
@@ -374,7 +384,8 @@ export default function MetaAdsCreatePage() {
                 recommended={(preview?.recommendedPlacements as Placement[] | undefined) ?? placements}
                 preflight={preflight} running={running} onPreflight={doPreflight} canLaunch={canLaunch} launchHint={launchHint}
                 onLaunch={() => setConfirmOpen(true)} onEdit={(s) => void go(s as StepKey)}
-                strategy={strategy.preview} strategyLoading={strategy.loading} strategyFailed={strategy.failed} />
+                strategy={strategy.preview} strategyLoading={strategy.loading} strategyFailed={strategy.failed}
+                nameSuggestion={nameSuggestion} onName={saveName} />
             )}
 
             {/* Preview inline on narrower screens, where there is no side rail. */}

@@ -638,6 +638,54 @@ export async function syncCampaign(sb: Sb, c: any, mode: MetaMode) {
   return { ok: true, results, status: patch.status, external_status: patch.external_status, issue: verdict.issue };
 }
 
+/**
+ * The light, frequent check, GROUPED BY AD ACCOUNT: two Graph reads per
+ * account (its campaigns' status, its ads' review/delivery state, filtered to
+ * the live campaign ids) however many live campaigns it holds. Each campaign
+ * is then mapped exactly as the full sync maps it, and written only when it
+ * differs — plus its own last_synced_at, which is what "last checked" means.
+ */
+export async function reconcileAccountStatuses(sb: Sb, token: string, account: string, rows: any[]): Promise<Array<{ id: string; before: string; status: string; changed: boolean }>> {
+  const act = String(account).startsWith('act_') ? String(account) : `act_${account}`;
+  const ids = rows.map((c) => String(c.external_campaign_id));
+  const auditCtx = { sb, userId: rows[0]?.user_id ?? null, campaignId: null };
+  const filter = (field: string) => encodeURIComponent(JSON.stringify([{ field, operator: 'IN', value: ids }]));
+  const camps = await graphAll(`/${act}/campaigns?fields=id,status,effective_status&filtering=${filter('id')}&limit=500`, { token, audit: auditCtx, attempts: 2 }, 3);
+  const ads = await graphAll(`/${act}/ads?fields=id,campaign_id,effective_status&filtering=${filter('campaign.id')}&limit=500`, { token, audit: auditCtx, attempts: 2 }, 5);
+  const byId = new Map(camps.map((x) => [String(x.id), x]));
+  const out: Array<{ id: string; before: string; status: string; changed: boolean }> = [];
+  for (const c of rows) {
+    const info = byId.get(String(c.external_campaign_id));
+    if (!info) continue; // not returned (deleted / no access): the 15-minute sync decides
+    const mine = ads.filter((a) => String(a.campaign_id) === String(c.external_campaign_id));
+    out.push({ id: c.id, before: c.status, ...(await applyStatus(sb, c, info, mine)) });
+  }
+  return out;
+}
+
+/** One campaign's Meta answer (campaign + its ads) → its HOMATCH status. */
+export async function applyStatus(sb: Sb, c: any, info: Record<string, unknown>, ads: Record<string, unknown>[]): Promise<{ changed: boolean; status: string }> {
+  const startedFrom = c.plan?.requestedStartAt ?? c.launched_at;
+  const endTime = startedFrom ? Date.parse(startedFrom) + Number(c.duration_days) * 86_400_000 + 10 * 60_000 : NaN;
+  const verdict = mapMetaStatus({
+    campaign: String(info.effective_status ?? info.status ?? ''),
+    ads: ads.map((a) => String(a.effective_status ?? '')),
+    endTimePassed: Number.isFinite(endTime) && Date.now() > endTime,
+  });
+  const status = verdict.status === 'SUBMITTED' ? c.status : verdict.status;
+  for (const ad of ads) {
+    await sb.from('meta_ad_entities').update({ status: String(ad.effective_status ?? ''), updated_at: new Date().toISOString() })
+      .eq('campaign_id', c.id).eq('kind', 'AD').eq('external_id', String(ad.id));
+  }
+  const patch: Record<string, unknown> = { last_synced_at: new Date().toISOString(), external_status: String(info.effective_status ?? info.status ?? '') };
+  if (status !== c.status) {
+    patch.status = status;
+    if (['COMPLETED', 'REJECTED', 'ARCHIVED'].includes(status) && !c.ended_at) patch.ended_at = new Date().toISOString();
+  }
+  await sb.from('meta_campaigns').update(patch).eq('id', c.id);
+  return { changed: status !== c.status, status };
+}
+
 export const SETTLEMENT_GRACE_DAYS = 3;
 
 /**

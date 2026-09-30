@@ -31,6 +31,8 @@ import { OptimizationSection } from '@/components/metaAds/campaign/OptimizationS
 import { IntegritySection, SuspendedBanner } from '@/components/metaAds/campaign/IntegritySection';
 import { BillingSection } from '@/components/metaAds/campaign/BillingSection';
 import { LiveDot, LiveStatusCard } from '@/components/metaAds/campaign/LiveStatusCard';
+import { AssistantPanel } from '@/components/metaAds/campaign/AssistantPanel';
+import { CampaignNameButton, CampaignNameForm } from '@/components/metaAds/campaign/CampaignNameEditor';
 
 export const CAMPAIGN_TABS = [
   'overview', 'performance', 'placements', 'audience', 'geo', 'time', 'creatives', 'leads', 'optimization', 'integrity', 'billing',
@@ -49,6 +51,7 @@ export default function MetaAdsCampaignPage() {
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [edit, setEdit] = useState<'budget' | 'duration' | null>(null);
+  const [renaming, setRenaming] = useState(false);
 
   const load = useCallback(async (quiet = false) => {
     if (!id) return;
@@ -66,8 +69,9 @@ export default function MetaAdsCampaignPage() {
   const refresh = useCallback(() => { void load(true); }, [load]);
 
   /* While the campaign is live at Meta, re-read what the backend holds every
-     minute (a database read — Meta itself is synced every 15 minutes),
-     and at once when the tab comes back. Never a local status change. */
+     minute (a database read — the status-sync cron reads Meta every minute,
+     insights every 15), and at once when the tab comes back. Never a local
+     status change. */
   const liveNow = !!d && ['SUBMITTED', 'META_REVIEW', 'ACTIVE', 'PAUSED'].includes(d.campaign.status);
   useEffect(() => {
     if (!liveNow) return undefined;
@@ -117,9 +121,16 @@ export default function MetaAdsCampaignPage() {
             <ArrowLeft className="h-4 w-4 rtl:-scale-x-100" aria-hidden="true" />{t('mm_c_back')}
           </Link>
 
+          {/* The HOMATCH display name; the objective, Meta's own name and IDs stay separate below. */}
           <PageHero compact eyebrow={t('mm_c_eyebrow')}
             title={c.name || t(`mads_goal_${c.goal.toLowerCase()}`)}
-            subtitle={subtitle} />
+            subtitle={subtitle}
+            actions={renaming ? undefined : <CampaignNameButton t={t} onEdit={() => setRenaming(true)} />} />
+          {renaming && (
+            <CampaignNameForm t={t} campaignId={c.id} current={c.name ?? ''}
+              onCancel={() => setRenaming(false)}
+              onDone={(name) => { setRenaming(false); setD((prev) => (prev ? { ...prev, campaign: { ...prev.campaign, name } } : prev)); refresh(); }} />
+          )}
 
           {String(c.external_campaign_id ?? '').startsWith('mock_') && (
             <div className="rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] px-4 py-2.5 text-[13px] text-[hsl(var(--gold-ink))]">{t('madsb_campaign_mock')}</div>
@@ -132,6 +143,7 @@ export default function MetaAdsCampaignPage() {
             {c.special_ad_categories?.length > 0 && <Chip>{t('mads_housing_note')}</Chip>}
           </div>
           <LifecycleStrip status={c.status} />
+          <AssistantPanel t={t} fmt={fmt} d={d} onOpenTab={setTab} />
           <LiveStatusCard t={t} fmt={fmt} d={d} />
           <ProvenanceNote t={t} fmt={fmt} provenance={d.provenance} />
 

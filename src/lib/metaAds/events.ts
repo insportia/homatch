@@ -21,7 +21,10 @@ export type EventType =
   | 'PLACEMENT_FINDING' | 'AUDIENCE_FINDING' | 'NEW_RECOMMENDATION'
   | 'CAMPAIGN_REJECTED' | 'CAMPAIGN_RESTRICTED' | 'CAMPAIGN_STOPPED' | 'LAUNCH_FAILED'
   | 'SERVICE_BALANCE_LOW' | 'EXTERNAL_MODIFICATION' | 'GUARD_WARNING' | 'GUARD_STRIKE' | 'GUARD_SUSPENDED'
-  | 'CONTROL_ACCESS_LOST' | 'DATA_HEALTH' | 'CAMPAIGN_LIFECYCLE';
+  | 'CONTROL_ACCESS_LOST' | 'DATA_HEALTH' | 'CAMPAIGN_LIFECYCLE'
+  // Status seen at reconciliation (statusChange.ts) and Guard edits, by kind.
+  | 'CAMPAIGN_PAUSED_OUTSIDE' | 'CAMPAIGN_RESUMED_OUTSIDE' | 'CAMPAIGN_ACTIVATED' | 'CAMPAIGN_STATUS_CHANGED'
+  | 'CAMPAIGN_BUDGET_CHANGED_OUTSIDE' | 'CAMPAIGN_SCHEDULE_CHANGED_OUTSIDE';
 
 export const EVENT_META: Record<EventType, { category: Category; mandatory?: boolean; stateful: boolean; preference: 'performance' | 'leads' | 'billing' | 'integrity' | 'lifecycle' }> = {
   PERFORMANCE_DETERIORATED: { category: 'CAMPAIGN', stateful: true, preference: 'performance' },
@@ -43,6 +46,12 @@ export const EVENT_META: Record<EventType, { category: Category; mandatory?: boo
   CONTROL_ACCESS_LOST: { category: 'SYSTEM', mandatory: true, stateful: true, preference: 'integrity' },
   DATA_HEALTH: { category: 'SYSTEM', stateful: true, preference: 'integrity' },
   CAMPAIGN_LIFECYCLE: { category: 'CAMPAIGN', stateful: false, preference: 'lifecycle' },
+  CAMPAIGN_PAUSED_OUTSIDE: { category: 'CAMPAIGN', stateful: false, preference: 'lifecycle' },
+  CAMPAIGN_RESUMED_OUTSIDE: { category: 'CAMPAIGN', stateful: false, preference: 'lifecycle' },
+  CAMPAIGN_ACTIVATED: { category: 'CAMPAIGN', stateful: false, preference: 'lifecycle' },
+  CAMPAIGN_STATUS_CHANGED: { category: 'CAMPAIGN', stateful: false, preference: 'lifecycle' },
+  CAMPAIGN_BUDGET_CHANGED_OUTSIDE: { category: 'GUARD', stateful: false, preference: 'integrity' },
+  CAMPAIGN_SCHEDULE_CHANGED_OUTSIDE: { category: 'GUARD', stateful: false, preference: 'integrity' },
 };
 
 const RANK: Record<Severity, number> = { INFO: 0, IMPORTANT: 1, CRITICAL: 2 };

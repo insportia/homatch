@@ -172,3 +172,14 @@ export const leadFormIssueKey = (code: string) =>
   (LEAD_FORM_ISSUE_CODES as readonly string[]).includes(code) ? `mm_b_lf_issue_${code}` : 'mm_b_lf_issue_OTHER';
 
 export const MAX_FORM_QUESTIONS = 5;
+
+/**
+ * A useful first name for a campaign: what is advertised · the goal · the
+ * month — e.g. "Krtsanisi apartment · Messages · October 2026". Only a
+ * suggestion: the customer edits it before launch, and can rename later.
+ */
+export function defaultCampaignName(a: { subject?: string | null; goalLabel: string; now?: Date; lang: string }): string {
+  const month = (a.now ?? new Date()).toLocaleDateString(a.lang, { month: 'long', year: 'numeric' });
+  const subject = String(a.subject ?? '').replace(/\s+/g, ' ').trim().slice(0, 60);
+  return [subject, a.goalLabel, month].filter(Boolean).join(' · ').slice(0, 120);
+}

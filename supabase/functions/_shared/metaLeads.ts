@@ -78,8 +78,8 @@ export async function ingestLead(sb: any, value: LeadValue): Promise<{ inserted:
     /* The ONE notification pipeline (in-app → push, preferences honoured:
        category meta_leads). The text never carries the person's details. */
     try {
-      const { data: u } = await sb.from('users').select('preferred_language,language').eq('id', uid).maybeSingle();
-      const loc = normLocale(u?.preferred_language ?? u?.language);
+      const { data: u } = await sb.from('users').select('preferred_language').eq('id', uid).maybeSingle();
+      const loc = normLocale(u?.preferred_language);
       await notify(sb, {
         userId: uid!, type: 'META_LEAD', title: t6(NEW_LEAD.title, loc),
         body: scrubPii(t6(NEW_LEAD.body, loc, { campaign: campaignName ?? 'Meta Ads' })), priority: 'HIGH',

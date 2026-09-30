@@ -206,6 +206,22 @@ export async function handleAction(x: ActionCtx): Promise<Response | null> {
         return json({ ok: true, status: 'APPLIED', result });
       }
 
+      /* ── RENAME: the HOMATCH display name only ─────────────────────────
+         Nothing is sent to Meta and nothing about delivery changes; Meta's
+         own campaign name stays what it was at launch. Recorded on the
+         campaign's timeline with before and after. */
+      case 'campaign_rename': {
+        const c = await ownCampaign(sb, uid, body.campaignId);
+        if (!c) return json({ error: 'not found' }, 404);
+        const name = String(body.name ?? '').replace(/\s+/g, ' ').trim();
+        if (name.length < 3 || name.length > 120) return json({ error: 'NAME_INVALID', code: 'NAME_INVALID' }, 400);
+        if (name === (c.name ?? '')) return json({ ok: true, name });
+        const { error } = await sb.from('meta_campaigns').update({ name }).eq('id', c.id).eq('user_id', uid);
+        if (error) throw error;
+        await timeline(sb, c, 'RENAMED', 'tl_renamed', { from: c.name ?? null, to: name });
+        return json({ ok: true, name });
+      }
+
       /* ── CAMPAIGN DRILL-DOWN ────────────────────────────────────────── */
       case 'campaign_detail': {
         const c = await ownCampaign(sb, uid, body.campaignId);

@@ -330,8 +330,8 @@ test('an admin accepts a Broker Review item and opens a broker\'s record with it
   await page.getByRole('button', { name: 'Details' }).first().click();
   const dialog = page.getByRole('dialog');
   await dialog.waitFor({ timeout: 5000 });
-  const text = await dialog.innerText();
-  assert.match(text, /Professional licence/);
+  /* The record loads after the dialog opens; wait for it, not for a timer. */
+  await dialog.getByText('Professional licence').waitFor({ timeout: 10000 });
   assert.equal(await dialog.getByRole('button', { name: 'Decline' }).isDisabled(), true, 'decline without a note is allowed');
   assert.equal(await dialog.getByRole('button', { name: 'Suspend account' }).isDisabled(), true, 'suspension without a reason is allowed');
 });

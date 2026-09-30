@@ -38,15 +38,30 @@ const CORS = {
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
+/* admin_audit_log is (admin_id, target_id uuid, action, entity_type, entity_id,
+   metadata). The previous shape (target_type/details) did not exist, so every
+   insert failed silently and no Meta Ads action was ever audited. A failure
+   is now logged, never swallowed. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function audit(sb: any, actorId: string | null, action: string, target: string, meta: unknown) {
-  try {
-    await sb.from('admin_audit_log').insert({
-      admin_id: actorId, action, target_type: 'META_ADS', target_id: target, details: meta ?? {},
-    });
-  } catch { /* best effort */ }
+  const { error } = await sb.from('admin_audit_log').insert({
+    admin_id: actorId, action, entity_type: 'META_ADS', entity_id: String(target ?? '').slice(0, 200),
+    target_id: UUID_RE.test(String(target ?? '')) ? target : null, metadata: meta ?? {},
+  });
+  if (error) console.error('[meta-ads-api] audit write failed', action, error.message);
 }
 
 const ASSET_KINDS = ['BUSINESS', 'PAGE', 'INSTAGRAM', 'AD_ACCOUNT', 'PIXEL', 'LEAD_FORM', 'WHATSAPP'];
+
+/** A database function's raised code, for the client (never the raw message). */
+export function rpcCode(message: string): string {
+  const m = String(message ?? '').match(/\b(FORBIDDEN|INSUFFICIENT_FUNDS|REASON_REQUIRED|PERCENT_INVALID|BAD_KIND|BAD_DIRECTION|AMOUNT_INVALID|CURRENCY_INVALID|USER_NOT_FOUND|CAMPAIGN_NOT_THIS_CUSTOMER)\b/);
+  return m ? m[1] : 'FAILED';
+}
+export function rpcStatus(message: string): number {
+  const c = rpcCode(message);
+  return c === 'FORBIDDEN' ? 403 : c === 'INSUFFICIENT_FUNDS' ? 402 : c === 'USER_NOT_FOUND' ? 404 : c === 'FAILED' ? 500 : 400;
+}
 
 function ownUrl(v: unknown, fallback: string): string {
   try {
@@ -87,7 +102,7 @@ Deno.serve(async (req) => {
   if (!settings.enabled && !me.is_admin) return json({ error: 'META_ADS_DISABLED', code: 'META_ADS_DISABLED' }, 503);
 
   try {
-    const handled = await handleAction({ sb, uid, me, body, action, settings, mode, json, audit });
+    const handled = await handleAction({ sb, userClient, uid, me, body, action, settings, mode, json, audit });
     if (handled) return handled;
     switch (action) {
       /* ── STATUS: the one call the workspace and builder boot from ───── */
@@ -761,18 +776,17 @@ Deno.serve(async (req) => {
       }
 
       case 'admin_adjust': {
+        /* Through the canonical, audited ledger function, under the ADMIN's own
+           session: it checks the role, refuses overdraft, and records amount,
+           direction, reason, actor, balance before/after and any campaign. */
         if (!me.is_admin) return json({ error: 'forbidden' }, 403);
-        const target = String(body.targetUserId ?? '');
-        const amount = Math.round(Number(body.amountCents) || 0);
-        const reason = String(body.reason ?? '').trim();
-        if (!target || amount === 0 || !reason) return json({ error: 'target, amount, reason required' }, 400);
-        const { error } = await sb.from('meta_ads_ledger').insert({
-          user_id: target, entry_type: 'ADJUSTMENT', amount_cents: amount,
-          note: reason, created_by: uid, idempotency_key: `adj:${crypto.randomUUID()}`,
+        const { data, error } = await userClient.rpc('admin_meta_adjust_balance', {
+          p_user: String(body.targetUserId ?? ''), p_direction: String(body.direction ?? ''),
+          p_amount_cents: Math.round(Number(body.amountCents) || 0), p_reason: String(body.reason ?? ''),
+          p_currency: String(body.currency ?? 'USD'), p_campaign: body.campaignId || null, p_related_ledger: body.relatedLedgerId ?? null,
         });
-        if (error) return json({ error: 'insert failed' }, 500);
-        await audit(sb, uid, 'META_ADS_ADJUSTMENT', target, { amount, reason });
-        return json({ ok: true });
+        if (error) return json({ error: rpcCode(error.message), code: rpcCode(error.message) }, rpcStatus(error.message));
+        return json({ ok: true, ...(data as Record<string, unknown>) });
       }
 
       case 'admin_test_connection': {

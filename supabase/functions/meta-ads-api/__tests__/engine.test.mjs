@@ -54,6 +54,13 @@ function fakeDb(seed) {
   };
   return {
     from, tables, log,
+    // meta_effective_fee_percent(): the admin policy over the standard 9%.
+    rpc: async (fn, args) => {
+      if (fn !== 'meta_effective_fee_percent') return { data: null, error: { message: 'unknown rpc' } };
+      const p = (tables.meta_fee_policies ?? []).find((r) => r.user_id === args.p_user);
+      const pct = !p || p.kind === 'STANDARD_PERCENT' ? 9 : p.kind === 'FEE_EXEMPT' ? 0 : Number(p.percent);
+      return { data: pct, error: null };
+    },
     storage: { from: () => ({
       download: async () => ({ data: new Blob([new Uint8Array([1, 2, 3])]) }),
       createSignedUrl: async () => ({ data: { signedUrl: 'https://signed/video.mp4' } }),
@@ -228,4 +235,21 @@ test('preflight: a missing lead form and a one-day campaign are ACTION_REQUIRED;
   const f1 = await configFingerprint(db, c);
   const f2 = await configFingerprint(db, { ...c, daily_budget_cents: 900 });
   assert.notEqual(f1, f2);
+});
+
+test('the fee comes from the canonical policy: exempt 0, custom exact, standard 9', async () => {
+  const { customerFeePercent } = await import('../engine.ts');
+  const db = fakeDb(seed());
+  db.tables.meta_fee_policies = [{ user_id: 'u1', kind: 'FEE_EXEMPT' }, { user_id: 'u2', kind: 'CUSTOM_PERCENT', percent: 4.5 }];
+  assert.equal(await customerFeePercent(db, 'u1'), 0);
+  assert.equal(await customerFeePercent(db, 'u2'), 4.5);
+  assert.equal(await customerFeePercent(db, 'u3'), 9);
+  const { computeTotals } = await import('../../../../src/lib/metaAds/strategy.ts');
+  for (const [daily, days] of [[1000, 10], [10000, 10], [100000, 10]]) {
+    assert.equal(computeTotals(daily, days, await customerFeePercent(db, 'u1')).feeCents, 0, 'exempt pays no service fee');
+  }
+  assert.equal(computeTotals(1000, 10, 9).feeCents, 900, '$100 at standard = $9');
+  assert.equal(computeTotals(1000, 10, 4.5).feeCents, 450, '$100 at 4.5% = $4.50');
+  // Never guessed: an unreadable policy fails the caller.
+  await assert.rejects(customerFeePercent({ rpc: async () => ({ data: null, error: { message: 'x' } }) }, 'u1'), /FEE_POLICY_UNAVAILABLE/);
 });

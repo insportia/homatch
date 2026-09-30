@@ -11,9 +11,9 @@
 // confirmed Meta change, and a failed Meta write gives back what it took.
 
 import { graph, graphAll, MetaApiError } from '../_shared/metaAds.ts';
-import { budgetChange, heldFeeFromLedger, effectiveFeePercent, type FeePolicy } from '../../../src/lib/metaAds/billing.ts';
+import { budgetChange, heldFeeFromLedger, type FeePolicy } from '../../../src/lib/metaAds/billing.ts';
 import { adSetState, type ManagedState } from '../../../src/lib/metaAds/guard.ts';
-import { userToken, type MetaSettings } from './engine.ts';
+import { userToken, customerFeePercent, type MetaSettings } from './engine.ts';
 
 type Sb = any;
 
@@ -107,7 +107,7 @@ export async function feePolicyFor(sb: Sb, userId: string): Promise<FeePolicy | 
 }
 
 export async function feePercentFor(sb: Sb, userId: string, settings: MetaSettings): Promise<number> {
-  return effectiveFeePercent(await feePolicyFor(sb, userId), settings.feePercent);
+  return customerFeePercent(sb, userId, settings);
 }
 
 const LIVE = ['SUBMITTED', 'META_REVIEW', 'ACTIVE', 'PAUSED'];

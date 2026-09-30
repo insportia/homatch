@@ -472,7 +472,7 @@ export const adminGuardOverview = () => call<{ accounts: Array<GuardAccountRow &
 export type AdminGuardAct = 'CLEAR_INCIDENT' | 'DISMISS_INCIDENT' | 'MARK_REVIEWED' | 'REINSTATE_ACCOUNT' | 'SUSPEND_ACCOUNT' | 'UNLOCK_CAMPAIGN' | 'ACCEPT_EXTERNAL' | 'RESTORE_CONFIG';
 export const adminGuardAct = (act: AdminGuardAct, reason: string, target: { incidentId?: string; targetUserId?: string; adAccountId?: string; campaignId?: string }) =>
   call<{ ok: boolean }>('admin_guard_act', { act, reason, ...target });
-export const adminFeePolicyGet = (targetUserId: string) => call<{ policy: { kind: string; percent: number | null }; standardPercent: number; audit: Array<Record<string, unknown>> }>('admin_fee_policy_get', { targetUserId });
+export const adminFeePolicyGet = (targetUserId: string) => call<{ policy: { kind: string; percent: number | null }; standardPercent: number; effectivePercent: number | null; audit: Array<Record<string, unknown>> }>('admin_fee_policy_get', { targetUserId });
 export const adminFeePolicySet = (targetUserId: string, kind: 'STANDARD_PERCENT' | 'FEE_EXEMPT' | 'CUSTOM_PERCENT', reason: string, percent?: number) =>
   call<{ ok: boolean }>('admin_fee_policy_set', { targetUserId, kind, reason, percent });
 export const adminMetaEconomics = (days = 30) => call<{
@@ -486,3 +486,26 @@ export const adminMetaEconomics = (days = 30) => call<{
 /** Money in the viewer's locale; never summed across currencies. */
 export const moneyIn = (minor: number | null | undefined, currency: string, locale: string) =>
   minor == null ? '—' : new Intl.NumberFormat(locale, { style: 'currency', currency, maximumFractionDigits: 2 }).format(minor / 100);
+
+/* ── ADMIN: ONE CUSTOMER'S MONEY (admin_meta_customer_finance) ─────── */
+export interface CustomerFinance {
+  policy: { kind: string; percent: number | null; reason: string; updated_at: string } | null;
+  effective_fee_percent: number;
+  standardPercent: number;
+  sampleQuote: { policy: string; fee_percent: number; planned_media_cents: number; service_fee_cents: number } | null;
+  balances: Array<{ currency: string; deposited_cents: number; available_cents: number; reserved_service_cents: number; consumed_service_cents: number; released_cents: number }>;
+  campaigns: Array<{ id: string; name: string | null; status: string; currency: string; fee_percent: number | null; planned_media_cents: number;
+    service_fee_taken_cents: number; service_fee_released_cents: number; service_fee_held_cents: number; meta_media_spend_cents: number;
+    launched_at: string | null; ended_at: string | null; settled_at: string | null }>;
+  ledger: Array<{ id: number; entry_type: string; amount_cents: number; currency: string; campaign_id: string | null; note: string | null; created_by: string | null; created_at: string }>;
+  adjustments: Array<{ id: string; direction: 'CREDIT' | 'DEBIT'; amount_cents: number; currency: string; reason: string; admin_user_id: string;
+    campaign_id: string | null; balance_before_cents: number; balance_after_cents: number; created_at: string }>;
+  policy_history: Array<{ previous: unknown; next: unknown; reason: string; admin_user_id: string; created_at: string }>;
+  revenue_and_costs: Array<{ currency: string; service_fee_revenue_cents: number; service_fee_reserved_cents: number; meta_media_spend_cents: number }>;
+  ai_costs_usd: { calls: number; raw_cost_usd: number; landed_cost_usd: number; unpriced_calls: number };
+  semantics: { non_refundable_to_cash: boolean; withdrawable: boolean; released_reservations_return_to: string };
+}
+export const adminCustomerFinance = (targetUserId: string) => call<CustomerFinance>('admin_customer_finance', { targetUserId });
+/** Through the canonical ledger: direction + reason + actor + balance before/after, audited. */
+export const adminAdjustBalance = (input: { targetUserId: string; direction: 'CREDIT' | 'DEBIT'; amountCents: number; reason: string; currency: string; campaignId?: string | null }) =>
+  call<{ ok: boolean; adjustment_id: string; ledger_id: number; balance_before_cents: number; balance_after_cents: number }>('admin_adjust', input);

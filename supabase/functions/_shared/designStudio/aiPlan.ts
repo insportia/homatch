@@ -15,7 +15,7 @@
 // one, and the customer previews, accepts or discards it. Every accepted
 // change is undoable and recorded against this job.
 //
-// Pure: no I/O. The edge function (design-studio-ai) does the calling.
+// Pure: no I/O. The edge function (design-studio-reconstruct/design) does the calling.
 
 export const DS_AI_VERSION = 'ds-ai-1';
 

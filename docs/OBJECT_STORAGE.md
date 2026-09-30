@@ -139,8 +139,8 @@ Categories: `property-photos`, `deal-room-documents`, `developer-documents`,
 `generated-reports`, and for HOMATCH Design Studio `design-studio-floorplans`,
 `design-studio-models` (glTF/GLB, up to 100 MB) and `design-studio-thumbnails`
 (entity = the `ds_projects` row; owner only, Admin read-only). An unlisted one
-is refused, not defaulted. Design Studio's `design-studio-floorplan` and
-`design-studio-model` functions read an upload back through
+is refused, not defaulted. Design Studio's `design-studio-reconstruct` (its
+picture and `/floorplan` readings) and `design-studio-model` functions read an upload back through
 `_shared/objectStore.ts` to check it by its bytes (as the storage functions
 do); they never write to R2 and never return an object to the browser.
 

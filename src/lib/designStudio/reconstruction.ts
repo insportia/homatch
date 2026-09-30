@@ -273,7 +273,7 @@ export function buildDesign(
     if (!ids.length || !s.color) continue;
     const mat = matchMaterial(s.part === 'FLOOR' ? 'FLOOR' : 'WALL', s.color, s.material, materials);
     for (const id of ids) {
-      state.surfaces[id] = { materialId: mat?.id ?? null, color: mat ? null : s.color, finish: null, locked: false };
+      state.surfaces[id] = { materialId: mat?.id ?? null, color: mat ? null : s.color, finish: null, locked: false, ...(s.part === 'FLOOR' && s.pattern ? { pattern: s.pattern } : {}) };
     }
     report.surfaces += ids.length;
   }

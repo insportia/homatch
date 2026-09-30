@@ -73,16 +73,16 @@
     { "key": "balcony-dining-chair", "type": "OUTDOOR_CHAIR", "label": "blue bistro chair", "room": "balcony", "at": [0.6, 0.8], "facingDeg": 90, "widthM": 0.5, "depthM": 0.5, "heightM": 0.8, "color": "#6fa8c7", "material": null, "style": null, "confidence": 0.6, "basis": "OBSERVED", "seenIn": [0] }
   ],
   "surfaces": [
-    { "room": "living", "part": "FLOOR", "color": "#d9c3a5", "material": "herringbone oak", "confidence": 0.85 },
-    { "room": "living", "part": "WALLS", "color": "#f1f1ef", "material": "white paint", "confidence": 0.8 },
-    { "room": "lobby", "part": "FLOOR", "color": "#d9c3a5", "material": "herringbone oak", "confidence": 0.7 },
-    { "room": "bed1", "part": "FLOOR", "color": "#d9c3a5", "material": "herringbone oak", "confidence": 0.8 },
-    { "room": "bed1", "part": "WALLS", "color": "#f1f1ef", "material": "white paint", "confidence": 0.8 },
-    { "room": "bed2", "part": "FLOOR", "color": "#d9c3a5", "material": "herringbone oak", "confidence": 0.8 },
-    { "room": "bed2", "part": "WALLS", "color": "#f1f1ef", "material": "white paint", "confidence": 0.8 },
-    { "room": "bath", "part": "FLOOR", "color": "#7f8791", "material": "grey tile", "confidence": 0.6 },
-    { "room": "bath", "part": "WALLS", "color": "#9aa1a8", "material": "grey tile", "confidence": 0.5 },
-    { "room": "balcony", "part": "FLOOR", "color": "#5d6268", "material": "grey decking", "confidence": 0.6 }
+    { "room": "living", "part": "FLOOR", "color": "#d9c3a5", "material": "herringbone oak", "confidence": 0.85, "pattern": "WOOD_HERRINGBONE" },
+    { "room": "living", "part": "WALLS", "color": "#f1f1ef", "material": "white paint", "confidence": 0.8, "pattern": null },
+    { "room": "lobby", "part": "FLOOR", "color": "#d9c3a5", "material": "herringbone oak", "confidence": 0.7, "pattern": "WOOD_HERRINGBONE" },
+    { "room": "bed1", "part": "FLOOR", "color": "#d9c3a5", "material": "herringbone oak", "confidence": 0.8, "pattern": "WOOD_HERRINGBONE" },
+    { "room": "bed1", "part": "WALLS", "color": "#f1f1ef", "material": "white paint", "confidence": 0.8, "pattern": null },
+    { "room": "bed2", "part": "FLOOR", "color": "#d9c3a5", "material": "herringbone oak", "confidence": 0.8, "pattern": "WOOD_HERRINGBONE" },
+    { "room": "bed2", "part": "WALLS", "color": "#f1f1ef", "material": "white paint", "confidence": 0.8, "pattern": null },
+    { "room": "bath", "part": "FLOOR", "color": "#7f8791", "material": "grey tile", "confidence": 0.6, "pattern": "TILE" },
+    { "room": "bath", "part": "WALLS", "color": "#9aa1a8", "material": "grey tile", "confidence": 0.5, "pattern": null },
+    { "room": "balcony", "part": "FLOOR", "color": "#5d6268", "material": "grey decking", "confidence": 0.6, "pattern": "WOOD_PLANK" }
   ],
   "palette": ["#d9c3a5", "#2f8f7f", "#f07a1a", "#8fc3dc", "#f1f1ef", "#3b3f45"],
   "styleWords": ["contemporary", "warm minimal"],

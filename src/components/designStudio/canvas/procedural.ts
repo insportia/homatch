@@ -21,6 +21,8 @@
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { applyFinish, patternOfSlot } from './finishTextures.ts';
 import type { CatalogAsset, ProceduralKind } from '@/lib/designStudio/catalog';
 import type { InteractionSpec } from '@/lib/designStudio/interactions';
 
@@ -28,6 +30,14 @@ export type SlotColors = Record<string, string>;
 
 function material(color: string, roughness = 0.8, metalness = 0) {
   return new THREE.MeshStandardMaterial({ color, roughness, metalness });
+}
+
+/** The texture budget of the current quality tier (set once by the scene). */
+let FINISH_SIZE = 512;
+let FINISH_ANISO = 1;
+export function setFinishBudget(size: number, anisotropy = 1) {
+  FINISH_SIZE = size;
+  FINISH_ANISO = anisotropy;
 }
 
 export function slotColors(asset: CatalogAsset, variant: string | null, override: string | null): SlotColors {
@@ -43,9 +53,22 @@ export function slotColors(asset: CatalogAsset, variant: string | null, override
   return colors;
 }
 
-/** A box sitting on (x, y0, z) with its size — y0 is the bottom. */
+/**
+ * A box sitting on (x, y0, z) with its size — y0 is the bottom. Real things
+ * have no razor edges: anything thicker than a centimetre gets a small bevel
+ * (one segment, so a cabinet stays cheap).
+ */
 function box(w: number, h: number, d: number, x: number, y0: number, z: number, mat: THREE.Material) {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  const t = Math.min(w, h, d);
+  const geometry = t >= 0.012 ? new RoundedBoxGeometry(w, h, d, 1, Math.min(0.008, t * 0.25)) : new THREE.BoxGeometry(w, h, d);
+  const mesh = new THREE.Mesh(geometry, mat);
+  mesh.position.set(x, y0 + h / 2, z);
+  return mesh;
+}
+
+/** An upholstered volume: generously rounded, so cushions, arms and mattresses read as soft. */
+function soft(w: number, h: number, d: number, x: number, y0: number, z: number, mat: THREE.Material, radius = 0.06) {
+  const mesh = new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 3, Math.min(radius, Math.min(w, h, d) * 0.45)), mat);
   mesh.position.set(x, y0 + h / 2, z);
   return mesh;
 }
@@ -194,7 +217,15 @@ export function buildProcedural(kind: ProceduralKind, asset: CatalogAsset, color
   const mat = (id: string, fallback: string) => {
     const key = `${id}|${fallback}`;
     let m = slotMats.get(key);
-    if (!m) { m = material(c(id, fallback), slot(id)?.roughness ?? 0.8, slot(id)?.metalness ?? 0); slotMats.set(key, m); }
+    if (!m) {
+      const color = c(id, fallback);
+      const metal = slot(id)?.metalness ?? 0;
+      m = material(color, slot(id)?.roughness ?? 0.8, metal);
+      // What the slot is made of (fabric, wood…), from the kind and slot — never a per-asset table.
+      const pattern = patternOfSlot(kind, id, color, metal);
+      if (pattern) applyFinish(m, pattern, FINISH_SIZE, false, FINISH_ANISO);
+      slotMats.set(key, m);
+    }
     return m;
   };
   const chrome = material('#c9ccd0', 0.2, 0.9);
@@ -204,26 +235,30 @@ export function buildProcedural(kind: ProceduralKind, asset: CatalogAsset, color
       const body = mat('body', '#cfc6b8');
       const leg = mat('legs', '#3b3128');
       const seatH = 0.42;
+      const arm = Math.min(0.18, W * 0.09);
       legs(g, W, D, 0.08, 0.08, leg);
-      g.add(box(W, seatH - 0.08, D, 0, 0.08, 0, body)); // base + seat
-      g.add(box(W, H - seatH + 0.02, 0.2, 0, seatH - 0.02, D / 2 - 0.1, body)); // back (rear = +z)
-      g.add(box(0.18, 0.2, D, -W / 2 + 0.09, seatH, 0, body)); // arms
-      g.add(box(0.18, 0.2, D, W / 2 - 0.09, seatH, 0, body));
-      // Seat cushion seams: three quiet lines.
-      const seamMat = material(c('body', '#cfc6b8'), 1);
-      seamMat.color.multiplyScalar(0.86);
+      g.add(soft(W, 0.2, D, 0, 0.08, 0, body, 0.03)); // frame
+      g.add(soft(W, H - 0.26, 0.16, 0, 0.26, D / 2 - 0.08, body, 0.05)); // back frame (rear = +z)
+      g.add(soft(arm, seatH + 0.2 - 0.08, D, -W / 2 + arm / 2, 0.08, 0, body, 0.07)); // arms
+      g.add(soft(arm, seatH + 0.2 - 0.08, D, W / 2 - arm / 2, 0.08, 0, body, 0.07));
+      // Seat and back cushions, one per seat: separate soft forms, so it reads as a sofa.
       const n = W > 2 ? 3 : 2;
-      for (let i = 1; i < n; i += 1) g.add(box(0.012, 0.02, D - 0.25, -W / 2 + 0.18 + ((W - 0.36) * i) / n, seatH, -0.1, seamMat));
+      const cw = (W - 2 * arm) / n;
+      for (let i = 0; i < n; i += 1) {
+        const x = -W / 2 + arm + cw * (i + 0.5);
+        g.add(soft(cw - 0.012, seatH - 0.28, D - 0.2, x, 0.28, -0.04, body, 0.06));
+        g.add(soft(cw - 0.02, Math.max(0.2, H - seatH - 0.04), 0.18, x, seatH, D / 2 - 0.24, body, 0.07));
+      }
       specs.push(seatsAlong(W - 0.36, 0.7, 1.12, 0.05));
       break;
     }
     case 'ARMCHAIR': {
       const body = mat('body', '#b9a58a');
       legs(g, W, D, 0.12, 0.08, mat('legs', '#5b4432'));
-      g.add(box(W, 0.3, D, 0, 0.12, 0, body));
-      g.add(box(W, H - 0.42, 0.16, 0, 0.42, D / 2 - 0.08, body));
-      g.add(box(0.14, 0.2, D, -W / 2 + 0.07, 0.42, 0, body));
-      g.add(box(0.14, 0.2, D, W / 2 - 0.07, 0.42, 0, body));
+      g.add(soft(W - 0.02, 0.3, D, 0, 0.12, 0, body, 0.07));
+      g.add(soft(W - 0.3, H - 0.42, 0.16, 0, 0.42, D / 2 - 0.08, body, 0.07));
+      g.add(soft(0.14, 0.2, D, -W / 2 + 0.07, 0.42, 0, body, 0.06));
+      g.add(soft(0.14, 0.2, D, W / 2 - 0.07, 0.42, 0, body, 0.06));
       specs.push(seatsAlong(W, 1, 1.12, 0.02));
       break;
     }
@@ -267,9 +302,17 @@ export function buildProcedural(kind: ProceduralKind, asset: CatalogAsset, color
       break;
     }
     case 'TV_UNIT': {
+      // A low console on slim legs: separate fronts with shadow reveals, a top that overhangs.
       const body = mat('body', '#8e6f50');
-      g.add(box(W, 0.06, D - 0.04, 0, 0, 0, mat('legs', '#2a2a2a')));
-      g.add(box(W, H - 0.06, D, 0, 0.06, 0, body));
+      const legM = mat('legs', '#2a2a2a');
+      const lift = 0.1;
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.add(box(0.03, lift, 0.03, sx * (W / 2 - 0.06), 0, sz * (D / 2 - 0.06), legM));
+      g.add(box(W - 0.02, H - lift - 0.025, D - 0.02, 0, lift, 0.005, body));
+      g.add(box(W, 0.025, D, 0, H - 0.025, 0, body)); // top
+      const reveal = material('#141414', 0.9);
+      const fronts = Math.max(2, Math.round(W / 0.55));
+      for (let i = 1; i < fronts; i += 1) g.add(box(0.006, H - lift - 0.05, 0.004, -W / 2 + (W * i) / fronts, lift + 0.012, -D / 2 + 0.008, reveal));
+      g.add(box(W - 0.04, 0.006, 0.004, 0, lift + 0.012, -D / 2 + 0.008, reveal));
       // A screen standing on the unit, sized to it (never wider than 1.45 m).
       const sw = Math.min(1.45, W * 0.78);
       const sh = sw * 0.5625;
@@ -347,18 +390,18 @@ export function buildProcedural(kind: ProceduralKind, asset: CatalogAsset, color
       const frame = mat('body', '#a88b6c');
       const linen = mat('linen', '#efeae2');
       g.add(box(W, 0.3, D - 0.08, 0, 0.05, -0.04, frame));
-      g.add(box(W - 0.06, 0.22, D - 0.2, 0, 0.35, -0.08, linen)); // mattress
-      g.add(box(W, H, 0.08, 0, 0, D / 2 - 0.04, frame)); // headboard at the rear
+      g.add(soft(W - 0.06, 0.22, D - 0.2, 0, 0.35, -0.08, linen, 0.07)); // mattress
+      g.add(soft(W, H, 0.08, 0, 0, D / 2 - 0.04, frame, 0.035)); // headboard at the rear
       // The duvet and pillows are parts: a bed can be made, or slept in.
       const duvetD = (D - 0.2) * 0.72;
       const duvet = part(g, 'duvet', 0, 0.57, -0.08 - (D - 0.2) * 0.14);
-      duvet.add(box(W - 0.02, 0.06, duvetD, 0, 0, 0, linen));
+      duvet.add(soft(W - 0.02, 0.06, duvetD, 0, 0, 0, linen, 0.03));
       const pillows = W > 1.2 ? 2 : 1;
       const pillowParts: string[] = [];
       for (let i = 0; i < pillows; i += 1) {
         const x = pillows === 1 ? 0 : (i === 0 ? -1 : 1) * (W / 4);
         const p = part(g, `pillow-${i + 1}`, x, 0.57, D / 2 - 0.3);
-        p.add(box(Math.min(0.6, W / pillows - 0.1), 0.1, 0.36, 0, 0, 0, linen));
+        p.add(soft(Math.min(0.6, W / pillows - 0.1), 0.1, 0.36, 0, 0, 0, linen, 0.05));
         pillowParts.push(`pillow-${i + 1}`);
       }
       const messy: Record<string, { p?: [number, number, number]; r?: [number, number, number]; s?: [number, number, number] }> = {
@@ -405,10 +448,19 @@ export function buildProcedural(kind: ProceduralKind, asset: CatalogAsset, color
       break;
     }
     case 'CHAIR': {
+      // A chair, not a box: slim tapered legs, a moulded seat and a rounded backrest.
       const body = mat('body', '#a4845f');
-      legs(g, W, D, 0.44, 0.04, body, 0.035);
-      g.add(box(W, 0.04, D, 0, 0.44, 0, body));
-      g.add(box(W, H - 0.48, 0.04, 0, 0.48, D / 2 - 0.02, body));
+      const leg = mat('legs', '#3b3128');
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+        const l = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.019, 0.42, 10), leg);
+        l.position.set(sx * (W / 2 - 0.05), 0.21, sz * (D / 2 - 0.05));
+        l.rotation.set(sz * 0.05, 0, -sx * 0.05); // splayed a little, like a real chair
+        g.add(l);
+      }
+      g.add(box(W - 0.04, 0.025, D - 0.04, 0, 0.405, 0, leg)); // seat frame
+      g.add(soft(W, 0.06, D - 0.02, 0, 0.42, -0.01, body, 0.025)); // seat
+      g.add(soft(W - 0.02, Math.max(0.18, H - 0.56), 0.05, 0, 0.56, D / 2 - 0.04, body, 0.022)); // backrest
+      for (const sx of [-1, 1]) g.add(box(0.025, 0.14, 0.025, sx * (W / 2 - 0.06), 0.44, D / 2 - 0.05, leg)); // back posts
       specs.push(seatsAlong(W, 1, 1.18, 0.02));
       break;
     }

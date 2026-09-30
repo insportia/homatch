@@ -72,7 +72,9 @@ export interface ReconObject {
   confidence: number; basis: Basis; seenIn: number[];
   px?: PixelTrace | null; geometry?: GeometrySource;
 }
-export interface ReconSurface { room: string; part: 'FLOOR' | 'WALLS'; color: string | null; material: string | null; confidence: number }
+export type SurfacePatternCode = 'WOOD_PLANK' | 'WOOD_HERRINGBONE' | 'TILE' | 'STONE' | 'CONCRETE' | 'CARPET';
+export const SURFACE_PATTERN_CODES: readonly SurfacePatternCode[] = ['WOOD_PLANK', 'WOOD_HERRINGBONE', 'TILE', 'STONE', 'CONCRETE', 'CARPET'];
+export interface ReconSurface { room: string; part: 'FLOOR' | 'WALLS'; color: string | null; material: string | null; confidence: number; pattern?: SurfacePatternCode | null }
 export interface ReconCamera {
   image: number; kind: 'AERIAL' | 'EYE';
   at: Point2; heightM: number;
@@ -149,7 +151,7 @@ PIXEL TRACES (the most important part)
 - polygonPx has exactly one entry per polygon corner, in the same order; null for a corner you cannot see (hidden behind a wall or out of the picture). atPx is null when the thing is not visible.
 - Trace carefully and consistently: HOMATCH fits the picture's camera from these traces and rebuilds the plan from them.
 
-SURFACES: per room, the FLOOR and WALLS colour (#rrggbb) and material words ("herringbone oak", "white paint", "grey tile").
+SURFACES: per room, the FLOOR and WALLS colour (#rrggbb) and material words ("herringbone oak", "white paint", "grey tile"). For a FLOOR also give "pattern", the laying pattern you can SEE: WOOD_PLANK, WOOD_HERRINGBONE, TILE, STONE, CONCRETE or CARPET; null when you cannot tell (never guess).
 CAMERAS: for each image, where the camera stood in the plan frame (at, heightM), the direction it looks (yawDeg, pitchDeg), its horizontal fovDeg, and kind AERIAL or EYE.
 palette: up to 6 dominant #rrggbb colours of the design; styleWords: up to 4 words (scandinavian, contemporary, warm minimal…).
 
@@ -205,8 +207,8 @@ export const SCHEMA = {
     surfaces: {
       type: 'array',
       items: {
-        type: 'object', additionalProperties: false, required: ['room', 'part', 'color', 'material', 'confidence'],
-        properties: { room: { type: 'string' }, part: { type: 'string', enum: ['FLOOR', 'WALLS'] }, color: { type: ['string', 'null'] }, material: { type: ['string', 'null'] }, confidence: conf },
+        type: 'object', additionalProperties: false, required: ['room', 'part', 'color', 'material', 'confidence', 'pattern'],
+        properties: { room: { type: 'string' }, part: { type: 'string', enum: ['FLOOR', 'WALLS'] }, color: { type: ['string', 'null'] }, material: { type: ['string', 'null'] }, confidence: conf, pattern: { type: ['string', 'null'], enum: [...SURFACE_PATTERN_CODES, null] } },
       },
     },
     palette: { type: 'array', items: { type: 'string' } },
@@ -357,7 +359,8 @@ export function validateReconstruction(
   for (const x of (Array.isArray(r.surfaces) ? r.surfaces : []).slice(0, MAX_ROOMS * 2)) {
     const o = (x ?? {}) as Record<string, unknown>;
     if (typeof o.room !== 'string' || !roomKeys.has(o.room) || (o.part !== 'FLOOR' && o.part !== 'WALLS')) { dropped += 1; continue; }
-    surfaces.push({ room: o.room, part: o.part, color: hex(o.color), material: text(o.material, 40), confidence: clamp01(o.confidence) });
+    const pattern = o.part === 'FLOOR' && SURFACE_PATTERN_CODES.includes(o.pattern as SurfacePatternCode) ? o.pattern as SurfacePatternCode : null;
+    surfaces.push({ room: o.room, part: o.part, color: hex(o.color), material: text(o.material, 40), confidence: clamp01(o.confidence), pattern });
   }
 
   const cameras: ReconCamera[] = [];

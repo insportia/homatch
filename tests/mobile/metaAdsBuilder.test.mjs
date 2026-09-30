@@ -234,8 +234,13 @@ test('the two-day minimum is refused in the browser, and the money card comes fr
   await page.waitForTimeout(900);
   assert.ok(calls.patches.some((p) => p.duration_days === 3), 'three days is saved');
   const text = await page.textContent('body');
-  assert.match(text, /\$38\.15/, 'the total shown is the server total');
+  assert.match(text, /\$35\.00/, 'the ad budget shown is the server budget');
   assert.match(text, /\$3\.15/, 'the 9% fee shown is the server fee');
+  /* Customer ad-account billing: Meta bills the budget; HOMATCH charges only
+     its fee now — never budget + fee. */
+  const chargedNow = await page.locator('[data-charged-now]').first().textContent();
+  assert.match(chargedNow ?? '', /\$3\.15/, 'charged by HOMATCH now is the fee alone');
+  assert.doesNotMatch(chargedNow ?? '', /\$38\.15/, 'budget + fee is never presented as charged by HOMATCH');
   assert.ok(calls.actions.includes('plan_preview'));
 });
 

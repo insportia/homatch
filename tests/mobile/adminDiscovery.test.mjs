@@ -159,6 +159,14 @@ const LAYOUT = () => ({
   }).length,
 });
 
+/* One switch per DISCOVERY_SWITCHES entry — read from the source, so adding
+   a switch (forum_schedule_enabled) moves the expectation with it. */
+const EXPECTED_SWITCHES = (() => {
+  const src = readFileSync(new URL('../../src/services/adminDiscovery.ts', import.meta.url), 'utf8');
+  const block = src.slice(src.indexOf('export const DISCOVERY_SWITCHES = ['), src.indexOf('] as const;', src.indexOf('export const DISCOVERY_SWITCHES = [')));
+  return (block.match(/'[a-z_]+'/g) ?? []).length;
+})();
+
 for (const [width, height] of [[1440, 900], [390, 844]]) {
   test(`Admin → Discovery renders every section, every locale, at ${width}px`, opts, async (t) => {
     if (skipReason) assert.fail(`admin discovery gate could not run: ${skipReason}`);
@@ -170,7 +178,7 @@ for (const [width, height] of [[1440, 900], [390, 844]]) {
       await page.waitForSelector('[role="switch"]', { timeout: 20000 });
       const l = await page.evaluate(LAYOUT);
       if (l.overflow > 1) failures.push(`${lang} ${width}: horizontal overflow ${l.overflow}px`);
-      if (l.switches !== 5) failures.push(`${lang} ${width}: ${l.switches} switches, expected 5`);
+      if (l.switches !== EXPECTED_SWITCHES) failures.push(`${lang} ${width}: ${l.switches} switches, expected ${EXPECTED_SWITCHES}`);
       if (l.sections < 5) failures.push(`${lang} ${width}: ${l.sections} sections`);
       if ((lang === 'ar' || lang === 'he') && l.dir !== 'rtl') failures.push(`${lang} ${width}: not RTL`);
       for (const v of ['2787', '3770', '23', '1830']) if (!l.text.includes(v)) failures.push(`${lang} ${width}: value ${v} missing`);

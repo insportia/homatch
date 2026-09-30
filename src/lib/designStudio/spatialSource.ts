@@ -167,11 +167,15 @@ export interface ProvenanceLabel {
 }
 
 export function provenanceLabel(source: SpatialSourceRecord): ProvenanceLabel {
+  // A plan HOMATCH read from the customer's pictures is theirs "from your
+  // pictures", never "from your floor plan" (20261001180000 records it).
   const originKey = source.kind === 'DEVELOPER_UNIT'
     ? 'ds_source_developer'
     : source.kind === 'UPLOADED_MODEL'
       ? 'ds_source_model'
-      : 'ds_source_floorplan';
+      : source.provenance?.origin === 'CUSTOMER_PICTURES'
+        ? 'ds_source_pictures'
+        : 'ds_source_floorplan';
 
   const geometryKey = source.geometry_state === 'VERIFIED'
     ? 'ds_geometry_verified'

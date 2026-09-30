@@ -90,6 +90,10 @@ export const getPriceBook = () =>
 export const getVerifyDeepDive = (days = 30) =>
   rpc<Record<string, unknown>>('finance_verify_deep_dive', { p_days: days });
 
+/** Design Studio AI COGS samples (priced rows only in every statistic). */
+export const getDesignStudioEconomics = (days = 90) =>
+  rpc<Record<string, unknown>>('finance_design_studio_economics', { p_days: days });
+
 export const getOpenAiBreakdown = (days = 30) =>
   rpc<Record<string, unknown>>('finance_openai_breakdown', { p_days: days });
 

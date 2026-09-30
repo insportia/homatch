@@ -108,7 +108,7 @@ export function Inspector({ source, space, names, selection, onSelect, onFocusRo
           {model ? <p className="mt-3 text-[13px] leading-relaxed text-[#4A5263]">{t(EDITABILITY_BODY[model.editability])}</p> : null}
           <p className="mt-3 flex gap-2 rounded-md bg-[#F4F5F7] px-3 py-2.5 text-[13px] leading-relaxed text-[#4A5263]">
             <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-            {t(state === 'ESTIMATED' ? 'ds_truth_estimated' : 'ds_truth_known')}
+            {t(state !== 'ESTIMATED' ? 'ds_truth_known' : label.originKey === 'ds_source_pictures' ? 'ds_truth_estimated_pictures' : 'ds_truth_estimated')}
           </p>
           {onRecalibrate ? (
             <button

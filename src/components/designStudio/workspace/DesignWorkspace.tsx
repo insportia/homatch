@@ -1020,7 +1020,7 @@ function Editor({
         <span
           className={cn('hidden shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[13px] xl:inline-flex',
             estimated ? 'bg-[hsl(38_92%_54%)]/15 text-[hsl(38_92%_70%)]' : 'bg-white/5 text-white/70')}
-          title={t(estimated ? 'ds_truth_estimated' : 'ds_truth_known')}
+          title={t(!estimated ? 'ds_truth_known' : label.originKey === 'ds_source_pictures' ? 'ds_truth_estimated_pictures' : 'ds_truth_estimated')}
         >
           {t(label.originKey)} · {t(label.geometryKey)}
         </span>

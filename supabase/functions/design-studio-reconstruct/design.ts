@@ -18,7 +18,8 @@
 // confirmation flow exists, this refuses rather than charge.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { recordUnbilledUsage, serviceClient } from '../_shared/billing.ts';
+import { serviceClient } from '../_shared/billing.ts';
+import { meterAiCall } from './metering.ts';
 import { refuseIfImpersonating } from '../_shared/impersonation.ts';
 import {
   buildUserMessage, DS_AI_VERSION, normalizeBrief, SCHEMA, SYSTEM, validatePlan,
@@ -34,8 +35,6 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RUNS_PER_HOUR = 20;
 const MAX_ASSETS = 160;
 const MODEL = Deno.env.get('OPENAI_DS_DESIGN_MODEL') || Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
-const USD_IN = Number(Deno.env.get('OPENAI_USD_PER_MTOK_IN') || '0');
-const USD_OUT = Number(Deno.env.get('OPENAI_USD_PER_MTOK_OUT') || '0');
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
@@ -160,20 +159,10 @@ export async function handleDesign(req: Request): Promise<Response> {
   const plan = validatePlan(raw, ctx, brief);
   if (!plan.alternatives.length) return fail('DESIGN_EMPTY');
 
-  // ── What it cost: measured, never charged while unpriced ───────────
-  const inTok = Number(payload?.usage?.input_tokens ?? 0);
-  const outTok = Number(payload?.usage?.output_tokens ?? 0);
-  const ratesKnown = USD_IN > 0 && USD_OUT > 0;
-  const cents = ratesKnown ? Math.round(((inTok / 1e6) * USD_IN + (outTok / 1e6) * USD_OUT) * 100 * 10000) / 10000 : null;
-  try {
-    const { data: ent } = await admin.rpc('billing_entitlements', { p_user_id: version.user_id });
-    const planCode = String((ent as { plan_code?: string } | null)?.plan_code ?? 'FREE').toUpperCase();
-    await recordUnbilledUsage(admin, { userId: version.user_id, productCode: PRODUCT, planCode, jobRef: jobId }, {
-      provider: 'openai', providerOperation: 'responses', model: MODEL, inputTokens: inTok, outputTokens: outTok,
-      durationMs: Date.now() - started, aiCostCents: cents ?? undefined,
-      metadata: { ds_version_id: version.id, cost_known: ratesKnown, plan_version: DS_AI_VERSION },
-    });
-  } catch { /* a missing measurement never fails a design that succeeded */ }
+  // ── What it cost: priced from the book, never charged ──────────────
+  const { aiCents: cents } = await meterAiCall(admin,
+    { userId: version.user_id, productCode: PRODUCT, jobRef: jobId, model: MODEL, startedAt: started },
+    payload, { ds_version_id: version.id, plan_version: DS_AI_VERSION });
 
   await admin.from('ds_jobs').update({
     status: 'SUCCEEDED', finished_at: new Date().toISOString(), cost_cents: cents,

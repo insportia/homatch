@@ -15,7 +15,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Archive, ArchiveRestore, ArrowRight, Box, FileImage, Loader2, MoreHorizontal, Search, X, ImagePlus } from 'lucide-react';
+import { Archive, ArchiveRestore, ArrowRight, Box, FileImage, Loader2, MoreHorizontal, Pencil, Search, Trash2, X, ImagePlus } from 'lucide-react';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { PRODUCT_SURFACE } from '@/components/customer/surface';
@@ -29,11 +29,12 @@ import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Input } from '@/components/ui/input';
 import {
-  attachDeveloperUnit, createOriginalVersion, createProject, DesignStudioError, getSource, listLauncherProperties,
-  listProjects, renameProject, setActiveSource, setProjectStatus,
+  attachDeveloperUnit, createOriginalVersion, createProject, deleteProjectPermanently, DesignStudioError, getSource, listLauncherProperties,
+  listProjects, renameProject, resumePendingDeletions, setActiveSource, setProjectStatus,
   type LauncherProperty, type ProjectListItem,
 } from '@/services/designStudio/projects';
 import { resolveSpatialSource } from '@/lib/designStudio/spatialSource';
@@ -86,6 +87,8 @@ function Launcher() {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [thumbs, setThumbs] = useState<Map<string, string>>(new Map());
+  const [renaming, setRenaming] = useState<ProjectListItem | null>(null);
+  const [deleting, setDeleting] = useState<ProjectListItem | null>(null);
 
   const userId = homatchUser?.id ?? '';
 
@@ -101,6 +104,9 @@ function Launcher() {
   }, [userId, view]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // A deletion that was interrupted is finished quietly on the next visit.
+  useEffect(() => { void resumePendingDeletions(userId); }, [userId]);
 
   // Version thumbnails live in R2; a short-lived URL is minted to show them.
   useEffect(() => {
@@ -292,11 +298,24 @@ function Launcher() {
                 thumbUrl={project.thumbnail_key ? thumbs.get(project.thumbnail_key) ?? null : null}
                 locale={lang}
                 onArchive={() => changeStatus(project.id, project.status === 'ACTIVE' ? 'ARCHIVED' : 'ACTIVE')}
+                onRename={() => setRenaming(project)}
+                onDelete={() => setDeleting(project)}
               />
             ))}
           </ul>
         )}
       </section>
+
+      <RenameProjectDialog
+        project={renaming}
+        onClose={() => setRenaming(null)}
+        onRenamed={() => { setRenaming(null); void load(); }}
+      />
+      <DeleteProjectDialog
+        project={deleting}
+        onClose={() => setDeleting(null)}
+        onDeleted={() => { setDeleting(null); void load(); }}
+      />
 
       <PropertyPicker
         open={pickerOpen}
@@ -320,8 +339,11 @@ function Launcher() {
 }
 
 function ProjectRow({
-  project, thumbUrl, locale, onArchive,
-}: { project: ProjectListItem; thumbUrl: string | null; locale: string; onArchive: () => void }) {
+  project, thumbUrl, locale, onArchive, onRename, onDelete,
+}: {
+  project: ProjectListItem; thumbUrl: string | null; locale: string;
+  onArchive: () => void; onRename: () => void; onDelete: () => void;
+}) {
   const { t } = useLanguage();
   /* The project is usually named after its property; repeating the title
      under itself would say the same thing twice. */
@@ -386,14 +408,126 @@ function ProjectRow({
           <DropdownMenuItem asChild className="sm:hidden">
             <Link to={`/design-studio/${project.id}`}>{t('ds_action_open')}</Link>
           </DropdownMenuItem>
+          <DropdownMenuItem onSelect={onRename}>
+            <Pencil className="me-2 h-4 w-4" aria-hidden="true" />{t('ds_action_rename')}
+          </DropdownMenuItem>
           <DropdownMenuItem onSelect={onArchive}>
             {project.status === 'ACTIVE'
               ? <><Archive className="me-2 h-4 w-4" aria-hidden="true" />{t('ds_action_archive')}</>
               : <><ArchiveRestore className="me-2 h-4 w-4" aria-hidden="true" />{t('ds_action_restore')}</>}
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={onDelete} className="text-destructive focus:text-destructive">
+            <Trash2 className="me-2 h-4 w-4" aria-hidden="true" />{t('ds_action_delete_permanent')}
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </li>
+  );
+}
+
+function RenameProjectDialog({
+  project, onClose, onRenamed,
+}: { project: ProjectListItem | null; onClose: () => void; onRenamed: () => void }) {
+  const { t } = useLanguage();
+  const [name, setName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { setName(project?.name ?? ''); setError(null); setSaving(false); }, [project]);
+  const trimmed = name.trim();
+
+  const save = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!project || !trimmed || trimmed === project.name.trim()) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await renameProject(project.id, trimmed);
+      onRenamed();
+    } catch (err) {
+      setError(t(errorKey(err)));
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={!!project} onOpenChange={(open) => { if (!open && !saving) onClose(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t('ds_rename_title')}</DialogTitle>
+          <DialogDescription className="sr-only">{t('ds_rename_title')}</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={save} className="space-y-4">
+          <label className="block text-sm font-medium text-foreground" htmlFor="ds-rename-input">{t('ds_rename_label')}</label>
+          <Input id="ds-rename-input" value={name} maxLength={120} autoFocus onChange={(e) => setName(e.target.value)} data-testid="ds-rename-input" />
+          {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+          <div className="flex justify-end gap-2">
+            <button type="button" className="h-10 rounded-lg px-4 text-sm font-medium text-muted-foreground hover:bg-secondary" onClick={onClose} disabled={saving}>
+              {t('ds_action_cancel')}
+            </button>
+            <button type="submit" className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#0C1119] px-4 text-sm font-semibold text-white disabled:opacity-50"
+              disabled={saving || !trimmed || trimmed === project?.name.trim()}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+              {t('ds_action_save')}
+            </button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Permanent deletion: the owner types the project's name, and the server does the rest. */
+function DeleteProjectDialog({
+  project, onClose, onDeleted,
+}: { project: ProjectListItem | null; onClose: () => void; onDeleted: () => void }) {
+  const { t } = useLanguage();
+  const [typed, setTyped] = useState('');
+  const [working, setWorking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { setTyped(''); setError(null); setWorking(false); }, [project]);
+  const matches = !!project && typed.trim() === project.name.trim();
+
+  const remove = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!project || !matches) return;
+    setWorking(true);
+    setError(null);
+    try {
+      await deleteProjectPermanently(project.id, typed.trim());
+      onDeleted();
+    } catch {
+      setError(t('ds_delete_error'));
+      setWorking(false);
+    }
+  };
+
+  return (
+    <Dialog open={!!project} onOpenChange={(open) => { if (!open && !working) onClose(); }}>
+      <DialogContent className="max-w-md" data-testid="ds-delete-dialog">
+        <DialogHeader>
+          <DialogTitle>{t('ds_delete_title')}</DialogTitle>
+          <DialogDescription>{t('ds_delete_body')}</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={remove} className="space-y-4">
+          <label className="block text-sm text-foreground" htmlFor="ds-delete-confirm">
+            {t('ds_delete_confirm_label', { name: project?.name ?? '' })}
+          </label>
+          <Input id="ds-delete-confirm" value={typed} autoComplete="off" onChange={(e) => setTyped(e.target.value)} data-testid="ds-delete-confirm" />
+          {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+          <div className="flex justify-end gap-2">
+            <button type="button" className="h-10 rounded-lg px-4 text-sm font-medium text-muted-foreground hover:bg-secondary" onClick={onClose} disabled={working}>
+              {t('ds_action_cancel')}
+            </button>
+            <button type="submit" className="inline-flex h-10 items-center gap-2 rounded-lg bg-destructive px-4 text-sm font-semibold text-destructive-foreground disabled:opacity-50"
+              disabled={!matches || working} data-testid="ds-delete-submit">
+              {working ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Trash2 className="h-4 w-4" aria-hidden="true" />}
+              {t('ds_action_delete_permanent')}
+            </button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

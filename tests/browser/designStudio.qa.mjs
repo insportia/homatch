@@ -184,7 +184,9 @@ export function createStore(seed = {}) {
         kind: 'FLOORPLAN_SCENE', status: 'READY', geometry_state: args.p_geometry_state, editability: 'GENERATED',
         dev_unit_id: null, upstream: null, floorplan_id: args.p_floorplan_id, model_object_key: null, model_sha256: null,
         model_bytes: null, model_mime: null, canonical: args.p_canonical, calibration: args.p_calibration,
-        generator_version: args.p_generator_version, provenance: { origin: 'CUSTOMER_FLOORPLAN' }, failure: null,
+        generator_version: args.p_generator_version,
+        provenance: { origin: db.ds_floorplans.find((f) => f.id === args.p_floorplan_id)?.purpose === 'REFERENCE' ? 'CUSTOMER_PICTURES' : 'CUSTOMER_FLOORPLAN' },
+        failure: null,
         supersedes_id: null, created_at: now(),
       };
       for (const s of db.ds_spatial_sources) if (s.floorplan_id === args.p_floorplan_id && s.status === 'READY') s.status = 'SUPERSEDED';
@@ -288,6 +290,15 @@ export async function wire(page, store, errors) {
     }
     /* A stand-in for design-studio-reconstruct/floorplan: the stored object must exist
        under the caller's key; the reading is a fixed proposal (no scale). */
+    if (url.pathname.endsWith('/functions/v1/design-studio-reconstruct/project-delete')) {
+      const body = JSON.parse(req.postData() || '{}');
+      const target = store.db.ds_projects.find((x) => x.id === body.projectId && x.user_id === 'hm1');
+      if (!target) return json({ error: 'NOT_FOUND' }, 404);
+      if (!target.deleting_at && body.confirmName !== target.name) return json({ error: 'CONFIRMATION_MISMATCH' }, 400);
+      (store.deletes ??= []).push(body);
+      store.db.ds_projects = store.db.ds_projects.filter((x) => x.id !== target.id);
+      return json({ state: 'DELETED', sharesRevoked: 0, objectsRemoved: 0 });
+    }
     if (url.pathname.endsWith('/functions/v1/design-studio-reconstruct/floorplan')) {
       const body = JSON.parse(req.postData() || '{}');
       store.readings.push(body);
@@ -310,7 +321,9 @@ export async function wire(page, store, errors) {
       const { validateReconstruction, planDocument, RECON_VERSION } = await import('../../supabase/functions/_shared/designStudio/reconstructRead.ts');
       const plan = recon.plan_source_id ? store.db.ds_spatial_sources.find((x) => x.id === recon.plan_source_id) : null;
       const planRoomIds = plan ? plan.canonical.scene.floors.map((x) => x.id) : [];
-      const { recon: reading } = validateReconstruction(plan ? store.reconPlanAnswer : store.reconAnswer, refs.length, { usesPlan: !!plan, planRoomIds });
+      const { imageSize } = await import('../../supabase/functions/_shared/designStudio/floorplanRead.ts');
+      const imageAspects = refs.map((r) => { const sz = imageSize(new Uint8Array(store.objects.get(r.object_key).body)); return sz ? sz.width / sz.height : null; });
+      const { recon: reading } = validateReconstruction(plan ? store.reconPlanAnswer : store.reconAnswer, refs.length, { usesPlan: !!plan, planRoomIds, imageAspects });
       if (!plan) Object.assign(refs[0], { status: 'INTERPRETED', interpretation: { doc: planDocument(reading, refs[0].object_key), dimensionStrings: [], readVersion: RECON_VERSION } });
       Object.assign(recon, { status: 'READ', analysis: reading, model: 'qa-fixture' });
       return json({ state: 'READ', counts: { rooms: reading.rooms.length, objects: reading.objects.length } });
@@ -432,7 +445,7 @@ async function main() {
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
   // QA_ONLY=11 runs one checkpoint (while iterating); the release run is all of them.
   if (process.env.QA_ONLY) {
-    try { await ({ 11: checkpoint11, '11b': checkpoint11b, 10: checkpoint10 })[process.env.QA_ONLY](browser); } finally { await browser.close().catch(() => {}); server.kill(); }
+    try { await ({ 11: checkpoint11, '11b': checkpoint11b, 12: checkpoint12, 13: checkpoint13, 10: checkpoint10 })[process.env.QA_ONLY](browser); } finally { await browser.close().catch(() => {}); server.kill(); }
     console.log(failures ? `${failures} FAILED` : 'ALL PASSED');
     process.exit(failures ? 1 : 0);
   }
@@ -528,6 +541,8 @@ async function main() {
     await checkpoint10(browser);
     await checkpoint11(browser);
     await checkpoint11b(browser);
+    await checkpoint12(browser);
+    await checkpoint13(browser);
   } finally {
     await browser.close().catch(() => {});
     server.kill();
@@ -682,6 +697,56 @@ async function checkpoint11(browser) {
   await page.getByTestId('reference-overlay-toggle').click();
   await page.screenshot({ path: path.join(OUT, 'cp11-reference-match-1440-en.png') });
   await page.getByTestId('reference-panel').getByRole('button', { name: 'Close' }).click();
+
+  // ── 4b. Picking from the ordinary oblique overview (not only from above).
+  // For each piece, sample its on-screen box and keep the points where THE PIECE is what
+  // is visible there (a wall in front of it is correctly the wall). Clicking any of those
+  // points must select the piece: never the floor under it, never a gap between its boxes.
+  await scene(page, (c) => c.frameAll(false));
+  await page.waitForTimeout(500);
+  const pickable = objs;
+  const picks = await scene(page, (c, ids) => {
+    const r = c.renderer.domElement.getBoundingClientRect();
+    const out = [];
+    for (const id of ids) {
+      const node = c.objectsById.get(id);
+      if (!node) continue;
+      node.updateMatrixWorld(true);
+      // The piece's screen box, from its world box corners.
+      const V = node.position.constructor;
+      const pts = [];
+      node.traverse((m) => {
+        if (!m.isMesh || !m.visible) return;
+        m.geometry.computeBoundingBox();
+        const b = m.geometry.boundingBox;
+        for (const x of [b.min.x, b.max.x]) for (const y of [b.min.y, b.max.y]) for (const z of [b.min.z, b.max.z]) {
+          const p = new V(x, y, z).applyMatrix4(m.matrixWorld).project(c.camera);
+          pts.push([r.left + ((p.x + 1) / 2) * r.width, r.top + ((1 - p.y) / 2) * r.height]);
+        }
+      });
+      const xs = pts.map((p) => p[0]); const ys = pts.map((p) => p[1]);
+      let visible = 0; let right = 0; const wrong = [];
+      for (let i = 1; i < 8; i += 1) for (let j = 1; j < 8; j += 1) {
+        const x = Math.min(...xs) + ((Math.max(...xs) - Math.min(...xs)) * i) / 8;
+        const y = Math.min(...ys) + ((Math.max(...ys) - Math.min(...ys)) * j) / 8;
+        // What is actually visible at this pixel: the first visible mesh the ray meets.
+        const ndc = { x: ((x - r.left) / r.width) * 2 - 1, y: -((y - r.top) / r.height) * 2 + 1 };
+        c.raycaster.setFromCamera(ndc, c.camera);
+        const first = c.raycaster.intersectObjects([c.objectsGroup, c.spaceGroup], true).find((h) => h.object.visible);
+        let o = first?.object ?? null;
+        while (o && o !== node) o = o.parent;
+        if (o !== node) continue;
+        visible += 1;
+        const got = c.pick(x, y);
+        if (got?.target.kind === 'object' && got.target.id === id) right += 1; else wrong.push(got ? `${got.target.kind}:${got.target.id ?? ''}` : 'nothing');
+      }
+      out.push({ id, visible, right, wrong: wrong.slice(0, 3) });
+    }
+    return out;
+  }, pickable.map((o) => o.instanceId));
+  const seen = picks.filter((p) => p.visible > 0);
+  check('pick: from the oblique overview, every visible point of a piece selects that piece (not the floor, not a gap)',
+    seen.length >= 8 && seen.every((p) => p.right === p.visible), JSON.stringify(seen.filter((p) => p.right !== p.visible).concat([{ seen: seen.length }])));
 
   // ── 5. Direct editing of a reconstructed piece: select, nudge (one step), provenance confirmed.
   // From above, so no wall stands between the camera and the piece.
@@ -1017,6 +1082,151 @@ async function checkpoint11b(browser) {
   await page.screenshot({ path: path.join(OUT, 'cp11b-built-1440-en.png') });
   check('no page errors (checkpoint 11b)', errors.length === 0, errors.join('\n        '));
   await ctx.close();
+}
+
+/* ── Checkpoint 12: the project menu — rename, and permanent deletion ──
+ *
+ * Deleting is the server's job (see project.ts); the browser's part is a
+ * menu entry, a typed-name confirmation, and a list and a URL that no longer
+ * show the project afterwards. */
+async function checkpoint12(browser) {
+  const { store, project } = await seededStore();
+  const errors = [];
+  const ctx = await openContext(browser, { width: 1440, height: 900, lang: 'en' });
+  const page = await ctx.newPage();
+  await wire(page, store, errors);
+  await page.goto(`${BASE}/design-studio`, { waitUntil: 'domcontentloaded' });
+  await page.getByRole('link', { name: project.name }).first().waitFor({ timeout: 25000 });
+
+  const openMenu = async (name) => {
+    await page.getByRole('button', { name: `Actions for ${name}` }).click();
+    await page.getByRole('menu').waitFor();
+  };
+  await openMenu(project.name);
+  check('menu: Rename, Archive and Delete permanently', (await page.getByRole('menuitem', { name: 'Rename' }).count()) === 1
+    && (await page.getByRole('menuitem', { name: 'Archive' }).count()) === 1
+    && (await page.getByRole('menuitem', { name: 'Delete permanently' }).count()) === 1);
+  await page.screenshot({ path: path.join(OUT, 'cp12-menu-1440-en.png') });
+  await page.getByRole('menuitem', { name: 'Rename' }).click();
+  await page.getByTestId('ds-rename-input').fill('Vake flat, redesigned');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await page.getByRole('link', { name: 'Vake flat, redesigned' }).first().waitFor({ timeout: 10000 });
+  check('rename: the new name is saved and listed', store.db.ds_projects.find((p) => p.id === project.id)?.name === 'Vake flat, redesigned');
+
+  await openMenu('Vake flat, redesigned');
+  await page.getByRole('menuitem', { name: 'Delete permanently' }).click();
+  await page.getByTestId('ds-delete-dialog').waitFor();
+  const submit = page.getByTestId('ds-delete-submit');
+  check('delete: says what is removed and that it cannot be undone', await page.getByText(/cannot be undone/).isVisible());
+  check('delete: nothing happens until the exact name is typed', await submit.isDisabled());
+  await page.getByTestId('ds-delete-confirm').fill('Vake flat, redesign');
+  check('delete: a near-miss name is still refused', await submit.isDisabled());
+  await page.getByTestId('ds-delete-confirm').fill('Vake flat, redesigned');
+  check('delete: the exact name enables it', await submit.isEnabled());
+  await page.screenshot({ path: path.join(OUT, 'cp12-delete-confirm-1440-en.png') });
+  await submit.click();
+  await page.getByTestId('ds-delete-dialog').waitFor({ state: 'detached', timeout: 10000 });
+  check('delete: the server route is asked, with the typed name', store.deletes?.length === 1
+    && store.deletes[0].projectId === project.id && store.deletes[0].confirmName === 'Vake flat, redesigned');
+  check('delete: gone from Active', (await page.getByRole('link', { name: 'Vake flat, redesigned' }).count()) === 0);
+  await page.getByRole('tab', { name: 'Archived' }).click();
+  await page.waitForTimeout(500);
+  check('delete: and not in Archived', (await page.getByRole('link', { name: 'Vake flat, redesigned' }).count()) === 0);
+  await page.goto(`${BASE}/design-studio/${project.id}`, { waitUntil: 'domcontentloaded' });
+  check('delete: the old project URL shows nothing of it', await page.getByText('This design project does not exist or is not yours.')
+    .waitFor({ timeout: 15000 }).then(() => true, () => false));
+  check('no page errors (checkpoint 12)', errors.length === 0, errors.join('\n        '));
+  await ctx.close();
+}
+
+/* ── Checkpoint 13: the rebuild follows the picture, and so does its camera ──
+ *
+ * A TRACED reading (every corner, opening and piece located in the picture's
+ * pixels) of a flat that is not a set of rectangles, pictured by a known
+ * orthographic camera at the uploaded picture's real shape. After building,
+ * "Match reference view" must put the live scene camera exactly where the
+ * picture looks from: every traced corner lands on its own pixel of the
+ * contained overlay. The space says it came from pictures. */
+async function checkpoint13(browser) {
+  const THREE = await import('three');
+  const { seedRows } = await import('../../src/lib/designStudio/__tests__/seedCatalog.mjs');
+  const { imageSize } = await import('../../supabase/functions/_shared/designStudio/floorplanRead.ts');
+  const fsm = await import('node:fs');
+  const picture = path.join(ROOT, 'tests/fixtures/design-studio/isometric-apartment.jpg');
+  const size = imageSize(new Uint8Array(fsm.readFileSync(picture)));
+  const aspect = size.width / size.height;
+  const cam = new THREE.OrthographicCamera(-aspect * 6, aspect * 6, 6, -6, 0.1, 500);
+  cam.position.set(5 + 50 * Math.sin(0.65), 50 * Math.tan((33 * Math.PI) / 180), -3 + 50 * Math.cos(0.65));
+  cam.lookAt(5, 0, -3);
+  cam.updateMatrixWorld();
+  const uvOf = ([x, y]) => { const v = new THREE.Vector3(x, 0, -y).project(cam); return [(v.x + 1) / 2, (1 - v.y) / 2]; };
+  const guess = ([x, y]) => [Math.round(x) + 0.12, Math.round(y) - 0.08];
+  const truth = {
+    living: [[0, 0], [5, 0], [7, 3.4641], [7, 6], [0, 6]],
+    bedroom: [[5, 0], [10, 0], [10, 6], [7, 6], [7, 3.4641]],
+  };
+  const room = (key, kind, poly) => ({ key, kind, label: null, polygon: poly.map(guess), polygonPx: poly.map(uvOf), pxImage: 0, outdoor: false, confidence: 0.8, basis: 'OBSERVED' });
+  const seed = seedRows();
+  const store = createStore({ ds_catalog_assets: seed.assets, ds_catalog_materials: seed.materials });
+  store.reconAnswer = {
+    view: 'AERIAL', scaleConfidence: 0.5, scaleEvidence: 'doors and beds', ceilingHeightM: null,
+    rooms: [room('living', 'LIVING', truth.living), room('bedroom', 'BEDROOM', truth.bedroom)],
+    openings: [{ key: 'd1', kind: 'DOOR', at: guess([6, 1.7321]), atPx: uvOf([6, 1.7321]), pxImage: 0, widthM: 0.9, heightM: null, sillM: null, confidence: 0.7, basis: 'OBSERVED' }],
+    objects: [{ key: 'bed', type: 'BED_DOUBLE', label: 'double bed', room: 'bedroom', at: guess([8.5, 3]), atPx: uvOf([8.5, 3]), pxImage: 0,
+      facingDeg: 180, widthM: 1.6, depthM: 2, heightM: 0.5, color: null, material: null, style: null, confidence: 0.9, basis: 'OBSERVED', seenIn: [0] }],
+    surfaces: [], palette: [], styleWords: [],
+    cameras: [{ image: 0, kind: 'AERIAL', at: [15, -10], heightM: 20, yawDeg: 330, pitchDeg: -40, fovDeg: 50, confidence: 0.5 }],
+    unknowns: [],
+  };
+  const errors = [];
+  for (const [W, H, touch] of [[1440, 900, false], [390, 844, true]]) {
+    const ctx = await openContext(browser, { width: W, height: H, lang: 'en', touch });
+    const page = await ctx.newPage();
+    await wire(page, store, errors);
+    await page.goto(`${BASE}/design-studio`, { waitUntil: 'domcontentloaded' });
+    await page.getByTestId('ds-start-image').click();
+    await page.getByTestId('recon-pick').waitFor({ timeout: 20000 });
+    await page.getByTestId('recon-input').setInputFiles(picture);
+    await page.getByTestId('recon-read').click();
+    await page.getByTestId('recon-review').waitFor({ timeout: 30000 });
+    const rec = store.db.ds_reconstructions.at(-1);
+    check(`fidelity ${W}: the outlines were rebuilt from the picture's pixels`, rec.analysis.fidelity?.model === 'ORTHO'
+      && rec.analysis.rooms.every((r) => r.geometry === 'PIXELS'), JSON.stringify(rec.analysis.fidelity));
+    await page.getByTestId('recon-build').click();
+    await page.locator('main canvas').waitFor({ timeout: 40000 });
+    await page.waitForTimeout(900);
+    if (W > 600) check('source: a space built from pictures says "From your pictures", never "From your floor plan"',
+      (await page.getByText('From your pictures', { exact: false }).count()) > 0 && (await page.getByText('From your floor plan').count()) === 0);
+    await page.getByTestId('ds-reference').click();
+    await page.getByTestId('reference-panel').waitFor();
+    check(`match ${W}: the view is the picture's own camera, and says how exact`, (await page.getByTestId('reference-match').getAttribute('data-fitted')) === 'ORTHO'
+      && (await page.getByTestId('reference-match-note').innerText()).startsWith("Matched to your picture's own camera"));
+    await page.getByTestId('reference-overlay-toggle').click();
+    await page.getByTestId('reference-match').click();
+    await page.waitForTimeout(500);
+    const traced = rec.analysis.rooms.flatMap((r) => r.polygon.map((p, i) => ({ plan: p, uv: r.px.points[i] }))).filter((x) => x.uv);
+    const worst = await page.evaluate(({ traced, aspect }) => {
+      const c = window.__dsScene.camera;
+      c.updateMatrixWorld();
+      const el = window.__dsScene.renderer.domElement.getBoundingClientRect();
+      const ov = document.querySelector('[data-testid="reference-overlay"]').getBoundingClientRect();
+      const imgH = Math.min(ov.height, ov.width / aspect);
+      const ox = ov.left + (ov.width - imgH * aspect) / 2; const oy = ov.top + (ov.height - imgH) / 2;
+      const V = c.matrixWorldInverse.elements; const P = c.projectionMatrix.elements;
+      const mul = (m, v) => [0, 1, 2, 3].map((r) => m[r] * v[0] + m[4 + r] * v[1] + m[8 + r] * v[2] + m[12 + r] * v[3]);
+      let worst = 0;
+      for (const t of traced) {
+        const q = mul(P, mul(V, [t.plan[0], 0, -t.plan[1], 1]));
+        const x = el.left + ((q[0] / q[3] + 1) / 2) * el.width; const y = el.top + ((1 - q[1] / q[3]) / 2) * el.height;
+        worst = Math.max(worst, Math.hypot(x - (ox + t.uv[0] * imgH * aspect), y - (oy + t.uv[1] * imgH)) / imgH);
+      }
+      return worst;
+    }, { traced, aspect });
+    check(`match ${W}: every traced corner lands on its own pixel of the overlay (worst ${(worst * 100).toFixed(2)}% of the picture)`, worst < 0.02);
+    await page.screenshot({ path: path.join(OUT, `cp13-matched-${W}-en.png`) });
+    await ctx.close();
+  }
+  check('no page errors (checkpoint 13)', errors.length === 0, errors.join('\n        '));
 }
 
 /* A few rows shaped exactly like the development seed (20260930091000). */

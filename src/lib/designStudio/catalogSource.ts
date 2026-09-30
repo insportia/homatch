@@ -192,6 +192,68 @@ const CONTENT_TYPE: Record<string, string> = {
 };
 export const contentTypeOf = (path: string) => CONTENT_TYPE[path.split('.').pop()?.toLowerCase() ?? ''] ?? 'application/octet-stream';
 
+/**
+ * What a MODEL delivered to a browser may weigh. The provider's original can
+ * be large; the runtime derivative the scene loads is capped, compressed and
+ * validated, and a model that cannot meet this is not READY (it is never
+ * served in its original, heavyweight form instead).
+ */
+export const RUNTIME_POLICY = {
+  maxTextureEdge: 2048,
+  lod1TextureEdge: 1024,
+  maxGlbBytes: 20_000_000,
+  maxLod1Bytes: 8_000_000,
+  simplifyAboveTriangles: 30_000,
+} as const;
+
+export interface RuntimeFacts { file: string; bytes: number; textureBytes: number; maxTextureEdge: number; textures: number; compressed: boolean }
+
+const KTX2_ID = [0xab, 0x4b, 0x54, 0x58, 0x20, 0x32, 0x30, 0xbb];
+
+/**
+ * What a runtime GLB actually carries, read from its bytes: total and texture
+ * bytes, the largest texture edge (from each image's own header: KTX2, PNG,
+ * JPEG) and whether every texture is GPU-compressed (KTX2).
+ */
+export function glbRuntimeFacts(bytes: Uint8Array, file = 'model.glb'): RuntimeFacts {
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (String.fromCharCode(...bytes.subarray(0, 4)) !== 'glTF') throw new Error('not a GLB');
+  const jsonLen = dv.getUint32(12, true);
+  const j = JSON.parse(new TextDecoder().decode(bytes.subarray(20, 20 + jsonLen)));
+  const binStart = 20 + jsonLen + 8;
+  let textureBytes = 0; let maxEdge = 0; let compressed = true;
+  for (const img of j.images ?? []) {
+    const bv = j.bufferViews?.[img.bufferView];
+    if (!bv) continue;
+    textureBytes += bv.byteLength;
+    const at = binStart + (bv.byteOffset ?? 0);
+    let w = 0; let h = 0;
+    if (KTX2_ID.every((v, i) => bytes[at + i] === v)) { w = dv.getUint32(at + 20, true); h = dv.getUint32(at + 24, true); } else {
+      compressed = false;
+      if (bytes[at] === 0x89 && bytes[at + 1] === 0x50) { w = dv.getUint32(at + 16); h = dv.getUint32(at + 20); } else if (bytes[at] === 0xff && bytes[at + 1] === 0xd8) {
+        let p = at + 2;
+        while (p + 8 < at + bv.byteLength) {
+          const m = bytes[p + 1]; const len = dv.getUint16(p + 2);
+          if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) { h = dv.getUint16(p + 5); w = dv.getUint16(p + 7); break; }
+          p += 2 + len;
+        }
+      }
+    }
+    maxEdge = Math.max(maxEdge, w, h);
+  }
+  return { file, bytes: bytes.byteLength, textureBytes, maxTextureEdge: maxEdge, textures: (j.images ?? []).length, compressed };
+}
+
+/** Why a model's runtime derivatives break the policy (null when they meet it). */
+export function runtimeRefusal(main: RuntimeFacts | null, lod1: RuntimeFacts | null): string | null {
+  if (!main) return 'no runtime derivative (the original is never served)';
+  if (main.bytes > RUNTIME_POLICY.maxGlbBytes) return `runtime GLB ${main.bytes} bytes exceeds ${RUNTIME_POLICY.maxGlbBytes}`;
+  if (main.maxTextureEdge > RUNTIME_POLICY.maxTextureEdge) return `runtime texture ${main.maxTextureEdge}px exceeds ${RUNTIME_POLICY.maxTextureEdge}px`;
+  if (lod1 && lod1.bytes > RUNTIME_POLICY.maxLod1Bytes) return `LOD1 ${lod1.bytes} bytes exceeds ${RUNTIME_POLICY.maxLod1Bytes}`;
+  if (lod1 && lod1.maxTextureEdge > RUNTIME_POLICY.lod1TextureEdge) return `LOD1 texture ${lod1.maxTextureEdge}px exceeds ${RUNTIME_POLICY.lod1TextureEdge}px`;
+  return null;
+}
+
 const AREA: Record<AssetKind, string> = { MATERIAL: 'materials', MODEL: 'models', ENVIRONMENT: 'hdri' };
 
 /** Where a planned file is stored: its delivery class, its area, its asset and version. */

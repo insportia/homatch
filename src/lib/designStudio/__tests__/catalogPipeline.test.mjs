@@ -74,7 +74,17 @@ function world(adapterBundle, faults = {}) {
     join: (...p) => p.join('/'),
     validateGltf: async () => ({ errors: 0, warnings: 0 }),
     gltfJson: (file) => JSON.parse(files.get(file)),
-    optimize: async () => ({ state: 'SKIPPED', note: 'no tools in tests', files: [] }),
+    async optimize(kind, _plan, dir, id) {
+      if (kind !== 'MODEL') return { state: 'SKIPPED', note: 'no tools in tests', files: [] };
+      if (faults.optimize) return faults.optimize(id);
+      const main = `${dir}/opt/${id}.glb`; const lod1 = `${dir}/opt/${id}.lod1.glb`;
+      files.set(main, 'glTF-runtime-main'); files.set(lod1, 'glTF-lod1');
+      return {
+        state: 'DONE',
+        files: [{ role: 'GLB', resolution: null, relPath: `${id}.glb`, file: main, contentType: 'model/gltf-binary' }, { role: 'GLB', resolution: null, relPath: `${id}.lod1.glb`, file: lod1, contentType: 'model/gltf-binary' }],
+        runtime: { main: { file: `${id}.glb`, bytes: 17, textureBytes: 8, maxTextureEdge: 2048, textures: 1, compressed: true }, lod1: { file: `${id}.lod1.glb`, bytes: 9, textureBytes: 4, maxTextureEdge: 1024, textures: 1, compressed: true } },
+      };
+    },
     async existing(objects) { return new Set(objects.filter((o) => r2.get(o.key)?.md5 === o.md5 && r2.get(o.key)?.bytes === o.bytes).map((o) => o.key)); },
     async put(objects) {
       for (const o of objects) {
@@ -146,6 +156,8 @@ test('an asset goes READY: stored under its delivery class, ledger = registry = 
   assert.deepEqual([chair.width_m, chair.height_m, chair.depth_m], [1, 0.9, 0.8], 'dimensions measured from the model');
   assert.equal(chair.triangles, 12);
   assert.equal(chair.license_class, 'CC0');
+  assert.match(chair.model_key, /\/optimized\/chair\.glb$/, 'the scene gets the optimised runtime GLB, never the source');
+  assert.deepEqual(chair.lods.map((l) => l.key.split('/').pop()), ['chair.glb', 'chair.lod1.glb']);
   const events = w.events.filter((e) => e.hma === byId(w, 'chair').homatch_asset_id).map((e) => e.ev);
   assert.deepEqual(events, ['CLAIMED', 'READY']);
 });
@@ -234,4 +246,26 @@ test('an unknown licence met at import time is EXCLUDED, never downloaded', asyn
 
 test('scrub keeps the host and drops the capability', () => {
   assert.equal(scrub('GET https://bucket.r2.example/key?X-Amz-Signature=abc failed'), 'GET https://bucket.r2.example/… failed');
+});
+
+test('runtime policy: an oversized or unoptimised model is FAILED at once — never READY, never uploaded, not retried', async () => {
+  for (const [label, result] of [
+    ['4K textures', { state: 'DONE', files: [], runtime: { main: { file: 'x.glb', bytes: 5e6, textureBytes: 4e6, maxTextureEdge: 4096, textures: 3, compressed: true }, lod1: null } }],
+    ['too heavy', { state: 'DONE', files: [], runtime: { main: { file: 'x.glb', bytes: 47e6, textureBytes: 40e6, maxTextureEdge: 2048, textures: 3, compressed: true }, lod1: null } }],
+    ['LOD1 too heavy', { state: 'DONE', files: [], runtime: { main: { file: 'x.glb', bytes: 5e6, textureBytes: 1e6, maxTextureEdge: 2048, textures: 1, compressed: true }, lod1: { file: 'l.glb', bytes: 9e6, textureBytes: 1e6, maxTextureEdge: 1024, textures: 1, compressed: true } } }],
+    ['tools unavailable', { state: 'SKIPPED', note: 'gltf-transform unavailable', files: [] }],
+  ]) {
+    const w = world(fakeAdapter(), { optimize: () => result });
+    await discover(w.io, 'fakeprov');
+    w.queue('chair');
+    const tally = await work(w.io, { budgetMs: 60000, concurrency: 1 });
+    assert.deepEqual(tally, { READY: 0, RETRY: 0, FAILED: 1, EXCLUDED: 0 }, label);
+    const r = byId(w, 'chair');
+    assert.equal(r.state, 'FAILED', label);
+    assert.equal(r.attempts, 1, `${label}: a policy refusal is final, not retried`);
+    assert.match(r.last_error, /runtime policy/, label);
+    assert.equal(r.last_error_stage, "OPTIMIZING", label);
+    assert.equal(w.r2.size, 0, `${label}: nothing stored`);
+    assert.ok(!w.tables.ds_catalog_assets, `${label}: never indexed`);
+  }
 });

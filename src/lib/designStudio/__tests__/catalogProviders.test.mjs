@@ -80,13 +80,15 @@ test('Blendkit taxonomy and quality: from metadata; GLB only; polygon count is n
   assert.equal(refined.canonicalSubcategory, 'SECTIONAL_SOFA');
 });
 
-test('Blendkit plan: its own GLB via its own download URL; CC0 public; Royalty-Free refused', () => {
+test('Blendkit plan: its own GLB via its own download URL; the ORIGINAL is private (only its optimised derivative is served); Royalty-Free refused', () => {
   const c = B.classify(BK.cc0);
   const p = B.plan('MODEL', BK.cc0.assetBaseId, BK.cc0, {}, c);
   assert.equal(p.refusal, null);
   const glb = p.files.find((f) => f.role === 'GLB');
   assert.match(glb.sourceUrl, B.DOWNLOAD_URL);
-  assert.equal(glb.delivery, 'public');
+  assert.equal(glb.delivery, 'restricted', 'the source package is never public, even for CC0');
+  assert.match(glb.relPath, /^source\//);
+  assert.ok(p.files.every((f) => f.role !== 'GLB' || f.delivery === 'restricted'), 'no original model file anywhere public');
   assert.ok(glb.bytes > 0, 'exact size from the listing');
   assert.ok(!p.files.some((f) => /\.blend$/.test(f.relPath)), 'a .blend is never taken');
   assert.match(B.plan('MODEL', BK.rf.assetBaseId, BK.rf, {}, B.classify(BK.rf)).refusal, /runtime delivery not permitted/);

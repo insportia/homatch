@@ -302,10 +302,11 @@ export function plan(kind: AssetKind, sourceAssetId: string, asset: BkAsset, _fi
   if (kind !== 'MODEL') refusal = 'provider policy: Blendkit supplies physical objects';
   else if (license.runtimeDelivery === 'NONE') refusal = `licence ${license.licenseClass}: runtime delivery not permitted`;
   else if (a.tier === 'REJECT') refusal = `quality: ${a.reasons.join('; ')}`;
-  const runtime: Delivery = deliveryFor(license, 'RUNTIME');
   const out: PlannedFile[] = [];
+  // The provider's GLB is the SOURCE: kept privately (restricted), never delivered.
+  // The browser only ever receives the optimised runtime derivative made from it.
   if (a.glb?.uuid) {
-    out.push({ role: 'GLB', resolution: null, relPath: `${sourceAssetId}.glb`, sourceUrl: `${API}/downloads/${a.glb.uuid}/`, bytes: a.glb.size ?? 0, md5: null, contentType: 'model/gltf-binary', delivery: runtime });
+    out.push({ role: 'GLB', resolution: null, relPath: `source/${sourceAssetId}.glb`, sourceUrl: `${API}/downloads/${a.glb.uuid}/`, bytes: a.glb.size ?? 0, md5: null, contentType: 'model/gltf-binary', delivery: 'restricted' });
   }
   if (asset.thumbnail) out.push({ role: 'THUMBNAIL', resolution: null, relPath: 'thumbnail.webp', sourceUrl: asset.thumbnail, bytes: 0, md5: null, contentType: 'image/webp', delivery: deliveryFor(license, 'PREVIEW') });
   out.push({ role: 'METADATA', resolution: null, relPath: 'source.json', sourceUrl: null, bytes: 0, md5: null, contentType: 'application/json', delivery: deliveryFor(license, 'METADATA') });

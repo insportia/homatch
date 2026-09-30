@@ -2,9 +2,12 @@
 //
 //   POST …/design-studio-model/catalog      Authorization: Bearer <service role>
 //     { op: 'sign', items: [{ key, method: 'PUT'|'GET'|'HEAD' }] }
-//         presigned R2 URLs for catalogue keys only, one verb each, ≤ 15 minutes
-//     { op: 'provider-sign', provider: 'blendkit', downloads: [downloadUrl] }
-//         Blendkit's signed CDN URL for each of ITS OWN download URLs
+//         presigned R2 URLs for catalogue keys only, one verb each, ≤ 15 minutes;
+//         a PUT only for a recorded asset whose licence is importable, and a
+//         PUBLIC key only for CC0 (catalogPolicy.writeRefusal)
+//     { op: 'provider-sign', provider: 'blendkit', homatchAssetId, downloads: [downloadUrl] }
+//         Blendkit's signed CDN URL for each of ITS OWN download URLs, only for
+//         files that recorded, importable asset listed (catalogPolicy.downloadRefusal)
 //
 // The importer runs in GitHub Actions (bytes go provider → runner → R2, never
 // through Supabase). The two credentials it needs to act for — R2's and
@@ -20,6 +23,8 @@
 
 import { r2Config } from '../_shared/objectStore.ts';
 import { presign } from '../_shared/storage/sigv4.ts';
+import { serviceClient } from '../_shared/billing.ts';
+import { assetOfKey, downloadRefusal, type ImportRow, writeRefusal } from './catalogPolicy.ts';
 
 /** The same pattern as catalogSource.ts CATALOG_KEY (a test keeps them equal). */
 export const CATALOG_KEY = /^design-studio\/catalog\/(public|licensed|restricted)\/(models|materials|hdri|thumbnails|metadata)\/hma_[0-9a-z]{26}\/hmv_[0-9a-z]{26}\/(?:[A-Za-z0-9_-][A-Za-z0-9_.-]*\/){0,3}[A-Za-z0-9_-][A-Za-z0-9_.-]*$/;
@@ -56,11 +61,29 @@ export function isServiceRole(authHeader: string): boolean {
   }
 }
 
+/** The catalogue's own record of these assets (licence, provider, the files it listed). */
+async function importRows(ids: string[]): Promise<Map<string, ImportRow>> {
+  const unique = [...new Set(ids)].filter((x) => /^hma_[0-9a-z]{26}$/.test(x));
+  if (!unique.length) return new Map();
+  const { data } = await serviceClient().from('ds_catalog_imports')
+    .select('homatch_asset_id, source_provider, license_class, source_asset').in('homatch_asset_id', unique);
+  return new Map(((data ?? []) as ImportRow[]).map((r) => [r.homatch_asset_id, r]));
+}
+
 async function signR2(items: Array<{ key?: unknown; method?: unknown }>): Promise<Response> {
   if (items.length === 0 || items.length > MAX_ITEMS) return json({ error: 'BAD_REQUEST' }, 400);
   for (const it of items) {
     if (typeof it?.key !== 'string' || !CATALOG_KEY.test(it.key) || it.key.includes('..') || !METHODS.has(String(it.method))) {
       return json({ error: 'KEY_REFUSED' }, 400);
+    }
+  }
+  // A WRITE stores new bytes: only for a recorded asset whose licence allows it, and public only when CC0.
+  const writes = items.filter((it) => it.method === 'PUT') as Array<{ key: string }>;
+  if (writes.length) {
+    const rows = await importRows(writes.map((w) => assetOfKey(w.key)));
+    for (const w of writes) {
+      const refusal = writeRefusal(w.key, rows.get(assetOfKey(w.key)));
+      if (refusal) return json({ error: refusal }, 403);
     }
   }
   let cfg;
@@ -82,11 +105,18 @@ async function signR2(items: Array<{ key?: unknown; method?: unknown }>): Promis
  * says per URL whether the account may download it (a paid asset on a plan
  * that does not include it is a refusal, reported, never worked around).
  */
-async function signBlendkit(downloads: unknown[]): Promise<Response> {
+async function signBlendkit(homatchAssetId: unknown, downloads: unknown[]): Promise<Response> {
   const key = Deno.env.get('BLENDKIT_API_KEY') ?? '';
   if (!key) return json({ error: 'PROVIDER_NOT_CONFIGURED' }, 503);
-  if (!downloads.length || downloads.length > MAX_DOWNLOADS || !downloads.every((d) => typeof d === 'string' && BLENDKIT_DOWNLOAD.test(d))) {
+  if (typeof homatchAssetId !== 'string' || !downloads.length || downloads.length > MAX_DOWNLOADS
+    || !downloads.every((d) => typeof d === 'string' && BLENDKIT_DOWNLOAD.test(d))) {
     return json({ error: 'DOWNLOAD_REFUSED' }, 400);
+  }
+  // Only a file the recorded asset listed, and only for a licence HOMATCH may import today.
+  const row = (await importRows([homatchAssetId])).get(homatchAssetId);
+  for (const d of downloads as string[]) {
+    const refusal = downloadRefusal(d, row);
+    if (refusal) return json({ error: refusal }, 403);
   }
   const results = [];
   for (const d of downloads as string[]) {
@@ -105,9 +135,9 @@ export async function handleCatalog(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'METHOD_NOT_ALLOWED' }, 405);
   if (!isServiceRole(req.headers.get('Authorization') ?? '')) return json({ error: 'FORBIDDEN' }, 403);
-  let body: { op?: string; items?: Array<{ key?: unknown; method?: unknown }>; provider?: string; downloads?: unknown[] };
+  let body: { op?: string; items?: Array<{ key?: unknown; method?: unknown }>; provider?: string; homatchAssetId?: unknown; downloads?: unknown[] };
   try { body = await req.json(); } catch { return json({ error: 'BAD_REQUEST' }, 400); }
   if (body.op === 'sign' && Array.isArray(body.items)) return signR2(body.items);
-  if (body.op === 'provider-sign' && body.provider === 'blendkit' && Array.isArray(body.downloads)) return signBlendkit(body.downloads);
+  if (body.op === 'provider-sign' && body.provider === 'blendkit' && Array.isArray(body.downloads)) return signBlendkit(body.homatchAssetId, body.downloads);
   return json({ error: 'BAD_REQUEST' }, 400);
 }

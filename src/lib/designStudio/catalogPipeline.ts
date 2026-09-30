@@ -24,8 +24,11 @@
 import {
   type AssetKind, type AssetPlan, type License, type PlannedFile, type ProviderAdapter,
   colorFamily, deliveryFor, inspectGltf, licenseRefusal, looksLike, materialPbr, MATERIAL_FAMILY, modelPlacement, normalizeName,
-  objectKey, rowUuid, uniqueNames, versionId, homatchAssetId,
+  objectKey, rowUuid, runtimeRefusal, type RuntimeFacts, uniqueNames, versionId, homatchAssetId,
 } from './catalogSource.ts';
+
+/** A failure no retry can fix (a policy the asset cannot meet): the asset ends FAILED at once. */
+export class FinalError extends Error {}
 
 export interface ImportRow {
   homatch_asset_id: string;
@@ -59,7 +62,7 @@ export interface PipelineIO {
   adapters: Record<string, ProviderAdapter<any>>;
   fetchJson(url: string): Promise<any>;
   /** A provider download URL that needs the provider's credential → a fetchable URL (signed by Supabase). Identity otherwise. */
-  resolveDownload(provider: string, url: string): Promise<string>;
+  resolveDownload(provider: string, url: string, homatchAssetId: string): Promise<string>;
   /** Download to a local file, returning exact size and digests. */
   download(url: string, dest: string): Promise<{ bytes: number; md5: string; sha256: string }>;
   readHead(file: string, n: number): Uint8Array;
@@ -73,7 +76,7 @@ export interface PipelineIO {
   validateGltf(file: string): Promise<{ errors: number; warnings: number } | null>;
   /** Parse a GLB's JSON chunk (or a .gltf's text). */
   gltfJson(file: string): any;
-  optimize(kind: AssetKind, plan: AssetPlan, dir: string, sourceAssetId: string): Promise<{ state: string; note?: string; files: OptimizedFile[] }>;
+  optimize(kind: AssetKind, plan: AssetPlan, dir: string, sourceAssetId: string): Promise<{ state: string; note?: string; files: OptimizedFile[]; runtime?: { main: RuntimeFacts | null; lod1: RuntimeFacts | null } }>;
   /** R2: which of these keys already hold these exact bytes. */
   existing(objects: StoredObject[]): Promise<Set<string>>;
   put(objects: StoredObject[]): Promise<void>;
@@ -169,7 +172,7 @@ export async function processAsset(io: PipelineIO, row: ImportRow): Promise<Outc
     // ── DOWNLOADING: exact size (and md5 where the provider gives one) must match.
     const got = new Map<string, { bytes: number; md5: string; sha256: string }>();
     for (const f of plan.files.filter((x) => x.sourceUrl)) {
-      const url = await io.resolveDownload(adapter.provider, f.sourceUrl as string);
+      const url = await io.resolveDownload(adapter.provider, f.sourceUrl as string, hma);
       const d = await io.download(url, io.join(dir, 'source', f.relPath));
       if (f.bytes && d.bytes !== f.bytes) throw new Error(`size ${d.bytes} ≠ provider ${f.bytes} for ${f.relPath}`);
       if (f.md5 && d.md5 !== f.md5) throw new Error(`md5 mismatch for ${f.relPath}`);
@@ -201,8 +204,13 @@ export async function processAsset(io: PipelineIO, row: ImportRow): Promise<Outc
 
     // ── OPTIMIZING: validated variants beside the source, never instead of it.
     await setState('OPTIMIZING');
-    let optimization: { state: string; note?: string; files: OptimizedFile[] };
+    let optimization: { state: string; note?: string; files: OptimizedFile[]; runtime?: { main: RuntimeFacts | null; lod1: RuntimeFacts | null } };
     try { optimization = await io.optimize(row.kind, plan, dir, row.source_asset_id); } catch (e) { optimization = { state: 'FAILED', note: scrub((e as Error).message), files: [] }; }
+    // A model reaches a browser only as a validated runtime derivative within budget — never as its original.
+    if (row.kind === 'MODEL') {
+      const refusal = optimization.state === 'DONE' ? runtimeRefusal(optimization.runtime?.main ?? null, optimization.runtime?.lod1 ?? null) : `optimisation ${optimization.state}: ${optimization.note ?? ''}`;
+      if (refusal) throw new FinalError(`runtime policy: ${refusal}`);
+    }
 
     // ── UPLOADING: under the delivery class the licence allows; identical objects are skipped.
     await setState('UPLOADING');
@@ -250,13 +258,13 @@ export async function processAsset(io: PipelineIO, row: ImportRow): Promise<Outc
     await setState('READY', {
       source_bytes: sourceBytes, optimized_bytes: optimizedBytes, stored_bytes: toPut.reduce((s, o) => s + o.bytes, 0), files_uploaded: toPut.length,
       files_skipped: already.size, lease_owner: null, lease_until: null, finished_at: io.now(), last_error: null, last_error_stage: null,
-      detail: { ...row.detail, optimization: { state: optimization.state, note: optimization.note ?? null } },
+      detail: { ...row.detail, optimization: { state: optimization.state, note: optimization.note ?? null, runtime: optimization.runtime ?? null } },
     });
     await io.db.event(hma, 'READY', 'READY', { detail: { objects: objects.length, uploaded: toPut.length, skipped: already.size, sourceBytes, optimizedBytes, optimization: optimization.state } });
     return 'READY';
   } catch (e) {
     const message = scrub((e as Error)?.message ?? e);
-    const final = row.attempts >= row.max_attempts;
+    const final = row.attempts >= row.max_attempts || e instanceof FinalError;
     await io.db.patchImport(hma, {
       state: final ? 'FAILED' : 'QUEUED', last_error: message, last_error_stage: stage, lease_owner: null, lease_until: null, updated_at: io.now(),
       ...(final ? { finished_at: io.now() } : {}),
@@ -314,7 +322,8 @@ async function indexCatalogRow(io: PipelineIO, adapter: ProviderAdapter<any>, ro
   } else if (row.kind === 'MODEL' && facts?.sizeM) {
     const size = facts.sizeM.map((d) => Math.max(0.001, d)) as [number, number, number];
     const place = modelPlacement(c, size);
-    const glb = byRes('OPTIMIZED', 'GLB', null) ?? byRes('OPTIMIZED', 'GLB', '1k') ?? byRes('SOURCE', 'GLB', null) ?? byRes('SOURCE', 'GLTF', '1k');
+    // The scene loads the optimised runtime derivative and nothing else.
+    const glb = key((o) => o.variant === 'OPTIMIZED' && o.role === 'GLB' && !o.relPath.includes('.lod1.'));
     const lod = key((o) => o.variant === 'OPTIMIZED' && o.relPath.includes('.lod1.'));
     const provider = asset?.params ?? {};
     await io.db.upsert('ds_catalog_assets', [{

@@ -23,6 +23,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
 import { discover, scrub, work } from '../../src/lib/designStudio/catalogPipeline.ts';
+import { glbRuntimeFacts, RUNTIME_POLICY } from '../../src/lib/designStudio/catalogSource.ts';
 import { polyhaven } from '../../src/lib/designStudio/catalogProviders/polyhaven.ts';
 import { assess as assessBlendkit, blendkit } from '../../src/lib/designStudio/catalogProviders/blendkit.ts';
 
@@ -138,24 +139,40 @@ async function optimize(kind, plan, dir, sourceAssetId) {
   if (!TOOLS.gltfTransform) return { state: 'SKIPPED', note: 'gltf-transform unavailable', files };
   const model = plan.files.find((f) => f.role === 'GLB') ?? plan.files.find((f) => f.role === 'GLTF' && f.resolution === '1k');
   const src = path.join(dir, 'source', model.relPath);
-  const tmp = path.join(opt, 'tmp.glb');
-  const dst = path.join(opt, `${sourceAssetId}.glb`);
-  await exec('gltf-transform', ['uastc', src, tmp, '--level', '2', '--rdo', '--rdo-lambda', '0.5', '--zstd', '18'], { timeout: 900000 });
-  await exec('gltf-transform', ['meshopt', tmp, dst], { timeout: 600000 });
-  fs.rmSync(tmp, { force: true });
-  const v = await validateGltf(dst);
-  if (v && v.errors > 0) throw new Error(`optimised GLB fails validation (${v.errors} errors)`);
-  files.push({ role: 'GLB', resolution: null, relPath: `${sourceAssetId}.glb`, file: dst, contentType: 'model/gltf-binary' });
-  // A lighter level for mobile and distance, only where the model is heavy enough to need one.
+  const gt = (args, timeout = 900000) => exec('gltf-transform', args, { timeout, maxBuffer: 16 * 1024 * 1024 });
+  /**
+   * One runtime level: textures capped (sharp resize), duplicates and unused
+   * data removed, normal maps UASTC (detail matters), every other texture
+   * ETC1S at the highest quality (colour, ORM, emission), geometry meshopt.
+   */
+  const level = async (input, out, edge, simplify) => {
+    const t = (n) => path.join(opt, `${path.basename(out)}.${n}.glb`);
+    let cur = input;
+    if (simplify) { await gt(['simplify', cur, t('s'), '--ratio', '0.35', '--error', '0.0015']); cur = t('s'); }
+    await gt(['resize', cur, t('r'), '--width', String(edge), '--height', String(edge)]); cur = t('r');
+    await gt(['dedup', cur, t('d')]); cur = t('d');
+    await gt(['prune', cur, t('p')]); cur = t('p');
+    await gt(['uastc', cur, t('n'), '--slots', 'normalTexture', '--level', '2', '--rdo', '--rdo-lambda', '0.5', '--zstd', '18']); cur = t('n');
+    await gt(['etc1s', cur, t('c'), '--quality', '255']); cur = t('c');
+    await gt(['meshopt', cur, out]);
+    for (const n of ['s', 'r', 'd', 'p', 'n', 'c']) fs.rmSync(t(n), { force: true });
+    const v = await validateGltf(out);
+    if (v && v.errors > 0) throw new Error(`runtime GLB fails the Khronos validator (${v.errors} errors)`);
+    return runtimeFacts(out);
+  };
   const tris = (() => { try { const j = gltfJson(src); return (j.meshes ?? []).flatMap((m) => m.primitives ?? []).reduce((s, p) => s + Math.floor(((j.accessors?.[p.indices ?? p.attributes?.POSITION]?.count) ?? 0) / 3), 0); } catch { return 0; } })();
-  if (tris > 60000) {
-    const lod = path.join(opt, `${sourceAssetId}.lod1.glb`);
-    await exec('gltf-transform', ['simplify', dst, lod, '--ratio', '0.35', '--error', '0.0015'], { timeout: 600000 });
-    const lv = await validateGltf(lod);
-    if (!lv || lv.errors === 0) files.push({ role: 'GLB', resolution: null, relPath: `${sourceAssetId}.lod1.glb`, file: lod, contentType: 'model/gltf-binary' });
-  }
-  return { state: 'DONE', files };
+  const main = path.join(opt, `${sourceAssetId}.glb`);
+  const lod1 = path.join(opt, `${sourceAssetId}.lod1.glb`);
+  const mainFacts = await level(src, main, RUNTIME_POLICY.maxTextureEdge, false);
+  files.push({ role: 'GLB', resolution: null, relPath: `${sourceAssetId}.glb`, file: main, contentType: 'model/gltf-binary' });
+  // The lighter level every asset gets for mobile and distance: 1K textures, and simplified geometry when it is heavy.
+  const lodFacts = await level(src, lod1, RUNTIME_POLICY.lod1TextureEdge, tris > RUNTIME_POLICY.simplifyAboveTriangles);
+  files.push({ role: 'GLB', resolution: null, relPath: `${sourceAssetId}.lod1.glb`, file: lod1, contentType: 'model/gltf-binary' });
+  return { state: 'DONE', files, runtime: { main: { ...mainFacts, triangles: tris }, lod1: lodFacts } };
 }
+
+/** What a runtime GLB actually carries (catalogSource.glbRuntimeFacts, read from the file's bytes). */
+const runtimeFacts = (file) => glbRuntimeFacts(new Uint8Array(fs.readFileSync(file)), path.basename(file));
 
 // ── IO for the pipeline ─────────────────────────────────────────────────
 
@@ -165,9 +182,9 @@ const io = {
   runId: RUN_ID,
   adapters: ADAPTERS,
   fetchJson,
-  async resolveDownload(provider, url) {
+  async resolveDownload(provider, url, homatchAssetId) {
     if (provider !== 'blendkit' || !/^https:\/\/www\.blendkit\.com\/api\/v1\/downloads\//.test(url)) return url;
-    const j = await route({ op: 'provider-sign', provider: 'blendkit', downloads: [url] });
+    const j = await route({ op: 'provider-sign', provider: 'blendkit', homatchAssetId, downloads: [url] });
     const r = j.results?.[0];
     if (!r?.ok) throw new Error(`provider refused the download (${r?.status ?? '?'}${r?.reason ? `: ${r.reason}` : ''})`);
     return r.url;

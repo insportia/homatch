@@ -130,12 +130,21 @@ const sizeFit = (seen: number, have: number) => Math.min(Math.max(0.01, seen), M
  * sofa is never "matched" to a table because a table happened to be the
  * right size. Returns null when HOMATCH has nothing of that family.
  */
-/** What the reader calls an object → the catalogue's canonical subtypes that can stand for it. */
+/**
+ * What the reader calls an object → the catalogue's canonical subtypes that can stand for it.
+ *
+ * Kitchen boundary: cabinetry and built-ins (the kitchen run, the island) are
+ * HOMATCH's own parametric generation, fitted to the measured wall; an
+ * imported kitchen set never stands in for them. Movable pieces (appliances,
+ * stools, the table) come from the catalogue.
+ */
+export const PARAMETRIC_ONLY: ReadonlySet<ObjectType> = new Set<ObjectType>(['KITCHEN_RUN', 'KITCHEN_ISLAND']);
+
 export const CANONICAL_FOR: Partial<Record<ObjectType, string[]>> = {
   SOFA: ['SOFA', 'SECTIONAL_SOFA'], ARMCHAIR: ['ARMCHAIR'], CHAIR: ['CHAIR', 'DINING_CHAIR'], OFFICE_CHAIR: ['OFFICE_CHAIR'], BAR_STOOL: ['BAR_STOOL'],
   DINING_TABLE: ['DINING_TABLE'], COFFEE_TABLE: ['COFFEE_TABLE'], SIDE_TABLE: ['SIDE_TABLE'], DESK: ['DESK'], BEDSIDE: ['NIGHTSTAND'],
   BED_DOUBLE: ['BED'], BED_SINGLE: ['BED'], WARDROBE: ['WARDROBE'], DRESSER: ['DRESSER'], SHELVING: ['SHELVING', 'BOOKCASE'], TV_UNIT: ['TV_UNIT'], TV: ['TV'],
-  KITCHEN_RUN: ['KITCHEN_UNIT', 'KITCHEN_SET'], KITCHEN_ISLAND: ['KITCHEN_ISLAND'], FRIDGE: ['REFRIGERATOR'], WASHING_MACHINE: ['WASHING_MACHINE'],
+  FRIDGE: ['REFRIGERATOR'], WASHING_MACHINE: ['WASHING_MACHINE'],
   RUG: ['RUG'], FLOOR_LAMP: ['FLOOR_LAMP'], PLANT: ['PLANT'], PLANTER: ['PLANTER'], VANITY: ['VANITY'], SHOWER: ['SHOWER'], TOILET: ['TOILET'],
   BATH: ['BATHTUB'], CURTAIN: ['CURTAIN'], BLIND: ['BLIND'], ARTWORK: ['WALL_ART', 'FRAME'], DECOR: ['VASE', 'SCULPTURE', 'ORNAMENT'],
 };

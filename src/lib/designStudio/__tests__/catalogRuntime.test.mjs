@@ -62,3 +62,47 @@ test('the scene loads a catalogue model in place of its placeholder, shares it s
   assert.match(sc, /if \(o\.userData\.catalogShared\) return;/, 'shared model resources are never disposed with one instance');
   assert.match(sc, /inst\.position\.set\(-c\.x, -box\.min\.y, -c\.z\);/, 'normalised: footprint centred, lowest point on the floor');
 });
+
+/** A minimal GLB whose images are the given headers (PNG or KTX2), for the runtime reader. */
+function glb(images) {
+  const blobs = images.map((b) => Buffer.concat([b, Buffer.alloc((4 - (b.length % 4)) % 4)]));
+  let off = 0;
+  const bufferViews = blobs.map((b) => { const v = { buffer: 0, byteOffset: off, byteLength: b.length }; off += b.length; return v; });
+  let json = Buffer.from(JSON.stringify({ asset: { version: '2.0' }, buffers: [{ byteLength: off }], bufferViews, images: bufferViews.map((_, i) => ({ bufferView: i, mimeType: 'image/png' })) }));
+  json = Buffer.concat([json, Buffer.alloc((4 - (json.length % 4)) % 4, 0x20)]);
+  const bin = Buffer.concat(blobs);
+  const head = Buffer.alloc(12); head.write('glTF', 0); head.writeUInt32LE(2, 4); head.writeUInt32LE(12 + 8 + json.length + 8 + bin.length, 8);
+  const chunk = (b, type) => { const h = Buffer.alloc(8); h.writeUInt32LE(b.length, 0); h.writeUInt32LE(type, 4); return Buffer.concat([h, b]); };
+  return new Uint8Array(Buffer.concat([head, chunk(json, 0x4e4f534a), chunk(bin, 0x004e4942)]));
+}
+const png = (w, h) => { const b = Buffer.alloc(33); Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(b); b.writeUInt32BE(13, 8); b.write('IHDR', 12); b.writeUInt32BE(w, 16); b.writeUInt32BE(h, 20); return b; };
+const ktx2 = (w, h) => { const b = Buffer.alloc(48); Buffer.from([0xab, 0x4b, 0x54, 0x58, 0x20, 0x32, 0x30, 0xbb, 0x0d, 0x0a, 0x1a, 0x0a]).copy(b); b.writeUInt32LE(w, 20); b.writeUInt32LE(h, 24); return b; };
+
+test('runtime policy reads the real texture sizes out of the GLB and refuses an over-budget model', async () => {
+  const { glbRuntimeFacts, runtimeRefusal, RUNTIME_POLICY } = await import('../catalogSource.ts');
+  const heavy = glbRuntimeFacts(glb([png(4096, 4096), ktx2(1024, 1024)]));
+  assert.equal(heavy.maxTextureEdge, 4096);
+  assert.equal(heavy.textures, 2);
+  assert.equal(heavy.compressed, false, 'a PNG is not GPU-compressed');
+  assert.match(runtimeRefusal(heavy, null), /4096px exceeds 2048px/);
+  const main = glbRuntimeFacts(glb([ktx2(2048, 2048), ktx2(2048, 1024)]));
+  const lod1 = glbRuntimeFacts(glb([ktx2(1024, 1024)]));
+  assert.equal(main.compressed, true);
+  assert.equal(runtimeRefusal(main, lod1), null, 'a 2K KTX2 model with a 1K LOD1 passes');
+  assert.match(runtimeRefusal(main, glbRuntimeFacts(glb([ktx2(2048, 2048)]))), /LOD1 texture 2048px exceeds 1024px/);
+  assert.match(runtimeRefusal({ ...main, bytes: 47_000_000 }, lod1), /exceeds 20000000/, 'the 47 MB toilet is refused as it came');
+  assert.match(runtimeRefusal(main, { ...lod1, bytes: RUNTIME_POLICY.maxLod1Bytes + 1 }), /LOD1 .* bytes exceeds/);
+  assert.match(runtimeRefusal(null, null), /original is never served/);
+  assert.throws(() => glbRuntimeFacts(new Uint8Array(Buffer.from('not a glb at all'))), /not a GLB/);
+});
+
+test('kitchen boundary: cabinetry is HOMATCH parametric; an imported kitchen set never stands in; movable appliances do come from the catalogue', async () => {
+  const { PARAMETRIC_ONLY } = await import('../reconstruction.ts');
+  assert.ok(PARAMETRIC_ONLY.has('KITCHEN_RUN') && PARAMETRIC_ONLY.has('KITCHEN_ISLAND'));
+  for (const t of PARAMETRIC_ONLY) assert.equal(CANONICAL_FOR[t], undefined, `${t} has no catalogue stand-in`);
+  const run = { ...base, code: 'dev.kitchen.run', category: 'KITCHEN', subcategory: 'RUN', procedural: { kind: 'KITCHEN_RUN' }, isPlaceholder: true, provenance: 'HOMATCH_DEV_PLACEHOLDER', widthM: 3, depthM: 0.6, heightM: 0.9 };
+  const set = imported('hma_kitchenset000000000000000', { category: 'KITCHEN', canonicalSubcategory: 'KITCHEN_SET', widthM: 3, depthM: 0.6, heightM: 0.9 });
+  const m = matchAsset({ type: 'KITCHEN_RUN', widthM: 3, depthM: 0.6, heightM: 0.9, color: null, style: null }, [set, run], []);
+  assert.notEqual(m?.assetId, 'hma_kitchenset000000000000000');
+  assert.deepEqual(CANONICAL_FOR.FRIDGE, ['REFRIGERATOR']);
+});

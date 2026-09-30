@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/db/supabase';
+import { isHistoryMatch, selectWithDemandDate } from '@/matching/currentDemand';
 import { StatusBadge } from '@/components/communications/primitives';
 
 interface CampaignRow {
@@ -71,9 +72,14 @@ export default function OutreachInsightsPage() {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const [propsRes, matchesRes, commRes, campaignsRes, callsRes] = await Promise.all([
+      const [propsRes, matchRows, commRes, campaignsRes, callsRes] = await Promise.all([
         supabase.from('properties').select('id', { count: 'exact', head: true }).eq('is_deleted', false),
-        supabase.from('matches').select('status').limit(2000),
+        /* Current demand only — the one rule (matching/currentDemand.ts) the
+           Matches page and the property header use. History is not a match. */
+        selectWithDemandDate<{ status: string; demand_published_at?: string | null }>(
+          (columns) => supabase.from('matches').select(columns).limit(2000),
+          'status',
+        ),
         supabase.from('property_community_recommendations').select('status').limit(2000),
         supabase.from('outreach_campaigns')
           .select('id,name,campaign_type,status,sent_count,open_count,reply_count,created_at')
@@ -89,8 +95,9 @@ export default function OutreachInsightsPage() {
       setPropertyCount(propsRes.count ?? 0);
 
       const mStatus: Record<string, number> = {};
-      for (const row of matchesRes.data ?? []) {
-        const s = (row as { status: string }).status;
+      for (const row of matchRows) {
+        if (isHistoryMatch(row)) continue;
+        const s = row.status;
         mStatus[s] = (mStatus[s] ?? 0) + 1;
       }
       setMatchStatusCounts(mStatus);

@@ -92,6 +92,12 @@ export interface ActualUsage {
   rawProviderCostCents?: number;
   aiCostCents?: number;
   enrichmentCostCents?: number;
+  /**
+   * How the cost columns were obtained (usage_events.pricing_state):
+   * ESTIMATED = tokens x price book; UNPRICED = no rate, so a zero cost
+   * is unknown rather than free. Omitted = not stated (column stays NULL).
+   */
+  pricingState?: 'ACTUAL' | 'ESTIMATED' | 'PARTIAL' | 'UNPRICED' | 'ZERO_REAL';
   metadata?: Record<string, unknown>;
   failureReason?: string;
 }
@@ -550,6 +556,9 @@ export async function recordUnbilledUsage(
     billable: false,
     outcome: 'SUCCESS',
     job_ref: ctx.jobRef ?? null,
+    // Only a caller that states its pricing writes the column, so every
+    // existing writer's insert is unchanged.
+    ...(usage.pricingState ? { pricing_state: usage.pricingState } : {}),
     metadata: { ...(usage.metadata ?? {}), shadow_metered: true },
   });
 }

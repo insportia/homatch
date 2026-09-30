@@ -243,6 +243,7 @@ export class SceneController {
     this.controls.screenSpacePanning = true;
     this.controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
     this.controls.addEventListener('change', this.requestRender);
+    this.controls.addEventListener('start', () => this.normalFrustum());
 
     this.living = new LivingRuntime({
       reducedMotion: this.reducedMotion,
@@ -634,16 +635,48 @@ export class SceneController {
       // Hidden things (cut-away walls, ceilings seen from above) are not there to be clicked.
       if (!hit.object.visible) continue;
       let o: THREE.Object3D | null = hit.object;
+      let target: PickTarget | null = null;
       while (o) {
         if (!o.visible) break;
         const data = o.userData as Partial<PickData>;
-        if (data.pick) return { target: data.pick, point: hit.point.clone() };
+        if (data.pick) { target = data.pick; break; }
         o = o.parent;
       }
+      if (target && target.kind !== 'surface') return { target, point: hit.point.clone() };
+      // A floor, wall or ceiling was reached first. A piece is a solid thing to the eye even
+      // where it is built of separate boxes: if the ray passed through a piece's outline on
+      // its way, that piece is what was clicked (a sofa's seat-to-back gap is still the sofa).
+      if (target) return this.pieceAlong(hit.distance) ?? { target, point: hit.point.clone() };
       // A wall body (structure) stops the ray: whatever is behind it is hidden.
-      if (this.wallBodies.includes(hit.object as THREE.Mesh)) return null;
+      if (this.wallBodies.includes(hit.object as THREE.Mesh)) return this.pieceAlong(hit.distance);
     }
-    return null;
+    return this.pieceAlong(Infinity);
+  }
+
+  /** Each piece's world outline, for picking; rebuilt only after pieces move. */
+  private pickBoxes: Map<string, THREE.Box3> | null = null;
+
+  private pieceAlong(limit: number): { target: PickTarget; point: THREE.Vector3 } | null {
+    if (!this.pickBoxes) {
+      this.pickBoxes = new Map();
+      for (const [id, node] of this.objectsById) {
+        if (!node.visible) continue;
+        node.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(node);
+        if (!box.isEmpty()) this.pickBoxes.set(id, box);
+      }
+    }
+    const ray = this.raycaster.ray;
+    const at = new THREE.Vector3();
+    let best: { id: string; d: number; point: THREE.Vector3 } | null = null;
+    for (const [id, box] of this.pickBoxes) {
+      if (!ray.intersectBox(box, at)) continue;
+      const d = at.distanceTo(ray.origin);
+      if (d < limit && (!best || d < best.d)) best = { id, d, point: at.clone() };
+    }
+    if (!best) return null;
+    const pick = (this.objectsById.get(best.id)?.userData as Partial<PickData> | undefined)?.pick;
+    return pick ? { target: pick, point: best.point } : null;
   }
 
   /** Project a plan point to screen pixels, or null when it is behind the camera. */
@@ -847,6 +880,7 @@ export class SceneController {
   }
 
   private placeNode(node: THREE.Object3D, planX: number, planY: number, rotation: number, elevation = 0) {
+    this.pickBoxes = null;
     node.position.set(planX, elevation, -planY);
     node.rotation.set(0, rotation, 0);
   }
@@ -854,6 +888,7 @@ export class SceneController {
   private disposeObject(id: string) {
     const node = this.objectsById.get(id);
     if (!node) return;
+    this.pickBoxes = null;
     this.living.clear(id);
     if (this.aimed?.objectId === id) this.setAim(null);
     if (this.walk?.seated?.objectId === id) this.standUp();
@@ -920,7 +955,40 @@ export class SceneController {
 
   // ── Camera ──────────────────────────────────────────────────────────
 
+  // ── The picture's own view ──────────────────────────────────────────
+  //
+  // "Match reference view" puts the camera where the customer's picture was
+  // taken from (sourceCamera.ts). An orthographic picture is matched by a far
+  // camera with a narrow lens, which needs a tight near/far range to keep
+  // depth precision; every other camera move, and the customer starting to
+  // orbit, puts the ordinary range back.
+
+  private matchedFrustum = false;
+
+  private normalFrustum() {
+    if (!this.matchedFrustum) return;
+    this.matchedFrustum = false;
+    this.camera.near = 0.05;
+    this.camera.far = 500;
+    this.camera.updateProjectionMatrix();
+  }
+
+  matchSourceView(view: { position: [number, number, number]; target: [number, number, number]; fov: number; near: number; far: number }) {
+    const position = new THREE.Vector3(...view.position);
+    const target = new THREE.Vector3(...view.target);
+    // Lift the orbit limit FIRST: moving the camera updates the controls, which clamp to it.
+    this.controls.maxDistance = Math.max(this.controls.maxDistance, position.distanceTo(target) + 20);
+    this.moveCamera(position, target, false);
+    this.camera.fov = view.fov;
+    this.camera.near = view.near;
+    this.camera.far = view.far;
+    this.camera.updateProjectionMatrix();
+    this.matchedFrustum = true;
+    this.requestRender();
+  }
+
   private moveCamera(pos: THREE.Vector3, target: THREE.Vector3, animate: boolean) {
+    this.normalFrustum();
     if (!animate || this.reducedMotion) {
       this.transition = null;
       this.camera.position.copy(pos);
@@ -1434,6 +1502,7 @@ export class SceneController {
     const w = this.walk;
     if (!w) return Promise.resolve(false);
     if (w.seated) this.standUp();
+    this.normalFrustum();
     this.camera.fov = pose.fov;
     this.camera.updateProjectionMatrix();
     return this.startRoute(pose.position, pose.target, EYE_HEIGHT_M - 0.25).then((ok) => {
@@ -1735,11 +1804,13 @@ export class SceneController {
       if (view.kind === 'EYE') {
         this.cutawayEnabled = false;
         this.setCeilings(true);
+        this.normalFrustum();
         this.camera.fov = view.pose.fov;
         this.camera.position.set(view.pose.position.x, EYE_HEIGHT_M, -view.pose.position.y);
         this.camera.lookAt(view.pose.target.x, EYE_HEIGHT_M - 0.15, -view.pose.target.y);
       } else if (!current) {
         this.cutawayEnabled = true;
+        this.normalFrustum();
         this.camera.fov = 45;
         if (view.kind === 'TOP') this.topView(false); else this.frameAll(false);
       }
@@ -1807,6 +1878,7 @@ export class SceneController {
     this.onMenu = on.onMenu;
     this.onLockChange = on.onLock;
     this.onPostureChange = on.onPosture;
+    this.normalFrustum();
     this.camera.fov = pose.fov;
     this.camera.updateProjectionMatrix();
     this.onAimChange = on.onAim;
@@ -1874,6 +1946,7 @@ export class SceneController {
     if (!w) return;
     if (w.seated) { w.seated = null; this.onSeatChange?.(null); this.setPosture('STANDING'); }
     w.vel = { x: 0, y: 0 };
+    this.normalFrustum();
     this.camera.fov = pose.fov;
     this.camera.updateProjectionMatrix();
     const toYaw = Math.atan2(pose.target.y - pose.position.y, pose.target.x - pose.position.x);

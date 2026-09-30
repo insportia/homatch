@@ -21,7 +21,8 @@
 // the confirmation flow exists this refuses rather than charging.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { recordUnbilledUsage, serviceClient } from '../_shared/billing.ts';
+import { serviceClient } from '../_shared/billing.ts';
+import { meterAiCall } from './metering.ts';
 import { refuseIfImpersonating } from '../_shared/impersonation.ts';
 import { getObject, headObject } from '../_shared/objectStore.ts';
 import { imageSize, sniffType } from '../_shared/designStudio/floorplanRead.ts';
@@ -38,8 +39,6 @@ const MAX_BYTES = 12 * 1024 * 1024;
 const MAX_TOTAL = 36 * 1024 * 1024;
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const MODEL = Deno.env.get('OPENAI_DS_RECONSTRUCT_MODEL') || Deno.env.get('OPENAI_DS_FLOORPLAN_MODEL') || Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
-const USD_IN = Number(Deno.env.get('OPENAI_USD_PER_MTOK_IN') || '0');
-const USD_OUT = Number(Deno.env.get('OPENAI_USD_PER_MTOK_OUT') || '0');
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
@@ -182,7 +181,11 @@ export async function handleReconstruct(req: Request): Promise<Response> {
   let raw: unknown;
   try { raw = JSON.parse(text); } catch { return fail('READING_BAD_SHAPE', jobId); }
 
-  const { recon: reading, dropped } = validateReconstruction(raw, images.length, { usesPlan: planRooms.length > 0, planRoomIds: planRooms.map((r) => r.id) });
+  const { recon: reading, dropped } = validateReconstruction(raw, images.length, {
+    usesPlan: planRooms.length > 0, planRoomIds: planRooms.map((r) => r.id),
+    // Each picture's shape, read from its own bytes: the traced pixels are fractions of it.
+    imageAspects: images.map((img) => img.width / img.height),
+  });
   if (!reading.usesPlan && reading.rooms.length === 0) return fail('NOTHING_READ', jobId);
 
   if (!reading.usesPlan) {
@@ -197,22 +200,11 @@ export async function handleReconstruct(req: Request): Promise<Response> {
   }
   await admin.from('ds_reconstructions').update({ status: 'READ', analysis: reading, model: MODEL, error: null }).eq('id', recon.id);
 
-  // ── What it cost: measured, never charged while unpriced ───────────
-  const inTok = Number(payload?.usage?.input_tokens ?? 0);
-  const outTok = Number(payload?.usage?.output_tokens ?? 0);
-  const ratesKnown = USD_IN > 0 && USD_OUT > 0;
-  const cents = ratesKnown ? Math.ceil(((inTok / 1e6) * USD_IN + (outTok / 1e6) * USD_OUT) * 100) : null;
-  try {
-    const { data: ent } = await admin.rpc('billing_entitlements', { p_user_id: recon.user_id });
-    const planCode = String((ent as { plan_code?: string } | null)?.plan_code ?? 'FREE').toUpperCase();
-    await recordUnbilledUsage(admin, { userId: recon.user_id, productCode: PRODUCT, planCode, jobRef: jobId ?? recon.id }, {
-      provider: 'openai', providerOperation: 'responses', model: MODEL, inputTokens: inTok, outputTokens: outTok,
-      durationMs: Date.now() - started, aiCostCents: cents ?? undefined,
-      // Unknown cost is recorded as unknown, not as zero.
-      metadata: { reconstruction_id: recon.id, pictures: images.length, cost_known: ratesKnown },
-    });
-  } catch { /* a missing measurement never fails a reading that succeeded */ }
-  const counts = { rooms: reading.rooms.length, openings: reading.openings.length, objects: reading.objects.length, surfaces: reading.surfaces.length, cameras: reading.cameras.length, dropped };
+  // ── What it cost: priced from the book, never charged ──────────────
+  const { aiCents: cents } = await meterAiCall(admin,
+    { userId: recon.user_id, productCode: PRODUCT, jobRef: jobId ?? recon.id, model: MODEL, startedAt: started },
+    payload, { reconstruction_id: recon.id, pictures: images.length });
+  const counts = { rooms: reading.rooms.length, openings: reading.openings.length, objects: reading.objects.length, surfaces: reading.surfaces.length, cameras: reading.cameras.length, dropped, fidelity: reading.fidelity ?? null };
   if (jobId) {
     await admin.from('ds_jobs').update({ status: 'SUCCEEDED', finished_at: new Date().toISOString(), cost_cents: cents, output: counts }).eq('id', jobId);
   }

@@ -18,7 +18,8 @@
 // before the confirmation flow is wired, this refuses rather than charging.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { recordUnbilledUsage, serviceClient } from '../_shared/billing.ts';
+import { serviceClient } from '../_shared/billing.ts';
+import { meterAiCall } from './metering.ts';
 import { refuseIfImpersonating } from '../_shared/impersonation.ts';
 import { getObject, headObject } from '../_shared/objectStore.ts';
 import { imageSize, SCHEMA, sniffType, SYSTEM, validateReading } from '../_shared/designStudio/floorplanRead.ts';
@@ -31,8 +32,6 @@ const PRODUCT = 'DS_FLOORPLAN_READ';
 const MAX_BYTES = 25 * 1024 * 1024;
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const MODEL = Deno.env.get('OPENAI_DS_FLOORPLAN_MODEL') || Deno.env.get('OPENAI_FLOORPLAN_MODEL') || Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
-const USD_IN = Number(Deno.env.get('OPENAI_USD_PER_MTOK_IN') || '0');
-const USD_OUT = Number(Deno.env.get('OPENAI_USD_PER_MTOK_OUT') || '0');
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
@@ -161,21 +160,10 @@ export async function handleFloorplan(req: Request): Promise<Response> {
     interpretation_error: null,
   }).eq('id', plan.id);
 
-  // ── What it cost: measured, never charged while unpriced ───────────
-  const inTok = Number(payload?.usage?.input_tokens ?? 0);
-  const outTok = Number(payload?.usage?.output_tokens ?? 0);
-  const ratesKnown = USD_IN > 0 && USD_OUT > 0;
-  const cents = ratesKnown ? Math.ceil(((inTok / 1e6) * USD_IN + (outTok / 1e6) * USD_OUT) * 100) : null;
-  try {
-    const { data: ent } = await admin.rpc('billing_entitlements', { p_user_id: plan.user_id });
-    const planCode = String((ent as { plan_code?: string } | null)?.plan_code ?? 'FREE').toUpperCase();
-    await recordUnbilledUsage(admin, { userId: plan.user_id, productCode: PRODUCT, planCode, jobRef: jobId ?? plan.id }, {
-      provider: 'openai', providerOperation: 'responses', model: MODEL, inputTokens: inTok, outputTokens: outTok,
-      durationMs: Date.now() - started, aiCostCents: cents ?? undefined,
-      // Unknown cost is recorded as unknown, not as zero.
-      metadata: { floorplan_id: plan.id, cost_known: ratesKnown },
-    });
-  } catch { /* a missing measurement never fails a reading that succeeded */ }
+  // ── What it cost: priced from the book, never charged ──────────────
+  const { aiCents: cents } = await meterAiCall(admin,
+    { userId: plan.user_id, productCode: PRODUCT, jobRef: jobId ?? plan.id, model: MODEL, startedAt: started },
+    payload, { floorplan_id: plan.id });
   if (jobId) {
     await admin.from('ds_jobs').update({
       status: 'SUCCEEDED', finished_at: new Date().toISOString(), cost_cents: cents,

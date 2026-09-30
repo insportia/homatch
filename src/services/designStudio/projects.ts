@@ -71,6 +71,8 @@ export async function listProjects(userId: string, status: 'ACTIVE' | 'ARCHIVED'
     )
     .eq('user_id', userId)
     .eq('status', status)
+    // A project being permanently deleted is gone from every list at once.
+    .is('deleting_at', null)
     .order('updated_at', { ascending: false })
     .limit(100);
   if (error) fail(error);
@@ -99,7 +101,8 @@ export async function getProject(projectId: string): Promise<ProjectBundle | nul
   const { data: project, error } = await supabase
     .from('ds_projects').select('*').eq('id', projectId).maybeSingle();
   if (error) fail(error);
-  if (!project) return null;
+  // A project being permanently deleted no longer exists for its owner.
+  if (!project || (project as DesignProjectRecord).deleting_at) return null;
 
   const [{ data: sources, error: sErr }, { data: versions, error: vErr }] = await Promise.all([
     supabase.from('ds_spatial_sources').select('*').eq('project_id', projectId).order('created_at'),
@@ -143,6 +146,41 @@ export async function renameProject(projectId: string, name: string): Promise<vo
 export async function setProjectStatus(projectId: string, status: 'ACTIVE' | 'ARCHIVED'): Promise<void> {
   const { error } = await supabase.from('ds_projects').update({ status }).eq('id', projectId);
   if (error) fail(error);
+}
+
+/**
+ * Permanently delete a project: the server revokes its shares, removes every
+ * upload from storage and every row, and refuses unless the caller owns it
+ * and `confirmName` is its name. A dropped attempt is finished by asking again.
+ */
+export async function deleteProjectPermanently(projectId: string, confirmName: string): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const { data, error } = await supabase.functions.invoke('design-studio-reconstruct/project-delete', { body: { projectId, confirmName } });
+    if (!error && (data as { state?: string } | null)?.state === 'DELETED') return;
+    let code = 'DS_DELETE_FAILED';
+    let retry = false;
+    try {
+      const body = await (error as { context?: Response } | null)?.context?.json();
+      if (typeof body?.error === 'string') code = `DS_DELETE_${body.error}`;
+      retry = body?.retry === true;
+    } catch { /* keep the generic code */ }
+    if (!retry) throw new DesignStudioError(code);
+  }
+  throw new DesignStudioError('DS_DELETE_STORAGE_NOT_EMPTY');
+}
+
+/**
+ * Finish any deletion the owner started that did not complete (the project is
+ * already hidden and unshared, so they have no row to retry from). Quiet by
+ * design: whatever still fails is picked up on the next visit.
+ */
+export async function resumePendingDeletions(userId: string): Promise<void> {
+  if (!userId) return;
+  const { data } = await supabase.from('ds_projects').select('id')
+    .eq('user_id', userId).not('deleting_at', 'is', null).limit(20);
+  for (const row of (data ?? []) as Array<{ id: string }>) {
+    try { await deleteProjectPermanently(row.id, ''); } catch { /* next visit */ }
+  }
 }
 
 /** Choose which ready source this project designs on. */

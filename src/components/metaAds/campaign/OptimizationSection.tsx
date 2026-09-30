@@ -75,8 +75,8 @@ export function OptimizationSection({ t, fmt, d, onChanged }: { t: T; fmt: Fmt; 
       {METRICS.includes(r.metric) && (r.baseline != null || r.candidate != null) && (
         <p className="mt-1.5 text-[13px] text-foreground">
           {r.baseline != null && r.candidate != null
-            ? t('mm_c_rec_change', { metric: t(`mm_c_metric_${r.metric}`), from: metricValue(r.metric, r.baseline), to: metricValue(r.metric, r.candidate) })
-            : t('mm_c_rec_value', { metric: t(`mm_c_metric_${r.metric}`), value: metricValue(r.metric, r.candidate ?? r.baseline) })}
+            ? `${t(`mm_c_metric_${r.metric}`)}: ${metricValue(r.metric, r.baseline)} → ${metricValue(r.metric, r.candidate)}`
+            : `${t(`mm_c_metric_${r.metric}`)}: ${metricValue(r.metric, r.candidate ?? r.baseline)}`}
         </p>
       )}
       {r.proposed?.dailyBudgetCents != null && (

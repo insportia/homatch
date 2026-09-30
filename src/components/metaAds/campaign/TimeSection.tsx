@@ -16,7 +16,7 @@ function HourBars({ t, fmt, values, label, tone }: { t: T; fmt: Fmt; values: num
       <figcaption className="mb-1.5 text-2xs font-semibold text-foreground">{label}</figcaption>
       <div className="flex h-24 items-end gap-[2px] border-b border-border" aria-hidden="true" dir="ltr">
         {values.map((v, h) => (
-          <div key={h} className="flex h-full min-w-0 flex-1 items-end" title={t('mm_c_time_hour', { hour: String(h).padStart(2, '0'), value: fmt.num(v) })}>
+          <div key={h} className="flex h-full min-w-0 flex-1 items-end" title={`${String(h).padStart(2, '0')}:00 — ${fmt.num(v)}`}>
             <div className={`w-full rounded-t-[4px] ${tone}`} style={{ height: `${v > 0 ? Math.max(3, (v / max) * 100) : 0}%` }} />
           </div>
         ))}
@@ -25,7 +25,7 @@ function HourBars({ t, fmt, values, label, tone }: { t: T; fmt: Fmt; values: num
         <span>00</span><span>06</span><span>12</span><span>18</span><span>23</span>
       </div>
       <ul className="sr-only">
-        {values.map((v, h) => v > 0 && <li key={h}>{t('mm_c_time_hour', { hour: String(h).padStart(2, '0'), value: fmt.num(v) })}</li>)}
+        {values.map((v, h) => v > 0 && <li key={h}>{`${String(h).padStart(2, '0')}:00 — ${fmt.num(v)}`}</li>)}
       </ul>
     </figure>
   );

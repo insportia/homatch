@@ -37,9 +37,9 @@ export function PerformanceSection({ t, fmt, d }: { t: T; fmt: Fmt; d: CampaignD
           <>
             {w && (
               <p className="mb-3 text-2xs text-muted-foreground">
-                {t('mm_c_perf_current')}: <span dir="ltr">{t('mm_c_perf_window', { since: fmt.date(w.current.since), until: fmt.date(w.current.until) })}</span>
+                {t('mm_c_perf_current')}: <span dir="ltr">{`${fmt.date(w.current.since)} – ${fmt.date(w.current.until)}`}</span>
                 {' · '}
-                {t('mm_c_perf_previous')}: <span dir="ltr">{t('mm_c_perf_window', { since: fmt.date(w.previous.since), until: fmt.date(w.previous.until) })}</span>
+                {t('mm_c_perf_previous')}: <span dir="ltr">{`${fmt.date(w.previous.since)} – ${fmt.date(w.previous.until)}`}</span>
               </p>
             )}
             {/* Desktop table; each row becomes a card below sm. */}

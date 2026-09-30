@@ -12,7 +12,7 @@ export function BillingSection({ t, fmt, d }: { t: T; fmt: Fmt; d: CampaignDetai
     <Card id="mm-billing" title={t('mm_c_billing_title')}>
       <div className="grid grid-cols-2 gap-2.5 sm:max-w-md">
         <Stat label={t('mm_c_billing_held')} value={fmt.money(f?.heldServiceFeeCents ?? 0)} />
-        <Stat label={t('mm_c_billing_fee')} value={pct == null ? '—' : t('mm_c_billing_fee_value', { percent: fmt.num(pct, 2) })} />
+        <Stat label={t('mm_c_billing_fee')} value={pct == null ? '—' : fmt.pct(pct / 100, 2)} />
       </div>
       <h3 className="mb-2 mt-4 text-[13px] font-semibold text-foreground">{t('mm_c_billing_ledger')}</h3>
       {ledger.length === 0 ? <Muted>{t('mm_c_billing_none')}</Muted> : (

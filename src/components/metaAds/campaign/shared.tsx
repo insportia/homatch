@@ -159,7 +159,7 @@ export const placementName = (t: T, key: string) => t(`mm_c_pl_${PLACEMENTS.incl
 export function ageGenderName(t: T, key: string) {
   const [age, g] = key.split('|');
   const gender = g === 'female' ? t('mm_c_gender_female') : g === 'male' ? t('mm_c_gender_male') : t('mm_c_gender_unknown');
-  return t('mm_c_age_gender', { age: age || '—', gender });
+  return `${age || '—'} · ${gender}`;
 }
 
 export function countryName(lang: string, code: string) {

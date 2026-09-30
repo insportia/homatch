@@ -286,11 +286,17 @@ export default function MetaAdsCreatePage() {
               <StepShell eyebrow={t('madsb_step_goal')} title={t('madsb_goal_title')} lead={t('madsb_goal_lead')}>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {ALL_GOALS.map((g) => {
-                    const enabled = (status?.settings.goalsEnabled ?? []).includes(g);
+                    const switchedOn = (status?.settings.goalsEnabled ?? []).includes(g);
+                    /* Instant Forms need three extra Meta permissions that the base
+                       Login for Business configuration does not grant (least
+                       privilege); until they are granted the goal is unavailable. */
+                    const needsFormPermissions = g === 'LEADS_ON_META' && status?.mode === 'REAL'
+                      && status?.connection?.status === 'CONNECTED' && status?.connection?.instant_forms_available === false;
+                    const enabled = switchedOn && !needsFormPermissions;
                     return (
                       <ChoiceCard key={g} active={campaign.goal === g} disabled={!enabled} icon={GOAL_ICON[g]}
                         title={t(`mads_goal_${g.toLowerCase()}` as never)} body={t(`madsb_goal_${g.toLowerCase()}_d` as never)}
-                        badge={enabled ? undefined : t('madsb_goal_not_enabled')}
+                        badge={!switchedOn ? t('madsb_goal_not_enabled') : needsFormPermissions ? t('madsb_goal_needs_form_permissions') : undefined}
                         onClick={() => patch({
                           goal: g,
                           destination: g === 'LEADS_ON_META' ? { type: 'META_FORM', formId: campaign.destination?.formId ?? null }

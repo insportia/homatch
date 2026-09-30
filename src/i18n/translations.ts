@@ -12100,6 +12100,10 @@ const en = {
   admin_mads_saved: 'Saved.',
   admin_mads_adjust_required: 'A user, a non-zero amount and a reason are required.',
   admin_mads_invalid_json: 'That value is not valid JSON.',
+
+  /* ── WORKSTREAM B FINAL HARDENING ── */
+  madsb_goal_needs_form_permissions: 'Needs extra Meta permissions',
+  madsb_instant_forms_permission: 'Instant Forms need the Meta permissions leads_retrieval, pages_manage_ads and pages_manage_metadata. Choose a website or message goal, or ask HOMATCH to enable Instant Forms.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -24114,6 +24118,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   admin_mads_saved: 'შენახულია.',
   admin_mads_adjust_required: 'საჭიროა მომხმარებელი, ნულისგან განსხვავებული თანხა და მიზეზი.',
   admin_mads_invalid_json: 'ეს მნიშვნელობა სწორი JSON არ არის.',
+
+  /* ── WORKSTREAM B FINAL HARDENING ── */
+  madsb_goal_needs_form_permissions: 'საჭიროა Meta-ს დამატებითი ნებართვები',
+  madsb_instant_forms_permission: 'მყისიერ ფორმებს სჭირდება Meta-ს ნებართვები leads_retrieval, pages_manage_ads და pages_manage_metadata. აირჩიეთ ვებსაიტის ან შეტყობინების მიზანი, ან სთხოვეთ HOMATCH-ს მყისიერი ფორმების ჩართვა.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -36119,6 +36127,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   admin_mads_saved: 'Сохранено.',
   admin_mads_adjust_required: 'Нужны пользователь, ненулевая сумма и причина.',
   admin_mads_invalid_json: 'Это значение не является корректным JSON.',
+
+  /* ── WORKSTREAM B FINAL HARDENING ── */
+  madsb_goal_needs_form_permissions: 'Нужны дополнительные разрешения Meta',
+  madsb_instant_forms_permission: 'Мгновенным формам нужны разрешения Meta leads_retrieval, pages_manage_ads и pages_manage_metadata. Выберите цель «сайт» или «сообщения» либо попросите HOMATCH включить мгновенные формы.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -48122,6 +48134,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   admin_mads_saved: 'Kaydedildi.',
   admin_mads_adjust_required: 'Bir kullanıcı, sıfırdan farklı bir tutar ve bir gerekçe gereklidir.',
   admin_mads_invalid_json: 'Bu değer geçerli bir JSON değil.',
+
+  /* ── WORKSTREAM B FINAL HARDENING ── */
+  madsb_goal_needs_form_permissions: 'Ek Meta izinleri gerekli',
+  madsb_instant_forms_permission: 'Anlık Formlar için leads_retrieval, pages_manage_ads ve pages_manage_metadata Meta izinleri gerekir. Web sitesi veya mesaj hedefi seçin ya da HOMATCH’ten Anlık Formları etkinleştirmesini isteyin.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -60125,6 +60141,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   admin_mads_saved: 'تم الحفظ.',
   admin_mads_adjust_required: 'يلزم مستخدم ومبلغ غير صفري وسبب.',
   admin_mads_invalid_json: 'هذه القيمة ليست JSON صالحًا.',
+
+  /* ── WORKSTREAM B FINAL HARDENING ── */
+  madsb_goal_needs_form_permissions: 'يتطلب أذونات Meta إضافية',
+  madsb_instant_forms_permission: 'تحتاج النماذج الفورية إلى أذونات Meta التالية: leads_retrieval وpages_manage_ads وpages_manage_metadata. اختر هدف موقع ويب أو رسائل، أو اطلب من HOMATCH تفعيل النماذج الفورية.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -72128,6 +72148,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   admin_mads_saved: 'נשמר.',
   admin_mads_adjust_required: 'נדרשים משתמש, סכום שאינו אפס וסיבה.',
   admin_mads_invalid_json: 'הערך הזה אינו JSON תקין.',
+
+  /* ── WORKSTREAM B FINAL HARDENING ── */
+  madsb_goal_needs_form_permissions: 'נדרשות הרשאות Meta נוספות',
+  madsb_instant_forms_permission: 'טפסים מיידיים דורשים את הרשאות Meta leads_retrieval, ‏pages_manage_ads ו-pages_manage_metadata. בחרו מטרה של אתר או הודעות, או בקשו מ-HOMATCH להפעיל טפסים מיידיים.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

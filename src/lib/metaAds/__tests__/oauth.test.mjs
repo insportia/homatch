@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   buildOAuthDialogUrl, META_LOGIN_CONFIG_ID_DEFAULT, signState, verifyState, STATE_TTL_MS,
   verifySignedRequest, signSignedRequest, newConfirmationCode, CONFIRMATION_CODE, deletionResponse, hashMetaUserId,
+  connectionIdentities, signedRequestIdentities,
 } from '../oauth.ts';
 
 const SECRET = 'test-app-secret-not-real';
@@ -86,4 +87,25 @@ test('data deletion: Meta\'s required response shape and an unguessable code', a
   assert.match(h, /^[a-f0-9]{64}$/);
   assert.notEqual(h, await hashMetaUserId('1234567891'));
   assert.ok(!h.includes('1234567890'), 'the id itself is not kept');
+});
+
+test('identities: a system-user connection records every id Meta showed us', () => {
+  assert.deepEqual(connectionIdentities('111', { user_id: '222', profile_id: 333 }, true), [
+    { kind: 'SYSTEM_USER', external_id: '111' },
+    { kind: 'TOKEN_USER', external_id: '222' },
+    { kind: 'TOKEN_PROFILE', external_id: '333' },
+  ]);
+  assert.deepEqual(connectionIdentities('111', { user_id: '111' }, false), [
+    { kind: 'APP_SCOPED_USER', external_id: '111' }, { kind: 'TOKEN_USER', external_id: '111' },
+  ]);
+  assert.deepEqual(connectionIdentities('111', null, true), [{ kind: 'SYSTEM_USER', external_id: '111' }], 'debug_token unavailable');
+  assert.deepEqual(connectionIdentities('not-an-id', { user_id: "1' or 1=1" }, true), [], 'only numeric Meta ids');
+});
+
+test('identities: a signed_request names user_id and profile_id, nothing else', async () => {
+  const sr = await signSignedRequest(SECRET, { algorithm: 'HMAC-SHA256', user_id: '42', profile_id: '77', business_id: '99' });
+  const parsed = await verifySignedRequest(SECRET, sr);
+  assert.deepEqual(signedRequestIdentities(parsed), ['42', '77']);
+  assert.deepEqual(signedRequestIdentities({ user_id: '42', profile_id: '42' }), ['42']);
+  assert.deepEqual(signedRequestIdentities({ user_id: 'x' }), []);
 });

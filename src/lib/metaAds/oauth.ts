@@ -161,3 +161,41 @@ export async function hashMetaUserId(userId: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', enc.encode(`meta-user:${userId}`));
   return hex(new Uint8Array(digest));
 }
+
+// ── identities ───────────────────────────────────────────────────────────
+//
+// With a Login for Business system-user token, /me answers for the business-
+// integration SYSTEM USER, while Meta's Deauthorize / Data Deletion callbacks
+// identify a Facebook user. A connection therefore records every Meta id it
+// observed, and a callback matches on any of them.
+
+export type IdentityKind = 'APP_SCOPED_USER' | 'SYSTEM_USER' | 'TOKEN_USER' | 'TOKEN_PROFILE';
+export interface ConnectionIdentity { kind: IdentityKind; external_id: string }
+
+const META_ID = /^[0-9]{1,32}$/;
+const asId = (v: unknown): string | null => {
+  const s = typeof v === 'number' ? String(v) : typeof v === 'string' ? v.trim() : '';
+  return META_ID.test(s) ? s : null;
+};
+
+/** The ids a new connection is known by: /me, and debug_token's user_id / profile_id. */
+export function connectionIdentities(
+  meId: unknown,
+  debug: { user_id?: unknown; profile_id?: unknown } | null | undefined,
+  usesBusinessConfig: boolean,
+): ConnectionIdentity[] {
+  const out: ConnectionIdentity[] = [];
+  const add = (kind: IdentityKind, v: unknown) => {
+    const id = asId(v);
+    if (id && !out.some((x) => x.kind === kind && x.external_id === id)) out.push({ kind, external_id: id });
+  };
+  add(usesBusinessConfig ? 'SYSTEM_USER' : 'APP_SCOPED_USER', meId);
+  add('TOKEN_USER', debug?.user_id);
+  add('TOKEN_PROFILE', debug?.profile_id);
+  return out;
+}
+
+/** The ids a verified signed_request names (user_id, and profile_id when present). */
+export function signedRequestIdentities(payload: { user_id?: unknown; profile_id?: unknown }): string[] {
+  return [...new Set([asId(payload.user_id), asId(payload.profile_id)].filter((x): x is string => !!x))];
+}

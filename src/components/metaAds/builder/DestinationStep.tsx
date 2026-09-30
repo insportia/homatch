@@ -148,7 +148,10 @@ function LeadFormPicker({ status, campaign, setDest, reloadStatus, lang }: {
       setCreating(false);
       toast.success(t('madsb_form_created'));
     } catch (e: any) {
-      toast.error(t(String(e?.code ?? '') === 'PRIVACY_URL_REQUIRED' ? 'madsb_form_privacy_required' : String(e?.message ?? '').startsWith('meta_err') ? e.message : 'mads_load_failed'));
+      const code = String(e?.code ?? '');
+      toast.error(t(code === 'PRIVACY_URL_REQUIRED' ? 'madsb_form_privacy_required'
+        : code === 'INSTANT_FORMS_PERMISSION_REQUIRED' ? 'madsb_instant_forms_permission'
+          : String(e?.message ?? '').startsWith('meta_err') ? e.message : 'mads_load_failed'));
     } finally { setBusy(false); }
   };
 

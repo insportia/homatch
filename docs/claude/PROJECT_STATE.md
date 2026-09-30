@@ -191,5 +191,9 @@ writing; apply after the Meta and Discovery migrations, via MCP
   0 launched. Paid launch NOT performed — awaiting owner approval.
 - Matches: 74 total, 69 dated, 0 within the 30-day active window (all history).
 - Found, not changed: Railway service `homatch-official-worker-v2` exists (never use);
-  7 `public.users` rows have no `auth.users` account; `admin_settings` holds a plaintext
-  `meta_ads_maintenance_token` (RLS admin-only, not public).
+  7 `public.users` rows have no `auth.users` account; `admin_settings` held a plaintext
+  `meta_ads_maintenance_token` (RLS admin-only) — moved to Vault by migration
+  20261001120000_workstream_b_final_hardening.
+- Known follow-up (latent, HOMATCH_WALLET billing only): Meta settlement posts RELEASE
+  and META_SPEND as separate writes outside the ledger balance lock; make settlement
+  one locked RPC before HOMATCH_WALLET is ever enabled. CUSTOMER_AD_ACCOUNT is unaffected.

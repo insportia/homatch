@@ -42,6 +42,7 @@ import {
 import { brokerProfileEventStats, type BrokerEventStats } from '@/services/brokers';
 import type { TranslationKey } from '@/i18n/translations';
 import { cn } from '@/lib/utils';
+import { statusLabel } from '@/components/matching/MatchingJobProgress';
 
 const DOC_KINDS = ['LICENSE', 'COMPANY_REGISTRATION', 'ID_DOCUMENT', 'OTHER'] as const;
 const SUBMITTABLE = ['DRAFT', 'NEEDS_CHANGES', 'REJECTED'];
@@ -115,11 +116,22 @@ export default function BrokerCrmPage() {
   const purchaseKey = useRef<string | null>(null);
   const docInput = useRef<HTMLInputElement>(null);
 
+  const [searchByProperty, setSearchByProperty] = useState<Record<string, string>>({});
   const load = useCallback(async () => {
     try {
       const d = await brokerDeskSummary();
       setDesk(d);
       setLoadFailed(false);
+      /* The latest search per property, read under the owner's own RLS. */
+      const ids = d.properties.map((p) => p.id);
+      if (ids.length > 0) {
+        const { data: jobs } = await supabase.from('matching_jobs')
+          .select('property_id,status,created_at').in('property_id', ids)
+          .order('created_at', { ascending: false }).limit(200);
+        const latest: Record<string, string> = {};
+        for (const j of (jobs ?? []) as Array<{ property_id: string; status: string }>) latest[j.property_id] ??= j.status;
+        setSearchByProperty(latest);
+      }
       if (d.profile) setStats(await brokerProfileEventStats(d.profile.id, 30));
     } catch {
       setLoadFailed(true);
@@ -462,10 +474,19 @@ export default function BrokerCrmPage() {
                       <dl className="mt-3 grid grid-cols-2 gap-2 text-2xs">
                         <div><dt className="text-muted-foreground">{t('broker_desk_current_leads')}</dt><dd className="text-base font-semibold tabular-nums text-foreground">{p.current_leads}</dd></div>
                         <div><dt className="text-muted-foreground">{t('broker_desk_opened_contacts')}</dt><dd className="text-base font-semibold tabular-nums text-foreground">{p.opened_contacts}</dd></div>
+                        <div className="col-span-2" data-desk-search-status>
+                          <dt className="text-muted-foreground">{t('broker_desk_last_search')}</dt>
+                          <dd className="text-xs font-medium text-foreground">
+                            {searchByProperty[p.id] ? statusLabel(searchByProperty[p.id], t as (k: string) => string) : t('broker_desk_no_search')}
+                          </dd>
+                        </div>
                       </dl>
                       <div className="mt-3 flex flex-wrap gap-2">
                         <Link to={`/property/${p.id}/matches`} className={btn}>{t('broker_desk_open_leads')}</Link>
                         <Link to={`/property/${p.id}`} className={btn}>{t('broker_desk_open_property')}</Link>
+                        {p.homatch_id && !p.archived_at && (
+                          <Link to={`/outreach/meta/create?property=${encodeURIComponent(p.homatch_id)}`} className={btn}>{t('broker_desk_promote_meta')}</Link>
+                        )}
                       </div>
                     </li>
                   ))}

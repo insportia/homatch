@@ -30,6 +30,7 @@ export const DISCOVERY_SWITCHES = [
   'campaign_source_discovery_enabled',
   'discovery_background_refresh_enabled',
   'forum_discovery_enabled',
+  'forum_schedule_enabled',
   'classifier_schedule_enabled',
 ] as const;
 export type DiscoverySwitch = typeof DISCOVERY_SWITCHES[number];
@@ -52,6 +53,10 @@ async function driverAction(body: Record<string, unknown>) {
   if (data?.success === false) throw new Error(String(data?.error ?? 'refused'));
   return data;
 }
+
+/** Admin-only Telegram health check. Reads the worker's status and records it;
+ *  collects nothing and never returns a credential. */
+export const testTelegramHealth = () => driverAction({ mode: 'admin_telegram_health' }) as Promise<{ healthy: boolean; error: string | null }>;
 
 /** Stop a running campaign; the server releases its whole reservation. */
 export const stopCampaignJob = (jobId: string) => driverAction({ mode: 'admin_stop', jobId });

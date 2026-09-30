@@ -63,9 +63,10 @@ export default function AdminMetaAdsPage() {
 function useRows<T>(loader: () => Promise<T[]>, deps: unknown[] = []) {
   const [rows, setRows] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
+  const { t } = useLanguage();
   const load = useCallback(async () => {
     setLoading(true);
-    try { setRows(await loader()); } catch (e) { console.error(e); toast.error('load failed'); }
+    try { setRows(await loader()); } catch (e) { console.error(e); toast.error(t('admin_mads_load_failed')); }
     finally { setLoading(false); }
   }, deps); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [load]);
@@ -124,7 +125,7 @@ function Overview() {
     try {
       const { data } = await supabase.functions.invoke('meta-ads-api', { body: { action: 'admin_test_connection' } });
       setProbe(data);
-    } catch { toast.error('probe failed'); }
+    } catch { toast.error(t('admin_mads_action_failed')); }
     finally { setProbing(false); }
   };
 
@@ -397,7 +398,7 @@ function Moderation() {
     const note = window.prompt('Decision note (audited):') ?? '';
     const { error } = await supabase.from('meta_moderation_cases')
       .update({ status, decided_at: new Date().toISOString(), decision_note: note }).eq('id', id);
-    if (error) toast.error('failed'); else { toast.success(status); reload(); }
+    if (error) toast.error(t('admin_mads_action_failed')); else { toast.success(status); reload(); }
   };
   if (loading) return <Skeleton className="h-40 rounded-2xl" />;
   return (
@@ -434,11 +435,11 @@ function Finance() {
     const user = window.prompt('User id:'); if (!user) return;
     const amount = Number(window.prompt('Amount in cents (positive = credit, negative = debit):') ?? '');
     const reason = window.prompt('Reason (required, audited):') ?? '';
-    if (!Number.isFinite(amount) || amount === 0 || !reason.trim()) { toast.error('amount + reason required'); return; }
+    if (!Number.isFinite(amount) || amount === 0 || !reason.trim()) { toast.error(t('admin_mads_adjust_required')); return; }
     const { data, error } = await supabase.functions.invoke('meta-ads-api', {
       body: { action: 'admin_adjust', targetUserId: user, amountCents: Math.round(amount), reason },
     });
-    if (error || (data as any)?.error) toast.error('adjust failed'); else { toast.success('adjusted'); reload(); }
+    if (error || (data as any)?.error) toast.error(t('admin_mads_action_failed')); else { toast.success(t('admin_mads_saved')); reload(); }
   };
   return (
     <div className="space-y-3">
@@ -495,13 +496,13 @@ function MetaErrors() {
 function Settings() {
   const { t } = useLanguage();
   const { rows, loading, reload } = useRows(async () => {
-    const { data } = await supabase.from('admin_settings').select('*').like('key', 'meta_ads_%').order('key');
+    const { data } = await supabase.from('admin_settings').select('key,value').like('key', 'meta_ads_%').not('key', 'ilike', '%token%').order('key');
     // Worker/cron tokens are credentials, not settings: never rendered here.
     return (data ?? []).filter((s: any) => !/token|secret/i.test(String(s.key)));
   });
   const save = async (key: string, value: unknown) => {
     const { error } = await supabase.from('admin_settings').update({ value }).eq('key', key);
-    if (error) toast.error('save failed'); else { toast.success(key); reload(); }
+    if (error) toast.error(t('admin_mads_action_failed')); else { toast.success(key); reload(); }
   };
   if (loading) return <Skeleton className="h-40 rounded-2xl" />;
   return (
@@ -523,7 +524,7 @@ function Settings() {
                 onBlur={e => { const n = Number(e.target.value); if (Number.isFinite(n)) save(s.key, n); }} />
             ) : (
               <Input className="w-72 font-mono" dir="ltr" defaultValue={JSON.stringify(s.value)}
-                onBlur={e => { try { save(s.key, JSON.parse(e.target.value)); } catch { toast.error('invalid JSON'); } }} />
+                onBlur={e => { try { save(s.key, JSON.parse(e.target.value)); } catch { toast.error(t('admin_mads_invalid_json')); } }} />
             )}
           </div>
         </Card>

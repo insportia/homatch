@@ -281,6 +281,28 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    /*
+     * ONE RUNNING SEARCH PER PROPERTY. A double click or a second tab carries a
+     * different key, so the idempotency check above cannot see it; without this
+     * it would reserve a second budget for the same search. The running job is
+     * returned instead. A language expansion extends a finished sweep and is
+     * exempt.
+     */
+    if (!expansion) {
+      const { data: running } = await db
+        .from('matching_jobs')
+        .select('id,status')
+        .eq('property_id', propertyId)
+        .in('status', ['queued', 'analysing_property', 'generating_queries', 'searching_sources',
+          'collecting_results', 'normalizing', 'deduplicating', 'classifying', 'ranking'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (running) {
+        return json({ success: true, idempotent: true, alreadyRunning: true, jobId: running.id, campaignId, status: running.status });
+      }
+    }
+
     /* ---- billing ----
      *
      * This is the Find Clients SEARCH. One full search a month is included on

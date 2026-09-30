@@ -62,9 +62,18 @@ test('MOCK mode is truthful: mock_ ids, TEST names, results stay null, no money 
   // Customer money moves only in REAL mode: every ledger write in launch sits
   // inside a `mode === 'REAL'` block.
   const launch = api.slice(api.indexOf("case 'launch':"), api.indexOf("case 'pause':"));
+  // The debit is written inline; a failed attempt's give-back goes through
+  // refundAttempt (RELEASE + REFUND), itself called only under a REAL guard.
   const ledgerWrites = launch.split("from('meta_ads_ledger').insert").length - 1;
   const guarded = launch.split("if (mode === 'REAL') {").length - 1;
-  assert.ok(ledgerWrites >= 2 && guarded >= 2, 'reserve and release are REAL-only');
+  assert.ok(ledgerWrites >= 1 && guarded >= 2, 'the debit is REAL-only');
+  assert.match(launch, /if \(mode === 'REAL'\) await refundAttempt\(sb, c, idem\)/, 'the failure give-back is REAL-only');
+  const unguardedRefunds = launch.split('\n').filter((l) => l.includes('await refundAttempt(') && !l.includes("mode === 'REAL'"));
+  for (const l of unguardedRefunds) {
+    const at = launch.indexOf(l);
+    const before = launch.slice(0, at);
+    assert.ok(before.lastIndexOf("if (mode === 'REAL') {") > before.lastIndexOf("case 'launch':"), `refund inside a REAL block: ${l.trim()}`);
+  }
   // A mock campaign is never reported as delivering.
   const publish = engine.slice(engine.indexOf('export async function publishCampaign'));
   const mockBlock = publish.slice(0, publish.indexOf('const token = await userToken(sb, uid);'));

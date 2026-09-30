@@ -31,7 +31,9 @@ export function AccountPanel({ status, onChanged, returnTo, compact }: {
   const { t } = useLanguage();
   const [busy, setBusy] = useState<string | null>(null);
   const health = status?.connection?.health ?? (status?.connection?.status === 'CONNECTED' ? 'CONNECTED' : 'NOT_CONNECTED');
-  const connectedish = health === 'CONNECTED' || health === 'PERMISSION_MISSING';
+  // Asset pickers stay usable while a permission or an eligible ad account is
+  // missing, so the owner can fix it here; every other state means reconnect.
+  const connectedish = health === 'CONNECTED' || health === 'PERMISSION_MISSING' || health === 'NO_ELIGIBLE_AD_ACCOUNT';
 
   const connect = async () => {
     setBusy('connect');
@@ -43,7 +45,9 @@ export function AccountPanel({ status, onChanged, returnTo, compact }: {
         return;
       }
       if (r.mockConnect) { await mockConnect(); toast.success(t('mads_connected_ok')); await onChanged(); }
-    } catch { toast.error(t('mads_load_failed')); } finally { setBusy(null); }
+    } catch (e: any) {
+      toast.error(t(e?.code === 'TOKEN_ENCRYPTION_NOT_CONFIGURED' ? 'madsb_connect_encryption_missing' : 'mads_load_failed'));
+    } finally { setBusy(null); }
   };
   const refresh = async () => {
     setBusy('refresh');
@@ -89,6 +93,9 @@ export function AccountPanel({ status, onChanged, returnTo, compact }: {
               <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">{t(`madsb_health_${health.toLowerCase()}_d` as never)}</p>
               {health === 'PERMISSION_MISSING' && (status?.connection?.missing_scopes ?? []).length > 0 && (
                 <p className="mt-1 text-2xs text-muted-foreground" dir="ltr">{status?.connection?.missing_scopes?.join(' · ')}</p>
+              )}
+              {health === 'ERROR' && status?.connection?.error_reason === 'TOKEN_ENCRYPTION_NOT_CONFIGURED' && (
+                <p className="mt-1 text-2xs text-muted-foreground">{t('madsb_connect_encryption_missing')}</p>
               )}
               {status?.mode === 'MOCK' && <p className="mt-1 text-2xs font-medium text-[hsl(var(--gold-ink))]">{t('madsb_mock_connection')}</p>}
             </div>

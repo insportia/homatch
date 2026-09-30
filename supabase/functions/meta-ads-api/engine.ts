@@ -205,6 +205,9 @@ export async function runPreflight(sb: Sb, uid: string, c: any, settings: MetaSe
   const spec = GOAL_SPECS[goal];
 
   add('goal_enabled', settings.goalsEnabled.includes(goal) ? 'READY' : 'ACTION_REQUIRED', settings.goalsEnabled.includes(goal) ? undefined : 'GOAL_DISABLED');
+  // Only a property this account manages can be promoted (checked again at launch).
+  const owned = await propertyAuthorized(sb, uid, c.property_id);
+  add('property_owned', owned ? 'READY' : 'ACTION_REQUIRED', owned ? undefined : 'PROPERTY_NOT_OWNED');
 
   const planIssues = validatePlanInput(input.strategy, limitsOf(settings));
   add('budget', planIssues.some((i) => i.field === 'dailyBudgetCents') ? 'ACTION_REQUIRED' : 'READY',
@@ -538,15 +541,24 @@ export async function syncCampaign(sb: Sb, c: any, mode: MetaMode) {
 /** Idempotent: the settlement keys are per campaign, so it posts exactly once. */
 export async function settleCampaign(sb: Sb, c: any, actualSpendCents: number) {
   const { data: rows } = await sb.from('meta_ads_ledger').select('entry_type,amount_cents,idempotency_key').eq('campaign_id', c.id);
-  const reserve = -(rows ?? []).filter((r: any) => r.entry_type === 'RESERVE').reduce((s: number, r: any) => s + Number(r.amount_cents), 0);
-  const fee = -(rows ?? []).filter((r: any) => r.entry_type === 'HOMATCH_FEE').reduce((s: number, r: any) => s + Number(r.amount_cents), 0);
-  const released = (rows ?? []).some((r: any) => String(r.idempotency_key ?? '').endsWith(':release'));
+  /* What is still HELD for this campaign: every attempt's reserve and fee,
+     minus what failed attempts already gave back under their own keys
+     (`<attempt>:release` / `<attempt>:feerefund`). Settlement rows use the
+     campaign-level `<campaign>:settle:*` keys and are never counted here. */
+  const key = (r: any) => String(r.idempotency_key ?? '');
+  const isSettle = (r: any) => key(r).startsWith(`${c.id}:settle:`);
+  const sum = (pred: (r: any) => boolean) => (rows ?? []).filter(pred).reduce((n: number, r: any) => n + Number(r.amount_cents), 0);
+  const reserve = -sum((r) => r.entry_type === 'RESERVE')
+    - sum((r) => r.entry_type === 'RELEASE' && !isSettle(r) && key(r).endsWith(':release'));
+  const fee = -sum((r) => r.entry_type === 'HOMATCH_FEE')
+    - sum((r) => r.entry_type === 'REFUND' && !isSettle(r) && key(r).endsWith(':feerefund'));
+  const released = (rows ?? []).some((r: any) => key(r) === `${c.id}:settle:release`);
   const base = { user_id: c.user_id, currency: c.currency, campaign_id: c.id };
 
   /* CUSTOMER_AD_ACCOUNT: Meta billed the customer's ad account, nothing was
      reserved here. Only the fee is reconciled, against the PLANNED budget. */
   if (reserve <= 0) {
-    const feeSettled = (rows ?? []).some((r: any) => String(r.idempotency_key ?? '').endsWith(':settle:feerefund'));
+    const feeSettled = (rows ?? []).some((r: any) => key(r) === `${c.id}:settle:feerefund`);
     if (fee <= 0 || feeSettled || c.settled_at) return null;
     const daily = Array.isArray(c.plan?.adSets)
       ? c.plan.adSets.reduce((n: number, a: { dailyBudgetCents: number }) => n + Number(a.dailyBudgetCents), 0) : 0;
@@ -576,6 +588,19 @@ export async function settleCampaign(sb: Sb, c: any, actualSpendCents: number) {
   }
   await sb.from('meta_campaigns').update({ settled_at: new Date().toISOString() }).eq('id', c.id);
   return s;
+}
+
+/* ── PROPERTY AUTHORITY ──────────────────────────────────────────────────
+   A campaign may promote a property only its owner manages. property_id is
+   whatever the builder stored (the permanent six-digit id or the uuid); a
+   campaign with no property is a general promotion and needs no check. */
+export async function propertyAuthorized(sb: Sb, uid: string, propertyId: unknown): Promise<boolean> {
+  const pid = String(propertyId ?? '').trim();
+  if (!pid) return true;
+  const isUuid = /^[0-9a-f-]{36}$/i.test(pid);
+  const q = sb.from('properties').select('id').eq('user_id', uid).eq('is_deleted', false).limit(1);
+  const { data } = isUuid ? await q.eq('id', pid) : await q.eq('homatch_id', pid);
+  return (data ?? []).length > 0;
 }
 
 export { computeTotals, metaMode };

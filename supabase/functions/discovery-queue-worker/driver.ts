@@ -40,7 +40,10 @@ export async function drive(db: any, baseUrl: string, serviceKey: string, body: 
   const settings = await loadDiscoverySettings(db);
   const report: Record<string, unknown> = { mode: 'drive' };
 
-  report.sourceJobs = await runSourceJobs(db, baseUrl, serviceKey, settings, Math.min(5, Number(body.limit) || 3));
+  /* One source job per tick: jobs run one after another and each may take
+     up to ~150s, so claiming more than one would let the later leases lapse
+     and the same job be claimed twice. The driver ticks every minute. */
+  report.sourceJobs = await runSourceJobs(db, baseUrl, serviceKey, settings, Math.min(5, Number(body.limit) || 1));
   report.campaigns = await advanceCampaigns(db, baseUrl, serviceKey, settings, started);
   report.rescued = await rescueStuck(db);
   report.elapsedMs = Date.now() - started;

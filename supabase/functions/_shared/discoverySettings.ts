@@ -17,9 +17,12 @@ export interface DiscoverySettings {
   telegramMode: TelegramMode;
   telegramAutoEnableSources: boolean;
   telegramMinRelevance: number;
-  /** Master switch for scheduled background refresh (all sources). */
+  /** Scheduled background refresh of Telegram communities. */
   backgroundRefreshEnabled: boolean;
   forumDiscoveryEnabled: boolean;
+  /** The hourly forum schedule — its own switch, so forums can run on a
+      schedule while Telegram (which needs credentials) stays off. */
+  forumScheduleEnabled: boolean;
   classifierScheduleEnabled: boolean;
   campaignMinCredits: number;
   campaignDefaultCredits: number;
@@ -40,6 +43,7 @@ export const DISCOVERY_SETTING_KEYS = [
   'telegram_source_min_relevance',
   'discovery_background_refresh_enabled',
   'forum_discovery_enabled',
+  'forum_schedule_enabled',
   'classifier_schedule_enabled',
   'campaign_min_credits',
   'campaign_default_credits',
@@ -77,6 +81,7 @@ export function parseDiscoverySettings(rows: Array<{ key: string; value: unknown
     telegramMinRelevance: num(m.get('telegram_source_min_relevance'), 0.2, 0, 1),
     backgroundRefreshEnabled: bool(m.get('discovery_background_refresh_enabled'), false),
     forumDiscoveryEnabled: bool(m.get('forum_discovery_enabled'), false),
+    forumScheduleEnabled: bool(m.get('forum_schedule_enabled'), false),
     classifierScheduleEnabled: bool(m.get('classifier_schedule_enabled'), false),
     campaignMinCredits: minCredits,
     campaignDefaultCredits: Math.max(minCredits, num(m.get('campaign_default_credits'), 50, 50, 1_000_000)),

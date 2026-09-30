@@ -33,6 +33,25 @@ MATTERS right now, verify against the live systems, not this file)
 - Push subscriptions in production: 0.
 - Cron: `homatch-native-intent` (*/1), `homatch-supply-matching` (*/15) — live.
 
+## Design Studio asset catalogue (branch `feat/design-studio-catalog-import`, 2026-09-30)
+
+- IMPLEMENTED, pushed (4f657594), NOT merged, NOT deployed; migration
+  `20261002210000` NOT applied; nothing imported. Owner approval gate: no bulk
+  import without "APPROVE FULL IMPORT".
+- One catalogue, provider adapters (`src/lib/designStudio/catalogProviders/`):
+  Poly Haven = materials + HDRIs (final selection 671 + 330, 4,822 files,
+  11,614,991,023 bytes exact); Blendkit = physical objects.
+- Blendkit Royalty-Free is STOPPED (FAQ: only where assets "can't be extracted
+  by the users in an easy way"; browser delivery does not clearly satisfy it).
+  Needs Blendkit's written confirmation. CC0 importable now: 213 P+S assets,
+  1,397,897,876 GLB bytes — mostly Poly Haven's own models republished.
+- Runs only by manual dispatch of "Design Studio catalogue import" (the
+  autonomous scheduled variant was refused by the environment's persistence
+  guard and removed). BLENDKIT_API_KEY authentication is unverified until the
+  signing route is deployed.
+- Unrelated: on Windows the Meta Ads test "no Meta Ads frontend code carries its
+  own fee percent" fails on a path bug (C:\\C:\\…); passes on Linux CI.
+
 ## Design Studio (branch `feat/design-studio`, rolling out 2026-09-30)
 
 - Five migrations `20260930090000`…`20260930095000` (foundation, dev catalog,

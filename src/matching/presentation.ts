@@ -180,6 +180,7 @@ const REASON_KEYS: Readonly<Record<string, string>> = {
   'budget compatible': 'match_reason_budget',
   'budget near range': 'match_reason_budget_near',
   'area compatible': 'match_reason_area',
+  'bedrooms fit': 'match_reason_bedrooms',
   'description/needs overlap': 'match_reason_description',
   /* the hedge — said as the absence it is, not as an agreement */
   'transaction intent partially known': 'match_reason_transaction_unstated',
@@ -189,6 +190,7 @@ const REASON_KEYS: Readonly<Record<string, string>> = {
   'city differs': 'match_gap_city',
   'property type differs': 'match_gap_type',
   'budget differs': 'match_gap_budget',
+  'bedrooms slightly different': 'match_gap_bedrooms',
 };
 
 /**
@@ -219,6 +221,7 @@ const REASON_FACETS: Readonly<Record<string, string>> = {
   'budget compatible': 'match_facet_budget',
   'budget near range': 'match_facet_budget',
   'area compatible': 'match_facet_size',
+  'bedrooms fit': 'match_facet_size',
   'description/needs overlap': 'match_facet_needs',
 };
 

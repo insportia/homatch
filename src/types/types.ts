@@ -109,7 +109,9 @@ export type NotificationType =
   | 'NEW_MESSAGE'
   | 'PROPERTY_ACTION_REQUIRED'
   | 'SEARCH_COMPLETE'
-  | 'ANNOUNCEMENT';
+  | 'ANNOUNCEMENT'
+  // Broker directory applications and verification decisions.
+  | 'BROKER_APPLICATION';
 export type ConditionType = 'NEW' | 'GOOD' | 'NEEDS_RENOVATION' | 'UNDER_CONSTRUCTION';
 export type BuildingType = 'PANEL' | 'BRICK' | 'MONOLITH' | 'WOOD' | 'OTHER';
 export type HeatingType = 'CENTRAL' | 'GAS' | 'ELECTRIC' | 'NONE' | 'OTHER';
@@ -126,6 +128,9 @@ export interface User {
   avatar_url?: string;
   is_admin: boolean;
   plan?: string;
+  /* PERSONAL, or a professional (BROKER / AGENCY). Server-set only. */
+  account_type?: 'PERSONAL' | 'BROKER' | 'AGENCY';
+  suspended_at?: string | null;
   preferred_language?: string | null;
   created_at: string;
   updated_at: string;
@@ -562,7 +567,10 @@ export type LedgerType =
   | 'MEMBERSHIP_GRANT' | 'PROMOTIONAL_GRANT' | 'FIRST_TOPUP_BONUS'
   | 'EXPIRATION' | 'REVERSAL'
   // One-off: the 1 Credit = $1.00 -> $0.10 rescale of 2026-09-13.
-  | 'REDENOMINATION';
+  | 'REDENOMINATION'
+  // Broker platform: a newly delivered discovered broker, and the public
+  // directory period a professional buys.
+  | 'BROKER_DISCOVERY' | 'BROKER_DIRECTORY_LISTING';
 
 export type PaymentStatus =
   | 'PENDING' | 'COMPLETED' | 'FAILED' | 'REFUNDED';
@@ -720,6 +728,13 @@ export interface Match {
    * this, so it must not be sold again.
    */
   unlock_included_allowance_id?: string | null;
+  /**
+   * When the person behind this match originally posted. The 30-day
+   * active-demand rule is applied to it on screen and by atomic-unlock:
+   * older (or undated) demand is shown as history and cannot be opened.
+   * Absent until migration 20260930130000 is applied.
+   */
+  demand_published_at?: string | null;
   /**
    * What the seven-day freshness rule concluded about this match's evidence
    * AT THE MOMENT it was created: NEW_UNVERIFIED, NEEDS_REVALIDATION, FRESH

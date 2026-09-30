@@ -54,6 +54,8 @@ interface NavItem {
   /* Presented only while this product is switched on for the viewer (see
      src/lib/designStudio/access.ts). Absent = always presented. */
   gate?: 'designStudio';
+  /* Shown only to broker and agency accounts (users.account_type). */
+  professional?: boolean;
 }
 
 interface NavGroup {
@@ -154,6 +156,9 @@ export const NAV: NavGroup[] = [
        * which stays public-only (see ALSO GONE above).
        */
       { key: 'pub_nav_brokers', path: '/brokers', glyph: 'brokers' },
+      /* THE BROKER DESK: a professional's profile, verification, leads and
+         client searches. Only a broker or agency account sees it. */
+      { key: 'nav_broker_desk', path: '/broker', glyph: 'brokers', professional: true },
     ],
   },
   /*
@@ -224,6 +229,7 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
   const location = useLocation();
   const navigate = useNavigate();
   const unread = useNotificationCount();
+  const isProfessional = homatchUser?.account_type === 'BROKER' || homatchUser?.account_type === 'AGENCY';
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   /* THE CREDIT BALANCE
@@ -326,7 +332,7 @@ export function HomatchShell({ children, noPadding = false, hidePadding = false 
             <p className="px-3 pb-1 text-[13px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/90">
               {t(group.key)}
             </p>
-            {group.items.map(item => {
+            {group.items.filter(item => !item.professional || isProfessional).map(item => {
               const active = isActive(item.path);
               return (
                 <Link

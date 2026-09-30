@@ -39,7 +39,8 @@ import { NavGlyphIcon } from '@/components/layouts/NavGlyph';
 import { 
   type CampaignSearchLanguageChoice, calculateMatchability,getCreditAccount,
   getMatchCounts, getProperty, pauseMatchingCampaign,softDeleteProperty, 
-  startMatchingCampaign } from '@/services/api';
+  startMatchingCampaign, campaignStartErrorKey,
+} from '@/services/api';
 import type { PortfolioIntelligence } from '@/services/propertyManagement';
 import { portfolioIntelligence } from '@/services/propertyManagement';
 import type { CreditAccount, Property } from '@/types/types';
@@ -177,7 +178,7 @@ function CampaignPanel({
       setActiveJobId(result.jobId);
       toast.success(t('matches_campaign_started_toast'));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : t('matches_start_failed'));
+      { const refused = campaignStartErrorKey(e); toast.error(refused ? t(refused.key, refused.vars) : t('matches_start_failed')); }
     } finally {
       setLoading(false);
     }
@@ -313,7 +314,7 @@ function CampaignPanel({
             });
             if (job.matches_created > 0) {
               toast.success(t('matches_job_complete_toast', { count: job.matches_created }));
-            } else if (job.status === 'partially_completed') {
+            } else if (job.status === 'partially_completed' || job.status === 'budget_reached') {
               toast.warning(t('matches_job_partial_toast'));
             }
           }}

@@ -1,6 +1,6 @@
 # PROJECT STATE
 
-last_updated: 2026-09-28
+last_updated: 2026-09-29
 maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
@@ -65,3 +65,102 @@ MATTERS right now, verify against the live systems, not this file)
   `partners_cat2_desc`.
 - Dormant billing-v2 "plan" machinery exists in code but is NOT product
   truth: HOMATCH is PAYG-only (see BILLING.md).
+
+## Meta Ads (branch claude/homatch-discovery-engine-rqdnza, 2026-09-29)
+
+- Production runs Meta Ads in MOCK: `META_APP_ID` / `META_APP_SECRET` are not
+  set as Edge secrets. The only production "connection" is a mock one (mock_
+  assets, "TEST Page"); 4 DRAFT campaigns, 0 launches, 0 leads, 0 webhooks.
+- Branch adds: per-goal Graph payloads (`src/lib/metaAds/payload.ts`), launch
+  engine (`meta-ads-api/engine.ts`), signed OAuth state, header-only tokens +
+  appsecret_proof, optional token sealing (`META_TOKEN_ENCRYPTION_KEY`),
+  webhook signature-before-dedupe, maintenance cron, stepped builder.
+  Migration `20260930120000_meta_ads_live_readiness.sql` NOT applied.
+- MONEY MODEL (code default, confirm before any paid launch):
+  `meta_ads_budget_billing` = CUSTOMER_AD_ACCOUNT — the campaign runs on the
+  customer's own ad account, Meta bills the budget there, HOMATCH holds only
+  its fee (refunded on unspent budget). HOMATCH_WALLET holds the budget in the
+  HOMATCH balance and is only correct for an ad account HOMATCH pays. Never
+  both.
+
+## Discovery engine (same branch)
+
+- Telegram MTProto gateway in the official worker (token-only `/telegram/*`),
+  `WorkerTelegramClient`, community-sync MTPROTO mode, source discovery.
+  Worker needs `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_SESSION`,
+  `TELEGRAM_ENABLED` in Railway (homatch-official-worker only).
+- ONE active-demand rule: `discovery_freshness_policy` (30 days; 0–7 / 8–14 /
+  15–30 bands; undated ineligible) via `judgeActiveDemand`, applied by
+  run-matching-v2, run-matching, the Matches screen (older demand is a
+  collapsed history section) and atomic-unlock (`DEMAND_NOT_CURRENT`, 409).
+  `matches.demand_published_at` carries the date. The 7-day
+  `evidence_delivery_window_days` is a different rule (have we seen the post
+  recently) and stays.
+- Structured gates in run-matching-v2 (`research-core/match/structured-gates.ts`):
+  city across scripts (place table), budget across currencies (fx_rates only —
+  production holds NO GEL/USD rate yet, so cross-currency budgets are UNKNOWN,
+  never guessed), bedrooms. Market query reads every city spelling.
+- Campaigns: PAYG-only (`allowIncluded:false`), budget is a ceiling, 50-Credit
+  minimum. Gap discovery queues TELEGRAM / TELEGRAM_SOURCES / FORUM source jobs
+  and finishes asynchronously via the discovery driver
+  (`discovery-queue-worker` mode `drive`, cron `homatch-discovery-driver`).
+  One ending for both paths: `_shared/campaignRun.ts` counts ONLY new matches
+  on current demand created by this run.
+- Classifier: nine-label taxonomy + classifier-version fingerprint cache
+  (`research-core/discovery/signal-taxonomy.ts`); agency posts labelled
+  BROKER_AGENCY and routed to broker review, never matches.
+- Admin: `/admin/discovery` (RPC `admin_discovery_overview`; stop/retry via
+  the driver with an admin session).
+- Migration `20260930130000_discovery_engine_queue_freshness_campaigns.sql`
+  NOT applied. Every new switch defaults OFF. Applying it also cancels the
+  6,557 dead APIFY/DATAFORSEO PENDING rows (history kept) and sets FIND_CLIENTS
+  to PAYG-only with a 50-Credit minimum — billing changes that need approval.
+- FX: run-matching-v2 never fetches. match-campaign / the discovery driver
+  fetch official NBG rates (_shared/fx.ts, 4s, best effort) and pass them in;
+  the writer re-validates (<= 3 days old). fx_rates rows count only when
+  dated within 7 days. No rate = cross-currency budget UNKNOWN (never a
+  rejection). Same-currency matching never depends on FX.
+- Pre-migration production snapshot (2026-09-29): 74 matches, 0 within 30
+  days, 69 older, 5 undated; 14 opened (11 stale + 3 undated) — all stay
+  accessible. Dry run of both migrations in a rolled-back transaction on
+  production: PASS (6,557 retired rows -> CANCELLED, 69 matches dated,
+  updated_at moved on 0 rows, 14 unlocks intact, 5 crons, all switches off).
+- Railway courteous-success also contains a pre-existing
+  `homatch-official-worker-v2` service (not created by this workstream; never
+  use it). The canonical worker has NO Telegram variables.
+
+
+## Brokers (same branch, 2026-09-29)
+
+Migration `20260930140000_broker_lifecycle.sql` (NOT yet applied at time of
+writing; apply after the Meta and Discovery migrations, via MCP
+`apply_migration` name `broker_lifecycle`).
+
+- Account: `users.account_type` PERSONAL/BROKER/AGENCY, `suspended_at`,
+  `suspension_reason` — server-set only (trigger resets them unless
+  service_role or GUC `homatch.account_rpc`). Signup "I'm a professional"
+  routes to `/broker/onboarding`.
+- One profile per owner (`broker_directory_listings`, unique owner, DRAFT
+  status). `broker_profile_save` / `broker_complete_onboarding` /
+  `broker_directory_submit` / `broker_directory_purchase(idempotency key)`.
+- Verification UNVERIFIED/PENDING/VERIFIED/REJECTED/SUSPENDED: private bucket
+  `broker-verification`, `admin_set_broker_verification` (audited, notifies).
+- Leads: `matches.lead_state` NEW→REVIEWED→CONTACTED→IN_PROGRESS→WON/CLOSED;
+  contact states need a `match_unlocks` row (`set_match_lead_state`).
+- Broker Review: classify-signals-v2 queues BROKER_AGENCY posts into
+  `broker_review_items`; admin ACCEPT writes `broker_intelligence` only from
+  a public identity (never invents one).
+- Suspension blocks new unlocks, campaigns, Meta launch, directory purchase;
+  already-paid contacts stay readable.
+- Native supply role: properties carry `listed_by_role`; supply-matching uses
+  `nativeSupplyRole` (rentals → LANDLORD, broker listings → BROKER/AGENCY).
+- UI: `/broker` desk, `/broker/onboarding`, lead status in the opened-contact
+  dialog, Admin → Brokers Verification + Broker Review tabs + detail dialog.
+- LIMITATION: agency TEAMS (members under an agency) are not implemented;
+  `agency_listing_id` exists for later. An agent joins as an individual broker.
+- `tests/browser/developerAcceptance.test.mjs` UNIT_UI / MOBILE_INTERACTIVE
+  failed on origin/main too: a stale test premise, not a product bug. The
+  project page defaults to the visual building (unit buttons read number AND
+  area) and the drawer shows the price in its editable Price input. The test
+  now finds a unit by its accessible name and reads dialog input values; the
+  Developer product code was not touched.

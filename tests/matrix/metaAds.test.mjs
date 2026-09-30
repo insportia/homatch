@@ -15,6 +15,9 @@ const api = read('supabase/functions/meta-ads-api/index.ts');
 const webhook = read('supabase/functions/meta-webhooks/index.ts');
 const paymentWebhook = read('supabase/functions/payment-webhook/index.ts');
 const shared = read('supabase/functions/_shared/metaAds.ts');
+const engine = read('supabase/functions/meta-ads-api/engine.ts');
+const payload = read('src/lib/metaAds/payload.ts');
+const leads = read('supabase/functions/_shared/metaLeads.ts');
 const shell = read('src/components/layouts/HomatchShell.tsx');
 const routes = read('src/routes.tsx');
 
@@ -42,26 +45,40 @@ test('launch money writes are idempotent and symmetric', () => {
 
 test('the 9% fee lives in admin_settings alone — code always reads the setting', () => {
   assert.match(migration, /'meta_ads_fee_percent',\s*'9'::jsonb/);
-  // Every fee use in the edge function goes through the settings reader.
-  const feeReads = api.match(/setting\(sb, 'meta_ads_fee_percent'\)/g) ?? [];
-  assert.ok(feeReads.length >= 2, 'launch and preview both read the canonical setting');
+  // ONE settings reader holds the key; every fee use goes through it.
+  assert.equal((engine.match(/'meta_ads_fee_percent'/g) ?? []).length, 1, 'the key is read in exactly one place');
+  assert.ok(!/'meta_ads_fee_percent'/.test(api), 'the router never reads the fee key directly');
+  const feeUses = api.match(/settings\.feePercent/g) ?? [];
+  assert.ok(feeUses.length >= 2, 'launch and preview both use the canonical setting');
   // The frontend never hardcodes a percent either: the wizard renders the
   // percent it was given by `status`.
   const create = read('src/pages/outreach/MetaAdsCreatePage.tsx');
   assert.ok(!/[^\w]9\s*\/\s*100/.test(create), 'no local 9/100 math in the wizard');
 });
 
-test('MOCK mode is truthful: mock_ ids, TEST names, results stay null', () => {
+test('MOCK mode is truthful: mock_ ids, TEST names, results stay null, no money moves', () => {
   assert.match(shared, /mock_\$\{prefix\}/);
-  assert.match(api, /results: null/);
+  assert.match(engine, /results: null/);
+  // Customer money moves only in REAL mode: every ledger write in launch sits
+  // inside a `mode === 'REAL'` block.
+  const launch = api.slice(api.indexOf("case 'launch':"), api.indexOf("case 'pause':"));
+  const ledgerWrites = launch.split("from('meta_ads_ledger').insert").length - 1;
+  const guarded = launch.split("if (mode === 'REAL') {").length - 1;
+  assert.ok(ledgerWrites >= 2 && guarded >= 2, 'reserve and release are REAL-only');
+  // A mock campaign is never reported as delivering.
+  const publish = engine.slice(engine.indexOf('export async function publishCampaign'));
+  const mockBlock = publish.slice(0, publish.indexOf('const token = await userToken(sb, uid);'));
+  assert.ok(mockBlock.length > 0 && !mockBlock.includes("'ACTIVE'"), 'mock entities are never ACTIVE');
   assert.ok(!api.includes('Math.random'), 'no synthesized metrics anywhere in the API');
   assert.ok(!webhook.includes('Math.random'), 'no synthesized leads in the webhook');
-  assert.match(api, /TEST /); // mock assets/campaign naming is explicit
+  assert.match(api, /TEST /); // mock assets naming is explicit
+  assert.match(engine, /TEST /); // mock campaign entities too
 });
 
 test('v26 capability requirements are encoded in the publish path', () => {
-  assert.match(api, /is_adset_budget_sharing_enabled/);
-  assert.match(api, /advantage_audience/);
+  assert.match(payload, /is_adset_budget_sharing_enabled/);
+  assert.match(payload, /advantage_audience/);
+  assert.match(engine, /campaignParams\(|adSetParams\(|creativeParams\(/, 'the engine publishes through payload.ts');
   // The adapter builds its base URL from the ONE pinned version constant.
   assert.match(shared, /graph\.facebook\.com\/\$\{META_API_VERSION\}/);
 });
@@ -83,6 +100,32 @@ test('webhook ingestion is idempotent and signature-checked', () => {
   assert.match(webhook, /dedupe_key/);
   assert.match(webhook, /X-Hub-Signature-256/i);
   assert.match(webhook, /hub\.challenge/);
+  // The signature decides BEFORE a real dedupe key is claimed: an unsigned
+  // payload is stored under a random key, so it can never pre-empt Meta's
+  // genuine delivery of the same lead.
+  assert.ok(webhook.indexOf('if (!sigOk)') < webhook.indexOf('const dedupe ='), 'signature gate precedes dedupe');
+  assert.match(webhook, /unsigned:\$\{crypto\.randomUUID\(\)\}/);
+  // No secret, no verification — an empty HMAC key is a key anyone has.
+  assert.match(shared, /if \(!metaAppSecret\(\)\) return false;/);
+  assert.match(leads, /PAGE_OWNER_AMBIGUOUS/);
+});
+
+test('tokens never travel in a URL and are sealed at rest when a key exists', () => {
+  assert.ok(!/access_token=\$\{encodeURIComponent/.test(shared), 'no token in a GET query string');
+  assert.match(shared, /Authorization: `OAuth \$\{opts\.token\}`/);
+  assert.match(shared, /appsecret_proof/);
+  assert.ok(!/oauth\/access_token\?\$\{/.test(shared), 'client_secret is never in a URL');
+  assert.match(shared, /enc:v1:/);
+  assert.match(read('supabase/functions/meta-oauth/index.ts'), /sealToken\(token\)/);
+  // The OAuth state is signed and expiring, and the nonce is single-use.
+  assert.match(shared, /signOAuthState/);
+  assert.match(read('supabase/functions/meta-oauth/index.ts'), /oauth_nonce: null/);
+});
+
+test('launch refuses a campaign that changed since preflight, and charges the frozen plan', () => {
+  assert.match(api, /PREFLIGHT_STALE/);
+  assert.match(api, /configFingerprint\(sb, c\)\) !== c\.preflight\?\.fingerprint/);
+  assert.match(api, /dailyFromPlan/);
 });
 
 test('the product is wired into the shell and routes', () => {
@@ -99,4 +142,20 @@ test('the product is wired into the shell and routes', () => {
 test('lookalike and autopilot ship gated OFF', () => {
   assert.match(migration, /'meta_ads_lookalike_enabled',\s*'false'::jsonb/);
   assert.match(migration, /'meta_ads_autopilot_enabled',\s*'false'::jsonb/);
+});
+
+test('a campaign on the customer\'s own ad account is never charged twice for the same budget', () => {
+  const index = read('supabase/functions/meta-ads-api/index.ts');
+  const engine = read('supabase/functions/meta-ads-api/engine.ts');
+  const payload = read('src/lib/metaAds/payload.ts');
+  /* The default model: Meta bills the ad account, HOMATCH holds its fee. */
+  assert.match(payload, /: 'CUSTOMER_AD_ACCOUNT';\n\}/, 'an unset billing model must default to the customer ad account');
+  assert.match(payload, /\{ reserveCents: 0, feeCents: totals\.feeCents, requiredCents: totals\.feeCents \}/);
+  /* Launch and preflight both size the HOMATCH hold from the billing model. */
+  assert.match(index, /const charge = launchCharge\(totals, settings\.budgetBilling\)/);
+  assert.match(index, /amount_cents: -charge\.reserveCents/);
+  assert.doesNotMatch(index, /amount_cents: -totals\.mediaCents/, 'the full budget is reserved regardless of who bills it');
+  assert.match(engine, /launchCharge\(totals, settings\.budgetBilling\)\.requiredCents/);
+  /* Fee-only settlement refunds the fee on what Meta did not spend. */
+  assert.match(engine, /feeOnlySettlement\(planned, fee, actualSpendCents\)/);
 });

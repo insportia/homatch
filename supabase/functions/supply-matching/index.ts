@@ -50,7 +50,7 @@ import {
   type StrengthMap,
   type SupplySide,
 } from '../../../src/research-core/match/compatibility.ts';
-import { supplyRoleFrom } from '../../../src/research-core/match/participants.ts';
+import { nativeSupplyRole, supplyRoleFrom } from '../../../src/research-core/match/participants.ts';
 import { judgeDemandFreshness } from '../../../src/research-core/match/demand-freshness.ts';
 import { attributionFrom } from '../../../src/research-core/match/broker-attribution.ts';
 import { placeNamesFor } from '../../../src/research-core/normalize/place.ts';
@@ -522,7 +522,7 @@ Deno.serve(async (req: Request) => {
         const { data: nativeRows } = await db
           .from('properties')
           .select('id,user_id,homatch_id,title,transaction_type,property_type,'
-            + 'matching_status,archived_at,contact_phone_e164,'
+            + 'matching_status,archived_at,contact_phone_e164,listed_by_role,'
             + 'facts:property_facts!property_id(city,district,total_price,currency,'
             + 'area,rooms,bedrooms)')
           .eq('is_deleted', false)
@@ -558,7 +558,9 @@ Deno.serve(async (req: Request) => {
           const amount = (propertyFacts?.total_price as number | null) ?? null;
           const amountCurrency = (propertyFacts?.currency as string | null) ?? null;
           const nativeSupply: SupplySide = {
-            role: supplyRoleFrom('OWNER') ?? 'SELLER',
+            /* Who listed it and what they offer -- see nativeSupplyRole. A rental
+               listed by its owner is LANDLORD supply, so a tenant can match it. */
+            role: nativeSupplyRole(transaction, (propertyRow.listed_by_role as string | null) ?? null),
             transaction: transaction || null,
             city: (propertyFacts?.city as string | null) ?? null,
             district: (propertyFacts?.district as string | null) ?? null,

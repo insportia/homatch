@@ -2,7 +2,12 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   FRESHNESS_COLUMNS, gateForDelivery, loadFreshnessPolicy,
 } from '../_shared/evidenceFreshness.ts';
-import { judgeDemandFreshness } from '../../../src/research-core/match/demand-freshness.ts';
+import { judgeActiveDemand } from '../../../src/research-core/discovery/freshness-policy.ts';
+import { loadDiscoverySettings } from '../_shared/discoverySettings.ts';
+import {
+  bedroomsGate, budgetGate, cityGate, converterFrom, marketCitySpellings, ratesFromPayload, ratesFromTable,
+  type GateVerdict,
+} from '../../../src/research-core/match/structured-gates.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -45,7 +50,7 @@ Deno.serve(async (req: Request) => {
   }
   if (!authorized) return json({ error: 'Internal only' }, 403);
   try {
-    const { propertyId, campaignId, intentProfileBatchSize = 1500 } = await req.json();
+    const { propertyId, campaignId, intentProfileBatchSize = 1500, fxRates = null } = await req.json();
     if (!propertyId) return json({ error: 'propertyId required' }, 400);
 
     const { data: property, error: propertyError } = await db
@@ -160,10 +165,15 @@ Deno.serve(async (req: Request) => {
 
     let globalRows: any[] = [];
     if (includeGlobalDemand && marketCity) {
+      /* EVERY SPELLING OF THE CITY. `city ilike 'Tbilisi'` never reached a
+         profile the classifier wrote as 'თბილისი' or 'Тбилиси', so demand in
+         the market's own languages was invisible to the market. The spellings
+         come from the one place table (normalize/place.ts). */
+      const spellings = marketCitySpellings(marketCity);
       let query = db
         .from('intent_profiles')
         .select('signal_id')
-        .ilike('city', marketCity)
+        .or(spellings.map((name) => `city.ilike."${name.replace(/"/g, '')}"`).join(','))
         .limit(GLOBAL_DEMAND_LIMIT);
       /*
        * NO COUNTRY CLAUSE, AND THAT IS NOT AN OVERSIGHT.
@@ -206,6 +216,19 @@ Deno.serve(async (req: Request) => {
     // Once per run. The window is a product decision and the setting is the
     // authority; a missing setting means the seven-day default, not no gate.
     const freshnessPolicy = await loadFreshnessPolicy(db);
+    /* The ACTIVE-DEMAND window: how long ago the person may have posted and
+       still count as current demand. One setting, discovery_freshness_policy,
+       read by every matcher and by the screens that show matches. */
+    const activeDemandPolicy = (await loadDiscoverySettings(db)).freshness;
+    /* Configured exchange rates only. A pair with no rate makes the budget
+       comparison UNKNOWN -- never a guessed conversion. */
+    const { data: fxRows } = await db.from('fx_rates')
+      .select('base_currency,quote_currency,rate,effective_from').is('effective_to', null);
+    /* Official NBG rates, fetched by the caller (_shared/fx.ts) and passed in
+       -- this writer never fetches. Re-validated here: dated, current, sane.
+       Absent or stale rates leave cross-currency budgets UNKNOWN. */
+    const nbg = ratesFromPayload(fxRates);
+    const fx = converterFrom(ratesFromTable((fxRows ?? []) as never), nbg);
 
     const requested = Math.min(5000, Math.max(1, Number(intentProfileBatchSize) || 1500));
     const profiles: any[] = [];
@@ -227,6 +250,9 @@ Deno.serve(async (req: Request) => {
     let rejectedTransaction = 0;
     let rejectedPropertyType = 0;
     let rejectedDistrict = 0;
+    let rejectedCity = 0;
+    let rejectedBudget = 0;
+    let rejectedBedrooms = 0;
     let rejectedSelfSourced = 0;
     /* Already matched on a previous run. Distinct from a rejection: the
        person qualified, they are simply already in the customer's list. */
@@ -348,7 +374,13 @@ Deno.serve(async (req: Request) => {
       // mismatch (a city-level mismatch is reported separately by score()) — a
       // district gate on top of an already-wrong city would double-penalize and
       // obscure which signal actually caused the rejection.
-      const cityKnownMismatch = !!facts?.city && !!profile.city && similar(facts.city, profile.city) === 0;
+      const cityVerdict = cityGate(facts?.city, profile.city);
+      const cityKnownMismatch = cityVerdict === 'CONFLICT';
+      if (cityKnownMismatch) {
+        skipped++;
+        rejectedCity++;
+        continue;
+      }
       if (
         propertyDistrictNorm &&
         intentDistricts.length &&
@@ -359,6 +391,15 @@ Deno.serve(async (req: Request) => {
         rejectedDistrict++;
         continue;
       }
+
+      const budgetVerdict = budgetGate({
+        price: facts?.total_price, priceCurrency: facts?.currency,
+        budgetMin: profile.budget_min, budgetMax: profile.budget_max, budgetCurrency: profile.currency,
+        converter: fx,
+      });
+      if (budgetVerdict === 'CONFLICT') { skipped++; rejectedBudget++; continue; }
+      const bedroomsVerdict = bedroomsGate(facts?.bedrooms ?? facts?.rooms, profile.bedrooms_min, profile.bedrooms_max);
+      if (bedroomsVerdict === 'CONFLICT') { skipped++; rejectedBedrooms++; continue; }
 
       /*
        * ONE PERSON, ONE MATCH -- KEYED ON THE SIGNAL, NOT THE PROFILE.
@@ -389,24 +430,32 @@ Deno.serve(async (req: Request) => {
       if (existingError) throw existingError;
       if (existing) { skipped++; alreadyMatched++; continue; }
 
-      const scored = score(property, facts, profile);
+      const scored = score(property, facts, profile, { city: cityVerdict, budget: budgetVerdict, bedrooms: bedroomsVerdict });
       if (scored.score < 20) { skipped++; continue; }
 
-      /* DEMAND FRESHNESS — the gate this pipeline was missing. judgeDelivery
-         above asks "is our EVIDENCE current?"; this asks "is the DEMAND
-         current?" — how long ago the person actually posted. A 2009 forum
-         post scored 100 on compatibility and sold for 35 credits before this
-         existed. Ancient demand never becomes an active match (the signal
-         row itself is untouched — history keeps it); merely old demand keeps
-         eligibility but decays in score, so it ranks below this week's.
-         An unreadable date is a flat penalty, never "fresh" (policy in
-         research-core/match/demand-freshness.ts). */
-      const demandFreshness = judgeDemandFreshness(signal.published_at, {
-        transaction: profile.transaction_type,
+      /* ACTIVE DEMAND — the 30-day rule. judgeDelivery above asks "is our
+         EVIDENCE current?"; this asks "is the DEMAND current?" -- how long ago
+         the person actually posted, judged on the ORIGINAL publication date.
+
+         It is a gate, not a penalty. The old rule kept buyer posts eligible
+         for a year and only multiplied their score down, which is how a 2009
+         forum post became a paid match. Outside the window the signal is not
+         an active match at all; the row itself is untouched and stays in
+         history. Undated demand is ineligible by default -- "we could not
+         read a date" is not "this was posted recently". Inside the window the
+         weight ranks this week's post above last month's. */
+      const demandFreshness = judgeActiveDemand(signal.published_at, {
+        policy: activeDemandPolicy,
+        source: signal.platform ?? null,
       });
-      if (!demandFreshness.eligible) { skipped++; rejectedAncientDemand++; continue; }
-      const finalScore = Math.max(0, Math.min(100, Math.round(scored.score * demandFreshness.factor)));
-      if (finalScore < 20) { skipped++; rejectedAncientDemand++; continue; }
+      if (!demandFreshness.eligible) {
+        skipped++;
+        rejectedAncientDemand++;
+        staleReasons[`DEMAND_${demandFreshness.band}`] = (staleReasons[`DEMAND_${demandFreshness.band}`] || 0) + 1;
+        continue;
+      }
+      const finalScore = Math.max(0, Math.min(100, Math.round(scored.score * demandFreshness.weight)));
+      if (finalScore < 20) { skipped++; continue; }
 
       const strength = finalScore >= 90 ? 'EXCEPTIONAL' : finalScore >= 80 ? 'VERY_STRONG' : finalScore >= 65 ? 'STRONG' : finalScore >= 50 ? 'GOOD' : 'POTENTIAL';
       const published = signal.published_at ? new Date(signal.published_at) : null;
@@ -505,6 +554,10 @@ Deno.serve(async (req: Request) => {
          */
         evidence_freshness: gate.decision.verdict,
         evidence_verified_at: signal.last_verified_at ?? null,
+        /* When the person posted. The screens apply the same 30-day window
+           to this column, so a match that was current when it was made stops
+           being shown as current demand once it ages out. */
+        demand_published_at: signal.published_at ?? null,
       });
       if (insertError) {
         insertErrors++;
@@ -512,8 +565,8 @@ Deno.serve(async (req: Request) => {
         continue;
       }
       created++;
-      best = Math.max(best, scored.score);
-      buckets[scored.score >= 80 ? '80-100' : scored.score >= 50 ? '50-79' : '20-49']++;
+      best = Math.max(best, finalScore);
+      buckets[finalScore >= 80 ? '80-100' : finalScore >= 50 ? '50-79' : '20-49']++;
     }
 
     await db.from('properties').update({ matchability_score: best || null }).eq('id', property.id);
@@ -532,6 +585,9 @@ Deno.serve(async (req: Request) => {
       rejectedTransaction,
       rejectedPropertyType,
       rejectedDistrict,
+      rejectedCity,
+      rejectedBudget,
+      rejectedBedrooms,
       rejectedSelfSourced,
       alreadyMatched,
       /*
@@ -542,7 +598,11 @@ Deno.serve(async (req: Request) => {
        * the second is a market.
        */
       rejectedStaleEvidence,
+      /* Refused because the PERSON posted outside the active-demand window. */
       rejectedAncientDemand,
+      activeDemandWindowDays: activeDemandPolicy.activeMaxDays,
+      /* Whether cross-currency budgets could be compared on this run. */
+      fxSource: nbg ? 'NBG' : 'NONE',
       queuedRevalidations,
       staleReasons,
       insertErrors,
@@ -563,7 +623,10 @@ function isSupplyAd(text: string) {
   return !demandWords && (supplyPhrases.some((rule) => rule.test(value)) || listingSignals);
 }
 
-function score(property: any, facts: any, profile: any) {
+function score(
+  property: any, facts: any, profile: any,
+  gates: { city: GateVerdict; budget: GateVerdict; bedrooms: GateVerdict },
+) {
   let total = 0;
   const reasons: string[] = [];
   const mismatches: string[] = [];
@@ -579,10 +642,9 @@ function score(property: any, facts: any, profile: any) {
   if (!propertyCountry || !intentCountry) total += 5;
   else if (propertyCountry === intentCountry || aliasCountry(propertyCountry) === aliasCountry(intentCountry)) { total += 10; reasons.push('Country matches'); }
   else mismatches.push('Country differs');
-  const city = similar(facts?.city, profile.city);
-  if (city === 1) { total += 10; reasons.push('City matches'); }
-  else if (city === 0.5) { total += 5; reasons.push('Location broadly compatible'); }
-  else if (profile.city && facts?.city) mismatches.push('City differs');
+  /* The city is judged by the place table, across scripts. A CONFLICT was
+     already rejected by the caller, so only AGREE and UNKNOWN reach here. */
+  if (gates.city === 'AGREE') { total += 10; reasons.push('City matches'); }
   else total += 4;
   const districts = [profile.district, ...(profile.neighborhoods || [])].filter(Boolean);
   const districtMatches = districts.some((value: string) => similar(facts?.district || facts?.neighborhood, value) >= 0.5);
@@ -597,13 +659,13 @@ function score(property: any, facts: any, profile: any) {
   if (!typeKnown) total += 8;
   else if (typeMatches) { total += 20; reasons.push('Property type matches'); }
   else mismatches.push('Property type differs');
-  const price = Number(facts?.total_price || 0);
-  const budgetMin = Number(profile.budget_min || 0);
-  const budgetMax = Number(profile.budget_max || 0);
-  if (!price || (!budgetMin && !budgetMax)) total += 7;
-  else if ((!budgetMin || price >= budgetMin * 0.8) && (!budgetMax || price <= budgetMax * 1.2)) { total += 15; reasons.push('Budget compatible'); }
-  else if (budgetMax && price <= budgetMax * 1.5) { total += 7; reasons.push('Budget near range'); }
-  else mismatches.push('Budget differs');
+  /* Currency-aware (structured-gates.ts). UNKNOWN covers "no budget", "no
+     price" and "no configured rate between the two currencies" alike. */
+  if (gates.budget === 'AGREE') { total += 15; reasons.push('Budget compatible'); }
+  else if (gates.budget === 'NEAR') { total += 7; reasons.push('Budget near range'); }
+  else total += 7;
+  if (gates.bedrooms === 'AGREE') { total += 5; reasons.push('Bedrooms fit'); }
+  else if (gates.bedrooms === 'NEAR') { total += 2; mismatches.push('Bedrooms slightly different'); }
   const area = Number(facts?.area || 0);
   const areaMin = Number(profile.area_min || 0);
   const areaMax = Number(profile.area_max || 0);

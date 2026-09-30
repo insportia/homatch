@@ -788,14 +788,17 @@ test('the same budget buys more execution on a better member rate', () => {
   assert.equal(premium.toFixed(2), '38.19');
 });
 
-test('a partial budget is spent on a scoped search, not a truncated one', () => {
+test('a campaign budget is a ceiling the customer chose, never silently shrunk', () => {
+  /* The campaign no longer runs the retired paid-provider consumer, so there is
+     no provider spend to scope. What replaced the scoped-search rule: the
+     customer's campaign budget (at least 50 Credits) is reserved in full as a
+     CEILING, a balance short of it is refused rather than quietly shrinking
+     the search, and settlement charges actual usage and releases the rest. */
   const campaign = fn('match-campaign/index.ts');
-  // Fewer, highest-yield jobs rather than a broad sweep that runs out of money.
+  assert.match(campaign, /budgetIsCeiling: true/);
+  assert.match(campaign, /requireFullBudget: true/);
+  assert.match(campaign, /BELOW_CAMPAIGN_MINIMUM/);
   assert.match(campaign, /grant\.partialBudget/);
-  assert.match(campaign, /Math\.floor\(configuredMax \/ 2\)/);
-  // The ceiling travels with the request.
-  assert.match(campaign, /maxSpendUsd/);
-  assert.match(campaign, /qualityTier: grant\.qualityTier/);
 });
 
 test('the worker stops before the provider call that would overrun the budget', () => {
@@ -815,11 +818,13 @@ test('the worker stops before the provider call that would overrun the budget', 
 test('a paid search includes its results: no second charge to reveal them', () => {
   // The stamp.
   assert.match(BUDGET, /ADD COLUMN IF NOT EXISTS unlock_included_reservation_id uuid REFERENCES public\.usage_reservations\(id\)/);
-  const campaign = fn('match-campaign/index.ts');
+  /* The stamp moved into the one campaign ending (campaignRun.ts), which both
+     the synchronous path and the discovery driver use. */
+  const campaign = fn('_shared/campaignRun.ts');
   assert.match(campaign, /unlock_included_reservation_id: grant\.reservationId/);
   // Scoped to this job's own results, so it cannot retroactively free somebody's
   // older, separately-priced matches.
-  assert.match(campaign, /\.gte\('created_at', startedAt\)/);
+  assert.match(campaign, /\.gte\('created_at', job\.started_at\)/);
   assert.match(campaign, /\.is\('unlock_included_reservation_id', null\)/);
 
   // The price.
@@ -868,7 +873,9 @@ test('settlement is still actual usage, and still clamped, under a partial budge
 test('the gateway never authorises more than the customer has, or than they agreed', () => {
   const gw = read(path.join(FN, '_shared', 'billing.ts'));
   // min of (what they asked for, what they have, what the estimate needs).
-  assert.match(gw, /round2\(Math\.min\(opts\.authorizedMaxCredits, balance, estMax\)\)/);
+  /* A budget-is-ceiling caller drops only the ESTIMATE cap; the balance and
+     what the customer agreed to are in the min either way. */
+  assert.match(gw, /round2\(Math\.min\(opts\.authorizedMaxCredits, balance, opts\.budgetIsCeiling \? Number\.POSITIVE_INFINITY : estMax\)\)/);
   assert.match(gw, /round2\(Math\.min\(estMax, balance\)\)/);
   // A caller that must not silently shrink can say so.
   assert.match(gw, /opts\.requireFullBudget/);

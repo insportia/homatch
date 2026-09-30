@@ -86,16 +86,20 @@ const v2 = readFileSync(new URL('../../../supabase/functions/run-matching-v2/ind
 const v1 = readFileSync(new URL('../../../supabase/functions/run-matching/index.ts', import.meta.url), 'utf8');
 const supply = readFileSync(new URL('../../../supabase/functions/supply-matching/index.ts', import.meta.url), 'utf8');
 
-test('run-matching-v2 gates and decays on the PUBLICATION date', () => {
-  assert.match(v2, /judgeDemandFreshness\(signal\.published_at/);
+/* The matchers moved from this module's 365/180-day decay to the canonical
+   30-day active-demand GATE (discovery/freshness-policy.ts, setting
+   discovery_freshness_policy). What must hold is unchanged: the policy is fed
+   the PUBLICATION date, never ingestion time, and it decides eligibility. */
+test('run-matching-v2 gates and weights on the PUBLICATION date', () => {
+  assert.match(v2, /judgeActiveDemand\(signal\.published_at/);
   assert.match(v2, /if \(!demandFreshness\.eligible\)/);
   assert.match(v2, /match_score: finalScore/);
-  assert.ok(!/judgeDemandFreshness\([^)]*created_at/.test(v2), 'ingestion time must never feed the policy');
+  assert.ok(!/judgeActiveDemand\([^)]*created_at/.test(v2), 'ingestion time must never feed the policy');
 });
 
 test('run-matching v1 no longer invents a 72-hour age for undated posts', () => {
   assert.ok(!/:\s*72;/.test(v1), 'the fabricated default is gone');
-  assert.match(v1, /judgeDemandFreshness/);
+  assert.match(v1, /judgeActiveDemand\(signal\?\.published_at/);
   assert.match(v1, /Number\.POSITIVE_INFINITY/);
   assert.match(v1, /Number\.isFinite\(recencyHours\) \? formatRecency\(recencyHours\) : null/);
 });

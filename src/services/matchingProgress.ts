@@ -1,4 +1,5 @@
 import { supabase } from '@/db/supabase';
+import { isHistoryMatch, selectWithDemandDate } from '@/matching/currentDemand';
 import { MATCHING_JOB_TERMINAL_STATUSES } from '@/components/matching/MatchingJobProgress';
 
 // Live matching-run status, sourced from the real `matching_jobs` table (the
@@ -57,13 +58,13 @@ export async function getLatestProgressForProperties(propertyIds: string[]): Pro
 
 export async function getUserMatchSummary(propertyIds: string[]) {
   if (!propertyIds.length) return { total: 0, newCount: 0, bestScore: 0, topPropertyId: null as string | null };
-  const { data, error } = await supabase
-    .from('matches')
-    .select('id,status,match_score,property_id')
-    .in('property_id', propertyIds)
-    .neq('status', 'REJECTED');
-  if (error) console.error('[matchingProgress] failed to load match summary:', error);
-  const rows = Array.isArray(data) ? data : [];
+  /* Current demand only (matching/currentDemand.ts): history is not a new
+     opportunity on the dashboard any more than it is on the Matches page. */
+  const all = await selectWithDemandDate<{ id: string; status: string; match_score: number; property_id: string; demand_published_at?: string | null }>(
+    (columns) => supabase.from('matches').select(columns).in('property_id', propertyIds).neq('status', 'REJECTED'),
+    'id,status,match_score,property_id',
+  );
+  const rows = all.filter((row) => !isHistoryMatch(row));
 
   // The dashboard's "View Matches" action is aggregate (matches across every
   // property the user owns), but the only real matches route is per-property

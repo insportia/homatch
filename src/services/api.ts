@@ -3,6 +3,7 @@
 
 import type { DiscoveryHeadroom } from '@/campaign/searchExpansion';
 import { supabase } from '@/db/supabase';
+import { isHistoryMatch, selectWithDemandDate } from '@/matching/currentDemand';
 import { keysetOrFilter, type FeedCursor } from '@/lib/notifications/feed';
 import { signalNotificationsChanged } from '@/lib/notifications/signals';
 import type { PropertyContact } from '@/lib/propertyContact';
@@ -546,11 +547,31 @@ export async function getMatches(
   cursor?: string,
   limit = 20
 ): Promise<Match[]> {
+  const page = await getMatchesPage(MATCH_COLUMNS_WITH_DEMAND_DATE, propertyId, cursor, limit);
+  if (!page.error) return page.rows;
+  /* Until migration 20260930130000 adds matches.demand_published_at the
+     column does not exist, and asking for it fails the whole read. The
+     frontend and the migration deploy separately, so the list falls back to
+     the columns that exist rather than showing an empty page. */
+  if (/demand_published_at/.test(page.error)) {
+    return (await getMatchesPage(MATCH_COLUMNS, propertyId, cursor, limit)).rows;
+  }
+  return [];
+}
+
+const MATCH_COLUMNS =
+  'id, property_id, campaign_id, signal_id, intent_profile_id, match_score, intent_confidence, signal_strength, match_reasons, mismatch_reasons, unlock_price_credits, unlock_included_reservation_id, unlock_included_allowance_id, evidence_freshness, status, preview_platform, preview_language, preview_city, preview_budget_min, preview_budget_max, preview_currency, preview_bedrooms, preview_excerpt, preview_recency, created_at, updated_at';
+const MATCH_COLUMNS_WITH_DEMAND_DATE = `${MATCH_COLUMNS}, demand_published_at`;
+
+async function getMatchesPage(
+  columns: string,
+  propertyId: string,
+  cursor: string | undefined,
+  limit: number,
+): Promise<{ rows: Match[]; error: string | null }> {
   let q = supabase
     .from('matches')
-    .select(
-      'id, property_id, campaign_id, signal_id, intent_profile_id, match_score, intent_confidence, signal_strength, match_reasons, mismatch_reasons, unlock_price_credits, unlock_included_reservation_id, unlock_included_allowance_id, evidence_freshness, status, preview_platform, preview_language, preview_city, preview_budget_min, preview_budget_max, preview_currency, preview_bedrooms, preview_excerpt, preview_recency, created_at, updated_at'
-    )
+    .select(columns)
     .eq('property_id', propertyId)
     .neq('status', 'REJECTED')
     .order('match_score', { ascending: false })
@@ -573,8 +594,9 @@ export async function getMatches(
     }
   }
 
-  const { data } = await q;
-  return Array.isArray(data) ? data : [];
+  const { data, error } = await q;
+  if (error) return { rows: [], error: error.message };
+  return { rows: Array.isArray(data) ? (data as unknown as Match[]) : [], error: null };
 }
 
 // Cursor string for the LAST row of a getMatches() page, to pass as the `cursor`
@@ -591,13 +613,14 @@ export async function getMatchCounts(propertyId: string): Promise<{
   newCount: number;
   strongCount: number;
 }> {
-  const { data } = await supabase
-    .from('matches')
-    .select('id, status, signal_strength')
-    .eq('property_id', propertyId)
-    .neq('status', 'REJECTED');
-
-  const rows = Array.isArray(data) ? data : [];
+  /* Current demand only: a match whose person posted outside the active
+     window is history (matching/currentDemand.ts) and is not counted as a
+     new or strong opportunity. */
+  const all = await selectWithDemandDate<{ id: string; status: string; signal_strength: string; demand_published_at?: string | null }>(
+    (columns) => supabase.from('matches').select(columns).eq('property_id', propertyId).neq('status', 'REJECTED'),
+    'id, status, signal_strength',
+  );
+  const rows = all.filter((row) => !isHistoryMatch(row));
   return {
     total: rows.length,
     newCount: rows.filter(r => r.status === 'NEW').length,
@@ -653,9 +676,9 @@ export async function unlockMatch(matchId: string): Promise<{
 
   if (error) {
     const msg = await error?.context?.text?.().catch(() => error.message);
-    let parsed: { error?: string; error_code?: string } = {};
+    let parsed: { error?: string; error_code?: string; reasonCode?: string } = {};
     try { parsed = JSON.parse(msg); } catch { /* ignore */ }
-    return { success: false, error: parsed.error ?? msg, errorCode: parsed.error_code };
+    return { success: false, error: parsed.error ?? msg, errorCode: parsed.error_code ?? parsed.reasonCode };
   }
 
   return data as { success: boolean; unlock?: MatchUnlock; newBalance?: number };
@@ -764,6 +787,26 @@ export interface CampaignSearchLanguageChoice {
   selected: string[];
 }
 
+/** A campaign start the server refused, with its machine-readable reason. */
+export class CampaignStartError extends Error {
+  constructor(message: string, readonly reasonCode: string | null, readonly minBudgetCredits: number | null) {
+    super(message);
+    this.name = 'CampaignStartError';
+  }
+}
+
+/** The customer-facing sentence for a refused campaign start, or null. */
+export function campaignStartErrorKey(error: unknown): { key: string; vars: Record<string, string> } | null {
+  if (!(error instanceof CampaignStartError) || !error.reasonCode) return null;
+  if (error.reasonCode === 'BELOW_CAMPAIGN_MINIMUM') {
+    return { key: 'campaign_err_below_min', vars: { min: String(error.minBudgetCredits ?? 50) } };
+  }
+  if (['INSUFFICIENT_CREDITS', 'BELOW_MIN_VIABLE_BUDGET'].includes(error.reasonCode)) {
+    return { key: 'campaign_err_balance', vars: {} };
+  }
+  return null;
+}
+
 export async function startMatchingCampaign(
   propertyId: string,
   userId: string,
@@ -797,6 +840,27 @@ export async function startMatchingCampaign(
     .select('id, status_v2')
     .eq('property_id', propertyId)
     .maybeSingle();
+  const { data: propertyBefore } = await supabase
+    .from('properties')
+    .select('matching_status')
+    .eq('id', propertyId)
+    .maybeSingle();
+  /*
+   * The campaign is marked ACTIVE before the server has reserved the budget,
+   * so a start the server REFUSES (below the 50-Credit minimum, balance short
+   * of the budget) must put both rows back. Otherwise the screen says the
+   * campaign is running when nothing was reserved and nothing will run.
+   */
+  const revertActivation = async (id: string | null) => {
+    if (id) {
+      await supabase.from('matching_campaigns')
+        .update({ status_v2: existing?.status_v2 ?? 'PAUSED' }).eq('id', id);
+    }
+    if (propertyBefore?.matching_status) {
+      await supabase.from('properties')
+        .update({ matching_status: propertyBefore.matching_status }).eq('id', propertyId);
+    }
+  };
 
   if (existing) {
     // Both writes are checked. Launching a campaign whose status never changed
@@ -857,8 +921,18 @@ export async function startMatchingCampaign(
        */
       ...(searchLanguages ? { searchLanguages } : {}),
     },
-  }).then(({ data, error }) => {
-    if (error) throw new Error(`match-campaign EF error: ${error.message}`);
+  }).then(async ({ data, error }) => {
+    if (error) {
+      /* The refusal's body says WHY (reasonCode) -- below the campaign
+         minimum, balance short of the budget. Carried to the page so it can
+         say so in the reader's language instead of "non-2xx status code". */
+      const body = await (error as { context?: Response }).context?.json?.().catch(() => null);
+      throw new CampaignStartError(
+        String(body?.error ?? error.message),
+        body?.reasonCode ? String(body.reasonCode) : null,
+        body?.minBudgetCredits != null ? Number(body.minBudgetCredits) : null,
+      );
+    }
     if (!data?.jobId) throw new Error('match-campaign returned no jobId');
     return { jobId: String(data.jobId), campaignId };
   }).catch((error: unknown) => {
@@ -881,12 +955,16 @@ export async function startMatchingCampaign(
       await registerFindClientsJob(String(createdJob.id), propertyId);
       return { jobId: String(createdJob.id), campaignId };
     }
-    if (invocationFailure) throw invocationFailure;
+    if (invocationFailure) {
+      await revertActivation(campaignId).catch(() => undefined);
+      throw invocationFailure;
+    }
     await new Promise(resolve => setTimeout(resolve, 500));
   }
 
   const completed = await invocation;
   if (!completed) {
+    await revertActivation(campaignId).catch(() => undefined);
     throw invocationFailure ?? new Error('match-campaign did not create a matching job');
   }
   await registerFindClientsJob(completed.jobId, propertyId);

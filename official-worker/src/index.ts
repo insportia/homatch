@@ -20,6 +20,8 @@ import {
 import { probeRegions } from './speech/SpeechRegionProbe.js';
 import { probeRecognizers } from './speech/SpeechRecognizerProbe.js';
 import { probeLanguageConfigs } from './speech/SpeechLanguageProbe.js';
+import { mountTelegramRoutes } from './telegram/routes.js';
+import { createGramJsDriver } from './telegram/GramJsDriver.js';
 
 const app = express();
 const ALLOWED_ORIGINS = new Set(['https://homatch.live', 'https://www.homatch.live']);
@@ -68,10 +70,17 @@ async function auth(req: any, res: any, next: any) {
   return res.status(401).json({ error: 'unauthorized' });
 }
 
+// Telegram discovery (MTProto). One session, one queue — see telegram/TelegramGateway.ts.
+// Mounted before the routes below; token-only; inert until TELEGRAM_ENABLED.
+const telegram = mountTelegramRoutes(app, { token: TOKEN, driverFactory: createGramJsDriver });
+process.once('SIGTERM', () => { void telegram.shutdown(); });
+
 app.get('/health', (_q: any, r: any) =>
   r.json({
     ok: true,
     service: 'homatch-official-worker',
+    // Presence facts only. Session health is at /health/telegram (token-only).
+    telegram: { configured: telegram.status().configured, enabled: telegram.status().enabled },
     // Deployed is not the same as able. Two Railway services run this image
     // and only one of them holds the Google credential.
     speech: speechHealth(),

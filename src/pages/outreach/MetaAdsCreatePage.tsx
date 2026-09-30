@@ -1,171 +1,192 @@
-// META ADS — the create flow. One page, seven human questions:
-// what → result → who sees it → budget → the ad itself → where → check &
-// launch. No Ads Manager vocabulary anywhere; the strategy engine and the
-// preflight do the technical thinking server-side.
+// META ADS — the campaign builder.
 //
-// PRE-AUTH: a visitor can choose, type and see the process; the moment an
-// action needs identity (saving the draft onward) the auth gate appears
-// and the typed draft survives in localStorage.
+// A customer answers a few business questions; HOMATCH does the technical
+// setup. Nine steps, each reachable at any time, Back and Continue on every
+// one, and nothing is ever lost on the way:
+//
+//   · ONE draft row. The builder resumes the customer's open draft (from the
+//     URL, or their most recent one) instead of inserting a new row on every
+//     visit, and the draft id and current step live in the URL — refresh,
+//     Back, the Facebook login round-trip and the AI panel all return to the
+//     same place.
+//   · Edits show instantly and save in the background (useMetaDraft).
+//   · The server is the source of truth for money (plan_preview) and for
+//     readiness (preflight). Nothing here computes the fee or decides that a
+//     campaign may launch.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import {
+  ArrowLeft, ArrowRight, Building2, FileText, Globe, Home, Loader2, MessageCircle, Plus, Target, ThumbsUp, UserPlus, Users,
+} from 'lucide-react';
+import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { PageHero } from '@/components/customer/surface';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  ImagePlus, Loader2, Trash2, CheckCircle2, XCircle, Sparkles, ShieldCheck, ChevronDown,
-} from 'lucide-react';
-import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { supabase } from '@/db/supabase';
+import { recommendedPlacements, type Placement } from '@/lib/metaAds/payload';
+import type { MetaGoal } from '@/lib/metaAds/strategy';
 import {
-  getMetaStatus, createMetaDraft, updateMetaDraft, getMetaCampaign, listCreatives, addCreative,
-  updateCreative, removeCreative, creativeMediaUrl, planPreview, runPreflight, launchCampaign,
-  listAudiences, trackFunnel, money,
-  type MetaStatus, type MetaCampaignRow, type MetaCreativeRow, type MetaAudienceRow,
+  getMetaStatus, createMetaDraft, getMetaCampaign, latestOpenDraft, listCreatives, planPreview, runPreflight,
+  launchCampaign, listAudiences, trackFunnel, money, EDITABLE_STATUSES,
+  type MetaStatus, type MetaCampaignRow, type MetaCreativeRow, type MetaAudienceRow, type PreflightResult, type PlanPreview,
 } from '@/services/metaAds';
+import { useMetaDraft } from '@/components/metaAds/builder/useMetaDraft';
+import { ALL_GOALS, STEPS, selectedAsset, stepGap, type StepKey } from '@/components/metaAds/builder/steps';
+import { ChoiceCard, SaveIndicator, StepShell, Stepper } from '@/components/metaAds/builder/ui';
+import { AccountPanel } from '@/components/metaAds/builder/AccountPanel';
+import { DestinationStep } from '@/components/metaAds/builder/DestinationStep';
+import { BudgetStep, FinancialSummary } from '@/components/metaAds/builder/BudgetStep';
+import { CreativeStep } from '@/components/metaAds/builder/CreativeStep';
+import { AdPreview, type PreviewField } from '@/components/metaAds/builder/AdPreview';
+import { PlacementsStep, ReviewStep } from '@/components/metaAds/builder/ReviewStep';
 
 const DRAFT_KEY = 'homatch_meta_ads_prelogin_draft';
 
-type Goal = 'LEADS_ON_META' | 'LEADS_ON_WEBSITE' | 'SITE_REGISTRATIONS' | 'ENGAGEMENT' | 'PROMOTE';
-const GOALS: Goal[] = ['LEADS_ON_META', 'LEADS_ON_WEBSITE', 'SITE_REGISTRATIONS', 'ENGAGEMENT', 'PROMOTE'];
-
 interface LocalDraft {
-  goal: Goal;
-  propertyId: string | null;
-  offer: { isProperty: boolean; dealKind: string; title: string; price?: string; location?: string } | null;
-  dailyUsd: string;
-  days: string;
-  destinationUrl: string;
+  goal: MetaGoal;
+  offer: { isProperty: boolean; dealKind: string; title: string } | null;
 }
 
+const GOAL_ICON: Record<MetaGoal, React.ReactNode> = {
+  LEADS_ON_META: <FileText className="h-4 w-4" />, MESSAGES: <MessageCircle className="h-4 w-4" />,
+  LEADS_ON_WEBSITE: <Globe className="h-4 w-4" />, SITE_REGISTRATIONS: <UserPlus className="h-4 w-4" />,
+  PROMOTE: <Target className="h-4 w-4" />, ENGAGEMENT: <ThumbsUp className="h-4 w-4" />,
+};
+
+const DEAL_FROM_TRANSACTION: Record<string, string> = { SALE: 'SALE', RENT: 'RENT_LONG', DAILY_RENT: 'RENT_SHORT', LEASE: 'RENT_LONG' };
+
 export default function MetaAdsCreatePage() {
-  const { homatchUser, session } = useAuth();
+  const { homatchUser } = useAuth();
   const { t } = useLanguage();
   const navigate = useNavigate();
-  const [params] = useSearchParams();
-
-  const [status, setStatus] = useState<MetaStatus | null>(null);
-  const [campaign, setCampaign] = useState<MetaCampaignRow | null>(null);
-  const [creatives, setCreatives] = useState<MetaCreativeRow[]>([]);
-  const [audiences, setAudiences] = useState<MetaAudienceRow[]>([]);
-  const [properties, setProperties] = useState<Array<{ id: string; title: string | null }>>([]);
-  const [local, setLocal] = useState<LocalDraft>(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem(DRAFT_KEY) ?? 'null');
-      if (saved) return saved;
-    } catch { /* fresh */ }
-    return {
-      goal: 'LEADS_ON_META', propertyId: params.get('property'),
-      offer: null, dailyUsd: '5', days: '7', destinationUrl: '',
-    };
-  });
-  const [totals, setTotals] = useState<{ mediaCents: number; feeCents: number; totalCents: number; feePercent: number } | null>(null);
-  const [issues, setIssues] = useState<Array<{ code: string }>>([]);
-  const [preflight, setPreflight] = useState<{ status: string; checks: Array<{ key: string; ok: boolean; detail?: string }> } | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const launchKey = useRef<string>(crypto.randomUUID());
-
+  const [params, setParams] = useSearchParams();
   const signedIn = !!homatchUser;
 
-  /* Boot: status + user properties + audiences; adopt/attach the draft. */
+  const [status, setStatus] = useState<MetaStatus | null>(null);
+  const [initial, setInitial] = useState<MetaCampaignRow | null>(null);
+  const [creatives, setCreatives] = useState<MetaCreativeRow[]>([]);
+  const [audiences, setAudiences] = useState<MetaAudienceRow[]>([]);
+  const [properties, setProperties] = useState<Array<{ id: string; title: string | null; homatch_id: number | null; transaction_type: string | null }>>([]);
+  const [bootError, setBootError] = useState(false);
+  const [preview, setPreview] = useState<PlanPreview | null>(null);
+  const [pricing, setPricing] = useState(false);
+  const [preflight, setPreflight] = useState<PreflightResult | null>(null);
+  const [running, setRunning] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [focusCreative, setFocusCreative] = useState<string | null>(null);
+  const launchKey = useRef<string>(crypto.randomUUID());
+  const { campaign, setCampaign, patch, flush, saveState } = useMetaDraft(initial);
+
+  const step: StepKey = (STEPS as readonly string[]).includes(params.get('step') ?? '') ? params.get('step') as StepKey : 'account';
+  const go = useCallback(async (next: StepKey) => {
+    await flush();
+    setParams((prev) => { prev.set('step', next); return prev; }, { replace: false });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [flush, setParams]);
+
+  const reloadStatus = useCallback(async () => { setStatus(await getMetaStatus()); }, []);
+
+  /* ── BOOT: everything independent in parallel, one draft, no duplicates ── */
   useEffect(() => {
     if (!signedIn) return;
+    let live = true;
     (async () => {
-      const [st, auds] = await Promise.all([getMetaStatus().catch(() => null), listAudiences().catch(() => [])]);
-      setStatus(st); setAudiences(auds);
-      const { data: props } = await supabase.from('properties')
-        .select('id,title').eq('user_id', homatchUser!.id).is('deleted_at', null).limit(50);
-      setProperties((props ?? []) as never);
-      // Continue an existing draft, or create one from the local pre-auth
-      // draft the visitor built before signing in.
-      const existingId = params.get('draft');
-      if (existingId) {
-        const c = await getMetaCampaign(existingId);
-        if (c) { setCampaign(c); setCreatives(await listCreatives(c.id)); return; }
+      const draftId = params.get('draft');
+      const propertyParam = params.get('property');
+      let local: LocalDraft | null = null;
+      try { local = JSON.parse(localStorage.getItem(DRAFT_KEY) ?? 'null'); } catch { local = null; }
+
+      const resolveDraft = async (): Promise<MetaCampaignRow> => {
+        if (draftId) {
+          const c = await getMetaCampaign(draftId);
+          if (c) return c;
+        }
+        if (!local && !propertyParam) {
+          const open = await latestOpenDraft();
+          if (open) return open;
+        }
+        if (propertyParam) {
+          const open = await latestOpenDraft();
+          if (open && open.property_id === propertyParam) return open;
+        }
+        const created = await createMetaDraft(homatchUser!.id, {
+          goal: local?.goal ?? 'LEADS_ON_META',
+          property_id: propertyParam,
+          offer: local?.offer ?? (propertyParam ? { isProperty: true, dealKind: 'SALE' } : null),
+          daily_budget_cents: 500, duration_days: 7,
+          destination: (local?.goal ?? 'LEADS_ON_META') === 'LEADS_ON_META' ? { type: 'META_FORM' } : { type: 'WEBSITE' },
+          audience_id: params.get('audience'),
+        } as never);
+        try { localStorage.removeItem(DRAFT_KEY); } catch { /* fine */ }
+        void trackFunnel('meta_ads_draft_created');
+        return created;
+      };
+
+      const [st, auds, props, draft] = await Promise.all([
+        getMetaStatus().catch(() => null),
+        listAudiences().catch(() => []),
+        supabase.from('properties').select('id,title,homatch_id,transaction_type')
+          .eq('user_id', homatchUser!.id).eq('is_deleted', false).is('archived_at', null)
+          .order('updated_at', { ascending: false }).limit(50)
+          .then(({ data }) => data ?? []),
+        resolveDraft(),
+      ]);
+      if (!live) return;
+      if (!EDITABLE_STATUSES.includes(draft.status)) {
+        navigate(`/outreach/meta/campaigns/${draft.id}`, { replace: true });
+        return;
       }
-      const draft = await createMetaDraft(homatchUser!.id, {
-        goal: local.goal,
-        property_id: local.propertyId,
-        offer: local.offer ?? (local.propertyId ? { isProperty: true, dealKind: 'SALE' } : null),
-        daily_budget_cents: Math.round(parseFloat(local.dailyUsd || '5') * 100),
-        duration_days: Math.max(2, parseInt(local.days || '7', 10)),
-        destination: local.goal === 'LEADS_ON_META'
-          ? { type: 'META_FORM' }
-          : { type: 'WEBSITE', url: local.destinationUrl || undefined },
-        audience_id: params.get('audience'),
-      } as never);
-      localStorage.removeItem(DRAFT_KEY);
-      setCampaign(draft);
-      setCreatives([]);
-      trackFunnel('meta_ads_draft_created');
-    })().catch(() => toast.error(t('mads_load_failed')));
+      setStatus(st); setAudiences(auds); setProperties(props as never);
+      setInitial(draft);
+      if (draft.preflight?.status) setPreflight(draft.preflight);
+      setParams((prev) => {
+        prev.set('draft', draft.id);
+        prev.delete('property'); prev.delete('audience');
+        if (!prev.get('step')) prev.set('step', st?.connection?.health === 'CONNECTED' ? 'offer' : 'account');
+        return prev;
+      }, { replace: true });
+      setCreatives(await listCreatives(draft.id));
+    })().catch(() => { if (live) setBootError(true); });
+    return () => { live = false; };
   }, [signedIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* Pre-auth: keep the local draft alive across the login redirect. */
-  useEffect(() => {
-    if (!signedIn) {
-      try { localStorage.setItem(DRAFT_KEY, JSON.stringify(local)); } catch { /* fine */ }
-    }
-  }, [local, signedIn]);
-
-  /* Persist field changes + refresh the honest total. */
-  const sync = useCallback(async (patch: Partial<MetaCampaignRow>) => {
-    if (!campaign) return;
-    await updateMetaDraft(campaign.id, patch).catch(() => toast.error(t('mads_load_failed')));
-    const next = { ...campaign, ...patch } as MetaCampaignRow;
-    setCampaign(next);
-    setPreflight(null); // anything changed → check again before launch
-  }, [campaign, t]);
-
+  /* ── Server-priced totals, refreshed after the money-shaping fields settle ── */
   useEffect(() => {
     if (!campaign) return;
+    setPricing(true);
     const h = setTimeout(async () => {
+      await flush();
       const r = await planPreview(campaign.id).catch(() => null);
-      if (r) { setTotals(r.totals); setIssues(r.issues); }
-    }, 400);
+      if (r) setPreview(r);
+      setPricing(false);
+    }, 700);
     return () => clearTimeout(h);
-  }, [campaign?.daily_budget_cents, campaign?.duration_days, campaign?.goal, creatives.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [campaign?.id, campaign?.daily_budget_cents, campaign?.duration_days, campaign?.goal, campaign?.placements, creatives.length, status?.assets]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* ── PRE-AUTH VIEW ─────────────────────────────────────────────────── */
-  if (!signedIn) {
+  // Any edit invalidates a previous preflight — the server enforces it too.
+  useEffect(() => { if (campaign && !campaign.preflight) setPreflight(null); }, [campaign?.preflight]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const placements: Placement[] = useMemo(() => {
+    if (!campaign) return ['facebook_feed'];
+    if (campaign.placements?.mode === 'CUSTOM') return (campaign.placements.list ?? []) as Placement[];
+    return (preview?.recommendedPlacements as Placement[] | undefined)
+      ?? recommendedPlacements({ hasInstagram: !!selectedAsset(status, 'INSTAGRAM'), hasVideo: creatives.some((c) => c.media[0]?.mime?.startsWith('video')), goal: campaign.goal as MetaGoal });
+  }, [campaign, preview, status, creatives]);
+
+  /* ── PRE-AUTH: a visitor can start; the draft survives the login redirect ── */
+  if (!signedIn) return <PreLogin />;
+
+  if (bootError) {
     return (
       <AppLayout noPadding>
-        <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-4 sm:px-6">
-          <PageHero compact eyebrow="Meta Ads" title={t('mads_create_title')} subtitle={t('mads_create_sub')} />
-          <Section title={t('mads_step_what')}>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <OfferChip active={!!local.offer && !local.offer.isProperty === false && local.propertyId === null && local.offer !== null}
-                label={t('mads_offer_other')} onClick={() => setLocal(v => ({ ...v, propertyId: null, offer: { isProperty: false, dealKind: 'OTHER', title: '' } }))} />
-              <OfferChip active={local.offer?.isProperty !== false && local.offer === null}
-                label={t('mads_offer_property_signin')} onClick={() => setLocal(v => ({ ...v, offer: null }))} />
-            </div>
-            {local.offer && !local.offer.isProperty && (
-              <Input className="mt-2" placeholder={t('mads_offer_title_ph')} value={local.offer.title}
-                onChange={e => setLocal(v => ({ ...v, offer: { ...v.offer!, title: e.target.value } }))} />
-            )}
-          </Section>
-          <Section title={t('mads_step_goal')}>
-            <GoalPicker value={local.goal} onChange={g => setLocal(v => ({ ...v, goal: g }))} enabled={GOALS as string[]} />
-          </Section>
-          <Section title={t('mads_step_budget')}>
-            <BudgetRow dailyUsd={local.dailyUsd} days={local.days}
-              onDaily={d => setLocal(v => ({ ...v, dailyUsd: d }))} onDays={d => setLocal(v => ({ ...v, days: d }))} />
-            <p className="mt-2 text-[13px] text-muted-foreground">{t('mads_minimum_days_note')}</p>
-          </Section>
-          <div className="overflow-hidden rounded-2xl bg-[#0C1119] p-5 text-white shadow-hover">
-            <p className="text-sm leading-relaxed text-white/85">{t('mads_prelogin_note')}</p>
-            <Button className="mt-3 bg-[hsl(38_92%_54%)] font-bold text-[#161309] hover:bg-[hsl(38_92%_60%)]"
-              onClick={() => { navigate(`/login?redirect=${encodeURIComponent('/outreach/meta/create')}`); }}>
-              {t('mads_prelogin_continue')}
-            </Button>
-          </div>
+        <div className="mx-auto w-full max-w-xl px-4 py-10 text-center">
+          <p className="text-sm text-muted-foreground">{t('mads_load_failed')}</p>
+          <Button className="mt-3" onClick={() => window.location.reload()}>{t('madsb_retry')}</Button>
         </div>
       </AppLayout>
     );
@@ -174,429 +195,344 @@ export default function MetaAdsCreatePage() {
   if (!campaign) {
     return (
       <AppLayout noPadding>
-        <div className="mx-auto w-full max-w-3xl space-y-3 px-4 py-6 sm:px-6">
-          <Skeleton className="h-28 rounded-2xl" /><Skeleton className="h-40 rounded-2xl" /><Skeleton className="h-40 rounded-2xl" />
+        <div className="mx-auto grid w-full max-w-[86rem] gap-5 px-4 py-6 sm:px-6 lg:grid-cols-[220px_minmax(0,1fr)_360px] lg:px-8">
+          <Skeleton className="hidden h-80 rounded-2xl lg:block" />
+          <div className="space-y-3"><Skeleton className="h-10 rounded-xl" /><Skeleton className="h-72 rounded-2xl" /></div>
+          <Skeleton className="hidden h-96 rounded-2xl lg:block" />
         </div>
       </AppLayout>
     );
   }
 
-  /* ── SIGNED-IN WIZARD ─────────────────────────────────────────────── */
-  const connected = status?.connection?.status === 'CONNECTED';
-  const pageSel = status?.assets.find(a => a.kind === 'PAGE' && a.selected);
-  const acctSel = status?.assets.find(a => a.kind === 'AD_ACCOUNT' && a.selected);
-  const readyCreatives = creatives.filter(c => c.media.length > 0);
-  const wallet = status?.wallet;
-  const canLaunch = preflight?.status === 'READY' && campaign.status === 'READY';
+  const ctx = { status, campaign, creatives };
+  const gaps = Object.fromEntries(STEPS.map((s) => [s, stepGap(s, ctx)])) as Record<StepKey, string | null>;
+  const idx = STEPS.indexOf(step);
+  const page = selectedAsset(status, 'PAGE');
+  const ig = selectedAsset(status, 'INSTAGRAM');
+  const acct = selectedAsset(status, 'AD_ACCOUNT');
+  const formAsset = (status?.assets ?? []).find((a) => a.kind === 'LEAD_FORM' && a.external_id === campaign.destination?.formId) ?? selectedAsset(status, 'LEAD_FORM');
+  const previewCreative = creatives.find((c) => c.id === focusCreative && c.media.length) ?? creatives.find((c) => c.media.length) ?? null;
+  const canLaunch = preflight?.status === 'READY' && !running;
+  const returnTo = `/outreach/meta/create?draft=${campaign.id}&step=account`;
 
   const doPreflight = async () => {
-    setBusy('preflight');
+    setRunning(true);
     try {
+      await flush();
       const r = await runPreflight(campaign.id);
       setPreflight(r);
-      setCampaign({ ...campaign, status: r.status } as MetaCampaignRow);
+      setCampaign({ ...campaign, status: r.status, preflight: r } as MetaCampaignRow);
       setCreatives(await listCreatives(campaign.id));
-      if (r.status === 'READY') toast.success(t('mads_preflight_ok'));
-      else toast.info(t(r.status === 'MANUAL_REVIEW' ? 'mads_preflight_review' : 'mads_preflight_changes'));
-    } catch { toast.error(t('mads_load_failed')); }
-    finally { setBusy(null); }
+      toast[r.status === 'READY' ? 'success' : 'info'](t(r.status === 'READY' ? 'mads_preflight_ok' : r.status === 'MANUAL_REVIEW' ? 'mads_preflight_review' : 'mads_preflight_changes'));
+    } catch { toast.error(t('mads_load_failed')); } finally { setRunning(false); }
   };
 
   const doLaunch = async () => {
-    setBusy('launch');
+    setRunning(true);
     try {
-      const r = await launchCampaign(campaign.id, launchKey.current);
-      toast.success(t('mads_launched'));
+      await launchCampaign(campaign.id, launchKey.current);
+      toast.success(t('madsb_submitted_to_meta'));
       navigate(`/outreach/meta/campaigns/${campaign.id}`);
     } catch (e: any) {
-      if (e?.code === 'INSUFFICIENT_FUNDS' || String(e.message).includes('INSUFFICIENT_FUNDS')) {
-        toast.error(t('mads_funds_needed'));
-        navigate('/outreach/meta?tab=overview');
-      } else if (String(e.message).startsWith('meta_err')) {
-        toast.error(t(e.message as never));
-      } else toast.error(t('mads_launch_failed'));
-    } finally { setBusy(null); setConfirmOpen(false); }
+      const code = e?.code ?? e?.body?.code;
+      if (code === 'INSUFFICIENT_FUNDS') { toast.error(t('mads_funds_needed')); navigate('/outreach/meta?tab=overview'); }
+      else if (code === 'PREFLIGHT_STALE') { toast.info(t('madsb_preflight_stale')); setPreflight(null); }
+      else if (String(e?.message ?? '').startsWith('meta_err')) toast.error(t(e.message as never));
+      else toast.error(t('mads_launch_failed'));
+    } finally { setRunning(false); setConfirmOpen(false); }
   };
+
+  const onPreviewField = (f: PreviewField) => {
+    const target = previewCreative;
+    if (step !== 'creative') { void go('creative'); }
+    if (target) setTimeout(() => document.getElementById(`madsb-field-${target.id}-${f}`)?.focus(), step === 'creative' ? 0 : 350);
+  };
+
+  const previewPanel = (
+    <AdPreview campaign={campaign} creative={previewCreative} placements={placements}
+      pageName={page?.name ?? null} instagramName={ig?.name ?? null} formName={formAsset?.name ?? null} onField={onPreviewField} />
+  );
 
   return (
     <AppLayout noPadding>
-      <div className="mx-auto w-full max-w-4xl space-y-4 px-4 py-4 pb-[calc(2rem+env(safe-area-inset-bottom))] sm:px-6">
-        <PageHero compact eyebrow="Meta Ads" title={t('mads_create_title')} subtitle={t('mads_create_sub')} />
+      <div className="mx-auto w-full max-w-[86rem] px-4 py-4 pb-[calc(10rem+env(safe-area-inset-bottom))] md:pb-[calc(6rem+env(safe-area-inset-bottom))] sm:px-6 lg:px-8">
+        <PageHero compact eyebrow="Meta Ads" title={t('mads_create_title')} subtitle={t('madsb_create_sub')} />
+        {status?.mode === 'MOCK' && (
+          <div className="mt-3 rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] px-4 py-2.5 text-[13px] text-[hsl(var(--gold-ink))]">{t('mads_mock_banner')}</div>
+        )}
 
-        {/* 1 · WHAT */}
-        <Section title={t('mads_step_what')} done={!!campaign.property_id || !!campaign.offer}>
-          <div className="flex flex-wrap gap-2">
-            {properties.map(p => (
-              <OfferChip key={p.id} active={campaign.property_id === p.id}
-                label={p.title || `#${p.id}`}
-                onClick={() => sync({ property_id: p.id, offer: { isProperty: true, dealKind: 'SALE' } as never })} />
-            ))}
-            <OfferChip active={!campaign.property_id && !!campaign.offer}
-              label={t('mads_offer_other')}
-              onClick={() => sync({ property_id: null, offer: { isProperty: false, dealKind: 'OTHER', title: '' } as never })} />
+        <div className="mt-4 grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)_360px]">
+          <aside className="lg:sticky lg:top-4 lg:self-start">
+            <Stepper steps={STEPS} current={step} gaps={gaps} onGo={(s) => void go(s)} />
+            <div className="mt-3 hidden lg:block"><SaveIndicator state={saveState} /></div>
+          </aside>
+
+          <main className="min-w-0 space-y-4">
+            {step === 'account' && (
+              <StepShell eyebrow={t('madsb_step_account')} title={t('madsb_account_title')} lead={t('madsb_account_lead')}>
+                <AccountPanel status={status} onChanged={reloadStatus} returnTo={returnTo} />
+              </StepShell>
+            )}
+            {step === 'offer' && (
+              <OfferStep campaign={campaign} properties={properties} patch={patch} />
+            )}
+            {step === 'goal' && (
+              <StepShell eyebrow={t('madsb_step_goal')} title={t('madsb_goal_title')} lead={t('madsb_goal_lead')}>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {ALL_GOALS.map((g) => {
+                    const enabled = (status?.settings.goalsEnabled ?? []).includes(g);
+                    return (
+                      <ChoiceCard key={g} active={campaign.goal === g} disabled={!enabled} icon={GOAL_ICON[g]}
+                        title={t(`mads_goal_${g.toLowerCase()}` as never)} body={t(`madsb_goal_${g.toLowerCase()}_d` as never)}
+                        badge={enabled ? undefined : t('madsb_goal_not_enabled')}
+                        onClick={() => patch({
+                          goal: g,
+                          destination: g === 'LEADS_ON_META' ? { type: 'META_FORM', formId: campaign.destination?.formId ?? null }
+                            : g === 'MESSAGES' ? { type: 'MESSAGING', messagingApp: campaign.destination?.messagingApp ?? (page ? 'MESSENGER' : null) }
+                              : g === 'ENGAGEMENT' ? { type: 'ON_POST' }
+                                : { type: 'WEBSITE', url: campaign.destination?.url },
+                        } as never, { immediate: true })} />
+                    );
+                  })}
+                </div>
+              </StepShell>
+            )}
+            {step === 'destination' && (
+              <DestinationStep campaign={campaign} status={status} patch={patch} reloadStatus={reloadStatus} propertyUrl={null} />
+            )}
+            {step === 'audience' && (
+              <StepShell eyebrow={t('madsb_step_audience')} title={t('madsb_audience_title')} lead={t('madsb_audience_lead')}>
+                <div>
+                  <p className="mb-1.5 text-sm font-medium text-foreground">{t('madsb_review_location')}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(status?.settings.countries ?? ['GE']).map((c) => (
+                      <span key={c} className="rounded-full border border-[hsl(var(--gold-border))]/60 bg-[hsl(var(--gold-soft))] px-3 py-1 text-[13px] font-medium">{t(`madsb_country_${c.toLowerCase()}` as never)}</span>
+                    ))}
+                  </div>
+                  <p className="mt-1.5 text-2xs text-muted-foreground">{t('madsb_location_note')}</p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <ChoiceCard active={!campaign.audience_id} icon={<Users className="h-4 w-4" />} title={t('mads_audience_broad')} body={t('madsb_audience_broad_d')}
+                    onClick={() => patch({ audience_id: null }, { immediate: true })} />
+                  {audiences.filter((a) => a.sync_status === 'READY').map((a) => (
+                    <ChoiceCard key={a.id} active={campaign.audience_id === a.id} title={a.name} body={t('madsb_audience_retarget_d')}
+                      onClick={() => patch({ audience_id: a.id }, { immediate: true })} />
+                  ))}
+                </div>
+                {(!!campaign.property_id || (campaign.offer as { isProperty?: boolean } | null)?.isProperty) && (
+                  <p className="rounded-xl border border-border bg-[hsl(var(--secondary))]/50 px-3.5 py-2.5 text-[13px] leading-relaxed text-muted-foreground">{t('madsb_housing_note')}</p>
+                )}
+              </StepShell>
+            )}
+            {step === 'budget' && (
+              <BudgetStep campaign={campaign} status={status} patch={patch} totals={preview?.totals ?? null} pricing={pricing} />
+            )}
+            {step === 'creative' && (
+              <CreativeStep campaign={campaign} creatives={creatives} setCreatives={setCreatives} placements={placements} onFocusCreative={setFocusCreative} />
+            )}
+            {step === 'placements' && (
+              <PlacementsStep campaign={campaign} status={status} creatives={creatives} recommended={(preview?.recommendedPlacements as Placement[] | undefined) ?? placements} patch={patch} />
+            )}
+            {step === 'review' && (
+              <ReviewStep campaign={campaign} status={status} creatives={creatives} totals={preview?.totals ?? null} pricing={pricing}
+                recommended={(preview?.recommendedPlacements as Placement[] | undefined) ?? placements}
+                preflight={preflight} running={running} onPreflight={doPreflight} canLaunch={canLaunch}
+                onLaunch={() => setConfirmOpen(true)} onEdit={(s) => void go(s as StepKey)} />
+            )}
+
+            {/* Preview inline on narrower screens, where there is no side rail. */}
+            {(step === 'creative' || step === 'placements' || step === 'review') && (
+              <div className="rounded-2xl border border-border bg-card p-4 shadow-card xl:hidden">
+                <p className="mb-2 text-sm font-semibold text-foreground">{t('mads_step_preview')}</p>
+                {previewPanel}
+              </div>
+            )}
+          </main>
+
+          <aside className="hidden space-y-4 xl:sticky xl:top-4 xl:block xl:self-start">
+            <div className="rounded-2xl border border-border bg-card p-4 shadow-card">
+              <p className="mb-2 text-sm font-semibold text-foreground">{t('mads_step_preview')}</p>
+              {previewPanel}
+            </div>
+            <FinancialSummary totals={preview?.totals ?? null} pricing={pricing} compact billing={status?.settings.budgetBilling} />
+          </aside>
+        </div>
+      </div>
+
+      {/* Back / Continue — always both, on every step. */}
+      <div data-madsb-nav="" className="fixed inset-x-0 bottom-[calc(3.75rem+env(safe-area-inset-bottom,0px))] z-30 md:bottom-0 lg:start-[18rem] border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="mx-auto flex w-full max-w-[86rem] items-center justify-between gap-3 px-4 py-3 md:pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-6 lg:px-8">
+          <Button variant="outline" onClick={() => void (idx > 0 ? go(STEPS[idx - 1]) : navigate('/outreach/meta'))} className="gap-1.5">
+            <ArrowLeft className="h-4 w-4 rtl:rotate-180" />{t(idx > 0 ? 'madsb_back' : 'madsb_exit')}
+          </Button>
+          <div className="hidden min-w-0 flex-1 text-center text-[13px] text-muted-foreground sm:block">
+            {gaps[step] ? t(gaps[step] as never) : <SaveIndicator state={saveState} />}
           </div>
-          {!campaign.property_id && campaign.offer && (
-            <Input className="mt-2" placeholder={t('mads_offer_title_ph')}
-              defaultValue={(campaign.offer as { title?: string }).title ?? ''}
-              onBlur={e => sync({ offer: { ...(campaign.offer as object), title: e.target.value } as never })} />
-          )}
-        </Section>
-
-        {/* 2 · GOAL */}
-        <Section title={t('mads_step_goal')} done>
-          <GoalPicker value={campaign.goal as Goal}
-            enabled={(status?.settings.goalsEnabled as string[]) ?? GOALS}
-            onChange={g => sync({
-              goal: g,
-              destination: g === 'LEADS_ON_META' ? { type: 'META_FORM' } : { type: 'WEBSITE', url: campaign.destination?.url },
-            } as never)} />
-          {campaign.goal !== 'LEADS_ON_META' && (
-            <Input className="mt-2" dir="ltr" placeholder="https://…"
-              defaultValue={campaign.destination?.url ?? ''}
-              onBlur={e => sync({ destination: { type: 'WEBSITE', url: e.target.value } as never })} />
-          )}
-        </Section>
-
-        {/* 3 · CONNECT */}
-        <Section title={t('mads_step_connect')} done={connected && !!pageSel && !!acctSel}>
-          <div className="space-y-1.5 text-sm">
-            <CheckLine ok={connected} label={t('mads_check_facebook')} />
-            <CheckLine ok={!!pageSel} label={t('mads_check_page')} />
-            <CheckLine ok={!!acctSel} label={t('mads_check_account')} />
-          </div>
-          {(!connected || !pageSel || !acctSel) && (
-            <Button variant="outline" size="sm" className="mt-2"
-              onClick={() => navigate('/outreach/meta?tab=connections')}>
-              {t('mads_go_connections')}
+          {idx < STEPS.length - 1 ? (
+            <Button onClick={() => void go(STEPS[idx + 1])} className="gap-1.5">
+              {t('madsb_continue')}<ArrowRight className="h-4 w-4 rtl:rotate-180" />
             </Button>
+          ) : (
+            <Button onClick={() => setConfirmOpen(true)} disabled={!canLaunch}
+              className="bg-[hsl(var(--gold))] font-bold text-[#161309] hover:bg-[hsl(var(--gold-hover))]">{t('mads_launch')}</Button>
           )}
-        </Section>
+        </div>
+      </div>
 
-        {/* 4 · AUDIENCE (optional retargeting) */}
-        <Section title={t('mads_step_audience')} done>
-          <div className="flex flex-wrap gap-2">
-            <OfferChip active={!campaign.audience_id} label={t('mads_audience_broad')}
-              onClick={() => sync({ audience_id: null })} />
-            {audiences.filter(a => a.sync_status === 'READY').map(a => (
-              <OfferChip key={a.id} active={campaign.audience_id === a.id} label={a.name}
-                onClick={() => sync({ audience_id: a.id })} />
+      {/* THE MONEY MOMENT — everything that will be submitted, spelled out. */}
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="max-h-[90vh] max-w-[calc(100%-2rem)] overflow-y-auto md:max-w-md">
+          <DialogHeader><DialogTitle>{t('mads_confirm_title')}</DialogTitle></DialogHeader>
+          <dl className="space-y-1.5 text-sm">
+            {[
+              [t('mads_conn_page'), page?.name ?? '—'],
+              [t('mads_conn_ad_account'), acct?.name ?? '—'],
+              [t('madsb_review_objective'), t(`mads_goal_${campaign.goal.toLowerCase()}` as never)],
+              [t('madsb_review_destination'), campaign.destination?.url ?? formAsset?.name ?? campaign.destination?.messagingApp ?? '—'],
+              [t('madsb_review_audience'), campaign.audience_id ? t('madsb_audience_retarget') : t('mads_audience_broad')],
+              [t('madsb_step_placements'), placements.map((p) => t(`mads_pl_${p}` as never)).join(', ')],
+              [t('mads_budget_daily'), money(Number(campaign.daily_budget_cents ?? 0))],
+              [t('mads_budget_days'), String(campaign.duration_days ?? 0)],
+            ].map(([k, v]) => (
+              <div key={k} className="flex justify-between gap-3"><dt className="text-muted-foreground">{k}</dt><dd className="min-w-0 truncate text-end font-medium" dir="auto">{v}</dd></div>
             ))}
-          </div>
-          <p className="mt-2 text-[13px] text-muted-foreground">{t('mads_audience_note')}</p>
-        </Section>
-
-        {/* 5 · BUDGET */}
-        <Section title={t('mads_step_budget')} done={!!campaign.daily_budget_cents}>
-          <BudgetRow
-            dailyUsd={String((campaign.daily_budget_cents ?? 500) / 100)}
-            days={String(campaign.duration_days ?? 7)}
-            onDaily={d => { const c = Math.round(parseFloat(d || '0') * 100); if (c > 0) sync({ daily_budget_cents: c }); }}
-            onDays={d => { const n = parseInt(d || '0', 10); if (n > 0) sync({ duration_days: n }); }}
-          />
-          <p className="mt-2 text-[13px] text-muted-foreground">{t('mads_minimum_days_note')}</p>
-          {totals && (
-            <dl className="mt-3 max-w-xs space-y-1 rounded-xl border border-border bg-[hsl(var(--secondary))] px-4 py-3 text-sm tabular-nums">
-              <div className="flex justify-between"><dt>{t('mads_total_media')}</dt><dd dir="ltr">{money(totals.mediaCents)}</dd></div>
-              <div className="flex justify-between"><dt>{t('mads_total_fee', { pct: String(totals.feePercent) })}</dt><dd dir="ltr">{money(totals.feeCents)}</dd></div>
-              <div className="flex justify-between border-t border-border pt-1 font-bold"><dt>{t('mads_total_total')}</dt><dd dir="ltr">{money(totals.totalCents)}</dd></div>
+          </dl>
+          {preview?.totals && (
+            <dl className="space-y-1 rounded-xl border border-border p-3 text-sm tabular-nums">
+              <div className="flex justify-between"><dt>{t('madsb_money_media')}</dt><dd dir="ltr">{money(preview.totals.mediaCents)}</dd></div>
+              <div className="flex justify-between"><dt>{t('madsb_money_fee', { pct: String(preview.totals.feePercent) })}</dt><dd dir="ltr">{money(preview.totals.feeCents)}</dd></div>
+              <div className="flex justify-between border-t border-border pt-1 text-base font-bold"><dt>{t('madsb_money_total_max')}</dt><dd dir="ltr">{money(preview.totals.totalCents)}</dd></div>
+              {/* What HOMATCH itself takes from the balance now. With the customer's own
+                  ad account that is the fee alone -- Meta bills the budget directly. */}
+              <div className="flex justify-between"><dt>{t('madsb_charged_now')}</dt><dd dir="ltr">{money(status?.settings.budgetBilling === 'HOMATCH_WALLET' ? preview.totals.totalCents : preview.totals.feeCents)}</dd></div>
+              <div className="flex justify-between text-muted-foreground"><dt>{t('mads_confirm_balance')}</dt><dd dir="ltr">{money(status?.wallet?.available_cents ?? 0)}</dd></div>
             </dl>
           )}
-        </Section>
-
-        {/* 6 · CREATIVES */}
-        <Section title={t('mads_step_creative')} done={readyCreatives.length > 0}>
-          <CreativeStudio campaign={campaign} creatives={creatives}
-            onChanged={async () => setCreatives(await listCreatives(campaign.id))}
-            aiEnabled={status?.settings.aiAssistEnabled ?? true} />
-        </Section>
-
-        {/* 7 · PLACEMENTS */}
-        <Section title={t('mads_step_placements')} done>
-          <div className="flex gap-2">
-            {(['RECOMMENDED', 'CUSTOM'] as const).map(m => (
-              <OfferChip key={m} active={(campaign.placements?.mode ?? 'RECOMMENDED') === m}
-                label={t(m === 'RECOMMENDED' ? 'mads_placements_reco' : 'mads_placements_custom')}
-                onClick={() => sync({ placements: m === 'RECOMMENDED' ? { mode: 'RECOMMENDED' } : { mode: 'CUSTOM', list: ['facebook_feed', 'instagram_feed'] } as never })} />
-            ))}
-          </div>
-          {campaign.placements?.mode === 'CUSTOM' && (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {['facebook_feed', 'instagram_feed', 'facebook_stories', 'instagram_stories', 'instagram_reels'].map(p => {
-                const list = campaign.placements?.list ?? [];
-                const on = list.includes(p);
-                return (
-                  <button key={p} type="button"
-                    onClick={() => sync({ placements: { mode: 'CUSTOM', list: on ? list.filter(x => x !== p) : [...list, p] } as never })}
-                    className={cn('rounded-full border px-3 py-1 text-[13px]',
-                      on ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] font-semibold text-[hsl(var(--gold-ink))]' : 'border-border text-muted-foreground')}>
-                    {t(`mads_pl_${p}` as never)}
-                  </button>
-                );
-              })}
-              <p className="w-full text-[13px] text-muted-foreground">{t('mads_placements_tradeoff')}</p>
-            </div>
-          )}
-        </Section>
-
-        {/* 8 · PREVIEW */}
-        <Section title={t('mads_step_preview')} done={readyCreatives.length > 0}>
-          {readyCreatives.length === 0
-            ? <p className="text-sm text-muted-foreground">{t('mads_preview_none')}</p>
-            : <AdPreview creative={readyCreatives[0]} pageName={pageSel?.name ?? 'Page'} />}
-        </Section>
-
-        {/* 9 · FINAL CHECK + LAUNCH */}
-        <div className="overflow-hidden rounded-2xl bg-[#0C1119] p-5 text-white shadow-hover">
-          <p className="flex items-center gap-2 text-[13px] font-semibold uppercase tracking-[0.14em] text-[hsl(38_92%_60%)]">
-            <ShieldCheck className="h-4 w-4" />{t('mads_step_check')}
-          </p>
-          {preflight && (
-            <ul className="mt-3 space-y-1 text-sm">
-              {preflight.checks.map(ch => (
-                <li key={ch.key} className="flex items-center gap-2">
-                  {ch.ok ? <CheckCircle2 className="h-4 w-4 text-[hsl(152_60%_55%)]" /> : <XCircle className="h-4 w-4 text-[hsl(0_70%_62%)]" />}
-                  <span className={ch.ok ? 'text-white/85' : 'text-white'}>{t(`mads_check_${ch.key}` as never)}</span>
-                  {ch.detail && !ch.ok && <span className="text-2xs text-white/60">{ch.detail}</span>}
-                </li>
-              ))}
-            </ul>
-          )}
-          <p className="mt-3 text-[13px] leading-relaxed text-white/70">{t('mads_meta_review_note')}</p>
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <Button onClick={doPreflight} disabled={busy !== null}
-              className="border border-white/40 bg-white text-[#0C1119] hover:bg-white/90">
-              {busy === 'preflight' ? <Loader2 className="h-4 w-4 animate-spin" /> : t('mads_run_preflight')}
+          <p className="text-[13px] leading-relaxed text-muted-foreground">{t(status?.mode === 'MOCK' ? 'madsb_confirm_mock'
+            : status?.settings.budgetBilling === 'HOMATCH_WALLET' ? 'madsb_confirm_note' : 'madsb_confirm_note_customer')}</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)}>{t('general_cancel')}</Button>
+            <Button onClick={doLaunch} disabled={running} className="bg-[hsl(var(--gold))] font-bold text-[#161309] hover:bg-[hsl(var(--gold-hover))]">
+              {running ? <Loader2 className="h-4 w-4 animate-spin" /> : t('mads_confirm_go')}
             </Button>
-            <Button onClick={() => setConfirmOpen(true)} disabled={!canLaunch || busy !== null}
-              className="bg-[hsl(38_92%_54%)] font-bold text-[#161309] hover:bg-[hsl(38_92%_60%)] disabled:bg-white/[0.14] disabled:text-white/50 disabled:opacity-100">
-              {t('mads_launch')}
-            </Button>
-            {totals && <span className="text-sm text-white/80 tabular-nums" dir="ltr">{money(totals.totalCents)}</span>}
-          </div>
-        </div>
-
-        {/* EXPLICIT SPEND CONFIRMATION — the money moment, spelled out. */}
-        <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-          <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-sm">
-            <DialogHeader><DialogTitle>{t('mads_confirm_title')}</DialogTitle></DialogHeader>
-            {totals && (
-              <dl className="space-y-1 text-sm tabular-nums">
-                <div className="flex justify-between"><dt>{t('mads_total_media')}</dt><dd dir="ltr">{money(totals.mediaCents)}</dd></div>
-                <div className="flex justify-between"><dt>{t('mads_total_fee', { pct: String(totals.feePercent) })}</dt><dd dir="ltr">{money(totals.feeCents)}</dd></div>
-                <div className="flex justify-between border-t border-border pt-1 text-base font-bold"><dt>{t('mads_total_total')}</dt><dd dir="ltr">{money(totals.totalCents)}</dd></div>
-                <div className="flex justify-between text-muted-foreground"><dt>{t('mads_confirm_balance')}</dt><dd dir="ltr">{money(wallet?.available_cents ?? 0)}</dd></div>
-              </dl>
-            )}
-            <p className="text-[13px] leading-relaxed text-muted-foreground">{t('mads_confirm_note')}</p>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setConfirmOpen(false)}>{t('general_cancel')}</Button>
-              <Button onClick={doLaunch} disabled={busy !== null}
-                className="bg-[hsl(var(--gold))] font-bold text-[#161309] hover:bg-[hsl(var(--gold-hover))]">
-                {busy === 'launch' ? <Loader2 className="h-4 w-4 animate-spin" /> : t('mads_confirm_go')}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }
 
-/* ── PIECES ───────────────────────────────────────────────────────────── */
+/* ── WHAT ARE YOU ADVERTISING ────────────────────────────────────────── */
 
-function Section({ title, done, children }: { title: string; done?: boolean; children: React.ReactNode }) {
-  return (
-    <section className="rounded-2xl border border-border bg-card p-4 shadow-card sm:p-5">
-      <h2 className="mb-3 flex items-center gap-2 font-display text-base font-semibold text-foreground">
-        {done !== undefined && (done
-          ? <CheckCircle2 className="h-4 w-4 text-[hsl(152_54%_30%)]" />
-          : <ChevronDown className="h-4 w-4 text-muted-foreground" />)}
-        {title}
-      </h2>
-      {children}
-    </section>
-  );
-}
-
-function OfferChip({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
-  return (
-    <button type="button" onClick={onClick}
-      className={cn('max-w-full truncate rounded-full border px-3.5 py-1.5 text-sm transition-colors',
-        active ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] font-semibold text-foreground'
-          : 'border-border bg-card text-muted-foreground hover:border-[hsl(var(--gold-border))]')}>
-      {label}
-    </button>
-  );
-}
-
-function GoalPicker({ value, onChange, enabled }: { value: Goal; onChange: (g: Goal) => void; enabled: string[] }) {
-  const { t } = useLanguage();
-  return (
-    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-      {GOALS.filter(g => enabled.includes(g)).map(g => (
-        <button key={g} type="button" onClick={() => onChange(g)}
-          className={cn('rounded-xl border px-3.5 py-3 text-start transition-colors',
-            value === g ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))]' : 'border-border bg-card hover:border-[hsl(var(--gold-border))]')}>
-          <p className={cn('text-sm font-semibold', value === g ? 'text-foreground' : 'text-foreground/90')}>
-            {t(`mads_goal_${g.toLowerCase()}` as never)}
-          </p>
-          <p className="mt-0.5 text-[13px] leading-snug text-muted-foreground">{t(`mads_goal_${g.toLowerCase()}_d` as never)}</p>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function BudgetRow({ dailyUsd, days, onDaily, onDays }: {
-  dailyUsd: string; days: string; onDaily: (v: string) => void; onDays: (v: string) => void;
+function OfferStep({ campaign, properties, patch }: {
+  campaign: MetaCampaignRow;
+  properties: Array<{ id: string; title: string | null; homatch_id: number | null; transaction_type: string | null }>;
+  patch: (p: Partial<MetaCampaignRow>, o?: { immediate?: boolean }) => void;
 }) {
-  const { t } = useLanguage();
-  return (
-    <div className="flex flex-wrap items-end gap-3">
-      <label className="block">
-        <span className="mb-1 block text-2xs font-medium text-muted-foreground">{t('mads_budget_daily')}</span>
-        <div className="flex items-center gap-1.5">
-          <span className="font-bold">$</span>
-          <Input inputMode="decimal" dir="ltr" className="w-24" defaultValue={dailyUsd} onBlur={e => onDaily(e.target.value)} />
-        </div>
-      </label>
-      <label className="block">
-        <span className="mb-1 block text-2xs font-medium text-muted-foreground">{t('mads_budget_days')}</span>
-        <Input inputMode="numeric" dir="ltr" className="w-20" defaultValue={days} onBlur={e => onDays(e.target.value)} />
-      </label>
-    </div>
-  );
-}
-
-function CheckLine({ ok, label }: { ok: boolean; label: string }) {
-  return (
-    <p className="flex items-center gap-2">
-      {ok ? <CheckCircle2 className="h-4 w-4 text-[hsl(152_54%_30%)]" /> : <XCircle className="h-4 w-4 text-muted-foreground" />}
-      <span className={ok ? 'text-foreground' : 'text-muted-foreground'}>{label}</span>
-    </p>
-  );
-}
-
-/* THE CREATIVE STUDIO — real media, editable copy, honest safety states. */
-function CreativeStudio({ campaign, creatives, onChanged, aiEnabled }: {
-  campaign: MetaCampaignRow; creatives: MetaCreativeRow[]; onChanged: () => void; aiEnabled: boolean;
-}) {
-  const { homatchUser } = useAuth();
   const { t } = useLanguage();
   const navigate = useNavigate();
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false);
-
-  const upload = async (file: File | null) => {
-    if (!file || !homatchUser) return;
-    if (file.size > 50 * 1024 * 1024) { toast.error(t('mads_media_too_large')); return; }
-    setBusy(true);
-    try {
-      await addCreative(homatchUser.id, campaign.id, file, { headline: '', primaryText: '' });
-      onChanged();
-    } catch { toast.error(t('mads_upload_failed')); }
-    finally { setBusy(false); if (fileRef.current) fileRef.current.value = ''; }
-  };
+  const offer = campaign.offer as { isProperty?: boolean; dealKind?: string; title?: string } | null;
+  const otherActive = !campaign.property_id && !!offer;
+  const [title, setTitle] = useState(offer?.title ?? '');
+  useEffect(() => { setTitle((campaign.offer as { title?: string } | null)?.title ?? ''); }, [campaign.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,video/mp4" className="hidden"
-          onChange={e => upload(e.target.files?.[0] ?? null)} />
-        <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()} disabled={busy} className="gap-1.5">
-          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}
-          {t('mads_add_media')}
-        </Button>
-        {aiEnabled && (
-          <Button variant="outline" size="sm" className="gap-1.5"
-            onClick={() => navigate('/ai', { state: { prompt: t('mads_ai_prompt', { title: campaign.name || campaign.property_id || '' }) } })}>
-            <Sparkles className="h-3.5 w-3.5 text-[hsl(var(--gold-ink))]" />{t('mads_ai_assist')}
-          </Button>
-        )}
-        <p className="w-full text-[13px] text-muted-foreground">{t('mads_creative_hint')}</p>
-      </div>
-      {creatives.map(cr => <CreativeCard key={cr.id} cr={cr} onChanged={onChanged} />)}
-    </div>
-  );
-}
-
-function CreativeCard({ cr, onChanged }: { cr: MetaCreativeRow; onChanged: () => void }) {
-  const { t } = useLanguage();
-  const [url, setUrl] = useState<string | null>(null);
-  useEffect(() => {
-    const p = cr.media?.[0]?.path;
-    if (p) creativeMediaUrl(p).then(setUrl).catch(() => {});
-  }, [cr.media]);
-  return (
-    <div className="rounded-2xl border border-border bg-card p-3.5 shadow-card">
-      <div className="flex gap-3">
-        {url
-          ? (cr.media[0]?.mime?.startsWith('video')
-            ? <video src={url} className="h-20 w-28 shrink-0 rounded-lg object-cover" muted />
-            : <img src={url} alt="" className="h-20 w-28 shrink-0 rounded-lg object-cover" />)
-          : <Skeleton className="h-20 w-28 shrink-0 rounded-lg" />}
-        <div className="min-w-0 flex-1 space-y-1.5">
-          <Input placeholder={t('mads_headline_ph')} defaultValue={cr.headline}
-            onBlur={e => updateCreative(cr.id, { headline: e.target.value }).then(onChanged)} maxLength={80} />
-          <Textarea placeholder={t('mads_text_ph')} defaultValue={cr.primary_text} rows={2}
-            onBlur={e => updateCreative(cr.id, { primary_text: e.target.value }).then(onChanged)} maxLength={500} />
-        </div>
-        <div className="flex shrink-0 flex-col items-end justify-between">
-          <span className={cn('rounded-full border px-2 py-0.5 text-[13px] font-medium',
-            cr.safety_status === 'READY' ? 'border-[hsl(152_40%_40%)]/30 bg-[hsl(152_54%_28%)]/10 text-[hsl(152_54%_26%)]'
-              : cr.safety_status === 'PENDING' ? 'border-border bg-[hsl(var(--secondary))] text-muted-foreground'
-                : 'border-destructive/30 bg-destructive/10 text-destructive')}>
-            {t(`mads_safety_${cr.safety_status.toLowerCase()}` as never)}
-          </span>
-          <button type="button" aria-label={t('live_chat_delete')}
-            onClick={() => removeCreative(cr.id).then(onChanged)}
-            className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-[hsl(var(--secondary))] hover:text-destructive">
-            <Trash2 className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* PREVIEW — clearly an approximation, never claimed to be Meta's exact
- * final rendering. */
-function AdPreview({ creative, pageName }: { creative: MetaCreativeRow; pageName: string }) {
-  const { t } = useLanguage();
-  const [url, setUrl] = useState<string | null>(null);
-  useEffect(() => {
-    const p = creative.media?.[0]?.path;
-    if (p) creativeMediaUrl(p).then(setUrl).catch(() => {});
-  }, [creative.media]);
-  return (
-    <div>
-      <p className="mb-2 inline-flex rounded-full border border-[hsl(var(--gold-border))]/60 bg-[hsl(var(--gold-soft))] px-2 py-0.5 text-[13px] font-semibold uppercase tracking-wide text-[hsl(var(--gold-ink))]">
-        {t('mads_preview_badge')}
-      </p>
-      <div className="max-w-sm overflow-hidden rounded-xl border border-border bg-white shadow-card" dir="ltr">
-        <div className="flex items-center gap-2 px-3 py-2">
-          <span className="grid h-8 w-8 place-items-center rounded-full bg-[#0C1119] text-[13px] font-bold text-[hsl(38_92%_60%)]">
-            {pageName.slice(0, 1).toUpperCase()}
-          </span>
-          <div>
-            <p className="text-[13px] font-semibold text-[#16181d]">{pageName}</p>
-            <p className="text-2xs text-[#5b6472]">{t('mads_sponsored')}</p>
+    <StepShell eyebrow={t('madsb_step_offer')} title={t('mads_step_what')} lead={t('madsb_offer_lead')}>
+      {properties.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-sm font-medium text-foreground">{t('madsb_offer_your_properties')}</p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {properties.map((p) => {
+              // meta_campaigns.property_id is the permanent six-digit HOMATCH id,
+              // the same one AI routing passes in ?property=.
+              const ref = p.homatch_id ? String(p.homatch_id) : p.id;
+              const active = campaign.property_id === ref;
+              return (
+                <ChoiceCard key={p.id} active={active} icon={<Home className="h-4 w-4" />}
+                  title={p.title || `#${p.homatch_id ?? ''}`} body={p.homatch_id ? `ID ${p.homatch_id}` : undefined}
+                  // Clicking the selected property again clears the choice.
+                  onClick={() => patch(active
+                    ? { property_id: null, offer: null }
+                    : { property_id: ref, offer: { isProperty: true, dealKind: DEAL_FROM_TRANSACTION[String(p.transaction_type ?? '').toUpperCase()] ?? 'SALE' } } as never,
+                  { immediate: true })} />
+              );
+            })}
           </div>
         </div>
-        {creative.primary_text && <p className="px-3 pb-2 text-sm text-[#16181d]">{creative.primary_text}</p>}
-        {url
-          ? (creative.media[0]?.mime?.startsWith('video')
-            ? <video src={url} className="aspect-[4/3] w-full object-cover" muted controls />
-            : <img src={url} alt="" className="aspect-[4/3] w-full object-cover" />)
-          : <Skeleton className="aspect-[4/3] w-full" />}
-        <div className="flex items-center justify-between gap-2 bg-[#f0f2f5] px-3 py-2">
-          <p className="min-w-0 truncate text-sm font-semibold text-[#16181d]">{creative.headline || '—'}</p>
-          <span className="shrink-0 rounded-md bg-[#e4e6eb] px-3 py-1.5 text-[13px] font-semibold text-[#16181d]">
-            {t('mads_preview_cta')}
-          </span>
+      )}
+      {properties.length === 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-[hsl(var(--secondary))]/40 px-3.5 py-2.5 text-[13px] text-muted-foreground">
+          {t('madsb_offer_no_properties')}
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => navigate('/property/add')}><Plus className="h-3.5 w-3.5" />{t('madsb_offer_add_property')}</Button>
+        </div>
+      )}
+      <ChoiceCard active={otherActive} icon={<Building2 className="h-4 w-4" />} title={t('mads_offer_other')} body={t('madsb_offer_other_d')}
+        onClick={() => patch(otherActive ? { offer: null } : { property_id: null, offer: { isProperty: false, dealKind: 'OTHER', title } } as never, { immediate: true })} />
+      {otherActive && (
+        <div className="space-y-3 rounded-xl border border-border p-3.5">
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-foreground">{t('madsb_offer_title_label')}</span>
+            <Input placeholder={t('mads_offer_title_ph')} value={title} maxLength={120}
+              onChange={(e) => { setTitle(e.target.value); patch({ offer: { ...(offer ?? { isProperty: false, dealKind: 'OTHER' }), title: e.target.value } } as never); }} />
+          </label>
+          <div>
+            <p className="mb-1.5 text-sm font-medium text-foreground">{t('madsb_offer_kind')}</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <ChoiceCard active={offer?.isProperty === true} title={t('madsb_offer_kind_property')} body={t('madsb_offer_kind_property_d')}
+                onClick={() => patch({ offer: { ...(offer ?? {}), title, isProperty: true, dealKind: 'SALE' } } as never, { immediate: true })} />
+              <ChoiceCard active={offer?.isProperty === false} title={t('madsb_offer_kind_other')} body={t('madsb_offer_kind_other_d')}
+                onClick={() => patch({ offer: { ...(offer ?? {}), title, isProperty: false, dealKind: 'OTHER' } } as never, { immediate: true })} />
+            </div>
+          </div>
+        </div>
+      )}
+    </StepShell>
+  );
+}
+
+/* ── BEFORE SIGN-IN ──────────────────────────────────────────────────── */
+
+function PreLogin() {
+  const { t } = useLanguage();
+  const navigate = useNavigate();
+  const [local, setLocal] = useState<LocalDraft>(() => {
+    try { const saved = JSON.parse(localStorage.getItem(DRAFT_KEY) ?? 'null'); if (saved?.goal) return saved; } catch { /* fresh */ }
+    return { goal: 'LEADS_ON_META', offer: null };
+  });
+  useEffect(() => { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(local)); } catch { /* fine */ } }, [local]);
+  const other = local.offer?.isProperty === false;
+  return (
+    <AppLayout noPadding>
+      <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-4 sm:px-6">
+        <PageHero compact eyebrow="Meta Ads" title={t('mads_create_title')} subtitle={t('madsb_create_sub')} />
+        <StepShell title={t('mads_step_what')}>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <ChoiceCard active={!other} icon={<Home className="h-4 w-4" />} title={t('mads_offer_property_signin')} onClick={() => setLocal((v) => ({ ...v, offer: null }))} />
+            <ChoiceCard active={other} icon={<Building2 className="h-4 w-4" />} title={t('mads_offer_other')}
+              onClick={() => setLocal((v) => ({ ...v, offer: other ? null : { isProperty: false, dealKind: 'OTHER', title: v.offer?.title ?? '' } }))} />
+          </div>
+          {other && (
+            <Input placeholder={t('mads_offer_title_ph')} value={local.offer?.title ?? ''}
+              onChange={(e) => setLocal((v) => ({ ...v, offer: { ...(v.offer ?? { isProperty: false, dealKind: 'OTHER' }), title: e.target.value } }))} />
+          )}
+        </StepShell>
+        <StepShell title={t('mads_step_goal')}>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {(['LEADS_ON_META', 'MESSAGES', 'LEADS_ON_WEBSITE', 'PROMOTE'] as MetaGoal[]).map((g) => (
+              <ChoiceCard key={g} active={local.goal === g} icon={GOAL_ICON[g]} title={t(`mads_goal_${g.toLowerCase()}` as never)}
+                body={t(`madsb_goal_${g.toLowerCase()}_d` as never)} onClick={() => setLocal((v) => ({ ...v, goal: g }))} />
+            ))}
+          </div>
+        </StepShell>
+        <div className="overflow-hidden rounded-2xl bg-[#0C1119] p-5 text-white shadow-hover">
+          <p className="text-sm leading-relaxed text-white/85">{t('madsb_prelogin_value')}</p>
+          <p className="mt-2 text-2xs leading-relaxed text-white/60">{t('madsb_experience_note')}</p>
+          <Button className="mt-3 bg-[hsl(38_92%_54%)] font-bold text-[#161309] hover:bg-[hsl(38_92%_60%)]"
+            onClick={() => navigate(`/login?redirect=${encodeURIComponent('/outreach/meta/create')}`)}>
+            {t('mads_prelogin_continue')}
+          </Button>
         </div>
       </div>
-      <p className="mt-2 max-w-sm text-[13px] leading-relaxed text-muted-foreground">{t('mads_preview_note')}</p>
-    </div>
+    </AppLayout>
   );
 }

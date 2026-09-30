@@ -76,3 +76,9 @@ Things that have already bitten a session once. Read before they bite twice.
   20260929131644). `supabase db push` would therefore see already-applied
   migrations as pending: do not run the workflow_dispatch migrate job without
   first aligning the ledger.
+
+## meta-oauth reads "deduplicated / already-current" in multi-function push deploys
+Runs #845 and #848 both left meta-oauth STALE (version unchanged, index.ts mismatched) while the
+other owed functions in the same run moved and proved. A single-function dispatch
+(`redeploy=meta-oauth`, runs #846/#849) proved it exact both times. The artifact proof caught it;
+until the cause is known, redeploy meta-oauth on its own when the proof flags it.

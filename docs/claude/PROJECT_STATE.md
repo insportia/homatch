@@ -244,3 +244,14 @@ writing; apply after the Meta and Discovery migrations, via MCP
 - Deploys: push runs fail on Workstream A's `design-studio-ai` (402 function cap). Workstream B
   functions ship by `workflow_dispatch` with `redeploy=<list>`; no cap workaround exists in
   this repo and Design Studio is not touched from Workstream B.
+
+## Phase 1 release (2026-09-30 10:21 UTC) — main 924776b (PR #14)
+- Vercel production READY on 924776b (dpl_AKtYPXtuJRXwxuTjB6DkdetGAKYk); live bundle inspected:
+  new /brokers (evidence links, no navy hero, no distinction block), current-demand counters,
+  TEST_MODE_TOKEN copy, six-locale strings. refs/deployed/frontend advanced by run #848.
+- Edge: community-sync v16 + meta-ads-api v12 PROVEN_EXACT (#848); meta-oauth v11 PROVEN_EXACT
+  (#849, single-function dispatch); meta-webhooks unchanged since its #845 proof.
+- Meta: REAL, secrets present, tokenKeyCheck valid/roundTrip true; old test connection now
+  ERROR/TEST_MODE_TOKEN. Ready for the owner's first real Connect Meta.
+- Property 244486: 14 current / 0 new / 9 strong (STRONG+VERY_STRONG+EXCEPTIONAL) — one rule
+  in header, cards, Matches, Insights.

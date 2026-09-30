@@ -12954,6 +12954,16 @@ const en = {
   mm_a_fin_adjusted: 'Recorded. Balance {{before}} → {{after}}.',
   mm_a_fin_insufficient: 'Not recorded: the debit would take the balance below zero.',
   mm_a_fin_adjust_where: 'Balance adjustments are made per customer under Fees & finance.',
+
+  /* ── META ADS MASTER — WORKSPACE ── */
+  mm_w_bal_zero_empty: 'No top-up is required for the HOMATCH service balance.',
+  mm_w_bal_zero_fee: 'HOMATCH service fee: 0%',
+  mm_w_bal_zero_card: 'Your HOMATCH service fee is 0%. Meta charges the advertising budget directly to your connected ad account.',
+  mm_w_bal_zero_dialog: 'Your HOMATCH service fee is 0%, so no HOMATCH service-balance top-up is required.',
+  mm_w_bal_std_empty: 'Your balance is empty. Add funds only to cover the HOMATCH service fee.',
+  mm_w_bal_std_fee: 'HOMATCH service fee: {{pct}}%',
+  mm_w_bal_std_card: 'This balance is only for the HOMATCH service fee; Meta ad spend is not taken from it. Example: with a $100 ad budget, the {{pct}}% HOMATCH service fee is ${{fee}}.',
+  mm_w_bal_std_dialog: 'Add only the HOMATCH service-fee amount. Example: for a $100 ad budget, a {{pct}}% service fee is ${{fee}}. Meta charges the $100 ad budget directly to your connected ad account. Unused funds remain in your HOMATCH balance for future campaigns and cannot be withdrawn as cash.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -25822,6 +25832,16 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mm_a_fin_adjusted: 'ჩაიწერა. ბალანსი {{before}} → {{after}}.',
   mm_a_fin_insufficient: 'არ ჩაიწერა: ჩამოწერა ბალანსს ნულს ქვემოთ ჩაიყვანდა.',
   mm_a_fin_adjust_where: 'ბალანსის კორექტირება ხდება თითოეული მომხმარებლისთვის განყოფილებაში „საკომისიო და ფინანსები“.',
+
+  /* ── META ADS MASTER — WORKSPACE ── */
+  mm_w_bal_zero_empty: 'HOMATCH-ის მომსახურების ბალანსზე თანხის დამატება არ გჭირდებათ.',
+  mm_w_bal_zero_fee: 'HOMATCH-ის მომსახურების საკომისიო: 0%',
+  mm_w_bal_zero_card: 'თქვენთვის HOMATCH-ის მომსახურების საკომისიო 0%-ია. Meta-ს სარეკლამო ბიუჯეტს Meta პირდაპირ თქვენს დაკავშირებულ სარეკლამო ანგარიშს ჩამოაჭრის.',
+  mm_w_bal_zero_dialog: 'თქვენთვის HOMATCH-ის მომსახურების საკომისიო 0%-ია, ამიტომ ამ ბალანსის შევსება Meta Ads-ის გასაშვებად საჭირო არ არის.',
+  mm_w_bal_std_empty: 'ბალანსი ჯერ არ შეგივსიათ. თანხა დაგჭირდებათ მხოლოდ HOMATCH-ის მომსახურების საკომისიოს გადასახდელად.',
+  mm_w_bal_std_fee: 'HOMATCH-ის მომსახურების საკომისიო: {{pct}}%',
+  mm_w_bal_std_card: 'ეს ბალანსი გამოიყენება მხოლოდ HOMATCH-ის მომსახურების საკომისიოსთვის. Meta-ს სარეკლამო ბიუჯეტი აქედან არ იხარჯება. მაგალითად, თუ სარეკლამო ბიუჯეტია $100, HOMATCH-ის {{pct}}% მომსახურების საკომისიო არის ${{fee}}.',
+  mm_w_bal_std_dialog: 'შეავსეთ მხოლოდ HOMATCH-ის მომსახურების საკომისიოს ბალანსი. მაგალითად, $100 სარეკლამო ბიუჯეტზე {{pct}}% საკომისიო არის ${{fee}}. Meta-ს $100 სარეკლამო ბიუჯეტს Meta პირდაპირ თქვენს დაკავშირებულ სარეკლამო ანგარიშს ჩამოაჭრის. გამოუყენებელი თანხა დარჩება HOMATCH-ის ბალანსზე მომავალი კამპანიებისთვის და ნაღდ ფულად ვერ გაიტანთ.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -38681,6 +38701,16 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mm_a_fin_adjusted: 'Записано. Баланс {{before}} → {{after}}.',
   mm_a_fin_insufficient: 'Не записано: списание увело бы баланс ниже нуля.',
   mm_a_fin_adjust_where: 'Корректировки баланса выполняются для клиента в разделе «Комиссии и финансы».',
+
+  /* ── META ADS MASTER — WORKSPACE ── */
+  mm_w_bal_zero_empty: 'Пополнять баланс HOMATCH не требуется.',
+  mm_w_bal_zero_fee: 'Комиссия HOMATCH: 0%',
+  mm_w_bal_zero_card: 'Ваша комиссия HOMATCH — 0%. Рекламный бюджет Meta списывает напрямую с подключённого рекламного аккаунта.',
+  mm_w_bal_zero_dialog: 'Ваша комиссия HOMATCH — 0%, поэтому пополнять этот баланс для Meta Ads не требуется.',
+  mm_w_bal_std_empty: 'Баланс пуст. Пополните его только для оплаты комиссии HOMATCH.',
+  mm_w_bal_std_fee: 'Комиссия HOMATCH: {{pct}}%',
+  mm_w_bal_std_card: 'Этот баланс используется только для комиссии HOMATCH; рекламный бюджет Meta отсюда не списывается. Пример: при бюджете $100 комиссия HOMATCH {{pct}}% составляет ${{fee}}.',
+  mm_w_bal_std_dialog: 'Пополните только сумму комиссии HOMATCH. Пример: при рекламном бюджете $100 комиссия {{pct}}% составляет ${{fee}}. Meta списывает рекламные $100 напрямую с подключённого рекламного аккаунта. Неиспользованные средства остаются на балансе HOMATCH для будущих кампаний и не выводятся наличными.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -51538,6 +51568,16 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mm_a_fin_adjusted: 'Kaydedildi. Bakiye {{before}} → {{after}}.',
   mm_a_fin_insufficient: 'Kaydedilmedi: borç bakiyeyi sıfırın altına düşürürdü.',
   mm_a_fin_adjust_where: 'Bakiye düzeltmeleri müşteri bazında Ücretler ve finans bölümünde yapılır.',
+
+  /* ── META ADS MASTER — WORKSPACE ── */
+  mm_w_bal_zero_empty: 'HOMATCH hizmet bakiyesine para eklemeniz gerekmez.',
+  mm_w_bal_zero_fee: 'HOMATCH hizmet bedeli: %0',
+  mm_w_bal_zero_card: 'HOMATCH hizmet bedeliniz %0. Meta reklam bütçesini doğrudan bağlı reklam hesabınızdan tahsil eder.',
+  mm_w_bal_zero_dialog: 'HOMATCH hizmet bedeliniz %0 olduğundan bu bakiyeyi Meta Ads için doldurmanız gerekmez.',
+  mm_w_bal_std_empty: 'Bakiyeniz boş. Yalnızca HOMATCH hizmet bedelini karşılamak için para ekleyin.',
+  mm_w_bal_std_fee: 'HOMATCH hizmet bedeli: %{{pct}}',
+  mm_w_bal_std_card: 'Bu bakiye yalnızca HOMATCH hizmet bedeli içindir; Meta reklam harcaması buradan alınmaz. Örnek: $100 reklam bütçesinde %{{pct}} HOMATCH hizmet bedeli ${{fee}} olur.',
+  mm_w_bal_std_dialog: 'Yalnızca HOMATCH hizmet bedeli tutarını ekleyin. Örnek: $100 reklam bütçesinde %{{pct}} hizmet bedeli ${{fee}} olur. Meta $100 reklam bütçesini doğrudan bağlı reklam hesabınızdan tahsil eder. Kullanılmayan tutar gelecekteki kampanyalar için HOMATCH bakiyenizde kalır ve nakit çekilemez.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -64395,6 +64435,16 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mm_a_fin_adjusted: 'تم التسجيل. الرصيد {{before}} ← {{after}}.',
   mm_a_fin_insufficient: 'لم يُسجَّل: الخصم سيجعل الرصيد أقل من صفر.',
   mm_a_fin_adjust_where: 'تتم تسويات الرصيد لكل عميل ضمن الرسوم والمالية.',
+
+  /* ── META ADS MASTER — WORKSPACE ── */
+  mm_w_bal_zero_empty: 'لا تحتاج إلى شحن رصيد خدمة HOMATCH.',
+  mm_w_bal_zero_fee: 'رسوم خدمة HOMATCH: 0%',
+  mm_w_bal_zero_card: 'رسوم خدمة HOMATCH لديك 0%. تخصم Meta ميزانية الإعلان مباشرةً من حسابك الإعلاني المرتبط.',
+  mm_w_bal_zero_dialog: 'رسوم خدمة HOMATCH لديك 0%، لذلك لا يلزم شحن هذا الرصيد لإعلانات Meta.',
+  mm_w_bal_std_empty: 'رصيدك فارغ. أضف أموالاً فقط لتغطية رسوم خدمة HOMATCH.',
+  mm_w_bal_std_fee: 'رسوم خدمة HOMATCH: {{pct}}%',
+  mm_w_bal_std_card: 'هذا الرصيد مخصص فقط لرسوم خدمة HOMATCH؛ ولا تُخصم منه ميزانية إعلانات Meta. مثال: عند ميزانية إعلانية قدرها $100، تكون رسوم HOMATCH بنسبة {{pct}}% هي ${{fee}}.',
+  mm_w_bal_std_dialog: 'أضف فقط مبلغ رسوم خدمة HOMATCH. مثال: عند ميزانية إعلانية قدرها $100، تكون الرسوم بنسبة {{pct}}% هي ${{fee}}. تخصم Meta ميزانية الإعلان البالغة $100 مباشرةً من حسابك الإعلاني المرتبط. يبقى المبلغ غير المستخدم في رصيد HOMATCH للحملات المستقبلية ولا يمكن سحبه نقدًا.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -77252,6 +77302,16 @@ const he: Partial<Record<TranslationKey, string>> = {
   mm_a_fin_adjusted: 'נרשם. יתרה {{before}} ← {{after}}.',
   mm_a_fin_insufficient: 'לא נרשם: החיוב היה מוריד את היתרה מתחת לאפס.',
   mm_a_fin_adjust_where: 'התאמות יתרה נעשות לכל לקוח תחת עמלות וכספים.',
+
+  /* ── META ADS MASTER — WORKSPACE ── */
+  mm_w_bal_zero_empty: 'אין צורך להטעין את יתרת השירות של HOMATCH.',
+  mm_w_bal_zero_fee: 'דמי השירות של HOMATCH: 0%',
+  mm_w_bal_zero_card: 'דמי השירות של HOMATCH עבורכם הם 0%. Meta מחייבת את תקציב הפרסום ישירות מחשבון המודעות המחובר.',
+  mm_w_bal_zero_dialog: 'דמי השירות של HOMATCH עבורכם הם 0%, ולכן אין צורך להטעין את היתרה עבור Meta Ads.',
+  mm_w_bal_std_empty: 'היתרה ריקה. הוסיפו כסף רק לכיסוי דמי השירות של HOMATCH.',
+  mm_w_bal_std_fee: 'דמי השירות של HOMATCH: {{pct}}%',
+  mm_w_bal_std_card: 'היתרה הזו משמשת רק לדמי השירות של HOMATCH; תקציב הפרסום של Meta אינו נגבה ממנה. לדוגמה: בתקציב פרסום של $100, דמי שירות של {{pct}}% הם ${{fee}}.',
+  mm_w_bal_std_dialog: 'הוסיפו רק את סכום דמי השירות של HOMATCH. לדוגמה: בתקציב פרסום של $100, דמי שירות של {{pct}}% הם ${{fee}}. Meta מחייבת את תקציב הפרסום בסך $100 ישירות מחשבון המודעות המחובר. סכום שלא נוצל נשאר ביתרת HOMATCH לקמפיינים עתידיים ואינו ניתן למשיכה במזומן.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

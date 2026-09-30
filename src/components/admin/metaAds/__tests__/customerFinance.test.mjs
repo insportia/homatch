@@ -49,3 +49,18 @@ test('costs stay visible whatever the policy; release wording, never refund', ()
   assert.match(panel, /mads_ledger_released_to_balance/);
   assert.doesNotMatch(panel, /Refund/);
 });
+
+test('no Meta Ads frontend code carries its own fee percent', async () => {
+  const { readdirSync, statSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const root = new URL('../../../../../', import.meta.url).pathname;
+  const files = [];
+  const walk = (d) => { for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) { if (f !== '__tests__') walk(p); } else if (/\.tsx?$/.test(f)) files.push(p); } };
+  for (const d of ['src/components/metaAds', 'src/components/admin/metaAds']) walk(join(root, d));
+  files.push(join(root, 'src/pages/outreach/MetaAdsPage.tsx'), join(root, 'src/pages/outreach/MetaAdsCreatePage.tsx'), join(root, 'src/pages/outreach/MetaAdsCampaignPage.tsx'));
+  for (const f of files) {
+    const src = readFileSync(f, 'utf8');
+    assert.doesNotMatch(src, /(fee|pct|percent)\w*\s*(\?\?|\|\|)\s*9\b/i, `${f} falls back to a literal 9%`);
+    assert.doesNotMatch(src, /\b0\.09\b/, `${f} uses a literal 9%`);
+  }
+});

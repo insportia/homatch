@@ -1,6 +1,6 @@
 # PROJECT STATE
 
-last_updated: 2026-09-29
+last_updated: 2026-09-30
 maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
@@ -229,3 +229,27 @@ writing; apply after the Meta and Discovery migrations, via MCP
 - Next rollout (one PR): the test-premise fixes + Facebook Login for Business
   (config_id 970930962712211, code grant, system-user token) + Meta Data Deletion Request
   callback + migration `20261001130000_meta_data_deletion_requests`.
+
+## Workstream B final release (2026-09-30)
+- Meta: production REAL; META_APP_ID / META_APP_SECRET / META_TOKEN_ENCRYPTION_KEY present;
+  maintenance `tokenKeyCheck` valid=true roundTrip=true (meta-ads-api v11, PROVEN_EXACT at
+  f2dda41). meta-webhooks PROVEN_EXACT; meta-oauth needed a single-function redeploy (run
+  #845 reported it deduplicated/STALE). The one existing connection is the admin's TEST
+  (mock_) connection: health = RECONNECT_REQUIRED; the maintenance pass retires it to
+  ERROR/TEST_MODE_TOKEN once the next meta-ads-api is live. No real Meta connection yet;
+  no campaign launched; no spend.
+- Telegram: worker `homatch-official-worker` (Railway project d088991c…) MTProto
+  configured/connected/authorized. `telegram_discovery_enabled` and
+  `discovery_background_refresh_enabled` switched ON 08:42 UTC (cron `homatch-telegram-sync`
+  */15). `telegram_source_auto_enable` stays OFF (operator activates found communities).
+  Source discovery found 7 communities; 2 qualifying (udzravi_qoneba, moonlightbatumi2023)
+  enabled; the 08:45 tick stored 263 current posts with t.me permalinks, target_id and (after
+  migration 20261001160000) source_id; classifier cron */5 is working through them.
+  Migrations 20261001140000 (community_targets columns), 20261001150000 (broker evidence
+  RPC), 20261001160000 (Telegram registry backfill) APPLIED via MCP.
+- Counters: one definition of current matches (src/matching/currentDemand.ts) now also in
+  portfolioIntelligence and Outreach Insights. Property 244486: 14 current / 0 new / 9 strong
+  (55/38/10 was all non-rejected rows including history).
+- Deploys: push runs fail on Workstream A's `design-studio-ai` (402 function cap). Workstream B
+  functions ship by `workflow_dispatch` with `redeploy=<list>`; no cap workaround exists in
+  this repo and Design Studio is not touched from Workstream B.

@@ -78,7 +78,12 @@ export default function MetaAdsPage() {
   useEffect(() => {
     if (params.get('deposit') === 'ok') toast.success(t('mads_deposit_ok'));
     const connect = params.get('connect');
-    if (connect === 'ok') toast.success(t('mads_connected_ok'));
+    if (connect === 'ok') {
+      toast.success(t('mads_connected_ok'));
+      /* Read the Businesses, Pages and Ad Accounts the owner just granted, so
+         the builder offers them without a manual refresh. */
+      void refreshMetaAssets().catch(() => undefined).then(() => boot());
+    }
     else if (connect) toast.error(t(`madsb_connect_${connect}` as never));
     // Back into the campaign builder the customer left for Facebook login.
     if (connect) {

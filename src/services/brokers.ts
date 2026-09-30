@@ -40,6 +40,21 @@ export async function listMyDiscoveredBrokers(limit = 200): Promise<DiscoveredBr
   return (data ?? []) as DiscoveredBroker[];
 }
 
+/** Where each firm in the caller's own library was seen: up to three http(s)
+ *  pages per firm, keyed by broker_id. Evidence, never registration. A failed
+ *  read yields no links rather than an error — the card still states what it is. */
+export async function listMyDiscoveredBrokerEvidence(brokerIds: string[]): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  if (brokerIds.length === 0) return out;
+  const { data, error } = await supabase.rpc('list_my_discovered_broker_evidence', { p_broker_ids: brokerIds.slice(0, 200) });
+  if (error) return out;
+  for (const row of (data ?? []) as Array<{ broker_id: string; url: string }>) {
+    if (!/^https?:\/\//i.test(row.url)) continue;
+    out.set(row.broker_id, [...(out.get(row.broker_id) ?? []), row.url]);
+  }
+  return out;
+}
+
 export interface BrokerDiscoveryPricing {
   active: boolean;
   charging: boolean;

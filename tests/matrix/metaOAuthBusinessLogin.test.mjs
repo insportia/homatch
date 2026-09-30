@@ -99,7 +99,7 @@ test('callbacks act on exactly the connections that identity made (tenant isolat
 });
 
 test('a connection records every Meta identity it was made with; reconnect replaces them', () => {
-  const cb = fn.slice(fn.indexOf('const sealed = await sealToken(token)'));
+  const cb = fn.slice(fn.indexOf('await exchangeCodeForToken(code)'));
   assert.match(cb, /graph\(`\/debug_token\?input_token=\$\{encodeURIComponent\(token\)\}`/);
   assert.match(cb, /from\('meta_connection_identities'\)\.delete\(\)\.eq\('connection_id', conn\.id\)/);
   assert.match(cb, /connectionIdentities\(meRes\.id, debug, !!metaLoginConfigId\(\)\)/);
@@ -120,4 +120,32 @@ test('least privilege: the base set is the five configured permissions; Instant 
   assert.match(api, /INSTANT_FORMS_PERMISSION_REQUIRED/);
   assert.match(api, /\/instagram_accounts\?fields=id,username/);
   assert.match(api, /kind === 'PAGE' && mode === 'REAL' && hasScopes\(scopeConn\?\.granted_scopes, INSTANT_FORM_SCOPES\)/, 'no subscribed_apps call without pages_manage_metadata');
+});
+
+test('a malformed token key is never used and never exposed: base64/32-byte check + round trip, booleans only', () => {
+  const key = shared.slice(shared.indexOf('async function tokenKey'), shared.indexOf('const b64 = '));
+  assert.match(key, /try \{ bytes = Uint8Array\.from\(atob\(raw\)/, 'invalid base64 must not throw');
+  assert.match(key, /if \(bytes\.length < 32\) return null/);
+  assert.match(key, /export async function tokenKeyStatus\(\): Promise<\{ present: boolean; valid: boolean; roundTrip: boolean \}>/);
+  assert.match(api, /if \(!\(await tokenKeyStatus\(\)\)\.roundTrip\)/, 'Connect refuses before the dialog when the key cannot seal');
+  assert.match(api, /const tokenKeyCheck = \{ valid: keyStatus\.valid, roundTrip: keyStatus\.roundTrip \}/);
+  assert.doesNotMatch(api, /META_TOKEN_ENCRYPTION_KEY'\)(?!\s*\??\)?)[^;\n]*json\(/, 'no path returns the key');
+});
+
+test('a test-mode connection is never presented as Connected once Meta is live', () => {
+  const open = shared.slice(shared.indexOf('export async function openToken'), shared.indexOf('export async function openToken') + 400);
+  assert.match(open, /if \(stored\.startsWith\('mock_'\) && metaMode\(\) === 'REAL'\) return null;/);
+  assert.match(api, /tokenUsable/, 'health reads token usability through openToken');
+});
+
+test('a system-user token that cannot answer /me/permissions still connects, and TEST assets are retired', () => {
+  const cb = fn.slice(fn.indexOf('await exchangeCodeForToken(code)'));
+  assert.match(cb, /granted = Array\.isArray\(debug\?\.scopes\)/, 'debug_token scopes are the fallback');
+  assert.ok(cb.indexOf('await sealToken(token)') < cb.indexOf("status: 'CONNECTED'"), 'sealed before CONNECTED');
+  assert.match(cb, /contains\('capabilities', \{ mock: true \}\)/);
+  const api = read('supabase/functions/meta-ads-api/index.ts');
+  assert.match(api, /settle\('\/me\/businesses/, 'each asset list is read on its own');
+  assert.match(api, /client_business_id/);
+  assert.match(api, /filter\(\(k\) => readKinds\.has\(k\)\)/, 'a refused list never retires its assets');
+  assert.match(read('src/pages/outreach/MetaAdsPage.tsx'), /refreshMetaAssets\(\)\.catch\(\(\) => undefined\)\.then\(\(\) => boot\(\)\)/);
 });

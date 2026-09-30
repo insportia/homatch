@@ -17,7 +17,7 @@ import { hashIdentifierRows, csvSafeCell, normalizeEmail, normalizePhone } from 
 import { getPaymentProvider } from '../_shared/payment_provider.ts';
 import {
   metaMode, graph, graphAll, MetaApiError, oauthStartUrl, mockExternalId, capabilityMatrix, signOAuthState,
-  sealToken, openToken, scrubText, REQUIRED_SCOPES_BY_GOAL, BASE_SCOPES, INSTANT_FORM_SCOPES, hasScopes, metaLoginConfigId,
+  sealToken, openToken, scrubText, REQUIRED_SCOPES_BY_GOAL, BASE_SCOPES, INSTANT_FORM_SCOPES, hasScopes, metaLoginConfigId, tokenKeyStatus,
 } from '../_shared/metaAds.ts';
 import { ingestLead } from '../_shared/metaLeads.ts';
 import { callLlm, llmAvailable } from '../_shared/comm/llm.ts';
@@ -139,7 +139,7 @@ Deno.serve(async (req) => {
         if (mode === 'MOCK') return json({ mode, mockConnect: true });
         // Refuse BEFORE sending the owner through Meta's dialog: a token that
         // cannot be stored encrypted would be thrown away at the callback.
-        if (!Deno.env.get('META_TOKEN_ENCRYPTION_KEY')) {
+        if (!(await tokenKeyStatus()).roundTrip) {
           return json({ error: 'TOKEN_ENCRYPTION_NOT_CONFIGURED', code: 'TOKEN_ENCRYPTION_NOT_CONFIGURED' }, 409);
         }
         const nonce = crypto.randomUUID();
@@ -194,11 +194,35 @@ Deno.serve(async (req) => {
         const auditCtx = { sb, userId: uid };
         const { data: scopeRow } = await sb.from('meta_connections').select('granted_scopes').eq('user_id', uid).maybeSingle();
         const instantForms = hasScopes(scopeRow?.granted_scopes, INSTANT_FORM_SCOPES);
-        const [biz, pages, accts] = await Promise.all([
-          graphAll('/me/businesses?fields=id,name&limit=100', { token, audit: auditCtx }),
-          graphAll('/me/accounts?fields=id,name,access_token&limit=100', { token, audit: auditCtx }),
-          graphAll('/me/adaccounts?fields=id,name,account_status,currency,business,disable_reason&limit=100', { token, audit: auditCtx }),
+        /* Each list is read on its own. A Login for Business SYSTEM-USER token
+           answers /me/adaccounts and /me/accounts for the assets the owner
+           granted, but may refuse /me/businesses; one refused list must not
+           hide the others. The Business then comes from the token's own
+           client_business_id and from each ad account's business. */
+        const settle = async (path: string) => {
+          try { return { ok: true, rows: await graphAll(path, { token, audit: auditCtx }) as any[] }; }
+          catch { return { ok: false, rows: [] as any[] }; }
+        };
+        const [bizRes, pagesRes, acctsRes] = await Promise.all([
+          settle('/me/businesses?fields=id,name&limit=100'),
+          settle('/me/accounts?fields=id,name,access_token&limit=100'),
+          settle('/me/adaccounts?fields=id,name,account_status,currency,business,disable_reason&limit=100'),
         ]);
+        if (!bizRes.ok && !pagesRes.ok && !acctsRes.ok) {
+          return json({ error: 'META_ASSETS_UNREADABLE', code: 'META_ASSETS_UNREADABLE' }, 502);
+        }
+        const pages = pagesRes.rows;
+        const accts = acctsRes.rows;
+        const biz = [...bizRes.rows];
+        const addBiz = (id: unknown, name: unknown) => {
+          const bid = String(id ?? '');
+          if (/^[0-9]{1,32}$/.test(bid) && !biz.some((b: any) => String(b.id) === bid)) biz.push({ id: bid, name: String(name ?? '') || 'Business' });
+        };
+        for (const a of accts) addBiz(a.business?.id, a.business?.name);
+        try {
+          const me = await graph('/me?fields=client_business_id', { token, attempts: 1 }) as any;
+          if (me?.client_business_id) addBiz(me.client_business_id, null);
+        } catch { /* not a business-integration token; nothing to add */ }
         const up = (kind: string, external_id: string, name: string, parent?: string | null, capabilities?: unknown) =>
           sb.from('meta_assets').upsert({
             user_id: uid, kind, external_id, name, parent_external_id: parent ?? null,
@@ -244,8 +268,14 @@ Deno.serve(async (req) => {
             }
           } catch { /* no pixel access is a state, not an error */ }
         }
-        // Assets no longer granted are marked, not deleted.
-        for (const kind of ['BUSINESS', 'PAGE', 'INSTAGRAM', 'AD_ACCOUNT', 'PIXEL', 'LEAD_FORM']) {
+        // Assets no longer granted are marked, not deleted — only for lists
+        // that were actually read, so a refused list never retires its assets.
+        const readKinds = new Set<string>([
+          ...(bizRes.ok || acctsRes.ok ? ['BUSINESS'] : []),
+          ...(pagesRes.ok ? ['PAGE', 'LEAD_FORM'] : []),
+          ...(acctsRes.ok ? ['AD_ACCOUNT', 'INSTAGRAM', 'PIXEL'] : []),
+        ]);
+        for (const kind of ['BUSINESS', 'PAGE', 'INSTAGRAM', 'AD_ACCOUNT', 'PIXEL', 'LEAD_FORM'].filter((k) => readKinds.has(k))) {
           const ids = seen[kind] ?? [];
           let q = sb.from('meta_assets').update({ status: 'UNAVAILABLE', selected: false }).eq('user_id', uid).eq('kind', kind);
           if (ids.length) q = q.not('external_id', 'in', `(${ids.map((i) => `"${i}"`).join(',')})`);
@@ -755,7 +785,7 @@ Deno.serve(async (req) => {
 /* ── MAINTENANCE: the scheduled pass ─────────────────────────────────── */
 
 async function maintenance(sb: any, mode: 'REAL' | 'MOCK') {
-  const report = { synced: 0, syncFailed: 0, recovered: 0, leadsRetried: 0, expired: 0 };
+  const report = { synced: 0, syncFailed: 0, recovered: 0, leadsRetried: 0, expired: 0, testTokensRetired: 0 };
   // 1. Status + spend for everything that is live at Meta.
   const { data: live } = await sb.from('meta_campaigns').select('*')
     .in('status', ['SUBMITTED', 'META_REVIEW', 'ACTIVE', 'PAUSED'])
@@ -797,6 +827,18 @@ async function maintenance(sb: any, mode: 'REAL' | 'MOCK') {
     const { data: u } = await sb.from('meta_connections').update({ status: 'EXPIRED' }).eq('id', t.connection_id).eq('status', 'CONNECTED').select('id');
     report.expired += (u ?? []).length;
   }
+  // 5. With Meta live, a connection still holding a TEST-mode token is not
+  //    connected to anything. Say so in the row itself, so no surface that
+  //    reads the status (Admin included) can show it as a real connection.
+  if (mode === 'REAL') {
+    const { data: mockTokens } = await sb.from('meta_tokens').select('connection_id').like('access_token', 'mock_%');
+    const ids = (mockTokens ?? []).map((t: any) => t.connection_id);
+    if (ids.length) {
+      const { data: u } = await sb.from('meta_connections').update({ status: 'ERROR', last_error: 'TEST_MODE_TOKEN' })
+        .in('id', ids).eq('status', 'CONNECTED').select('id');
+      report.testTokensRetired = (u ?? []).length;
+    }
+  }
   /* Configuration PRESENCE only (never a value), so an operator can tell
      from the scheduled pass which Meta secrets are still missing. */
   const configured = {
@@ -805,7 +847,10 @@ async function maintenance(sb: any, mode: 'REAL' | 'MOCK') {
     META_TOKEN_ENCRYPTION_KEY: !!Deno.env.get('META_TOKEN_ENCRYPTION_KEY'),
     loginConfigId: metaLoginConfigId(),
   };
-  return { ok: true, mode, configured, ...report };
+  /* Base64 of 32+ bytes and an AES-GCM seal/open round trip — booleans only. */
+  const keyStatus = await tokenKeyStatus();
+  const tokenKeyCheck = { valid: keyStatus.valid, roundTrip: keyStatus.roundTrip };
+  return { ok: true, mode, configured, tokenKeyCheck, ...report };
 }
 
 /* ── COPY CONTEXT ────────────────────────────────────────────────────── */

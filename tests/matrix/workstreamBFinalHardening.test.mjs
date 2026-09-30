@@ -148,3 +148,11 @@ test('every new callable function is closed to anon', () => {
     assert.match(M, new RegExp(`revoke all on function public\\.${n}\\([^)]*\\) from public, anon`), `${n} is not revoked from anon`);
   }
 });
+
+test('with Meta live, a test-mode token is retired in the row, not only hidden by health', () => {
+  const api = read('supabase/functions/meta-ads-api/index.ts');
+  const at = api.indexOf("if (mode === 'REAL') {\n    const { data: mockTokens }");
+  assert.ok(at > 0, 'the maintenance pass looks for test-mode tokens when live');
+  assert.match(api.slice(at, at + 600), /status: 'ERROR', last_error: 'TEST_MODE_TOKEN'/);
+  assert.match(read('src/components/metaAds/builder/AccountPanel.tsx'), /error_reason === 'TEST_MODE_TOKEN'/);
+});

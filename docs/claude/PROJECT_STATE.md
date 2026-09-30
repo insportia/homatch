@@ -73,6 +73,22 @@ MATTERS right now, verify against the live systems, not this file)
   gate), so production readings fall back to the model's estimated plan
   (labelled ESTIMATE; the reference panel says "aligned approximately"). The
   layout is recognisable but not faithful (L-shape read as a rectangle).
+  ROOT CAUSE (2026-09-30): the camera is fitted AGAINST the reader's own
+  metres, so a wrong layout can never fit and the traces are thrown away.
+  FIX on branch `feat/design-studio-measured-frame` (69bc4a0e, stacked on #19,
+  NOT merged/deployed/applied): the browser measures an isometric picture's
+  frame at upload (`pictureGeometry.ts` → `pictureFrame.ts`, byte-identical in
+  `_shared`), stores `picture_geometry` + `plan_view_key` (migration
+  `20261002200000`, NOT applied), and the reader traces rooms on the top-down
+  plan view in the same single reading. Outline error replaces the fitted-camera
+  rms as the matched/approximate number (FIT_TRUST unchanged). Needs production
+  acceptance on the real fixture (a NEW upload — old rows have no frame).
+- Wave 1 (#19: bundle ratchet 6.5 MiB, floor pattern, storage-sign refuses
+  DELETED, original preservation — its migration `20261001210000` IS applied)
+  is reconciled with main `aee8f77d` but blocked: every main deploy fails
+  Validate on Workstream B's own test "balance card: the non-refundable
+  disclosure is rendered" (B removed `mm_w_bal_disclosure` from
+  ServiceBalanceCard). Not ours to change; B notified.
 - Rendering fidelity (#17): HOMATCH-drawn procedural finishes
   (`canvas/finishTextures.ts`: planks, herringbone, tile, stone, concrete,
   carpet, paint, fabric, wood grain, leather — normal-mapped, per-tier size),

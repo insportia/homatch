@@ -67,4 +67,7 @@ export function JsonDetails({ label, value }: { label: string; value: unknown })
   );
 }
 
+/** An audited admin act needs a stated reason; the server checks the same bound. */
+export const MIN_REASON = 3;
+
 export const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e ?? ''));

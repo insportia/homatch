@@ -14,8 +14,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { searchUsers, type UserSearchRow } from '@/services/adminControl';
 import { adminFeePolicyGet, adminFeePolicySet } from '@/services/metaAds';
-import { errorText, Panel } from './kit';
-import { MIN_REASON } from './GuardPanel';
+import { errorText, MIN_REASON, Panel } from './kit';
 
 type Kind = 'STANDARD_PERCENT' | 'FEE_EXEMPT' | 'CUSTOM_PERCENT';
 const KINDS: Kind[] = ['STANDARD_PERCENT', 'FEE_EXEMPT', 'CUSTOM_PERCENT'];

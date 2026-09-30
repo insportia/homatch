@@ -13,7 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { adminGuardAct, adminGuardOverview, type AdminGuardAct } from '@/services/metaAds';
-import { errorText, JsonDetails, Panel } from './kit';
+import { errorText, JsonDetails, MIN_REASON, Panel } from './kit';
 
 type Overview = Awaited<ReturnType<typeof adminGuardOverview>>;
 type Target = { incidentId?: string; targetUserId?: string; adAccountId?: string; campaignId?: string };
@@ -21,7 +21,6 @@ type Target = { incidentId?: string; targetUserId?: string; adAccountId?: string
 const RESOLVED = new Set(['CLEARED', 'DISMISSED', 'REVIEWED']);
 const DESTRUCTIVE: ReadonlySet<AdminGuardAct> = new Set(['SUSPEND_ACCOUNT', 'RESTORE_CONFIG']);
 
-export const MIN_REASON = 3;
 
 function levelTone(level: string) {
   if (level === 'STRIKE' || level === 'REVIEW_REQUIRED') return 'border-destructive/30 bg-destructive/10 text-destructive';
@@ -67,8 +66,8 @@ export function GuardPanel() {
     } finally { setBusy(false); }
   };
 
-  const ActButton = ({ act, target, variant = 'outline' }: { act: AdminGuardAct; target: Target; variant?: 'outline' | 'destructive' | 'default' }) => (
-    <Button size="sm" variant={variant} onClick={() => ask(act, target)}>{t(`mm_a_act_${act}`)}</Button>
+  const actButton = (act: AdminGuardAct, target: Target, variant: 'outline' | 'destructive' | 'default' = 'outline') => (
+    <Button key={act} size="sm" variant={variant} onClick={() => ask(act, target)}>{t(`mm_a_act_${act}`)}</Button>
   );
 
   if (loading && !data) return <Skeleton className="h-40 rounded-2xl" />;
@@ -120,8 +119,8 @@ export function GuardPanel() {
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {a.status === 'SUSPENDED'
-                    ? <ActButton act="REINSTATE_ACCOUNT" variant="default" target={{ targetUserId: a.user_id, adAccountId: a.ad_account_external_id }} />
-                    : <ActButton act="SUSPEND_ACCOUNT" variant="destructive" target={{ targetUserId: a.user_id, adAccountId: a.ad_account_external_id }} />}
+                    ? actButton('REINSTATE_ACCOUNT', { targetUserId: a.user_id, adAccountId: a.ad_account_external_id }, 'default')
+                    : actButton('SUSPEND_ACCOUNT', { targetUserId: a.user_id, adAccountId: a.ad_account_external_id }, 'destructive')}
                 </div>
               </li>
             ))}
@@ -155,16 +154,16 @@ export function GuardPanel() {
                   <div className="flex flex-wrap gap-2">
                     {open && (
                       <>
-                        <ActButton act="CLEAR_INCIDENT" target={{ incidentId: inc.id }} />
-                        <ActButton act="DISMISS_INCIDENT" target={{ incidentId: inc.id }} />
-                        <ActButton act="MARK_REVIEWED" target={{ incidentId: inc.id }} />
+                        {actButton('CLEAR_INCIDENT', { incidentId: inc.id })}
+                        {actButton('DISMISS_INCIDENT', { incidentId: inc.id })}
+                        {actButton('MARK_REVIEWED', { incidentId: inc.id })}
                       </>
                     )}
                     {inc.campaign_id && (
                       <>
-                        <ActButton act="UNLOCK_CAMPAIGN" target={{ campaignId: inc.campaign_id }} />
-                        <ActButton act="ACCEPT_EXTERNAL" target={{ campaignId: inc.campaign_id }} />
-                        <ActButton act="RESTORE_CONFIG" variant="destructive" target={{ campaignId: inc.campaign_id }} />
+                        {actButton('UNLOCK_CAMPAIGN', { campaignId: inc.campaign_id })}
+                        {actButton('ACCEPT_EXTERNAL', { campaignId: inc.campaign_id })}
+                        {actButton('RESTORE_CONFIG', { campaignId: inc.campaign_id }, 'destructive')}
                       </>
                     )}
                   </div>

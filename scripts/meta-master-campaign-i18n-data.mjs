@@ -223,7 +223,7 @@ export const META_MASTER_CAMPAIGN_STRINGS = {
   ],
   mm_c_pv_release: [
     "{{amount}} of the service fee will be released to your HOMATCH Balance.",
-    "მომსახურების საფასურიდან {{amount}} დაბრუნდება თქვენს HOMATCH ბალანსზე.",
+    "მომსახურების საფასურიდან {{amount}} გადაირიცხება თქვენს HOMATCH ბალანსზე.",
     "{{amount}} сервисной комиссии будет зачислено на ваш баланс HOMATCH.",
     "Hizmet bedelinin {{amount}} tutarı HOMATCH Bakiyenize aktarılacak.",
     "سيُحرَّر {{amount}} من رسوم الخدمة إلى رصيدك في HOMATCH.",
@@ -495,7 +495,7 @@ export const META_MASTER_CAMPAIGN_STRINGS = {
   mm_c_billing_other: ["Other entry", "სხვა ჩანაწერი", "Другая операция", "Diğer kayıt", "قيد آخر", "רשומה אחרת"],
   mm_c_billing_disclosure: [
     "The HOMATCH service fee can't be paid out as cash. Any unused part is released to your HOMATCH Balance, where you can use it for future campaigns.",
-    "HOMATCH-ის მომსახურების საფასური ნაღდი ფულით არ გაიცემა. გამოუყენებელი ნაწილი ბრუნდება თქვენს HOMATCH ბალანსზე და შეგიძლიათ მომავალ კამპანიებში გამოიყენოთ.",
+    "HOMATCH-ის მომსახურების საფასური ნაღდი ფულით არ გაიცემა. გამოუყენებელი ნაწილი გადაირიცხება თქვენს HOMATCH ბალანსზე და შეგიძლიათ მომავალ კამპანიებში გამოიყენოთ.",
     "Сервисная комиссия HOMATCH не выплачивается деньгами. Неиспользованная часть зачисляется на ваш баланс HOMATCH — её можно использовать для будущих кампаний.",
     "HOMATCH hizmet bedeli nakit olarak ödenmez. Kullanılmayan kısım HOMATCH Bakiyenize aktarılır ve gelecekteki kampanyalarda kullanılabilir.",
     "لا تُصرف رسوم خدمة HOMATCH نقدًا. يُحرَّر أي جزء غير مستخدم إلى رصيدك في HOMATCH لتستخدمه في حملات مقبلة.",

@@ -1,6 +1,6 @@
 // HOMATCH DESIGN STUDIO — THE AI DESIGNER.
 //
-//   POST { versionId, brief }   (signed-in customer, own version)
+//   POST …/design-studio-reconstruct/design { versionId, brief }   (signed-in customer, own version)
 //
 // Reads the version, its space and the relevant slice of the catalogue AS
 // THE CALLER (RLS decides what exists), asks the model for a plan in a fixed
@@ -17,7 +17,6 @@
 // recorded unbilled. If Admin switches Design Studio billing on before the
 // confirmation flow exists, this refuses rather than charge.
 
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { recordUnbilledUsage, serviceClient } from '../_shared/billing.ts';
 import { refuseIfImpersonating } from '../_shared/impersonation.ts';
@@ -49,7 +48,7 @@ function textOf(payload: any): string {
 
 const NO_LOCKS: PlanLocks = { layout: false, furniture: false, walls: false, floor: false, kitchen: false, colors: false, lighting: false };
 
-serve(async (req) => {
+export async function handleDesign(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   const authHeader = req.headers.get('Authorization') ?? '';
   if (!authHeader) return json({ error: 'UNAUTHENTICATED' }, 401);
@@ -182,4 +181,4 @@ serve(async (req) => {
   }).eq('id', jobId);
 
   return json({ state: 'READY', jobId, plan, billing: 'NOT_CHARGED' });
-});
+}

@@ -286,9 +286,9 @@ export async function wire(page, store, errors) {
       const verb = body.action === 'WRITE' ? 'put' : 'get';
       return json({ url: `https://r2.qa.test/${verb}/${encodeURIComponent(body.key)}`, expiresAt: new Date(Date.now() + 600000).toISOString(), key: body.key });
     }
-    /* A stand-in for design-studio-floorplan: the stored object must exist
+    /* A stand-in for design-studio-reconstruct/floorplan: the stored object must exist
        under the caller's key; the reading is a fixed proposal (no scale). */
-    if (url.pathname.includes('/functions/v1/design-studio-floorplan')) {
+    if (url.pathname.endsWith('/functions/v1/design-studio-reconstruct/floorplan')) {
       const body = JSON.parse(req.postData() || '{}');
       store.readings.push(body);
       const plan = store.db.ds_floorplans.find((f) => f.id === body.floorplanId);
@@ -300,7 +300,7 @@ export async function wire(page, store, errors) {
        "R2" under the caller's key; the MODEL'S ANSWER is the acceptance
        fixture (store.reconAnswer), and the REAL validator and plan builder
        turn it into the analysis and the floor-plan proposal, as the server does. */
-    if (url.pathname.includes('/functions/v1/design-studio-reconstruct')) {
+    if (url.pathname.endsWith('/functions/v1/design-studio-reconstruct')) {
       const body = JSON.parse(req.postData() || '{}');
       store.reconRequests.push(body);
       const recon = store.db.ds_reconstructions.find((r) => r.id === body.reconstructionId);
@@ -344,10 +344,10 @@ export async function wire(page, store, errors) {
       store.db.ds_spatial_sources.push(source);
       return json({ state: 'READY', sourceId: source.id, editability: result.analysis.editability, warnings: result.analysis.warnings });
     }
-    /* A stand-in for design-studio-ai: builds the server's context from the
+    /* A stand-in for design-studio-reconstruct/design: builds the server's context from the
        fake tables and runs the REAL validatePlan() on a canned model answer
        (which includes things the server must throw away). */
-    if (url.pathname.includes('/functions/v1/design-studio-ai')) {
+    if (url.pathname.endsWith('/functions/v1/design-studio-reconstruct/design')) {
       const body = JSON.parse(req.postData() || '{}');
       const version = store.db.ds_versions.find((v) => v.id === body.versionId);
       const source = version && store.db.ds_spatial_sources.find((x) => x.id === version.source_id);
@@ -463,7 +463,8 @@ async function main() {
 
     await page.getByRole('button', { name: 'Choose my property' }).click();
     await page.getByRole('dialog').waitFor();
-    check('picker: lists the customer\'s properties', await page.getByText('Two-bedroom apartment, Vake').isVisible());
+    // The list loads after the dialog opens: wait for the row rather than racing it.
+    check('picker: lists the customer\'s properties', await page.getByText('Two-bedroom apartment, Vake').waitFor({ timeout: 10000 }).then(() => true, () => false));
     await page.screenshot({ path: path.join(OUT, 'cp1-picker-1440-en.png') });
     await page.getByRole('dialog').getByRole('button', { name: 'Start designing' }).first().click();
     await page.waitForURL(/\/design-studio\/[0-9a-f-]{36}$/);

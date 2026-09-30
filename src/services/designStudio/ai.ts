@@ -17,7 +17,7 @@ export interface DesignBrief {
 }
 
 export async function requestDesign(versionId: string, brief: DesignBrief): Promise<{ jobId: string; plan: ValidatedPlan }> {
-  const { data, error } = await supabase.functions.invoke('design-studio-ai', { body: { versionId, brief } });
+  const { data, error } = await supabase.functions.invoke('design-studio-reconstruct/design', { body: { versionId, brief } });
   if (error) {
     let code = 'DS_AI_FAILED';
     try {

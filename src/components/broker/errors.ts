@@ -25,6 +25,8 @@ export function brokerErrorKey(code: string): TranslationKey {
     UNLOCK_REQUIRED: 'broker_err_unlock_required',
     TOO_MANY_DOCUMENTS: 'broker_err_too_many',
     VERIFICATION_CLOSED: 'broker_err_verification_closed',
+    INVALID_TRANSITION: 'broker_err_invalid_transition',
+    MATCH_CLOSED: 'broker_err_match_closed',
   };
   return known[code] ?? 'broker_apply_err_generic';
 }

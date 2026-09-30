@@ -164,3 +164,36 @@ writing; apply after the Meta and Discovery migrations, via MCP
   area) and the drawer shows the price in its editable Price input. The test
   now finds a unit by its accessible name and reads dialog input values; the
   Developer product code was not touched.
+
+## Workstream B rollout (2026-09-30) — PRODUCTION
+
+- Merged: insportia/homatch#9 as `48943c8`. Later `main` = `d103891` (Design Studio #8).
+- Migrations applied via MCP (ledger names; versions are MCP timestamps):
+  `meta_ads_live_readiness` 20260930022058, `discovery_engine_queue_freshness_campaigns`
+  20260930022225, `broker_lifecycle` 20260930022722. Each dry-run first (rolled back)
+  against current production incl. the Design Studio migrations.
+- Edge: all 28 Workstream B functions PROVEN_EXACT (runs 835/836/837 at 48943c8, and
+  again in 838 at d103891). The CI bundler lost 6 uploads in run 835 (CLI printed
+  "Deployed", no new version) and crashed once on discovery-queue-worker (exit 135 after
+  Docker `toomanyrequests`); single-function `redeploy` dispatch fixed it.
+  `refs/deployed/edge` still reads 87c715b: dispatch runs never advance it by design, and
+  run 838 failed on two Design Studio functions (design-studio-ai, design-studio-floorplan
+  UNAVAILABLE) — Workstream A's to resolve. `refs/deployed/frontend` = d103891.
+- Vercel prod READY on 48943c8 (then d103891). Railway `homatch-official-worker`
+  SUCCESS on 48943c8.
+- Switches: `classifier_schedule_enabled` = true (proven: gate call skipped at $0;
+  acceptance call classified 7 pending, 0 errors, $0.00012, classifierVersion
+  signals-v2.1). All others OFF: Telegram credentials missing on the worker
+  (TELEGRAM_API_ID, TELEGRAM_API_HASH, TELEGRAM_SESSION, TELEGRAM_ENABLED);
+  forum cron is coupled to `discovery_background_refresh_enabled` (which also runs the
+  Telegram sync); campaign source discovery would only reach one forum source.
+- Meta: fee 9%, `meta_ads_budget_billing` = CUSTOMER_AD_ACCOUNT, 4 DRAFT campaigns,
+  0 launched. Paid launch NOT performed — awaiting owner approval.
+- Matches: 74 total, 69 dated, 0 within the 30-day active window (all history).
+- Found, not changed: Railway service `homatch-official-worker-v2` exists (never use);
+  7 `public.users` rows have no `auth.users` account; `admin_settings` held a plaintext
+  `meta_ads_maintenance_token` (RLS admin-only) — moved to Vault by migration
+  20261001120000_workstream_b_final_hardening.
+- Known follow-up (latent, HOMATCH_WALLET billing only): Meta settlement posts RELEASE
+  and META_SPEND as separate writes outside the ledger balance lock; make settlement
+  one locked RPC before HOMATCH_WALLET is ever enabled. CUSTOMER_AD_ACCOUNT is unaffected.

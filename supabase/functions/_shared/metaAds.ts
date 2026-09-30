@@ -140,6 +140,17 @@ export async function graph(path: string, opts: GraphOptions): Promise<Record<st
         });
       } catch { /* logged best-effort */ }
     }
+    /* 190 = the token itself is no longer valid (password change, revoked
+       app, expired session). The connection must stop saying CONNECTED, so
+       the next status call asks the owner to reconnect instead of failing
+       every action one by one. */
+    if (lastErr.normalized.code === 190 && opts.audit?.userId) {
+      try {
+        await (opts.audit.sb as unknown as { from: (t: string) => any }).from('meta_connections')
+          .update({ status: 'EXPIRED', last_error: 'TOKEN_INVALIDATED' })
+          .eq('user_id', opts.audit.userId).eq('status', 'CONNECTED');
+      } catch { /* best effort; the next call re-detects it */ }
+    }
     if (!lastErr.normalized.recoverable || attempt === attempts) throw lastErr;
     await new Promise((r) => setTimeout(r, 500 * 2 ** (attempt - 1)));
   }
@@ -192,9 +203,20 @@ async function tokenKey(): Promise<CryptoKey | null> {
 const b64 = (u: Uint8Array) => btoa(String.fromCharCode(...u));
 const unb64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 
+/** A live Meta credential is never stored in the clear: in REAL mode a
+ *  missing META_TOKEN_ENCRYPTION_KEY refuses the connection with a named
+ *  configuration error instead of silently writing plaintext. MOCK tokens
+ *  are not credentials and may stay readable for tests. */
+export class TokenEncryptionMissingError extends Error {
+  constructor() { super('TOKEN_ENCRYPTION_NOT_CONFIGURED'); }
+}
+
 export async function sealToken(token: string): Promise<string> {
   const key = await tokenKey();
-  if (!key) return token;
+  if (!key) {
+    if (metaMode() === 'REAL') throw new TokenEncryptionMissingError();
+    return token;
+  }
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(token)));
   return `enc:v1:${b64(iv)}:${b64(ct)}`;

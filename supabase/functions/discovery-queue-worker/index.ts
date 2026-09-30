@@ -57,6 +57,19 @@ Deno.serve(async (req: Request) => {
         ? await adminStop(db, String(body.jobId || ''))
         : await adminRetry(db, String(body.jobId || '')));
     }
+    /* The Telegram health check, for an admin: it reads the worker's own
+       status and records it. Harmless with collection off — it collects
+       nothing — and it never returns a credential. */
+    if (mode === 'admin_telegram_health') {
+      if (!(await isAdminCaller(req, db))) return json({ error: 'Admin only' }, 403);
+      const r = await fetch(`${baseUrl}/functions/v1/community-sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
+        body: JSON.stringify({ action: 'health', source: 'admin' }),
+      });
+      const out = await r.json().catch(() => ({}));
+      return json({ success: r.ok, healthy: out?.healthy === true, error: out?.error ?? null, mode: out?.mode ?? null });
+    }
     if (!(await isAuthorized(req, db, serviceKey))) return json({ error: 'Internal only' }, 403);
     if (mode === 'health' || mode === 'audit') return json(await audit(db));
     /* The campaign discovery driver (see driver.ts): source jobs for

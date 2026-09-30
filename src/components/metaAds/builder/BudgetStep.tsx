@@ -111,9 +111,21 @@ export function FinancialSummary({ totals, pricing, compact, billing }: {
             </div>
             {!compact && <p className="mt-0.5 text-2xs leading-relaxed text-white/55">{t('madsb_money_fee_d')}</p>}
           </div>
-          <div className="flex items-baseline justify-between gap-3 border-t border-white/10 pt-3">
-            <dt className="text-sm font-semibold text-white">{t('madsb_money_total')}</dt>
-            <dd className="text-2xl font-bold text-[hsl(38_92%_62%)]" dir="ltr">{money(totals.totalCents)}</dd>
+          {/* The one number HOMATCH itself takes now. With the customer's own
+              ad account that is the fee alone — Meta bills the budget to that
+              account directly, so it is never added to what HOMATCH charges. */}
+          <div className="border-t border-white/10 pt-3">
+            <div className="flex items-baseline justify-between gap-3">
+              <dt className="text-sm font-semibold text-white">{t('madsb_charged_now')}</dt>
+              <dd className="text-2xl font-bold text-[hsl(38_92%_62%)]" dir="ltr" data-charged-now="">
+                {money(viaWallet ? totals.totalCents : totals.feeCents)}
+              </dd>
+            </div>
+            {!viaWallet && (
+              <p className="mt-1 text-2xs leading-relaxed text-white/60">
+                {t('madsb_money_meta_bills', { amount: money(totals.mediaCents) })}
+              </p>
+            )}
           </div>
         </dl>
       )}

@@ -13,6 +13,19 @@ export type ListingStatus = 'DRAFT' | 'PENDING_REVIEW' | 'NEEDS_CHANGES' | 'APPR
 export type LeadState = 'NEW' | 'REVIEWED' | 'CONTACTED' | 'IN_PROGRESS' | 'WON' | 'CLOSED';
 
 export const LEAD_STATES: LeadState[] = ['NEW', 'REVIEWED', 'CONTACTED', 'IN_PROGRESS', 'WON', 'CLOSED'];
+/**
+ * Which state may follow which — the same table set_match_lead_state enforces.
+ * WON is reached only through a conversation; a WON or CLOSED lead is settled
+ * (a CLOSED lead may be reopened for review).
+ */
+export const LEAD_TRANSITIONS: Record<LeadState, LeadState[]> = {
+  NEW: ['REVIEWED', 'CONTACTED', 'IN_PROGRESS', 'CLOSED'],
+  REVIEWED: ['NEW', 'CONTACTED', 'IN_PROGRESS', 'CLOSED'],
+  CONTACTED: ['REVIEWED', 'IN_PROGRESS', 'WON', 'CLOSED'],
+  IN_PROGRESS: ['CONTACTED', 'WON', 'CLOSED'],
+  WON: ['CLOSED'],
+  CLOSED: ['REVIEWED'],
+};
 /** States that need an opened contact (enforced again by set_match_lead_state). */
 export const CONTACT_LEAD_STATES: LeadState[] = ['CONTACTED', 'IN_PROGRESS', 'WON'];
 

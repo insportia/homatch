@@ -10,7 +10,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/db/supabase';
 import type { TranslationKey } from '@/i18n/translations';
 import { brokerErrorKey } from '@/components/broker/errors';
-import { BrokerRpcError, LEAD_STATES, setMatchLeadState, type LeadState } from '@/services/brokerDesk';
+import { BrokerRpcError, LEAD_STATES, LEAD_TRANSITIONS, setMatchLeadState, type LeadState } from '@/services/brokerDesk';
 
 export function LeadStateControl({ matchId }: { matchId: string }) {
   const { t } = useLanguage();
@@ -55,7 +55,9 @@ export function LeadStateControl({ matchId }: { matchId: string }) {
           onChange={(e) => void change(e.target.value as LeadState)}
           className="h-10 min-w-0 flex-1 rounded-lg border border-input bg-card px-3 text-sm text-foreground"
         >
-          {LEAD_STATES.map((s) => <option key={s} value={s}>{t(`lead_state_${s}` as TranslationKey)}</option>)}
+          {LEAD_STATES.map((s) => (
+            <option key={s} value={s} disabled={s !== state && !LEAD_TRANSITIONS[state].includes(s)}>{t(`lead_state_${s}` as TranslationKey)}</option>
+          ))}
         </select>
         {saving && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-hidden="true" />}
       </div>

@@ -235,7 +235,13 @@ export default function MetaAdsCreatePage() {
       navigate(`/outreach/meta/campaigns/${campaign.id}`);
     } catch (e: any) {
       const code = e?.code ?? e?.body?.code;
-      if (code === 'INSUFFICIENT_FUNDS') { toast.error(t('mads_funds_needed')); navigate('/outreach/meta?tab=overview'); }
+      /* One launch intent = one key. Any attempt that ended (failed, refused,
+         refunded) retires its key, so the next press is a new intent with its
+         own fee. Only an attempt still in flight keeps the key. */
+      if (code !== 'LAUNCH_IN_PROGRESS') launchKey.current = crypto.randomUUID();
+      if (code === 'PROPERTY_NOT_OWNED') toast.error(t('madsb_property_not_owned'));
+      else if (code === 'IDEMPOTENCY_KEY_USED') toast.info(t('madsb_launch_retry'));
+      else if (code === 'INSUFFICIENT_FUNDS') { toast.error(t('mads_funds_needed')); navigate('/outreach/meta?tab=overview'); }
       else if (code === 'PREFLIGHT_STALE') { toast.info(t('madsb_preflight_stale')); setPreflight(null); }
       else if (String(e?.message ?? '').startsWith('meta_err')) toast.error(t(e.message as never));
       else toast.error(t('mads_launch_failed'));
@@ -328,7 +334,8 @@ export default function MetaAdsCreatePage() {
               <BudgetStep campaign={campaign} status={status} patch={patch} totals={preview?.totals ?? null} pricing={pricing} />
             )}
             {step === 'creative' && (
-              <CreativeStep campaign={campaign} creatives={creatives} setCreatives={setCreatives} placements={placements} onFocusCreative={setFocusCreative} />
+              <CreativeStep campaign={campaign} creatives={creatives} setCreatives={setCreatives} placements={placements} onFocusCreative={setFocusCreative}
+                defaultHeadline={properties.find((p) => (p.homatch_id ? String(p.homatch_id) : p.id) === campaign.property_id)?.title ?? ''} />
             )}
             {step === 'placements' && (
               <PlacementsStep campaign={campaign} status={status} creatives={creatives} recommended={(preview?.recommendedPlacements as Placement[] | undefined) ?? placements} patch={patch} />
@@ -401,10 +408,10 @@ export default function MetaAdsCreatePage() {
             <dl className="space-y-1 rounded-xl border border-border p-3 text-sm tabular-nums">
               <div className="flex justify-between"><dt>{t('madsb_money_media')}</dt><dd dir="ltr">{money(preview.totals.mediaCents)}</dd></div>
               <div className="flex justify-between"><dt>{t('madsb_money_fee', { pct: String(preview.totals.feePercent) })}</dt><dd dir="ltr">{money(preview.totals.feeCents)}</dd></div>
-              <div className="flex justify-between border-t border-border pt-1 text-base font-bold"><dt>{t('madsb_money_total_max')}</dt><dd dir="ltr">{money(preview.totals.totalCents)}</dd></div>
+              <div className="flex justify-between text-muted-foreground"><dt>{t('madsb_money_total_max')}</dt><dd dir="ltr">{money(preview.totals.totalCents)}</dd></div>
               {/* What HOMATCH itself takes from the balance now. With the customer's own
                   ad account that is the fee alone -- Meta bills the budget directly. */}
-              <div className="flex justify-between"><dt>{t('madsb_charged_now')}</dt><dd dir="ltr">{money(status?.settings.budgetBilling === 'HOMATCH_WALLET' ? preview.totals.totalCents : preview.totals.feeCents)}</dd></div>
+              <div className="flex justify-between border-t border-border pt-1 text-base font-bold"><dt>{t('madsb_charged_now')}</dt><dd dir="ltr" data-charged-now="">{money(status?.settings.budgetBilling === 'HOMATCH_WALLET' ? preview.totals.totalCents : preview.totals.feeCents)}</dd></div>
               <div className="flex justify-between text-muted-foreground"><dt>{t('mads_confirm_balance')}</dt><dd dir="ltr">{money(status?.wallet?.available_cents ?? 0)}</dd></div>
             </dl>
           )}

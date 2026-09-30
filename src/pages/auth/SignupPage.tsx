@@ -48,7 +48,12 @@ export default function SignupPage() {
   const PENDING_RETURN_KEY = 'homatch_return_to';
   useEffect(() => {
     if (asProfessional) rememberPendingPath('/broker/onboarding');
-    else { try { if (sessionStorage.getItem(PENDING_RETURN_KEY) === '/broker/onboarding') takePendingPath(); } catch { /* storage unavailable */ } }
+    else {
+      try {
+        const durable = localStorage.getItem(PENDING_RETURN_KEY) ?? '';
+        if (sessionStorage.getItem(PENDING_RETURN_KEY) === '/broker/onboarding' || durable.includes('"/broker/onboarding"')) takePendingPath();
+      } catch { /* storage unavailable */ }
+    }
   }, [asProfessional]);
 
   // Preserve intent through OAuth redirect
@@ -86,7 +91,7 @@ export default function SignupPage() {
     e.preventDefault();
     if (!email || !password) return;
     if (password.length < 6) {
-      toast.error('Password must be at least 6 characters.');
+      toast.error(t('auth_password_min6'));
       return;
     }
     setLoading(true);
@@ -95,7 +100,7 @@ export default function SignupPage() {
     if (error) {
       toast.error(error);
     } else {
-      toast.success('Account created! Welcome to Homatch.');
+      toast.success(t('auth_account_created'));
     }
   };
 

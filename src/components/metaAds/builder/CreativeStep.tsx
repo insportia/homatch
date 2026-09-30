@@ -84,10 +84,12 @@ export function MediaGuidance({ placements }: { placements: Placement[] }) {
   );
 }
 
-export function CreativeStep({ campaign, creatives, setCreatives, placements, onFocusCreative }: {
+export function CreativeStep({ campaign, creatives, setCreatives, placements, onFocusCreative, defaultHeadline = '' }: {
   campaign: MetaCampaignRow; creatives: MetaCreativeRow[];
   setCreatives: React.Dispatch<React.SetStateAction<MetaCreativeRow[]>>;
   placements: Placement[]; onFocusCreative: (id: string) => void;
+  /** The owner's own property title — a truthful, editable starting headline. */
+  defaultHeadline?: string;
 }) {
   const { homatchUser } = useAuth();
   const { t } = useLanguage();
@@ -106,7 +108,7 @@ export function CreativeStep({ campaign, creatives, setCreatives, placements, on
       }
       setUploading((n) => n + 1);
       try {
-        const row = await addCreative(homatchUser.id, campaign.id, file, { headline: '', primaryText: '' }, facts, creatives.length);
+        const row = await addCreative(homatchUser.id, campaign.id, file, { headline: defaultHeadline.slice(0, 40), primaryText: '' }, facts, creatives.length);
         setCreatives((cur) => [...cur, row]);
         onFocusCreative(row.id);
       } catch { toast.error(t('mads_upload_failed')); }

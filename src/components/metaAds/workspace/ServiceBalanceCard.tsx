@@ -16,6 +16,7 @@ export const MIN_DEPOSIT_CENTS = 500;
 
 export function ServiceBalanceCard({ rows, feePercent }: { rows: ServiceBalanceRow[]; feePercent?: number | null }) {
   const { t, lang } = useLanguage();
+  const balanceExplanation = serviceBalanceExplanation(lang, feePercent);
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState('50');
   const [busy, setBusy] = useState(false);
@@ -62,7 +63,7 @@ export function ServiceBalanceCard({ rows, feePercent }: { rows: ServiceBalanceR
       {feePercent != null && <p className="mt-3 text-[13px] text-white/70">{t('mm_w_bal_fee', { percent: feePercent })}</p>}
 
       <p className="mt-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[13px] leading-relaxed text-white/80">
-        {t('mm_w_bal_disclosure')}
+        {balanceExplanation}
       </p>
 
       <Button onClick={() => setOpen(true)}
@@ -74,14 +75,14 @@ export function ServiceBalanceCard({ rows, feePercent }: { rows: ServiceBalanceR
         <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-sm">
           <DialogHeader>
             <DialogTitle>{t('mads_add_funds')}</DialogTitle>
-            <DialogDescription>{t('mads_deposit_desc')}</DialogDescription>
+            <DialogDescription>{balanceExplanation}</DialogDescription>
           </DialogHeader>
           <label className="flex items-center gap-2" dir="ltr">
             <span className="text-lg font-bold" aria-hidden="true">$</span>
             <Input inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} aria-label={t('mads_add_funds')} />
           </label>
           <p className="text-[13px] text-muted-foreground">{t('mm_w_bal_min')}</p>
-          <p className="text-[13px] leading-relaxed text-muted-foreground">{t('mm_w_bal_disclosure')}</p>
+          <p className="text-[13px] leading-relaxed text-muted-foreground">{balanceExplanation}</p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>{t('general_cancel')}</Button>
             <Button onClick={deposit} disabled={busy}>
@@ -104,4 +105,30 @@ function Line({ label, value, hint }: { label: string; value: string; hint?: str
       <dd className="shrink-0" dir="ltr">{value}</dd>
     </div>
   );
+}
+
+
+function serviceBalanceExplanation(lang: string, feePercent?: number | null): string {
+  const pct = feePercent ?? 9;
+  if (pct === 0) {
+    const zero: Record<string, string> = {
+      en: 'This balance is only for HOMATCH service fees. Your service fee is 0%, so no HOMATCH top-up is required for Meta Ads. Meta charges the advertising budget directly to your connected ad account.',
+      ka: 'ეს ბალანსი მხოლოდ HOMATCH-ის მომსახურების საკომისიოსთვისაა. თქვენი მომსახურების საკომისიო 0%-ია, ამიტომ Meta Ads-ისთვის HOMATCH ბალანსის შევსება არ გჭირდებათ. სარეკლამო ბიუჯეტს Meta პირდაპირ თქვენს დაკავშირებულ სარეკლამო ანგარიშს ჩამოაჭრის.',
+      ru: 'Этот баланс предназначен только для комиссии HOMATCH. Ваша комиссия — 0%, поэтому пополнять баланс HOMATCH для Meta Ads не нужно. Рекламный бюджет Meta списывает напрямую с подключённого рекламного аккаунта.',
+      tr: 'Bu bakiye yalnızca HOMATCH hizmet bedeli içindir. Hizmet bedeliniz %0 olduğundan Meta Ads için HOMATCH bakiyesine para eklemeniz gerekmez. Reklam bütçesini Meta doğrudan bağlı reklam hesabınızdan tahsil eder.',
+      ar: 'هذا الرصيد مخصص فقط لرسوم خدمة HOMATCH. رسوم خدمتك 0%، لذلك لا تحتاج إلى شحن رصيد HOMATCH لإعلانات Meta. تخصم Meta ميزانية الإعلان مباشرةً من حسابك الإعلاني المرتبط.',
+      he: 'היתרה הזו מיועדת רק לדמי השירות של HOMATCH. דמי השירות שלכם הם 0%, ולכן אין צורך להטעין את יתרת HOMATCH עבור Meta Ads. Meta מחייבת את תקציב הפרסום ישירות מחשבון המודעות המחובר.',
+    };
+    return zero[lang] ?? zero.en;
+  }
+  const exampleFee = (100 * pct / 100).toLocaleString(undefined, { maximumFractionDigits: 2 });
+  const copy: Record<string, string> = {
+    en: `This balance is only for the HOMATCH service fee — it is not your Meta advertising budget. Meta charges the ad budget directly to your connected ad account. Example: if your advertising budget is $100 and your service fee is ${pct}%, you need $\${exampleFee} in your HOMATCH balance. Unused funds stay in your HOMATCH balance for future campaigns and are not withdrawable as cash.`,
+    ka: `ეს ბალანსი მხოლოდ HOMATCH-ის მომსახურების საკომისიოსთვისაა და არ წარმოადგენს Meta-ს სარეკლამო ბიუჯეტს. სარეკლამო ბიუჯეტს Meta პირდაპირ თქვენს დაკავშირებულ სარეკლამო ანგარიშს ჩამოაჭრის. მაგალითი: თუ თქვენი სარეკლამო ბიუჯეტია $100 და მომსახურების საკომისიო ${pct}%-ია, HOMATCH-ის ბალანსზე უნდა გქონდეთ $\${exampleFee}. გამოუყენებელი თანხა რჩება HOMATCH-ის ბალანსზე მომავალი კამპანიებისთვის და ნაღდ ფულად ვერ გაიტანთ.`,
+    ru: `Этот баланс предназначен только для комиссии HOMATCH и не является рекламным бюджетом Meta. Meta списывает рекламный бюджет напрямую с подключённого рекламного аккаунта. Пример: если рекламный бюджет — $100, а комиссия — ${pct}%, на балансе HOMATCH нужно $\${exampleFee}. Неиспользованные средства остаются на балансе HOMATCH для будущих кампаний и не выводятся наличными.`,
+    tr: `Bu bakiye yalnızca HOMATCH hizmet bedeli içindir; Meta reklam bütçeniz değildir. Meta reklam bütçesini doğrudan bağlı reklam hesabınızdan tahsil eder. Örnek: reklam bütçeniz $100 ve hizmet bedeliniz %${pct} ise HOMATCH bakiyenizde $\${exampleFee} bulunmalıdır. Kullanılmayan tutar gelecekteki kampanyalar için HOMATCH bakiyenizde kalır ve nakit olarak çekilemez.`,
+    ar: `هذا الرصيد مخصص فقط لرسوم خدمة HOMATCH وليس ميزانية إعلانات Meta. تخصم Meta ميزانية الإعلان مباشرةً من حسابك الإعلاني المرتبط. مثال: إذا كانت ميزانية الإعلان $100 ورسوم الخدمة ${pct}%، فيجب أن يتوفر $\${exampleFee} في رصيد HOMATCH. يبقى المبلغ غير المستخدم في رصيد HOMATCH للحملات المستقبلية ولا يمكن سحبه نقدًا.`,
+    he: `היתרה הזו מיועדת רק לדמי השירות של HOMATCH ואינה תקציב הפרסום ב-Meta. Meta מחייבת את תקציב הפרסום ישירות מחשבון המודעות המחובר. לדוגמה: אם תקציב הפרסום הוא $100 ודמי השירות הם ${pct}%, צריכים להיות $\${exampleFee} ביתרת HOMATCH. סכום שלא נוצל נשאר ביתרת HOMATCH לקמפיינים עתידיים ואינו ניתן למשיכה במזומן.`,
+  };
+  return copy[lang] ?? copy.en;
 }

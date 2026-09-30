@@ -63,9 +63,8 @@ test('only BLOCKING_ERROR blocks; INFO is neutral, RECOMMENDATION and WARNING ar
 test('the funding card renders the disclosure, and the copy never says refunded', () => {
   const card = read(`${B}/FundingCard.tsx`);
   assert.match(card, /<p data-mm-disclosure=""[^>]*>[\s\S]*?\{t\('mm_b_funding_disclosure'\)\}/);
-  // Rendered unconditionally: it is outside the {!funding ? … : …} branch.
-  const tail = card.slice(card.lastIndexOf(')}', card.indexOf('data-mm-disclosure')));
-  assert.ok(tail.includes('mm_b_funding_disclosure'));
+  // Rendered unconditionally: after the {!funding ? … : …} branch closes.
+  assert.ok(card.indexOf('data-mm-disclosure') > card.lastIndexOf('        )}\n'), 'the disclosure sits outside the funding branch');
   assert.match(card, /depositCheckout\(addCents\)/);
   assert.match(card, /depositAmountCents\(funding\.shortfallCents\)/);
   assert.ok(!/feePercent\s*\/\s*100|\*\s*0\.09/.test(card), 'no fee math in the browser');

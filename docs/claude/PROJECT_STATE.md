@@ -255,3 +255,30 @@ writing; apply after the Meta and Discovery migrations, via MCP
   ERROR/TEST_MODE_TOKEN. Ready for the owner's first real Connect Meta.
 - Property 244486: 14 current / 0 new / 9 strong (STRONG+VERY_STRONG+EXCEPTIONAL) — one rule
   in header, cards, Matches, Insights.
+
+## Meta Ads master (in progress on claude/homatch-discovery-engine-rqdnza, NOT yet on main)
+
+Phase 2 (Universal Discovery) is blocked until this is live and proven.
+
+- Migration `20261002100000_meta_ads_master.sql` — written, proven idempotent on
+  the local fixture, NOT applied to production. Production pre-check: none of its
+  tables exist, 0 meta_leads rows (the status remap is a no-op), 5 campaigns
+  (3 DRAFT, 1 NEEDS_CHANGES, 1 PAYMENT_REQUIRED), 0 launched.
+- Edge (meta-ads-api): `engine.ts` (v2 strategy, targeting, creative advice,
+  fee policy, 3-day settlement grace), `lifecycle.ts` (write-through
+  pause/resume/end/edit), `monitor.ts` (deterministic 15-min cycle: Guard →
+  insights → analysis → events; lead backfill; duplicate scans every 6 h;
+  briefs at 08:00 local), `actions.ts` (geo search, strategy preview, drill-down,
+  dashboard, recommendations, premium lead forms, admin Guard/fees/economics),
+  `notifier.ts` (canonical events → notify() → push-send → email via Resend).
+- Shared: metaLeads attribution + localized notify(); notifyEmail; push-send
+  meta_* categories; outreach_providers parameter properties made explicit
+  (behaviour-neutral, needed for node type-stripping tests).
+- Fixed in passing: `_shared/metaAds.ts` 190 check compared string to number,
+  so invalidated tokens never marked the connection EXPIRED.
+- UI: four slices (builder, campaign drill-down, workspace/leads/balance,
+  admin + notification center) with i18n data files spliced by
+  `scripts/meta-master-i18n-apply.mjs`.
+- Remaining: gates, production migration apply, one rollout (meta-ads-api,
+  meta-webhooks, push-send + frontend), PROVEN_EXACT proof, non-spending
+  acceptance, final report. No paid Meta actions; owner performs first launch.

@@ -382,6 +382,10 @@ test('the entry bundle is measured, and its size is a stated fact', () => {
    * the entry at 6.21MB. The code itself adds nothing to the entry (its pages
    * are lazy routes). Per-language lazy loading is the follow-up that lets
    * this come back down.
+   *
+   * THIS IS NOT HEADROOM. The extra 0.5MB was spent by one named release; the
+   * next change that grows the entry needs its own owner decision, or the
+   * lazy-loading work first. Measured at the move: 6.21MB (6,511,363 bytes).
    */
   const CEILING = 6.5 * 1024 * 1024;
   assert.ok(bytes < CEILING,

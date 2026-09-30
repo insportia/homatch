@@ -305,3 +305,8 @@ Phase 2 (Universal Discovery) is blocked until this is live and proven.
 - Remaining: gates, production migration apply, one rollout (meta-ads-api,
   meta-webhooks, push-send + frontend), PROVEN_EXACT proof, non-spending
   acceptance, final report. No paid Meta actions; owner performs first launch.
+- 2026-09-30: PR #18 merged (3d3d433); migration applied to production and
+  fingerprint-verified; deploy #853 stopped at the entry-bundle ratchet
+  (6.21MB > 6MB) so edge was not deployed while Vercel served the new frontend.
+  Ceiling moved to 6.5MB (owner-approved, PR #20). Follow-up: per-language
+  lazy loading of translations, then lower the ceiling.

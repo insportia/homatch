@@ -375,8 +375,15 @@ test('the entry bundle is measured, and its size is a stated fact', () => {
    * So this is a ratchet rather than a fix: the number is written down, and
    * the next change that makes it materially worse fails here instead of
    * being noticed in six months. Lower it when the work above is done.
+   *
+   * MOVED ON PURPOSE, 2026-09-30: 6MB → 6.5MB, approved by the owner. The
+   * Meta Ads master release added ~330KB of translation source (~700 keys ×
+   * six languages: builder, campaign drill-down, workspace, admin), which put
+   * the entry at 6.21MB. The code itself adds nothing to the entry (its pages
+   * are lazy routes). Per-language lazy loading is the follow-up that lets
+   * this come back down.
    */
-  const CEILING = 6 * 1024 * 1024;
+  const CEILING = 6.5 * 1024 * 1024;
   assert.ok(bytes < CEILING,
     `the entry chunk is ${(bytes / 1024 / 1024).toFixed(2)}MB, past the ${CEILING / 1024 / 1024}MB ceiling`);
 });

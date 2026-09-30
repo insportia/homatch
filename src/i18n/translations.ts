@@ -12212,6 +12212,9 @@ const en = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_recon_approx_view: 'Aligned approximately with your picture\'s camera (about {{error}}% of its height off). The rebuilt layout is an estimate — use Overlay to compare.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_invert_x: 'Invert horizontal look',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -24338,6 +24341,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_recon_approx_view: 'დაახლოებით შეთანხმებულია თქვენი სურათის კამერასთან (სიმაღლის დაახლ. {{error}}%-ის სხვაობით). აღდგენილი განლაგება შეფასებაა — შესადარებლად გამოიყენეთ გადაფარვა.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_invert_x: 'ჰორიზონტალური ხედის შებრუნება',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -36455,6 +36461,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_recon_approx_view: 'Приблизительно совмещено с камерой вашей картинки (расхождение около {{error}}% её высоты). Восстановленная планировка — оценка: сравните через наложение.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_invert_x: 'Инвертировать по горизонтали',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -48570,6 +48579,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_recon_approx_view: 'Görselinizin kamerasıyla yaklaşık olarak hizalandı (yüksekliğinin yaklaşık %{{error}} kadar sapma). Yeniden oluşturulan yerleşim bir tahmindir — karşılaştırmak için Üst üste bindir özelliğini kullanın.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_invert_x: 'Yatay bakışı ters çevir',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -60685,6 +60697,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_recon_approx_view: 'محاذاة تقريبية مع كاميرا صورتك (فارق يقارب {{error}}% من ارتفاعها). التخطيط المُعاد بناؤه تقدير — استخدم التراكب للمقارنة.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_invert_x: 'اعكس النظر الأفقي',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -72800,6 +72815,9 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_recon_approx_view: 'מיושר בקירוב למצלמה של התמונה שלך (סטייה של כ-{{error}}% מגובהה). הפריסה המשוחזרת היא הערכה — השתמש ב„שכבה” להשוואה.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_invert_x: 'היפוך מבט אופקי',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

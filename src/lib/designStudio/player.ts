@@ -33,10 +33,12 @@ export interface PlayerSettings {
   /** 0.8 … 1.25: walking pace, within what still reads as walking. */
   speed: number;
   invertY: boolean;
+  /** Optional; off by default. Moving right always turns right unless the visitor asks otherwise. */
+  invertX: boolean;
   reducedMotion: boolean;
 }
 
-export const DEFAULT_SETTINGS: PlayerSettings = { lookSensitivity: 1, speed: 1, invertY: false, reducedMotion: false };
+export const DEFAULT_SETTINGS: PlayerSettings = { lookSensitivity: 1, speed: 1, invertY: false, invertX: false, reducedMotion: false };
 
 /** Settings from storage or a form, bounded to what is safe and comfortable. */
 export function normalizeSettings(raw: unknown): PlayerSettings {
@@ -46,6 +48,7 @@ export function normalizeSettings(raw: unknown): PlayerSettings {
     lookSensitivity: num(x.lookSensitivity, 0.5, 2, 1),
     speed: num(x.speed, 0.8, 1.25, 1),
     invertY: x.invertY === true,
+    invertX: x.invertX === true,
     reducedMotion: x.reducedMotion === true,
   };
 }
@@ -102,7 +105,8 @@ export function stepBody(model: WalkModel, pos: Point, vel: Point, wish: Point, 
 export function look(yaw: number, pitch: number, dxPx: number, dyPx: number, settings: PlayerSettings, radPerPx = 0.0026): { yaw: number; pitch: number } {
   const k = radPerPx * settings.lookSensitivity;
   const dy = settings.invertY ? -dyPx : dyPx;
-  return { yaw: yaw - dxPx * k, pitch: Math.max(PITCH_MIN, Math.min(PITCH_MAX, pitch - dy * k)) };
+  const dx = settings.invertX ? -dxPx : dxPx;
+  return { yaw: yaw - dx * k, pitch: Math.max(PITCH_MIN, Math.min(PITCH_MAX, pitch - dy * k)) };
 }
 
 /** The posture a transition leads to, and where it settles. */

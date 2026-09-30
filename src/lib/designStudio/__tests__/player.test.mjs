@@ -66,7 +66,7 @@ test('looking honours sensitivity and invert, within a comfortable range', () =>
   const inverted = look(0, 0, 0, -100, normalizeSettings({ invertY: true }));
   assert.ok(up.pitch > 0 && inverted.pitch < 0);
   assert.equal(look(0, 0, 0, -1e6, DEFAULT_SETTINGS).pitch, PITCH_MAX);
-  assert.deepEqual(normalizeSettings({ lookSensitivity: 99, speed: 5 }), { lookSensitivity: 2, speed: 1.25, invertY: false, reducedMotion: false });
+  assert.deepEqual(normalizeSettings({ lookSensitivity: 99, speed: 5 }), { lookSensitivity: 2, speed: 1.25, invertY: false, invertX: false, reducedMotion: false });
 });
 
 test('sitting and standing are transitions, and only a standing person walks', () => {

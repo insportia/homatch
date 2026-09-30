@@ -774,11 +774,45 @@ async function checkpoint11(browser) {
   await page.getByRole('button', { name: 'Exit walkthrough' }).first().waitFor();
   const states = () => scene(page, (c) => Object.fromEntries(c.interactiveStates().map((x) => [x.key, x.state])));
   const player = () => scene(page, (c) => c.playerState());
+  // Where a point that was straight ahead of `from` now sits on screen (NDC x: <0 left, >0 right).
+  const aheadOnScreen = (from) => scene(page, (c, f) => {
+    const V = c.camera.position.constructor;
+    const p = new V(f.pos.x + Math.cos(f.yaw) * 5, f.eye, -(f.pos.y + Math.sin(f.yaw) * 5)).project(c.camera);
+    return { x: p.x, y: p.y };
+  }, from);
   const s0 = await states();
   check('walk: doors, balcony doors, windows, room lights and pieces are all living parts',
     s0['door:d-lobby-door'] === 'OPEN' && s0['door:d-living-balcony'] === 'CLOSED' && s0['window:win-living-glass'] === 'CLOSED'
     && Object.keys(s0).some((k) => k.startsWith('light:')) && s0[`obj:${fridge.instanceId}:door`] === 'CLOSED' && s0[`obj:${kitchen.instanceId}:coffee`] === 'IDLE',
     JSON.stringify(Object.keys(s0).slice(0, 12)));
+
+  // Looking is tested as a person sees it: drag RIGHT and the view turns RIGHT
+  // (what was ahead slides left); drag UP and the view looks UP.
+  await scene(page, (c) => c.walkTo({ position: { x: 3.1, y: 5.9 }, target: { x: 3.1, y: 8 }, fov: 60 }));
+  await page.waitForTimeout(400);
+  {
+    const box = await page.locator('canvas').first().boundingBox();
+    const cx = box.x + box.width * 0.6; const cy = box.y + box.height * 0.5;
+    const look0 = await player();
+    await page.mouse.move(cx, cy); await page.mouse.down();
+    for (let i = 1; i <= 10; i += 1) await page.mouse.move(cx + i * 12, cy);
+    await page.mouse.up();
+    await page.waitForTimeout(150);
+    const right = await aheadOnScreen(look0);
+    check('look: dragging RIGHT turns the view RIGHT (not inverted)', right.x < -0.05, JSON.stringify(right));
+    const look1 = await player();
+    const before = await aheadOnScreen(look1); // the walk camera may start pitched a little down
+    // Start high on the screen, on open space (a drag that starts on a door moves the door).
+    const ux = box.x + box.width * 0.5; const uy = box.y + box.height * 0.55;
+    await page.mouse.move(ux, uy); await page.mouse.down();
+    for (let i = 1; i <= 8; i += 1) await page.mouse.move(ux, uy - i * 10);
+    await page.mouse.up();
+    await page.waitForTimeout(150);
+    const up = await aheadOnScreen(look1);
+    const look2 = await player();
+    check('look: dragging UP looks UP (not inverted)', look2.pitch > look1.pitch + 0.05 && up.y < before.y - 0.03,
+      `pitch ${look1.pitch.toFixed(3)} → ${look2.pitch.toFixed(3)}; ahead ${before.y.toFixed(3)} → ${up.y.toFixed(3)}`);
+  }
 
   // A body that walks: speeds up, stops, and does not go through walls.
   await scene(page, (c) => c.walkTo({ position: { x: 3.1, y: 5.9 }, target: { x: 3.1, y: 8 }, fov: 60 }));
@@ -991,6 +1025,14 @@ async function checkpoint11(browser) {
   await touch('touchEnd', []);
   check('phone: left thumb walks while the right thumb looks — at the same time',
     Math.hypot(p1.pos.x - p0.pos.x, p1.pos.y - p0.pos.y) > 0.2 && Math.abs(p1.yaw - p0.yaw) > 0.1, `${JSON.stringify(p0)} → ${JSON.stringify(p1)}`);
+  {
+    // The right thumb dragged LEFT: the view turned LEFT, so what was ahead slid right.
+    const seen = await scene(page, (c, f) => {
+      const V = c.camera.position.constructor;
+      return new V(f.pos.x + Math.cos(f.yaw) * 5, f.eye, -(f.pos.y + Math.sin(f.yaw) * 5)).project(c.camera).x;
+    }, p0);
+    check('phone: dragging the right thumb LEFT turns the view LEFT (not inverted)', seen > 0.05, String(seen));
+  }
   await page.waitForTimeout(600);
   await scene(page, (c, k) => c.debugAim(k), `obj:${fridge.instanceId}:door`);
   const phoneHint = page.getByTestId('walk-hint');

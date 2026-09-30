@@ -135,7 +135,9 @@ writing; apply after the Meta and Discovery migrations, via MCP
   dialog, Admin → Brokers Verification + Broker Review tabs + detail dialog.
 - LIMITATION: agency TEAMS (members under an agency) are not implemented;
   `agency_listing_id` exists for later. An agent joins as an individual broker.
-- Pre-existing, not ours: `tests/browser/developerAcceptance.test.mjs` fails
-  UNIT_UI / MOBILE_INTERACTIVE ("unit drawer did not open") on clean
-  origin/main too (reproduced 2026-09-29). Developer digital twin is protected
-  — left untouched.
+- `tests/browser/developerAcceptance.test.mjs` UNIT_UI / MOBILE_INTERACTIVE
+  failed on origin/main too: a stale test premise, not a product bug. The
+  project page defaults to the visual building (unit buttons read number AND
+  area) and the drawer shows the price in its editable Price input. The test
+  now finds a unit by its accessible name and reads dialog input values; the
+  Developer product code was not touched.

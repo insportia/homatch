@@ -35,10 +35,17 @@ interface SharePayload {
   shareType: 'WALKTHROUGH' | 'DESIGN';
   title: string;
   geometryState: string | null;
+  /** Where the space came from (coarse): the estimate note says so truthfully. */
+  origin?: 'PICTURES' | 'FLOORPLAN' | null;
   scene: GeneratedScene;
   state: unknown;
   assets: Array<Record<string, unknown>>;
   materials: Array<Record<string, unknown>>;
+}
+
+/** A space rebuilt from pictures must never say it was drawn from a floor plan. */
+export function estimatedKey(origin: SharePayload['origin']): string {
+  return origin === 'PICTURES' ? 'share_estimated_pictures' : 'share_estimated';
 }
 
 /** /w/<token> (walkthrough) or /d/<token> (design), or ?w=<token> where a host has no rewrite. */
@@ -293,7 +300,7 @@ function Presentation({ data, say, picker }: { data: SharePayload; say: (k: stri
       ) : webgl && isDesign ? (
         <DesignPanel
           title={data.title}
-          estimated={data.geometryState === 'ESTIMATED'}
+          estimated={data.geometryState === 'ESTIMATED' ? estimatedKey(data.origin) : null}
           say={say}
           rooms={tour.map((id) => ({ id, name: names.get(id) ?? '' }))}
           summary={summary}
@@ -306,7 +313,7 @@ function Presentation({ data, say, picker }: { data: SharePayload; say: (k: stri
           <div className="w-full max-w-xl text-center">
             <p className="text-2xs font-semibold uppercase tracking-[0.18em] text-[hsl(38_92%_62%)]">{say('share_brand_line')}</p>
             <h1 className="mt-2 font-display text-3xl font-semibold leading-tight sm:text-4xl">{data.title}</h1>
-            {data.geometryState === 'ESTIMATED' ? <p className="mt-2 text-[14px] text-white/65">{say('share_estimated')}</p> : null}
+            {data.geometryState === 'ESTIMATED' ? <p className="mt-2 text-[14px] text-white/65">{say(estimatedKey(data.origin))}</p> : null}
             <button type="button" onClick={() => enter()}
               className="mt-6 inline-flex h-12 items-center justify-center gap-2 rounded-full bg-white px-7 text-[16px] font-semibold text-[#0C1119] shadow-lg hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]">
               <Footprints className="h-5 w-5" aria-hidden="true" />{say('share_enter')}
@@ -353,7 +360,8 @@ function DesignPanel({
   title, estimated, say, rooms, summary, focus, onFocus, onWalk,
 }: {
   title: string;
-  estimated: boolean;
+  /** The estimate note's key, or null when the sizes are known. */
+  estimated: string | null;
   say: (k: string) => string;
   rooms: Array<{ id: string; name: string }>;
   summary: ReturnType<typeof summarizeDesign>;
@@ -376,7 +384,7 @@ function DesignPanel({
     >
       <p className="text-2xs font-semibold uppercase tracking-[0.18em] text-[hsl(38_92%_62%)]">{say('share_brand_line')}</p>
       <h1 className="mt-1 font-display text-2xl font-semibold leading-tight">{title}</h1>
-      {estimated ? <p className="mt-1 text-[13px] text-white/60">{say('share_estimated')}</p> : null}
+      {estimated ? <p className="mt-1 text-[13px] text-white/60">{say(estimated)}</p> : null}
       {summary.palette.length ? (
         <div className="mt-3">
           <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-white/55">{say('share_palette')}</p>

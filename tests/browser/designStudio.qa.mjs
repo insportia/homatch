@@ -234,6 +234,7 @@ export function createStore(seed = {}) {
       return {
         status: 'ACTIVE', shareType: share.share_type, title: pub.title, sharedAt: pub.created_at,
         geometryState: src.canonical.geometryState, ceilingSource: src.canonical.ceilingSource ?? null,
+        origin: ({ CUSTOMER_PICTURES: 'PICTURES', CUSTOMER_FLOORPLAN: 'FLOORPLAN' })[src.provenance?.origin] ?? null,
         scene: src.canonical.scene, state: pub.state,
         assets: db.ds_catalog_assets.filter((a) => codes.has(a.code)).map(({ id, model_key, ...a }) => ({ id, ...a })),
         materials: db.ds_catalog_materials.filter((m) => mats.has(m.id)),
@@ -1008,6 +1009,10 @@ async function checkpoint11(browser) {
   const vp = await vctx.newPage();
   await wire(vp, store, errors);
   await vp.goto(`${BASE}/w/${token}`, { waitUntil: 'domcontentloaded' });
+  await vp.getByRole('button', { name: 'Enter walkthrough' }).waitFor({ timeout: 20000 });
+  const cover = await vp.locator('body').innerText();
+  check('visitor: a home rebuilt from pictures says so, never "drawn from a floor plan"',
+    cover.includes('rebuilt from pictures') && !cover.includes('floor plan'), cover.slice(0, 300));
   await vp.getByRole('button', { name: 'Enter walkthrough' }).click();
   await vp.getByTestId('walk-hint').or(vp.getByTestId('walk-live')).first().waitFor({ timeout: 20000 });
   await scene(vp, (c, k) => c.debugAim(k), `obj:${fridge.instanceId}:door`);

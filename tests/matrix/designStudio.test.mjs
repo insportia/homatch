@@ -544,3 +544,21 @@ test('a Design Studio AI call is priced from the book, and an unknown cost is ne
     'the economics report is admin-only');
   assert.match(mig, /filter \(where p\)/, 'statistics are over priced samples only');
 });
+
+test('a design rebuilt from pictures never tells anyone it was drawn from a floor plan', () => {
+  // The workspace, the public viewer and the downloaded PDF each carry the
+  // "sizes are approximate" note; each must know where the space came from.
+  const mig = read('supabase/migrations/20261001200000_design_studio_share_origin.sql');
+  assert.match(mig, /'origin', CASE v_pub\.origin WHEN 'CUSTOMER_PICTURES' THEN 'PICTURES' WHEN 'CUSTOMER_FLOORPLAN' THEN 'FLOORPLAN' END/,
+    'the public payload states the coarse origin');
+  // Catalogue assets carry their own (public) provenance; the SOURCE's is read only for its origin.
+  assert.equal((mig.match(/src\.provenance/g) ?? []).length, 1, 'the source provenance is read once');
+  assert.match(mig, /src\.provenance->>'origin' AS origin/, 'and only its origin');
+  assert.doesNotMatch(mig, /v_pub\.provenance|'origin', v_pub\.origin\b/, 'the public payload exposes nothing more of the source');
+  const viewer = read('src/share/ShareViewer.tsx');
+  assert.match(viewer, /origin === 'PICTURES' \? 'share_estimated_pictures' : 'share_estimated'/);
+  assert.doesNotMatch(viewer, /say\('share_estimated'\)/, 'no estimate note is hard-wired to the floor-plan sentence');
+  const dl = read('src/components/designStudio/workspace/DownloadDialog.tsx');
+  assert.match(dl, /fromPictures \? 'ds_export_truth_estimated_pictures' : 'ds_export_truth_estimated'/);
+  assert.match(read('src/components/designStudio/workspace/DesignWorkspace.tsx'), /fromPictures=\{label\.originKey === 'ds_source_pictures'\}/);
+});

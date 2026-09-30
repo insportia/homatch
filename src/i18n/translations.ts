@@ -12206,6 +12206,9 @@ const en = {
   ds_fin_above_floor: 'Above floor',
   ds_fin_above_70: '70%+ target',
   ds_fin_in_band: 'In 75–85% band',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_export_truth_estimated_pictures: 'Sizes are approximate: the space was rebuilt from pictures.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -24326,6 +24329,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   ds_fin_above_floor: 'ზღვარს ზემოთ',
   ds_fin_above_70: '70%+ მიზანი',
   ds_fin_in_band: '75–85% დიაპაზონში',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_export_truth_estimated_pictures: 'ზომები მიახლოებითია: სივრცე სურათებიდანაა აღდგენილი.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -36437,6 +36443,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   ds_fin_above_floor: 'Выше порога',
   ds_fin_above_70: 'Цель 70%+',
   ds_fin_in_band: 'В диапазоне 75–85%',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_export_truth_estimated_pictures: 'Размеры приблизительные: пространство восстановлено по картинкам.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -48546,6 +48555,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   ds_fin_above_floor: 'Tabanın üstünde',
   ds_fin_above_70: '%70+ hedef',
   ds_fin_in_band: '%75–85 aralığında',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_export_truth_estimated_pictures: 'Ölçüler yaklaşıktır: alan görsellerden yeniden oluşturuldu.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -60655,6 +60667,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   ds_fin_above_floor: 'فوق الحد الأدنى',
   ds_fin_above_70: 'هدف 70%+',
   ds_fin_in_band: 'ضمن نطاق 75–85%',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_export_truth_estimated_pictures: 'الأحجام تقريبية: أُعيد بناء المساحة من الصور.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -72764,6 +72779,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   ds_fin_above_floor: 'מעל הרצפה',
   ds_fin_above_70: 'יעד 70%+',
   ds_fin_in_band: 'בטווח 75–85%',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_export_truth_estimated_pictures: 'המידות משוערות: המרחב שוחזר מתמונות.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

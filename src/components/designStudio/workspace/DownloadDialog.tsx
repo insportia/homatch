@@ -26,7 +26,7 @@ import type { SceneController } from '../canvas/SceneController';
 import { bytesOf, download, renderPages, renderStills, STILL_H, STILL_W } from './exportRender';
 
 export function DownloadDialog({
-  controller, space, state, assets, materials, names, projectName, versionName, estimated, onClose,
+  controller, space, state, assets, materials, names, projectName, versionName, estimated, fromPictures = false, onClose,
 }: {
   controller: SceneController | null;
   space: SpaceModel;
@@ -37,6 +37,8 @@ export function DownloadDialog({
   projectName: string;
   versionName: string;
   estimated: boolean;
+  /** The space was rebuilt from the customer's pictures, not drawn from a plan. */
+  fromPictures?: boolean;
   onClose: () => void;
 }) {
   const { t, isRTL } = useLanguage();
@@ -75,7 +77,7 @@ export function DownloadDialog({
         title: projectName,
         subtitle: `${versionName} · ${new Date().toLocaleDateString()}`,
         note: t('ds_preview_note'),
-        truth: t(estimated ? 'ds_export_truth_estimated' : 'ds_export_truth_known'),
+        truth: t(!estimated ? 'ds_export_truth_known' : fromPictures ? 'ds_export_truth_estimated_pictures' : 'ds_export_truth_estimated'),
         palette: t('ds_export_palette'),
         walls: t('ds_export_walls'),
         floor: t('ds_export_floor'),

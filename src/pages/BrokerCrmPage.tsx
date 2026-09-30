@@ -1,4 +1,6 @@
-// BROKER DESK — the professional's own workspace.
+// BROKER WORKSPACE — the professional's own workspace, in sections:
+// Overview · Profile & verification · Properties · Client searches · Leads &
+// pipeline · Directory listing · Billing · Notifications (?tab=…).
 //
 // One call, broker_desk_summary(), returns everything on this page for the
 // caller only: the account (and whether it is suspended), the ONE profile with
@@ -17,11 +19,15 @@
 // more than the platform knows is a fake metric.
 
 import {
-  BadgeCheck, Building2, CalendarClock, Check, Circle, Coins, Eye, FileUp, Globe, Home, Loader2, Mail,
-  MousePointerClick, Phone, Plus, Search, ShieldAlert, Store, Upload,
+  BadgeCheck, Bell, Building2, CalendarClock, Check, Circle, Coins, Eye, FileUp, Globe, Home, LayoutDashboard, Loader2, Mail,
+  MousePointerClick, Pause, Phone, Play, Plus, Search, ShieldAlert, Store, Upload, UserRound, Users,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { LeadsBoard } from '@/components/broker/workspace/LeadsBoard';
+import { NotificationsPanel } from '@/components/broker/workspace/NotificationsPanel';
+import { ClientSearchResults } from '@/components/broker/workspace/ClientSearchResults';
+import { toggleActiveSearch } from '@/services/api3';
 import { CustomerSurface, PageHero } from '@/components/customer/surface';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import {
@@ -51,15 +57,35 @@ const PURCHASABLE = ['APPROVED', 'ACTIVE', 'EXPIRED'];
 const btn = 'inline-flex min-h-10 items-center gap-2 rounded-lg border border-border bg-card px-4 text-2xs font-semibold text-foreground transition-colors hover:border-[hsl(var(--gold-border))] hover:text-[hsl(var(--gold-ink))] disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 const primaryBtn = 'inline-flex min-h-10 items-center gap-2 rounded-lg bg-primary px-4 text-2xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2';
 
-function ClientSearchRow({ row, onSaved }: { row: DeskClientSearch; onSaved: () => void }) {
+/** The Find Property plan a search was confirmed with, in one line. */
+function criteriaSummary(c: Record<string, unknown>, t: (k: TranslationKey, v?: Record<string, string>) => string): { goal: string | null; line: string } {
+  const v = (x: unknown): unknown => (x && typeof x === 'object' && 'value' in (x as object) ? (x as { value: unknown }).value : x);
+  const goal = typeof c.goal === 'string' ? c.goal : typeof c.transactionType === 'string' ? c.transactionType : null;
+  const city = v(c.city);
+  const districts = v(c.districts);
+  const types = v(c.propertyTypes) ?? c.propertyType ?? c.property_type;
+  const budget = v(c.budget) as { min?: number | null; max?: number | null; currency?: string } | null;
+  const beds = v(c.bedrooms) as { min?: number | null; max?: number | null } | null;
+  const parts = [
+    typeof city === 'string' ? city : null,
+    Array.isArray(districts) && districts.length ? districts.slice(0, 3).join(', ') : null,
+    Array.isArray(types) && types.length ? types.join(', ') : typeof types === 'string' ? types : null,
+    budget && (budget.max != null || budget.min != null)
+      ? `${budget.min != null ? `${Number(budget.min).toLocaleString()}–` : '≤ '}${Number(budget.max ?? budget.min).toLocaleString()} ${budget.currency ?? ''}`.trim() : null,
+    beds && (beds.min != null || beds.max != null) ? t('broker_ws_bedrooms', { n: String(beds.min ?? beds.max) }) : null,
+  ].filter(Boolean);
+  return { goal, line: parts.join(' · ') };
+}
+
+function ClientSearchRow({ row, onSaved, suspended }: { row: DeskClientSearch; onSaved: () => void; suspended: boolean }) {
   const { t } = useLanguage();
   const [label, setLabel] = useState(row.client_label ?? '');
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [toggling, setToggling] = useState(false);
+  const [showResults, setShowResults] = useState(false);
   const dirty = label.trim() !== (row.client_label ?? '');
-  const criteria = row.criteria ?? {};
-  const summary = [criteria.city, criteria.propertyType ?? criteria.property_type, criteria.transactionType ?? criteria.transaction_type]
-    .filter((v) => typeof v === 'string' && v).join(' · ');
+  const { goal, line } = criteriaSummary(row.criteria ?? {}, t as never);
   const save = async () => {
     setSaving(true);
     setFailed(false);
@@ -72,16 +98,29 @@ function ClientSearchRow({ row, onSaved }: { row: DeskClientSearch; onSaved: () 
     if (error) { setFailed(true); return; }
     onSaved();
   };
+  const toggle = async () => {
+    setToggling(true);
+    setFailed(false);
+    try { await toggleActiveSearch(row.id, !row.is_active); onSaved(); } catch { setFailed(true); } finally { setToggling(false); }
+  };
   return (
-    <li className="rounded-lg border border-border bg-card p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="min-w-0 break-words text-sm font-semibold text-foreground">{summary || t('broker_desk_search_untitled')}</p>
-        <span className="text-2xs text-muted-foreground">
+    <li className="rounded-xl border border-border bg-card p-3.5" data-client-search>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="break-words text-sm font-semibold text-foreground">
+            {row.client_label || line || t('broker_desk_search_untitled')}
+          </p>
+          <p className="mt-0.5 text-2xs text-muted-foreground">
+            {goal && <span className="me-1.5 rounded bg-secondary px-1.5 py-0.5 font-semibold">{goal === 'RENT' || goal === 'SHORT_STAY' ? t('broker_ws_goal_rent') : t('broker_ws_goal_buy')}</span>}
+            {row.client_label ? line : null}
+          </p>
+        </div>
+        <span className={cn('rounded-full border px-2.5 py-0.5 text-2xs font-semibold',
+          row.is_active ? 'border-[hsl(var(--success))]/30 bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]' : 'border-border bg-secondary text-muted-foreground')}>
           {row.is_active ? t('broker_desk_search_active') : t('broker_desk_search_paused')}
-          {' · '}{new Date(row.created_at).toLocaleDateString()}
         </span>
       </div>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
+      <div className="mt-2.5 flex flex-wrap items-center gap-2">
         <label htmlFor={`cl-${row.id}`} className="sr-only">{t('broker_desk_client_label')}</label>
         <Input
           id={`cl-${row.id}`}
@@ -95,10 +134,38 @@ function ClientSearchRow({ row, onSaved }: { row: DeskClientSearch; onSaved: () 
           {t('broker_desk_save')}
         </button>
       </div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {!suspended && (
+          <button type="button" className={btn} disabled={toggling} onClick={() => void toggle()}>
+            {toggling ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : row.is_active ? <Pause className="h-4 w-4" aria-hidden="true" /> : <Play className="h-4 w-4" aria-hidden="true" />}
+            {row.is_active ? t('broker_ws_search_stop') : t('broker_ws_search_start')}
+          </button>
+        )}
+        {row.side === 'SUPPLY' && (
+          <button type="button" className={btn} aria-expanded={showResults} onClick={() => setShowResults((v) => !v)}>
+            <Search className="h-4 w-4" aria-hidden="true" />
+            {showResults ? t('broker_ws_hide_matches') : t('broker_ws_show_matches')}
+          </button>
+        )}
+      </div>
+      {showResults && <div className="mt-2.5"><ClientSearchResults subscriptionId={row.id} /></div>}
       {failed && <p role="alert" className="mt-1.5 text-2xs text-destructive">{t('broker_apply_err_generic')}</p>}
     </li>
   );
 }
+
+const TABS = ['overview', 'profile', 'properties', 'clients', 'leads', 'listing', 'billing', 'notifications'] as const;
+type Tab = typeof TABS[number];
+const TAB_ICON: Record<Tab, React.ReactNode> = {
+  overview: <LayoutDashboard className="h-4 w-4" aria-hidden="true" />,
+  profile: <UserRound className="h-4 w-4" aria-hidden="true" />,
+  properties: <Home className="h-4 w-4" aria-hidden="true" />,
+  clients: <Users className="h-4 w-4" aria-hidden="true" />,
+  leads: <Check className="h-4 w-4" aria-hidden="true" />,
+  listing: <Store className="h-4 w-4" aria-hidden="true" />,
+  billing: <Coins className="h-4 w-4" aria-hidden="true" />,
+  notifications: <Bell className="h-4 w-4" aria-hidden="true" />,
+};
 
 export default function BrokerCrmPage() {
   const { t } = useLanguage();
@@ -117,6 +184,9 @@ export default function BrokerCrmPage() {
   const docInput = useRef<HTMLInputElement>(null);
 
   const [searchByProperty, setSearchByProperty] = useState<Record<string, string>>({});
+  const [params, setParams] = useSearchParams();
+  const tab: Tab = (TABS as readonly string[]).includes(params.get('tab') ?? '') ? params.get('tab') as Tab : 'overview';
+  const go = (k: Tab) => setParams(k === 'overview' ? {} : { tab: k });
   const load = useCallback(async () => {
     try {
       const d = await brokerDeskSummary();
@@ -181,6 +251,20 @@ export default function BrokerCrmPage() {
         <p className="font-display text-2xl font-semibold leading-none text-foreground tabular-nums">{value}</p>
         <p className="mt-1 text-2xs leading-snug text-muted-foreground">{t(labelKey)}</p>
       </div>
+    </div>
+  );
+
+  const kpi = (labelKey: string, value: string, target: Tab) => (
+    <button type="button" onClick={() => go(target)} data-kpi={labelKey}
+      className="hm-customer-panel min-w-0 p-3.5 text-start transition-colors hover:border-[hsl(var(--gold-border))]">
+      <p className="text-2xs font-medium text-muted-foreground">{t(labelKey as TranslationKey)}</p>
+      <p className="mt-1 break-words font-display text-lg font-semibold leading-tight text-foreground tabular-nums">{value}</p>
+    </button>
+  );
+  const profileRow = (labelKey: string, value: string) => (
+    <div className="min-w-0">
+      <dt className="text-2xs font-medium text-muted-foreground">{t(labelKey as TranslationKey)}</dt>
+      <dd className="break-words text-foreground">{value || '—'}</dd>
     </div>
   );
 
@@ -256,7 +340,7 @@ export default function BrokerCrmPage() {
 
         {!loading && !loadFailed && listing && desk && (
           <>
-            {/* ── Standing ─────────────────────────────────────────────── */}
+            {/* ── Identity ─────────────────────────────────────────────── */}
             <section className="hm-customer-panel p-5 sm:p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
@@ -291,6 +375,216 @@ export default function BrokerCrmPage() {
                 </div>
               </div>
 
+            </section>
+            <nav aria-label={t('broker_ws_nav')} data-ws-tabs>
+              <ul className="flex flex-wrap gap-1 rounded-xl border border-border bg-card p-1">
+                {TABS.map((k) => (
+                  <li key={k}>
+                    <button type="button" onClick={() => go(k)} aria-current={tab === k ? 'page' : undefined}
+                      className={cn('inline-flex min-h-10 items-center gap-1.5 rounded-lg px-3 text-2xs font-semibold transition-colors',
+                        tab === k ? 'bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))]' : 'text-muted-foreground hover:text-foreground')}>
+                      {TAB_ICON[k]}{t(`broker_ws_tab_${k}` as TranslationKey)}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+            {tab === 'overview' && (<>
+            <section aria-labelledby="desk-kpis" className="space-y-3" data-ws-overview>
+              <h2 id="desk-kpis" className="sr-only">{t('broker_ws_tab_overview')}</h2>
+              <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+                {kpi('broker_ws_kpi_listing', t(`broker_status_${listing.status}` as TranslationKey), 'listing')}
+                {kpi('broker_ws_kpi_verification', t(`broker_verif_${listing.verification_state}` as TranslationKey), 'profile')}
+                {kpi('broker_ws_kpi_expires', listing.paid_until ? new Date(listing.paid_until).toLocaleDateString() : '—', 'listing')}
+                {kpi('broker_ws_kpi_balance', balance != null ? `${balance.toFixed(2)} CR` : '—', 'billing')}
+                {kpi('broker_ws_kpi_properties', String(desk.properties.filter((p) => !p.archived_at).length), 'properties')}
+                {kpi('broker_ws_kpi_searches', String(desk.client_searches.filter((c) => c.is_active).length), 'clients')}
+                {kpi('broker_ws_kpi_current_leads', String(desk.properties.reduce((n, p) => n + Number(p.current_leads ?? 0), 0)), 'leads')}
+                {kpi('broker_ws_kpi_needs_action', String((desk.leads.NEW ?? 0) + (desk.leads.REVIEWED ?? 0)), 'leads')}
+              </div>
+            </section>
+            <section className="hm-customer-panel space-y-3 p-5 sm:p-6" aria-labelledby="desk-needs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 id="desk-needs" className="font-display text-base font-semibold text-foreground">{t('broker_ws_needs_action')}</h2>
+                <button type="button" className={btn} onClick={() => go('leads')}>{t('broker_ws_open_pipeline')}</button>
+              </div>
+              <LeadsBoard properties={desk.properties} compact />
+            </section>
+              {!steps.every((x) => x.done) && (<>
+            {/* ── Setup progress ────────────────────────────────────────── */}
+            <section className="hm-customer-panel p-5 sm:p-6" aria-labelledby="desk-steps">
+              <h2 id="desk-steps" className="font-display text-base font-semibold text-foreground">{t('broker_desk_steps_heading')}</h2>
+              <ol className="mt-3 grid gap-2 sm:grid-cols-2">
+                {steps.map((s) => (
+                  <li key={s.key} className="flex items-start gap-2 text-sm text-foreground">
+                    {s.done
+                      ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--success))]" aria-hidden="true" />
+                      : <Circle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
+                    <span className={cn(!s.done && 'text-muted-foreground')}>{t(s.key)}</span>
+                    <span className="sr-only">{s.done ? t('broker_desk_done') : t('broker_desk_todo')}</span>
+                  </li>
+                ))}
+              </ol>
+            </section>
+
+              </>)}
+            <section className="flex flex-wrap gap-2" aria-label={t('broker_ws_quick_actions')}>
+              <Link to="/property/add" className={primaryBtn}><Plus className="h-4 w-4" aria-hidden="true" />{t('broker_desk_add_property')}</Link>
+              <Link to="/find-property" className={btn}><Search className="h-4 w-4" aria-hidden="true" />{t('broker_desk_new_client_search')}</Link>
+              <Link to="/broker/onboarding" className={btn}><CalendarClock className="h-4 w-4" aria-hidden="true" />{t('broker_crm_edit_profile')}</Link>
+            </section>
+            </>)}
+            {tab === 'profile' && (<>
+            <section className="hm-customer-panel space-y-3 p-5 sm:p-6" aria-labelledby="desk-profile">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 id="desk-profile" className="font-display text-base font-semibold text-foreground">{t('broker_ws_tab_profile')}</h2>
+                <Link to="/broker/onboarding" className={btn}><CalendarClock className="h-4 w-4" aria-hidden="true" />{t('broker_crm_edit_profile')}</Link>
+              </div>
+              <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2" data-ws-profile>
+                {profileRow('broker_ws_f_type', listing.role === 'AGENCY' ? t('broker_role_agency') : t('broker_role_broker'))}
+                {profileRow('broker_ws_f_cities', [...(listing.cities ?? []), ...(listing.districts ?? [])].join(', '))}
+                {profileRow('broker_ws_f_languages', (listing.languages ?? []).map((l) => l.toUpperCase()).join(', '))}
+                {profileRow('broker_ws_f_focus', (listing.deal_kinds ?? []).join(', '))}
+                {profileRow('broker_ws_f_types', (listing.property_types ?? []).join(', '))}
+                {profileRow('broker_ws_f_contact_person', listing.contact_person ?? '')}
+                {profileRow('broker_ws_f_contact', [listing.contact_phone, listing.contact_email, listing.whatsapp, listing.telegram, listing.website].filter(Boolean).join(' · '))}
+                {profileRow('broker_ws_f_about', listing.about ?? '')}
+              </dl>
+              {listing.role === 'AGENCY' && <p className="text-2xs leading-relaxed text-muted-foreground">{t('broker_ws_team_note')}</p>}
+            </section>
+            {/* ── Verification ──────────────────────────────────────────── */}
+            <section className="hm-customer-panel space-y-3 p-5 sm:p-6" aria-labelledby="desk-verif">
+              <h2 id="desk-verif" className="font-display text-base font-semibold text-foreground">{t('broker_desk_verif_heading')}</h2>
+              <p className="text-sm leading-relaxed text-muted-foreground">{t(`broker_verif_${listing.verification_state}_body` as TranslationKey)}</p>
+              {listing.verification_note && (listing.verification_state === 'REJECTED' || listing.verification_state === 'SUSPENDED') && (
+                <p className="break-words rounded-lg border border-[hsl(var(--warning)/0.45)] bg-[hsl(var(--gold-soft))] px-4 py-3 text-sm text-[hsl(var(--gold-ink))]">{listing.verification_note}</p>
+              )}
+              {desk.documents.length > 0 && (
+                <ul className="space-y-1.5">
+                  {desk.documents.map((d) => (
+                    <li key={d.id} className="flex flex-wrap items-center gap-2 text-2xs text-muted-foreground">
+                      <FileUp className="h-3.5 w-3.5" aria-hidden="true" />
+                      <span className="font-semibold text-foreground">{t(`broker_doc_${d.kind}` as TranslationKey)}</span>
+                      <span>{new Date(d.created_at).toLocaleDateString()}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {(listing.verification_state === 'UNVERIFIED' || listing.verification_state === 'REJECTED') && !suspended && (
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <label htmlFor="doc-kind" className="sr-only">{t('broker_desk_doc_kind')}</label>
+                  <select
+                    id="doc-kind"
+                    value={docKind}
+                    onChange={(e) => setDocKind(e.target.value)}
+                    className="h-10 min-w-0 rounded-lg border border-input bg-card px-3 text-2xs font-semibold text-foreground"
+                  >
+                    {DOC_KINDS.map((k) => <option key={k} value={k}>{t(`broker_doc_${k}` as TranslationKey)}</option>)}
+                  </select>
+                  <input
+                    ref={docInput}
+                    id="doc-file"
+                    type="file"
+                    accept="application/pdf,image/*"
+                    className="sr-only"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f && authId) void run('doc', () => uploadVerificationDocument(authId, docKind, f), 'broker_desk_doc_added');
+                      if (docInput.current) docInput.current.value = '';
+                    }}
+                  />
+                  <label htmlFor="doc-file" className={cn(btn, 'cursor-pointer')}>
+                    {busy === 'doc' ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Upload className="h-4 w-4" aria-hidden="true" />}
+                    {t('broker_desk_doc_upload')}
+                  </label>
+                  <button type="button" className={primaryBtn} disabled={busy !== null || desk.documents.length === 0}
+                    onClick={() => void run('verify', submitBrokerVerification, 'broker_desk_verif_sent')}
+                  >
+                    {busy === 'verify' && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+                    {t('broker_desk_verif_submit')}
+                  </button>
+                </div>
+              )}
+              <p className="text-2xs leading-relaxed text-muted-foreground">{t('broker_desk_doc_private')}</p>
+            </section>
+
+            </>)}
+            {tab === 'properties' && (<>
+            {/* ── Portfolio with current leads ──────────────────────────── */}
+            <section className="space-y-3" aria-labelledby="desk-portfolio">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 id="desk-portfolio" className="font-display text-lg font-semibold text-foreground">{t('broker_desk_portfolio_heading')}</h2>
+                <div className="flex flex-wrap gap-2">
+                  <Link to="/property/add" className={primaryBtn}><Plus className="h-4 w-4" aria-hidden="true" />{t('broker_desk_add_property')}</Link>
+                  <Link to="/property/import" className={btn}>{t('broker_desk_import_property')}</Link>
+                </div>
+              </div>
+              <p className="text-2xs text-muted-foreground">{t('broker_desk_leads_window', { days: String(desk.active_window_days) })}</p>
+              {desk.properties.length === 0 ? (
+                <p className="hm-customer-panel p-5 text-sm text-muted-foreground">{t('broker_desk_portfolio_empty')}</p>
+              ) : (
+                <ul className="grid gap-3 sm:grid-cols-2">
+                  {desk.properties.map((p) => (
+                    <li key={p.id} className="hm-customer-panel min-w-0 p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="break-words text-sm font-semibold text-foreground">{p.title || t('broker_desk_untitled_property')}</p>
+                          <p className="mt-0.5 text-2xs text-muted-foreground" dir="ltr">{p.homatch_id ? `#${p.homatch_id}` : ''}</p>
+                        </div>
+                        <Home className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      </div>
+                      <dl className="mt-3 grid grid-cols-2 gap-2 text-2xs">
+                        <div><dt className="text-muted-foreground">{t('broker_desk_current_leads')}</dt><dd className="text-base font-semibold tabular-nums text-foreground">{p.current_leads}</dd></div>
+                        <div><dt className="text-muted-foreground">{t('broker_desk_opened_contacts')}</dt><dd className="text-base font-semibold tabular-nums text-foreground">{p.opened_contacts}</dd></div>
+                        <div className="col-span-2" data-desk-search-status>
+                          <dt className="text-muted-foreground">{t('broker_desk_last_search')}</dt>
+                          <dd className="text-xs font-medium text-foreground">
+                            {searchByProperty[p.id] ? statusLabel(searchByProperty[p.id], t as (k: string) => string) : t('broker_desk_no_search')}
+                          </dd>
+                        </div>
+                      </dl>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Link to={`/property/${p.id}/matches`} className={btn}>{t('broker_desk_open_leads')}</Link>
+                        <Link to={`/property/${p.id}`} className={btn}>{t('broker_desk_open_property')}</Link>
+                        {p.homatch_id && !p.archived_at && (
+                          <Link to={`/outreach/meta/create?property=${encodeURIComponent(p.homatch_id)}`} className={btn}>{t('broker_desk_promote_meta')}</Link>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            </>)}
+            {tab === 'clients' && (<>
+            {/* ── Client searches (private labels) ──────────────────────── */}
+            <section className="hm-customer-panel space-y-3 p-5 sm:p-6" aria-labelledby="desk-clients">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 id="desk-clients" className="font-display text-base font-semibold text-foreground">{t('broker_desk_clients_heading')}</h2>
+                <Link to="/find-property" className={btn}><Search className="h-4 w-4" aria-hidden="true" />{t('broker_desk_new_client_search')}</Link>
+              </div>
+              <p className="text-2xs leading-relaxed text-muted-foreground">{t('broker_desk_clients_note')}</p>
+              {desk.client_searches.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{t('broker_desk_clients_empty')}</p>
+              ) : (
+                <ul className="space-y-2">
+                  {desk.client_searches.map((c) => <ClientSearchRow key={c.id} row={c} suspended={suspended} onSaved={() => void load()} />)}
+                </ul>
+              )}
+            </section>
+
+            </>)}
+            {tab === 'leads' && (<>
+            <section className="hm-customer-panel space-y-3 p-5 sm:p-6" aria-labelledby="desk-leads">
+              <h2 id="desk-leads" className="font-display text-base font-semibold text-foreground">{t('broker_desk_leads_heading')}</h2>
+              <p className="text-2xs leading-relaxed text-muted-foreground">{t('broker_desk_leads_window', { days: String(desk.active_window_days) })} {t('broker_desk_leads_note')}</p>
+              <LeadsBoard properties={desk.properties} />
+            </section>
+            </>)}
+            {tab === 'listing' && (<>
+            <section className="hm-customer-panel p-5 sm:p-6" aria-labelledby="desk-listing">
+              <h2 id="desk-listing" className="font-display text-base font-semibold text-foreground">{t('broker_ws_tab_listing')}</h2>
               {listing.review_note && (listing.status === 'NEEDS_CHANGES' || listing.status === 'REJECTED') && (
                 <p className="mt-3 break-words rounded-lg border border-[hsl(var(--warning)/0.45)] bg-[hsl(var(--gold-soft))] px-4 py-3 text-sm leading-relaxed text-[hsl(var(--gold-ink))]">
                   {listing.review_note}
@@ -351,203 +645,6 @@ export default function BrokerCrmPage() {
               )}
             </section>
 
-            <AlertDialog open={confirmBuy} onOpenChange={setConfirmBuy}>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>{t('broker_desk_buy_title')}</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {t('broker_desk_buy_body', { credits: price != null ? price.toFixed(2) : '—', days: String(days), balance: balance != null ? balance.toFixed(2) : '—' })}
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>{t('broker_desk_cancel')}</AlertDialogCancel>
-                  <AlertDialogAction
-                    disabled={busy !== null}
-                    onClick={async () => {
-                      const key = purchaseKey.current ?? newIdempotencyKey('broker-listing');
-                      purchaseKey.current = key;
-                      const ok = await run('buy', () => purchaseBrokerListing(key), 'broker_desk_bought');
-                      if (ok) purchaseKey.current = null;
-                    }}
-                  >
-                    {t('broker_desk_buy_confirm')}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-
-            {/* ── Setup progress ────────────────────────────────────────── */}
-            <section className="hm-customer-panel p-5 sm:p-6" aria-labelledby="desk-steps">
-              <h2 id="desk-steps" className="font-display text-base font-semibold text-foreground">{t('broker_desk_steps_heading')}</h2>
-              <ol className="mt-3 grid gap-2 sm:grid-cols-2">
-                {steps.map((s) => (
-                  <li key={s.key} className="flex items-start gap-2 text-sm text-foreground">
-                    {s.done
-                      ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--success))]" aria-hidden="true" />
-                      : <Circle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
-                    <span className={cn(!s.done && 'text-muted-foreground')}>{t(s.key)}</span>
-                    <span className="sr-only">{s.done ? t('broker_desk_done') : t('broker_desk_todo')}</span>
-                  </li>
-                ))}
-              </ol>
-            </section>
-
-            {/* ── Verification ──────────────────────────────────────────── */}
-            <section className="hm-customer-panel space-y-3 p-5 sm:p-6" aria-labelledby="desk-verif">
-              <h2 id="desk-verif" className="font-display text-base font-semibold text-foreground">{t('broker_desk_verif_heading')}</h2>
-              <p className="text-sm leading-relaxed text-muted-foreground">{t(`broker_verif_${listing.verification_state}_body` as TranslationKey)}</p>
-              {listing.verification_note && (listing.verification_state === 'REJECTED' || listing.verification_state === 'SUSPENDED') && (
-                <p className="break-words rounded-lg border border-[hsl(var(--warning)/0.45)] bg-[hsl(var(--gold-soft))] px-4 py-3 text-sm text-[hsl(var(--gold-ink))]">{listing.verification_note}</p>
-              )}
-              {desk.documents.length > 0 && (
-                <ul className="space-y-1.5">
-                  {desk.documents.map((d) => (
-                    <li key={d.id} className="flex flex-wrap items-center gap-2 text-2xs text-muted-foreground">
-                      <FileUp className="h-3.5 w-3.5" aria-hidden="true" />
-                      <span className="font-semibold text-foreground">{t(`broker_doc_${d.kind}` as TranslationKey)}</span>
-                      <span>{new Date(d.created_at).toLocaleDateString()}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {(listing.verification_state === 'UNVERIFIED' || listing.verification_state === 'REJECTED') && !suspended && (
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <label htmlFor="doc-kind" className="sr-only">{t('broker_desk_doc_kind')}</label>
-                  <select
-                    id="doc-kind"
-                    value={docKind}
-                    onChange={(e) => setDocKind(e.target.value)}
-                    className="h-10 min-w-0 rounded-lg border border-input bg-card px-3 text-2xs font-semibold text-foreground"
-                  >
-                    {DOC_KINDS.map((k) => <option key={k} value={k}>{t(`broker_doc_${k}` as TranslationKey)}</option>)}
-                  </select>
-                  <input
-                    ref={docInput}
-                    id="doc-file"
-                    type="file"
-                    accept="application/pdf,image/*"
-                    className="sr-only"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f && authId) void run('doc', () => uploadVerificationDocument(authId, docKind, f), 'broker_desk_doc_added');
-                      if (docInput.current) docInput.current.value = '';
-                    }}
-                  />
-                  <label htmlFor="doc-file" className={cn(btn, 'cursor-pointer')}>
-                    {busy === 'doc' ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Upload className="h-4 w-4" aria-hidden="true" />}
-                    {t('broker_desk_doc_upload')}
-                  </label>
-                  <button type="button" className={primaryBtn} disabled={busy !== null || desk.documents.length === 0}
-                    onClick={() => void run('verify', submitBrokerVerification, 'broker_desk_verif_sent')}
-                  >
-                    {busy === 'verify' && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
-                    {t('broker_desk_verif_submit')}
-                  </button>
-                </div>
-              )}
-              <p className="text-2xs leading-relaxed text-muted-foreground">{t('broker_desk_doc_private')}</p>
-            </section>
-
-            {/* ── Portfolio with current leads ──────────────────────────── */}
-            <section className="space-y-3" aria-labelledby="desk-portfolio">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 id="desk-portfolio" className="font-display text-lg font-semibold text-foreground">{t('broker_desk_portfolio_heading')}</h2>
-                <div className="flex flex-wrap gap-2">
-                  <Link to="/property/add" className={primaryBtn}><Plus className="h-4 w-4" aria-hidden="true" />{t('broker_desk_add_property')}</Link>
-                  <Link to="/property/import" className={btn}>{t('broker_desk_import_property')}</Link>
-                </div>
-              </div>
-              <p className="text-2xs text-muted-foreground">{t('broker_desk_leads_window', { days: String(desk.active_window_days) })}</p>
-              {desk.properties.length === 0 ? (
-                <p className="hm-customer-panel p-5 text-sm text-muted-foreground">{t('broker_desk_portfolio_empty')}</p>
-              ) : (
-                <ul className="grid gap-3 sm:grid-cols-2">
-                  {desk.properties.map((p) => (
-                    <li key={p.id} className="hm-customer-panel min-w-0 p-4">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="break-words text-sm font-semibold text-foreground">{p.title || t('broker_desk_untitled_property')}</p>
-                          <p className="mt-0.5 text-2xs text-muted-foreground" dir="ltr">{p.homatch_id ? `#${p.homatch_id}` : ''}</p>
-                        </div>
-                        <Home className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                      </div>
-                      <dl className="mt-3 grid grid-cols-2 gap-2 text-2xs">
-                        <div><dt className="text-muted-foreground">{t('broker_desk_current_leads')}</dt><dd className="text-base font-semibold tabular-nums text-foreground">{p.current_leads}</dd></div>
-                        <div><dt className="text-muted-foreground">{t('broker_desk_opened_contacts')}</dt><dd className="text-base font-semibold tabular-nums text-foreground">{p.opened_contacts}</dd></div>
-                        <div className="col-span-2" data-desk-search-status>
-                          <dt className="text-muted-foreground">{t('broker_desk_last_search')}</dt>
-                          <dd className="text-xs font-medium text-foreground">
-                            {searchByProperty[p.id] ? statusLabel(searchByProperty[p.id], t as (k: string) => string) : t('broker_desk_no_search')}
-                          </dd>
-                        </div>
-                      </dl>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <Link to={`/property/${p.id}/matches`} className={btn}>{t('broker_desk_open_leads')}</Link>
-                        <Link to={`/property/${p.id}`} className={btn}>{t('broker_desk_open_property')}</Link>
-                        {p.homatch_id && !p.archived_at && (
-                          <Link to={`/outreach/meta/create?property=${encodeURIComponent(p.homatch_id)}`} className={btn}>{t('broker_desk_promote_meta')}</Link>
-                        )}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            {/* ── Lead workflow ─────────────────────────────────────────── */}
-            <section className="hm-customer-panel p-5 sm:p-6" aria-labelledby="desk-leads">
-              <h2 id="desk-leads" className="font-display text-base font-semibold text-foreground">{t('broker_desk_leads_heading')}</h2>
-              {totalLeads === 0 ? (
-                <p className="mt-2 text-sm text-muted-foreground">{t('broker_desk_leads_empty')}</p>
-              ) : (
-                <dl className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-                  {LEAD_STATES.map((s) => (
-                    <div key={s} className="rounded-lg border border-border bg-card p-3">
-                      <dt className="text-2xs text-muted-foreground">{t(`lead_state_${s}` as TranslationKey)}</dt>
-                      <dd className="mt-1 text-lg font-semibold tabular-nums text-foreground">{desk.leads[s] ?? 0}</dd>
-                    </div>
-                  ))}
-                </dl>
-              )}
-              <p className="mt-3 text-2xs leading-relaxed text-muted-foreground">{t('broker_desk_leads_note')}</p>
-            </section>
-
-            {/* ── Client searches (private labels) ──────────────────────── */}
-            <section className="hm-customer-panel space-y-3 p-5 sm:p-6" aria-labelledby="desk-clients">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 id="desk-clients" className="font-display text-base font-semibold text-foreground">{t('broker_desk_clients_heading')}</h2>
-                <Link to="/find-property" className={btn}><Search className="h-4 w-4" aria-hidden="true" />{t('broker_desk_new_client_search')}</Link>
-              </div>
-              <p className="text-2xs leading-relaxed text-muted-foreground">{t('broker_desk_clients_note')}</p>
-              {desk.client_searches.length === 0 ? (
-                <p className="text-sm text-muted-foreground">{t('broker_desk_clients_empty')}</p>
-              ) : (
-                <ul className="space-y-2">
-                  {desk.client_searches.map((c) => <ClientSearchRow key={c.id} row={c} onSaved={() => void load()} />)}
-                </ul>
-              )}
-            </section>
-
-            {/* ── Credits ──────────────────────────────────────────────── */}
-            <section className="hm-customer-panel p-5 sm:p-6" aria-labelledby="desk-credits">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 id="desk-credits" className="font-display text-base font-semibold text-foreground">{t('broker_desk_credits_heading')}</h2>
-                <Link to="/credits" className={btn}><Coins className="h-4 w-4" aria-hidden="true" />{t('broker_desk_credits_open')}</Link>
-              </div>
-              <p className="mt-2 font-display text-2xl font-semibold tabular-nums text-foreground" dir="ltr">
-                {balance != null ? `${balance.toFixed(2)} CR` : '—'}
-              </p>
-              {desk.purchases.length > 0 && (
-                <ul className="mt-3 space-y-1 text-2xs text-muted-foreground">
-                  {desk.purchases.map((b) => (
-                    <li key={b.created_at}>
-                      {t('broker_desk_purchase_row', { credits: Number(b.credits).toFixed(2), date: new Date(b.period_end).toLocaleDateString() })}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-
             {/* ── Engagement, honestly labelled ─────────────────────────── */}
             <section className="space-y-3" aria-labelledby="broker-crm-analytics">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -599,6 +696,60 @@ export default function BrokerCrmPage() {
                 {t('broker_crm_metrics_honesty')}
               </p>
             </section>
+            </>)}
+            {tab === 'billing' && (<>
+            {/* ── Credits ──────────────────────────────────────────────── */}
+            <section className="hm-customer-panel p-5 sm:p-6" aria-labelledby="desk-credits">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 id="desk-credits" className="font-display text-base font-semibold text-foreground">{t('broker_desk_credits_heading')}</h2>
+                <Link to="/credits" className={btn}><Coins className="h-4 w-4" aria-hidden="true" />{t('broker_desk_credits_open')}</Link>
+              </div>
+              <p className="mt-2 font-display text-2xl font-semibold tabular-nums text-foreground" dir="ltr">
+                {balance != null ? `${balance.toFixed(2)} CR` : '—'}
+              </p>
+              {desk.purchases.length > 0 && (
+                <ul className="mt-3 space-y-1 text-2xs text-muted-foreground">
+                  {desk.purchases.map((b) => (
+                    <li key={b.created_at}>
+                      {t('broker_desk_purchase_row', { credits: Number(b.credits).toFixed(2), date: new Date(b.period_end).toLocaleDateString() })}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            </>)}
+            {tab === 'notifications' && (<>
+            <section className="hm-customer-panel space-y-3 p-5 sm:p-6" aria-labelledby="desk-notif">
+              <h2 id="desk-notif" className="font-display text-base font-semibold text-foreground">{t('broker_ws_tab_notifications')}</h2>
+              <NotificationsPanel />
+            </section>
+            </>)}
+            <AlertDialog open={confirmBuy} onOpenChange={setConfirmBuy}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>{t('broker_desk_buy_title')}</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {t('broker_desk_buy_body', { credits: price != null ? price.toFixed(2) : '—', days: String(days), balance: balance != null ? balance.toFixed(2) : '—' })}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>{t('broker_desk_cancel')}</AlertDialogCancel>
+                  <AlertDialogAction
+                    disabled={busy !== null}
+                    onClick={async () => {
+                      const key = purchaseKey.current ?? newIdempotencyKey('broker-listing');
+                      purchaseKey.current = key;
+                      const ok = await run('buy', () => purchaseBrokerListing(key), 'broker_desk_bought');
+                      if (ok) purchaseKey.current = null;
+                    }}
+                  >
+                    {t('broker_desk_buy_confirm')}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+
           </>
         )}
       </CustomerSurface>

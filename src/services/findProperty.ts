@@ -92,6 +92,8 @@ export interface BrokerDisclosure {
 
 export interface FindPropertyResult {
   id: string;
+  /** The search (intent) this result answers. */
+  intentId?: string | null;
   score: number;
   deal: string | null;
   roles: { demand: string | null; supply: string | null };
@@ -225,9 +227,9 @@ export async function confirmPlan(
 }
 
 /** Read what the matcher found. Costs nothing: these results are already paid for. */
-export async function readResults(limit = 20): Promise<ResultsResponse> {
+export async function readResults(limit = 20, subscriptionId?: string): Promise<ResultsResponse> {
   const { data, error } = await supabase.functions.invoke('find-property', {
-    body: { limit },
+    body: subscriptionId ? { limit, subscriptionId } : { limit },
   });
   if (error) {
     return {

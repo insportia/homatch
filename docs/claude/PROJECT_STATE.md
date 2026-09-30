@@ -197,3 +197,24 @@ writing; apply after the Meta and Discovery migrations, via MCP
 - Known follow-up (latent, HOMATCH_WALLET billing only): Meta settlement posts RELEASE
   and META_SPEND as separate writes outside the ledger balance lock; make settlement
   one locked RPC before HOMATCH_WALLET is ever enabled. CUSTOMER_AD_ACCOUNT is unaffected.
+
+## Workstream B final hardening (2026-09-30) — PR #11
+- Merged to main as `d09ea5a` ([insportia/homatch#11](https://github.com/insportia/homatch/pull/11)).
+- Migration `workstream_b_final_hardening` APPLIED to production (ledger version
+  `20260930061526`, via MCP). Verified live: maintenance token in Vault (admin_settings row
+  gone; RPC service-role only), maintenance cron reads Vault, ledger balance guard trigger,
+  forum cron gated by `forum_schedule_enabled` (false), broker expiry cron `7 * * * *`,
+  finished-search trigger, whole-row directory policy dropped.
+- Production acceptance (rolled-back transaction, real identities): new broker DRAFT →
+  self-activate 0 rows → purchase NOT_APPROVED → submit PENDING_REVIEW → self-approve
+  FORBIDDEN; admin approves; zero balance INSUFFICIENT_CREDITS; purchase 290 once, replay
+  `duplicate` (1000 → 710); stranger table 0 / view 1; anon table denied / view 1; admin
+  detail + overview OK, non-admin FORBIDDEN; owner sees own matches only.
+- Deploy run #839 did NOT deploy: Validate failed on 3 browser tests whose premises changed
+  on purpose (6 discovery switches; review shows "charged by HOMATCH now" = fee only).
+  Premises fixed on the branch. Until the next rollout, production runs the previous
+  edge/frontend on the new schema: compatible, except the Meta maintenance pass is refused
+  (old meta-ads-api reads the token from admin_settings) — fails closed, MOCK mode.
+- Next rollout (one PR): the test-premise fixes + Facebook Login for Business
+  (config_id 970930962712211, code grant, system-user token) + Meta Data Deletion Request
+  callback + migration `20261001130000_meta_data_deletion_requests`.

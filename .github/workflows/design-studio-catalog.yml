@@ -49,7 +49,6 @@ jobs:
     timeout-minutes: 345
     env:
       SUPABASE_URL: https://ptxajsjhobhvsfhmutjn.supabase.co
-      CATALOG_TOOLS_DIR: ${{ runner.temp }}/catalog-tools
       MODE: ${{ inputs.mode }}
       PROVIDER: ${{ inputs.provider }}
       IDS: ${{ inputs.ids }}
@@ -61,6 +60,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+
+      # The runner context is not available in job-level env; the tools directory is set here.
+      - name: Tools directory
+        run: echo "CATALOG_TOOLS_DIR=$RUNNER_TEMP/catalog-tools" >> "$GITHUB_ENV"
 
       - name: Service credential for this run (masked, never printed)
         env:

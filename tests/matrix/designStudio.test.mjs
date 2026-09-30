@@ -579,6 +579,11 @@ test('catalogue importer: credentials stay in Supabase, runs are deliberate, bul
   const wf = read('.github/workflows/design-studio-catalog.yml');
   assert.doesNotMatch(wf, /^\s*schedule:/m, 'no scheduled, unattended runs');
   assert.match(wf, /workflow_dispatch:/);
+  // GitHub rejects the whole file (a push-triggered "failure" with no jobs, and no Run button) when the
+  // runner context is used outside steps; job-level env may not reference it.
+  const jobEnv = /\n {4}env:\n((?: {6}.*\n)+)/.exec(wf.replace(/\r\n/g, '\n'))?.[1] ?? '';
+  assert.match(jobEnv, /SUPABASE_URL/, 'the job-level env block is found');
+  assert.doesNotMatch(jobEnv, /\$\{\{\s*runner\./, 'no runner context in job-level env');
   const runner = read('scripts/design-studio/catalog-import.mjs');
   assert.match(runner, /if \(!args\.includes\('--owner-approved'\)\) throw/, 'queuing a whole provider needs the owner');
   assert.doesNotMatch(runner, /console\.log\([^)]*\burl\b/i, 'no URL is ever printed');

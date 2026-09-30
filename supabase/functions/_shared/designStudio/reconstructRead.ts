@@ -74,6 +74,44 @@ export interface ReconObject {
 }
 export type SurfacePatternCode = 'WOOD_PLANK' | 'WOOD_HERRINGBONE' | 'TILE' | 'STONE' | 'CONCRETE' | 'CARPET';
 export const SURFACE_PATTERN_CODES: readonly SurfacePatternCode[] = ['WOOD_PLANK', 'WOOD_HERRINGBONE', 'TILE', 'STONE', 'CONCRETE', 'CARPET'];
+/** A code's usual spellings (the reader is asked for the exact code; it does not always comply). */
+const PATTERN_ALIASES: Array<[RegExp, SurfacePatternCode]> = [
+  [/^(WOOD_)?(HERRINGBONE|CHEVRON|PARQUET)$/, 'WOOD_HERRINGBONE'],
+  [/^(WOOD_)?(PLANKS?|BOARDS?|LAMINATE|DECKING|WOOD)$/, 'WOOD_PLANK'],
+  [/^(TILES?|CERAMIC|PORCELAIN)$/, 'TILE'],
+  [/^(STONE|MARBLE|TERRAZZO)$/, 'STONE'],
+  [/^(CONCRETE|CEMENT|MICROCEMENT)$/, 'CONCRETE'],
+  [/^(CARPET|RUG)$/, 'CARPET'],
+];
+
+/**
+ * What the reader SAID it saw, in its own words and in any of the six
+ * languages, when it gave no code. Containment only: \b does not match
+ * Georgian, and upper-casing turns Mkhedruli into Mtavruli, so the text is
+ * compared as written (lower-cased Latin/Cyrillic only). Herringbone before
+ * plain wood: "herringbone oak" is herringbone.
+ */
+const PATTERN_WORDS: Array<[string[], SurfacePatternCode]> = [
+  [['herringbone', 'chevron', 'parquet', 'ჰერინგბონ', 'ნაძვისებრ', 'ёлочк', 'елочк', 'паркет', 'balıksırtı', 'balik sirti', 'parke', 'متعرج', 'باركيه', 'הרינגבון', 'פרקט'], 'WOOD_HERRINGBONE'],
+  [['tile', 'ceramic', 'porcelain', 'ფილა', 'კერამიკ', 'плитк', 'кафел', 'fayans', 'seramik', 'karo', 'بلاط', 'سيراميك', 'אריח', 'קרמיק'], 'TILE'],
+  [['marble', 'stone', 'terrazzo', 'მარმარილ', 'ქვა', 'мрамор', 'камен', 'mermer', 'taş', 'رخام', 'حجر', 'שיש', 'אבן'], 'STONE'],
+  [['concrete', 'cement', 'ბეტონ', 'ცემენტ', 'бетон', 'цемент', 'beton', 'çimento', 'خرسان', 'اسمنت', 'בטון'], 'CONCRETE'],
+  [['carpet', 'rug', 'ხალიჩ', 'ковр', 'ковролин', 'halı', 'سجاد', 'שטיח'], 'CARPET'],
+  [['oak', 'walnut', 'wood', 'plank', 'laminate', 'deck', 'მუხა', 'კაკალ', 'ხის', 'ლამინატ', 'дуб', 'орех', 'дерев', 'ламинат', 'доск', 'meşe', 'ceviz', 'ahşap', 'laminat', 'خشب', 'بلوط', 'עץ', 'אלון', 'למינציה'], 'WOOD_PLANK'],
+];
+
+export function floorPattern(code: unknown, material: unknown): SurfacePatternCode | null {
+  if (typeof code === 'string') {
+    const c = code.trim().toUpperCase().replace(/[\s-]+/g, '_');
+    if (SURFACE_PATTERN_CODES.includes(c as SurfacePatternCode)) return c as SurfacePatternCode;
+    for (const [re, out] of PATTERN_ALIASES) if (re.test(c)) return out;
+  }
+  if (typeof material !== 'string' || !material.trim()) return null;
+  const text = material.replace(/[A-ZА-ЯЁİ]/g, (ch) => ch.toLowerCase());
+  for (const [words, out] of PATTERN_WORDS) if (words.some((w) => text.includes(w))) return out;
+  return null;
+}
+
 export interface ReconSurface { room: string; part: 'FLOOR' | 'WALLS'; color: string | null; material: string | null; confidence: number; pattern?: SurfacePatternCode | null }
 export interface ReconCamera {
   image: number; kind: 'AERIAL' | 'EYE';
@@ -359,7 +397,7 @@ export function validateReconstruction(
   for (const x of (Array.isArray(r.surfaces) ? r.surfaces : []).slice(0, MAX_ROOMS * 2)) {
     const o = (x ?? {}) as Record<string, unknown>;
     if (typeof o.room !== 'string' || !roomKeys.has(o.room) || (o.part !== 'FLOOR' && o.part !== 'WALLS')) { dropped += 1; continue; }
-    const pattern = o.part === 'FLOOR' && SURFACE_PATTERN_CODES.includes(o.pattern as SurfacePatternCode) ? o.pattern as SurfacePatternCode : null;
+    const pattern = o.part === 'FLOOR' ? floorPattern(o.pattern, o.material) : null;
     surfaces.push({ room: o.room, part: o.part, color: hex(o.color), material: text(o.material, 40), confidence: clamp01(o.confidence), pattern });
   }
 

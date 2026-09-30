@@ -108,7 +108,7 @@ function categoryOf(eventType: string, metadata?: Record<string, unknown> | null
      a suspension or a rejected campaign. */
   if (eventType.startsWith('META_')) {
     const pref = typeof metadata?.pref === 'string' ? metadata.pref : '';
-    if (/^meta_(performance|leads|billing|integrity|lifecycle)$/.test(pref)) return pref;
+    if (/^meta_(performance|leads|billing|integrity|lifecycle|daily_brief|weekly_brief)$/.test(pref)) return pref;
     return eventType === 'META_LEAD' ? 'meta_leads' : 'meta_lifecycle';
   }
   if (eventType.startsWith('CAMPAIGN_')) return 'campaigns';

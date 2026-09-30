@@ -75,6 +75,19 @@ Deno.serve(async (req) => {
             error: scrubText(err instanceof Error ? err.message : String(err)).slice(0, 400),
           }).eq('id', stored.id);
         }
+      } else if (payload.object === 'ad_account' || payload.object === 'page') {
+        /* A change Meta tells us about (ad objects in review / with issues,
+           a page change). The webhook only ACCELERATES: the campaigns it may
+           concern are moved to the front of the next reconciliation pass,
+           which reads Meta itself. Nothing is changed from the payload. */
+        const id = String(entry.id ?? '');
+        if (/^[0-9]{1,32}$/.test(id)) {
+          const col = payload.object === 'ad_account' ? 'ad_account_external_id' : 'page_external_id';
+          const ids = payload.object === 'ad_account' ? [`act_${id}`, id] : [id];
+          await sb.from('meta_campaigns').update({ last_synced_at: null, insights_synced_at: null })
+            .in(col, ids).in('status', ['SUBMITTED', 'META_REVIEW', 'ACTIVE', 'PAUSED']);
+        }
+        await sb.from('meta_webhook_events').update({ processed_at: new Date().toISOString() }).eq('id', stored.id);
       }
     }
   }

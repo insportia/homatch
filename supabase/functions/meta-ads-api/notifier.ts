@@ -10,7 +10,7 @@
 // event is IMPORTANT or worse, and no summary exists for this exact evidence
 // fingerprint in this language. A stable campaign costs nothing here.
 
-import { notify, type Priority } from '../_shared/notify.ts';
+import { notify } from '../_shared/notify.ts';
 import { sendNotificationEmail, renderNotificationEmail } from '../_shared/notifyEmail.ts';
 import { callLlm, llmAvailable } from '../_shared/comm/llm.ts';
 import { estimatedProviderCost } from '../_shared/providerCost.ts';
@@ -22,7 +22,6 @@ import { renderEvent, normLocale, RTL, EMAIL_CTA, EMAIL_WHY, EMAIL_ANALYSIS, EMA
 
 type Sb = any;
 
-const PRIORITY: Record<Severity, Priority> = { INFO: 'LOW', IMPORTANT: 'HIGH', CRITICAL: 'CRITICAL' };
 const APP_URL = 'https://www.homatch.live';
 
 export interface Recipient { userId: string; locale: Locale; prefs: Preferences; hasPush: boolean; hasEmail: boolean }
@@ -123,7 +122,8 @@ export async function processConditions(sb: Sb, campaign: { id: string; user_id:
       userId, type: type.startsWith('GUARD') || type === 'EXTERNAL_MODIFICATION' ? 'META_GUARD' : type === 'NEW_RECOMMENDATION' ? 'META_RECOMMENDATION'
         : type === 'SERVICE_BALANCE_LOW' ? 'META_ADS_BALANCE' : 'META_CAMPAIGN_STATUS',
       title: scrubPii(words.title), body: scrubPii(words.body),
-      priority: channels.includes('PUSH') ? PRIORITY[row.severity as Severity] : 'LOW',
+      // Push-routed events interrupt by severity; in-app-only ones never push.
+      priority: !channels.includes('PUSH') ? 'LOW' : row.severity === 'CRITICAL' ? 'CRITICAL' : 'HIGH',
       deepLink: row.deep_link, entityType: campaign ? 'META_CAMPAIGN' : null, entityId: campaign?.id ?? null,
       dedupeKey: `meta_evt:${saved.id}:${r.transition}:${historyKey}`,
       metadata: { kind: 'META_EVENT', eventType: type, transition: r.transition, severity: row.severity, category: row.category,

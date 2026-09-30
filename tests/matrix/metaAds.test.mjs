@@ -48,8 +48,12 @@ test('the 9% fee lives in admin_settings alone — code always reads the setting
   // ONE settings reader holds the key; every fee use goes through it.
   assert.equal((engine.match(/'meta_ads_fee_percent'/g) ?? []).length, 1, 'the key is read in exactly one place');
   assert.ok(!/'meta_ads_fee_percent'/.test(api), 'the router never reads the fee key directly');
-  const feeUses = api.match(/settings\.feePercent/g) ?? [];
-  assert.ok(feeUses.length >= 2, 'launch and preview both use the canonical setting');
+  // Launch and preview charge the CUSTOMER's percent: the admin fee policy
+  // (standard / custom / exempt) resolved over the canonical setting — one
+  // resolver, and it falls back to settings.feePercent, never a literal.
+  const feeUses = api.match(/customerFeePercent\(sb, uid, settings\)/g) ?? [];
+  assert.ok(feeUses.length >= 2, 'launch and preview both use the canonical fee resolver');
+  assert.match(engine, /effectiveFeePercent\([^)]*settings\.feePercent\)/, 'the resolver falls back to the canonical setting');
   // The frontend never hardcodes a percent either: the wizard renders the
   // percent it was given by `status`.
   const create = read('src/pages/outreach/MetaAdsCreatePage.tsx');
@@ -165,6 +169,9 @@ test('a campaign on the customer\'s own ad account is never charged twice for th
   assert.match(index, /amount_cents: -charge\.reserveCents/);
   assert.doesNotMatch(index, /amount_cents: -totals\.mediaCents/, 'the full budget is reserved regardless of who bills it');
   assert.match(engine, /launchCharge\(totals, settings\.budgetBilling\)\.requiredCents/);
-  /* Fee-only settlement refunds the fee on what Meta did not spend. */
-  assert.match(engine, /feeOnlySettlement\(planned, fee, actualSpendCents\)/);
+  /* Fee-only settlement: the fee this campaign HOLDS (launch + increases,
+     less releases) against the fee on what Meta actually spent; the rest is
+     RELEASED to the HOMATCH balance (FEE_RELEASE, never a cash refund). */
+  assert.match(engine, /settleServiceFee\(\{ heldFeeCents: held, plannedMediaCents: planned, spentMediaCents: actualSpendCents/);
+  assert.match(engine, /entry_type: 'FEE_RELEASE', amount_cents: f\.releaseCents/);
 });

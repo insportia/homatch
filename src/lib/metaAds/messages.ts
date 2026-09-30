@@ -178,6 +178,12 @@ export const BRIEF_LINES: Record<string, T6> = {
   resolved: ['Resolved issues: {{n}}', 'მოგვარებული საკითხები: {{n}}', 'Решённые проблемы: {{n}}', 'Çözülen sorunlar: {{n}}', 'المشكلات المحلولة: {{n}}', 'בעיות שנפתרו: {{n}}'],
 };
 
+/** A new lead: never the person's name or contact in the lock-screen text. */
+export const NEW_LEAD: { title: T6; body: T6 } = {
+  title: ['New lead', 'ახალი ლიდი', 'Новая заявка', 'Yeni potansiyel müşteri', 'عميل محتمل جديد', 'ליד חדש'],
+  body: ['{{campaign}}: a new lead arrived. Open the Leads Center to follow up.', '{{campaign}}: ახალი ლიდი შემოვიდა. გახსენით ლიდების ცენტრი.', '{{campaign}}: поступила новая заявка. Откройте центр заявок.', '{{campaign}}: yeni bir potansiyel müşteri geldi. Takip için Potansiyel Müşteri Merkezini açın.', '{{campaign}}: وصل عميل محتمل جديد. افتح مركز العملاء المحتملين للمتابعة.', '{{campaign}}: הגיע ליד חדש. פתחו את מרכז הלידים כדי לטפל בו.'],
+};
+
 export function t6(tuple: T6, locale: Locale, params: Record<string, string | number | null | undefined> = {}) {
   return fill(tuple[L.indexOf(locale)], params);
 }

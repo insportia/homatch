@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 
 globalThis.Deno = { env: { get: (k) => ({ META_APP_ID: 'app', META_APP_SECRET: 'secret', SUPABASE_URL: 'https://x.supabase.co' })[k] } };
 
-const { publishCampaign, syncCampaign, settleCampaign, runPreflight, configFingerprint } = await import('../engine.ts');
+const { publishCampaign, syncCampaign, settleCampaign, settlementDue, runPreflight, configFingerprint } = await import('../engine.ts');
 const { buildPlan } = await import('../../../../src/lib/metaAds/strategy.ts');
 
 /* ── an in-memory PostgREST-ish client ─────────────────────────────── */
@@ -183,10 +183,16 @@ test('sync maps Meta review and rejection, and settlement posts exactly once', a
   };
   const r = await syncCampaign(db, c, 'REAL');
   assert.equal(r.status, 'COMPLETED', 'end time passed → completed');
+  // Ended now; money waits out the settlement grace (late-attributed spend).
+  assert.ok(db.tables.meta_campaigns[0].ended_at, 'the end is recorded');
+  assert.equal(db.tables.meta_ads_ledger.length, 2, 'nothing settles inside the grace period');
+  const ended = { ...db.tables.meta_campaigns[0], ended_at: new Date(Date.now() - 4 * 86400000).toISOString() };
+  assert.ok(settlementDue(ended), 'due once the grace has passed');
+  await settleCampaign(db, ended, 2000);
   const types = db.tables.meta_ads_ledger.map((l) => `${l.entry_type}:${l.amount_cents}`);
   assert.ok(types.includes('RELEASE:3500') && types.includes('META_SPEND:-2000') && types.includes('REFUND:135'));
   const before = db.tables.meta_ads_ledger.length;
-  await settleCampaign(db, c, 2000);
+  await settleCampaign(db, ended, 2000);
   assert.equal(db.tables.meta_ads_ledger.length, before, 'a second settlement writes nothing');
 });
 

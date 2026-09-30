@@ -233,6 +233,7 @@ create table if not exists public.meta_guard_accounts (
   updated_at timestamptz not null default now(),
   unique (user_id, ad_account_external_id)
 );
+alter table public.meta_guard_accounts add column if not exists last_duplicate_scan_at timestamptz;
 alter table public.meta_guard_accounts enable row level security;
 drop policy if exists meta_guard_accounts_own on public.meta_guard_accounts;
 create policy meta_guard_accounts_own on public.meta_guard_accounts for select to authenticated

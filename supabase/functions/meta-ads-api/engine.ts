@@ -22,14 +22,19 @@
 //      unspent reserve and its share of the fee come back.
 
 import {
-  buildPlan, validatePlanInput, computeTotals, classifySpecialAdCategories, STRATEGY_VERSION,
-  type MetaGoal, type StrategyInput, type TypedCampaignPlan,
+  buildPlan, validatePlanInput, computeTotals, classifySpecialAdCategories, strategyParams, STRATEGY_VERSION,
+  type MetaGoal, type StrategyInput, type StrategyParams, type TypedCampaignPlan,
 } from '../../../src/lib/metaAds/strategy.ts';
+import { normalizeIntent, validateTargeting } from '../../../src/lib/metaAds/targeting.ts';
+import { creativeAdvice, creativeQuality, blocksLaunch, type AdviceItem } from '../../../src/lib/metaAds/creativeAdvice.ts';
+import { effectiveFeePercent, fundingPlan, heldFeeFromLedger, settleServiceFee, plannedMediaCents, type FeePolicy } from '../../../src/lib/metaAds/billing.ts';
+import { DEFAULT_ANALYSIS_PARAMS, type AnalysisParams } from '../../../src/lib/metaAds/analysis.ts';
+import { guardPolicy, type GuardPolicy } from '../../../src/lib/metaAds/guard.ts';
 import {
   GOAL_SPECS, adSetParams, adParams, campaignParams, creativeParams, missingRequirements, mapMetaStatus,
   settlement, checkMedia, recommendedPlacements, PLACEMENTS, isHttpsUrl,
   type LaunchContext, type LaunchCreative, type MessagingApp, type Placement,
-  feeOnlySettlement, launchCharge, parseBudgetBilling, type BudgetBilling,
+  launchCharge, parseBudgetBilling, type BudgetBilling,
 } from '../../../src/lib/metaAds/payload.ts';
 import {
   graph, graphAll, MetaApiError, metaMode, openToken, uploadImage, uploadVideo, mockExternalId,
@@ -57,6 +62,25 @@ export interface MetaSettings {
   defaultCountries: string[];
   /** Who pays Meta for the ad budget (payload.ts BudgetBilling). */
   budgetBilling: BudgetBilling;
+  /** Canonical, server-side strategy thresholds (strategy.ts). */
+  strategyParams: StrategyParams;
+  /** Evidence thresholds for recommendations and events (analysis.ts). */
+  analysisParams: AnalysisParams;
+  guardPolicy: GuardPolicy;
+  guardEnabled: boolean;
+  /** AI narrative for meaningful events and summaries; never in the cycle by default. */
+  aiSummaryEnabled: boolean;
+}
+
+/** Bounded numeric overrides on top of the analysis defaults. */
+function analysisParamsOf(raw: unknown): AnalysisParams {
+  const o = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+  const out = { ...DEFAULT_ANALYSIS_PARAMS } as Record<string, number>;
+  for (const [k, d] of Object.entries(DEFAULT_ANALYSIS_PARAMS)) {
+    const v = Number(o[k]);
+    if (Number.isFinite(v) && v > 0 && v <= (d as number) * 20) out[k] = v;
+  }
+  return out as unknown as AnalysisParams;
 }
 
 export async function loadSettings(sb: Sb): Promise<MetaSettings> {
@@ -86,7 +110,18 @@ export async function loadSettings(sb: Sb): Promise<MetaSettings> {
     /* Default: Meta bills the customer's own ad account, HOMATCH holds only
        its fee. Reserving the budget too would charge the customer twice. */
     budgetBilling: parseBudgetBilling(m.get('meta_ads_budget_billing')),
+    strategyParams: strategyParams(m.get('meta_ads_strategy_params')),
+    analysisParams: analysisParamsOf(m.get('meta_ads_analysis_params')),
+    guardPolicy: guardPolicy(m.get('meta_ads_guard_policy')),
+    guardEnabled: b('meta_ads_guard_enabled', true),
+    aiSummaryEnabled: b('meta_ads_ai_summary_enabled', true),
   };
+}
+
+/** The service-fee percent for this customer: the admin policy, or standard. */
+export async function customerFeePercent(sb: Sb, userId: string, settings: MetaSettings): Promise<number> {
+  const { data } = await sb.from('meta_fee_policies').select('kind,percent').eq('user_id', userId).maybeSingle();
+  return effectiveFeePercent(data ? { kind: data.kind, percent: data.percent } as FeePolicy : null, settings.feePercent);
 }
 
 /* ── TOKENS + ASSETS ────────────────────────────────────────────────── */
@@ -120,7 +155,7 @@ export async function pageToken(userTokenValue: string, pageId: string, audit?: 
 export async function strategyInputFor(sb: Sb, uid: string, c: any, settings: MetaSettings):
   Promise<{ strategy: StrategyInput } | { error: string }> {
   const { data: creatives } = await sb.from('meta_creatives')
-    .select('id,kind,safety_status,media').eq('campaign_id', c.id).order('sort');
+    .select('id,kind,safety_status,media,headline,primary_text').eq('campaign_id', c.id).order('sort');
   let audienceExternalId: string | null = null;
   if (c.audience_id) {
     const { data: aud } = await sb.from('meta_audiences').select('external_audience_id,sync_status,user_id')
@@ -143,9 +178,13 @@ export async function strategyInputFor(sb: Sb, uid: string, c: any, settings: Me
       creatives: (creatives ?? []).map((cr: any) => ({
         id: cr.id, kind: cr.kind,
         ready: (cr.media ?? []).length > 0 && cr.safety_status !== 'BLOCKED',
+        width: cr.media?.[0]?.width ?? null, height: cr.media?.[0]?.height ?? null,
+        quality: creativeQuality({ id: cr.id, media: cr.media ?? [], headline: cr.headline, primaryText: cr.primary_text }),
       })),
       destination: c.destination ?? { type: c.goal === 'LEADS_ON_META' ? 'META_FORM' : 'WEBSITE' },
       audienceExternalId,
+      // Where / ages / gender the customer chose; the market default when unset.
+      targeting: normalizeIntent(c.targeting, settings.defaultCountries),
       countryCode: settings.defaultCountries[0],
       placementsMode: c.placements?.mode === 'CUSTOM' ? 'CUSTOM' : 'RECOMMENDED',
       customPlacements: c.placements?.list ?? [],
@@ -214,6 +253,8 @@ export async function runPreflight(sb: Sb, uid: string, c: any, settings: MetaSe
     planIssues.filter((i) => i.field === 'dailyBudgetCents').map((i) => i.code).join(',') || undefined);
   add('duration', planIssues.some((i) => i.field === 'durationDays') ? 'ACTION_REQUIRED' : 'READY',
     planIssues.some((i) => i.field === 'durationDays') ? `MIN_${settings.minDurationDays}_DAYS` : undefined);
+  const targetingIssues = validateTargeting(input.strategy.targeting!);
+  add('targeting', targetingIssues.length ? 'ACTION_REQUIRED' : 'READY', targetingIssues.map((i) => i.code).join(',') || undefined);
 
   // Connection + assets.
   const token = await userToken(sb, uid);
@@ -229,6 +270,11 @@ export async function runPreflight(sb: Sb, uid: string, c: any, settings: MetaSe
   ]);
   add('page_selected', page ? 'READY' : 'ACTION_REQUIRED');
   add('ad_account_selected', acct ? 'READY' : 'ACTION_REQUIRED');
+  if (acct) {
+    const { data: guard } = await sb.from('meta_guard_accounts').select('status')
+      .eq('user_id', uid).eq('ad_account_external_id', acct.external_id).maybeSingle();
+    if (guard?.status === 'SUSPENDED') add('managed_access', 'ACTION_REQUIRED', 'META_ADS_ACCESS_SUSPENDED');
+  }
 
   // Live reads, REAL mode only: the token works, the account can spend, the
   // page is still ours, and the goal's own assets exist.
@@ -315,13 +361,24 @@ export async function runPreflight(sb: Sb, uid: string, c: any, settings: MetaSe
       });
     }
   }
+  /* Yellow vs red: RECOMMENDATION / WARNING never block; only a
+     BLOCKING_ERROR does. The advice is stored for the builder to show. */
+  const draftPlan = planIssues.length === 0 ? buildPlan(input.strategy, settings.strategyParams) : null;
+  const advice: AdviceItem[] = creativeAdvice((creatives ?? []).map((cr: any) => ({
+    id: cr.id, media: cr.media ?? [], headline: cr.headline, primaryText: cr.primary_text,
+  })), { goal, placements, recommendedCreativeCount: draftPlan?.strategy.recommendedCreativeCount ?? null });
+  if (blocksLaunch(advice) && creativeState !== 'ACTION_REQUIRED') {
+    creativeState = 'ACTION_REQUIRED';
+    creativeDetail.push(...advice.filter((a) => a.severity === 'BLOCKING_ERROR').map((a) => a.code));
+  }
   add('creatives', creativeState, [...new Set(creativeDetail)].join(',') || undefined);
 
   const cats = input.strategy.specialAdCategories;
   add('policy_classified', 'READY', cats.join(',') || 'NONE');
 
   // Money: shown now, enforced at launch.
-  const totals = computeTotals(input.strategy.dailyBudgetCents, input.strategy.durationDays, settings.feePercent);
+  const feePercent = await customerFeePercent(sb, uid, settings);
+  const totals = computeTotals(input.strategy.dailyBudgetCents, input.strategy.durationDays, feePercent);
   const { data: wallet } = await sb.from('meta_wallet_balances').select('available_cents').eq('user_id', uid).maybeSingle();
   const available = Number(wallet?.available_cents ?? 0);
   /* Only what HOMATCH itself will hold must be in the balance: with the
@@ -329,28 +386,46 @@ export async function runPreflight(sb: Sb, uid: string, c: any, settings: MetaSe
   const required = launchCharge(totals, settings.budgetBilling).requiredCents;
   add('balance', available >= required ? 'READY' : 'WARNING', available >= required ? undefined : `SHORT_${required - available}`);
 
-  return finish(sb, uid, c, checks, input.strategy, settings, manualReview, cats);
+  return finish(sb, uid, c, checks, input.strategy, settings, manualReview, cats, {
+    advice, feePercent, hasInstagram: !!ig,
+    funding: fundingPlan({ dailyBudgetCents: input.strategy.dailyBudgetCents, durationDays: input.strategy.durationDays, feePercent, availableCents: available }),
+  });
+}
+
+/** Recommended placements lose Instagram when no Instagram account is selected. */
+export function withoutInstagram(plan: TypedCampaignPlan): TypedCampaignPlan {
+  return {
+    ...plan,
+    adSets: plan.adSets.map((s) => (s.placements ? { ...s, placements: s.placements.filter((p) => !p.startsWith('instagram')) } : s))
+      .filter((s) => !s.placements || s.placements.length > 0),
+  };
 }
 
 async function finish(
   sb: Sb, uid: string, c: any, checks: PreflightCheck[], strategy: StrategyInput | null, settings: MetaSettings,
   manualReview = false, cats: string[] = [],
+  extra: { advice?: AdviceItem[]; feePercent?: number; hasInstagram?: boolean; funding?: ReturnType<typeof fundingPlan> } = {},
 ) {
   const blocked = checks.some((ch) => ch.state === 'ACTION_REQUIRED');
   const status = manualReview ? 'MANUAL_REVIEW' : blocked ? 'NEEDS_CHANGES' : 'READY';
-  const plan: TypedCampaignPlan | null = !blocked && strategy ? buildPlan(strategy) : null;
+  let plan: TypedCampaignPlan | null = !blocked && strategy ? buildPlan(strategy, settings.strategyParams) : null;
+  if (plan && extra.hasInstagram === false) plan = withoutInstagram(plan);
   const fingerprint = await configFingerprint(sb, c);
   const warnings = checks.filter((ch) => ch.state === 'WARNING').length;
+  const feePercent = extra.feePercent ?? settings.feePercent;
   await sb.from('meta_campaigns').update({
     special_ad_categories: cats,
     objective: strategy ? GOAL_SPECS[strategy.goal].objective : null,
-    preflight: { status, checks, warnings, fingerprint, checked_at: new Date().toISOString() },
+    preflight: {
+      status, checks, warnings, fingerprint, checked_at: new Date().toISOString(),
+      advice: extra.advice ?? [], strategy: plan?.strategy ?? null, funding: extra.funding ?? null,
+    },
     plan, plan_version: plan ? STRATEGY_VERSION : null,
     status,
   }).eq('id', c.id);
   await sb.from('meta_funnel_events').insert({ event: 'preflight_completed', user_id: uid });
-  const totals = strategy ? computeTotals(strategy.dailyBudgetCents, strategy.durationDays, settings.feePercent) : null;
-  return { status, checks, warnings, totals };
+  const totals = strategy ? computeTotals(strategy.dailyBudgetCents, strategy.durationDays, feePercent) : null;
+  return { status, checks, warnings, totals, advice: extra.advice ?? [], strategy: plan?.strategy ?? null, funding: extra.funding ?? null, feePercent };
 }
 
 async function probeUrl(url: string): Promise<'OK' | 'UNREACHABLE' | 'HTTP_ERROR'> {
@@ -399,7 +474,7 @@ export async function publishCampaign(sb: Sb, uid: string, c: any, plan: TypedCa
     leadFormId: await ownedFormId(sb, uid, c.destination?.formId, form),
     messagingApp: (c.destination?.messagingApp as MessagingApp) ?? (goal === 'MESSAGES' ? 'MESSENGER' : null),
     whatsappNumber: wa?.external_id ?? null,
-    countries: settings.defaultCountries,
+    countries: plan.countries?.length ? plan.countries : settings.defaultCountries,
     startTime: start.toISOString(),
     endTime: new Date(start.getTime() + Number(c.duration_days) * 86_400_000).toISOString(),
     websiteUrl: c.destination?.url ?? null,
@@ -440,12 +515,17 @@ export async function publishCampaign(sb: Sb, uid: string, c: any, plan: TypedCa
 
     const camp = await graph(`/${acct.external_id}/campaigns`, {
       token, method: 'POST', audit: auditCtx,
-      body: campaignParams(plan, c.name || `HOMATCH ${goal} ${c.id.slice(0, 8)}`, settings.defaultCountries),
+      body: campaignParams(plan, c.name || `HOMATCH ${goal} ${c.id.slice(0, 8)}`, ctx.countries),
     });
     const campaignId = String(camp.id);
     created.push(campaignId);
-    // Persist at once, so a crash from here on can still find and clean it.
-    await sb.from('meta_campaigns').update({ external_campaign_id: campaignId }).eq('id', c.id);
+    /* Persist at once, so a crash from here on can still find and clean it —
+       and with it the exact Meta objects this campaign is bound to, which is
+       what Guard, sync and lead attribution compare against. */
+    await sb.from('meta_campaigns').update({
+      external_campaign_id: campaignId, ad_account_external_id: acct.external_id, page_external_id: page.external_id,
+      instagram_external_id: ig?.external_id ?? null, lead_form_external_id: ctx.leadFormId,
+    }).eq('id', c.id);
 
     for (const set of plan.adSets) {
       const adset = await graph(`/${acct.external_id}/adsets`, {
@@ -453,6 +533,7 @@ export async function publishCampaign(sb: Sb, uid: string, c: any, plan: TypedCa
       });
       await sb.from('meta_ad_entities').insert({
         campaign_id: c.id, kind: 'AD_SET', external_id: String(adset.id), name: `HOMATCH ${set.key}`, status: 'ACTIVE', config: set,
+        parent_external_id: campaignId,
       });
       for (const crId of set.creativeIds) {
         const lc = launchCreatives.get(crId);
@@ -465,8 +546,9 @@ export async function publishCampaign(sb: Sb, uid: string, c: any, plan: TypedCa
           body: adParams(lc.headline || `HOMATCH ad ${crId.slice(0, 6)}`, String(adset.id), String(creative.id)),
         });
         await sb.from('meta_ad_entities').insert([
-          { campaign_id: c.id, kind: 'CREATIVE', external_id: String(creative.id), config: { creativeId: crId, imageHash: lc.imageHash, videoId: lc.videoId } },
-          { campaign_id: c.id, kind: 'AD', external_id: String(ad.id), status: 'PENDING_REVIEW', config: { creativeId: crId } },
+          { campaign_id: c.id, kind: 'CREATIVE', external_id: String(creative.id), config: { creativeId: crId, imageHash: lc.imageHash, videoId: lc.videoId }, local_creative_id: crId },
+          { campaign_id: c.id, kind: 'AD', external_id: String(ad.id), status: 'PENDING_REVIEW', config: { creativeId: crId },
+            parent_external_id: String(adset.id), creative_external_id: String(creative.id), local_creative_id: crId },
         ]);
         await sb.from('meta_creatives').update({ external_creative_id: String(creative.id) }).eq('id', crId);
       }
@@ -530,12 +612,42 @@ export async function syncCampaign(sb: Sb, c: any, mode: MetaMode) {
       ? { key: 'meta_err_rejected', code: 'DISAPPROVED', review }
       : verdict.issue ? { key: verdict.issue === 'WITH_ISSUES' ? 'meta_err_with_issues' : 'meta_err_partially_rejected', code: verdict.issue, review } : null,
   };
+  /* A campaign that stopped delivering is ENDED now, but its money settles
+     only after SETTLEMENT_GRACE_DAYS: Meta keeps attributing spend for a
+     while, and a fee released on a spend figure that later grows cannot be
+     taken back. The maintenance pass settles it from the final figure. */
+  const stopped = ['COMPLETED', 'REJECTED', 'ARCHIVED'].includes(String(patch.status));
+  if (stopped && !c.ended_at) patch.ended_at = new Date().toISOString();
   await sb.from('meta_campaigns').update(patch).eq('id', c.id);
-
-  if (verdict.status === 'COMPLETED' || verdict.status === 'REJECTED' || verdict.status === 'ARCHIVED') {
-    await settleCampaign(sb, c, spendCents);
-  }
+  if (stopped && settlementDue({ ...c, ...patch })) await settleCampaign(sb, { ...c, ...patch }, spendCents);
   return { ok: true, results, status: patch.status, external_status: patch.external_status, issue: verdict.issue };
+}
+
+export const SETTLEMENT_GRACE_DAYS = 3;
+
+/**
+ * The grace period is over: read Meta's FINAL lifetime spend (status is not
+ * touched — an ended campaign stays ended) and settle from it. Without a
+ * usable token the settlement waits; it is never done on a guessed figure.
+ */
+export async function finalizeSettlement(sb: Sb, c: any, mode: MetaMode) {
+  if (!settlementDue(c)) return { settled: false, reason: 'NOT_DUE' };
+  let spendCents = Number(c.spend_cents ?? 0);
+  if (mode === 'REAL' && c.external_campaign_id && !String(c.external_campaign_id).startsWith('mock_')) {
+    const token = await userToken(sb, c.user_id);
+    if (!token) return { settled: false, reason: 'NOT_CONNECTED' };
+    const insights = await graph(`/${c.external_campaign_id}/insights?fields=spend&date_preset=maximum`, { token, audit: { sb, userId: c.user_id, campaignId: c.id } });
+    const row = (insights.data as any[])?.[0] ?? null;
+    if (row) spendCents = Math.round(parseFloat(row.spend ?? '0') * 100);
+    await sb.from('meta_campaigns').update({ spend_cents: spendCents }).eq('id', c.id);
+  }
+  const r = await settleCampaign(sb, { ...c, spend_cents: spendCents }, spendCents);
+  return { settled: true, spendCents, result: r };
+}
+
+export function settlementDue(c: { ended_at?: string | null; settled_at?: string | null }, now = Date.now()): boolean {
+  if (c.settled_at || !c.ended_at) return false;
+  return now - Date.parse(c.ended_at) >= SETTLEMENT_GRACE_DAYS * 86_400_000;
 }
 
 /** Idempotent: the settlement keys are per campaign, so it posts exactly once. */
@@ -556,18 +668,25 @@ export async function settleCampaign(sb: Sb, c: any, actualSpendCents: number) {
   const base = { user_id: c.user_id, currency: c.currency, campaign_id: c.id };
 
   /* CUSTOMER_AD_ACCOUNT: Meta billed the customer's ad account, nothing was
-     reserved here. Only the fee is reconciled, against the PLANNED budget. */
+     reserved here. Only the service fee is reconciled: every fee this
+     campaign holds (launch + budget increases, less releases already made)
+     against the fee on what Meta actually spent. The rest is RELEASED to the
+     available HOMATCH balance — reusable, never a cash refund. */
   if (reserve <= 0) {
-    const feeSettled = (rows ?? []).some((r: any) => key(r) === `${c.id}:settle:feerefund`);
-    if (fee <= 0 || feeSettled || c.settled_at) return null;
-    const daily = Array.isArray(c.plan?.adSets)
-      ? c.plan.adSets.reduce((n: number, a: { dailyBudgetCents: number }) => n + Number(a.dailyBudgetCents), 0) : 0;
-    const planned = computeTotals(daily, Number(c.duration_days), 0).mediaCents;
-    const f = feeOnlySettlement(planned, fee, actualSpendCents);
-    if (f.feeRefundCents > 0) {
+    const feeSettled = (rows ?? []).some((r: any) => key(r) === `${c.id}:settle:fee_release` || key(r) === `${c.id}:settle:feerefund`);
+    const held = heldFeeFromLedger(rows ?? []);
+    if (held <= 0 || feeSettled || c.settled_at) {
+      if (!c.settled_at && held <= 0) await sb.from('meta_campaigns').update({ settled_at: new Date().toISOString() }).eq('id', c.id);
+      return null;
+    }
+    const planned = plannedMediaCents(Number(c.daily_budget_cents ?? 0), Number(c.duration_days ?? 0));
+    const pct = c.fee_percent != null && Number.isFinite(Number(c.fee_percent)) ? Number(c.fee_percent)
+      : planned > 0 ? Math.round((held / planned) * 10000) / 100 : 0;
+    const f = settleServiceFee({ heldFeeCents: held, plannedMediaCents: planned, spentMediaCents: actualSpendCents, feePercent: pct });
+    if (f.releaseCents > 0) {
       const { error } = await sb.from('meta_ads_ledger').insert({
-        ...base, entry_type: 'REFUND', amount_cents: f.feeRefundCents,
-        idempotency_key: `${c.id}:settle:feerefund`, note: 'fee on budget Meta did not spend',
+        ...base, entry_type: 'FEE_RELEASE', amount_cents: f.releaseCents,
+        idempotency_key: `${c.id}:settle:fee_release`, note: 'released to HOMATCH balance: budget Meta did not spend',
       });
       if (error && !String(error.message).includes('duplicate')) throw error;
     }

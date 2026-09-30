@@ -20,7 +20,13 @@ type Sb = any;
 export type Actor = 'CUSTOMER' | 'ADMIN' | 'SYSTEM';
 
 export class LifecycleError extends Error {
-  constructor(public code: string, public status = 409, public extra: Record<string, unknown> = {}) { super(code); }
+  code: string;
+  status: number;
+  extra: Record<string, unknown>;
+  constructor(code: string, status = 409, extra: Record<string, unknown> = {}) {
+    super(code);
+    this.code = code; this.status = status; this.extra = extra;
+  }
 }
 
 /* ── OPERATIONS LOG ─────────────────────────────────────────────────── */

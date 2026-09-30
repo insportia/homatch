@@ -161,9 +161,27 @@ export async function persistRecommendations(sb: Sb, c: any, recs: Recommendatio
   const keys: string[] = [];
   for (const r of recs) {
     const dedupe = `${c.id}:${r.type}:${r.affected}:${r.window.current}`;
+    /* The same advice about the same object is ONE recommendation while it
+       stays open, snoozed, or was dismissed within the last 14 days — its
+       evidence is refreshed, it is never re-announced as new every day. */
+    const { data: same } = await sb.from('meta_recommendations').select('id,status,dedupe_key,acted_at')
+      .eq('campaign_id', c.id).eq('type', r.type).eq('affected', r.affected).in('status', ['OPEN', 'SNOOZED', 'DISMISSED'])
+      .order('created_at', { ascending: false }).limit(1);
+    const prior = (same ?? [])[0];
+    const dismissedRecently = prior?.status === 'DISMISSED' && prior.acted_at && Date.parse(prior.acted_at) > Date.now() - 14 * 86_400_000;
+    if (prior && (prior.status !== 'DISMISSED' || dismissedRecently)) {
+      keys.push(prior.dedupe_key);
+      if (prior.status === 'OPEN') {
+        await sb.from('meta_recommendations').update({
+          window_current: r.window.current, window_previous: r.window.previous, baseline: r.baseline, candidate: r.candidate,
+          confidence: r.confidence, reason_codes: r.reasonCodes, actionable: r.actionable,
+          proposed: r.proposedDailyMinor ? { dailyBudgetCents: r.proposedDailyMinor } : null,
+        }).eq('id', prior.id);
+      }
+      fresh.push({ ...r, id: prior.id, isNew: false });
+      continue;
+    }
     keys.push(dedupe);
-    const { data: prior } = await sb.from('meta_recommendations').select('id,status').eq('dedupe_key', dedupe).maybeSingle();
-    if (prior) { fresh.push({ ...r, id: prior.id, isNew: false }); continue; }
     const { data, error } = await sb.from('meta_recommendations').insert({
       campaign_id: c.id, user_id: c.user_id, type: r.type, affected: r.affected, window_current: r.window.current,
       window_previous: r.window.previous, metric: r.metric, baseline: r.baseline, candidate: r.candidate,

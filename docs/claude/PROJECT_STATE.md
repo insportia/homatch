@@ -51,7 +51,7 @@ MATTERS right now, verify against the live systems, not this file)
   the reading's plan rides on the first picture's row so the shared floor-plan
   generator builds it (ESTIMATED until calibrated). Pieces carry `provenance`;
   public share snapshots strip it.
-- Permanent project deletion (`20261001130000`): never from the browser (the
+- Permanent project deletion (`20261001170000`): never from the browser (the
   direct DELETE is revoked — it would orphan every R2 upload). The route
   `design-studio-reconstruct/project-delete` begins as the owner
   (`ds_project_delete_begin`: hides, freezes, revokes all shares), deletes

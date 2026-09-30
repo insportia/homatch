@@ -466,7 +466,7 @@ test('the three AI readings share one deployed function, because the project is 
 /* ── Permanent project deletion ───────────────────────────────────── */
 
 test('permanent deletion is a server lifecycle, not a hidden row', () => {
-  const sql = read('supabase/migrations/20261001130000_design_studio_project_deletion.sql');
+  const sql = read('supabase/migrations/20261001170000_design_studio_project_deletion.sql');
   assert.ok(!/^\s*(BEGIN|COMMIT)\s*;/im.test(sql), 'the migration runner owns the transaction');
   // The browser can no longer delete the row (that would orphan every upload).
   assert.match(sql, /DROP POLICY IF EXISTS ds_projects_delete ON public\.ds_projects;/);

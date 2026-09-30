@@ -151,7 +151,7 @@ export function CreativeStep({ campaign, creatives, setCreatives, placements, on
           }}
           onAi={() => setAiFor(cr.id)} onFocus={() => onFocusCreative(cr.id)} />
       ))}
-      {blocked && creatives.length > 0 && (
+      {blocked && (
         <p id="mm-b-blocking-hint" data-mm-blocking="" className="flex items-start gap-2 rounded-xl border border-destructive/35 bg-destructive/10 px-3.5 py-2.5 text-[13px] text-destructive" role="status">
           <XCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />{t('mm_b_blocking_summary')}
         </p>

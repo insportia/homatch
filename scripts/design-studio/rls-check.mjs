@@ -28,6 +28,7 @@ const CATALOG_SEED = process.argv[5] ?? null;
 const RECON_MIGRATION = process.argv[6] ?? null;
 const DELETE_MIGRATION = process.argv[7] ?? null;
 const ORIGIN_MIGRATION = process.argv[8] ?? null;
+const SHARE_ORIGIN_MIGRATION = process.argv[9] ?? null;
 const db = new PGlite({ extensions: { pgcrypto } });
 let failures = 0;
 const ok = (name) => console.log(`  ok   ${name}`);
@@ -532,6 +533,27 @@ if (ORIGIN_MIGRATION) {
     tx.query(`select ds_create_floorplan_source($1,'{"schema":1}','ESTIMATED',null,'x')`, [pic.id])));
   await expectError('origin: CALIBRATED still needs a measurement', 'DS_CALIBRATION_REQUIRED', () => as(A, (tx) =>
     tx.query(`select ds_create_floorplan_source($1,'{"schema":1}','CALIBRATED',null,'x')`, [pic.id])));
+
+  // ── a shared design says where it came from (20261001200000)
+  if (SHARE_ORIGIN_MIGRATION) {
+    await db.exec(fs.readFileSync(SHARE_ORIGIN_MIGRATION, 'utf8'));
+    await db.exec(fs.readFileSync(SHARE_ORIGIN_MIGRATION, 'utf8'));
+    ok('share origin: migration applies and re-applies');
+    const scene = JSON.stringify({ schema: 1, geometryState: 'ESTIMATED', scene: { floors: [{ id: 'r1', kind: 'LIVING', areaM2: 20 }], walls: [] } });
+    await as('service', (tx) => tx.query(`update ds_spatial_sources set canonical=$1 where id = any($2)`, [scene, [fromPic.id, fromPlan.id]]));
+    const shareOf = async (sourceId) => {
+      const v = await as(A, (tx) => one(tx, `insert into ds_versions (project_id,user_id,source_id,name,origin,state) values ($1,$2,$3,'S','USER','{"schema":1,"objects":[],"surfaces":{}}') returning id`, [pO.id, UA, sourceId]));
+      const c = await as(A, (tx) => one(tx, `select public.ds_create_share($1,'WALKTHROUGH',null,null) as r`, [v.id]));
+      return (await as('anon', (tx) => one(tx, 'select public.ds_public_share($1) as r', [c.r.token]))).r;
+    };
+    const fromPictures = await shareOf(fromPic.id);
+    const fromAPlan = await shareOf(fromPlan.id);
+    fromPictures.status === 'ACTIVE' && fromPictures.origin === 'PICTURES'
+      ? ok('share origin: a design from pictures tells the visitor so') : bad('share origin pictures', JSON.stringify(fromPictures).slice(0, 200));
+    fromAPlan.origin === 'FLOORPLAN' ? ok('share origin: a design from a floor plan still says floor plan') : bad('share origin plan', String(fromAPlan.origin));
+    const leaked = ['provenance', 'CUSTOMER_PICTURES', 'object_key', 'floorplan_id', UA].filter((w) => JSON.stringify(fromPictures).includes(w));
+    !leaked.length ? ok('share origin: nothing but the coarse origin is exposed') : bad('share origin leak', leaked.join(','));
+  }
 }
 
 // ── permanent deletion (server-authorised, storage first, tombstoned)

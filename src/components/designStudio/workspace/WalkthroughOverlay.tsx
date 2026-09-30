@@ -258,6 +258,7 @@ export function WalkthroughOverlay(props: WalkthroughOverlayProps) {
             <Slider label={tr('ds_set_look')} min={0.5} max={2} step={0.1} value={settings.lookSensitivity} onChange={(v) => changeSettings({ lookSensitivity: v })} />
             <Slider label={tr('ds_set_speed')} min={0.8} max={1.25} step={0.05} value={settings.speed} onChange={(v) => changeSettings({ speed: v })} />
             <Toggle label={tr('ds_set_invert')} checked={settings.invertY} onChange={(v) => changeSettings({ invertY: v })} />
+            <Toggle label={tr('ds_set_invert_x')} checked={settings.invertX} onChange={(v) => changeSettings({ invertX: v })} />
             <Toggle label={tr('ds_set_reduced')} checked={settings.reducedMotion} onChange={(v) => changeSettings({ reducedMotion: v })} />
           </div>
           <button type="button" className={cn(primary, 'mt-5 w-full')} onClick={() => setSheet(null)}>{tr('ds_set_done')}</button>

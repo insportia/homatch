@@ -1220,6 +1220,7 @@ function Editor({
           projectName={bundle.project.name}
           versionName={versionName}
           estimated={estimated}
+          fromPictures={label.originKey === 'ds_source_pictures'}
           onClose={() => setDownloadOpen(false)}
         />
       ) : null}

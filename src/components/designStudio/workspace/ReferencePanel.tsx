@@ -13,7 +13,7 @@ import { Camera, Layers, X } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import type { SceneController } from '@/components/designStudio/canvas/SceneController';
-import { PX_PER_M } from '@/lib/designStudio/reconstructRead';
+import { FIT_TRUST, PX_PER_M } from '@/lib/designStudio/reconstructRead';
 import { referenceCamera } from '@/lib/designStudio/reconstruction';
 import { scaleFit, viewForCanvas } from '@/lib/designStudio/sourceCamera';
 import type { CanonicalSpace, SpatialSourceRecord } from '@/lib/designStudio/types';
@@ -123,8 +123,10 @@ export function ReferencePanel({ data, source, controller, onClose }: {
             </label>
           ) : null}
           <p className="text-2xs leading-snug text-[#5B6472]" data-testid="reference-match-note">
+            {/* "Matched" only for a camera the reading itself trusted; a looser fit is
+                an approximate alignment, and the layout it frames is an estimate. */}
             {fit
-              ? t('ds_recon_matched_view', { error: String(Math.max(0.1, Math.round(fit.rms * 1000) / 10)) })
+              ? t(fit.rms <= FIT_TRUST ? 'ds_recon_matched_view' : 'ds_recon_approx_view', { error: String(Math.max(0.1, Math.round(fit.rms * 1000) / 10)) })
               : t('ds_recon_estimated_view')}
           </p>
         </div>

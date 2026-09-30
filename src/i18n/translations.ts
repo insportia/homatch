@@ -12207,6 +12207,15 @@ const en = {
   ds_fin_above_70: '70%+ target',
   ds_fin_in_band: 'In 75–85% band',
 
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_export_truth_estimated_pictures: 'Sizes are approximate: the space was rebuilt from pictures.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_recon_approx_view: 'Aligned approximately with your picture\'s camera (about {{error}}% of its height off). The rebuilt layout is an estimate — use Overlay to compare.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_invert_x: 'Invert horizontal look',
+
   /* ── META ADS MASTER — BUILDER ── */
   mm_b_loc_title: 'Where your ad runs',
   mm_b_loc_chosen: 'Chosen places',
@@ -12355,6 +12364,7 @@ const en = {
   mm_b_funding_meta_bills: 'Meta bills the ad budget to your own ad account. HOMATCH takes only its service fee from your HOMATCH balance.',
   mm_b_funding_disclosure: 'Your HOMATCH service balance is non-refundable to cash, but it stays in your HOMATCH balance and can be reused for future campaigns. Any unused service fee is Released to HOMATCH Balance.',
   mm_b_funding_checkout_failed: 'The payment page could not be opened. Please try again.',
+  mm_b_money_fee_d: 'Covers campaign setup, automation and management infrastructure. Any unspent share is released to your HOMATCH Balance.',
 
   /* ── META ADS MASTER — CAMPAIGN ── */
   mm_c_back: 'All campaigns',
@@ -12900,9 +12910,6 @@ const en = {
   mm_n_pref_meta_daily_brief: 'Daily brief',
   mm_n_pref_meta_weekly_brief: 'Weekly brief',
   mm_n_integrity_note: 'Account-integrity messages — Campaign Guard warnings, strikes and suspensions, and loss of access to your Meta account — are always delivered and cannot be turned off.',
-
-  /* ── META ADS MASTER — BUILDER ── */
-  mm_b_money_fee_d: 'Covers campaign setup, automation and management infrastructure. Any unspent share is released to your HOMATCH Balance.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -25024,6 +25031,15 @@ const ka: Partial<Record<TranslationKey, string>> = {
   ds_fin_above_70: '70%+ მიზანი',
   ds_fin_in_band: '75–85% დიაპაზონში',
 
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_export_truth_estimated_pictures: 'ზომები მიახლოებითია: სივრცე სურათებიდანაა აღდგენილი.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_recon_approx_view: 'დაახლოებით შეთანხმებულია თქვენი სურათის კამერასთან (სიმაღლის დაახლ. {{error}}%-ის სხვაობით). აღდგენილი განლაგება შეფასებაა — შესადარებლად გამოიყენეთ გადაფარვა.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_invert_x: 'ჰორიზონტალური ხედის შებრუნება',
+
   /* ── META ADS MASTER — BUILDER ── */
   mm_b_loc_title: 'სად გამოჩნდება რეკლამა',
   mm_b_loc_chosen: 'არჩეული ადგილები',
@@ -25172,6 +25188,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mm_b_funding_meta_bills: 'სარეკლამო ბიუჯეტს Meta თქვენს სარეკლამო ანგარიშს ჩამოაჭრის. HOMATCH თქვენი HOMATCH-ის ბალანსიდან მხოლოდ მომსახურების საფასურს იღებს.',
   mm_b_funding_disclosure: 'HOMATCH-ის მომსახურების ბალანსი ნაღდ ფულად არ ბრუნდება, მაგრამ რჩება თქვენს HOMATCH-ის ბალანსზე და მომავალ კამპანიებში შეგიძლიათ გამოიყენოთ. გამოუყენებელი მომსახურების საფასური გადადის HOMATCH-ის ბალანსზე.',
   mm_b_funding_checkout_failed: 'გადახდის გვერდის გახსნა ვერ მოხერხდა. გთხოვთ, სცადოთ ხელახლა.',
+  mm_b_money_fee_d: 'მოიცავს კამპანიის აწყობას, ავტომატიზაციასა და მართვის ინფრასტრუქტურას. დაუხარჯავი ნაწილი HOMATCH-ის ბალანსზე გადაგეცემათ.',
 
   /* ── META ADS MASTER — CAMPAIGN ── */
   mm_c_back: 'ყველა კამპანია',
@@ -25717,9 +25734,6 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mm_n_pref_meta_daily_brief: 'ყოველდღიური მიმოხილვა',
   mm_n_pref_meta_weekly_brief: 'ყოველკვირეული მიმოხილვა',
   mm_n_integrity_note: 'ანგარიშის მთლიანობის შეტყობინებები — კამპანიის დაცვის გაფრთხილებები, დარტყმები და შეჩერებები, ასევე Meta-ს ანგარიშზე წვდომის დაკარგვა — ყოველთვის მოგივათ და მათი გამორთვა შეუძლებელია.',
-
-  /* ── META ADS MASTER — BUILDER ── */
-  mm_b_money_fee_d: 'მოიცავს კამპანიის აწყობას, ავტომატიზაციასა და მართვის ინფრასტრუქტურას. დაუხარჯავი ნაწილი HOMATCH-ის ბალანსზე გადაგეცემათ.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -37832,6 +37846,15 @@ const ru: Partial<Record<TranslationKey, string>> = {
   ds_fin_above_70: 'Цель 70%+',
   ds_fin_in_band: 'В диапазоне 75–85%',
 
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_export_truth_estimated_pictures: 'Размеры приблизительные: пространство восстановлено по картинкам.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_recon_approx_view: 'Приблизительно совмещено с камерой вашей картинки (расхождение около {{error}}% её высоты). Восстановленная планировка — оценка: сравните через наложение.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_invert_x: 'Инвертировать по горизонтали',
+
   /* ── META ADS MASTER — BUILDER ── */
   mm_b_loc_title: 'Где показывается реклама',
   mm_b_loc_chosen: 'Выбранные места',
@@ -37980,6 +38003,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mm_b_funding_meta_bills: 'Рекламный бюджет Meta списывает с вашего собственного рекламного аккаунта. HOMATCH берёт с баланса HOMATCH только сервисный сбор.',
   mm_b_funding_disclosure: 'Сервисный баланс HOMATCH не возвращается деньгами, но остаётся на вашем балансе HOMATCH и может использоваться для будущих кампаний. Неиспользованный сервисный сбор переводится на баланс HOMATCH.',
   mm_b_funding_checkout_failed: 'Не удалось открыть страницу оплаты. Попробуйте ещё раз.',
+  mm_b_money_fee_d: 'Покрывает настройку кампании, автоматизацию и инфраструктуру управления. Неиспользованная часть переходит на ваш баланс HOMATCH.',
 
   /* ── META ADS MASTER — CAMPAIGN ── */
   mm_c_back: 'Все кампании',
@@ -38525,9 +38549,6 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mm_n_pref_meta_daily_brief: 'Ежедневная сводка',
   mm_n_pref_meta_weekly_brief: 'Еженедельная сводка',
   mm_n_integrity_note: 'Сообщения о целостности аккаунта — предупреждения, страйки и блокировки Защиты кампаний, а также потеря доступа к аккаунту Meta — доставляются всегда и не отключаются.',
-
-  /* ── META ADS MASTER — BUILDER ── */
-  mm_b_money_fee_d: 'Покрывает настройку кампании, автоматизацию и инфраструктуру управления. Неиспользованная часть переходит на ваш баланс HOMATCH.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -50638,6 +50659,15 @@ const tr: Partial<Record<TranslationKey, string>> = {
   ds_fin_above_70: '%70+ hedef',
   ds_fin_in_band: '%75–85 aralığında',
 
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_export_truth_estimated_pictures: 'Ölçüler yaklaşıktır: alan görsellerden yeniden oluşturuldu.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_recon_approx_view: 'Görselinizin kamerasıyla yaklaşık olarak hizalandı (yüksekliğinin yaklaşık %{{error}} kadar sapma). Yeniden oluşturulan yerleşim bir tahmindir — karşılaştırmak için Üst üste bindir özelliğini kullanın.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_invert_x: 'Yatay bakışı ters çevir',
+
   /* ── META ADS MASTER — BUILDER ── */
   mm_b_loc_title: 'Reklamınızın gösterileceği yerler',
   mm_b_loc_chosen: 'Seçilen yerler',
@@ -50786,6 +50816,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mm_b_funding_meta_bills: 'Reklam bütçesini Meta kendi reklam hesabınızdan tahsil eder. HOMATCH, HOMATCH bakiyenizden yalnızca hizmet bedelini alır.',
   mm_b_funding_disclosure: 'HOMATCH hizmet bakiyesi nakit olarak iade edilmez; ancak HOMATCH bakiyenizde kalır ve gelecekteki kampanyalarda yeniden kullanılabilir. Kullanılmayan hizmet bedeli HOMATCH Bakiyesine aktarılır.',
   mm_b_funding_checkout_failed: 'Ödeme sayfası açılamadı. Lütfen tekrar deneyin.',
+  mm_b_money_fee_d: 'Kampanya kurulumu, otomasyon ve yönetim altyapısını kapsar. Harcanmayan kısım HOMATCH bakiyenize aktarılır.',
 
   /* ── META ADS MASTER — CAMPAIGN ── */
   mm_c_back: 'Tüm kampanyalar',
@@ -51331,9 +51362,6 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mm_n_pref_meta_daily_brief: 'Günlük özet',
   mm_n_pref_meta_weekly_brief: 'Haftalık özet',
   mm_n_integrity_note: 'Hesap bütünlüğü mesajları — Kampanya Koruması uyarıları, ihlaller ve askıya almalar ile Meta hesabınıza erişim kaybı — her zaman iletilir ve kapatılamaz.',
-
-  /* ── META ADS MASTER — BUILDER ── */
-  mm_b_money_fee_d: 'Kampanya kurulumu, otomasyon ve yönetim altyapısını kapsar. Harcanmayan kısım HOMATCH bakiyenize aktarılır.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -63444,6 +63472,15 @@ const ar: Partial<Record<TranslationKey, string>> = {
   ds_fin_above_70: 'هدف 70%+',
   ds_fin_in_band: 'ضمن نطاق 75–85%',
 
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_export_truth_estimated_pictures: 'الأحجام تقريبية: أُعيد بناء المساحة من الصور.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_recon_approx_view: 'محاذاة تقريبية مع كاميرا صورتك (فارق يقارب {{error}}% من ارتفاعها). التخطيط المُعاد بناؤه تقدير — استخدم التراكب للمقارنة.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_invert_x: 'اعكس النظر الأفقي',
+
   /* ── META ADS MASTER — BUILDER ── */
   mm_b_loc_title: 'أين يظهر إعلانك',
   mm_b_loc_chosen: 'الأماكن المختارة',
@@ -63592,6 +63629,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mm_b_funding_meta_bills: 'تُحصّل Meta الميزانية الإعلانية من حسابك الإعلاني الخاص. ولا تأخذ HOMATCH من رصيدك فيها سوى رسوم الخدمة.',
   mm_b_funding_disclosure: 'رصيد خدمة HOMATCH غير قابل للاسترداد نقدًا، لكنه يبقى في رصيدك لدى HOMATCH ويمكن استخدامه في حملات مستقبلية. وأي رسوم خدمة غير مستخدمة تُحرَّر إلى رصيد HOMATCH.',
   mm_b_funding_checkout_failed: 'تعذّر فتح صفحة الدفع. يُرجى المحاولة مرة أخرى.',
+  mm_b_money_fee_d: 'تغطي إعداد الحملة والأتمتة والبنية التحتية للإدارة. ويُحوَّل الجزء غير المُنفق إلى رصيدك في HOMATCH.',
 
   /* ── META ADS MASTER — CAMPAIGN ── */
   mm_c_back: 'كل الحملات',
@@ -64137,9 +64175,6 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mm_n_pref_meta_daily_brief: 'الملخص اليومي',
   mm_n_pref_meta_weekly_brief: 'الملخص الأسبوعي',
   mm_n_integrity_note: 'رسائل سلامة الحساب — تحذيرات حماية الحملات والمخالفات والإيقاف وفقدان الوصول إلى حساب Meta — تُرسل دائمًا ولا يمكن إيقافها.',
-
-  /* ── META ADS MASTER — BUILDER ── */
-  mm_b_money_fee_d: 'تغطي إعداد الحملة والأتمتة والبنية التحتية للإدارة. ويُحوَّل الجزء غير المُنفق إلى رصيدك في HOMATCH.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -76250,6 +76285,15 @@ const he: Partial<Record<TranslationKey, string>> = {
   ds_fin_above_70: 'יעד 70%+',
   ds_fin_in_band: 'בטווח 75–85%',
 
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_export_truth_estimated_pictures: 'המידות משוערות: המרחב שוחזר מתמונות.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_recon_approx_view: 'מיושר בקירוב למצלמה של התמונה שלך (סטייה של כ-{{error}}% מגובהה). הפריסה המשוחזרת היא הערכה — השתמש ב„שכבה” להשוואה.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_invert_x: 'היפוך מבט אופקי',
+
   /* ── META ADS MASTER — BUILDER ── */
   mm_b_loc_title: 'איפה המודעה תוצג',
   mm_b_loc_chosen: 'המקומות שנבחרו',
@@ -76398,6 +76442,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   mm_b_funding_meta_bills: 'את תקציב הפרסום Meta מחייבת מחשבון המודעות שלכם. HOMATCH גובה מיתרת HOMATCH רק את דמי השירות.',
   mm_b_funding_disclosure: 'יתרת השירות של HOMATCH אינה ניתנת להחזר במזומן, אבל היא נשארת ביתרת HOMATCH שלכם וניתן להשתמש בה בקמפיינים עתידיים. דמי שירות שלא נוצלו משוחררים ליתרת HOMATCH.',
   mm_b_funding_checkout_failed: 'לא ניתן לפתוח את דף התשלום. נסו שוב.',
+  mm_b_money_fee_d: 'מכסים את הקמת הקמפיין, האוטומציה ותשתית הניהול. החלק שלא נוצל מועבר ליתרת HOMATCH שלכם.',
 
   /* ── META ADS MASTER — CAMPAIGN ── */
   mm_c_back: 'כל הקמפיינים',
@@ -76943,9 +76988,6 @@ const he: Partial<Record<TranslationKey, string>> = {
   mm_n_pref_meta_daily_brief: 'תקציר יומי',
   mm_n_pref_meta_weekly_brief: 'תקציר שבועי',
   mm_n_integrity_note: 'הודעות על תקינות החשבון — אזהרות, פסילות והשעיות של הגנת הקמפיינים ואובדן גישה לחשבון Meta — נמסרות תמיד ואי אפשר לכבות אותן.',
-
-  /* ── META ADS MASTER — BUILDER ── */
-  mm_b_money_fee_d: 'מכסים את הקמת הקמפיין, האוטומציה ותשתית הניהול. החלק שלא נוצל מועבר ליתרת HOMATCH שלכם.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

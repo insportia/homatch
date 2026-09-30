@@ -24,41 +24,89 @@ async function call<T = Record<string, unknown>>(action: string, payload: Record
 
 /* ── STATUS / CONNECTION ────────────────────────────────────────────── */
 
+export type MetaAssetKind = 'BUSINESS' | 'PAGE' | 'INSTAGRAM' | 'AD_ACCOUNT' | 'PIXEL' | 'LEAD_FORM' | 'WHATSAPP';
 export interface MetaAsset {
-  id: string; kind: 'BUSINESS' | 'PAGE' | 'INSTAGRAM' | 'AD_ACCOUNT' | 'PIXEL';
+  id: string; kind: MetaAssetKind;
   external_id: string; name: string | null; selected: boolean; status: string;
+  parent_external_id?: string | null;
+  /** Account status, currency, pixel last-fired time, form fields — never a token. */
+  capabilities?: Record<string, unknown>;
 }
+/** One customer-facing connection state, derived server-side. */
+export type MetaConnectionHealth =
+  | 'NOT_CONNECTED' | 'CONNECTED' | 'PERMISSION_MISSING' | 'TOKEN_EXPIRED' | 'REVOKED' | 'ERROR';
 export interface MetaWallet {
   available_cents: number; reserved_cents: number; spent_cents: number;
   fees_cents: number; deposited_cents: number; currency: string;
 }
 export interface MetaStatus {
   mode: 'REAL' | 'MOCK';
-  connection: { status: string; granted_scopes?: string[]; token_expires_at?: string | null };
+  connection: {
+    status: string; health?: MetaConnectionHealth; granted_scopes?: string[]; missing_scopes?: string[];
+    token_expires_at?: string | null; last_checked_at?: string | null;
+  };
   assets: MetaAsset[];
   wallet: MetaWallet;
   settings: {
     feePercent: number; minDurationDays: number; minDailyCents: number; maxDailyCents: number;
     goalsEnabled: string[]; leadImportEnabled: boolean; audienceCreationEnabled: boolean;
     retargetingEnabled: boolean; aiAssistEnabled: boolean; publishingEnabled: boolean;
+    whatsappEnabled?: boolean; countries?: string[];
+    /** Who pays Meta for the ad budget. Absent from an older server = the customer's ad account. */
+    budgetBilling?: 'CUSTOMER_AD_ACCOUNT' | 'HOMATCH_WALLET';
   };
 }
 export const getMetaStatus = () => call<MetaStatus>('status');
 export const startMetaOAuth = () => call<{ url?: string; mockConnect?: boolean; mode: string }>('oauth_start');
 export const mockConnect = () => call('oauth_mock_connect');
 export const refreshMetaAssets = () => call('assets_refresh');
-export const selectMetaAsset = (kind: string, assetId: string) => call('select_asset', { kind, assetId });
+export const selectMetaAsset = (kind: string, assetId: string) =>
+  call<{ ok: boolean; leadgenSubscribed: boolean | null }>('select_asset', { kind, assetId });
+export const disconnectMeta = () => call('disconnect');
+export const createLeadForm = (input: {
+  name: string; privacyPolicyUrl: string; fields: Array<'FULL_NAME' | 'EMAIL' | 'PHONE'>; locale?: string;
+}) => call<{ form: { id: string; external_id: string; name: string }; mode: string }>('create_lead_form', input);
 
 /* ── CAMPAIGNS (drafts through RLS) ─────────────────────────────────── */
 
 export interface MetaCampaignRow {
   id: string; name: string; property_id: string | null; offer: Record<string, unknown> | null;
   goal: string; status: string; daily_budget_cents: number | null; duration_days: number | null;
-  currency: string; destination: { type: string; url?: string } | null; audience_id: string | null;
-  placements: { mode: string; list?: string[] }; preflight: { status: string; checks: Array<{ key: string; ok: boolean; detail?: string }> } | null;
-  external_status: string | null; spend_cents: number; results: Record<string, unknown> | null;
-  special_ad_categories: string[]; last_error: { key?: string } | null;
+  currency: string;
+  destination: {
+    type: string; url?: string; formId?: string | null; messagingApp?: 'MESSENGER' | 'INSTAGRAM_DIRECT' | 'WHATSAPP' | null;
+  } | null;
+  audience_id: string | null;
+  placements: { mode: string; list?: string[] };
+  preflight: PreflightResult | null;
+  external_status: string | null; external_campaign_id?: string | null; spend_cents: number; results: Record<string, unknown> | null;
+  special_ad_categories: string[]; last_error: { key?: string; code?: string; detail?: string; review?: unknown } | null;
+  launched_at?: string | null; settled_at?: string | null; last_synced_at?: string | null;
   created_at: string; updated_at: string;
+}
+
+export type PreflightState = 'READY' | 'WARNING' | 'ACTION_REQUIRED';
+export interface PreflightCheck { key: string; state?: PreflightState; ok: boolean; detail?: string }
+export interface PreflightResult {
+  status: string; checks: PreflightCheck[]; warnings?: number; checked_at?: string;
+  totals?: { mediaCents: number; feeCents: number; totalCents: number; feePercent: number } | null;
+}
+
+/** Statuses in which a campaign is still a draft the customer is building. */
+export const EDITABLE_STATUSES = ['DRAFT', 'CONNECTION_REQUIRED', 'CREATIVE_REQUIRED', 'AUDIENCE_REQUIRED',
+  'PREFLIGHT_REQUIRED', 'NEEDS_CHANGES', 'READY', 'PAYMENT_REQUIRED', 'FAILED'];
+
+/**
+ * The customer's most recent unfinished draft, so opening the builder again —
+ * after a refresh, a back button, a Facebook login round-trip — continues it
+ * instead of inserting another empty row.
+ */
+export async function latestOpenDraft(): Promise<MetaCampaignRow | null> {
+  const { data } = await supabase.from('meta_campaigns').select('*')
+    .in('status', EDITABLE_STATUSES).is('external_campaign_id', null)
+    .gte('updated_at', new Date(Date.now() - 30 * 86_400_000).toISOString())
+    .order('updated_at', { ascending: false }).limit(1).maybeSingle();
+  return (data as MetaCampaignRow) ?? null;
 }
 
 export async function listMetaCampaigns(): Promise<MetaCampaignRow[]> {
@@ -90,12 +138,24 @@ export async function updateMetaDraft(id: string, patch: Partial<MetaCampaignRow
   if (error) throw error;
 }
 
-export const planPreview = (campaignId: string) =>
-  call<{ issues: Array<{ code: string; field?: string }>; totals: { mediaCents: number; feeCents: number; totalCents: number; feePercent: number }; summary: { adSetCount: number; creativeCount: number; specialAdCategories: string[] } | null }>('plan_preview', { campaignId });
-export const runPreflight = (campaignId: string) =>
-  call<{ status: string; checks: Array<{ key: string; ok: boolean; detail?: string }> }>('preflight', { campaignId });
+export interface PlanPreview {
+  issues: Array<{ code: string; field?: string }>;
+  totals: { mediaCents: number; feeCents: number; totalCents: number; feePercent: number };
+  requirements?: string[];
+  recommendedPlacements?: string[];
+  goalSpec?: { objective: string; optimizationGoal: string; needsPixel: boolean; pixelEvent: string | null; needsLeadForm: boolean; allowedCtas: string[]; defaultCta: string };
+  summary: { adSetCount: number; creativeCount: number; specialAdCategories: string[]; placementsMode?: string; objective?: string } | null;
+}
+export const planPreview = (campaignId: string) => call<PlanPreview>('plan_preview', { campaignId });
+export const runPreflight = (campaignId: string) => call<PreflightResult>('preflight', { campaignId });
 export const launchCampaign = (campaignId: string, idempotencyKey: string) =>
-  call<{ ok: boolean; status: string; mode: string }>('launch', { campaignId, idempotencyKey });
+  call<{ ok: boolean; status: string; mode: string; externalCampaignId?: string }>('launch', { campaignId, idempotencyKey });
+
+export type AiCopyOp = 'GENERATE' | 'IMPROVE' | 'SHORTEN' | 'PROFESSIONAL' | 'ALTERNATIVES' | 'TRANSLATE';
+export interface AiCopyVariant { primaryText: string; headline: string; description: string }
+/** Suggestions only: nothing is saved until the customer accepts one. */
+export const aiCopy = (campaignId: string, op: AiCopyOp, language: string, current: Partial<AiCopyVariant>, notes = '') =>
+  call<{ variants: AiCopyVariant[] }>('ai_copy', { campaignId, op, language, current, notes });
 export const pauseCampaign = (campaignId: string) => call('pause', { campaignId });
 export const resumeCampaign = (campaignId: string) => call('resume', { campaignId });
 export const syncCampaign = (campaignId: string) =>
@@ -103,10 +163,38 @@ export const syncCampaign = (campaignId: string) =>
 
 /* ── CREATIVES ──────────────────────────────────────────────────────── */
 
+export interface MediaMeta {
+  path: string; mime: string; size?: number; width?: number | null; height?: number | null; duration?: number | null;
+}
 export interface MetaCreativeRow {
   id: string; campaign_id: string | null; kind: 'IMAGE' | 'VIDEO' | 'CAROUSEL';
-  media: Array<{ path: string; mime: string }>; headline: string; primary_text: string;
+  media: MediaMeta[]; headline: string; primary_text: string; description?: string;
   cta: string; destination_url: string | null; safety_status: string; sort: number;
+  safety?: { flags?: string[] } | null;
+}
+
+/** Width, height and duration read from the file itself, before upload. */
+export async function readMediaFacts(file: File): Promise<{ width: number | null; height: number | null; duration: number | null }> {
+  const url = URL.createObjectURL(file);
+  try {
+    if (file.type.startsWith('video')) {
+      return await new Promise((resolve) => {
+        const v = document.createElement('video');
+        v.preload = 'metadata';
+        v.onloadedmetadata = () => resolve({ width: v.videoWidth || null, height: v.videoHeight || null, duration: Number.isFinite(v.duration) ? v.duration : null });
+        v.onerror = () => resolve({ width: null, height: null, duration: null });
+        v.src = url;
+      });
+    }
+    return await new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve({ width: img.naturalWidth || null, height: img.naturalHeight || null, duration: null });
+      img.onerror = () => resolve({ width: null, height: null, duration: null });
+      img.src = url;
+    });
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 }
 
 export async function listCreatives(campaignId: string): Promise<MetaCreativeRow[]> {
@@ -116,20 +204,26 @@ export async function listCreatives(campaignId: string): Promise<MetaCreativeRow
 }
 
 export async function addCreative(userId: string, campaignId: string, file: File, copy: {
-  headline: string; primaryText: string; cta?: string; destinationUrl?: string | null;
-}): Promise<MetaCreativeRow> {
-  const path = `${userId}/${crypto.randomUUID()}.${file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : file.type.startsWith('video') ? 'mp4' : 'jpg'}`;
+  headline: string; primaryText: string; description?: string; cta?: string; destinationUrl?: string | null;
+}, facts?: { width: number | null; height: number | null; duration: number | null }, sort = 0): Promise<MetaCreativeRow> {
+  const ext = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp'
+    : file.type === 'video/quicktime' ? 'mov' : file.type.startsWith('video') ? 'mp4' : 'jpg';
+  const path = `${userId}/${crypto.randomUUID()}.${ext}`;
   const { error: upErr } = await supabase.storage.from('meta-ads-media')
     .upload(path, file, { contentType: file.type, upsert: false });
   if (upErr) throw upErr;
   const { data, error } = await supabase.from('meta_creatives').insert({
-    user_id: userId, campaign_id: campaignId,
+    user_id: userId, campaign_id: campaignId, sort,
     kind: file.type.startsWith('video') ? 'VIDEO' : 'IMAGE',
-    media: [{ path, mime: file.type }],
-    headline: copy.headline, primary_text: copy.primaryText,
+    media: [{ path, mime: file.type, size: file.size, width: facts?.width ?? null, height: facts?.height ?? null, duration: facts?.duration ?? null }],
+    headline: copy.headline, primary_text: copy.primaryText, description: copy.description ?? '',
     cta: copy.cta ?? 'LEARN_MORE', destination_url: copy.destinationUrl ?? null,
   }).select('*').single();
-  if (error) throw error;
+  if (error) {
+    // Never leave an orphaned file when the row could not be written.
+    await supabase.storage.from('meta-ads-media').remove([path]).catch(() => undefined);
+    throw error;
+  }
   return data as MetaCreativeRow;
 }
 

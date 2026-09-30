@@ -63,7 +63,7 @@ interface Props {
 // live-matching card) render the exact same status vocabulary instead of
 // re-deriving their own — the two used to drift out of sync when the
 // Dashboard read from a different, now-removed progress table entirely.
-export const MATCHING_JOB_TERMINAL_STATUSES = ['completed', 'partially_completed', 'failed', 'cancelled', 'paused'] as const;
+export const MATCHING_JOB_TERMINAL_STATUSES = ['completed', 'partially_completed', 'failed', 'cancelled', 'paused', 'budget_reached'] as const;
 const TERMINAL = new Set<string>(MATCHING_JOB_TERMINAL_STATUSES);
 
 // The non-terminal lifecycle order, in the sequence a job actually moves
@@ -75,7 +75,7 @@ export const MATCHING_JOB_STEP_ORDER = [
 
 function statusIcon(status: string) {
   if (status === 'completed') return <CheckCircle2 className="h-4 w-4 text-green-500" />;
-  if (status === 'partially_completed') return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
+  if (status === 'partially_completed' || status === 'budget_reached') return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
   if (status === 'failed') return <XCircle className="h-4 w-4 text-destructive" />;
   return <Loader2 className="h-4 w-4 animate-spin text-primary" />;
 }
@@ -100,6 +100,7 @@ export function statusLabel(status: string, t: (key: string) => string) {
     failed: 'mjp_status_failed',
     paused: 'mjp_status_paused',
     cancelled: 'mjp_status_cancelled',
+    budget_reached: 'mjp_status_budget_reached',
   };
   const key = keyMap[status];
   return key ? t(key) : status;

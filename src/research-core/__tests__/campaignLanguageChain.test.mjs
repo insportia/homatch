@@ -263,11 +263,16 @@ test('a language is only marked bought after discovery actually ran', () => {
    * it — so the customer paid for a language that was never searched, and
    * nothing will ever search it.
    */
+  /* Languages are marked by the discovery driver, after the campaign's
+     source jobs ran -- and only when at least one of them finished DONE.
+     match-campaign, which only queues the work, never marks anything. */
   const fn = read('supabase/functions/match-campaign/index.ts');
-  const block = fn.slice(fn.indexOf('markLanguagesDiscovered(db, campaignId'));
-  const guard = fn.slice(Math.max(0, fn.indexOf('markLanguagesDiscovered(db, campaignId') - 400));
-  assert.match(guard, /externalResult && Number\(externalResult\?\.processed \|\| 0\) > 0/);
-  assert.ok(block.length > 0);
+  assert.ok(!fn.includes('markLanguagesDiscovered('), 'queueing a search is not having searched');
+  const driver = read('supabase/functions/discovery-queue-worker/driver.ts');
+  const at = driver.indexOf('await markLanguagesDiscovered(db, row.campaign_id');
+  assert.ok(at > 0, 'the driver records the languages it searched');
+  const guard = driver.slice(Math.max(0, at - 200), at);
+  assert.match(guard, /if \(summary\.done > 0/);
 });
 
 /* ── hop 8: economics ──────────────────────────────────────────────────── */

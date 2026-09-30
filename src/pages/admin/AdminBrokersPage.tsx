@@ -28,7 +28,7 @@
 // "approve" or "list" on that tab and there is no function behind one: a discovered firm
 // becomes a listing by applying, or not at all.
 
-import { AlertTriangle, RefreshCw, Store, Radar } from 'lucide-react';
+import { AlertTriangle, BadgeCheck, Inbox, RefreshCw, Store, Radar } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
@@ -44,8 +44,9 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/db/supabase';
 import type { TranslationKey } from '@/i18n/translations';
 import { cn } from '@/lib/utils';
+import { BrokerDetailDialog, BrokerReviewPanel, BrokerVerificationPanel } from '@/components/admin/BrokerAdminPanels';
 
-type ListingStatus = 'PENDING_REVIEW' | 'APPROVED' | 'NEEDS_CHANGES' | 'REJECTED' | 'ACTIVE' | 'SUSPENDED' | 'EXPIRED';
+type ListingStatus = 'DRAFT' | 'PENDING_REVIEW' | 'APPROVED' | 'NEEDS_CHANGES' | 'REJECTED' | 'ACTIVE' | 'SUSPENDED' | 'EXPIRED';
 
 interface ListingRow {
   id: string;
@@ -107,7 +108,8 @@ function explain(t: (k: TranslationKey, v?: Record<string, string>) => string, m
 
 export default function AdminBrokersPage() {
   const { t } = useLanguage();
-  const [tab, setTab] = useState<'listings' | 'intel'>('listings');
+  const [tab, setTab] = useState<'listings' | 'verification' | 'review' | 'intel'>('listings');
+  const [detailId, setDetailId] = useState<string | null>(null);
   const [listings, setListings] = useState<ListingRow[]>([]);
   const [intel, setIntel] = useState<IntelRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -222,6 +224,7 @@ export default function AdminBrokersPage() {
   };
 
   const statusTone: Record<ListingStatus, string> = {
+    DRAFT: 'border-border text-muted-foreground',
     PENDING_REVIEW: 'border-amber-500/40 text-amber-600 dark:text-amber-400',
     APPROVED: 'border-sky-500/40 text-sky-600 dark:text-sky-400',
     NEEDS_CHANGES: 'border-amber-500/40 text-amber-600 dark:text-amber-400',
@@ -231,7 +234,7 @@ export default function AdminBrokersPage() {
     EXPIRED: 'border-border text-muted-foreground',
   };
 
-  const tabButton = (id: 'listings' | 'intel', label: string, Icon: typeof Store, count: number) => (
+  const tabButton = (id: 'listings' | 'verification' | 'review' | 'intel', label: string, Icon: typeof Store, count: number | null) => (
     <button
       type="button"
       onClick={() => { setTab(id); setMarket(''); }}
@@ -243,7 +246,7 @@ export default function AdminBrokersPage() {
     >
       <Icon className="h-3.5 w-3.5" aria-hidden="true" />
       {label}
-      <span className="text-xs tabular-nums text-muted-foreground">{count}</span>
+      {count != null && <span className="text-xs tabular-nums text-muted-foreground">{count}</span>}
     </button>
   );
 
@@ -263,6 +266,8 @@ export default function AdminBrokersPage() {
 
       <div className="inline-flex flex-wrap rounded-lg bg-muted p-1">
         {tabButton('listings', t('admin_brokers_tab_listings'), Store, listings.length)}
+        {tabButton('verification', t('admin_brokers_tab_verification'), BadgeCheck, null)}
+        {tabButton('review', t('admin_brokers_tab_review'), Inbox, null)}
         {tabButton('intel', t('admin_brokers_tab_intel'), Radar, intel.length)}
       </div>
 
@@ -283,6 +288,11 @@ export default function AdminBrokersPage() {
         </p>
       )}
 
+      {tab === 'verification' && <BrokerVerificationPanel onOpen={setDetailId} />}
+      {tab === 'review' && <BrokerReviewPanel />}
+      {detailId && <BrokerDetailDialog listingId={detailId} onClose={() => setDetailId(null)} onChanged={() => void load()} />}
+
+      {(tab === 'listings' || tab === 'intel') && (<>
       {/* ── Filters ── */}
       <div className="flex flex-wrap items-end gap-2">
         <Input
@@ -300,7 +310,7 @@ export default function AdminBrokersPage() {
           <>
             <select className={SELECT} value={status} onChange={(e) => setStatus(e.target.value as '' | ListingStatus)} aria-label={t('admin_brokers_filter_status')}>
               <option value="">{t('admin_brokers_filter_status')}: {t('admin_brokers_filter_all')}</option>
-              {(['PENDING_REVIEW', 'ACTIVE', 'SUSPENDED', 'EXPIRED'] as const).map((s) => (
+              {(['DRAFT', 'PENDING_REVIEW', 'NEEDS_CHANGES', 'APPROVED', 'ACTIVE', 'REJECTED', 'SUSPENDED', 'EXPIRED'] as const).map((s) => (
                 <option key={s} value={s}>{t(`broker_status_${s}` as TranslationKey)}</option>
               ))}
             </select>
@@ -379,6 +389,9 @@ export default function AdminBrokersPage() {
                       </td>
                       <td className={TD}>
                         <div className="flex flex-wrap gap-1.5">
+                          <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setDetailId(r.id)}>
+                            {t('admin_broker_open')}
+                          </Button>
                           {/* The review pass, before money: an application is
                               approved, sent back or declined on its merits;
                               ACTIVE stays a separate, paid act. */}
@@ -473,6 +486,7 @@ export default function AdminBrokersPage() {
           </div>
         </CardContent>
       </Card>
+      </>)}
 
       <Dialog open={pending !== null} onOpenChange={(o) => { if (!o) setPending(null); }}>
         <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-md">

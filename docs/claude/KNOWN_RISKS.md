@@ -56,3 +56,23 @@ Things that have already bitten a session once. Read before they bite twice.
   means regenerate, not trust.
 - CBM's index is a map of code, never proof of production state, and its
   in-degree-0 results are not proof of dead code.
+
+## Migration history: clean rebuild
+
+- The repository history is NOT replayable end to end from an empty database.
+  `scripts/claude/replay-migrations.sh` (against a throwaway local Postgres,
+  with `supabase/replay/platform-bootstrap.sql`) replays it with two repairs:
+  the eight legacy `000xx_` files run at their chronological place, and
+  `supabase/replay/before/<version>.sql` fills gaps where production objects
+  were created by hand and only declared later (the discovery_query_queue
+  claim/cost columns; `increment_source_failure`, `rls_auto_enable`).
+- It stops at `20260829180000_outreach_schema_reconciliation`: that migration
+  renames columns of outreach tables that were built in production by hand
+  and were never declared by any migration. Reconstructing them would mean
+  inventing their shape. Applied migrations stay frozen; the fix, when
+  wanted, is a fragment derived from a production schema dump, not a guess.
+- Production ledger versions are MCP-generated for migrations applied through
+  the Supabase migration API (e.g. repo 20260929220000 = ledger
+  20260929131644). `supabase db push` would therefore see already-applied
+  migrations as pending: do not run the workflow_dispatch migrate job without
+  first aligning the ledger.

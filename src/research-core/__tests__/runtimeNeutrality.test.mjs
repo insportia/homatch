@@ -196,6 +196,17 @@ test('the core is consumed only through its deliberate integration points', () =
    * assertion was.
    */
   const ALLOWED = new Set([
+    // Discovery engine: the campaign run, its source jobs, the unlock
+    // freshness guard, the classifier taxonomy, and the Matches screen's
+    // current-demand split -- all reading the ONE active-demand policy and
+    // the ONE signal taxonomy rather than re-deriving them.
+    'supabase/functions/_shared/campaignRun.ts',
+    'supabase/functions/_shared/campaignSources.ts',
+    'supabase/functions/atomic-unlock/index.ts',
+    'supabase/functions/classify-signals-v2/index.ts',
+    'src/matching/currentDemand.ts',
+    'supabase/functions/_shared/fx.ts',
+    'supabase/functions/_shared/__tests__/campaignMoney.test.mjs',
     // The Verify market lane and the seed it is built from.
     'src/verify/marketLane.ts',
     'src/verify/researchSeed.ts',
@@ -346,6 +357,19 @@ test('the core is consumed only through its deliberate integration points', () =
      * the seam has stopped being a seam.
      */
     'supabase/functions/community-sync/index.ts',
+    /*
+     * The same seam's source-discovery half: the multilingual public-chat
+     * searches and the measured audit (telegram-sources.ts) decide which
+     * communities are worth reading; the file only registers and records.
+     */
+    'supabase/functions/community-sync/sourceDiscovery.ts',
+    /*
+     * DISCOVERY SETTINGS — the one reader of the canonical active-demand
+     * freshness policy. It parses the admin setting through
+     * parseActiveDemandPolicy() so no function holds its own copy of "how old
+     * may demand be".
+     */
+    'supabase/functions/_shared/discoverySettings.ts',
     /*
      * GLOBAL INTELLIGENCE READS — the same seam from the other direction.
      *

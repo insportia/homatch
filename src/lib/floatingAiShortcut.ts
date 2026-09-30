@@ -25,6 +25,10 @@ const COMPOSER_ROUTES = [
   '/live-chat',               // community chat: sticky composer + send
   '/chat',                    // Private Messages: inbox/thread composer
   '/outreach/whatsapp/inbox', // WhatsApp thread view: reply composer
+  // The Meta Ads builder: a sticky Back / Continue / Launch bar owns the
+  // bottom edge (the shortcut sat exactly on Continue at desktop width), and
+  // the builder carries HOMATCH AI inline for the ad copy it is writing.
+  '/outreach/meta/create',
 ] as const;
 
 export function shouldShowFloatingAiShortcut(pathname: string): boolean {

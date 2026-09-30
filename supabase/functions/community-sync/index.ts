@@ -44,7 +44,12 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { PublicPreviewTelegramClient } from '../../../src/research-core/adapters/telegram/preview-client.ts';
-import { TelegramError } from '../../../src/research-core/adapters/telegram/client.ts';
+import { WorkerTelegramClient } from '../../../src/research-core/adapters/telegram/worker-client.ts';
+import { TelegramError, type TelegramClient } from '../../../src/research-core/adapters/telegram/client.ts';
+import { activeWindowStart } from '../../../src/research-core/discovery/freshness-policy.ts';
+import { RESEARCH_LANGUAGES } from '../../../src/research-core/discovery/lexicon.ts';
+import { loadDiscoverySettings, type DiscoverySettings } from '../_shared/discoverySettings.ts';
+import { discoverTelegramSources } from './sourceDiscovery.ts';
 import {
   asCommunityEvidence,
   planObservation,
@@ -71,9 +76,56 @@ const json = (d: unknown, s = 200) =>
  */
 const COOLDOWN_MINUTES = 15;
 
-/** Pages walked backwards in one tick. The cursor makes this rarely needed. */
-const MAX_PAGES = 3;
-const PAGE_SIZE = 20;
+/**
+ * Pages walked backwards in one tick, per mode. The cursor makes a deep walk
+ * rare; the publication floor (the freshness policy's hard ceiling) ends it
+ * early, because demand older than that can never become an active result and
+ * reading it would spend Telegram requests on history nobody may be shown.
+ */
+const LIMITS = {
+  PUBLIC_PREVIEW: { maxPages: 3, pageSize: 20 },
+  MTPROTO_USER: { maxPages: 3, pageSize: 50 },
+} as const;
+
+/**
+ * Failures that belong to the INTEGRATION, not to the target. They stop the
+ * tick and are recorded once on the provider, never on the channel: a revoked
+ * session says nothing about whether @tbilisikvartiri is readable, and a
+ * FLOOD_WAIT is account-wide, so reading the next target would only extend it.
+ */
+const INTEGRATION_FAILURES = new Set(['NOT_CONFIGURED', 'DISABLED', 'AUTH_FAILED', 'RATE_LIMITED']);
+
+function makeClient(settings: DiscoverySettings, trace: string): TelegramClient {
+  if (settings.telegramMode === 'MTPROTO_USER') {
+    return new WorkerTelegramClient({
+      baseUrl: Deno.env.get('WORKER_URL') || '',
+      token: Deno.env.get('WORKER_TOKEN') || '',
+      trace,
+    });
+  }
+  return new PublicPreviewTelegramClient();
+}
+
+async function recordProviderHealth(
+  db: ReturnType<typeof createClient>,
+  outcome: { ok: boolean; latencyMs: number; error?: string | null },
+) {
+  const now = new Date().toISOString();
+  const { data: existing } = await db.from('provider_health').select('id,success_count,failure_count')
+    .eq('provider', 'TELEGRAM').maybeSingle();
+  const patch = {
+    provider: 'TELEGRAM',
+    status: outcome.ok ? 'HEALTHY' : 'DEGRADED',
+    last_tested_at: now,
+    ...(outcome.ok ? { last_success_at: now, last_error: null } : { last_error: String(outcome.error ?? '').slice(0, 200) }),
+    latency_ms: Math.round(outcome.latencyMs),
+    success_count: Number(existing?.success_count ?? 0) + (outcome.ok ? 1 : 0),
+    failure_count: Number(existing?.failure_count ?? 0) + (outcome.ok ? 0 : 1),
+    updated_at: now,
+  };
+  if (existing?.id) await db.from('provider_health').update(patch).eq('id', existing.id);
+  else await db.from('provider_health').insert(patch);
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
@@ -99,6 +151,42 @@ Deno.serve(async (req: Request) => {
     /** Ignore the cooldown. For an operator proving behaviour, never a schedule. */
     const force = body.force === true;
     const onlyTarget = body.target ? String(body.target) : null;
+    /** Campaign gap discovery names the targets its Search Plan selected. */
+    const targetIds: string[] = Array.isArray(body.targetIds) ? body.targetIds.map(String).slice(0, 10) : [];
+    const action = String(body.action || 'sync');
+    const trace = String(body.trace || crypto.randomUUID()).slice(0, 64);
+
+    const settings = await loadDiscoverySettings(db);
+    /*
+     * The operator switch. A scheduled tick with Telegram off does nothing and
+     * says so; `force` is the operator proving behaviour by hand.
+     */
+    if (!settings.telegramEnabled && !force) {
+      return json({ success: true, skipped: 'TELEGRAM_DISCOVERY_DISABLED', mode: settings.telegramMode, elapsedMs: Date.now() - started });
+    }
+    /* The schedule has its own switch on top: Telegram may be on for campaigns
+       while background refresh stays off. A campaign's source job calls with
+       source 'campaign' and is governed by telegramEnabled alone. */
+    if (body.source === 'cron' && !settings.backgroundRefreshEnabled && !force) {
+      return json({ success: true, skipped: 'BACKGROUND_REFRESH_DISABLED', mode: settings.telegramMode, elapsedMs: Date.now() - started });
+    }
+    const client = makeClient(settings, trace);
+
+    if (action === 'health') {
+      const t0 = Date.now();
+      const health = await client.healthCheck();
+      await recordProviderHealth(db, { ok: health.ok, latencyMs: Date.now() - t0, error: health.ok ? null : health.error.kind });
+      const status = client instanceof WorkerTelegramClient ? await client.status(false).catch(() => null) : null;
+      return json({ success: true, mode: client.mode, healthy: health.ok, error: health.ok ? null : health.error.kind, status });
+    }
+
+    if (action === 'discover') {
+      const report = await discoverTelegramSources(db, client, settings, {
+        queries: Array.isArray(body.queries) ? body.queries.map(String) : null,
+        maxQueries: Number(body.maxQueries) || 6,
+      });
+      return json({ success: true, mode: client.mode, ...report, elapsedMs: Date.now() - started });
+    }
 
     /*
      * Candidates: enabled Telegram targets that are not rate-limited. UNVERIFIED
@@ -109,14 +197,24 @@ Deno.serve(async (req: Request) => {
     let query = db
       .from('community_targets')
       .select('id,external_id,name,readability,cursor,last_seen_external_id,'
-        + 'last_checked_at,items_read,demand_found,supply_found,duplicates_seen,source_id')
+        + 'last_checked_at,items_read,demand_found,supply_found,duplicates_seen,source_id,languages,last_message_at')
       .eq('platform', 'TELEGRAM')
       .eq('discovery_enabled', true)
-      .in('readability', ['READABLE', 'UNVERIFIED'])
+      .not('lifecycle', 'in', '(BLOCKED,RETIRED)')
       .or(`rate_limited_until.is.null,rate_limited_until.lt.${new Date().toISOString()}`)
       .order('last_checked_at', { ascending: true, nullsFirst: true })
       .limit(limit);
+    /*
+     * The authenticated client can read channels the preview page could not
+     * (those failed with CAPABILITY_NOT_SUPPORTED — a statement about the MODE,
+     * not the channel), so under MTPROTO_USER they are eligible again. A
+     * PRIVATE or BLOCKED target stays excluded in every mode.
+     */
+    query = client.mode === 'MTPROTO_USER'
+      ? query.or('readability.in.(READABLE,UNVERIFIED),and(readability.eq.API_UNAVAILABLE,last_error_code.eq.CAPABILITY_NOT_SUPPORTED)')
+      : query.in('readability', ['READABLE', 'UNVERIFIED']);
     if (onlyTarget) query = query.eq('external_id', onlyTarget);
+    if (targetIds.length) query = query.in('id', targetIds);
 
     const { data: candidates, error } = await query;
     if (error) throw error;
@@ -129,8 +227,9 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const client = new PublicPreviewTelegramClient();
     const results: Array<Record<string, unknown>> = [];
+    const floor = activeWindowStart(settings.freshness, { source: 'TELEGRAM', campaignMaxDays: settings.freshness.hardMaxDays });
+    let integrationFailure: { kind: string; detail: string; retryAfterSeconds: number | null } | null = null;
 
     /* Counters kept per tick and reported separately, because "we wrote nothing"
        and "we fetched nothing" are different savings and only one of them is real
@@ -188,12 +287,31 @@ Deno.serve(async (req: Request) => {
         continue;
       }
 
-      const outcome = await syncTarget(db, client, target, totals);
+      const outcome = await syncTarget(db, client, target, totals, floor);
       results.push(outcome);
+      if (outcome.outcome === 'INTEGRATION_FAILURE') {
+        integrationFailure = {
+          kind: String(outcome.kind),
+          detail: String(outcome.detail ?? ''),
+          retryAfterSeconds: (outcome.retryAfterSeconds as number | null) ?? null,
+        };
+        /* Hand the target back: nothing was learned about it. */
+        await db.from('community_targets').update({ last_checked_at: target.last_checked_at ?? null }).eq('id', target.id);
+        break;
+      }
     }
 
+    await recordProviderHealth(db, {
+      ok: !integrationFailure,
+      latencyMs: Date.now() - started,
+      error: integrationFailure ? `${integrationFailure.kind}:${integrationFailure.detail}` : null,
+    });
+
     return json({
-      success: true,
+      success: !integrationFailure,
+      mode: client.mode,
+      trace,
+      integrationFailure,
       targetsConsidered: candidates.length,
       synced: results.filter((r) => r.outcome === 'OK').length,
       results,
@@ -211,25 +329,39 @@ Deno.serve(async (req: Request) => {
 
 async function syncTarget(
   db: ReturnType<typeof createClient>,
-  client: PublicPreviewTelegramClient,
+  client: TelegramClient,
   target: Record<string, unknown>,
   totals: Record<string, number>,
+  floor: Date,
 ): Promise<Record<string, unknown>> {
   const channel = String(target.external_id);
   const knownNewest = target.last_seen_external_id ? Number(target.last_seen_external_id) : null;
   const now = new Date().toISOString();
+  const { maxPages, pageSize } = LIMITS[client.mode === 'MTPROTO_USER' ? 'MTPROTO_USER' : 'PUBLIC_PREVIEW'];
+  const authenticated = client.mode === 'MTPROTO_USER';
+  const acquisitionMode = authenticated ? 'AUTHORIZED_ACCOUNT' : 'PUBLIC_WEB';
+  const floorSeconds = Math.floor(floor.getTime() / 1000);
+  let reachedFloor = false;
+  let newestMessageAt: number | null = null;
+  const languagesSeen = new Set<string>();
 
   const collected: Array<{ message: Record<string, unknown>; channel: string }> = [];
   let cursor: string | null = null;
   let newestSeen = knownNewest;
   let reachedKnown = false;
 
-  for (let page = 0; page < MAX_PAGES && !reachedKnown; page += 1) {
+  for (let page = 0; page < maxPages && !reachedKnown && !reachedFloor; page += 1) {
     let batch;
     try {
       totals.networkFetches += 1;
-      batch = await client.readHistory(channel, { cursor, limit: PAGE_SIZE });
+      batch = await client.readHistory(channel, { cursor, limit: pageSize });
     } catch (error) {
+      if (error instanceof TelegramError && INTEGRATION_FAILURES.has(error.kind)) {
+        return {
+          target: channel, outcome: 'INTEGRATION_FAILURE', kind: error.kind,
+          detail: error.message.slice(0, 120), retryAfterSeconds: error.retryAfterSeconds,
+        };
+      }
       return await recordFailure(db, target, channel, error);
     }
 
@@ -246,7 +378,19 @@ async function syncTarget(
         reachedKnown = true;
         break;
       }
+      /*
+       * THE PUBLICATION FLOOR. Older than the freshness policy's hard ceiling
+       * can never be active demand; stop walking rather than spend requests on
+       * it. Measured on Telegram's own date, never on when we read it.
+       */
+      if (Number(message.date) > 0 && Number(message.date) < floorSeconds) {
+        reachedFloor = true;
+        break;
+      }
       if (Number.isFinite(id) && (newestSeen === null || id > newestSeen)) newestSeen = id;
+      if (Number(message.date) > 0 && (newestMessageAt === null || Number(message.date) > newestMessageAt)) {
+        newestMessageAt = Number(message.date);
+      }
       collected.push({ message: message as unknown as Record<string, unknown>, channel });
     }
 
@@ -335,14 +479,21 @@ async function syncTarget(
 
     /* INSERT and VERSION both need an interpretation of the text. */
     totals.classificationsRun += 1;
+    /* Every HOMATCH language, not the four the preview path started with. */
     const verdict = classifyDirection(text, {
-      languages: ['ka', 'ru', 'en', 'tr'],
+      languages: [...RESEARCH_LANGUAGES],
       parentContext: null,
     });
     const language = detectLanguage(text)?.language ?? null;
+    if (language) languagesSeen.add(language);
     const publishedAt = Number(message.date)
       ? new Date(Number(message.date) * 1000).toISOString()
       : null;
+    const editedAt = Number(message.editDate)
+      ? new Date(Number(message.editDate) * 1000).toISOString()
+      : null;
+    const authorUsername = !message.fromChannel && typeof message.authorUsername === 'string'
+      ? String(message.authorUsername) : null;
 
     const evidence = asCommunityEvidence({
       id: 'REPLACED_BY_NATIVE_IDENTITY',
@@ -372,7 +523,7 @@ async function syncTarget(
         externalContentId: externalId,
         parentContentId: (message.replyToMessageId as string | null) ?? null,
       },
-      acquisitionMode: 'PUBLIC_WEB',
+      acquisitionMode,
       targetId: String(target.id),
       connectionId: null,
       contentVersion: plan.contentVersion,
@@ -403,10 +554,18 @@ async function syncTarget(
        * entry exists.
        */
       source_id: (target as Record<string, unknown>).source_id ?? null,
-      acquisition_mode: 'PUBLIC_WEB',
+      acquisition_mode: acquisitionMode,
       parent_external_id: (message.replyToMessageId as string | null) ?? null,
+      /* The public permalink. Only public chats are ever read, so it resolves for anyone. */
       source_url: evidence.contentUrl,
-      author_public_name: evidence.author.publicName,
+      author_public_name: evidence.author.publicName ?? (authorUsername ? `@${authorUsername}` : null),
+      /*
+       * The one legitimate contact route a public group offers: the author's
+       * own public @username. Never a phone number, never inferred.
+       */
+      author_public_url: authorUsername ? `https://t.me/${authorUsername}` : null,
+      /* When the AUTHOR edited it (Telegram's edit_date) — not when we noticed. */
+      source_updated_at: editedAt,
       original_text: text,
       language,
       published_at: publishedAt,
@@ -627,10 +786,16 @@ async function syncTarget(
   const persisted = writeFailures.length === 0;
   const nowIso = new Date().toISOString();
 
+  const knownLanguages = Array.isArray(target.languages) ? (target.languages as string[]) : [];
   await db.from('community_targets').update({
     readability: 'READABLE',
     membership_state: 'PUBLIC',
-    acquisition_mode: 'PUBLIC_WEB',
+    acquisition_mode: acquisitionMode,
+    /* Measured from what was read, never declared. */
+    languages: [...new Set([...knownLanguages, ...languagesSeen])].slice(0, 8),
+    ...(newestMessageAt
+      ? { last_message_at: new Date(Math.max(newestMessageAt * 1000, Date.parse(String(target.last_message_at ?? 0)) || 0)).toISOString() }
+      : {}),
     /* Earned by a real read. LOW_SIGNAL and PRODUCTIVE are decided by measured
        yield over time, not by one tick. */
     lifecycle: 'REACHABLE',
@@ -669,6 +834,7 @@ async function syncTarget(
     supply,
     newestSeenId: newestSeen,
     reachedKnownCursor: reachedKnown,
+    reachedPublicationFloor: reachedFloor,
     markedUnavailable: totals.markedUnavailable,
     ...(persisted ? {} : {
       cursorHeldAt: target.cursor ?? null,

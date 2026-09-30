@@ -19,8 +19,9 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { AccountPanel, RETURN_KEY } from '@/components/metaAds/builder/AccountPanel';
 import {
-  getMetaStatus, startMetaOAuth, mockConnect, refreshMetaAssets, selectMetaAsset,
+  getMetaStatus, startMetaOAuth, mockConnect, refreshMetaAssets, selectMetaAsset, EDITABLE_STATUSES,
   listMetaCampaigns, listMetaLeads, updateMetaLead, exportLeadsCsv, importLeads,
   listAudiences, acceptAudienceTerms, createAudience, depositCheckout, listHelp, money,
   type MetaStatus, type MetaCampaignRow, type MetaLeadRow, type MetaAudienceRow,
@@ -76,7 +77,15 @@ export default function MetaAdsPage() {
 
   useEffect(() => {
     if (params.get('deposit') === 'ok') toast.success(t('mads_deposit_ok'));
-    if (params.get('connect') === 'ok') toast.success(t('mads_connected_ok'));
+    const connect = params.get('connect');
+    if (connect === 'ok') toast.success(t('mads_connected_ok'));
+    else if (connect) toast.error(t(`madsb_connect_${connect}` as never));
+    // Back into the campaign builder the customer left for Facebook login.
+    if (connect) {
+      let back: string | null = null;
+      try { back = localStorage.getItem(RETURN_KEY); localStorage.removeItem(RETURN_KEY); } catch { /* fine */ }
+      if (back && back.startsWith('/outreach/meta/create')) navigate(back, { replace: true });
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const connected = status?.connection?.status === 'CONNECTED';
@@ -245,7 +254,7 @@ function CampaignsTab({ campaigns, onCreate }: { campaigns: MetaCampaignRow[]; o
   return (
     <div className="space-y-2.5">
       {campaigns.map(c => (
-        <Link key={c.id} to={`/outreach/meta/campaigns/${c.id}`}
+        <Link key={c.id} to={EDITABLE_STATUSES.includes(c.status) && !c.external_campaign_id ? `/outreach/meta/create?draft=${c.id}&step=review` : `/outreach/meta/campaigns/${c.id}`}
           className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5 shadow-card transition-colors hover:border-[hsl(var(--gold-border))]">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
@@ -546,95 +555,7 @@ function AudiencesTab({ enabled, connected, campaigns, onRetarget }: {
 /* ── CONNECTIONS ──────────────────────────────────────────────────────── */
 
 function ConnectionsTab({ status, onChanged }: { status: MetaStatus | null; onChanged: () => void }) {
-  const { t } = useLanguage();
-  const [busy, setBusy] = useState(false);
-  const connected = status?.connection?.status === 'CONNECTED';
-  const kinds: Array<{ kind: string; labelKey: string }> = [
-    { kind: 'BUSINESS', labelKey: 'mads_conn_business' },
-    { kind: 'PAGE', labelKey: 'mads_conn_page' },
-    { kind: 'INSTAGRAM', labelKey: 'mads_conn_instagram' },
-    { kind: 'AD_ACCOUNT', labelKey: 'mads_conn_ad_account' },
-  ];
-
-  const connect = async () => {
-    setBusy(true);
-    try {
-      const r = await startMetaOAuth();
-      if (r.url) { window.location.href = r.url; return; }
-      if (r.mockConnect) { await mockConnect(); toast.success(t('mads_connected_ok')); onChanged(); }
-    } catch { toast.error(t('mads_load_failed')); }
-    finally { setBusy(false); }
-  };
-
-  const refresh = async () => {
-    setBusy(true);
-    try { await refreshMetaAssets(); onChanged(); }
-    catch (e: any) { toast.error(t(String(e.message).startsWith('meta_err') ? e.message : 'mads_load_failed')); }
-    finally { setBusy(false); }
-  };
-
-  return (
-    <div className="space-y-3">
-      <div className="rounded-2xl border border-border bg-card p-5 shadow-card">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            {connected
-              ? <CheckCircle2 className="h-5 w-5 text-[hsl(152_54%_30%)]" />
-              : <Circle className="h-5 w-5 text-muted-foreground" />}
-            <div>
-              <p className="font-semibold text-foreground">{t(connected ? 'mads_conn_connected' : 'mads_conn_disconnected')}</p>
-              <p className="text-2xs text-muted-foreground">{t('mads_conn_hint')}</p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            {connected && (
-              <Button variant="outline" size="sm" onClick={refresh} disabled={busy} className="gap-1.5">
-                <RefreshCw className={cn('h-3.5 w-3.5', busy && 'animate-spin')} />{t('mads_conn_refresh')}
-              </Button>
-            )}
-            <Button size="sm" onClick={connect} disabled={busy} className="gap-1.5">
-              <Link2 className="h-3.5 w-3.5" />{t(connected ? 'mads_conn_reconnect' : 'mads_conn_connect')}
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {connected && kinds.map(({ kind, labelKey }) => {
-        const options = (status?.assets ?? []).filter(a => a.kind === kind);
-        const selected = options.find(a => a.selected);
-        return (
-          <div key={kind} className="rounded-2xl border border-border bg-card px-4 py-3.5 shadow-card">
-            <div className="flex flex-wrap items-center gap-3">
-              {selected ? <CheckCircle2 className="h-[1.1rem] w-[1.1rem] text-[hsl(152_54%_30%)]" /> : <Circle className="h-[1.1rem] w-[1.1rem] text-muted-foreground" />}
-              <p className="min-w-[9rem] font-medium text-foreground">{t(labelKey as never)}</p>
-              {options.length === 0 ? (
-                kind === 'AD_ACCOUNT' ? (
-                  <div className="min-w-0 flex-1 rounded-xl border border-[hsl(var(--gold-border))]/60 bg-[hsl(var(--gold-soft))] px-3 py-2 text-[13px] leading-relaxed text-foreground">
-                    {t('mads_conn_no_ad_account')}
-                    <Button variant="outline" size="sm" onClick={refresh} className="ms-2 mt-1 gap-1.5">
-                      <RefreshCw className="h-3.5 w-3.5" />{t('mads_conn_check_again')}
-                    </Button>
-                  </div>
-                ) : <p className="text-[13px] text-muted-foreground">{t('mads_conn_none_found')}</p>
-              ) : (
-                <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
-                  {options.map(o => (
-                    <button key={o.id} type="button"
-                      onClick={async () => { await selectMetaAsset(kind, o.id).catch(() => {}); onChanged(); }}
-                      className={cn('max-w-full truncate rounded-full border px-3 py-1 text-[13px] transition-colors',
-                        o.selected ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] font-semibold text-[hsl(var(--gold-ink))]'
-                          : 'border-border bg-card text-muted-foreground hover:border-[hsl(var(--gold-border))]')}>
-                      {o.name ?? o.external_id}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
+  return <AccountPanel status={status} onChanged={onChanged} />;
 }
 
 /* ── HELP ─────────────────────────────────────────────────────────────── */

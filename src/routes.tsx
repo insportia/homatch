@@ -60,6 +60,7 @@ const InvestmentPage = lazyRoute(() => import('./pages/InvestmentPage'));
 const BrokersPage = lazyRoute(() => import('./pages/BrokersPage'));
 const BrokerProfilePage = lazyRoute(() => import('./pages/BrokerProfilePage'));
 const BrokerCrmPage = lazyRoute(() => import('./pages/BrokerCrmPage'));
+const BrokerOnboardingPage = lazyRoute(() => import('./pages/BrokerOnboardingPage'));
 const FindPropertyPage = lazyRoute(() => import('./pages/FindPropertyPage'));
 const MyPropertiesPage = lazyRoute(() => import('./pages/property/MyPropertiesPage'));
 const EditPropertyPage = lazyRoute(() => import('./pages/property/EditPropertyPage'));
@@ -123,6 +124,7 @@ const MetaAdsPage = lazyRoute(() => import('./pages/outreach/MetaAdsPage'));
 const MetaAdsCreatePage = lazyRoute(() => import('./pages/outreach/MetaAdsCreatePage'));
 const MetaAdsCampaignPage = lazyRoute(() => import('./pages/outreach/MetaAdsCampaignPage'));
 const AdminMetaAdsPage = lazyRoute(() => import('./pages/admin/AdminMetaAdsPage'));
+const AdminDiscoveryPage = lazyRoute(() => import('./pages/admin/AdminDiscoveryPage'));
 const CommunitiesPage = lazyRoute(() => import('./pages/outreach/CommunitiesPage'));
 const ContactListsPage = lazyRoute(() => import('./pages/outreach/ContactListsPage'));
 const EmailCampaignsPage = lazyRoute(() => import('./pages/outreach/EmailCampaignsPage'));
@@ -290,6 +292,8 @@ export const routes: RouteConfig[] = [
    * server-side (RLS on the listing row; the stats RPC checks the owner).
    */
   { name: 'Broker CRM',        path: '/broker',                   element: <BrokerCrmPage /> },
+  /* Create or edit the professional's ONE profile (broker_profile_save). */
+  { name: 'Broker Onboarding', path: '/broker/onboarding',        element: <BrokerOnboardingPage /> },
   /*
    * FIND PROPERTY. Not public, and the reason is the row it writes rather than
    * anything it shows: confirming a plan creates an intent_profiles row and an
@@ -543,6 +547,7 @@ export const routes: RouteConfig[] = [
   { name: 'Admin Campaigns',   path: '/admin/campaigns',          element: adminWrap(<AdminCampaignsPage />),   adminOnly: true },
   { name: 'Admin Outreach',    path: '/admin/outreach',           element: adminWrap(<AdminOutreachPage />),    adminOnly: true },
   { name: 'Admin Meta Ads',    path: '/admin/meta-ads',           element: adminWrap(<AdminMetaAdsPage />),     adminOnly: true },
+  { name: 'Admin Discovery',   path: '/admin/discovery',          element: adminWrap(<AdminDiscoveryPage />),   adminOnly: true },
   { name: 'Admin Markets',     path: '/admin/markets',            element: adminWrap(<AdminMarketsPage />),     adminOnly: true },
   { name: 'Admin Sources',     path: '/admin/sources',            element: adminWrap(<AdminSourcesPage />),     adminOnly: true },
   /* Connected Social Accounts. One place to connect an account and see what

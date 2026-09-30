@@ -17,6 +17,7 @@
   "include": ["src/**/*.ts"],
   "exclude": [
     "src/index.ts",
+    "src/telegram/GramJsDriver.ts",
     "src/orchestrator/ResearchOrchestrator.ts",
     "src/browser/BrowserSession.ts",
     "src/documents/OnlineDocumentReader.ts",

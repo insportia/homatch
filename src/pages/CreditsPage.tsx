@@ -62,6 +62,8 @@ const LEDGER_TYPE_CONFIG: Record<LedgerType, { labelKey: string; icon: React.Ele
   // The one-off 1 Credit = $1.00 -> $0.10 rescale. Its own label so it is
   // never mistaken for a top-up or a gift in a customer's history.
   REDENOMINATION:    { labelKey: 'credits_type_redenomination',   icon: TrendingUp,     color: 'text-muted-foreground' },
+  BROKER_DISCOVERY:  { labelKey: 'credits_type_broker_discovery',  icon: ShoppingCart,   color: 'text-muted-foreground' },
+  BROKER_DIRECTORY_LISTING: { labelKey: 'credits_type_broker_listing', icon: ShoppingCart, color: 'text-muted-foreground' },
 };
 
 function LedgerRow({ entry }: { entry: CreditLedgerEntry }) {

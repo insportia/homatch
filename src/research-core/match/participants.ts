@@ -157,6 +157,32 @@ export function supplyRoleFrom(value: string | null | undefined): SupplyRole | n
 }
 
 /**
+ * The supply role of a property listed on HOMATCH itself.
+ *
+ * It used to be SELLER for every native property, whatever its transaction --
+ * so a flat for RENT was a "seller", and a TENANT (whose supply is LANDLORD,
+ * AGENCY or BROKER) could never transact with it: native rentals never matched
+ * a tenant. The role now comes from who listed it and what they offer:
+ *
+ *   listed by an AGENCY or a BROKER   -> that professional role (a buyer and a
+ *                                        tenant can both deal with them)
+ *   listed by the owner, for rent or
+ *   short stay                         -> LANDLORD
+ *   listed by the owner, otherwise    -> SELLER
+ */
+export function nativeSupplyRole(
+  transaction: string | null | undefined,
+  listedByRole: string | null | undefined,
+): SupplyRole {
+  const by = String(listedByRole ?? '').toUpperCase();
+  if (by === 'AGENCY') return 'AGENCY';
+  if (by === 'BROKER') return 'BROKER';
+  const tx = String(transaction ?? '').toUpperCase();
+  if (tx === 'RENT' || tx === 'SHORT_STAY' || tx === 'DAILY_RENT' || tx === 'SHORT_TERM') return 'LANDLORD';
+  return 'SELLER';
+}
+
+/**
  * Normalise whatever a row calls a demand role.
  *
  * Reads the intent_type the classifier already writes where it can, because a

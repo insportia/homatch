@@ -11,6 +11,11 @@
 // real translation). Add a key here only when that's a deliberate decision,
 // never to silence a real missing translation.
 export const ALLOW_DUPLICATE_KEYS = new Set([
+  // Meta Ads messaging destinations: product names Meta itself does not translate.
+  'madsb_msg_messenger',
+  'madsb_msg_instagram',
+  'madsb_msg_whatsapp',
+  'admin_disc_kpi_telegram',
   /* "Email" is the channel's name in the Georgian UI on purpose — the
      sidebar and rail already say "Email კამპანიები", and the terminology
      contract keeps globally recognized channel names (Email/SMS/WhatsApp)

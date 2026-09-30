@@ -39,6 +39,7 @@
 // read, which is the difference between a quiet source and a broken one.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { loadDiscoverySettings } from '../_shared/discoverySettings.ts';
 import { createPortalRuntime } from '../../../src/research-core/market/runtime.ts';
 import { observe, readTopic, topicUrls } from '../../../src/research-core/adapters/forum/board.ts';
 import { forumSourceById } from '../../../src/research-core/adapters/forum/sources.ts';
@@ -85,6 +86,17 @@ Deno.serve(async (req: Request) => {
   try {
     const body = await req.json().catch(() => ({}));
     const maxThreads = Math.max(1, Math.min(10, Number(body.maxThreads) || 3));
+
+    /* The hourly schedule runs only when an operator has switched both the
+       master background refresh and forum discovery on. A campaign's source
+       job (source 'campaign') needs forum discovery on; a manual operator
+       call carries neither and is unaffected. */
+    if (body.source === 'cron' || body.source === 'campaign') {
+      const discovery = await loadDiscoverySettings(db);
+      if (!discovery.forumDiscoveryEnabled || (body.source === 'cron' && !discovery.backgroundRefreshEnabled)) {
+        return json({ success: true, skipped: 'FORUM_DISCOVERY_DISABLED', postsRead: 0 });
+      }
+    }
 
     /*
      * THE REGISTRY DECIDES. A reader existing in the bundle is not permission

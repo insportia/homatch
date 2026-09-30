@@ -17,18 +17,19 @@ import { hashIdentifierRows, csvSafeCell, normalizeEmail, normalizePhone } from 
 import { getPaymentProvider } from '../_shared/payment_provider.ts';
 import {
   metaMode, graph, graphAll, MetaApiError, oauthStartUrl, mockExternalId, capabilityMatrix, signOAuthState,
-  sealToken, openToken, scrubText, REQUIRED_SCOPES_BY_GOAL, BASE_SCOPES, INSTANT_FORM_SCOPES, hasScopes, metaLoginConfigId, tokenKeyStatus,
+  sealToken, openToken, scrubText, REQUIRED_SCOPES_BY_GOAL, BASE_SCOPES, INSTANT_FORM_SCOPES, hasScopes, metaLoginConfigId, tokenKeyStatus, flushApiUsage,
 } from '../_shared/metaAds.ts';
+import { allowance, pressureOf, type Pressure } from '../../../src/lib/metaAds/rateLimit.ts';
 import { ingestLead } from '../_shared/metaLeads.ts';
 import { callLlm, llmAvailable } from '../_shared/comm/llm.ts';
 import {
   loadSettings, userToken, selectedAsset, pageToken, strategyInputFor, limitsOf, configFingerprint,
-  runPreflight, publishCampaign, syncCampaign, propertyAuthorized, customerFeePercent, withoutInstagram, finalizeSettlement,
+  runPreflight, publishCampaign, syncCampaign, reconcileAccountStatuses, propertyAuthorized, customerFeePercent, withoutInstagram, finalizeSettlement,
   type MetaSettings,
 } from './engine.ts';
 import { handleAction } from './actions.ts';
 import { readManagedState, setApproved, LifecycleError, assertNotSuspended } from './lifecycle.ts';
-import { monitorCampaign, monitorUser, maybeScanDuplicates, lifecycleEvent, runBriefs, emptyMonitorReport } from './monitor.ts';
+import { monitorCampaign, monitorUser, maybeScanDuplicates, lifecycleEvent, runBriefs, emptyMonitorReport, statusChangeNotice } from './monitor.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -84,7 +85,8 @@ Deno.serve(async (req) => {
        the database compares it (service-role only RPC), so no copy of the
        secret is ever read into this function or any admin screen. */
     const { data: tokenOk } = await sb.rpc('meta_ads_maintenance_token_ok', { p_token: cronToken });
-    if (tokenOk !== true || action !== 'maintenance') return json({ error: 'Forbidden' }, 403);
+    if (tokenOk !== true || (action !== 'maintenance' && action !== 'status_sync')) return json({ error: 'Forbidden' }, 403);
+    if (action === 'status_sync') return json(await statusSync(sb, mode, await loadSettings(sb)));
     return json(await maintenance(sb, mode, await loadSettings(sb)));
   }
 
@@ -519,6 +521,9 @@ Deno.serve(async (req) => {
           await sb.from('meta_campaigns').update({
             external_campaign_id: external.campaignId, external_status: external.status,
             status: 'SUBMITTED', last_synced_at: new Date().toISOString(), last_error: null,
+            // HOMATCH's requested start (server clock + 1 min, or the customer's schedule).
+            // Meta's own start and delivery state come back through sync.
+            ...('requestedStartAt' in external && external.requestedStartAt ? { plan: { ...plan, requestedStartAt: external.requestedStartAt } } : {}),
           }).eq('id', c.id);
           let after: Record<string, unknown> = { status: 'SUBMITTED' };
           if (mode === 'REAL') {
@@ -823,6 +828,65 @@ Deno.serve(async (req) => {
   }
 });
 
+/* ── STATUS SYNC: the every-minute pass ──────────────────────────────────
+ * Only what can change minute to minute and matters at once: each live
+ * campaign's status at Meta (campaign + ads, two light Graph reads, no
+ * insights). Reviewing / delivering campaigns every minute, paused ones every
+ * fifth minute; ended ones never (the 15-minute maintenance settles them).
+ * A campaign synced in the last 50 seconds is skipped, so this and the
+ * maintenance pass never double the calls. Insights, Guard and analysis stay
+ * on the 15-minute pass. */
+const STATUS_SYNC_BUDGET_MS = 40_000;
+async function statusSync(sb: any, mode: 'REAL' | 'MOCK', settings: MetaSettings) {
+  const started = Date.now();
+  const report = { accounts: 0, checked: 0, changed: 0, failed: 0, skippedForCapacity: 0, notifications: 0, graphCalls: 0 };
+  if (mode !== 'REAL') return { ok: true, mode, ...report };
+  const minute = new Date().getUTCMinutes();
+  const statuses = minute % 5 === 0 ? ['SUBMITTED', 'META_REVIEW', 'ACTIVE', 'PAUSED'] : ['SUBMITTED', 'META_REVIEW', 'ACTIVE'];
+  const fresh = new Date(Date.now() - 50_000).toISOString();
+  const { data: rows } = await sb.from('meta_campaigns').select('*').in('status', statuses)
+    .not('external_campaign_id', 'is', null).not('ad_account_external_id', 'is', null)
+    .or(`last_synced_at.is.null,last_synced_at.lt.${fresh}`)
+    .order('last_synced_at', { ascending: true, nullsFirst: true }).limit(200);
+  // One group per (customer token, ad account): two Graph reads each.
+  const groups = new Map<string, any[]>();
+  for (const c of rows ?? []) {
+    if (String(c.external_campaign_id).startsWith('mock_')) continue;
+    const k = `${c.user_id}|${c.ad_account_external_id}`;
+    groups.set(k, [...(groups.get(k) ?? []), c]);
+  }
+  const { data: usage } = await sb.from('meta_api_usage').select('bucket,type,call_count,total_cputime,total_time,regain_minutes,observed_at');
+  for (const [k, list] of groups) {
+    if (Date.now() - started > STATUS_SYNC_BUDGET_MS) break;
+    const [userId, account] = k.split('|');
+    const bucket = String(account).replace(/^act_/, '');
+    // Meta's own numbers for this account, if seen in the last hour.
+    const mine = (usage ?? []).filter((u: any) => u.bucket === bucket && Date.parse(u.observed_at) > Date.now() - 3_600_000)
+      .map((u: any) => ({ callCount: Number(u.call_count), totalCputime: Number(u.total_cputime), totalTime: Number(u.total_time),
+        regainMinutes: Date.parse(u.observed_at) + Number(u.regain_minutes) * 60_000 > Date.now() ? Number(u.regain_minutes) : 0 }));
+    if (!allowance(pressureOf(mine), minute).status) { report.skippedForCapacity += list.length; continue; }
+    const token = await userToken(sb, userId);
+    if (!token) continue;
+    report.accounts += 1;
+    try {
+      const results = await reconcileAccountStatuses(sb, token, account, list);
+      report.graphCalls += 2;
+      for (const r of results) {
+        report.checked += 1;
+        if (!r.changed) continue;
+        report.changed += 1;
+        const { data: after } = await sb.from('meta_campaigns').select('*').eq('id', r.id).single();
+        if (after) report.notifications += (await statusChangeNotice(sb, after, r.before, settings)).notifications;
+      }
+    } catch (err) {
+      report.failed += list.length;
+      console.error('[meta-ads-api] status_sync', bucket.slice(-4), scrubText(err instanceof Error ? err.message : String(err)));
+    }
+  }
+  await flushApiUsage(sb);
+  return { ok: true, mode, ...report, elapsedMs: Date.now() - started };
+}
+
 /* ── MAINTENANCE: the scheduled pass ─────────────────────────────────── */
 
 /* The cron call times out at 55 s; the pass stops starting new campaign
@@ -838,6 +902,12 @@ async function maintenance(sb: any, mode: 'REAL' | 'MOCK', settings: MetaSetting
   const LIVE = ['SUBMITTED', 'META_REVIEW', 'ACTIVE', 'PAUSED'];
   // 1. Status + spend for everything that is live at Meta, then the
   //    deterministic monitoring cycle (Guard, insights, analysis, events).
+  // Meta's reported capacity per ad account (meta_api_usage), for the insights gate.
+  const { data: usageRows } = await sb.from('meta_api_usage').select('bucket,call_count,total_cputime,total_time,regain_minutes,observed_at');
+  const pressureFor = (account: string | null): Pressure => pressureOf((usageRows ?? [])
+    .filter((u: any) => u.bucket === String(account ?? '').replace(/^act_/, '') && Date.parse(u.observed_at) > Date.now() - 3_600_000)
+    .map((u: any) => ({ callCount: Number(u.call_count), totalCputime: Number(u.total_cputime), totalTime: Number(u.total_time),
+      regainMinutes: Date.parse(u.observed_at) + Number(u.regain_minutes) * 60_000 > Date.now() ? Number(u.regain_minutes) : 0 })));
   const { data: live } = await sb.from('meta_campaigns').select('*')
     .in('status', LIVE)
     .not('external_campaign_id', 'is', null)
@@ -853,7 +923,12 @@ async function maintenance(sb: any, mode: 'REAL' | 'MOCK', settings: MetaSetting
       if (!fresh) continue;
       users.add(fresh.user_id);
       if (fresh.ad_account_external_id) accounts.set(`${fresh.user_id}:${fresh.ad_account_external_id}`, { userId: fresh.user_id, account: fresh.ad_account_external_id });
-      if (LIVE.includes(fresh.status) || fresh.status === 'REJECTED') await monitorCampaign(sb, fresh, settings, mode, monitor);
+      if (LIVE.includes(fresh.status) || fresh.status === 'REJECTED') await monitorCampaign(sb, fresh, settings, mode, monitor, Date.now(), pressureFor(fresh.ad_account_external_id));
+      // A status change Meta reported since the last pass: told once, with honest provenance.
+      if (fresh.status !== before) {
+        const n = await statusChangeNotice(sb, fresh, before, settings);
+        monitor.notifications += n.notifications; monitor.pushEligible += n.pushEligible; monitor.conditions += n.conditions;
+      }
       if (!LIVE.includes(fresh.status) && LIVE.includes(before) && fresh.status !== 'REJECTED') {
         await lifecycleEvent(sb, fresh, 'CAMPAIGN_STOPPED', fresh.status, `stopped:${fresh.id}:${fresh.status}`, settings);
       }
@@ -934,7 +1009,8 @@ async function maintenance(sb: any, mode: 'REAL' | 'MOCK', settings: MetaSetting
   if (new Date().getUTCMinutes() < 15 && inBudget()) {
     try { await runBriefs(sb, report); } catch (err) { console.error('[meta-ads-api] briefs', scrubText(err instanceof Error ? err.message : String(err))); }
   }
-  return { ok: true, mode, configured, tokenKeyCheck, ...report, monitor, elapsedMs: Date.now() - started };
+  const usageRecorded = await flushApiUsage(sb);
+  return { ok: true, mode, configured, tokenKeyCheck, ...report, monitor, usageRecorded, elapsedMs: Date.now() - started };
 }
 
 /* ── COPY CONTEXT ────────────────────────────────────────────────────── */

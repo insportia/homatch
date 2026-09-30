@@ -13,6 +13,8 @@ export interface NormalizedMetaError {
   customerKey: string;
   /** Can a plain retry help, without changing anything? */
   recoverable: boolean;
+  /** Meta's throttle family: wait for the regain time, never retry in the same call. */
+  throttled?: boolean;
   /** What has to happen first. */
   action: 'RETRY' | 'RECONNECT' | 'FIX_INPUT' | 'META_ACTION_REQUIRED' | 'CONTACT_SUPPORT';
   code: string;
@@ -28,6 +30,12 @@ export function normalizeMetaError(err: {
   const rawMessage = String(err?.message ?? '');
   const base = { code, subcode, rawMessage };
 
+  // Rate limits / throttling FIRST: Meta sends many of these with
+  // type OAuthException, and a throttle is not "reconnect your account".
+  // 4/17/32/613 and the business-use-case family 80000–80014.
+  if (code === '4' || code === '17' || code === '32' || code === '613' || (Number(subcode) >= 80000 && Number(subcode) <= 80014)) {
+    return { ...base, customerKey: 'meta_err_busy', recoverable: true, action: 'RETRY', throttled: true };
+  }
   // Auth family: expired/invalidated token, revoked permission.
   if (code === '190' || err?.type === 'OAuthException') {
     return { ...base, customerKey: 'meta_err_reconnect', recoverable: false, action: 'RECONNECT' };
@@ -35,10 +43,6 @@ export function normalizeMetaError(err: {
   // Permission family.
   if (code === '200' || code === '10' || (Number(code) >= 200 && Number(code) <= 299)) {
     return { ...base, customerKey: 'meta_err_permission', recoverable: false, action: 'META_ACTION_REQUIRED' };
-  }
-  // Rate limits / throttling.
-  if (code === '4' || code === '17' || code === '32' || code === '613' || subcode === '80004') {
-    return { ...base, customerKey: 'meta_err_busy', recoverable: true, action: 'RETRY' };
   }
   // Transient platform errors.
   if (code === '1' || code === '2') {

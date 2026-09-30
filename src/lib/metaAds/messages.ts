@@ -13,6 +13,15 @@ type T6 = [string, string, string, string, string, string];
 
 interface Copy { title: T6; body: T6; why: T6; action: T6 | null }
 
+const MANAGE_FROM_HOMATCH: T6 = [
+  'Managing the campaign from HOMATCH keeps changes, protection and analytics fully in sync.',
+  'კამპანიის მართვა რეკომენდებულია HOMATCH-იდან, რათა ცვლილებები, დაცვა და ანალიტიკა სრულად სინქრონიზებული დარჩეს.',
+  'Управляйте кампанией из HOMATCH, чтобы изменения, защита и аналитика оставались полностью синхронизированными.',
+  "Değişiklikler, koruma ve analizler tamamen eşit kalsın diye kampanyayı HOMATCH'ten yönetmenizi öneririz.",
+  'يُستحسن إدارة الحملة من HOMATCH لتبقى التغييرات والحماية والتحليلات متزامنة بالكامل.',
+  'מומלץ לנהל את הקמפיין מתוך HOMATCH כדי שהשינויים, ההגנה והניתוח יישארו מסונכרנים לגמרי.',
+];
+
 const C: Record<EventType, Copy> = {
   PERFORMANCE_DETERIORATED: {
     title: ['Cost per result is rising', 'შედეგის ღირებულება იზრდება', 'Стоимость результата растёт', 'Sonuç başına maliyet artıyor', 'تكلفة النتيجة ترتفع', 'העלות לתוצאה עולה'],
@@ -128,7 +137,60 @@ const C: Record<EventType, Copy> = {
     why: ['', '', '', '', '', ''],
     action: null,
   },
+  CAMPAIGN_PAUSED_OUTSIDE: {
+    title: ['Campaign paused in Meta', 'კამპანია Meta-ში შეჩერდა', 'Кампания приостановлена в Meta', "Kampanya Meta'da duraklatıldı", 'تم إيقاف الحملة مؤقتًا في Meta', 'הקמפיין הושהה ב־Meta'],
+    body: ['{{campaign}} was paused directly in Meta (for example in Meta Ads Manager), not from HOMATCH. HOMATCH detected the change and updated the campaign status.', '{{campaign}} შეჩერდა პირდაპირ Meta-ში (მაგალითად, Meta Ads Manager-იდან) და არა HOMATCH-იდან. HOMATCH-მა ცვლილება აღმოაჩინა და კამპანიის მდგომარეობა ავტომატურად განაახლა.', '{{campaign}} приостановлена напрямую в Meta (например, в Meta Ads Manager), а не из HOMATCH. HOMATCH обнаружил изменение и обновил статус кампании.', "{{campaign}} HOMATCH'ten değil, doğrudan Meta'da (örneğin Meta Ads Manager'da) duraklatıldı. HOMATCH değişikliği fark etti ve kampanya durumunu güncelledi.", 'تم إيقاف {{campaign}} مباشرة في Meta (مثلًا في مدير إعلانات Meta) وليس من HOMATCH. رصد HOMATCH التغيير وحدّث حالة الحملة.', '{{campaign}} הושהה ישירות ב־Meta (למשל ב־Meta Ads Manager) ולא מתוך HOMATCH. HOMATCH זיהתה את השינוי ועדכנה את סטטוס הקמפיין.'],
+    why: ['A paused campaign does not deliver or collect results.', 'შეჩერებული კამპანია არ გადის და შედეგებს არ აგროვებს.', 'Приостановленная кампания не показывается и не собирает результаты.', 'Duraklatılmış bir kampanya yayınlanmaz ve sonuç toplamaz.', 'الحملة المتوقفة لا تُعرض ولا تجمع نتائج.', 'קמפיין מושהה לא מוצג ולא אוסף תוצאות.'],
+    action: MANAGE_FROM_HOMATCH,
+  },
+  CAMPAIGN_RESUMED_OUTSIDE: {
+    title: ['Campaign resumed in Meta', 'კამპანია Meta-ში განახლდა', 'Кампания возобновлена в Meta', "Kampanya Meta'da sürdürüldü", 'تم استئناف الحملة في Meta', 'הקמפיין חודש ב־Meta'],
+    body: ['{{campaign}} was switched back on directly in Meta (for example in Meta Ads Manager), not from HOMATCH. HOMATCH detected the change and updated the campaign status.', '{{campaign}} ხელახლა ჩაირთო პირდაპირ Meta-ში (მაგალითად, Meta Ads Manager-იდან) და არა HOMATCH-იდან. HOMATCH-მა ცვლილება აღმოაჩინა და კამპანიის მდგომარეობა ავტომატურად განაახლა.', '{{campaign}} снова включена напрямую в Meta (например, в Meta Ads Manager), а не из HOMATCH. HOMATCH обнаружил изменение и обновил статус кампании.', "{{campaign}} HOMATCH'ten değil, doğrudan Meta'da (örneğin Meta Ads Manager'da) yeniden açıldı. HOMATCH değişikliği fark etti ve kampanya durumunu güncelledi.", 'أُعيد تشغيل {{campaign}} مباشرة في Meta (مثلًا في مدير إعلانات Meta) وليس من HOMATCH. رصد HOMATCH التغيير وحدّث حالة الحملة.', '{{campaign}} הופעל מחדש ישירות ב־Meta (למשל ב־Meta Ads Manager) ולא מתוך HOMATCH. HOMATCH זיהתה את השינוי ועדכנה את סטטוס הקמפיין.'],
+    why: ['The campaign can deliver and spend its Meta budget again.', 'კამპანიას კვლავ შეუძლია ჩვენება და Meta-ს ბიუჯეტის ხარჯვა.', 'Кампания снова может показываться и расходовать бюджет Meta.', 'Kampanya yeniden yayınlanabilir ve Meta bütçesini harcayabilir.', 'يمكن للحملة العرض وإنفاق ميزانية Meta مجددًا.', 'הקמפיין יכול שוב להיות מוצג ולנצל את תקציב Meta.'],
+    action: MANAGE_FROM_HOMATCH,
+  },
+  CAMPAIGN_ACTIVATED: {
+    title: ['Your campaign is active', 'თქვენი კამპანია აქტიურია', 'Ваша кампания активна', 'Kampanyanız aktif', 'حملتك نشطة', 'הקמפיין שלכם פעיל'],
+    body: ['{{campaign}}: Meta finished its review and the ads are delivering.', '{{campaign}}: Meta-მ განხილვა დაასრულა და რეკლამა გადის.', '{{campaign}}: Meta завершила проверку, объявления показываются.', '{{campaign}}: Meta incelemeyi tamamladı ve reklamlar yayında.', '{{campaign}}: أنهت Meta مراجعتها والإعلانات تُعرض.', '{{campaign}}: Meta סיימה את הבדיקה והמודעות מוצגות.'],
+    why: ['', '', '', '', '', ''],
+    action: null,
+  },
+  CAMPAIGN_STATUS_CHANGED: {
+    title: ['Campaign status changed on Meta', 'Meta-ზე კამპანიის სტატუსი შეიცვალა', 'Статус кампании в Meta изменился', "Meta'da kampanya durumu değişti", 'تغيّرت حالة الحملة على Meta', 'סטטוס הקמפיין ב־Meta השתנה'],
+    body: ['{{campaign}}: Meta now reports the campaign as {{state}}.', '{{campaign}}: Meta ახლა კამპანიას აჩვენებს სტატუსით „{{state}}“.', '{{campaign}}: Meta теперь показывает статус «{{state}}».', "{{campaign}}: Meta kampanyayı artık „{{state}}“ olarak gösteriyor.", '{{campaign}}: تُظهر Meta الحملة الآن بحالة «{{state}}».', '{{campaign}}: Meta מציגה כעת את הקמפיין כ„{{state}}“.'],
+    why: ['', '', '', '', '', ''],
+    action: null,
+  },
+  CAMPAIGN_BUDGET_CHANGED_OUTSIDE: {
+    title: ['Campaign budget changed in Meta', 'კამპანიის ბიუჯეტი Meta-ში შეიცვალა', 'Бюджет кампании изменён в Meta', "Kampanya bütçesi Meta'da değiştirildi", 'تم تغيير ميزانية الحملة في Meta', 'תקציב הקמפיין שונה ב־Meta'],
+    body: ['The budget of {{campaign}} was changed directly in Meta (for example in Meta Ads Manager), not from HOMATCH.', '{{campaign}}-ის ბიუჯეტი შეიცვალა პირდაპირ Meta-ში (მაგალითად, Meta Ads Manager-იდან) და არა HOMATCH-იდან.', 'Бюджет {{campaign}} изменён напрямую в Meta (например, в Meta Ads Manager), а не из HOMATCH.', "{{campaign}} bütçesi HOMATCH'ten değil, doğrudan Meta'da (örneğin Meta Ads Manager'da) değiştirildi.", 'تم تغيير ميزانية {{campaign}} مباشرة في Meta (مثلًا في مدير إعلانات Meta) وليس من HOMATCH.', 'התקציב של {{campaign}} שונה ישירות ב־Meta (למשל ב־Meta Ads Manager) ולא מתוך HOMATCH.'],
+    why: ['Budget changes made outside HOMATCH are not reflected in its plan or service fee.', 'HOMATCH-ის გარეთ შეცვლილი ბიუჯეტი მის გეგმასა და მომსახურების საკომისიოში არ აისახება.', 'Изменения бюджета вне HOMATCH не отражаются в его плане и комиссии.', 'HOMATCH dışında yapılan bütçe değişiklikleri planına ve hizmet bedeline yansımaz.', 'تغييرات الميزانية خارج HOMATCH لا تنعكس في خطته ولا في رسوم الخدمة.', 'שינויי תקציב מחוץ ל־HOMATCH לא משתקפים בתוכנית שלה ובדמי השירות.'],
+    action: MANAGE_FROM_HOMATCH,
+  },
+  CAMPAIGN_SCHEDULE_CHANGED_OUTSIDE: {
+    title: ['Campaign schedule changed in Meta', 'კამპანიის განრიგი Meta-ში შეიცვალა', 'Расписание кампании изменено в Meta', "Kampanya takvimi Meta'da değiştirildi", 'تم تغيير جدول الحملة في Meta', 'לוח הזמנים של הקמפיין שונה ב־Meta'],
+    body: ['The start or end time of {{campaign}} was changed directly in Meta (for example in Meta Ads Manager), not from HOMATCH.', '{{campaign}}-ის დაწყების ან დასრულების დრო შეიცვალა პირდაპირ Meta-ში (მაგალითად, Meta Ads Manager-იდან) და არა HOMATCH-იდან.', 'Время начала или окончания {{campaign}} изменено напрямую в Meta (например, в Meta Ads Manager), а не из HOMATCH.', "{{campaign}} başlangıç veya bitiş zamanı HOMATCH'ten değil, doğrudan Meta'da (örneğin Meta Ads Manager'da) değiştirildi.", 'تم تغيير وقت بدء {{campaign}} أو انتهائها مباشرة في Meta (مثلًا في مدير إعلانات Meta) وليس من HOMATCH.', 'שעת ההתחלה או הסיום של {{campaign}} שונתה ישירות ב־Meta (למשל ב־Meta Ads Manager) ולא מתוך HOMATCH.'],
+    why: ['', '', '', '', '', ''],
+    action: MANAGE_FROM_HOMATCH,
+  },
 };
+
+/** A HOMATCH/Meta status code in words, for {{state}} and CAMPAIGN_LIFECYCLE {{what}}. */
+export const STATE_WORDS: Record<string, T6> = {
+  SUBMITTED: ['sent to Meta', 'გაგზავნილია Meta-ში', 'отправлена в Meta', "Meta'ya gönderildi", 'أُرسلت إلى Meta', 'נשלח ל־Meta'],
+  META_REVIEW: ['in Meta review', 'Meta-ს განხილვაშია', 'на проверке Meta', 'Meta incelemesinde', 'قيد مراجعة Meta', 'בבדיקת Meta'],
+  ACTIVE: ['active', 'აქტიური', 'активна', 'aktif', 'نشطة', 'פעיל'],
+  PAUSED: ['paused', 'შეჩერებული', 'приостановлена', 'duraklatıldı', 'متوقفة مؤقتًا', 'מושהה'],
+  COMPLETED: ['completed', 'დასრულებული', 'завершена', 'tamamlandı', 'مكتملة', 'הסתיים'],
+  REJECTED: ['rejected', 'უარყოფილი', 'отклонена', 'reddedildi', 'مرفوضة', 'נדחה'],
+  ARCHIVED: ['archived', 'დაარქივებული', 'в архиве', 'arşivlendi', 'مؤرشفة', 'בארכיון'],
+};
+export function stateWord(code: unknown, locale: Locale): string | null {
+  const w = STATE_WORDS[String(code ?? '').toUpperCase()];
+  return w ? w[L.indexOf(locale)] : null;
+}
+/** When a campaign has no name yet. */
+export const CAMPAIGN_FALLBACK: T6 = ['Your campaign', 'თქვენი კამპანია', 'Ваша кампания', 'Kampanyanız', 'حملتك', 'הקמפיין שלכם'];
 
 const RESOLVED: T6 = ['Resolved: ', 'მოგვარდა: ', 'Решено: ', 'Çözüldü: ', 'تم الحل: ', 'נפתר: '];
 const REMINDER: T6 = ['Reminder: ', 'შეხსენება: ', 'Напоминание: ', 'Hatırlatma: ', 'تذكير: ', 'תזכורת: '];

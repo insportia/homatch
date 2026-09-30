@@ -119,7 +119,11 @@ test('launch builds the whole tree in order, with media, the lead form, and ACTI
   db.tables.meta_campaigns.push(c);
   const calls = fakeGraph();
   const result = await publishCampaign(db, 'u1', c, planFor(c), 'REAL', settings);
-  assert.deepEqual(result, { campaignId: 'camp_9', status: 'SUBMITTED' });
+  const { requestedStartAt, ...rest } = result;
+  assert.deepEqual(rest, { campaignId: 'camp_9', status: 'SUBMITTED' });
+  // "Launch now": the requested start is the server's now + 1 minute (payload.launchStartTime).
+  const lead = Date.parse(requestedStartAt) - Date.now();
+  assert.ok(lead > 50_000 && lead <= 60_000, `requested start ${requestedStartAt} is now + 1 minute`);
   const posts = calls.filter((x) => x.method === 'POST').map((x) => x.path);
   assert.deepEqual(posts, ['/act_1/adimages', '/act_1/campaigns', '/act_1/adsets', '/act_1/adcreatives', '/act_1/ads', '/camp_9']);
   const [, camp, adset, creative, ad, activate] = calls.filter((x) => x.method === 'POST');

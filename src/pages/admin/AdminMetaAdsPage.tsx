@@ -19,10 +19,11 @@ import { money } from '@/services/metaAds';
 import { EconomicsPanel } from '@/components/admin/metaAds/EconomicsPanel';
 import { FeePolicyPanel } from '@/components/admin/metaAds/FeePolicyPanel';
 import { GuardPanel } from '@/components/admin/metaAds/GuardPanel';
+import { ApiHealthPanel } from '@/components/admin/metaAds/ApiHealthPanel';
 import { Textarea } from '@/components/ui/textarea';
 
 type Tab = 'overview' | 'campaigns' | 'connections' | 'leads' | 'audiences'
-  | 'moderation' | 'finance' | 'errors' | 'guard' | 'fees' | 'economics' | 'settings';
+  | 'moderation' | 'finance' | 'errors' | 'guard' | 'fees' | 'economics' | 'api' | 'settings';
 
 const KILL_SWITCHES = [
   'meta_ads_enabled', 'meta_ads_publishing_enabled', 'meta_ads_lead_sync_enabled',
@@ -57,7 +58,7 @@ export default function AdminMetaAdsPage() {
           { value: 'audiences', label: t('admin_mads_tab_audiences') }, { value: 'moderation', label: t('admin_mads_tab_moderation') },
           { value: 'finance', label: t('admin_mads_tab_finance') }, { value: 'errors', label: t('admin_mads_tab_errors') },
           { value: 'guard', label: t('mm_a_tab_guard') }, { value: 'fees', label: t('mm_a_tab_fees') },
-          { value: 'economics', label: t('mm_a_tab_economics') },
+          { value: 'economics', label: t('mm_a_tab_economics') }, { value: 'api', label: t('mm_a_tab_api') },
           { value: 'settings', label: t('admin_mads_tab_settings') },
         ]}
         value={tab} onChange={setTab} ariaLabel="Meta Ads admin" />
@@ -72,6 +73,7 @@ export default function AdminMetaAdsPage() {
       {tab === 'guard' && <GuardPanel />}
       {tab === 'fees' && <FeePolicyPanel />}
       {tab === 'economics' && <EconomicsPanel />}
+      {tab === 'api' && <ApiHealthPanel />}
       {tab === 'settings' && <Settings />}
     </div>
   );

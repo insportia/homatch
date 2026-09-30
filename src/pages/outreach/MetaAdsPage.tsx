@@ -132,7 +132,7 @@ export default function MetaAdsPage() {
           ) : tab === 'overview' ? (
             <div className="grid gap-4 lg:grid-cols-3">
               <div className="min-w-0 lg:col-span-2"><GlobalDashboard goals={status?.settings.goalsEnabled} /></div>
-              <div className="min-w-0"><ServiceBalanceCard rows={serviceBalance} feePercent={feePercent} /></div>
+              <div className="min-w-0"><ServiceBalanceCard rows={serviceBalance} feePercent={feePercent} billing={status?.settings.budgetBilling} /></div>
             </div>
           ) : tab === 'campaigns' ? (
             <CampaignsTab campaigns={campaigns} onCreate={() => navigate('/outreach/meta/create')} />
@@ -169,7 +169,7 @@ function BalanceTab({ status }: { status: MetaStatus | null }) {
   const showAdWallet = status?.settings.budgetBilling === 'HOMATCH_WALLET' && wallet;
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <ServiceBalanceCard rows={status?.serviceBalance ?? []} feePercent={status?.settings.feePercent ?? null} />
+      <ServiceBalanceCard rows={status?.serviceBalance ?? []} feePercent={status?.settings.feePercent ?? null} billing={status?.settings.budgetBilling} />
       {showAdWallet && (
         <div className="rounded-2xl border border-border bg-card p-5 shadow-card">
           <p className="flex items-center gap-2 text-[13px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">

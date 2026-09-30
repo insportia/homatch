@@ -150,3 +150,23 @@ test('balance card copy: $100 → $9 at 9%, 0% needs no top-up, Non-refundable, 
   assert.match(bal, /className="min-h-0 flex-1 overflow-y-auto overscroll-contain/);
   assert.match(bal, /<DialogFooter className="shrink-0/);
 });
+
+test('balance card: FEE_EXEMPT (0% on the own ad account) has no deposit path; STANDARD keeps Add funds and the disclosure', async () => {
+  const bal = code(`${DIR}/ServiceBalanceCard.tsx`);
+  const { readFileSync } = await import('node:fs');
+  // Decided from the server's percent and billing mode — no identity in the frontend.
+  assert.match(bal, /feePercent != null && Number\(feePercent\) === 0 && \(billing \?\? 'CUSTOMER_AD_ACCOUNT'\) === 'CUSTOMER_AD_ACCOUNT'/);
+  assert.doesNotMatch(bal, /[\w.+-]+@[\w-]+\.[a-z]{2,}|tatochachua/i, 'no account identity in the frontend');
+  // Add funds and the deposit dialog exist only when a deposit is possible.
+  assert.match(bal, /\{!noDepositNeeded && \(\s*<Button onClick=\{\(\) => setOpen\(true\)\}/);
+  assert.match(bal, /\{!noDepositNeeded && <Dialog open=\{open\}/);
+  // The disclosure stays wherever a deposit can be made or money is held.
+  assert.match(bal, /\{\(!noDepositNeeded \|\| holdsMoney\) && <p [^>]*>\{t\('mm_w_bal_disclosure'\)\}<\/p>\}/);
+  // The page passes the server's billing mode.
+  const page = readFileSync(new URL('../../../../pages/outreach/MetaAdsPage.tsx', import.meta.url), 'utf8');
+  assert.equal((page.match(/billing=\{status\?\.settings\.budgetBilling\}/g) ?? []).length, 2);
+  // Standard: 9% on $100 is $9, and the zero copy says no top-up.
+  const fill = (s, v) => s.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => String(v[k]));
+  assert.match(fill(W.mm_w_bal_std_card[0], { pct: 9, fee: 9 }), /\$100[\s\S]*9% HOMATCH service fee is \$9\./);
+  assert.match(W.mm_w_bal_zero_dialog[0], /no HOMATCH service-balance top-up is required/);
+});

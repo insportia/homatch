@@ -147,7 +147,8 @@ export function classifyCreatives(goal: string, ads: Array<{ key: string; totals
 
 /* ── HEALTH ───────────────────────────────────────────────────────────── */
 
-export type HealthState = 'HEALTHY' | 'WATCH' | 'ACTION_RECOMMENDED' | 'INSUFFICIENT_DATA';
+export type HealthState = 'HEALTHY' | 'WATCH' | 'ACTION_RECOMMENDED' | 'INSUFFICIENT_DATA' | 'STATE';
+/* STATE: a plain fact (paused, in Meta review, data updated) — neither good nor bad, never green. */
 export type HealthDimension = 'DELIVERY' | 'COST_EFFICIENCY' | 'LEAD_QUALITY' | 'CREATIVE_HEALTH' | 'AUDIENCE_LEARNING' | 'BUDGET_UTILIZATION' | 'DATA_HEALTH';
 
 export interface HealthInput {
@@ -171,9 +172,10 @@ export function health(h: HealthInput, p: AnalysisParams = DEFAULT_ANALYSIS_PARA
   const prev = h.previous ? kpis(h.goal, h.previous) : null;
   const curEv = h.current ? evidenceOf(cur!.results, h.current.impressions, p) : 'INSUFFICIENT_DATA';
 
+  // Not delivering because paused / ended / in review is a state, not a verdict.
   const delivery = !live
-    ? { state: 'HEALTHY' as HealthState, code: `STATUS_${h.status}` }
-    : h.status !== 'ACTIVE' ? { state: 'WATCH' as HealthState, code: 'IN_REVIEW' }
+    ? { state: 'STATE' as HealthState, code: h.status }
+    : h.status !== 'ACTIVE' ? { state: 'STATE' as HealthState, code: h.status === 'SUBMITTED' ? 'SUBMITTED' : 'IN_REVIEW' }
       : h.daysRunning >= 2 && (h.last3Days?.impressions ?? 0) === 0 ? { state: 'ACTION_RECOMMENDED' as HealthState, code: 'NOT_DELIVERING' }
         : { state: 'HEALTHY' as HealthState, code: 'DELIVERING' };
 
@@ -212,7 +214,7 @@ export function health(h: HealthInput, p: AnalysisParams = DEFAULT_ANALYSIS_PARA
   const data: { state: HealthState; code: string } = !h.connectionOk ? { state: 'ACTION_RECOMMENDED', code: 'CONNECTION_NEEDS_ATTENTION' }
     : h.lastSyncMinutes == null ? { state: 'INSUFFICIENT_DATA', code: 'NOT_SYNCED' }
       : h.lastSyncMinutes > 24 * 60 ? { state: 'ACTION_RECOMMENDED', code: 'STALE_DATA' }
-        : h.lastSyncMinutes > 6 * 60 ? { state: 'WATCH', code: 'DATA_DELAYED' } : { state: 'HEALTHY', code: 'FRESH' };
+        : h.lastSyncMinutes > 6 * 60 ? { state: 'WATCH', code: 'DATA_DELAYED' } : { state: 'STATE', code: 'FRESH' }; // freshness, not quality
 
   return {
     DELIVERY: delivery, COST_EFFICIENCY: cost, LEAD_QUALITY: quality, CREATIVE_HEALTH: creative,
@@ -261,8 +263,10 @@ export function recommend(r: RecommendInput, p: AnalysisParams = DEFAULT_ANALYSI
   const base = { window: r.window };
 
   if (!atLeast(ev, 'EARLY_SIGNAL')) {
+    // Paused cannot collect: say so instead of "wait for more data".
+    const paused = r.status === 'PAUSED';
     return [{ ...base, type: 'COLLECT_DATA', affected: 'campaign', metric: 'COST_PER_RESULT', baseline: null, candidate: null,
-      confidence: ev, reasonCodes: ['NOT_ENOUGH_RESULTS_YET'], actionable: false }];
+      confidence: ev, reasonCodes: [paused ? 'PAUSED_NOT_COLLECTING' : 'NOT_ENOUGH_RESULTS_YET'], actionable: false }];
   }
 
   const classes = classifyCreatives(r.goal, r.ads, p);

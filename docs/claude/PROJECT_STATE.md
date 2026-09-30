@@ -325,3 +325,62 @@ Phase 2 (Universal Discovery) is blocked until this is live and proven.
   the only admin, audited). No email address is anywhere in code.
   Production acceptance ran as a rolled-back transaction, and all 10 proofs
   passed. Nothing persisted except the exemption.
+- 2026-09-30 (evening): Meta Ads release rolled out. PR #20 squash-merged as
+  7f5fc1d. Vercel production READY at 7f5fc1d (refs/deployed/frontend =
+  7f5fc1d). Edge, all PROVEN_EXACT at 7f5fc1d:
+  - run #857: meta-ads-api v13, meta-oauth v12, outreach-send v35;
+  - run #858 (single-function redeploy): meta-webhooks v12;
+  - run #859 (single-function redeploy): push-send v24.
+  The CLI deduplicated meta-webhooks and push-send in #857 (STALE), the known
+  failure mode. refs/deployed/edge is still a32f74d because single-function
+  runs do not advance it; the next main deploy re-proves the five and advances
+  it. Railway not touched.
+  Live checks:
+  - The new maintenance build answers the */15 cron in REAL mode (monitor
+    block present, 0 errors, 0 AI calls).
+  - Unauthenticated, forged-JWT and bad-cron-token calls are refused
+    (401/401/403); a wrong webhook verify token gets 403.
+  - Bad-signature and unsigned webhooks get 200 but are only stored as
+    signature_ok=false, never processed.
+  Meta connection: the owner's real connection is CONNECTED with base scopes
+  only (no leads_retrieval / pages_manage_ads / pages_manage_metadata). Instant
+  Forms stay blocked on Meta App Review, and the preflight names the missing
+  scopes. No campaign launched and no spend. The owner's ENGAGEMENT campaign
+  sits at PAYMENT_REQUIRED from before the exemption; it is launchable
+  fee-free by the owner.
+- Follow-up done on branch claude/homatch-discovery-engine-rqdnza (not yet
+  merged): per-language translation chunks. Entry 6.21MB -> 1.62MB, ratchet
+  lowered to 2MB, full gate green at 43aec4d.
+- 2026-09-30 (night): the owner launched the first real Meta campaign
+  (MESSAGES, sale property, HOUSING, fee 0%, $5/day × 7) and then paused it
+  from Meta Ads Manager. HOMATCH detected the pause at the next scheduled
+  sync: status PAUSED, ad CAMPAIGN_PAUSED, Guard MANUAL_PAUSE NOTICE, in-app
+  notification. EXTERNAL META STATUS RECONCILIATION: PRODUCTION-PROVEN.
+  Claude did not touch the campaign, launch anything or spend anything.
+- Pending on the same branch (not yet deployed); one release carries it all:
+  - Status sync: a new `homatch-meta-ads-status-sync` cron runs every minute
+    (migration 20261002120000). Campaigns are grouped by ad account, with two
+    Graph reads per account. Paused campaigns are read every fifth minute.
+    Insights, Guard and analysis stay on the 15-minute pass.
+  - Rate-limit observability: `graph()` captures X-Business-Use-Case-Usage,
+    X-Ad-Account-Usage and X-App-Usage (percentages only) and stores them in
+    `meta_api_usage` (migration 20261002130000, admin-read RLS).
+    `rateLimit.ts` sets the pressure levels: NORMAL, ELEVATED at 50%, HIGH at
+    75%, CRITICAL at 90%, and THROTTLED while Meta reports a regain time.
+    Throttle errors are classified before auth errors and are never retried
+    in the same call. Admin gets a "Meta API health" tab.
+  - Status-change notifications carry provenance (statusChange.ts); neutral
+    wording is used when a change can't be attributed. The notifier queried
+    the missing column `users.language`, which made every notification
+    English with no email; it now uses `preferred_language`.
+  - Paused semantics: a paused campaign never shows green "healthy", and
+    fresh data is a STATE (FRESH) rather than a verdict. Recommendations are
+    worded for the lifecycle stage.
+  - START NOW means server time + 1 minute (`launchStartTime`). The requested
+    start is persisted separately from Meta's start_time.
+  - Campaign rename (HOMATCH display name, audited on the timeline). A default
+    name from the property, goal and month is set in review.
+  - "HOMATCH ახლა" assistant panel: four answers from stored facts only;
+    Campaign Guard is the only automatic actor. Autopilot is NOT IMPLEMENTED.
+  - Release order: apply 20261002130000 BEFORE the edge deploy; apply
+    20261002120000 AFTER meta-ads-api is PROVEN_EXACT.

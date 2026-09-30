@@ -8,12 +8,23 @@ import { adNamer, Card, Chip, EvidenceChip, Muted, errorText, type Fmt, type T, 
 
 const REC_TYPES = ['KEEP', 'MONITOR', 'TEST', 'REALLOCATE', 'REDUCE', 'INCREASE', 'REFRESH_CREATIVE', 'PAUSE', 'EXPAND', 'NARROW', 'COLLECT_DATA'];
 const REASONS = ['NOT_ENOUGH_RESULTS_YET', 'CREATIVE_COSTS_MORE_THAN_STRONGEST', 'CTR_DECLINING', 'COST_RISING', 'FREQUENCY_RISING',
-  'CONVERSION_DECLINING', 'COST_IMPROVED_TWO_WINDOWS', 'COST_PER_RESULT_ROSE', 'LOW_QUALIFICATION_RATE', 'PERFORMING_STEADILY', 'COLLECTING_MORE_DATA'];
+  'CONVERSION_DECLINING', 'COST_IMPROVED_TWO_WINDOWS', 'COST_PER_RESULT_ROSE', 'LOW_QUALIFICATION_RATE', 'PERFORMING_STEADILY', 'COLLECTING_MORE_DATA', 'PAUSED_NOT_COLLECTING'];
 const METRICS = ['COST_PER_RESULT', 'COST_PER_QUALIFIED_LEAD', 'CTR', 'SPEND_PACE'];
 const OUTCOMES: Record<string, Tone> = { HELPED: 'good', NEUTRAL: 'quiet', HURT: 'watch', INSUFFICIENT_DATA: 'quiet' };
 const TIMELINE_KEYS = ['tl_budget_changed', 'tl_changed_in_meta', 'tl_config_restored', 'tl_duplicate_detected', 'tl_duplicate_review',
   'tl_duration_changed', 'tl_ended', 'tl_guard_attention', 'tl_guard_reviewed', 'tl_guard_warning_n', 'tl_paused', 'tl_paused_in_meta',
-  'tl_protective_pause', 'tl_protective_pause_copy', 'tl_recommendation_applied', 'tl_resumed', 'tl_resumed_in_meta', 'tl_synced'];
+  'tl_protective_pause', 'tl_protective_pause_copy', 'tl_recommendation_applied', 'tl_renamed', 'tl_resumed', 'tl_resumed_in_meta', 'tl_synced'];
+
+/**
+ * The recommendation's title, read against where the campaign is: "collect
+ * more data" only makes sense while it can collect. Paused and in-review
+ * campaigns say what actually happens next.
+ */
+export function recTitle(t: T, type: string, status: string): string {
+  if (type === 'COLLECT_DATA' && status === 'PAUSED') return t('mm_rec_COLLECT_DATA_PAUSED');
+  if (type === 'COLLECT_DATA' && ['SUBMITTED', 'META_REVIEW'].includes(status)) return t('mm_rec_COLLECT_DATA_REVIEW');
+  return REC_TYPES.includes(type) ? t(`mm_rec_${type}`) : type;
+}
 
 /** The one gate for APPLY, mirroring the server's own check in recommendation_act. */
 export function canApply(r: Pick<RecommendationRow, 'actionable' | 'confidence'>): boolean {
@@ -63,7 +74,7 @@ export function OptimizationSection({ t, fmt, d, onChanged }: { t: T; fmt: Fmt; 
   const recBody = (r: RecommendationRow) => (
     <>
       <div className="flex flex-wrap items-center gap-2">
-        <p className="text-sm font-semibold text-foreground">{REC_TYPES.includes(r.type) ? t(`mm_rec_${r.type}`) : r.type}</p>
+        <p className="text-sm font-semibold text-foreground">{recTitle(t, r.type, d.campaign.status)}</p>
         <span className="flex items-center gap-1 text-2xs text-muted-foreground">{t('mm_c_rec_confidence')}<EvidenceChip t={t} evidence={r.confidence} /></span>
       </div>
       <p className="mt-1 text-2xs text-muted-foreground">{t('mm_c_rec_affects', { target: target(r.affected) })}</p>
@@ -177,6 +188,7 @@ function TimelineList({ t, fmt, timeline }: { t: T; fmt: Fmt; timeline: Campaign
         return { from: m(p.from), to: m(p.to) };
       }
       case 'tl_duration_changed': return { from: fmt.num(Number(p.from)), to: fmt.num(Number(p.to)) };
+      case 'tl_renamed': return { from: typeof p.from === 'string' && p.from ? p.from : '—', to: typeof p.to === 'string' ? p.to : '—' };
       case 'tl_guard_warning_n': return { n: fmt.num(Number(p.n)), of: fmt.num(Number(p.of)) };
       case 'tl_recommendation_applied': {
         const type = String(p.type ?? '');

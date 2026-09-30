@@ -25,6 +25,18 @@ export function isHousingCampaign(c: {
   return cats.includes('HOUSING');
 }
 
+/**
+ * When HOMATCH shows its (non-blocking) broad-audience recommendation: a single
+ * gender, or an age range noticeably tighter than Meta's 18–65+. Advice only —
+ * the customer's choice is saved and sent as chosen. Housing ads never get
+ * here: Meta itself fixes their ages and gender.
+ */
+export const NARROW_AGE_MIN_OVER = 25;
+export const NARROW_AGE_MAX_UNDER = 55;
+export function isNarrowAudience(a: { ageMin: number; ageMax: number; gender: string }): boolean {
+  return a.gender !== 'ALL' || a.ageMin > NARROW_AGE_MIN_OVER || a.ageMax < NARROW_AGE_MAX_UNDER;
+}
+
 /* ── STRATEGY COPY ───────────────────────────────────────────────────── */
 
 /** Every StrategyReason the engine can emit (strategy.ts). */
@@ -160,3 +172,14 @@ export const leadFormIssueKey = (code: string) =>
   (LEAD_FORM_ISSUE_CODES as readonly string[]).includes(code) ? `mm_b_lf_issue_${code}` : 'mm_b_lf_issue_OTHER';
 
 export const MAX_FORM_QUESTIONS = 5;
+
+/**
+ * A useful first name for a campaign: what is advertised · the goal · the
+ * month — e.g. "Krtsanisi apartment · Messages · October 2026". Only a
+ * suggestion: the customer edits it before launch, and can rename later.
+ */
+export function defaultCampaignName(a: { subject?: string | null; goalLabel: string; now?: Date; lang: string }): string {
+  const month = (a.now ?? new Date()).toLocaleDateString(a.lang, { month: 'long', year: 'numeric' });
+  const subject = String(a.subject ?? '').replace(/\s+/g, ' ').trim().slice(0, 60);
+  return [subject, a.goalLabel, month].filter(Boolean).join(' · ').slice(0, 120);
+}

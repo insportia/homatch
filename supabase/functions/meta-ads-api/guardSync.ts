@@ -83,7 +83,7 @@ async function pauseVerified(sb: Sb, token: string, objectId: string, c: any, op
  * are adopted silently; external ones are classified and judged.
  */
 export async function guardCampaign(sb: Sb, c: any, current: ManagedState, token: string, policy: GuardPolicy, enabled: boolean,
-  onDecision?: (d: { action: ExternalAction; decision: GuardDecision; incidentId: string; account: string }) => Promise<void>): Promise<GuardOutcome> {
+  onDecision?: (d: { action: ExternalAction; decision: GuardDecision; incidentId: string; account: string; items?: Array<{ field: string }> }) => Promise<void>): Promise<GuardOutcome> {
   const out: GuardOutcome = { incidents: 0, protective: 0, adopted: false };
   if (!c.approved_state) { await setApproved(sb, c, current); out.adopted = true; return out; }
   const diff = diffState(c.approved_state as ManagedState, current);
@@ -115,7 +115,7 @@ export async function guardCampaign(sb: Sb, c: any, current: ManagedState, token
         }
       }
       await refreshAccount(sb, c.user_id, account, policy, d.suspend);
-      if (onDecision) await onDecision({ action: ev.action, decision: d, incidentId, account });
+      if (onDecision) await onDecision({ action: ev.action, decision: d, incidentId, account, items: ev.items });
     }
   }
   // Meta is authoritative for delivery: the observed state becomes the new

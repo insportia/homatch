@@ -285,7 +285,21 @@ test('health: a delivering campaign with too little data says INSUFFICIENT DATA,
   assert.equal(h.COST_EFFICIENCY.state, 'INSUFFICIENT_DATA');
   assert.equal(h.LEAD_QUALITY.state, 'INSUFFICIENT_DATA');
   assert.equal(h.DELIVERY.state, 'HEALTHY');
-  assert.equal(h.DATA_HEALTH.state, 'HEALTHY');
+  // Fresh data is a fact about the sync, not a verdict on the campaign: never green "healthy".
+  assert.equal(h.DATA_HEALTH.state, 'STATE');
+  assert.equal(h.DATA_HEALTH.code, 'FRESH');
+});
+
+test('health: a paused campaign is a plain state — never "healthy" delivery — and recommends nothing but its state', () => {
+  const h = health({ goal: 'LEADS_ON_META', status: 'PAUSED', daysRunning: 1, dailyBudgetMinor: 500, last3Days: T({}),
+    current: T({}), previous: null, outcomes: {}, leads: 0, creativeClasses: [], lastSyncMinutes: 2, connectionOk: true });
+  assert.equal(h.DELIVERY.state, 'STATE');
+  assert.equal(h.DELIVERY.code, 'PAUSED');
+  assert.notEqual(h.DATA_HEALTH.state, 'HEALTHY');
+  const r = recommend({ goal: 'LEADS_ON_META', status: 'PAUSED', dailyBudgetMinor: 500, window: { current: 'w2', previous: 'w1' },
+    campaign: { current: T({}), previous: null, outcomes: {} }, ads: [], recentlyChanged: [] });
+  assert.ok(r.every((x) => !x.actionable), 'nothing to apply while paused');
+  assert.ok(r.some((x) => x.reasonCodes.includes('PAUSED_NOT_COLLECTING')));
 });
 
 /* ── GUARD ──────────────────────────────────────────────────────────── */

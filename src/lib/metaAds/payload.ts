@@ -423,6 +423,11 @@ export function mapMetaStatus(input: {
   if (ads.length > 0 && rejected === ads.length) return { status: 'REJECTED', issue: null };
   if (input.endTimePassed && (c === 'ACTIVE' || c === 'COMPLETED' || c === 'PAUSED')) return { status: 'COMPLETED', issue: null };
   if (c === 'PAUSED' || c === 'CAMPAIGN_PAUSED') return { status: 'PAUSED', issue: null };
+  /* Paused lower down (the ad set or every ad switched off in Ads Manager):
+     the campaign object still reads ACTIVE, but nothing can deliver. An
+     explicit pause wins over any review state. */
+  const PAUSED_LIKE = ['PAUSED', 'ADSET_PAUSED', 'CAMPAIGN_PAUSED'];
+  if (ads.length > 0 && ads.every((a) => PAUSED_LIKE.includes(a))) return { status: 'PAUSED', issue: null };
   if (c === 'WITH_ISSUES') return { status: any('ACTIVE') ? 'ACTIVE' : 'META_REVIEW', issue: 'WITH_ISSUES' };
   if (c === 'IN_PROCESS' || any('PENDING_REVIEW') || any('IN_PROCESS') || any('PREAPPROVED')) {
     return { status: any('ACTIVE') ? 'ACTIVE' : 'META_REVIEW', issue: rejected ? 'PARTIALLY_REJECTED' : null };
@@ -457,6 +462,24 @@ export function parseBudgetBilling(value: unknown): BudgetBilling {
 }
 
 /** What HOMATCH itself takes from the balance at launch, per billing model. */
+/**
+ * WHEN THE CAMPAIGN ASKS META TO START.
+ *
+ * "Launch now" asks for now + one minute: Meta wants a start in the future,
+ * and a minute is the smallest buffer that survives the request itself. It is
+ * HOMATCH's REQUESTED start, not a delivery promise — Meta reviews first and
+ * delivery begins when Meta says so; the status shown is always Meta's. A
+ * customer's explicit later schedule (start_at) is kept exactly. `nowMs` is the
+ * server's clock (never the browser's); the result is an absolute instant,
+ * sent as UTC ISO-8601, so no timezone or calendar-day arithmetic is involved.
+ */
+export const LAUNCH_START_BUFFER_MS = 60_000;
+export function launchStartTime(nowMs: number, scheduledAt?: string | null): Date {
+  const soonest = nowMs + LAUNCH_START_BUFFER_MS;
+  const chosen = scheduledAt ? Date.parse(scheduledAt) : Number.NaN;
+  return new Date(Number.isFinite(chosen) && chosen > soonest ? chosen : soonest);
+}
+
 export function launchCharge(totals: { mediaCents: number; feeCents: number }, billing: BudgetBilling) {
   return billing === 'HOMATCH_WALLET'
     ? { reserveCents: totals.mediaCents, feeCents: totals.feeCents, requiredCents: totals.mediaCents + totals.feeCents }

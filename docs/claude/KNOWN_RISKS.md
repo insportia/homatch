@@ -83,19 +83,25 @@ other owed functions in the same run moved and proved. A single-function dispatc
 (`redeploy=meta-oauth`, runs #846/#849) proved it exact both times. The artifact proof caught it;
 until the cause is known, redeploy meta-oauth on its own when the proof flags it.
 
-## Entry bundle ratchet at 6.5MB (moved 2026-09-30, owner-approved)
+## Entry bundle ratchet at 2MB (translations split per language, 2026-09-30)
 
 `tests/browser/accessibilityAudit.test.mjs` fails the Validate job — and so
 blocks every edge deploy — when the Vite entry chunk passes its ceiling. The
-Meta Ads master release (PR #18) took it from under 6MB to 6.21MB with ~330KB of
-translation source; the owner approved moving the ceiling to 6.5MB for that
-release only. `src/i18n/translations.ts` (all six languages, synchronous
-import in LanguageContext) is ~3.9MB of the entry.
+entry peaked at 6.21MB (all six languages of `src/i18n/translations.ts` were
+imported synchronously); the owner approved 6.5MB for the Meta Ads release
+with per-language loading named as the follow-up. That follow-up is done:
 
-- The move is not headroom: the next growth needs its own owner decision.
-- Follow-up (dedicated, after this release): load English + the active
-  language up front, others on demand; then lower the ceiling to the new
-  measurement.
+- English ships in the entry; ka/ru/tr/ar/he are separate chunks cut from
+  `translations.ts` at build time by the `i18nLanguageChunks` plugin in
+  `vite.config.ts` and read through `src/i18n/bundles.ts`. `translations.ts`
+  stays the single source for apply-scripts, gates and tests.
+- `main.tsx` renders after the visitor's language arrives (bounded at 4s; a
+  failed chunk renders English), and a switch loads before it switches, so no
+  flash of English. `tests/browser/languageChunks.test.mjs` holds both.
+- Entry 6.21MB → 1.62MB; ceiling 6.5MB → 2MB.
+- Keep new runtime code off `@/i18n/translations` and `@/i18n/appContent`
+  (value imports): either one puts all six languages back into the entry. Use
+  `@/i18n/bundles` or `@/i18n/locales`; type imports are free.
 - Watch-out seen during this release: Vercel auto-deploys `main` even when the
   Validate job fails, so a failed deploy run can leave a NEW frontend live
   against OLD edge functions. Check both after every main merge.

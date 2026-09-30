@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import type { SupportedLanguage } from '@/types/types';
 import { RTL_LANGUAGES } from '@/types/types';
-import { translations } from '@/i18n/translations';
+import { bundleFor, english as englishBundle, loadLanguage } from '@/i18n/bundles';
 import type { ContentLocale, OverrideMap } from '@/i18n/appContent';
 import { hasUnfilledHole, interpolate, resolveCopy } from '@/i18n/interpolate';
 import { fetchOverrides } from '@/services/appContent';
@@ -74,6 +74,23 @@ function getInitialLanguage(): SupportedLanguage {
   return detectBrowserLanguage();
 }
 
+/**
+ * Fetch the language this visitor will see first, before the app renders.
+ *
+ * Each language but English is its own chunk (src/i18n/bundles.ts). main.tsx
+ * awaits this — bounded, so a failed or slow chunk still lets the app render,
+ * in English — which is what keeps a Georgian visitor from seeing an English
+ * flash before their own language arrives.
+ */
+export function preloadLanguage(timeoutMs = 4000): Promise<void> {
+  const lang = getInitialLanguage();
+  if (bundleFor(lang)) return Promise.resolve();
+  return Promise.race([
+    loadLanguage(lang).then(() => undefined, () => undefined),
+    new Promise<void>((resolve) => { setTimeout(resolve, timeoutMs); }),
+  ]);
+}
+
 function hadExplicitStoredPreference(): boolean {
   try {
     return typeof window !== 'undefined' && !!window.localStorage &&
@@ -84,7 +101,35 @@ function hadExplicitStoredPreference(): boolean {
 }
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [lang, setLangState] = useState<SupportedLanguage>(getInitialLanguage);
+  const [lang, setLangStateNow] = useState<SupportedLanguage>(getInitialLanguage);
+  /* Bumped when a language bundle arrives, so t() re-reads it. */
+  const [bundleTick, setBundleTick] = useState(0);
+  /* The last language asked for: a slower, earlier request never wins. */
+  const wantedRef = useRef<SupportedLanguage>(lang);
+
+  /*
+   * A language switch loads first and switches second, so the page goes
+   * straight from one whole language to the other. If the bundle cannot be
+   * fetched the switch still happens (direction, lang attribute, the saved
+   * choice) and the copy reads English until a later load succeeds.
+   */
+  const setLangState = useCallback((next: SupportedLanguage) => {
+    wantedRef.current = next;
+    if (bundleFor(next)) { setLangStateNow(next); return; }
+    const apply = () => { if (wantedRef.current === next) setLangStateNow(next); };
+    loadLanguage(next).then(apply, (err) => {
+      warnOnce(`could not load the "${next}" bundle (${err instanceof Error ? err.message : String(err)}) — reading English`);
+      apply();
+    });
+  }, []);
+
+  /* The first language, when main.tsx's preload did not finish in time. */
+  useEffect(() => {
+    if (bundleFor(lang)) return;
+    let live = true;
+    loadLanguage(lang).then(() => { if (live) setBundleTick((n) => n + 1); }, () => { /* reads English */ });
+    return () => { live = false; };
+  }, [lang]);
 
   /*
    * WHAT AN ADMIN WROTE INSTEAD.
@@ -132,7 +177,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
       // Keep the in-memory language working even when persistence is blocked.
     }
     setLangState(newLang);
-  }, []);
+  }, [setLangState]);
 
   const applyProfileLanguage = useCallback((profileLang: string | null | undefined) => {
     if (profileAppliedRef.current) return; // once per session — never re-fights a live choice
@@ -145,11 +190,11 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
       // Non-fatal — the in-memory language still applies for this session.
     }
     setLangState(profileLang);
-  }, []);
+  }, [setLangState]);
 
   const t = useCallback((key: string, vars?: Record<string, string | number>): string => {
-    const bundle = translations[lang] as Record<string, string> | undefined;
-    const english = translations.en as Record<string, string>;
+    const bundle = bundleFor(lang);
+    const english = englishBundle;
     /*
      * The override first, and only when it has words in it. A blank is not a
      * choice somebody made: the write path deletes a cleared row rather than
@@ -175,7 +220,9 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
       warnOnce(`app_content override for "${key}" (${lang}) names a placeholder this call site cannot fill — using the shipped string`);
     }
     return resolveCopy([written?.trim() ? written : undefined, value, english[key]], vars) ?? key;
-  }, [lang, overrides]);
+    // bundleTick: a bundle that arrived after this language was chosen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang, overrides, bundleTick]);
 
   return (
     <LanguageContext.Provider value={{ lang, setLang, applyProfileLanguage, t, isRTL }}>
@@ -209,10 +256,18 @@ export function LanguageOverride({
   lang, children, overrides,
 }: { lang: SupportedLanguage; children: React.ReactNode; overrides?: OverrideMap }) {
   const outer = useLanguage();
+  /* The previewed language may not be the one this visitor has loaded. */
+  const [bundleTick, setBundleTick] = useState(0);
+  useEffect(() => {
+    if (bundleFor(lang)) return;
+    let live = true;
+    loadLanguage(lang).then(() => { if (live) setBundleTick((n) => n + 1); }, () => { /* reads English */ });
+    return () => { live = false; };
+  }, [lang]);
 
   const t = useCallback((key: string, vars?: Record<string, string | number>): string => {
-    const bundle = translations[lang] as Record<string, string> | undefined;
-    const english = translations.en as Record<string, string>;
+    const bundle = bundleFor(lang);
+    const english = englishBundle;
     /* The same order as the real provider. A preview that ignored overrides
        would show an admin the copy they have already replaced, which is the
        one thing a preview must not do. */
@@ -222,7 +277,8 @@ export function LanguageOverride({
        preview that rendered braces the live page will not would be lying
        about the change the admin is looking at. */
     return resolveCopy([written?.trim() ? written : undefined, bundle?.[key], english[key]], vars) ?? key;
-  }, [lang, overrides]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang, overrides, bundleTick]);
 
   const value: LanguageContextValue = {
     lang,

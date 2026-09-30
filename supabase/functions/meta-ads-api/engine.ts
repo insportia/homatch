@@ -34,7 +34,7 @@ import {
   GOAL_SPECS, adSetParams, adParams, campaignParams, creativeParams, missingRequirements, mapMetaStatus,
   settlement, checkMedia, recommendedPlacements, PLACEMENTS, isHttpsUrl,
   type LaunchContext, type LaunchCreative, type MessagingApp, type Placement,
-  launchCharge, parseBudgetBilling, type BudgetBilling,
+  launchCharge, launchStartTime, parseBudgetBilling, type BudgetBilling,
 } from '../../../src/lib/metaAds/payload.ts';
 import {
   graph, graphAll, MetaApiError, metaMode, openToken, uploadImage, uploadVideo, mockExternalId,
@@ -475,7 +475,7 @@ export async function publishCampaign(sb: Sb, uid: string, c: any, plan: TypedCa
   ]);
   if (!acct || !page) throw new MetaApiError(400, { error: { message: 'ASSETS_MISSING', code: 100 } });
   const goal = c.goal as MetaGoal;
-  const start = new Date(Date.now() + 5 * 60_000);
+  const start = launchStartTime(Date.now(), c.start_at ?? null);
   const ctx: LaunchContext = {
     pageId: page.external_id,
     instagramUserId: ig?.external_id ?? null,
@@ -564,7 +564,7 @@ export async function publishCampaign(sb: Sb, uid: string, c: any, plan: TypedCa
     }
     // The one act that starts delivery.
     await graph(`/${campaignId}`, { token, method: 'POST', body: { status: 'ACTIVE' }, audit: auditCtx });
-    return { campaignId, status: 'SUBMITTED' };
+    return { campaignId, status: 'SUBMITTED', requestedStartAt: ctx.startTime };
   } catch (err) {
     // Tear down what was created, so a retry never leaves orphans at Meta.
     for (const id of created) {
@@ -588,12 +588,14 @@ export async function syncCampaign(sb: Sb, c: any, mode: MetaMode) {
     return { ok: false, reason: 'NOT_CONNECTED' };
   }
   const auditCtx = { sb, userId: c.user_id, campaignId: c.id };
-  const info = await graph(`/${c.external_campaign_id}?fields=status,effective_status,stop_time`, { token, audit: auditCtx });
+  const info = await graph(`/${c.external_campaign_id}?fields=status,effective_status,start_time,stop_time`, { token, audit: auditCtx });
   const ads = await graphAll(`/${c.external_campaign_id}/ads?fields=id,effective_status,ad_review_feedback`, { token, audit: auditCtx }, 3);
   const insights = await graph(`/${c.external_campaign_id}/insights?fields=spend,impressions,reach,clicks,actions&date_preset=maximum`, { token, audit: auditCtx });
   const row = (insights.data as any[])?.[0] ?? null;
 
-  const endTime = c.launched_at ? Date.parse(c.launched_at) + Number(c.duration_days) * 86_400_000 + 10 * 60_000 : NaN;
+  // From the start HOMATCH requested (older launches: launched_at), never from local time alone.
+  const startedFrom = c.plan?.requestedStartAt ?? c.launched_at;
+  const endTime = startedFrom ? Date.parse(startedFrom) + Number(c.duration_days) * 86_400_000 + 10 * 60_000 : NaN;
   const verdict = mapMetaStatus({
     campaign: String(info.effective_status ?? info.status ?? ''),
     ads: ads.map((a) => String(a.effective_status ?? '')),
@@ -606,10 +608,14 @@ export async function syncCampaign(sb: Sb, c: any, mode: MetaMode) {
     }).eq('campaign_id', c.id).eq('kind', 'AD').eq('external_id', String(ad.id));
   }
 
-  const results = row ? {
-    spend: row.spend, impressions: row.impressions, reach: row.reach,
-    clicks: row.clicks, actions: row.actions, fetched_at: new Date().toISOString(),
-  } : null;
+  /* Meta's own start time is kept apart from HOMATCH's requested one
+     (plan.requestedStartAt): what was asked for vs what Meta holds. */
+  const results = {
+    ...(row ? { spend: row.spend, impressions: row.impressions, reach: row.reach, clicks: row.clicks, actions: row.actions } : {}),
+    meta_start_time: info.start_time ?? null,
+    fetched_at: new Date().toISOString(),
+    has_delivery: !!row,
+  };
   const spendCents = row ? Math.round(parseFloat(row.spend ?? '0') * 100) : Number(c.spend_cents ?? 0);
   const review = ads.map((a) => a.ad_review_feedback).find(Boolean) ?? null;
 
@@ -630,6 +636,54 @@ export async function syncCampaign(sb: Sb, c: any, mode: MetaMode) {
   await sb.from('meta_campaigns').update(patch).eq('id', c.id);
   if (stopped && settlementDue({ ...c, ...patch })) await settleCampaign(sb, { ...c, ...patch }, spendCents);
   return { ok: true, results, status: patch.status, external_status: patch.external_status, issue: verdict.issue };
+}
+
+/**
+ * The light, frequent check, GROUPED BY AD ACCOUNT: two Graph reads per
+ * account (its campaigns' status, its ads' review/delivery state, filtered to
+ * the live campaign ids) however many live campaigns it holds. Each campaign
+ * is then mapped exactly as the full sync maps it, and written only when it
+ * differs — plus its own last_synced_at, which is what "last checked" means.
+ */
+export async function reconcileAccountStatuses(sb: Sb, token: string, account: string, rows: any[]): Promise<Array<{ id: string; before: string; status: string; changed: boolean }>> {
+  const act = String(account).startsWith('act_') ? String(account) : `act_${account}`;
+  const ids = rows.map((c) => String(c.external_campaign_id));
+  const auditCtx = { sb, userId: rows[0]?.user_id ?? null, campaignId: null };
+  const filter = (field: string) => encodeURIComponent(JSON.stringify([{ field, operator: 'IN', value: ids }]));
+  const camps = await graphAll(`/${act}/campaigns?fields=id,status,effective_status&filtering=${filter('id')}&limit=500`, { token, audit: auditCtx, attempts: 2 }, 3);
+  const ads = await graphAll(`/${act}/ads?fields=id,campaign_id,effective_status&filtering=${filter('campaign.id')}&limit=500`, { token, audit: auditCtx, attempts: 2 }, 5);
+  const byId = new Map(camps.map((x) => [String(x.id), x]));
+  const out: Array<{ id: string; before: string; status: string; changed: boolean }> = [];
+  for (const c of rows) {
+    const info = byId.get(String(c.external_campaign_id));
+    if (!info) continue; // not returned (deleted / no access): the 15-minute sync decides
+    const mine = ads.filter((a) => String(a.campaign_id) === String(c.external_campaign_id));
+    out.push({ id: c.id, before: c.status, ...(await applyStatus(sb, c, info, mine)) });
+  }
+  return out;
+}
+
+/** One campaign's Meta answer (campaign + its ads) → its HOMATCH status. */
+export async function applyStatus(sb: Sb, c: any, info: Record<string, unknown>, ads: Record<string, unknown>[]): Promise<{ changed: boolean; status: string }> {
+  const startedFrom = c.plan?.requestedStartAt ?? c.launched_at;
+  const endTime = startedFrom ? Date.parse(startedFrom) + Number(c.duration_days) * 86_400_000 + 10 * 60_000 : NaN;
+  const verdict = mapMetaStatus({
+    campaign: String(info.effective_status ?? info.status ?? ''),
+    ads: ads.map((a) => String(a.effective_status ?? '')),
+    endTimePassed: Number.isFinite(endTime) && Date.now() > endTime,
+  });
+  const status = verdict.status === 'SUBMITTED' ? c.status : verdict.status;
+  for (const ad of ads) {
+    await sb.from('meta_ad_entities').update({ status: String(ad.effective_status ?? ''), updated_at: new Date().toISOString() })
+      .eq('campaign_id', c.id).eq('kind', 'AD').eq('external_id', String(ad.id));
+  }
+  const patch: Record<string, unknown> = { last_synced_at: new Date().toISOString(), external_status: String(info.effective_status ?? info.status ?? '') };
+  if (status !== c.status) {
+    patch.status = status;
+    if (['COMPLETED', 'REJECTED', 'ARCHIVED'].includes(status) && !c.ended_at) patch.ended_at = new Date().toISOString();
+  }
+  await sb.from('meta_campaigns').update(patch).eq('id', c.id);
+  return { changed: status !== c.status, status };
 }
 
 export const SETTLEMENT_GRACE_DAYS = 3;

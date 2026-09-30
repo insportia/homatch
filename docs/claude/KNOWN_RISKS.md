@@ -82,3 +82,11 @@ Runs #845 and #848 both left meta-oauth STALE (version unchanged, index.ts misma
 other owed functions in the same run moved and proved. A single-function dispatch
 (`redeploy=meta-oauth`, runs #846/#849) proved it exact both times. The artifact proof caught it;
 until the cause is known, redeploy meta-oauth on its own when the proof flags it.
+
+## Entry bundle ratchet raised to 6.5 MiB (interim, 2026-09-30)
+`tests/browser/accessibilityAudit.test.mjs` caps the entry chunk. Main reached 6.21 MiB after
+Meta Ads master (#18) on top of Design Studio and every deploy failed Validate. The owner approved
+raising the cap to 6.5 MiB as an interim unblock. Translations are ~5.4 MiB of the entry because
+all six languages load up front (LanguageContext imports src/i18n/translations.ts). The fix is
+per-language lazy loading — a dedicated follow-up, not part of any feature release. Do not treat
+the new headroom as room to grow.

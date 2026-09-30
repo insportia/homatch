@@ -375,8 +375,16 @@ test('the entry bundle is measured, and its size is a stated fact', () => {
    * So this is a ratchet rather than a fix: the number is written down, and
    * the next change that makes it materially worse fails here instead of
    * being noticed in six months. Lower it when the work above is done.
+   *
+   * 2026-09-30: raised 6.0 → 6.5 MiB, deliberately and approved by the owner
+   * as an interim release unblock. Legitimate shipped functionality (Meta Ads
+   * master #18 on top of Design Studio) took the entry to 6.21 MiB; measured,
+   * translations are ~5.4 MiB of it (admin 491 KiB, dev 438, mortgage 417,
+   * inv 310, Meta mm+madsb 520, Design Studio 284), all six languages loaded
+   * up front. Per-language lazy loading is the dedicated follow-up that
+   * brings this back down; this is not headroom for growth.
    */
-  const CEILING = 6 * 1024 * 1024;
+  const CEILING = 6.5 * 1024 * 1024;
   assert.ok(bytes < CEILING,
     `the entry chunk is ${(bytes / 1024 / 1024).toFixed(2)}MB, past the ${CEILING / 1024 / 1024}MB ceiling`);
 });

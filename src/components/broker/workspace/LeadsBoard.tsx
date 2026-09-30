@@ -7,9 +7,9 @@
 // Only CURRENT demand is listed (the canonical active window); history stays on
 // the property's own matches page. A locked lead shows its locked preview only;
 // opening the contact happens on the property's matches page, through the
-// canonical unlock.
+// canonical contact-opening flow.
 
-import { ExternalLink, Lock, Unlock } from 'lucide-react';
+import { ExternalLink, Eye, EyeOff } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -123,7 +123,7 @@ export function LeadsBoard({ properties, compact = false }: {
                   </div>
                   <span className={cn('inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-2xs font-semibold',
                     opened ? 'border-[hsl(var(--success))]/30 bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]' : 'border-border bg-secondary text-muted-foreground')}>
-                    {opened ? <Unlock className="h-3 w-3" aria-hidden="true" /> : <Lock className="h-3 w-3" aria-hidden="true" />}
+                    {opened ? <Eye className="h-3 w-3" aria-hidden="true" /> : <EyeOff className="h-3 w-3" aria-hidden="true" />}
                     {opened ? t('broker_ws_contact_opened') : t('broker_ws_contact_locked')}
                   </span>
                 </div>

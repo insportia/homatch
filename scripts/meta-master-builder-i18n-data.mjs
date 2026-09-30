@@ -1034,7 +1034,7 @@ export const META_MASTER_BUILDER_STRINGS = {
   ],
   mm_b_funding_disclosure: [
     "Your HOMATCH service balance is non-refundable to cash, but it stays in your HOMATCH balance and can be reused for future campaigns. Any unused service fee is Released to HOMATCH Balance.",
-    "HOMATCH-ის მომსახურების ბალანსი ნაღდ ფულად არ ბრუნდება, მაგრამ რჩება თქვენს HOMATCH-ის ბალანსზე და მომავალ კამპანიებში შეგიძლიათ გამოიყენოთ. გამოუყენებელი მომსახურების საფასური გადადის HOMATCH-ის ბალანსზე.",
+    "HOMATCH-ის ბალანსზე შეტანილი დეპოზიტი არ ექვემდებარება დაბრუნებას (Non-refundable). გამოუყენებელი თანხა რჩება HOMATCH-ის ბალანსზე და შეგიძლიათ გამოიყენოთ სხვა ან მომავალი კამპანიების მომსახურების საკომისიოსთვის. გამოუყენებელი დაჯავშნილი საკომისიო ბრუნდება HOMATCH-ის ბალანსზე.",
     "Сервисный баланс HOMATCH не возвращается деньгами, но остаётся на вашем балансе HOMATCH и может использоваться для будущих кампаний. Неиспользованный сервисный сбор переводится на баланс HOMATCH.",
     "HOMATCH hizmet bakiyesi nakit olarak iade edilmez; ancak HOMATCH bakiyenizde kalır ve gelecekteki kampanyalarda yeniden kullanılabilir. Kullanılmayan hizmet bedeli HOMATCH Bakiyesine aktarılır.",
     "رصيد خدمة HOMATCH غير قابل للاسترداد نقدًا، لكنه يبقى في رصيدك لدى HOMATCH ويمكن استخدامه في حملات مستقبلية. وأي رسوم خدمة غير مستخدمة تُحرَّر إلى رصيد HOMATCH.",

@@ -117,3 +117,36 @@ test('customer copy: no "Refund", no "confirmed buyer", Georgian terminology', (
   for (const f of FILES) assert.doesNotMatch(code(f), /['"`][^'"`]*Refund[^'"`]*['"`]/, `${f} has no Refund literal`);
   assert.match(W.mm_w_kpi_leads[1], /ლიდ/);
 });
+
+test('balance card copy: $100 → $9 at 9%, 0% needs no top-up, Non-refundable, no broken interpolation, mobile-safe dialog', async () => {
+  const bal = code(`${DIR}/ServiceBalanceCard.tsx`);
+  // The example fee is computed from the server percent on a $100 budget, never a literal.
+  assert.match(bal, /const fee = \(100 \* pct \/ 100\)/);
+  assert.doesNotMatch(bal, /exampleFee|\$\\\$\{|\?\?\s*9\b/, 'no hand-escaped template or 9% fallback in the card');
+  const fill = (s, vars) => s.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => String(vars[k]));
+  for (const key of ['mm_w_bal_std_card', 'mm_w_bal_std_dialog']) {
+    for (const [i, s] of W[key].entries()) {
+      const out = fill(s, { pct: 9, fee: 9 });
+      assert.match(out, /\$100/, `${key}[${i}] names the $100 budget`);
+      assert.match(out, /\$9(?!\d)/, `${key}[${i}] renders the $9 fee`);
+      assert.doesNotMatch(out, /exampleFee|\$\{|\{\{|\}\}|undefined|NaN/, `${key}[${i}] has no broken interpolation`);
+    }
+  }
+  const ka = (k) => W[k][1];
+  assert.equal(ka('mm_w_bal_std_fee'), 'HOMATCH-ის მომსახურების საკომისიო: {{pct}}%');
+  for (const k of ['mm_w_bal_disclosure', 'mm_w_bal_std_dialog']) assert.match(ka(k), /Non-refundable/, `${k} ka says Non-refundable`);
+  for (const [k, v] of Object.entries(W)) {
+    for (const s of v) assert.doesNotMatch(s, /ნაღდ ფულად ვერ გაიტანთ/, `${k}: wording the owner rejected`);
+  }
+  // The balance is the fee only: Meta bills the ad budget to the connected ad account.
+  assert.match(W.mm_w_bal_std_dialog[0], /Meta charges the \$100 ad budget directly to your connected ad account/);
+  assert.match(ka('mm_w_bal_std_dialog'), /სხვა ან მომავალი კამპანიების/);
+  // 0%: no top-up and no fee example.
+  assert.match(W.mm_w_bal_zero_dialog[0], /0%, so no HOMATCH service-balance top-up is required/);
+  const { launchCharge } = await import('../../../../lib/metaAds/payload.ts');
+  assert.deepEqual(launchCharge({ mediaCents: 10000, feeCents: 0 }, 'CUSTOMER_AD_ACCOUNT'), { reserveCents: 0, feeCents: 0, requiredCents: 0 });
+  // Mobile: the dialog fits the viewport, its body scrolls, the actions stay on screen.
+  assert.match(bal, /<DialogContent className="[^"]*max-h-\[calc\(100dvh-2rem\)\][^"]*flex-col[^"]*overflow-hidden/);
+  assert.match(bal, /className="min-h-0 flex-1 overflow-y-auto overscroll-contain/);
+  assert.match(bal, /<DialogFooter className="shrink-0/);
+});

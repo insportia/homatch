@@ -1,10 +1,12 @@
 // THE CUSTOMER'S OWN PICTURES, BESIDE THE DESIGN BUILT FROM THEM.
 //
 // A small card over the canvas (never covering the whole viewport): the
-// reference pictures, "Match reference view" — the camera moves to about
-// where the picture was taken, estimated, and said to be — and an overlay
-// of the picture over the model, with its strength under the customer's
-// control. The picture is a reference; the design is the model.
+// reference pictures, "Match reference view" — the camera moves to where the
+// picture was taken from: EXACTLY, when HOMATCH fitted the picture's camera
+// from what it traced (sourceCamera.ts), orthographic or perspective; about
+// there, and said to be, for a reading without a fit — and an overlay of the
+// picture over the model, with its strength under the customer's control.
+// The picture is a reference; the design is the model.
 
 import React, { useEffect, useState } from 'react';
 import { Camera, Layers, X } from 'lucide-react';
@@ -13,6 +15,7 @@ import { cn } from '@/lib/utils';
 import type { SceneController } from '@/components/designStudio/canvas/SceneController';
 import { PX_PER_M } from '@/lib/designStudio/reconstructRead';
 import { referenceCamera } from '@/lib/designStudio/reconstruction';
+import { scaleFit, viewForCanvas } from '@/lib/designStudio/sourceCamera';
 import type { CanonicalSpace, SpatialSourceRecord } from '@/lib/designStudio/types';
 import { signedUrls } from '@/services/designStudio/files';
 import type { FloorPlanRecord } from '@/services/designStudio/floorplans';
@@ -58,7 +61,26 @@ export function ReferencePanel({ data, source, controller, onClose }: {
     const mpp = (source.canonical as CanonicalSpace | null)?.metresPerPx;
     return data.recon.plan_source_id === source.id || !mpp ? 1 : mpp * PX_PER_M;
   })();
-  const camera = data.recon.analysis ? referenceCamera(data.recon.analysis, index, scale) : null;
+  const analysis = data.recon.analysis;
+  const camera = analysis ? referenceCamera(analysis, index, scale) : null;
+  // The picture's own camera, when HOMATCH could fit it from what it traced.
+  const fitted = analysis?.cameras.find((c) => c.image === index)?.fit ?? null;
+  const fit = fitted ? scaleFit(fitted, scale) : null;
+  const centre = ((): [number, number] => {
+    const pts = (analysis?.rooms ?? []).flatMap((r) => r.polygon);
+    if (!pts.length) return [0, 0];
+    const xs = pts.map((p) => p[0]); const ys = pts.map((p) => p[1]);
+    return [((Math.min(...xs) + Math.max(...xs)) / 2) * scale, ((Math.min(...ys) + Math.max(...ys)) / 2) * scale];
+  })();
+  const match = () => {
+    if (!controller) return;
+    if (fit) {
+      const el = controller.renderer.domElement;
+      const view = viewForCanvas(fit, el.clientWidth, el.clientHeight, centre);
+      if (view) { controller.matchSourceView(view); return; }
+    }
+    if (camera) controller.restore(camera);
+  };
 
   return (
     <>
@@ -85,8 +107,8 @@ export function ReferencePanel({ data, source, controller, onClose }: {
           </div>
         ) : null}
         <div className="mt-2 grid gap-1.5">
-          <button type="button" disabled={!camera || !controller} data-testid="reference-match"
-            onClick={() => { if (camera) controller?.restore(camera); }}
+          <button type="button" disabled={!(fit || camera) || !controller} data-testid="reference-match" data-fitted={fit ? fit.model : undefined}
+            onClick={match}
             className={cn('inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#0C1119] text-[13px] font-semibold text-white hover:bg-[#1a2230] disabled:opacity-50', ring)}>
             <Camera className="h-4 w-4" aria-hidden="true" />{t('ds_recon_match_view')}
           </button>
@@ -100,7 +122,11 @@ export function ReferencePanel({ data, source, controller, onClose }: {
               <input type="range" min={0.15} max={0.9} step={0.05} value={opacity} onChange={(e) => setOpacity(Number(e.target.value))} className="accent-[hsl(38_92%_56%)]" />
             </label>
           ) : null}
-          <p className="text-2xs leading-snug text-[#5B6472]">{t('ds_recon_estimated_view')}</p>
+          <p className="text-2xs leading-snug text-[#5B6472]" data-testid="reference-match-note">
+            {fit
+              ? t('ds_recon_matched_view', { error: String(Math.max(0.1, Math.round(fit.rms * 1000) / 10)) })
+              : t('ds_recon_estimated_view')}
+          </p>
         </div>
       </aside>
     </>

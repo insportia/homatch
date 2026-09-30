@@ -12177,6 +12177,13 @@ const en = {
   ds_delete_body: 'This removes the project, every version, the pictures, plans and models you uploaded, its renders and thumbnails, and turns off every link you shared. It cannot be undone.',
   ds_delete_confirm_label: 'To confirm, type the project name: {{name}}',
   ds_delete_error: 'The deletion did not finish. The project is already hidden and its links are off; try again to complete it.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_source_pictures: 'From your pictures',
+  ds_recon_matched_view: 'Matched to your picture\'s own camera, to within {{error}}% of its height.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_truth_estimated_pictures: 'Dimensions are estimated from your pictures. Anything that depends on size is based on this estimate until you calibrate it.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -24268,6 +24275,13 @@ const ka: Partial<Record<TranslationKey, string>> = {
   ds_delete_body: 'ეს წაშლის პროექტს, ყველა ვერსიას, თქვენ მიერ ატვირთულ სურათებს, გეგმებსა და მოდელებს, რენდერებსა და მინიატურებს, და გათიშავს ყველა გაზიარებულ ბმულს. ამის გაუქმება შეუძლებელია.',
   ds_delete_confirm_label: 'დასადასტურებლად ჩაწერეთ პროექტის სახელი: {{name}}',
   ds_delete_error: 'წაშლა ვერ დასრულდა. პროექტი უკვე დამალულია და ბმულები გათიშულია; სცადეთ ხელახლა დასასრულებლად.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_source_pictures: 'თქვენი სურათებიდან',
+  ds_recon_matched_view: 'თქვენი სურათის კამერასთან შეთანხმებულია, მისი სიმაღლის {{error}}%-ის სიზუსტით.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_truth_estimated_pictures: 'ზომები თქვენი სურათებიდანაა შეფასებული. ყველაფერი, რაც ზომაზეა დამოკიდებული, ამ შეფასებას ეყრდნობა, სანამ არ დააკალიბრებთ.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -36350,6 +36364,13 @@ const ru: Partial<Record<TranslationKey, string>> = {
   ds_delete_body: 'Будут удалены проект, все версии, загруженные вами картинки, планы и модели, его рендеры и миниатюры, а все ссылки, которыми вы поделились, перестанут работать. Это нельзя отменить.',
   ds_delete_confirm_label: 'Для подтверждения введите название проекта: {{name}}',
   ds_delete_error: 'Удаление не завершилось. Проект уже скрыт, а ссылки отключены; попробуйте ещё раз, чтобы завершить.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_source_pictures: 'По вашим картинкам',
+  ds_recon_matched_view: 'Совмещено с камерой вашей картинки, с точностью до {{error}}% её высоты.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_truth_estimated_pictures: 'Размеры оценены по вашим картинкам. Всё, что зависит от размеров, опирается на эту оценку, пока вы не откалибруете.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -48430,6 +48451,13 @@ const tr: Partial<Record<TranslationKey, string>> = {
   ds_delete_body: 'Bu işlem projeyi, tüm sürümleri, yüklediğiniz görselleri, planları ve modelleri, render ve küçük resimlerini kaldırır ve paylaştığınız tüm bağlantıları kapatır. Geri alınamaz.',
   ds_delete_confirm_label: 'Onaylamak için proje adını yazın: {{name}}',
   ds_delete_error: 'Silme işlemi tamamlanmadı. Proje zaten gizlendi ve bağlantıları kapatıldı; tamamlamak için tekrar deneyin.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_source_pictures: 'Görsellerinizden',
+  ds_recon_matched_view: 'Görselinizin kendi kamerasıyla, yüksekliğinin %{{error}} kadarı içinde eşleştirildi.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_truth_estimated_pictures: 'Ölçüler görsellerinizden tahmin edildi. Boyuta bağlı her şey, kalibre edene kadar bu tahmine dayanır.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -60510,6 +60538,13 @@ const ar: Partial<Record<TranslationKey, string>> = {
   ds_delete_body: 'سيؤدي هذا إلى حذف المشروع وكل إصداراته والصور والمخططات والنماذج التي رفعتها وصوره المعروضة ومصغّراته، وإيقاف كل رابط شاركته. لا يمكن التراجع عن ذلك.',
   ds_delete_confirm_label: 'للتأكيد، اكتب اسم المشروع: {{name}}',
   ds_delete_error: 'لم يكتمل الحذف. المشروع مخفي بالفعل وروابطه متوقفة؛ حاول مرة أخرى لإكماله.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_source_pictures: 'من صورك',
+  ds_recon_matched_view: 'مُطابَق مع كاميرا صورتك نفسها، بدقة {{error}}% من ارتفاعها.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_truth_estimated_pictures: 'الأبعاد مقدّرة من صورك. كل ما يعتمد على الحجم يستند إلى هذا التقدير حتى تقوم بالمعايرة.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -72590,6 +72625,13 @@ const he: Partial<Record<TranslationKey, string>> = {
   ds_delete_body: 'פעולה זו מסירה את הפרויקט, כל גרסה, התמונות, התוכניות והמודלים שהעליתם, את ההדמיות והתמונות הממוזערות שלו, ומשביתה כל קישור ששיתפתם. לא ניתן לבטל זאת.',
   ds_delete_confirm_label: 'לאישור, הקלידו את שם הפרויקט: {{name}}',
   ds_delete_error: 'המחיקה לא הושלמה. הפרויקט כבר מוסתר והקישורים שלו כבויים; נסו שוב כדי להשלים אותה.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_source_pictures: 'מהתמונות שלך',
+  ds_recon_matched_view: 'מותאם למצלמה של התמונה שלך, בדיוק של {{error}}% מגובהה.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_truth_estimated_pictures: 'המידות מוערכות מהתמונות שלך. כל מה שתלוי בגודל מבוסס על ההערכה הזו עד שתכייל.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

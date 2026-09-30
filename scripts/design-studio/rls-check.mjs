@@ -27,6 +27,7 @@ const SHARES_MIGRATION = process.argv[4] ?? null;
 const CATALOG_SEED = process.argv[5] ?? null;
 const RECON_MIGRATION = process.argv[6] ?? null;
 const DELETE_MIGRATION = process.argv[7] ?? null;
+const ORIGIN_MIGRATION = process.argv[8] ?? null;
 const db = new PGlite({ extensions: { pgcrypto } });
 let failures = 0;
 const ok = (name) => console.log(`  ok   ${name}`);
@@ -498,6 +499,39 @@ if (RECON_MIGRATION) {
     tx.query(`update ds_reconstructions set built_source_id=$2 where id=$1`, [rec.id, srcRB.id])));
   await expectError('reconstruction: a customer cannot write a RECONSTRUCT job', 'permission denied', () => as(A, (tx) =>
     tx.query(`insert into ds_jobs (user_id,kind) values ($1,'RECONSTRUCT')`, [UA])));
+}
+
+// ── a space built from pictures says so (20261001180000)
+if (ORIGIN_MIGRATION) {
+  const pO = await as(A, (tx) => one(tx, `insert into ds_projects (user_id,name) values ($1,'Origins') returning id`, [UA]));
+  const key = (n, ext) => `users/${UA}/design-studio-floorplans/${pO.id}/0000000${n}-0000-4000-8000-00000000000${n}.${ext}`;
+  const plan = await as(A, (tx) => one(tx, `insert into ds_floorplans (project_id,user_id,object_key,mime,bytes) values ($1,$2,$3,'image/png',1000) returning id`, [pO.id, UA, key(1, 'png')]));
+  const pic = await as(A, (tx) => one(tx, `insert into ds_floorplans (project_id,user_id,object_key,mime,bytes,purpose) values ($1,$2,$3,'image/jpeg',1000,'REFERENCE') returning id`, [pO.id, UA, key(2, 'jpg')]));
+  const pic2 = await as(A, (tx) => one(tx, `insert into ds_floorplans (project_id,user_id,object_key,mime,bytes,purpose) values ($1,$2,$3,'image/jpeg',1000,'REFERENCE') returning id`, [pO.id, UA, key(3, 'jpg')]));
+  await as('service', (tx) => tx.query(`update ds_floorplans set status='INTERPRETED', interpretation='{"rooms":[]}' where id = any($1)`, [[plan.id, pic.id, pic2.id]]));
+  // Built BEFORE the fix: a picture-built source still labelled a floor plan.
+  const legacy = await as(A, (tx) => one(tx, `select ds_create_floorplan_source($1,'{"schema":1}','ESTIMATED',null,'ds-1') as id`, [pic2.id]));
+  const legacyPlan = await as(A, (tx) => one(tx, `select ds_create_floorplan_source($1,'{"schema":1}','ESTIMATED',null,'ds-1') as id`, [plan.id]));
+  const before = await db.query(`select provenance->>'origin' o from ds_spatial_sources where id=$1`, [legacy.id]);
+  before.rows[0].o === 'CUSTOMER_FLOORPLAN' ? ok('origin: before the fix, a picture-built space was labelled a floor plan') : bad('origin before', before.rows[0].o);
+
+  await db.exec(fs.readFileSync(ORIGIN_MIGRATION, 'utf8'));
+  await db.exec(fs.readFileSync(ORIGIN_MIGRATION, 'utf8'));
+  ok('origin: migration applies and re-applies');
+  const originOf = async (id) => (await db.query(`select provenance->>'origin' o, status from ds_spatial_sources where id=$1`, [id])).rows[0];
+  (await originOf(legacy.id)).o === 'CUSTOMER_PICTURES' ? ok('origin: an existing picture-built space is corrected in place') : bad('origin backfill', JSON.stringify(await originOf(legacy.id)));
+  (await originOf(legacyPlan.id)).o === 'CUSTOMER_FLOORPLAN' ? ok('origin: a real floor plan\'s space is left alone') : bad('origin plan untouched', JSON.stringify(await originOf(legacyPlan.id)));
+  (await originOf(legacy.id)).status === 'READY' ? ok('origin: the backfill changed nothing but the label (still READY)') : bad('origin status', JSON.stringify(await originOf(legacy.id)));
+
+  const fromPic = await as(A, (tx) => one(tx, `select ds_create_floorplan_source($1,'{"schema":1}','ESTIMATED',null,'ds-2') as id`, [pic.id]));
+  const fromPlan = await as(A, (tx) => one(tx, `select ds_create_floorplan_source($1,'{"schema":1}','ESTIMATED',null,'ds-2') as id`, [plan.id]));
+  (await originOf(fromPic.id)).o === 'CUSTOMER_PICTURES' ? ok('origin: a space built from pictures now says so') : bad('origin new pic', JSON.stringify(await originOf(fromPic.id)));
+  (await originOf(fromPlan.id)).o === 'CUSTOMER_FLOORPLAN' ? ok('origin: a space built from a floor plan still says floor plan') : bad('origin new plan', JSON.stringify(await originOf(fromPlan.id)));
+  (await originOf(legacyPlan.id)).status === 'SUPERSEDED' ? ok('origin: rebuilding still supersedes, never overwrites') : bad('origin supersede', JSON.stringify(await originOf(legacyPlan.id)));
+  await expectError('origin: another customer still cannot build from A\'s pictures', 'DS_FLOORPLAN_NOT_OWNED', () => as(B, (tx) =>
+    tx.query(`select ds_create_floorplan_source($1,'{"schema":1}','ESTIMATED',null,'x')`, [pic.id])));
+  await expectError('origin: CALIBRATED still needs a measurement', 'DS_CALIBRATION_REQUIRED', () => as(A, (tx) =>
+    tx.query(`select ds_create_floorplan_source($1,'{"schema":1}','CALIBRATED',null,'x')`, [pic.id])));
 }
 
 // ── permanent deletion (server-authorised, storage first, tombstoned)

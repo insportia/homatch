@@ -182,7 +182,11 @@ export async function handleReconstruct(req: Request): Promise<Response> {
   let raw: unknown;
   try { raw = JSON.parse(text); } catch { return fail('READING_BAD_SHAPE', jobId); }
 
-  const { recon: reading, dropped } = validateReconstruction(raw, images.length, { usesPlan: planRooms.length > 0, planRoomIds: planRooms.map((r) => r.id) });
+  const { recon: reading, dropped } = validateReconstruction(raw, images.length, {
+    usesPlan: planRooms.length > 0, planRoomIds: planRooms.map((r) => r.id),
+    // Each picture's shape, read from its own bytes: the traced pixels are fractions of it.
+    imageAspects: images.map((img) => img.width / img.height),
+  });
   if (!reading.usesPlan && reading.rooms.length === 0) return fail('NOTHING_READ', jobId);
 
   if (!reading.usesPlan) {
@@ -212,7 +216,7 @@ export async function handleReconstruct(req: Request): Promise<Response> {
       metadata: { reconstruction_id: recon.id, pictures: images.length, cost_known: ratesKnown },
     });
   } catch { /* a missing measurement never fails a reading that succeeded */ }
-  const counts = { rooms: reading.rooms.length, openings: reading.openings.length, objects: reading.objects.length, surfaces: reading.surfaces.length, cameras: reading.cameras.length, dropped };
+  const counts = { rooms: reading.rooms.length, openings: reading.openings.length, objects: reading.objects.length, surfaces: reading.surfaces.length, cameras: reading.cameras.length, dropped, fidelity: reading.fidelity ?? null };
   if (jobId) {
     await admin.from('ds_jobs').update({ status: 'SUCCEEDED', finished_at: new Date().toISOString(), cost_cents: cents, output: counts }).eq('id', jobId);
   }

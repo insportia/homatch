@@ -184,7 +184,9 @@ export function createStore(seed = {}) {
         kind: 'FLOORPLAN_SCENE', status: 'READY', geometry_state: args.p_geometry_state, editability: 'GENERATED',
         dev_unit_id: null, upstream: null, floorplan_id: args.p_floorplan_id, model_object_key: null, model_sha256: null,
         model_bytes: null, model_mime: null, canonical: args.p_canonical, calibration: args.p_calibration,
-        generator_version: args.p_generator_version, provenance: { origin: 'CUSTOMER_FLOORPLAN' }, failure: null,
+        generator_version: args.p_generator_version,
+        provenance: { origin: db.ds_floorplans.find((f) => f.id === args.p_floorplan_id)?.purpose === 'REFERENCE' ? 'CUSTOMER_PICTURES' : 'CUSTOMER_FLOORPLAN' },
+        failure: null,
         supersedes_id: null, created_at: now(),
       };
       for (const s of db.ds_spatial_sources) if (s.floorplan_id === args.p_floorplan_id && s.status === 'READY') s.status = 'SUPERSEDED';
@@ -319,7 +321,9 @@ export async function wire(page, store, errors) {
       const { validateReconstruction, planDocument, RECON_VERSION } = await import('../../supabase/functions/_shared/designStudio/reconstructRead.ts');
       const plan = recon.plan_source_id ? store.db.ds_spatial_sources.find((x) => x.id === recon.plan_source_id) : null;
       const planRoomIds = plan ? plan.canonical.scene.floors.map((x) => x.id) : [];
-      const { recon: reading } = validateReconstruction(plan ? store.reconPlanAnswer : store.reconAnswer, refs.length, { usesPlan: !!plan, planRoomIds });
+      const { imageSize } = await import('../../supabase/functions/_shared/designStudio/floorplanRead.ts');
+      const imageAspects = refs.map((r) => { const sz = imageSize(new Uint8Array(store.objects.get(r.object_key).body)); return sz ? sz.width / sz.height : null; });
+      const { recon: reading } = validateReconstruction(plan ? store.reconPlanAnswer : store.reconAnswer, refs.length, { usesPlan: !!plan, planRoomIds, imageAspects });
       if (!plan) Object.assign(refs[0], { status: 'INTERPRETED', interpretation: { doc: planDocument(reading, refs[0].object_key), dimensionStrings: [], readVersion: RECON_VERSION } });
       Object.assign(recon, { status: 'READ', analysis: reading, model: 'qa-fixture' });
       return json({ state: 'READ', counts: { rooms: reading.rooms.length, objects: reading.objects.length } });
@@ -441,7 +445,7 @@ async function main() {
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
   // QA_ONLY=11 runs one checkpoint (while iterating); the release run is all of them.
   if (process.env.QA_ONLY) {
-    try { await ({ 11: checkpoint11, '11b': checkpoint11b, 12: checkpoint12, 10: checkpoint10 })[process.env.QA_ONLY](browser); } finally { await browser.close().catch(() => {}); server.kill(); }
+    try { await ({ 11: checkpoint11, '11b': checkpoint11b, 12: checkpoint12, 13: checkpoint13, 10: checkpoint10 })[process.env.QA_ONLY](browser); } finally { await browser.close().catch(() => {}); server.kill(); }
     console.log(failures ? `${failures} FAILED` : 'ALL PASSED');
     process.exit(failures ? 1 : 0);
   }
@@ -538,6 +542,7 @@ async function main() {
     await checkpoint11(browser);
     await checkpoint11b(browser);
     await checkpoint12(browser);
+    await checkpoint13(browser);
   } finally {
     await browser.close().catch(() => {});
     server.kill();
@@ -1082,6 +1087,96 @@ async function checkpoint12(browser) {
     .waitFor({ timeout: 15000 }).then(() => true, () => false));
   check('no page errors (checkpoint 12)', errors.length === 0, errors.join('\n        '));
   await ctx.close();
+}
+
+/* ── Checkpoint 13: the rebuild follows the picture, and so does its camera ──
+ *
+ * A TRACED reading (every corner, opening and piece located in the picture's
+ * pixels) of a flat that is not a set of rectangles, pictured by a known
+ * orthographic camera at the uploaded picture's real shape. After building,
+ * "Match reference view" must put the live scene camera exactly where the
+ * picture looks from: every traced corner lands on its own pixel of the
+ * contained overlay. The space says it came from pictures. */
+async function checkpoint13(browser) {
+  const THREE = await import('three');
+  const { seedRows } = await import('../../src/lib/designStudio/__tests__/seedCatalog.mjs');
+  const { imageSize } = await import('../../supabase/functions/_shared/designStudio/floorplanRead.ts');
+  const fsm = await import('node:fs');
+  const picture = path.join(ROOT, 'tests/fixtures/design-studio/isometric-apartment.jpg');
+  const size = imageSize(new Uint8Array(fsm.readFileSync(picture)));
+  const aspect = size.width / size.height;
+  const cam = new THREE.OrthographicCamera(-aspect * 6, aspect * 6, 6, -6, 0.1, 500);
+  cam.position.set(5 + 50 * Math.sin(0.65), 50 * Math.tan((33 * Math.PI) / 180), -3 + 50 * Math.cos(0.65));
+  cam.lookAt(5, 0, -3);
+  cam.updateMatrixWorld();
+  const uvOf = ([x, y]) => { const v = new THREE.Vector3(x, 0, -y).project(cam); return [(v.x + 1) / 2, (1 - v.y) / 2]; };
+  const guess = ([x, y]) => [Math.round(x) + 0.12, Math.round(y) - 0.08];
+  const truth = {
+    living: [[0, 0], [5, 0], [7, 3.4641], [7, 6], [0, 6]],
+    bedroom: [[5, 0], [10, 0], [10, 6], [7, 6], [7, 3.4641]],
+  };
+  const room = (key, kind, poly) => ({ key, kind, label: null, polygon: poly.map(guess), polygonPx: poly.map(uvOf), pxImage: 0, outdoor: false, confidence: 0.8, basis: 'OBSERVED' });
+  const seed = seedRows();
+  const store = createStore({ ds_catalog_assets: seed.assets, ds_catalog_materials: seed.materials });
+  store.reconAnswer = {
+    view: 'AERIAL', scaleConfidence: 0.5, scaleEvidence: 'doors and beds', ceilingHeightM: null,
+    rooms: [room('living', 'LIVING', truth.living), room('bedroom', 'BEDROOM', truth.bedroom)],
+    openings: [{ key: 'd1', kind: 'DOOR', at: guess([6, 1.7321]), atPx: uvOf([6, 1.7321]), pxImage: 0, widthM: 0.9, heightM: null, sillM: null, confidence: 0.7, basis: 'OBSERVED' }],
+    objects: [{ key: 'bed', type: 'BED_DOUBLE', label: 'double bed', room: 'bedroom', at: guess([8.5, 3]), atPx: uvOf([8.5, 3]), pxImage: 0,
+      facingDeg: 180, widthM: 1.6, depthM: 2, heightM: 0.5, color: null, material: null, style: null, confidence: 0.9, basis: 'OBSERVED', seenIn: [0] }],
+    surfaces: [], palette: [], styleWords: [],
+    cameras: [{ image: 0, kind: 'AERIAL', at: [15, -10], heightM: 20, yawDeg: 330, pitchDeg: -40, fovDeg: 50, confidence: 0.5 }],
+    unknowns: [],
+  };
+  const errors = [];
+  for (const [W, H, touch] of [[1440, 900, false], [390, 844, true]]) {
+    const ctx = await openContext(browser, { width: W, height: H, lang: 'en', touch });
+    const page = await ctx.newPage();
+    await wire(page, store, errors);
+    await page.goto(`${BASE}/design-studio`, { waitUntil: 'domcontentloaded' });
+    await page.getByTestId('ds-start-image').click();
+    await page.getByTestId('recon-pick').waitFor({ timeout: 20000 });
+    await page.getByTestId('recon-input').setInputFiles(picture);
+    await page.getByTestId('recon-read').click();
+    await page.getByTestId('recon-review').waitFor({ timeout: 30000 });
+    const rec = store.db.ds_reconstructions.at(-1);
+    check(`fidelity ${W}: the outlines were rebuilt from the picture's pixels`, rec.analysis.fidelity?.model === 'ORTHO'
+      && rec.analysis.rooms.every((r) => r.geometry === 'PIXELS'), JSON.stringify(rec.analysis.fidelity));
+    await page.getByTestId('recon-build').click();
+    await page.locator('main canvas').waitFor({ timeout: 40000 });
+    await page.waitForTimeout(900);
+    if (W > 600) check('source: a space built from pictures says "From your pictures", never "From your floor plan"',
+      (await page.getByText('From your pictures', { exact: false }).count()) > 0 && (await page.getByText('From your floor plan').count()) === 0);
+    await page.getByTestId('ds-reference').click();
+    await page.getByTestId('reference-panel').waitFor();
+    check(`match ${W}: the view is the picture's own camera, and says how exact`, (await page.getByTestId('reference-match').getAttribute('data-fitted')) === 'ORTHO'
+      && (await page.getByTestId('reference-match-note').innerText()).startsWith("Matched to your picture's own camera"));
+    await page.getByTestId('reference-overlay-toggle').click();
+    await page.getByTestId('reference-match').click();
+    await page.waitForTimeout(500);
+    const traced = rec.analysis.rooms.flatMap((r) => r.polygon.map((p, i) => ({ plan: p, uv: r.px.points[i] }))).filter((x) => x.uv);
+    const worst = await page.evaluate(({ traced, aspect }) => {
+      const c = window.__dsScene.camera;
+      c.updateMatrixWorld();
+      const el = window.__dsScene.renderer.domElement.getBoundingClientRect();
+      const ov = document.querySelector('[data-testid="reference-overlay"]').getBoundingClientRect();
+      const imgH = Math.min(ov.height, ov.width / aspect);
+      const ox = ov.left + (ov.width - imgH * aspect) / 2; const oy = ov.top + (ov.height - imgH) / 2;
+      const V = c.matrixWorldInverse.elements; const P = c.projectionMatrix.elements;
+      const mul = (m, v) => [0, 1, 2, 3].map((r) => m[r] * v[0] + m[4 + r] * v[1] + m[8 + r] * v[2] + m[12 + r] * v[3]);
+      let worst = 0;
+      for (const t of traced) {
+        const q = mul(P, mul(V, [t.plan[0], 0, -t.plan[1], 1]));
+        const x = el.left + ((q[0] / q[3] + 1) / 2) * el.width; const y = el.top + ((1 - q[1] / q[3]) / 2) * el.height;
+        worst = Math.max(worst, Math.hypot(x - (ox + t.uv[0] * imgH * aspect), y - (oy + t.uv[1] * imgH)) / imgH);
+      }
+      return worst;
+    }, { traced, aspect });
+    check(`match ${W}: every traced corner lands on its own pixel of the overlay (worst ${(worst * 100).toFixed(2)}% of the picture)`, worst < 0.02);
+    await page.screenshot({ path: path.join(OUT, `cp13-matched-${W}-en.png`) });
+    await ctx.close();
+  }
+  check('no page errors (checkpoint 13)', errors.length === 0, errors.join('\n        '));
 }
 
 /* A few rows shaped exactly like the development seed (20260930091000). */

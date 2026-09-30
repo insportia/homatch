@@ -243,6 +243,7 @@ export class SceneController {
     this.controls.screenSpacePanning = true;
     this.controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
     this.controls.addEventListener('change', this.requestRender);
+    this.controls.addEventListener('start', () => this.normalFrustum());
 
     this.living = new LivingRuntime({
       reducedMotion: this.reducedMotion,
@@ -920,7 +921,40 @@ export class SceneController {
 
   // ── Camera ──────────────────────────────────────────────────────────
 
+  // ── The picture's own view ──────────────────────────────────────────
+  //
+  // "Match reference view" puts the camera where the customer's picture was
+  // taken from (sourceCamera.ts). An orthographic picture is matched by a far
+  // camera with a narrow lens, which needs a tight near/far range to keep
+  // depth precision; every other camera move, and the customer starting to
+  // orbit, puts the ordinary range back.
+
+  private matchedFrustum = false;
+
+  private normalFrustum() {
+    if (!this.matchedFrustum) return;
+    this.matchedFrustum = false;
+    this.camera.near = 0.05;
+    this.camera.far = 500;
+    this.camera.updateProjectionMatrix();
+  }
+
+  matchSourceView(view: { position: [number, number, number]; target: [number, number, number]; fov: number; near: number; far: number }) {
+    const position = new THREE.Vector3(...view.position);
+    const target = new THREE.Vector3(...view.target);
+    // Lift the orbit limit FIRST: moving the camera updates the controls, which clamp to it.
+    this.controls.maxDistance = Math.max(this.controls.maxDistance, position.distanceTo(target) + 20);
+    this.moveCamera(position, target, false);
+    this.camera.fov = view.fov;
+    this.camera.near = view.near;
+    this.camera.far = view.far;
+    this.camera.updateProjectionMatrix();
+    this.matchedFrustum = true;
+    this.requestRender();
+  }
+
   private moveCamera(pos: THREE.Vector3, target: THREE.Vector3, animate: boolean) {
+    this.normalFrustum();
     if (!animate || this.reducedMotion) {
       this.transition = null;
       this.camera.position.copy(pos);
@@ -1434,6 +1468,7 @@ export class SceneController {
     const w = this.walk;
     if (!w) return Promise.resolve(false);
     if (w.seated) this.standUp();
+    this.normalFrustum();
     this.camera.fov = pose.fov;
     this.camera.updateProjectionMatrix();
     return this.startRoute(pose.position, pose.target, EYE_HEIGHT_M - 0.25).then((ok) => {
@@ -1735,11 +1770,13 @@ export class SceneController {
       if (view.kind === 'EYE') {
         this.cutawayEnabled = false;
         this.setCeilings(true);
+        this.normalFrustum();
         this.camera.fov = view.pose.fov;
         this.camera.position.set(view.pose.position.x, EYE_HEIGHT_M, -view.pose.position.y);
         this.camera.lookAt(view.pose.target.x, EYE_HEIGHT_M - 0.15, -view.pose.target.y);
       } else if (!current) {
         this.cutawayEnabled = true;
+        this.normalFrustum();
         this.camera.fov = 45;
         if (view.kind === 'TOP') this.topView(false); else this.frameAll(false);
       }
@@ -1807,6 +1844,7 @@ export class SceneController {
     this.onMenu = on.onMenu;
     this.onLockChange = on.onLock;
     this.onPostureChange = on.onPosture;
+    this.normalFrustum();
     this.camera.fov = pose.fov;
     this.camera.updateProjectionMatrix();
     this.onAimChange = on.onAim;
@@ -1874,6 +1912,7 @@ export class SceneController {
     if (!w) return;
     if (w.seated) { w.seated = null; this.onSeatChange?.(null); this.setPosture('STANDING'); }
     w.vel = { x: 0, y: 0 };
+    this.normalFrustum();
     this.camera.fov = pose.fov;
     this.camera.updateProjectionMatrix();
     const toYaw = Math.atan2(pose.target.y - pose.position.y, pose.target.x - pose.position.x);

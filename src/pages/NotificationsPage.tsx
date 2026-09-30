@@ -181,7 +181,7 @@ function NotifRow({
               /* Severity in words as well as colour: colour alone is not an accessible state. */
               <span
                 className={cn(
-                  'ms-1 inline-flex shrink-0 items-center rounded-full border px-1.5 text-[11px] leading-4',
+                  'ms-1 inline-flex shrink-0 items-center rounded-full border px-1.5 text-2xs leading-4',
                   meta.severity === 'CRITICAL'
                     ? 'border-[hsl(var(--destructive))]/30 bg-[hsl(var(--destructive))]/10 font-semibold text-[hsl(var(--destructive))]'
                     : meta.severity === 'IMPORTANT'

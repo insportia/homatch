@@ -323,9 +323,6 @@ export const META_MASTER_CAMPAIGN_STRINGS = {
   mm_c_col_segment: ["Segment", "სეგმენტი", "Сегмент", "Segment", "الشريحة", "פלח"],
   mm_c_col_spend: ["Spend", "ხარჯი", "Расход", "Harcama", "الإنفاق", "הוצאה"],
   mm_c_col_impressions: ["Impressions", "ჩვენებები", "Показы", "Gösterimler", "مرات الظهور", "חשיפות"],
-  mm_c_col_results: ["Results", "შედეგები", "Результаты", "Sonuçlar", "النتائج", "תוצאות"],
-  mm_c_col_cpr: ["Cost per result", "ფასი შედეგზე", "Цена за результат", "Sonuç başına maliyet", "التكلفة لكل نتيجة", "עלות לתוצאה"],
-  mm_c_col_ctr: ["CTR", "CTR", "CTR", "TO", "نسبة النقر", "שיעור הקלקה"],
   mm_c_leader: ["Strongest signal", "ყველაზე ძლიერი სიგნალი", "Самый сильный сигнал", "En güçlü sinyal", "أقوى إشارة", "האות החזק ביותר"],
   mm_c_seg_none: ["Meta hasn't reported this breakdown yet.", "Meta-ს ეს დაყოფა ჯერ არ მოუწოდებია.", "Meta ещё не передала эту разбивку.", "Meta bu kırılımı henüz bildirmedi.", "لم تُبلغ Meta عن هذا التقسيم بعد.", "Meta עוד לא דיווחה על הפילוח הזה."],
   mm_c_seg_early: [

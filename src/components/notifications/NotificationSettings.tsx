@@ -1,4 +1,4 @@
-import { Bell, BellOff, Loader2, Send } from 'lucide-react';
+import { Bell, BellOff, Loader2, Mail, Send, ShieldCheck } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,7 @@ import {dismissSoftPrompt,
 } from '@/lib/push';
 import {DEFAULT_PREFERENCES,
   getNotificationPreferences, 
+  META_NOTIFICATION_CATEGORIES, metaCategoryOn,
   NOTIFICATION_CATEGORIES, type NotificationCategory,
   type NotificationPreferences, saveNotificationPreferences,
 } from '@/services/notificationPreferences';
@@ -43,6 +44,14 @@ import {DEFAULT_PREFERENCES,
  *   GRANTED      a real switch, and a test send, because a notification
  *                system nobody has ever seen work is a notification system
  *                nobody trusts.
+ *
+ * CHANNELS AND META ADS
+ *
+ * Push (the account-wide push_enabled — the per-device subscription above is
+ * a separate fact, and the panel says so when this device has none) and Email
+ * (email_enabled) are channel switches. The Meta Ads switches live in the same
+ * `categories` bag under the notifier's own keys and defaults; integrity
+ * messages have no switch, and the panel says that in words.
  */
 export function NotificationSettings() {
   const { t } = useLanguage();
@@ -165,6 +174,51 @@ export function NotificationSettings() {
         )}
       </div>
 
+      {/* ── Channels ─────────────────────────────────────────────────── */}
+      <div className="border-b border-border p-5">
+        <p className="text-[15px] font-medium text-foreground">{t('mm_n_channels_title')}</p>
+        <ul className="mt-3 space-y-3">
+          <li className="flex items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <Label htmlFor="notif-channel-push" className="flex items-center gap-2 text-sm font-normal text-ink-soft">
+                <Bell className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span className="min-w-0">{t('mm_n_push_label')}</span>
+              </Label>
+              <p id="notif-channel-push-hint" className="mt-0.5 text-2xs leading-relaxed text-muted-foreground">
+                {prefs.pushEnabled && pushSupported() && permission !== 'DENIED' && !subscribed
+                  ? t('mm_n_push_no_device')
+                  : t('mm_n_push_hint')}
+              </p>
+            </div>
+            <Switch
+              id="notif-channel-push"
+              aria-describedby="notif-channel-push-hint"
+              disabled={!loaded}
+              checked={prefs.pushEnabled}
+              onCheckedChange={(on) => void persist({ ...prefs, pushEnabled: on })}
+            />
+          </li>
+          <li className="flex items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <Label htmlFor="notif-channel-email" className="flex items-center gap-2 text-sm font-normal text-ink-soft">
+                <Mail className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span className="min-w-0">{t('mm_n_email_label')}</span>
+              </Label>
+              <p id="notif-channel-email-hint" className="mt-0.5 text-2xs leading-relaxed text-muted-foreground">
+                {t('mm_n_email_hint')}
+              </p>
+            </div>
+            <Switch
+              id="notif-channel-email"
+              aria-describedby="notif-channel-email-hint"
+              disabled={!loaded}
+              checked={prefs.emailEnabled}
+              onCheckedChange={(on) => void persist({ ...prefs, emailEnabled: on })}
+            />
+          </li>
+        </ul>
+      </div>
+
       {/* ── Categories ───────────────────────────────────────────────── */}
       <div className="border-b border-border p-5">
         <p className="text-[15px] font-medium text-foreground">{t('notif_cat_title')}</p>
@@ -188,6 +242,36 @@ export function NotificationSettings() {
             </li>
           ))}
         </ul>
+      </div>
+
+      {/* ── Meta Ads ─────────────────────────────────────────────────── */}
+      <div className="border-b border-border p-5">
+        <p className="text-[15px] font-medium text-foreground">{t('mm_n_meta_title')}</p>
+        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{t('mm_n_meta_sub')}</p>
+        <ul className="mt-3 space-y-3">
+          {META_NOTIFICATION_CATEGORIES.map((key) => (
+            <li key={key} className="flex items-center justify-between gap-4">
+              <Label htmlFor={`notif-${key}`} className="min-w-0 flex-1 text-sm font-normal text-ink-soft">
+                {t(`mm_n_pref_${key}` as Parameters<typeof t>[0])}
+              </Label>
+              <Switch
+                id={`notif-${key}`}
+                disabled={!loaded}
+                /* Not "absent means on": each switch shows the notifier's own default
+                   until somebody changes it (the daily brief is opt-in). */
+                checked={metaCategoryOn(prefs.categories, key)}
+                onCheckedChange={(on) => void persist({
+                  ...prefs,
+                  categories: { ...prefs.categories, [key]: on },
+                })}
+              />
+            </li>
+          ))}
+        </ul>
+        <p className="mt-4 flex items-start gap-2.5 rounded-lg border border-border bg-[hsl(var(--secondary))]/60 p-3 text-2xs leading-relaxed text-muted-foreground">
+          <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-foreground/70" aria-hidden="true" />
+          <span className="min-w-0">{t('mm_n_integrity_note')}</span>
+        </p>
       </div>
 
       {/* ── Quiet hours ──────────────────────────────────────────────── */}

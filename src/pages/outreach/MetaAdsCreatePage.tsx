@@ -16,7 +16,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  ArrowLeft, ArrowRight, Building2, FileText, Globe, Home, Loader2, MessageCircle, Plus, Target, ThumbsUp, UserPlus, Users,
+  ArrowLeft, ArrowRight, Building2, FileText, Globe, Home, Loader2, MessageCircle, Plus, Target, ThumbsUp, UserPlus,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -30,6 +30,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { supabase } from '@/db/supabase';
 import { recommendedPlacements, type Placement } from '@/lib/metaAds/payload';
 import type { MetaGoal } from '@/lib/metaAds/strategy';
+import { creativeAdvice } from '@/lib/metaAds/creativeAdvice';
 import {
   getMetaStatus, createMetaDraft, getMetaCampaign, latestOpenDraft, listCreatives, planPreview, runPreflight,
   launchCampaign, listAudiences, trackFunnel, money, EDITABLE_STATUSES,
@@ -44,6 +45,10 @@ import { BudgetStep, FinancialSummary } from '@/components/metaAds/builder/Budge
 import { CreativeStep } from '@/components/metaAds/builder/CreativeStep';
 import { AdPreview, type PreviewField } from '@/components/metaAds/builder/AdPreview';
 import { PlacementsStep, ReviewStep } from '@/components/metaAds/builder/ReviewStep';
+import { AudienceStep } from '@/components/metaAds/builder/AudienceStep';
+import { regionName } from '@/components/metaAds/builder/LocationPicker';
+import { useStrategyPreview } from '@/components/metaAds/builder/useStrategyPreview';
+import { adviceBlocks, destinationForGoal } from '@/components/metaAds/builder/masterLogic';
 
 const DRAFT_KEY = 'homatch_meta_ads_prelogin_draft';
 
@@ -62,7 +67,7 @@ const DEAL_FROM_TRANSACTION: Record<string, string> = { SALE: 'SALE', RENT: 'REN
 
 export default function MetaAdsCreatePage() {
   const { homatchUser } = useAuth();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const signedIn = !!homatchUser;
@@ -119,7 +124,8 @@ export default function MetaAdsCreatePage() {
           property_id: propertyParam,
           offer: local?.offer ?? (propertyParam ? { isProperty: true, dealKind: 'SALE' } : null),
           daily_budget_cents: 500, duration_days: 7,
-          destination: (local?.goal ?? 'LEADS_ON_META') === 'LEADS_ON_META' ? { type: 'META_FORM' } : { type: 'WEBSITE' },
+          // Every goal gets the destination it needs (MESSAGES → messaging, not a website).
+          destination: destinationForGoal(local?.goal ?? 'LEADS_ON_META', null, false),
           audience_id: params.get('audience'),
         } as never);
         try { localStorage.removeItem(DRAFT_KEY); } catch { /* fine */ }
@@ -177,6 +183,23 @@ export default function MetaAdsCreatePage() {
     return (preview?.recommendedPlacements as Placement[] | undefined)
       ?? recommendedPlacements({ hasInstagram: !!selectedAsset(status, 'INSTAGRAM'), hasVideo: creatives.some((c) => c.media[0]?.mime?.startsWith('video')), goal: campaign.goal as MetaGoal });
   }, [campaign, preview, status, creatives]);
+
+  /* ── SMART STRATEGY: the server's plan, funding and advice for this draft ── */
+  const strategySignature = campaign ? JSON.stringify([
+    campaign.goal, campaign.daily_budget_cents, campaign.duration_days, campaign.placements, campaign.targeting ?? null,
+    campaign.offer, campaign.property_id, campaign.audience_id, campaign.destination,
+    creatives.map((c) => [c.id, c.media.length, c.media[0]?.width ?? null, !!c.headline.trim(), !!c.primary_text.trim()]),
+    (status?.assets ?? []).filter((a) => a.selected).map((a) => a.id),
+  ]) : '';
+  const strategy = useStrategyPreview(campaign?.id ?? null, strategySignature, flush);
+
+  /* Live creative advice — the same pure function preflight runs, fed the
+     server's budget-aware creative count. Only BLOCKING_ERROR stops Continue. */
+  const advice = useMemo(() => (campaign ? creativeAdvice(
+    creatives.map((c) => ({ id: c.id, media: c.media, headline: c.headline, primaryText: c.primary_text })),
+    { goal: campaign.goal as MetaGoal, placements, recommendedCreativeCount: strategy.preview?.strategy?.recommendedCreativeCount ?? null },
+  ) : []), [campaign, creatives, placements, strategy.preview]);
+  const creativeBlocked = adviceBlocks(advice);
 
   /* ── PRE-AUTH: a visitor can start; the draft survives the login redirect ── */
   if (!signedIn) return <PreLogin />;
@@ -299,10 +322,7 @@ export default function MetaAdsCreatePage() {
                         badge={!switchedOn ? t('madsb_goal_not_enabled') : needsFormPermissions ? t('madsb_goal_needs_form_permissions') : undefined}
                         onClick={() => patch({
                           goal: g,
-                          destination: g === 'LEADS_ON_META' ? { type: 'META_FORM', formId: campaign.destination?.formId ?? null }
-                            : g === 'MESSAGES' ? { type: 'MESSAGING', messagingApp: campaign.destination?.messagingApp ?? (page ? 'MESSENGER' : null) }
-                              : g === 'ENGAGEMENT' ? { type: 'ON_POST' }
-                                : { type: 'WEBSITE', url: campaign.destination?.url },
+                          destination: destinationForGoal(g, campaign.destination, !!page),
                         } as never, { immediate: true })} />
                     );
                   })}
@@ -313,35 +333,16 @@ export default function MetaAdsCreatePage() {
               <DestinationStep campaign={campaign} status={status} patch={patch} reloadStatus={reloadStatus} propertyUrl={null} />
             )}
             {step === 'audience' && (
-              <StepShell eyebrow={t('madsb_step_audience')} title={t('madsb_audience_title')} lead={t('madsb_audience_lead')}>
-                <div>
-                  <p className="mb-1.5 text-sm font-medium text-foreground">{t('madsb_review_location')}</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {(status?.settings.countries ?? ['GE']).map((c) => (
-                      <span key={c} className="rounded-full border border-[hsl(var(--gold-border))]/60 bg-[hsl(var(--gold-soft))] px-3 py-1 text-[13px] font-medium">{t(`madsb_country_${c.toLowerCase()}` as never)}</span>
-                    ))}
-                  </div>
-                  <p className="mt-1.5 text-2xs text-muted-foreground">{t('madsb_location_note')}</p>
-                </div>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <ChoiceCard active={!campaign.audience_id} icon={<Users className="h-4 w-4" />} title={t('mads_audience_broad')} body={t('madsb_audience_broad_d')}
-                    onClick={() => patch({ audience_id: null }, { immediate: true })} />
-                  {audiences.filter((a) => a.sync_status === 'READY').map((a) => (
-                    <ChoiceCard key={a.id} active={campaign.audience_id === a.id} title={a.name} body={t('madsb_audience_retarget_d')}
-                      onClick={() => patch({ audience_id: a.id }, { immediate: true })} />
-                  ))}
-                </div>
-                {(!!campaign.property_id || (campaign.offer as { isProperty?: boolean } | null)?.isProperty) && (
-                  <p className="rounded-xl border border-border bg-[hsl(var(--secondary))]/50 px-3.5 py-2.5 text-[13px] leading-relaxed text-muted-foreground">{t('madsb_housing_note')}</p>
-                )}
-              </StepShell>
+              <AudienceStep campaign={campaign} status={status} audiences={audiences} patch={patch} />
             )}
             {step === 'budget' && (
-              <BudgetStep campaign={campaign} status={status} patch={patch} totals={preview?.totals ?? null} pricing={pricing} />
+              <BudgetStep campaign={campaign} status={status} patch={patch} totals={preview?.totals ?? null} pricing={pricing}
+                strategy={strategy.preview} strategyLoading={strategy.loading} strategyFailed={strategy.failed} />
             )}
             {step === 'creative' && (
               <CreativeStep campaign={campaign} creatives={creatives} setCreatives={setCreatives} placements={placements} onFocusCreative={setFocusCreative}
-                defaultHeadline={properties.find((p) => (p.homatch_id ? String(p.homatch_id) : p.id) === campaign.property_id)?.title ?? ''} />
+                defaultHeadline={properties.find((p) => (p.homatch_id ? String(p.homatch_id) : p.id) === campaign.property_id)?.title ?? ''}
+                advice={advice} strategy={strategy.preview?.strategy ?? null} strategyLoading={strategy.loading} />
             )}
             {step === 'placements' && (
               <PlacementsStep campaign={campaign} status={status} creatives={creatives} recommended={(preview?.recommendedPlacements as Placement[] | undefined) ?? placements} patch={patch} />
@@ -350,7 +351,8 @@ export default function MetaAdsCreatePage() {
               <ReviewStep campaign={campaign} status={status} creatives={creatives} totals={preview?.totals ?? null} pricing={pricing}
                 recommended={(preview?.recommendedPlacements as Placement[] | undefined) ?? placements}
                 preflight={preflight} running={running} onPreflight={doPreflight} canLaunch={canLaunch}
-                onLaunch={() => setConfirmOpen(true)} onEdit={(s) => void go(s as StepKey)} />
+                onLaunch={() => setConfirmOpen(true)} onEdit={(s) => void go(s as StepKey)}
+                strategy={strategy.preview} strategyLoading={strategy.loading} strategyFailed={strategy.failed} />
             )}
 
             {/* Preview inline on narrower screens, where there is no side rail. */}
@@ -379,10 +381,13 @@ export default function MetaAdsCreatePage() {
             <ArrowLeft className="h-4 w-4 rtl:rotate-180" />{t(idx > 0 ? 'madsb_back' : 'madsb_exit')}
           </Button>
           <div className="hidden min-w-0 flex-1 text-center text-[13px] text-muted-foreground sm:block">
-            {gaps[step] ? t(gaps[step] as never) : <SaveIndicator state={saveState} />}
+            {step === 'creative' && creativeBlocked ? <span className="text-destructive">{t('mm_b_blocking_continue')}</span>
+              : gaps[step] ? t(gaps[step] as never) : <SaveIndicator state={saveState} />}
           </div>
           {idx < STEPS.length - 1 ? (
-            <Button onClick={() => void go(STEPS[idx + 1])} className="gap-1.5">
+            /* Only a BLOCKING_ERROR creative advice holds Continue; every other step is advisory. */
+            <Button onClick={() => void go(STEPS[idx + 1])} className="gap-1.5" disabled={step === 'creative' && creativeBlocked}
+              aria-describedby={step === 'creative' && creativeBlocked ? 'mm-b-blocking-hint' : undefined}>
               {t('madsb_continue')}<ArrowRight className="h-4 w-4 rtl:rotate-180" />
             </Button>
           ) : (
@@ -401,7 +406,9 @@ export default function MetaAdsCreatePage() {
               [t('mads_conn_page'), page?.name ?? '—'],
               [t('mads_conn_ad_account'), acct?.name ?? '—'],
               [t('madsb_review_objective'), t(`mads_goal_${campaign.goal.toLowerCase()}` as never)],
-              [t('madsb_review_destination'), campaign.destination?.url ?? formAsset?.name ?? campaign.destination?.messagingApp ?? '—'],
+              [t('madsb_review_destination'), campaign.destination?.url ?? formAsset?.name
+                ?? (campaign.destination?.messagingApp ? t(`madsb_msg_${campaign.destination.messagingApp.toLowerCase().replace('instagram_direct', 'instagram')}`) : '—')],
+              [t('madsb_review_location'), (campaign.targeting?.locations?.length ? campaign.targeting.locations.map((l) => l.name) : (status?.settings.countries ?? ['GE']).map((c) => regionName(c, lang))).join(', ')],
               [t('madsb_review_audience'), campaign.audience_id ? t('madsb_audience_retarget') : t('mads_audience_broad')],
               [t('madsb_step_placements'), placements.map((p) => t(`mads_pl_${p}` as never)).join(', ')],
               [t('mads_budget_daily'), money(Number(campaign.daily_budget_cents ?? 0))],

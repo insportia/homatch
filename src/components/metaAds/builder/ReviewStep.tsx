@@ -10,10 +10,14 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { checkMedia, GOAL_SPECS, PLACEMENTS, type Placement } from '@/lib/metaAds/payload';
 import type { MetaGoal } from '@/lib/metaAds/strategy';
-import type { MetaCampaignRow, MetaCreativeRow, MetaStatus, PreflightResult } from '@/services/metaAds';
+import type { MetaCampaignRow, MetaCreativeRow, MetaStatus, PreflightResult, StrategyPreview } from '@/services/metaAds';
 import { ChoiceCard, StepShell, VerdictBadge } from './ui';
 import { selectedAsset, preflightDetails, handledTasks } from './steps';
 import { FinancialSummary, type Totals } from './BudgetStep';
+import { StrategyCard } from './StrategyCard';
+import { FundingCard } from './FundingCard';
+import { regionName } from './LocationPicker';
+import { isHousingCampaign } from './masterLogic';
 
 export function PlacementsStep({ campaign, status, creatives, recommended, patch }: {
   campaign: MetaCampaignRow; status: MetaStatus | null; creatives: MetaCreativeRow[]; recommended: Placement[];
@@ -83,12 +87,13 @@ export function PlacementsStep({ campaign, status, creatives, recommended, patch
   );
 }
 
-export function ReviewStep({ campaign, status, creatives, totals, pricing, recommended, preflight, running, onPreflight, onLaunch, canLaunch, onEdit }: {
+export function ReviewStep({ campaign, status, creatives, totals, pricing, recommended, preflight, running, onPreflight, onLaunch, canLaunch, onEdit, strategy = null, strategyLoading = false, strategyFailed = false }: {
   campaign: MetaCampaignRow; status: MetaStatus | null; creatives: MetaCreativeRow[]; totals: Totals | null; pricing: boolean;
   recommended: Placement[]; preflight: PreflightResult | null; running: boolean;
   onPreflight: () => void; onLaunch: () => void; canLaunch: boolean; onEdit: (step: string) => void;
+  strategy?: StrategyPreview | null; strategyLoading?: boolean; strategyFailed?: boolean;
 }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const goal = campaign.goal as MetaGoal;
   const spec = GOAL_SPECS[goal];
   const page = selectedAsset(status, 'PAGE');
@@ -96,8 +101,12 @@ export function ReviewStep({ campaign, status, creatives, totals, pricing, recom
   const acct = selectedAsset(status, 'AD_ACCOUNT');
   const pixel = selectedAsset(status, 'PIXEL');
   const form = (status?.assets ?? []).find((a) => a.kind === 'LEAD_FORM' && a.external_id === campaign.destination?.formId) ?? selectedAsset(status, 'LEAD_FORM');
-  const offer = campaign.offer as { isProperty?: boolean; title?: string } | null;
-  const housing = !!campaign.property_id || offer?.isProperty === true;
+  // The server's classification (engine.strategyInputFor), not a guess.
+  const housing = isHousingCampaign(campaign);
+  const locs = campaign.targeting?.locations?.length
+    ? campaign.targeting.locations.map((l) => (l.type === 'country' ? regionName(l.key, lang) : l.type === 'city' && l.radiusKm ? `${l.name} (+${t('mm_b_loc_radius_km', { km: String(l.radiusKm) })})` : l.name))
+    : (status?.settings.countries ?? ['GE']).map((c) => regionName(c, lang));
+  const eff = strategy?.targeting.effective;
   const placements = campaign.placements?.mode === 'CUSTOM' ? (campaign.placements.list ?? []) : recommended;
   const withMedia = creatives.filter((c) => c.media.length);
 
@@ -127,7 +136,8 @@ export function ReviewStep({ campaign, status, creatives, totals, pricing, recom
           [t('mads_conn_ad_account'), acct?.name ?? '—'],
         ]} />
         <Block title={t('madsb_review_audience')} step="audience" rows={[
-          [t('madsb_review_location'), (status?.settings.countries ?? ['GE']).map((c) => t(`madsb_country_${c.toLowerCase()}` as never)).join(', ')],
+          [t('madsb_review_location'), <span dir="auto">{locs.join(', ')}</span>],
+          ...(eff ? [[t('mm_b_who_title'), `${t('mm_b_age_range', { min: String(eff.ageMin), max: eff.ageMax >= 65 ? '65+' : String(eff.ageMax) })} · ${t(`mm_b_gender_${eff.gender === 'MALE' || eff.gender === 'FEMALE' ? eff.gender : 'ALL'}`)}`] as [string, React.ReactNode]] : []),
           [t('madsb_review_audience_type'), campaign.audience_id ? t('madsb_audience_retarget') : t('mads_audience_broad')],
           ...(housing ? [[t('madsb_review_policy'), t('madsb_housing_short')] as [string, React.ReactNode]] : []),
         ]} />
@@ -146,6 +156,9 @@ export function ReviewStep({ campaign, status, creatives, totals, pricing, recom
       </div>
 
       <FinancialSummary totals={totals} pricing={pricing} billing={status?.settings.budgetBilling} />
+      <StrategyCard preview={strategy} loading={strategyLoading} failed={strategyFailed} />
+      <FundingCard funding={strategy?.funding ?? null} loading={strategyLoading}
+        currency={campaign.currency || status?.wallet?.currency || 'USD'} billing={status?.settings.budgetBilling} />
 
       <div className="rounded-2xl border border-[hsl(var(--gold-border))]/60 bg-[hsl(var(--gold-soft))]/60 p-4">
         <p className="flex items-center gap-2 text-sm font-semibold text-foreground"><Wand2 className="h-4 w-4 text-[hsl(var(--gold-ink))]" />{t('madsb_handles_title')}</p>

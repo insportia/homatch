@@ -1,7 +1,7 @@
 // THE AD ITSELF — media guidance, validated uploads, the real ad fields, and
 // HOMATCH AI inline.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ImagePlus, Loader2, Trash2, Sparkles, Smartphone, Square, RectangleVertical } from 'lucide-react';
+import { Clock, ImagePlus, Loader2, Trash2, Sparkles, Smartphone, Square, RectangleVertical, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,12 +12,15 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { checkMedia, GOAL_SPECS, PLACEMENTS, type Placement } from '@/lib/metaAds/payload';
 import type { MetaGoal } from '@/lib/metaAds/strategy';
+import type { AdviceItem } from '@/lib/metaAds/creativeAdvice';
 import {
   addCreative, removeCreative, updateCreative, readMediaFacts, creativeMediaUrl,
-  type MetaCampaignRow, type MetaCreativeRow, type AiCopyVariant,
+  type MetaCampaignRow, type MetaCreativeRow, type AiCopyVariant, type StrategySummaryRow,
 } from '@/services/metaAds';
 import { StepShell, VerdictBadge } from './ui';
 import { AiCopyPanel } from './AiCopyPanel';
+import { AdviceList, CreativeBudgetAdvice } from './CreativeAdviceList';
+import { adviceBlocks, groupAdvice } from './masterLogic';
 
 export const ACCEPT = 'image/jpeg,image/png,image/webp,video/mp4,video/quicktime';
 
@@ -84,12 +87,16 @@ export function MediaGuidance({ placements }: { placements: Placement[] }) {
   );
 }
 
-export function CreativeStep({ campaign, creatives, setCreatives, placements, onFocusCreative, defaultHeadline = '' }: {
+export function CreativeStep({ campaign, creatives, setCreatives, placements, onFocusCreative, defaultHeadline = '', advice = [], strategy = null, strategyLoading = false }: {
   campaign: MetaCampaignRow; creatives: MetaCreativeRow[];
   setCreatives: React.Dispatch<React.SetStateAction<MetaCreativeRow[]>>;
   placements: Placement[]; onFocusCreative: (id: string) => void;
   /** The owner's own property title — a truthful, editable starting headline. */
   defaultHeadline?: string;
+  /** creativeAdvice() for these creatives; only BLOCKING_ERROR blocks Continue. */
+  advice?: AdviceItem[];
+  /** The server's plan: how many creatives the budget tests well, which run later. */
+  strategy?: StrategySummaryRow | null; strategyLoading?: boolean;
 }) {
   const { homatchUser } = useAuth();
   const { t } = useLanguage();
@@ -118,6 +125,9 @@ export function CreativeStep({ campaign, creatives, setCreatives, placements, on
   };
 
   const aiCreative = creatives.find((c) => c.id === aiFor) ?? null;
+  const grouped = useMemo(() => groupAdvice(advice), [advice]);
+  const held = new Set(strategy?.heldBackCreativeIds ?? []);
+  const blocked = adviceBlocks(advice);
 
   return (
     <StepShell eyebrow={t('madsb_step_creative')} title={t('madsb_creative_title')} lead={t('madsb_creative_lead')}>
@@ -129,8 +139,11 @@ export function CreativeStep({ campaign, creatives, setCreatives, placements, on
         </Button>
         <p className="text-[13px] text-muted-foreground">{t('madsb_add_media_hint')}</p>
       </div>
+      <CreativeBudgetAdvice general={grouped.general} recommendedCount={strategy?.recommendedCreativeCount ?? null}
+        heldBackCount={creatives.filter((c) => held.has(c.id)).length} loading={strategyLoading} />
       {creatives.map((cr) => (
         <CreativeEditor key={cr.id} creative={cr} goal={campaign.goal as MetaGoal} placements={placements}
+          advice={grouped.byCreative.get(cr.id) ?? []} heldBack={held.has(cr.id)}
           onChange={(next) => setCreatives((cur) => cur.map((c) => (c.id === next.id ? next : c)))}
           onRemove={async () => {
             try { await removeCreative(cr.id); setCreatives((cur) => cur.filter((c) => c.id !== cr.id)); }
@@ -138,6 +151,11 @@ export function CreativeStep({ campaign, creatives, setCreatives, placements, on
           }}
           onAi={() => setAiFor(cr.id)} onFocus={() => onFocusCreative(cr.id)} />
       ))}
+      {blocked && creatives.length > 0 && (
+        <p id="mm-b-blocking-hint" data-mm-blocking="" className="flex items-start gap-2 rounded-xl border border-destructive/35 bg-destructive/10 px-3.5 py-2.5 text-[13px] text-destructive" role="status">
+          <XCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />{t('mm_b_blocking_summary')}
+        </p>
+      )}
       {aiCreative && (
         <AiCopyPanel open={!!aiFor} onOpenChange={(v) => { if (!v) setAiFor(null); }} campaignId={campaign.id}
           current={{ primaryText: aiCreative.primary_text, headline: aiCreative.headline, description: aiCreative.description ?? '' }}
@@ -151,8 +169,9 @@ export function CreativeStep({ campaign, creatives, setCreatives, placements, on
   );
 }
 
-function CreativeEditor({ creative, goal, placements, onChange, onRemove, onAi, onFocus }: {
+function CreativeEditor({ creative, goal, placements, advice, heldBack, onChange, onRemove, onAi, onFocus }: {
   creative: MetaCreativeRow; goal: MetaGoal; placements: Placement[];
+  advice: AdviceItem[]; heldBack: boolean;
   onChange: (c: MetaCreativeRow) => void; onRemove: () => void; onAi: () => void; onFocus: () => void;
 }) {
   const { t } = useLanguage();
@@ -173,6 +192,12 @@ function CreativeEditor({ creative, goal, placements, onChange, onRemove, onAi, 
 
   return (
     <div className="rounded-2xl border border-border bg-card p-3.5 shadow-card sm:p-4" onFocusCapture={onFocus}>
+      {heldBack && (
+        <p data-mm-held-back="" className="mb-3 flex items-start gap-2 rounded-lg border border-border bg-[hsl(var(--secondary))]/60 px-2.5 py-1.5 text-2xs leading-relaxed text-muted-foreground">
+          <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+          <span><span className="font-semibold text-foreground">{t('mm_b_held_back_badge')}</span> · {t('mm_b_held_back_d')}</span>
+        </p>
+      )}
       <div className="flex flex-col gap-4 sm:flex-row">
         <div id={fid('media')} tabIndex={-1} className="w-full shrink-0 sm:w-40">
           {url ? (m0?.mime?.startsWith('video')
@@ -185,7 +210,6 @@ function CreativeEditor({ creative, goal, placements, onChange, onRemove, onAi, 
                 <VerdictBadge verdict={check.verdict} />
                 {check.ratio && <span className="text-2xs text-muted-foreground" dir="ltr">{check.ratio}{m0?.width ? ` · ${m0.width}×${m0.height}` : ''}</span>}
               </div>
-              {check.reasons.slice(0, 2).map((r) => <p key={r} className="text-2xs leading-snug text-muted-foreground">{t(`madsb_${r}` as never)}</p>)}
               <div className="flex flex-wrap gap-1">
                 {PLACEMENTS.filter((p) => placements.includes(p)).map((p) => (
                   <span key={p} className={cn('rounded px-1.5 py-px text-2xs',
@@ -239,6 +263,7 @@ function CreativeEditor({ creative, goal, placements, onChange, onRemove, onAi, 
               </div>
             </div>
           )}
+          <AdviceList items={advice} />
           <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
             <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={onAi} data-madsb-ai="">
               <Sparkles className="h-3.5 w-3.5 text-[hsl(var(--gold-ink))]" />{t('mads_ai_assist')}

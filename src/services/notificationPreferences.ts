@@ -49,9 +49,46 @@ export const NOTIFICATION_CATEGORIES = [
 
 export type NotificationCategory = typeof NOTIFICATION_CATEGORIES[number];
 
+/*
+ * META ADS SWITCHES.
+ *
+ * Kept apart from NOTIFICATION_CATEGORIES because their defaults are not all "on": a
+ * daily brief nobody asked for is noise, so it is opt-in, while the weekly one is on.
+ * The keys and defaults are the notifier's — recipientFor() in
+ * supabase/functions/meta-ads-api/notifier.ts reads exactly these keys from
+ * `categories` and falls back to DEFAULT_PREFERENCES in src/lib/metaAds/events.ts.
+ *
+ * There is deliberately no switch for integrity (Campaign Guard warnings, strikes,
+ * suspensions, loss of access) or lifecycle: those are always delivered.
+ */
+export const META_NOTIFICATION_CATEGORIES = [
+  'meta_performance', 'meta_leads', 'meta_billing', 'meta_daily_brief', 'meta_weekly_brief',
+] as const;
+
+export type MetaNotificationCategory = typeof META_NOTIFICATION_CATEGORIES[number];
+
+export const META_CATEGORY_DEFAULTS: Record<MetaNotificationCategory, boolean> = {
+  meta_performance: true,
+  meta_leads: true,
+  meta_billing: true,
+  meta_daily_brief: false,
+  meta_weekly_brief: true,
+};
+
+/** A Meta switch's effective value: what was stored, else the notifier's default. */
+export function metaCategoryOn(
+  categories: NotificationPreferences['categories'], key: MetaNotificationCategory,
+): boolean {
+  const stored = (categories as Record<string, unknown>)[key];
+  return typeof stored === 'boolean' ? stored : META_CATEGORY_DEFAULTS[key];
+}
+
 export interface NotificationPreferences {
-  categories: Partial<Record<NotificationCategory, boolean>>;
+  categories: Partial<Record<NotificationCategory | MetaNotificationCategory, boolean>>;
   pushEnabled: boolean;
+  /** Email channel (notification_preferences.email_enabled, default true). CRITICAL
+      Meta events are emailed; integrity messages are emailed whatever this says. */
+  emailEnabled: boolean;
   marketingOptIn: boolean;
   quietHoursStart: number | null;
   quietHoursEnd: number | null;
@@ -61,6 +98,7 @@ export interface NotificationPreferences {
 export const DEFAULT_PREFERENCES: NotificationPreferences = {
   categories: {},
   pushEnabled: true,
+  emailEnabled: true,
   marketingOptIn: false,
   quietHoursStart: null,
   quietHoursEnd: null,
@@ -72,7 +110,7 @@ export async function getNotificationPreferences(
 ): Promise<NotificationPreferences> {
   const { data, error } = await supabase
     .from('notification_preferences')
-    .select('categories, push_enabled, marketing_opt_in, quiet_hours_start, quiet_hours_end, timezone')
+    .select('categories, push_enabled, email_enabled, marketing_opt_in, quiet_hours_start, quiet_hours_end, timezone')
     .eq('user_id', userId)
     .maybeSingle();
 
@@ -83,6 +121,7 @@ export async function getNotificationPreferences(
   return {
     categories: (data.categories ?? {}) as NotificationPreferences['categories'],
     pushEnabled: data.push_enabled ?? true,
+    emailEnabled: data.email_enabled ?? true,
     marketingOptIn: data.marketing_opt_in ?? false,
     quietHoursStart: data.quiet_hours_start,
     quietHoursEnd: data.quiet_hours_end,
@@ -103,6 +142,7 @@ export async function saveNotificationPreferences(
     user_id: userId,
     categories: prefs.categories,
     push_enabled: prefs.pushEnabled,
+    email_enabled: prefs.emailEnabled,
     marketing_opt_in: prefs.marketingOptIn,
     quiet_hours_start: prefs.quietHoursStart,
     quiet_hours_end: prefs.quietHoursEnd,

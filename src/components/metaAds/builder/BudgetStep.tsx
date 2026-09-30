@@ -7,15 +7,19 @@ import React, { useEffect, useState } from 'react';
 import { Info, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { money, type MetaCampaignRow, type MetaStatus } from '@/services/metaAds';
+import { money, type MetaCampaignRow, type MetaStatus, type StrategyPreview } from '@/services/metaAds';
 import { parseDailyCents, parseDays } from './steps';
 import { StepShell } from './ui';
+import { StrategyCard } from './StrategyCard';
+import { FundingCard } from './FundingCard';
 
 export interface Totals { mediaCents: number; feeCents: number; totalCents: number; feePercent: number }
 
-export function BudgetStep({ campaign, status, patch, totals, pricing }: {
+export function BudgetStep({ campaign, status, patch, totals, pricing, strategy = null, strategyLoading = false, strategyFailed = false }: {
   campaign: MetaCampaignRow; status: MetaStatus | null;
   patch: (p: Partial<MetaCampaignRow>) => void; totals: Totals | null; pricing: boolean;
+  /** strategy_preview: the plan this budget buys and what it needs from the balance. */
+  strategy?: StrategyPreview | null; strategyLoading?: boolean; strategyFailed?: boolean;
 }) {
   const { t } = useLanguage();
   const minDays = Math.max(2, status?.settings.minDurationDays ?? 2);
@@ -74,6 +78,9 @@ export function BudgetStep({ campaign, status, patch, totals, pricing }: {
         ))}
       </div>
       <FinancialSummary totals={totals} pricing={pricing} billing={status?.settings.budgetBilling} />
+      <StrategyCard preview={strategy} loading={strategyLoading} failed={strategyFailed} />
+      <FundingCard funding={strategy?.funding ?? null} loading={strategyLoading}
+        currency={campaign.currency || status?.wallet?.currency || 'USD'} billing={status?.settings.budgetBilling} />
     </StepShell>
   );
 }

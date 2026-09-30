@@ -26,12 +26,13 @@
 // only when it begins with a single slash.
 
 import {
-  Bell, Building2, CalendarDays, CheckCircle2, ClipboardCheck, CreditCard, Megaphone,
-  MessageSquare, Phone, Search, ShieldCheck, Zap,
+  Activity, Bell, Building2, CalendarDays, CheckCircle2, ClipboardCheck, CreditCard, FileText,
+  Lightbulb, Megaphone, MessageSquare, Phone, Search, ShieldAlert, ShieldCheck, UserPlus, Wallet, Zap,
 } from 'lucide-react';
 import type React from 'react';
 import {
-  announcementText, categoryOf, kindOf as feedKindOf, safeDeepLink, type NotificationCategory,
+  announcementText, categoryOf, kindOf as feedKindOf, metaCategoryOf, metaSeverityOf, safeDeepLink,
+  type MetaCategory, type MetaSeverity, type NotificationCategory,
 } from '@/lib/notifications/feed';
 import type { Notification } from '@/types/types';
 
@@ -181,9 +182,56 @@ export function notificationCategory(notif: Notification): NotificationCategory 
   return categoryOf(notif);
 }
 
+/*
+ * META ADS ROWS.
+ *
+ * Their title and body arrive already in the reader's language (the notifier renders
+ * them per recipient), so notificationText falls through to the stored text on purpose.
+ * What the client adds is the finer category, an icon per type and the severity — the
+ * one place a colour means something: CRITICAL is the destructive tone, IMPORTANT the
+ * gold that says "this wants you", INFO stays quiet.
+ */
+export const META_CATEGORY_LABEL: Record<MetaCategory, string> = {
+  CAMPAIGN: 'mm_n_cat_campaign',
+  LEADS: 'mm_n_cat_leads',
+  BILLING: 'mm_n_cat_billing',
+  GUARD: 'mm_n_cat_guard',
+  SYSTEM: 'mm_n_cat_system',
+};
+
+export const META_SEVERITY_LABEL: Record<MetaSeverity, string> = {
+  CRITICAL: 'mm_n_sev_CRITICAL',
+  IMPORTANT: 'mm_n_sev_IMPORTANT',
+  INFO: 'mm_n_sev_INFO',
+};
+
+const META_TYPE_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
+  META_CAMPAIGN_STATUS: Activity,
+  META_GUARD: ShieldAlert,
+  META_RECOMMENDATION: Lightbulb,
+  META_ADS_BALANCE: Wallet,
+  META_LEAD: UserPlus,
+};
+
+/** The Meta facts about a row, or null when it is not a Meta Ads notification. */
+export function metaNotificationInfo(notif: Notification): {
+  category: MetaCategory; severity: MetaSeverity; categoryKey: string; severityKey: string;
+} | null {
+  const category = metaCategoryOf(notif);
+  const severity = metaSeverityOf(notif);
+  if (!category || !severity) return null;
+  return { category, severity, categoryKey: META_CATEGORY_LABEL[category], severityKey: META_SEVERITY_LABEL[severity] };
+}
+
 export function notificationMark(notif: Notification): NotificationMark {
   const kind = kindOf(notif);
   const category = categoryOf(notif);
+
+  const meta = metaNotificationInfo(notif);
+  if (meta) {
+    const icon = kind === 'META_BRIEF' ? FileText : META_TYPE_ICON[String(notif.type)] ?? Megaphone;
+    return { icon, tone: meta.severity === 'CRITICAL' ? 'alert' : meta.severity === 'IMPORTANT' ? 'accent' : 'plain' };
+  }
 
   /* The few that want something from you, or went wrong, earn a role. */
   if (category === 'MESSAGE') return { icon: MessageSquare, tone: 'accent' };

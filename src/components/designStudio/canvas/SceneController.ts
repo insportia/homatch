@@ -1341,7 +1341,7 @@ export class SceneController {
       (this.aimBox.material as THREE.LineBasicMaterial).opacity = 0.55;
       this.overlayGroup.add(this.aimBox);
     }
-    this.renderer.domElement.style.cursor = this.aimed ? 'pointer' : (this.walk ? 'grab' : '');
+    this.renderer.domElement.style.cursor = this.aimed ? 'pointer' : (this.walk ? 'crosshair' : '');
     this.onAimChange?.(this.hintFor(this.aimed));
     this.requestRender();
   }
@@ -1886,7 +1886,7 @@ export class SceneController {
     // Doors start as the design shows them: closed doors block from the first step.
     for (const e of this.living.all()) if (e.doorId) setDoorClosed(model, e.doorId, !!e.machine.states.get(e.target ?? e.state)?.blocks);
     this.followDaylight(this.environment);
-    this.renderer.domElement.style.cursor = 'grab';
+    this.renderer.domElement.style.cursor = 'crosshair';
     this.updateHandle();
     window.addEventListener('keydown', this.onWalkKey);
     window.addEventListener('keyup', this.onWalkKey);
@@ -2043,7 +2043,7 @@ export class SceneController {
     const locked = document.pointerLockElement === this.renderer.domElement;
     if (locked === this.pointerLocked) return;
     this.pointerLocked = locked;
-    this.renderer.domElement.style.cursor = locked ? 'none' : (this.walk ? 'grab' : '');
+    this.renderer.domElement.style.cursor = locked ? 'none' : (this.walk ? 'crosshair' : '');
     this.lastPointer = null;
     this.onLockChange?.(locked);
     // Esc released the mouse: the menu opens (unless we are leaving on purpose).

@@ -12206,6 +12206,15 @@ const en = {
   ds_fin_above_floor: 'Above floor',
   ds_fin_above_70: '70%+ target',
   ds_fin_in_band: 'In 75–85% band',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_export_truth_estimated_pictures: 'Sizes are approximate: the space was rebuilt from pictures.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_recon_approx_view: 'Aligned approximately with your picture\'s camera (about {{error}}% of its height off). The rebuilt layout is an estimate — use Overlay to compare.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_invert_x: 'Invert horizontal look',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -24326,6 +24335,15 @@ const ka: Partial<Record<TranslationKey, string>> = {
   ds_fin_above_floor: 'ზღვარს ზემოთ',
   ds_fin_above_70: '70%+ მიზანი',
   ds_fin_in_band: '75–85% დიაპაზონში',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_export_truth_estimated_pictures: 'ზომები მიახლოებითია: სივრცე სურათებიდანაა აღდგენილი.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_recon_approx_view: 'დაახლოებით შეთანხმებულია თქვენი სურათის კამერასთან (სიმაღლის დაახლ. {{error}}%-ის სხვაობით). აღდგენილი განლაგება შეფასებაა — შესადარებლად გამოიყენეთ გადაფარვა.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_invert_x: 'ჰორიზონტალური ხედის შებრუნება',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -36437,6 +36455,15 @@ const ru: Partial<Record<TranslationKey, string>> = {
   ds_fin_above_floor: 'Выше порога',
   ds_fin_above_70: 'Цель 70%+',
   ds_fin_in_band: 'В диапазоне 75–85%',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_export_truth_estimated_pictures: 'Размеры приблизительные: пространство восстановлено по картинкам.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_recon_approx_view: 'Приблизительно совмещено с камерой вашей картинки (расхождение около {{error}}% её высоты). Восстановленная планировка — оценка: сравните через наложение.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_invert_x: 'Инвертировать по горизонтали',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -48546,6 +48573,15 @@ const tr: Partial<Record<TranslationKey, string>> = {
   ds_fin_above_floor: 'Tabanın üstünde',
   ds_fin_above_70: '%70+ hedef',
   ds_fin_in_band: '%75–85 aralığında',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_export_truth_estimated_pictures: 'Ölçüler yaklaşıktır: alan görsellerden yeniden oluşturuldu.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_recon_approx_view: 'Görselinizin kamerasıyla yaklaşık olarak hizalandı (yüksekliğinin yaklaşık %{{error}} kadar sapma). Yeniden oluşturulan yerleşim bir tahmindir — karşılaştırmak için Üst üste bindir özelliğini kullanın.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_invert_x: 'Yatay bakışı ters çevir',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -60655,6 +60691,15 @@ const ar: Partial<Record<TranslationKey, string>> = {
   ds_fin_above_floor: 'فوق الحد الأدنى',
   ds_fin_above_70: 'هدف 70%+',
   ds_fin_in_band: 'ضمن نطاق 75–85%',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_export_truth_estimated_pictures: 'الأحجام تقريبية: أُعيد بناء المساحة من الصور.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_recon_approx_view: 'محاذاة تقريبية مع كاميرا صورتك (فارق يقارب {{error}}% من ارتفاعها). التخطيط المُعاد بناؤه تقدير — استخدم التراكب للمقارنة.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_invert_x: 'اعكس النظر الأفقي',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -72764,6 +72809,15 @@ const he: Partial<Record<TranslationKey, string>> = {
   ds_fin_above_floor: 'מעל הרצפה',
   ds_fin_above_70: 'יעד 70%+',
   ds_fin_in_band: 'בטווח 75–85%',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_export_truth_estimated_pictures: 'המידות משוערות: המרחב שוחזר מתמונות.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_recon_approx_view: 'מיושר בקירוב למצלמה של התמונה שלך (סטייה של כ-{{error}}% מגובהה). הפריסה המשוחזרת היא הערכה — השתמש ב„שכבה” להשוואה.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_set_invert_x: 'היפוך מבט אופקי',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

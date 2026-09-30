@@ -396,7 +396,7 @@ export function validateReconstruction(
 // ── Following the picture ───────────────────────────────────────────────
 
 /** A fitted camera is trusted to redraw the plan only when it reprojects within this share of the picture's height. */
-const FIT_TRUST = 0.025;
+export const FIT_TRUST = 0.025;
 /** A traced point that lands this far from the reader's own estimate is a mistrace, not a correction. */
 const MAX_SHIFT_M = 3;
 

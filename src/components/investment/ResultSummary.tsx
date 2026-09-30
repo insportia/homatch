@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils';
 import type { Figure } from '@/investment/types';
 import type { AnalysisState } from '@/investment/strategies/definitions';
 import { FigureValue, type FigureKind } from './primitives';
+import { plainInvestmentExplanation } from '@/investment/plainLanguage';
 
 export interface SummaryMetric {
   labelKey: string;
@@ -93,7 +94,7 @@ export function ResultSummary({
   missingLabels: string[];
   currency: string;
 }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
 
   return (
     <div className="hm-invest-panel overflow-hidden">
@@ -137,7 +138,11 @@ export function ResultSummary({
               />
             </p>
             {metric.noteKey ? (
-              <p className="mt-1.5 text-2xs text-muted-foreground">{t(metric.noteKey)}</p>
+              <p className="mt-1.5 text-2xs leading-relaxed text-muted-foreground">{t(metric.noteKey)}</p>
+            ) : plainInvestmentExplanation(metric.labelKey, lang) ? (
+              <p className="mt-1.5 text-2xs leading-relaxed text-muted-foreground">
+                {plainInvestmentExplanation(metric.labelKey, lang)}
+              </p>
             ) : null}
           </div>
         ))}

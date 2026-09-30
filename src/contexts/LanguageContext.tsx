@@ -5,6 +5,7 @@ import { translations } from '@/i18n/translations';
 import type { ContentLocale, OverrideMap } from '@/i18n/appContent';
 import { hasUnfilledHole, interpolate, resolveCopy } from '@/i18n/interpolate';
 import { fetchOverrides } from '@/services/appContent';
+import { investmentCopy } from '@/investment/plainLanguage';
 
 const LANG_STORAGE_KEY = 'homatch_lang';
 const SUPPORTED_LANGUAGES: SupportedLanguage[] = ['en', 'ka', 'ru', 'tr', 'ar', 'he'];
@@ -158,6 +159,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
      */
     const written = overrides[lang as ContentLocale]?.[key];
     const value = bundle?.[key];
+    const productCopy = investmentCopy(key, lang);
     if (value === undefined) {
       if (english[key] === undefined) {
         warnOnce(`unknown key "${key}" — not present even in the English bundle`);
@@ -174,7 +176,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     if (typeof written === 'string' && written.trim() && hasUnfilledHole(interpolate(written, vars))) {
       warnOnce(`app_content override for "${key}" (${lang}) names a placeholder this call site cannot fill — using the shipped string`);
     }
-    return resolveCopy([written?.trim() ? written : undefined, value, english[key]], vars) ?? key;
+    return resolveCopy([written?.trim() ? written : undefined, productCopy, value, english[key]], vars) ?? key;
   }, [lang, overrides]);
 
   return (
@@ -217,11 +219,12 @@ export function LanguageOverride({
        would show an admin the copy they have already replaced, which is the
        one thing a preview must not do. */
     const written = overrides?.[lang as ContentLocale]?.[key];
+    const productCopy = investmentCopy(key, lang);
     /* Same contract as the real provider, including the part where an
        override that cannot be completed loses to the shipped string. A
        preview that rendered braces the live page will not would be lying
        about the change the admin is looking at. */
-    return resolveCopy([written?.trim() ? written : undefined, bundle?.[key], english[key]], vars) ?? key;
+    return resolveCopy([written?.trim() ? written : undefined, productCopy, bundle?.[key], english[key]], vars) ?? key;
   }, [lang, overrides]);
 
   const value: LanguageContextValue = {

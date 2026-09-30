@@ -84,6 +84,12 @@ export interface SurfaceAssignment {
   materialId: string | null;
   color: string | null;
   finish: 'MATTE' | 'SATIN' | 'GLOSS' | null;
+  /**
+   * What the surface's pattern is, when a reading SAW it (herringbone
+   * parquet, tiles…) and no catalogue material says otherwise. Optional:
+   * designs saved before it existed simply have none.
+   */
+  pattern?: 'WOOD_PLANK' | 'WOOD_HERRINGBONE' | 'TILE' | 'STONE' | 'CONCRETE' | 'CARPET' | null;
   locked: boolean;
 }
 

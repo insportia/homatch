@@ -15,6 +15,10 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { applyFinish, patternOfMaterial, type SurfacePattern } from './finishTextures.ts';
 import {
   ceilingSurfaceId, floorSurfaceId, wallSlabPlacement, type SpaceModel, type SpaceRoom,
 } from '@/lib/designStudio/space';
@@ -33,7 +37,7 @@ import {
 } from '@/lib/designStudio/player';
 import { LivingRuntime, type LiveEntry } from './livingRuntime';
 import { roomContaining, wallFrame, type Point } from '@/lib/designStudio/space';
-import { buildProcedural, slotColors } from './procedural';
+import { buildProcedural, setFinishBudget, slotColors } from './procedural';
 
 export type PickTarget =
   | { kind: 'surface'; id: string; roomId: string | null }
@@ -66,9 +70,51 @@ export interface AimHint { role: InteractionRole; open: boolean; actions: Action
 /** The walkthrough's time of day. */
 export type TimeOfDayEnv = 'DAY' | 'SUNSET' | 'EVENING' | 'NIGHT';
 
+/** Skirting board: 7 cm high, 1.2 cm proud of the wall face. */
+const SKIRT_H = 0.07;
+const SKIRT_D = 0.012;
+
+/** A soft darkening under a piece: grounds it on the floor on every tier (no shadow maps needed). */
+let contactTexture: THREE.Texture | null = null;
+let contactGeometry: THREE.PlaneGeometry | null = null;
+function contactShadow(w: number, d: number): THREE.Mesh {
+  if (!contactTexture && typeof document !== 'undefined') {
+    const c = document.createElement('canvas'); c.width = 64; c.height = 64;
+    const ctx = c.getContext('2d');
+    if (ctx) {
+      const g = ctx.createRadialGradient(32, 32, 6, 32, 32, 32);
+      g.addColorStop(0, 'rgba(0,0,0,0.42)'); g.addColorStop(0.6, 'rgba(0,0,0,0.18)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, 64, 64);
+    }
+    contactTexture = new THREE.CanvasTexture(c);
+  }
+  contactGeometry ??= new THREE.PlaneGeometry(1, 1);
+  const m = new THREE.Mesh(contactGeometry, new THREE.MeshBasicMaterial({ map: contactTexture, transparent: true, depthWrite: false, toneMapped: false }));
+  m.rotation.x = -Math.PI / 2;
+  m.position.y = 0.004;
+  m.scale.set(w * 1.18 + 0.12, d * 1.18 + 0.12, 1);
+  m.renderOrder = -1;
+  m.raycast = () => {};
+  m.name = 'contact-shadow';
+  m.userData.decor = true;
+  return m;
+}
+
+/** An object's box from what it is made of (its contact shadow is not the object). */
+function solidBox(node: THREE.Object3D): THREE.Box3 {
+  const box = new THREE.Box3();
+  node.updateMatrixWorld(true);
+  node.traverse((o) => {
+    if ((o as THREE.Mesh).isMesh && !o.userData.decor) box.expandByObject(o, false);
+  });
+  return box;
+}
+
 interface LightRig {
   sun: number; sunColor: THREE.Color; sunPos: THREE.Vector3; hemi: number;
   interior: number; interiorColor: THREE.Color; background: THREE.Color;
+  /** Image-based light (reflections, soft fill), scaled with daylight. */
+  env: number;
 }
 
 /**
@@ -90,6 +136,7 @@ function lightRig(l: { timeOfDay: TimeOfDayEnv; temperature: 'WARM' | 'NEUTRAL' 
     interior: (1 - day) * 1.3 * Math.max(0, Math.min(1, l.interiorIntensity)) + 0.1,
     interiorColor: new THREE.Color(kelvin),
     background: new THREE.Color(bg),
+    env: 0.06 + 0.34 * day,
   };
 }
 
@@ -363,7 +410,24 @@ export class SceneController {
     this.sun.shadow.mapSize.set(this.quality.shadowMapSize, this.quality.shadowMapSize);
     this.sun.shadow.bias = -0.0005;
     this.scene.add(this.hemi, this.sun, this.sun.target, this.interior);
+    // A neutral studio room as image-based light: wood, fabric and glass get
+    // real reflections and soft fill instead of flat plastic shading.
+    try {
+      const pmrem = new THREE.PMREMGenerator(this.renderer);
+      this.envTexture = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+      pmrem.dispose();
+      this.scene.environment = this.envTexture;
+      this.scene.environmentIntensity = 0.4;
+    } catch { /* no environment on a context that cannot build one */ }
+    const aniso = this.quality.tier === 'HIGH' ? Math.min(8, this.renderer.capabilities.getMaxAnisotropy()) : this.quality.tier === 'BALANCED' ? 4 : 1;
+    this.finishSize = Math.min(this.quality.maxTextureSize, this.quality.tier === 'LOW' ? 256 : 512);
+    this.finishAniso = aniso;
+    setFinishBudget(this.finishSize, aniso);
   }
+
+  private envTexture: THREE.Texture | null = null;
+  private finishSize = 512;
+  private finishAniso = 1;
 
   /**
    * The design's own lighting (time of day, interior light colour). In the
@@ -466,6 +530,7 @@ export class SceneController {
     const bodyMat = new THREE.MeshStandardMaterial({ color: TONE.wallBody, roughness: 0.95 });
     const topMat = new THREE.MeshStandardMaterial({ color: TONE.wallTop, roughness: 1 });
     const edgeMat = new THREE.LineBasicMaterial({ color: TONE.wallEdge, transparent: true, opacity: 0.55 });
+    const skirting: THREE.BufferGeometry[] = [];
     for (const wall of space.walls) {
       const parts: THREE.Object3D[] = [];
       this.wallParts.set(wall.id, { start: wall.mesh.start, end: wall.mesh.end, meshes: parts });
@@ -493,7 +558,17 @@ export class SceneController {
       for (const seg of wall.segments) {
         const pieces = clipSlabs(slabs, seg.from, seg.to);
         const offset = (wall.mesh.thicknessM / 2 + 0.003) * (seg.side === 'R' ? 1 : -1);
+        const indoor = !space.rooms.find((r) => r.id === seg.roomId)?.outdoor;
         for (const piece of pieces) {
+          // A skirting board where an indoor wall face meets the floor (not across a doorway).
+          if (indoor && piece.v < 0.01 && piece.lengthM > 0.08) {
+            const place = wallSlabPlacement(wall.mesh, piece.u, 0, piece.lengthM, SKIRT_H);
+            const out = offset + (seg.side === 'R' ? 1 : -1) * (SKIRT_D / 2);
+            const g = new RoundedBoxGeometry(piece.lengthM, SKIRT_H, SKIRT_D, 1, 0.003);
+            g.rotateY(place.rotationY);
+            g.translate(place.position.x + Math.sin(place.rotationY) * out, SKIRT_H / 2, place.position.z + Math.cos(place.rotationY) * out);
+            skirting.push(g);
+          }
           const plane = new THREE.PlaneGeometry(piece.lengthM, piece.heightM);
           const face = new THREE.Mesh(plane, surfaceMaterial(seg.surfaceId, TONE.wallFace));
           const place = wallSlabPlacement(wall.mesh, piece.u, piece.v, piece.lengthM, piece.heightM);
@@ -510,6 +585,18 @@ export class SceneController {
           register(seg.surfaceId, face);
           parts.push(face);
         }
+      }
+    }
+
+    if (skirting.length) {
+      const merged = mergeGeometries(skirting, false);
+      skirting.forEach((g) => g.dispose());
+      if (merged) {
+        const mesh = new THREE.Mesh(this.track(merged), this.track(new THREE.MeshStandardMaterial({ color: 0xf1eee8, roughness: 0.45 })));
+        mesh.receiveShadow = this.quality.shadows;
+        mesh.raycast = () => {};
+        mesh.userData.decor = true;
+        this.spaceGroup.add(mesh);
       }
     }
 
@@ -662,7 +749,7 @@ export class SceneController {
       for (const [id, node] of this.objectsById) {
         if (!node.visible) continue;
         node.updateMatrixWorld(true);
-        const box = new THREE.Box3().setFromObject(node);
+        const box = solidBox(node);
         if (!box.isEmpty()) this.pickBoxes.set(id, box);
       }
     }
@@ -745,7 +832,7 @@ export class SceneController {
     } else if (target.kind === 'object') {
       const obj = this.objectsById.get(target.id);
       if (obj) {
-        const box = new THREE.Box3().setFromObject(obj);
+        const box = solidBox(obj);
         const helper = new THREE.Box3Helper(box, new THREE.Color(color));
         (helper.material as THREE.LineBasicMaterial).depthTest = false;
         helper.renderOrder = 10;
@@ -828,6 +915,18 @@ export class SceneController {
       m.color.set(color ?? (m.userData.baseColor as number));
       m.roughness = finishRoughness ?? mat?.pbr.roughness ?? 0.9;
       m.metalness = mat?.pbr.metalness ?? 0;
+      // A floor wears its pattern: the chosen material's own kind, else what
+      // the reading saw (herringbone, tile…). No pattern is ever invented.
+      if (id.startsWith('floor:')) {
+        const own = mat ? patternOfMaterial(mat, 'FLOOR') : null;
+        const seen = (a?.pattern ?? null) as SurfacePattern | null;
+        // What the reading saw wins while the material is of the same family
+        // (herringbone oak stays herringbone); a different material brings its own.
+        const family = (x: SurfacePattern) => (x.startsWith('WOOD') ? 'WOOD' : x);
+        const pattern: SurfacePattern | null = seen && (!own || family(own) === family(seen)) ? seen : own ?? seen;
+        applyFinish(m, pattern, this.finishSize, true, this.finishAniso);
+        if (pattern) m.roughness = finishRoughness ?? mat?.pbr.roughness ?? m.roughness;
+      }
       m.needsUpdate = true;
     }
 
@@ -858,6 +957,7 @@ export class SceneController {
   private buildObject(obj: ObjectInstance, asset: CatalogAsset | undefined): THREE.Object3D {
     if (asset?.procedural) {
       const node = buildProcedural(asset.procedural.kind, asset, slotColors(asset, obj.materialVariant, obj.colorOverride));
+      if (asset.placement === 'FLOOR') node.add(contactShadow(asset.widthM, asset.depthM));
       // A concept block's moving parts come with it; a model declares them.
       const specs = validateInteractions(node.userData.interactions ?? asset.interactions);
       this.living.register(`obj:${obj.instanceId}`, node, specs, asset.capabilities, { objectId: obj.instanceId });
@@ -894,7 +994,7 @@ export class SceneController {
     if (this.walk?.seated?.objectId === id) this.standUp();
     node.traverse((o) => {
       const mesh = o as THREE.Mesh;
-      mesh.geometry?.dispose();
+      if (!o.userData.decor) mesh.geometry?.dispose(); // the contact shadow's plane is shared
       const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
       if (Array.isArray(mat)) mat.forEach((x) => x.dispose()); else mat?.dispose();
     });
@@ -1744,6 +1844,7 @@ export class SceneController {
       sun: this.sun.intensity, sunColor: this.sun.color.clone(), sunPos: this.sun.position.clone(),
       hemi: this.hemi.intensity, interior: this.interior.intensity, interiorColor: this.interior.color.clone(),
       background: (this.scene.background as THREE.Color | null)?.clone() ?? new THREE.Color(TONE.background),
+      env: this.scene.environmentIntensity,
     };
   }
 
@@ -1755,6 +1856,7 @@ export class SceneController {
     this.interior.intensity = r.interior;
     this.interior.color.copy(r.interiorColor);
     this.scene.background = r.background.clone();
+    this.scene.environmentIntensity = r.env;
   }
 
   private stepEnvironment(now: number): boolean {
@@ -1770,6 +1872,7 @@ export class SceneController {
       interior: tw.from.interior + (tw.to.interior - tw.from.interior) * k,
       interiorColor: tw.from.interiorColor.clone().lerp(tw.to.interiorColor, k),
       background: tw.from.background.clone().lerp(tw.to.background, k),
+      env: tw.from.env + (tw.to.env - tw.from.env) * k,
     });
     if (t >= 1) this.envTween = null;
     return true;
@@ -2344,6 +2447,7 @@ export class SceneController {
     this.clearGroup(this.objectsGroup);
     this.clearGroup(this.fixturesGroup);
     this.living.dispose();
+    this.envTexture?.dispose();
     for (const d of this.disposables) d.dispose();
     this.listeners.clear();
     this.renderer.dispose();

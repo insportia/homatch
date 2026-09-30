@@ -681,6 +681,21 @@ async function checkpoint11(browser) {
   check('build: floors and walls dressed as seen', Object.keys(version.state.surfaces).length > 10);
   check('build: the reading is marked built, pointing at what was built', rec.status === 'BUILT' && rec.built_source_id === source.id && rec.built_version_id === version.id);
   await page.screenshot({ path: path.join(OUT, 'cp11-built-1440-en.png') });
+  // What the real acceptance design costs to draw (HIGH tier, whole home in view).
+  {
+    const cost = await scene(page, (c) => {
+      c.renderer.info.autoReset = false;
+      c.renderer.info.reset();
+      c.renderer.render(c.scene, c.camera);
+      const i = c.renderer.info;
+      const out = { calls: i.render.calls, triangles: i.render.triangles, geometries: i.memory.geometries, textures: i.memory.textures };
+      c.renderer.info.autoReset = true;
+      return out;
+    });
+    console.log(`  perf  acceptance design: ${JSON.stringify(cost)}`);
+    check('perf: the acceptance home draws within budget (≤ 900 draw calls, ≤ 1.2 M triangles, ≤ 64 textures)',
+      cost.calls <= 900 && cost.triangles <= 1_200_000 && cost.textures <= 64, JSON.stringify(cost));
+  }
 
   // ── 4. Reference tools.
   await page.getByTestId('ds-reference').click();

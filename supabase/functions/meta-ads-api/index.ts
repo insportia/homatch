@@ -17,13 +17,13 @@ import { hashIdentifierRows, csvSafeCell, normalizeEmail, normalizePhone } from 
 import { getPaymentProvider } from '../_shared/payment_provider.ts';
 import {
   metaMode, graph, graphAll, MetaApiError, oauthStartUrl, mockExternalId, capabilityMatrix, signOAuthState,
-  sealToken, scrubText, REQUIRED_SCOPES_BY_GOAL,
+  sealToken, openToken, scrubText, REQUIRED_SCOPES_BY_GOAL,
 } from '../_shared/metaAds.ts';
 import { ingestLead } from '../_shared/metaLeads.ts';
 import { callLlm, llmAvailable } from '../_shared/comm/llm.ts';
 import {
   loadSettings, userToken, selectedAsset, pageToken, strategyInputFor, limitsOf, configFingerprint,
-  runPreflight, publishCampaign, syncCampaign, settleCampaign,
+  runPreflight, publishCampaign, syncCampaign, propertyAuthorized,
 } from './engine.ts';
 
 const CORS = {
@@ -54,9 +54,11 @@ Deno.serve(async (req) => {
   /* ── SCHEDULED MAINTENANCE (cron token, no user) ─────────────────────── */
   const cronToken = req.headers.get('x-cron-token');
   if (cronToken) {
-    const { data: tokenRow } = await sb.from('admin_settings').select('value').eq('key', 'meta_ads_maintenance_token').maybeSingle();
-    const expected = String(tokenRow?.value ?? '').replace(/^"|"$/g, '');
-    if (!expected || cronToken !== expected || action !== 'maintenance') return json({ error: 'Forbidden' }, 403);
+    /* The expected value lives in Supabase Vault, never in admin_settings:
+       the database compares it (service-role only RPC), so no copy of the
+       secret is ever read into this function or any admin screen. */
+    const { data: tokenOk } = await sb.rpc('meta_ads_maintenance_token_ok', { p_token: cronToken });
+    if (tokenOk !== true || action !== 'maintenance') return json({ error: 'Forbidden' }, 403);
     return json(await maintenance(sb, mode));
   }
 
@@ -78,24 +80,39 @@ Deno.serve(async (req) => {
       /* ── STATUS: the one call the workspace and builder boot from ───── */
       case 'status': {
         const [{ data: conn }, { data: assets }, { data: wallet }] = await Promise.all([
-          sb.from('meta_connections').select('status,granted_scopes,declined_scopes,token_expires_at,last_checked_at,meta_user_external_id').eq('user_id', uid).maybeSingle(),
+          sb.from('meta_connections').select('id,status,granted_scopes,declined_scopes,token_expires_at,last_checked_at,meta_user_external_id,oauth_nonce,oauth_started_at,last_error').eq('user_id', uid).maybeSingle(),
           sb.from('meta_assets').select('id,kind,external_id,name,selected,status,parent_external_id,capabilities').eq('user_id', uid).order('kind').order('name'),
           sb.from('meta_wallet_balances').select('*').eq('user_id', uid).maybeSingle(),
         ]);
         const granted: string[] = conn?.granted_scopes ?? [];
         const missingScopes = [...new Set(Object.values(REQUIRED_SCOPES_BY_GOAL).flat())].filter((s) => !granted.includes(s));
         const expiresAt = conn?.token_expires_at ? Date.parse(conn.token_expires_at) : NaN;
-        const health = !conn || conn.status === 'DISCONNECTED' ? 'NOT_CONNECTED'
+        /* "Connected" is a claim about a usable credential, not about a row:
+           the stored token must exist and open with this deployment's key. */
+        let tokenUsable = false;
+        if (conn?.status === 'CONNECTED') {
+          const { data: tok } = await sb.from('meta_tokens').select('access_token').eq('connection_id', conn.id).maybeSingle();
+          tokenUsable = !!(tok && await openToken(tok.access_token));
+        }
+        const startedAt = conn?.oauth_started_at ? Date.parse(conn.oauth_started_at) : NaN;
+        const connecting = !!conn?.oauth_nonce && Number.isFinite(startedAt) && Date.now() - startedAt < 15 * 60_000;
+        const adAccounts = (assets ?? []).filter((a: any) => a.kind === 'AD_ACCOUNT');
+        const health = !conn || conn.status === 'DISCONNECTED' || (!conn.status && !connecting) ? 'NOT_CONNECTED'
+          : conn.status !== 'CONNECTED' && connecting ? 'CONNECTING'
           : conn.status === 'EXPIRED' || (Number.isFinite(expiresAt) && expiresAt < Date.now()) ? 'TOKEN_EXPIRED'
           : conn.status === 'REVOKED' ? 'REVOKED'
           : conn.status === 'ERROR' ? 'ERROR'
+          : !tokenUsable ? 'RECONNECT_REQUIRED'
           : missingScopes.length ? 'PERMISSION_MISSING'
+          : (assets ?? []).length > 0 && adAccounts.length === 0 ? 'NO_ELIGIBLE_AD_ACCOUNT'
           : 'CONNECTED';
         return json({
           mode,
           connection: conn
             ? { status: conn.status, health, granted_scopes: granted, missing_scopes: missingScopes,
-              token_expires_at: conn.token_expires_at, last_checked_at: conn.last_checked_at }
+              token_expires_at: conn.token_expires_at, last_checked_at: conn.last_checked_at,
+              // A named reason only (e.g. TOKEN_ENCRYPTION_NOT_CONFIGURED), never a raw error.
+              error_reason: typeof conn.last_error === 'string' && /^[A-Z_]{3,64}$/.test(conn.last_error) ? conn.last_error : null }
             : { status: 'DISCONNECTED', health: 'NOT_CONNECTED', granted_scopes: [], missing_scopes: [] },
           // Asset capabilities carry account status/currency, never a token.
           assets: (assets ?? []).map((a: any) => ({ ...a, capabilities: a.capabilities ?? {} })),
@@ -116,6 +133,11 @@ Deno.serve(async (req) => {
       case 'oauth_start': {
         await sb.from('meta_funnel_events').insert({ event: 'meta_ads_authenticated', user_id: uid });
         if (mode === 'MOCK') return json({ mode, mockConnect: true });
+        // Refuse BEFORE sending the owner through Meta's dialog: a token that
+        // cannot be stored encrypted would be thrown away at the callback.
+        if (!Deno.env.get('META_TOKEN_ENCRYPTION_KEY')) {
+          return json({ error: 'TOKEN_ENCRYPTION_NOT_CONFIGURED', code: 'TOKEN_ENCRYPTION_NOT_CONFIGURED' }, 409);
+        }
         const nonce = crypto.randomUUID();
         await sb.from('meta_connections').upsert(
           { user_id: uid, oauth_nonce: nonce, oauth_started_at: new Date().toISOString() },
@@ -339,6 +361,16 @@ Deno.serve(async (req) => {
         if (c.launch_idempotency_key === idem && c.external_campaign_id) {
           return json({ ok: true, already: true, status: c.status, mode });
         }
+        /* One launch intent, one fee. A key that already carried a fee (a
+           failed attempt, refunded) can never be reused: its ledger rows are
+           unique, so a second attempt under it would go live with no fee. */
+        {
+          const { data: spent } = await sb.from('meta_ads_ledger').select('id').in('idempotency_key', [`${idem}:fee`, `${idem}:reserve`]).limit(1);
+          if ((spent ?? []).length > 0) return json({ error: 'IDEMPOTENCY_KEY_USED', code: 'IDEMPOTENCY_KEY_USED', rotateKey: true }, 409);
+        }
+        if (!(await propertyAuthorized(sb, uid, c.property_id))) {
+          return json({ error: 'PROPERTY_NOT_OWNED', code: 'PROPERTY_NOT_OWNED' }, 403);
+        }
         if (c.status !== 'READY' || c.preflight?.status !== 'READY') {
           return json({ error: 'NOT_READY', code: 'NOT_READY', status: c.status }, 409);
         }
@@ -379,6 +411,14 @@ Deno.serve(async (req) => {
           ]) {
             if (row.amount_cents === 0) continue;
             const r = await sb.from('meta_ads_ledger').insert({ user_id: uid, currency: c.currency, campaign_id: c.id, ...row });
+            if (r.error && String(r.error.message).includes('INSUFFICIENT_FUNDS')) {
+              /* The database refused the debit (per-user lock + balance check):
+                 a concurrent launch got there first. Give back whatever this
+                 attempt already took and stop before anything reaches Meta. */
+              await refundAttempt(sb, c, idem);
+              await sb.from('meta_campaigns').update({ status: 'PAYMENT_REQUIRED', launch_idempotency_key: null, launched_at: null }).eq('id', c.id);
+              return json({ error: 'INSUFFICIENT_FUNDS', code: 'INSUFFICIENT_FUNDS', totals, requiredCents: charge.requiredCents, budgetBilling: settings.budgetBilling, rotateKey: true }, 402);
+            }
             if (r.error && !String(r.error.message).includes('duplicate')) throw r.error;
           }
         }
@@ -406,15 +446,7 @@ Deno.serve(async (req) => {
           await audit(sb, uid, 'META_CAMPAIGN_LAUNCH', c.id, { totals, charge, budgetBilling: settings.budgetBilling, mode, externalCampaignId: external.campaignId });
           return json({ ok: true, status: after.status ?? 'SUBMITTED', totals, charge, budgetBilling: settings.budgetBilling, mode, externalCampaignId: external.campaignId });
         } catch (err) {
-          if (mode === 'REAL') {
-            for (const row of [
-              { entry_type: 'RELEASE', amount_cents: charge.reserveCents, idempotency_key: `${idem}:release` },
-              { entry_type: 'REFUND', amount_cents: charge.feeCents, idempotency_key: `${idem}:feerefund` },
-            ]) {
-              if (row.amount_cents === 0) continue;
-              await sb.from('meta_ads_ledger').insert({ user_id: uid, currency: c.currency, campaign_id: c.id, ...row });
-            }
-          }
+          if (mode === 'REAL') await refundAttempt(sb, c, idem);
           const norm = err instanceof MetaApiError ? err.normalized : null;
           await sb.from('meta_campaigns').update({
             status: 'FAILED', launch_idempotency_key: null, external_campaign_id: null,
@@ -445,7 +477,8 @@ Deno.serve(async (req) => {
         // Resume is not "ACTIVE" until Meta says so: set review, then read Meta.
         await sb.from('meta_campaigns').update({ status: to === 'ACTIVE' ? 'META_REVIEW' : to }).eq('id', c.id);
         let result: Record<string, unknown> = { status: to === 'ACTIVE' ? 'META_REVIEW' : to };
-        if (mode === 'REAL' && launched && to !== 'ARCHIVED') {
+        // Archive syncs as well: the final spend is what settles the fee.
+        if (mode === 'REAL' && launched && !String(c.external_campaign_id).startsWith('mock_')) {
           const { data: fresh } = await sb.from('meta_campaigns').select('*').eq('id', c.id).single();
           result = await syncCampaign(sb, fresh, mode);
         }
@@ -719,7 +752,7 @@ async function maintenance(sb: any, mode: 'REAL' | 'MOCK') {
       await sb.from('meta_campaigns').update({ status: 'SUBMITTED' }).eq('id', c.id);
       try { await syncCampaign(sb, { ...c, status: 'SUBMITTED' }, mode); } catch { /* next pass */ }
     } else {
-      await settleCampaign(sb, c, 0);
+      if (c.launch_idempotency_key) await refundAttempt(sb, c, c.launch_idempotency_key);
       await sb.from('meta_campaigns').update({ status: 'FAILED', launch_idempotency_key: null, last_error: { key: 'meta_err_generic', code: 'LAUNCH_INTERRUPTED' } }).eq('id', c.id);
     }
     report.recovered += 1;
@@ -727,7 +760,7 @@ async function maintenance(sb: any, mode: 'REAL' | 'MOCK') {
   // 3. Signed lead webhooks that failed to ingest (owner token hiccup etc.).
   const { data: failed } = await sb.from('meta_webhook_events').select('id,payload,error')
     .eq('signature_ok', true).is('processed_at', null).not('error', 'is', null)
-    .gt('created_at', new Date(Date.now() - 3 * 86_400_000).toISOString()).limit(25);
+    .gt('received_at', new Date(Date.now() - 3 * 86_400_000).toISOString()).limit(25);
   for (const ev of failed ?? []) {
     if (ev.payload?.field !== 'leadgen' || !ev.payload?.value?.leadgen_id || ev.error === 'LEAD_SYNC_DISABLED') continue;
     try {
@@ -776,4 +809,28 @@ async function copyContext(sb: any, uid: string, c: any): Promise<Record<string,
     }
   }
   return ctx;
+}
+
+/* ── ATTEMPT REFUND ──────────────────────────────────────────────────────
+   A launch attempt that did not reach Meta gives back exactly what IT took,
+   under keys derived from its own idempotency key: the campaign-level
+   settlement keys stay free for the attempt that eventually goes live. */
+async function refundAttempt(sb: any, c: any, idem: string) {
+  const { data: rows } = await sb.from('meta_ads_ledger').select('entry_type,amount_cents,idempotency_key')
+    .in('idempotency_key', [`${idem}:reserve`, `${idem}:fee`]);
+  const took = (kind: string) => -(rows ?? []).filter((r: any) => r.entry_type === kind).reduce((n: number, r: any) => n + Number(r.amount_cents), 0);
+  for (const row of [
+    { entry_type: 'RELEASE', amount_cents: took('RESERVE'), idempotency_key: `${idem}:release`, note: 'launch did not reach Meta' },
+    { entry_type: 'REFUND', amount_cents: took('HOMATCH_FEE'), idempotency_key: `${idem}:feerefund`, note: 'launch did not reach Meta' },
+  ]) {
+    if (row.amount_cents <= 0) continue;
+    let { error } = await sb.from('meta_ads_ledger').insert({ user_id: c.user_id, currency: c.currency, campaign_id: c.id, ...row });
+    if (error && !String(error.message).includes('duplicate')) {
+      ({ error } = await sb.from('meta_ads_ledger').insert({ user_id: c.user_id, currency: c.currency, campaign_id: c.id, ...row }));
+      if (error && !String(error.message).includes('duplicate')) {
+        // Never silent: the money owed back is recorded for support.
+        await audit(sb, c.user_id, 'META_REFUND_FAILED', c.id, { key: row.idempotency_key, cents: row.amount_cents });
+      }
+    }
+  }
 }

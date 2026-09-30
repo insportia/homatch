@@ -34,7 +34,8 @@ export interface MetaAsset {
 }
 /** One customer-facing connection state, derived server-side. */
 export type MetaConnectionHealth =
-  | 'NOT_CONNECTED' | 'CONNECTED' | 'PERMISSION_MISSING' | 'TOKEN_EXPIRED' | 'REVOKED' | 'ERROR';
+  | 'NOT_CONNECTED' | 'CONNECTING' | 'CONNECTED' | 'PERMISSION_MISSING' | 'NO_ELIGIBLE_AD_ACCOUNT'
+  | 'TOKEN_EXPIRED' | 'REVOKED' | 'RECONNECT_REQUIRED' | 'ERROR';
 export interface MetaWallet {
   available_cents: number; reserved_cents: number; spent_cents: number;
   fees_cents: number; deposited_cents: number; currency: string;
@@ -42,7 +43,7 @@ export interface MetaWallet {
 export interface MetaStatus {
   mode: 'REAL' | 'MOCK';
   connection: {
-    status: string; health?: MetaConnectionHealth; granted_scopes?: string[]; missing_scopes?: string[];
+    status: string; health?: MetaConnectionHealth; granted_scopes?: string[]; missing_scopes?: string[]; error_reason?: string | null;
     token_expires_at?: string | null; last_checked_at?: string | null;
   };
   assets: MetaAsset[];

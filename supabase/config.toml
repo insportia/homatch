@@ -167,7 +167,8 @@ verify_jwt = false
 # resolves the user from the Authorization header with auth.getUser and
 # answers 401 without one), and the homatch-meta-ads-maintenance cron, which
 # carries no user JWT and is accepted ONLY for action=maintenance with the
-# private meta_ads_maintenance_token from admin_settings. The gateway check
+# maintenance token, which lives in Supabase Vault and is checked through the
+# service-role-only RPC meta_ads_maintenance_token_ok. The gateway check
 # would reject the cron before the function could authenticate it.
 [functions.meta-ads-api]
 verify_jwt = false

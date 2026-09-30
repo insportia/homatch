@@ -115,7 +115,10 @@ async function recordProviderHealth(
     .eq('provider', 'TELEGRAM').maybeSingle();
   const patch = {
     provider: 'TELEGRAM',
-    status: outcome.ok ? 'HEALTHY' : 'DEGRADED',
+    /* Missing credentials (NOT_CONFIGURED) or a worker switched off (DISABLED)
+       are setup steps the owner has not taken yet, not an outage; Admin shows
+       them neutrally. */
+    status: outcome.ok ? 'HEALTHY' : outcome.error === 'NOT_CONFIGURED' || outcome.error === 'DISABLED' ? outcome.error : 'DEGRADED',
     last_tested_at: now,
     ...(outcome.ok ? { last_success_at: now, last_error: null } : { last_error: String(outcome.error ?? '').slice(0, 200) }),
     latency_ms: Math.round(outcome.latencyMs),
@@ -161,7 +164,7 @@ Deno.serve(async (req: Request) => {
      * The operator switch. A scheduled tick with Telegram off does nothing and
      * says so; `force` is the operator proving behaviour by hand.
      */
-    if (!settings.telegramEnabled && !force) {
+    if (!settings.telegramEnabled && !force && action !== 'health') {
       return json({ success: true, skipped: 'TELEGRAM_DISCOVERY_DISABLED', mode: settings.telegramMode, elapsedMs: Date.now() - started });
     }
     /* The schedule has its own switch on top: Telegram may be on for campaigns

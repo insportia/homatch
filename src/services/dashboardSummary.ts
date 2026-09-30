@@ -14,6 +14,7 @@
 import { getActivityEvents, getMatches, getProperties } from '@/services/api';
 import { getLatestProgressForProperties, getUserMatchSummary, type LiveMatchingJob } from '@/services/matchingProgress';
 import { listVerifyHistory } from '@/services/researchJobs';
+import { isHistoryMatch } from '@/matching/currentDemand';
 import type { ActivityEvent, Match, Property, ResearchJobRecord } from '@/types/types';
 
 /** A match plus the property it belongs to, so the card can link to both. */
@@ -93,6 +94,9 @@ async function loadTopMatches(properties: Property[], topPropertyId: string | nu
       return property ? { match, property } : null;
     })
     .filter((m): m is DashboardMatch => m !== null)
+    /* Top matches are current demand only — history (outside the active
+       window) is never presented as a live opportunity. */
+    .filter(m => !isHistoryMatch(m.match))
     .sort((a, b) => b.match.match_score - a.match.match_score)
     .slice(0, limit);
 }

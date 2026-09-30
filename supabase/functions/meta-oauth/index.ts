@@ -15,7 +15,7 @@
 //   connection becomes REVOKED and the stored token is deleted.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
-  exchangeCodeForToken, metaMode, graph, verifyOAuthState, sealToken, parseSignedRequest, scrubText,
+  exchangeCodeForToken, metaMode, graph, verifyOAuthState, sealToken, parseSignedRequest, scrubText, TokenEncryptionMissingError,
 } from '../_shared/metaAds.ts';
 
 const HOME = Deno.env.get('META_OAUTH_RETURN') ?? 'https://www.homatch.live/outreach/meta';
@@ -65,18 +65,25 @@ Deno.serve(async (req) => {
     const declined = ((grantedRes.data as Array<{ status?: string; permission?: string }>) ?? [])
       .filter((p) => p.status === 'declined').map((p) => String(p.permission));
     const expiresAt = expiresIn ? new Date(Date.now() + expiresIn * 1000).toISOString() : null;
+    /* Sealed BEFORE the connection says CONNECTED: a credential that cannot
+       be stored safely must never leave a "Connected" row behind. */
+    const sealed = await sealToken(token);
     await sb.from('meta_connections').update({
       status: 'CONNECTED', meta_user_external_id: String(meRes.id),
       granted_scopes: granted, declined_scopes: declined, token_expires_at: expiresAt,
       last_checked_at: new Date().toISOString(), last_error: null,
     }).eq('id', conn.id);
     await sb.from('meta_tokens').upsert({
-      connection_id: conn.id, access_token: await sealToken(token), expires_at: expiresAt,
+      connection_id: conn.id, access_token: sealed, expires_at: expiresAt,
       updated_at: new Date().toISOString(),
     });
     await sb.from('meta_funnel_events').insert({ event: 'meta_connected', user_id: state.uid });
     return redirect(`${HOME}?tab=connections&connect=ok`);
   } catch (err) {
+    if (err instanceof TokenEncryptionMissingError) {
+      await sb.from('meta_connections').update({ status: 'ERROR', last_error: 'TOKEN_ENCRYPTION_NOT_CONFIGURED' }).eq('id', conn.id);
+      return redirect(`${HOME}?tab=connections&connect=encryption_missing`);
+    }
     console.error('[meta-oauth] exchange failed', scrubText(err instanceof Error ? err.message : String(err)));
     await sb.from('meta_connections').update({ status: 'ERROR', last_error: 'OAUTH_EXCHANGE_FAILED' }).eq('id', conn.id);
     return redirect(`${HOME}?tab=connections&connect=error`);

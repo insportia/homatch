@@ -10,7 +10,7 @@
 // never message text, never a token, never a Telegram credential (those exist
 // only in the Railway worker's variables and are not in the database).
 import React, { useCallback, useEffect, useState } from 'react';
-import { Loader2, RefreshCw, RotateCcw, Square } from 'lucide-react';
+import { Activity, Loader2, RefreshCw, RotateCcw, Square } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -20,9 +20,13 @@ import { cn } from '@/lib/utils';
 import { intlLocaleFor } from '@/components/workspace/primitives';
 import { statusLabel } from '@/components/matching/MatchingJobProgress';
 import {
-  DISCOVERY_SWITCHES, getDiscoveryOverview, retryCampaignSources, setDiscoverySwitch, settingOn, stopCampaignJob,
+  DISCOVERY_SWITCHES, getDiscoveryOverview, retryCampaignSources, setDiscoverySwitch, settingOn, stopCampaignJob, testTelegramHealth,
   type DiscoveryOverview, type DiscoverySwitch,
 } from '@/services/adminDiscovery';
+
+/* Railway worker variable NAMES (never values) — invariant identifiers, not copy. */
+const TELEGRAM_CREDENTIAL_VARS = 'TELEGRAM_API_ID · TELEGRAM_API_HASH · TELEGRAM_SESSION';
+const TELEGRAM_ENABLE_VAR = 'TELEGRAM_ENABLED=true';
 
 const RUNNING = new Set(['queued', 'analysing_property', 'generating_queries', 'searching_sources',
   'collecting_results', 'normalizing', 'deduplicating', 'classifying', 'ranking']);
@@ -82,7 +86,23 @@ export default function AdminDiscoveryPage() {
 
   const policy = (data?.settings.discovery_freshness_policy ?? {}) as { activeMaxDays?: number };
   const tg = data?.telegram_health ?? null;
-  const tgTone = !tg ? 'warn' : tg.last_error ? 'bad' : 'ok';
+  /* Not configured is a setup step the owner has not taken, not an outage. */
+  const tgNotConfigured = tg?.status === 'NOT_CONFIGURED';
+  const tgWorkerOff = tg?.status === 'DISABLED';
+  const tgTone = !tg || tgNotConfigured || tgWorkerOff ? undefined : tg.last_error ? 'bad' : 'ok';
+  const tgEnabled = settingOn(data?.settings.telegram_discovery_enabled);
+  const testTelegram = async () => {
+    setBusy('tg-health');
+    try {
+      const r = await testTelegramHealth();
+      if (r.healthy) toast.success(t('admin_disc_tg_ok'));
+      else if (r.error === 'NOT_CONFIGURED') toast.info(t('admin_disc_tg_not_configured'));
+      else if (r.error === 'DISABLED') toast.info(t('admin_disc_tg_worker_off'));
+      else toast.error(t('admin_disc_tg_error'));
+      await load();
+    } catch (e) { toast.error(e instanceof Error ? e.message : t('admin_disc_action_failed')); }
+    finally { setBusy(null); }
+  };
   const openQueue = (data?.queue ?? []).filter((q) => ['PENDING', 'PROCESSING', 'RETRY_WAIT'].includes(q.status))
     .reduce((n, q) => n + q.jobs, 0);
 
@@ -108,7 +128,7 @@ export default function AdminDiscoveryPage() {
             <Kpi label={t('admin_disc_kpi_d30')} value={data.current_demand.d30} />
             <Kpi label={t('admin_disc_kpi_pending')} value={data.pending_classification} tone={data.pending_classification > 200 ? 'warn' : undefined} />
             <Kpi label={t('admin_disc_kpi_queue')} value={openQueue} />
-            <Kpi label={t('admin_disc_kpi_telegram')} value={!tg ? t('admin_disc_tg_never') : tg.last_error ? t('admin_disc_tg_error') : t('admin_disc_tg_ok')} tone={tgTone} />
+            <Kpi label={t('admin_disc_kpi_telegram')} value={!tg ? t('admin_disc_tg_never') : tgNotConfigured ? t('admin_disc_tg_not_configured') : tgWorkerOff ? t('admin_disc_tg_worker_off') : tg.last_error ? t('admin_disc_tg_error') : t('admin_disc_tg_ok')} tone={tgTone} />
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
@@ -136,7 +156,31 @@ export default function AdminDiscoveryPage() {
             </Panel>
 
             <Panel title={t('admin_disc_telegram')}>
-              {tg ? (
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  <dt className="text-muted-foreground">{t('admin_disc_tg_configured')}</dt>
+                  <dd data-tg-configured>{!tg ? t('admin_disc_tg_unknown') : tgNotConfigured ? t('admin_disc_tg_no') : t('admin_disc_tg_yes')}</dd>
+                  <dt className="text-muted-foreground">{t('admin_disc_tg_enabled')}</dt>
+                  <dd>{tgEnabled ? t('admin_disc_tg_yes') : t('admin_disc_tg_no')}</dd>
+                </dl>
+                <Button variant="outline" size="sm" onClick={() => void testTelegram()} disabled={busy !== null} className="gap-1.5">
+                  {busy === 'tg-health' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Activity className="h-3.5 w-3.5" />}{t('admin_disc_tg_test')}
+                </Button>
+              </div>
+              {(!tg || tgNotConfigured || tgWorkerOff) && (
+                <div className="mb-3 rounded-lg border border-border bg-muted/40 p-3 text-xs leading-relaxed text-muted-foreground" data-tg-setup>
+                  <p className="font-medium text-foreground">{t('admin_disc_tg_setup_title')}</p>
+                  <p className="mt-1">{t('admin_disc_tg_setup_d')}</p>
+                  <ol className="mt-2 list-decimal space-y-0.5 ps-4">
+                    <li>{t('admin_disc_tg_step_credentials')} <code dir="ltr" className="text-2xs">{TELEGRAM_CREDENTIAL_VARS}</code></li>
+                    <li>{t('admin_disc_tg_step_enable')} <code dir="ltr" className="text-2xs">{TELEGRAM_ENABLE_VAR}</code></li>
+                    <li>{t('admin_disc_tg_step_health')}</li>
+                    <li>{t('admin_disc_tg_step_test')}</li>
+                    <li>{t('admin_disc_tg_step_schedule')}</li>
+                  </ol>
+                </div>
+              )}
+              {tg && !tgNotConfigured && !tgWorkerOff ? (
                 <dl className="grid grid-cols-2 gap-2 text-xs">
                   <dt className="text-muted-foreground">{t('admin_disc_tg_last_ok')}</dt>
                   <dd className="text-end">{when(tg.last_success_at, locale)}</dd>
@@ -147,7 +191,7 @@ export default function AdminDiscoveryPage() {
                   {tg.last_error && (<><dt className="text-muted-foreground">{t('admin_disc_tg_error')}</dt>
                     <dd className="break-words text-end text-destructive">{tg.last_error.split(':')[0]}</dd></>)}
                 </dl>
-              ) : <p className="text-xs text-muted-foreground">{t('admin_disc_tg_never_d')}</p>}
+              ) : !tg ? <p className="text-xs text-muted-foreground">{t('admin_disc_tg_never_d')}</p> : null}
               <div className="mt-3 overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead><tr className="text-start text-muted-foreground">

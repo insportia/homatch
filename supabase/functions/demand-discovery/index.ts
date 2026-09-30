@@ -87,13 +87,14 @@ Deno.serve(async (req: Request) => {
     const body = await req.json().catch(() => ({}));
     const maxThreads = Math.max(1, Math.min(10, Number(body.maxThreads) || 3));
 
-    /* The hourly schedule runs only when an operator has switched both the
-       master background refresh and forum discovery on. A campaign's source
-       job (source 'campaign') needs forum discovery on; a manual operator
-       call carries neither and is unaffected. */
+    /* The hourly schedule runs only when an operator has switched both forum
+       discovery and the forum schedule on — independent of the Telegram
+       background refresh, so forums never wait on Telegram credentials. A
+       campaign's source job (source 'campaign') needs forum discovery on; a
+       manual operator call carries neither and is unaffected. */
     if (body.source === 'cron' || body.source === 'campaign') {
       const discovery = await loadDiscoverySettings(db);
-      if (!discovery.forumDiscoveryEnabled || (body.source === 'cron' && !discovery.backgroundRefreshEnabled)) {
+      if (!discovery.forumDiscoveryEnabled || (body.source === 'cron' && !discovery.forumScheduleEnabled)) {
         return json({ success: true, skipped: 'FORUM_DISCOVERY_DISABLED', postsRead: 0 });
       }
     }
@@ -108,7 +109,9 @@ Deno.serve(async (req: Request) => {
       .select('id,name,url,adapter_id,lifecycle,active')
       .eq('source_family', 'FORUM')
       .eq('active', true)
-      .in('lifecycle', ['LIVE_TESTED', 'PRODUCTIVE', 'FIXTURE_TESTED']);
+      /* A customer's campaign reads only sources proven live; a fixture-tested
+         board may be exercised by the schedule or an operator, never billed. */
+      .in('lifecycle', body.source === 'campaign' ? ['LIVE_TESTED', 'PRODUCTIVE'] : ['LIVE_TESTED', 'PRODUCTIVE', 'FIXTURE_TESTED']);
     if (sourceError) throw sourceError;
 
     const permitted = (sourceRows ?? []).filter((r: SourceRow) => r.adapter_id) as SourceRow[];
@@ -308,8 +311,11 @@ async function persist(
    * discovered_at is absent from this update on purpose.
    */
   const changed = existing.content_fingerprint !== signal.contentFingerprint;
+  /* An unchanged post keeps its classification: re-queuing it on every
+     sighting would re-bill the classifier for text it has already read. */
+  const { classification_status: _pending, ...unchanged } = shared;
   const { error } = await db.from('raw_signals').update({
-    ...shared,
+    ...(changed ? shared : unchanged),
     ...(changed ? { content_changed_at: now } : {}),
   }).eq('id', existing.id);
   if (error) return null;

@@ -414,3 +414,123 @@ update public.admin_settings
 -- ── 14. NOTIFICATIONS ────────────────────────────────────────────────────
 alter type public.notification_type add value if not exists 'META_GUARD';
 alter type public.notification_type add value if not exists 'META_RECOMMENDATION';
+
+-- ── 15. CANONICAL EVENTS + NOTIFICATION HISTORY ─────────────────────────
+-- One row per condition (key), carried across monitoring cycles: lifecycle
+-- state, severity, bucketed evidence fingerprint, first/last seen, and when
+-- it last notified. A stable condition updates last_seen_at and nothing else.
+create table if not exists public.meta_events (
+  id uuid primary key default gen_random_uuid(),
+  key text not null unique,
+  user_id uuid not null,
+  campaign_id uuid references public.meta_campaigns(id) on delete cascade,
+  type text not null,
+  category text not null check (category in ('CAMPAIGN','LEADS','BILLING','GUARD','SYSTEM')),
+  severity text not null check (severity in ('INFO','IMPORTANT','CRITICAL')),
+  action_required boolean not null default false,
+  state text not null check (state in ('OPEN','RESOLVED')),
+  evidence_fingerprint text not null,
+  evidence jsonb not null default '{}'::jsonb,
+  facts jsonb not null default '{}'::jsonb,
+  deep_link text,
+  first_seen_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now(),
+  last_notified_at timestamptz,
+  missing_cycles integer not null default 0,
+  reminders integer not null default 0,
+  resolved_at timestamptz
+);
+create index if not exists meta_events_user_idx on public.meta_events (user_id, state, last_seen_at desc);
+create index if not exists meta_events_campaign_idx on public.meta_events (campaign_id, state);
+alter table public.meta_events enable row level security;
+drop policy if exists meta_events_own on public.meta_events;
+create policy meta_events_own on public.meta_events for select to authenticated
+  using (user_id = public.auth_user_id() or public.is_admin());
+revoke all on public.meta_events from anon;
+
+create table if not exists public.meta_event_notifications (
+  id uuid primary key default gen_random_uuid(),
+  event_id uuid not null references public.meta_events(id) on delete cascade,
+  user_id uuid not null,
+  transition text not null check (transition in ('OPEN','ESCALATED','UPDATED','RESOLVED','REMINDER','BRIEF')),
+  severity text not null,
+  evidence_fingerprint text not null,
+  channels text[] not null default '{}',
+  notification_id uuid,
+  ai_summary_id uuid,
+  created_at timestamptz not null default now(),
+  unique (event_id, transition, evidence_fingerprint)
+);
+alter table public.meta_event_notifications enable row level security;
+drop policy if exists meta_event_notifications_own on public.meta_event_notifications;
+create policy meta_event_notifications_own on public.meta_event_notifications for select to authenticated
+  using (user_id = public.auth_user_id() or public.is_admin());
+revoke all on public.meta_event_notifications from anon;
+
+-- ── 16. AI SUMMARIES, CACHED BY EVIDENCE — with their cost ──────────────
+create table if not exists public.meta_ai_summaries (
+  id uuid primary key default gen_random_uuid(),
+  fingerprint text not null,
+  locale text not null,
+  purpose text not null check (purpose in ('EVENT','CAMPAIGN_SUMMARY','BRIEF')),
+  user_id uuid,
+  campaign_id uuid references public.meta_campaigns(id) on delete cascade,
+  trigger_reason text not null,
+  text text not null,
+  model text,
+  input_tokens integer,
+  output_tokens integer,
+  raw_cost_usd numeric,
+  landed_cost_usd numeric,
+  created_at timestamptz not null default now(),
+  unique (purpose, fingerprint, locale)
+);
+alter table public.meta_ai_summaries enable row level security;
+drop policy if exists meta_ai_summaries_own on public.meta_ai_summaries;
+create policy meta_ai_summaries_own on public.meta_ai_summaries for select to authenticated
+  using (user_id = public.auth_user_id() or public.is_admin());
+revoke all on public.meta_ai_summaries from anon;
+
+-- ── 17. DELIVERY LOG: every push/email attempt, one table for all channels ─
+create table if not exists public.notification_deliveries (
+  id uuid primary key default gen_random_uuid(),
+  notification_id uuid,
+  user_id uuid not null,
+  channel text not null check (channel in ('IN_APP','PUSH','EMAIL')),
+  status text not null check (status in ('QUEUED','SENT','FAILED','SKIPPED')),
+  reason text,
+  provider text,
+  provider_message_id text,
+  source text not null default 'meta_ads',
+  event_key text,
+  created_at timestamptz not null default now(),
+  unique (notification_id, channel)
+);
+alter table public.notification_deliveries enable row level security;
+drop policy if exists notification_deliveries_admin on public.notification_deliveries;
+create policy notification_deliveries_admin on public.notification_deliveries for select to authenticated using (public.is_admin());
+revoke all on public.notification_deliveries from anon;
+
+alter table public.notification_preferences
+  add column if not exists email_enabled boolean not null default true;
+comment on column public.notification_preferences.email_enabled is
+  'Email for important notices. Account-integrity messages (Meta Ads Guard, access loss) are sent regardless.';
+
+-- ── 18. BRIEFS ───────────────────────────────────────────────────────────
+create table if not exists public.meta_briefs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null,
+  period text not null check (period in ('DAILY','WEEKLY')),
+  period_key text not null,
+  fingerprint text not null,
+  content jsonb not null,
+  notification_id uuid,
+  channels text[] not null default '{}',
+  created_at timestamptz not null default now(),
+  unique (user_id, period, period_key)
+);
+alter table public.meta_briefs enable row level security;
+drop policy if exists meta_briefs_own on public.meta_briefs;
+create policy meta_briefs_own on public.meta_briefs for select to authenticated
+  using (user_id = public.auth_user_id() or public.is_admin());
+revoke all on public.meta_briefs from anon;

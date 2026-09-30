@@ -102,6 +102,15 @@ function categoryOf(eventType: string, metadata?: Record<string, unknown> | null
   if (kind === 'NEW_MESSAGE') return 'messages';
   if (kind === 'VIEWING_REQUEST' || kind === 'VIEWING_UPDATE') return 'viewings';
 
+  /* META ADS events carry their preference: meta_performance, meta_leads,
+     meta_billing are user switches; meta_integrity (Guard, access loss) and
+     meta_lifecycle are not, so turning off performance alerts never silences
+     a suspension or a rejected campaign. */
+  if (eventType.startsWith('META_')) {
+    const pref = typeof metadata?.pref === 'string' ? metadata.pref : '';
+    if (/^meta_(performance|leads|billing|integrity|lifecycle)$/.test(pref)) return pref;
+    return eventType === 'META_LEAD' ? 'meta_leads' : 'meta_lifecycle';
+  }
   if (eventType.startsWith('CAMPAIGN_')) return 'campaigns';
   if (eventType.startsWith('WHATSAPP_')) return 'whatsapp';
   if (eventType.startsWith('MATCH_')) return 'matches';

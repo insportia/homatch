@@ -16,6 +16,21 @@ const ASSET_COLUMNS =
   + 'placement, anchor, clearance_m, procedural, model_key, lods, triangles, texture_bytes, thumbnail_key, material_slots, '
   + 'variants, dominant_colors, provenance, is_placeholder, active, capabilities, interactions';
 
+/** The imported-catalogue columns (20261002210000). Read when they exist; a database without them answers without them. */
+const CATALOG_COLUMNS = ', homatch_asset_id, source_provider, canonical_category, canonical_subcategory, search_aliases, quality_tier, web_suitability, color_families, license_class';
+
+/**
+ * Run an asset query with the imported-catalogue columns, and again without
+ * them if this database has not got them yet (Postgres 42703, undefined
+ * column): the editor never breaks on the order a release lands in.
+ */
+async function withCatalogColumns(run: (columns: string) => PromiseLike<{ data: unknown; error: { code?: string; message: string } | null }>) {
+  const first = await run(ASSET_COLUMNS + CATALOG_COLUMNS);
+  if (!first.error) return first;
+  if (first.error.code !== '42703' && !/column .* does not exist/i.test(first.error.message)) return first;
+  return run(ASSET_COLUMNS);
+}
+
 export interface AssetFilter {
   category?: string | null;
   roomKind?: string | null;
@@ -26,17 +41,19 @@ export interface AssetFilter {
 }
 
 export async function listAssets(filter: AssetFilter = {}): Promise<CatalogAsset[]> {
-  let q = supabase.from('ds_catalog_assets').select(ASSET_COLUMNS).eq('active', true)
-    .order('category').order('name')
-    .range(filter.offset ?? 0, (filter.offset ?? 0) + (filter.limit ?? 120) - 1);
-  if (filter.category) q = q.eq('category', filter.category);
-  if (filter.roomKind) q = q.contains('room_kinds', [filter.roomKind]);
-  if (filter.styles?.length) q = q.overlaps('style_tags', filter.styles);
-  if (filter.text) {
-    const safe = filter.text.replace(/[%,()*]/g, ' ').trim();
-    if (safe) q = q.or(`name.ilike.%${safe}%,code.ilike.%${safe}%`);
-  }
-  const { data, error } = await q;
+  const { data, error } = await withCatalogColumns((columns) => {
+    let q = supabase.from('ds_catalog_assets').select(columns).eq('active', true)
+      .order('category').order('name')
+      .range(filter.offset ?? 0, (filter.offset ?? 0) + (filter.limit ?? 120) - 1);
+    if (filter.category) q = q.eq('category', filter.category);
+    if (filter.roomKind) q = q.contains('room_kinds', [filter.roomKind]);
+    if (filter.styles?.length) q = q.overlaps('style_tags', filter.styles);
+    if (filter.text) {
+      const safe = filter.text.replace(/[%,()*]/g, ' ').trim();
+      if (safe) q = q.or(`name.ilike.%${safe}%,code.ilike.%${safe}%`);
+    }
+    return q;
+  });
   if (error) throw new Error(error.message);
   return ((data ?? []) as unknown as Record<string, unknown>[]).map(assetFromRow);
 }
@@ -47,7 +64,7 @@ export async function assetsByCode(codes: string[]): Promise<CatalogAsset[]> {
   if (unique.length === 0) return [];
   // Inactive assets are still resolved so an existing design keeps rendering
   // after Admin retires a piece; they just cannot be ADDED any more.
-  const { data, error } = await supabase.from('ds_catalog_assets').select(ASSET_COLUMNS).in('code', unique);
+  const { data, error } = await withCatalogColumns((columns) => supabase.from('ds_catalog_assets').select(columns).in('code', unique));
   if (error) throw new Error(error.message);
   return ((data ?? []) as unknown as Record<string, unknown>[]).map(assetFromRow);
 }

@@ -107,6 +107,22 @@ function sizeScores(want: Want['sizeM'], have: Candidate['sizeM']): { size: numb
 }
 
 const TIER: Record<string, number> = { PREMIUM: 1, STANDARD: 0.75, FALLBACK: 0.35, REJECT: 0 };
+/** Score for an attribute the want states and the candidate has no evidence about. */
+const UNKNOWN_EVIDENCE = 0.3;
+
+/** Style families that cannot stand in for each other. */
+const MODERN = ['modern', 'contemporary', 'minimal', 'minimalist', 'scandinavian', 'japandi', 'mid century', 'luxury'];
+const PERIOD = ['vintage', 'antique', 'retro', 'victorian', 'baroque', 'rococo', 'medieval', 'gothic', 'chinese', 'oriental', 'rustic', 'shaker', 'old', 'worn', '1920s', '1930s', '1940s', '1950s', '1960s', '1970s', 'classic'];
+function styleConflict(want: string[] = [], have: string[] = []): boolean {
+  if (!want.length) return false;
+  const h = new Set(lower(have));
+  const w = lower(want);
+  const wantsModern = w.some((x) => MODERN.includes(x));
+  const wantsPeriod = w.some((x) => PERIOD.includes(x));
+  const isPeriod = PERIOD.some((p) => h.has(p));
+  const isModern = MODERN.some((m) => h.has(m));
+  return (wantsModern && isPeriod && !isModern) || (wantsPeriod && isModern && !isPeriod);
+}
 
 /**
  * Candidates ranked for a want. Only READY assets of the asked kind whose
@@ -126,10 +142,13 @@ export function rank(want: Want, candidates: Candidate[], limit = 5): Ranked[] {
     const s = sizeScores(want.sizeM, c.sizeM);
     parts.size = s.size;
     parts.proportion = s.proportion;
-    parts.color = colorScore(want.color, c.colors);
-    parts.material = overlap(want.materials, [...c.materials, ...c.aliases]);
-    parts.style = overlap(want.styles, [...c.styles, ...c.aliases]);
-    parts.shape = overlap(want.shape, c.aliases);
+    // What the want ASKS for but the candidate cannot show is not a match: below neutral, never dropped
+    // (dropping it would let an asset with no colour data beat one whose colour is merely close).
+    const asked = (v: number | null, wanted: unknown) => (v === null && wanted ? UNKNOWN_EVIDENCE : v);
+    parts.color = asked(colorScore(want.color, c.colors), want.color);
+    parts.material = asked(overlap(want.materials, [...c.materials, ...c.aliases]), want.materials?.length);
+    parts.style = asked(overlap(want.styles, [...c.styles, ...c.aliases]), want.styles?.length);
+    parts.shape = asked(overlap(want.shape, c.aliases), want.shape?.length);
     parts.room = want.room ? (!c.roomKinds?.length || c.roomKinds.includes(want.room) ? 1 : 0) : null;
     if (want.lighting) parts.subtype = (parts.subtype ?? 0) * 0.5 + (c.lighting === want.lighting ? 0.5 : 0);
     parts.quality = c.qualityTier ? TIER[c.qualityTier] ?? 0.5 : 0.5;
@@ -142,7 +161,15 @@ export function rank(want: Want, candidates: Candidate[], limit = 5): Ranked[] {
       const w = WEIGHTS[k as keyof typeof WEIGHTS];
       total += w * v; weight += w; kept[k] = Math.round(v * 1000) / 1000;
     }
-    out.push({ homatchAssetId: c.homatchAssetId, score: weight ? Math.round((total / weight) * 10000) / 10000 : 0, parts: kept });
+    let score = weight ? total / weight : 0;
+    // Scale is a hard truth: a candidate far off the source's size cannot be rescued by tags.
+    if (parts.size !== null && parts.size !== undefined) score *= 0.4 + 0.6 * parts.size;
+    // A period piece is not a modern match, nor the reverse: the source's style family must agree.
+    const conflict = styleConflict(want.styles, [...c.styles, ...c.aliases]);
+    if (conflict) { score *= 0.6; kept.styleConflict = 1; }
+    // A fallback is for when nothing closer exists: it wins only when it is clearly closer.
+    if (c.qualityTier === 'FALLBACK') score *= 0.8;
+    out.push({ homatchAssetId: c.homatchAssetId, score: Math.round(score * 10000) / 10000, parts: kept });
   }
   return out.sort((a, b) => b.score - a.score || (a.homatchAssetId < b.homatchAssetId ? -1 : 1)).slice(0, limit);
 }

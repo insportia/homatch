@@ -46,7 +46,7 @@ export interface CatalogAsset {
   clearanceM: number;
   procedural: { kind: ProceduralKind } | null;
   modelKey: string | null;
-  lods: Array<{ key: string; triangles: number }>;
+  lods: Array<{ key: string; triangles?: number; level?: number }>;
   triangles: number | null;
   textureBytes: number | null;
   thumbnailKey: string | null;
@@ -60,6 +60,16 @@ export interface CatalogAsset {
   capabilities: AssetCapability[];
   /** Parts that open and close in the walkthrough, and how (declared for models; concept blocks generate theirs). */
   interactions: InteractionSpec[];
+  /** Imported catalogue assets (licensed library): the canonical identity and what the Asset Resolver ranks on. Absent on hand-made rows. */
+  homatchAssetId?: string | null;
+  sourceProvider?: string | null;
+  canonicalCategory?: string | null;
+  canonicalSubcategory?: string | null;
+  searchAliases?: string[];
+  qualityTier?: 'PREMIUM' | 'STANDARD' | 'FALLBACK' | 'REJECT' | null;
+  webSuitability?: number | null;
+  colorFamilies?: string[];
+  licenseClass?: string | null;
 }
 
 export interface Pbr {
@@ -133,6 +143,15 @@ export function assetFromRow(r: Record<string, unknown>): CatalogAsset {
     active: !!r.active,
     capabilities: r.capabilities === undefined ? [...DEFAULT_CAPABILITIES] : validateCapabilities(r.capabilities),
     interactions: validateInteractions(r.interactions),
+    homatchAssetId: (r.homatch_asset_id as string | null) ?? null,
+    sourceProvider: (r.source_provider as string | null) ?? null,
+    canonicalCategory: (r.canonical_category as string | null) ?? null,
+    canonicalSubcategory: (r.canonical_subcategory as string | null) ?? null,
+    searchAliases: arr<string>(r.search_aliases),
+    qualityTier: (r.quality_tier as CatalogAsset['qualityTier']) ?? null,
+    webSuitability: r.web_suitability == null ? null : num(r.web_suitability),
+    colorFamilies: arr<string>(r.color_families),
+    licenseClass: (r.license_class as string | null) ?? null,
   };
 }
 

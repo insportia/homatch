@@ -69,3 +69,38 @@ test('what the want does not say is not held against anyone', () => {
   assert.equal(r[0].parts.color, undefined);
   assert.ok(r[0].score > 0);
 });
+
+test('asking for a colour the candidate cannot show is not a free pass', () => {
+  const want = { kind: 'MODEL', objectType: 'SOFA', color: '#efe4cf' };
+  const unknown = sofa('hma_unknown', { colors: [] });
+  const close = sofa('hma_close', { colors: ['#e8dcc0'] });
+  assert.equal(rank(want, [unknown, close])[0].homatchAssetId, 'hma_close');
+});
+
+test('a double bed is found by size, and a single bed at the wrong size cannot win on words', () => {
+  const bed = (id, o) => sofa(id, { canonicalSubcategory: 'BED', roomKinds: ['BEDROOM'], ...o });
+  const want = { kind: 'MODEL', objectType: 'BED', styles: ['modern'], shape: ['double'], sizeM: { width: 1.7, depth: 2.15, height: 1.0 } };
+  const singleButWordy = bed('hma_single', { styles: ['modern'], aliases: ['double', 'modern'], sizeM: { width: 0.95, depth: 2.05, height: 0.9 } });
+  const double = bed('hma_double', { styles: [], aliases: [], sizeM: { width: 1.72, depth: 2.12, height: 1.0 } });
+  assert.equal(rank(want, [singleButWordy, double])[0].homatchAssetId, 'hma_double');
+});
+
+test('a period piece does not answer a modern request (and the reverse)', () => {
+  const fridge = (id, o) => sofa(id, { canonicalCategory: 'OBJECT.APPLIANCE', canonicalSubcategory: 'REFRIGERATOR', roomKinds: ['KITCHEN'], sizeM: { width: 0.72, depth: 0.72, height: 1.8 }, ...o });
+  const modernWant = { kind: 'MODEL', objectType: 'REFRIGERATOR', styles: ['modern'], sizeM: { width: 0.7, depth: 0.7, height: 1.85 } };
+  const retroPremium = fridge('hma_retro', { qualityTier: 'PREMIUM', styles: [], aliases: ['1930s', 'vintage'] });
+  const plainStandard = fridge('hma_plain', { qualityTier: 'STANDARD', styles: [], aliases: ['whirlpool'] });
+  assert.equal(rank(modernWant, [retroPremium, plainStandard])[0].homatchAssetId, 'hma_plain');
+  const periodWant = { ...modernWant, styles: ['vintage'] };
+  const modern = fridge('hma_modern', { styles: ['modern'], aliases: ['modern'] });
+  assert.equal(rank(periodWant, [modern, retroPremium])[0].homatchAssetId, 'hma_retro');
+});
+
+test('a fallback wins only when it is clearly closer', () => {
+  const want = { kind: 'MODEL', objectType: 'SOFA', sizeM: { width: 2.2, depth: 0.95, height: 0.85 } };
+  const fallbackSlightlyCloser = sofa('hma_fb', { qualityTier: 'FALLBACK', sizeM: { width: 2.2, depth: 0.95, height: 0.85 } });
+  const standard = sofa('hma_std', { qualityTier: 'STANDARD', sizeM: { width: 2.25, depth: 0.97, height: 0.86 } });
+  assert.equal(rank(want, [fallbackSlightlyCloser, standard])[0].homatchAssetId, 'hma_std');
+  const standardFar = sofa('hma_far', { qualityTier: 'STANDARD', sizeM: { width: 3.2, depth: 1.4, height: 0.85 } });
+  assert.equal(rank(want, [fallbackSlightlyCloser, standardFar])[0].homatchAssetId, 'hma_fb');
+});

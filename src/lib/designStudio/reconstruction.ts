@@ -17,6 +17,7 @@
 // on) comes from the matched HOMATCH asset's own declarations — never from
 // the pixels. Nothing here calls the network.
 
+import { type Candidate, rank as rankAssets } from './catalogResolver.ts';
 import type { CatalogAsset, CatalogMaterial } from './catalog.ts';
 import { emptyDesignState, type DesignState, type ObjectInstance, type ObjectProvenance } from './designState.ts';
 import { blocks, evaluatePlacement, type PlacementContext } from './placement.ts';
@@ -129,7 +130,46 @@ const sizeFit = (seen: number, have: number) => Math.min(Math.max(0.01, seen), M
  * sofa is never "matched" to a table because a table happened to be the
  * right size. Returns null when HOMATCH has nothing of that family.
  */
+/** What the reader calls an object → the catalogue's canonical subtypes that can stand for it. */
+export const CANONICAL_FOR: Partial<Record<ObjectType, string[]>> = {
+  SOFA: ['SOFA', 'SECTIONAL_SOFA'], ARMCHAIR: ['ARMCHAIR'], CHAIR: ['CHAIR', 'DINING_CHAIR'], OFFICE_CHAIR: ['OFFICE_CHAIR'], BAR_STOOL: ['BAR_STOOL'],
+  DINING_TABLE: ['DINING_TABLE'], COFFEE_TABLE: ['COFFEE_TABLE'], SIDE_TABLE: ['SIDE_TABLE'], DESK: ['DESK'], BEDSIDE: ['NIGHTSTAND'],
+  BED_DOUBLE: ['BED'], BED_SINGLE: ['BED'], WARDROBE: ['WARDROBE'], DRESSER: ['DRESSER'], SHELVING: ['SHELVING', 'BOOKCASE'], TV_UNIT: ['TV_UNIT'], TV: ['TV'],
+  KITCHEN_RUN: ['KITCHEN_UNIT', 'KITCHEN_SET'], KITCHEN_ISLAND: ['KITCHEN_ISLAND'], FRIDGE: ['REFRIGERATOR'], WASHING_MACHINE: ['WASHING_MACHINE'],
+  RUG: ['RUG'], FLOOR_LAMP: ['FLOOR_LAMP'], PLANT: ['PLANT'], PLANTER: ['PLANTER'], VANITY: ['VANITY'], SHOWER: ['SHOWER'], TOILET: ['TOILET'],
+  BATH: ['BATHTUB'], CURTAIN: ['CURTAIN'], BLIND: ['BLIND'], ARTWORK: ['WALL_ART', 'FRAME'], DECOR: ['VASE', 'SCULPTURE', 'ORNAMENT'],
+};
+
+/**
+ * The licensed library first: when imported assets of the right canonical
+ * subtype exist, the Asset Resolver ranks them on what the picture showed —
+ * type, size and proportion, colour, material, style, room — and returns ONE
+ * canonical id. Otherwise the hand-made catalogue is matched as before.
+ */
+function matchImported(obj: Pick<ReconObject, 'type' | 'widthM' | 'depthM' | 'heightM' | 'color' | 'style'>, assets: CatalogAsset[], styleWords: string[]): AssetMatch | null {
+  const subs = CANONICAL_FOR[obj.type];
+  if (!subs) return null;
+  const pool = assets.filter((a) => a.active && a.homatchAssetId && a.canonicalSubcategory && subs.includes(a.canonicalSubcategory));
+  if (!pool.length) return null;
+  const candidates: Candidate[] = pool.map((a) => ({
+    homatchAssetId: a.code, kind: 'MODEL', sourceProvider: a.sourceProvider ?? 'homatch', canonicalCategory: a.canonicalCategory ?? '',
+    canonicalSubcategory: a.canonicalSubcategory ?? '', styles: a.styleTags, colors: [...a.dominantColors, ...a.colorTags, ...(a.colorFamilies ?? [])],
+    materials: a.materialTags, aliases: a.searchAliases ?? [], sizeM: { width: a.widthM, depth: a.depthM, height: a.heightM }, roomKinds: a.roomKinds,
+    qualityTier: a.qualityTier ?? null, webSuitability: a.webSuitability ?? null, state: 'READY',
+  }));
+  const [best] = rankAssets({
+    kind: 'MODEL', styles: [...styleWords, ...(obj.style ? [obj.style] : [])], color: obj.color ?? undefined,
+    sizeM: { width: obj.widthM, depth: obj.depthM, height: obj.heightM },
+  }, candidates, 1);
+  if (!best) return null;
+  const a = pool.find((x) => x.code === best.homatchAssetId) as CatalogAsset;
+  const within = (seen: number, have: number) => Math.abs(seen - have) / Math.max(have, 0.01) <= 0.2;
+  return { assetId: a.code, score: Math.round(best.score * 100) / 100, quality: within(obj.widthM, a.widthM) && within(obj.depthM, a.depthM) ? 'GOOD' : 'APPROXIMATE', colorOverride: null };
+}
+
 export function matchAsset(obj: Pick<ReconObject, 'type' | 'widthM' | 'depthM' | 'heightM' | 'color' | 'style'>, assets: CatalogAsset[], styleWords: string[] = []): AssetMatch | null {
+  const imported = matchImported(obj, assets, styleWords);
+  if (imported) return imported;
   const family = FAMILY[obj.type];
   if (!family) return null;
   const candidates = assets.filter((a) => a.active && inFamily(a, family));

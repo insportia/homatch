@@ -111,3 +111,34 @@ test('names: no provider filenames; the object type is said', () => {
   assert.ok(n.styleTags.includes('modern'));
   assert.ok(n.colorTags.includes('beige'));
 });
+
+test('Blendkit classification: the NAME says what it is; tags only refine within the shelf; audit cases', () => {
+  const as = (name, category, tags = []) => B.classify({ ...BK.cc0, name, displayName: '', category, slugs: [category], tags });
+  // The checkpoint's bug: a microwave tagged "oven".
+  assert.equal(as('Vintage Microwave', 'household-appliances', ['retro', 'oven']).canonicalSubcategory, 'MICROWAVE');
+  assert.equal(as('Refrigerator magnet Slovakia', 'kitchen-appliance').canonicalSubcategory, 'ORNAMENT');
+  assert.equal(as('Bookcase6', 'wardrobe').canonicalSubcategory, 'BOOKCASE', 'digits glued to a word still split');
+  assert.equal(as('Modern wooden shelf with decoration, lamp and books', 'art').canonicalSubcategory, 'SHELVING', 'the subject comes before "with"');
+  assert.equal(as('Simple Window Picture Frame', 'window').canonicalSubcategory, 'FRAME');
+  assert.equal(as('Bed lamp on bedside table', 'table-lamps').canonicalSubcategory, 'TABLE_LAMP');
+  assert.equal(as('Bedside Table', 'table').canonicalSubcategory, 'NIGHTSTAND');
+  assert.equal(as('Range Hood Steel', 'kitchen-appliance').canonicalSubcategory, 'RANGE_HOOD');
+  assert.equal(as('Wood Toilet Brush', 'toilet-bidet').canonicalSubcategory, 'BATH_ACCESSORY');
+  assert.equal(as('Hair Dryer', 'laundry').canonicalSubcategory, 'BATH_ACCESSORY');
+  assert.equal(as('Cleaver Knife', 'kitchen-set').canonicalSubcategory, 'TABLEWARE');
+  assert.equal(as('Freestanding Bathtub', 'bathhub').canonicalSubcategory, 'BATHTUB');
+  assert.equal(as('Roman blinds 03 quarter grey', 'curtain').canonicalSubcategory, 'BLIND');
+  assert.equal(as('Smania Sir Alex', 'sofa').canonicalSubcategory, 'SOFA', 'an unnamed piece on a specific shelf keeps the shelf');
+  assert.equal(as('Modern Door Handle', 'door').canonicalSubcategory, 'HARDWARE');
+});
+
+test('Blendkit quality: not-a-home and cartoon contexts are rejected; a generic shelf cannot vouch for an unnamed piece', () => {
+  const q = (o) => B.assess({ ...BK.cc0, ...o });
+  assert.equal(q({ name: 'Old Hospital Bed' }).tier, 'REJECT');
+  assert.equal(q({ name: 'Low poly game chair' }).tier, 'REJECT');
+  assert.equal(q({ name: 'LEGO Papa Smurf' }).tier, 'REJECT');
+  const unnamed = q({ name: 'Idanas', displayName: '', category: 'furniture', slugs: ['furniture'] });
+  assert.equal(unnamed.tier, 'FALLBACK');
+  assert.match(unnamed.reasons[0], /not stated by its name/);
+  assert.equal(q({ name: 'Living room set with decor' }).tier, 'FALLBACK', 'a set is not one object');
+});

@@ -89,24 +89,119 @@ export const SLUGS: Record<string, Map3> = {
   'floor-covering': ['OBJECT.SOFT_FURNISHING', 'RUG'], 'wall-panel': ['OBJECT.ARCHITECTURAL', 'WALL_PANEL'], 'molding-carving': ['OBJECT.ARCHITECTURAL', 'MOLDING'],
 };
 
-/** Name/tag words that refine a subtype the category alone cannot say. */
-const REFINE: Array<[RegExp, string, string[]]> = [
-  [/\b(sectional|corner sofa|l[- ]shaped|modular sofa|chaise)\b/i, 'SECTIONAL_SOFA', ['SOFA']],
-  [/\barm ?chair|lounge chair|recliner\b/i, 'ARMCHAIR', ['CHAIR', 'SOFA']],
-  [/\bdining chair\b/i, 'DINING_CHAIR', ['CHAIR']],
-  [/\bbench\b/i, 'BENCH', ['CHAIR', 'OTTOMAN']],
-  [/\b(night ?stand|bedside)\b/i, 'NIGHTSTAND', ['TABLE', 'DRESSER', 'BEDROOM_FURNITURE', 'CABINET']],
-  [/\bcoffee table\b/i, 'COFFEE_TABLE', ['TABLE']], [/\bdining table\b/i, 'DINING_TABLE', ['TABLE']],
-  [/\b(side table|end table)\b/i, 'SIDE_TABLE', ['TABLE']], [/\bconsole\b/i, 'CONSOLE_TABLE', ['TABLE']],
-  [/\b(fridge|refrigerator|freezer)\b/i, 'REFRIGERATOR', ['KITCHEN_APPLIANCE', 'HOUSEHOLD_APPLIANCE']],
-  [/\b(oven|range|stove|cooktop|hob)\b/i, 'OVEN', ['KITCHEN_APPLIANCE', 'HOUSEHOLD_APPLIANCE']], [/\bmicrowave\b/i, 'MICROWAVE', ['KITCHEN_APPLIANCE', 'HOUSEHOLD_APPLIANCE']],
-  [/\bdishwasher\b/i, 'DISHWASHER', ['KITCHEN_APPLIANCE', 'HOUSEHOLD_APPLIANCE']], [/\b(washing machine|washer|dryer)\b/i, 'WASHING_MACHINE', ['HOUSEHOLD_APPLIANCE', 'WASHING_MACHINE']],
-  [/\b(hood|extractor)\b/i, 'RANGE_HOOD', ['KITCHEN_APPLIANCE', 'HOUSEHOLD_APPLIANCE']], [/\b(tv|television)\b/i, 'TV', ['TV', 'HOUSEHOLD_APPLIANCE', 'TV_UNIT']],
-  [/\bkitchen island\b/i, 'KITCHEN_ISLAND', ['KITCHEN_SET', 'KITCHEN_UNIT']], [/\bradiator\b/i, 'RADIATOR', ['HOUSEHOLD_APPLIANCE', 'ACCESSORY', 'WALL_PANEL']],
-  [/\bchandelier\b/i, 'CHANDELIER', ['CEILING_LIGHT', 'LIGHT', 'PENDANT']], [/\bpendant\b/i, 'PENDANT', ['CEILING_LIGHT', 'LIGHT']],
-  [/\bblinds?\b/i, 'BLIND', ['CURTAIN']], [/\bsliding door\b/i, 'SLIDING_DOOR', ['DOOR']], [/\bbidet\b/i, 'BIDET', ['TOILET']],
-  [/\bvanity\b/i, 'VANITY', ['SINK', 'BATHROOM_FIXTURE']], [/\bheadboard\b/i, 'HEADBOARD', ['BED']], [/\bplanter|pot\b/i, 'PLANTER', ['PLANT']],
+/**
+ * What the asset IS, from its own NAME first. The name is the author's
+ * statement; tags are search keywords ("oven" on a microwave, "sofa" on a
+ * pillow) and the category slug is a shelf. Rules are ordered most specific
+ * first: "microwave" before "oven", "range hood" before "range", "bedside"
+ * before "bed", "sofa table" before "sofa", "pillow" before "sofa".
+ */
+export const NAME_RULES: Array<[RegExp, string]> = [
+  // Small things named after the big thing they belong to (a fridge magnet is not a fridge)
+  [/\b(magnets?|keychains?|miniatures?|toy|figurines?|candles?|candlesticks?|candle holders?)\b/i, 'ORNAMENT'],
+  [/\b(mugs?|cups?|teacups?|glass(es)?|bottles?|jars?|kettles?|teapots?|pots?|pans?|knife|knives|forks?|spoons?|plates?|bowls?|grill|utensils?|cutting board|pour over)\b(?! (plant|lamp|light))/i, 'TABLEWARE'],
+  [/\b(soap|lotion|shampoo|toothbrush|hair ?dryer|toilet (brush|seat|button|roll)|brush|toilet ?paper|paper holder|towel|hand dryer|bath mat|laundry basket|shower basket|toiletries)\b/i, 'BATH_ACCESSORY'],
+  [/\b(handles?|knobs?|doorknobs?|hinges?|door stops?|locks?|latch(es)?)\b/i, 'HARDWARE'],
+  [/\b(hangers?|coat hangers?|clothes hangers?)\b/i, 'ACCESSORY'],
+  [/\b(dish dryer|dish rack|detergent|washing powder|coffee maker|whisk|spice|grater|toaster|blender|mixer bowl)\b/i, 'TABLEWARE'],
+  [/\b(picture frames?|photo frames?)\b/i, 'FRAME'], [/\bplant stands?\b/i, 'SHELVING'],
+  [/\btoilet (storage|cabinet|unit)\b/i, 'CABINET'], [/\b(mixer|single lever|thermostatic)\b/i, 'FAUCET'],
+  // Accessories named after what they sit on or near
+  [/\b(pillows?|cushions?)\b/i, 'PILLOW'], [/\b(throw|blanket|plaid)\b/i, 'THROW'],
+  [/\b(rugs?|carpets?|runner)\b/i, 'RUG'], [/\b(curtains?|drapes?|drapery)\b/i, 'CURTAIN'], [/\b(blinds?|roller shade|venetian)\b/i, 'BLIND'],
+  [/\b(towel rail|towel rack|towel holder|soap dispenser|toilet paper|toothbrush)\b/i, 'BATH_ACCESSORY'],
+  [/\b(faucets?|taps?|mixer tap)\b/i, 'FAUCET'],
+  // Appliances
+  [/\bmicrowaves?\b/i, 'MICROWAVE'], [/\b(range hood|cooker hood|extractor hood|kitchen hood|exhaust hood)\b/i, 'RANGE_HOOD'],
+  [/\bdish ?washers?\b/i, 'DISHWASHER'], [/\b(washing machines?|washer|tumble dryer|dryer|laundry machine)\b/i, 'WASHING_MACHINE'],
+  [/\b(fridge|refrigerators?|freezer)\b/i, 'REFRIGERATOR'], [/\b(cooktop|hob|induction)\b/i, 'COOKTOP'],
+  [/\b(oven|stove|range cooker|cooker)\b/i, 'OVEN'], [/\b(tv|television)\b(?! (stand|unit|cabinet|console|table))/i, 'TV'],
+  [/\b(monitor|display)\b/i, 'MONITOR'], [/\bradiators?\b/i, 'RADIATOR'],
+  // Bathroom
+  [/\bbidets?\b/i, 'BIDET'], [/\b(toilets?|wc|water closet)\b/i, 'TOILET'], [/\b(bath ?tubs?|bath ?hub|freestanding bath)\b/i, 'BATHTUB'],
+  [/\b(shower (cabin|enclosure|tray|screen|head|system)|showers?)\b/i, 'SHOWER'], [/\bvanit(y|ies)\b/i, 'VANITY'],
+  [/\b(wash ?basin|basin|sink)\b/i, 'SINK'], [/\bmirrors?\b/i, 'MIRROR'],
+  // Lighting (before furniture: "table lamp" is a lamp, not a table)
+  [/\bchandeliers?\b/i, 'CHANDELIER'], [/\bpendants?( light| lamp)?\b/i, 'PENDANT'], [/\b(ceiling (light|lamp)|flush mount)\b/i, 'CEILING_LIGHT'],
+  [/\bfloor lamps?\b/i, 'FLOOR_LAMP'], [/\b(table|desk|bedside) lamps?\b/i, 'TABLE_LAMP'], [/\b(wall (light|lamp)|sconces?)\b/i, 'WALL_LIGHT'],
+  [/\blamps?\b/i, 'TABLE_LAMP'],
+  // Beds before tables ("bedside table" is a nightstand)
+  [/\b(night ?stands?|bedside (table|cabinet)?)\b/i, 'NIGHTSTAND'], [/\bheadboards?\b/i, 'HEADBOARD'],
+  [/\b(bunk bed|day ?bed|bed ?frame|double bed|single bed|king bed|queen bed|beds?)\b/i, 'BED'],
+  // Storage
+  [/\b(wardrobes?|closets?|armoires?)\b/i, 'WARDROBE'], [/\b(tv (stand|unit|cabinet|console)|media (console|unit|cabinet))\b/i, 'TV_UNIT'],
+  [/\b(book ?cases?|book ?shel(f|ves))\b/i, 'BOOKCASE'], [/\b(shelf|shelves|shelving|rack)\b/i, 'SHELVING'],
+  [/\b(dressers?|chest of drawers|commodes?)\b/i, 'DRESSER'], [/\b(sideboards?|buffet|credenza)\b/i, 'CABINET'],
+  [/\bkitchen island\b/i, 'KITCHEN_ISLAND'], [/\b(kitchen (set|cabinets?|units?)|base cabinet|upper cabinet|wall cabinet|tall cabinet)\b/i, 'KITCHEN_UNIT'],
+  [/\b(cabinets?|cupboards?|lockers?)\b/i, 'CABINET'],
+  // Seating
+  [/\b(sofa table|sofa bed)\b/i, 'SOFA'], [/\b(sectional|corner sofa|l[- ]shaped sofa|modular sofa|chaise)\b/i, 'SECTIONAL_SOFA'],
+  [/\b(sofas?|couch(es)?|settees?|loveseat)\b/i, 'SOFA'], [/\b(arm ?chairs?|lounge chairs?|recliners?|wing ?chair)\b/i, 'ARMCHAIR'],
+  [/\b(office chairs?|desk chairs?|task chairs?)\b/i, 'OFFICE_CHAIR'], [/\b(bar stools?|counter stools?|stools?)\b/i, 'BAR_STOOL'],
+  [/\bdining chairs?\b/i, 'DINING_CHAIR'], [/\b(ottomans?|poufs?|footstools?)\b/i, 'OTTOMAN'], [/\bbench(es)?\b/i, 'BENCH'],
+  [/\bchairs?\b/i, 'CHAIR'],
+  // Tables
+  [/\b(coffee tables?|cocktail tables?)\b/i, 'COFFEE_TABLE'], [/\b(dining tables?|kitchen tables?)\b/i, 'DINING_TABLE'],
+  [/\b(side tables?|end tables?|accent tables?)\b/i, 'SIDE_TABLE'], [/\bconsoles?( tables?)?\b/i, 'CONSOLE_TABLE'],
+  [/\b(desks?|workstation|writing table)\b/i, 'DESK'], [/\btables?\b/i, 'TABLE'],
+  // Architecture
+  [/\bsliding doors?\b/i, 'SLIDING_DOOR'], [/\bdoors?\b/i, 'DOOR'], [/\bwindows?\b/i, 'WINDOW'], [/\b(stairs|staircase|stairway)\b/i, 'STAIRS'],
+  // Plants
+  [/\b(planters?|flower ?pots?|plant pots?)\b/i, 'PLANTER'],
+  [/\b(plants?|monstera|ficus|succulents?|cactus|cacti|palm|fern|bonsai|orchid|snake plant|pothos|olive tree)\b/i, 'PLANT'],
+  // Decor
+  [/\b(vases?)\b/i, 'VASE'], [/\b(picture frames?|photo frames?)\b/i, 'FRAME'], [/\b(paintings?|canvas|poster|artwork|wall art)\b/i, 'WALL_ART'],
+  [/\b(books?)\b/i, 'BOOKS'], [/\b(sculptures?|statues?|figurines?|bust)\b/i, 'SCULPTURE'],
 ];
+
+/** Which family each subtype belongs to. */
+export const FAMILY: Record<string, string> = {
+  SOFA: 'OBJECT.FURNITURE', SECTIONAL_SOFA: 'OBJECT.FURNITURE', ARMCHAIR: 'OBJECT.FURNITURE', CHAIR: 'OBJECT.FURNITURE', DINING_CHAIR: 'OBJECT.FURNITURE',
+  OFFICE_CHAIR: 'OBJECT.FURNITURE', BAR_STOOL: 'OBJECT.FURNITURE', BENCH: 'OBJECT.FURNITURE', OTTOMAN: 'OBJECT.FURNITURE', BED: 'OBJECT.FURNITURE',
+  HEADBOARD: 'OBJECT.FURNITURE', NIGHTSTAND: 'OBJECT.FURNITURE', TABLE: 'OBJECT.FURNITURE', DINING_TABLE: 'OBJECT.FURNITURE', COFFEE_TABLE: 'OBJECT.FURNITURE',
+  SIDE_TABLE: 'OBJECT.FURNITURE', CONSOLE_TABLE: 'OBJECT.FURNITURE', DESK: 'OBJECT.FURNITURE', FIREPLACE: 'OBJECT.FURNITURE', DINING_SET: 'OBJECT.FURNITURE',
+  WARDROBE: 'OBJECT.STORAGE', DRESSER: 'OBJECT.STORAGE', CABINET: 'OBJECT.STORAGE', SHELVING: 'OBJECT.STORAGE', BOOKCASE: 'OBJECT.STORAGE', TV_UNIT: 'OBJECT.STORAGE',
+  KITCHEN_UNIT: 'OBJECT.KITCHEN', KITCHEN_ISLAND: 'OBJECT.KITCHEN', KITCHEN_SET: 'OBJECT.KITCHEN', FAUCET: 'OBJECT.KITCHEN',
+  REFRIGERATOR: 'OBJECT.APPLIANCE', OVEN: 'OBJECT.APPLIANCE', COOKTOP: 'OBJECT.APPLIANCE', MICROWAVE: 'OBJECT.APPLIANCE', DISHWASHER: 'OBJECT.APPLIANCE',
+  WASHING_MACHINE: 'OBJECT.APPLIANCE', RANGE_HOOD: 'OBJECT.APPLIANCE', TV: 'OBJECT.APPLIANCE', MONITOR: 'OBJECT.APPLIANCE', RADIATOR: 'OBJECT.APPLIANCE',
+  TOILET: 'OBJECT.BATHROOM', BIDET: 'OBJECT.BATHROOM', BATHTUB: 'OBJECT.BATHROOM', SHOWER: 'OBJECT.BATHROOM', VANITY: 'OBJECT.BATHROOM', SINK: 'OBJECT.BATHROOM',
+  BATH_ACCESSORY: 'OBJECT.BATHROOM', MIRROR: 'OBJECT.DECOR',
+  CHANDELIER: 'OBJECT.LIGHTING', PENDANT: 'OBJECT.LIGHTING', CEILING_LIGHT: 'OBJECT.LIGHTING', FLOOR_LAMP: 'OBJECT.LIGHTING', TABLE_LAMP: 'OBJECT.LIGHTING', WALL_LIGHT: 'OBJECT.LIGHTING',
+  RUG: 'OBJECT.SOFT_FURNISHING', CURTAIN: 'OBJECT.SOFT_FURNISHING', BLIND: 'OBJECT.SOFT_FURNISHING', PILLOW: 'OBJECT.SOFT_FURNISHING', THROW: 'OBJECT.SOFT_FURNISHING',
+  PLANT: 'OBJECT.PLANT', PLANTER: 'OBJECT.PLANT', PLANT_WALL: 'OBJECT.PLANT',
+  DOOR: 'OBJECT.ARCHITECTURAL', SLIDING_DOOR: 'OBJECT.ARCHITECTURAL', WINDOW: 'OBJECT.ARCHITECTURAL', STAIRS: 'OBJECT.ARCHITECTURAL', WALL_PANEL: 'OBJECT.ARCHITECTURAL', MOLDING: 'OBJECT.ARCHITECTURAL',
+  VASE: 'OBJECT.DECOR', FRAME: 'OBJECT.DECOR', WALL_ART: 'OBJECT.DECOR', BOOKS: 'OBJECT.DECOR', SCULPTURE: 'OBJECT.DECOR', ORNAMENT: 'OBJECT.DECOR', TABLEWARE: 'OBJECT.DECOR',
+  ACCESSORY: 'OBJECT.DECOR', HARDWARE: 'OBJECT.ARCHITECTURAL',
+};
+
+/**
+ * A name as words: camelCase and letter/digit joins split, separators spaced
+ * ("Bookcase6" → "bookcase 6", "Flush-Mount" → "flush mount").
+ */
+export function words0(name: string): string {
+  return name.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Za-z])(\d)/g, '$1 $2').replace(/(\d)([A-Za-z])/g, '$1 $2').replace(/[_\-./]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/** The SUBJECT of a name: what comes before "with" ("Sofa Corner with Carpet" is a sofa). */
+export const subjectOf = (name: string) => words0(name).split(/\s+with\s+|,/i)[0];
+
+/** The subtype the NAME states, if it states one. */
+export function nameSubtype(name: string): string | null {
+  const subject = subjectOf(name);
+  for (const [re, sub] of NAME_RULES) if (re.test(subject)) return sub;
+  return null;
+}
+
+/** Shelves too broad to say what an unnamed object is. */
+export const GENERIC_SHELVES = new Set([
+  'container', 'design', 'art', 'utility', 'storage', 'hall', 'bedroom', 'living-room', 'furniture', 'kitchen', 'bathroom', 'lighting',
+  'seating', 'household-appliances', 'kids-room', 'restaurant-bar', 'cabinets', 'office-storage', 'fabrics', 'tableware-set', 'audio', 'video',
+]);
+
+/** Contexts that are not a home, and makes that are not photoreal. */
+export const IRRELEVANT = /\b(hospital|medical|dental|clinic|prison|military|army|sci ?fi|spaceship|fantasy|medieval|castle|game ready|low ?poly|lowpoly|cartoon|toon|stylized|voxel|pixel|lego|smurf|toy)\b/i;
+/** A scene or a set rather than one object ("Dining Set", "Sofa with Decor"). */
+export const COMPOSITE = /\b(set with|with decor|with decoration|scene|interior scene|room set|living room set|bedroom set|furniture set|collection)\b|\b(chairs?|table) (and|&) (chairs?|table)\b/i;
 
 export interface BkAsset {
   id: string;
@@ -132,15 +227,22 @@ export interface BkAsset {
   files?: Array<{ type: string; size: number | null; uuid?: string; downloadUrl?: string }>;
 }
 
+/**
+ * The slug decides WHETHER an asset is a residential object at all (it sits
+ * on a residential shelf); what it IS comes from its name, then — only within
+ * the slug's own family — from its tags, and only then from the slug.
+ */
 export function classify(asset: BkAsset): Canonical | null {
   const slugs = [asset.category, ...(asset.slugs ?? [])];
   const hit = slugs.map((s) => SLUGS[s]).find(Boolean);
   if (!hit) return null;
-  let [category, subcategory] = hit;
-  const text = `${asset.name} ${(asset.tags ?? []).join(' ')}`;
-  for (const [re, sub, from] of REFINE) if (from.includes(subcategory) && re.test(text)) { subcategory = sub; break; }
-  if (subcategory === 'KITCHEN_APPLIANCE' || subcategory === 'HOUSEHOLD_APPLIANCE') category = 'OBJECT.APPLIANCE';
-  return { canonicalCategory: category, canonicalSubcategory: subcategory };
+  const [slugCategory, slugSub] = hit;
+  const byName = nameSubtype(`${asset.name} ${asset.displayName ?? ''}`);
+  if (byName) return { canonicalCategory: FAMILY[byName] ?? slugCategory, canonicalSubcategory: byName };
+  const byTags = nameSubtype((asset.tags ?? []).join(' , '));
+  const family = FAMILY[slugSub] ?? slugCategory;
+  if (byTags && (FAMILY[byTags] ?? '') === family) return { canonicalCategory: family, canonicalSubcategory: byTags };
+  return { canonicalCategory: family, canonicalSubcategory: slugSub };
 }
 
 // ── Quality from metadata (a visual QA pass follows at canary time) ─────
@@ -165,6 +267,9 @@ export function assess(asset: BkAsset): Assessment {
   if (p.modelStyle && p.modelStyle !== 'realistic') reasons.push(`style ${p.modelStyle}`);
   if (p.productionLevel && p.productionLevel !== 'finished') reasons.push(`production ${p.productionLevel}`);
   if (p.sexualizedContent) reasons.push('sexualised content');
+  const text = words0(`${asset.name} ${(asset.tags ?? []).join(' ')}`);
+  const irrelevant = IRRELEVANT.exec(text);
+  if (irrelevant) reasons.push(`not a residential photoreal object (${irrelevant[0].toLowerCase()})`);
   if (!glb) reasons.push('no GLB export (only .blend)');
   if (!dims.every((d) => Number.isFinite(d) && d > 0.01) || Math.max(...dims) > MAX_DIM_M) reasons.push(`dimensions ${dims.map((d) => d?.toFixed?.(2)).join('×')} m`);
   if (faces > 2_000_000) reasons.push(`${faces} faces: no practical web path`);
@@ -176,6 +281,13 @@ export function assess(asset: BkAsset): Assessment {
   const webSuitability = Math.max(0, Math.min(1, 1 - Math.max(0, faces - 150_000) / 1_350_000)) * (glbMb === null ? 0.7 : Math.max(0.2, Math.min(1, 1 - Math.max(0, glbMb - 20) / 130)));
   const score = Math.round(((rated ? q / 10 : 0.6) * 0.45 + (p.purePbr ? 0.15 : 0) + Math.min(1, texMax / 2048) * 0.15 + Math.min(1, (asset.bookmarks ?? 0) / 40) * 0.1 + webSuitability * 0.15) * 1000) / 1000;
   if (reasons.length) return { tier: 'REJECT', score, webSuitability, reasons, glb };
+  // What a generic shelf holds is only a guess unless the name says it: never better than a fallback.
+  const shelf = [asset.category, ...(asset.slugs ?? [])].find((s) => SLUGS[s]) ?? '';
+  if (GENERIC_SHELVES.has(shelf) && !nameSubtype(`${asset.name} ${asset.displayName ?? ''}`)) {
+    return { tier: 'FALLBACK', score, webSuitability, reasons: [`type not stated by its name (shelf "${shelf}")`], glb };
+  }
+  // A set or a scene is kept only as a fallback: reconstruction places ONE object at a time.
+  if (COMPOSITE.test(words0(asset.name))) return { tier: 'FALLBACK', score, webSuitability, reasons: ['composite set/scene'], glb };
   const tier: QualityTier = rated && q >= 8 && p.purePbr && texMax >= 2048 && webSuitability >= 0.5 ? 'PREMIUM'
     : (rated ? q >= 6 : true) && texMax >= 1024 && webSuitability >= 0.3 ? 'STANDARD' : 'FALLBACK';
   return { tier, score, webSuitability, reasons, glb };

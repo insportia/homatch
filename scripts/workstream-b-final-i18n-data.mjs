@@ -243,4 +243,24 @@ export const WORKSTREAM_B_FINAL_STRINGS = {
     'تحتاج النماذج الفورية إلى أذونات Meta التالية: leads_retrieval وpages_manage_ads وpages_manage_metadata. اختر هدف موقع ويب أو رسائل، أو اطلب من HOMATCH تفعيل النماذج الفورية.',
     'טפסים מיידיים דורשים את הרשאות Meta leads_retrieval, ‏pages_manage_ads ו-pages_manage_metadata. בחרו מטרה של אתר או הודעות, או בקשו מ-HOMATCH להפעיל טפסים מיידיים.',
   ],
+  // ── /brokers ─────────────────────────────────────────────────────────────
+  broker_found_evidence: [
+    'Seen on', 'ნანახია', 'Замечено на', 'Görüldüğü yer', 'شوهد على', 'נראה ב־',
+  ],
+  broker_directory_empty_compact: [
+    'No broker or agency has a current paid Homatch listing yet.',
+    'ჯერ არცერთ ბროკერს ან სააგენტოს არ აქვს მოქმედი ფასიანი Homatch-ის განცხადება.',
+    'Пока ни у одного брокера или агентства нет действующего платного размещения в Homatch.',
+    'Henüz hiçbir emlakçı veya ajansın geçerli ücretli Homatch listelemesi yok.',
+    'لا يوجد حتى الآن وسيط أو وكالة لديهم إدراج مدفوع ساري في Homatch.',
+    'עדיין לאף מתווך או סוכנות אין רישום בתשלום פעיל ב-Homatch.',
+  ],
+  madsb_connect_test_token: [
+    'This connection was made in test mode and is not linked to a real Meta account. Reconnect to connect your Meta account.',
+    'ეს კავშირი სატესტო რეჟიმში შეიქმნა და რეალურ Meta-ს ანგარიშთან დაკავშირებული არ არის. ხელახლა დაუკავშირდით, რომ თქვენი Meta-ს ანგარიში დააკავშიროთ.',
+    'Это подключение создано в тестовом режиме и не связано с реальным аккаунтом Meta. Подключитесь заново, чтобы привязать свой аккаунт Meta.',
+    'Bu bağlantı test modunda oluşturuldu ve gerçek bir Meta hesabına bağlı değil. Meta hesabınızı bağlamak için yeniden bağlanın.',
+    'تم إنشاء هذا الاتصال في وضع الاختبار وهو غير مرتبط بحساب Meta حقيقي. أعد الاتصال لربط حسابك في Meta.',
+    'החיבור הזה נוצר במצב בדיקה ואינו מקושר לחשבון Meta אמיתי. התחברו מחדש כדי לחבר את חשבון ה-Meta שלכם.',
+  ],
 };

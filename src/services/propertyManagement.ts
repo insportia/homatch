@@ -40,6 +40,7 @@
 // therefore has two halves — the row and the object — and they are done in that
 // order on purpose: see removePhoto.
 
+import { isHistoryMatch, selectWithDemandDate } from '@/matching/currentDemand';
 import { supabase } from '@/db/supabase';
 import type { Property, PropertyPhoto } from '@/types/types';
 
@@ -124,8 +125,8 @@ export async function portfolioCounts(userId: string): Promise<{
  * answers for a single property and is right for the property page; asking it forty
  * times to render a list is forty round trips before the first card settles.
  *
- * REJECTED is excluded and NEW is counted separately, which is the same reading
- * getMatchCounts uses -- two functions answering the same question differently is how
+ * REJECTED is excluded, history (outside the active window) is excluded, and NEW is
+ * counted separately — the same reading getMatchCounts uses -- two functions answering the same question differently is how
  * a card and the page it links to end up disagreeing about how many matches there are.
  *
  * A property with no entry in the returned map has no matches. That is a real state
@@ -146,15 +147,17 @@ export async function portfolioIntelligence(
   const found = new Map<string, PortfolioIntelligence>();
   if (propertyIds.length === 0) return found;
 
-  const { data, error } = await supabase
-    .from('matches')
-    .select('property_id,status,signal_strength')
-    .in('property_id', propertyIds)
-    .neq('status', 'REJECTED')
-    .limit(5000);
-  if (error) throw new Error(error.message);
+  /* CURRENT demand only — the one definition (matching/currentDemand.ts) that
+     getMatchCounts, the dashboard and the Matches page use. A match whose
+     person posted outside the active window is history and is never counted
+     as a match, a new match or a strong match here. */
+  const rows = await selectWithDemandDate<{ property_id: string; status: string; signal_strength: string | null; demand_published_at?: string | null }>(
+    (columns) => supabase.from('matches').select(columns).in('property_id', propertyIds).neq('status', 'REJECTED').limit(5000),
+    'property_id,status,signal_strength',
+  );
 
-  for (const row of data ?? []) {
+  for (const row of rows) {
+    if (isHistoryMatch(row)) continue;
     const key = String(row.property_id);
     const entry = found.get(key) ?? { total: 0, fresh: 0, strong: 0 };
     entry.total += 1;

@@ -97,6 +97,9 @@ export function AccountPanel({ status, onChanged, returnTo, compact }: {
               {health === 'ERROR' && status?.connection?.error_reason === 'TOKEN_ENCRYPTION_NOT_CONFIGURED' && (
                 <p className="mt-1 text-2xs text-muted-foreground">{t('madsb_connect_encryption_missing')}</p>
               )}
+              {health === 'ERROR' && status?.connection?.error_reason === 'TEST_MODE_TOKEN' && (
+                <p className="mt-1 text-2xs text-muted-foreground">{t('madsb_connect_test_token')}</p>
+              )}
               {status?.mode === 'MOCK' && <p className="mt-1 text-2xs font-medium text-[hsl(var(--gold-ink))]">{t('madsb_mock_connection')}</p>}
             </div>
           </div>

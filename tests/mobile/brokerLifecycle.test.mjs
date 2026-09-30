@@ -366,7 +366,15 @@ test('/brokers is account-aware: a person is offered onboarding, a professional 
     await personal.page.goto(`${BASE}/brokers`, { waitUntil: 'domcontentloaded' });
     await personal.page.waitForSelector('[data-broker-bar="become"]', { timeout: 20000 });
     assert.equal(await personal.page.locator('#apply, #broker-name').count(), 0, 'the old application form is back');
-    assert.equal(await personal.page.locator('details[data-broker-distinction]').count(), 1, 'the distinction is one collapsible note');
+    assert.equal(await personal.page.locator('details[data-broker-distinction]').count(), 0, 'no explanatory block — the cards carry the distinction');
+    /* No hero: the title is plain text on the page ground, and the order is
+       directory → found for you → the one professional line at the bottom. */
+    assert.equal(await personal.page.locator('header.bg-\\[\\#0C1119\\]').count(), 0, 'the navy hero is back');
+    const order = await personal.page.evaluate(() => {
+      const at = (sel) => { const el = document.querySelector(sel); return el ? el.getBoundingClientRect().top + window.scrollY : -1; };
+      return { dir: at('#broker-directory-heading'), bar: at('[data-broker-bar]') };
+    });
+    assert.ok(order.dir >= 0 && order.bar > order.dir, `the professional line is not below the directory: ${JSON.stringify(order)}`);
     await personal.page.getByRole('button', { name: 'Create professional profile' }).click();
     await personal.page.waitForURL(`${BASE}/broker/onboarding`, { timeout: 10000 });
 

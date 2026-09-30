@@ -49,7 +49,7 @@ import { TelegramError, type TelegramClient } from '../../../src/research-core/a
 import { activeWindowStart } from '../../../src/research-core/discovery/freshness-policy.ts';
 import { RESEARCH_LANGUAGES } from '../../../src/research-core/discovery/lexicon.ts';
 import { loadDiscoverySettings, type DiscoverySettings } from '../_shared/discoverySettings.ts';
-import { discoverTelegramSources } from './sourceDiscovery.ts';
+import { discoverTelegramSources, registerSource } from './sourceDiscovery.ts';
 import {
   asCommunityEvidence,
   planObservation,
@@ -200,7 +200,7 @@ Deno.serve(async (req: Request) => {
     let query = db
       .from('community_targets')
       .select('id,external_id,name,readability,cursor,last_seen_external_id,'
-        + 'last_checked_at,items_read,demand_found,supply_found,duplicates_seen,source_id,languages,last_message_at')
+        + 'last_checked_at,items_read,demand_found,supply_found,duplicates_seen,source_id,languages,last_message_at,market')
       .eq('platform', 'TELEGRAM')
       .eq('discovery_enabled', true)
       .not('lifecycle', 'in', '(BLOCKED,RETIRED)')
@@ -399,6 +399,12 @@ async function syncTarget(
 
     if (!batch.hasMore || !batch.nextCursor) break;
     cursor = batch.nextCursor;
+  }
+
+  /* The read succeeded, so the channel is public: make sure every signal it
+     yields points back to a registry entry (see source_id below). */
+  if (!target.source_id && collected.length > 0) {
+    target.source_id = await registerSource(db, target, String(target.market ?? 'GE').toUpperCase()).catch(() => null);
   }
 
   /*

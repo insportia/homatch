@@ -23,34 +23,28 @@
 // this list. A firm reaches this page by applying, being approved and paying,
 // or not at all.
 //
-// WHAT CHANGED, AND WHY
+// LAYOUT (top to bottom), and nothing else:
 //
-// The first version was generic shadcn cards on the root palette in a narrow
-// column, with no way to search, and it ended in "get in touch" — a dead end,
-// because there was nothing to get in touch through. It is now on the light
-// product ground (PRODUCT_SURFACE, `.hm-product`) -- its own product, not the
-// shell's `.hm-customer` block and not the root palette -- and it filters by
-// market, language and type over the columns the view actually exposes, and it
-// ends in a real application: `broker_directory_apply`, a SECURITY DEFINER
-// function whose signature has no status, no paid_until and no broker_id, so an
-// application is PENDING_REVIEW by construction and cannot link itself to a firm
-// discovery observed. Admin review and a stated paid period are what make it
-// public (/admin/brokers).
+//   1. A title and one line — no hero, no marketing block.
+//   2. Listed with HOMATCH: approved brokers and agencies with a paid listing
+//      that is running, paid first.
+//   3. Found for you (signed in only): firms HOMATCH discovered for THIS
+//      customer's searches and campaigns, each labelled observed — never
+//      registered — with links to the pages it was seen on
+//      (list_my_discovered_broker_evidence, scoped to the caller's library).
+//   4. One compact professional line: Open Workspace for a broker or agency
+//      that has a profile, Create Profile for anyone else.
 //
-// WHY THE EMPTY STATE SAYS SOMETHING RATHER THAN NOTHING
-//
-// Production had no listings when this was written. An empty directory is exactly
-// where the temptation to "helpfully" fill it with the agencies we already know
-// about would bite. The empty state says why it is empty and offers the one honest
-// way in, which is applying.
+// An empty directory says so in one line. It is never filled with firms we
+// know about from elsewhere.
 
 import {
-  ArrowRight, Building2, CalendarClock, CheckCircle2, ClipboardCheck, ExternalLink,
-  Globe, Languages, LayoutDashboard, Loader2, Mail, MapPin, Phone, Radar, Search, Store, X,
+  ArrowRight, Building2, ExternalLink,
+  Globe, Languages, LayoutDashboard, Mail, MapPin, Phone, Radar, Search, Store, X,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { listMyDiscoveredBrokers, recordBrokerProfileEvent, type DiscoveredBroker } from '@/services/brokers';
+import { listMyDiscoveredBrokers, listMyDiscoveredBrokerEvidence, recordBrokerProfileEvent, type DiscoveredBroker } from '@/services/brokers';
 import { brokerDeskSummary, type BrokerProfile } from '@/services/brokerDesk';
 import { CustomerSurface, PRODUCT_SURFACE } from '@/components/customer/surface';
 import { AppLayout } from '@/components/layouts/AppLayout';
@@ -73,15 +67,6 @@ interface DirectoryRow {
   contact_email: string | null;
   website: string | null;
   paid_until: string | null;
-}
-
-interface OwnListing {
-  id: string;
-  display_name: string;
-  status: 'PENDING_REVIEW' | 'APPROVED' | 'NEEDS_CHANGES' | 'REJECTED' | 'ACTIVE' | 'SUSPENDED' | 'EXPIRED';
-  paid_until: string | null;
-  review_note: string | null;
-  created_at: string;
 }
 
 type RoleFilter = 'ALL' | 'AGENCY' | 'BROKER';
@@ -108,8 +93,6 @@ function websiteHref(value: string): string {
    token block, and at 320px a native picker is also the one that fits. */
 const FIELD = 'h-11 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground '
   + 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
-
-const EYEBROW = 'text-2xs font-semibold uppercase tracking-[0.12em] text-[hsl(var(--gold-ink))]';
 
 /* ─────────────────────────────────────────────────────────────────────────
  * One listing
@@ -225,8 +208,6 @@ function DirectoryCard({ row }: { row: DirectoryRow }) {
  * Applying
  * ───────────────────────────────────────────────────────────────────────── */
 
-const APPLY_LANGS = SUPPORTED_LANGUAGES.map((l) => l.code);
-
 /*
  * ONE LINE FOR THE PROFESSIONAL SIDE. A broker or agency with a profile goes
  * to their workspace (/broker); anyone else is offered the canonical
@@ -321,12 +302,18 @@ function FoundForYouSection() {
   const [failed, setFailed] = useState(false);
   const [intent, setIntent] = useState<IntentFilter>('ALL');
   const [city, setCity] = useState('');
+  const [evidence, setEvidence] = useState<Map<string, string[]>>(new Map());
 
   useEffect(() => {
     if (status !== 'AUTHENTICATED') { setRows(null); return; }
     let cancelled = false;
     listMyDiscoveredBrokers()
-      .then((data) => { if (!cancelled) setRows(data); })
+      .then(async (data) => {
+        if (cancelled) return;
+        setRows(data);
+        const links = await listMyDiscoveredBrokerEvidence([...new Set(data.map((r) => r.broker_id))]);
+        if (!cancelled) setEvidence(links);
+      })
       .catch(() => { if (!cancelled) { setRows([]); setFailed(true); } });
     return () => { cancelled = true; };
   }, [status]);
@@ -405,7 +392,7 @@ function FoundForYouSection() {
             <p className="text-sm text-muted-foreground">{t('broker_dir_no_results')}</p>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {filtered.map((row) => <DiscoveredCard key={row.id} row={row} />)}
+              {filtered.map((row) => <DiscoveredCard key={row.id} row={row} evidence={evidence.get(row.broker_id) ?? []} />)}
             </div>
           )}
         </>
@@ -425,7 +412,11 @@ function contactHref(kind: string, key: string): string | null {
   return null;
 }
 
-function DiscoveredCard({ row }: { row: DiscoveredBroker }) {
+function hostOf(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
+}
+
+function DiscoveredCard({ row, evidence }: { row: DiscoveredBroker; evidence: string[] }) {
   const { t } = useLanguage();
   const name = row.display_name?.trim() || t('broker_found_unnamed');
   const cities = (row.cities ?? []).filter(Boolean);
@@ -496,6 +487,17 @@ function DiscoveredCard({ row }: { row: DiscoveredBroker }) {
         {row.first_intent && (
           <p>{t('broker_found_via', { context: t(INTENT_KEY[row.first_intent]) })}</p>
         )}
+        {evidence.length > 0 && (
+          <p className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5" data-broker-evidence>
+            <span>{t('broker_found_evidence')}:</span>
+            {evidence.map((url) => (
+              <a key={url} href={url} target="_blank" rel="noopener noreferrer nofollow" dir="ltr"
+                className="max-w-full truncate font-medium text-[hsl(var(--gold-ink))] underline-offset-2 hover:underline">
+                {hostOf(url)}
+              </a>
+            ))}
+          </p>
+        )}
         <p>
           {t('broker_found_first_seen', { date: new Date(row.discovered_at).toLocaleDateString() })}
           {row.source_count > 0 ? ` · ${t('broker_found_sources', { count: String(row.source_count) })}` : ''}
@@ -558,6 +560,13 @@ export default function BrokersPage() {
       if (language && !(r.languages ?? []).some((l) => l.toLowerCase() === language)) return false;
       if (roleFilter !== 'ALL' && r.role !== roleFilter) return false;
       return true;
+    }).sort((a, b) => {
+      /* Paid and running first. The view already admits only current paid
+         listings; the order still states it, so a later view change cannot
+         push an unpaid row ahead of a paying one. */
+      const now = Date.now();
+      const paid = (r: DirectoryRow) => (r.paid_until && Date.parse(r.paid_until) > now ? 1 : 0);
+      return paid(b) - paid(a) || a.display_name.localeCompare(b.display_name);
     });
   }, [rows, query, market, language, roleFilter]);
 
@@ -568,20 +577,13 @@ export default function BrokersPage() {
   return (
     <AppLayout noPadding surfaceClass={PRODUCT_SURFACE}>
       <CustomerSurface className="max-w-6xl space-y-8 pt-6 sm:space-y-10 sm:pt-10">
-        {/* ── Header ─────────────────────────────────────────────────────── */}
-        {/* The navy structural header — the directory's dark frame. */}
-        <header className="overflow-hidden rounded-2xl bg-[#0C1119] px-5 py-6 text-white shadow-hover sm:px-9 sm:py-8">
-          <p className="text-[13px] font-semibold uppercase tracking-[0.18em] text-[hsl(38_92%_60%)]">{t('broker_dir_eyebrow')}</p>
-          <h1 className="mt-2 font-display text-3xl font-bold leading-tight tracking-[-0.02em] text-white sm:text-4xl">
+        {/* ── Header: a title and one line. No hero, no marketing block. ──── */}
+        <header className="space-y-1.5">
+          <h1 className="font-display text-2xl font-bold leading-tight tracking-[-0.01em] text-foreground sm:text-3xl">
             {t('broker_page_title')}
           </h1>
-          <p className="mt-3 max-w-3xl text-[15px] leading-relaxed text-white/80 sm:text-base">
-            {t('broker_dir_lead')}
-          </p>
-          <span className="mt-5 block h-[3px] w-16 rounded-full bg-[hsl(38_92%_56%)]" aria-hidden="true" />
+          <p className="max-w-3xl text-sm leading-relaxed text-muted-foreground">{t('broker_dir_lead')}</p>
         </header>
-
-        <ProfessionalBar />
 
         {/* ── The directory ──────────────────────────────────────────────── */}
         <section aria-labelledby="broker-directory-heading" className="space-y-4">
@@ -653,22 +655,9 @@ export default function BrokersPage() {
           )}
 
           {empty && (
-            <div className="hm-product-panel px-5 py-10 text-center sm:px-10 sm:py-14">
-              <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))] ring-1 ring-inset ring-[hsl(var(--gold-border))]" aria-hidden="true">
-                <Building2 className="h-5 w-5" strokeWidth={1.7} />
-              </span>
-              <p className="mx-auto mt-4 max-w-md font-display text-base font-semibold text-foreground">
-                {t('broker_directory_empty_title')}
-              </p>
-              <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
-                {t('broker_directory_empty_body')}
-              </p>
-              <Link
-                to="/broker/onboarding"
-                className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-lg border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] px-4 text-sm font-semibold text-[hsl(var(--gold-ink))] transition-colors hover:bg-[hsl(var(--gold-soft))]/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                {t('broker_dir_empty_cta')}
-              </Link>
+            <div className="hm-product-panel flex min-w-0 items-center gap-3 p-4" data-broker-directory-empty>
+              <Building2 className="h-5 w-5 shrink-0 text-[hsl(var(--gold-ink))]" strokeWidth={1.7} aria-hidden="true" />
+              <p className="text-sm text-muted-foreground">{t('broker_directory_empty_compact')}</p>
             </div>
           )}
 
@@ -692,36 +681,9 @@ export default function BrokersPage() {
                External firms, never partners, never public. ─────────────── */}
         <FoundForYouSection />
 
-        {/*
-          * THE DISTINCTION, STATED IN WORDS AND NOT ONLY IMPLIED BY LAYOUT.
-          *
-          * A customer who sees an observed agency on their results needs to already
-          * know what that label means, and a tooltip on the results screen is not
-          * where somebody learns it. So it is written out here, once, in all six
-          * languages.
-          */}
-        <details className="hm-product-panel group p-4 sm:p-5" data-broker-distinction>
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-foreground">
-            <span id="broker-distinction-heading">{t('broker_distinction_heading')}</span>
-            <span className="text-2xs font-semibold text-[hsl(var(--gold-ink))] group-open:hidden">{t('broker_bar_learn_more')}</span>
-          </summary>
-          <div className="mt-3 grid gap-3 md:grid-cols-2">
-            <div className="flex min-w-0 items-start gap-3">
-              <Store className="mt-0.5 h-5 w-5 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden="true" />
-              <div className="min-w-0 space-y-1">
-                <p className="text-sm font-semibold text-foreground">{t('broker_disclosure_directory')}</p>
-                <p className="text-2xs leading-relaxed text-muted-foreground">{t('broker_distinction_directory')}</p>
-              </div>
-            </div>
-            <div className="flex min-w-0 items-start gap-3">
-              <Radar className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-              <div className="min-w-0 space-y-1">
-                <p className="text-sm font-semibold text-foreground">{t('broker_disclosure_observed')}</p>
-                <p className="text-2xs leading-relaxed text-muted-foreground">{t('broker_distinction_observed')}</p>
-              </div>
-            </div>
-          </div>
-        </details>
+        {/* ── The professional side: one compact line, last. A broker or agency
+               with a profile gets Open Workspace; anyone else Create Profile. ── */}
+        <ProfessionalBar />
       </CustomerSurface>
     </AppLayout>
   );

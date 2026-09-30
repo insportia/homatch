@@ -97,6 +97,11 @@ export async function discoverTelegramSources(
           updated_at: new Date().toISOString(),
           metadata: { ...((target.metadata as Record<string, unknown>) ?? {}), audit: { ...audit, at: new Date().toISOString() } },
         }).eq('id', target.id);
+        /* The read proved the channel public and readable, so it gets the
+           registry entry every signal it yields points back to (raw_signals.
+           source_id). Without it revalidate-evidence answers "unregistered;
+           not requested" and the evidence stays UNKNOWN forever. */
+        await registerSource(db, target, market);
         audits.push({ target: target.external_id, qualifies: audit.qualifies, relevance: audit.relevance, reason: audit.reason });
       } catch (error) {
         const kind = error instanceof TelegramError ? error.kind : 'NETWORK_ERROR';
@@ -124,4 +129,42 @@ export async function discoverTelegramSources(
     stoppedBy,
     autoEnable: settings.telegramAutoEnableSources,
   };
+}
+
+/**
+ * The source_registry entry for a community a real read proved public.
+ * Registered AUDITED with a PUBLIC_HTML finding (a public channel's permalinks
+ * render for anyone), and `active: false`: the community target, not the
+ * registry, decides whether HOMATCH reads it. An existing entry is kept as it
+ * is — an operator's decision about a source is never overwritten here.
+ */
+export async function registerSource(
+  db: ReturnType<typeof createClient>,
+  target: { id: unknown; external_id: unknown },
+  market: string,
+): Promise<string | null> {
+  const handle = String(target.external_id ?? '');
+  if (!/^[A-Za-z0-9_]{3,64}$/.test(handle)) return null;
+  await db.from('source_registry').upsert({
+    platform: 'TELEGRAM',
+    external_id: handle,
+    url: `https://t.me/${handle}`,
+    source_type: 'TELEGRAM_GROUP',
+    source_family: 'PUBLIC_COMMUNITY',
+    country_code: market,
+    access_state: 'PUBLIC',
+    access_finding: 'PUBLIC_HTML',
+    lifecycle: 'AUDITED',
+    adapter_id: 'telegram:mtproto',
+    active: false,
+    priority_rationale: 'Registered by Telegram source discovery after a real read of its recent public messages.',
+  }, { onConflict: 'platform,external_id', ignoreDuplicates: true });
+  const { data } = await db.from('source_registry').select('id')
+    .eq('platform', 'TELEGRAM').eq('external_id', handle).maybeSingle();
+  const sourceId = (data as { id?: string } | null)?.id ?? null;
+  if (sourceId) {
+    await db.from('community_targets').update({ source_id: sourceId, source_registry_id: sourceId })
+      .eq('id', target.id).is('source_id', null);
+  }
+  return sourceId;
 }

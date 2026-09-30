@@ -99,7 +99,7 @@ test('callbacks act on exactly the connections that identity made (tenant isolat
 });
 
 test('a connection records every Meta identity it was made with; reconnect replaces them', () => {
-  const cb = fn.slice(fn.indexOf('const sealed = await sealToken(token)'));
+  const cb = fn.slice(fn.indexOf('await exchangeCodeForToken(code)'));
   assert.match(cb, /graph\(`\/debug_token\?input_token=\$\{encodeURIComponent\(token\)\}`/);
   assert.match(cb, /from\('meta_connection_identities'\)\.delete\(\)\.eq\('connection_id', conn\.id\)/);
   assert.match(cb, /connectionIdentities\(meRes\.id, debug, !!metaLoginConfigId\(\)\)/);
@@ -136,4 +136,16 @@ test('a test-mode connection is never presented as Connected once Meta is live',
   const open = shared.slice(shared.indexOf('export async function openToken'), shared.indexOf('export async function openToken') + 400);
   assert.match(open, /if \(stored\.startsWith\('mock_'\) && metaMode\(\) === 'REAL'\) return null;/);
   assert.match(api, /tokenUsable/, 'health reads token usability through openToken');
+});
+
+test('a system-user token that cannot answer /me/permissions still connects, and TEST assets are retired', () => {
+  const cb = fn.slice(fn.indexOf('await exchangeCodeForToken(code)'));
+  assert.match(cb, /granted = Array\.isArray\(debug\?\.scopes\)/, 'debug_token scopes are the fallback');
+  assert.ok(cb.indexOf('await sealToken(token)') < cb.indexOf("status: 'CONNECTED'"), 'sealed before CONNECTED');
+  assert.match(cb, /contains\('capabilities', \{ mock: true \}\)/);
+  const api = read('supabase/functions/meta-ads-api/index.ts');
+  assert.match(api, /settle\('\/me\/businesses/, 'each asset list is read on its own');
+  assert.match(api, /client_business_id/);
+  assert.match(api, /filter\(\(k\) => readKinds\.has\(k\)\)/, 'a refused list never retires its assets');
+  assert.match(read('src/pages/outreach/MetaAdsPage.tsx'), /refreshMetaAssets\(\)\.catch\(\(\) => undefined\)\.then\(\(\) => boot\(\)\)/);
 });

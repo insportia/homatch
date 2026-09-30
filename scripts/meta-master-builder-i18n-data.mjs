@@ -1048,4 +1048,14 @@ export const META_MASTER_BUILDER_STRINGS = {
     "تعذّر فتح صفحة الدفع. يُرجى المحاولة مرة أخرى.",
     "לא ניתן לפתוח את דף התשלום. נסו שוב.",
   ],
+  // Budget-step fee line (replaces madsb_money_fee_d, which said "refunded"):
+  // the unused service fee is released to the HOMATCH Balance.
+  mm_b_money_fee_d: [
+    "Covers campaign setup, automation and management infrastructure. Any unspent share is released to your HOMATCH Balance.",
+    "მოიცავს კამპანიის აწყობას, ავტომატიზაციასა და მართვის ინფრასტრუქტურას. დაუხარჯავი ნაწილი HOMATCH-ის ბალანსზე გადაგეცემათ.",
+    "Покрывает настройку кампании, автоматизацию и инфраструктуру управления. Неиспользованная часть переходит на ваш баланс HOMATCH.",
+    "Kampanya kurulumu, otomasyon ve yönetim altyapısını kapsar. Harcanmayan kısım HOMATCH bakiyenize aktarılır.",
+    "تغطي إعداد الحملة والأتمتة والبنية التحتية للإدارة. ويُحوَّل الجزء غير المُنفق إلى رصيدك في HOMATCH.",
+    "מכסים את הקמת הקמפיין, האוטומציה ותשתית הניהול. החלק שלא נוצל מועבר ליתרת HOMATCH שלכם.",
+  ],
 };

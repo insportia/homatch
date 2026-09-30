@@ -539,10 +539,10 @@ function Settings() {
             ) : JSON_OBJECT_SETTINGS.includes(s.key) ? (
               <JsonObjectSetting settingKey={s.key} value={s.value} onSave={(v) => save(s.key, v)} />
             ) : NUMERIC_SETTINGS.includes(s.key) ? (
-              <Input className="w-32 font-mono" dir="ltr" defaultValue={String(s.value)}
+              <Input className="w-32 font-mono" dir="ltr" aria-label={s.key} defaultValue={String(s.value)}
                 onBlur={e => { const n = Number(e.target.value); if (Number.isFinite(n)) save(s.key, n); }} />
             ) : (
-              <Input className="w-72 font-mono" dir="ltr" defaultValue={JSON.stringify(s.value)}
+              <Input className="w-full max-w-72 font-mono sm:w-72" dir="ltr" aria-label={s.key} defaultValue={JSON.stringify(s.value)}
                 onBlur={e => { try { save(s.key, JSON.parse(e.target.value)); } catch { toast.error(t('admin_mads_invalid_json')); } }} />
             )}
           </div>

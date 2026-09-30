@@ -20,7 +20,7 @@ export function BillingSection({ t, fmt, d }: { t: T; fmt: Fmt; d: CampaignDetai
           {ledger.map((r, i) => (
             <li key={`${r.created_at}-${i}`} className="flex items-center justify-between gap-3 px-3 py-2 text-[13px]">
               <span className="min-w-0">
-                <span className="block truncate text-foreground">{r.labelKey ? t(r.labelKey) : t('mm_c_billing_other')}</span>
+                <span className="block break-words text-foreground">{r.labelKey ? t(r.labelKey) : t('mm_c_billing_other')}</span>
                 <span className="block text-2xs text-muted-foreground">{fmt.dateTime(r.created_at)}</span>
               </span>
               <span className="shrink-0 tabular-nums text-foreground" dir="ltr">{fmt.money(r.amount_cents)}</span>

@@ -110,8 +110,8 @@ export function PlanChangeDialog({ kind, t, fmt, open, onOpenChange, onDone, cam
           {preview && (
             <div className={`rounded-xl border border-border p-3 text-[13px] ${fresh ? '' : 'opacity-60'}`} data-mm-plan-preview="">
               <dl className="space-y-1">
-                <Row label={t('mm_c_pv_daily')} value={`${fmt.money(preview.currentDailyCents)} → ${fmt.money(preview.newDailyCents)}`} />
-                <Row label={t('mm_c_pv_days')} value={`${t('mm_c_pv_days_value', { days: preview.currentDays })} → ${t('mm_c_pv_days_value', { days: preview.newDays })}`} />
+                <Row label={t('mm_c_pv_daily')} value={<><bdi>{fmt.money(preview.currentDailyCents)}</bdi> → <bdi>{fmt.money(preview.newDailyCents)}</bdi></>} />
+                <Row label={t('mm_c_pv_days')} value={<><bdi>{t('mm_c_pv_days_value', { days: preview.currentDays })}</bdi> → <bdi>{t('mm_c_pv_days_value', { days: preview.newDays })}</bdi></>} />
                 <Row label={t('mm_c_pv_fee')} value={`${fmt.num(preview.feePercent, 2)}%`} />
                 <Row label={t('mm_c_pv_held')} value={fmt.money(preview.heldFeeCents)} />
                 <Row label={t('mm_c_pv_required')} value={fmt.money(preview.requiredFeeCents)} />
@@ -159,7 +159,9 @@ export function PlanChangeDialog({ kind, t, fmt, open, onOpenChange, onDone, cam
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+/* Each amount is its own bidi isolate: an he/ar currency string carries RLM marks
+   that otherwise scramble "a → b" inside the LTR cell. */
+function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
       <dt className="text-muted-foreground">{label}</dt>

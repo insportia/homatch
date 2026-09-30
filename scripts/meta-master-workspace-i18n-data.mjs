@@ -104,8 +104,8 @@ export const META_MASTER_WORKSPACE_STRINGS = {
     '{{currency}} cinsinden sonuçlar', 'النتائج بعملة {{currency}}', 'תוצאות ב-{{currency}}',
   ],
   mm_w_summary_campaigns: [
-    '{{count}} campaigns', '{{count}} კამპანია', 'Кампаний: {{count}}',
-    '{{count}} kampanya', '{{count}} حملات', '{{count}} קמפיינים',
+    'Campaigns: {{count}}', '{{count}} კამპანია', 'Кампаний: {{count}}',
+    'Kampanya: {{count}}', 'الحملات: {{count}}', 'קמפיינים: {{count}}',
   ],
   mm_w_summary_note: [
     'Each currency is shown on its own card. Amounts in different currencies are never added together.',

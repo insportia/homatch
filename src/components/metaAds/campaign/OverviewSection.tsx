@@ -92,7 +92,7 @@ export function OverviewSection({ t, fmt, d }: { t: T; fmt: Fmt; d: CampaignDeta
               const state = h?.state ?? 'INSUFFICIENT_DATA';
               return (
                 <li key={dim} className="flex items-center justify-between gap-2 rounded-xl border border-border px-3 py-2">
-                  <span className="min-w-0 truncate text-[13px] text-foreground">{t(`mm_hdim_${dim}`)}</span>
+                  <span className="min-w-0 break-words text-[13px] text-foreground">{t(`mm_hdim_${dim}`)}</span>
                   <Chip tone={healthTone(state)}>{t(`mm_hstate_${state}`)}</Chip>
                 </li>
               );

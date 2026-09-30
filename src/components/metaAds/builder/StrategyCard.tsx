@@ -40,7 +40,7 @@ export function StrategyCard({ preview, loading, failed }: {
         )}
         {s && (
           <>
-            <dl className={`grid grid-cols-2 gap-2 sm:grid-cols-4 ${loading ? 'opacity-60' : ''}`}>
+            <dl className={`grid grid-cols-2 gap-2 ${loading ? 'opacity-60' : ''}`}>
               {[
                 ['mm_b_strategy_ad_sets', String(s.adSetCount)],
                 ['mm_b_strategy_ads', String(s.adCount)],

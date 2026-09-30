@@ -131,7 +131,7 @@ export function EvidenceChip({ t, evidence }: { t: T; evidence: string }) {
 export function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="min-w-0 rounded-xl border border-border bg-[hsl(var(--secondary))] px-3 py-2.5">
-      <p className="truncate text-2xs text-muted-foreground">{label}</p>
+      <p className="break-words text-2xs leading-snug text-muted-foreground">{label}</p>
       <p className="font-display text-lg font-bold tabular-nums text-foreground" dir="ltr">{value}</p>
       {hint && <p className="text-2xs text-muted-foreground">{hint}</p>}
     </div>

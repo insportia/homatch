@@ -116,7 +116,7 @@ export function FinancialSummary({ totals, pricing, compact, billing }: {
               <dt className="text-sm font-medium text-white/90">{t('madsb_money_fee', { pct: String(totals.feePercent) })}</dt>
               <dd className="text-base font-semibold" dir="ltr">{money(totals.feeCents)}</dd>
             </div>
-            {!compact && <p className="mt-0.5 text-2xs leading-relaxed text-white/55">{t('madsb_money_fee_d')}</p>}
+            {!compact && <p className="mt-0.5 text-2xs leading-relaxed text-white/55">{t('mm_b_money_fee_d')}</p>}
           </div>
           {/* The one number HOMATCH itself takes now. With the customer's own
               ad account that is the fee alone — Meta bills the budget to that

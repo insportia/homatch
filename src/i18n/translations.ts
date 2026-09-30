@@ -12692,7 +12692,7 @@ const en = {
   mm_w_count_live: 'Live',
   mm_w_count_attention: 'Needs attention',
   mm_w_summary_title: 'Results in {{currency}}',
-  mm_w_summary_campaigns: '{{count}} campaigns',
+  mm_w_summary_campaigns: 'Campaigns: {{count}}',
   mm_w_summary_note: 'Each currency is shown on its own card. Amounts in different currencies are never added together.',
   mm_w_summary_empty_title: 'No results in this period',
   mm_w_summary_empty_body: 'Numbers appear here once Meta reports delivery for a campaign.',
@@ -12900,6 +12900,9 @@ const en = {
   mm_n_pref_meta_daily_brief: 'Daily brief',
   mm_n_pref_meta_weekly_brief: 'Weekly brief',
   mm_n_integrity_note: 'Account-integrity messages — Campaign Guard warnings, strikes and suspensions, and loss of access to your Meta account — are always delivered and cannot be turned off.',
+
+  /* ── META ADS MASTER — BUILDER ── */
+  mm_b_money_fee_d: 'Covers campaign setup, automation and management infrastructure. Any unspent share is released to your HOMATCH Balance.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -25714,6 +25717,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mm_n_pref_meta_daily_brief: 'ყოველდღიური მიმოხილვა',
   mm_n_pref_meta_weekly_brief: 'ყოველკვირეული მიმოხილვა',
   mm_n_integrity_note: 'ანგარიშის მთლიანობის შეტყობინებები — კამპანიის დაცვის გაფრთხილებები, დარტყმები და შეჩერებები, ასევე Meta-ს ანგარიშზე წვდომის დაკარგვა — ყოველთვის მოგივათ და მათი გამორთვა შეუძლებელია.',
+
+  /* ── META ADS MASTER — BUILDER ── */
+  mm_b_money_fee_d: 'მოიცავს კამპანიის აწყობას, ავტომატიზაციასა და მართვის ინფრასტრუქტურას. დაუხარჯავი ნაწილი HOMATCH-ის ბალანსზე გადაგეცემათ.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -38519,6 +38525,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mm_n_pref_meta_daily_brief: 'Ежедневная сводка',
   mm_n_pref_meta_weekly_brief: 'Еженедельная сводка',
   mm_n_integrity_note: 'Сообщения о целостности аккаунта — предупреждения, страйки и блокировки Защиты кампаний, а также потеря доступа к аккаунту Meta — доставляются всегда и не отключаются.',
+
+  /* ── META ADS MASTER — BUILDER ── */
+  mm_b_money_fee_d: 'Покрывает настройку кампании, автоматизацию и инфраструктуру управления. Неиспользованная часть переходит на ваш баланс HOMATCH.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -51114,7 +51123,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mm_w_count_live: 'Yayında',
   mm_w_count_attention: 'İlgi gerektiriyor',
   mm_w_summary_title: '{{currency}} cinsinden sonuçlar',
-  mm_w_summary_campaigns: '{{count}} kampanya',
+  mm_w_summary_campaigns: 'Kampanya: {{count}}',
   mm_w_summary_note: 'Her para birimi kendi kartında gösterilir. Farklı para birimlerindeki tutarlar asla toplanmaz.',
   mm_w_summary_empty_title: 'Bu dönemde sonuç yok',
   mm_w_summary_empty_body: 'Meta bir kampanyanın yayınını bildirdiğinde rakamlar burada görünür.',
@@ -51322,6 +51331,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mm_n_pref_meta_daily_brief: 'Günlük özet',
   mm_n_pref_meta_weekly_brief: 'Haftalık özet',
   mm_n_integrity_note: 'Hesap bütünlüğü mesajları — Kampanya Koruması uyarıları, ihlaller ve askıya almalar ile Meta hesabınıza erişim kaybı — her zaman iletilir ve kapatılamaz.',
+
+  /* ── META ADS MASTER — BUILDER ── */
+  mm_b_money_fee_d: 'Kampanya kurulumu, otomasyon ve yönetim altyapısını kapsar. Harcanmayan kısım HOMATCH bakiyenize aktarılır.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -63917,7 +63929,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mm_w_count_live: 'قيد التشغيل',
   mm_w_count_attention: 'تحتاج إلى انتباه',
   mm_w_summary_title: 'النتائج بعملة {{currency}}',
-  mm_w_summary_campaigns: '{{count}} حملات',
+  mm_w_summary_campaigns: 'الحملات: {{count}}',
   mm_w_summary_note: 'تُعرض كل عملة في بطاقة مستقلة. لا تُجمع المبالغ بعملات مختلفة أبدًا.',
   mm_w_summary_empty_title: 'لا توجد نتائج في هذه الفترة',
   mm_w_summary_empty_body: 'تظهر الأرقام هنا بمجرد أن تُبلغ Meta عن عرض إحدى الحملات.',
@@ -64125,6 +64137,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mm_n_pref_meta_daily_brief: 'الملخص اليومي',
   mm_n_pref_meta_weekly_brief: 'الملخص الأسبوعي',
   mm_n_integrity_note: 'رسائل سلامة الحساب — تحذيرات حماية الحملات والمخالفات والإيقاف وفقدان الوصول إلى حساب Meta — تُرسل دائمًا ولا يمكن إيقافها.',
+
+  /* ── META ADS MASTER — BUILDER ── */
+  mm_b_money_fee_d: 'تغطي إعداد الحملة والأتمتة والبنية التحتية للإدارة. ويُحوَّل الجزء غير المُنفق إلى رصيدك في HOMATCH.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -76720,7 +76735,7 @@ const he: Partial<Record<TranslationKey, string>> = {
   mm_w_count_live: 'פעילים',
   mm_w_count_attention: 'דורשים תשומת לב',
   mm_w_summary_title: 'תוצאות ב-{{currency}}',
-  mm_w_summary_campaigns: '{{count}} קמפיינים',
+  mm_w_summary_campaigns: 'קמפיינים: {{count}}',
   mm_w_summary_note: 'כל מטבע מוצג בכרטיס משלו. סכומים במטבעות שונים לעולם אינם מחוברים יחד.',
   mm_w_summary_empty_title: 'אין תוצאות בתקופה הזו',
   mm_w_summary_empty_body: 'המספרים יופיעו כאן ברגע ש-Meta ידווח על הצגת קמפיין.',
@@ -76928,6 +76943,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   mm_n_pref_meta_daily_brief: 'תקציר יומי',
   mm_n_pref_meta_weekly_brief: 'תקציר שבועי',
   mm_n_integrity_note: 'הודעות על תקינות החשבון — אזהרות, פסילות והשעיות של הגנת הקמפיינים ואובדן גישה לחשבון Meta — נמסרות תמיד ואי אפשר לכבות אותן.',
+
+  /* ── META ADS MASTER — BUILDER ── */
+  mm_b_money_fee_d: 'מכסים את הקמת הקמפיין, האוטומציה ותשתית הניהול. החלק שלא נוצל מועבר ליתרת HOMATCH שלכם.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

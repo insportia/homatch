@@ -73,8 +73,8 @@ export function CreativesSection({ t, fmt, d }: { t: T; fmt: Fmt; d: CampaignDet
                     [t('mm_c_kpi_frequency'), fmt.num(k.frequency, 2)],
                   ] as Array<[string, string]>).map(([l, v]) => (
                     <div key={l} className="flex min-w-0 justify-between gap-2">
-                      <dt className="truncate text-muted-foreground">{l}</dt>
-                      <dd className="tabular-nums text-foreground" dir="ltr">{v}</dd>
+                      <dt className="min-w-0 break-words text-muted-foreground">{l}</dt>
+                      <dd className="shrink-0 tabular-nums text-foreground" dir="ltr">{v}</dd>
                     </div>
                   ))}
                 </dl>

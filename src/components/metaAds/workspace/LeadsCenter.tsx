@@ -140,7 +140,7 @@ export function LeadsCenter({ campaigns, importEnabled, onImport, reloadKey = 0 
           {visible.map(l => (
             <li key={l.id} className="rounded-2xl border border-border bg-card shadow-card">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
-                <button type="button" onClick={() => setOpenId(l.id)} aria-label={t('mm_w_lead_open')}
+                <button type="button" onClick={() => setOpenId(l.id)} title={t('mm_w_lead_open')}
                   className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-lg text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]">
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-semibold text-foreground">{leadName(l) || t('mads_lead_unnamed')}</span>

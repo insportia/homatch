@@ -96,7 +96,7 @@ export function LeadRecordDrawer({ lead, campaignName, onClose, onStatus, onNote
                   ))}
                   {extra.map(k => (
                     <div key={k}>
-                      <dt className="text-2xs text-muted-foreground">{k}</dt>
+                      <dt className="break-words text-2xs text-muted-foreground">{k.replace(/_/g, ' ')}</dt>
                       <dd className="break-words">{String(answers[k])}</dd>
                     </div>
                   ))}

@@ -47,8 +47,8 @@ export function SegmentTable({ t, fmt, rows, name, leader, label }: {
             <dl className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 text-[13px]">
               {cols.map(([h, v]) => (
                 <div key={h} className="flex min-w-0 justify-between gap-2">
-                  <dt className="truncate text-muted-foreground">{h}</dt>
-                  <dd className="tabular-nums text-foreground" dir="ltr">{v(r.totals)}</dd>
+                  <dt className="min-w-0 break-words text-muted-foreground">{h}</dt>
+                  <dd className="shrink-0 tabular-nums text-foreground" dir="ltr">{v(r.totals)}</dd>
                 </div>
               ))}
             </dl>

@@ -99,7 +99,7 @@ function Count({ label, value, tone }: { label: string; value: string; tone?: 'w
     <div className={tone === 'warn'
       ? 'min-w-0 rounded-xl border border-[hsl(32_78%_36%)]/30 bg-[hsl(32_78%_36%)]/10 px-3 py-2.5'
       : 'min-w-0 rounded-xl border border-border bg-[hsl(var(--secondary))] px-3 py-2.5'}>
-      <dt className="truncate text-2xs text-muted-foreground">{label}</dt>
+      <dt className="break-words text-2xs leading-snug text-muted-foreground">{label}</dt>
       <dd className="font-display text-xl font-bold tabular-nums text-foreground">{value}</dd>
     </div>
   );
@@ -128,11 +128,13 @@ function CurrencySummaryCard({ s }: { s: Summary }) {
         </h3>
         <span className="text-2xs text-muted-foreground">{t('mm_w_summary_campaigns', { count: s.campaigns })}</span>
       </div>
-      <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2.5 sm:grid-cols-4">
+      {/* Two columns: the card is half of the dashboard column, and four columns
+          cut money values to "$192.…" at every desktop width. */}
+      <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2.5">
         {items.map(([label, value]) => (
           <div key={label} className="min-w-0">
-            <dt className="truncate text-2xs text-muted-foreground" title={label}>{label}</dt>
-            <dd className="truncate font-semibold tabular-nums text-foreground" dir="ltr">{value}</dd>
+            <dt className="break-words text-2xs leading-snug text-muted-foreground">{label}</dt>
+            <dd className="break-words font-semibold tabular-nums text-foreground" dir="ltr">{value}</dd>
           </div>
         ))}
       </dl>

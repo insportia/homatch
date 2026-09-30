@@ -3,7 +3,7 @@
 //   file (PNG / JPEG / WebP, or page 1 of a PDF rendered here)
 //     → R2 (design-studio-floorplans, presigned, owner-only)
 //     → ds_floorplans row (key + metadata only)
-//     → design-studio-floorplan edge function: bytes checked, AI reading
+//     → design-studio-reconstruct/floorplan (edge): bytes checked, AI reading
 //       stored as a PROPOSAL
 //     → the customer keeps / removes elements and corrects room kinds
 //     → Design Studio scale: estimated, calibrated or verified
@@ -121,7 +121,7 @@ export async function uploadFloorPlan(input: { userId: string; projectId: string
 
 /** Ask HOMATCH to read the drawing. Returns when the reading is stored (or failed). */
 export async function interpretFloorPlan(floorplanId: string): Promise<void> {
-  const { error } = await supabase.functions.invoke('design-studio-floorplan', { body: { floorplanId } });
+  const { error } = await supabase.functions.invoke('design-studio-reconstruct/floorplan', { body: { floorplanId } });
   if (error) {
     let code = 'DS_READING_FAILED';
     try {

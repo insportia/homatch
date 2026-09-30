@@ -39,7 +39,9 @@ MATTERS right now, verify against the live systems, not this file)
   storage categories, billable products, shares, reconstruction). Unapplied
   until the unified rollout; `scripts/design-studio/rls-check.mjs` proves them
   on PGlite (131 checks).
-- Edge functions: `design-studio-floorplan`, `-model`, `-ai`, `-reconstruct`
+- Edge functions: `design-studio-model` and `design-studio-reconstruct`, which
+  routes the three AI readings by path (`/`, `/floorplan`, `/design`) because the
+  Free plan caps a project at 100 edge functions and production is at the cap
   (all JWT-verified, act as the caller), `storage-sign` (commit-time type and
   size enforcement, `4daf32aa`).
 - AI operations (DS_FLOORPLAN_READ, DS_AI_DESIGN, DS_RECONSTRUCT) are measured,

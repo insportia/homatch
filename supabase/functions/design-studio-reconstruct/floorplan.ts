@@ -1,6 +1,6 @@
 // HOMATCH DESIGN STUDIO — read a customer's floor plan.
 //
-// POST { floorplanId }  (the caller's JWT; they must own the plan)
+// POST …/design-studio-reconstruct/floorplan { floorplanId }  (the caller's JWT; they must own the plan)
 //
 // 1. The plan row is read AS THE CALLER, so RLS decides whose it is.
 // 2. The file is read from R2 by its key and checked by its BYTES: it must
@@ -17,7 +17,6 @@
 // false the run is recorded as unbilled usage; if the switch is turned on
 // before the confirmation flow is wired, this refuses rather than charging.
 
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { recordUnbilledUsage, serviceClient } from '../_shared/billing.ts';
 import { refuseIfImpersonating } from '../_shared/impersonation.ts';
@@ -55,7 +54,7 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-serve(async (req) => {
+export async function handleFloorplan(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   const authHeader = req.headers.get('Authorization') ?? '';
   if (!authHeader) return json({ error: 'UNAUTHENTICATED' }, 401);
@@ -185,4 +184,4 @@ serve(async (req) => {
   }
 
   return json({ state: 'INTERPRETED', counts: { walls: reading.doc.walls.length, rooms: reading.doc.rooms.length, doors: reading.doc.doors.length, windows: reading.doc.windows.length } });
-});
+}

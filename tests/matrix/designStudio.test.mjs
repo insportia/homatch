@@ -188,7 +188,7 @@ test('the migration leaves transactions to the runner', () => {
 /* ── The customer floor plan (checkpoint 5) ─────────────────────── */
 
 test('the floor-plan reader treats the upload as untrusted and stores only a proposal', () => {
-  const fn = read('supabase/functions/design-studio-floorplan/index.ts');
+  const fn = read('supabase/functions/design-studio-reconstruct/floorplan.ts');
   assert.match(fn, /refuseIfImpersonating\(/, 'an impersonating admin could spend reading on a customer');
   assert.match(fn, /caller\.from\('ds_floorplans'\)/, 'the plan row is not read as the caller (RLS decides ownership)');
   assert.match(fn, /startsWith\(expectedPrefix\)/, 'the object key is not checked against the caller and project');
@@ -217,7 +217,8 @@ test('an unmeasured ceiling is recorded as typical, never as a fact', () => {
 });
 
 test('the reader is deployed with JWT verification like every signed-in function', () => {
-  assert.match(read('.github/workflows/deploy.yml'), /design-studio-floorplan/);
+  assert.match(read('.github/workflows/deploy.yml'), /"design-studio-reconstruct"/);
+  assert.match(read('supabase/functions/design-studio-reconstruct/index.ts'), /route === 'floorplan'\) return handleFloorplan\(req\)/);
 });
 
 test('table privileges are explicit and sources/jobs are read-only to customers', () => {
@@ -266,7 +267,7 @@ test('model furniture can be hidden, never moved', () => {
 /* ── The AI designer (checkpoint 7) ─────────────────────────────── */
 
 test('the AI designer returns a validated plan and never writes a design', () => {
-  const fn = read('supabase/functions/design-studio-ai/index.ts');
+  const fn = read('supabase/functions/design-studio-reconstruct/design.ts');
   assert.match(fn, /refuseIfImpersonating\(/);
   assert.match(fn, /caller\.from\('ds_versions'\)/, 'the version is not read as the caller');
   assert.match(fn, /validatePlan\(raw, ctx, brief\)/, 'the model output is not validated');
@@ -275,7 +276,7 @@ test('the AI designer returns a validated plan and never writes a design', () =>
   assert.match(fn, /recordUnbilledUsage\(/, 'AI design is not metered');
   assert.ok(!/rpc\(['"](charge|debit|reserve|settle)/i.test(fn.replace(/\/\/.*$/gm, '')), 'AI design charges');
   assert.match(fn, /strict: true/, 'the model is not held to the schema');
-  assert.match(read('.github/workflows/deploy.yml'), /"design-studio-ai"/);
+  assert.match(read('supabase/functions/design-studio-reconstruct/index.ts'), /route === 'design'\) return handleDesign\(req\)/);
 });
 
 test('style codes and plan shape stay in step between server and browser', () => {
@@ -406,7 +407,7 @@ test('the scene debug hook exists only in the QA harness build', () => {
 });
 
 test('reconstruction reads pictures as the caller, is JWT-verified and shipped, and never writes geometry or a design', () => {
-  const fn = read('supabase/functions/design-studio-reconstruct/index.ts');
+  const fn = read('supabase/functions/design-studio-reconstruct/reconstruct.ts');
   assert.match(fn, /caller\.from\('ds_reconstructions'\)/, 'the reconstruction is read as the caller (RLS decides)');
   assert.match(fn, /sniffType\(/, 'pictures are checked by their bytes');
   assert.match(fn, /BILLING_CONFIRMATION_REQUIRED/, 'refuses rather than charging if billing is switched on early');
@@ -436,4 +437,28 @@ test('light is a fixed pool, never a light per lamp (every forward-rendered ligh
 
 test('mobile: the walking thumb is physically on the left in every language', () => {
   assert.match(read('src/components/designStudio/workspace/WalkthroughOverlay.tsx'), /absolute bottom-0 left-0 top-28/);
+});
+
+test('the three AI readings share one deployed function, because the project is at its function cap', () => {
+  const index = read('supabase/functions/design-studio-reconstruct/index.ts');
+  // One router, three handlers, routed by path: no handler reads another's body.
+  assert.match(index, /import \{ handleDesign \} from '\.\/design\.ts'/);
+  assert.match(index, /import \{ handleFloorplan \} from '\.\/floorplan\.ts'/);
+  assert.match(index, /import \{ handleReconstruct \} from '\.\/reconstruct\.ts'/);
+  assert.ok(!/req\.json\(|req\.clone\(/.test(index), 'the router must route by path, not by reading the body');
+  // Each handler keeps its own guards.
+  for (const f of ['design.ts', 'floorplan.ts', 'reconstruct.ts']) {
+    const h = read(`supabase/functions/design-studio-reconstruct/${f}`);
+    assert.match(h, /caller\.auth\.getUser\(\)/, `${f}: the caller is not authenticated`);
+    assert.match(h, /refuseIfImpersonating\(/, `${f}: an impersonated session could drive it`);
+    assert.match(h, /BILLING_CONFIRMATION_REQUIRED/, `${f}: an enabled billing switch could become a charge`);
+    assert.ok(!/\bserve\(/.test(h), `${f}: a handler must not start its own server`);
+  }
+  // The browser calls the routes; the two retired function names are gone.
+  assert.match(read('src/services/designStudio/ai.ts'), /invoke\('design-studio-reconstruct\/design'/);
+  assert.match(read('src/services/designStudio/floorplans.ts'), /invoke\('design-studio-reconstruct\/floorplan'/);
+  assert.ok(!/"design-studio-(ai|floorplan)"/.test(read('.github/workflows/deploy.yml')), 'a function the project cap cannot hold is listed for deploy');
+  for (const gone of ['design-studio-ai', 'design-studio-floorplan']) {
+    assert.ok(!fs.existsSync(path.join(ROOT, 'supabase/functions', gone)), `${gone} came back as its own function`);
+  }
 });

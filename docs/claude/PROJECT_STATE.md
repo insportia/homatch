@@ -33,6 +33,29 @@ MATTERS right now, verify against the live systems, not this file)
 - Push subscriptions in production: 0.
 - Cron: `homatch-native-intent` (*/1), `homatch-supply-matching` (*/15) — live.
 
+## Design Studio (branch `feat/design-studio`, rolling out 2026-09-30)
+
+- Five migrations `20260930090000`…`20260930095000` (foundation, dev catalog,
+  storage categories, billable products, shares, reconstruction). Unapplied
+  until the unified rollout; `scripts/design-studio/rls-check.mjs` proves them
+  on PGlite (131 checks).
+- Edge functions: `design-studio-floorplan`, `-model`, `-ai`, `-reconstruct`
+  (all JWT-verified, act as the caller), `storage-sign` (commit-time type and
+  size enforcement, `4daf32aa`).
+- AI operations (DS_FLOORPLAN_READ, DS_AI_DESIGN, DS_RECONSTRUCT) are measured,
+  NOT priced: `design_studio_billing_enabled = false`; the functions refuse
+  (not charge) if it is switched on before a confirmation flow exists.
+- Reconstruction: pictures are `ds_floorplans` rows with `purpose='REFERENCE'`;
+  the reading's plan rides on the first picture's row so the shared floor-plan
+  generator builds it (ESTIMATED until calibrated). Pieces carry `provenance`;
+  public share snapshots strip it.
+- Living engine: `canvas/livingRuntime.ts` runs every interaction (declared by
+  assets, permitted by capabilities); lights are a pool of 4/3/2 per tier
+  (12 per-lamp lights halved the frame rate — measured).
+- Browser QA: `tests/browser/designStudio.qa.mjs` (324 checks; checkpoint 11
+  runs the customer's acceptance render end to end with a hand-authored
+  reading in place of the model).
+
 ## Deferred / known-open (do not "fix" casually)
 
 - Active Search has no dedicated UI surface yet (backend + notify exist).

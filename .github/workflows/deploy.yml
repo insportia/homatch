@@ -513,6 +513,34 @@ jobs:
             "developer-buyer-document"
             "developer-document-extract"
             "developer-floorplan-extract"
+            # HOMATCH DESIGN STUDIO. Browser-facing, JWT-verified, and acting
+            # only on the caller's own rows (RLS reads as the caller).
+            #   design-studio-floorplan  checks an uploaded plan by its bytes
+            #                             and writes an AI reading onto
+            #                             ds_floorplans as a PROPOSAL. It
+            #                             never builds geometry or marks
+            #                             anything verified. Metered, unpriced.
+            "design-studio-floorplan"
+            #   design-studio-model      reads an uploaded glTF back from R2
+            #                             by its bytes, refuses anything
+            #                             external, undecodable or too heavy,
+            #                             and records an UPLOADED_MODEL
+            #                             source. No AI, nothing billable.
+            "design-studio-model"
+            #   design-studio-ai         asks the model for a design PLAN in
+            #                             a fixed schema and returns only what
+            #                             validatePlan() keeps. It never writes
+            #                             a design. Metered, unpriced; refuses
+            #                             if billing is switched on early.
+            "design-studio-ai"
+            #   design-studio-reconstruct reads the customer's own pictures
+            #                             of a home (checked by their bytes)
+            #                             into structured scene data and an
+            #                             estimated floor-plan PROPOSAL. It
+            #                             never builds geometry or a design.
+            #                             Metered, unpriced; refuses if
+            #                             billing is switched on early.
+            "design-studio-reconstruct"
             # Object storage. storage-sign is the ONLY runtime anywhere that
             # holds an R2 credential: it authorises the caller in Postgres
             # under that caller's own token and hands back a short-lived

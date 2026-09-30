@@ -29,7 +29,15 @@ import { isChunkLoadError } from '../../src/lib/lazyRoute.ts';
 
 test('route 1: the SPA rewrite does not answer for build output', () => {
   const cfg = JSON.parse(readFileSync('vercel.json', 'utf8'));
-  const rewrites = cfg.rewrites ?? [];
+  const all = cfg.rewrites ?? [];
+  // Design Studio's public share viewer is its own page; it is the only
+  // other rewrite, and it names a fixed token path, never a catch-all.
+  const others = all.filter((r) => r.destination !== '/index.html');
+  assert.deepEqual(others, [
+    { source: '/w/:token', destination: '/share.html' },
+    { source: '/d/:token', destination: '/share.html' },
+  ], 'an unexpected rewrite was added');
+  const rewrites = all.filter((r) => r.destination === '/index.html');
   assert.equal(rewrites.length, 1, 'expected exactly one SPA rewrite');
 
   const { source, destination } = rewrites[0];

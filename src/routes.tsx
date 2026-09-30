@@ -45,6 +45,10 @@ const AIPage = lazyRoute(() => import('./pages/AIPage'));
 const VerifyPage = lazyRoute(() => import('./pages/VerifyPage'));
 const MortgagePage = lazyRoute(() => import('./pages/MortgagePage'));
 const ForExpatsPage = lazyRoute(() => import('./pages/ForExpatsPage'));
+/* HOMATCH Design Studio. Lazy, and the workspace separately from the
+   launcher, because only the workspace pulls three.js. */
+const DesignStudioPage = lazyRoute(() => import('./pages/designStudio/DesignStudioPage'));
+const DesignStudioWorkspacePage = lazyRoute(() => import('./pages/designStudio/DesignStudioWorkspacePage'));
 const ExpatTopicPage = lazyRoute(() => import('./pages/ExpatTopicPage'));
 const ExpatPlanPage = lazyRoute(() => import('./pages/ExpatPlanPage'));
 /*
@@ -317,6 +321,16 @@ export const routes: RouteConfig[] = [
   { name: 'For Expats',        path: '/for-expats/georgia',       element: <ForExpatsPage />,     public: true },
   { name: 'My Expat Plan',     path: '/for-expats/plan',          element: <ExpatPlanPage />,     public: false },
   { name: 'For Expats topic',  path: '/for-expats/georgia/:slug', element: <ExpatTopicPage />,    public: true },
+  /*
+   * HOMATCH DESIGN STUDIO — "now that I have THIS space, let me design it".
+   * A customer product, separate from the Developer Digital Twin (/p/..., /studio/...).
+   * Signed-in only, and hidden by DesignStudioGate until the feature is switched on for
+   * the viewer (src/lib/designStudio/access.ts).
+   */
+  { name: 'Design Studio',           path: '/design-studio',                                element: <DesignStudioPage />,          public: false },
+  { name: 'Design Studio project',   path: '/design-studio/:projectId',                     element: <DesignStudioWorkspacePage />, public: false, visible: false },
+  { name: 'Design Studio version',   path: '/design-studio/:projectId/design/:versionId',   element: <DesignStudioWorkspacePage />, public: false, visible: false },
+  { name: 'Design Studio walkthrough', path: '/design-studio/:projectId/walkthrough',       element: <DesignStudioWorkspacePage />, public: false, visible: false },
   // 'My Deals' / '/cases' route intentionally removed from the product
   // (2026-09-06 mandate) — see the CasesPage import comment above.
   { name: 'Partners',          path: '/partners',                 element: <PartnersPage />,      public: true },

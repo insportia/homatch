@@ -136,7 +136,13 @@ and is reunited with the object only in a `Content-Disposition` header.
 
 Categories: `property-photos`, `deal-room-documents`, `developer-documents`,
 `developer-media`, `mortgage-documents`, `expat-attachments`,
-`generated-reports`. An unlisted one is refused, not defaulted.
+`generated-reports`, and for HOMATCH Design Studio `design-studio-floorplans`,
+`design-studio-models` (glTF/GLB, up to 100 MB) and `design-studio-thumbnails`
+(entity = the `ds_projects` row; owner only, Admin read-only). An unlisted one
+is refused, not defaulted. Design Studio's `design-studio-floorplan` and
+`design-studio-model` functions read an upload back through
+`_shared/objectStore.ts` to check it by its bytes (as the storage functions
+do); they never write to R2 and never return an object to the browser.
 
 **Registering creates nothing.** A prefix in object storage is a substring of
 a key, not a directory, so there is nothing to make until the first upload.

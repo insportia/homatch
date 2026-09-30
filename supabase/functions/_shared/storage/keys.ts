@@ -83,6 +83,15 @@ const MEDIA: ContentPolicy = {
   maxBytes: 200 * MB,
 };
 const AUDIO: ContentPolicy = { mime: ['audio/'], maxBytes: 50 * MB };
+// HOMATCH Design Studio. A customer floor plan (drawing or PDF), a customer
+// 3D model (glTF only: other formats would need a conversion service that
+// does not exist), and small version thumbnails.
+const DS_FLOORPLAN: ContentPolicy = {
+  mime: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'],
+  maxBytes: 25 * MB,
+};
+const DS_MODEL: ContentPolicy = { mime: ['model/gltf-binary', 'model/gltf+json'], maxBytes: 100 * MB };
+const DS_THUMBNAIL: ContentPolicy = { mime: ['image/webp', 'image/jpeg', 'image/png'], maxBytes: 2 * MB };
 const ANY_SMALL: ContentPolicy = { mime: ['*'], maxBytes: 25 * MB };
 
 export interface CategoryRules {
@@ -117,6 +126,11 @@ export const ACCOUNT_CATEGORIES: Record<string, CategoryRules> = {
   'mortgage-documents': owned(DOCUMENT, true, 'mortgage_offer'),
   'expat-attachments': owned(DOCUMENT, true, 'expat_task'),
   'generated-reports': owned(DOCUMENT, false, 'report'),
+  // Design Studio: the entity is the ds_projects row; storage_authorize
+  // resolves its owner (owner only, Admin read-only).
+  'design-studio-floorplans': owned(DS_FLOORPLAN, true, 'ds_project'),
+  'design-studio-models': owned(DS_MODEL, true, 'ds_project'),
+  'design-studio-thumbnails': owned(DS_THUMBNAIL, true, 'ds_project'),
   'developer-documents': owned(
     DOCUMENT, true, 'dev_workspace',
     'Workspace-owned. The account segment records who uploaded it; the '
@@ -358,14 +372,47 @@ export function checkContent(
   return { ok: true };
 }
 
+/**
+ * May what ACTUALLY ARRIVED stay at this key?
+ *
+ * checkContent() judges what the browser said it would send. A presigned PUT
+ * binds neither the body length nor the Content-Type header, so whoever
+ * holds the URL can send something larger, or labelled differently, than
+ * was declared. At commit the object's real size and stored type are read
+ * back from R2 and judged by the same category policy — and, where the key
+ * carries an extension chosen from the declared type, the stored type must
+ * be the one that extension was chosen for (a `.png` key holds a PNG
+ * label, not `application/pdf` or `text/html`).
+ *
+ * `size: null` means R2 did not report one; that is not a pass.
+ */
+export function checkArrived(
+  parsed: ParsedKey, facts: { size: number | null; contentType: string | null },
+): ContentVerdict {
+  if (typeof facts.size !== 'number') return { ok: false, reason: 'BAD_SIZE' };
+  const verdict = checkContent(parsed, facts.contentType ?? undefined, facts.size);
+  if (!verdict.ok) return verdict;
+  const mime = (facts.contentType ?? '').split(';')[0].trim().toLowerCase();
+  const rawExt = /\.([a-z0-9]{2,5})$/i.exec(parsed.rest)?.[1]?.toLowerCase();
+  const keyExt = rawExt === 'jpeg' ? 'jpg' : rawExt;
+  const mimeExt = EXT_BY_MIME[mime];
+  if (keyExt && mimeExt && keyExt !== mimeExt) return { ok: false, reason: 'MIME_NOT_ALLOWED' };
+  if (keyExt && !mimeExt && KNOWN_EXTENSIONS.has(keyExt)) return { ok: false, reason: 'MIME_NOT_ALLOWED' };
+  return { ok: true };
+}
+
 /** Extension chosen from the declared type, never from the uploaded name. */
 const EXT_BY_MIME: Record<string, string> = {
   'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/avif': 'avif',
   'image/heic': 'heic', 'image/gif': 'gif', 'application/pdf': 'pdf',
+  'model/gltf-binary': 'glb', 'model/gltf+json': 'gltf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
   'text/plain': 'txt', 'audio/mpeg': 'mp3', 'video/mp4': 'mp4',
 };
+
+/** Extensions HOMATCH itself gives keys: one of these on a key names the type it must hold. */
+const KNOWN_EXTENSIONS = new Set(Object.values(EXT_BY_MIME));
 
 /**
  * Build an account-scoped key.

@@ -18,8 +18,10 @@
 //
 //   sign   → authorise, check the type and size, record a PENDING row, and
 //            return a URL
-//   commit → ask R2 what actually arrived, record the real size and md5, and
-//            turn the row ACTIVE
+//   commit → ask R2 what actually arrived, judge the REAL size and stored type
+//            by the same category policy (a presigned PUT binds neither),
+//            remove anything that fails, otherwise record the real size and
+//            md5 and turn the row ACTIVE
 //
 // Without the second call an abandoned upload is invisible: bytes in a bucket
 // that nothing in Postgres knows about, which is the definition of an orphan.
@@ -41,7 +43,7 @@ import { authorize, callerClient, type DenyReason } from '../_shared/storageAuth
 import {
   StorageUnavailable, deleteObject, envReport, headObject, signedUrl,
 } from '../_shared/objectStore.ts';
-import type { ParsedKey, StorageAction } from '../_shared/storage/keys.ts';
+import { checkArrived, type ParsedKey, type StorageAction } from '../_shared/storage/keys.ts';
 
 declare const Deno: { env: { get(k: string): string | undefined } };
 
@@ -203,6 +205,26 @@ serve(async (req) => {
             .eq('object_key', objectKey);
         }
         return json({ error: 'NOT_FOUND', key: objectKey }, 404);
+      }
+      // Judge the bytes that arrived, not the ones that were promised: the
+      // presigned PUT bound neither the length nor the Content-Type. An
+      // object the category would never have accepted is removed and its
+      // row closed, so it can never be read back as if it had been.
+      const arrived = checkArrived(parsed, { size: facts.size, contentType: facts.contentType });
+      if (!arrived.ok) {
+        await deleteObject(objectKey);
+        if (db) {
+          await db.from('storage_objects').update({
+            lifecycle: 'DELETED',
+            byte_size: facts.size ?? 0,
+            content_type: facts.contentType ?? null,
+            deleted_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }).eq('object_key', objectKey);
+        }
+        const reason = arrived.reason === 'TOO_LARGE' ? 'TOO_LARGE' : 'MIME_NOT_ALLOWED';
+        console.error('storage-sign: commit refused', reason, parsed.category ?? parsed.namespace);
+        return json({ error: reason, key: objectKey }, STATUS[reason]);
       }
       if (db) {
         await db.from('storage_objects').update({

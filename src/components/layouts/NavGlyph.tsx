@@ -19,7 +19,7 @@ import React from 'react';
  */
 
 export type NavGlyphName =
-  | 'dashboard' | 'properties' | 'find_property' | 'brokers' | 'expats'
+  | 'dashboard' | 'properties' | 'find_property' | 'brokers' | 'expats' | 'design_studio'
   | 'verify' | 'contracts' | 'mortgage' | 'investment'
   | 'calls' | 'whatsapp' | 'email' | 'live_chat' | 'chat' | 'meta_ads'
   | 'ai' | 'activity' | 'notifications' | 'credits' | 'profile';
@@ -145,6 +145,15 @@ const GLYPHS: Record<NavGlyphName, React.ReactNode> = {
       <circle cx="11.7" cy="9.9" r="1.1" fill={GOLD} stroke="none" />
       <circle cx="15" cy="9.9" r="1.1" fill={GOLD} stroke="none" />
       <path d="M19.6 9.4a4.3 4.3 0 0 1 0 5.8" fill="none" stroke={GOLD} strokeWidth="1.8" strokeLinecap="round" />
+    </>
+  ),
+  /* Design Studio: a room's corner — two walls and the floor they stand on —
+     and the gold swatch being tried on that floor. Space first, design on it. */
+  design_studio: (
+    <>
+      <path d="M4 7.6 12 3.6l8 4v8l-8-4-8 4z" {...S} />
+      <path d="M12 3.6v8" {...S} />
+      <path d="M12 15.4l3.6 1.9-3.6 1.9-3.6-1.9z" fill={GOLD} stroke="none" />
     </>
   ),
   /* Messages: two people's bubbles. */

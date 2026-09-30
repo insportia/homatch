@@ -50,7 +50,7 @@ async function sha256Hex(blob: Blob): Promise<string> {
  * no longer than MAX_EDGE_PX on its longest side when it is bigger than
  * that (a phone photo or a 6K render), otherwise untouched.
  */
-export async function prepareReferenceImage(file: File): Promise<{ blob: Blob; mime: string; width: number; height: number }> {
+export async function prepareReferenceImage(file: File): Promise<{ blob: Blob; mime: string; width: number; height: number; originalWidth: number; originalHeight: number }> {
   const type = (file.type || '').toLowerCase();
   if (!(REFERENCE_TYPES as readonly string[]).includes(type)) throw new DesignStudioError('DS_REFERENCE_TYPE');
   if (file.size > MAX_REFERENCE_INPUT_BYTES) throw new DesignStudioError('DS_REFERENCE_TOO_LARGE');
@@ -60,7 +60,7 @@ export async function prepareReferenceImage(file: File): Promise<{ blob: Blob; m
     const { width, height } = bitmap;
     if (width < 64 || height < 64) throw new DesignStudioError('DS_REFERENCE_TOO_SMALL');
     const scale = Math.min(1, MAX_EDGE_PX / Math.max(width, height));
-    if (scale === 1 && file.size <= 8 * 1024 * 1024) return { blob: file, mime: type, width, height };
+    if (scale === 1 && file.size <= 8 * 1024 * 1024) return { blob: file, mime: type, width, height, originalWidth: width, originalHeight: height };
     const w = Math.round(width * scale);
     const h = Math.round(height * scale);
     const canvas = document.createElement('canvas');
@@ -73,26 +73,46 @@ export async function prepareReferenceImage(file: File): Promise<{ blob: Blob; m
     ctx.drawImage(bitmap, 0, 0, w, h);
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.9));
     if (!blob) throw new DesignStudioError('DS_REFERENCE_UNREADABLE');
-    return { blob, mime: 'image/jpeg', width: w, height: h };
+    return { blob, mime: 'image/jpeg', width: w, height: h, originalWidth: width, originalHeight: height };
   } finally {
     bitmap.close();
   }
 }
 
-/** Upload one picture of the home as a reference (never as a floor plan). */
+/**
+ * Upload one picture of the home as a reference (never as a floor plan).
+ * The customer's ORIGINAL is always kept, unchanged; when it is bigger than
+ * the reading size a separate analysis copy is what HOMATCH reads.
+ */
 export async function uploadReference(input: { userId: string; projectId: string; file: File }): Promise<FloorPlanRecord> {
   const prepared = await prepareReferenceImage(input.file);
+  const derived = prepared.blob !== input.file;
   const { key } = await uploadDesignFile({
     accountId: input.userId, projectId: input.projectId, category: 'design-studio-floorplans',
-    file: prepared.blob, contentType: prepared.mime, originalFilename: input.file.name, purpose: 'DS_REFERENCE',
+    file: prepared.blob, contentType: prepared.mime, originalFilename: input.file.name,
+    purpose: derived ? 'DS_REFERENCE_ANALYSIS' : 'DS_REFERENCE',
   });
+  // The original: its own object when a derivative was made, else the same one.
+  const original = derived
+    ? (await uploadDesignFile({
+      accountId: input.userId, projectId: input.projectId, category: 'design-studio-floorplans',
+      file: input.file, contentType: input.file.type.toLowerCase(), originalFilename: input.file.name, purpose: 'DS_REFERENCE_ORIGINAL',
+    })).key
+    : key;
+  const analysisSha = await sha256Hex(prepared.blob);
   const { data, error } = await supabase.from('ds_floorplans').insert({
+    original_key: original,
+    original_mime: input.file.type.toLowerCase(),
+    original_bytes: input.file.size,
+    original_sha256: derived ? await sha256Hex(input.file) : analysisSha,
+    original_width: prepared.originalWidth,
+    original_height: prepared.originalHeight,
     project_id: input.projectId,
     user_id: input.userId,
     object_key: key,
     mime: prepared.mime,
     bytes: prepared.blob.size,
-    sha256: await sha256Hex(prepared.blob),
+    sha256: analysisSha,
     image_width: prepared.width,
     image_height: prepared.height,
     purpose: 'REFERENCE',

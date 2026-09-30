@@ -138,6 +138,15 @@ serve(async (req) => {
   const db = admin();
 
   try {
+    if (op === 'sign' && db) {
+      // A deleted object stays deleted: no URL is signed for a key whose
+      // record says DELETED — not a read (the bytes are gone; a URL would be
+      // a lie that 404s), and not a write (it would quietly revive the row).
+      const { data: row } = await db.from('storage_objects').select('lifecycle').eq('object_key', objectKey).maybeSingle();
+      if ((row as { lifecycle?: string } | null)?.lifecycle === 'DELETED') {
+        return json({ error: 'NOT_FOUND' }, 404);
+      }
+    }
     if (op === 'sign') {
       const result = await signedUrl({
         action,

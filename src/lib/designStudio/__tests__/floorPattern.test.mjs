@@ -13,6 +13,8 @@ test('exact codes and their usual spellings', () => {
   assert.equal(floorPattern('wood plank', null), 'WOOD_PLANK');
   assert.equal(floorPattern('Tiles', null), 'TILE');
   assert.equal(floorPattern('marble', null), 'STONE');
+  assert.equal(floorPattern('grid', null), 'TILE');
+  assert.equal(floorPattern('CHEVRON', null), 'WOOD_HERRINGBONE');
 });
 
 test('no code: the reader\'s own words, in every language', () => {

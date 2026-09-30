@@ -257,7 +257,9 @@ test('commit: an upload that is what it said it was is kept', () => {
 
 test('commit: bytes larger than the category allows are refused, whatever was declared', () => {
   const plan = parseKey(`users/${ACC}/design-studio-floorplans/${ENT}/${OBJ}.png`);
-  assert.equal(checkArrived(plan, { size: 25 * 1024 * 1024 + 1, contentType: 'image/png' }).reason, 'TOO_LARGE');
+  // 40 MB: the category keeps the customer's original picture (20261001210000).
+  assert.equal(checkArrived(plan, { size: 40 * 1024 * 1024 + 1, contentType: 'image/png' }).reason, 'TOO_LARGE');
+  assert.equal(checkArrived(plan, { size: 40 * 1024 * 1024, contentType: 'image/png' }).ok, true);
   const model = parseKey(`users/${ACC}/design-studio-models/${ENT}/${OBJ}.glb`);
   assert.equal(checkArrived(model, { size: 101 * 1024 * 1024, contentType: 'model/gltf-binary' }).reason, 'TOO_LARGE');
 });

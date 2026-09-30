@@ -568,3 +568,15 @@ test('"matched to your picture\'s camera" is said only for a camera the reading 
   assert.match(panel, /fit\.rms <= FIT_TRUST \? 'ds_recon_matched_view' : 'ds_recon_approx_view'/);
   assert.match(read('src/lib/designStudio/reconstructRead.ts'), /export const FIT_TRUST = 0\.025;/);
 });
+
+test("the customer's original picture is kept, never replaced by the analysis copy", () => {
+  const svc = read('src/services/designStudio/reconstructions.ts');
+  const up = svc.slice(svc.indexOf('export async function uploadReference'));
+  assert.match(up, /purpose: 'DS_REFERENCE_ORIGINAL'/, 'a derived analysis copy never replaces the original upload');
+  assert.match(up, /file: input\.file, contentType: input\.file\.type/, 'the original bytes are uploaded as supplied');
+  assert.match(up, /original_key: original/);
+  assert.match(read('supabase/functions/_shared/storage/keys.ts'), /const DS_FLOORPLAN: ContentPolicy = \{[\s\S]{0,120}maxBytes: 40 \* MB/,
+    'the picture category holds what the client accepts (40 MB)');
+  const mig = read('supabase/migrations/20261001210000_design_studio_original_source.sql');
+  assert.match(mig, /OR NEW\.original_key IS DISTINCT FROM OLD\.original_key/, 'the original is immutable');
+});

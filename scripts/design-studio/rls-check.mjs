@@ -29,6 +29,7 @@ const RECON_MIGRATION = process.argv[6] ?? null;
 const DELETE_MIGRATION = process.argv[7] ?? null;
 const ORIGIN_MIGRATION = process.argv[8] ?? null;
 const SHARE_ORIGIN_MIGRATION = process.argv[9] ?? null;
+const ORIGINAL_MIGRATION = process.argv[10] ?? null;
 const db = new PGlite({ extensions: { pgcrypto } });
 let failures = 0;
 const ok = (name) => console.log(`  ok   ${name}`);
@@ -651,6 +652,29 @@ if (DELETE_MIGRATION) {
   const left = await db.query(`select (select count(*) from ds_versions where project_id=$1)::int v,
     (select count(*) from ds_spatial_sources where project_id=$1)::int s`, [pA.id]);
   left.rows[0].v === 0 && left.rows[0].s === 0 ? ok('deleting a project removes its versions and sources') : bad('cascade', JSON.stringify(left.rows[0]));
+}
+
+// ── the customer's original picture is kept, immutable (20261001210000)
+if (ORIGINAL_MIGRATION) {
+  await db.exec(fs.readFileSync(ORIGINAL_MIGRATION, 'utf8'));
+  await db.exec(fs.readFileSync(ORIGINAL_MIGRATION, 'utf8'));
+  ok('original: migration applies and re-applies');
+  const pX = await as(A, (tx) => one(tx, `insert into ds_projects (user_id,name) values ($1,'Originals') returning id`, [UA]));
+  const k = (f) => `users/${UA}/design-studio-floorplans/${pX.id}/${f}`;
+  const sha = 'a'.repeat(64);
+  const row = await as(A, (tx) => one(tx, `insert into ds_floorplans (project_id,user_id,object_key,mime,bytes,purpose,original_key,original_mime,original_bytes,original_sha256,original_width,original_height)
+    values ($1,$2,$3,'image/jpeg',1000,'REFERENCE',$4,'image/png',30000000,$5,6000,4000) returning id, original_key`, [pX.id, UA, k('a.jpg'), k('orig.png'), sha]));
+  row.original_key === k('orig.png') ? ok('original: a 30 MB original is recorded beside its analysis image') : bad('original insert', JSON.stringify(row));
+  await expectError('original: an original outside the project prefix is refused', 'DS_OBJECT_KEY_INVALID', () => as(A, (tx) =>
+    tx.query(`insert into ds_floorplans (project_id,user_id,object_key,mime,bytes,purpose,original_key,original_mime,original_bytes)
+      values ($1,$2,$3,'image/jpeg',1000,'REFERENCE',$4,'image/jpeg',1000)`, [pX.id, UA, k('b.jpg'), `users/${UB}/design-studio-floorplans/${pX.id}/x.jpg`])));
+  await expectError('original: the original never changes', 'DS_SERVER_FIELD', () => as(A, (tx) =>
+    tx.query(`update ds_floorplans set original_key=$2 where id=$1`, [row.id, k('other.png')])));
+  await expectError('original: more than 40 MB is refused', 'ds_floorplans_original_check', () => as(A, (tx) =>
+    tx.query(`insert into ds_floorplans (project_id,user_id,object_key,mime,bytes,purpose,original_key,original_mime,original_bytes)
+      values ($1,$2,$3,'image/jpeg',1000,'REFERENCE',$4,'image/jpeg',50000000)`, [pX.id, UA, k('c.jpg'), k('c-orig.jpg')])));
+  const legacy = await as(A, (tx) => one(tx, `insert into ds_floorplans (project_id,user_id,object_key,mime,bytes,purpose) values ($1,$2,$3,'image/jpeg',1000,'REFERENCE') returning original_key`, [pX.id, UA, k('d.jpg')]));
+  legacy.original_key === null ? ok('original: a row without one stays "not recorded" (nothing guessed)') : bad('original legacy', JSON.stringify(legacy));
 }
 
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nALL PASSED');

@@ -293,15 +293,17 @@ test('the Developer journey works when a person actually drives it', opts, async
 
   // Open one apartment's drawer and read what it says.
   let unitOpened = false;
-  const unitCell = page.locator('td, button, a').filter({ hasText: /^A-70[0-9]$/ }).first();
+  const unitCell = page.locator('td, button, a').filter({ has: page.getByText(/^A-70[0-9]$/) }).first();
   if (await unitCell.count()) {
     await unitCell.click().catch(() => {});
     await page.waitForTimeout(1400);
     unitOpened = await seen('A-70');
   }
-  const drawerText = await page.evaluate(() => document.body.innerText);
+  // The price is edited in place, so it lives in the drawer's Price field, not its text.
+  const drawerText = await page.evaluate(() => document.body.innerText + '\n'
+    + [...document.querySelectorAll('input')].map((i) => i.value).join('\n'));
   const hasArea = /92|68\.5/.test(drawerText);
-  const hasPrice = /184,000|137,000|\$184|\$137/.test(drawerText);
+  const hasPrice = /184,000|137,000|184000|137000|\$184|\$137/.test(drawerText);
   const hasPsm = /m²/.test(drawerText);
   const hasStatus = /Available|Reserved|Sold/i.test(drawerText);
   record('UNIT_UI', unitOpened && hasArea && hasPrice && hasPsm && hasStatus,
@@ -716,7 +718,7 @@ test('the Developer journey works when a person actually drives it', opts, async
     await page.waitForTimeout(600);
     menuWorks = opened > 0;
   }
-  const mobileUnit = page.locator('td, button, a').filter({ hasText: /^A-70[0-9]$/ }).first();
+  const mobileUnit = page.locator('td, button, a').filter({ has: page.getByText(/^A-70[0-9]$/) }).first();
   let mobileDrawer = false;
   if (await mobileUnit.count()) {
     await mobileUnit.click().catch(() => {});

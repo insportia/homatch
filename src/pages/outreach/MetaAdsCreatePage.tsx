@@ -16,7 +16,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  ArrowLeft, ArrowRight, Building2, FileText, Globe, Home, Loader2, MessageCircle, Plus, Target, ThumbsUp, UserPlus,
+  ArrowLeft, ArrowRight, Building2, FileText, Globe, Home, Loader2, MessageCircle, Plus, ShieldCheck, Target, ThumbsUp, UserPlus,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -24,6 +24,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { PageHero } from '@/components/customer/surface';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -33,7 +34,7 @@ import type { MetaGoal } from '@/lib/metaAds/strategy';
 import { creativeAdvice } from '@/lib/metaAds/creativeAdvice';
 import {
   getMetaStatus, createMetaDraft, getMetaCampaign, latestOpenDraft, listCreatives, planPreview, runPreflight,
-  launchCampaign, listAudiences, trackFunnel, money, EDITABLE_STATUSES,
+  launchCampaign, listAudiences, trackFunnel, money, EDITABLE_STATUSES, updateMetaDraft,
   type MetaStatus, type MetaCampaignRow, type MetaCreativeRow, type MetaAudienceRow, type PreflightResult, type PlanPreview,
 } from '@/services/metaAds';
 import { useMetaDraft } from '@/components/metaAds/builder/useMetaDraft';
@@ -48,7 +49,7 @@ import { PlacementsStep, ReviewStep } from '@/components/metaAds/builder/ReviewS
 import { AudienceStep } from '@/components/metaAds/builder/AudienceStep';
 import { regionName } from '@/components/metaAds/builder/LocationPicker';
 import { useStrategyPreview } from '@/components/metaAds/builder/useStrategyPreview';
-import { adviceBlocks, destinationForGoal } from '@/components/metaAds/builder/masterLogic';
+import { adviceBlocks, defaultCampaignName, destinationForGoal } from '@/components/metaAds/builder/masterLogic';
 
 const DRAFT_KEY = 'homatch_meta_ads_prelogin_draft';
 
@@ -236,7 +237,20 @@ export default function MetaAdsCreatePage() {
   const formAsset = (status?.assets ?? []).find((a) => a.kind === 'LEAD_FORM' && a.external_id === campaign.destination?.formId) ?? selectedAsset(status, 'LEAD_FORM');
   const previewCreative = creatives.find((c) => c.id === focusCreative && c.media.length) ?? creatives.find((c) => c.media.length) ?? null;
   const canLaunch = preflight?.status === 'READY' && !running;
+  /* Why "Launch" is unavailable, in words, wherever the button is. */
+  const launchHint: string | null = canLaunch || running ? null
+    : !preflight ? 'mm_b_launch_needs_check'
+      : preflight.status === 'MANUAL_REVIEW' ? 'mm_b_launch_in_review'
+        : preflight.status !== 'READY' ? 'mm_b_launch_needs_fixes' : null;
   const returnTo = `/outreach/meta/create?draft=${campaign.id}&step=account`;
+  /* The HOMATCH name: a suggestion from what is advertised, the goal and the
+     month; an edit is saved as is (not part of the check's fingerprint). */
+  const advertised = properties.find((p) => (p.homatch_id ? String(p.homatch_id) : p.id) === campaign.property_id)?.title ?? null;
+  const nameSuggestion = defaultCampaignName({ subject: advertised, goalLabel: t(`mads_goal_${String(campaign.goal).toLowerCase()}` as never), lang });
+  const saveName = (name: string) => {
+    setCampaign({ ...campaign, name } as MetaCampaignRow);
+    void updateMetaDraft(campaign.id, { name }).catch(() => toast.error(t('mm_c_name_failed')));
+  };
 
   const doPreflight = async () => {
     setRunning(true);
@@ -253,6 +267,8 @@ export default function MetaAdsCreatePage() {
   const doLaunch = async () => {
     setRunning(true);
     try {
+      // An untouched name field launches with the suggestion it showed.
+      if (!campaign.name?.trim()) await updateMetaDraft(campaign.id, { name: nameSuggestion }).catch(() => undefined);
       await launchCampaign(campaign.id, launchKey.current);
       toast.success(t('madsb_submitted_to_meta'));
       navigate(`/outreach/meta/campaigns/${campaign.id}`);
@@ -297,6 +313,22 @@ export default function MetaAdsCreatePage() {
           </aside>
 
           <main className="min-w-0 space-y-4">
+            {/* The HOMATCH check, explained before the disabled button is reached. */}
+            {preflight?.status !== 'READY' && (
+              <div data-mm-check-notice="" role="note" className="rounded-2xl border border-border bg-card px-4 py-3 shadow-card">
+                <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <ShieldCheck className="h-4 w-4 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden />{t('mm_b_check_notice_title')}
+                </p>
+                <p className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-2xs font-medium text-muted-foreground">
+                  <span>{t('mm_b_check_flow_setup')}</span>
+                  <ArrowRight className="h-3 w-3 rtl:rotate-180" aria-hidden />
+                  <span className="text-foreground">{t('madsb_preflight_title')}</span>
+                  <ArrowRight className="h-3 w-3 rtl:rotate-180" aria-hidden />
+                  <span>{t('mads_launch')}</span>
+                </p>
+                <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">{t('mm_b_check_notice_body')}</p>
+              </div>
+            )}
             {step === 'account' && (
               <StepShell eyebrow={t('madsb_step_account')} title={t('madsb_account_title')} lead={t('madsb_account_lead')}>
                 <AccountPanel status={status} onChanged={reloadStatus} returnTo={returnTo} />
@@ -350,9 +382,10 @@ export default function MetaAdsCreatePage() {
             {step === 'review' && (
               <ReviewStep campaign={campaign} status={status} creatives={creatives} totals={preview?.totals ?? null} pricing={pricing}
                 recommended={(preview?.recommendedPlacements as Placement[] | undefined) ?? placements}
-                preflight={preflight} running={running} onPreflight={doPreflight} canLaunch={canLaunch}
+                preflight={preflight} running={running} onPreflight={doPreflight} canLaunch={canLaunch} launchHint={launchHint}
                 onLaunch={() => setConfirmOpen(true)} onEdit={(s) => void go(s as StepKey)}
-                strategy={strategy.preview} strategyLoading={strategy.loading} strategyFailed={strategy.failed} />
+                strategy={strategy.preview} strategyLoading={strategy.loading} strategyFailed={strategy.failed}
+                nameSuggestion={nameSuggestion} onName={saveName} />
             )}
 
             {/* Preview inline on narrower screens, where there is no side rail. */}
@@ -380,9 +413,10 @@ export default function MetaAdsCreatePage() {
           <Button variant="outline" onClick={() => void (idx > 0 ? go(STEPS[idx - 1]) : navigate('/outreach/meta'))} className="gap-1.5">
             <ArrowLeft className="h-4 w-4 rtl:rotate-180" />{t(idx > 0 ? 'madsb_back' : 'madsb_exit')}
           </Button>
-          <div className="hidden min-w-0 flex-1 text-center text-[13px] text-muted-foreground sm:block">
-            {step === 'creative' && creativeBlocked ? <span className="text-destructive">{t('mm_b_blocking_continue')}</span>
-              : gaps[step] ? t(gaps[step] as never) : <SaveIndicator state={saveState} />}
+          <div className={cn('min-w-0 flex-1 text-center text-2xs text-muted-foreground sm:text-[13px]', step === 'review' && launchHint ? 'block' : 'hidden sm:block')}>
+            {step === 'review' && launchHint ? <span id="mm-b-launch-hint-nav">{t(launchHint as never)}</span>
+              : step === 'creative' && creativeBlocked ? <span className="text-destructive">{t('mm_b_blocking_continue')}</span>
+                : gaps[step] ? t(gaps[step] as never) : <SaveIndicator state={saveState} />}
           </div>
           {idx < STEPS.length - 1 ? (
             /* Only a BLOCKING_ERROR creative advice holds Continue; every other step is advisory. */
@@ -392,6 +426,7 @@ export default function MetaAdsCreatePage() {
             </Button>
           ) : (
             <Button onClick={() => setConfirmOpen(true)} disabled={!canLaunch}
+              aria-describedby={launchHint ? 'mm-b-launch-hint-nav' : undefined}
               className="bg-[hsl(var(--gold))] font-bold text-[#161309] hover:bg-[hsl(var(--gold-hover))]">{t('mads_launch')}</Button>
           )}
         </div>

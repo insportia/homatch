@@ -153,6 +153,9 @@ export async function createMetaDraft(userId: string, init: Partial<MetaCampaign
   return data as MetaCampaignRow;
 }
 
+/** Rename a campaign in HOMATCH (display name only; Meta's name is unchanged). */
+export const renameCampaign = (campaignId: string, name: string) => call<{ ok: boolean; name: string }>('campaign_rename', { campaignId, name });
+
 export async function updateMetaDraft(id: string, patch: Partial<MetaCampaignRow>): Promise<void> {
   const { error } = await supabase.from('meta_campaigns').update(patch).eq('id', id);
   if (error) throw error;
@@ -398,7 +401,7 @@ export interface KpisRow {
   frequency: number | null; cplMinor: number | null; resultRate: number | null; cpqlMinor: number | null; qualificationRate: number | null;
   costPerViewingMinor: number | null; leadToViewingRate: number | null;
 }
-export type HealthStateRow = 'HEALTHY' | 'WATCH' | 'ACTION_RECOMMENDED' | 'INSUFFICIENT_DATA';
+export type HealthStateRow = 'HEALTHY' | 'WATCH' | 'ACTION_RECOMMENDED' | 'INSUFFICIENT_DATA' | 'STATE';
 export interface RecommendationRow {
   id: string; type: string; affected: string; metric: string; baseline: number | null; candidate: number | null;
   confidence: 'INSUFFICIENT_DATA' | 'EARLY_SIGNAL' | 'MEANINGFUL_SIGNAL' | 'HIGH_CONFIDENCE';
@@ -408,7 +411,8 @@ export interface RecommendationRow {
 }
 export interface CampaignDetail {
   campaign: MetaCampaignRow & { summary?: { facts: Array<{ code: string; params: Record<string, string | number | null>; confidence?: string }>; evidence: string } | null;
-    strategy?: StrategySummaryRow | null; ad_set_count?: number; last_error_key?: string | null; insights_synced_at?: string | null; summary_at?: string | null };
+    strategy?: StrategySummaryRow | null; ad_set_count?: number; last_error_key?: string | null; insights_synced_at?: string | null; summary_at?: string | null;
+    requested_start_at?: string | null; meta_start_time?: string | null };
   kpis: KpisRow | null;
   evidence: string;
   analysis: null | {

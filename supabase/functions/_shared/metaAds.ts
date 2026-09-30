@@ -23,6 +23,7 @@
 // replayed against the Graph API from outside this app.
 
 import { normalizeMetaError, type NormalizedMetaError } from '../../../src/lib/metaAds/errors.ts';
+import { parseBucHeader, parseAdAccountUsage, type BucEntry } from '../../../src/lib/metaAds/rateLimit.ts';
 import { META_API_VERSION } from '../../../src/lib/metaAds/strategy.ts';
 import {
   buildOAuthDialogUrl, META_LOGIN_CONFIG_ID_DEFAULT, signState, verifyState, verifySignedRequest,
@@ -90,8 +91,42 @@ export async function appSecretProof(token: string): Promise<string | null> {
   return secret && token ? await hmacHex(secret, token) : null;
 }
 
+/* ── MARKETING API CAPACITY, AS META REPORTS IT ─────────────────────────
+ * Every response's X-Business-Use-Case-Usage / X-Ad-Account-Usage /
+ * X-App-Usage is parsed (percentages, regain minutes, access tier — never a
+ * token) and kept per bucket+type for the pass; flushApiUsage() persists the
+ * latest to meta_api_usage (admin-only). The schedulers read it back to slow
+ * down before Meta throttles. */
+const API_USAGE = new Map<string, BucEntry & { observedAt: string }>();
+function captureUsage(h: Headers) {
+  const now = new Date().toISOString();
+  for (const e of parseBucHeader(h.get('x-business-use-case-usage'))) API_USAGE.set(`${e.bucket}|${e.type}`, { ...e, observedAt: now });
+  const acct = parseAdAccountUsage(h.get('x-ad-account-usage'));
+  if (acct) API_USAGE.set('ad_account|acc_id_util_pct', { bucket: 'ad_account', type: 'acc_id_util_pct', callCount: acct.utilPct, totalCputime: 0, totalTime: 0, regainMinutes: 0, tier: acct.tier, observedAt: now });
+  const app = h.get('x-app-usage');
+  if (app) {
+    try {
+      const a = JSON.parse(app) as Record<string, unknown>;
+      API_USAGE.set('app|app_usage', { bucket: 'app', type: 'app_usage', callCount: Number(a.call_count ?? 0), totalCputime: Number(a.total_cputime ?? 0), totalTime: Number(a.total_time ?? 0), regainMinutes: 0, tier: null, observedAt: now });
+    } catch { /* ignore */ }
+  }
+}
+/** Persist what this pass observed (latest per bucket+type). Best effort. */
+export async function flushApiUsage(sb: { from: (t: string) => any }) {
+  if (!API_USAGE.size) return 0;
+  const rows = [...API_USAGE.values()].map((e) => ({
+    bucket: e.bucket, type: e.type, call_count: e.callCount, total_cputime: e.totalCputime, total_time: e.totalTime,
+    regain_minutes: e.regainMinutes, tier: e.tier, observed_at: e.observedAt,
+  }));
+  API_USAGE.clear();
+  try { await sb.from('meta_api_usage').upsert(rows, { onConflict: 'bucket,type' }); } catch { /* observability only */ }
+  return rows.length;
+}
+
 /** One Graph call: form-encoded POST (the Marketing API's lingua franca),
- *  bounded retries with exponential backoff on the throttle family only. */
+ *  bounded retries with exponential backoff on transient errors. A Meta
+ *  THROTTLE is not retried in the same call: its regain time is minutes, and
+ *  retrying only spends more of the allowance. */
 export async function graph(path: string, opts: GraphOptions): Promise<Record<string, unknown>> {
   const url = `${GRAPH}${path}`;
   const attempts = opts.attempts ?? 3;
@@ -126,6 +161,7 @@ export async function graph(path: string, opts: GraphOptions): Promise<Record<st
       await new Promise((r) => setTimeout(r, 500 * 2 ** (attempt - 1)));
       continue;
     }
+    captureUsage(res.headers);
     const body = await res.json().catch(() => ({}));
     if (res.ok) return body as Record<string, unknown>;
     lastErr = new MetaApiError(res.status, body);
@@ -155,7 +191,7 @@ export async function graph(path: string, opts: GraphOptions): Promise<Record<st
           .eq('user_id', opts.audit.userId).eq('status', 'CONNECTED');
       } catch { /* best effort; the next call re-detects it */ }
     }
-    if (!lastErr.normalized.recoverable || attempt === attempts) throw lastErr;
+    if (!lastErr.normalized.recoverable || lastErr.normalized.throttled || attempt === attempts) throw lastErr;
     await new Promise((r) => setTimeout(r, 500 * 2 ** (attempt - 1)));
   }
   throw lastErr!;

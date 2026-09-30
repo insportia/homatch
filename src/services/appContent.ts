@@ -1,5 +1,5 @@
 import { supabase } from '@/db/supabase';
-import { LOCALES, type ContentLocale, type OverrideMap } from '@/i18n/appContent';
+import { LOCALES, type ContentLocale, type OverrideMap } from '@/i18n/locales';
 
 /**
  * HOMATCH — the App Content service.

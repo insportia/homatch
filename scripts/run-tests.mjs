@@ -75,6 +75,10 @@ const EXCLUDE = [
   /commSurfaces\.test\.mjs$/,
   /pushHandlers\.test\.mjs$/,
   /accessibilityAudit\.test\.mjs$/,
+  // Serves the harness build and loads it in real Chrome to prove which
+  // language chunks a visitor downloads. Runs in `test:a11y`, after the
+  // harness build, in the deploy workflow (strict under CI).
+  /languageChunks\.test\.mjs$/,
   // Drives real Chrome through the whole Developer journey for about a
   // minute and a half, and needs the harness bundle in dist/. It runs as
   // its own CI step (`test:developer`) rather than inside the unit suite.

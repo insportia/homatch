@@ -55,6 +55,8 @@ export function factSentence(t: T, fmt: Fmt, d: CampaignDetail, f: Fact): string
   }
 }
 
+const HEALTH_CODES = ['PAUSED', 'COMPLETED', 'REJECTED', 'ARCHIVED', 'SUBMITTED', 'IN_REVIEW', 'FRESH'];
+
 export function OverviewSection({ t, fmt, d }: { t: T; fmt: Fmt; d: CampaignDetail }) {
   const facts: Fact[] = (d.analysis?.facts?.length ? d.analysis.facts : d.campaign.summary?.facts) ?? [];
   const evidence = d.evidence || 'INSUFFICIENT_DATA';
@@ -93,7 +95,8 @@ export function OverviewSection({ t, fmt, d }: { t: T; fmt: Fmt; d: CampaignDeta
               return (
                 <li key={dim} className="flex items-center justify-between gap-2 rounded-xl border border-border px-3 py-2">
                   <span className="min-w-0 break-words text-[13px] text-foreground">{t(`mm_hdim_${dim}`)}</span>
-                  <Chip tone={healthTone(state)}>{t(`mm_hstate_${state}`)}</Chip>
+                  {/* STATE is a fact (paused, in review, data updated): its own words, grey. */}
+                  <Chip tone={healthTone(state)}>{state === 'STATE' && HEALTH_CODES.includes(String(h?.code)) ? t(`mm_hcode_${h?.code}`) : t(`mm_hstate_${state === 'STATE' ? 'INSUFFICIENT_DATA' : state}`)}</Chip>
                 </li>
               );
             })}

@@ -20,6 +20,9 @@ export function FundingCard({ funding, currency, billing, loading }: {
   const fmt = (c: number) => moneyIn(c, currency, lang);
   const viaWallet = billing === 'HOMATCH_WALLET';
   const addCents = funding ? depositAmountCents(funding.shortfallCents) : 0;
+  /* 0% on the customer's own ad account (server-decided): HOMATCH holds
+     nothing, so there is no balance to show, top up or disclose. */
+  const exempt = !!funding && !viaWallet && Number(funding.feePercent) === 0;
 
   const addFunds = async () => {
     if (addCents <= 0) return;
@@ -46,6 +49,21 @@ export function FundingCard({ funding, currency, billing, loading }: {
           <p className="text-sm text-muted-foreground">{t(loading ? 'mm_b_strategy_loading' : 'mm_b_funding_pending')}</p>
         ) : (
           <>
+            {exempt ? (
+              <div data-mm-funding-exempt="" className="space-y-2">
+                <dl className={`space-y-2 text-sm tabular-nums ${loading ? 'opacity-60' : ''}`}>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <dt className="min-w-0 text-muted-foreground">{t('mm_b_funding_planned')}</dt>
+                    <dd className="shrink-0 font-medium text-foreground" dir="ltr">{fmt(funding.plannedMediaCents)}</dd>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <dt className="min-w-0 text-muted-foreground">{t('mm_b_funding_fee', { pct: String(funding.feePercent) })}</dt>
+                    <dd className="shrink-0 font-semibold text-foreground" dir="ltr">{fmt(funding.requiredCents)}</dd>
+                  </div>
+                </dl>
+                <p className="text-[13px] leading-relaxed text-[hsl(152_54%_26%)]">{t('mm_b_funding_exempt')}</p>
+              </div>
+            ) : (<>
             <dl className={`space-y-2 text-sm tabular-nums ${loading ? 'opacity-60' : ''}`}>
               <div className="flex items-baseline justify-between gap-3">
                 <dt className="min-w-0 text-muted-foreground">{t('mm_b_funding_planned')}</dt>
@@ -79,11 +97,12 @@ export function FundingCard({ funding, currency, billing, loading }: {
               <p className="text-[13px] text-[hsl(152_54%_26%)]">{t('mm_b_funding_covered')}</p>
             )}
             {!viaWallet && <p className="text-2xs leading-relaxed text-muted-foreground">{t('mm_b_funding_meta_bills')}</p>}
+            </>)}
           </>
         )}
-        <p data-mm-disclosure="" className="flex items-start gap-2 rounded-xl bg-[hsl(var(--secondary))]/50 px-3 py-2.5 text-2xs leading-relaxed text-muted-foreground">
+        {!exempt && <p data-mm-disclosure="" className="flex items-start gap-2 rounded-xl bg-[hsl(var(--secondary))]/50 px-3 py-2.5 text-2xs leading-relaxed text-muted-foreground">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />{t('mm_b_funding_disclosure')}
-        </p>
+        </p>}
       </div>
     </section>
   );

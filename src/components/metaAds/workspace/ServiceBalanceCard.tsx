@@ -1,7 +1,11 @@
 // META ADS — the HOMATCH service balance, one block per currency:
 // DEPOSITED / AVAILABLE / RESERVED / CONSUMED / RELEASED. Amounts in
 // different currencies are never added together. The non-refundable
-// disclosure is mandatory and always rendered.
+// disclosure is mandatory wherever a deposit can be made or is held.
+//
+// A 0% fee on the customer's own ad account (a FEE_EXEMPT policy, decided by
+// the server) needs no HOMATCH balance at all: no Add funds, no deposit
+// dialog, and no deposit disclosure unless money is already held.
 import { useState } from 'react';
 import { Loader2, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
@@ -14,9 +18,14 @@ import { depositCheckout, moneyIn, type ServiceBalanceRow } from '@/services/met
 /** Stripe checkout minimum, in cents ($5). */
 export const MIN_DEPOSIT_CENTS = 500;
 
-export function ServiceBalanceCard({ rows, feePercent }: { rows: ServiceBalanceRow[]; feePercent?: number | null }) {
+export function ServiceBalanceCard({ rows, feePercent, billing }: {
+  rows: ServiceBalanceRow[]; feePercent?: number | null; billing?: 'CUSTOMER_AD_ACCOUNT' | 'HOMATCH_WALLET';
+}) {
   const { t, lang } = useLanguage();
   const balanceCopy = serviceBalanceCopy(t as T, lang, feePercent);
+  /* Server-decided: the customer's effective percent and the billing mode. */
+  const noDepositNeeded = isNoDepositNeeded(feePercent, billing);
+  const holdsMoney = rows.some((r) => Number(r.deposited_cents) > 0 || Number(r.available_cents) > 0);
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState('50');
   const [busy, setBusy] = useState(false);
@@ -67,15 +76,17 @@ export function ServiceBalanceCard({ rows, feePercent }: { rows: ServiceBalanceR
           {balanceCopy.card}
         </p>
       )}
-      {/* Mandatory, whatever the fee: non-refundable to cash, reusable, released to HOMATCH Balance. */}
-      <p className="mt-2 text-2xs leading-relaxed text-white/60">{t('mm_w_bal_disclosure')}</p>
+      {/* Mandatory wherever a deposit can be made or is held: non-refundable, reusable, released to HOMATCH Balance. */}
+      {(!noDepositNeeded || holdsMoney) && <p className="mt-2 text-2xs leading-relaxed text-white/60">{t('mm_w_bal_disclosure')}</p>}
 
-      <Button onClick={() => setOpen(true)}
-        className="mt-4 w-full bg-[hsl(38_92%_54%)] font-bold text-[#161309] hover:bg-[hsl(38_92%_60%)]">
-        {t('mads_add_funds')}
-      </Button>
+      {!noDepositNeeded && (
+        <Button onClick={() => setOpen(true)}
+          className="mt-4 w-full bg-[hsl(38_92%_54%)] font-bold text-[#161309] hover:bg-[hsl(38_92%_60%)]">
+          {t('mads_add_funds')}
+        </Button>
+      )}
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      {!noDepositNeeded && <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="flex max-h-[calc(100dvh-2rem)] max-w-[calc(100%-2rem)] flex-col overflow-hidden p-0 md:max-w-sm">
           <DialogHeader className="shrink-0 px-6 pt-6">
             <DialogTitle>{t('mads_add_funds')}</DialogTitle>
@@ -95,7 +106,7 @@ export function ServiceBalanceCard({ rows, feePercent }: { rows: ServiceBalanceR
             </Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </Dialog>}
     </section>
   );
 }
@@ -112,6 +123,11 @@ function Line({ label, value, hint }: { label: string; value: string; hint?: str
   );
 }
 
+
+/** 0% on the customer's own ad account: HOMATCH holds nothing for a launch. */
+export function isNoDepositNeeded(feePercent: number | null | undefined, billing?: 'CUSTOMER_AD_ACCOUNT' | 'HOMATCH_WALLET'): boolean {
+  return feePercent != null && Number(feePercent) === 0 && (billing ?? 'CUSTOMER_AD_ACCOUNT') === 'CUSTOMER_AD_ACCOUNT';
+}
 
 /**
  * The card's words for this customer's fee. The percent comes only from the

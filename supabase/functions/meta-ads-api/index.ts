@@ -17,7 +17,7 @@ import { hashIdentifierRows, csvSafeCell, normalizeEmail, normalizePhone } from 
 import { getPaymentProvider } from '../_shared/payment_provider.ts';
 import {
   metaMode, graph, graphAll, MetaApiError, oauthStartUrl, mockExternalId, capabilityMatrix, signOAuthState,
-  sealToken, openToken, scrubText, REQUIRED_SCOPES_BY_GOAL, BASE_SCOPES, INSTANT_FORM_SCOPES, hasScopes, metaLoginConfigId,
+  sealToken, openToken, scrubText, REQUIRED_SCOPES_BY_GOAL, BASE_SCOPES, INSTANT_FORM_SCOPES, hasScopes, metaLoginConfigId, tokenKeyStatus,
 } from '../_shared/metaAds.ts';
 import { ingestLead } from '../_shared/metaLeads.ts';
 import { callLlm, llmAvailable } from '../_shared/comm/llm.ts';
@@ -139,7 +139,7 @@ Deno.serve(async (req) => {
         if (mode === 'MOCK') return json({ mode, mockConnect: true });
         // Refuse BEFORE sending the owner through Meta's dialog: a token that
         // cannot be stored encrypted would be thrown away at the callback.
-        if (!Deno.env.get('META_TOKEN_ENCRYPTION_KEY')) {
+        if (!(await tokenKeyStatus()).roundTrip) {
           return json({ error: 'TOKEN_ENCRYPTION_NOT_CONFIGURED', code: 'TOKEN_ENCRYPTION_NOT_CONFIGURED' }, 409);
         }
         const nonce = crypto.randomUUID();
@@ -805,7 +805,10 @@ async function maintenance(sb: any, mode: 'REAL' | 'MOCK') {
     META_TOKEN_ENCRYPTION_KEY: !!Deno.env.get('META_TOKEN_ENCRYPTION_KEY'),
     loginConfigId: metaLoginConfigId(),
   };
-  return { ok: true, mode, configured, ...report };
+  /* Base64 of 32+ bytes and an AES-GCM seal/open round trip — booleans only. */
+  const keyStatus = await tokenKeyStatus();
+  const tokenKeyCheck = { valid: keyStatus.valid, roundTrip: keyStatus.roundTrip };
+  return { ok: true, mode, configured, tokenKeyCheck, ...report };
 }
 
 /* ── COPY CONTEXT ────────────────────────────────────────────────────── */

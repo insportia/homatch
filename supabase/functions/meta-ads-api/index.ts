@@ -755,7 +755,7 @@ Deno.serve(async (req) => {
 /* ── MAINTENANCE: the scheduled pass ─────────────────────────────────── */
 
 async function maintenance(sb: any, mode: 'REAL' | 'MOCK') {
-  const report = { synced: 0, syncFailed: 0, recovered: 0, leadsRetried: 0, expired: 0 };
+  const report = { synced: 0, syncFailed: 0, recovered: 0, leadsRetried: 0, expired: 0, testTokensRetired: 0 };
   // 1. Status + spend for everything that is live at Meta.
   const { data: live } = await sb.from('meta_campaigns').select('*')
     .in('status', ['SUBMITTED', 'META_REVIEW', 'ACTIVE', 'PAUSED'])
@@ -796,6 +796,18 @@ async function maintenance(sb: any, mode: 'REAL' | 'MOCK') {
   for (const t of tokens ?? []) {
     const { data: u } = await sb.from('meta_connections').update({ status: 'EXPIRED' }).eq('id', t.connection_id).eq('status', 'CONNECTED').select('id');
     report.expired += (u ?? []).length;
+  }
+  // 5. With Meta live, a connection still holding a TEST-mode token is not
+  //    connected to anything. Say so in the row itself, so no surface that
+  //    reads the status (Admin included) can show it as a real connection.
+  if (mode === 'REAL') {
+    const { data: mockTokens } = await sb.from('meta_tokens').select('connection_id').like('access_token', 'mock_%');
+    const ids = (mockTokens ?? []).map((t: any) => t.connection_id);
+    if (ids.length) {
+      const { data: u } = await sb.from('meta_connections').update({ status: 'ERROR', last_error: 'TEST_MODE_TOKEN' })
+        .in('id', ids).eq('status', 'CONNECTED').select('id');
+      report.testTokensRetired = (u ?? []).length;
+    }
   }
   /* Configuration PRESENCE only (never a value), so an operator can tell
      from the scheduled pass which Meta secrets are still missing. */

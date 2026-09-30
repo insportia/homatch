@@ -12165,6 +12165,9 @@ const en = {
   /* ── WORKSTREAM B FINAL HARDENING ── */
   broker_found_evidence: 'Seen on',
   broker_directory_empty_compact: 'No broker or agency has a current paid Homatch listing yet.',
+
+  /* ── WORKSTREAM B FINAL HARDENING ── */
+  madsb_connect_test_token: 'This connection was made in test mode and is not linked to a real Meta account. Reconnect to connect your Meta account.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -24244,6 +24247,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   /* ── WORKSTREAM B FINAL HARDENING ── */
   broker_found_evidence: 'ნანახია',
   broker_directory_empty_compact: 'ჯერ არცერთ ბროკერს ან სააგენტოს არ აქვს მოქმედი ფასიანი Homatch-ის განცხადება.',
+
+  /* ── WORKSTREAM B FINAL HARDENING ── */
+  madsb_connect_test_token: 'ეს კავშირი სატესტო რეჟიმში შეიქმნა და რეალურ Meta-ს ანგარიშთან დაკავშირებული არ არის. ხელახლა დაუკავშირდით, რომ თქვენი Meta-ს ანგარიში დააკავშიროთ.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -36314,6 +36320,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   /* ── WORKSTREAM B FINAL HARDENING ── */
   broker_found_evidence: 'Замечено на',
   broker_directory_empty_compact: 'Пока ни у одного брокера или агентства нет действующего платного размещения в Homatch.',
+
+  /* ── WORKSTREAM B FINAL HARDENING ── */
+  madsb_connect_test_token: 'Это подключение создано в тестовом режиме и не связано с реальным аккаунтом Meta. Подключитесь заново, чтобы привязать свой аккаунт Meta.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -48382,6 +48391,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   /* ── WORKSTREAM B FINAL HARDENING ── */
   broker_found_evidence: 'Görüldüğü yer',
   broker_directory_empty_compact: 'Henüz hiçbir emlakçı veya ajansın geçerli ücretli Homatch listelemesi yok.',
+
+  /* ── WORKSTREAM B FINAL HARDENING ── */
+  madsb_connect_test_token: 'Bu bağlantı test modunda oluşturuldu ve gerçek bir Meta hesabına bağlı değil. Meta hesabınızı bağlamak için yeniden bağlanın.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -60450,6 +60462,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   /* ── WORKSTREAM B FINAL HARDENING ── */
   broker_found_evidence: 'شوهد على',
   broker_directory_empty_compact: 'لا يوجد حتى الآن وسيط أو وكالة لديهم إدراج مدفوع ساري في Homatch.',
+
+  /* ── WORKSTREAM B FINAL HARDENING ── */
+  madsb_connect_test_token: 'تم إنشاء هذا الاتصال في وضع الاختبار وهو غير مرتبط بحساب Meta حقيقي. أعد الاتصال لربط حسابك في Meta.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -72518,6 +72533,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   /* ── WORKSTREAM B FINAL HARDENING ── */
   broker_found_evidence: 'נראה ב־',
   broker_directory_empty_compact: 'עדיין לאף מתווך או סוכנות אין רישום בתשלום פעיל ב-Homatch.',
+
+  /* ── WORKSTREAM B FINAL HARDENING ── */
+  madsb_connect_test_token: 'החיבור הזה נוצר במצב בדיקה ואינו מקושר לחשבון Meta אמיתי. התחברו מחדש כדי לחבר את חשבון ה-Meta שלכם.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

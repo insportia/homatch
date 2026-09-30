@@ -255,4 +255,12 @@ export const WORKSTREAM_B_FINAL_STRINGS = {
     'لا يوجد حتى الآن وسيط أو وكالة لديهم إدراج مدفوع ساري في Homatch.',
     'עדיין לאף מתווך או סוכנות אין רישום בתשלום פעיל ב-Homatch.',
   ],
+  madsb_connect_test_token: [
+    'This connection was made in test mode and is not linked to a real Meta account. Reconnect to connect your Meta account.',
+    'ეს კავშირი სატესტო რეჟიმში შეიქმნა და რეალურ Meta-ს ანგარიშთან დაკავშირებული არ არის. ხელახლა დაუკავშირდით, რომ თქვენი Meta-ს ანგარიში დააკავშიროთ.',
+    'Это подключение создано в тестовом режиме и не связано с реальным аккаунтом Meta. Подключитесь заново, чтобы привязать свой аккаунт Meta.',
+    'Bu bağlantı test modunda oluşturuldu ve gerçek bir Meta hesabına bağlı değil. Meta hesabınızı bağlamak için yeniden bağlanın.',
+    'تم إنشاء هذا الاتصال في وضع الاختبار وهو غير مرتبط بحساب Meta حقيقي. أعد الاتصال لربط حسابك في Meta.',
+    'החיבור הזה נוצר במצב בדיקה ואינו מקושר לחשבון Meta אמיתי. התחברו מחדש כדי לחבר את חשבון ה-Meta שלכם.',
+  ],
 };

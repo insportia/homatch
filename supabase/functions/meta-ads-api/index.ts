@@ -17,7 +17,7 @@ import { hashIdentifierRows, csvSafeCell, normalizeEmail, normalizePhone } from 
 import { getPaymentProvider } from '../_shared/payment_provider.ts';
 import {
   metaMode, graph, graphAll, MetaApiError, oauthStartUrl, mockExternalId, capabilityMatrix, signOAuthState,
-  sealToken, openToken, scrubText, REQUIRED_SCOPES_BY_GOAL,
+  sealToken, openToken, scrubText, REQUIRED_SCOPES_BY_GOAL, BASE_SCOPES, INSTANT_FORM_SCOPES, hasScopes, metaLoginConfigId,
 } from '../_shared/metaAds.ts';
 import { ingestLead } from '../_shared/metaLeads.ts';
 import { callLlm, llmAvailable } from '../_shared/comm/llm.ts';
@@ -85,7 +85,10 @@ Deno.serve(async (req) => {
           sb.from('meta_wallet_balances').select('*').eq('user_id', uid).maybeSingle(),
         ]);
         const granted: string[] = conn?.granted_scopes ?? [];
-        const missingScopes = [...new Set(Object.values(REQUIRED_SCOPES_BY_GOAL).flat())].filter((s) => !granted.includes(s));
+        /* Health asks for the BASE set only; Instant Forms' extra permissions
+           are reported per goal (instant_forms_available), never as a broken
+           connection. */
+        const missingScopes = BASE_SCOPES.filter((s) => !granted.includes(s));
         const expiresAt = conn?.token_expires_at ? Date.parse(conn.token_expires_at) : NaN;
         /* "Connected" is a claim about a usable credential, not about a row:
            the stored token must exist and open with this deployment's key. */
@@ -110,6 +113,7 @@ Deno.serve(async (req) => {
           mode,
           connection: conn
             ? { status: conn.status, health, granted_scopes: granted, missing_scopes: missingScopes,
+              instant_forms_available: hasScopes(granted, INSTANT_FORM_SCOPES),
               token_expires_at: conn.token_expires_at, last_checked_at: conn.last_checked_at,
               // A named reason only (e.g. TOKEN_ENCRYPTION_NOT_CONFIGURED), never a raw error.
               error_reason: typeof conn.last_error === 'string' && /^[A-Z_]{3,64}$/.test(conn.last_error) ? conn.last_error : null }
@@ -188,9 +192,11 @@ Deno.serve(async (req) => {
         if (!token) return json({ error: 'NOT_CONNECTED', code: 'NOT_CONNECTED' }, 400);
         if (mode === 'MOCK') return json({ ok: true, mode });
         const auditCtx = { sb, userId: uid };
+        const { data: scopeRow } = await sb.from('meta_connections').select('granted_scopes').eq('user_id', uid).maybeSingle();
+        const instantForms = hasScopes(scopeRow?.granted_scopes, INSTANT_FORM_SCOPES);
         const [biz, pages, accts] = await Promise.all([
           graphAll('/me/businesses?fields=id,name&limit=100', { token, audit: auditCtx }),
-          graphAll('/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&limit=100', { token, audit: auditCtx }),
+          graphAll('/me/accounts?fields=id,name,access_token&limit=100', { token, audit: auditCtx }),
           graphAll('/me/adaccounts?fields=id,name,account_status,currency,business,disable_reason&limit=100', { token, audit: auditCtx }),
         ]);
         const up = (kind: string, external_id: string, name: string, parent?: string | null, capabilities?: unknown) =>
@@ -203,13 +209,10 @@ Deno.serve(async (req) => {
         for (const b of biz as any[]) { await up('BUSINESS', b.id, b.name); mark('BUSINESS', b.id); }
         for (const p of pages as any[]) {
           await up('PAGE', p.id, p.name); mark('PAGE', p.id);
-          if (p.instagram_business_account) {
-            await up('INSTAGRAM', p.instagram_business_account.id, p.instagram_business_account.username ?? 'Instagram', p.id);
-            mark('INSTAGRAM', p.instagram_business_account.id);
-          }
           // Lead forms live on the Page and are read with its token, which is
-          // used here and discarded — never stored.
-          if (p.access_token) {
+          // used here and discarded — never stored. Only when Instant Forms'
+          // permissions were granted (pages_manage_ads).
+          if (p.access_token && instantForms) {
             try {
               const forms = await graphAll(`/${p.id}/leadgen_forms?fields=id,name,status,locale&limit=100`, { token: p.access_token }, 2);
               for (const f of forms as any[]) {
@@ -223,6 +226,16 @@ Deno.serve(async (req) => {
         for (const a of accts as any[]) {
           await up('AD_ACCOUNT', a.id, a.name, a.business?.id, { account_status: a.account_status, currency: a.currency, disable_reason: a.disable_reason ?? null });
           mark('AD_ACCOUNT', a.id);
+          /* Instagram accounts usable for ads, read from the ad account under
+             ads_management — no instagram_basic. Not tied to one Page. */
+          try {
+            const igs = await graphAll(`/${a.id}/instagram_accounts?fields=id,username&limit=100`, { token, audit: auditCtx }, 2);
+            for (const ig of igs as any[]) {
+              if (seen.INSTAGRAM?.includes(String(ig.id))) continue;
+              await up('INSTAGRAM', String(ig.id), ig.username ?? 'Instagram', null);
+              mark('INSTAGRAM', String(ig.id));
+            }
+          } catch { /* no Instagram account on this ad account is a state, not an error */ }
           try {
             const pixels = await graphAll(`/${a.id}/adspixels?fields=id,name,last_fired_time&limit=100`, { token, audit: auditCtx }, 2);
             for (const px of pixels as any[]) {
@@ -251,7 +264,10 @@ Deno.serve(async (req) => {
         await sb.from('meta_assets').update({ selected: true }).eq('id', asset.id);
         let subscribed: boolean | null = null;
         // A selected Page is subscribed to leadgen webhooks, or leads never arrive.
-        if (kind === 'PAGE' && mode === 'REAL') {
+        const { data: scopeConn } = await sb.from('meta_connections').select('granted_scopes').eq('user_id', uid).maybeSingle();
+        /* Only with Instant Forms' permissions (pages_manage_metadata): without
+           them there are no lead forms to deliver, so nothing is attempted. */
+        if (kind === 'PAGE' && mode === 'REAL' && hasScopes(scopeConn?.granted_scopes, INSTANT_FORM_SCOPES)) {
           const token = await userToken(sb, uid);
           if (token) {
             try {
@@ -280,6 +296,10 @@ Deno.serve(async (req) => {
         const fields = (Array.isArray(body.fields) ? body.fields : allowed).map(String).filter((f: string) => allowed.includes(f));
         if (!fields.length) return json({ error: 'FIELDS_REQUIRED' }, 400);
         let externalId: string;
+        const { data: formConn } = await sb.from('meta_connections').select('granted_scopes').eq('user_id', uid).maybeSingle();
+        if (mode === 'REAL' && !hasScopes(formConn?.granted_scopes, INSTANT_FORM_SCOPES)) {
+          return json({ error: 'INSTANT_FORMS_PERMISSION_REQUIRED', code: 'INSTANT_FORMS_PERMISSION_REQUIRED', needed: INSTANT_FORM_SCOPES }, 403);
+        }
         if (mode === 'MOCK') externalId = mockExternalId('form');
         else {
           const token = await userToken(sb, uid);
@@ -777,7 +797,15 @@ async function maintenance(sb: any, mode: 'REAL' | 'MOCK') {
     const { data: u } = await sb.from('meta_connections').update({ status: 'EXPIRED' }).eq('id', t.connection_id).eq('status', 'CONNECTED').select('id');
     report.expired += (u ?? []).length;
   }
-  return { ok: true, mode, ...report };
+  /* Configuration PRESENCE only (never a value), so an operator can tell
+     from the scheduled pass which Meta secrets are still missing. */
+  const configured = {
+    META_APP_ID: !!Deno.env.get('META_APP_ID'),
+    META_APP_SECRET: !!Deno.env.get('META_APP_SECRET'),
+    META_TOKEN_ENCRYPTION_KEY: !!Deno.env.get('META_TOKEN_ENCRYPTION_KEY'),
+    loginConfigId: metaLoginConfigId(),
+  };
+  return { ok: true, mode, configured, ...report };
 }
 
 /* ── COPY CONTEXT ────────────────────────────────────────────────────── */

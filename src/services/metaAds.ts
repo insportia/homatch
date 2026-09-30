@@ -44,6 +44,8 @@ export interface MetaStatus {
   mode: 'REAL' | 'MOCK';
   connection: {
     status: string; health?: MetaConnectionHealth; granted_scopes?: string[]; missing_scopes?: string[]; error_reason?: string | null;
+    /** Instant Forms' extra permissions granted (goal LEADS_ON_META). */
+    instant_forms_available?: boolean;
     token_expires_at?: string | null; last_checked_at?: string | null;
   };
   assets: MetaAsset[];

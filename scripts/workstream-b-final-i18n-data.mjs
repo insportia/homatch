@@ -232,4 +232,15 @@ export const WORKSTREAM_B_FINAL_STRINGS = {
   admin_mads_invalid_json: [
     'That value is not valid JSON.', 'ეს მნიშვნელობა სწორი JSON არ არის.', 'Это значение не является корректным JSON.', 'Bu değer geçerli bir JSON değil.', 'هذه القيمة ليست JSON صالحًا.', 'הערך הזה אינו JSON תקין.',
   ],
+  madsb_goal_needs_form_permissions: [
+    'Needs extra Meta permissions', 'საჭიროა Meta-ს დამატებითი ნებართვები', 'Нужны дополнительные разрешения Meta', 'Ek Meta izinleri gerekli', 'يتطلب أذونات Meta إضافية', 'נדרשות הרשאות Meta נוספות',
+  ],
+  madsb_instant_forms_permission: [
+    'Instant Forms need the Meta permissions leads_retrieval, pages_manage_ads and pages_manage_metadata. Choose a website or message goal, or ask HOMATCH to enable Instant Forms.',
+    'მყისიერ ფორმებს სჭირდება Meta-ს ნებართვები leads_retrieval, pages_manage_ads და pages_manage_metadata. აირჩიეთ ვებსაიტის ან შეტყობინების მიზანი, ან სთხოვეთ HOMATCH-ს მყისიერი ფორმების ჩართვა.',
+    'Мгновенным формам нужны разрешения Meta leads_retrieval, pages_manage_ads и pages_manage_metadata. Выберите цель «сайт» или «сообщения» либо попросите HOMATCH включить мгновенные формы.',
+    'Anlık Formlar için leads_retrieval, pages_manage_ads ve pages_manage_metadata Meta izinleri gerekir. Web sitesi veya mesaj hedefi seçin ya da HOMATCH’ten Anlık Formları etkinleştirmesini isteyin.',
+    'تحتاج النماذج الفورية إلى أذونات Meta التالية: leads_retrieval وpages_manage_ads وpages_manage_metadata. اختر هدف موقع ويب أو رسائل، أو اطلب من HOMATCH تفعيل النماذج الفورية.',
+    'טפסים מיידיים דורשים את הרשאות Meta leads_retrieval, ‏pages_manage_ads ו-pages_manage_metadata. בחרו מטרה של אתר או הודעות, או בקשו מ-HOMATCH להפעיל טפסים מיידיים.',
+  ],
 };

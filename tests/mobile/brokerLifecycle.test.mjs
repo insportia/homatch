@@ -180,10 +180,17 @@ for (const [width, height] of [[1440, 900], [390, 844]]) {
     const failures = [];
     for (const lang of LOCALES) {
       const { page } = await boot(t, { width, height, lang });
+      /* The workspace: overview (identity, KPIs from the one summary call),
+         then every section through its tab. */
       await page.goto(`${BASE}/broker`, { waitUntil: 'domcontentloaded' });
-      await page.waitForSelector('#desk-portfolio', { timeout: 20000 });
-      await check(page, lang, width, 'desk', failures, ['Nino Beridze Realty', '104233', '120.50']);
-      if (await page.inputValue('#cl-s1') !== 'Giorgi — 2BR Vake') failures.push(`desk ${lang} ${width}: private client label not shown`);
+      await page.waitForSelector('[data-ws-overview]', { timeout: 20000 });
+      await check(page, lang, width, 'desk overview', failures, ['Nino Beridze Realty', '120.50']);
+      for (const tab of ['profile', 'properties', 'clients', 'leads', 'listing', 'billing', 'notifications']) {
+        await page.goto(`${BASE}/broker?tab=${tab}`, { waitUntil: 'domcontentloaded' });
+        await page.waitForSelector('[data-ws-tabs] [aria-current="page"]', { timeout: 20000 });
+        await check(page, lang, width, `desk ${tab}`, failures, tab === 'properties' ? ['104233'] : []);
+        if (tab === 'clients' && await page.inputValue('#cl-s1') !== 'Giorgi — 2BR Vake') failures.push(`desk ${lang} ${width}: private client label not shown`);
+      }
 
       await page.goto(`${BASE}/broker/onboarding`, { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('#onb-name', { timeout: 20000 });
@@ -258,8 +265,8 @@ test('the directory purchase is confirmed, keyed, and a retry after a refusal re
   const { page, calls } = await boot(t, {
     rpc: { broker_directory_purchase: () => { attempts += 1; return attempts === 1 ? { __error: 'INSUFFICIENT_CREDITS' } : { duplicate: false, charged_credits: 90, paid_until: ago(-30) }; } },
   });
-  await page.goto(`${BASE}/broker`, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('#desk-portfolio', { timeout: 20000 });
+  await page.goto(`${BASE}/broker?tab=listing`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#desk-listing', { timeout: 20000 });
   await page.getByRole('button', { name: 'Buy directory listing' }).click();
   const dialog = page.getByRole('alertdialog');
   await dialog.waitFor({ timeout: 5000 });
@@ -284,12 +291,15 @@ test('the directory purchase is confirmed, keyed, and a retry after a refusal re
 test('empty, error, loading and suspended desks each say so', opts, async (t) => {
   if (skipReason) assert.fail(`broker gate could not run: ${skipReason}`);
   const empty = await boot(t, { summary: desk({ properties: [], leads: {}, client_searches: [] }) });
-  await empty.page.goto(`${BASE}/broker`, { waitUntil: 'domcontentloaded' });
-  await empty.page.waitForSelector('#desk-portfolio', { timeout: 20000 });
-  const emptyText = await empty.page.evaluate(() => document.body.innerText);
-  assert.match(emptyText, /No properties yet/);
-  assert.match(emptyText, /No current leads yet/);
-  assert.match(emptyText, /No client searches yet/);
+  const emptyTab = async (tab, sel) => {
+    await empty.page.goto(`${BASE}/broker?tab=${tab}`, { waitUntil: 'domcontentloaded' });
+    await empty.page.waitForSelector(sel, { timeout: 20000 });
+    await empty.page.waitForTimeout(300);
+    return empty.page.evaluate(() => document.body.innerText);
+  };
+  assert.match(await emptyTab('properties', '#desk-portfolio'), /No properties yet/);
+  assert.match(await emptyTab('leads', '#desk-leads'), /No current leads yet/);
+  assert.match(await emptyTab('clients', '#desk-clients'), /No client searches yet/);
 
   const failing = await boot(t, { rpc: { broker_desk_summary: () => ({ __error: 'NOT_AUTHENTICATED' }) } });
   await failing.page.goto(`${BASE}/broker`, { waitUntil: 'domcontentloaded' });
@@ -304,13 +314,15 @@ test('empty, error, loading and suspended desks each say so', opts, async (t) =>
   assert.ok(await slow.page.locator('.animate-pulse').count() > 0, 'no loading placeholder');
 
   const suspended = await boot(t, { summary: desk({ account: { account_type: 'BROKER', suspended: true, suspension_reason: 'Duplicate listings reported' } }) });
-  await suspended.page.goto(`${BASE}/broker`, { waitUntil: 'domcontentloaded' });
-  await suspended.page.waitForSelector('#desk-portfolio', { timeout: 20000 });
-  const sText = await suspended.page.evaluate(() => document.body.innerText);
-  assert.match(sText, /account is suspended/);
-  assert.match(sText, /Duplicate listings reported/);
-  for (const name of ['Buy directory listing', 'Send for review', 'Send for verification']) {
-    assert.equal(await suspended.page.getByRole('button', { name }).count(), 0, `a suspended account is offered "${name}"`);
+  for (const tab of ['overview', 'profile', 'listing', 'clients']) {
+    await suspended.page.goto(`${BASE}/broker?tab=${tab}`, { waitUntil: 'domcontentloaded' });
+    await suspended.page.waitForSelector('[data-ws-tabs]', { timeout: 20000 });
+    const sText = await suspended.page.evaluate(() => document.body.innerText);
+    assert.match(sText, /account is suspended/);
+    assert.match(sText, /Duplicate listings reported/);
+    for (const name of ['Buy directory listing', 'Extend directory listing', 'Send for review', 'Send for verification', 'Start search', 'Stop search']) {
+      assert.equal(await suspended.page.getByRole('button', { name }).count(), 0, `a suspended account is offered "${name}" on ${tab}`);
+    }
   }
 });
 
@@ -345,4 +357,24 @@ test('a non-professional account never sees the broker desk in the navigation', 
   const pro = await boot(t, { accountType: 'AGENCY' });
   await pro.page.goto(`${BASE}/dashboard`, { waitUntil: 'domcontentloaded' });
   await pro.page.waitForSelector('nav a[href="/broker"]', { timeout: 20000 });
+});
+
+test('/brokers is account-aware: a person is offered onboarding, a professional their workspace — never the old form', opts, async (t) => {
+  if (skipReason) assert.fail(`broker gate could not run: ${skipReason}`);
+  for (const [width, height] of [[1440, 900], [390, 844]]) {
+    const personal = await boot(t, { width, height, accountType: 'PERSONAL', summary: desk({ profile: null }) });
+    await personal.page.goto(`${BASE}/brokers`, { waitUntil: 'domcontentloaded' });
+    await personal.page.waitForSelector('[data-broker-bar="become"]', { timeout: 20000 });
+    assert.equal(await personal.page.locator('#apply, #broker-name').count(), 0, 'the old application form is back');
+    assert.equal(await personal.page.locator('details[data-broker-distinction]').count(), 1, 'the distinction is one collapsible note');
+    await personal.page.getByRole('button', { name: 'Create professional profile' }).click();
+    await personal.page.waitForURL(`${BASE}/broker/onboarding`, { timeout: 10000 });
+
+    const pro = await boot(t, { width, height, accountType: 'BROKER' });
+    await pro.page.goto(`${BASE}/brokers`, { waitUntil: 'domcontentloaded' });
+    await pro.page.waitForSelector('[data-broker-bar="workspace"]', { timeout: 20000 });
+    assert.match(await pro.page.locator('[data-broker-bar="workspace"]').innerText(), /Nino Beridze Realty/);
+    assert.equal(await pro.page.locator('[data-broker-bar="workspace"] a[href="/broker"]').count(), 1, 'no way into the workspace');
+    assert.equal(await pro.page.locator('#apply, #broker-name').count(), 0, 'a broker is shown the application form again');
+  }
 });

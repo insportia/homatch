@@ -55,7 +55,7 @@ const ASSET_KINDS = ['BUSINESS', 'PAGE', 'INSTAGRAM', 'AD_ACCOUNT', 'PIXEL', 'LE
 
 /** A database function's raised code, for the client (never the raw message). */
 export function rpcCode(message: string): string {
-  const m = String(message ?? '').match(/\b(FORBIDDEN|INSUFFICIENT_FUNDS|REASON_REQUIRED|PERCENT_INVALID|BAD_KIND|BAD_DIRECTION|AMOUNT_INVALID|CURRENCY_INVALID|USER_NOT_FOUND|CAMPAIGN_NOT_THIS_CUSTOMER)\b/);
+  const m = String(message ?? '').match(/\b(FORBIDDEN|INSUFFICIENT_FUNDS|REASON_REQUIRED|PERCENT_INVALID|BAD_KIND|BAD_DIRECTION|AMOUNT_INVALID|CURRENCY_INVALID|USER_NOT_FOUND|USER_REQUIRED|CAMPAIGN_NOT_THIS_CUSTOMER|LEDGER_ENTRY_NOT_THIS_CUSTOMER|CANNOT_ADJUST_SELF)\b/);
   return m ? m[1] : 'FAILED';
 }
 export function rpcStatus(message: string): number {

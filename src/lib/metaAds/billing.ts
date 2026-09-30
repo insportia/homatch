@@ -31,7 +31,9 @@ const clampPct = (p: number) => (Number.isFinite(p) ? Math.min(100, Math.max(0, 
 
 /** The fee on a planned budget. Rounded half-up to the minor unit. */
 export function serviceFeeCents(plannedMediaCents: number, feePercent: number): number {
-  return Math.round((Math.max(0, Math.round(plannedMediaCents)) * clampPct(feePercent)) / 100);
+  // Basis points, so a fractional percent rounds exactly as the database does.
+  const bp = Math.round(clampPct(feePercent) * 100);
+  return Math.round((Math.max(0, Math.round(plannedMediaCents)) * bp) / 10000);
 }
 
 export const plannedMediaCents = (dailyBudgetCents: number, durationDays: number) =>

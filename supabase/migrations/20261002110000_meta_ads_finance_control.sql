@@ -25,7 +25,7 @@ returns numeric
 language plpgsql
 stable
 security definer
-set search_path to 'public'
+set search_path to 'public', 'pg_temp'
 as $$
 declare
   v_standard numeric;
@@ -40,11 +40,13 @@ begin
   select case when jsonb_typeof(value) = 'number' then (value #>> '{}')::numeric
               when jsonb_typeof(value) = 'string' and (value #>> '{}') ~ '^[0-9]+(\.[0-9]+)?$' then (value #>> '{}')::numeric end
     into v_standard from public.admin_settings where key = 'meta_ads_fee_percent';
-  v_standard := least(100, greatest(0, coalesce(v_standard, 9)));
+  if p_user is null then raise exception 'USER_REQUIRED'; end if;
+  -- Percent to two decimals (basis points): the TS fee maths is exact at that precision.
+  v_standard := round(least(100, greatest(0, coalesce(v_standard, 9))), 2);
   select kind, percent into v_kind, v_percent from public.meta_fee_policies where user_id = p_user;
   if v_kind is null or v_kind = 'STANDARD_PERCENT' then return v_standard; end if;
   if v_kind = 'FEE_EXEMPT' then return 0; end if;
-  return least(100, greatest(0, coalesce(v_percent, v_standard)));
+  return round(least(100, greatest(0, coalesce(v_percent, v_standard))), 2);
 end $$;
 revoke all on function public.meta_effective_fee_percent(uuid) from public, anon;
 grant execute on function public.meta_effective_fee_percent(uuid) to authenticated, service_role;
@@ -54,7 +56,7 @@ returns jsonb
 language plpgsql
 stable
 security definer
-set search_path to 'public'
+set search_path to 'public', 'pg_temp'
 as $$
 declare
   v_pct numeric := public.meta_effective_fee_percent(p_user);  -- carries the access check
@@ -66,8 +68,8 @@ begin
     'policy', coalesce(v_kind, 'STANDARD_PERCENT'),
     'fee_percent', v_pct,
     'planned_media_cents', v_planned,
-    -- Same rounding as billing.ts serviceFeeCents / strategy.ts computeTotals (half-up).
-    'service_fee_cents', round(v_planned * v_pct / 100)::bigint
+    -- Basis points, half-up: identical to billing.ts serviceFeeCents / strategy.ts computeTotals.
+    'service_fee_cents', round(v_planned * round(v_pct * 100) / 10000)::bigint
   );
 end $$;
 revoke all on function public.meta_service_fee_quote(uuid, bigint) from public, anon;
@@ -78,7 +80,7 @@ create or replace function public.admin_set_meta_fee_policy(p_user uuid, p_kind 
 returns jsonb
 language plpgsql
 security definer
-set search_path to 'public'
+set search_path to 'public', 'pg_temp'
 as $$
 declare
   v_admin uuid := public.auth_user_id();
@@ -87,7 +89,11 @@ declare
   v_reason text := btrim(coalesce(p_reason, ''));
 begin
   if not public.is_admin() or v_admin is null then raise exception 'FORBIDDEN' using errcode = '42501'; end if;
-  if p_kind not in ('STANDARD_PERCENT', 'FEE_EXEMPT', 'CUSTOM_PERCENT') then raise exception 'BAD_KIND'; end if;
+  if exists (select 1 from public.users where id = v_admin and suspended_at is not null) then raise exception 'FORBIDDEN' using errcode = '42501'; end if;
+  if p_user is null or p_kind is null or p_kind not in ('STANDARD_PERCENT', 'FEE_EXEMPT', 'CUSTOM_PERCENT') then raise exception 'BAD_KIND'; end if;
+  if p_kind = 'CUSTOM_PERCENT' and p_percent <> round(p_percent, 2) then raise exception 'PERCENT_INVALID'; end if;
+  -- An admin may set their own fee policy (the owner-operator's account is the
+  -- canonical example); it is recorded with them as both actor and target.
   if length(v_reason) < 3 then raise exception 'REASON_REQUIRED'; end if;
   if p_kind = 'CUSTOM_PERCENT' and (p_percent is null or p_percent < 0 or p_percent > 100) then raise exception 'PERCENT_INVALID'; end if;
   if not exists (select 1 from public.users where id = p_user) then raise exception 'USER_NOT_FOUND'; end if;
@@ -112,20 +118,31 @@ grant execute on function public.admin_set_meta_fee_policy(uuid, text, numeric, 
 -- ── 3. ADJUSTMENTS: through the ledger, never around it ──────────────────
 create table if not exists public.meta_finance_adjustments (
   id uuid primary key default gen_random_uuid(),
-  ledger_id bigint not null,
-  user_id uuid not null references public.users(id) on delete cascade,
-  admin_user_id uuid not null,
+  ledger_id bigint not null references public.meta_ads_ledger(id) on delete restrict,
+  user_id uuid not null references public.users(id) on delete restrict,
+  admin_user_id uuid not null references public.users(id) on delete restrict,
   direction text not null check (direction in ('CREDIT', 'DEBIT')),
   amount_cents bigint not null check (amount_cents > 0),
   currency text not null,
   reason text not null check (length(btrim(reason)) >= 3),
   campaign_id uuid references public.meta_campaigns(id) on delete set null,
-  related_ledger_id bigint,
+  related_ledger_id bigint references public.meta_ads_ledger(id) on delete restrict,
   balance_before_cents bigint not null,
   balance_after_cents bigint not null,
   created_at timestamptz not null default now()
 );
+create index if not exists meta_finance_adjustments_user_idx on public.meta_finance_adjustments (user_id, created_at desc);
 alter table public.meta_finance_adjustments enable row level security;
+-- A money audit record: written once, never changed or removed, by anyone.
+create or replace function public.meta_finance_adjustments_immutable()
+returns trigger language plpgsql set search_path to 'public', 'pg_temp' as $$
+begin
+  raise exception 'META_FINANCE_ADJUSTMENTS_IMMUTABLE';
+end $$;
+revoke all on function public.meta_finance_adjustments_immutable() from public, anon, authenticated;
+drop trigger if exists trg_meta_finance_adjustments_immutable on public.meta_finance_adjustments;
+create trigger trg_meta_finance_adjustments_immutable before update or delete on public.meta_finance_adjustments
+  for each row execute function public.meta_finance_adjustments_immutable();
 drop policy if exists meta_finance_adjustments_admin on public.meta_finance_adjustments;
 create policy meta_finance_adjustments_admin on public.meta_finance_adjustments for select to authenticated using (public.is_admin());
 revoke all on public.meta_finance_adjustments from anon;
@@ -138,7 +155,7 @@ create or replace function public.admin_meta_adjust_balance(
 returns jsonb
 language plpgsql
 security definer
-set search_path to 'public'
+set search_path to 'public', 'pg_temp'
 as $$
 declare
   v_admin uuid := public.auth_user_id();
@@ -151,13 +168,19 @@ declare
   v_adj uuid;
 begin
   if not public.is_admin() or v_admin is null then raise exception 'FORBIDDEN' using errcode = '42501'; end if;
-  if p_direction not in ('CREDIT', 'DEBIT') then raise exception 'BAD_DIRECTION'; end if;
+  if exists (select 1 from public.users where id = v_admin and suspended_at is not null) then raise exception 'FORBIDDEN' using errcode = '42501'; end if;
+  -- Nobody moves money in their own balance: another admin must.
+  if p_user = v_admin then raise exception 'CANNOT_ADJUST_SELF'; end if;
+  if p_user is null or p_direction is null or p_direction not in ('CREDIT', 'DEBIT') then raise exception 'BAD_DIRECTION'; end if;
   if p_amount_cents is null or p_amount_cents <= 0 or p_amount_cents > 100000000 then raise exception 'AMOUNT_INVALID'; end if;
   if length(v_reason) < 3 then raise exception 'REASON_REQUIRED'; end if;
   if v_currency !~ '^[A-Z]{3}$' then raise exception 'CURRENCY_INVALID'; end if;
   if not exists (select 1 from public.users where id = p_user) then raise exception 'USER_NOT_FOUND'; end if;
   if p_campaign is not null and not exists (select 1 from public.meta_campaigns where id = p_campaign and user_id = p_user) then
     raise exception 'CAMPAIGN_NOT_THIS_CUSTOMER';
+  end if;
+  if p_related_ledger is not null and not exists (select 1 from public.meta_ads_ledger where id = p_related_ledger and user_id = p_user) then
+    raise exception 'LEDGER_ENTRY_NOT_THIS_CUSTOMER';
   end if;
 
   -- The ledger guard's own lock key: one money movement per customer at a time.
@@ -169,7 +192,8 @@ begin
   insert into public.meta_ads_ledger (user_id, entry_type, amount_cents, currency, campaign_id, idempotency_key, note, created_by)
   values (p_user, 'ADJUSTMENT', v_signed, v_currency, p_campaign, 'adj:' || gen_random_uuid()::text, v_reason, v_admin)
   returning id into v_ledger;
-  select coalesce(sum(amount_cents), 0)::bigint into v_after from public.meta_ads_ledger where user_id = p_user and currency = v_currency;
+  -- This adjustment's own effect (a concurrent deposit cannot misstate it).
+  v_after := v_before + v_signed;
 
   insert into public.meta_finance_adjustments (ledger_id, user_id, admin_user_id, direction, amount_cents, currency, reason,
     campaign_id, related_ledger_id, balance_before_cents, balance_after_cents)
@@ -191,7 +215,7 @@ returns jsonb
 language plpgsql
 stable
 security definer
-set search_path to 'public'
+set search_path to 'public', 'pg_temp'
 as $$
 declare
   v jsonb;
@@ -232,7 +256,7 @@ begin
         from (select * from public.meta_finance_adjustments where user_id = p_user order by created_at desc limit 100) a), '[]'::jsonb),
     'policy_history', coalesce((select jsonb_agg(jsonb_build_object('previous', previous, 'next', next, 'reason', reason,
         'admin_user_id', admin_user_id, 'created_at', created_at) order by created_at desc)
-        from public.meta_fee_policy_audit where user_id = p_user), '[]'::jsonb),
+        from (select * from public.meta_fee_policy_audit where user_id = p_user order by created_at desc limit 100) h), '[]'::jsonb),
     -- HOMATCH revenue is the service fee actually consumed; real costs stay visible whatever the policy.
     'revenue_and_costs', coalesce((select jsonb_agg(jsonb_build_object(
         'currency', m.currency, 'service_fee_revenue_cents', m.consumed, 'service_fee_reserved_cents', m.reserved,
@@ -281,6 +305,10 @@ revoke all on function public.meta_ads_ledger_balance_guard() from public, anon,
 -- ── 6. LEDGER + POLICY TABLES: no client writes, ever ────────────────────
 -- RLS already limits writes to the service role; the explicit revoke is the repo convention.
 revoke insert, update, delete, truncate on public.meta_ads_ledger from authenticated;
+revoke all on public.meta_ads_ledger from anon;
+-- Percents are kept to two decimals so every fee is computed exactly (basis points).
+alter table public.meta_fee_policies drop constraint if exists meta_fee_policies_percent_2dp;
+alter table public.meta_fee_policies add constraint meta_fee_policies_percent_2dp check (percent is null or percent = round(percent, 2));
 revoke insert, update, delete, truncate on public.meta_fee_policies, public.meta_fee_policy_audit from authenticated;
 -- Reads stay RLS-scoped (own policy; audit admin-only).
 grant select on public.meta_ads_ledger, public.meta_fee_policies, public.meta_fee_policy_audit to authenticated;

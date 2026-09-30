@@ -253,3 +253,19 @@ test('the fee comes from the canonical policy: exempt 0, custom exact, standard 
   // Never guessed: an unreadable policy fails the caller.
   await assert.rejects(customerFeePercent({ rpc: async () => ({ data: null, error: { message: 'x' } }) }, 'u1'), /FEE_POLICY_UNAVAILABLE/);
 });
+
+test('fee rounding is exact half-up in basis points for any 2-decimal percent (matches the database quote)', async () => {
+  const { computeTotals } = await import('../../../../src/lib/metaAds/strategy.ts');
+  const { serviceFeeCents } = await import('../../../../src/lib/metaAds/billing.ts');
+  const exact = (planned, pct) => {            // BigInt half-up: the SQL round(planned * bp / 10000)
+    const bp = BigInt(Math.round(pct * 100));
+    const n = BigInt(planned) * bp;
+    return Number((n * 2n + 10000n) / 20000n);
+  };
+  for (const pct of [0, 0.35, 0.57, 0.7, 4.5, 9, 9.99, 12.25, 100]) {
+    for (const planned of [0, 1, 5000, 5500, 10000, 11000, 99999, 100000, 1000000, 123457]) {
+      assert.equal(serviceFeeCents(planned, pct), exact(planned, pct), `serviceFeeCents(${planned}, ${pct})`);
+      assert.equal(computeTotals(planned, 1, pct).feeCents, exact(planned, pct), `computeTotals(${planned}, ${pct})`);
+    }
+  }
+});

@@ -361,33 +361,24 @@ test('the entry bundle is measured, and its size is a stated fact', () => {
   /*
    * A CEILING, NOT A TARGET.
    *
-   * The entry chunk is large — around 5MB unzipped — and the dominant reason
-   * is src/i18n/translations.ts: 2.26MB of source holding all six languages,
-   * imported synchronously by LanguageContext so that t() can be a plain
-   * function call. Every visitor downloads six languages to read one.
+   * For a long time the entry was dominated by src/i18n/translations.ts: all
+   * six languages, imported synchronously by LanguageContext, so every
+   * visitor downloaded six languages to read one. It peaked at 6.21MB with
+   * the Meta Ads master release, and the ceiling was moved to 6.5MB on the
+   * owner's approval with this work named as the way back down.
    *
-   * That is worth fixing and it is not a small change: it turns a synchronous
-   * lookup used by 4,773 keys into something that has to be loaded, which
-   * reaches the App Content editor (which genuinely wants all six), the Site
-   * Studio preview, the i18n gates and every test. Doing it at the end of a
-   * release is how a release breaks.
+   * DONE, 2026-09-30: English ships in the entry (it is the fallback for
+   * every key); each other language is its own chunk, cut from the same
+   * source file at build time (vite.config.ts, i18nLanguageChunks) and loaded
+   * before the first render for the visitor who needs it
+   * (tests/browser/languageChunks.test.mjs holds that part). The entry went
+   * from 6.21MB to 1.62MB (1,693,447 bytes), and the ceiling comes down with
+   * it — 2MB, so it again fails the change that makes it materially worse.
    *
-   * So this is a ratchet rather than a fix: the number is written down, and
-   * the next change that makes it materially worse fails here instead of
-   * being noticed in six months. Lower it when the work above is done.
-   *
-   * MOVED ON PURPOSE, 2026-09-30: 6MB → 6.5MB, approved by the owner. The
-   * Meta Ads master release added ~330KB of translation source (~700 keys ×
-   * six languages: builder, campaign drill-down, workspace, admin), which put
-   * the entry at 6.21MB. The code itself adds nothing to the entry (its pages
-   * are lazy routes). Per-language lazy loading is the follow-up that lets
-   * this come back down.
-   *
-   * THIS IS NOT HEADROOM. The extra 0.5MB was spent by one named release; the
-   * next change that grows the entry needs its own owner decision, or the
-   * lazy-loading work first. Measured at the move: 6.21MB (6,511,363 bytes).
+   * The App Content editor still loads all six languages: it genuinely edits
+   * all six, and it is an admin-only lazy route.
    */
-  const CEILING = 6.5 * 1024 * 1024;
+  const CEILING = 2 * 1024 * 1024;
   assert.ok(bytes < CEILING,
     `the entry chunk is ${(bytes / 1024 / 1024).toFixed(2)}MB, past the ${CEILING / 1024 / 1024}MB ceiling`);
 });

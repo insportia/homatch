@@ -23,7 +23,7 @@
     "test:floorplan": "node --test tests/browser/floorplanPipeline.test.mjs",
     "test:studio": "node --test tests/studio/previewWidth.test.mjs && node --test tests/studio/inlineEditing.test.mjs && node --test tests/studio/blocks.test.mjs && node --test tests/studio/layers.test.mjs && node --test tests/studio/translationAndHistory.test.mjs && node --test tests/studio/appContent.test.mjs && node --test tests/studio/stylePresets.test.mjs && node --test tests/studio/pageMatrix.test.mjs",
     "test:push": "node --test --test-timeout=300000 tests/browser/pushHandlers.test.mjs",
-    "test:a11y": "node --test --test-timeout=600000 tests/browser/accessibilityAudit.test.mjs",
+    "test:a11y": "node --test --test-timeout=600000 tests/browser/accessibilityAudit.test.mjs tests/browser/languageChunks.test.mjs",
     "test:pwa": "node --test --test-timeout=300000 tests/browser/pwaInstallSheet.test.mjs",
     "test:browser": "npm run test:mobile && npm run test:developer && npm run test:onboarding && npm run test:floorplan && npm run test:studio && npm run test:push && npm run test:a11y && npm run test:pwa",
     "test:mobile:setup": "node scripts/setup-mobile-test.mjs",

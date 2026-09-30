@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import svgr from "vite-plugin-svgr";
 import path from "path";
 import fs from "fs";
+import { pathToFileURL } from "url";
 
 /**
  * THE DIGITAL TWIN’S DECODERS, SERVED FROM OUR OWN ORIGIN.
@@ -127,9 +128,79 @@ function shareViewerRewrite(): Plugin {
   };
 }
 
+/**
+ * ONE LANGUAGE PER CHUNK, CUT FROM THE ONE SOURCE FILE.
+ *
+ * src/i18n/translations.ts holds all six languages and stays the file every
+ * apply-script, gate and test reads. The runtime (src/i18n/bundles.ts) never
+ * imports it: it imports virtual:homatch-i18n/<lang>, which this plugin
+ * answers by evaluating translations.ts once and emitting that one language's
+ * object — English whole (the fallback, in the entry), every other language
+ * as only its own strings, in a chunk of its own.
+ *
+ * Emitted as JSON.parse of a string: a large object literal parses measurably
+ * slower than the same data as JSON, and nothing here needs to be code.
+ */
+function i18nLanguageChunks(): Plugin {
+  const SOURCE = path.resolve(__dirname, 'src/i18n/translations.ts');
+  const PREFIX = 'virtual:homatch-i18n/';
+  const LANGS = ['en', 'ka', 'ru', 'tr', 'ar', 'he'];
+  let cached: { mtimeMs: number; bundles: Record<string, Record<string, string>> } | null = null;
+
+  async function bundles(): Promise<Record<string, Record<string, string>>> {
+    const { mtimeMs } = fs.statSync(SOURCE);
+    if (cached && cached.mtimeMs === mtimeMs) return cached.bundles;
+    /* Node strips the file's types itself (the i18n node tests import it the
+       same way); its one import is `import type`, which is erased. The query
+       string makes an edited file a new module rather than the cached one. */
+    const mod = await import(`${pathToFileURL(SOURCE).href}?v=${mtimeMs}`);
+    const merged = mod.translations as Record<string, Record<string, string>>;
+    /* English whole; every other language only where it differs, so a chunk
+       carries no copy of English (t() already falls back to English). */
+    const en = merged.en;
+    const out: Record<string, Record<string, string>> = { en };
+    for (const lang of LANGS) {
+      if (!merged[lang] || typeof merged[lang] !== 'object') throw new Error(`[i18n] translations.ts has no "${lang}" bundle`);
+      if (lang === 'en') continue;
+      const own: Record<string, string> = {};
+      for (const [k, v] of Object.entries(merged[lang])) if (v !== en[k]) own[k] = v;
+      out[lang] = own;
+    }
+    cached = { mtimeMs, bundles: out };
+    return out;
+  }
+
+  return {
+    name: 'homatch:i18n-language-chunks',
+    resolveId(id) {
+      if (id.startsWith(PREFIX) && LANGS.includes(id.slice(PREFIX.length))) return `\0${id}`;
+      return null;
+    },
+    async load(id) {
+      if (!id.startsWith(`\0${PREFIX}`)) return null;
+      this.addWatchFile(SOURCE);
+      const lang = id.slice(PREFIX.length + 1);
+      const bundle = (await bundles())[lang];
+      return `export default JSON.parse(${JSON.stringify(JSON.stringify(bundle))});`;
+    },
+    // Dev: the virtual modules do not import translations.ts, so an edit to it
+    // would not reach them on its own. Drop them and reload the page.
+    handleHotUpdate({ file, server }) {
+      if (path.resolve(file) !== SOURCE) return;
+      for (const lang of LANGS) {
+        const mod = server.moduleGraph.getModuleById(`\0${PREFIX}${lang}`);
+        if (mod) server.moduleGraph.invalidateModule(mod);
+      }
+      server.ws.send({ type: 'full-reload' });
+      return [];
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [
     react(),
+    i18nLanguageChunks(),
     shareViewerRewrite(),
     stampServiceWorker(),
     threeDecoders(),

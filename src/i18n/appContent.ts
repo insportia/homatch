@@ -27,11 +27,9 @@ import { translations } from './translations.ts';
  * did my change only work on one page" comes from.
  */
 
-export const LOCALES = ['en', 'ka', 'ru', 'tr', 'ar', 'he'] as const;
-export type ContentLocale = (typeof LOCALES)[number];
-
-/** key -> locale -> the admin's replacement. */
-export type OverrideMap = Partial<Record<ContentLocale, Record<string, string>>>;
+import type { ContentLocale, OverrideMap } from './locales.ts';
+export { LOCALES } from './locales.ts';
+export type { ContentLocale, OverrideMap } from './locales.ts';
 
 /** The string the application ships for a key, or undefined. */
 export function shipped(key: string, locale: ContentLocale): string | undefined {

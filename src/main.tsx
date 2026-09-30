@@ -2,6 +2,7 @@ import * as Sentry from "@sentry/react";
 import { recordStandaloneSession } from '@/lib/engagement';
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
+import { preloadLanguage } from "./contexts/LanguageContext.tsx";
 import { AppWrapper } from "./components/common/PageMeta.tsx";
 import "./index.css";
 
@@ -97,10 +98,18 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
   else window.setTimeout(register, 1200);
 }
 
-createRoot(document.getElementById("root")!).render(
-  <Sentry.ErrorBoundary fallback={<p>应用发生错误，请刷新页面重试</p>}>
-    <AppWrapper>
-      <App />
-    </AppWrapper>
-  </Sentry.ErrorBoundary>
-);
+/*
+ * Each language but English is its own chunk. Render once the visitor's own
+ * language has arrived (bounded: a failed or slow chunk renders in English),
+ * so nobody sees an English flash before Georgian, Russian, Turkish, Arabic
+ * or Hebrew. English visitors wait for nothing.
+ */
+void preloadLanguage().then(() => {
+  createRoot(document.getElementById("root")!).render(
+    <Sentry.ErrorBoundary fallback={<p>应用发生错误，请刷新页面重试</p>}>
+      <AppWrapper>
+        <App />
+      </AppWrapper>
+    </Sentry.ErrorBoundary>
+  );
+});

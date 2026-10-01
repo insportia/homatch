@@ -13,7 +13,7 @@
 // different place behind the customer's back.
 
 import { HEX, type CatalogAsset, type CatalogMaterial } from './catalog.ts';
-import type { DesignState, LightingState, LockSet, ObjectInstance, SurfaceAssignment } from './designState.ts';
+import { normalizeGenerated, type DesignState, type GeneratedRef, type LightingState, type LockSet, type ObjectInstance, type SurfaceAssignment } from './designState.ts';
 import { blocks, evaluatePlacement, type PlacementIssue } from './placement.ts';
 import { shapedAsset } from './objectShape.ts';
 import { parseSurfaceId, type SpaceModel } from './space.ts';
@@ -28,7 +28,7 @@ export type Operation =
   | { type: 'REMOVE_OBJECT'; instanceId: string }
   | { type: 'MOVE_OBJECT'; instanceId: string; position: { x: number; y: number; z: number }; roomId: string | null }
   | { type: 'ROTATE_OBJECT'; instanceId: string; rotationY: number }
-  | { type: 'REPLACE_OBJECT'; instanceId: string; assetId: string }
+  | { type: 'REPLACE_OBJECT'; instanceId: string; assetId: string; generated?: GeneratedRef }
   | { type: 'SET_OBJECT_COLOR'; instanceId: string; color: string | null }
   | { type: 'SET_OBJECT_VARIANT'; instanceId: string; variant: string | null }
   | { type: 'LOCK_OBJECT'; instanceId: string }
@@ -285,9 +285,13 @@ export function applyOperation(state: DesignState, op: Operation): { state: Desi
       const obj = findObject(state, op.instanceId)!;
       // A different asset starts from its own defaults: the old variant may not exist on it.
       return {
-        state: mapObject(state, op.instanceId, (o) => ({ ...o, assetId: op.assetId, materialVariant: null })),
+        // A different piece: the model built for the old one no longer stands for it.
+        state: mapObject(state, op.instanceId, ({ generated: _built, ...o }) => {
+          const generated = normalizeGenerated(op.generated);
+          return { ...o, assetId: op.assetId, materialVariant: null, ...(generated ? { generated } : {}) };
+        }),
         inverse: [
-          { type: 'REPLACE_OBJECT', instanceId: op.instanceId, assetId: obj.assetId },
+          { type: 'REPLACE_OBJECT', instanceId: op.instanceId, assetId: obj.assetId, ...(obj.generated ? { generated: obj.generated } : {}) },
           ...(obj.materialVariant ? [{ type: 'SET_OBJECT_VARIANT', instanceId: op.instanceId, variant: obj.materialVariant } as Operation] : []),
         ],
       };

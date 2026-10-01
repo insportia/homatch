@@ -14,7 +14,7 @@
 // real geometry, which is why it can be edited and walked through.
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ImagePlus, Loader2, X } from 'lucide-react';
+import { ArrowLeft, Check, ImagePlus, Loader2, Minus, X } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import type { FloorPlanDocument } from '@/services/developer/floorplan';
@@ -34,8 +34,40 @@ import {
   runReconstruction, saveCorrections, uploadReference, type ReconstructionRecord,
 } from '@/services/designStudio/reconstructions';
 import type { CatalogAsset } from '@/lib/designStudio/catalog';
+import { readFrame } from '@/lib/designStudio/pictureFrame';
+import { scaleFit } from '@/lib/designStudio/sourceCamera';
+import { ENGINE_VERSION, STAGES, STAGE_COPY, type Stage } from '@/lib/designStudio/hybrid/contract';
+import { totals } from '@/lib/designStudio/hybrid/cost';
+import { runEngine, unprojectWith, type EngineResult } from '@/lib/designStudio/hybrid/orchestrate';
+import { generationStatus, startGeneration, visualQa } from '@/services/designStudio/generation';
+import { offscreenSourceStill } from './canvas/offscreenStill';
 
 type Step = 'PICK' | 'WORKING' | 'REVIEW' | 'BUILDING';
+type StageStatus = 'PENDING' | 'RUNNING' | 'DONE' | 'SKIPPED';
+const freshStages = (): Record<Stage, StageStatus> => Object.fromEntries(STAGES.map((s) => [s, 'PENDING'])) as Record<Stage, StageStatus>;
+
+/** What is kept of an engine run: routes, timings, cost lines, the visual check and the fidelity gates (never URLs). */
+function engineReport(r: EngineResult, extra: { versionId: string; startedAt: number; endedAt: number }): Record<string, unknown> {
+  return {
+    engineVersion: ENGINE_VERSION,
+    mode: 'RECONSTRUCT_FROM_IMAGE',
+    versionId: extra.versionId,
+    totalMs: Math.round(extra.endedAt - extra.startedAt),
+    timings: r.timings,
+    decisions: r.decisions.map((d) => ({ key: d.key, type: d.type, route: d.route, impact: Math.round(d.impact * 100) / 100, group: d.group, reason: d.reason })),
+    generated: [...r.generated.entries()].map(([k, g]) => ({ key: k, assetId: g.assetId, sha256: g.sha256 })),
+    gpu: { jobId: r.gpu.jobId, state: r.gpu.state, error: r.gpu.error, persistedBytes: r.gpu.persistedBytes, worker: r.gpu.worker },
+    qa: r.qa ? { scores: r.qa.scores, errors: r.qa.errors.map((e) => ({ code: e.code, target: e.target, severity: e.severity, confidence: e.confidence, evidence: e.evidence.slice(0, 200) })) } : null,
+    qaCalls: r.qaCalls,
+    correctionPasses: r.correctionPasses,
+    applied: r.applied.slice(0, 60),
+    skipped: r.skipped.slice(0, 60),
+    cost: r.cost,
+    costTotals: totals(r.cost),
+    fidelity: r.fidelity,
+    build: { placed: r.build.placed.length, unmatched: r.build.unmatched, unplaced: r.build.unplaced },
+  };
+}
 
 const ERROR_KEY: Record<string, string> = {
   DS_REFERENCE_TYPE: 'ds_recon_error_type',
@@ -83,6 +115,15 @@ export function ReconstructionFlow({
   const [area, setArea] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [stages, setStages] = useState<Record<Stage, StageStatus>>(freshStages);
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (step !== 'BUILDING') return undefined;
+    const t0 = Date.now();
+    setElapsed(0);
+    const id = window.setInterval(() => setElapsed(Math.floor((Date.now() - t0) / 1000)), 1000);
+    return () => window.clearInterval(id);
+  }, [step]);
 
   const recon = record?.analysis ?? null;
   const previews = useMemo(() => files.map((f) => URL.createObjectURL(f)), [files]);
@@ -143,6 +184,9 @@ export function ReconstructionFlow({
   const build = async () => {
     if (!record || !recon) return;
     setError(null);
+    const startedAt = performance.now();
+    const mark = (stage: Stage, status: StageStatus) => setStages((cur) => ({ ...cur, [stage]: status }));
+    setStages({ ...freshStages(), UNDERSTANDING: 'DONE', MEASURING: 'RUNNING' });
     setStep('BUILDING');
     try {
       await saveCorrections(record.id, corrections);
@@ -173,11 +217,48 @@ export function ReconstructionFlow({
         scale = calibration.metresPerPx * PX_PER_M;
       }
       const space = buildSpaceModel(canonical.scene);
-      const { state } = buildDesign(recon, corrections, space, assets, materials, {
+      mark('MEASURING', 'DONE');
+      const assemble = (r: typeof recon) => buildDesign(r, corrections, space, assets, materials, {
         scale, referenceImageIds: record.reference_ids, roomIdOf: recon.usesPlan ? (k) => k : undefined,
       });
-      const version = await createReconstructedVersion({ userId, projectId, sourceId, name: t('ds_recon_version_name'), state, styleTags: recon.styleWords });
-      await markBuilt(record.id, sourceId, version.id);
+      // What the customer kept, as they corrected it: the engine routes and builds only that.
+      const rejected = new Set(corrections.rejected);
+      const kept = {
+        ...recon,
+        objects: recon.objects.filter((o) => !rejected.has(o.key) && !(o.room && rejected.has(o.room))).map((o) => ({ ...o, type: corrections.objectTypes[o.key] ?? o.type })),
+      };
+      // The picture's own camera, in the reading's metres (the check) and in the built space's (the still).
+      const camera = recon.cameras.find((c) => c.fit) ?? null;
+      const fit = camera?.fit ?? null;
+      const pts = recon.rooms.flatMap((r) => r.polygon);
+      const xs = pts.map((p) => p[0]); const ys = pts.map((p) => p[1]);
+      const centre: [number, number] = pts.length ? [((Math.min(...xs) + Math.max(...xs)) / 2) * scale, ((Math.min(...ys) + Math.max(...ys)) / 2) * scale] : [0, 0];
+      const fid = recon.fidelity && camera && recon.fidelity.image === camera.image ? recon.fidelity : null;
+      const cut = fid?.wallM ? { exteriorM: fid.wallM * scale, interiorM: (fid.interiorWallM ?? fid.wallM) * scale } : null;
+      const background = camera ? readFrame(refs[camera.image]?.picture_geometry)?.background ?? null : null;
+      const result = await runEngine({
+        recon: kept, assets, confirmed: new Set(corrections.confirmed), unproject: fit ? unprojectWith(fit) : null,
+        roomsBuilt: space.rooms.length, quality: 'HIGH',
+      }, {
+        startGeneration: (keys) => startGeneration(record.id, keys),
+        generationStatus,
+        assemble,
+        render: (state) => (fit ? offscreenSourceStill({ space, state, assets, materials, fit: scaleFit(fit, scale), centre, cut, background }) : Promise.resolve(null)),
+        visualQa: async (render, r) => visualQa({
+          reconstructionId: record.id, render,
+          objects: r.objects.map((o) => ({ key: o.key, type: o.type, label: o.label })),
+          rooms: r.rooms.map((x) => ({ key: x.key, kind: x.kind })),
+        }),
+        sleep: (ms) => new Promise((res) => setTimeout(res, ms)),
+        now: () => Date.now(),
+        onStage: mark,
+      });
+      mark('PREPARING', 'RUNNING');
+      const version = await createReconstructedVersion({ userId, projectId, sourceId, name: t('ds_recon_version_name'), state: result.state, styleTags: recon.styleWords });
+      const report = engineReport(result, { versionId: version.id, startedAt, endedAt: performance.now() });
+      // The report is a record of the run; failing to keep it never loses the design.
+      await markBuilt(record.id, sourceId, version.id, report).catch(() => markBuilt(record.id, sourceId, version.id));
+      mark('PREPARING', 'DONE');
       onBuilt(sourceId);
     } catch (e) {
       fail(e, 'ds_recon_build_failed');
@@ -231,11 +312,35 @@ export function ReconstructionFlow({
           </section>
         ) : null}
 
-        {step === 'WORKING' || step === 'BUILDING' ? (
+        {step === 'BUILDING' ? (
+          <section className="mx-auto grid min-h-[40vh] max-w-md content-center gap-4" role="status" aria-live="polite" data-testid="recon-building">
+            <div>
+              <p className="text-[17px] font-semibold">{t('ds_recon_building')}</p>
+              <p className="mt-1 text-[13px] text-[#5B6472]" data-testid="recon-elapsed">{t('ds_gen_elapsed', { m: Math.floor(elapsed / 60), s: String(elapsed % 60).padStart(2, '0') })}</p>
+            </div>
+            <ol className="grid gap-2">
+              {STAGES.map((s) => {
+                const st = stages[s];
+                return (
+                  <li key={s} data-stage={s} data-state={st}
+                    className={cn('flex items-center gap-3 rounded-lg bg-white px-3 py-2 text-[14px] ring-1', st === 'RUNNING' ? 'ring-[#0C1119]' : 'ring-[#E3E6EB]', st === 'PENDING' || st === 'SKIPPED' ? 'text-[#8A919C]' : '')}>
+                    <span className="grid h-5 w-5 shrink-0 place-items-center" aria-hidden="true">
+                      {st === 'RUNNING' ? <Loader2 className="h-4 w-4 animate-spin" /> : st === 'DONE' ? <Check className="h-4 w-4 text-[hsl(152_55%_38%)]" /> : st === 'SKIPPED' ? <Minus className="h-4 w-4" /> : <span className="h-1.5 w-1.5 rounded-full bg-[#C9CED6]" />}
+                    </span>
+                    <span className="min-w-0 flex-1">{t(STAGE_COPY[s])}</span>
+                    <span className="sr-only">{t(`ds_gen_state_${st.toLowerCase()}`)}</span>
+                  </li>
+                );
+              })}
+            </ol>
+          </section>
+        ) : null}
+
+        {step === 'WORKING' ? (
           <div className="grid min-h-[40vh] place-items-center" role="status" aria-live="polite" data-testid="recon-working">
             <p className="inline-flex items-center gap-2 text-[15px]">
               <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
-              {step === 'BUILDING' ? t('ds_recon_building') : progress ? t('ds_recon_uploading', progress) : t('ds_recon_reading')}
+              {progress ? t('ds_recon_uploading', progress) : t('ds_recon_reading')}
             </p>
           </div>
         ) : null}

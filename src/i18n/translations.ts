@@ -13354,6 +13354,22 @@ const en = {
 
   /* ── META ADS CAMPAIGN BUILDER ── */
   madsb_cta_whatsapp_message: 'Send WhatsApp message',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_gen_stage_understanding: 'Understanding your picture',
+  ds_gen_stage_measuring: 'Measuring the rooms and walls',
+  ds_gen_stage_finding: 'Choosing how to make each piece',
+  ds_gen_stage_building: 'Building the pieces from your picture',
+  ds_gen_stage_materials: 'Matching floors, walls and finishes',
+  ds_gen_stage_assembling: 'Putting the home together',
+  ds_gen_stage_optimizing: 'Making it fast on every device',
+  ds_gen_stage_checking: 'Comparing it with your picture',
+  ds_gen_stage_preparing: 'Saving your design',
+  ds_gen_elapsed: '{{m}}:{{s}} elapsed',
+  ds_gen_state_pending: 'waiting',
+  ds_gen_state_running: 'in progress',
+  ds_gen_state_done: 'done',
+  ds_gen_state_skipped: 'not needed',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -26622,6 +26638,22 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── META ADS CAMPAIGN BUILDER ── */
   madsb_cta_whatsapp_message: 'WhatsApp შეტყობინება',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_gen_stage_understanding: 'თქვენი სურათის გააზრება',
+  ds_gen_stage_measuring: 'ოთახებისა და კედლების გაზომვა',
+  ds_gen_stage_finding: 'თითოეული ნივთის შექმნის გზის შერჩევა',
+  ds_gen_stage_building: 'ნივთების აგება თქვენი სურათიდან',
+  ds_gen_stage_materials: 'იატაკის, კედლებისა და მოპირკეთების შერჩევა',
+  ds_gen_stage_assembling: 'სახლის აწყობა',
+  ds_gen_stage_optimizing: 'ყველა მოწყობილობაზე სწრაფი მუშაობისთვის მომზადება',
+  ds_gen_stage_checking: 'თქვენს სურათთან შედარება',
+  ds_gen_stage_preparing: 'თქვენი დიზაინის შენახვა',
+  ds_gen_elapsed: 'გავიდა {{m}}:{{s}}',
+  ds_gen_state_pending: 'ელოდება',
+  ds_gen_state_running: 'მიმდინარეობს',
+  ds_gen_state_done: 'დასრულდა',
+  ds_gen_state_skipped: 'არ დასჭირდა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -39881,6 +39913,22 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── META ADS CAMPAIGN BUILDER ── */
   madsb_cta_whatsapp_message: 'Написать в WhatsApp',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_gen_stage_understanding: 'Разбираем ваш снимок',
+  ds_gen_stage_measuring: 'Измеряем комнаты и стены',
+  ds_gen_stage_finding: 'Выбираем, как воссоздать каждый предмет',
+  ds_gen_stage_building: 'Создаём предметы по вашему снимку',
+  ds_gen_stage_materials: 'Подбираем полы, стены и отделку',
+  ds_gen_stage_assembling: 'Собираем квартиру',
+  ds_gen_stage_optimizing: 'Оптимизируем для любого устройства',
+  ds_gen_stage_checking: 'Сравниваем с вашим снимком',
+  ds_gen_stage_preparing: 'Сохраняем ваш дизайн',
+  ds_gen_elapsed: 'Прошло {{m}}:{{s}}',
+  ds_gen_state_pending: 'ожидает',
+  ds_gen_state_running: 'выполняется',
+  ds_gen_state_done: 'готово',
+  ds_gen_state_skipped: 'не потребовалось',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -53138,6 +53186,22 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── META ADS CAMPAIGN BUILDER ── */
   madsb_cta_whatsapp_message: 'WhatsApp mesajı gönder',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_gen_stage_understanding: 'Resminiz anlaşılıyor',
+  ds_gen_stage_measuring: 'Odalar ve duvarlar ölçülüyor',
+  ds_gen_stage_finding: 'Her parçanın nasıl yapılacağı seçiliyor',
+  ds_gen_stage_building: 'Parçalar resminizden oluşturuluyor',
+  ds_gen_stage_materials: 'Zeminler, duvarlar ve kaplamalar eşleştiriliyor',
+  ds_gen_stage_assembling: 'Ev bir araya getiriliyor',
+  ds_gen_stage_optimizing: 'Her cihazda hızlı çalışması sağlanıyor',
+  ds_gen_stage_checking: 'Resminizle karşılaştırılıyor',
+  ds_gen_stage_preparing: 'Tasarımınız kaydediliyor',
+  ds_gen_elapsed: '{{m}}:{{s}} geçti',
+  ds_gen_state_pending: 'bekliyor',
+  ds_gen_state_running: 'devam ediyor',
+  ds_gen_state_done: 'tamamlandı',
+  ds_gen_state_skipped: 'gerekmedi',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -66395,6 +66459,22 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── META ADS CAMPAIGN BUILDER ── */
   madsb_cta_whatsapp_message: 'إرسال رسالة واتساب',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_gen_stage_understanding: 'فهم صورتك',
+  ds_gen_stage_measuring: 'قياس الغرف والجدران',
+  ds_gen_stage_finding: 'اختيار طريقة صنع كل قطعة',
+  ds_gen_stage_building: 'بناء القطع من صورتك',
+  ds_gen_stage_materials: 'مطابقة الأرضيات والجدران والتشطيبات',
+  ds_gen_stage_assembling: 'تجميع المنزل',
+  ds_gen_stage_optimizing: 'تسريعه على كل الأجهزة',
+  ds_gen_stage_checking: 'مقارنته بصورتك',
+  ds_gen_stage_preparing: 'حفظ تصميمك',
+  ds_gen_elapsed: 'انقضى {{m}}:{{s}}',
+  ds_gen_state_pending: 'في الانتظار',
+  ds_gen_state_running: 'قيد التنفيذ',
+  ds_gen_state_done: 'تم',
+  ds_gen_state_skipped: 'غير مطلوب',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -79652,6 +79732,22 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── META ADS CAMPAIGN BUILDER ── */
   madsb_cta_whatsapp_message: 'שליחת הודעת WhatsApp',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_gen_stage_understanding: 'מבינים את התמונה שלכם',
+  ds_gen_stage_measuring: 'מודדים את החדרים והקירות',
+  ds_gen_stage_finding: 'בוחרים איך ליצור כל פריט',
+  ds_gen_stage_building: 'בונים את הפריטים מהתמונה שלכם',
+  ds_gen_stage_materials: 'מתאימים רצפות, קירות וגימורים',
+  ds_gen_stage_assembling: 'מרכיבים את הבית',
+  ds_gen_stage_optimizing: 'מכינים לעבודה מהירה בכל מכשיר',
+  ds_gen_stage_checking: 'משווים לתמונה שלכם',
+  ds_gen_stage_preparing: 'שומרים את העיצוב שלכם',
+  ds_gen_elapsed: 'עברו {{m}}:{{s}}',
+  ds_gen_state_pending: 'ממתין',
+  ds_gen_state_running: 'בתהליך',
+  ds_gen_state_done: 'הושלם',
+  ds_gen_state_skipped: 'לא נדרש',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

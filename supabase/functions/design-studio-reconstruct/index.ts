@@ -4,6 +4,9 @@
 //   POST …/design-studio-reconstruct/floorplan  a floor-plan image → a plan   (floorplan.ts)
 //   POST …/design-studio-reconstruct/design     a version + brief  → a plan   (design.ts)
 //   POST …/design-studio-reconstruct/project-delete  permanently delete a project (project.ts)
+//   POST …/design-studio-reconstruct/generate         objects built on the GPU (generate.ts)
+//   POST …/design-studio-reconstruct/generate-status  a GPU job's state; models verified on completion
+//   POST …/design-studio-reconstruct/qa               the rebuild checked against the picture
 //
 // One function because the project is on a plan that caps how many edge
 // functions it may have, and production is at that cap: two new functions
@@ -17,6 +20,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { handleDesign } from './design.ts';
 import { handleFloorplan } from './floorplan.ts';
+import { handleGenerate, handleGenerateStatus, handleQa } from './generate.ts';
 import { handleProjectDelete } from './project.ts';
 import { handleReconstruct } from './reconstruct.ts';
 
@@ -25,5 +29,8 @@ serve((req) => {
   if (route === 'design') return handleDesign(req);
   if (route === 'floorplan') return handleFloorplan(req);
   if (route === 'project-delete') return handleProjectDelete(req);
+  if (route === 'generate') return handleGenerate(req);
+  if (route === 'generate-status') return handleGenerateStatus(req);
+  if (route === 'qa') return handleQa(req);
   return handleReconstruct(req);
 });

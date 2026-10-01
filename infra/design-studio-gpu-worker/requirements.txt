@@ -1,0 +1,6 @@
+runpod==1.7.9
+requests>=2.32,<3
+pillow>=10.4,<12
+numpy>=1.26,<3
+trimesh>=4.4,<6
+huggingface_hub>=0.25,<1

@@ -122,12 +122,12 @@ export const DS_STRINGS_3 = {
   ds_issue_generic: ['Worth checking', 'შესამოწმებელია', 'Стоит проверить', 'Kontrol etmeye değer', 'يستحق التحقق', 'כדאי לבדוק'],
   ds_add_no_room: ['Choose a room first.', 'ჯერ აირჩიეთ ოთახი.', 'Сначала выберите комнату.', 'Önce bir oda seçin.', 'اختر غرفة أولًا.', 'בחרו קודם חדר.'],
   ds_add_no_space: [
-    'There is no free space for this piece in {{room}}.',
-    '{{room}}: ამ ნივთისთვის თავისუფალი ადგილი არ არის.',
-    'В помещении «{{room}}» нет свободного места для этого предмета.',
-    '{{room}} içinde bu parça için boş yer yok.',
-    'لا توجد مساحة فارغة لهذه القطعة في {{room}}.',
-    'אין מקום פנוי לפריט הזה ב{{room}}.',
+    'No good free spot for this piece in {{room}} — drag it where you want it.',
+    '{{room}}: ამ ნივთისთვის კარგი თავისუფალი ადგილი ვერ მოიძებნა — გადაიტანეთ იქ, სადაც გსურთ.',
+    'В помещении «{{room}}» нет подходящего свободного места для этого предмета — перетащите его, куда нужно.',
+    '{{room}} içinde bu parça için uygun boş yer yok — istediğiniz yere sürükleyin.',
+    'لا يوجد مكان فارغ مناسب لهذه القطعة في {{room}} — اسحبها إلى المكان الذي تريده.',
+    'אין מקום פנוי מתאים לפריט הזה ב{{room}} — גררו אותו למקום שתרצו.',
   ],
 
   ds_reject_op_placement: ['That placement is not possible here.', 'აქ ასე განთავსება შეუძლებელია.', 'Такое размещение здесь невозможно.', 'Bu yerleşim burada mümkün değil.', 'هذا الموضع غير ممكن هنا.', 'המיקום הזה לא אפשרי כאן.'],

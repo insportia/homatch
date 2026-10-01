@@ -7,11 +7,12 @@ MATTERS right now, verify against the live systems, not this file)
 
 ## Production pointers
 
-- main == refs/deployed/frontend == refs/deployed/edge == `5a3a688`
-  ("CI owes only what CI may deploy"). Verify at deploy time with a fresh
+- main == refs/deployed/frontend == refs/deployed/edge == `d4be0a86`
+  (PR #28, Meta Ads dashboard; deploy #864, FAST). Verify at deploy time with a fresh
   `git fetch origin '+refs/deployed/*:refs/deployed/*'`.
 - Vercel: project `homatch` (`prj_oQDQ3HV4N9AiPwzfFGlRyEjXhlib`, team
-  `team_5Uh3IRBVJcl3DV1ZoOpmPGi8`), production deployment READY at 5a3a688.
+  `team_5Uh3IRBVJcl3DV1ZoOpmPGi8`), production deployment READY at d4be0a86
+  (`dpl_Cda9Z6fxRaYaqysFdQS3iyitbmXq`, aliased to www.homatch.live).
 - Supabase: project `ptxajsjhobhvsfhmutjn` (Postgres 17, RLS everywhere).
   Migration ledger applied through `retired_providers_and_no_spend_while_viewed`
   (8 migrations applied 2026-09-27/28).
@@ -468,3 +469,41 @@ Phase 2 (Universal Discovery) is blocked until this is live and proven.
   (read-only SQL and on-main migrations auto-allowed; the rest asks).
 - Gap: no gated browser suite visits Design Studio (designStudio.qa.mjs is
   manual, needs VITE_FEATURE_DESIGN_STUDIO=on).
+
+## Meta Ads canonical status + first FAST release (PR #28, 2026-10-01)
+
+- One customer-facing status: `src/lib/metaAds/uiStatus.ts` (server counts
+  in `meta-ads-api` dashboard and every UI surface). Meta-paused is PAUSED,
+  never ACTIVE. Production on 2026-10-01: 3 DRAFT, 1 NEEDS_CHANGES, 1 PAUSED
+  at Meta (`911e571e…`) → Active 0 · Paused 1 · Needs attention 1.
+- First real FAST promotion, measured: PR validation run 36823453627
+  TARGETED (static, unit, mobile:meta-ads) 3 m 14 s; deploy #864
+  (run 36824324056) RELEASE PATH: FAST — tree `ba0d5d72` identical to the
+  validated tree — 1 m 11 s merge-push → edge proven (meta-ads-api v16
+  PROVEN_EXACT, refs/deployed/{edge,frontend} → d4be0a86).
+- Not provable from the sandbox: the logged-in production screen (the proxy
+  refuses www.homatch.live); proven instead by alias → deployment at the
+  merge commit, the deployed function over the production rows, and the
+  browser suite with the production fixture.
+
+## Meta Ads Admin Control Center (PR after #28, 2026-10-01)
+
+- Admin campaign state = `src/lib/metaAds/adminView.ts` on top of uiStatus:
+  KPIs (all / delivering / paused / review / drafts / attention / rejected /
+  failed / mismatch / stale) open `?tab=campaigns&view=…` filtered by the
+  same predicate. Rows show HOMATCH lifecycle, canonical chip, Meta
+  external_status, sync freshness (stale > 20 min for SUBMITTED/META_REVIEW/
+  ACTIVE/PAUSED at Meta) and any HOMATCH≠Meta mismatch.
+- Settings and kill switches: only through `admin_setting_set` (admin, not
+  suspended, reason ≥ 3, `src/lib/metaAds/adminSettings.ts` validation,
+  admin_audit_log with previous/next; reverted if the audit row fails).
+  admin_settings still has an admin RLS write policy (shared table, not
+  changed here): the UI never uses it.
+- Moderation: only through `admin_moderation_decide` (OPEN only, note,
+  canonical transition: CHANGES_REQUESTED → NEEDS_CHANGES, REJECTED →
+  REJECTED; audited). APPROVED records the decision only — a campaign in
+  MANUAL_REVIEW has no plan and preflight re-flags the claim, so approval
+  cannot make it launchable yet (product decision pending). uiStatus still
+  shows MANUAL_REVIEW to the customer as DRAFT (follow-up).
+- API health probe: booleans + `lastStatusSyncAt` / `lastUsageReportAt`.
+

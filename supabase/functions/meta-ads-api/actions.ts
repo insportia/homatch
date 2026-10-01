@@ -9,13 +9,14 @@
 // and writes an audit row with a reason. Nothing here reports a Meta change
 // done before Meta confirmed it — that is lifecycle.ts.
 
-import { buildPlan, validatePlanInput, type MetaGoal } from '../../../src/lib/metaAds/strategy.ts';
+import { buildPlan, validatePlanInput, canTransition, type MetaGoal } from '../../../src/lib/metaAds/strategy.ts';
 import { applyTargeting, targetingConstraints, validateTargeting, MAX_LOCATIONS } from '../../../src/lib/metaAds/targeting.ts';
 import { creativeAdvice } from '../../../src/lib/metaAds/creativeAdvice.ts';
 import { fundingPlan, heldFeeFromLedger, LEDGER_LABEL_KEY } from '../../../src/lib/metaAds/billing.ts';
 import { kpis, sumTotals, totalsByCurrency, emptyTotals, type MetricTotals } from '../../../src/lib/metaAds/kpi.ts';
 import { recommendedPlacements, type Placement } from '../../../src/lib/metaAds/payload.ts';
 import { statusCounts } from '../../../src/lib/metaAds/uiStatus.ts';
+import { validateSetting, isCredentialKey } from '../../../src/lib/metaAds/adminSettings.ts';
 import { validateLeadFormSpec, leadFormPayload, leadFormPreview, META_LOCALE, type LeadFormSpec } from '../../../src/lib/metaAds/leadForms.ts';
 import { graph, MetaApiError, mockExternalId, hasScopes, INSTANT_FORM_SCOPES, type MetaMode } from '../_shared/metaAds.ts';
 import {
@@ -36,7 +37,7 @@ export interface ActionCtx {
   sb: Sb;
   /** The caller's own session: database RBAC functions check THIS identity. */
   userClient?: Sb;
-  uid: string; me: { id: string; is_admin?: boolean; email?: string | null };
+  uid: string; me: { id: string; is_admin?: boolean; email?: string | null; suspended_at?: string | null };
   body: Record<string, any>; action: string; settings: MetaSettings; mode: MetaMode; json: Json;
   audit: (sb: Sb, actorId: string | null, action: string, target: string, meta: unknown) => Promise<void>;
 }
@@ -513,6 +514,70 @@ export async function handleAction(x: ActionCtx): Promise<Response | null> {
         ]);
         if (error) return json({ error: rpcErr(error.message) }, rpcErr(error.message) === 'FORBIDDEN' ? 403 : 500);
         return json({ ...(data as Record<string, unknown>), standardPercent: settings.feePercent, sampleQuote: quote.data ?? null });
+      }
+
+      /* ── ADMIN: SETTINGS + KILL SWITCHES ────────────────────────────── */
+      case 'admin_setting_set': {
+        /* The only write path for a meta_ads_* setting: admin (not suspended),
+           a known key with a valid value (src/lib/metaAds/adminSettings.ts),
+           a stated reason, and an audit row with the value before and after.
+           If the audit row cannot be written the change is put back: no
+           setting changes without a record of who, why and from what. */
+        if (!me.is_admin || me.suspended_at) return json({ error: 'forbidden', code: 'FORBIDDEN' }, 403);
+        const key = String(body.key ?? '');
+        const reason = String(body.reason ?? '').trim().slice(0, 500);
+        if (isCredentialKey(key)) return json({ error: 'UNKNOWN_SETTING', code: 'UNKNOWN_SETTING' }, 400);
+        if (reason.length < 3) return json({ error: 'REASON_REQUIRED', code: 'REASON_REQUIRED' }, 400);
+        const { data: all } = await sb.from('admin_settings').select('key,value').like('key', 'meta_ads_%');
+        const current = Object.fromEntries((all ?? []).filter((r: any) => !isCredentialKey(r.key)).map((r: any) => [r.key, r.value]));
+        if (!(key in current)) return json({ error: 'UNKNOWN_SETTING', code: 'UNKNOWN_SETTING' }, 400);
+        const check = validateSetting(key, body.value, current);
+        if (!check.ok) return json({ error: check.error, code: check.error }, 400);
+        const previous = current[key];
+        if (JSON.stringify(previous) === JSON.stringify(check.value)) return json({ ok: true, unchanged: true, key, value: previous });
+        const { data: written, error: wErr } = await sb.from('admin_settings').update({ value: check.value }).eq('key', key).select('key');
+        if (wErr || !written?.length) return json({ error: 'FAILED', code: 'FAILED' }, 500);
+        const { error: aErr } = await sb.from('admin_audit_log').insert({
+          admin_id: uid, action: 'META_SETTING_SET', entity_type: 'META_ADS_SETTING', entity_id: key, target_id: null,
+          metadata: { key, previous, next: check.value, reason },
+        });
+        if (aErr) {
+          await sb.from('admin_settings').update({ value: previous }).eq('key', key);
+          console.error('[meta-ads-api] setting audit failed; change reverted', key, aErr.message);
+          return json({ error: 'AUDIT_FAILED', code: 'AUDIT_FAILED' }, 500);
+        }
+        return json({ ok: true, key, previous, value: check.value });
+      }
+
+      /* ── ADMIN: MODERATION DECISIONS ────────────────────────────────── */
+      case 'admin_moderation_decide': {
+        /* An OPEN case only (a decided case is never re-decided by a stale
+           screen), a note on record, the audit row, and the campaign moved
+           along the canonical transition map: changes requested → the
+           customer fixes it (NEEDS_CHANGES); rejected → REJECTED. Approval
+           records the decision; it does not launch or ready anything. */
+        if (!me.is_admin || me.suspended_at) return json({ error: 'forbidden', code: 'FORBIDDEN' }, 403);
+        const id = String(body.caseId ?? '');
+        const decision = String(body.decision ?? '');
+        const note = String(body.note ?? '').trim().slice(0, 1000);
+        if (!UUID.test(id)) return json({ error: 'caseId required' }, 400);
+        if (!['APPROVED', 'CHANGES_REQUESTED', 'REJECTED'].includes(decision)) return json({ error: 'BAD_DECISION', code: 'BAD_DECISION' }, 400);
+        if (note.length < 3) return json({ error: 'REASON_REQUIRED', code: 'REASON_REQUIRED' }, 400);
+        const { data: decided } = await sb.from('meta_moderation_cases')
+          .update({ status: decision, decided_at: new Date().toISOString(), decision_note: note })
+          .eq('id', id).eq('status', 'OPEN').select('id,campaign_id,user_id').maybeSingle();
+        if (!decided) return json({ error: 'NOT_OPEN', code: 'NOT_OPEN' }, 409);
+        let campaignStatus: string | null = null;
+        if (decided.campaign_id && decision !== 'APPROVED') {
+          const { data: c } = await sb.from('meta_campaigns').select('id,status').eq('id', decided.campaign_id).maybeSingle();
+          const to = decision === 'REJECTED' ? 'REJECTED' : 'NEEDS_CHANGES';
+          if (c && canTransition(c.status, to)) {
+            await sb.from('meta_campaigns').update({ status: to }).eq('id', c.id).eq('status', c.status);
+            campaignStatus = to;
+          }
+        }
+        await x.audit(sb, uid, `META_MODERATION_${decision}`, id, { note, campaign_id: decided.campaign_id, user_id: decided.user_id, campaign_status: campaignStatus });
+        return json({ ok: true, status: decision, campaignStatus });
       }
 
       /* ── ADMIN: NOTIFICATION + AI ECONOMICS ─────────────────────────── */

@@ -116,7 +116,7 @@ function fixtures() {
   return { campaign, status, creative, dashboard };
 }
 
-async function boot(t, { width, height, lang }) {
+async function boot(t, { width, height, lang, admin = false }) {
   const { chromium } = resolvePlaywright();
   const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
@@ -127,7 +127,8 @@ async function boot(t, { width, height, lang }) {
     ['sb-stubproj-auth-token', fakeSession(), lang]);
   const page = await ctx.newPage();
   const fx = fixtures();
-  const calls = { patches: [], inserts: 0, actions: [] };
+  const calls = { patches: [], inserts: 0, actions: [], bodies: [], settingWrites: 0 };
+  const ADM = admin ? adminFixtures() : null;
   const json = (b, status = 200) => ({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(b) });
   await page.route('**', async (r) => {
     const req = r.request();
@@ -136,8 +137,26 @@ async function boot(t, { width, height, lang }) {
     if (req.method() === 'OPTIONS') return r.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' } });
     if (url.includes('/auth/v1/user')) return r.fulfill(json(fakeSession().user));
     if (url.includes('/auth/v1/token')) return r.fulfill(json(fakeSession()));
-    if (url.includes('/rest/v1/users')) return r.fulfill(json(PROFILE));
+    if (url.includes('/rest/v1/users')) return r.fulfill(json(admin ? { ...PROFILE, is_admin: true, role: 'admin' } : PROFILE));
     const wantsObject = (req.headers().accept ?? '').includes('pgrst.object');
+    if (ADM) {
+      if (url.includes('/rest/v1/admin_settings') && req.method() !== 'GET') { calls.settingWrites += 1; return r.fulfill(json({}, 403)); }
+      if (url.includes('/rest/v1/meta_moderation_cases') && req.method() === 'PATCH') { calls.settingWrites += 1; return r.fulfill(json({}, 403)); }
+      if (req.method() === 'HEAD') {
+        const n = url.includes('meta_moderation_cases') ? 0 : url.includes('meta_leads') ? 2 : url.includes('meta_api_errors') ? 3 : 0;
+        return r.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*', 'access-control-expose-headers': 'content-range', 'content-range': `0-0/${n}` }, body: '' });
+      }
+      if (url.includes('/rest/v1/meta_campaigns')) return r.fulfill(json(ADM.campaigns));
+      if (url.includes('/rest/v1/admin_settings')) return r.fulfill(json(ADM.settings));
+      if (url.includes('/functions/v1/meta-ads-api')) {
+        const body = JSON.parse(req.postData() || '{}');
+        calls.actions.push(body.action); calls.bodies.push(body);
+        if (body.action === 'admin_test_connection') return r.fulfill(json(ADM.probe));
+        if (body.action === 'admin_setting_set') return r.fulfill(json({ ok: true, key: body.key, value: body.value }));
+        if (body.action === 'admin_sync') return r.fulfill(json({ ok: true, status: 'PAUSED', external_status: 'PAUSED' }));
+        return r.fulfill(json({ ok: true }));
+      }
+    }
     if (url.includes('/functions/v1/meta-ads-api')) {
       const body = JSON.parse(req.postData() || '{}');
       calls.actions.push(body.action);
@@ -393,4 +412,161 @@ test('dashboard: tapping a count filters the list to exactly those campaigns, an
   d = await page.evaluate(DASH);
   assert.deepEqual(d.pressed, ['paused']);
   assert.deepEqual(d.cards, ['PAUSED']);
+});
+
+/* ── ADMIN CONTROL CENTER ───────────────────────────────────────────────── */
+
+/* Production's five campaigns on 2026-10-01, plus one at Meta review that
+   Meta has disapproved and that has not been read for 45 minutes: one
+   discrepancy, one stale sync — and still nothing delivering. */
+function adminFixtures() {
+  const t = (m) => new Date(Date.now() - m * 60_000).toISOString();
+  const c = (id, status, extra = {}) => ({ id, user_id: 'u2', name: `Campaign ${id.slice(0, 4)}`, goal: 'LEADS_ON_META', status, external_status: null,
+    guard_state: 'OK', last_error: null, launched_at: null, external_campaign_id: null, last_synced_at: null, daily_budget_cents: 500, duration_days: 7,
+    special_ad_categories: ['HOUSING'], property_id: null, created_at: t(600), ...extra });
+  return {
+    campaigns: [
+      c('911e571e-ff0a-463b-a0bf-0ae23eb71f27', 'PAUSED', { external_status: 'PAUSED', launched_at: t(720), external_campaign_id: '120200000000001', last_synced_at: t(2) }),
+      c('d1d50dc1-0000-4000-8000-000000000001', 'NEEDS_CHANGES'),
+      c('829ab04d-0000-4000-8000-000000000002', 'DRAFT'), c('41e99f5c-0000-4000-8000-000000000003', 'DRAFT'), c('df990653-0000-4000-8000-000000000004', 'DRAFT'),
+      c('7c0ffee0-0000-4000-8000-000000000005', 'META_REVIEW', { external_status: 'DISAPPROVED', launched_at: t(200), external_campaign_id: '120200000000002', last_synced_at: t(45) }),
+    ],
+    settings: [
+      { key: 'meta_ads_autopilot_enabled', value: false }, { key: 'meta_ads_enabled', value: true },
+      { key: 'meta_ads_fee_percent', value: 9 }, { key: 'meta_ads_guard_policy', value: {} },
+    ],
+    probe: { mode: 'REAL', secretsConfigured: true, webhookVerifyTokenConfigured: true, tokenEncryptionConfigured: true, redirectUriConfigured: false,
+      capabilities: [{ key: 'LEADS_ON_META', status: 'VERIFIED_SUPPORTED' }], lastStatusSyncAt: t(1), lastUsageReportAt: t(3), checkedAt: t(0) },
+  };
+}
+
+const ADMIN = () => {
+  const kpi = (f) => document.querySelector(`[data-mm-admin-kpi="${f}"]`);
+  return {
+    overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    dir: document.documentElement.getAttribute('dir') || document.body.getAttribute('dir') || 'ltr',
+    values: Object.fromEntries(['all', 'delivering', 'paused', 'review', 'drafts', 'attention', 'discrepancy', 'stale'].map((f) => [f, kpi(f)?.getAttribute('data-mm-admin-kpi-value')])),
+    clipped: [...document.querySelectorAll('[data-mm-admin-kpi]')].filter((b) => b.scrollWidth > b.clientWidth + 1).length,
+    small: [...document.querySelectorAll('[data-mm-admin-kpi]')].filter((b) => b.getBoundingClientRect().height < 44).length,
+    rows: [...document.querySelectorAll('[data-mm-admin-campaign]')].map((r) => ({
+      id: r.getAttribute('data-mm-admin-campaign').slice(0, 8),
+      status: r.querySelector('[data-mm-status]')?.getAttribute('data-mm-status'),
+      lifecycle: r.querySelector('[data-mm-lifecycle]')?.getAttribute('data-mm-lifecycle'),
+      meta: r.querySelector('[data-mm-meta-status]')?.getAttribute('data-mm-meta-status'),
+      sync: r.querySelector('[data-mm-sync]')?.getAttribute('data-mm-sync'),
+      discrepancy: r.querySelector('[data-mm-discrepancy]')?.getAttribute('data-mm-discrepancy') ?? null,
+    })),
+    text: document.body.innerText,
+  };
+};
+const adminReady = (page, sel = '[data-mm-admin-kpi="all"]') => page.waitForSelector(sel, { timeout: 20000 }).then(() => page.waitForTimeout(250));
+
+for (const [width, height] of [[390, 844], [1440, 900]]) {
+  test(`admin Meta Ads at ${width}px, every locale: paused is not delivering, KPIs and campaign states fit`, opts, async (t) => {
+    if (skipReason) assert.fail(`meta ads admin gate could not run: ${skipReason}`);
+    const failures = [];
+    for (const lang of LOCALES) {
+      const { page } = await boot(t, { width, height, lang, admin: true });
+      await page.goto(`${BASE}/admin/meta-ads`, { waitUntil: 'domcontentloaded' });
+      await adminReady(page);
+      const o = await page.evaluate(ADMIN);
+      const tag = `${lang} ${width}px`;
+      const want = { all: '6', delivering: '0', paused: '1', review: '1', drafts: '3', attention: '1', discrepancy: '1', stale: '1' };
+      if (JSON.stringify(o.values) !== JSON.stringify(want)) failures.push(`${tag}: KPIs ${JSON.stringify(o.values)}`);
+      if (o.overflow > 1) failures.push(`${tag}: overview overflows ${o.overflow}px`);
+      if (o.clipped) failures.push(`${tag}: ${o.clipped} KPI tile(s) clip`);
+      if (o.small) failures.push(`${tag}: ${o.small} KPI tile(s) under 44px`);
+      if ((lang === 'ar' || lang === 'he') && o.dir !== 'rtl') failures.push(`${tag}: not RTL`);
+      await page.goto(`${BASE}/admin/meta-ads?tab=campaigns`, { waitUntil: 'domcontentloaded' });
+      await adminReady(page, '[data-mm-admin-campaign]');
+      const c = await page.evaluate(ADMIN);
+      if (c.overflow > 1) failures.push(`${tag}: campaigns overflow ${c.overflow}px`);
+      if (c.rows.length !== 6) failures.push(`${tag}: ${c.rows.length} campaign rows`);
+      if (SHOTS && (lang === 'en' || lang === 'ka')) {
+        mkdirSync(SHOTS, { recursive: true });
+        await page.screenshot({ path: join(SHOTS, `admin-campaigns-${width}-${lang}.png`), fullPage: true });
+        await page.goto(`${BASE}/admin/meta-ads`, { waitUntil: 'domcontentloaded' });
+        await adminReady(page);
+        await page.screenshot({ path: join(SHOTS, `admin-overview-${width}-${lang}.png`), fullPage: true });
+      }
+    }
+    assert.deepEqual(failures, []);
+  });
+}
+
+test('admin: a KPI opens exactly its records; the row shows HOMATCH, canonical and Meta state, freshness and the mismatch', opts, async (t) => {
+  if (skipReason) assert.fail(`meta ads admin gate could not run: ${skipReason}`);
+  const { page, calls } = await boot(t, { width: 1440, height: 900, lang: 'en', admin: true });
+  await page.goto(`${BASE}/admin/meta-ads`, { waitUntil: 'domcontentloaded' });
+  await adminReady(page);
+
+  await page.locator('[data-mm-admin-kpi="paused"]').click();
+  await page.waitForURL(/tab=campaigns&view=paused/);
+  await adminReady(page, '[data-mm-admin-campaign]');
+  let o = await page.evaluate(ADMIN);
+  assert.deepEqual(o.rows, [{ id: '911e571e', status: 'PAUSED', lifecycle: 'PAUSED', meta: 'PAUSED', sync: 'FRESH', discrepancy: null }]);
+
+  await page.goto(`${BASE}/admin/meta-ads`, { waitUntil: 'domcontentloaded' });
+  await adminReady(page);
+  await page.locator('[data-mm-admin-kpi="delivering"]').click();
+  await page.waitForURL(/view=delivering/);
+  await page.waitForSelector('[data-mm-admin-empty="delivering"]', { timeout: 10000 });
+  assert.equal((await page.evaluate(ADMIN)).rows.length, 0, 'nothing is delivering: the paused campaign is not counted or listed');
+
+  await page.goto(`${BASE}/admin/meta-ads?tab=campaigns&view=discrepancy`, { waitUntil: 'domcontentloaded' });
+  await adminReady(page, '[data-mm-admin-campaign]');
+  o = await page.evaluate(ADMIN);
+  assert.deepEqual(o.rows.map((r) => [r.id, r.lifecycle, r.meta, r.sync, r.discrepancy]), [['7c0ffee0', 'META_REVIEW', 'DISAPPROVED', 'STALE', 'META_PROBLEM']]);
+  assert.match(o.text, /Meta reports a problem: DISAPPROVED/);
+
+  await page.goto(`${BASE}/admin/meta-ads?tab=campaigns&view=stale`, { waitUntil: 'domcontentloaded' });
+  await adminReady(page, '[data-mm-admin-campaign]');
+  assert.deepEqual((await page.evaluate(ADMIN)).rows.map((r) => r.id), ['7c0ffee0']);
+
+  // Drafts are not "never synced": nothing at Meta is read for them.
+  await page.goto(`${BASE}/admin/meta-ads?tab=campaigns&view=drafts`, { waitUntil: 'domcontentloaded' });
+  await adminReady(page, '[data-mm-admin-campaign]');
+  assert.deepEqual([...new Set((await page.evaluate(ADMIN)).rows.map((r) => r.sync))], ['NOT_SYNCED']);
+
+  // Manual sync of the paused campaign: the audited server action, then a re-read.
+  await page.goto(`${BASE}/admin/meta-ads?tab=campaigns&view=paused`, { waitUntil: 'domcontentloaded' });
+  await adminReady(page, '[data-mm-admin-campaign]');
+  await page.locator('[data-mm-admin-campaign]').click();
+  await page.getByRole('button', { name: /sync/i }).last().click();
+  await page.waitForTimeout(300);
+  assert.ok(calls.bodies.some((b) => b.action === 'admin_sync' && b.campaignId === '911e571e-ff0a-463b-a0bf-0ae23eb71f27'));
+});
+
+test('admin: a setting changes only through the audited server action, with a reason; API health shows booleans only', opts, async (t) => {
+  if (skipReason) assert.fail(`meta ads admin gate could not run: ${skipReason}`);
+  const { page, calls } = await boot(t, { width: 390, height: 844, lang: 'en', admin: true });
+  await page.goto(`${BASE}/admin/meta-ads?tab=settings`, { waitUntil: 'domcontentloaded' });
+  await adminReady(page, '[data-mm-setting="meta_ads_autopilot_enabled"]');
+  const row = page.locator('[data-mm-setting="meta_ads_autopilot_enabled"]');
+  await row.locator('[data-mm-switch]').click();
+  const staged = page.locator('[data-mm-setting-staged="meta_ads_autopilot_enabled"]');
+  const save = staged.getByRole('button', { name: 'Save' });
+  assert.equal(await save.isDisabled(), true, 'no reason, no save');
+  assert.equal(calls.actions.filter((a) => a === 'admin_setting_set').length, 0, 'staging writes nothing');
+  await staged.locator('input').fill('Owner approved autopilot trial');
+  await save.click();
+  await page.waitForTimeout(300);
+  const sent = calls.bodies.find((b) => b.action === 'admin_setting_set');
+  assert.deepEqual(sent, { action: 'admin_setting_set', key: 'meta_ads_autopilot_enabled', value: true, reason: 'Owner approved autopilot trial' });
+
+  // A fee the server would refuse is refused before it is sent.
+  const fee = page.locator('[data-mm-setting="meta_ads_fee_percent"] input');
+  await fee.fill('9.125');
+  await page.locator('[data-mm-setting-staged="meta_ads_fee_percent"] input').fill('typo test');
+  await page.locator('[data-mm-setting-staged="meta_ads_fee_percent"]').getByRole('button', { name: 'Save' }).click();
+  await page.waitForSelector('[data-mm-setting-staged="meta_ads_fee_percent"] [role="alert"]');
+  assert.equal(calls.bodies.filter((b) => b.action === 'admin_setting_set').length, 1);
+  assert.equal(calls.settingWrites, 0, 'the browser never writes admin_settings or a moderation case itself');
+
+  await page.goto(`${BASE}/admin/meta-ads?tab=api`, { waitUntil: 'domcontentloaded' });
+  await adminReady(page, '[data-mm-probe="secrets"]');
+  const probe = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('[data-mm-probe]')].map((e) => [e.getAttribute('data-mm-probe'), e.getAttribute('data-mm-probe-value')])));
+  assert.deepEqual(probe, { secrets: 'set', webhook: 'set', encryption: 'set', redirect: 'missing' });
+  assert.equal(await page.locator('[data-mm-probe-fresh="fresh"]').count(), 1);
+  assert.equal((await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)) <= 1, true);
 });

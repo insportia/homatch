@@ -27,16 +27,20 @@ export function ChoiceCard({ active, onClick, title, body, icon, disabled, badge
   return (
     <button type="button" onClick={onClick} disabled={disabled} aria-pressed={active}
       className={cn(
-        'group relative flex w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-start transition-colors',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]',
-        active ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))]' : 'border-border bg-card hover:border-[hsl(var(--gold-border))]',
-        disabled && 'cursor-not-allowed opacity-55 hover:border-border',
+        /* DEFAULT white card · HOVER gold edge · PRESSED settles · SELECTED gold
+           ring + check (never colour alone) · DISABLED dashed with its reason
+           in the badge, still readable — not a grey ghost. */
+        'group relative flex min-h-11 w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-start shadow-sm transition-[border-color,box-shadow,transform] motion-reduce:transition-none',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))] focus-visible:ring-offset-1',
+        active ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] ring-1 ring-[hsl(var(--gold-border))]'
+          : 'border-border bg-card hover:border-[hsl(var(--gold-border))] hover:shadow-card active:scale-[0.99] motion-reduce:active:scale-100',
+        disabled && 'cursor-not-allowed border-dashed bg-[hsl(var(--secondary))]/40 shadow-none hover:border-border hover:shadow-none active:scale-100',
       )}>
       {icon && <span className="mt-0.5 shrink-0 text-[hsl(var(--gold-ink))]">{icon}</span>}
       <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-2">
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="text-sm font-semibold text-foreground">{title}</span>
-          {badge && <span className="rounded-full border border-border px-1.5 py-px text-2xs text-muted-foreground">{badge}</span>}
+          {badge && <span className="rounded-full border border-border bg-card px-2 py-px text-2xs font-medium text-muted-foreground">{badge}</span>}
         </span>
         {body && <span className="mt-0.5 block text-[13px] leading-snug text-muted-foreground">{body}</span>}
       </span>

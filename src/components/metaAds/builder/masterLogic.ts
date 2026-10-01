@@ -28,8 +28,15 @@ export function isHousingOffer(c: { property_id?: string | null; offer?: Record<
  * (engine.strategyInputFor → targeting.declaredSpecialAdCategories): only a
  * housing offer that reaches the US, Canada or the European list.
  */
-export function housingRuleFor(c: { property_id?: string | null; offer?: Record<string, unknown> | null }, locations: Array<{ countryCode?: string | null }>): HousingRule {
-  return housingRule(isHousingOffer(c), [...new Set(locations.map((l) => String(l.countryCode ?? '').toUpperCase()).filter(Boolean))]);
+export function housingRuleFor(c: { property_id?: string | null; offer?: Record<string, unknown> | null }, locations: Array<{ countryCode?: string | null }>, advertiserCountry?: string | null): HousingRule {
+  return housingRule(isHousingOffer(c), [...new Set(locations.map((l) => String(l.countryCode ?? '').toUpperCase()).filter(Boolean))], advertiserCountry);
+}
+
+/** The selected ad account's business country, when Meta reported it. */
+export function advertiserCountryOf(status: { assets?: Array<{ kind: string; selected?: boolean; capabilities?: Record<string, unknown> | null }> } | null): string | null {
+  const acct = status?.assets?.find((a) => a.kind === 'AD_ACCOUNT' && a.selected);
+  const cc = String(acct?.capabilities?.business_country_code ?? '').toUpperCase();
+  return /^[A-Z]{2}$/.test(cc) ? cc : null;
 }
 
 /** Back-compat name: true only when Meta's restrictions apply to the campaign as targeted. */
@@ -183,20 +190,38 @@ export interface LocationLike { type: 'country' | 'region' | 'city' | 'pin'; key
 export const locationId = (l: LocationLike) => `${l.type}:${l.key}`;
 
 /**
- * Add a place. Meta refuses a country together with a place inside it, and
- * applyTargeting would silently drop the country anyway — so a region or
- * city replaces its chosen country, and a country replaces the places chosen
- * inside it. The chips always show what will really run.
+ * Add a place. Countries and the places inside them COEXIST: a city, region
+ * or pin inside a chosen country REFINES it (the ads run in the refined
+ * places only — targeting.effectiveLocations / applyTargeting), and removing
+ * the refinement brings the whole country back. Nothing the owner chose is
+ * silently deleted, so the same action can always be repeated.
  */
 export function addLocation<T extends LocationLike>(list: readonly T[], next: T): { list: T[]; replaced: string[]; full: boolean } {
   if (list.some((l) => locationId(l) === locationId(next))) return { list: [...list], replaced: [], full: false };
-  const overlaps = (l: T) => (next.type === 'country'
-    ? l.type !== 'country' && l.countryCode === next.key
-    : l.type === 'country' && l.key === next.countryCode);
-  const replaced = list.filter(overlaps);
-  const base = list.filter((l) => !overlaps(l));
-  if (base.length >= MAX_LOCATIONS) return { list: [...list], replaced: [], full: true };
-  return { list: [...base, next], replaced: replaced.map((l) => l.name), full: false };
+  if (list.length >= MAX_LOCATIONS) return { list: [...list], replaced: [], full: true };
+  return { list: [...list, next], replaced: [], full: false };
+}
+
+/** Countries that have a city, region or pin chosen inside them (they run only as those places). */
+export function refinedCountries(list: ReadonlyArray<LocationLike>): Set<string> {
+  return new Set(list.filter((l) => l.type !== 'country').map((l) => l.countryCode));
+}
+
+/**
+ * What will actually run, grouped by country: "Georgia → Tbilisi · 15 km +
+ * Kazakhstan". A country with places inside it runs only as those places
+ * (targeting.effectiveLocations); a country alone runs whole.
+ */
+export function geographyGroups<T extends LocationLike>(list: readonly T[]): Array<{ countryCode: string; whole: boolean; places: T[] }> {
+  const order: string[] = [];
+  const by = new Map<string, { whole: boolean; places: T[] }>();
+  for (const l of list) {
+    const cc = String(l.countryCode ?? '').toUpperCase();
+    if (!by.has(cc)) { by.set(cc, { whole: false, places: [] }); order.push(cc); }
+    const g = by.get(cc)!;
+    if (l.type === 'country') g.whole = true; else g.places.push(l);
+  }
+  return order.map((cc) => { const g = by.get(cc)!; return { countryCode: cc, whole: g.whole && g.places.length === 0, places: g.places }; });
 }
 
 /* ── LEAD FORMS ──────────────────────────────────────────────────────── */

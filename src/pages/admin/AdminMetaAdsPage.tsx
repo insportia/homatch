@@ -32,7 +32,7 @@ import { ApiHealthPanel, IntegrationProbe } from '@/components/admin/metaAds/Api
 import { AGO, MIN_REASON } from '@/components/admin/metaAds/kit';
 import { IdChip } from '@/components/admin/control/AdminKit';
 import { Owner, usePeople } from '@/components/admin/metaAds/people';
-import { missingInstantFormScopes, INSTANT_FORM_PERMISSIONS } from '@/lib/metaAds/instantForms';
+import { instantFormsCause as formsCause, missingInstantFormScopes, INSTANT_FORM_PERMISSIONS } from '@/lib/metaAds/instantForms';
 import { searchUsers } from '@/services/adminControl';
 import { CampaignStatusChip } from '@/components/metaAds/workspace/CampaignStatusChip';
 import { ago } from '@/components/metaAds/workspace/format';
@@ -437,6 +437,8 @@ function Connections() {
           {c.status === 'CONNECTED' && missingInstantFormScopes(c.granted_scopes, INSTANT_FORM_PERMISSIONS).length > 0 && (
             <p className="mt-1 text-[13px] text-[hsl(var(--warning))]" data-mm-admin-forms-missing={c.user_id}>
               {t('mm_a_forms_missing')}: <span className="font-mono" dir="ltr">{missingInstantFormScopes(c.granted_scopes, INSTANT_FORM_PERMISSIONS).join(', ')}</span>
+              {/* The diagnosis: declined by the customer, or never asked for by the Login for Business configuration. */}
+              <span className="mt-0.5 block text-2xs text-muted-foreground" data-mm-admin-forms-cause={formsCause(c)}>{t(`mm_m_admin_forms_${formsCause(c)}`)}</span>
             </p>
           )}
           <p className="mt-1 text-sm">{c.status} · {t('admin_mads_scopes')}: {c.granted_scopes?.join(', ') || '—'}
@@ -523,6 +525,14 @@ function Moderation() {
       {rows.map((m: any) => (
         <Card key={m.id}>
           <p className="text-sm"><b>{m.reason}</b> · {m.severity} · {m.status} · {t('admin_mads_user')} <Owner id={m.user_id} /> · {new Date(m.created_at).toLocaleString()}</p>
+          {/* Real-estate scope evidence (domainScope.ts): classification, reason, source, when. */}
+          {m.reason === 'DOMAIN_SCOPE' && m.findings && (
+            <p className="text-[13px] font-medium" data-mm-admin-domain={m.findings.domain}>
+              {t('mm_m_admin_domain')}: {m.findings.domain} · {m.findings.domain_reason} · {m.findings.source}
+              {m.findings.checked_at ? ` · ${new Date(m.findings.checked_at).toLocaleString()}` : ''}
+              {m.decided_by ? ` · ${m.status}` : ''}
+            </p>
+          )}
           <p className="text-[13px] text-muted-foreground">{JSON.stringify(m.findings)}</p>
           {m.status === 'OPEN' && <ModerationDecision caseId={m.id} onDone={reload} />}
           {m.decision_note && <p className="mt-1 text-[13px]">{t('admin_mads_note')}: {m.decision_note}</p>}

@@ -91,14 +91,33 @@ export interface HousingRule {
   minRadiusKm: number | null;
 }
 
-/** Whether a housing offer reaching these countries runs under Meta's restrictions. */
-export function housingRule(housingOffer: boolean, countries: string[]): HousingRule {
+/**
+ * Whether a housing offer runs under Meta's restrictions: it reaches a listed
+ * country, OR the advertiser's ad account belongs to a US business (Meta:
+ * "any United States advertiser"). The advertiser country is the ad
+ * account's business_country_code when Meta reported it; unknown is unknown,
+ * never guessed.
+ */
+export function housingRule(housingOffer: boolean, countries: string[], advertiserCountry?: string | null): HousingRule {
   if (!housingOffer) return { restricted: false, countries: [], minRadiusKm: null };
   const set = [...new Set(countries.map((c) => String(c).toUpperCase()))];
+  if (String(advertiserCountry ?? '').toUpperCase() === 'US' && !set.some((c) => HOUSING_COUNTRIES_25KM.includes(c) || HOUSING_COUNTRIES_15KM.includes(c))) {
+    return { restricted: true, countries: ['US_ADVERTISER'], minRadiusKm: HOUSING_MIN_RADIUS_KM };
+  }
   const strict = set.filter((c) => HOUSING_COUNTRIES_25KM.includes(c));
   const europe = set.filter((c) => HOUSING_COUNTRIES_15KM.includes(c));
   if (!strict.length && !europe.length) return { restricted: false, countries: [], minRadiusKm: null };
   return { restricted: true, countries: [...strict, ...europe], minRadiusKm: strict.length ? HOUSING_MIN_RADIUS_KM : HOUSING_MIN_RADIUS_KM_EUROPE };
+}
+
+/**
+ * The places the ads actually run in: a country with a city, region or pin
+ * chosen inside it runs only as those places (Meta refuses a country together
+ * with a location inside it), so the refined country itself drops out.
+ */
+export function effectiveLocations(locations: LocationChoice[]): LocationChoice[] {
+  const refined = new Set(locations.filter((l) => l.type !== 'country').map((l) => String(l.countryCode).toUpperCase()));
+  return locations.filter((l) => l.type !== 'country' || !refined.has(String(l.key).toUpperCase()));
 }
 
 /** Every country a targeting intent reaches. */
@@ -110,10 +129,24 @@ export function reachedCountries(intent: Pick<TargetingIntent, 'locations'>): st
  * The categories the campaign DECLARES to Meta: the offer's own classification
  * (strategy.classifySpecialAdCategories), kept only where Meta requires it.
  */
-export function declaredSpecialAdCategories(offerCategories: string[], intent: Pick<TargetingIntent, 'locations'>): string[] {
+export function declaredSpecialAdCategories(offerCategories: string[], intent: Pick<TargetingIntent, 'locations'>, advertiserCountry?: string | null): string[] {
   const housingOffer = offerCategories.includes('HOUSING');
   const rest = offerCategories.filter((c) => c !== 'HOUSING');
-  return housingRule(housingOffer, reachedCountries(intent)).restricted ? ['HOUSING', ...rest] : rest;
+  return housingRule(housingOffer, reachedCountries(intent), advertiserCountry).restricted ? ['HOUSING', ...rest] : rest;
+}
+
+/**
+ * WHO DECIDES AN AUDIENCE SETTING — three explicit authorities, never mixed:
+ *   META_REQUIRED      Meta's rule for this campaign (housing in restricted
+ *                      countries / US advertiser) — applied, named, explained.
+ *   HOMATCH_RECOMMENDED HOMATCH's advice (broad ages and gender, a balanced
+ *                      area) — shown beside the choice, never applied by itself.
+ *   USER_CHOICE         everything Meta allows — saved and sent exactly as chosen.
+ */
+export type AudienceAuthority = 'META_REQUIRED' | 'HOMATCH_RECOMMENDED' | 'USER_CHOICE';
+export function audienceAuthority(rule: HousingRule, setting: 'AGE' | 'GENDER' | 'RADIUS', chosen: { narrow: boolean }): AudienceAuthority {
+  if (rule.restricted) return 'META_REQUIRED';
+  return chosen.narrow && setting !== 'RADIUS' ? 'HOMATCH_RECOMMENDED' : 'USER_CHOICE';
 }
 
 export interface TargetingConstraints {

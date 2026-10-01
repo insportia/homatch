@@ -111,6 +111,11 @@ export function preflightDetails(detail: string): Array<{ key: string; value: st
     if ((m = code.match(/^ACCOUNT_STATUS_(\d+)$/))) return { key: 'madsb_pfd_account_status', value: m[1] };
     if ((m = code.match(/^ACCOUNT_CURRENCY_(\w+)$/))) return { key: 'madsb_pfd_account_currency', value: m[1] };
     if (code.startsWith('meta_err')) return { key: code, value: '' };
+    // Real-estate scope (domainScope.ts): one kind sentence, never the matched words.
+    if (code === 'LEAD_TERMS_REQUIRED') return { key: 'mm_l_pfd_terms', value: '' };
+    if (code.startsWith('BLOCKED_OUT_OF_SCOPE')) return { key: 'mm_m_scope_blocked', value: '' };
+    if (code.startsWith('IN_REVIEW')) return { key: 'mm_m_scope_review', value: '' };
+    if (code === 'APPROVED_BY_REVIEW' || /^(HOMATCH_PROPERTY|PROPERTY_OFFER|REAL_ESTATE_SERVICE)$/.test(code)) return { key: 'mm_m_scope_ok', value: '' };
     if (/^[a-z_]+$/.test(code)) return { key: 'madsb_pfd_permission', value: code };
     return { key: `madsb_pfd_${code.toLowerCase()}`, value: code };
   });

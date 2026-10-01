@@ -5,6 +5,8 @@ import React from 'react';
 import { Info } from 'lucide-react';
 import type { CampaignDetail } from '@/services/metaAds';
 import { KpiGrid } from './KpiGrid';
+import { LearningStageCard } from '@/components/metaAds/builder/FinishKit';
+import { learningStage, type Evidence } from '@/lib/metaAds/analysis';
 import {
   Card, Chip, EvidenceChip, Muted, healthTone, placementName, ageGenderName, adNamer, type Fmt, type T,
 } from './shared';
@@ -67,6 +69,8 @@ export function OverviewSection({ t, fmt, d }: { t: T; fmt: Fmt; d: CampaignDeta
   return (
     <div className="space-y-4">
       {insufficient && <InsufficientBanner t={t} />}
+      {/* The one learning model: collecting results, or using real signals (never inferred traits). */}
+      <LearningStageCard stage={learningStage(!!d.campaign.external_campaign_id, evidence as Evidence)} />
 
       <Card id="mm-kpis" title={t('mm_c_kpi_title')}
         actions={<span className="flex items-center gap-1.5 text-2xs text-muted-foreground">{t('mm_c_evidence_label')}<EvidenceChip t={t} evidence={evidence} /></span>}>

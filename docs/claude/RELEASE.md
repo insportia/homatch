@@ -218,6 +218,47 @@ Studio). Owed after deploy: PROVEN_EXACT for the six functions, the migration
 in the ledger, RLS / grants on `ds_catalog_*` and `storage_authorize`
 verified in production, `storage-selftest` PASS, Vercel READY.
 
+## Incident #869 — provider success is not deployment truth
+
+**What happened (deploy #869, PR #33, 2026-10-01).** FAST promotion, owed
+`meta-ads-api`, `meta-oauth`, `meta-webhooks`. `meta-webhooks`' own files
+were unchanged; its closure changed through `src/lib/metaAds/strategy.ts`
+(via `_shared/metaAds.ts` → `errors.ts`). The CLI bundled it, printed
+`Deploying Function: meta-webhooks (141 kB)` — not `No change found`, so the
+CLI's own hash differed and it uploaded — then `Deployed Functions`, exit 0.
+Production stayed at **v13 with the same `ezbr_sha256` (`0a0f5dfc…`)** and
+the old `strategy.ts`. Deploy #870 ran the identical command on the identical
+source and created v14. The same shape (entry unchanged, imported module
+changed, CLI exit 0, no new version, intermittent) is recorded for runs 733,
+734, 735, 739 and 741. The provider's internal reason is not observable; the
+owed-set computation and the proof were both correct.
+
+**Detection.** The exact proof compared every deployed module with the
+revision: `mismatched: src/lib/metaAds/strategy.ts` → `STALE`; the ref did
+not advance. Correct — and still the rule.
+
+**Recovery (now).** In the same `Prove it in production` step:
+
+1. first proof (`--first-pass`, unproven = warning, report written);
+2. if every unproven owed function is `STALE` **and** a deploy loop attempted
+   it (`attempted.txt` names its list): redeploy each **once, serially**, with
+   the same command and JWT mode (`scripts/release/edgeRecovery.mjs`);
+   `INCOMPLETE`, `UNAVAILABLE` or a never-attempted function → no redeploy,
+   fail now;
+3. snapshot, and the same exact proof again;
+4. `PROVEN_EXACT` for all → success; anything else → **fail closed**.
+
+**Maximum retries: 1** (`MAX_RECOVERY_ATTEMPTS`). No loop, no source edits,
+nonces or comments to move a hash, no delete-and-recreate, no concurrent
+uploads during recovery.
+
+**Ref invariant.** `refs/deployed/edge` advances only in the step after the
+proof, under `success()`. Provider exit codes, "Deployed Functions", version
+numbers and `ezbr_sha256` are evidence that is printed; the module-by-module
+proof — summarised by the desired closure digest
+(`sha256` over every path + content in the function's import closure) — is
+the only verdict. Regression tests: `tests/matrix/edgeRecovery.test.mjs`.
+
 ## Known gaps (explicit, not hidden)
 
 - No gated browser suite visits Design Studio; `tests/browser/designStudio.qa.mjs`

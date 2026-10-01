@@ -1121,8 +1121,22 @@ jobs:
           # the weaker check this replaced.
           # ─────────────────────────────────────────────────────────────────
           node scripts/edgeArtifacts.mjs snapshot $(cat "$RUNNER_TEMP/owed.txt") > "$RUNNER_TEMP/post.json"
-          node scripts/edgeArtifacts.mjs verify "$RUNNER_TEMP/pre.json" "$RUNNER_TEMP/post.json" \
-            --since "$(cat "$RUNNER_TEMP/started-at-ms")"
+          if node scripts/edgeArtifacts.mjs verify "$RUNNER_TEMP/pre.json" "$RUNNER_TEMP/post.json" \
+            --since "$(cat "$RUNNER_TEMP/started-at-ms")" --report "$RUNNER_TEMP/proof-1.json" --first-pass; then
+            exit 0
+          fi
+
+          # F. ONE deterministic recovery, then the same proof again (#869).
+          #
+          # An owed function whose closure changed below an untouched entry
+          # file can be uploaded with exit 0 and still not become a new
+          # version (meta-webhooks in #869; runs 733-741 before it). The
+          # identical command run again took. So: only when every unproven
+          # function is STALE and was attempted, redeploy each ONCE, serially,
+          # via the same list, snapshot, and prove again. Anything else, or a
+          # second STALE, fails here — the ref below stays put and the work
+          # stays owed. Never a loop, never a source edit, never a delete.
+          node scripts/release/edgeRecovery.mjs --dir "$RUNNER_TEMP"
 
       # ── E. The ref advances here, downstream of the proof, or not at all ─
       #

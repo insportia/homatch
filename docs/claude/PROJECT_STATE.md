@@ -604,3 +604,19 @@ Phase 2 (Universal Discovery) is blocked until this is live and proven.
   (HOMATCH side): maintenance ≤ 25 campaigns per 15-min pass (40 s budget),
   status sync one 40 s invocation per minute (≤ 200 rows) — the first scaling
   blockers, ahead of Meta's per-account limits (tier: development_access).
+
+## Design Studio hybrid engine (branch `feat/design-studio-hybrid-engine`, 2026-10-01) — NOT yet on main
+
+- Commit 6d1c1268 on top of main 34bc4d1a (#45). PR not opened yet (browser pane signed out of GitHub; no gh).
+- Picture → 3D now: route each object (catalogue only if it looks like it → parametric → GPU-generated → approximate),
+  GPU worker builds only GENERATE groups (one model per identical group, ≤10), assemble, render from the picture's
+  measured camera offscreen, structured visual check (≤2 calls, $ ceiling), bounded corrections, fidelity gates.
+  Engine report saved to `ds_reconstructions.engine_report`.
+- Migration `20261005100000_design_studio_generation.sql` NOT applied: ds_generation_jobs, ds_generated_assets
+  (PROJECT_PRIVATE), engine_report column, ds_create_share now strips `generated` from public snapshots.
+  Apply byte-exact from origin/main after merge.
+- GPU worker `infra/design-studio-gpu-worker/` (Runpod serverless, min 0 / max 1) — Docker image never built yet.
+  Without Supabase secrets RUNPOD_API_KEY / RUNPOD_DS_ENDPOINT_ID / RUNPOD_DS_USD_PER_SECOND the app degrades
+  honestly (GPU_NOT_CONFIGURED → pieces drawn, marked APPROXIMATE). Endpoint needs HF_TOKEN (DINOv3 + SAM licences accepted).
+- Golden run pending: exact picture sha256 89919f728795c08aee17922745b484bca6d6d8d6965bcd8b0f64a201ee3ff94f, uploaded by the owner in production.
+- Local Windows test noise (not regressions): bundleImports / metaAds customerFinance (C:\C:\ path), releasePath 11b + plan.mjs (uncommitted diff), placementSearch timing under parallel load.

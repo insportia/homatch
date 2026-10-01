@@ -1,0 +1,45 @@
+# Graphify (code-intelligence graph, local engineering tool only).
+# .gitignore is honoured automatically; these are extra exclusions so the graph
+# never carries credentials, history blobs, build output or bulky data.
+
+# Environment / credentials: never indexed, whatever their name
+.env
+.env.*
+*.pem
+*.key
+*.p12
+**/secrets/**
+supabase/.temp/
+.mcp.json
+
+# Git history bundles at the repository root (full repo history, not source)
+*.bundle
+
+# Build output, dependencies, caches, generated graphs
+node_modules/
+dist/
+coverage/
+graphify-out/
+.claude/worktrees/
+official-worker/node_modules/
+
+# Bulk data, not architecture: the 6 MB translation bundle, recorded fixtures,
+# lockfiles and binary/media assets
+src/i18n/translations.ts
+**/__tests__/fixtures/
+tests/fixtures/
+pnpm-lock.yaml
+package-lock.json
+deno.lock
+public/**/*.png
+public/**/*.jpg
+public/**/*.webp
+public/**/*.glb
+*.recording.spec.ts
+*-recording.spec.ts
+
+# Vendored, minified third-party browser-extension bundle (sanitised by
+# official-worker/scripts/sanitize-human-assist-extension.mjs): not HOMATCH
+# architecture, and ~2,300 minified symbols that drown the real communities.
+official-worker/extensions/*/src/
+*.min.js

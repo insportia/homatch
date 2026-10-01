@@ -18,6 +18,8 @@ import {
 } from '@/lib/metaAds/leadForms';
 import { createPremiumLeadForm } from '@/services/metaAds';
 import { leadFormIssueKey, MAX_FORM_QUESTIONS } from './masterLogic';
+import { FORMS_COPY } from './instantFormsCopy';
+import type { InstantFormsState } from '@/lib/metaAds/instantForms';
 
 const LOCALES = Object.keys(META_LOCALE) as FormLocale[];
 
@@ -25,8 +27,10 @@ function languageName(code: string, ui: string): string {
   try { return new Intl.DisplayNames([ui], { type: 'language' }).of(code) ?? code; } catch { return code; }
 }
 
-export function LeadFormBuilder({ propertyId, onCreated, onCancel }: {
+export function LeadFormBuilder({ propertyId, onCreated, onCancel, formsState }: {
   propertyId: string | null;
+  /** Why Instant Forms may be unavailable (server-decided); product words only. */
+  formsState?: InstantFormsState;
   /** Meta's form id, after the server created it. */
   onCreated: (externalId: string) => Promise<void> | void;
   onCancel: () => void;
@@ -97,7 +101,7 @@ export function LeadFormBuilder({ propertyId, onCreated, onCancel }: {
       {permissionNeeded && (
         <div role="status" className="flex items-start gap-2.5 rounded-xl border border-[hsl(var(--gold-border))]/70 bg-[hsl(var(--gold-soft))] px-3.5 py-3 text-[13px] leading-relaxed text-foreground">
           <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden />
-          <span>{t('mm_b_lf_permission')}</span>
+          <span>{t(FORMS_COPY[formsState === 'RECONNECT' ? 'RECONNECT' : 'COMING_SOON'])}</span>
         </div>
       )}
 

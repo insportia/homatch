@@ -9,7 +9,7 @@
 //   · funding           the Add-funds amount for a server-computed shortfall
 import { classifySpecialAdCategories, type DealKind, type MetaGoal } from '../../../lib/metaAds/strategy.ts';
 import type { AdviceItem, AdviceSeverity } from '../../../lib/metaAds/creativeAdvice.ts';
-import { MAX_LOCATIONS } from '../../../lib/metaAds/targeting.ts';
+import { CITY_RADIUS_KM_DEFAULT, HOUSING_MIN_RADIUS_KM, MAX_LOCATIONS, META_AGE_MAX, META_AGE_MIN } from '../../../lib/metaAds/targeting.ts';
 
 /* ── HOUSING ─────────────────────────────────────────────────────────── */
 
@@ -23,6 +23,25 @@ export function isHousingCampaign(c: {
     dealKind: (offer?.dealKind ?? (c.property_id ? 'SALE' : 'OTHER')) as DealKind,
   });
   return cats.includes('HOUSING');
+}
+
+/** A city's radius as it will actually run: property ads reach at least HOUSING_MIN_RADIUS_KM. */
+export function effectiveRadiusKm(radiusKm: number | null | undefined, housing: boolean): number {
+  const r = Number(radiusKm ?? CITY_RADIUS_KM_DEFAULT);
+  return housing ? Math.max(HOUSING_MIN_RADIUS_KM, r) : r;
+}
+
+/**
+ * A property ad's audience as HOMATCH will run it — all adults, everyone, and
+ * city radii at the property-ad minimum — so what the draft stores is exactly
+ * what the server sends (targeting.applyTargeting applies the same rule).
+ * Everything else (places, the customer's other choices) is kept.
+ */
+export function housingNormalized<T extends { locations: Array<{ type: string; radiusKm?: number | null }>; ageMin: number; ageMax: number; gender: string }>(t: T): T {
+  return {
+    ...t, ageMin: META_AGE_MIN, ageMax: META_AGE_MAX, gender: 'ALL',
+    locations: t.locations.map((l) => (l.type === 'city' ? { ...l, radiusKm: effectiveRadiusKm(l.radiusKm, true) } : l)),
+  };
 }
 
 /**

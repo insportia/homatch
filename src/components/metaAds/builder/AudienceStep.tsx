@@ -5,12 +5,13 @@
 // HOMATCH's RECOMMENDATION, not a rule: narrowing is allowed and saved as
 // chosen, and a small non-blocking note says why broad usually works better.
 //
-// The one real restriction is Meta's: a property ad is in its Housing ad
-// category, where Meta requires all adults 18–65+ of every gender (and a city
-// radius of at least 25 km). Only then are the values fixed, shown as plain
-// values with that reason — not as disabled controls or a lock.
+// HOMATCH absorbs the platform rules: a property ad runs to all adults of
+// every gender with city radii of at least 25 km (Meta's Housing ad category).
+// For those ads the audience is shown as what HOMATCH set up — plain values,
+// no disabled controls, no rulebook — and the draft stores exactly what will
+// run (masterLogic.housingNormalized = targeting.applyTargeting on the server).
 import React from 'react';
-import { Lightbulb, MapPin, Users, X } from 'lucide-react';
+import { Lightbulb, MapPin, Sparkles, Users, X } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import {
@@ -19,7 +20,7 @@ import {
 import type { LocationChoiceRow, MetaAudienceRow, MetaCampaignRow, MetaStatus, TargetingIntentRow } from '@/services/metaAds';
 import { ChoiceCard, StepShell } from './ui';
 import { LocationPicker, regionName } from './LocationPicker';
-import { addLocation, isHousingCampaign, isNarrowAudience, locationId } from './masterLogic';
+import { addLocation, effectiveRadiusKm, housingNormalized, isHousingCampaign, isNarrowAudience, locationId } from './masterLogic';
 
 const RADII = [10, CITY_RADIUS_KM_DEFAULT, HOUSING_MIN_RADIUS_KM, 40, 60, CITY_RADIUS_KM_MAX];
 const AGES = Array.from({ length: META_AGE_MAX - META_AGE_MIN + 1 }, (_, i) => META_AGE_MIN + i);
@@ -42,13 +43,19 @@ export function AudienceStep({ campaign, status, audiences, patch }: {
   const minRadius = housing ? HOUSING_MIN_RADIUS_KM : 1;
   const [note, setNote] = React.useState<string | null>(null);
 
-  const save = (next: Partial<TargetingIntentRow>) => patch({
-    targeting: {
+  const save = (next: Partial<TargetingIntentRow>) => {
+    const merged: TargetingIntentRow = {
       locations: usingDefault ? defaults : stored!.locations,
       ageMin: stored?.ageMin ?? META_AGE_MIN, ageMax: stored?.ageMax ?? META_AGE_MAX, gender: stored?.gender ?? 'ALL',
       ...next,
-    },
-  }, { immediate: true });
+    };
+    patch({ targeting: housing ? housingNormalized(merged) : merged }, { immediate: true });
+  };
+
+  /* A draft that became a property ad after narrowing: store what will run,
+     once, so the draft, the review and the server all say the same thing. */
+  const staleHousing = housing && !!stored && JSON.stringify(housingNormalized(stored)) !== JSON.stringify(stored);
+  React.useEffect(() => { if (staleHousing) save({}); }, [staleHousing]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onPick = (loc: LocationChoiceRow) => {
     const withRadius = loc.type === 'city' ? { ...loc, radiusKm: Math.max(CITY_RADIUS_KM_DEFAULT, minRadius) } : loc;
@@ -66,6 +73,14 @@ export function AudienceStep({ campaign, status, audiences, patch }: {
 
   return (
     <StepShell eyebrow={t('madsb_step_audience')} title={t('madsb_audience_title')} lead={t('madsb_audience_lead')}>
+      {/* HOMATCH does the platform work; the customer adjusts what is theirs to choose. */}
+      <div data-mm-smart-audience="" className="flex items-start gap-2.5 rounded-xl border border-[hsl(var(--gold-border))]/60 bg-[hsl(var(--gold-soft))]/60 px-3.5 py-3 text-[13px] leading-relaxed">
+        <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden />
+        <span className="min-w-0">
+          <span className="block font-semibold text-foreground">{t('mm_b_smart_title')}</span>
+          <span className="text-muted-foreground">{t('mm_b_smart_body')}</span>
+        </span>
+      </div>
       {/* WHERE */}
       <section aria-labelledby="mm-b-where" className="space-y-2.5">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -78,7 +93,7 @@ export function AudienceStep({ campaign, status, audiences, patch }: {
           {locations.map((l) => {
             const id = locationId(l);
             const name = l.type === 'country' ? regionName(l.key, lang) : l.name;
-            const radius = Math.max(minRadius, Number(l.radiusKm ?? CITY_RADIUS_KM_DEFAULT));
+            const radius = effectiveRadiusKm(l.radiusKm, housing);
             const options = [...new Set([...RADII, radius])].filter((r) => r >= minRadius && r <= CITY_RADIUS_KM_MAX).sort((a, b) => a - b);
             return (
               <li key={id} className="flex max-w-full items-center gap-1 rounded-full border border-[hsl(var(--gold-border))]/60 bg-[hsl(var(--gold-soft))] py-1 ps-3 pe-1 text-[13px]">
@@ -107,9 +122,6 @@ export function AudienceStep({ campaign, status, audiences, patch }: {
         <LocationPicker scopeCountry={scope} full={!usingDefault && locations.length >= MAX_LOCATIONS} onPick={onPick}
           isChosen={(r) => locations.some((l) => locationId(l) === `${r.type}:${r.key}`)} />
         {note && <p className="text-[13px] text-muted-foreground" aria-live="polite">{note}</p>}
-        {housing && locations.some((l) => l.type === 'city') && (
-          <p className="text-2xs leading-relaxed text-muted-foreground">{t('mm_b_housing_radius_note', { km: String(HOUSING_MIN_RADIUS_KM) })}</p>
-        )}
       </section>
 
       {/* AGES + GENDER */}
@@ -118,12 +130,12 @@ export function AudienceStep({ campaign, status, audiences, patch }: {
           <Users className="h-4 w-4 text-[hsl(var(--gold-ink))]" aria-hidden />{t('mm_b_who_title')}
         </h3>
         {housing ? (
-          /* Meta's Housing category fixes these; say so once, as fact. */
-          <div data-mm-housing-rule="">
+          /* What HOMATCH set up for a property ad: the values, not the rulebook. */
+          <div data-mm-housing-rule="" data-mm-smart-fixed="">
             <p className="text-sm font-medium text-foreground">
               {t('mm_b_age_range', { min: String(META_AGE_MIN), max: `${META_AGE_MAX}+` })} · {t('mm_b_gender_ALL')}
             </p>
-            <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">{t('mm_b_housing_rule')}</p>
+            <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">{t('mm_b_smart_fixed')}</p>
           </div>
         ) : (
           <>
@@ -181,7 +193,8 @@ export function AudienceStep({ campaign, status, audiences, patch }: {
         <div className="grid gap-2 sm:grid-cols-2">
           <ChoiceCard active={!campaign.audience_id} icon={<Users className="h-4 w-4" />} title={t('mads_audience_broad')} body={t('madsb_audience_broad_d')}
             onClick={() => patch({ audience_id: null }, { immediate: true })} />
-          {audiences.filter((a) => a.sync_status === 'READY').map((a) => (
+          {/* Retargeting audiences only while the admin switch allows them (the chosen one stays visible to switch away). */}
+          {audiences.filter((a) => a.sync_status === 'READY' && (status?.settings.retargetingEnabled !== false || campaign.audience_id === a.id)).map((a) => (
             <ChoiceCard key={a.id} active={campaign.audience_id === a.id} title={a.name} body={t('madsb_audience_retarget_d')}
               onClick={() => patch({ audience_id: a.id }, { immediate: true })} />
           ))}

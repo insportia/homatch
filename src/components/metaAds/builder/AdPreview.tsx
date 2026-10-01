@@ -2,12 +2,16 @@
 // Instagram identity, the uploaded media, and the copy as it is being typed.
 // It is an honest approximation, labelled as one: Meta renders the final ad
 // and may crop, truncate or rearrange it. Clicking a part of the preview
-// jumps to the field that controls it.
+// jumps to the field that controls it — only parts the customer can actually
+// change are clickable (media and a fixed button are shown, not offered).
+// The grey line above the headline is the display link Meta derives from the
+// destination URL's domain (HOMATCH does not override it), so it is shown
+// only for website destinations and is never editable here.
 import React, { useMemo, useState } from 'react';
 import { Globe, MoreHorizontal, ThumbsUp, MessageCircle, Share2, Heart, Send, Bookmark, ChevronRight, AlertTriangle } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
-import { checkMedia, GOAL_SPECS, type Placement } from '@/lib/metaAds/payload';
+import { checkMedia, ctaOptions, resolveCta, type Placement } from '@/lib/metaAds/payload';
 import type { MetaGoal } from '@/lib/metaAds/strategy';
 import type { MetaCampaignRow, MetaCreativeRow } from '@/services/metaAds';
 import { useMediaUrl } from './CreativeStep';
@@ -27,8 +31,10 @@ export function AdPreview({ campaign, creative, placements, pageName, instagramN
   const url = useMediaUrl(m0?.path);
   const isVideo = !!m0?.mime?.startsWith('video');
   const goal = campaign.goal as MetaGoal;
-  const spec = GOAL_SPECS[goal];
-  const cta = t(`madsb_cta_${(creative && spec.allowedCtas.includes(creative.cta) ? creative.cta : spec.defaultCta).toLowerCase()}` as never);
+  const app = campaign.destination?.messagingApp ?? null;
+  // The same rule the Meta payload uses (payload.resolveCta): what is shown is what is sent.
+  const cta = t(`madsb_cta_${resolveCta(goal, creative?.cta, app).toLowerCase()}` as never);
+  const ctaEditable = ctaOptions(goal, app).length > 1;
   const domain = useMemo(() => {
     try { return campaign.destination?.url ? new URL(campaign.destination.url).hostname.replace(/^www\./, '') : null; } catch { return null; }
   }, [campaign.destination?.url]);
@@ -38,12 +44,13 @@ export function AdPreview({ campaign, creative, placements, pageName, instagramN
   const text = creative?.primary_text?.trim() || t('madsb_preview_text_placeholder');
   const headline = creative?.headline?.trim() || t('madsb_preview_headline_placeholder');
 
-  const zone = (field: PreviewField, children: React.ReactNode, cls?: string) => (
-    <button type="button" onClick={() => onField(field)} title={t(`madsb_field_${field === 'primaryText' ? 'primary' : field}` as never)}
+  const editable = (field: PreviewField) => field === 'media' ? false : field === 'cta' ? ctaEditable : true;
+  const zone = (field: PreviewField, children: React.ReactNode, cls?: string) => (editable(field) ? (
+    <button type="button" onClick={() => onField(field)} title={t(`madsb_field_${field === 'primaryText' ? 'primary' : field}` as never)} data-mm-preview-zone={field}
       className={cn('block w-full text-start outline-none ring-[hsl(var(--gold-border))] transition-shadow hover:ring-2 focus-visible:ring-2', cls)}>
       {children}
     </button>
-  );
+  ) : <div data-mm-preview-fixed={field} className={cn('block w-full', cls)}>{children}</div>);
   const media = (cls: string) => zone('media', url
     ? (isVideo ? <video src={url} className={cn('w-full object-cover', cls)} muted playsInline /> : <img src={url} alt="" className={cn('w-full object-cover', cls)} />)
     : <div className={cn('grid w-full place-items-center bg-[#e4e6eb] text-2xs text-[#65676b]', cls)}>{t('madsb_preview_media_placeholder')}</div>);
@@ -80,7 +87,7 @@ export function AdPreview({ campaign, creative, placements, pageName, instagramN
             {goal !== 'ENGAGEMENT' && (
               <div className="flex items-center gap-2 bg-[#f0f2f5] px-3 py-2">
                 <div className="min-w-0 flex-1">
-                  {domain && <p className="truncate text-2xs uppercase text-[#65676b]">{domain}</p>}
+                  {domain && <p data-mm-preview-display-link="" className="truncate text-2xs uppercase text-[#65676b]">{domain}</p>}
                   {zone('headline', <p className="truncate font-semibold">{headline}</p>)}
                   {creative?.description && zone('description', <p className="truncate text-2xs text-[#65676b]">{creative.description}</p>)}
                 </div>

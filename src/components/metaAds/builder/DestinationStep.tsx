@@ -11,6 +11,7 @@ import { selectMetaAsset, type MetaCampaignRow, type MetaStatus } from '@/servic
 import { ChoiceCard, StepShell, VerdictBadge } from './ui';
 import { selectedAsset, urlProblem } from './steps';
 import { LeadFormBuilder } from './LeadFormBuilder';
+import { formsStateOf, FORMS_COPY } from './instantFormsCopy';
 
 export function DestinationStep({ campaign, status, patch, reloadStatus, propertyUrl }: {
   campaign: MetaCampaignRow; status: MetaStatus | null;
@@ -132,7 +133,7 @@ function LeadFormPicker({ status, campaign, setDest, reloadStatus }: {
     && (!page || !a.parent_external_id || a.parent_external_id === page.external_id)), [status, page]);
   const chosen = campaign.destination?.formId ?? forms.find((f) => f.selected)?.external_id ?? null;
   const [creating, setCreating] = useState(false);
-  const formPermissionsMissing = status?.mode === 'REAL' && status?.connection?.instant_forms_available === false;
+  const formsState = formsStateOf(status);
 
   return (
     <div className="space-y-3">
@@ -148,15 +149,15 @@ function LeadFormPicker({ status, campaign, setDest, reloadStatus }: {
               ))}
             </div>
           )}
-          {formPermissionsMissing && (
-            <p role="status" className="rounded-xl border border-[hsl(var(--gold-border))]/70 bg-[hsl(var(--gold-soft))] px-3.5 py-2.5 text-[13px] leading-relaxed text-foreground">{t('mm_b_lf_permission')}</p>
+          {formsState !== 'AVAILABLE' && formsState !== 'DISABLED' && (
+            <p role="status" data-mm-forms-state={formsState} className="rounded-xl border border-[hsl(var(--gold-border))]/70 bg-[hsl(var(--gold-soft))] px-3.5 py-2.5 text-[13px] leading-relaxed text-foreground">{t(FORMS_COPY[formsState])}</p>
           )}
           {!creating ? (
             <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => setCreating(true)}>
               <Plus className="h-3.5 w-3.5" />{t('mm_b_lf_open')}
             </Button>
           ) : (
-            <LeadFormBuilder propertyId={campaign.property_id}
+            <LeadFormBuilder propertyId={campaign.property_id} formsState={formsState}
               onCreated={async (externalId) => { await reloadStatus(); setDest({ type: 'META_FORM', formId: externalId }, true); setCreating(false); }}
               onCancel={() => setCreating(false)} />
           )}

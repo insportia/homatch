@@ -511,3 +511,30 @@ Phase 2 (Universal Discovery) is blocked until this is live and proven.
   `HOMATCH_REVIEW` ("In review", distinct from Meta's IN_REVIEW).
 - API health probe: booleans + `lastStatusSyncAt` / `lastUsageReportAt`.
 
+
+## Meta Ads production polish (2026-10-01)
+
+- Instant Forms (LEADS_ON_META): goal switch ON, but no production connection
+  holds leads_retrieval / pages_manage_ads / pages_manage_metadata. State is
+  server-decided (`src/lib/metaAds/instantForms.ts`): COMING_SOON (nobody
+  holds them — App Review / Login for Business configuration pending),
+  RECONNECT (some connection does), AVAILABLE, DISABLED. Customers see product
+  words only; Admin sees the missing permissions (API health probe, Connections).
+  Owner checklist to unblock: Business Verification; App Review Advanced Access
+  for leads_retrieval, pages_manage_ads, pages_manage_metadata (+ the base set
+  if not yet approved); Ads Management Standard Access; add the three to the
+  Login for Business configuration (META_LOGIN_CONFIG_ID); leadgen webhook on
+  the Page object; customers reconnect Meta; Leads Access Manager grant where
+  customised. Sources: Meta docs via search summaries (direct fetch blocked) —
+  re-verify in the App Dashboard.
+- Admin owner identity: `admin_meta_people` (admin-only, ids → name/username/
+  email/connection/ad accounts; users stays own-row-only, nothing copied).
+- CTA: one rule `payload.resolveCta` for payload/preview/review/editor;
+  LEADS_ON_META no longer offers CONTACT_US, PROMOTE no SEE_MORE, WhatsApp
+  sends WHATSAPP_MESSAGE. Message ads expose headline/description editors.
+- Capacity: ELEVATED pressure now halves insights and drops breakdowns
+  (`allowance().insightsSlowdown/breakdowns` were unused); maintenance skips a
+  THROTTLED account; duplicate scans wait from HIGH. Known throughput ceilings
+  (HOMATCH side): maintenance ≤ 25 campaigns per 15-min pass (40 s budget),
+  status sync one 40 s invocation per minute (≤ 200 rows) — the first scaling
+  blockers, ahead of Meta's per-account limits (tier: development_access).

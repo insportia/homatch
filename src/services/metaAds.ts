@@ -54,6 +54,8 @@ export interface MetaStatus {
     status: string; health?: MetaConnectionHealth; granted_scopes?: string[]; missing_scopes?: string[]; error_reason?: string | null;
     /** Instant Forms' extra permissions granted (goal LEADS_ON_META). */
     instant_forms_available?: boolean;
+    /** AVAILABLE / RECONNECT / COMING_SOON / DISABLED (src/lib/metaAds/instantForms.ts). */
+    instant_forms?: 'AVAILABLE' | 'RECONNECT' | 'COMING_SOON' | 'DISABLED';
     token_expires_at?: string | null; last_checked_at?: string | null;
   };
   assets: MetaAsset[];

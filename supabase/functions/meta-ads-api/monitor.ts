@@ -101,8 +101,11 @@ export async function monitorCampaign(sb: Sb, c: any, settings: MetaSettings, mo
 
   // 2. Insights: normalized daily + breakdown rows, at most every 30 minutes.
   // Insights only while Meta reports room for them (rateLimit.allowance); status never waits on this.
-  if (real && token && connectionOk && allowance(pressure, new Date(now).getUTCMinutes()).insights && insightsDue(c)) {
-    try { report.insightRows += (await syncInsights(sb, c, token)).rows; } catch (err) {
+  /* Under capacity pressure the optional analytics give way first (rateLimit.allowance):
+     ELEVATED → half the cadence and no heavy breakdowns; HIGH and above → no insights at all. */
+  const room = allowance(pressure, new Date(now).getUTCMinutes());
+  if (real && token && connectionOk && room.insights && insightsDue(c, false, room.insightsSlowdown, now)) {
+    try { report.insightRows += (await syncInsights(sb, c, token, { breakdowns: room.breakdowns })).rows; } catch (err) {
       if (isAccessError(err)) connectionOk = false; else report.errors += 1;
     }
     // Lead reconciliation on the same cadence: a lead the webhook missed is backfilled.

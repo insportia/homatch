@@ -246,6 +246,7 @@ export const META_ADS_BUILDER_STRINGS = {
   madsb_cta_book_travel: ["Book now", "დაჯავშნა", "Забронировать", "Hemen rezervasyon yap", "احجز الآن", "הזמינו עכשיו"],
   madsb_cta_see_more: ["See more", "მეტის ნახვა", "Смотреть ещё", "Daha fazlasını gör", "عرض المزيد", "עוד"],
   madsb_cta_message_page: ["Send message", "შეტყობინების გაგზავნა", "Написать", "Mesaj gönder", "إرسال رسالة", "שליחת הודעה"],
+  madsb_cta_whatsapp_message: ["Send WhatsApp message", "WhatsApp შეტყობინება", "Написать в WhatsApp", "WhatsApp mesajı gönder", "إرسال رسالة واتساب", "שליחת הודעת WhatsApp"],
   // AI
   madsb_ai_title: ["Write with HOMATCH AI", "დაწერეთ HOMATCH AI-ით", "Написать с HOMATCH AI", "HOMATCH AI ile yaz", "اكتب باستخدام HOMATCH AI", "כתיבה עם HOMATCH AI"],
   madsb_ai_lead: ["HOMATCH AI knows this campaign. It only suggests — nothing changes until you accept.", "HOMATCH AI იცნობს ამ კამპანიას. ის მხოლოდ გთავაზობთ — არაფერი შეიცვლება, სანამ არ დაეთანხმებით.", "HOMATCH AI знает эту кампанию. Он только предлагает — ничего не изменится, пока вы не примете.", "HOMATCH AI bu kampanyayı tanır. Yalnızca öneride bulunur — siz kabul edene kadar hiçbir şey değişmez.", "يعرف HOMATCH AI هذه الحملة. هو يقترح فقط — ولا يتغير شيء حتى توافق.", "HOMATCH AI מכיר את הקמפיין הזה. הוא רק מציע — שום דבר לא משתנה עד שתאשרו."],

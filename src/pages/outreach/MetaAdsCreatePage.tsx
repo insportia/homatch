@@ -37,6 +37,7 @@ import {
   launchCampaign, listAudiences, trackFunnel, money, EDITABLE_STATUSES, updateMetaDraft,
   type MetaStatus, type MetaCampaignRow, type MetaCreativeRow, type MetaAudienceRow, type PreflightResult, type PlanPreview,
 } from '@/services/metaAds';
+import { formsStateOf } from '@/components/metaAds/builder/instantFormsCopy';
 import { useMetaDraft } from '@/components/metaAds/builder/useMetaDraft';
 import { ALL_GOALS, STEPS, selectedAsset, stepGap, type StepKey } from '@/components/metaAds/builder/steps';
 import { ChoiceCard, SaveIndicator, StepShell, Stepper } from '@/components/metaAds/builder/ui';
@@ -301,7 +302,7 @@ export default function MetaAdsCreatePage() {
   return (
     <AppLayout noPadding>
       <div className="mx-auto w-full max-w-[86rem] px-4 py-4 pb-[calc(10rem+env(safe-area-inset-bottom))] md:pb-[calc(6rem+env(safe-area-inset-bottom))] sm:px-6 lg:px-8">
-        <PageHero compact eyebrow="Meta Ads" title={t('mads_create_title')} subtitle={t('madsb_create_sub')} />
+        <PageHero compact eyebrow="Meta Ads" title={t('mads_create_title')} subtitle={t('mm_b_create_sub')} />
         {status?.mode === 'MOCK' && (
           <div className="mt-3 rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] px-4 py-2.5 text-[13px] text-[hsl(var(--gold-ink))]">{t('mads_mock_banner')}</div>
         )}
@@ -342,16 +343,14 @@ export default function MetaAdsCreatePage() {
                 <div className="grid gap-2 sm:grid-cols-2">
                   {ALL_GOALS.map((g) => {
                     const switchedOn = (status?.settings.goalsEnabled ?? []).includes(g);
-                    /* Instant Forms need three extra Meta permissions that the base
-                       Login for Business configuration does not grant (least
-                       privilege); until they are granted the goal is unavailable. */
-                    const needsFormPermissions = g === 'LEADS_ON_META' && status?.mode === 'REAL'
-                      && status?.connection?.status === 'CONNECTED' && status?.connection?.instant_forms_available === false;
-                    const enabled = switchedOn && !needsFormPermissions;
+                    /* Leads on Facebook/Instagram is decided by the server
+                       (src/lib/metaAds/instantForms.ts): never a permission name here. */
+                    const forms = g === 'LEADS_ON_META' && status?.connection?.status === 'CONNECTED' ? formsStateOf(status) : 'AVAILABLE';
+                    const enabled = switchedOn && forms === 'AVAILABLE';
                     return (
                       <ChoiceCard key={g} active={campaign.goal === g} disabled={!enabled} icon={GOAL_ICON[g]}
                         title={t(`mads_goal_${g.toLowerCase()}` as never)} body={t(`madsb_goal_${g.toLowerCase()}_d` as never)}
-                        badge={!switchedOn ? t('madsb_goal_not_enabled') : needsFormPermissions ? t('madsb_goal_needs_form_permissions') : undefined}
+                        badge={!switchedOn ? t('madsb_goal_not_enabled') : forms === 'COMING_SOON' ? t('mm_b_goal_soon') : forms === 'RECONNECT' ? t('mm_b_goal_reconnect') : undefined}
                         onClick={() => patch({
                           goal: g,
                           destination: destinationForGoal(g, campaign.destination, !!page),
@@ -559,7 +558,7 @@ function PreLogin() {
   return (
     <AppLayout noPadding>
       <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-4 sm:px-6">
-        <PageHero compact eyebrow="Meta Ads" title={t('mads_create_title')} subtitle={t('madsb_create_sub')} />
+        <PageHero compact eyebrow="Meta Ads" title={t('mads_create_title')} subtitle={t('mm_b_create_sub')} />
         <StepShell title={t('mads_step_what')}>
           <div className="grid gap-2 sm:grid-cols-2">
             <ChoiceCard active={!other} icon={<Home className="h-4 w-4" />} title={t('mads_offer_property_signin')} onClick={() => setLocal((v) => ({ ...v, offer: null }))} />

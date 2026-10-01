@@ -13,7 +13,7 @@
 // objective is not shown; never a screen of dashes.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { AlertTriangle, BarChart3, ChevronRight, CirclePause, Layers, Lightbulb, PlayCircle, RefreshCw, SlidersHorizontal } from 'lucide-react';
+import { AlertTriangle, BarChart3, ChevronRight, CirclePause, Clock, Layers, Lightbulb, PlayCircle, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { EmptyState } from '@/components/customer/surface';
 import { Button } from '@/components/ui/button';
@@ -238,7 +238,16 @@ function Signals({ row }: { row: DashboardRow }) {
   // The one most useful line, never a wall of badges.
   const warning = u === 'ACCESS_LOST' ? 'mm_w_warn_access' : u === 'LOCKED' ? 'mm_w_warn_locked' : u === 'FAILED' ? 'mm_w_warn_failed'
     : row.status === 'REJECTED' ? 'mm_w_warn_rejected' : row.status === 'NEEDS_CHANGES' ? 'mm_w_warn_changes'
-      : row.status === 'PAYMENT_REQUIRED' ? 'mm_w_warn_payment' : needsAttention(statusOf(row)) ? 'mm_w_badge_attention' : null;
+      : row.status === 'PAYMENT_REQUIRED' ? 'mm_w_warn_payment' : row.status === 'PREFLIGHT_REQUIRED' ? 'mm_w_warn_recheck'
+        : needsAttention(statusOf(row)) ? 'mm_w_badge_attention' : null;
+  if (u === 'HOMATCH_REVIEW') {
+    // Held for a person at HOMATCH: nothing for the customer to do, and nothing is published or charged.
+    return (
+      <p className="flex items-start gap-1.5 text-2xs font-medium leading-snug text-[hsl(var(--gold-ink))]" data-mm-review-note="">
+        <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />{t('mm_w_note_homatch_review')}
+      </p>
+    );
+  }
   if (warning) {
     return (
       <p className="flex items-start gap-1.5 text-2xs font-medium leading-snug text-[hsl(var(--warning))]" data-mm-warning="">

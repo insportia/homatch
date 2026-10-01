@@ -499,11 +499,15 @@ Phase 2 (Universal Discovery) is blocked until this is live and proven.
   admin_audit_log with previous/next; reverted if the audit row fails).
   admin_settings still has an admin RLS write policy (shared table, not
   changed here): the UI never uses it.
-- Moderation: only through `admin_moderation_decide` (OPEN only, note,
-  canonical transition: CHANGES_REQUESTED → NEEDS_CHANGES, REJECTED →
-  REJECTED; audited). APPROVED records the decision only — a campaign in
-  MANUAL_REVIEW has no plan and preflight re-flags the claim, so approval
-  cannot make it launchable yet (product decision pending). uiStatus still
-  shows MANUAL_REVIEW to the customer as DRAFT (follow-up).
+- Moderation: only through `admin_moderation_decide` (admin, OPEN only,
+  note, decided_by, audit with before/after). CHANGES_REQUESTED →
+  NEEDS_CHANGES, REJECTED → REJECTED. APPROVED (`src/lib/metaAds/moderation.ts`):
+  stores the SHA-256 claim fingerprint of the approved creative text; the
+  HOMATCH check passes that exact text next time (any edit is reviewed
+  again) and never opens a second OPEN case; with no other review open the
+  campaign goes MANUAL_REVIEW → PREFLIGHT_REQUIRED with `preflight` cleared
+  (never READY: the normal check builds the plan). Approval never launches,
+  publishes, resumes or spends. Customer status: MANUAL_REVIEW = uiStatus
+  `HOMATCH_REVIEW` ("In review", distinct from Meta's IN_REVIEW).
 - API health probe: booleans + `lastStatusSyncAt` / `lastUsageReportAt`.
 

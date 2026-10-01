@@ -60,13 +60,14 @@ test('admin_setting_set: admin and not suspended, a reason, a known key, server 
   assert.match(b, /if \(!\(key in current\)\)/, 'no new keys are created');
 });
 
-test('admin_moderation_decide: open cases only, a note, the canonical transition map, audited; approval readies nothing', () => {
+test('admin_moderation_decide: open cases only, a note, the canonical transition map, audited; approval returns to the check, never to READY', () => {
   const b = caseBody(actions, 'admin_moderation_decide');
   assert.match(b, /\.eq\('status', 'OPEN'\)/);
   assert.match(b, /NOT_OPEN/);
   assert.match(b, /REASON_REQUIRED/);
   assert.match(b, /canTransition\(c\.status, to\)/);
-  assert.match(b, /decision !== 'APPROVED'/);
+  assert.match(b, /const after = afterApproval\(c\.status, count \?\? 0\);/);
+  assert.doesNotMatch(b, /'READY'|'LAUNCHING'|publishCampaign/);
   assert.match(b, /x\.audit\(sb, uid, `META_MODERATION_\$\{decision\}`/);
 });
 

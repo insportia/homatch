@@ -13202,6 +13202,15 @@ const en = {
   mm_a_api_last_sync: 'Last status sync',
   mm_a_api_last_usage: 'Last usage report from Meta',
   mm_a_api_capabilities: 'Capabilities',
+
+  /* ── META ADS MASTER — WORKSPACE ── */
+  mm_st_HOMATCH_REVIEW: 'In review',
+  mm_w_note_homatch_review: 'HOMATCH is reviewing a claim in this ad. Nothing is published or charged meanwhile.',
+  mm_w_warn_recheck: 'Run the HOMATCH check again to continue.',
+
+  /* ── META ADS MASTER — ADMIN + NOTIFICATIONS ── */
+  mm_a_mod_next_preflight: 'Approved. Nothing was launched; the customer runs the HOMATCH check again before launching.',
+  mm_a_mod_next_other: 'Approved. Another review on this campaign is still open.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -26318,6 +26327,15 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mm_a_api_last_sync: 'სტატუსის ბოლო სინქრონიზაცია',
   mm_a_api_last_usage: 'Meta-ს ბოლო ანგარიში გამოყენებაზე',
   mm_a_api_capabilities: 'შესაძლებლობები',
+
+  /* ── META ADS MASTER — WORKSPACE ── */
+  mm_st_HOMATCH_REVIEW: 'შემოწმებაზეა',
+  mm_w_note_homatch_review: 'HOMATCH ამოწმებს ამ რეკლამაში არსებულ განცხადებას. ამ დროს არაფერი ქვეყნდება და არაფერი ჩამოიჭრება.',
+  mm_w_warn_recheck: 'გასაგრძელებლად ხელახლა გაუშვით HOMATCH-ის შემოწმება.',
+
+  /* ── META ADS MASTER — ADMIN + NOTIFICATIONS ── */
+  mm_a_mod_next_preflight: 'დამტკიცდა. არაფერი გაშვებულა; გაშვებამდე მომხმარებელი ხელახლა გაუშვებს HOMATCH-ის შემოწმებას.',
+  mm_a_mod_next_other: 'დამტკიცდა. ამ კამპანიაზე სხვა განხილვა ჯერ კიდევ ღიაა.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -39425,6 +39443,15 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mm_a_api_last_sync: 'Последняя синхронизация статуса',
   mm_a_api_last_usage: 'Последний отчёт Meta об использовании',
   mm_a_api_capabilities: 'Возможности',
+
+  /* ── META ADS MASTER — WORKSPACE ── */
+  mm_st_HOMATCH_REVIEW: 'На проверке',
+  mm_w_note_homatch_review: 'HOMATCH проверяет утверждение в этой рекламе. Пока ничего не публикуется и не списывается.',
+  mm_w_warn_recheck: 'Чтобы продолжить, снова запустите проверку HOMATCH.',
+
+  /* ── META ADS MASTER — ADMIN + NOTIFICATIONS ── */
+  mm_a_mod_next_preflight: 'Одобрено. Ничего не запущено; перед запуском клиент снова проходит проверку HOMATCH.',
+  mm_a_mod_next_other: 'Одобрено. По этой кампании ещё открыта другая проверка.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -52530,6 +52557,15 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mm_a_api_last_sync: 'Son durum eşitlemesi',
   mm_a_api_last_usage: 'Meta\'dan son kullanım raporu',
   mm_a_api_capabilities: 'Yetenekler',
+
+  /* ── META ADS MASTER — WORKSPACE ── */
+  mm_st_HOMATCH_REVIEW: 'İncelemede',
+  mm_w_note_homatch_review: 'HOMATCH bu reklamdaki bir iddiayı inceliyor. Bu sırada hiçbir şey yayınlanmaz ve ücret alınmaz.',
+  mm_w_warn_recheck: 'Devam etmek için HOMATCH kontrolünü yeniden çalıştırın.',
+
+  /* ── META ADS MASTER — ADMIN + NOTIFICATIONS ── */
+  mm_a_mod_next_preflight: 'Onaylandı. Hiçbir şey başlatılmadı; müşteri başlatmadan önce HOMATCH kontrolünü yeniden çalıştırır.',
+  mm_a_mod_next_other: 'Onaylandı. Bu kampanyada başka bir inceleme hâlâ açık.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -65635,6 +65671,15 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mm_a_api_last_sync: 'آخر مزامنة للحالة',
   mm_a_api_last_usage: 'آخر تقرير استخدام من Meta',
   mm_a_api_capabilities: 'الإمكانات',
+
+  /* ── META ADS MASTER — WORKSPACE ── */
+  mm_st_HOMATCH_REVIEW: 'قيد المراجعة',
+  mm_w_note_homatch_review: 'يراجع HOMATCH ادعاءً في هذا الإعلان. لا يُنشر شيء ولا يُخصم أي مبلغ خلال ذلك.',
+  mm_w_warn_recheck: 'للمتابعة، شغّل فحص HOMATCH مرة أخرى.',
+
+  /* ── META ADS MASTER — ADMIN + NOTIFICATIONS ── */
+  mm_a_mod_next_preflight: 'تمت الموافقة. لم يُطلق شيء؛ يعيد العميل تشغيل فحص HOMATCH قبل الإطلاق.',
+  mm_a_mod_next_other: 'تمت الموافقة. ما زالت مراجعة أخرى مفتوحة لهذه الحملة.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -78740,6 +78785,15 @@ const he: Partial<Record<TranslationKey, string>> = {
   mm_a_api_last_sync: 'סנכרון סטטוס אחרון',
   mm_a_api_last_usage: 'דוח שימוש אחרון מ-Meta',
   mm_a_api_capabilities: 'יכולות',
+
+  /* ── META ADS MASTER — WORKSPACE ── */
+  mm_st_HOMATCH_REVIEW: 'בבדיקה',
+  mm_w_note_homatch_review: 'HOMATCH בודקת טענה במודעה הזו. בינתיים דבר אינו מתפרסם ואין חיוב.',
+  mm_w_warn_recheck: 'כדי להמשיך, הריצו שוב את בדיקת HOMATCH.',
+
+  /* ── META ADS MASTER — ADMIN + NOTIFICATIONS ── */
+  mm_a_mod_next_preflight: 'אושר. דבר לא הופעל; הלקוח מריץ שוב את בדיקת HOMATCH לפני ההפעלה.',
+  mm_a_mod_next_other: 'אושר. בדיקה נוספת בקמפיין הזה עדיין פתוחה.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

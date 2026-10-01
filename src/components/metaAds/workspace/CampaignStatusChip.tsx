@@ -12,6 +12,7 @@ import { uiStatus, type StatusInput, type UiStatus } from '@/lib/metaAds/uiStatu
 export const STATUS_TONE: Record<UiStatus, string> = {
   ACTIVE: 'border-[hsl(var(--success))]/35 bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]',
   IN_REVIEW: 'border-[hsl(var(--gold-border))]/70 bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))]',
+  HOMATCH_REVIEW: 'border-[hsl(var(--gold-border))]/70 bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))]',
   PAUSED: 'border-[hsl(var(--warning))]/35 bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))]',
   NEEDS_ATTENTION: 'border-[hsl(var(--warning))]/45 bg-[hsl(var(--warning))]/12 text-[hsl(var(--warning))]',
   LOCKED: 'border-[hsl(var(--warning))]/45 bg-[hsl(var(--warning))]/12 text-[hsl(var(--warning))]',
@@ -23,7 +24,7 @@ export const STATUS_TONE: Record<UiStatus, string> = {
 };
 /** A small leading dot carries the state for colour-blind readers too (with the word). */
 const DOT: Partial<Record<UiStatus, string>> = {
-  ACTIVE: 'bg-[hsl(var(--success))]', PAUSED: 'bg-[hsl(var(--warning))]', IN_REVIEW: 'bg-[hsl(var(--gold))]',
+  ACTIVE: 'bg-[hsl(var(--success))]', PAUSED: 'bg-[hsl(var(--warning))]', IN_REVIEW: 'bg-[hsl(var(--gold))]', HOMATCH_REVIEW: 'bg-[hsl(var(--gold))]',
   NEEDS_ATTENTION: 'bg-[hsl(var(--warning))]', LOCKED: 'bg-[hsl(var(--warning))]', ACCESS_LOST: 'bg-destructive', FAILED: 'bg-destructive',
 };
 

@@ -54,7 +54,7 @@ test('every distinct state maps, and the overriding states win', () => {
   assert.equal(uiStatus({ status: 'ACTIVE', last_error_key: 'meta_err_reconnect', launched_at: 'x' }), 'ACCESS_LOST');
   assert.equal(uiStatus({ status: 'DRAFT', last_error_key: 'meta_err_reconnect' }), 'DRAFT');
   assert.equal(uiStatus({ status: 'COMPLETED', last_error_key: 'meta_err_reconnect', launched_at: 'x' }), 'ENDED');
-  assert.equal(new Set(UI_STATUSES).size, 10);
+  assert.equal(new Set(UI_STATUSES).size, 11);
 });
 
 test('needs attention: action required, whatever the status — and nothing else', () => {
@@ -75,3 +75,16 @@ test('server and client count with the same function; the old "live" rule is gon
   assert.match(dash, /matchesKpi\(statusOf\(r\), view\)/, 'the list is filtered by the same rule');
   assert.doesNotMatch(dash, /counts\.live|data\.counts/, 'the client never shows a count it did not derive');
 });
+
+test('a campaign held for a person at HOMATCH is "In review" — never a draft, never Meta\'s review, never active', () => {
+  const held = { status: 'MANUAL_REVIEW', external_status: null, guard_state: 'OK', launched_at: null };
+  assert.equal(uiStatus(held), 'HOMATCH_REVIEW');
+  assert.notEqual(uiStatus(held), 'IN_REVIEW', 'HOMATCH\'s review is not Meta\'s');
+  assert.equal(statusFromMeta(held), false, 'no "Synced with Meta" for a review that is HOMATCH\'s own');
+  assert.equal(needsAttention(held), false, 'nothing for the customer to do');
+  assert.deepEqual(statusCounts([held]), { total: 1, active: 0, paused: 0, attention: 0 });
+  assert.ok(UI_STATUSES.includes('HOMATCH_REVIEW'));
+  // After an approval the campaign is back on the normal path: a draft that needs the check.
+  assert.equal(uiStatus({ status: 'PREFLIGHT_REQUIRED' }), 'DRAFT');
+});
+

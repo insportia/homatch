@@ -36,6 +36,7 @@ import {
   type LaunchContext, type LaunchCreative, type MessagingApp, type Placement,
   launchCharge, launchStartTime, parseBudgetBilling, type BudgetBilling,
 } from '../../../src/lib/metaAds/payload.ts';
+import { CLAIM_FLAG, claimText, claimFingerprint, approvedClaim, openClaimCase, type ModerationCaseRow } from '../../../src/lib/metaAds/moderation.ts';
 import {
   graph, graphAll, MetaApiError, metaMode, openToken, uploadImage, uploadVideo, mockExternalId,
   REQUIRED_SCOPES_BY_GOAL, type MetaMode,
@@ -339,13 +340,21 @@ export async function runPreflight(sb: Sb, uid: string, c: any, settings: MetaSe
   } else add('placements', 'READY', input.strategy.placementsMode);
 
   const { data: creatives } = await sb.from('meta_creatives').select('*').eq('campaign_id', c.id).order('sort');
+  // Admin moderation decisions on this campaign: an approved claim text is
+  // not held again; a review already waiting is never opened twice.
+  const { data: modCases } = await sb.from('meta_moderation_cases').select('id,creative_id,status,findings').eq('campaign_id', c.id);
   let manualReview = false;
   let creativeState: CheckState = (creatives ?? []).length ? 'READY' : 'ACTION_REQUIRED';
   const creativeDetail: string[] = (creatives ?? []).length ? [] : ['CREATIVE_REQUIRED'];
   for (const cr of creatives ?? []) {
-    const text = `${cr.headline}\n${cr.primary_text}\n${cr.description ?? ''}`;
     const flags: string[] = [];
-    if (BANNED_CLAIMS.test(text)) flags.push('CLAIM_GUARANTEE');
+    let claimFp: string | null = null;
+    let approved: ModerationCaseRow | null = null;
+    if (BANNED_CLAIMS.test(claimText(cr))) {
+      claimFp = await claimFingerprint(cr);
+      approved = approvedClaim(modCases ?? [], cr.id, claimFp);
+      if (!approved) flags.push(CLAIM_FLAG);
+    }
     if ((cr.media ?? []).length === 0) flags.push('NO_MEDIA');
     if (goal !== 'ENGAGEMENT' && !String(cr.primary_text ?? '').trim()) flags.push('PRIMARY_TEXT_REQUIRED');
     if (['LEADS_ON_META', 'LEADS_ON_WEBSITE', 'SITE_REGISTRATIONS', 'PROMOTE'].includes(goal) && !String(cr.headline ?? '').trim()) flags.push('HEADLINE_REQUIRED');
@@ -357,16 +366,17 @@ export async function runPreflight(sb: Sb, uid: string, c: any, settings: MetaSe
       else if (mc.verdict === 'WARNING' && creativeState === 'READY') creativeState = 'WARNING';
       if (input.strategy.placementsMode === 'CUSTOM' && Object.values(mc.placements).includes('INCOMPATIBLE')) flags.push('MEDIA_PLACEMENT_MISMATCH');
     }
-    const status = flags.includes('CLAIM_GUARANTEE') ? 'MANUAL_REVIEW' : flags.length ? 'NEEDS_CHANGES' : 'READY';
+    const status = flags.includes(CLAIM_FLAG) ? 'MANUAL_REVIEW' : flags.length ? 'NEEDS_CHANGES' : 'READY';
     if (status !== 'READY') { creativeState = 'ACTION_REQUIRED'; creativeDetail.push(...flags); }
     if (status === 'MANUAL_REVIEW') manualReview = true;
     await sb.from('meta_creatives').update({
-      safety_status: status, safety: { flags, checked_at: new Date().toISOString() },
+      safety_status: status,
+      safety: { flags, checked_at: new Date().toISOString(), ...(approved ? { approved_claim_case: approved.id } : {}) },
     }).eq('id', cr.id);
-    if (status === 'MANUAL_REVIEW') {
+    if (status === 'MANUAL_REVIEW' && claimFp && !openClaimCase(modCases ?? [], cr.id, claimFp)) {
       await sb.from('meta_moderation_cases').insert({
         user_id: uid, campaign_id: c.id, creative_id: cr.id,
-        reason: flags.join(','), severity: 'HIGH', findings: { flags }, status: 'OPEN',
+        reason: flags.join(','), severity: 'HIGH', findings: { flags, claim_fingerprint: claimFp }, status: 'OPEN',
       });
     }
   }

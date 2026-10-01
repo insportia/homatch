@@ -523,7 +523,8 @@ function ModerationDecision({ caseId, onDone }: { caseId: string; onDone: () => 
     try {
       const { data, error } = await supabase.functions.invoke('meta-ads-api', { body: { action: 'admin_moderation_decide', caseId, decision, note } });
       if (error) { toast.error(t(SETTING_ERROR[await actionError(error)] ?? 'admin_mads_action_failed')); return; }
-      toast.success(data?.campaignStatus ? t('mm_a_mod_campaign_moved', { status: data.campaignStatus }) : t('mm_a_saved'));
+      toast.success(data?.next === 'RUN_PREFLIGHT' ? t('mm_a_mod_next_preflight') : data?.next === 'OTHER_REVIEWS_OPEN' ? t('mm_a_mod_next_other')
+        : data?.campaignStatus ? t('mm_a_mod_campaign_moved', { status: data.campaignStatus }) : t('mm_a_saved'));
       onDone();
     } finally { setBusy(false); }
   };

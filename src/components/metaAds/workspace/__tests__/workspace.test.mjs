@@ -206,7 +206,7 @@ test('dashboard: an empty metric says why, instead of a dash', () => {
   }
   // Lead metrics only when there are leads.
   assert.match(src, /s\.leads > 0 \?/);
-  for (const s of ['ACTIVE', 'IN_REVIEW', 'PAUSED', 'NEEDS_ATTENTION', 'LOCKED', 'ACCESS_LOST', 'FAILED', 'READY', 'DRAFT', 'ENDED']) {
+  for (const s of ['ACTIVE', 'IN_REVIEW', 'HOMATCH_REVIEW', 'PAUSED', 'NEEDS_ATTENTION', 'LOCKED', 'ACCESS_LOST', 'FAILED', 'READY', 'DRAFT', 'ENDED']) {
     assert.ok(W[`mm_st_${s}`], `mm_st_${s} defined`);
   }
   // Georgian: the compact attention label that fits a KPI control on one line.

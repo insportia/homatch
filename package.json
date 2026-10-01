@@ -37,6 +37,7 @@
     "homatch:test:affected": "node scripts/claude/affected-tests.mjs",
     "homatch:migrations": "node scripts/claude/migrations-check.mjs",
     "homatch:check": "npx tsgo -p tsconfig.check.json && npm run i18n:check && npm run i18n:keys && node scripts/claude/affected-tests.mjs --run",
+    "homatch:release:plan": "node scripts/release/plan.mjs",
     "homatch:check:full": "npx tsgo -p tsconfig.check.json && npm run lint && npm run i18n:all && npm test && npm run test:matrix && npm run test:studio && npm run test:a11y",
     "homatch:deploy:scope": "node scripts/deploy-scope.mjs",
     "homatch:security": "npm audit --audit-level=high",

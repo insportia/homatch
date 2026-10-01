@@ -21,6 +21,7 @@ answering; never assume a feature is missing because a grep came back empty.
 | Protected surfaces / design contracts | `docs/claude/PROTECTED_SURFACES.md` · `UI_CONTRACTS.md` |
 | Money | `docs/claude/BILLING.md` |
 | Tests and gates | `docs/claude/TESTING.md` |
+| Release levels (FAST / TARGETED / FULL) | `docs/claude/RELEASE.md` |
 | Production/deferred state | `docs/claude/PROJECT_STATE.md` |
 | Sharp edges | `docs/claude/KNOWN_RISKS.md` |
 | Deep narrative | `docs/ARCHITECTURE.md` · `docs/DATABASE.md` · `docs/DEPLOYMENT.md` |
@@ -64,9 +65,22 @@ An index is never proof of production state.
 - **Diff awareness**: `npm run homatch:scope` classifies your diff into
   domains and prints the protected-surface warnings that apply. Run it
   before proposing review.
-- **Tests**: iterate with `npm run homatch:check`; release truth is
-  `npm run homatch:check:full`. Matrix tests parse sources — when reality
-  legitimately changed, fix the premise, don't weaken the assertion.
+- **Tests**: iterate with `npm run homatch:check`; release truth is the PR's
+  validation run (`npm run homatch:release:plan` shows its FULL/TARGETED
+  plan; `npm run homatch:check:full` is the same gate locally). Matrix tests
+  parse sources — when reality legitimately changed, fix the premise, don't
+  weaken the assertion.
+- **Fast release** (`docs/claude/RELEASE.md`): Do not repeatedly run the full
+  HOMATCH repository gate when the exact relevant code has already passed the
+  required full validation and its integrity can be proven. Prefer the
+  fastest safe release path. Reuse trustworthy validation evidence. Run
+  targeted checks during development. Run the full release gate once when
+  required. After a validated PR is merged without meaningful code changes,
+  promote the validated code and run deployment-specific production proof
+  instead of blindly repeating the entire repository test suite. Escalate
+  back to full validation whenever code integrity, dependency impact,
+  security impact or validation provenance is uncertain. Never trade away
+  production proof for speed.
 - **i18n**: single bundle `src/i18n/translations.ts`; extend via the
   idempotent apply-script pattern; placeholders `{{var}}` survive all six
   locales; AR/HE flip direction.

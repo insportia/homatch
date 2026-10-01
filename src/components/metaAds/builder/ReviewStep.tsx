@@ -141,7 +141,7 @@ export function ReviewStep({ campaign, status, creatives, totals, pricing, recom
     : (status?.settings.countries ?? ['GE']).map((c) => regionName(c, lang));
   const langs = (campaign.targeting?.languages ?? []).map((l) => (l.code ? languageName(l.code, lang) : l.name));
   const priorityCount = creatives.filter((c) => c.priority && c.media.length).length;
-  const eff = strategy?.targeting.effective;
+  const eff = strategy?.targeting?.effective;
   const placements = campaign.placements?.mode === 'CUSTOM' ? (campaign.placements.list ?? []) : recommended;
   const withMedia = creatives.filter((c) => c.media.length);
 

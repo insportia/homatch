@@ -311,3 +311,9 @@ test('the map places Georgian cities by name in three languages and draws Meta\'
   const back = unproject(x, y);
   assert.ok(Math.abs(back.lat - 41.7151) < 1e-9 && Math.abs(back.lng - 44.8271) < 1e-9);
 });
+
+test('the review never crashes on a strategy preview without targeting (the crash the end-to-end run found)', () => {
+  assert.match(read('src/components/metaAds/builder/ReviewStep.tsx'), /strategy\?\.targeting\?\.effective/);
+  assert.match(read('src/components/metaAds/builder/StrategyCard.tsx'), /preview\?\.targeting\?\.adjustments/);
+  assert.doesNotMatch(read('src/components/metaAds/builder/ReviewStep.tsx'), /strategy\?\.targeting\.effective/);
+});

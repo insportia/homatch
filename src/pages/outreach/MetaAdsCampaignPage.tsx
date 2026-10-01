@@ -137,7 +137,7 @@ export default function MetaAdsCampaignPage() {
           )}
 
           <div className="flex flex-wrap items-center gap-2">
-            <CampaignStatusChip status={c.status} />
+            <CampaignStatusChip campaign={c} />
             <Chip>{t('mm_c_goal')}: {t(`mads_goal_${c.goal.toLowerCase()}`)}</Chip>
             <Chip>{t('mm_c_currency')}: <span dir="ltr">{c.currency || 'USD'}</span></Chip>
             {c.special_ad_categories?.length > 0 && <Chip>{t('mads_housing_note')}</Chip>}

@@ -15,6 +15,7 @@ import { creativeAdvice } from '../../../src/lib/metaAds/creativeAdvice.ts';
 import { fundingPlan, heldFeeFromLedger, LEDGER_LABEL_KEY } from '../../../src/lib/metaAds/billing.ts';
 import { kpis, sumTotals, totalsByCurrency, emptyTotals, type MetricTotals } from '../../../src/lib/metaAds/kpi.ts';
 import { recommendedPlacements, type Placement } from '../../../src/lib/metaAds/payload.ts';
+import { statusCounts } from '../../../src/lib/metaAds/uiStatus.ts';
 import { validateLeadFormSpec, leadFormPayload, leadFormPreview, META_LOCALE, type LeadFormSpec } from '../../../src/lib/metaAds/leadForms.ts';
 import { graph, MetaApiError, mockExternalId, hasScopes, INSTANT_FORM_SCOPES, type MetaMode } from '../_shared/metaAds.ts';
 import {
@@ -315,7 +316,8 @@ export async function handleAction(x: ActionCtx): Promise<Response | null> {
         });
         return json({
           campaigns: rows, summary,
-          counts: { total: rows.length, live: rows.filter((r: any) => ['SUBMITTED', 'META_REVIEW', 'ACTIVE', 'PAUSED'].includes(r.status)).length, attention: rows.filter((r: any) => r.attention).length },
+          // The canonical status (uiStatus.ts): ACTIVE means Meta is running it; a paused campaign is never counted as active.
+          counts: statusCounts(rows),
           serviceBalance: svc ?? [],
           filters: { status: body.status ?? null, goal: body.goal ?? null, currency: body.currency ?? null, from, to },
         });

@@ -134,3 +134,15 @@ test('the plan view is the picture seen from above: the notch is empty, the home
   const corner = planToImage(frame, [frame.view.x0, frame.view.y0], frame.view.lift);
   assert.ok(Number.isFinite(corner[0]) && Number.isFinite(corner[1]));
 });
+
+test('the plan view is never the home\'s mirror image (the axes keep the picture\'s handedness)', () => {
+  for (const yaw of [35, -35, 120, 210]) {
+    const cam = camera(yaw, 38, 26, 250, 90);
+    const axes = measureAxes(render(cam), W, H);
+    if (!axes) continue;
+    const r = (d) => (d * Math.PI) / 180;
+    const [a, b] = axes.floorDeg;
+    // Plan x along the first axis, plan y along the second, both drawn y-down: a positive turn, as on screen.
+    assert.ok(Math.cos(r(a)) * Math.sin(r(b)) - Math.sin(r(a)) * Math.cos(r(b)) > 0, `yaw ${yaw}: ${axes.floorDeg}`);
+  }
+});

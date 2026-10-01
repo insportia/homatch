@@ -16,7 +16,7 @@ import type { FloorPlanRecord } from './floorplans';
 import { DesignStudioError, setHeadVersion } from './projects';
 import type { DesignVersionRecord } from '@/lib/designStudio/types';
 import type { PictureFrame } from '@/lib/designStudio/pictureFrame';
-import { measureFrame, renderPlanView } from '@/lib/designStudio/pictureGeometry';
+import { borderColor, measureFrame, renderPlanView } from '@/lib/designStudio/pictureGeometry';
 
 export const REFERENCE_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const;
 export const MAX_REFERENCE_INPUT_BYTES = 40 * 1024 * 1024;
@@ -107,8 +107,9 @@ export async function measurePicture(image: Blob): Promise<{ frame: PictureFrame
     const rgba = ctx.getImageData(0, 0, w, h).data;
     const grey = new Uint8Array(w * h);
     for (let i = 0; i < grey.length; i += 1) grey[i] = Math.round(0.299 * rgba[i * 4] + 0.587 * rgba[i * 4 + 1] + 0.114 * rgba[i * 4 + 2]);
-    const frame = measureFrame(grey, w, h);
-    if (!frame) return null;
+    const measured = measureFrame(grey, w, h);
+    if (!measured) return null;
+    const frame = { ...measured, background: borderColor(rgba, w, h) };
     const pixels = renderPlanView(rgba, w, h, frame);
     const out = document.createElement('canvas');
     out.width = frame.view.width;

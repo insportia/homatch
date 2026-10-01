@@ -150,10 +150,14 @@ export function measureAxes(g: ArrayLike<number>, w: number, h: number): Axes | 
   const r2 = -(d2[0] * d2[1]) / (d1[0] * d1[1]);
   if (!(r2 > 0)) return null; // not an orthographic view with vertical verticals
   const explained = [vertical[0], f1, f2[0]].reduce((s, i) => s + [-3, -2, -1, 0, 1, 2, 3].reduce((t, k) => t + smooth[(i + k + 180) % 180], 0), 0) / 5;
+  // Seen from above, a floor is never mirrored: the plan's x and y must keep
+  // the picture's handedness (both y down), or the plan view — and every room
+  // traced on it — comes out as the home's mirror image. Order the two axes so.
+  const keep = d1[0] * d2[1] - d1[1] * d2[0] > 0;
   return {
     verticalDeg: sharpestAngle(points, refine(smooth, vertical[0]), 4),
-    floorDeg: [a1, a2],
-    ratio: Math.sqrt(r2),
+    floorDeg: keep ? [a1, a2] : [a2, a1],
+    ratio: keep ? Math.sqrt(r2) : 1 / Math.sqrt(r2),
     confidence: Math.max(0, Math.min(1, explained / total)),
   };
 }
@@ -314,4 +318,13 @@ export function renderPlanView(rgba: ArrayLike<number>, w: number, h: number, fr
     }
   }
   return out;
+}
+
+/** The picture's background colour: the per-channel median of its border (RGBA, row-major). */
+export function borderColor(rgba: ArrayLike<number>, w: number, h: number): string {
+  const ch: number[][] = [[], [], []];
+  const take = (x: number, y: number) => { const o = (y * w + x) * 4; for (let c = 0; c < 3; c += 1) ch[c].push(rgba[o + c]); };
+  for (let x = 0; x < w; x += 4) { take(x, 0); take(x, h - 1); }
+  for (let y = 0; y < h; y += 4) { take(0, y); take(w - 1, y); }
+  return `#${ch.map((v) => { v.sort((a, b) => a - b); return Math.round(v[Math.floor(v.length / 2)]).toString(16).padStart(2, '0'); }).join('')}`;
 }

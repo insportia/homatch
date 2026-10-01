@@ -123,6 +123,35 @@ MATTERS right now, verify against the live systems, not this file)
   plan view in the same single reading. Outline error replaces the fitted-camera
   rms as the matched/approximate number (FIT_TRUST unchanged). Needs production
   acceptance on the real fixture (a NEW upload — old rows have no frame).
+- PHOTOREAL / SOURCE FIDELITY (branch `feat/design-studio-photoreal`, 2026-10-01;
+  measured-frame + wave 1 merged in, frame migration renumbered `20261004100000`):
+  * Plan view was MIRRORED (measureAxes axis order); fixed — the axes keep the
+    picture's handedness (test). Frame also records the picture `background`.
+  * Reading `ds-recon-3`: objects carry `form`, `secondaryColor`, `frontPx`; on a
+    framed (aerial) picture objects are traced on their TOP face and lowered by
+    their height through the measured camera; facing from the front edge; frame
+    aligned on rooms+openings, then refined with the lowered pieces;
+    `fidelity.wallM` (picture's cut height) + `wallCutRatio` → `interiorWallM`;
+    `frameColor` → `state.frames`. Frame vs fitted-camera disagreement → fitted.
+  * Pieces keep what was seen: `ObjectInstance.shape` (size/form/secondary,
+    `objectShape.ts`; parametric pieces drawn at it, catalogue models scaled
+    within 0.7–1.45). A model is used only if it `looksLike` the seen piece.
+    Placement: settle into the reader's room, square, back to the wall (or the
+    room edge for railings), quarter-turn fallback; door zones only while the
+    doors between the rooms stay walkable; small pieces that would block a door
+    are left out (reported), essential ones never.
+  * Surfaces: `chooseSurfaceMaterial` picks imported PBR by pattern/words/colour
+    family (worn textures penalised, paint stays flat) and `tint` balances the
+    texture to the seen colour (albedo mean measured at load).
+  * Render: GTAO + MSAA HDR post (`postFx.ts`, HIGH tier live + all stills),
+    exposure 0.88, NW sun, light wall cut; source look = exact picture camera,
+    picture background (ground hidden), section cut rebuilt at wall/partition
+    heights, doors+glazing shown, ceiling fittings hidden. Download images
+    start with the picture-camera still. New procedural forms
+    (`proceduralForms.ts`): curved sofa, shell lounge/dining chairs, pedestal/
+    drum tables, leaf foliage, made bed, TV on stand.
+  * Local acceptance loop (harness + traced reading of the real picture) lives
+    in the session scratchpad only; production acceptance is the real model.
 - Wave 1 (#19: bundle ratchet 6.5 MiB, floor pattern, storage-sign refuses
   DELETED, original preservation — its migration `20261001210000` IS applied)
   is reconciled with main `aee8f77d` but blocked: every main deploy fails

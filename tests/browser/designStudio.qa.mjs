@@ -324,7 +324,14 @@ export async function wire(page, store, errors) {
       const planRoomIds = plan ? plan.canonical.scene.floors.map((x) => x.id) : [];
       const { imageSize } = await import('../../supabase/functions/_shared/designStudio/floorplanRead.ts');
       const imageAspects = refs.map((r) => { const sz = imageSize(new Uint8Array(store.objects.get(r.object_key).body)); return sz ? sz.width / sz.height : null; });
-      const { recon: reading } = validateReconstruction(plan ? store.reconPlanAnswer : store.reconAnswer, refs.length, { usesPlan: !!plan, planRoomIds, imageAspects });
+      // Measured pictures go with their plan views, numbered after the pictures (as the server does).
+      const { readFrame } = await import('../../supabase/functions/_shared/designStudio/pictureFrame.ts');
+      const frames = [];
+      refs.forEach((r, i) => {
+        const frame = readFrame(r.picture_geometry);
+        if (frame && r.plan_view_key && store.objects.has(r.plan_view_key)) frames.push({ image: i, view: refs.length + frames.length, frame });
+      });
+      const { recon: reading } = validateReconstruction(plan ? store.reconPlanAnswer : store.reconAnswer, refs.length, { usesPlan: !!plan, planRoomIds, imageAspects, frames });
       if (!plan) Object.assign(refs[0], { status: 'INTERPRETED', interpretation: { doc: planDocument(reading, refs[0].object_key), dimensionStrings: [], readVersion: RECON_VERSION } });
       Object.assign(recon, { status: 'READ', analysis: reading, model: 'qa-fixture' });
       return json({ state: 'READ', counts: { rooms: reading.rooms.length, objects: reading.objects.length } });
@@ -841,9 +848,10 @@ async function checkpoint11(browser) {
     `${early.speed.toFixed(2)} → ${cruising.speed.toFixed(2)}`);
   await page.waitForTimeout(700);
   check('walk: and comes to rest', (await player()).speed === 0);
-  // A clear spot (clear of the sofa, the plant and the armchairs), facing the bedroom wall.
-  await scene(page, (c) => c.walkTo({ position: { x: 2.6, y: 5.55 }, target: { x: 9, y: 5.55 }, fov: 60 }));
-  check('walk: standing somewhere free to start', (await player()).pos.x === 2.6);
+  // A clear lane (past the plant, clear of the dining chairs — the sofa is drawn at the 2.5 m it was
+  // read as, so it reaches further than the catalogue's 2.2 m one did), facing the bedroom wall.
+  await scene(page, (c) => c.walkTo({ position: { x: 2.95, y: 6.8 }, target: { x: 9, y: 6.8 }, fov: 60 }));
+  check('walk: standing somewhere free to start', (await player()).pos.x === 2.95);
   await page.keyboard.down('KeyW'); await page.waitForTimeout(2500); await page.keyboard.up('KeyW');
   await page.waitForTimeout(500);
   const atWall = (await player()).pos;

@@ -19,7 +19,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { applyFinish, patternOfMaterial, type SurfacePattern } from './finishTextures.ts';
-import { PbrTextureLoader, shedPbr, wearPbr } from './pbrTextures';
+import { balanceTo, PbrTextureLoader, shedPbr, wearPbr } from './pbrTextures';
 import { selectPbrMaps, type PbrSelection } from '@/lib/designStudio/pbrMaps';
 import {
   ceilingSurfaceId, floorSurfaceId, wallSlabPlacement, type SpaceModel, type SpaceRoom,
@@ -38,8 +38,10 @@ import {
   type PlayerSettings, type Posture,
 } from '@/lib/designStudio/player';
 import { LivingRuntime, type LiveEntry } from './livingRuntime';
+import { PostFx } from './postFx';
 import { roomContaining, wallFrame, type Point } from '@/lib/designStudio/space';
 import { buildProcedural, setFinishBudget, slotColors } from './procedural';
+import { modelScale, seenColors, shapedAsset } from '@/lib/designStudio/objectShape';
 import { catalogModelUrl, loadGltf, modelKeyFor } from './modelLoader';
 
 export type PickTarget =
@@ -135,17 +137,21 @@ function lightRig(l: { timeOfDay: TimeOfDayEnv; temperature: 'WARM' | 'NEUTRAL' 
   const day = l.timeOfDay === 'DAY' ? 1 : l.timeOfDay === 'SUNSET' ? 0.62 : l.timeOfDay === 'EVENING' ? 0.4 : 0.07;
   const sunColor = l.timeOfDay === 'SUNSET' ? 0xff9a5a : l.timeOfDay === 'EVENING' ? 0xffc59a : l.timeOfDay === 'NIGHT' ? 0x9fb4e0 : 0xffffff;
   // The sun lowers toward the horizon through the evening; at night it is the moon's cool fill.
-  const sunPos = l.timeOfDay === 'DAY' ? [8, 14, 6] : l.timeOfDay === 'SUNSET' ? [14, 3.5, 4] : l.timeOfDay === 'EVENING' ? [12, 5, 8] : [-6, 12, -8];
+  // Relative to the home's centre. By day a high sun from the north-west: shadows fall
+  // toward the viewer's lower right, as in an architectural visualisation.
+  const sunPos = l.timeOfDay === 'DAY' ? [-7, 13, -5] : l.timeOfDay === 'SUNSET' ? [14, 3.5, 4] : l.timeOfDay === 'EVENING' ? [12, 5, 8] : [-6, 12, -8];
   const bg = l.timeOfDay === 'NIGHT' ? 0x1c2230 : l.timeOfDay === 'EVENING' ? 0x4a4f66 : l.timeOfDay === 'SUNSET' ? 0xe9b48a : TONE.background;
   return {
-    sun: 1.5 * day,
+    sun: 2.7 * day,
     sunColor: new THREE.Color(sunColor),
     sunPos: new THREE.Vector3(sunPos[0], sunPos[1], sunPos[2]),
-    hemi: 0.3 + 1.05 * day,
+    // Daylight is mostly sky: a soft image-based fill does the work, the
+    // hemisphere only lifts the shadows (too much of it flattens everything).
+    hemi: 0.25 + 0.38 * day,
     interior: (1 - day) * 1.3 * Math.max(0, Math.min(1, l.interiorIntensity)) + 0.1,
     interiorColor: new THREE.Color(kelvin),
     background: new THREE.Color(bg),
-    env: 0.06 + 0.34 * day,
+    env: 0.1 + 0.32 * day,
   };
 }
 
@@ -165,6 +171,12 @@ export interface WalkCallbacks {
   onLock?: (locked: boolean) => void;
 }
 
+/** Where a cut-away picture cuts the home: its outer walls, and its partitions (often lower). */
+export interface SectionCut { exteriorM: number; interiorM: number }
+
+/** A camera pose that reproduces a picture's own view (sourceCamera.viewForCanvas). */
+export interface SourcePose { position: [number, number, number]; target: [number, number, number]; fov: number; near: number; far: number }
+
 export interface CameraSnapshot {
   position: [number, number, number];
   target: [number, number, number];
@@ -177,15 +189,27 @@ const TONE = {
   background: 0xdfe3e8,
   ground: 0xd3d8df,
   wallBody: 0xfbfaf8,
-  wallTop: 0x2a3140, // the cut: walls read as a drawn plan from above
+  wallTop: 0xe3e6ea, // the cut: a light section, as in an architectural visualisation
   wallFace: 0xf7f5f1,
-  wallEdge: 0x8b93a1,
+  wallEdge: 0xb4bac4,
   floor: 0xd8c4a6, // neutral light oak until a design says otherwise
   outdoor: 0xc3cabe,
   ceiling: 0xfbfbf9,
   select: 0xe8a33a, // HOMATCH gold
   hover: 0xf2c46b,
 };
+
+/**
+ * A background colour that comes out of the tone mapping as itself: a
+ * picture's white stays white (Neutral tone mapping compresses highlights,
+ * so a plain white background would otherwise read as a grey veil).
+ */
+function untoned(hex: string, exposure = 1): THREE.Color {
+  const c = new THREE.Color(hex); // linear working space
+  const start = 0.76; const d = 1 - start;
+  const back = (y: number) => ((y <= start ? y + 0.04 : (d * d) / (1 - Math.min(y, 0.9995)) - d + start + 0.04)) / Math.max(exposure, 0.05);
+  return new THREE.Color(back(c.r), back(c.g), back(c.b));
+}
 
 /** Ease for camera transitions. */
 const ease = (t: number) => 1 - Math.pow(1 - t, 3);
@@ -277,7 +301,8 @@ export class SceneController {
     // Neutral tone mapping keeps whites white and a paint colour the colour
     // it was chosen as; ACES shifts both, which matters in a design tool.
     this.renderer.toneMapping = THREE.NeutralToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
+    // A touch under 1: whites (bedding, paint) keep their detail instead of blowing out.
+    this.renderer.toneMappingExposure = 0.88;
     this.renderer.shadowMap.enabled = quality.shadows;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.domElement.style.display = 'block';
@@ -347,7 +372,7 @@ export class SceneController {
       moving = true;
     }
     this.updateCutaway();
-    this.renderer.render(this.scene, this.camera);
+    this.draw();
     for (const fn of this.listeners) fn();
     if (moving) this.requestRender();
   };
@@ -358,6 +383,31 @@ export class SceneController {
    * open — otherwise the nearest wall would hide the very room being
    * designed. Off in walkthrough, where walls are walls.
    */
+  // ── The section cut ─────────────────────────────────────────────────
+  //
+  // An architectural "dollhouse" picture shows the home cut through at some
+  // height below the ceiling (measured from the picture: reconstructRead's
+  // fidelity.wallM). Shown from the picture's own camera, the walls, doors
+  // and glazing are cut at that height, with a flat cap on every cut wall —
+  // otherwise full-height walls hide the very rooms the picture shows. The
+  // space keeps its real ceiling height; only the drawing is cut.
+
+  private cut: SectionCut | null = null;
+  /** The ground around the home: the editor's floor to stand it on, hidden on a picture's own plain background. */
+  private ground: THREE.Mesh | null = null;
+
+  setSectionCut(cut: SectionCut | null) {
+    const next = cut && cut.exteriorM > 0.3 ? { exteriorM: cut.exteriorM, interiorM: Math.min(cut.exteriorM, Math.max(0.3, cut.interiorM)) } : null;
+    const same = (a: SectionCut | null, b: SectionCut | null) => (!a && !b) || (!!a && !!b && a.exteriorM === b.exteriorM && a.interiorM === b.interiorM);
+    if (same(next, this.cut)) return;
+    this.cut = next;
+    if (!this.space) return;
+    // The walls are drawn again at the cut, and dressed again in the design.
+    this.loadSpace(this.space, { keepCamera: true });
+    if (this.lastDesign) this.applyDesign(this.lastDesign.state, this.lastDesign.assets, this.lastDesign.materials);
+    this.requestRender();
+  }
+
   setCutaway(enabled: boolean) {
     this.cutawayEnabled = enabled;
     this.cutawayKey = '';
@@ -404,7 +454,32 @@ export class SceneController {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height, false);
+    this.postFx?.setSize(width, height, this.renderer.getPixelRatio());
     this.requestRender();
+  }
+
+  /**
+   * The finishing pass (ambient occlusion, multisampled HDR, then the same
+   * tone mapping): live on the HIGH tier, and for every still.
+   */
+  private postFx: PostFx | null = null;
+  private fxFailed = false;
+  private ensureFx(): PostFx | null {
+    if (this.postFx || this.fxFailed) return this.postFx;
+    try {
+      const size = this.renderer.getSize(new THREE.Vector2());
+      this.postFx = new PostFx(this.renderer, this.scene, this.camera, Math.max(1, size.x), Math.max(1, size.y));
+      this.postFx.setSize(Math.max(1, size.x), Math.max(1, size.y), this.renderer.getPixelRatio());
+    } catch {
+      this.fxFailed = true;
+      this.postFx = null;
+    }
+    return this.postFx;
+  }
+
+  private draw(finished = this.quality.tier === 'HIGH') {
+    const fx = finished ? this.ensureFx() : null;
+    if (fx) fx.render(); else this.renderer.render(this.scene, this.camera);
   }
 
   // ── Lighting ────────────────────────────────────────────────────────
@@ -470,7 +545,7 @@ export class SceneController {
     group.clear();
   }
 
-  loadSpace(space: SpaceModel) {
+  loadSpace(space: SpaceModel, options: { keepCamera?: boolean } = {}) {
     this.clearGroup(this.spaceGroup);
     this.surfaceMeshes.clear();
     this.surfaceMaterials.clear();
@@ -488,6 +563,8 @@ export class SceneController {
     ground.rotation.x = -Math.PI / 2;
     ground.position.set(space.extent.width / 2, -0.03, -space.extent.depth / 2);
     ground.receiveShadow = this.quality.shadows;
+    ground.visible = !this.sourceLook || !this.sourceLook.hidesGround;
+    this.ground = ground;
     this.spaceGroup.add(ground);
 
     const surfaceMaterial = (id: string, color: number) => {
@@ -540,14 +617,29 @@ export class SceneController {
     // Walls: a structural body cut around its openings, and a thin design
     // face on each side per room segment, which is what paint and materials
     // are applied to. The body is structure; it is not a design surface.
-    const bodyMat = new THREE.MeshStandardMaterial({ color: TONE.wallBody, roughness: 0.95 });
-    const topMat = new THREE.MeshStandardMaterial({ color: TONE.wallTop, roughness: 1 });
-    const edgeMat = new THREE.LineBasicMaterial({ color: TONE.wallEdge, transparent: true, opacity: 0.55 });
+    const kindMats = new Map<string, { body: THREE.MeshStandardMaterial; top: THREE.MeshStandardMaterial; edge: THREE.LineBasicMaterial }>();
+    const matsFor = (kind: 'EXTERIOR' | 'INTERIOR') => {
+      let m = kindMats.get(kind);
+      if (!m) {
+        m = {
+          body: new THREE.MeshStandardMaterial({ color: TONE.wallBody, roughness: 0.95 }),
+          top: new THREE.MeshStandardMaterial({ color: TONE.wallTop, roughness: 1 }),
+          edge: new THREE.LineBasicMaterial({ color: TONE.wallEdge, transparent: true, opacity: 0.22 }),
+        };
+        kindMats.set(kind, m);
+      }
+      return m;
+    };
     const skirting: THREE.BufferGeometry[] = [];
     for (const wall of space.walls) {
       const parts: THREE.Object3D[] = [];
       this.wallParts.set(wall.id, { start: wall.mesh.start, end: wall.mesh.end, meshes: parts });
-      const slabs = sliceWall(wall.mesh);
+      // A section cut (a cut-away picture's own) draws the wall to its cut height;
+      // openings above the cut leave no lintel, as in the picture.
+      const cutH = this.cut ? (wall.kind === 'EXTERIOR' ? this.cut.exteriorM : this.cut.interiorM) : null;
+      const drawn = cutH !== null && cutH < wall.mesh.heightM ? { ...wall.mesh, heightM: cutH } : wall.mesh;
+      const slabs = sliceWall(drawn);
+      const { body: bodyMat, top: topMat, edge: edgeMat } = matsFor(wall.kind);
       for (const slab of slabs) {
         if (slab.lengthM <= 0 || slab.heightM <= 0) continue;
         const box = new THREE.BoxGeometry(slab.lengthM, slab.heightM, wall.mesh.thicknessM);
@@ -584,7 +676,8 @@ export class SceneController {
           }
           const plane = new THREE.PlaneGeometry(piece.lengthM, piece.heightM);
           metreUVs(plane, piece.u, piece.v, piece.lengthM, piece.heightM, seg.side === 'R');
-          const face = new THREE.Mesh(plane, surfaceMaterial(seg.surfaceId, TONE.wallFace));
+          const faceMat = surfaceMaterial(seg.surfaceId, TONE.wallFace);
+          const face = new THREE.Mesh(plane, faceMat);
           const place = wallSlabPlacement(wall.mesh, piece.u, piece.v, piece.lengthM, piece.heightM);
           face.rotation.y = place.rotationY + (seg.side === 'R' ? 0 : Math.PI);
           // Local +z of the rotated slab is the R normal: (sin a, 0, cos a).
@@ -617,13 +710,13 @@ export class SceneController {
     this.buildOpenings(space);
 
     this.sun.target.position.set(space.extent.width / 2, 0, -space.extent.depth / 2);
-    this.sun.position.set(space.extent.width / 2 + 6, 14, -space.extent.depth / 2 + 8);
+    this.sun.position.copy(this.sun.target.position).add(lightRig(this.designLighting ?? { timeOfDay: 'DAY', temperature: 'NEUTRAL', interiorIntensity: 0.6 }).sunPos);
     const s = Math.max(space.extent.width, space.extent.depth);
     const cam = this.sun.shadow.camera as THREE.OrthographicCamera;
     cam.left = -s; cam.right = s; cam.top = s; cam.bottom = -s; cam.near = 0.5; cam.far = 60;
     cam.updateProjectionMatrix();
 
-    this.frameAll(false);
+    if (!options.keepCamera) this.frameAll(false);
     this.requestRender();
   }
 
@@ -901,7 +994,17 @@ export class SceneController {
    * lighting. Objects are diffed by instance, so a move updates a transform
    * and only a changed asset/colour rebuilds geometry.
    */
+  /** Window and glazing frames, in the design's frame colour (a picture's black steel). */
+  private glazingFrameMat: THREE.MeshStandardMaterial | null = null;
+  private framesColor: string | null = null;
+
+  /** The last design drawn: a space rebuilt for a section cut is dressed in it again. */
+  private lastDesign: { state: DesignState; assets: Map<string, CatalogAsset>; materials: Map<string, CatalogMaterial> } | null = null;
+
   applyDesign(state: DesignState, assets: Map<string, CatalogAsset>, materials: Map<string, CatalogMaterial>) {
+    this.lastDesign = { state, assets, materials };
+    this.framesColor = state.frames ?? null;
+    this.glazingFrameMat?.color.set(this.framesColor ?? 0xf4f4f2);
     // Model parts: a colour or material replaces the modelled finish (and
     // its texture) for the preview; removing it brings the original back.
     for (const [id, list] of this.partMaterials) {
@@ -950,7 +1053,7 @@ export class SceneController {
       const sel = mat ? selectPbrMaps(mat.pbr, this.quality.tier, this.quality.maxTextureSize) : null;
       if (sel && mat) {
         this.dressPbr(m, sel, a?.color ?? mat.pbr.baseColor, a?.color ?? null, finishRoughness ?? mat.pbr.roughness ?? 1, mat.pbr.metalness ?? 1,
-          () => this.surfaceMaterials.get(id) === m);
+          () => this.surfaceMaterials.get(id) === m, a?.tint ?? null);
         continue;
       }
       if (m.userData.pbrSig) { shedPbr(m); m.userData.pbrSig = null; }
@@ -975,12 +1078,14 @@ export class SceneController {
     const live = new Set<string>();
     for (const obj of state.objects) {
       live.add(obj.instanceId);
-      const asset = assets.get(obj.assetId);
-      const sig = `${obj.assetId}|${obj.materialVariant ?? ''}|${obj.colorOverride ?? ''}`;
+      const own = assets.get(obj.assetId);
+      const asset = own ? shapedAsset(own, obj) : undefined;
+      const shape = obj.shape;
+      const sig = `${obj.assetId}|${obj.materialVariant ?? ''}|${obj.colorOverride ?? ''}|${shape ? `${shape.widthM},${shape.depthM},${shape.heightM},${shape.form ?? ''},${shape.secondary ?? ''}` : ''}`;
       let node = this.objectsById.get(obj.instanceId);
       if (!node || this.objectSignature.get(obj.instanceId) !== sig) {
         if (node) this.disposeObject(obj.instanceId);
-        node = this.buildObject(obj, asset);
+        node = this.buildObject(obj, asset, own);
         this.objectsById.set(obj.instanceId, node);
         this.objectSignature.set(obj.instanceId, sig);
         this.objectsGroup.add(node);
@@ -1003,35 +1108,54 @@ export class SceneController {
    * the surface changed material, or after the scene was rebuilt or
    * disposed, is dropped.
    */
+  /** Texture dressing still in flight (a still waits for it, so a floor is never caught mid-load). */
+  private dressing = new Set<Promise<unknown>>();
+  private async settled(maxMs = 4000) {
+    const until = performance.now() + maxMs;
+    while (this.dressing.size && performance.now() < until) {
+      await Promise.race([Promise.allSettled([...this.dressing]), new Promise((r) => setTimeout(r, Math.max(0, until - performance.now())))]);
+    }
+  }
+
   private dressPbr(
     m: THREE.MeshStandardMaterial, sel: PbrSelection, color: string, loadingColor: string | null,
-    roughness: number, metalness: number, live: () => boolean,
+    roughness: number, metalness: number, live: () => boolean, tint: string | null = null,
   ) {
     m.roughness = roughness;
     m.metalness = metalness;
     m.userData.pbrColor = color;
+    m.userData.pbrTint = tint;
+    // A tint (the colour a picture showed) balances the texture to it once its average is known.
+    const wear = () => { if (m.userData.pbrTint) m.color.copy(balanceTo(m.userData.pbrTint as string, (m.userData.pbrMean as THREE.Color | null) ?? null)); else m.color.set(m.userData.pbrColor as string); };
     if (m.userData.pbrSig === sel.signature) {
-      if (m.userData.pbrReady) m.color.set(color);
-      else m.color.set(loadingColor ?? PBR_LOADING_TONE);
+      if (m.userData.pbrReady) wear();
+      else m.color.set(loadingColor ?? tint ?? PBR_LOADING_TONE);
       m.needsUpdate = true;
       return;
     }
     m.userData.pbrSig = sel.signature;
     m.userData.pbrReady = false;
     shedPbr(m);
-    m.color.set(loadingColor ?? PBR_LOADING_TONE);
-    void this.pbr.load(sel).then((set) => {
+    m.color.set(loadingColor ?? tint ?? PBR_LOADING_TONE);
+    const loading = this.pbr.load(sel).then((set) => {
       if (!set || this.disposed || m.userData.pbrSig !== sel.signature || !live()) return;
       wearPbr(m, set, sel.normalScale);
-      m.color.set(m.userData.pbrColor as string);
+      m.userData.pbrMean = set.mean;
+      wear();
       m.userData.pbrReady = true;
       this.requestRender();
     });
+    this.dressing.add(loading);
+    void loading.finally(() => this.dressing.delete(loading));
   }
 
-  private buildObject(obj: ObjectInstance, asset: CatalogAsset | undefined): THREE.Object3D {
+  private buildObject(obj: ObjectInstance, asset: CatalogAsset | undefined, own: CatalogAsset | undefined = asset): THREE.Object3D {
     if (asset?.procedural) {
-      const node = buildProcedural(asset.procedural.kind, asset, slotColors(asset, obj.materialVariant, obj.colorOverride));
+      // A piece rebuilt from a picture wears what was seen, on the parts that showed it.
+      const colors = obj.shape
+        ? seenColors(asset, slotColors(asset, obj.materialVariant, null), obj.colorOverride, obj.shape)
+        : slotColors(asset, obj.materialVariant, obj.colorOverride);
+      const node = buildProcedural(asset.procedural.kind, asset, colors, obj.shape?.form ?? null);
       if (asset.placement === 'FLOOR') node.add(contactShadow(asset.widthM, asset.depthM));
       // A concept block's moving parts come with it; a model declares them.
       const specs = validateInteractions(node.userData.interactions ?? asset.interactions);
@@ -1052,7 +1176,7 @@ export class SceneController {
     m.position.y = h / 2;
     g.add(m);
     const key = asset ? modelKeyFor(asset, this.quality.tier) : null;
-    if (asset && key) this.attachCatalogModel(obj.instanceId, g, asset, key);
+    if (asset && key) this.attachCatalogModel(obj.instanceId, g, asset, key, obj.shape && own ? modelScale(own, obj.shape) : null);
     return g;
   }
 
@@ -1067,7 +1191,7 @@ export class SceneController {
    * instance (flagged, never disposed with one of them). A load that finishes
    * after its piece was removed or rebuilt is dropped.
    */
-  private attachCatalogModel(instanceId: string, holder: THREE.Group, asset: CatalogAsset, key: string) {
+  private attachCatalogModel(instanceId: string, holder: THREE.Group, asset: CatalogAsset, key: string, scale: { x: number; y: number; z: number } | null = null) {
     let load = this.catalogModels.get(key);
     if (!load) {
       load = catalogModelUrl(key).then((url) => loadGltf(url, this.renderer)).then((scene) => {
@@ -1085,6 +1209,9 @@ export class SceneController {
     load.then((model) => {
       if (this.objectsById.get(instanceId) !== holder) return;
       const inst = model.clone(true);
+      // Toward the size the picture showed, within the model's bound (objectShape.ts).
+      if (scale) inst.scale.set(inst.scale.x * scale.x, inst.scale.y * scale.y, inst.scale.z * scale.z);
+      inst.updateMatrixWorld(true);
       const box = new THREE.Box3().setFromObject(inst);
       if (!box.isEmpty()) {
         const c = box.getCenter(new THREE.Vector3());
@@ -1198,9 +1325,27 @@ export class SceneController {
     this.camera.near = 0.05;
     this.camera.far = 500;
     this.camera.updateProjectionMatrix();
+    // Leaving the picture's view: the editor's own look comes back.
+    if (this.sourceLook) {
+      this.cutawayEnabled = this.sourceLook.cutaway;
+      this.scene.background = this.sourceLook.background;
+      this.sourceLook = null;
+      this.cutawayKey = '';
+      this.setSectionCut(null);
+      this.showOpeningsOnly(false);
+      if (this.ground) this.ground.visible = true;
+    }
   }
 
-  matchSourceView(view: { position: [number, number, number]; target: [number, number, number]; fov: number; near: number; far: number }) {
+  /** While the camera stands where the picture was taken: what the editor showed before. */
+  private sourceLook: { cutaway: boolean; background: THREE.Color | THREE.Texture | null; hidesGround?: boolean } | null = null;
+
+  /**
+   * Put the camera exactly where the picture looks from. With `look`, the
+   * scene is also shown as the picture shows it (every wall, its background)
+   * until the camera moves.
+   */
+  matchSourceView(view: SourcePose, look: { background?: string | null; cut?: SectionCut | null } | null = null) {
     const position = new THREE.Vector3(...view.position);
     const target = new THREE.Vector3(...view.target);
     // Lift the orbit limit FIRST: moving the camera updates the controls, which clamp to it.
@@ -1211,6 +1356,17 @@ export class SceneController {
     this.camera.far = view.far;
     this.camera.updateProjectionMatrix();
     this.matchedFrustum = true;
+    if (look) {
+      this.sourceLook ??= { cutaway: this.cutawayEnabled, background: this.scene.background };
+      this.cutawayEnabled = false;
+      this.cutawayKey = '';
+      // Cut where the picture is cut (this rebuilds the walls), then its look:
+      // its background, doors and glazing as it shows them.
+      this.setSectionCut(look.cut ?? null);
+      if (look.background) this.scene.background = untoned(look.background, this.renderer.toneMappingExposure);
+      this.showOpeningsOnly(true);
+      if (this.ground && look.background) { this.ground.visible = false; this.sourceLook.hidesGround = true; }
+    }
     this.requestRender();
   }
 
@@ -1382,8 +1538,11 @@ export class SceneController {
     this.clearGroup(this.fixturesGroup);
     const leafMat = new THREE.MeshStandardMaterial({ color: 0xece7df, roughness: 0.7 });
     const frameMat = new THREE.MeshStandardMaterial({ color: 0xf4f4f2, roughness: 0.5 });
-    const glassMat = new THREE.MeshStandardMaterial({ color: 0xcfe0ea, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.28 });
-    this.track(leafMat); this.track(frameMat); this.track(glassMat);
+    // Clear glass (a faint cool reflection, not a milky panel), in frames the design's own colour.
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0xdfe9f0, roughness: 0.03, metalness: 0.05, transparent: true, opacity: 0.16 });
+    const glazingMat = new THREE.MeshStandardMaterial({ color: this.framesColor ?? 0xf4f4f2, roughness: 0.4, metalness: 0.2 });
+    this.glazingFrameMat = glazingMat;
+    this.track(leafMat); this.track(frameMat); this.track(glassMat); this.track(glazingMat);
     const outdoor = new Set(space.rooms.filter((r) => r.outdoor).map((r) => r.id));
     for (const wall of space.walls) {
       const f = wallFrame(wall.mesh);
@@ -1404,7 +1563,7 @@ export class SceneController {
         const glazed = (panelW: number, x0: number) => {
           const t = 0.05;
           for (const [bw, bh, x, y] of [[panelW, t, x0 + panelW / 2, t / 2], [panelW, t, x0 + panelW / 2, h - t / 2], [t, h, x0 + t / 2, h / 2], [t, h, x0 + panelW - t / 2, h / 2]]) {
-            const bar = new THREE.Mesh(this.track(new THREE.BoxGeometry(bw, bh, 0.05)), frameMat);
+            const bar = new THREE.Mesh(this.track(new THREE.BoxGeometry(bw, bh, 0.05)), glazingMat);
             bar.position.set(x, y, 0);
             pivot.add(bar);
           }
@@ -1478,6 +1637,8 @@ export class SceneController {
       if (room.outdoor) continue;
       const node = new THREE.Group();
       node.name = 'ix:fixture';
+      node.userData.ceilingFixture = true;
+      node.visible = !this.openingsOnly;
       node.position.set(room.centroid.x, space.ceilingHeightM - 0.035, -room.centroid.y);
       const disc = new THREE.Mesh(this.track(new THREE.CylinderGeometry(0.16, 0.19, 0.05, 28)), fixtureMat);
       node.add(disc);
@@ -1488,7 +1649,18 @@ export class SceneController {
         effects: [{ id: 'light', type: 'LIGHT', part: 'fixture', color: '#ffe2bd', intensity: Math.min(9, 2.2 + room.areaM2 * 0.22), distance: reach * 1.1 }],
       }], null, { objectId: null });
     }
-    this.fixturesGroup.visible = this.ceilingsShown;
+    this.fixturesGroup.visible = this.ceilingsShown || this.openingsOnly;
+  }
+
+  /**
+   * Doors and glazing shown without the ceiling's light fittings: how a
+   * cut-away picture shows a home (there is no ceiling to hang them from).
+   */
+  private openingsOnly = false;
+  private showOpeningsOnly(on: boolean) {
+    this.openingsOnly = on;
+    this.fixturesGroup.visible = on || this.ceilingsShown;
+    for (const c of this.fixturesGroup.children) if (c.userData.ceilingFixture) c.visible = !on;
   }
 
   /** What the pointer rests on: a machine's part, or a whole piece (for seats and one-machine pieces). */
@@ -1968,7 +2140,7 @@ export class SceneController {
 
   private currentRig(): LightRig {
     return {
-      sun: this.sun.intensity, sunColor: this.sun.color.clone(), sunPos: this.sun.position.clone(),
+      sun: this.sun.intensity, sunColor: this.sun.color.clone(), sunPos: this.sun.position.clone().sub(this.sun.target.position),
       hemi: this.hemi.intensity, interior: this.interior.intensity, interiorColor: this.interior.color.clone(),
       background: (this.scene.background as THREE.Color | null)?.clone() ?? new THREE.Color(TONE.background),
       env: this.scene.environmentIntensity,
@@ -1978,7 +2150,7 @@ export class SceneController {
   private applyRig(r: LightRig) {
     this.sun.intensity = r.sun;
     this.sun.color.copy(r.sunColor);
-    this.sun.position.copy(r.sunPos);
+    this.sun.position.copy(this.sun.target.position).add(r.sunPos);
     this.hemi.intensity = r.hemi;
     this.interior.intensity = r.interior;
     this.interior.color.copy(r.interiorColor);
@@ -2012,7 +2184,7 @@ export class SceneController {
   // as a person standing in it sees it). The live view is restored exactly.
 
   async renderStill(
-    view: { kind: 'OVERVIEW' | 'TOP' | 'CURRENT' } | { kind: 'EYE'; pose: WalkPose },
+    view: { kind: 'OVERVIEW' | 'TOP' | 'CURRENT' } | { kind: 'EYE'; pose: WalkPose } | { kind: 'SOURCE'; pose: SourcePose; background?: string | null; cut?: SectionCut | null },
     width: number, height: number, quality = 0.92,
   ): Promise<Blob | null> {
     // The current view is taken exactly as it is — in the walkthrough too.
@@ -2025,6 +2197,11 @@ export class SceneController {
     const cutaway = this.cutawayEnabled;
     const focus = this.focusRadius;
     const viewMode = this.view;
+    const background = this.scene.background;
+    const cut = this.cut;
+    const fixtures = this.fixturesGroup.visible;
+    const openingsOnly = this.openingsOnly;
+    const groundVisible = this.ground?.visible ?? true;
     try {
       this.transition = null;
       this.renderer.setPixelRatio(1);
@@ -2038,6 +2215,21 @@ export class SceneController {
         this.camera.fov = view.pose.fov;
         this.camera.position.set(view.pose.position.x, EYE_HEIGHT_M, -view.pose.position.y);
         this.camera.lookAt(view.pose.target.x, EYE_HEIGHT_M - 0.15, -view.pose.target.y);
+      } else if (view.kind === 'SOURCE') {
+        // Exactly the picture's camera, at the picture's own shape: nothing cut
+        // away (the picture shows every wall), on the picture's own background.
+        this.cutawayEnabled = false;
+        this.setCeilings(false);
+        this.camera.position.set(...view.pose.position);
+        this.camera.fov = view.pose.fov;
+        this.camera.near = view.pose.near;
+        this.camera.far = view.pose.far;
+        this.camera.lookAt(...view.pose.target);
+        // The walls first (a cut rebuilds them), then the picture's look over them.
+        this.setSectionCut(view.cut ?? null);
+        if (view.background) this.scene.background = untoned(view.background, this.renderer.toneMappingExposure);
+        if (this.ground && view.background) this.ground.visible = false;
+        this.showOpeningsOnly(true);
       } else if (!current) {
         this.cutawayEnabled = true;
         this.normalFrustum();
@@ -2047,7 +2239,9 @@ export class SceneController {
       this.camera.updateProjectionMatrix();
       this.cutawayKey = '';
       this.updateCutaway();
-      this.renderer.render(this.scene, this.camera);
+      await this.settled();
+      this.ensureFx()?.setSize(width, height, 1);
+      this.draw(true);
       const out = document.createElement('canvas');
       out.width = width;
       out.height = height;
@@ -2060,11 +2254,22 @@ export class SceneController {
     } finally {
       this.renderer.setPixelRatio(ratio);
       this.renderer.setSize(size.x, size.y, false);
+      this.postFx?.setSize(size.x, size.y, ratio);
+      this.scene.background = background;
       this.camera.aspect = aspect;
       this.cutawayEnabled = cutaway;
       this.focusRadius = focus;
       this.view = viewMode;
-      if (!current) {
+      if (view.kind === 'SOURCE') {
+        this.setSectionCut(cut);
+        this.showOpeningsOnly(openingsOnly);
+        this.fixturesGroup.visible = fixtures;
+        if (this.ground) this.ground.visible = groundVisible;
+        this.scene.background = background;
+        this.camera.near = 0.05;
+        this.camera.far = 500;
+        this.restore(saved, false);
+      } else if (!current) {
         this.setCeilings(false);
         this.restore(saved, false);
       } else {
@@ -2575,6 +2780,7 @@ export class SceneController {
     this.clearGroup(this.fixturesGroup);
     this.living.dispose();
     this.envTexture?.dispose();
+    this.postFx?.dispose();
     this.pbr.dispose();
     for (const d of this.disposables) d.dispose();
     this.listeners.clear();

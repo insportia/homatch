@@ -20,6 +20,7 @@
 
 import { isFlat, type CatalogAsset } from './catalog.ts';
 import type { ObjectInstance } from './designState.ts';
+import { shapedAsset } from './objectShape.ts';
 import { pointInPolygon, wallFrame, type Point, type SpaceModel, type SpaceRoom } from './space.ts';
 
 export interface Obb {
@@ -175,8 +176,9 @@ export function placementWorld(ctx: PlacementContext, room: SpaceRoom): Placemen
   }
   const objects: PlacementWorld['objects'] = [];
   for (const o of ctx.objects) {
-    const asset = ctx.assets.get(o.assetId);
-    if (!asset) continue;
+    const own = ctx.assets.get(o.assetId);
+    if (!own) continue;
+    const asset = shapedAsset(own, o);
     objects.push({
       id: o.instanceId, asset, flat: isFlat(asset), object: o,
       box: solidBox(footprint(asset, { x: o.position.x, y: o.position.z }, o.rotationY)),

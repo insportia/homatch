@@ -77,8 +77,10 @@ function reading(cam, frame) {
     // Traced in the empty notch, outside the home: a mistrace.
     { key: 'ghost', type: 'OTHER', truth: [7.5, 6.5], guess: [7.5, 6.5] },
   ].map((o) => ({
-    key: o.key, type: o.type, label: o.key, room: null, at: o.guess, atPx: uvOf(cam, o.truth), pxImage: 0, facingDeg: 0,
-    widthM: 1, depthM: 1, heightM: 1, color: null, material: null, style: null, confidence: 0.8, basis: 'OBSERVED', seenIn: [0],
+    // Traced as the reader is asked to: the centre of the piece's TOP (1 m up), and the middle of its front edge.
+    key: o.key, type: o.type, label: o.key, room: null, at: o.guess, atPx: uvOf(cam, o.truth, 1), frontPx: uvOf(cam, [o.truth[0], o.truth[1] - 0.5], 1),
+    pxImage: 0, facingDeg: 90,
+    widthM: 1, depthM: 1, heightM: 1, color: null, material: null, style: null, form: null, secondaryColor: null, confidence: 0.8, basis: 'OBSERVED', seenIn: [0],
   }));
   return {
     view: 'AERIAL', scaleConfidence: 0.5, scaleEvidence: null, ceilingHeightM: null, rooms, openings: [], objects, surfaces: [],
@@ -136,6 +138,22 @@ test('pieces follow the picture through the measured camera; a trace outside the
   assert.ok(Math.hypot(at.sofa.at[0] - 3, at.sofa.at[1] - 2) < 0.25, JSON.stringify(at.sofa.at));
   assert.ok(Math.hypot(at.table.at[0] - 2, at.table.at[1] - 6) < 0.25, 'the reader put the table 3 m off; the picture puts it back');
   assert.equal(at.ghost.geometry, 'ESTIMATE', 'a point in the notch is outside the picture\'s own outline');
+  // Which way it faces comes from where its front edge is drawn (south here), not from the reader's 90 degrees.
+  assert.equal(at.sofa.facingDeg, 180, `facing ${at.sofa.facingDeg}`);
+});
+
+test('a piece traced on its top lands where it stands, and the picture gives its own wall height', () => {
+  const cam = camera();
+  const frame = frameOf(cam);
+  const r = reading(cam, frame);
+  // A 2 m wardrobe, traced on its top: lowered by 2 m it stands at its floor point.
+  r.objects.push({ key: 'wardrobe', type: 'WARDROBE', label: 'wardrobe', room: null, at: [1, 1], atPx: uvOf(cam, [1.5, 3], 2), frontPx: null, pxImage: 0, facingDeg: 0,
+    widthM: 1, depthM: 0.6, heightM: 2, color: null, material: null, style: null, form: null, secondaryColor: null, confidence: 0.8, basis: 'OBSERVED', seenIn: [0] });
+  const { recon } = validateReconstruction(r, 1, { imageAspects: [ASPECT], frames: [{ image: 0, view: 1, frame: readFrame(frame) }] });
+  const w = recon.objects.find((o) => o.key === 'wardrobe');
+  assert.ok(Math.hypot(w.at[0] - 1.5, w.at[1] - 3) < 0.25, JSON.stringify(w.at));
+  // The frame's wall is 2.7 m in this picture.
+  assert.ok(Math.abs(recon.fidelity.wallM - 2.7) < 0.15, `wall ${recon.fidelity.wallM}`);
 });
 
 test('the camera is the measured one, and its error is how far the rebuilt outline is from the picture\'s', () => {

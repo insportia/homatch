@@ -16,6 +16,7 @@
 import type { CatalogAsset } from './catalog.ts';
 import type { ObjectInstance } from './designState.ts';
 import { footprint, type Obb } from './placement.ts';
+import { shapedAsset } from './objectShape.ts';
 import { pointInPolygon, wallFrame, type Point, type SpaceModel } from './space.ts';
 
 export const EYE_HEIGHT_M = 1.6;
@@ -78,7 +79,8 @@ export function buildWalkModel(space: SpaceModel, objects: ObjectInstance[], ass
 
   const furniture: Obb[] = [];
   for (const o of objects) {
-    const a = assets.get(o.assetId);
+    const own = assets.get(o.assetId);
+    const a = own ? shapedAsset(own, o) : undefined;
     if (!a || a.placement !== 'FLOOR' || a.heightM < STEP_OVER_M) continue;
     furniture.push(footprint(a, { x: o.position.x, y: o.position.z }, o.rotationY));
   }

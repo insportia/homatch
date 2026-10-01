@@ -15,6 +15,7 @@
 import { HEX, type CatalogAsset, type CatalogMaterial } from './catalog.ts';
 import type { DesignState, LightingState, LockSet, ObjectInstance, SurfaceAssignment } from './designState.ts';
 import { blocks, evaluatePlacement, type PlacementIssue } from './placement.ts';
+import { shapedAsset } from './objectShape.ts';
 import { parseSurfaceId, type SpaceModel } from './space.ts';
 import { HIDEABLE_ROLES, PAINTABLE_ROLES, type PartRole } from './modelParts.ts';
 import { DEFAULT_CAPABILITIES, type AssetCapability } from './interactions.ts';
@@ -135,7 +136,7 @@ export function validateOperation(state: DesignState, op: Operation, ctx: Operat
       if (!asset.active) return { code: 'INACTIVE_ASSET', detail: o.assetId };
       if (o.colorOverride != null && !HEX.test(o.colorOverride)) return { code: 'BAD_COLOR' };
       if (locks.kitchen && (asset.category === 'KITCHEN' || roomKindOf(ctx, o.roomId) === 'KITCHEN')) return { code: 'CATEGORY_LOCKED', detail: 'kitchen' };
-      return placementCheck(asset, o.position.x, o.position.z, o.rotationY, o.roomId);
+      return placementCheck(shapedAsset(asset, o), o.position.x, o.position.z, o.rotationY, o.roomId);
     }
     case 'REMOVE_OBJECT': {
       const r = objectOp(op.instanceId, 'FURNITURE');
@@ -149,7 +150,7 @@ export function validateOperation(state: DesignState, op: Operation, ctx: Operat
       const asset = ctx.assets.get(r.assetId);
       if (!asset) return { code: 'UNKNOWN_ASSET', detail: r.assetId };
       if (!can(asset, 'MOVABLE')) return { code: 'NOT_ALLOWED_FOR_ASSET', detail: 'MOVABLE' };
-      return placementCheck(asset, op.position.x, op.position.z, r.rotationY, op.roomId, r.instanceId);
+      return placementCheck(shapedAsset(asset, r), op.position.x, op.position.z, r.rotationY, op.roomId, r.instanceId);
     }
     case 'ROTATE_OBJECT': {
       if (!finite(op.rotationY)) return { code: 'MALFORMED', detail: 'rotation' };
@@ -158,7 +159,7 @@ export function validateOperation(state: DesignState, op: Operation, ctx: Operat
       const asset = ctx.assets.get(r.assetId);
       if (!asset) return { code: 'UNKNOWN_ASSET', detail: r.assetId };
       if (!can(asset, 'ROTATABLE')) return { code: 'NOT_ALLOWED_FOR_ASSET', detail: 'ROTATABLE' };
-      return placementCheck(asset, r.position.x, r.position.z, op.rotationY, r.roomId, r.instanceId);
+      return placementCheck(shapedAsset(asset, r), r.position.x, r.position.z, op.rotationY, r.roomId, r.instanceId);
     }
     case 'REPLACE_OBJECT': {
       const r = objectOp(op.instanceId, 'FURNITURE');
@@ -168,7 +169,7 @@ export function validateOperation(state: DesignState, op: Operation, ctx: Operat
       const asset = ctx.assets.get(op.assetId);
       if (!asset) return { code: 'UNKNOWN_ASSET', detail: op.assetId };
       if (!asset.active) return { code: 'INACTIVE_ASSET', detail: op.assetId };
-      return placementCheck(asset, r.position.x, r.position.z, r.rotationY, r.roomId, r.instanceId);
+      return placementCheck(shapedAsset(asset, r), r.position.x, r.position.z, r.rotationY, r.roomId, r.instanceId);
     }
     case 'SET_OBJECT_COLOR': {
       if (op.color != null && !HEX.test(op.color)) return { code: 'BAD_COLOR' };
@@ -320,7 +321,8 @@ export function applyOperation(state: DesignState, op: Operation): { state: Desi
       const surfaces = { ...state.surfaces };
       for (const id of op.surfaceIds) {
         before[id] = state.surfaces[id] ?? null;
-        const current = state.surfaces[id] ?? EMPTY_SURFACE;
+        // A new choice is the customer's own: the colour it was balanced to from a picture goes.
+        const { tint: _seen, ...current } = state.surfaces[id] ?? EMPTY_SURFACE;
         surfaces[id] = op.type === 'ASSIGN_MATERIAL'
           ? { ...current, materialId: op.materialId }
           : { ...current, color: op.color, finish: op.finish ?? current.finish };

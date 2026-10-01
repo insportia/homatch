@@ -24,9 +24,10 @@ import { fileSlug, pdfFromJpegs, zipStore } from '@/lib/designStudio/exportFiles
 import type { SpaceModel } from '@/lib/designStudio/space';
 import type { SceneController } from '../canvas/SceneController';
 import { bytesOf, download, renderPages, renderStills, STILL_H, STILL_W } from './exportRender';
+import type { pictureStill } from './ReferencePanel';
 
 export function DownloadDialog({
-  controller, space, state, assets, materials, names, projectName, versionName, estimated, fromPictures = false, onClose,
+  controller, space, state, assets, materials, names, projectName, versionName, estimated, fromPictures = false, pictureView = null, onClose,
 }: {
   controller: SceneController | null;
   space: SpaceModel;
@@ -39,6 +40,8 @@ export function DownloadDialog({
   estimated: boolean;
   /** The space was rebuilt from the customer's pictures, not drawn from a plan. */
   fromPictures?: boolean;
+  /** The picture's own camera, when the design was rebuilt from a picture: its still comes first. */
+  pictureView?: ReturnType<typeof pictureStill>;
   onClose: () => void;
 }) {
   const { t, isRTL } = useLanguage();
@@ -58,6 +61,11 @@ export function DownloadDialog({
     setBusy('IMAGES'); setError(false);
     try {
       const shots = await stills();
+      // The rebuilt home from the picture's own camera, first: the one to compare with the picture.
+      if (pictureView && controller) {
+        const blob = await controller.renderStill({ kind: 'SOURCE', pose: pictureView.pose, background: pictureView.background, cut: pictureView.cut }, pictureView.width, pictureView.height);
+        if (blob) shots.unshift({ key: 'picture-view', roomId: null, blob });
+      }
       const files = await Promise.all(shots.map(async (s, i) => ({
         name: `${String(i + 1).padStart(2, '0')}-${s.roomId ? fileSlug(names.get(s.roomId) ?? '', 'room') : s.key}.jpg`,
         data: await bytesOf(s.blob),

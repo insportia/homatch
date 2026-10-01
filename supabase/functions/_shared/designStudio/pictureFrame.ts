@@ -46,6 +46,8 @@ export interface PictureFrame {
   view: { width: number; height: number; x0: number; y0: number; perUnit: number; lift: number };
   /** How sure the measurement is, 0..1. */
   confidence: number;
+  /** The picture's plain background (#rrggbb), when measured: its views are drawn on it. */
+  background?: string | null;
 }
 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -76,6 +78,7 @@ export function readFrame(raw: unknown): PictureFrame | null {
     v: 1, width: o.width, height: o.height, verticalDeg: o.verticalDeg, floorDeg: [floor[0], floor[1]], ratio: o.ratio, wall: o.wall, footprint,
     view: { width: view.width, height: view.height, x0: view.x0, y0: view.y0, perUnit: view.perUnit, lift: view.lift },
     confidence: o.confidence,
+    background: typeof o.background === 'string' && /^#[0-9a-f]{6}$/i.test(o.background) ? o.background.toLowerCase() : null,
   };
 }
 

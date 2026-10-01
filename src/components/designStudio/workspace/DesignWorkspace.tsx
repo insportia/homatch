@@ -50,6 +50,7 @@ import {
 import { saveVersionThumbnail, signedUrls } from '@/services/designStudio/files';
 import { copyState, uniqueVersionName } from '@/lib/designStudio/versioning';
 import { normalizeDesignState } from '@/lib/designStudio/designState';
+import { shapedAsset } from '@/lib/designStudio/objectShape';
 import { cn } from '@/lib/utils';
 import { DesignCanvas } from '../canvas/DesignCanvas';
 import type { CameraSnapshot, PickTarget, SceneController } from '../canvas/SceneController';
@@ -62,7 +63,7 @@ import { AiDesignPanel, type AiProposalItem } from './AiDesignPanel';
 import { WalkthroughOverlay } from './WalkthroughOverlay';
 import { ShareDialog } from './ShareDialog';
 import { DownloadDialog } from './DownloadDialog';
-import { ReferencePanel, useReconstructionFor } from './ReferencePanel';
+import { pictureStill, ReferencePanel, useReconstructionFor } from './ReferencePanel';
 import { download } from './exportRender';
 import { fileSlug } from '@/lib/designStudio/exportFiles';
 
@@ -527,7 +528,8 @@ function Editor({
   }, [space, assets, state.objects, targetRoomFor, names, run, t]);
 
   const findingsFor = useCallback((obj: ObjectInstance): PlacementIssue[] => {
-    const asset = assets.get(obj.assetId);
+    const own = assets.get(obj.assetId);
+    const asset = own ? shapedAsset(own, obj) : undefined;
     if (!space || !asset) return [];
     return evaluatePlacement({ space, assets, objects: state.objects }, asset, { x: obj.position.x, y: obj.position.z }, obj.rotationY, obj.roomId, obj.instanceId);
   }, [space, assets, state.objects]);
@@ -542,7 +544,8 @@ function Editor({
     },
     onMove: (id: string, p: { x: number; y: number }, free: boolean) => {
       const o = state.objects.find((x) => x.instanceId === id);
-      const asset = o ? assets.get(o.assetId) : undefined;
+      const own = o ? assets.get(o.assetId) : undefined;
+      const asset = o && own ? shapedAsset(own, o) : undefined;
       if (!o || !asset) return null;
       const roomId = roomContaining(space, p);
       const pctx = { space, assets, objects: state.objects };
@@ -598,7 +601,8 @@ function Editor({
     },
     onRotate: (id: string, rotation: number, free: boolean) => {
       const o = state.objects.find((x) => x.instanceId === id);
-      const a = o ? assets.get(o.assetId) : undefined;
+      const own = o ? assets.get(o.assetId) : undefined;
+      const a = o && own ? shapedAsset(own, o) : undefined;
       const r = free ? rotation : quantise({ x: 0, y: 0 }, rotation).rotation;
       const valid = !!o && !!a && !blocks(evaluatePlacement({ space, assets, objects: state.objects }, a, { x: o.position.x, y: o.position.z }, r, o.roomId, id));
       return { rotation: r, valid };
@@ -1228,6 +1232,7 @@ function Editor({
           versionName={versionName}
           estimated={estimated}
           fromPictures={label.originKey === 'ds_source_pictures'}
+          pictureView={source ? pictureStill(reference, source) : null}
           onClose={() => setDownloadOpen(false)}
         />
       ) : null}

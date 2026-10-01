@@ -24,6 +24,40 @@ export interface PbrTextureSet {
   map: THREE.Texture;
   normalMap: THREE.Texture | null;
   orm: THREE.Texture | null;
+  /** The albedo's average colour (linear), when it could be measured: what a tint balances against. */
+  mean: THREE.Color | null;
+}
+
+/** The average colour of an image (linear), from a small copy of it; null when it cannot be read. */
+export function imageMean(image: unknown): THREE.Color | null {
+  try {
+    if (typeof document === 'undefined' || !image) return null;
+    const c = document.createElement('canvas');
+    c.width = 16; c.height = 16;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return null;
+    ctx.drawImage(image as CanvasImageSource, 0, 0, 16, 16);
+    const d = ctx.getImageData(0, 0, 16, 16).data;
+    const lin = (v: number) => { const x = v / 255; return x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; };
+    let r = 0; let g = 0; let b = 0;
+    for (let i = 0; i < d.length; i += 4) { r += lin(d[i]); g += lin(d[i + 1]); b += lin(d[i + 2]); }
+    const n = d.length / 4;
+    return new THREE.Color(r / n, g / n, b / n);
+  } catch {
+    return null; // a tainted or unreadable image: no balancing, the texture as it is
+  }
+}
+
+/**
+ * The colour a material is multiplied by so its texture's average becomes
+ * the colour that was seen: the grain stays, the tone is the picture's.
+ * Bounded, so a texture is never pushed into a caricature of itself.
+ */
+export function balanceTo(seen: string, mean: THREE.Color | null): THREE.Color {
+  const target = new THREE.Color(seen);
+  if (!mean) return target;
+  const k = (t: number, m: number) => Math.max(0.25, Math.min(2.4, t / Math.max(m, 0.01)));
+  return new THREE.Color(k(target.r, mean.r), k(target.g, mean.g), k(target.b, mean.b));
 }
 
 type Sign = (key: string) => Promise<string | null>;
@@ -36,6 +70,7 @@ async function defaultSign(key: string): Promise<string | null> {
 export class PbrTextureLoader {
   private base = new Map<string, Promise<THREE.Texture | null>>();
   private loadedBase = new Set<THREE.Texture>();
+  private means = new Map<string, THREE.Color | null>();
   private clones = new Map<string, THREE.Texture>();
   private loader = new THREE.TextureLoader();
   private disposed = false;
@@ -97,7 +132,9 @@ export class PbrTextureLoader {
       sel.orm ? this.loadBase(sel.orm, false) : Promise.resolve(null),
     ]);
     if (!albedo || this.disposed) return null;
+    if (!this.means.has(sel.albedo)) this.means.set(sel.albedo, imageMean(albedo.image));
     return {
+      mean: this.means.get(sel.albedo) ?? null,
       map: this.repeated(sel.albedo, albedo, sel.repeat),
       normalMap: normal && sel.normal ? this.repeated(sel.normal, normal, sel.repeat) : null,
       orm: orm && sel.orm ? this.repeated(sel.orm, orm, sel.repeat) : null,

@@ -14,7 +14,7 @@
 // real geometry, which is why it can be edited and walked through.
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Check, ImagePlus, Loader2, Minus, X } from 'lucide-react';
+import { ArrowLeft, ImagePlus, Loader2, X } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import type { FloorPlanDocument } from '@/services/developer/floorplan';
@@ -35,39 +35,18 @@ import {
 } from '@/services/designStudio/reconstructions';
 import type { CatalogAsset } from '@/lib/designStudio/catalog';
 import { readFrame } from '@/lib/designStudio/pictureFrame';
-import { scaleFit } from '@/lib/designStudio/sourceCamera';
-import { ENGINE_VERSION, STAGES, STAGE_COPY, type Stage } from '@/lib/designStudio/hybrid/contract';
-import { totals } from '@/lib/designStudio/hybrid/cost';
-import { runEngine, unprojectWith, type EngineResult } from '@/lib/designStudio/hybrid/orchestrate';
-import { generationStatus, startGeneration, visualQa } from '@/services/designStudio/generation';
+import { scaleFit, viewForCanvas } from '@/lib/designStudio/sourceCamera';
+import type { Stage } from '@/lib/designStudio/hybrid/contract';
+import { compileSceneSpec } from '@/lib/designStudio/hybrid/compileSpec';
+import { runEngine, unprojectWith } from '@/lib/designStudio/hybrid/orchestrate';
+import { engineReport } from '@/lib/designStudio/hybrid/report';
+import { designChecks } from '@/lib/designStudio/hybrid/designChecks';
+import { withChecks } from '@/lib/designStudio/hybrid/fidelity';
+import { discardFactory, factoryStatus, startFactory, visualQa } from '@/services/designStudio/factory';
 import { offscreenSourceStill } from './canvas/offscreenStill';
+import { freshStages, GenerationStages, type StageStatus } from './GenerationStages';
 
 type Step = 'PICK' | 'WORKING' | 'REVIEW' | 'BUILDING';
-type StageStatus = 'PENDING' | 'RUNNING' | 'DONE' | 'SKIPPED';
-const freshStages = (): Record<Stage, StageStatus> => Object.fromEntries(STAGES.map((s) => [s, 'PENDING'])) as Record<Stage, StageStatus>;
-
-/** What is kept of an engine run: routes, timings, cost lines, the visual check and the fidelity gates (never URLs). */
-function engineReport(r: EngineResult, extra: { versionId: string; startedAt: number; endedAt: number }): Record<string, unknown> {
-  return {
-    engineVersion: ENGINE_VERSION,
-    mode: 'RECONSTRUCT_FROM_IMAGE',
-    versionId: extra.versionId,
-    totalMs: Math.round(extra.endedAt - extra.startedAt),
-    timings: r.timings,
-    decisions: r.decisions.map((d) => ({ key: d.key, type: d.type, route: d.route, impact: Math.round(d.impact * 100) / 100, group: d.group, reason: d.reason })),
-    generated: [...r.generated.entries()].map(([k, g]) => ({ key: k, assetId: g.assetId, sha256: g.sha256 })),
-    gpu: { jobId: r.gpu.jobId, state: r.gpu.state, error: r.gpu.error, persistedBytes: r.gpu.persistedBytes, worker: r.gpu.worker },
-    qa: r.qa ? { scores: r.qa.scores, errors: r.qa.errors.map((e) => ({ code: e.code, target: e.target, severity: e.severity, confidence: e.confidence, evidence: e.evidence.slice(0, 200) })) } : null,
-    qaCalls: r.qaCalls,
-    correctionPasses: r.correctionPasses,
-    applied: r.applied.slice(0, 60),
-    skipped: r.skipped.slice(0, 60),
-    cost: r.cost,
-    costTotals: totals(r.cost),
-    fidelity: r.fidelity,
-    build: { placed: r.build.placed.length, unmatched: r.build.unmatched, unplaced: r.build.unplaced },
-  };
-}
 
 const ERROR_KEY: Record<string, string> = {
   DS_REFERENCE_TYPE: 'ds_recon_error_type',
@@ -116,14 +95,6 @@ export function ReconstructionFlow({
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [stages, setStages] = useState<Record<Stage, StageStatus>>(freshStages);
-  const [elapsed, setElapsed] = useState(0);
-  useEffect(() => {
-    if (step !== 'BUILDING') return undefined;
-    const t0 = Date.now();
-    setElapsed(0);
-    const id = window.setInterval(() => setElapsed(Math.floor((Date.now() - t0) / 1000)), 1000);
-    return () => window.clearInterval(id);
-  }, [step]);
 
   const recon = record?.analysis ?? null;
   const previews = useMemo(() => files.map((f) => URL.createObjectURL(f)), [files]);
@@ -236,16 +207,31 @@ export function ReconstructionFlow({
       const fid = recon.fidelity && camera && recon.fidelity.image === camera.image ? recon.fidelity : null;
       const cut = fid?.wallM ? { exteriorM: fid.wallM * scale, interiorM: (fid.interiorWallM ?? fid.wallM) * scale } : null;
       const background = camera ? readFrame(refs[camera.image]?.picture_geometry)?.background ?? null : null;
+      // The source camera in the built space: the factory renders exactly this view.
+      const scaled = fit ? scaleFit(fit, scale) : null;
+      const edge = 1600;
+      const w = scaled ? (scaled.aspect >= 1 ? edge : Math.round(edge * scaled.aspect)) : edge;
+      const h = scaled ? (scaled.aspect >= 1 ? Math.round(edge / scaled.aspect) : edge) : edge;
+      const pose = scaled ? viewForCanvas(scaled, w, h, centre) : null;
+      const sourceCamera = scaled && pose ? { position: pose.position, target: pose.target, fov: pose.fov, near: pose.near, far: pose.far, aspect: scaled.aspect, background, cut } : null;
+      const assetMap = new Map(assets.map((a) => [a.code, a]));
+      const materialMap = new Map(materials.map((m) => [m.id, m]));
       const result = await runEngine({
         recon: kept, assets, confirmed: new Set(corrections.confirmed), unproject: fit ? unprojectWith(fit) : null,
         roomsBuilt: space.rooms.length, quality: 'HIGH',
       }, {
-        startGeneration: (keys) => startGeneration(record.id, keys),
-        generationStatus,
+        startFactory: (spec, pass) => startFactory({ projectId, reconstructionId: record.id, pass, spec }),
+        factoryStatus,
+        discardFactory,
         assemble,
-        render: (state) => (fit ? offscreenSourceStill({ space, state, assets, materials, fit: scaleFit(fit, scale), centre, cut, background }) : Promise.resolve(null)),
+        compile: (state, outputs) => compileSceneSpec({
+          space, state, assets: assetMap, materials: materialMap, camera: sourceCamera,
+          source: { kind: 'PICTURE', architecture: 'OBSERVED', furnishing: 'OBSERVED' }, render: { edge, samples: 128 }, outputs,
+        }),
+        browserRender: (state) => (scaled ? offscreenSourceStill({ space, state, assets, materials, fit: scaled, centre, cut, background }) : Promise.resolve(null)),
         visualQa: async (render, r) => visualQa({
-          reconstructionId: record.id, render,
+          reconstructionId: record.id,
+          ...('assetId' in render ? { renderAssetId: render.assetId } : { render: render.dataUrl }),
           objects: r.objects.map((o) => ({ key: o.key, type: o.type, label: o.label })),
           rooms: r.rooms.map((x) => ({ key: x.key, kind: x.kind })),
         }),
@@ -253,12 +239,15 @@ export function ReconstructionFlow({
         now: () => Date.now(),
         onStage: mark,
       });
-      mark('PREPARING', 'RUNNING');
+      // The built home held to the same facts as any design: walkable, nothing in anything, the source's scale.
+      const checks = designChecks(space, result.state, assetMap, canonical);
+      result.fidelity = withChecks(result.fidelity, checks.dimensions.filter((x) => x.name === 'walkability' || x.name === 'intersections' || x.name === 'scale'));
+      mark('FINALIZING', 'RUNNING');
       const version = await createReconstructedVersion({ userId, projectId, sourceId, name: t('ds_recon_version_name'), state: result.state, styleTags: recon.styleWords });
-      const report = engineReport(result, { versionId: version.id, startedAt, endedAt: performance.now() });
+      const report = engineReport(result, { mode: 'RECONSTRUCT_FROM_IMAGE', versionId: version.id, startedAt, endedAt: performance.now() });
       // The report is a record of the run; failing to keep it never loses the design.
       await markBuilt(record.id, sourceId, version.id, report).catch(() => markBuilt(record.id, sourceId, version.id));
-      mark('PREPARING', 'DONE');
+      mark('FINALIZING', 'DONE');
       onBuilt(sourceId);
     } catch (e) {
       fail(e, 'ds_recon_build_failed');
@@ -313,27 +302,9 @@ export function ReconstructionFlow({
         ) : null}
 
         {step === 'BUILDING' ? (
-          <section className="mx-auto grid min-h-[40vh] max-w-md content-center gap-4" role="status" aria-live="polite" data-testid="recon-building">
-            <div>
-              <p className="text-[17px] font-semibold">{t('ds_recon_building')}</p>
-              <p className="mt-1 text-[13px] text-[#5B6472]" data-testid="recon-elapsed">{t('ds_gen_elapsed', { m: Math.floor(elapsed / 60), s: String(elapsed % 60).padStart(2, '0') })}</p>
-            </div>
-            <ol className="grid gap-2">
-              {STAGES.map((s) => {
-                const st = stages[s];
-                return (
-                  <li key={s} data-stage={s} data-state={st}
-                    className={cn('flex items-center gap-3 rounded-lg bg-white px-3 py-2 text-[14px] ring-1', st === 'RUNNING' ? 'ring-[#0C1119]' : 'ring-[#E3E6EB]', st === 'PENDING' || st === 'SKIPPED' ? 'text-[#8A919C]' : '')}>
-                    <span className="grid h-5 w-5 shrink-0 place-items-center" aria-hidden="true">
-                      {st === 'RUNNING' ? <Loader2 className="h-4 w-4 animate-spin" /> : st === 'DONE' ? <Check className="h-4 w-4 text-[hsl(152_55%_38%)]" /> : st === 'SKIPPED' ? <Minus className="h-4 w-4" /> : <span className="h-1.5 w-1.5 rounded-full bg-[#C9CED6]" />}
-                    </span>
-                    <span className="min-w-0 flex-1">{t(STAGE_COPY[s])}</span>
-                    <span className="sr-only">{t(`ds_gen_state_${st.toLowerCase()}`)}</span>
-                  </li>
-                );
-              })}
-            </ol>
-          </section>
+          <div className="grid min-h-[40vh] place-items-center" data-testid="recon-building">
+            <GenerationStages stages={stages} title={t('ds_recon_building')} />
+          </div>
         ) : null}
 
         {step === 'WORKING' ? (

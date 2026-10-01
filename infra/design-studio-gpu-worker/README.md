@@ -1,51 +1,61 @@
-# Design Studio GPU worker
+# Design Studio scene factory (Blender on Runpod)
 
-Builds the high-impact pieces of a picture reconstruction (a distinctive sofa,
-shell chairs, beds, plants…) as 3D models, from the customer's own picture.
-It is a Runpod Serverless worker: **min workers 0, max workers 1**, so it costs
-nothing while idle. It is not a Railway service and has nothing to do with
-`homatch-official-worker`.
+HOMATCH's online 3D factory. AI and HOMATCH decide **what** the home is (the
+reading of a picture or a floor plan, the measured camera, the calibrated
+plan, the catalogue); HOMATCH compiles that into a strict **SceneBuildSpec**
+(`src/lib/designStudio/hybrid/sceneSpec.ts` — data only). This worker runs
+Blender headless and builds the scene from the spec:
 
-## What runs inside
+| Stage | What Blender builds |
+|---|---|
+| Architecture | floor slabs for every room (any polygon: L-shapes included), walls with real openings, door frames and leaves, window frames, glass and sills, baseboards, balcony railings, ceilings |
+| Furnishing | every piece at the size, form and colours read — sofas (straight, L, curved), shell chairs, beds with bedding, tables, kitchens with counters and wall cabinets, wardrobes, sanitaryware, appliances, curtains, plants, rugs — or a catalogue model when one genuinely looks like the piece |
+| Materials | HOMATCH catalogue materials as PBR (albedo, normal, roughness from ORM, tile size, rotation, the colour a picture showed as a tint) |
+| Lighting | sun and sky by time of day, a soft ceiling light per room |
+| Checking | a Cycles render from the source picture's own camera (with its section cut and background) for the visual check |
+| Exporting | the whole home as GLB (semantic node names: `floor:`, `wall:`, `door:`, `window:`, `railing:`, `ceiling:`, `obj:<instance>`), and one GLB per group of identical walkthrough pieces |
 
-| Step | Tool | Licence |
-|---|---|---|
-| Mask from the object's box | SAM 2.1 hiera-small | Apache-2.0 |
-| Image → 3D (PBR GLB) | TRELLIS.2-4B | MIT (code and weights) |
-| Image encoder (inside TRELLIS.2) | DINOv3 (gated) | DINOv3 licence, commercial use allowed — "Built with DINOv3" |
-| Clean-up, orientation, size, floor, decimation | Blender 4.2 LTS, headless, our own script only | GPL (tool, not linked) |
-| Runtime GLB (KTX2, meshopt, validation) | glTF-Transform 4.5.1, KTX-Software 4.4.2, gltf-validator | MIT / Apache-2.0 |
+Then every GLB is optimised (dedup, prune, KTX2 when textured, meshopt) and
+passes the Khronos validator, and the outputs go only to the signed URLs the
+job brought. The walkthrough stays HOMATCH's own (SceneController): the
+factory's pieces replace HOMATCH's drawn pieces there; architecture is drawn
+by HOMATCH from the same canonical geometry so walls remain editable surfaces.
 
-TRELLIS.2's default background remover (RMBG-2.0) is CC BY-NC: it is replaced
-by a stub that refuses to run, and the worker asserts that at load.
+No generative 3D, no model weights, no tokens: SAM/TRELLIS are not part of
+this worker.
 
 ## Security
 
-- The job carries **signed URLs only** (one GET for the picture, one PUT per
-  model), host-locked to `*.r2.cloudflarestorage.com`. No storage credentials
+- The job carries **signed URLs only**, host-locked to
+  `*.r2.cloudflarestorage.com`: GETs for the catalogue maps and models the
+  spec names (resolved by the server from the catalogue, never by the
+  browser), PUTs for exactly the outputs. No storage or database credentials
   ever reach the worker.
-- Blender runs only `worker/blender_normalize.py` with a JSON parameter file;
-  nothing from the customer or a model is executed.
-- Every input is bounded (`worker/schema.py`); downloads are size-, type- and
-  hash-checked; outputs are validated before upload and again on the server.
+- Blender runs only `worker/factory/build.py` (HOMATCH-owned). The spec is
+  validated before Blender starts (`worker/spec.py`) and again inside Blender;
+  nothing in it is ever evaluated or executed. A test fails the build if any
+  factory file calls eval/exec/compile/dynamic import/a shell.
+- Inputs are size-, type- and magic-checked before Blender sees them; outputs
+  are checked again on the server (size, hash, glTF inspection) before use.
 - Temporary files live in one job directory that is always removed.
 
 ## Setup (owner, once)
 
 1. Runpod → Serverless → New Endpoint → **GitHub repo**, Dockerfile
    `infra/design-studio-gpu-worker/Dockerfile`, build context
-   `infra/design-studio-gpu-worker`. GPU 48 GB (A6000/L40S) or 80 GB;
-   min workers 0, max workers 1, idle timeout 5 s, execution timeout 900 s.
-   Optional: attach a network volume (weights are cached under
-   `/runpod-volume/homatch-ds-models`).
-2. Endpoint secret `HF_TOKEN`: a Hugging Face read token on an account that
-   has accepted the DINOv3 and SAM licences.
-3. Supabase edge secrets: `RUNPOD_API_KEY`, `RUNPOD_DS_ENDPOINT_ID`,
-   `RUNPOD_DS_USD_PER_SECOND` (the endpoint's per-second GPU price; GPU cost
+   `infra/design-studio-gpu-worker`. A 24 GB GPU is enough (RTX A5000 /
+   4090 / L4 class); **min workers 0, max workers 1**, idle timeout 5 s,
+   execution timeout 900 s. No endpoint secrets are needed.
+2. Supabase edge secrets: `RUNPOD_API_KEY`, `RUNPOD_DS_ENDPOINT_ID`,
+   `RUNPOD_DS_USD_PER_SECOND` (the endpoint's per-second price; compute cost
    lines are ESTIMATED from measured seconds × this rate).
 
-Without (3) the app reports generation as unavailable and every piece is drawn
-by HOMATCH, marked approximate.
+Without (2) the app says the factory is unavailable: a picture reconstruction
+still builds (HOMATCH's own walkthrough, checked on a browser still), and the
+floor-plan "realistic 3D" action reports it is not available.
+
+The image builds itself once at build time (`factory selftest`): if the
+factory cannot build the fixture home, the image does not build.
 
 ## Tests
 
@@ -53,5 +63,8 @@ by HOMATCH, marked approximate.
 python -m pytest -q
 ```
 
-Runs the whole pipeline with a mock generator and a box segmenter, with real
-Blender when it is installed (`HM_BLENDER`, or `blender` on PATH).
+Real Blender runs when installed (`HM_BLENDER`, or `blender` on PATH); the
+glTF toolchain when `HM_GLTF_TRANSFORM` / `gltf-transform` and `NODE_PATH`
+with `gltf-validator` are available. `tests/fixtures/apartment.spec.json` is
+written by `node scripts/design-studio/factory-fixtures.mjs` from HOMATCH's
+own builder, so the worker tests build what production sends.

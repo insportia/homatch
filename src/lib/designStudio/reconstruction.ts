@@ -202,7 +202,9 @@ export function matchAsset(obj: Pick<ReconObject, 'type' | 'widthM' | 'depthM' |
   }
   const family = FAMILY[obj.type];
   if (!family) return null;
-  const candidates = assets.filter((a) => a.active && inFamily(a, family));
+  // A category match alone never brings in a catalogue MODEL (it must look like the piece, above):
+  // the family fallback is HOMATCH's own parametric piece, drawn at the size and colours read.
+  const candidates = assets.filter((a) => a.active && a.procedural !== null && inFamily(a, family));
   if (!candidates.length) return null;
   const words = new Set([...styleWords, ...(obj.style ? [obj.style] : [])].map((w) => w.toLowerCase()));
   let best: { a: CatalogAsset; score: number; size: number } | null = null;

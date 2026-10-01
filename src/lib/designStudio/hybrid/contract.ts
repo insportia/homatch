@@ -1,21 +1,22 @@
 // THE HYBRID ENGINE'S CONTRACT — what a Design Studio job is asked, and what it answers.
 //
 // One contract for every way a customer arrives at a space: a picture to
-// rebuild, a floor plan to furnish, a brief in words, an existing design to
-// change. AI reads and proposes; deterministic code measures, places,
-// validates and stores; a GPU worker builds only the objects nothing else can
-// represent faithfully. Nothing here names a provider: a GPU vendor, a model
-// or a renderer is an adapter behind this contract, never part of it.
+// rebuild, a floor plan to build and furnish, a brief in words, an existing
+// design to change. AI reads, plans, compares and proposes corrections;
+// deterministic code measures, places, validates and compiles the scene build
+// spec; the Blender scene factory (a GPU worker) builds and renders the scene
+// from that spec. Nothing here names a provider: a compute vendor or a
+// renderer is an adapter behind this contract, never part of it.
 //
 // Pure and dependency-free: the browser, the edge function and the tests read
 // the same code (byte-identical copy in supabase/functions/_shared/designStudio/hybrid).
 
-export const ENGINE_VERSION = 'ds-hybrid-1';
+export const ENGINE_VERSION = 'ds-factory-1';
 
 export const JOB_MODES = ['RECONSTRUCT_FROM_IMAGE', 'DESIGN_FROM_FLOOR_PLAN', 'DESIGN_FROM_TEXT', 'REDESIGN_EXISTING_SCENE'] as const;
 export type JobMode = typeof JOB_MODES[number];
 /** The modes this build runs end to end; the others are accepted by the contract and refused as NOT_YET. */
-export const LIVE_MODES: ReadonlySet<JobMode> = new Set<JobMode>(['RECONSTRUCT_FROM_IMAGE']);
+export const LIVE_MODES: ReadonlySet<JobMode> = new Set<JobMode>(['RECONSTRUCT_FROM_IMAGE', 'DESIGN_FROM_FLOOR_PLAN']);
 
 export type QualityTarget = 'DRAFT' | 'STANDARD' | 'HIGH';
 export type DeviceTarget = 'DESKTOP' | 'MOBILE' | 'BOTH';
@@ -43,28 +44,36 @@ export interface JobInput {
  * taken, nothing more precise than that.
  */
 export const STAGES = [
-  'UNDERSTANDING', // the picture is read
-  'MEASURING', // geometry follows the picture's measured camera
-  'FINDING', // catalogue, parametric or generated: each object's route
-  'BUILDING_OBJECTS', // the GPU builds what nothing else can represent
-  'MATERIALS', // surfaces and finishes
-  'ASSEMBLING', // the canonical scene
-  'OPTIMIZING', // runtime variants
-  'CHECKING', // rendered from the picture's camera and compared with it
-  'PREPARING', // saved and opened
+  'UNDERSTANDING', // the source is read (picture or plan)
+  'MEASURING', // geometry from the measured camera / the calibrated plan
+  'PLANNING', // each object's route, and the scene build spec
+  'ARCHITECTURE', // the factory builds floors, walls, openings, balcony
+  'FURNISHING', // the factory builds and places every piece
+  'MATERIALS', // catalogue materials onto the surfaces
+  'LIGHTING', // daylight, interior light, the source camera
+  'CHECKING', // rendered from the source camera and compared with it
+  'PREPARING', // the walkthrough's models, optimised for every device
+  'FINALIZING', // saved as a design version and opened
 ] as const;
 export type Stage = typeof STAGES[number];
 /** The customer-facing copy key for each stage (translations.ts). */
 export const STAGE_COPY: Record<Stage, string> = {
   UNDERSTANDING: 'ds_gen_stage_understanding',
   MEASURING: 'ds_gen_stage_measuring',
-  FINDING: 'ds_gen_stage_finding',
-  BUILDING_OBJECTS: 'ds_gen_stage_building',
+  PLANNING: 'ds_gen_stage_planning',
+  ARCHITECTURE: 'ds_gen_stage_architecture',
+  FURNISHING: 'ds_gen_stage_furnishing',
   MATERIALS: 'ds_gen_stage_materials',
-  ASSEMBLING: 'ds_gen_stage_assembling',
-  OPTIMIZING: 'ds_gen_stage_optimizing',
+  LIGHTING: 'ds_gen_stage_lighting',
   CHECKING: 'ds_gen_stage_checking',
   PREPARING: 'ds_gen_stage_preparing',
+  FINALIZING: 'ds_gen_stage_finalizing',
+};
+
+/** The factory's own progress (worker stage markers) → the stage the customer sees. */
+export const FACTORY_STAGE: Record<string, Stage> = {
+  ARCHITECTURE: 'ARCHITECTURE', FURNISHING: 'FURNISHING', MATERIALS: 'MATERIALS', LIGHTING: 'LIGHTING',
+  RENDERING: 'CHECKING', EXPORTING: 'PREPARING', OPTIMIZING: 'PREPARING',
 };
 
 export interface StageTiming { stage: Stage; startedAt: string; endedAt: string | null; ms: number | null }
@@ -117,7 +126,7 @@ export function validateJobInput(raw: unknown): { ok: true; input: JobInput } | 
 }
 
 /** How each object reached the scene. */
-export type ObjectRoute = 'CATALOGUE' | 'PARAMETRIC' | 'GENERATED' | 'APPROXIMATE' | 'UNRESOLVED';
+export type ObjectRoute = 'CATALOGUE' | 'PARAMETRIC' | 'FACTORY' | 'UNRESOLVED';
 
 export interface JobOutput {
   engineVersion: string;
@@ -125,7 +134,8 @@ export interface JobOutput {
   /** The design version the scene was saved as (the canonical HOMATCH scene). */
   versionId: string | null;
   objectRoutes: Record<string, ObjectRoute>;
-  generatedAssetIds: string[];
+  /** Project-private factory outputs (renders, scene tiers, walkthrough pieces). */
+  factoryAssetIds: string[];
   unresolved: string[];
   timings: StageTiming[];
   /** Cost lines (cost.ts), each MEASURED, ESTIMATED or NOT_AVAILABLE. */

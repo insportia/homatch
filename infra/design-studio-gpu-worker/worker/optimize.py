@@ -57,12 +57,16 @@ def optimize(src: Path, out: Path, texture_size: int, tools: dict | None = None)
     work = out.parent / f"{out.stem}.opt"
     work.mkdir(parents=True, exist_ok=True)
     cur = src
+    textured = facts(src)["textures"] > 0
+    # Texture steps only when there are textures (a factory-built piece wears colours, not maps).
     steps = [
-        ["resize", "--width", str(texture_size), "--height", str(texture_size)],
+        *([["resize", "--width", str(texture_size), "--height", str(texture_size)]] if textured else []),
         ["dedup"],
         ["prune"],
-        ["uastc", "--slots", "normalTexture", "--level", "2", "--rdo", "--rdo-lambda", "0.5", "--zstd", "18"],
-        ["etc1s", "--quality", "255"],
+        *([
+            ["uastc", "--slots", "normalTexture", "--level", "2", "--rdo", "--rdo-lambda", "0.5", "--zstd", "18"],
+            ["etc1s", "--quality", "255"],
+        ] if textured else []),
     ]
     for i, step in enumerate(steps):
         nxt = work / f"{i}.glb"

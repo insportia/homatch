@@ -1,26 +1,35 @@
-"""The GPU worker without a GPU: schema, security, crops, and the whole pipeline with the mock generator.
+"""The Blender scene factory and its worker: spec, security, a real Blender build, outputs, failure handling.
 
-The Blender stage runs for real when a Blender binary is available
-(HM_BLENDER, or `blender` on PATH, or the Windows default install);
-otherwise those tests are skipped and say so.
+Blender runs for real when a binary is available (HM_BLENDER, `blender` on
+PATH, or the Windows default install); the glTF toolchain and the Khronos
+validator run when installed (HM_GLTF_TRANSFORM / gltf-transform on PATH, and
+NODE_PATH with gltf-validator). A test that needs a missing tool is skipped
+and says which tool.
 """
 from __future__ import annotations
 
+import copy
+import io
 import json
 import os
+import re
 import shutil
 import struct
+import tempfile
 from pathlib import Path
 
-import numpy as np
 import pytest
 from PIL import Image
 
 from worker import pipeline as pipeline_mod
-from worker.imaging import BoxSegmenter, object_rgba
-from worker.models import MockGenerator
-from worker.schema import Job, JobError, ObjectJob, parse_job
+from worker.handler import handle
+from worker.optimize import glb_json
+from worker.schema import JobError, parse_job
+from worker.spec import SpecError, validate_spec
 
+HERE = Path(__file__).resolve().parent
+WORKER = HERE.parent / "worker"
+SPEC = json.loads((HERE / "fixtures" / "apartment.spec.json").read_text())
 R2 = "https://abc123.r2.cloudflarestorage.com/homatch-storage/users/u/design-studio-models/p/x.glb?X-Amz-Signature=s"
 UUID = "123e4567-e89b-42d3-a456-426614174000"
 
@@ -32,166 +41,343 @@ def blender_path() -> str | None:
     return None
 
 
-def good(**over):
-    job = {
-        "jobId": UUID, "image": {"url": R2, "sha256": None},
-        "objects": [{"key": "sofa", "type": "SOFA", "crop": [0.1, 0.1, 0.5, 0.5], "tight": [0.15, 0.15, 0.45, 0.45],
-                     "sizeM": {"width": 2.6, "depth": 0.95, "height": 0.75}, "outputs": {"glb": R2}}],
-        "limits": {"maxTriangles": 40000, "textureSize": 1024, "deadlineS": 900}, "model": "mock",
-    }
-    job.update(over)
-    return job
+def gltf_transform() -> str | None:
+    return os.environ.get("HM_GLTF_TRANSFORM") or shutil.which("gltf-transform")
 
+
+needs_blender = pytest.mark.skipif(blender_path() is None, reason="Blender is not installed here")
+
+
+def spec(**over) -> dict:
+    s = copy.deepcopy(SPEC)
+    s["render"] = {"width": 360, "height": 258, "samples": 4}
+    s.update(over)
+    return s
+
+
+def groups(s: dict) -> list[str]:
+    return sorted({o["group"] for o in s["objects"] if o["runtime"] and o["group"]})
+
+
+def job(s: dict | None = None, **over) -> dict:
+    s = s or spec()
+    j = {
+        "jobId": UUID, "spec": s, "inputs": {"textures": {}, "models": {}},
+        "outputs": {"render": R2, "scene": {"DESKTOP": R2, "MOBILE": R2}, "objects": {g: R2 for g in groups(s)}},
+        "limits": {"deadlineS": 600, "textureSize": {"DESKTOP": 2048, "MOBILE": 1024}, "objectTextureSize": 1024, "device": "CPU"},
+    }
+    j.update(over)
+    return j
+
+
+# ── A. the spec ───────────────────────────────────────────────────────
+
+def test_the_fixture_spec_is_valid_and_complete():
+    v = validate_spec(SPEC)
+    assert len(v["rooms"]) == 7 and len(v["walls"]) >= 10 and len(v["objects"]) >= 30
+    assert any(r["outdoor"] for r in v["rooms"]), "the balcony is in the spec"
+    assert sum(len(w["openings"]) for w in v["walls"]) >= 10
+
+
+@pytest.mark.parametrize("mutate, why", [
+    (lambda s: s.update(version="hm-scene-0"), "version"),
+    (lambda s: s["objects"][0].update(kind="SPACESHIP"), "kind"),
+    (lambda s: s["objects"][0].update(id="__import__('os').system('rm -rf /')"), "id"),
+    (lambda s: s["objects"][0].update(at=[1e9, 0]), "number"),
+    (lambda s: s["objects"][0].update(at=[float("nan"), 0]), "number"),
+    (lambda s: s["objects"][0]["size"].update(w=True), "number"),
+    (lambda s: s["objects"][0].update(colors={"body": "red"}), "colour"),
+    (lambda s: s["objects"][0].update(colors={"Body; DROP": "#ffffff"}), "slot"),
+    (lambda s: s["rooms"][0].update(floor="floor:nowhere"), "surface"),
+    (lambda s: s["rooms"][0].update(polygon=[[0, 0], [1, 1]]), "3 points"),
+    (lambda s: s["walls"][0].update(end=s["walls"][0]["start"]), "degenerate"),
+    (lambda s: s["walls"][0]["openings"].append({"id": "x", "kind": "PORTAL", "offsetM": 0.5, "widthM": 0.4, "sillM": 0, "heightM": 1}), "allowed"),
+    (lambda s: s.update(objects=s["objects"] * 10), "300"),
+    (lambda s: s["surfaces"][0].update(material="not-declared"), "declared"),
+    (lambda s: s["render"].update(width=99999), "render.width"),
+])
+def test_a_malicious_or_malformed_spec_is_refused(mutate, why):
+    s = copy.deepcopy(SPEC)
+    mutate(s)
+    with pytest.raises(SpecError, match=re.escape(why) if why != "300" else "more than 300"):
+        validate_spec(s)
+
+
+def test_unknown_fields_never_reach_blender():
+    s = copy.deepcopy(SPEC)
+    s["script"] = "import os; os.system('id')"
+    s["objects"][0]["python"] = "exec('1')"
+    v = validate_spec(s)
+    assert "script" not in v and "python" not in v["objects"][0]
+
+
+def test_the_factory_executes_only_its_own_code():
+    """No eval/exec/compile/dynamic import/shell anywhere in the factory or the spec reader."""
+    banned = re.compile(r"(?<![\w.])(eval|exec|compile|__import__)\s*\(|\b(importlib|os\.system|os\.popen|subprocess|pickle|marshal)\b")
+    allowed_import = re.compile(r"__import__\(\"mathutils\"\)")
+    for f in [*(WORKER / "factory").glob("*.py"), WORKER / "spec.py"]:
+        for i, line in enumerate(f.read_text().splitlines(), 1):
+            code = line.split("#", 1)[0]
+            if banned.search(code):
+                pytest.fail(f"{f.name}:{i}: {line.strip()}")
+
+
+# ── B. the job ────────────────────────────────────────────────────────
 
 def test_a_good_job_parses():
-    j = parse_job(good())
-    assert j.objects[0].size_m == (2.6, 0.95, 0.75) and j.model == "mock"
+    j = parse_job(job())
+    assert j.render_url == R2 and set(j.scene_urls) == {"DESKTOP", "MOBILE"} and set(j.object_urls) == set(groups(spec()))
 
 
-@pytest.mark.parametrize("mutate,why", [
-    (lambda j: j.update(jobId="x"), "jobId"),
-    (lambda j: j["image"].update(url="https://evil.example.com/x.jpg"), "only the storage endpoint"),
-    (lambda j: j["image"].update(url="http://abc.r2.cloudflarestorage.com/x"), "https"),
-    (lambda j: j["objects"][0].update(key="../../etc"), "key"),
-    (lambda j: j["objects"][0].update(type="WARDROBE"), "generatable"),
-    (lambda j: j["objects"][0].update(crop=[0.5, 0.1, 0.4, 0.5]), "left < right"),
-    (lambda j: j["objects"][0]["outputs"].update(glb="https://attacker.r2.dev/x"), "storage endpoint"),
-    (lambda j: j.update(objects=[]), "objects"),
-    (lambda j: j.update(model="some-unlicensed-model"), "approved"),
-    (lambda j: j.update(limits={"maxTriangles": 5_000_000}), "limits"),
+@pytest.mark.parametrize("mutate, why", [
+    (lambda j: j.update(jobId="../../etc"), "jobId"),
+    (lambda j: j["outputs"].update(render="https://evil.example.com/x"), "storage endpoint"),
+    (lambda j: j["outputs"].update(render="http://abc.r2.cloudflarestorage.com/x"), "storage endpoint"),
+    (lambda j: j["inputs"].update(textures={"mat-unknown": {"albedo": R2}}), "not a material"),
+    (lambda j: j["inputs"].update(models={"x/y": R2}), "not a model"),
+    (lambda j: j["outputs"].update(objects={"gextra": R2}), "one URL per walkthrough group"),
+    (lambda j: j["outputs"].update(scene={"DESKTOP": R2}), "one URL per tier"),
+    (lambda j: j["limits"].update(deadlineS=99999), "deadlineS"),
+    (lambda j: j["limits"].update(device="TPU"), "device"),
+    (lambda j: j["spec"].update(camera=None), "no camera"),
 ])
 def test_a_bad_job_is_refused_not_repaired(mutate, why):
-    j = good()
+    j = job()
     mutate(j)
     with pytest.raises(JobError, match=why):
         parse_job(j)
 
 
-def test_too_many_objects_is_refused():
-    o = good()["objects"][0]
-    with pytest.raises(JobError):
-        parse_job(good(objects=[{**o, "key": f"k{i}"} for i in range(17)]))
+def test_production_refuses_to_ship_unoptimised_models(monkeypatch):
+    monkeypatch.delenv("HM_ALLOW_UNOPTIMIZED", raising=False)
+    monkeypatch.setattr("worker.handler.tools", lambda: {"blender": "x", "gltf_transform": None, "node": None, "ktx": None})
+    out = handle({"input": job()})
+    assert out["ok"] is False and out["error"].startswith("TOOLCHAIN_MISSING")
+    assert handle({"input": {"jobId": "nope"}})["error"].startswith("INVALID_JOB")
 
 
-def test_the_crop_is_the_object_alone_rgba_and_square():
-    img = Image.new("RGB", (800, 600), (240, 240, 240))
-    img.paste((30, 140, 130), (200, 150, 400, 300))  # a teal "sofa"
-    rgba, cov = object_rgba(img, (0.2, 0.2, 0.55, 0.55), (0.25, 0.25, 0.5, 0.5), BoxSegmenter(), size=256)
-    assert rgba.mode == "RGBA" and rgba.size == (256, 256)
-    a = np.asarray(rgba)[..., 3]
-    assert 0.05 < cov < 0.95 and a.max() == 255 and a[0, 0] == 0
+# ── C. a real Blender build ───────────────────────────────────────────
+
+class FakeTransfer:
+    def __init__(self, files: dict | None = None, fail_put: bool = False):
+        self.files = files or {}
+        self.puts: list[tuple[str, int, str, bytes]] = []
+        self.fail_put = fail_put
+
+    def get(self, url, limit):
+        data = self.files[url]
+        if len(data) > limit:
+            raise JobError("input: too large")
+        return data
+
+    def put(self, url, data, content_type):
+        if self.fail_put:
+            raise RuntimeError("upload: HTTP 500")
+        self.puts.append((url, len(data), content_type, data))
 
 
-def fake_job(tmp: Path) -> Job:
-    return Job(job_id=UUID, image_url=R2, image_sha256=None, objects=(
-        ObjectJob(key="sofa", type="SOFA", crop=(0.2, 0.2, 0.55, 0.55), tight=(0.25, 0.25, 0.5, 0.5), size_m=(2.6, 0.95, 0.75), put_url=R2),
-        ObjectJob(key="chair", type="CHAIR", crop=(0.6, 0.6, 0.7, 0.7), tight=(0.62, 0.62, 0.68, 0.68), size_m=(0.5, 0.5, 0.8), put_url=R2),
-    ), model="mock")
+def tools() -> dict:
+    return {"blender": blender_path(), "gltf_transform": gltf_transform(), "node": shutil.which("node")}
 
 
-@pytest.fixture
-def offline(monkeypatch, tmp_path):
-    img = Image.new("RGB", (800, 600), (240, 240, 240))
-    img.paste((30, 140, 130), (200, 150, 400, 300))
-    img.paste((240, 120, 30), (500, 380, 540, 420))
-    uploads = {}
-    monkeypatch.setattr(pipeline_mod, "download_image", lambda url, sha: img)
-    monkeypatch.setattr(pipeline_mod, "upload", lambda url, path: uploads.setdefault(path.name, path.read_bytes()))
-    return uploads
+@pytest.fixture(scope="module")
+def built():
+    if blender_path() is None:
+        pytest.skip("Blender is not installed here")
+    tr = FakeTransfer()
+    stages: list[str] = []
+    # The factory's own export (positions exact); the optimisation toolchain is tested on its own below.
+    out = pipeline_mod.run_job(parse_job(job()), {**tools(), "gltf_transform": None}, tr, progress=stages.append)
+    out["_stages"] = stages
+    return out, tr
 
 
-@pytest.mark.skipif(blender_path() is None, reason="no Blender binary available")
-def test_the_whole_pipeline_runs_and_cleans_up(offline):
-    out = pipeline_mod.run_job(fake_job(Path(".")), MockGenerator(), BoxSegmenter(), {"blender": blender_path(), "gltf_transform": None})
-    assert [o["ok"] for o in out["objects"]] == [True, True], json.dumps(out, indent=1)
-    sofa = out["objects"][0]
-    # Normalised to the seen size: width along X, depth, height.
-    w, d, h = sofa["dims_m"]
-    assert abs(w - 2.6) / 2.6 < 0.05 and abs(d - 0.95) / 0.95 < 0.08 and abs(h - 0.75) / 0.75 < 0.08, sofa["dims_m"]
-    # A chair-sized model asked to be a chair: each axis within the ±35 % bound of one uniform scale (never stretched into a caricature).
-    cw, cd, ch = out["objects"][1]["dims_m"]
-    assert max(cw, cd, ch) / min(cw / 0.5, cd / 0.5, ch / 0.8) <= 0.8 * 1.36 / 0.65 + 1e-6
-    assert sofa["sha256"] and sofa["bytes"] == len(offline["sofa.glb"])
-    # Everything intermediate is gone; only the final GLBs were uploaded.
+def _glb_from(tr: FakeTransfer, ctype: str, nth: int = 0) -> dict:
+    data = [p for p in tr.puts if p[2] == ctype][nth][3]
+    length = struct.unpack_from("<I", data, 12)[0]
+    return json.loads(data[20:20 + length])
+
+
+@needs_blender
+def test_the_factory_builds_the_l_shaped_home_renders_and_exports(built):
+    out, tr = built
+    c = out["build"]["counts"]
+    assert c["rooms"] == 7 and c["railings"] >= 1 and c["openings"] >= 10
+    assert c["piecesFailed"] == 0 and c["pieces"] == len(SPEC["objects"])
     assert out["temporaryDirRemoved"] is True and out["temporaryBytesDeleted"] > 0
-    assert sorted(offline) == ["chair.glb", "sofa.glb"]
-    for t in ("download", "total"):
-        assert t in out["timings"]
+    assert out["attempts"] == 1
+    kinds = {p[2] for p in tr.puts}
+    assert kinds == {"image/jpeg", "model/gltf-binary"}
 
 
-@pytest.mark.skipif(blender_path() is None, reason="no Blender binary available")
-def test_the_piece_faces_homatch_front_and_stands_on_the_floor(offline):
-    pipeline_mod.run_job(fake_job(Path(".")), MockGenerator(), BoxSegmenter(), {"blender": blender_path(), "gltf_transform": None})
-    import trimesh
-
-    scene = trimesh.load(file_obj=__import__("io").BytesIO(offline["sofa.glb"]), file_type="glb", force="mesh")
-    v = scene.vertices
-    assert abs(v[:, 1].min()) < 1e-3, "lowest point on the floor (glTF Y-up)"
-    assert abs((v[:, 0].min() + v[:, 0].max()) / 2) < 1e-3 and abs((v[:, 2].min() + v[:, 2].max()) / 2) < 1e-3, "footprint centred"
-    # The back (the high part) is at +Z: the front faces -Z, HOMATCH's convention.
-    high = v[v[:, 1] > v[:, 1].max() * 0.75]
-    assert high[:, 2].mean() > 0, high[:, 2].mean()
+@needs_blender
+def test_progress_is_the_factory_s_real_stages_in_order(built):
+    out, _ = built
+    assert out["_stages"] == ["ARCHITECTURE", "FURNISHING", "MATERIALS", "LIGHTING", "RENDERING", "EXPORTING", "OPTIMIZING"]
 
 
-def test_one_object_failing_does_not_fail_the_apartment(offline, monkeypatch):
+@needs_blender
+def test_the_render_is_the_source_camera_at_the_spec_size_and_not_blank(built):
+    out, tr = built
+    jpg = next(p[3] for p in tr.puts if p[2] == "image/jpeg")
+    im = Image.open(io.BytesIO(jpg))
+    assert im.size == (360, 258) and im.format == "JPEG"
+    assert out["outputs"]["render"]["bytes"] <= 2 * 1024 * 1024
+    px = list(im.convert("L").getdata())
+    mean = sum(px) / len(px)
+    assert sum((v - mean) ** 2 for v in px) / len(px) > 50, "the home is in the picture, not an empty frame"
+
+
+@needs_blender
+def test_the_scene_keeps_semantic_names_and_places_every_piece_where_the_spec_says(built):
+    _, tr = built
+    gl = _glb_from(tr, "model/gltf-binary", 0)
+    names = {n.get("name", "") for n in gl["nodes"]}
+    floors = {n for n in names if n.startswith("floor:")}
+    assert len(floors) == 7, "every room's floor, the L-shape included"
+    assert any(n.startswith("wall:") for n in names) and any(n.startswith("window:") for n in names) and any(n.startswith("door:") for n in names)
+    assert any(n.startswith("railing:") for n in names) and any(n.startswith("ceiling:") for n in names)
+    by_name = {n.get("name"): n for n in gl["nodes"]}
+    for o in SPEC["objects"]:
+        node = by_name.get(f"obj:{o['id']}"[:63])
+        assert node is not None, o["id"]
+        t = node.get("translation", [0, 0, 0])
+        # glTF is three.js's convention: (x, up, −north).
+        assert abs(t[0] - o["at"][0]) < 1e-3 and abs(t[1] - o["elevationM"]) < 1e-3 and abs(t[2] + o["at"][1]) < 1e-3
+
+
+@needs_blender
+def test_identical_tiers_are_stored_once_and_every_walkthrough_group_is_delivered(built):
+    out, tr = built
+    sc = out["outputs"]["scene"]
+    assert "DESKTOP" in sc and (sc["MOBILE"].get("sameAs") == "DESKTOP" or sc["MOBILE"]["sha256"] != sc["DESKTOP"]["sha256"])
+    assert set(out["outputs"]["objects"]) == set(groups(spec()))
+    assert all(v["ok"] for v in out["outputs"]["objects"].values())
+
+
+@needs_blender
+def test_a_walkthrough_piece_is_at_the_origin_front_toward_minus_z_and_sized_as_read(built):
+    out, tr = built
+    sofa = next(o for o in SPEC["objects"] if o["kind"] == "SOFA" and o["runtime"])
+    sha = out["outputs"]["objects"][sofa["group"]]["sha256"]
+    import hashlib
+
+    data = next(p[3] for p in tr.puts if hashlib.sha256(p[3]).hexdigest() == sha)
+    length = struct.unpack_from("<I", data, 12)[0]
+    gl = json.loads(data[20:20 + length])
+    node = gl["nodes"][gl["scenes"][0]["nodes"][0]]
+    assert not node.get("translation") or max(abs(v) for v in node["translation"]) < 1e-4
+    acc = gl["accessors"][gl["meshes"][node["mesh"]]["primitives"][0]["attributes"]["POSITION"]]
+    lo, hi = acc["min"], acc["max"]
+    mins = [min(gl["accessors"][p["attributes"]["POSITION"]]["min"][i] for p in gl["meshes"][node["mesh"]]["primitives"]) for i in range(3)]
+    maxs = [max(gl["accessors"][p["attributes"]["POSITION"]]["max"][i] for p in gl["meshes"][node["mesh"]]["primitives"]) for i in range(3)]
+    assert abs((maxs[0] - mins[0]) - sofa["size"]["w"]) < 0.01
+    assert abs((maxs[1] - mins[1]) - sofa["size"]["h"]) < 0.01 and abs(mins[1]) < 0.01, "stands on the floor"
+    assert abs((maxs[2] - mins[2]) - sofa["size"]["d"]) < 0.01
+    assert lo and hi
+
+
+@needs_blender
+def test_catalogue_pbr_maps_become_textured_materials_that_survive_export(tmp_path):
+    s = spec()
+    s["outputs"] = {"render": False, "scene": True, "objects": False}
+    for o in s["objects"]:
+        o["runtime"] = False
+        o["group"] = None
+    mid = "mat-oak-test"
+    s["materials"].append({"id": mid, "baseColor": "#b08a62", "roughness": 0.6, "metalness": 0.0, "tileM": [1.2, 1.2], "rotationDeg": 90, "normalScale": 1.0})
+    floor_id = s["rooms"][0]["floor"]
+    for sf in s["surfaces"]:
+        if sf["id"] == floor_id:
+            sf["material"] = mid
+            sf["tint"] = "#a07850"
+    buf = io.BytesIO()
+    Image.new("RGB", (64, 64), (180, 140, 100)).save(buf, "PNG")
+    files = {R2 + "&albedo": buf.getvalue(), R2 + "&normal": buf.getvalue()}
+    j = job(s)
+    j["inputs"]["textures"] = {mid: {"albedo": R2 + "&albedo", "normal": R2 + "&normal", "orm": None}}
+    j["outputs"] = {"scene": {"DESKTOP": R2, "MOBILE": R2}}
+    tr = FakeTransfer(files)
+    out = pipeline_mod.run_job(parse_job(j), {**tools(), "gltf_transform": None}, tr)
+    gl = _glb_from(tr, "model/gltf-binary")
+    assert gl.get("images"), "the map is in the file"
+    mats = [m for m in gl["materials"] if (m.get("pbrMetallicRoughness") or {}).get("baseColorTexture")]
+    assert mats, "a material wears the albedo"
+    tex = mats[0]["pbrMetallicRoughness"]["baseColorTexture"]
+    assert "KHR_texture_transform" in (tex.get("extensions") or {}), "the tile size travels with it"
+    assert mats[0].get("normalTexture"), "and the normal map"
+    assert out["build"]["counts"]["texturedMaterials"] >= 1
+
+
+@needs_blender
+@pytest.mark.skipif(gltf_transform() is None or shutil.which("node") is None, reason="the glTF toolchain is not installed here")
+def test_runtime_glbs_are_meshopt_compressed_and_pass_the_khronos_validator():
+    out = pipeline_mod.run_job(parse_job(job()), tools(), FakeTransfer())
+    d = out["outputs"]["scene"]["DESKTOP"]
+    assert d["meshopt"] is True and d["validator"]["errors"] == 0
+    for v in out["outputs"]["objects"].values():
+        assert v["meshopt"] is True and v["validator"]["errors"] == 0
+
+
+# ── D. failure handling ───────────────────────────────────────────────
+
+@needs_blender
+def test_a_failed_upload_leaves_no_temporary_files(monkeypatch):
+    made: list[str] = []
+    real = tempfile.mkdtemp
+
+    def spy(*a, **k):
+        d = real(*a, **k)
+        made.append(d)
+        return d
+
+    monkeypatch.setattr(pipeline_mod.tempfile, "mkdtemp", spy)
+    with pytest.raises(RuntimeError, match="upload"):
+        pipeline_mod.run_job(parse_job(job()), tools(), FakeTransfer(fail_put=True))
+    assert made and not Path(made[0]).exists()
+
+
+def test_blender_is_retried_once_then_the_job_fails_with_the_reason(monkeypatch):
     calls = {"n": 0}
 
-    class Flaky(MockGenerator):
-        def generate(self, rgba, seed, out_glb, texture_size):
-            calls["n"] += 1
-            raise RuntimeError("GPU out of memory")
+    def boom(*a, **k):
+        calls["n"] += 1
+        raise RuntimeError("factory: crashed")
 
-    monkeypatch.setattr(pipeline_mod, "blender_normalize", lambda *a, **k: {"dimsM": [1, 1, 1]})
-    out = pipeline_mod.run_job(fake_job(Path(".")), Flaky(), BoxSegmenter(), {"blender": "x", "gltf_transform": None})
-    assert [o["ok"] for o in out["objects"]] == [False, False]
-    assert all(o["attempts"] == pipeline_mod.RETRIES + 1 for o in out["objects"]), "bounded retries"
-    assert calls["n"] == 2 * (pipeline_mod.RETRIES + 1)
-    assert out["temporaryDirRemoved"] is True and offline == {}, "nothing uploaded for failed objects"
+    monkeypatch.setattr(pipeline_mod, "run_blender", boom)
+    with pytest.raises(RuntimeError, match="crashed"):
+        pipeline_mod.run_job(parse_job(job()), {"blender": "x"}, FakeTransfer())
+    assert calls["n"] == pipeline_mod.RETRIES + 1 == 2
 
 
-def test_an_empty_mask_is_a_failed_object_not_a_hallucinated_one(offline, monkeypatch):
-    class Nothing(BoxSegmenter):
-        def mask(self, crop, prompt_box):
-            return np.zeros((crop.size[1], crop.size[0]), dtype=bool)
-
-    out = pipeline_mod.run_job(fake_job(Path(".")), MockGenerator(), Nothing(), {"blender": "x", "gltf_transform": None})
-    assert all(not o["ok"] and "mask is empty" in o["error"] for o in out["objects"])
-
-
-def test_the_deadline_stops_new_objects(offline, monkeypatch):
+def test_the_deadline_stops_blender_from_starting(monkeypatch):
     t = {"now": 0.0}
 
     def clock():
-        t["now"] += 400.0  # every call jumps 400 s
+        t["now"] += 400.0
         return t["now"]
 
-    monkeypatch.setattr(pipeline_mod, "blender_normalize", lambda *a, **k: {"dimsM": [1, 1, 1]})
-    job = fake_job(Path("."))
-    out = pipeline_mod.run_job(job, MockGenerator(), BoxSegmenter(), {"blender": "x", "gltf_transform": None}, now=clock)
-    assert any(o["error"] == "deadline" for o in out["objects"])
+    monkeypatch.setattr(pipeline_mod, "run_blender", lambda *a, **k: pytest.fail("Blender started past the deadline"))
+    j = job()
+    j["limits"]["deadlineS"] = 120
+    with pytest.raises(RuntimeError, match="deadline"):
+        pipeline_mod.run_job(parse_job(j), {"blender": "x"}, FakeTransfer(), now=clock)
 
 
-def test_the_trellis_config_cannot_load_the_non_commercial_background_remover(tmp_path, monkeypatch):
-    # The baked config must route background removal to the refusing stub; anything else is refused at load.
-    cfg = {"args": {"rembg_model": {"name": "BiRefNet", "args": {"model_name": "briaai/RMBG-2.0"}}}}
-    (tmp_path / "trellis2").mkdir()
-    (tmp_path / "trellis2" / "pipeline.json").write_text(json.dumps(cfg))
-    from worker import prepare_models
-
-    patched = prepare_models.route_rembg_to_stub(cfg)
-    assert patched["args"]["rembg_model"] == {"name": "Refused", "args": {}}
-    assert "RMBG" not in json.dumps(patched)
+def test_inputs_are_type_checked_before_blender(monkeypatch):
+    s = spec()
+    s["materials"].append({"id": "m1", "baseColor": "#ffffff", "roughness": 0.5, "metalness": 0.0, "tileM": [1, 1], "rotationDeg": 0, "normalScale": 1})
+    j = job(s)
+    j["inputs"]["textures"] = {"m1": {"albedo": R2 + "&a"}}
+    monkeypatch.setattr(pipeline_mod, "run_blender", lambda *a, **k: pytest.fail("Blender ran on an unchecked input"))
+    with pytest.raises(JobError, match="texture"):
+        pipeline_mod.run_job(parse_job(j), {"blender": "x"}, FakeTransfer({R2 + "&a": b"#!/bin/sh\nrm -rf /\n"}))
 
 
-def test_glb_facts_read_from_bytes(tmp_path):
-    import trimesh
-
-    p = tmp_path / "b.glb"
-    trimesh.creation.box().export(p)
-    from worker.optimize import facts
-
-    f = facts(p)
-    assert f["triangles"] == 12 and f["textures"] == 0 and f["compressed"] is True
-    with open(p, "rb") as fh:
-        assert fh.read(4) == b"glTF"
-    assert struct.unpack_from("<I", p.read_bytes(), 12)[0] > 0
+def test_glb_json_reads_the_chunk(tmp_path):
+    body = json.dumps({"asset": {"version": "2.0"}}).encode()
+    body += b" " * ((4 - len(body) % 4) % 4)
+    data = b"glTF" + struct.pack("<II", 2, 12 + 8 + len(body)) + struct.pack("<II", len(body), 0x4E4F534A) + body
+    p = tmp_path / "x.glb"
+    p.write_bytes(data)
+    assert glb_json(p)["asset"]["version"] == "2.0"

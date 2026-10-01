@@ -1,31 +1,25 @@
-# HOMATCH Design Studio — GPU worker (Runpod Serverless).
+# HOMATCH Design Studio — the Blender scene factory (Runpod Serverless).
 #
 # A separate compute service: it is not the Railway discovery worker and shares
 # nothing with it. Built by Runpod from this directory (Dockerfile path
 # infra/design-studio-gpu-worker/Dockerfile, build context the same directory).
 #
-#   * TRELLIS.2-4B image-to-3D (MIT code and weights), pinned commit
-#   * SAM 2.1 masks (Apache-2.0)
-#   * Blender 4.2 LTS, headless (the 3D factory; driven by code only)
-#   * glTF-Transform 4.5.1 + KTX-Software 4.4.2 + Khronos validator (same toolchain as the catalogue)
+#   * Blender 5.2.1 LTS, headless — the scene factory (the same version the worker tests run)
+#   * Cycles on the GPU (OptiX, else CUDA; the host's NVIDIA driver), CPU as the fallback
+#   * glTF-Transform 4.5.1 + KTX-Software 4.4.2 + Khronos validator (the catalogue's toolchain)
 #
-# No secrets at build time. Weights are prepared on first start into the
-# Runpod network volume when one is attached (/runpod-volume), else into the
-# container disk; the gated DINOv3 encoder needs HF_TOKEN as an endpoint secret.
+# No model weights, no tokens, no secrets — at build time or at run time.
 
-FROM pytorch/pytorch:2.6.0-cuda12.4-cudnn9-devel
+FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
 
-ARG TRELLIS2_COMMIT=main
-ARG SAM2_COMMIT=main
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
-    TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0" \
-    OPENCV_IO_ENABLE_OPENEXR=1 \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics \
     HM_BLENDER=/opt/blender/blender
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      git curl wget ca-certificates xz-utils build-essential ninja-build \
-      libgl1 libglib2.0-0 libxi6 libxrender1 libxkbcommon0 libsm6 libxxf86vm1 libxfixes3 libegl1 \
+      ca-certificates curl xz-utils python3 python3-pip \
+      libgl1 libegl1 libglib2.0-0 libxi6 libxrender1 libxkbcommon0 libsm6 libice6 libxxf86vm1 libxfixes3 libx11-6 libxext6 \
     && rm -rf /var/lib/apt/lists/*
 
 # Node 20 + the glTF toolchain (pinned like .github/workflows/design-studio-catalog.yml).
@@ -36,22 +30,21 @@ ENV NODE_PATH=/opt/hm-node/node_modules
 RUN curl -fsSL -o /tmp/ktx.deb https://github.com/KhronosGroup/KTX-Software/releases/download/v4.4.2/KTX-Software-4.4.2-Linux-x86_64.deb \
     && apt-get update && apt-get install -y /tmp/ktx.deb && rm -f /tmp/ktx.deb && rm -rf /var/lib/apt/lists/* && ktx --version
 
-# Blender 4.2 LTS (headless).
-RUN curl -fsSL https://download.blender.org/release/Blender4.2/blender-4.2.3-linux-x64.tar.xz -o /tmp/blender.tar.xz \
+# Blender 5.2.1 LTS (headless): the factory's only executable code is worker/factory.
+RUN curl -fsSL https://download.blender.org/release/Blender5.2/blender-5.2.1-linux-x64.tar.xz -o /tmp/blender.tar.xz \
     && mkdir -p /opt/blender && tar -xJf /tmp/blender.tar.xz -C /opt/blender --strip-components=1 && rm /tmp/blender.tar.xz \
     && /opt/blender/blender -b --factory-startup --python-expr "import bpy; print(bpy.app.version_string)"
 
-# TRELLIS.2 and its compiled extensions (no new conda env: this image's Python and torch).
-RUN git clone --recursive https://github.com/microsoft/TRELLIS.2.git /opt/trellis2 && cd /opt/trellis2 && git checkout ${TRELLIS2_COMMIT} \
-    && bash -c ". ./setup.sh --basic --flash-attn --nvdiffrast --nvdiffrec --cumesh --o-voxel --flexgemm"
-ENV PYTHONPATH=/opt/trellis2:/app
-
-# SAM 2.1.
-RUN pip install --no-cache-dir "git+https://github.com/facebookresearch/sam2.git@${SAM2_COMMIT}"
-
 COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
+RUN pip3 install --no-cache-dir -r /app/requirements.txt
 COPY worker /app/worker
 WORKDIR /app
 
-CMD ["python", "-u", "-m", "worker.serve"]
+# A build-time proof that the factory runs: the fixture home is built and exported on the CPU.
+COPY tests/fixtures/apartment.spec.json /app/selftest/apartment.spec.json
+RUN mkdir -p /tmp/st && printf '{"spec":"/app/selftest/apartment.spec.json","textures":{},"models":{},"out":"/tmp/st/out","device":"CPU","report":"/tmp/st/report.json"}' > /tmp/st/params.json \
+    && /opt/blender/blender -b --factory-startup --python /app/worker/factory/build.py -- /tmp/st/params.json \
+    && python3 -c "import json; r=json.load(open('/tmp/st/report.json')); assert r['ok'], r; print('factory selftest', r['counts'])" \
+    && rm -rf /tmp/st
+
+CMD ["python3", "-u", "-m", "worker.serve"]

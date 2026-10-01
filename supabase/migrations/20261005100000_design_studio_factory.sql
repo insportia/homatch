@@ -1,37 +1,43 @@
--- HOMATCH DESIGN STUDIO — the hybrid engine's GPU generation ledger and its private generated assets.
+-- HOMATCH DESIGN STUDIO — the Blender scene factory's ledger and its private outputs.
 --
--- A reconstruction may send its high-impact objects (a distinctive sofa, shell
--- chairs, beds, plants…) to the Design Studio GPU worker, which builds each
--- one from its crop of the customer's own picture. This records:
+-- A reconstruction (or a floor-plan design) is built by the Design Studio
+-- scene factory: HOMATCH compiles its canonical scene into a validated
+-- SceneBuildSpec, the factory (Blender, headless, on the GPU worker) builds
+-- the home, renders it from the source picture's own camera, and exports it.
+-- This records:
 --
---   ds_generation_jobs    one request to the GPU worker: what was asked (object
---                         keys and crops, never URLs), what it answered
---                         (per-object facts), its stage timings and its cost
---                         lines (each MEASURED / ESTIMATED / NOT_AVAILABLE).
---                         Idempotent per (project, idempotency_key): a retry
---                         never starts a second paid job.
---   ds_generated_assets   the runtime GLB of each object that was built:
---                         content hash, size, provider and model version,
---                         licence status, and where it is stored
---                         (users/<user>/design-studio-models/<project>/<id>.glb).
---                         PROJECT_PRIVATE only: a customer-derived model is
---                         never a shared catalogue asset. Deduplicated by hash
---                         within the project.
+--   ds_factory_jobs     one factory pass: the spec it built (data only — no
+--                       URLs, no secrets), its pass number in the visual-check
+--                       loop, what the worker answered, its stage timings and
+--                       its cost lines (each MEASURED / ESTIMATED /
+--                       NOT_AVAILABLE). Idempotent per (project,
+--                       idempotency_key): a retry never starts a second paid job.
+--   ds_factory_assets   what a pass produced: the source-camera RENDER (a
+--                       private JPEG), the whole home as a SCENE model per
+--                       tier, and each walkthrough PIECE model. Content hash,
+--                       size, tier, where it is stored. PROJECT_PRIVATE only:
+--                       nothing built from a customer's picture or plan is
+--                       ever a shared catalogue asset. Deduplicated by hash
+--                       within the project.
 --
 -- The owner reads both; only the server writes. Deleting the project deletes
--- the rows (cascade) and its R2 prefix (the existing project-delete route).
+-- the rows (cascade) and its R2 prefixes (the existing project-delete route).
 
-CREATE TABLE IF NOT EXISTS public.ds_generation_jobs (
+CREATE TABLE IF NOT EXISTS public.ds_factory_jobs (
   id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id        uuid NOT NULL REFERENCES public.ds_projects(id) ON DELETE CASCADE,
   user_id           uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
   reconstruction_id uuid REFERENCES public.ds_reconstructions(id) ON DELETE CASCADE,
+  version_id        uuid REFERENCES public.ds_versions(id) ON DELETE SET NULL,
+  source_kind       text NOT NULL CHECK (source_kind IN ('PICTURE','FLOOR_PLAN','DESIGN')),
+  pass              smallint NOT NULL CHECK (pass BETWEEN 1 AND 3),
   idempotency_key   text NOT NULL CHECK (idempotency_key ~ '^[0-9a-f]{64}$'),
+  spec_sha256       text NOT NULL CHECK (spec_sha256 ~ '^[0-9a-f]{64}$'),
   engine_version    text NOT NULL,
   state             text NOT NULL DEFAULT 'QUEUED' CHECK (state IN ('QUEUED','RUNNING','COMPLETED','FAILED','CANCELLED')),
   provider          text NOT NULL,
   provider_job_id   text,
-  request           jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(request) = 'object' AND octet_length(request::text) <= 131072),
+  spec              jsonb NOT NULL CHECK (jsonb_typeof(spec) = 'object' AND octet_length(spec::text) <= 1048576),
   result            jsonb CHECK (result IS NULL OR (jsonb_typeof(result) = 'object' AND octet_length(result::text) <= 262144)),
   timings           jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(timings) = 'object'),
   cost              jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(cost) = 'array'),
@@ -40,70 +46,74 @@ CREATE TABLE IF NOT EXISTS public.ds_generation_jobs (
   updated_at        timestamptz NOT NULL DEFAULT now(),
   UNIQUE (project_id, idempotency_key)
 );
-CREATE INDEX IF NOT EXISTS idx_ds_generation_jobs_project ON public.ds_generation_jobs(project_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ds_factory_jobs_project ON public.ds_factory_jobs(project_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ds_factory_jobs_reconstruction ON public.ds_factory_jobs(reconstruction_id) WHERE reconstruction_id IS NOT NULL;
 
-CREATE TABLE IF NOT EXISTS public.ds_generated_assets (
-  id             uuid PRIMARY KEY,
-  project_id     uuid NOT NULL REFERENCES public.ds_projects(id) ON DELETE CASCADE,
-  user_id        uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-  job_id         uuid REFERENCES public.ds_generation_jobs(id) ON DELETE SET NULL,
-  object_key     text NOT NULL,
-  source_ref     text NOT NULL CHECK (source_ref ~ '^[A-Za-z0-9_-]{1,24}$'),
-  sha256         text CHECK (sha256 IS NULL OR sha256 ~ '^[0-9a-f]{64}$'),
-  bytes          bigint CHECK (bytes IS NULL OR bytes BETWEEN 1 AND 104857600),
-  triangles      integer,
-  textures       integer,
-  dims_m         jsonb,
-  provider       text NOT NULL,
-  model_version  text NOT NULL,
-  license_status text NOT NULL CHECK (license_status IN ('COMMERCIAL_OK','BENCHMARK_ONLY')),
-  scope          text NOT NULL DEFAULT 'PROJECT_PRIVATE' CHECK (scope = 'PROJECT_PRIVATE'),
-  state          text NOT NULL DEFAULT 'PENDING' CHECK (state IN ('PENDING','READY','FAILED','DELETED')),
-  created_at     timestamptz NOT NULL DEFAULT now(),
-  updated_at     timestamptz NOT NULL DEFAULT now(),
-  -- The object key is always this project's own model folder and this asset's id.
-  CHECK (object_key = 'users/' || user_id::text || '/design-studio-models/' || project_id::text || '/' || id::text || '.glb')
+CREATE TABLE IF NOT EXISTS public.ds_factory_assets (
+  id          uuid PRIMARY KEY,
+  project_id  uuid NOT NULL REFERENCES public.ds_projects(id) ON DELETE CASCADE,
+  user_id     uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  job_id      uuid REFERENCES public.ds_factory_jobs(id) ON DELETE SET NULL,
+  role        text NOT NULL CHECK (role IN ('RENDER','SCENE','PIECE')),
+  tier        text NOT NULL CHECK (tier IN ('QA','DESKTOP','MOBILE','RUNTIME')),
+  -- The walkthrough group a PIECE model stands for (identical pieces share one model).
+  group_key   text CHECK (group_key IS NULL OR group_key ~ '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}$'),
+  object_key  text NOT NULL,
+  sha256      text CHECK (sha256 IS NULL OR sha256 ~ '^[0-9a-f]{64}$'),
+  bytes       bigint CHECK (bytes IS NULL OR bytes BETWEEN 1 AND 104857600),
+  facts       jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(facts) = 'object' AND octet_length(facts::text) <= 16384),
+  provider    text NOT NULL,
+  scope       text NOT NULL DEFAULT 'PROJECT_PRIVATE' CHECK (scope = 'PROJECT_PRIVATE'),
+  state       text NOT NULL DEFAULT 'PENDING' CHECK (state IN ('PENDING','READY','FAILED','DELETED')),
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  CHECK ((role = 'PIECE') = (group_key IS NOT NULL)),
+  CHECK ((role = 'RENDER') = (tier = 'QA')),
+  -- Always this project's own folder and this asset's id: models are glTF, a render is a private JPEG.
+  CHECK (object_key = 'users/' || user_id::text || CASE WHEN role = 'RENDER'
+         THEN '/design-studio-thumbnails/' || project_id::text || '/' || id::text || '.jpg'
+         ELSE '/design-studio-models/' || project_id::text || '/' || id::text || '.glb' END)
 );
-CREATE INDEX IF NOT EXISTS idx_ds_generated_assets_project ON public.ds_generated_assets(project_id);
+CREATE INDEX IF NOT EXISTS idx_ds_factory_assets_project ON public.ds_factory_assets(project_id);
+CREATE INDEX IF NOT EXISTS idx_ds_factory_assets_job ON public.ds_factory_assets(job_id);
 -- The same bytes are stored once per project.
-CREATE UNIQUE INDEX IF NOT EXISTS uq_ds_generated_assets_project_sha ON public.ds_generated_assets(project_id, sha256) WHERE state = 'READY';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ds_factory_assets_project_sha ON public.ds_factory_assets(project_id, sha256) WHERE state = 'READY';
+
+COMMENT ON TABLE public.ds_factory_jobs IS 'Design Studio scene factory: one Blender pass over a validated SceneBuildSpec (data only; no URLs or secrets), idempotent per project.';
+COMMENT ON TABLE public.ds_factory_assets IS 'Design Studio scene factory outputs (source-camera render, scene tiers, walkthrough pieces). Project-private; never a shared catalogue asset.';
 
 -- What the engine did for a reading: each object's route, stage timings, cost
--- lines (MEASURED / ESTIMATED / NOT_AVAILABLE), the visual check and the
--- fidelity gates. Written by the owner's own build (the same row they already
--- update); informational, never trusted for money.
+-- lines, the visual checks and the fidelity gates. Written by the owner's own
+-- build (the same row they already update); informational, never trusted for money.
 ALTER TABLE public.ds_reconstructions ADD COLUMN IF NOT EXISTS engine_report jsonb
   CHECK (engine_report IS NULL OR (jsonb_typeof(engine_report) = 'object' AND octet_length(engine_report::text) <= 262144));
 
-COMMENT ON TABLE public.ds_generation_jobs IS 'Design Studio hybrid engine: one GPU generation request (no URLs or secrets stored), idempotent per project.';
-COMMENT ON TABLE public.ds_generated_assets IS 'Design Studio: a runtime GLB built from the customer''s own picture. Project-private; never a shared catalogue asset.';
+ALTER TABLE public.ds_factory_jobs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ds_factory_assets ENABLE ROW LEVEL SECURITY;
 
-ALTER TABLE public.ds_generation_jobs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.ds_generated_assets ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS ds_generation_jobs_select ON public.ds_generation_jobs;
-CREATE POLICY ds_generation_jobs_select ON public.ds_generation_jobs
+DROP POLICY IF EXISTS ds_factory_jobs_select ON public.ds_factory_jobs;
+CREATE POLICY ds_factory_jobs_select ON public.ds_factory_jobs
   FOR SELECT USING (user_id = public.auth_user_id() OR public.is_admin());
-DROP POLICY IF EXISTS ds_generation_jobs_service ON public.ds_generation_jobs;
-CREATE POLICY ds_generation_jobs_service ON public.ds_generation_jobs
+DROP POLICY IF EXISTS ds_factory_jobs_service ON public.ds_factory_jobs;
+CREATE POLICY ds_factory_jobs_service ON public.ds_factory_jobs
   FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
 
-DROP POLICY IF EXISTS ds_generated_assets_select ON public.ds_generated_assets;
-CREATE POLICY ds_generated_assets_select ON public.ds_generated_assets
+DROP POLICY IF EXISTS ds_factory_assets_select ON public.ds_factory_assets;
+CREATE POLICY ds_factory_assets_select ON public.ds_factory_assets
   FOR SELECT USING (user_id = public.auth_user_id() OR public.is_admin());
-DROP POLICY IF EXISTS ds_generated_assets_service ON public.ds_generated_assets;
-CREATE POLICY ds_generated_assets_service ON public.ds_generated_assets
+DROP POLICY IF EXISTS ds_factory_assets_service ON public.ds_factory_assets;
+CREATE POLICY ds_factory_assets_service ON public.ds_factory_assets
   FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
 
-REVOKE ALL ON public.ds_generation_jobs FROM public, anon, authenticated;
-REVOKE ALL ON public.ds_generated_assets FROM public, anon, authenticated;
-GRANT SELECT ON public.ds_generation_jobs TO authenticated;
-GRANT SELECT ON public.ds_generated_assets TO authenticated;
-GRANT ALL ON public.ds_generation_jobs TO service_role;
-GRANT ALL ON public.ds_generated_assets TO service_role;
+REVOKE ALL ON public.ds_factory_jobs FROM public, anon, authenticated;
+REVOKE ALL ON public.ds_factory_assets FROM public, anon, authenticated;
+GRANT SELECT ON public.ds_factory_jobs TO authenticated;
+GRANT SELECT ON public.ds_factory_assets TO authenticated;
+GRANT ALL ON public.ds_factory_jobs TO service_role;
+GRANT ALL ON public.ds_factory_assets TO service_role;
 
 -- A public link carries the design, not how it was made: besides provenance,
--- a piece's generated-model reference (an owner-private storage key) is
+-- a piece's factory-model reference (an owner-private storage key) is
 -- stripped, so the shared view shows HOMATCH's drawn piece in its place.
 CREATE OR REPLACE FUNCTION public.ds_create_share(
   p_version_id uuid,

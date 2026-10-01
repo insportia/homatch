@@ -141,14 +141,15 @@ Project permissions live in `.claude/settings.json` (shared, checked in):
 - **No prompt:** git read/branch/commit/push/merge/rebase; npm / pnpm / node
   scripts, tests, lint, type-check, builds; Supabase CLI function deploy and
   inspection; `gh` PR / run inspection, PR create / merge; Vercel inspect /
-  logs / deploy; Railway status / logs; health `curl`s to homatch.live and the
-  project's functions; GitHub / Supabase / Vercel / Railway MCP read tools;
+  logs / deploy; Railway status / logs; GitHub / Supabase / Vercel / Railway MCP read tools;
   GitHub PR / branch / merge tools; Supabase `deploy_edge_function`.
 - **SQL** (`.claude/hooks/sql-guard.mjs`, a PreToolUse hook): provably
   read-only SQL on the HOMATCH project is allowed; applying a migration is
   allowed only when its SQL is byte-identical to a file already on
   `origin/main`. Everything else asks.
-- **Always asks:** force push, push to main, `reset --hard`, `git clean`,
+- **Always asks:** `curl` (a URL glob is a prefix match — it would also match
+  look-alike hosts and extra arguments; health checks use WebFetch / MCP reads),
+  `sudo`, `rm -rf`, force push, push to main, `reset --hard`, `git clean`,
   `supabase db push`, secrets / env changes, Railway deploy / restart /
   variables, `gh api`, Supabase branches / restore, token readers.
 - **Denied:** creating / pausing / deleting projects or services, purchases,

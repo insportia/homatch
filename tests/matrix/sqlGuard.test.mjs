@@ -63,6 +63,7 @@ test('settings: destructive and spending operations are never pre-approved; the 
   for (const must of ['Bash(git push --force*)', 'Bash(git push origin main*)', 'Bash(git reset --hard*)', 'Bash(supabase db push*)', 'Bash(railway up*)', 'mcp__Railway__redeploy']) {
     assert.ok(ask.includes(must), `${must} must ask`);
   }
+  assert.ok(!allow.some((r) => /^Bash\(curl/.test(r)), 'a curl URL glob is a prefix match: never pre-approved');
   for (const never of ['mcp__Supabase__execute_sql', 'mcp__Supabase__apply_migration', 'mcp__Supabase', 'mcp__Supabase__*', 'Bash(*)', 'Bash']) {
     assert.ok(!allow.includes(never), `${never} must not be blanket-allowed (the SQL hook decides)`);
   }

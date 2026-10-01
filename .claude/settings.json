@@ -66,11 +66,6 @@
       "Bash(vercel deploy*)",
       "Bash(railway status*)",
       "Bash(railway logs*)",
-      "Bash(curl -s https://www.homatch.live*)",
-      "Bash(curl -sS https://www.homatch.live*)",
-      "Bash(curl -sI https://www.homatch.live*)",
-      "Bash(curl -s https://ptxajsjhobhvsfhmutjn.supabase.co/functions/v1/*)",
-      "Bash(curl -sS https://ptxajsjhobhvsfhmutjn.supabase.co/functions/v1/*)",
 
       "mcp__github__get_*",
       "mcp__github__list_*",
@@ -118,6 +113,9 @@
       "mcp__Railway__http-*"
     ],
     "ask": [
+      "Bash(sudo *)",
+      "Bash(rm -rf *)",
+      "Bash(curl *)",
       "Bash(git push --force*)",
       "Bash(git push -f*)",
       "Bash(git push * --force*)",

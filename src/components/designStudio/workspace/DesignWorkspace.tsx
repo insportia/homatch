@@ -32,8 +32,9 @@ import { entryShot, roomGraph, roomShot, tourOrder } from '@/lib/designStudio/ca
 import { requestDesign, type DesignBrief } from '@/services/designStudio/ai';
 import type { Operation, OperationContext, Rejection } from '@/lib/designStudio/operations';
 import {
-  alignToNeighbours, autoPlace, blocks, evaluatePlacement, quantise, roomOf, snapToWall, type PlacementIssue,
+  alignToNeighbours, blocks, evaluatePlacement, quantise, roomOf, snapToWall, type PlacementIssue,
 } from '@/lib/designStudio/placement';
+import { findPlacement } from '@/lib/designStudio/placementSearch';
 import {
   buildSpaceModel, ceilingSurfaceId, floorSurfaceId, roomContaining, surfacesOfRoom, type SpaceModel,
 } from '@/lib/designStudio/space';
@@ -497,16 +498,20 @@ function Editor({
     }
     let placed: { at: { x: number; y: number }; rotation: number } | null = null;
     if (point) {
+      // A drop is the customer's intent and wins as long as it is possible;
+      // only an impossible spot falls back to the best free spot near it.
       const snapped = snapToWall(pctx, asset, point, 0, room.id);
       const candidate = snapped.snapped ? snapped : quantise(point, 0);
       placed = blocks(evaluatePlacement(pctx, asset, candidate.at, candidate.rotation, room.id))
-        ? autoPlace(pctx, asset, room)
+        ? findPlacement(pctx, asset, room, { near: point })
         : candidate;
     } else {
-      placed = autoPlace(pctx, asset, room);
+      // "+": the best free spot in the room — never on top of another piece.
+      placed = findPlacement(pctx, asset, room);
     }
     if (!placed) {
-      // The chosen room cannot take it; say so rather than dropping it somewhere else.
+      // No good spot: say so rather than forcing it somewhere poor — the
+      // customer can still drag it where they want it.
       toast.error(t('ds_add_no_space', { room: names.get(room.id) ?? '' }));
       return;
     }
@@ -627,7 +632,9 @@ function Editor({
     const asset = assets.get(selectedObject.assetId);
     const room = roomOf(space, selectedObject.roomId);
     if (!asset || !room) return;
-    const placed = autoPlace({ space, assets, objects: state.objects }, asset, room);
+    const placed = findPlacement({ space, assets, objects: state.objects }, asset, room, {
+      near: { x: selectedObject.position.x, y: selectedObject.position.z },
+    });
     if (!placed) { toast.error(t('ds_add_no_space', { room: names.get(room.id) ?? '' })); return; }
     const object: ObjectInstance = {
       ...selectedObject, instanceId: newId(asset), locked: false,

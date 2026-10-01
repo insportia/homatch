@@ -82,14 +82,20 @@ async function fetchJson(url) {
 
 // ── Tools ───────────────────────────────────────────────────────────────
 
-const TOOLS = { toktx: false, gltfTransform: false, validator: null };
+const TOOLS = { ktx: null, gltfTransform: false, validator: null };
 async function detectTools() {
-  for (const [name, cmd] of [['toktx', 'toktx'], ['gltfTransform', 'gltf-transform']]) {
-    try { await exec(cmd, ['--version'], { timeout: 20000 }); TOOLS[name] = true; } catch { TOOLS[name] = false; }
-  }
+  // KTX-Software's `ktx` CLI (4.4+): gltf-transform's uastc/etc1s need it, and materials use it directly.
+  try { const { stdout, stderr } = await exec('ktx', ['--version'], { timeout: 20000 }); TOOLS.ktx = String(stdout || stderr).replace(/ktx version:\s*/i, '').trim() || 'unknown'; } catch { TOOLS.ktx = null; }
+  try { await exec('gltf-transform', ['--version'], { timeout: 20000 }); TOOLS.gltfTransform = true; } catch { TOOLS.gltfTransform = false; }
   try { TOOLS.validator = createRequire(path.join(process.env.CATALOG_TOOLS_DIR ?? process.cwd(), 'noop.js'))('gltf-validator'); } catch { TOOLS.validator = null; }
-  log(`tools: ${JSON.stringify({ toktx: TOOLS.toktx, gltfTransform: TOOLS.gltfTransform, validator: !!TOOLS.validator })}`);
+  log(`tools: ${JSON.stringify({ ktx: TOOLS.ktx, gltfTransform: TOOLS.gltfTransform, validator: !!TOOLS.validator })}`);
 }
+
+/** One texture map → KTX2: colour/ORM as ETC1S (Basis LZ, quality 255), normals as UASTC + zstd (no RDO on normals), mipmapped. */
+const ktxCreateArgs = (role) => (role === 'NORMAL'
+  ? ['create', '--generate-mipmap', '--encode', 'uastc', '--uastc-quality', '2', '--zstd', '18', '--assign-tf', 'linear', '--assign-primaries', 'bt709', '--format', 'R8G8B8_UNORM']
+  : ['create', '--generate-mipmap', '--encode', 'basis-lz', '--qlevel', '255', '--clevel', '4',
+    ...(role === 'BASE_COLOR' ? ['--assign-tf', 'srgb', '--assign-primaries', 'bt709', '--format', 'R8G8B8_SRGB'] : ['--assign-tf', 'linear', '--assign-primaries', 'bt709', '--format', 'R8G8B8_UNORM'])]);
 
 const KTX2_MAGIC = Buffer.from([0xab, 0x4b, 0x54, 0x58, 0x20, 0x32, 0x30, 0xbb]);
 
@@ -113,15 +119,16 @@ async function validateGltf(file) {
 
 /**
  * Optimised runtime variants, deterministic in their settings; quality first.
- * Texture maps → KTX2 UASTC (level 2, light RDO, zstd, mipmaps; colour sRGB,
- * data linear). Models → GLB with KTX2 textures and meshopt geometry (no
- * simplification), plus a simplified LOD1 for heavy models. HDRIs stay
- * Radiance .hdr (the runtime format). A variant exists only if it validates.
+ * Material maps → KTX2 (colour/ORM ETC1S q255, normals UASTC + zstd; mipmaps;
+ * colour sRGB, data linear). Models → GLB with KTX2 textures (verified: a GLB
+ * whose textures did not compress fails) and meshopt geometry, plus a LOD1
+ * only when it differs from the main GLB. HDRIs stay Radiance .hdr. A variant
+ * exists only if it validates.
  */
 async function optimize(kind, plan, dir, sourceAssetId) {
   const files = [];
   if (kind === 'ENVIRONMENT') return { state: 'NOT_APPLICABLE', note: 'Radiance .hdr is the runtime format (RGBELoader + PMREM)', files };
-  if (!TOOLS.toktx) return { state: 'SKIPPED', note: 'toktx unavailable', files };
+  if (!TOOLS.ktx) return { state: 'SKIPPED', note: 'ktx (KTX-Software 4.4+) unavailable', files };
   const opt = path.join(dir, 'optimized');
   fs.mkdirSync(opt, { recursive: true });
   if (kind === 'MATERIAL') {
@@ -129,8 +136,7 @@ async function optimize(kind, plan, dir, sourceAssetId) {
       const rel = f.relPath.replace(/\.(jpe?g|png)$/i, '.ktx2');
       const dst = path.join(opt, rel);
       fs.mkdirSync(path.dirname(dst), { recursive: true });
-      await exec('toktx', ['--t2', '--encode', 'uastc', '--uastc_quality', '2', '--uastc_rdo_l', '0.5', '--zcmp', '18', '--genmipmap',
-        '--assign_oetf', f.role === 'BASE_COLOR' ? 'srgb' : 'linear', dst, path.join(dir, 'source', f.relPath)], { timeout: 300000 });
+      await exec('ktx', [...ktxCreateArgs(f.role), path.join(dir, 'source', f.relPath), dst], { timeout: 300000 });
       if (!fs.readFileSync(dst).subarray(0, 8).equals(KTX2_MAGIC)) throw new Error(`not KTX2: ${rel}`);
       files.push({ role: f.role, resolution: f.resolution, relPath: rel, file: dst, contentType: 'image/ktx2' });
     }
@@ -158,7 +164,10 @@ async function optimize(kind, plan, dir, sourceAssetId) {
     for (const n of ['s', 'r', 'd', 'p', 'n', 'c']) fs.rmSync(t(n), { force: true });
     const v = await validateGltf(out);
     if (v && v.errors > 0) throw new Error(`runtime GLB fails the Khronos validator (${v.errors} errors)`);
-    return runtimeFacts(out);
+    const facts = runtimeFacts(out);
+    // gltf-transform only LOGS a texture its encoder could not compress; a silent JPEG fallback is a failure here.
+    if (facts.textures > 0 && !facts.compressed) throw new Error('runtime GLB textures are not GPU-compressed (KTX2 encoding failed)');
+    return facts;
   };
   const tris = (() => { try { const j = gltfJson(src); return (j.meshes ?? []).flatMap((m) => m.primitives ?? []).reduce((s, p) => s + Math.floor(((j.accessors?.[p.indices ?? p.attributes?.POSITION]?.count) ?? 0) / 3), 0); } catch { return 0; } })();
   const main = path.join(opt, `${sourceAssetId}.glb`);
@@ -167,6 +176,9 @@ async function optimize(kind, plan, dir, sourceAssetId) {
   files.push({ role: 'GLB', resolution: null, relPath: `${sourceAssetId}.glb`, file: main, contentType: 'model/gltf-binary' });
   // The lighter level every asset gets for mobile and distance: 1K textures, and simplified geometry when it is heavy.
   const lodFacts = await level(src, lod1, RUNTIME_POLICY.lod1TextureEdge, tris > RUNTIME_POLICY.simplifyAboveTriangles);
+  // A LOD that is byte-identical to the main GLB (textures already ≤ 1K, geometry light) is not a level: don't store it twice.
+  const same = crypto.createHash('md5').update(fs.readFileSync(lod1)).digest('hex') === crypto.createHash('md5').update(fs.readFileSync(main)).digest('hex');
+  if (same) { fs.rmSync(lod1, { force: true }); return { state: 'DONE', files, runtime: { main: { ...mainFacts, triangles: tris }, lod1: null, lod1Note: 'identical to the main GLB; not stored' } }; }
   files.push({ role: 'GLB', resolution: null, relPath: `${sourceAssetId}.lod1.glb`, file: lod1, contentType: 'model/gltf-binary' });
   return { state: 'DONE', files, runtime: { main: { ...mainFacts, triangles: tris }, lod1: lodFacts } };
 }
@@ -253,24 +265,38 @@ const io = {
 
 // ── Modes ───────────────────────────────────────────────────────────────
 
+/** The import batch this run queues into: named (--batch / BATCH) or ib_<yyyymmdd>_<provider>_<run>. Immutable once set on an asset. */
+function batchId(provider) {
+  const named = flag('batch', '') || process.env.BATCH || '';
+  const id = named || `ib_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}_${provider}_${process.env.GITHUB_RUN_NUMBER ?? process.pid}`;
+  if (!/^ib_[0-9a-z_]{4,60}$/.test(id)) throw new Error(`malformed batch id: ${id} (ib_ + lowercase letters, digits, _)`);
+  return id;
+}
+
 async function enqueue() {
   const provider = flag('provider', '');
   if (!ADAPTERS[provider]) throw new Error('enqueue needs --provider');
+  const batch = batchId(provider);
   const ids = flag('ids', '');
   if (ids) {
     const { ids: list, invalid } = parseIds(ids, ADAPTERS[provider].idPattern);
     if (invalid.length) throw new Error(`malformed ${provider} ids: ${invalid.join(', ')}`);
+    // An asset keeps the batch it was first queued in (a re-queued FAILED asset is not re-batched).
+    await rest(`ds_catalog_imports?source_provider=eq.${provider}&source_asset_id=in.(${list.map((x) => `"${x}"`).join(',')})&state=in.(DISCOVERED,FAILED)&import_batch_id=is.null`, {
+      method: 'PATCH', prefer: 'return=minimal', body: { import_batch_id: batch },
+    });
     const queued = await rest(`ds_catalog_imports?source_provider=eq.${provider}&source_asset_id=in.(${list.map((x) => `"${x}"`).join(',')})&state=in.(DISCOVERED,FAILED)&select=source_asset_id`, {
       method: 'PATCH', prefer: 'return=representation', body: { state: 'QUEUED', attempts: 0, last_error: null, last_error_stage: null, updated_at: io.now() },
     });
     const got = new Set((queued ?? []).map((r) => r.source_asset_id));
-    log(`enqueue ${provider} (named): requested ${list.length}, queued ${got.size}, not queueable ${list.length - got.size}`);
+    log(`enqueue ${provider} (named) into ${batch}: requested ${list.length}, queued ${got.size}, not queueable ${list.length - got.size}`);
     for (const id of list.filter((x) => !got.has(x))) log(`  not queued ${id}: not DISCOVERED/FAILED (missing, EXCLUDED, or already in the pipeline)`);
   } else if (args.includes('--all')) {
     // The whole selection only on the owner's explicit approval ("APPROVE FULL IMPORT").
     if (!args.includes('--owner-approved')) throw new Error('queuing everything needs --owner-approved');
+    await rest(`ds_catalog_imports?source_provider=eq.${provider}&state=eq.DISCOVERED&import_batch_id=is.null`, { method: 'PATCH', prefer: 'return=minimal', body: { import_batch_id: batch } });
     await rest(`ds_catalog_imports?source_provider=eq.${provider}&state=eq.DISCOVERED`, { method: 'PATCH', prefer: 'return=minimal', body: { state: 'QUEUED', updated_at: io.now() } });
-    log(`enqueue ${provider}: every DISCOVERED asset`);
+    log(`enqueue ${provider} into ${batch}: every DISCOVERED asset`);
   } else throw new Error('enqueue needs --ids or --all --owner-approved');
 }
 
@@ -288,7 +314,7 @@ async function activate() {
   if (!named) throw new Error('activate needs --ids (named assets only)');
   const { ids, invalid } = parseIds(named, ADAPTERS[provider].idPattern);
   if (invalid.length) throw new Error(`malformed ${provider} ids: ${invalid.join(', ')}`);
-  const rows = await rest(`ds_catalog_imports?source_provider=eq.${provider}&source_asset_id=in.(${ids.map((x) => `"${x}"`).join(',')})&select=homatch_asset_id,source_asset_id,kind,state`);
+  const rows = await rest(`ds_catalog_imports?source_provider=eq.${provider}&source_asset_id=in.(${ids.map((x) => `"${x}"`).join(',')})&select=homatch_asset_id,source_asset_id,kind,state,lifecycle`);
   const byId = new Map((rows ?? []).map((r) => [r.source_asset_id, r]));
   const TABLE = { MODEL: 'ds_catalog_assets', MATERIAL: 'ds_catalog_materials', ENVIRONMENT: 'ds_catalog_environments' };
   let activated = 0;
@@ -296,10 +322,13 @@ async function activate() {
     const r = byId.get(id);
     if (!r) { log(`  not activated ${id}: not in the catalogue`); continue; }
     if (r.state !== 'READY') { log(`  not activated ${id}: import is ${r.state}, not READY`); continue; }
+    // An admin who disabled or queued an asset for deletion decides; the importer never overrides it.
+    if (['DISABLED', 'PENDING_DELETE', 'DELETED'].includes(r.lifecycle)) { log(`  not activated ${id}: ${r.lifecycle} by an admin (re-enable it in Admin)`); continue; }
     const done = await rest(`${TABLE[r.kind]}?homatch_asset_id=eq.${r.homatch_asset_id}&quality_state=eq.READY&select=homatch_asset_id`, {
       method: 'PATCH', prefer: 'return=representation', body: { active: true, updated_at: io.now() },
     });
     if (!done?.length) { log(`  not activated ${id}: no READY catalogue row`); continue; }
+    await rest(`ds_catalog_imports?homatch_asset_id=eq.${r.homatch_asset_id}`, { method: 'PATCH', prefer: 'return=minimal', body: { lifecycle: 'ACTIVE', lifecycle_at: io.now(), updated_at: io.now() } });
     await io.db.event(r.homatch_asset_id, 'ACTIVE', 'STAGE', { detail: { activated: true } });
     activated += 1;
   }

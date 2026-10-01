@@ -114,6 +114,9 @@ function world(adapterBundle, faults = {}) {
       async patchImport(hma, patch) { Object.assign(imports.get(hma), patch); },
       async event(hma, stage, ev, extra = {}) { events.push({ hma, stage, ev, ...extra }); },
       async upsert(table, rows, onConflict) {
+        // Like PostgREST (PGRST102): every row of one bulk write must carry the same keys.
+        const shape = (r) => Object.keys(r).sort().join(',');
+        if (rows.some((r) => shape(r) !== shape(rows[0]))) throw new Error('PGRST102: All object keys must match');
         const t = (tables[table] ??= new Map());
         for (const r of rows) {
           const k = r[onConflict];
@@ -399,4 +402,13 @@ test('every key the pipeline writes is a real production column (PostgREST refus
     assert.ok(rows.length > 0, `${table} was written`);
     for (const row of rows) for (const k of Object.keys(row)) assert.ok(cols.has(k), `${table} has no column "${k}"`);
   }
+});
+
+test('discovering a provider when some of its assets are already recorded writes uniform bulk rows (PGRST102)', async () => {
+  const w = world(fakeAdapter());
+  await discover(w.io, 'fakeprov', undefined, ['chair']);
+  byId(w, 'chair').state = 'READY';
+  const r = await discover(w.io, 'fakeprov');
+  assert.equal(r.newRows, 4, 'the other assets are recorded');
+  assert.equal(byId(w, 'chair').state, 'READY', 'an existing row keeps its state');
 });

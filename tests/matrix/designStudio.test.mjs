@@ -591,6 +591,13 @@ test('catalogue importer: credentials stay in Supabase, runs are deliberate, bul
   assert.match(runner, /if \(!args\.includes\('--owner-approved'\)\) throw/, 'queuing a whole provider needs the owner');
   assert.match(runner, /else \{ console\.error\('discover needs --ids a,b,c \(named assets\) or --all \(the whole provider\)'\); process\.exit\(2\); \}/, 'discovery never defaults to the whole provider');
   assert.doesNotMatch(runner, /console\.log\([^)]*\burl\b/i, 'no URL is ever printed');
+  // KTX2 is real or the asset fails: KTX-Software >= 4.4 (gltf-transform 4.5 needs `ktx create`; 4.3 fell back to JPEG silently).
+  assert.match(wf, /KTX-Software\/releases\/download\/v4\.(4|[5-9])\.\d+\//, 'KTX-Software 4.4+');
+  assert.match(runner, /if \(facts\.textures > 0 && !facts\.compressed\) throw new Error/, 'an uncompressed runtime GLB fails');
+  assert.match(runner, /=== crypto\.createHash\('md5'\)\.update\(fs\.readFileSync\(main\)\)\.digest\('hex'\);/, 'an identical LOD1 is not stored twice');
+  // Every queued asset carries its batch; an admin's decision is never overridden by the importer.
+  assert.match(runner, /&import_batch_id=is\.null`, \{\n\s+method: 'PATCH', prefer: 'return=minimal', body: \{ import_batch_id: batch \},/);
+  assert.match(runner, /\['DISABLED', 'PENDING_DELETE', 'DELETED'\]\.includes\(r\.lifecycle\)/);
   // Publishing is named and READY-only: never a whole provider, never an unfinished import.
   assert.match(runner, /if \(!named\) throw new Error\('activate needs --ids \(named assets only\)'\);/);
   assert.match(runner, /if \(r\.state !== 'READY'\) \{ log\(`  not activated/);

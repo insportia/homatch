@@ -45,18 +45,69 @@ export function obbCorners(b: Obb): Point[] {
   ];
 }
 
-/** Separating-axis test. Touching edges do not count as overlap. */
-export function obbOverlap(a: Obb, b: Obb, epsilon = 0.005): boolean {
-  const ca = obbCorners(a);
-  const cb = obbCorners(b);
-  const axes = [a.angle, a.angle + Math.PI / 2, b.angle, b.angle + Math.PI / 2]
-    .map((t) => ({ x: Math.cos(t), y: Math.sin(t) }));
-  for (const axis of axes) {
-    const pa = ca.map((p) => p.x * axis.x + p.y * axis.y);
-    const pb = cb.map((p) => p.x * axis.x + p.y * axis.y);
-    if (Math.max(...pa) <= Math.min(...pb) + epsilon || Math.max(...pb) <= Math.min(...pa) + epsilon) return false;
+/**
+ * A box with its corners and axis-aligned bounds worked out once. The search
+ * tests the same walls and pieces thousands of times; precomputing them is
+ * what keeps a whole-room search inside a frame.
+ */
+export interface SolidBox {
+  obb: Obb;
+  corners: Point[];
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
+export function solidBox(b: Obb): SolidBox {
+  const corners = obbCorners(b);
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const p of corners) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  return { obb: b, corners, minX, maxX, minY, maxY };
+}
+
+function separatedOn(ca: Point[], cb: Point[], ax: number, ay: number, epsilon: number): boolean {
+  let aMin = Infinity;
+  let aMax = -Infinity;
+  let bMin = Infinity;
+  let bMax = -Infinity;
+  for (let i = 0; i < 4; i += 1) {
+    const pa = ca[i].x * ax + ca[i].y * ay;
+    const pb = cb[i].x * ax + cb[i].y * ay;
+    if (pa < aMin) aMin = pa;
+    if (pa > aMax) aMax = pa;
+    if (pb < bMin) bMin = pb;
+    if (pb > bMax) bMax = pb;
+  }
+  return aMax <= bMin + epsilon || bMax <= aMin + epsilon;
+}
+
+/**
+ * Separating-axis test on precomputed boxes. Boxes whose bounds do not even
+ * meet are disjoint (or only touch), so the bounds reject gives exactly the
+ * answer the full test would — it is only faster.
+ */
+export function solidOverlap(a: SolidBox, b: SolidBox, epsilon = 0.005): boolean {
+  if (a.maxX <= b.minX || b.maxX <= a.minX || a.maxY <= b.minY || b.maxY <= a.minY) return false;
+  for (const t of [a.obb.angle, b.obb.angle]) {
+    const c = Math.cos(t);
+    const s = Math.sin(t);
+    if (separatedOn(a.corners, b.corners, c, s, epsilon) || separatedOn(a.corners, b.corners, -s, c, epsilon)) return false;
   }
   return true;
+}
+
+/** Separating-axis test. Touching edges do not count as overlap. */
+export function obbOverlap(a: Obb, b: Obb, epsilon = 0.005): boolean {
+  return solidOverlap(solidBox(a), solidBox(b), epsilon);
 }
 
 /** The asset's local +y (its front) in plan, at a rotation. */
@@ -89,20 +140,74 @@ export interface PlacementContext {
   objects: ObjectInstance[];
 }
 
-function wallObbs(space: SpaceModel): Array<{ id: string; box: Obb }> {
-  return space.walls.map((w) => {
+/**
+ * Everything a placement is tested against, every box precomputed: the
+ * walls, the doorway keep-out zones and the pieces already in the design.
+ * One world serves one evaluation (evaluatePlacement) or a whole search, and
+ * both go through the same tests below — so the search can never disagree
+ * with the rules a customer's own move is held to.
+ */
+export interface PlacementWorld {
+  room: SpaceRoom;
+  walls: Array<{ id: string; box: SolidBox }>;
+  doors: Array<{ id: string; box: SolidBox }>;
+  objects: Array<{ id: string; box: SolidBox; asset: CatalogAsset; flat: boolean; object: ObjectInstance }>;
+}
+
+export function placementWorld(ctx: PlacementContext, room: SpaceRoom): PlacementWorld {
+  const walls = ctx.space.walls.map((w) => {
     const f = wallFrame(w.mesh);
     return {
       id: w.id,
-      box: {
+      box: solidBox({
         cx: (w.mesh.start.x + w.mesh.end.x) / 2,
         cy: (w.mesh.start.y + w.mesh.end.y) / 2,
         hw: f.length / 2,
         hd: w.mesh.thicknessM / 2,
         angle: f.angle,
-      },
+      }),
     };
   });
+  const doors: PlacementWorld['doors'] = [];
+  for (const d of ctx.space.doors) {
+    const zone = doorKeepOut(ctx.space, d.id);
+    if (zone) doors.push({ id: d.id, box: solidBox(zone) });
+  }
+  const objects: PlacementWorld['objects'] = [];
+  for (const o of ctx.objects) {
+    const asset = ctx.assets.get(o.assetId);
+    if (!asset) continue;
+    objects.push({
+      id: o.instanceId, asset, flat: isFlat(asset), object: o,
+      box: solidBox(footprint(asset, { x: o.position.x, y: o.position.z }, o.rotationY)),
+    });
+  }
+  return { room, walls, doors, objects };
+}
+
+export const insideRoom = (world: PlacementWorld, box: SolidBox) => box.corners.every((p) => pointInPolygon(p, world.room.polygon));
+
+/** The first wall the box goes through, or null. */
+export function hitsWall(world: PlacementWorld, box: SolidBox): string | null {
+  for (const w of world.walls) if (solidOverlap(box, w.box)) return w.id;
+  return null;
+}
+
+/** The zone a piece needs free in front of it, `reach` metres deep. */
+export function frontZone(asset: Pick<CatalogAsset, 'widthM' | 'depthM'>, at: Point, rotation: number, reach: number): SolidBox {
+  const f = frontOf(rotation);
+  const d = asset.depthM / 2 + reach / 2;
+  return solidBox({ cx: at.x + f.x * d, cy: at.y + f.y * d, hw: asset.widthM / 2, hd: reach / 2, angle: rotation });
+}
+
+/** Is this zone inside the room and free of walls and of solid pieces? */
+export function zoneClear(world: PlacementWorld, zone: SolidBox, instanceId?: string): boolean {
+  if (hitsWall(world, zone) || !insideRoom(world, zone)) return false;
+  for (const o of world.objects) {
+    if (o.id === instanceId || o.flat) continue;
+    if (solidOverlap(zone, o.box)) return false;
+  }
+  return true;
 }
 
 /** The zone in front of a door that must stay passable, on both sides of the wall. */
@@ -130,48 +235,35 @@ export function evaluatePlacement(
   roomId: string | null,
   instanceId?: string,
 ): PlacementIssue[] {
-  const issues: PlacementIssue[] = [];
   const room = roomOf(ctx.space, roomId);
   if (!room) return [{ code: 'NO_ROOM', severity: 'BLOCK' }];
+  return evaluateInWorld(placementWorld(ctx, room), asset, at, rotation, instanceId);
+}
 
-  const box = footprint(asset, at, rotation);
-  const corners = obbCorners(box);
-  if (!corners.every((p) => pointInPolygon(p, room.polygon))) {
-    issues.push({ code: 'OUTSIDE_ROOM', severity: 'BLOCK' });
-  }
-  for (const wall of wallObbs(ctx.space)) {
-    if (obbOverlap(box, wall.box)) {
-      issues.push({ code: 'THROUGH_WALL', severity: 'BLOCK', relatedId: wall.id });
-      break;
-    }
-  }
+/** evaluatePlacement against a prepared world — the one implementation of the rules. */
+export function evaluateInWorld(
+  world: PlacementWorld,
+  asset: CatalogAsset,
+  at: Point,
+  rotation: number,
+  instanceId?: string,
+): PlacementIssue[] {
+  const issues: PlacementIssue[] = [];
+  const box = solidBox(footprint(asset, at, rotation));
+  if (!insideRoom(world, box)) issues.push({ code: 'OUTSIDE_ROOM', severity: 'BLOCK' });
+  const wall = hitsWall(world, box);
+  if (wall) issues.push({ code: 'THROUGH_WALL', severity: 'BLOCK', relatedId: wall });
 
-  const flat = isFlat(asset);
-  if (!flat) {
-    for (const door of ctx.space.doors) {
-      const zone = doorKeepOut(ctx.space, door.id);
-      if (zone && obbOverlap(box, zone)) issues.push({ code: 'BLOCKS_DOOR', severity: 'WARN', relatedId: door.id });
+  if (!isFlat(asset)) {
+    for (const door of world.doors) {
+      if (solidOverlap(box, door.box)) issues.push({ code: 'BLOCKS_DOOR', severity: 'WARN', relatedId: door.id });
     }
-    for (const other of ctx.objects) {
-      if (other.instanceId === instanceId) continue;
-      const otherAsset = ctx.assets.get(other.assetId);
-      if (!otherAsset || isFlat(otherAsset)) continue;
-      const otherBox = footprint(otherAsset, { x: other.position.x, y: other.position.z }, other.rotationY);
-      if (obbOverlap(box, otherBox)) issues.push({ code: 'OVERLAPS_OBJECT', severity: 'WARN', relatedId: other.instanceId });
+    for (const other of world.objects) {
+      if (other.id === instanceId || other.flat) continue;
+      if (solidOverlap(box, other.box)) issues.push({ code: 'OVERLAPS_OBJECT', severity: 'WARN', relatedId: other.id });
     }
-    if (asset.clearanceM > 0) {
-      const f = frontOf(rotation);
-      const reach = asset.depthM / 2 + asset.clearanceM / 2;
-      const zone: Obb = { cx: at.x + f.x * reach, cy: at.y + f.y * reach, hw: asset.widthM / 2, hd: asset.clearanceM / 2, angle: rotation };
-      const zoneCorners = obbCorners(zone);
-      const blockedByWall = wallObbs(ctx.space).some((w) => obbOverlap(zone, w.box))
-        || !zoneCorners.every((p) => pointInPolygon(p, room.polygon));
-      const blockedByObject = ctx.objects.some((o) => {
-        if (o.instanceId === instanceId) return false;
-        const a = ctx.assets.get(o.assetId);
-        return !!a && !isFlat(a) && obbOverlap(zone, footprint(a, { x: o.position.x, y: o.position.z }, o.rotationY));
-      });
-      if (blockedByWall || blockedByObject) issues.push({ code: 'TIGHT_ACCESS', severity: 'WARN' });
+    if (asset.clearanceM > 0 && !zoneClear(world, frontZone(asset, at, rotation, asset.clearanceM), instanceId)) {
+      issues.push({ code: 'TIGHT_ACCESS', severity: 'WARN' });
     }
   }
   return issues;

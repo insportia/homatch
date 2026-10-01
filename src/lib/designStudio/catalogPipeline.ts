@@ -133,7 +133,10 @@ export async function discover(io: PipelineIO, provider: string, assess?: (asset
     ...(r.refusal ? { detail: { excluded: r.refusal } } : {}),
     updated_at: io.now(),
   }));
-  for (let i = 0; i < payload.length; i += 200) await io.db.upsert('ds_catalog_imports', payload.slice(i, i + 200), 'homatch_asset_id');
+  // PostgREST needs every row of one bulk write to carry the same keys (new rows carry state/detail, existing ones keep theirs).
+  const shapes = new Map<string, typeof payload>();
+  for (const r of payload) { const k = Object.keys(r).sort().join(','); shapes.set(k, [...(shapes.get(k) ?? []), r]); }
+  for (const rows of shapes.values()) for (let i = 0; i < rows.length; i += 200) await io.db.upsert('ds_catalog_imports', rows.slice(i, i + 200), 'homatch_asset_id');
   return {
     ...(only ? { requested: only.length, missing: bounded?.missing ?? [] } : {}),
     found: rows.length, excluded: rows.filter((r) => r.refusal).length, newRows: rows.filter((r) => !states.has(r.hma)).length,

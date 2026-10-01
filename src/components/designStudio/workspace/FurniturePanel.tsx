@@ -2,8 +2,11 @@ import React, { useMemo, useState } from 'react';
 import { Plus, Search, X } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { CatalogAsset } from '@/lib/designStudio/catalog';
+import { assetTagKeys } from '@/lib/designStudio/assetTags';
 import { parseAssetQuery, rankAssets } from '@/lib/designStudio/search';
 import { cn } from '@/lib/utils';
+import { CatalogThumb } from './CatalogThumb';
+import { useIncrementalList } from './useIncrementalList';
 
 export const ASSET_DRAG_TYPE = 'application/x-homatch-asset';
 
@@ -11,6 +14,7 @@ const CATEGORY_KEYS: Record<string, string> = {
   SOFA: 'ds_cat_sofa', ARMCHAIR: 'ds_cat_armchair', TABLE: 'ds_cat_table', CHAIR: 'ds_cat_chair', BED: 'ds_cat_bed',
   WARDROBE: 'ds_cat_wardrobe', STORAGE: 'ds_cat_storage', RUG: 'ds_cat_rug', LIGHTING: 'ds_cat_lighting',
   DECOR: 'ds_cat_decor', KITCHEN: 'ds_cat_kitchen', BATHROOM: 'ds_cat_bathroom', OUTDOOR: 'ds_cat_outdoor',
+  TEXTILE: 'ds_cat_textile',
 };
 
 export interface FitCheck {
@@ -18,7 +22,12 @@ export interface FitCheck {
 }
 
 /**
- * THE FURNITURE LIBRARY. Metadata only; nothing heavy loads while browsing.
+ * THE FURNITURE LIBRARY. Metadata and small pictures; no model loads while browsing.
+ *
+ * Every row shows what it is before it is picked: the piece's picture (signed
+ * only once the row is on screen, batched, cached), its name, kind, size and
+ * a short line of style/material/colour. Replace mode uses the same rows. A
+ * long result is drawn a page at a time.
  *
  * Browsing: natural words become structured filters ("small wooden table" →
  * TABLE + wood + small), categories narrow, results rank toward the room
@@ -50,7 +59,11 @@ export function FurniturePanel({
     return rankAssets(assets, q, { roomKind });
   }, [assets, query, effectiveCategory, roomKind]);
 
-  const anyPlaceholder = results.some((a) => a.isPlaceholder);
+  // A 2,000-row result is drawn a page at a time; the ranking is untouched.
+  const list = useIncrementalList(results.length, `${query}|${effectiveCategory ?? ''}|${roomKind ?? ''}|${replacing?.name ?? ''}`);
+  const visible = results.slice(0, list.shown);
+  // The concept-block note speaks about what is on screen.
+  const anyPlaceholder = visible.some((a) => a.isPlaceholder);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -125,8 +138,9 @@ export function FurniturePanel({
       <ul className="min-h-0 flex-1 overflow-y-auto px-2 py-2" aria-label={t('ds_panel_furniture')}>
         {results.length === 0 ? (
           <li className="px-2 py-6 text-[14px] text-[#4A5263]">{t('ds_library_empty')}</li>
-        ) : results.map((asset) => {
+        ) : visible.map((asset) => {
           const verdict = replacing && fit ? fit(asset) : null;
+          const tags = assetTagKeys(asset, 3);
           return (
             <li
               key={asset.code}
@@ -137,12 +151,17 @@ export function FurniturePanel({
               }}
               className="group flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-[#F4F5F7]"
             >
-              <AssetSwatch asset={asset} />
+              <CatalogThumb thumbKey={asset.thumbnailKey} className="h-16 w-16" fallback={<AssetSwatch asset={asset} />} />
               <div className="min-w-0 flex-1">
                 <p className="break-words text-[14px] font-medium leading-snug text-[#0C1119]">{asset.name}</p>
-                <p className="text-[13px] text-[#4A5263]" dir="ltr">
-                  {asset.widthM.toFixed(2)} × {asset.depthM.toFixed(2)} × {asset.heightM.toFixed(2)} m
+                <p className="min-w-0 break-words text-[13px] text-[#4A5263]">
+                  {t(CATEGORY_KEYS[asset.category] ?? 'ds_cat_other')}
+                  {' · '}
+                  <span dir="ltr" className="whitespace-nowrap">{asset.widthM.toFixed(2)} × {asset.depthM.toFixed(2)} × {asset.heightM.toFixed(2)} m</span>
                 </p>
+                {tags.length ? (
+                  <p className="truncate text-[13px] text-[#4A5263]">{tags.map((k) => t(k)).join(' · ')}</p>
+                ) : null}
                 {verdict ? (
                   <p className={cn('text-[13px] font-medium', verdict === 'FITS' ? 'text-[hsl(152_54%_28%)]' : verdict === 'WARN' ? 'text-[hsl(32_78%_34%)]' : 'text-[hsl(0_66%_40%)]')}>
                     {t(verdict === 'FITS' ? 'ds_fit_fits' : verdict === 'WARN' ? 'ds_fit_tight' : 'ds_fit_no')}
@@ -171,12 +190,24 @@ export function FurniturePanel({
             </li>
           );
         })}
+        {list.hasMore ? (
+          <li ref={list.sentinelRef} className="flex flex-wrap items-center justify-between gap-2 px-2 py-3">
+            <span className="text-[13px] text-[#4A5263]">{t('ds_library_showing', { shown: list.shown, total: results.length })}</span>
+            <button
+              type="button"
+              onClick={list.more}
+              className="rounded-md border border-[#D5D9E0] px-3 py-1.5 text-[13px] font-medium text-[#0C1119] hover:bg-[#F4F5F7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]"
+            >
+              {t('ds_library_show_more')}
+            </button>
+          </li>
+        ) : null}
       </ul>
     </div>
   );
 }
 
-/** A plan-view silhouette in the piece's own colours — until a thumbnail exists. */
+/** A plan-view silhouette in the piece's own colours — when there is no picture (concept blocks, unsigned thumbnails). */
 export function AssetSwatch({ asset }: { asset: CatalogAsset }) {
   const main = asset.materialSlots[0]?.defaultColor ?? '#c9ccd2';
   const accent = asset.materialSlots[1]?.defaultColor ?? main;

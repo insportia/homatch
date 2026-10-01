@@ -79,6 +79,25 @@ export interface Pbr {
   maps?: { albedo?: string; normal?: string; roughness?: string };
   repeatM?: number;
   rotationDeg?: number;
+  /**
+   * Imported (licensed) materials: map keys per resolution ('1k', '2k'),
+   * glTF ORM packing (R = occlusion, G = roughness, B = metalness), OpenGL
+   * normals. See materialPbr() in catalogSource.ts. Absent on hand-made rows.
+   */
+  mapsByRes?: Record<string, PbrMapSet>;
+  variants?: { mobile?: string; desktop?: string };
+  /** Metres one texture tile covers, [across, along]. */
+  physicalSizeM?: [number, number] | null;
+  controls?: { repeatM?: number; rotationDeg?: number; scale?: number; roughnessFactor?: number; metalnessFactor?: number; normalScale?: number };
+}
+
+export interface PbrMapSet {
+  albedo?: string | null;
+  normal?: string | null;
+  orm?: string | null;
+  height?: string | null;
+  opacity?: string | null;
+  emission?: string | null;
 }
 
 export interface CatalogMaterial {

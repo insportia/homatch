@@ -55,8 +55,12 @@ export interface MetaStatus {
     status: string; health?: MetaConnectionHealth; granted_scopes?: string[]; missing_scopes?: string[]; error_reason?: string | null;
     /** Instant Forms' extra permissions granted (goal LEADS_ON_META). */
     instant_forms_available?: boolean;
-    /** AVAILABLE / RECONNECT / COMING_SOON / DISABLED (src/lib/metaAds/instantForms.ts). */
-    instant_forms?: 'AVAILABLE' | 'RECONNECT' | 'COMING_SOON' | 'DISABLED';
+    /** The server's state (src/lib/metaAds/instantForms.ts). */
+    instant_forms?: import('@/lib/metaAds/instantForms').InstantFormsState;
+    /** What remains once the Page's Lead Ads Terms are accepted. */
+    instant_forms_next?: import('@/lib/metaAds/instantForms').InstantFormsState;
+    /** The selected Page's leadgen_tos_accepted as Meta last reported it (null: not confirmed). */
+    lead_terms?: boolean | null;
     token_expires_at?: string | null; last_checked_at?: string | null;
   };
   assets: MetaAsset[];
@@ -75,6 +79,8 @@ export const getMetaStatus = () => call<MetaStatus>('status');
 export const startMetaOAuth = () => call<{ url?: string; mockConnect?: boolean; mode: string }>('oauth_start');
 export const mockConnect = () => call('oauth_mock_connect');
 export const refreshMetaAssets = () => call('assets_refresh');
+/** Ask Meta again: permissions, the Page's Lead Ads Terms, form access. Never accepts anything. */
+export const recheckLeadForms = () => call<{ ok: boolean; mode?: string; pageId?: string; checked?: { page: boolean; terms?: boolean | null; termsReason?: string | null; formsReadable?: boolean | null } }>('forms_recheck');
 export const selectMetaAsset = (kind: string, assetId: string) =>
   call<{ ok: boolean; leadgenSubscribed: boolean | null }>('select_asset', { kind, assetId });
 export const disconnectMeta = () => call('disconnect');

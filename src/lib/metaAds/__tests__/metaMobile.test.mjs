@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { classifyDomainScope, domainFingerprint, DOMAIN_CASE_REASON } from '../domainScope.ts';
 import { effectiveLocations, housingRule, declaredSpecialAdCategories, audienceAuthority } from '../targeting.ts';
 import { learningStage, evidenceOf } from '../analysis.ts';
-import { instantFormsCause, instantFormsState, INSTANT_FORM_PERMISSIONS } from '../instantForms.ts';
+import { afterTerms, instantFormsCause, instantFormsState, termsOutcome, INSTANT_FORM_PERMISSIONS, LEAD_TERMS_URL } from '../instantForms.ts';
 import { addLocation, geographyGroups, refinedCountries } from '../../../components/metaAds/builder/masterLogic.ts';
 import { preflightDetails } from '../../../components/metaAds/builder/steps.ts';
 import { META_MOBILE_STRINGS as M } from '../../../../scripts/meta-mobile-i18n-data.mjs';
@@ -222,7 +222,7 @@ test('G: leads — the real blocker named for admin, one action for the customer
   const prod = { granted_scopes: ['ads_management', 'ads_read', 'business_management', 'pages_show_list', 'pages_read_engagement'], declined_scopes: [] };
   assert.equal(instantFormsCause(prod), 'NOT_REQUESTED');
   assert.equal(instantFormsCause({ ...prod, declined_scopes: ['leads_retrieval'] }), 'DECLINED');
-  assert.equal(instantFormsState({ goalEnabled: true, granted: prod.granted_scopes, required: INSTANT_FORM_PERMISSIONS, offeredByLogin: false }), 'COMING_SOON', 'not faked available');
+  assert.equal(instantFormsState({ goalEnabled: true, granted: prod.granted_scopes, required: INSTANT_FORM_PERMISSIONS, offeredByLogin: false, termsAccepted: null }), 'COMING_SOON', 'not faked available');
   const dest = read(`${B}/DestinationStep.tsx`);
   assert.match(dest, /data-mm-forms-action="RECONNECT"/);
   assert.match(dest, /data-mm-forms-action="USE_MESSAGES"/);
@@ -280,4 +280,64 @@ test('every mm_m_ key: six real translations, placeholders intact, and present i
   for (const k of used) assert.ok(M[k], `${k} has copy`);
   for (const s of ['NEW', 'COLLECTING', 'USING_SIGNALS']) { assert.ok(M[`mm_m_stage_${s}`]); assert.ok(M[`mm_m_stage_${s}_d`]); }
   for (const c of ['NOT_REQUESTED', 'DECLINED']) assert.ok(M[`mm_m_admin_forms_${c}`]);
+});
+
+/* ── G2 · META LEAD ADS TERMS ──────────────────────────────────────────── */
+
+test('G2: Terms acceptance is its own state — never collapsed into "coming soon", never assumed', () => {
+  const req = INSTANT_FORM_PERMISSIONS;
+  const base = ['ads_management', 'ads_read', 'business_management', 'pages_show_list', 'pages_read_engagement'];
+  const ready = { goalEnabled: true, granted: [...base, ...req], required: req, offeredByLogin: false };
+  assert.equal(instantFormsState({ ...ready, termsAccepted: false }), 'TERMS_REQUIRED', 'everything ready except the terms');
+  assert.equal(instantFormsState({ ...ready, termsAccepted: true }), 'AVAILABLE', 'Meta confirmed');
+  assert.equal(instantFormsState({ ...ready, termsAccepted: null }), 'RECHECK', 'unknown is checked, not assumed');
+  assert.equal(instantFormsState({ ...ready, termsAccepted: undefined }), 'RECHECK');
+  assert.equal(instantFormsState({ ...ready, termsAccepted: true, pageSelected: false }), 'PAGE_REQUIRED');
+  // Terms first (the owner can do it now), then the next blocker is said.
+  const noPerms = { goalEnabled: true, granted: base, required: req, offeredByLogin: true, termsAccepted: false };
+  assert.equal(instantFormsState(noPerms), 'TERMS_REQUIRED');
+  assert.equal(afterTerms(noPerms), 'RECONNECT', 'Terms accepted ✓ · next: reconnect');
+  assert.equal(afterTerms({ ...noPerms, offeredByLogin: false }), 'COMING_SOON', 'capability not available ≠ terms');
+  assert.equal(instantFormsState({ ...ready, goalEnabled: false, termsAccepted: false }), 'DISABLED');
+});
+
+test('G2: the round trip ends only on Meta\'s answer — a closing window proves nothing', () => {
+  assert.equal(termsOutcome({ pageAtOpen: '1', pageNow: '1', terms: true, windowOpen: false }), 'ACCEPTED');
+  assert.equal(termsOutcome({ pageAtOpen: '1', pageNow: '1', terms: false, windowOpen: false }), 'NOT_ACCEPTED', 'closed without accepting');
+  assert.equal(termsOutcome({ pageAtOpen: '1', pageNow: '1', terms: false, windowOpen: true }), 'WAITING');
+  assert.equal(termsOutcome({ pageAtOpen: '1', pageNow: '1', terms: null, windowOpen: false }), 'UNCONFIRMED');
+  assert.equal(termsOutcome({ pageAtOpen: '1', pageNow: '2', terms: true, windowOpen: false }), 'PAGE_CHANGED', 'another Page is not this acceptance');
+  assert.equal(LEAD_TERMS_URL('123'), 'https://www.facebook.com/ads/leadgen/tos?page_id=123', 'Meta\'s own page');
+});
+
+test('G2: HOMATCH opens Meta\'s own terms page and re-checks with Meta — it never accepts, copies, frames or trusts messages', () => {
+  const flow = read(`${B}/LeadTermsFlow.tsx`);
+  assert.match(flow, /window\.open\('', 'homatch-meta-lead-terms', 'popup,/);
+  assert.match(flow, /w\.opener = null/);
+  assert.match(flow, /w\.location\.href = url/);
+  assert.match(flow, /target="_blank" rel="noopener noreferrer"/, 'blocked popup: a real link the owner taps');
+  assert.doesNotMatch(flow, /addEventListener\('message'|onmessage|postMessage/, 'no message is trusted');
+  assert.doesNotMatch(flow, /<iframe/i, 'facebook.com is never framed');
+  assert.doesNotMatch(flow, /localStorage|sessionStorage/, 'no local "accepted" flag');
+  assert.match(flow, /await recheckLeadForms\(\);\s*await onRechecked\(\);/, 'Meta is asked, then the server status reloads');
+  for (const o of ['WAITING', 'NOT_ACCEPTED', 'UNCONFIRMED', 'POPUP_BLOCKED', 'META_ERROR', 'SESSION_EXPIRED', 'PAGE_CHANGED', 'TIMEOUT', 'ACCEPTED']) {
+    assert.match(flow, new RegExp(`${o}: 'mm_l_`), `${o} has its sentence`);
+  }
+  // Server: reads leadgen_tos_accepted with the Page token; writes no acceptance anywhere.
+  const engine = read('supabase/functions/meta-ads-api/engine.ts');
+  const index = read('supabase/functions/meta-ads-api/index.ts');
+  assert.match(engine, /fields=leadgen_tos_accepted`, \{ token: pageAccessToken, attempts: 1 \}/);
+  assert.match(engine, /typeof res\?\.leadgen_tos_accepted === 'boolean' \? \{ accepted: res\.leadgen_tos_accepted/);
+  const recheck = index.slice(index.indexOf("case 'forms_recheck'"), index.indexOf("case 'select_asset'"));
+  assert.ok(recheck.length > 100);
+  assert.doesNotMatch(recheck, /method: 'POST'|leadgen_tos_accepted: true/, 'nothing is accepted for the owner');
+  assert.match(recheck, /graph\('\/me\/permissions'/, 'permissions re-read');
+  assert.match(recheck, /readLeadTerms\(page\.external_id, pt\)/, 'terms re-read');
+  assert.match(recheck, /leadgen_forms\?fields=id&limit=1/, 'form access re-read');
+  assert.match(index, /termsAccepted: typeof tos === 'boolean' \? tos : null/);
+  assert.match(engine, /leadgen_tos_accepted === false\) add\('lead_terms', 'ACTION_REQUIRED', 'LEAD_TERMS_REQUIRED'\)/, 'preflight holds it too');
+  // The Leads goal stays selectable when the owner can resolve it here.
+  assert.match(page, /const enabled = switchedOn && FORMS_ACTIONABLE\.has\(forms\);/);
+  assert.equal(M.mm_l_terms_cta[1], 'Meta-ს პირობებთან დათანხმება');
+  for (const [k, v] of Object.entries(M)) if (k.startsWith('mm_l_')) for (const x of v) assert.doesNotMatch(x, /leads_retrieval|pages_manage|permission/i, k);
 });

@@ -161,6 +161,21 @@ export async function pageToken(userTokenValue: string, pageId: string, audit?: 
   return typeof res.access_token === 'string' ? res.access_token : null;
 }
 
+/**
+ * The Page's Lead Ads Terms as META reports them (Page field
+ * leadgen_tos_accepted, read with the Page token). true / false only when Meta
+ * answered with a boolean; anything else is null with a named reason — never
+ * a guess, and never an acceptance: that happens only in Meta's own window.
+ */
+export async function readLeadTerms(pageId: string, pageAccessToken: string): Promise<{ accepted: boolean | null; reason: string | null }> {
+  try {
+    const res = await graph(`/${pageId}?fields=leadgen_tos_accepted`, { token: pageAccessToken, attempts: 1 }) as any;
+    return typeof res?.leadgen_tos_accepted === 'boolean' ? { accepted: res.leadgen_tos_accepted, reason: null } : { accepted: null, reason: 'FIELD_ABSENT' };
+  } catch (e) {
+    return { accepted: null, reason: e instanceof MetaApiError ? `META_${e.normalized.code || e.status}` : 'FAILED' };
+  }
+}
+
 /* ── STRATEGY INPUT ─────────────────────────────────────────────────── */
 
 export async function strategyInputFor(sb: Sb, uid: string, c: any, settings: MetaSettings):
@@ -332,6 +347,8 @@ export async function runPreflight(sb: Sb, uid: string, c: any, settings: MetaSe
   }
   if (spec.needsPixel) add('tracking', ctx.pixelId ? 'READY' : 'ACTION_REQUIRED', ctx.pixelId ? spec.pixelEvent ?? undefined : 'PIXEL_REQUIRED');
   if (spec.needsLeadForm) add('lead_form', ctx.leadFormId ? 'READY' : 'ACTION_REQUIRED', ctx.leadFormId ? undefined : 'LEAD_FORM_REQUIRED');
+  // Meta's own answer for the Page: terms not accepted → the owner accepts them in Meta's window first.
+  if (spec.needsLeadForm && page?.capabilities?.leadgen_tos_accepted === false) add('lead_terms', 'ACTION_REQUIRED', 'LEAD_TERMS_REQUIRED');
   if (spec.needsMessagingApp) {
     const m = missing.find((x) => ['MESSAGING_DESTINATION_REQUIRED', 'INSTAGRAM_REQUIRED', 'WHATSAPP_REQUIRED'].includes(x));
     const waBlocked = ctx.messagingApp === 'WHATSAPP' && !settings.whatsappEnabled;

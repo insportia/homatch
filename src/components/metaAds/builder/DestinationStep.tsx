@@ -1,19 +1,20 @@
 // WHERE PEOPLE GO — a destination step shaped by the goal, never just "URL".
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FileText, Globe, MessageCircle, Instagram, Loader2, Plus, Radio, ThumbsUp, Home } from 'lucide-react';
+import { CheckCircle2, FileText, Globe, MessageCircle, Instagram, Loader2, Plus, Radio, ThumbsUp, Home } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { GOAL_SPECS } from '@/lib/metaAds/payload';
 import type { MetaGoal } from '@/lib/metaAds/strategy';
-import { selectMetaAsset, type MetaCampaignRow, type MetaStatus } from '@/services/metaAds';
+import { recheckLeadForms, selectMetaAsset, type MetaCampaignRow, type MetaStatus } from '@/services/metaAds';
 import { ChoiceCard, StepShell, VerdictBadge } from './ui';
 import { selectedAsset, urlProblem } from './steps';
 import { LeadFormBuilder } from './LeadFormBuilder';
 import { formsStateOf, FORMS_COPY } from './instantFormsCopy';
 import { destinationForGoal } from './masterLogic';
+import { LeadTermsFlow } from './LeadTermsFlow';
 
 export function DestinationStep({ campaign, status, patch, reloadStatus, propertyUrl }: {
   campaign: MetaCampaignRow; status: MetaStatus | null;
@@ -137,6 +138,15 @@ function LeadFormPicker({ status, campaign, setDest, reloadStatus, patch }: {
   const chosen = campaign.destination?.formId ?? forms.find((f) => f.selected)?.external_id ?? null;
   const [creating, setCreating] = useState(false);
   const formsState = formsStateOf(status);
+  /* Leads chosen and Meta's answer on the Page's terms still unknown: ask Meta
+     once, quietly — the state shown is then Meta's, not a guess. */
+  const asked = React.useRef(false);
+  React.useEffect(() => {
+    if (asked.current || status?.mode !== 'REAL' || !page || status?.connection?.status !== 'CONNECTED') return;
+    if (status.connection.lead_terms !== null && status.connection.lead_terms !== undefined) return;
+    asked.current = true;
+    recheckLeadForms().then(() => reloadStatus()).catch(() => undefined);
+  }, [status, page, reloadStatus]);
   const messagesOn = (status?.settings.goalsEnabled ?? []).includes('MESSAGES');
 
   return (
@@ -158,8 +168,17 @@ function LeadFormPicker({ status, campaign, setDest, reloadStatus, patch }: {
                leads through messages meanwhile. Never a permission name, never a
                form builder that cannot work. */
             <div role="status" data-mm-forms-state={formsState} className="rounded-xl border border-[hsl(var(--gold-border))]/70 bg-[hsl(var(--gold-soft))] px-3.5 py-2.5 text-[13px] leading-relaxed text-foreground">
+              {/* Meta confirmed the terms; another blocker remains — said next, honestly. */}
+              {status?.connection?.lead_terms === true && (
+                <p className="mb-1 flex items-center gap-1.5 font-medium text-[hsl(152_54%_26%)]" data-mm-terms-done=""><CheckCircle2 className="h-4 w-4" aria-hidden />{t('mm_l_terms_done')}</p>
+              )}
               <p>{t(FORMS_COPY[formsState])}</p>
-              {formsState === 'RECONNECT' ? (
+              {formsState === 'TERMS_REQUIRED' && status?.connection?.instant_forms_next && status.connection.instant_forms_next !== 'AVAILABLE' && (
+                <p className="mt-1 text-2xs text-muted-foreground" data-mm-terms-next={status.connection.instant_forms_next}>{t('mm_l_next', { next: t(FORMS_COPY[status.connection.instant_forms_next as keyof typeof FORMS_COPY] ?? 'mm_b_lf_soon') })}</p>
+              )}
+              {formsState === 'TERMS_REQUIRED' || formsState === 'RECHECK' ? (
+                <LeadTermsFlow status={status} onRechecked={reloadStatus} checkOnly={formsState === 'RECHECK'} />
+              ) : formsState === 'RECONNECT' ? (
                 <Link to={{ search: `?draft=${encodeURIComponent(campaign.id)}&step=account` }} data-mm-forms-action="RECONNECT"
                   className="mt-2 inline-flex min-h-11 items-center rounded-full bg-[hsl(var(--gold))] px-4 text-[13px] font-semibold text-[#161309] hover:bg-[hsl(var(--gold-hover))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">
                   {t('mm_m_forms_reconnect_cta')}
@@ -174,7 +193,7 @@ function LeadFormPicker({ status, campaign, setDest, reloadStatus, patch }: {
             </div>
           )}
           {formsState === 'AVAILABLE' && (!creating ? (
-            <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => setCreating(true)}>
+            <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => setCreating(true)} data-mm-lf-open="">
               <Plus className="h-3.5 w-3.5" />{t('mm_b_lf_open')}
             </Button>
           ) : (

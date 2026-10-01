@@ -25,7 +25,9 @@ test('Instant Forms: the switch on but permissions missing is safely unavailable
   const base = ['ads_management', 'ads_read', 'business_management', 'pages_show_list', 'pages_read_engagement', 'public_profile'];
   assert.equal(instantFormsState({ goalEnabled: true, granted: base, required: req, offeredByLogin: false }), 'COMING_SOON', 'production today');
   assert.equal(instantFormsState({ goalEnabled: true, granted: base, required: req, offeredByLogin: true }), 'RECONNECT');
-  assert.equal(instantFormsState({ goalEnabled: true, granted: [...base, ...req], required: req, offeredByLogin: false }), 'AVAILABLE');
+  // Available only when Meta also confirmed the Page's Lead Ads Terms (unknown is checked again, never assumed).
+  assert.equal(instantFormsState({ goalEnabled: true, granted: [...base, ...req], required: req, offeredByLogin: false, termsAccepted: true }), 'AVAILABLE');
+  assert.equal(instantFormsState({ goalEnabled: true, granted: [...base, ...req], required: req, offeredByLogin: false, termsAccepted: null }), 'RECHECK');
   assert.equal(instantFormsState({ goalEnabled: true, granted: [...base, 'leads_retrieval'], required: req, offeredByLogin: false }), 'COMING_SOON', 'all three, not some');
   assert.equal(instantFormsState({ goalEnabled: false, granted: [...base, ...req], required: req, offeredByLogin: true }), 'DISABLED');
   assert.equal(instantFormsState({ goalEnabled: true, granted: [], required: req, offeredByLogin: false, mock: true }), 'AVAILABLE');
@@ -62,7 +64,12 @@ test('Instant Forms: no permission name is ever shown to a customer', () => {
   }
   assert.match(values('mm_b_lf_soon')[1], /Facebook\/Instagram ლიდების მიღება მალე იქნება ხელმისაწვდომი/);
   const page = read('src/pages/outreach/MetaAdsCreatePage.tsx');
-  assert.match(page, /const enabled = switchedOn && forms === 'AVAILABLE';/, 'the goal stays unavailable until the server says AVAILABLE');
+  // The goal is selectable only where the owner can resolve it in the builder (accept Meta's terms,
+  // reconnect, check again); "coming soon" stays unavailable. Ready still needs the server's AVAILABLE.
+  assert.match(page, /const enabled = switchedOn && FORMS_ACTIONABLE\.has\(forms\);/);
+  const copy = read('src/components/metaAds/builder/instantFormsCopy.ts');
+  assert.match(copy, /FORMS_ACTIONABLE: ReadonlySet<InstantFormsState> = new Set\(\['AVAILABLE', 'TERMS_REQUIRED', 'RECONNECT', 'RECHECK', 'PAGE_REQUIRED'\]\)/);
+  assert.doesNotMatch(copy.slice(copy.indexOf('FORMS_ACTIONABLE')), /'COMING_SOON'|'DISABLED'/, 'never the unavailable ones');
 });
 
 test('Instant Forms: Admin sees the technical blocker — permission names and counts, never tokens', () => {

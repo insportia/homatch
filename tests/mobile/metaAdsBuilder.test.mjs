@@ -250,6 +250,8 @@ const BOTTOM = () => {
   window.scrollTo(0, document.documentElement.scrollHeight);
   const nav = document.querySelector('[data-madsb-nav]')?.getBoundingClientRect();
   const controls = [...document.querySelectorAll('main button, main a[href], main input, main textarea, main select')]
+    // The page's own controls: not the bar itself, nor anything fixed (the app shell's nested <main> holds both).
+    .filter((el) => !el.closest('[data-madsb-nav]') && ![...function* up(n) { for (; n; n = n.parentElement) yield n; }(el)].some((n) => getComputedStyle(n).position === 'fixed'))
     .filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
   const last = controls.at(-1)?.getBoundingClientRect();
   const money = [...document.querySelectorAll('[data-charged-now]')].map((el) => {
@@ -259,7 +261,9 @@ const BOTTOM = () => {
   const appNav = [...document.querySelectorAll('nav')].filter((n) => n !== document.querySelector('[data-madsb-nav]') && getComputedStyle(n).position === 'fixed'
     && n.getBoundingClientRect().bottom >= window.innerHeight - 1 && n.getBoundingClientRect().height > 0)
     .filter((n) => { const r = n.getBoundingClientRect(); const hit = document.elementFromPoint(r.left + r.width / 2, r.bottom - 4); return hit && n.contains(hit); });
-  return { lastClear: !last || !nav || last.bottom <= nav.top + 1, moneyOneLine: money.every(Boolean), appNavVisible: appNav.length };
+  const lastEl = controls.at(-1);
+  const what = lastEl ? `${lastEl.tagName.toLowerCase()} "${(lastEl.textContent || '').trim().slice(0, 30)}" bottom ${Math.round(last.bottom)} vs bar ${Math.round(nav?.top ?? 0)}, page ${document.documentElement.scrollHeight}/${window.scrollY + window.innerHeight}` : '';
+  return { what, lastClear: !last || !nav || last.bottom <= nav.top + 1, moneyOneLine: money.every(Boolean), appNavVisible: appNav.length };
 };
 
 for (const [width, height] of [[1440, 900], [390, 844], [320, 640], [360, 760], [430, 932], [768, 1024]]) {
@@ -278,7 +282,7 @@ for (const [width, height] of [[1440, 900], [390, 844], [320, 640], [360, 760], 
         if ((lang === 'ar' || lang === 'he') && l.dir !== 'rtl') failures.push(`${lang} ${width}px ${step}: not RTL`);
         if (step === 'creative' || step === 'budget' || step === 'review' || step === 'audience') {
           const b = await page.evaluate(BOTTOM);
-          if (!b.lastClear) failures.push(`${lang} ${width}px ${step}: the last control is under the bar`);
+          if (!b.lastClear) failures.push(`${lang} ${width}px ${step}: the last control is under the bar — ${b.what}`);
           if (!b.moneyOneLine) failures.push(`${lang} ${width}px ${step}: an amount wraps`);
           if (width < 768 && b.appNavVisible) failures.push(`${lang} ${width}px ${step}: two bottom bars`);
         }
@@ -986,5 +990,77 @@ test('LEADS: unavailable forms offer ONE action — never a permission name, nev
       await page.waitForTimeout(500);
       assert.equal(calls.patches.map((p) => p.goal).filter(Boolean).pop(), 'MESSAGES', 'one tap switches to messages');
     }
+  }
+});
+
+test('LEADS TERMS: Leads stays selectable; Meta\'s own terms page opens from HOMATCH; only Meta\'s answer makes Leads available; the draft is kept', opts, async (t) => {
+  if (skipReason) assert.fail(`meta ads builder gate could not run: ${skipReason}`);
+  const settings = { ...fixtures().status.settings, goalsEnabled: ['MESSAGES', 'LEADS_ON_META', 'PROMOTE'] };
+  const assets = fixtures().status.assets;
+  const pageId = assets.find((a) => a.kind === 'PAGE' && a.selected)?.external_id;
+  for (const [width, height] of [[390, 844], [1440, 900]]) {
+    const { page, calls } = await boot(t, { width, height, lang: 'ka',
+      statusOver: { settings, mode: 'REAL', connection: { instant_forms: 'TERMS_REQUIRED', instant_forms_next: 'AVAILABLE', lead_terms: false, instant_forms_available: true } },
+      campaignOver: { goal: 'LEADS_ON_META', destination: { type: 'META_FORM', formId: null }, daily_budget_cents: 2500, duration_days: 7 } });
+    // A stand-in for the browser window so the test can play the owner closing it — Meta's page itself is not loaded offline.
+    await page.addInitScript(() => {
+      window.__opened = [];
+      window.open = (url, name, features) => { const w = { closed: false, opener: window, location: { href: url } }; window.__opened.push({ name, features, w }); return w; };
+    });
+    await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=goal`, { waitUntil: 'domcontentloaded' });
+    await waitReady(page);
+    const leads = page.locator('button[aria-pressed]', { hasText: /ლიდ|Lead/i }).first();
+    assert.equal(await leads.isDisabled(), false, `${width}: Leads is not shown as permanently disabled`);
+    assert.doesNotMatch(await page.evaluate(() => document.body.innerText), /მალე/, 'not "coming soon"');
+
+    await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=destination`, { waitUntil: 'domcontentloaded' });
+    await waitReady(page);
+    await page.waitForSelector('[data-mm-forms-state="TERMS_REQUIRED"]');
+    assert.equal(await page.locator('[data-mm-terms-open]').count(), 1, 'one obvious action');
+    assert.match(await page.locator('[data-mm-terms-open]').innerText(), /Meta-ს პირობებთან დათანხმება/);
+    assert.doesNotMatch(await page.evaluate(() => document.body.innerText), /leads_retrieval|pages_manage/);
+    await page.locator('[data-mm-terms-open]').click();
+    const opened = await page.evaluate(() => window.__opened.map((o) => ({ href: o.w.location.href, opener: o.w.opener, features: o.features })));
+    assert.equal(opened.length, 1);
+    assert.equal(opened[0].href, `https://www.facebook.com/ads/leadgen/tos?page_id=${pageId}`, 'Meta\'s own terms page for the selected Page');
+    assert.equal(opened[0].opener, null, 'the Meta window cannot reach back into HOMATCH');
+    await page.waitForSelector('[data-mm-terms-flow="WAITING"]');
+
+    // A forged message changes nothing: no message is listened to.
+    await page.evaluate(() => window.postMessage({ type: 'META_TERMS_ACCEPTED', accepted: true }, '*'));
+    await page.waitForTimeout(300);
+    assert.equal(await page.locator('[data-mm-terms-flow="WAITING"]').count(), 1);
+    assert.ok(!calls.actions.includes('forms_recheck'), 'nothing re-checked on a message');
+
+    // The owner closes Meta's window without accepting: HOMATCH asks Meta, Meta says no.
+    await page.route('**/functions/v1/meta-ads-api', async (r) => {
+      const body = JSON.parse(r.request().postData() || '{}');
+      if (body.action !== 'forms_recheck') return r.fallback();
+      calls.actions.push('forms_recheck');
+      return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ ok: true, pageId, checked: { page: true, terms: false } }) });
+    });
+    await page.evaluate(() => { window.__opened[0].w.closed = true; });
+    await page.waitForSelector('[data-mm-terms-flow="NOT_ACCEPTED"]', { timeout: 8000 });
+
+    // Opened again, accepted in Meta's window: Meta now reports it, the server status follows.
+    await page.locator('[data-mm-terms-open]').click();
+    await page.waitForSelector('[data-mm-terms-flow="WAITING"]');
+    await page.route('**/functions/v1/meta-ads-api', async (r) => {
+      const body = JSON.parse(r.request().postData() || '{}');
+      const ok = (o) => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(o) });
+      if (body.action === 'forms_recheck') { calls.actions.push('forms_recheck'); return ok({ ok: true, pageId, checked: { page: true, terms: true, formsReadable: true } }); }
+      if (body.action === 'status') {
+        const s = fixtures().status;
+        return ok({ ...s, mode: 'REAL', settings, connection: { ...s.connection, instant_forms: 'AVAILABLE', instant_forms_next: 'AVAILABLE', lead_terms: true, instant_forms_available: true } });
+      }
+      return r.fallback();
+    });
+    await page.evaluate(() => { window.__opened.at(-1).w.closed = true; });
+    await page.waitForFunction(() => !document.querySelector('[data-mm-forms-state]'), null, { timeout: 8000 });
+    await page.waitForSelector('[data-mm-lf-open]', { timeout: 5000 });
+    // Still the same draft, nothing lost or re-created; nothing launched or charged.
+    assert.equal(calls.inserts, 0);
+    assert.ok(!calls.actions.includes('launch') && !calls.actions.includes('deposit_checkout'));
+    assert.match(page.url(), /draft=c1&step=destination/);
   }
 });

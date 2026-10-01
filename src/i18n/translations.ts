@@ -13625,6 +13625,26 @@ const en = {
   mm_m_stage_COLLECTING_d: 'There isn\'t enough data yet to draw conclusions. HOMATCH keeps the initial strategy and will suggest changes once Meta reports enough results.',
   mm_m_stage_USING_SIGNALS: 'Learning from real results',
   mm_m_stage_USING_SIGNALS_d: 'HOMATCH now uses the results Meta reports — which versions, placements and groups respond — to recommend improvements. Nothing changes without your approval.',
+
+  /* ── META ADS — MOBILE SIMPLIFICATION ── */
+  mm_l_terms_cta: 'Accept Meta\'s terms',
+  mm_l_terms_body: 'Almost ready: Meta asks your Page to accept its Lead Ads terms once. They open on Meta\'s own page — read them there and press Meta\'s Accept button.',
+  mm_l_goal_terms: 'Accept Meta\'s terms',
+  mm_l_recheck_body: 'Meta hasn\'t confirmed your Page\'s Lead Ads status yet. Check with Meta to continue.',
+  mm_l_recheck_cta: 'Check with Meta',
+  mm_l_waiting: 'Meta\'s terms are open in another window. When you\'ve accepted them there, come back — HOMATCH checks with Meta automatically.',
+  mm_l_accepted: 'Meta confirmed: your Page accepted the Lead Ads terms.',
+  mm_l_terms_done: 'Meta terms accepted',
+  mm_l_next: 'Next: {{next}}',
+  mm_l_not_accepted: 'Meta doesn\'t show the terms as accepted yet. You can open them again whenever you\'re ready.',
+  mm_l_unconfirmed: 'Meta didn\'t confirm the result yet. Check again in a moment.',
+  mm_l_popup_blocked: 'Your browser blocked the window. Tap the button again to open Meta\'s terms in a new tab.',
+  mm_l_meta_error: 'Meta didn\'t answer just now. Your draft is saved — check again in a moment.',
+  mm_l_session_expired: 'Your Meta connection has expired. Reconnect Meta from the Account step — your draft is kept.',
+  mm_l_page_changed: 'The selected Facebook Page changed. HOMATCH checked the new Page — accept Meta\'s terms for it if asked.',
+  mm_l_timeout: 'We stopped waiting for Meta\'s window. If you accepted the terms, check with Meta now.',
+  mm_l_pfd_terms: 'Accept Meta\'s Lead Ads terms for your Page in the Destination step.',
+  mads_check_lead_terms: 'Meta Lead Ads terms',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -27164,6 +27184,26 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mm_m_stage_COLLECTING_d: 'დასკვნებისთვის მონაცემები ჯერ საკმარისი არ არის. HOMATCH საწყის სტრატეგიას ინარჩუნებს და ცვლილებებს შემოგთავაზებთ, როცა Meta საკმარის შედეგებს აჩვენებს.',
   mm_m_stage_USING_SIGNALS: 'ვსწავლობთ რეალური შედეგებიდან',
   mm_m_stage_USING_SIGNALS_d: 'HOMATCH ახლა Meta-ს მიერ მოწოდებულ შედეგებს იყენებს — რომელი ვერსიები, განთავსებები და ჯგუფები რეაგირებენ — გაუმჯობესებების შესათავაზებლად. თქვენი თანხმობის გარეშე არაფერი იცვლება.',
+
+  /* ── META ADS — MOBILE SIMPLIFICATION ── */
+  mm_l_terms_cta: 'Meta-ს პირობებთან დათანხმება',
+  mm_l_terms_body: 'თითქმის მზადაა: Meta ითხოვს, რომ თქვენმა გვერდმა ერთხელ დაეთანხმოს მის ლიდ-რეკლამების პირობებს. ისინი Meta-ს საკუთარ გვერდზე გაიხსნება — წაიკითხეთ და დააჭირეთ Meta-ს დათანხმების ღილაკს.',
+  mm_l_goal_terms: 'საჭიროა Meta-ს პირობები',
+  mm_l_recheck_body: 'Meta-ს ჯერ არ დაუდასტურებია თქვენი გვერდის ლიდ-რეკლამების სტატუსი. გასაგრძელებლად შეამოწმეთ Meta-სთან.',
+  mm_l_recheck_cta: 'Meta-სთან შემოწმება',
+  mm_l_waiting: 'Meta-ს პირობები სხვა ფანჯარაშია გახსნილი. იქ დათანხმების შემდეგ დაბრუნდით — HOMATCH ავტომატურად გადაამოწმებს Meta-სთან.',
+  mm_l_accepted: 'Meta-მ დაადასტურა: თქვენი გვერდი დაეთანხმა ლიდ-რეკლამების პირობებს.',
+  mm_l_terms_done: 'Meta-ს პირობები მიღებულია',
+  mm_l_next: 'შემდეგი ნაბიჯი: {{next}}',
+  mm_l_not_accepted: 'Meta-ში პირობები ჯერ მიღებულად არ ჩანს. როცა მზად იქნებით, შეგიძლიათ ხელახლა გახსნათ.',
+  mm_l_unconfirmed: 'Meta-ს შედეგი ჯერ არ დაუდასტურებია. ცოტა ხანში ხელახლა შეამოწმეთ.',
+  mm_l_popup_blocked: 'ბრაუზერმა ფანჯარა დაბლოკა. Meta-ს პირობების ახალ ჩანართში გასახსნელად ხელახლა დააჭირეთ ღილაკს.',
+  mm_l_meta_error: 'Meta-მ ახლა არ გვიპასუხა. თქვენი მონახაზი შენახულია — ცოტა ხანში ხელახლა შეამოწმეთ.',
+  mm_l_session_expired: 'Meta-სთან კავშირს ვადა გაუვიდა. ხელახლა დააკავშირეთ Meta ანგარიშის ნაბიჯიდან — მონახაზი შენახულია.',
+  mm_l_page_changed: 'არჩეული Facebook გვერდი შეიცვალა. HOMATCH-მა ახალი გვერდი შეამოწმა — საჭიროების შემთხვევაში დაეთანხმეთ მისთვის Meta-ს პირობებს.',
+  mm_l_timeout: 'Meta-ს ფანჯრის ლოდინი შევწყვიტეთ. თუ პირობებს დაეთანხმეთ, ახლა შეამოწმეთ Meta-სთან.',
+  mm_l_pfd_terms: 'დაეთანხმეთ Meta-ს ლიდ-რეკლამების პირობებს თქვენი გვერდისთვის „მიმართულების“ ნაბიჯში.',
+  mads_check_lead_terms: 'Meta-ს ლიდ-რეკლამების პირობები',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -40694,6 +40734,26 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mm_m_stage_COLLECTING_d: 'Данных для выводов пока мало. HOMATCH сохраняет начальную стратегию и предложит изменения, когда Meta сообщит достаточно результатов.',
   mm_m_stage_USING_SIGNALS: 'Учимся на реальных результатах',
   mm_m_stage_USING_SIGNALS_d: 'HOMATCH теперь использует результаты из отчётов Meta — какие версии, места размещения и группы откликаются — чтобы предлагать улучшения. Без вашего согласия ничего не меняется.',
+
+  /* ── META ADS — MOBILE SIMPLIFICATION ── */
+  mm_l_terms_cta: 'Принять условия Meta',
+  mm_l_terms_body: 'Почти готово: Meta просит вашу страницу один раз принять условия рекламы для лидов. Они откроются на странице Meta — прочитайте их там и нажмите кнопку принятия Meta.',
+  mm_l_goal_terms: 'Нужны условия Meta',
+  mm_l_recheck_body: 'Meta ещё не подтвердила статус рекламы для лидов на вашей странице. Проверьте в Meta, чтобы продолжить.',
+  mm_l_recheck_cta: 'Проверить в Meta',
+  mm_l_waiting: 'Условия Meta открыты в другом окне. Примите их там и возвращайтесь — HOMATCH проверит в Meta автоматически.',
+  mm_l_accepted: 'Meta подтвердила: ваша страница приняла условия рекламы для лидов.',
+  mm_l_terms_done: 'Условия Meta приняты',
+  mm_l_next: 'Далее: {{next}}',
+  mm_l_not_accepted: 'В Meta условия пока не отмечены как принятые. Откройте их снова, когда будете готовы.',
+  mm_l_unconfirmed: 'Meta пока не подтвердила результат. Проверьте ещё раз чуть позже.',
+  mm_l_popup_blocked: 'Браузер заблокировал окно. Нажмите кнопку ещё раз, чтобы открыть условия Meta в новой вкладке.',
+  mm_l_meta_error: 'Meta сейчас не ответила. Черновик сохранён — проверьте ещё раз чуть позже.',
+  mm_l_session_expired: 'Подключение к Meta истекло. Переподключите Meta на шаге «Аккаунт» — черновик сохранён.',
+  mm_l_page_changed: 'Выбранная страница Facebook изменилась. HOMATCH проверил новую страницу — при необходимости примите для неё условия Meta.',
+  mm_l_timeout: 'Мы перестали ждать окно Meta. Если вы приняли условия, проверьте в Meta сейчас.',
+  mm_l_pfd_terms: 'Примите условия Meta для рекламы лидов на шаге «Назначение».',
+  mads_check_lead_terms: 'Условия Meta для рекламы лидов',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -54222,6 +54282,26 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mm_m_stage_COLLECTING_d: 'Sonuç çıkarmak için henüz yeterli veri yok. HOMATCH başlangıç stratejisini korur ve Meta yeterli sonuç bildirdiğinde değişiklik önerir.',
   mm_m_stage_USING_SIGNALS: 'Gerçek sonuçlardan öğreniyoruz',
   mm_m_stage_USING_SIGNALS_d: 'HOMATCH artık Meta\'nın bildirdiği sonuçları — hangi sürümlerin, yerleşimlerin ve grupların tepki verdiğini — iyileştirme önermek için kullanıyor. Onayınız olmadan hiçbir şey değişmez.',
+
+  /* ── META ADS — MOBILE SIMPLIFICATION ── */
+  mm_l_terms_cta: 'Meta koşullarını kabul et',
+  mm_l_terms_body: 'Neredeyse hazır: Meta, sayfanızın potansiyel müşteri reklamı koşullarını bir kez kabul etmesini istiyor. Koşullar Meta\'nın kendi sayfasında açılır — orada okuyun ve Meta\'nın Kabul düğmesine basın.',
+  mm_l_goal_terms: 'Meta koşulları gerekli',
+  mm_l_recheck_body: 'Meta, sayfanızın potansiyel müşteri reklamı durumunu henüz onaylamadı. Devam etmek için Meta ile kontrol edin.',
+  mm_l_recheck_cta: 'Meta ile kontrol et',
+  mm_l_waiting: 'Meta koşulları başka bir pencerede açık. Orada kabul ettikten sonra geri dönün — HOMATCH Meta ile otomatik olarak kontrol eder.',
+  mm_l_accepted: 'Meta onayladı: sayfanız potansiyel müşteri reklamı koşullarını kabul etti.',
+  mm_l_terms_done: 'Meta koşulları kabul edildi',
+  mm_l_next: 'Sonraki adım: {{next}}',
+  mm_l_not_accepted: 'Meta koşulları henüz kabul edilmiş göstermiyor. Hazır olduğunuzda tekrar açabilirsiniz.',
+  mm_l_unconfirmed: 'Meta sonucu henüz onaylamadı. Birazdan tekrar kontrol edin.',
+  mm_l_popup_blocked: 'Tarayıcınız pencereyi engelledi. Meta koşullarını yeni sekmede açmak için düğmeye tekrar dokunun.',
+  mm_l_meta_error: 'Meta şu anda yanıt vermedi. Taslağınız kaydedildi — birazdan tekrar kontrol edin.',
+  mm_l_session_expired: 'Meta bağlantınızın süresi doldu. Hesap adımından Meta\'yı yeniden bağlayın — taslağınız korunur.',
+  mm_l_page_changed: 'Seçili Facebook sayfası değişti. HOMATCH yeni sayfayı kontrol etti — istenirse onun için Meta koşullarını kabul edin.',
+  mm_l_timeout: 'Meta penceresini beklemeyi bıraktık. Koşulları kabul ettiyseniz şimdi Meta ile kontrol edin.',
+  mm_l_pfd_terms: 'Hedef adımında sayfanız için Meta\'nın potansiyel müşteri reklamı koşullarını kabul edin.',
+  mads_check_lead_terms: 'Meta potansiyel müşteri reklamı koşulları',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -67750,6 +67830,26 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mm_m_stage_COLLECTING_d: 'لا توجد بيانات كافية بعد لاستخلاص النتائج. يحافظ HOMATCH على الاستراتيجية الأولية وسيقترح تغييرات عندما تُبلغ Meta عن نتائج كافية.',
   mm_m_stage_USING_SIGNALS: 'نتعلم من النتائج الحقيقية',
   mm_m_stage_USING_SIGNALS_d: 'يستخدم HOMATCH الآن النتائج التي تُبلغ عنها Meta — أي النسخ والمواضع والمجموعات تتفاعل — لاقتراح تحسينات. لا يتغير شيء دون موافقتك.',
+
+  /* ── META ADS — MOBILE SIMPLIFICATION ── */
+  mm_l_terms_cta: 'الموافقة على شروط Meta',
+  mm_l_terms_body: 'أوشكت على الانتهاء: تطلب Meta من صفحتك الموافقة على شروط إعلانات العملاء المحتملين مرة واحدة. تُفتح على صفحة Meta نفسها — اقرأها هناك واضغط زر الموافقة لدى Meta.',
+  mm_l_goal_terms: 'تتطلب شروط Meta',
+  mm_l_recheck_body: 'لم تؤكد Meta بعد حالة إعلانات العملاء المحتملين لصفحتك. تحقق مع Meta للمتابعة.',
+  mm_l_recheck_cta: 'التحقق مع Meta',
+  mm_l_waiting: 'شروط Meta مفتوحة في نافذة أخرى. بعد الموافقة عليها هناك عُد — سيتحقق HOMATCH مع Meta تلقائيًا.',
+  mm_l_accepted: 'أكدت Meta: وافقت صفحتك على شروط إعلانات العملاء المحتملين.',
+  mm_l_terms_done: 'تم قبول شروط Meta',
+  mm_l_next: 'التالي: {{next}}',
+  mm_l_not_accepted: 'لا تُظهر Meta الشروط كمقبولة بعد. يمكنك فتحها مرة أخرى متى كنت مستعدًا.',
+  mm_l_unconfirmed: 'لم تؤكد Meta النتيجة بعد. تحقق مرة أخرى بعد قليل.',
+  mm_l_popup_blocked: 'حظر متصفحك النافذة. اضغط الزر مرة أخرى لفتح شروط Meta في علامة تبويب جديدة.',
+  mm_l_meta_error: 'لم تستجب Meta الآن. تم حفظ مسودتك — تحقق مرة أخرى بعد قليل.',
+  mm_l_session_expired: 'انتهت صلاحية اتصالك بـ Meta. أعد ربط Meta من خطوة الحساب — مسودتك محفوظة.',
+  mm_l_page_changed: 'تغيّرت صفحة Facebook المختارة. تحقق HOMATCH من الصفحة الجديدة — وافق على شروط Meta لها إذا طُلب ذلك.',
+  mm_l_timeout: 'توقفنا عن انتظار نافذة Meta. إذا وافقت على الشروط، تحقق مع Meta الآن.',
+  mm_l_pfd_terms: 'وافق على شروط إعلانات العملاء المحتملين من Meta لصفحتك في خطوة الوجهة.',
+  mads_check_lead_terms: 'شروط إعلانات العملاء المحتملين من Meta',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -81278,6 +81378,26 @@ const he: Partial<Record<TranslationKey, string>> = {
   mm_m_stage_COLLECTING_d: 'עדיין אין מספיק נתונים כדי להסיק מסקנות. HOMATCH שומר על האסטרטגיה הראשונית ויציע שינויים כש-Meta תדווח על מספיק תוצאות.',
   mm_m_stage_USING_SIGNALS: 'לומדים מתוצאות אמיתיות',
   mm_m_stage_USING_SIGNALS_d: 'HOMATCH משתמש עכשיו בתוצאות ש-Meta מדווחת — אילו גרסאות, מיקומים וקבוצות מגיבים — כדי להמליץ על שיפורים. שום דבר לא משתנה בלי האישור שלכם.',
+
+  /* ── META ADS — MOBILE SIMPLIFICATION ── */
+  mm_l_terms_cta: 'אישור התנאים של Meta',
+  mm_l_terms_body: 'כמעט מוכן: Meta מבקשת מהדף שלכם לאשר פעם אחת את תנאי מודעות הלידים. הם נפתחים בדף של Meta עצמה — קראו אותם שם ולחצו על כפתור האישור של Meta.',
+  mm_l_goal_terms: 'נדרשים תנאי Meta',
+  mm_l_recheck_body: 'Meta עדיין לא אישרה את מצב מודעות הלידים של הדף שלכם. בדקו מול Meta כדי להמשיך.',
+  mm_l_recheck_cta: 'בדיקה מול Meta',
+  mm_l_waiting: 'התנאים של Meta פתוחים בחלון אחר. אחרי שתאשרו אותם שם, חזרו — HOMATCH יבדוק מול Meta אוטומטית.',
+  mm_l_accepted: 'Meta אישרה: הדף שלכם אישר את תנאי מודעות הלידים.',
+  mm_l_terms_done: 'התנאים של Meta אושרו',
+  mm_l_next: 'השלב הבא: {{next}}',
+  mm_l_not_accepted: 'ב-Meta התנאים עדיין לא מופיעים כמאושרים. אפשר לפתוח אותם שוב מתי שתרצו.',
+  mm_l_unconfirmed: 'Meta עדיין לא אישרה את התוצאה. בדקו שוב בעוד רגע.',
+  mm_l_popup_blocked: 'הדפדפן חסם את החלון. הקישו שוב על הכפתור כדי לפתוח את התנאים של Meta בכרטיסייה חדשה.',
+  mm_l_meta_error: 'Meta לא ענתה כרגע. הטיוטה נשמרה — בדקו שוב בעוד רגע.',
+  mm_l_session_expired: 'החיבור ל-Meta פג. חברו מחדש את Meta משלב החשבון — הטיוטה נשמרת.',
+  mm_l_page_changed: 'דף הפייסבוק שנבחר השתנה. HOMATCH בדק את הדף החדש — אשרו עבורו את התנאים של Meta אם יתבקש.',
+  mm_l_timeout: 'הפסקנו לחכות לחלון של Meta. אם אישרתם את התנאים, בדקו מול Meta עכשיו.',
+  mm_l_pfd_terms: 'אשרו את תנאי מודעות הלידים של Meta עבור הדף שלכם בשלב היעד.',
+  mads_check_lead_terms: 'תנאי מודעות הלידים של Meta',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

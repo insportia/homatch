@@ -648,3 +648,13 @@ Phase 2 (Universal Discovery) is blocked until this is live and proven.
 - Mobile: the builder bar replaces the app bottom nav on phones (bottom-0, z-[60], safe-area);
   audience/creative/review fold their detail; ☆/★ priority; money nowrap. Browser gate at
   320/360/390/430/768/1440.
+- Lead Ads Terms (2026-10-01): Meta's per-Page Lead Ads Terms are read from the Page field
+  `leadgen_tos_accepted` (Page token) by assets_refresh and the new `forms_recheck` action, stored in
+  the PAGE asset capabilities (leadgen_tos_accepted / _reason / _checked_at, leadgen_forms_readable).
+  instantForms states: AVAILABLE (perms + Meta-confirmed terms) / TERMS_REQUIRED / PAGE_REQUIRED /
+  RECONNECT / COMING_SOON / RECHECK (unknown, never assumed) / DISABLED. The owner accepts on Meta's
+  own page (facebook.com/ads/leadgen/tos?page_id=…) opened in a separate window (opener cut; link
+  fallback when popups are blocked); HOMATCH re-asks Meta on close/return — no message listener, no
+  local "accepted" flag, nothing accepted for the user. Preflight check `lead_terms`.
+  Production 2026-10-01: Page "Tbilisi Premium Apartments" has NO terms reading stored yet (never
+  read before this release); the proven blocker remains PERMISSIONS (config does not request them).

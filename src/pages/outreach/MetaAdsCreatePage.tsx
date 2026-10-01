@@ -37,7 +37,7 @@ import {
   launchCampaign, listAudiences, trackFunnel, money, EDITABLE_STATUSES, updateMetaDraft,
   type MetaStatus, type MetaCampaignRow, type MetaCreativeRow, type MetaAudienceRow, type PreflightResult, type PlanPreview,
 } from '@/services/metaAds';
-import { formsStateOf } from '@/components/metaAds/builder/instantFormsCopy';
+import { FORMS_ACTIONABLE, formsStateOf } from '@/components/metaAds/builder/instantFormsCopy';
 import { useMetaDraft } from '@/components/metaAds/builder/useMetaDraft';
 import { ALL_GOALS, STEPS, selectedAsset, stepGap, type StepKey } from '@/components/metaAds/builder/steps';
 import { ChoiceCard, SaveIndicator, StepShell, Stepper } from '@/components/metaAds/builder/ui';
@@ -367,11 +367,13 @@ export default function MetaAdsCreatePage() {
                     /* Leads on Facebook/Instagram is decided by the server
                        (src/lib/metaAds/instantForms.ts): never a permission name here. */
                     const forms = g === 'LEADS_ON_META' && status?.connection?.status === 'CONNECTED' ? formsStateOf(status) : 'AVAILABLE';
-                    const enabled = switchedOn && forms === 'AVAILABLE';
+                    // Selectable whenever the owner can resolve it here (accept Meta's terms, reconnect, check again).
+                    const enabled = switchedOn && FORMS_ACTIONABLE.has(forms);
                     return (
                       <ChoiceCard key={g} active={campaign.goal === g} disabled={!enabled} icon={GOAL_ICON[g]}
                         title={t(`mads_goal_${g.toLowerCase()}` as never)} body={t(`madsb_goal_${g.toLowerCase()}_d` as never)}
-                        badge={!switchedOn ? t('madsb_goal_not_enabled') : forms === 'COMING_SOON' ? t('mm_b_goal_soon') : forms === 'RECONNECT' ? t('mm_b_goal_reconnect') : undefined}
+                        badge={!switchedOn ? t('madsb_goal_not_enabled') : forms === 'COMING_SOON' ? t('mm_b_goal_soon') : forms === 'RECONNECT' ? t('mm_b_goal_reconnect')
+                          : forms === 'TERMS_REQUIRED' ? t('mm_l_goal_terms') : undefined}
                         onClick={() => patch({
                           goal: g,
                           destination: destinationForGoal(g, campaign.destination, !!page),
@@ -435,11 +437,12 @@ export default function MetaAdsCreatePage() {
       {/* On phones it sits over the app's bottom nav (z-50) instead of stacking
           above it — one bar, never two fighting; Exit/Back leaves the flow. */}
       <div data-madsb-nav="" className="fixed inset-x-0 bottom-0 z-[60] md:z-30 lg:start-[18rem] border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/90">
-        <div className="mx-auto flex w-full max-w-[86rem] items-center justify-between gap-3 px-4 pt-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom,0px))] sm:px-6 lg:px-8">
+        <div className="mx-auto flex w-full max-w-[86rem] flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-4 pt-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom,0px))] sm:flex-nowrap sm:px-6 lg:px-8">
           <Button variant="outline" onClick={() => void (idx > 0 ? go(STEPS[idx - 1]) : navigate('/outreach/meta'))} className="min-h-11 shrink-0 gap-1.5">
             <ArrowLeft className="h-4 w-4 rtl:rotate-180" />{t(idx > 0 ? 'madsb_back' : 'madsb_exit')}
           </Button>
-          <div className={cn('min-w-0 flex-1 text-center text-2xs text-muted-foreground sm:text-[13px]', step === 'review' && launchHint ? 'block' : 'hidden sm:block')}>
+          {/* Phones: the hint is its own line above the buttons (two lines at most), never a squeezed column that grows the bar. */}
+          <div className={cn('order-first line-clamp-2 basis-full text-center text-2xs text-muted-foreground sm:order-none sm:line-clamp-none sm:min-w-0 sm:flex-1 sm:basis-auto sm:text-[13px]', step === 'review' && launchHint ? 'block' : 'hidden sm:block')}>
             {step === 'review' && launchHint ? <span id="mm-b-launch-hint-nav">{t(launchHint as never)}</span>
               : step === 'creative' && creativeBlocked ? <span className="text-destructive">{t('mm_b_blocking_continue')}</span>
                 : gaps[step] ? t(gaps[step] as never) : <SaveIndicator state={saveState} />}

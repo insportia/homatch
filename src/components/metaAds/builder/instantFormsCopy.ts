@@ -16,4 +16,10 @@ export function formsStateOf(status: MetaStatus | null | undefined): InstantForm
 export const FORMS_COPY: Record<Exclude<InstantFormsState, 'AVAILABLE' | 'DISABLED'>, string> = {
   COMING_SOON: 'mm_b_lf_soon',
   RECONNECT: 'mm_b_lf_reconnect',
+  TERMS_REQUIRED: 'mm_l_terms_body',
+  PAGE_REQUIRED: 'madsb_gap_page',
+  RECHECK: 'mm_l_recheck_body',
 };
+
+/** States the owner can resolve inside the builder — the Leads goal stays selectable for them. */
+export const FORMS_ACTIONABLE: ReadonlySet<InstantFormsState> = new Set(['AVAILABLE', 'TERMS_REQUIRED', 'RECONNECT', 'RECHECK', 'PAGE_REQUIRED']);

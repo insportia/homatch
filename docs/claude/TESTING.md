@@ -5,10 +5,13 @@
 1. **Iteration** — `npm run homatch:check`
    (tsgo typecheck + i18n:check/keys + affected unit tests via
    `homatch:test:affected --run`). Fast; scoped to the diff's domains.
-2. **Release truth** — `npm run homatch:check:full`
-   (typecheck, lint, i18n:all, full unit run, browser acceptance matrix,
-   studio, a11y). This — not the affected subset — decides readiness.
-3. **Deploy-time** — the pipeline's own gates in
+2. **Release truth** — the PR's `PR Checks` run: the suites
+   `scripts/release/classify.mjs` plans (FULL for dependency / CI / build /
+   security / shared-core / unplaceable changes; TARGETED otherwise), run in
+   parallel, recorded by tree id. `npm run homatch:check:full` is the same
+   full gate locally. See `docs/claude/RELEASE.md`.
+3. **Deploy-time** — provenance first (FAST when the deployed tree is the
+   validated tree; otherwise the full gate runs again), then the pipeline's own gates in
    `.github/workflows/deploy.yml`: scope accounting (owed == attempted) and
    exact eszip artifact proof. A green CLI deploy is NOT proof; the artifact
    check is.

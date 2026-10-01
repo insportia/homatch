@@ -357,7 +357,7 @@ Phase 2 (Universal Discovery) is blocked until this is live and proven.
   sync: status PAUSED, ad CAMPAIGN_PAUSED, Guard MANUAL_PAUSE NOTICE, in-app
   notification. EXTERNAL META STATUS RECONCILIATION: PRODUCTION-PROVEN.
   Claude did not touch the campaign, launch anything or spend anything.
-- Pending on the same branch (not yet deployed); one release carries it all:
+- Released in PR #25 (main 6cd79ce); originally listed as pending:
   - Status sync: a new `homatch-meta-ads-status-sync` cron runs every minute
     (migration 20261002120000). Campaigns are grouped by ad account, with two
     Graph reads per account. Paused campaigns are read every fifth minute.
@@ -384,3 +384,30 @@ Phase 2 (Universal Discovery) is blocked until this is live and proven.
     Campaign Guard is the only automatic actor. Autopilot is NOT IMPLEMENTED.
   - Release order: apply 20261002130000 BEFORE the edge deploy; apply
     20261002120000 AFTER meta-ads-api is PROVEN_EXACT.
+- 2026-09-30 / 10-01: PR #25 → main 6cd79ce. PRODUCTION-PROVEN:
+  - Edge (deploy #860, then independently re-read from production): all 5
+    PROVEN_EXACT, no redeploy needed: meta-ads-api v15 (36/36 modules
+    byte-identical to main), meta-oauth v14 (7/7), meta-webhooks v13 (12/12),
+    outreach-send v36 (3/3, deduplicated, unchanged since 7f5fc1d),
+    push-send v24 (2/2, deduplicated, unchanged since 7f5fc1d).
+    refs/deployed/edge = refs/deployed/frontend = 6cd79ce.
+  - Vercel: dpl_FwUBdAGh11mUo3WAwMC3mhu6UTR3 READY at 6cd79ce, aliased to
+    www.homatch.live (homatch.live redirects there).
+  - Migrations: meta_api_usage before the edge deploy;
+    meta_ads_status_sync_cron (job 31, every minute) after meta-ads-api was
+    proven. It runs every minute with 200 {ok, mode REAL}. On fifth minutes
+    it reads the paused campaign with 1 account, 1 campaign and 2 Graph
+    calls; no-token / bad-token calls get 401 / 403.
+  - Meta usage (first real capture, 02:40 UTC): tier development_access;
+    ads_management 4% calls / 1% CPU / 1% time; ads_insights 1/1/1;
+    ad-account util 0%; app usage 0%; no regain time — NORMAL.
+  - Health on the real paused campaign: DELIVERY STATE/PAUSED,
+    DATA_HEALTH STATE/FRESH, recommendation PAUSED_NOT_COLLECTING (not
+    actionable). Rename DB path proven in a rolled-back transaction.
+  - Status-change notification: deployed; awaiting the next real external
+    status change for proof.
+- Fast Release Rule (docs/claude/RELEASE.md): validation once in parallel
+  PR jobs with a tree-id validation record; post-merge provenance step
+  promotes byte-identical validated code without re-running repository
+  suites. Projections: PR ~6–8 min (was 19.6), merge→edge proven ~2–3 min on
+  FAST (was ~18.7).

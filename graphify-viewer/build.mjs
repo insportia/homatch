@@ -9,8 +9,10 @@
  * customer HOMATCH build and nothing in HOMATCH imports it.
  *
  *   1. revision     the commit Vercel is building (branch, sha)
- *   2. previous     the live viewer's status.json (read with the project's
- *                   automation-bypass secret; absent on the first build)
+ *   2. previous     the last valid graph + status, kept in Vercel's build
+ *                   cache (.cache/homatch-viewer, declared in config.json).
+ *                   No credential is involved; an evicted cache only means
+ *                   no history carry-over and no failure fallback
  *   3. reuse?       only docs/markdown changed since the live graph's commit
  *                   → keep that graph, re-stamp the revision (no rebuild)
  *   4. build        Graphify through scripts/claude/graphify.mjs — the SAME
@@ -20,7 +22,9 @@
  *                   the graph for excluded source paths; any hit FAILS CLOSED
  *   6. failure      the new graph is not published; the last valid graph is
  *                   re-published, marked UPDATE_FAILED with the attempted
- *                   commit, the last good commit and the reason
+ *                   commit, the last good commit and the reason. With no
+ *                   cached graph the build fails instead: Vercel keeps the
+ *                   previous deployment live and /api/freshness turns STALE
  *   7. output       viewer shell + graph artifacts + status.json + the
  *                   /api/freshness function (live CURRENT/STALE check)
  *
@@ -156,25 +160,25 @@ function revisionOf() {
   };
 }
 
-/* The live viewer, read through the project's automation bypass. */
-async function fetchLive(path, { json = true } = {}) {
-  const host = process.env.VERCEL_PROJECT_PRODUCTION_URL;
-  const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  if (!host || !bypass) return null;
-  try {
-    const r = await fetch(`https://${host}/${path}`, { headers: { 'x-vercel-protection-bypass': bypass } });
-    if (!r.ok) return null;
-    return json ? await r.json() : Buffer.from(await r.arrayBuffer());
-  } catch { return null; }
+/* Cross-build state: Vercel restores .cache/** paths declared in config.json. */
+const STATE = join(ROOT, '.cache', 'homatch-viewer');
+function readState() {
+  try { return JSON.parse(readFileSync(join(STATE, 'status.json'), 'utf8')); } catch { return null; }
 }
-
-async function restoreLive(prev, dest) {
+function restoreState(prev, dest) {
   for (const f of prev?.files ?? []) {
-    const body = await fetchLive(`g/${f}`, { json: false });
-    if (!body) throw new Error(`could not restore g/${f} from the live viewer`);
+    const src = join(STATE, 'g', f);
+    if (!existsSync(src)) throw new Error(`cached graph incomplete: g/${f} missing`);
     mkdirSync(dirname(join(dest, f)), { recursive: true });
-    writeFileSync(join(dest, f), body);
+    cpSync(src, join(dest, f));
   }
+}
+function saveState(status, G) {
+  rmSync(STATE, { recursive: true, force: true });
+  mkdirSync(STATE, { recursive: true });
+  cpSync(G, join(STATE, 'g'), { recursive: true });
+  writeFileSync(join(STATE, 'status.json'), JSON.stringify(status));
+  writeFileSync(join(STATE, '.gitignore'), '# viewer build state (Vercel build cache): never committed\n*\n');
 }
 
 function installGraphify() {
@@ -235,8 +239,8 @@ async function main() {
   const revision = revisionOf();
   const now = new Date().toISOString();
   log(`revision ${revision.branch} @ ${revision.sha.slice(0, 8)}`);
-  const prev = await fetchLive('status.json');
-  log(prev?.graph ? `live viewer: graph @ ${prev.graph.sha.slice(0, 8)} (${prev.state})` : 'live viewer: none readable (first build or no bypass)');
+  const prev = readState();
+  log(prev?.graph ? `cached state: graph @ ${prev.graph.sha.slice(0, 8)} (${prev.state}), ${prev.history?.length ?? 0} history entries` : 'cached state: none (first build or cache evicted)');
 
   let outcome;
   let graphInfo = {};
@@ -244,7 +248,7 @@ async function main() {
   const changed = prev?.graph?.sha ? git('diff', '--name-only', prev.graph.sha, revision.sha) : null;
   const relevant = graphRelevant(changed === null ? null : changed.split('\n').filter(Boolean));
   if (prev?.graph && prev.state !== 'UPDATE_FAILED' && relevant === false) {
-    try { await restoreLive(prev, G); outcome = { kind: 'reused' }; log('no graph-relevant change: live graph re-published'); }
+    try { restoreState(prev, G); outcome = { kind: 'reused' }; log('no graph-relevant change: cached graph re-published'); }
     catch (e) { log(`reuse failed (${e.message}) — rebuilding`); }
   }
 
@@ -292,14 +296,22 @@ async function main() {
       log(`UPDATE FAILED: ${outcome.reason}`);
       rmSync(G, { recursive: true, force: true });
       mkdirSync(G, { recursive: true });
+      let restored = false;
       if (prev?.graph) {
-        try { await restoreLive(prev, G); log(`last valid graph @ ${prev.graph.sha.slice(0, 8)} re-published`); }
-        catch (e2) { log(`could not restore the last valid graph: ${e2.message}`); rmSync(G, { recursive: true, force: true }); mkdirSync(G, { recursive: true }); prev.graph = null; }
+        try { restoreState(prev, G); restored = true; log(`last valid graph @ ${prev.graph.sha.slice(0, 8)} re-published as UPDATE_FAILED`); }
+        catch (e2) { log(`could not restore the last valid graph: ${e2.message}`); }
+      }
+      if (!restored) {
+        /* Nothing valid to show: fail the build so the previous deployment
+           stays live; its /api/freshness will report STALE. */
+        console.error(`[viewer] refresh failed and no cached graph to fall back on: ${outcome.reason}`);
+        process.exit(1);
       }
     }
   }
 
   const status = nextStatus({ prev, revision, outcome, now, deploymentUrl: process.env.VERCEL_URL ?? null, graphInfo });
+  if (outcome.kind === 'reused') status.graph = prev.graph;
   status.files = [...walk(G)].map((f) => relative(G, f)).sort();
   status.ancestors = (git('log', '--format=%H', '-n', '300', revision.sha) ?? '').split('\n').filter(Boolean).map((h) => h.slice(0, 8));
   if (outcome.kind !== 'built' && prev?.ancestors?.length && !status.ancestors.length) status.ancestors = prev.ancestors;
@@ -324,6 +336,7 @@ async function main() {
   };
   writeFileSync(join(OUT, 'config.json'), JSON.stringify({
     version: 3,
+    cache: ['.cache/homatch-viewer/**'],
     routes: [
       { src: '/(.*)', headers, continue: true },
       { handle: 'filesystem' },
@@ -331,6 +344,7 @@ async function main() {
     ],
   }, null, 2));
 
+  if (status.graph) saveState(status, G);
   log(`status ${status.state}; ${status.files.length} graph files; history ${status.history.length}`);
   /* A failed update still deploys (the viewer must SAY it failed), but the
      build log carries the failure. */

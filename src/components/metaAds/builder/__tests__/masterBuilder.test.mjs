@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  isHousingCampaign, isNarrowAudience, adviceBlocks, adviceTone, isBlocking, groupAdvice, depositAmountCents, addLocation, destinationForGoal,
+  isHousingCampaign, isNarrowAudience, adviceBlocks, adviceTone, isBlocking, groupAdvice, depositAmountCents, addLocation, refinedCountries, destinationForGoal,
   strategyExplanationKeys, STRATEGY_REASON_CODES, TARGETING_ADJUSTMENT_CODES, PLAN_ISSUE_CODES, ADVICE_CODES, LEAD_FORM_ISSUE_CODES,
 } from '../masterLogic.ts';
 import { META_MASTER_BUILDER_STRINGS as S } from '../../../../../scripts/meta-master-builder-i18n-data.mjs';
@@ -33,7 +33,7 @@ test('audience: ages and gender are the owner\'s choice wherever Meta allows it;
   // No lock presentation anywhere, and no disabled controls standing in for a rule.
   assert.doesNotMatch(aud, /Lock|mm_b_locked|mm_b_housing_lock|data-mm-housing-lock|disabled=\{housing\}|disabled=\{rule/);
   // The restriction follows the PLACES, decided on what is about to be saved.
-  assert.match(aud, /const rule = housingRuleFor\(campaign, locations\);/);
+  assert.match(aud, /const rule = housingRuleFor\(campaign, locations, advertiserCountryOf\(status\)\);/);
   assert.match(aud, /const gender = rule\.restricted \? 'ALL' : stored\?\.gender \?\? 'ALL';/);
   assert.match(aud, /const GENDERS: TargetingIntentRow\['gender'\]\[\] = \['ALL', 'FEMALE', 'MALE'\];/);
   assert.match(aud, /<Pill key=\{g\} active=\{gender === g\} onClick=\{\(\) => save\(\{ gender: g \}\)\} data-mm-gender=\{g\}>/);
@@ -71,8 +71,8 @@ test('HOMATCH check: explained up front, the disabled Launch says why, copy clai
   const review = read(`${B}/ReviewStep.tsx`);
   // Launch is available only after a READY check.
   assert.match(page, /const canLaunch = preflight\?\.status === 'READY' && !running;/);
-  // The notice sits at the top of the flow until the check passes.
-  assert.match(page, /\{preflight\?\.status !== 'READY' && \(\s*<div data-mm-check-notice="" role="note"/);
+  // The notice opens the flow (first step) until the check passes; review carries the check itself.
+  assert.match(page, /\{step === 'account' && preflight\?\.status !== 'READY' && \(\s*<div data-mm-check-notice="" role="note"/);
   assert.match(page, /mm_b_check_flow_setup[\s\S]*madsb_preflight_title[\s\S]*mads_launch/, 'set up → check → create');
   // Why Launch is unavailable: before the check, after a failed check, in manual review.
   assert.match(page, /!preflight \? 'mm_b_launch_needs_check'/);
@@ -177,14 +177,19 @@ test('strategy copy is built only from codes the server sent', () => {
   for (const c of emitted) assert.ok(ADVICE_CODES.includes(c), `advice code ${c} is explained`);
 });
 
-test('locations: a place inside a chosen country replaces it, and back', () => {
+test('locations: a place inside a chosen country refines it — both stay, in either order, and removing the place brings the country back', () => {
   const ge = { type: 'country', key: 'GE', name: 'Georgia', countryCode: 'GE' };
   const tbs = { type: 'city', key: '1234', name: 'Tbilisi', countryCode: 'GE', radiusKm: 25 };
+  const pin = { type: 'pin', key: '41.70990,44.75160', name: 'Pin', countryCode: 'GE', radiusKm: 5 };
   let r = addLocation([ge], tbs);
-  assert.deepEqual(r.list.map((l) => l.key), ['1234']);
-  assert.deepEqual(r.replaced, ['Georgia']);
-  r = addLocation(r.list, ge);
-  assert.deepEqual(r.list.map((l) => l.key), ['GE']);
+  assert.deepEqual(r.list.map((l) => l.key), ['GE', '1234'], 'country kept, city refines it');
+  assert.deepEqual(r.replaced, []);
+  r = addLocation([pin], ge);
+  assert.deepEqual(r.list.map((l) => l.key), [pin.key, 'GE'], 'a pin first, then the country: nothing lost');
+  r = addLocation(r.list, pin);
+  assert.equal(r.list.length, 2, 'repeating an action never duplicates');
+  assert.deepEqual([...refinedCountries([ge, tbs])], ['GE']);
+  assert.deepEqual([...refinedCountries([ge])], []);
   assert.equal(addLocation([ge], ge).list.length, 1, 'no duplicates');
 });
 

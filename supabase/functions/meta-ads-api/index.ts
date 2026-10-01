@@ -24,7 +24,7 @@ import { ingestLead } from '../_shared/metaLeads.ts';
 import { callLlm, llmAvailable } from '../_shared/comm/llm.ts';
 import { factsPreserved, numbersIn } from '../../../src/lib/metaAds/audienceGuide.ts';
 import {
-  loadSettings, userToken, selectedAsset, pageToken, strategyInputFor, limitsOf, configFingerprint,
+  loadSettings, userToken, selectedAsset, pageToken, strategyInputFor, limitsOf, configFingerprint, domainCheck,
   runPreflight, publishCampaign, syncCampaign, reconcileAccountStatuses, propertyAuthorized, customerFeePercent, withoutInstagram, finalizeSettlement,
   type MetaSettings,
 } from './engine.ts';
@@ -299,7 +299,15 @@ Deno.serve(async (req) => {
           }
         }
         for (const a of accts as any[]) {
-          await up('AD_ACCOUNT', a.id, a.name, a.business?.id, { account_status: a.account_status, currency: a.currency, disable_reason: a.disable_reason ?? null });
+          /* The advertiser's business country decides Meta's housing rule for a
+             US advertiser. Asked separately and tolerantly: if Meta does not
+             answer, it stays unknown — never guessed, never fatal. */
+          let businessCountry: string | null = null;
+          try {
+            const bc = await graph(`/${a.id}?fields=business_country_code`, { token, attempts: 1 }) as any;
+            businessCountry = /^[A-Z]{2}$/.test(String(bc?.business_country_code ?? '')) ? String(bc.business_country_code) : null;
+          } catch { /* not reported for this account */ }
+          await up('AD_ACCOUNT', a.id, a.name, a.business?.id, { account_status: a.account_status, currency: a.currency, disable_reason: a.disable_reason ?? null, business_country_code: businessCountry });
           mark('AD_ACCOUNT', a.id);
           /* Instagram accounts usable for ads, read from the ad account under
              ads_management — no instagram_basic. Not tied to one Page. */
@@ -482,6 +490,17 @@ Deno.serve(async (req) => {
         if ((await configFingerprint(sb, c)) !== c.preflight?.fingerprint || !c.plan) {
           await sb.from('meta_campaigns').update({ status: 'PREFLIGHT_REQUIRED' }).eq('id', c.id);
           return json({ error: 'PREFLIGHT_STALE', code: 'PREFLIGHT_STALE' }, 409);
+        }
+        // Real-estate scope, decided again on what is stored NOW: a browser
+        // cannot skip it, and a brief edited after the check is read too.
+        const scope = await domainCheck(sb, uid, c);
+        if (scope.state === 'BLOCKED') {
+          await sb.from('meta_campaigns').update({ status: 'PREFLIGHT_REQUIRED' }).eq('id', c.id);
+          return json({ error: 'OUT_OF_SCOPE', code: 'OUT_OF_SCOPE', reason: scope.verdict.reason }, 409);
+        }
+        if (scope.state === 'IN_REVIEW') {
+          await sb.from('meta_campaigns').update({ status: 'PREFLIGHT_REQUIRED' }).eq('id', c.id);
+          return json({ error: 'IN_REVIEW', code: 'IN_REVIEW' }, 409);
         }
         if (!canTransition(c.status, 'LAUNCHING')) return json({ error: 'BAD_TRANSITION' }, 409);
         // Campaign Guard: a suspended ad account launches nothing new through HOMATCH.
@@ -1067,6 +1086,7 @@ async function maintenance(sb: any, mode: 'REAL' | 'MOCK', settings: MetaSetting
 const COPY_SYSTEM = [
   'You write Meta (Facebook/Instagram) ad copy for HOMATCH customers — property owners, agents and small businesses in Georgia.',
   'Write in the requested targetLanguage. Be specific to the offer; use only facts present in context or current text or notes.',
+  'Tone: warm, positive and constructive — lead with what is genuinely attractive about the offer, in plain human words; never pushy, never negative about alternatives.',
   'Never invent prices, sizes, locations, amenities, discounts or deadlines. Never promise results, returns, approval or guaranteed income.',
   'For housing, never mention or target protected characteristics (race, religion, family status, disability, sex, age).',
   'primaryText: up to ~3 short lines; headline: up to 40 characters; description: optional, up to 30 characters.',

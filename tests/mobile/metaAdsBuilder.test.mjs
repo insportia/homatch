@@ -238,11 +238,35 @@ async function waitReady(page) {
   await page.waitForTimeout(300);
 }
 
-for (const [width, height] of [[1440, 900], [390, 844]]) {
-  test(`every step, every locale, fits at ${width}px`, opts, async (t) => {
+/** Open a folded section (FinishKit Fold / the review insights) if it is closed. */
+async function openFold(page, selector) {
+  const el = page.locator(selector).first();
+  if ((await el.getAttribute('aria-expanded')) === 'false') await el.click();
+  await page.waitForSelector(`${selector}[aria-expanded="true"]`);
+}
+
+/* The last control must scroll fully above the builder bar; money on one line. */
+const BOTTOM = () => {
+  window.scrollTo(0, document.documentElement.scrollHeight);
+  const nav = document.querySelector('[data-madsb-nav]')?.getBoundingClientRect();
+  const controls = [...document.querySelectorAll('main button, main a[href], main input, main textarea, main select')]
+    .filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
+  const last = controls.at(-1)?.getBoundingClientRect();
+  const money = [...document.querySelectorAll('[data-charged-now]')].map((el) => {
+    const lh = parseFloat(getComputedStyle(el).lineHeight) || 32;
+    return el.getBoundingClientRect().height <= lh * 1.5;
+  });
+  const appNav = [...document.querySelectorAll('nav')].filter((n) => n !== document.querySelector('[data-madsb-nav]') && getComputedStyle(n).position === 'fixed'
+    && n.getBoundingClientRect().bottom >= window.innerHeight - 1 && n.getBoundingClientRect().height > 0)
+    .filter((n) => { const r = n.getBoundingClientRect(); const hit = document.elementFromPoint(r.left + r.width / 2, r.bottom - 4); return hit && n.contains(hit); });
+  return { lastClear: !last || !nav || last.bottom <= nav.top + 1, moneyOneLine: money.every(Boolean), appNavVisible: appNav.length };
+};
+
+for (const [width, height] of [[1440, 900], [390, 844], [320, 640], [360, 760], [430, 932], [768, 1024]]) {
+  test(`every step fits at ${width}px — ${width === 1440 || width === 390 ? 'every locale' : 'en, ka, ar'}; nothing hides under the bar`, opts, async (t) => {
     if (skipReason) assert.fail(`meta ads builder gate could not run: ${skipReason}`);
     const failures = [];
-    for (const lang of LOCALES) {
+    for (const lang of (width === 1440 || width === 390 ? LOCALES : ['en', 'ka', 'ar'])) {
       const { page } = await boot(t, { width, height, lang });
       for (const step of STEPS) {
         await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=${step}`, { waitUntil: 'domcontentloaded' });
@@ -252,6 +276,12 @@ for (const [width, height] of [[1440, 900], [390, 844]]) {
         if (l.buttons < 2) failures.push(`${lang} ${width}px ${step}: Back/Continue missing`);
         if (l.covered) failures.push(`${lang} ${width}px ${step}: ${l.covered} of Back/Continue covered`);
         if ((lang === 'ar' || lang === 'he') && l.dir !== 'rtl') failures.push(`${lang} ${width}px ${step}: not RTL`);
+        if (step === 'creative' || step === 'budget' || step === 'review' || step === 'audience') {
+          const b = await page.evaluate(BOTTOM);
+          if (!b.lastClear) failures.push(`${lang} ${width}px ${step}: the last control is under the bar`);
+          if (!b.moneyOneLine) failures.push(`${lang} ${width}px ${step}: an amount wraps`);
+          if (width < 768 && b.appNavVisible) failures.push(`${lang} ${width}px ${step}: two bottom bars`);
+        }
         if (SHOTS && (lang === 'en' || lang === 'ka' || lang === 'ar')) {
           mkdirSync(SHOTS, { recursive: true });
           await page.screenshot({ path: join(SHOTS, `${width}-${lang}-${step}.png`), fullPage: true });
@@ -728,7 +758,8 @@ test('END TO END: a Russian-speaking expat messages campaign — map, internatio
     await page.waitForSelector('[data-mm-copy-lang="ru"]');
     await page.locator('[data-mm-lang="ru"]').click();
     await page.waitForSelector('[data-mm-lang="ru"][aria-pressed="true"]');
-    // 👥 Gender is a real choice here (Georgia and Kazakhstan are not restricted).
+    // 👥 Gender is a real choice here (Georgia and Kazakhstan are not restricted) — folded until opened.
+    await openFold(page, '[data-mm-fold="who"]');
     await page.locator('[data-mm-gender="FEMALE"]').click();
     await page.waitForTimeout(800);
     await shot(page, `${width}-audience`);
@@ -797,6 +828,10 @@ test('END TO END: a Russian-speaking expat messages campaign — map, internatio
     // 🚀 Review: the campaign explained, what to expect, the holistic check.
     await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=review`, { waitUntil: 'domcontentloaded' });
     await waitReady(page);
+    // The summary comes first; the explanation is one tap away.
+    await page.waitForSelector('[data-mm-review-summary]');
+    await page.waitForSelector('[data-mm-learning-stage="NEW"]');
+    await openFold(page, '[data-mm-insights-toggle]');
     await page.waitForSelector('[data-mm-story]');
     const sections = await page.locator('[data-mm-story-section]').evaluateAll((els) => els.map((e) => e.getAttribute('data-mm-story-section')));
     for (const s of ['goal', 'who', 'where', 'language', 'creative', 'optimise', 'first_days']) assert.ok(sections.includes(s), `${at} story: ${s}`);
@@ -843,3 +878,113 @@ test('builder: the CTA and headline are edited in the editor, the preview follow
   assert.equal(await page.locator('#madsb-field-cr1-headline').inputValue(), 'Sunny 2BR in Vake');
 });
 
+
+test('MOBILE: countries, cities and pins coexist; one effective-geography line says what runs', opts, async (t) => {
+  if (skipReason) assert.fail(`meta ads builder gate could not run: ${skipReason}`);
+  const { page } = await boot(t, { width: 360, height: 760, lang: 'en', campaignOver: {
+    targeting: { locations: [
+      { type: 'pin', key: '41.70990,44.75160', name: 'Pin 1', countryCode: 'GE', lat: 41.7099, lng: 44.7516, radiusKm: 5 },
+      { type: 'country', key: 'GE', name: 'Georgia', countryCode: 'GE' },
+      { type: 'city', key: '1963014', name: 'Tbilisi', countryCode: 'GE', radiusKm: 15 },
+      { type: 'country', key: 'KZ', name: 'Kazakhstan', countryCode: 'KZ' },
+    ], ageMin: 18, ageMax: 65, gender: 'ALL' },
+  } });
+  await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=audience`, { waitUntil: 'domcontentloaded' });
+  await waitReady(page);
+  const line = await page.locator('[data-mm-geo-summary]').innerText();
+  assert.match(line, /Georgia → Pin 1 · 5 km, Tbilisi · 15 km \+ Kazakhstan/);
+  assert.equal(await page.locator('[data-mm-loc]').count(), 4, 'nothing replaced');
+  assert.match(await page.locator('[data-mm-loc="country:GE"]').innerText(), /Only the places you chose inside it/);
+  // Folded sections say what is chosen and open on request.
+  assert.match(await page.locator('[data-mm-fold-section="who"]').innerText(), /18.+65\+ · /);
+  await openFold(page, '[data-mm-fold="who"]');
+  assert.equal(await page.locator('[data-mm-gender="ALL"]').getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.locator('[data-mm-authority="USER_CHOICE"]').count(), 1);
+  assert.equal(await page.locator('[data-mm-authority="META_REQUIRED"]').count(), 0, 'Georgia/Kazakhstan: no Meta rule');
+  assert.equal(await page.locator('#mm-f-aud-h').count(), 0, 'no empty retargeting section');
+});
+
+test('MOBILE: a US-registered ad account follows Meta\'s housing rule even in Georgia — named as Meta\'s, from Meta\'s data', opts, async (t) => {
+  if (skipReason) assert.fail(`meta ads builder gate could not run: ${skipReason}`);
+  const base = fixtures().status;
+  const assets = base.assets.map((a) => (a.kind === 'AD_ACCOUNT' ? { ...a, capabilities: { ...(a.capabilities ?? {}), business_country_code: 'US' } } : a));
+  const { page } = await boot(t, { width: 390, height: 844, lang: 'en', statusOver: { assets }, campaignOver: {
+    property_id: '123456', targeting: { locations: [{ type: 'city', key: '1963014', name: 'Tbilisi', countryCode: 'GE', radiusKm: 30 }], ageMin: 18, ageMax: 65, gender: 'ALL' },
+  } });
+  await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=audience`, { waitUntil: 'domcontentloaded' });
+  await waitReady(page);
+  await page.waitForSelector('[data-mm-authority="META_REQUIRED"]');
+  assert.match(await page.locator('[data-mm-meta-rule]').innerText(), /registered in the United States[\s\S]*Meta's rule, not a HOMATCH choice/);
+});
+
+test('MOBILE: priority is a binary ☆/★ toggle with words, aria-pressed and an explanation; the AI button says what it does', opts, async (t) => {
+  if (skipReason) assert.fail(`meta ads builder gate could not run: ${skipReason}`);
+  const { page, calls } = await boot(t, { width: 320, height: 640, lang: 'ka' });
+  await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=creative`, { waitUntil: 'domcontentloaded' });
+  await waitReady(page);
+  const toggle = page.locator('[data-mm-priority-toggle]').first();
+  assert.equal(await toggle.getAttribute('aria-pressed'), 'false');
+  assert.match(await toggle.innerText(), /☆/);
+  await toggle.click();
+  await page.waitForSelector('[data-mm-priority-toggle][aria-pressed="true"]');
+  assert.match(await toggle.innerText(), /★\s*პრიორიტეტი/);
+  assert.match(await page.locator('[data-mm-priority-explain]').first().innerText(), /პირველ რიგში გაითვალისწინებს/);
+  await page.waitForTimeout(700);
+  assert.ok(calls.creativePatches.some((b) => b.priority === true), 'saved');
+  const text = await page.evaluate(() => document.body.innerText);
+  assert.match(text, /დაწერეთ თქვენი სარეკლამო ტექსტი \/ აღწერა/);
+  assert.match(text, /მოკლე მთავარი ფრაზა, რომელსაც მომხმარებელი პირველ რიგში დაინახავს/);
+  assert.match(await page.locator('[data-madsb-ai]').first().innerText(), /დამეხმაროს HOMATCH AI/);
+  const box = await toggle.boundingBox();
+  assert.ok(box.height >= 44, `44px target (${box.height})`);
+  assert.equal((await page.evaluate(LAYOUT)).overflow <= 1, true, 'no overflow at 320px');
+});
+
+test('DOMAIN GUARD: an out-of-scope offer is told kindly in the builder, and the server check is what blocks it', opts, async (t) => {
+  if (skipReason) assert.fail(`meta ads builder gate could not run: ${skipReason}`);
+  const { page } = await boot(t, { width: 390, height: 844, lang: 'ka', campaignOver: { property_id: null, offer: { isProperty: false, dealKind: 'OTHER', title: '' } } });
+  await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=offer`, { waitUntil: 'domcontentloaded' });
+  await waitReady(page);
+  await page.locator('[data-mm-offer-title]').fill('Online casino bonus');
+  await page.waitForSelector('[data-mm-scope="BLOCKED_OUT_OF_SCOPE"]');
+  assert.match(await page.locator('[data-mm-scope]').innerText(), /უძრავი ქონებისა და მასთან დაკავშირებული სერვისებისთვის/);
+  await page.locator('[data-mm-offer-title]').fill('Apartment renovation in Tbilisi');
+  await page.waitForTimeout(200);
+  assert.equal(await page.locator('[data-mm-scope]').count(), 0, 'real-estate services are welcome');
+  // Even if the browser said nothing, the server's preflight decides — and the customer reads one kind sentence.
+  await page.route('**/functions/v1/meta-ads-api', async (r) => {
+    const body = JSON.parse(r.request().postData() || '{}');
+    if (body.action !== 'preflight') return r.fallback();
+    return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({
+      status: 'NEEDS_CHANGES', warnings: 0, checks: [{ key: 'domain_scope', state: 'ACTION_REQUIRED', ok: false, detail: 'BLOCKED_OUT_OF_SCOPE:GAMBLING' }],
+    }) });
+  });
+  await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=review`, { waitUntil: 'domcontentloaded' });
+  await waitReady(page);
+  await page.locator('[data-mm-run-check]').click();
+  await page.waitForFunction(() => /უძრავი ქონებისა და მასთან დაკავშირებული სერვისებისთვის/.test(document.body.innerText), null, { timeout: 8000 });
+  assert.doesNotMatch(await page.evaluate(() => document.body.innerText), /GAMBLING|casino/i, 'never the matched words');
+  assert.equal(await page.locator('[data-madsb-nav] button').last().isDisabled(), true, 'nothing to launch');
+});
+
+test('LEADS: unavailable forms offer ONE action — never a permission name, never a form builder that cannot work', opts, async (t) => {
+  if (skipReason) assert.fail(`meta ads builder gate could not run: ${skipReason}`);
+  const settings = { ...fixtures().status.settings, goalsEnabled: ['MESSAGES', 'LEADS_ON_META', 'PROMOTE'] };
+  for (const [state, action] of [['COMING_SOON', 'USE_MESSAGES'], ['RECONNECT', 'RECONNECT']]) {
+    const { page, calls } = await boot(t, { width: 390, height: 844, lang: 'en', statusOver: { settings, mode: 'REAL', connection: { instant_forms: state, instant_forms_available: false } },
+      campaignOver: { goal: 'LEADS_ON_META', destination: { type: 'META_FORM', formId: null } } });
+    await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=destination`, { waitUntil: 'domcontentloaded' });
+    await waitReady(page);
+    await page.waitForSelector(`[data-mm-forms-state="${state}"]`);
+    assert.equal(await page.locator('[data-mm-forms-action]').count(), 1, `${state}: exactly one action`);
+    assert.equal(await page.locator('[data-mm-forms-action]').getAttribute('data-mm-forms-action'), action);
+    const text = await page.evaluate(() => document.body.innerText);
+    assert.doesNotMatch(text, /leads_retrieval|pages_manage_ads|pages_manage_metadata/);
+    assert.doesNotMatch(text, /Create a HOMATCH lead form/, `${state}: no form builder`);
+    if (action === 'USE_MESSAGES') {
+      await page.locator('[data-mm-forms-action]').click();
+      await page.waitForTimeout(500);
+      assert.equal(calls.patches.map((p) => p.goal).filter(Boolean).pop(), 'MESSAGES', 'one tap switches to messages');
+    }
+  }
+});

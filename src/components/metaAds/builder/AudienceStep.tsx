@@ -29,8 +29,8 @@ import {
 } from '@/services/metaAds';
 import { ChoiceCard, StepShell } from './ui';
 import { LocationPicker, regionName } from './LocationPicker';
-import { BreadthGuide, HelperCard, LearningCard, More, Pill, Section } from './FinishKit';
-import { addLocation, effectiveRadiusKm, housingNormalized, housingRuleFor, isNarrowAudience, locationId } from './masterLogic';
+import { BreadthGuide, Fold, HelperCard, LearningCard, More, Pill, Section } from './FinishKit';
+import { addLocation, advertiserCountryOf, effectiveRadiusKm, geographyGroups, housingNormalized, housingRuleFor, isNarrowAudience, locationId, refinedCountries } from './masterLogic';
 
 const GeoMap = React.lazy(() => import('./GeoMap'));
 const AGES = Array.from({ length: META_AGE_MAX - META_AGE_MIN + 1 }, (_, i) => META_AGE_MIN + i);
@@ -52,7 +52,7 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
     .map((c) => ({ type: 'country', key: c.toUpperCase(), name: regionName(c.toUpperCase(), lang), countryCode: c.toUpperCase() }));
   const usingDefault = !stored?.locations?.length;
   const locations = usingDefault ? defaults : stored!.locations;
-  const rule = housingRuleFor(campaign, locations);
+  const rule = housingRuleFor(campaign, locations, advertiserCountryOf(status));
   const ageMin = rule.restricted ? META_AGE_MIN : stored?.ageMin ?? META_AGE_MIN;
   const ageMax = rule.restricted ? META_AGE_MAX : stored?.ageMax ?? META_AGE_MAX;
   const gender = rule.restricted ? 'ALL' : stored?.gender ?? 'ALL';
@@ -76,7 +76,7 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
       ...next,
     };
     // Meta's housing rule follows the places: decided on the merged result.
-    const r = housingRuleFor(campaign, merged.locations);
+    const r = housingRuleFor(campaign, merged.locations, advertiserCountryOf(status));
     patch({ targeting: r.restricted ? housingNormalized(merged, r.minRadiusKm ?? undefined) : merged }, { immediate });
   };
 
@@ -134,26 +134,28 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
     save({ locations: list });
   };
 
+  const refined = refinedCountries(locations);
+  const precise = locations.some((l) => l.type !== 'country');
+  const narrow = isNarrowAudience({ ageMin, ageMax, gender });
+  const readyAudiences = audiences.filter((a) => a.sync_status === 'READY' && (status?.settings.retargetingEnabled !== false || campaign.audience_id === a.id));
+  const placeLabel = (l: LocationChoiceRow) => {
+    const r = l.type === 'city' || l.type === 'pin' ? effectiveRadiusKm(l.radiusKm, rule.minRadiusKm) : null;
+    return r ? `${l.name} · ${r} km` : l.name;
+  };
+  /* The effective geography in one line — what will run, never a guess. */
+  const geoSummary = geographyGroups(locations).map((g) =>
+    g.whole || !g.places.length ? regionName(g.countryCode, lang) : `${regionName(g.countryCode, lang)} → ${g.places.map(placeLabel).join(', ')}`).join(' + ');
+  const whoSummary = `${t('mm_b_age_range', { min: String(ageMin), max: ageLabel(ageMax) })} · ${t(`mm_b_gender_${gender}`)}`;
+  const intlSummary = intl?.enabled ? t('mm_m_intl_on', { n: String(intl.intents.length) }) : t('mm_m_intl_off');
+  const langSummary = languages.length ? languages.map((l) => languageName(l.code ?? l.name, lang)).join(', ') : t('mm_f_lang_all');
+
   return (
     <StepShell eyebrow={t('madsb_step_audience')} title={t('madsb_audience_title')} lead={t('mm_f_audience_lead')}>
-      <HelperCard emoji="✨" tone="gold" title={t('mm_b_smart_title')} data-mm-smart-audience="">{t('mm_f_smart_body')}</HelperCard>
-
-      {/* 📍 WHERE */}
-      <Section id="mm-f-where" emoji="📍" title={t('mm_b_loc_title')} aside={<span className="text-2xs text-muted-foreground" dir="ltr">{locations.length}/{MAX_LOCATIONS}</span>}>
-        <Suspense fallback={<Skeleton className="aspect-[16/10] w-full rounded-2xl" />}>
-          <GeoMap locations={locations} minRadiusKm={rule.minRadiusKm} home={home} pinMode={pinMode}
-            onPin={(lat, lng) => addPin(lat, lng, t('mm_f_pin_name', { n: String(locations.filter((l) => l.type === 'pin').length + 1) }))} />
-        </Suspense>
-        <div className="flex flex-wrap gap-2">
-          {home && (
-            <button type="button" data-mm-around-property="" onClick={() => addPin(home.lat, home.lng, home.label ? t('mm_f_around_named', { place: home.label }) : t('mm_f_around_property'))}
-              className="inline-flex min-h-[40px] items-center gap-1.5 rounded-full border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] px-3.5 text-[13px] font-semibold text-foreground hover:bg-[hsl(var(--gold-soft))]/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">
-              <Home className="h-4 w-4 text-[hsl(var(--gold-ink))]" aria-hidden />{t('mm_f_around_property')}
-            </button>
-          )}
-          <Pill active={pinMode} onClick={() => setPinMode((v) => !v)} data-mm-pin-mode="">
-            <MapPin className="h-4 w-4" aria-hidden />{pinMode ? t('mm_f_pin_cancel') : t('mm_f_pin_drop')}
-          </Pill>
+      {/* 📍 WHERE: country → city / area → (optional) a precise spot with a radius. */}
+      <Section id="mm-f-where" emoji="📍" title={t('mm_m_where_title')} aside={<span className="text-2xs text-muted-foreground" dir="ltr">{locations.length}/{MAX_LOCATIONS}</span>}>
+        <div data-mm-geo-summary="" className="rounded-xl border border-[hsl(var(--gold-border))]/60 bg-[hsl(var(--gold-soft))] px-3.5 py-2.5">
+          <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-[hsl(var(--gold-ink))]">{t('mm_m_geo_runs')}</p>
+          <p className="mt-0.5 text-sm font-semibold leading-snug text-foreground" dir="auto">{geoSummary}</p>
         </div>
         <LocationPicker scopeCountry={scope} full={!usingDefault && locations.length >= MAX_LOCATIONS} onPick={onPick}
           isChosen={(r) => locations.some((l) => locationId(l) === `${r.type}:${r.key}`)} />
@@ -163,15 +165,18 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
             const name = l.type === 'country' ? regionName(l.key, lang) : l.name;
             const radius = effectiveRadiusKm(l.radiusKm, rule.minRadiusKm);
             const round = l.type === 'city' || l.type === 'pin';
+            const narrowed = l.type === 'country' && refined.has(l.key);
             return (
               <li key={id} data-mm-loc={id} className="rounded-2xl border border-[hsl(var(--gold-border))]/50 bg-gradient-to-r from-[hsl(var(--gold-soft))] to-card px-3.5 py-2.5">
                 <div className="flex items-center gap-2">
                   <span aria-hidden>{l.type === 'country' ? '🌍' : l.type === 'pin' ? '📌' : l.type === 'region' ? '🗺️' : '🏙️'}</span>
-                  <span className="min-w-0 flex-1 text-sm font-semibold leading-snug text-foreground [overflow-wrap:anywhere]" dir="auto">{name}</span>
-                  <span className="shrink-0 text-2xs text-muted-foreground">{t(`mm_b_loc_kind_${l.type === 'pin' ? 'pin' : l.type}`)}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold leading-snug text-foreground break-words" dir="auto">{name}</span>
+                    <span className="block text-2xs text-muted-foreground">{narrowed ? t('mm_m_loc_refined') : t(`mm_b_loc_kind_${l.type === 'pin' ? 'pin' : l.type}`)}</span>
+                  </span>
                   {!usingDefault && (
                     <button type="button" onClick={() => remove(id)} aria-label={t('mm_b_loc_remove', { place: name })}
-                      className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">
+                      className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">
                       <X className="h-4 w-4" />
                     </button>
                   )}
@@ -182,7 +187,7 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
                     <input type="range" min={Math.max(1, minRadius)} max={CITY_RADIUS_KM_MAX} step={1} value={radius} data-mm-radius={id}
                       onChange={(e) => setRadius(id, Number(e.target.value))}
                       className="h-2 min-w-0 flex-1 cursor-pointer accent-[hsl(var(--gold))]" />
-                    <span className="w-16 shrink-0 text-end text-[13px] font-semibold tabular-nums text-foreground" dir="ltr">{radius} km</span>
+                    <span className="w-16 shrink-0 whitespace-nowrap text-end text-[13px] font-semibold tabular-nums text-foreground" dir="ltr">{radius} km</span>
                   </label>
                 )}
               </li>
@@ -191,11 +196,29 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
         </ul>
         {usingDefault && <p className="text-2xs text-muted-foreground">{t('mm_b_loc_default_note')}</p>}
         {note && <p className="text-[13px] text-muted-foreground" aria-live="polite">{note}</p>}
-        <BreadthGuide breadth={breadth.breadth} areaKm2={breadth.areaKm2} />
+        {home && (
+          <button type="button" data-mm-around-property="" onClick={() => addPin(home.lat, home.lng, home.label ? t('mm_f_around_named', { place: home.label }) : t('mm_f_around_property'))}
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] px-3.5 text-[13px] font-semibold text-foreground hover:bg-[hsl(var(--gold-soft))]/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">
+            <Home className="h-4 w-4 text-[hsl(var(--gold-ink))]" aria-hidden />{t('mm_f_around_property')}
+          </button>
+        )}
+        {/* Precise location: the map, a pin, a radius — open once a place has a radius. */}
+        <More label={t('mm_m_precise')} defaultOpen={precise || pinMode} key={precise ? 'precise' : 'broad'} data-mm-precise="">
+          <div className="space-y-3">
+            <Suspense fallback={<Skeleton className="aspect-[16/10] w-full rounded-2xl" />}>
+              <GeoMap locations={locations} minRadiusKm={rule.minRadiusKm} home={home} pinMode={pinMode}
+                onPin={(lat, lng) => addPin(lat, lng, t('mm_f_pin_name', { n: String(locations.filter((l) => l.type === 'pin').length + 1) }))} />
+            </Suspense>
+            <Pill active={pinMode} onClick={() => setPinMode((v) => !v)} data-mm-pin-mode="">
+              <MapPin className="h-4 w-4" aria-hidden />{pinMode ? t('mm_f_pin_cancel') : t('mm_f_pin_drop')}
+            </Pill>
+            <BreadthGuide breadth={breadth.breadth} areaKm2={breadth.areaKm2} />
+          </div>
+        </More>
       </Section>
 
-      {/* 🌍 INTERNATIONAL / EXPAT */}
-      <Section id="mm-f-intl" emoji="🌍" title={t('mm_f_intl_title')}
+      {/* 🌍 INTERNATIONAL / EXPAT — an intent, not a place: who the ad is for. */}
+      <Fold id="intl" emoji="🌍" title={t('mm_f_intl_title')} summary={intlSummary} defaultOpen={!!intl?.enabled}
         aside={<Pill active={!!intl?.enabled} onClick={() => setIntl({ enabled: !intl?.enabled })} data-mm-intl-toggle="">{intl?.enabled ? t('mm_f_on') : t('mm_f_off')}</Pill>}>
         <p className="text-[13px] leading-relaxed text-muted-foreground">{t('mm_f_intl_body')}</p>
         {intl?.enabled && (
@@ -212,7 +235,7 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
             <MarketPicker markets={intl.markets} onChange={(markets) => setIntl({ markets })} />
             {intl.intents.some((i) => i === 'MOVING_HERE' || i === 'INVESTORS_ABROAD' || i === 'COUNTRY_CONNECTED') && marketsNotReached.length > 0 && (
               <HelperCard emoji="✨" tone="gold" title={t('mm_f_intl_suggest_title')} data-mm-intl-suggest=""
-                action={<button type="button" onClick={addMarketsAsPlaces} className="inline-flex min-h-[40px] items-center gap-1.5 rounded-full bg-[hsl(var(--gold))] px-3.5 text-[13px] font-semibold text-[#161309]"><Plus className="h-4 w-4" />{t('mm_f_intl_add_markets')}</button>}>
+                action={<button type="button" onClick={addMarketsAsPlaces} className="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-[hsl(var(--gold))] px-3.5 text-[13px] font-semibold text-[#161309]"><Plus className="h-4 w-4" />{t('mm_f_intl_add_markets')}</button>}>
                 {t('mm_f_intl_suggest_body', { markets: marketsNotReached.map((m) => regionName(m, lang)).join(', ') })}
               </HelperCard>
             )}
@@ -222,10 +245,10 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
             <p className="text-2xs leading-relaxed text-muted-foreground">{t('mm_f_intl_how')}</p>
           </div>
         )}
-      </Section>
+      </Fold>
 
-      {/* 🗣️ LANGUAGES */}
-      <Section id="mm-f-lang" emoji="🗣️" title={t('mm_f_lang_title')}>
+      {/* 🗣️ LANGUAGES — open when the copy is in a language worth matching. */}
+      <Fold id="lang" emoji="🗣️" title={t('mm_f_lang_title')} summary={langSummary} defaultOpen={languages.length > 0 || !!intl?.enabled}>
         <p className="text-[13px] leading-relaxed text-muted-foreground">{t('mm_f_lang_body')}</p>
         {copyLangs[0] && (
           <HelperCard emoji="📝" tone="gold" title={t('mm_f_copy_detected', { lang: languageName(copyLangs[0], lang) })} data-mm-copy-lang={copyLangs[0]}>
@@ -242,19 +265,21 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
         </div>
         {langNote && <p className="text-[13px] text-muted-foreground" aria-live="polite">{langNote}</p>}
         {languages.length > 0 && <p className="text-2xs text-muted-foreground">{t('mm_f_lang_chosen_note')}</p>}
-      </Section>
+      </Fold>
 
-      {/* 👥 WHO */}
-      <Section id="mm-f-who" emoji="👥" title={t('mm_b_who_title')}>
+      {/* 👥 WHO — three kinds of setting, never confused (targeting.audienceAuthority):
+          META REQUIRED (named, with the fix) · HOMATCH RECOMMENDED (advice) · USER CHOICE. */}
+      <Fold id="who" emoji="👥" title={t('mm_b_who_title')} summary={rule.restricted ? t('mm_m_who_meta') : whoSummary}
+        defaultOpen={rule.restricted || narrow}>
         {rule.restricted ? (
-          /* META RESTRICTION — named, explained, with the fix. Not a disabled control. */
-          <HelperCard emoji="🏛️" tone="amber" title={t('mm_f_meta_rule_title')} data-mm-meta-rule={rule.countries.join(',')}
+          /* META REQUIRED — named, explained, with the fix. Not a disabled control. */
+          <HelperCard emoji="🏛️" tone="amber" title={t('mm_f_meta_rule_title')} data-mm-meta-rule={rule.countries.join(',')} data-mm-authority="META_REQUIRED"
             action={<span className="text-2xs text-muted-foreground">{t('mm_f_meta_rule_fix')}</span>}>
-            {t('mm_f_meta_rule_body', { countries: rule.countries.map((c) => regionName(c, lang)).join(', '), km: String(rule.minRadiusKm ?? '') })}
+            {t(rule.countries.includes('US_ADVERTISER') ? 'mm_m_meta_rule_us_advertiser' : 'mm_f_meta_rule_body', { countries: rule.countries.filter((c) => c !== 'US_ADVERTISER').map((c) => regionName(c, lang)).join(', '), km: String(rule.minRadiusKm ?? '') })}
             <span className="mt-1.5 block font-medium text-foreground">{t('mm_b_age_range', { min: String(META_AGE_MIN), max: `${META_AGE_MAX}+` })} · {t('mm_b_gender_ALL')}</span>
           </HelperCard>
         ) : (
-          <div data-mm-who-choice="">
+          <div data-mm-who-choice="" data-mm-authority="USER_CHOICE">
             <div className="grid gap-3 sm:grid-cols-2">
               <fieldset className="min-w-0">
                 <legend className="mb-1.5 text-[13px] font-medium text-foreground">{t('mm_b_age_label')}</legend>
@@ -285,27 +310,29 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
                 </div>
               </div>
             </div>
-            {/* HOMATCH RECOMMENDATION — advice beside the choice, which stays exactly as made. */}
-            <HelperCard emoji="✨" tone={isNarrowAudience({ ageMin, ageMax, gender }) ? 'gold' : 'calm'} className="mt-3"
-              title={t('mm_f_rec_title')} data-mm-audience-rec={isNarrowAudience({ ageMin, ageMax, gender }) ? 'narrow' : 'broad'}>
-              {t(isNarrowAudience({ ageMin, ageMax, gender }) ? 'mm_f_rec_narrow' : 'mm_f_rec_broad')}
+            {/* HOMATCH RECOMMENDATION (HOMATCH_RECOMMENDED) — advice beside the choice, which stays exactly as made. */}
+            <HelperCard emoji="✨" tone={narrow ? 'gold' : 'calm'} className="mt-3" data-mm-authority="HOMATCH_RECOMMENDED"
+              title={t('mm_f_rec_title')} data-mm-audience-rec={narrow ? 'narrow' : 'broad'}>
+              {t(narrow ? 'mm_f_rec_narrow' : 'mm_f_rec_broad')}
             </HelperCard>
           </div>
         )}
-      </Section>
+      </Fold>
 
       {/* WHO, BY RELATIONSHIP */}
-      <Section id="mm-f-aud" emoji="🤝" title={t('madsb_review_audience_type')}>
-        <div className={cn('grid gap-2', audiences.some((a) => a.sync_status === 'READY') && 'sm:grid-cols-2')}>
-          <ChoiceCard active={!campaign.audience_id} icon={<Users className="h-4 w-4" />} title={t('mads_audience_broad')} body={t('madsb_audience_broad_d')}
-            onClick={() => patch({ audience_id: null }, { immediate: true })} />
-          {/* Retargeting audiences only while the admin switch allows them (the chosen one stays visible to switch away). */}
-          {audiences.filter((a) => a.sync_status === 'READY' && (status?.settings.retargetingEnabled !== false || campaign.audience_id === a.id)).map((a) => (
-            <ChoiceCard key={a.id} active={campaign.audience_id === a.id} title={a.name} body={t('madsb_audience_retarget_d')}
-              onClick={() => patch({ audience_id: a.id }, { immediate: true })} />
-          ))}
-        </div>
-      </Section>
+      {/* Shown only when the customer has a ready audience to choose. */}
+      {(readyAudiences.length > 0 || !!campaign.audience_id) && (
+        <Section id="mm-f-aud" emoji="🤝" title={t('madsb_review_audience_type')}>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <ChoiceCard active={!campaign.audience_id} icon={<Users className="h-4 w-4" />} title={t('mads_audience_broad')} body={t('madsb_audience_broad_d')}
+              onClick={() => patch({ audience_id: null }, { immediate: true })} />
+            {readyAudiences.map((a) => (
+              <ChoiceCard key={a.id} active={campaign.audience_id === a.id} title={a.name} body={t('madsb_audience_retarget_d')}
+                onClick={() => patch({ audience_id: a.id }, { immediate: true })} />
+            ))}
+          </div>
+        </Section>
+      )}
 
       <More label={t('mm_f_how_learning')}><LearningCard compact /></More>
     </StepShell>

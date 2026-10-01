@@ -98,25 +98,25 @@ export function FinancialSummary({ totals, pricing, compact, billing }: {
   const viaWallet = billing === 'HOMATCH_WALLET';
   return (
     <div className="overflow-hidden rounded-2xl bg-[#0C1119] text-white shadow-hover ring-1 ring-[hsl(38_60%_40%)]/25">
-      <div className="flex items-center justify-between gap-2 border-b border-white/10 px-5 py-3">
+      <div className="flex items-center justify-between gap-2 border-b border-white/10 px-4 sm:px-5 py-3">
         <p className="text-2xs font-semibold uppercase tracking-[0.14em] text-[hsl(38_92%_60%)]">{t('madsb_money_title')}</p>
         {pricing && <span className="inline-flex items-center gap-1.5 text-2xs text-white/60"><Loader2 className="h-3 w-3 animate-spin" />{t('madsb_money_pricing')}</span>}
       </div>
       {!totals ? (
-        <div className="px-5 py-5 text-sm text-white/60">{t('madsb_money_pending')}</div>
+        <div className="px-4 sm:px-5 py-5 text-sm text-white/60">{t('madsb_money_pending')}</div>
       ) : (
-        <dl className={`space-y-3 px-5 py-4 tabular-nums ${pricing ? 'opacity-60' : ''}`}>
+        <dl className={`space-y-3 px-4 sm:px-5 py-4 tabular-nums ${pricing ? 'opacity-60' : ''}`}>
           <div>
             <div className="flex items-baseline justify-between gap-3">
-              <dt className="text-sm font-medium text-white/90">{t('madsb_money_media')}</dt>
-              <dd className="text-base font-semibold" dir="ltr">{money(totals.mediaCents)}</dd>
+              <dt className="min-w-0 text-sm font-medium text-white/90">{t('madsb_money_media')}</dt>
+              <dd className="shrink-0 whitespace-nowrap text-base font-semibold" dir="ltr">{money(totals.mediaCents)}</dd>
             </div>
             {!compact && <p className="mt-0.5 text-2xs leading-relaxed text-white/55">{t(viaWallet ? 'madsb_money_media_d' : 'madsb_money_media_d_customer')}</p>}
           </div>
           <div>
             <div className="flex items-baseline justify-between gap-3">
-              <dt className="text-sm font-medium text-white/90">{t('madsb_money_fee', { pct: String(totals.feePercent) })}</dt>
-              <dd className="text-base font-semibold" dir="ltr">{money(totals.feeCents)}</dd>
+              <dt className="min-w-0 text-sm font-medium text-white/90">{t('madsb_money_fee', { pct: String(totals.feePercent) })}</dt>
+              <dd className="shrink-0 whitespace-nowrap text-base font-semibold" dir="ltr">{money(totals.feeCents)}</dd>
             </div>
             {!compact && <p className="mt-0.5 text-2xs leading-relaxed text-white/55">{t('mm_b_money_fee_d')}</p>}
           </div>
@@ -125,8 +125,8 @@ export function FinancialSummary({ totals, pricing, compact, billing }: {
               account directly, so it is never added to what HOMATCH charges. */}
           <div className="border-t border-white/10 pt-3">
             <div className="flex items-baseline justify-between gap-3">
-              <dt className="text-sm font-semibold text-white">{t('madsb_charged_now')}</dt>
-              <dd className="text-2xl font-bold text-[hsl(38_92%_62%)]" dir="ltr" data-charged-now="">
+              <dt className="min-w-0 text-sm font-semibold text-white">{t('madsb_charged_now')}</dt>
+              <dd className="shrink-0 whitespace-nowrap text-2xl font-bold text-[hsl(38_92%_62%)]" dir="ltr" data-charged-now="">
                 {money(viaWallet ? totals.totalCents : totals.feeCents)}
               </dd>
             </div>
@@ -139,7 +139,7 @@ export function FinancialSummary({ totals, pricing, compact, billing }: {
         </dl>
       )}
       {!compact && (
-        <p className="flex items-start gap-2 border-t border-white/10 bg-white/[0.03] px-5 py-3 text-2xs leading-relaxed text-white/60">
+        <p className="flex items-start gap-2 border-t border-white/10 bg-white/[0.03] px-4 sm:px-5 py-3 text-2xs leading-relaxed text-white/60">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />{t(viaWallet ? 'madsb_money_note' : 'madsb_money_note_customer')}
         </p>
       )}

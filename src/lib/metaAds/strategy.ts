@@ -13,7 +13,7 @@
 // No React, no Deno, no Supabase: imported by the browser (previews), by
 // edge functions (the only launch path) and by node:test directly.
 
-import { applyTargeting, normalizeIntent, validateTargeting, type LocationChoice, type TargetingIntent } from './targeting.ts';
+import { applyTargeting, effectiveLocations, normalizeIntent, validateTargeting, type LocationChoice, type TargetingIntent } from './targeting.ts';
 
 export const STRATEGY_VERSION = 'homatch-meta-v2';
 
@@ -252,7 +252,8 @@ export function buildPlan(input: StrategyInput, params: StrategyParams = DEFAULT
 
   const intent = input.targeting
     ?? normalizeIntent(null, input.countryCode ? [input.countryCode] : ['GE']);
-  const locations = intent.locations;
+  // The places that actually run: a country refined by a place inside it is not a separate cell.
+  const locations = effectiveLocations(intent.locations);
 
   type Cell = { segment: PlannedAdSet['segment']; only?: LocationChoice[]; creatives: CreativeRef[]; placements?: string[] | null };
   let cells: Cell[] = [{ segment: { kind: 'ALL', label: 'all' }, creatives: ready }];

@@ -54,11 +54,11 @@ export function FundingCard({ funding, currency, billing, loading }: {
                 <dl className={`space-y-2 text-sm tabular-nums ${loading ? 'opacity-60' : ''}`}>
                   <div className="flex items-baseline justify-between gap-3">
                     <dt className="min-w-0 text-muted-foreground">{t('mm_b_funding_planned')}</dt>
-                    <dd className="shrink-0 font-medium text-foreground" dir="ltr">{fmt(funding.plannedMediaCents)}</dd>
+                    <dd className="shrink-0 whitespace-nowrap font-medium text-foreground" dir="ltr">{fmt(funding.plannedMediaCents)}</dd>
                   </div>
                   <div className="flex items-baseline justify-between gap-3">
                     <dt className="min-w-0 text-muted-foreground">{t('mm_b_funding_fee', { pct: String(funding.feePercent) })}</dt>
-                    <dd className="shrink-0 font-semibold text-foreground" dir="ltr">{fmt(funding.requiredCents)}</dd>
+                    <dd className="shrink-0 whitespace-nowrap font-semibold text-foreground" dir="ltr">{fmt(funding.requiredCents)}</dd>
                   </div>
                 </dl>
                 <p className="text-[13px] leading-relaxed text-[hsl(152_54%_26%)]">{t('mm_b_funding_exempt')}</p>
@@ -67,19 +67,19 @@ export function FundingCard({ funding, currency, billing, loading }: {
             <dl className={`space-y-2 text-sm tabular-nums ${loading ? 'opacity-60' : ''}`}>
               <div className="flex items-baseline justify-between gap-3">
                 <dt className="min-w-0 text-muted-foreground">{t('mm_b_funding_planned')}</dt>
-                <dd className="shrink-0 font-medium text-foreground" dir="ltr">{fmt(funding.plannedMediaCents)}</dd>
+                <dd className="shrink-0 whitespace-nowrap font-medium text-foreground" dir="ltr">{fmt(funding.plannedMediaCents)}</dd>
               </div>
               <div className="flex items-baseline justify-between gap-3">
                 <dt className="min-w-0 text-muted-foreground">{t('mm_b_funding_fee', { pct: String(funding.feePercent) })}</dt>
-                <dd className="shrink-0 font-semibold text-foreground" dir="ltr">{fmt(funding.requiredCents)}</dd>
+                <dd className="shrink-0 whitespace-nowrap font-semibold text-foreground" dir="ltr">{fmt(funding.requiredCents)}</dd>
               </div>
               <div className="flex items-baseline justify-between gap-3">
                 <dt className="min-w-0 text-muted-foreground">{t('mm_b_funding_available')}</dt>
-                <dd className="shrink-0 font-medium text-foreground" dir="ltr">{fmt(funding.availableCents)}</dd>
+                <dd className="shrink-0 whitespace-nowrap font-medium text-foreground" dir="ltr">{fmt(funding.availableCents)}</dd>
               </div>
               <div className="flex items-baseline justify-between gap-3 border-t border-border pt-2">
                 <dt className="min-w-0 font-semibold text-foreground">{t('mm_b_funding_shortfall')}</dt>
-                <dd className={`shrink-0 text-base font-bold ${funding.shortfallCents > 0 ? 'text-[hsl(32_78%_32%)]' : 'text-[hsl(152_54%_28%)]'}`} dir="ltr">
+                <dd className={`shrink-0 whitespace-nowrap text-base font-bold ${funding.shortfallCents > 0 ? 'text-[hsl(32_78%_32%)]' : 'text-[hsl(152_54%_28%)]'}`} dir="ltr">
                   {fmt(funding.shortfallCents)}
                 </dd>
               </div>

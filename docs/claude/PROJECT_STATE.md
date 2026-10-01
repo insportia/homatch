@@ -622,3 +622,29 @@ Phase 2 (Universal Discovery) is blocked until this is live and proven.
   every number.
 - Builder: 10 steps (new "brief" before review); review = campaign story + expectations (room to
   learn, Meta estimate) + holistic consistency check with one-tap fixes + learning card.
+
+## Meta Ads mobile simplification, real-signal learning, leads, domain guard (2026-10-01)
+- Advertiser business country: assets refresh stores the ad account's Meta `business_country_code`
+  in capabilities (ISO2 or null). housingRule/declaredSpecialAdCategories treat a US advertiser as
+  restricted wherever the ad runs (supersedes the "not detected" limitation above). Unknown → only
+  the places decide.
+- Location model: places refine countries, nothing is replaced (masterLogic.addLocation);
+  targeting.effectiveLocations drops a country that has places inside it; buildPlan runs the
+  effective places; the builder shows one effective-geography line (geographyGroups).
+- Domain guard (src/lib/metaAds/domainScope.ts, deterministic, no AI): ALLOWED / NEEDS_REVIEW /
+  BLOCKED_OUT_OF_SCOPE. Runs in preflight (check `domain_scope`) and again at launch on the stored
+  campaign (409 OUT_OF_SCOPE / IN_REVIEW). Evidence in meta_moderation_cases reason DOMAIN_SCOPE
+  (findings: domain, domain_reason, signals, domain_fingerprint, source, checked_at); BLOCKED is
+  auto-REJECTED, NEEDS_REVIEW opens a case a person decides; approval is per fingerprint. No migration.
+- LEADS BLOCKER (production, read-only 2026-10-01): connection CONNECTED, the three Instant Form
+  permissions absent, declined_scopes [] → the Facebook Login for Business configuration
+  (config 970930962712211) does not request leads_retrieval / pages_manage_ads /
+  pages_manage_metadata. Owner action in the Meta app dashboard: add them to that configuration
+  (non-role users additionally need Advanced Access via App Review + Business Verification), then
+  the customer reconnects. Customers see one action (reconnect, or "collect leads through messages");
+  Admin shows the cause (instantForms.instantFormsCause: NOT_REQUESTED / DECLINED).
+- Learning model: analysis.learningStage(launched, evidence) → NEW / COLLECTING / USING_SIGNALS,
+  shown in the builder review and the campaign overview. Recommendations stay RECOMMEND-only.
+- Mobile: the builder bar replaces the app bottom nav on phones (bottom-0, z-[60], safe-area);
+  audience/creative/review fold their detail; ☆/★ priority; money nowrap. Browser gate at
+  320/360/390/430/768/1440.

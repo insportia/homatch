@@ -6,6 +6,7 @@ import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { Breadth } from '@/lib/metaAds/audienceGuide';
+import type { LearningStage } from '@/lib/metaAds/analysis';
 
 export type Tone = 'gold' | 'navy' | 'calm' | 'amber';
 
@@ -53,12 +54,12 @@ export function Section({ emoji, title, aside, children, id, className }: {
 }
 
 /** Progressive disclosure: the advanced detail stays folded until asked for. */
-export function More({ label, children }: { label: string; children: React.ReactNode }) {
-  const [open, setOpen] = React.useState(false);
+export function More({ label, children, defaultOpen = false, ...rest }: { label: string; children: React.ReactNode; defaultOpen?: boolean } & React.HTMLAttributes<HTMLDivElement>) {
+  const [open, setOpen] = React.useState(defaultOpen);
   return (
-    <div>
+    <div {...rest}>
       <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1 rounded-lg text-[13px] font-medium text-[hsl(var(--gold-ink))] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">
+        className="inline-flex min-h-11 items-center gap-1 rounded-lg text-[13px] font-medium text-[hsl(var(--gold-ink))] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">
         {label}<ChevronDown className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-180')} aria-hidden />
       </button>
       {open && <div className="mt-2 animate-in fade-in-0 slide-in-from-top-1">{children}</div>}
@@ -123,5 +124,52 @@ export function Pill({ active, onClick, children, ...rest }: { active: boolean; 
         active ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold))] font-semibold text-[#161309] shadow-sm' : 'border-border bg-card text-foreground hover:border-[hsl(var(--gold-border))]')}>
       {children}
     </button>
+  );
+}
+
+/**
+ * A folded section: one row with the title and what is chosen now ("18–65+ ·
+ * everyone"), opened to edit. The summary is text, so the state never depends
+ * on colour; `aside` (a switch) stays reachable while folded.
+ */
+export function Fold({ id, emoji, title, summary, aside, defaultOpen = false, children }: {
+  id: string; emoji: string; title: React.ReactNode; summary?: React.ReactNode; aside?: React.ReactNode; defaultOpen?: boolean; children: React.ReactNode;
+}) {
+  const { t } = useLanguage();
+  const [open, setOpen] = React.useState(defaultOpen);
+  React.useEffect(() => { if (defaultOpen) setOpen(true); }, [defaultOpen]);
+  const panel = `${id}-panel`;
+  return (
+    <section data-mm-fold-section={id} className="rounded-2xl border border-border bg-card shadow-sm">
+      <div className="flex items-center gap-2 pe-2">
+        <button type="button" data-mm-fold={id} aria-expanded={open} aria-controls={panel} onClick={() => setOpen((v) => !v)}
+          className="flex min-h-[52px] min-w-0 flex-1 items-center gap-2.5 rounded-2xl px-3.5 py-2.5 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">
+          <span aria-hidden className="text-base">{emoji}</span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[15px] font-semibold leading-snug text-foreground">{title}</span>
+            {summary != null && !open && <span className="mt-0.5 block text-[13px] leading-snug text-muted-foreground" dir="auto">{summary}</span>}
+          </span>
+          <span className="shrink-0 text-[13px] font-medium text-[hsl(var(--gold-ink))]">{open ? t('mm_m_done') : t('mm_m_edit')}</span>
+          <ChevronDown className={cn('h-4 w-4 shrink-0 text-[hsl(var(--gold-ink))] transition-transform motion-reduce:transition-none', open && 'rotate-180')} aria-hidden />
+        </button>
+        {aside}
+      </div>
+      {open && <div id={panel} className="space-y-3 border-t border-border px-3.5 pb-3.5 pt-3">{children}</div>}
+    </section>
+  );
+}
+
+/** Where HOMATCH's learning is for this campaign (analysis.learningStage) — one sentence, never a promise. */
+export function LearningStageCard({ stage }: { stage: LearningStage }) {
+  const { t } = useLanguage();
+  const emoji = stage === 'NEW' ? '🌱' : stage === 'COLLECTING' ? '⏳' : '📈';
+  return (
+    <div data-mm-learning-stage={stage} className="flex items-start gap-3 rounded-2xl border border-[#22324F] bg-gradient-to-br from-[#101A2C] to-[#0B1220] px-3.5 py-3 text-white">
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-white/10 text-base" aria-hidden>{emoji}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold">{t(`mm_m_stage_${stage}`)}</span>
+        <span className="mt-0.5 block text-[13px] leading-relaxed text-white/75">{t(`mm_m_stage_${stage}_d`)}</span>
+      </span>
+    </div>
   );
 }

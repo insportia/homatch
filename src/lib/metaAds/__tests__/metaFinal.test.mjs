@@ -51,7 +51,10 @@ test('declared category: the offer\'s classification, kept only where Meta requi
   assert.deepEqual(declaredSpecialAdCategories(offer, { locations: [tbilisi] }), []);
   assert.deepEqual(declaredSpecialAdCategories(offer, { locations: [tbilisi, { type: 'country', key: 'GB', name: 'UK', countryCode: 'GB' }] }), ['HOUSING']);
   const engine = read('supabase/functions/meta-ads-api/engine.ts');
-  assert.match(engine, /const cats = declaredSpecialAdCategories\(offerCats, targeting\);/);
+  assert.match(engine, /const cats = declaredSpecialAdCategories\(offerCats, targeting, acct\?\.capabilities\?\.business_country_code \?\? null\);/);
+  // A US advertiser is restricted even when the ad only reaches Georgia (Meta's rule, not a guess).
+  assert.deepEqual(declaredSpecialAdCategories(offer, { locations: [tbilisi] }, 'US'), ['HOUSING']);
+  assert.deepEqual(declaredSpecialAdCategories(offer, { locations: [tbilisi] }, 'GE'), []);
   assert.match(engine, /specialAdCategories: cats,/);
 });
 

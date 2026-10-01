@@ -41,3 +41,15 @@ export function missingInstantFormScopes(granted: readonly string[] | null | und
   const g = granted ?? [];
   return required.filter((s) => !g.includes(s));
 }
+
+/**
+ * Why a connection lacks the Instant Form permissions — for Admin. DECLINED:
+ * the customer unticked them at login (reconnect fixes it). NOT_REQUESTED: the
+ * Facebook Login for Business configuration never asked for them (declined is
+ * empty), so no reconnect can grant them until the app's configuration adds
+ * them (and Meta grants Advanced Access for non-role users).
+ */
+export function instantFormsCause(c: { granted_scopes?: readonly string[] | null; declined_scopes?: readonly string[] | null }): 'DECLINED' | 'NOT_REQUESTED' {
+  const missing = missingInstantFormScopes(c.granted_scopes, INSTANT_FORM_PERMISSIONS);
+  return missing.some((s) => (c.declined_scopes ?? []).includes(s)) ? 'DECLINED' : 'NOT_REQUESTED';
+}

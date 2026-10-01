@@ -37,6 +37,7 @@ import {
   launchCharge, launchStartTime, parseBudgetBilling, type BudgetBilling,
 } from '../../../src/lib/metaAds/payload.ts';
 import { CLAIM_FLAG, claimText, claimFingerprint, approvedClaim, openClaimCase, type ModerationCaseRow } from '../../../src/lib/metaAds/moderation.ts';
+import { classifyDomainScope, domainFingerprint, DOMAIN_CASE_REASON, type DomainVerdict } from '../../../src/lib/metaAds/domainScope.ts';
 import {
   graph, graphAll, MetaApiError, metaMode, openToken, uploadImage, uploadVideo, mockExternalId,
   REQUIRED_SCOPES_BY_GOAL, type MetaMode,
@@ -182,7 +183,8 @@ export async function strategyInputFor(sb: Sb, uid: string, c: any, settings: Me
   const targeting = normalizeIntent(c.targeting, settings.defaultCountries);
   // Declared only where Meta requires it: a housing offer reaching the US,
   // Canada or the European list (targeting.housingRule).
-  const cats = declaredSpecialAdCategories(offerCats, targeting);
+  const acct = await selectedAsset(sb, uid, 'AD_ACCOUNT');
+  const cats = declaredSpecialAdCategories(offerCats, targeting, acct?.capabilities?.business_country_code ?? null);
   return {
     strategy: {
       goal: c.goal,
@@ -398,6 +400,13 @@ export async function runPreflight(sb: Sb, uid: string, c: any, settings: MetaSe
   }
   add('creatives', creativeState, [...new Set(creativeDetail)].join(',') || undefined);
 
+  /* REAL-ESTATE SCOPE — HOMATCH Ads are for property and the services
+     around it. Decided here and again at launch (domainCheck). */
+  const domain = await domainCheck(sb, uid, c, { owned, creatives: creatives ?? [] });
+  if (domain.state === 'BLOCKED') add('domain_scope', 'ACTION_REQUIRED', `BLOCKED_OUT_OF_SCOPE:${domain.verdict.reason}`);
+  else if (domain.state === 'IN_REVIEW') { add('domain_scope', 'WARNING', `IN_REVIEW:${domain.verdict.reason}`); manualReview = true; }
+  else add('domain_scope', 'READY', domain.state === 'APPROVED' ? 'APPROVED_BY_REVIEW' : domain.verdict.reason);
+
   const cats = input.strategy.specialAdCategories;
   add('policy_classified', 'READY', cats.join(',') || 'NONE');
 
@@ -415,6 +424,50 @@ export async function runPreflight(sb: Sb, uid: string, c: any, settings: MetaSe
     advice, feePercent, hasInstagram: !!ig,
     funding: fundingPlan({ dailyBudgetCents: input.strategy.dailyBudgetCents, durationDays: input.strategy.durationDays, feePercent, availableCents: available }),
   });
+}
+
+/**
+ * The real-estate scope of a campaign, as a decision with evidence. A case is
+ * written for every non-ALLOWED verdict (once per exact offer+copy): BLOCKED
+ * as an automatic REJECTED record, NEEDS_REVIEW as an OPEN case an admin
+ * decides. A person's APPROVED decision for the same text lets it through;
+ * a person's REJECTED decision holds it.
+ */
+export async function domainCheck(sb: Sb, uid: string, c: any, pre?: { owned?: boolean; creatives?: any[] }): Promise<{
+  state: 'ALLOWED' | 'APPROVED' | 'IN_REVIEW' | 'BLOCKED'; verdict: DomainVerdict; fingerprint: string;
+}> {
+  const creatives = pre?.creatives ?? (await sb.from('meta_creatives').select('*').eq('campaign_id', c.id)).data ?? [];
+  const owned = pre?.owned ?? await propertyAuthorized(sb, uid, c.property_id);
+  const input = {
+    hasProperty: !!c.property_id && owned,
+    offer: c.offer ?? null,
+    texts: [...creatives.flatMap((cr: any) => [cr.headline, cr.primary_text, cr.description]), c.owner_brief],
+  };
+  const verdict = classifyDomainScope(input);
+  const fingerprint = domainFingerprint(input);
+  if (verdict.decision === 'ALLOWED') return { state: 'ALLOWED', verdict, fingerprint };
+  const { data: cases } = await sb.from('meta_moderation_cases').select('id,status,findings,decided_by')
+    .eq('campaign_id', c.id).eq('reason', DOMAIN_CASE_REASON);
+  const same = (cases ?? []).filter((m: any) => m.findings?.domain_fingerprint === fingerprint);
+  const findings = { domain: verdict.decision, domain_reason: verdict.reason, signals: verdict.signals, domain_fingerprint: fingerprint, source: 'DETERMINISTIC', checked_at: new Date().toISOString() };
+  // A person's decision on this exact offer and copy stands — an admin may overturn an automatic block.
+  if (same.some((m: any) => m.status === 'APPROVED' && m.decided_by)) return { state: 'APPROVED', verdict, fingerprint };
+  if (verdict.decision === 'BLOCKED_OUT_OF_SCOPE') {
+    if (!same.length) {
+      await sb.from('meta_moderation_cases').insert({
+        user_id: uid, campaign_id: c.id, creative_id: null, reason: DOMAIN_CASE_REASON, severity: 'HIGH', findings,
+        status: 'REJECTED', decided_at: new Date().toISOString(), decision_note: 'AUTO: out of HOMATCH Ads scope',
+      });
+    }
+    return { state: 'BLOCKED', verdict, fingerprint };
+  }
+  if (same.some((m: any) => m.status === 'REJECTED' && m.decided_by)) return { state: 'BLOCKED', verdict, fingerprint };
+  if (!same.some((m: any) => m.status === 'OPEN')) {
+    await sb.from('meta_moderation_cases').insert({
+      user_id: uid, campaign_id: c.id, creative_id: null, reason: DOMAIN_CASE_REASON, severity: 'MEDIUM', findings, status: 'OPEN',
+    });
+  }
+  return { state: 'IN_REVIEW', verdict, fingerprint };
 }
 
 /** Recommended placements lose Instagram when no Instagram account is selected. */

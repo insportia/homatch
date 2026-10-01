@@ -51,6 +51,8 @@ import { AudienceStep } from '@/components/metaAds/builder/AudienceStep';
 import { BriefStep } from '@/components/metaAds/builder/BriefStep';
 import { ReviewInsights } from '@/components/metaAds/builder/ReviewInsights';
 import { briefHash } from '@/lib/metaAds/audienceGuide';
+import { classifyDomainScope } from '@/lib/metaAds/domainScope';
+import { HelperCard } from '@/components/metaAds/builder/FinishKit';
 import { regionName } from '@/components/metaAds/builder/LocationPicker';
 import { useStrategyPreview } from '@/components/metaAds/builder/useStrategyPreview';
 import { adviceBlocks, defaultCampaignName, destinationForGoal } from '@/components/metaAds/builder/masterLogic';
@@ -293,6 +295,8 @@ export default function MetaAdsCreatePage() {
       else if (code === 'IDEMPOTENCY_KEY_USED') toast.info(t('madsb_launch_retry'));
       else if (code === 'INSUFFICIENT_FUNDS') { toast.error(t('mads_funds_needed')); navigate('/outreach/meta?tab=overview'); }
       else if (code === 'PREFLIGHT_STALE') { toast.info(t('madsb_preflight_stale')); setPreflight(null); }
+      else if (code === 'OUT_OF_SCOPE') { toast.error(t('mm_m_scope_blocked')); setPreflight(null); }
+      else if (code === 'IN_REVIEW') { toast.info(t('mm_m_scope_review')); setPreflight(null); }
       else if (String(e?.message ?? '').startsWith('meta_err')) toast.error(t(e.message as never));
       else toast.error(t('mads_launch_failed'));
     } finally { setRunning(false); setConfirmOpen(false); }
@@ -311,8 +315,14 @@ export default function MetaAdsCreatePage() {
 
   return (
     <AppLayout noPadding>
-      <div className="mx-auto w-full max-w-[86rem] px-4 py-4 pb-[calc(10rem+env(safe-area-inset-bottom))] md:pb-[calc(6rem+env(safe-area-inset-bottom))] sm:px-6 lg:px-8">
-        <PageHero compact eyebrow="Meta Ads" title={t('mads_create_title')} subtitle={t('mm_b_create_sub')} />
+      {/* The builder's own bar replaces the app's bottom nav on phones (see
+          data-madsb-nav), so the page only reserves the bar's height plus the
+          safe area — the last control always scrolls clear of it. */}
+      <div className="mx-auto w-full max-w-[86rem] px-4 py-4 pb-[calc(6.5rem+env(safe-area-inset-bottom,0px))] md:pb-[calc(6rem+env(safe-area-inset-bottom,0px))] sm:px-6 lg:px-8">
+        {/* On a phone the hero is shown once, on the first step; later steps start with the work. */}
+        <div className={cn(step !== 'account' && 'hidden md:block')}>
+          <PageHero compact eyebrow="Meta Ads" title={t('mads_create_title')} subtitle={t('mm_b_create_sub')} />
+        </div>
         {status?.mode === 'MOCK' && (
           <div className="mt-3 rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] px-4 py-2.5 text-[13px] text-[hsl(var(--gold-ink))]">{t('mads_mock_banner')}</div>
         )}
@@ -325,7 +335,8 @@ export default function MetaAdsCreatePage() {
 
           <main className="min-w-0 space-y-4">
             {/* The HOMATCH check, explained before the disabled button is reached. */}
-            {preflight?.status !== 'READY' && (
+            {/* Once, at the start; the review step carries the check itself. */}
+            {step === 'account' && preflight?.status !== 'READY' && (
               <div data-mm-check-notice="" role="note" className="rounded-2xl border border-border bg-card px-4 py-3 shadow-card">
                 <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
                   <ShieldCheck className="h-4 w-4 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden />{t('mm_b_check_notice_title')}
@@ -421,9 +432,11 @@ export default function MetaAdsCreatePage() {
       </div>
 
       {/* Back / Continue — always both, on every step. */}
-      <div data-madsb-nav="" className="fixed inset-x-0 bottom-[calc(3.75rem+env(safe-area-inset-bottom,0px))] z-30 md:bottom-0 lg:start-[18rem] border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <div className="mx-auto flex w-full max-w-[86rem] items-center justify-between gap-3 px-4 py-3 md:pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-6 lg:px-8">
-          <Button variant="outline" onClick={() => void (idx > 0 ? go(STEPS[idx - 1]) : navigate('/outreach/meta'))} className="gap-1.5">
+      {/* On phones it sits over the app's bottom nav (z-50) instead of stacking
+          above it — one bar, never two fighting; Exit/Back leaves the flow. */}
+      <div data-madsb-nav="" className="fixed inset-x-0 bottom-0 z-[60] md:z-30 lg:start-[18rem] border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/90">
+        <div className="mx-auto flex w-full max-w-[86rem] items-center justify-between gap-3 px-4 pt-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom,0px))] sm:px-6 lg:px-8">
+          <Button variant="outline" onClick={() => void (idx > 0 ? go(STEPS[idx - 1]) : navigate('/outreach/meta'))} className="min-h-11 shrink-0 gap-1.5">
             <ArrowLeft className="h-4 w-4 rtl:rotate-180" />{t(idx > 0 ? 'madsb_back' : 'madsb_exit')}
           </Button>
           <div className={cn('min-w-0 flex-1 text-center text-2xs text-muted-foreground sm:text-[13px]', step === 'review' && launchHint ? 'block' : 'hidden sm:block')}>
@@ -433,14 +446,14 @@ export default function MetaAdsCreatePage() {
           </div>
           {idx < STEPS.length - 1 ? (
             /* Only a BLOCKING_ERROR creative advice holds Continue; every other step is advisory. */
-            <Button onClick={() => void go(STEPS[idx + 1])} className="gap-1.5" disabled={step === 'creative' && creativeBlocked}
+            <Button onClick={() => void go(STEPS[idx + 1])} className="min-h-11 shrink-0 gap-1.5" disabled={step === 'creative' && creativeBlocked}
               aria-describedby={step === 'creative' && creativeBlocked ? 'mm-b-blocking-hint' : undefined}>
               {t('madsb_continue')}<ArrowRight className="h-4 w-4 rtl:rotate-180" />
             </Button>
           ) : (
             <Button onClick={() => setConfirmOpen(true)} disabled={!canLaunch}
               aria-describedby={launchHint ? 'mm-b-launch-hint-nav' : undefined}
-              className="bg-[hsl(var(--gold))] font-bold text-[#161309] hover:bg-[hsl(var(--gold-hover))]">{t('mads_launch')}</Button>
+              className="min-h-11 shrink-0 bg-[hsl(var(--gold))] font-bold text-[#161309] hover:bg-[hsl(var(--gold-hover))]">{t('mads_launch')}</Button>
           )}
         </div>
       </div>
@@ -540,7 +553,7 @@ function OfferStep({ campaign, properties, patch }: {
         <div className="space-y-3 rounded-xl border border-border p-3.5">
           <label className="block">
             <span className="mb-1 block text-sm font-medium text-foreground">{t('madsb_offer_title_label')}</span>
-            <Input placeholder={t('mads_offer_title_ph')} value={title} maxLength={120}
+            <Input data-mm-offer-title="" placeholder={t('mads_offer_title_ph')} value={title} maxLength={120}
               onChange={(e) => { setTitle(e.target.value); patch({ offer: { ...(offer ?? { isProperty: false, dealKind: 'OTHER' }), title: e.target.value } } as never); }} />
           </label>
           <div>
@@ -552,6 +565,17 @@ function OfferStep({ campaign, properties, patch }: {
                 onClick={() => patch({ offer: { ...(offer ?? {}), title, isProperty: false, dealKind: 'OTHER' } } as never, { immediate: true })} />
             </div>
           </div>
+          {/* Real-estate scope, said early and kindly; preflight and launch decide (domainScope.ts). */}
+          {(() => {
+            const scope = title.trim().length >= 3 ? classifyDomainScope({ hasProperty: false, offer: { ...(offer ?? {}), title }, texts: [] }) : null;
+            if (!scope || scope.decision === 'ALLOWED') return null;
+            return (
+              <HelperCard emoji={scope.decision === 'BLOCKED_OUT_OF_SCOPE' ? '🏠' : '🔍'} tone={scope.decision === 'BLOCKED_OUT_OF_SCOPE' ? 'amber' : 'calm'}
+                data-mm-scope={scope.decision} title={t(scope.decision === 'BLOCKED_OUT_OF_SCOPE' ? 'mm_m_scope_blocked_title' : 'mm_m_scope_review_title')}>
+                {t(scope.decision === 'BLOCKED_OUT_OF_SCOPE' ? 'mm_m_scope_blocked' : 'mm_m_scope_review')}
+              </HelperCard>
+            );
+          })()}
         </div>
       )}
     </StepShell>

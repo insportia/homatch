@@ -1,0 +1,1944 @@
+{
+ "version": "hm-scene-1",
+ "units": "m",
+ "coordinateSystem": "PLAN_XY_Z_UP",
+ "source": {
+  "kind": "PICTURE",
+  "architecture": "OBSERVED",
+  "furnishing": "OBSERVED"
+ },
+ "ceilingHeightM": 2.7,
+ "rooms": [
+  {
+   "id": "r-living",
+   "kind": "LIVING",
+   "polygon": [
+    [
+     0,
+     1.8
+    ],
+    [
+     4.6,
+     1.8
+    ],
+    [
+     4.6,
+     14.4
+    ],
+    [
+     2.2,
+     14.4
+    ],
+    [
+     2.2,
+     9.6
+    ],
+    [
+     0,
+     9.6
+    ]
+   ],
+   "outdoor": false,
+   "floor": "floor:r-living",
+   "ceiling": "ceiling:r-living"
+  },
+  {
+   "id": "r-bath",
+   "kind": "BATHROOM",
+   "polygon": [
+    [
+     0,
+     9.6
+    ],
+    [
+     2.2,
+     9.6
+    ],
+    [
+     2.2,
+     12.4
+    ],
+    [
+     0,
+     12.4
+    ]
+   ],
+   "outdoor": false,
+   "floor": "floor:r-bath",
+   "ceiling": "ceiling:r-bath"
+  },
+  {
+   "id": "r-dressing",
+   "kind": "STORAGE",
+   "polygon": [
+    [
+     0,
+     12.4
+    ],
+    [
+     2.2,
+     12.4
+    ],
+    [
+     2.2,
+     14.4
+    ],
+    [
+     0,
+     14.4
+    ]
+   ],
+   "outdoor": false,
+   "floor": "floor:r-dressing",
+   "ceiling": "ceiling:r-dressing"
+  },
+  {
+   "id": "r-lobby",
+   "kind": "CORRIDOR",
+   "polygon": [
+    [
+     4.6,
+     6.6
+    ],
+    [
+     8.2,
+     6.6
+    ],
+    [
+     8.2,
+     8.2
+    ],
+    [
+     4.6,
+     8.2
+    ]
+   ],
+   "outdoor": false,
+   "floor": "floor:r-lobby",
+   "ceiling": "ceiling:r-lobby"
+  },
+  {
+   "id": "r-bed1",
+   "kind": "BEDROOM",
+   "polygon": [
+    [
+     4.6,
+     1.8
+    ],
+    [
+     8.2,
+     1.8
+    ],
+    [
+     8.2,
+     6.6
+    ],
+    [
+     4.6,
+     6.6
+    ]
+   ],
+   "outdoor": false,
+   "floor": "floor:r-bed1",
+   "ceiling": "ceiling:r-bed1"
+  },
+  {
+   "id": "r-bed2",
+   "kind": "BEDROOM",
+   "polygon": [
+    [
+     8.2,
+     1.8
+    ],
+    [
+     11.6,
+     1.8
+    ],
+    [
+     11.6,
+     7.6
+    ],
+    [
+     8.2,
+     7.6
+    ]
+   ],
+   "outdoor": false,
+   "floor": "floor:r-bed2",
+   "ceiling": "ceiling:r-bed2"
+  },
+  {
+   "id": "r-balcony",
+   "kind": "BALCONY",
+   "polygon": [
+    [
+     0,
+     0
+    ],
+    [
+     11.6,
+     0
+    ],
+    [
+     11.6,
+     1.8
+    ],
+    [
+     0,
+     1.8
+    ]
+   ],
+   "outdoor": true,
+   "floor": "floor:r-balcony",
+   "ceiling": null
+  }
+ ],
+ "walls": [
+  {
+   "id": "w-1",
+   "kind": "EXTERIOR",
+   "start": [
+    0,
+    1.8
+   ],
+   "end": [
+    11.6,
+    1.8
+   ],
+   "thicknessM": 0.3,
+   "heightM": 2.7,
+   "openings": [
+    {
+     "id": "win-living-glass",
+     "kind": "WINDOW",
+     "offsetM": 0.9,
+     "widthM": 1.3,
+     "sillM": 0.1,
+     "heightM": 2.2
+    },
+    {
+     "id": "d-living-balcony",
+     "kind": "DOOR",
+     "offsetM": 2.8,
+     "widthM": 1.6,
+     "sillM": 0,
+     "heightM": 2.3
+    },
+    {
+     "id": "win-bed1-glass",
+     "kind": "WINDOW",
+     "offsetM": 5.4,
+     "widthM": 1,
+     "sillM": 0.1,
+     "heightM": 2.2
+    },
+    {
+     "id": "d-bed1-balcony",
+     "kind": "DOOR",
+     "offsetM": 6.9,
+     "widthM": 1.2,
+     "sillM": 0,
+     "heightM": 2.3
+    },
+    {
+     "id": "d-bed2-balcony",
+     "kind": "DOOR",
+     "offsetM": 9.6,
+     "widthM": 1.2,
+     "sillM": 0,
+     "heightM": 2.3
+    },
+    {
+     "id": "win-bed2-glass",
+     "kind": "WINDOW",
+     "offsetM": 11,
+     "widthM": 0.8,
+     "sillM": 0.1,
+     "heightM": 2.2
+    }
+   ],
+   "faces": [
+    {
+     "side": "L",
+     "from": 0,
+     "to": 4.575,
+     "surface": "wall:w-1:L:r-living"
+    },
+    {
+     "side": "L",
+     "from": 4.575,
+     "to": 8.225,
+     "surface": "wall:w-1:L:r-bed1"
+    },
+    {
+     "side": "L",
+     "from": 8.225,
+     "to": 11.6,
+     "surface": "wall:w-1:L:r-bed2"
+    },
+    {
+     "side": "R",
+     "from": 0,
+     "to": 11.6,
+     "surface": "wall:w-1:R:r-balcony"
+    }
+   ]
+  },
+  {
+   "id": "w-2",
+   "kind": "INTERIOR",
+   "start": [
+    0,
+    12.4
+   ],
+   "end": [
+    2.2,
+    12.4
+   ],
+   "thicknessM": 0.1,
+   "heightM": 2.7,
+   "openings": [],
+   "faces": [
+    {
+     "side": "L",
+     "from": 0,
+     "to": 2.2,
+     "surface": "wall:w-2:L:r-dressing"
+    },
+    {
+     "side": "R",
+     "from": 0,
+     "to": 2.2,
+     "surface": "wall:w-2:R:r-bath"
+    }
+   ]
+  },
+  {
+   "id": "w-3",
+   "kind": "EXTERIOR",
+   "start": [
+    0,
+    14.4
+   ],
+   "end": [
+    4.6,
+    14.4
+   ],
+   "thicknessM": 0.3,
+   "heightM": 2.7,
+   "openings": [
+    {
+     "id": "d-entry",
+     "kind": "DOOR",
+     "offsetM": 3.4,
+     "widthM": 0.95,
+     "sillM": 0,
+     "heightM": 2.1
+    }
+   ],
+   "faces": [
+    {
+     "side": "R",
+     "from": 0,
+     "to": 2.225,
+     "surface": "wall:w-3:R:r-dressing"
+    },
+    {
+     "side": "R",
+     "from": 2.225,
+     "to": 4.6,
+     "surface": "wall:w-3:R:r-living"
+    }
+   ]
+  },
+  {
+   "id": "w-4",
+   "kind": "INTERIOR",
+   "start": [
+    4.6,
+    6.6
+   ],
+   "end": [
+    8.2,
+    6.6
+   ],
+   "thicknessM": 0.1,
+   "heightM": 2.7,
+   "openings": [
+    {
+     "id": "d-bed1-door",
+     "kind": "DOOR",
+     "offsetM": 1.4,
+     "widthM": 0.8,
+     "sillM": 0,
+     "heightM": 2.1
+    }
+   ],
+   "faces": [
+    {
+     "side": "L",
+     "from": 0,
+     "to": 3.6,
+     "surface": "wall:w-4:L:r-lobby"
+    },
+    {
+     "side": "R",
+     "from": 0,
+     "to": 3.6,
+     "surface": "wall:w-4:R:r-bed1"
+    }
+   ]
+  },
+  {
+   "id": "w-5",
+   "kind": "EXTERIOR",
+   "start": [
+    8.2,
+    7.6
+   ],
+   "end": [
+    11.6,
+    7.6
+   ],
+   "thicknessM": 0.3,
+   "heightM": 2.7,
+   "openings": [],
+   "faces": [
+    {
+     "side": "R",
+     "from": 0.025,
+     "to": 3.4,
+     "surface": "wall:w-5:R:r-bed2"
+    }
+   ]
+  },
+  {
+   "id": "w-6",
+   "kind": "EXTERIOR",
+   "start": [
+    4.6,
+    8.2
+   ],
+   "end": [
+    8.2,
+    8.2
+   ],
+   "thicknessM": 0.3,
+   "heightM": 2.7,
+   "openings": [],
+   "faces": [
+    {
+     "side": "R",
+     "from": 0,
+     "to": 3.6,
+     "surface": "wall:w-6:R:r-lobby"
+    }
+   ]
+  },
+  {
+   "id": "w-7",
+   "kind": "INTERIOR",
+   "start": [
+    0,
+    9.6
+   ],
+   "end": [
+    2.2,
+    9.6
+   ],
+   "thicknessM": 0.1,
+   "heightM": 2.7,
+   "openings": [],
+   "faces": [
+    {
+     "side": "L",
+     "from": 0,
+     "to": 2.2,
+     "surface": "wall:w-7:L:r-bath"
+    },
+    {
+     "side": "R",
+     "from": 0,
+     "to": 2.2,
+     "surface": "wall:w-7:R:r-living"
+    }
+   ]
+  },
+  {
+   "id": "w-8",
+   "kind": "EXTERIOR",
+   "start": [
+    0,
+    1.8
+   ],
+   "end": [
+    0,
+    14.4
+   ],
+   "thicknessM": 0.3,
+   "heightM": 2.7,
+   "openings": [],
+   "faces": [
+    {
+     "side": "R",
+     "from": 0.025,
+     "to": 7.775,
+     "surface": "wall:w-8:R:r-living"
+    },
+    {
+     "side": "R",
+     "from": 7.775,
+     "to": 10.575,
+     "surface": "wall:w-8:R:r-bath"
+    },
+    {
+     "side": "R",
+     "from": 10.575,
+     "to": 12.6,
+     "surface": "wall:w-8:R:r-dressing"
+    }
+   ]
+  },
+  {
+   "id": "w-9",
+   "kind": "EXTERIOR",
+   "start": [
+    11.6,
+    1.8
+   ],
+   "end": [
+    11.6,
+    7.6
+   ],
+   "thicknessM": 0.3,
+   "heightM": 2.7,
+   "openings": [],
+   "faces": [
+    {
+     "side": "L",
+     "from": 0,
+     "to": 5.8,
+     "surface": "wall:w-9:L:r-bed2"
+    }
+   ]
+  },
+  {
+   "id": "w-10",
+   "kind": "INTERIOR",
+   "start": [
+    2.2,
+    9.6
+   ],
+   "end": [
+    2.2,
+    14.4
+   ],
+   "thicknessM": 0.1,
+   "heightM": 2.7,
+   "openings": [
+    {
+     "id": "d-bath-door",
+     "kind": "DOOR",
+     "offsetM": 1.4,
+     "widthM": 0.8,
+     "sillM": 0,
+     "heightM": 2.1
+    },
+    {
+     "id": "d-dressing-door",
+     "kind": "DOOR",
+     "offsetM": 3.8,
+     "widthM": 0.8,
+     "sillM": 0,
+     "heightM": 2.1
+    }
+   ],
+   "faces": [
+    {
+     "side": "L",
+     "from": 0,
+     "to": 2.775,
+     "surface": "wall:w-10:L:r-bath"
+    },
+    {
+     "side": "L",
+     "from": 2.775,
+     "to": 4.8,
+     "surface": "wall:w-10:L:r-dressing"
+    },
+    {
+     "side": "R",
+     "from": 0,
+     "to": 4.8,
+     "surface": "wall:w-10:R:r-living"
+    }
+   ]
+  },
+  {
+   "id": "w-11",
+   "kind": "INTERIOR",
+   "start": [
+    4.6,
+    1.8
+   ],
+   "end": [
+    4.6,
+    8.2
+   ],
+   "thicknessM": 0.1,
+   "heightM": 2.7,
+   "openings": [
+    {
+     "id": "d-lobby-door",
+     "kind": "DOOR",
+     "offsetM": 5.6,
+     "widthM": 0.9,
+     "sillM": 0,
+     "heightM": 2.1
+    }
+   ],
+   "faces": [
+    {
+     "side": "L",
+     "from": 0.025,
+     "to": 6.4,
+     "surface": "wall:w-11:L:r-living"
+    },
+    {
+     "side": "R",
+     "from": 0,
+     "to": 4.775,
+     "surface": "wall:w-11:R:r-bed1"
+    },
+    {
+     "side": "R",
+     "from": 4.775,
+     "to": 6.4,
+     "surface": "wall:w-11:R:r-lobby"
+    }
+   ]
+  },
+  {
+   "id": "w-12",
+   "kind": "EXTERIOR",
+   "start": [
+    4.6,
+    8.2
+   ],
+   "end": [
+    4.6,
+    14.4
+   ],
+   "thicknessM": 0.3,
+   "heightM": 2.7,
+   "openings": [],
+   "faces": [
+    {
+     "side": "L",
+     "from": 0,
+     "to": 6.2,
+     "surface": "wall:w-12:L:r-living"
+    }
+   ]
+  },
+  {
+   "id": "w-13",
+   "kind": "INTERIOR",
+   "start": [
+    8.2,
+    1.8
+   ],
+   "end": [
+    8.2,
+    7.6
+   ],
+   "thicknessM": 0.1,
+   "heightM": 2.7,
+   "openings": [
+    {
+     "id": "d-bed2-door",
+     "kind": "DOOR",
+     "offsetM": 5.3,
+     "widthM": 0.8,
+     "sillM": 0,
+     "heightM": 2.1
+    }
+   ],
+   "faces": [
+    {
+     "side": "L",
+     "from": 0,
+     "to": 4.775,
+     "surface": "wall:w-13:L:r-bed1"
+    },
+    {
+     "side": "L",
+     "from": 4.775,
+     "to": 5.8,
+     "surface": "wall:w-13:L:r-lobby"
+    },
+    {
+     "side": "R",
+     "from": 0,
+     "to": 5.8,
+     "surface": "wall:w-13:R:r-bed2"
+    }
+   ]
+  },
+  {
+   "id": "w-14",
+   "kind": "EXTERIOR",
+   "start": [
+    8.2,
+    7.6
+   ],
+   "end": [
+    8.2,
+    8.2
+   ],
+   "thicknessM": 0.3,
+   "heightM": 2.7,
+   "openings": [],
+   "faces": [
+    {
+     "side": "L",
+     "from": 0,
+     "to": 0.6,
+     "surface": "wall:w-14:L:r-lobby"
+    }
+   ]
+  }
+ ],
+ "railings": [
+  {
+   "id": "rail-0",
+   "a": [
+    0,
+    0
+   ],
+   "b": [
+    11.6,
+    0
+   ],
+   "heightM": 1.05
+  },
+  {
+   "id": "rail-1",
+   "a": [
+    11.6,
+    0
+   ],
+   "b": [
+    11.6,
+    1.8
+   ],
+   "heightM": 1.05
+  },
+  {
+   "id": "rail-2",
+   "a": [
+    0,
+    1.8
+   ],
+   "b": [
+    0,
+    0
+   ],
+   "heightM": 1.05
+  }
+ ],
+ "surfaces": [
+  {
+   "id": "floor:r-living",
+   "material": null,
+   "color": "#d9c3a5",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": "WOOD_HERRINGBONE",
+   "tint": null
+  },
+  {
+   "id": "ceiling:r-living",
+   "material": null,
+   "color": "#fbfbf9",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "floor:r-bath",
+   "material": null,
+   "color": "#7f8791",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": "TILE",
+   "tint": null
+  },
+  {
+   "id": "ceiling:r-bath",
+   "material": null,
+   "color": "#fbfbf9",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "floor:r-dressing",
+   "material": null,
+   "color": "#d8c4a6",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "ceiling:r-dressing",
+   "material": null,
+   "color": "#fbfbf9",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "floor:r-lobby",
+   "material": null,
+   "color": "#d9c3a5",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": "WOOD_HERRINGBONE",
+   "tint": null
+  },
+  {
+   "id": "ceiling:r-lobby",
+   "material": null,
+   "color": "#fbfbf9",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "floor:r-bed1",
+   "material": null,
+   "color": "#d9c3a5",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": "WOOD_HERRINGBONE",
+   "tint": null
+  },
+  {
+   "id": "ceiling:r-bed1",
+   "material": null,
+   "color": "#fbfbf9",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "floor:r-bed2",
+   "material": null,
+   "color": "#d9c3a5",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": "WOOD_HERRINGBONE",
+   "tint": null
+  },
+  {
+   "id": "ceiling:r-bed2",
+   "material": null,
+   "color": "#fbfbf9",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "floor:r-balcony",
+   "material": null,
+   "color": "#5d6268",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": "WOOD_PLANK",
+   "tint": null
+  },
+  {
+   "id": "wall:w-1:L:r-living",
+   "material": "mat-0",
+   "color": "#f2eee6",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "wall:w-1:L:r-bed1",
+   "material": "mat-0",
+   "color": "#f2eee6",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "wall:w-1:L:r-bed2",
+   "material": "mat-0",
+   "color": "#f2eee6",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "wall:w-1:R:r-balcony",
+   "material": null,
+   "color": "#f7f5f1",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "wall:w-2:L:r-dressing",
+   "material": null,
+   "color": "#f7f5f1",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "wall:w-2:R:r-bath",
+   "material": null,
+   "color": "#9aa1a8",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "wall:w-3:R:r-dressing",
+   "material": null,
+   "color": "#f7f5f1",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "wall:w-3:R:r-living",
+   "material": "mat-0",
+   "color": "#f2eee6",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "wall:w-4:L:r-lobby",
+   "material": null,
+   "color": "#f7f5f1",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "wall:w-4:R:r-bed1",
+   "material": "mat-0",
+   "color": "#f2eee6",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "wall:w-5:R:r-bed2",
+   "material": "mat-0",
+   "color": "#f2eee6",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "wall:w-6:R:r-lobby",
+   "material": null,
+   "color": "#f7f5f1",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "wall:w-7:L:r-bath",
+   "material": null,
+   "color": "#9aa1a8",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "wall:w-7:R:r-living",
+   "material": "mat-0",
+   "color": "#f2eee6",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "wall:w-8:R:r-living",
+   "material": "mat-0",
+   "color": "#f2eee6",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "wall:w-8:R:r-bath",
+   "material": null,
+   "color": "#9aa1a8",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "wall:w-8:R:r-dressing",
+   "material": null,
+   "color": "#f7f5f1",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "wall:w-9:L:r-bed2",
+   "material": "mat-0",
+   "color": "#f2eee6",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "wall:w-10:L:r-bath",
+   "material": null,
+   "color": "#9aa1a8",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "wall:w-10:L:r-dressing",
+   "material": null,
+   "color": "#f7f5f1",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "wall:w-10:R:r-living",
+   "material": "mat-0",
+   "color": "#f2eee6",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "wall:w-11:L:r-living",
+   "material": "mat-0",
+   "color": "#f2eee6",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "wall:w-11:R:r-bed1",
+   "material": "mat-0",
+   "color": "#f2eee6",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "wall:w-11:R:r-lobby",
+   "material": null,
+   "color": "#f7f5f1",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "wall:w-12:L:r-living",
+   "material": "mat-0",
+   "color": "#f2eee6",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "wall:w-13:L:r-bed1",
+   "material": "mat-0",
+   "color": "#f2eee6",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "wall:w-13:L:r-lobby",
+   "material": null,
+   "color": "#f7f5f1",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "wall:w-13:R:r-bed2",
+   "material": "mat-0",
+   "color": "#f2eee6",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  },
+  {
+   "id": "wall:w-14:L:r-lobby",
+   "material": null,
+   "color": "#f7f5f1",
+   "roughness": 0.9,
+   "metalness": 0,
+   "pattern": null,
+   "tint": null
+  }
+ ],
+ "materials": [
+  {
+   "id": "mat-0",
+   "baseColor": "#f2eee6",
+   "roughness": 0.9,
+   "metalness": 0,
+   "tileM": [
+    1,
+    1
+   ],
+   "rotationDeg": 0,
+   "normalScale": 1
+  }
+ ],
+ "objects": [
+  {
+   "id": "rc-1-kitchen-run",
+   "kind": "KITCHEN_RUN",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 3,
+    "d": 0.62,
+    "h": 0.9
+   },
+   "at": [
+    1.65,
+    9.23
+   ],
+   "elevationM": 0,
+   "rotation": -3.142,
+   "colors": {
+    "body": "#5b6068",
+    "top": "#d7d2ca"
+   },
+   "provenance": "OBSERVED",
+   "runtime": false,
+   "group": null
+  },
+  {
+   "id": "rc-2-kitchen-peninsula",
+   "kind": "KITCHEN_RUN",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 1.8,
+    "d": 0.9,
+    "h": 0.9
+   },
+   "at": [
+    2.2,
+    8.1
+   ],
+   "elevationM": 0,
+   "rotation": 0,
+   "colors": {
+    "body": "#5b6068",
+    "top": "#e4e0da"
+   },
+   "provenance": "OBSERVED",
+   "runtime": false,
+   "group": null
+  },
+  {
+   "id": "rc-3-fridge",
+   "kind": "FRIDGE",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 0.6,
+    "d": 0.65,
+    "h": 1.9
+   },
+   "at": [
+    3.9,
+    9.25
+   ],
+   "elevationM": 0,
+   "rotation": -3.142,
+   "colors": {
+    "body": "#a9aeb4"
+   },
+   "provenance": "OBSERVED",
+   "runtime": false,
+   "group": null
+  },
+  {
+   "id": "rc-4-bed1-wardrobe",
+   "kind": "WARDROBE",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 1.2,
+    "d": 0.6,
+    "h": 2.2
+   },
+   "at": [
+    7.84,
+    4
+   ],
+   "elevationM": 0,
+   "rotation": 1.571,
+   "colors": {
+    "body": "#a8998a"
+   },
+   "provenance": "OBSERVED",
+   "runtime": false,
+   "group": null
+  },
+  {
+   "id": "rc-5-bed2-wardrobe",
+   "kind": "WARDROBE",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 1,
+    "d": 0.6,
+    "h": 2.2
+   },
+   "at": [
+    11.14,
+    3.2
+   ],
+   "elevationM": 0,
+   "rotation": 1.571,
+   "colors": {
+    "body": "#7d8187"
+   },
+   "provenance": "OBSERVED",
+   "runtime": false,
+   "group": null
+  },
+  {
+   "id": "rc-6-hall-wardrobe",
+   "kind": "WARDROBE",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 2.2,
+    "d": 0.6,
+    "h": 2.4
+   },
+   "at": [
+    4.14,
+    12.2
+   ],
+   "elevationM": 0,
+   "rotation": 1.571,
+   "colors": {
+    "body": "#b09a80"
+   },
+   "provenance": "OBSERVED",
+   "runtime": false,
+   "group": null
+  },
+  {
+   "id": "rc-7-shower",
+   "kind": "SHOWER",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 0.9,
+    "d": 0.9,
+    "h": 2
+   },
+   "at": [
+    0.6,
+    10.15
+   ],
+   "elevationM": 0,
+   "rotation": -1.571,
+   "colors": {
+    "body": "#e9ecef"
+   },
+   "provenance": "OBSERVED",
+   "runtime": false,
+   "group": null
+  },
+  {
+   "id": "rc-8-vanity",
+   "kind": "VANITY",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 1,
+    "d": 0.5,
+    "h": 0.85
+   },
+   "at": [
+    1.25,
+    12.09
+   ],
+   "elevationM": 0,
+   "rotation": -3.142,
+   "colors": {
+    "body": "#6d625a",
+    "top": "#ffffff"
+   },
+   "provenance": "OBSERVED",
+   "runtime": false,
+   "group": null
+  },
+  {
+   "id": "rc-9-bed1x",
+   "kind": "BED",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 1.6,
+    "d": 2.1,
+    "h": 0.95
+   },
+   "at": [
+    5.697,
+    5.15
+   ],
+   "elevationM": 0,
+   "rotation": -1.571,
+   "colors": {
+    "body": "#c9a27a",
+    "linen": "#efeae2"
+   },
+   "provenance": "OBSERVED",
+   "runtime": true,
+   "group": "gbed-10l3k4v"
+  },
+  {
+   "id": "rc-10-bed2x",
+   "kind": "BED",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 1.6,
+    "d": 2.1,
+    "h": 0.95
+   },
+   "at": [
+    9.9,
+    6.39
+   ],
+   "elevationM": 0,
+   "rotation": -3.142,
+   "colors": {
+    "body": "#c9a27a",
+    "linen": "#efeae2"
+   },
+   "provenance": "OBSERVED",
+   "runtime": true,
+   "group": "gbed-10l3k4v"
+  },
+  {
+   "id": "rc-11-sofa",
+   "kind": "SOFA",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 2.5,
+    "d": 0.95,
+    "h": 0.8
+   },
+   "at": [
+    4.065,
+    4.3
+   ],
+   "elevationM": 0,
+   "rotation": 1.571,
+   "colors": {
+    "body": "#2f8f7f",
+    "legs": "#3b3128"
+   },
+   "provenance": "OBSERVED",
+   "runtime": true,
+   "group": "gsofa-4vvj6c"
+  },
+  {
+   "id": "rc-12-balcony-sofa",
+   "kind": "SOFA",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 1.5,
+    "d": 0.7,
+    "h": 0.7
+   },
+   "at": [
+    11.19,
+    0.9
+   ],
+   "elevationM": 0,
+   "rotation": 1.571,
+   "colors": {
+    "body": "#9a9ea3",
+    "legs": "#2b2d31"
+   },
+   "provenance": "OBSERVED",
+   "runtime": true,
+   "group": "gsofa-1c1o105"
+  },
+  {
+   "id": "rc-13-tv",
+   "kind": "TV_UNIT",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 1.6,
+    "d": 0.4,
+    "h": 0.5
+   },
+   "at": [
+    0.36,
+    3.9
+   ],
+   "elevationM": 0,
+   "rotation": -1.571,
+   "colors": {
+    "body": "#1f2226",
+    "legs": "#2a2a2a"
+   },
+   "provenance": "OBSERVED",
+   "runtime": false,
+   "group": null
+  },
+  {
+   "id": "rc-14-dining-table",
+   "kind": "TABLE",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 0.9,
+    "d": 0.9,
+    "h": 0.75
+   },
+   "at": [
+    1.5,
+    6.9
+   ],
+   "elevationM": 0,
+   "rotation": 0,
+   "colors": {
+    "legs": "#6d5238",
+    "top": "#f2f1ee"
+   },
+   "provenance": "OBSERVED",
+   "runtime": true,
+   "group": "gtable-1edf0jk"
+  },
+  {
+   "id": "rc-15-dressing-shelves",
+   "kind": "SHELF",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 1.8,
+    "d": 0.45,
+    "h": 2.2
+   },
+   "at": [
+    1.1,
+    14.015
+   ],
+   "elevationM": 0,
+   "rotation": -3.142,
+   "colors": {
+    "body": "#8a6d52"
+   },
+   "provenance": "OBSERVED",
+   "runtime": false,
+   "group": null
+  },
+  {
+   "id": "rc-16-armchair-1",
+   "kind": "ARMCHAIR",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 0.85,
+    "d": 0.85,
+    "h": 0.85
+   },
+   "at": [
+    1.6,
+    5.1
+   ],
+   "elevationM": 0,
+   "rotation": -2.094,
+   "colors": {
+    "body": "#3f9a4c",
+    "legs": "#5b4432"
+   },
+   "provenance": "OBSERVED",
+   "runtime": true,
+   "group": "garmchair-5hpuls"
+  },
+  {
+   "id": "rc-17-balcony-chair-1",
+   "kind": "ARMCHAIR",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 0.7,
+    "d": 0.75,
+    "h": 0.8
+   },
+   "at": [
+    6.503,
+    0.776
+   ],
+   "elevationM": 0,
+   "rotation": -2.793,
+   "colors": {
+    "body": "#8fc3dc",
+    "legs": "#8a7353"
+   },
+   "provenance": "OBSERVED",
+   "runtime": true,
+   "group": "garmchair-auapkm"
+  },
+  {
+   "id": "rc-18-balcony-chair-2",
+   "kind": "ARMCHAIR",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 0.7,
+    "d": 0.75,
+    "h": 0.8
+   },
+   "at": [
+    8.1,
+    0.9
+   ],
+   "elevationM": 0,
+   "rotation": 2.793,
+   "colors": {
+    "body": "#8fc3dc",
+    "legs": "#8a7353"
+   },
+   "provenance": "OBSERVED",
+   "runtime": true,
+   "group": "garmchair-auapkm"
+  },
+  {
+   "id": "rc-19-balcony-dining",
+   "kind": "ROUND_TABLE",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 0.6,
+    "d": 0.6,
+    "h": 0.72
+   },
+   "at": [
+    1.3,
+    0.8
+   ],
+   "elevationM": 0,
+   "rotation": 0,
+   "colors": {
+    "legs": "#2b2d31",
+    "top": "#f2f2f0"
+   },
+   "provenance": "OBSERVED",
+   "runtime": true,
+   "group": "groundtable-1mfpt2p"
+  },
+  {
+   "id": "rc-20-balcony-dining-chair",
+   "kind": "ARMCHAIR",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.8
+   },
+   "at": [
+    0.6,
+    0.8
+   ],
+   "elevationM": 0,
+   "rotation": -1.571,
+   "colors": {
+    "body": "#6fa8c7",
+    "legs": "#8a7353"
+   },
+   "provenance": "OBSERVED",
+   "runtime": true,
+   "group": "garmchair-h5t3p7"
+  },
+  {
+   "id": "rc-21-balcony-planter",
+   "kind": "PLANTER",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 1.4,
+    "d": 0.45,
+    "h": 1
+   },
+   "at": [
+    4.6,
+    0.285
+   ],
+   "elevationM": 0,
+   "rotation": 0,
+   "colors": {
+    "leaves": "#5f7a4f",
+    "pot": "#6b5a47"
+   },
+   "provenance": "OBSERVED",
+   "runtime": true,
+   "group": "gplanter-19yalv7"
+  },
+  {
+   "id": "rc-22-balcony-side-table",
+   "kind": "ROUND_TABLE",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.45
+   },
+   "at": [
+    7.35,
+    0.6
+   ],
+   "elevationM": 0,
+   "rotation": 0,
+   "colors": {
+    "legs": "#2b2d31",
+    "top": "#f2f2f0"
+   },
+   "provenance": "OBSERVED",
+   "runtime": true,
+   "group": "groundtable-13w8x9t"
+  },
+  {
+   "id": "rc-23-bed1-side-1",
+   "kind": "DRESSER",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 0.45,
+    "d": 0.4,
+    "h": 0.5
+   },
+   "at": [
+    5.2,
+    6.34
+   ],
+   "elevationM": 0,
+   "rotation": -3.142,
+   "colors": {
+    "body": "#c9a27a"
+   },
+   "provenance": "OBSERVED",
+   "runtime": false,
+   "group": null
+  },
+  {
+   "id": "rc-24-bed1-side-2",
+   "kind": "DRESSER",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 0.45,
+    "d": 0.4,
+    "h": 0.5
+   },
+   "at": [
+    7.6,
+    6.34
+   ],
+   "elevationM": 0,
+   "rotation": -3.142,
+   "colors": {
+    "body": "#c9a27a"
+   },
+   "provenance": "OBSERVED",
+   "runtime": false,
+   "group": null
+  },
+  {
+   "id": "rc-25-bed2-side-2",
+   "kind": "DRESSER",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 0.45,
+    "d": 0.4,
+    "h": 0.5
+   },
+   "at": [
+    11.1,
+    7.24
+   ],
+   "elevationM": 0,
+   "rotation": -3.142,
+   "colors": {
+    "body": "#c9a27a"
+   },
+   "provenance": "OBSERVED",
+   "runtime": false,
+   "group": null
+  },
+  {
+   "id": "rc-26-coffee-table",
+   "kind": "ROUND_TABLE",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 0.8,
+    "d": 0.8,
+    "h": 0.4
+   },
+   "at": [
+    2.9,
+    3.9
+   ],
+   "elevationM": 0,
+   "rotation": 0,
+   "colors": {
+    "legs": "#8a7f70",
+    "top": "#2c5c8a"
+   },
+   "provenance": "OBSERVED",
+   "runtime": true,
+   "group": "groundtable-16h4arv"
+  },
+  {
+   "id": "rc-27-dining-chair-1",
+   "kind": "CHAIR",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.8
+   },
+   "at": [
+    0.7,
+    6.9
+   ],
+   "elevationM": 0,
+   "rotation": -1.571,
+   "colors": {
+    "body": "#f07a1a"
+   },
+   "provenance": "OBSERVED",
+   "runtime": true,
+   "group": "gchair-19n156c"
+  },
+  {
+   "id": "rc-28-dining-chair-2",
+   "kind": "CHAIR",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.8
+   },
+   "at": [
+    2.3,
+    6.9
+   ],
+   "elevationM": 0,
+   "rotation": 1.571,
+   "colors": {
+    "body": "#f07a1a"
+   },
+   "provenance": "OBSERVED",
+   "runtime": true,
+   "group": "gchair-19n156c"
+  },
+  {
+   "id": "rc-29-dining-chair-3",
+   "kind": "CHAIR",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.8
+   },
+   "at": [
+    1.5,
+    6.1
+   ],
+   "elevationM": 0,
+   "rotation": 0,
+   "colors": {
+    "body": "#f07a1a"
+   },
+   "provenance": "OBSERVED",
+   "runtime": true,
+   "group": "gchair-19n156c"
+  },
+  {
+   "id": "rc-30-hall-plant",
+   "kind": "PLANT",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 1
+   },
+   "at": [
+    3.6,
+    10.4
+   ],
+   "elevationM": 0,
+   "rotation": 0,
+   "colors": {
+    "leaves": "#3d6b3a",
+    "pot": "#c8b8a2"
+   },
+   "provenance": "OBSERVED",
+   "runtime": true,
+   "group": "gplant-walzhj"
+  },
+  {
+   "id": "rc-31-plant-living",
+   "kind": "PLANT",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 0.6,
+    "d": 0.6,
+    "h": 1.3
+   },
+   "at": [
+    3.9,
+    6.2
+   ],
+   "elevationM": 0,
+   "rotation": 0,
+   "colors": {
+    "leaves": "#3d6b3a",
+    "pot": "#c8b8a2"
+   },
+   "provenance": "OBSERVED",
+   "runtime": true,
+   "group": "gplant-1hp5cs2"
+  },
+  {
+   "id": "rc-32-plant-window",
+   "kind": "PLANT",
+   "model": null,
+   "form": null,
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 1.2
+   },
+   "at": [
+    0.5,
+    2.3
+   ],
+   "elevationM": 0,
+   "rotation": 0,
+   "colors": {
+    "leaves": "#4a7a3f",
+    "pot": "#c8b8a2"
+   },
+   "provenance": "OBSERVED",
+   "runtime": true,
+   "group": "gplant-k68s5m"
+  }
+ ],
+ "frames": "#f4f4f2",
+ "lighting": {
+  "timeOfDay": "DAY",
+  "temperature": "NEUTRAL",
+  "interior": 0.6,
+  "sun": [
+   -0.449,
+   0.321,
+   0.834
+  ]
+ },
+ "camera": {
+  "position": [
+   37.463,
+   -30.391,
+   34.415
+  ],
+  "target": [
+   5.8,
+   7.2,
+   0
+  ],
+  "fovDeg": 16,
+  "near": 1,
+  "far": 400,
+  "aspect": 1.4,
+  "background": "#f3f1ed",
+  "cut": {
+   "exteriorM": 1.1,
+   "interiorM": 1
+  }
+ },
+ "render": {
+  "width": 640,
+  "height": 457,
+  "samples": 16
+ },
+ "outputs": {
+  "render": true,
+  "scene": true,
+  "objects": true
+ }
+}

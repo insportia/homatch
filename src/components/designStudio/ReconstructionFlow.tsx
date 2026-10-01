@@ -34,6 +34,17 @@ import {
   runReconstruction, saveCorrections, uploadReference, type ReconstructionRecord,
 } from '@/services/designStudio/reconstructions';
 import type { CatalogAsset } from '@/lib/designStudio/catalog';
+import { readFrame } from '@/lib/designStudio/pictureFrame';
+import { scaleFit, viewForCanvas } from '@/lib/designStudio/sourceCamera';
+import type { Stage } from '@/lib/designStudio/hybrid/contract';
+import { compileSceneSpec } from '@/lib/designStudio/hybrid/compileSpec';
+import { runEngine, unprojectWith } from '@/lib/designStudio/hybrid/orchestrate';
+import { engineReport } from '@/lib/designStudio/hybrid/report';
+import { designChecks } from '@/lib/designStudio/hybrid/designChecks';
+import { withChecks } from '@/lib/designStudio/hybrid/fidelity';
+import { discardFactory, factoryStatus, startFactory, visualQa } from '@/services/designStudio/factory';
+import { offscreenSourceStill } from './canvas/offscreenStill';
+import { freshStages, GenerationStages, type StageStatus } from './GenerationStages';
 
 type Step = 'PICK' | 'WORKING' | 'REVIEW' | 'BUILDING';
 
@@ -83,6 +94,7 @@ export function ReconstructionFlow({
   const [area, setArea] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [stages, setStages] = useState<Record<Stage, StageStatus>>(freshStages);
 
   const recon = record?.analysis ?? null;
   const previews = useMemo(() => files.map((f) => URL.createObjectURL(f)), [files]);
@@ -143,6 +155,9 @@ export function ReconstructionFlow({
   const build = async () => {
     if (!record || !recon) return;
     setError(null);
+    const startedAt = performance.now();
+    const mark = (stage: Stage, status: StageStatus) => setStages((cur) => ({ ...cur, [stage]: status }));
+    setStages({ ...freshStages(), UNDERSTANDING: 'DONE', MEASURING: 'RUNNING' });
     setStep('BUILDING');
     try {
       await saveCorrections(record.id, corrections);
@@ -173,11 +188,66 @@ export function ReconstructionFlow({
         scale = calibration.metresPerPx * PX_PER_M;
       }
       const space = buildSpaceModel(canonical.scene);
-      const { state } = buildDesign(recon, corrections, space, assets, materials, {
+      mark('MEASURING', 'DONE');
+      const assemble = (r: typeof recon) => buildDesign(r, corrections, space, assets, materials, {
         scale, referenceImageIds: record.reference_ids, roomIdOf: recon.usesPlan ? (k) => k : undefined,
       });
-      const version = await createReconstructedVersion({ userId, projectId, sourceId, name: t('ds_recon_version_name'), state, styleTags: recon.styleWords });
-      await markBuilt(record.id, sourceId, version.id);
+      // What the customer kept, as they corrected it: the engine routes and builds only that.
+      const rejected = new Set(corrections.rejected);
+      const kept = {
+        ...recon,
+        objects: recon.objects.filter((o) => !rejected.has(o.key) && !(o.room && rejected.has(o.room))).map((o) => ({ ...o, type: corrections.objectTypes[o.key] ?? o.type })),
+      };
+      // The picture's own camera, in the reading's metres (the check) and in the built space's (the still).
+      const camera = recon.cameras.find((c) => c.fit) ?? null;
+      const fit = camera?.fit ?? null;
+      const pts = recon.rooms.flatMap((r) => r.polygon);
+      const xs = pts.map((p) => p[0]); const ys = pts.map((p) => p[1]);
+      const centre: [number, number] = pts.length ? [((Math.min(...xs) + Math.max(...xs)) / 2) * scale, ((Math.min(...ys) + Math.max(...ys)) / 2) * scale] : [0, 0];
+      const fid = recon.fidelity && camera && recon.fidelity.image === camera.image ? recon.fidelity : null;
+      const cut = fid?.wallM ? { exteriorM: fid.wallM * scale, interiorM: (fid.interiorWallM ?? fid.wallM) * scale } : null;
+      const background = camera ? readFrame(refs[camera.image]?.picture_geometry)?.background ?? null : null;
+      // The source camera in the built space: the factory renders exactly this view.
+      const scaled = fit ? scaleFit(fit, scale) : null;
+      const edge = 1600;
+      const w = scaled ? (scaled.aspect >= 1 ? edge : Math.round(edge * scaled.aspect)) : edge;
+      const h = scaled ? (scaled.aspect >= 1 ? Math.round(edge / scaled.aspect) : edge) : edge;
+      const pose = scaled ? viewForCanvas(scaled, w, h, centre) : null;
+      const sourceCamera = scaled && pose ? { position: pose.position, target: pose.target, fov: pose.fov, near: pose.near, far: pose.far, aspect: scaled.aspect, background, cut } : null;
+      const assetMap = new Map(assets.map((a) => [a.code, a]));
+      const materialMap = new Map(materials.map((m) => [m.id, m]));
+      const result = await runEngine({
+        recon: kept, assets, confirmed: new Set(corrections.confirmed), unproject: fit ? unprojectWith(fit) : null,
+        roomsBuilt: space.rooms.length, quality: 'HIGH',
+      }, {
+        startFactory: (spec, pass) => startFactory({ projectId, reconstructionId: record.id, pass, spec }),
+        factoryStatus,
+        discardFactory,
+        assemble,
+        compile: (state, outputs) => compileSceneSpec({
+          space, state, assets: assetMap, materials: materialMap, camera: sourceCamera,
+          source: { kind: 'PICTURE', architecture: 'OBSERVED', furnishing: 'OBSERVED' }, render: { edge, samples: 128 }, outputs,
+        }),
+        browserRender: (state) => (scaled ? offscreenSourceStill({ space, state, assets, materials, fit: scaled, centre, cut, background }) : Promise.resolve(null)),
+        visualQa: async (render, r) => visualQa({
+          reconstructionId: record.id,
+          ...('assetId' in render ? { renderAssetId: render.assetId } : { render: render.dataUrl }),
+          objects: r.objects.map((o) => ({ key: o.key, type: o.type, label: o.label })),
+          rooms: r.rooms.map((x) => ({ key: x.key, kind: x.kind })),
+        }),
+        sleep: (ms) => new Promise((res) => setTimeout(res, ms)),
+        now: () => Date.now(),
+        onStage: mark,
+      });
+      // The built home held to the same facts as any design: walkable, nothing in anything, the source's scale.
+      const checks = designChecks(space, result.state, assetMap, canonical);
+      result.fidelity = withChecks(result.fidelity, checks.dimensions.filter((x) => x.name === 'walkability' || x.name === 'intersections' || x.name === 'scale'));
+      mark('FINALIZING', 'RUNNING');
+      const version = await createReconstructedVersion({ userId, projectId, sourceId, name: t('ds_recon_version_name'), state: result.state, styleTags: recon.styleWords });
+      const report = engineReport(result, { mode: 'RECONSTRUCT_FROM_IMAGE', versionId: version.id, startedAt, endedAt: performance.now() });
+      // The report is a record of the run; failing to keep it never loses the design.
+      await markBuilt(record.id, sourceId, version.id, report).catch(() => markBuilt(record.id, sourceId, version.id));
+      mark('FINALIZING', 'DONE');
       onBuilt(sourceId);
     } catch (e) {
       fail(e, 'ds_recon_build_failed');
@@ -231,11 +301,17 @@ export function ReconstructionFlow({
           </section>
         ) : null}
 
-        {step === 'WORKING' || step === 'BUILDING' ? (
+        {step === 'BUILDING' ? (
+          <div className="grid min-h-[40vh] place-items-center" data-testid="recon-building">
+            <GenerationStages stages={stages} title={t('ds_recon_building')} />
+          </div>
+        ) : null}
+
+        {step === 'WORKING' ? (
           <div className="grid min-h-[40vh] place-items-center" role="status" aria-live="polite" data-testid="recon-working">
             <p className="inline-flex items-center gap-2 text-[15px]">
               <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
-              {step === 'BUILDING' ? t('ds_recon_building') : progress ? t('ds_recon_uploading', progress) : t('ds_recon_reading')}
+              {progress ? t('ds_recon_uploading', progress) : t('ds_recon_reading')}
             </p>
           </div>
         ) : null}

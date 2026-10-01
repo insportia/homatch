@@ -230,9 +230,9 @@ export async function saveCorrections(id: string, corrections: ReconCorrections)
   if (error) throw new DesignStudioError('DS_REQUEST_FAILED', error.message);
 }
 
-export async function markBuilt(id: string, sourceId: string, versionId: string): Promise<void> {
+export async function markBuilt(id: string, sourceId: string, versionId: string, engineReport: Record<string, unknown> | null = null): Promise<void> {
   const { error } = await supabase.from('ds_reconstructions')
-    .update({ status: 'BUILT', built_source_id: sourceId, built_version_id: versionId }).eq('id', id);
+    .update({ status: 'BUILT', built_source_id: sourceId, built_version_id: versionId, ...(engineReport ? { engine_report: engineReport } : {}) }).eq('id', id);
   if (error) throw new DesignStudioError('DS_REQUEST_FAILED', error.message);
 }
 

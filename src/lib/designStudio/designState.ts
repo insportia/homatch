@@ -63,6 +63,23 @@ export interface ObjectInstance {
    * designs without it draw the catalogue piece as it is.
    */
   shape?: ObjectShape;
+  /**
+   * A model HOMATCH built from the customer's own picture for this piece (the
+   * hybrid engine's GPU path): project-private, referenced, never copied. The
+   * catalogue asset still says what the piece IS and can do; this is how it
+   * LOOKS. Optional; without it the piece is drawn as before.
+   */
+  generated?: GeneratedRef;
+}
+
+export interface GeneratedRef { assetId: string; key: string; sha256: string | null }
+
+const GEN_KEY = /^users\/[0-9a-f-]{36}\/design-studio-models\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.glb$/;
+export function normalizeGenerated(raw: unknown): GeneratedRef | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const g = raw as Record<string, unknown>;
+  if (typeof g.assetId !== 'string' || typeof g.key !== 'string' || !GEN_KEY.test(g.key) || !g.key.endsWith(`/${g.assetId}.glb`)) return undefined;
+  return { assetId: g.assetId, key: g.key, sha256: typeof g.sha256 === 'string' && /^[0-9a-f]{64}$/i.test(g.sha256) ? g.sha256.toLowerCase() : null };
 }
 
 function normalizeProvenance(raw: unknown): ObjectProvenance | undefined {
@@ -175,8 +192,9 @@ export function normalizeDesignState(raw: unknown): DesignState {
       ? r.objects.filter((o) => o && typeof o.instanceId === 'string' && typeof o.assetId === 'string').map((o) => {
         const provenance = normalizeProvenance(o.provenance);
         const shape = normalizeShape(o.shape);
-        const { provenance: _drop, shape: _dropShape, ...rest } = o;
-        return { ...rest, ...(provenance ? { provenance } : {}), ...(shape ? { shape } : {}) };
+        const generated = normalizeGenerated(o.generated);
+        const { provenance: _drop, shape: _dropShape, generated: _dropGenerated, ...rest } = o;
+        return { ...rest, ...(provenance ? { provenance } : {}), ...(shape ? { shape } : {}), ...(generated ? { generated } : {}) };
       })
       : [],
     surfaces: r.surfaces && typeof r.surfaces === 'object' ? r.surfaces : {},

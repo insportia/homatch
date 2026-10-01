@@ -192,7 +192,7 @@ export function frameCamera(frame: PictureFrame, al: FrameAlignment): CameraFit 
   const aspect = frame.width / frame.height;
   const xs = frame.footprint.map((p) => p[0]); const ys = frame.footprint.map((p) => p[1]);
   const lo: Point2 = [Math.min(...xs), Math.min(...ys)]; const hi: Point2 = [Math.max(...xs), Math.max(...ys)];
-  const pairs = [];
+  const pairs: Array<{ plan: Point2; uv: Point2 }> = [];
   for (let i = 0; i <= 4; i += 1) {
     for (let j = 0; j <= 4; j += 1) {
       const q: Point2 = [lo[0] + ((hi[0] - lo[0]) * i) / 4, lo[1] + ((hi[1] - lo[1]) * j) / 4];

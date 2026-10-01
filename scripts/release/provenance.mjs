@@ -16,15 +16,17 @@
  *   5. promotionDecision(): identical tree, suites covering what this change
  *      requires, and no change to the release machinery itself.
  *
- * Writes `path=FAST|FULL` to GITHUB_OUTPUT. It never fails the job: every
- * error, missing token, missing record or API surprise answers FULL, which
- * runs the whole gate exactly as before this rule existed.
+ * Writes `path=FAST|VALIDATE` and `base` (the parent commit) to
+ * GITHUB_OUTPUT. It never fails the job: every error, missing token, missing
+ * record or API surprise answers VALIDATE, which runs the validation this
+ * change requires (its component plan, in parallel) before anything deploys.
  */
 import { appendFileSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promotionDecision } from './classify.mjs';
+import { repoContext } from './context.mjs';
 
 export const RECORD_ARTIFACT = 'validation-record';
 export const RECORD_FILE = 'validation-record.json';
@@ -79,36 +81,45 @@ async function main() {
 
   let decision;
   let notes = [];
+  let parent = '';
   try {
     const sha = process.env.GITHUB_SHA || git('rev-parse', 'HEAD');
     const mergedTree = git('rev-parse', `${sha}^{tree}`);
     let changed = null;
-    try { changed = git('diff', '--name-only', `${sha}^`, sha).split('\n').filter(Boolean); } catch { changed = null; }
-    if (!process.env.GITHUB_TOKEN || !process.env.GITHUB_REPOSITORY) throw new Error('no GitHub token or repository in the environment');
-    const ev = await findEvidence({
-      api: process.env.GITHUB_API_URL || 'https://api.github.com',
-      repo: process.env.GITHUB_REPOSITORY, sha, token: process.env.GITHUB_TOKEN,
-    });
+    try { parent = git('rev-parse', `${sha}^`); changed = git('diff', '--name-only', parent, sha).split('\n').filter(Boolean); } catch { changed = null; }
+    const context = repoContext({ base: parent || undefined, head: sha });
+    let ev = { run: null, record: null, notes: [] };
+    if (!process.env.GITHUB_TOKEN || !process.env.GITHUB_REPOSITORY) {
+      ev.notes.push('no GitHub token or repository in the environment');
+    } else {
+      ev = await findEvidence({
+        api: process.env.GITHUB_API_URL || 'https://api.github.com',
+        repo: process.env.GITHUB_REPOSITORY, sha, token: process.env.GITHUB_TOKEN,
+      });
+    }
     notes = ev.notes;
-    decision = changed == null
-      ? { path: 'FULL', reasons: ['the deployed commit has no readable parent to diff against'] }
-      : promotionDecision({ mergedTree, record: ev.record, run: ev.run, changed, read: (f) => git('show', `${sha}:${f}`) });
+    decision = promotionDecision({ mergedTree, record: ev.record, run: ev.run, changed, ...context });
   } catch (err) {
-    decision = { path: 'FULL', reasons: [`provenance could not be established: ${String(err?.message ?? err).split('\n')[0]}`] };
+    decision = { path: 'VALIDATE', reasons: [`provenance could not be established: ${String(err?.message ?? err).split('\n')[0]}`], required: null };
   }
 
   console.log(`RELEASE PATH: ${decision.path}`);
   for (const n of notes) console.log(`  · ${n}`);
   for (const r of decision.reasons) console.log(`  → ${r}`);
   out('path', decision.path);
+  // The parent the fallback validation plans against. Empty (no parent) makes
+  // the fallback plan against nothing it can diff, which plans REPO_FULL.
+  out('base', parent);
+  out('tier', decision.required?.tier ?? 'REPO_FULL');
   summary([
     `### Release path: ${decision.path}`,
     decision.path === 'FAST'
-      ? 'The deployed code is byte-identical to code that already passed PR validation. The repository suites are not re-run; edge syntax, migration audit, the frontend build, the edge deploy and the production proof still run.'
-      : 'The full validation gate runs.',
+      ? 'The deployed code is byte-identical to code that already passed PR validation covering everything this change requires. No validation suite is re-run; the deployment prerequisites, the owed deploy and the production proof still run.'
+      : `No complete proof of prior validation: the plan for this change (${decision.required?.tier ?? 'REPO_FULL'}) runs now, in parallel, before anything deploys.`,
     '',
     ...notes.map((n) => `- ${n}`),
     ...decision.reasons.map((r) => `- **${r}**`),
+    ...(decision.required?.proofs ?? []).map((p) => `- proof owed: ${p}`),
     '',
   ].join('\n'));
 }

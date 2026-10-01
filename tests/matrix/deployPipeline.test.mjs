@@ -125,7 +125,17 @@ test('2: no work owed — the job still runs and says NO_WORK about itself', () 
    * about itself -- which is how "skipped" came to be read downstream as
    * "nothing was owed" and the ref advanced over five owed functions.
    */
-  assert.ok(!/^ {4}if:/m.test(deploy), 'deploy-functions has a job-level condition again');
+  //
+  // Its one job-level condition is the release gate (validation passed, or a
+  // proven FAST promotion skipped it) — results of jobs that ALWAYS report,
+  // never a scope output. A lost provenance output is not 'FAST', so the
+  // validation runs and this job starts after it.
+  const cond = (deploy.match(/^ {4}if: >-\n((?: {6}.*\n)+)/m) || [])[1] ?? (deploy.match(/^ {4}if: (.*)$/m) || [])[1] ?? '';
+  assert.ok(!/scope\.outputs|steps\.|needs\.[a-z-]+\.outputs\.(?!path\b)/.test(cond), 'deploy-functions is gated on a scope output again');
+  if (cond) {
+    assert.match(cond, /needs\.validate\.result == 'success' \|\| \(needs\.validate\.result == 'skipped' && needs\.provenance\.outputs\.path == 'FAST'\)/,
+      'deploy-functions has a job-level condition other than the release gate');
+  }
   assert.match(deploy, /NO_WORK/, 'the job cannot report that it had nothing to do');
 });
 

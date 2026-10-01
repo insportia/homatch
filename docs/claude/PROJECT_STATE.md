@@ -1,6 +1,6 @@
 # PROJECT STATE
 
-last_updated: 2026-09-30
+last_updated: 2026-10-01
 maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
@@ -450,3 +450,21 @@ Phase 2 (Universal Discovery) is blocked until this is live and proven.
   promotes byte-identical validated code without re-running repository
   suites. Projections: PR ~6–8 min (was 19.6), merge→edge proven ~2–3 min on
   FAST (was ~18.7).
+
+## Release engine v2 — component-aware (PR #27, 2026-10-01)
+
+- `scripts/release/components.mjs` is the component/suite table; reach is
+  computed (import graph, edge closure, migration objects, translation keys).
+  Tiers: TARGETED / COMPONENT_FULL / REPO_FULL; FAST post-merge on a v2
+  record covering the change. v1 records (before #27) are never promoted.
+- PR: one parallel job per planned suite (mobile by owner ×10, studio ×2,
+  journeys, push, a11y, worker). Post-merge without proof: deploy.yml calls
+  pr-check.yml for the merged change (parallel), not the serial gate.
+- Baseline measured: PR FULL 5 m 56 s (run 36816875975); deploy #861
+  20 m 30 s, 19 m 42 s of it a serial Validate (run 36813098669).
+- Measured after: see the PR #27 / its merge runs (to be filled from real
+  runs; do not quote projections as measurements).
+- Permissions: `.claude/settings.json` + `.claude/hooks/sql-guard.mjs`
+  (read-only SQL and on-main migrations auto-allowed; the rest asks).
+- Gap: no gated browser suite visits Design Studio (designStudio.qa.mjs is
+  manual, needs VITE_FEATURE_DESIGN_STUDIO=on).

@@ -172,6 +172,9 @@ test('the canonical command is the one CI runs', () => {
   assert.equal(pkg.scripts.test, 'node scripts/run-tests.mjs');
   for (const wf of ['deploy.yml', 'pr-check.yml']) {
     const src = readFileSync(join(process.cwd(), '.github', 'workflows', wf), 'utf8');
+    // deploy.yml validates by CALLING pr-check.yml, so the command it runs is
+    // pr-check's — one definition of the gate, not two that can drift.
+    if (wf === 'deploy.yml' && /uses: \.\/\.github\/workflows\/pr-check\.yml/.test(src)) continue;
     assert.match(src, /^\s*run: pnpm test\s*$/m, `${wf} must invoke the canonical suite`);
     // And it must invoke it bare. A pipe on that line would hand CI the exit
     // code of whatever is downstream of the `|`.

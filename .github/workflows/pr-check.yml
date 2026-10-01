@@ -1,32 +1,44 @@
 name: PR Checks
 
-# THE ONE FULL VALIDATION — RUN ONCE, IN PARALLEL, AND RECORDED.
+# THE ONE VALIDATION — PLANNED BY COMPONENT, RUN ONCE, IN PARALLEL, RECORDED.
 #
-# HOMATCH Fast Release (docs/claude/RELEASE.md). This workflow is where a
-# change is validated. It plans the suites the changed paths require
-# (scripts/release/classify.mjs: FULL for dependencies, CI/CD, build system,
-# auth / RLS / security, shared infrastructure or anything it cannot place;
-# TARGETED otherwise), runs them as parallel jobs, and — only when every
-# planned suite passed — uploads a validation record naming the exact git
-# tree that was validated.
+# HOMATCH Fast Release (docs/claude/RELEASE.md). The plan job maps the changed
+# files to components and their dependency closure (scripts/release/:
+# component table, import graph, edge closure, migration objects, translation
+# keys) and plans one tier:
 #
-# After merge, the deploy workflow proves the commit it is deploying has that
-# same tree and promotes it without re-running these suites. If the tree
-# differs (main moved, the merge changed code) or the record is missing, the
-# deploy workflow runs the full gate itself, exactly as before.
+#   TARGETED        static + unit + the suites of the reached components
+#   COMPONENT_FULL  the complete suite set of a component whose change is
+#                   security-relevant (access-control SQL, auth paths, shared
+#                   edge code, its own workflow)
+#   REPO_FULL       everything: toolchain, app shell, release engine, global
+#                   auth / RLS primitives, anything unplaceable
 #
-# "Validate PR" is the aggregate job and keeps the check name that was always
-# required: it is green only when every planned suite is green.
+# Every planned browser suite is its own parallel job (a dynamic matrix,
+# split by owner, not round-robin). "Validate PR" is the aggregate, keeps the
+# required check name, and only when every planned suite passed uploads a
+# record naming the exact git tree that was validated.
+#
+# After merge, deploy.yml proves the deployed tree is that tree and promotes it
+# without re-running anything. Without that proof it CALLS THIS WORKFLOW
+# (workflow_call) for the merged commit's own change — the same plan, the same
+# parallel jobs — before anything deploys.
 
 on:
   pull_request:
     branches: [main]
+  workflow_call:
+    inputs:
+      base:
+        description: The commit the change is planned against (the deployed commit's parent).
+        type: string
+        required: true
 
 # A newer push to the same PR supersedes the older run; nothing is deployed
-# from here, so cancelling loses no work.
+# from here, so cancelling loses no work. A post-merge call is its own group.
 concurrency:
-  group: pr-check-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  group: pr-check-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -38,13 +50,10 @@ jobs:
     outputs:
       tier: ${{ steps.plan.outputs.tier }}
       suites: ${{ steps.plan.outputs.suites }}
-      run_mobile: ${{ steps.plan.outputs.run_mobile }}
-      run_developer: ${{ steps.plan.outputs.run_developer }}
-      run_onboarding: ${{ steps.plan.outputs.run_onboarding }}
-      run_floorplan: ${{ steps.plan.outputs.run_floorplan }}
-      run_studio: ${{ steps.plan.outputs.run_studio }}
-      run_push: ${{ steps.plan.outputs.run_push }}
-      run_a11y: ${{ steps.plan.outputs.run_a11y }}
+      components: ${{ steps.plan.outputs.components }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+      has_browser: ${{ steps.plan.outputs.has_browser }}
+      run_worker: ${{ steps.plan.outputs.run_worker }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,10 +61,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      # Planned by this change's engine AND the base branch's engine; the
+      # stricter wins, so an engine change cannot plan itself less work.
       - name: Plan suites from the changed paths
         id: plan
         env:
-          RELEASE_BASE: origin/${{ github.base_ref }}
+          RELEASE_BASE: ${{ inputs.base || format('origin/{0}', github.base_ref) }}
         run: node scripts/release/plan.mjs
 
   # Type-check, lint (tsgo, biome, ast-grep rules, Tailwind, i18n), edge
@@ -70,21 +81,19 @@ jobs:
           version: 10.33.4
       - uses: actions/setup-node@v4
         with:
-          # 24, not 20 — matching the deploy workflow. The suites import .ts
-          # modules directly, which needs Node's native type stripping.
+          # 24: the suites import .ts modules directly (native type stripping).
           node-version: 24
           cache: pnpm
       # The .rules checks are ast-grep scans. Without the binary every scan
-      # fails to start and the lint script still exits 0, so the PR used to
-      # pass rules only the deploy workflow actually enforced.
+      # fails to start and the lint script still exits 0.
       - name: Install ast-grep
         run: |
           npm install -g @ast-grep/cli
           ast-grep --version
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      # tsconfig.check.json, as in the deploy workflow. `tsc --noEmit` on the
-      # root config compiles nothing (it has "files": [] and references only).
+      # tsconfig.check.json: `tsc --noEmit` on the root config compiles
+      # nothing (it has "files": [] and references only).
       - name: Type-check
         run: pnpm exec tsc -p tsconfig.check.json --noEmit
       - name: Lint
@@ -92,8 +101,7 @@ jobs:
           VITE_SUPABASE_URL: https://ptxajsjhobhvsfhmutjn.supabase.co
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: pnpm run lint
-      # The edge functions are Deno TypeScript with URL and jsr: imports, so
-      # they sit outside the tsconfig and nothing else parses them.
+      # Deno TypeScript with URL and jsr: imports: nothing else parses them.
       - name: Edge function syntax
         run: pnpm run check:edge
       - name: Migration history
@@ -104,8 +112,8 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: pnpm run build
 
-  # The regression suite. Needs no credentials, no provider calls and no
-  # production. Always run: it is under a minute and guards everything.
+  # The whole regression suite — every unit, matrix and security source test
+  # (~45 s). Always run: it is the cheapest complete proof there is.
   unit:
     name: Unit and matrix tests
     runs-on: ubuntu-latest
@@ -123,18 +131,19 @@ jobs:
       - name: Tests
         run: pnpm test
 
-  # Real Chrome at 320/360/375/390/430, split in two so the longest suite is
-  # not the whole critical path. scripts/release/shard.mjs reads the file list
-  # from `test:mobile` itself; the shards cannot drift from it.
-  mobile:
-    name: Mobile regression (shard ${{ matrix.shard }}/2)
+  # One job per planned browser suite, all in parallel. Each builds its own
+  # harness from .env.harness (a stub origin, not a credential; every request
+  # is intercepted) — a browser suite never reads a dist/ it did not build.
+  # CI=true makes a missing browser or driver a FAILURE, not a skip.
+  browser:
+    name: ${{ matrix.title }}
     needs: plan
-    if: needs.plan.outputs.run_mobile == 'true'
+    if: needs.plan.outputs.has_browser == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -146,83 +155,35 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      # Built from .env.harness — a stub origin, not a credential. Every
-      # request the page makes is intercepted, so this reaches no network.
-      # Built HERE, explicitly: a browser suite never reads a dist/ it did
-      # not build.
-      - name: Build mobile harness
+      - name: Build harness
         run: pnpm run build:harness
-      # CI=true makes a missing browser or driver a FAILURE, not a skip.
-      - name: Mobile regression (real viewports)
-        run: node scripts/release/shard.mjs ${{ matrix.shard }}/2
+      - name: Run suite ${{ matrix.id }}
+        run: node scripts/release/run-suite.mjs ${{ matrix.id }}
 
-  # The Developer journey, onboarding, the 2D -> 3D floor-plan chain, the
-  # service worker and the accessibility / performance audit, on one harness
-  # build. Each step runs only when the plan needs it.
-  journeys:
-    name: Journeys, push and accessibility
+  # The Railway worker's own tests, when the worker is in the plan.
+  worker:
+    name: Railway worker tests
     needs: plan
-    if: >-
-      needs.plan.outputs.run_developer == 'true' || needs.plan.outputs.run_onboarding == 'true' ||
-      needs.plan.outputs.run_floorplan == 'true' || needs.plan.outputs.run_push == 'true' ||
-      needs.plan.outputs.run_a11y == 'true'
+    if: needs.plan.outputs.run_worker == 'true'
     runs-on: ubuntu-latest
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.33.4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: pnpm
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Build mobile harness
-        run: pnpm run build:harness
-      - name: Developer acceptance (real browser)
-        if: needs.plan.outputs.run_developer == 'true'
-        run: pnpm run test:developer
-      - name: Developer onboarding (real browser)
-        if: needs.plan.outputs.run_onboarding == 'true'
-        run: pnpm run test:onboarding
-      - name: Floor plan pipeline (real browser)
-        if: needs.plan.outputs.run_floorplan == 'true'
-        run: pnpm run test:floorplan
-      - name: Web push handlers (real service worker)
-        if: needs.plan.outputs.run_push == 'true'
-        run: pnpm run test:push
-      - name: Accessibility and performance audit
-        if: needs.plan.outputs.run_a11y == 'true'
-        run: pnpm run test:a11y
-
-  studio:
-    name: Site Studio regression
-    needs: plan
-    if: needs.plan.outputs.run_studio == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.33.4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Build mobile harness
-        run: pnpm run build:harness
-      - name: Site Studio regression (real browser)
-        run: pnpm run test:studio
+      - name: Install worker dependencies
+        run: npm install --prefix official-worker --no-audit --no-fund
+      - name: Worker tests
+        run: npm --prefix official-worker test
 
   # The required check. Green only when the plan ran and every suite it
   # planned passed; a planned suite that was skipped, cancelled or failed is
   # red. Then — and only then — the validation record is uploaded.
   validate:
     name: Validate PR
-    needs: [plan, static, unit, mobile, journeys, studio]
+    needs: [plan, static, unit, browser, worker]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -231,12 +192,11 @@ jobs:
           PLAN: ${{ needs.plan.result }}
           STATIC: ${{ needs.static.result }}
           UNIT: ${{ needs.unit.result }}
-          MOBILE: ${{ needs.mobile.result }}
-          JOURNEYS: ${{ needs.journeys.result }}
-          STUDIO: ${{ needs.studio.result }}
-          RUN_MOBILE: ${{ needs.plan.outputs.run_mobile }}
-          RUN_STUDIO: ${{ needs.plan.outputs.run_studio }}
-          RUN_JOURNEYS: ${{ needs.plan.outputs.run_developer == 'true' || needs.plan.outputs.run_onboarding == 'true' || needs.plan.outputs.run_floorplan == 'true' || needs.plan.outputs.run_push == 'true' || needs.plan.outputs.run_a11y == 'true' }}
+          BROWSER: ${{ needs.browser.result }}
+          WORKER: ${{ needs.worker.result }}
+          RUN_BROWSER: ${{ needs.plan.outputs.has_browser }}
+          RUN_WORKER: ${{ needs.plan.outputs.run_worker }}
+          TIER: ${{ needs.plan.outputs.tier }}
         run: |
           set -euo pipefail
           ok=1
@@ -245,12 +205,12 @@ jobs:
             if [[ "$3" != "true" && "$2" != "skipped" && "$2" != "success" ]]; then echo "::error::$1 is $2"; ok=0; fi
             echo "$1: $2 (planned: $3)"
           }
+          [[ -n "$TIER" ]] || { echo "::error::the plan produced no tier"; ok=0; }
           need plan "$PLAN" true
           need static "$STATIC" true
           need unit "$UNIT" true
-          need mobile "$MOBILE" "$RUN_MOBILE"
-          need journeys "$JOURNEYS" "$RUN_JOURNEYS"
-          need studio "$STUDIO" "$RUN_STUDIO"
+          need browser "$BROWSER" "$RUN_BROWSER"
+          need worker "$WORKER" "$RUN_WORKER"
           [[ "$ok" == 1 ]] || exit 1
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -258,9 +218,10 @@ jobs:
           node-version: 24
       - name: Record what was validated
         env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: node scripts/release/record.mjs validation-record.json --tier '${{ needs.plan.outputs.tier }}' --suites '${{ needs.plan.outputs.suites }}'
+        run: node scripts/release/record.mjs validation-record.json --tier '${{ needs.plan.outputs.tier }}' --suites '${{ needs.plan.outputs.suites }}' --components '${{ needs.plan.outputs.components }}'
       - uses: actions/upload-artifact@v4
         with:
           name: validation-record

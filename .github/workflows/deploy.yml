@@ -101,47 +101,32 @@ jobs:
         run: |
           node scripts/deploy-scope.mjs >> $GITHUB_STEP_SUMMARY || true
 
-  # ── Job 1: Validate ────────────────────────────────────────────────────────
+  # ── Job 1: Release path — was this exact code already validated? ────────
   #
-  # FAST RELEASE (docs/claude/RELEASE.md). The first step proves, from the
-  # Actions API and git tree ids, whether this exact code already passed the
-  # PR validation gate. When it did (path=FAST) the repository suites below
-  # are not repeated; the deployment-specific checks still run here, and the
-  # edge deploy, its production proof and the ref advance run unchanged in
-  # their own jobs. Any doubt — no PR, a different tree, a missing record, a
-  # change to the release machinery, an API error — answers FULL and every
-  # step runs exactly as before. The decision never leaves this job: no other
-  # job reads it, so a lost output can only ever mean "run everything".
-  validate:
-    name: Validate
+  # FAST RELEASE (docs/claude/RELEASE.md). Proves, from the Actions API and git
+  # tree ids, whether the commit being deployed is byte-identical to code a
+  # successful PR validation run covered completely. Never fails: every doubt
+  # (no PR, a different tree, a missing or old record, a change to the release
+  # engine, an API error) answers VALIDATE.
+  provenance:
+    name: Release path
     runs-on: ubuntu-latest
     permissions:
       contents: read
       actions: read
       pull-requests: read
+    outputs:
+      path: ${{ steps.provenance.outputs.path }}
+      base: ${{ steps.provenance.outputs.base }}
     steps:
-      # Depth 2: the provenance check diffs the deployed commit against its
-      # parent to know which suites the change required.
+      # Depth 2: the decision diffs the deployed commit against its parent to
+      # know what the change requires.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.33.4
-
       - uses: actions/setup-node@v4
         with:
-          # 24, not 20. The frontend suite imports the .ts domain modules
-          # directly, which needs Node's native type stripping (on by default
-          # from 22.18 / 24). On Node 20 every such test dies with
-          # ERR_UNKNOWN_FILE_EXTENSION, so the gate could not run at all.
-          # This also matches the Node developers run locally, which is what
-          # let a 413-test suite pass on a laptop and fail in CI.
           node-version: 24
-          cache: pnpm
-
-      # Never fails the job: every error is path=FULL.
       - name: Release path (validation provenance)
         id: provenance
         continue-on-error: true
@@ -149,106 +134,46 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/release/provenance.mjs
 
-      - name: Install ast-grep
-        if: steps.provenance.outputs.path != 'FAST'
-        run: |
-          npm install -g @ast-grep/cli
-          ast-grep --version
+  # ── Job 1b: Validate — only when there is no proof it already happened ────
+  #
+  # The SAME workflow the PR runs (pr-check.yml, called), planned for this
+  # commit's own change against its parent: the component plan, its suites in
+  # parallel. Not the old serial repository-wide gate, and not skipped on
+  # anything short of a positive FAST proof. A lost or empty `path` output is
+  # not 'FAST', so it validates.
+  validate:
+    name: Validate
+    needs: provenance
+    if: needs.provenance.outputs.path != 'FAST'
+    uses: ./.github/workflows/pr-check.yml
+    with:
+      base: ${{ needs.provenance.outputs.base }}
+    secrets: inherit
 
+  # ── Job 1c: Deployment prerequisites — on every path ───────────────────────
+  #
+  # Cheap and deployment-specific, so never skipped. The edge functions are
+  # Deno TypeScript with URL and jsr: imports, so they sit outside the
+  # tsconfig and nothing else parses them. A research-agent/index.ts that could
+  # not be parsed AT ALL once passed type-check, lint, 796 tests and the mobile
+  # gate — and was caught only by the deploy step, after it was on main.
+  prerequisites:
+    name: Deployment prerequisites
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
-      # `tsc --noEmit` on the ROOT tsconfig checks NOTHING: it has "files": []
-      # and only project references, so the command exits 0 without compiling a
-      # single file. It was a green gate that could not fail. tsconfig.check.json
-      # is the config the lint script's tsgo already uses; running real tsc
-      # against it gives a genuine second type-check with a different engine.
-      - name: Type-check
-        if: steps.provenance.outputs.path != 'FAST'
-        run: pnpm exec tsc -p tsconfig.check.json --noEmit
-
-      - name: Lint
-        if: steps.provenance.outputs.path != 'FAST'
-        env:
-          VITE_SUPABASE_URL: https://ptxajsjhobhvsfhmutjn.supabase.co
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-        run: pnpm run lint
-
-      # The regression suite gates the DEPLOY, not just the PR.
-      #
-      # Every job below depends on `validate`, so a broken Verify invariant
-      # now stops the release instead of shipping and being discovered in
-      # production. It needs no credentials, calls no paid provider and does
-      # not touch production: the Verify suites are pure, and the research
-      # pipeline is exercised through fixtures.
-      - name: Tests
-        if: steps.provenance.outputs.path != 'FAST'
-        run: pnpm test
-
-      # Built from .env.harness, which holds a stub origin and a fake anon
-      # key rather than a credential. The mobile test intercepts every
-      # request the page makes, so this reaches no network and no backend.
-      - name: Build mobile harness
-        if: steps.provenance.outputs.path != 'FAST'
-        run: pnpm run build:harness
-
-      # Real Chrome at 320/360/375/390/430 with the Evidence drawer
-      # expanded. CI=true turns a missing browser or driver into a FAILURE
-      # rather than a skip, so this gate cannot report green without having
-      # actually run.
-      - name: Mobile regression (real viewports)
-        if: steps.provenance.outputs.path != 'FAST'
-        run: pnpm run test:mobile
-      # The same real Chrome, driving Site Studio: click a section, edit the
-      # text in place, paste markup at it, add/duplicate/move/hide/delete a
-      # block. Four defects that passed type-check, lint and every unit test
-      # were found only by doing this, so it runs on every change.
-      - name: Site Studio regression (real browser)
-        if: steps.provenance.outputs.path != 'FAST'
-        run: pnpm run test:studio
-
-      # The Developer journeys, as in the PR gate, so the full path here and
-      # the full path there are the same set of suites.
-      - name: Developer acceptance (real browser)
-        if: steps.provenance.outputs.path != 'FAST'
-        run: pnpm run test:developer
-
-      - name: Developer onboarding (real browser)
-        if: steps.provenance.outputs.path != 'FAST'
-        run: pnpm run test:onboarding
-
-      - name: Floor plan pipeline (real browser)
-        if: steps.provenance.outputs.path != 'FAST'
-        run: pnpm run test:floorplan
-
-      # The service worker, in the same real Chrome. What a push BECOMES and
-      # where a tap goes were the only parts of web push that had never run
-      # anywhere: the server half is verified against production, and this is
-      # the half that decides whether a notification is blank, stacks twelve
-      # deep, or opens somebody else's site.
-      - name: Web push handlers (real service worker)
-        if: steps.provenance.outputs.path != 'FAST'
-        run: pnpm run test:push
-
-      # Keyboard use, accessible names, visible focus and 320px on the pages
-      # this pass touched — none of which the contrast and overflow gates can
-      # see — plus the two performance questions it could have got wrong: what
-      # a visitor downloads, and whether a search over 4,773 strings can be
-      # typed into.
-      - name: Accessibility and performance audit
-        if: steps.provenance.outputs.path != 'FAST'
-        run: pnpm run test:a11y
-
-      # The edge functions are Deno TypeScript with URL and jsr: imports, so
-      # they sit outside the tsconfig and nothing else parses them. A
-      # research-agent/index.ts that could not be parsed AT ALL once passed
-      # type-check, lint, 796 tests and the mobile gate — and was caught only
-      # by the deploy step below, after the commit was already on main.
       - name: Edge function syntax
         run: pnpm run check:edge
-
-      # Deployment-specific, and cheap, so it runs on every path: the
-      # migration history the deploy and migrate jobs rely on is coherent.
+      # The migration history the deploy and migrate jobs rely on is coherent.
       - name: Migration history
         run: node scripts/migration-baseline.mjs
 
@@ -258,7 +183,10 @@ jobs:
   build-frontend:
     name: Build Frontend
     runs-on: ubuntu-latest
-    needs: validate
+    needs: [provenance, validate, prerequisites]
+    if: >-
+      !cancelled() && needs.prerequisites.result == 'success' &&
+      (needs.validate.result == 'success' || (needs.validate.result == 'skipped' && needs.provenance.outputs.path == 'FAST'))
     env:
       VITE_SUPABASE_URL: https://ptxajsjhobhvsfhmutjn.supabase.co
       VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
@@ -337,8 +265,11 @@ jobs:
   migrate:
     name: Apply DB Migrations
     runs-on: ubuntu-latest
-    needs: validate
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_migrations }}
+    needs: [provenance, validate, prerequisites]
+    if: >-
+      !cancelled() && github.event_name == 'workflow_dispatch' && inputs.run_migrations &&
+      needs.prerequisites.result == 'success' &&
+      (needs.validate.result == 'success' || (needs.validate.result == 'skipped' && needs.provenance.outputs.path == 'FAST'))
     steps:
       - uses: actions/checkout@v4
 
@@ -443,7 +374,10 @@ jobs:
   deploy-functions:
     name: Deploy Edge Functions
     runs-on: ubuntu-latest
-    needs: [validate]
+    needs: [provenance, validate, prerequisites]
+    if: >-
+      !cancelled() && needs.prerequisites.result == 'success' &&
+      (needs.validate.result == 'success' || (needs.validate.result == 'skipped' && needs.provenance.outputs.path == 'FAST'))
     permissions:
       contents: write
     steps:
@@ -1215,7 +1149,7 @@ jobs:
   summary:
     name: Deployment Summary
     runs-on: ubuntu-latest
-    needs: [validate, build-frontend, migrate, deploy-functions]
+    needs: [provenance, validate, prerequisites, build-frontend, migrate, deploy-functions]
     if: always()
     steps:
       - name: Report status
@@ -1224,7 +1158,9 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Step | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Validate | ${{ needs.validate.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Release path | ${{ needs.provenance.outputs.path || 'unknown' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Validate | ${{ needs.validate.result }} (skipped only on a proven FAST) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Prerequisites | ${{ needs.prerequisites.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Build Frontend | ${{ needs.build-frontend.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| DB Migrations | ${{ needs.migrate.result }} (skipped unless run_migrations) |" >> $GITHUB_STEP_SUMMARY
           echo "| Edge Functions | ${{ needs.deploy-functions.result }} |" >> $GITHUB_STEP_SUMMARY
@@ -1234,6 +1170,7 @@ jobs:
           echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
 
           if [[ "${{ needs.validate.result }}"          == "failure" ]] || \
+             [[ "${{ needs.prerequisites.result }}"     == "failure" ]] || \
              [[ "${{ needs.build-frontend.result }}"    == "failure" ]] || \
              [[ "${{ needs.migrate.result }}"           == "failure" ]] || \
              [[ "${{ needs.deploy-functions.result }}"  == "failure" ]]; then
@@ -1256,13 +1193,15 @@ jobs:
   record-deployment:
     name: Record deployed revisions
     runs-on: ubuntu-latest
-    needs: [scope, validate, build-frontend]
+    needs: [scope, provenance, validate, prerequisites, build-frontend]
     # Only when the gate itself passed. On the first run of this job a failing
     # type-check skipped the edge deploy, and "skipped" was read as "nothing
     # was owed" -- so the ref advanced and the manifest claimed production was
     # current when the deploy had never run. That is the precise failure this
     # whole mechanism exists to prevent, committed by the mechanism itself.
-    if: always() && github.event_name == 'push' && needs.validate.result == 'success'
+    if: >-
+      !cancelled() && github.event_name == 'push' && needs.prerequisites.result == 'success' &&
+      (needs.validate.result == 'success' || (needs.validate.result == 'skipped' && needs.provenance.outputs.path == 'FAST'))
     permissions:
       contents: write
     steps:

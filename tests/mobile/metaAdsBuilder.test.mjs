@@ -29,7 +29,7 @@ const PORT = 4351;
 const BASE = `http://127.0.0.1:${PORT}`;
 const SHOTS = process.env.META_ADS_QA_SHOTS || null;
 const LOCALES = ['en', 'ka', 'ru', 'tr', 'ar', 'he'];
-const STEPS = ['account', 'offer', 'goal', 'destination', 'audience', 'budget', 'creative', 'placements', 'review'];
+const STEPS = ['account', 'offer', 'goal', 'destination', 'audience', 'budget', 'creative', 'placements', 'brief', 'review'];
 
 function findChrome() {
   if (process.env.PLAYWRIGHT_CHROME && existsSync(process.env.PLAYWRIGHT_CHROME)) return process.env.PLAYWRIGHT_CHROME;
@@ -116,7 +116,7 @@ function fixtures() {
   return { campaign, status, creative, dashboard };
 }
 
-async function boot(t, { width, height, lang, admin = false, statusOver = null, campaignOver = null }) {
+async function boot(t, { width, height, lang, admin = false, statusOver = null, campaignOver = null, creativeOver = null }) {
   const { chromium } = resolvePlaywright();
   const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
@@ -129,7 +129,8 @@ async function boot(t, { width, height, lang, admin = false, statusOver = null, 
   const fx = fixtures();
   if (statusOver) fx.status = { ...fx.status, ...statusOver, connection: { ...fx.status.connection, ...(statusOver.connection ?? {}) } };
   if (campaignOver) Object.assign(fx.campaign, campaignOver);
-  const calls = { patches: [], inserts: 0, actions: [], bodies: [], settingWrites: 0, creativePatches: [] };
+  if (creativeOver) Object.assign(fx.creative, creativeOver);
+  const calls = { patches: [], inserts: 0, actions: [], bodies: [], settingWrites: 0, creativePatches: [], creativeInserts: [] };
   const ADM = admin ? adminFixtures() : null;
   const json = (b, status = 200) => ({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(b) });
   await page.route('**', async (r) => {
@@ -167,7 +168,29 @@ async function boot(t, { width, height, lang, admin = false, statusOver = null, 
       if (body.action === 'dashboard') return r.fulfill(json(fx.dashboard));
       if (body.action === 'plan_preview') return r.fulfill(json({ issues: [], totals: { mediaCents: 3500, feeCents: 315, totalCents: 3815, feePercent: 9 }, recommendedPlacements: ['facebook_feed', 'facebook_stories', 'instagram_feed', 'instagram_stories'], requirements: [], summary: null }));
       if (body.action === 'preflight') return r.fulfill(json({ status: 'READY', warnings: 1, checks: [{ key: 'connection', state: 'READY', ok: true }, { key: 'integration_mode', state: 'WARNING', ok: true, detail: 'MOCK_MODE_NOTHING_REACHES_META' }] }));
+      if (body.action === 'ai_copy' && body.op === 'TRANSLATE') {
+        calls.bodies.push(body);
+        return r.fulfill(json({ variants: [{ primaryText: 'Bright apartment with a balcony in Vake.', headline: 'Vake 2BR', description: '' }] }));
+      }
       if (body.action === 'ai_copy') return r.fulfill(json({ variants: [{ primaryText: 'Sunny two-bedroom in Vake.', headline: 'Vake 2BR', description: '' }] }));
+      // Meta's own catalogues and estimate, as the edge answers them (fixtures, never a real call).
+      if (body.action === 'locale_search') {
+        const names = { ru: 'Russian', en: 'English (All)', ka: 'Georgian' };
+        const keys = { ru: '17', en: '1001', ka: '28' };
+        return r.fulfill(json({ results: names[body.code] ? [{ key: keys[body.code], name: names[body.code], code: body.code }] : [] }));
+      }
+      if (body.action === 'brief_interpret') {
+        calls.bodies.push(body);
+        const u = {
+          hash: fx.briefHash ?? '', source: 'AI', at: new Date().toISOString(),
+          summary: 'You want Russian-speaking people living in Georgia or moving here; the balcony and location matter most.',
+          audiences: ['FOREIGNERS_IN_COUNTRY', 'MOVING_HERE'], languages: ['ru'], markets: ['KZ'], places: [], sellingPoints: ['balcony', 'location'],
+          expectation: 'MESSAGES', ignored: [],
+        };
+        fx.campaign.brief_understanding = u;
+        return r.fulfill(json({ understanding: u }));
+      }
+      if (body.action === 'delivery_estimate') return r.fulfill(json({ available: true, source: 'META_DELIVERY_ESTIMATE', audience: { lower: 120000, upper: 150000 } }));
       return r.fulfill(json({ ok: true }));
     }
     if (url.includes('/rest/v1/meta_campaigns')) {
@@ -178,9 +201,17 @@ async function boot(t, { width, height, lang, admin = false, statusOver = null, 
     if (url.includes('/rest/v1/meta_creatives')) {
       // A saved edit is what a reload reads back.
       if (req.method() === 'PATCH') { const b = JSON.parse(req.postData() || '{}'); calls.creativePatches.push(b); Object.assign(fx.creative, b); return r.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' }, body: '' }); }
+      if (req.method() === 'POST') { const b = JSON.parse(req.postData() || '{}'); calls.creativeInserts.push(b); return r.fulfill(json({ ...fx.creative, ...b, id: `cr${calls.creativeInserts.length + 1}` }, 201)); }
       return r.fulfill(json(wantsObject ? fx.creative : [fx.creative]));
     }
-    if (url.includes('/rest/v1/properties')) return r.fulfill(json([{ id: 'prop-1', title: 'Vake two-bedroom', homatch_id: 123456, transaction_type: 'SALE' }]));
+    if (url.includes('/rest/v1/property_facts')) {
+      const facts = { latitude: 41.7099, longitude: 44.7516, city: 'Tbilisi', district: 'Vake' };
+      return r.fulfill(json(wantsObject ? facts : [facts]));
+    }
+    if (url.includes('/rest/v1/properties')) {
+      const prop = { id: '0f0f0f0f-0000-4000-8000-000000000001', title: 'Vake two-bedroom', homatch_id: 123456, transaction_type: 'SALE' };
+      return r.fulfill(json(wantsObject ? prop : [prop]));
+    }
     if (url.includes('/storage/v1/object/sign/')) return r.fulfill(json({ signedURL: '/object/sign/meta-ads-media/u1/a.png?token=t' }));
     if (url.includes('/storage/v1/object/')) return r.fulfill({ status: 200, contentType: 'image/png', headers: { 'access-control-allow-origin': '*' }, body: PNG });
     if (url.includes('/rest/v1/')) return r.fulfill(json(wantsObject ? {} : []));
@@ -618,24 +649,175 @@ test('builder: Leads on Facebook/Instagram unavailable reads as "coming soon" �
   assert.doesNotMatch(await page.evaluate(() => document.body.innerText), /leads_retrieval|pages_manage_ads|pages_manage_metadata/);
 });
 
-test('builder: a property ad shows HOMATCH\'s smart audience, and stores the audience it runs with', opts, async (t) => {
+test('builder: a Georgian property ad keeps the owner\'s ages and gender; Meta\'s rule appears only for a restricted country, named, with what will run', opts, async (t) => {
   if (skipReason) assert.fail(`meta ads builder gate could not run: ${skipReason}`);
-  const { page, calls } = await boot(t, { width: 390, height: 844, lang: 'ka', campaignOver: {
-    property_id: 'prop-1', special_ad_categories: ['HOUSING'],
-    targeting: { locations: [{ type: 'city', key: '2001', name: 'ბათუმი', countryCode: 'GE', radiusKm: 10 }], ageMin: 30, ageMax: 45, gender: 'FEMALE' },
-  } });
-  await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=audience`, { waitUntil: 'domcontentloaded' });
-  await waitReady(page);
-  await page.waitForSelector('[data-mm-smart-audience]');
-  assert.equal(await page.locator('[data-mm-smart-fixed]').count(), 1);
-  const text = await page.evaluate(() => document.body.innerText);
-  assert.match(text, /HOMATCH-ის ჭკვიანი აუდიტორია/);
-  assert.doesNotMatch(text, /Housing|საცხოვრებლის/);
-  // The stale narrowing is stored as what will run: all adults, everyone, 25 km.
-  await page.waitForTimeout(400);
-  const t2 = calls.patches.map((p) => p.targeting).filter(Boolean).pop();
-  assert.ok(t2, 'the normalized audience was saved');
-  assert.deepEqual([t2.ageMin, t2.ageMax, t2.gender, t2.locations[0].radiusKm], [18, 65, 'ALL', 25]);
+  const narrowed = { ageMin: 30, ageMax: 45, gender: 'FEMALE' };
+  {
+    const { page, calls } = await boot(t, { width: 390, height: 844, lang: 'ka', campaignOver: {
+      property_id: '123456',
+      targeting: { locations: [{ type: 'city', key: '2001', name: 'ბათუმი', countryCode: 'GE', radiusKm: 10 }], ...narrowed },
+    } });
+    await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=audience`, { waitUntil: 'domcontentloaded' });
+    await waitReady(page);
+    await page.waitForSelector('[data-mm-who-choice]');
+    assert.equal(await page.locator('[data-mm-meta-rule]').count(), 0, 'no restriction in Georgia');
+    assert.equal(await page.locator('[data-mm-gender="FEMALE"]').getAttribute('aria-pressed'), 'true', 'the owner\'s choice is shown as chosen');
+    assert.equal(await page.locator('[data-mm-age-min]').inputValue(), '30');
+    assert.equal(await page.locator('select[disabled], [data-mm-gender][disabled]').count(), 0, 'no dead controls');
+    await page.waitForTimeout(500);
+    assert.equal(calls.patches.filter((p) => p.targeting).length, 0, 'nothing silently reverted');
+    await page.locator('[data-mm-gender="MALE"]').click();
+    await page.waitForTimeout(300);
+    assert.equal(calls.patches.map((p) => p.targeting).filter(Boolean).pop().gender, 'MALE', 'a new choice is saved as made');
+    assert.match(await page.evaluate(() => document.body.innerText), /HOMATCH-ის რჩევა/);
+  }
+  {
+    const { page, calls } = await boot(t, { width: 1440, height: 900, lang: 'en', campaignOver: {
+      property_id: '123456',
+      targeting: { locations: [{ type: 'city', key: '2001', name: 'Batumi', countryCode: 'GE', radiusKm: 10 }, { type: 'country', key: 'DE', name: 'Germany', countryCode: 'DE' }], ...narrowed },
+    } });
+    await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=audience`, { waitUntil: 'domcontentloaded' });
+    await waitReady(page);
+    await page.waitForSelector('[data-mm-meta-rule]');
+    assert.equal(await page.locator('[data-mm-meta-rule]').getAttribute('data-mm-meta-rule'), 'DE');
+    const text = await page.evaluate(() => document.querySelector('[data-mm-meta-rule]').innerText);
+    assert.match(text, /Germany/);
+    assert.match(text, /Meta's rule, not a HOMATCH choice/);
+    await page.waitForTimeout(500);
+    const saved = calls.patches.map((p) => p.targeting).filter(Boolean).pop();
+    assert.deepEqual([saved.ageMin, saved.ageMax, saved.gender, saved.locations[0].radiusKm], [18, 65, 'ALL', 15], 'stores what Meta will run: the European floor');
+  }
+});
+
+test('END TO END: a Russian-speaking expat messages campaign — map, international mode, language, priority, AI translation, brief, review — nothing launched', opts, async (t) => {
+  if (skipReason) assert.fail(`meta ads builder gate could not run: ${skipReason}`);
+  const shot = async (page, name) => { if (SHOTS) { mkdirSync(SHOTS, { recursive: true }); await page.screenshot({ path: join(SHOTS, `e2e-${name}.png`), fullPage: true }); } };
+  for (const [width, height] of [[390, 844], [1440, 900]]) {
+    const { page, calls } = await boot(t, { width, height, lang: 'en',
+      statusOver: { settings: { ...fixtures().status.settings, goalsEnabled: ['MESSAGES', 'LEADS_ON_META', 'PROMOTE'] } },
+      campaignOver: { property_id: '123456', goal: 'MESSAGES', destination: { type: 'MESSAGING', messagingApp: 'MESSENGER' }, daily_budget_cents: 2000, duration_days: 10,
+        targeting: { locations: [{ type: 'city', key: '1963014', name: 'Tbilisi', countryCode: 'GE', radiusKm: 17 }], ageMin: 18, ageMax: 65, gender: 'ALL' } },
+      creativeOver: { primary_text: 'Продаётся светлая квартира с балконом в Ваке. 85 м², 7 этаж.', headline: 'Квартира в Ваке', cta: 'MESSAGE_PAGE' },
+    });
+    const at = `${width}px`;
+
+    // 📍 Audience: the map, a live radius, around my property.
+    await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=audience`, { waitUntil: 'domcontentloaded' });
+    await waitReady(page);
+    await page.waitForSelector('[data-mm-map="georgia"]', { timeout: 15000 });
+    assert.equal(await page.locator('[data-mm-map-circle="city:1963014"]').getAttribute('data-mm-map-km'), '17', at);
+    await page.locator('[data-mm-radius="city:1963014"]').fill('25');
+    await page.waitForFunction(() => document.querySelector('[data-mm-map-circle="city:1963014"]')?.getAttribute('data-mm-map-km') === '25', null, { timeout: 5000 });
+    assert.equal(await page.locator('[data-mm-breadth]').getAttribute('data-mm-breadth'), 'BALANCED');
+    await page.waitForSelector('[data-mm-around-property]');
+    await page.locator('[data-mm-around-property]').click();
+    await page.waitForSelector('[data-mm-loc^="pin:41.70990"]');
+    if (SHOTS) { await page.waitForTimeout(600); await page.locator('[data-mm-map]').screenshot({ path: join(SHOTS, `e2e-${width}-map-georgia.png`) }); }
+
+    // 🌍 International: foreigners here + people moving here, from Kazakhstan.
+    await page.locator('[data-mm-intl-toggle]').click();
+    await page.locator('[data-mm-intent="FOREIGNERS_IN_COUNTRY"]').click();
+    await page.locator('[data-mm-intent="MOVING_HERE"]').click();
+    await page.locator('[data-mm-markets] input').fill('Kazakh');
+    await page.getByRole('option', { name: /Kazakhstan/ }).locator('button').dispatchEvent('mousedown');
+    await page.waitForSelector('[data-mm-intl-suggest]');
+    await page.locator('[data-mm-intl-suggest] button').click();
+    await page.waitForSelector('[data-mm-map="world"]');
+    if (SHOTS) { await page.waitForTimeout(600); await page.locator('[data-mm-map]').screenshot({ path: join(SHOTS, `e2e-${width}-map-world.png`) }); }
+    // 🗣️ Language: Russian, from Meta's locale catalogue.
+    await page.waitForSelector('[data-mm-copy-lang="ru"]');
+    await page.locator('[data-mm-lang="ru"]').click();
+    await page.waitForSelector('[data-mm-lang="ru"][aria-pressed="true"]');
+    // 👥 Gender is a real choice here (Georgia and Kazakhstan are not restricted).
+    await page.locator('[data-mm-gender="FEMALE"]').click();
+    await page.waitForTimeout(800);
+    await shot(page, `${width}-audience`);
+    const tg = calls.patches.map((p) => p.targeting).filter(Boolean).pop();
+    assert.ok(tg.locations.some((l) => l.type === 'pin' && l.countryCode === 'GE' && Math.abs(l.lat - 41.7099) < 1e-4), `${at} pin around the property`);
+    assert.ok(tg.locations.some((l) => l.type === 'country' && l.key === 'KZ'), `${at} Kazakhstan reached`);
+    assert.equal(tg.locations.find((l) => l.key === '1963014').radiusKm, 25);
+    assert.deepEqual(tg.languages, [{ key: '17', name: 'Russian', code: 'ru' }]);
+    assert.deepEqual(tg.international, { enabled: true, intents: ['FOREIGNERS_IN_COUNTRY', 'MOVING_HERE'], markets: ['KZ'] });
+    assert.equal(tg.gender, 'FEMALE');
+
+    // 🎨 Creative: priority, the language it is written in, AI translation as a new version.
+    await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=creative`, { waitUntil: 'domcontentloaded' });
+    await waitReady(page);
+    await page.waitForSelector('[data-mm-creative-lang="ru"]');
+    await page.locator('[data-mm-priority-toggle]').click();
+    await page.waitForSelector('[data-mm-priority="true"]');
+    await page.locator('[data-mm-translate]').click();
+    await page.waitForSelector('[data-mm-ai-translate]');
+    await page.locator('[data-mm-ai-translate] button').click();
+    await page.waitForSelector('[data-mm-ai-as-version]');
+    await page.locator('[data-mm-ai-as-version]').click();
+    await page.waitForTimeout(900);
+    await page.keyboard.press('Escape');
+    await shot(page, `${width}-creative`);
+    assert.ok(calls.creativePatches.some((b) => b.priority === true), `${at} priority saved`);
+    const tr = calls.bodies.find((b) => b.action === 'ai_copy');
+    assert.equal(tr.op, 'TRANSLATE');
+    assert.equal(calls.creativeInserts.length, 1, `${at} one new language version`);
+    assert.equal(calls.creativeInserts[0].primary_text, 'Bright apartment with a balcony in Vake.');
+    assert.deepEqual(calls.creativeInserts[0].media, fixtures().creative.media, 'same photo, new text');
+
+    // 💬 Brief: the owner's words, what HOMATCH understood, one-tap suggestions.
+    await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=brief`, { waitUntil: 'domcontentloaded' });
+    await waitReady(page);
+    const BRIEF = 'I mainly want Russian-speaking people living in Georgia or considering moving here. The location and balcony are the strongest parts.';
+    await page.locator('[data-mm-brief]').fill(BRIEF);
+    await page.waitForTimeout(800);
+    assert.equal(calls.patches.map((p) => p.owner_brief).filter((x) => x != null).pop(), BRIEF, `${at} brief saved`);
+    // The fixture echoes the hash the browser computes, as the server stores it.
+    await page.evaluate(async (b) => {
+      const s = b.trim(); let h = 0x811c9dc5;
+      for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+      window.__briefHash = `b${h.toString(16)}_${s.length}`;
+    }, BRIEF);
+    const hash = await page.evaluate(() => window.__briefHash);
+    await page.route('**/functions/v1/meta-ads-api', async (r) => {
+      const body = JSON.parse(r.request().postData() || '{}');
+      if (body.action !== 'brief_interpret') return r.fallback();
+      calls.bodies.push(body);
+      return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ understanding: {
+        hash, source: 'AI', at: new Date().toISOString(),
+        summary: 'You want Russian-speaking people living in Georgia or moving here; the balcony and location matter most.',
+        audiences: ['FOREIGNERS_IN_COUNTRY', 'MOVING_HERE'], languages: ['ru'], markets: [], places: [], sellingPoints: ['balcony', 'location'], expectation: 'MESSAGES', ignored: [],
+      } }) });
+    });
+    await page.locator('[data-mm-brief-read]').click();
+    await page.waitForSelector('[data-mm-understood="AI"]');
+    const understood = await page.locator('[data-mm-understood]').innerText();
+    assert.match(understood, /What HOMATCH understood/);
+    assert.match(understood, /balcony/);
+    assert.match(understood, /Foreigners living here/);
+    assert.ok(calls.bodies.some((b) => b.action === 'brief_interpret' && b.campaignId === 'c1'));
+    await shot(page, `${width}-brief`);
+
+    // 🚀 Review: the campaign explained, what to expect, the holistic check.
+    await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=review`, { waitUntil: 'domcontentloaded' });
+    await waitReady(page);
+    await page.waitForSelector('[data-mm-story]');
+    const sections = await page.locator('[data-mm-story-section]').evaluateAll((els) => els.map((e) => e.getAttribute('data-mm-story-section')));
+    for (const s of ['goal', 'who', 'where', 'language', 'creative', 'optimise', 'first_days']) assert.ok(sections.includes(s), `${at} story: ${s}`);
+    const story = await page.locator('[data-mm-story]').innerText();
+    assert.match(story, /Start conversations/);
+    assert.match(story, /Russian/);
+    assert.match(story, /priority creative/i);
+    await page.waitForSelector('[data-mm-estimate="meta"]', { timeout: 8000 });
+    assert.match(await page.locator('[data-mm-estimate]').innerText(), /120K–150K|120K-150K/);
+    assert.match(await page.locator('[data-mm-expect]').innerText(), /never promises/i);
+    await page.waitForSelector('[data-mm-learning]');
+    await page.waitForSelector('[data-mm-consistency]');
+    const layout = await page.evaluate(LAYOUT);
+    assert.ok(layout.overflow <= 1, `${at} review: no horizontal overflow`);
+    await shot(page, `${width}-review`);
+
+    // Nothing was launched or charged, and the saved draft carries every choice.
+    assert.ok(!calls.actions.includes('launch'), 'no launch');
+    assert.ok(!calls.actions.includes('deposit_checkout'), 'no money moved');
+    assert.equal(calls.inserts, 0, 'still the one draft');
+  }
 });
 
 test('builder: the CTA and headline are edited in the editor, the preview follows live, and a reload keeps them', opts, async (t) => {

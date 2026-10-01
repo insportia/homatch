@@ -22,6 +22,7 @@ import {
 import { allowance, pressureOf, type Pressure } from '../../../src/lib/metaAds/rateLimit.ts';
 import { ingestLead } from '../_shared/metaLeads.ts';
 import { callLlm, llmAvailable } from '../_shared/comm/llm.ts';
+import { factsPreserved, numbersIn } from '../../../src/lib/metaAds/audienceGuide.ts';
 import {
   loadSettings, userToken, selectedAsset, pageToken, strategyInputFor, limitsOf, configFingerprint,
   runPreflight, publishCampaign, syncCampaign, reconcileAccountStatuses, propertyAuthorized, customerFeePercent, withoutInstagram, finalizeSettlement,
@@ -631,7 +632,16 @@ Deno.serve(async (req) => {
           headline: String(v.headline ?? '').slice(0, 255),
           description: String(v.description ?? '').slice(0, 255),
         })).filter((v) => v.primaryText || v.headline)
-          .filter((v) => !/(guaranteed|გარანტირებულ|гарантир|garantili|مضمون|מובטח)/i.test(`${v.primaryText} ${v.headline}`));
+          .filter((v) => !/(guaranteed|გარანტირებულ|гарантир|garantili|مضمون|מובטח)/i.test(`${v.primaryText} ${v.headline}`))
+          // Facts stay facts: no number the customer never gave (a price, a size,
+          // a floor), and a translation keeps every number of the original.
+          .filter((v) => {
+            const out = `${v.primaryText}\n${v.headline}\n${v.description}`;
+            const source = `${current.primaryText}\n${current.headline}\n${current.description}`;
+            const known = new Set(numbersIn(`${source}\n${notes}\n${JSON.stringify(context)}`));
+            if (numbersIn(out).some((n) => !known.has(n))) return false;
+            return op !== 'TRANSLATE' || factsPreserved(source, out);
+          });
         if (!result.ok || variants.length === 0) return json({ error: 'AI_NO_RESULT', code: 'AI_NO_RESULT' }, 502);
         await sb.from('meta_funnel_events').insert({ event: `ai_copy_${op.toLowerCase()}`, user_id: uid });
         return json({ variants, usage: { inputTokens: result.inputTokens, outputTokens: result.outputTokens, model: result.model } });
@@ -1061,7 +1071,7 @@ const COPY_SYSTEM = [
   'For housing, never mention or target protected characteristics (race, religion, family status, disability, sex, age).',
   'primaryText: up to ~3 short lines; headline: up to 40 characters; description: optional, up to 30 characters.',
   'op GENERATE: write fresh copy. IMPROVE: improve current. SHORTEN: shorter version of current. PROFESSIONAL: more professional tone of current.',
-  'ALTERNATIVES: three different angles. TRANSLATE: translate current faithfully to targetLanguage.',
+  'ALTERNATIVES: three different angles. TRANSLATE: translate and adapt current so it reads naturally to native speakers of targetLanguage — keep every fact, number, price, size and place exactly; adapt tone, not content. Use notes for the audience (e.g. buyers moving from abroad).',
   'Reply with JSON only: {"variants":[{"primaryText":"","headline":"","description":""}]} — 1 variant, or 3 for ALTERNATIVES.',
 ].join('\n');
 

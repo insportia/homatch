@@ -1,28 +1,55 @@
-// META ADS — WHO SEES THE AD. The customer's simple choice (where, which ages,
-// which gender) and the Meta targeting spec it becomes.
+// META ADS — WHO SEES THE AD. The customer's choice (where, which ages,
+// which gender, which languages) and the Meta targeting spec it becomes.
 //
-// The customer picks locations from Meta's own location search, so every
-// region/city carries the key Meta issued; nothing here invents an id. Pure:
-// no React, no Deno, no network. Used by the builder (to show what applies),
-// by preflight (to refuse what Meta would refuse) and by the ad-set payload.
+// The customer picks places from Meta's own location search, so every
+// region/city carries the key Meta issued; nothing here invents an id. A
+// "pin" is a point the customer placed on the map (or their property's own
+// coordinates): Meta's custom_locations, a latitude/longitude and a radius.
+// Languages carry the locale key Meta's own locale search issued. Pure: no
+// React, no Deno, no network. Used by the builder (to show what applies), by
+// preflight (to refuse what Meta would refuse) and by the ad-set payload.
 //
-// SPECIAL AD CATEGORY: HOUSING. A residential sale or rental is a Housing ad.
-// Meta then fixes the audience to all adults (18–65+) of every gender, allows
-// no postcode targeting and no location radius under 15 miles, and restricts
-// detailed targeting. HOMATCH never sends a narrowing Meta would reject; it
-// applies the rule and says so, in plain words, before the customer launches.
+// SPECIAL AD CATEGORY: HOUSING — ONLY WHERE META REQUIRES IT.
+// Meta requires a housing ad to run as a Special Ad Category when it reaches
+// the United States (and its territories), Canada or a listed set of European
+// countries (Meta Business Help, "About audiences for credit, employment or
+// housing campaigns"; checked 2026-10-01). There, the audience is all adults
+// (18–65+) of every gender, a city or pin reaches at least 25 km (US, Canada)
+// or 15 km (the European list), and detailed targeting is restricted. A
+// residential offer that reaches only other countries — Georgia, for one — is
+// not restricted: its ages and gender are the customer's choice. HOMATCH never
+// sends a narrowing Meta would reject; where Meta's rule applies it applies it
+// and names the countries that cause it.
 
 export type Gender = 'ALL' | 'MALE' | 'FEMALE';
-export type LocationType = 'country' | 'region' | 'city';
+export type LocationType = 'country' | 'region' | 'city' | 'pin';
 
 export interface LocationChoice {
   type: LocationType;
-  /** ISO-3166 alpha-2 for a country; Meta's location key for a region or city. */
+  /** ISO-3166 alpha-2 for a country; Meta's location key for a region or
+   *  city; "lat,lng" (5 decimals) for a pin. */
   key: string;
   name: string;
   countryCode: string;
-  /** Cities only: radius around the city, kilometres. */
+  /** Cities and pins: radius around it, kilometres. */
   radiusKm?: number | null;
+  /** Pins: the point Meta receives. Cities: where the map draws it (display only). */
+  lat?: number | null;
+  lng?: number | null;
+}
+
+/** A language the ads are shown in — Meta's locale key, from Meta's locale search. */
+export interface LanguageChoice { key: string; name: string; code?: string | null }
+
+/** What the customer wants from an international campaign. Intent only:
+ *  HOMATCH turns it into places and languages the customer sees and confirms. */
+export const INTERNATIONAL_INTENTS = ['FOREIGNERS_IN_COUNTRY', 'MOVING_HERE', 'INVESTORS_ABROAD', 'LANGUAGE_SPEAKERS', 'COUNTRY_CONNECTED'] as const;
+export type InternationalIntent = (typeof INTERNATIONAL_INTENTS)[number];
+export interface InternationalChoice {
+  enabled: boolean;
+  intents: InternationalIntent[];
+  /** Countries the people are from / connected to (ISO-3166 alpha-2). */
+  markets: string[];
 }
 
 export interface TargetingIntent {
@@ -30,16 +57,64 @@ export interface TargetingIntent {
   ageMin: number;
   ageMax: number;
   gender: Gender;
+  languages?: LanguageChoice[];
+  international?: InternationalChoice | null;
 }
 
 /** Meta's own bounds: 18..65, where 65 means "65 and older". */
 export const META_AGE_MIN = 18;
 export const META_AGE_MAX = 65;
-/** Housing ads: the smallest radius Meta accepts around a city (15 miles). */
+/** Housing ads in the US and Canada: the smallest radius Meta accepts (15 miles). */
 export const HOUSING_MIN_RADIUS_KM = 25;
+/** Housing ads in the European list: the smallest radius Meta accepts (9 miles). */
+export const HOUSING_MIN_RADIUS_KM_EUROPE = 15;
 export const CITY_RADIUS_KM_DEFAULT = 17;
 export const CITY_RADIUS_KM_MAX = 80;
+export const PIN_RADIUS_KM_MIN = 1;
 export const MAX_LOCATIONS = 25;
+export const MAX_LANGUAGES = 6;
+export const MAX_MARKETS = 10;
+
+/** Where Meta's housing restrictions apply, with the radius floor each needs. */
+export const HOUSING_COUNTRIES_25KM: readonly string[] = ['US', 'PR', 'GU', 'VI', 'AS', 'MP', 'UM', 'CA'];
+export const HOUSING_COUNTRIES_15KM: readonly string[] = [
+  'AD', 'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'GF', 'DE', 'GR', 'GP', 'HU', 'IS', 'IE', 'IM', 'IT',
+  'LV', 'LI', 'LT', 'LU', 'MT', 'MQ', 'YT', 'MC', 'NL', 'NO', 'PL', 'PT', 'RE', 'RO', 'MF', 'SM', 'SK', 'SI', 'ES', 'SE',
+  'CH', 'GB', 'GG', 'JE', 'VA',
+];
+
+export interface HousingRule {
+  /** Meta's restrictions apply to this campaign. */
+  restricted: boolean;
+  /** The reached countries that cause it (empty when not restricted). */
+  countries: string[];
+  minRadiusKm: number | null;
+}
+
+/** Whether a housing offer reaching these countries runs under Meta's restrictions. */
+export function housingRule(housingOffer: boolean, countries: string[]): HousingRule {
+  if (!housingOffer) return { restricted: false, countries: [], minRadiusKm: null };
+  const set = [...new Set(countries.map((c) => String(c).toUpperCase()))];
+  const strict = set.filter((c) => HOUSING_COUNTRIES_25KM.includes(c));
+  const europe = set.filter((c) => HOUSING_COUNTRIES_15KM.includes(c));
+  if (!strict.length && !europe.length) return { restricted: false, countries: [], minRadiusKm: null };
+  return { restricted: true, countries: [...strict, ...europe], minRadiusKm: strict.length ? HOUSING_MIN_RADIUS_KM : HOUSING_MIN_RADIUS_KM_EUROPE };
+}
+
+/** Every country a targeting intent reaches. */
+export function reachedCountries(intent: Pick<TargetingIntent, 'locations'>): string[] {
+  return [...new Set((intent.locations ?? []).map((l) => String(l.countryCode ?? '').toUpperCase()).filter(Boolean))];
+}
+
+/**
+ * The categories the campaign DECLARES to Meta: the offer's own classification
+ * (strategy.classifySpecialAdCategories), kept only where Meta requires it.
+ */
+export function declaredSpecialAdCategories(offerCategories: string[], intent: Pick<TargetingIntent, 'locations'>): string[] {
+  const housingOffer = offerCategories.includes('HOUSING');
+  const rest = offerCategories.filter((c) => c !== 'HOUSING');
+  return housingRule(housingOffer, reachedCountries(intent)).restricted ? ['HOUSING', ...rest] : rest;
+}
 
 export interface TargetingConstraints {
   ageLocked: boolean;
@@ -49,17 +124,30 @@ export interface TargetingConstraints {
   reason: 'HOUSING_SPECIAL_AD_CATEGORY' | null;
 }
 
-export function targetingConstraints(specialAdCategories: string[]): TargetingConstraints {
+/**
+ * What the DECLARED categories impose. `countries` refines the radius floor
+ * (15 km when only the European list is reached); without it the stricter
+ * 25 km applies.
+ */
+export function targetingConstraints(specialAdCategories: string[], countries?: string[]): TargetingConstraints {
   const housing = specialAdCategories.includes('HOUSING');
-  return housing
-    ? { ageLocked: true, genderLocked: true, minRadiusKm: HOUSING_MIN_RADIUS_KM, detailedTargetingAllowed: false, reason: 'HOUSING_SPECIAL_AD_CATEGORY' }
-    : { ageLocked: false, genderLocked: false, minRadiusKm: null, detailedTargetingAllowed: true, reason: null };
+  if (!housing) return { ageLocked: false, genderLocked: false, minRadiusKm: null, detailedTargetingAllowed: true, reason: null };
+  const rule = countries ? housingRule(true, countries) : null;
+  return {
+    ageLocked: true, genderLocked: true,
+    minRadiusKm: rule?.restricted ? rule.minRadiusKm : HOUSING_MIN_RADIUS_KM,
+    detailedTargetingAllowed: false, reason: 'HOUSING_SPECIAL_AD_CATEGORY',
+  };
 }
 
 const COUNTRY = /^[A-Z]{2}$/;
 const META_KEY = /^[0-9]{1,20}$/;
 
-export interface TargetingIssue { code: string; field: 'locations' | 'age' | 'gender' }
+export const pinKey = (lat: number, lng: number) => `${lat.toFixed(5)},${lng.toFixed(5)}`;
+const validLat = (v: unknown) => Number.isFinite(Number(v)) && Number(v) >= -90 && Number(v) <= 90;
+const validLng = (v: unknown) => Number.isFinite(Number(v)) && Number(v) >= -180 && Number(v) <= 180;
+
+export interface TargetingIssue { code: string; field: 'locations' | 'age' | 'gender' | 'languages' | 'international' }
 
 /** Structural validation. Meta itself is the final judge of a key; this
  *  refuses what can never be valid, so a bad draft never reaches Graph. */
@@ -69,9 +157,10 @@ export function validateTargeting(intent: TargetingIntent): TargetingIssue[] {
   if (locs.length === 0) issues.push({ code: 'LOCATION_REQUIRED', field: 'locations' });
   if (locs.length > MAX_LOCATIONS) issues.push({ code: 'TOO_MANY_LOCATIONS', field: 'locations' });
   for (const l of locs) {
-    if (!['country', 'region', 'city'].includes(l.type)) issues.push({ code: 'LOCATION_TYPE_INVALID', field: 'locations' });
+    if (!['country', 'region', 'city', 'pin'].includes(l.type)) issues.push({ code: 'LOCATION_TYPE_INVALID', field: 'locations' });
     else if (l.type === 'country' && !COUNTRY.test(String(l.key))) issues.push({ code: 'COUNTRY_CODE_INVALID', field: 'locations' });
-    else if (l.type !== 'country' && !META_KEY.test(String(l.key))) issues.push({ code: 'LOCATION_KEY_INVALID', field: 'locations' });
+    else if ((l.type === 'region' || l.type === 'city') && !META_KEY.test(String(l.key))) issues.push({ code: 'LOCATION_KEY_INVALID', field: 'locations' });
+    else if (l.type === 'pin' && (!validLat(l.lat) || !validLng(l.lng))) issues.push({ code: 'PIN_INVALID', field: 'locations' });
     if (!COUNTRY.test(String(l.countryCode ?? ''))) issues.push({ code: 'LOCATION_COUNTRY_INVALID', field: 'locations' });
   }
   const min = Number(intent.ageMin);
@@ -80,6 +169,9 @@ export function validateTargeting(intent: TargetingIntent): TargetingIssue[] {
     issues.push({ code: 'AGE_RANGE_INVALID', field: 'age' });
   }
   if (!['ALL', 'MALE', 'FEMALE'].includes(intent.gender)) issues.push({ code: 'GENDER_INVALID', field: 'gender' });
+  const langs = intent.languages ?? [];
+  if (langs.length > MAX_LANGUAGES) issues.push({ code: 'TOO_MANY_LANGUAGES', field: 'languages' });
+  if (langs.some((l) => !META_KEY.test(String(l?.key ?? '')))) issues.push({ code: 'LANGUAGE_KEY_INVALID', field: 'languages' });
   return [...new Map(issues.map((i) => [i.code, i])).values()];
 }
 
@@ -87,18 +179,43 @@ export function validateTargeting(intent: TargetingIntent): TargetingIssue[] {
 export function normalizeIntent(raw: unknown, defaultCountries: string[]): TargetingIntent {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const locs = Array.isArray(r.locations) ? (r.locations as LocationChoice[]).filter((l) => l && typeof l === 'object') : [];
-  return {
+  const coord = (v: unknown, ok: (x: unknown) => boolean) => (v != null && ok(v) ? Math.round(Number(v) * 1e5) / 1e5 : null);
+  const intl = (r.international && typeof r.international === 'object' ? r.international : null) as Record<string, unknown> | null;
+  const languages = Array.isArray(r.languages)
+    ? (r.languages as LanguageChoice[]).filter((l) => l && typeof l === 'object' && META_KEY.test(String(l.key)))
+      .slice(0, MAX_LANGUAGES)
+      .map((l) => ({ key: String(l.key), name: String(l.name ?? l.key).slice(0, 80), code: l.code ? String(l.code).slice(0, 8) : null }))
+    : [];
+  const out: TargetingIntent = {
     locations: locs.length
-      ? locs.slice(0, MAX_LOCATIONS).map((l) => ({
-        type: l.type, key: l.type === 'country' ? String(l.key).toUpperCase() : String(l.key), name: String(l.name ?? l.key).slice(0, 120),
-        countryCode: String(l.countryCode ?? (l.type === 'country' ? l.key : '')).toUpperCase(),
-        radiusKm: l.type === 'city' && Number.isFinite(Number(l.radiusKm)) ? Number(l.radiusKm) : null,
-      }))
+      ? locs.slice(0, MAX_LOCATIONS).map((l) => {
+        const lat = coord(l.lat, validLat);
+        const lng = coord(l.lng, validLng);
+        const radius = Number.isFinite(Number(l.radiusKm)) ? Number(l.radiusKm) : null;
+        return {
+          type: l.type,
+          key: l.type === 'country' ? String(l.key).toUpperCase() : l.type === 'pin' && lat != null && lng != null ? pinKey(lat, lng) : String(l.key),
+          name: String(l.name ?? l.key).slice(0, 120),
+          countryCode: String(l.countryCode ?? (l.type === 'country' ? l.key : '')).toUpperCase(),
+          radiusKm: l.type === 'city' || l.type === 'pin' ? radius : null,
+          ...(l.type === 'city' || l.type === 'pin' ? { lat, lng } : {}),
+        };
+      })
       : defaultCountries.map((c) => ({ type: 'country' as const, key: c.toUpperCase(), name: c.toUpperCase(), countryCode: c.toUpperCase() })),
     ageMin: Number.isInteger(Number(r.ageMin)) ? Number(r.ageMin) : META_AGE_MIN,
     ageMax: Number.isInteger(Number(r.ageMax)) ? Number(r.ageMax) : META_AGE_MAX,
     gender: r.gender === 'MALE' || r.gender === 'FEMALE' ? r.gender : 'ALL',
   };
+  if (languages.length) out.languages = languages;
+  if (intl) {
+    out.international = {
+      enabled: intl.enabled === true,
+      intents: (Array.isArray(intl.intents) ? intl.intents : []).map(String)
+        .filter((x): x is InternationalIntent => (INTERNATIONAL_INTENTS as readonly string[]).includes(x)),
+      markets: [...new Set((Array.isArray(intl.markets) ? intl.markets : []).map((m) => String(m).toUpperCase()).filter((m) => COUNTRY.test(m)))].slice(0, MAX_MARKETS),
+    };
+  }
+  return out;
 }
 
 export interface AppliedTargeting {
@@ -112,29 +229,34 @@ export interface AppliedTargeting {
 }
 
 /**
- * The customer's intent, made legal for the ad's category. A country that
- * also has a region or city chosen inside it is sent only as those places
- * (Meta refuses a country together with a location inside it).
+ * The customer's intent, made legal for the ad's declared category. A country
+ * that also has a region, city or pin chosen inside it is sent only as those
+ * places (Meta refuses a country together with a location inside it).
  */
 export function applyTargeting(intent: TargetingIntent, specialAdCategories: string[], only?: LocationChoice[]): AppliedTargeting {
-  const rules = targetingConstraints(specialAdCategories);
+  const rules = targetingConstraints(specialAdCategories, reachedCountries(intent));
   const adjustments: string[] = [];
   const locs = only ?? intent.locations;
   const narrowed = new Set(locs.filter((l) => l.type !== 'country').map((l) => l.countryCode));
   const countries = [...new Set(locs.filter((l) => l.type === 'country' && !narrowed.has(l.key)).map((l) => l.key))];
   const regions = locs.filter((l) => l.type === 'region').map((l) => ({ key: l.key }));
-  const cities = locs.filter((l) => l.type === 'city').map((l) => {
-    let radius = Math.min(CITY_RADIUS_KM_MAX, Math.max(1, Math.round(Number(l.radiusKm ?? CITY_RADIUS_KM_DEFAULT))));
+  const radiusOf = (l: LocationChoice, min: number) => {
+    let radius = Math.min(CITY_RADIUS_KM_MAX, Math.max(min, Math.round(Number(l.radiusKm ?? CITY_RADIUS_KM_DEFAULT))));
     if (rules.minRadiusKm && radius < rules.minRadiusKm) {
       radius = rules.minRadiusKm;
       adjustments.push('HOUSING_RADIUS_WIDENED');
     }
-    return { key: l.key, radius, distance_unit: 'kilometer' };
-  });
+    return radius;
+  };
+  const cities = locs.filter((l) => l.type === 'city').map((l) => ({ key: l.key, radius: radiusOf(l, 1), distance_unit: 'kilometer' }));
+  const pins = locs.filter((l) => l.type === 'pin' && validLat(l.lat) && validLng(l.lng)).map((l) => ({
+    latitude: Number(l.lat), longitude: Number(l.lng), radius: radiusOf(l, PIN_RADIUS_KM_MIN), distance_unit: 'kilometer',
+  }));
   const geo: Record<string, unknown> = {};
   if (countries.length) geo.countries = countries;
   if (regions.length) geo.regions = regions;
   if (cities.length) geo.cities = cities;
+  if (pins.length) geo.custom_locations = pins;
 
   let ageMin = intent.ageMin;
   let ageMax = intent.ageMax;
@@ -147,6 +269,8 @@ export function applyTargeting(intent: TargetingIntent, specialAdCategories: str
   const spec: Record<string, unknown> = { geo_locations: geo, age_min: ageMin, age_max: ageMax };
   if (gender === 'MALE') spec.genders = [1];
   if (gender === 'FEMALE') spec.genders = [2];
+  const locales = (intent.languages ?? []).map((l) => Number(l.key)).filter((k) => Number.isInteger(k) && k > 0);
+  if (locales.length) spec.locales = locales;
   return {
     spec,
     countries: [...new Set(locs.map((l) => l.countryCode))],

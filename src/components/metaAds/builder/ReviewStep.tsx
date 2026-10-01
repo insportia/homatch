@@ -17,7 +17,8 @@ import { FinancialSummary, type Totals } from './BudgetStep';
 import { StrategyCard } from './StrategyCard';
 import { FundingCard } from './FundingCard';
 import { regionName } from './LocationPicker';
-import { effectiveRadiusKm, isHousingCampaign } from './masterLogic';
+import { effectiveRadiusKm, housingRuleFor } from './masterLogic';
+import { languageName } from './AudienceStep';
 
 export function PlacementsStep({ campaign, status, creatives, recommended, patch }: {
   campaign: MetaCampaignRow; status: MetaStatus | null; creatives: MetaCreativeRow[]; recommended: Placement[];
@@ -111,7 +112,9 @@ export function CampaignNameField({ value, suggestion, onSave }: { value: string
   );
 }
 
-export function ReviewStep({ campaign, status, creatives, totals, pricing, recommended, preflight, running, onPreflight, onLaunch, canLaunch, launchHint = null, onEdit, strategy = null, strategyLoading = false, strategyFailed = false, nameSuggestion = '', onName }: {
+export function ReviewStep({ campaign, status, creatives, totals, pricing, recommended, preflight, running, onPreflight, onLaunch, canLaunch, launchHint = null, onEdit, strategy = null, strategyLoading = false, strategyFailed = false, nameSuggestion = '', onName, insights = null }: {
+  /** The campaign explained, what to expect and the holistic check (ReviewInsights). */
+  insights?: React.ReactNode;
   /** The suggested HOMATCH name and where an edited one is saved. */
   nameSuggestion?: string; onName?: (name: string) => void;
   campaign: MetaCampaignRow; status: MetaStatus | null; creatives: MetaCreativeRow[]; totals: Totals | null; pricing: boolean;
@@ -129,12 +132,16 @@ export function ReviewStep({ campaign, status, creatives, totals, pricing, recom
   const acct = selectedAsset(status, 'AD_ACCOUNT');
   const pixel = selectedAsset(status, 'PIXEL');
   const form = (status?.assets ?? []).find((a) => a.kind === 'LEAD_FORM' && a.external_id === campaign.destination?.formId) ?? selectedAsset(status, 'LEAD_FORM');
-  // The server's classification (engine.strategyInputFor), not a guess.
-  const housing = isHousingCampaign(campaign);
+  // The server's rule (engine.strategyInputFor → declaredSpecialAdCategories), not a guess.
+  const chosenLocs = campaign.targeting?.locations?.length ? campaign.targeting.locations : (status?.settings.countries ?? ['GE']).map((c) => ({ countryCode: c }));
+  const rule = housingRuleFor(campaign, chosenLocs);
+  const housing = rule.restricted;
   const locs = campaign.targeting?.locations?.length
-    ? campaign.targeting.locations.map((l) => (l.type === 'country' ? regionName(l.key, lang) : l.type === 'city' ? `${l.name} (+${t('mm_b_loc_radius_km', { km: String(effectiveRadiusKm(l.radiusKm, housing)) })})` : l.name))
+    ? campaign.targeting.locations.map((l) => (l.type === 'country' ? regionName(l.key, lang) : l.type === 'city' || l.type === 'pin' ? `${l.name} (+${t('mm_b_loc_radius_km', { km: String(effectiveRadiusKm(l.radiusKm, rule.minRadiusKm)) })})` : l.name))
     : (status?.settings.countries ?? ['GE']).map((c) => regionName(c, lang));
-  const eff = strategy?.targeting.effective;
+  const langs = (campaign.targeting?.languages ?? []).map((l) => (l.code ? languageName(l.code, lang) : l.name));
+  const priorityCount = creatives.filter((c) => c.priority && c.media.length).length;
+  const eff = strategy?.targeting?.effective;
   const placements = campaign.placements?.mode === 'CUSTOM' ? (campaign.placements.list ?? []) : recommended;
   const withMedia = creatives.filter((c) => c.media.length);
 
@@ -157,6 +164,7 @@ export function ReviewStep({ campaign, status, creatives, totals, pricing, recom
   return (
     <StepShell eyebrow={t('madsb_step_review')} title={t('madsb_review_title')} lead={t('madsb_review_lead')}>
       {onName && <div className="mb-3"><CampaignNameField value={campaign.name ?? ''} suggestion={nameSuggestion} onSave={onName} /></div>}
+      {insights}
       <div className="grid gap-3 md:grid-cols-2">
         <Block title={t('madsb_review_campaign')} step="goal" rows={[
           [t('madsb_review_objective'), t(`mads_goal_${goal.toLowerCase()}` as never)],
@@ -167,11 +175,14 @@ export function ReviewStep({ campaign, status, creatives, totals, pricing, recom
         <Block title={t('madsb_review_audience')} step="audience" rows={[
           [t('madsb_review_location'), <span dir="auto">{locs.join(', ')}</span>],
           ...(eff ? [[t('mm_b_who_title'), `${t('mm_b_age_range', { min: String(eff.ageMin), max: eff.ageMax >= 65 ? '65+' : String(eff.ageMax) })} · ${t(`mm_b_gender_${eff.gender === 'MALE' || eff.gender === 'FEMALE' ? eff.gender : 'ALL'}`)}`] as [string, React.ReactNode]] : []),
+          [t('mm_f_lang_title'), langs.length ? langs.join(', ') : t('mm_f_lang_all')],
+          ...(campaign.targeting?.international?.enabled ? [[t('mm_f_intl_title'), (campaign.targeting.international.markets ?? []).map((m) => regionName(m, lang)).join(', ') || t('mm_f_on')] as [string, React.ReactNode]] : []),
           [t('madsb_review_audience_type'), campaign.audience_id ? t('madsb_audience_retarget') : t('mads_audience_broad')],
-          ...(housing ? [[t('madsb_review_audience'), t('mm_b_smart_property')] as [string, React.ReactNode]] : []),
+          ...(housing ? [[t('madsb_review_audience'), t('mm_f_meta_rule_short')] as [string, React.ReactNode]] : []),
         ]} />
         <Block title={t('madsb_review_creative')} step="creative" rows={[
           [t('madsb_review_media'), t('madsb_review_media_count', { n: String(withMedia.length) })],
+          ...(priorityCount ? [[t('mm_f_priority_title'), `⭐ ${priorityCount}`] as [string, React.ReactNode]] : []),
           [t('madsb_field_primary'), <span className="line-clamp-2">{withMedia[0]?.primary_text || '—'}</span>],
           [t('madsb_field_headline'), withMedia[0]?.headline || '—'],
           [t('madsb_field_cta'), t(`madsb_cta_${resolveCta(goal, withMedia[0]?.cta, campaign.destination?.messagingApp ?? null).toLowerCase()}` as never)],

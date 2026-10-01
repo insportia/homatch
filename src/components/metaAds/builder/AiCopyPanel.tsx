@@ -16,13 +16,19 @@ import { aiCopy, type AiCopyOp, type AiCopyVariant } from '@/services/metaAds';
 const LANGS = ['ka', 'en', 'ru', 'tr', 'ar', 'he'] as const;
 const OPS: AiCopyOp[] = ['GENERATE', 'IMPROVE', 'SHORTEN', 'PROFESSIONAL', 'ALTERNATIVES', 'TRANSLATE'];
 
-export function AiCopyPanel({ open, onOpenChange, campaignId, current, onAccept }: {
+export function AiCopyPanel({ open, onOpenChange, campaignId, current, onAccept, onAcceptAsVersion, initialTarget, initialNotes = '' }: {
   open: boolean; onOpenChange: (v: boolean) => void; campaignId: string;
   current: AiCopyVariant; onAccept: (v: AiCopyVariant) => void;
+  /** Keep this ad and add the translation as a new language version of it. */
+  onAcceptAsVersion?: (v: AiCopyVariant, language: string) => void;
+  /** Open with a translation target chosen (e.g. from "translate for this audience"). */
+  initialTarget?: string | null;
+  initialNotes?: string;
 }) {
   const { t, lang } = useLanguage();
-  const [target, setTarget] = useState<string>(LANGS.includes(lang as never) ? lang : 'ka');
-  const [notes, setNotes] = useState('');
+  const [target, setTarget] = useState<string>(initialTarget && LANGS.includes(initialTarget as never) ? initialTarget : LANGS.includes(lang as never) ? lang : 'ka');
+  const [notes, setNotes] = useState(initialNotes);
+  React.useEffect(() => { if (open && initialTarget && LANGS.includes(initialTarget as never)) setTarget(initialTarget); }, [open, initialTarget]);
   const [busy, setBusy] = useState<AiCopyOp | null>(null);
   const [lastOp, setLastOp] = useState<AiCopyOp | null>(null);
   const [variants, setVariants] = useState<AiCopyVariant[]>([]);
@@ -49,6 +55,15 @@ export function AiCopyPanel({ open, onOpenChange, campaignId, current, onAccept 
         </SheetHeader>
 
         <div className="mt-4 space-y-4">
+          {/* AI translation, said plainly: adapted, not word-for-word, facts untouched. */}
+          <div data-mm-ai-translate="" className="rounded-2xl border border-[hsl(var(--gold-border))]/60 bg-gradient-to-br from-[hsl(var(--gold-soft))] to-card p-3.5">
+            <p className="text-sm font-semibold text-foreground">🧠 {t('mm_f_ai_translate_title')}</p>
+            <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">{t('mm_f_ai_translate_body')}</p>
+            <Button type="button" size="sm" className="mt-2.5 gap-1.5" disabled={busy !== null || !hasCurrent} onClick={() => run('TRANSLATE')} data-mm-ai-translate-run="">
+              {busy === 'TRANSLATE' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+              {t('mm_f_ai_translate_to', { lang: (() => { try { return new Intl.DisplayNames([lang], { type: 'language' }).of(target) ?? target; } catch { return target; } })() })}
+            </Button>
+          </div>
           <div>
             <p className="mb-1.5 text-[13px] font-medium text-foreground">{t('madsb_ai_language')}</p>
             <div className="flex flex-wrap gap-1.5">
@@ -93,10 +108,16 @@ export function AiCopyPanel({ open, onOpenChange, campaignId, current, onAccept 
                   {v.headline && <p className="text-sm font-semibold text-foreground">{v.headline}</p>}
                   <p className="mt-1 whitespace-pre-line text-sm text-foreground/90">{v.primaryText}</p>
                   {v.description && <p className="mt-1 text-2xs text-muted-foreground">{v.description}</p>}
-                  <div className="mt-2.5 flex gap-2" dir="ltr">
+                  <div className="mt-2.5 flex flex-wrap gap-2" dir="ltr">
                     <Button type="button" size="sm" className="gap-1.5" onClick={() => { onAccept(v); toast.success(t('madsb_ai_applied')); }}>
                       <Check className="h-3.5 w-3.5" />{t('madsb_ai_accept')}
                     </Button>
+                    {lastOp === 'TRANSLATE' && onAcceptAsVersion && (
+                      <Button type="button" size="sm" variant="outline" className="gap-1.5" data-mm-ai-as-version=""
+                        onClick={() => { onAcceptAsVersion(v, target); toast.success(t('mm_f_ai_version_added')); }}>
+                        <Sparkles className="h-3.5 w-3.5" />{t('mm_f_ai_as_version')}
+                      </Button>
+                    )}
                     <Button type="button" size="sm" variant="ghost" className="gap-1.5"
                       onClick={() => setVariants((cur) => cur.filter((_, j) => j !== i))}>
                       <X className="h-3.5 w-3.5" />{t('madsb_ai_reject')}

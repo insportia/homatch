@@ -14,6 +14,7 @@ import { META_MASTER_BUILDER_STRINGS } from './meta-master-builder-i18n-data.mjs
 import { META_MASTER_CAMPAIGN_STRINGS } from './meta-master-campaign-i18n-data.mjs';
 import { META_MASTER_WORKSPACE_STRINGS } from './meta-master-workspace-i18n-data.mjs';
 import { META_MASTER_ADMIN_STRINGS } from './meta-master-admin-i18n-data.mjs';
+import { META_FINAL_STRINGS } from './meta-final-i18n-data.mjs';
 import { splice, validate } from './lib/i18nSplice.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -24,6 +25,7 @@ const PARTS = [
   ['META ADS MASTER — CAMPAIGN', 'meta-master-campaign-i18n', META_MASTER_CAMPAIGN_STRINGS],
   ['META ADS MASTER — WORKSPACE', 'meta-master-workspace-i18n', META_MASTER_WORKSPACE_STRINGS],
   ['META ADS MASTER — ADMIN + NOTIFICATIONS', 'meta-master-admin-i18n', META_MASTER_ADMIN_STRINGS],
+  ['META ADS — FINAL PRODUCT FINISH', 'meta-final-i18n', META_FINAL_STRINGS],
 ];
 
 // One key, one owner: the parts must not define the same key twice.

@@ -44,8 +44,10 @@ export function useMetaDraft(initial: MetaCampaignRow | null) {
     return chain.current;
   }, []);
 
-  const patch = useCallback((p: Partial<MetaCampaignRow>, opts: { immediate?: boolean } = {}) => {
-    setCampaign((c) => (c ? ({ ...c, ...p, preflight: null } as MetaCampaignRow) : c));
+  /* keepPreflight: a field outside what the HOMATCH check approves (the
+     owner's brief) — the server's launch fingerprint ignores it too. */
+  const patch = useCallback((p: Partial<MetaCampaignRow>, opts: { immediate?: boolean; keepPreflight?: boolean } = {}) => {
+    setCampaign((c) => (c ? ({ ...c, ...p, ...(opts.keepPreflight ? {} : { preflight: null }) } as MetaCampaignRow) : c));
     pending.current = { ...pending.current, ...p };
     setSaveState('saving');
     if (timer.current) clearTimeout(timer.current);

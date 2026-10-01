@@ -724,5 +724,58 @@ if (CATALOG_MIGRATION) {
     as('service', (tx) => tx.query(`insert into ds_catalog_materials (code, name, category, pbr, provenance, homatch_asset_id) values ('x-partial','X','WOOD','{}'::jsonb,'LICENSED',$1)`, [H(7)])));
 }
 
+// ── Design Studio catalogue management (DS_CATALOG_MGMT_MIGRATION) ────────
+const MGMT_MIGRATION = process.env.DS_CATALOG_MGMT_MIGRATION ?? null;
+if (CATALOG_MIGRATION && MGMT_MIGRATION) {
+  await db.exec(fs.readFileSync(MGMT_MIGRATION, 'utf8'));
+  await db.exec(fs.readFileSync(MGMT_MIGRATION, 'utf8'));
+  ok('management: migration applies and re-applies');
+  const H = (n) => `hma_${String(n).padStart(26, '0')}`;
+  const MAT = '30000000-0000-0000-0000-000000000001';
+  await as('service', (tx) => tx.query(`update ds_catalog_imports set state='READY', quality_tier=NULL, attempts=0 where homatch_asset_id=$1`, [H(1)]));
+  const b = await as('service', (tx) => one(tx, `select import_batch_id, lifecycle from ds_catalog_imports where homatch_asset_id=$1`, [H(1)]));
+  if (b.import_batch_id === 'ib_20261001_canary' && b.lifecycle === 'UNPUBLISHED') ok('management: existing imports are backfilled into the canary batch, unpublished');
+  else bad('backfill', JSON.stringify(b));
+  await expectError('management: a batch id never changes once set', 'DS_CATALOG_BATCH_IMMUTABLE', () =>
+    as('service', (tx) => tx.query(`update ds_catalog_imports set import_batch_id='ib_other_batch' where homatch_asset_id=$1`, [H(1)])));
+  const set = (who, ids, target, n) => as(who, (tx) => one(tx, `select public.ds_catalog_admin_set_lifecycle($1, $2, $3, 'test') as r`, [ids, target, n])).then((x) => x.r);
+  await expectError('management: a customer cannot change the catalogue', 'DS_CATALOG_ADMIN_ONLY', () => set(A, [H(1)], 'ACTIVE', 1));
+  await expectError('management: the confirmed count must match the selection', 'DS_CATALOG_CONFIRM_MISMATCH', () => set(ADM, [H(1)], 'ACTIVE', 2));
+  const on = await set(ADM, [H(1)], 'ACTIVE', 1);
+  const activeRow = await as('service', (tx) => one(tx, `select m.active, i.lifecycle from ds_catalog_materials m join ds_catalog_imports i using (homatch_asset_id) where m.homatch_asset_id=$1`, [H(1)]));
+  if (on.changed === 1 && activeRow.active === true && activeRow.lifecycle === 'ACTIVE') ok('management: re-enable publishes a READY asset'); else bad('activate', JSON.stringify({ on, activeRow }));
+  const res1 = await as(A, (tx) => tx.query(`select * from ds_catalog_resolve('MATERIAL', ARRAY['oak'], 5)`));
+  if (res1.rows.length === 1) ok('management: the resolver offers an ACTIVE asset'); else bad('resolve active', JSON.stringify(res1.rows));
+  // A saved design uses the material: removal from the catalogue is allowed, physical deletion is not.
+  await as('service', (tx) => tx.query(`update ds_versions set state = jsonb_set(coalesce(state, '{}'::jsonb), '{surfaces}', jsonb_build_object('floor:r-1', jsonb_build_object('materialId', $2::text))) where id=$1`, [v1.id, MAT]));
+  const dep = await as(ADM, (tx) => one(tx, `select * from ds_catalog_dependencies($1)`, [[H(1)]]));
+  if (dep.versions === 1 && dep.projects === 1) ok('management: dependencies count the saved design that uses the material'); else bad('deps', JSON.stringify(dep));
+  await expectError('management: customers cannot read dependencies', 'DS_CATALOG_ADMIN_ONLY', () => as(A, (tx) => tx.query(`select * from ds_catalog_dependencies($1)`, [[H(1)]])));
+  const off = await set(ADM, [H(1)], 'DISABLED', 1);
+  const offRow = await as('service', (tx) => one(tx, `select m.active, i.lifecycle from ds_catalog_materials m join ds_catalog_imports i using (homatch_asset_id) where m.homatch_asset_id=$1`, [H(1)]));
+  if (off.changed === 1 && offRow.active === false && offRow.lifecycle === 'DISABLED') ok('management: disable takes an asset out of the catalogue'); else bad('disable', JSON.stringify({ off, offRow }));
+  const res2 = await as(A, (tx) => tx.query(`select * from ds_catalog_resolve('MATERIAL', ARRAY['oak'], 5)`));
+  if (res2.rows.length === 0) ok('management: the resolver no longer offers a DISABLED asset'); else bad('resolve disabled', JSON.stringify(res2.rows));
+  const del = await set(ADM, [H(1)], 'PENDING_DELETE', 1);
+  const delRow = await as('service', (tx) => one(tx, `select lifecycle from ds_catalog_imports where homatch_asset_id=$1`, [H(1)]));
+  if (del.changed === 0 && del.blocked.length === 1 && del.blocked[0].versions === 1 && delRow.lifecycle === 'DISABLED') ok('management: deletion is refused for an asset a saved design uses, with the count');
+  else bad('blocked delete', JSON.stringify({ del, delRow }));
+  await as('service', (tx) => tx.query(`update ds_versions set state = state - 'surfaces' where id=$1`, [v1.id]));
+  const del2 = await set(ADM, [H(1)], 'PENDING_DELETE', 1);
+  if (del2.changed === 1) ok('management: an unreferenced asset can be queued for deletion'); else bad('delete', JSON.stringify(del2));
+  const reactivate = await set(ADM, [H(1)], 'ACTIVE', 1);
+  if (reactivate.changed === 0 && reactivate.skipped.includes(H(1))) ok('management: a deletion candidate cannot be re-published'); else bad('republish pending', JSON.stringify(reactivate));
+  const back = await set(ADM, [H(1)], 'CANCEL_DELETE', 1);
+  if (back.changed === 1) ok('management: a queued deletion can be cancelled'); else bad('cancel', JSON.stringify(back));
+  const audit = await as(ADM, (tx) => tx.query(`select action, asset_count, actor_kind, import_batch_ids from ds_catalog_admin_events order by id`));
+  const actions = audit.rows.map((r) => r.action).join(',');
+  if (actions === 'ACTIVATE,DISABLE,REQUEST_DELETE,DELETE_BLOCKED,REQUEST_DELETE,ACTIVATE,CANCEL_DELETE' && audit.rows.every((r) => r.actor_kind === 'ADMIN' && r.import_batch_ids.includes('ib_20261001_canary')))
+    ok('management: every change is audited with actor and batch');
+  else bad('audit', actions);
+  const seenAudit = await as(A, (tx) => tx.query(`select 1 from ds_catalog_admin_events`));
+  if (seenAudit.rows.length === 0) ok('management: customers cannot read the audit trail'); else bad('audit rls', `${seenAudit.rows.length}`);
+  await expectError('management: nobody writes the audit trail directly', 'permission denied', () => as(ADM, (tx) => tx.query(`insert into ds_catalog_admin_events (actor_kind, action, asset_count) values ('ADMIN','DISABLE',0)`)));
+}
+
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nALL PASSED');
 process.exit(failures ? 1 : 0);

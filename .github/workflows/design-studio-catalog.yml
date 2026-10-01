@@ -31,6 +31,10 @@ on:
         type: boolean
         required: false
         default: false
+      batch:
+        description: 'enqueue: import batch id (ib_ + lowercase/digits/_); default ib_<date>_<provider>_<run>'
+        required: false
+        default: ''
       budget_min:
         description: 'run: minutes of work'
         required: false
@@ -54,6 +58,7 @@ jobs:
       IDS: ${{ inputs.ids }}
       ALL_APPROVED: ${{ inputs.all_owner_approved }}
       BUDGET: ${{ inputs.budget_min }}
+      BATCH: ${{ inputs.batch }}
     steps:
       - uses: actions/checkout@v4
 
@@ -79,7 +84,8 @@ jobs:
       - name: Optimisation tools (Khronos KTX-Software, glTF-Transform, glTF-Validator)
         if: env.MODE == 'run'
         run: |
-          curl -fsSL -o "$RUNNER_TEMP/ktx.deb" https://github.com/KhronosGroup/KTX-Software/releases/download/v4.3.2/KTX-Software-4.3.2-Linux-x86_64.deb
+          # gltf-transform 4.5 needs KTX-Software >= 4.4 (`ktx create`); 4.3 made every texture fall back to JPEG silently.
+          curl -fsSL -o "$RUNNER_TEMP/ktx.deb" https://github.com/KhronosGroup/KTX-Software/releases/download/v4.4.2/KTX-Software-4.4.2-Linux-x86_64.deb
           sudo dpkg -i "$RUNNER_TEMP/ktx.deb"
           mkdir -p "$CATALOG_TOOLS_DIR"
           npm install --prefix "$CATALOG_TOOLS_DIR" --no-audit --no-fund @gltf-transform/cli@4.5.1 gltf-validator@2.0.0-dev.3.10

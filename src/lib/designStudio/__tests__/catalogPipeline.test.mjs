@@ -114,6 +114,9 @@ function world(adapterBundle, faults = {}) {
       async patchImport(hma, patch) { Object.assign(imports.get(hma), patch); },
       async event(hma, stage, ev, extra = {}) { events.push({ hma, stage, ev, ...extra }); },
       async upsert(table, rows, onConflict) {
+        // Like PostgREST (PGRST102): every row of one bulk write must carry the same keys.
+        const shape = (r) => Object.keys(r).sort().join(',');
+        if (rows.some((r) => shape(r) !== shape(rows[0]))) throw new Error('PGRST102: All object keys must match');
         const t = (tables[table] ??= new Map());
         for (const r of rows) {
           const k = r[onConflict];
@@ -412,4 +415,13 @@ test('re-processing a published asset keeps it published; a new import stays unp
   byId(w, 'chair').state = 'QUEUED'; byId(w, 'chair').attempts = 0;
   await work(w.io, { budgetMs: 60000, concurrency: 1 });
   assert.equal(w.tables.ds_catalog_assets.get(id).active, true, 'availability follows the admin lifecycle, not the re-run');
+});
+
+test('discovering a provider when some of its assets are already recorded writes uniform bulk rows (PGRST102)', async () => {
+  const w = world(fakeAdapter());
+  await discover(w.io, 'fakeprov', undefined, ['chair']);
+  byId(w, 'chair').state = 'READY';
+  const r = await discover(w.io, 'fakeprov');
+  assert.equal(r.newRows, 4, 'the other assets are recorded');
+  assert.equal(byId(w, 'chair').state, 'READY', 'an existing row keeps its state');
 });

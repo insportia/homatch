@@ -328,7 +328,8 @@ export const polyhaven: ProviderAdapter<PhAsset> = {
     }
     return out;
   },
-  idPattern: /^[a-z0-9][a-z0-9_]{1,79}$/,
+  // Poly Haven ids are case-sensitive ("ArmChair_01", "anniversary_lounge").
+  idPattern: /^[A-Za-z0-9][A-Za-z0-9_]{1,79}$/,
   async discoverIds(ids: string[], fetchJson: Fetch) {
     const found: Discovered<PhAsset>[] = [];
     const missing: Array<{ id: string; reason: string }> = [];

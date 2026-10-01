@@ -175,6 +175,8 @@ test('named discovery: each adapter asks for ONE asset per id, by id, and files 
   assert.equal(ph.found[0].kind, 'MATERIAL');
   assert.deepEqual(ph.missing, [{ id: 'no_such_asset', reason: 'not listed by Poly Haven' }]);
   assert.ok(P.polyhaven.idPattern.test('anniversary_lounge') && !P.polyhaven.idPattern.test('a/b'));
+  for (const id of ['Sofa_01', 'ArmChair_01', 'GothicBed_01']) assert.ok(P.polyhaven.idPattern.test(id), `Poly Haven ids are case-sensitive: ${id}`);
+  for (const id of ['../x', 'a b', 'x"y', '_x', 'a-b']) assert.ok(!P.polyhaven.idPattern.test(id), `refused: ${id}`);
 });
 
 test('Poly Haven objects: only when NAMED; filed by name; the original bundle is private', async () => {

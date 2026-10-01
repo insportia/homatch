@@ -193,7 +193,7 @@ test('Match reference view: a camera above and outside, looking into the home', 
 });
 
 test('the browser and the server read reconstructions with the same code (byte-identical copies)', () => {
-  for (const file of ['reconstructRead.ts', 'sourceCamera.ts']) {
+  for (const file of ['reconstructRead.ts', 'sourceCamera.ts', 'pictureFrame.ts']) {
     const a = fs.readFileSync(path.join(process.cwd(), 'supabase/functions/_shared/designStudio', file), 'utf8');
     const b = fs.readFileSync(path.join(process.cwd(), 'src/lib/designStudio', file), 'utf8');
     assert.equal(b.replace(/\r\n/g, '\n'), a.replace(/\r\n/g, '\n'), file);

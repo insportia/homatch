@@ -72,7 +72,7 @@ export async function assetsByCode(codes: string[]): Promise<CatalogAsset[]> {
 export async function listMaterials(): Promise<CatalogMaterial[]> {
   const { data, error } = await supabase
     .from('ds_catalog_materials')
-    .select('id, code, name, category, applies_to, style_tags, color_family, pbr, thumbnail_key, provenance, is_placeholder, active')
+    .select('id, code, name, category, applies_to, style_tags, color_family, pbr, thumbnail_key, provenance, is_placeholder, active, search_aliases, color_families')
     .eq('active', true)
     .order('category').order('name')
     .limit(1000);

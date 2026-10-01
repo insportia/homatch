@@ -97,13 +97,17 @@ test('with a door closed the route is found through it, and the walker knows to 
   const { model, space } = apartment();
   const lobbyDoor = space.doors.find((d) => Math.abs(d.centre.x - 4.6) < 0.2 && Math.abs(d.centre.y - 7.4) < 0.3);
   setDoorClosed(model, lobbyDoor.id, true);
-  // The balcony doors (closed in the live walkthrough by default) too: the lobby is the only way left.
-  for (const d of space.doors) if (Math.abs(d.centre.y - 1.8) < 0.05) setDoorClosed(model, d.id, true);
+  // The balcony doors (closed in the live walkthrough by default) too: every way to the bedroom is a closed door.
+  const closed = new Set([lobbyDoor.id]);
+  for (const d of space.doors) if (Math.abs(d.centre.y - 1.8) < 0.05) { setDoorClosed(model, d.id, true); closed.add(d.id); }
   const from = { x: 3.2, y: 5.9 };
   assert.equal(findPath(model, from, { x: 9.9, y: 3.6 }), null, 'a closed door stops a walker who cannot open doors');
   const route = findPath(model, from, { x: 9.9, y: 3.6 }, { throughDoors: true });
   assert.ok(route);
-  assert.ok(doorsOnRoute(model, from, route).includes(lobbyDoor.id));
+  // Which closed door the route takes depends on where the rebuilt furniture stands; whichever
+  // it is, the walker knows it has to open it.
+  const passed = doorsOnRoute(model, from, route);
+  assert.ok(passed.length > 0 && passed.every((id) => closed.has(id)), JSON.stringify(passed));
 });
 
 test('Live Here offers what this reconstructed apartment can do, and nothing it cannot', () => {

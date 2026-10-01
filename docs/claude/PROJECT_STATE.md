@@ -75,10 +75,10 @@ MATTERS right now, verify against the live systems, not this file)
 
 ## Design Studio (branch `feat/design-studio`, rolling out 2026-09-30)
 
-- Five migrations `20260930090000`…`20260930095000` (foundation, dev catalog,
-  storage categories, billable products, shares, reconstruction). Unapplied
-  until the unified rollout; `scripts/design-studio/rls-check.mjs` proves them
-  on PGlite (131 checks).
+- Migrations `20260930090000`…`095000` and `20261001170000`…`200000` are all
+  APPLIED in production (the last four by hand runner SQL + ledger rows whose
+  `statements` point at the repo files). `scripts/design-studio/rls-check.mjs`
+  proves them on PGlite (171 checks).
 - Edge functions: `design-studio-model` and `design-studio-reconstruct`, which
   routes the three AI readings by path (`/`, `/floorplan`, `/design`) because the
   Free plan caps a project at 100 edge functions and production is at the cap
@@ -100,12 +100,77 @@ MATTERS right now, verify against the live systems, not this file)
   refuses unless storage is empty, writes an ids-only tombstone and cascades.
   Billing/usage rows are never touched. Interrupted deletions resume on the
   owner's next launcher visit.
-- Fidelity (`ds-recon-2`, branch `feat/design-studio-finish`): the model traces
+- Fidelity (`ds-recon-2`): the model traces
   every room/opening/piece in picture pixels; `sourceCamera.ts` fits each
   picture's camera (orthographic or perspective) and the plan is unprojected
   from the pixels (geometry `PIXELS`, else `ESTIMATE`). Match Reference View
   uses that fitted camera. A pictures reconstruction is labelled "From your
-  pictures" (`20261001180000` sets `provenance.origin` from the plan's purpose).
+  pictures" (`20261001180000` sets `provenance.origin` from the plan's purpose;
+  `20261001200000` gives the public share a coarse `origin`, so its note says
+  "rebuilt from pictures").
+- KNOWN LIMIT (measured on the real render): the reader's pixel traces are too
+  coarse to trust (camera fit rms ≈ 9–11% of image height vs the 2.5% trust
+  gate), so production readings fall back to the model's estimated plan
+  (labelled ESTIMATE; the reference panel says "aligned approximately"). The
+  layout is recognisable but not faithful (L-shape read as a rectangle).
+  ROOT CAUSE (2026-09-30): the camera is fitted AGAINST the reader's own
+  metres, so a wrong layout can never fit and the traces are thrown away.
+  FIX on branch `feat/design-studio-measured-frame` (69bc4a0e, stacked on #19,
+  NOT merged/deployed/applied): the browser measures an isometric picture's
+  frame at upload (`pictureGeometry.ts` → `pictureFrame.ts`, byte-identical in
+  `_shared`), stores `picture_geometry` + `plan_view_key` (migration
+  `20261004100000`, NOT applied), and the reader traces rooms on the top-down
+  plan view in the same single reading. Outline error replaces the fitted-camera
+  rms as the matched/approximate number (FIT_TRUST unchanged). Needs production
+  acceptance on the real fixture (a NEW upload — old rows have no frame).
+- PHOTOREAL / SOURCE FIDELITY (branch `feat/design-studio-photoreal`, 2026-10-01;
+  measured-frame + wave 1 merged in, frame migration renumbered `20261004100000`):
+  * Plan view was MIRRORED (measureAxes axis order); fixed — the axes keep the
+    picture's handedness (test). Frame also records the picture `background`.
+  * Reading `ds-recon-3`: objects carry `form`, `secondaryColor`, `frontPx`; on a
+    framed (aerial) picture objects are traced on their TOP face and lowered by
+    their height through the measured camera; facing from the front edge; frame
+    aligned on rooms+openings, then refined with the lowered pieces;
+    `fidelity.wallM` (picture's cut height) + `wallCutRatio` → `interiorWallM`;
+    `frameColor` → `state.frames`. Frame vs fitted-camera disagreement → fitted.
+  * Pieces keep what was seen: `ObjectInstance.shape` (size/form/secondary,
+    `objectShape.ts`; parametric pieces drawn at it, catalogue models scaled
+    within 0.7–1.45). A model is used only if it `looksLike` the seen piece.
+    Placement: settle into the reader's room, square, back to the wall (or the
+    room edge for railings), quarter-turn fallback; door zones only while the
+    doors between the rooms stay walkable; small pieces that would block a door
+    are left out (reported), essential ones never.
+  * Surfaces: `chooseSurfaceMaterial` picks imported PBR by pattern/words/colour
+    family (worn textures penalised, paint stays flat) and `tint` balances the
+    texture to the seen colour (albedo mean measured at load).
+  * Render: GTAO + MSAA HDR post (`postFx.ts`, HIGH tier live + all stills),
+    exposure 0.88, NW sun, light wall cut; source look = exact picture camera,
+    picture background (ground hidden), section cut rebuilt at wall/partition
+    heights, doors+glazing shown, ceiling fittings hidden. Download images
+    start with the picture-camera still. New procedural forms
+    (`proceduralForms.ts`): curved sofa, shell lounge/dining chairs, pedestal/
+    drum tables, leaf foliage, made bed, TV on stand.
+  * Local acceptance loop (harness + traced reading of the real picture) lives
+    in the session scratchpad only; production acceptance is the real model.
+- Wave 1 (#19: bundle ratchet 6.5 MiB, floor pattern, storage-sign refuses
+  DELETED, original preservation — its migration `20261001210000` IS applied)
+  is reconciled with main `aee8f77d` but blocked: every main deploy fails
+  Validate on Workstream B's own test "balance card: the non-refundable
+  disclosure is rendered" (B removed `mm_w_bal_disclosure` from
+  ServiceBalanceCard). Not ours to change; B notified.
+- Rendering fidelity (#17): HOMATCH-drawn procedural finishes
+  (`canvas/finishTextures.ts`: planks, herringbone, tile, stone, concrete,
+  carpet, paint, fabric, wood grain, leather — normal-mapped, per-tier size),
+  bevelled/soft concept blocks, PMREM RoomEnvironment light following time of
+  day, skirting, contact shadows. Floors carry a structured `pattern`; the
+  rebuild also derives it from the reader's own material words in six
+  languages (`floorPattern`). Render cost of the acceptance home: 832 draw
+  calls / 129k tris / 14 textures (before: 783 / 17k / 2). The 783-call
+  baseline (walls, paint faces, edges as separate meshes) is the real mobile
+  cost — not yet optimised.
+- Catalogue: still 56 `dev/*` procedural placeholders. No licensed mesh
+  library exists; the schema (`model_key`, `lods`, `license`, provenance) is
+  ready but empty — the main remaining fidelity gap.
 - AI COGS (`20261001190000`): the handlers priced from unset env rates, so every
   job was written as a silent 0. Now `metering.ts` prices through
   `ds_ai_cost_evidence` (the price book) and writes
@@ -117,7 +182,8 @@ MATTERS right now, verify against the live systems, not this file)
 - Living engine: `canvas/livingRuntime.ts` runs every interaction (declared by
   assets, permitted by capabilities); lights are a pool of 4/3/2 per tier
   (12 per-lamp lights halved the frame rate — measured).
-- Browser QA: `tests/browser/designStudio.qa.mjs` (324 checks; checkpoint 11
+- Browser QA: `tests/browser/designStudio.qa.mjs` (360+ checks, incl. on-screen
+  look direction and a render-cost budget; checkpoint 11
   runs the customer's acceptance render end to end with a hand-authored
   reading in place of the model).
 

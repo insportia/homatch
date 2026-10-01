@@ -36,6 +36,8 @@ export interface FloorPlanRecord {
   interpretation: { doc: FloorPlanDocument; dimensionStrings: DimensionString[]; readVersion: string } | null;
   interpretation_error: string | null;
   corrections: Array<{ at: string; decisions: ReviewDecisions; anchors: Anchor[]; ceilingM: number | null }>;
+  /** A reference picture's measured frame (pictureFrame.ts), when it is an isometric cut-away. */
+  picture_geometry?: unknown;
   created_at: string;
 }
 

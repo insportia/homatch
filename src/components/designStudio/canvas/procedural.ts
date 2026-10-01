@@ -23,6 +23,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { applyFinish, patternOfSlot } from './finishTextures.ts';
+import { curvedSofa, foliage, frameLounge, pot, roundTable, screenOnStand, shellChair, shellLounge } from './proceduralForms.ts';
 import type { CatalogAsset, ProceduralKind } from '@/lib/designStudio/catalog';
 import type { InteractionSpec } from '@/lib/designStudio/interactions';
 
@@ -203,7 +204,8 @@ function mergeStatic(g: THREE.Group) {
   }
 }
 
-export function buildProcedural(kind: ProceduralKind, asset: CatalogAsset, colors: SlotColors): THREE.Group {
+/** `form` is what a picture showed beyond the kind (objectShape.ts): a curved sofa, a shell chair, a round table. */
+export function buildProcedural(kind: ProceduralKind, asset: CatalogAsset, colors: SlotColors, form: string | null = null): THREE.Group {
   const g = new THREE.Group();
   const specs: InteractionSpec[] = [];
   const handleMat = material('#8a8d92', 0.35, 0.6);
@@ -232,6 +234,11 @@ export function buildProcedural(kind: ProceduralKind, asset: CatalogAsset, color
 
   switch (kind) {
     case 'SOFA': {
+      if (form === 'CURVED' || form === 'ROUNDED') {
+        curvedSofa(g, W, D, H, mat('body', '#cfc6b8'), mat('cushion', '#c9c4bc'));
+        specs.push(seatsAlong(W - 0.4, 0.7, 1.12, 0.05));
+        break;
+      }
       const body = mat('body', '#cfc6b8');
       const leg = mat('legs', '#3b3128');
       const seatH = 0.42;
@@ -253,6 +260,16 @@ export function buildProcedural(kind: ProceduralKind, asset: CatalogAsset, color
       break;
     }
     case 'ARMCHAIR': {
+      if (form === 'SHELL' || form === 'ROUNDED' || form === 'CURVED') {
+        shellLounge(g, W, D, H, mat('body', '#b9a58a'), mat('legs', '#5b4432'));
+        specs.push(seatsAlong(W, 1, 1.05, 0.02));
+        break;
+      }
+      if (form === 'STRAIGHT' && colors.legs && colors.legs !== slot('legs')?.defaultColor) {
+        frameLounge(g, W, D, H, mat('body', '#b9a58a'), mat('legs', '#5b4432'));
+        specs.push(seatsAlong(W, 1, 1.05, 0.02));
+        break;
+      }
       const body = mat('body', '#b9a58a');
       legs(g, W, D, 0.12, 0.08, mat('legs', '#5b4432'));
       g.add(soft(W - 0.02, 0.3, D, 0, 0.12, 0, body, 0.07));
@@ -290,6 +307,10 @@ export function buildProcedural(kind: ProceduralKind, asset: CatalogAsset, color
       break;
     }
     case 'ROUND_TABLE': {
+      if (form === 'ROUND' || form === 'OVAL') {
+        roundTable(g, W, D, H, mat('top', '#e6e2dc'), mat('legs', H < 0.55 ? '#e6e2dc' : '#e6e2dc'));
+        break;
+      }
       const r = Math.min(W, D) / 2;
       g.add(cylinder(0.05, H - 0.04, 0, 0, 0, mat('legs', '#6d5238')));
       g.add(cylinder(r * 0.45, 0.02, 0, 0, 0, mat('legs', '#6d5238')));
@@ -302,6 +323,14 @@ export function buildProcedural(kind: ProceduralKind, asset: CatalogAsset, color
       break;
     }
     case 'TV_UNIT': {
+      if (H > 0.9) {
+        // A screen on its own stand, not a console.
+        const stand = screenOnStand(g, W, D, H, material('#111214', 0.4, 0.3));
+        const screen = part(g, 'screen');
+        screen.add(stand.panel);
+        specs.push({ id: 'tv', kind: 'SWITCH', role: 'TV', durationMs: 450, effects: [{ id: 'picture', type: 'SCREEN', part: 'screen', color: '#ffffff', intensity: 1.1 }] });
+        break;
+      }
       // A low console on slim legs: separate fronts with shadow reveals, a top that overhangs.
       const body = mat('body', '#8e6f50');
       const legM = mat('legs', '#2a2a2a');
@@ -387,21 +416,45 @@ export function buildProcedural(kind: ProceduralKind, asset: CatalogAsset, color
       break;
     }
     case 'BED': {
+      // A made bed as a picture shows one: an oak frame, a white mattress, a
+      // duvet in the bedding's colour draped over the sides, a folded sheet at
+      // the head, a throw across the foot, sleep pillows and cushions, and an
+      // upholstered headboard.
       const frame = mat('body', '#a88b6c');
+      const linenColor = c('linen', '#efeae2');
       const linen = mat('linen', '#efeae2');
-      g.add(box(W, 0.3, D - 0.08, 0, 0.05, -0.04, frame));
-      g.add(soft(W - 0.06, 0.22, D - 0.2, 0, 0.35, -0.08, linen, 0.07)); // mattress
-      g.add(soft(W, H, 0.08, 0, 0, D / 2 - 0.04, frame, 0.035)); // headboard at the rear
+      const lin = new THREE.Color(linenColor);
+      const white = material('#f4f3f0', 0.92);
+      const lightLinen = lin.getHSL({ h: 0, s: 0, l: 0 }).l > 0.82;
+      const throwMat = material(`#${lin.clone().lerp(new THREE.Color('#6d7176'), 0.38).getHexString()}`, 0.95);
+      applyFinish(throwMat, 'FABRIC', FINISH_SIZE, false, FINISH_ANISO);
+      const head = material(`#${lin.clone().lerp(new THREE.Color('#a3a6aa'), 0.3).getHexString()}`, 0.9);
+      applyFinish(head, 'FABRIC', FINISH_SIZE, false, FINISH_ANISO);
+      const top = 0.55; // mattress top
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.add(box(0.05, 0.08, 0.05, sx * (W / 2 - 0.06), 0, sz * (D / 2 - 0.12), frame));
+      g.add(soft(W, 0.24, D - 0.08, 0, 0.08, -0.04, frame, 0.02)); // frame
+      g.add(soft(W - 0.08, top - 0.33, D - 0.2, 0, 0.33, -0.06, white, 0.05)); // mattress
+      g.add(soft(W + 0.02, Math.min(H - 0.1, 0.62), 0.09, 0, top - 0.12, D / 2 - 0.045, head, 0.04)); // upholstered headboard
       // The duvet and pillows are parts: a bed can be made, or slept in.
-      const duvetD = (D - 0.2) * 0.72;
-      const duvet = part(g, 'duvet', 0, 0.57, -0.08 - (D - 0.2) * 0.14);
-      duvet.add(soft(W - 0.02, 0.06, duvetD, 0, 0, 0, linen, 0.03));
+      const duvetD = (D - 0.2) * 0.74;
+      const duvet = part(g, 'duvet', 0, top, -0.06 - (D - 0.2) * 0.13);
+      duvet.add(soft(W + 0.04, 0.08, duvetD, 0, 0, 0, linen, 0.04));
+      for (const sx of [-1, 1]) duvet.add(soft(0.04, 0.2, duvetD, sx * (W / 2 + 0.01), -0.17, 0, linen, 0.018)); // over the sides
+      duvet.add(soft(W + 0.05, 0.1, 0.24, 0, 0.005, duvetD / 2 - 0.1, lightLinen ? linen : white, 0.04)); // folded sheet
+      duvet.add(soft(W + 0.08, 0.04, Math.min(0.55, duvetD * 0.38), 0, 0.075, -duvetD / 2 + Math.min(0.55, duvetD * 0.38) / 2, throwMat, 0.02)); // throw
       const pillows = W > 1.2 ? 2 : 1;
       const pillowParts: string[] = [];
+      const pw = Math.min(0.62, W / pillows - 0.08);
       for (let i = 0; i < pillows; i += 1) {
         const x = pillows === 1 ? 0 : (i === 0 ? -1 : 1) * (W / 4);
-        const p = part(g, `pillow-${i + 1}`, x, 0.57, D / 2 - 0.3);
-        p.add(soft(Math.min(0.6, W / pillows - 0.1), 0.1, 0.36, 0, 0, 0, linen, 0.05));
+        const p = part(g, `pillow-${i + 1}`, x, top, D / 2 - 0.28);
+        const pillow = soft(pw, 0.13, 0.38, 0, 0, 0, white, 0.06);
+        pillow.rotation.x = -0.18;
+        p.add(pillow);
+        // A cushion in front of it, leaning back.
+        const cushion = soft(pw * 0.62, 0.3, 0.1, 0, 0.06, -0.24, lightLinen ? throwMat : linen, 0.05);
+        cushion.rotation.x = -0.42;
+        p.add(cushion);
         pillowParts.push(`pillow-${i + 1}`);
       }
       const messy: Record<string, { p?: [number, number, number]; r?: [number, number, number]; s?: [number, number, number] }> = {
@@ -439,15 +492,26 @@ export function buildProcedural(kind: ProceduralKind, asset: CatalogAsset, color
     }
     case 'PLANT':
     case 'PLANTER': {
-      const potH = kind === 'PLANTER' ? H * 0.55 : H * 0.28;
-      g.add(cylinder(Math.min(W, D) * 0.38, potH, 0, 0, 0, mat('pot', '#c8b8a2')));
-      const leaves = new THREE.Mesh(new THREE.IcosahedronGeometry(Math.min(W, D) * 0.5, 1), mat('leaves', '#56724a'));
-      leaves.scale.set(1, (H - potH) / Math.min(W, D), 1);
-      leaves.position.set(0, potH + (H - potH) / 2, 0);
-      g.add(leaves);
+      // Leaves, not a blob: a crown of individual leaves on stems over the pot.
+      const leafColor = c('leaves', '#56724a');
+      if (kind === 'PLANTER' && W > D * 1.6) {
+        const boxH = Math.min(0.5, H * 0.45);
+        g.add(box(W, boxH, D, 0, 0, 0, mat('pot', '#b8735a')));
+        g.add(foliage(W, H - boxH + 0.08, D * 1.2, boxH - 0.08, leafColor, { spread: 'ROW', leaf: Math.min(0.16, D * 0.35), count: Math.round(60 + W * 70) }));
+        break;
+      }
+      const potH = kind === 'PLANTER' ? H * 0.5 : Math.min(0.42, H * 0.3);
+      const r = Math.min(W, D) * (kind === 'PLANTER' ? 0.42 : 0.3);
+      g.add(pot(r, potH, mat('pot', '#c8b8a2')));
+      g.add(foliage(W, H - potH, D, potH - 0.04, leafColor));
       break;
     }
     case 'CHAIR': {
+      if (form === 'SHELL') {
+        shellChair(g, W, D, H, mat('body', '#a4845f'), mat('legs', '#c49a6c'));
+        specs.push(seatsAlong(W, 1, 1.18, 0.02));
+        break;
+      }
       // A chair, not a box: slim tapered legs, a moulded seat and a rounded backrest.
       const body = mat('body', '#a4845f');
       const leg = mat('legs', '#3b3128');

@@ -57,7 +57,8 @@ test('the scene loads a catalogue model in place of its placeholder, shares it s
   assert.equal(modelKeyFor(asset, 'LOW'), 'design-studio/catalog/public/models/a/b/x.lod1.glb', 'a LOW-quality device: the lighter level of the SAME asset');
   assert.equal(modelKeyFor({ modelKey: 'k', lods: [] }, 'LOW'), 'k', 'no LOD: the model itself');
   const sc = fs.readFileSync(path.join(process.cwd(), 'src/components/designStudio/canvas/SceneController.ts'), 'utf8');
-  assert.match(sc, /if \(asset && key\) this\.attachCatalogModel\(obj\.instanceId, g, asset, key\);/);
+  // The model in place of its placeholder; a piece rebuilt from a picture is scaled toward its seen size (bounded, objectShape.ts).
+  assert.match(sc, /if \(asset && key\) this\.attachCatalogModel\(obj\.instanceId, g, asset, key, obj\.shape && own \? modelScale\(own, obj\.shape\) : null\);/);
   assert.match(sc, /if \(this\.objectsById\.get\(instanceId\) !== holder\) return;/, 'a late load for a removed piece is dropped');
   assert.match(sc, /if \(o\.userData\.catalogShared\) return;/, 'shared model resources are never disposed with one instance');
   assert.match(sc, /inst\.position\.set\(-c\.x, -box\.min\.y, -c\.z\);/, 'normalised: footprint centred, lowest point on the floor');

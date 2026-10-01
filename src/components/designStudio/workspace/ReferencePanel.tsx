@@ -16,6 +16,7 @@ import type { SceneController } from '@/components/designStudio/canvas/SceneCont
 import { FIT_TRUST, PX_PER_M } from '@/lib/designStudio/reconstructRead';
 import { referenceCamera } from '@/lib/designStudio/reconstruction';
 import { scaleFit, viewForCanvas } from '@/lib/designStudio/sourceCamera';
+import { readFrame } from '@/lib/designStudio/pictureFrame';
 import type { CanonicalSpace, SpatialSourceRecord } from '@/lib/designStudio/types';
 import { signedUrls } from '@/services/designStudio/files';
 import type { FloorPlanRecord } from '@/services/designStudio/floorplans';
@@ -37,6 +38,38 @@ export function useReconstructionFor(projectId: string, source: SpatialSourceRec
     return () => { cancelled = true; };
   }, [projectId, source.id]);
   return found;
+}
+
+/** How the picture's own camera sits over this space: its fit (scaled to a calibrated space) and the plan's centre. */
+function pictureCamera(data: { recon: ReconstructionRecord; refs: FloorPlanRecord[] }, source: SpatialSourceRecord, index: number) {
+  // The plan was read at PX_PER_M; a calibrated space scales its positions.
+  const mpp = (source.canonical as CanonicalSpace | null)?.metresPerPx;
+  const scale = data.recon.plan_source_id === source.id || !mpp ? 1 : mpp * PX_PER_M;
+  const analysis = data.recon.analysis;
+  const fitted = analysis?.cameras.find((c) => c.image === index)?.fit ?? null;
+  const fit = fitted ? scaleFit(fitted, scale) : null;
+  const pts = (analysis?.rooms ?? []).flatMap((r) => r.polygon);
+  const xs = pts.map((p) => p[0]); const ys = pts.map((p) => p[1]);
+  const centre: [number, number] = pts.length ? [((Math.min(...xs) + Math.max(...xs)) / 2) * scale, ((Math.min(...ys) + Math.max(...ys)) / 2) * scale] : [0, 0];
+  const fid = analysis?.fidelity?.image === index ? analysis.fidelity : null;
+  const cut = fid?.wallM ? { exteriorM: fid.wallM * scale, interiorM: (fid.interiorWallM ?? fid.wallM) * scale } : null;
+  const background = readFrame(data.refs[index]?.picture_geometry)?.background ?? null;
+  return { scale, fit, centre, cut, background };
+}
+
+/**
+ * A still exactly from the picture's camera, at the picture's own shape (the
+ * longer edge `edge` pixels): what the customer compares with their picture.
+ * Null when HOMATCH has no fitted camera for it.
+ */
+export function pictureStill(data: { recon: ReconstructionRecord; refs: FloorPlanRecord[] } | null, source: SpatialSourceRecord, edge = 2560, index = 0) {
+  if (!data) return null;
+  const { fit, centre, cut, background } = pictureCamera(data, source, index);
+  if (!fit) return null;
+  const width = fit.aspect >= 1 ? edge : Math.round(edge * fit.aspect);
+  const height = fit.aspect >= 1 ? Math.round(edge / fit.aspect) : edge;
+  const pose = viewForCanvas(fit, width, height, centre);
+  return pose ? { pose, cut, background, width, height } : null;
 }
 
 export function ReferencePanel({ data, source, controller, onClose }: {
@@ -77,7 +110,9 @@ export function ReferencePanel({ data, source, controller, onClose }: {
     if (fit) {
       const el = controller.renderer.domElement;
       const view = viewForCanvas(fit, el.clientWidth, el.clientHeight, centre);
-      if (view) { controller.matchSourceView(view); return; }
+      // Shown as the picture shows it: every wall, on the picture's own background.
+      const { cut, background } = pictureCamera(data, source, index);
+      if (view) { controller.matchSourceView(view, { background, cut }); return; }
     }
     if (camera) controller.restore(camera);
   };

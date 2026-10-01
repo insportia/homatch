@@ -113,6 +113,9 @@ export interface CatalogMaterial {
   provenance: Provenance;
   isPlaceholder: boolean;
   active: boolean;
+  /** What an imported material is called and looks like (search words, colour families): what matching reads. */
+  aliases?: string[];
+  colorFamilies?: string[];
 }
 
 export interface Palette {
@@ -189,5 +192,7 @@ export function materialFromRow(r: Record<string, unknown>): CatalogMaterial {
     provenance: r.provenance as Provenance,
     isPlaceholder: !!r.is_placeholder,
     active: !!r.active,
+    aliases: arr<string>(r.search_aliases),
+    colorFamilies: arr<string>(r.color_families),
   };
 }

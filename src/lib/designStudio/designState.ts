@@ -9,6 +9,8 @@
 // Everything here is plain JSON so it can be persisted, diffed, validated
 // and replayed deterministically.
 
+import { normalizeShape, type ObjectShape } from './objectShape.ts';
+
 export const DESIGN_STATE_SCHEMA = 1 as const;
 
 export interface Vec3 { x: number; y: number; z: number }
@@ -55,6 +57,12 @@ export interface ObjectInstance {
   colorOverride: string | null;
   locked: boolean;
   provenance?: ObjectProvenance;
+  /**
+   * What a picture showed of this piece (size, form, second colour), when it
+   * was rebuilt from one: it is drawn and collided at that size. Optional;
+   * designs without it draw the catalogue piece as it is.
+   */
+  shape?: ObjectShape;
 }
 
 function normalizeProvenance(raw: unknown): ObjectProvenance | undefined {
@@ -90,6 +98,12 @@ export interface SurfaceAssignment {
    * designs saved before it existed simply have none.
    */
   pattern?: 'WOOD_PLANK' | 'WOOD_HERRINGBONE' | 'TILE' | 'STONE' | 'CONCRETE' | 'CARPET' | null;
+  /**
+   * The colour a picture showed this surface in, when an imported (textured)
+   * material was chosen for it: the texture is balanced to it, so herringbone
+   * oak is the oak tone the customer saw. Optional; cleared by any new choice.
+   */
+  tint?: string | null;
   locked: boolean;
 }
 
@@ -126,6 +140,8 @@ export interface DesignState {
   locks: LockSet;
   /** Uploaded models only: identified furniture parts the customer has hidden (`part:<node>`). */
   hiddenParts: string[];
+  /** The colour of the window and glazing frames, when a picture showed it (black steel, white uPVC…). */
+  frames?: string | null;
 }
 
 export function emptyDesignState(): DesignState {
@@ -158,8 +174,9 @@ export function normalizeDesignState(raw: unknown): DesignState {
     objects: Array.isArray(r.objects)
       ? r.objects.filter((o) => o && typeof o.instanceId === 'string' && typeof o.assetId === 'string').map((o) => {
         const provenance = normalizeProvenance(o.provenance);
-        const { provenance: _drop, ...rest } = o;
-        return provenance ? { ...rest, provenance } : rest;
+        const shape = normalizeShape(o.shape);
+        const { provenance: _drop, shape: _dropShape, ...rest } = o;
+        return { ...rest, ...(provenance ? { provenance } : {}), ...(shape ? { shape } : {}) };
       })
       : [],
     surfaces: r.surfaces && typeof r.surfaces === 'object' ? r.surfaces : {},
@@ -170,5 +187,6 @@ export function normalizeDesignState(raw: unknown): DesignState {
     hiddenParts: Array.isArray(r.hiddenParts)
       ? [...new Set(r.hiddenParts.filter((p): p is string => typeof p === 'string' && /^part:\d{1,6}$/.test(p)))].slice(0, 5000)
       : [],
+    ...(typeof r.frames === 'string' && /^#[0-9a-f]{6}$/i.test(r.frames) ? { frames: r.frames.toLowerCase() } : {}),
   };
 }

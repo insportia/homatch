@@ -20,9 +20,9 @@ const phPlan = (id) => {
   return { c, p: c ? P.plan(kind, id, s.asset, s.files, c) : null };
 };
 
-test('Poly Haven: materials and environments only — its models are not selected', () => {
-  assert.equal(P.classify('MODEL', 'Furniture/Seating', 'ArmChair_01'), null, 'objects come from Blendkit');
-  assert.equal(P.plan('MODEL', 'ArmChair_01', PH.ArmChair_01.asset, PH.ArmChair_01.files, { canonicalCategory: 'OBJECT.FURNITURE', canonicalSubcategory: 'SEATING' }).refusal, 'provider policy: physical objects come from Blendkit');
+test('Poly Haven: a whole-provider listing is materials and environments only — no model is ever shelved by category', () => {
+  assert.equal(P.classify('MODEL', 'Furniture/Seating', 'ArmChair_01'), null, 'objects enter only when NAMED (classifyModel), never by listing');
+  assert.deepEqual(Object.keys(P.TYPES).sort(), ['hdris', 'textures']);
   assert.equal(P.classify('MATERIAL', 'Wood/Bark/Pine', 'pine_bark'), null);
 });
 
@@ -175,4 +175,34 @@ test('named discovery: each adapter asks for ONE asset per id, by id, and files 
   assert.equal(ph.found[0].kind, 'MATERIAL');
   assert.deepEqual(ph.missing, [{ id: 'no_such_asset', reason: 'not listed by Poly Haven' }]);
   assert.ok(P.polyhaven.idPattern.test('anniversary_lounge') && !P.polyhaven.idPattern.test('a/b'));
+});
+
+test('Poly Haven objects: only when NAMED; filed by name; the original bundle is private', async () => {
+  assert.ok(!Object.keys(P.TYPES).includes('models'), 'a whole-provider discovery never lists a model');
+  const shelf = (n) => P.classifyModel({ name: n })?.canonicalSubcategory ?? null;
+  assert.deepEqual(
+    ['Sofa 01', 'Arm Chair 01', 'Modern Coffee Table 01', 'Painted Wooden Cabinet', 'Modern Ceiling Lamp 01', 'Potted Plant 02', 'Ceramic Vase 01', 'Toy Robot'].map(shelf),
+    ['SOFA', 'ARMCHAIR', 'COFFEE_TABLE', 'CABINET', 'CEILING_LIGHT', 'PLANT', 'VASE', null],
+  );
+  assert.deepEqual(P.classifyModel({ name: 'Arm Chair 01' }), { canonicalCategory: 'OBJECT.FURNITURE', canonicalSubcategory: 'ARMCHAIR' });
+
+  const info = { type: 2, name: 'Arm Chair 01', category: '', categories: ['furniture', 'seating'], tags: ['chair'], files_hash: 'h', authors: { 'Kirill Sannikov': 'All' } };
+  const files = { gltf: { '1k': { gltf: { url: 'https://dl.polyhaven.org/a/ArmChair_01_1k.gltf', size: 2643, md5: 'a'.repeat(32), include: {
+    'ArmChair_01.bin': { url: 'https://dl.polyhaven.org/a/ArmChair_01.bin', size: 154012, md5: 'b'.repeat(32) },
+    'textures/Armchair_01_diff_1k.jpg': { url: 'https://dl.polyhaven.org/a/d.jpg', size: 184246, md5: 'c'.repeat(32) },
+    'textures/Armchair_01_nor_gl_1k.jpg': { url: 'https://dl.polyhaven.org/a/n.jpg', size: 289916, md5: 'd'.repeat(32) },
+    'textures/Armchair_01_arm_1k.jpg': { url: 'https://dl.polyhaven.org/a/o.jpg', size: 138327, md5: 'e'.repeat(32) },
+  } } } } };
+  const r = await P.polyhaven.discoverIds(['ArmChair_01'], async () => info);
+  assert.equal(r.found[0].kind, 'MODEL');
+  assert.equal(r.found[0].canonical.canonicalSubcategory, 'ARMCHAIR');
+  const plan = P.plan('MODEL', 'ArmChair_01', { ...info, thumbnail_url: 'https://cdn.polyhaven.com/t.png' }, files, r.found[0].canonical);
+  assert.equal(plan.refusal, null);
+  const src = plan.files.filter((f) => ['GLTF', 'GEOMETRY', 'BASE_COLOR', 'NORMAL', 'ORM'].includes(f.role));
+  assert.deepEqual(src.map((f) => f.role).sort(), ['BASE_COLOR', 'GEOMETRY', 'GLTF', 'NORMAL', 'ORM']);
+  assert.ok(src.every((f) => f.delivery === 'restricted'), 'the original glTF bundle is never public');
+  assert.deepEqual(src.map((f) => f.relPath).filter((p) => p !== 'ArmChair_01_1k.gltf').sort(), Object.keys(files.gltf['1k'].gltf.include).sort(), 'every file the glTF references is planned at the path it references');
+  assert.equal(plan.files.find((f) => f.role === 'THUMBNAIL').delivery, 'public');
+  assert.match(P.plan('MODEL', 'x', info, { gltf: { '1k': { gltf: { url: 'u', size: 1, include: { '../evil.bin': { url: 'u', size: 1 } } } } } }, r.found[0].canonical).refusal, /unsafe path/);
+  assert.match(P.plan('MODEL', 'x', info, {}, r.found[0].canonical).refusal, /no 1k glTF bundle/);
 });

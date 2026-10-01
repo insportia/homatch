@@ -1,9 +1,12 @@
 // HOMATCH DESIGN STUDIO — the Poly Haven provider adapter (CC0).
 //
 // PROVIDER POLICY (owner decision): Poly Haven supplies the catalogue's
-// PBR MATERIALS and HDRI ENVIRONMENTS. Physical residential objects —
-// furniture, appliances, fixtures, decor — come from Blendkit, through its
-// own adapter; Poly Haven models are therefore not selected at all.
+// PBR MATERIALS and HDRI ENVIRONMENTS. Physical residential objects come from
+// Blendkit by default, so a whole-provider discovery never lists Poly Haven
+// models. A Poly Haven OBJECT enters only when it is NAMED (bounded discovery
+// by id, owner-approved 2026-10-01 while Blendkit's cloud access is blocked):
+// its original glTF bundle is stored private, and the scene loads only the
+// optimised runtime GLB.
 //
 // Everything Poly Haven publishes is CC0: redistributable, no attribution
 // required, so its files may be delivered publicly (delivery class PUBLIC).
@@ -16,12 +19,15 @@ import {
   type AssetKind, type AssetPlan, type Canonical, type Delivery, type Discovered, type License, type Naming, type PlannedFile, type ProviderAdapter, type Role,
   cleanSourceName, COLORS, contentTypeOf, environmentName, normalizeName, qualifiersFor, STYLE_WORDS, titleCase, words,
 } from '../catalogSource.ts';
+import { FAMILY } from './blendkit.ts';
 
 export const PROVIDER = 'polyhaven';
 /** Materials and environments; objects come from Blendkit. A different policy is a different version. */
 export const POLICY = 'polyhaven-materials-environments-v1';
 const API = 'https://api.polyhaven.com';
 const DELIVERY: Delivery = 'public';
+/** A model's original bundle: staff and the importer only (the browser gets the optimised runtime GLB). */
+const SOURCE_DELIVERY: Delivery = 'restricted';
 
 export const LICENSE: License = {
   licenseClass: 'CC0',
@@ -121,6 +127,29 @@ export function classify(kind: AssetKind, category: string, _sourceAssetId: stri
   return null;
 }
 
+/**
+ * A named Poly Haven object → its HOMATCH shelf, from what its NAME says it is
+ * (first match wins; specific before general). Families are the catalogue's
+ * canonical ones (the same table Blendkit objects use).
+ */
+const MODEL_RULES: Array<[RegExp, string]> = [
+  [/\b(sofa|couch|settee)\b/, 'SOFA'], [/\b(arm ?chair|lounge chair)\b/, 'ARMCHAIR'], [/\bcoffee table\b/, 'COFFEE_TABLE'],
+  [/\bdining table\b/, 'DINING_TABLE'], [/\b(side|end) table\b/, 'SIDE_TABLE'], [/\bconsole table\b/, 'CONSOLE_TABLE'], [/\bdesk\b/, 'DESK'],
+  [/\bottoman\b/, 'OTTOMAN'], [/\bbench\b/, 'BENCH'], [/\bbar (stool|chair)\b/, 'BAR_STOOL'], [/\bchair\b/, 'CHAIR'],
+  [/\b(cabinet|cupboard|sideboard)\b/, 'CABINET'], [/\b(bookcase|bookshelf)\b/, 'BOOKCASE'], [/\bshel(f|ves|ving)\b/, 'SHELVING'], [/\bwardrobe\b/, 'WARDROBE'],
+  [/\bchandelier\b/, 'CHANDELIER'], [/\b(ceiling (lamp|light)|pendant)\b/, 'CEILING_LIGHT'], [/\bfloor lamp\b/, 'FLOOR_LAMP'],
+  [/\b(table|desk) lamp\b/, 'TABLE_LAMP'], [/\b(wall lamp|sconce)\b/, 'WALL_LIGHT'],
+  [/\bplanter\b/, 'PLANTER'], [/\b(potted plant|plant)\b/, 'PLANT'], [/\bvase\b/, 'VASE'], [/\bmirror\b/, 'MIRROR'], [/\bbed\b/, 'BED'], [/\btable\b/, 'TABLE'],
+];
+
+export function classifyModel(asset: Pick<PhAsset, 'name'>): Canonical | null {
+  const n = String(asset.name ?? '').toLowerCase().replace(/[_-]+/g, ' ');
+  for (const [re, sub] of MODEL_RULES) {
+    if (re.test(n)) return FAMILY[sub] ? { canonicalCategory: FAMILY[sub], canonicalSubcategory: sub } : null;
+  }
+  return null;
+}
+
 interface FileEntry { url: string; size: number; md5?: string; include?: Record<string, unknown> }
 const entry = (v: unknown): FileEntry | null => {
   const o = v as FileEntry | null;
@@ -151,11 +180,27 @@ export function roleOfMap(path: string): Role | null {
 export function plan(kind: AssetKind, sourceAssetId: string, asset: PhAsset, files: Record<string, unknown>, canonical: Canonical): AssetPlan {
   const out: PlannedFile[] = [];
   const seen = new Set<string>();
-  const add = (f: Omit<PlannedFile, 'delivery'>) => { if (!seen.has(f.relPath)) { seen.add(f.relPath); out.push({ ...f, delivery: DELIVERY }); } };
+  const add = (f: Omit<PlannedFile, 'delivery'>, delivery: Delivery = DELIVERY) => { if (!seen.has(f.relPath)) { seen.add(f.relPath); out.push({ ...f, delivery }); } };
   let resolutions: Array<'1k' | '2k' | '4k'> = ['1k', '2k'];
   let refusal: string | null = null;
-  if (kind === 'MODEL') refusal = 'provider policy: physical objects come from Blendkit';
-  else if (kind === 'ENVIRONMENT') {
+  if (kind === 'MODEL') {
+    // Only named objects reach here (a full discovery lists no models). The 1K bundle is the source;
+    // the runtime GLB and its LOD are derived from it, and the bundle itself stays private.
+    resolutions = ['1k'];
+    const g = entry(((files.gltf ?? {}) as Record<string, Record<string, unknown>>)['1k']?.gltf);
+    if (!g) refusal = 'no 1k glTF bundle';
+    else {
+      add({ role: 'GLTF', resolution: '1k', relPath: `${sourceAssetId}_1k.gltf`, sourceUrl: g.url, bytes: g.size, md5: g.md5 ?? null, contentType: contentTypeOf('x.gltf') }, SOURCE_DELIVERY);
+      for (const [path, v] of Object.entries(g.include ?? {})) {
+        const e = entry(v);
+        const role = roleOfMap(path);
+        if (!e) continue;
+        if (path.includes('..') || path.startsWith('/')) { refusal = 'unsafe path in bundle'; continue; }
+        if (!role) { refusal = `unrecognised file in bundle: ${path}`; continue; }
+        add({ role, resolution: role === 'GEOMETRY' ? null : '1k', relPath: path, sourceUrl: e.url, bytes: e.size, md5: e.md5 ?? null, contentType: contentTypeOf(path) }, SOURCE_DELIVERY);
+      }
+    }
+  } else if (kind === 'ENVIRONMENT') {
     if (HDRI_4K_SUBCATEGORIES.has(canonical.canonicalSubcategory)) resolutions = ['1k', '2k', '4k'];
     const hdri = (files.hdri ?? {}) as Record<string, Record<string, unknown>>;
     for (const r of resolutions) {
@@ -291,8 +336,16 @@ export const polyhaven: ProviderAdapter<PhAsset> = {
     for (const id of ids) {
       let a: PhAsset;
       try { a = await fetchJson(`${API}/info/${encodeURIComponent(id)}`) as PhAsset; } catch { missing.push({ id, reason: 'not listed by Poly Haven' }); continue; }
-      const type = typeOf[(a as { type?: number }).type ?? -1];
-      if (!type) { missing.push({ id, reason: 'not a material or an HDRI (objects come from Blendkit)' }); continue; }
+      const t = (a as { type?: number }).type ?? -1;
+      if (t === 2) {
+        // A NAMED object (type 2 = model): filed by what its name says it is.
+        const c = classifyModel(a);
+        if (!c) { missing.push({ id, reason: 'no HOMATCH shelf for this object' }); continue; }
+        found.push({ sourceAssetId: id, kind: 'MODEL', canonical: c, asset: a, naming: name('MODEL', a, c) });
+        continue;
+      }
+      const type = typeOf[t];
+      if (!type) { missing.push({ id, reason: 'not a material, an HDRI or a model' }); continue; }
       const kind = TYPES[type];
       const c = classify(kind, a.category, id);
       if (!c) { missing.push({ id, reason: 'no HOMATCH shelf for its category' }); continue; }

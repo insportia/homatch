@@ -31,7 +31,8 @@ export async function startFactory(input: { projectId: string; reconstructionId?
 export async function factoryStatus(jobId: string): Promise<FactoryPoll> {
   const r = await call<FactoryPoll>('factory-status', { jobId });
   // A transient error while polling is not a failed pass: keep waiting (the pass is bounded by time).
-  return r.data ?? { state: 'RUNNING', error: r.error };
+  const known = ['QUEUED', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED'];
+  return r.data && known.includes(r.data.state) ? r.data : { state: 'RUNNING', error: r.error };
 }
 
 export async function discardFactory(jobId: string): Promise<void> {
@@ -43,5 +44,7 @@ export async function visualQa(input: {
   objects: Array<{ key: string; type: string; label: string }>; rooms: Array<{ key: string; kind: string }>;
 }) {
   const r = await call<{ report: QaReport; ms: number; cost: { usd: number | null; basis: string }; tokens: unknown }>('qa', input);
-  return r.data;
+  // Only a real answer is an answer: anything else is "no check" (never a crash, never an invented report).
+  return r.data?.report && Array.isArray(r.data.report.errors) && r.data.report.scores
+    ? { ...r.data, cost: r.data.cost ?? { usd: null, basis: 'NOT_AVAILABLE' } } : null;
 }

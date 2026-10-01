@@ -436,7 +436,7 @@ export class SceneController {
   }
 
   /** Imported materials' texture maps, shared across surfaces; disposed with the scene. */
-  private pbr: PbrTextureLoader;
+  private pbr!: PbrTextureLoader; // set in buildLighting(), which the constructor calls
 
   private envTexture: THREE.Texture | null = null;
   private finishSize = 512;

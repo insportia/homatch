@@ -795,8 +795,18 @@ Deno.serve(async (req) => {
       }
 
       case 'admin_test_connection': {
+        /* Sanitized by construction: the mode, whether each secret is SET
+           (booleans — never a value, a prefix or a length), the capability
+           matrix, and how fresh HOMATCH's view of Meta is. */
         if (!me.is_admin) return json({ error: 'forbidden' }, 403);
+        const [{ data: lastSync }, { data: lastUsage }] = await Promise.all([
+          sb.from('meta_campaigns').select('last_synced_at').not('last_synced_at', 'is', null)
+            .order('last_synced_at', { ascending: false }).limit(1).maybeSingle(),
+          sb.from('meta_api_usage').select('observed_at').order('observed_at', { ascending: false }).limit(1).maybeSingle(),
+        ]);
         return json({
+          lastStatusSyncAt: lastSync?.last_synced_at ?? null,
+          lastUsageReportAt: lastUsage?.observed_at ?? null,
           mode,
           secretsConfigured: mode === 'REAL',
           webhookVerifyTokenConfigured: !!Deno.env.get('META_WEBHOOK_VERIFY_TOKEN'),

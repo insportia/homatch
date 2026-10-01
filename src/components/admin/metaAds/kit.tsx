@@ -71,3 +71,8 @@ export function JsonDetails({ label, value }: { label: string; value: unknown })
 export const MIN_REASON = 3;
 
 export const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e ?? ''));
+
+/** format.ago()'s customer keys → the admin's plain "N min ago" (no "Synced with Meta" prefix). */
+export const AGO: Record<string, string> = {
+  mm_w_ago_now: 'mm_a_ago_now', mm_w_ago_min: 'mm_a_ago_min', mm_w_ago_hour: 'mm_a_ago_hour', mm_w_ago_day: 'mm_a_ago_day',
+};

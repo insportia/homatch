@@ -6,14 +6,15 @@
 // slow down, above 75% only status is read, above 90% status every fifth
 // minute, and a regain time stops calls for that account until it passes.
 import React, { useCallback, useEffect, useState } from 'react';
-import { Loader2, RefreshCw } from 'lucide-react';
+import { CheckCircle2, Loader2, RefreshCw, ShieldAlert, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/db/supabase';
 import { pressureOf, type Pressure } from '@/lib/metaAds/rateLimit';
 import { cn } from '@/lib/utils';
-import { errorText, Panel, Stat } from './kit';
+import { ago } from '@/components/metaAds/workspace/format';
+import { AGO, errorText, Panel, Stat } from './kit';
 
 interface UsageRow { bucket: string; type: string; call_count: number; total_cputime: number; total_time: number; regain_minutes: number; tier: string | null; observed_at: string }
 
@@ -21,9 +22,98 @@ interface UsageRow { bucket: string; type: string; call_count: number; total_cpu
 export const maskBucket = (b: string) => (/^\d{5,}$/.test(b) ? `…${b.slice(-4)}` : b);
 
 const TONE: Record<Pressure, string> = {
-  NORMAL: 'text-[hsl(152_60%_32%)]', ELEVATED: 'text-[hsl(38_92%_38%)]', HIGH: 'text-[hsl(24_90%_42%)]',
+  NORMAL: 'text-[hsl(var(--success))]', ELEVATED: 'text-[hsl(var(--warning))]', HIGH: 'text-[hsl(var(--warning))]',
   CRITICAL: 'text-destructive', THROTTLED: 'text-destructive',
 };
+
+/** What admin_test_connection returns: booleans and timestamps, never a value. */
+interface Probe {
+  mode: 'REAL' | 'MOCK'; secretsConfigured: boolean; webhookVerifyTokenConfigured: boolean;
+  tokenEncryptionConfigured: boolean; redirectUriConfigured: boolean;
+  capabilities: { key: string; status: string; requirement?: string }[];
+  lastStatusSyncAt: string | null; lastUsageReportAt: string | null; checkedAt: string;
+}
+/** HOMATCH's view of Meta older than this is stale (status sync runs every minute). */
+const PROBE_STALE_MS = 20 * 60_000;
+
+/**
+ * The integration truth from the server: mode, whether each credential is SET,
+ * the capability matrix, and how fresh the status sync and Meta's usage
+ * reports are. Rendered from booleans only — there is nothing secret to show.
+ */
+export function IntegrationProbe() {
+  const { t } = useLanguage();
+  const [probe, setProbe] = useState<Probe | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const run = useCallback(async () => {
+    setBusy(true); setFailed(false);
+    try {
+      const { data, error } = await supabase.functions.invoke('meta-ads-api', { body: { action: 'admin_test_connection' } });
+      if (error) throw error;
+      setProbe(data as Probe);
+    } catch { setFailed(true); } finally { setBusy(false); }
+  }, []);
+  useEffect(() => { void run(); }, [run]);
+  const now = Date.now();
+  const when = (iso: string | null) => {
+    if (!iso) return { text: t('mm_a_api_never'), stale: true };
+    const a = ago(iso, now);
+    return { text: a ? t(AGO[a.key] ?? 'mm_a_ago_min', { n: a.n }) : '—', stale: now - Date.parse(iso) > PROBE_STALE_MS };
+  };
+  const flag = (label: string, on: boolean, key: string) => (
+    <li key={key} data-mm-probe={key} data-mm-probe-value={on ? 'set' : 'missing'} className="flex items-center justify-between gap-3 border-b border-border/60 py-1 last:border-0">
+      <span className="min-w-0 break-words">{label}</span>
+      <b className={cn('shrink-0 whitespace-nowrap', on ? 'text-[hsl(var(--success))]' : 'text-destructive')}>{on ? t('mm_a_api_set') : t('mm_a_api_missing')}</b>
+    </li>
+  );
+  const sync = probe ? when(probe.lastStatusSyncAt) : null;
+  const usage = probe ? when(probe.lastUsageReportAt) : null;
+  return (
+    <div data-mm-probe-panel="">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-semibold text-foreground">{t('admin_mads_integration')}</h2>
+        <Button size="sm" variant="outline" onClick={() => void run()} disabled={busy} className="gap-1.5">
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+          {t('admin_mads_test_conn')}
+        </Button>
+      </div>
+      {failed && <p className="mt-2 text-sm text-destructive">{t('mm_a_load_failed')}</p>}
+      {probe && (
+        <div className="mt-3 grid gap-4 text-[13px] md:grid-cols-2">
+          <div className="min-w-0">
+            <p className="mb-1">{t('admin_mads_mode')}: <b data-mm-probe-mode={probe.mode} className={probe.mode === 'REAL' ? 'text-[hsl(var(--success))]' : 'text-[hsl(var(--gold-ink))]'}>{probe.mode}</b></p>
+            <ul>
+              {flag(t('mm_a_api_secret_meta'), probe.secretsConfigured, 'secrets')}
+              {flag(t('mm_a_api_secret_webhook'), probe.webhookVerifyTokenConfigured, 'webhook')}
+              {flag(t('mm_a_api_secret_enc'), probe.tokenEncryptionConfigured, 'encryption')}
+              {flag(t('mm_a_api_secret_redirect'), probe.redirectUriConfigured, 'redirect')}
+            </ul>
+            <ul className="mt-2">
+              <li className="flex items-center justify-between gap-3 py-1" data-mm-probe-fresh={sync?.stale ? 'stale' : 'fresh'}>
+                <span>{t('mm_a_api_last_sync')}</span><b className={cn('shrink-0 whitespace-nowrap', sync?.stale && 'text-[hsl(var(--warning))]')}>{sync?.text}</b>
+              </li>
+              <li className="flex items-center justify-between gap-3 py-1">
+                <span>{t('mm_a_api_last_usage')}</span><b className={cn('shrink-0 whitespace-nowrap', usage?.stale && 'text-[hsl(var(--warning))]')}>{usage?.text}</b>
+              </li>
+            </ul>
+          </div>
+          <div className="min-w-0 space-y-1">
+            <p className="font-semibold">{t('mm_a_api_capabilities')}</p>
+            {(probe.capabilities ?? []).map((c) => (
+              <div key={c.key} className="flex items-start gap-2">
+                {c.status === 'VERIFIED_SUPPORTED' ? <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[hsl(var(--success))]" />
+                  : c.status === 'UNSUPPORTED' ? <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+                    : <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[hsl(var(--gold-ink))]" />}
+                <span className="min-w-0 break-words"><b>{c.key}</b> — {c.status}{c.requirement ? `: ${c.requirement}` : ''}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function ApiHealthPanel() {
   const { t, lang } = useLanguage();
@@ -55,6 +145,8 @@ export function ApiHealthPanel() {
   const pct = (n: number) => `${Number(n).toLocaleString(lang, { maximumFractionDigits: 1 })}%`;
 
   return (
+    <div className="space-y-4">
+    <Panel><IntegrationProbe /></Panel>
     <Panel title={t('mm_a_api_title')} actions={
       <Button size="sm" variant="outline" onClick={() => void load()} disabled={loading}>
         {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}{t('mm_a_api_refresh')}
@@ -100,5 +192,6 @@ export function ApiHealthPanel() {
       )}
       <p className="mt-3 text-2xs leading-relaxed text-muted-foreground">{t('mm_a_api_policy')}</p>
     </Panel>
+    </div>
   );
 }

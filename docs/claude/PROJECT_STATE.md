@@ -119,7 +119,7 @@ MATTERS right now, verify against the live systems, not this file)
   NOT merged/deployed/applied): the browser measures an isometric picture's
   frame at upload (`pictureGeometry.ts` → `pictureFrame.ts`, byte-identical in
   `_shared`), stores `picture_geometry` + `plan_view_key` (migration
-  `20261002200000`, NOT applied), and the reader traces rooms on the top-down
+  `20261004100000`, NOT applied), and the reader traces rooms on the top-down
   plan view in the same single reading. Outline error replaces the fitted-camera
   rms as the matched/approximate number (FIT_TRUST unchanged). Needs production
   acceptance on the real fixture (a NEW upload — old rows have no frame).

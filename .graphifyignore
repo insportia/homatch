@@ -20,6 +20,7 @@ node_modules/
 dist/
 coverage/
 graphify-out/
+.vercel/
 .claude/worktrees/
 official-worker/node_modules/
 

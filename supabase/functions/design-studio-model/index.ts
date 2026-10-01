@@ -19,6 +19,7 @@ import { refuseIfImpersonating } from '../_shared/impersonation.ts';
 import { getObject, headObject } from '../_shared/objectStore.ts';
 import { inspectModel, MODEL_INSPECT_VERSION, MODEL_LIMITS } from '../_shared/designStudio/modelInspect.ts';
 import { handleCatalog } from './catalog.ts';
+import { handleCatalogPurge } from './catalogPurge.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -45,6 +46,8 @@ function displayName(name: unknown): string | null {
 serve(async (req) => {
   // The catalogue importer's signing route (service role only; see catalog.ts).
   if (new URL(req.url).pathname.replace(/\/+$/, '').endsWith('/catalog')) return handleCatalog(req);
+  // Physical deletion of unreferenced, queued catalogue files (admin only; see catalogPurge.ts).
+  if (new URL(req.url).pathname.replace(/\/+$/, '').endsWith('/catalog-purge')) return handleCatalogPurge(req);
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   const authHeader = req.headers.get('Authorization') ?? '';
   if (!authHeader) return json({ error: 'UNAUTHENTICATED' }, 401);

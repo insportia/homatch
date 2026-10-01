@@ -775,6 +775,25 @@ if (CATALOG_MIGRATION && MGMT_MIGRATION) {
   const seenAudit = await as(A, (tx) => tx.query(`select 1 from ds_catalog_admin_events`));
   if (seenAudit.rows.length === 0) ok('management: customers cannot read the audit trail'); else bad('audit rls', `${seenAudit.rows.length}`);
   await expectError('management: nobody writes the audit trail directly', 'permission denied', () => as(ADM, (tx) => tx.query(`insert into ds_catalog_admin_events (actor_kind, action, asset_count) values ('ADMIN','DISABLE',0)`)));
+
+  const REPROCESS_MIGRATION = process.env.DS_CATALOG_REPROCESS_MIGRATION ?? null;
+  if (REPROCESS_MIGRATION) {
+    await db.exec(fs.readFileSync(REPROCESS_MIGRATION, 'utf8'));
+    await db.exec(fs.readFileSync(REPROCESS_MIGRATION, 'utf8'));
+    ok('reprocess: migration applies and re-applies');
+    const rq = (who, ids, n) => as(who, (tx) => one(tx, `select public.ds_catalog_admin_requeue($1, $2, 'test') as r`, [ids, n])).then((x) => x.r);
+    await expectError('reprocess: a customer cannot re-queue', 'DS_CATALOG_ADMIN_ONLY', () => rq(A, [H(1)], 1));
+    await expectError('reprocess: the confirmed count must match', 'DS_CATALOG_CONFIRM_MISMATCH', () => rq(ADM, [H(1), H(3)], 1));
+    const r1 = await rq(ADM, [H(1), H(3)], 2);
+    const s1 = await as('service', (tx) => one(tx, `select state, attempts from ds_catalog_imports where homatch_asset_id=$1`, [H(1)]));
+    if (r1.queued === 1 && r1.skipped.includes(H(3)) && s1.state === 'QUEUED' && s1.attempts === 0) ok('reprocess: a READY asset is re-queued; an UNKNOWN-licence discovery is not');
+    else bad('requeue', JSON.stringify({ r1, s1 }));
+    await as('service', (tx) => tx.query(`update ds_catalog_imports set state='READY', lifecycle='PENDING_DELETE' where homatch_asset_id=$1`, [H(1)]));
+    const r2 = await rq(ADM, [H(1)], 1);
+    if (r2.queued === 0) ok('reprocess: a deletion candidate is never re-queued'); else bad('requeue pending', JSON.stringify(r2));
+    const last = await as(ADM, (tx) => one(tx, `select action from ds_catalog_admin_events order by id desc limit 1`));
+    if (last.action === 'REPROCESS') ok('reprocess: audited'); else bad('reprocess audit', last.action);
+  }
 }
 
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nALL PASSED');

@@ -177,6 +177,7 @@ const AdminPricingPage = lazyRoute(() => import('./pages/admin/AdminPricingPage'
 const AdminSpendCapsPage = lazyRoute(() => import('./pages/admin/AdminSpendCapsPage'));
 const AdminDiagnosticsPage = lazyRoute(() => import('./pages/admin/AdminDiagnosticsPage'));
 const AdminStoragePage = lazyRoute(() => import('./pages/admin/AdminStoragePage'));
+const AdminDesignCatalogPage = lazyRoute(() => import('./pages/admin/AdminDesignCatalogPage'));
 const AdminSponsoredPage = lazyRoute(() => import('./pages/admin/AdminSponsoredPage'));
 const AdminSettingsPage = lazyRoute(() => import('./pages/admin/AdminSettingsPage'));
 const AdminHealthPage = lazyRoute(() => import('./pages/admin/AdminHealthPage'));
@@ -609,6 +610,7 @@ export const routes: RouteConfig[] = [
   { name: 'Admin Spend Caps',  path: '/admin/spend-caps',         element: adminWrap(<AdminSpendCapsPage />),   adminOnly: true },
   { name: 'Admin Diagnostics', path: '/admin/diagnostics',        element: adminWrap(<AdminDiagnosticsPage />), adminOnly: true },
   { name: 'Admin Storage',     path: '/admin/storage',            element: adminWrap(<AdminStoragePage />),     adminOnly: true },
+  { name: 'Admin Design Catalogue', path: '/admin/design-catalog', element: adminWrap(<AdminDesignCatalogPage />), adminOnly: true },
   { name: 'Admin Sponsored',   path: '/admin/sponsored',          element: adminWrap(<AdminSponsoredPage />),   adminOnly: true },
   { name: 'Admin Settings',    path: '/admin/settings',           element: adminWrap(<AdminSettingsPage />),    adminOnly: true },
   { name: 'Admin Health',      path: '/admin/health',             element: adminWrap(<AdminHealthPage />),      adminOnly: true },

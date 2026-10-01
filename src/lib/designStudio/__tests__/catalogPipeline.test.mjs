@@ -400,3 +400,16 @@ test('every key the pipeline writes is a real production column (PostgREST refus
     for (const row of rows) for (const k of Object.keys(row)) assert.ok(cols.has(k), `${table} has no column "${k}"`);
   }
 });
+
+test('re-processing a published asset keeps it published; a new import stays unpublished', async () => {
+  const w = world(fakeAdapter());
+  await discover(w.io, 'fakeprov');
+  w.queue('chair');
+  await work(w.io, { budgetMs: 60000, concurrency: 1 });
+  const id = await rowUuid(byId(w, 'chair').homatch_asset_id);
+  assert.equal(w.tables.ds_catalog_assets.get(id).active, false, 'a first import is never published by the importer');
+  byId(w, 'chair').lifecycle = 'ACTIVE';
+  byId(w, 'chair').state = 'QUEUED'; byId(w, 'chair').attempts = 0;
+  await work(w.io, { budgetMs: 60000, concurrency: 1 });
+  assert.equal(w.tables.ds_catalog_assets.get(id).active, true, 'availability follows the admin lifecycle, not the re-run');
+});

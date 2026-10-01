@@ -351,8 +351,10 @@ async function indexCatalogRow(io: PipelineIO, adapter: ProviderAdapter<any>, ro
     }], 'id');
   } else if (row.kind === 'ENVIRONMENT') {
     const cls = adapter.environmentClass?.(asset, c) ?? { lighting: 'DAY', context: 'OUTDOOR' };
+    // An environment has no surface colour: ds_catalog_environments has no color_families column.
+    const { color_families: _noColour, ...envIdentity } = identity;
     await io.db.upsert('ds_catalog_environments', [{
-      ...identity, lighting_class: cls.lighting, context_class: cls.context, attributes: asset?.attributes ?? {}, thumbnail_key: thumbnail,
+      ...envIdentity, lighting_class: cls.lighting, context_class: cls.context, attributes: asset?.attributes ?? {}, thumbnail_key: thumbnail,
       texture_bytes: objects.filter((o) => o.role === 'HDRI').reduce((s, o) => s + o.bytes, 0), provenance: 'LICENSED', license: licenseMeta,
       catalog_meta: { variants, resolutions: Object.fromEntries(plan.resolutions.map((r) => [r, byRes('SOURCE', 'HDRI', r)])), mobile: '1k', desktop: '2k' },
     }], 'id');

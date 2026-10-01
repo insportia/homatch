@@ -27,8 +27,9 @@ function fakeAdapter(licenses = {}) {
     chair: { kind: 'MODEL', files: { 'chair_1k.gltf': GLTF(['chair.bin', 'textures/chair_diff_1k.jpg']), 'chair.bin': 'BIN', 'textures/chair_diff_1k.jpg': JPG }, hash: 'c1' },
     broken: { kind: 'MODEL', files: { 'broken_1k.gltf': GLTF(['missing.bin']) }, hash: 'b1' },
     nolicence: { kind: 'MODEL', files: { 'x_1k.gltf': GLTF([]) }, hash: 'n1' },
+    sky: { kind: 'ENVIRONMENT', files: { 'sky_1k.hdr': '#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n' }, hash: 's1' },
   };
-  const role = (p) => (p.endsWith('.gltf') ? 'GLTF' : p.endsWith('.bin') ? 'GEOMETRY' : /nor_gl/.test(p) ? 'NORMAL' : /_arm_/.test(p) ? 'ORM' : 'BASE_COLOR');
+  const role = (p) => (p.endsWith('.hdr') ? 'HDRI' : p.endsWith('.gltf') ? 'GLTF' : p.endsWith('.bin') ? 'GEOMETRY' : /nor_gl/.test(p) ? 'NORMAL' : /_arm_/.test(p) ? 'ORM' : 'BASE_COLOR');
   return {
     assets,
     adapter: {
@@ -135,7 +136,7 @@ const byId = (w, id) => [...w.imports.values()].find((r) => r.source_asset_id ==
 test('discovery records and names, never queues; an unknown licence is EXCLUDED with its reason', async () => {
   const w = world(fakeAdapter());
   const r = await discover(w.io, 'fakeprov');
-  assert.equal(r.found, 4);
+  assert.equal(r.found, 5, "wood, chair, broken, nolicence, sky");
   assert.ok([...w.imports.values()].every((x) => x.state !== 'QUEUED'), 'discovery never queues');
   assert.equal(byId(w, 'nolicence').state, 'EXCLUDED');
   assert.match(byId(w, 'nolicence').detail.excluded, /licence unknown/);
@@ -143,7 +144,7 @@ test('discovery records and names, never queues; an unknown licence is EXCLUDED 
   // Discovering again finds the same assets and changes no state.
   byId(w, 'wood').state = 'READY';
   await discover(w.io, 'fakeprov');
-  assert.equal(w.imports.size, 4, 'no duplicates');
+  assert.equal(w.imports.size, 5, 'no duplicates');
   assert.equal(byId(w, 'wood').state, 'READY', 'a re-discovery never resets progress');
 });
 
@@ -375,4 +376,27 @@ test('every row the pipeline writes carries the columns production requires (NOT
     for (const row of rows) for (const c of cols) assert.ok(row[c] !== undefined && row[c] !== null, `${table}.${c}`);
   }
   for (const e of w.events) assert.ok(e.hma && e.stage && e.ev, 'every event has its asset, stage and event');
+});
+
+test('every key the pipeline writes is a real production column (PostgREST refuses unknown columns)', async () => {
+  // From production's information_schema (2026-10-01).
+  const COLUMNS = {
+    ds_catalog_assets: 'active anchor canonical_category canonical_subcategory capabilities catalog_meta category clearance_m code color_families color_tags commerce created_at depth_m dominant_colors height_m homatch_asset_id id interactions is_placeholder license license_class lods material_slots material_tags model_bytes model_key model_sha256 name normalized_name placement procedural provenance quality_score quality_state quality_tier room_kinds search_aliases source_asset_id source_category_id source_category_path source_files_hash source_provider style_tags subcategory texture_bytes thumbnail_key triangles updated_at variants version_id web_suitability width_m',
+    ds_catalog_environments: 'active attributes canonical_category canonical_subcategory catalog_meta code context_class created_at homatch_asset_id id license license_class lighting_class name normalized_name provenance quality_state search_aliases source_asset_id source_category_id source_category_path source_files_hash source_provider texture_bytes thumbnail_key updated_at version_id',
+    ds_catalog_files: 'bytes content_type created_at delivery homatch_asset_id md5 object_key rel_path resolution role sha256 source_url variant version_id',
+    ds_catalog_imports: 'attempts canonical_category canonical_subcategory created_at detail display_name files_skipped files_uploaded finished_at homatch_asset_id kind last_error last_error_stage lease_owner lease_until license license_class max_attempts optimized_bytes planned_bytes planned_files policy quality_score quality_tier source_asset source_asset_id source_bytes source_files_hash source_provider source_type started_at state stored_bytes updated_at version_id web_suitability',
+    ds_catalog_materials: 'active applies_to canonical_category canonical_subcategory catalog_meta category code color_families color_family color_tags created_at homatch_asset_id id is_placeholder license license_class name normalized_name pbr provenance quality_state search_aliases source_asset_id source_category_id source_category_path source_files_hash source_provider style_tags texture_bytes thumbnail_key updated_at version_id',
+    storage_objects: 'byte_size category checksum_md5 checksum_sha256 conflict_reason content_type copied_at created_at deleted_at entity_id entity_type id lifecycle namespace object_key original_filename owner_user_id provider purpose source_bucket source_path updated_at verified_at visibility',
+  };
+  const w = world(fakeAdapter());
+  await discover(w.io, 'fakeprov');
+  w.queue('wood', 'chair', 'sky');
+  const tally = await work(w.io, { budgetMs: 60000, concurrency: 3 });
+  assert.equal(tally.READY, 3, 'a material, a model and an environment all reach READY');
+  for (const [table, list] of Object.entries(COLUMNS)) {
+    const cols = new Set(list.split(' '));
+    const rows = [...(w.tables[table]?.values() ?? [])];
+    assert.ok(rows.length > 0, `${table} was written`);
+    for (const row of rows) for (const k of Object.keys(row)) assert.ok(cols.has(k), `${table} has no column "${k}"`);
+  }
 });

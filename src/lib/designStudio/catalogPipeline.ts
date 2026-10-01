@@ -102,6 +102,9 @@ export const scrub = (msg: unknown) => String(msg ?? '').replace(/https?:\/\/([^
  * an explicit enqueue; refused ones are EXCLUDED with their reason. Names are
  * unique across the WHOLE catalogue (names other providers hold are reserved).
  */
+/** ds_catalog_imports.source_type (NOT NULL): the provider-neutral family of the source asset. */
+const SOURCE_TYPE: Record<AssetKind, 'textures' | 'models' | 'hdris'> = { MATERIAL: 'textures', MODEL: 'models', ENVIRONMENT: 'hdris' };
+
 export async function discover(io: PipelineIO, provider: string, assess?: (asset: any) => { tier: string; score: number; webSuitability: number; reasons: string[] }, only?: string[]) {
   const adapter = io.adapters[provider];
   if (!adapter) throw new Error(`no adapter for ${provider}`);
@@ -121,7 +124,7 @@ export async function discover(io: PipelineIO, provider: string, assess?: (asset
   const names = uniqueNames(rows.map((r) => ({ assetId: r.hma, kind: r.f.kind, displayName: r.f.naming.displayName, qualifiers: r.f.naming.qualifiers })), others);
   const states = await io.db.existingStates(provider);
   const payload = rows.map((r) => ({
-    homatch_asset_id: r.hma, source_provider: adapter.provider, source_asset_id: r.f.sourceAssetId, kind: r.f.kind,
+    homatch_asset_id: r.hma, source_provider: adapter.provider, source_asset_id: r.f.sourceAssetId, source_type: SOURCE_TYPE[r.f.kind], kind: r.f.kind,
     canonical_category: r.f.canonical.canonicalCategory, canonical_subcategory: r.f.canonical.canonicalSubcategory, display_name: names.get(r.hma),
     source_asset: r.f.asset, policy: adapter.policy, license_class: r.license.licenseClass, license: r.license,
     quality_tier: r.q?.tier ?? null, quality_score: r.q?.score ?? null, web_suitability: r.q?.webSuitability ?? null,

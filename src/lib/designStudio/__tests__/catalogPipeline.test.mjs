@@ -5,6 +5,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import { discover, processAsset, work, scrub } from '../catalogPipeline.ts';
 import { homatchAssetId, rowUuid, CATALOG_KEY } from '../catalogSource.ts';
 
@@ -336,4 +338,41 @@ test('without named ids, discovery is the whole provider exactly as before', asy
   assert.equal(bundle.adapter.listings, 1);
   assert.equal(r.requested, undefined);
   assert.equal(r.found, Object.keys(bundle.assets).length);
+});
+
+test('a discovered row carries every NOT NULL column the migration declares without a default (production refuses it otherwise)', async () => {
+  // Read the table definition from the migration itself, so a fake database cannot hide a missing column.
+  const sql = fs.readFileSync(path.join(process.cwd(), 'supabase/migrations/20261002210000_design_studio_catalog_import.sql'), 'utf8');
+  const body = /CREATE TABLE IF NOT EXISTS public\.ds_catalog_imports \(([\s\S]*?)\n\);/.exec(sql)[1];
+  const required = body.split('\n').map((l) => l.trim())
+    .filter((l) => /^[a-z_]+\s/.test(l) && /NOT NULL|PRIMARY KEY/.test(l) && !/DEFAULT/.test(l))
+    .map((l) => l.split(/\s+/)[0]);
+  assert.ok(required.includes('source_type') && required.includes('homatch_asset_id'), `parsed: ${required}`);
+  const w = world(fakeAdapter());
+  await discover(w.io, 'fakeprov', undefined, ['chair', 'wood']);
+  for (const row of w.imports.values()) {
+    for (const col of required) assert.ok(row[col] !== undefined && row[col] !== null, `${row.source_asset_id}: ${col} is set`);
+  }
+  assert.equal(byId(w, 'chair').source_type, 'models');
+  assert.equal(byId(w, 'wood').source_type, 'textures');
+});
+
+test('every row the pipeline writes carries the columns production requires (NOT NULL, no default)', async () => {
+  // From production's information_schema (2026-10-01): a fake table must not be more forgiving than the real one.
+  const REQUIRED = {
+    ds_catalog_assets: ['code', 'name', 'category', 'width_m', 'depth_m', 'height_m', 'provenance'],
+    ds_catalog_materials: ['code', 'name', 'category', 'pbr', 'provenance'],
+    ds_catalog_files: ['object_key', 'delivery', 'homatch_asset_id', 'version_id', 'variant', 'role', 'rel_path', 'bytes', 'md5', 'sha256', 'content_type'],
+    storage_objects: ['namespace', 'object_key', 'byte_size'],
+  };
+  const w = world(fakeAdapter());
+  await discover(w.io, 'fakeprov');
+  w.queue('wood', 'chair');
+  await work(w.io, { budgetMs: 60000, concurrency: 2 });
+  for (const [table, cols] of Object.entries(REQUIRED)) {
+    const rows = [...(w.tables[table]?.values() ?? [])];
+    assert.ok(rows.length > 0, `${table} was written`);
+    for (const row of rows) for (const c of cols) assert.ok(row[c] !== undefined && row[c] !== null, `${table}.${c}`);
+  }
+  for (const e of w.events) assert.ok(e.hma && e.stage && e.ev, 'every event has its asset, stage and event');
 });

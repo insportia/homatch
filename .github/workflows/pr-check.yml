@@ -1,99 +1,269 @@
 name: PR Checks
 
+# THE ONE FULL VALIDATION — RUN ONCE, IN PARALLEL, AND RECORDED.
+#
+# HOMATCH Fast Release (docs/claude/RELEASE.md). This workflow is where a
+# change is validated. It plans the suites the changed paths require
+# (scripts/release/classify.mjs: FULL for dependencies, CI/CD, build system,
+# auth / RLS / security, shared infrastructure or anything it cannot place;
+# TARGETED otherwise), runs them as parallel jobs, and — only when every
+# planned suite passed — uploads a validation record naming the exact git
+# tree that was validated.
+#
+# After merge, the deploy workflow proves the commit it is deploying has that
+# same tree and promotes it without re-running these suites. If the tree
+# differs (main moved, the merge changed code) or the record is missing, the
+# deploy workflow runs the full gate itself, exactly as before.
+#
+# "Validate PR" is the aggregate job and keeps the check name that was always
+# required: it is green only when every planned suite is green.
+
 on:
   pull_request:
     branches: [main]
 
+# A newer push to the same PR supersedes the older run; nothing is deployed
+# from here, so cancelling loses no work.
+concurrency:
+  group: pr-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
-  validate:
-    name: Validate PR
+  plan:
+    name: Release plan
+    runs-on: ubuntu-latest
+    outputs:
+      tier: ${{ steps.plan.outputs.tier }}
+      suites: ${{ steps.plan.outputs.suites }}
+      run_mobile: ${{ steps.plan.outputs.run_mobile }}
+      run_developer: ${{ steps.plan.outputs.run_developer }}
+      run_onboarding: ${{ steps.plan.outputs.run_onboarding }}
+      run_floorplan: ${{ steps.plan.outputs.run_floorplan }}
+      run_studio: ${{ steps.plan.outputs.run_studio }}
+      run_push: ${{ steps.plan.outputs.run_push }}
+      run_a11y: ${{ steps.plan.outputs.run_a11y }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Plan suites from the changed paths
+        id: plan
+        env:
+          RELEASE_BASE: origin/${{ github.base_ref }}
+        run: node scripts/release/plan.mjs
+
+  # Type-check, lint (tsgo, biome, ast-grep rules, Tailwind, i18n), edge
+  # function syntax, migration history and the production build. Always run.
+  static:
+    name: Static checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: pnpm/action-setup@v4
         with:
           version: 10.33.4
-
       - uses: actions/setup-node@v4
         with:
-          # 24, not 20 — matching the deploy workflow rather than adding a
-          # second Node story. The frontend suite imports the .ts domain
-          # modules directly, which needs Node's native type stripping (on by
-          # default from 22.18 / 24). On Node 20 every such test dies with
-          # ERR_UNKNOWN_FILE_EXTENSION, which is why the suite could not be
-          # wired in here at all.
+          # 24, not 20 — matching the deploy workflow. The suites import .ts
+          # modules directly, which needs Node's native type stripping.
           node-version: 24
           cache: pnpm
-
+      # The .rules checks are ast-grep scans. Without the binary every scan
+      # fails to start and the lint script still exits 0, so the PR used to
+      # pass rules only the deploy workflow actually enforced.
+      - name: Install ast-grep
+        run: |
+          npm install -g @ast-grep/cli
+          ast-grep --version
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
+      # tsconfig.check.json, as in the deploy workflow. `tsc --noEmit` on the
+      # root config compiles nothing (it has "files": [] and references only).
       - name: Type-check
-        run: pnpm exec tsc --noEmit
-
+        run: pnpm exec tsc -p tsconfig.check.json --noEmit
       - name: Lint
+        env:
+          VITE_SUPABASE_URL: https://ptxajsjhobhvsfhmutjn.supabase.co
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: pnpm run lint
-
-      # The regression suite. It runs BEFORE the build so a broken invariant
-      # is reported as a failing test rather than as a confusing build error,
-      # and it needs no credentials, no provider calls and no production.
-      - name: Tests
-        run: pnpm test
-
-      # The mobile layout gate needs the harness bundle, which is built from
-      # .env.harness — a stub origin, not a credential. Every request the page
-      # makes is intercepted by the test, so this reaches no network.
-      - name: Build mobile harness
-        run: pnpm run build:harness
-
-      # Real Chrome at 320/360/375/390/430 with the Evidence drawer expanded.
-      # CI=true makes a missing browser or driver a FAILURE rather than a
-      # skip: a workflow that skips its only layout gate reports green while
-      # proving nothing.
-      - name: Mobile regression (real viewports)
-        run: pnpm run test:mobile
-      # The same real Chrome, driving Site Studio: click a section, edit the
-      # text in place, paste markup at it, add/duplicate/move/hide/delete a
-      # block. Four defects that passed type-check, lint and every unit test
-      # were found only by doing this, so it runs on every change.
-      # The Developer journey, driven the way a person drives it: open a
-      # project, open an apartment, type a buyer into the form, submit it,
-      # RELOAD, and check it is still there. Route rendering is covered
-      # above; this is the half where a screen can look perfect while the
-      # button on it does nothing. Uses the same harness bundle built for
-      # the mobile gate, so it reaches no network and needs no credentials.
-      - name: Developer acceptance (real browser)
-        run: pnpm run test:developer
-
-      # The journey before that one: an account that belongs to no
-      # workspace, which is the state production is actually in. It is the
-      # only run in which the public Developer page, the onboarding form
-      # and every first-run empty state are reachable at all.
-      - name: Developer onboarding (real browser)
-        run: pnpm run test:onboarding
-
-      # The 2D -> 3D pipeline, link by link: the overlay draws, the gate
-      # REFUSES while anything required is unverified, an operator confirms,
-      # the gate opens, geometry is generated and the shell renders it. It
-      # proves the chain, not extraction accuracy — the document it drives is
-      # a harness fixture, and no assertion in it treats that as a real plan.
-      - name: Floor plan pipeline (real browser)
-        run: pnpm run test:floorplan
-
-      - name: Site Studio regression (real browser)
-        run: pnpm run test:studio
-
       # The edge functions are Deno TypeScript with URL and jsr: imports, so
-      # they sit outside the tsconfig and nothing else parses them. A
-      # research-agent/index.ts that could not be parsed AT ALL once passed
-      # type-check, lint, 796 tests and the mobile gate — and was caught only
-      # by the deploy step, after the commit was already on main.
+      # they sit outside the tsconfig and nothing else parses them.
       - name: Edge function syntax
         run: pnpm run check:edge
-
+      - name: Migration history
+        run: node scripts/migration-baseline.mjs
       - name: Build check
         env:
           VITE_SUPABASE_URL: https://ptxajsjhobhvsfhmutjn.supabase.co
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: pnpm run build
+
+  # The regression suite. Needs no credentials, no provider calls and no
+  # production. Always run: it is under a minute and guards everything.
+  unit:
+    name: Unit and matrix tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Tests
+        run: pnpm test
+
+  # Real Chrome at 320/360/375/390/430, split in two so the longest suite is
+  # not the whole critical path. scripts/release/shard.mjs reads the file list
+  # from `test:mobile` itself; the shards cannot drift from it.
+  mobile:
+    name: Mobile regression (shard ${{ matrix.shard }}/2)
+    needs: plan
+    if: needs.plan.outputs.run_mobile == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      # Built from .env.harness — a stub origin, not a credential. Every
+      # request the page makes is intercepted, so this reaches no network.
+      # Built HERE, explicitly: a browser suite never reads a dist/ it did
+      # not build.
+      - name: Build mobile harness
+        run: pnpm run build:harness
+      # CI=true makes a missing browser or driver a FAILURE, not a skip.
+      - name: Mobile regression (real viewports)
+        run: node scripts/release/shard.mjs ${{ matrix.shard }}/2
+
+  # The Developer journey, onboarding, the 2D -> 3D floor-plan chain, the
+  # service worker and the accessibility / performance audit, on one harness
+  # build. Each step runs only when the plan needs it.
+  journeys:
+    name: Journeys, push and accessibility
+    needs: plan
+    if: >-
+      needs.plan.outputs.run_developer == 'true' || needs.plan.outputs.run_onboarding == 'true' ||
+      needs.plan.outputs.run_floorplan == 'true' || needs.plan.outputs.run_push == 'true' ||
+      needs.plan.outputs.run_a11y == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build mobile harness
+        run: pnpm run build:harness
+      - name: Developer acceptance (real browser)
+        if: needs.plan.outputs.run_developer == 'true'
+        run: pnpm run test:developer
+      - name: Developer onboarding (real browser)
+        if: needs.plan.outputs.run_onboarding == 'true'
+        run: pnpm run test:onboarding
+      - name: Floor plan pipeline (real browser)
+        if: needs.plan.outputs.run_floorplan == 'true'
+        run: pnpm run test:floorplan
+      - name: Web push handlers (real service worker)
+        if: needs.plan.outputs.run_push == 'true'
+        run: pnpm run test:push
+      - name: Accessibility and performance audit
+        if: needs.plan.outputs.run_a11y == 'true'
+        run: pnpm run test:a11y
+
+  studio:
+    name: Site Studio regression
+    needs: plan
+    if: needs.plan.outputs.run_studio == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build mobile harness
+        run: pnpm run build:harness
+      - name: Site Studio regression (real browser)
+        run: pnpm run test:studio
+
+  # The required check. Green only when the plan ran and every suite it
+  # planned passed; a planned suite that was skipped, cancelled or failed is
+  # red. Then — and only then — the validation record is uploaded.
+  validate:
+    name: Validate PR
+    needs: [plan, static, unit, mobile, journeys, studio]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every planned suite passed
+        env:
+          PLAN: ${{ needs.plan.result }}
+          STATIC: ${{ needs.static.result }}
+          UNIT: ${{ needs.unit.result }}
+          MOBILE: ${{ needs.mobile.result }}
+          JOURNEYS: ${{ needs.journeys.result }}
+          STUDIO: ${{ needs.studio.result }}
+          RUN_MOBILE: ${{ needs.plan.outputs.run_mobile }}
+          RUN_STUDIO: ${{ needs.plan.outputs.run_studio }}
+          RUN_JOURNEYS: ${{ needs.plan.outputs.run_developer == 'true' || needs.plan.outputs.run_onboarding == 'true' || needs.plan.outputs.run_floorplan == 'true' || needs.plan.outputs.run_push == 'true' || needs.plan.outputs.run_a11y == 'true' }}
+        run: |
+          set -euo pipefail
+          ok=1
+          need() { # name result planned
+            if [[ "$3" == "true" && "$2" != "success" ]]; then echo "::error::$1 was planned and is $2"; ok=0; fi
+            if [[ "$3" != "true" && "$2" != "skipped" && "$2" != "success" ]]; then echo "::error::$1 is $2"; ok=0; fi
+            echo "$1: $2 (planned: $3)"
+          }
+          need plan "$PLAN" true
+          need static "$STATIC" true
+          need unit "$UNIT" true
+          need mobile "$MOBILE" "$RUN_MOBILE"
+          need journeys "$JOURNEYS" "$RUN_JOURNEYS"
+          need studio "$STUDIO" "$RUN_STUDIO"
+          [[ "$ok" == 1 ]] || exit 1
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Record what was validated
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/release/record.mjs validation-record.json --tier '${{ needs.plan.outputs.tier }}' --suites '${{ needs.plan.outputs.suites }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: validation-record
+          path: validation-record.json
+          retention-days: 90
+          if-no-files-found: error

@@ -102,11 +102,29 @@ jobs:
           node scripts/deploy-scope.mjs >> $GITHUB_STEP_SUMMARY || true
 
   # ── Job 1: Validate ────────────────────────────────────────────────────────
+  #
+  # FAST RELEASE (docs/claude/RELEASE.md). The first step proves, from the
+  # Actions API and git tree ids, whether this exact code already passed the
+  # PR validation gate. When it did (path=FAST) the repository suites below
+  # are not repeated; the deployment-specific checks still run here, and the
+  # edge deploy, its production proof and the ref advance run unchanged in
+  # their own jobs. Any doubt — no PR, a different tree, a missing record, a
+  # change to the release machinery, an API error — answers FULL and every
+  # step runs exactly as before. The decision never leaves this job: no other
+  # job reads it, so a lost output can only ever mean "run everything".
   validate:
     name: Validate
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
     steps:
+      # Depth 2: the provenance check diffs the deployed commit against its
+      # parent to know which suites the change required.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - uses: pnpm/action-setup@v4
         with:
@@ -123,7 +141,16 @@ jobs:
           node-version: 24
           cache: pnpm
 
+      # Never fails the job: every error is path=FULL.
+      - name: Release path (validation provenance)
+        id: provenance
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/release/provenance.mjs
+
       - name: Install ast-grep
+        if: steps.provenance.outputs.path != 'FAST'
         run: |
           npm install -g @ast-grep/cli
           ast-grep --version
@@ -137,9 +164,11 @@ jobs:
       # is the config the lint script's tsgo already uses; running real tsc
       # against it gives a genuine second type-check with a different engine.
       - name: Type-check
+        if: steps.provenance.outputs.path != 'FAST'
         run: pnpm exec tsc -p tsconfig.check.json --noEmit
 
       - name: Lint
+        if: steps.provenance.outputs.path != 'FAST'
         env:
           VITE_SUPABASE_URL: https://ptxajsjhobhvsfhmutjn.supabase.co
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
@@ -153,12 +182,14 @@ jobs:
       # not touch production: the Verify suites are pure, and the research
       # pipeline is exercised through fixtures.
       - name: Tests
+        if: steps.provenance.outputs.path != 'FAST'
         run: pnpm test
 
       # Built from .env.harness, which holds a stub origin and a fake anon
       # key rather than a credential. The mobile test intercepts every
       # request the page makes, so this reaches no network and no backend.
       - name: Build mobile harness
+        if: steps.provenance.outputs.path != 'FAST'
         run: pnpm run build:harness
 
       # Real Chrome at 320/360/375/390/430 with the Evidence drawer
@@ -166,13 +197,29 @@ jobs:
       # rather than a skip, so this gate cannot report green without having
       # actually run.
       - name: Mobile regression (real viewports)
+        if: steps.provenance.outputs.path != 'FAST'
         run: pnpm run test:mobile
       # The same real Chrome, driving Site Studio: click a section, edit the
       # text in place, paste markup at it, add/duplicate/move/hide/delete a
       # block. Four defects that passed type-check, lint and every unit test
       # were found only by doing this, so it runs on every change.
       - name: Site Studio regression (real browser)
+        if: steps.provenance.outputs.path != 'FAST'
         run: pnpm run test:studio
+
+      # The Developer journeys, as in the PR gate, so the full path here and
+      # the full path there are the same set of suites.
+      - name: Developer acceptance (real browser)
+        if: steps.provenance.outputs.path != 'FAST'
+        run: pnpm run test:developer
+
+      - name: Developer onboarding (real browser)
+        if: steps.provenance.outputs.path != 'FAST'
+        run: pnpm run test:onboarding
+
+      - name: Floor plan pipeline (real browser)
+        if: steps.provenance.outputs.path != 'FAST'
+        run: pnpm run test:floorplan
 
       # The service worker, in the same real Chrome. What a push BECOMES and
       # where a tap goes were the only parts of web push that had never run
@@ -180,6 +227,7 @@ jobs:
       # the half that decides whether a notification is blank, stacks twelve
       # deep, or opens somebody else's site.
       - name: Web push handlers (real service worker)
+        if: steps.provenance.outputs.path != 'FAST'
         run: pnpm run test:push
 
       # Keyboard use, accessible names, visible focus and 320px on the pages
@@ -188,6 +236,7 @@ jobs:
       # a visitor downloads, and whether a search over 4,773 strings can be
       # typed into.
       - name: Accessibility and performance audit
+        if: steps.provenance.outputs.path != 'FAST'
         run: pnpm run test:a11y
 
       # The edge functions are Deno TypeScript with URL and jsr: imports, so
@@ -197,6 +246,11 @@ jobs:
       # by the deploy step below, after the commit was already on main.
       - name: Edge function syntax
         run: pnpm run check:edge
+
+      # Deployment-specific, and cheap, so it runs on every path: the
+      # migration history the deploy and migrate jobs rely on is coherent.
+      - name: Migration history
+        run: node scripts/migration-baseline.mjs
 
   # ── Job 2: Build frontend (pnpm build — no Vercel CLI required) ───────────
   # Vercel's native GitHub integration handles production deploys automatically.

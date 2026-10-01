@@ -1,14 +1,13 @@
-// META ADS — global dashboard filters. Every value goes to metaDashboard();
-// the server validates each one, the client only offers sensible choices.
+// META ADS — global dashboard filters (goal, currency, period). Every value
+// goes to metaDashboard(); the server validates each one. Campaign STATUS is
+// not filtered here: the KPI controls filter by the canonical status
+// (src/lib/metaAds/uiStatus.ts), so there is one status system, not two.
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { SELECT_CLASS } from './format';
 
-export interface DashboardFilterValue { status: string; goal: string; currency: string; from: string; to: string }
-export const EMPTY_FILTERS: DashboardFilterValue = { status: '', goal: '', currency: '', from: '', to: '' };
-
-/** Campaign statuses worth filtering by; each has a mads_status_* label. */
-export const FILTER_STATUSES = ['ACTIVE', 'PAUSED', 'META_REVIEW', 'SUBMITTED', 'READY', 'DRAFT', 'COMPLETED', 'REJECTED', 'FAILED'];
+export interface DashboardFilterValue { goal: string; currency: string; from: string; to: string }
+export const EMPTY_FILTERS: DashboardFilterValue = { goal: '', currency: '', from: '', to: '' };
 export const FILTER_GOALS = ['LEADS_ON_META', 'LEADS_ON_WEBSITE', 'SITE_REGISTRATIONS', 'MESSAGES', 'ENGAGEMENT', 'PROMOTE'];
 
 export function DashboardFilters({ value, onChange, currencies, goals }: {
@@ -25,14 +24,7 @@ export function DashboardFilters({ value, onChange, currencies, goals }: {
   return (
     <fieldset className="rounded-2xl border border-border bg-card p-3 shadow-card">
       <legend className="sr-only">{t('mm_w_filters_label')}</legend>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-        <label className="min-w-0 space-y-1 text-2xs text-muted-foreground">
-          <span>{t('mm_w_filter_status')}</span>
-          <select className={SELECT_CLASS} value={value.status} onChange={e => set({ status: e.target.value })}>
-            <option value="">{t('mm_w_filter_any')}</option>
-            {FILTER_STATUSES.map(s => <option key={s} value={s}>{t(`mads_status_${s.toLowerCase()}`)}</option>)}
-          </select>
-        </label>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
         <label className="min-w-0 space-y-1 text-2xs text-muted-foreground">
           <span>{t('mm_w_filter_goal')}</span>
           <select className={SELECT_CLASS} value={value.goal} onChange={e => set({ goal: e.target.value })}>

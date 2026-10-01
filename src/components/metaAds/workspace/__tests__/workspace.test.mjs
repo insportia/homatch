@@ -170,3 +170,45 @@ test('balance card: FEE_EXEMPT (0% on the own ad account) has no deposit path; S
   assert.match(fill(W.mm_w_bal_std_card[0], { pct: 9, fee: 9 }), /\$100[\s\S]*9% HOMATCH service fee is \$9\./);
   assert.match(W.mm_w_bal_zero_dialog[0], /no HOMATCH service-balance top-up is required/);
 });
+
+test('dashboard: the status counts are the filters, every card is one link, nothing interactive is nested', () => {
+  const src = code(`${DIR}/GlobalDashboard.tsx`);
+  // Four KPI controls, real buttons with a pressed state, each a filter.
+  const kpis = [...src.matchAll(/<KpiControl filter="(\w+)"/g)].map(m => m[1]);
+  assert.deepEqual(kpis, ['all', 'active', 'paused', 'attention']);
+  assert.match(src, /<button type="button" aria-pressed=\{selected\}/);
+  assert.match(src, /min-h-\[3\.75rem\]/, 'a tap target, not a chevron');
+  // The filter lives in the URL (?view=), so it survives a reload and can be linked.
+  assert.match(src, /params\.get\('view'\)/);
+  // Filtered-empty state with a way back.
+  assert.match(src, /data-mm-filtered-empty/);
+  assert.match(src, /t\(LIST_EMPTY\[view\]\)/);
+  // One Link per card; no button or link inside it.
+  const open = src.indexOf('<Link to={href(r)}');
+  const card = src.slice(src.indexOf('>', src.indexOf('className=', open)) + 1, src.indexOf('</Link>', open));
+  assert.ok(card.length > 0);
+  assert.doesNotMatch(card, /<button|<Link |<a /, 'no nested interactive element in a card');
+  assert.match(card, /<CampaignStatusChip campaign=\{st\} \/>/, 'every card shows the canonical status');
+  assert.match(card, /data-mm-synced/, 'Meta-sourced status says when it was synced');
+  assert.doesNotMatch(src, /<table/, 'cards on every width; the desktop table with a name-only link is gone');
+  // The raw-status server filter is gone: one status system.
+  const filters = code(`${DIR}/DashboardFilters.tsx`);
+  assert.doesNotMatch(filters, /FILTER_STATUSES|mads_status_/);
+  // No generic grey count boxes.
+  assert.doesNotMatch(src, /bg-\[hsl\(var\(--secondary\)\)\] px-3 py-2\.5/);
+});
+
+test('dashboard: an empty metric says why, instead of a dash', () => {
+  const src = code(`${DIR}/GlobalDashboard.tsx`);
+  for (const k of ['mm_w_metric_no_results', 'mm_w_metric_no_spend', 'mm_w_metric_leads_later']) {
+    assert.match(src, new RegExp(`'${k}'`));
+    assert.ok(W[k] && W[k].every(Boolean), `${k} in all six locales`);
+  }
+  // Lead metrics only when there are leads.
+  assert.match(src, /s\.leads > 0 \?/);
+  for (const s of ['ACTIVE', 'IN_REVIEW', 'PAUSED', 'NEEDS_ATTENTION', 'LOCKED', 'ACCESS_LOST', 'FAILED', 'READY', 'DRAFT', 'ENDED']) {
+    assert.ok(W[`mm_st_${s}`], `mm_st_${s} defined`);
+  }
+  // Georgian: the compact attention label that fits a KPI control on one line.
+  assert.equal(W.mm_w_kpi_f_attention[1], 'საყურადღებო');
+});

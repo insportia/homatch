@@ -97,7 +97,23 @@ function fixtures() {
     headline: 'Two-bedroom in Vake', primary_text: 'Bright flat, parking included.', description: '', cta: 'SIGN_UP',
     destination_url: null, safety_status: 'PENDING',
   };
-  return { campaign, status, creative };
+  // The dashboard as production held it on 2026-10-01: three drafts, one the
+  // HOMATCH check sent back, and the real campaign the owner paused in Meta.
+  const zero = { currency: 'USD', spendMinor: 0, impressions: 0, reach: null, clicks: 0, linkClicks: 0, landingPageViews: 0, leads: 0, messages: 0, registrations: 0, postEngagements: 0 };
+  const noKpis = { spendMinor: 0, results: 0, costPerResultMinor: null, ctr: null, cpcMinor: null, cpmMinor: null, frequency: null, cplMinor: null, resultRate: null, cpqlMinor: null, qualificationRate: null, costPerViewingMinor: null, leadToViewingRate: null };
+  const row = (id, status, extra = {}) => ({ ...campaign, id, status, name: '', external_status: null, guard_state: 'OK', last_error_key: null, launched_at: null,
+    last_synced_at: null, totals: zero, kpis: noKpis, leads: 0, outcomes: { qualifiedLeads: 0, viewings: 0, won: 0 }, openRecommendations: 0, attention: false, ...extra });
+  const dashboard = {
+    campaigns: [
+      row('911e571e-ff0a-463b-a0bf-0ae23eb71f27', 'PAUSED', { goal: 'MESSAGES', external_status: 'PAUSED', launched_at: '2026-09-30T18:30:56Z', last_synced_at: new Date(Date.now() - 120000).toISOString() }),
+      row('d1d50dc1', 'NEEDS_CHANGES', { goal: 'ENGAGEMENT' }),
+      row('829ab04d', 'DRAFT'), row('41e99f5c', 'DRAFT'), row('df990653', 'DRAFT'),
+    ],
+    summary: [{ currency: 'USD', totals: zero, kpis: noKpis, leads: 0, campaigns: 1 }],
+    counts: { total: 5, active: 0, paused: 1, attention: 1 },
+    serviceBalance: [],
+  };
+  return { campaign, status, creative, dashboard };
 }
 
 async function boot(t, { width, height, lang }) {
@@ -126,6 +142,7 @@ async function boot(t, { width, height, lang }) {
       const body = JSON.parse(req.postData() || '{}');
       calls.actions.push(body.action);
       if (body.action === 'status') return r.fulfill(json(fx.status));
+      if (body.action === 'dashboard') return r.fulfill(json(fx.dashboard));
       if (body.action === 'plan_preview') return r.fulfill(json({ issues: [], totals: { mediaCents: 3500, feeCents: 315, totalCents: 3815, feePercent: 9 }, recommendedPlacements: ['facebook_feed', 'facebook_stories', 'instagram_feed', 'instagram_stories'], requirements: [], summary: null }));
       if (body.action === 'preflight') return r.fulfill(json({ status: 'READY', warnings: 1, checks: [{ key: 'connection', state: 'READY', ok: true }, { key: 'integration_mode', state: 'WARNING', ok: true, detail: 'MOCK_MODE_NOTHING_REACHES_META' }] }));
       if (body.action === 'ai_copy') return r.fulfill(json({ variants: [{ primaryText: 'Sunny two-bedroom in Vake.', headline: 'Vake 2BR', description: '' }] }));
@@ -263,4 +280,117 @@ test('HOMATCH AI opens inside the builder, suggests, and never navigates away', 
   assert.equal(await page.locator('textarea').first().inputValue(), 'Sunny two-bedroom in Vake.', 'accepted text lands in the editable field');
   assert.ok(calls.actions.includes('ai_copy'));
   assert.equal(page.url(), before);
+});
+
+/* ── THE DASHBOARD: status that matches Meta, counts that are filters ──── */
+
+const DASH = () => {
+  const kpi = (f) => document.querySelector(`[data-mm-kpi="${f}"]`);
+  const cards = [...document.querySelectorAll('[data-mm-campaign-card]')];
+  const label = kpi('attention')?.querySelector('span > span:last-child');
+  return {
+    overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    dir: document.documentElement.getAttribute('dir') || document.body.getAttribute('dir') || 'ltr',
+    values: Object.fromEntries(['all', 'active', 'paused', 'attention'].map((f) => [f, kpi(f)?.getAttribute('data-mm-kpi-value')])),
+    pressed: ['all', 'active', 'paused', 'attention'].filter((f) => kpi(f)?.getAttribute('aria-pressed') === 'true'),
+    cards: cards.map((c) => c.getAttribute('data-mm-campaign-card')),
+    // The attention label on one line, and nothing clipped inside any KPI.
+    attentionLines: label ? Math.round(label.getBoundingClientRect().height / parseFloat(getComputedStyle(label).lineHeight || '15')) : 0,
+    kpiClipped: [...document.querySelectorAll('[data-mm-kpi]')].filter((b) => b.scrollWidth > b.clientWidth + 1).length,
+    smallTargets: [...document.querySelectorAll('[data-mm-kpi]')].filter((b) => b.getBoundingClientRect().height < 44).length,
+    // Scrolled to the end, no tappable element of the page sits under a
+    // fixed control (the floating AI shortcut, the mobile bottom nav).
+    lastCovered: (() => {
+      window.scrollTo(0, document.documentElement.scrollHeight);
+      const fixed = [...document.querySelectorAll('body *')].filter((e) => getComputedStyle(e).position === 'fixed' && e.getBoundingClientRect().height > 0)
+        .map((e) => ({ e, r: e.getBoundingClientRect() }));
+      const targets = [...document.querySelectorAll('main a, main button, [data-mm-campaign-card], [data-mm-kpi]')]
+        .filter((t) => !fixed.some((f) => f.e.contains(t)));
+      return targets.filter((t) => {
+        const r = t.getBoundingClientRect();
+        if (r.bottom <= 0 || r.top >= innerHeight) return false;
+        return fixed.some(({ r: f }) => !(r.right <= f.left || r.left >= f.right || r.bottom <= f.top || r.top >= f.bottom));
+      }).map((t) => (t.getAttribute('data-mm-campaign-card') ?? t.getAttribute('aria-label') ?? t.textContent ?? '').slice(0, 40));
+    })(),
+  };
+};
+
+async function dashReady(page) {
+  await page.waitForSelector('[data-mm-kpis] [data-mm-kpi="all"]', { timeout: 20000 });
+  await page.waitForTimeout(250);
+}
+
+for (const [width, height] of [[360, 760], [390, 844], [412, 915], [1440, 900]]) {
+  test(`dashboard at ${width}px, every locale: Meta-paused is Paused, counts are honest, nothing clipped or covered`, opts, async (t) => {
+    if (skipReason) assert.fail(`meta ads dashboard gate could not run: ${skipReason}`);
+    const failures = [];
+    for (const lang of LOCALES) {
+      const { page } = await boot(t, { width, height, lang });
+      await page.goto(`${BASE}/outreach/meta?tab=overview`, { waitUntil: 'domcontentloaded' });
+      await dashReady(page);
+      const d = await page.evaluate(DASH);
+      const tag = `${lang} ${width}px`;
+      if (d.overflow > 1) failures.push(`${tag}: horizontal overflow ${d.overflow}px`);
+      if (JSON.stringify(d.values) !== JSON.stringify({ all: '5', active: '0', paused: '1', attention: '1' })) failures.push(`${tag}: counts ${JSON.stringify(d.values)}`);
+      if (d.cards.filter((c) => c === 'PAUSED').length !== 1 || d.cards.includes('ACTIVE')) failures.push(`${tag}: cards ${d.cards.join(',')}`);
+      if (d.kpiClipped) failures.push(`${tag}: ${d.kpiClipped} KPI control(s) clip their text`);
+      if (d.smallTargets) failures.push(`${tag}: ${d.smallTargets} KPI control(s) under 44px tall`);
+      if (lang === 'ka' && d.attentionLines > 1) failures.push(`${tag}: the Georgian attention label wraps (${d.attentionLines} lines)`);
+      if (d.lastCovered.length) failures.push(`${tag}: under a fixed control at the end of the page: ${d.lastCovered.join(' | ')}`);
+      if ((lang === 'ar' || lang === 'he') && d.dir !== 'rtl') failures.push(`${tag}: not RTL`);
+      if (SHOTS && (lang === 'en' || lang === 'ka')) {
+        mkdirSync(SHOTS, { recursive: true });
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.screenshot({ path: join(SHOTS, `dashboard-${width}-${lang}.png`), fullPage: true });
+      }
+    }
+    assert.deepEqual(failures, []);
+  });
+}
+
+test('dashboard: tapping a count filters the list to exactly those campaigns, and a card opens its campaign', opts, async (t) => {
+  if (skipReason) assert.fail(`meta ads dashboard gate could not run: ${skipReason}`);
+  const { page } = await boot(t, { width: 390, height: 844, lang: 'ka' });
+  await page.goto(`${BASE}/outreach/meta?tab=overview`, { waitUntil: 'domcontentloaded' });
+  await dashReady(page);
+  const tap = async (f) => { await page.locator(`[data-mm-kpi="${f}"]`).click(); await page.waitForTimeout(150); return page.evaluate(DASH); };
+
+  let d = await tap('active');
+  assert.deepEqual(d.pressed, ['active']);
+  assert.deepEqual(d.cards, [], 'nothing is running at Meta');
+  assert.equal(await page.locator('[data-mm-filtered-empty]').count(), 1, 'an honest empty filtered state');
+  assert.match(page.url(), /view=active/);
+
+  d = await tap('paused');
+  assert.deepEqual(d.cards, ['PAUSED']);
+  assert.ok(await page.locator('[data-mm-campaign-card="PAUSED"] [data-mm-synced]').count() === 1, 'Paused · synced with Meta');
+
+  d = await tap('attention');
+  assert.deepEqual(d.cards, ['NEEDS_ATTENTION']);
+  assert.equal(await page.locator('[data-mm-campaign-card] [data-mm-warning]').count(), 1);
+
+  d = await tap('all');
+  assert.equal(d.cards.length, 5);
+  assert.deepEqual(d.pressed, ['all']);
+
+  // Tapping a selected filter again returns to all.
+  await tap('paused');
+  d = await tap('paused');
+  assert.deepEqual(d.pressed, ['all']);
+
+  // Anywhere on the card — here its delivery line, not the chevron — opens the campaign.
+  assert.equal(await page.locator('[data-mm-campaign-card="PAUSED"] [data-mm-no-delivery]').count(), 1, 'no zeros pretending to be results');
+  await page.locator('[data-mm-campaign-card="PAUSED"] [data-mm-no-delivery]').click();
+  await page.waitForURL(/\/outreach\/meta\/campaigns\/911e571e/, { timeout: 10000 });
+  // A draft opens the builder.
+  await page.goto(`${BASE}/outreach/meta?tab=overview`, { waitUntil: 'domcontentloaded' });
+  await dashReady(page);
+  await page.locator('[data-mm-campaign-card="DRAFT"]').first().click({ position: { x: 30, y: 30 } });
+  await page.waitForURL(/\/outreach\/meta\/create\?draft=/, { timeout: 10000 });
+  // The view survives a reload.
+  await page.goto(`${BASE}/outreach/meta?tab=overview&view=paused`, { waitUntil: 'domcontentloaded' });
+  await dashReady(page);
+  d = await page.evaluate(DASH);
+  assert.deepEqual(d.pressed, ['paused']);
+  assert.deepEqual(d.cards, ['PAUSED']);
 });

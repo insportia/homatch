@@ -451,7 +451,8 @@ export interface DashboardRow extends MetaCampaignRow {
 export interface DashboardData {
   campaigns: DashboardRow[];
   summary: Array<{ currency: string; totals: MetricTotalsRow; kpis: KpisRow; leads: number; campaigns: number }>;
-  counts: { total: number; live: number; attention: number };
+  /** Canonical (src/lib/metaAds/uiStatus.ts statusCounts). */
+  counts: { total: number; active: number; paused: number; attention: number };
   serviceBalance: ServiceBalanceRow[];
 }
 export const metaDashboard = (filters: { status?: string; goal?: string; currency?: string; from?: string; to?: string } = {}) =>

@@ -85,7 +85,7 @@ export default function MetaAdsPage() {
   return (
     <RouteGuard>
       <AppLayout noPadding>
-        <div className="mx-auto w-full max-w-[86rem] space-y-4 px-4 py-4 pb-[calc(2rem+env(safe-area-inset-bottom))] sm:px-6 lg:px-8">
+        <div className="mx-auto w-full max-w-[86rem] space-y-4 px-4 py-4 pb-[calc(6rem+env(safe-area-inset-bottom))] sm:px-6 md:pb-24 lg:px-8">
           <PageHero
             compact
             eyebrow={t('mads_eyebrow')}
@@ -204,7 +204,7 @@ function CampaignsTab({ campaigns, onCreate }: { campaigns: MetaCampaignRow[]; o
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <p className="truncate font-semibold text-foreground">{c.name || t(`mads_goal_${c.goal.toLowerCase()}` as never)}</p>
-              <CampaignStatusChip status={c.status} />
+              <CampaignStatusChip campaign={{ status: c.status, external_status: c.external_status, guard_state: c.guard_state, last_error_key: c.last_error?.key ?? null, launched_at: c.launched_at ?? null }} />
             </div>
             <p className="mt-0.5 text-2xs text-muted-foreground tabular-nums" dir="ltr">
               {c.daily_budget_cents ? `${money(c.daily_budget_cents)}/day · ${c.duration_days ?? '—'}d` : ''}

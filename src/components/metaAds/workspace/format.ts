@@ -30,3 +30,19 @@ export const newest = (values: Array<string | null | undefined>) => {
 
 export const SELECT_CLASS =
   'h-10 w-full min-w-0 rounded-lg border border-border bg-card px-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]';
+
+/**
+ * How long ago, from a real timestamp, as { key, n } for the mm_w_ago_* copy:
+ * the viewer's language comes from the translation bundle, not from the
+ * browser's Intl data (which lacks Georgian relative time in some builds).
+ */
+export const ago = (iso: string | null | undefined, nowMs = Date.now()): { key: string; n: number } | null => {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  const s = Math.max(0, Math.round((nowMs - t) / 1000));
+  if (s < 60) return { key: 'mm_w_ago_now', n: 0 };
+  if (s < 3600) return { key: 'mm_w_ago_min', n: Math.round(s / 60) };
+  if (s < 86400) return { key: 'mm_w_ago_hour', n: Math.round(s / 3600) };
+  return { key: 'mm_w_ago_day', n: Math.round(s / 86400) };
+};

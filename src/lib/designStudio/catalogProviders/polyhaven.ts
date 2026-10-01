@@ -283,6 +283,23 @@ export const polyhaven: ProviderAdapter<PhAsset> = {
     }
     return out;
   },
+  idPattern: /^[a-z0-9][a-z0-9_]{1,79}$/,
+  async discoverIds(ids: string[], fetchJson: Fetch) {
+    const found: Discovered<PhAsset>[] = [];
+    const missing: Array<{ id: string; reason: string }> = [];
+    const typeOf: Record<number, PhType> = { 0: 'hdris', 1: 'textures' };
+    for (const id of ids) {
+      let a: PhAsset;
+      try { a = await fetchJson(`${API}/info/${encodeURIComponent(id)}`) as PhAsset; } catch { missing.push({ id, reason: 'not listed by Poly Haven' }); continue; }
+      const type = typeOf[(a as { type?: number }).type ?? -1];
+      if (!type) { missing.push({ id, reason: 'not a material or an HDRI (objects come from Blendkit)' }); continue; }
+      const kind = TYPES[type];
+      const c = classify(kind, a.category, id);
+      if (!c) { missing.push({ id, reason: 'no HOMATCH shelf for its category' }); continue; }
+      found.push({ sourceAssetId: id, kind, canonical: c, asset: a, naming: name(kind, a, c) });
+    }
+    return { found, missing };
+  },
   async current(sourceAssetId: string, _kind: AssetKind, fetchJson: Fetch) {
     const asset = await fetchJson(`${API}/info/${encodeURIComponent(sourceAssetId)}`) as PhAsset;
     const files = await fetchJson(`${API}/files/${encodeURIComponent(sourceAssetId)}`) as Record<string, unknown>;

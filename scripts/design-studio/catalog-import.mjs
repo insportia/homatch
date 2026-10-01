@@ -23,7 +23,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
 import { discover, scrub, work } from '../../src/lib/designStudio/catalogPipeline.ts';
-import { glbRuntimeFacts, RUNTIME_POLICY } from '../../src/lib/designStudio/catalogSource.ts';
+import { glbRuntimeFacts, parseIds, RUNTIME_POLICY } from '../../src/lib/designStudio/catalogSource.ts';
 import { polyhaven } from '../../src/lib/designStudio/catalogProviders/polyhaven.ts';
 import { assess as assessBlendkit, blendkit } from '../../src/lib/designStudio/catalogProviders/blendkit.ts';
 
@@ -258,11 +258,14 @@ async function enqueue() {
   if (!ADAPTERS[provider]) throw new Error('enqueue needs --provider');
   const ids = flag('ids', '');
   if (ids) {
-    const list = ids.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 50);
-    await rest(`ds_catalog_imports?source_provider=eq.${provider}&source_asset_id=in.(${list.map((x) => `"${x}"`).join(',')})&state=in.(DISCOVERED,FAILED)`, {
-      method: 'PATCH', prefer: 'return=minimal', body: { state: 'QUEUED', attempts: 0, last_error: null, last_error_stage: null, updated_at: io.now() },
+    const { ids: list, invalid } = parseIds(ids, ADAPTERS[provider].idPattern);
+    if (invalid.length) throw new Error(`malformed ${provider} ids: ${invalid.join(', ')}`);
+    const queued = await rest(`ds_catalog_imports?source_provider=eq.${provider}&source_asset_id=in.(${list.map((x) => `"${x}"`).join(',')})&state=in.(DISCOVERED,FAILED)&select=source_asset_id`, {
+      method: 'PATCH', prefer: 'return=representation', body: { state: 'QUEUED', attempts: 0, last_error: null, last_error_stage: null, updated_at: io.now() },
     });
-    log(`enqueue ${provider}: ${list.length} named assets`);
+    const got = new Set((queued ?? []).map((r) => r.source_asset_id));
+    log(`enqueue ${provider} (named): requested ${list.length}, queued ${got.size}, not queueable ${list.length - got.size}`);
+    for (const id of list.filter((x) => !got.has(x))) log(`  not queued ${id}: not DISCOVERED/FAILED (missing, EXCLUDED, or already in the pipeline)`);
   } else if (args.includes('--all')) {
     // The whole selection only on the owner's explicit approval ("APPROVE FULL IMPORT").
     if (!args.includes('--owner-approved')) throw new Error('queuing everything needs --owner-approved');
@@ -288,7 +291,18 @@ if (!SERVICE_KEY) { console.error('SUPABASE_SERVICE_ROLE_KEY is required'); proc
 if (mode === 'discover') {
   const provider = flag('provider', '');
   if (!ADAPTERS[provider]) { console.error('discover needs --provider polyhaven|blendkit'); process.exit(2); }
-  log(`discover ${provider}: ${JSON.stringify(await discover(io, provider, ASSESS[provider]))}`);
+  const named = flag('ids', '');
+  if (named) {
+    // Bounded: only the named assets are looked up and recorded — never the provider's catalogue.
+    const { ids, invalid } = parseIds(named, ADAPTERS[provider].idPattern);
+    if (invalid.length) { console.error(`malformed ${provider} ids (nothing was looked up): ${invalid.join(', ')}`); process.exit(2); }
+    const r = await discover(io, provider, ASSESS[provider], ids);
+    log(`discover ${provider} (named): requested ${r.requested}, discovered ${r.found}, excluded ${r.excluded}, new ${r.newRows}, missing ${r.missing.length}`);
+    for (const m of r.missing) log(`  missing ${m.id}: ${m.reason}`);
+    if (r.missing.length) process.exit(3);
+  } else if (args.includes('--all')) {
+    log(`discover ${provider} (whole provider): ${JSON.stringify(await discover(io, provider, ASSESS[provider]))}`);
+  } else { console.error('discover needs --ids a,b,c (named assets) or --all (the whole provider)'); process.exit(2); }
 } else if (mode === 'enqueue') await enqueue();
 else if (mode === 'run') {
   await detectTools();

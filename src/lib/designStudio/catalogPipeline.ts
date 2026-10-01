@@ -102,10 +102,12 @@ export const scrub = (msg: unknown) => String(msg ?? '').replace(/https?:\/\/([^
  * an explicit enqueue; refused ones are EXCLUDED with their reason. Names are
  * unique across the WHOLE catalogue (names other providers hold are reserved).
  */
-export async function discover(io: PipelineIO, provider: string, assess?: (asset: any) => { tier: string; score: number; webSuitability: number; reasons: string[] }) {
+export async function discover(io: PipelineIO, provider: string, assess?: (asset: any) => { tier: string; score: number; webSuitability: number; reasons: string[] }, only?: string[]) {
   const adapter = io.adapters[provider];
   if (!adapter) throw new Error(`no adapter for ${provider}`);
-  const found = await adapter.discover((u) => io.fetchJson(u));
+  // Named ids: one lookup each, and only those rows are written. Without them, the whole provider.
+  const bounded = only ? await adapter.discoverIds(only, (u) => io.fetchJson(u)) : null;
+  const found = bounded ? bounded.found : await adapter.discover((u) => io.fetchJson(u));
   const rows: Array<{ hma: string; f: (typeof found)[number]; license: License; q: ReturnType<NonNullable<typeof assess>> | null; refusal: string | null }> = [];
   for (const f of found) {
     const hma = await homatchAssetId(adapter.provider, f.kind, f.sourceAssetId);
@@ -129,7 +131,10 @@ export async function discover(io: PipelineIO, provider: string, assess?: (asset
     updated_at: io.now(),
   }));
   for (let i = 0; i < payload.length; i += 200) await io.db.upsert('ds_catalog_imports', payload.slice(i, i + 200), 'homatch_asset_id');
-  return { found: rows.length, excluded: rows.filter((r) => r.refusal).length, newRows: rows.filter((r) => !states.has(r.hma)).length };
+  return {
+    ...(only ? { requested: only.length, missing: bounded?.missing ?? [] } : {}),
+    found: rows.length, excluded: rows.filter((r) => r.refusal).length, newRows: rows.filter((r) => !states.has(r.hma)).length,
+  };
 }
 
 // ── One asset through the pipeline ──────────────────────────────────────

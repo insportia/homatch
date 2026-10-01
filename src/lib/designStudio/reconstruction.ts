@@ -22,7 +22,7 @@ import type { CatalogAsset, CatalogMaterial } from './catalog.ts';
 import { emptyDesignState, type DesignState, type ObjectInstance, type ObjectProvenance } from './designState.ts';
 import { blocks, evaluatePlacement, type PlacementContext } from './placement.ts';
 import { pointInPolygon, roomContaining, type Point, type SpaceModel } from './space.ts';
-import type { ObjectType, Reconstruction, ReconObject, ReconRoomKind } from './reconstructRead.ts';
+import { floorPattern, type ObjectType, type Reconstruction, type ReconObject, type ReconRoomKind } from './reconstructRead.ts';
 
 // ── Corrections the customer makes in review ──────────────────────────
 
@@ -321,8 +321,10 @@ export function buildDesign(
     const ids = space.surfaces.filter((x) => x.roomId === roomId && x.kind === (s.part === 'FLOOR' ? 'FLOOR' : 'WALL')).map((x) => x.id);
     if (!ids.length || !s.color) continue;
     const mat = matchMaterial(s.part === 'FLOOR' ? 'FLOOR' : 'WALL', s.color, s.material, materials);
+    // Readings stored before the code existed (or that gave no code) still say what they saw.
+    const pattern = s.part === 'FLOOR' ? floorPattern(s.pattern ?? null, s.material) : null;
     for (const id of ids) {
-      state.surfaces[id] = { materialId: mat?.id ?? null, color: mat ? null : s.color, finish: null, locked: false, ...(s.part === 'FLOOR' && s.pattern ? { pattern: s.pattern } : {}) };
+      state.surfaces[id] = { materialId: mat?.id ?? null, color: mat ? null : s.color, finish: null, locked: false, ...(s.part === 'FLOOR' && pattern ? { pattern } : {}) };
     }
     report.surfaces += ids.length;
   }

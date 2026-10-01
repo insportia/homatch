@@ -29,6 +29,7 @@
 // (Node) run the same code.
 
 import { type CameraFit, type Correspondence, fitCamera, transformFit, unprojectFloor } from './sourceCamera.ts';
+import { type PictureFrame, alignFrame, frameCamera, outlineError, pictureToPlan, toMetres, viewToPlan } from './pictureFrame.ts';
 
 export const RECON_VERSION = 'ds-recon-2';
 /** Virtual pixels per metre of the plan document the generator reads. */
@@ -74,6 +75,44 @@ export interface ReconObject {
 }
 export type SurfacePatternCode = 'WOOD_PLANK' | 'WOOD_HERRINGBONE' | 'TILE' | 'STONE' | 'CONCRETE' | 'CARPET';
 export const SURFACE_PATTERN_CODES: readonly SurfacePatternCode[] = ['WOOD_PLANK', 'WOOD_HERRINGBONE', 'TILE', 'STONE', 'CONCRETE', 'CARPET'];
+/** A code's usual spellings (the reader is asked for the exact code; it does not always comply). */
+const PATTERN_ALIASES: Array<[RegExp, SurfacePatternCode]> = [
+  [/^(WOOD_)?(HERRINGBONE|CHEVRON|PARQUET)$/, 'WOOD_HERRINGBONE'],
+  [/^(WOOD_)?(PLANKS?|BOARDS?|LAMINATE|DECKING|WOOD)$/, 'WOOD_PLANK'],
+  [/^(TILES?|CERAMIC|PORCELAIN|GRID|CHECKER(BOARD)?)$/, 'TILE'],
+  [/^(STONE|MARBLE|TERRAZZO)$/, 'STONE'],
+  [/^(CONCRETE|CEMENT|MICROCEMENT)$/, 'CONCRETE'],
+  [/^(CARPET|RUG)$/, 'CARPET'],
+];
+
+/**
+ * What the reader SAID it saw, in its own words and in any of the six
+ * languages, when it gave no code. Containment only: \b does not match
+ * Georgian, and upper-casing turns Mkhedruli into Mtavruli, so the text is
+ * compared as written (lower-cased Latin/Cyrillic only). Herringbone before
+ * plain wood: "herringbone oak" is herringbone.
+ */
+const PATTERN_WORDS: Array<[string[], SurfacePatternCode]> = [
+  [['herringbone', 'chevron', 'parquet', 'ჰერინგბონ', 'ნაძვისებრ', 'ёлочк', 'елочк', 'паркет', 'balıksırtı', 'balik sirti', 'parke', 'متعرج', 'باركيه', 'הרינגבון', 'פרקט'], 'WOOD_HERRINGBONE'],
+  [['tile', 'ceramic', 'porcelain', 'ფილა', 'კერამიკ', 'плитк', 'кафел', 'fayans', 'seramik', 'karo', 'بلاط', 'سيراميك', 'אריח', 'קרמיק'], 'TILE'],
+  [['marble', 'stone', 'terrazzo', 'მარმარილ', 'ქვა', 'мрамор', 'камен', 'mermer', 'taş', 'رخام', 'حجر', 'שיש', 'אבן'], 'STONE'],
+  [['concrete', 'cement', 'ბეტონ', 'ცემენტ', 'бетон', 'цемент', 'beton', 'çimento', 'خرسان', 'اسمنت', 'בטון'], 'CONCRETE'],
+  [['carpet', 'rug', 'ხალიჩ', 'ковр', 'ковролин', 'halı', 'سجاد', 'שטיח'], 'CARPET'],
+  [['oak', 'walnut', 'wood', 'plank', 'laminate', 'deck', 'მუხა', 'კაკალ', 'ხის', 'ლამინატ', 'дуб', 'орех', 'дерев', 'ламинат', 'доск', 'meşe', 'ceviz', 'ahşap', 'laminat', 'خشب', 'بلوط', 'עץ', 'אלון', 'למינציה'], 'WOOD_PLANK'],
+];
+
+export function floorPattern(code: unknown, material: unknown): SurfacePatternCode | null {
+  if (typeof code === 'string') {
+    const c = code.trim().toUpperCase().replace(/[\s-]+/g, '_');
+    if (SURFACE_PATTERN_CODES.includes(c as SurfacePatternCode)) return c as SurfacePatternCode;
+    for (const [re, out] of PATTERN_ALIASES) if (re.test(c)) return out;
+  }
+  if (typeof material !== 'string' || !material.trim()) return null;
+  const text = material.replace(/[A-ZА-ЯЁİ]/g, (ch) => ch.toLowerCase());
+  for (const [words, out] of PATTERN_WORDS) if (words.some((w) => text.includes(w))) return out;
+  return null;
+}
+
 export interface ReconSurface { room: string; part: 'FLOOR' | 'WALLS'; color: string | null; material: string | null; confidence: number; pattern?: SurfacePatternCode | null }
 export interface ReconCamera {
   image: number; kind: 'AERIAL' | 'EYE';
@@ -150,6 +189,12 @@ PIXEL TRACES (the most important part)
 - Trace at FLOOR LEVEL: a room corner where the floor meets the walls; an opening at the middle of its threshold; an object at the centre of its footprint on the floor.
 - polygonPx has exactly one entry per polygon corner, in the same order; null for a corner you cannot see (hidden behind a wall or out of the picture). atPx is null when the thing is not visible.
 - Trace carefully and consistently: HOMATCH fits the picture's camera from these traces and rebuilds the plan from them.
+
+PLAN VIEWS
+- A picture may come with a PLAN VIEW: HOMATCH measured that picture's own camera from its pixels and redrew the picture from directly above, at the height of the wall tops. In a plan view every wall is a straight horizontal or vertical line at its true proportions. Plan views are numbered after the pictures; the message says which picture each belongs to.
+- When a plan view is given, trace every ROOM on it: pxImage = the plan view's number, and polygonPx the room's corners where the wall lines meet, as fractions of the plan view. Follow the walls you see there: an L-shaped home is an L, a room is as long and as wide as the plan view shows.
+- Your room polygons in metres follow the plan view's layout and proportions (its scale is unknown: size it from ordinary objects as usual).
+- Openings and objects are still traced on the ORIGINAL picture, at floor level.
 
 SURFACES: per room, the FLOOR and WALLS colour (#rrggbb) and material words ("herringbone oak", "white paint", "grey tile"). For a FLOOR also give "pattern", the laying pattern you can SEE: WOOD_PLANK, WOOD_HERRINGBONE, TILE, STONE, CONCRETE or CARPET; null when you cannot tell (never guess).
 CAMERAS: for each image, where the camera stood in the plan frame (at, heightM), the direction it looks (yawDeg, pitchDeg), its horizontal fovDeg, and kind AERIAL or EYE.
@@ -276,10 +321,13 @@ function signedArea(poly: Point2[]): number {
  */
 export function validateReconstruction(
   raw: unknown, imageCount: number,
-  options: { usesPlan?: boolean; planRoomIds?: string[]; imageAspects?: Array<number | null> } = {},
+  options: { usesPlan?: boolean; planRoomIds?: string[]; imageAspects?: Array<number | null>; frames?: FramedPicture[] } = {},
 ): { recon: Reconstruction; dropped: number } {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const pxImage = (v: unknown) => (Number.isInteger(v) && (v as number) >= 0 && (v as number) < imageCount ? v as number : null);
+  // A room may also be traced on a plan view (numbered after the pictures).
+  const views = new Set((options.frames ?? []).map((f) => f.view));
+  const roomImage = (v: unknown) => pxImage(v) ?? (Number.isInteger(v) && views.has(v as number) ? v as number : null);
   const single = (o: Record<string, unknown>): PixelTrace | null => {
     const image = pxImage(o.pxImage);
     const at = uv(o.atPx);
@@ -304,7 +352,7 @@ export function validateReconstruction(
       const area = signedArea(ring);
       if (Math.abs(area) < 0.8) { dropped += 1; continue; }
       // The trace pairs with the outline corner by corner; it is only kept when it has one entry per corner.
-      const image = pxImage(o.pxImage);
+      const image = roomImage(o.pxImage);
       let trace = image !== null && Array.isArray(o.polygonPx) && o.polygonPx.length === poly.length
         ? (o.polygonPx as unknown[]).map(uv) : null;
       if (area < 0) { ring = ring.reverse(); trace = trace ? trace.reverse() : null; }
@@ -359,7 +407,7 @@ export function validateReconstruction(
   for (const x of (Array.isArray(r.surfaces) ? r.surfaces : []).slice(0, MAX_ROOMS * 2)) {
     const o = (x ?? {}) as Record<string, unknown>;
     if (typeof o.room !== 'string' || !roomKeys.has(o.room) || (o.part !== 'FLOOR' && o.part !== 'WALLS')) { dropped += 1; continue; }
-    const pattern = o.part === 'FLOOR' && SURFACE_PATTERN_CODES.includes(o.pattern as SurfacePatternCode) ? o.pattern as SurfacePatternCode : null;
+    const pattern = o.part === 'FLOOR' ? floorPattern(o.pattern, o.material) : null;
     surfaces.push({ room: o.room, part: o.part, color: hex(o.color), material: text(o.material, 40), confidence: clamp01(o.confidence), pattern });
   }
 
@@ -393,7 +441,108 @@ export function validateReconstruction(
     fidelity: null,
   };
   if (options.usesPlan) return { recon, dropped };
-  return { recon: normalizeOrigin(refineFromPixels(recon, options.imageAspects ?? [])), dropped };
+  const framed = options.frames?.length ? refineFromFrames(recon, options.frames) : null;
+  return { recon: normalizeOrigin(framed ?? refineFromPixels(recon, options.imageAspects ?? [])), dropped };
+}
+
+// ── Following a MEASURED picture ────────────────────────────────────────
+
+/** A picture whose frame was measured from its pixels, and the index its top-down plan view has in the reading. */
+export interface FramedPicture { image: number; view: number; frame: PictureFrame }
+
+/** A traced point this far outside the picture's own outline is a mistrace. */
+const OUTSIDE_M = 0.5;
+
+/**
+ * With the picture's camera MEASURED (pictureFrame.ts), nothing is fitted from
+ * the reader's traces: rooms traced on the plan view ARE the plan, and every
+ * point traced on the picture is unprojected through the measured camera. The
+ * reader's metres only set the size and which way is north. A point is
+ * rejected when it lands outside the picture's own outline (a mistrace), not
+ * when it disagrees with the reader's guess — the guess is what is being
+ * corrected. Null when there is too little to align (the fitted path runs).
+ */
+export function refineFromFrames(recon: Reconstruction, frames: FramedPicture[]): Reconstruction | null {
+  for (const f of frames) {
+    const pairs: Array<{ m: Point2; q: Point2 }> = [];
+    const planOf = (image: number, at: Point2): Point2 | null =>
+      image === f.view ? viewToPlan(f.frame, at) : image === f.image ? pictureToPlan(f.frame, at) : null;
+    for (const room of recon.rooms) {
+      room.px?.points.forEach((at, i) => { const q = at ? planOf(room.px!.image, at) : null; if (q) pairs.push({ m: room.polygon[i], q }); });
+    }
+    for (const o of [...recon.openings, ...recon.objects]) {
+      const q = o.px?.points[0] ? planOf(o.px.image, o.px.points[0]) : null;
+      if (q) pairs.push({ m: o.at, q });
+    }
+    if (pairs.length < 6) continue;
+    const al = alignFrame(f.frame, pairs);
+    if (!al) continue;
+    const outline = f.frame.footprint.map((q) => toMetres(al, q));
+    const near = (p: Point2) => insidePolygon(p, outline) || edgeDistance(p, outline) <= OUTSIDE_M;
+    let traced = 0;
+    let applied = 0;
+    const follow = (image: number, at: Point2 | null): Point2 | null => {
+      if (!at) return null;
+      const q = planOf(image, at);
+      if (!q) return null;
+      traced += 1;
+      const m = toMetres(al, q);
+      if (!near(m)) return null;
+      applied += 1;
+      return [round(m[0]), round(m[1])];
+    };
+    const rooms = recon.rooms.map((room) => {
+      if (!room.px) return room;
+      const moved = room.px.points.map((at) => follow(room.px!.image, at));
+      // An outline is replaced only whole: every corner followed, and still a real room.
+      if (moved.every((p) => p)) {
+        let ring = moved as Point2[];
+        const area = signedArea(ring);
+        if (Math.abs(area) >= 0.8) {
+          if (area < 0) ring = ring.reverse();
+          return { ...room, polygon: ring, geometry: 'PIXELS' as const };
+        }
+      }
+      return room;
+    });
+    const point = <T extends ReconOpening | ReconObject>(o: T): T => {
+      const q = o.px ? follow(o.px.image, o.px.points[0]) : null;
+      return q ? { ...o, at: q, geometry: 'PIXELS' } : o;
+    };
+    const openings = recon.openings.map(point);
+    const objects = recon.objects.map(point);
+    const camera = frameCamera(f.frame, al);
+    if (!camera) continue;
+    // The honest number: how far the rebuilt outline is from the picture's own, in the picture.
+    const fit: CameraFit = { ...camera, rms: outlineError(f.frame, al, rooms.map((x) => x.polygon)), points: applied };
+    const cameras = recon.cameras.some((c) => c.image === f.image)
+      ? recon.cameras.map((c) => (c.image === f.image ? { ...c, kind: 'AERIAL' as const, fit } : c))
+      : [...recon.cameras, { image: f.image, kind: 'AERIAL' as const, at: [0, 0] as Point2, heightM: 10, yawDeg: 0, pitchDeg: -45, fovDeg: 50, confidence: f.frame.confidence, fit }];
+    const fidelity: Fidelity = { image: f.image, model: 'ORTHO', errorPct: Math.round(fit.rms * 10000) / 100, traced, applied };
+    return { ...recon, rooms, openings, objects, cameras, fidelity };
+  }
+  return null;
+}
+
+function insidePolygon(p: Point2, poly: Point2[]): boolean {
+  let c = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i, i += 1) {
+    const [xi, yi] = poly[i]; const [xj, yj] = poly[j];
+    if ((yi > p[1]) !== (yj > p[1]) && p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi) + xi) c = !c;
+  }
+  return c;
+}
+
+function edgeDistance(p: Point2, poly: Point2[]): number {
+  let best = Infinity;
+  for (let i = 0; i < poly.length; i += 1) {
+    const a = poly[i]; const b = poly[(i + 1) % poly.length];
+    const dx = b[0] - a[0]; const dy = b[1] - a[1];
+    const l2 = dx * dx + dy * dy;
+    const t = l2 > 0 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2)) : 0;
+    best = Math.min(best, Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy));
+  }
+  return best;
 }
 
 // ── Following the picture ───────────────────────────────────────────────

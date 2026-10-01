@@ -86,9 +86,11 @@ const AUDIO: ContentPolicy = { mime: ['audio/'], maxBytes: 50 * MB };
 // HOMATCH Design Studio. A customer floor plan (drawing or PDF), a customer
 // 3D model (glTF only: other formats would need a conversion service that
 // does not exist), and small version thumbnails.
+// 40 MB: the customer's ORIGINAL picture is kept as supplied (a phone photo
+// or a 6K render), beside the smaller analysis copy HOMATCH reads.
 const DS_FLOORPLAN: ContentPolicy = {
   mime: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'],
-  maxBytes: 25 * MB,
+  maxBytes: 40 * MB,
 };
 const DS_MODEL: ContentPolicy = { mime: ['model/gltf-binary', 'model/gltf+json'], maxBytes: 100 * MB };
 const DS_THUMBNAIL: ContentPolicy = { mime: ['image/webp', 'image/jpeg', 'image/png'], maxBytes: 2 * MB };

@@ -14,6 +14,11 @@
 //    the shared generator build it exactly like a drawn plan. With the
 //    customer's own floor plan, its rooms are given to the model and only
 //    furniture, surfaces and cameras are read.
+// 5. A picture whose camera the browser MEASURED from its pixels (an
+//    isometric cut-away: picture_geometry + a top-down plan view) goes with
+//    its plan view, in the SAME reading: the reader traces rooms on the plan
+//    view, and the plan follows the picture's own geometry (pictureFrame.ts).
+//    A missing, unreadable or inconsistent plan view is simply left out.
 //
 // It never writes geometry, a source or a design. Money: DS_RECONSTRUCT is
 // registered, measured and NOT priced; while design_studio_billing_enabled
@@ -26,7 +31,8 @@ import { meterAiCall } from './metering.ts';
 import { refuseIfImpersonating } from '../_shared/impersonation.ts';
 import { getObject, headObject } from '../_shared/objectStore.ts';
 import { imageSize, sniffType } from '../_shared/designStudio/floorplanRead.ts';
-import { planContext, planDocument, RECON_VERSION, SCHEMA, SYSTEM, validateReconstruction } from '../_shared/designStudio/reconstructRead.ts';
+import { type FramedPicture, planContext, planDocument, RECON_VERSION, SCHEMA, SYSTEM, validateReconstruction } from '../_shared/designStudio/reconstructRead.ts';
+import { readFrame } from '../_shared/designStudio/pictureFrame.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -92,7 +98,7 @@ export async function handleReconstruct(req: Request): Promise<Response> {
 
   const ids: string[] = recon.reference_ids ?? [];
   const { data: refs } = await caller.from('ds_floorplans')
-    .select('id, project_id, user_id, object_key, purpose').in('id', ids);
+    .select('id, project_id, user_id, object_key, purpose, plan_view_key, picture_geometry').in('id', ids);
   const byId = new Map((refs ?? []).map((r: any) => [r.id, r]));
   const ordered = ids.map((id) => byId.get(id)).filter(Boolean) as any[];
   if (ordered.length !== ids.length) return json({ error: 'NOT_FOUND' }, 404);
@@ -134,6 +140,27 @@ export async function handleReconstruct(req: Request): Promise<Response> {
     await admin.from('ds_floorplans').update({ image_width: size.width, image_height: size.height, sha256: await sha256Hex(bytes) }).eq('id', ref.id);
   }
 
+  // ── Plan views of measured pictures (never required, never trusted blindly) ──
+  const frames: FramedPicture[] = [];
+  const views: Array<{ type: string; width: number; height: number; bytes: Uint8Array; forImage: number }> = [];
+  for (const [i, ref] of ordered.entries()) {
+    const frame = readFrame(ref.picture_geometry);
+    const key = typeof ref.plan_view_key === 'string' ? ref.plan_view_key : '';
+    if (!frame || !key.startsWith(prefix) || key.includes('..')) continue;
+    // The frame was measured on this picture: its shape must be this picture's.
+    if (Math.abs(frame.width / frame.height - images[i].width / images[i].height) > 0.01) continue;
+    const res = await getObject(key);
+    if (!res.ok) continue;
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const type = sniffType(bytes.subarray(0, 64));
+    const size = type && IMAGE_TYPES.has(type) ? imageSize(bytes.subarray(0, Math.min(bytes.length, 256 * 1024))) : null;
+    if (!type || !size || bytes.length > MAX_BYTES || total + bytes.length > MAX_TOTAL) continue;
+    if (Math.abs(size.width / size.height - frame.view.width / frame.view.height) > 0.02) continue;
+    total += bytes.length;
+    frames.push({ image: i, view: images.length + views.length, frame });
+    views.push({ type, width: size.width, height: size.height, bytes, forImage: i });
+  }
+
   // ── With the customer's own plan, its rooms are the frame ──────────
   let planRooms: Array<{ id: string; kind: string; polygon: Array<{ x: number; y: number }> }> = [];
   if (recon.plan_source_id) {
@@ -157,6 +184,10 @@ export async function handleReconstruct(req: Request): Promise<Response> {
   images.forEach((img, i) => {
     content.push({ type: 'input_text', text: `Picture ${i} (${img.width} x ${img.height} px):` });
     content.push({ type: 'input_image', image_url: `data:${img.type};base64,${base64(img.bytes)}` });
+  });
+  views.forEach((v, k) => {
+    content.push({ type: 'input_text', text: `Plan view ${images.length + k} (${v.width} x ${v.height} px): picture ${v.forImage} redrawn from directly above, from its measured camera. Trace the rooms here.` });
+    content.push({ type: 'input_image', image_url: `data:${v.type};base64,${base64(v.bytes)}` });
   });
 
   const started = Date.now();
@@ -185,6 +216,7 @@ export async function handleReconstruct(req: Request): Promise<Response> {
     usesPlan: planRooms.length > 0, planRoomIds: planRooms.map((r) => r.id),
     // Each picture's shape, read from its own bytes: the traced pixels are fractions of it.
     imageAspects: images.map((img) => img.width / img.height),
+    frames: planRooms.length ? [] : frames,
   });
   if (!reading.usesPlan && reading.rooms.length === 0) return fail('NOTHING_READ', jobId);
 
@@ -203,7 +235,7 @@ export async function handleReconstruct(req: Request): Promise<Response> {
   // ── What it cost: priced from the book, never charged ──────────────
   const { aiCents: cents } = await meterAiCall(admin,
     { userId: recon.user_id, productCode: PRODUCT, jobRef: jobId ?? recon.id, model: MODEL, startedAt: started },
-    payload, { reconstruction_id: recon.id, pictures: images.length });
+    payload, { reconstruction_id: recon.id, pictures: images.length, plan_views: views.length });
   const counts = { rooms: reading.rooms.length, openings: reading.openings.length, objects: reading.objects.length, surfaces: reading.surfaces.length, cameras: reading.cameras.length, dropped, fidelity: reading.fidelity ?? null };
   if (jobId) {
     await admin.from('ds_jobs').update({ status: 'SUCCEEDED', finished_at: new Date().toISOString(), cost_cents: cents, output: counts }).eq('id', jobId);

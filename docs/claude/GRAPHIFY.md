@@ -115,3 +115,92 @@ For a cross-cutting change, an unfamiliar subsystem or an impact question:
   boundaries are unchanged.
 - An index is never proof of production state (`refs/deployed/*` and the
   artifact proofs are).
+
+## Online viewer (private, cloud — no owner PC)
+
+`graphify-viewer/` is the source of a **separate** Vercel project,
+`homatch-architecture`. It is not part of the customer HOMATCH build, nothing
+in HOMATCH imports it, and its failure cannot affect homatch.live, Supabase,
+Railway or Runpod.
+
+```
+push to main ─► Vercel (viewer project) build ─► node graphify-viewer/build.mjs
+                 │  same scripts/claude/graphify.mjs as Claude Code (code-only, no LLM,
+                 │  no credential in Graphify's environment)
+                 ├─ secret scan of every published file + excluded-path check → fail closed
+                 ├─ docs-only commit → cached graph re-published, revision re-stamped
+                 ├─ failure → last valid graph re-published as UPDATE_FAILED
+                 │            (attempted commit, last good commit, reason);
+                 │            nothing cached → build fails, previous deployment stays
+                 └─ deploy: shell + g/** (Graphify HTML/JSON) + status.json + /api/freshness
+```
+
+- **Access**: Vercel Authentication on every deployment URL of the project
+  (`all_except_custom_domains`) and **no custom domain**, so every URL —
+  including `homatch-architecture.vercel.app` — needs a Vercel login with
+  access to the `insportia` team. Unauthenticated requests get 401 / the
+  Vercel login, never the graph. `noindex` headers are defence in depth,
+  not the control. Do not add a custom domain unless the plan can protect
+  it ("All Deployments" protection); otherwise it would be public.
+- **Guard**: `.github/workflows/architecture-viewer-guard.yml` (daily, on
+  viewer changes, or by hand) requests the page, status, full graph,
+  presets, traces and the function **anonymously** and fails if any is
+  served. Override the URL with the repo variable `ARCHITECTURE_VIEWER_URL`.
+- **Status bar**: branch @ short SHA, graph generated time, and a badge:
+  `CURRENT` (live homatch.live runs this revision or an older commit of it —
+  read from the build id it already publishes in `/sw.js`), `STALE` (live
+  runs a commit this graph has not seen), `STALE · UPDATE FAILED`,
+  `UNVERIFIED` (the live check could not run). Never CURRENT by default.
+- **History**: the last 20 builds (commit, time, built / reused / failed +
+  reason). Each successful build stays openable at its own deployment URL
+  (also protected).
+- **Presets**: All HOMATCH (community map), Design Studio, Meta Ads,
+  Discovery / Campaigns, Supabase / DB, Infrastructure, Runpod / Blender —
+  the `VIEWS` patterns in `scripts/claude/graphify.mjs`, i.e. filters over
+  the one real graph. Traces (Design Studio upload → walkthrough, Meta Ads
+  builder → insights, Meta Leads form → readiness) and a dependency source
+  scan (SAM, TRELLIS, HF_TOKEN, Runpod, Blender, generated assets: paths
+  only).
+- **Manual refresh**: Vercel → homatch-architecture → Deployments → latest
+  production → Redeploy (or push to main). The build cache carries the
+  history; "Redeploy without cache" starts history afresh.
+- **Preview branches**: the ignore step builds `main` always and other
+  branches only if they match the project env `VIEWER_PREVIEW_BRANCHES`
+  (regex) **and** contain `graphify-viewer/build.mjs` — branches without
+  the viewer never produce a failing check.
+
+### Same truth for Claude (cloud or local)
+
+A fresh cloud session needs no state from any PC:
+
+```sh
+uv tool install "graphifyy[sql]==0.9.73"
+git checkout <the viewer's revision SHA>        # shown in the status bar
+node scripts/claude/graphify.mjs                # ~1 min
+node scripts/claude/graphify.mjs digest         # → "<sha> <digest>"
+```
+
+The digest equals the viewer's History → Digest for that commit (verified:
+two clean builds of one commit give one digest). Then `graphify query /
+path / explain` as above. Claude does **not** read the hosted viewer: it
+rebuilds the same graph from the same commit and proves equality by digest.
+
+### Owner setup (one time)
+
+The Claude Vercel connector cannot create projects in the `insportia` team
+(403). In the Vercel dashboard:
+
+1. **Add New → Project → Import** `insportia/homatch`. Name:
+   `homatch-architecture`. Framework preset: **Other**. Root directory:
+   `./`. Build command: `node graphify-viewer/build.mjs`. Install command:
+   `echo no-install-needed`. Output directory: default. Add env
+   `VIEWER_PREVIEW_BRANCHES` = `ccr-76ef455d-0qvt80` (optional). Deploy —
+   the first build from `main` fails until this PR merges; that is
+   expected and serves nothing.
+2. **Settings → Deployment Protection → Vercel Authentication: Enabled,
+   Standard Protection** (all deployments except custom domains). Add no
+   custom domain.
+3. **Settings → Git → Ignored Build Step → Custom**:
+   `[ -f graphify-viewer/build.mjs ] || exit 0; [ "$VERCEL_GIT_COMMIT_REF" = main ] && exit 1; echo "$VERCEL_GIT_COMMIT_REF" | grep -Eqx "${VIEWER_PREVIEW_BRANCHES:-^$}" && exit 1; exit 0`
+4. Tell Claude the project exists; it then deploys the branch, runs the
+   access guard, and proves the rest.

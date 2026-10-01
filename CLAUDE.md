@@ -24,7 +24,7 @@ answering; never assume a feature is missing because a grep came back empty.
 | Release tiers (FAST / TARGETED / COMPONENT_FULL / REPO_FULL), routine-operation permissions | `docs/claude/RELEASE.md` |
 | Production/deferred state | `docs/claude/PROJECT_STATE.md` |
 | Sharp edges | `docs/claude/KNOWN_RISKS.md` |
-| Code graph (Graphify): pre-flight, views, limits | `docs/claude/GRAPHIFY.md` |
+| Code graph (Graphify): pre-flight, views, limits, private online viewer | `docs/claude/GRAPHIFY.md` |
 | Deep narrative | `docs/ARCHITECTURE.md` · `docs/DATABASE.md` · `docs/DEPLOYMENT.md` |
 
 For symbol relationships, call paths, and change impact, prefer the

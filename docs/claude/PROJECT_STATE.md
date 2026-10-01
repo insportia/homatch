@@ -622,3 +622,17 @@ Phase 2 (Universal Discovery) is blocked until this is live and proven.
   every number.
 - Builder: 10 steps (new "brief" before review); review = campaign story + expectations (room to
   learn, Meta estimate) + holistic consistency check with one-tap fixes + learning card.
+
+## Graphify — local + private online architecture viewer (2026-10-01, PR #47)
+
+- Local: Graphify 0.9.73 (`graphifyy[sql]`), official project skill, LLM-free
+  wrapper `scripts/claude/graphify.mjs` (presets, traces, digest). Doc:
+  `docs/claude/GRAPHIFY.md`.
+- Online: `graphify-viewer/` = separate Vercel project `homatch-architecture`
+  (Vercel Authentication, no custom domain). **BLOCKED on owner**: the Claude
+  Vercel connector cannot create projects (403). Owner steps in GRAPHIFY.md
+  → "Owner setup". Until then: NOT DEPLOYED; auto-refresh IMPLEMENTED, NOT
+  PROVEN; access guard workflow reports NOT_DEPLOYED.
+- Not a HOMATCH runtime dependency; merging #47 triggers only the routine
+  customer Vercel rebuild of identical app code.
+

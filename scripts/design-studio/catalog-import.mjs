@@ -274,6 +274,38 @@ async function enqueue() {
   } else throw new Error('enqueue needs --ids or --all --owner-approved');
 }
 
+/**
+ * Publish NAMED assets to the editor: the catalogue row of each named asset
+ * whose import is READY becomes active. Never a whole provider, never a row
+ * that is not READY (READY already means: licensed for runtime delivery,
+ * validated, optimised within budget, stored and indexed). Each activation is
+ * audited as an import event.
+ */
+async function activate() {
+  const provider = flag('provider', '');
+  if (!ADAPTERS[provider]) throw new Error('activate needs --provider');
+  const named = flag('ids', '');
+  if (!named) throw new Error('activate needs --ids (named assets only)');
+  const { ids, invalid } = parseIds(named, ADAPTERS[provider].idPattern);
+  if (invalid.length) throw new Error(`malformed ${provider} ids: ${invalid.join(', ')}`);
+  const rows = await rest(`ds_catalog_imports?source_provider=eq.${provider}&source_asset_id=in.(${ids.map((x) => `"${x}"`).join(',')})&select=homatch_asset_id,source_asset_id,kind,state`);
+  const byId = new Map((rows ?? []).map((r) => [r.source_asset_id, r]));
+  const TABLE = { MODEL: 'ds_catalog_assets', MATERIAL: 'ds_catalog_materials', ENVIRONMENT: 'ds_catalog_environments' };
+  let activated = 0;
+  for (const id of ids) {
+    const r = byId.get(id);
+    if (!r) { log(`  not activated ${id}: not in the catalogue`); continue; }
+    if (r.state !== 'READY') { log(`  not activated ${id}: import is ${r.state}, not READY`); continue; }
+    const done = await rest(`${TABLE[r.kind]}?homatch_asset_id=eq.${r.homatch_asset_id}&quality_state=eq.READY&select=homatch_asset_id`, {
+      method: 'PATCH', prefer: 'return=representation', body: { active: true, updated_at: io.now() },
+    });
+    if (!done?.length) { log(`  not activated ${id}: no READY catalogue row`); continue; }
+    await io.db.event(r.homatch_asset_id, 'ACTIVE', 'STAGE', { detail: { activated: true } });
+    activated += 1;
+  }
+  log(`activate ${provider} (named): requested ${ids.length}, activated ${activated}, refused ${ids.length - activated}`);
+}
+
 async function report() {
   const rows = await rest('ds_catalog_imports?select=source_provider,kind,state,license_class,quality_tier,source_bytes,optimized_bytes,stored_bytes,files_uploaded,files_skipped,planned_bytes');
   const by = {};
@@ -307,5 +339,6 @@ if (mode === 'discover') {
 else if (mode === 'run') {
   await detectTools();
   log(`run: ${JSON.stringify(await work(io, { budgetMs: Number(flag('budget-min', '300')) * 60000, concurrency: Math.max(1, Math.min(6, Number(flag('concurrency', '3')))) }))}`);
-} else if (mode === 'report') await report();
+} else if (mode === 'activate') await activate();
+else if (mode === 'report') await report();
 else { console.error('usage: discover | enqueue | run | report'); process.exit(2); }

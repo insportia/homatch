@@ -98,3 +98,23 @@ export function adminCounts(rows: AdminCampaignRow[], now: number): AdminCounts 
   for (const r of rows) for (const f of ADMIN_FILTERS) if (matchesAdminFilter(r, f, now)) out[f] += 1;
   return out;
 }
+
+/** Everything an admin may search a campaign owner by (people resolved by admin_meta_people). */
+export interface PersonSearchFields {
+  name?: string | null; username?: string | null; email?: string | null;
+  adAccounts?: Array<{ id: string; name?: string | null }>;
+}
+export const personSearchText = (p: PersonSearchFields | null | undefined, id: string) =>
+  [id, p?.name, p?.username, p?.email, ...(p?.adAccounts ?? []).flatMap((a) => [a.id, a.name])].filter(Boolean).join(' ').toLowerCase();
+
+/** The admin campaign search: owner (email, name, username, id), campaign name/id, Meta campaign id, ad account. */
+export function campaignMatchesSearch(
+  c: { id: string; user_id: string; name?: string | null; property_id?: string | null; external_campaign_id?: string | null; ad_account_external_id?: string | null },
+  person: PersonSearchFields | null | undefined, query: string,
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return `${c.name ?? ''} ${c.id} ${c.property_id ?? ''} ${c.external_campaign_id ?? ''} ${c.ad_account_external_id ?? ''} ${personSearchText(person, c.user_id)}`
+    .toLowerCase().includes(q);
+}
+

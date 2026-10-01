@@ -32,6 +32,7 @@ interface Probe {
   tokenEncryptionConfigured: boolean; redirectUriConfigured: boolean;
   capabilities: { key: string; status: string; requirement?: string }[];
   lastStatusSyncAt: string | null; lastUsageReportAt: string | null; checkedAt: string;
+  instantForms?: { goalEnabled: boolean; leadImportEnabled: boolean; requiredScopes: string[]; connectedTotal: number; connectedWithScopes: number };
 }
 /** HOMATCH's view of Meta older than this is stale (status sync runs every minute). */
 const PROBE_STALE_MS = 20 * 60_000;
@@ -99,6 +100,15 @@ export function IntegrationProbe() {
             </ul>
           </div>
           <div className="min-w-0 space-y-1">
+            {probe.instantForms && (
+              <div className="mb-3 rounded-lg border border-border p-2.5" data-mm-probe-forms={probe.instantForms.connectedWithScopes > 0 ? 'granted' : 'blocked'}>
+                <p className="font-semibold">{t('mm_a_forms_title')}</p>
+                <p className="text-muted-foreground">{t('mm_a_forms_counts', { n: probe.instantForms.connectedWithScopes, total: probe.instantForms.connectedTotal })}</p>
+                {probe.instantForms.goalEnabled && probe.instantForms.connectedWithScopes === 0 && (
+                  <p className="mt-1 text-[hsl(var(--warning))]">{t('mm_a_forms_blocked')} <span className="font-mono" dir="ltr">{probe.instantForms.requiredScopes.join(', ')}</span></p>
+                )}
+              </div>
+            )}
             <p className="font-semibold">{t('mm_a_api_capabilities')}</p>
             {(probe.capabilities ?? []).map((c) => (
               <div key={c.key} className="flex items-start gap-2">

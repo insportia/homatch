@@ -30,11 +30,15 @@ import { FeePolicyPanel } from '@/components/admin/metaAds/FeePolicyPanel';
 import { GuardPanel } from '@/components/admin/metaAds/GuardPanel';
 import { ApiHealthPanel, IntegrationProbe } from '@/components/admin/metaAds/ApiHealthPanel';
 import { AGO, MIN_REASON } from '@/components/admin/metaAds/kit';
+import { IdChip } from '@/components/admin/control/AdminKit';
+import { Owner, usePeople } from '@/components/admin/metaAds/people';
+import { missingInstantFormScopes, INSTANT_FORM_PERMISSIONS } from '@/lib/metaAds/instantForms';
+import { searchUsers } from '@/services/adminControl';
 import { CampaignStatusChip } from '@/components/metaAds/workspace/CampaignStatusChip';
 import { ago } from '@/components/metaAds/workspace/format';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  adminCounts, matchesAdminFilter, discrepancy, syncFreshness, isAdminFilter, ADMIN_FILTERS,
+  adminCounts, campaignMatchesSearch, matchesAdminFilter, discrepancy, syncFreshness, isAdminFilter, ADMIN_FILTERS,
   type AdminCampaignRow, type AdminFilter, type Discrepancy, type Freshness,
 } from '@/lib/metaAds/adminView';
 import {
@@ -287,13 +291,14 @@ function Campaigns({ view, setView }: { view: AdminFilter; setView: (v: AdminFil
     return (data ?? []).map(asRow);
   }, []);
   const counts = useMemo(() => adminCounts(all, now), [all, now]);
+  const people = usePeople(all.map((c: any) => c.user_id));
   // The same rule the KPI counted with: the list a KPI opens is exactly its number.
-  const rows = all.filter((c: any) => matchesAdminFilter(c, view, now)
-    && (!search || `${c.name} ${c.user_id} ${c.property_id ?? ''} ${c.external_campaign_id ?? ''}`.toLowerCase().includes(search.toLowerCase())));
+  // Search: owner email / name / username / user id, campaign name / id, Meta campaign id, ad account.
+  const rows = all.filter((c: any) => matchesAdminFilter(c, view, now) && campaignMatchesSearch(c, people[c.user_id], search));
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Input placeholder={t('admin_mads_search_ph')} value={search} onChange={e => setSearch(e.target.value)} className="max-w-sm" />
+        <Input placeholder={t('mm_a_search_ph')} aria-label={t('mm_a_search_ph')} value={search} onChange={e => setSearch(e.target.value)} className="w-full max-w-md" data-mm-admin-search="" />
         <Button size="sm" variant="outline" onClick={reload} aria-label={t('mm_a_refresh')}><RefreshCw className="h-3.5 w-3.5" /></Button>
       </div>
       <FilterRail<AdminFilter> options={ADMIN_FILTERS.map(f => ({ value: f, label: t(FILTER_LABEL[f]), count: counts[f] }))}
@@ -328,6 +333,15 @@ function Campaigns({ view, setView }: { view: AdminFilter; setView: (v: AdminFil
                 </span>
               )}
             </button>
+            {/* Who and where: outside the toggle, so its copyable ids are real buttons of their own. */}
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/60 pt-2 text-[13px]" data-mm-admin-identity={c.id}>
+              <span className="min-w-0"><span className="text-muted-foreground">{t('mm_a_owner')}: </span><Owner id={c.user_id} person={people[c.user_id]} /></span>
+              <span><span className="text-muted-foreground">{t('mm_a_campaign_id')}: </span><IdChip id={c.id} /></span>
+              {c.external_campaign_id && <span><span className="text-muted-foreground">{t('mm_a_meta_campaign_id')}: </span><IdChip id={String(c.external_campaign_id)} label={String(c.external_campaign_id)} /></span>}
+              {c.ad_account_external_id && <span><span className="text-muted-foreground">{t('mm_a_account')}: </span><IdChip id={String(c.ad_account_external_id)} label={String(c.ad_account_external_id)} /></span>}
+              <span data-mm-admin-connection={people[c.user_id]?.connection?.status ?? 'NONE'}><span className="text-muted-foreground">{t('mm_a_connection')}: </span>
+                <b className="font-mono" dir="ltr">{people[c.user_id]?.connection?.status ?? '—'}</b></span>
+            </div>
             {open === c.id && <CampaignDrill c={c} onSynced={reload} />}
           </Card>
         );
@@ -367,7 +381,7 @@ function CampaignDrill({ c, onSynced }: { c: any; onSynced: () => void }) {
   const sum = (type: string) => ledger.filter((l: any) => l.entry_type === type).reduce((n: number, l: any) => n + Number(l.amount_cents), 0);
   return (
     <div className="mt-3 space-y-2 border-t border-border pt-3 text-[13px]">
-      <p><b>{t('admin_mads_user')}</b> {c.user_id} · <b>{t('admin_mads_property')}</b> {c.property_id ?? '—'} · <b>{t('admin_mads_objective')}</b> {c.objective ?? '—'} · <b>{t('admin_mads_plan')}</b> {c.plan_version ?? '—'} · <b>{t('admin_mads_external')}</b> {c.external_campaign_id ?? '—'} · <b>{t('admin_mads_launch_key')}</b> {c.launch_idempotency_key ?? '—'}</p>
+      <p><b>{t('admin_mads_user')}</b> <Owner id={c.user_id} /> · <b>{t('admin_mads_property')}</b> {c.property_id ?? '—'} · <b>{t('admin_mads_objective')}</b> {c.objective ?? '—'} · <b>{t('admin_mads_plan')}</b> {c.plan_version ?? '—'} · <b>{t('admin_mads_external')}</b> {c.external_campaign_id ?? '—'} · <b>{t('admin_mads_launch_key')}</b> {c.launch_idempotency_key ?? '—'}</p>
       <p><b>{t('admin_mads_preflight')}</b> {c.preflight?.status ?? '—'} {c.preflight?.checks?.map((ch: any) => `${ch.state === 'WARNING' ? '!' : ch.ok ? '✓' : '✗'}${ch.key}${ch.detail && !ch.ok ? `(${ch.detail})` : ''}`).join(' ')}</p>
       <p><b>{t('admin_mads_placements')}</b> {JSON.stringify(c.placements)} · <b>{t('admin_mads_destination')}</b> {JSON.stringify(c.destination)} · <b>{t('admin_mads_spend')}</b> {money(c.spend_cents)} · <b>{t('admin_mads_error')}</b> {c.last_error?.key ?? '—'}{c.last_error?.code ? ` (${c.last_error.code})` : ''}{c.last_error?.detail ? ` — ${c.last_error.detail}` : ''}</p>
       <p><b>{t('admin_mads_timeline')}</b> {t('admin_mads_created')} {new Date(c.created_at).toLocaleString()} · {t('admin_mads_launched')} {c.launched_at ? new Date(c.launched_at).toLocaleString() : '—'} · {t('admin_mads_synced_at')} {c.last_synced_at ? new Date(c.last_synced_at).toLocaleString() : '—'} · {t('admin_mads_settled')} {c.settled_at ? new Date(c.settled_at).toLocaleString() : '—'}</p>
@@ -418,7 +432,14 @@ function Connections() {
     <div className="space-y-2">
       {rows.map((c: any) => (
         <Card key={c.id}>
-          <p className="text-sm"><b>{c.user_id}</b> · {c.status} · {t('admin_mads_scopes')}: {c.granted_scopes?.join(', ') || '—'}
+          <p className="text-sm"><Owner id={c.user_id} /></p>
+          {/* Admin sees the technical reason Leads on Facebook/Instagram is unavailable for this connection. */}
+          {c.status === 'CONNECTED' && missingInstantFormScopes(c.granted_scopes, INSTANT_FORM_PERMISSIONS).length > 0 && (
+            <p className="mt-1 text-[13px] text-[hsl(var(--warning))]" data-mm-admin-forms-missing={c.user_id}>
+              {t('mm_a_forms_missing')}: <span className="font-mono" dir="ltr">{missingInstantFormScopes(c.granted_scopes, INSTANT_FORM_PERMISSIONS).join(', ')}</span>
+            </p>
+          )}
+          <p className="mt-1 text-sm">{c.status} · {t('admin_mads_scopes')}: {c.granted_scopes?.join(', ') || '—'}
             {c.token_expires_at ? ` · token exp ${new Date(c.token_expires_at).toLocaleDateString()}` : ''}
             {c.declined_scopes?.length ? ` · ${t('admin_mads_declined')}: ${c.declined_scopes.join(', ')}` : ''}
             {c.last_error ? ` · err ${c.last_error}` : ''}</p>
@@ -454,7 +475,7 @@ function Leads() {
               {rows.map((l: any) => (
                 <tr key={l.id} className="border-t border-border">
                   <td className="py-1.5">{new Date(l.received_at).toLocaleString()}</td>
-                  <td className="font-mono">{String(l.user_id).slice(0, 8)}</td>
+                  <td className="py-1.5 pe-2"><Owner id={l.user_id} /></td>
                   <td>{l.source}</td><td>{l.status}</td>
                   <td className="font-mono">{l.campaign_id ? String(l.campaign_id).slice(0, 8) : '—'}</td>
                 </tr>
@@ -501,7 +522,7 @@ function Moderation() {
     <div className="space-y-2">
       {rows.map((m: any) => (
         <Card key={m.id}>
-          <p className="text-sm"><b>{m.reason}</b> · {m.severity} · {m.status} · {t('admin_mads_user')} {String(m.user_id).slice(0, 8)} · {new Date(m.created_at).toLocaleString()}</p>
+          <p className="text-sm"><b>{m.reason}</b> · {m.severity} · {m.status} · {t('admin_mads_user')} <Owner id={m.user_id} /> · {new Date(m.created_at).toLocaleString()}</p>
           <p className="text-[13px] text-muted-foreground">{JSON.stringify(m.findings)}</p>
           {m.status === 'OPEN' && <ModerationDecision caseId={m.id} onDone={reload} />}
           {m.decision_note && <p className="mt-1 text-[13px]">{t('admin_mads_note')}: {m.decision_note}</p>}
@@ -548,13 +569,19 @@ function Finance() {
   const [userFilter, setUserFilter] = useState('');
   const { rows, loading } = useRows(async () => {
     let q = supabase.from('meta_ads_ledger').select('*').order('created_at', { ascending: false }).limit(300);
-    if (userFilter) q = q.eq('user_id', userFilter);
+    const f = userFilter.trim();
+    if (f) {
+      // A user id directly; anything else (email, name, username) through the admin user search.
+      const ids = /^[0-9a-f-]{36}$/i.test(f) ? [f] : (await searchUsers(f, 25).catch(() => [])).map((u) => u.id);
+      if (!ids.length) return [];
+      q = q.in('user_id', ids);
+    }
     const { data } = await q; return data ?? [];
   }, [userFilter]);
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">
-        <Input placeholder={t('admin_mads_filter_user_ph')} value={userFilter} onChange={e => setUserFilter(e.target.value)} className="max-w-sm font-mono" />
+        <Input placeholder={t('mm_a_fin_filter_ph')} aria-label={t('mm_a_fin_filter_ph')} value={userFilter} onChange={e => setUserFilter(e.target.value)} className="w-full max-w-md" />
         {/* Adjustments live with the customer (Fees & finance): direction, reason and balance before/after, audited. */}
         <p className="self-center text-2xs text-muted-foreground">{t('mm_a_fin_adjust_where')}</p>
       </div>
@@ -566,7 +593,7 @@ function Finance() {
               {rows.map((e: any) => (
                 <tr key={e.id} className="border-t border-border">
                   <td className="py-1.5">{new Date(e.created_at).toLocaleString()}</td>
-                  <td className="font-mono">{String(e.user_id).slice(0, 8)}</td>
+                  <td className="py-1.5 pe-2"><Owner id={e.user_id} /></td>
                   <td>{e.entry_type}</td>
                   <td className={cn('text-end tabular-nums', e.amount_cents < 0 ? 'text-destructive' : 'text-[hsl(var(--success))]')} dir="ltr">{money(e.amount_cents)}</td>
                   <td className="font-mono">{e.campaign_id ? String(e.campaign_id).slice(0, 8) : '—'}</td>
@@ -596,6 +623,7 @@ function MetaErrors() {
         <Card key={e.id}>
           <p className="text-sm"><b>{e.endpoint}</b> · {t('admin_mads_code')} {e.code}{e.subcode ? `/${e.subcode}` : ''} · {e.customer_message_key} · {new Date(e.created_at).toLocaleString()}</p>
           <p className="truncate text-[13px] text-muted-foreground">{e.message}</p>
+          {e.user_id && <p className="mt-1 text-[13px]"><Owner id={e.user_id} /></p>}
         </Card>
       ))}
       {rows.length === 0 && <p className="text-sm text-muted-foreground">{t('admin_mads_no_errors')}</p>}

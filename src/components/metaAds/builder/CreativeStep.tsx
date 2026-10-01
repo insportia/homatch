@@ -10,7 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
-import { checkMedia, GOAL_SPECS, PLACEMENTS, type Placement } from '@/lib/metaAds/payload';
+import { checkMedia, ctaOptions, PLACEMENTS, resolveCta, type Placement } from '@/lib/metaAds/payload';
 import type { MetaGoal } from '@/lib/metaAds/strategy';
 import type { AdviceItem } from '@/lib/metaAds/creativeAdvice';
 import {
@@ -115,7 +115,11 @@ export function CreativeStep({ campaign, creatives, setCreatives, placements, on
       }
       setUploading((n) => n + 1);
       try {
-        const row = await addCreative(homatchUser.id, campaign.id, file, { headline: defaultHeadline.slice(0, 40), primaryText: '' }, facts, creatives.length);
+        // Starts on this goal's own default button (the table default would silently be Learn more).
+        const row = await addCreative(homatchUser.id, campaign.id, file, {
+          headline: defaultHeadline.slice(0, 40), primaryText: '',
+          cta: resolveCta(campaign.goal as MetaGoal, null, campaign.destination?.messagingApp ?? null),
+        }, facts, creatives.length);
         setCreatives((cur) => [...cur, row]);
         onFocusCreative(row.id);
       } catch { toast.error(t('mads_upload_failed')); }
@@ -142,7 +146,7 @@ export function CreativeStep({ campaign, creatives, setCreatives, placements, on
       <CreativeBudgetAdvice general={grouped.general} recommendedCount={strategy?.recommendedCreativeCount ?? null}
         heldBackCount={creatives.filter((c) => held.has(c.id)).length} loading={strategyLoading} />
       {creatives.map((cr) => (
-        <CreativeEditor key={cr.id} creative={cr} goal={campaign.goal as MetaGoal} placements={placements}
+        <CreativeEditor key={cr.id} creative={cr} goal={campaign.goal as MetaGoal} messagingApp={campaign.destination?.messagingApp ?? null} placements={placements}
           advice={grouped.byCreative.get(cr.id) ?? []} heldBack={held.has(cr.id)}
           onChange={(next) => setCreatives((cur) => cur.map((c) => (c.id === next.id ? next : c)))}
           onRemove={async () => {
@@ -169,26 +173,40 @@ export function CreativeStep({ campaign, creatives, setCreatives, placements, on
   );
 }
 
-function CreativeEditor({ creative, goal, placements, advice, heldBack, onChange, onRemove, onAi, onFocus }: {
-  creative: MetaCreativeRow; goal: MetaGoal; placements: Placement[];
+function CreativeEditor({ creative, goal, messagingApp, placements, advice, heldBack, onChange, onRemove, onAi, onFocus }: {
+  creative: MetaCreativeRow; goal: MetaGoal; messagingApp: string | null; placements: Placement[];
   advice: AdviceItem[]; heldBack: boolean;
   onChange: (c: MetaCreativeRow) => void; onRemove: () => void; onAi: () => void; onFocus: () => void;
 }) {
   const { t } = useLanguage();
-  const spec = GOAL_SPECS[goal];
+  const options = ctaOptions(goal, messagingApp);
+  const activeCta = resolveCta(goal, creative.cta, messagingApp);
   const m0 = creative.media[0];
   const url = useMediaUrl(m0?.path);
   const check = useMemo(() => (m0 ? checkMedia({ mime: m0.mime, sizeBytes: Number(m0.size ?? 0), width: m0.width, height: m0.height, durationSeconds: m0.duration }, placements) : null), [m0, placements]);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /* Every field changed since the last save — merged, so a quick second edit
+     (a headline right after a button) never drops the first one. */
+  const pending = useRef<Partial<MetaCreativeRow>>({});
+  const flush = () => {
+    const p = pending.current;
+    pending.current = {};
+    timer.current = null;
+    if (Object.keys(p).length) void updateCreative(creative.id, p as never).catch(() => undefined);
+  };
+  useEffect(() => () => { if (timer.current) { clearTimeout(timer.current); flush(); } }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const edit = (patch: Partial<MetaCreativeRow>) => {
     const next = { ...creative, ...patch };
     onChange(next);
+    pending.current = { ...pending.current, ...patch };
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => { void updateCreative(creative.id, patch as never).catch(() => undefined); }, 600);
+    timer.current = setTimeout(flush, 600);
   };
   const fid = (f: string) => `madsb-field-${creative.id}-${f}`;
-  const needsHeadline = goal !== 'ENGAGEMENT' && goal !== 'MESSAGES';
+  // Every goal but a plain post carries a headline and description to Meta (payload.creativeParams),
+  // so each of those gets its editor — message ads included.
+  const needsHeadline = goal !== 'ENGAGEMENT';
 
   return (
     <div className="rounded-2xl border border-border bg-card p-3.5 shadow-card sm:p-4" onFocusCapture={onFocus}>
@@ -247,14 +265,14 @@ function CreativeEditor({ creative, goal, placements, advice, heldBack, onChange
                 onChange={(e) => edit({ description: e.target.value } as never)} />
             </label>
           )}
-          {spec.allowedCtas.length > 1 && (
-            <div id={fid('cta')} tabIndex={-1}>
+          {options.length > 1 && (
+            <div id={fid('cta')} tabIndex={-1} data-mm-cta-options={options.join(',')}>
               <span className="mb-1 block text-[13px] font-medium text-foreground">{t('madsb_field_cta')}</span>
               <div className="flex flex-wrap gap-1.5">
-                {spec.allowedCtas.map((c) => {
-                  const active = (spec.allowedCtas.includes(creative.cta) ? creative.cta : spec.defaultCta) === c;
+                {options.map((c) => {
+                  const active = activeCta === c;
                   return (
-                    <button key={c} type="button" aria-pressed={active} onClick={() => edit({ cta: c })}
+                    <button key={c} type="button" aria-pressed={active} onClick={() => edit({ cta: c })} data-mm-cta={c}
                       className={cn('rounded-full border px-2.5 py-1 text-2xs', active ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] font-semibold text-foreground' : 'border-border text-muted-foreground')}>
                       {t(`madsb_cta_${c.toLowerCase()}` as never)}
                     </button>
@@ -262,6 +280,12 @@ function CreativeEditor({ creative, goal, placements, advice, heldBack, onChange
                 })}
               </div>
             </div>
+          )}
+          {options.length === 1 && (
+            /* One button is valid for this destination: shown as what HOMATCH set, not as a choice. */
+            <p data-mm-cta-fixed={options[0]} className="text-[13px] text-muted-foreground">
+              {t('madsb_field_cta')}: <b className="text-foreground">{t(`madsb_cta_${options[0].toLowerCase()}` as never)}</b> · {t('mm_b_cta_set_by_homatch')}
+            </p>
           )}
           <AdviceList items={advice} />
           <div className="flex flex-wrap items-center justify-between gap-2 pt-1">

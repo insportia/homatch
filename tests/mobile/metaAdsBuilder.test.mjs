@@ -116,7 +116,7 @@ function fixtures() {
   return { campaign, status, creative, dashboard };
 }
 
-async function boot(t, { width, height, lang, admin = false }) {
+async function boot(t, { width, height, lang, admin = false, statusOver = null, campaignOver = null }) {
   const { chromium } = resolvePlaywright();
   const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
@@ -127,7 +127,9 @@ async function boot(t, { width, height, lang, admin = false }) {
     ['sb-stubproj-auth-token', fakeSession(), lang]);
   const page = await ctx.newPage();
   const fx = fixtures();
-  const calls = { patches: [], inserts: 0, actions: [], bodies: [], settingWrites: 0 };
+  if (statusOver) fx.status = { ...fx.status, ...statusOver, connection: { ...fx.status.connection, ...(statusOver.connection ?? {}) } };
+  if (campaignOver) Object.assign(fx.campaign, campaignOver);
+  const calls = { patches: [], inserts: 0, actions: [], bodies: [], settingWrites: 0, creativePatches: [] };
   const ADM = admin ? adminFixtures() : null;
   const json = (b, status = 200) => ({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(b) });
   await page.route('**', async (r) => {
@@ -154,6 +156,7 @@ async function boot(t, { width, height, lang, admin = false }) {
         if (body.action === 'admin_test_connection') return r.fulfill(json(ADM.probe));
         if (body.action === 'admin_setting_set') return r.fulfill(json({ ok: true, key: body.key, value: body.value }));
         if (body.action === 'admin_sync') return r.fulfill(json({ ok: true, status: 'PAUSED', external_status: 'PAUSED' }));
+        if (body.action === 'admin_meta_people') return r.fulfill(json({ people: Object.fromEntries((body.userIds ?? []).filter((id) => ADM.people[id]).map((id) => [id, ADM.people[id]])) }));
         return r.fulfill(json({ ok: true }));
       }
     }
@@ -168,11 +171,15 @@ async function boot(t, { width, height, lang, admin = false }) {
       return r.fulfill(json({ ok: true }));
     }
     if (url.includes('/rest/v1/meta_campaigns')) {
-      if (req.method() === 'PATCH') { calls.patches.push(JSON.parse(req.postData() || '{}')); return r.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' }, body: '' }); }
+      if (req.method() === 'PATCH') { const b = JSON.parse(req.postData() || '{}'); calls.patches.push(b); Object.assign(fx.campaign, b); return r.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' }, body: '' }); }
       if (req.method() === 'POST') { calls.inserts += 1; return r.fulfill(json(fx.campaign, 201)); }
       return r.fulfill(json(wantsObject ? fx.campaign : [fx.campaign]));
     }
-    if (url.includes('/rest/v1/meta_creatives')) return r.fulfill(json(wantsObject ? fx.creative : [fx.creative]));
+    if (url.includes('/rest/v1/meta_creatives')) {
+      // A saved edit is what a reload reads back.
+      if (req.method() === 'PATCH') { const b = JSON.parse(req.postData() || '{}'); calls.creativePatches.push(b); Object.assign(fx.creative, b); return r.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' }, body: '' }); }
+      return r.fulfill(json(wantsObject ? fx.creative : [fx.creative]));
+    }
     if (url.includes('/rest/v1/properties')) return r.fulfill(json([{ id: 'prop-1', title: 'Vake two-bedroom', homatch_id: 123456, transaction_type: 'SALE' }]));
     if (url.includes('/storage/v1/object/sign/')) return r.fulfill(json({ signedURL: '/object/sign/meta-ads-media/u1/a.png?token=t' }));
     if (url.includes('/storage/v1/object/')) return r.fulfill({ status: 200, contentType: 'image/png', headers: { 'access-control-allow-origin': '*' }, body: PNG });
@@ -426,7 +433,7 @@ function adminFixtures() {
     special_ad_categories: ['HOUSING'], property_id: null, created_at: t(600), ...extra });
   return {
     campaigns: [
-      c('911e571e-ff0a-463b-a0bf-0ae23eb71f27', 'PAUSED', { external_status: 'PAUSED', launched_at: t(720), external_campaign_id: '120200000000001', last_synced_at: t(2) }),
+      c('911e571e-ff0a-463b-a0bf-0ae23eb71f27', 'PAUSED', { user_id: 'b0b00000-0000-4000-8000-0000000000aa', external_status: 'PAUSED', launched_at: t(720), external_campaign_id: '120200000000001', ad_account_external_id: 'act_920919324393041', last_synced_at: t(2) }),
       c('d1d50dc1-0000-4000-8000-000000000001', 'NEEDS_CHANGES'),
       c('829ab04d-0000-4000-8000-000000000002', 'DRAFT'), c('41e99f5c-0000-4000-8000-000000000003', 'DRAFT'), c('df990653-0000-4000-8000-000000000004', 'DRAFT'),
       c('7c0ffee0-0000-4000-8000-000000000005', 'META_REVIEW', { external_status: 'DISAPPROVED', launched_at: t(200), external_campaign_id: '120200000000002', last_synced_at: t(45) }),
@@ -435,6 +442,10 @@ function adminFixtures() {
       { key: 'meta_ads_autopilot_enabled', value: false }, { key: 'meta_ads_enabled', value: true },
       { key: 'meta_ads_fee_percent', value: 9 }, { key: 'meta_ads_guard_policy', value: {} },
     ],
+    people: {
+      'b0b00000-0000-4000-8000-0000000000aa': { id: 'b0b00000-0000-4000-8000-0000000000aa', name: 'Nino Beridze', username: 'nino', email: 'nino@example.test', suspended: false,
+        connection: { status: 'CONNECTED', instantFormsMissing: ['leads_retrieval', 'pages_manage_ads', 'pages_manage_metadata'] }, adAccounts: [{ id: 'act_920919324393041', name: 'Nino Ads', selected: true }] },
+    },
     probe: { mode: 'REAL', secretsConfigured: true, webhookVerifyTokenConfigured: true, tokenEncryptionConfigured: true, redirectUriConfigured: false,
       capabilities: [{ key: 'LEADS_ON_META', status: 'VERIFIED_SUPPORTED' }], lastStatusSyncAt: t(1), lastUsageReportAt: t(3), checkedAt: t(0) },
   };
@@ -570,3 +581,83 @@ test('admin: a setting changes only through the audited server action, with a re
   assert.equal(await page.locator('[data-mm-probe-fresh="fresh"]').count(), 1);
   assert.equal((await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)) <= 1, true);
 });
+
+/* ── PRODUCTION POLISH: owners, Leads on Meta, smart audience, CTA ─────── */
+
+test('admin: every campaign names its owner (name, email, ids) and search finds it by email or Meta id', opts, async (t) => {
+  if (skipReason) assert.fail(`meta ads admin gate could not run: ${skipReason}`);
+  const { page, calls } = await boot(t, { width: 1440, height: 900, lang: 'en', admin: true });
+  await page.goto(`${BASE}/admin/meta-ads?tab=campaigns`, { waitUntil: 'domcontentloaded' });
+  await adminReady(page, '[data-mm-admin-campaign]');
+  await page.waitForSelector('[data-mm-owner="b0b00000-0000-4000-8000-0000000000aa"] b', { timeout: 10000 });
+  const line = await page.locator('[data-mm-admin-identity="911e571e-ff0a-463b-a0bf-0ae23eb71f27"]').innerText();
+  for (const s of ['Nino Beridze', 'nino@example.test', '911e571e', '120200000000001', 'act_920919324393041', 'CONNECTED']) assert.ok(line.includes(s), `${s} in: ${line}`);
+  assert.equal(calls.bodies.filter((b) => b.action === 'admin_meta_people').length, 1, 'one batched lookup for the whole list');
+  const search = page.locator('[data-mm-admin-search]');
+  for (const q of ['nino@example', 'Beridze', '120200000000001', '920919324393041']) {
+    await search.fill(q);
+    await page.waitForTimeout(100);
+    const rows = await page.evaluate(() => [...document.querySelectorAll('[data-mm-admin-campaign]')].map((r) => r.getAttribute('data-mm-admin-campaign').slice(0, 8)));
+    assert.deepEqual(rows, ['911e571e'], q);
+  }
+  await search.fill('nobody@example');
+  await page.waitForSelector('[data-mm-admin-empty]');
+});
+
+test('builder: Leads on Facebook/Instagram unavailable reads as "coming soon" — no permission names anywhere', opts, async (t) => {
+  if (skipReason) assert.fail(`meta ads builder gate could not run: ${skipReason}`);
+  const { page } = await boot(t, { width: 390, height: 844, lang: 'en', statusOver: { mode: 'REAL', connection: { instant_forms_available: false, instant_forms: 'COMING_SOON', granted_scopes: ['ads_management', 'ads_read', 'business_management', 'pages_show_list', 'pages_read_engagement'] } } });
+  await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=goal`, { waitUntil: 'domcontentloaded' });
+  await waitReady(page);
+  const text = await page.evaluate(() => document.body.innerText);
+  assert.match(text, /Coming soon/);
+  assert.doesNotMatch(text, /leads_retrieval|pages_manage_ads|pages_manage_metadata|permission/i);
+  await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=destination`, { waitUntil: 'domcontentloaded' });
+  await waitReady(page);
+  assert.equal(await page.locator('[data-mm-forms-state="COMING_SOON"]').count(), 1);
+  assert.doesNotMatch(await page.evaluate(() => document.body.innerText), /leads_retrieval|pages_manage_ads|pages_manage_metadata/);
+});
+
+test('builder: a property ad shows HOMATCH\'s smart audience, and stores the audience it runs with', opts, async (t) => {
+  if (skipReason) assert.fail(`meta ads builder gate could not run: ${skipReason}`);
+  const { page, calls } = await boot(t, { width: 390, height: 844, lang: 'ka', campaignOver: {
+    property_id: 'prop-1', special_ad_categories: ['HOUSING'],
+    targeting: { locations: [{ type: 'city', key: '2001', name: 'ბათუმი', countryCode: 'GE', radiusKm: 10 }], ageMin: 30, ageMax: 45, gender: 'FEMALE' },
+  } });
+  await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=audience`, { waitUntil: 'domcontentloaded' });
+  await waitReady(page);
+  await page.waitForSelector('[data-mm-smart-audience]');
+  assert.equal(await page.locator('[data-mm-smart-fixed]').count(), 1);
+  const text = await page.evaluate(() => document.body.innerText);
+  assert.match(text, /HOMATCH-ის ჭკვიანი აუდიტორია/);
+  assert.doesNotMatch(text, /Housing|საცხოვრებლის/);
+  // The stale narrowing is stored as what will run: all adults, everyone, 25 km.
+  await page.waitForTimeout(400);
+  const t2 = calls.patches.map((p) => p.targeting).filter(Boolean).pop();
+  assert.ok(t2, 'the normalized audience was saved');
+  assert.deepEqual([t2.ageMin, t2.ageMax, t2.gender, t2.locations[0].radiusKm], [18, 65, 'ALL', 25]);
+});
+
+test('builder: the CTA and headline are edited in the editor, the preview follows live, and a reload keeps them', opts, async (t) => {
+  if (skipReason) assert.fail(`meta ads builder gate could not run: ${skipReason}`);
+  const { page, calls } = await boot(t, { width: 1440, height: 900, lang: 'en' });
+  await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=creative`, { waitUntil: 'domcontentloaded' });
+  await waitReady(page);
+  await page.waitForSelector('[data-mm-cta-options]');
+  const offered = (await page.locator('[data-mm-cta-options]').getAttribute('data-mm-cta-options')).split(',');
+  assert.deepEqual(offered, ['SIGN_UP', 'LEARN_MORE', 'GET_QUOTE', 'APPLY_NOW', 'SUBSCRIBE'], 'only the lead-form CTAs Meta documents');
+  await page.locator('[data-mm-cta="APPLY_NOW"]').click();
+  await page.waitForFunction(() => [...document.querySelectorAll('[data-mm-preview-zone="cta"]')].some((z) => /Apply now/i.test(z.textContent ?? '')), null, { timeout: 5000 });
+  await page.locator('#madsb-field-cr1-headline').fill('Sunny 2BR in Vake');
+  await page.waitForFunction(() => /Sunny 2BR in Vake/.test(document.querySelector('[data-mm-preview-zone="headline"]')?.textContent ?? ''), null, { timeout: 5000 });
+  await page.waitForTimeout(900);
+  assert.ok(calls.creativePatches.some((b) => b.cta === 'APPLY_NOW'), 'the CTA was saved');
+  assert.ok(calls.creativePatches.some((b) => b.headline === 'Sunny 2BR in Vake'), 'the headline was saved');
+  // The media is shown, not offered as an editor.
+  assert.equal(await page.locator('[data-mm-preview-fixed="media"]').count() > 0, true);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await waitReady(page);
+  await page.waitForSelector('[data-mm-cta="APPLY_NOW"][aria-pressed="true"]');
+  assert.equal(await page.locator('#madsb-field-cr1-headline').inputValue(), 'Sunny 2BR in Vake');
+});
+

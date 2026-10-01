@@ -8,7 +8,7 @@ import { CheckCircle2, Loader2, ShieldCheck, Wand2, XCircle, AlertTriangle } fro
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
-import { checkMedia, GOAL_SPECS, PLACEMENTS, type Placement } from '@/lib/metaAds/payload';
+import { checkMedia, GOAL_SPECS, PLACEMENTS, type Placement, resolveCta } from '@/lib/metaAds/payload';
 import type { MetaGoal } from '@/lib/metaAds/strategy';
 import type { MetaCampaignRow, MetaCreativeRow, MetaStatus, PreflightResult, StrategyPreview } from '@/services/metaAds';
 import { ChoiceCard, StepShell, VerdictBadge } from './ui';
@@ -17,7 +17,7 @@ import { FinancialSummary, type Totals } from './BudgetStep';
 import { StrategyCard } from './StrategyCard';
 import { FundingCard } from './FundingCard';
 import { regionName } from './LocationPicker';
-import { isHousingCampaign } from './masterLogic';
+import { effectiveRadiusKm, isHousingCampaign } from './masterLogic';
 
 export function PlacementsStep({ campaign, status, creatives, recommended, patch }: {
   campaign: MetaCampaignRow; status: MetaStatus | null; creatives: MetaCreativeRow[]; recommended: Placement[];
@@ -132,7 +132,7 @@ export function ReviewStep({ campaign, status, creatives, totals, pricing, recom
   // The server's classification (engine.strategyInputFor), not a guess.
   const housing = isHousingCampaign(campaign);
   const locs = campaign.targeting?.locations?.length
-    ? campaign.targeting.locations.map((l) => (l.type === 'country' ? regionName(l.key, lang) : l.type === 'city' && l.radiusKm ? `${l.name} (+${t('mm_b_loc_radius_km', { km: String(l.radiusKm) })})` : l.name))
+    ? campaign.targeting.locations.map((l) => (l.type === 'country' ? regionName(l.key, lang) : l.type === 'city' ? `${l.name} (+${t('mm_b_loc_radius_km', { km: String(effectiveRadiusKm(l.radiusKm, housing)) })})` : l.name))
     : (status?.settings.countries ?? ['GE']).map((c) => regionName(c, lang));
   const eff = strategy?.targeting.effective;
   const placements = campaign.placements?.mode === 'CUSTOM' ? (campaign.placements.list ?? []) : recommended;
@@ -168,13 +168,13 @@ export function ReviewStep({ campaign, status, creatives, totals, pricing, recom
           [t('madsb_review_location'), <span dir="auto">{locs.join(', ')}</span>],
           ...(eff ? [[t('mm_b_who_title'), `${t('mm_b_age_range', { min: String(eff.ageMin), max: eff.ageMax >= 65 ? '65+' : String(eff.ageMax) })} · ${t(`mm_b_gender_${eff.gender === 'MALE' || eff.gender === 'FEMALE' ? eff.gender : 'ALL'}`)}`] as [string, React.ReactNode]] : []),
           [t('madsb_review_audience_type'), campaign.audience_id ? t('madsb_audience_retarget') : t('mads_audience_broad')],
-          ...(housing ? [[t('madsb_review_policy'), t('madsb_housing_short')] as [string, React.ReactNode]] : []),
+          ...(housing ? [[t('madsb_review_audience'), t('mm_b_smart_property')] as [string, React.ReactNode]] : []),
         ]} />
         <Block title={t('madsb_review_creative')} step="creative" rows={[
           [t('madsb_review_media'), t('madsb_review_media_count', { n: String(withMedia.length) })],
           [t('madsb_field_primary'), <span className="line-clamp-2">{withMedia[0]?.primary_text || '—'}</span>],
           [t('madsb_field_headline'), withMedia[0]?.headline || '—'],
-          [t('madsb_field_cta'), t(`madsb_cta_${(withMedia[0] && spec.allowedCtas.includes(withMedia[0].cta) ? withMedia[0].cta : spec.defaultCta).toLowerCase()}` as never)],
+          [t('madsb_field_cta'), t(`madsb_cta_${resolveCta(goal, withMedia[0]?.cta, campaign.destination?.messagingApp ?? null).toLowerCase()}` as never)],
         ]} />
         <Block title={t('madsb_review_delivery')} step="placements" rows={[
           [t('madsb_step_placements'), campaign.placements?.mode === 'CUSTOM' ? t('mads_placements_custom') : t('mads_placements_reco')],

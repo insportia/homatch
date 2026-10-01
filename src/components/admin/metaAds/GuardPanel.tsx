@@ -7,6 +7,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Confirm, IdChip, When } from '@/components/admin/control/AdminKit';
+import { Owner } from './people';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
@@ -112,7 +113,7 @@ export function GuardPanel() {
                     {t(a.status === 'SUSPENDED' ? 'mm_a_acct_suspended' : a.status === 'WATCH' ? 'mm_a_acct_watch' : 'mm_a_acct_active')}
                   </span>
                   <span>{t('mm_a_account')}: <b className="font-mono" dir="ltr">{a.ad_account_external_id}</b></span>
-                  <span>{t('mm_a_user')}: <IdChip id={a.user_id} /></span>
+                  <span>{t('mm_a_user')}: <Owner id={a.user_id} /></span>
                   <span>{t('mm_a_strikes', { n: a.active_strikes })}</span>
                   <span>{t('mm_a_warnings', { n: a.active_warnings })}</span>
                   {a.suspended_at && <span className="text-muted-foreground">{t('mm_a_suspended_at', { at: new Date(a.suspended_at).toLocaleString() })}</span>}
@@ -147,7 +148,7 @@ export function GuardPanel() {
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">
                     <span>{t('mm_a_protective')}: <span className="font-mono" dir="ltr">{inc.protective_action || '—'} / {inc.protective_status || '—'}</span></span>
                     <span>{t('mm_a_account')}: <span className="font-mono" dir="ltr">{inc.ad_account_external_id}</span></span>
-                    <span>{t('mm_a_user')}: <IdChip id={inc.user_id} /></span>
+                    <span>{t('mm_a_user')}: <Owner id={inc.user_id} /></span>
                     {inc.campaign_id && <span>{t('mm_a_campaign')}: <IdChip id={inc.campaign_id} /></span>}
                   </div>
                   <JsonDetails label={t('mm_a_evidence')} value={evidenceOf(inc)} />
@@ -181,7 +182,7 @@ export function GuardPanel() {
               <li key={String(a.id ?? i)} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-b border-border/60 pb-1.5 last:border-0">
                 <When at={String(a.created_at ?? '')} />
                 <b className="font-mono" dir="ltr">{String(a.action ?? '')}</b>
-                <span>{t('mm_a_user')}: <IdChip id={String(a.target_user_id ?? '')} /></span>
+                <span>{t('mm_a_user')}: <Owner id={String(a.target_user_id ?? '')} /></span>
                 <span className="min-w-0 break-words text-muted-foreground">{t('mm_a_reason')}: {String(a.reason ?? '')}</span>
               </li>
             ))}

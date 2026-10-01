@@ -18,6 +18,7 @@ import { recommendedPlacements, type Placement } from '../../../src/lib/metaAds/
 import { statusCounts } from '../../../src/lib/metaAds/uiStatus.ts';
 import { validateSetting, isCredentialKey } from '../../../src/lib/metaAds/adminSettings.ts';
 import { claimFingerprint, afterApproval, type NextAction } from '../../../src/lib/metaAds/moderation.ts';
+import { missingInstantFormScopes } from '../../../src/lib/metaAds/instantForms.ts';
 import { validateLeadFormSpec, leadFormPayload, leadFormPreview, META_LOCALE, type LeadFormSpec } from '../../../src/lib/metaAds/leadForms.ts';
 import { graph, MetaApiError, mockExternalId, hasScopes, INSTANT_FORM_SCOPES, type MetaMode } from '../_shared/metaAds.ts';
 import {
@@ -344,7 +345,7 @@ export async function handleAction(x: ActionCtx): Promise<Response | null> {
         if (!page) return json({ error: 'NO_PAGE', code: 'NO_PAGE' }, 400);
         const { data: conn } = await sb.from('meta_connections').select('granted_scopes').eq('user_id', uid).maybeSingle();
         if (mode === 'REAL' && !hasScopes(conn?.granted_scopes, INSTANT_FORM_SCOPES)) {
-          return json({ error: 'INSTANT_FORMS_PERMISSION_REQUIRED', code: 'INSTANT_FORMS_PERMISSION_REQUIRED', needed: INSTANT_FORM_SCOPES }, 403);
+          return json({ error: 'INSTANT_FORMS_PERMISSION_REQUIRED', code: 'INSTANT_FORMS_PERMISSION_REQUIRED' }, 403);
         }
         const { data: row } = await sb.from('meta_lead_forms').insert({
           user_id: uid, page_external_id: page.external_id, name: String(spec.name).trim().slice(0, 100), spec,
@@ -515,6 +516,34 @@ export async function handleAction(x: ActionCtx): Promise<Response | null> {
         ]);
         if (error) return json({ error: rpcErr(error.message) }, rpcErr(error.message) === 'FORBIDDEN' ? 403 : 500);
         return json({ ...(data as Record<string, unknown>), standardPercent: settings.feePercent, sampleQuote: quote.data ?? null });
+      }
+
+      /* ── ADMIN: WHO OWNS IT ─────────────────────────────────────────── */
+      case 'admin_meta_people': {
+        /* The HOMATCH person behind each user id the Control Center shows:
+           name, username, email, plus their Meta connection and the ad
+           accounts they selected. users is own-row-only under RLS, so this
+           is resolved here, admin-only, for exactly the ids asked about —
+           nothing is copied into another table. Never a token. */
+        if (!me.is_admin) return json({ error: 'forbidden', code: 'FORBIDDEN' }, 403);
+        const ids = [...new Set((Array.isArray(body.userIds) ? body.userIds : []).map(String).filter((v: string) => UUID.test(v)))].slice(0, 500);
+        if (!ids.length) return json({ people: {} });
+        const [{ data: users }, { data: conns }, { data: accts }] = await Promise.all([
+          sb.from('users').select('id,full_name,nickname,username,email,suspended_at').in('id', ids),
+          sb.from('meta_connections').select('user_id,status,granted_scopes').in('user_id', ids),
+          sb.from('meta_assets').select('user_id,external_id,name,selected').eq('kind', 'AD_ACCOUNT').in('user_id', ids),
+        ]);
+        const people: Record<string, unknown> = {};
+        for (const u of users ?? []) {
+          const conn = (conns ?? []).find((c: any) => c.user_id === u.id);
+          people[u.id] = {
+            id: u.id, name: u.full_name || u.nickname || null, username: u.username ?? null, email: u.email ?? null,
+            suspended: !!u.suspended_at,
+            connection: conn ? { status: conn.status, instantFormsMissing: missingInstantFormScopes(conn.granted_scopes, INSTANT_FORM_SCOPES) } : null,
+            adAccounts: (accts ?? []).filter((a: any) => a.user_id === u.id).map((a: any) => ({ id: a.external_id, name: a.name ?? null, selected: !!a.selected })),
+          };
+        }
+        return json({ people });
       }
 
       /* ── ADMIN: SETTINGS + KILL SWITCHES ────────────────────────────── */

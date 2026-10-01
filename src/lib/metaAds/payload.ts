@@ -45,12 +45,13 @@ export const GOAL_SPECS: Record<MetaGoal, GoalSpec> = {
   LEADS_ON_META: {
     objective: 'OUTCOME_LEADS', optimizationGoal: 'LEAD_GENERATION', destinationType: 'ON_AD',
     needsPixel: false, pixelEvent: null, needsLeadForm: true, needsWebsiteUrl: false, needsMessagingApp: false,
-    defaultCta: 'SIGN_UP', allowedCtas: ['SIGN_UP', 'LEARN_MORE', 'GET_QUOTE', 'APPLY_NOW', 'CONTACT_US', 'SUBSCRIBE'],
+    // Instant Form ad CTAs as Meta documents them for lead ads (CONTACT_US is not among them).
+    defaultCta: 'SIGN_UP', allowedCtas: ['SIGN_UP', 'LEARN_MORE', 'GET_QUOTE', 'APPLY_NOW', 'SUBSCRIBE'],
   },
   LEADS_ON_WEBSITE: {
     objective: 'OUTCOME_LEADS', optimizationGoal: 'OFFSITE_CONVERSIONS', destinationType: 'WEBSITE',
     needsPixel: true, pixelEvent: 'LEAD', needsLeadForm: false, needsWebsiteUrl: true, needsMessagingApp: false,
-    defaultCta: 'LEARN_MORE', allowedCtas: ['LEARN_MORE', 'SIGN_UP', 'GET_QUOTE', 'CONTACT_US', 'APPLY_NOW', 'BOOK_TRAVEL'],
+    defaultCta: 'LEARN_MORE', allowedCtas: ['LEARN_MORE', 'SIGN_UP', 'GET_QUOTE', 'CONTACT_US', 'APPLY_NOW'],
   },
   SITE_REGISTRATIONS: {
     objective: 'OUTCOME_LEADS', optimizationGoal: 'OFFSITE_CONVERSIONS', destinationType: 'WEBSITE',
@@ -60,7 +61,7 @@ export const GOAL_SPECS: Record<MetaGoal, GoalSpec> = {
   PROMOTE: {
     objective: 'OUTCOME_TRAFFIC', optimizationGoal: 'LINK_CLICKS', destinationType: 'WEBSITE',
     needsPixel: false, pixelEvent: null, needsLeadForm: false, needsWebsiteUrl: true, needsMessagingApp: false,
-    defaultCta: 'LEARN_MORE', allowedCtas: ['LEARN_MORE', 'SEE_MORE', 'CONTACT_US', 'BOOK_TRAVEL', 'GET_QUOTE'],
+    defaultCta: 'LEARN_MORE', allowedCtas: ['LEARN_MORE', 'CONTACT_US', 'GET_QUOTE'],
   },
   ENGAGEMENT: {
     objective: 'OUTCOME_ENGAGEMENT', optimizationGoal: 'POST_ENGAGEMENT', destinationType: 'ON_POST',
@@ -338,9 +339,29 @@ export function adSetParams(
   return params;
 }
 
+/**
+ * The buttons Meta accepts for this goal and destination. Message ads carry
+ * the one their app requires: WhatsApp's own type, otherwise Send message.
+ */
+export function ctaOptions(goal: MetaGoal, messagingApp?: string | null): readonly string[] {
+  if (goal === 'MESSAGES') return [messagingApp === 'WHATSAPP' ? 'WHATSAPP_MESSAGE' : 'MESSAGE_PAGE'];
+  return GOAL_SPECS[goal].allowedCtas;
+}
+
+/**
+ * The button the ad will actually carry: the customer's choice when it is
+ * valid for this goal and destination, otherwise the goal's default. ONE rule
+ * for the Meta payload, the preview, the review and the editor — so what the
+ * customer sees is what Meta receives, and an invalid choice is never sent.
+ */
+export function resolveCta(goal: MetaGoal, chosen: string | null | undefined, messagingApp?: string | null): string {
+  const options = ctaOptions(goal, messagingApp);
+  if (chosen && options.includes(chosen)) return chosen;
+  return goal === 'MESSAGES' ? options[0] : GOAL_SPECS[goal].defaultCta;
+}
+
 export function creativeParams(goal: MetaGoal, creative: LaunchCreative, ctx: LaunchContext): Record<string, unknown> {
-  const spec = GOAL_SPECS[goal];
-  const cta = creative.cta && spec.allowedCtas.includes(creative.cta) ? creative.cta : spec.defaultCta;
+  const cta = resolveCta(goal, creative.cta, ctx.messagingApp);
   const storySpec: Record<string, unknown> = { page_id: ctx.pageId };
   if (ctx.instagramUserId) storySpec.instagram_user_id = ctx.instagramUserId;
 

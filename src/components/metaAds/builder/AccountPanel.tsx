@@ -91,9 +91,6 @@ export function AccountPanel({ status, onChanged, returnTo, compact }: {
             <div className="min-w-0">
               <p className="font-semibold text-foreground">{t(`madsb_health_${health.toLowerCase()}` as never)}</p>
               <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">{t(`madsb_health_${health.toLowerCase()}_d` as never)}</p>
-              {health === 'PERMISSION_MISSING' && (status?.connection?.missing_scopes ?? []).length > 0 && (
-                <p className="mt-1 text-2xs text-muted-foreground" dir="ltr">{status?.connection?.missing_scopes?.join(' · ')}</p>
-              )}
               {health === 'ERROR' && status?.connection?.error_reason === 'TOKEN_ENCRYPTION_NOT_CONFIGURED' && (
                 <p className="mt-1 text-2xs text-muted-foreground">{t('madsb_connect_encryption_missing')}</p>
               )}

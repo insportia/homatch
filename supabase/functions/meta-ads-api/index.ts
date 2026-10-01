@@ -28,6 +28,7 @@ import {
   type MetaSettings,
 } from './engine.ts';
 import { handleAction } from './actions.ts';
+import { instantFormsState } from '../../../src/lib/metaAds/instantForms.ts';
 import { readManagedState, setApproved, LifecycleError, assertNotSuspended } from './lifecycle.ts';
 import { monitorCampaign, monitorUser, maybeScanDuplicates, lifecycleEvent, runBriefs, emptyMonitorReport, statusChangeNotice } from './monitor.ts';
 
@@ -122,6 +123,18 @@ Deno.serve(async (req) => {
            are reported per goal (instant_forms_available), never as a broken
            connection. */
         const missingScopes = BASE_SCOPES.filter((s) => !granted.includes(s));
+        /* Leads on Facebook/Instagram: available, reconnect-to-enable, or not
+           offered yet (src/lib/metaAds/instantForms.ts). "Offered" = some
+           connection already holds the permissions, i.e. the Login for
+           Business configuration grants them. */
+        let offeredByLogin = false;
+        if (mode === 'REAL' && !hasScopes(granted, INSTANT_FORM_SCOPES)) {
+          const { count } = await sb.from('meta_connections').select('id', { count: 'exact', head: true }).contains('granted_scopes', INSTANT_FORM_SCOPES);
+          offeredByLogin = (count ?? 0) > 0;
+        }
+        const instantForms = instantFormsState({
+          goalEnabled: settings.goalsEnabled.includes('LEADS_ON_META'), granted, required: INSTANT_FORM_SCOPES, offeredByLogin, mock: mode === 'MOCK',
+        });
         const expiresAt = conn?.token_expires_at ? Date.parse(conn.token_expires_at) : NaN;
         /* "Connected" is a claim about a usable credential, not about a row:
            the stored token must exist and open with this deployment's key. */
@@ -147,6 +160,7 @@ Deno.serve(async (req) => {
           connection: conn
             ? { status: conn.status, health, granted_scopes: granted, missing_scopes: missingScopes,
               instant_forms_available: hasScopes(granted, INSTANT_FORM_SCOPES),
+              instant_forms: instantForms,
               token_expires_at: conn.token_expires_at, last_checked_at: conn.last_checked_at,
               // A named reason only (e.g. TOKEN_ENCRYPTION_NOT_CONFIGURED), never a raw error.
               error_reason: typeof conn.last_error === 'string' && /^[A-Z_]{3,64}$/.test(conn.last_error) ? conn.last_error : null }
@@ -364,7 +378,7 @@ Deno.serve(async (req) => {
         let externalId: string;
         const { data: formConn } = await sb.from('meta_connections').select('granted_scopes').eq('user_id', uid).maybeSingle();
         if (mode === 'REAL' && !hasScopes(formConn?.granted_scopes, INSTANT_FORM_SCOPES)) {
-          return json({ error: 'INSTANT_FORMS_PERMISSION_REQUIRED', code: 'INSTANT_FORMS_PERMISSION_REQUIRED', needed: INSTANT_FORM_SCOPES }, 403);
+          return json({ error: 'INSTANT_FORMS_PERMISSION_REQUIRED', code: 'INSTANT_FORMS_PERMISSION_REQUIRED' }, 403);
         }
         if (mode === 'MOCK') externalId = mockExternalId('form');
         else {
@@ -804,7 +818,16 @@ Deno.serve(async (req) => {
             .order('last_synced_at', { ascending: false }).limit(1).maybeSingle(),
           sb.from('meta_api_usage').select('observed_at').order('observed_at', { ascending: false }).limit(1).maybeSingle(),
         ]);
+        // Instant Forms: the real blocker, for Admin — counts and permission names, never tokens.
+        const [{ count: connTotal }, { count: connWithForms }] = await Promise.all([
+          sb.from('meta_connections').select('id', { count: 'exact', head: true }).eq('status', 'CONNECTED'),
+          sb.from('meta_connections').select('id', { count: 'exact', head: true }).eq('status', 'CONNECTED').contains('granted_scopes', INSTANT_FORM_SCOPES),
+        ]);
         return json({
+          instantForms: {
+            goalEnabled: settings.goalsEnabled.includes('LEADS_ON_META'), leadImportEnabled: settings.leadImportEnabled,
+            requiredScopes: INSTANT_FORM_SCOPES, connectedTotal: connTotal ?? 0, connectedWithScopes: connWithForms ?? 0,
+          },
           lastStatusSyncAt: lastSync?.last_synced_at ?? null,
           lastUsageReportAt: lastUsage?.observed_at ?? null,
           mode,
@@ -907,7 +930,7 @@ const MAINTENANCE_BUDGET_MS = 40_000;
 async function maintenance(sb: any, mode: 'REAL' | 'MOCK', settings: MetaSettings) {
   const started = Date.now();
   const inBudget = () => Date.now() - started < MAINTENANCE_BUDGET_MS;
-  const report = { synced: 0, syncFailed: 0, recovered: 0, leadsRetried: 0, expired: 0, testTokensRetired: 0, settled: 0, briefs: 0, briefEmails: 0 };
+  const report = { synced: 0, syncFailed: 0, skippedThrottled: 0, recovered: 0, leadsRetried: 0, expired: 0, testTokensRetired: 0, settled: 0, briefs: 0, briefEmails: 0 };
   const monitor = emptyMonitorReport();
   const LIVE = ['SUBMITTED', 'META_REVIEW', 'ACTIVE', 'PAUSED'];
   // 1. Status + spend for everything that is live at Meta, then the
@@ -927,6 +950,8 @@ async function maintenance(sb: any, mode: 'REAL' | 'MOCK', settings: MetaSetting
   for (const c of live ?? []) {
     if (!inBudget()) break;
     const before = c.status;
+    // While Meta says wait (regain time) for this ad account, no call is made for it at all.
+    if (mode === 'REAL' && pressureFor(c.ad_account_external_id) === 'THROTTLED') { report.skippedThrottled += 1; continue; }
     try { await syncCampaign(sb, c, mode); report.synced += 1; } catch { report.syncFailed += 1; }
     try {
       const { data: fresh } = await sb.from('meta_campaigns').select('*').eq('id', c.id).single();
@@ -950,7 +975,11 @@ async function maintenance(sb: any, mode: 'REAL' | 'MOCK', settings: MetaSetting
   // 1b. Account-level state (Guard suspension, balance) and throttled duplicate scans.
   for (const u of users) { if (inBudget()) { try { await monitorUser(sb, u, settings, monitor); } catch { monitor.errors += 1; } } }
   if (mode === 'REAL') {
-    for (const a of accounts.values()) { if (inBudget()) await maybeScanDuplicates(sb, a.userId, a.account, settings, monitor); }
+    // An optional, account-wide scan: it waits whenever the account is under HIGH pressure or worse.
+    for (const a of accounts.values()) {
+      const p = pressureFor(a.account);
+      if (inBudget() && (p === 'NORMAL' || p === 'ELEVATED')) await maybeScanDuplicates(sb, a.userId, a.account, settings, monitor);
+    }
   }
   // 1c. Ended campaigns whose settlement grace has passed: final spend, then settle.
   const { data: ended } = await sb.from('meta_campaigns').select('*').in('status', ['COMPLETED', 'REJECTED', 'ARCHIVED'])

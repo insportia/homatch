@@ -15,14 +15,16 @@ export const DAILY_WINDOW_DAYS = 35;
 
 const day = (t: number) => new Date(t).toISOString().slice(0, 10);
 
-export function insightsDue(c: any, force = false): boolean {
+/** `slowdown` stretches the cadence under capacity pressure (rateLimit.allowance: ELEVATED = 2 → every hour). */
+export function insightsDue(c: any, force = false, slowdown = 1, now = Date.now()): boolean {
   if (!c.external_campaign_id || String(c.external_campaign_id).startsWith('mock_')) return false;
   if (force) return true;
   const last = c.insights_synced_at ? Date.parse(c.insights_synced_at) : 0;
-  return Date.now() - last >= INSIGHTS_MIN_MINUTES * 60_000;
+  return now - last >= INSIGHTS_MIN_MINUTES * Math.max(1, slowdown) * 60_000;
 }
 
-export async function syncInsights(sb: Sb, c: any, token: string): Promise<{ rows: number; queries: number }> {
+/** `breakdowns: false` (ELEVATED pressure) reads only the primary daily + total rows — the heavy breakdowns wait. */
+export async function syncInsights(sb: Sb, c: any, token: string, opts: { breakdowns?: boolean } = {}): Promise<{ rows: number; queries: number }> {
   const launched = c.launched_at ? Date.parse(c.launched_at) : Date.now() - 86_400_000;
   const until = day(Date.now());
   const since = day(launched);
@@ -31,7 +33,8 @@ export async function syncInsights(sb: Sb, c: any, token: string): Promise<{ row
   const audit = { sb, userId: c.user_id, campaignId: c.id };
   let rows = 0;
   let queries = 0;
-  for (const q of planQueries({ hasRegions })) {
+  const plan = planQueries({ hasRegions }).filter((q) => opts.breakdowns !== false || q.breakdown === 'none');
+  for (const q of plan) {
     const from = q.timeIncrement === 1 ? dailySince : since;
     const data = await graphAll(`/${c.external_campaign_id}/insights?${queryString(q, from, until)}`, { token, audit } as any, 10);
     queries += 1;

@@ -12,6 +12,7 @@ import { parseDailyCents, parseDays } from './steps';
 import { StepShell } from './ui';
 import { StrategyCard } from './StrategyCard';
 import { FundingCard } from './FundingCard';
+import { LearningCard } from './FinishKit';
 
 export interface Totals { mediaCents: number; feeCents: number; totalCents: number; feePercent: number }
 
@@ -81,6 +82,7 @@ export function BudgetStep({ campaign, status, patch, totals, pricing, strategy 
       <StrategyCard preview={strategy} loading={strategyLoading} failed={strategyFailed} />
       <FundingCard funding={strategy?.funding ?? null} loading={strategyLoading}
         currency={campaign.currency || status?.wallet?.currency || 'USD'} billing={status?.settings.budgetBilling} />
+      <LearningCard compact />
     </StepShell>
   );
 }

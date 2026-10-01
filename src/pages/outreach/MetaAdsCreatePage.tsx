@@ -33,7 +33,7 @@ import { recommendedPlacements, type Placement } from '@/lib/metaAds/payload';
 import type { MetaGoal } from '@/lib/metaAds/strategy';
 import { creativeAdvice } from '@/lib/metaAds/creativeAdvice';
 import {
-  getMetaStatus, createMetaDraft, getMetaCampaign, latestOpenDraft, listCreatives, planPreview, runPreflight,
+  getMetaStatus, createMetaDraft, getMetaCampaign, latestOpenDraft, listCreatives, planPreview, runPreflight, briefInterpret,
   launchCampaign, listAudiences, trackFunnel, money, EDITABLE_STATUSES, updateMetaDraft,
   type MetaStatus, type MetaCampaignRow, type MetaCreativeRow, type MetaAudienceRow, type PreflightResult, type PlanPreview,
 } from '@/services/metaAds';
@@ -48,6 +48,9 @@ import { CreativeStep } from '@/components/metaAds/builder/CreativeStep';
 import { AdPreview, type PreviewField } from '@/components/metaAds/builder/AdPreview';
 import { PlacementsStep, ReviewStep } from '@/components/metaAds/builder/ReviewStep';
 import { AudienceStep } from '@/components/metaAds/builder/AudienceStep';
+import { BriefStep } from '@/components/metaAds/builder/BriefStep';
+import { ReviewInsights } from '@/components/metaAds/builder/ReviewInsights';
+import { briefHash } from '@/lib/metaAds/audienceGuide';
 import { regionName } from '@/components/metaAds/builder/LocationPicker';
 import { useStrategyPreview } from '@/components/metaAds/builder/useStrategyPreview';
 import { adviceBlocks, defaultCampaignName, destinationForGoal } from '@/components/metaAds/builder/masterLogic';
@@ -92,9 +95,16 @@ export default function MetaAdsCreatePage() {
   const step: StepKey = (STEPS as readonly string[]).includes(params.get('step') ?? '') ? params.get('step') as StepKey : 'account';
   const go = useCallback(async (next: StepKey) => {
     await flush();
+    /* Leaving the brief with new words: HOMATCH reads them in the background,
+       so the review can already say what it understood. */
+    if (campaign && step === 'brief' && next !== 'brief' && (campaign.owner_brief ?? '').trim()
+      && campaign.brief_understanding?.hash !== briefHash(campaign.owner_brief)) {
+      const id = campaign.id;
+      void briefInterpret(id, lang).then((r) => setCampaign((c) => (c && c.id === id ? { ...c, brief_understanding: r.understanding } : c) as never)).catch(() => undefined);
+    }
     setParams((prev) => { prev.set('step', next); return prev; }, { replace: false });
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [flush, setParams]);
+  }, [flush, setParams, campaign, step, lang, setCampaign]);
 
   const reloadStatus = useCallback(async () => { setStatus(await getMetaStatus()); }, []);
 
@@ -364,7 +374,7 @@ export default function MetaAdsCreatePage() {
               <DestinationStep campaign={campaign} status={status} patch={patch} reloadStatus={reloadStatus} propertyUrl={null} />
             )}
             {step === 'audience' && (
-              <AudienceStep campaign={campaign} status={status} audiences={audiences} patch={patch} />
+              <AudienceStep campaign={campaign} status={status} audiences={audiences} creatives={creatives} patch={patch} />
             )}
             {step === 'budget' && (
               <BudgetStep campaign={campaign} status={status} patch={patch} totals={preview?.totals ?? null} pricing={pricing}
@@ -378,13 +388,17 @@ export default function MetaAdsCreatePage() {
             {step === 'placements' && (
               <PlacementsStep campaign={campaign} status={status} creatives={creatives} recommended={(preview?.recommendedPlacements as Placement[] | undefined) ?? placements} patch={patch} />
             )}
+            {step === 'brief' && (
+              <BriefStep campaign={campaign} patch={patch} setCampaign={(c) => setCampaign(c)} flush={flush} />
+            )}
             {step === 'review' && (
               <ReviewStep campaign={campaign} status={status} creatives={creatives} totals={preview?.totals ?? null} pricing={pricing}
                 recommended={(preview?.recommendedPlacements as Placement[] | undefined) ?? placements}
                 preflight={preflight} running={running} onPreflight={doPreflight} canLaunch={canLaunch} launchHint={launchHint}
                 onLaunch={() => setConfirmOpen(true)} onEdit={(s) => void go(s as StepKey)}
                 strategy={strategy.preview} strategyLoading={strategy.loading} strategyFailed={strategy.failed}
-                nameSuggestion={nameSuggestion} onName={saveName} />
+                nameSuggestion={nameSuggestion} onName={saveName}
+                insights={<ReviewInsights campaign={campaign} status={status} creatives={creatives} patch={patch} onEdit={(s) => void go(s as StepKey)} />} />
             )}
 
             {/* Preview inline on narrower screens, where there is no side rail. */}

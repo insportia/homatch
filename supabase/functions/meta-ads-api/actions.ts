@@ -10,11 +10,14 @@
 // done before Meta confirmed it — that is lifecycle.ts.
 
 import { buildPlan, validatePlanInput, canTransition, type MetaGoal } from '../../../src/lib/metaAds/strategy.ts';
-import { applyTargeting, targetingConstraints, validateTargeting, MAX_LOCATIONS } from '../../../src/lib/metaAds/targeting.ts';
+import { applyTargeting, targetingConstraints, validateTargeting, reachedCountries, MAX_LOCATIONS } from '../../../src/lib/metaAds/targeting.ts';
+import { briefHash, readBriefRules, sanitizeUnderstanding, isLanguageCode, LANGUAGE_ENGLISH, BRIEF_MAX, BRIEF_AUDIENCES, BRIEF_EXPECTATIONS, BRIEF_IGNORED_REASONS, LANGUAGE_CODES } from '../../../src/lib/metaAds/audienceGuide.ts';
+import { callLlm, llmAvailable } from '../_shared/comm/llm.ts';
+import { estimatedProviderCost } from '../_shared/providerCost.ts';
 import { creativeAdvice } from '../../../src/lib/metaAds/creativeAdvice.ts';
 import { fundingPlan, heldFeeFromLedger, LEDGER_LABEL_KEY } from '../../../src/lib/metaAds/billing.ts';
 import { kpis, sumTotals, totalsByCurrency, emptyTotals, type MetricTotals } from '../../../src/lib/metaAds/kpi.ts';
-import { recommendedPlacements, type Placement } from '../../../src/lib/metaAds/payload.ts';
+import { GOAL_SPECS, recommendedPlacements, type Placement } from '../../../src/lib/metaAds/payload.ts';
 import { statusCounts } from '../../../src/lib/metaAds/uiStatus.ts';
 import { validateSetting, isCredentialKey } from '../../../src/lib/metaAds/adminSettings.ts';
 import { claimFingerprint, afterApproval, type NextAction } from '../../../src/lib/metaAds/moderation.ts';
@@ -112,6 +115,100 @@ export async function handleAction(x: ActionCtx): Promise<Response | null> {
             region: r.region ?? null, countryName: r.country_name ?? null,
           })),
         });
+      }
+
+      /* ── LANGUAGES: Meta's own locale catalogue ─────────────────────── */
+      case 'locale_search': {
+        const code = String(body.code ?? '').toLowerCase();
+        if (!isLanguageCode(code)) return json({ error: 'bad language', code: 'BAD_LANGUAGE' }, 400);
+        if (mode === 'MOCK') return json({ results: [], mode, reason: 'MOCK_MODE_NO_META_CATALOGUE' });
+        const token = await userToken(sb, uid);
+        if (!token) return json({ error: 'NOT_CONNECTED', code: 'NOT_CONNECTED' }, 400);
+        const english = LANGUAGE_ENGLISH[code];
+        const params = new URLSearchParams({ type: 'adlocale', q: english, limit: '10' });
+        const res = await graph(`/search?${params.toString()}`, { token, attempts: 2 });
+        // Meta answers e.g. "English (All)", "English (US)", "Russian": the
+        // whole-language entry first, then the regional variants.
+        const rows = ((res.data as any[]) ?? [])
+          .filter((r) => String(r.name ?? '').toLowerCase().startsWith(english.toLowerCase()) && /^[0-9]{1,20}$/.test(String(r.key)))
+          .map((r) => ({ key: String(r.key), name: String(r.name), code }))
+          .sort((a, b) => Number(/\(all\)/i.test(b.name)) - Number(/\(all\)/i.test(a.name)) || a.name.length - b.name.length);
+        return json({ results: rows.slice(0, 5) });
+      }
+
+      /* ── THE OWNER'S BRIEF: what HOMATCH understood ─────────────────── */
+      case 'brief_interpret': {
+        const c = await ownCampaign(sb, uid, body.campaignId);
+        if (!c) return json({ error: 'not found' }, 404);
+        // The brief as SAVED — the understanding always belongs to a stored text.
+        const brief = String(c.owner_brief ?? '').slice(0, BRIEF_MAX);
+        const hash = briefHash(brief);
+        const at = new Date().toISOString();
+        if (!brief.trim()) {
+          await sb.from('meta_campaigns').update({ brief_understanding: null }).eq('id', c.id).eq('user_id', uid);
+          return json({ understanding: null });
+        }
+        const locale = ['ka', 'en', 'ru', 'tr', 'ar', 'he'].includes(String(body.locale)) ? String(body.locale) : 'en';
+        let understanding = sanitizeUnderstanding(readBriefRules(brief), hash, 'RULES', at);
+        const { count: recent } = await sb.from('meta_funnel_events').select('id', { count: 'exact', head: true })
+          .eq('user_id', uid).eq('event', 'brief_interpret').gte('created_at', new Date(Date.now() - 3_600_000).toISOString());
+        if (settings.aiAssistEnabled && llmAvailable() && (recent ?? 0) < 20) {
+          const result = await callLlm({
+            system: BRIEF_SYSTEM,
+            user: JSON.stringify({ replyLanguage: locale, goal: c.goal, offer: c.offer ?? null, brief }),
+            json: true, maxTokens: 700, timeoutMs: 25_000,
+          });
+          if (result.ok && result.parsed) {
+            understanding = sanitizeUnderstanding(result.parsed, hash, 'AI', at);
+            await sb.from('meta_funnel_events').insert({ event: 'brief_interpret', user_id: uid });
+            const inCost = await estimatedProviderCost(sb, { provider: 'OPENAI', unit: 'INPUT_TOKEN', units: result.inputTokens, model: result.model });
+            const outCost = await estimatedProviderCost(sb, { provider: 'OPENAI', unit: 'OUTPUT_TOKEN', units: result.outputTokens, model: result.model });
+            const raw = inCost != null && outCost != null ? inCost + outCost : null;
+            await sb.from('cost_events').insert({
+              provider: 'OPENAI', operation_type: 'meta_ads_brief_interpret', source: 'meta-ads-api',
+              units: result.inputTokens + result.outputTokens, cost_usd: raw ?? 0, success: true, cache_hit: false,
+              pricing_state: raw == null ? 'UNPRICED' : 'ESTIMATED',
+            });
+          }
+        }
+        const { error } = await sb.from('meta_campaigns').update({ brief_understanding: understanding }).eq('id', c.id).eq('user_id', uid);
+        if (error) return json({ error: 'save failed', code: 'SAVE_FAILED' }, 500);
+        return json({ understanding });
+      }
+
+      /* ── WHAT CAN I EXPECT: Meta's own audience estimate ────────────── */
+      case 'delivery_estimate': {
+        const c = await ownCampaign(sb, uid, body.campaignId);
+        if (!c) return json({ error: 'not found' }, 404);
+        if (mode === 'MOCK') return json({ available: false, reason: 'MOCK_MODE' });
+        const input = await strategyInputFor(sb, uid, c, settings);
+        if ('error' in input) return json({ available: false, reason: input.error });
+        const issues = validateTargeting(input.strategy.targeting!);
+        if (issues.length) return json({ available: false, reason: 'TARGETING_INCOMPLETE' });
+        const { count: recent } = await sb.from('meta_funnel_events').select('id', { count: 'exact', head: true })
+          .eq('user_id', uid).eq('event', 'delivery_estimate').gte('created_at', new Date(Date.now() - 3_600_000).toISOString());
+        if ((recent ?? 0) >= 60) return json({ available: false, reason: 'RATE_LIMITED' });
+        const [token, acct] = await Promise.all([userToken(sb, uid), selectedAsset(sb, uid, 'AD_ACCOUNT')]);
+        if (!token || !acct?.external_id) return json({ available: false, reason: 'NOT_CONNECTED' });
+        const applied = applyTargeting(input.strategy.targeting!, input.strategy.specialAdCategories);
+        const goal = c.goal as MetaGoal;
+        const params = new URLSearchParams({
+          optimization_goal: String(GOAL_SPECS[goal]?.optimizationGoal ?? 'REACH'),
+          targeting_spec: JSON.stringify(applied.spec),
+        });
+        await sb.from('meta_funnel_events').insert({ event: 'delivery_estimate', user_id: uid });
+        try {
+          const res = await graph(`/${acct.external_id}/delivery_estimate?${params.toString()}`, { token, attempts: 1 });
+          const row = ((res.data as any[]) ?? [])[0] ?? {};
+          const lower = Number(row.estimate_mau_lower_bound);
+          const upper = Number(row.estimate_mau_upper_bound);
+          if (row.estimate_ready === false || !Number.isFinite(lower) || !Number.isFinite(upper) || upper <= 0) {
+            return json({ available: false, reason: 'NOT_READY' });
+          }
+          return json({ available: true, source: 'META_DELIVERY_ESTIMATE', audience: { lower, upper }, countries: reachedCountries(input.strategy.targeting!) });
+        } catch (e) {
+          return json({ available: false, reason: e instanceof MetaApiError ? 'META_REFUSED' : 'FAILED' });
+        }
       }
 
       /* ── SMART STRATEGY PREVIEW ─────────────────────────────────────── */
@@ -693,3 +790,18 @@ export async function handleAction(x: ActionCtx): Promise<Response | null> {
   }
 }
 
+
+/* The brief reader. Soft intent only: closed vocabularies, nothing becomes
+   targeting on its own, and anything that would single people out by a
+   protected characteristic is set aside, never used. */
+const BRIEF_SYSTEM = [
+  'You read a property owner\'s short brief for a Facebook/Instagram campaign and extract only what it plainly says.',
+  `audiences: zero or more of ${BRIEF_AUDIENCES.join(', ')}.`,
+  `languages: ISO 639-1 codes of languages the owner wants to reach, only from: ${LANGUAGE_CODES.join(', ')}.`,
+  'markets: ISO 3166 alpha-2 codes of countries the owner names as where the people are from or live now.',
+  'places: places in the brief (cities, districts), exactly as written. sellingPoints: what the owner says matters most about the property, short, in their words, at most 5.',
+  `expectation: one of ${BRIEF_EXPECTATIONS.join(', ')} or null.`,
+  `ignored: parts you did not use, each {reason, text} with reason one of ${BRIEF_IGNORED_REASONS.join(', ')}. Anything asking to include or exclude people by race, ethnicity, religion, nationality as exclusion, family status, disability, sex or age is NOT_ALLOWED_TARGETING. Promises of results are NOT_POSSIBLE.`,
+  'summary: one plain sentence in replyLanguage saying what HOMATCH understood. Never invent facts, prices or features.',
+  'Reply with JSON only: {"summary":"","audiences":[],"languages":[],"markets":[],"places":[],"sellingPoints":[],"expectation":null,"ignored":[]}',
+].join('\n');

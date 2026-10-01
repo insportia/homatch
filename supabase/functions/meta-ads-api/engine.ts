@@ -25,7 +25,7 @@ import {
   buildPlan, validatePlanInput, computeTotals, classifySpecialAdCategories, strategyParams, STRATEGY_VERSION,
   type MetaGoal, type StrategyInput, type StrategyParams, type TypedCampaignPlan,
 } from '../../../src/lib/metaAds/strategy.ts';
-import { normalizeIntent, validateTargeting } from '../../../src/lib/metaAds/targeting.ts';
+import { declaredSpecialAdCategories, normalizeIntent, validateTargeting } from '../../../src/lib/metaAds/targeting.ts';
 import { creativeAdvice, creativeQuality, blocksLaunch, type AdviceItem } from '../../../src/lib/metaAds/creativeAdvice.ts';
 import { effectiveFeePercent, fundingPlan, heldFeeFromLedger, settleServiceFee, plannedMediaCents, type FeePolicy } from '../../../src/lib/metaAds/billing.ts';
 import { DEFAULT_ANALYSIS_PARAMS, type AnalysisParams } from '../../../src/lib/metaAds/analysis.ts';
@@ -164,8 +164,9 @@ export async function pageToken(userTokenValue: string, pageId: string, audit?: 
 
 export async function strategyInputFor(sb: Sb, uid: string, c: any, settings: MetaSettings):
   Promise<{ strategy: StrategyInput } | { error: string }> {
+  // '*': priority arrived with 20261003120000; absent reads as false.
   const { data: creatives } = await sb.from('meta_creatives')
-    .select('id,kind,safety_status,media,headline,primary_text').eq('campaign_id', c.id).order('sort');
+    .select('*').eq('campaign_id', c.id).order('sort');
   let audienceExternalId: string | null = null;
   if (c.audience_id) {
     const { data: aud } = await sb.from('meta_audiences').select('external_audience_id,sync_status,user_id')
@@ -174,10 +175,14 @@ export async function strategyInputFor(sb: Sb, uid: string, c: any, settings: Me
     if (aud.sync_status !== 'READY') return { error: 'AUDIENCE_NOT_READY' };
     audienceExternalId = aud.external_audience_id;
   }
-  const cats = classifySpecialAdCategories({
+  const offerCats = classifySpecialAdCategories({
     isProperty: !!c.property_id || !!(c.offer && c.offer.isProperty !== false),
     dealKind: c.offer?.dealKind ?? (c.property_id ? 'SALE' : 'OTHER'),
   });
+  const targeting = normalizeIntent(c.targeting, settings.defaultCountries);
+  // Declared only where Meta requires it: a housing offer reaching the US,
+  // Canada or the European list (targeting.housingRule).
+  const cats = declaredSpecialAdCategories(offerCats, targeting);
   return {
     strategy: {
       goal: c.goal,
@@ -190,11 +195,12 @@ export async function strategyInputFor(sb: Sb, uid: string, c: any, settings: Me
         ready: (cr.media ?? []).length > 0 && cr.safety_status !== 'BLOCKED',
         width: cr.media?.[0]?.width ?? null, height: cr.media?.[0]?.height ?? null,
         quality: creativeQuality({ id: cr.id, media: cr.media ?? [], headline: cr.headline, primaryText: cr.primary_text }),
+        priority: cr.priority === true,
       })),
       destination: c.destination ?? { type: c.goal === 'LEADS_ON_META' ? 'META_FORM' : 'WEBSITE' },
       audienceExternalId,
       // Where / ages / gender the customer chose; the market default when unset.
-      targeting: normalizeIntent(c.targeting, settings.defaultCountries),
+      targeting,
       countryCode: settings.defaultCountries[0],
       placementsMode: c.placements?.mode === 'CUSTOM' ? 'CUSTOM' : 'RECOMMENDED',
       customPlacements: c.placements?.list ?? [],
@@ -209,12 +215,12 @@ export function limitsOf(settings: MetaSettings) {
 /** What preflight approved. Launch recomputes it and refuses on any difference. */
 export async function configFingerprint(sb: Sb, c: any): Promise<string> {
   const { data: creatives } = await sb.from('meta_creatives')
-    .select('id,updated_at,headline,primary_text,description,cta,media').eq('campaign_id', c.id).order('id');
+    .select('*').eq('campaign_id', c.id).order('id');
   const material = JSON.stringify({
     goal: c.goal, daily: c.daily_budget_cents, days: c.duration_days, currency: c.currency,
     destination: c.destination, placements: c.placements, audience: c.audience_id,
     offer: c.offer, property: c.property_id, targeting: c.targeting ?? null,
-    creatives: (creatives ?? []).map((cr: any) => [cr.id, cr.headline, cr.primary_text, cr.description ?? '', cr.cta, cr.media]),
+    creatives: (creatives ?? []).map((cr: any) => [cr.id, cr.headline, cr.primary_text, cr.description ?? '', cr.cta, cr.media, cr.priority === true]),
   });
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(material));
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');

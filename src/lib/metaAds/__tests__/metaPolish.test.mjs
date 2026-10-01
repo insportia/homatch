@@ -132,10 +132,10 @@ test('a property ad stores the audience it runs with — the same rule the serve
 test('audience step: no Meta rulebook, controls persist, retargeting follows its switch', () => {
   const aud = read('src/components/metaAds/builder/AudienceStep.tsx');
   assert.doesNotMatch(aud, /t\('mm_b_housing_rule'\)|t\('mm_b_housing_radius_note'/);
-  assert.match(aud, /React\.useEffect\(\(\) => \{ if \(staleHousing\) save\(\{\}\); \}, \[staleHousing\]\)/, 'stale stored values are put right once');
+  assert.match(aud, /React\.useEffect\(\(\) => \{ if \(stale\) save\(\{\}\); \}, \[stale\]\)/, 'stale stored values are put right once');
   assert.match(aud, /status\?\.settings\.retargetingEnabled !== false \|\| campaign\.audience_id === a\.id/);
   const review = read('src/components/metaAds/builder/ReviewStep.tsx');
-  assert.match(review, /effectiveRadiusKm\(l\.radiusKm, housing\)/, 'the review shows the radius that will run');
+  assert.match(review, /effectiveRadiusKm\(l\.radiusKm, rule\.minRadiusKm\)/, 'the review shows the radius that will run');
   assert.doesNotMatch(review, /t\('madsb_housing_short'\)/);
 });
 

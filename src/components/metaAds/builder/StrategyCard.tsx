@@ -14,7 +14,7 @@ export function StrategyCard({ preview, loading, failed }: {
 }) {
   const { t } = useLanguage();
   const s = preview?.strategy ?? null;
-  const explanation = s ? strategyExplanationKeys(s.reasonCodes, [...(s.targetingAdjustments ?? []), ...(preview?.targeting.adjustments ?? [])]) : [];
+  const explanation = s ? strategyExplanationKeys(s.reasonCodes, [...(s.targetingAdjustments ?? []), ...(preview?.targeting?.adjustments ?? [])]) : [];
   const issues = [...new Set((preview?.issues ?? []).map((i) => planIssueKey(i.code)))];
 
   return (

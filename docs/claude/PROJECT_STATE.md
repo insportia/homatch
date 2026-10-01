@@ -605,18 +605,46 @@ Phase 2 (Universal Discovery) is blocked until this is live and proven.
   status sync one 40 s invocation per minute (≤ 200 rows) — the first scaling
   blockers, ahead of Meta's per-account limits (tier: development_access).
 
-## Design Studio hybrid engine (branch `feat/design-studio-hybrid-engine`, 2026-10-01) — NOT yet on main
+## Design Studio scene factory (branch `feat/design-studio-hybrid-engine`, 2026-10-02) — NOT yet on main
 
-- Commit 6d1c1268 on top of main 34bc4d1a (#45). PR not opened yet (browser pane signed out of GitHub; no gh).
-- Picture → 3D now: route each object (catalogue only if it looks like it → parametric → GPU-generated → approximate),
-  GPU worker builds only GENERATE groups (one model per identical group, ≤10), assemble, render from the picture's
-  measured camera offscreen, structured visual check (≤2 calls, $ ceiling), bounded corrections, fidelity gates.
-  Engine report saved to `ds_reconstructions.engine_report`.
-- Migration `20261005100000_design_studio_generation.sql` NOT applied: ds_generation_jobs, ds_generated_assets
-  (PROJECT_PRIVATE), engine_report column, ds_create_share now strips `generated` from public snapshots.
-  Apply byte-exact from origin/main after merge.
-- GPU worker `infra/design-studio-gpu-worker/` (Runpod serverless, min 0 / max 1) — Docker image never built yet.
-  Without Supabase secrets RUNPOD_API_KEY / RUNPOD_DS_ENDPOINT_ID / RUNPOD_DS_USD_PER_SECOND the app degrades
-  honestly (GPU_NOT_CONFIGURED → pieces drawn, marked APPROXIMATE). Endpoint needs HF_TOKEN (DINOv3 + SAM licences accepted).
-- Golden run pending: exact picture sha256 89919f728795c08aee17922745b484bca6d6d8d6965bcd8b0f64a201ee3ff94f, uploaded by the owner in production.
-- Local Windows test noise (not regressions): bundleImports / metaAds customerFinance (C:\C:\ path), releasePath 11b + plan.mjs (uncommitted diff), placementSearch timing under parallel load.
+- Architecture corrected per owner: AI = understanding/planning/comparison/correction; HOMATCH compiles
+  its canonical scene into a strict SceneBuildSpec (`src/lib/designStudio/hybrid/sceneSpec.ts`, data only,
+  validated in TS, on the edge, in the worker and inside Blender); Blender on Runpod is the scene factory
+  (`infra/design-studio-gpu-worker/worker/factory/`). SAM/TRELLIS removed from the worker entirely: no
+  weights, no HF_TOKEN.
+- Engine: pass 1 build+render → visual check → bounded corrections → pass 2 build+render+export →
+  verifying check → third pass only if justified and within budget; superseded exports discarded.
+  Runtime = HOMATCH walkthrough; factory piece GLBs replace drawn pieces (non-interactive kinds);
+  architecture stays HOMATCH-native (editable surfaces); whole-home GLB tiers stored as artifacts.
+- Floor plan → realistic 3D: workspace "Realistic 3D" action (FLOORPLAN_SCENE sources), one pass,
+  plan check reported only; walkability / intersection / scale checks on every build.
+- Migration `20261005100000_design_studio_factory.sql` NOT applied: ds_factory_jobs, ds_factory_assets
+  (PROJECT_PRIVATE), ds_reconstructions.engine_report, ds_create_share strips `generated`. PGlite RLS
+  check: 200/200 incl. 13 factory checks.
+- Owner actions still required after merge: Runpod endpoint from GitHub (Dockerfile in the worker dir,
+  24 GB GPU, min 0 / max 1, no endpoint secrets) + Supabase secrets RUNPOD_API_KEY,
+  RUNPOD_DS_ENDPOINT_ID, RUNPOD_DS_USD_PER_SECOND. Docker image never built locally (no Docker); it
+  self-tests the factory at build time.
+- Golden picture sha256 89919f728795c08aee17922745b484bca6d6d8d6965bcd8b0f64a201ee3ff94f (owner uploads).
+- Windows-only test failures (reproduced on pristine main fd1cdd72, not regressions): bundleImports +
+  metaAds customerFinance (`URL.pathname` → `C:\C:\`), releasePath 11b + plan.mjs (MSYS tar reads `C:` as
+  a remote host in plan.mjs's `git archive | tar -x -C`), placementSearch timing (10.9 ms alone, 36 ms
+  only under full-suite contention).
+
+## Meta Ads final product finish (2026-10-01)
+- Meta Housing Special Ad Category is declared ONLY when a housing offer reaches US/territories,
+  Canada (25 km floor) or Meta's European list (15 km floor) — Meta Business Help "About audiences
+  for credit, employment or housing campaigns", checked 2026-10-01. Georgia-only property ads:
+  ages/gender are the owner's choice (targeting.housingRule / declaredSpecialAdCategories; engine
+  strategyInputFor uses the same function). Advertiser-based-in-US is not detected (no ad-account
+  business country is stored) — documented limitation.
+- Targeting intent now carries pins (custom_locations), languages (Meta locale keys from
+  locale_search type=adlocale) and international intent (UI intent → places/languages the owner
+  confirms). HOMATCH SVG map (Natural Earth outlines, lazy chunk) — no tile provider.
+- Migration 20261003120000: meta_creatives.priority, meta_campaigns.owner_brief + brief_understanding.
+  Priority creatives always included / first in buildPlan; part of the launch fingerprint.
+- New meta-ads-api actions: locale_search, brief_interpret (LLM → closed vocabularies, cost_events,
+  20/h), delivery_estimate (Meta MAU bounds only, 60/h). ai_copy: no invented numbers; TRANSLATE keeps
+  every number.
+- Builder: 10 steps (new "brief" before review); review = campaign story + expectations (room to
+  learn, Meta estimate) + holistic consistency check with one-tap fixes + learning card.

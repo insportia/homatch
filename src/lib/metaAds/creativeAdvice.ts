@@ -26,7 +26,11 @@ export interface AdviceItem {
 
 export interface CreativeForAdvice {
   id: string;
-  media: Array<{ mime?: string; size?: number; width?: number | null; height?: number | null; duration?: number | null }>;
+  media: Array<{
+    mime?: string; size?: number; width?: number | null; height?: number | null; duration?: number | null;
+    /** Measured in the browser at upload (images): mean luminance 0..255 and its spread. */
+    luma?: number | null; contrast?: number | null;
+  }>;
   headline?: string | null;
   primaryText?: string | null;
 }
@@ -48,6 +52,12 @@ export function creativeQuality(c: CreativeForAdvice): number {
   if (String(c.headline ?? '').trim() && String(c.primaryText ?? '').trim()) q += 0.05;
   return Math.min(1, Math.round(q * 100) / 100);
 }
+
+/** Mean luminance (0..255) below which a photo reads as dark on a phone. */
+export const DARK_LUMA = 70;
+export const BRIGHT_LUMA = 225;
+/** Standard deviation of luminance below which a photo looks flat. */
+export const LOW_CONTRAST = 28;
 
 export function creativeAdvice(
   creatives: CreativeForAdvice[],
@@ -88,6 +98,15 @@ export function creativeAdvice(
       const w = Number(m.width ?? 0);
       const h = Number(m.height ?? 0);
       if (w > 0 && h > 0 && h / w >= 1.5) vertical += 1;
+      // Only what was measured: an image's brightness and contrast.
+      const luma = m.luma == null ? null : Number(m.luma);
+      const contrast = m.contrast == null ? null : Number(m.contrast);
+      if (luma != null && Number.isFinite(luma)) {
+        if (luma < DARK_LUMA) out.push({ severity: 'RECOMMENDATION', code: 'MEDIA_TOO_DARK', creativeId: c.id, params });
+        else if (luma > BRIGHT_LUMA) out.push({ severity: 'RECOMMENDATION', code: 'MEDIA_WASHED_OUT', creativeId: c.id, params });
+        else if (contrast != null && Number.isFinite(contrast) && contrast < LOW_CONTRAST) out.push({ severity: 'RECOMMENDATION', code: 'MEDIA_LOW_CONTRAST', creativeId: c.id, params });
+        else if (index === 0 && check.verdict === 'READY' && Math.min(w, h) >= 1080) out.push({ severity: 'INFO', code: 'MEDIA_STRONG', creativeId: c.id, params });
+      }
     });
   }
   const wantsVertical = placements.some((p) => p.includes('stories') || p.includes('reels'));

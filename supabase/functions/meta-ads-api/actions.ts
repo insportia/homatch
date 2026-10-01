@@ -17,6 +17,7 @@ import { kpis, sumTotals, totalsByCurrency, emptyTotals, type MetricTotals } fro
 import { recommendedPlacements, type Placement } from '../../../src/lib/metaAds/payload.ts';
 import { statusCounts } from '../../../src/lib/metaAds/uiStatus.ts';
 import { validateSetting, isCredentialKey } from '../../../src/lib/metaAds/adminSettings.ts';
+import { claimFingerprint, afterApproval, type NextAction } from '../../../src/lib/metaAds/moderation.ts';
 import { validateLeadFormSpec, leadFormPayload, leadFormPreview, META_LOCALE, type LeadFormSpec } from '../../../src/lib/metaAds/leadForms.ts';
 import { graph, MetaApiError, mockExternalId, hasScopes, INSTANT_FORM_SCOPES, type MetaMode } from '../_shared/metaAds.ts';
 import {
@@ -552,10 +553,17 @@ export async function handleAction(x: ActionCtx): Promise<Response | null> {
       /* ── ADMIN: MODERATION DECISIONS ────────────────────────────────── */
       case 'admin_moderation_decide': {
         /* An OPEN case only (a decided case is never re-decided by a stale
-           screen), a note on record, the audit row, and the campaign moved
-           along the canonical transition map: changes requested → the
-           customer fixes it (NEEDS_CHANGES); rejected → REJECTED. Approval
-           records the decision; it does not launch or ready anything. */
+           screen), a note on record, decided_by, and the audit row with the
+           case and campaign before and after. Decisions move the campaign
+           along the canonical transition map:
+             CHANGES_REQUESTED → NEEDS_CHANGES (the customer edits);
+             REJECTED          → REJECTED;
+             APPROVED          → the held claim text is approved by its
+               fingerprint (src/lib/metaAds/moderation.ts) so the next HOMATCH
+               check passes it; once no other review is open the campaign
+               returns to PREFLIGHT_REQUIRED with the stale check cleared.
+           Approval never launches, publishes, resumes or spends: no plan
+           exists yet, and launch remains the customer's own explicit act. */
         if (!me.is_admin || me.suspended_at) return json({ error: 'forbidden', code: 'FORBIDDEN' }, 403);
         const id = String(body.caseId ?? '');
         const decision = String(body.decision ?? '');
@@ -563,21 +571,56 @@ export async function handleAction(x: ActionCtx): Promise<Response | null> {
         if (!UUID.test(id)) return json({ error: 'caseId required' }, 400);
         if (!['APPROVED', 'CHANGES_REQUESTED', 'REJECTED'].includes(decision)) return json({ error: 'BAD_DECISION', code: 'BAD_DECISION' }, 400);
         if (note.length < 3) return json({ error: 'REASON_REQUIRED', code: 'REASON_REQUIRED' }, 400);
+        const { data: kase } = await sb.from('meta_moderation_cases').select('*').eq('id', id).maybeSingle();
+        if (!kase) return json({ error: 'not found' }, 404);
+        if (kase.status !== 'OPEN') return json({ error: 'NOT_OPEN', code: 'NOT_OPEN' }, 409);
+        const now = new Date().toISOString();
+        let findings = kase.findings ?? {};
+        if (decision === 'APPROVED') {
+          // The exact text approved: the case's own fingerprint, or (an older
+          // case) the creative's text as it stands now.
+          let fp: string | null = findings.claim_fingerprint ?? null;
+          if (!fp && kase.creative_id) {
+            const { data: cr } = await sb.from('meta_creatives').select('headline,primary_text,description').eq('id', kase.creative_id).maybeSingle();
+            if (cr) fp = await claimFingerprint(cr);
+          }
+          findings = { ...findings, claim_fingerprint: fp, approval: { by: uid, at: now, note } };
+        }
         const { data: decided } = await sb.from('meta_moderation_cases')
-          .update({ status: decision, decided_at: new Date().toISOString(), decision_note: note })
+          .update({ status: decision, decided_at: now, decided_by: uid, decision_note: note, findings })
           .eq('id', id).eq('status', 'OPEN').select('id,campaign_id,user_id').maybeSingle();
         if (!decided) return json({ error: 'NOT_OPEN', code: 'NOT_OPEN' }, 409);
+        let campaignBefore: string | null = null;
         let campaignStatus: string | null = null;
-        if (decided.campaign_id && decision !== 'APPROVED') {
+        let next: NextAction = 'NONE';
+        if (decided.campaign_id) {
           const { data: c } = await sb.from('meta_campaigns').select('id,status').eq('id', decided.campaign_id).maybeSingle();
-          const to = decision === 'REJECTED' ? 'REJECTED' : 'NEEDS_CHANGES';
-          if (c && canTransition(c.status, to)) {
-            await sb.from('meta_campaigns').update({ status: to }).eq('id', c.id).eq('status', c.status);
-            campaignStatus = to;
+          campaignBefore = c?.status ?? null;
+          if (c && decision === 'APPROVED') {
+            const { count } = await sb.from('meta_moderation_cases').select('id', { count: 'exact', head: true })
+              .eq('campaign_id', c.id).eq('status', 'OPEN');
+            const after = afterApproval(c.status, count ?? 0);
+            next = after.next;
+            if (after.status && canTransition(c.status, after.status)) {
+              // The check that held it is stale: cleared, so the builder asks for a fresh one.
+              await sb.from('meta_campaigns').update({ status: after.status, preflight: null }).eq('id', c.id).eq('status', c.status);
+              campaignStatus = after.status;
+            }
+          } else if (c) {
+            const to = decision === 'REJECTED' ? 'REJECTED' : 'NEEDS_CHANGES';
+            if (canTransition(c.status, to)) {
+              await sb.from('meta_campaigns').update({ status: to }).eq('id', c.id).eq('status', c.status);
+              campaignStatus = to;
+            }
           }
         }
-        await x.audit(sb, uid, `META_MODERATION_${decision}`, id, { note, campaign_id: decided.campaign_id, user_id: decided.user_id, campaign_status: campaignStatus });
-        return json({ ok: true, status: decision, campaignStatus });
+        await x.audit(sb, uid, `META_MODERATION_${decision}`, id, {
+          note, campaign_id: decided.campaign_id, user_id: decided.user_id,
+          before: { case: 'OPEN', campaign: campaignBefore },
+          after: { case: decision, campaign: campaignStatus ?? campaignBefore },
+          claim_fingerprint: decision === 'APPROVED' ? findings.claim_fingerprint ?? null : undefined, next,
+        });
+        return json({ ok: true, status: decision, campaignStatus, next });
       }
 
       /* ── ADMIN: NOTIFICATION + AI ECONOMICS ─────────────────────────── */

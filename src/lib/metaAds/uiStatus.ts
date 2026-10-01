@@ -14,16 +14,18 @@
 //      effective_status, plus external_status itself). A campaign Meta reports
 //      as paused — at campaign, ad-set or ad level — is PAUSED, never ACTIVE.
 //   4. HOMATCH's own lifecycle for anything not yet at Meta (drafts, the
-//      HOMATCH check, payment).
+//      HOMATCH check, payment). A creative held for a person at HOMATCH
+//      (MANUAL_REVIEW) is HOMATCH_REVIEW — "In review" — never a draft and
+//      never Meta's review.
 //
 // ACTIVE therefore means one thing: Meta is running it. Being created,
 // enabled in HOMATCH or "live" in any other sense is not ACTIVE.
 
 export type UiStatus =
-  | 'DRAFT' | 'READY' | 'IN_REVIEW' | 'ACTIVE' | 'PAUSED' | 'NEEDS_ATTENTION'
+  | 'DRAFT' | 'READY' | 'IN_REVIEW' | 'HOMATCH_REVIEW' | 'ACTIVE' | 'PAUSED' | 'NEEDS_ATTENTION'
   | 'ENDED' | 'FAILED' | 'ACCESS_LOST' | 'LOCKED';
 
-export const UI_STATUSES: UiStatus[] = ['ACTIVE', 'IN_REVIEW', 'PAUSED', 'NEEDS_ATTENTION', 'LOCKED', 'ACCESS_LOST', 'FAILED', 'READY', 'DRAFT', 'ENDED'];
+export const UI_STATUSES: UiStatus[] = ['ACTIVE', 'IN_REVIEW', 'HOMATCH_REVIEW', 'PAUSED', 'NEEDS_ATTENTION', 'LOCKED', 'ACCESS_LOST', 'FAILED', 'READY', 'DRAFT', 'ENDED'];
 
 export interface StatusInput {
   status: string;
@@ -55,6 +57,7 @@ export function uiStatus(c: StatusInput): UiStatus {
   if (s === 'PAUSED') return 'PAUSED';
   if (s === 'ACTIVE') return 'ACTIVE';
   if (REVIEWING.includes(s)) return 'IN_REVIEW';
+  if (s === 'MANUAL_REVIEW') return 'HOMATCH_REVIEW';
   if (s === 'NEEDS_CHANGES' || s === 'PAYMENT_REQUIRED') return 'NEEDS_ATTENTION';
   if (s === 'READY') return 'READY';
   if (BUILDING.includes(s)) return 'DRAFT';

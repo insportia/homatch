@@ -78,9 +78,9 @@ export function matchesAdminFilter(c: AdminCampaignRow, f: AdminFilter, now: num
   switch (f) {
     case 'delivering': return u === 'ACTIVE';
     case 'paused': return u === 'PAUSED';
-    // Meta's review, or HOMATCH's own manual check of a creative (MANUAL_REVIEW).
-    case 'review': return u === 'IN_REVIEW' || String(c.status).toUpperCase() === 'MANUAL_REVIEW';
-    case 'drafts': return (u === 'DRAFT' || u === 'READY') && String(c.status).toUpperCase() !== 'MANUAL_REVIEW';
+    // Meta's review, or HOMATCH's own manual check of a creative.
+    case 'review': return u === 'IN_REVIEW' || u === 'HOMATCH_REVIEW';
+    case 'drafts': return u === 'DRAFT' || u === 'READY';
     // Rejected is a lifecycle fact (the customer sees it as "needs attention").
     case 'rejected': return String(c.status).toUpperCase() === 'REJECTED';
     case 'failed': return u === 'FAILED';

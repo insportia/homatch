@@ -31,6 +31,7 @@ const ORIGIN_MIGRATION = process.argv[8] ?? null;
 const SHARE_ORIGIN_MIGRATION = process.argv[9] ?? null;
 const ORIGINAL_MIGRATION = process.argv[10] ?? null;
 const FRAME_MIGRATION = process.argv[11] ?? null;
+const FACTORY_MIGRATION = process.argv[12] ?? null;
 const db = new PGlite({ extensions: { pgcrypto } });
 let failures = 0;
 const ok = (name) => console.log(`  ok   ${name}`);
@@ -850,6 +851,48 @@ if (FRAME_MIGRATION) {
   // Someone else's rows stay invisible (RLS unchanged).
   const seen = await as(B, (tx) => tx.query(`select id from ds_floorplans where id=$1`, [row.id]));
   seen.rows.length === 0 ? ok('frame: another user cannot see the frame') : bad('frame rls', 'visible to B');
+}
+
+if (FACTORY_MIGRATION) {
+  await db.exec(fs.readFileSync(FACTORY_MIGRATION, 'utf8'));
+  await db.exec(fs.readFileSync(FACTORY_MIGRATION, 'utf8'));
+  ok('factory: migration applies and re-applies');
+  const pG = await as(A, (tx) => one(tx, `insert into ds_projects (user_id,name) values ($1,'Factory') returning id`, [UA]));
+  const job = await as('service', (tx) => one(tx, `insert into ds_factory_jobs (project_id,user_id,source_kind,pass,idempotency_key,spec_sha256,engine_version,provider,spec)
+    values ($1,$2,'PICTURE',1,$3,$3,'ds-factory-1','runpod','{"version":"hm-scene-1"}'::jsonb) returning id`, [pG.id, UA, 'a'.repeat(64)]));
+  job.id ? ok('factory: the server records a pass') : bad('factory job', 'no id');
+  const key = (folder, id, ext) => `users/${UA}/${folder}/${pG.id}/${id}.${ext}`;
+  const ids = ['70000000-0000-4000-8000-000000000001', '70000000-0000-4000-8000-000000000002', '70000000-0000-4000-8000-000000000003', '70000000-0000-4000-8000-000000000004'];
+  const asset = (id, role, tier, group, k, scope = 'PROJECT_PRIVATE') => as('service', (tx) => tx.query(`insert into ds_factory_assets (id,project_id,user_id,job_id,role,tier,group_key,object_key,provider,scope)
+    values ($1,$2,$3,$4,$5,$6,$7,$8,'runpod',$9)`, [id, pG.id, UA, job.id, role, tier, group, k, scope]));
+  await asset(ids[0], 'RENDER', 'QA', null, key('design-studio-thumbnails', ids[0], 'jpg'));
+  await asset(ids[1], 'PIECE', 'RUNTIME', 'gsofa-1', key('design-studio-models', ids[1], 'glb'));
+  ok("factory: a render and a piece are recorded in the project's own folders");
+  await expectError("factory: a model outside the project's model folder is refused", 'check', () => asset(ids[2], 'SCENE', 'DESKTOP', null, `users/${UB}/design-studio-models/${pG.id}/${ids[2]}.glb`));
+  await expectError('factory: a render stored as a model is refused', 'check', () => asset(ids[2], 'RENDER', 'QA', null, key('design-studio-models', ids[2], 'glb')));
+  await expectError('factory: a piece without its group is refused', 'check', () => asset(ids[2], 'PIECE', 'RUNTIME', null, key('design-studio-models', ids[2], 'glb')));
+  await expectError('factory: nothing built for a customer is ever shared scope', 'check', () => asset(ids[3], 'SCENE', 'DESKTOP', null, key('design-studio-models', ids[3], 'glb'), 'GLOBAL'));
+  const mine = await as(A, (tx) => tx.query('select id from ds_factory_assets where project_id=$1', [pG.id]));
+  mine.rows.length === 2 ? ok('factory: the owner reads their outputs') : bad('factory owner read', String(mine.rows.length));
+  const theirs = await as(B, (tx) => tx.query('select id from ds_factory_assets union all select id from ds_factory_jobs'));
+  theirs.rows.length === 0 ? ok('factory: another customer sees nothing') : bad('factory isolation', String(theirs.rows.length));
+  await expectError('factory: anon has no access', 'permission denied', () => as('anon', (tx) => tx.query('select * from ds_factory_assets')));
+  await expectError('factory: the owner cannot write the ledger', 'permission denied', () => as(A, (tx) => tx.query(`update ds_factory_jobs set state='COMPLETED' where id=$1`, [job.id])));
+  await expectError('factory: the owner cannot insert outputs', 'permission denied', () => as(A, (tx) => tx.query(`insert into ds_factory_assets (id,project_id,user_id,role,tier,object_key,provider) values ($1,$2,$3,'SCENE','DESKTOP',$4,'x')`, [ids[3], pG.id, UA, key('design-studio-models', ids[3], 'glb')])));
+  if (SHARES_MIGRATION) {
+    const scene = { schema: 1, geometryState: 'CALIBRATED', scene: { floors: [{ id: 'r1', kind: 'LIVING', areaM2: 20 }], walls: [] } };
+    const fp = await as(A, (tx) => one(tx, `insert into ds_floorplans (project_id,user_id,object_key,mime,bytes,purpose) values ($1,$2,$3,'image/jpeg',1000,'REFERENCE') returning id`, [pG.id, UA, `users/${UA}/design-studio-floorplans/${pG.id}/g.jpg`]));
+    const srcG = await as('service', (tx) => one(tx, `insert into ds_spatial_sources (project_id,user_id,kind,status,geometry_state,editability,floorplan_id,canonical)
+      values ($1,$2,'FLOORPLAN_SCENE','READY','CALIBRATED','GENERATED',$3,$4) returning id`, [pG.id, UA, fp.id, JSON.stringify(scene)]));
+    const privateKey = key('design-studio-models', ids[1], 'glb');
+    const state = { schema: 1, objects: [{ instanceId: 'o1', assetId: 'dev/sofa-3', generated: { assetId: ids[1], key: privateKey, sha256: null }, provenance: { source: 'IMAGE_RECONSTRUCTION', ref: 'sofa' } }], surfaces: {}, palette: [] };
+    const verG = await as(A, (tx) => one(tx, `insert into ds_versions (project_id,user_id,source_id,name,origin,state) values ($1,$2,$3,'3D','USER',$4) returning id`, [pG.id, UA, srcG.id, JSON.stringify(state)]));
+    const link = await as(A, (tx) => one(tx, `select public.ds_create_share($1,'WALKTHROUGH',null,null) as r`, [verG.id])).then((x) => x.r);
+    const pubG = await as('anon', (tx) => one(tx, 'select public.ds_public_share($1) as r', [link.token])).then((x) => x.r);
+    const text = JSON.stringify(pubG);
+    !text.includes(privateKey) && !text.includes(UA) && !text.includes('"generated"') && pubG.state.objects[0].instanceId === 'o1'
+      ? ok("factory: a public link never carries a factory model's private key (the drawn piece stands in)") : bad('factory share leak', text.slice(0, 300));
+  }
 }
 
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nALL PASSED');

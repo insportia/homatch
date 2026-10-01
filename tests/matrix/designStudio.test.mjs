@@ -422,6 +422,8 @@ test('the browser and the server read reconstructions with byte-identical code',
 
 test('what a picture became stays private: public snapshots strip provenance', () => {
   assert.match(read('supabase/migrations/20260930094000_design_studio_shares.sql'), /o - 'provenance'/);
+  // A model built from the customer's picture is owner-private: its key never reaches a public snapshot.
+  assert.match(read('supabase/migrations/20261005100000_design_studio_factory.sql'), /o - 'provenance' - 'generated'/);
 });
 
 test('reconstructed pieces carry provenance, and only the customer confirms them', () => {

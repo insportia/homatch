@@ -368,6 +368,17 @@ export async function wire(page, store, errors) {
     /* A stand-in for design-studio-reconstruct/design: builds the server's context from the
        fake tables and runs the REAL validatePlan() on a canned model answer
        (which includes things the server must throw away). */
+    /* The scene factory is not configured here — exactly production's state until the owner sets
+       Runpod up: the honest fallback must hold. The visual check answers with a clean report. */
+    if (url.pathname.endsWith('/functions/v1/design-studio-reconstruct/factory')) {
+      store.factoryCalls = (store.factoryCalls ?? 0) + 1;
+      return json({ error: 'FACTORY_NOT_CONFIGURED' }, 503);
+    }
+    if (url.pathname.endsWith('/functions/v1/design-studio-reconstruct/qa')) {
+      const body = JSON.parse(req.postData() || '{}');
+      (store.qaBodies ??= []).push({ reconstructionId: body.reconstructionId ?? null, floorplanId: body.floorplanId ?? null, inline: typeof body.render === 'string', asset: body.renderAssetId ?? null });
+      return json({ report: { errors: [], scores: { layout: 9, furniture: 9, materials: 9, lighting: 9, overall: 9, dimensions: {} } }, ms: 1, cost: { usd: null, basis: 'NOT_AVAILABLE' }, tokens: null });
+    }
     if (url.pathname.endsWith('/functions/v1/design-studio-reconstruct/design')) {
       const body = JSON.parse(req.postData() || '{}');
       const version = store.db.ds_versions.find((v) => v.id === body.versionId);
@@ -453,7 +464,7 @@ async function main() {
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
   // QA_ONLY=11 runs one checkpoint (while iterating); the release run is all of them.
   if (process.env.QA_ONLY) {
-    try { await ({ 11: checkpoint11, '11b': checkpoint11b, 12: checkpoint12, 13: checkpoint13, 10: checkpoint10 })[process.env.QA_ONLY](browser); } finally { await browser.close().catch(() => {}); server.kill(); }
+    try { await ({ 11: checkpoint11, '11b': checkpoint11b, 12: checkpoint12, 13: checkpoint13, 14: checkpoint14, 10: checkpoint10 })[process.env.QA_ONLY](browser); } finally { await browser.close().catch(() => {}); server.kill(); }
     console.log(failures ? `${failures} FAILED` : 'ALL PASSED');
     process.exit(failures ? 1 : 0);
   }
@@ -551,6 +562,7 @@ async function main() {
     await checkpoint11b(browser);
     await checkpoint12(browser);
     await checkpoint13(browser);
+    await checkpoint14(browser);
   } finally {
     await browser.close().catch(() => {});
     server.kill();
@@ -671,8 +683,11 @@ async function checkpoint11(browser) {
   await page.locator('[data-piece="sofa"]').getByRole('combobox', { name: 'HOMATCH piece' }).selectOption('dev/sofa-2');
   check('review: a corrected piece says it is the customer\'s choice', (await page.locator('[data-piece="sofa"]').innerText()).includes('HOMATCH piece: Two-seat sofa'));
 
-  // ── 3. Build.
+  // ── 3. Build: real stages on screen (never a percentage), then the design.
   await page.getByTestId('recon-build').click();
+  const stagesShown = await page.getByTestId('generation-stages').waitFor({ timeout: 10000 }).then(() => true).catch(() => false);
+  const stageText = stagesShown ? await page.getByTestId('generation-stages').innerText().catch(() => '') : '';
+  check('build: the customer sees the real stages, with elapsed time and no percentage', stagesShown && /Planning the scene/.test(stageText) && !/\d+\s*%/.test(stageText), stageText.slice(0, 160));
   await page.locator('main canvas').waitFor({ timeout: 40000 });
   await page.waitForTimeout(1200);
   const source = store.db.ds_spatial_sources.find((s) => s.project_id === project.id && s.kind === 'FLOORPLAN_SCENE');
@@ -687,6 +702,18 @@ async function checkpoint11(browser) {
   check('build: the customer\'s corrections were kept', !objs.some((o) => o.provenance.ref === 'plant-window') && objs.find((o) => o.provenance.ref === 'sofa')?.assetId === 'dev/sofa-2');
   check('build: floors and walls dressed as seen', Object.keys(version.state.surfaces).length > 10);
   check('build: the reading is marked built, pointing at what was built', rec.status === 'BUILT' && rec.built_source_id === source.id && rec.built_version_id === version.id);
+  {
+    const report = rec.engine_report;
+    check('build: without the factory the build still completes and says so (no models invented)',
+      (store.factoryCalls ?? 0) >= 1 && report?.factory === 'UNAVAILABLE' && objs.every((o) => !o.generated), JSON.stringify(report?.factory));
+    // This reading has no fitted picture camera: no still can be taken from it, so no check is
+    // claimed — the report says "not checked" instead of inventing a comparison.
+    const likeness = report?.fidelity?.dimensions?.find((d) => d.name === 'overall likeness');
+    check('build: no picture camera → no visual check, and the report says so',
+      (store.qaBodies ?? []).length === 0 && likeness?.gate === 'UNKNOWN', JSON.stringify({ qa: store.qaBodies ?? [], likeness }));
+    check('build: the engine report is gates per dimension, and holds no URL',
+      Array.isArray(report?.fidelity?.dimensions) && report.fidelity.dimensions.some((d) => d.name === 'walkability') && !/https?:\/\//.test(JSON.stringify(report)));
+  }
   await page.screenshot({ path: path.join(OUT, 'cp11-built-1440-en.png') });
   // What the real acceptance design costs to draw (HIGH tier, whole home in view).
   {
@@ -1664,6 +1691,37 @@ function readZip(buf) {
     at += 46 + nameLen;
   }
   return out;
+}
+
+// 14. A floor-plan design → "Realistic 3D": the plan's walls are the source, furniture a design
+// choice — said before anything runs; without the factory configured, an honest message and an
+// untouched design (no version, no half result).
+async function checkpoint14(browser) {
+  const { store, project } = await seededStore();
+  const errors = [];
+  const ctx = await openContext(browser, { width: 1440, height: 900, lang: 'en' });
+  const page = await ctx.newPage();
+  await wire(page, store, errors);
+  await page.goto(`${BASE}/design-studio/${project.id}`, { waitUntil: 'domcontentloaded' });
+  await page.locator('main canvas').waitFor({ timeout: 25000 });
+  const versionsBefore = store.db.ds_versions.filter((v) => v.project_id === project.id).length;
+  const button = page.getByTestId('ds-factory');
+  check('factory: a floor-plan design offers "Realistic 3D"', await button.isVisible());
+  await button.click();
+  const dialog = page.getByRole('dialog', { name: 'Build as a realistic 3D home' });
+  await dialog.waitFor({ timeout: 5000 });
+  const intro = await dialog.innerText();
+  check('factory: before anything runs, the plan\'s walls are the source and furniture is a design choice',
+    /follow your floor plan exactly/.test(intro) && /design choices/.test(intro), intro.slice(0, 200));
+  await page.screenshot({ path: path.join(OUT, 'cp14-factory-intro-1440-en.png') });
+  await page.getByTestId('factory-start').click();
+  const alert = dialog.getByRole('alert');
+  await alert.waitFor({ timeout: 15000 });
+  check('factory: not configured → an honest message', /not available right now/.test(await alert.innerText()));
+  check('factory: nothing saved, the design untouched', store.db.ds_versions.filter((v) => v.project_id === project.id).length === versionsBefore && (store.factoryCalls ?? 0) === 1);
+  await page.screenshot({ path: path.join(OUT, 'cp14-factory-unavailable-1440-en.png') });
+  check('no page errors (checkpoint 14)', errors.length === 0, errors.join('\n        '));
+  await ctx.close();
 }
 
 async function checkpoint9(browser) {

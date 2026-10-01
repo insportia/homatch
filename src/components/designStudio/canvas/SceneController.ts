@@ -1081,7 +1081,7 @@ export class SceneController {
       const own = assets.get(obj.assetId);
       const asset = own ? shapedAsset(own, obj) : undefined;
       const shape = obj.shape;
-      const sig = `${obj.assetId}|${obj.materialVariant ?? ''}|${obj.colorOverride ?? ''}|${shape ? `${shape.widthM},${shape.depthM},${shape.heightM},${shape.form ?? ''},${shape.secondary ?? ''}` : ''}`;
+      const sig = `${obj.assetId}|${obj.materialVariant ?? ''}|${obj.colorOverride ?? ''}|${shape ? `${shape.widthM},${shape.depthM},${shape.heightM},${shape.form ?? ''},${shape.secondary ?? ''}` : ''}|${obj.generated?.key ?? ''}`;
       let node = this.objectsById.get(obj.instanceId);
       if (!node || this.objectSignature.get(obj.instanceId) !== sig) {
         if (node) this.disposeObject(obj.instanceId);
@@ -1157,9 +1157,14 @@ export class SceneController {
         : slotColors(asset, obj.materialVariant, obj.colorOverride);
       const node = buildProcedural(asset.procedural.kind, asset, colors, obj.shape?.form ?? null);
       if (asset.placement === 'FLOOR') node.add(contactShadow(asset.widthM, asset.depthM));
-      // A concept block's moving parts come with it; a model declares them.
-      const specs = validateInteractions(node.userData.interactions ?? asset.interactions);
+      // A concept block's moving parts come with it; a model declares them. A model built from the
+      // picture has no parts that move: it keeps only the places to sit and lie.
+      let specs = validateInteractions(node.userData.interactions ?? asset.interactions);
+      if (obj.generated) specs = specs.filter((x) => x.kind === 'SEAT');
       this.living.register(`obj:${obj.instanceId}`, node, specs, asset.capabilities, { objectId: obj.instanceId });
+      // The model HOMATCH built from the customer's picture takes the drawn piece's place once it
+      // arrives; until then — or if it cannot be read — the drawn piece stands in for it.
+      if (obj.generated) this.attachGeneratedModel(obj.instanceId, node, obj.generated.key, asset);
       return node;
     }
     // A real model loads asynchronously; until then — or when an asset is
@@ -1178,6 +1183,71 @@ export class SceneController {
     const key = asset ? modelKeyFor(asset, this.quality.tier) : null;
     if (asset && key) this.attachCatalogModel(obj.instanceId, g, asset, key, obj.shape && own ? modelScale(own, obj.shape) : null);
     return g;
+  }
+
+  /** Models built from the customer's pictures: one download per model, however many pieces share it. */
+  private generatedModels = new Map<string, Promise<THREE.Object3D>>();
+
+  private attachGeneratedModel(instanceId: string, holder: THREE.Object3D, key: string, asset: CatalogAsset) {
+    let load = this.generatedModels.get(key);
+    if (!load) {
+      load = import('@/services/designStudio/files').then(({ signedUrls }) => signedUrls([key], 900)).then((urls) => {
+        const url = urls.get(key);
+        if (!url) throw new Error('not signed');
+        return loadGltf(url, this.renderer);
+      }).then((scene) => {
+        scene.traverse((o) => {
+          o.userData.catalogShared = true;
+          const mesh = o as THREE.Mesh;
+          if (mesh.isMesh) { mesh.castShadow = true; mesh.receiveShadow = true; }
+        });
+        return scene;
+      });
+      load.catch(() => this.generatedModels.delete(key));
+      this.generatedModels.set(key, load);
+    }
+    holder.userData.generatedModelKey = key;
+    load.then((model) => {
+      if (this.objectsById.get(instanceId) !== holder) return;
+      const inst = model.clone(true);
+      // To the piece's size: each axis to the seen box when the model is close to it,
+      // else one uniform scale (a model is never stretched into a caricature).
+      const box = new THREE.Box3().setFromObject(inst);
+      const size = box.getSize(new THREE.Vector3());
+      const want = new THREE.Vector3(asset.widthM, asset.heightM, asset.depthM);
+      const ratios = [want.x / Math.max(size.x, 1e-6), want.y / Math.max(size.y, 1e-6), want.z / Math.max(size.z, 1e-6)];
+      const median = [...ratios].sort((a, b) => a - b)[1];
+      const close = ratios.every((r) => Math.abs(r / median - 1) <= 0.12);
+      inst.scale.set(close ? ratios[0] : median, close ? ratios[1] : median, close ? ratios[2] : median);
+      inst.updateMatrixWorld(true);
+      const b2 = new THREE.Box3().setFromObject(inst);
+      const c = b2.getCenter(new THREE.Vector3());
+      inst.position.set(inst.position.x - c.x, inst.position.y - b2.min.y, inst.position.z - c.z);
+      // The drawn piece's meshes give way (its contact shadow stays); its seats stay registered.
+      for (const child of [...holder.children]) {
+        if (child.name === 'contact-shadow') continue;
+        holder.remove(child);
+        child.traverse((o) => {
+          const mesh = o as THREE.Mesh;
+          if (!mesh.isMesh) return;
+          mesh.geometry?.dispose();
+          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+          mats.forEach((m) => m?.dispose?.());
+        });
+      }
+      holder.add(inst);
+      holder.userData.generatedModelLoaded = key;
+      this.pickBoxes = null;
+      this.requestRender();
+    }).catch(() => { holder.userData.generatedModelError = key; });
+  }
+
+  /** Wait (bounded) until every model built from the pictures has arrived or failed: a still shows them, not their stand-ins. */
+  async generatedSettled(maxMs = 20000) {
+    const loads = [...this.generatedModels.values()].map((p) => p.catch(() => null));
+    if (!loads.length) return;
+    await Promise.race([Promise.allSettled(loads), new Promise((r) => setTimeout(r, maxMs))]);
+    await new Promise((r) => setTimeout(r, 0));
   }
 
   /** One download per catalogue model, however many times it is placed. */

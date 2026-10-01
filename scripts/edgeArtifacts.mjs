@@ -48,6 +48,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
+import { createHash } from 'node:crypto';
 import { importClosure } from './deploy-scope.mjs';
 
 const FUNCTIONS_DIR = 'supabase/functions';
@@ -452,6 +453,27 @@ export function matchDeployedName(deployedName, expectedPaths) {
  */
 const canonical = (s) => String(s).split('\r\n').join('\n');
 
+/**
+ * THE DESIRED EFFECTIVE SOURCE DIGEST.
+ *
+ * One deterministic number for a set of source files: SHA-256 over every
+ * repository path (sorted) and its line-ending-normalised content. Applied to
+ * expectedClosure(name) it covers the WHOLE deployable closure — the entry
+ * file and every local module it reaches, such as src/lib/metaAds/strategy.ts
+ * for meta-webhooks — not the entry file alone. Applied to what production
+ * runs, it is the same number exactly when every module is identical.
+ *
+ * It summarises the proof; it does not replace it. The verdict is still the
+ * module-by-module comparison in proveArtifact().
+ */
+export function closureDigest(files) {
+  const h = createHash('sha256');
+  for (const path of Object.keys(files ?? {}).sort()) {
+    h.update(path).update('\0').update(canonical(files[path])).update('\0');
+  }
+  return `sha256:${h.digest('hex')}`;
+}
+
 export function proveArtifact({ name, expected, deployed }) {
   const expectedPaths = Object.keys(expected);
   const entry = `${FUNCTIONS_DIR}/${name}/index.ts`;
@@ -488,6 +510,7 @@ export function proveArtifact({ name, expected, deployed }) {
   }
 
   const matchedExpected = new Set();
+  const deployedFiles = {};
   for (const mod of modules) {
     const path = decodeURIComponent(String(mod.sourceUrl ?? mod.specifier ?? '')).replace(/^file:\/\//, '');
     const hits = matchDeployedName(path, expectedPaths);
@@ -503,9 +526,16 @@ export function proveArtifact({ name, expected, deployed }) {
      */
     if (typeof mod.content !== 'string') { base.unresolved.push(repoPath); continue; }
     base.matched += 1;
+    deployedFiles[repoPath] = mod.content;
     if (canonical(expected[repoPath]) !== canonical(mod.content)) base.mismatched.push(repoPath);
   }
   base.missing = expectedPaths.filter((p) => !matchedExpected.has(p));
+  /* Desired: the whole closure. Deployed: what production runs. The bundler
+     erases type-only modules, so the equality that matters is the desired
+     digest over the modules production carries. */
+  base.desiredDigest = closureDigest(expected);
+  base.deployedDigest = closureDigest(deployedFiles);
+  base.desiredDeployedDigest = closureDigest(Object.fromEntries(Object.keys(deployedFiles).map((p) => [p, expected[p]])));
 
   if (base.foreign.length || base.ambiguous.length) {
     return {
@@ -646,9 +676,16 @@ if (isMain) {
     });
     console.log(JSON.stringify(out, null, 2));
   } else if (mode === 'verify') {
-    const [preFile, postFile] = rest.filter((a) => !a.startsWith('-'));
+    const [preFile, postFile] = rest.filter((a, i) => !a.startsWith('-') && !['--since', '--report'].includes(rest[i - 1]));
     const sinceIdx = rest.indexOf('--since');
     const since = sinceIdx >= 0 ? Number(rest[sinceIdx + 1]) : NaN;
+    const reportIdx = rest.indexOf('--report');
+    const reportFile = reportIdx >= 0 ? rest[reportIdx + 1] : null;
+    /* The first pass before the one recovery attempt: an unproven function
+       is a warning there, because the verdict belongs to the second pass. */
+    const firstPass = rest.includes('--first-pass');
+    const level = firstPass ? 'warning' : 'error';
+    const report = [];
     const pre = JSON.parse(readFileSync(preFile, 'utf8'));
     const post = JSON.parse(readFileSync(postFile, 'utf8'));
 
@@ -693,11 +730,15 @@ if (isMain) {
      * stale.
      *
      * It is INTERMITTENT rather than absolute -- run 740 shipped the same
-     * kind of change successfully -- so this is a description of the pattern
-     * and not yet a mechanism. It is recorded here rather than worked around,
-     * because a workaround aimed at the wrong mechanism would hide the right
-     * one, and the proof already fails loudly and refuses to advance
-     * refs/deployed/edge, so nothing false is claimed while it happens.
+     * kind of change successfully. Deploy #869 (meta-webhooks, 2026-10-01)
+     * added the decisive observation: the CLI printed "Deploying Function",
+     * not "No change found" -- so the CLI saw a new hash and uploaded -- and
+     * production kept the old version and ezbr_sha256; #870 ran the identical
+     * command on the identical source and got a new version. So the response
+     * is not a workaround aimed at a guessed mechanism but the one action the
+     * evidence supports: scripts/release/edgeRecovery.mjs redeploys a STALE,
+     * attempted function ONCE, serially, via the same list, and this proof
+     * runs again. A second STALE still fails and still holds the ref.
      */
     const attemptedPath = process.env.RUNNER_TEMP
       ? `${process.env.RUNNER_TEMP}/attempted.txt` : null;
@@ -753,7 +794,15 @@ if (isMain) {
        * normally has some of these.
        */
       if (proof.missing.length) console.log(`  in closure but not deployed: ${proof.missing.length} (type-only imports and unused re-exports land here)`);
+      console.log(`  desired closure digest: ${String(proof.desiredDigest).slice(0, 23)} (${proof.expectedFileCount} files)`);
+      console.log(`  deployed digest: ${String(proof.deployedDigest).slice(0, 23)} · desired over the same ${proof.matched} module(s): ${String(proof.desiredDeployedDigest).slice(0, 23)}`);
       console.log(`  ezbr_sha256: ${String(proof.ezbr_sha256).slice(0, 16)} (diagnostic; not reproducible)`);
+      report.push({
+        name, state: proof.state, proven: isProven(proof), version: proof.version,
+        preVersion: pre[name]?.version ?? 0, mismatched: proof.mismatched, reason: proof.reason,
+        desiredDigest: proof.desiredDigest, deployedDigest: proof.deployedDigest,
+        desiredDeployedDigest: proof.desiredDeployedDigest,
+      });
       console.log(`  result: ${isProven(proof) ? 'PROVEN' : 'UNPROVEN'}  (${proof.reason})`);
 
       if (isProven(proof)) {
@@ -794,7 +843,7 @@ if (isMain) {
           proof.unresolved.length ? `noSource=${proof.unresolved.slice(0, 4).join(',')}` : '',
           `reason=${proof.reason}`,
         ].filter(Boolean).join(' ');
-        console.log(`::error::${name} UNPROVEN — ${detail}`);
+        console.log(`::${level}::${name} UNPROVEN — ${detail}`);
         if (proof.state === PROOF.STALE) tally.stale += 1;
         else if (proof.state === PROOF.INCOMPLETE) tally.incomplete += 1;
         else tally.unavailable += 1;
@@ -807,13 +856,17 @@ if (isMain) {
       + `exact=${tally.exact} stale=${tally.stale} `
       + `incomplete=${tally.incomplete} unavailable=${tally.unavailable}`,
     );
+    if (reportFile) {
+      const { writeFileSync } = await import('node:fs');
+      writeFileSync(reportFile, `${JSON.stringify(report, null, 2)}\n`);
+    }
     if (unproven.length) {
-      console.log(`::error::production does not contain the expected artifact for: ${unproven.join(', ')}`);
+      console.log(`::${level}::production does not contain the expected artifact for: ${unproven.join(', ')}`);
       process.exit(1);
     }
     console.log(`all ${tally.owed} owed function(s) contain the expected artifact in production`);
   } else {
-    console.error('usage: edgeArtifacts.mjs snapshot <fn...> | verify <pre.json> <post.json> --since <ms>');
+    console.error('usage: edgeArtifacts.mjs snapshot <fn...> | verify <pre.json> <post.json> --since <ms> [--report <file>] [--first-pass]');
     process.exit(2);
   }
 }

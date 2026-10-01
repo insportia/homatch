@@ -1,0 +1,257 @@
+{
+ "cc0": {
+  "id": "f8d2d827-8956-4fa1-8b1f-7332fe8ed184",
+  "assetBaseId": "473c38b5-453f-43d8-b11c-f3e37dfb662e",
+  "name": "Sofa",
+  "displayName": "Sofa",
+  "category": "sofa",
+  "slugs": [
+   "sofa"
+  ],
+  "license": "cc_zero",
+  "isFree": true,
+  "isForSale": false,
+  "verificationStatus": "validated",
+  "score": 1000,
+  "quality": 10,
+  "qualityCount": 2,
+  "workingHours": 10,
+  "bookmarks": 218,
+  "tags": [
+   "Sofa",
+   "brown",
+   "wood",
+   "4k",
+   "texture"
+  ],
+  "author": "Author",
+  "created": "2025-09-03T14:41:42.847082+02:00",
+  "versionNumber": 1,
+  "url": "https://www.blendkit.com/api/v1/assets/f8d2d827-8956-4fa1-8b1f-7332fe8ed184/",
+  "thumbnail": "https://public.blenderkit.com/thumbnails/assets/f8d2d82789564fa18b1f7332fe8ed184/files/thumbnail_fbaac774-be71-4e61-8d97-a27f077387a1.jpg.512x512_q85_crop-%2C.png.webp?webp_generated=1766685078",
+  "params": {
+   "faceCount": 205708,
+   "faceCountRender": 205708,
+   "textureCount": 0,
+   "megapixels": 0,
+   "modelStyle": "realistic",
+   "productionLevel": "finished",
+   "purePbr": true,
+   "pbrType": "metallic",
+   "uv": true,
+   "animated": false,
+   "rig": false,
+   "procedural": true,
+   "manifold": false,
+   "objectCount": 2,
+   "dimensionX": 0.8749,
+   "dimensionY": 0.9825,
+   "dimensionZ": 1.0544,
+   "boundBox": [
+    -0.4595,
+    -0.443,
+    -0.0002,
+    0.4154,
+    0.5394,
+    1.0541
+   ],
+   "gltfGeneratedError": false,
+   "gltfGodotGeneratedError": false,
+   "designStyle": null,
+   "designCollection": null,
+   "manufacturer": null,
+   "designer": null,
+   "sexualizedContent": false
+  },
+  "files": [
+   {
+    "type": "gltf",
+    "size": 11434052,
+    "resolution": null,
+    "uuid": "e706404e-4529-4f61-b18b-75a9883a712c"
+   },
+   {
+    "type": "gltf_godot",
+    "size": 24729192,
+    "resolution": null,
+    "uuid": "18e9e1c6-a119-4b84-889a-469a2bacf31d"
+   },
+   {
+    "type": "thumbnail",
+    "size": 1062427,
+    "resolution": null,
+    "uuid": "c21db55d-0bf6-4398-b3c5-224f4b688eec"
+   }
+  ]
+ },
+ "rf": {
+  "id": "e66e54fc-3f6a-4800-8c5d-d3bab02ebd4f",
+  "assetBaseId": "b45d44a6-3059-4646-b9ca-804bee1b6ab5",
+  "name": "Teak Sofa by Arne Wahl Iversen",
+  "displayName": "Teak Sofa by Arne Wahl Iversen",
+  "category": "sofa",
+  "slugs": [
+   "sofa"
+  ],
+  "license": "royalty_free",
+  "isFree": true,
+  "isForSale": false,
+  "verificationStatus": "validated",
+  "score": 3000,
+  "quality": 10,
+  "qualityCount": 2,
+  "workingHours": 30,
+  "bookmarks": 128,
+  "tags": [
+   "sofa",
+   "midcentury",
+   "nordic",
+   "scandinavian",
+   "wood",
+   "vintage",
+   "bench",
+   "couch",
+   "daybed",
+   "timeless"
+  ],
+  "author": "Author",
+  "created": "2026-01-09T18:07:02.526894+01:00",
+  "versionNumber": 1,
+  "url": "https://www.blendkit.com/api/v1/assets/e66e54fc-3f6a-4800-8c5d-d3bab02ebd4f/",
+  "thumbnail": "https://public.blenderkit.com/thumbnails/assets/e66e54fc3f6a48008c5dd3bab02ebd4f/files/thumbnail_95608c99-a093-424a-822a-1f26b5b268d3.png.512x512_q85_crop-%2C.png.webp?webp_generated=1784740859",
+  "params": {
+   "faceCount": 3592,
+   "faceCountRender": 57292,
+   "textureResolutionMax": 4096,
+   "textureResolutionMin": 1920,
+   "textureCount": 7,
+   "megapixels": 75,
+   "modelStyle": "realistic",
+   "productionLevel": "finished",
+   "condition": "used",
+   "uv": true,
+   "rig": false,
+   "procedural": false,
+   "manifold": false,
+   "objectCount": 12,
+   "dimensionX": 1.9568,
+   "dimensionY": 0.8019,
+   "dimensionZ": 0.7825,
+   "boundBox": [
+    -0.0044,
+    -0.0006,
+    0,
+    1.9524,
+    0.8014,
+    0.7825
+   ],
+   "gltfGeneratedError": false,
+   "gltfGodotGeneratedError": false,
+   "designStyle": null,
+   "designCollection": null,
+   "manufacturer": "Vinde Mobelfabrik",
+   "designer": "Arne Wahl Iversen",
+   "sexualizedContent": false
+  },
+  "files": [
+   {
+    "type": "gltf",
+    "size": 3665816,
+    "resolution": null,
+    "uuid": "36edc1fe-ecc8-43ee-a02e-2f54c72d3ee0"
+   },
+   {
+    "type": "gltf_godot",
+    "size": 4378548,
+    "resolution": null,
+    "uuid": "3b2811c7-3559-4c96-9bc4-00818eeec4b4"
+   },
+   {
+    "type": "thumbnail",
+    "size": 4635731,
+    "resolution": null,
+    "uuid": "83c7b869-170c-4c04-acd4-953e9d945146"
+   }
+  ]
+ },
+ "noglb": {
+  "id": "7533b7c2-07fc-4456-a77c-732a1a826463",
+  "assetBaseId": "981722b5-0112-4a84-ae62-92346e63a3a8",
+  "name": "Bedroom Wardrobe",
+  "displayName": "Bedroom Wardrobe",
+  "category": "wardrobe",
+  "slugs": [
+   "wardrobe"
+  ],
+  "license": "royalty_free",
+  "isFree": false,
+  "isForSale": false,
+  "verificationStatus": "validated",
+  "score": 1530,
+  "quality": 9,
+  "qualityCount": 1,
+  "workingHours": 17,
+  "bookmarks": 146,
+  "tags": [
+   "wardrobe",
+   "closet",
+   "storage",
+   "furniture",
+   "cabinet",
+   "armoire",
+   "modernwardrobe",
+   "woodenwardrobe",
+   "minimalist",
+   "wardrobe"
+  ],
+  "author": "Author",
+  "created": "2025-04-12T02:27:40.901891+02:00",
+  "versionNumber": 1,
+  "url": "https://www.blendkit.com/api/v1/assets/7533b7c2-07fc-4456-a77c-732a1a826463/",
+  "thumbnail": "https://public.blenderkit.com/thumbnails/assets/7533b7c207fc4456a77c732a1a826463/files/thumbnail_41d9350b-e80f-4bfa-97a1-03cbb2793cc7.png.512x512_q85_crop-%2C.jpg.webp?webp_generated=1766626964",
+  "params": {
+   "faceCount": 313699,
+   "faceCountRender": 4514100,
+   "textureResolutionMax": 2048,
+   "textureResolutionMin": 512,
+   "textureCount": 98,
+   "megapixels": 334,
+   "modelStyle": "realistic",
+   "productionLevel": "finished",
+   "condition": "new",
+   "purePbr": false,
+   "uv": true,
+   "animated": false,
+   "rig": false,
+   "procedural": false,
+   "manifold": false,
+   "objectCount": 90,
+   "dimensionX": 2.8317,
+   "dimensionY": 0.8105,
+   "dimensionZ": 2.5902,
+   "boundBox": [
+    0,
+    -0.8101,
+    0,
+    2.8317,
+    0.0004,
+    2.5902
+   ],
+   "gltfGeneratedError": true,
+   "gltfGodotGeneratedError": true,
+   "designStyle": null,
+   "designCollection": null,
+   "manufacturer": null,
+   "designer": null,
+   "sexualizedContent": false
+  },
+  "files": [
+   {
+    "type": "thumbnail",
+    "size": 1195248,
+    "resolution": null,
+    "uuid": "fe41cc97-2af3-4acf-b849-fe046760b502"
+   }
+  ]
+ }
+}

@@ -38,6 +38,7 @@ import {
 import { LivingRuntime, type LiveEntry } from './livingRuntime';
 import { roomContaining, wallFrame, type Point } from '@/lib/designStudio/space';
 import { buildProcedural, setFinishBudget, slotColors } from './procedural';
+import { catalogModelUrl, loadGltf, modelKeyFor } from './modelLoader';
 
 export type PickTarget =
   | { kind: 'surface'; id: string; roomId: string | null }
@@ -963,9 +964,9 @@ export class SceneController {
       this.living.register(`obj:${obj.instanceId}`, node, specs, asset.capabilities, { objectId: obj.instanceId });
       return node;
     }
-    // A real model loads asynchronously (catalogue models arrive with the
-    // licensed library); until then — or when an asset is missing — a
-    // labelled neutral block holds its footprint so the design never breaks.
+    // A real model loads asynchronously; until then — or when an asset is
+    // missing or its file cannot be read — a neutral block holds its
+    // footprint so the design never breaks.
     const w = asset?.widthM ?? 0.6;
     const d = asset?.depthM ?? 0.6;
     const h = asset?.heightM ?? 0.6;
@@ -976,7 +977,57 @@ export class SceneController {
     );
     m.position.y = h / 2;
     g.add(m);
+    const key = asset ? modelKeyFor(asset, this.quality.tier) : null;
+    if (asset && key) this.attachCatalogModel(obj.instanceId, g, asset, key);
     return g;
+  }
+
+  /** One download per catalogue model, however many times it is placed. */
+  private catalogModels = new Map<string, Promise<THREE.Object3D>>();
+
+  /**
+   * Put the catalogue model in place of its placeholder. Normalised on the
+   * way in: the model's footprint centred on the piece's origin and its lowest
+   * point on the floor, so a placed piece stands where the design says,
+   * whatever pivot its author used. Geometry and materials are shared by every
+   * instance (flagged, never disposed with one of them). A load that finishes
+   * after its piece was removed or rebuilt is dropped.
+   */
+  private attachCatalogModel(instanceId: string, holder: THREE.Group, asset: CatalogAsset, key: string) {
+    let load = this.catalogModels.get(key);
+    if (!load) {
+      load = catalogModelUrl(key).then((url) => loadGltf(url, this.renderer)).then((scene) => {
+        scene.traverse((o) => {
+          o.userData.catalogShared = true;
+          const mesh = o as THREE.Mesh;
+          if (mesh.isMesh) { mesh.castShadow = true; mesh.receiveShadow = true; }
+        });
+        return scene;
+      });
+      load.catch(() => this.catalogModels.delete(key));
+      this.catalogModels.set(key, load);
+    }
+    holder.userData.catalogModelKey = key;
+    load.then((model) => {
+      if (this.objectsById.get(instanceId) !== holder) return;
+      const inst = model.clone(true);
+      const box = new THREE.Box3().setFromObject(inst);
+      if (!box.isEmpty()) {
+        const c = box.getCenter(new THREE.Vector3());
+        inst.position.set(-c.x, -box.min.y, -c.z);
+      }
+      for (const child of [...holder.children]) {
+        holder.remove(child);
+        const mesh = child as THREE.Mesh;
+        mesh.geometry?.dispose();
+        (mesh.material as THREE.Material | undefined)?.dispose?.();
+      }
+      holder.add(inst);
+      if (asset.placement === 'FLOOR') holder.add(contactShadow(asset.widthM, asset.depthM));
+      holder.userData.catalogModelLoaded = key;
+      this.pickBoxes = null;
+      this.requestRender();
+    }).catch(() => { holder.userData.catalogModelError = key; });
   }
 
   private placeNode(node: THREE.Object3D, planX: number, planY: number, rotation: number, elevation = 0) {
@@ -994,7 +1045,9 @@ export class SceneController {
     if (this.walk?.seated?.objectId === id) this.standUp();
     node.traverse((o) => {
       const mesh = o as THREE.Mesh;
-      if (!o.userData.decor) mesh.geometry?.dispose(); // the contact shadow's plane is shared
+      // Shared resources stay: the contact shadow's plane, and a catalogue model's geometry and materials.
+      if (o.userData.catalogShared) return;
+      if (!o.userData.decor) mesh.geometry?.dispose();
       const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
       if (Array.isArray(mat)) mat.forEach((x) => x.dispose()); else mat?.dispose();
     });

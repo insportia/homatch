@@ -33,6 +33,45 @@ MATTERS right now, verify against the live systems, not this file)
 - Push subscriptions in production: 0.
 - Cron: `homatch-native-intent` (*/1), `homatch-supply-matching` (*/15) — live.
 
+## Design Studio asset catalogue (branch `feat/design-studio-catalog-import`, 2026-09-30)
+
+- IMPLEMENTED, pushed, NO PR (no GitHub credentials in the session), NOT
+  merged, NOT deployed; migration `20261002210000` NOT applied; nothing
+  imported; Blendkit key UNVERIFIED. Owner approval gate: no bulk import
+  without "APPROVE FULL IMPORT". Canary (only after merge + deploy + migration):
+  Poly Haven oak_wood_planks, white_plaster_02, anniversary_lounge; Blendkit
+  CC0 Soave sofa, Teo chair, Danish dining table, Geberit toilet, Hansgrohe
+  faucet, Lampe-Gras floor lamp, snake plant.
+- Runtime policy (`catalogSource.RUNTIME_POLICY`): a model reaches the browser
+  only as an optimised GLB (textures ≤ 2048, KTX2 — UASTC normals, ETC1S
+  rest — meshopt, Khronos-validated, ≤ 20 MB) plus LOD1 (≤ 1024, ≤ 8 MB,
+  simplified above 30k triangles). The original is stored `restricted`; a model
+  that misses the budget or cannot be optimised is FAILED (final, not retried).
+  Source and runtime bytes are recorded separately.
+- Signing route (`design-studio-model/catalog`, service role only): an R2 PUT
+  only for a recorded asset with an importable licence (CC0 today) and a
+  public key only for CC0; a Blendkit download only for a file that asset
+  listed. RF and UNKNOWN are refused at the credential boundary
+  (`catalogPolicy.ts`).
+- Kitchen boundary: cabinetry and built-ins (KITCHEN_RUN, KITCHEN_ISLAND) are
+  HOMATCH parametric generation fitted to the measured wall
+  (`reconstruction.PARAMETRIC_ONLY`); movable pieces (appliances, stools,
+  tables, sanitaryware) come from the catalogue.
+- One catalogue, provider adapters (`src/lib/designStudio/catalogProviders/`):
+  Poly Haven = materials + HDRIs (final selection 671 + 330, 4,822 files,
+  11,614,991,023 bytes exact); Blendkit = physical objects.
+- Blendkit Royalty-Free is STOPPED (FAQ: only where assets "can't be extracted
+  by the users in an easy way"; browser delivery does not clearly satisfy it).
+  BLOCKED_PENDING_PERMISSION: 1,948 curated RF assets (12,230,929,404 bytes)
+  are not downloaded. CC0 after the name-first audit: 40 KEEP (228,706,336
+  bytes); not imported automatically. No CC0 bed, kitchen object or door passes.
+- Runs only by manual dispatch of "Design Studio catalogue import" (the
+  autonomous scheduled variant was refused by the environment's persistence
+  guard and removed). BLENDKIT_API_KEY authentication is unverified until the
+  signing route is deployed.
+- Unrelated: on Windows the Meta Ads test "no Meta Ads frontend code carries its
+  own fee percent" fails on a path bug (C:\\C:\\…); passes on Linux CI.
+
 ## Design Studio (branch `feat/design-studio`, rolling out 2026-09-30)
 
 - Five migrations `20260930090000`…`20260930095000` (foundation, dev catalog,

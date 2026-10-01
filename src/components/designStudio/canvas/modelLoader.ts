@@ -76,3 +76,23 @@ export async function developerUnitModelUrl(unitId: string): Promise<{ url: stri
   if (!primary) return null;
   return { url: assetUrl(primary), sceneId: scene.id, version: String(scene.version) };
 }
+
+/**
+ * A catalogue model's URL: a short-lived signed read of its storage key
+ * (storage-sign decides by the key's delivery class — public for CC0, signed
+ * in for licensed derivatives). The key is the durable thing; a URL is minted
+ * when the scene needs it.
+ */
+export async function catalogModelUrl(key: string): Promise<string> {
+  const { signedReadUrl } = await import('@/services/storage/objectStore');
+  return (await signedReadUrl(key, { expiresIn: 600 })).url;
+}
+
+/** The model variant a device should load: LOD 1 when the device renders at LOW quality and the asset has one. */
+export function modelKeyFor(asset: { modelKey: string | null; lods?: Array<{ key?: string | null; level?: number }> }, tier: 'HIGH' | 'BALANCED' | 'LOW'): string | null {
+  if (tier === 'LOW') {
+    const lod1 = (asset.lods ?? []).find((l) => l.level === 1 && typeof l.key === 'string' && l.key);
+    if (lod1?.key) return lod1.key;
+  }
+  return asset.modelKey;
+}

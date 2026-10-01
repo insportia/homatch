@@ -1,0 +1,102 @@
+# HOMATCH Design Studio — the catalogue importer, run ONLY when someone starts it.
+#
+# No schedule: every run is an explicit, deliberate dispatch by an owner or
+# operator (Actions → "Design Studio catalogue import" → Run workflow), with
+# the mode, provider and assets chosen at that moment. Queuing a whole provider
+# additionally requires the owner-approved box to be ticked.
+#
+# Server-to-server: provider → this runner → R2. R2 and Blendkit are reached
+# through short-lived URLs signed by design-studio-model/catalog; neither
+# credential is ever on the runner. The log is public: nothing prints a key or URL.
+
+name: Design Studio catalogue import
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'discover | enqueue | run | report'
+        required: true
+        default: report
+      provider:
+        description: 'polyhaven | blendkit (discover, enqueue)'
+        required: false
+        default: ''
+      ids:
+        description: 'enqueue: comma-separated provider asset ids (at most 50)'
+        required: false
+        default: ''
+      all_owner_approved:
+        description: 'enqueue EVERY discovered asset of the provider (owner approval only)'
+        type: boolean
+        required: false
+        default: false
+      budget_min:
+        description: 'run: minutes of work'
+        required: false
+        default: '300'
+
+concurrency:
+  group: design-studio-catalog
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 345
+    env:
+      SUPABASE_URL: https://ptxajsjhobhvsfhmutjn.supabase.co
+      MODE: ${{ inputs.mode }}
+      PROVIDER: ${{ inputs.provider }}
+      IDS: ${{ inputs.ids }}
+      ALL_APPROVED: ${{ inputs.all_owner_approved }}
+      BUDGET: ${{ inputs.budget_min }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # The runner context is not available in job-level env; the tools directory is set here.
+      - name: Tools directory
+        run: echo "CATALOG_TOOLS_DIR=$RUNNER_TEMP/catalog-tools" >> "$GITHUB_ENV"
+
+      - name: Service credential for this run (masked, never printed)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          key=$(curl -fsS -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            "https://api.supabase.com/v1/projects/ptxajsjhobhvsfhmutjn/api-keys?reveal=true" \
+            | jq -r '.[] | select(.name == "service_role") | .api_key')
+          if [ -z "$key" ] || [ "$key" = "null" ]; then echo "no service credential"; exit 1; fi
+          echo "::add-mask::$key"
+          echo "SUPABASE_SERVICE_ROLE_KEY=$key" >> "$GITHUB_ENV"
+
+      - name: Optimisation tools (Khronos KTX-Software, glTF-Transform, glTF-Validator)
+        if: env.MODE == 'run'
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/ktx.deb" https://github.com/KhronosGroup/KTX-Software/releases/download/v4.3.2/KTX-Software-4.3.2-Linux-x86_64.deb
+          sudo dpkg -i "$RUNNER_TEMP/ktx.deb"
+          mkdir -p "$CATALOG_TOOLS_DIR"
+          npm install --prefix "$CATALOG_TOOLS_DIR" --no-audit --no-fund @gltf-transform/cli@4.5.1 gltf-validator@2.0.0-dev.3.10
+          echo "$CATALOG_TOOLS_DIR/node_modules/.bin" >> "$GITHUB_PATH"
+
+      - name: Import
+        run: |
+          case "$MODE" in
+            discover) node scripts/design-studio/catalog-import.mjs discover --provider "$PROVIDER" ;;
+            enqueue)
+              if [ "$ALL_APPROVED" = "true" ]; then node scripts/design-studio/catalog-import.mjs enqueue --provider "$PROVIDER" --all --owner-approved
+              else node scripts/design-studio/catalog-import.mjs enqueue --provider "$PROVIDER" --ids "$IDS"; fi ;;
+            run) node scripts/design-studio/catalog-import.mjs run --budget-min "${BUDGET:-300}" --concurrency 3 ;;
+            report) node scripts/design-studio/catalog-import.mjs report ;;
+            *) echo "unknown mode"; exit 2 ;;
+          esac
+
+      - name: Report
+        if: always() && env.MODE != 'report'
+        run: node scripts/design-studio/catalog-import.mjs report

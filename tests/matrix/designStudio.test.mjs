@@ -568,3 +568,25 @@ test('"matched to your picture\'s camera" is said only for a camera the reading 
   assert.match(panel, /fit\.rms <= FIT_TRUST \? 'ds_recon_matched_view' : 'ds_recon_approx_view'/);
   assert.match(read('src/lib/designStudio/reconstructRead.ts'), /export const FIT_TRUST = 0\.025;/);
 });
+
+test('catalogue importer: credentials stay in Supabase, runs are deliberate, bulk import needs the owner', () => {
+  const route = read('supabase/functions/design-studio-model/catalog.ts');
+  assert.match(route, /Deno\.env\.get\('BLENDKIT_API_KEY'\)/, 'the Blendkit key is read by the signing route');
+  for (const f of ['scripts/design-studio/catalog-import.mjs', 'src/lib/designStudio/catalogPipeline.ts', 'src/lib/designStudio/catalogProviders/blendkit.ts', '.github/workflows/design-studio-catalog.yml']) {
+    assert.doesNotMatch(read(f), /(process\.env|Deno\.env\.get\(|secrets)[.[('"\s]*(BLENDKIT_API_KEY|R2_SECRET_ACCESS_KEY|R2_ACCESS_KEY_ID)/, `${f} never reads a provider or R2 credential`);
+  }
+  assert.match(route, /isServiceRole\(req\.headers\.get\('Authorization'\)/, 'service role only');
+  const wf = read('.github/workflows/design-studio-catalog.yml');
+  assert.doesNotMatch(wf, /^\s*schedule:/m, 'no scheduled, unattended runs');
+  assert.match(wf, /workflow_dispatch:/);
+  // GitHub rejects the whole file (a push-triggered "failure" with no jobs, and no Run button) when the
+  // runner context is used outside steps; job-level env may not reference it.
+  const jobEnv = /\n {4}env:\n((?: {6}.*\n)+)/.exec(wf.replace(/\r\n/g, '\n'))?.[1] ?? '';
+  assert.match(jobEnv, /SUPABASE_URL/, 'the job-level env block is found');
+  assert.doesNotMatch(jobEnv, /\$\{\{\s*runner\./, 'no runner context in job-level env');
+  const runner = read('scripts/design-studio/catalog-import.mjs');
+  assert.match(runner, /if \(!args\.includes\('--owner-approved'\)\) throw/, 'queuing a whole provider needs the owner');
+  assert.doesNotMatch(runner, /console\.log\([^)]*\burl\b/i, 'no URL is ever printed');
+  const pipeline = read('src/lib/designStudio/catalogPipeline.ts');
+  assert.match(pipeline, /state: r\.refusal \? 'EXCLUDED' : 'DISCOVERED'/, 'discovery never queues');
+});

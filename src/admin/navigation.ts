@@ -29,7 +29,7 @@
 // the navigation itself. Knowing the jargon must not be REQUIRED; knowing
 // it must still WORK.
 
-import {Activity, AudioLines, BadgeDollarSign,BarChart3,Bell,BellRing,Brain,Building2, CreditCard,Gauge, Globe, Handshake, HardDrive, HeartPulse, 
+import {Activity, AudioLines, BadgeDollarSign,BarChart3,Bell,BellRing,Boxes,Brain,Building2, CreditCard,Gauge, Globe, Handshake, HardDrive, HeartPulse, 
   LayoutDashboard, Mail, Megaphone, ScrollText,
   MessageCircle, MessageSquareWarning, 
   Paintbrush, PhoneCall, Puzzle, Radio, 
@@ -308,6 +308,10 @@ export const ADMIN_GROUPS: AdminGroup[] = [
       {
         path: '/admin/storage', labelKey: 'admin_nav_storage', icon: HardDrive,
         keywords: ['storage', 'file', 'bucket', 'upload', 'object'],
+      },
+      {
+        path: '/admin/design-catalog', labelKey: 'admin_nav_design_catalog', icon: Boxes,
+        keywords: ['design studio', 'catalogue', 'catalog', 'asset', '3d model', 'material', 'batch', 'import'],
       },
       {
         path: '/admin/settings', labelKey: 'admin_nav_settings', icon: SlidersHorizontal,

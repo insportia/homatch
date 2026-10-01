@@ -46,6 +46,8 @@ export interface ImportRow {
   license_class: string;
   quality_tier?: string | null;
   quality_score?: number | null;
+  /** Admin availability (catalogue management); a re-processed asset keeps it. */
+  lifecycle?: string | null;
   web_suitability?: number | null;
   detail: Record<string, unknown>;
 }
@@ -315,7 +317,7 @@ async function indexCatalogRow(io: PipelineIO, adapter: ProviderAdapter<any>, ro
     source_category_id: /^[0-9a-f-]{36}$/.test(String(asset?.category_id ?? '')) ? asset.category_id : null, source_category_path: asset?.category ?? null,
     source_files_hash: filesHash,
     canonical_category: c.canonicalCategory, canonical_subcategory: c.canonicalSubcategory, version_id: version,
-    normalized_name: normalizeName(row.display_name), search_aliases: naming.aliases, quality_state: 'READY', active: false, license_class: license.licenseClass,
+    normalized_name: normalizeName(row.display_name), search_aliases: naming.aliases, quality_state: 'READY', active: row.lifecycle === 'ACTIVE', license_class: license.licenseClass,
     color_families: families, updated_at: io.now(),
   };
   const licenseMeta = { ...license, sourcePage: adapter.sourcePage(row.source_asset_id), metadataKey: key((o) => o.role === 'METADATA') };

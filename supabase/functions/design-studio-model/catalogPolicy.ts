@@ -31,7 +31,33 @@ export function writeRefusal(key: string, row: ImportRow | undefined): string | 
   return null;
 }
 
-const UUID_IN_URL = /\/downloads\/([0-9a-f-]{36})\/$/;
+/**
+ * Which queued assets may be physically deleted now: lifecycle PENDING_DELETE
+ * and no saved design version or public share references them (counted
+ * server-side immediately before). Everything else is refused with a reason.
+ */
+export function purgePlan(
+  ids: string[],
+  imports: Array<{ homatch_asset_id: string; lifecycle: string }>,
+  deps: Array<{ homatch_asset_id: string; versions: number; published: number }>,
+): { deletable: string[]; blocked: Array<{ homatch_asset_id: string; reason: string; versions?: number; published?: number }> } {
+  const life = new Map(imports.map((r) => [r.homatch_asset_id, r.lifecycle]));
+  const use = new Map(deps.map((d) => [d.homatch_asset_id, d]));
+  const deletable: string[] = [];
+  const blocked: Array<{ homatch_asset_id: string; reason: string; versions?: number; published?: number }> = [];
+  for (const id of ids) {
+    const l = life.get(id);
+    if (!l) { blocked.push({ homatch_asset_id: id, reason: 'not in the catalogue' }); continue; }
+    if (l !== 'PENDING_DELETE') { blocked.push({ homatch_asset_id: id, reason: `lifecycle is ${l}; queue it for deletion first` }); continue; }
+    const d = use.get(id);
+    if (!d) { blocked.push({ homatch_asset_id: id, reason: 'dependencies could not be counted' }); continue; }
+    if (d.versions + d.published > 0) { blocked.push({ homatch_asset_id: id, reason: 'referenced by saved designs or public shares; its files must stay', versions: d.versions, published: d.published }); continue; }
+    deletable.push(id);
+  }
+  return { deletable, blocked };
+}
+
+const UUID_IN_URL =/\/downloads\/([0-9a-f-]{36})\/$/;
 
 /** Why a Blendkit download may not be signed (null when it may). */
 export function downloadRefusal(url: string, row: ImportRow | undefined): string | null {

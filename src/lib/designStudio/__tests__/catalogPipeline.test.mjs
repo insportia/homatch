@@ -404,6 +404,19 @@ test('every key the pipeline writes is a real production column (PostgREST refus
   }
 });
 
+test('re-processing a published asset keeps it published; a new import stays unpublished', async () => {
+  const w = world(fakeAdapter());
+  await discover(w.io, 'fakeprov');
+  w.queue('chair');
+  await work(w.io, { budgetMs: 60000, concurrency: 1 });
+  const id = await rowUuid(byId(w, 'chair').homatch_asset_id);
+  assert.equal(w.tables.ds_catalog_assets.get(id).active, false, 'a first import is never published by the importer');
+  byId(w, 'chair').lifecycle = 'ACTIVE';
+  byId(w, 'chair').state = 'QUEUED'; byId(w, 'chair').attempts = 0;
+  await work(w.io, { budgetMs: 60000, concurrency: 1 });
+  assert.equal(w.tables.ds_catalog_assets.get(id).active, true, 'availability follows the admin lifecycle, not the re-run');
+});
+
 test('discovering a provider when some of its assets are already recorded writes uniform bulk rows (PGRST102)', async () => {
   const w = world(fakeAdapter());
   await discover(w.io, 'fakeprov', undefined, ['chair']);

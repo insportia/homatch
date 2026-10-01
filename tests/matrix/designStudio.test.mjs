@@ -606,3 +606,22 @@ test('catalogue importer: credentials stay in Supabase, runs are deliberate, bul
   const pipeline = read('src/lib/designStudio/catalogPipeline.ts');
   assert.match(pipeline, /state: r\.refusal \? 'EXCLUDED' : 'DISCOVERED'/, 'discovery never queues');
 });
+
+test('Design Studio catalogue admin: admin-only route, audited RPCs only, typed confirmation for destructive bulk actions', () => {
+  const page = read('src/pages/admin/AdminDesignCatalogPage.tsx');
+  const svc = read('src/services/designStudio/adminCatalog.ts');
+  const routes = read('src/routes.tsx');
+  assert.match(routes, /path: '\/admin\/design-catalog', element: adminWrap\(<AdminDesignCatalogPage \/>\), adminOnly: true/);
+  // Availability and deletion go through the audited, admin-only database functions / server route — never a direct table write.
+  assert.doesNotMatch(svc, /\.(update|insert|delete|upsert)\(/, 'no direct writes from the browser');
+  assert.match(svc, /rpc\('ds_catalog_admin_set_lifecycle'/);
+  assert.match(svc, /rpc\('ds_catalog_admin_requeue'/);
+  assert.match(svc, /functions\.invoke\('design-studio-model\/catalog-purge'/);
+  // The list is paged on the server: a 2,000-asset catalogue never comes to the browser at once.
+  assert.match(svc, /export const PAGE_SIZE = 50;/);
+  assert.match(svc, /\.range\(from, from \+ PAGE_SIZE - 1\)/);
+  // Destructive bulk actions need the count typed, and the confirmed count is what the server checks.
+  assert.match(page, /export const needsTypedCount = \(action: Action, n: number\) => action === 'PURGE' \|\| action === 'REQUEST_DELETE' \|\| n >= 50;/);
+  assert.match(page, /const PURGE_MAX = 200;/);
+  assert.match(page, /purge\(ids, ids\.length\)/);
+});

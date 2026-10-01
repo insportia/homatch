@@ -63,3 +63,39 @@ test('the route: service role only, the key only in the outbound header, a write
   for (const l of keyUses) assert.ok(!/console\.|JSON\.stringify|json\(|Response\(/.test(l), `the key never reaches a log or a response: ${l.trim()}`);
   assert.ok(!/console\.(log|info|warn|error)\([^)]*(filePath|signed|url)/i.test(src), 'no signed URL is logged');
 });
+
+test('purge: only PENDING_DELETE assets nothing references are deleted; everything else is refused with a reason', async () => {
+  const { purgePlan } = await import('../catalogPolicy.ts');
+  const H = (n) => `hma_${String(n).padStart(26, '0')}`;
+  const imports = [
+    { homatch_asset_id: H(1), lifecycle: 'PENDING_DELETE' },
+    { homatch_asset_id: H(2), lifecycle: 'PENDING_DELETE' },
+    { homatch_asset_id: H(3), lifecycle: 'DISABLED' },
+    { homatch_asset_id: H(4), lifecycle: 'PENDING_DELETE' },
+  ];
+  const deps = [
+    { homatch_asset_id: H(1), versions: 0, published: 0 },
+    { homatch_asset_id: H(2), versions: 3, published: 1 },
+    { homatch_asset_id: H(3), versions: 0, published: 0 },
+  ];
+  const p = purgePlan([H(1), H(2), H(3), H(4), H(5)], imports, deps);
+  assert.deepEqual(p.deletable, [H(1)]);
+  const why = Object.fromEntries(p.blocked.map((b) => [b.homatch_asset_id, b.reason]));
+  assert.match(why[H(2)], /referenced by saved designs/);
+  assert.equal(p.blocked.find((b) => b.homatch_asset_id === H(2)).versions, 3);
+  assert.match(why[H(3)], /queue it for deletion first/, 'a DISABLED asset is never physically deleted');
+  assert.match(why[H(4)], /could not be counted/, 'no dependency count, no deletion');
+  assert.match(why[H(5)], /not in the catalogue/);
+});
+
+test('purge route: admin session (database flag), not impersonated, confirmed, bounded, re-counted server-side, audited', () => {
+  const src = fs.readFileSync(path.join(process.cwd(), 'supabase/functions/design-studio-model/catalogPurge.ts'), 'utf8');
+  assert.match(src, /await caller\.rpc\('is_admin'\)/);
+  assert.match(src, /refuseIfImpersonating\(admin, authHeader, CORS\)/);
+  assert.match(src, /if \(body\.confirmCount !== ids\.length\)/);
+  assert.match(src, /if \(ids\.length > MAX_PURGE\)/);
+  assert.match(src, /await admin\.rpc\('ds_catalog_dependencies', \{ p_ids: ids \}\)/, 'dependencies are counted again now, not trusted from the browser');
+  assert.match(src, /action: 'DELETED'/);
+  assert.match(src, /action: 'DELETE_BLOCKED'/);
+  assert.doesNotMatch(src, /console\.log\([^)]*(object_key|url)/i, 'no keys or URLs logged');
+});

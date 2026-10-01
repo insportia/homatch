@@ -1,7 +1,7 @@
 // THE AD ITSELF — media guidance, validated uploads, the real ad fields, and
 // HOMATCH AI inline.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Clock, ImagePlus, Loader2, Trash2, Sparkles, Smartphone, Square, RectangleVertical, XCircle } from 'lucide-react';
+import { Clock, ImagePlus, Languages, Loader2, Star, Trash2, Sparkles, Smartphone, Square, RectangleVertical, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,13 +14,16 @@ import { checkMedia, ctaOptions, PLACEMENTS, resolveCta, type Placement } from '
 import type { MetaGoal } from '@/lib/metaAds/strategy';
 import type { AdviceItem } from '@/lib/metaAds/creativeAdvice';
 import {
-  addCreative, removeCreative, updateCreative, readMediaFacts, creativeMediaUrl,
+  addCreative, addCopyVersion, removeCreative, updateCreative, readMediaFacts, creativeMediaUrl,
   type MetaCampaignRow, type MetaCreativeRow, type AiCopyVariant, type StrategySummaryRow,
 } from '@/services/metaAds';
 import { StepShell, VerdictBadge } from './ui';
 import { AiCopyPanel } from './AiCopyPanel';
 import { AdviceList, CreativeBudgetAdvice } from './CreativeAdviceList';
 import { adviceBlocks, groupAdvice } from './masterLogic';
+import { HelperCard } from './FinishKit';
+import { detectCopyLanguage } from '@/lib/metaAds/audienceGuide';
+import { languageName } from './AudienceStep';
 
 export const ACCEPT = 'image/jpeg,image/png,image/webp,video/mp4,video/quicktime';
 
@@ -103,6 +106,10 @@ export function CreativeStep({ campaign, creatives, setCreatives, placements, on
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(0);
   const [aiFor, setAiFor] = useState<string | null>(null);
+  const [aiTarget, setAiTarget] = useState<string | null>(null);
+  /* The audience's languages (Audience step): the natural translation targets. */
+  const wanted = (campaign.targeting?.languages ?? []).map((l) => String(l.code ?? '')).filter(Boolean);
+  const openAi = (id: string, target: string | null = null) => { setAiTarget(target); setAiFor(id); };
 
   const upload = async (files: FileList | null) => {
     if (!files || !homatchUser) return;
@@ -135,6 +142,10 @@ export function CreativeStep({ campaign, creatives, setCreatives, placements, on
 
   return (
     <StepShell eyebrow={t('madsb_step_creative')} title={t('madsb_creative_title')} lead={t('madsb_creative_lead')}>
+      <div className="grid gap-2 md:grid-cols-2">
+        <HelperCard emoji="🎨" tone="gold" title={t('mm_f_options_title')}>{t('mm_f_options_body')}</HelperCard>
+        <HelperCard emoji="⭐" tone="calm" title={t('mm_f_priority_title')}>{t('mm_f_priority_body')}</HelperCard>
+      </div>
       <MediaGuidance placements={placements} />
       <div className="flex flex-wrap items-center gap-2">
         <input ref={fileRef} type="file" accept={ACCEPT} multiple className="hidden" onChange={(e) => upload(e.target.files)} />
@@ -153,7 +164,7 @@ export function CreativeStep({ campaign, creatives, setCreatives, placements, on
             try { await removeCreative(cr.id); setCreatives((cur) => cur.filter((c) => c.id !== cr.id)); }
             catch { toast.error(t('mads_load_failed')); }
           }}
-          onAi={() => setAiFor(cr.id)} onFocus={() => onFocusCreative(cr.id)} />
+          onAi={(target) => openAi(cr.id, target ?? null)} wantedLanguages={wanted} onFocus={() => onFocusCreative(cr.id)} />
       ))}
       {blocked && (
         <p id="mm-b-blocking-hint" data-mm-blocking="" className="flex items-start gap-2 rounded-xl border border-destructive/35 bg-destructive/10 px-3.5 py-2.5 text-[13px] text-destructive" role="status">
@@ -162,7 +173,14 @@ export function CreativeStep({ campaign, creatives, setCreatives, placements, on
       )}
       {aiCreative && (
         <AiCopyPanel open={!!aiFor} onOpenChange={(v) => { if (!v) setAiFor(null); }} campaignId={campaign.id}
+          initialTarget={aiTarget}
           current={{ primaryText: aiCreative.primary_text, headline: aiCreative.headline, description: aiCreative.description ?? '' }}
+          onAcceptAsVersion={async (v) => {
+            try {
+              const row = await addCopyVersion(aiCreative, { headline: v.headline || aiCreative.headline, primaryText: v.primaryText, description: v.description }, creatives.length);
+              setCreatives((cur) => [...cur, row]);
+            } catch { toast.error(t('mads_load_failed')); }
+          }}
           onAccept={(v: AiCopyVariant) => {
             const next = { ...aiCreative, primary_text: v.primaryText || aiCreative.primary_text, headline: v.headline || aiCreative.headline, description: v.description ?? aiCreative.description ?? '' };
             setCreatives((cur) => cur.map((c) => (c.id === next.id ? next : c)));
@@ -173,12 +191,15 @@ export function CreativeStep({ campaign, creatives, setCreatives, placements, on
   );
 }
 
-function CreativeEditor({ creative, goal, messagingApp, placements, advice, heldBack, onChange, onRemove, onAi, onFocus }: {
+function CreativeEditor({ creative, goal, messagingApp, placements, advice, heldBack, onChange, onRemove, onAi, onFocus, wantedLanguages = [] }: {
   creative: MetaCreativeRow; goal: MetaGoal; messagingApp: string | null; placements: Placement[];
   advice: AdviceItem[]; heldBack: boolean;
-  onChange: (c: MetaCreativeRow) => void; onRemove: () => void; onAi: () => void; onFocus: () => void;
+  onChange: (c: MetaCreativeRow) => void; onRemove: () => void; onAi: (target?: string | null) => void; onFocus: () => void;
+  wantedLanguages?: string[];
 }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
+  const copyLang = detectCopyLanguage(`${creative.primary_text} ${creative.headline}`);
+  const translateTo = wantedLanguages.find((l) => l !== copyLang && ['ka', 'en', 'ru', 'tr', 'ar', 'he'].includes(l)) ?? null;
   const options = ctaOptions(goal, messagingApp);
   const activeCta = resolveCta(goal, creative.cta, messagingApp);
   const m0 = creative.media[0];
@@ -209,7 +230,26 @@ function CreativeEditor({ creative, goal, messagingApp, placements, advice, held
   const needsHeadline = goal !== 'ENGAGEMENT';
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-3.5 shadow-card sm:p-4" onFocusCapture={onFocus}>
+    <div className={cn('rounded-2xl border bg-card p-3.5 shadow-card transition-colors sm:p-4', creative.priority ? 'border-[hsl(var(--gold-border))] ring-1 ring-[hsl(var(--gold-border))]/60' : 'border-border')}
+      onFocusCapture={onFocus} data-mm-creative={creative.id} data-mm-priority={creative.priority ? 'true' : 'false'}>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <button type="button" aria-pressed={!!creative.priority} onClick={() => edit({ priority: !creative.priority })} data-mm-priority-toggle=""
+          className={cn('inline-flex min-h-[40px] items-center gap-1.5 rounded-full border px-3.5 text-[13px] font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]',
+            creative.priority ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold))] text-[#161309] shadow-sm' : 'border-border text-muted-foreground hover:border-[hsl(var(--gold-border))] hover:text-foreground')}>
+          <Star className={cn('h-4 w-4', creative.priority && 'fill-current')} aria-hidden />{t(creative.priority ? 'mm_f_priority_on' : 'mm_f_priority_set')}
+        </button>
+        {copyLang && (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-[hsl(var(--secondary))]/60 px-3 py-1 text-2xs font-medium text-foreground" data-mm-creative-lang={copyLang}>
+            <Languages className="h-3.5 w-3.5" aria-hidden />{t('mm_f_written_in', { lang: languageName(copyLang, lang) })}
+          </span>
+        )}
+      </div>
+      {translateTo && (
+        <HelperCard emoji="🧠" tone="gold" className="mb-3" title={t('mm_f_lang_mismatch_title', { lang: languageName(translateTo, lang) })} data-mm-translate-suggest={translateTo}
+          action={<Button type="button" size="sm" className="gap-1.5" onClick={() => onAi(translateTo)}><Sparkles className="h-3.5 w-3.5" />{t('mm_f_translate_now', { lang: languageName(translateTo, lang) })}</Button>}>
+          {t('mm_f_lang_mismatch_body')}
+        </HelperCard>
+      )}
       {heldBack && (
         <p data-mm-held-back="" className="mb-3 flex items-start gap-2 rounded-lg border border-border bg-[hsl(var(--secondary))]/60 px-2.5 py-1.5 text-2xs leading-relaxed text-muted-foreground">
           <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
@@ -289,9 +329,14 @@ function CreativeEditor({ creative, goal, messagingApp, placements, advice, held
           )}
           <AdviceList items={advice} />
           <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-            <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={onAi} data-madsb-ai="">
-              <Sparkles className="h-3.5 w-3.5 text-[hsl(var(--gold-ink))]" />{t('mads_ai_assist')}
-            </Button>
+            <span className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => onAi(null)} data-madsb-ai="">
+                <Sparkles className="h-3.5 w-3.5 text-[hsl(var(--gold-ink))]" />{t('mads_ai_assist')}
+              </Button>
+              <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => onAi(translateTo ?? (lang !== copyLang ? lang : 'en'))} data-mm-translate="">
+                <Languages className="h-3.5 w-3.5 text-[hsl(var(--gold-ink))]" />{t('mm_f_translate')}
+              </Button>
+            </span>
             <button type="button" aria-label={t('live_chat_delete')} onClick={onRemove}
               className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-[hsl(var(--secondary))] hover:text-destructive">
               <Trash2 className="h-4 w-4" />

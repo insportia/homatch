@@ -1,6 +1,7 @@
 // META ADS — client data layer. Drafts and creatives move through RLS;
 // everything that touches Meta or money goes through the meta-ads-api
 // edge function. Nothing in this file talks to Meta directly.
+import type { BriefUnderstanding } from '@/lib/metaAds/audienceGuide';
 import { supabase } from '@/db/supabase';
 
 const FN = 'meta-ads-api';
@@ -102,10 +103,26 @@ export interface MetaCampaignRow {
   guard_state?: 'OK' | 'NEEDS_REVIEW' | 'LOCKED_FOR_REVIEW';
   health?: Record<string, { state: string; code: string }> | null;
   created_at: string; updated_at: string;
+  /** "Tell HOMATCH what you really want" — soft intent, never sent to Meta. */
+  owner_brief?: string;
+  /** What HOMATCH understood from owner_brief (audienceGuide.BriefUnderstanding). */
+  brief_understanding?: BriefUnderstanding | null;
 }
 
-export interface LocationChoiceRow { type: 'country' | 'region' | 'city'; key: string; name: string; countryCode: string; radiusKm?: number }
-export interface TargetingIntentRow { locations: LocationChoiceRow[]; ageMin: number; ageMax: number; gender: 'ALL' | 'MALE' | 'FEMALE' }
+export interface LocationChoiceRow {
+  type: 'country' | 'region' | 'city' | 'pin'; key: string; name: string; countryCode: string; radiusKm?: number | null;
+  /** Pins: the point Meta receives. Cities: where HOMATCH's map draws them (display only). */
+  lat?: number | null; lng?: number | null;
+}
+export interface LanguageChoiceRow { key: string; name: string; code?: string | null }
+export interface InternationalChoiceRow { enabled: boolean; intents: string[]; markets: string[] }
+export interface TargetingIntentRow {
+  locations: LocationChoiceRow[]; ageMin: number; ageMax: number; gender: 'ALL' | 'MALE' | 'FEMALE';
+  /** Meta locale keys the ads are shown in (empty: every language). */
+  languages?: LanguageChoiceRow[];
+  /** International / expat intent — captured as intent, applied as places and languages the customer confirms. */
+  international?: InternationalChoiceRow | null;
+}
 
 export type PreflightState = 'READY' | 'WARNING' | 'ACTION_REQUIRED';
 export interface PreflightCheck { key: string; state?: PreflightState; ok: boolean; detail?: string }
@@ -192,16 +209,43 @@ export const syncCampaign = (campaignId: string) =>
 
 export interface MediaMeta {
   path: string; mime: string; size?: number; width?: number | null; height?: number | null; duration?: number | null;
+  /** Images: mean luminance 0..255 and its spread, measured before upload. */
+  luma?: number | null; contrast?: number | null;
 }
 export interface MetaCreativeRow {
   id: string; campaign_id: string | null; kind: 'IMAGE' | 'VIDEO' | 'CAROUSEL';
   media: MediaMeta[]; headline: string; primary_text: string; description?: string;
   cta: string; destination_url: string | null; safety_status: string; sort: number;
   safety?: { flags?: string[] } | null;
+  /** "Priority creative": always included and first in line; results still decide delivery. */
+  priority?: boolean;
 }
 
 /** Width, height and duration read from the file itself, before upload. */
-export async function readMediaFacts(file: File): Promise<{ width: number | null; height: number | null; duration: number | null }> {
+export interface MediaFacts { width: number | null; height: number | null; duration: number | null; luma?: number | null; contrast?: number | null }
+
+/** Mean luminance and its standard deviation, from a 64-px thumbnail of the image. */
+function lumaOf(img: HTMLImageElement): { luma: number; contrast: number } | null {
+  try {
+    const w = 64;
+    const h = Math.max(1, Math.round((img.naturalHeight / Math.max(1, img.naturalWidth)) * w));
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0, w, h);
+    const px = ctx.getImageData(0, 0, w, h).data;
+    let sum = 0; let sq = 0; const n = px.length / 4;
+    for (let i = 0; i < px.length; i += 4) {
+      const y = 0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2];
+      sum += y; sq += y * y;
+    }
+    const mean = sum / n;
+    return { luma: Math.round(mean), contrast: Math.round(Math.sqrt(Math.max(0, sq / n - mean * mean))) };
+  } catch { return null; }
+}
+
+export async function readMediaFacts(file: File): Promise<MediaFacts> {
   const url = URL.createObjectURL(file);
   try {
     if (file.type.startsWith('video')) {
@@ -215,7 +259,7 @@ export async function readMediaFacts(file: File): Promise<{ width: number | null
     }
     return await new Promise((resolve) => {
       const img = new Image();
-      img.onload = () => resolve({ width: img.naturalWidth || null, height: img.naturalHeight || null, duration: null });
+      img.onload = () => resolve({ width: img.naturalWidth || null, height: img.naturalHeight || null, duration: null, ...(lumaOf(img) ?? {}) });
       img.onerror = () => resolve({ width: null, height: null, duration: null });
       img.src = url;
     });
@@ -232,7 +276,7 @@ export async function listCreatives(campaignId: string): Promise<MetaCreativeRow
 
 export async function addCreative(userId: string, campaignId: string, file: File, copy: {
   headline: string; primaryText: string; description?: string; cta?: string; destinationUrl?: string | null;
-}, facts?: { width: number | null; height: number | null; duration: number | null }, sort = 0): Promise<MetaCreativeRow> {
+}, facts?: MediaFacts, sort = 0): Promise<MetaCreativeRow> {
   const ext = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp'
     : file.type === 'video/quicktime' ? 'mov' : file.type.startsWith('video') ? 'mp4' : 'jpg';
   const path = `${userId}/${crypto.randomUUID()}.${ext}`;
@@ -242,7 +286,10 @@ export async function addCreative(userId: string, campaignId: string, file: File
   const { data, error } = await supabase.from('meta_creatives').insert({
     user_id: userId, campaign_id: campaignId, sort,
     kind: file.type.startsWith('video') ? 'VIDEO' : 'IMAGE',
-    media: [{ path, mime: file.type, size: file.size, width: facts?.width ?? null, height: facts?.height ?? null, duration: facts?.duration ?? null }],
+    media: [{
+      path, mime: file.type, size: file.size, width: facts?.width ?? null, height: facts?.height ?? null, duration: facts?.duration ?? null,
+      ...(facts?.luma != null ? { luma: facts.luma, contrast: facts.contrast ?? null } : {}),
+    }],
     headline: copy.headline, primary_text: copy.primaryText, description: copy.description ?? '',
     cta: copy.cta ?? 'LEARN_MORE', destination_url: copy.destinationUrl ?? null,
   }).select('*').single();
@@ -257,6 +304,18 @@ export async function addCreative(userId: string, campaignId: string, file: File
 export async function updateCreative(id: string, patch: Partial<MetaCreativeRow>): Promise<void> {
   const { error } = await supabase.from('meta_creatives').update(patch).eq('id', id);
   if (error) throw error;
+}
+
+/** A new creative with the same photo/video and different copy (a language version). */
+export async function addCopyVersion(source: MetaCreativeRow, copy: { headline: string; primaryText: string; description?: string }, sort: number): Promise<MetaCreativeRow> {
+  const { data, error } = await supabase.from('meta_creatives').insert({
+    user_id: (source as { user_id?: string }).user_id, campaign_id: source.campaign_id, sort,
+    kind: source.kind, media: source.media,
+    headline: copy.headline, primary_text: copy.primaryText, description: copy.description ?? '',
+    cta: source.cta, destination_url: source.destination_url ?? null,
+  }).select('*').single();
+  if (error) throw error;
+  return data as MetaCreativeRow;
 }
 
 export async function removeCreative(id: string): Promise<void> {
@@ -371,6 +430,33 @@ export interface StrategyPreview {
 export const strategyPreview = (campaignId: string) => call<StrategyPreview>('strategy_preview', { campaignId });
 export const geoSearch = (q: string, type: 'country' | 'region' | 'city', locale: string, country?: string) =>
   call<{ results: LocationChoiceRow[]; reason?: string }>('geo_search', { q, type, locale, country });
+/** Meta's locale keys for a language (type=adlocale), whole-language entry first. */
+export const localeSearch = (code: string) =>
+  call<{ results: LanguageChoiceRow[]; reason?: string }>('locale_search', { code });
+/** Read the SAVED owner brief and store what HOMATCH understood. */
+export const briefInterpret = (campaignId: string, locale: string) =>
+  call<{ understanding: BriefUnderstanding | null }>('brief_interpret', { campaignId, locale });
+export interface DeliveryEstimate { available: boolean; reason?: string; source?: string; audience?: { lower: number; upper: number } }
+/** Meta's own audience-size estimate for the draft's targeting, when Meta gives one. */
+export const deliveryEstimate = (campaignId: string) => call<DeliveryEstimate>('delivery_estimate', { campaignId });
+
+/** The advertised property's own point (property_facts), when its owner stored one. */
+export async function propertyPoint(propertyId: string | null): Promise<{ lat: number; lng: number; label: string | null } | null> {
+  if (!propertyId) return null;
+  let id = propertyId;
+  // Campaigns name a property by its six-digit HOMATCH id.
+  if (/^[0-9]{6}$/.test(propertyId)) {
+    const { data: p } = await supabase.from('properties').select('id').eq('homatch_id', Number(propertyId)).maybeSingle();
+    if (!p?.id) return null;
+    id = p.id;
+  }
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  const { data } = await supabase.from('property_facts').select('latitude,longitude,city,district').eq('property_id', id).maybeSingle();
+  const lat = Number(data?.latitude);
+  const lng = Number(data?.longitude);
+  if (!data || !Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) return null;
+  return { lat, lng, label: [data.district, data.city].filter(Boolean).join(', ') || null };
+}
 
 export interface PlanChangePreview {
   currentDailyCents: number; currentDays: number; newDailyCents: number; newDays: number; feePercent: number;

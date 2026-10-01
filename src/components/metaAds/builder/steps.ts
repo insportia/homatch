@@ -6,7 +6,7 @@ import type { MetaAsset, MetaCampaignRow, MetaCreativeRow, MetaStatus } from '@/
 import { GOAL_SPECS, isHttpsUrl } from '../../../lib/metaAds/payload.ts';
 import type { MetaGoal } from '../../../lib/metaAds/strategy.ts';
 
-export const STEPS = ['account', 'offer', 'goal', 'destination', 'audience', 'budget', 'creative', 'placements', 'review'] as const;
+export const STEPS = ['account', 'offer', 'goal', 'destination', 'audience', 'budget', 'creative', 'placements', 'brief', 'review'] as const;
 export type StepKey = (typeof STEPS)[number];
 
 export const ALL_GOALS: MetaGoal[] = ['LEADS_ON_META', 'MESSAGES', 'LEADS_ON_WEBSITE', 'SITE_REGISTRATIONS', 'PROMOTE', 'ENGAGEMENT'];
@@ -66,6 +66,9 @@ export function stepGap(step: StepKey, ctx: StepContext): string | null {
     }
     case 'placements':
       return c.placements?.mode === 'CUSTOM' && !(c.placements.list ?? []).length ? 'madsb_gap_placements' : null;
+    case 'brief':
+      // Optional: the owner's own words, never required to continue.
+      return null;
     case 'review':
       return c.preflight?.status === 'READY' ? null : 'madsb_gap_preflight';
   }

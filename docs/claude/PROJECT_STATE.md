@@ -538,3 +538,21 @@ Phase 2 (Universal Discovery) is blocked until this is live and proven.
   (HOMATCH side): maintenance ≤ 25 campaigns per 15-min pass (40 s budget),
   status sync one 40 s invocation per minute (≤ 200 rows) — the first scaling
   blockers, ahead of Meta's per-account limits (tier: development_access).
+
+## Meta Ads final product finish (2026-10-01)
+- Meta Housing Special Ad Category is declared ONLY when a housing offer reaches US/territories,
+  Canada (25 km floor) or Meta's European list (15 km floor) — Meta Business Help "About audiences
+  for credit, employment or housing campaigns", checked 2026-10-01. Georgia-only property ads:
+  ages/gender are the owner's choice (targeting.housingRule / declaredSpecialAdCategories; engine
+  strategyInputFor uses the same function). Advertiser-based-in-US is not detected (no ad-account
+  business country is stored) — documented limitation.
+- Targeting intent now carries pins (custom_locations), languages (Meta locale keys from
+  locale_search type=adlocale) and international intent (UI intent → places/languages the owner
+  confirms). HOMATCH SVG map (Natural Earth outlines, lazy chunk) — no tile provider.
+- Migration 20261003120000: meta_creatives.priority, meta_campaigns.owner_brief + brief_understanding.
+  Priority creatives always included / first in buildPlan; part of the launch fingerprint.
+- New meta-ads-api actions: locale_search, brief_interpret (LLM → closed vocabularies, cost_events,
+  20/h), delivery_estimate (Meta MAU bounds only, 60/h). ai_copy: no invented numbers; TRANSLATE keeps
+  every number.
+- Builder: 10 steps (new "brief" before review); review = campaign story + expectations (room to
+  learn, Meta estimate) + holistic consistency check with one-tap fixes + learning card.

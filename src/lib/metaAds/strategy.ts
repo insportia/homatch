@@ -69,6 +69,9 @@ export interface CreativeRef {
   height?: number | null;
   /** 0..1 from creativeAdvice(): resolution, format fit, completeness. */
   quality?: number | null;
+  /** The customer's "Priority creative": always included, first in line.
+   *  A preference, not an order — delivery still follows results. */
+  priority?: boolean;
 }
 
 export interface StrategyInput {
@@ -158,6 +161,7 @@ export interface PlannedAdSet {
 export type StrategyReason =
   | 'COMPACT_BUDGET_ONE_AD_SET'
   | 'BUDGET_CONCENTRATED_ON_STRONGEST_CREATIVES'
+  | 'PRIORITY_CREATIVE_FIRST'
   | 'ALL_CREATIVES_TESTED'
   | 'SINGLE_CREATIVE'
   | 'LOCATIONS_TESTED_SEPARATELY'
@@ -238,9 +242,11 @@ export function buildPlan(input: StrategyInput, params: StrategyParams = DEFAULT
   let capacity = Math.max(1, Math.min(params.maxAdSets, Math.floor(daily / cellCents)));
   if (shortRun && capacity > 1) { capacity = 1; reasons.push('SHORT_DURATION_SIMPLIFIED'); }
 
+  // Priority creatives first (the customer's preference), then the strongest.
   const ready = input.creatives.filter((c) => c.ready)
     .map((c, i) => ({ c, i }))
-    .sort((a, b) => (Number(b.c.quality ?? 0.5) - Number(a.c.quality ?? 0.5)) || a.i - b.i)
+    .sort((a, b) => (Number(!!b.c.priority) - Number(!!a.c.priority))
+      || (Number(b.c.quality ?? 0.5) - Number(a.c.quality ?? 0.5)) || a.i - b.i)
     .map((x) => x.c);
   const unknownShape = ready.some((c) => !c.width || !c.height || c.quality == null);
 
@@ -300,6 +306,7 @@ export function buildPlan(input: StrategyInput, params: StrategyParams = DEFAULT
   else if (ready.length > 1) reasons.push('ALL_CREATIVES_TESTED');
   reasons.push(housing ? 'HOUSING_AUDIENCE_RULES' : 'BROAD_AUDIENCE_META_OPTIMIZES');
   if (input.audienceExternalId) reasons.push('CUSTOM_AUDIENCE_USED');
+  if (ready.some((c) => c.priority)) reasons.push('PRIORITY_CREATIVE_FIRST');
 
   const perAdSetBudget = Math.floor(daily / adSets.length);
   const recommended = Math.max(1, Math.min(params.maxAdsPerAdSet, Math.floor(perAdSetBudget / params.minAdDailyCents)))

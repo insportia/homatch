@@ -32,6 +32,7 @@ export const META_ADS_BUILDER_STRINGS = {
   madsb_step_creative: ["Ad content", "რეკლამის შიგთავსი", "Содержание рекламы", "Reklam içeriği", "محتوى الإعلان", "תוכן המודעה"],
   madsb_step_placements: ["Placements", "განთავსებები", "Места размещения", "Yerleşimler", "مواضع الظهور", "מיקומים"],
   madsb_step_review: ["Review & launch", "გადახედვა და გაშვება", "Проверка и запуск", "İncele ve yayınla", "المراجعة والإطلاق", "בדיקה והשקה"],
+  madsb_step_brief: ["Your brief", "თქვენი სურვილები", "Ваши пожелания", "Notunuz", "ملاحظتك", "ההנחיות שלכם"],
   madsb_step_incomplete: ["Needs attention", "საჭიროებს ყურადღებას", "Требует внимания", "Dikkat gerekiyor", "يحتاج إلى انتباه", "דורש טיפול"],
   madsb_back: ["Back", "უკან", "Назад", "Geri", "رجوع", "חזרה"],
   madsb_exit: ["Exit", "გასვლა", "Выйти", "Çık", "خروج", "יציאה"],

@@ -24,10 +24,13 @@ const campaign = (over = {}) => ({
 });
 const creative = (over = {}) => ({ id: 'cr', media: [{ path: 'x', mime: 'image/jpeg' }], primary_text: 'Text', headline: 'Head', cta: 'SIGN_UP', ...over });
 
-test('nine steps, account first, review last', () => {
-  assert.equal(STEPS.length, 9);
+test('ten steps, account first, the owner\'s brief right before review, review last', () => {
+  assert.equal(STEPS.length, 10);
   assert.equal(STEPS[0], 'account');
+  assert.equal(STEPS.at(-2), 'brief');
   assert.equal(STEPS.at(-1), 'review');
+  // The brief is optional: it never blocks Continue.
+  assert.equal(stepGap('brief', { status: null, campaign: campaign(), creatives: [] }), null);
 });
 
 test('account: connection, then Page, then ad account', () => {

@@ -10,6 +10,7 @@ import {
   strategyExplanationKeys, STRATEGY_REASON_CODES, TARGETING_ADJUSTMENT_CODES, PLAN_ISSUE_CODES, ADVICE_CODES, LEAD_FORM_ISSUE_CODES,
 } from '../masterLogic.ts';
 import { META_MASTER_BUILDER_STRINGS as S } from '../../../../../scripts/meta-master-builder-i18n-data.mjs';
+import { META_FINAL_STRINGS as F } from '../../../../../scripts/meta-final-i18n-data.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../..');
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
@@ -19,48 +20,46 @@ const SOURCES = [
   ...fs.readdirSync(path.join(ROOT, B)).filter((f) => /\.(tsx?|mjs)$/.test(f)).map((f) => `${B}/${f}`),
 ];
 
-test('audience: broad is recommended, not forced; a property ad\'s audience is set up by HOMATCH, without platform jargon', () => {
-  // The one real restriction: Meta's Housing ad category (property ads).
-  assert.equal(isHousingCampaign({ property_id: '123456', offer: null }), true);
-  assert.equal(isHousingCampaign({ property_id: null, offer: { isProperty: true, dealKind: 'RENT_LONG' } }), true);
-  assert.equal(isHousingCampaign({ property_id: null, offer: { isProperty: false, dealKind: 'OTHER' } }), false);
-  assert.equal(isHousingCampaign({ property_id: null, offer: { isProperty: true, dealKind: 'COMMERCIAL' } }), false);
-  assert.equal(isHousingCampaign({ property_id: null, offer: null, special_ad_categories: ['HOUSING'] }), true);
+test('audience: ages and gender are the owner\'s choice wherever Meta allows it; Meta\'s housing rule only where it applies, named, never a disabled control', () => {
+  // Meta's housing restrictions apply to a property ad that reaches the US, Canada or the European list — not Georgia.
+  assert.equal(isHousingCampaign({ property_id: '123456', offer: null }), false, 'a Georgian property ad: no restriction');
+  assert.equal(isHousingCampaign({ property_id: '123456', offer: null, targeting: { locations: [{ countryCode: 'GE' }] } }), false);
+  assert.equal(isHousingCampaign({ property_id: '123456', offer: null, targeting: { locations: [{ countryCode: 'GE' }, { countryCode: 'DE' }] } }), true);
+  assert.equal(isHousingCampaign({ property_id: null, offer: { isProperty: true, dealKind: 'RENT_LONG' }, targeting: { locations: [{ countryCode: 'US' }] } }), true);
+  assert.equal(isHousingCampaign({ property_id: null, offer: { isProperty: false, dealKind: 'OTHER' }, targeting: { locations: [{ countryCode: 'US' }] } }), false, 'not a housing offer');
+  assert.equal(isHousingCampaign({ property_id: null, offer: { isProperty: true, dealKind: 'COMMERCIAL' }, targeting: { locations: [{ countryCode: 'CA' }] } }), false, 'commercial is not housing');
 
   const aud = read(`${B}/AudienceStep.tsx`);
   // No lock presentation anywhere, and no disabled controls standing in for a rule.
-  assert.doesNotMatch(aud, /Lock|mm_b_locked|mm_b_housing_lock|data-mm-housing-lock|disabled=\{housing\}/);
-  // Default Gender = All, every gender selectable, ages editable (non-housing).
-  assert.match(aud, /const gender = housing \? 'ALL' : stored\?\.gender \?\? 'ALL';/);
+  assert.doesNotMatch(aud, /Lock|mm_b_locked|mm_b_housing_lock|data-mm-housing-lock|disabled=\{housing\}|disabled=\{rule/);
+  // The restriction follows the PLACES, decided on what is about to be saved.
+  assert.match(aud, /const rule = housingRuleFor\(campaign, locations\);/);
+  assert.match(aud, /const gender = rule\.restricted \? 'ALL' : stored\?\.gender \?\? 'ALL';/);
   assert.match(aud, /const GENDERS: TargetingIntentRow\['gender'\]\[\] = \['ALL', 'FEMALE', 'MALE'\];/);
-  assert.match(aud, /<button key=\{g\} type="button" aria-pressed=\{gender === g\} onClick=\{\(\) => save\(\{ gender: g \}\)\}/);
+  assert.match(aud, /<Pill key=\{g\} active=\{gender === g\} onClick=\{\(\) => save\(\{ gender: g \}\)\} data-mm-gender=\{g\}>/);
   assert.match(aud, /<fieldset className="min-w-0">/, 'ages are an ordinary, enabled fieldset');
-  // Narrowing shows advice, never reverts: nothing in the recommendation calls save().
-  const rec = aud.slice(aud.indexOf('data-mm-audience-rec'), aud.indexOf('{/* WHO, BY RELATIONSHIP */}'));
-  assert.match(aud, /\{isNarrowAudience\(\{ ageMin, ageMax, gender \}\) && \(/);
-  assert.match(rec, /role="note"/);
+  // The recommendation sits beside the choice and never reverts it.
+  const rec = aud.slice(aud.indexOf('HOMATCH RECOMMENDATION'), aud.indexOf('{/* WHO, BY RELATIONSHIP */}'));
+  assert.match(rec, /mm_f_rec_title[\s\S]*mm_f_rec_narrow[\s\S]*mm_f_rec_broad/);
   assert.doesNotMatch(rec, /save\(|destructive|role="alert"/, 'advice: no revert, no error styling');
-  assert.match(rec, /mm_b_rec_title[\s\S]*mm_b_rec_narrow/);
-  // Housing: the values HOMATCH set up, as plain text — not Meta's rulebook, not disabled controls.
-  assert.match(aud, /\{housing \? \(\s*\/\*[^*]*\*\/\s*<div data-mm-housing-rule="" data-mm-smart-fixed="">/);
-  assert.doesNotMatch(aud, /t\('mm_b_housing_rule'\)|t\('mm_b_housing_radius_note'/, 'no Meta Housing explanation is rendered');
-  assert.match(aud, /data-mm-smart-audience=""[\s\S]*mm_b_smart_title[\s\S]*mm_b_smart_body/);
-  // What is stored is what runs: a property ad's draft is normalized exactly as the server does.
-  assert.match(aud, /patch\(\{ targeting: housing \? housingNormalized\(merged\) : merged \}, \{ immediate: true \}\)/);
+  // META RESTRICTION: a named card with the countries that cause it and the fix — not the old silent values.
+  assert.match(aud, /\{rule\.restricted \? \(\s*\/\*[^*]*\*\/\s*<HelperCard emoji="🏛️" tone="amber" title=\{t\('mm_f_meta_rule_title'\)\} data-mm-meta-rule=\{rule\.countries\.join\(','\)\}/);
+  assert.match(aud, /mm_f_meta_rule_body[\s\S]*mm_f_meta_rule_fix|mm_f_meta_rule_fix[\s\S]*mm_f_meta_rule_body/);
+  // What is stored is what runs: normalized exactly as the server does, only where the rule applies.
+  assert.match(aud, /patch\(\{ targeting: r\.restricted \? housingNormalized\(merged, r\.minRadiusKm \?\? undefined\) : merged \}, \{ immediate \}\)/);
 
-  // When the note shows.
+  // When the narrow note shows.
   assert.equal(isNarrowAudience({ ageMin: 18, ageMax: 65, gender: 'ALL' }), false, 'the default is broad');
   assert.equal(isNarrowAudience({ ageMin: 21, ageMax: 60, gender: 'ALL' }), false, 'a light trim is fine');
   assert.equal(isNarrowAudience({ ageMin: 18, ageMax: 65, gender: 'FEMALE' }), true);
   assert.equal(isNarrowAudience({ ageMin: 18, ageMax: 65, gender: 'MALE' }), true);
   assert.equal(isNarrowAudience({ ageMin: 30, ageMax: 45, gender: 'ALL' }), true);
 
-  // The copy: HOMATCH's recommendation, not a Meta requirement; Housing names Meta's rule.
-  assert.equal(S.mm_b_rec_title[1], 'HOMATCH-ის რეკომენდაცია');
-  assert.equal(S.mm_b_rec_narrow[1], 'უკეთესი შედეგისთვის გირჩევთ აუდიტორია ზედმეტად არ შეზღუდოთ და Meta-ს მისცეთ საშუალება იპოვოს ყველაზე შედეგიანი მომხმარებლები. სურვილის შემთხვევაში შეგიძლიათ თქვენი არჩევანი დატოვოთ.');
-  for (const v of S.mm_b_rec_narrow) assert.doesNotMatch(v, /requires|must|required/i);
-  // The audience copy a customer reads speaks of what HOMATCH does — no Meta policy jargon.
+  // The recommendation copy never claims a requirement.
+  for (const v of F.mm_f_rec_narrow) assert.doesNotMatch(v, /requires|must|required|требует|მოითხოვს/i);
   assert.equal(S.mm_b_smart_title[1], 'HOMATCH-ის ჭკვიანი აუდიტორია');
+  // The restriction copy says it is Meta's rule, not HOMATCH's choice — in every language.
+  for (const v of F.mm_f_meta_rule_body) assert.match(v, /Meta/);
   for (const k of ['mm_b_smart_title', 'mm_b_smart_body', 'mm_b_smart_fixed', 'mm_b_smart_property', 'mm_b_reason_HOUSING_AUDIENCE_RULES',
     'mm_b_adj_HOUSING_AGE_ALL_ADULTS', 'mm_b_adj_HOUSING_ALL_GENDERS', 'mm_b_adj_HOUSING_RADIUS_WIDENED']) {
     for (const v of S[k]) assert.doesNotMatch(v, /Meta|Housing|საცხოვრებლის|Жильё|жилья|Konut|الإسكان|דיור/, `${k}: ${v}`);

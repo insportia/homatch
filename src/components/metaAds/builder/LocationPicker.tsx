@@ -11,7 +11,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { geoSearch, type LocationChoiceRow } from '@/services/metaAds';
 
-type LocType = LocationChoiceRow['type'];
+type LocType = Exclude<LocationChoiceRow['type'], 'pin'>;
 type Found = LocationChoiceRow & { region?: string | null; countryName?: string | null };
 
 const TYPES: LocType[] = ['city', 'region', 'country'];

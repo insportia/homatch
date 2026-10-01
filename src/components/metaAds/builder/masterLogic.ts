@@ -9,14 +9,12 @@
 //   · funding           the Add-funds amount for a server-computed shortfall
 import { classifySpecialAdCategories, type DealKind, type MetaGoal } from '../../../lib/metaAds/strategy.ts';
 import type { AdviceItem, AdviceSeverity } from '../../../lib/metaAds/creativeAdvice.ts';
-import { CITY_RADIUS_KM_DEFAULT, HOUSING_MIN_RADIUS_KM, MAX_LOCATIONS, META_AGE_MAX, META_AGE_MIN } from '../../../lib/metaAds/targeting.ts';
+import { CITY_RADIUS_KM_DEFAULT, HOUSING_MIN_RADIUS_KM, MAX_LOCATIONS, META_AGE_MAX, META_AGE_MIN, housingRule, type HousingRule } from '../../../lib/metaAds/targeting.ts';
 
 /* ── HOUSING ─────────────────────────────────────────────────────────── */
 
-export function isHousingCampaign(c: {
-  property_id?: string | null; offer?: Record<string, unknown> | null; special_ad_categories?: string[] | null;
-}): boolean {
-  if ((c.special_ad_categories ?? []).includes('HOUSING')) return true;
+/** The offer is a residential sale or rental (strategy.classifySpecialAdCategories). */
+export function isHousingOffer(c: { property_id?: string | null; offer?: Record<string, unknown> | null }): boolean {
   const offer = c.offer as { isProperty?: boolean; dealKind?: string } | null | undefined;
   const cats = classifySpecialAdCategories({
     isProperty: !!c.property_id || !!(offer && offer.isProperty !== false),
@@ -25,22 +23,41 @@ export function isHousingCampaign(c: {
   return cats.includes('HOUSING');
 }
 
-/** A city's radius as it will actually run: property ads reach at least HOUSING_MIN_RADIUS_KM. */
-export function effectiveRadiusKm(radiusKm: number | null | undefined, housing: boolean): number {
+/**
+ * Meta's housing restrictions for this campaign as the server will apply them
+ * (engine.strategyInputFor → targeting.declaredSpecialAdCategories): only a
+ * housing offer that reaches the US, Canada or the European list.
+ */
+export function housingRuleFor(c: { property_id?: string | null; offer?: Record<string, unknown> | null }, locations: Array<{ countryCode?: string | null }>): HousingRule {
+  return housingRule(isHousingOffer(c), [...new Set(locations.map((l) => String(l.countryCode ?? '').toUpperCase()).filter(Boolean))]);
+}
+
+/** Back-compat name: true only when Meta's restrictions apply to the campaign as targeted. */
+export function isHousingCampaign(c: {
+  property_id?: string | null; offer?: Record<string, unknown> | null; special_ad_categories?: string[] | null;
+  targeting?: { locations?: Array<{ countryCode?: string | null }> } | null;
+}, defaultCountries: string[] = ['GE']): boolean {
+  const locs = c.targeting?.locations?.length ? c.targeting.locations : defaultCountries.map((cc) => ({ countryCode: cc }));
+  return housingRuleFor(c, locs).restricted;
+}
+
+/** A city's radius as it will actually run: Meta's floor where its housing rule applies. */
+export function effectiveRadiusKm(radiusKm: number | null | undefined, minRadiusKm: number | null | boolean): number {
   const r = Number(radiusKm ?? CITY_RADIUS_KM_DEFAULT);
-  return housing ? Math.max(HOUSING_MIN_RADIUS_KM, r) : r;
+  const min = minRadiusKm === true ? HOUSING_MIN_RADIUS_KM : typeof minRadiusKm === 'number' ? minRadiusKm : 0;
+  return Math.max(min, r);
 }
 
 /**
- * A property ad's audience as HOMATCH will run it — all adults, everyone, and
- * city radii at the property-ad minimum — so what the draft stores is exactly
- * what the server sends (targeting.applyTargeting applies the same rule).
- * Everything else (places, the customer's other choices) is kept.
+ * The audience as HOMATCH will run it where Meta's housing rule applies — all
+ * adults, everyone, and radii at Meta's floor for the reached countries — so
+ * the draft stores exactly what the server sends (applyTargeting). Places,
+ * languages and everything else are kept. Not restricted: unchanged.
  */
-export function housingNormalized<T extends { locations: Array<{ type: string; radiusKm?: number | null }>; ageMin: number; ageMax: number; gender: string }>(t: T): T {
+export function housingNormalized<T extends { locations: Array<{ type: string; radiusKm?: number | null; countryCode?: string | null }>; ageMin: number; ageMax: number; gender: string }>(t: T, minRadiusKm: number = HOUSING_MIN_RADIUS_KM): T {
   return {
     ...t, ageMin: META_AGE_MIN, ageMax: META_AGE_MAX, gender: 'ALL',
-    locations: t.locations.map((l) => (l.type === 'city' ? { ...l, radiusKm: effectiveRadiusKm(l.radiusKm, true) } : l)),
+    locations: t.locations.map((l) => (l.type === 'city' || l.type === 'pin' ? { ...l, radiusKm: effectiveRadiusKm(l.radiusKm, minRadiusKm) } : l)),
   };
 }
 
@@ -63,6 +80,7 @@ export const STRATEGY_REASON_CODES = [
   'COMPACT_BUDGET_ONE_AD_SET', 'BUDGET_CONCENTRATED_ON_STRONGEST_CREATIVES', 'ALL_CREATIVES_TESTED',
   'SINGLE_CREATIVE', 'LOCATIONS_TESTED_SEPARATELY', 'LOCATIONS_COMBINED_FOR_BUDGET', 'FORMATS_TESTED_SEPARATELY',
   'SHORT_DURATION_SIMPLIFIED', 'BROAD_AUDIENCE_META_OPTIMIZES', 'HOUSING_AUDIENCE_RULES', 'CUSTOM_AUDIENCE_USED',
+  'PRIORITY_CREATIVE_FIRST',
 ] as const;
 
 /** Every adjustment applyTargeting can report (targeting.ts). */
@@ -72,6 +90,7 @@ export const TARGETING_ADJUSTMENT_CODES = ['HOUSING_AGE_ALL_ADULTS', 'HOUSING_AL
 export const PLAN_ISSUE_CODES = [
   'GOAL_UNSUPPORTED', 'DURATION_BELOW_MINIMUM', 'BUDGET_BELOW_MINIMUM', 'BUDGET_ABOVE_MAXIMUM', 'CREATIVE_REQUIRED',
   'DESTINATION_URL_INVALID', 'DESTINATION_GOAL_MISMATCH', 'LOCATION_REQUIRED', 'TOO_MANY_LOCATIONS', 'AGE_RANGE_INVALID',
+  'PIN_INVALID', 'TOO_MANY_LANGUAGES', 'LANGUAGE_KEY_INVALID',
 ] as const;
 
 const known = <T extends string>(list: readonly T[], codes: readonly string[] | null | undefined): T[] =>
@@ -97,6 +116,7 @@ export const ADVICE_CODES = [
   'MEDIA_FORMAT_UNSUPPORTED', 'MEDIA_TOO_LARGE', 'MEDIA_RESOLUTION_TOO_LOW', 'MEDIA_VIDEO_TOO_SHORT', 'MEDIA_VIDEO_TOO_LONG',
   'MEDIA_NO_COMPATIBLE_PLACEMENT', 'MEDIA_DIMENSIONS_UNKNOWN', 'MEDIA_RESOLUTION_LOW', 'MEDIA_VIDEO_LONG_FOR_STORIES',
   'MEDIA_RATIO_CROPPED_ON_SOME_PLACEMENTS', 'ADD_VERTICAL_VERSION', 'ADD_CREATIVE_VARIATION', 'STRONGEST_CREATIVES_RUN_FIRST',
+  'MEDIA_TOO_DARK', 'MEDIA_WASHED_OUT', 'MEDIA_LOW_CONTRAST', 'MEDIA_STRONG',
 ] as const;
 
 export const adviceKey = (code: string) =>
@@ -158,7 +178,7 @@ export function destinationForGoal(goal: MetaGoal, prev: Dest | null | undefined
 
 /* ── LOCATIONS ───────────────────────────────────────────────────────── */
 
-export interface LocationLike { type: 'country' | 'region' | 'city'; key: string; name: string; countryCode: string; radiusKm?: number | null }
+export interface LocationLike { type: 'country' | 'region' | 'city' | 'pin'; key: string; name: string; countryCode: string; radiusKm?: number | null }
 
 export const locationId = (l: LocationLike) => `${l.type}:${l.key}`;
 

@@ -21,7 +21,7 @@ answering; never assume a feature is missing because a grep came back empty.
 | Protected surfaces / design contracts | `docs/claude/PROTECTED_SURFACES.md` · `UI_CONTRACTS.md` |
 | Money | `docs/claude/BILLING.md` |
 | Tests and gates | `docs/claude/TESTING.md` |
-| Release levels (FAST / TARGETED / FULL) | `docs/claude/RELEASE.md` |
+| Release tiers (FAST / TARGETED / COMPONENT_FULL / REPO_FULL), routine-operation permissions | `docs/claude/RELEASE.md` |
 | Production/deferred state | `docs/claude/PROJECT_STATE.md` |
 | Sharp edges | `docs/claude/KNOWN_RISKS.md` |
 | Deep narrative | `docs/ARCHITECTURE.md` · `docs/DATABASE.md` · `docs/DEPLOYMENT.md` |
@@ -66,21 +66,30 @@ An index is never proof of production state.
   domains and prints the protected-surface warnings that apply. Run it
   before proposing review.
 - **Tests**: iterate with `npm run homatch:check`; release truth is the PR's
-  validation run (`npm run homatch:release:plan` shows its FULL/TARGETED
-  plan; `npm run homatch:check:full` is the same gate locally). Matrix tests
+  validation run (`npm run homatch:release:plan` shows its tier, components,
+  suites and owed proofs; `npm run homatch:check:full` is diagnosis only). Matrix tests
   parse sources — when reality legitimately changed, fix the premise, don't
   weaken the assertion.
-- **Fast release** (`docs/claude/RELEASE.md`): Do not repeatedly run the full
-  HOMATCH repository gate when the exact relevant code has already passed the
-  required full validation and its integrity can be proven. Prefer the
-  fastest safe release path. Reuse trustworthy validation evidence. Run
-  targeted checks during development. Run the full release gate once when
-  required. After a validated PR is merged without meaningful code changes,
-  promote the validated code and run deployment-specific production proof
-  instead of blindly repeating the entire repository test suite. Escalate
-  back to full validation whenever code integrity, dependency impact,
-  security impact or validation provenance is uncertain. Never trade away
-  production proof for speed.
+- **Fast release** (`docs/claude/RELEASE.md`): HOMATCH releases must use the
+  fastest safe path. Never rerun unrelated repository-wide validation merely
+  because a change touches a migration, Edge Function or workflow. Determine
+  the affected dependency closure (`scripts/release/components.mjs` + the
+  import graph, edge closure and migration objects). Validate that closure
+  completely. Reuse trustworthy validation evidence. After merge, if content
+  equivalence is proven, promote the validated code without rerunning its PR
+  suites. Deploy only affected infrastructure. Production proof remains
+  mandatory. Escalate to repository-wide validation only for genuinely global
+  or unknown impact. New code area or suite → add it to `components.mjs` in
+  the same PR (an unplaced path plans REPO_FULL).
+- **Routine operations**: the owner pre-authorized routine non-destructive
+  development and release operations (git, PRs, merging after green checks,
+  tests/builds, read-only production inspection, reviewed migrations in
+  release order, owed edge deploys, production proof). `.claude/settings.json`
+  encodes this; its SQL hook allows only read-only SQL and migrations already
+  on main. Do not ask again for what it allows; destructive, spending,
+  secret-touching or security-weakening actions still need explicit
+  confirmation. Never poll for a merge you cannot perform — report
+  READY_FOR_EXTERNAL_MERGE and stop.
 - **i18n**: single bundle `src/i18n/translations.ts`; extend via the
   idempotent apply-script pattern; placeholders `{{var}}` survive all six
   locales; AR/HE flip direction.

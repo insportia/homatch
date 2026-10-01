@@ -1,0 +1,4 @@
+# One line ending everywhere. Source-parsing tests, the release classifier and
+# the workflows read these files as text; a Windows checkout with CRLF must
+# classify and parse exactly like CI's LF one. Binary files are detected.
+* text=auto eol=lf

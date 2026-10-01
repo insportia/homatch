@@ -144,3 +144,35 @@ test('Blendkit quality: not-a-home and cartoon contexts are rejected; a generic 
   assert.match(unnamed.reasons[0], /not stated by its name/);
   assert.equal(q({ name: 'Living room set with decor' }).tier, 'FALLBACK', 'a set is not one object');
 });
+
+test('named discovery: each adapter asks for ONE asset per id, by id, and files it on the same shelf as a full listing', async () => {
+  const urls = [];
+  // A raw search row, as Blendkit returns it, for the fixture asset.
+  const c = BK.cc0;
+  const bkRow = {
+    id: c.id, assetBaseId: c.assetBaseId, name: c.name, displayName: c.displayName, category: c.category, license: c.license, isFree: c.isFree,
+    verificationStatus: c.verificationStatus, tags: c.tags, author: { fullName: c.author }, created: c.created, versionNumber: c.versionNumber, url: c.url,
+    files: c.files.map((f) => ({ fileType: f.type, fileUploadSize: f.size, uuid: f.uuid })), dictParameters: c.params,
+    ratingsAverage: { quality: c.quality }, ratingsCount: { quality: c.qualityCount, bookmarks: c.bookmarks },
+  };
+  const bk = await B.blendkit.discoverIds([BK.cc0.assetBaseId, '00000000-0000-4000-8000-000000000000'], async (u) => {
+    urls.push(u);
+    return { results: u.includes(BK.cc0.assetBaseId) ? [bkRow] : [] };
+  });
+  assert.ok(urls.every((u) => /asset_base_id:[0-9a-f-]{36}\+asset_type:model&page_size=1$/.test(u)), 'one exact lookup per id, never a category crawl');
+  assert.equal(bk.found.length, 1);
+  assert.deepEqual(bk.found[0].canonical, B.classify(c), 'the same shelf a full discovery gives it');
+  assert.equal(bk.found[0].asset.license, c.license, 'licence kept');
+  assert.deepEqual(bk.found[0].asset.files.map((f) => f.uuid), c.files.map((f) => f.uuid), 'its own file list kept (provider-sign checks it)');
+  assert.deepEqual(bk.missing, [{ id: '00000000-0000-4000-8000-000000000000', reason: 'not listed by Blendkit as a model' }]);
+  assert.ok(B.blendkit.idPattern.test(BK.cc0.assetBaseId) && !B.blendkit.idPattern.test('../x'));
+
+  const ph = await P.polyhaven.discoverIds(['oak_wood_planks', 'no_such_asset'], async (u) => {
+    if (u.endsWith('/info/oak_wood_planks')) return { type: 1, name: 'Oak Wood Planks', category: 'Wood/Boards & Planks/Finished & Varnished', categories: ['wood'], tags: [], files_hash: 'h' };
+    throw new Error('provider /info/no_such_asset: 404');
+  });
+  assert.equal(ph.found.length, 1);
+  assert.equal(ph.found[0].kind, 'MATERIAL');
+  assert.deepEqual(ph.missing, [{ id: 'no_such_asset', reason: 'not listed by Poly Haven' }]);
+  assert.ok(P.polyhaven.idPattern.test('anniversary_lounge') && !P.polyhaven.idPattern.test('a/b'));
+});

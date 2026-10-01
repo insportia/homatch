@@ -23,11 +23,11 @@ on:
         required: false
         default: ''
       ids:
-        description: 'enqueue: comma-separated provider asset ids (at most 50)'
+        description: 'discover, enqueue: comma-separated provider asset ids (at most 50)'
         required: false
         default: ''
       all_owner_approved:
-        description: 'enqueue EVERY discovered asset of the provider (owner approval only)'
+        description: 'discover or enqueue the WHOLE provider (owner approval only)'
         type: boolean
         required: false
         default: false
@@ -88,7 +88,11 @@ jobs:
       - name: Import
         run: |
           case "$MODE" in
-            discover) node scripts/design-studio/catalog-import.mjs discover --provider "$PROVIDER" ;;
+            discover)
+              # Named ids: only those assets are looked up and recorded. The whole provider needs the owner box.
+              if [ -n "$IDS" ]; then node scripts/design-studio/catalog-import.mjs discover --provider "$PROVIDER" --ids "$IDS"
+              elif [ "$ALL_APPROVED" = "true" ]; then node scripts/design-studio/catalog-import.mjs discover --provider "$PROVIDER" --all
+              else echo "discover needs ids (named assets) or all_owner_approved (the whole provider)"; exit 2; fi ;;
             enqueue)
               if [ "$ALL_APPROVED" = "true" ]; then node scripts/design-studio/catalog-import.mjs enqueue --provider "$PROVIDER" --all --owner-approved
               else node scripts/design-studio/catalog-import.mjs enqueue --provider "$PROVIDER" --ids "$IDS"; fi ;;

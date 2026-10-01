@@ -32,8 +32,18 @@ function fakeAdapter(licenses = {}) {
     adapter: {
       provider: 'fakeprov', policy: 'fake-v1',
       license: (a) => licenses[a.id] ?? (a.id === 'nolicence' ? UNKNOWN : CC0),
+      listings: 0,
       async discover() {
-        return Object.entries(assets).map(([id, a]) => ({ sourceAssetId: id, kind: a.kind, canonical: { canonicalCategory: a.kind === 'MODEL' ? 'OBJECT.FURNITURE' : 'MATERIAL.WOOD', canonicalSubcategory: a.kind === 'MODEL' ? 'CHAIR' : 'FLOOR_BOARDS' }, asset: { id, name: id }, naming: { displayName: `Nice ${id}`, qualifiers: [], normalizedName: id, styleTags: [], colorTags: [], materialTags: [], aliases: [id] } }));
+        this.listings += 1;
+        return Object.keys(assets).map((id) => this.entry(id));
+      },
+      entry(id) {
+        const a = assets[id];
+        return { sourceAssetId: id, kind: a.kind, canonical: { canonicalCategory: a.kind === 'MODEL' ? 'OBJECT.FURNITURE' : 'MATERIAL.WOOD', canonicalSubcategory: a.kind === 'MODEL' ? 'CHAIR' : 'FLOOR_BOARDS' }, asset: { id, name: id }, naming: { displayName: `Nice ${id}`, qualifiers: [], normalizedName: id, styleTags: [], colorTags: [], materialTags: [], aliases: [id] } };
+      },
+      idPattern: /^[a-z]{2,20}$/,
+      async discoverIds(ids) {
+        return { found: ids.filter((id) => assets[id]).map((id) => this.entry(id)), missing: ids.filter((id) => !assets[id]).map((id) => ({ id, reason: 'not listed' })) };
       },
       async current(id) { return { asset: { id, name: id, category: 'Wood' }, files: {}, filesHash: assets[id].hash, categoryId: null, categoryPath: 'Wood' }; },
       plan(kind, id, asset) {
@@ -268,4 +278,62 @@ test('runtime policy: an oversized or unoptimised model is FAILED at once — ne
     assert.equal(w.r2.size, 0, `${label}: nothing stored`);
     assert.ok(!w.tables.ds_catalog_assets, `${label}: never indexed`);
   }
+});
+
+// ── Bounded discovery: named ids only (the canary never records a whole provider) ──
+
+test('discover with named ids looks up and records ONLY those assets — never the provider listing', async () => {
+  const bundle = fakeAdapter();
+  const w = world(bundle);
+  const r = await discover(w.io, 'fakeprov', undefined, ['chair', 'wood']);
+  assert.equal(bundle.adapter.listings, 0, 'the whole listing is never fetched');
+  assert.deepEqual([...w.imports.values()].map((x) => x.source_asset_id).sort(), ['chair', 'wood'], 'unrelated provider assets are not persisted');
+  assert.deepEqual({ requested: r.requested, found: r.found, newRows: r.newRows, missing: r.missing }, { requested: 2, found: 2, newRows: 2, missing: [] });
+  assert.ok([...w.imports.values()].every((x) => x.state === 'DISCOVERED'), 'bounded discovery never queues either');
+});
+
+test('discovering the same ids again is idempotent: same rows, same ids, nothing new', async () => {
+  const w = world(fakeAdapter());
+  await discover(w.io, 'fakeprov', undefined, ['chair']);
+  const first = [...w.imports.values()].map((x) => x.homatch_asset_id);
+  const again = await discover(w.io, 'fakeprov', undefined, ['chair']);
+  assert.equal(again.newRows, 0);
+  assert.deepEqual([...w.imports.values()].map((x) => x.homatch_asset_id), first);
+});
+
+test('named ids are parsed strictly: duplicates collapse, malformed ones are refused before any request, the cap is an error', async () => {
+  const { parseIds, MAX_NAMED_IDS } = await import('../catalogSource.ts');
+  const pat = /^[a-z]{2,20}$/;
+  assert.deepEqual(parseIds('chair, wood,chair,,wood', pat), { ids: ['chair', 'wood'], invalid: [] });
+  assert.deepEqual(parseIds('chair,../etc,x"y,UPPER', pat).invalid, ['../etc', 'x"y', 'UPPER']);
+  assert.throws(() => parseIds(Array.from({ length: MAX_NAMED_IDS + 1 }, (_, i) => `id${String.fromCharCode(97 + Math.floor(i / 26))}${String.fromCharCode(97 + (i % 26))}`).join(','), /at most/));
+});
+
+test('a named id the provider does not list is reported missing, and nothing is written for it', async () => {
+  const w = world(fakeAdapter());
+  const r = await discover(w.io, 'fakeprov', undefined, ['chair', 'ghost']);
+  assert.deepEqual(r.missing, [{ id: 'ghost', reason: 'not listed' }]);
+  assert.deepEqual([...w.imports.values()].map((x) => x.source_asset_id), ['chair']);
+});
+
+test('bounded discovery keeps the licence and provenance, and still EXCLUDES an unknown licence', async () => {
+  const w = world(fakeAdapter());
+  await discover(w.io, 'fakeprov', undefined, ['chair', 'nolicence']);
+  const chair = byId(w, 'chair');
+  assert.equal(chair.license_class, 'CC0');
+  assert.equal(chair.license.redistribution, true);
+  assert.deepEqual(chair.source_asset, { id: 'chair', name: 'chair' });
+  assert.equal(chair.source_provider, 'fakeprov');
+  const none = byId(w, 'nolicence');
+  assert.equal(none.state, 'EXCLUDED', 'the licence guard is the same on the bounded path');
+  assert.equal(none.license_class, 'UNKNOWN');
+});
+
+test('without named ids, discovery is the whole provider exactly as before', async () => {
+  const bundle = fakeAdapter();
+  const w = world(bundle);
+  const r = await discover(w.io, 'fakeprov');
+  assert.equal(bundle.adapter.listings, 1);
+  assert.equal(r.requested, undefined);
+  assert.equal(r.found, Object.keys(bundle.assets).length);
 });

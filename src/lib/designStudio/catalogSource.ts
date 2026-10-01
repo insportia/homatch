@@ -177,6 +177,14 @@ export interface ProviderAdapter<A = unknown> {
   policy: string;
   license(asset: A): License;
   discover(fetchJson: (url: string) => Promise<any>): Promise<Array<Discovered<A>>>;
+  /** The shape of one of this provider's asset ids (checked before any request is made). */
+  idPattern: RegExp;
+  /**
+   * Discover ONLY the named assets — one lookup each, never the provider's
+   * whole listing. Ids the provider does not list, or that HOMATCH cannot
+   * place on a shelf, come back in `missing` with the reason.
+   */
+  discoverIds(ids: string[], fetchJson: (url: string) => Promise<any>): Promise<{ found: Array<Discovered<A>>; missing: Array<{ id: string; reason: string }> }>;
   current(sourceAssetId: string, kind: AssetKind, fetchJson: (url: string) => Promise<any>): Promise<{ asset: A; files: Record<string, unknown>; filesHash: string; categoryId: string | null; categoryPath: string | null }>;
   plan(kind: AssetKind, sourceAssetId: string, asset: A, files: Record<string, unknown>, canonical: Canonical): AssetPlan;
   name(kind: AssetKind, asset: A, canonical: Canonical): Naming;
@@ -184,6 +192,22 @@ export interface ProviderAdapter<A = unknown> {
   appliesTo?(asset: A): Array<'WALL' | 'FLOOR' | 'CEILING' | 'OBJECT'>;
   physicalSizeMm?(asset: A): [number, number] | null;
   sourcePage(sourceAssetId: string): string;
+}
+
+/** The most assets one bounded discovery or enqueue may name (a canary, not a catalogue). */
+export const MAX_NAMED_IDS = 50;
+
+/**
+ * A comma-separated id list → unique, well-formed ids. Anything malformed is
+ * returned in `invalid` and never sent anywhere; more than MAX_NAMED_IDS is an
+ * error, not a silent truncation.
+ */
+export function parseIds(raw: string, pattern: RegExp): { ids: string[]; invalid: string[] } {
+  const all = String(raw ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  const ids = [...new Set(all.filter((s) => pattern.test(s)))];
+  const invalid = [...new Set(all.filter((s) => !pattern.test(s)))];
+  if (ids.length + invalid.length > MAX_NAMED_IDS) throw new Error(`at most ${MAX_NAMED_IDS} ids may be named at once`);
+  return { ids, invalid };
 }
 
 const CONTENT_TYPE: Record<string, string> = {

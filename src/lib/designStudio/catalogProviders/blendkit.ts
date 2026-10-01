@@ -30,7 +30,7 @@
 // - Anything else is UNKNOWN and never imported.
 
 import {
-  type AssetKind, type AssetPlan, type Canonical, type Delivery, type License, type Naming, type PlannedFile, type ProviderAdapter,
+  type AssetKind, type AssetPlan, type Canonical, type Delivery, type Discovered, type License, type Naming, type PlannedFile, type ProviderAdapter,
   classifyLicense, cleanSourceName, colorFamily, deliveryFor, normalizeName, qualifiersFor, STYLE_WORDS, titleCase, words,
 } from '../catalogSource.ts';
 
@@ -366,6 +366,22 @@ export const blendkit: ProviderAdapter<BkAsset> = {
       }
     }
     return [...out.values()];
+  },
+  idPattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+  async discoverIds(ids: string[], fetchJson: Fetch) {
+    const found: Discovered<BkAsset>[] = [];
+    const missing: Array<{ id: string; reason: string }> = [];
+    for (const id of ids) {
+      const d = await fetchJson(`${API}/search/?query=asset_base_id:${encodeURIComponent(id)}+asset_type:model&page_size=1`);
+      const r = (d.results ?? []).find((x: any) => x.assetBaseId === id);
+      if (!r) { missing.push({ id, reason: 'not listed by Blendkit as a model' }); continue; }
+      // The listing's own category is the shelf, exactly as a full discovery would file it.
+      const asset = fromSearch(r, r.category);
+      const c = classify(asset);
+      if (!c) { missing.push({ id, reason: 'no HOMATCH shelf for its category' }); continue; }
+      found.push({ sourceAssetId: id, kind: 'MODEL', canonical: c, asset, naming: name('MODEL', asset, c) });
+    }
+    return { found, missing };
   },
   async current(sourceAssetId: string, _kind: AssetKind, fetchJson: Fetch) {
     const d = await fetchJson(`${API}/search/?query=asset_base_id:${encodeURIComponent(sourceAssetId)}+asset_type:model&page_size=1`);

@@ -34,15 +34,31 @@ MATTERS right now, verify against the live systems, not this file)
 - Push subscriptions in production: 0.
 - Cron: `homatch-native-intent` (*/1), `homatch-supply-matching` (*/15) — live.
 
-## Design Studio asset catalogue (branch `feat/design-studio-catalog-import`, 2026-09-30)
+## Design Studio asset catalogue (in production, closed out 2026-10-01)
 
-- IMPLEMENTED, pushed, NO PR (no GitHub credentials in the session), NOT
-  merged, NOT deployed; migration `20261002210000` NOT applied; nothing
-  imported; Blendkit key UNVERIFIED. Owner approval gate: no bulk import
-  without "APPROVE FULL IMPORT". Canary (only after merge + deploy + migration):
-  Poly Haven oak_wood_planks, white_plaster_02, anniversary_lounge; Blendkit
-  CC0 Soave sofa, Teo chair, Danish dining table, Geberit toilet, Hansgrohe
-  faucet, Lampe-Gras floor lamp, snake plant.
+- CLOSED (owner: "we already got enough models … finish it"). No further
+  imports queued. Merged + deployed through PRs #24–#42; migrations
+  `20261002210000`, `20261003100000` (management) and `20261003110000`
+  (reprocess) applied from main via apply_migration.
+- Catalogue: 1,008 imports READY, 0 FAILED. Materials 671 (all ACTIVE;
+  ~7.41 GB source, ~5.13 GB optimised). HDRIs 330 (1 ACTIVE, 329 UNPUBLISHED —
+  the editor has no HDRI consumer yet). Models 7 (Poly Haven CC0 stand-in for
+  Blendkit; ACTIVE, KTX2 via KTX-Software 4.4.2, duplicate LOD1 not stored).
+  Batches: `ib_20261001_canary`, `ib_20261001_ph_*`.
+- Proven in production: R2 byte integrity, resolver, GLB render (KTX2 Sofa /
+  ArmChair via basis transcoder), select/move/rotate, save/reload, walk mode,
+  mobile, visual catalogue thumbnails, PBR materials, smart placement, Admin
+  `/admin/design-catalog` (filters, select-all-matching, usage check,
+  dependency-protected delete refusal, disable/re-enable, typed-count bulk,
+  reprocess, publish 619, audit trail).
+- NOT done: physical R2 purge (`/catalog-purge`) never executed — destructive,
+  needs owner confirmation; Blendkit BLOCKED (Cloudflare 403 from runners, not
+  bypassed); Royalty-Free not imported; WASD walking not automation-provable.
+- Quirks: `stored_bytes` is per run (a re-queued HDRI shows ~2 KB); KTX2 model
+  GLBs are larger on disk than 1K JPEG (Sofa 462,688 → 1,445,268 B) but
+  smaller in GPU memory.
+- History (pre-merge plan, superseded): canary Poly Haven oak_wood_planks,
+  white_plaster_02, anniversary_lounge; Blendkit CC0 picks never reachable.
 - Runtime policy (`catalogSource.RUNTIME_POLICY`): a model reaches the browser
   only as an optimised GLB (textures ≤ 2048, KTX2 — UASTC normals, ETC1S
   rest — meshopt, Khronos-validated, ≤ 20 MB) plus LOD1 (≤ 1024, ≤ 8 MB,

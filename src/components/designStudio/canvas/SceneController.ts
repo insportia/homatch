@@ -19,6 +19,8 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { applyFinish, patternOfMaterial, type SurfacePattern } from './finishTextures.ts';
+import { PbrTextureLoader, shedPbr, wearPbr } from './pbrTextures';
+import { selectPbrMaps, type PbrSelection } from '@/lib/designStudio/pbrMaps';
 import {
   ceilingSurfaceId, floorSurfaceId, wallSlabPlacement, type SpaceModel, type SpaceRoom,
 } from '@/lib/designStudio/space';
@@ -57,7 +59,10 @@ export interface ModelPartBinding { id: string; role: PartRole; object: THREE.Ob
 
 interface PartMaterial {
   material: THREE.MeshStandardMaterial;
-  original: { color: THREE.Color; map: THREE.Texture | null; roughness: number; metalness: number };
+  original: {
+    color: THREE.Color; map: THREE.Texture | null; roughness: number; metalness: number;
+    normalMap: THREE.Texture | null; aoMap: THREE.Texture | null; roughnessMap: THREE.Texture | null; metalnessMap: THREE.Texture | null;
+  };
 }
 
 export type ViewMode = 'OVERVIEW' | 'TOP' | 'ROOM' | 'WALK';
@@ -70,6 +75,9 @@ export interface AimHint { role: InteractionRole; open: boolean; actions: Action
 
 /** The walkthrough's time of day. */
 export type TimeOfDayEnv = 'DAY' | 'SUNSET' | 'EVENING' | 'NIGHT';
+
+/** What a surface wearing an imported material shows while its maps load (never plain white). */
+const PBR_LOADING_TONE = '#d8d4cd';
 
 /** Skirting board: 7 cm high, 1.2 cm proud of the wall face. */
 const SKIRT_H = 0.07;
@@ -424,7 +432,11 @@ export class SceneController {
     this.finishSize = Math.min(this.quality.maxTextureSize, this.quality.tier === 'LOW' ? 256 : 512);
     this.finishAniso = aniso;
     setFinishBudget(this.finishSize, aniso);
+    this.pbr = new PbrTextureLoader(aniso);
   }
+
+  /** Imported materials' texture maps, shared across surfaces; disposed with the scene. */
+  private pbr: PbrTextureLoader;
 
   private envTexture: THREE.Texture | null = null;
   private finishSize = 512;
@@ -571,6 +583,7 @@ export class SceneController {
             skirting.push(g);
           }
           const plane = new THREE.PlaneGeometry(piece.lengthM, piece.heightM);
+          metreUVs(plane, piece.u, piece.v, piece.lengthM, piece.heightM, seg.side === 'R');
           const face = new THREE.Mesh(plane, surfaceMaterial(seg.surfaceId, TONE.wallFace));
           const place = wallSlabPlacement(wall.mesh, piece.u, piece.v, piece.lengthM, piece.heightM);
           face.rotation.y = place.rotationY + (seg.side === 'R' ? 0 : Math.PI);
@@ -653,7 +666,13 @@ export class SceneController {
             ? (m as THREE.MeshStandardMaterial).clone()
             : new THREE.MeshStandardMaterial({ color: (m as THREE.MeshBasicMaterial).color ?? 0xdddddd });
           this.track(std);
-          materials.push({ material: std, original: { color: std.color.clone(), map: std.map, roughness: std.roughness, metalness: std.metalness } });
+          materials.push({
+            material: std,
+            original: {
+              color: std.color.clone(), map: std.map, roughness: std.roughness, metalness: std.metalness,
+              normalMap: std.normalMap, aoMap: std.aoMap, roughnessMap: std.roughnessMap, metalnessMap: std.metalnessMap,
+            },
+          });
           return std;
         });
         mesh.material = Array.isArray(mesh.material) ? own : own[0];
@@ -890,7 +909,20 @@ export class SceneController {
       const mat = a?.materialId ? materials.get(a.materialId) : undefined;
       const color = a?.color ?? mat?.pbr.baseColor ?? null;
       const finishRoughness = a?.finish === 'GLOSS' ? 0.25 : a?.finish === 'SATIN' ? 0.55 : a?.finish === 'MATTE' ? 0.95 : undefined;
+      const sel = mat ? selectPbrMaps(mat.pbr, this.quality.tier, this.quality.maxTextureSize, false) : null;
       for (const { material: m, original } of list) {
+        if (sel && mat) {
+          // An imported material on a model part: its maps on the part's own UVs.
+          this.dressPbr(m, sel, a?.color ?? mat.pbr.baseColor, a?.color ?? null, finishRoughness ?? mat.pbr.roughness ?? 1, mat.pbr.metalness ?? 1,
+            () => !!this.partMaterials.get(id)?.some((x) => x.material === m));
+          continue;
+        }
+        if (m.userData.pbrSig) {
+          // Back from an imported material: the part's own detail maps return.
+          m.normalMap = original.normalMap; m.aoMap = original.aoMap;
+          m.roughnessMap = original.roughnessMap; m.metalnessMap = original.metalnessMap;
+          m.userData.pbrSig = null;
+        }
         if (color) {
           m.color.set(color);
           m.map = null;
@@ -913,6 +945,15 @@ export class SceneController {
       const mat = a?.materialId ? materials.get(a.materialId) : undefined;
       const color = a?.color ?? mat?.pbr.baseColor ?? null;
       const finishRoughness = a?.finish === 'GLOSS' ? 0.25 : a?.finish === 'SATIN' ? 0.55 : a?.finish === 'MATTE' ? 0.95 : undefined;
+      // An imported material wears its texture maps (its colour is white);
+      // a hand-made one keeps the flat-colour path below, unchanged.
+      const sel = mat ? selectPbrMaps(mat.pbr, this.quality.tier, this.quality.maxTextureSize) : null;
+      if (sel && mat) {
+        this.dressPbr(m, sel, a?.color ?? mat.pbr.baseColor, a?.color ?? null, finishRoughness ?? mat.pbr.roughness ?? 1, mat.pbr.metalness ?? 1,
+          () => this.surfaceMaterials.get(id) === m);
+        continue;
+      }
+      if (m.userData.pbrSig) { shedPbr(m); m.userData.pbrSig = null; }
       m.color.set(color ?? (m.userData.baseColor as number));
       m.roughness = finishRoughness ?? mat?.pbr.roughness ?? 0.9;
       m.metalness = mat?.pbr.metalness ?? 0;
@@ -953,6 +994,39 @@ export class SceneController {
 
     this.setLighting(state.lighting);
     this.requestRender();
+  }
+
+  /**
+   * Dress a material in an imported material's maps. The maps load once
+   * (shared, cached); until they arrive the surface shows a neutral tone
+   * (or the chosen colour), never plain white. A load that finishes after
+   * the surface changed material, or after the scene was rebuilt or
+   * disposed, is dropped.
+   */
+  private dressPbr(
+    m: THREE.MeshStandardMaterial, sel: PbrSelection, color: string, loadingColor: string | null,
+    roughness: number, metalness: number, live: () => boolean,
+  ) {
+    m.roughness = roughness;
+    m.metalness = metalness;
+    m.userData.pbrColor = color;
+    if (m.userData.pbrSig === sel.signature) {
+      if (m.userData.pbrReady) m.color.set(color);
+      else m.color.set(loadingColor ?? PBR_LOADING_TONE);
+      m.needsUpdate = true;
+      return;
+    }
+    m.userData.pbrSig = sel.signature;
+    m.userData.pbrReady = false;
+    shedPbr(m);
+    m.color.set(loadingColor ?? PBR_LOADING_TONE);
+    void this.pbr.load(sel).then((set) => {
+      if (!set || this.disposed || m.userData.pbrSig !== sel.signature || !live()) return;
+      wearPbr(m, set, sel.normalScale);
+      m.color.set(m.userData.pbrColor as string);
+      m.userData.pbrReady = true;
+      this.requestRender();
+    });
   }
 
   private buildObject(obj: ObjectInstance, asset: CatalogAsset | undefined): THREE.Object3D {
@@ -2501,12 +2575,30 @@ export class SceneController {
     this.clearGroup(this.fixturesGroup);
     this.living.dispose();
     this.envTexture?.dispose();
+    this.pbr.dispose();
     for (const d of this.disposables) d.dispose();
     this.listeners.clear();
     this.renderer.dispose();
     this.renderer.forceContextLoss();
     if (this.renderer.domElement.parentNode === this.mount) this.mount.removeChild(this.renderer.domElement);
   }
+}
+
+/**
+ * Plan-metre UVs on a wall face (a PlaneGeometry of length × height), offset
+ * by where the piece sits along and up the wall, so a texture of known
+ * physical size repeats at its real scale and runs on across the pieces
+ * around an opening. The face on the L side looks the other way along the
+ * wall; its u runs the other way so the pattern is not mirrored.
+ */
+export function metreUVs(plane: THREE.BufferGeometry, u: number, v: number, lengthM: number, heightM: number, rightSide: boolean) {
+  const uv = plane.getAttribute('uv') as THREE.BufferAttribute | undefined;
+  if (!uv) return;
+  for (let i = 0; i < uv.count; i += 1) {
+    const x = uv.getX(i) * lengthM;
+    uv.setXY(i, rightSide ? u + x : -(u + lengthM) + x, v + uv.getY(i) * heightM);
+  }
+  uv.needsUpdate = true;
 }
 
 /** The parts of a wall's slabs that fall within [from, to] along the wall. */

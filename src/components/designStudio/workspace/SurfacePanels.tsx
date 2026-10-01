@@ -4,6 +4,8 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { HEX, type CatalogMaterial, type Palette } from '@/lib/designStudio/catalog';
 import type { LightingState } from '@/lib/designStudio/designState';
 import { cn } from '@/lib/utils';
+import { CatalogThumb } from './CatalogThumb';
+import { useIncrementalList } from './useIncrementalList';
 
 /** One colour chip; the selected one is marked with a check, never only by colour. */
 export function Swatch({
@@ -87,16 +89,17 @@ export function ColorPicker({
   );
 }
 
-/** Materials for one surface kind, as swatches with names. */
+/** Materials for one surface kind: their picture (lazy, when they have one) or colour swatch, with names. Long lists draw a page at a time. */
 export function MaterialList({
   materials, current, onPick, onReset,
 }: { materials: CatalogMaterial[]; current: string | null; onPick: (m: CatalogMaterial) => void; onReset?: () => void }) {
   const { t } = useLanguage();
+  const list = useIncrementalList(materials.length, `${materials.length}|${materials[0]?.id ?? ''}`);
   if (materials.length === 0) return <p className="text-[13px] text-[#4A5263]">{t('ds_materials_none')}</p>;
   return (
     <div>
       <ul className="grid grid-cols-2 gap-1.5">
-        {materials.map((m) => (
+        {materials.slice(0, list.shown).map((m) => (
           <li key={m.id}>
             <button
               type="button"
@@ -107,11 +110,26 @@ export function MaterialList({
                 current === m.id ? 'border-[#0C1119] bg-[#F4F5F7] font-semibold' : 'border-[#E4E6EA] hover:bg-[#F7F8FA]',
               )}
             >
-              <span className="h-6 w-6 shrink-0 rounded ring-1 ring-black/10" style={{ backgroundColor: m.pbr.baseColor }} aria-hidden="true" />
+              <CatalogThumb
+                thumbKey={m.thumbnailKey}
+                className="h-9 w-9 ring-1 ring-black/10"
+                fallback={<span className="h-full w-full" style={{ backgroundColor: m.pbr.baseColor }} aria-hidden="true" />}
+              />
               <span className="min-w-0 break-words text-[#0C1119]">{m.name}</span>
             </button>
           </li>
         ))}
+        {list.hasMore ? (
+          <li ref={list.sentinelRef} className="col-span-2">
+            <button
+              type="button"
+              onClick={list.more}
+              className="w-full rounded-md border border-[#D5D9E0] px-3 py-1.5 text-[13px] font-medium text-[#0C1119] hover:bg-[#F4F5F7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]"
+            >
+              {t('ds_library_show_more')}
+            </button>
+          </li>
+        ) : null}
       </ul>
       {onReset ? (
         <button type="button" onClick={onReset} className="mt-2 text-[13px] font-medium text-[#4A5263] underline underline-offset-4 hover:text-[#0C1119]">

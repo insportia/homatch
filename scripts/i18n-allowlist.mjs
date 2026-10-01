@@ -271,6 +271,10 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   // The other four locales carry distinct real translations.
   'comm_step_test',
   'comm_kind_video',
+  // Design Studio material tags: Turkish writes "Metal" and "Rattan" exactly as
+  // English does. The other four locales carry distinct real translations.
+  'ds_tag_mat_metal',
+  'ds_tag_mat_rattan',
 
 ]);
 

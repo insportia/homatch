@@ -591,6 +591,11 @@ test('catalogue importer: credentials stay in Supabase, runs are deliberate, bul
   assert.match(runner, /if \(!args\.includes\('--owner-approved'\)\) throw/, 'queuing a whole provider needs the owner');
   assert.match(runner, /else \{ console\.error\('discover needs --ids a,b,c \(named assets\) or --all \(the whole provider\)'\); process\.exit\(2\); \}/, 'discovery never defaults to the whole provider');
   assert.doesNotMatch(runner, /console\.log\([^)]*\burl\b/i, 'no URL is ever printed');
+  // Publishing is named and READY-only: never a whole provider, never an unfinished import.
+  assert.match(runner, /if \(!named\) throw new Error\('activate needs --ids \(named assets only\)'\);/);
+  assert.match(runner, /if \(r\.state !== 'READY'\) \{ log\(`  not activated/);
+  assert.match(runner, /\?homatch_asset_id=eq\.\$\{r\.homatch_asset_id\}&quality_state=eq\.READY&select=homatch_asset_id/);
+  assert.match(wf, /if \[ -z "\$IDS" \]; then echo "activate needs ids"; exit 2; fi/);
   const pipeline = read('src/lib/designStudio/catalogPipeline.ts');
   assert.match(pipeline, /state: r\.refusal \? 'EXCLUDED' : 'DISCOVERED'/, 'discovery never queues');
 });

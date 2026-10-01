@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'discover | enqueue | run | report'
+        description: 'discover | enqueue | run | activate | report'
         required: true
         default: report
       provider:
@@ -97,6 +97,10 @@ jobs:
               if [ "$ALL_APPROVED" = "true" ]; then node scripts/design-studio/catalog-import.mjs enqueue --provider "$PROVIDER" --all --owner-approved
               else node scripts/design-studio/catalog-import.mjs enqueue --provider "$PROVIDER" --ids "$IDS"; fi ;;
             run) node scripts/design-studio/catalog-import.mjs run --budget-min "${BUDGET:-300}" --concurrency 3 ;;
+            activate)
+              # Publish NAMED, READY assets to the editor; never a whole provider.
+              if [ -z "$IDS" ]; then echo "activate needs ids"; exit 2; fi
+              node scripts/design-studio/catalog-import.mjs activate --provider "$PROVIDER" --ids "$IDS" ;;
             report) node scripts/design-studio/catalog-import.mjs report ;;
             *) echo "unknown mode"; exit 2 ;;
           esac

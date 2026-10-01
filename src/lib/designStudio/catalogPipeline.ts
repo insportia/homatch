@@ -106,7 +106,7 @@ export async function discover(io: PipelineIO, provider: string, assess?: (asset
   const adapter = io.adapters[provider];
   if (!adapter) throw new Error(`no adapter for ${provider}`);
   const found = await adapter.discover((u) => io.fetchJson(u));
-  const rows = [];
+  const rows: Array<{ hma: string; f: (typeof found)[number]; license: License; q: ReturnType<NonNullable<typeof assess>> | null; refusal: string | null }> = [];
   for (const f of found) {
     const hma = await homatchAssetId(adapter.provider, f.kind, f.sourceAssetId);
     const license = adapter.license(f.asset);

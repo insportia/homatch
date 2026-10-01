@@ -99,7 +99,7 @@ function sizeScores(want: Want['sizeM'], have: Candidate['sizeM']): { size: numb
   let proportion: number | null = null;
   if (pairs.length >= 2) {
     const r = (a: readonly [number, number], b: readonly [number, number]) => Math.abs(Math.log((a[1] / b[1]) / (a[0] / b[0])));
-    const e = [];
+    const e: number[] = [];
     for (let i = 0; i < pairs.length; i += 1) for (let j = i + 1; j < pairs.length; j += 1) e.push(r(pairs[i], pairs[j]));
     proportion = Math.max(0, 1 - Math.max(...e) / Math.log(1.3));
   }

@@ -13,7 +13,7 @@
 // validation and indexing are the provider-neutral core (catalogSource.ts).
 
 import {
-  type AssetKind, type AssetPlan, type Canonical, type Delivery, type License, type Naming, type PlannedFile, type ProviderAdapter, type Role,
+  type AssetKind, type AssetPlan, type Canonical, type Delivery, type Discovered, type License, type Naming, type PlannedFile, type ProviderAdapter, type Role,
   cleanSourceName, COLORS, contentTypeOf, environmentName, normalizeName, qualifiersFor, STYLE_WORDS, titleCase, words,
 } from '../catalogSource.ts';
 
@@ -273,7 +273,7 @@ export const polyhaven: ProviderAdapter<PhAsset> = {
   policy: POLICY,
   license: () => ({ ...LICENSE }),
   async discover(fetchJson: Fetch) {
-    const out = [];
+    const out: Discovered<PhAsset>[] = [];
     for (const [type, kind] of Object.entries(TYPES) as Array<[PhType, AssetKind]>) {
       const list = await fetchJson(`${API}/assets?type=${type}`) as Record<string, PhAsset>;
       for (const [id, a] of Object.entries(list)) {

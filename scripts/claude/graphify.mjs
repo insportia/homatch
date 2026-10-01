@@ -111,12 +111,19 @@ function main() {
     process.exit(1);
   }
   const graph = JSON.parse(readFileSync(GRAPH, 'utf8'));
+  /* Community names live next to the full graph; with --graph Graphify looks
+     beside the subgraph, so each view gets the names of its own communities
+     (ids are unchanged by the cut). */
+  const labelsFile = join(GRAPH, '..', '.graphify_labels.json');
+  const labels = existsSync(labelsFile) ? JSON.parse(readFileSync(labelsFile, 'utf8')) : {};
   for (const [name, patterns] of Object.entries(VIEWS)) {
     const dir = join(OUT, name);
     mkdirSync(dir, { recursive: true });
     const sub = cut(graph, patterns);
     const file = join(dir, 'graph.json');
     writeFileSync(file, JSON.stringify(sub));
+    const present = new Set(sub.nodes.map((n) => String(n.community)));
+    writeFileSync(join(dir, '.graphify_labels.json'), JSON.stringify(Object.fromEntries(Object.entries(labels).filter(([k]) => present.has(k)))));
     const html = spawnSync(GRAPHIFY, ['export', 'html', '--graph', file], { encoding: 'utf8', env: localEnv() });
     const flow = spawnSync(GRAPHIFY, ['export', 'callflow-html', '--graph', file, '--output', join(dir, 'callflow.html')], { encoding: 'utf8', env: localEnv() });
     const by = (c) => sub.links.filter((e) => e.confidence === c).length;

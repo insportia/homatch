@@ -96,7 +96,7 @@ export const META_MASTER_WORKSPACE_STRINGS = {
   mm_w_count_total: ['Campaigns', 'კამპანიები', 'Кампании', 'Kampanyalar', 'الحملات', 'קמפיינים'],
   mm_w_count_live: ['Live', 'აქტიური', 'Активные', 'Yayında', 'قيد التشغيل', 'פעילים'],
   mm_w_count_attention: [
-    'Needs attention', 'საჭიროებს ყურადღებას', 'Требуют внимания',
+    'Needs attention', 'ყურადღებას საჭიროებს', 'Требуют внимания',
     'İlgi gerektiriyor', 'تحتاج إلى انتباه', 'דורשים תשומת לב',
   ],
   mm_w_summary_title: [
@@ -158,7 +158,7 @@ export const META_MASTER_WORKSPACE_STRINGS = {
     '{{count}} öneri', '{{count}} توصيات', '{{count}} המלצות',
   ],
   mm_w_badge_attention: [
-    'Needs attention', 'საჭიროებს ყურადღებას', 'Требует внимания',
+    'Needs attention', 'ყურადღებას საჭიროებს', 'Требует внимания',
     'İlgi gerektiriyor', 'تحتاج إلى انتباه', 'דורש תשומת לב',
   ],
   mm_w_open_campaign: [
@@ -197,7 +197,7 @@ export const META_MASTER_WORKSPACE_STRINGS = {
     'The dashboard could not be loaded.', 'დაფის ჩატვირთვა ვერ მოხერხდა.', 'Не удалось загрузить панель.',
     'Pano yüklenemedi.', 'تعذّر تحميل اللوحة.', 'לא ניתן היה לטעון את לוח הבקרה.',
   ],
-  mm_w_retry: ['Try again', 'ხელახლა ცდა', 'Повторить', 'Tekrar dene', 'حاول مجددًا', 'נסו שוב'],
+  mm_w_retry: ['Try again', 'ხელახლა სცადეთ', 'Повторить', 'Tekrar dene', 'حاول مجددًا', 'נסו שוב'],
 
   // ── HOMATCH service balance ─────────────────────────────────────────────
   mm_w_bal_title: [

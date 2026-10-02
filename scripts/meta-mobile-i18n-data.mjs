@@ -112,7 +112,7 @@ export const META_MOBILE_STRINGS = {
   // ── Real-estate scope ───────────────────────────────────────────────────
   mm_m_scope_blocked_title: [
     'This ad is outside HOMATCH Ads',
-    'ეს რეკლამა HOMATCH Ads-ის დანიშნულებას არ შეესაბამება',
+    'ეს რეკლამა HOMATCH Ads-ის მიმართულებას არ შეესაბამება',
     'Эта реклама вне направления HOMATCH Ads',
     'Bu reklam HOMATCH Ads kapsamı dışında',
     'هذا الإعلان خارج نطاق HOMATCH Ads',
@@ -120,7 +120,7 @@ export const META_MOBILE_STRINGS = {
   ],
   mm_m_scope_blocked: [
     'HOMATCH Ads is made for real estate and the services around it. This ad doesn\'t fit that direction. You can create a campaign related to property.',
-    'HOMATCH Ads შექმნილია უძრავი ქონებისა და მასთან დაკავშირებული სერვისებისთვის. ეს რეკლამა ამ დანიშნულებას არ შეესაბამება. შეგიძლიათ შექმნათ უძრავ ქონებასთან დაკავშირებული კამპანია.',
+    'HOMATCH Ads შექმნილია უძრავი ქონებისა და მასთან დაკავშირებული სერვისებისთვის. ეს რეკლამა ამ მიმართულებას არ შეესაბამება. შეგიძლიათ შექმნათ უძრავ ქონებასთან დაკავშირებული კამპანია.',
     'HOMATCH Ads создан для недвижимости и связанных с ней услуг. Эта реклама не соответствует этому направлению. Вы можете создать кампанию, связанную с недвижимостью.',
     'HOMATCH Ads, gayrimenkul ve ilgili hizmetler için tasarlandı. Bu reklam bu alana uymuyor. Gayrimenkulle ilgili bir kampanya oluşturabilirsiniz.',
     'صُمم HOMATCH Ads للعقارات والخدمات المرتبطة بها. هذا الإعلان لا يتوافق مع هذا الاتجاه. يمكنك إنشاء حملة مرتبطة بالعقارات.',
@@ -177,7 +177,7 @@ export const META_MOBILE_STRINGS = {
     'السبب: رفض العميل هذه الأذونات عند تسجيل الدخول. إعادة الربط والسماح بها يحل المشكلة.',
     'הסיבה: הלקוח דחה את ההרשאות האלה בהתחברות. חיבור מחדש ואישורן יפתור זאת.',
   ],
-  mm_m_admin_domain: ['Real-estate scope', 'უძრავი ქონების დანიშნულება', 'Сфера недвижимости', 'Gayrimenkul kapsamı', 'نطاق العقارات', 'תחום הנדל״ן'],
+  mm_m_admin_domain: ['Real-estate scope', 'უძრავი ქონების მიმართულება', 'Сфера недвижимости', 'Gayrimenkul kapsamı', 'نطاق العقارات', 'תחום הנדל״ן'],
 
   // ── Review ──────────────────────────────────────────────────────────────
   mm_m_review_ready: ['Ready to continue', 'მზად ხართ გასაგრძელებლად', 'Готово к продолжению', 'Devam etmeye hazır', 'جاهز للمتابعة', 'מוכן להמשך'],
@@ -255,7 +255,7 @@ export const META_MOBILE_STRINGS = {
     'أكدت Meta: وافقت صفحتك على شروط إعلانات العملاء المحتملين.',
     'Meta אישרה: הדף שלכם אישר את תנאי מודעות הלידים.',
   ],
-  mm_l_terms_done: ['Meta terms accepted', 'Meta-ს პირობები დადასტურებულია', 'Условия Meta приняты', 'Meta koşulları kabul edildi', 'تم قبول شروط Meta', 'התנאים של Meta אושרו'],
+  mm_l_terms_done: ['Meta terms accepted', 'Meta-ს პირობები მიღებულია', 'Условия Meta приняты', 'Meta koşulları kabul edildi', 'تم قبول شروط Meta', 'התנאים של Meta אושרו'],
   mm_l_next: ['Next: {{next}}', 'შემდეგი ნაბიჯი: {{next}}', 'Далее: {{next}}', 'Sonraki adım: {{next}}', 'التالي: {{next}}', 'השלב הבא: {{next}}'],
   mm_l_not_accepted: [
     'Meta doesn\'t show the terms as accepted yet. You can open them again whenever you\'re ready.',
@@ -283,7 +283,7 @@ export const META_MOBILE_STRINGS = {
   ],
   mm_l_meta_error: [
     'Meta didn\'t answer just now. Your draft is saved — check again in a moment.',
-    'Meta-მ ახლა არ გვიპასუხა. თქვენი მონახაზი შენარჩუნებულია — ცოტა ხანში ხელახლა შეამოწმეთ.',
+    'Meta-მ ახლა არ გვიპასუხა. თქვენი მონახაზი შენახულია — ცოტა ხანში ხელახლა შეამოწმეთ.',
     'Meta сейчас не ответила. Черновик сохранён — проверьте ещё раз чуть позже.',
     'Meta şu anda yanıt vermedi. Taslağınız kaydedildi — birazdan tekrar kontrol edin.',
     'لم تستجب Meta الآن. تم حفظ مسودتك — تحقق مرة أخرى بعد قليل.',
@@ -291,7 +291,7 @@ export const META_MOBILE_STRINGS = {
   ],
   mm_l_session_expired: [
     'Your Meta connection has expired. Reconnect Meta from the Account step — your draft is kept.',
-    'Meta-სთან კავშირს ვადა გაუვიდა. ხელახლა დააკავშირეთ Meta ანგარიშის ნაბიჯიდან — მონახაზი შენარჩუნებულია.',
+    'Meta-სთან კავშირს ვადა გაუვიდა. ხელახლა დააკავშირეთ Meta ანგარიშის ნაბიჯიდან — მონახაზი შენახულია.',
     'Подключение к Meta истекло. Переподключите Meta на шаге «Аккаунт» — черновик сохранён.',
     'Meta bağlantınızın süresi doldu. Hesap adımından Meta\'yı yeniden bağlayın — taslağınız korunur.',
     'انتهت صلاحية اتصالك بـ Meta. أعد ربط Meta من خطوة الحساب — مسودتك محفوظة.',

@@ -13789,6 +13789,10 @@ const en = {
   p2h_compare_original: 'Original',
   p2h_compare_homatch: 'HOMATCH plan',
   p2h_compare_note: 'Your 3D home is built from the HOMATCH plan. Furniture and finishes are a design proposal, not part of your drawing.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_issue_on_stairs: 'That would stand on the stairs.',
+  ds_issue_blocks_stairs: 'That would block the way onto the stairs.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -27492,6 +27496,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   p2h_compare_original: 'ორიგინალი',
   p2h_compare_homatch: 'HOMATCH-ის გეგმა',
   p2h_compare_note: 'თქვენი 3D სახლი HOMATCH-ის გეგმიდან შენდება. ავეჯი და მოპირკეთება დიზაინის შეთავაზებაა და არა თქვენი ნახაზის ნაწილი.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_issue_on_stairs: 'ეს კიბეზე აღმოჩნდებოდა.',
+  ds_issue_blocks_stairs: 'ეს კიბისკენ გასასვლელს გადაკეტავდა.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -41186,6 +41194,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   p2h_compare_original: 'Оригинал',
   p2h_compare_homatch: 'План HOMATCH',
   p2h_compare_note: 'Ваш 3D-дом построен по плану HOMATCH. Мебель и отделка — дизайнерское предложение, а не часть вашего чертежа.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_issue_on_stairs: 'Это окажется на лестнице.',
+  ds_issue_blocks_stairs: 'Это загородит проход к лестнице.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -54878,6 +54890,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   p2h_compare_original: 'Orijinal',
   p2h_compare_homatch: 'HOMATCH planı',
   p2h_compare_note: '3D eviniz HOMATCH planından oluşturulur. Mobilya ve kaplamalar bir tasarım önerisidir, çiziminizin parçası değildir.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_issue_on_stairs: 'Bu merdivenin üzerinde kalır.',
+  ds_issue_blocks_stairs: 'Bu merdivene giden yolu kapatır.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -68570,6 +68586,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   p2h_compare_original: 'الأصل',
   p2h_compare_homatch: 'مخطط HOMATCH',
   p2h_compare_note: 'يُبنى منزلك ثلاثي الأبعاد من مخطط HOMATCH. الأثاث والتشطيبات اقتراح تصميمي وليست جزءاً من رسمك.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_issue_on_stairs: 'سيكون ذلك فوق السلالم.',
+  ds_issue_blocks_stairs: 'سيعيق ذلك الطريق إلى السلالم.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -82262,6 +82282,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   p2h_compare_original: 'מקור',
   p2h_compare_homatch: 'התוכנית של HOMATCH',
   p2h_compare_note: 'הבית שלך בתלת־ממד נבנה מהתוכנית של HOMATCH. הריהוט והגימורים הם הצעת עיצוב, לא חלק מהשרטוט שלך.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_issue_on_stairs: 'זה יעמוד על המדרגות.',
+  ds_issue_blocks_stairs: 'זה יחסום את הגישה למדרגות.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

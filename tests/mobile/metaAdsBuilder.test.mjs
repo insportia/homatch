@@ -1379,12 +1379,11 @@ test('MOBILE UX: on every step in Georgian at 320 and 390, no button clips its l
 
 /* ── FINAL ACCEPTANCE: what the phone test found ─────────────────────────── */
 
-const SHOTS = process.env.MM_SHOTS_DIR || '';
+/* Screenshots for visual inspection, with the suite's own META_ADS_QA_SHOTS switch. */
 async function shot(page, name) {
   if (!SHOTS) return;
-  const fsx = await import('node:fs');
-  fsx.mkdirSync(SHOTS, { recursive: true });
-  await page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true });
+  mkdirSync(SHOTS, { recursive: true });
+  await page.screenshot({ path: join(SHOTS, `final-${name}.png`), fullPage: true });
 }
 
 test('FINAL: one universal location search — "საქართველო" finds Georgia, typed, added as a removable chip', opts, async (t) => {

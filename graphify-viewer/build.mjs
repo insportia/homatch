@@ -44,6 +44,7 @@ import { spawnSync } from 'node:child_process';
 import { join, dirname, relative, extname } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { VIEWS } from '../scripts/claude/graphify.mjs';
 
 export const GRAPHIFY_VERSION = '0.9.73';
 export const HISTORY_LIMIT = 20;
@@ -118,6 +119,7 @@ export function graphRelevant(changedPaths) {
 export function nextStatus({ prev, revision, outcome, now, deploymentUrl, graphInfo }) {
   const entry = { sha: revision.sha, branch: revision.branch, at: now, result: outcome.kind, deployment: deploymentUrl ?? null };
   if (outcome.reason) entry.reason = outcome.reason;
+  if (outcome.kind === 'built' && graphInfo?.delta) entry.delta = graphInfo.delta;
   const history = [entry, ...(prev?.history ?? [])].slice(0, HISTORY_LIMIT);
   if (outcome.kind === 'built') {
     return { state: 'CURRENT', revision, graph: { sha: revision.sha, generatedAt: now, ...graphInfo }, lastAttempt: entry, history };
@@ -149,6 +151,83 @@ const MOBILE_CSS = `<meta name="viewport" content="width=device-width, initial-s
 export function mobilePatch(html) {
   if (html.includes('id="homatch-mobile"')) return html;
   return html.replace(/<head([^>]*)>/i, (m) => `${m}\n${MOBILE_CSS}`);
+}
+
+/* ── what changed since the previous build ──────────────────────────────── */
+
+const DIFF_LIST_LIMIT = 300;
+/**
+ * Node/edge delta between two Graphify graphs (ids are stable across builds
+ * of the same code). Per-preset counts use the same VIEWS patterns as the
+ * presets. Lists are capped; addedIds (for in-graph highlighting) is not.
+ */
+export function graphDiff(prev, next, views = VIEWS) {
+  const ids = (g) => new Map(g.nodes.map((n) => [n.id, n]));
+  const ek = (e) => `${e.source}\u0000${e.target}\u0000${e.relation}`;
+  const [pn, nn] = [ids(prev), ids(next)];
+  const added = [...nn.values()].filter((n) => !pn.has(n.id));
+  const removed = [...pn.values()].filter((n) => !nn.has(n.id));
+  const pe = new Set(prev.links.map(ek));
+  const ne = new Set(next.links.map(ek));
+  let edgesAdded = 0;
+  let edgesRemoved = 0;
+  for (const k of ne) if (!pe.has(k)) edgesAdded += 1;
+  for (const k of pe) if (!ne.has(k)) edgesRemoved += 1;
+  const inView = (n, pats) => pats.some((re) => re.test(n.source_file ?? ''));
+  const perView = Object.fromEntries(Object.entries(views).map(([v, pats]) => [v, {
+    added: added.filter((n) => inView(n, pats)).length,
+    removed: removed.filter((n) => inView(n, pats)).length,
+  }]));
+  const brief = (n) => ({ label: n.label, file: n.source_file ?? null });
+  const byFile = (list) => [...list].sort((a, b) => String(a.source_file).localeCompare(String(b.source_file)));
+  return {
+    totals: { nodesAdded: added.length, nodesRemoved: removed.length, edgesAdded, edgesRemoved },
+    perView,
+    added: byFile(added).slice(0, DIFF_LIST_LIMIT).map(brief),
+    removed: byFile(removed).slice(0, DIFF_LIST_LIMIT).map(brief),
+    addedIds: added.map((n) => n.id),
+  };
+}
+
+/* ── Graphify's page, tuned: smoother on phones, live layout progress, and
+      the nodes that are new since the previous build glow green. Runs after
+      Graphify's own script (it reads its `network` / `nodesDS`). ─────────── */
+
+export function enhancePatch(html, changesUrl) {
+  if (html.includes('id="homatch-enhance"')) return html;
+  const script = `<script id="homatch-enhance">
+(function () {
+  if (typeof network === 'undefined' || typeof nodesDS === 'undefined') return;
+  network.setOptions({ interaction: { hideEdgesOnDrag: true, hideEdgesOnZoom: true }, edges: { smooth: false } });
+  var css = document.createElement('style');
+  css.textContent = '#hm-stab{position:fixed;left:50%;top:14px;transform:translateX(-50%);background:rgba(22,22,39,.92);color:#e6e6f0;border:1px solid #2a2a4e;border-radius:999px;padding:6px 14px;font:13px -apple-system,Segoe UI,sans-serif;z-index:9;pointer-events:none}'
+    + '#hm-new{position:fixed;left:12px;bottom:12px;background:rgba(22,22,39,.92);color:#c8f0da;border:1px solid #3fb97a;border-radius:999px;padding:5px 12px;font:12.5px -apple-system,Segoe UI,sans-serif;z-index:9;cursor:pointer}';
+  document.head.appendChild(css);
+  var ov = document.createElement('div');
+  ov.id = 'hm-stab';
+  ov.textContent = 'Arranging ' + nodesDS.length.toLocaleString() + ' nodes…';
+  document.body.appendChild(ov);
+  network.on('stabilizationProgress', function (p) { ov.textContent = 'Arranging ' + nodesDS.length.toLocaleString() + ' nodes… ' + Math.round(100 * p.iterations / p.total) + '%'; });
+  network.once('stabilizationIterationsDone', function () { ov.remove(); });
+  setTimeout(function () { if (ov.parentNode) ov.remove(); }, 20000);
+  ${changesUrl ? `fetch(${JSON.stringify(changesUrl)}, { cache: 'no-cache', credentials: 'same-origin' })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (c) {
+      if (!c || !c.addedIds || !c.addedIds.length) return;
+      var ids = new Set(c.addedIds); var upd = [];
+      nodesDS.forEach(function (n) { if (ids.has(n.id)) upd.push({ id: n.id, borderWidth: 4, color: { background: (n.color && n.color.background) || n.color, border: '#3fb97a', highlight: { border: '#3fb97a' } }, shadow: { enabled: true, color: 'rgba(63,185,122,.85)', size: 18, x: 0, y: 0 } }); });
+      if (!upd.length) return;
+      nodesDS.update(upd);
+      var b = document.createElement('div');
+      b.id = 'hm-new';
+      b.title = 'Tap to focus the new nodes';
+      b.textContent = '● ' + upd.length + ' new since ' + String(c.from || '').slice(0, 8);
+      b.onclick = function () { network.fit({ nodes: upd.map(function (u) { return u.id; }), animation: { duration: 600 } }); };
+      document.body.appendChild(b);
+    }).catch(function () {});` : ''}
+})();
+</script>`;
+  return html.includes('</body>') ? html.replace(/<\/body>(?![\s\S]*<\/body>)/i, `${script}\n</body>`) : `${html}\n${script}`;
 }
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
@@ -292,13 +371,31 @@ async function main() {
       }
       cpSync(join(go, 'views', 'index.json'), join(G, 'views', 'index.json'));
       writeFileSync(join(G, 'deps.json'), JSON.stringify(sourceScan(), null, 2));
-      for (const f of walk(G)) if (f.endsWith('.html')) writeFileSync(f, mobilePatch(readFileSync(f, 'utf8')));
+      /* what changed since the previous valid graph (from the build cache) */
+      let changes = null;
+      const prevGraphFile = join(STATE, 'g', 'data', 'graph.json');
+      if (prev?.graph?.sha && prev.graph.sha !== revision.sha && existsSync(prevGraphFile)) {
+        try {
+          changes = { from: prev.graph.sha, to: revision.sha, at: now, ...graphDiff(JSON.parse(readFileSync(prevGraphFile, 'utf8')), graph) };
+          writeFileSync(join(G, 'changes.json'), JSON.stringify(changes));
+          log(`changes since ${prev.graph.sha.slice(0, 8)}: +${changes.totals.nodesAdded} / -${changes.totals.nodesRemoved} nodes`);
+        } catch (e) { log(`diff skipped: ${e.message}`); changes = null; }
+      }
+      for (const f of walk(G)) {
+        if (!f.endsWith('.html')) continue;
+        const rel = relative(G, f);
+        /* per-preset graph pages highlight new nodes; the aggregated All map and call-flow pages only get the tuning */
+        const changesUrl = changes && /^views\/[^/]+\/graph\.html$/.test(rel) ? '../../changes.json' : null;
+        const html = mobilePatch(readFileSync(f, 'utf8'));
+        writeFileSync(f, rel.endsWith('graph.html') ? enhancePatch(html, changesUrl) : html);
+      }
       const by = (c) => graph.links.filter((e) => e.confidence === c).length;
       const dg = run(process.execPath, ['scripts/claude/graphify.mjs', 'digest']).stdout.trim().split(' ')[1] ?? null;
       graphInfo = {
         graphifyVersion: GRAPHIFY_VERSION, builtAtCommit: graph.built_at_commit ?? null, digest: dg,
         nodes: graph.nodes.length, edges: graph.links.length, extracted: by('EXTRACTED'), inferred: by('INFERRED'),
         files: new Set(graph.nodes.map((n) => n.source_file).filter(Boolean)).size,
+        delta: changes ? { from: changes.from, ...changes.totals } : null,
       };
       /* 5. fail closed on any credential shape anywhere we would publish */
       const findings = scanTree(G);

@@ -6,7 +6,8 @@
 # fails if any of them comes back: the page, the status, the full graph,
 # a preset, a trace, the freshness function.
 #
-# Pass   401/403, or a redirect to Vercel's login (Vercel Authentication)
+# Pass   401/403, or a redirect to Vercel's login (Vercel Authentication),
+#        or a plain 404 (the viewer's host allowlist: nothing is served)
 # Skip   404 DEPLOYMENT_NOT_FOUND — the project does not exist yet
 # Fail   anything that serves content (2xx) or an unexpected redirect
 #
@@ -48,6 +49,7 @@ jobs:
               code=$(curl -s -o body.txt -w '%{http_code}' --max-time 20 "$VIEWER$path")
               loc=$(curl -s -o /dev/null -w '%{redirect_url}' --max-time 20 "$VIEWER$path")
               if [ "$code" = 401 ] || [ "$code" = 403 ]; then verdict=REFUSED; deployed=1
+              elif [ "$code" = 404 ] && ! grep -q 'DEPLOYMENT_NOT_FOUND' body.txt; then verdict=REFUSED_404; deployed=1
               elif [ "${code#3}" != "$code" ] && echo "$loc" | grep -Eq '^https://vercel\.com/(login|sso-api)'; then verdict=REFUSED; deployed=1
               elif [ "$code" = 404 ] && grep -q 'DEPLOYMENT_NOT_FOUND' body.txt; then verdict=NOT_DEPLOYED
               else verdict=EXPOSED; fail=1

@@ -700,8 +700,18 @@ Phase 2 (Universal Discovery) is blocked until this is live and proven.
   Claude Vercel connector is scoped to the homatch project only: it cannot
   read or fetch homatch-architecture.
 - Isolation: root vercel.json ignoreCommand skips homatch builds for commits
-  that only change graphify-viewer/ (seven viewer-only commits had each
-  redeployed homatch production).
+  that only change graphify-viewer/, docs/, tests/matrix/ or *.md (seven
+  viewer-only commits had each redeployed homatch production). Proven: #52
+  → homatch "Canceled by Ignored Build Step".
+- Production (2026-10-02): #51 631e4630 → homatch-architecture
+  dpl_9jS4qELRGJKGF3mgfLt8ChY2214P READY (first real viewer deploy); #52
+  aeb330c1 → dpl_4mDDqRYXpgcZUsDF5LdXamzUymKU READY.
+- SECURITY incident 2026-10-02: the bare homatch-architecture.vercel.app
+  served the viewer (graph.json included) anonymously; closed by #52 (host
+  allowlist → 404). OWNER: remove that domain from the project in the
+  dashboard. Viewer URL: https://homatch-architecture-insportia.vercel.app
+- Viewer features: live status polling, "What changed" per build (green
+  new-node glow), smoother graph (edges hidden on drag/zoom).
 - Graph of the merged architecture (main 9f4b1777 = #48 + #49, 2026-10-02):
   22,412 nodes; Design Studio preset includes the Runpod worker and the
   headless-Blender scene factory (infra/design-studio-gpu-worker); the

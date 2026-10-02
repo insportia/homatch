@@ -136,17 +136,21 @@ push to main ─► Vercel (viewer project, Root Directory graphify-viewer/) ─
                  └─ deploy: shell + g/** (Graphify HTML/JSON) + status.json + /api/freshness
 ```
 
-- **Access**: Vercel Authentication on every deployment URL of the project
-  (`all_except_custom_domains`) and **no custom domain**, so every URL —
-  including `homatch-architecture.vercel.app` — needs a Vercel login with
-  access to the `insportia` team. Unauthenticated requests get 401 / the
-  Vercel login, never the graph. `noindex` headers are defence in depth,
-  not the control. Do not add a custom domain unless the plan can protect
-  it ("All Deployments" protection); otherwise it would be public.
+- **Access**: Vercel Authentication on the project, and the viewer itself
+  answers ONLY on Vercel's team-scoped hosts
+  (`<name>-insportia.vercel.app`: deployment, branch and
+  `homatch-architecture-insportia.vercel.app`); every other Host — the bare
+  `homatch-architecture.vercel.app` production domain, any custom domain —
+  gets a 404 from the first route, before files or functions. Incident
+  2026-10-02: the bare domain served the viewer, `graph.json` included, to
+  anonymous requests although protection was on (guard runs 36966887604,
+  36967118724); closed by #52 (404 on every path, guard run 36967613908).
+  The bare domain should also be removed from the project (dashboard).
+  Open the viewer at **https://homatch-architecture-insportia.vercel.app**.
 - **Guard**: `.github/workflows/architecture-viewer-guard.yml` (daily, on
   viewer changes, or by hand) requests the page, status, full graph,
-  presets, traces and the function **anonymously** and fails if any is
-  served. Override the URL with the repo variable `ARCHITECTURE_VIEWER_URL`.
+  presets, traces and the function **anonymously** on both hosts and fails
+  if any is served (401/403, a Vercel-login redirect or a plain 404 pass). Override the URL with the repo variable `ARCHITECTURE_VIEWER_URL`.
 - **Status bar**: branch @ short SHA, graph generated time, and a badge:
   `CURRENT` (live homatch.live runs this revision or an older commit of it —
   read from the build id it already publishes in `/sw.js`), `STALE` (live
@@ -180,10 +184,23 @@ push to main ─► Vercel (viewer project, Root Directory graphify-viewer/) ─
     (main) always rebuilds the graph; a preview builds only when the commit
     touched `graphify-viewer/`, `scripts/claude/graphify.mjs` or
     `.graphifyignore`.
-  - customer app: root `vercel.json` `ignoreCommand`
-    `git diff --quiet HEAD^ HEAD -- . ':(exclude)graphify-viewer'` — a commit
-    that only changes `graphify-viewer/` does not rebuild homatch.live.
+  - customer app: root `vercel.json` `ignoreCommand` — a commit
+    that only changes `graphify-viewer/`, `docs/`, `tests/matrix/` or `*.md`
+    does not rebuild homatch.live (none of them is in the app bundle).
     Anything else (or an unreadable HEAD^) builds as before.
+
+- **Live**: the page re-reads `status.json` every 30 s (pulsing dot in the
+  header): a new graph or a failed refresh appears as a banner without a
+  reload; the CURRENT/STALE check re-runs every 2 min.
+- **What changed**: each build diffs its graph against the previous valid
+  one (from the build cache) → `g/changes.json`: nodes/edges added and
+  removed, per-area counts, the lists. The "What changed" tab shows it; in
+  the preset graphs the new nodes glow green and a badge flies to them.
+  History shows +/− nodes per build. First build after a cache reset: no
+  comparison.
+- **Smoothness**: Graphify's own settle-then-freeze layout, plus edges hidden
+  while dragging/zooming and straight edges; a progress pill shows the
+  layout. Dragging a node moves only that node, in your browser only.
 
 ### Same truth for Claude (cloud or local)
 

@@ -893,6 +893,71 @@ if (FACTORY_MIGRATION) {
     !text.includes(privateKey) && !text.includes(UA) && !text.includes('"generated"') && pubG.state.objects[0].instanceId === 'o1'
       ? ok("factory: a public link never carries a factory model's private key (the drawn piece stands in)") : bad('factory share leak', text.slice(0, 300));
   }
+
+  // ── renders (20261006120000): the owner reads, only the server writes; the DNA rides on the version.
+  //   DS_RENDERS_MIGRATION=supabase/migrations/20261006120000_design_studio_renders.sql (needs the factory and shares migrations)
+  const RENDERS_MIGRATION = process.env.DS_RENDERS_MIGRATION ?? null;
+  if (RENDERS_MIGRATION && SHARES_MIGRATION) {
+    // Minimal stubs of the billing registry the product rows land in.
+    await db.exec(`
+      create table if not exists public.billing_plans (code text primary key, quality_tier text not null default 'STANDARD');
+      insert into public.billing_plans values ('FREE','STANDARD') on conflict do nothing;
+      create table if not exists public.billable_products (code text primary key, name text, billing_mode text, requires_reservation boolean,
+        standard_retail_cents integer not null default 0, reference_landed_cogs_cents numeric not null default 0, min_gross_margin_bps integer,
+        estimate_strategy text, enabled boolean, pricing_active boolean, min_viable_budget_credits numeric, sort_order integer, config jsonb);
+      create table if not exists public.product_plan_entitlements (product_code text, plan_code text, included_per_period integer, period text,
+        quality_tier text, primary key (product_code, plan_code));
+    `);
+    await db.exec(fs.readFileSync(RENDERS_MIGRATION, 'utf8'));
+    await db.exec(fs.readFileSync(RENDERS_MIGRATION, 'utf8'));
+    ok('renders: migration applies and re-applies');
+    const prods = await db.query(`select code, pricing_active from billable_products where code in ('DS_MASTER_RENDER','DS_ROOM_RENDER','DS_RENDER_EDIT') order by code`);
+    prods.rows.length === 3 && prods.rows.every((r) => r.pricing_active === false)
+      ? ok('renders: three products registered, pricing inactive') : bad('renders products', JSON.stringify(prods.rows));
+    const ents = await db.query(`select count(*)::int n from product_plan_entitlements where product_code in ('DS_MASTER_RENDER','DS_ROOM_RENDER','DS_RENDER_EDIT') and included_per_period = 0`);
+    ents.rows[0].n >= 3 ? ok('renders: an entitlement row per plan (nothing included)') : bad('renders entitlements', String(ents.rows[0].n));
+
+    const pR = await as(A, (tx) => one(tx, `insert into ds_projects (user_id,name) values ($1,'Renders') returning id`, [UA]));
+    const fpR = await as(A, (tx) => one(tx, `insert into ds_floorplans (project_id,user_id,object_key,mime,bytes,purpose) values ($1,$2,$3,'image/jpeg',1000,'REFERENCE') returning id`, [pR.id, UA, `users/${UA}/design-studio-floorplans/${pR.id}/r.jpg`]));
+    const srcR = await as('service', (tx) => one(tx, `insert into ds_spatial_sources (project_id,user_id,kind,status,geometry_state,editability,floorplan_id,canonical)
+      values ($1,$2,'FLOORPLAN_SCENE','READY','CALIBRATED','GENERATED',$3,'{"schema":1}'::jsonb) returning id`, [pR.id, UA, fpR.id]));
+    const verR = await as(A, (tx) => one(tx, `insert into ds_versions (project_id,user_id,source_id,name,origin,state) values ($1,$2,$3,'Design','USER','{"schema":1}'::jsonb) returning id, revision`, [pR.id, UA, srcR.id]));
+    const view = JSON.stringify({ id: 'v-master', kind: 'MASTER' });
+    const tk = (n) => n.toString(16).padStart(64, '0');
+    const row = await as('service', (tx) => one(tx, `insert into ds_renders (project_id,user_id,version_id,kind,view,idempotency_key,base_key)
+      values ($1,$2,$3,'MASTER',$4::jsonb,$5,$6) returning id, status`, [pR.id, UA, verR.id, view, tk(1), `users/${UA}/design-studio-thumbnails/${pR.id}/b.png`]));
+    row.status === 'QUEUED' ? ok('renders: the server records a render (QUEUED)') : bad('renders insert', JSON.stringify(row));
+    await expectError('renders: the same idempotency key is one render', 'duplicate key', () => as('service', (tx) =>
+      tx.query(`insert into ds_renders (project_id,user_id,version_id,kind,view,idempotency_key) values ($1,$2,$3,'MASTER',$4::jsonb,$5)`, [pR.id, UA, verR.id, view, tk(1)])));
+    await expectError("renders: a picture outside the customer's project folder is refused", 'check', () => as('service', (tx) =>
+      tx.query(`insert into ds_renders (project_id,user_id,version_id,kind,view,idempotency_key,final_key) values ($1,$2,$3,'MASTER',$4::jsonb,$5,$6)`,
+        [pR.id, UA, verR.id, view, tk(2), `users/${UB}/design-studio-thumbnails/${pR.id}/x.png`])));
+    await expectError('renders: an edit names its parent and its change', 'check', () => as('service', (tx) =>
+      tx.query(`insert into ds_renders (project_id,user_id,version_id,kind,view,idempotency_key) values ($1,$2,$3,'EDIT',$4::jsonb,$5)`, [pR.id, UA, verR.id, view, tk(3)])));
+    const mineR = await as(A, (tx) => tx.query('select id from ds_renders where project_id=$1', [pR.id]));
+    mineR.rows.length === 1 ? ok('renders: the owner reads their render') : bad('renders owner read', String(mineR.rows.length));
+    const theirsR = await as(B, (tx) => tx.query('select id from ds_renders'));
+    theirsR.rows.length === 0 ? ok('renders: another customer reads nothing') : bad('renders isolation', String(theirsR.rows.length));
+    const admR = await as(ADM, (tx) => tx.query('select id from ds_renders where id=$1', [row.id]));
+    admR.rows.length === 1 ? ok('renders: an admin may read') : bad('renders admin read', 'no row');
+    await expectError('renders: anon has no access', 'permission denied', () => as('anon', (tx) => tx.query('select * from ds_renders')));
+    await expectError('renders: the owner cannot insert a render', 'permission denied', () => as(A, (tx) =>
+      tx.query(`insert into ds_renders (project_id,user_id,version_id,kind,view,idempotency_key) values ($1,$2,$3,'MASTER',$4::jsonb,$5)`, [pR.id, UA, verR.id, view, tk(4)])));
+    await expectError('renders: the owner cannot mark a render READY', 'permission denied', () => as(A, (tx) =>
+      tx.query(`update ds_renders set status='READY' where id=$1`, [row.id])));
+    await expectError('renders: the owner cannot settle its billing', 'permission denied', () => as(A, (tx) =>
+      tx.query(`update ds_renders set billing='{"state":"SETTLED"}'::jsonb where id=$1`, [row.id])));
+    await expectError('renders: the owner cannot delete a render', 'permission denied', () => as(A, (tx) => tx.query('delete from ds_renders where id=$1', [row.id])));
+
+    const dna = JSON.stringify({ version: 'ds-dna-1', look: ['warm oak', 'linen'], palette: ['#f0e6d8'] });
+    const wrote = await as(A, (tx) => one(tx, 'update ds_versions set design_dna=$2::jsonb where id=$1 returning design_dna, revision', [verR.id, dna]));
+    wrote?.design_dna?.version === 'ds-dna-1' && wrote.revision === verR.revision
+      ? ok("renders: the owner writes the version's DNA (the revision does not move)") : bad('dna write', JSON.stringify(wrote));
+    const bDna = await as(B, (tx) => tx.query('update ds_versions set design_dna=$2::jsonb where id=$1', [verR.id, dna]));
+    bDna.affectedRows === 0 ? ok('renders: another customer cannot write the DNA') : bad('dna isolation', 'B wrote');
+    await expectError('renders: an unknown DNA version is refused', 'ds_versions_design_dna_check', () => as(A, (tx) =>
+      tx.query(`update ds_versions set design_dna='{"version":"x"}'::jsonb where id=$1`, [verR.id])));
+  }
 }
 
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nALL PASSED');

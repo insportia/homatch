@@ -691,10 +691,17 @@ Phase 2 (Universal Discovery) is blocked until this is live and proven.
   wrapper `scripts/claude/graphify.mjs` (presets, traces, digest). Doc:
   `docs/claude/GRAPHIFY.md`.
 - Online: `graphify-viewer/` = separate Vercel project `homatch-architecture`
-  (Vercel Authentication, no custom domain). **BLOCKED on owner**: the Claude
-  Vercel connector cannot create projects (403). Owner steps in GRAPHIFY.md
-  → "Owner setup". Until then: NOT DEPLOYED; auto-refresh IMPLEMENTED, NOT
-  PROVEN; access guard workflow reports NOT_DEPLOYED.
+  (`prj_oRMiFPyvDLKzugaO6fuWOLgoZauj`, Root Directory `graphify-viewer`,
+  Vercel Authentication, no custom domain). Created by the owner 2026-10-02.
+  Deploys c028ec49…beaa065c: first READY one built the customer app (Root
+  Directory unset → repo-root vercel.json); the rest failed ("No Output
+  Directory named 'public'") because build.mjs wrote <repo>/.vercel/output
+  outside the Root Directory. Fixed: output inside graphify-viewer/. The
+  Claude Vercel connector is scoped to the homatch project only: it cannot
+  read or fetch homatch-architecture.
+- Isolation: root vercel.json ignoreCommand skips homatch builds for commits
+  that only change graphify-viewer/ (seven viewer-only commits had each
+  redeployed homatch production).
 - Graph of the merged architecture (main 9f4b1777 = #48 + #49, 2026-10-02):
   22,412 nodes; Design Studio preset includes the Runpod worker and the
   headless-Blender scene factory (infra/design-studio-gpu-worker); the

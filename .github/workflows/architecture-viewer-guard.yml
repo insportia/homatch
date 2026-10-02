@@ -35,21 +35,25 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      VIEWER: ${{ vars.ARCHITECTURE_VIEWER_URL || 'https://homatch-architecture.vercel.app' }}
+      # Vercel gives a team project <name>.vercel.app when free, and always
+      # <name>-<team>.vercel.app; both are checked unless a URL is pinned.
+      VIEWERS: ${{ vars.ARCHITECTURE_VIEWER_URL || 'https://homatch-architecture.vercel.app https://homatch-architecture-insportia.vercel.app' }}
     steps:
       - name: Every served path refuses an anonymous request
         run: |
           set -u
-          fail=0; missing=0
-          for path in / /index.html /status.json /g/data/graph.json /g/views/design-studio/graph.html /g/views/meta-ads/graph.json /g/traces.json /api/freshness; do
-            code=$(curl -s -o body.txt -w '%{http_code}' --max-time 20 "$VIEWER$path")
-            loc=$(curl -s -o /dev/null -w '%{redirect_url}' --max-time 20 "$VIEWER$path")
-            if [ "$code" = 401 ] || [ "$code" = 403 ]; then verdict=REFUSED
-            elif [ "${code#3}" != "$code" ] && echo "$loc" | grep -Eq '^https://vercel\.com/(login|sso-api)'; then verdict=REFUSED
-            elif [ "$code" = 404 ] && grep -q 'DEPLOYMENT_NOT_FOUND' body.txt; then verdict=NOT_DEPLOYED; missing=1
-            else verdict=EXPOSED; fail=1
-            fi
-            echo "$verdict  $code  $path"
+          fail=0; deployed=0
+          for VIEWER in $VIEWERS; do
+            for path in / /index.html /status.json /g/data/graph.json /g/views/design-studio/graph.html /g/views/meta-ads/graph.json /g/traces.json /api/freshness; do
+              code=$(curl -s -o body.txt -w '%{http_code}' --max-time 20 "$VIEWER$path")
+              loc=$(curl -s -o /dev/null -w '%{redirect_url}' --max-time 20 "$VIEWER$path")
+              if [ "$code" = 401 ] || [ "$code" = 403 ]; then verdict=REFUSED; deployed=1
+              elif [ "${code#3}" != "$code" ] && echo "$loc" | grep -Eq '^https://vercel\.com/(login|sso-api)'; then verdict=REFUSED; deployed=1
+              elif [ "$code" = 404 ] && grep -q 'DEPLOYMENT_NOT_FOUND' body.txt; then verdict=NOT_DEPLOYED
+              else verdict=EXPOSED; fail=1
+              fi
+              echo "$verdict  $code  $VIEWER$path"
+            done
           done
           if [ "$fail" = 1 ]; then echo "::error::the architecture viewer served content without authentication"; exit 1; fi
-          if [ "$missing" = 1 ]; then echo "::notice::viewer not deployed at $VIEWER — nothing to guard yet"; fi
+          if [ "$deployed" = 0 ]; then echo "::notice::no viewer deployment answered at: $VIEWERS — nothing to guard yet"; fi

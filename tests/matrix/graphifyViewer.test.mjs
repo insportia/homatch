@@ -151,3 +151,22 @@ test('a stage may name its file; external modules never couple two stages', () =
   assert.equal(t.stages[0].node.at.startsWith('infra/w/handler.py'), true, 'the file decides between two handle()');
   assert.deepEqual(trace(g, [['X', /^x\(\)$/], ['Y', /^y\(\)$/]]).links.map((l) => l.kind), ['NO_STATIC_PATH'], 'shared `json` import is not coupling');
 });
+
+/*
+ * Deploys after c028ec49 failed with "No Output Directory named 'public'":
+ * the viewer project's Vercel Root Directory is graphify-viewer/, Vercel
+ * looks for .vercel/output inside it, and the build wrote <repo>/.vercel/output.
+ */
+test('the Build Output API directory lives in the viewer Root Directory; config has one source of truth', async () => {
+  const { OUTPUT_DIR } = await import('../../graphify-viewer/build.mjs');
+  const viewerDir = new URL('../../graphify-viewer/', import.meta.url).pathname.replace(/\/$/, '');
+  assert.equal(OUTPUT_DIR, `${viewerDir}/.vercel/output`);
+  const { readFileSync } = await import('node:fs');
+  const v = JSON.parse(readFileSync(new URL('../../graphify-viewer/vercel.json', import.meta.url), 'utf8'));
+  assert.equal(v.framework, null);
+  assert.equal(v.buildCommand, 'node build.mjs');
+  assert.equal(v.outputDirectory, undefined, 'Build Output API: no static outputDirectory alongside it');
+  assert.match(v.ignoreCommand, /VERCEL_ENV" = production \] && exit 1/, 'production always rebuilds the graph');
+  const app = JSON.parse(readFileSync(new URL('../../vercel.json', import.meta.url), 'utf8'));
+  assert.equal(app.ignoreCommand, "git diff --quiet HEAD^ HEAD -- . ':(exclude)graphify-viewer'", 'viewer-only commits do not rebuild the customer app');
+});

@@ -2,7 +2,14 @@
 /*
  * HOMATCH ARCHITECTURE VIEWER — cloud build (separate Vercel project).
  *
- *   node graphify-viewer/build.mjs        → .vercel/output (Build Output API v3)
+ *   node graphify-viewer/build.mjs  → graphify-viewer/.vercel/output (Build Output API v3)
+ *
+ * The viewer project's Vercel Root Directory is graphify-viewer/, and Vercel
+ * looks for .vercel/output INSIDE the Root Directory. Everything this build
+ * writes for Vercel (the output and the build-cache state) therefore lives
+ * next to this file; the repository root is only READ (the graph covers the
+ * whole repo). Writing to <repo>/.vercel/output made every build end with
+ * "No Output Directory named 'public' found" (deploys after c028ec49).
  *
  * Runs in the viewer project's own Vercel build, on every push to main
  * (and to the preview branches the project allows). It is NOT part of the
@@ -10,7 +17,8 @@
  *
  *   1. revision     the commit Vercel is building (branch, sha)
  *   2. previous     the last valid graph + status, kept in Vercel's build
- *                   cache (.cache/homatch-viewer, declared in config.json).
+ *                   cache (graphify-viewer/.cache/homatch-viewer, declared in
+ *                   config.json relative to the Root Directory).
  *                   No credential is involved; an evicted cache only means
  *                   no history carry-over and no failure fallback
  *   3. reuse?       only docs/markdown changed since the live graph's commit
@@ -41,6 +49,8 @@ export const GRAPHIFY_VERSION = '0.9.73';
 export const HISTORY_LIMIT = 20;
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
+/* Vercel Root Directory = HERE: the Build Output API dir must be inside it. */
+export const OUTPUT_DIR = join(HERE, '.vercel', 'output');
 
 /* ── 5. what may never be published ─────────────────────────────────────── */
 
@@ -161,7 +171,7 @@ function revisionOf() {
 }
 
 /* Cross-build state: Vercel restores .cache/** paths declared in config.json. */
-const STATE = join(ROOT, '.cache', 'homatch-viewer');
+const STATE = join(HERE, '.cache', 'homatch-viewer');
 function readState() {
   try { return JSON.parse(readFileSync(join(STATE, 'status.json'), 'utf8')); } catch { return null; }
 }
@@ -232,7 +242,7 @@ function sourceScan() {
 const SHELL = ['index.html', 'viewer.css', 'viewer.js'];
 
 async function main() {
-  const OUT = join(ROOT, '.vercel', 'output');
+  const OUT = OUTPUT_DIR;
   const STATIC = join(OUT, 'static');
   const G = join(STATIC, 'g');
   rmSync(OUT, { recursive: true, force: true });

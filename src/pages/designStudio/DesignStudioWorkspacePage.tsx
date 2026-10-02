@@ -229,7 +229,7 @@ function ProjectLoader() {
           setFlow(null);
           setResumePlan(null);
           loaded.current = false;
-          navigate(`/design-studio/${bundle.project.id}/walkthrough`, { replace: true });
+          navigate(`/design-studio/${bundle.project.id}/home`, { replace: true });
           void load();
         }}
         onCancel={() => { setFlow(null); setResumePlan(null); clearStart(); }}

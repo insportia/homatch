@@ -30,6 +30,10 @@ import { FURNISHING_CAP, type DesignPreferences, type FlowTimings, type PlanAnsw
 import { planCamera } from '@/components/designStudio/workspace/FactoryBuildDialog';
 import { assetsByCode, listAssets, listMaterials } from './catalog';
 import { designFromPreferences } from './ai';
+import { quoteRender, saveDesignDna, startRenders } from './renders';
+import { planMasterView } from '@/lib/designStudio/renders/cameras';
+import { deriveDNA } from '@/lib/designStudio/renders/dna';
+import type { PropertyDesignDNA } from '@/lib/designStudio/renders/contract';
 import { factoryStatus, startFactory, visualQa } from './factory';
 import { createFloorPlanSource, getFloorPlan, type FloorPlanRecord } from './floorplans';
 import {
@@ -48,6 +52,11 @@ export interface FlowRecord {
   designVersionId?: string | null;
   factoryVersionId?: string | null;
   factoryJobId?: string | null;
+  /** The review the architecture was built from (a changed review builds it again). */
+  reviewKey?: string | null;
+  masterRenderId?: string | null;
+  /** The credits the customer confirmed for the master design (a different quote stops and asks). */
+  confirmedCredits?: number | null;
   factory?: 'USED' | 'UNAVAILABLE' | 'FAILED' | null;
   timings?: FlowTimings;
   startedAt?: string | null;
@@ -101,6 +110,8 @@ export interface GenerateInput {
   ceilingM: number;
   ceilingSource: 'CUSTOMER' | 'DRAWING' | 'TYPICAL';
   preferences: DesignPreferences;
+  /** What the customer confirmed for the master design (from the Look step's quote). */
+  confirmedCredits: number | null;
   versionName: (key: 'original' | 'design' | 'factory') => string;
   onStage: (stage: Stage, status: 'RUNNING' | 'DONE' | 'SKIPPED') => void;
   /** The factory pass may take minutes; it is polled until this. */
@@ -114,6 +125,50 @@ export interface GenerateResult {
   timings: FlowTimings;
 }
 
+export type ArchitectureInput = Pick<GenerateInput, 'userId' | 'projectId' | 'plan' | 'doc' | 'decisions' | 'anchors' | 'calibration' | 'ceilingM' | 'ceilingSource' | 'versionName'> & { answers?: PlanAnswer[] };
+
+/** What the reviewed architecture depends on: a different review is a different building. */
+export function reviewKeyOf(input: Pick<ArchitectureInput, 'decisions' | 'anchors' | 'calibration' | 'ceilingM'> & { answers?: PlanAnswer[] }): string {
+  return JSON.stringify([input.answers ?? [], input.decisions, input.anchors, input.ceilingM, Math.round(input.calibration.metresPerPx * 1e9)]);
+}
+
+/**
+ * The reviewed plan as a spatial source and its empty Original version —
+ * built once per review (a changed review builds a new source; the earlier
+ * one is superseded, never edited). Called when the customer confirms the
+ * review, and again (as a no-op) by generateHome.
+ */
+export async function prepareArchitecture(input: ArchitectureInput): Promise<{ sourceId: string; originalId: string; canonical: CanonicalSpace; space: ReturnType<typeof buildSpaceModel> }> {
+  const plan = (await getFloorPlan(input.plan.id)) ?? input.plan;
+  const flow = latestFlow(plan);
+  const key = reviewKeyOf({ ...input, answers: input.answers ?? flow?.answers ?? [] });
+  let sourceId = flow?.reviewKey === key ? flow?.sourceId ?? null : null;
+  if (sourceId && !(await getSourceFull(sourceId))) sourceId = null;
+  let originalId = sourceId ? flow?.originalVersionId ?? null : null;
+  if (!sourceId) {
+    const built = buildCanonical(input.doc, input.decisions, input.calibration, input.ceilingM, input.ceilingSource);
+    if (!built.ok) throw new DesignStudioError('DS_PLAN_NOT_BUILDABLE', built.problems.join(','));
+    sourceId = await createFloorPlanSource({
+      floorplanId: input.plan.id, canonical: built.canonical, geometryState: input.calibration.geometryState, anchors: input.anchors,
+    });
+    // A new building: everything designed on the previous one is no longer this flow's.
+    await saveFlow(input.plan.id, { sourceId, reviewKey: key, originalVersionId: null, designVersionId: null, factoryVersionId: null, factoryJobId: null, masterRenderId: null });
+  }
+  await setActiveSource(input.projectId, sourceId);
+  const source = await getSourceFull(sourceId);
+  const canonical = (source?.canonical as CanonicalSpace | null) ?? null;
+  if (!source || !canonical?.scene) throw new DesignStudioError('DS_SOURCE_MISSING');
+  if (!originalId) {
+    const bundle = await getProject(input.projectId);
+    const existing = bundle?.versions.find((v) => v.source_id === sourceId && !v.archived_at && v.origin === 'ORIGINAL');
+    originalId = existing?.id ?? (await createOriginalVersion({
+      userId: input.userId, projectId: input.projectId, sourceId, name: input.versionName('original'),
+    })).id;
+    await saveFlow(input.plan.id, { originalVersionId: originalId });
+  }
+  return { sourceId, originalId, canonical, space: buildSpaceModel(canonical.scene) };
+}
+
 const now = () => Date.now();
 
 export async function generateHome(input: GenerateInput): Promise<GenerateResult> {
@@ -125,35 +180,12 @@ export async function generateHome(input: GenerateInput): Promise<GenerateResult
   };
   await save({ step: 'GENERATING', preferences: input.preferences, startedAt: flow.startedAt ?? new Date().toISOString() });
 
-  // ── 1. Architecture: the reviewed plan, built once ──────────────────────
+  // ── 1–2. Architecture and the Original (normally done when the review was confirmed) ──
   input.onStage('MEASURING', 'RUNNING');
-  let sourceId = flow.sourceId ?? null;
-  if (sourceId && !(await getSourceFull(sourceId))) sourceId = null;
-  if (!sourceId) {
-    const built = buildCanonical(input.doc, input.decisions, input.calibration, input.ceilingM, input.ceilingSource);
-    if (!built.ok) throw new DesignStudioError('DS_PLAN_NOT_BUILDABLE', built.problems.join(','));
-    sourceId = await createFloorPlanSource({
-      floorplanId: input.plan.id, canonical: built.canonical, geometryState: input.calibration.geometryState, anchors: input.anchors,
-    });
-    await save({ sourceId });
-  }
-  await setActiveSource(input.projectId, sourceId);
-  const source = await getSourceFull(sourceId);
-  const canonical = (source?.canonical as CanonicalSpace | null) ?? null;
-  if (!source || !canonical?.scene) throw new DesignStudioError('DS_SOURCE_MISSING');
-  const space = buildSpaceModel(canonical.scene);
+  const arch = await prepareArchitecture(input);
+  flow = latestFlow(await getFloorPlan(input.plan.id)) ?? flow;
+  const { sourceId, originalId, canonical, space } = arch;
   input.onStage('MEASURING', 'DONE');
-
-  // ── 2. The Original (empty) version on this space ───────────────────────
-  let originalId = flow.originalVersionId ?? null;
-  if (!originalId) {
-    const bundle = await getProject(input.projectId);
-    const existing = bundle?.versions.find((v) => v.source_id === sourceId && !v.archived_at && v.origin === 'ORIGINAL');
-    originalId = existing?.id ?? (await createOriginalVersion({
-      userId: input.userId, projectId: input.projectId, sourceId, name: input.versionName('original'),
-    })).id;
-    await save({ originalVersionId: originalId });
-  }
 
   // ── 3. The design: AI intent, placed by HOMATCH ─────────────────────────
   input.onStage('PLANNING', 'RUNNING');
@@ -184,6 +216,7 @@ export async function generateHome(input: GenerateInput): Promise<GenerateResult
     });
     designId = created.id;
     timings.designIntentMs = now() - t0;
+    await saveDesignDna(designId, deriveDNA({ preferences: input.preferences, state: proposal.state, space, materials: materialMap, sourceJobId: jobId }));
     await save({ designVersionId: designId });
   }
   input.onStage('PLANNING', 'DONE');
@@ -198,12 +231,23 @@ export async function generateHome(input: GenerateInput): Promise<GenerateResult
   const state = normalizeDesignState(design?.state ?? emptyDesignState());
   for (const o of state.objects) if (!assets.has(o.assetId)) for (const a of await assetsByCode([o.assetId])) assets.set(a.code, a);
   const checks = designChecks(space, state, assets, canonical);
+  const master = planMasterView(space);
   const t1 = now();
   const result = await runDesignBuild({ state: copyState(state), checks: checks.dimensions, passTimeoutMs: input.passTimeoutMs ?? 20 * 60_000 }, {
-    startFactory: (spec, pass) => startFactory({ projectId: input.projectId, versionId: designId, pass, spec }),
+    // One pass builds the walkthrough's models, the plan-check render AND the master design (the dollhouse view).
+    startFactory: async (spec) => {
+      const quoted = await quoteRender({ projectId: input.projectId, versionId: designId, product: 'DS_MASTER_RENDER', views: 1 });
+      if (!quoted.quote) return { jobId: null, state: 'FAILED', error: quoted.error };
+      if (input.confirmedCredits != null && quoted.quote.credits !== input.confirmedCredits) throw new DesignStudioError('DS_PRICE_CHANGED');
+      const started = await startRenders({ quote: quoted.quote, projectId: input.projectId, versionId: designId, views: [master], spec, idempotencyKey: `p2h-master-${designId}` });
+      const first = started.renders[0];
+      if (!first?.factory_job_id) return { jobId: null, state: started.error === 'FACTORY_NOT_CONFIGURED' ? 'UNAVAILABLE' : 'FAILED', error: started.error };
+      await save({ masterRenderId: first.id });
+      return { jobId: first.factory_job_id, state: 'QUEUED', error: null };
+    },
     factoryStatus,
     compile: (s, outputs) => compileSceneSpec({
-      space, state: s, assets, materials: materialMap, camera: planCamera(space),
+      space, state: s, assets, materials: materialMap, camera: planCamera(space), views: [master],
       source: { kind: 'FLOOR_PLAN', architecture: 'OBSERVED', furnishing: 'DESIGN' }, render: { edge: 1600, samples: 96 }, outputs,
     }),
     planQa: async (renderAssetId) => visualQa({
@@ -237,6 +281,9 @@ export async function generateHome(input: GenerateInput): Promise<GenerateResult
     }],
   });
   timings.persistMs = now() - t2;
+  const dnaRow = await getVersion(designId);
+  const dna = (dnaRow as { design_dna?: PropertyDesignDNA | null } | null)?.design_dna ?? null;
+  if (dna) await saveDesignDna(created.id, dna);
   input.onStage('FINALIZING', 'DONE');
   await save({ step: 'DONE', factory: 'USED', factoryVersionId: created.id });
   return { versionId: created.id, factory: 'USED', renderKey: result.render?.key ?? null, timings };

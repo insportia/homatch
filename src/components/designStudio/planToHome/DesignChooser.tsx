@@ -44,12 +44,15 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-export function DesignChooser({ value, onChange, onGenerate, busy, onBack }: {
+export function DesignChooser({ value, onChange, onGenerate, busy, onBack, price, priceUnavailable }: {
   value: DesignPreferences;
   onChange: (next: DesignPreferences) => void;
   onGenerate: () => void;
   busy: boolean;
   onBack: () => void;
+  /** The server's quote for the master design, shown before anything is generated. */
+  price?: { credits: number; charged: boolean } | null;
+  priceUnavailable?: boolean;
 }) {
   const { t } = useLanguage();
   const set = <K extends keyof DesignPreferences>(k: K, v: DesignPreferences[K]) => onChange({ ...value, [k]: v });
@@ -169,13 +172,20 @@ export function DesignChooser({ value, onChange, onGenerate, busy, onBack }: {
           </label>
         </div>
       </div>
-      <div className="sticky bottom-0 border-t border-[#E4E6EA] bg-white/95 backdrop-blur">
+      <div className="sticky bottom-0 border-t border-[#E4E6EA] bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
+        {price ? (
+          <p className="mx-auto w-full max-w-3xl px-4 pt-3 text-[13px] text-[#4A5263] sm:px-6" data-testid="design-price">
+            {t(price.charged ? 'p2h_price_charged' : 'p2h_price_not_charged', { credits: String(price.credits) })}
+          </p>
+        ) : priceUnavailable ? (
+          <p className="mx-auto w-full max-w-3xl px-4 pt-3 text-[13px] text-[hsl(32_78%_34%)] sm:px-6">{t('p2h_price_unavailable')}</p>
+        ) : null}
         <div className="mx-auto flex w-full max-w-3xl items-center gap-2 p-4 sm:px-6">
           <button type="button" onClick={onBack} className={cn('h-12 rounded-xl border border-[#D5D9E0] px-4 text-[15px] font-medium hover:bg-[#F4F5F7]', RING)}>{t('p2h_back_to_plan')}</button>
-          <button type="button" onClick={onGenerate} disabled={busy || (value.style === null && value.brief.trim().length < 3)}
+          <button type="button" onClick={onGenerate} disabled={busy || !price || (value.style === null && value.brief.trim().length < 3)}
             className={cn('inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-[hsl(38_92%_56%)] px-5 text-[16px] font-semibold text-[#0C1119] hover:bg-[hsl(38_92%_50%)] disabled:opacity-50', RING)}
             data-testid="design-generate">
-            <Sparkles className="h-5 w-5" aria-hidden="true" />{t('p2h_generate')}
+            <Sparkles className="h-5 w-5" aria-hidden="true" />{price ? t('p2h_generate_credits', { credits: String(price.credits) }) : t('p2h_generate')}
           </button>
         </div>
       </div>

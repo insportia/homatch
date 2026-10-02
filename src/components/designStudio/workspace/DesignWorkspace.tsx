@@ -66,6 +66,7 @@ import { DownloadDialog } from './DownloadDialog';
 import { FactoryBuildDialog } from './FactoryBuildDialog';
 import { pictureStill, ReferencePanel, useReconstructionFor } from './ReferencePanel';
 import { PlanComparePanel, usePlanFor } from '../planToHome/PlanComparePanel';
+import { REJECTION_KEY } from '@/lib/designStudio/rejectionKeys';
 import { latestFlow, saveFlow } from '@/services/designStudio/planToHome';
 import { download } from './exportRender';
 import { fileSlug } from '@/lib/designStudio/exportFiles';
@@ -124,16 +125,6 @@ const TOOL_BUTTON =
 /** Below lg the panels are sheets; above it they are columns and a sheet must never open. */
 const isPhoneLayout = () => typeof window !== 'undefined' && !!window.matchMedia?.('(max-width: 1023px)').matches;
 
-const REJECTION_KEY: Record<string, string> = {
-  PLACEMENT_BLOCKED: 'ds_reject_op_placement',
-  OBJECT_LOCKED: 'ds_reject_op_kept',
-  CATEGORY_LOCKED: 'ds_reject_op_category_locked',
-  UNKNOWN_ASSET: 'ds_reject_op_asset',
-  INACTIVE_ASSET: 'ds_reject_op_asset',
-  MATERIAL_NOT_FOR_SURFACE: 'ds_reject_op_material',
-  TOO_MANY_OBJECTS: 'ds_reject_op_too_many',
-  NOT_ALLOWED_FOR_ASSET: 'ds_reject_op_not_allowed',
-};
 
 /** Loads the version's design state and the catalogue, then hands over to the editor. */
 export function DesignWorkspace(props: DesignWorkspaceProps) {

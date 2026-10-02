@@ -111,6 +111,15 @@ export function applyEdit(entry: MapEntry, choice: EditChoice, state: DesignStat
     working = applyOperation(working, op).state;
   }
   const appearance = choice.action === 'COLOR' || choice.action === 'PAINT' || choice.action === 'MATERIAL' || choice.action === 'FINISH';
+  // A factory-built model is baked in the old colours (or is the old piece): the piece goes back to
+  // HOMATCH's own until the next factory pass bakes the new one — the walkthrough never shows the old look.
+  if (entry.kind === 'OBJECT' && (appearance || choice.action === 'REPLACE')) {
+    working = { ...working, objects: working.objects.map((o) => {
+      if (o.instanceId !== entry.id || !o.generated) return o;
+      const { generated: _old, ...rest } = o;
+      return rest;
+    }) };
+  }
   const edit: RenderEdit = appearance
     ? {
       type: 'APPEARANCE', targetId: entry.id, targetKind: entry.kind,

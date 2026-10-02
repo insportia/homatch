@@ -31,7 +31,9 @@ import { DesignStudioError } from '@/services/designStudio/projects';
 import {
   createFloorPlanSource, getFloorPlan, interpretFloorPlan, recordReview, uploadFloorPlan, type FloorPlanRecord,
 } from '@/services/designStudio/floorplans';
-import { generateHome, latestFlow, saveFlow } from '@/services/designStudio/planToHome';
+import { generateHome, latestFlow, prepareArchitecture, saveFlow } from '@/services/designStudio/planToHome';
+import { quoteRender } from '@/services/designStudio/renders';
+import type { RenderQuote } from '@/lib/designStudio/renders/contract';
 import { signedUrls } from '@/services/designStudio/files';
 import { cn } from '@/lib/utils';
 import { PlanReview } from './planToHome/PlanReview';
@@ -51,6 +53,8 @@ const ERROR_KEY: Record<string, string> = {
   DS_PLAN_NOT_BUILDABLE: 'p2h_error_not_buildable',
   DS_AI_UNAVAILABLE: 'p2h_error_design',
   DS_AI_FAILED: 'p2h_error_design',
+  DS_PRICE_CHANGED: 'p2h_error_price_changed',
+  DS_SOURCE_MISSING: 'p2h_error_not_buildable',
 };
 
 const INPUT = 'h-10 w-full rounded-lg border border-[#D5D9E0] bg-white px-3 text-[15px] text-[#0C1119] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]';
@@ -102,6 +106,9 @@ export function FloorPlanFlow({
   const [busy, setBusy] = useState(false);
   const [genFailed, setGenFailed] = useState(false);
   const [problems, setProblems] = useState<string[]>([]);
+  /* The master design's price, quoted by the server for this home and shown before Generate. */
+  const [quote, setQuote] = useState<RenderQuote | null>(null);
+  const [quoteFailed, setQuoteFailed] = useState(false);
   const timings = useRef<FlowTimings>({ ...(startFlow?.timings ?? {}) });
   const running = useRef(false);
 
@@ -218,14 +225,34 @@ export function FloorPlanFlow({
         onBuilt(sourceId, calibration.metresPerPx);
         return;
       }
-      setPlan(await saveFlow(plan.id, { step: 'DESIGN', answers, decisions, anchors, ceilingM }));
+      await saveFlow(plan.id, { answers, decisions, anchors, ceilingM });
+      // The confirmed plan becomes the home's architecture now: the Look step can quote it, and it is never rebuilt for a new look.
+      const arch = await prepareArchitecture({
+        userId, projectId, plan, doc, decisions, anchors, calibration, ceilingM: ceilingFinal, ceilingSource, answers,
+        versionName: (k) => t(k === 'original' ? 'ds_version_original' : k === 'design' ? 'p2h_version_design' : 'p2h_version_factory'),
+      });
+      setPlan(await saveFlow(plan.id, { step: 'DESIGN' }));
       setStep('DESIGN');
+      void requestQuote(arch.originalId);
     } catch (e) {
       fail(e);
     } finally {
       setBusy(false);
     }
   };
+
+  const requestQuote = useCallback(async (versionId: string) => {
+    setQuoteFailed(false);
+    const q = await quoteRender({ projectId, versionId, product: 'DS_MASTER_RENDER', views: 1 });
+    setQuote(q.quote);
+    setQuoteFailed(!q.quote);
+  }, [projectId]);
+  // A reload on the Look step quotes again (a quote lives ten minutes).
+  useEffect(() => {
+    if (step !== 'DESIGN' || quote || quoteFailed) return;
+    const original = latestFlow(plan)?.originalVersionId;
+    if (original) void requestQuote(original);
+  }, [step, quote, quoteFailed, plan, requestQuote]);
 
   // ── Generate: resumable; a double tap is one run ────────────────────────
   const generate = useCallback(async () => {
@@ -242,11 +269,12 @@ export function FloorPlanFlow({
     });
     const mark = (s: Stage, st: 'RUNNING' | 'DONE' | 'SKIPPED') => setStages((cur) => ({ ...cur, [s]: st }));
     try {
-      const fresh = await saveFlow(plan.id, { step: 'GENERATING', answers, preferences: prefs, decisions, anchors, ceilingM, timings: timings.current });
+      const fresh = await saveFlow(plan.id, { step: 'GENERATING', answers, preferences: prefs, decisions, anchors, ceilingM, timings: timings.current, ...(quote ? { confirmedCredits: quote.credits } : {}) });
       setPlan(fresh);
       const result = await generateHome({
         userId, projectId, projectName, plan: fresh, doc, decisions, anchors, calibration,
         ceilingM: ceilingFinal, ceilingSource, preferences: prefs,
+        confirmedCredits: quote?.credits ?? latestFlow(fresh)?.confirmedCredits ?? null,
         versionName: (k) => t(k === 'original' ? 'ds_version_original' : k === 'design' ? 'p2h_version_design' : 'p2h_version_factory'),
         onStage: mark,
       });
@@ -258,7 +286,7 @@ export function FloorPlanFlow({
       running.current = false;
       setBusy(false);
     }
-  }, [plan, doc, calibration, answers, prefs, decisions, anchors, ceilingM, ceilingFinal, ceilingSource, userId, projectId, projectName, t, onDone]);
+  }, [plan, doc, calibration, answers, prefs, decisions, anchors, ceilingM, ceilingFinal, ceilingSource, userId, projectId, projectName, t, onDone, quote]);
 
   // A generation that was running when the page was left: carry on.
   const resumed = useRef(false);
@@ -366,6 +394,8 @@ export function FloorPlanFlow({
           onChange={(p) => { setPrefs(p); keep({ preferences: p }); }}
           onGenerate={() => { void generate(); }}
           busy={busy}
+          price={quote ? { credits: quote.credits, charged: quote.charged } : null}
+          priceUnavailable={quoteFailed}
           onBack={() => { setStep('REVIEW'); keep({ step: 'REVIEW' }); }}
         />
       ) : null}

@@ -158,3 +158,13 @@ test('edits: only the views that show the target are redone; a move also redoes 
   assert.deepEqual(affectedViews({ type: 'APPEARANCE', targetId: 's1', targetKind: 'OBJECT', color: '#000', materialId: null, label: '' }, views), ['r1-v1']);
   assert.deepEqual(affectedViews({ type: 'SPATIAL', targetId: 's1', op: 'MOVE', detail: {} }, views, 'r2').sort(), ['master', 'r1-v1', 'r2-v1']);
 });
+
+test('edits: a recoloured piece drops its baked factory model; a moved one keeps it', () => {
+  const { state, ctx, living, c } = sofaDesign();
+  const baked = { ...state, objects: state.objects.map((o) => ({ ...o, generated: { assetId: 'a', key: 'k', sha256: null } })) };
+  const entry = { color: '#010203', kind: 'OBJECT', id: 's1', roomId: living.id, coverage: 0.02, box: [0, 0, 1, 1] };
+  const recol = applyEdit(entry, { action: 'COLOR', color: '#2f4f3a' }, baked, ctx, '');
+  assert.ok(recol.ok && !recol.state.objects[0].generated);
+  const moved = applyEdit(entry, { action: 'MOVE', to: { x: c.x, y: c.y + 0.3 }, roomId: living.id }, baked, ctx, '');
+  assert.ok(moved.ok && moved.state.objects[0].generated);
+});

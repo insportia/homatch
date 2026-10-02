@@ -191,7 +191,8 @@ test('live checks are bounded, robots-first, write only admin-read rows, and nev
 });
 
 test('admin intelligence is one admin-only read, inside the Admin shell, with no secrets or text', () => {
-  const sql = read('supabase/migrations/20261008100100_phase2_admin_intelligence.sql');
+  const sql = read('supabase/migrations/20261008100100_phase2_admin_intelligence.sql')
+    .replace(/--.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
   assert.match(sql, /if not public\.is_admin\(\) then\s+raise exception 'FORBIDDEN'/);
   assert.match(sql, /key not like '%token%'/);
   assert.doesNotMatch(sql, /original_text|description|phone|insert into|update public|delete from/i);

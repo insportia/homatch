@@ -734,3 +734,34 @@ Phase 2 (Universal Discovery) is blocked until this is live and proven.
   includes #49's Lead Ads Terms flow and domain guard.
 - Not a HOMATCH runtime dependency; merging #47 triggers only the routine
   customer Vercel rebuild of identical app code.
+
+## Meta Ads closure (2026-10-02, branch claude/homatch-discovery-engine-rqdnza)
+
+- **Lead Ads Terms root cause**: the production token still holds the 6 pre-reconfiguration
+  scopes (no leads_retrieval / pages_manage_ads / pages_manage_metadata); the Meta reconnect
+  started 2026-10-02 06:41 never completed (oauth_nonce still pending), so "refresh assets"
+  re-read Meta with the OLD token. A `leadgen_tos_accepted=false` read with that token was
+  shown as "terms not accepted". Now: `instantForms.ts` state model PERMISSIONS_MISSING /
+  TERMS_REQUIRED / TERMS_UNKNOWN / FORM_ACCESS_UNAVAILABLE / PAGE_UNAVAILABLE / META_ERROR /
+  READY; terms evidence = tos true | acceptance time | Page already has forms (ACCEPTED);
+  a create refused for terms or false read WITH lead permissions (REQUIRED); else UNKNOWN.
+  `engine.checkLeadPage` (page token, then /{page}/leadgen_forms) logs `meta_lead_check`.
+  The owner must complete "Reconnect Meta" once for the new scopes to reach the token.
+- **Audience**: no default locations anywhere (UI, brief, server strategy input). Multilingual
+  geo search (`geoQuery.ts`: locale + Latin transliteration, street detection → pin).
+  Map = targets only (`geo/mapTargets.ts`), always visible, numbered, real radius.
+- **Lead Form Builder**: sections, phone preview (approximate), custom questions with
+  sensitive-topic refusal, advertiser privacy URL (HOMATCH policy only flagged, never implied),
+  readiness list, explicit confirm before Meta creation.
+- **HOMATCH AI creatives**: `meta-ads-api/creativeAi.ts` + `src/lib/metaAds/creativeAi.ts`;
+  table `meta_creative_ai_jobs`; product META_AD_IMAGE_GEN (13¢ retail / 9¢ reference,
+  PER_UNIT, settled on measured gpt-image-1 tokens × provider_price_book, only delivered
+  images; 0 delivered = release; stale RUNNING job > 8 min = release). Kill switch
+  `admin_settings.meta_ads_ai_creative_enabled`. Analysis free to the customer, metered in
+  cost_events (`meta_ads_creative_analysis`). Env overrides: OPENAI_META_IMAGE_MODEL,
+  OPENAI_META_CREATIVE_MODEL (an unpriced image model refuses to run — PRICING_UNAVAILABLE).
+- **Video**: player + cover (manual frame or deterministic `videoCover.ts`); cover is a
+  separate still `${uid}/covers/*.jpg`; launch sends it as video_data.image_hash.
+- **Fixed in passing**: meta_funnel_events check never allowed forms_recheck /
+  brief_interpret / delivery_estimate, so those rate limiters never counted.
+- Migrations: 20261006100000_meta_ads_creative_ai.sql, 20261006100100_meta_ads_creative_ai_pricing.sql.

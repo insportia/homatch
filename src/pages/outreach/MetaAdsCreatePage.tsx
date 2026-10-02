@@ -51,6 +51,7 @@ import { AudienceStep } from '@/components/metaAds/builder/AudienceStep';
 import { BriefStep } from '@/components/metaAds/builder/BriefStep';
 import { ReviewInsights } from '@/components/metaAds/builder/ReviewInsights';
 import { briefHash } from '@/lib/metaAds/audienceGuide';
+import { Hint } from '@/components/metaAds/builder/FinishKit';
 import { classifyDomainScope } from '@/lib/metaAds/domainScope';
 import { HelperCard } from '@/components/metaAds/builder/FinishKit';
 import { regionName } from '@/components/metaAds/builder/LocationPicker';
@@ -361,19 +362,20 @@ export default function MetaAdsCreatePage() {
             )}
             {step === 'goal' && (
               <StepShell eyebrow={t('madsb_step_goal')} title={t('madsb_goal_title')} lead={t('madsb_goal_lead')}>
+                <Hint k="mm_c_hint_goal" />
                 <div className="grid gap-2 sm:grid-cols-2">
                   {ALL_GOALS.map((g) => {
                     const switchedOn = (status?.settings.goalsEnabled ?? []).includes(g);
                     /* Leads on Facebook/Instagram is decided by the server
                        (src/lib/metaAds/instantForms.ts): never a permission name here. */
-                    const forms = g === 'LEADS_ON_META' && status?.connection?.status === 'CONNECTED' ? formsStateOf(status) : 'AVAILABLE';
+                    const forms = g === 'LEADS_ON_META' && status?.connection?.status === 'CONNECTED' ? formsStateOf(status) : 'READY';
                     // Selectable whenever the owner can resolve it here (accept Meta's terms, reconnect, check again).
                     const enabled = switchedOn && FORMS_ACTIONABLE.has(forms);
                     return (
                       <ChoiceCard key={g} active={campaign.goal === g} disabled={!enabled} icon={GOAL_ICON[g]}
                         title={t(`mads_goal_${g.toLowerCase()}` as never)} body={t(`madsb_goal_${g.toLowerCase()}_d` as never)}
-                        badge={!switchedOn ? t('madsb_goal_not_enabled') : forms === 'COMING_SOON' ? t('mm_b_goal_soon') : forms === 'RECONNECT' ? t('mm_b_goal_reconnect')
-                          : forms === 'TERMS_REQUIRED' ? t('mm_l_goal_terms') : undefined}
+                        badge={!switchedOn ? t('madsb_goal_not_enabled') : forms === 'PERMISSIONS_MISSING' || forms === 'FORM_ACCESS_UNAVAILABLE' ? t('mm_b_goal_reconnect')
+                          : forms === 'TERMS_REQUIRED' ? t('mm_l_goal_terms') : forms === 'READY' ? undefined : t('mm_c_goal_check')}
                         onClick={() => patch({
                           goal: g,
                           destination: destinationForGoal(g, campaign.destination, !!page),
@@ -396,7 +398,8 @@ export default function MetaAdsCreatePage() {
             {step === 'creative' && (
               <CreativeStep campaign={campaign} creatives={creatives} setCreatives={setCreatives} placements={placements} onFocusCreative={setFocusCreative}
                 defaultHeadline={properties.find((p) => (p.homatch_id ? String(p.homatch_id) : p.id) === campaign.property_id)?.title ?? ''}
-                advice={advice} strategy={strategy.preview?.strategy ?? null} strategyLoading={strategy.loading} />
+                advice={advice} strategy={strategy.preview?.strategy ?? null} strategyLoading={strategy.loading}
+                aiCreativeEnabled={!!status?.settings?.aiCreativeEnabled} />
             )}
             {step === 'placements' && (
               <PlacementsStep campaign={campaign} status={status} creatives={creatives} recommended={(preview?.recommendedPlacements as Placement[] | undefined) ?? placements} patch={patch} />
@@ -472,7 +475,7 @@ export default function MetaAdsCreatePage() {
               [t('madsb_review_objective'), t(`mads_goal_${campaign.goal.toLowerCase()}` as never)],
               [t('madsb_review_destination'), campaign.destination?.url ?? formAsset?.name
                 ?? (campaign.destination?.messagingApp ? t(`madsb_msg_${campaign.destination.messagingApp.toLowerCase().replace('instagram_direct', 'instagram')}`) : '—')],
-              [t('madsb_review_location'), (campaign.targeting?.locations?.length ? campaign.targeting.locations.map((l) => l.name) : (status?.settings.countries ?? ['GE']).map((c) => regionName(c, lang))).join(', ')],
+              [t('madsb_review_location'), (campaign.targeting?.locations?.length ? campaign.targeting.locations.map((l) => (l.type === 'country' ? regionName(l.key, lang) : l.name)) : [t('mm_c_loc_none_chosen')]).join(', ')],
               [t('madsb_review_audience'), campaign.audience_id ? t('madsb_audience_retarget') : t('mads_audience_broad')],
               [t('madsb_step_placements'), placements.map((p) => t(`mads_pl_${p}` as never)).join(', ')],
               [t('mads_budget_daily'), money(Number(campaign.daily_budget_cents ?? 0))],

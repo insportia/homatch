@@ -185,7 +185,7 @@ export function destinationForGoal(goal: MetaGoal, prev: Dest | null | undefined
 
 /* ── LOCATIONS ───────────────────────────────────────────────────────── */
 
-export interface LocationLike { type: 'country' | 'region' | 'city' | 'pin'; key: string; name: string; countryCode: string; radiusKm?: number | null }
+export interface LocationLike { type: 'country' | 'region' | 'city' | 'neighborhood' | 'pin'; key: string; name: string; countryCode: string; radiusKm?: number | null }
 
 export const locationId = (l: LocationLike) => `${l.type}:${l.key}`;
 
@@ -230,6 +230,7 @@ export function geographyGroups<T extends LocationLike>(list: readonly T[]): Arr
 export const LEAD_FORM_ISSUE_CODES = [
   'FORM_NAME_REQUIRED', 'PRIVACY_URL_REQUIRED', 'FOLLOW_UP_URL_INVALID', 'CONTACT_FIELD_REQUIRED', 'QUESTION_UNKNOWN',
   'TOO_MANY_QUESTIONS', 'HEADLINE_TOO_LONG', 'MESSAGE_TOO_LONG', 'LOCALE_UNSUPPORTED',
+  'CUSTOM_QUESTION_LABEL', 'CUSTOM_QUESTION_OPTIONS', 'QUESTION_SENSITIVE', 'INTRO_TITLE', 'INTRO_POINTS', 'THANKS_TITLE_TOO_LONG',
 ] as const;
 
 export const leadFormIssueKey = (code: string) =>

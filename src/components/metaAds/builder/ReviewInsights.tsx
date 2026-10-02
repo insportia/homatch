@@ -30,9 +30,9 @@ export function ReviewInsights({ campaign, status, creatives, patch, onEdit }: {
   onEdit: (step: string) => void;
 }) {
   const { t, lang } = useLanguage();
-  const defaults = (status?.settings.countries?.length ? status.settings.countries : ['GE']);
+  // Exactly what the owner chose — never a default country standing in for an empty choice.
   const targeting: TargetingIntentRow = campaign.targeting?.locations?.length ? campaign.targeting : {
-    locations: defaults.map((c) => ({ type: 'country' as const, key: c, name: c, countryCode: c })),
+    locations: [],
     ageMin: campaign.targeting?.ageMin ?? META_AGE_MIN, ageMax: campaign.targeting?.ageMax ?? META_AGE_MAX, gender: campaign.targeting?.gender ?? 'ALL',
     languages: campaign.targeting?.languages, international: campaign.targeting?.international ?? null,
   };

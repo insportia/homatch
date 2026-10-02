@@ -21,7 +21,8 @@ import { GOAL_SPECS, recommendedPlacements, type Placement } from '../../../src/
 import { statusCounts } from '../../../src/lib/metaAds/uiStatus.ts';
 import { validateSetting, isCredentialKey } from '../../../src/lib/metaAds/adminSettings.ts';
 import { claimFingerprint, afterApproval, type NextAction } from '../../../src/lib/metaAds/moderation.ts';
-import { missingInstantFormScopes } from '../../../src/lib/metaAds/instantForms.ts';
+import { isTermsRefusal, missingInstantFormScopes } from '../../../src/lib/metaAds/instantForms.ts';
+import { countryNameMatches, locationTypeOf, looksLikeStreet, metaLocale, queryVariants, SEARCH_TYPES } from '../../../src/lib/metaAds/geoQuery.ts';
 import { validateLeadFormSpec, leadFormPayload, leadFormPreview, META_LOCALE, type LeadFormSpec } from '../../../src/lib/metaAds/leadForms.ts';
 import { graph, MetaApiError, mockExternalId, hasScopes, INSTANT_FORM_SCOPES, type MetaMode } from '../_shared/metaAds.ts';
 import {
@@ -33,6 +34,7 @@ import {
 import { refreshAccount } from './guardSync.ts';
 import { analyzeCampaign, QUALIFIED, VIEWED } from './intelligence.ts';
 import { lifecycleEvent } from './monitor.ts';
+import { handleCreativeAi } from './creativeAi.ts';
 
 type Sb = any;
 const rpcErr = (m: string) => (String(m ?? '').match(/\b(FORBIDDEN|REASON_REQUIRED|PERCENT_INVALID|BAD_KIND|USER_NOT_FOUND)\b/)?.[1] ?? 'FAILED');
@@ -81,14 +83,19 @@ const ISO2 = 'AD AE AF AG AI AL AM AO AR AT AU AW AZ BA BB BD BE BF BG BH BI BJ 
 
 function countryMatches(q: string, locale: string) {
   let names: Intl.DisplayNames | null = null;
-  let en: Intl.DisplayNames | null = null;
-  try { names = new Intl.DisplayNames([locale], { type: 'region' }); en = new Intl.DisplayNames(['en'], { type: 'region' }); } catch { /* fallback below */ }
-  const needle = q.trim().toLowerCase();
-  return ISO2.map((code) => ({ code, name: names?.of(code) ?? code, en: en?.of(code) ?? code }))
-    .filter((c) => !needle || c.name.toLowerCase().includes(needle) || c.en.toLowerCase().includes(needle) || c.code.toLowerCase() === needle)
+  try { names = new Intl.DisplayNames([locale], { type: 'region' }); } catch { /* fallback below */ }
+  // A country is found by its name in ANY of the six interface languages (or its code).
+  return ISO2.filter((code) => countryNameMatches(code, q))
     .slice(0, 20)
-    .map((c) => ({ type: 'country', key: c.code, name: c.name, countryCode: c.code }));
+    .map((code) => ({ type: 'country', key: code, name: names?.of(code) ?? code, countryCode: code }));
 }
+
+/* Meta location answers change rarely: a short per-instance cache spares
+   repeated keystrokes the same Graph call. Keyed by the exact question. */
+const GEO_CACHE = new Map<string, { at: number; rows: any[] }>();
+const GEO_TTL_MS = 10 * 60_000;
+function geoCacheGet(k: string) { const v = GEO_CACHE.get(k); return v && Date.now() - v.at < GEO_TTL_MS ? v.rows : null; }
+function geoCacheSet(k: string, rows: any[]) { if (GEO_CACHE.size > 500) GEO_CACHE.clear(); GEO_CACHE.set(k, { at: Date.now(), rows }); }
 
 export async function handleAction(x: ActionCtx): Promise<Response | null> {
   const { sb, uid, me, body, action, settings, mode, json } = x;
@@ -97,23 +104,66 @@ export async function handleAction(x: ActionCtx): Promise<Response | null> {
       /* ── LOCATIONS: Meta's own targeting catalogue ──────────────────── */
       case 'geo_search': {
         const q = String(body.q ?? '').trim().slice(0, 80);
-        const type = ['country', 'region', 'city'].includes(body.type) ? String(body.type) : 'city';
-        const locale = String(body.locale ?? 'en').slice(0, 5);
-        if (type === 'country') return json({ results: countryMatches(q, locale) });
+        const tab = body.type === 'country' ? 'country' : body.type === 'region' ? 'region' : 'place';
+        const lang = String(body.locale ?? 'en').slice(0, 5);
+        if (tab === 'country') return json({ results: countryMatches(q, lang) });
         if (q.length < 2) return json({ results: [] });
         if (mode === 'MOCK') return json({ results: [], mode, reason: 'MOCK_MODE_NO_META_CATALOGUE' });
         const token = await userToken(sb, uid);
         if (!token) return json({ error: 'NOT_CONNECTED', code: 'NOT_CONNECTED' }, 400);
         const country = /^[A-Z]{2}$/.test(String(body.country ?? '')) ? String(body.country) : null;
-        const params = new URLSearchParams({ type: 'adgeolocation', q, location_types: JSON.stringify([type]), limit: '20', locale: `${locale}_${locale.toUpperCase()}` });
-        if (country) params.set('country_code', country);
-        const res = await graph(`/search?${params.toString()}`, { token, attempts: 2 });
-        const rows = ((res.data as any[]) ?? []).filter((r) => r.supports_region !== false || type !== 'region');
+        const locale = metaLocale(lang);
+        const types = SEARCH_TYPES[tab];
+        // As typed first; then the Latin spelling for Georgian / Cyrillic input.
+        const variants = queryVariants(q);
+        let rows: any[] = [];
+        let usedVariant = 0;
+        for (let v = 0; v < variants.length && !rows.length; v++) {
+          const key = `${variants[v]}|${types.join(',')}|${locale}|${country ?? ''}`;
+          const hit = geoCacheGet(key);
+          if (hit) { rows = hit; usedVariant = v; break; }
+          const params = new URLSearchParams({ type: 'adgeolocation', q: variants[v], location_types: JSON.stringify(types), limit: '20', locale });
+          if (country) params.set('country_code', country);
+          try {
+            const res = await graph(`/search?${params.toString()}`, { token, attempts: 2 });
+            rows = ((res.data as any[]) ?? []).filter((r) => r.type !== 'region' || r.supports_region !== false);
+            geoCacheSet(key, rows);
+            usedVariant = v;
+          } catch (e) {
+            console.log(JSON.stringify({ evt: 'meta_geo_search_failed', variant: v, types, code: e instanceof MetaApiError ? e.normalized.code : 'FAILED' }));
+            if (v === variants.length - 1) throw e;
+          }
+        }
+        // Real coordinates for the map, only where Meta gives them (never invented).
+        const coords: Record<string, { lat: number; lng: number }> = {};
+        const cityKeys = rows.filter((r) => r.type === 'city').map((r) => String(r.key)).slice(0, 20);
+        const hoodKeys = rows.filter((r) => r.type === 'neighborhood' || r.type === 'subcity').map((r) => String(r.key)).slice(0, 20);
+        if (cityKeys.length || hoodKeys.length) {
+          try {
+            const mp = new URLSearchParams({ type: 'adgeolocationmeta', locale });
+            if (cityKeys.length) mp.set('cities', JSON.stringify(cityKeys));
+            if (hoodKeys.length) mp.set('neighborhoods', JSON.stringify(hoodKeys));
+            const meta = await graph(`/search?${mp.toString()}`, { token, attempts: 1 }) as any;
+            for (const group of Object.values((meta?.data ?? {}) as Record<string, Record<string, any>>)) {
+              for (const [k, v] of Object.entries(group ?? {})) {
+                const lat = Number(v?.latitude); const lng = Number(v?.longitude);
+                if (Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) coords[k] = { lat, lng };
+              }
+            }
+          } catch { /* the map then lists the place as "not drawn" — targeting is unaffected */ }
+        }
         return json({
-          results: rows.map((r) => ({
-            type, key: String(r.key), name: String(r.name ?? ''), countryCode: String(r.country_code ?? ''),
-            region: r.region ?? null, countryName: r.country_name ?? null,
-          })),
+          variant: usedVariant,
+          street: !rows.length && looksLikeStreet(q),
+          results: rows.map((r) => {
+            const t = locationTypeOf(String(r.type ?? (tab === 'region' ? 'region' : 'city')));
+            return {
+              type: t, key: String(r.key), name: String(r.name ?? ''), countryCode: String(r.country_code ?? ''),
+              region: r.region ?? null, countryName: r.country_name ?? null,
+              ...(t === 'neighborhood' && r.type === 'subcity' ? { metaType: 'subcity' } : {}),
+              ...(coords[String(r.key)] ?? {}),
+            };
+          }),
         });
       }
 
@@ -461,6 +511,11 @@ export async function handleAction(x: ActionCtx): Promise<Response | null> {
           }
         } catch (err) {
           await sb.from('meta_lead_forms').update({ status: 'FAILED', error: { code: err instanceof MetaApiError ? err.normalized.customerKey : (err as Error).message } }).eq('id', row.id);
+          // Meta refusing the form for its Lead Ads terms is the strongest evidence there is: kept on the Page.
+          if (err instanceof MetaApiError && isTermsRefusal(err.normalized.rawMessage)) {
+            await sb.from('meta_assets').update({ capabilities: { ...(page.capabilities ?? {}), leadgen_create_refused_for_terms: true, leadgen_tos_checked_at: new Date().toISOString() } }).eq('id', page.id);
+            return json({ error: 'LEAD_TERMS_REQUIRED', code: 'LEAD_TERMS_REQUIRED' }, 409);
+          }
           throw err;
         }
         await sb.from('meta_lead_forms').update({ status: 'CREATED', meta_form_id: externalId, updated_at: new Date().toISOString() }).eq('id', row.id);
@@ -781,6 +836,8 @@ export async function handleAction(x: ActionCtx): Promise<Response | null> {
       }
 
       default:
+        // HOMATCH AI creative intelligence: explicit, cached, billed (creativeAi.ts).
+        if (action.startsWith('creative_ai_')) return await handleCreativeAi(x);
         return null;
     }
   } catch (err) {

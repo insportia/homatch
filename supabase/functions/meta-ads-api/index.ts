@@ -24,12 +24,12 @@ import { ingestLead } from '../_shared/metaLeads.ts';
 import { callLlm, llmAvailable } from '../_shared/comm/llm.ts';
 import { factsPreserved, numbersIn } from '../../../src/lib/metaAds/audienceGuide.ts';
 import {
-  loadSettings, userToken, selectedAsset, pageToken, strategyInputFor, limitsOf, configFingerprint, domainCheck, readLeadTerms,
+  loadSettings, userToken, selectedAsset, pageToken, strategyInputFor, limitsOf, configFingerprint, domainCheck, checkLeadPage,
   runPreflight, publishCampaign, syncCampaign, reconcileAccountStatuses, propertyAuthorized, customerFeePercent, withoutInstagram, finalizeSettlement,
   type MetaSettings,
 } from './engine.ts';
 import { handleAction } from './actions.ts';
-import { afterTerms, instantFormsState } from '../../../src/lib/metaAds/instantForms.ts';
+import { afterTerms, instantFormsState, isTermsRefusal, leadCheckOf, leadTermsEvidence } from '../../../src/lib/metaAds/instantForms.ts';
 import { readManagedState, setApproved, LifecycleError, assertNotSuspended } from './lifecycle.ts';
 import { monitorCampaign, monitorUser, maybeScanDuplicates, lifecycleEvent, runBriefs, emptyMonitorReport, statusChangeNotice } from './monitor.ts';
 
@@ -124,22 +124,14 @@ Deno.serve(async (req) => {
            are reported per goal (instant_forms_available), never as a broken
            connection. */
         const missingScopes = BASE_SCOPES.filter((s) => !granted.includes(s));
-        /* Leads on Facebook/Instagram: available, reconnect-to-enable, or not
-           offered yet (src/lib/metaAds/instantForms.ts). "Offered" = some
-           connection already holds the permissions, i.e. the Login for
-           Business configuration grants them. */
-        let offeredByLogin = false;
-        if (mode === 'REAL' && !hasScopes(granted, INSTANT_FORM_SCOPES)) {
-          const { count } = await sb.from('meta_connections').select('id', { count: 'exact', head: true }).contains('granted_scopes', INSTANT_FORM_SCOPES);
-          offeredByLogin = (count ?? 0) > 0;
-        }
-        /* The selected Page's Lead Ads Terms, as Meta last reported them
-           (assets_refresh / forms_recheck read leadgen_tos_accepted). */
+        /* Leads on Facebook/Instagram (src/lib/metaAds/instantForms.ts): the
+           permissions this token holds, and the selected Page's last check
+           as Meta answered it (forms_recheck / assets_refresh). */
         const formPage = (assets ?? []).find((a: any) => a.kind === 'PAGE' && a.selected && a.status !== 'UNAVAILABLE');
-        const tos = formPage?.capabilities?.leadgen_tos_accepted;
+        const leadCheck = leadCheckOf(formPage?.capabilities);
         const formsInput = {
-          goalEnabled: settings.goalsEnabled.includes('LEADS_ON_META'), granted, required: INSTANT_FORM_SCOPES, offeredByLogin, mock: mode === 'MOCK',
-          pageSelected: !!formPage, termsAccepted: typeof tos === 'boolean' ? tos : null,
+          goalEnabled: settings.goalsEnabled.includes('LEADS_ON_META'), granted, required: INSTANT_FORM_SCOPES, mock: mode === 'MOCK',
+          pageSelected: !!formPage, check: leadCheck,
         };
         const instantForms = instantFormsState(formsInput);
         const instantFormsNext = afterTerms(formsInput);
@@ -171,7 +163,8 @@ Deno.serve(async (req) => {
               instant_forms: instantForms,
               // What remains once the terms are accepted, and whether Meta reported them accepted.
               instant_forms_next: instantFormsNext,
-              lead_terms: typeof tos === 'boolean' ? tos : null,
+              lead_terms: mode === 'MOCK' ? 'ACCEPTED' : leadTermsEvidence(leadCheck),
+              lead_checked_at: formPage?.capabilities?.leadgen_tos_checked_at ?? null,
               token_expires_at: conn.token_expires_at, last_checked_at: conn.last_checked_at,
               // A named reason only (e.g. TOKEN_ENCRYPTION_NOT_CONFIGURED), never a raw error.
               error_reason: typeof conn.last_error === 'string' && /^[A-Z_]{3,64}$/.test(conn.last_error) ? conn.last_error : null }
@@ -188,6 +181,7 @@ Deno.serve(async (req) => {
             goalsEnabled: settings.goalsEnabled, leadImportEnabled: settings.leadImportEnabled,
             audienceCreationEnabled: settings.audienceCreationEnabled, retargetingEnabled: settings.retargetingEnabled,
             aiAssistEnabled: settings.aiAssistEnabled && llmAvailable(), publishingEnabled: settings.publishingEnabled,
+            aiCreativeEnabled: settings.aiCreativeEnabled && !!Deno.env.get('OPENAI_API_KEY'),
             whatsappEnabled: settings.whatsappEnabled, countries: settings.defaultCountries,
             budgetBilling: settings.budgetBilling,
           },
@@ -293,9 +287,10 @@ Deno.serve(async (req) => {
         const mark = (kind: string, id: string) => { (seen[kind] ??= []).push(id); };
         for (const b of biz as any[]) { await up('BUSINESS', b.id, b.name); mark('BUSINESS', b.id); }
         for (const p of pages as any[]) {
-          // Lead Ads Terms, as Meta reports them for this Page (read with its token; never accepted here).
-          const terms = p.access_token ? await readLeadTerms(p.id, p.access_token) : { accepted: null, reason: 'NO_PAGE_TOKEN' };
-          await up('PAGE', p.id, p.name, null, { leadgen_tos_accepted: terms.accepted, leadgen_tos_reason: terms.reason, leadgen_tos_checked_at: new Date().toISOString() });
+          // Keep what earlier checks stored (lead readiness, webhook subscription); the
+          // selected Page is re-checked below with checkLeadPage.
+          const { data: prev } = await sb.from('meta_assets').select('capabilities').eq('user_id', uid).eq('kind', 'PAGE').eq('external_id', p.id).maybeSingle();
+          await up('PAGE', p.id, p.name, null, prev?.capabilities ?? {});
           mark('PAGE', p.id);
           // Lead forms live on the Page and are read with its token, which is
           // used here and discarded — never stored. Only when Instant Forms'
@@ -354,6 +349,11 @@ Deno.serve(async (req) => {
           await q;
         }
         await sb.from('meta_connections').update({ last_checked_at: new Date().toISOString() }).eq('user_id', uid);
+        // The selected Page's lead readiness, as Meta answers it now.
+        const selPage = await selectedAsset(sb, uid, 'PAGE');
+        if (selPage?.external_id && (seen.PAGE ?? []).includes(selPage.external_id)) {
+          await checkLeadPage(sb, uid, selPage, token, scopeRow?.granted_scopes ?? []).catch(() => undefined);
+        }
         return json({ ok: true, counts: Object.fromEntries(Object.entries(seen).map(([k, v]) => [k, v.length])) });
       }
 
@@ -386,25 +386,17 @@ Deno.serve(async (req) => {
         } catch (e) {
           if (e instanceof MetaApiError && e.normalized.action === 'RECONNECT') return json({ error: 'SESSION_EXPIRED', code: 'SESSION_EXPIRED' }, 401);
         }
-        // 2. The Page's Lead Ads Terms, and 3. whether its forms can be read.
-        let terms: { accepted: boolean | null; reason: string | null } = { accepted: null, reason: 'NO_PAGE_TOKEN' };
-        let formsReadable: boolean | null = null;
-        const pt = await pageToken(token, page.external_id, { sb, userId: uid }).catch(() => null);
-        if (pt) {
-          terms = await readLeadTerms(page.external_id, pt);
-          const { data: conn } = await sb.from('meta_connections').select('granted_scopes').eq('user_id', uid).maybeSingle();
-          if (hasScopes(conn?.granted_scopes, INSTANT_FORM_SCOPES)) {
-            try { await graph(`/${page.external_id}/leadgen_forms?fields=id&limit=1`, { token: pt, attempts: 1 }); formsReadable = true; }
-            catch { formsReadable = false; }
-          }
-        }
-        const { data: row } = await sb.from('meta_assets').select('capabilities').eq('id', page.id).maybeSingle();
-        await sb.from('meta_assets').update({ capabilities: {
-          ...(row?.capabilities ?? {}), leadgen_tos_accepted: terms.accepted, leadgen_tos_reason: terms.reason,
-          leadgen_tos_checked_at: new Date().toISOString(), leadgen_forms_readable: formsReadable,
-        } }).eq('id', page.id);
-        // The builder reads the resulting state from `status`, the one place it is decided.
-        return json({ ok: true, checked: { page: true, permissions: permissionsRead, terms: terms.accepted, termsReason: terms.reason, formsReadable }, pageId: page.external_id });
+        // 2–4. The Page's Lead Ads Terms, its forms, and whether Meta answered at all.
+        const { data: conn } = await sb.from('meta_connections').select('granted_scopes').eq('user_id', uid).maybeSingle();
+        const granted: string[] = conn?.granted_scopes ?? [];
+        const caps = await checkLeadPage(sb, uid, page, token, granted);
+        const check = leadCheckOf(caps);
+        const state = instantFormsState({ goalEnabled: settings.goalsEnabled.includes('LEADS_ON_META'), granted, required: INSTANT_FORM_SCOPES, check, pageSelected: true });
+        // The builder renders this answer at once and reloads `status` (the same function decides both).
+        return json({ ok: true, pageId: page.external_id, state, checked: {
+          page: true, permissions: permissionsRead, terms: leadTermsEvidence(check), termsReason: caps.leadgen_tos_reason ?? null,
+          formsReadable: caps.leadgen_forms_readable ?? null, error: caps.leadgen_check_error ?? null,
+        } });
       }
 
       case 'select_asset': {

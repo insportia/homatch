@@ -10,6 +10,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { money, type MetaCampaignRow, type MetaStatus, type StrategyPreview } from '@/services/metaAds';
 import { parseDailyCents, parseDays } from './steps';
 import { StepShell } from './ui';
+import { Hint } from './FinishKit';
 import { StrategyCard } from './StrategyCard';
 import { FundingCard } from './FundingCard';
 import { LearningCard } from './FinishKit';
@@ -37,6 +38,7 @@ export function BudgetStep({ campaign, status, patch, totals, pricing, strategy 
 
   return (
     <StepShell eyebrow={t('madsb_step_budget')} title={t('madsb_budget_title')} lead={t('madsb_budget_lead')}>
+      <Hint k="mm_c_hint_budget" />
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block">
           <span className="mb-1 block text-sm font-medium text-foreground">{t('mads_budget_daily')}</span>
@@ -55,6 +57,7 @@ export function BudgetStep({ campaign, status, patch, totals, pricing, strategy 
         </label>
         <label className="block">
           <span className="mb-1 block text-sm font-medium text-foreground">{t('mads_budget_days')}</span>
+          <Hint k="mm_c_hint_schedule" className="mb-1" />
           <Input inputMode="numeric" dir="ltr" value={days} aria-invalid={!!daysError}
             onChange={(e) => {
               setDays(e.target.value);

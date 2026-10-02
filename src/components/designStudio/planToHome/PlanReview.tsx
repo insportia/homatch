@@ -92,7 +92,8 @@ export function PlanReview({
 
   const sel = selection;
   const selRoom = sel?.kind === 'room' ? rooms.find((r) => r.id === sel.id) ?? [...doc.rooms, ...doc.balconies].find((r) => r.id === sel.id) : null;
-  const manual = (id: string) => `manual-${id}`;
+  /* A correction by tapping is an answer to the question HOMATCH would have asked ("KIND:elementId"). */
+  const manual = (kind: 'ROOM_TYPE' | 'OPENING_TYPE', id: string) => `${kind}:${id}`;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col lg:flex-row" data-testid="plan-review">
@@ -186,7 +187,7 @@ export function PlanReview({
                   <p className="mt-2 text-[13px] font-medium">{t('p2h_what_room')}</p>
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
                     {KINDS.map((k) => (
-                      <button key={k} type="button" className={chip(selRoom.kind === k)} onClick={() => answer({ questionId: manual(selRoom.id), kind: 'ROOM_TYPE', value: k })}>{t(`ds_room_${k.toLowerCase()}`)}</button>
+                      <button key={k} type="button" className={chip(selRoom.kind === k)} onClick={() => answer({ questionId: manual('ROOM_TYPE', selRoom.id), kind: 'ROOM_TYPE', value: k })}>{t(`ds_room_${k.toLowerCase()}`)}</button>
                     ))}
                   </div>
                 </>
@@ -197,7 +198,7 @@ export function PlanReview({
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {(['DOOR', 'WINDOW', 'OPENING', 'WALL'] as const).map((o) => (
                       <button key={o} type="button" className={chip((sel.kind === 'door' && o === 'DOOR') || (sel.kind === 'window' && o === 'WINDOW'))}
-                        onClick={() => { answer({ questionId: manual(sel.id), kind: 'OPENING_TYPE', value: o }); if (o === 'WALL') setSelection(null); }}>
+                        onClick={() => { answer({ questionId: manual('OPENING_TYPE', sel.id), kind: 'OPENING_TYPE', value: o }); if (o === 'WALL') setSelection(null); }}>
                         {t(`p2h_opening_${o.toLowerCase()}`)}
                       </button>
                     ))}

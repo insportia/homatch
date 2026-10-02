@@ -867,7 +867,10 @@ function sizeFromPieces(recon: Reconstruction, f: FramedPicture, al: FrameAlignm
   if (!est) return { factor: 1, evidence: { source: 'READER', factor: 1, estimate: null, pieces: [], spread: null } };
   const n = est.pieces.length;
   const pieces = (n / (n + 2)) * Math.max(0, 1 - est.spread / SCALE_MAX_SPREAD);
-  const reader = recon.scaleConfidence;
+  // The reader's scaleConfidence is its own impression, read off the same beds and worktops; a measured
+  // consensus of four or more pieces that agree within 8% is evidence, and it replaces that impression.
+  const strong = n >= 4 && est.spread <= 0.08;
+  const reader = strong ? 0 : recon.scaleConfidence;
   const combined = pieces + reader > 0 ? Math.exp((pieces * Math.log(est.estimate)) / (pieces + reader)) : 1;
   const factor = Math.round(Math.max(0.5, Math.min(2, combined)) * 1000) / 1000;
   const apply = Math.abs(factor - 1) > RESCALE_AT;

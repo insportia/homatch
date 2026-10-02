@@ -20,6 +20,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import zlib from 'node:zlib';
 import {
   BASE, OUT, check as report, chromium, createStore, findChrome, openContext, overflowX, qaCatalogAssets, qaCatalogMaterials, startServer, wire,
 } from './designStudio.qa.mjs';
@@ -31,14 +32,24 @@ const ROOT = path.resolve(import.meta.dirname, '../..');
 const FIXTURE = path.join(ROOT, 'tests/fixtures/design-studio');
 const GOLDEN_JPG = path.join(FIXTURE, 'golden-floorplan.jpg');
 
+/** The golden plan's grey copy (the reader's own test fixture). */
+function loadPgm(file) {
+  const buf = zlib.gunzipSync(readFileSync(file));
+  const m = buf.subarray(0, 64).toString('latin1').match(/^P5\s+(\d+)\s+(\d+)\s+(\d+)\s/);
+  const width = Number(m[1]); const height = Number(m[2]);
+  return { width, height, data: new Uint8Array(buf.buffer, buf.byteOffset + m[0].length, width * height) };
+}
+
 async function goldenInterpretation(key) {
   const recorded = JSON.parse(readFileSync(path.join(FIXTURE, 'golden-floorplan.read-v1.json'), 'utf8'));
   const doc = { ...recorded.doc, sourceAssetId: key };
-  const read = await import('../../supabase/functions/_shared/designStudio/planRead/understand.ts');
-  const { loadGray } = await import('../../supabase/functions/_shared/designStudio/planRead/__tests__/grayFixture.mjs').catch(() => ({ loadGray: null }));
-  const gray = loadGray ? loadGray() : null;
-  const out = read.understand(doc, recorded.dimensionStrings, gray);
-  return { doc: out.doc, rawDoc: doc, dimensionStrings: recorded.dimensionStrings, understanding: out.understanding, readVersion: 'ds-read-2', timings: { modelMs: 0, fuseMs: 0 } };
+  const { understand } = await import('../../supabase/functions/_shared/designStudio/planRead/understand.ts');
+  const gray = loadPgm(path.join(FIXTURE, 'golden-floorplan.pgm.gz'));
+  const out = understand({ doc, dimensionStrings: recorded.dimensionStrings, gray });
+  return {
+    doc: out.doc, rawDoc: out.rawDoc, dimensionStrings: out.dimensionStrings, understanding: out.understanding,
+    fusion: out.fusion, readVersion: 'ds-read-2', timings: { modelMs: 0, fuseMs: Math.round(out.timings.fuseMs) },
+  };
 }
 
 function wireFactory(page, store) {

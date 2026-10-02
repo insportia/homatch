@@ -216,7 +216,9 @@ function sourceScan() {
       const p = join(dir, e.name);
       const rel = relative(ROOT, p);
       if (e.isDirectory()) { if (!SCAN_SKIP_DIR.has(e.name) && rel !== 'graphify-viewer') visit(p); continue; }
-      if (!SCAN_EXT.has(extname(e.name)) || /(^|\/)\.env|lock\.(json|yaml)$|translations\.ts$/.test(rel) || statSync(p).size > 1_000_000) continue;
+      /* same exclusions as the graph (.graphifyignore: vendored/minified), and
+         never the graph tooling's own pattern lists */
+      if (!SCAN_EXT.has(extname(e.name)) || /(^|\/)\.env|lock\.(json|yaml)$|translations\.ts$|^official-worker\/extensions\/[^/]+\/src\/|\.min\.js$|^scripts\/claude\/graphify\.mjs$/.test(rel) || statSync(p).size > 1_000_000) continue;
       const text = readFileSync(p, 'utf8');
       for (const [k, re] of Object.entries(DEP_TERMS)) if (re.test(text)) out[k].push(rel);
     }

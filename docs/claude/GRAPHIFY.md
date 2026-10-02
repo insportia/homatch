@@ -157,10 +157,20 @@ push to main ─► Vercel (viewer project) build ─► node graphify-viewer/bu
 - **Presets**: All HOMATCH (community map), Design Studio, Meta Ads,
   Discovery / Campaigns, Supabase / DB, Infrastructure, Runpod / Blender —
   the `VIEWS` patterns in `scripts/claude/graphify.mjs`, i.e. filters over
-  the one real graph. Traces (Design Studio upload → walkthrough, Meta Ads
-  builder → insights, Meta Leads form → readiness) and a dependency source
-  scan (SAM, TRELLIS, HF_TOKEN, Runpod, Blender, generated assets: paths
-  only).
+  the one real graph. Traces, each stage a real node of the revision:
+  - Design Studio (the #48 Blender scene factory): upload → reconstruction →
+    compiled SceneBuildSpec → `runEngine` → `handleFactory` (Runpod
+    dispatch) → worker `handle()` → `run_blender()` → `export_glb()` →
+    `handleQa()` → signed R2 PUT → `attachFactoryModels()` →
+    SceneController → walkthrough. The HTTP / Runpod / Blender-subprocess
+    hops read NO_STATIC_PATH by design: verify those in source.
+  - Meta Ads: builder → state → targeting → creative → review →
+    meta-ads-api → OAuth → Graph API → publish → insights.
+  - Meta Leads (#49): form → Page → permissions → Instant Forms state →
+    Lead Ads Terms (`LeadTermsFlow` → `recheckLeadForms` → `readLeadTerms`)
+    → domain guard → readiness → lead ingest.
+  Plus a dependency source scan (SAM, TRELLIS, HF_TOKEN, Runpod, Blender,
+  generated assets: paths only, same exclusions as the graph).
 - **Manual refresh**: Vercel → homatch-architecture → Deployments → latest
   production → Redeploy (or push to main). The build cache carries the
   history; "Redeploy without cache" starts history afresh.
@@ -181,7 +191,9 @@ node scripts/claude/graphify.mjs digest         # → "<sha> <digest>"
 ```
 
 The digest equals the viewer's History → Digest for that commit (verified:
-two clean builds of one commit give one digest). Then `graphify query /
+clean builds of one commit give one digest). The wrapper always builds from
+scratch: an incremental extract over an old `graphify-out/` was seen to
+drift (same commit, 18 nodes fewer). Then `graphify query /
 path / explain` as above. Claude does **not** read the hosted viewer: it
 rebuilds the same graph from the same commit and proves equality by digest.
 

@@ -29,7 +29,7 @@
  * Local only. Reads graph.json; writes under graphify-out/ (self-ignored). Edge
  * confidence (EXTRACTED / INFERRED) is preserved exactly as Graphify wrote it.
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
@@ -248,7 +248,13 @@ function selfIgnore() {
   writeFileSync(join(ROOT, 'graphify-out/.gitignore'), '# local Graphify output: never committed (docs/claude/GRAPHIFY.md)\n*\n');
 }
 
+/* Always from scratch: an incremental extract over a previous graphify-out/
+   was seen to drift (same commit, 18 nodes fewer), and the online viewer —
+   which always builds clean — must describe the same graph Claude queries.
+   Only graphify-out/.gitignore survives. */
 function build() {
+  const out = join(ROOT, 'graphify-out');
+  for (const e of existsSync(out) ? readdirSync(out) : []) if (e !== '.gitignore') rmSync(join(out, e), { recursive: true, force: true });
   sh(['extract', '.', '--code-only']);
   sh(['cluster-only', '.']);
   sh(['export', 'callflow-html', '.', '--output', join(ROOT, 'graphify-out/callflow.html')]);

@@ -695,5 +695,10 @@ Phase 2 (Universal Discovery) is blocked until this is live and proven.
   Vercel connector cannot create projects (403). Owner steps in GRAPHIFY.md
   → "Owner setup". Until then: NOT DEPLOYED; auto-refresh IMPLEMENTED, NOT
   PROVEN; access guard workflow reports NOT_DEPLOYED.
+- Graph of the merged architecture (main 9f4b1777 = #48 + #49, 2026-10-02):
+  22,412 nodes; Design Studio preset includes the Runpod worker and the
+  headless-Blender scene factory (infra/design-studio-gpu-worker); the
+  Design Studio trace resolves all 13 factory stages; the Meta Leads trace
+  includes #49's Lead Ads Terms flow and domain guard.
 - Not a HOMATCH runtime dependency; merging #47 triggers only the routine
   customer Vercel rebuild of identical app code.

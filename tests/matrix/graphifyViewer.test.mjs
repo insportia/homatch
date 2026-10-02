@@ -131,3 +131,23 @@ test('freshness: CURRENT only when the live build is this revision or its ancest
   assert.equal((await freshness(st, null)).verdict, 'UNKNOWN');
   assert.equal((await freshness({ ...st, state: 'UPDATE_FAILED' }, "'homatch-aaaaaaaa'")).verdict, 'UPDATE_FAILED');
 });
+
+test('a stage may name its file; external modules never couple two stages', () => {
+  const g = {
+    nodes: [
+      { id: 'h1', label: 'handle()', source_file: 'src/other.ts' },
+      { id: 'h2', label: 'handle()', source_file: 'infra/w/handler.py' },
+      { id: 'x', label: 'x()', source_file: 'infra/w/x.py' },
+      { id: 'y', label: 'y()', source_file: 'infra/w/y.py' },
+      { id: 'json', label: 'json' },
+    ],
+    links: [
+      { source: 'h1', target: 'x', relation: 'calls', confidence: 'EXTRACTED' },
+      { source: 'x', target: 'json', relation: 'imports', confidence: 'EXTRACTED' },
+      { source: 'y', target: 'json', relation: 'imports', confidence: 'EXTRACTED' },
+    ],
+  };
+  const t = trace(g, [['Worker', /^handle\(\)$/, /handler\.py$/], ['X', /^x\(\)$/]]);
+  assert.equal(t.stages[0].node.at.startsWith('infra/w/handler.py'), true, 'the file decides between two handle()');
+  assert.deepEqual(trace(g, [['X', /^x\(\)$/], ['Y', /^y\(\)$/]]).links.map((l) => l.kind), ['NO_STATIC_PATH'], 'shared `json` import is not coupling');
+});

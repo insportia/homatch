@@ -105,7 +105,7 @@
     $('open').href = file;
     if (!has(file)) {
       frame.hidden = true; frame.removeAttribute('src'); panel.hidden = false;
-      panel.innerHTML = `<div class="empty"><h2>${esc(v.label)}</h2><p>This revision has no ${mode === 'callflow' ? 'call-flow ' : ''}graph for this preset${s && !s.nodes ? ' — no source file in it matches the preset' : ''}.</p>${v.id === 'runpod-blender' ? '<p>The Runpod / TRELLIS / SAM / Blender pipeline is not on this revision; see <a href="#traces">Traces → dependency source scan</a> for every file that still mentions them.</p>' : ''}</div>`;
+      panel.innerHTML = `<div class="empty"><h2>${esc(v.label)}</h2><p>This revision has no ${mode === 'callflow' ? 'call-flow ' : ''}graph for this preset${s && !s.nodes ? ' — no source file in it matches the preset' : ''}.</p>${v.id === 'runpod-blender' ? '<p>No source file on this revision matches the Runpod / Blender preset; see <a href="#traces">Traces → dependency source scan</a> for every file that mentions Runpod, Blender, SAM, TRELLIS or HF_TOKEN.</p>' : ''}</div>`;
       return;
     }
     panel.hidden = true; frame.hidden = false;

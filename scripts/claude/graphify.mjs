@@ -68,25 +68,32 @@ export const VIEWS = {
     /^supabase\/functions\/_shared\/(objectStore|storage[A-Za-z]*|serviceCaller|providers?|provider_types|providerCost|retiredProviders)\.ts$/,
     /^supabase\/functions\/_shared\/storage\//, /^supabase\/functions\/(system-health|provider-health-check|storage-[^/]+|spend-cap-check)\//,
   ],
-  /* Whatever the revision really holds. On main today that is the BlendKit
-     catalogue provider only; the Runpod / TRELLIS / SAM / Blender pipeline
-     appears here when (and only when) it lands on the graphed branch. */
+  /* Whatever the revision really holds: since #48 the Runpod worker and the
+     headless-Blender scene factory (infra/design-studio-gpu-worker), plus the
+     BlendKit catalogue provider. A path filter, so SAM/TRELLIS code appears
+     here only if a revision actually contains it. */
   'runpod-blender': [/(runpod|blender|blendkit|trellis|(^|[/_-])sam2?([/_.-]|$)|segmenter|gpu-worker)/i],
 };
 
 /* Stage → the node that stands for it. A stage with no match is reported as
    absent from this revision, never guessed. */
 export const TRACES = {
+  /* The merged Blender scene factory (#48): browser compiles a SceneBuildSpec,
+     the edge dispatches one Runpod job per pass, the worker drives headless
+     Blender, outputs go to R2 through signed PUTs, QA compares the render
+     with the source, and the factory models join the canonical scene. */
   'design-studio': [
     ['Upload', /^uploadReference\(\)$/],
     ['AI reconstruction', /^handleReconstruct\(\)$/],
-    ['SceneBuildSpec', /SceneBuildSpec/],
-    ['Runpod', /runpod/i],
-    ['Blender', /^(blender|Blender)/],
-    ['Visual QA', /visual_?qa/i],
-    ['GLB (model service)', /^handleModel\(\)$|^handleCatalog\(\)$/],
-    ['R2', /^putObject\(\)$/],
-    ['Canonical scene', /^normalizeDesignState\(\)$/],
+    ['SceneBuildSpec (compile)', /^compileSceneSpec\(\)$/],
+    ['Factory orchestration', /^runEngine\(\)$/, /designStudio\/hybrid\/orchestrate\.ts$/],
+    ['Factory edge (Runpod dispatch)', /^handleFactory\(\)$/, /design-studio-reconstruct\/factory\.ts$/],
+    ['Runpod worker', /^handle\(\)$/, /gpu-worker\/worker\/handler\.py$/],
+    ['Blender', /^run_blender\(\)$/, /gpu-worker\/worker\/pipeline\.py$/],
+    ['GLB export', /^export_glb\(\)$/, /gpu-worker\/worker\/factory\/build\.py$/],
+    ['Visual QA', /^handleQa\(\)$/, /design-studio-reconstruct\/factory\.ts$/],
+    ['R2 (signed PUT)', /^presign\(\)$/, /_shared\/storage\/sigv4\.ts$/],
+    ['Canonical scene', /^attachFactoryModels\(\)$/],
     ['SceneController', /^SceneController$/],
     ['Walkthrough', /^WalkthroughOverlay\(\)$/],
   ],
@@ -107,7 +114,10 @@ export const TRACES = {
     ['Page / destination', /^DestinationStep\(\)$/],
     ['Permissions', /^missingInstantFormScopes\(\)$/],
     ['Instant Forms state', /^instantFormsState\(\)$|^InstantFormsState$/],
-    ['Meta Terms', /^acceptAudienceTerms\(\)$/],
+    ['Meta Lead Ads Terms (UI)', /^LeadTermsFlow\(\)$/],
+    ['Terms re-check (Meta-confirmed)', /^recheckLeadForms\(\)$/],
+    ['Terms read from Meta', /^readLeadTerms\(\)$/],
+    ['Domain guard', /^classifyDomainScope\(\)$/],
     ['Readiness', /^runPreflight\(\)$/],
     ['Lead ingest (webhook)', /^ingestLead\(\)$/],
   ],
@@ -122,7 +132,8 @@ const TEST_FILE = /(^|\/)(__tests__|tests)\/|\.(test|spec|qa)\.[cm]?[jt]sx?$|^sr
    contains b). Every hop keeps Graphify's relation and confidence. */
 export function shortestPath(graph, from, to, { maxDepth = 6, directed = true } = {}) {
   const byId = new Map(graph.nodes.map((n) => [n.id, n]));
-  const skip = (id) => HUB.test(byId.get(id)?.label ?? '') || TEST_FILE.test(byId.get(id)?.source_file ?? '');
+  /* external modules (stdlib, npm) have no source file: shared imports are not coupling */
+  const skip = (id) => HUB.test(byId.get(id)?.label ?? '') || TEST_FILE.test(byId.get(id)?.source_file ?? '') || !byId.get(id)?.source_file;
   const adj = new Map();
   for (const e of graph.links) {
     const dirs = directed ? [[e.source, e.target, '→']] : [[e.source, e.target, '→'], [e.target, e.source, '←']];
@@ -158,10 +169,10 @@ export function shortestPath(graph, from, to, { maxDepth = 6, directed = true } 
 export function trace(graph, stages) {
   const degree = new Map();
   for (const e of graph.links) for (const x of [e.source, e.target]) degree.set(x, (degree.get(x) ?? 0) + 1);
-  const pick = (re) => graph.nodes.filter((n) => re.test(n.label ?? '') && !TEST_FILE.test(n.source_file ?? ''))
+  const pick = (re, fileRe) => graph.nodes.filter((n) => re.test(n.label ?? '') && !TEST_FILE.test(n.source_file ?? '') && (!fileRe || fileRe.test(n.source_file ?? '')))
     .sort((a, b) => (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0))[0];
-  const found = stages.map(([stage, re]) => {
-    const n = pick(re);
+  const found = stages.map(([stage, re, fileRe]) => {
+    const n = pick(re, fileRe);
     return { stage, node: n ? { id: n.id, label: n.label, at: `${n.source_file}${n.source_location ? `:${n.source_location}` : ''}`, community: n.community_name ?? null } : null };
   });
   const links = [];

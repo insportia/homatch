@@ -102,3 +102,18 @@ Object.assign(PHASE2_DISCOVERY_STRINGS, {
   p2d_admin_col_sources_n: A('Sources', 'წყაროები', 'Источники', 'Kaynaklar', 'المصادر', 'מקורות'),
   p2d_admin_col_price: A('Price', 'ფასი', 'Цена', 'Fiyat', 'السعر', 'מחיר'),
 });
+
+// Find Property: where a result came from — one click to the original source.
+Object.assign(PHASE2_DISCOVERY_STRINGS, {
+  p2d_attr_open_post: ['Open original post', 'ორიგინალი პოსტის გახსნა', 'Открыть исходный пост', 'Orijinal gönderiyi aç', 'فتح المنشور الأصلي', 'פתיחת הפוסט המקורי'],
+  p2d_attr_open_listing: ['Open original listing', 'ორიგინალი განცხადების გახსნა', 'Открыть исходное объявление', 'Orijinal ilanı aç', 'فتح الإعلان الأصلي', 'פתיחת המודעה המקורית'],
+  p2d_attr_posted_by: ['Posted by', 'ავტორი', 'Автор', 'Paylaşan', 'نشره', 'פורסם על ידי'],
+  p2d_attr_source: ['Source', 'წყარო', 'Источник', 'Kaynak', 'المصدر', 'מקור'],
+  p2d_attr_thread: ['Thread', 'თემა', 'Тема', 'Konu', 'الموضوع', 'שרשור'],
+  p2d_attr_original_text: ['Original post', 'ორიგინალი ტექსტი', 'Исходный текст', 'Orijinal metin', 'النص الأصلي', 'הטקסט המקורי'],
+  p2d_attr_show_more: ['Show full text', 'სრული ტექსტის ჩვენება', 'Показать полностью', 'Tamamını göster', 'عرض النص كاملًا', 'הצגת הטקסט המלא'],
+  p2d_attr_show_less: ['Show less', 'ნაკლების ჩვენება', 'Свернуть', 'Daha az göster', 'عرض أقل', 'הצגה מקוצרת'],
+  p2d_attr_platform_telegram: ['Telegram', 'Telegram', 'Telegram', 'Telegram', 'تيليغرام', 'טלגרם'],
+  p2d_attr_platform_forum: ['Forum', 'ფორუმი', 'Форум', 'Forum', 'منتدى', 'פורום'],
+  p2d_attr_platform_portal: ['Property site', 'უძრავი ქონების საიტი', 'Сайт недвижимости', 'Emlak sitesi', 'موقع عقارات', 'אתר נדל״ן'],
+});

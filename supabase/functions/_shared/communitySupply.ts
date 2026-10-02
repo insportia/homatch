@@ -15,6 +15,7 @@ import {
   COMMUNITY_LISTING_PARSER_VERSION, extractCommunityListing,
 } from '../../../src/research-core/discovery/community-listing.ts';
 import { contentHash } from '../../../src/research-core/normalize/hash.ts';
+import { safeWebUrl } from '../../../src/research-core/discovery/source-link.ts';
 
 /*
  * A repost of the same card shuffles its lines and its hashtags, so the raw
@@ -45,6 +46,11 @@ export interface CommunitySignal {
 
 export async function recordCommunitySupply(db: any, signal: CommunitySignal): Promise<string | null> {
   if (!signal.source_id || !signal.external_id) return null;
+  /* The exact post is the observation's canonical URL. A post with no real
+     http(s) link is not offered as a listing: a result must open its source,
+     and a placeholder like `signal:<id>` opens nothing. */
+  const permalink = safeWebUrl(signal.source_url);
+  if (!permalink) return null;
   const source = Array.isArray(signal.source) ? signal.source[0] : signal.source;
   const listing = extractCommunityListing(String(signal.original_text ?? ''), { sourceCity: source?.city ?? null });
   if (!listing) return null;
@@ -55,7 +61,7 @@ export async function recordCommunitySupply(db: any, signal: CommunitySignal): P
     source_id: signal.source_id,
     adapter_id: `${platform}-community`,
     external_id: String(signal.external_id),
-    canonical_url: signal.source_url || `signal:${signal.id}`,
+    canonical_url: permalink,
     transaction: listing.transaction,
     property_type: listing.propertyType,
     country_code: String(source?.country_code ?? 'GE').toUpperCase(),

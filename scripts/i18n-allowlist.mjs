@@ -11,6 +11,10 @@
 // real translation). Add a key here only when that's a deliberate decision,
 // never to silence a real missing translation.
 export const ALLOW_DUPLICATE_KEYS = new Set([
+  // Find Property attribution: Telegram is the platform's own name; "Forum" is the
+  // Georgian-board word in Turkish/English alike.
+  'p2d_attr_platform_telegram',
+  'p2d_attr_platform_forum',
   // HOMATCH Intelligence is the product's own name, the same in every language.
   'mm_i_title',
   // Meta placements and the product name, as Meta itself labels them in every locale.

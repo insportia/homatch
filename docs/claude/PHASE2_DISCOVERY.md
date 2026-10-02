@@ -121,6 +121,16 @@ Hardening (D1–D2, after the 2026-10-02 reconciliation):
 | D1 ss.ge id | a run plans the ids the portal runtime executes (`ss-ge`), not the `PORTAL_SOURCES` labels (`home-ss-ge`) | `research-core/discovery/portal-selection.ts`, `find-property-run` |
 | D2 billing | owner rule: 0 delivered → reservation released, charge 0; otherwise unit price (plan the run started under) × delivered properties, capped at the reservation; duplicates, INVALID/REMOVED, incompatible and already-delivered properties never billed; settled once per run; a settle that errors releases | `_shared/findPropertySettlement.ts`, `_shared/discoveryRun.ts` (shared `billing.ts` untouched) |
 
+Provenance (P1–P3): every Find Property external result carries `attribution`
+— exact post / listing permalink, channel / board / site, forum thread, author
+name and profile, the post as written (public contacts kept) — resolved in two
+batched reads (`raw_signals` by `field_origins.rawSignalId`, then
+`source_registry`) in `find-property` (`research-core/discovery/attribution.ts`).
+forum.ge stores the exact post (`findpost`) as `source_url`, the topic as
+`parent_url`, the `showuser` profile as `author_public_url` (forward; re-reads
+refresh old rows). Only real http(s) links are stored or opened
+(`source-link.ts`, `src/lib/safeExternalUrl.ts`); no `signal:` placeholder.
+
 Not built (named, not hidden): browser rendering on the worker
 (WORKER_BROWSER route), a canonical DEMAND entity with cross-source demand
 dedup, one scorer for both directions, revalidation schedule for supply,

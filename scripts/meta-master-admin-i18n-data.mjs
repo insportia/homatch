@@ -13,7 +13,7 @@ export const META_MASTER_ADMIN_STRINGS = {
   mm_a_released: ['fee released', 'გათავისუფლებული საკომისიო', 'комиссия возвращена', 'serbest bırakılan ücret', 'رسوم محرَّرة', 'עמלה ששוחררה'],
   mm_a_refresh: ['Refresh', 'განახლება', 'Обновить', 'Yenile', 'تحديث', 'רענון'],
   mm_a_load_failed: ['Could not load this section.', 'ამ განყოფილების ჩატვირთვა ვერ მოხერხდა.', 'Не удалось загрузить этот раздел.', 'Bu bölüm yüklenemedi.', 'تعذّر تحميل هذا القسم.', 'לא ניתן לטעון את החלק הזה.'],
-  mm_a_retry: ['Try again', 'ხელახლა ცდა', 'Повторить', 'Tekrar dene', 'أعد المحاولة', 'נסו שוב'],
+  mm_a_retry: ['Try again', 'ხელახლა სცადეთ', 'Повторить', 'Tekrar dene', 'أعد المحاولة', 'נסו שוב'],
   mm_a_user: ['User', 'მომხმარებელი', 'Пользователь', 'Kullanıcı', 'المستخدم', 'משתמש'],
   mm_a_campaign: ['Campaign', 'კამპანია', 'Кампания', 'Kampanya', 'الحملة', 'קמפיין'],
   mm_a_account: ['Ad account', 'სარეკლამო ანგარიში', 'Рекламный аккаунт', 'Reklam hesabı', 'الحساب الإعلاني', 'חשבון מודעות'],

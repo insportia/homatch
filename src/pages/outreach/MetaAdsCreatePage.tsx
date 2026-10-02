@@ -23,7 +23,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { PageHero } from '@/components/customer/surface';
-import { Button } from '@/components/ui/button';
+import { Button } from '@/components/metaAds/builder/MetaButton';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -40,7 +40,9 @@ import {
 import { FORMS_ACTIONABLE, formsStateOf } from '@/components/metaAds/builder/instantFormsCopy';
 import { useMetaDraft } from '@/components/metaAds/builder/useMetaDraft';
 import { ALL_GOALS, STEPS, selectedAsset, stepGap, type StepKey } from '@/components/metaAds/builder/steps';
-import { ChoiceCard, SaveIndicator, StepShell, Stepper } from '@/components/metaAds/builder/ui';
+import { ChoiceCard, SaveIndicator, StepShell, Stepper, SummaryRow } from '@/components/metaAds/builder/ui';
+import { useConnectReturn } from '@/components/metaAds/builder/useMetaConnect';
+import { ConnectReturnNotice } from '@/components/metaAds/builder/ConnectReturnNotice';
 import { AccountPanel } from '@/components/metaAds/builder/AccountPanel';
 import { DestinationStep } from '@/components/metaAds/builder/DestinationStep';
 import { BudgetStep, FinancialSummary } from '@/components/metaAds/builder/BudgetStep';
@@ -110,6 +112,23 @@ export default function MetaAdsCreatePage() {
   }, [flush, setParams, campaign, step, lang, setCampaign]);
 
   const reloadStatus = useCallback(async () => { setStatus(await getMetaStatus()); }, []);
+  const navRef = useRef<HTMLDivElement>(null);
+  const [navH, setNavH] = useState(0);
+  useEffect(() => {
+    const el = navRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => setNavH(Math.ceil(el.getBoundingClientRect().height)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [!!campaign]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* Back from Meta's login: ONE shared refresh, then the step the owner came from. */
+  const connectReturn = useConnectReturn(reloadStatus);
+  const fromStep = params.get('from');
+  useEffect(() => {
+    if (connectReturn.result === 'ok' && !connectReturn.refreshing && fromStep && (STEPS as readonly string[]).includes(fromStep)) {
+      void go(fromStep as StepKey);
+    }
+  }, [connectReturn.result, connectReturn.refreshing]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── BOOT: everything independent in parallel, one draft, no duplicates ── */
   useEffect(() => {
@@ -256,7 +275,8 @@ export default function MetaAdsCreatePage() {
     : !preflight ? 'mm_b_launch_needs_check'
       : preflight.status === 'MANUAL_REVIEW' ? 'mm_b_launch_in_review'
         : preflight.status !== 'READY' ? 'mm_b_launch_needs_fixes' : null;
-  const returnTo = `/outreach/meta/create?draft=${campaign.id}&step=account`;
+  /* Where Meta's login returns: this draft, this step (and the step that sent the owner here). */
+  const returnTo = `/outreach/meta/create?draft=${campaign.id}&step=account${fromStep && (STEPS as readonly string[]).includes(fromStep) ? `&from=${fromStep}` : ''}`;
   /* The HOMATCH name: a suggestion from what is advertised, the goal and the
      month; an edit is saved as is (not part of the check's fingerprint). */
   const advertised = properties.find((p) => (p.homatch_id ? String(p.homatch_id) : p.id) === campaign.property_id)?.title ?? null;
@@ -319,7 +339,8 @@ export default function MetaAdsCreatePage() {
       {/* The builder's own bar replaces the app's bottom nav on phones (see
           data-madsb-nav), so the page only reserves the bar's height plus the
           safe area — the last control always scrolls clear of it. */}
-      <div className="mx-auto w-full max-w-[86rem] px-4 py-4 pb-[calc(6.5rem+env(safe-area-inset-bottom,0px))] md:pb-[calc(6rem+env(safe-area-inset-bottom,0px))] sm:px-6 lg:px-8">
+      <div style={{ '--mm-nav-h': navH ? `${navH}px` : undefined } as React.CSSProperties}
+        className="mx-auto w-full max-w-[86rem] px-4 py-4 pb-[calc(var(--mm-nav-h,6.5rem)+1rem)] sm:px-6 lg:px-8">
         {/* On a phone the hero is shown once, on the first step; later steps start with the work. */}
         <div className={cn(step !== 'account' && 'hidden md:block')}>
           <PageHero compact eyebrow="Meta Ads" title={t('mads_create_title')} subtitle={t('mm_b_create_sub')} />
@@ -335,6 +356,9 @@ export default function MetaAdsCreatePage() {
           </aside>
 
           <main className="min-w-0 space-y-4">
+            {connectReturn.result && (
+              <ConnectReturnNotice result={connectReturn.result} refreshing={connectReturn.refreshing} />
+            )}
             {/* The HOMATCH check, explained before the disabled button is reached. */}
             {/* Once, at the start; the review step carries the check itself. */}
             {step === 'account' && preflight?.status !== 'READY' && (
@@ -439,8 +463,10 @@ export default function MetaAdsCreatePage() {
       {/* Back / Continue — always both, on every step. */}
       {/* On phones it sits over the app's bottom nav (z-50) instead of stacking
           above it — one bar, never two fighting; Exit/Back leaves the flow. */}
-      <div data-madsb-nav="" className="fixed inset-x-0 bottom-0 z-[60] md:z-30 lg:start-[18rem] border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/90">
-        <div className="mx-auto flex w-full max-w-[86rem] flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-4 pt-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom,0px))] sm:flex-nowrap sm:px-6 lg:px-8">
+      {/* Its real height (hint line, two-line labels, the safe area) is measured,
+          and the page reserves exactly that — content never hides under it. */}
+      <div ref={navRef} data-madsb-nav="" className="fixed inset-x-0 bottom-0 z-[60] md:z-30 lg:start-[18rem] border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/90">
+        <div className="mx-auto flex w-full max-w-[86rem] flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))] sm:flex-nowrap sm:px-6 lg:px-8">
           <Button variant="outline" onClick={() => void (idx > 0 ? go(STEPS[idx - 1]) : navigate('/outreach/meta'))} className="min-h-11 shrink-0 gap-1.5">
             <ArrowLeft className="h-4 w-4 rtl:rotate-180" />{t(idx > 0 ? 'madsb_back' : 'madsb_exit')}
           </Button>
@@ -481,17 +507,17 @@ export default function MetaAdsCreatePage() {
               [t('mads_budget_daily'), money(Number(campaign.daily_budget_cents ?? 0))],
               [t('mads_budget_days'), String(campaign.duration_days ?? 0)],
             ].map(([k, v]) => (
-              <div key={k} className="flex justify-between gap-3"><dt className="text-muted-foreground">{k}</dt><dd className="min-w-0 truncate text-end font-medium" dir="auto">{v}</dd></div>
+              <SummaryRow key={k} label={k} value={v} editLabel={t('madsb_edit')} dense />
             ))}
           </dl>
           {preview?.totals && (
             <dl className="space-y-1 rounded-xl border border-border p-3 text-sm tabular-nums">
-              <div className="flex justify-between"><dt>{t('madsb_money_media')}</dt><dd dir="ltr">{money(preview.totals.mediaCents)}</dd></div>
-              <div className="flex justify-between"><dt>{t('madsb_money_fee', { pct: String(preview.totals.feePercent) })}</dt><dd dir="ltr">{money(preview.totals.feeCents)}</dd></div>
-              <div className="flex justify-between text-muted-foreground"><dt>{t('madsb_money_total_max')}</dt><dd dir="ltr">{money(preview.totals.totalCents)}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="min-w-0">{t('madsb_money_media')}</dt><dd className="shrink-0 whitespace-nowrap" dir="ltr">{money(preview.totals.mediaCents)}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="min-w-0">{t('madsb_money_fee', { pct: String(preview.totals.feePercent) })}</dt><dd className="shrink-0 whitespace-nowrap" dir="ltr">{money(preview.totals.feeCents)}</dd></div>
+              <div className="flex justify-between gap-3 text-muted-foreground"><dt className="min-w-0">{t('madsb_money_total_max')}</dt><dd className="shrink-0 whitespace-nowrap" dir="ltr">{money(preview.totals.totalCents)}</dd></div>
               {/* What HOMATCH itself takes from the balance now. With the customer's own
                   ad account that is the fee alone -- Meta bills the budget directly. */}
-              <div className="flex justify-between border-t border-border pt-1 text-base font-bold"><dt>{t('madsb_charged_now')}</dt><dd dir="ltr" data-charged-now="">{money(status?.settings.budgetBilling === 'HOMATCH_WALLET' ? preview.totals.totalCents : preview.totals.feeCents)}</dd></div>
+              <div className="flex justify-between gap-3 border-t border-border pt-1 text-base font-bold"><dt className="min-w-0">{t('madsb_charged_now')}</dt><dd className="shrink-0 whitespace-nowrap" dir="ltr" data-charged-now="">{money(status?.settings.budgetBilling === 'HOMATCH_WALLET' ? preview.totals.totalCents : preview.totals.feeCents)}</dd></div>
               <div className="flex justify-between text-muted-foreground"><dt>{t('mads_confirm_balance')}</dt><dd dir="ltr">{money(status?.wallet?.available_cents ?? 0)}</dd></div>
             </dl>
           )}

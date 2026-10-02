@@ -1,6 +1,6 @@
 // Small presentational pieces the builder steps share.
 import React from 'react';
-import { Check, AlertTriangle, XCircle, Loader2, CloudOff, CircleDot } from 'lucide-react';
+import { Check, AlertTriangle, XCircle, Loader2, CloudOff, CircleDot, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { StepKey } from './steps';
@@ -120,5 +120,45 @@ export function Stepper({ steps, current, gaps, onGo }: {
         })}
       </ol>
     </nav>
+  );
+}
+
+/* A short token joined by "/" or "-" ("Facebook/Instagram-ზე", "Wi-Fi") is
+   one word to a reader: it may move to the next line but is never split.
+   Longer tokens (URLs, codes) keep their normal break opportunities. */
+const JOINED = /(\S*[/\u2010-\u2014-]\S*)/u;
+export function keepWordsWhole(text: string): React.ReactNode {
+  const parts = text.split(JOINED);
+  if (parts.length === 1) return text;
+  return parts.map((p, i) => (i % 2 === 1 && p.length <= 28 ? <span key={i} className="whitespace-nowrap">{p}</span> : p));
+}
+
+/**
+ * One "label · value · edit" row that reflows instead of squeezing.
+ *
+ * At every width: the label on its own line, the value below it with the
+ * whole width but the edit button, and the edit button beside the value — a
+ * 44 px pencil on phones (named for screen readers), pencil + "Edit" from
+ * `sm`. The value never shares its line with a fixed-width label, so normal
+ * words are never broken letter by letter; words break only at word
+ * boundaries (overflow-wrap: break-word, word-break: normal).
+ */
+export function SummaryRow({ label, value, onEdit, editLabel, dense = false }: {
+  label: string; value: React.ReactNode; onEdit?: () => void; editLabel: string; dense?: boolean;
+}) {
+  return (
+    <div data-mm-row="" className={cn('grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5', dense ? 'py-1.5' : 'px-3.5 py-2.5')}>
+      <dt className="col-start-1 row-start-1 min-w-0 text-[13px] leading-snug text-muted-foreground [overflow-wrap:break-word] [word-break:normal]">{label}</dt>
+      <dd data-mm-row-value="" className="col-start-1 row-start-2 min-w-0 font-medium leading-snug text-foreground [overflow-wrap:break-word] [word-break:normal]" dir="auto">
+        {typeof value === 'string' ? keepWordsWhole(value) : value}
+      </dd>
+      {onEdit && (
+        <button type="button" onClick={onEdit} aria-label={`${editLabel} · ${label}`} data-mm-row-edit=""
+          className="col-start-2 row-span-2 row-start-1 inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1 self-center rounded-full px-2 text-2xs font-semibold text-[hsl(var(--gold-ink))] hover:bg-[hsl(var(--gold-soft))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))] sm:px-3">
+          <Pencil className="h-3.5 w-3.5" aria-hidden />
+          <span className="hidden sm:inline">{editLabel}</span>
+        </button>
+      )}
+    </div>
   );
 }

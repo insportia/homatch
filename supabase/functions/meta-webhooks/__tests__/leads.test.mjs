@@ -77,7 +77,7 @@ test('webhook signatures: valid passes, tampered fails, and no secret means no v
 
 test('OAuth state is signed, bound and expiring', async () => {
   const state = await signOAuthState({ uid: 'u1', nonce: 'n1' });
-  assert.deepEqual(await verifyOAuthState(state), { uid: 'u1', nonce: 'n1' });
+  assert.deepEqual(await verifyOAuthState(state), { uid: 'u1', nonce: 'n1', ret: null });
   const [body, mac] = state.split('.');
   const forged = `${Buffer.from(JSON.stringify({ uid: 'u2', nonce: 'n1', exp: Date.now() + 1e6 })).toString('base64url')}.${mac}`;
   assert.equal(await verifyOAuthState(forged), null, 'a different user cannot reuse the signature');

@@ -765,3 +765,20 @@ Phase 2 (Universal Discovery) is blocked until this is live and proven.
 - **Fixed in passing**: meta_funnel_events check never allowed forms_recheck /
   brief_interpret / delivery_estimate, so those rate limiters never counted.
 - Migrations: 20261006100000_meta_ads_creative_ai.sql, 20261006100100_meta_ads_creative_ai_pricing.sql.
+
+## Meta Ads mobile UX + connect hardening (2026-10-02)
+
+- Builder buttons use `builder/MetaButton.tsx` (grows with its label, min 44 px) instead of the
+  fixed-height shared Button; review/confirm rows use `ui.SummaryRow` (label above, value full
+  width, pencil Edit) + `keepWordsWhole` (short slash/hyphen tokens never split).
+- Sticky bar height is measured (ResizeObserver → `--mm-nav-h`) and reserved exactly.
+- Meta connect: `lib/metaAds/connectFlow.ts` state machine + `builder/useMetaConnect.ts`
+  (one attempt per tab, same-tab navigation to Meta's official dialog, bfcache unlock, one
+  shared post-callback refresh). The return path (draft + step + `from`) is validated by
+  `oauth.safeReturnPath` and sealed in the HMAC state; meta-oauth re-validates it and redirects
+  only to the configured HOMATCH origin. Cancel (`access_denied`) → `connect=denied`, nonce
+  retired; replayed callbacks write nothing; the nonce claim is atomic.
+- Native Facebook-app handoff: Meta documents app switch only for its native SDKs; a web app
+  has no supported mechanism, so none is attempted (no URI schemes). Facebook's own dialog
+  page decides any app routing.
+- Migration 20261007100000_meta_creative_ai_jobs_grants.sql: authenticated has SELECT only.

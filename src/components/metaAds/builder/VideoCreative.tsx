@@ -5,7 +5,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Expand, ImageIcon, Loader2, Pause, Play, RotateCcw, Sparkles, Volume2, VolumeX } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
+import { Button } from './MetaButton';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';

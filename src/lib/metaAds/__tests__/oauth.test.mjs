@@ -41,7 +41,7 @@ test('without a configuration the legacy scope flow is unchanged', () => {
 test('state: round trip, tampering, wrong secret, expiry, malformed', async () => {
   const now = 1_800_000_000_000;
   const state = await signState(SECRET, { uid: 'user-1', nonce: 'n-1' }, now);
-  assert.deepEqual(await verifyState(SECRET, state, now + 1000), { uid: 'user-1', nonce: 'n-1' });
+  assert.deepEqual(await verifyState(SECRET, state, now + 1000), { uid: 'user-1', nonce: 'n-1', ret: null });
   assert.equal(await verifyState('other-secret', state, now), null, 'another secret');
   const [body, sig] = state.split('.');
   const forged = Buffer.from(JSON.stringify({ uid: 'attacker', nonce: 'n-1', exp: now + 999999 })).toString('base64url');

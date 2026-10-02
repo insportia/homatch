@@ -16,6 +16,9 @@ import { Megaphone, Plus, Bookmark, CircleHelp, Loader2, ChevronRight, Wallet } 
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { AccountPanel, RETURN_KEY } from '@/components/metaAds/builder/AccountPanel';
+import { useConnectReturn } from '@/components/metaAds/builder/useMetaConnect';
+import { ConnectReturnNotice } from '@/components/metaAds/builder/ConnectReturnNotice';
+import { safeReturnPath, withConnectResult } from '@/lib/metaAds/oauth';
 import { CampaignStatusChip } from '@/components/metaAds/workspace/CampaignStatusChip';
 import { GlobalDashboard } from '@/components/metaAds/workspace/GlobalDashboard';
 import { GuardBanner } from '@/components/metaAds/workspace/GuardBanner';
@@ -60,24 +63,22 @@ export default function MetaAdsPage() {
   }, [t]);
   useEffect(() => { boot(); }, [boot]);
 
+  /* An older login (no return path in its state) lands here; the builder it
+     came from — remembered in this browser — takes the result instead. */
+  const builderReturn = (() => {
+    if (!params.get('connect')) return null;
+    let back: string | null = null;
+    try { back = localStorage.getItem(RETURN_KEY); } catch { /* fine */ }
+    const safe = back ? safeReturnPath(back) : null;
+    return safe && safe.startsWith('/outreach/meta/create') ? safe : null;
+  })();
   useEffect(() => {
     if (params.get('deposit') === 'ok') toast.success(t('mads_deposit_ok'));
-    const connect = params.get('connect');
-    if (connect === 'ok') {
-      toast.success(t('mads_connected_ok'));
-      /* Read the Businesses, Pages and Ad Accounts the owner just granted, so
-         the builder offers them without a manual refresh. */
-      void refreshMetaAssets().catch(() => undefined).then(() => boot());
-    }
-    else if (connect) toast.error(t(`madsb_connect_${connect}` as never));
-    // Back into the campaign builder the customer left for Facebook login.
-    if (connect) {
-      let back: string | null = null;
-      try { back = localStorage.getItem(RETURN_KEY); localStorage.removeItem(RETURN_KEY); } catch { /* fine */ }
-      if (back && back.startsWith('/outreach/meta/create')) navigate(back, { replace: true });
-    }
+    if (builderReturn) navigate(withConnectResult(builderReturn, params.get('connect') ?? 'error'), { replace: true });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* Back from Meta's login here: one shared refresh, one calm notice. */
+  const connectReturn = useConnectReturn(boot, !builderReturn);
   const connected = status?.connection?.status === 'CONNECTED';
   const serviceBalance = status?.serviceBalance ?? [];
   const feePercent = status?.settings.feePercent ?? null;
@@ -102,6 +103,7 @@ export default function MetaAdsPage() {
             }
           />
 
+          {connectReturn.result && <ConnectReturnNotice result={connectReturn.result} refreshing={connectReturn.refreshing} />}
           {/* MOCK banner: the truth about the integration, never hidden. */}
           {status?.mode === 'MOCK' && (
             <div className="rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] px-4 py-2.5 text-[13px] text-[hsl(var(--gold-ink))]">

@@ -2,7 +2,7 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CheckCircle2, FileText, Globe, MessageCircle, Instagram, Loader2, Plus, Radio, ThumbsUp, Home } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button } from './MetaButton';
 import { Input } from '@/components/ui/input';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
@@ -194,7 +194,7 @@ function LeadFormPicker({ status, campaign, setDest, reloadStatus, patch }: {
                 <p className="text-2xs text-muted-foreground" data-mm-terms-next={status.connection.instant_forms_next}>{t('mm_l_next', { next: t(FORMS_COPY[status.connection.instant_forms_next as keyof typeof FORMS_COPY]) })}</p>
               )}
               {formsState === 'PERMISSIONS_MISSING' || formsState === 'FORM_ACCESS_UNAVAILABLE' ? (
-                <Link to={{ search: `?draft=${encodeURIComponent(campaign.id)}&step=account` }} data-mm-forms-action="RECONNECT"
+                <Link to={{ search: `?draft=${encodeURIComponent(campaign.id)}&step=account&from=destination` }} data-mm-forms-action="RECONNECT"
                   className="inline-flex min-h-11 items-center rounded-full bg-[hsl(var(--gold))] px-4 text-[13px] font-semibold text-[#161309] hover:bg-[hsl(var(--gold-hover))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">
                   {t('mm_m_forms_reconnect_cta')}
                 </Link>

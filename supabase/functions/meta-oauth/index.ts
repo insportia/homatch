@@ -32,9 +32,12 @@ import {
 } from '../_shared/metaAds.ts';
 import {
   CONFIRMATION_CODE, connectionIdentities, deletionResponse, hashMetaUserId, newConfirmationCode, signedRequestIdentities,
+  dialogErrorResult, safeReturnPath, withConnectResult,
 } from '../../../src/lib/metaAds/oauth.ts';
 
 const HOME = Deno.env.get('META_OAUTH_RETURN') ?? 'https://www.homatch.live/outreach/meta';
+/* Only the configured HOMATCH origin is ever a return target (paths are validated by safeReturnPath). */
+const ORIGIN = (() => { try { return new URL(HOME).origin; } catch { return 'https://www.homatch.live'; } })();
 const FUNCTION_URL = `${(Deno.env.get('SUPABASE_URL') ?? '').replace(/\/+$/, '')}/functions/v1/meta-oauth`;
 
 function redirect(to: string): Response {
@@ -164,18 +167,39 @@ Deno.serve(async (req) => {
   }
 
   if (metaMode() !== 'REAL') return redirect(`${HOME}?tab=connections&connect=mock_mode`);
-  if (url.searchParams.get('error')) return redirect(`${HOME}?tab=connections&connect=denied`);
-  const code = url.searchParams.get('code');
   const state = await verifyOAuthState(url.searchParams.get('state') ?? '');
-  if (!code || !state) return redirect(`${HOME}?tab=connections&connect=bad_state`);
+  /* Back to where the owner started — the same draft and step — when the
+     signed state names a HOMATCH Meta Ads path; otherwise the Meta page. */
+  const back = (result: string) => {
+    const ret = state ? safeReturnPath(state.ret) : null;
+    return redirect(ret ? `${ORIGIN}${withConnectResult(ret, result)}` : `${HOME}?tab=connections&connect=${result}`);
+  };
+  const dialogError = url.searchParams.get('error');
+  if (dialogError) {
+    const result = dialogErrorResult(dialogError, url.searchParams.get('error_reason'));
+    console.log(JSON.stringify({ tag: 'meta_oauth', event: 'dialog_error', result, reason: scrubText(String(url.searchParams.get('error_reason') ?? '')).slice(0, 40) }));
+    /* A cancelled attempt is finished: its nonce can never be redeemed later. */
+    if (state) await sb.from('meta_connections').update({ oauth_nonce: null }).eq('user_id', state.uid).eq('oauth_nonce', state.nonce);
+    return back(result);
+  }
+  const code = url.searchParams.get('code');
+  if (!code || !state) return back('bad_state');
 
   const { data: conn } = await sb.from('meta_connections')
-    .select('id,oauth_nonce').eq('user_id', state.uid).maybeSingle();
+    .select('id,oauth_nonce,status,last_checked_at').eq('user_id', state.uid).maybeSingle();
   if (!conn || !conn.oauth_nonce || conn.oauth_nonce !== state.nonce) {
-    return redirect(`${HOME}?tab=connections&connect=bad_state`);
+    /* The same callback delivered twice (a reload, a browser re-sending it):
+       the first one already connected, so this is not an error. It never
+       writes anything — a stale or replayed callback cannot overwrite the
+       newer connection. */
+    const recent = conn?.status === 'CONNECTED' && conn.last_checked_at && Date.now() - new Date(conn.last_checked_at).getTime() < 5 * 60_000;
+    console.log(JSON.stringify({ tag: 'meta_oauth', event: 'callback_replay', recent: !!recent }));
+    return back(recent ? 'ok' : 'bad_state');
   }
-  // One use only.
-  await sb.from('meta_connections').update({ oauth_nonce: null }).eq('id', conn.id);
+  // One use only — claimed atomically, so two simultaneous deliveries cannot both exchange the code.
+  const { data: claimed } = await sb.from('meta_connections').update({ oauth_nonce: null })
+    .eq('id', conn.id).eq('oauth_nonce', state.nonce).select('id');
+  if (!claimed?.length) return back('ok');
 
   try {
     const { token, expiresIn } = await exchangeCodeForToken(code);
@@ -229,14 +253,15 @@ Deno.serve(async (req) => {
     await sb.from('meta_assets').update({ selected: false, status: 'UNAVAILABLE' })
       .eq('user_id', state.uid).contains('capabilities', { mock: true });
     await sb.from('meta_funnel_events').insert({ event: 'meta_connected', user_id: state.uid });
-    return redirect(`${HOME}?tab=connections&connect=ok`);
+    console.log(JSON.stringify({ tag: 'meta_oauth', event: 'connected', scopes: granted.length, returned: !!state.ret }));
+    return back('ok');
   } catch (err) {
     if (err instanceof TokenEncryptionMissingError) {
       await sb.from('meta_connections').update({ status: 'ERROR', last_error: 'TOKEN_ENCRYPTION_NOT_CONFIGURED' }).eq('id', conn.id);
-      return redirect(`${HOME}?tab=connections&connect=encryption_missing`);
+      return back('encryption_missing');
     }
     console.error('[meta-oauth] exchange failed', scrubText(err instanceof Error ? err.message : String(err)));
     await sb.from('meta_connections').update({ status: 'ERROR', last_error: 'OAUTH_EXCHANGE_FAILED' }).eq('id', conn.id);
-    return redirect(`${HOME}?tab=connections&connect=error`);
+    return back('error');
   }
 });

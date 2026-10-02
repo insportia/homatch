@@ -14351,6 +14351,10 @@ const en = {
   sf_your_plan: 'Your plan',
   sf_edit_room: 'Edit a room',
   sf_advanced: 'Advanced editor',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  sf_q_overall_width: 'Is your home really {{text}} wide?',
+  sf_q_overall_depth: 'Is your home really {{text}} deep?',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -28616,6 +28620,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   sf_your_plan: 'თქვენი გეგმა',
   sf_edit_room: 'ოთახის რედაქტირება',
   sf_advanced: 'გაფართოებული რედაქტორი',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  sf_q_overall_width: 'მართლა {{text}} არის თქვენი სახლის სიგანე?',
+  sf_q_overall_depth: 'მართლა {{text}} არის თქვენი სახლის სიღრმე?',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -42872,6 +42880,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   sf_your_plan: 'Ваш план',
   sf_edit_room: 'Изменить комнату',
   sf_advanced: 'Расширенный редактор',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  sf_q_overall_width: 'Ширина вашего дома действительно {{text}}?',
+  sf_q_overall_depth: 'Глубина вашего дома действительно {{text}}?',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -57126,6 +57138,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   sf_your_plan: 'Planınız',
   sf_edit_room: 'Bir odayı düzenle',
   sf_advanced: 'Gelişmiş düzenleyici',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  sf_q_overall_width: 'Evinizin genişliği gerçekten {{text}} mi?',
+  sf_q_overall_depth: 'Evinizin derinliği gerçekten {{text}} mi?',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -71380,6 +71396,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   sf_your_plan: 'مخططك',
   sf_edit_room: 'عدّل غرفة',
   sf_advanced: 'المحرر المتقدم',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  sf_q_overall_width: 'هل عرض منزلك فعلًا {{text}}؟',
+  sf_q_overall_depth: 'هل عمق منزلك فعلًا {{text}}؟',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -85634,6 +85654,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   sf_your_plan: 'התוכנית שלכם',
   sf_edit_room: 'עריכת חדר',
   sf_advanced: 'עורך מתקדם',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  sf_q_overall_width: 'האם רוחב הבית באמת {{text}}?',
+  sf_q_overall_depth: 'האם עומק הבית באמת {{text}}?',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

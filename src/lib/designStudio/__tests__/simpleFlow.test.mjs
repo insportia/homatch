@@ -10,7 +10,8 @@ import zlib from 'node:zlib';
 import { LOOK_QUALITIES, LOOK_STYLES, lookPreferences, readLook } from '../lookPresets.ts';
 import { DEFAULT_PREFERENCES, FURNISHING_CAP, normalizePreferences } from '../planToHome.ts';
 import { STYLE_CODES } from '../grammar.ts';
-import { isNecessary, MAX_QUICK, necessaryQuestions, WEAK } from '../quickQuestions.ts';
+import { isCritical, isNecessary, MAX_QUICK, necessaryQuestions, WEAK } from '../quickQuestions.ts';
+import { MAX_QUESTIONS } from '../planRead/questions.ts';
 import { CUSTOMER_STAGE_OF, CUSTOMER_STAGES, customerStages } from '../customerStages.ts';
 import { STAGES } from '../hybrid/contract.ts';
 
@@ -62,14 +63,67 @@ test('only weak evidence stops the customer; a confident suggestion goes ahead',
   assert.equal(isNecessary(q('DIMENSION', 0, { suggestedM: [0, 0], text: '', residualPct: 100 })), true, 'no printed size at all');
   assert.equal(isNecessary(q('DIMENSION', 0.8, { suggestedM: [3, 3], text: '', residualPct: 10 })), false);
   assert.equal(isNecessary(q('OPENING_TYPE', 0.3, { options: ['DOOR', 'WINDOW', 'OPENING', 'WALL'], suggested: 'DOOR' })), true, 'an opening HOMATCH cannot tell apart');
-  assert.equal(isNecessary(q('OPENING_TYPE', WEAK, { options: [], suggested: 'DOOR' })), false, 'at the threshold it goes ahead');
+  // Changed premise (PR #68 audit): an opening question is architecture-critical, so the threshold does not apply to it.
+  assert.equal(isNecessary(q('OPENING_TYPE', WEAK, { options: [], suggested: 'DOOR' })), true, 'an opening the reader asked about is asked, whatever its confidence');
+  assert.equal(isNecessary(q('ROOM_TYPE', WEAK)), false, 'a room name at the threshold goes ahead');
 });
 
-test('one at a time: answered ones leave, at most three, in the reader\'s own order', () => {
+test('one at a time: answered ones leave; low-impact questions stop at three; critical ones are never capped', () => {
+  // A weak room size and three uncertain openings: the openings are all asked, the size goes ahead on its suggestion.
   const list = [q('DIMENSION', 0.1, { id: 'D:1' }), q('ROOM_TYPE', 0.8, { id: 'R:1' }), q('OPENING_TYPE', 0.2, { id: 'O:1' }), q('OPENING_TYPE', 0.2, { id: 'O:2' }), q('OPENING_TYPE', 0.2, { id: 'O:3' })];
-  assert.deepEqual(necessaryQuestions(list, []).map((x) => x.id), ['D:1', 'O:1', 'O:2']);
-  assert.equal(necessaryQuestions(list, []).length, MAX_QUICK);
-  assert.deepEqual(necessaryQuestions(list, [{ questionId: 'D:1', kind: 'DIMENSION', value: [3, 2] }]).map((x) => x.id), ['O:1', 'O:2', 'O:3']);
+  assert.deepEqual(necessaryQuestions(list, []).map((x) => x.id), ['O:1', 'O:2', 'O:3']);
+  assert.deepEqual(necessaryQuestions(list, [{ questionId: 'O:1', kind: 'OPENING_TYPE', value: 'DOOR' }]).map((x) => x.id), ['O:2', 'O:3'], 'answering never brings a capped question back');
+  // Low-impact only: still at most three.
+  const low = [1, 2, 3, 4].map((i) => q('ROOM_TYPE', 0.2, { id: `R:${i}`, suggested: 'BEDROOM' }));
+  assert.deepEqual(necessaryQuestions(low, []).map((x) => x.id), ['R:1', 'R:2', 'R:3']);
+  assert.equal(necessaryQuestions(low, []).length, MAX_QUICK);
+});
+
+// ── Architecture-critical questions (PR #68 audit) ──────────────────────────
+// Each in the confidence band the first rule skipped (>= 0.4): the reader asked it, so the simple flow asks it.
+
+const critical = {
+  door: q('OPENING_TYPE', 0.6, { id: 'OPENING_TYPE:D3', elementId: 'D3', options: ['DOOR', 'WINDOW', 'OPENING', 'WALL'], suggested: 'DOOR' }),
+  wall: q('IS_WALL', 0.55, { id: 'IS_WALL:W12', elementId: 'W12', suggested: true }),
+  outdoor: q('OUTDOOR', 0.8, { id: 'OUTDOOR:R7', elementId: 'R7', suggested: true }),
+  stairs: q('STAIRS', 0.5, { id: 'STAIRS:S1', elementId: 'S1', suggested: true }),
+  overall: q('DIMENSION', 0.6, { id: 'DIMENSION:OVERALL_W', elementId: 'OVERALL_W', text: '12.4 m', suggestedM: 10.2, residualPct: 20 }),
+  overallD: q('DIMENSION', 0.7, { id: 'DIMENSION:OVERALL_D', elementId: 'OVERALL_D', text: '9.1 m', suggestedM: 8.2, residualPct: 15 }),
+};
+
+for (const [name, question] of Object.entries(critical)) {
+  test(`architecture-critical: an uncertain ${name} question is asked at confidence ${question.confidence}`, () => {
+    assert.ok(question.confidence >= WEAK, 'in the band the first rule skipped');
+    assert.equal(isCritical(question), true);
+    assert.deepEqual(necessaryQuestions([question], []).map((x) => x.id), [question.id]);
+  });
+}
+
+test('low-impact uncertainty stays quiet: a fairly sure room name, an ordinary room size', () => {
+  const list = [q('ROOM_TYPE', 0.6, { id: 'ROOM_TYPE:R2', elementId: 'R2' }), q('DIMENSION', 0.6, { id: 'DIMENSION:R3', elementId: 'R3', text: '3x4', suggestedM: [3, 4], residualPct: 20 })];
+  for (const x of list) assert.equal(isCritical(x), false, x.id);
+  assert.deepEqual(necessaryQuestions(list, []), []);
+});
+
+test('critical questions survive the cap and keep the reader\'s order; low-impact ones fill only what is left', () => {
+  const list = [critical.overall, q('ROOM_TYPE', 0.2, { id: 'ROOM_TYPE:R1', elementId: 'R1' }), critical.door, critical.wall, critical.stairs, q('ROOM_TYPE', 0.1, { id: 'ROOM_TYPE:R9', elementId: 'R9' })];
+  assert.deepEqual(necessaryQuestions(list, []).map((x) => x.id), ['DIMENSION:OVERALL_W', 'OPENING_TYPE:D3', 'IS_WALL:W12', 'STAIRS:S1']);
+  // One critical, two weak room names: three in all, the reader's order.
+  const mixed = [q('ROOM_TYPE', 0.2, { id: 'ROOM_TYPE:A', elementId: 'A' }), critical.door, q('ROOM_TYPE', 0.2, { id: 'ROOM_TYPE:B', elementId: 'B' }), q('ROOM_TYPE', 0.2, { id: 'ROOM_TYPE:C', elementId: 'C' })];
+  assert.deepEqual(necessaryQuestions(mixed, []).map((x) => x.id), ['ROOM_TYPE:A', 'OPENING_TYPE:D3', 'ROOM_TYPE:B']);
+  // Never more than the reader's own maximum.
+  const many = Array.from({ length: 9 }, (_, i) => q('IS_WALL', 0.5, { id: `IS_WALL:W${i}`, elementId: `W${i}`, suggested: true }));
+  assert.equal(necessaryQuestions(many, []).length, MAX_QUESTIONS);
+});
+
+test('a reload asks the same next question; an answered one never returns; the last answer leaves nothing to ask', () => {
+  const list = [critical.door, critical.wall];
+  const first = necessaryQuestions(list, []);
+  assert.deepEqual(first.map((x) => x.id), ['OPENING_TYPE:D3', 'IS_WALL:W12']);
+  const afterOne = [{ questionId: 'OPENING_TYPE:D3', kind: 'OPENING_TYPE', value: 'DOOR' }];
+  assert.deepEqual(necessaryQuestions(list, afterOne).map((x) => x.id), ['IS_WALL:W12'], 'after a reload: the next one, not the answered one');
+  assert.deepEqual(necessaryQuestions(list, afterOne), necessaryQuestions(structuredClone(list), structuredClone(afterOne)), 'decided from the saved reading and answers alone');
+  assert.deepEqual(necessaryQuestions(list, [...afterOne, { questionId: 'IS_WALL:W12', kind: 'IS_WALL', value: true }]), [], 'the last answer: on to Style');
 });
 
 test('on the real golden readings: v1 asks nothing, v2 asks exactly the porch', async () => {

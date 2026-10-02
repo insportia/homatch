@@ -21,8 +21,12 @@
 //      detailed review and "Customise details" reachable and resumable.
 //                                                              390/en, 1440/ru
 //   C  right to left: the simple screens mirror, never overflow. 390/ar, 1440/he
+//   D  architecture-critical questions in the band the first rule skipped (a
+//      disputed door, a weakly inferred wall): asked one at a time, resumed on
+//      the next after a reload, never repeated, then Style and Generate.
+//                                                              390/ka, 1440/en
 // No page errors, no horizontal overflow, no duplicate paid work.
-// QA_ONLY=A|B|C runs one of them while iterating.
+// QA_ONLY=A|B|C|D runs one of them while iterating.
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -47,12 +51,27 @@ function loadPgm(file) {
   return { width, height, data: new Uint8Array(buf.buffer, buf.byteOffset + m[0].length, width * height) };
 }
 
+/**
+ * The golden reading, v1 or v2. 'v1-critical' is v1 with two questions of the reader's own shape added, both in
+ * the confidence band the first quick rule skipped: a door whose type the ink disputes (0.6) and a wall HOMATCH
+ * inferred on weak ink (0.55) — the architecture-critical case the simple flow must ask.
+ */
 async function goldenInterpretation(key, reading = 'v1') {
-  const recorded = JSON.parse(readFileSync(path.join(FIXTURE, `golden-floorplan.read-${reading}.json`), 'utf8'));
+  const base = reading === 'v1-critical' ? 'v1' : reading;
+  const recorded = JSON.parse(readFileSync(path.join(FIXTURE, `golden-floorplan.read-${base}.json`), 'utf8'));
   const doc = { ...(recorded.rawDoc ?? recorded.doc), sourceAssetId: key };
   const { understand } = await import('../../supabase/functions/_shared/designStudio/planRead/understand.ts');
   const gray = loadPgm(path.join(FIXTURE, 'golden-floorplan.pgm.gz'));
   const out = understand({ doc, dimensionStrings: recorded.dimensionStrings, gray });
+  if (reading === 'v1-critical') {
+    const door = out.doc.doors[0];
+    const wall = out.doc.walls.find((w) => w.kind !== 'EXTERIOR') ?? out.doc.walls[0];
+    out.understanding.questions = [
+      { id: `OPENING_TYPE:${door.id}`, kind: 'OPENING_TYPE', elementId: door.id, options: ['DOOR', 'WINDOW', 'OPENING', 'WALL'], suggested: 'DOOR', confidence: 0.6 },
+      { id: `IS_WALL:${wall.id}`, kind: 'IS_WALL', elementId: wall.id, suggested: true, confidence: 0.55 },
+      ...out.understanding.questions,
+    ];
+  }
   return {
     doc: out.doc, rawDoc: out.rawDoc, dimensionStrings: out.dimensionStrings, understanding: out.understanding,
     fusion: out.fusion, readVersion: 'ds-read-2', timings: { modelMs: 0, fuseMs: Math.round(out.timings.fuseMs) },
@@ -445,6 +464,54 @@ async function oneQuestionPath(browser, { width, height, lang, touch }) {
   await s.ctx.close();
 }
 
+/* ── D: architecture-critical questions the first rule skipped — asked one at a time, resumed, never repeated ── */
+async function criticalQuestions(browser, { width, height, lang, touch }) {
+  const tag = `${width}-${lang} critical`;
+  const s = await open(browser, { width, height, lang, touch, reading: 'v1-critical' });
+  const { page, store } = s;
+  await s.start(tag);
+  const reached = await untilStep(page, ['QUICK', 'STYLE', 'REVIEW'], 40000);
+  check(`${tag}: an uncertain door stops the customer (${reached})`, reached === 'QUICK', String(reached));
+  await page.getByTestId('quick-question').waitFor({ timeout: 10000 });
+  await page.waitForTimeout(300);
+  const ids = (store.db.ds_floorplans[0]?.interpretation?.understanding?.questions ?? []).map((q) => q.id);
+  const [doorQ, wallQ] = ids;
+  check(`${tag}: one question on screen, 1 of 2`, (await page.getByTestId('question-choices').count()) === 1 && JSON.stringify((await page.getByTestId('quick-question').locator('p').first().innerText()).match(/[0-9]+/g)) === '["1","2"]');
+  await s.shot('critical-question');
+  await s.noOverflow(tag, 'the critical question');
+  const small = await page.getByTestId('question-choices').locator('button').evaluateAll((els) => els.filter((e) => e.getBoundingClientRect().height < 48).length);
+  check(`${tag}: answer targets are at least 48 px`, small === 0, String(small));
+  const raw = await page.locator('body').innerText();
+  check(`${tag}: no internal ids or raw keys on screen`, !/OPENING_TYPE|IS_WALL|OVERALL_|\bsf_[a-z_]+|p2h_q_|\{\{/.test(raw));
+  // Answer the door with its suggestion; the save lands; a reload shows the wall, not the door again.
+  await page.getByTestId('question-choices').locator('button').first().click();
+  for (let i = 0; i < 40 && !(s.flow()?.answers ?? []).some((a) => a.questionId === doorQ); i += 1) await page.waitForTimeout(150);
+  check(`${tag}: the door answer is saved (${(s.flow()?.answers ?? []).map((a) => a.questionId).join(',')})`, (s.flow()?.answers ?? []).some((a) => a.questionId === doorQ));
+  check(`${tag}: still asking — the wall is next (${await s.step()})`, (await s.step()) === 'QUICK');
+  await page.reload();
+  await page.getByTestId('quick-question').waitFor({ timeout: 20000 });
+  check(`${tag}: after a reload, the next question (2 of 2), not the answered one`, JSON.stringify((await page.getByTestId('quick-question').locator('p').first().innerText()).match(/[0-9]+/g)) === '["2","2"]');
+  await s.shot('critical-question-2');
+  await page.getByTestId('question-choices').locator('button').first().click();
+  const after = await untilStep(page, ['STYLE', 'QUICK', 'REVIEW'], 30000);
+  check(`${tag}: the last critical answer goes on to Style (${after})`, after === 'STYLE', String(after));
+  const answers = (s.flow()?.answers ?? []).map((a) => a.questionId);
+  check(`${tag}: both answers kept, once each (${answers.join(',')})`, answers.filter((x) => x === doorQ).length === 1 && answers.filter((x) => x === wallQ).length === 1);
+  await s.reloadAt(tag, 'STYLE', 'look-style');
+  check(`${tag}: no question comes back after a reload on Style`, (await page.getByTestId('quick-question').count()) === 0);
+  check(`${tag}: the reading is cached (${store.readCalls})`, store.readCalls === 1, String(store.readCalls));
+  // Generate exactly as before.
+  await page.getByTestId('look-style-MODERN').click();
+  await page.getByTestId('look-next').click();
+  await page.getByTestId('look-quality').waitFor({ timeout: 10000 });
+  await generateAndResume(s, tag, 'look-generate');
+  await page.getByTestId('design-home').waitFor({ timeout: 20000 });
+  const done = s.flow();
+  check(`${tag}: the generated home carries the answers (door ${done?.answers?.find((a) => a.questionId === doorQ)?.value})`, done?.step === 'DONE' && done?.answers?.find((a) => a.questionId === doorQ)?.value === 'DOOR' && done?.answers?.find((a) => a.questionId === wallQ)?.value === true);
+  check(`${tag}: no page errors`, s.errors.length === 0, s.errors.join('\n        '));
+  await s.ctx.close();
+}
+
 /* ── C: right-to-left — the simple screens mirror and never overflow ── */
 async function rtl(browser, { width, height, lang, touch }) {
   const tag = `${width}-${lang} rtl`;
@@ -488,6 +555,10 @@ async function main() {
     if (!only || only === 'B') {
       await oneQuestionPath(browser, { width: 390, height: 844, lang: 'en', touch: true });
       await oneQuestionPath(browser, { width: 1440, height: 900, lang: 'ru', touch: false });
+    }
+    if (!only || only === 'D') {
+      await criticalQuestions(browser, { width: 390, height: 844, lang: 'ka', touch: true });
+      await criticalQuestions(browser, { width: 1440, height: 900, lang: 'en', touch: false });
     }
     if (!only || only === 'C') {
       await rtl(browser, { width: 390, height: 844, lang: 'ar', touch: true });

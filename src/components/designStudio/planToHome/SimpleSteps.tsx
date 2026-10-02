@@ -24,19 +24,21 @@ import { StylePreview } from './StylePreview';
 /** The calm surface every simple screen shares. */
 export const SURFACE = 'bg-[#F7F4EF] text-[#0C1119]';
 export const RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#F7F4EF]';
-const PRIMARY = cn('inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-full bg-[hsl(38_92%_56%)] px-7 text-[16px] font-semibold text-[#0C1119] transition-colors hover:bg-[hsl(38_92%_50%)] disabled:opacity-50 sm:w-auto sm:min-w-[240px]', RING);
+const PRIMARY = cn('inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-full bg-[hsl(38_92%_56%)] px-7 text-[16px] font-semibold text-[#0C1119] transition-colors hover:bg-[hsl(38_92%_50%)] disabled:cursor-not-allowed disabled:bg-[#E4DDD1] disabled:text-[#4A5263] disabled:shadow-[inset_0_0_0_1px_#9C9180] disabled:hover:bg-[#E4DDD1] sm:w-auto sm:min-w-[240px]', RING);
 const QUIET = cn('inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 text-[14px] font-medium text-[#4A5263] underline-offset-4 hover:text-[#0C1119] hover:underline', RING);
 
 /** A screen: an optional back, the one question it asks, its content, and its one action. */
-function Screen({ title, body, eyebrow, onBack, children, action, aside, testId, wide = false }: {
+function Screen({ title, body, eyebrow, onBack, children, action, aside, testId, wide = false, center = false }: {
   title: string; body?: string; eyebrow?: string; onBack?: () => void; children?: React.ReactNode;
-  action?: React.ReactNode; aside?: React.ReactNode; testId?: string; wide?: boolean;
+  action?: React.ReactNode; aside?: React.ReactNode; testId?: string; wide?: boolean; center?: boolean;
 }) {
   const { t } = useLanguage();
+  const frame = wide ? 'max-w-5xl' : 'max-w-2xl';
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid={testId}>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className={cn('mx-auto w-full px-4 pb-8 pt-6 sm:px-8 sm:pt-12', wide ? 'max-w-5xl' : 'max-w-2xl')}>
+        <div className={cn('flex min-h-full flex-col px-4 sm:px-8', center && 'lg:justify-center')}>
+        <div className={cn('mx-auto w-full pb-8 pt-6 sm:pt-12', center && 'lg:pt-6', frame)}>
           {onBack ? (
             <button type="button" onClick={onBack} className={cn('-ms-2 mb-4 inline-flex min-h-11 items-center gap-1.5 rounded-full px-2 text-[14px] font-medium text-[#4A5263] hover:text-[#0C1119]', RING)} data-testid="simple-back">
               <ArrowLeft className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />{t('sf_back')}
@@ -48,10 +50,11 @@ function Screen({ title, body, eyebrow, onBack, children, action, aside, testId,
           <div className="mt-7 sm:mt-10">{children}</div>
           {aside ? <div className="mt-6 flex flex-wrap items-center justify-center gap-2 sm:justify-start">{aside}</div> : null}
         </div>
+        </div>
       </div>
       {action ? (
         <div className="shrink-0 border-t border-[#E7E1D8] bg-[#F7F4EF]/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur sm:px-8">
-          <div className={cn('mx-auto flex w-full flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-end', wide ? 'max-w-5xl' : 'max-w-2xl')}>{action}</div>
+          <div className={cn('mx-auto flex w-full flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-end', frame)}>{action}</div>
         </div>
       ) : null}
     </div>
@@ -177,7 +180,7 @@ export function QualityStep({ value, onChange, onBack, onGenerate, onCustomize, 
 }) {
   const { t } = useLanguage();
   return (
-    <Screen title={t('sf_quality_title')} body={t('sf_quality_body')} onBack={onBack} testId="look-quality"
+    <Screen wide center title={t('sf_quality_title')} body={t('sf_quality_body')} onBack={onBack} testId="look-quality"
       aside={<button type="button" onClick={onCustomize} className={QUIET} data-testid="look-customize">{t('sf_customize')}</button>}
       action={(
         <>
@@ -199,13 +202,13 @@ export function QualityStep({ value, onChange, onBack, onGenerate, onCustomize, 
           const on = value === q;
           return (
             <button key={q} type="button" role="radio" aria-checked={on} onClick={() => onChange(q)}
-              className={cn('relative flex min-h-[88px] flex-col justify-center rounded-[22px] bg-white px-5 py-4 text-start transition-shadow sm:min-h-[160px] sm:justify-end', RING, on ? 'ring-2 ring-[#0C1119]' : 'ring-1 ring-[#E7E1D8] hover:ring-[#B9AE9C]')}
+              className={cn('relative flex min-h-[88px] flex-col justify-center rounded-[22px] bg-white px-5 py-4 text-start transition-shadow sm:min-h-[200px] sm:justify-start sm:p-7 lg:min-h-[240px]', RING, on ? 'ring-2 ring-[#0C1119]' : 'ring-1 ring-[#E7E1D8] hover:ring-[#B9AE9C]')}
               data-testid={`look-quality-${q}`}>
-              <span className="mb-auto hidden gap-1 sm:flex" aria-hidden="true">
+              <span className="hidden gap-1 sm:flex" aria-hidden="true">
                 {[0, 1, 2].map((k) => <span key={k} className={cn('h-1.5 w-6 rounded-full', k <= i ? 'bg-[hsl(38_70%_52%)]' : 'bg-[#E7E1D8]')} />)}
               </span>
-              <span className="text-[17px] font-semibold">{t(`sf_quality_${q.toLowerCase()}`)}</span>
-              <span className="mt-1 text-[14px] leading-snug text-[#5B6472]">{t(`sf_quality_${q.toLowerCase()}_line`)}</span>
+              <span className="text-[17px] font-semibold sm:mt-12 sm:text-[20px] lg:mt-16">{t(`sf_quality_${q.toLowerCase()}`)}</span>
+              <span className="mt-1 text-[14px] leading-snug text-[#5B6472] sm:mt-2 sm:text-[15px]">{t(`sf_quality_${q.toLowerCase()}_line`)}</span>
               {on ? <span className="absolute end-3 top-3 grid h-7 w-7 place-items-center rounded-full bg-[#0C1119] text-white" aria-hidden="true"><Check className="h-4 w-4" /></span> : null}
             </button>
           );

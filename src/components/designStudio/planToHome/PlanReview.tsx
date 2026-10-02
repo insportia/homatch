@@ -256,7 +256,10 @@ export function questionText(q: PlanQuestion, t: (k: string, v?: Record<string, 
   switch (q.kind) {
     case 'OPENING_TYPE': return t('p2h_q_opening');
     case 'ROOM_TYPE': return t('p2h_q_room', { label: name });
-    case 'DIMENSION': return t('p2h_q_dimension', { label: name || q.elementId, text: q.text });
+    // The overall width / depth has no room to name: say what it is, never its internal id.
+    case 'DIMENSION': return q.elementId === 'OVERALL_W' || q.elementId === 'OVERALL_D'
+      ? t(q.elementId === 'OVERALL_W' ? 'sf_q_overall_width' : 'sf_q_overall_depth', { text: q.text })
+      : t('p2h_q_dimension', { label: name || q.elementId, text: q.text });
     case 'OUTDOOR': return t('p2h_q_outdoor', { label: name });
     case 'IS_WALL': return t('p2h_q_wall');
     case 'STAIRS': return t('p2h_q_stairs');

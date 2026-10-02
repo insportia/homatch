@@ -28,8 +28,8 @@
 // Pure and dependency-free, so the edge function (Deno) and the tests
 // (Node) run the same code.
 
-import { type CameraFit, type Correspondence, fitCamera, transformFit, unprojectFloor } from './sourceCamera.ts';
-import { type PictureFrame, alignFrame, frameCamera, outlineError, pictureToPlan, toMetres, viewShift, viewToPlan } from './pictureFrame.ts';
+import { type CameraFit, type Correspondence, fitCamera, scaleFit, transformFit, unprojectFloor } from './sourceCamera.ts';
+import { type FrameAlignment, type PictureFrame, alignFrame, frameCamera, outlineError, pictureToPlan, toMetres, viewShift, viewToPlan } from './pictureFrame.ts';
 
 export const RECON_VERSION = 'ds-recon-3';
 /** Virtual pixels per metre of the plan document the generator reads. */
@@ -162,6 +162,22 @@ export interface Fidelity {
   outline?: Point2[] | null;
   /** Floor inside that outline that no room covers (each region at least COVERAGE_MIN_M2). */
   uncovered?: Array<{ areaM2: number; centre: Point2; candidate: string | null }>;
+  /** Where the plan's size came from, and what the pieces said about it. */
+  scale?: ScaleEvidence | null;
+}
+
+/**
+ * The size check. `factor` is what the whole reading was multiplied by (1 =
+ * the reader's own metres stand); `estimate` what the pieces alone say;
+ * `pieces` the ones that said it, `spread` how much they disagree (a
+ * weighted median absolute deviation, in log terms: 0.1 ≈ ±10 %).
+ */
+export interface ScaleEvidence {
+  source: 'PIECES' | 'READER';
+  factor: number;
+  estimate: number | null;
+  pieces: string[];
+  spread: number | null;
 }
 
 export interface Reconstruction {
@@ -594,6 +610,9 @@ export function correctPartitions(rooms: Array<{ outdoor: boolean; q: Point2[] |
   });
 }
 
+/** The angle between two bearings, degrees (0…180). */
+const angleBetween = (a: number, b: number) => Math.abs((((a - b) % 360) + 540) % 360 - 180);
+
 /** The nearest point on a closed outline. */
 function nearestOnOutline(p: Point2, poly: Point2[]): Point2 {
   let best: Point2 = poly[0]; let bestD = Infinity;
@@ -760,6 +779,104 @@ export function uncoveredFloor(rooms: ReconRoom[], openings: ReconOpening[], out
   return { regions, candidates };
 }
 
+// ── The size, checked against pieces of standard size ──────────────────
+
+/**
+ * Real depths (front to back, metres) of pieces that come in near-standard
+ * sizes. Traced in the picture, the centre of such a piece's top and the
+ * middle of its front edge are half that depth apart on the floor plane
+ * (both at the same height, so the measured camera maps their difference
+ * exactly, whatever the height).
+ */
+export const STANDARD_DEPTH_M: Partial<Record<ObjectType, [number, number]>> = {
+  BED_DOUBLE: [1.9, 2.2], BED_SINGLE: [1.9, 2.1], KITCHEN_RUN: [0.55, 0.65], FRIDGE: [0.6, 0.75], WASHING_MACHINE: [0.55, 0.65],
+  TOILET: [0.6, 0.75], VANITY: [0.4, 0.55], BATH: [0.7, 0.8], BEDSIDE: [0.3, 0.5], WARDROBE: [0.55, 0.65], DRESSER: [0.4, 0.55],
+  SOFA: [0.8, 1.05], DESK: [0.6, 0.8],
+};
+/** A traced extent shorter than this share of the picture's height is mostly tracing error. */
+const SCALE_MIN_EXTENT = 0.012;
+/** Pieces further than this from the consensus (in ratio) are outliers. */
+const SCALE_TRIM = Math.log(1.3);
+const SCALE_MIN_PIECES = 3;
+/** Pieces that disagree more than this (log spread) say nothing about the size. */
+const SCALE_MAX_SPREAD = 0.25;
+/** The reading is rescaled only when the combined evidence moves it by more than this. */
+export const RESCALE_AT = 0.08;
+
+export interface PieceSample { key: string; type: ObjectType; expectedHalfM: number; measuredHalfM: number; extent: number; confidence: number }
+
+/**
+ * What the pieces say the size should be multiplied by: a weighted median of
+ * expected / measured half-depth (weight: the traced extent squared — tracing
+ * error is a few pixels, whatever the piece — times its confidence), outliers
+ * trimmed until stable. Null unless at least SCALE_MIN_PIECES independent
+ * pieces of at least two kinds agree.
+ */
+export function piecesScale(samples: PieceSample[]): { estimate: number; pieces: string[]; spread: number } | null {
+  type V = { key: string; type: ObjectType; v: number; w: number };
+  let kept: V[] = samples.filter((x) => x.measuredHalfM > 0 && x.expectedHalfM > 0 && x.extent >= SCALE_MIN_EXTENT)
+    .map((x) => ({ key: x.key, type: x.type, v: Math.log(x.expectedHalfM / x.measuredHalfM), w: x.extent * x.extent * Math.max(0.05, x.confidence) }));
+  const wmed = (xs: Array<{ v: number; w: number }>) => {
+    const o = [...xs].sort((a, b) => a.v - b.v);
+    const half = o.reduce((t, x) => t + x.w, 0) / 2;
+    let c = 0;
+    for (const x of o) { c += x.w; if (c >= half) return x.v; }
+    return o[o.length - 1].v;
+  };
+  if (kept.length < SCALE_MIN_PIECES) return null;
+  let med = wmed(kept);
+  for (let i = 0; i < 8; i += 1) {
+    const next = kept.filter((x) => Math.abs(x.v - med) <= SCALE_TRIM);
+    if (next.length < SCALE_MIN_PIECES) return null;
+    const m = wmed(next);
+    const stable = next.length === kept.length && m === med;
+    kept = next; med = m;
+    if (stable) break;
+  }
+  if (new Set(kept.map((x) => x.type)).size < 2) return null;
+  const spread = wmed(kept.map((x) => ({ v: Math.abs(x.v - med), w: x.w })));
+  return { estimate: Math.exp(med), pieces: kept.map((x) => x.key).sort(), spread };
+}
+
+/**
+ * The size of a measured picture's plan: the reader's metres (its own
+ * confidence in them, scaleConfidence), checked against the pieces of
+ * standard size traced in the picture. The two are combined in log terms by
+ * their confidences (the pieces': how many agree, and how closely); when the
+ * result differs from the reader's by more than RESCALE_AT, the WHOLE reading
+ * is multiplied by that one factor — never room by room.
+ */
+function sizeFromPieces(recon: Reconstruction, f: FramedPicture, al: FrameAlignment): { factor: number; evidence: ScaleEvidence } {
+  const aspect = f.frame.width / f.frame.height;
+  const samples: PieceSample[] = [];
+  for (const o of recon.objects) {
+    const range = STANDARD_DEPTH_M[o.type];
+    const pts = o.px?.image === f.image ? o.px.points : null;
+    if (!range || !pts?.[0] || !pts[1]) continue;
+    const a = toMetres(al, pictureToPlan(f.frame, pts[0])); const b = toMetres(al, pictureToPlan(f.frame, pts[1]));
+    // The second point must be its FRONT (depth), not a side (width): where the reader says it faces.
+    const bearing = (Math.atan2(b[0] - a[0], b[1] - a[1]) * 180) / Math.PI;
+    if (angleBetween(bearing, o.facingDeg) > 60) continue;
+    const depth = o.depthM >= range[0] && o.depthM <= range[1] ? o.depthM : (range[0] + range[1]) / 2;
+    samples.push({
+      key: o.key, type: o.type, expectedHalfM: depth / 2, measuredHalfM: Math.hypot(b[0] - a[0], b[1] - a[1]),
+      extent: Math.hypot((pts[1][0] - pts[0][0]) * aspect, pts[1][1] - pts[0][1]), confidence: o.confidence,
+    });
+  }
+  const est = piecesScale(samples);
+  if (!est) return { factor: 1, evidence: { source: 'READER', factor: 1, estimate: null, pieces: [], spread: null } };
+  const n = est.pieces.length;
+  const pieces = (n / (n + 2)) * Math.max(0, 1 - est.spread / SCALE_MAX_SPREAD);
+  const reader = recon.scaleConfidence;
+  const combined = pieces + reader > 0 ? Math.exp((pieces * Math.log(est.estimate)) / (pieces + reader)) : 1;
+  const factor = Math.round(Math.max(0.5, Math.min(2, combined)) * 1000) / 1000;
+  const apply = Math.abs(factor - 1) > RESCALE_AT;
+  return {
+    factor: apply ? factor : 1,
+    evidence: { source: apply ? 'PIECES' : 'READER', factor: apply ? factor : 1, estimate: Math.round(est.estimate * 1000) / 1000, pieces: est.pieces, spread: Math.round(est.spread * 1000) / 1000 },
+  };
+}
+
 /**
  * With the picture's camera MEASURED (pictureFrame.ts), nothing is fitted from
  * the reader's traces: rooms traced on the plan view ARE the plan (their lower
@@ -807,16 +924,25 @@ export function refineFromFrames(recon: Reconstruction, frames: FramedPicture[])
     const firstCamera = first ? frameCamera(f.frame, first) : null;
     if (!first || !firstCamera) continue;
     // Image-height units per metre of HEIGHT in this picture (verticals stay vertical).
-    const rise = (firstCamera.s ?? 0) * Math.abs(firstCamera.R[4]);
+    const firstRise = (firstCamera.s ?? 0) * Math.abs(firstCamera.R[4]);
     // With the height scale known, the pieces (traced on their tops, lowered by
     // their height) join the alignment: more of the reader's metres set the size.
     const lowered = (o: ReconObject): Point2 | null => {
       const at = o.px?.image === f.image ? o.px.points[0] : null;
-      return at && rise ? pictureToPlan(f.frame, [at[0], at[1] + o.heightM * rise]) : null;
+      return at && firstRise ? pictureToPlan(f.frame, [at[0], at[1] + o.heightM * firstRise]) : null;
     };
     for (const o of recon.objects) { const q = lowered(o); if (q) pairs.push({ m: o.at, q }); }
-    const al = alignFrame(f.frame, pairs) ?? first;
+    const fitted = alignFrame(f.frame, pairs) ?? first;
+    // THE SIZE. The reader's metres set it; the pieces with a near-standard real size, whose
+    // extent is traced in the picture, check it: when they disagree by more than RESCALE_AT
+    // the whole reading is rescaled, by ONE factor, weighed against the reader's own confidence.
+    const scale = sizeFromPieces(recon, f, fitted);
+    const F = scale.factor;
+    const al: FrameAlignment = F === 1 ? fitted : { ...fitted, k: fitted.k * F, t: [fitted.t[0] * F, fitted.t[1] * F] };
     const camera = frameCamera(f.frame, al) ?? firstCamera;
+    // Re-measured at the corrected size: a piece's height in metres lowers it this much.
+    const rise = (camera.s ?? 0) * Math.abs(camera.R[4]);
+    const mul = (p: Point2): Point2 => (F === 1 ? p : [round(p[0] * F), round(p[1] * F)]);
     const outline = f.frame.footprint.map((q) => toMetres(al, q));
     const outside = (p: Point2) => (insidePolygon(p, outline) ? 0 : edgeDistance(p, outline));
     let traced = 0;
@@ -848,12 +974,13 @@ export function refineFromFrames(recon: Reconstruction, frames: FramedPicture[])
     // Each followed outline, corner by corner in the reading's own order (what untraced things ride on).
     const moved = new Map<number, Point2[]>();
     const rooms = recon.rooms.map((room, r) => {
-      if (!room.px) return room;
+      const kept = F === 1 ? room : { ...room, polygon: room.polygon.map(mul) };
+      if (!room.px) return kept;
       const ring = room.px.points.map((_, i) => corner(roomPlan(r, i), room.outdoor));
       // An outline is replaced only whole: every corner followed, and still a real room.
-      if (!ring.every((p) => p)) return room;
+      if (!ring.every((p) => p)) return kept;
       const area = signedArea(ring as Point2[]);
-      if (Math.abs(area) < MIN_ROOM_M2) return room;
+      if (Math.abs(area) < MIN_ROOM_M2) return kept;
       moved.set(r, ring as Point2[]);
       return { ...room, polygon: area < 0 ? [...(ring as Point2[])].reverse() : ring as Point2[], geometry: 'PIXELS' as const };
     });
@@ -862,9 +989,12 @@ export function refineFromFrames(recon: Reconstruction, frames: FramedPicture[])
       if (q) return { ...o, at: q, geometry: 'PIXELS' as const };
       // Untraced: it stays where it was on its wall, in the same frame as the rooms.
       const carried = carryOnEdge(o.at, recon.rooms, moved);
-      return carried ? { ...o, at: carried } : o;
+      return carried ? { ...o, at: carried } : { ...o, at: mul(o.at) };
     });
     const roomIndex = new Map(recon.rooms.map((r, i) => [r.key, i]));
+    // Which way "straight down the picture" runs on the floor, as a bearing.
+    const down = [toMetres(al, pictureToPlan(f.frame, [0.5, 0.5])), toMetres(al, pictureToPlan(f.frame, [0.5, 0.6]))];
+    const downDeg = (Math.atan2(down[1][0] - down[0][0], down[1][1] - down[0][1]) * 180) / Math.PI;
     const objects = recon.objects.map((o) => {
       if (o.px && o.px.image === f.image && rise) {
         const at = follow(o.px.image, o.px.points[0], o.heightM);
@@ -872,7 +1002,10 @@ export function refineFromFrames(recon: Reconstruction, frames: FramedPicture[])
           // Which way it faces, from where its front edge is drawn — not from a guessed angle.
           const front = o.px.points[1] ? follow(o.px.image, o.px.points[1], o.heightM) : null;
           const d = front ? Math.hypot(front[0] - at[0], front[1] - at[1]) : 0;
-          const facingDeg = front && d > 0.08 ? ((Math.round((Math.atan2(front[0] - at[0], front[1] - at[1]) * 180) / Math.PI) % 360) + 360) % 360 : o.facingDeg;
+          const traced = front && d > 0.08 ? ((Math.round((Math.atan2(front[0] - at[0], front[1] - at[1]) * 180) / Math.PI) % 360) + 360) % 360 : null;
+          // A front put straight below the centre in the picture is the reader not knowing (it is
+          // also just where "towards the camera" lands): its own facing stands then.
+          const facingDeg = traced !== null && angleBetween(traced, downDeg) > 6 ? traced : o.facingDeg;
           return { ...o, at, facingDeg, geometry: 'PIXELS' as const };
         }
       }
@@ -880,7 +1013,7 @@ export function refineFromFrames(recon: Reconstruction, frames: FramedPicture[])
       const r = o.room !== null && roomIndex.has(o.room) ? roomIndex.get(o.room)! : recon.rooms.findIndex((x) => insidePolygon(o.at, x.polygon));
       const ring = r >= 0 ? moved.get(r) : undefined;
       const at = ring ? affineCarry(recon.rooms[r].polygon, ring, o.at) : null;
-      return at ? { ...o, at } : o;
+      return at ? { ...o, at } : { ...o, at: mul(o.at) };
     });
     // The picture's own wall height, when it is a plausible storey (a low cut-away is not a ceiling).
     const wallM = rise > 0 ? f.frame.wall / rise : 0;
@@ -888,7 +1021,7 @@ export function refineFromFrames(recon: Reconstruction, frames: FramedPicture[])
     // The honest number: how far the rebuilt outline is from the picture's own, in the picture.
     const fit: CameraFit = { ...camera, rms: outlineError(f.frame, al, rooms.map((x) => x.polygon)), points: applied };
     const cameras = recon.cameras.some((c) => c.image === f.image)
-      ? recon.cameras.map((c) => (c.image === f.image ? { ...c, kind: 'AERIAL' as const, fit } : c))
+      ? recon.cameras.map((c) => (c.image === f.image ? { ...c, kind: 'AERIAL' as const, at: mul(c.at), fit } : { ...c, at: mul(c.at), fit: c.fit && F !== 1 ? scaleFit(c.fit, F) : c.fit }))
       : [...recon.cameras, { image: f.image, kind: 'AERIAL' as const, at: [0, 0] as Point2, heightM: 10, yawDeg: 0, pitchDeg: -45, fovDeg: 50, confidence: f.frame.confidence, fit }];
     const cutM = wallM > 0.6 && wallM < 6 ? round(wallM) : null;
     // Floor the picture shows and no room covers: reported, and proposed when something says a space is there.
@@ -898,7 +1031,7 @@ export function refineFromFrames(recon: Reconstruction, frames: FramedPicture[])
       image: f.image, model: 'ORTHO', errorPct: Math.round(fit.rms * 10000) / 100, traced, applied,
       wallM: cutM, interiorWallM: cutM !== null ? round(Math.max(0.3, cutM * (recon.wallCutRatio ?? 1))) : null,
       partitionShiftM: round(Math.hypot(shift[0], shift[1]) * al.k),
-      outline: metresOutline, uncovered: regions,
+      outline: metresOutline, uncovered: regions, scale: scale.evidence,
     };
     return { ...recon, rooms: [...rooms, ...candidates], openings, objects, cameras, fidelity, ceilingHeightM };
   }

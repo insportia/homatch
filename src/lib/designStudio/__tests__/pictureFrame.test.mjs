@@ -11,7 +11,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { planDocument, validateReconstruction } from '../reconstructRead.ts';
+import { piecesScale, planDocument, validateReconstruction } from '../reconstructRead.ts';
 import { imageToPlan, planToImage, readFrame, viewShift } from '../pictureFrame.ts';
 import { projectPlan, worldOf } from '../sourceCamera.ts';
 
@@ -304,4 +304,76 @@ test('floor the picture shows and no room covers is reported; a door into it mak
 
   // Named among the unknowns (the only such region): proposed as what was named.
   assert.equal(short(false, ['a walk-in closet behind the kitchen']).rooms.find((x) => x.candidate)?.kind, 'STORAGE');
+});
+
+// ── The size: the reader's metres, checked against pieces of standard size ─
+
+/** Pieces of near-standard size, traced as the reader is asked: the centre of the top, the middle of its front edge. */
+function furnished(cam, frame, shrink, scaleConfidence) {
+  const r = reading(cam, frame);
+  // The reader's metres are the truth shrunk uniformly (its guess at the size), traced shape intact.
+  for (const room of r.rooms) room.polygon = TRUTH[room.key].map(([x, y]) => [x * shrink, y * shrink]);
+  r.scaleConfidence = scaleConfidence;
+  const piece = (key, type, at, facingDeg, widthM, depthM, heightM) => {
+    const rad = (facingDeg * Math.PI) / 180;
+    const front = [at[0] + Math.sin(rad) * depthM / 2, at[1] + Math.cos(rad) * depthM / 2];
+    return {
+      key, type, label: key, room: null, at: [at[0] * shrink, at[1] * shrink], atPx: uvOf(cam, at, heightM), frontPx: uvOf(cam, front, heightM), pxImage: 0,
+      facingDeg, widthM, depthM, heightM, color: null, material: null, style: null, form: null, secondaryColor: null, confidence: 0.8, basis: 'OBSERVED', seenIn: [0],
+    };
+  };
+  r.objects = [
+    piece('bed', 'BED_DOUBLE', [8, 2], 270, 1.6, 2.0, 0.55),
+    piece('wardrobe', 'WARDROBE', [9.6, 2], 270, 1.8, 0.6, 2.2),
+    piece('sofa', 'SOFA', [3, 2], 180, 2.2, 0.95, 0.8),
+    piece('run', 'KITCHEN_RUN', [2, 7.6], 180, 2.4, 0.6, 0.9),
+    piece('fridge', 'FRIDGE', [3.6, 7.6], 180, 0.6, 0.65, 1.9),
+  ];
+  return r;
+}
+
+test('the pieces of standard size check the reader\'s size: a plan read 30 % small is rescaled, as a whole', () => {
+  const cam = camera();
+  const frame = frameOf(cam);
+  const { recon } = validateReconstruction(furnished(cam, frame, 0.7, 0.3), 1, { imageAspects: [ASPECT], frames: [{ image: 0, view: 1, frame: readFrame(frame) }] });
+  const s = recon.fidelity.scale;
+  assert.equal(s.source, 'PIECES', JSON.stringify(s));
+  assert.ok(Math.abs(s.estimate - 1 / 0.7) < 0.1, `the pieces alone say ×${s.estimate}`);
+  assert.ok(s.factor > 1.2 && s.factor <= s.estimate + 1e-9, `applied ×${s.factor}, weighed against the reader's own confidence`);
+  assert.ok(s.pieces.length >= 3 && s.spread < 0.1, JSON.stringify(s));
+  // One factor for everything: the kitchen is still 4 × 4 in proportion, and the pieces stand in their rooms.
+  const by = Object.fromEntries(recon.rooms.map((x) => [x.key, x]));
+  const size = (poly) => [Math.max(...poly.map((p) => p[0])) - Math.min(...poly.map((p) => p[0])), Math.max(...poly.map((p) => p[1])) - Math.min(...poly.map((p) => p[1]))];
+  const [kw, kd] = size(by.kitchen.polygon);
+  assert.ok(Math.abs(kw / kd - 1) < 0.05, `kitchen ${kw} × ${kd}`);
+  const [lw] = size(by.living.polygon);
+  assert.ok(Math.abs(lw - 6 * 0.7 * s.factor) < 0.3, `living ${lw} m long at ×${s.factor}`);
+  const bed = recon.objects.find((o) => o.key === 'bed');
+  assert.ok(Math.abs(bed.at[0] - 8 * 0.7 * s.factor) < 0.3 && Math.abs(bed.at[1] - 2 * 0.7 * s.factor) < 0.3, JSON.stringify(bed.at));
+  // The picture's wall height follows the corrected size.
+  assert.ok(Math.abs(recon.fidelity.wallM - 2.7 * 0.7 * s.factor) < 0.15, `wall ${recon.fidelity.wallM}`);
+});
+
+test('a reader whose size the pieces confirm is left alone; too few pieces, or one kind, say nothing', () => {
+  const cam = camera();
+  const frame = frameOf(cam);
+  const fr = { imageAspects: [ASPECT], frames: [{ image: 0, view: 1, frame: readFrame(frame) }] };
+  const right = validateReconstruction(furnished(cam, frame, 1, 0.5), 1, fr).recon;
+  assert.equal(right.fidelity.scale.source, 'READER');
+  assert.equal(right.fidelity.scale.factor, 1);
+  assert.ok(Math.abs(right.fidelity.scale.estimate - 1) < 0.08);
+  const few = furnished(cam, frame, 0.7, 0.3);
+  few.objects = few.objects.slice(0, 2);
+  const none = validateReconstruction(few, 1, fr).recon;
+  assert.equal(none.fidelity.scale.factor, 1);
+  assert.equal(none.fidelity.scale.estimate, null);
+});
+
+test('the size estimate is a robust consensus: an outlier is trimmed, extents too short to trace are ignored', () => {
+  const s = (key, type, ratio, extent = 0.05) => ({ key, type, expectedHalfM: 1, measuredHalfM: 1 / ratio, extent, confidence: 0.8 });
+  const est = piecesScale([s('a', 'BED_DOUBLE', 1.5), s('b', 'BED_DOUBLE', 1.45), s('c', 'SOFA', 1.55), s('d', 'WARDROBE', 1.5), s('x', 'FRIDGE', 0.6), s('tiny', 'BEDSIDE', 3, 0.005)]);
+  assert.ok(est && Math.abs(est.estimate - 1.5) < 0.06, JSON.stringify(est));
+  assert.ok(!est.pieces.includes('x') && !est.pieces.includes('tiny'));
+  assert.equal(piecesScale([s('a', 'BED_DOUBLE', 1.5), s('b', 'BED_DOUBLE', 1.5), s('c', 'BED_DOUBLE', 1.5)]), null, 'one kind of piece is not independent evidence');
+  assert.equal(piecesScale([s('a', 'BED_DOUBLE', 1.5), s('c', 'SOFA', 1.5)]), null, 'two pieces are not a consensus');
 });

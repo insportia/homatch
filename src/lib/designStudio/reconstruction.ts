@@ -430,6 +430,9 @@ export function buildDesign(
     let spot: { at: Point; roomId: string } | null = null;
     let rotation = 0;
     const read = rotationFromFacing(o.facingDeg);
+    // A piece read at a slant (a facing guessed from a trace) that cannot stand so is tried square to the walls.
+    const square = Math.round(read / (Math.PI / 2)) * (Math.PI / 2);
+    const turns = [0, Math.PI / 2, -Math.PI / 2, Math.PI, ...(Math.abs(read - square) > 1e-6 ? [0, Math.PI / 2, -Math.PI / 2, Math.PI].map((t) => square + t - read) : [])];
     // Standing as seen in a door's zone is allowed only while that door can still be walked through.
     const probe = (rot: number) => (p: Point, roomId: string, doors: string[]) => doorsPassable(space, byCode, [...state.objects, {
       instanceId: '__probe', assetId: own.code, roomId, position: { x: p.x, y: 0, z: p.y }, rotationY: rot, materialVariant: null, colorOverride: null, locked: false, shape,
@@ -448,7 +451,7 @@ export function buildDesign(
     // even where it narrows a passage. A small piece that could only stand in a doorway is left out
     // (and reported), so every door stays usable.
     for (const last of ESSENTIAL.has(o.type) ? [true, false] : [true]) {
-      for (const turn of [0, Math.PI / 2, -Math.PI / 2, Math.PI]) {
+      for (const turn of turns) {
         if (spot) break;
         const pose = settle(space, asset, o.type, hintInSpace, seen0, read + turn);
         spot = legalSpot(ctx, asset, pose.at, pose.rotation, hintInSpace ?? nearestRoom(space, pose.at), hintInSpace, 'TOUCH', 1.5, last ? probe(pose.rotation) : undefined);
@@ -462,7 +465,7 @@ export function buildDesign(
     let movedTo: string | null = null;
     if (!spot && hintInSpace && !ESSENTIAL.has(o.type)) {
       for (const next of connectedRooms(space, hintInSpace, seen0)) {
-        for (const turn of [0, Math.PI / 2, -Math.PI / 2, Math.PI]) {
+        for (const turn of turns) {
           const pose = settle(space, asset, o.type, next, seen0, read + turn);
           spot = legalSpot(ctx, asset, pose.at, pose.rotation, next, next, 'TOUCH', 1, probe(pose.rotation));
           // Still near where it was seen: just across the door, not anywhere in the next room.

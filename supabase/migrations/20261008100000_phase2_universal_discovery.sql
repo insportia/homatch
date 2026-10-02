@@ -448,3 +448,94 @@ $function$;
 
 revoke all on function public.discovery_control(text, uuid, uuid, text) from public, anon, authenticated, service_role;
 grant execute on function public.discovery_control(text, uuid, uuid, text) to service_role;
+
+------------------------------------------------------------------------------
+-- 7. FIND PROPERTY can deliver an EXTERNAL listing to a customer's own search.
+--
+-- supply_matches allowed two shapes: INTERNAL_HOMATCH (a plan × a HOMATCH
+-- property) and EXTERNAL_INTELLIGENCE (an external demand signal × an external
+-- listing). A customer's confirmed plan × an external listing fit neither, so
+-- no external listing had ever reached a Find Property search (production
+-- 2026-10-02: 72 rows, all EXTERNAL_INTELLIGENCE). The third shape:
+--
+--   EXTERNAL_LISTING  intent_profile (the plan) × supply_observation; no signal,
+--                     no HOMATCH property.
+--
+-- Keyed by (intent_profile_id, observation_id): unique across every row today
+-- (checked: 0 duplicate pairs), non-partial so the upsert can name it.
+------------------------------------------------------------------------------
+alter table public.supply_matches drop constraint if exists supply_matches_one_supply_kind;
+alter table public.supply_matches
+  add constraint supply_matches_one_supply_kind
+  check (
+    (source_kind = 'INTERNAL_HOMATCH'
+      and property_id is not null and signal_id is null and observation_id is null)
+    or
+    (source_kind = 'EXTERNAL_INTELLIGENCE'
+      and property_id is null and signal_id is not null and observation_id is not null)
+    or
+    (source_kind = 'EXTERNAL_LISTING'
+      and property_id is null and signal_id is null and observation_id is not null
+      and intent_profile_id is not null)
+  )
+  not valid;
+
+create unique index if not exists supply_matches_profile_observation_key
+  on public.supply_matches (intent_profile_id, observation_id);
+
+------------------------------------------------------------------------------
+-- 8. FIND_PROPERTY — PAYG exactly like FIND_CLIENTS (owner decision
+--    2026-10-02): the same retail, reference COGS, margin floor and 50-credit
+--    minimum; no plan includes a run. Copied, not invented.
+------------------------------------------------------------------------------
+insert into public.billable_products (
+  code, name, config, enabled, sort_order, kill_switch, billing_mode, pricing_active, pricing_version,
+  estimate_strategy, min_gross_margin_bps, requires_reservation, standard_retail_cents,
+  min_viable_budget_credits, reference_landed_cogs_cents)
+select 'FIND_PROPERTY', 'Find Property', config || jsonb_build_object('priced_like', 'FIND_CLIENTS'),
+       enabled, 3, kill_switch, billing_mode, pricing_active, pricing_version,
+       estimate_strategy, min_gross_margin_bps, requires_reservation, standard_retail_cents,
+       min_viable_budget_credits, reference_landed_cogs_cents
+  from public.billable_products where code = 'FIND_CLIENTS'
+on conflict (code) do nothing;
+
+insert into public.product_plan_entitlements
+select (jsonb_populate_record(null::public.product_plan_entitlements,
+          to_jsonb(e) || jsonb_build_object('product_code', 'FIND_PROPERTY', 'included_per_period', 0))).*
+  from public.product_plan_entitlements e
+ where e.product_code = 'FIND_CLIENTS'
+on conflict do nothing;
+
+------------------------------------------------------------------------------
+-- 9. The driver also wakes for paused campaigns and FIND PROPERTY runs, so a
+--    pause can be expired honestly and a run is never stranded with a held
+--    reservation when a switch is turned off. Same function, same token.
+------------------------------------------------------------------------------
+do $$
+begin
+  if not exists (select 1 from pg_namespace where nspname = 'cron') then
+    raise notice 'pg_cron absent (fixture); driver schedule unchanged';
+    return;
+  end if;
+  if exists (select 1 from cron.job where jobname = 'homatch-discovery-driver') then
+    perform cron.unschedule('homatch-discovery-driver');
+  end if;
+  perform cron.schedule(
+    'homatch-discovery-driver',
+    '* * * * *',
+    $cron$
+    select net.http_post(
+      url := 'https://ptxajsjhobhvsfhmutjn.supabase.co/functions/v1/discovery-queue-worker',
+      headers := jsonb_build_object('Content-Type', 'application/json',
+        'x-cron-token', (select value #>> '{}' from public.admin_settings where key = 'discovery_driver_token')),
+      body := '{"mode":"drive","source":"cron"}'::jsonb,
+      timeout_milliseconds := 55000
+    )
+    where ((select value #>> '{}' from public.admin_settings where key = 'campaign_source_discovery_enabled') = 'true'
+       or (select value #>> '{}' from public.admin_settings where key = 'find_property_discovery_enabled') = 'true'
+       or exists (select 1 from public.matching_jobs where discovery_deadline_at is not null
+                   and status::text in ('searching_sources','classifying','ranking','paused'))
+       or exists (select 1 from public.discovery_runs where status in ('SEARCHING','PAUSED','MATCHING')));
+    $cron$
+  );
+end $$;

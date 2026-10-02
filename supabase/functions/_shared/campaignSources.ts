@@ -110,10 +110,10 @@ const PERMANENT = new Set(['NOT_CONFIGURED', 'DISABLED', 'AUTH_FAILED']);
 export async function executeSourceJob(
   baseUrl: string,
   serviceKey: string,
-  job: { id: string; provider: string | null; matching_job_id: string | null; metadata: any },
+  job: { id: string; provider: string | null; matching_job_id: string | null; discovery_run_id?: string | null; metadata: any },
 ): Promise<SourceOutcome> {
   const provider = String(job.provider ?? '').toUpperCase();
-  const trace = `campaign-${String(job.matching_job_id ?? job.id).slice(0, 8)}`;
+  const trace = `campaign-${String(job.matching_job_id ?? job.discovery_run_id ?? job.id).slice(0, 8)}`;
   try {
     if (provider === 'TELEGRAM') {
       const { data } = await invokeFunction(baseUrl, serviceKey, 'community-sync',
@@ -157,6 +157,28 @@ export async function executeSourceJob(
         signalsNew: Number(data?.signalsNew ?? 0),
         sourcesPermitted: Number(data?.sourcesPermitted ?? 0),
       });
+    }
+
+    if (provider === 'PORTAL') {
+      const meta = job.metadata ?? {};
+      const { data } = await invokeFunction(baseUrl, serviceKey, 'supply-discovery', {
+        mode: 'portal-job', adapterId: meta.adapterId, subject: meta.subject,
+        runId: job.discovery_run_id ?? null, limitPerSource: 6, trace,
+      }, 150_000);
+      const kind = String(data?.outcome ?? '');
+      if (kind === 'OK') {
+        return done(Number(data?.observations ?? 0), {
+          adapterId: meta.adapterId, parsed: Number(data?.parsed ?? 0),
+          discovered: Number(data?.discovered ?? 0), reused: Number(data?.reused ?? 0),
+          networkRequests: data?.networkRequests ?? null, entitiesTouched: data?.resolution?.entitiesTouched ?? null,
+        });
+      }
+      /* Not live, not supported, no adapter, a malformed job: retrying cannot help. */
+      if (['SOURCE_NOT_LIVE', 'ADAPTER_MISSING', 'UNSUPPORTED', 'BAD_JOB'].includes(kind)) {
+        return failed(`PORTAL_${kind}`);
+      }
+      /* A refusal or an error from the site: bounded retry with backoff. */
+      return retry(`PORTAL_${kind || 'ERROR'}: ${String(data?.detail ?? data?.error ?? '').slice(0, 200)}`, 300);
     }
 
     /* Retired or unknown providers are never executed. The claim function

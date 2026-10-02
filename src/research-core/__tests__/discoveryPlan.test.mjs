@@ -98,3 +98,19 @@ test('customer source groups never name a provider', () => {
   assert.equal(sourceGroupOf('FORUM'), 'FORUMS');
   assert.equal(sourceGroupOf('anything'), 'HOMATCH');
 });
+
+test('a stored SearchPlan round-trips through the draft and normalisePlan unchanged', async () => {
+  const { draftFromStoredPlan } = await import('../discovery/discovery-plan.ts');
+  const { plan: first } = normalisePlan({
+    goal: 'RENT', countryCode: 'GE', city: 'Tbilisi', cityStrength: 'REQUIRED',
+    districts: ['Vake'], districtsStrength: 'PREFERRED', propertyTypes: ['APARTMENT'], propertyTypesStrength: 'REQUIRED',
+    budgetMax: 1200, currency: 'USD', budgetStrength: 'REQUIRED', bedroomsMin: 2, bedroomsStrength: 'FLEXIBLE',
+    languages: ['ka', 'en'], originalText: 'two bedrooms in Vake up to 1200',
+  });
+  const stored = JSON.parse(JSON.stringify(first));
+  const { plan: again } = normalisePlan(draftFromStoredPlan(stored));
+  assert.deepEqual(again, first);
+  assert.equal(normalisePlan(draftFromStoredPlan({ city: { value: 'x; drop table', strength: 'REQUIRED' } })).plan?.city?.value ?? null,
+    normalisePlan({ city: 'x; drop table', cityStrength: 'REQUIRED' }).plan?.city?.value ?? null,
+    'a stored value gets exactly the validation a fresh draft gets');
+});

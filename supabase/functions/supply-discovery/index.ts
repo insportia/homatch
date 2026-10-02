@@ -168,6 +168,21 @@ const started = Date.now();
      * Attribution only. It cannot fetch, cannot create a campaign, cannot spend,
      * and cannot touch a directory listing.
      */
+    /*
+     * PHASE 2 — ONE PORTAL JOB OF A FIND PROPERTY RUN.
+     *
+     * The discovery driver calls this once per PORTAL source job. The scope is
+     * the run's stored DiscoveryPlan subject (what the customer confirmed),
+     * never a property's comparables envelope: here the customer's budget IS a
+     * filter. One adapter, only if the registry has it LIVE_TESTED/PRODUCTIVE
+     * and active. Observations go through the same persist() and the same
+     * entity resolution as every other sweep, so they become global
+     * intelligence any later search can reuse.
+     */
+    if (String(body.mode ?? '') === 'portal-job') {
+      return await portalJob(db, body, started);
+    }
+
     if (String(body.mode ?? '') === 'attribute-stored') {
       return await attributeStored(db, {
         limit: Math.max(1, Math.min(2000, Number(body.limit) || 500)),
@@ -1588,4 +1603,108 @@ async function applyMerges(
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+async function portalJob(db: any, body: any, started: number) {
+  const adapterId = String(body.adapterId ?? '');
+  const subject = (body.subject ?? {}) as {
+    transaction?: string | null; propertyTypes?: string[]; countryCode?: string; city?: string | null;
+    districts?: string[]; price?: { min: number | null; max: number | null; currency: string | null } | null;
+    bedrooms?: { min: number | null; max: number | null } | null;
+    areaSqm?: { min: number | null; max: number | null } | null;
+  };
+  const countryCode = String(subject.countryCode || 'GE').toUpperCase();
+  const city = subject.city ? String(subject.city) : '';
+  const transaction = String(subject.transaction || 'SALE').toUpperCase() === 'RENT' ? 'RENT' : 'SALE';
+  if (!adapterId || !city) {
+    return json({ success: false, outcome: 'BAD_JOB', error: 'adapterId and a city are required' });
+  }
+
+  const { data: sourceRow } = await db
+    .from('source_registry')
+    .select('id,name,url,adapter_id,lifecycle,active,quality_score,priority_tier')
+    .eq('adapter_id', adapterId)
+    .eq('active', true)
+    .in('lifecycle', ['LIVE_TESTED', 'PRODUCTIVE'])
+    .limit(1)
+    .maybeSingle();
+  if (!sourceRow) {
+    return json({ success: true, outcome: 'SOURCE_NOT_LIVE', adapterId, observations: 0,
+      note: 'the registry does not have this adapter LIVE_TESTED/PRODUCTIVE and active; nothing was fetched' });
+  }
+
+  const runtime = createPortalRuntime();
+  const adapter = runtime.registry.all().find((a) => a.id === adapterId);
+  if (!adapter) {
+    return json({ success: true, outcome: 'ADAPTER_MISSING', adapterId, observations: 0 });
+  }
+
+  const propertyType = normalizeType((subject.propertyTypes ?? [])[0]);
+  const query = {
+    id: `find-${countryCode}-${city}-${transaction}-${adapterId}`.toLowerCase(),
+    transaction, countryCode, city,
+    propertyType,
+    district: (subject.districts ?? [])[0] ?? null,
+    subDistrict: null, projectName: null,
+    area: { min: subject.areaSqm?.min ?? null, max: subject.areaSqm?.max ?? null },
+    rooms: { min: null, max: null },
+    bedrooms: { min: subject.bedrooms?.min ?? null, max: subject.bedrooms?.max ?? null },
+    floor: { min: null, max: null },
+    /* FIND PROPERTY: the customer's budget is a real filter here. */
+    price: { min: subject.price?.min ?? null, max: subject.price?.max ?? null },
+    priceCurrency: subject.price?.currency ?? null,
+    languages: [],
+    limit: Math.max(1, Math.min(10, Number(body.limitPerSource) || 6)),
+    rationale: 'find-property run: scoped by the confirmed plan',
+  };
+
+  if (!adapter.supports(query as never)) {
+    return json({ success: true, outcome: 'UNSUPPORTED', adapterId, observations: 0 });
+  }
+
+  let outcome;
+  try {
+    outcome = await adapter.searchListings(query as never, runtime.context);
+  } catch (error) {
+    await recordSourceFailure(db, sourceRow.id, message(error));
+    return json({ success: false, outcome: 'ERROR', adapterId, error: message(error) });
+  }
+  if (!outcome.ok) {
+    await recordSourceFailure(db, sourceRow.id, `${outcome.reason}: ${outcome.detail ?? ''}`);
+    return json({ success: false, outcome: outcome.reason, adapterId, detail: outcome.detail ?? null });
+  }
+
+  let discovered = 0;
+  let reused = 0;
+  const written: string[] = [];
+  for (const portalListing of outcome.value.listings) {
+    const result = await persist(db, sourceRow as SourceRow, portalListing, countryCode);
+    if (!result) continue;
+    written.push(result.id);
+    if (result.isNew) discovered += 1; else reused += 1;
+  }
+  const nowIso = new Date().toISOString();
+  await db.from('source_registry').update({
+    last_collected_at: nowIso, last_successful_at: nowIso, failure_count: 0,
+    last_failure_reason: null, scanned_signal_count: outcome.value.listings.length ?? 0, updated_at: nowIso,
+  }).eq('id', sourceRow.id);
+
+  const resolution = written.length ? await resolveMarket(db, countryCode, city, transaction) : null;
+
+  return json({
+    success: true,
+    outcome: 'OK',
+    adapterId,
+    runId: body.runId ?? null,
+    parsed: outcome.value.listings.length,
+    observations: written.length,
+    discovered,
+    reused,
+    networkRequests: outcome.value.networkRequests ?? null,
+    rejectedByEnvelope: outcome.value.rejectedByEnvelope ?? 0,
+    resolution,
+    /* No provider was called: native HTTP through the SSRF-guarded runtime. */
+    providerCostUsd: 0,
+    elapsedMs: Date.now() - started,
+  });
 }

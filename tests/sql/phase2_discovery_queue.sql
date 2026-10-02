@@ -96,3 +96,28 @@ begin
   end;
   raise notice 'PHASE2 QUEUE CHECKS: PASS';
 end $$;
+
+-- FIND PROPERTY: a customer plan x an external listing is a storable, deduped shape.
+do $$
+declare ip uuid := gen_random_uuid(); ob uuid := gen_random_uuid();
+begin
+  insert into public.intent_profiles values (ip);
+  insert into public.supply_observations values (ob);
+  insert into public.supply_matches(intent_profile_id,observation_id,source_kind,compatibility,match_score)
+  values (ip,ob,'EXTERNAL_LISTING','COMPATIBLE',0.8);
+  begin
+    insert into public.supply_matches(intent_profile_id,observation_id,source_kind,compatibility,match_score)
+    values (ip,ob,'EXTERNAL_LISTING','COMPATIBLE',0.8);
+    raise exception 'duplicate plan x listing accepted';
+  exception when unique_violation then null; end;
+  begin
+    insert into public.supply_matches(observation_id,source_kind) values (ob,'EXTERNAL_LISTING');
+    raise exception 'an external listing match without a plan was accepted';
+  exception when check_violation then null; end;
+  if (select count(*) from public.product_plan_entitlements where product_code='FIND_PROPERTY' and included_per_period <> 0) > 0 then
+    raise exception 'FIND_PROPERTY includes a free run'; end if;
+  if (select (standard_retail_cents, min_viable_budget_credits, reference_landed_cogs_cents) from public.billable_products where code='FIND_PROPERTY')
+     is distinct from (select (standard_retail_cents, min_viable_budget_credits, reference_landed_cogs_cents) from public.billable_products where code='FIND_CLIENTS') then
+    raise exception 'FIND_PROPERTY is not priced like FIND_CLIENTS'; end if;
+  raise notice 'FIND PROPERTY SHAPE + PRODUCT CHECKS: PASS';
+end $$;

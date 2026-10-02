@@ -80,3 +80,50 @@ test('the Matches screen finds the open search on load, so a refresh keeps progr
   assert.match(page, /p2d_resume_search/);
   assert.match(page, /jobRunning && 'order-first xl:order-none'/, 'controls first on a phone while a search runs');
 });
+
+// Slice B — FIND PROPERTY
+const RUN_FN = read('supabase/functions/find-property-run/index.ts');
+const SUPPLY_MATCHING = read('supabase/functions/supply-matching/index.ts');
+const SUPPLY_DISCOVERY = read('supabase/functions/supply-discovery/index.ts');
+const RUN_LIB = read('supabase/functions/_shared/discoveryRun.ts');
+
+test('a Find Property run is PAYG through the wallet, idempotent, one open run per search', () => {
+  assert.match(RUN_FN, /productCode: 'FIND_PROPERTY'/);
+  assert.match(RUN_FN, /allowIncluded: false/);
+  assert.match(RUN_FN, /budgetIsCeiling: true/);
+  assert.match(RUN_FN, /eq\('idempotency_key', idempotencyKey\)/);
+  assert.match(RUN_FN, /in\('status', OPEN_RUN_STATES\)/);
+  assert.match(RUN_FN, /findPropertyDiscoveryEnabled/, 'off until an operator switches it on');
+  const reserve = RUN_FN.indexOf('beginExecution(db');
+  const plan = RUN_FN.indexOf('storePlan(db');
+  const queue = RUN_FN.indexOf('queuePlannedJobs(db');
+  assert.ok(reserve > 0 && plan > reserve && queue > plan, 'reserve, then plan, then queue');
+  assert.match(RUN_FN, /releaseExecution\(db, grant/, 'a failed start releases the reservation');
+  assert.match(RUN_FN, /normalisePlan\(draftFromStoredPlan\(/, 'a stored plan is re-validated, not trusted');
+  assert.match(RUN_FN, /PORTAL_IDS\.has\(id\)/, 'only listing portals serve PORTAL jobs');
+});
+
+test('a customer plan x an external listing is written as EXTERNAL_LISTING, keyed by plan and observation', () => {
+  assert.match(SUPPLY_MATCHING, /source_kind: planDemand \? 'EXTERNAL_LISTING' : 'EXTERNAL_INTELLIGENCE'/);
+  assert.match(SUPPLY_MATCHING, /onConflict: planDemand \? 'intent_profile_id,observation_id' : 'signal_id,observation_id'/);
+  assert.match(SUPPLY_MATCHING, /signal_id: planDemand \? null : signalId/);
+});
+
+test('a PORTAL job reads one live adapter scoped by the plan, with the budget as a real filter', () => {
+  const fn = SUPPLY_DISCOVERY.slice(SUPPLY_DISCOVERY.indexOf('async function portalJob'));
+  assert.match(fn, /in\('lifecycle', \['LIVE_TESTED', 'PRODUCTIVE'\]\)/);
+  assert.match(fn, /eq\('active', true\)/);
+  assert.match(fn, /price: \{ min: subject\.price\?\.min/);
+  assert.match(fn, /persist\(db, sourceRow/, 'the same observation writer as every sweep');
+  assert.match(fn, /resolveMarket\(db/, 'entity resolution runs on what was written');
+});
+
+test('a run ends by counting only what it delivered, settling measured cost, unknown cost kept unknown', () => {
+  assert.match(RUN_LIB, /eq\('source_kind', 'EXTERNAL_LISTING'\)/);
+  assert.match(RUN_LIB, /gte\('created_at', run\.started_at\)/);
+  assert.match(RUN_LIB, /provider_cost_usd: costUnknown \? null : providerCostUsd/);
+  const driver = read('supabase/functions/discovery-queue-worker/driver.ts');
+  assert.match(driver, /advanceRuns\(db/);
+  assert.match(driver, /rescueStuckRuns\(db\)/);
+  assert.match(driver, /expirePausedRuns\(db\)/);
+});

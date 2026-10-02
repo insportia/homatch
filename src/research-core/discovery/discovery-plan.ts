@@ -29,7 +29,7 @@
 // (CLAUDE.md) and cannot be named by a plan; the claim function refuses them a
 // second time, and tests/matrix/phase2Discovery.test.mjs asserts both.
 
-import type { SearchPlan } from './search-plan.ts';
+import type { PlanDraft, SearchPlan } from './search-plan.ts';
 import { sourceQueriesFor } from './telegram-sources.ts';
 
 export type DiscoveryDirection = 'SUPPLY' | 'DEMAND';
@@ -308,4 +308,30 @@ export function sourceGroupOf(provider: string): 'COMMUNITIES' | 'FORUMS' | 'PRO
     case 'PORTAL': return 'PROPERTY_PORTALS';
     default: return 'HOMATCH';
   }
+}
+
+/**
+ * A stored SearchPlan (active_search_subscriptions.search_criteria) back into
+ * the flat draft normalisePlan() reads, so a plan read from the database is
+ * re-validated through the same closed vocabularies instead of being trusted.
+ */
+export function draftFromStoredPlan(stored: unknown): PlanDraft {
+  const p = (stored && typeof stored === 'object' ? stored : {}) as Record<string, any>;
+  const c = (key: string) => (p[key] && typeof p[key] === 'object' ? p[key] : null);
+  const city = c('city'); const districts = c('districts'); const types = c('propertyTypes');
+  const budget = c('budget'); const bedrooms = c('bedrooms'); const area = c('areaSqm');
+  return {
+    goal: p.goal,
+    countryCode: p.countryCode,
+    city: city?.value, cityStrength: city?.strength,
+    districts: districts?.value, districtsStrength: districts?.strength,
+    propertyTypes: types?.value, propertyTypesStrength: types?.strength,
+    budgetMin: budget?.value?.min, budgetMax: budget?.value?.max, currency: budget?.value?.currency,
+    budgetStrength: budget?.strength,
+    bedroomsMin: bedrooms?.value?.min, bedroomsMax: bedrooms?.value?.max, bedroomsStrength: bedrooms?.strength,
+    areaMin: area?.value?.min, areaMax: area?.value?.max, areaStrength: area?.strength,
+    languages: p.languages,
+    originalText: p.originalText,
+    originalLanguage: p.originalLanguage,
+  };
 }

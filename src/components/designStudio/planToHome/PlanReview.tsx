@@ -156,26 +156,7 @@ export function PlanReview({
                   <button type="button" className="text-start text-[15px] font-medium underline-offset-4 hover:underline" onClick={() => setSelection(selectionFor(q, doc))}>
                     {questionText(q, t, doc)}
                   </button>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {q.kind === 'OPENING_TYPE' ? q.options.map((o) => (
-                      <button key={o} type="button" className={chip(o === q.suggested)} onClick={() => answer({ questionId: q.id, kind: 'OPENING_TYPE', value: o })}>{t(`p2h_opening_${o.toLowerCase()}`)}</button>
-                    )) : null}
-                    {q.kind === 'ROOM_TYPE' ? [q.suggested, ...KINDS.filter((k) => k !== q.suggested)].slice(0, 6).map((k) => (
-                      <button key={k} type="button" className={chip(k === q.suggested)} onClick={() => answer({ questionId: q.id, kind: 'ROOM_TYPE', value: k })}>{t(`ds_room_${k.toLowerCase()}`)}</button>
-                    )) : null}
-                    {q.kind === 'DIMENSION' ? (
-                      <>
-                        <button type="button" className={chip(true)} onClick={() => answer({ questionId: q.id, kind: 'DIMENSION', value: q.suggestedM })}>{t('p2h_dim_as_printed', { text: q.text })}</button>
-                        <button type="button" className={chip(false)} onClick={() => answer({ questionId: q.id, kind: 'DIMENSION', value: Array.isArray(q.suggestedM) ? [0, 0] : 0 })}>{t('p2h_dim_ignore')}</button>
-                      </>
-                    ) : null}
-                    {q.kind === 'OUTDOOR' || q.kind === 'IS_WALL' || q.kind === 'STAIRS' ? (
-                      <>
-                        <button type="button" className={chip(q.suggested)} onClick={() => answer({ questionId: q.id, kind: q.kind, value: true })}>{t('p2h_yes')}</button>
-                        <button type="button" className={chip(!q.suggested)} onClick={() => answer({ questionId: q.id, kind: q.kind, value: false })}>{t('p2h_no')}</button>
-                      </>
-                    ) : null}
-                  </div>
+                  <QuestionChoices q={q} onAnswer={answer} className="mt-2" />
                 </div>
               ))}
             </section>
@@ -259,7 +240,7 @@ export function PlanReview({
   );
 }
 
-function selectionFor(q: PlanQuestion, doc: FloorPlanDocument): PlanSelection | null {
+export function selectionFor(q: PlanQuestion, doc: FloorPlanDocument): PlanSelection | null {
   const id = q.elementId;
   if ([...doc.rooms, ...doc.balconies].some((r) => r.id === id)) return { kind: 'room', id };
   if (doc.doors.some((o) => o.id === id)) return { kind: 'door', id };
@@ -269,7 +250,7 @@ function selectionFor(q: PlanQuestion, doc: FloorPlanDocument): PlanSelection | 
   return null;
 }
 
-function questionText(q: PlanQuestion, t: (k: string, v?: Record<string, string>) => string, doc: FloorPlanDocument): string {
+export function questionText(q: PlanQuestion, t: (k: string, v?: Record<string, string>) => string, doc: FloorPlanDocument): string {
   const room = [...doc.rooms, ...doc.balconies].find((r) => r.id === q.elementId);
   const name = room ? (room.label ?? t(`ds_room_${room.kind.toLowerCase()}`)) : '';
   switch (q.kind) {
@@ -281,4 +262,32 @@ function questionText(q: PlanQuestion, t: (k: string, v?: Record<string, string>
     case 'STAIRS': return t('p2h_q_stairs');
     default: return '';
   }
+}
+
+/** A question's answers, each one tap, HOMATCH's suggestion marked (shared with the quick questions). */
+export function QuestionChoices({ q, onAnswer, className, large = false }: { q: PlanQuestion; onAnswer: (a: PlanAnswer) => void; className?: string; large?: boolean }) {
+  const { t } = useLanguage();
+  const c = (on: boolean) => cn(chip(on), large && 'min-h-12 px-5 text-[15px]');
+  return (
+    <div className={cn('flex flex-wrap gap-1.5', large && 'gap-2', className)} data-testid="question-choices">
+      {q.kind === 'OPENING_TYPE' ? q.options.map((o) => (
+        <button key={o} type="button" className={c(o === q.suggested)} onClick={() => onAnswer({ questionId: q.id, kind: 'OPENING_TYPE', value: o })}>{t(`p2h_opening_${o.toLowerCase()}`)}</button>
+      )) : null}
+      {q.kind === 'ROOM_TYPE' ? [q.suggested, ...KINDS.filter((k) => k !== q.suggested)].slice(0, 6).map((k) => (
+        <button key={k} type="button" className={c(k === q.suggested)} onClick={() => onAnswer({ questionId: q.id, kind: 'ROOM_TYPE', value: k })}>{t(`ds_room_${k.toLowerCase()}`)}</button>
+      )) : null}
+      {q.kind === 'DIMENSION' ? (
+        <>
+          <button type="button" className={c(true)} onClick={() => onAnswer({ questionId: q.id, kind: 'DIMENSION', value: q.suggestedM })}>{t('p2h_dim_as_printed', { text: q.text })}</button>
+          <button type="button" className={c(false)} onClick={() => onAnswer({ questionId: q.id, kind: 'DIMENSION', value: Array.isArray(q.suggestedM) ? [0, 0] : 0 })}>{t('p2h_dim_ignore')}</button>
+        </>
+      ) : null}
+      {q.kind === 'OUTDOOR' || q.kind === 'IS_WALL' || q.kind === 'STAIRS' ? (
+        <>
+          <button type="button" className={c(q.suggested)} onClick={() => onAnswer({ questionId: q.id, kind: q.kind, value: true })}>{t('p2h_yes')}</button>
+          <button type="button" className={c(!q.suggested)} onClick={() => onAnswer({ questionId: q.id, kind: q.kind, value: false })}>{t('p2h_no')}</button>
+        </>
+      ) : null}
+    </div>
+  );
 }

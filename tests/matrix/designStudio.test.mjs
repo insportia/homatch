@@ -235,7 +235,7 @@ test('the customer path creates geometry only through the checking RPC', () => {
 
 test('an unmeasured ceiling is recorded as typical, never as a fact', () => {
   const flow = read('src/components/designStudio/FloorPlanFlow.tsx');
-  assert.match(flow, /ceilingM \? 'CUSTOMER' : doc\.ceilingHeight \? 'DRAWING' : 'TYPICAL'/);
+  assert.match(flow, /ceilingM \? 'CUSTOMER' : doc\??\.ceilingHeight \? 'DRAWING' : 'TYPICAL'/);
   assert.match(read('src/components/designStudio/workspace/Inspector.tsx'), /ds_inspector_ceiling_typical/);
 });
 

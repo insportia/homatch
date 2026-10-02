@@ -93,6 +93,8 @@ export interface DesignWorkspaceProps {
   /** Open straight into the walkthrough (the /walkthrough route). */
   startWalkthrough?: boolean;
   onWalkthroughExit?: () => void;
+  /** A generated home: the back arrow returns to it (the result), not to the project list. */
+  homeHref?: string;
 }
 
 /** The camera, remembered per project across version switches, so A and B are seen from the same place. */
@@ -197,7 +199,7 @@ function SaveIndicator({ status, onRetry }: { status: SaveStatus; onRetry: () =>
 }
 
 function Editor({
-  bundle, source, version, catalog, onReload, onRecalibrate, onFurnishFromPictures, startWalkthrough, onWalkthroughExit,
+  bundle, source, version, catalog, onReload, onRecalibrate, onFurnishFromPictures, startWalkthrough, onWalkthroughExit, homeHref,
 }: DesignWorkspaceProps & {
   version: DesignVersionRecord;
   catalog: { assets: CatalogAsset[]; materials: CatalogMaterial[]; palettes: Palette[] };
@@ -1018,7 +1020,7 @@ function Editor({
     <div className="flex h-[100dvh] flex-col bg-[#0C1119] text-white">
       {/* ── Toolbar ──────────────────────────────────────────────── */}
       <header className="flex h-14 shrink-0 items-center gap-1.5 border-b border-white/10 px-2 sm:gap-2 sm:px-3">
-        <Link to="/design-studio" aria-label={t('ds_back_to_projects')} className={TOOL_BUTTON}>
+        <Link to={homeHref ?? '/design-studio'} aria-label={t(homeHref ? 'sf_your_home' : 'ds_back_to_projects')} className={TOOL_BUTTON} data-testid="workspace-back">
           <ArrowLeft className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
         </Link>
         <span className="hidden h-7 w-7 shrink-0 place-items-center rounded-md bg-[#101623] text-white/85 ring-1 ring-white/10 sm:grid" aria-hidden="true">

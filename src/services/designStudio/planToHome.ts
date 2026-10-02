@@ -61,6 +61,12 @@ export interface FlowRecord {
   factory?: 'USED' | 'UNAVAILABLE' | 'FAILED' | null;
   timings?: FlowTimings;
   startedAt?: string | null;
+  /** How the reading was confirmed: on its own, by quick questions, or in the detailed review. */
+  review?: 'AUTO' | 'QUICK' | 'DETAIL' | null;
+  /** Which part of "how should it feel" the customer is on. */
+  lookStep?: 'STYLE' | 'QUALITY' | 'CUSTOM' | null;
+  /** The two simple choices (lookPresets.ts); `preferences` is what they produced, or the customer's own details. */
+  look?: { style: string; quality: string } | null;
 }
 
 export type ReviewEntry = FloorPlanRecord['corrections'][number] & { flow?: FlowRecord };

@@ -48,8 +48,9 @@ export async function drive(db: any, baseUrl: string, serviceKey: string, body: 
      up to ~150s, so claiming more than one would let the later leases lapse
      and the same job be claimed twice. The driver ticks every minute. */
   report.sourceJobs = await runSourceJobs(db, baseUrl, serviceKey, settings, Math.min(5, Number(body.limit) || 1), 'EDGE');
-  /* Portal jobs routed through the official worker: same claim, same lease;
-     the network hop is the worker's (supply-discovery picks the transport). */
+  /* Portal jobs routed through the official worker: this edge driver still
+     claims, leases, runs and finishes them; only each HTTP fetch hop goes to
+     the Railway official worker (supply-discovery picks the transport). */
   if (settings.workerRouteEnabled) {
     report.workerRoutedJobs = await runSourceJobs(db, baseUrl, serviceKey, settings, 1, 'WORKER');
   }
@@ -67,8 +68,10 @@ async function runSourceJobs(
   db: any, baseUrl: string, serviceKey: string, settings: DiscoverySettings, limit: number, executor: 'EDGE' | 'WORKER',
 ) {
   /* v2: one job per run per pass (a large campaign cannot monopolise the
-     queue), per-provider concurrency caps, and only EDGE-executor jobs --
-     WORKER jobs are leased by the official Railway worker. */
+     queue), per-provider concurrency caps, and one executor per call. The edge
+     driver owns claim, lease and lifecycle for BOTH executors; for WORKER jobs
+     the Railway official worker only performs the fetch hop the edge requests
+     (POST /discovery/fetch). It holds no queue lease and no database key. */
   const { data: claimed, error } = await db.rpc('claim_discovery_source_jobs_v2', {
     p_limit: limit,
     p_lease_seconds: settings.sourceJobLeaseSeconds,

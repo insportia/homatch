@@ -114,6 +114,13 @@ production with evidence (filled in by the release, not by this list).
 | Admin | `admin_discovery_intelligence()` + panel under /admin/discovery; Phase 2 switches; run live checks | migration `20261009100100`, `DiscoveryIntelligencePanel.tsx` |
 | UI | Find Property "Search outside HOMATCH": budget, real stages, source groups, pause/resume/stop, refresh-safe | `OutsideSearchPanel.tsx` |
 
+Hardening (D1–D2, after the 2026-10-02 reconciliation):
+
+| Fix | Behaviour | Where |
+|---|---|---|
+| D1 ss.ge id | a run plans the ids the portal runtime executes (`ss-ge`), not the `PORTAL_SOURCES` labels (`home-ss-ge`) | `research-core/discovery/portal-selection.ts`, `find-property-run` |
+| D2 billing | owner rule: 0 delivered → reservation released, charge 0; otherwise unit price (plan the run started under) × delivered properties, capped at the reservation; duplicates, INVALID/REMOVED, incompatible and already-delivered properties never billed; settled once per run; a settle that errors releases | `_shared/findPropertySettlement.ts`, `_shared/discoveryRun.ts` (shared `billing.ts` untouched) |
+
 Not built (named, not hidden): browser rendering on the worker
 (WORKER_BROWSER route), a canonical DEMAND entity with cross-source demand
 dedup, one scorer for both directions, revalidation schedule for supply,

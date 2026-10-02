@@ -101,7 +101,8 @@ test('a Find Property run is PAYG through the wallet, idempotent, one open run p
   assert.ok(reserve > 0 && plan > reserve && queue > plan, 'reserve, then plan, then queue');
   assert.match(RUN_FN, /releaseExecution\(db, grant/, 'a failed start releases the reservation');
   assert.match(RUN_FN, /normalisePlan\(draftFromStoredPlan\(/, 'a stored plan is re-validated, not trusted');
-  assert.match(RUN_FN, /PORTAL_IDS\.has\(id\)/, 'only listing portals serve PORTAL jobs');
+  assert.match(RUN_FN, /livePortalAdaptersFor\(/, 'only adapters the portal runtime executes serve PORTAL jobs');
+  assert.doesNotMatch(RUN_FN, /PORTAL_SOURCES/, 'config ids (home-ss-ge) are not runtime ids (ss-ge)');
 });
 
 test('a customer plan x an external listing is written as EXTERNAL_LISTING, keyed by plan and observation', () => {
@@ -119,9 +120,13 @@ test('a PORTAL job reads one live adapter scoped by the plan, with the budget as
   assert.match(fn, /resolveMarket\(db/, 'entity resolution runs on what was written');
 });
 
-test('a run ends by counting only what it delivered, settling measured cost, unknown cost kept unknown', () => {
-  assert.match(RUN_LIB, /eq\('source_kind', 'EXTERNAL_LISTING'\)/);
-  assert.match(RUN_LIB, /gte\('created_at', run\.started_at\)/);
+test('a run ends by counting only what it delivered, charging only for that, unknown cost kept unknown', () => {
+  const settlement = read('supabase/functions/_shared/findPropertySettlement.ts');
+  assert.match(settlement, /eq\('source_kind', 'EXTERNAL_LISTING'\)/);
+  assert.match(settlement, /Date\.parse\(row\.created_at\) >= started/, 'counted from this run\'s start');
+  assert.match(RUN_LIB, /loadDeliveries\(db, run\.intent_profile_id, run\.started_at\)/);
+  assert.match(RUN_LIB, /settleFindPropertyRun\(db, grant/);
+  assert.doesNotMatch(RUN_LIB, /settleExecution/, 'never the shared work-priced settle');
   assert.match(RUN_LIB, /provider_cost_usd: costUnknown \? null : providerCostUsd/);
   const driver = read('supabase/functions/discovery-queue-worker/driver.ts');
   assert.match(driver, /advanceRuns\(db/);
@@ -144,7 +149,7 @@ test('a listing post filtered out of demand also becomes a supply observation, d
 test('reposts collapse: results and the delivery count are per property (entity), resolution scoped by city', () => {
   const fp = read('supabase/functions/find-property/index.ts');
   assert.match(fp, /seenEntities/);
-  assert.match(read('supabase/functions/_shared/discoveryRun.ts'), /entity_id \?\? r\.observation_id/);
+  assert.match(read('supabase/functions/_shared/findPropertySettlement.ts'), /entity_id \?\? row\.observation_id/);
   const sd = read('supabase/functions/supply-discovery/index.ts');
   const resolver = sd.slice(sd.indexOf('async function resolveMarket'));
   assert.match(resolver.slice(0, 1500), /placeNamesFor\(city\)/);

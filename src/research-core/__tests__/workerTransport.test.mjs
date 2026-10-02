@@ -48,10 +48,10 @@ test('only the portals an operator routes go to the worker', () => {
   const { plan: search } = normalisePlan({ goal: 'RENT', countryCode: 'GE', city: 'Batumi', cityStrength: 'REQUIRED' });
   const plan = compileSupplyPlan({
     plan: search,
-    switches: { telegram: false, forum: false, portals: true, livePortalAdapters: ['home-ss-ge', 'place-ge'], workerRoutedAdapters: ['place-ge', 'not-live'] },
+    switches: { telegram: false, forum: false, portals: true, livePortalAdapters: ['ss-ge', 'place-ge'], workerRoutedAdapters: ['place-ge', 'not-live'] },
     limits: { maxCredits: 50, deadlineMinutes: 30, targetResults: 5, activeDemandMaxDays: 30 },
   });
   assert.deepEqual(plan.workerRoutedAdapters, ['place-ge'], 'never a portal that is not live');
   const jobs = plannedSourceJobs(plan, 'r');
-  assert.deepEqual(jobs.map((j) => [j.metadata.adapterId, j.executor]), [['home-ss-ge', 'EDGE'], ['place-ge', 'WORKER']]);
+  assert.deepEqual(jobs.map((j) => [j.metadata.adapterId, j.executor]), [['ss-ge', 'EDGE'], ['place-ge', 'WORKER']]);
 });

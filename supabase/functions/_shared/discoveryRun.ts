@@ -8,12 +8,15 @@
 //   COMPLETED / PARTIAL / FAILED / CANCELLED / BUDGET_REACHED
 //
 // The ending counts ONLY external listings this run delivered to the
-// customer's own search (supply_matches EXTERNAL_LISTING created since the
-// run started), settles measured cost against the reservation, and releases
-// the rest. Unknown cost is recorded as unknown, never as zero.
+// customer's own search and charges for those alone (findPropertySettlement.ts):
+// zero delivered releases the whole reservation; otherwise the charge is the
+// plan's unit price per delivered property, capped at the reservation.
+// Measured provider cost is recorded; unknown cost is recorded as unknown,
+// never as zero.
 
-import { releaseExecution, settleExecution, type ExecutionGrant } from './billing.ts';
+import { releaseExecution, type ExecutionGrant } from './billing.ts';
 import { errorText } from './campaignRun.ts';
+import { claimSettlement, loadDeliveries, settleFindPropertyRun } from './findPropertySettlement.ts';
 
 type Json = Record<string, unknown>;
 
@@ -52,23 +55,23 @@ export async function finalizeDiscoveryRun(
   grant: ExecutionGrant | null,
   context: { sourceJobs: Json; matching?: Json | null; noResultsReason?: string | null },
 ) {
-  const now = Date.now();
-  let delivered = 0;
-  if (run.intent_profile_id) {
-    /* Counted per PROPERTY: reposts of one flat are one delivery. */
-    const { data: rows, error } = await db.from('supply_matches')
-      .select('observation_id,observation:supply_observations!observation_id(entity_id)')
-      .eq('intent_profile_id', run.intent_profile_id)
-      .eq('source_kind', 'EXTERNAL_LISTING')
-      .eq('compatibility', 'COMPATIBLE')
-      .gte('created_at', run.started_at)
-      .limit(1000);
-    if (error) throw error;
-    delivered = new Set(((rows ?? []) as any[]).map((r) => {
-      const o = Array.isArray(r.observation) ? r.observation[0] : r.observation;
-      return String(o?.entity_id ?? r.observation_id);
-    })).size;
+  /* Once per run: a repeat (a retried tick, a lost race) settles nothing again
+     and reports what the first ending recorded. */
+  if (!(await claimSettlement(db, run.id))) {
+    const { data: ended } = await db.from('discovery_runs')
+      .select('status,results_found,credits_charged').eq('id', run.id).maybeSingle();
+    return {
+      status: String(ended?.status ?? 'UNKNOWN'),
+      delivered: Number(ended?.results_found ?? 0),
+      creditsCharged: Number(ended?.credits_charged ?? 0),
+      repeated: true,
+    };
   }
+
+  const now = Date.now();
+  /* Counted on the server, per PROPERTY: reposts of one flat are one delivery. */
+  const deliveries = await loadDeliveries(db, run.intent_profile_id, run.started_at);
+  const delivered = deliveries.delivered;
 
   /* Measured provider spend of this run's source jobs. Native routes report
      0 per request; a job that did not measure leaves actual_cost_usd null and
@@ -80,21 +83,36 @@ export async function finalizeDiscoveryRun(
   const costUnknown = finished.some((j) => j.actual_cost_usd === null);
   const providerCostUsd = finished.reduce((sum, j) => sum + Number(j.actual_cost_usd ?? 0), 0);
 
-  let creditsCharged = 0;
-  if (grant) {
+  /* null only when neither a settle nor a release could be recorded: the
+     reservation is still held and the run says so rather than claiming 0. */
+  let creditsCharged: number | null = 0;
+  let billing: string = grant ? 'NONE' : 'NO_GRANT';
+  try {
+    const settled = await settleFindPropertyRun(db, grant, {
+      runId: run.id,
+      searchCount: finished.length,
+      durationMs: now - new Date(run.started_at).getTime(),
+      providerCostUsd,
+      providerCostUnknown: costUnknown,
+      deliveries,
+    }, releaseExecution);
+    creditsCharged = settled.creditsCharged;
+    billing = settled.action;
+  } catch (error) {
+    /* A charge that cannot be priced or recorded is not taken: the hold is
+       released (nothing in production sweeps a stranded reservation). Only
+       when even the release fails does the run say the hold is still open. */
     try {
-      const settled = await settleExecution(db, grant, {
-        provider: 'homatch_discovery',
-        providerOperation: 'find_property_run',
-        providerRequestId: run.id,
-        searchCount: finished.length,
-        durationMs: now - new Date(run.started_at).getTime(),
-        rawProviderCostCents: providerCostUsd * 100,
-        metadata: { delivered_listings: delivered, provider_cost_unknown: costUnknown },
-      }, delivered > 0 ? 'SUCCESS' : 'PARTIAL');
-      creditsCharged = settled.chargedCredits;
-    } catch (error) {
-      await runEvent(db, run.id, 'SETTLE_DEFERRED', { message: errorText(error) }).catch(() => undefined);
+      if (grant) await releaseExecution(db, grant, 'settle_failed');
+      creditsCharged = 0;
+      billing = 'RELEASED_AFTER_ERROR';
+      await runEvent(db, run.id, 'SETTLE_FAILED_RELEASED', { message: errorText(error) }).catch(() => undefined);
+    } catch (releaseError) {
+      creditsCharged = null;
+      billing = 'DEFERRED';
+      await runEvent(db, run.id, 'SETTLE_DEFERRED', {
+        message: errorText(error), releaseMessage: errorText(releaseError),
+      }).catch(() => undefined);
     }
   }
 
@@ -110,10 +128,11 @@ export async function finalizeDiscoveryRun(
     completed_at: new Date().toISOString(),
   });
   await runEvent(db, run.id, 'RUN_COMPLETE', {
-    delivered, creditsCharged, providerCostUsd: costUnknown ? null : providerCostUsd,
+    delivered, notBilled: deliveries.excluded, billing, creditsCharged,
+    providerCostUsd: costUnknown ? null : providerCostUsd,
     providerCostUnknown: costUnknown, sourceJobs: context.sourceJobs, matching: context.matching ?? null,
   });
-  return { status, delivered, creditsCharged };
+  return { status, delivered, creditsCharged: creditsCharged ?? 0 };
 }
 
 /** End a run that could not finish: release the whole reservation, say why. */

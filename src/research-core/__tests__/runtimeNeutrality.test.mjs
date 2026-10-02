@@ -556,9 +556,10 @@ test('the core is consumed only through its deliberate integration points', () =
      *
      * find-property-run compiles a FIND PROPERTY run's DiscoveryPlan from the
      * stored SearchPlan (re-validated through normalisePlan) and reads the
-     * portal configuration to know which registry adapters are listing
-     * portals. The driver maps a provider to its customer-safe source group
-     * for run progress. Neither fetches: plans and names only.
+     * portal runtime's adapter ids to know which registry adapters are
+     * executable listing portals (building the runtime touches no network).
+     * The driver maps a provider to its customer-safe source group for run
+     * progress. Neither fetches: plans and names only.
      */
     'supabase/functions/find-property-run/index.ts',
     'supabase/functions/discovery-queue-worker/driver.ts',

@@ -5,20 +5,20 @@
 // cron). A line is added here only when the code behind it exists.
 import React, { useEffect, useState } from 'react';
 import { CheckCircle2, Loader2, ShieldCheck, Wand2, XCircle, AlertTriangle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button } from './MetaButton';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { checkMedia, GOAL_SPECS, PLACEMENTS, type Placement, resolveCta } from '@/lib/metaAds/payload';
 import type { MetaGoal } from '@/lib/metaAds/strategy';
 import { money, type MetaCampaignRow, type MetaCreativeRow, type MetaStatus, type PreflightResult, type StrategyPreview } from '@/services/metaAds';
-import { ChoiceCard, StepShell, VerdictBadge } from './ui';
+import { ChoiceCard, StepShell, SummaryRow, VerdictBadge } from './ui';
 import { selectedAsset, preflightDetails, handledTasks } from './steps';
 import { FinancialSummary, type Totals } from './BudgetStep';
 import { StrategyCard } from './StrategyCard';
 import { FundingCard } from './FundingCard';
 import { regionName } from './LocationPicker';
 import { advertiserCountryOf, effectiveRadiusKm, geographyGroups, housingRuleFor } from './masterLogic';
-import { More } from './FinishKit';
+import { Hint, More } from './FinishKit';
 import { languageName } from './AudienceStep';
 
 export function PlacementsStep({ campaign, status, creatives, recommended, patch }: {
@@ -45,6 +45,7 @@ export function PlacementsStep({ campaign, status, creatives, recommended, patch
 
   return (
     <StepShell eyebrow={t('madsb_step_placements')} title={t('madsb_pl_title')} lead={t('madsb_pl_lead')}>
+      <Hint k="mm_c_hint_placements" />
       <div className="grid gap-2 sm:grid-cols-2">
         <ChoiceCard active={mode === 'RECOMMENDED'} icon={<Wand2 className="h-4 w-4" />} title={t('mads_placements_reco')} body={t('madsb_pl_reco_d')}
           onClick={() => patch({ placements: { mode: 'RECOMMENDED' } }, { immediate: true })} />
@@ -134,12 +135,12 @@ export function ReviewStep({ campaign, status, creatives, totals, pricing, recom
   const pixel = selectedAsset(status, 'PIXEL');
   const form = (status?.assets ?? []).find((a) => a.kind === 'LEAD_FORM' && a.external_id === campaign.destination?.formId) ?? selectedAsset(status, 'LEAD_FORM');
   // The server's rule (engine.strategyInputFor → declaredSpecialAdCategories), not a guess.
-  const chosenLocs = campaign.targeting?.locations?.length ? campaign.targeting.locations : (status?.settings.countries ?? ['GE']).map((c) => ({ countryCode: c }));
+  const chosenLocs = campaign.targeting?.locations ?? [];
   const rule = housingRuleFor(campaign, chosenLocs, advertiserCountryOf(status));
   const housing = rule.restricted;
   const locs = campaign.targeting?.locations?.length
     ? campaign.targeting.locations.map((l) => (l.type === 'country' ? regionName(l.key, lang) : l.type === 'city' || l.type === 'pin' ? `${l.name} (+${t('mm_b_loc_radius_km', { km: String(effectiveRadiusKm(l.radiusKm, rule.minRadiusKm)) })})` : l.name))
-    : (status?.settings.countries ?? ['GE']).map((c) => regionName(c, lang));
+    : [t('mm_c_loc_none_chosen')];
   const langs = (campaign.targeting?.languages ?? []).map((l) => (l.code ? languageName(l.code, lang) : l.name));
   const priorityCount = creatives.filter((c) => c.priority && c.media.length).length;
   const eff = strategy?.targeting?.effective;
@@ -160,17 +161,15 @@ export function ReviewStep({ campaign, status, creatives, totals, pricing, recom
   ];
 
   const Block = ({ title, step, rows }: { title: string; step: string; rows: Array<[string, React.ReactNode]> }) => (
-    <div className="rounded-xl border border-border p-3.5">
-      <div className="flex items-center justify-between">
-        <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">{title}</p>
-        <button type="button" onClick={() => onEdit(step)} className="text-2xs font-medium text-[hsl(var(--gold-ink))] hover:underline">{t('madsb_edit')}</button>
+    <div className="rounded-xl border border-border p-3.5" data-mm-review-block={step}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="min-w-0 text-2xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">{title}</p>
+        <button type="button" onClick={() => onEdit(step)} aria-label={`${t('madsb_edit')} · ${title}`}
+          className="inline-flex min-h-11 shrink-0 items-center rounded-full px-2.5 text-2xs font-semibold text-[hsl(var(--gold-ink))] hover:bg-[hsl(var(--gold-soft))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">{t('madsb_edit')}</button>
       </div>
-      <dl className="mt-2 space-y-1.5 text-sm">
-        {rows.map(([k, v]) => (
-          <div key={k} className="flex flex-wrap justify-between gap-x-3">
-            <dt className="text-muted-foreground">{k}</dt><dd className="min-w-0 text-end font-medium text-foreground">{v}</dd>
-          </div>
-        ))}
+      {/* Label above value on phones: never two narrow columns. */}
+      <dl className="mt-1 divide-y divide-border/60 text-sm">
+        {rows.map(([k, v]) => <SummaryRow key={k} label={k} value={v} editLabel={t('madsb_edit')} dense />)}
       </dl>
     </div>
   );
@@ -181,14 +180,7 @@ export function ReviewStep({ campaign, status, creatives, totals, pricing, recom
       {/* SUMMARY FIRST — about one phone screen: what runs, where, for how much. */}
       <div data-mm-review-summary="" className="overflow-hidden rounded-2xl border border-[hsl(var(--gold-border))]/60 bg-card shadow-card">
         <dl className="divide-y divide-border text-sm">
-          {summary.map(([k, v, step]) => (
-            <div key={k} className="flex items-center gap-3 px-3.5 py-2.5">
-              <dt className="w-24 shrink-0 text-[13px] text-muted-foreground sm:w-32">{k}</dt>
-              <dd className="min-w-0 flex-1 font-medium leading-snug text-foreground" dir="auto">{v}</dd>
-              <button type="button" onClick={() => onEdit(step)} aria-label={`${t('madsb_edit')} · ${k}`}
-                className="inline-flex min-h-11 shrink-0 items-center rounded-full px-2.5 text-2xs font-semibold text-[hsl(var(--gold-ink))] hover:bg-[hsl(var(--gold-soft))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">{t('madsb_edit')}</button>
-            </div>
-          ))}
+          {summary.map(([k, v, step]) => <SummaryRow key={k} label={k} value={v} onEdit={() => onEdit(step)} editLabel={t('madsb_edit')} />)}
         </dl>
       </div>
       {insights}
@@ -246,7 +238,7 @@ export function ReviewStep({ campaign, status, creatives, totals, pricing, recom
           <div className="grid gap-3 md:grid-cols-2">
             <Block title={t('madsb_review_campaign')} step="goal" rows={[
               [t('madsb_review_objective'), t(`mads_goal_${goal.toLowerCase()}` as never)],
-              [t('madsb_review_destination'), spec.needsLeadForm ? (form?.name ?? '—') : spec.needsMessagingApp ? t(`madsb_msg_${String(campaign.destination?.messagingApp ?? 'messenger').toLowerCase().replace('instagram_direct', 'instagram')}` as never) : <span dir="ltr">{campaign.destination?.url ?? '—'}</span>],
+              [t('madsb_review_destination'), spec.needsLeadForm ? (form?.name ?? '—') : spec.needsMessagingApp ? t(`madsb_msg_${String(campaign.destination?.messagingApp ?? 'messenger').toLowerCase().replace('instagram_direct', 'instagram')}` as never) : <span dir="ltr" className="[overflow-wrap:anywhere]">{campaign.destination?.url ?? "—"}</span>],
               [t('madsb_review_identity'), `${page?.name ?? '—'}${ig ? ` · ${ig.name}` : ''}`],
               [t('mads_conn_ad_account'), acct?.name ?? '—'],
             ]} />

@@ -86,13 +86,44 @@ export function timingSafeEqual(a: string, b: string): boolean {
 
 export const STATE_TTL_MS = 15 * 60_000;
 
-export async function signState(secret: string, payload: { uid: string; nonce: string }, now = Date.now()): Promise<string> {
+/**
+ * Where the owner returns after Meta's dialog: a HOMATCH path inside the Meta
+ * Ads area, never another site. Only `/outreach/meta` or
+ * `/outreach/meta/create` with a plain query string (the draft id and step);
+ * anything else — a scheme, `//host`, a backslash, an encoded slash — is
+ * refused and the default page is used. Checked when the state is signed AND
+ * again at the callback, so a forged or stale value can never redirect.
+ */
+const RETURN_PATH = /^\/outreach\/meta(?:\/create)?(?:\?[A-Za-z0-9=&_.-]{0,180})?$/;
+export function safeReturnPath(raw: unknown): string | null {
+  const s = String(raw ?? '').trim();
+  return s.length <= 200 && RETURN_PATH.test(s) ? s : null;
+}
+
+/** The return path with HOMATCH's connect result (any earlier result replaced). */
+export function withConnectResult(path: string, result: string): string {
+  const [base, query = ''] = path.split('?');
+  const q = new URLSearchParams(query);
+  q.delete('connect');
+  q.set('connect', result);
+  return `${base}?${q}`;
+}
+
+/** Meta's dialog error → HOMATCH's result: the owner saying no is a cancel, not a failure. */
+export function dialogErrorResult(error: string | null, reason: string | null): 'denied' | 'error' {
+  const e = String(error ?? '').toLowerCase();
+  const r = String(reason ?? '').toLowerCase();
+  return e === 'access_denied' || r === 'user_denied' ? 'denied' : 'error';
+}
+
+export async function signState(secret: string, payload: { uid: string; nonce: string; ret?: string | null }, now = Date.now()): Promise<string> {
   if (!secret) throw new Error('STATE_SECRET_MISSING');
-  const body = b64url(enc.encode(JSON.stringify({ ...payload, exp: now + STATE_TTL_MS })));
+  const ret = safeReturnPath(payload.ret);
+  const body = b64url(enc.encode(JSON.stringify({ uid: payload.uid, nonce: payload.nonce, ...(ret ? { ret } : {}), exp: now + STATE_TTL_MS })));
   return `${body}.${hex(await hmac(secret, body))}`;
 }
 
-export async function verifyState(secret: string, state: string, now = Date.now()): Promise<{ uid: string; nonce: string } | null> {
+export async function verifyState(secret: string, state: string, now = Date.now()): Promise<{ uid: string; nonce: string; ret: string | null } | null> {
   const [body, sig, extra] = String(state ?? '').split('.');
   if (!secret || !body || !sig || extra !== undefined) return null;
   if (!timingSafeEqual(hex(await hmac(secret, body)), sig)) return null;
@@ -101,7 +132,7 @@ export async function verifyState(secret: string, state: string, now = Date.now(
     if (typeof parsed.exp !== 'number' || parsed.exp < now) return null;
     const uid = String(parsed.uid ?? '');
     const nonce = String(parsed.nonce ?? '');
-    return uid && nonce ? { uid, nonce } : null;
+    return uid && nonce ? { uid, nonce, ret: safeReturnPath(parsed.ret) } : null;
   } catch {
     return null;
   }

@@ -59,8 +59,10 @@ export interface MetaStatus {
     instant_forms?: import('@/lib/metaAds/instantForms').InstantFormsState;
     /** What remains once the Page's Lead Ads Terms are accepted. */
     instant_forms_next?: import('@/lib/metaAds/instantForms').InstantFormsState;
-    /** The selected Page's leadgen_tos_accepted as Meta last reported it (null: not confirmed). */
-    lead_terms?: boolean | null;
+    /** The selected Page's Lead Ads terms, as Meta's evidence shows them (UNKNOWN is never "not accepted"). */
+    lead_terms?: import('@/lib/metaAds/instantForms').LeadTerms;
+    /** When HOMATCH last asked Meta about the Page (null: never). */
+    lead_checked_at?: string | null;
     token_expires_at?: string | null; last_checked_at?: string | null;
   };
   assets: MetaAsset[];
@@ -70,17 +72,23 @@ export interface MetaStatus {
     feePercent: number; standardFeePercent?: number; minDurationDays: number; minDailyCents: number; maxDailyCents: number;
     goalsEnabled: string[]; leadImportEnabled: boolean; audienceCreationEnabled: boolean;
     retargetingEnabled: boolean; aiAssistEnabled: boolean; publishingEnabled: boolean;
+    /** HOMATCH AI creative analysis + paid variations. Absent from an older server = off. */
+    aiCreativeEnabled?: boolean;
     whatsappEnabled?: boolean; countries?: string[];
     /** Who pays Meta for the ad budget. Absent from an older server = the customer's ad account. */
     budgetBilling?: 'CUSTOMER_AD_ACCOUNT' | 'HOMATCH_WALLET';
   };
 }
 export const getMetaStatus = () => call<MetaStatus>('status');
-export const startMetaOAuth = () => call<{ url?: string; mockConnect?: boolean; mode: string }>('oauth_start');
+/** `returnTo` (a HOMATCH Meta Ads path) is validated and sealed into the signed state server-side. */
+export const startMetaOAuth = (returnTo?: string | null) => call<{ url?: string; mockConnect?: boolean; mode: string }>('oauth_start', returnTo ? { returnTo } : {});
 export const mockConnect = () => call('oauth_mock_connect');
 export const refreshMetaAssets = () => call('assets_refresh');
 /** Ask Meta again: permissions, the Page's Lead Ads Terms, form access. Never accepts anything. */
-export const recheckLeadForms = () => call<{ ok: boolean; mode?: string; pageId?: string; checked?: { page: boolean; terms?: boolean | null; termsReason?: string | null; formsReadable?: boolean | null } }>('forms_recheck');
+export const recheckLeadForms = () => call<{
+  ok: boolean; mode?: string; pageId?: string; state?: import('@/lib/metaAds/instantForms').InstantFormsState;
+  checked?: { page: boolean; permissions?: boolean; terms?: import('@/lib/metaAds/instantForms').LeadTerms; termsReason?: string | null; formsReadable?: boolean | null; error?: string | null };
+}>('forms_recheck');
 export const selectMetaAsset = (kind: string, assetId: string) =>
   call<{ ok: boolean; leadgenSubscribed: boolean | null }>('select_asset', { kind, assetId });
 export const disconnectMeta = () => call('disconnect');
@@ -116,9 +124,11 @@ export interface MetaCampaignRow {
 }
 
 export interface LocationChoiceRow {
-  type: 'country' | 'region' | 'city' | 'pin'; key: string; name: string; countryCode: string; radiusKm?: number | null;
-  /** Pins: the point Meta receives. Cities: where HOMATCH's map draws them (display only). */
+  type: 'country' | 'region' | 'city' | 'neighborhood' | 'pin'; key: string; name: string; countryCode: string; radiusKm?: number | null;
+  /** Pins: the point Meta receives. Cities / neighbourhoods: where HOMATCH's map draws them
+   *  (display only, only when Meta gave coordinates). */
   lat?: number | null; lng?: number | null;
+  metaType?: 'neighborhood' | 'subcity' | null;
 }
 export interface LanguageChoiceRow { key: string; name: string; code?: string | null }
 export interface InternationalChoiceRow { enabled: boolean; intents: string[]; markets: string[] }
@@ -217,6 +227,10 @@ export interface MediaMeta {
   path: string; mime: string; size?: number; width?: number | null; height?: number | null; duration?: number | null;
   /** Images: mean luminance 0..255 and its spread, measured before upload. */
   luma?: number | null; contrast?: number | null;
+  /** Videos: the cover still (a separate file — the video is never altered). */
+  cover?: { path: string; t: number; auto: boolean } | null;
+  /** Lineage of a HOMATCH AI variation: original → analysis → job → this image. */
+  ai?: { jobId: string; analysisJobId?: string | null; conceptId?: string | null; sourcePath?: string | null; sourceCreativeId?: string | null; index: number; role?: string } | null;
 }
 export interface MetaCreativeRow {
   id: string; campaign_id: string | null; kind: 'IMAGE' | 'VIDEO' | 'CAROUSEL';
@@ -329,11 +343,50 @@ export async function removeCreative(id: string): Promise<void> {
   if (error) throw error;
 }
 
+/** Saves a video's cover as its own still and points the creative at it. The old cover file is removed. */
+export async function saveVideoCover(userId: string, creative: MetaCreativeRow, still: Blob, t: number, auto: boolean): Promise<MetaCreativeRow> {
+  const m0 = creative.media[0];
+  if (!m0) throw new Error('media');
+  const path = `${userId}/covers/${crypto.randomUUID()}.jpg`;
+  const { error: upErr } = await supabase.storage.from('meta-ads-media').upload(path, still, { contentType: 'image/jpeg', upsert: false });
+  if (upErr) throw upErr;
+  const media = [{ ...m0, cover: { path, t: Math.round(t * 100) / 100, auto } }, ...creative.media.slice(1)];
+  const { error } = await supabase.from('meta_creatives').update({ media }).eq('id', creative.id);
+  if (error) { await supabase.storage.from('meta-ads-media').remove([path]).catch(() => undefined); throw error; }
+  if (m0.cover?.path) void supabase.storage.from('meta-ads-media').remove([m0.cover.path]).catch(() => undefined);
+  return { ...creative, media };
+}
+
 export async function creativeMediaUrl(path: string): Promise<string> {
   const { data, error } = await supabase.storage.from('meta-ads-media').createSignedUrl(path, 3600);
   if (error || !data?.signedUrl) throw (error ?? new Error('media'));
   return data.signedUrl;
 }
+
+/* ── HOMATCH AI CREATIVES (explicit, cached, billed — meta-ads-api/creativeAi.ts) ── */
+
+export interface AiConcept { id: string; title: string; angle: string; visual: string; composition: string; cta: string; safeArea: string }
+export interface AiAnalysis { subject: string; strengths: string[]; issues: string[]; concepts: AiConcept[] }
+export interface AiImage { index: number; width: number; height: number; discarded: boolean; url: string | null }
+export interface AiJob {
+  id: string; kind: 'ANALYSIS' | 'GENERATION' | 'REFINE'; status: 'RUNNING' | 'DONE' | 'FAILED'; stage: string; error: string | null;
+  creativeId: string; conceptId: string | null; requested: number | null;
+  quotedCredits: number | null; chargedCredits: number | null; analysis: AiAnalysis | null; images: AiImage[];
+  createdAt: string; updatedAt: string;
+}
+export interface AiQuote { variations: number; unitCredits: number; expectedCredits: number; maxCredits: number; balanceCredits: number; enough: boolean; available: boolean }
+
+export const aiAnalyze = (creativeId: string, locale: string, force = false) =>
+  call<{ cached: boolean; job: AiJob }>('creative_ai_analyze', { creativeId, locale, force, idempotencyKey: crypto.randomUUID() });
+export const aiQuote = (variations: number, refine = false) => call<{ quote: AiQuote }>('creative_ai_quote', { variations, refine });
+/** `idempotencyKey` is minted ONCE per confirmed click and reused on retry — the server never charges a key twice. */
+export const aiGenerate = (p: { creativeId: string; analysisJobId: string; conceptId: string; instruction?: string; variations: number; idempotencyKey: string; locale: string; fromJobId?: string; fromIndex?: number }) =>
+  call<{ job: AiJob; replay: boolean }>('creative_ai_generate', p);
+export const aiJob = (jobId: string) => call<{ job: AiJob }>('creative_ai_job', { jobId });
+export const aiJobs = (creativeId: string) => call<{ jobs: AiJob[] }>('creative_ai_jobs', { creativeId });
+export const aiDiscard = (jobId: string, index: number, restore = false) => call<{ ok: boolean }>('creative_ai_discard', { jobId, index, restore });
+export const aiUse = (jobId: string, picks: Array<{ index: number; role: 'PRIMARY' | 'SECONDARY' | 'TEST' }>) =>
+  call<{ created: string[] }>('creative_ai_use', { jobId, picks });
 
 /* ── LEADS ──────────────────────────────────────────────────────────── */
 
@@ -434,8 +487,8 @@ export interface StrategyPreview {
   };
 }
 export const strategyPreview = (campaignId: string) => call<StrategyPreview>('strategy_preview', { campaignId });
-export const geoSearch = (q: string, type: 'country' | 'region' | 'city', locale: string, country?: string) =>
-  call<{ results: LocationChoiceRow[]; reason?: string }>('geo_search', { q, type, locale, country });
+export const geoSearch = (q: string, type: 'country' | 'region' | 'place', locale: string, country?: string) =>
+  call<{ results: Array<LocationChoiceRow & { region?: string | null; countryName?: string | null }>; reason?: string; street?: boolean; variant?: number }>('geo_search', { q, type, locale, country });
 /** Meta's locale keys for a language (type=adlocale), whole-language entry first. */
 export const localeSearch = (code: string) =>
   call<{ results: LanguageChoiceRow[]; reason?: string }>('locale_search', { code });

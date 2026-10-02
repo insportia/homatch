@@ -207,7 +207,7 @@ test('every mm_b_ key used exists with six non-empty values and matching placeho
   const EXPAND = {
     mm_b_reason_: STRATEGY_REASON_CODES, mm_b_adj_: TARGETING_ADJUSTMENT_CODES, mm_b_issue_: PLAN_ISSUE_CODES,
     mm_b_adv_: ADVICE_CODES, mm_b_lf_issue_: LEAD_FORM_ISSUE_CODES, mm_b_gender_: ['ALL', 'FEMALE', 'MALE'],
-    mm_b_loc_kind_: ['country', 'region', 'city'], mm_b_loc_ph_: ['country', 'region', 'city'],
+    mm_b_loc_kind_: ['country', 'region', 'city', 'neighborhood', 'pin'], mm_b_loc_ph_: ['country', 'region', 'city'],
     mm_b_sev_: ['INFO', 'RECOMMENDATION', 'WARNING', 'BLOCKING_ERROR'],
   };
   const used = new Set();

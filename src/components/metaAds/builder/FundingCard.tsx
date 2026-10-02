@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { Info, Loader2, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
+import { Button } from './MetaButton';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { depositCheckout, moneyIn, type FundingRow } from '@/services/metaAds';
 import { depositAmountCents } from './masterLogic';

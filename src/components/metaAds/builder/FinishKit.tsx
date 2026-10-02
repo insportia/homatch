@@ -173,3 +173,16 @@ export function LearningStageCard({ stage }: { stage: LearningStage }) {
     </div>
   );
 }
+
+/**
+ * One short sentence under a control, saying what it does in plain words —
+ * no Meta jargon, no documentation block. `k` is an i18n key.
+ */
+export function Hint({ k, vars, className }: { k: string; vars?: Record<string, string>; className?: string }) {
+  const { t } = useLanguage();
+  return (
+    <p data-mm-hint={k} className={cn('flex items-start gap-1.5 text-2xs leading-relaxed text-muted-foreground', className)}>
+      <span aria-hidden className="mt-px shrink-0 text-[hsl(var(--gold-ink))]">ⓘ</span><span>{t(k, vars)}</span>
+    </p>
+  );
+}

@@ -2,7 +2,7 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CheckCircle2, FileText, Globe, MessageCircle, Instagram, Loader2, Plus, Radio, ThumbsUp, Home } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button } from './MetaButton';
 import { Input } from '@/components/ui/input';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
@@ -12,9 +12,10 @@ import { recheckLeadForms, selectMetaAsset, type MetaCampaignRow, type MetaStatu
 import { ChoiceCard, StepShell, VerdictBadge } from './ui';
 import { selectedAsset, urlProblem } from './steps';
 import { LeadFormBuilder } from './LeadFormBuilder';
-import { formsStateOf, FORMS_COPY } from './instantFormsCopy';
+import { formsStateOf, FORMS_COPY, leadTermsOf } from './instantFormsCopy';
 import { destinationForGoal } from './masterLogic';
 import { LeadTermsFlow } from './LeadTermsFlow';
+import { Hint } from './FinishKit';
 
 export function DestinationStep({ campaign, status, patch, reloadStatus, propertyUrl }: {
   campaign: MetaCampaignRow; status: MetaStatus | null;
@@ -33,6 +34,7 @@ export function DestinationStep({ campaign, status, patch, reloadStatus, propert
 
   return (
     <StepShell eyebrow={t(`mads_goal_${goal.toLowerCase()}` as never)} title={t('madsb_dest_title')} lead={t(`madsb_dest_lead_${goal.toLowerCase()}` as never)}>
+      <Hint k={spec.needsLeadForm ? 'mm_c_hint_forms' : spec.needsPixel ? 'mm_c_hint_pixel' : 'mm_c_hint_destination'} />
       {spec.needsLeadForm && <LeadFormPicker status={status} campaign={campaign} setDest={setDest} reloadStatus={reloadStatus} patch={patch} />}
       {spec.needsWebsiteUrl && <WebsiteDestination campaign={campaign} setDest={setDest} propertyUrl={goal === 'PROMOTE' ? propertyUrl : null} />}
       {spec.needsPixel && <PixelPicker status={status} reloadStatus={reloadStatus} event={spec.pixelEvent} />}
@@ -138,12 +140,13 @@ function LeadFormPicker({ status, campaign, setDest, reloadStatus, patch }: {
   const chosen = campaign.destination?.formId ?? forms.find((f) => f.selected)?.external_id ?? null;
   const [creating, setCreating] = useState(false);
   const formsState = formsStateOf(status);
-  /* Leads chosen and Meta's answer on the Page's terms still unknown: ask Meta
-     once, quietly — the state shown is then Meta's, not a guess. */
+  const terms = leadTermsOf(status);
+  /* Leads chosen and the Page never checked: ask Meta once, quietly — the
+     state shown is then Meta's answer, not a guess. */
   const asked = React.useRef(false);
   React.useEffect(() => {
     if (asked.current || status?.mode !== 'REAL' || !page || status?.connection?.status !== 'CONNECTED') return;
-    if (status.connection.lead_terms !== null && status.connection.lead_terms !== undefined) return;
+    if (status.connection.lead_checked_at) return;
     asked.current = true;
     recheckLeadForms().then(() => reloadStatus()).catch(() => undefined);
   }, [status, page, reloadStatus]);
@@ -158,46 +161,66 @@ function LeadFormPicker({ status, campaign, setDest, reloadStatus, patch }: {
             <div className="grid gap-2 sm:grid-cols-2">
               {forms.map((f) => (
                 <ChoiceCard key={f.id} active={chosen === f.external_id} title={f.name ?? f.external_id}
-                  body={(f.capabilities as { created_by_homatch?: boolean } | undefined)?.created_by_homatch ? t('madsb_form_by_homatch') : t('madsb_form_existing')}
+                  body={[
+                    (f.capabilities as { created_by_homatch?: boolean } | undefined)?.created_by_homatch ? t('madsb_form_by_homatch') : t('madsb_form_existing'),
+                    Array.isArray((f.capabilities as { questions?: unknown[] } | undefined)?.questions) ? t('mm_c_lf_n_questions', { n: String(((f.capabilities as { questions: unknown[] }).questions).length) }) : null,
+                    (f.capabilities as { locale?: string } | undefined)?.locale ?? null,
+                  ].filter(Boolean).join(' · ')}
                   onClick={async () => { await selectMetaAsset('LEAD_FORM', f.id).catch(() => undefined); setDest({ type: 'META_FORM', formId: f.external_id }, true); await reloadStatus(); }} />
               ))}
             </div>
           )}
-          {formsState !== 'AVAILABLE' && formsState !== 'DISABLED' && (
-            /* ONE customer action, in product words: reconnect once, or collect
-               leads through messages meanwhile. Never a permission name, never a
-               form builder that cannot work. */
-            <div role="status" data-mm-forms-state={formsState} className="rounded-xl border border-[hsl(var(--gold-border))]/70 bg-[hsl(var(--gold-soft))] px-3.5 py-2.5 text-[13px] leading-relaxed text-foreground">
-              {/* Meta confirmed the terms; another blocker remains — said next, honestly. */}
-              {status?.connection?.lead_terms === true && (
-                <p className="mb-1 flex items-center gap-1.5 font-medium text-[hsl(152_54%_26%)]" data-mm-terms-done=""><CheckCircle2 className="h-4 w-4" aria-hidden />{t('mm_l_terms_done')}</p>
-              )}
+          {formsState !== 'READY' && formsState !== 'DISABLED' && (
+            /* What Meta confirmed, row by row, and ONE action for the first real
+               blocker. Never a permission name; "not confirmed" is never "not accepted". */
+            <div role="status" data-mm-forms-state={formsState} className="space-y-2 rounded-xl border border-[hsl(var(--gold-border))]/70 bg-[hsl(var(--gold-soft))] px-3.5 py-3 text-[13px] leading-relaxed text-foreground">
+              <ul className="space-y-1" aria-label={t('mm_c_lf_ready_title')}>
+                {([
+                  ['perms', formsState === 'PERMISSIONS_MISSING' ? 'todo' : 'ok'],
+                  ['terms', terms === 'ACCEPTED' ? 'ok' : terms === 'REQUIRED' ? 'todo' : 'unknown'],
+                  ['access', formsState === 'FORM_ACCESS_UNAVAILABLE' ? 'todo' : formsState === 'PERMISSIONS_MISSING' ? 'unknown' : status?.connection?.instant_forms === 'READY' || terms === 'ACCEPTED' ? 'ok' : 'unknown'],
+                ] as const).map(([row, st]) => (
+                  <li key={row} data-mm-lf-row={row} data-mm-lf-row-state={st} className="flex items-start gap-2">
+                    <span aria-hidden className={cn('mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full text-[10px] font-bold',
+                      st === 'ok' ? 'bg-[hsl(152_54%_28%)] text-white' : st === 'todo' ? 'bg-[hsl(32_78%_45%)] text-white' : 'border border-muted-foreground/50 text-muted-foreground')}>
+                      {st === 'ok' ? '✓' : st === 'todo' ? '!' : '?'}
+                    </span>
+                    <span><span className="font-medium">{t(`mm_c_lf_row_${row}`)}</span> · {t(`mm_c_lf_state_${st}`)}</span>
+                  </li>
+                ))}
+              </ul>
               <p>{t(FORMS_COPY[formsState])}</p>
-              {formsState === 'TERMS_REQUIRED' && status?.connection?.instant_forms_next && status.connection.instant_forms_next !== 'AVAILABLE' && (
-                <p className="mt-1 text-2xs text-muted-foreground" data-mm-terms-next={status.connection.instant_forms_next}>{t('mm_l_next', { next: t(FORMS_COPY[status.connection.instant_forms_next as keyof typeof FORMS_COPY] ?? 'mm_b_lf_soon') })}</p>
+              {formsState === 'TERMS_REQUIRED' && status?.connection?.instant_forms_next && status.connection.instant_forms_next !== 'READY' && status.connection.instant_forms_next !== 'DISABLED' && (
+                <p className="text-2xs text-muted-foreground" data-mm-terms-next={status.connection.instant_forms_next}>{t('mm_l_next', { next: t(FORMS_COPY[status.connection.instant_forms_next as keyof typeof FORMS_COPY]) })}</p>
               )}
-              {formsState === 'TERMS_REQUIRED' || formsState === 'RECHECK' ? (
-                <LeadTermsFlow status={status} onRechecked={reloadStatus} checkOnly={formsState === 'RECHECK'} />
-              ) : formsState === 'RECONNECT' ? (
-                <Link to={{ search: `?draft=${encodeURIComponent(campaign.id)}&step=account` }} data-mm-forms-action="RECONNECT"
-                  className="mt-2 inline-flex min-h-11 items-center rounded-full bg-[hsl(var(--gold))] px-4 text-[13px] font-semibold text-[#161309] hover:bg-[hsl(var(--gold-hover))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">
+              {formsState === 'PERMISSIONS_MISSING' || formsState === 'FORM_ACCESS_UNAVAILABLE' ? (
+                <Link to={{ search: `?draft=${encodeURIComponent(campaign.id)}&step=account&from=destination` }} data-mm-forms-action="RECONNECT"
+                  className="inline-flex min-h-11 items-center rounded-full bg-[hsl(var(--gold))] px-4 text-[13px] font-semibold text-[#161309] hover:bg-[hsl(var(--gold-hover))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">
                   {t('mm_m_forms_reconnect_cta')}
                 </Link>
-              ) : messagesOn && (
+              ) : formsState === 'TERMS_REQUIRED' || formsState === 'TERMS_UNKNOWN' || formsState === 'META_ERROR' ? (
+                <LeadTermsFlow status={status} onRechecked={reloadStatus} checkOnly={formsState !== 'TERMS_REQUIRED'} />
+              ) : null}
+              {/* One action: the fix when there is one in HOMATCH; messages only when there is none. */}
+              {formsState === 'PAGE_UNAVAILABLE' && messagesOn && (
                 <button type="button" data-mm-forms-action="USE_MESSAGES"
                   onClick={() => patch({ goal: 'MESSAGES', destination: destinationForGoal('MESSAGES', campaign.destination, !!page) } as never, { immediate: true })}
-                  className="mt-2 inline-flex min-h-11 items-center rounded-full bg-[hsl(var(--gold))] px-4 text-[13px] font-semibold text-[#161309] hover:bg-[hsl(var(--gold-hover))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">
+                  className="inline-flex min-h-11 items-center rounded-full border border-[hsl(var(--gold-border))] bg-card px-4 text-[13px] font-semibold text-foreground hover:bg-[hsl(var(--gold-soft))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">
                   {t('mm_m_forms_use_messages')}
                 </button>
               )}
             </div>
           )}
-          {formsState === 'AVAILABLE' && (!creating ? (
+          {formsState === 'READY' && (!creating ? (
             <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => setCreating(true)} data-mm-lf-open="">
               <Plus className="h-3.5 w-3.5" />{t('mm_b_lf_open')}
             </Button>
           ) : (
-            <LeadFormBuilder propertyId={campaign.property_id} formsState={formsState}
+            <LeadFormBuilder propertyId={campaign.property_id} formsState={formsState} pageName={page?.name ?? null}
+              context={{
+                isProperty: !!campaign.property_id || (campaign.offer as { isProperty?: boolean } | null)?.isProperty === true,
+                dealKind: (campaign.offer as { dealKind?: string } | null)?.dealKind ?? null,
+              }}
               onCreated={async (externalId) => { await reloadStatus(); setDest({ type: 'META_FORM', formId: externalId }, true); setCreating(false); }}
               onCancel={() => setCreating(false)} />
           ))}

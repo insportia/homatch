@@ -49,7 +49,8 @@ export function stepGap(step: StepKey, ctx: StepContext): string | null {
       if (spec.needsMessagingApp && !c.destination?.messagingApp) return 'madsb_gap_messaging';
       return null;
     case 'audience':
-      return null;
+      // The owner chooses where: no place is ever filled in for them.
+      return (c.targeting?.locations?.length ?? 0) > 0 ? null : 'mm_c_gap_locations';
     case 'budget': {
       const min = status?.settings.minDailyCents ?? 200;
       const minDays = Math.max(2, status?.settings.minDurationDays ?? 2);

@@ -29,7 +29,7 @@ import {
 } from '@/services/metaAds';
 import { ChoiceCard, StepShell } from './ui';
 import { LocationPicker, regionName } from './LocationPicker';
-import { BreadthGuide, Fold, HelperCard, LearningCard, More, Pill, Section } from './FinishKit';
+import { BreadthGuide, Fold, HelperCard, Hint, LearningCard, More, Pill, Section } from './FinishKit';
 import { addLocation, advertiserCountryOf, effectiveRadiusKm, geographyGroups, housingNormalized, housingRuleFor, isNarrowAudience, locationId, refinedCountries } from './masterLogic';
 
 const GeoMap = React.lazy(() => import('./GeoMap'));
@@ -48,10 +48,10 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
 }) {
   const { t, lang } = useLanguage();
   const stored = campaign.targeting ?? null;
-  const defaults: LocationChoiceRow[] = (status?.settings.countries?.length ? status.settings.countries : ['GE'])
-    .map((c) => ({ type: 'country', key: c.toUpperCase(), name: regionName(c.toUpperCase(), lang), countryCode: c.toUpperCase() }));
-  const usingDefault = !stored?.locations?.length;
-  const locations = usingDefault ? defaults : stored!.locations;
+  /* Targeting is the owner's own choice: a new campaign starts with NO place.
+     Never a default country, the account's country, the browser's or a
+     device location — only a saved draft brings places back. */
+  const locations: LocationChoiceRow[] = stored?.locations ?? [];
   const rule = housingRuleFor(campaign, locations, advertiserCountryOf(status));
   const ageMin = rule.restricted ? META_AGE_MIN : stored?.ageMin ?? META_AGE_MIN;
   const ageMax = rule.restricted ? META_AGE_MAX : stored?.ageMax ?? META_AGE_MAX;
@@ -69,7 +69,7 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
 
   const save = (next: Partial<TargetingIntentRow>, immediate = true) => {
     const merged: TargetingIntentRow = {
-      locations: usingDefault ? defaults : stored!.locations,
+      locations: stored?.locations ?? [],
       ageMin: stored?.ageMin ?? META_AGE_MIN, ageMax: stored?.ageMax ?? META_AGE_MAX, gender: stored?.gender ?? 'ALL',
       ...(stored?.languages ? { languages: stored.languages } : {}),
       ...(stored?.international ? { international: stored.international } : {}),
@@ -135,6 +135,12 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
   };
 
   const refined = refinedCountries(locations);
+  /* The number the map shows for a place: its position among the drawn targets
+     (a country with places inside runs as those places, so it has no number). */
+  const shownIds = locations.filter((l) => !(l.type === 'country' && refined.has(l.key))).map(locationId);
+  const mapNumber = (idx: number) => shownIds.indexOf(locationId(locations[idx])) + 1;
+  // A pin around the property only where HOMATCH knows the point's country (Georgia).
+  const homeInGeorgia = !!home && home.lat >= 41 && home.lat <= 43.7 && home.lng >= 39.9 && home.lng <= 46.8;
   const precise = locations.some((l) => l.type !== 'country');
   const narrow = isNarrowAudience({ ageMin, ageMax, gender });
   const readyAudiences = audiences.filter((a) => a.sync_status === 'READY' && (status?.settings.retargetingEnabled !== false || campaign.audience_id === a.id));
@@ -151,70 +157,81 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
 
   return (
     <StepShell eyebrow={t('madsb_step_audience')} title={t('madsb_audience_title')} lead={t('mm_f_audience_lead')}>
-      {/* 📍 WHERE: country → city / area → (optional) a precise spot with a radius. */}
+      {/* 📍 WHERE — the owner's own choice: empty until a place is picked. The map
+          shows exactly the targets and stays in view; on wide screens it sits beside the list. */}
       <Section id="mm-f-where" emoji="📍" title={t('mm_m_where_title')} aside={<span className="text-2xs text-muted-foreground" dir="ltr">{locations.length}/{MAX_LOCATIONS}</span>}>
-        <div data-mm-geo-summary="" className="rounded-xl border border-[hsl(var(--gold-border))]/60 bg-[hsl(var(--gold-soft))] px-3.5 py-2.5">
-          <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-[hsl(var(--gold-ink))]">{t('mm_m_geo_runs')}</p>
-          <p className="mt-0.5 text-sm font-semibold leading-snug text-foreground" dir="auto">{geoSummary}</p>
-        </div>
-        <LocationPicker scopeCountry={scope} full={!usingDefault && locations.length >= MAX_LOCATIONS} onPick={onPick}
-          isChosen={(r) => locations.some((l) => locationId(l) === `${r.type}:${r.key}`)} />
-        <ul className="grid gap-2" aria-label={t('mm_b_loc_chosen')}>
-          {locations.map((l) => {
-            const id = locationId(l);
-            const name = l.type === 'country' ? regionName(l.key, lang) : l.name;
-            const radius = effectiveRadiusKm(l.radiusKm, rule.minRadiusKm);
-            const round = l.type === 'city' || l.type === 'pin';
-            const narrowed = l.type === 'country' && refined.has(l.key);
-            return (
-              <li key={id} data-mm-loc={id} className="rounded-2xl border border-[hsl(var(--gold-border))]/50 bg-gradient-to-r from-[hsl(var(--gold-soft))] to-card px-3.5 py-2.5">
-                <div className="flex items-center gap-2">
-                  <span aria-hidden>{l.type === 'country' ? '🌍' : l.type === 'pin' ? '📌' : l.type === 'region' ? '🗺️' : '🏙️'}</span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-semibold leading-snug text-foreground break-words" dir="auto">{name}</span>
-                    <span className="block text-2xs text-muted-foreground">{narrowed ? t('mm_m_loc_refined') : t(`mm_b_loc_kind_${l.type === 'pin' ? 'pin' : l.type}`)}</span>
-                  </span>
-                  {!usingDefault && (
-                    <button type="button" onClick={() => remove(id)} aria-label={t('mm_b_loc_remove', { place: name })}
-                      className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">
-                      <X className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-                {round && (
-                  <label className="mt-1.5 flex items-center gap-3">
-                    <span className="sr-only">{t('mm_b_loc_radius_label', { place: name })}</span>
-                    <input type="range" min={Math.max(1, minRadius)} max={CITY_RADIUS_KM_MAX} step={1} value={radius} data-mm-radius={id}
-                      onChange={(e) => setRadius(id, Number(e.target.value))}
-                      className="h-2 min-w-0 flex-1 cursor-pointer accent-[hsl(var(--gold))]" />
-                    <span className="w-16 shrink-0 whitespace-nowrap text-end text-[13px] font-semibold tabular-nums text-foreground" dir="ltr">{radius} km</span>
-                  </label>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-        {usingDefault && <p className="text-2xs text-muted-foreground">{t('mm_b_loc_default_note')}</p>}
-        {note && <p className="text-[13px] text-muted-foreground" aria-live="polite">{note}</p>}
-        {home && (
-          <button type="button" data-mm-around-property="" onClick={() => addPin(home.lat, home.lng, home.label ? t('mm_f_around_named', { place: home.label }) : t('mm_f_around_property'))}
-            className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] px-3.5 text-[13px] font-semibold text-foreground hover:bg-[hsl(var(--gold-soft))]/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">
-            <Home className="h-4 w-4 text-[hsl(var(--gold-ink))]" aria-hidden />{t('mm_f_around_property')}
-          </button>
-        )}
-        {/* Precise location: the map, a pin, a radius — open once a place has a radius. */}
-        <More label={t('mm_m_precise')} defaultOpen={precise || pinMode} key={precise ? 'precise' : 'broad'} data-mm-precise="">
-          <div className="space-y-3">
+        <Hint k="mm_c_hint_location" />
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:items-start">
+          <div className="min-w-0 space-y-3">
+            {locations.length > 0 ? (
+              <div data-mm-geo-summary="" className="rounded-xl border border-[hsl(var(--gold-border))]/60 bg-[hsl(var(--gold-soft))] px-3.5 py-2.5">
+                <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-[hsl(var(--gold-ink))]">{t('mm_m_geo_runs')}</p>
+                <p className="mt-0.5 text-sm font-semibold leading-snug text-foreground" dir="auto">{geoSummary}</p>
+              </div>
+            ) : (
+              <div data-mm-geo-empty="" className="rounded-xl border border-dashed border-[hsl(var(--gold-border))]/70 bg-card px-3.5 py-2.5">
+                <p className="text-sm font-semibold text-foreground">{t('mm_c_loc_empty_title')}</p>
+                <p className="mt-0.5 text-[13px] text-muted-foreground">{t('mm_c_loc_empty_body')}</p>
+              </div>
+            )}
+            <LocationPicker scopeCountry={scope} full={locations.length >= MAX_LOCATIONS} onPick={onPick}
+              onStreet={() => setPinMode(true)}
+              isChosen={(r) => locations.some((l) => locationId(l) === `${r.type}:${r.key}`)} />
+            <ul className="grid gap-2" aria-label={t('mm_b_loc_chosen')}>
+              {locations.map((l, idx) => {
+                const id = locationId(l);
+                const name = l.type === 'country' ? regionName(l.key, lang) : l.name;
+                const radius = effectiveRadiusKm(l.radiusKm, rule.minRadiusKm);
+                const round = l.type === 'city' || l.type === 'pin';
+                const narrowed = l.type === 'country' && refined.has(l.key);
+                return (
+                  <li key={id} data-mm-loc={id} className="rounded-2xl border border-[hsl(var(--gold-border))]/50 bg-gradient-to-r from-[hsl(var(--gold-soft))] to-card px-3.5 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <span aria-hidden className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[hsl(var(--gold))] text-2xs font-extrabold text-[#161309]">{narrowed ? '·' : mapNumber(idx)}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-semibold leading-snug text-foreground break-words" dir="auto">{name}</span>
+                        <span className="block text-2xs text-muted-foreground">{narrowed ? t('mm_m_loc_refined') : t(`mm_b_loc_kind_${l.type === 'neighborhood' ? 'neighborhood' : l.type}`)}</span>
+                      </span>
+                      <button type="button" onClick={() => remove(id)} aria-label={t('mm_b_loc_remove', { place: name })} data-mm-loc-remove={id}
+                        className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                    {round && (
+                      <label className="mt-1.5 flex items-center gap-3">
+                        <span className="sr-only">{t('mm_b_loc_radius_label', { place: name })}</span>
+                        <input type="range" min={Math.max(1, minRadius)} max={CITY_RADIUS_KM_MAX} step={1} value={radius} data-mm-radius={id}
+                          onChange={(e) => setRadius(id, Number(e.target.value))}
+                          className="h-2 min-w-0 flex-1 cursor-pointer accent-[hsl(var(--gold))]" />
+                        <span className="w-16 shrink-0 whitespace-nowrap text-end text-[13px] font-semibold tabular-nums text-foreground" dir="ltr">{radius} km</span>
+                      </label>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+            {locations.some((l) => l.type === 'city' || l.type === 'pin') && <Hint k="mm_c_hint_radius" />}
+            {note && <p className="text-[13px] text-muted-foreground" aria-live="polite">{note}</p>}
+          </div>
+          <div className="min-w-0 space-y-2 lg:sticky lg:top-4">
             <Suspense fallback={<Skeleton className="aspect-[16/10] w-full rounded-2xl" />}>
-              <GeoMap locations={locations} minRadiusKm={rule.minRadiusKm} home={home} pinMode={pinMode}
+              <GeoMap locations={locations} minRadiusKm={rule.minRadiusKm} pinMode={pinMode}
                 onPin={(lat, lng) => addPin(lat, lng, t('mm_f_pin_name', { n: String(locations.filter((l) => l.type === 'pin').length + 1) }))} />
             </Suspense>
-            <Pill active={pinMode} onClick={() => setPinMode((v) => !v)} data-mm-pin-mode="">
-              <MapPin className="h-4 w-4" aria-hidden />{pinMode ? t('mm_f_pin_cancel') : t('mm_f_pin_drop')}
-            </Pill>
-            <BreadthGuide breadth={breadth.breadth} areaKm2={breadth.areaKm2} />
+            <div className="flex flex-wrap gap-2">
+              <Pill active={pinMode} onClick={() => setPinMode((v) => !v)} data-mm-pin-mode="">
+                <MapPin className="h-4 w-4" aria-hidden />{pinMode ? t('mm_f_pin_cancel') : t('mm_f_pin_drop')}
+              </Pill>
+              {home && homeInGeorgia && (
+                <button type="button" data-mm-around-property="" onClick={() => addPin(home.lat, home.lng, home.label ? t('mm_f_around_named', { place: home.label }) : t('mm_f_around_property'))}
+                  className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] px-3.5 text-[13px] font-semibold text-foreground hover:bg-[hsl(var(--gold-soft))]/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">
+                  <Home className="h-4 w-4 text-[hsl(var(--gold-ink))]" aria-hidden />{t('mm_f_around_property')}
+                </button>
+              )}
+            </div>
+            {locations.length > 0 && <BreadthGuide breadth={breadth.breadth} areaKm2={breadth.areaKm2} />}
           </div>
-        </More>
+        </div>
       </Section>
 
       {/* 🌍 INTERNATIONAL / EXPAT — an intent, not a place: who the ad is for. */}
@@ -250,6 +267,7 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
       {/* 🗣️ LANGUAGES — open when the copy is in a language worth matching. */}
       <Fold id="lang" emoji="🗣️" title={t('mm_f_lang_title')} summary={langSummary} defaultOpen={languages.length > 0 || !!intl?.enabled}>
         <p className="text-[13px] leading-relaxed text-muted-foreground">{t('mm_f_lang_body')}</p>
+        <Hint k="mm_c_hint_languages" />
         {copyLangs[0] && (
           <HelperCard emoji="📝" tone="gold" title={t('mm_f_copy_detected', { lang: languageName(copyLangs[0], lang) })} data-mm-copy-lang={copyLangs[0]}>
             {t('mm_f_copy_detected_body', { lang: languageName(copyLangs[0], lang) })}
@@ -271,6 +289,7 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
           META REQUIRED (named, with the fix) · HOMATCH RECOMMENDED (advice) · USER CHOICE. */}
       <Fold id="who" emoji="👥" title={t('mm_b_who_title')} summary={rule.restricted ? t('mm_m_who_meta') : whoSummary}
         defaultOpen={rule.restricted || narrow}>
+        <Hint k="mm_c_hint_advantage" />
         {rule.restricted ? (
           /* META REQUIRED — named, explained, with the fix. Not a disabled control. */
           <HelperCard emoji="🏛️" tone="amber" title={t('mm_f_meta_rule_title')} data-mm-meta-rule={rule.countries.join(',')} data-mm-authority="META_REQUIRED"
@@ -283,6 +302,7 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
             <div className="grid gap-3 sm:grid-cols-2">
               <fieldset className="min-w-0">
                 <legend className="mb-1.5 text-[13px] font-medium text-foreground">{t('mm_b_age_label')}</legend>
+                <Hint k="mm_c_hint_age" className="mb-1.5" />
                 <div className="flex items-center gap-2">
                   <label className="min-w-0 flex-1">
                     <span className="sr-only">{t('mm_b_age_min')}</span>
@@ -303,6 +323,7 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
               </fieldset>
               <div className="min-w-0">
                 <p id="mm-b-gender" className="mb-1.5 text-[13px] font-medium text-foreground">{t('mm_b_gender_label')}</p>
+                <Hint k="mm_c_hint_gender" className="mb-1.5" />
                 <div role="group" aria-labelledby="mm-b-gender" className="flex flex-wrap gap-2">
                   {GENDERS.map((g) => (
                     <Pill key={g} active={gender === g} onClick={() => save({ gender: g })} data-mm-gender={g}>{t(`mm_b_gender_${g}`)}</Pill>

@@ -75,18 +75,20 @@ export const PLACES: Place[] = [
   { id: 'dighomi', en: 'Dighomi', ka: 'დიღომი', ru: 'Дигоми', lat: 41.771, lng: 44.744, kind: 'district' },
 ];
 
+// Unicode-aware word edges (JS \b is ASCII-only, so Georgian / Cyrillic noise words need (^|\s)).
 const norm = (s: string) => String(s ?? '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '')
-  .replace(/\b(city|town|municipality|district|region|г\.|город|район|ქალაქი|რაიონი)\b/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  .replace(/(^|\s)(city|town|municipality|district|region|г\.|город|район|ქალაქი|რაიონი|უბანი)(?=\s|$)/gu, ' ').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 
 /** The map point for a chosen place: its own coordinates, or a known Georgian place by name. */
 export function placePoint(l: { type: string; name: string; countryCode?: string | null; lat?: number | null; lng?: number | null }): { lat: number; lng: number } | null {
   if (Number.isFinite(Number(l.lat)) && Number.isFinite(Number(l.lng)) && l.lat != null && l.lng != null) return { lat: Number(l.lat), lng: Number(l.lng) };
-  if (l.type !== 'city' && l.type !== 'pin') return null;
+  if (l.type !== 'city' && l.type !== 'pin' && l.type !== 'neighborhood') return null;
   if (l.countryCode && String(l.countryCode).toUpperCase() !== 'GE') return null;
   const n = norm(l.name);
   if (!n) return null;
-  const hit = PLACES.find((p) => [p.en, p.ka, p.ru].some((x) => norm(x) === n))
-    ?? PLACES.find((p) => [p.en, p.ka, p.ru].some((x) => n.startsWith(norm(x)) || norm(x).startsWith(n)));
+  // Exact names only: a loose prefix match could put a place on the wrong town.
+  const pool = PLACES.filter((p) => (l.type === 'neighborhood' ? p.kind === 'district' : p.kind === 'city'));
+  const hit = pool.find((p) => [p.en, p.ka, p.ru].some((x) => norm(x) === n));
   return hit ? { lat: hit.lat, lng: hit.lng } : null;
 }
 

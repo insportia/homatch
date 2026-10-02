@@ -29,6 +29,7 @@ import { declaredSpecialAdCategories, normalizeIntent, validateTargeting } from 
 import { creativeAdvice, creativeQuality, blocksLaunch, type AdviceItem } from '../../../src/lib/metaAds/creativeAdvice.ts';
 import { effectiveFeePercent, fundingPlan, heldFeeFromLedger, settleServiceFee, plannedMediaCents, type FeePolicy } from '../../../src/lib/metaAds/billing.ts';
 import { DEFAULT_ANALYSIS_PARAMS, type AnalysisParams } from '../../../src/lib/metaAds/analysis.ts';
+import { leadCheckOf, leadTermsEvidence } from '../../../src/lib/metaAds/instantForms.ts';
 import { guardPolicy, type GuardPolicy } from '../../../src/lib/metaAds/guard.ts';
 import {
   GOAL_SPECS, adSetParams, adParams, campaignParams, creativeParams, missingRequirements, mapMetaStatus,
@@ -40,7 +41,7 @@ import { CLAIM_FLAG, claimText, claimFingerprint, approvedClaim, openClaimCase, 
 import { classifyDomainScope, domainFingerprint, DOMAIN_CASE_REASON, type DomainVerdict } from '../../../src/lib/metaAds/domainScope.ts';
 import {
   graph, graphAll, MetaApiError, metaMode, openToken, uploadImage, uploadVideo, mockExternalId,
-  REQUIRED_SCOPES_BY_GOAL, type MetaMode,
+  REQUIRED_SCOPES_BY_GOAL, INSTANT_FORM_SCOPES, type MetaMode,
 } from '../_shared/metaAds.ts';
 
 type Sb = any;
@@ -60,6 +61,8 @@ export interface MetaSettings {
   audienceCreationEnabled: boolean;
   retargetingEnabled: boolean;
   aiAssistEnabled: boolean;
+  /** HOMATCH AI creative analysis + paid image generation (creativeAi.ts). Off until its migration says on. */
+  aiCreativeEnabled: boolean;
   whatsappEnabled: boolean;
   defaultCountries: string[];
   /** Who pays Meta for the ad budget (payload.ts BudgetBilling). */
@@ -107,6 +110,7 @@ export async function loadSettings(sb: Sb): Promise<MetaSettings> {
     audienceCreationEnabled: b('meta_ads_audience_creation_enabled', true),
     retargetingEnabled: b('meta_ads_retargeting_enabled', true),
     aiAssistEnabled: b('meta_ads_ai_assist_enabled', true),
+    aiCreativeEnabled: b('meta_ads_ai_creative_enabled', false),
     whatsappEnabled: b('meta_ads_whatsapp_enabled', false),
     defaultCountries: Array.isArray(countries) && countries.length ? countries.map(String) : ['GE'],
     /* Default: Meta bills the customer's own ad account, HOMATCH holds only
@@ -162,18 +166,70 @@ export async function pageToken(userTokenValue: string, pageId: string, audit?: 
 }
 
 /**
- * The Page's Lead Ads Terms as META reports them (Page field
- * leadgen_tos_accepted, read with the Page token). true / false only when Meta
- * answered with a boolean; anything else is null with a named reason — never
- * a guess, and never an acceptance: that happens only in Meta's own window.
+ * The Page's Lead Ads Terms as META reports them, read with the Page token.
+ * Two tolerant reads: leadgen_tos_accepted, then leadgen_tos_acceptance_time
+ * (a field Meta may not return for every Page; asked on its own so a refusal
+ * cannot hide the first). Values are kept only when Meta answered with them —
+ * never a guess, never an acceptance (that happens only in Meta's own window).
+ * Whether the answer counts as evidence is decided by
+ * instantForms.leadTermsEvidence (it needs the lead permissions).
  */
-export async function readLeadTerms(pageId: string, pageAccessToken: string): Promise<{ accepted: boolean | null; reason: string | null }> {
+export async function readLeadTerms(pageId: string, pageAccessToken: string): Promise<{
+  tosField: boolean | null; acceptanceTime: boolean | null; reason: string | null;
+}> {
+  let tosField: boolean | null = null;
+  let acceptanceTime: boolean | null = null;
+  let reason: string | null = null;
   try {
     const res = await graph(`/${pageId}?fields=leadgen_tos_accepted`, { token: pageAccessToken, attempts: 1 }) as any;
-    return typeof res?.leadgen_tos_accepted === 'boolean' ? { accepted: res.leadgen_tos_accepted, reason: null } : { accepted: null, reason: 'FIELD_ABSENT' };
+    if (typeof res?.leadgen_tos_accepted === 'boolean') tosField = res.leadgen_tos_accepted;
+    else reason = 'FIELD_ABSENT';
   } catch (e) {
-    return { accepted: null, reason: e instanceof MetaApiError ? `META_${e.normalized.code || e.status}` : 'FAILED' };
+    reason = e instanceof MetaApiError ? `META_${e.normalized.code || e.status}` : 'FAILED';
   }
+  try {
+    const res = await graph(`/${pageId}?fields=leadgen_tos_acceptance_time`, { token: pageAccessToken, attempts: 1 }) as any;
+    acceptanceTime = res?.leadgen_tos_acceptance_time ? true : null;
+  } catch { /* not every Page/token answers this field; it is corroboration only */ }
+  return { tosField, acceptanceTime, reason };
+}
+
+/**
+ * Read the selected Page's lead readiness from Meta and store it on the PAGE
+ * asset (instantForms.leadCheckOf reads it back). Non-mutating: GETs only.
+ */
+export async function checkLeadPage(sb: Sb, uid: string, page: { id: string; external_id: string; capabilities?: any }, userTokenValue: string, granted: readonly string[]): Promise<Record<string, unknown>> {
+  const withPerms = INSTANT_FORM_SCOPES.every((s: string) => granted.includes(s));
+  const caps: Record<string, unknown> = {
+    leadgen_tos_checked_at: new Date().toISOString(), leadgen_tos_read_with_lead_permissions: withPerms,
+    leadgen_tos_accepted: null, leadgen_tos_acceptance_time: null, leadgen_tos_reason: null,
+    leadgen_forms_readable: null, leadgen_forms_count: null, leadgen_check_error: null,
+  };
+  const pt = await pageToken(userTokenValue, page.external_id, { sb, userId: uid }).catch(() => null);
+  if (!pt) {
+    caps.leadgen_check_error = 'NO_PAGE_TOKEN';
+  } else {
+    const terms = await readLeadTerms(page.external_id, pt);
+    caps.leadgen_tos_accepted = terms.tosField;
+    caps.leadgen_tos_acceptance_time = terms.acceptanceTime;
+    caps.leadgen_tos_reason = terms.reason;
+    if (withPerms) {
+      try {
+        const res = await graph(`/${page.external_id}/leadgen_forms?fields=id&limit=25`, { token: pt, attempts: 1 }) as any;
+        caps.leadgen_forms_readable = true;
+        caps.leadgen_forms_count = Array.isArray(res?.data) ? res.data.length : 0;
+      } catch { caps.leadgen_forms_readable = false; }
+    }
+  }
+  // Keep a refusal Meta gave at form creation until the terms read true again.
+  const keepRefusal = page.capabilities?.leadgen_create_refused_for_terms === true && caps.leadgen_tos_accepted !== true;
+  const merged = { ...(page.capabilities ?? {}), ...caps, leadgen_create_refused_for_terms: keepRefusal };
+  await sb.from('meta_assets').update({ capabilities: merged }).eq('id', page.id);
+  // Non-secret diagnostics: what Meta said, not who or with which token.
+  console.log(JSON.stringify({ evt: 'meta_lead_check', page: page.external_id, withPerms, tos: caps.leadgen_tos_accepted,
+    acceptanceTime: caps.leadgen_tos_acceptance_time, reason: caps.leadgen_tos_reason, formsReadable: caps.leadgen_forms_readable,
+    formsCount: caps.leadgen_forms_count, error: caps.leadgen_check_error }));
+  return merged;
 }
 
 /* ── STRATEGY INPUT ─────────────────────────────────────────────────── */
@@ -195,7 +251,9 @@ export async function strategyInputFor(sb: Sb, uid: string, c: any, settings: Me
     isProperty: !!c.property_id || !!(c.offer && c.offer.isProperty !== false),
     dealKind: c.offer?.dealKind ?? (c.property_id ? 'SALE' : 'OTHER'),
   });
-  const targeting = normalizeIntent(c.targeting, settings.defaultCountries);
+  // Targeting is the owner's choice only: no default country is ever filled in
+  // (validateTargeting then asks for a place — LOCATION_REQUIRED).
+  const targeting = normalizeIntent(c.targeting, []);
   // Declared only where Meta requires it: a housing offer reaching the US,
   // Canada or the European list (targeting.housingRule).
   const acct = await selectedAsset(sb, uid, 'AD_ACCOUNT');
@@ -216,9 +274,9 @@ export async function strategyInputFor(sb: Sb, uid: string, c: any, settings: Me
       })),
       destination: c.destination ?? { type: c.goal === 'LEADS_ON_META' ? 'META_FORM' : 'WEBSITE' },
       audienceExternalId,
-      // Where / ages / gender the customer chose; the market default when unset.
+      // Where / ages / gender exactly as the customer chose them.
       targeting,
-      countryCode: settings.defaultCountries[0],
+      countryCode: targeting.locations[0]?.countryCode || settings.defaultCountries[0],
       placementsMode: c.placements?.mode === 'CUSTOM' ? 'CUSTOM' : 'RECOMMENDED',
       customPlacements: c.placements?.list ?? [],
     },
@@ -348,7 +406,8 @@ export async function runPreflight(sb: Sb, uid: string, c: any, settings: MetaSe
   if (spec.needsPixel) add('tracking', ctx.pixelId ? 'READY' : 'ACTION_REQUIRED', ctx.pixelId ? spec.pixelEvent ?? undefined : 'PIXEL_REQUIRED');
   if (spec.needsLeadForm) add('lead_form', ctx.leadFormId ? 'READY' : 'ACTION_REQUIRED', ctx.leadFormId ? undefined : 'LEAD_FORM_REQUIRED');
   // Meta's own answer for the Page: terms not accepted → the owner accepts them in Meta's window first.
-  if (spec.needsLeadForm && page?.capabilities?.leadgen_tos_accepted === false) add('lead_terms', 'ACTION_REQUIRED', 'LEAD_TERMS_REQUIRED');
+  // Only Meta's evidence counts (instantForms.leadTermsEvidence): "not confirmed" never blocks.
+  if (spec.needsLeadForm && leadTermsEvidence(leadCheckOf(page?.capabilities)) === 'REQUIRED') add('lead_terms', 'ACTION_REQUIRED', 'LEAD_TERMS_REQUIRED');
   if (spec.needsMessagingApp) {
     const m = missing.find((x) => ['MESSAGING_DESTINATION_REQUIRED', 'INSTAGRAM_REQUIRED', 'WHATSAPP_REQUIRED'].includes(x));
     const waBlocked = ctx.messagingApp === 'WHATSAPP' && !settings.whatsappEnabled;
@@ -596,7 +655,18 @@ export async function publishCampaign(sb: Sb, uid: string, c: any, plan: TypedCa
         const v = await uploadVideo(acct.external_id, signed.signedUrl, { token, audit: auditCtx });
         videoId = v.videoId;
         thumbnailUrl = v.thumbnailUrl;
-        if (!v.ready || !thumbnailUrl) throw new MetaApiError(400, { error: { message: 'VIDEO_STILL_PROCESSING', code: 2 } });
+        /* The cover the customer chose (a frame they picked, or HOMATCH's pick) —
+           a still saved beside the video; the video itself is never altered.
+           Sent as the thumbnail's image_hash in place of Meta's own frame. */
+        const coverPath = typeof m0.cover?.path === 'string' && m0.cover.path.startsWith(`${uid}/`) ? m0.cover.path : null;
+        if (coverPath) {
+          const { data: cov } = await sb.storage.from('meta-ads-media').download(coverPath);
+          if (cov) {
+            imageHash = await uploadImage(acct.external_id, new Uint8Array(await cov.arrayBuffer()), coverPath.split('/').pop() ?? 'cover.jpg', { token, audit: auditCtx });
+            thumbnailUrl = null;
+          }
+        }
+        if (!v.ready || (!thumbnailUrl && !imageHash)) throw new MetaApiError(400, { error: { message: 'VIDEO_STILL_PROCESSING', code: 2 } });
       } else {
         const { data: blob } = await sb.storage.from('meta-ads-media').download(m0.path);
         if (!blob) throw new MetaApiError(500, { error: { message: 'MEDIA_UNAVAILABLE', code: 100 } });

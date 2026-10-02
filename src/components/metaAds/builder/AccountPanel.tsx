@@ -42,7 +42,11 @@ export function AccountPanel({ status, onChanged, returnTo, compact }: {
     const r = await flow.connect();
     if (r && r !== 'ok') toast.error(t(r === 'TOKEN_ENCRYPTION_NOT_CONFIGURED' ? 'madsb_connect_encryption_missing' : 'mm_x_connect_failed'));
   };
-  const needsReconnect = health !== 'CONNECTED' && health !== 'NOT_CONNECTED';
+  /* The grant lacks ad-account access (ads_management / ads_read / business_management). */
+  const adsAccessMissing = health === 'PERMISSION_MISSING'
+    && (status?.connection?.missing_scopes ?? []).some((s) => s === 'ads_management' || s === 'ads_read' || s === 'business_management');
+  const expiresSoon = health === 'CONNECTED' && !!status?.connection?.expires_soon;
+  const needsReconnect = (health !== 'CONNECTED' && health !== 'NOT_CONNECTED') || expiresSoon;
   const refresh = async () => {
     setBusy('refresh');
     try { await refreshMetaAssets(); await onChanged(); toast.success(t('madsb_assets_refreshed')); }
@@ -84,7 +88,11 @@ export function AccountPanel({ status, onChanged, returnTo, compact }: {
                 : <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-[hsl(32_78%_36%)]" />}
             <div className="min-w-0">
               <p className="font-semibold text-foreground">{t(`madsb_health_${health.toLowerCase()}` as never)}</p>
-              <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">{t(`madsb_health_${health.toLowerCase()}_d` as never)}</p>
+              {/* ONE actionable line: what is missing, in product words — never a permission name. */}
+              <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground" data-mm-connect-missing={adsAccessMissing ? 'ads' : undefined}>
+                {t(adsAccessMissing ? 'mm_r_pfd_permissions' : `madsb_health_${health.toLowerCase()}_d` as never)}
+              </p>
+              {expiresSoon && <p className="mt-1 text-2xs font-medium text-[hsl(32_78%_32%)]" data-mm-connect-expiring="">{t('mm_x_connect_expiring')}</p>}
               {health === 'ERROR' && status?.connection?.error_reason === 'TOKEN_ENCRYPTION_NOT_CONFIGURED' && (
                 <p className="mt-1 text-2xs text-muted-foreground">{t('madsb_connect_encryption_missing')}</p>
               )}

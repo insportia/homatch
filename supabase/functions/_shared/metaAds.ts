@@ -344,10 +344,14 @@ export const REQUIRED_SCOPES_BY_GOAL: Record<string, string[]> = {
 export const hasScopes = (granted: string[] | null | undefined, needed: string[]) =>
   needed.every((s) => (granted ?? []).includes(s));
 
-/** The Facebook Login for Business configuration the dialog uses. The
- *  production configuration issues a system-user access token; the secret
- *  META_LOGIN_CONFIG_ID can point at another one without a code change. */
-export function metaLoginConfigId(): string {
+/** The Facebook Login for Business configuration the dialog uses: the admin
+ *  setting meta_ads_login_config_id when set, else META_LOGIN_CONFIG_ID, else
+ *  the production default. The configuration decides the screen Meta shows:
+ *  a SYSTEM-USER token configuration shows "share business assets"; a USER
+ *  access token configuration shows the standard "Continue as …" consent with
+ *  Page selection. Both are handled at the callback (exchangeCodeForToken). */
+export function metaLoginConfigId(override?: string | null): string {
+  if (override && /^\d{6,20}$/.test(override)) return override;
   return (Deno.env.get('META_LOGIN_CONFIG_ID') ?? META_LOGIN_CONFIG_ID_DEFAULT).trim();
 }
 
@@ -360,13 +364,13 @@ export function verifyOAuthState(state: string): Promise<{ uid: string; nonce: s
   return verifyState(metaAppSecret(), state);
 }
 
-export function oauthStartUrl(state: string): string {
+export function oauthStartUrl(state: string, configOverride?: string | null): string {
   return buildOAuthDialogUrl({
     apiVersion: META_API_VERSION,
     appId: metaAppId(),
     redirectUri: metaRedirectUri(),
     state,
-    configId: metaLoginConfigId(),
+    configId: metaLoginConfigId(configOverride),
     scopes: OAUTH_SCOPES,
   });
 }
@@ -387,29 +391,35 @@ async function tokenCall(params: Record<string, string>): Promise<Record<string,
   return body as Record<string, unknown>;
 }
 
-export async function exchangeCodeForToken(code: string): Promise<{ token: string; expiresIn: number | null }> {
+/** Below this, a token is a short-lived USER token and is upgraded to a long-lived one. */
+const LONG_LIVED_SECONDS = 7 * 86_400;
+
+export async function exchangeCodeForToken(code: string): Promise<{ token: string; expiresIn: number | null; upgraded: boolean }> {
   const first = await tokenCall({
     client_id: metaAppId(), client_secret: metaAppSecret(), redirect_uri: metaRedirectUri(), code,
   });
-  /* A Login for Business configuration returns a business-integration
-     system-user token: it is already long-lived (no expires_in unless the
-     configuration sets one) and is never passed through fb_exchange_token,
-     which applies to short-lived USER tokens only. */
-  if (metaLoginConfigId()) {
+  const token = String(first.access_token);
+  const expiresIn = typeof first.expires_in === 'number' && first.expires_in > 0 ? first.expires_in : null;
+  /* A SYSTEM-USER configuration returns a business-integration token that is
+     already long-lived (no expires_in unless the configuration sets one): it
+     is never passed through fb_exchange_token. A USER access token
+     configuration (or legacy Facebook Login) returns a short-lived user
+     token: upgrade it, server-side, to a long-lived (~60 day) one. The expiry
+     is stored, and the owner is asked to reconnect before it lapses. */
+  if (expiresIn === null || expiresIn >= LONG_LIVED_SECONDS) return { token, expiresIn, upgraded: false };
+  try {
+    const long = await tokenCall({
+      grant_type: 'fb_exchange_token', client_id: metaAppId(), client_secret: metaAppSecret(), fb_exchange_token: token,
+    });
     return {
-      token: String(first.access_token),
-      expiresIn: typeof first.expires_in === 'number' && first.expires_in > 0 ? first.expires_in : null,
+      token: String(long.access_token),
+      expiresIn: typeof long.expires_in === 'number' && long.expires_in > 0 ? long.expires_in : expiresIn,
+      upgraded: true,
     };
+  } catch {
+    // The short-lived token still works; its real expiry is stored and the owner is asked to reconnect in time.
+    return { token, expiresIn, upgraded: false };
   }
-  // Legacy Facebook Login: upgrade to a long-lived (~60 day) user token.
-  const long = await tokenCall({
-    grant_type: 'fb_exchange_token', client_id: metaAppId(), client_secret: metaAppSecret(),
-    fb_exchange_token: String(first.access_token),
-  });
-  return {
-    token: String(long.access_token),
-    expiresIn: typeof long.expires_in === 'number' ? long.expires_in : null,
-  };
 }
 
 /* ── SIGNED REQUESTS (deauthorize / data deletion callbacks) ────────── */

@@ -13920,6 +13920,9 @@ const en = {
   mm_g_search_ph: 'Country, city, district or region — e.g. საქართველო, Tbilisi, Ваке',
   mm_g_countries_only: 'Countries are shown. Connect Meta to search cities and districts too.',
   mm_g_street_nearest: 'Meta cannot target a street. These are the nearest areas it can — or place a pin for the exact spot.',
+
+  /* ── META ADS — FINAL ACCEPTANCE ── */
+  mm_x_connect_expiring: 'Your Meta access ends within a week — reconnect now so your campaigns keep running.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -27754,6 +27757,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mm_g_search_ph: 'ქვეყანა, ქალაქი, უბანი ან რეგიონი — მაგ. საქართველო, თბილისი, Vake',
   mm_g_countries_only: 'ნაჩვენებია ქვეყნები. ქალაქებისა და უბნების საძიებლად დააკავშირეთ Meta.',
   mm_g_street_nearest: 'Meta ქუჩაზე ტარგეტირებას ვერ აკეთებს. ეს უახლოესი არეალებია, რომლებზეც შეუძლია — ან ზუსტი ადგილისთვის დასვით ნიშნული.',
+
+  /* ── META ADS — FINAL ACCEPTANCE ── */
+  mm_x_connect_expiring: 'Meta-ზე წვდომა ერთ კვირაში იწურება — ხელახლა დააკავშირეთ ახლავე, რომ კამპანიები არ შეჩერდეს.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -41579,6 +41585,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mm_g_search_ph: 'Страна, город, район или регион — напр. საქართველო, Tbilisi, Ваке',
   mm_g_countries_only: 'Показаны страны. Подключите Meta, чтобы искать также города и районы.',
   mm_g_street_nearest: 'Meta не может нацелить рекламу на улицу. Вот ближайшие районы, которые она поддерживает, — или поставьте метку для точного места.',
+
+  /* ── META ADS — FINAL ACCEPTANCE ── */
+  mm_x_connect_expiring: 'Доступ к Meta истекает в течение недели — переподключите сейчас, чтобы кампании продолжали работать.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -55402,6 +55411,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mm_g_search_ph: 'Ülke, şehir, semt veya bölge — örn. საქართველო, Tbilisi, Ваке',
   mm_g_countries_only: 'Ülkeler gösteriliyor. Şehir ve semt aramak için Meta’yı bağlayın.',
   mm_g_street_nearest: 'Meta bir sokağı hedefleyemez. Hedefleyebildiği en yakın alanlar bunlar — ya da tam konum için bir iğne bırakın.',
+
+  /* ── META ADS — FINAL ACCEPTANCE ── */
+  mm_x_connect_expiring: 'Meta erişiminiz bir hafta içinde sona eriyor — kampanyalarınız devam etsin diye şimdi yeniden bağlayın.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -69225,6 +69237,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mm_g_search_ph: 'دولة أو مدينة أو حي أو منطقة — مثل საქართველო أو Tbilisi أو Ваке',
   mm_g_countries_only: 'تظهر الدول. اربط Meta للبحث عن المدن والأحياء أيضًا.',
   mm_g_street_nearest: 'لا يستطيع Meta استهداف شارع. هذه أقرب المناطق التي يدعمها — أو ضع دبوسًا للموقع الدقيق.',
+
+  /* ── META ADS — FINAL ACCEPTANCE ── */
+  mm_x_connect_expiring: 'ينتهي وصولك إلى Meta خلال أسبوع — أعد الربط الآن لتستمر حملاتك.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -83048,6 +83063,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   mm_g_search_ph: 'מדינה, עיר, שכונה או אזור — למשל საქართველო, Tbilisi, Ваке',
   mm_g_countries_only: 'מוצגות מדינות. חברו את Meta כדי לחפש גם ערים ושכונות.',
   mm_g_street_nearest: 'Meta לא יכולה לטרגט רחוב. אלה האזורים הקרובים שהיא תומכת בהם — או סמנו נעץ למיקום המדויק.',
+
+  /* ── META ADS — FINAL ACCEPTANCE ── */
+  mm_x_connect_expiring: 'הגישה ל-Meta מסתיימת תוך שבוע — חברו מחדש עכשיו כדי שהקמפיינים ימשיכו לרוץ.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

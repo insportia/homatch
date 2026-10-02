@@ -52,7 +52,7 @@ export interface MetaStatus {
   serviceBalance?: ServiceBalanceRow[];
   guard?: { accounts: GuardAccountRow[]; maxStrikes: number; enabled: boolean };
   connection: {
-    status: string; health?: MetaConnectionHealth; granted_scopes?: string[]; missing_scopes?: string[]; error_reason?: string | null;
+    status: string; health?: MetaConnectionHealth; granted_scopes?: string[]; missing_scopes?: string[]; error_reason?: string | null; expires_soon?: boolean;
     /** Instant Forms' extra permissions granted (goal LEADS_ON_META). */
     instant_forms_available?: boolean;
     /** The server's state (src/lib/metaAds/instantForms.ts). */

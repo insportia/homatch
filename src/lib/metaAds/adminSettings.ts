@@ -30,7 +30,11 @@ export const ADMIN_NUMERIC_SETTINGS: Record<string, { min: number; max: number; 
 export const ADMIN_GOALS = ['LEADS_ON_META', 'LEADS_ON_WEBSITE', 'SITE_REGISTRATIONS', 'ENGAGEMENT', 'MESSAGES', 'PROMOTE'];
 export const ADMIN_BUDGET_BILLING = ['CUSTOMER_AD_ACCOUNT', 'HOMATCH_WALLET'];
 
-const OTHER = ['meta_ads_goals_enabled', 'meta_ads_default_countries', 'meta_ads_budget_billing', 'meta_ads_api_version'];
+/* meta_ads_login_config_id: which Facebook Login for Business configuration
+   the Connect button opens — a public id (it is in every dialog URL), never a
+   credential. Switching a system-user configuration for a user-token one is a
+   setting, not a deploy. */
+const OTHER = ['meta_ads_goals_enabled', 'meta_ads_default_countries', 'meta_ads_budget_billing', 'meta_ads_api_version', 'meta_ads_login_config_id'];
 
 export const ADMIN_SETTING_KEYS: string[] = [
   ...ADMIN_KILL_SWITCHES, ...ADMIN_JSON_OBJECT_SETTINGS, ...Object.keys(ADMIN_NUMERIC_SETTINGS), ...OTHER,
@@ -41,7 +45,7 @@ export const isCredentialKey = (key: string) => /token|secret|password|credentia
 
 export type SettingError =
   | 'UNKNOWN_SETTING' | 'NOT_BOOLEAN' | 'NOT_NUMBER' | 'OUT_OF_RANGE' | 'NOT_INTEGER' | 'TOO_PRECISE'
-  | 'NOT_OBJECT' | 'TOO_LARGE' | 'BAD_GOAL' | 'BAD_COUNTRY' | 'BAD_BILLING' | 'BAD_VERSION' | 'MIN_ABOVE_MAX' | 'EMPTY_LIST';
+  | 'NOT_OBJECT' | 'TOO_LARGE' | 'BAD_GOAL' | 'BAD_COUNTRY' | 'BAD_BILLING' | 'BAD_VERSION' | 'MIN_ABOVE_MAX' | 'EMPTY_LIST' | 'BAD_CONFIG_ID';
 
 export type SettingCheck = { ok: true; value: unknown } | { ok: false; error: SettingError };
 
@@ -92,6 +96,9 @@ export function validateSetting(key: string, value: unknown, current: Record<str
   }
   if (key === 'meta_ads_api_version') {
     return typeof value === 'string' && /^v\d{2}\.\d$/.test(value) ? { ok: true, value } : { ok: false, error: 'BAD_VERSION' };
+  }
+  if (key === 'meta_ads_login_config_id') {
+    return typeof value === 'string' && /^\d{6,20}$/.test(value) ? { ok: true, value } : { ok: false, error: 'BAD_CONFIG_ID' };
   }
   return { ok: false, error: 'UNKNOWN_SETTING' };
 }

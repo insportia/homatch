@@ -167,6 +167,8 @@ Deno.serve(async (req) => {
               lead_terms: mode === 'MOCK' ? 'ACCEPTED' : leadTermsEvidence(leadCheck),
               lead_checked_at: formPage?.capabilities?.leadgen_tos_checked_at ?? null,
               token_expires_at: conn.token_expires_at, last_checked_at: conn.last_checked_at,
+              // A dated (user) token within a week of lapsing: ask for a reconnect before launch fails.
+              expires_soon: Number.isFinite(expiresAt) && expiresAt > Date.now() && expiresAt - Date.now() < 7 * 86_400_000,
               // A named reason only (e.g. TOKEN_ENCRYPTION_NOT_CONFIGURED), never a raw error.
               error_reason: typeof conn.last_error === 'string' && /^[A-Z_]{3,64}$/.test(conn.last_error) ? conn.last_error : null }
             : { status: 'DISCONNECTED', health: 'NOT_CONNECTED', granted_scopes: [], missing_scopes: [] },
@@ -206,7 +208,7 @@ Deno.serve(async (req) => {
            into the signed state — so the callback returns there even when the
            dialog finishes in a different browser context. */
         const ret = safeReturnPath(body.returnTo);
-        return json({ mode, url: oauthStartUrl(await signOAuthState({ uid, nonce, ret })) });
+        return json({ mode, url: oauthStartUrl(await signOAuthState({ uid, nonce, ret }), settings.loginConfigId) });
       }
 
       case 'oauth_mock_connect': {

@@ -150,3 +150,33 @@ test('LOCATION: no tabs — one search; typed subtitles; cache, coalescing, retr
   const aud = read('src/components/metaAds/builder/AudienceStep.tsx');
   assert.match(aud, /data-mm-loc-chips=""/, 'chosen areas are removable chips');
 });
+
+/* ── META CONNECTION: the cleanest supported flow, the one thing missing ─ */
+
+test('CONNECT: the Login for Business configuration is an admin setting, validated; never a credential', async () => {
+  const { validateSetting, isCredentialKey } = await import('../adminSettings.ts');
+  assert.deepEqual(validateSetting('meta_ads_login_config_id', '1234567890123456'), { ok: true, value: '1234567890123456' });
+  assert.deepEqual(validateSetting('meta_ads_login_config_id', 'https://evil'), { ok: false, error: 'BAD_CONFIG_ID' });
+  assert.deepEqual(validateSetting('meta_ads_login_config_id', 970930962712211), { ok: false, error: 'BAD_CONFIG_ID' });
+  assert.equal(isCredentialKey('meta_ads_login_config_id'), false);
+  const engine = read('supabase/functions/meta-ads-api/engine.ts');
+  assert.match(engine, /loginConfigId: typeof m\.get\('meta_ads_login_config_id'\) === 'string' && \/\^\\d\{6,20\}\$\/\.test/);
+  const shared = read('supabase/functions/_shared/metaAds.ts');
+  assert.match(shared, /if \(override && \/\^\\d\{6,20\}\$\/\.test\(override\)\) return override;/);
+});
+
+test('CONNECT: a user-token configuration gets a long-lived token server-side; expiry is tracked and announced', () => {
+  const shared = read('supabase/functions/_shared/metaAds.ts');
+  const ex = shared.slice(shared.indexOf('export async function exchangeCodeForToken'), shared.indexOf('/* ── SIGNED REQUESTS'));
+  assert.match(ex, /grant_type: 'fb_exchange_token'/);
+  assert.match(ex, /method: 'POST'|tokenCall\(/, 'the exchange is a server-side POST');
+  const cb = read('supabase/functions/meta-oauth/index.ts');
+  assert.match(cb, /missing: missingBase/, 'the log names what Meta did not grant');
+  assert.doesNotMatch(cb.slice(cb.indexOf("event: 'connected'") - 400, cb.indexOf("event: 'connected'") + 300), /token[,: ]+token\b|access_token/, 'never the token');
+  const api = read('supabase/functions/meta-ads-api/index.ts');
+  assert.match(api, /expires_soon: Number\.isFinite\(expiresAt\) && expiresAt > Date\.now\(\) && expiresAt - Date\.now\(\) < 7 \* 86_400_000/);
+  const panel = read('src/components/metaAds/builder/AccountPanel.tsx');
+  assert.match(panel, /t\(adsAccessMissing \? 'mm_r_pfd_permissions' :/, 'ONE actionable line when ad-account access is missing');
+  assert.match(panel, /data-mm-connect-expiring=""/);
+  assert.match(read('src/pages/outreach/MetaAdsPage.tsx'), /returnTo="\/outreach\/meta\?tab=connections"/, 'the workspace reconnect comes back to its tab');
+});

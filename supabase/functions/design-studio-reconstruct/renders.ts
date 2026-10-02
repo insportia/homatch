@@ -28,10 +28,11 @@
 // impersonated session, and answers errors as codes.
 
 import { beginExecution, recordUnbilledUsage, releaseExecution, settleExecution, type ExecutionGrant } from '../_shared/billing.ts';
-import { getObject, putObject } from '../_shared/objectStore.ts';
+import { deleteObject, getObject, putObject } from '../_shared/objectStore.ts';
 import { renderPictureKey } from '../_shared/designStudio/renderKeys.ts';
 import { checkFinish, rgbToGray, type CheckResult, type RgbPixels } from '../_shared/designStudio/renderCheck.ts';
-import { EDIT_HEARTBEAT_MS, editPixels, editRecovery, type AnswerMeta } from '../_shared/designStudio/editPipeline.ts';
+import type { AnswerMeta, AnswerOk } from '../_shared/designStudio/editPipeline.ts';
+import { claimEditFinish, editNext, failEdit, runEditFinish, runEditRequest, type EditStore } from '../_shared/designStudio/editFlow.ts';
 import { selectProvider, type ImageProvider, type ImageResult, type ProviderDeps } from '../_shared/designStudio/imageProviders.ts';
 
 /** The image model chosen for production (admin_settings, written by an administrator after the benchmark). */
@@ -301,13 +302,16 @@ export async function handleRenderStart(req: Request): Promise<Response> {
 }
 
 /** QUEUED/RENDERING/FINISHING → FAILED exactly once (compare-and-set), then the money goes back. */
-async function failRender(admin: Row, row: Row, error: string, finish: Row | null, m: Measured, expectStatus?: string[]) {
+async function failRender(admin: Row, row: Row, error: string, finish: Row | null, m: Measured, expectStatus?: string[], lease?: string): Promise<boolean> {
   const now = new Date().toISOString();
-  const { data: claimed } = await admin.from('ds_renders').update({ status: 'FAILED', error: error.slice(0, 300), lease_at: null, updated_at: now, ...(finish ? { finish } : {}) })
-    .eq('id', row.id).in('status', expectStatus ?? ['QUOTED', 'QUEUED', 'RENDERING', 'FINISHING']).select('*');
-  if (!claimed?.length) return;
+  let q = admin.from('ds_renders').update({ status: 'FAILED', error: error.slice(0, 300), lease_at: null, updated_at: now, ...(finish ? { finish } : {}) })
+    .eq('id', row.id).in('status', expectStatus ?? ['QUOTED', 'QUEUED', 'RENDERING', 'FINISHING']);
+  if (lease) q = q.eq('lease_at', lease); // only the holder of this lease: a superseded worker changes nothing
+  const { data: claimed } = await q.select('*');
+  if (!claimed?.length) return false;
   const billing = await closeBilling(admin, { ...claimed[0], error }, 'RELEASE', m);
   await admin.from('ds_renders').update({ billing, timings: { ...(claimed[0].timings ?? {}), failedAt: now }, updated_at: now }).eq('id', row.id);
+  return true;
 }
 
 // ── render-status ────────────────────────────────────────────────────────
@@ -471,6 +475,56 @@ async function inBackground(work: () => Promise<unknown>): Promise<'BACKGROUND' 
   return 'DONE';
 }
 
+// ── The edit's two steps, on this database and storage (editFlow.ts) ─────────
+
+/** Nothing was spent before the provider was asked; after it, an unknown spend stays unknown. */
+const NOTHING_SPENT = new Set(['PICTURE_UNREADABLE', 'TARGET_NOT_VISIBLE', 'EDIT_NOT_CONFIGURED']);
+
+function editMeasured(row: Row, code: string | null, answer: AnswerMeta | null): Measured {
+  const known = answer ? answer.cost.basis === 'ESTIMATED' : code != null && NOTHING_SPENT.has(code);
+  const requested = Date.parse(row.timings?.requestedAt ?? '');
+  return {
+    gpuUsd: null, aiUsd: answer ? answer.cost.usd : known ? 0 : null, aiKnown: known, provider: answer?.provider ?? null, model: answer?.model ?? null,
+    ms: Number.isFinite(requested) ? Date.now() - requested : 0, detail: { step: 'edit', target_id: row.edit?.targetId ?? null, target_kind: row.edit?.targetKind ?? null },
+  };
+}
+
+/** The edit row store: compare-and-set on FINISHING + lease for every write; billing and storage as for renders. */
+function editStore(ctx: Ctx): EditStore {
+  return {
+    update: async (rowId, lease, fields) => {
+      const { data } = await ctx.admin.from('ds_renders').update({ ...fields, updated_at: fields.updated_at ?? new Date().toISOString() })
+        .eq('id', rowId).eq('status', 'FINISHING').eq('lease_at', lease).select('*');
+      return data?.[0] ?? null;
+    },
+    fail: (r, lease, code, failure, answer) => failRender(ctx.admin, r, code,
+      answer && (failure?.finishReason || failure?.check) ? blenderFinish(failure.finishReason, failure.check, answer) : null,
+      editMeasured(r, code, answer), ['FINISHING'], lease),
+    settle: async (done, answer) => {
+      const billing = await closeBilling(ctx.admin, done, 'SETTLE', editMeasured(done, null, answer));
+      await ctx.admin.from('ds_renders').update({ billing, updated_at: new Date().toISOString() }).eq('id', done.id);
+    },
+    put: (key, bytes, mime) => putObject(key, bytes, mime).then(() => true).catch(() => false),
+    remove: (key) => deleteObject(key).then(() => undefined).catch(() => undefined),
+    stagedKey: (r, mime) => renderPictureKey(r, 'staged', mime),
+    finalKey: (r) => renderPictureKey(r, 'edit', 'image/png'),
+    finishRecord: (check, answer: AnswerOk) => blenderFinish(null, check, answer),
+    now: () => Date.now(),
+    every: (ms, fn) => { const h = setInterval(fn, ms); return () => clearInterval(h); },
+  };
+}
+
+/** The colour of the edited target in the picture's id map. */
+const editColor = (row: Row): string => (row.legend?.entries ?? []).find((e: Row) => e?.id === row.edit?.targetId)?.color ?? '';
+
+/** Step 2's reads: the picture edited, its id map, the staged answer. */
+const editFinishIo = (row: Row) => ({
+  readImage: () => readBytes(row.base_key, MAX_PICTURE_BYTES),
+  readIds: () => readBytes(row.map_key, MAX_PICTURE_BYTES),
+  readAnswer: () => readBytes(row.timings?.staged?.key, MAX_PICTURE_BYTES),
+  decode: decodeRgba, rgba: rgbaOf, encodePng,
+});
+
 export async function handleRenderStatus(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   const res = await callerOf(req);
@@ -484,16 +538,34 @@ export async function handleRenderStatus(req: Request): Promise<Response> {
   const { data: rows } = await ctx.caller.from('ds_renders').select('*').in('id', ids);
   const jobs = new Map<string, Row>();
   const budget = { finishes: FINISHES_PER_POLL };
-  // An edit whose background work died (an instance killed for memory or time cannot clean up)
-  // is failed and its reservation released here: within ~75 s of its last heartbeat, not left FINISHING.
+  // Edits (editFlow.ts): one whose worker died is failed and released here (an instance killed
+  // for memory or CPU cannot clean up); one whose answer is staged is claimed and finished in
+  // this poll's background — the same one-finish-per-poll budget as renders (each finish is
+  // the whole of an invocation's CPU budget).
   const nowMs = Date.now();
+  const finishing: Array<{ claimed: Row; store: EditStore }> = [];
   for (const row of rows ?? []) {
-    const lapse = editRecovery(row, nowMs);
-    if (!lapse) continue;
-    console.warn('[ds-render] edit recovered', row.id, lapse);
-    await failRender(ctx.admin, row, lapse, null, { gpuUsd: null, aiUsd: null, aiKnown: false, provider: null, model: null, ms: 0, detail: { step: 'edit', recovery: lapse } }, ['FINISHING']);
+    if (row.kind !== 'EDIT' || String(row.user_id) !== ctx.actorId) continue; // an administrator reads; only the owner's poll spends
+    const next = editNext(row, nowMs);
+    if (next.action === 'WAIT') continue;
+    const store = editStore(ctx);
+    if (next.action === 'FAIL') {
+      if (await failEdit(store, row, next.code)) console.warn('[ds-render] edit recovered', row.id, next.code);
+      continue;
+    }
+    if (budget.finishes <= 0) continue;
+    const claimed = await claimEditFinish(store, row, next.attempt);
+    if (!claimed) continue; // another poll claimed it
+    budget.finishes -= 1;
+    finishing.push({ claimed, store });
   }
-  await inBackground(async () => { for (const row of rows ?? []) if (row.kind !== 'EDIT') await advance(req, ctx, row, jobs, budget); });
+  await inBackground(async () => {
+    for (const { claimed, store } of finishing) {
+      const outcome = await runEditFinish(store, editFinishIo(claimed), claimed, editColor(claimed));
+      console.warn('[ds-render] edit finish', claimed.id, outcome, `attempt ${claimed.timings?.finisher?.attempt}`);
+    }
+    for (const row of rows ?? []) if (row.kind !== 'EDIT') await advance(req, ctx, row, jobs, budget);
+  });
   const { data: out } = await ctx.caller.from('ds_renders').select(RECORD).in('id', ids);
   return json({ renders: out ?? [] });
 }
@@ -513,7 +585,6 @@ function validateAppearance(raw: unknown, targetId: string): Extract<RenderEdit,
 
 export async function handleRenderEdit(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
-  const t0 = Date.now();
   const res = await callerOf(req);
   if ('error' in res) return res.error!;
   const ctx = res as Ctx;
@@ -558,63 +629,21 @@ export async function handleRenderEdit(req: Request): Promise<Response> {
     return json({ render: await again(), reused: true });
   }
 
-  const m = (res2?: AnswerMeta | null): Measured => ({
-    gpuUsd: null, aiUsd: res2 ? res2.cost.usd : 0, aiKnown: res2 ? res2.cost.basis === 'ESTIMATED' : true, provider: res2?.provider ?? null, model: res2?.model ?? null,
-    ms: Date.now() - t0, detail: { step: 'edit', target_id: edit.targetId, target_kind: edit.targetKind },
-  });
-  const fail = async (code: string, status: number, finish: Row | null = null, res2?: AnswerMeta | null) => {
-    await failRender(ctx.admin, row, code, finish, m(res2), ['FINISHING']);
-    void status;
-    return null;
-  };
-  const edited = async () => {
-    const provider = selectProvider(deps, override, await configuredModel(ctx.admin));
-    if (!provider) return fail('EDIT_NOT_CONFIGURED', 503);
-    // The pixels (editPipeline.ts): each full-size buffer is released as soon as nothing needs it.
-    const o = await editPixels({
+  // Step 1 (editFlow.ts): the paid request and its answer, staged; the poll finishes it (step 2).
+  const provider = selectProvider(deps, override, await configuredModel(ctx.admin));
+  const store = editStore(ctx);
+  if (!provider) {
+    await store.fail(row, lease, 'EDIT_NOT_CONFIGURED', null, null);
+    return json({ render: await again() });
+  }
+  await inBackground(async () => {
+    const outcome = await runEditRequest(store, {
       readImage: () => readBytes(row.base_key, MAX_PICTURE_BYTES),
       readIds: () => readBytes(row.map_key, MAX_PICTURE_BYTES),
       decode: decodeRgba, rgba: rgbaOf, encodePng,
       edit: ({ image, mask, size }) => provider.edit({ image, mask, prompt: editPrompt(edit), size }),
-    }, entry.color);
-    if (!o.ok) {
-      console.warn('[ds-render] edit failed', row.id, o.code);
-      return fail(o.code, o.status, o.result ? blenderFinish(o.finishReason, o.check, o.result) : null, o.result);
-    }
-    const result = o.result as Extract<AnswerMeta, { ok: true }>;
-    const finish = blenderFinish(null, o.check, result);
-    const finalKey = await renderPictureKey(row, 'edit', 'image/png');
-    const stored = await putObject(finalKey, o.png, 'image/png').then(() => true).catch(() => false);
-    if (!stored) return fail('FINAL_NOT_STORED', 502, finish, result);
-    const cost = [{ stage: 'RENDERING', kind: 'IMAGE_MODEL', usd: result.cost.usd, basis: result.cost.basis === 'ESTIMATED' ? 'ESTIMATED' : 'NOT_AVAILABLE', detail: result.cost.detail }];
-    const nowIso = new Date().toISOString();
-    const { data: done } = await ctx.admin.from('ds_renders').update({
-      status: 'READY', final_key: finalKey, finish, cost, lease_at: null, updated_at: nowIso,
-      timings: { requestedAt: lease, readyAt: nowIso, editMs: result.ms, checkMs: o.checkMs, totalMs: Date.now() - t0 },
-    }).eq('id', row.id).eq('status', 'FINISHING').eq('lease_at', lease).select('*');
-    if (done?.length) {
-      const billing = await closeBilling(ctx.admin, done[0], 'SETTLE', m(result));
-      await ctx.admin.from('ds_renders').update({ billing, updated_at: new Date().toISOString() }).eq('id', row.id);
-    }
-    return null;
-  };
-  // Alive while it works: a heartbeat the status poll reads (editRecovery). A caught failure is
-  // failed here and its reservation released; a killed instance cannot do that, so the poll does.
-  // Both writes are compare-and-set on FINISHING + this lease: a finished edit is never touched.
-  const beat = () => ctx.admin.from('ds_renders').update({ timings: { ...(row.timings ?? {}), heartbeatAt: new Date().toISOString() } })
-    .eq('id', row.id).eq('status', 'FINISHING').eq('lease_at', lease).then(() => null, () => null);
-  const work = async () => {
-    await beat();
-    const timer = setInterval(() => { void beat(); }, EDIT_HEARTBEAT_MS);
-    try {
-      await edited();
-    } catch (e) {
-      console.error('[ds-render] edit crashed', row.id, String((e as Error)?.message ?? e).slice(0, 120));
-      await fail(`EDIT_CRASHED:${String((e as Error)?.message ?? '').slice(0, 80)}`, 500);
-    } finally {
-      clearInterval(timer);
-    }
-  };
-  await inBackground(work);
+    }, row, lease, entry.color);
+    console.warn('[ds-render] edit request', row.id, outcome);
+  });
   return json({ render: await again() });
 }

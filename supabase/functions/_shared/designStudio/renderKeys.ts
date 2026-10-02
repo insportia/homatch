@@ -12,7 +12,8 @@
  */
 import { accountKey } from '../storage/keys.ts';
 
-export type RenderPictureRole = 'final' | 'edit';
+/** final: a finished render; edit: an edited picture; staged: an edit's provider answer awaiting its finish. */
+export type RenderPictureRole = 'final' | 'edit' | 'staged';
 
 /** A uuid-shaped name (version 8, RFC 9562 "custom") from the sha-256 of the text. */
 export async function uuidFrom(text: string): Promise<string> {

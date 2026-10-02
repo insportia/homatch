@@ -663,6 +663,18 @@ test('no customer route overflows a phone viewport', opts, async (t) => {
        * Three sources read of eight, which is the real FREE-plan shape.
        */
       if (url.includes('/rest/v1/matching_jobs')) {
+        /*
+         * THE OPEN-SEARCH LOOKUP (Phase 2) asks for a running or paused job by
+         * status (running or paused statuses -- the settled-sweep query also
+         * filters by status, but by completed ones). This fixture has none: the property's only sweep is settled,
+         * which is what puts the Expand Search panel on screen. Answering the
+         * status query with the sweep would claim a search is running.
+         */
+        const statusFilter = decodeURIComponent(url).match(/status=in\.\(([^)]*)\)/)?.[1] ?? '';
+        if (/paused|searching_sources/.test(statusFilter)) {
+          const singleOpen = (r.request().headers()['accept'] ?? '').includes('pgrst.object');
+          return r.fulfill(singleOpen ? { status: 406, headers: { 'access-control-allow-origin': '*', 'content-type': 'application/json' }, body: JSON.stringify({ code: 'PGRST116', message: 'no rows' }) } : json([]));
+        }
         const sweep = {
           id: '99999999-9999-4999-8999-999999999999',
           status: 'completed',

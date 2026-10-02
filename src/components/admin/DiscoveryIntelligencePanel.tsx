@@ -49,7 +49,7 @@ function when(iso: string | null | undefined, locale: string) {
 }
 const yes = (v: boolean | null | undefined) => (v === true ? '✓' : v === false ? '✗' : '—');
 
-export function DiscoveryIntelligencePanel() {
+function IntelligenceContent() {
   const { t, lang } = useLanguage();
   const locale = intlLocaleFor(lang);
   const [data, setData] = useState<DiscoveryIntelligence | null>(null);
@@ -84,6 +84,13 @@ export function DiscoveryIntelligencePanel() {
   if (!data) {
     return loading ? <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div> : null;
   }
+  const safe = (v: unknown) => (Array.isArray(v) ? v : []);
+  data.runs = safe(data.runs) as never; data.queue = safe(data.queue) as never;
+  data.live_checks = safe(data.live_checks) as never; data.supply_by_adapter = safe(data.supply_by_adapter) as never;
+  data.entities.largest = safe(data.entities.largest) as never;
+  data.switches = data.switches ?? {}; data.resolution_7d = data.resolution_7d ?? {};
+  data.matches = data.matches ?? { external_listing: 0, external_intelligence: 0, internal_homatch: 0, demand_matches_30d: 0 };
+  data.community_supply = data.community_supply ?? { listing_posts: 0, stored_as_supply: 0 };
 
   const e = data.entities;
   const dedupRate = e.observations > 0 ? Math.round((1 - e.total / Math.max(1, e.resolved_observations)) * 100) : null;
@@ -269,4 +276,19 @@ export function DiscoveryIntelligencePanel() {
       </Panel>
     </div>
   );
+}
+
+/*
+ * A fault in this panel must never take down the Admin shell around it: the
+ * Discovery page's switches and Stop/Retry stay usable whatever this renders.
+ */
+class PanelBoundary extends React.Component<{ children: React.ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(error: unknown) { console.error('DiscoveryIntelligencePanel failed', error); }
+  render() { return this.state.failed ? null : this.props.children; }
+}
+
+export function DiscoveryIntelligencePanel() {
+  return <PanelBoundary><IntelligenceContent /></PanelBoundary>;
 }

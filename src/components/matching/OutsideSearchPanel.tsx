@@ -63,15 +63,20 @@ export function OutsideSearchPanel({ onFinished, className }: { onFinished?: () 
   finished.current = onFinished;
 
   const refresh = useCallback(async () => {
-    const id = subscriptionId ?? await latestSupplySearchId();
-    if (!id) return;
-    if (!subscriptionId) setSubscriptionId(id);
-    const latest = await latestOutsideRun(id);
-    setRun(latest);
-    if (latest) setActivity(await outsideRunActivity(latest.id));
-    const open = !!latest && OPEN_OUTSIDE_RUN.includes(latest.status);
-    if (wasOpen.current && !open) finished.current?.();
-    wasOpen.current = open;
+    /* A failed poll keeps the last known state; the next poll tries again. */
+    try {
+      const id = subscriptionId ?? await latestSupplySearchId();
+      if (!id) return;
+      if (!subscriptionId) setSubscriptionId(id);
+      const latest = await latestOutsideRun(id);
+      setRun(latest);
+      if (latest) setActivity(await outsideRunActivity(latest.id));
+      const open = !!latest && OPEN_OUTSIDE_RUN.includes(latest.status);
+      if (wasOpen.current && !open) finished.current?.();
+      wasOpen.current = open;
+    } catch (error) {
+      console.error('outside search refresh failed', error);
+    }
   }, [subscriptionId]);
 
   useEffect(() => { void refresh(); }, [refresh]);
@@ -96,6 +101,8 @@ export function OutsideSearchPanel({ onFinished, className }: { onFinished?: () 
       startKey.current = crypto.randomUUID();
       setChoosing(false);
       await refresh();
+    } catch {
+      toast.error(t('p2d_control_error'));
     } finally {
       setBusy(false);
     }

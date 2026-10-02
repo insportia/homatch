@@ -803,6 +803,8 @@ function MatchesContent() {
     try {
       await controlMatchingJob(propertyId, activeJobId, action);
       setJobPaused(false);
+      /* A stopped search is finishing on the server; its controls go away. */
+      if (action === 'stop') setActiveJobId(null);
       toast.success(t(action === 'resume' ? 'p2d_resumed_toast' : 'p2d_stopping_toast'));
     } catch (err) {
       console.error(err);
@@ -925,14 +927,17 @@ function MatchesContent() {
       <p className="mb-2.5 text-2xs leading-snug text-muted-foreground">
         {t('matches_search_what')}
       </p>
-      <QuietAction
-        full
-        icon={Play}
-        busy={campaignLoading}
-        disabled={campaignLoading}
-        onClick={() => setShowBudget(true)}
-        label={t(discoverKey)}
-      />
+      {/* One search at a time: while one runs or is paused, its own controls are the actions. */}
+      {!jobRunning && (
+        <QuietAction
+          full
+          icon={Play}
+          busy={campaignLoading}
+          disabled={campaignLoading}
+          onClick={() => setShowBudget(true)}
+          label={t(discoverKey)}
+        />
+      )}
       {/*
         THE STOP, WHERE STOPPING MEANS SOMETHING.
         Not a page-level status control and not keyed off a mode — it appears while a job

@@ -91,10 +91,13 @@ export interface DiscoveryIntelligence {
   community_supply: { listing_posts: number; stored_as_supply: number };
 }
 
-export async function getDiscoveryIntelligence(): Promise<DiscoveryIntelligence> {
+/** Null when the RPC is not there yet or answers a shape this screen does not know. */
+export async function getDiscoveryIntelligence(): Promise<DiscoveryIntelligence | null> {
   const { data, error } = await supabase.rpc('admin_discovery_intelligence');
   if (error) throw new Error(error.message);
-  return data as DiscoveryIntelligence;
+  const shaped = data && typeof data === 'object' && !Array.isArray(data)
+    && (data as Record<string, unknown>).entities && typeof (data as Record<string, unknown>).entities === 'object';
+  return shaped ? data as DiscoveryIntelligence : null;
 }
 
 export const PHASE2_SWITCHES = ['find_property_discovery_enabled', 'discovery_worker_route_enabled'] as const;

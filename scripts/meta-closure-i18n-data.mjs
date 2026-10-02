@@ -127,7 +127,7 @@ export const META_CLOSURE_STRINGS = {
   ],
 
   // ── Goal / terms states ────────────────────────────────────────────────
-  mm_c_goal_check: ['Check with Meta', 'Meta-სთან შემოწმება', 'Проверить в Meta', 'Meta ile kontrol et', 'تحقق مع Meta', 'בדיקה מול Meta'],
+  mm_c_goal_check: ['Check with Meta', 'Meta-ში გადამოწმება', 'Проверить в Meta', 'Meta ile kontrol et', 'تحقق مع Meta', 'בדיקה מול Meta'],
   mm_c_lf_perms: [
     'HOMATCH needs your permission to create and read instant forms. Reconnect Meta and approve the lead permissions.',
     'HOMATCH-ს სჭირდება თქვენი ნებართვა მყისიერი ფორმების შესაქმნელად და წასაკითხად. ხელახლა დაუკავშირდით Meta-ს და დაადასტურეთ ლიდების ნებართვები.',

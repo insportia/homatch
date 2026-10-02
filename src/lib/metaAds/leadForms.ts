@@ -20,7 +20,7 @@ export const QUALIFYING_KEYS: QualifyingKey[] = ['buy_or_rent', 'budget', 'prefe
 type L = Record<FormLocale, string>;
 interface QuestionDef { label: L; options?: Array<{ key: string; label: L }> }
 
-const Q: Record<QualifyingKey, QuestionDef> = {
+export const Q: Record<QualifyingKey, QuestionDef> = {
   buy_or_rent: {
     label: { en: 'Are you looking to buy or rent?', ka: 'ყიდვა გსურთ თუ ქირაობა?', ru: 'Вы хотите купить или арендовать?', tr: 'Satın almak mı kiralamak mı istiyorsunuz?', ar: 'هل تبحث عن الشراء أم الإيجار؟', he: 'אתם מחפשים לקנות או לשכור?' },
     options: [

@@ -121,6 +121,8 @@ export interface MetaCampaignRow {
   owner_brief?: string;
   /** What HOMATCH understood from owner_brief (audienceGuide.BriefUnderstanding). */
   brief_understanding?: BriefUnderstanding | null;
+  /** HOMATCH Intelligence preference (homatchIntelligence.prefsOf) — off unless the owner turned it on. */
+  intelligence?: { enabled?: boolean; optimiseFor?: 'QUALITY' | 'VOLUME' } | null;
 }
 
 export interface LocationChoiceRow {
@@ -397,6 +399,19 @@ export interface MetaLeadRow {
   ad_external_id?: string | null; adset_external_id?: string | null; property_id?: string | null;
   /** Qualifying answers from a HOMATCH premium form (buy_or_rent, budget, …). */
   answers?: Record<string, string> | null; meta_created_time?: string | null;
+  /** Lead Center pipeline (owner-edited; won_at / lost_reason follow the status, DB guard). */
+  follow_up_at?: string | null; lost_reason?: string | null; won_at?: string | null;
+  quality?: 'HIGH' | 'MEDIUM' | 'LOW' | 'UNRATED'; quality_source?: 'AUTO' | 'MANUAL';
+  /** Groups one person's submissions (a per-owner hash) — never merges them. */
+  contact_key?: string | null;
+}
+export interface MetaLeadEventRow { id: number; kind: 'RECEIVED' | 'STATUS' | 'NOTE' | 'FOLLOW_UP' | 'QUALITY'; from_value: string | null; to_value: string | null; actor: string; at: string }
+/** The lead's timeline, newest first (written by database triggers only). */
+export async function listLeadEvents(leadId: string): Promise<MetaLeadEventRow[]> {
+  const { data, error } = await supabase.from('meta_lead_events').select('id,kind,from_value,to_value,actor,at')
+    .eq('lead_id', leadId).order('at', { ascending: false }).limit(100);
+  if (error) throw error;
+  return (data ?? []) as MetaLeadEventRow[];
 }
 /** The Leads Center pipeline. */
 export const LEAD_STATUSES = ['NEW', 'CONTACTED', 'QUALIFIED', 'VIEWING', 'NEGOTIATING', 'WON', 'LOST'] as const;
@@ -415,7 +430,9 @@ export async function listMetaLeads(filter: { campaignId?: string; status?: stri
   return rows;
 }
 
-export async function updateMetaLead(id: string, patch: { status?: string; note?: string }): Promise<void> {
+export async function updateMetaLead(id: string, patch: {
+  status?: string; note?: string; follow_up_at?: string | null; lost_reason?: string | null; quality?: string;
+}): Promise<void> {
   const { error } = await supabase.from('meta_leads').update(patch).eq('id', id);
   if (error) throw error;
 }

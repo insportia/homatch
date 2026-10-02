@@ -502,12 +502,12 @@ export const META_FINAL_STRINGS = {
     "יש עוד משהו שתרצו ש-HOMATCH ידע?",
   ],
   mm_f_brief_ph: [
-    "For example: I mostly want people already living in Georgia, especially Russian-speaking families. The balcony and location are the strongest parts of the apartment.",
-    "მაგალითად: ძირითადად მინდა ის ადამიანები, ვინც უკვე საქართველოში ცხოვრობს, განსაკუთრებით რუსულენოვანი ოჯახები. ბინის ყველაზე ძლიერი მხარე აივანი და მდებარეობაა.",
-    "Например: в первую очередь хочу людей, которые уже живут в Грузии, особенно русскоязычные семьи. Самое сильное в квартире — балкон и расположение.",
-    "Örneğin: Çoğunlukla Gürcistan'da yaşayan kişileri, özellikle Rusça konuşan aileleri istiyorum. Dairenin en güçlü yanları balkonu ve konumu.",
-    "مثلًا: أريد بالأساس أشخاصًا يعيشون في جورجيا بالفعل، خاصةً العائلات الناطقة بالروسية. الشرفة والموقع هما أقوى ما في الشقة.",
-    "למשל: אני רוצה בעיקר אנשים שכבר גרים בגאורגיה, במיוחד משפחות דוברות רוסית. המרפסת והמיקום הם החלקים החזקים בדירה.",
+    "For example: I'm looking for buyers aged 30+ who are ready to buy in the next few months — say, a family that needs more room. The strongest points are the balcony, the quiet street and the short walk to the metro.",
+    "მაგალითად: ვეძებ 30+ ასაკის მყიდველუნარიან ადამიანებს, ვინც უახლოეს თვეებში ბინის ყიდვას გეგმავს — მაგალითად, ოჯახს, რომელსაც მეტი სივრცე სჭირდება. ბინის ყველაზე ძლიერი მხარეებია აივანი, მშვიდი ქუჩა და მეტროსთან სიახლოვე.",
+    "Например: ищу покупателей от 30 лет, готовых купить в ближайшие месяцы — скажем, семью, которой нужно больше места. Самое сильное в квартире — балкон, тихая улица и метро в паре минут.",
+    "Örneğin: Önümüzdeki birkaç ay içinde satın almaya hazır, 30 yaş üstü alıcılar arıyorum — mesela daha geniş bir eve ihtiyacı olan bir aile. Dairenin en güçlü yanları balkonu, sakin sokağı ve metroya yakınlığı.",
+    "مثلًا: أبحث عن مشترين بعمر 30 عامًا فأكثر مستعدين للشراء خلال الأشهر القليلة القادمة — كعائلة تحتاج إلى مساحة أكبر. أقوى ما في الشقة: الشرفة والشارع الهادئ وقربها من المترو.",
+    "למשל: אני מחפש קונים בני 30 ומעלה שמוכנים לקנות בחודשים הקרובים — נגיד, משפחה שצריכה יותר מקום. החוזקות של הדירה: המרפסת, הרחוב השקט והקרבה למטרו.",
   ],
   mm_f_brief_optional: [
     "Optional. HOMATCH uses it as guidance, never as a hard rule.",

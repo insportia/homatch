@@ -180,3 +180,101 @@ test('CONNECT: a user-token configuration gets a long-lived token server-side; e
   assert.match(panel, /data-mm-connect-expiring=""/);
   assert.match(read('src/pages/outreach/MetaAdsPage.tsx'), /returnTo="\/outreach\/meta\?tab=connections"/, 'the workspace reconnect comes back to its tab');
 });
+
+/* ── HOMATCH INTELLIGENCE: optional, bounded, evidence-based ─────────────── */
+
+test('INTELLIGENCE: hard constraints can never be crossed by a suggestion', async () => {
+  const { violates, decide, prefsOf, ageFocus, proposalOf } = await import('../homatchIntelligence.ts');
+  const c = { approvedDailyMinor: 1000, status: 'PAUSED', approvedLocationIds: ['city:1'], housingRestricted: false, exclusions: [] };
+  const P = (kind, extra = {}) => ({ kind, entity: 'campaign', direction: 0, evidence: 'HIGH_CONFIDENCE', reasonCodes: [], ...extra });
+  assert.equal(violates(P('RAISE_DAILY', { dailyMinor: 1200 }), c), 'BUDGET_INCREASE');
+  assert.equal(violates(P('REDUCE_DAILY', { dailyMinor: 800 }), c), null);
+  assert.equal(violates(P('CHANGE_GEOGRAPHY', { locations: ['city:1', 'country:TR'] }), c), 'GEO_EXPANSION');
+  assert.equal(violates(P('CHANGE_OBJECTIVE'), c), 'OBJECTIVE_CHANGE');
+  assert.equal(violates(P('ACTIVATE'), c), 'ACTIVATE_PAUSED', 'a paused campaign is never switched on');
+  assert.equal(violates(P('FOCUS_AGE'), { ...c, housingRestricted: true }), 'SPECIAL_AD_CATEGORY');
+  assert.equal(violates(P('DROP_EXCLUSION'), c), 'EXCLUSION_OVERRIDE');
+  // Off by default; nothing is decided while off.
+  assert.deepEqual(prefsOf(null), { enabled: false, optimiseFor: 'QUALITY' });
+  assert.deepEqual(decide([P('REDUCE_DAILY', { dailyMinor: 800 })], prefsOf(null), c, [], 0), []);
+  const on = prefsOf({ enabled: true });
+  const now = 10 * 86_400_000;
+  assert.equal(decide([P('RAISE_DAILY', { dailyMinor: 1200 })], on, c, [], now)[0].verdict, 'NEEDS_APPROVAL');
+  assert.equal(decide([P('REDUCE_DAILY', { dailyMinor: 800, evidence: 'EARLY_SIGNAL' })], on, c, [], now)[0].reason, 'NOT_ENOUGH_EVIDENCE');
+  // No oscillation: cooldown, and never the reverse of a recent change.
+  assert.equal(decide([P('REDUCE_DAILY', { dailyMinor: 800, direction: -1 })], on, c, [{ entity: 'campaign', direction: 1, at: now - 86_400_000 }], now)[0].reason, 'COOLDOWN');
+  assert.equal(decide([P('REDUCE_DAILY', { dailyMinor: 800, direction: -1 })], on, c, [{ entity: 'campaign', direction: 1, at: now - 4 * 86_400_000 }], now)[0].reason, 'WOULD_REVERSE');
+  assert.equal(decide([P('REDUCE_DAILY', { dailyMinor: 800, direction: -1 })], on, c, [], now)[0].verdict, 'WITHIN_LIMITS');
+  // Age focus only from measured data, never a preset split, never under the housing rule.
+  const segs = [{ ageMin: 18, ageMax: 29, results: 20, qualified: 3, spendMinor: 5000 }, { ageMin: 30, ageMax: 65, results: 20, qualified: 12, spendMinor: 5000 }];
+  const f = ageFocus(segs, 30, { housingRestricted: false });
+  assert.equal(f.kind, 'FOCUS_AGE'); assert.equal(f.measuredShare, 0.8, 'the share proposed is the measured one');
+  assert.equal(ageFocus(segs, 30, { housingRestricted: true }), null);
+  assert.equal(ageFocus(segs.map((s) => ({ ...s, qualified: 1 })), 30, { housingRestricted: false }), null, 'too small a sample');
+  assert.equal(proposalOf({ type: 'INCREASE', affected: 'campaign', confidence: 'HIGH_CONFIDENCE', reasonCodes: [], proposedDailyMinor: 1200 }).kind, 'RAISE_DAILY');
+  const lib = read('src/lib/metaAds/homatchIntelligence.ts');
+  assert.doesNotMatch(lib, /0\.7\b|70\s*%/, 'no hardcoded 70 % split');
+});
+
+test('INTELLIGENCE: an opt-in card on the Audience step; the campaign page only labels suggestions', () => {
+  const aud = read('src/components/metaAds/builder/AudienceStep.tsx');
+  assert.match(aud, /<IntelligenceCard value=\{campaign\.intelligence\}/);
+  const card = read('src/components/metaAds/builder/IntelligenceCard.tsx');
+  assert.match(card, /role="switch" aria-checked=\{prefs\.enabled\}/);
+  const opt = read('src/components/metaAds/campaign/OptimizationSection.tsx');
+  assert.match(opt, /data-mm-intel-verdict=\{v\.verdict\}/);
+  assert.doesNotMatch(opt.slice(opt.indexOf('const verdictOf')), /actOnRecommendation\(r\.id, 'APPLY'[^)]*\)\s*;\s*\/\/ auto/, 'never auto-applied');
+});
+
+/* ── LEAD CENTER: a real-estate pipeline on the existing rows ────────────── */
+
+test('LEAD CENTER: explainable quality from the person’s own answers; contact grouping never merges', async () => {
+  const { autoQuality, contactMaterial, followUpBucket, priorityOf, funnelOf, breakdownOf, submissionsByContact, answerKey } = await import('../leadCenter.ts');
+  assert.deepEqual(autoQuality({ fields: {}, answers: {} }), { quality: 'LOW', reasons: ['NO_REACHABLE_CONTACT'] });
+  assert.equal(autoQuality({ fields: { phone_number: '+995 555 12 34 56' }, answers: {} }).quality, 'UNRATED', 'nothing answered is not LOW');
+  const hi = autoQuality({ fields: { phone_number: '+995555123456' }, answers: { timeframe: 'ერთი თვის განმავლობაში', budget: '120000', agent_contact: 'yes' } });
+  assert.equal(hi.quality, 'HIGH'); assert.ok(hi.reasons.includes('BUYING_SOON'), 'a Georgian answer maps to its option');
+  assert.equal(answerKey('timeframe', 'В течение месяца'), 'now');
+  assert.equal(contactMaterial({ fields: { phone_number: '+995 555 12-34-56' } }), 'p:995555123456');
+  assert.equal(contactMaterial({ fields: { email: ' A@B.ge ' } }), 'e:a@b.ge');
+  const leads = [
+    { id: '1', status: 'NEW', received_at: '2026-10-02T08:00:00Z', contact_key: 'k1' },
+    { id: '2', status: 'WON', received_at: '2026-09-20T08:00:00Z', contact_key: 'k1', campaign_id: 'c' },
+    { id: '3', status: 'VIEWING', received_at: '2026-09-21T08:00:00Z', campaign_id: 'c' },
+    { id: '4', status: 'LOST', received_at: '2026-09-22T08:00:00Z', campaign_id: 'c' },
+  ];
+  assert.equal(submissionsByContact(leads).get('k1'), 2, 'counted, both rows kept');
+  const f = funnelOf(leads, 10000);
+  assert.deepEqual([f.leads, f.qualified, f.viewing, f.won, f.lost], [4, 2, 2, 1, 1]);
+  assert.equal(f.cost.perWon, 10000); assert.equal(f.cost.perQualified, 5000);
+  assert.equal(funnelOf(leads, null).cost.perLead, null, 'no spend → no cost, never zero');
+  assert.ok(!('roas' in f) && !('revenue' in f), 'no ROAS invented');
+  assert.equal(breakdownOf(leads, 'campaign_id')[0].enough, false, 'below the sample threshold');
+  const now = new Date('2026-10-02T12:00:00Z');
+  assert.equal(followUpBucket('2026-10-02T09:00:00Z', now, 'Asia/Tbilisi'), 'OVERDUE');
+  assert.equal(followUpBucket('2026-10-02T15:00:00Z', now, 'Asia/Tbilisi'), 'TODAY');
+  assert.equal(followUpBucket('2026-10-05T09:00:00Z', now, 'Asia/Tbilisi'), 'UPCOMING');
+  assert.equal(priorityOf({ ...leads[0], follow_up_at: '2026-10-01T09:00:00Z' }, now).reason, 'FOLLOW_UP_OVERDUE');
+  assert.equal(priorityOf(leads[0], now).reason, 'NEW_UNCONTACTED');
+  assert.equal(priorityOf(leads[1], now).score, 0, 'a closed lead is never "call first"');
+});
+
+test('LEAD CENTER: schema — owner edits the pipeline, the server owns identity; a timeline; Realtime by RLS', () => {
+  const m = read('supabase/migrations/20261008100100_meta_lead_center.sql');
+  assert.match(m, /or new\.contact_key is distinct from old\.contact_key then\s+raise exception 'META_ADS_SERVER_FIELD'/);
+  assert.match(m, /if new\.quality is distinct from old\.quality then new\.quality_source := 'MANUAL'; end if;/, 'a manual rating stays');
+  assert.match(m, /revoke insert, update, delete, truncate, references, trigger on public\.meta_lead_events from authenticated, anon;/);
+  assert.match(m, /create policy meta_lead_events_select on public\.meta_lead_events\s+for select using \(user_id = public\.auth_user_id\(\) or public\.is_admin\(\)\)/);
+  assert.match(m, /Notes are recorded as "changed", never copied/);
+  assert.doesNotMatch(m.slice(m.indexOf('meta_lead_events_log')), /new\.note\b[^\n]*insert|to_value[^\n]*new\.note/, 'no note text in the timeline');
+  assert.match(m, /check \(jsonb_typeof\(intelligence\) = 'object' and pg_column_size\(intelligence\) <= 2048\)/);
+  assert.match(read('supabase/migrations/20261008100200_meta_leads_realtime.sql'), /alter publication supabase_realtime add table public\.meta_leads/);
+  const ingest = read('supabase/functions/_shared/metaLeads.ts');
+  assert.match(ingest, /sha256Hex\(`\$\{uid\}\|\$\{material\}`\)/, 'the key is scoped to the owner and hashed');
+  const center = read('src/components/metaAds/workspace/LeadsCenter.tsx');
+  assert.match(center, /\.on\('postgres_changes', \{ event: '\*', schema: 'public', table: 'meta_leads' \}/);
+  assert.doesNotMatch(center, /setInterval/, 'no polling');
+  const drawer = read('src/components/metaAds/workspace/LeadRecordDrawer.tsx');
+  assert.match(drawer, /mm_lc_draft_never_sent/);
+  assert.doesNotMatch(drawer, /sendMessage|send_whatsapp|functions\.invoke\('.*send/i, 'a draft is never sent');
+});

@@ -29,6 +29,7 @@ import {
 } from '@/services/metaAds';
 import { ChoiceCard, StepShell } from './ui';
 import { LocationPicker, regionName } from './LocationPicker';
+import { IntelligenceCard } from './IntelligenceCard';
 import { BreadthGuide, Fold, HelperCard, Hint, LearningCard, More, Pill, Section } from './FinishKit';
 import { addLocation, advertiserCountryOf, effectiveRadiusKm, geographyGroups, housingNormalized, housingRuleFor, isNarrowAudience, locationId, refinedCountries } from './masterLogic';
 
@@ -375,6 +376,10 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
           </div>
         </Section>
       )}
+
+      {/* ✨ HOMATCH INTELLIGENCE — optional; suggests within the owner's limits, never acts alone. */}
+      <IntelligenceCard value={campaign.intelligence} housingRestricted={rule.restricted}
+        onChange={(next) => patch({ intelligence: next } as Partial<MetaCampaignRow>, { immediate: true })} />
 
       <More label={t('mm_f_how_learning')}><LearningCard compact /></More>
     </StepShell>

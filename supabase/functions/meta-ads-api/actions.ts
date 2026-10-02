@@ -22,6 +22,7 @@ import { statusCounts } from '../../../src/lib/metaAds/uiStatus.ts';
 import { validateSetting, isCredentialKey } from '../../../src/lib/metaAds/adminSettings.ts';
 import { claimFingerprint, afterApproval, type NextAction } from '../../../src/lib/metaAds/moderation.ts';
 import { isTermsRefusal, missingInstantFormScopes } from '../../../src/lib/metaAds/instantForms.ts';
+import { prefsOf } from '../../../src/lib/metaAds/homatchIntelligence.ts';
 import { countryNameMatches, locationTypeOf, looksLikeStreet, metaLocale, queryVariants, rankResults, SEARCH_TYPES, streetAreaParts } from '../../../src/lib/metaAds/geoQuery.ts';
 import { validateLeadFormSpec, leadFormPayload, leadFormPreview, META_LOCALE, type LeadFormSpec } from '../../../src/lib/metaAds/leadForms.ts';
 import { graph, MetaApiError, mockExternalId, hasScopes, INSTANT_FORM_SCOPES, type MetaMode } from '../_shared/metaAds.ts';
@@ -70,6 +71,8 @@ function publicCampaign(c: any) {
     // HOMATCH's requested start vs the start Meta reports (engine.syncCampaign).
     requested_start_at: c.plan?.requestedStartAt ?? null,
     meta_start_time: c.results?.meta_start_time ?? null,
+    // HOMATCH Intelligence preference (sanitised on read, homatchIntelligence.prefsOf).
+    intelligence: prefsOf(c.intelligence),
   };
 }
 

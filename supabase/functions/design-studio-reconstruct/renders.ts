@@ -31,6 +31,17 @@ import { beginExecution, recordUnbilledUsage, releaseExecution, settleExecution,
 import { getObject, putObject } from '../_shared/objectStore.ts';
 import { checkFinish, checkEdit, compositeInsideMask, maskFromIds, resizeMask, rgbToGray, type CheckResult, type RgbPixels } from '../_shared/designStudio/renderCheck.ts';
 import { selectProvider, type ImageProvider, type ImageResult, type ProviderDeps } from '../_shared/designStudio/imageProviders.ts';
+
+/** The image model chosen for production (admin_settings, written by an administrator after the benchmark). */
+async function configuredModel(admin: { from: (t: string) => any }): Promise<{ provider?: unknown; model?: unknown } | null> {
+  try {
+    const { data } = await admin.from('admin_settings').select('value').eq('key', 'design_studio_render_model').maybeSingle();
+    const v = (data as { value?: unknown } | null)?.value;
+    return v && typeof v === 'object' ? v as { provider?: unknown; model?: unknown } : null;
+  } catch {
+    return null;
+  }
+}
 import { editPrompt, finishPrompt, validateLegend, validateSpecView } from '../_shared/designStudio/renderPrompt.ts';
 import {
   isRenderProduct, productForView, QUOTE_TTL_MS, quoteCredits, quoteMatches, quoteSecret, RENDER_PRICING, renderRowKey, reservationKey,
@@ -348,7 +359,7 @@ async function finishRender(ctx: Ctx, row: Row, lease: string, refs: ViewRefs, g
   let result: ImageResult | undefined;
   let checkMs: number | null = null;
   const override = row.quote?.override ?? null;
-  const provider: ImageProvider | null = decoded.ok ? selectProvider(deps, override) : null;
+  const provider: ImageProvider | null = decoded.ok ? selectProvider(deps, override, await configuredModel(ctx.admin)) : null;
   if (!decoded.ok) finish = blenderFinish(`BASE_${decoded.reason}`);
   else if (!provider) finish = blenderFinish('FINISH_NOT_CONFIGURED');
   else {
@@ -530,7 +541,7 @@ export async function handleRenderEdit(req: Request): Promise<Response> {
     await failRender(ctx.admin, row, code, finish, m(res2), ['FINISHING']);
     return json({ render: await again(), error: code }, status);
   };
-  const provider = selectProvider(deps, override);
+  const provider = selectProvider(deps, override, await configuredModel(ctx.admin));
   if (!provider) return fail('EDIT_NOT_CONFIGURED', 503);
   const [imgBytes, idBytes] = await Promise.all([readBytes(row.base_key, MAX_PICTURE_BYTES), readBytes(row.map_key, MAX_PICTURE_BYTES)]);
   const img = imgBytes ? decodeRgba(imgBytes) : null; const ids = idBytes ? decodeRgba(idBytes) : null;

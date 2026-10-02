@@ -332,10 +332,17 @@ const isProvider = (v: unknown): v is ProviderId => v === 'OPENAI' || v === 'GEM
  * environment's choice, else the default. A model not on the provider's list
  * falls back to its default model. Null when that provider has no key.
  */
-export function selectProvider(deps: ProviderDeps, override: { provider?: unknown; model?: unknown } | null = null): ImageProvider | null {
+export function selectProvider(
+  deps: ProviderDeps, override: { provider?: unknown; model?: unknown } | null = null,
+  /** The production choice recorded after the benchmark (admin_settings design_studio_render_model): wins over the environment. */
+  configured: { provider?: unknown; model?: unknown } | null = null,
+): ImageProvider | null {
   const envProvider = (deps.env('DS_RENDER_PROVIDER') ?? '').toUpperCase();
-  const provider: ProviderId = isProvider(override?.provider) ? override!.provider as ProviderId : isProvider(envProvider) ? envProvider : DEFAULT_PROVIDER;
-  const wanted = typeof override?.model === 'string' && isProvider(override?.provider) ? override.model : deps.env('DS_RENDER_MODEL') ?? '';
+  const confProvider = typeof configured?.provider === 'string' ? configured.provider.toUpperCase() : '';
+  const provider: ProviderId = isProvider(override?.provider) ? override!.provider as ProviderId
+    : isProvider(confProvider) ? confProvider : isProvider(envProvider) ? envProvider : DEFAULT_PROVIDER;
+  const wanted = typeof override?.model === 'string' && isProvider(override?.provider) ? override.model
+    : isProvider(confProvider) && typeof configured?.model === 'string' ? configured.model : deps.env('DS_RENDER_MODEL') ?? '';
   const model = PROVIDER_MODELS[provider].includes(wanted) ? wanted : DEFAULT_MODEL[provider];
   const keyName = provider === 'OPENAI' ? 'OPENAI_API_KEY' : 'GEMINI_API_KEY';
   if (!deps.env(keyName)) return null;

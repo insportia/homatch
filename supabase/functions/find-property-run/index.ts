@@ -24,16 +24,12 @@ import { queuePlannedJobs, storePlan } from '../_shared/campaignSources.ts';
 import { OPEN_RUN_STATES, runEvent, updateRun } from '../_shared/discoveryRun.ts';
 import { compileSupplyPlan, draftFromStoredPlan, sourceGroupOf } from '../../../src/research-core/discovery/discovery-plan.ts';
 import { normalisePlan, type SearchPlan } from '../../../src/research-core/discovery/search-plan.ts';
-import { PORTAL_SOURCES } from '../../../src/research-core/adapters/portal/sources.ts';
+import { livePortalAdaptersFor } from '../../../src/research-core/discovery/portal-selection.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-/* Only listing portals serve a PORTAL job; forum and Telegram adapters in the
-   same registry are other source classes. */
-const PORTAL_IDS = new Set(PORTAL_SOURCES.map((source) => source.id));
-
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status, headers: { ...CORS, 'Content-Type': 'application/json' },
 });
@@ -103,8 +99,10 @@ Deno.serve(async (req: Request) => {
       .eq('active', true).in('lifecycle', ['LIVE_TESTED', 'PRODUCTIVE'])
       .eq('country_code', market).not('adapter_id', 'is', null)
       .order('priority_tier', { ascending: true, nullsFirst: false });
-    const livePortalAdapters = [...new Set(((liveRows ?? []) as Array<{ adapter_id: string }>)
-      .map((r) => String(r.adapter_id)).filter((id) => PORTAL_IDS.has(id)))];
+    /* Only adapters the portal runtime executes (the ids a portal-job looks up),
+       so ss.ge is planned as `ss-ge`; forum and Telegram rows drop out. */
+    const livePortalAdapters = livePortalAdaptersFor(((liveRows ?? []) as Array<{ adapter_id: string }>)
+      .map((r) => r.adapter_id));
 
     const budget = body.authorizedMaxCredits != null ? Number(body.authorizedMaxCredits) : settings.campaignDefaultCredits;
     if (!Number.isFinite(budget) || budget < settings.campaignMinCredits) {

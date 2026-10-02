@@ -12,7 +12,7 @@ import {
 } from '../discovery/discovery-plan.ts';
 import { normalisePlan } from '../discovery/search-plan.ts';
 
-const ALL_ON = { telegram: true, forum: true, portals: true, livePortalAdapters: ['home-ss-ge', 'place-ge', 'home-ge'] };
+const ALL_ON = { telegram: true, forum: true, portals: true, livePortalAdapters: ['ss-ge', 'place-ge', 'home-ge'] };
 const LIMITS = { maxCredits: 50, deadlineMinutes: 30, targetResults: 3, activeDemandMaxDays: 30 };
 
 const property = {
@@ -56,14 +56,14 @@ test('SUPPLY plan: REQUIRED dimensions are hard, others only rank; portals come 
   assert.ok(plan.hardConstraints.includes('budget'));
   assert.ok(plan.softPreferences.includes('districts'));
   assert.ok(!plan.hardConstraints.includes('districts'));
-  assert.deepEqual(plan.portalAdapters, ['home-ss-ge', 'place-ge', 'home-ge']);
+  assert.deepEqual(plan.portalAdapters, ['ss-ge', 'place-ge', 'home-ge']);
   const providers = plan.tranches.flatMap((t) => t.providers);
   assert.ok(providers.includes('PORTAL'));
   assert.ok(!providers.includes('FORUM'), 'forums carry requests, not listings');
 });
 
 test('switches off means nothing external is planned', () => {
-  const off = { telegram: false, forum: false, portals: false, livePortalAdapters: ['home-ss-ge'] };
+  const off = { telegram: false, forum: false, portals: false, livePortalAdapters: ['ss-ge'] };
   const plan = compileDemandPlan({ market: 'GE', languages: ['ka'], property, switches: off, limits: LIMITS });
   assert.equal(plan.tranches.length, 1);
   assert.deepEqual(plannedSourceJobs(plan, 'run-1'), []);
@@ -79,7 +79,7 @@ test('queue rows derive from the plan: one per provider/adapter, stable dedupe k
   assert.equal(jobs.filter((j) => j.provider === 'PORTAL').length, 3);
   assert.ok(jobs.every((j) => EXECUTABLE_PROVIDERS.includes(j.provider)));
   const portal = jobs.find((j) => j.provider === 'PORTAL');
-  assert.equal(portal.metadata.adapterId, 'home-ss-ge');
+  assert.equal(portal.metadata.adapterId, 'ss-ge');
   assert.equal(portal.metadata.direction, 'SUPPLY');
   const discovery = jobs.find((j) => j.provider === 'TELEGRAM_SOURCES');
   assert.equal(discovery.tranche, 2);

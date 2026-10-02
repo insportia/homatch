@@ -10,11 +10,19 @@
 // classification. Identity is (source_id, external_id), so a re-read updates
 // the same observation instead of adding one; reposts of the same flat stay
 // separate observations for entity resolution to group.
+//
+// CONTACTS NEVER REACH THE STORED TEXT. title and description are what a
+// Find Property customer sees, so the poster's phone, @handle, t.me / wa.me
+// links and e-mail are redacted before the row is written
+// (research-core/discovery/contact-redaction.ts). Fields are still parsed from
+// the original post; the fingerprint is still taken from it, so a repost
+// groups the same way; the raw signal keeps the original for the classifier.
 
 import {
   COMMUNITY_LISTING_PARSER_VERSION, extractCommunityListing,
 } from '../../../src/research-core/discovery/community-listing.ts';
 import { contentHash } from '../../../src/research-core/normalize/hash.ts';
+import { redactContacts } from '../../../src/research-core/discovery/contact-redaction.ts';
 
 /*
  * A repost of the same card shuffles its lines and its hashtags, so the raw
@@ -27,6 +35,14 @@ export function listingFingerprint(text: string): string {
     .map((line) => line.replace(/#[\p{L}\p{N}_]+/gu, '').replace(/[^\p{L}\p{N}+/.,:$€₾ ]/gu, '').replace(/\s+/g, ' ').trim().toLowerCase())
     .filter((line) => line.length > 2);
   return `cl1:${contentHash([...new Set(lines)].sort().join('\n'))}`;
+}
+
+/** The first line that still says something once contacts are masked. */
+export function communityTitle(redacted: string): string | null {
+  const line = redacted.split('\n')
+    .map((l) => l.trim())
+    .find((l) => l.replace(/\[•••\]/g, '').replace(/[^\p{L}\p{N}]/gu, '').length > 0);
+  return line ? line.slice(0, 160) : null;
 }
 
 export interface CommunitySignal {
@@ -50,6 +66,7 @@ export async function recordCommunitySupply(db: any, signal: CommunitySignal): P
   if (!listing) return null;
 
   const now = new Date().toISOString();
+  const shown = redactContacts(String(signal.original_text ?? ''));
   const platform = String(signal.platform ?? 'COMMUNITY').toLowerCase();
   const row: Record<string, unknown> = {
     source_id: signal.source_id,
@@ -72,13 +89,13 @@ export async function recordCommunitySupply(db: any, signal: CommunitySignal): P
     bedrooms: listing.bedrooms,
     floor: listing.floor,
     total_floors: listing.totalFloors,
-    title: String(signal.original_text ?? '').split('\n').find((line) => line.trim())?.trim().slice(0, 160) ?? null,
-    description: String(signal.original_text ?? '').slice(0, 4000),
+    title: communityTitle(shown.text),
+    description: shown.text.slice(0, 4000),
     detected_language: signal.language,
     published_at: signal.published_at,
     content_fingerprint: listingFingerprint(String(signal.original_text ?? '')),
     last_seen_at: now,
-    field_origins: { ...listing.origins, rawSignalId: signal.id },
+    field_origins: { ...listing.origins, rawSignalId: signal.id, contactsRedacted: shown.removed },
     structured_quality: listing.quality,
     parser_version: COMMUNITY_LISTING_PARSER_VERSION,
     adapter_version: 'community-supply-1',

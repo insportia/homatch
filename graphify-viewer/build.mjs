@@ -51,6 +51,8 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
 /* Vercel Root Directory = HERE: the Build Output API dir must be inside it. */
 export const OUTPUT_DIR = join(HERE, '.vercel', 'output');
+/* Hosts the viewer answers on (regex, Vercel route `has`/`missing` syntax). */
+export const ALLOWED_HOST = '^[a-z0-9-]+-insportia\\.vercel\\.app$';
 
 /* ── 5. what may never be published ─────────────────────────────────────── */
 
@@ -350,6 +352,12 @@ async function main() {
     version: 3,
     cache: ['.cache/homatch-viewer/**'],
     routes: [
+      /* Serve ONLY on Vercel's team-scoped hosts (deployment, branch and
+         <project>-insportia URLs), which Vercel Authentication protects.
+         Every other host — the bare <project>.vercel.app production domain
+         (served anonymously on 2026-10-02 although protection was on) or any
+         custom domain — gets a 404 before files or functions are reached. */
+      { src: '/(.*)', missing: [{ type: 'host', value: ALLOWED_HOST }], status: 404, dest: '/__host_not_allowed' },
       { src: '/(.*)', headers, continue: true },
       { handle: 'filesystem' },
       { src: '/(.*)', status: 404, dest: '/index.html' },

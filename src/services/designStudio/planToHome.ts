@@ -29,7 +29,7 @@ import type { Stage } from '@/lib/designStudio/hybrid/contract';
 import { FURNISHING_CAP, type DesignPreferences, type FlowTimings, type PlanAnswer } from '@/lib/designStudio/planToHome';
 import { planCamera } from '@/components/designStudio/workspace/FactoryBuildDialog';
 import { assetsByCode, listAssets, listMaterials } from './catalog';
-import { requestDesign } from './ai';
+import { designFromPreferences } from './ai';
 import { factoryStatus, startFactory, visualQa } from './factory';
 import { createFloorPlanSource, getFloorPlan, type FloorPlanRecord } from './floorplans';
 import {
@@ -86,18 +86,6 @@ export async function saveFlow(planId: string, patch: Partial<FlowRecord> & { de
   const { error } = await supabase.from('ds_floorplans').update({ corrections }).eq('id', planId);
   if (error) throw new DesignStudioError('DS_REQUEST_FAILED', error.message);
   return { ...plan, corrections } as FloorPlanRecord;
-}
-
-/** Only the customer's own language reaches the AI designer: everything else is enums. */
-function briefFor(prefs: DesignPreferences) {
-  return {
-    styleCode: prefs.style,
-    palette: [],
-    text: prefs.brief,
-    roomIds: [],
-    alternatives: 1,
-    preferences: prefs,
-  };
 }
 
 export interface GenerateInput {
@@ -175,18 +163,18 @@ export async function generateHome(input: GenerateInput): Promise<GenerateResult
   const materialMap = new Map<string, CatalogMaterial>(materials.map((m) => [m.id, m]));
   if (!designId) {
     const t0 = now();
-    const { jobId, plan } = await requestDesign(originalId, briefFor(input.preferences) as Parameters<typeof requestDesign>[1]);
+    const { jobId, plan } = await designFromPreferences({ versionId: originalId, preferences: input.preferences });
     const alt = plan.alternatives[0];
     if (!alt) throw new DesignStudioError('DS_AI_FAILED');
     // The level the customer chose is a ceiling the AI's list is cut to, never padded past.
     const cap = FURNISHING_CAP[input.preferences.furnishing];
-    const capped = { ...alt, rooms: alt.rooms.map((r) => ({ ...r, furniture: r.furniture.slice(0, cap) })) };
+    const capped = { ...alt, rooms: alt.rooms.map((r) => ({ ...r, furniture: r.furniture.slice(0, Math.max(cap, 0)) })) };
     const wanted = [...new Set(capped.rooms.flatMap((r) => r.furniture))].filter((c) => !assets.has(c));
     if (wanted.length) for (const a of await assetsByCode(wanted)) assets.set(a.code, a);
     const original = await getVersion(originalId);
     const basis = normalizeDesignState(original?.state ?? emptyDesignState());
     const proposal = planToOperations(capped, {
-      state: basis, space, ctx: { space, assets, materials: materialMap }, assets, materials, idPrefix: `p2h-${jobId.slice(0, 8)}`,
+      state: basis, space, ctx: { space, assets, materials: materialMap }, assets, materials, idPrefix: `p2h-${jobId.slice(0, 8)}`, furnishing: input.preferences.furnishing,
     });
     const created = await createVersion({
       userId: input.userId, projectId: input.projectId, sourceId, parentId: originalId, origin: 'AI', jobId,

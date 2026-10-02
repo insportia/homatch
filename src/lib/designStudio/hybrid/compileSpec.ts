@@ -14,8 +14,9 @@ import { pbrRepeat, surfaceMetalness } from '../pbrMaps.ts';
 import type { Point, SpaceModel } from '../space.ts';
 import { ceilingSurfaceId, floorSurfaceId } from '../space.ts';
 import {
-  objectGroup, RUNTIME_KINDS, SPEC_FORMS, SPEC_KINDS, SPEC_PATTERNS, SPEC_VERSION,
-  type Provenance, type SceneBuildSpec, type SpecCamera, type SpecKind, type SpecMaterial, type SpecObject, type SpecSurface, type XY,
+  objectGroup, RUNTIME_KINDS, SPEC_FORMS, SPEC_KINDS, SPEC_LEAVES, SPEC_LIMITS, SPEC_PATTERNS, SPEC_VERSION,
+  type Provenance, type SceneBuildSpec, type SpecCamera, type SpecKind, type SpecLeaf, type SpecMaterial, type SpecObject,
+  type SpecOpening, type SpecStair, type SpecSurface, type XY,
 } from './sceneSpec.ts';
 
 /** The furthest near plane a spec may carry (sceneSpec validator, edge and worker alike). */
@@ -134,11 +135,21 @@ export function compileSceneSpec(input: CompileInput): SceneBuildSpec {
 
   const walls = space.walls.slice(0, 400).map((w) => ({
     id: w.id, kind: w.kind, start: rp(w.mesh.start), end: rp(w.mesh.end), thicknessM: r3(w.mesh.thicknessM), heightM: r3(w.mesh.heightM),
-    openings: w.mesh.openings.slice(0, 16).map((o) => ({ id: o.id, kind: o.kind, offsetM: r3(o.offsetM), widthM: r3(o.widthM), sillM: r3(o.sillM), heightM: r3(o.heightM) })),
+    openings: w.mesh.openings.slice(0, 16).map((o) => {
+      const opening: SpecOpening = { id: o.id, kind: o.kind, offsetM: r3(o.offsetM), widthM: r3(o.widthM), sillM: r3(o.sillM), heightM: r3(o.heightM) };
+      // Only what the plan said: an opening without a leaf compiles exactly as before.
+      if (o.leaf && (SPEC_LEAVES as readonly string[]).includes(o.leaf)) opening.leaf = o.leaf as SpecLeaf;
+      if (o.swing === 'L' || o.swing === 'R') opening.swing = o.swing;
+      return opening;
+    }),
     faces: w.segments.slice(0, 24).map((s) => ({ side: s.side, from: r3(s.from), to: r3(Math.max(s.from, s.to)), surface: surface(s.surfaceId, DEFAULT_FINISH.wall) })),
   }));
 
   const railings = railingEdges(space).slice(0, 120).map((e, i) => ({ id: `rail-${i}`, a: rp(e.a), b: rp(e.b), heightM: 1.05 }));
+
+  const stairs: SpecStair[] = (space.stairs ?? []).slice(0, SPEC_LIMITS.stairs).map((st) => ({
+    id: st.id, a: rp(st.a), b: rp(st.b), runM: r3(st.runM), riseM: r3(st.riseM), treads: st.treads, direction: st.direction,
+  }));
 
   const objects: SpecObject[] = [];
   for (const obj of state.objects.slice(0, 300)) {
@@ -178,6 +189,7 @@ export function compileSceneSpec(input: CompileInput): SceneBuildSpec {
     source: input.source,
     ceilingHeightM: r3(space.ceilingHeightM),
     rooms, walls, railings,
+    ...(stairs.length ? { stairs } : {}),
     surfaces: [...surfaces.values()],
     materials: [...usedMaterials.values()],
     objects,

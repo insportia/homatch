@@ -1,0 +1,665 @@
+{
+  "version": "hm-scene-1",
+  "units": "m",
+  "coordinateSystem": "PLAN_XY_Z_UP",
+  "source": {
+    "kind": "FLOOR_PLAN",
+    "architecture": "OBSERVED",
+    "furnishing": "DESIGN"
+  },
+  "ceilingHeightM": 2.7,
+  "rooms": [
+    {
+      "id": "r-living",
+      "kind": "LIVING",
+      "polygon": [
+        [
+          0,
+          0
+        ],
+        [
+          6,
+          0
+        ],
+        [
+          6,
+          7
+        ],
+        [
+          0,
+          7
+        ]
+      ],
+      "outdoor": false,
+      "floor": "floor:r-living",
+      "ceiling": "ceiling:r-living"
+    },
+    {
+      "id": "r-bed",
+      "kind": "BEDROOM",
+      "polygon": [
+        [
+          6,
+          3
+        ],
+        [
+          10,
+          3
+        ],
+        [
+          10,
+          7
+        ],
+        [
+          6,
+          7
+        ]
+      ],
+      "outdoor": false,
+      "floor": "floor:r-bed",
+      "ceiling": "ceiling:r-bed"
+    },
+    {
+      "id": "r-bath",
+      "kind": "BATHROOM",
+      "polygon": [
+        [
+          6,
+          0
+        ],
+        [
+          8,
+          0
+        ],
+        [
+          8,
+          3
+        ],
+        [
+          6,
+          3
+        ]
+      ],
+      "outdoor": false,
+      "floor": "floor:r-bath",
+      "ceiling": "ceiling:r-bath"
+    },
+    {
+      "id": "r-hall",
+      "kind": "HALL",
+      "polygon": [
+        [
+          8,
+          0
+        ],
+        [
+          10,
+          0
+        ],
+        [
+          10,
+          3
+        ],
+        [
+          8,
+          3
+        ]
+      ],
+      "outdoor": false,
+      "floor": "floor:r-hall",
+      "ceiling": "ceiling:r-hall"
+    }
+  ],
+  "walls": [
+    {
+      "id": "w-n",
+      "kind": "EXTERIOR",
+      "start": [
+        0,
+        7
+      ],
+      "end": [
+        10,
+        7
+      ],
+      "thicknessM": 0.25,
+      "heightM": 2.7,
+      "openings": [
+        {
+          "id": "win-living-n",
+          "kind": "WINDOW",
+          "offsetM": 3,
+          "widthM": 1.6,
+          "sillM": 0.9,
+          "heightM": 1.4
+        },
+        {
+          "id": "win-bed",
+          "kind": "WINDOW",
+          "offsetM": 8,
+          "widthM": 1.4,
+          "sillM": 0.9,
+          "heightM": 1.4,
+          "leaf": "FIXED"
+        }
+      ],
+      "faces": [
+        {
+          "side": "R",
+          "from": 0,
+          "to": 5.975,
+          "surface": "wall:w-n:R:r-living"
+        },
+        {
+          "side": "R",
+          "from": 5.975,
+          "to": 10,
+          "surface": "wall:w-n:R:r-bed"
+        }
+      ]
+    },
+    {
+      "id": "w-e",
+      "kind": "EXTERIOR",
+      "start": [
+        10,
+        7
+      ],
+      "end": [
+        10,
+        0
+      ],
+      "thicknessM": 0.25,
+      "heightM": 2.7,
+      "openings": [
+        {
+          "id": "d-entry",
+          "kind": "DOOR",
+          "offsetM": 5.5,
+          "widthM": 1,
+          "sillM": 0,
+          "heightM": 2.1
+        }
+      ],
+      "faces": [
+        {
+          "side": "R",
+          "from": 0,
+          "to": 3.975,
+          "surface": "wall:w-e:R:r-bed"
+        },
+        {
+          "side": "R",
+          "from": 3.975,
+          "to": 7,
+          "surface": "wall:w-e:R:r-hall"
+        }
+      ]
+    },
+    {
+      "id": "w-s",
+      "kind": "EXTERIOR",
+      "start": [
+        10,
+        0
+      ],
+      "end": [
+        0,
+        0
+      ],
+      "thicknessM": 0.25,
+      "heightM": 2.7,
+      "openings": [],
+      "faces": [
+        {
+          "side": "R",
+          "from": 0,
+          "to": 1.975,
+          "surface": "wall:w-s:R:r-hall"
+        },
+        {
+          "side": "R",
+          "from": 1.975,
+          "to": 4.025,
+          "surface": "wall:w-s:R:r-bath"
+        },
+        {
+          "side": "R",
+          "from": 4.025,
+          "to": 10,
+          "surface": "wall:w-s:R:r-living"
+        }
+      ]
+    },
+    {
+      "id": "w-w",
+      "kind": "EXTERIOR",
+      "start": [
+        0,
+        0
+      ],
+      "end": [
+        0,
+        7
+      ],
+      "thicknessM": 0.25,
+      "heightM": 2.7,
+      "openings": [
+        {
+          "id": "win-living-w",
+          "kind": "WINDOW",
+          "offsetM": 3.5,
+          "widthM": 1.8,
+          "sillM": 0.9,
+          "heightM": 1.4
+        }
+      ],
+      "faces": [
+        {
+          "side": "R",
+          "from": 0,
+          "to": 7,
+          "surface": "wall:w-w:R:r-living"
+        }
+      ]
+    },
+    {
+      "id": "w-i1",
+      "kind": "INTERIOR",
+      "start": [
+        6,
+        7
+      ],
+      "end": [
+        6,
+        0
+      ],
+      "thicknessM": 0.1,
+      "heightM": 2.7,
+      "openings": [
+        {
+          "id": "d-bed",
+          "kind": "DOOR",
+          "offsetM": 2,
+          "widthM": 0.9,
+          "sillM": 0,
+          "heightM": 2.1,
+          "leaf": "DOUBLE"
+        },
+        {
+          "id": "d-hall",
+          "kind": "DOOR",
+          "offsetM": 5.5,
+          "widthM": 1,
+          "sillM": 0,
+          "heightM": 2.1,
+          "leaf": "HINGED",
+          "swing": "R"
+        }
+      ],
+      "faces": [
+        {
+          "side": "L",
+          "from": 0,
+          "to": 3.975,
+          "surface": "wall:w-i1:L:r-bed"
+        },
+        {
+          "side": "L",
+          "from": 3.975,
+          "to": 7,
+          "surface": "wall:w-i1:L:r-bath"
+        },
+        {
+          "side": "R",
+          "from": 0,
+          "to": 7,
+          "surface": "wall:w-i1:R:r-living"
+        }
+      ]
+    },
+    {
+      "id": "w-i2",
+      "kind": "INTERIOR",
+      "start": [
+        6,
+        3
+      ],
+      "end": [
+        10,
+        3
+      ],
+      "thicknessM": 0.1,
+      "heightM": 2.7,
+      "openings": [
+        {
+          "id": "d-bed2",
+          "kind": "DOOR",
+          "offsetM": 3,
+          "widthM": 0.9,
+          "sillM": 0,
+          "heightM": 2.1
+        }
+      ],
+      "faces": [
+        {
+          "side": "L",
+          "from": 0,
+          "to": 4,
+          "surface": "wall:w-i2:L:r-bed"
+        },
+        {
+          "side": "R",
+          "from": 0,
+          "to": 2.025,
+          "surface": "wall:w-i2:R:r-bath"
+        },
+        {
+          "side": "R",
+          "from": 2.025,
+          "to": 4,
+          "surface": "wall:w-i2:R:r-hall"
+        }
+      ]
+    },
+    {
+      "id": "w-i3",
+      "kind": "INTERIOR",
+      "start": [
+        8,
+        3
+      ],
+      "end": [
+        8,
+        0
+      ],
+      "thicknessM": 0.1,
+      "heightM": 2.7,
+      "openings": [
+        {
+          "id": "d-bath",
+          "kind": "DOOR",
+          "offsetM": 1.5,
+          "widthM": 0.8,
+          "sillM": 0,
+          "heightM": 2.1,
+          "leaf": "SLIDING"
+        }
+      ],
+      "faces": [
+        {
+          "side": "L",
+          "from": 0,
+          "to": 3,
+          "surface": "wall:w-i3:L:r-hall"
+        },
+        {
+          "side": "R",
+          "from": 0,
+          "to": 3,
+          "surface": "wall:w-i3:R:r-bath"
+        }
+      ]
+    }
+  ],
+  "railings": [],
+  "stairs": [
+    {
+      "id": "s-1",
+      "a": [
+        1,
+        1.15
+      ],
+      "b": [
+        1,
+        0.15
+      ],
+      "runM": 3,
+      "riseM": 2.7,
+      "treads": 15,
+      "direction": "UP"
+    }
+  ],
+  "surfaces": [
+    {
+      "id": "floor:r-living",
+      "material": null,
+      "color": "#d8c4a6",
+      "roughness": 0.9,
+      "metalness": 0,
+      "pattern": null,
+      "tint": null
+    },
+    {
+      "id": "ceiling:r-living",
+      "material": null,
+      "color": "#fbfbf9",
+      "roughness": 0.9,
+      "metalness": 0,
+      "pattern": null,
+      "tint": null
+    },
+    {
+      "id": "floor:r-bed",
+      "material": null,
+      "color": "#d8c4a6",
+      "roughness": 0.9,
+      "metalness": 0,
+      "pattern": null,
+      "tint": null
+    },
+    {
+      "id": "ceiling:r-bed",
+      "material": null,
+      "color": "#fbfbf9",
+      "roughness": 0.9,
+      "metalness": 0,
+      "pattern": null,
+      "tint": null
+    },
+    {
+      "id": "floor:r-bath",
+      "material": null,
+      "color": "#d8c4a6",
+      "roughness": 0.9,
+      "metalness": 0,
+      "pattern": null,
+      "tint": null
+    },
+    {
+      "id": "ceiling:r-bath",
+      "material": null,
+      "color": "#fbfbf9",
+      "roughness": 0.9,
+      "metalness": 0,
+      "pattern": null,
+      "tint": null
+    },
+    {
+      "id": "floor:r-hall",
+      "material": null,
+      "color": "#d8c4a6",
+      "roughness": 0.9,
+      "metalness": 0,
+      "pattern": null,
+      "tint": null
+    },
+    {
+      "id": "ceiling:r-hall",
+      "material": null,
+      "color": "#fbfbf9",
+      "roughness": 0.9,
+      "metalness": 0,
+      "pattern": null,
+      "tint": null
+    },
+    {
+      "id": "wall:w-n:R:r-living",
+      "material": null,
+      "color": "#f7f5f1",
+      "roughness": 0.9,
+      "metalness": 0,
+      "pattern": null,
+      "tint": null
+    },
+    {
+      "id": "wall:w-n:R:r-bed",
+      "material": null,
+      "color": "#f7f5f1",
+      "roughness": 0.9,
+      "metalness": 0,
+      "pattern": null,
+      "tint": null
+    },
+    {
+      "id": "wall:w-e:R:r-bed",
+      "material": null,
+      "color": "#f7f5f1",
+      "roughness": 0.9,
+      "metalness": 0,
+      "pattern": null,
+      "tint": null
+    },
+    {
+      "id": "wall:w-e:R:r-hall",
+      "material": null,
+      "color": "#f7f5f1",
+      "roughness": 0.9,
+      "metalness": 0,
+      "pattern": null,
+      "tint": null
+    },
+    {
+      "id": "wall:w-s:R:r-hall",
+      "material": null,
+      "color": "#f7f5f1",
+      "roughness": 0.9,
+      "metalness": 0,
+      "pattern": null,
+      "tint": null
+    },
+    {
+      "id": "wall:w-s:R:r-bath",
+      "material": null,
+      "color": "#f7f5f1",
+      "roughness": 0.9,
+      "metalness": 0,
+      "pattern": null,
+      "tint": null
+    },
+    {
+      "id": "wall:w-s:R:r-living",
+      "material": null,
+      "color": "#f7f5f1",
+      "roughness": 0.9,
+      "metalness": 0,
+      "pattern": null,
+      "tint": null
+    },
+    {
+      "id": "wall:w-w:R:r-living",
+      "material": null,
+      "color": "#f7f5f1",
+      "roughness": 0.9,
+      "metalness": 0,
+      "pattern": null,
+      "tint": null
+    },
+    {
+      "id": "wall:w-i1:L:r-bed",
+      "material": null,
+      "color": "#f7f5f1",
+      "roughness": 0.9,
+      "metalness": 0,
+      "pattern": null,
+      "tint": null
+    },
+    {
+      "id": "wall:w-i1:L:r-bath",
+      "material": null,
+      "color": "#f7f5f1",
+      "roughness": 0.9,
+      "metalness": 0,
+      "pattern": null,
+      "tint": null
+    },
+    {
+      "id": "wall:w-i1:R:r-living",
+      "material": null,
+      "color": "#f7f5f1",
+      "roughness": 0.9,
+      "metalness": 0,
+      "pattern": null,
+      "tint": null
+    },
+    {
+      "id": "wall:w-i2:L:r-bed",
+      "material": null,
+      "color": "#f7f5f1",
+      "roughness": 0.9,
+      "metalness": 0,
+      "pattern": null,
+      "tint": null
+    },
+    {
+      "id": "wall:w-i2:R:r-bath",
+      "material": null,
+      "color": "#f7f5f1",
+      "roughness": 0.9,
+      "metalness": 0,
+      "pattern": null,
+      "tint": null
+    },
+    {
+      "id": "wall:w-i2:R:r-hall",
+      "material": null,
+      "color": "#f7f5f1",
+      "roughness": 0.9,
+      "metalness": 0,
+      "pattern": null,
+      "tint": null
+    },
+    {
+      "id": "wall:w-i3:L:r-hall",
+      "material": null,
+      "color": "#f7f5f1",
+      "roughness": 0.9,
+      "metalness": 0,
+      "pattern": null,
+      "tint": null
+    },
+    {
+      "id": "wall:w-i3:R:r-bath",
+      "material": null,
+      "color": "#f7f5f1",
+      "roughness": 0.9,
+      "metalness": 0,
+      "pattern": null,
+      "tint": null
+    }
+  ],
+  "materials": [],
+  "objects": [],
+  "frames": "#f4f4f2",
+  "lighting": {
+    "timeOfDay": "DAY",
+    "temperature": "NEUTRAL",
+    "interior": 0.6,
+    "sun": [
+      -0.449,
+      0.321,
+      0.834
+    ]
+  },
+  "camera": null,
+  "render": {
+    "width": 1280,
+    "height": 853,
+    "samples": 96
+  },
+  "outputs": {
+    "render": true,
+    "scene": true,
+    "objects": false
+  }
+}

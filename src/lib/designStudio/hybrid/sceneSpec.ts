@@ -20,7 +20,12 @@ export const SPEC_LIMITS = {
   rooms: 80, polygonPoints: 64, walls: 400, openingsPerWall: 16, facesPerWall: 24, railings: 120,
   objects: 300, materials: 48, surfaces: 1500, colorSlots: 12, coord: 200, size: [0.02, 12] as const, height: 6,
   renderEdge: [256, 2560] as const, samples: [1, 512] as const,
+  stairs: 8, treads: [3, 25] as const, stairRunM: [0.5, 12] as const, stairWidthM: [0.5, 6] as const,
 };
+
+/** How an opening closes (floorplan OpeningLeaf). Optional: absent means the drawing did not say. */
+export const SPEC_LEAVES = ['HINGED', 'DOUBLE', 'SLIDING', 'NONE', 'FRENCH', 'FIXED', 'CASEMENT'] as const;
+export type SpecLeaf = typeof SPEC_LEAVES[number];
 
 export const SPEC_KINDS = [
   'SOFA', 'ARMCHAIR', 'TABLE', 'ROUND_TABLE', 'CABINET', 'SHELF', 'BED', 'RUG', 'LAMP', 'PLANT', 'CHAIR', 'STOOL',
@@ -72,7 +77,19 @@ export interface SpecMaterial {
 }
 
 export interface SpecRoom { id: string; kind: string; polygon: XY[]; outdoor: boolean; floor: string; ceiling: string | null }
-export interface SpecOpening { id: string; kind: 'DOOR' | 'WINDOW'; offsetM: number; widthM: number; sillM: number; heightM: number }
+export interface SpecOpening {
+  id: string; kind: 'DOOR' | 'WINDOW'; offsetM: number; widthM: number; sillM: number; heightM: number;
+  /** Additive (still hm-scene-1): present only when the plan says how it closes. */
+  leaf?: SpecLeaf;
+  /** The wall face a swinging leaf opens towards (L: left walking start→end). */
+  swing?: 'L' | 'R';
+}
+/**
+ * A straight flight (geometry StairMesh): it starts at the edge a→b and climbs
+ * (UP) or descends (DOWN) `runM` towards the LEFT of a→b, in `treads` equal
+ * steps over `riseM`. Built architecture: never moved, never furniture.
+ */
+export interface SpecStair { id: string; a: XY; b: XY; runM: number; riseM: number; treads: number; direction: 'UP' | 'DOWN' }
 export interface SpecWall {
   id: string; kind: 'EXTERIOR' | 'INTERIOR'; start: XY; end: XY; thicknessM: number; heightM: number;
   openings: SpecOpening[];
@@ -120,6 +137,11 @@ export interface SceneBuildSpec {
   rooms: SpecRoom[];
   walls: SpecWall[];
   railings: SpecRailing[];
+  /**
+   * Additive and optional (still hm-scene-1): absent means none. Left out
+   * rather than empty so a spec without stairs hashes exactly as before.
+   */
+  stairs?: SpecStair[];
   surfaces: SpecSurface[];
   materials: SpecMaterial[];
   objects: SpecObject[];
@@ -219,7 +241,10 @@ export function validateSceneSpec(raw: unknown): SceneBuildSpec {
       const widthM = num(q.widthM, `${p}.widthM`, 0.2, Math.max(0.2, length));
       const offsetM = num(q.offsetM, `${p}.offsetM`, widthM / 2 - 0.01, length - widthM / 2 + 0.01);
       const sillM = num(q.sillM, `${p}.sillM`, 0, heightM - 0.1);
-      return { id: id(q.id, `${p}.id`), kind: oneOf(q.kind, `${p}.kind`, ['DOOR', 'WINDOW'] as const), offsetM, widthM, sillM, heightM: num(q.heightM, `${p}.heightM`, 0.1, heightM - sillM) };
+      const opening: SpecOpening = { id: id(q.id, `${p}.id`), kind: oneOf(q.kind, `${p}.kind`, ['DOOR', 'WINDOW'] as const), offsetM, widthM, sillM, heightM: num(q.heightM, `${p}.heightM`, 0.1, heightM - sillM) };
+      if (q.leaf != null) opening.leaf = oneOf(q.leaf, `${p}.leaf`, SPEC_LEAVES);
+      if (q.swing != null) opening.swing = oneOf(q.swing, `${p}.swing`, ['L', 'R'] as const);
+      return opening;
     });
     const faces = arr(w.faces, `walls[${i}].faces`, SPEC_LIMITS.facesPerWall).map((f, j) => {
       const q = obj(f, `walls[${i}].faces[${j}]`);
@@ -233,6 +258,21 @@ export function validateSceneSpec(raw: unknown): SceneBuildSpec {
     const q = obj(v, `railings[${i}]`);
     return { id: id(q.id, `railings[${i}].id`), a: xy(q.a, `railings[${i}].a`), b: xy(q.b, `railings[${i}].b`), heightM: num(q.heightM, `railings[${i}].heightM`, 0.5, 1.6) };
   });
+
+  const stairs: SpecStair[] = r.stairs == null ? [] : arr(r.stairs, 'stairs', SPEC_LIMITS.stairs).map((v, i) => {
+    const q = obj(v, `stairs[${i}]`);
+    const p = `stairs[${i}]`;
+    const a = xy(q.a, `${p}.a`); const b = xy(q.b, `${p}.b`);
+    num(Math.hypot(b[0] - a[0], b[1] - a[1]), `${p}.width`, ...SPEC_LIMITS.stairWidthM);
+    const treads = num(q.treads, `${p}.treads`, ...SPEC_LIMITS.treads);
+    if (!Number.isInteger(treads)) fail(`${p}.treads`, 'not a whole number');
+    return {
+      id: id(q.id, `${p}.id`), a, b, runM: num(q.runM, `${p}.runM`, ...SPEC_LIMITS.stairRunM),
+      riseM: num(q.riseM, `${p}.riseM`, 0.5, SPEC_LIMITS.height), treads,
+      direction: oneOf(q.direction, `${p}.direction`, ['UP', 'DOWN'] as const),
+    };
+  });
+  if (new Set(stairs.map((s) => s.id)).size !== stairs.length) fail('stairs', 'duplicate id');
 
   const objects = arr(r.objects, 'objects', SPEC_LIMITS.objects).map((v, i) => {
     const o = obj(v, `objects[${i}]`);
@@ -270,7 +310,7 @@ export function validateSceneSpec(raw: unknown): SceneBuildSpec {
   return {
     version: SPEC_VERSION, units: 'm', coordinateSystem: 'PLAN_XY_Z_UP',
     source: { kind: oneOf(src.kind, 'source.kind', ['PICTURE', 'FLOOR_PLAN', 'DESIGN'] as const), architecture: oneOf(src.architecture, 'source.architecture', PROV), furnishing: oneOf(src.furnishing, 'source.furnishing', PROV) },
-    ceilingHeightM, rooms, walls, railings, surfaces, materials, objects,
+    ceilingHeightM, rooms, walls, railings, ...(stairs.length ? { stairs } : {}), surfaces, materials, objects,
     frames: hex(r.frames, 'frames'),
     lighting: {
       timeOfDay: oneOf(l.timeOfDay, 'lighting.timeOfDay', ['DAY', 'SUNSET', 'EVENING', 'NIGHT'] as const),

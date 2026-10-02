@@ -132,15 +132,17 @@ export function Pill({ active, onClick, children, ...rest }: { active: boolean; 
  * everyone"), opened to edit. The summary is text, so the state never depends
  * on colour; `aside` (a switch) stays reachable while folded.
  */
-export function Fold({ id, emoji, title, summary, aside, defaultOpen = false, children }: {
-  id: string; emoji: string; title: React.ReactNode; summary?: React.ReactNode; aside?: React.ReactNode; defaultOpen?: boolean; children: React.ReactNode;
+export function Fold({ id, emoji, title, summary, aside, defaultOpen = false, field, children }: {
+  id: string; emoji: string; title: React.ReactNode; summary?: React.ReactNode; aside?: React.ReactNode; defaultOpen?: boolean;
+  /** The readiness field this fold holds (lib/metaAds/readiness.ts) — a deep link opens it. */
+  field?: string; children: React.ReactNode;
 }) {
   const { t } = useLanguage();
   const [open, setOpen] = React.useState(defaultOpen);
   React.useEffect(() => { if (defaultOpen) setOpen(true); }, [defaultOpen]);
   const panel = `${id}-panel`;
   return (
-    <section data-mm-fold-section={id} className="rounded-2xl border border-border bg-card shadow-sm">
+    <section data-mm-fold-section={id} data-mm-field={field} className="rounded-2xl border border-border bg-card shadow-sm">
       <div className="flex items-center gap-2 pe-2">
         <button type="button" data-mm-fold={id} aria-expanded={open} aria-controls={panel} onClick={() => setOpen((v) => !v)}
           className="flex min-h-[52px] min-w-0 flex-1 items-center gap-2.5 rounded-2xl px-3.5 py-2.5 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">

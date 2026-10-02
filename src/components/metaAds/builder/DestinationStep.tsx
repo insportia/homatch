@@ -39,7 +39,7 @@ export function DestinationStep({ campaign, status, patch, reloadStatus, propert
       {spec.needsWebsiteUrl && <WebsiteDestination campaign={campaign} setDest={setDest} propertyUrl={goal === 'PROMOTE' ? propertyUrl : null} />}
       {spec.needsPixel && <PixelPicker status={status} reloadStatus={reloadStatus} event={spec.pixelEvent} />}
       {spec.needsMessagingApp && (
-        <div className="space-y-2">
+        <div className="space-y-2" data-mm-field="messaging">
           <p className="text-sm font-medium text-foreground">{t('madsb_msg_where')}</p>
           <div className="grid gap-2 sm:grid-cols-2">
             <ChoiceCard active={dest.messagingApp === 'MESSENGER'} disabled={!page} icon={<MessageCircle className="h-4 w-4" />}
@@ -78,7 +78,7 @@ function WebsiteDestination({ campaign, setDest, propertyUrl }: {
   const [value, setValue] = useState(campaign.destination?.url ?? '');
   const problem = urlProblem(value);
   return (
-    <div className="space-y-2">
+    <div className="space-y-2" data-mm-field="url">
       <label className="block">
         <span className="mb-1 flex items-center gap-2 text-sm font-medium text-foreground"><Globe className="h-4 w-4 text-[hsl(var(--gold-ink))]" />{t('madsb_url_label')}</span>
         <Input dir="ltr" inputMode="url" placeholder="https://" value={value}
@@ -105,7 +105,7 @@ function PixelPicker({ status, reloadStatus, event }: { status: MetaStatus | nul
   const pixels = (status?.assets ?? []).filter((a) => a.kind === 'PIXEL' && a.status !== 'UNAVAILABLE' && (!acct || !a.parent_external_id || a.parent_external_id === acct.external_id));
   const [busy, setBusy] = useState<string | null>(null);
   return (
-    <div className="space-y-2">
+    <div className="space-y-2" data-mm-field="pixel" tabIndex={-1}>
       <p className="flex items-center gap-2 text-sm font-medium text-foreground"><Radio className="h-4 w-4 text-[hsl(var(--gold-ink))]" />{t('madsb_pixel_title')}</p>
       <p className="text-[13px] leading-relaxed text-muted-foreground">{t('madsb_pixel_lead', { event: event ?? '' })}</p>
       {pixels.length === 0 ? (
@@ -153,7 +153,7 @@ function LeadFormPicker({ status, campaign, setDest, reloadStatus, patch }: {
   const messagesOn = (status?.settings.goalsEnabled ?? []).includes('MESSAGES');
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" data-mm-field="form" tabIndex={-1}>
       <p className="flex items-center gap-2 text-sm font-medium text-foreground"><FileText className="h-4 w-4 text-[hsl(var(--gold-ink))]" />{t('madsb_form_title')}</p>
       {!page ? <p className="text-[13px] text-muted-foreground">{t('madsb_gap_page')}</p> : (
         <>

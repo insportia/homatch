@@ -20,6 +20,7 @@ import { META_CLOSURE_STRINGS } from './meta-closure-i18n-data.mjs';
 import { META_CLOSURE_FORMS_STRINGS } from './meta-closure-forms-i18n-data.mjs';
 import { META_CLOSURE_AI_STRINGS } from './meta-closure-ai-i18n-data.mjs';
 import { META_CONNECT_STRINGS } from './meta-connect-i18n-data.mjs';
+import { META_ACCEPT_STRINGS } from './meta-accept-i18n-data.mjs';
 import { splice, validate } from './lib/i18nSplice.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -36,6 +37,7 @@ const PARTS = [
   ['META ADS — CLOSURE: LEAD FORM BUILDER', 'meta-closure-forms-i18n', META_CLOSURE_FORMS_STRINGS],
   ['META ADS — CLOSURE: HOMATCH AI CREATIVES + VIDEO', 'meta-closure-ai-i18n', META_CLOSURE_AI_STRINGS],
   ['META ADS — CONNECT / RECONNECT', 'meta-connect-i18n', META_CONNECT_STRINGS],
+  ['META ADS — FINAL ACCEPTANCE', 'meta-accept-i18n', META_ACCEPT_STRINGS],
 ];
 
 // One key, one owner: the parts must not define the same key twice.

@@ -74,7 +74,7 @@ export function AccountPanel({ status, onChanged, returnTo, compact }: {
 
   return (
     <div className="space-y-3">
-      <div className={cn('rounded-2xl border p-4 sm:p-5',
+      <div data-mm-field="connect" className={cn('rounded-2xl border p-4 sm:p-5',
         health === 'CONNECTED' ? 'border-[hsl(152_40%_40%)]/30 bg-[hsl(152_54%_28%)]/[0.06]' : 'border-[hsl(var(--gold-border))]/60 bg-[hsl(var(--gold-soft))]')}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-3">
@@ -124,7 +124,7 @@ export function AccountPanel({ status, onChanged, returnTo, compact }: {
         const options = assets.filter((a) => a.kind === kind && (!filter || filter(a)));
         const selected = options.find((a) => a.selected);
         return (
-          <div key={kind} className="rounded-2xl border border-border bg-card px-4 py-3.5 shadow-card">
+          <div key={kind} data-mm-field={kind === 'PAGE' ? 'page' : kind === 'AD_ACCOUNT' ? 'ad_account' : undefined} className="rounded-2xl border border-border bg-card px-4 py-3.5 shadow-card">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <p className="font-medium text-foreground">
                 {t(label as never)}{optional && <span className="ms-1.5 text-2xs font-normal text-muted-foreground">{t('madsb_optional')}</span>}

@@ -162,7 +162,7 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
       <Section id="mm-f-where" emoji="📍" title={t('mm_m_where_title')} aside={<span className="text-2xs text-muted-foreground" dir="ltr">{locations.length}/{MAX_LOCATIONS}</span>}>
         <Hint k="mm_c_hint_location" />
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:items-start">
-          <div className="min-w-0 space-y-3">
+          <div className="min-w-0 space-y-3" data-mm-field="locations">
             {locations.length > 0 ? (
               <div data-mm-geo-summary="" className="rounded-xl border border-[hsl(var(--gold-border))]/60 bg-[hsl(var(--gold-soft))] px-3.5 py-2.5">
                 <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-[hsl(var(--gold-ink))]">{t('mm_m_geo_runs')}</p>
@@ -265,7 +265,7 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
       </Fold>
 
       {/* 🗣️ LANGUAGES — open when the copy is in a language worth matching. */}
-      <Fold id="lang" emoji="🗣️" title={t('mm_f_lang_title')} summary={langSummary} defaultOpen={languages.length > 0 || !!intl?.enabled}>
+      <Fold id="lang" field="languages" emoji="🗣️" title={t('mm_f_lang_title')} summary={langSummary} defaultOpen={languages.length > 0 || !!intl?.enabled}>
         <p className="text-[13px] leading-relaxed text-muted-foreground">{t('mm_f_lang_body')}</p>
         <Hint k="mm_c_hint_languages" />
         {copyLangs[0] && (
@@ -287,7 +287,7 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
 
       {/* 👥 WHO — three kinds of setting, never confused (targeting.audienceAuthority):
           META REQUIRED (named, with the fix) · HOMATCH RECOMMENDED (advice) · USER CHOICE. */}
-      <Fold id="who" emoji="👥" title={t('mm_b_who_title')} summary={rule.restricted ? t('mm_m_who_meta') : whoSummary}
+      <Fold id="who" field="who" emoji="👥" title={t('mm_b_who_title')} summary={rule.restricted ? t('mm_m_who_meta') : whoSummary}
         defaultOpen={rule.restricted || narrow}>
         <Hint k="mm_c_hint_advantage" />
         {rule.restricted ? (
@@ -344,7 +344,7 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
       {/* Shown only when the customer has a ready audience to choose. */}
       {(readyAudiences.length > 0 || !!campaign.audience_id) && (
         <Section id="mm-f-aud" emoji="🤝" title={t('madsb_review_audience_type')}>
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-2 sm:grid-cols-2" data-mm-field="audience_type">
             <ChoiceCard active={!campaign.audience_id} icon={<Users className="h-4 w-4" />} title={t('mads_audience_broad')} body={t('madsb_audience_broad_d')}
               onClick={() => patch({ audience_id: null }, { immediate: true })} />
             {readyAudiences.map((a) => (

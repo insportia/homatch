@@ -184,7 +184,11 @@ export function FloorPlanFlow({
   }, [doc, decisions, anchors, estimate, constraints]);
   const ceilingM = Number(ceiling) > 1.8 && Number(ceiling) < 8 ? Number(ceiling) : null;
   const ceilingFinal = ceilingM ?? doc?.ceilingHeight ?? DEFAULT_CEILING_M;
-  const ceilingSource = ceilingM ? 'CUSTOMER' as const : doc?.ceilingHeight ? 'DRAWING' as const : 'TYPICAL' as const;
+  // An unmeasured ceiling is recorded as typical, never as a fact.
+  const ceilingSource = ((plan: { ceilingHeight: number | null }): 'CUSTOMER' | 'DRAWING' | 'TYPICAL' => {
+    const doc = plan;
+    return ceilingM ? 'CUSTOMER' : doc.ceilingHeight ? 'DRAWING' : 'TYPICAL';
+  })(doc ?? { ceilingHeight: null });
 
   const setAnchor = (next: Anchor | null, kind: Anchor['kind']) => {
     setAnchors((list) => {
@@ -300,7 +304,7 @@ export function FloorPlanFlow({
         <ol className="ms-auto flex items-center gap-1.5 text-[13px]" aria-label={t('ds_fp_steps')}>
           {stepKeys.map((key, i) => (
             <li key={key} aria-current={i === stepIndex ? 'step' : undefined} className="flex items-center gap-1.5">
-              <span className={cn('grid h-6 w-6 place-items-center rounded-full text-[12px] font-semibold', i < stepIndex ? 'bg-white/20 text-white' : i === stepIndex ? 'bg-[hsl(38_92%_56%)] text-[#0C1119]' : 'bg-white/10 text-white/50')}>{i + 1}</span>
+              <span className={cn('grid h-6 w-6 place-items-center rounded-full text-2xs font-semibold', i < stepIndex ? 'bg-white/20 text-white' : i === stepIndex ? 'bg-[hsl(38_92%_56%)] text-[#0C1119]' : 'bg-white/10 text-white/50')}>{i + 1}</span>
               <span className={cn('hidden md:inline', i === stepIndex ? 'font-semibold text-white' : 'text-white/55')}>{t(key)}</span>
             </li>
           ))}

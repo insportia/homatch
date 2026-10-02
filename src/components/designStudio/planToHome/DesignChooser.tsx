@@ -99,7 +99,7 @@ export function DesignChooser({ value, onChange, onGenerate, busy, onBack }: {
               {FLOOR_DIRECTIONS.map((f) => (
                 <button key={f} type="button" role="radio" aria-checked={value.floor === f} onClick={() => set('floor', f)} className={swatch(value.floor === f)}>
                   <span className="h-12 rounded-lg" style={{ background: FLOOR_SWATCH[f] }} aria-hidden="true" />
-                  <span className="px-1 text-[12px]">{t(`p2h_floor_${f.toLowerCase()}`)}</span>
+                  <span className="px-1 text-2xs">{t(`p2h_floor_${f.toLowerCase()}`)}</span>
                 </button>
               ))}
             </div>
@@ -111,7 +111,7 @@ export function DesignChooser({ value, onChange, onGenerate, busy, onBack }: {
                 {WALL_DIRECTIONS.map((w) => (
                   <button key={w} type="button" role="radio" aria-checked={value.walls === w} onClick={() => set('walls', w)} className={cn(swatch(value.walls === w), 'w-[5.5rem]')}>
                     <span className="h-10 rounded-lg ring-1 ring-inset ring-black/5" style={{ backgroundColor: WALL_SWATCH[w] }} aria-hidden="true" />
-                    <span className="px-1 text-[12px]">{t(`p2h_wall_${w.toLowerCase()}`)}</span>
+                    <span className="px-1 text-2xs">{t(`p2h_wall_${w.toLowerCase()}`)}</span>
                   </button>
                 ))}
               </div>
@@ -121,7 +121,7 @@ export function DesignChooser({ value, onChange, onGenerate, busy, onBack }: {
                 {ACCENTS.map((a) => (
                   <button key={a} type="button" role="radio" aria-checked={value.accent === a} onClick={() => set('accent', a)} className={cn(swatch(value.accent === a), 'w-[5.5rem]')}>
                     <span className="h-10 rounded-lg" style={{ background: `linear-gradient(135deg,${ACCENT_SWATCH[a]},#ffffff55)` , backgroundColor: ACCENT_SWATCH[a] }} aria-hidden="true" />
-                    <span className="px-1 text-[12px]">{t(`p2h_accent_${a.toLowerCase()}`)}</span>
+                    <span className="px-1 text-2xs">{t(`p2h_accent_${a.toLowerCase()}`)}</span>
                   </button>
                 ))}
               </div>
@@ -150,7 +150,7 @@ export function DesignChooser({ value, onChange, onGenerate, busy, onBack }: {
                     data-testid={`furnishing-${l.toLowerCase()}`}>
                     <Icon className="h-5 w-5" aria-hidden="true" />
                     <span className="text-[14px] font-semibold">{t(`p2h_level_${l.toLowerCase()}`)}</span>
-                    <span className="text-[12px] leading-snug text-[#5B6472]">{t(`p2h_level_${l.toLowerCase()}_hint`)}</span>
+                    <span className="text-2xs leading-snug text-[#5B6472]">{t(`p2h_level_${l.toLowerCase()}_hint`)}</span>
                   </button>
                 );
               })}

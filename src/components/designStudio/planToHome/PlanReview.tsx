@@ -114,7 +114,7 @@ export function PlanReview({
               roomLabel={(r) => ({ name: roomName(r), size: mpp ? (() => { const e = extentPx(r.polygon); return `${(e.w * mpp).toFixed(1)} × ${(e.h * mpp).toFixed(1)} m`; })() : null })}
             />
           </div>
-          <p className="mx-auto mt-2 max-w-[760px] text-center text-[12px] text-[#5B6472]">{t('p2h_tap_to_fix')}</p>
+          <p className="mx-auto mt-2 max-w-[760px] text-center text-2xs text-[#5B6472]">{t('p2h_tap_to_fix')}</p>
         </div>
       </div>
 
@@ -223,9 +223,9 @@ export function PlanReview({
                     data-testid="plan-room-row">
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[14px] font-medium">{roomName(r)}{r.label ? <span className="font-normal text-[#5B6472]"> · {r.label}</span> : null}</span>
-                      {roomSize(r) ? <span className="block text-[12px] text-[#5B6472]">{roomSize(r)}</span> : null}
+                      {roomSize(r) ? <span className="block text-2xs text-[#5B6472]">{roomSize(r)}</span> : null}
                     </span>
-                    {r.dimensionText ? <span className="shrink-0 rounded-md bg-[#F1F3F6] px-1.5 py-0.5 text-[12px] text-[#4A5263]" title={t('p2h_printed')}>{r.dimensionText}</span> : null}
+                    {r.dimensionText ? <span className="shrink-0 rounded-md bg-[#F1F3F6] px-1.5 py-0.5 text-2xs text-[#4A5263]" title={t('p2h_printed')}>{r.dimensionText}</span> : null}
                   </button>
                 </li>
               ))}

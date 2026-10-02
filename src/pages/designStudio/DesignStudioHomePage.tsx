@@ -393,7 +393,7 @@ function Home() {
                 <p className="text-[14px] text-[#4A5263]">{t(master.ready ? 'rend_master_hint' : 'rend_master_wait')}</p>
               </div>
               {master.ready?.finish && master.ready.finish.provider === 'BLENDER' && master.ready.finish.check && !master.ready.finish.check.accepted ? (
-                <p className="text-[12px] text-[#5B6472]">{t('rend_finish_refused')}</p>
+                <p className="text-2xs text-[#5B6472]">{t('rend_finish_refused')}</p>
               ) : null}
             </div>
             <div className="relative overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
@@ -412,7 +412,7 @@ function Home() {
                 </div>
               )}
               {master.working && master.ready ? (
-                <p className="absolute start-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1 text-[12px] font-medium shadow" role="status"><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />{t('rend_updating')}</p>
+                <p className="absolute start-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1 text-2xs font-medium shadow" role="status"><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />{t('rend_updating')}</p>
               ) : null}
               {selected && actions.length ? (
                 <EditPanel

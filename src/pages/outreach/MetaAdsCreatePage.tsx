@@ -190,11 +190,21 @@ export default function MetaAdsCreatePage() {
       setStatus(st); setAudiences(auds); setProperties(props as never);
       setInitial(draft);
       if (draft.preflight?.status) setPreflight(draft.preflight);
-      setParams((prev) => {
-        prev.set('draft', draft.id);
-        prev.delete('property'); prev.delete('audience');
-        if (!prev.get('step')) prev.set('step', st?.connection?.health === 'CONNECTED' ? 'offer' : 'account');
-        return prev;
+      /*
+       * FROM THE URL AS IT IS NOW. setParams(fn) hands the updater the search of the
+       * render this effect closed over (the mount), not the current one. Boot finishes
+       * after the network, and by then the URL has moved: the Meta return already
+       * consumed ?connect=ok, and may already have sent the owner back to the step
+       * they came from. Writing the mount snapshot resurrected ?connect=ok, which
+       * re-ran the return handler, whose second replace could land after that step
+       * change and undo it -- the owner was left on Account.
+       */
+      setParams(() => {
+        const next = new URLSearchParams(window.location.search);
+        next.set('draft', draft.id);
+        next.delete('property'); next.delete('audience');
+        if (!next.get('step')) next.set('step', st?.connection?.health === 'CONNECTED' ? 'offer' : 'account');
+        return next;
       }, { replace: true });
       setCreatives(await listCreatives(draft.id));
     })().catch(() => { if (live) setBootError(true); });

@@ -112,7 +112,7 @@ export const META_MOBILE_STRINGS = {
   // ── Real-estate scope ───────────────────────────────────────────────────
   mm_m_scope_blocked_title: [
     'This ad is outside HOMATCH Ads',
-    'ეს რეკლამა HOMATCH Ads-ის მიმართულებას არ შეესაბამება',
+    'ეს რეკლამა HOMATCH Ads-ის დანიშნულებას არ შეესაბამება',
     'Эта реклама вне направления HOMATCH Ads',
     'Bu reklam HOMATCH Ads kapsamı dışında',
     'هذا الإعلان خارج نطاق HOMATCH Ads',
@@ -120,7 +120,7 @@ export const META_MOBILE_STRINGS = {
   ],
   mm_m_scope_blocked: [
     'HOMATCH Ads is made for real estate and the services around it. This ad doesn\'t fit that direction. You can create a campaign related to property.',
-    'HOMATCH Ads შექმნილია უძრავი ქონებისა და მასთან დაკავშირებული სერვისებისთვის. ეს რეკლამა ამ მიმართულებას არ შეესაბამება. შეგიძლიათ შექმნათ უძრავ ქონებასთან დაკავშირებული კამპანია.',
+    'HOMATCH Ads შექმნილია უძრავი ქონებისა და მასთან დაკავშირებული სერვისებისთვის. ეს რეკლამა ამ დანიშნულებას არ შეესაბამება. შეგიძლიათ შექმნათ უძრავ ქონებასთან დაკავშირებული კამპანია.',
     'HOMATCH Ads создан для недвижимости и связанных с ней услуг. Эта реклама не соответствует этому направлению. Вы можете создать кампанию, связанную с недвижимостью.',
     'HOMATCH Ads, gayrimenkul ve ilgili hizmetler için tasarlandı. Bu reklam bu alana uymuyor. Gayrimenkulle ilgili bir kampanya oluşturabilirsiniz.',
     'صُمم HOMATCH Ads للعقارات والخدمات المرتبطة بها. هذا الإعلان لا يتوافق مع هذا الاتجاه. يمكنك إنشاء حملة مرتبطة بالعقارات.',
@@ -177,7 +177,7 @@ export const META_MOBILE_STRINGS = {
     'السبب: رفض العميل هذه الأذونات عند تسجيل الدخول. إعادة الربط والسماح بها يحل المشكلة.',
     'הסיבה: הלקוח דחה את ההרשאות האלה בהתחברות. חיבור מחדש ואישורן יפתור זאת.',
   ],
-  mm_m_admin_domain: ['Real-estate scope', 'უძრავი ქონების მიმართულება', 'Сфера недвижимости', 'Gayrimenkul kapsamı', 'نطاق العقارات', 'תחום הנדל״ן'],
+  mm_m_admin_domain: ['Real-estate scope', 'უძრავი ქონების დანიშნულება', 'Сфера недвижимости', 'Gayrimenkul kapsamı', 'نطاق العقارات', 'תחום הנדל״ן'],
 
   // ── Review ──────────────────────────────────────────────────────────────
   mm_m_review_ready: ['Ready to continue', 'მზადაა გასაგრძელებლად', 'Готово к продолжению', 'Devam etmeye hazır', 'جاهز للمتابعة', 'מוכן להמשך'],
@@ -223,7 +223,7 @@ export const META_MOBILE_STRINGS = {
   mm_l_terms_cta: ['Accept Meta\'s terms', 'Meta-ს პირობებთან დათანხმება', 'Принять условия Meta', 'Meta koşullarını kabul et', 'الموافقة على شروط Meta', 'אישור התנאים של Meta'],
   mm_l_terms_body: [
     'Almost ready: Meta asks your Page to accept its Lead Ads terms once. They open on Meta\'s own page — read them there and press Meta\'s Accept button.',
-    'თითქმის მზადაა: Meta ითხოვს, რომ თქვენმა გვერდმა ერთხელ დაეთანხმოს მის ლიდ-რეკლამების პირობებს. ისინი Meta-ს საკუთარ გვერდზე გაიხსნება — წაიკითხეთ და დააჭირეთ Meta-ს დათანხმების ღილაკს.',
+    'თითქმის მზადაა: Meta ითხოვს, რომ თქვენმა გვერდმა ერთხელ დაეთანხმოს მის ლიდების რეკლამების პირობებს. ისინი Meta-ს საკუთარ გვერდზე გაიხსნება — წაიკითხეთ და დააჭირეთ Meta-ს დათანხმების ღილაკს.',
     'Почти готово: Meta просит вашу страницу один раз принять условия рекламы для лидов. Они откроются на странице Meta — прочитайте их там и нажмите кнопку принятия Meta.',
     'Neredeyse hazır: Meta, sayfanızın potansiyel müşteri reklamı koşullarını bir kez kabul etmesini istiyor. Koşullar Meta\'nın kendi sayfasında açılır — orada okuyun ve Meta\'nın Kabul düğmesine basın.',
     'أوشكت على الانتهاء: تطلب Meta من صفحتك الموافقة على شروط إعلانات العملاء المحتملين مرة واحدة. تُفتح على صفحة Meta نفسها — اقرأها هناك واضغط زر الموافقة لدى Meta.',
@@ -232,13 +232,13 @@ export const META_MOBILE_STRINGS = {
   mm_l_goal_terms: ['Accept Meta\'s terms', 'საჭიროა Meta-ს პირობები', 'Нужны условия Meta', 'Meta koşulları gerekli', 'تتطلب شروط Meta', 'נדרשים תנאי Meta'],
   mm_l_recheck_body: [
     'Meta hasn\'t confirmed your Page\'s Lead Ads status yet. Check with Meta to continue.',
-    'Meta-ს ჯერ არ დაუდასტურებია თქვენი გვერდის ლიდ-რეკლამების სტატუსი. გასაგრძელებლად შეამოწმეთ Meta-სთან.',
+    'Meta-ს ჯერ არ დაუდასტურებია თქვენი გვერდის ლიდების რეკლამების სტატუსი. გასაგრძელებლად გადაამოწმეთ Meta-ში.',
     'Meta ещё не подтвердила статус рекламы для лидов на вашей странице. Проверьте в Meta, чтобы продолжить.',
     'Meta, sayfanızın potansiyel müşteri reklamı durumunu henüz onaylamadı. Devam etmek için Meta ile kontrol edin.',
     'لم تؤكد Meta بعد حالة إعلانات العملاء المحتملين لصفحتك. تحقق مع Meta للمتابعة.',
     'Meta עדיין לא אישרה את מצב מודעות הלידים של הדף שלכם. בדקו מול Meta כדי להמשיך.',
   ],
-  mm_l_recheck_cta: ['Check with Meta', 'Meta-სთან შემოწმება', 'Проверить в Meta', 'Meta ile kontrol et', 'التحقق مع Meta', 'בדיקה מול Meta'],
+  mm_l_recheck_cta: ['Check with Meta', 'Meta-ში გადამოწმება', 'Проверить в Meta', 'Meta ile kontrol et', 'التحقق مع Meta', 'בדיקה מול Meta'],
   mm_l_waiting: [
     'Meta\'s terms are open in another window. When you\'ve accepted them there, come back — HOMATCH checks with Meta automatically.',
     'Meta-ს პირობები სხვა ფანჯარაშია გახსნილი. იქ დათანხმების შემდეგ დაბრუნდით — HOMATCH ავტომატურად გადაამოწმებს Meta-სთან.',
@@ -249,7 +249,7 @@ export const META_MOBILE_STRINGS = {
   ],
   mm_l_accepted: [
     'Meta confirmed: your Page accepted the Lead Ads terms.',
-    'Meta-მ დაადასტურა: თქვენი გვერდი დაეთანხმა ლიდ-რეკლამების პირობებს.',
+    'Meta-მ დაადასტურა: თქვენი გვერდი დაეთანხმა ლიდების რეკლამების პირობებს.',
     'Meta подтвердила: ваша страница приняла условия рекламы для лидов.',
     'Meta onayladı: sayfanız potansiyel müşteri reklamı koşullarını kabul etti.',
     'أكدت Meta: وافقت صفحتك على شروط إعلانات العملاء المحتملين.',
@@ -283,7 +283,7 @@ export const META_MOBILE_STRINGS = {
   ],
   mm_l_meta_error: [
     'Meta didn\'t answer just now. Your draft is saved — check again in a moment.',
-    'Meta-მ ახლა არ გვიპასუხა. თქვენი მონახაზი შენახულია — ცოტა ხანში ხელახლა შეამოწმეთ.',
+    'Meta-მ ახლა არ გვიპასუხა. თქვენი მონახაზი შენარჩუნებულია — ცოტა ხანში ხელახლა შეამოწმეთ.',
     'Meta сейчас не ответила. Черновик сохранён — проверьте ещё раз чуть позже.',
     'Meta şu anda yanıt vermedi. Taslağınız kaydedildi — birazdan tekrar kontrol edin.',
     'لم تستجب Meta الآن. تم حفظ مسودتك — تحقق مرة أخرى بعد قليل.',
@@ -291,7 +291,7 @@ export const META_MOBILE_STRINGS = {
   ],
   mm_l_session_expired: [
     'Your Meta connection has expired. Reconnect Meta from the Account step — your draft is kept.',
-    'Meta-სთან კავშირს ვადა გაუვიდა. ხელახლა დააკავშირეთ Meta ანგარიშის ნაბიჯიდან — მონახაზი შენახულია.',
+    'Meta-სთან კავშირს ვადა გაუვიდა. ხელახლა დააკავშირეთ Meta ანგარიშის ნაბიჯიდან — მონახაზი შენარჩუნებულია.',
     'Подключение к Meta истекло. Переподключите Meta на шаге «Аккаунт» — черновик сохранён.',
     'Meta bağlantınızın süresi doldu. Hesap adımından Meta\'yı yeniden bağlayın — taslağınız korunur.',
     'انتهت صلاحية اتصالك بـ Meta. أعد ربط Meta من خطوة الحساب — مسودتك محفوظة.',
@@ -307,7 +307,7 @@ export const META_MOBILE_STRINGS = {
   ],
   mm_l_timeout: [
     'We stopped waiting for Meta\'s window. If you accepted the terms, check with Meta now.',
-    'Meta-ს ფანჯრის ლოდინი შევწყვიტეთ. თუ პირობებს დაეთანხმეთ, ახლა შეამოწმეთ Meta-სთან.',
+    'Meta-ს ფანჯრის ლოდინი შევწყვიტეთ. თუ პირობებს დაეთანხმეთ, ახლა გადაამოწმეთ Meta-ში.',
     'Мы перестали ждать окно Meta. Если вы приняли условия, проверьте в Meta сейчас.',
     'Meta penceresini beklemeyi bıraktık. Koşulları kabul ettiyseniz şimdi Meta ile kontrol edin.',
     'توقفنا عن انتظار نافذة Meta. إذا وافقت على الشروط، تحقق مع Meta الآن.',
@@ -315,11 +315,11 @@ export const META_MOBILE_STRINGS = {
   ],
   mm_l_pfd_terms: [
     'Accept Meta\'s Lead Ads terms for your Page in the Destination step.',
-    'დაეთანხმეთ Meta-ს ლიდ-რეკლამების პირობებს თქვენი გვერდისთვის „მიმართულების“ ნაბიჯში.',
+    'დაეთანხმეთ Meta-ს ლიდების რეკლამების პირობებს თქვენი გვერდისთვის „დანიშნულების“ ნაბიჯში.',
     'Примите условия Meta для рекламы лидов на шаге «Назначение».',
     'Hedef adımında sayfanız için Meta\'nın potansiyel müşteri reklamı koşullarını kabul edin.',
     'وافق على شروط إعلانات العملاء المحتملين من Meta لصفحتك في خطوة الوجهة.',
     'אשרו את תנאי מודעות הלידים של Meta עבור הדף שלכם בשלב היעד.',
   ],
-  mads_check_lead_terms: ['Meta Lead Ads terms', 'Meta-ს ლიდ-რეკლამების პირობები', 'Условия Meta для рекламы лидов', 'Meta potansiyel müşteri reklamı koşulları', 'شروط إعلانات العملاء المحتملين من Meta', 'תנאי מודעות הלידים של Meta'],
+  mads_check_lead_terms: ['Meta Lead Ads terms', 'Meta-ს ლიდების რეკლამების პირობები', 'Условия Meta для рекламы лидов', 'Meta potansiyel müşteri reklamı koşulları', 'شروط إعلانات العملاء المحتملين من Meta', 'תנאי מודעות הלידים של Meta'],
 };

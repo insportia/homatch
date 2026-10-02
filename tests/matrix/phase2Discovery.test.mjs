@@ -149,3 +149,14 @@ test('reposts collapse: results and the delivery count are per property (entity)
   assert.match(resolver.slice(0, 1500), /placeNamesFor\(city\)/);
   assert.match(read('supabase/functions/discovery-queue-worker/driver.ts'), /mode: 'resolve-market'/);
 });
+
+test('the outside-search panel shows only real server state and never a provider, cost or raw error', () => {
+  const panel = read('src/components/matching/OutsideSearchPanel.tsx');
+  assert.match(panel, /latestOutsideRun\(id\)/, 'the run is read from the server, so a refresh keeps it');
+  assert.match(panel, /setInterval\(\(\) => \{ void refresh\(\); \}, 5000\)/);
+  assert.match(panel, /productCode="FIND_PROPERTY"/);
+  assert.doesNotMatch(panel, /TELEGRAM|PORTAL'|provider|cost_usd|error_message/, 'no provider names or costs reach the customer');
+  assert.match(panel, /controlOutsideRun\(run\.id, action\)/);
+  const page = read('src/pages/FindPropertyPage.tsx');
+  assert.match(page, /<OutsideSearchPanel /);
+});

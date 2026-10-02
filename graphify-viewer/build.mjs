@@ -146,6 +146,25 @@ const MOBILE_CSS = `<meta name="viewport" content="width=device-width, initial-s
   #graph { flex: 1 1 auto !important; min-height: 58dvh; }
   #sidebar { width: auto !important; max-height: 42dvh; border-left: 0 !important; border-top: 1px solid #2a2a4e; overflow: auto !important; }
   #search, input[type="text"] { font-size: 16px !important; }
+  /* call-flow pages: the sticky section menu wrapped to many lines and
+     covered the page while scrolling; wide tables/grids overflowed */
+  html, body, .container { overflow-x: clip; }
+  .container { padding: 12px !important; }
+  h1 { font-size: 1.35rem !important; line-height: 1.3; }
+  h2 { font-size: 1.2rem !important; margin: 28px 0 10px !important; }
+  h3 { font-size: 1.05rem !important; }
+  .subtitle { font-size: .95rem !important; margin-bottom: 14px !important; }
+  .nav { flex-wrap: nowrap !important; overflow-x: auto; gap: 14px !important; padding: 8px 0 !important;
+         white-space: nowrap; font-size: 14px; line-height: 1.4; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .nav::-webkit-scrollbar { display: none; }
+  .grid { grid-template-columns: minmax(0, 1fr) !important; }
+  .card { min-width: 0; }
+  .container table { display: block; max-width: 100%; overflow-x: auto; font-size: .82rem !important; }
+  .container td, .container th { padding: 6px 8px !important; }
+  code { word-break: break-word; }
+  .card { padding: 14px !important; }
+  .mermaid-viewport { padding: 52px 8px 8px !important; }
+  .arrow-chain { overflow-x: auto; }
 }
 </style>`;
 export function mobilePatch(html) {

@@ -283,6 +283,31 @@ export function validateReading(raw: unknown, imageWidth: number, imageHeight: n
   return { doc, dimensionStrings, dropped, readVersion: DS_READ_VERSION };
 }
 
+/**
+ * What a cached interpretation may be reused for: the MODEL's reading only.
+ *
+ * The model call is the slow, paid part and is a pure function of (bytes,
+ * reader version). The fused doc is not — it depends on the fusion code, which
+ * changes between deployments — so a reuse re-fuses this raw reading with the
+ * code running now. (Copying the fused doc served production a stale reading
+ * with 15 doors after the fusion fix that reads 9.) Null when the cached row
+ * has no raw reading of this version: then the picture is read again.
+ */
+export function cachedModelReading(it: Record<string, unknown> | null | undefined, sourceKey: string): {
+  doc: ReturnType<typeof validateReading>['doc']; dimensionStrings: DimensionString[]; readVersion: string;
+} | null {
+  if (!it || it.readVersion !== DS_READ_VERSION) return null;
+  const raw = it.rawDoc as Record<string, unknown> | null | undefined;
+  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.walls)) return null;
+  const dims = Array.isArray(it.rawDimensionStrings) ? it.rawDimensionStrings : null;
+  if (!dims) return null;
+  return {
+    doc: structuredClone({ ...raw, sourceAssetId: sourceKey }) as ReturnType<typeof validateReading>['doc'],
+    dimensionStrings: structuredClone(dims) as DimensionString[],
+    readVersion: DS_READ_VERSION,
+  };
+}
+
 // ── Server-side file checks: the bytes, not the declared type ───────────────
 
 export type SniffedType = 'image/png' | 'image/jpeg' | 'image/webp' | 'application/pdf' | 'model/gltf-binary' | null;

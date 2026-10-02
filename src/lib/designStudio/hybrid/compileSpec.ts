@@ -10,13 +10,16 @@
 import type { CatalogAsset, CatalogMaterial } from '../catalog.ts';
 import type { DesignState, ObjectInstance } from '../designState.ts';
 import { seenColors, shapedAsset } from '../objectShape.ts';
-import { pbrRepeat } from '../pbrMaps.ts';
+import { pbrRepeat, surfaceMetalness } from '../pbrMaps.ts';
 import type { Point, SpaceModel } from '../space.ts';
 import { ceilingSurfaceId, floorSurfaceId } from '../space.ts';
 import {
   objectGroup, RUNTIME_KINDS, SPEC_FORMS, SPEC_KINDS, SPEC_PATTERNS, SPEC_VERSION,
   type Provenance, type SceneBuildSpec, type SpecCamera, type SpecKind, type SpecMaterial, type SpecObject, type SpecSurface, type XY,
 } from './sceneSpec.ts';
+
+/** The furthest near plane a spec may carry (sceneSpec validator, edge and worker alike). */
+const CAMERA_NEAR_MAX = 100;
 
 /** The walkthrough's own finishes when a design says nothing (SceneController TONE). */
 export const DEFAULT_FINISH = { floor: '#d8c4a6', outdoor: '#c3cabe', wall: '#f7f5f1', ceiling: '#fbfbf9', frames: '#f4f4f2' };
@@ -104,7 +107,7 @@ export function compileSceneSpec(input: CompileInput): SceneBuildSpec {
       const tx = 1 / Math.max(rx, 1e-3); const ty = 1 / Math.max(ry, 1e-3);
       usedMaterials.set(mat.id, {
         id: mat.id, baseColor: lower(mat.pbr.baseColor) ?? '#ffffff', roughness: Math.max(0, Math.min(1, mat.pbr.roughness ?? 0.8)),
-        metalness: Math.max(0, Math.min(1, mat.pbr.metalness ?? 0)),
+        metalness: surfaceMetalness(mat),
         tileM: [r3(Math.max(0.02, Math.min(20, tx))), r3(Math.max(0.02, Math.min(20, ty)))],
         rotationDeg: Math.max(-360, Math.min(360, mat.pbr.controls?.rotationDeg ?? mat.pbr.rotationDeg ?? 0)),
         normalScale: Math.max(0, Math.min(4, mat.pbr.controls?.normalScale ?? 1)),
@@ -116,7 +119,7 @@ export function compileSceneSpec(input: CompileInput): SceneBuildSpec {
       material: mat && usedMaterials.has(mat.id) ? mat.id : null,
       color: lower(a?.color) ?? lower(mat?.pbr.baseColor) ?? fallback,
       roughness: Math.max(0, Math.min(1, roughness)),
-      metalness: Math.max(0, Math.min(1, mat?.pbr.metalness ?? 0)),
+      metalness: mat ? surfaceMetalness(mat) : 0,
       pattern: pattern && (SPEC_PATTERNS as readonly string[]).includes(pattern) ? pattern : null,
       tint: lower((a as { tint?: string | null } | undefined)?.tint ?? null),
     });
@@ -159,7 +162,10 @@ export function compileSceneSpec(input: CompileInput): SceneBuildSpec {
 
   const cam: SpecCamera | null = input.camera ? {
     position: fromThree(input.camera.position), target: fromThree(input.camera.target), fovDeg: r3(input.camera.fov),
-    near: input.camera.near, far: input.camera.far, aspect: r3(input.camera.aspect), background: lower(input.camera.background),
+    // The walkthrough's telephoto stand-in for a parallel camera keeps a tight near plane (150 m at
+    // 250 m) for WebGL depth precision; the factory ray-traces and needs none, and the spec bounds it.
+    near: Math.max(0.01, Math.min(CAMERA_NEAR_MAX, input.camera.near)), far: Math.max(1, Math.min(5000, input.camera.far)),
+    aspect: r3(input.camera.aspect), background: lower(input.camera.background),
     cut: input.camera.cut ? { exteriorM: r3(input.camera.cut.exteriorM), interiorM: r3(input.camera.cut.interiorM) } : null,
   } : null;
   const edge = Math.max(256, Math.min(2560, Math.round(input.render?.edge ?? 1280)));

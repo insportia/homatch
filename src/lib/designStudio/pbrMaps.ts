@@ -18,6 +18,18 @@ import type { Pbr, PbrMapSet } from './catalog.ts';
 
 export type PbrTier = 'HIGH' | 'BALANCED' | 'LOW';
 
+/**
+ * How metallic a catalogue surface is. Imported materials carry metalness 1 as a MULTIPLIER on
+ * their ORM map, and that slot is sometimes a packed AO/roughness/metal map and sometimes a plain
+ * greyscale roughness map — whose blue channel would turn wood, tile and plaster into metal. Only a
+ * material catalogued as METAL is metal; everything else is dielectric.
+ */
+export function surfaceMetalness(mat: { category?: string | null; pbr: { metalness?: number | null } }): number {
+  if (String(mat.category ?? '').toUpperCase() !== 'METAL') return 0;
+  const m = mat.pbr.metalness;
+  return typeof m === 'number' && Number.isFinite(m) ? Math.max(0, Math.min(1, m)) : 1;
+}
+
 /** The pixel edge a resolution label stands for ('1k' → 1024, '2k' → 2048). */
 export function resolutionEdge(res: string): number {
   const m = /^(\d+)k$/i.exec(res.trim());

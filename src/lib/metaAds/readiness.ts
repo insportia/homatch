@@ -118,3 +118,9 @@ export const DETAIL_KEYS: ReadonlySet<string> = new Set([
   'madsb_pfd_meta_ads_access_suspended', 'madsb_pfd_media_required', 'madsb_pfd_duration_below_minimum',
   'madsb_pfd_goal_unsupported', 'madsb_pfd_destination_goal_mismatch', 'mm_r_pfd_permissions',
 ]);
+
+/** Meta did not grant ad-account access (ads_management / ads_read / business_management): one actionable line, no scope names. */
+export function adsAccessMissing(connection: { health?: string; missing_scopes?: string[] } | null | undefined): boolean {
+  return connection?.health === 'PERMISSION_MISSING'
+    && (connection.missing_scopes ?? []).some((s) => s === 'ads_management' || s === 'ads_read' || s === 'business_management');
+}

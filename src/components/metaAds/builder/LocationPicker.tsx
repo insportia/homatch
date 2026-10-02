@@ -39,6 +39,12 @@ function ask(key: string, run: () => Promise<Answer>): Promise<Answer> {
   return p;
 }
 
+/** A country's name in the owner's language: the browser's when it has one, else the server's. */
+export function countryLabel(r: { key: string; name?: string | null }, lang: string): string {
+  const own = regionName(String(r.key), lang);
+  return own && own !== regionName(String(r.key), 'en') ? own : (r.name || own);
+}
+
 export function regionName(code: string, lang: string): string {
   try { return new Intl.DisplayNames([lang], { type: 'region' }).of(code) ?? code; } catch { return code; }
 }
@@ -100,7 +106,8 @@ export function LocationPicker({ scopeCountry, full, onPick, isChosen, onStreet 
 
   const pick = (r: Found) => {
     onPick({
-      type: r.type, key: String(r.key), name: r.type === 'country' ? regionName(String(r.key), lang) : r.name, countryCode: String(r.countryCode || '').toUpperCase(),
+      // A country keeps the server's name (full CLDR in the owner's language); the browser's may lack it.
+      type: r.type, key: String(r.key), name: r.type === 'country' ? countryLabel(r, lang) : r.name, countryCode: String(r.countryCode || '').toUpperCase(),
       // Coordinates only when Meta gave them (the map never places a guess).
       ...(Number.isFinite(Number(r.lat)) && Number.isFinite(Number(r.lng)) && r.lat != null && r.lng != null ? { lat: Number(r.lat), lng: Number(r.lng) } : {}),
       ...(r.type === 'neighborhood' ? { metaType: r.metaType === 'subcity' ? 'subcity' : 'neighborhood' } : {}),
@@ -149,7 +156,7 @@ export function LocationPicker({ scopeCountry, full, onPick, isChosen, onStreet 
                   className={cn('flex min-h-11 cursor-pointer items-center justify-between gap-2 rounded-lg px-3 py-2 text-start text-sm',
                     i === active ? 'bg-[hsl(var(--gold-soft))]' : '', chosen && 'cursor-default opacity-55')}>
                   <span className="min-w-0">
-                    <span className="block truncate font-medium text-foreground" dir="auto">{r.type === 'country' ? regionName(String(r.key), lang) : r.name}</span>
+                    <span className="block truncate font-medium text-foreground" dir="auto">{r.type === 'country' ? countryLabel(r, lang) : r.name}</span>
                     <span className="block truncate text-2xs text-muted-foreground" dir="auto">{placeSubtitle(r, lang, t)}</span>
                   </span>
                   {chosen && <span className="shrink-0 text-2xs text-muted-foreground">{t('mm_b_loc_added')}</span>}
@@ -177,7 +184,9 @@ export function LocationPicker({ scopeCountry, full, onPick, isChosen, onStreet 
 export function placeSubtitle(r: Pick<Found, 'type' | 'name' | 'region' | 'countryCode' | 'countryName'>, lang: string, t: (k: string) => string): string {
   const kind = t(`mm_b_loc_kind_${r.type === 'neighborhood' ? 'neighborhood' : r.type}`);
   if (r.type === 'country') return kind;
-  const country = r.countryCode ? regionName(String(r.countryCode).toUpperCase(), lang) : (r.countryName ?? '');
+  /* Meta answers in the owner's locale; the browser's own country names can lack a
+     language (Chromium has no Georgian ones), so Meta's name comes first. */
+  const country = r.countryName || (r.countryCode ? regionName(String(r.countryCode).toUpperCase(), lang) : '');
   const region = r.type !== 'region' && r.region && r.region !== r.name ? r.region : null;
   const parent = [region, country].filter(Boolean).join(', ');
   return parent ? `${kind} · ${parent}` : kind;

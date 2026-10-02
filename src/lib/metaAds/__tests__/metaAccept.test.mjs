@@ -278,3 +278,11 @@ test('LEAD CENTER: schema — owner edits the pipeline, the server owns identity
   assert.match(drawer, /mm_lc_draft_never_sent/);
   assert.doesNotMatch(drawer, /sendMessage|send_whatsapp|functions\.invoke\('.*send/i, 'a draft is never sent');
 });
+
+test('CONNECT: "Meta connected" with ONE missing requirement when ad-account access was not granted', async () => {
+  const { adsAccessMissing } = await import('../readiness.ts');
+  // Production on 2026-10-02 10:30: six scopes, none of the ads ones.
+  assert.equal(adsAccessMissing({ health: 'PERMISSION_MISSING', missing_scopes: ['ads_management', 'ads_read', 'business_management'] }), true);
+  assert.equal(adsAccessMissing({ health: 'PERMISSION_MISSING', missing_scopes: ['pages_read_engagement'] }), false);
+  assert.equal(adsAccessMissing({ health: 'CONNECTED', missing_scopes: [] }), false);
+});

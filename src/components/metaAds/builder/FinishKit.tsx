@@ -143,9 +143,11 @@ export function Fold({ id, emoji, title, summary, aside, defaultOpen = false, fi
   const panel = `${id}-panel`;
   return (
     <section data-mm-fold-section={id} data-mm-field={field} className="rounded-2xl border border-border bg-card shadow-sm">
-      <div className="flex items-center gap-2 pe-2">
+      {/* Phones: a side control (the on/off pill) takes its own row under the title,
+          so the title never shrinks to a word per line. */}
+      <div className="flex flex-wrap items-center gap-x-2 sm:flex-nowrap sm:pe-2">
         <button type="button" data-mm-fold={id} aria-expanded={open} aria-controls={panel} onClick={() => setOpen((v) => !v)}
-          className="flex min-h-[52px] min-w-0 flex-1 items-center gap-2.5 rounded-2xl px-3.5 py-2.5 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">
+          className="flex min-h-[52px] min-w-0 basis-full items-center gap-2.5 rounded-2xl px-3.5 py-2.5 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))] sm:flex-1 sm:basis-auto">
           <span aria-hidden className="text-base">{emoji}</span>
           <span className="min-w-0 flex-1">
             <span className="block text-[15px] font-semibold leading-snug text-foreground">{title}</span>
@@ -154,7 +156,7 @@ export function Fold({ id, emoji, title, summary, aside, defaultOpen = false, fi
           <span className="shrink-0 text-[13px] font-medium text-[hsl(var(--gold-ink))]">{open ? t('mm_m_done') : t('mm_m_edit')}</span>
           <ChevronDown className={cn('h-4 w-4 shrink-0 text-[hsl(var(--gold-ink))] transition-transform motion-reduce:transition-none', open && 'rotate-180')} aria-hidden />
         </button>
-        {aside}
+        {aside && <div className="ps-3.5 pb-2.5 sm:p-0" data-mm-fold-aside="">{aside}</div>}
       </div>
       {open && <div id={panel} className="space-y-3 border-t border-border px-3.5 pb-3.5 pt-3">{children}</div>}
     </section>

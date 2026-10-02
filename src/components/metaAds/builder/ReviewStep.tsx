@@ -226,8 +226,9 @@ export function ReviewStep({ campaign, status, creatives, totals, pricing, recom
                             <span className={sev === null ? 'text-white/85' : 'font-medium text-white'}>{t(checkTitleKey(ch.key) as never)}</span>
                             {sev && <span className="ms-1.5 text-2xs uppercase tracking-wide text-white/50">{t(sev === 'BLOCKER' ? 'mm_r_sev_blocker' : 'mm_r_sev_warning')}</span>}
                             {details && <span className="block text-2xs text-white/60">{details}</span>}
+                            {/* Under the text, never a column beside it: the title keeps the width. */}
+                            {sev && onFix && <span className="mt-0.5 block text-2xs font-semibold text-[hsl(38_92%_66%)]">{t('mm_r_fix')} →</span>}
                           </span>
-                          {sev && onFix && <span className="shrink-0 self-center text-2xs font-semibold text-[hsl(38_92%_66%)]">{t('mm_r_fix')}</span>}
                         </>
                       );
                       return (

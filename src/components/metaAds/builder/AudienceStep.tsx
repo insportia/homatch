@@ -28,7 +28,7 @@ import {
   type LocationChoiceRow, type MetaAudienceRow, type MetaCampaignRow, type MetaCreativeRow, type MetaStatus, type TargetingIntentRow,
 } from '@/services/metaAds';
 import { ChoiceCard, StepShell } from './ui';
-import { LocationPicker, regionName } from './LocationPicker';
+import { countryLabel, LocationPicker, regionName } from './LocationPicker';
 import { IntelligenceCard } from './IntelligenceCard';
 import { BreadthGuide, Fold, HelperCard, Hint, LearningCard, More, Pill, Section } from './FinishKit';
 import { addLocation, advertiserCountryOf, effectiveRadiusKm, geographyGroups, housingNormalized, housingRuleFor, isNarrowAudience, locationId, refinedCountries } from './masterLogic';
@@ -184,7 +184,7 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
                 {locations.map((l, idx) => {
                   if (l.type === 'city' || l.type === 'pin') return null;
                   const id = locationId(l);
-                  const name = l.type === 'country' ? regionName(l.key, lang) : l.name;
+                  const name = l.type === 'country' ? countryLabel({ key: l.key, name: l.name }, lang) : l.name;
                   const narrowed = l.type === 'country' && refined.has(l.key);
                   return (
                     <li key={id} data-mm-loc={id} className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-[hsl(var(--gold-border))]/60 bg-[hsl(var(--gold-soft))] py-0.5 ps-1 text-[13px]">

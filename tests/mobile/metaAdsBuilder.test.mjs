@@ -172,8 +172,9 @@ async function boot(t, { width, height, lang, admin = false, statusOver = null, 
       if (body.action === 'geo_search') {
         calls.bodies.push(body);
         const q = String(body.q ?? '');
-        const GE = { type: 'country', key: 'GE', name: 'Georgia', countryCode: 'GE' };
-        const TB = { type: 'city', key: '1958367', name: 'Tbilisi', countryCode: 'GE', region: 'Tbilisi', lat: 41.7151, lng: 44.8271 };
+        const GE = { type: 'country', key: 'GE', name: String(body.locale).startsWith('ka') ? 'საქართველო' : 'Georgia', countryCode: 'GE' };
+        const countryName = String(body.locale).startsWith('ka') ? 'საქართველო' : 'Georgia';
+        const TB = { type: 'city', key: '1958367', name: 'Tbilisi', countryCode: 'GE', countryName, region: 'Tbilisi', lat: 41.7151, lng: 44.8271 };
         const VK = { type: 'neighborhood', key: '2340912', name: 'Vake', countryCode: 'GE', region: 'Tbilisi', metaType: 'neighborhood', lat: 41.709, lng: 44.75 };
         const results = /საქართველო|georgia|грузия|sakartvelo/i.test(q) ? [GE] : /თბილისი|tbilisi|тбилиси/i.test(q) ? [TB] : /vake|ვაკე|ваке/i.test(q) ? [VK] : [];
         return r.fulfill(json({ results, variant: 0, street: false }));
@@ -1404,6 +1405,9 @@ test('FINAL: one universal location search — "საქართველო" 
   await page.waitForSelector('[data-mm-loc-result="city"]');
   assert.match(await page.locator('[data-mm-loc-result="city"]').first().innerText(), /ქალაქი · .*საქართველო/, 'City · …, Georgia');
   await shot(page, 'ka-390-audience-search');
+  assert.match(await page.locator('[data-mm-loc-chips] [data-mm-loc="country:GE"]').innerText(), /საქართველო/, 'the chip speaks Georgian');
+  await input.press('Escape'); // the open result list sits over the chips, as a combobox does
+  await page.locator('[data-mm-loc-chips] [data-mm-loc-remove="country:GE"]').evaluate((el) => el.scrollIntoView({ block: 'center' }));
   await page.locator('[data-mm-loc-chips] [data-mm-loc-remove="country:GE"]').click();
   await page.waitForFunction(() => !document.querySelector('[data-mm-loc="country:GE"]'));
 });

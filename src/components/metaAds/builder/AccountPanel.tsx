@@ -1,6 +1,7 @@
 // The Meta connection and asset picker, shared by the builder and the
 // workspace's Connections tab. Friendly names first; technical IDs only as
 // secondary detail. Never a token — the status call does not return one.
+import { adsAccessMissing as adsAccessMissingOf } from '@/lib/metaAds/readiness';
 import React, { useState } from 'react';
 import { CheckCircle2, Link2, RefreshCw, Loader2, ShieldAlert, Unplug, Facebook } from 'lucide-react';
 import { toast } from 'sonner';
@@ -43,8 +44,7 @@ export function AccountPanel({ status, onChanged, returnTo, compact }: {
     if (r && r !== 'ok') toast.error(t(r === 'TOKEN_ENCRYPTION_NOT_CONFIGURED' ? 'madsb_connect_encryption_missing' : 'mm_x_connect_failed'));
   };
   /* The grant lacks ad-account access (ads_management / ads_read / business_management). */
-  const adsAccessMissing = health === 'PERMISSION_MISSING'
-    && (status?.connection?.missing_scopes ?? []).some((s) => s === 'ads_management' || s === 'ads_read' || s === 'business_management');
+  const adsAccessMissing = adsAccessMissingOf({ ...status?.connection, health });
   const expiresSoon = health === 'CONNECTED' && !!status?.connection?.expires_soon;
   const needsReconnect = (health !== 'CONNECTED' && health !== 'NOT_CONNECTED') || expiresSoon;
   const refresh = async () => {

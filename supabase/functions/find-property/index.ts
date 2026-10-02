@@ -38,6 +38,7 @@ import {
   directoryStandingOf,
   discloseBroker,
 } from '../../../src/research-core/match/broker-identity.ts';
+import { attributionFor, rawSignalIdOf } from '../../../src/research-core/discovery/attribution.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -141,7 +142,7 @@ Deno.serve(async (req: Request) => {
         + 'id,city,district,transaction,property_type,sale_amount,sale_currency,'
         + 'rent_amount,rent_currency,area_sqm,rooms,bedrooms,title,canonical_url,'
         + 'published_at,first_seen_at,last_verified_at,detected_language,adapter_id,'
-        + 'supply_role,broker_id,entity_id,'
+        + 'supply_role,broker_id,entity_id,source_id,field_origins,'
         /*
          * THE BROKER, WHEN THERE IS ONE -- from broker_intelligence, which is the
          * table of firms we FOUND. Note what is not joined and cannot be: this
@@ -209,11 +210,50 @@ Deno.serve(async (req: Request) => {
       return true;
     });
 
+    /*
+     * WHERE EACH RESULT CAME FROM, resolved in two batched reads (never one per
+     * result): the raw signals community observations point back to
+     * (field_origins.rawSignalId), then the registry entries of every channel,
+     * board and site involved. attributionFor() keeps only real http(s) links
+     * and prefers the exact post over its channel.
+     */
+    const observationOf = (row: Record<string, unknown>) => {
+      const joined: unknown = Array.isArray(row.observation) ? row.observation[0] : row.observation;
+      return (joined ?? null) as Record<string, unknown> | null;
+    };
+    const signalIds = [...new Set(distinct
+      .map((row: Record<string, unknown>) => rawSignalIdOf(observationOf(row)?.field_origins))
+      .filter((id): id is string => Boolean(id)))];
+    const signals = new Map<string, Record<string, unknown>>();
+    if (signalIds.length) {
+      const { data: signalRows, error: signalError } = await db.from('raw_signals')
+        .select('id,platform,source_id,source_url,parent_url,author_public_name,author_public_url,profile_url,original_text')
+        .in('id', signalIds);
+      if (signalError) throw signalError;
+      for (const s of signalRows ?? []) signals.set(String(s.id), s as Record<string, unknown>);
+    }
+    const sourceIds = [...new Set([
+      ...distinct.map((row: Record<string, unknown>) => observationOf(row)?.source_id),
+      ...[...signals.values()].map((s) => s.source_id),
+    ].filter((id): id is string => typeof id === 'string' && id.length > 0))];
+    const sources = new Map<string, Record<string, unknown>>();
+    if (sourceIds.length) {
+      const { data: sourceRows, error: sourceError } = await db.from('source_registry')
+        .select('id,name,url').in('id', sourceIds);
+      if (sourceError) throw sourceError;
+      for (const s of sourceRows ?? []) sources.set(String(s.id), s as Record<string, unknown>);
+    }
+
     const results = distinct.map((row: Record<string, unknown>) => {
-      const joined: unknown = Array.isArray(row.observation)
-        ? row.observation[0]
-        : row.observation;
-      const observation = (joined ?? null) as Record<string, unknown> | null;
+      const observation = observationOf(row);
+      const signal = signals.get(rawSignalIdOf(observation?.field_origins) ?? '') ?? null;
+      const attribution = observation
+        ? attributionFor({
+          observation: observation as { canonical_url?: string | null; adapter_id?: string | null },
+          signal: signal as never,
+          source: (sources.get(String(signal?.source_id ?? observation.source_id ?? '')) ?? null) as never,
+        })
+        : null;
       return {
         id: row.id,
         intentId: row.intent_profile_id,
@@ -244,7 +284,8 @@ Deno.serve(async (req: Request) => {
           ? {
             id: observation.id,
             title: observation.title,
-            url: observation.canonical_url,
+            /* The exact post or listing, validated; null rather than a link that opens nothing. */
+            url: attribution?.permalink ?? null,
             city: observation.city,
             district: observation.district,
             transaction: observation.transaction,
@@ -261,6 +302,12 @@ Deno.serve(async (req: Request) => {
             source: observation.adapter_id,
           }
           : null,
+        /*
+         * WHERE IT CAME FROM, for the customer: the exact post, its channel or
+         * board, the author as the source shows them, and the post as written
+         * (public contacts included). Null fields were not provided.
+         */
+        attribution,
         /*
          * WHO IS OFFERING, AND WHAT THEY ARE TO HOMATCH.
          *

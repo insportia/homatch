@@ -57,6 +57,7 @@ import {
 import { readProperty } from '@/services/propertyManagement';
 import type { CreditAccount, Match, MatchUnlock, Property, PropertyFacts } from '@/types/types';
 import { isHistoryMatch } from '@/matching/currentDemand';
+import { openExternal, safeExternalUrl } from '@/lib/safeExternalUrl';
 
 // ── CONSTANTS ─────────────────────────────────────────────────
 
@@ -286,23 +287,23 @@ function UnlockedMatchDialog({
 
           {/* Source actions */}
           <div className="flex flex-wrap gap-2 pt-2">
-            {unlock.full_source_url && (
+            {safeExternalUrl(unlock.full_source_url) && (
               <Button
                 variant="ghost"
                 size="sm"
                 className="border border-border gap-1.5 text-sm h-8"
-                onClick={() => window.open(unlock.full_source_url!, '_blank')}
+                onClick={() => openExternal(unlock.full_source_url)}
               >
                 <ExternalLink className="h-3.5 w-3.5" />
                 {t('matches_full_source')}
               </Button>
             )}
-            {unlock.full_profile_url && (
+            {safeExternalUrl(unlock.full_profile_url) && (
               <Button
                 variant="ghost"
                 size="sm"
                 className="border border-border gap-1.5 text-sm h-8"
-                onClick={() => window.open(unlock.full_profile_url!, '_blank')}
+                onClick={() => openExternal(unlock.full_profile_url)}
               >
                 <User className="h-3.5 w-3.5" />
                 {t('matches_full_profile')}

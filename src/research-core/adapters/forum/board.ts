@@ -37,6 +37,7 @@ import { contentHash } from '../../normalize/hash.ts';
 import { detectLanguage } from '../../normalize/language.ts';
 import { classifyDirection } from '../../signals/direction.ts';
 import type { ResearchLanguage } from '../../discovery/lexicon.ts';
+import { forumProfileUrl } from '../../discovery/source-link.ts';
 
 export const FORUM_READER_VERSION = 'forum-board-1.0.0';
 
@@ -61,6 +62,12 @@ export interface ForumSourceConfig {
   postDelimiter: { pattern: RegExp; idGroup: number };
   /** The poster's public name, inside a post block. */
   authorPattern?: RegExp;
+  /**
+   * The poster's public profile, inside a post block: the MEMBER ID only.
+   * The URL is rebuilt from the id (forumProfileUrl), so a reader's session
+   * parameter never becomes part of an author's identity.
+   */
+  authorProfile?: { pattern: RegExp; idGroup: number };
   /** When the post says it was written, inside a post block. */
   datePattern?: RegExp;
   /**
@@ -81,6 +88,8 @@ export interface ForumPost {
   topicId: string;
   topicUrl: string;
   authorName: string | null;
+  /** The poster's public profile page, when the board links one. */
+  authorUrl: string | null;
   /** ISO day, when the board states one. Never the time we read it. */
   publishedAt: string | null;
   text: string;
@@ -199,7 +208,12 @@ export function readTopic(html: string, url: string, config: ForumSourceConfig):
       ? isoDay(config.datePattern.exec(visibleText(block))?.[1] ?? '')
       : null;
 
-    posts.push({ postId, topicId, topicUrl: url, authorName, publishedAt, text });
+    const memberId = config.authorProfile
+      ? decodeEntities(block).match(config.authorProfile.pattern)?.[config.authorProfile.idGroup] ?? null
+      : null;
+    const authorUrl = forumProfileUrl(url, memberId);
+
+    posts.push({ postId, topicId, topicUrl: url, authorName, authorUrl, publishedAt, text });
   }
   return posts;
 }
@@ -210,6 +224,7 @@ export interface ForumObservation {
   sourceUrl: string;
   contentUrl: string;
   authorName: string | null;
+  authorUrl: string | null;
   originalText: string;
   language: ResearchLanguage | null;
   publishedAt: string | null;
@@ -242,6 +257,7 @@ export function observe(post: ForumPost, config: ForumSourceConfig): ForumObserv
     sourceUrl: post.topicUrl,
     contentUrl: `${post.topicUrl}&view=findpost&p=${post.postId}`,
     authorName: post.authorName,
+    authorUrl: post.authorUrl,
     originalText: post.text,
     language: detected?.reliable ? (detected.language as ResearchLanguage) : null,
     publishedAt: post.publishedAt,

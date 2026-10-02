@@ -43,6 +43,7 @@ import { loadDiscoverySettings } from '../_shared/discoverySettings.ts';
 import { createPortalRuntime } from '../../../src/research-core/market/runtime.ts';
 import { observe, readTopic, topicUrls } from '../../../src/research-core/adapters/forum/board.ts';
 import { forumSourceById } from '../../../src/research-core/adapters/forum/sources.ts';
+import { safeWebUrl } from '../../../src/research-core/discovery/source-link.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -241,8 +242,16 @@ async function persist(
     source_id: source.id,
     platform: 'FORUM',
     external_id: signal.externalId,
-    source_url: signal.sourceUrl,
+    /*
+     * THE EXACT POST, not its thread: one click from a HOMATCH result must land
+     * on the post that produced it (forum.ge's findpost anchor). The thread is
+     * kept as the parent. The author's public profile is the board's own
+     * showuser page; a link that is not a real http(s) URL is never stored.
+     */
+    source_url: safeWebUrl(signal.contentUrl) ?? safeWebUrl(signal.sourceUrl),
+    parent_url: safeWebUrl(signal.sourceUrl),
     author_public_name: signal.authorName,
+    author_public_url: safeWebUrl(signal.authorUrl),
     original_text: signal.originalText,
     /* OBSERVED on the post. A Russian post on a Georgian board is Russian. */
     language: signal.language,

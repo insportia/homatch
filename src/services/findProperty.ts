@@ -124,7 +124,24 @@ export interface FindPropertyResult {
     language: string | null;
     source: string | null;
   } | null;
+  /**
+   * Where the result came from, as the source provided it: the exact post or
+   * listing, its channel / board / site, the author, and the post as written.
+   * Every field is null when the source did not give it; links are server-validated.
+   */
+  attribution?: SourceAttribution | null;
   supply?: { role: string | null; broker: BrokerDisclosure | null };
+}
+
+export interface SourceAttribution {
+  platform: string;
+  sourceName: string | null;
+  sourceUrl: string | null;
+  threadUrl: string | null;
+  permalink: string | null;
+  authorName: string | null;
+  authorUrl: string | null;
+  originalText: string | null;
 }
 
 export interface ResultsResponse {

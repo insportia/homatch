@@ -14296,6 +14296,19 @@ const en = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   rend_edit_failed: 'Your change is saved, but the picture could not be updated — nothing was charged.',
   rend_edit_retry: 'Update the picture again',
+
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_attr_open_post: 'Open original post',
+  p2d_attr_open_listing: 'Open original listing',
+  p2d_attr_posted_by: 'Posted by',
+  p2d_attr_source: 'Source',
+  p2d_attr_thread: 'Thread',
+  p2d_attr_original_text: 'Original post',
+  p2d_attr_show_more: 'Show full text',
+  p2d_attr_show_less: 'Show less',
+  p2d_attr_platform_telegram: 'Telegram',
+  p2d_attr_platform_forum: 'Forum',
+  p2d_attr_platform_portal: 'Property site',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -28506,6 +28519,19 @@ const ka: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   rend_edit_failed: 'ცვლილება შენახულია, მაგრამ სურათის განახლება ვერ მოხერხდა — არაფერი ჩამოგეჭრათ.',
   rend_edit_retry: 'სურათის ხელახლა განახლება',
+
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_attr_open_post: 'ორიგინალი პოსტის გახსნა',
+  p2d_attr_open_listing: 'ორიგინალი განცხადების გახსნა',
+  p2d_attr_posted_by: 'ავტორი',
+  p2d_attr_source: 'წყარო',
+  p2d_attr_thread: 'თემა',
+  p2d_attr_original_text: 'ორიგინალი ტექსტი',
+  p2d_attr_show_more: 'სრული ტექსტის ჩვენება',
+  p2d_attr_show_less: 'ნაკლების ჩვენება',
+  p2d_attr_platform_telegram: 'Telegram',
+  p2d_attr_platform_forum: 'ფორუმი',
+  p2d_attr_platform_portal: 'უძრავი ქონების საიტი',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -42707,6 +42733,19 @@ const ru: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   rend_edit_failed: 'Изменение сохранено, но обновить изображение не удалось — ничего не списано.',
   rend_edit_retry: 'Обновить изображение снова',
+
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_attr_open_post: 'Открыть исходный пост',
+  p2d_attr_open_listing: 'Открыть исходное объявление',
+  p2d_attr_posted_by: 'Автор',
+  p2d_attr_source: 'Источник',
+  p2d_attr_thread: 'Тема',
+  p2d_attr_original_text: 'Исходный текст',
+  p2d_attr_show_more: 'Показать полностью',
+  p2d_attr_show_less: 'Свернуть',
+  p2d_attr_platform_telegram: 'Telegram',
+  p2d_attr_platform_forum: 'Форум',
+  p2d_attr_platform_portal: 'Сайт недвижимости',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -56906,6 +56945,19 @@ const tr: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   rend_edit_failed: 'Değişikliğiniz kaydedildi ancak görsel güncellenemedi — ücret alınmadı.',
   rend_edit_retry: 'Görseli yeniden güncelle',
+
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_attr_open_post: 'Orijinal gönderiyi aç',
+  p2d_attr_open_listing: 'Orijinal ilanı aç',
+  p2d_attr_posted_by: 'Paylaşan',
+  p2d_attr_source: 'Kaynak',
+  p2d_attr_thread: 'Konu',
+  p2d_attr_original_text: 'Orijinal metin',
+  p2d_attr_show_more: 'Tamamını göster',
+  p2d_attr_show_less: 'Daha az göster',
+  p2d_attr_platform_telegram: 'Telegram',
+  p2d_attr_platform_forum: 'Forum',
+  p2d_attr_platform_portal: 'Emlak sitesi',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -71105,6 +71157,19 @@ const ar: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   rend_edit_failed: 'تم حفظ التغيير، لكن تعذّر تحديث الصورة — لم يُخصم شيء.',
   rend_edit_retry: 'حدّث الصورة مرة أخرى',
+
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_attr_open_post: 'فتح المنشور الأصلي',
+  p2d_attr_open_listing: 'فتح الإعلان الأصلي',
+  p2d_attr_posted_by: 'نشره',
+  p2d_attr_source: 'المصدر',
+  p2d_attr_thread: 'الموضوع',
+  p2d_attr_original_text: 'النص الأصلي',
+  p2d_attr_show_more: 'عرض النص كاملًا',
+  p2d_attr_show_less: 'عرض أقل',
+  p2d_attr_platform_telegram: 'تيليغرام',
+  p2d_attr_platform_forum: 'منتدى',
+  p2d_attr_platform_portal: 'موقع عقارات',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -85304,6 +85369,19 @@ const he: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   rend_edit_failed: 'השינוי נשמר, אך לא ניתן היה לעדכן את התמונה — לא חויבת.',
   rend_edit_retry: 'עדכן את התמונה שוב',
+
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_attr_open_post: 'פתיחת הפוסט המקורי',
+  p2d_attr_open_listing: 'פתיחת המודעה המקורית',
+  p2d_attr_posted_by: 'פורסם על ידי',
+  p2d_attr_source: 'מקור',
+  p2d_attr_thread: 'שרשור',
+  p2d_attr_original_text: 'הטקסט המקורי',
+  p2d_attr_show_more: 'הצגת הטקסט המלא',
+  p2d_attr_show_less: 'הצגה מקוצרת',
+  p2d_attr_platform_telegram: 'טלגרם',
+  p2d_attr_platform_forum: 'פורום',
+  p2d_attr_platform_portal: 'אתר נדל״ן',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

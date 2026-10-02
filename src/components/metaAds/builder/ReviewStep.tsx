@@ -10,14 +10,15 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { checkMedia, GOAL_SPECS, PLACEMENTS, type Placement, resolveCta } from '@/lib/metaAds/payload';
 import type { MetaGoal } from '@/lib/metaAds/strategy';
-import type { MetaCampaignRow, MetaCreativeRow, MetaStatus, PreflightResult, StrategyPreview } from '@/services/metaAds';
+import { money, type MetaCampaignRow, type MetaCreativeRow, type MetaStatus, type PreflightResult, type StrategyPreview } from '@/services/metaAds';
 import { ChoiceCard, StepShell, VerdictBadge } from './ui';
 import { selectedAsset, preflightDetails, handledTasks } from './steps';
 import { FinancialSummary, type Totals } from './BudgetStep';
 import { StrategyCard } from './StrategyCard';
 import { FundingCard } from './FundingCard';
 import { regionName } from './LocationPicker';
-import { effectiveRadiusKm, housingRuleFor } from './masterLogic';
+import { advertiserCountryOf, effectiveRadiusKm, geographyGroups, housingRuleFor } from './masterLogic';
+import { More } from './FinishKit';
 import { languageName } from './AudienceStep';
 
 export function PlacementsStep({ campaign, status, creatives, recommended, patch }: {
@@ -134,7 +135,7 @@ export function ReviewStep({ campaign, status, creatives, totals, pricing, recom
   const form = (status?.assets ?? []).find((a) => a.kind === 'LEAD_FORM' && a.external_id === campaign.destination?.formId) ?? selectedAsset(status, 'LEAD_FORM');
   // The server's rule (engine.strategyInputFor → declaredSpecialAdCategories), not a guess.
   const chosenLocs = campaign.targeting?.locations?.length ? campaign.targeting.locations : (status?.settings.countries ?? ['GE']).map((c) => ({ countryCode: c }));
-  const rule = housingRuleFor(campaign, chosenLocs);
+  const rule = housingRuleFor(campaign, chosenLocs, advertiserCountryOf(status));
   const housing = rule.restricted;
   const locs = campaign.targeting?.locations?.length
     ? campaign.targeting.locations.map((l) => (l.type === 'country' ? regionName(l.key, lang) : l.type === 'city' || l.type === 'pin' ? `${l.name} (+${t('mm_b_loc_radius_km', { km: String(effectiveRadiusKm(l.radiusKm, rule.minRadiusKm)) })})` : l.name))
@@ -144,6 +145,19 @@ export function ReviewStep({ campaign, status, creatives, totals, pricing, recom
   const eff = strategy?.targeting?.effective;
   const placements = campaign.placements?.mode === 'CUSTOM' ? (campaign.placements.list ?? []) : recommended;
   const withMedia = creatives.filter((c) => c.media.length);
+  const shortfall = Number(strategy?.funding?.shortfallCents ?? 0) > 0;
+  const geo = geographyGroups(chosenLocs as never).map((g) => {
+    const places = g.places.map((l: { type: string; name: string; radiusKm?: number | null }) =>
+      (l.type === 'city' || l.type === 'pin' ? `${l.name} · ${effectiveRadiusKm(l.radiusKm, rule.minRadiusKm)} km` : l.name));
+    return places.length ? `${regionName(g.countryCode, lang)} → ${places.join(', ')}` : regionName(g.countryCode, lang);
+  }).join(' + ');
+  const daily = Number(campaign.daily_budget_cents ?? 0);
+  const summary: Array<[string, React.ReactNode, string]> = [
+    [t('madsb_review_objective'), t(`mads_goal_${goal.toLowerCase()}` as never), 'goal'],
+    [t('madsb_review_location'), geo, 'audience'],
+    [t('mads_budget_daily'), <span className="whitespace-nowrap" dir="ltr">{`${money(daily)} × ${campaign.duration_days ?? 0}`}</span>, 'budget'],
+    [t('madsb_review_creative'), `${t('madsb_review_media_count', { n: String(withMedia.length) })}${priorityCount ? ` · ★ ${priorityCount}` : ''}`, 'creative'],
+  ];
 
   const Block = ({ title, step, rows }: { title: string; step: string; rows: Array<[string, React.ReactNode]> }) => (
     <div className="rounded-xl border border-border p-3.5">
@@ -163,53 +177,24 @@ export function ReviewStep({ campaign, status, creatives, totals, pricing, recom
 
   return (
     <StepShell eyebrow={t('madsb_step_review')} title={t('madsb_review_title')} lead={t('madsb_review_lead')}>
-      {onName && <div className="mb-3"><CampaignNameField value={campaign.name ?? ''} suggestion={nameSuggestion} onSave={onName} /></div>}
-      {insights}
-      <div className="grid gap-3 md:grid-cols-2">
-        <Block title={t('madsb_review_campaign')} step="goal" rows={[
-          [t('madsb_review_objective'), t(`mads_goal_${goal.toLowerCase()}` as never)],
-          [t('madsb_review_destination'), spec.needsLeadForm ? (form?.name ?? '—') : spec.needsMessagingApp ? t(`madsb_msg_${String(campaign.destination?.messagingApp ?? 'messenger').toLowerCase().replace('instagram_direct', 'instagram')}` as never) : <span dir="ltr">{campaign.destination?.url ?? '—'}</span>],
-          [t('madsb_review_identity'), `${page?.name ?? '—'}${ig ? ` · ${ig.name}` : ''}`],
-          [t('mads_conn_ad_account'), acct?.name ?? '—'],
-        ]} />
-        <Block title={t('madsb_review_audience')} step="audience" rows={[
-          [t('madsb_review_location'), <span dir="auto">{locs.join(', ')}</span>],
-          ...(eff ? [[t('mm_b_who_title'), `${t('mm_b_age_range', { min: String(eff.ageMin), max: eff.ageMax >= 65 ? '65+' : String(eff.ageMax) })} · ${t(`mm_b_gender_${eff.gender === 'MALE' || eff.gender === 'FEMALE' ? eff.gender : 'ALL'}`)}`] as [string, React.ReactNode]] : []),
-          [t('mm_f_lang_title'), langs.length ? langs.join(', ') : t('mm_f_lang_all')],
-          ...(campaign.targeting?.international?.enabled ? [[t('mm_f_intl_title'), (campaign.targeting.international.markets ?? []).map((m) => regionName(m, lang)).join(', ') || t('mm_f_on')] as [string, React.ReactNode]] : []),
-          [t('madsb_review_audience_type'), campaign.audience_id ? t('madsb_audience_retarget') : t('mads_audience_broad')],
-          ...(housing ? [[t('madsb_review_audience'), t('mm_f_meta_rule_short')] as [string, React.ReactNode]] : []),
-        ]} />
-        <Block title={t('madsb_review_creative')} step="creative" rows={[
-          [t('madsb_review_media'), t('madsb_review_media_count', { n: String(withMedia.length) })],
-          ...(priorityCount ? [[t('mm_f_priority_title'), `⭐ ${priorityCount}`] as [string, React.ReactNode]] : []),
-          [t('madsb_field_primary'), <span className="line-clamp-2">{withMedia[0]?.primary_text || '—'}</span>],
-          [t('madsb_field_headline'), withMedia[0]?.headline || '—'],
-          [t('madsb_field_cta'), t(`madsb_cta_${resolveCta(goal, withMedia[0]?.cta, campaign.destination?.messagingApp ?? null).toLowerCase()}` as never)],
-        ]} />
-        <Block title={t('madsb_review_delivery')} step="placements" rows={[
-          [t('madsb_step_placements'), campaign.placements?.mode === 'CUSTOM' ? t('mads_placements_custom') : t('mads_placements_reco')],
-          ['', <span className="text-2xs">{placements.map((p) => t(`mads_pl_${p}` as never)).join(' · ')}</span>],
-          ...(spec.needsPixel ? [[t('madsb_review_tracking'), `${pixel?.name ?? '—'} · ${spec.pixelEvent}`] as [string, React.ReactNode]] : []),
-          [t('madsb_review_schedule'), t('madsb_review_schedule_v', { days: String(campaign.duration_days ?? 0) })],
-        ]} />
-      </div>
-
-      <FinancialSummary totals={totals} pricing={pricing} billing={status?.settings.budgetBilling} />
-      <StrategyCard preview={strategy} loading={strategyLoading} failed={strategyFailed} />
-      <FundingCard funding={strategy?.funding ?? null} loading={strategyLoading}
-        currency={campaign.currency || status?.wallet?.currency || 'USD'} billing={status?.settings.budgetBilling} />
-
-      <div className="rounded-2xl border border-[hsl(var(--gold-border))]/60 bg-[hsl(var(--gold-soft))]/60 p-4">
-        <p className="flex items-center gap-2 text-sm font-semibold text-foreground"><Wand2 className="h-4 w-4 text-[hsl(var(--gold-ink))]" />{t('madsb_handles_title')}</p>
-        <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">{t('madsb_handles_lead')}</p>
-        <ul className="mt-3 grid gap-x-4 gap-y-1.5 text-[13px] sm:grid-cols-2">
-          {handledTasks(goal, { hasInstagram: !!ig, placementsMode: campaign.placements?.mode ?? 'RECOMMENDED', housing }).map((k) => (
-            <li key={k} className="flex items-start gap-2 text-foreground"><CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[hsl(152_54%_30%)]" />{t(`madsb_handles_${k}` as never)}</li>
+      {onName && <CampaignNameField value={campaign.name ?? ''} suggestion={nameSuggestion} onSave={onName} />}
+      {/* SUMMARY FIRST — about one phone screen: what runs, where, for how much. */}
+      <div data-mm-review-summary="" className="overflow-hidden rounded-2xl border border-[hsl(var(--gold-border))]/60 bg-card shadow-card">
+        <dl className="divide-y divide-border text-sm">
+          {summary.map(([k, v, step]) => (
+            <div key={k} className="flex items-center gap-3 px-3.5 py-2.5">
+              <dt className="w-24 shrink-0 text-[13px] text-muted-foreground sm:w-32">{k}</dt>
+              <dd className="min-w-0 flex-1 font-medium leading-snug text-foreground" dir="auto">{v}</dd>
+              <button type="button" onClick={() => onEdit(step)} aria-label={`${t('madsb_edit')} · ${k}`}
+                className="inline-flex min-h-11 shrink-0 items-center rounded-full px-2.5 text-2xs font-semibold text-[hsl(var(--gold-ink))] hover:bg-[hsl(var(--gold-soft))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">{t('madsb_edit')}</button>
+            </div>
           ))}
-        </ul>
-        <p className="mt-3 text-2xs leading-relaxed text-muted-foreground">{t('madsb_experience_note')}</p>
+        </dl>
       </div>
+      {insights}
+      <FinancialSummary totals={totals} pricing={pricing} billing={status?.settings.budgetBilling} />
+      {shortfall && <FundingCard funding={strategy?.funding ?? null} loading={strategyLoading}
+        currency={campaign.currency || status?.wallet?.currency || 'USD'} billing={status?.settings.budgetBilling} />}
 
       <div className="overflow-hidden rounded-2xl bg-[#0C1119] p-5 text-white shadow-hover">
         <p className="flex items-center gap-2 text-2xs font-semibold uppercase tracking-[0.14em] text-[hsl(38_92%_60%)]"><ShieldCheck className="h-4 w-4" />{t('madsb_preflight_title')}</p>
@@ -243,7 +228,7 @@ export function ReviewStep({ campaign, status, creatives, totals, pricing, recom
           </>
         )}
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          <Button onClick={onPreflight} disabled={running} className="border border-white/40 bg-white text-[#0C1119] hover:bg-white/90">
+          <Button onClick={onPreflight} disabled={running} data-mm-run-check="" className="border border-white/40 bg-white text-[#0C1119] hover:bg-white/90">
             {running ? <Loader2 className="h-4 w-4 animate-spin" /> : t(preflight ? 'madsb_preflight_again' : 'mads_run_preflight')}
           </Button>
           <Button onClick={onLaunch} disabled={!canLaunch || running} aria-describedby={launchHint ? 'mm-b-launch-hint' : undefined}
@@ -254,6 +239,57 @@ export function ReviewStep({ campaign, status, creatives, totals, pricing, recom
         {launchHint && <p id="mm-b-launch-hint" data-mm-launch-hint="" className="mt-2 text-[13px] font-medium text-[hsl(38_92%_66%)]">{t(launchHint as never)}</p>}
         <p className="mt-3 text-2xs leading-relaxed text-white/60">{t('mads_meta_review_note')}</p>
       </div>
+
+      {/* Everything else, folded: the full build, the plan, what HOMATCH handles. */}
+      <More label={t('mm_m_review_all_details')} data-mm-review-details="">
+        <div className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-2">
+            <Block title={t('madsb_review_campaign')} step="goal" rows={[
+              [t('madsb_review_objective'), t(`mads_goal_${goal.toLowerCase()}` as never)],
+              [t('madsb_review_destination'), spec.needsLeadForm ? (form?.name ?? '—') : spec.needsMessagingApp ? t(`madsb_msg_${String(campaign.destination?.messagingApp ?? 'messenger').toLowerCase().replace('instagram_direct', 'instagram')}` as never) : <span dir="ltr">{campaign.destination?.url ?? '—'}</span>],
+              [t('madsb_review_identity'), `${page?.name ?? '—'}${ig ? ` · ${ig.name}` : ''}`],
+              [t('mads_conn_ad_account'), acct?.name ?? '—'],
+            ]} />
+            <Block title={t('madsb_review_audience')} step="audience" rows={[
+              [t('madsb_review_location'), <span dir="auto">{locs.join(', ')}</span>],
+              ...(eff ? [[t('mm_b_who_title'), `${t('mm_b_age_range', { min: String(eff.ageMin), max: eff.ageMax >= 65 ? '65+' : String(eff.ageMax) })} · ${t(`mm_b_gender_${eff.gender === 'MALE' || eff.gender === 'FEMALE' ? eff.gender : 'ALL'}`)}`] as [string, React.ReactNode]] : []),
+              [t('mm_f_lang_title'), langs.length ? langs.join(', ') : t('mm_f_lang_all')],
+              ...(campaign.targeting?.international?.enabled ? [[t('mm_f_intl_title'), (campaign.targeting.international.markets ?? []).map((m) => regionName(m, lang)).join(', ') || t('mm_f_on')] as [string, React.ReactNode]] : []),
+              [t('madsb_review_audience_type'), campaign.audience_id ? t('madsb_audience_retarget') : t('mads_audience_broad')],
+              ...(housing ? [[t('madsb_review_audience'), t('mm_f_meta_rule_short')] as [string, React.ReactNode]] : []),
+            ]} />
+            <Block title={t('madsb_review_creative')} step="creative" rows={[
+              [t('madsb_review_media'), t('madsb_review_media_count', { n: String(withMedia.length) })],
+              ...(priorityCount ? [[t('mm_f_priority_title'), `⭐ ${priorityCount}`] as [string, React.ReactNode]] : []),
+              [t('madsb_field_primary'), <span className="line-clamp-2">{withMedia[0]?.primary_text || '—'}</span>],
+              [t('madsb_field_headline'), withMedia[0]?.headline || '—'],
+              [t('madsb_field_cta'), t(`madsb_cta_${resolveCta(goal, withMedia[0]?.cta, campaign.destination?.messagingApp ?? null).toLowerCase()}` as never)],
+            ]} />
+            <Block title={t('madsb_review_delivery')} step="placements" rows={[
+              [t('madsb_step_placements'), campaign.placements?.mode === 'CUSTOM' ? t('mads_placements_custom') : t('mads_placements_reco')],
+              ['', <span className="text-2xs">{placements.map((p) => t(`mads_pl_${p}` as never)).join(' · ')}</span>],
+              ...(spec.needsPixel ? [[t('madsb_review_tracking'), `${pixel?.name ?? '—'} · ${spec.pixelEvent}`] as [string, React.ReactNode]] : []),
+              [t('madsb_review_schedule'), t('madsb_review_schedule_v', { days: String(campaign.duration_days ?? 0) })],
+            ]} />
+          </div>
+
+
+          <StrategyCard preview={strategy} loading={strategyLoading} failed={strategyFailed} />
+          {!shortfall && <FundingCard funding={strategy?.funding ?? null} loading={strategyLoading}
+            currency={campaign.currency || status?.wallet?.currency || 'USD'} billing={status?.settings.budgetBilling} />}
+          <div className="rounded-2xl border border-[hsl(var(--gold-border))]/60 bg-[hsl(var(--gold-soft))]/60 p-4">
+            <p className="flex items-center gap-2 text-sm font-semibold text-foreground"><Wand2 className="h-4 w-4 text-[hsl(var(--gold-ink))]" />{t('madsb_handles_title')}</p>
+            <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">{t('madsb_handles_lead')}</p>
+            <ul className="mt-3 grid gap-x-4 gap-y-1.5 text-[13px] sm:grid-cols-2">
+              {handledTasks(goal, { hasInstagram: !!ig, placementsMode: campaign.placements?.mode ?? 'RECOMMENDED', housing }).map((k) => (
+                <li key={k} className="flex items-start gap-2 text-foreground"><CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[hsl(152_54%_30%)]" />{t(`madsb_handles_${k}` as never)}</li>
+              ))}
+            </ul>
+            <p className="mt-3 text-2xs leading-relaxed text-muted-foreground">{t('madsb_experience_note')}</p>
+          </div>
+
+        </div>
+      </More>
     </StepShell>
   );
 }

@@ -34,6 +34,21 @@ export const DEFAULT_ANALYSIS_PARAMS: AnalysisParams = {
   fatigueMinImpressions: 3000,
 };
 
+/**
+ * ONE LEARNING MODEL, told truthfully. A campaign that has not run has no
+ * evidence: it starts from HOMATCH's initial strategy. A running one collects
+ * Meta's own reported results; only once evidenceOf() finds a real signal do
+ * HOMATCH's recommendations lean on them (still RECOMMEND — nothing is applied
+ * without the owner). Signals are Meta's aggregate reporting (creatives,
+ * placements, Meta's own age/gender breakdowns) — no trait is ever inferred.
+ */
+export type LearningStage = 'NEW' | 'COLLECTING' | 'USING_SIGNALS';
+
+export function learningStage(launched: boolean, evidence: Evidence | null | undefined): LearningStage {
+  if (!launched) return 'NEW';
+  return !evidence || evidence === 'INSUFFICIENT_DATA' ? 'COLLECTING' : 'USING_SIGNALS';
+}
+
 export function evidenceOf(results: number, impressions: number, p: AnalysisParams = DEFAULT_ANALYSIS_PARAMS): Evidence {
   if (results >= p.highResults && impressions >= p.minImpressions * 5) return 'HIGH_CONFIDENCE';
   if (results >= p.meaningfulResults && impressions >= p.minImpressions) return 'MEANINGFUL_SIGNAL';

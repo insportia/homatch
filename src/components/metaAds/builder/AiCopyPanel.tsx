@@ -50,7 +50,7 @@ export function AiCopyPanel({ open, onOpenChange, campaignId, current, onAccept,
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
         <SheetHeader>
-          <SheetTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-[hsl(var(--gold-ink))]" />{t('madsb_ai_title')}</SheetTitle>
+          <SheetTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-[hsl(var(--gold-ink))]" />{t('mm_m_ai_help')}</SheetTitle>
           <SheetDescription>{t('madsb_ai_lead')}</SheetDescription>
         </SheetHeader>
 

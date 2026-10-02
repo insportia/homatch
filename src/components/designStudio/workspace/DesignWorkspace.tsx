@@ -18,7 +18,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
-  AlertTriangle, Armchair, ArrowLeft, Camera, Check, ChevronDown, CloudOff, Columns2, Download, Footprints, Info, Layers, LayoutGrid, Loader2, Maximize, Palette as PaletteIcon,
+  AlertTriangle, Armchair, ArrowLeft, Box, Camera, Check, ChevronDown, CloudOff, Columns2, Download, Footprints, Info, Layers, LayoutGrid, Loader2, Maximize, Palette as PaletteIcon,
   PanelLeftClose, PanelLeftOpen, Redo2, Scan, Share2, Sparkles, SquareDashed, Sun, Undo2, Image as ImageIcon,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -63,6 +63,7 @@ import { AiDesignPanel, type AiProposalItem } from './AiDesignPanel';
 import { WalkthroughOverlay } from './WalkthroughOverlay';
 import { ShareDialog } from './ShareDialog';
 import { DownloadDialog } from './DownloadDialog';
+import { FactoryBuildDialog } from './FactoryBuildDialog';
 import { pictureStill, ReferencePanel, useReconstructionFor } from './ReferencePanel';
 import { download } from './exportRender';
 import { fileSlug } from '@/lib/designStudio/exportFiles';
@@ -685,6 +686,7 @@ function Editor({
   const [walking, setWalking] = useState(false);
   const versionNameRef = useRef(version.name);
   const [shareOpen, setShareOpen] = useState<false | 'WALKTHROUGH' | 'DESIGN'>(false);
+  const [factoryOpen, setFactoryOpen] = useState(false);
   const [downloadOpen, setDownloadOpen] = useState(false);
   // The pictures this design was read from (if it was): shown on request, never over the whole view.
   const reference = useReconstructionFor(bundle.project.id, source);
@@ -1068,6 +1070,11 @@ function Editor({
           <button type="button" className={cn(TOOL_BUTTON, 'hidden sm:inline-flex')} disabled={!space || walking} onClick={() => { setSelection(null); setDownloadOpen(true); }} aria-label={t('ds_export_title')} title={t('ds_export_title')}>
             <Download className="h-4 w-4" aria-hidden="true" /><span className="hidden 2xl:inline">{t('ds_export_short')}</span>
           </button>
+          {source.kind === 'FLOORPLAN_SCENE' && source.floorplan_id && label.originKey !== 'ds_source_pictures' ? (
+            <button type="button" className={cn(TOOL_BUTTON, 'hidden sm:inline-flex')} disabled={!space || walking || !homatchUser} onClick={() => { setSelection(null); setFactoryOpen(true); }} aria-label={t('ds_factory_title')} title={t('ds_factory_title')} data-testid="ds-factory">
+              <Box className="h-4 w-4" aria-hidden="true" /><span className="hidden 2xl:inline">{t('ds_factory_short')}</span>
+            </button>
+          ) : null}
           <button type="button" className={TOOL_BUTTON} disabled={!space} onClick={() => setShareOpen('DESIGN')} aria-label={t('ds_share_title')} title={space ? t('ds_share_title') : t('ds_share_error_source')}>
             <Share2 className="h-4 w-4" aria-hidden="true" /><span className="hidden xl:inline">{t('ds_share_short')}</span>
           </button>
@@ -1234,6 +1241,21 @@ function Editor({
           fromPictures={label.originKey === 'ds_source_pictures'}
           pictureView={source ? pictureStill(reference, source) : null}
           onClose={() => setDownloadOpen(false)}
+        />
+      ) : null}
+      {factoryOpen && space && homatchUser ? (
+        <FactoryBuildDialog
+          userId={homatchUser.id}
+          projectId={projectId}
+          source={source}
+          versionId={version.id}
+          versionName={versionName}
+          space={space}
+          state={state}
+          assets={assets}
+          materials={materials}
+          onSaved={(id) => { setFactoryOpen(false); void Promise.resolve(onReload()).then(() => navigate(`/design-studio/${projectId}/design/${id}`)); }}
+          onClose={() => setFactoryOpen(false)}
         />
       ) : null}
       {shareOpen ? (

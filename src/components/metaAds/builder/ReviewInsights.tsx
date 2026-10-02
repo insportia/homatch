@@ -13,7 +13,7 @@ import {
 } from '@/lib/metaAds/audienceGuide';
 import { META_AGE_MAX, META_AGE_MIN } from '@/lib/metaAds/targeting';
 import { deliveryEstimate, localeSearch, type DeliveryEstimate, type MetaCampaignRow, type MetaCreativeRow, type MetaStatus, type TargetingIntentRow } from '@/services/metaAds';
-import { HelperCard, LearningCard } from './FinishKit';
+import { HelperCard, LearningCard, LearningStageCard } from './FinishKit';
 import { regionName } from './LocationPicker';
 import { languageName } from './AudienceStep';
 import { addLocation, isHousingOffer } from './masterLogic';
@@ -102,8 +102,42 @@ export function ReviewInsights({ campaign, status, creatives, patch, onEdit }: {
   };
   const fixLabel = (i: ConsistencyIssue) => (i.fix ? t(`mm_f_fix_${i.fix.kind}`, i.fix.kind === 'ADD_LANGUAGE' || i.fix.kind === 'TRANSLATE_COPY' ? { lang: languageName(i.fix.code, lang) } : undefined) : null);
 
+  const warnings = issues.filter((i) => i.severity === 'WARNING').length;
+  const [open, setOpen] = useState(false);
+  useEffect(() => { if (warnings) setOpen(true); }, [warnings]);
+  const estimateBox = (
+    <div className="mt-3 rounded-xl border border-dashed border-[hsl(var(--gold-border))]/70 bg-[hsl(var(--gold-soft))]/40 p-3" data-mm-estimate={estimate?.available ? 'meta' : estimate?.reason ?? 'pending'}>
+      {estimating ? (
+        <p className="flex items-center gap-2 text-[13px] text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />{t('mm_f_estimate_loading')}</p>
+      ) : estimate?.available && estimate.audience ? (
+        <>
+          <p className="text-sm font-semibold text-foreground">👥 {t('mm_f_estimate_audience', { lower: compact(estimate.audience.lower, lang), upper: compact(estimate.audience.upper, lang) })}</p>
+          <p className="mt-0.5 text-2xs text-muted-foreground">{t('mm_f_estimate_source')}</p>
+        </>
+      ) : (
+        <p className="text-[13px] leading-relaxed text-muted-foreground">{t('mm_f_estimate_none')}</p>
+      )}
+    </div>
+  );
+
   return (
     <div className="space-y-4">
+      {/* One line first: ready, or how many suggestions — the detail folds open on request. */}
+      <section data-mm-insights="" className="rounded-2xl border border-border bg-card p-3.5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="min-w-0 text-sm font-semibold text-foreground" data-mm-insights-summary={issues.length}>
+            {issues.length === 0 ? `✓ ${t('mm_m_review_ready')}` : `💡 ${t('mm_m_review_suggestions', { n: String(issues.length) })}`}
+          </p>
+          <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} data-mm-insights-toggle=""
+            className="inline-flex min-h-11 items-center rounded-full px-3 text-[13px] font-semibold text-[hsl(var(--gold-ink))] hover:bg-[hsl(var(--gold-soft))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">
+            {t(open ? 'mm_m_hide_details' : 'mm_m_view_details')}
+          </button>
+        </div>
+        {estimateBox}
+        {/* A new campaign has no results yet: it starts from the initial strategy. */}
+        <div className="mt-3"><LearningStageCard stage="NEW" /></div>
+      </section>
+      {open && (<>
       {/* 🧠 THE CAMPAIGN, EXPLAINED */}
       <section data-mm-story="" className="overflow-hidden rounded-2xl border border-[hsl(var(--gold-border))]/50 bg-gradient-to-br from-[hsl(var(--gold-soft))] via-card to-card shadow-card">
         <div className="border-b border-[hsl(var(--gold-border))]/40 px-4 py-3">
@@ -132,18 +166,6 @@ export function ReviewInsights({ campaign, status, creatives, patch, onEdit }: {
           </span>
         </div>
         <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">{t(`mm_f_room_${guide.room}_d`)}</p>
-        <div className="mt-3 rounded-xl border border-dashed border-[hsl(var(--gold-border))]/70 bg-[hsl(var(--gold-soft))]/40 p-3" data-mm-estimate={estimate?.available ? 'meta' : estimate?.reason ?? 'pending'}>
-          {estimating ? (
-            <p className="flex items-center gap-2 text-[13px] text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />{t('mm_f_estimate_loading')}</p>
-          ) : estimate?.available && estimate.audience ? (
-            <>
-              <p className="text-sm font-semibold text-foreground">👥 {t('mm_f_estimate_audience', { lower: compact(estimate.audience.lower, lang), upper: compact(estimate.audience.upper, lang) })}</p>
-              <p className="mt-0.5 text-2xs text-muted-foreground">{t('mm_f_estimate_source')}</p>
-            </>
-          ) : (
-            <p className="text-[13px] leading-relaxed text-muted-foreground">{t('mm_f_estimate_none')}</p>
-          )}
-        </div>
         <ul className="mt-3 space-y-1.5 text-[13px] leading-relaxed text-foreground">
           {guide.notes.filter((n) => n.key !== 'exp_audience_size').map((n, i) => <li key={i} className="flex gap-2"><span aria-hidden>•</span><span>{t(`mm_f_${n.key}`, vars(n.vars))}</span></li>)}
         </ul>
@@ -174,6 +196,7 @@ export function ReviewInsights({ campaign, status, creatives, patch, onEdit }: {
       </section>
 
       <LearningCard />
+      </>)}
     </div>
   );
 }

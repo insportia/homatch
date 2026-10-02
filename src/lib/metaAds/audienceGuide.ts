@@ -10,7 +10,7 @@
 // never a promise of results.
 
 import type { InternationalIntent, LanguageChoice, LocationChoice, TargetingIntent } from './targeting.ts';
-import { housingRule, reachedCountries, CITY_RADIUS_KM_DEFAULT } from './targeting.ts';
+import { effectiveLocations, housingRule, reachedCountries, CITY_RADIUS_KM_DEFAULT } from './targeting.ts';
 
 /* ── LANGUAGES ─────────────────────────────────────────────────────── */
 
@@ -79,7 +79,9 @@ const circleKm2 = (r: number) => Math.PI * r * r;
  * area the cities and pins cover decides it (Tbilisi at 17 km ≈ 900 km² is
  * balanced; a 10 km circle is very specific).
  */
-export function locationBreadth(locations: LocationChoice[], minRadiusKm: number | null = null): { breadth: Breadth; areaKm2: number | null } {
+export function locationBreadth(all: LocationChoice[], minRadiusKm: number | null = null): { breadth: Breadth; areaKm2: number | null } {
+  // What runs: a country refined by places inside it is measured as those places.
+  const locations = effectiveLocations(all);
   if (!locations.length) return { breadth: 'BROAD', areaKm2: null };
   if (locations.some((l) => l.type === 'country')) return { breadth: 'BROAD', areaKm2: null };
   const regions = locations.filter((l) => l.type === 'region').length;

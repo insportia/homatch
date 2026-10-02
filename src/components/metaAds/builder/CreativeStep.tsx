@@ -1,7 +1,7 @@
 // THE AD ITSELF — media guidance, validated uploads, the real ad fields, and
 // HOMATCH AI inline.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Clock, ImagePlus, Languages, Loader2, Star, Trash2, Sparkles, Smartphone, Square, RectangleVertical, XCircle } from 'lucide-react';
+import { Clock, ImagePlus, Languages, Loader2, Trash2, Sparkles, Smartphone, Square, RectangleVertical, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,7 +21,7 @@ import { StepShell, VerdictBadge } from './ui';
 import { AiCopyPanel } from './AiCopyPanel';
 import { AdviceList, CreativeBudgetAdvice } from './CreativeAdviceList';
 import { adviceBlocks, groupAdvice } from './masterLogic';
-import { HelperCard } from './FinishKit';
+import { HelperCard, More } from './FinishKit';
 import { detectCopyLanguage } from '@/lib/metaAds/audienceGuide';
 import { languageName } from './AudienceStep';
 
@@ -142,11 +142,16 @@ export function CreativeStep({ campaign, creatives, setCreatives, placements, on
 
   return (
     <StepShell eyebrow={t('madsb_step_creative')} title={t('madsb_creative_title')} lead={t('madsb_creative_lead')}>
-      <div className="grid gap-2 md:grid-cols-2">
-        <HelperCard emoji="🎨" tone="gold" title={t('mm_f_options_title')}>{t('mm_f_options_body')}</HelperCard>
-        <HelperCard emoji="⭐" tone="calm" title={t('mm_f_priority_title')}>{t('mm_f_priority_body')}</HelperCard>
+      {/* Guidance folded: the editors come first; nothing here looks like a choice. */}
+      <div className="flex flex-wrap gap-x-4">
+        <More label={t('mm_m_creative_how')} data-mm-creative-how="">
+          <div className="space-y-2 text-[13px] leading-relaxed text-muted-foreground">
+            <p><span className="font-semibold text-foreground">🎨 {t('mm_f_options_title')}</span> — {t('mm_f_options_body')}</p>
+            <p><span className="font-semibold text-foreground">★ {t('mm_f_priority_title')}</span> — {t('mm_f_priority_body')}</p>
+          </div>
+        </More>
+        <More label={t('mm_m_media_sizes')} data-mm-media-sizes=""><MediaGuidance placements={placements} /></More>
       </div>
-      <MediaGuidance placements={placements} />
       <div className="flex flex-wrap items-center gap-2">
         <input ref={fileRef} type="file" accept={ACCEPT} multiple className="hidden" onChange={(e) => upload(e.target.files)} />
         <Button type="button" onClick={() => fileRef.current?.click()} disabled={uploading > 0} className="gap-1.5">
@@ -233,10 +238,13 @@ function CreativeEditor({ creative, goal, messagingApp, placements, advice, held
     <div className={cn('rounded-2xl border bg-card p-3.5 shadow-card transition-colors sm:p-4', creative.priority ? 'border-[hsl(var(--gold-border))] ring-1 ring-[hsl(var(--gold-border))]/60' : 'border-border')}
       onFocusCapture={onFocus} data-mm-creative={creative.id} data-mm-priority={creative.priority ? 'true' : 'false'}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        {/* Binary and unmistakable: ☆ Make priority / ★ Priority — the glyph, the
+            words and aria-pressed all change, never the colour alone. */}
         <button type="button" aria-pressed={!!creative.priority} onClick={() => edit({ priority: !creative.priority })} data-mm-priority-toggle=""
-          className={cn('inline-flex min-h-[40px] items-center gap-1.5 rounded-full border px-3.5 text-[13px] font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]',
-            creative.priority ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold))] text-[#161309] shadow-sm' : 'border-border text-muted-foreground hover:border-[hsl(var(--gold-border))] hover:text-foreground')}>
-          <Star className={cn('h-4 w-4', creative.priority && 'fill-current')} aria-hidden />{t(creative.priority ? 'mm_f_priority_on' : 'mm_f_priority_set')}
+          aria-describedby={`mm-m-prio-${creative.id}`}
+          className={cn('inline-flex min-h-11 items-center gap-1.5 rounded-full border px-4 text-[13px] font-semibold transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))] focus-visible:ring-offset-1',
+            creative.priority ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold))] text-[#161309] shadow-sm' : 'border-[hsl(var(--gold-border))]/70 bg-card text-foreground hover:bg-[hsl(var(--gold-soft))]')}>
+          <span aria-hidden className="text-base leading-none">{creative.priority ? '★' : '☆'}</span>{t(creative.priority ? 'mm_m_priority_on' : 'mm_m_priority_make')}
         </button>
         {copyLang && (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-[hsl(var(--secondary))]/60 px-3 py-1 text-2xs font-medium text-foreground" data-mm-creative-lang={copyLang}>
@@ -244,9 +252,12 @@ function CreativeEditor({ creative, goal, messagingApp, placements, advice, held
           </span>
         )}
       </div>
+      <p id={`mm-m-prio-${creative.id}`} className={cn('-mt-1.5 mb-3 text-2xs leading-relaxed text-muted-foreground', !creative.priority && 'sr-only')} data-mm-priority-explain="">
+        {t('mm_m_priority_explain')}
+      </p>
       {translateTo && (
         <HelperCard emoji="🧠" tone="gold" className="mb-3" title={t('mm_f_lang_mismatch_title', { lang: languageName(translateTo, lang) })} data-mm-translate-suggest={translateTo}
-          action={<Button type="button" size="sm" className="gap-1.5" onClick={() => onAi(translateTo)}><Sparkles className="h-3.5 w-3.5" />{t('mm_f_translate_now', { lang: languageName(translateTo, lang) })}</Button>}>
+          action={<Button type="button" size="sm" className="min-h-11 gap-1.5" onClick={() => onAi(translateTo)}><Sparkles className="h-3.5 w-3.5" />{t('mm_f_translate_now', { lang: languageName(translateTo, lang) })}</Button>}>
           {t('mm_f_lang_mismatch_body')}
         </HelperCard>
       )}
@@ -283,19 +294,20 @@ function CreativeEditor({ creative, goal, messagingApp, placements, advice, held
         <div className="min-w-0 flex-1 space-y-2.5">
           <label className="block">
             <span className="mb-1 flex items-baseline justify-between text-[13px] font-medium text-foreground">
-              {t('madsb_field_primary')}<span className="text-2xs font-normal text-muted-foreground" dir="ltr">{creative.primary_text.length}/2200</span>
+              <span className="min-w-0">{t('mm_m_field_primary')}</span><span className="shrink-0 text-2xs font-normal text-muted-foreground" dir="ltr">{creative.primary_text.length}/2200</span>
             </span>
             <Textarea id={fid('primaryText')} rows={3} value={creative.primary_text} maxLength={2200}
-              placeholder={t('madsb_field_primary_ph')} onChange={(e) => edit({ primary_text: e.target.value })} />
+              placeholder={t('mm_m_field_primary_ph')} onChange={(e) => edit({ primary_text: e.target.value })} />
             <span className="mt-0.5 block text-2xs text-muted-foreground">{t('madsb_field_primary_d')}</span>
           </label>
           {needsHeadline && (
             <label className="block">
               <span className="mb-1 flex items-baseline justify-between text-[13px] font-medium text-foreground">
-                {t('madsb_field_headline')}<span className="text-2xs font-normal text-muted-foreground" dir="ltr">{creative.headline.length}/40</span>
+                <span className="min-w-0">{t('madsb_field_headline')}</span><span className="shrink-0 text-2xs font-normal text-muted-foreground" dir="ltr">{creative.headline.length}/40</span>
               </span>
               <Input id={fid('headline')} value={creative.headline} maxLength={255} placeholder={t('madsb_field_headline_ph')}
                 onChange={(e) => edit({ headline: e.target.value })} />
+              <span className="mt-0.5 block text-2xs text-muted-foreground">{t('mm_m_field_headline_d')}</span>
             </label>
           )}
           {needsHeadline && (
@@ -303,6 +315,7 @@ function CreativeEditor({ creative, goal, messagingApp, placements, advice, held
               <span className="mb-1 block text-[13px] font-medium text-foreground">{t('madsb_field_description')} <span className="text-2xs font-normal text-muted-foreground">{t('madsb_optional')}</span></span>
               <Input id={fid('description')} value={creative.description ?? ''} maxLength={255} placeholder={t('madsb_field_description_ph')}
                 onChange={(e) => edit({ description: e.target.value } as never)} />
+              <span className="mt-0.5 block text-2xs text-muted-foreground">{t('mm_m_field_description_d')}</span>
             </label>
           )}
           {options.length > 1 && (
@@ -330,10 +343,10 @@ function CreativeEditor({ creative, goal, messagingApp, placements, advice, held
           <AdviceList items={advice} />
           <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
             <span className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => onAi(null)} data-madsb-ai="">
-                <Sparkles className="h-3.5 w-3.5 text-[hsl(var(--gold-ink))]" />{t('mads_ai_assist')}
+              <Button type="button" variant="outline" size="sm" className="min-h-11 gap-1.5" onClick={() => onAi(null)} data-madsb-ai="">
+                <Sparkles className="h-3.5 w-3.5 text-[hsl(var(--gold-ink))]" />{t('mm_m_ai_help')}
               </Button>
-              <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => onAi(translateTo ?? (lang !== copyLang ? lang : 'en'))} data-mm-translate="">
+              <Button type="button" variant="outline" size="sm" className="min-h-11 gap-1.5" onClick={() => onAi(translateTo ?? (lang !== copyLang ? lang : 'en'))} data-mm-translate="">
                 <Languages className="h-3.5 w-3.5 text-[hsl(var(--gold-ink))]" />{t('mm_f_translate')}
               </Button>
             </span>

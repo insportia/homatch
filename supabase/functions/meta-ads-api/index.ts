@@ -24,12 +24,12 @@ import { ingestLead } from '../_shared/metaLeads.ts';
 import { callLlm, llmAvailable } from '../_shared/comm/llm.ts';
 import { factsPreserved, numbersIn } from '../../../src/lib/metaAds/audienceGuide.ts';
 import {
-  loadSettings, userToken, selectedAsset, pageToken, strategyInputFor, limitsOf, configFingerprint,
+  loadSettings, userToken, selectedAsset, pageToken, strategyInputFor, limitsOf, configFingerprint, domainCheck, readLeadTerms,
   runPreflight, publishCampaign, syncCampaign, reconcileAccountStatuses, propertyAuthorized, customerFeePercent, withoutInstagram, finalizeSettlement,
   type MetaSettings,
 } from './engine.ts';
 import { handleAction } from './actions.ts';
-import { instantFormsState } from '../../../src/lib/metaAds/instantForms.ts';
+import { afterTerms, instantFormsState } from '../../../src/lib/metaAds/instantForms.ts';
 import { readManagedState, setApproved, LifecycleError, assertNotSuspended } from './lifecycle.ts';
 import { monitorCampaign, monitorUser, maybeScanDuplicates, lifecycleEvent, runBriefs, emptyMonitorReport, statusChangeNotice } from './monitor.ts';
 
@@ -133,9 +133,16 @@ Deno.serve(async (req) => {
           const { count } = await sb.from('meta_connections').select('id', { count: 'exact', head: true }).contains('granted_scopes', INSTANT_FORM_SCOPES);
           offeredByLogin = (count ?? 0) > 0;
         }
-        const instantForms = instantFormsState({
+        /* The selected Page's Lead Ads Terms, as Meta last reported them
+           (assets_refresh / forms_recheck read leadgen_tos_accepted). */
+        const formPage = (assets ?? []).find((a: any) => a.kind === 'PAGE' && a.selected && a.status !== 'UNAVAILABLE');
+        const tos = formPage?.capabilities?.leadgen_tos_accepted;
+        const formsInput = {
           goalEnabled: settings.goalsEnabled.includes('LEADS_ON_META'), granted, required: INSTANT_FORM_SCOPES, offeredByLogin, mock: mode === 'MOCK',
-        });
+          pageSelected: !!formPage, termsAccepted: typeof tos === 'boolean' ? tos : null,
+        };
+        const instantForms = instantFormsState(formsInput);
+        const instantFormsNext = afterTerms(formsInput);
         const expiresAt = conn?.token_expires_at ? Date.parse(conn.token_expires_at) : NaN;
         /* "Connected" is a claim about a usable credential, not about a row:
            the stored token must exist and open with this deployment's key. */
@@ -162,6 +169,9 @@ Deno.serve(async (req) => {
             ? { status: conn.status, health, granted_scopes: granted, missing_scopes: missingScopes,
               instant_forms_available: hasScopes(granted, INSTANT_FORM_SCOPES),
               instant_forms: instantForms,
+              // What remains once the terms are accepted, and whether Meta reported them accepted.
+              instant_forms_next: instantFormsNext,
+              lead_terms: typeof tos === 'boolean' ? tos : null,
               token_expires_at: conn.token_expires_at, last_checked_at: conn.last_checked_at,
               // A named reason only (e.g. TOKEN_ENCRYPTION_NOT_CONFIGURED), never a raw error.
               error_reason: typeof conn.last_error === 'string' && /^[A-Z_]{3,64}$/.test(conn.last_error) ? conn.last_error : null }
@@ -283,7 +293,10 @@ Deno.serve(async (req) => {
         const mark = (kind: string, id: string) => { (seen[kind] ??= []).push(id); };
         for (const b of biz as any[]) { await up('BUSINESS', b.id, b.name); mark('BUSINESS', b.id); }
         for (const p of pages as any[]) {
-          await up('PAGE', p.id, p.name); mark('PAGE', p.id);
+          // Lead Ads Terms, as Meta reports them for this Page (read with its token; never accepted here).
+          const terms = p.access_token ? await readLeadTerms(p.id, p.access_token) : { accepted: null, reason: 'NO_PAGE_TOKEN' };
+          await up('PAGE', p.id, p.name, null, { leadgen_tos_accepted: terms.accepted, leadgen_tos_reason: terms.reason, leadgen_tos_checked_at: new Date().toISOString() });
+          mark('PAGE', p.id);
           // Lead forms live on the Page and are read with its token, which is
           // used here and discarded — never stored. Only when Instant Forms'
           // permissions were granted (pages_manage_ads).
@@ -299,7 +312,15 @@ Deno.serve(async (req) => {
           }
         }
         for (const a of accts as any[]) {
-          await up('AD_ACCOUNT', a.id, a.name, a.business?.id, { account_status: a.account_status, currency: a.currency, disable_reason: a.disable_reason ?? null });
+          /* The advertiser's business country decides Meta's housing rule for a
+             US advertiser. Asked separately and tolerantly: if Meta does not
+             answer, it stays unknown — never guessed, never fatal. */
+          let businessCountry: string | null = null;
+          try {
+            const bc = await graph(`/${a.id}?fields=business_country_code`, { token, attempts: 1 }) as any;
+            businessCountry = /^[A-Z]{2}$/.test(String(bc?.business_country_code ?? '')) ? String(bc.business_country_code) : null;
+          } catch { /* not reported for this account */ }
+          await up('AD_ACCOUNT', a.id, a.name, a.business?.id, { account_status: a.account_status, currency: a.currency, disable_reason: a.disable_reason ?? null, business_country_code: businessCountry });
           mark('AD_ACCOUNT', a.id);
           /* Instagram accounts usable for ads, read from the ad account under
              ads_management — no instagram_basic. Not tied to one Page. */
@@ -334,6 +355,56 @@ Deno.serve(async (req) => {
         }
         await sb.from('meta_connections').update({ last_checked_at: new Date().toISOString() }).eq('user_id', uid);
         return json({ ok: true, counts: Object.fromEntries(Object.entries(seen).map(([k, v]) => [k, v.length])) });
+      }
+
+      /* ── LEADS: RE-CHECK WITH META ─────────────────────────────────────
+         After the owner returns from Meta's own Lead Ads Terms window (or
+         asks), read again what META says — permissions, the selected Page's
+         leadgen_tos_accepted, and whether its forms can be read. Nothing is
+         accepted, assumed or remembered here: the state is Meta's answer. */
+      case 'forms_recheck': {
+        if (mode === 'MOCK') return json({ ok: true, mode });
+        const { count: recent } = await sb.from('meta_funnel_events').select('id', { count: 'exact', head: true })
+          .eq('user_id', uid).eq('event', 'forms_recheck').gte('created_at', new Date(Date.now() - 3_600_000).toISOString());
+        if ((recent ?? 0) >= 60) return json({ error: 'RATE_LIMITED', code: 'RATE_LIMITED' }, 429);
+        await sb.from('meta_funnel_events').insert({ event: 'forms_recheck', user_id: uid });
+        const token = await userToken(sb, uid);
+        if (!token) return json({ error: 'NOT_CONNECTED', code: 'NOT_CONNECTED' }, 400);
+        const page = await selectedAsset(sb, uid, 'PAGE');
+        if (!page?.external_id) return json({ ok: true, checked: { page: false } });
+        // 1. Permissions, as Meta grants them now (a reconnect may have changed them).
+        let permissionsRead = false;
+        try {
+          const res = await graph('/me/permissions', { token, attempts: 1 });
+          const rows = (res.data as Array<{ status?: string; permission?: string }>) ?? [];
+          const granted = rows.filter((r) => r.status === 'granted').map((r) => String(r.permission));
+          const declined = rows.filter((r) => r.status === 'declined').map((r) => String(r.permission));
+          if (granted.length) {
+            await sb.from('meta_connections').update({ granted_scopes: granted, declined_scopes: declined, last_checked_at: new Date().toISOString() }).eq('user_id', uid);
+            permissionsRead = true;
+          }
+        } catch (e) {
+          if (e instanceof MetaApiError && e.normalized.action === 'RECONNECT') return json({ error: 'SESSION_EXPIRED', code: 'SESSION_EXPIRED' }, 401);
+        }
+        // 2. The Page's Lead Ads Terms, and 3. whether its forms can be read.
+        let terms: { accepted: boolean | null; reason: string | null } = { accepted: null, reason: 'NO_PAGE_TOKEN' };
+        let formsReadable: boolean | null = null;
+        const pt = await pageToken(token, page.external_id, { sb, userId: uid }).catch(() => null);
+        if (pt) {
+          terms = await readLeadTerms(page.external_id, pt);
+          const { data: conn } = await sb.from('meta_connections').select('granted_scopes').eq('user_id', uid).maybeSingle();
+          if (hasScopes(conn?.granted_scopes, INSTANT_FORM_SCOPES)) {
+            try { await graph(`/${page.external_id}/leadgen_forms?fields=id&limit=1`, { token: pt, attempts: 1 }); formsReadable = true; }
+            catch { formsReadable = false; }
+          }
+        }
+        const { data: row } = await sb.from('meta_assets').select('capabilities').eq('id', page.id).maybeSingle();
+        await sb.from('meta_assets').update({ capabilities: {
+          ...(row?.capabilities ?? {}), leadgen_tos_accepted: terms.accepted, leadgen_tos_reason: terms.reason,
+          leadgen_tos_checked_at: new Date().toISOString(), leadgen_forms_readable: formsReadable,
+        } }).eq('id', page.id);
+        // The builder reads the resulting state from `status`, the one place it is decided.
+        return json({ ok: true, checked: { page: true, permissions: permissionsRead, terms: terms.accepted, termsReason: terms.reason, formsReadable }, pageId: page.external_id });
       }
 
       case 'select_asset': {
@@ -482,6 +553,17 @@ Deno.serve(async (req) => {
         if ((await configFingerprint(sb, c)) !== c.preflight?.fingerprint || !c.plan) {
           await sb.from('meta_campaigns').update({ status: 'PREFLIGHT_REQUIRED' }).eq('id', c.id);
           return json({ error: 'PREFLIGHT_STALE', code: 'PREFLIGHT_STALE' }, 409);
+        }
+        // Real-estate scope, decided again on what is stored NOW: a browser
+        // cannot skip it, and a brief edited after the check is read too.
+        const scope = await domainCheck(sb, uid, c);
+        if (scope.state === 'BLOCKED') {
+          await sb.from('meta_campaigns').update({ status: 'PREFLIGHT_REQUIRED' }).eq('id', c.id);
+          return json({ error: 'OUT_OF_SCOPE', code: 'OUT_OF_SCOPE', reason: scope.verdict.reason }, 409);
+        }
+        if (scope.state === 'IN_REVIEW') {
+          await sb.from('meta_campaigns').update({ status: 'PREFLIGHT_REQUIRED' }).eq('id', c.id);
+          return json({ error: 'IN_REVIEW', code: 'IN_REVIEW' }, 409);
         }
         if (!canTransition(c.status, 'LAUNCHING')) return json({ error: 'BAD_TRANSITION' }, 409);
         // Campaign Guard: a suspended ad account launches nothing new through HOMATCH.
@@ -1067,6 +1149,7 @@ async function maintenance(sb: any, mode: 'REAL' | 'MOCK', settings: MetaSetting
 const COPY_SYSTEM = [
   'You write Meta (Facebook/Instagram) ad copy for HOMATCH customers — property owners, agents and small businesses in Georgia.',
   'Write in the requested targetLanguage. Be specific to the offer; use only facts present in context or current text or notes.',
+  'Tone: warm, positive and constructive — lead with what is genuinely attractive about the offer, in plain human words; never pushy, never negative about alternatives.',
   'Never invent prices, sizes, locations, amenities, discounts or deadlines. Never promise results, returns, approval or guaranteed income.',
   'For housing, never mention or target protected characteristics (race, religion, family status, disability, sex, age).',
   'primaryText: up to ~3 short lines; headline: up to 40 characters; description: optional, up to 30 characters.',

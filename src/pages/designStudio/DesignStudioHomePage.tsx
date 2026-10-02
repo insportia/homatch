@@ -31,7 +31,8 @@ import { compileSceneSpec } from '@/lib/designStudio/hybrid/compileSpec';
 import { designChecks } from '@/lib/designStudio/hybrid/designChecks';
 import { runDesignBuild } from '@/lib/designStudio/hybrid/designBuild';
 import { planMasterView, planRoomViews, maxRoomViews } from '@/lib/designStudio/renders/cameras';
-import type { MapEntry, PropertyDesignDNA, RenderProduct, RenderQuote, RenderRecord, SpecView } from '@/lib/designStudio/renders/contract';
+import type { MapEntry, ObjectMap, PropertyDesignDNA, RenderProduct, RenderQuote, RenderRecord, SpecView } from '@/lib/designStudio/renders/contract';
+import { compareMaps, type ConsistencyReport } from '@/lib/designStudio/renders/consistency';
 import { actionsFor, applyEdit, colourChoices, replacements, type EditChoice } from '@/lib/designStudio/renders/edits';
 import { REJECTION_KEY } from '@/lib/designStudio/rejectionKeys';
 import { planCamera } from '@/components/designStudio/workspace/FactoryBuildDialog';
@@ -278,24 +279,38 @@ function Home() {
     const built = (data.head.change_summary ?? []).some((c) => (c as { kind?: string })?.kind === 'FACTORY_BUILD');
     if (built || !homatchUser) { navigate(`/design-studio/${projectId}/walkthrough`); return; }
     setWalkPrep('BUILDING');
+    const approved = master.ready && sameDesign.has(master.ready.version_id) ? master.ready : null;
+    const approvedView = approved?.view ?? null;
     try {
       const canonical = data.source.canonical as CanonicalSpace;
       const checks = designChecks(data.space, data.state, data.assets, canonical);
       const result = await runDesignBuild({ state: copyState(data.state), checks: checks.dimensions }, {
         startFactory: (spec, pass) => startFactory({ projectId, versionId: data.head.id, pass, spec }),
         factoryStatus,
+        // The approved master camera again, with its object map: the build is checked against the approved picture.
         compile: (s, outputs) => compileSceneSpec({
           space: data.space, state: s, assets: data.assets, materials: data.materials, camera: planCamera(data.space),
+          views: approvedView ? [{ ...approvedView, id: 'check', samples: 16, width: 800, height: Math.round(800 / approvedView.aspect), objectMap: true }] : undefined,
           source: { kind: 'FLOOR_PLAN', architecture: 'OBSERVED', furnishing: 'DESIGN' }, render: { edge: 1200, samples: 48 }, outputs,
         }),
         planQa: async (renderAssetId) => (data.source.floorplan_id ? visualQa({ floorplanId: data.source.floorplan_id, renderAssetId, objects: [], rooms: data.space.rooms.map((r) => ({ key: r.id, kind: r.kind })) }).catch(() => null) : null),
         sleep: (ms) => new Promise((res) => setTimeout(res, ms)), now: () => Date.now(),
       });
       if (result.factory === 'USED') {
+        let consistency: ConsistencyReport | null = null;
+        if (approved?.legend && result.jobId) {
+          const poll = await factoryStatus(result.jobId).catch(() => null);
+          const ref = (poll?.outputs as { views?: Record<string, { legend?: { key: string } | null }> } | undefined)?.views?.check?.legend;
+          if (ref?.key) {
+            const url = (await signedUrls([ref.key], 300)).get(ref.key);
+            const built = url ? await fetch(url).then((r) => (r.ok ? r.json() : null)).catch(() => null) : null;
+            if (built?.entries) consistency = compareMaps(approved.legend, built as ObjectMap);
+          }
+        }
         const v = await createVersion({
           userId: homatchUser.id, projectId, sourceId: data.source.id, parentId: data.head.id, origin: 'BRANCH',
           name: t('p2h_version_factory'), state: copyState(result.state) as unknown as Record<string, unknown>,
-          changeSummary: [{ kind: 'FACTORY_BUILD', jobId: result.jobId, verdict: result.verdict, persistedBytes: result.persistedBytes, cost: result.cost, timings: result.timings, provenance: { architecture: 'SOURCE_DERIVED', furnishing: 'DESIGN_CHOICE' } }],
+          changeSummary: [{ kind: 'FACTORY_BUILD', jobId: result.jobId, verdict: result.verdict, persistedBytes: result.persistedBytes, cost: result.cost, timings: result.timings, consistency, provenance: { architecture: 'SOURCE_DERIVED', furnishing: 'DESIGN_CHOICE' } }],
         });
         if (data.dna) await saveDesignDna(v.id, data.dna);
       }

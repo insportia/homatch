@@ -168,3 +168,18 @@ test('edits: a recoloured piece drops its baked factory model; a moved one keeps
   const moved = applyEdit(entry, { action: 'MOVE', to: { x: c.x, y: c.y + 0.3 }, roomId: living.id }, baked, ctx, '');
   assert.ok(moved.ok && moved.state.objects[0].generated);
 });
+
+import { compareMaps } from '../renders/consistency.ts';
+
+test('consistency: the rebuilt picture is checked against the approved one — missing, extra, moved', () => {
+  const e = (id, kind, box, coverage = 0.02) => ({ color: '#000001', kind, id, roomId: null, coverage, box });
+  const approved = { width: 10, height: 10, entries: [e('sofa', 'OBJECT', [0.1, 0.1, 0.3, 0.3]), e('bed', 'OBJECT', [0.5, 0.5, 0.7, 0.7]), e('floor:r1', 'FLOOR', [0, 0, 1, 1], 0.4)] };
+  const same = compareMaps(approved, approved);
+  assert.equal(same.contradictions.length, 0);
+  assert.equal(same.agreement, 1);
+  const built = { width: 10, height: 10, entries: [e('sofa', 'OBJECT', [0.3, 0.3, 0.5, 0.5]), e('lamp', 'OBJECT', [0.8, 0.1, 0.85, 0.2]), e('floor:r1', 'FLOOR', [0, 0, 1, 1], 0.4)] };
+  const r = compareMaps(approved, built);
+  const codes = r.contradictions.map((c) => `${c.code}:${c.id}`).sort();
+  assert.deepEqual(codes, ['EXTRA:lamp', 'MISSING:bed', 'MOVED:sofa']);
+  assert.ok(r.agreement < 0.5);
+});

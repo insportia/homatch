@@ -57,6 +57,26 @@ export interface OpeningMesh {
   /** Metres from the floor to the bottom of the hole. */
   sillM: number;
   heightM: number;
+  /** How it closes (OpeningLeaf); absent when the drawing does not say. */
+  leaf?: import('@/services/developer/floorplan').OpeningLeaf | null;
+}
+
+/**
+ * A straight flight, in metres: it starts at the edge a→b (the first tread's
+ * front, the flight's full width) and climbs `runM` in the direction
+ * perpendicular to a→b that points into its footprint, `treads` equal steps
+ * up to `riseM`.
+ */
+export interface StairMesh {
+  id: string;
+  a: MetrePoint;
+  b: MetrePoint;
+  runM: number;
+  riseM: number;
+  treads: number;
+  direction: 'UP' | 'DOWN';
+  /** The footprint as drawn, counter-clockwise: walked around, never through. */
+  polygon: MetrePoint[];
 }
 
 export interface FloorMesh {
@@ -78,6 +98,8 @@ export interface GeneratedScene {
   ceilingHeightM: number;
   walls: WallMesh[];
   floors: FloorMesh[];
+  /** Absent on scenes generated before stairs were read (homatch-geo-1). */
+  stairs?: StairMesh[];
   /** Metres. The plan's own bounding box, after normalisation. */
   extent: { width: number; depth: number };
   /** What was verified and therefore built, and what was not. */

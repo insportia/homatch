@@ -13,7 +13,7 @@
 //
 // Pure: no three.js, no network.
 
-import type { FloorMesh, GeneratedScene, WallMesh } from '../floorplan/geometry.ts';
+import type { FloorMesh, GeneratedScene, StairMesh, WallMesh } from '../floorplan/geometry.ts';
 import type { RoomKind } from '@/services/developer/floorplan';
 
 export interface Point { x: number; y: number }
@@ -78,6 +78,8 @@ export interface SpaceModel {
   walls: SpaceWall[];
   doors: SpaceDoor[];
   surfaces: SpaceSurface[];
+  /** Built architecture the design walks around and never moves (empty on older scenes). */
+  stairs: StairMesh[];
 }
 
 export const floorSurfaceId = (roomId: string) => `floor:${roomId}`;
@@ -234,7 +236,7 @@ export function buildSpaceModel(scene: GeneratedScene): SpaceModel {
     }
   }
 
-  return { ceilingHeightM: scene.ceilingHeightM, extent: scene.extent, rooms, walls, doors, surfaces };
+  return { ceilingHeightM: scene.ceilingHeightM, extent: scene.extent, rooms, walls, doors, surfaces, stairs: scene.stairs ?? [] };
 }
 
 /** Every surface that belongs to one room: its floor, ceiling and the wall faces looking into it. */

@@ -291,6 +291,23 @@ test('style codes and plan shape stay in step between server and browser', () =>
   }
 });
 
+test('the customer look is the same contract on the server and in the browser', () => {
+  const browser = read('src/lib/designStudio/planToHome.ts');
+  const server = read('supabase/functions/_shared/designStudio/designIntent.ts');
+  const list = (src, name) => (src.match(new RegExp(`${name} = \\[([^\\]]+)\\]`)) ?? [])[1]?.replace(/\s/g, '');
+  for (const name of ['MOODS', 'FLOOR_DIRECTIONS', 'WALL_DIRECTIONS', 'ACCENTS', 'PALETTES', 'FURNISHING_LEVELS']) {
+    assert.ok(list(browser, name), `browser lacks ${name}`);
+    assert.equal(list(server, name), list(browser, name), `${name} drifted between server and browser`);
+  }
+  const cap = (src) => src.match(/FURNISHING_CAP: Record<FurnishingLevel, number> = (\{[^}]+\})/)[1];
+  assert.equal(cap(server), cap(browser), 'FURNISHING_CAP drifted');
+  const fn = read('supabase/functions/design-studio-reconstruct/design.ts');
+  assert.match(fn, /offerFor\(fullCtx, brief\.preferences\)/, 'the model is not limited to what fits the look');
+  assert.match(fn, /intent: \{\s*plan, preferences: brief\.preferences, model: MODEL/, 'the validated intent is not recorded on the job');
+  assert.match(read('supabase/functions/_shared/designStudio/aiPlan.ts'), /applyIntent\(/, 'the plan is not held to the look');
+  assert.match(read('src/services/designStudio/ai.ts'), /export async function designFromPreferences\(/);
+});
+
 test('an AI proposal reaches a design only through the operation validator, as AI with its job', () => {
   const conv = read('src/lib/designStudio/aiPlan.ts');
   assert.match(conv, /validateOperation\(working, op, input\.ctx\)/);

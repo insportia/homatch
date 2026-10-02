@@ -12,6 +12,9 @@
 //   POST …/design-studio-reconstruct/render-start     quoted renders reserved, recorded, one factory pass started
 //   POST …/design-studio-reconstruct/render-status    renders advanced: factory → photoreal finish → structure check → settle
 //   POST …/design-studio-reconstruct/render-edit      one appearance edit inside a target's own mask, checked
+//   POST …/design-studio-reconstruct/design-spec           OpenAI's Design Specification from the customer's own source (generate.ts)
+//   POST …/design-studio-reconstruct/render-generate       an OpenAI-first picture (MASTER / ROOM / VARIANT): quoted, reserved, generated
+//   POST …/design-studio-reconstruct/render-generate-step  generated pictures advanced: image → scene → edit map → settle
 //
 // One function because the project is on a plan that caps how many edge
 // functions it may have, and production is at that cap: two new functions
@@ -29,6 +32,7 @@ import { handleFactory, handleFactoryDiscard, handleFactoryStatus, handleQa } fr
 import { handleProjectDelete } from './project.ts';
 import { handleRenderEdit, handleRenderQuote, handleRenderStart, handleRenderStatus } from './renders.ts';
 import { handleReconstruct } from './reconstruct.ts';
+import { handleDesignSpec, handleRenderGenerate, handleRenderGenerateStep } from './generate.ts';
 
 serve((req) => {
   const route = new URL(req.url).pathname.replace(/\/+$/, '').split('/').pop();
@@ -43,5 +47,8 @@ serve((req) => {
   if (route === 'render-start') return handleRenderStart(req);
   if (route === 'render-status') return handleRenderStatus(req);
   if (route === 'render-edit') return handleRenderEdit(req);
+  if (route === 'design-spec') return handleDesignSpec(req);
+  if (route === 'render-generate') return handleRenderGenerate(req);
+  if (route === 'render-generate-step') return handleRenderGenerateStep(req);
   return handleReconstruct(req);
 });

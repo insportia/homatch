@@ -9,9 +9,10 @@
 //   4. Style       six looks, one tap
 //   5. Quality     Smart budget / High quality / Premium, the price, Generate.
 //                  "Customise details" opens the detailed look (DesignChooser).
-//   6. Generate    the existing pipeline — architecture cached by its key, the
-//                  AI designer's intent, the factory, the master render —
-//                  resumable, never paid for twice
+//   6. Generate    OpenAI-first (planToHome.ts generateHome): architecture cached
+//                  by its key, OpenAI's Design Specification from the customer's
+//                  own source, ONE photorealistic master picture and its edit map
+//                  — no Blender, resumable, never paid for twice
 //   7. Result      the home opens on its photorealistic picture
 //
 // Every step is kept on the plan's review entry, so a reload lands where the
@@ -69,6 +70,8 @@ const ERROR_KEY: Record<string, string> = {
   DS_AI_FAILED: 'p2h_error_design',
   DS_PRICE_CHANGED: 'p2h_error_price_changed',
   DS_SOURCE_MISSING: 'p2h_error_not_buildable',
+  DS_RENDER_FAILED: 'sf_error_render',
+  DS_RATE_LIMITED: 'sf_error_busy',
 };
 
 const INPUT = 'h-10 w-full rounded-lg border border-[#D5D9E0] bg-white px-3 text-[15px] text-[#0C1119] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]';
@@ -351,7 +354,7 @@ export function FloorPlanFlow({
   const chosen = (): DesignPreferences | null => (style && quality ? lookPreferences(style, quality) : null);
 
   // ── Generate: resumable; a double tap is one run ────────────────────────
-  const generate = useCallback(async (preferences: DesignPreferences | null) => {
+  const generate = useCallback(async (preferences: DesignPreferences | null, retry = false) => {
     if (!plan || !doc || !calibration || running.current || !preferences) return;
     running.current = true;
     setBusy(true);
@@ -373,7 +376,7 @@ export function FloorPlanFlow({
       setPlan(fresh);
       const result = await generateHome({
         userId, projectId, projectName, plan: fresh, doc, decisions, anchors, calibration,
-        ceilingM: ceilingFinal, ceilingSource, preferences,
+        ceilingM: ceilingFinal, ceilingSource, preferences, look: style && quality ? { style, quality } : null, retry,
         confirmedCredits: quote?.credits ?? latestFlow(fresh)?.confirmedCredits ?? null,
         versionName: (k) => t(k === 'original' ? 'ds_version_original' : k === 'design' ? 'p2h_version_design' : 'p2h_version_factory'),
         onStage: mark,
@@ -495,7 +498,7 @@ export function FloorPlanFlow({
 
       {step === 'GENERATING' ? (
         <BuildingStep stages={stages} since={startFlow?.startedAt ? Date.parse(startFlow.startedAt) : undefined}
-          failed={genFailed} error={error} busy={busy} onRetry={() => { void generate(savedPrefs()); }} />
+          failed={genFailed} error={error} busy={busy} onRetry={() => { void generate(savedPrefs(), true); }} />
       ) : null}
 
       {needsDoc && !doc ? (

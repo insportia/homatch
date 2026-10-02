@@ -175,8 +175,75 @@ function wireRenders(page, store) {
     const existing = store.db.ds_renders.find((r) => r.idempotency_key === body.idempotencyKey);
     if (existing) return json({ render: existing });
     const row = ready({ id: randomUUID(), project_id: parent.project_id, user_id: 'hm1', version_id: body.newVersionId, kind: 'EDIT', parent_id: parent.id, view: parent.view, edit: body.edit, idempotency_key: body.idempotencyKey, billing: { credits: null, reservationId: null, state: 'NOT_CHARGED' }, error: null, created_at: now() });
+    // As the real render-edit (renders.ts): an edited picture keeps its parent's object map and legend.
+    if (parent.legend) Object.assign(row, { legend: parent.legend, map_key: parent.map_key });
     store.db.ds_renders.push(row);
     return json({ render: row });
+  });
+}
+
+/*
+ * OpenAI-first generation, as the browser sees it: design-spec answers a specification job; render-generate
+ * makes ONE row per idempotency key (no factory job); render-generate-step moves it QUEUED → RENDERING (the one
+ * image call) → FINISHING (the picture) → READY (the picture with its AI edit map: "ai:sofa:1", "ai:floor:1"
+ * painted in the fixture id picture's own colours). The picture is the fixture photograph.
+ */
+function wireGeneration(page, store) {
+  store.gen = { specCalls: 0, specBodies: [], generateCalls: 0, stepCalls: 0, imageCalls: 0, specJobs: new Map() };
+  const now = () => new Date().toISOString();
+  const json = (route, b, status = 200) => route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(b) });
+  const legendFor = (versionId) => {
+    const v = store.db.ds_versions.find((x) => x.id === versionId);
+    const src = store.db.ds_spatial_sources.find((x) => x.id === v?.source_id);
+    const living = src?.canonical?.scene?.floors?.find((f) => f.kind === 'LIVING');
+    return { width: 1600, height: 1143, entries: [
+      { color: '#0a0b0c', kind: 'OBJECT', id: 'ai:sofa:1', roomId: living?.id ?? null, coverage: 0.017, box: [0.33, 0.48, 0.47, 0.6] },
+      { color: '#0d0e0f', kind: 'FLOOR', id: 'ai:floor:1', roomId: living?.id ?? null, coverage: 0.07, box: [0.25, 0.4, 0.55, 0.7] },
+    ] };
+  };
+  return page.route(/\/functions\/v1\/design-studio-reconstruct\/(design-spec|render-generate|render-generate-step)$/, async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}');
+    const kind = route.request().url().split('/').pop();
+    if (kind === 'design-spec') {
+      store.gen.specCalls += 1; store.gen.specBodies.push(body);
+      await new Promise((r) => setTimeout(r, 400));
+      let job = store.gen.specJobs.get(body.idempotencyKey);
+      if (!job) {
+        job = { id: randomUUID(), user_id: 'hm1', project_id: body.projectId, kind: 'AI_DESIGN', status: 'SUCCEEDED', output: { kind: 'DESIGN_SPEC', mode: body.mode, look: body.look } };
+        store.db.ds_jobs.push(job); store.gen.specJobs.set(body.idempotencyKey, job);
+      }
+      const dna = {
+        version: 'ds-dna-1', preferences: body.preferences, palette: ['#f2f0eb', '#c8a27a', '#2b2d30', '#9fae94'],
+        finishes: { floor: { materialId: null, color: '#c8a27a' }, wetFloor: { materialId: null, color: '#d8d2c8' }, outdoorFloor: { materialId: null, color: '#d8d2c8' }, walls: { materialId: null, color: '#f2f0eb' }, accentWall: null, ceiling: { color: '#f5f2ed' }, cabinetry: { color: '#c8a27a', materialId: null }, metal: '#2b2d30' },
+        lighting: { timeOfDay: 'DAY', temperature: 'WARM', interior: 0.7 }, look: ['clean modern lines'], sourceJobId: job.id,
+      };
+      return json(route, { jobId: job.id, mode: body.mode, dna, summary: { style: 'Clean modern lines', quality: 'Premium natural materials', palette: [], conflicts: 0 } });
+    }
+    if (kind === 'render-generate') {
+      store.gen.generateCalls += 1;
+      let row = store.db.ds_renders.find((r) => r.idempotency_key === body.idempotencyKey);
+      if (!row) {
+        row = {
+          id: randomUUID(), project_id: body.projectId, user_id: 'hm1', version_id: body.versionId, kind: 'MASTER', parent_id: null,
+          view: { id: 'master', kind: 'MASTER', purpose: 'DOLLHOUSE', roomId: null, generator: 'OPENAI', mode: body.mode },
+          status: 'QUEUED', factory_job_id: null, base_key: null, map_key: null, final_key: null, legend: null,
+          finish: { generator: 'OPENAI_FIRST', mode: body.mode, specJobId: body.specJobId, provider: 'OPENAI', model: null, check: null }, edit: null,
+          billing: { credits: 6, reservationId: null, state: 'NOT_CHARGED' }, error: null, idempotency_key: body.idempotencyKey, created_at: now(), updated_at: now(),
+        };
+        store.db.ds_renders.push(row);
+      }
+      return json(route, { render: row });
+    }
+    store.gen.stepCalls += 1;
+    const rows = store.db.ds_renders.filter((r) => (body.renderIds ?? []).includes(r.id));
+    for (const r of rows) {
+      if (r.factory_job_id || r.finish?.generator !== 'OPENAI_FIRST') continue;
+      if (r.status === 'QUEUED') { r.status = 'RENDERING'; store.gen.imageCalls += 1; }
+      else if (r.status === 'RENDERING') Object.assign(r, { status: 'FINISHING', final_key: 'users/hm1/qa/master.jpg' });
+      else if (r.status === 'FINISHING') Object.assign(r, { status: 'READY', map_key: 'users/hm1/qa/master-ids.png', legend: legendFor(r.version_id), finish: { ...r.finish, model: 'gpt-image-2', editMap: { state: 'READY', entries: 2 } } });
+      r.updated_at = now();
+    }
+    return json(route, { renders: rows });
   });
 }
 
@@ -190,6 +257,7 @@ async function open(browser, { width, height, lang, touch, reading }) {
   await wire(page, store, errors);
   await wireFactory(page, store);
   await wireRenders(page, store);
+  await wireGeneration(page, store);
   // The reading: the recorded model output through HOMATCH's real fusion.
   await page.route(/\/functions\/v1\/design-studio-reconstruct\/floorplan$/, async (route) => {
     const body = JSON.parse(route.request().postData() || '{}');
@@ -265,26 +333,30 @@ async function untilStep(page, steps, timeout = 30000) {
   return null;
 }
 
-/** Generate from the Quality screen (or the detailed chooser), with a double tap and a reload mid-factory. */
+/** Generate from the Quality screen (or the detailed chooser), with a double tap and a reload mid-generation. */
 async function generateAndResume(s, tag, generateId) {
   const { page, store } = s;
   await page.getByTestId(generateId).waitFor({ timeout: 10000 });
   for (let i = 0; i < 40 && !(await page.getByTestId(generateId).isEnabled()); i += 1) await page.waitForTimeout(150);
   await page.getByTestId(generateId).dblclick();
   await page.getByTestId('plan-generating').waitFor({ timeout: 15000 });
-  for (let i = 0; i < 60 && store.factoryPolls < 2; i += 1) await page.waitForTimeout(500);
+  for (let i = 0; i < 60 && !store.db.ds_renders.some((r) => r.status === 'RENDERING'); i += 1) await page.waitForTimeout(250);
   await s.shot('generating');
   await s.noOverflow(tag, 'generating');
   const shown = await page.getByTestId('generation-stages').locator('li[data-stage]').count();
   check(`${tag}: four customer stages, no percentage (${shown})`, shown === 4 && !/%/.test(await page.getByTestId('generation-stages').innerText()));
-  const jobsBefore = store.factoryJobs.size;
+  const rowsBefore = store.db.ds_renders.length;
   await page.reload();
   await page.getByTestId('plan-generating').waitFor({ timeout: 20000 });
   check(`${tag}: a reload during generation resumes it`, true);
   await page.waitForURL(/\/home$/, { timeout: 120000 });
-  check(`${tag}: one design request (${store.aiRequests.length})`, store.aiRequests.length === 1, String(store.aiRequests.length));
-  check(`${tag}: one factory job across the double tap and the reload (${store.factoryJobs.size})`, store.factoryJobs.size === 1 && jobsBefore === 1, `${jobsBefore} → ${store.factoryJobs.size}`);
-  check(`${tag}: the master design was started once (${store.db.ds_renders.filter((r) => r.view?.id === 'master').length})`, store.db.ds_renders.filter((r) => r.view?.id === 'master').length === 1);
+  const masters = store.db.ds_renders.filter((r) => r.view?.id === 'master');
+  check(`${tag}: one Design Specification (${store.gen.specCalls})`, store.gen.specCalls === 1, String(store.gen.specCalls));
+  check(`${tag}: ONE OpenAI picture across the double tap and the reload (${store.gen.imageCalls})`, store.gen.imageCalls === 1 && masters.length === 1 && rowsBefore === 1, `${rowsBefore} → ${masters.length}`);
+  check(`${tag}: no factory, no Blender, no render-start, no legacy design intent (${store.factoryStarts}/${store.factoryPolls}/${store.renderCalls.start}/${store.aiRequests.length})`,
+    store.factoryStarts === 0 && store.factoryPolls === 0 && store.renderCalls.start === 0 && store.aiRequests.length === 0);
+  check(`${tag}: the master is OpenAI's own picture, without a factory job`, masters[0]?.factory_job_id === null && masters[0]?.finish?.generator === 'OPENAI_FIRST' && masters[0]?.status === 'READY');
+  check(`${tag}: the AI design version stands on its specification job`, store.db.ds_versions.some((v) => v.origin === 'AI' && v.job_id === [...store.gen.specJobs.values()][0]?.id && (v.change_summary ?? []).some((c) => c.kind === 'AI_DESIGN_SPEC' && c.generator === 'OPENAI_FIRST')));
 }
 
 /* ── A: the golden plan (v1) — nothing to ask: upload → Style → Quality → Generate → the home ── */
@@ -333,8 +405,9 @@ async function zeroQuestionPath(browser, { width, height, lang, touch }) {
   const f = s.flow();
   check(`${tag}: Luxury × Premium is what was generated (${f?.look?.style}/${f?.look?.quality}, ${f?.preferences?.style}/${f?.preferences?.furnishing}/${f?.preferences?.floor})`,
     f?.look?.style === 'LUXURY' && f?.look?.quality === 'PREMIUM' && f?.preferences?.style === 'luxury' && f?.preferences?.furnishing === 'STAGED' && f?.preferences?.floor === 'MARBLE');
-  const brief = JSON.stringify(store.aiRequests[0] ?? null);
-  check(`${tag}: the AI designer was briefed with the quality`, /Premium: top-tier natural materials/.test(brief), brief.slice(0, 200));
+  const specBody = store.gen.specBodies[0] ?? {};
+  check(`${tag}: OpenAI's specification is asked with the customer's look and quality as direction (${JSON.stringify(specBody.look)})`,
+    specBody.mode === 'MASTER' && specBody.look?.style === 'LUXURY' && specBody.look?.quality === 'PREMIUM' && /Premium: top-tier natural materials/.test(specBody.preferences?.brief ?? ''));
   check(`${tag}: flow recorded DONE with timings`, f?.step === 'DONE' && typeof f?.timings?.analysisMs === 'number');
 
   // ── The result: the picture first; the edit pipeline exactly as before ──
@@ -361,31 +434,20 @@ async function zeroQuestionPath(browser, { width, height, lang, touch }) {
   for (let i = 0; i < 40 && !store.db.ds_renders.some((r) => r.kind === 'EDIT'); i += 1) await page.waitForTimeout(250);
   check(`${tag}: one appearance edit rendered, double tap or not (${store.db.ds_renders.filter((r) => r.kind === 'EDIT').length})`, store.db.ds_renders.filter((r) => r.kind === 'EDIT').length === 1);
   const head = () => store.db.ds_versions.find((v) => v.id === store.db.ds_projects[0].head_version_id);
-  const sofaColour = () => (head()?.state?.objects ?? []).find((o) => /sofa/.test(o.assetId))?.colorOverride ?? null;
-  check(`${tag}: the edit is the design's own (sofa ${sofaColour()} = ${colour})`, !!colour && sofaColour()?.toLowerCase() === colour.toLowerCase(), `${sofaColour()} vs ${colour}`);
+  const edited = store.db.ds_renders.find((r) => r.kind === 'EDIT');
+  check(`${tag}: the edit targets what OpenAI saw (${edited?.edit?.targetId} ${edited?.edit?.color} = ${colour})`,
+    edited?.edit?.type === 'APPEARANCE' && edited.edit.targetId === 'ai:sofa:1' && edited.edit.targetKind === 'OBJECT' && !!colour && edited.edit.color === colour.toLowerCase() && edited.edit.label === 'sofa');
+  check(`${tag}: the edit is a new version of the design, recorded`, (head()?.change_summary ?? []).some((c) => c.kind === 'RENDER_EDIT' && c.edit?.targetId === 'ai:sofa:1'));
 
-  // ── Edit a room: priced first, appearing when ready, and back to the home ──
-  await page.getByTestId('home-rooms').click();
-  await page.getByTestId('room-pick').first().waitFor({ timeout: 10000 });
-  const living = page.getByTestId('room-pick').filter({ hasText: /Living|მისაღები/ }).first();
-  await living.getByRole('radio', { name: '1' }).click();
-  await page.getByTestId('rooms-quote').click();
-  await page.getByTestId('rooms-offer').waitFor({ timeout: 10000 });
-  await page.getByTestId('rooms-confirm').click();
-  await page.getByTestId('room-shot').first().waitFor({ timeout: 30000 });
-  for (let i = 0; i < 40 && (await page.locator('[data-testid="room-shot"][data-status="READY"]').count()) === 0; i += 1) await page.waitForTimeout(500);
-  await s.shot('rooms');
-  await s.noOverflow(tag, 'rooms');
-  check(`${tag}: a room view arrives`, (await page.locator('[data-testid="room-shot"][data-status="READY"]').count()) >= 1);
-  await page.getByTestId('home-back').click();
-  await page.getByTestId('home-render').waitFor({ timeout: 10000 });
+  // ── Rooms: OpenAI's own room pictures come later (ROOM mode, PR4); a Blender view of an empty plan is never offered ──
+  check(`${tag}: no Blender room views on an OpenAI home`, (await page.getByTestId('home-rooms').count()) === 0);
   await page.getByTestId('home-plan').click();
   await page.getByTestId('home-back').waitFor({ timeout: 10000 });
   await s.shot('plan');
   await s.noOverflow(tag, 'your plan');
   await page.getByTestId('home-back').click();
   await page.getByTestId('home-render').waitFor({ timeout: 10000 });
-  check(`${tag}: rooms and plan always lead back to the home`, true);
+  check(`${tag}: the plan always leads back to the home`, true);
 
   // ── Navigation: the project opens on its home; the editor only on purpose, with a way back ──
   const id = store.db.ds_projects[0].id;

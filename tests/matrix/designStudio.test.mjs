@@ -698,3 +698,33 @@ test('a measured picture: optional evidence, read through the server\'s own vali
   const rr = read('src/lib/designStudio/reconstructRead.ts');
   assert.match(rr, /rms: outlineError\(f\.frame, al, rooms\.map/);
 });
+
+/* ── OpenAI-first generation: the first result never touches the 3D path ───── */
+
+/** Code only (comments name what the path does NOT use; a test must not match its own prose). */
+const code = (rel) => read(rel).replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+
+test('the first result is OpenAI\'s: no factory, RunPod, Blender, GLB or 3D asset library on its path', () => {
+  const route = code('supabase/functions/design-studio-reconstruct/generate.ts');
+  for (const banned of [/from '\.\/factory\.ts'/, /handleFactory/, /runpod/i, /RUNPOD/, /blender/i, /compileSceneSpec/, /ds_catalog_assets/, /ds_catalog_materials/, /\.glb/i, /startFactory/]) {
+    assert.doesNotMatch(route, banned, `generate.ts: ${banned}`);
+  }
+  assert.match(route, /selectProvider\(deps, null, await configuredModel\(admin\)\)/, 'the existing OpenAI image provider, no override, no fallback');
+  const flow = code('supabase/functions/_shared/designStudio/generationFlow.ts');
+  // Its only mention of a factory is the guard that leaves factory rows alone (factory_job_id).
+  assert.doesNotMatch(flow, /factory(?!_job_id)|runpod|blender|catalog/i);
+  assert.match(flow, /if \(!ai \|\| row\.factory_job_id\) return \{ action: 'NONE' \};/);
+  const home = code('src/services/designStudio/planToHome.ts');
+  const gen = home.slice(home.indexOf('export async function generateHome'));
+  for (const banned of [/runDesignBuild/, /startFactory/, /startRenders/, /listAssets/, /assetsByCode/, /designFromPreferences/, /planToOperations/, /compileSceneSpec/, /factoryStatus/]) {
+    assert.doesNotMatch(gen, banned, `generateHome: ${banned}`);
+  }
+  assert.match(gen, /requestDesignSpec\(/);
+  assert.match(gen, /generateRender\(/);
+  const spec = code('supabase/functions/_shared/designStudio/designSpec.ts');
+  assert.doesNotMatch(spec, /catalog|asset|materialCode/i, 'the specification never sees a catalogue');
+  assert.match(spec, /type: 'input_image', image_url: images\.source/, 'the customer\'s own picture reaches OpenAI');
+  // The walkthrough stays gated until PR2.
+  assert.match(code('src/lib/designStudio/walkthroughOffer.ts'), /export const WALKTHROUGH_OFFERED = false;/);
+});
+

@@ -535,6 +535,15 @@ Phase 2 (Universal Discovery) is blocked until this is live and proven.
   (read-only SQL and on-main migrations auto-allowed; the rest asks).
 - Gap: no gated browser suite visits Design Studio (designStudio.qa.mjs is
   manual, needs VITE_FEATURE_DESIGN_STUDIO=on).
+- Debt (recorded 2026-10-02, PR #68): `tests/browser/designStudio.qa.mjs`
+  checkpoint 5 is STALE on main — it waits for the heading "Check what
+  HOMATCH read" (`ds_fp_review_title`), which no screen renders since the
+  plan-to-home path of #57 (`64b55124`). It is in no CI workflow and no npm
+  gate (run-tests, run-full-matrix, lint), so nothing release-blocking runs
+  it. The customer path it once covered is covered by
+  `tests/browser/planToHome.qa.mjs` (A zero-question, B one-question,
+  C RTL, D architecture-critical questions). Fix later: move checkpoint 5 onto
+  the simple flow, or retire it.
 
 ## Meta Ads canonical status + first FAST release (PR #28, 2026-10-01)
 

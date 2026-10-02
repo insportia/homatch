@@ -47,6 +47,8 @@ import { applyAnswers } from '@/lib/designStudio/planRead';
 import { latestFlow } from '@/services/designStudio/planToHome';
 import { readLook } from '@/lib/designStudio/lookPresets';
 import { WALKTHROUGH_OFFERED } from '@/lib/designStudio/walkthroughOffer';
+import { aiActionsFor, aiAppearanceEdit, aiWhat, isAiEntry } from '@/lib/designStudio/renders/aiEdits';
+import { isGenerated } from '@/services/designStudio/generation';
 import { signedUrls } from '@/services/designStudio/files';
 
 export default function DesignStudioHomePage() {
@@ -179,9 +181,15 @@ function Home() {
   }, [master.ready?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const ctx = useMemo(() => (data ? { space: data.space, assets: data.assets, materials: data.materials } : null), [data]);
-  const editable = useCallback((e: MapEntry) => (data ? actionsFor(e, data.state, data.assets).length > 0 : false), [data]);
+  const editable = useCallback((e: MapEntry) => (data ? (isAiEntry(e) ? aiActionsFor(e) : actionsFor(e, data.state, data.assets)).length > 0 : false), [data]);
   const labelFor = useCallback((e: MapEntry) => {
     if (!data) return '';
+    if (isAiEntry(e)) {
+      // What OpenAI saw there ("Sofa", "Wall"), and the room it is in when it knows.
+      const room = e.roomId ? data.space.rooms.find((r) => r.id === e.roomId) : null;
+      const what = t(`sf_obj_${aiWhat(e) ?? 'other'}`);
+      return room ? `${what} · ${t(`ds_room_${room.kind.toLowerCase()}`)}` : what;
+    }
     if (e.kind === 'OBJECT') {
       const o = data.state.objects.find((x) => x.instanceId === e.id);
       return (o && data.assets.get(o.assetId)?.name) ?? t('rend_piece');
@@ -220,6 +228,7 @@ function Home() {
   const onChoice = async (choice: EditChoice, label: string) => {
     if (!data || !ctx || !selected || !master.ready) return;
     setError(null);
+    if (isAiEntry(selected)) { await onAiChoice(selected, choice, label); return; }
     const r = applyEdit(selected, choice, data.state, ctx, label);
     if (!r.ok) { setError(reject(r.rejection.code, (r.rejection as { placement?: Array<{ code: string }> }).placement)); return; }
     const title = labelFor(selected);
@@ -237,6 +246,25 @@ function Home() {
         await renderViews(v.id, r.state, [master.ready!.view ?? planMasterView(data.space)], 'DS_MASTER_RENDER', shown.credits);
       });
     }
+  };
+
+  /**
+   * A change to a picture OpenAI made: the same priced, versioned, one-tap edit through the same edit
+   * pipeline (render-edit), inside the target's own mask. The design state is unchanged (the picture is
+   * the design); the edit is recorded on the new version.
+   */
+  const onAiChoice = async (entry: MapEntry, choice: EditChoice, label: string) => {
+    if (!data || !master.ready) return;
+    const edit = aiAppearanceEdit(entry, choice, label);
+    if (!edit) return;
+    const title = labelFor(entry);
+    await confirmPrice('DS_RENDER_EDIT', 1, t('rend_confirm_appearance', { what: title }), async (shown) => {
+      const v = await commitVersion(data.state, t('rend_version_edit', { what: title }), { kind: 'RENDER_EDIT', edit, generator: 'OPENAI_FIRST' });
+      const q = await quoteRender({ projectId, versionId: v.id, product: 'DS_RENDER_EDIT', views: 1 });
+      if (!q.quote || q.quote.credits !== shown.credits) throw new Error('DS_PRICE_CHANGED');
+      const e = await editRender({ renderId: master.ready!.id, edit, newVersionId: v.id, quote: q.quote, idempotencyKey: `edit-${v.id}` });
+      if (!e.render) throw new Error(e.error ?? 'EDIT_FAILED');
+    });
   };
 
   /** The head's picture edit that failed (nothing was charged): the customer can ask for it again. */
@@ -354,7 +382,9 @@ function Home() {
 
   const selObj = selected?.kind === 'OBJECT' ? data.state.objects.find((o) => o.instanceId === selected.id) ?? null : null;
   const selAsset = selObj ? data.assets.get(selObj.assetId) : undefined;
-  const actions = selected ? actionsFor(selected, data.state, data.assets) : [];
+  const actions = selected ? (isAiEntry(selected) ? aiActionsFor(selected) : actionsFor(selected, data.state, data.assets)) : [];
+  /** The master is OpenAI's own picture: its rooms are pictures OpenAI makes (PR4), never Blender views of an empty plan. */
+  const aiHome = renders.some((r) => isGenerated(r)) || (master.ready?.legend?.entries ?? []).some((e) => isAiEntry(e));
   const fittingMaterials = selected ? [...data.materials.values()].filter((m) => m.active && (m.appliesTo ?? []).includes(selected.kind === 'FLOOR' ? 'FLOOR' : 'WALL')) : [];
   const flow = latestFlow(data.plan);
   const doc = data.plan?.interpretation?.doc ? applyAnswers(data.plan.interpretation.doc, flow?.answers ?? []) : null;
@@ -454,9 +484,11 @@ function Home() {
               </div>
             ) : null}
             <div className="order-last mt-6 flex flex-wrap gap-2 sm:order-none sm:col-start-2 sm:row-start-1 sm:mb-6 sm:mt-0 sm:justify-end" data-testid="home-actions">
-              <button type="button" onClick={() => { setTab('ROOMS'); setSelected(null); }} className={QUIET_ACTION} data-testid="home-rooms">
-                <ImageIcon className="h-4 w-4" aria-hidden="true" />{t('sf_edit_room')}
-              </button>
+              {!aiHome ? (
+                <button type="button" onClick={() => { setTab('ROOMS'); setSelected(null); }} className={QUIET_ACTION} data-testid="home-rooms">
+                  <ImageIcon className="h-4 w-4" aria-hidden="true" />{t('sf_edit_room')}
+                </button>
+              ) : null}
               <button type="button" onClick={() => { setTab('PLAN'); setSelected(null); }} className={QUIET_ACTION} data-testid="home-plan">
                 <MapIcon className="h-4 w-4" aria-hidden="true" />{t('sf_your_plan')}
               </button>

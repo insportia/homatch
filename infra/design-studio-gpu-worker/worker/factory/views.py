@@ -3,7 +3,7 @@
 For every spec view (sceneSpec.ts SpecView), after the scene is built:
 
   beauty   Cycles at final quality (adaptive sampling, the denoiser the device
-           has, the walkthrough's own tone mapping), opaque: a MASTER (dollhouse)
+           has, AgX and the views' light and materials from look.py), opaque: a MASTER (dollhouse)
            stands on a soft neutral studio ground with contact shadows, a ROOM view
            is the room itself. Ceilings hidden and walls cut when the view asks.
            -> view-<id>.png (8-bit sRGB)
@@ -31,7 +31,7 @@ import bpy  # type: ignore
 import numpy as np  # type: ignore  (bundled with Blender)
 from mathutils import Vector  # type: ignore
 
-from . import arch, geo
+from . import arch, geo, look
 from .materials import rgba
 
 STUDIO = "#ecebe8"
@@ -167,7 +167,7 @@ _SETTINGS = (
     ("cycles", "samples"), ("cycles", "use_adaptive_sampling"), ("cycles", "adaptive_threshold"), ("cycles", "use_denoising"),
     ("cycles", "denoiser"), ("cycles", "filter_width"), ("cycles", "pixel_filter_type"), ("cycles", "max_bounces"),
     ("cycles", "diffuse_bounces"), ("cycles", "glossy_bounces"), ("cycles", "transmission_bounces"),
-    ("cycles", "transparent_max_bounces"), ("cycles", "volume_bounces"), ("render", "film_transparent"),
+    ("cycles", "transparent_max_bounces"), ("cycles", "volume_bounces"), ("cycles", "sample_clamp_indirect"), ("render", "film_transparent"),
     ("render", "dither_intensity"), ("render", "resolution_x"), ("render", "resolution_y"),
     ("view_settings", "view_transform"), ("view_settings", "look"), ("view_settings", "exposure"), ("view_settings", "gamma"),
 )
@@ -199,19 +199,12 @@ def _png(sc, color_mode: str = "RGB") -> None:
 
 # ── the passes ───────────────────────────────────────────────────────
 
-def beauty(v: dict, path: Path, device: str) -> None:
+def beauty(v: dict, path: Path) -> None:
+    """The picture itself, with the settings look.quality() set and the exposure chosen for it."""
     sc = bpy.context.scene
     sc.render.resolution_x, sc.render.resolution_y = v["width"], v["height"]
     sc.cycles.samples = v["samples"]
     sc.cycles.use_adaptive_sampling = True
-    sc.cycles.adaptive_threshold = 0.01
-    sc.cycles.use_denoising = True
-    try:
-        sc.cycles.denoiser = "OPTIX" if device == "OPTIX" else "OPENIMAGEDENOISE"
-    except TypeError:
-        pass
-    sc.cycles.max_bounces = 8
-    sc.render.film_transparent = False
     _png(sc)
     sc.render.filepath = str(path)
     bpy.ops.render.render(write_still=True)
@@ -270,6 +263,7 @@ def id_pass(v: dict, path: Path, targets: Targets, objs: list, hidden_extra: lis
                 me.polygons.foreach_set("material_index", [0] * len(me.polygons))
             swaps.append((o, o.data, me))
             o.data = me
+        sc.render.resolution_x, sc.render.resolution_y = v["width"], v["height"]
         sc.cycles.samples = 1
         sc.cycles.use_adaptive_sampling = False
         sc.cycles.use_denoising = False
@@ -342,12 +336,15 @@ def legend(path: Path, painted: dict, targets: Targets) -> tuple[dict, int]:
 
 
 def render_views(spec: dict, lib, out: Path, ctx: dict, stage, hide) -> dict:
-    """Every planned view: beauty, and (objectMap) the id picture and legend. One view's failure is reported, not fatal."""
+    """Every planned view: (objectMap) the exact id picture and legend, then the picture with the views' look
+    (look.py). One view's failure is reported, not fatal; the scene is left exactly as it was found."""
     sc = bpy.context.scene
     report: dict = {}
     sky = sc.world
+    lighting = look.Lighting(spec)
     studio = studio_world(sky)
     floor_ground = ground(spec)
+    looks = look.Looks(spec)
     base = save_settings(sc)
     try:
         for v in spec["views"]:
@@ -363,25 +360,42 @@ def render_views(spec: dict, lib, out: Path, ctx: dict, stage, hide) -> dict:
                 height_for = (lambda w: cut["exteriorM"] if w["kind"] == "EXTERIOR" else cut["interiorM"]) if cut else None
                 view_walls = arch.build_walls(spec, lib, height_for=height_for, name="walls-view", split_faces=True)
                 lib.apply_textures(view_walls)
+                if cut:
+                    look.cap_walls(view_walls)
+                lighting.for_view(v["kind"])
                 sc.world = studio if v["kind"] == "MASTER" else sky
                 floor_ground.hide_render = False
-                image = out / f"view-{v['id']}.png"
-                beauty(v, image, ctx["device"])
-                entry = {"ok": True, "ms": _ms(t), "width": v["width"], "height": v["height"], "samples": v["samples"], "image": image.name}
+                entry: dict = {"ok": True, "width": v["width"], "height": v["height"], "samples": v["samples"]}
+                painted = None
+                ids = out / f"view-{v['id']}-ids.png"
                 if v["objectMap"]:
+                    # The id pass first, over the scene's own materials: exact, and independent of the look.
                     t2 = time.perf_counter()
-                    ids = out / f"view-{v['id']}-ids.png"
                     targets = Targets(spec)
-                    objs = [o for o in bpy.context.scene.objects]
-                    painted = id_pass(v, ids, targets, objs, [floor_ground])
+                    painted = id_pass(v, ids, targets, list(sc.objects), [floor_ground])
                     om, unmatched = legend(ids, painted, targets)
                     (out / f"view-{v['id']}-legend.json").write_text(json.dumps(om, separators=(",", ":")))
                     entry.update({"idMs": _ms(t2), "ids": ids.name, "legend": f"view-{v['id']}-legend.json", "entries": len(om["entries"]),
                                   "targets": len(painted), "unmatchedPixels": unmatched})
+                t = time.perf_counter()
+                looks.dress(list(sc.objects))
+                look.quality(sc, v, ctx["device"])
+                if v["kind"] == "ROOM":
+                    mask = look.wall_mask_from(ids, painted) if painted else None
+                    ev, how = look.solve_exposure(v, out / f"view-{v['id']}-preview.exr", mask)
+                    entry["exposure"] = how
+                else:
+                    ev = look.MASTER_EXPOSURE
+                    entry["exposure"] = {"ev": ev, "on": "fixed"}
+                sc.view_settings.exposure = ev
+                image = out / f"view-{v['id']}.png"
+                beauty(v, image)
+                entry.update({"ms": _ms(t), "image": image.name})
                 report[v["id"]] = entry
             except Exception as e:  # noqa: BLE001 - one view's failure is reported; the others still render
                 report[v["id"]] = {"ok": False, "error": f"{type(e).__name__}: {str(e)[:200]}"}
             finally:
+                looks.undress()
                 for o in view_walls:
                     bpy.data.objects.remove(o, do_unlink=True)
                 if cam is not None:
@@ -393,6 +407,11 @@ def render_views(spec: dict, lib, out: Path, ctx: dict, stage, hide) -> dict:
                 restore_settings(sc, base)
     finally:
         sc.world = sky
+        looks.remove()
+        lighting.restore()
+        cap = bpy.data.materials.get("wall-cap")
+        if cap is not None:
+            bpy.data.materials.remove(cap)
         mat = floor_ground.data.materials[0] if floor_ground.data.materials else None
         bpy.data.objects.remove(floor_ground, do_unlink=True)
         if mat is not None:

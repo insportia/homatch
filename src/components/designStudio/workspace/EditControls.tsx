@@ -11,6 +11,8 @@ import { ColorPicker, MaterialList, Swatch } from './SurfacePanels';
 
 const ISSUE_KEY: Record<string, string> = {
   BLOCKS_DOOR: 'ds_issue_blocks_door',
+  ON_STAIRS: 'ds_issue_on_stairs',
+  BLOCKS_STAIRS: 'ds_issue_blocks_stairs',
   OVERLAPS_OBJECT: 'ds_issue_overlaps',
   TIGHT_ACCESS: 'ds_issue_tight',
   THROUGH_WALL: 'ds_issue_through_wall',

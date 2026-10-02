@@ -14,7 +14,15 @@ SPEC_VERSION = "hm-scene-1"
 LIMITS = {
     "rooms": 80, "polygon_points": 64, "walls": 400, "openings": 16, "faces": 24, "railings": 120,
     "objects": 300, "materials": 48, "surfaces": 1500, "color_slots": 12, "coord": 200.0, "height": 6.0,
+    "stairs": 8, "treads": (3, 25), "stair_run": (0.5, 12.0), "stair_width": (0.5, 6.0),
+    "views": 12, "view_edge": (256, 3072), "view_samples": (1, 1024), "view_fov": (10, 100),
+    "view_ortho": (1, 200), "view_aspect": (0.3, 4), "view_coord": 500.0,
 }
+# Planned views (sceneSpec.ts VIEW_KINDS / VIEW_PURPOSES).
+VIEW_KINDS = {"MASTER", "ROOM"}
+VIEW_PURPOSES = {"DOLLHOUSE", "MAIN", "REVERSE", "FUNCTION", "DETAIL", "CONNECTION"}
+# How an opening closes (sceneSpec.ts SPEC_LEAVES). Optional: absent means the plan did not say.
+LEAVES = {"HINGED", "DOUBLE", "SLIDING", "NONE", "FRENCH", "FIXED", "CASEMENT"}
 KINDS = {
     "SOFA", "ARMCHAIR", "TABLE", "ROUND_TABLE", "CABINET", "SHELF", "BED", "RUG", "LAMP", "PLANT", "CHAIR", "STOOL",
     "KITCHEN_RUN", "VANITY", "PLANTER", "WARDROBE", "DRESSER", "FRIDGE", "RECLINER", "TV_UNIT", "SHOWER", "TOILET",
@@ -178,6 +186,9 @@ def validate_spec(raw) -> dict:
                 "id": _id(o.get("id"), "opening.id"), "kind": _one(o.get("kind"), "opening.kind", {"DOOR", "WINDOW"}),
                 "offsetM": _num(o.get("offsetM"), "offsetM", wd / 2 - 0.01, length - wd / 2 + 0.01), "widthM": wd,
                 "sillM": sill, "heightM": _num(o.get("heightM"), "heightM", 0.1, h - sill),
+                # Additive (still hm-scene-1): None when the plan does not say how it closes.
+                "leaf": None if o.get("leaf") is None else _one(o.get("leaf"), "opening.leaf", LEAVES),
+                "swing": None if o.get("swing") is None else _one(o.get("swing"), "opening.swing", {"L", "R"}),
             })
         faces = []
         for j, f in enumerate(_arr(w.get("faces"), f"walls[{i}].faces", LIMITS["faces"])):
@@ -193,6 +204,25 @@ def validate_spec(raw) -> dict:
     for i, q in enumerate(_arr(r.get("railings"), "railings", LIMITS["railings"])):
         q = _obj(q, f"railings[{i}]")
         railings.append({"id": _id(q.get("id"), "railing.id"), "a": _xy(q.get("a"), "railing.a"), "b": _xy(q.get("b"), "railing.b"), "heightM": _num(q.get("heightM"), "railing.heightM", 0.5, 1.6)})
+
+    # Stairs: additive and optional (still hm-scene-1); absent is none.
+    stairs = []
+    raw_stairs = r.get("stairs")
+    for i, q in enumerate([] if raw_stairs is None else _arr(raw_stairs, "stairs", LIMITS["stairs"])):
+        q = _obj(q, f"stairs[{i}]")
+        p = f"stairs[{i}]"
+        a, b = _xy(q.get("a"), f"{p}.a"), _xy(q.get("b"), f"{p}.b")
+        _num(math.hypot(b[0] - a[0], b[1] - a[1]), f"{p}.width", *LIMITS["stair_width"])
+        treads = _num(q.get("treads"), f"{p}.treads", *LIMITS["treads"])
+        if treads != int(treads):
+            raise SpecError(f"{p}.treads: not a whole number")
+        stairs.append({
+            "id": _id(q.get("id"), f"{p}.id"), "a": a, "b": b, "runM": _num(q.get("runM"), f"{p}.runM", *LIMITS["stair_run"]),
+            "riseM": _num(q.get("riseM"), f"{p}.riseM", 0.5, H), "treads": int(treads),
+            "direction": _one(q.get("direction"), f"{p}.direction", {"UP", "DOWN"}),
+        })
+    if len({s["id"] for s in stairs}) != len(stairs):
+        raise SpecError("stairs: duplicate id")
 
     objects = []
     seen = set()
@@ -241,17 +271,57 @@ def validate_spec(raw) -> dict:
             "background": None if cam.get("background") is None else _hex(cam.get("background"), "camera.background"),
             "cut": None if cut is None else {"exteriorM": _num(_obj(cut, "camera.cut").get("exteriorM"), "cut", 0.2, H), "interiorM": _num(cut.get("interiorM"), "cut", 0.2, H)},
         }
+    # Views: additive and optional (still hm-scene-1); absent is none.
+    room_ids = {m["id"] for m in rooms}
+    views = []
+    raw_views = r.get("views")
+    for i, q in enumerate([] if raw_views is None else _arr(raw_views, "views", LIMITS["views"])):
+        q = _obj(q, f"views[{i}]")
+        p = f"views[{i}]"
+        pos = _xyz(q.get("position"), f"{p}.position", LIMITS["view_coord"])
+        tgt = _xyz(q.get("target"), f"{p}.target", LIMITS["view_coord"])
+        if math.dist(pos, tgt) < 0.01:
+            raise SpecError(f"{p}.target: the camera looks at itself")
+        fov = None if q.get("fovDeg") is None else _num(q.get("fovDeg"), f"{p}.fovDeg", *LIMITS["view_fov"])
+        ortho = None if q.get("orthoScale") is None else _num(q.get("orthoScale"), f"{p}.orthoScale", *LIMITS["view_ortho"])
+        if (fov is None) == (ortho is None):
+            raise SpecError(f"{p}.fovDeg: either fovDeg or orthoScale")
+        room = q.get("roomId")
+        if room is not None and room not in room_ids:
+            raise SpecError(f"{p}.roomId: unknown room")
+        cut = q.get("cut")
+        if cut is not None:
+            cut = _obj(cut, f"{p}.cut")
+            cut = {"exteriorM": _num(cut.get("exteriorM"), f"{p}.cut.exteriorM", 0.2, H), "interiorM": _num(cut.get("interiorM"), f"{p}.cut.interiorM", 0.2, H)}
+
+        def whole(v, path, lo, hi):
+            n = _num(v, path, lo, hi)
+            if n != int(n):
+                raise SpecError(f"{path}: not a whole number")
+            return int(n)
+
+        views.append({
+            "id": _id(q.get("id"), f"{p}.id"), "kind": _one(q.get("kind"), f"{p}.kind", VIEW_KINDS),
+            "purpose": _one(q.get("purpose"), f"{p}.purpose", VIEW_PURPOSES), "roomId": room, "position": pos, "target": tgt,
+            "fovDeg": fov, "orthoScale": ortho, "aspect": _num(q.get("aspect"), f"{p}.aspect", *LIMITS["view_aspect"]),
+            "width": whole(q.get("width"), f"{p}.width", *LIMITS["view_edge"]), "height": whole(q.get("height"), f"{p}.height", *LIMITS["view_edge"]),
+            "samples": whole(q.get("samples"), f"{p}.samples", *LIMITS["view_samples"]), "cut": cut,
+            "hideCeilings": _bool(q.get("hideCeilings"), f"{p}.hideCeilings"), "objectMap": _bool(q.get("objectMap"), f"{p}.objectMap"),
+        })
+    if len({v["id"] for v in views}) != len(views):
+        raise SpecError("views: duplicate id")
+
     rr = _obj(r.get("render"), "render")
     outs = _obj(r.get("outputs"), "outputs")
     out.update({
-        "rooms": rooms, "walls": walls, "railings": railings, "surfaces": surfaces, "materials": materials, "objects": objects,
+        "rooms": rooms, "walls": walls, "railings": railings, "stairs": stairs, "surfaces": surfaces, "materials": materials, "objects": objects,
         "frames": _hex(r.get("frames"), "frames"),
         "lighting": {
             "timeOfDay": _one(lt.get("timeOfDay"), "lighting.timeOfDay", {"DAY", "SUNSET", "EVENING", "NIGHT"}),
             "temperature": _one(lt.get("temperature"), "lighting.temperature", {"WARM", "NEUTRAL", "COOL"}),
             "interior": _num(lt.get("interior"), "lighting.interior", 0, 1), "sun": _xyz(lt.get("sun"), "lighting.sun", 10),
         },
-        "camera": camera,
+        "camera": camera, "views": views,
         "render": {"width": int(_num(rr.get("width"), "render.width", 256, 2560)), "height": int(_num(rr.get("height"), "render.height", 256, 2560)), "samples": int(_num(rr.get("samples"), "render.samples", 1, 512))},
         "outputs": {"render": _bool(outs.get("render"), "outputs.render"), "scene": _bool(outs.get("scene"), "outputs.scene"), "objects": _bool(outs.get("objects"), "outputs.objects")},
     })

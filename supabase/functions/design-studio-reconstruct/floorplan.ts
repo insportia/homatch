@@ -6,10 +6,17 @@
 // 2. The file is read from R2 by its key and checked by its BYTES: it must
 //    really be a PNG, JPEG or WebP within the size limit, whatever the
 //    browser declared. Its pixel size comes from its own header.
-// 3. The drawing is read by the model into a structured PROPOSAL (every
-//    element UNVERIFIED, scale evidence kept as signals, nothing invented).
-// 4. The proposal is written onto ds_floorplans; the customer reviews it and
-//    HOMATCH's deterministic generator builds geometry from what they keep.
+// 3. The same picture already read for this customer (same sha256, same
+//    reader version) is reused: no model call, no cost.
+// 4. Otherwise the drawing is read by the model into a structured PROPOSAL
+//    (every element UNVERIFIED, nothing invented), and HOMATCH fuses it with
+//    the drawing's own pixels (planRead/understand.ts): walls snapped to
+//    their ink, openings placed in their gaps, rooms bounded by the walls,
+//    the scale solved from every printed size, topology checked, and only
+//    the questions worth asking prepared.
+// 5. The reading (fused AND raw, so every change is auditable) is written
+//    onto ds_floorplans; the customer reviews it and HOMATCH's deterministic
+//    generator builds geometry from what they keep.
 //
 // It never writes geometry, never creates a spatial source and never marks
 // anything verified. Money: DS_FLOORPLAN_READ is registered, measured and
@@ -22,7 +29,9 @@ import { serviceClient } from '../_shared/billing.ts';
 import { meterAiCall } from './metering.ts';
 import { refuseIfImpersonating } from '../_shared/impersonation.ts';
 import { getObject, headObject } from '../_shared/objectStore.ts';
-import { imageSize, SCHEMA, sniffType, SYSTEM, validateReading } from '../_shared/designStudio/floorplanRead.ts';
+import { DS_READ_VERSION, imageSize, SCHEMA, sniffType, SYSTEM, validateReading } from '../_shared/designStudio/floorplanRead.ts';
+import { understand } from '../_shared/designStudio/planRead/understand.ts';
+import { decodeGray } from './rasterDecode.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -113,10 +122,37 @@ export async function handleFloorplan(req: Request): Promise<Response> {
   const size = imageSize(bytes.subarray(0, Math.min(bytes.length, 256 * 1024)));
   if (!size || size.width < 64 || size.height < 64 || size.width > 20000 || size.height > 20000) return fail('IMAGE_SIZE_UNREADABLE', jobId);
 
+  const sha256 = await sha256Hex(bytes);
   await admin.from('ds_floorplans').update({
-    status: 'INTERPRETING', interpretation_error: null, image_width: size.width, image_height: size.height,
-    sha256: await sha256Hex(bytes),
+    status: 'INTERPRETING', interpretation_error: null, image_width: size.width, image_height: size.height, sha256,
   }).eq('id', plan.id);
+
+  // ── The same picture, already read for this customer: reuse it ─────
+  // Same owner, same bytes, same reader version: the reading is a pure
+  // function of those, so it is copied rather than paid for again.
+  const { data: cached } = await admin.from('ds_floorplans')
+    .select('id, interpretation, interpretation_model')
+    .eq('user_id', plan.user_id).eq('sha256', sha256).eq('status', 'INTERPRETED').eq('purpose', 'PLAN')
+    .eq('interpretation->>readVersion', DS_READ_VERSION).neq('id', plan.id)
+    .order('updated_at', { ascending: false }).limit(1).maybeSingle();
+  const reuse = (cached as { id: string; interpretation: Record<string, any> | null; interpretation_model: string | null } | null);
+  if (reuse?.interpretation?.doc) {
+    const it = reuse.interpretation;
+    const rekey = (d: any) => (d && typeof d === 'object' ? { ...d, sourceAssetId: plan.object_key } : d);
+    const interpretation = { ...it, doc: rekey(it.doc), rawDoc: rekey(it.rawDoc), cachedFrom: reuse.id, timings: { ...(it.timings ?? {}), modelMs: 0, fuseMs: 0 } };
+    await admin.from('ds_floorplans').update({
+      status: 'INTERPRETED', interpretation, interpretation_model: reuse.interpretation_model, interpretation_error: null,
+    }).eq('id', plan.id);
+    const d = interpretation.doc;
+    if (jobId) {
+      await admin.from('ds_jobs').update({
+        // A reused reading made no model call: its cost is zero because nothing was spent, not because it is unknown.
+        status: 'SUCCEEDED', finished_at: new Date().toISOString(), cost_cents: 0,
+        output: { cached: true, cachedFrom: reuse.id, walls: d.walls?.length ?? 0, rooms: d.rooms?.length ?? 0, doors: d.doors?.length ?? 0, windows: d.windows?.length ?? 0 },
+      }).eq('id', jobId);
+    }
+    return json({ state: 'INTERPRETED', cached: true, counts: { walls: d.walls?.length ?? 0, rooms: d.rooms?.length ?? 0, doors: d.doors?.length ?? 0, windows: d.windows?.length ?? 0 } });
+  }
 
   const apiKey = Deno.env.get('OPENAI_API_KEY');
   if (!apiKey) return fail('READING_UNAVAILABLE', jobId);
@@ -134,7 +170,7 @@ export async function handleFloorplan(req: Request): Promise<Response> {
           {
             role: 'user',
             content: [
-              { type: 'input_text', text: `Read this floor plan. The image is ${size.width} by ${size.height} pixels; give every coordinate in those pixels. Report only what the drawing shows.` },
+              { type: 'input_text', text: `Read this floor plan. The image is ${size.width} by ${size.height} pixels; give every coordinate in those pixels. Give each door and window its drawn centre, copy every printed text and size exactly, and report only what the drawing shows.` },
               { type: 'input_image', image_url: `data:${type};base64,${base64(bytes)}` },
             ],
           },
@@ -152,10 +188,34 @@ export async function handleFloorplan(req: Request): Promise<Response> {
   let raw: unknown;
   try { raw = JSON.parse(text); } catch { return fail('READING_BAD_SHAPE', jobId); }
 
+  const modelMs = Date.now() - started;
   const reading = validateReading(raw, size.width, size.height, plan.object_key);
+
+  // ── Fusion: the reading checked against the drawing's own pixels ───
+  // A picture that cannot be decoded here (WebP, or too large) is fused
+  // without its raster; a failure in fusion itself keeps the plain reading.
+  const fuseStarted = Date.now();
+  const decoded = decodeGray(bytes, type, size);
+  let interpretation: Record<string, unknown>;
+  let doc = reading.doc;
+  try {
+    const u = understand({ doc: reading.doc as any, dimensionStrings: reading.dimensionStrings, gray: decoded.ok ? decoded.gray : null });
+    doc = u.doc as typeof reading.doc;
+    interpretation = {
+      doc: u.doc, rawDoc: reading.doc, dimensionStrings: u.dimensionStrings, rawDimensionStrings: reading.dimensionStrings,
+      understanding: u.understanding, fusion: u.fusion, readVersion: reading.readVersion,
+      timings: { modelMs, fuseMs: Date.now() - fuseStarted, rasterMs: u.timings.rasterMs, raster: decoded.ok ? 'USED' : decoded.reason },
+    };
+  } catch (e) {
+    console.error('floorplan fusion failed', e instanceof Error ? e.message : String(e));
+    interpretation = {
+      doc: reading.doc, rawDoc: reading.doc, dimensionStrings: reading.dimensionStrings, understanding: null, readVersion: reading.readVersion,
+      timings: { modelMs, fuseMs: Date.now() - fuseStarted, raster: 'FUSION_FAILED' },
+    };
+  }
   await admin.from('ds_floorplans').update({
     status: 'INTERPRETED',
-    interpretation: { doc: reading.doc, dimensionStrings: reading.dimensionStrings, readVersion: reading.readVersion },
+    interpretation,
     interpretation_model: MODEL,
     interpretation_error: null,
   }).eq('id', plan.id);
@@ -167,9 +227,9 @@ export async function handleFloorplan(req: Request): Promise<Response> {
   if (jobId) {
     await admin.from('ds_jobs').update({
       status: 'SUCCEEDED', finished_at: new Date().toISOString(), cost_cents: cents,
-      output: { walls: reading.doc.walls.length, rooms: reading.doc.rooms.length, doors: reading.doc.doors.length, windows: reading.doc.windows.length, dimensions: reading.dimensionStrings.length, dropped: reading.dropped },
+      output: { walls: doc.walls.length, rooms: doc.rooms.length, doors: doc.doors.length, windows: doc.windows.length, dimensions: reading.dimensionStrings.length, dropped: reading.dropped, timings: interpretation.timings },
     }).eq('id', jobId);
   }
 
-  return json({ state: 'INTERPRETED', counts: { walls: reading.doc.walls.length, rooms: reading.doc.rooms.length, doors: reading.doc.doors.length, windows: reading.doc.windows.length } });
+  return json({ state: 'INTERPRETED', counts: { walls: doc.walls.length, rooms: doc.rooms.length, doors: doc.doors.length, windows: doc.windows.length } });
 }

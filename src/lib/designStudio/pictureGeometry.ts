@@ -187,9 +187,16 @@ export function footprintFromSilhouette(g: ArrayLike<number>, w: number, h: numb
   for (let x = 0; x < w; x += 1) if (top[x] >= 0 && bot[x] - top[x] > 8) cols.push(x);
   if (cols.length < w * 0.2) return null;
   const x0 = cols[0]; const x1 = cols[cols.length - 1];
-  // Wall height: the smallest vertical extent just inside the silhouette's two ends.
-  const ends = [x0 + 2, x0 + 4, x1 - 2, x1 - 4].filter((x) => top[x] >= 0).map((x) => bot[x] - top[x]);
-  const wallPx = Math.max(1, Math.min(...ends));
+  // Wall height: the vertical extent just inside the silhouette's two ends (a corner seen
+  // whole, floor to top; it grows moving inward, so the smallest is the corner's). The
+  // second-smallest of a few columns at each end, so one stray column (a pane of glass or a
+  // railing gap read as background) does not set it; the lower end wins.
+  const end = (from: number, dir: number) => {
+    const v = [2, 3, 4, 5, 6].map((k) => from + dir * k).filter((x) => x >= 0 && x < w && top[x] >= 0).map((x) => bot[x] - top[x]).sort((a, b) => a - b);
+    return v.length ? v[Math.min(1, v.length - 1)] : Infinity;
+  };
+  const wallPx = Math.max(1, Math.min(end(x0, 1), end(x1, -1)));
+  if (!Number.isFinite(wallPx)) return null;
   // Front floor edge (lower boundary, left → right), then the back floor edge
   // (upper boundary lowered by the wall height, right → left).
   const step = Math.max(1, Math.round(cols.length / 400));

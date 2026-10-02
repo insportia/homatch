@@ -22,8 +22,10 @@ import { applyFinish, patternOfMaterial, type SurfacePattern } from './finishTex
 import { balanceTo, PbrTextureLoader, shedPbr, wearPbr } from './pbrTextures';
 import { selectPbrMaps, surfaceMetalness, type PbrSelection } from '@/lib/designStudio/pbrMaps';
 import {
-  ceilingSurfaceId, floorSurfaceId, wallSlabPlacement, type SpaceModel, type SpaceRoom,
+  ceilingSurfaceId, floorSurfaceId, pointInPolygon, wallSlabPlacement, type SpaceModel, type SpaceRoom,
 } from '@/lib/designStudio/space';
+import { stairGeometries } from './stairMeshes';
+import type { OpeningMesh, WallMesh } from '@/lib/floorplan/geometry';
 import { sliceWall, type WallSlab } from '@/lib/floorplan/slabs';
 import type { QualityProfile } from '@/lib/designStudio/quality';
 import type { CatalogAsset, CatalogMaterial } from '@/lib/designStudio/catalog';
@@ -582,12 +584,28 @@ export class SceneController {
       this.surfaceMeshes.set(id, list);
     };
 
-    // Floors and ceilings, one polygon per room.
+    // Floors and ceilings, one polygon per room. A flight inside a room cuts
+    // its hole: in the ceiling for one going up, in the floor for one going down.
+    const stairs = space.stairs ?? [];
     for (const room of space.rooms) {
-      const shape = new THREE.Shape();
-      room.polygon.forEach((p, i) => (i === 0 ? shape.moveTo(p.x, p.y) : shape.lineTo(p.x, p.y)));
-      shape.closePath();
-      const geometry = new THREE.ShapeGeometry(shape);
+      const roomShape = (dir: 'UP' | 'DOWN' | null) => {
+        const shape = new THREE.Shape();
+        room.polygon.forEach((p, i) => (i === 0 ? shape.moveTo(p.x, p.y) : shape.lineTo(p.x, p.y)));
+        shape.closePath();
+        if (dir) {
+          for (const st of stairs) {
+            if (st.direction !== dir || !st.polygon.every((p) => pointInPolygon(p, room.polygon))) continue;
+            const hole = new THREE.Path();
+            st.polygon.forEach((p, i) => (i === 0 ? hole.moveTo(p.x, p.y) : hole.lineTo(p.x, p.y)));
+            hole.closePath();
+            shape.holes.push(hole);
+          }
+        }
+        return shape;
+      };
+      const holesFor = (dir: 'UP' | 'DOWN') => stairs.some((st) => st.direction === dir && st.polygon.every((p) => pointInPolygon(p, room.polygon)));
+      const geometry = new THREE.ShapeGeometry(roomShape(holesFor('DOWN') ? 'DOWN' : null));
+      const ceilingGeometry = holesFor('UP') ? new THREE.ShapeGeometry(roomShape('UP')) : geometry;
 
       const floorId = floorSurfaceId(room.id);
       const floor = new THREE.Mesh(geometry, surfaceMaterial(floorId, room.outdoor ? TONE.outdoor : TONE.floor));
@@ -603,7 +621,7 @@ export class SceneController {
         const ceilingMat = surfaceMaterial(ceilingId, TONE.ceiling);
         // The floor's polygon, lifted to the ceiling and seen from below.
         ceilingMat.side = THREE.BackSide;
-        const ceiling = new THREE.Mesh(geometry, ceilingMat);
+        const ceiling = new THREE.Mesh(ceilingGeometry, ceilingMat);
         ceiling.rotation.x = -Math.PI / 2;
         ceiling.position.y = space.ceilingHeightM;
         ceiling.visible = false; // cutaway in overview; shown from inside
@@ -707,6 +725,7 @@ export class SceneController {
       }
     }
 
+    this.buildStairs(space);
     this.buildOpenings(space);
 
     this.sun.target.position.set(space.extent.width / 2, 0, -space.extent.depth / 2);
@@ -1602,6 +1621,70 @@ export class SceneController {
   private living: LivingRuntime;
   private fixturesGroup = new THREE.Group();
 
+  /**
+   * Stairs: built architecture, walked around (navigation.ts) and never
+   * furnished over (placement.ts). Wood treads, rail and newels; painted
+   * risers and stringers; dark metal balusters; a lined well where the flight
+   * passes through the ceiling (shown with the ceilings) or the floor.
+   */
+  private buildStairs(space: SpaceModel) {
+    if (!space.stairs?.length) return;
+    const wood = new THREE.MeshStandardMaterial({ color: 0xc19a6b, roughness: 0.55 });
+    applyFinish(wood, 'WOOD_GRAIN', this.finishSize, false, this.finishAniso);
+    const mats = {
+      WOOD: wood,
+      PAINT: new THREE.MeshStandardMaterial({ color: 0xf1eee8, roughness: 0.45 }),
+      METAL: new THREE.MeshStandardMaterial({ color: 0x2b2d31, roughness: 0.45, metalness: 0.4 }),
+      WELL_UP: new THREE.MeshStandardMaterial({ color: TONE.ceiling, roughness: 0.9 }),
+      WELL_DOWN: new THREE.MeshStandardMaterial({ color: TONE.wallFace, roughness: 0.9 }),
+    } as const;
+    for (const [role, geometry] of stairGeometries(space)) {
+      const mesh = new THREE.Mesh(this.track(geometry), this.track(mats[role]));
+      mesh.castShadow = this.quality.shadows && role !== 'WELL_UP';
+      mesh.receiveShadow = this.quality.shadows;
+      mesh.raycast = () => {};
+      mesh.userData.decor = true;
+      mesh.name = `stairs:${role.toLowerCase()}`;
+      // The ceiling's well shows and hides with the ceilings (the cut-away overview has none).
+      if (role === 'WELL_UP') { mesh.visible = this.ceilingsShown; this.ceilingMeshes.push(mesh); }
+      this.spaceGroup.add(mesh);
+    }
+  }
+
+  /**
+   * A door's lining (the reveal) and, when it has a leaf, an architrave on
+   * both faces: world-space boxes for one merged mesh.
+   */
+  private doorCasing(out: THREE.BufferGeometry[], wall: WallMesh, o: OpeningMesh, architrave: boolean) {
+    const t = wall.thicknessM;
+    const w = o.widthM;
+    const h = o.heightM;
+    const lt = 0.02; // lining thickness
+    // [size along, size up, size across, along, up, across] in the wall's frame.
+    const boxes: Array<[number, number, number, number, number, number]> = [
+      [lt, h, t + 0.004, o.offsetM - w / 2 + lt / 2, o.sillM + h / 2, 0],
+      [lt, h, t + 0.004, o.offsetM + w / 2 - lt / 2, o.sillM + h / 2, 0],
+      [w, lt, t + 0.004, o.offsetM, o.sillM + h - lt / 2, 0],
+    ];
+    if (architrave) {
+      const aw = 0.07;
+      const at = 0.015;
+      for (const z of [t / 2 + at / 2, -(t / 2 + at / 2)]) {
+        boxes.push([aw, h + aw - lt, at, o.offsetM - w / 2 - aw / 2 + lt, o.sillM + (h + aw - lt) / 2, z]);
+        boxes.push([aw, h + aw - lt, at, o.offsetM + w / 2 + aw / 2 - lt, o.sillM + (h + aw - lt) / 2, z]);
+        boxes.push([w + 2 * aw - 2 * lt, aw, at, o.offsetM, o.sillM + h - lt + aw / 2, z]);
+      }
+    }
+    const f = wallFrame(wall);
+    const place = new THREE.Matrix4().makeRotationY(f.angle).setPosition(wall.start.x, 0, -wall.start.y);
+    for (const [sx, sy, sz, x, y, z] of boxes) {
+      const g = new THREE.BoxGeometry(sx, sy, sz);
+      g.translate(x, y, z);
+      g.applyMatrix4(place);
+      out.push(g);
+    }
+  }
+
   /** Doors, windows and balcony doors of a floor-plan space, and a ceiling light in every indoor room. */
   private buildOpenings(space: SpaceModel) {
     this.living.clear(null);
@@ -1611,57 +1694,157 @@ export class SceneController {
     // Clear glass (a faint cool reflection, not a milky panel), in frames the design's own colour.
     const glassMat = new THREE.MeshStandardMaterial({ color: 0xdfe9f0, roughness: 0.03, metalness: 0.05, transparent: true, opacity: 0.16 });
     const glazingMat = new THREE.MeshStandardMaterial({ color: this.framesColor ?? 0xf4f4f2, roughness: 0.4, metalness: 0.2 });
+    const handleMat = new THREE.MeshStandardMaterial({ color: 0x8f8d89, roughness: 0.3, metalness: 0.85 });
+    // Raised panels a shade off the leaf, so their edges read.
+    const panelMat = new THREE.MeshStandardMaterial({ color: 0xe3ddd3, roughness: 0.65 });
     this.glazingFrameMat = glazingMat;
-    this.track(leafMat); this.track(frameMat); this.track(glassMat); this.track(glazingMat);
+    this.track(leafMat); this.track(frameMat); this.track(glassMat); this.track(glazingMat); this.track(handleMat); this.track(panelMat);
+    // One unit box, scaled per piece: dozens of door parts, one geometry.
+    const unit = this.track(new THREE.BoxGeometry(1, 1, 1));
+    const piece = (parent: THREE.Object3D, mat: THREE.Material, w: number, h: number, d: number, x: number, y: number, z: number) => {
+      const m = new THREE.Mesh(unit, mat);
+      m.scale.set(Math.max(w, 1e-3), Math.max(h, 1e-3), Math.max(d, 1e-3));
+      m.position.set(x, y, z);
+      parent.add(m);
+      return m;
+    };
+    // Door linings and architraves never move: merged into one mesh at the end.
+    const casing: THREE.BufferGeometry[] = [];
     const outdoor = new Set(space.rooms.filter((r) => r.outdoor).map((r) => r.id));
+    const areaOf = new Map(space.rooms.map((r) => [r.id, r.areaM2]));
     for (const wall of space.walls) {
       const f = wallFrame(wall.mesh);
+      const t = wall.mesh.thicknessM;
       for (const o of wall.mesh.openings) {
-        const jamb = { x: wall.mesh.start.x + f.dir.x * (o.offsetM - o.widthM / 2), y: wall.mesh.start.y + f.dir.y * (o.offsetM - o.widthM / 2) };
         const at = (seg: { from: number; to: number }) => o.offsetM >= seg.from - 0.05 && o.offsetM <= seg.to + 0.05;
-        // Swing toward a room (the left face when it looks into one).
-        const intoLeft = wall.segments.some((seg) => seg.side === 'L' && at(seg) && !outdoor.has(seg.roomId));
+        // The side a leaf opens into: the drawing's, else the larger indoor room.
+        const sideArea = (side: 'L' | 'R') => Math.max(-1, ...wall.segments
+          .filter((seg) => seg.side === side && at(seg))
+          .map((seg) => (outdoor.has(seg.roomId) ? -0.5 : areaOf.get(seg.roomId) ?? 0)));
+        const intoLeft = o.swing ? o.swing === 'L' : sideArea('L') >= sideArea('R');
         const sign = intoLeft ? 1 : -1;
-        // A door between a room and a balcony or terrace slides, glazed.
+        // A door between a room and a balcony or terrace slides, glazed (unless the plan says how it closes).
         const balcony = o.kind === 'DOOR' && wall.segments.some((seg) => at(seg) && outdoor.has(seg.roomId));
+        const leafKind = o.leaf ?? null;
+        const w = o.widthM;
+        const h = o.heightM;
+        if (o.kind === 'DOOR') this.doorCasing(casing, wall.mesh, o, leafKind !== 'NONE' && leafKind !== 'FRENCH' && !(balcony && !leafKind));
+        if (o.kind === 'DOOR' && leafKind === 'NONE') continue; // a doorless opening: lined, open, nothing to perform
+        // A door leaf hangs towards the face it opens to (in its lining, not mid-wall).
+        const face = o.kind === 'DOOR' ? Math.max(0, t / 2 - 0.035) : 0;
+        const n = intoLeft ? f.normalL : f.normalR;
+        const jamb = {
+          x: wall.mesh.start.x + f.dir.x * (o.offsetM - w / 2) + n.x * face,
+          y: wall.mesh.start.y + f.dir.y * (o.offsetM - w / 2) + n.y * face,
+        };
         const pivot = new THREE.Group();
         pivot.name = `ix:${o.id}`;
         pivot.position.set(jamb.x, o.sillM, -jamb.y);
         pivot.rotation.y = f.angle;
-        const w = o.widthM;
-        const h = o.heightM;
-        const glazed = (panelW: number, x0: number) => {
-          const t = 0.05;
-          for (const [bw, bh, x, y] of [[panelW, t, x0 + panelW / 2, t / 2], [panelW, t, x0 + panelW / 2, h - t / 2], [t, h, x0 + t / 2, h / 2], [t, h, x0 + panelW - t / 2, h / 2]]) {
-            const bar = new THREE.Mesh(this.track(new THREE.BoxGeometry(bw, bh, 0.05)), glazingMat);
-            bar.position.set(x, y, 0);
-            pivot.add(bar);
-          }
-          const glass = new THREE.Mesh(this.track(new THREE.PlaneGeometry(panelW - 2 * t, h - 2 * t)), glassMat);
+        const glazed = (parent: THREE.Object3D, panelW: number, x0: number, bars = 0) => {
+          const fw = 0.05;
+          piece(parent, glazingMat, panelW, fw, 0.05, x0 + panelW / 2, fw / 2, 0);
+          piece(parent, glazingMat, panelW, fw, 0.05, x0 + panelW / 2, h - fw / 2, 0);
+          piece(parent, glazingMat, fw, h, 0.05, x0 + fw / 2, h / 2, 0);
+          piece(parent, glazingMat, fw, h, 0.05, x0 + panelW - fw / 2, h / 2, 0);
+          // Glazing bars (a French door's lites).
+          for (let k = 1; k <= bars; k += 1) piece(parent, glazingMat, panelW - 2 * fw, 0.03, 0.035, x0 + panelW / 2, (h * k) / (bars + 1), 0);
+          const glass = new THREE.Mesh(this.track(new THREE.PlaneGeometry(panelW - 2 * fw, h - 2 * fw)), glassMat);
           glass.position.set(x0 + panelW / 2, h / 2, 0);
-          pivot.add(glass);
+          parent.add(glass);
         };
-        let spec: InteractionSpec;
-        if (balcony) {
-          glazed(w * 0.52, w * 0.02);
+        /** A panelled leaf, hinge at local x = 0, extending along +x (or -x when `mirror`). */
+        const panelLeaf = (parent: THREE.Object3D, lw: number, mirror: boolean) => {
+          const dir = mirror ? -1 : 1;
+          const lh = h - 0.015;
+          const slab = piece(parent, leafMat, lw, lh, 0.04, (dir * lw) / 2, lh / 2, 0);
+          slab.castShadow = this.quality.shadows;
+          // Two raised panels on each face: the light catches their edges.
+          const pw = Math.max(0.1, lw - 0.22);
+          for (const z of [0.024, -0.024]) {
+            piece(parent, panelMat, pw, lh * 0.36, 0.008, (dir * lw) / 2, lh * 0.27, z);
+            piece(parent, panelMat, pw, lh * 0.36, 0.008, (dir * lw) / 2, lh * 0.71, z);
+          }
+          // A lever handle and rose on both faces, at the free edge.
+          const hx = dir * (lw - 0.07);
+          for (const z of [1, -1]) {
+            piece(parent, handleMat, 0.05, 0.05, 0.01, hx, 1.0 - o.sillM, z * 0.025);
+            piece(parent, handleMat, 0.13, 0.018, 0.018, hx - dir * 0.05, 1.0 - o.sillM, z * 0.045);
+          }
+        };
+        let spec: InteractionSpec | null;
+        const open = 1.48 * sign; // about 85 degrees
+        if (o.kind === 'DOOR' && (leafKind === 'DOUBLE' || leafKind === 'FRENCH')) {
+          // Two leaves, hinged at each jamb, opening together.
+          const a = new THREE.Group();
+          a.name = `ix:${o.id}.a`;
+          const b = new THREE.Group();
+          b.name = `ix:${o.id}.b`;
+          b.position.x = w;
+          const half = w / 2 - 0.005;
+          if (leafKind === 'FRENCH') {
+            glazed(a, half, 0, 2);
+            glazed(b, half, -half, 2);
+            for (const [g, x] of [[a, half - 0.08], [b, -(half - 0.08)]] as const) {
+              for (const z of [1, -1]) piece(g, handleMat, 0.02, 0.16, 0.02, x, 1.05 - o.sillM, z * 0.04);
+            }
+          } else {
+            panelLeaf(a, half, false);
+            panelLeaf(b, half, true);
+          }
+          pivot.add(a, b);
+          const leaves = (r: number) => ({
+            [`${o.id}.a`]: { r: [0, r, 0] as [number, number, number] },
+            [`${o.id}.b`]: { r: [0, -r, 0] as [number, number, number] },
+          });
+          spec = {
+            id: o.id, kind: 'STATES', role: balcony ? 'BALCONY_DOOR' : 'DOOR', durationMs: 900, initial: balcony ? 'CLOSED' : 'OPEN',
+            states: [{ id: 'CLOSED', parts: leaves(0), blocks: true }, { id: 'OPEN', parts: leaves(open) }],
+            transitions: [{ from: 'CLOSED', to: 'OPEN', action: 'OPEN' }, { from: 'OPEN', to: 'CLOSED', action: 'CLOSE' }],
+          };
+        } else if (o.kind === 'DOOR' && leafKind === 'SLIDING') {
+          // A panel that slides along the wall's face, past the opening.
+          const slide = new THREE.Group();
+          slide.name = `ix:${o.id}`;
+          panelLeaf(slide, w + 0.04, false);
+          slide.position.set(-0.02, 0, -sign * (Math.max(0, t / 2 - face) + 0.035));
+          pivot.name = `door:${o.id}`;
+          pivot.add(slide);
+          this.spaceGroup.add(pivot);
+          this.living.register('door', pivot, [{ id: o.id, kind: 'SLIDING', role: 'DOOR', axis: 'x', open: w * 0.95, durationMs: 1000, initiallyOpen: true }], null, { objectId: null, doorId: () => o.id });
+          continue;
+        } else if (balcony && !leafKind) {
+          glazed(pivot, w * 0.52, w * 0.02);
           // Slides along the wall, behind the fixed half.
           spec = { id: o.id, kind: 'SLIDING', role: 'BALCONY_DOOR', axis: 'x', open: w * 0.46, durationMs: 1100 };
         } else if (o.kind === 'DOOR') {
-          const leaf = new THREE.Mesh(this.track(new THREE.BoxGeometry(w - 0.02, h - 0.02, 0.04)), leafMat);
-          leaf.position.set(w / 2, h / 2, 0);
-          leaf.castShadow = this.quality.shadows;
-          pivot.add(leaf);
-          const handle = new THREE.Mesh(this.track(new THREE.BoxGeometry(0.12, 0.02, 0.08)), frameMat);
-          handle.position.set(w - 0.1, 1.0, 0);
-          pivot.add(handle);
-          spec = { id: o.id, kind: 'HINGED', role: 'DOOR', axis: 'y', open: 1.5 * sign, durationMs: 900, initiallyOpen: true };
+          panelLeaf(pivot, w - 0.01, false);
+          spec = { id: o.id, kind: 'HINGED', role: 'DOOR', axis: 'y', open, durationMs: 900, initiallyOpen: true };
+        } else if (leafKind === 'FIXED') {
+          glazed(pivot, w, 0);
+          spec = null;
+        } else if (leafKind === 'SLIDING') {
+          glazed(pivot, w * 0.52, w * 0.02);
+          spec = { id: o.id, kind: 'SLIDING', role: 'WINDOW', axis: 'x', open: w * 0.44, durationMs: 900 };
         } else {
-          glazed(w, 0);
+          glazed(pivot, w, 0);
           spec = { id: o.id, kind: 'HINGED', role: 'WINDOW', axis: 'y', open: 1.1 * sign, durationMs: 800 };
         }
         this.spaceGroup.add(pivot);
+        if (!spec) continue;
         const prefix = o.kind === 'DOOR' ? 'door' : 'window';
         this.living.register(prefix, pivot, [spec], null, { objectId: null, doorId: () => (o.kind === 'DOOR' ? o.id : null) });
+      }
+    }
+    if (casing.length) {
+      const merged = mergeGeometries(casing, false);
+      casing.forEach((g) => g.dispose());
+      if (merged) {
+        const mesh = new THREE.Mesh(this.track(merged), frameMat);
+        mesh.receiveShadow = this.quality.shadows;
+        mesh.raycast = () => {};
+        mesh.userData.decor = true;
+        this.spaceGroup.add(mesh);
       }
     }
     // A balcony or terrace edge with no wall is a railing: glass, a top rail,

@@ -8,6 +8,10 @@
 //   POST …/design-studio-reconstruct/factory-status   a pass's state; every output verified on completion
 //   POST …/design-studio-reconstruct/factory-discard  a superseded pass's outputs deleted
 //   POST …/design-studio-reconstruct/qa               the rebuild checked against the picture or plan
+//   POST …/design-studio-reconstruct/render-quote     a signed render quote (credits, 10-minute expiry)   (renders.ts)
+//   POST …/design-studio-reconstruct/render-start     quoted renders reserved, recorded, one factory pass started
+//   POST …/design-studio-reconstruct/render-status    renders advanced: factory → photoreal finish → structure check → settle
+//   POST …/design-studio-reconstruct/render-edit      one appearance edit inside a target's own mask, checked
 //
 // One function because the project is on a plan that caps how many edge
 // functions it may have, and production is at that cap: two new functions
@@ -23,6 +27,7 @@ import { handleDesign } from './design.ts';
 import { handleFloorplan } from './floorplan.ts';
 import { handleFactory, handleFactoryDiscard, handleFactoryStatus, handleQa } from './factory.ts';
 import { handleProjectDelete } from './project.ts';
+import { handleRenderEdit, handleRenderQuote, handleRenderStart, handleRenderStatus } from './renders.ts';
 import { handleReconstruct } from './reconstruct.ts';
 
 serve((req) => {
@@ -34,5 +39,9 @@ serve((req) => {
   if (route === 'factory-status') return handleFactoryStatus(req);
   if (route === 'factory-discard') return handleFactoryDiscard(req);
   if (route === 'qa') return handleQa(req);
+  if (route === 'render-quote') return handleRenderQuote(req);
+  if (route === 'render-start') return handleRenderStart(req);
+  if (route === 'render-status') return handleRenderStatus(req);
+  if (route === 'render-edit') return handleRenderEdit(req);
   return handleReconstruct(req);
 });

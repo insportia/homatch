@@ -67,6 +67,14 @@ export interface WallSegment extends Asserted {
   thicknessPx: number | null;
 }
 
+/**
+ * How an opening closes, as the drawing shows it. HINGED: one swinging leaf
+ * (an arc); DOUBLE: two leaves; SLIDING: a leaf drawn along the wall; NONE: a
+ * doorless gap; FRENCH: a full-height glazed door (balconies). Windows use
+ * FIXED / CASEMENT / SLIDING. Absent means the drawing does not say.
+ */
+export type OpeningLeaf = 'HINGED' | 'DOUBLE' | 'SLIDING' | 'NONE' | 'FRENCH' | 'FIXED' | 'CASEMENT';
+
 export interface Opening extends Asserted {
   id: string;
   /** The wall it sits in. An opening with no wall is a warning, not geometry. */
@@ -77,7 +85,51 @@ export interface Opening extends Asserted {
   /** Doors: the leaf height. Windows: sill and head. Null when not drawn. */
   sillHeightM?: number | null;
   heightM?: number | null;
+  /** The opening's centre as drawn, in pixels. `position` is derived from it when present. */
+  centerPx?: PixelPoint | null;
+  leaf?: OpeningLeaf | null;
+  /** HINGED/DOUBLE: the side of the wall the leaf swings into, as the room it opens into. */
+  swingRoomId?: string | null;
 }
+
+/**
+ * A flight of stairs, as drawn: its footprint, and the edge it starts from
+ * (the first tread; it climbs away from that edge). Stairs are architecture,
+ * not furniture: they are built, walked around, and never moved by a design.
+ */
+export interface StairFlight extends Asserted {
+  id: string;
+  /** Closed ring in image pixels, first point not repeated. */
+  polygon: PixelPoint[];
+  /** Two points on the footprint's boundary: where the flight starts. Null when not drawn. */
+  startEdge: [PixelPoint, PixelPoint] | null;
+  direction: 'UP' | 'DOWN' | 'UNKNOWN';
+  /** Treads counted on the drawing, when they can be. */
+  treads: number | null;
+}
+
+/** What a piece of text on the sheet IS. Only some of it is about the building. */
+export type PlanTextRole =
+  | 'ROOM_LABEL' | 'DIMENSION' | 'AREA' | 'SCALE' | 'NORTH' | 'LEVEL'
+  | 'TITLE' | 'LOGO' | 'CONTACT' | 'NOTE' | 'OTHER';
+
+export interface PixelBox { x: number; y: number; w: number; h: number }
+
+export interface PlanText {
+  id: string;
+  /** Exactly as printed. */
+  text: string;
+  role: PlanTextRole;
+  box: PixelBox;
+  /** A room label or a room dimension: the room it belongs to. */
+  roomId?: string | null;
+  confidence: number;
+}
+
+/** Parts of the sheet that are not the building: read, kept for audit, never built. */
+export type IgnoredRole = 'TITLE_BLOCK' | 'LOGO' | 'CONTACT' | 'BORDER' | 'COMPASS' | 'LEGEND' | 'DIMENSION_LINES' | 'OTHER';
+
+export interface IgnoredRegion { id: string; role: IgnoredRole; box: PixelBox; note?: string | null }
 
 export type RoomKind =
   | 'LIVING' | 'BEDROOM' | 'KITCHEN' | 'BATHROOM' | 'WC' | 'HALL'
@@ -92,6 +144,8 @@ export interface RoomPolygon extends Asserted {
   polygon: PixelPoint[];
   /** Square metres AS PRINTED on the plan, when it prints one. */
   statedAreaM2: number | null;
+  /** The room's printed size, verbatim ("10'X14'", "3.20 x 4.10"), when it prints one. */
+  dimensionText?: string | null;
 }
 
 export interface UnknownElement {
@@ -154,6 +208,17 @@ export interface FloorPlanDocument {
 
   /** The LOWEST element confidence, never the average. See below. */
   extractionConfidence: number;
+
+  // ── Added by the Design Studio reader (ds-read-2); absent on older readings ──
+  stairs?: StairFlight[];
+  /** Every piece of text on the sheet, with what it is. */
+  texts?: PlanText[];
+  /** The sheet's non-building parts: title block, logo, contact, border, compass. */
+  ignored?: IgnoredRegion[];
+  /** The building's outer boundary as drawn (outside faces of the exterior walls), pixels. */
+  footprint?: PixelPoint[] | null;
+  /** Degrees clockwise from the image's up direction to north, when a compass is drawn. */
+  northDeg?: number | null;
 }
 
 /**

@@ -44,6 +44,8 @@ jobs:
           context: infra/design-studio-gpu-worker
           file: infra/design-studio-gpu-worker/Dockerfile
           push: true
+          build-args: |
+            HM_IMAGE_REVISION=${{ github.sha }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main

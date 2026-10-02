@@ -7,6 +7,8 @@
 //     solid: you look through them, you do not walk through them)
 //   · a CLOSED door fills its opening; an open one leaves it free
 //   · every placed floor piece taller than a rug (from the current design)
+//   · every flight of stairs: its footprint is walked around, never onto
+//     (one storey is walked; the flight is architecture to look at)
 //   · the space itself: the body must stay in a room or in a doorway
 //
 // A blocked move slides along the obstacle instead of stopping dead, and a
@@ -31,6 +33,8 @@ export interface WalkModel {
   walls: Obb[];
   furniture: Obb[];
   doors: Point[];
+  /** Stair footprints (plan polygons): solid, like a wall. */
+  stairs: Point[][];
   /** Each door opening's leaf, as the solid it becomes when the door is closed. */
   doorways: Map<string, Obb>;
   /** Doors currently closed (walkthrough state, never the design's). */
@@ -85,7 +89,8 @@ export function buildWalkModel(space: SpaceModel, objects: ObjectInstance[], ass
     furniture.push(footprint(a, { x: o.position.x, y: o.position.z }, o.rotationY));
   }
 
-  return { space, walls, furniture, doors: space.doors.map((d) => d.centre), doorways, closedDoors: new Set(), radius: BODY_RADIUS_M };
+  const stairs = (space.stairs ?? []).map((st) => st.polygon).filter((p) => p.length >= 3);
+  return { space, walls, furniture, doors: space.doors.map((d) => d.centre), stairs, doorways, closedDoors: new Set(), radius: BODY_RADIUS_M };
 }
 
 /** Distance from a point to an oriented box (0 inside). */
@@ -101,6 +106,22 @@ export function distanceToObb(p: Point, b: Obb): number {
   return Math.hypot(qx, qy);
 }
 
+/** Distance from a point to a polygon's boundary (0 inside). */
+export function distanceToPolygon(p: Point, polygon: Point[]): number {
+  if (pointInPolygon(p, polygon)) return 0;
+  let best = Infinity;
+  for (let i = 0; i < polygon.length; i += 1) {
+    const a = polygon[i];
+    const b = polygon[(i + 1) % polygon.length];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy;
+    const t = len2 > 0 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2)) : 0;
+    best = Math.min(best, Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy)));
+  }
+  return best;
+}
+
 /** The room a point stands in; a doorway counts as the space too. */
 export function inSpace(model: WalkModel, p: Point): boolean {
   if (model.space.rooms.some((r) => pointInPolygon(p, r.polygon))) return true;
@@ -111,6 +132,7 @@ export function isFree(model: WalkModel, p: Point): boolean {
   if (!inSpace(model, p)) return false;
   for (const w of model.walls) if (distanceToObb(p, w) < model.radius) return false;
   for (const f of model.furniture) if (distanceToObb(p, f) < model.radius) return false;
+  for (const s of model.stairs ?? []) if (distanceToPolygon(p, s) < model.radius) return false;
   for (const id of model.closedDoors) {
     const leaf = model.doorways.get(id);
     if (leaf && distanceToObb(p, leaf) < model.radius) return false;

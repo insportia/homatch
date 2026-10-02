@@ -111,6 +111,21 @@ export function viewToPlan(frame: PictureFrame, uv: Point2): Point2 {
   return [frame.view.x0 + (uv[0] * frame.view.width) / frame.view.perUnit, frame.view.y0 + (uv[1] * frame.view.height) / frame.view.perUnit];
 }
 
+/**
+ * Where something `height` image-height units above the floor is DRAWN in the
+ * plan view, relative to where it stands, in plan units. The plan view samples
+ * the picture at `view.lift` (the outer wall tops), so only things at that
+ * height are drawn in place: a partition cut lower, or the floor itself,
+ * appears shifted toward the side the picture was taken from, by
+ * (lift − height) · cot(elevation) — this vector. Subtract it to put a traced
+ * point back where it stands.
+ */
+export function viewShift(frame: Pick<PictureFrame, 'floorDeg' | 'ratio' | 'view'>, height: number): Point2 {
+  const drop = frame.view.lift - height;
+  if (Math.abs(drop) < 1e-12) return [0, 0];
+  return imageToPlan(frame, 0, drop);
+}
+
 /** Plan units ↔ the reader's metres: a turn by a multiple of 90°, a uniform scale and a shift. */
 export interface FrameAlignment {
   /** Metres per plan unit. */

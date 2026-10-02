@@ -4,6 +4,7 @@
   blender    the trusted factory script builds the scene from the validated spec,
              renders the source camera, exports the home and its walkthrough pieces
   composite  the render over the picture's own background → JPEG
+  views      each planned view: its picture → JPEG, its id image (PNG) and legend (JSON)
   optimize   each GLB: dedup, prune, KTX2 (when textured), meshopt, Khronos validator;
              the home in two tiers (DESKTOP, MOBILE), each piece once
   upload     only to the signed URLs the job brought
@@ -29,7 +30,8 @@ from PIL import Image
 
 from .optimize import facts, optimize
 from .schema import (
-    MAX_MODEL_BYTES, MAX_OBJECT_BYTES, MAX_RENDER_BYTES, MAX_SCENE_BYTES, MAX_TEXTURE_BYTES, Job, JobError,
+    MAX_MODEL_BYTES, MAX_OBJECT_BYTES, MAX_RENDER_BYTES, MAX_SCENE_BYTES, MAX_TEXTURE_BYTES, MAX_VIEW_BYTES, MAX_VIEW_IDS_BYTES,
+    MAX_VIEW_LEGEND_BYTES, Job, JobError,
 )
 
 HERE = Path(__file__).resolve().parent
@@ -92,6 +94,55 @@ def composite_jpeg(png: Path, background: str | None, out: Path) -> dict:
     raise RuntimeError("render over the size limit")
 
 
+def view_jpeg(png: Path, out: Path) -> dict:
+    """A planned view's picture (opaque, 8-bit sRGB) as a JPEG under the size limit, as good as it fits."""
+    rgb = Image.open(png).convert("RGB")
+    for q in (92, 88, 82, 75):
+        rgb.save(out, "JPEG", quality=q, optimize=True, subsampling=0 if q >= 88 else 2)
+        if out.stat().st_size <= MAX_VIEW_BYTES:
+            return {"width": rgb.size[0], "height": rgb.size[1], "quality": q}
+    raise RuntimeError("view over the size limit")
+
+
+def _file(data: bytes, **facts) -> dict:
+    return {**facts, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+
+
+def deliver_views(job: Job, out: Path, work: Path, build: dict, transfer) -> dict:
+    """Each view's three files to their own signed URLs; a view that did not render is reported, never invented."""
+    result: dict = {}
+    reports = build.get("views") or {}
+    for vid, urls in job.view_urls.items():
+        rep = reports.get(vid) or {}
+        try:
+            if not rep.get("ok"):
+                raise RuntimeError(rep.get("error") or "not rendered")
+            jpg = work / f"view-{vid}.jpg"
+            info = view_jpeg(out / rep["image"], jpg)
+            data = jpg.read_bytes()
+            transfer.put(urls["image"], data, "image/jpeg")
+            entry: dict = {"ok": True, "image": _file(data, **info), "ids": None, "legend": None, "ms": rep.get("ms")}
+            if urls["ids"]:
+                ids = (out / rep["ids"]).read_bytes()
+                legend = (out / rep["legend"]).read_bytes()
+                if len(ids) > MAX_VIEW_IDS_BYTES or len(legend) > MAX_VIEW_LEGEND_BYTES:
+                    raise RuntimeError("object map over the size limit")
+                if rep.get("unmatchedPixels"):
+                    raise RuntimeError(f"object map: {rep['unmatchedPixels']} pixels of no target")
+                transfer.put(urls["ids"], ids, "image/png")
+                transfer.put(urls["legend"], legend, "application/json")
+                w, h = Image.open(out / rep["ids"]).size
+                entry["ids"] = _file(ids, width=w, height=h)
+                entry["legend"] = _file(legend, entries=rep.get("entries"))
+                entry["idMs"] = rep.get("idMs")
+            result[vid] = entry
+        except Exception as e:  # noqa: BLE001 - one view's failure is reported; the others are delivered
+            if "upload" in str(e):
+                raise
+            result[vid] = {"ok": False, "error": str(e)[:200]}
+    return result
+
+
 STAGES = {"ARCHITECTURE", "FURNISHING", "MATERIALS", "LIGHTING", "RENDERING", "EXPORTING"}
 
 
@@ -132,6 +183,8 @@ def run_job(job: Job, tools: dict, transfer: Transfer | None = None, now=time.pe
     started = now()
     timings: dict[str, int] = {}
     outputs: dict = {"render": None, "scene": {}, "objects": {}}
+    if job.view_urls:
+        outputs["views"] = {}
     work = Path(tempfile.mkdtemp(prefix="hm-ds-factory-"))
     temp_bytes = 0
     build: dict = {}
@@ -199,6 +252,11 @@ def run_job(job: Job, tools: dict, transfer: Transfer | None = None, now=time.pe
             outputs["render"] = {**info, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
         timings["render_output"] = _ms(t)
 
+        if job.view_urls:
+            t = now()
+            outputs["views"] = deliver_views(job, out, work, build, transfer)
+            timings["views_output"] = _ms(t)
+
         if job.scene_urls or job.object_urls:
             tell("OPTIMIZING")
         t = now()
@@ -245,7 +303,7 @@ def run_job(job: Job, tools: dict, transfer: Transfer | None = None, now=time.pe
     timings["total"] = _ms(started)
     return {
         "jobId": job.job_id, "outputs": outputs, "timings": timings, "attempts": attempts,
-        "build": {k: build.get(k) for k in ("counts", "warnings", "timings", "objects", "groups", "device", "blender", "render")},
+        "build": {k: build.get(k) for k in ("counts", "warnings", "timings", "objects", "groups", "device", "blender", "render", *(("views",) if "views" in build else ()))},
         "temporaryBytesDeleted": temp_bytes, "temporaryDirRemoved": not work.exists(),
     }
 

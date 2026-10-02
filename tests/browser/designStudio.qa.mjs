@@ -1327,7 +1327,7 @@ async function checkpoint13(browser) {
 }
 
 /* A few rows shaped exactly like the development seed (20260930091000). */
-function qaCatalogAssets() {
+export function qaCatalogAssets() {
   const row = (code, name, category, w, d, h, kind, over = {}) => ({
     id: `asset-${code}`, code, name, category, subcategory: null, room_kinds: ['LIVING'], style_tags: ['contemporary'],
     color_tags: ['neutral'], material_tags: ['fabric'], width_m: w, depth_m: d, height_m: h, placement: 'FLOOR',
@@ -1355,7 +1355,7 @@ function qaCatalogAssets() {
   ];
 }
 
-function qaCatalogMaterials() {
+export function qaCatalogMaterials() {
   const m = (code, name, category, appliesTo, baseColor, roughness = 0.9) => ({
     id: `mat-${code}`, code, name, category, applies_to: appliesTo, style_tags: [], color_family: null,
     pbr: { baseColor, roughness, metalness: 0 }, thumbnail_key: null, provenance: 'HOMATCH_DEV_PLACEHOLDER',

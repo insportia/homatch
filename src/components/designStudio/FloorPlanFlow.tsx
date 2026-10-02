@@ -1,52 +1,45 @@
-// FROM A FLOOR PLAN TO A 3D SPACE — the customer's path.
+// FROM A FLOOR PLAN TO A HOME YOU CAN WALK THROUGH — the customer's path.
 //
-//   1. Upload     PNG / JPEG / WebP, or a PDF (page 1 is rendered here)
-//   2. Reading    HOMATCH checks the file and reads the drawing
-//   3. Review     keep what was read correctly, remove what was misread,
-//                 correct room types — the reading is a proposal
-//   4. Size       estimated from the drawing, or calibrated from a real
-//                 measurement: total area, one wall, one room
-//   5. Build      HOMATCH's deterministic generator builds the space
+//   1. Upload      PNG / JPEG / WebP, or a PDF (page 1 is rendered here)
+//   2. Understand  HOMATCH reads the drawing and checks it against itself:
+//                  printed sizes against each other, rooms against walls
+//   3. Confirm     the plan as HOMATCH understood it; only the questions its
+//                  evidence could not settle; anything can be tapped and fixed
+//   4. Look        style, mood, floors, walls, accents, furnishing, own words
+//   5. Generate    the AI designer's intent, placed by HOMATCH, built by the
+//                  Blender factory — resumable, never paid for twice
+//   6. Walk        the walkthrough opens on the result
 //
-// It never shows a space the evidence does not support: no scale signal and
-// no measurement means a question, not a guess.
+// Every step is kept on the plan's review entry, so a reload lands where the
+// customer was. Recalibrating an existing space uses the same review and
+// rebuilds the space only (no new design).
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, FileImage, Loader2, Upload } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, FileImage, Loader2, RefreshCw, Upload } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { FloorPlanOverlay, DEFAULT_CATEGORIES, type Selection } from '@/components/developer/FloorPlanOverlay';
-import type { FloorPlanDocument, RoomKind } from '@/services/developer/floorplan';
+import type { FloorPlanDocument } from '@/services/developer/floorplan';
 import {
-  buildCanonical, calibrate, DEFAULT_CEILING_M, estimateScale, type Anchor, type ReviewDecisions,
+  buildCanonical, calibrate, DEFAULT_CEILING_M, estimateScale, type Anchor, type Calibration, type ReviewDecisions,
 } from '@/lib/designStudio/scale';
+import { applyAnswers, solvePlan } from '@/lib/designStudio/planRead';
+import {
+  DEFAULT_PREFERENCES, normalizePreferences, type DesignPreferences, type FlowTimings, type PlanAnswer,
+} from '@/lib/designStudio/planToHome';
+import { freshStages, GenerationStages, type StageStatus } from '@/components/designStudio/GenerationStages';
+import type { Stage } from '@/lib/designStudio/hybrid/contract';
 import { DesignStudioError } from '@/services/designStudio/projects';
 import {
-  createFloorPlanSource, interpretFloorPlan, recordReview, uploadFloorPlan, getFloorPlan, type FloorPlanRecord,
+  createFloorPlanSource, getFloorPlan, interpretFloorPlan, recordReview, uploadFloorPlan, type FloorPlanRecord,
 } from '@/services/designStudio/floorplans';
+import { generateHome, latestFlow, prepareArchitecture, saveFlow } from '@/services/designStudio/planToHome';
+import { quoteRender } from '@/services/designStudio/renders';
+import type { RenderQuote } from '@/lib/designStudio/renders/contract';
 import { signedUrls } from '@/services/designStudio/files';
 import { cn } from '@/lib/utils';
+import { PlanReview } from './planToHome/PlanReview';
+import { DesignChooser } from './planToHome/DesignChooser';
 
-type Step = 'UPLOAD' | 'READING' | 'REVIEW' | 'SIZE';
-
-/**
- * The drawing, scaled down to the width available (never up). The overlay
- * draws at the drawing's own pixel size; CSS zoom keeps its hit targets and
- * its geometry aligned while the whole plan fits a phone.
- */
-function FitWidth({ width, children }: { width: number; children: React.ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [zoom, setZoom] = useState(1);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || !width) return;
-    const observer = new ResizeObserver(([entry]) => setZoom(Math.min(1, entry.contentRect.width / (width + 4))));
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [width]);
-  return <div ref={ref} className="w-full"><div style={{ zoom }}>{children}</div></div>;
-}
-
-const ROOM_KINDS: RoomKind[] = ['LIVING', 'BEDROOM', 'KITCHEN', 'BATHROOM', 'WC', 'HALL', 'CORRIDOR', 'STORAGE', 'BALCONY', 'TERRACE', 'UNKNOWN'];
+type Step = 'UPLOAD' | 'READING' | 'REVIEW' | 'DESIGN' | 'GENERATING';
 
 const ERROR_KEY: Record<string, string> = {
   DS_PLAN_TYPE: 'ds_fp_error_type',
@@ -57,90 +50,159 @@ const ERROR_KEY: Record<string, string> = {
   DS_IMAGE_SIZE_UNREADABLE: 'ds_fp_error_unreadable',
   DS_READING_UNAVAILABLE: 'ds_fp_error_reading_unavailable',
   DS_BILLING_CONFIRMATION_REQUIRED: 'ds_fp_error_reading_unavailable',
+  DS_PLAN_NOT_BUILDABLE: 'p2h_error_not_buildable',
+  DS_AI_UNAVAILABLE: 'p2h_error_design',
+  DS_AI_FAILED: 'p2h_error_design',
+  DS_PRICE_CHANGED: 'p2h_error_price_changed',
+  DS_SOURCE_MISSING: 'p2h_error_not_buildable',
 };
 
 const INPUT = 'h-10 w-full rounded-lg border border-[#D5D9E0] bg-white px-3 text-[15px] text-[#0C1119] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]';
-const PRIMARY = 'inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#0C1119] px-5 text-[15px] font-semibold text-white hover:bg-[#1a2230] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)] disabled:opacity-50';
+const GEN_STAGES: readonly Stage[] = ['MEASURING', 'PLANNING', 'ARCHITECTURE', 'FURNISHING', 'MATERIALS', 'LIGHTING', 'CHECKING', 'PREPARING', 'FINALIZING'];
+
+/** A drawing in feet and inches: sizes are shown in both. */
+const isImperial = (doc: FloorPlanDocument | null) => !!doc && [
+  ...(doc.texts ?? []).map((x) => x.text), ...doc.rooms.map((r) => r.dimensionText ?? ''), doc.scaleEvidence ?? '',
+].some((s) => /\d\s*['′]|\bft\b|\bfeet\b/i.test(s));
 
 export function FloorPlanFlow({
-  userId, projectId, projectName, existing, onBuilt, onCancel,
+  userId, projectId, projectName, existing, resume, onBuilt, onDone, onCancel,
 }: {
   userId: string;
   projectId: string;
   projectName: string;
-  /** Recalibrating: start from this plan's review and measurements. */
+  /** Recalibrating: start from this plan's review; rebuild the space only. */
   existing?: FloorPlanRecord | null;
+  /** A plan whose path was left part-way (reload, closed tab): continue it. */
+  resume?: FloorPlanRecord | null;
   onBuilt: (sourceId: string, metresPerPx: number) => void;
+  /** The home is built: open its walkthrough on this version. */
+  onDone: (versionId: string) => void;
   onCancel: () => void;
 }) {
   const { t } = useLanguage();
-  const [step, setStep] = useState<Step>(existing?.interpretation ? 'SIZE' : 'UPLOAD');
-  const [plan, setPlan] = useState<FloorPlanRecord | null>(existing ?? null);
+  const recalibrating = !!existing;
+  const start = existing ?? resume ?? null;
+  const startFlow = latestFlow(start);
+  const initialStep: Step = !start ? 'UPLOAD'
+    : start.status === 'INTERPRETING' || start.status === 'UPLOADED' ? 'READING'
+      : startFlow?.step === 'GENERATING' ? 'GENERATING'
+        : startFlow?.step === 'DESIGN' ? 'DESIGN'
+          : start.interpretation ? 'REVIEW' : 'UPLOAD';
+  const [step, setStep] = useState<Step>(initialStep);
+  const [plan, setPlan] = useState<FloorPlanRecord | null>(start);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [localPreview, setLocalPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [stage, setStage] = useState<'UPLOADING' | 'READING'>('UPLOADING');
-  const last = existing?.corrections?.[existing.corrections.length - 1];
+  const [stage, setStage] = useState<'UPLOADING' | 'READING'>('READING');
+  const [readingSince, setReadingSince] = useState<number>(() => Date.now());
+  const last = start?.corrections?.[start.corrections.length - 1];
   const [decisions, setDecisions] = useState<ReviewDecisions>(last?.decisions ?? { rejected: [], roomKinds: {} });
+  const [answers, setAnswers] = useState<PlanAnswer[]>(startFlow?.answers ?? []);
   const [anchors, setAnchors] = useState<Anchor[]>(last?.anchors ?? []);
   const [ceiling, setCeiling] = useState<string>(last?.ceilingM ? String(last.ceilingM) : '');
-  const [selection, setSelection] = useState<Selection | null>(null);
-  const [building, setBuilding] = useState(false);
+  const [prefs, setPrefs] = useState<DesignPreferences>(() => normalizePreferences(startFlow?.preferences ?? DEFAULT_PREFERENCES));
+  const [stages, setStages] = useState<Record<Stage, StageStatus>>(freshStages);
+  const [busy, setBusy] = useState(false);
+  const [genFailed, setGenFailed] = useState(false);
   const [problems, setProblems] = useState<string[]>([]);
+  /* The master design's price, quoted by the server for this home and shown before Generate. */
+  const [quote, setQuote] = useState<RenderQuote | null>(null);
+  const [quoteFailed, setQuoteFailed] = useState(false);
+  const timings = useRef<FlowTimings>({ ...(startFlow?.timings ?? {}) });
+  const running = useRef(false);
 
-  const doc = plan?.interpretation?.doc ?? null;
-  const dims = plan?.interpretation?.dimensionStrings ?? [];
+  const reading = plan?.interpretation ?? null;
+  const baseDoc = reading?.doc ?? null;
+  const dims = reading?.dimensionStrings ?? [];
+  const doc = useMemo(() => (baseDoc ? applyAnswers(baseDoc, answers) : null), [baseDoc, answers]);
+  const constraints = useMemo(() => (doc ? solvePlan(doc, dims, answers) ?? reading?.understanding?.constraints ?? null : null), [doc, dims, answers, reading]);
+  const questions = reading?.understanding?.questions ?? [];
 
   useEffect(() => {
     if (!plan?.object_key) return;
     signedUrls([plan.object_key], 1800).then((m) => setImageUrl(m.get(plan.object_key) ?? null)).catch(() => {});
   }, [plan?.object_key]);
+  useEffect(() => () => { if (localPreview) URL.revokeObjectURL(localPreview); }, [localPreview]);
 
   const fail = (e: unknown) => {
     const code = e instanceof DesignStudioError ? e.code : '';
     setError(t(ERROR_KEY[code] ?? 'ds_fp_error_generic'));
   };
 
+  // ── Reading ────────────────────────────────────────────────────────────
   const onFile = async (file: File) => {
+    if (running.current) return;
+    running.current = true;
     setError(null);
     setStep('READING');
+    setStage('UPLOADING');
+    setReadingSince(Date.now());
+    if (file.type.startsWith('image/')) setLocalPreview(URL.createObjectURL(file));
     try {
-      setStage('UPLOADING');
+      const t0 = performance.now();
       const created = await uploadFloorPlan({ userId, projectId, file });
+      timings.current.uploadMs = Math.round(performance.now() - t0);
+      setPlan(created);
       setStage('READING');
+      const t1 = performance.now();
       await interpretFloorPlan(created.id);
       const read = await getFloorPlan(created.id);
       if (!read?.interpretation) throw new DesignStudioError('DS_READING_FAILED');
-      setPlan(read);
+      timings.current.analysisMs = Math.round(performance.now() - t1);
+      timings.current.reviewReadyMs = Math.round(performance.now() - t0);
+      setPlan(await saveFlow(read.id, { step: 'REVIEW', answers: [], timings: timings.current }));
       setStep('REVIEW');
     } catch (e) {
       fail(e);
       setStep('UPLOAD');
+    } finally {
+      running.current = false;
     }
   };
 
-  // What the overlay shows: removed elements faded, kept ones solid.
-  const shown: FloorPlanDocument | null = useMemo(() => {
-    if (!doc) return null;
-    const mark = <T extends { id: string; state: string }>(e: T) => ({ ...e, state: decisions.rejected.includes(e.id) ? 'REJECTED' : 'CORRECTED' });
-    return {
-      ...doc,
-      walls: doc.walls.map(mark), doors: doc.doors.map(mark), windows: doc.windows.map(mark),
-      rooms: doc.rooms.map(mark), balconies: doc.balconies.map(mark),
-    } as FloorPlanDocument;
-  }, [doc, decisions]);
+  // A reading still under way when the page was opened: wait for it.
+  useEffect(() => {
+    if (step !== 'READING' || running.current || !plan) return;
+    let stop = false;
+    const id = window.setInterval(async () => {
+      const next = await getFloorPlan(plan.id).catch(() => null);
+      if (stop || !next) return;
+      if (next.status === 'INTERPRETED' && next.interpretation) { setPlan(next); setStep('REVIEW'); }
+      else if (next.status === 'FAILED') { setError(t('ds_fp_error_generic')); setStep('UPLOAD'); }
+    }, 3000);
+    return () => { stop = true; window.clearInterval(id); };
+  }, [step, plan, t]);
+
+  // ── Review: every change kept, so a reload never loses it ───────────────
+  const persist = useRef<number | null>(null);
+  const keep = useCallback((patch: Parameters<typeof saveFlow>[1]) => {
+    if (!plan) return;
+    if (persist.current) window.clearTimeout(persist.current);
+    persist.current = window.setTimeout(() => { void saveFlow(plan.id, patch).catch(() => {}); }, 700);
+  }, [plan]);
 
   const estimate = useMemo(() => (doc ? estimateScale(doc, dims) : null), [doc, dims]);
-  const calibration = useMemo(() => (doc ? calibrate(doc, decisions, anchors, estimate) : null), [doc, decisions, anchors, estimate]);
+  const calibration: Calibration | null = useMemo(() => {
+    if (!doc) return null;
+    if (anchors.length) return calibrate(doc, decisions, anchors, estimate);
+    if (constraints) return { metresPerPx: constraints.metresPerPx, geometryState: 'ESTIMATED', uncertainty: constraints.uncertainty, conflict: false, implied: [] };
+    return estimate ? calibrate(doc, decisions, [], estimate) : null;
+  }, [doc, decisions, anchors, estimate, constraints]);
   const ceilingM = Number(ceiling) > 1.8 && Number(ceiling) < 8 ? Number(ceiling) : null;
-
-  const toggleElement = (id: string) => setDecisions((d) => ({
-    ...d, rejected: d.rejected.includes(id) ? d.rejected.filter((x) => x !== id) : [...d.rejected, id],
-  }));
+  const ceilingFinal = ceilingM ?? doc?.ceilingHeight ?? DEFAULT_CEILING_M;
+  // An unmeasured ceiling is recorded as typical, never as a fact.
+  const ceilingSource = ((plan: { ceilingHeight: number | null }): 'CUSTOMER' | 'DRAWING' | 'TYPICAL' => {
+    const doc = plan;
+    return ceilingM ? 'CUSTOMER' : doc.ceilingHeight ? 'DRAWING' : 'TYPICAL';
+  })(doc ?? { ceilingHeight: null });
 
   const setAnchor = (next: Anchor | null, kind: Anchor['kind']) => {
     setAnchors((list) => {
       const rest = list.filter((a) => a.kind !== kind);
-      return next ? [...rest, next] : rest;
+      const out = next ? [...rest, next] : rest;
+      keep({ anchors: out });
+      return out;
     });
   };
   const anchorValue = (kind: Anchor['kind']) => {
@@ -148,32 +210,117 @@ export function FloorPlanFlow({
     if (!a) return '';
     return String(a.kind === 'WALL_LENGTH' ? a.valueM : a.valueM2);
   };
-  const selectedWall = selection?.kind === 'wall' ? selection.id : (anchors.find((a) => a.kind === 'WALL_LENGTH') as { wallId?: string } | undefined)?.wallId ?? null;
-  const selectedRoom = selection?.kind === 'room' ? selection.id : (anchors.find((a) => a.kind === 'ROOM_AREA') as { roomId?: string } | undefined)?.roomId ?? null;
 
-  const build = async () => {
-    if (!plan || !doc || !calibration) return;
-    setBuilding(true);
+  const continueToDesign = async () => {
+    if (!plan || !doc || busy) return;
+    if (!calibration) { setProblems(['NO_SCALE']); return; }
+    const check = buildCanonical(doc, decisions, calibration, ceilingFinal, ceilingSource);
+    if (!check.ok) { setProblems(check.problems); return; }
     setProblems([]);
-    setError(null);
+    setBusy(true);
     try {
-      const result = buildCanonical(doc, decisions, calibration, ceilingM ?? doc.ceilingHeight ?? DEFAULT_CEILING_M,
-        ceilingM ? 'CUSTOMER' : doc.ceilingHeight ? 'DRAWING' : 'TYPICAL');
-      if (!result.ok) { setProblems(result.problems); return; }
-      await recordReview(plan, { decisions, anchors, ceilingM });
-      const sourceId = await createFloorPlanSource({ floorplanId: plan.id, canonical: result.canonical, geometryState: calibration.geometryState, anchors });
-      onBuilt(sourceId, calibration.metresPerPx);
+      if (recalibrating) {
+        await recordReview(plan, { decisions, anchors, ceilingM });
+        const sourceId = await createFloorPlanSource({ floorplanId: plan.id, canonical: check.canonical, geometryState: calibration.geometryState, anchors });
+        onBuilt(sourceId, calibration.metresPerPx);
+        return;
+      }
+      await saveFlow(plan.id, { answers, decisions, anchors, ceilingM });
+      // The confirmed plan becomes the home's architecture now: the Look step can quote it, and it is never rebuilt for a new look.
+      const arch = await prepareArchitecture({
+        userId, projectId, plan, doc, decisions, anchors, calibration, ceilingM: ceilingFinal, ceilingSource, answers,
+        versionName: (k) => t(k === 'original' ? 'ds_version_original' : k === 'design' ? 'p2h_version_design' : 'p2h_version_factory'),
+      });
+      setPlan(await saveFlow(plan.id, { step: 'DESIGN' }));
+      setStep('DESIGN');
+      void requestQuote(arch.originalId);
     } catch (e) {
       fail(e);
     } finally {
-      setBuilding(false);
+      setBusy(false);
     }
   };
 
-  const stepIndex = ['UPLOAD', 'READING', 'REVIEW', 'SIZE'].indexOf(step);
+  const requestQuote = useCallback(async (versionId: string) => {
+    setQuoteFailed(false);
+    const q = await quoteRender({ projectId, versionId, product: 'DS_MASTER_RENDER', views: 1 });
+    setQuote(q.quote);
+    setQuoteFailed(!q.quote);
+  }, [projectId]);
+  // A reload on the Look step quotes again (a quote lives ten minutes).
+  useEffect(() => {
+    if (step !== 'DESIGN' || quote || quoteFailed) return;
+    const original = latestFlow(plan)?.originalVersionId;
+    if (original) void requestQuote(original);
+  }, [step, quote, quoteFailed, plan, requestQuote]);
+
+  // ── Generate: resumable; a double tap is one run ────────────────────────
+  const generate = useCallback(async () => {
+    if (!plan || !doc || !calibration || running.current) return;
+    running.current = true;
+    setBusy(true);
+    setGenFailed(false);
+    setError(null);
+    setStep('GENERATING');
+    setStages(() => {
+      const s = freshStages();
+      s.UNDERSTANDING = 'DONE';
+      return s;
+    });
+    const mark = (s: Stage, st: 'RUNNING' | 'DONE' | 'SKIPPED') => setStages((cur) => ({ ...cur, [s]: st }));
+    try {
+      const fresh = await saveFlow(plan.id, { step: 'GENERATING', answers, preferences: prefs, decisions, anchors, ceilingM, timings: timings.current, ...(quote ? { confirmedCredits: quote.credits } : {}) });
+      setPlan(fresh);
+      const result = await generateHome({
+        userId, projectId, projectName, plan: fresh, doc, decisions, anchors, calibration,
+        ceilingM: ceilingFinal, ceilingSource, preferences: prefs,
+        confirmedCredits: quote?.credits ?? latestFlow(fresh)?.confirmedCredits ?? null,
+        versionName: (k) => t(k === 'original' ? 'ds_version_original' : k === 'design' ? 'p2h_version_design' : 'p2h_version_factory'),
+        onStage: mark,
+      });
+      onDone(result.versionId);
+    } catch (e) {
+      setGenFailed(true);
+      fail(e);
+    } finally {
+      running.current = false;
+      setBusy(false);
+    }
+  }, [plan, doc, calibration, answers, prefs, decisions, anchors, ceilingM, ceilingFinal, ceilingSource, userId, projectId, projectName, t, onDone, quote]);
+
+  // A generation that was running when the page was left: carry on.
+  const resumed = useRef(false);
+  useEffect(() => {
+    if (step === 'GENERATING' && !resumed.current && !running.current && doc && calibration) {
+      resumed.current = true;
+      void generate();
+    }
+  }, [step, doc, calibration, generate]);
+
+  const stepIndex = { UPLOAD: 0, READING: 0, REVIEW: 1, DESIGN: 2, GENERATING: 3 }[step];
+  const stepKeys = recalibrating ? ['p2h_step_upload', 'p2h_step_confirm'] : ['p2h_step_upload', 'p2h_step_confirm', 'p2h_step_look', 'p2h_step_build'];
+
+  const advanced = doc ? (
+    <div className="space-y-3">
+      <p className="text-[13px] text-[#4A5263]">{t('p2h_adjust_size_body')}</p>
+      <label className="block text-[14px] font-medium">
+        {t('ds_fp_anchor_total')}
+        <input type="number" inputMode="decimal" min={5} max={2000} step="0.1" className={cn(INPUT, 'mt-1')} placeholder="82"
+          value={anchorValue('TOTAL_AREA')}
+          onChange={(e) => { const v = Number(e.target.value); setAnchor(v > 0 ? { kind: 'TOTAL_AREA', valueM2: v } : null, 'TOTAL_AREA'); }} />
+      </label>
+      <label className="block text-[14px] font-medium">
+        {t('ds_fp_ceiling')}
+        <input type="number" inputMode="decimal" min={2} max={6} step="0.01" className={cn(INPUT, 'mt-1')}
+          placeholder={String(doc.ceilingHeight ?? DEFAULT_CEILING_M)} value={ceiling} onChange={(e) => { setCeiling(e.target.value); const v = Number(e.target.value); keep({ ceilingM: v > 1.8 && v < 8 ? v : null }); }} />
+        {!ceilingM && !doc.ceilingHeight ? <span className="mt-1 block text-[13px] font-normal text-[#4A5263]">{t('ds_fp_ceiling_default')}</span> : null}
+      </label>
+      {calibration?.conflict ? <p className="text-[13px] font-medium text-[hsl(32_78%_34%)]">{t('ds_fp_conflict')}</p> : null}
+    </div>
+  ) : null;
 
   return (
-    <div className="flex h-[100dvh] flex-col bg-[#F4F5F7] text-[#0C1119]">
+    <div className="flex h-[100dvh] flex-col bg-[#F4F5F7] text-[#0C1119]" data-testid="plan-to-home" data-step={step}>
       <header className="flex h-14 shrink-0 items-center gap-3 bg-[#0C1119] px-3 text-white">
         <button type="button" onClick={onCancel} aria-label={t('ds_action_cancel')} className="grid h-9 w-9 place-items-center rounded-lg hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]">
           <ArrowLeft className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
@@ -182,10 +329,11 @@ export function FloorPlanFlow({
           <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-[hsl(38_92%_62%)]">{t('ds_fp_title')}</p>
           <p className="truncate font-display text-[15px] font-semibold">{projectName}</p>
         </div>
-        <ol className="ms-auto hidden items-center gap-4 text-[13px] md:flex" aria-label={t('ds_fp_steps')}>
-          {['ds_fp_step_upload', 'ds_fp_step_reading', 'ds_fp_step_review', 'ds_fp_step_size'].map((key, i) => (
-            <li key={key} aria-current={i === stepIndex ? 'step' : undefined} className={cn(i === stepIndex ? 'font-semibold text-white' : i < stepIndex ? 'text-white/60' : 'text-white/35')}>
-              {i + 1}. {t(key)}
+        <ol className="ms-auto flex items-center gap-1.5 text-[13px]" aria-label={t('ds_fp_steps')}>
+          {stepKeys.map((key, i) => (
+            <li key={key} aria-current={i === stepIndex ? 'step' : undefined} className="flex items-center gap-1.5">
+              <span className={cn('grid h-6 w-6 place-items-center rounded-full text-2xs font-semibold', i < stepIndex ? 'bg-white/20 text-white' : i === stepIndex ? 'bg-[hsl(38_92%_56%)] text-[#0C1119]' : 'bg-white/10 text-white/50')}>{i + 1}</span>
+              <span className={cn('hidden md:inline', i === stepIndex ? 'font-semibold text-white' : 'text-white/55')}>{t(key)}</span>
             </li>
           ))}
         </ol>
@@ -194,166 +342,117 @@ export function FloorPlanFlow({
       {step === 'UPLOAD' || step === 'READING' ? (
         <div className="grid flex-1 place-items-center overflow-y-auto px-4 py-8">
           <div className="w-full max-w-xl">
-            <h1 className="font-display text-2xl font-semibold">{t('ds_fp_upload_title')}</h1>
-            <p className="mt-2 text-[15px] leading-relaxed text-[#4A5263]">{t('ds_fp_upload_body')}</p>
             {step === 'UPLOAD' ? (
-              <label
-                className="mt-6 flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-[#B8BFCA] bg-white px-6 py-12 text-center hover:border-[#0C1119] focus-within:ring-2 focus-within:ring-[hsl(38_92%_56%)]"
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) void onFile(f); }}
-              >
-                <Upload className="h-8 w-8 text-[#4A5263]" aria-hidden="true" />
-                <span className="text-[15px] font-semibold">{t('ds_fp_choose_file')}</span>
-                <span className="text-[13px] text-[#4A5263]">{t('ds_fp_file_types')}</span>
-                <input type="file" accept="image/png,image/jpeg,image/webp,application/pdf" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) void onFile(f); }} />
-              </label>
+              <>
+                <h1 className="font-display text-2xl font-semibold">{t('p2h_upload_title')}</h1>
+                <p className="mt-2 text-[15px] leading-relaxed text-[#4A5263]">{t('p2h_upload_body')}</p>
+                <label
+                  className="mt-6 flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-[#B8BFCA] bg-white px-6 py-14 text-center transition-colors hover:border-[#0C1119] focus-within:ring-2 focus-within:ring-[hsl(38_92%_56%)]"
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) void onFile(f); }}
+                  data-testid="plan-drop"
+                >
+                  <Upload className="h-9 w-9 text-[#4A5263]" aria-hidden="true" />
+                  <span className="text-[16px] font-semibold">{t('ds_fp_choose_file')}</span>
+                  <span className="text-[13px] text-[#4A5263]">{t('ds_fp_file_types')}</span>
+                  <input type="file" accept="image/png,image/jpeg,image/webp,application/pdf" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void onFile(f); }} data-testid="plan-file" />
+                </label>
+              </>
             ) : (
-              <ol className="mt-6 space-y-2 rounded-xl bg-white p-5 text-[15px]" aria-live="polite">
-                {([['UPLOADING', 'ds_fp_stage_uploading'], ['READING', 'ds_fp_stage_reading']] as const).map(([s, key]) => {
-                  const order = ['UPLOADING', 'READING'];
-                  const at = order.indexOf(stage);
-                  const i = order.indexOf(s);
-                  return (
-                    <li key={s} className={cn('flex items-center gap-2', i < at ? 'text-[#4A5263]' : i === at ? 'font-medium' : 'text-[#9AA1AD]')}>
-                      {i === at ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <span className="inline-block h-4 w-4" />}
-                      {t(key)}
-                    </li>
-                  );
-                })}
-              </ol>
+              <ReadingView image={localPreview ?? imageUrl} stage={stage} since={readingSince} />
             )}
             {error ? <p role="alert" className="mt-4 rounded-lg bg-[hsl(0_66%_44%)]/10 px-4 py-3 text-[14px] text-[hsl(0_66%_34%)]">{error}</p> : null}
             <p className="mt-4 text-[13px] text-[#4A5263]">{t('ds_fp_privacy')}</p>
           </div>
         </div>
-      ) : (
-        <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-          <div className="relative min-h-[40dvh] flex-1 overflow-auto bg-[#E4E7EB] p-3">
-            {shown && imageUrl ? (
-              <FitWidth width={shown.imageWidth}>
-                <FloorPlanOverlay doc={shown} imageUrl={imageUrl} categories={DEFAULT_CATEGORIES} selection={selection} onSelect={setSelection} className="mx-auto" />
-              </FitWidth>
-            ) : (
-              <div className="grid h-full place-items-center text-[#4A5263]"><FileImage className="h-8 w-8" aria-hidden="true" /></div>
-            )}
+      ) : null}
+
+      {step === 'REVIEW' && doc ? (
+        <>
+          <PlanReview
+            doc={doc} imageUrl={imageUrl} constraints={constraints} questions={questions} answers={answers}
+            rejected={decisions.rejected} imperial={isImperial(doc)} busy={busy} advanced={advanced}
+            onChange={({ answers: a, rejected }) => {
+              setAnswers(a);
+              const d = { ...decisions, rejected };
+              setDecisions(d);
+              keep({ answers: a, decisions: d });
+            }}
+            onContinue={() => { void continueToDesign(); }}
+          />
+          {problems.length || error ? (
+            <p role="alert" className="fixed inset-x-4 bottom-24 z-10 mx-auto max-w-md rounded-lg bg-[hsl(0_66%_44%)] px-4 py-3 text-[14px] text-white shadow-lg lg:bottom-6">
+              {error ?? `${t('ds_fp_build_problems')} ${problems.map((p) => t(`ds_fp_problem_${p.toLowerCase()}`)).join(' · ')}`}
+            </p>
+          ) : null}
+        </>
+      ) : null}
+
+      {step === 'DESIGN' ? (
+        <DesignChooser
+          value={prefs}
+          onChange={(p) => { setPrefs(p); keep({ preferences: p }); }}
+          onGenerate={() => { void generate(); }}
+          busy={busy}
+          price={quote ? { credits: quote.credits, charged: quote.charged } : null}
+          priceUnavailable={quoteFailed}
+          onBack={() => { setStep('REVIEW'); keep({ step: 'REVIEW' }); }}
+        />
+      ) : null}
+
+      {step === 'GENERATING' ? (
+        <div className="grid flex-1 place-items-center overflow-y-auto px-4 py-8" data-testid="plan-generating">
+          <div className="w-full max-w-md space-y-5">
+            <GenerationStages stages={stages} title={t('p2h_generating_title')} only={GEN_STAGES}
+              since={startFlow?.startedAt ? Date.parse(startFlow.startedAt) : undefined} />
+            <p className="text-center text-[13px] text-[#4A5263]">{t('p2h_generating_leave')}</p>
+            {genFailed ? (
+              <div className="space-y-3 text-center">
+                {error ? <p role="alert" className="rounded-lg bg-[hsl(0_66%_44%)]/10 px-4 py-3 text-[14px] text-[hsl(0_66%_34%)]">{error}</p> : null}
+                <button type="button" onClick={() => { void generate(); }} disabled={busy}
+                  className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#0C1119] px-5 text-[15px] font-semibold text-white disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]"
+                  data-testid="plan-retry">
+                  <RefreshCw className="h-4 w-4" aria-hidden="true" />{t('p2h_retry')}
+                </button>
+              </div>
+            ) : null}
           </div>
-
-          <aside className="w-full shrink-0 overflow-y-auto border-s border-[#D5D9E0] bg-white lg:w-[24rem]">
-            {step === 'REVIEW' && doc ? (
-              <div className="space-y-5 p-5">
-                <div>
-                  <h2 className="font-display text-lg font-semibold">{t('ds_fp_review_title')}</h2>
-                  <p className="mt-1 text-[14px] leading-relaxed text-[#4A5263]">{t('ds_fp_review_body')}</p>
-                </div>
-                <p className="text-[14px] text-[#0C1119]">
-                  {t('ds_fp_read_counts', { walls: String(doc.walls.length), doors: String(doc.doors.length), windows: String(doc.windows.length), rooms: String(doc.rooms.length) })}
-                </p>
-                {selection && selection.kind !== 'room' ? (
-                  <div className="rounded-lg border border-[#E4E6EA] p-3">
-                    <p className="text-[14px] font-medium">{t(`ds_fp_element_${selection.kind}`)}</p>
-                    <button type="button" onClick={() => toggleElement(selection.id)} className="mt-2 h-9 rounded-md border border-[#D5D9E0] px-3 text-[14px] font-medium hover:bg-[#F4F5F7]">
-                      {t(decisions.rejected.includes(selection.id) ? 'ds_fp_keep' : 'ds_fp_misread')}
-                    </button>
-                  </div>
-                ) : null}
-                <div>
-                  <h3 className="mb-2 text-2xs font-semibold uppercase tracking-[0.12em] text-[#4A5263]">{t('ds_panel_rooms')}</h3>
-                  <ul className="space-y-2">
-                    {doc.rooms.map((room) => {
-                      const removed = decisions.rejected.includes(room.id);
-                      return (
-                        <li key={room.id} className={cn('rounded-lg border p-2.5', selection?.id === room.id ? 'border-[#0C1119]' : 'border-[#E4E6EA]', removed && 'opacity-60')}>
-                          <div className="flex items-center gap-2">
-                            <select
-                              value={decisions.roomKinds[room.id] ?? room.kind}
-                              onChange={(e) => setDecisions((d) => ({ ...d, roomKinds: { ...d.roomKinds, [room.id]: e.target.value } }))}
-                              disabled={removed}
-                              aria-label={t('ds_fp_room_type')}
-                              className="h-9 min-w-0 flex-1 rounded-md border border-[#D5D9E0] bg-white px-2 text-[14px]"
-                            >
-                              {ROOM_KINDS.map((k) => <option key={k} value={k}>{t(`ds_room_${k.toLowerCase()}`)}</option>)}
-                            </select>
-                            <button type="button" onClick={() => toggleElement(room.id)} className="h-9 shrink-0 rounded-md border border-[#D5D9E0] px-2.5 text-[13px] font-medium hover:bg-[#F4F5F7]">
-                              {t(removed ? 'ds_fp_keep' : 'ds_fp_misread')}
-                            </button>
-                          </div>
-                          {room.label ? <p className="mt-1 text-[13px] text-[#4A5263]">{t('ds_fp_label_on_drawing', { label: room.label })}</p> : null}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-                <button type="button" className={PRIMARY} onClick={() => setStep('SIZE')}>{t('ds_fp_continue')}</button>
-              </div>
-            ) : null}
-
-            {step === 'SIZE' && doc ? (
-              <div className="space-y-5 p-5">
-                <div>
-                  <h2 className="font-display text-lg font-semibold">{t('ds_fp_size_title')}</h2>
-                  <p className="mt-1 text-[14px] leading-relaxed text-[#4A5263]">
-                    {estimate ? t('ds_fp_size_estimated', { pct: String(Math.round(estimate.uncertainty * 100)) }) : t('ds_fp_size_needed')}
-                  </p>
-                </div>
-
-                <div className="space-y-3">
-                  <label className="block text-[14px] font-medium">
-                    {t('ds_fp_anchor_total')}
-                    <input type="number" inputMode="decimal" min={5} max={2000} step="0.1" className={cn(INPUT, 'mt-1')} placeholder="82"
-                      value={anchorValue('TOTAL_AREA')}
-                      onChange={(e) => { const v = Number(e.target.value); setAnchor(v > 0 ? { kind: 'TOTAL_AREA', valueM2: v } : null, 'TOTAL_AREA'); }} />
-                  </label>
-                  <label className="block text-[14px] font-medium">
-                    {t('ds_fp_anchor_wall')}
-                    <span className="block text-[13px] font-normal text-[#4A5263]">{selectedWall ? t('ds_fp_wall_selected') : t('ds_fp_pick_wall')}</span>
-                    <input type="number" inputMode="decimal" min={0.3} max={100} step="0.01" className={cn(INPUT, 'mt-1')} placeholder="4.10"
-                      disabled={!selectedWall} value={anchorValue('WALL_LENGTH')}
-                      onChange={(e) => { const v = Number(e.target.value); setAnchor(v > 0 && selectedWall ? { kind: 'WALL_LENGTH', wallId: selectedWall, valueM: v } : null, 'WALL_LENGTH'); }} />
-                  </label>
-                  <label className="block text-[14px] font-medium">
-                    {t('ds_fp_anchor_room')}
-                    <span className="block text-[13px] font-normal text-[#4A5263]">{selectedRoom ? t('ds_fp_room_selected') : t('ds_fp_pick_room')}</span>
-                    <input type="number" inputMode="decimal" min={1} max={500} step="0.1" className={cn(INPUT, 'mt-1')} placeholder="18.5"
-                      disabled={!selectedRoom} value={anchorValue('ROOM_AREA')}
-                      onChange={(e) => { const v = Number(e.target.value); setAnchor(v > 0 && selectedRoom ? { kind: 'ROOM_AREA', roomId: selectedRoom, valueM2: v } : null, 'ROOM_AREA'); }} />
-                  </label>
-                  <label className="block text-[14px] font-medium">
-                    {t('ds_fp_ceiling')}
-                    <input type="number" inputMode="decimal" min={2} max={6} step="0.01" className={cn(INPUT, 'mt-1')}
-                      placeholder={String(doc.ceilingHeight ?? DEFAULT_CEILING_M)} value={ceiling} onChange={(e) => setCeiling(e.target.value)} />
-                    {!ceilingM && !doc.ceilingHeight ? <span className="mt-1 block text-[13px] font-normal text-[#4A5263]">{t('ds_fp_ceiling_default')}</span> : null}
-                  </label>
-                </div>
-
-                <div className="rounded-lg bg-[#F4F5F7] p-3 text-[14px]" aria-live="polite">
-                  {calibration ? (
-                    <>
-                      <p className="font-semibold">{t(calibration.geometryState === 'VERIFIED' ? 'ds_geometry_verified' : calibration.geometryState === 'CALIBRATED' ? 'ds_geometry_calibrated' : 'ds_geometry_estimated')}</p>
-                      <p className="mt-0.5 text-[#4A5263]">{t(`ds_fp_state_${calibration.geometryState.toLowerCase()}`)}</p>
-                      {calibration.conflict ? <p className="mt-1 font-medium text-[hsl(32_78%_34%)]">{t('ds_fp_conflict')}</p> : null}
-                    </>
-                  ) : <p className="font-medium text-[hsl(32_78%_34%)]">{t('ds_fp_size_needed')}</p>}
-                </div>
-
-                {problems.length ? (
-                  <p role="alert" className="rounded-lg bg-[hsl(0_66%_44%)]/10 px-3 py-2 text-[14px] text-[hsl(0_66%_34%)]">
-                    {t('ds_fp_build_problems')} {problems.map((p) => t(`ds_fp_problem_${p.toLowerCase()}`)).join(' · ')}
-                  </p>
-                ) : null}
-                {error ? <p role="alert" className="text-[14px] text-[hsl(0_66%_34%)]">{error}</p> : null}
-
-                <div className="flex flex-wrap gap-2">
-                  {!existing ? <button type="button" onClick={() => setStep('REVIEW')} className="h-11 rounded-lg border border-[#D5D9E0] px-4 text-[15px] font-medium hover:bg-[#F4F5F7]">{t('ds_fp_back_review')}</button> : null}
-                  <button type="button" className={PRIMARY} disabled={!calibration || building} onClick={() => { void build(); }}>
-                    {building ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
-                    {t(existing ? 'ds_fp_rebuild' : 'ds_fp_build')}
-                  </button>
-                </div>
-              </div>
-            ) : null}
-          </aside>
         </div>
-      )}
+      ) : null}
+
+      {(step === 'REVIEW' || step === 'DESIGN' || step === 'GENERATING') && !doc ? (
+        <div className="grid flex-1 place-items-center text-[#4A5263]"><FileImage className="h-8 w-8" aria-hidden="true" /></div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Reading: the customer's own drawing, being read — real stages, real time, no percentages. */
+function ReadingView({ image, stage, since }: { image: string | null; stage: 'UPLOADING' | 'READING'; since: number }) {
+  const { t } = useLanguage();
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const id = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(id); }, []);
+  const secs = Math.max(0, Math.floor((now - since) / 1000));
+  return (
+    <div className="space-y-5" role="status" aria-live="polite" data-testid="plan-reading">
+      <h1 className="font-display text-2xl font-semibold">{t('p2h_reading_title')}</h1>
+      <div className="relative overflow-hidden rounded-2xl bg-white ring-1 ring-black/5">
+        {image ? <img src={image} alt="" className="mx-auto max-h-[46dvh] w-auto object-contain opacity-90" /> : <div className="h-56" />}
+        <div className="hm-plan-scan pointer-events-none absolute inset-x-0 h-24" aria-hidden="true" />
+      </div>
+      <ol className="space-y-2 text-[15px]">
+        {([['UPLOADING', 'p2h_stage_upload'], ['READING', 'p2h_stage_read']] as const).map(([s, key]) => {
+          const order = ['UPLOADING', 'READING'];
+          const at = order.indexOf(stage); const i = order.indexOf(s);
+          return (
+            <li key={s} className={cn('flex items-center gap-2', i < at ? 'text-[#4A5263]' : i === at ? 'font-medium' : 'text-[#9AA1AD]')}>
+              {i === at ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <span className="inline-block h-4 w-4 text-center text-[hsl(152_55%_38%)]">{i < at ? '✓' : ''}</span>}
+              {t(key)}
+            </li>
+          );
+        })}
+      </ol>
+      <p className="text-[13px] text-[#4A5263]">{t('p2h_reading_hint', { s: String(secs) })}</p>
     </div>
   );
 }

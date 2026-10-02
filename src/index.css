@@ -1915,3 +1915,17 @@ html[data-impersonating] .sticky.top-0 { top: 2.5rem; }
   0% { box-shadow: 0 0 0 0 hsl(152 60% 42% / 0.45); }
   100% { box-shadow: 0 0 0 10px hsl(152 60% 42% / 0); }
 }
+
+/* Design Studio: a drawing being read — a soft band passing over it, never a fake progress bar. */
+.hm-plan-scan {
+  top: -6rem;
+  background: linear-gradient(180deg, hsl(38 92% 56% / 0) 0%, hsl(38 92% 56% / 0.18) 50%, hsl(38 92% 56% / 0) 100%);
+  animation: hm-plan-scan 2.6s ease-in-out infinite;
+}
+@keyframes hm-plan-scan {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(calc(46dvh + 12rem)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hm-plan-scan { animation: none; opacity: 0; }
+}

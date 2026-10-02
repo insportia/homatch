@@ -11,8 +11,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { validateReconstruction } from '../reconstructRead.ts';
-import { imageToPlan, planToImage, readFrame } from '../pictureFrame.ts';
+import { piecesScale, planDocument, validateReconstruction } from '../reconstructRead.ts';
+import { imageToPlan, planToImage, readFrame, viewShift } from '../pictureFrame.ts';
 import { projectPlan, worldOf } from '../sourceCamera.ts';
 
 const ASPECT = 1536 / 1197;
@@ -185,4 +185,195 @@ test('a plan-view index is only valid for rooms, and only when a frame names it'
   const frame = frameOf(cam);
   const { recon } = validateReconstruction(reading(cam, frame), 1, { imageAspects: [ASPECT] });
   assert.ok(recon.rooms.every((r) => r.px === null), 'without a frame, image 1 does not exist');
+});
+
+// ── Partitions cut lower than the outer walls ─────────────────────────────
+//
+// The plan view is drawn at the OUTER wall tops. A cut-away cuts its
+// partitions lower, so the plan view draws them off their lines, toward the
+// side the picture was taken from, by (outer − partition) · cot(elevation) —
+// nearly 2 m here. The reader traces what it sees; the reading says how low
+// the partitions are cut; HOMATCH puts them back.
+
+const onOutline = (a, b) => OUTLINE.some((c, i) => {
+  const d = OUTLINE[(i + 1) % OUTLINE.length];
+  const on = (p) => Math.abs((d[0] - c[0]) * (p[1] - c[1]) - (d[1] - c[1]) * (p[0] - c[0])) < 1e-6
+    && p[0] >= Math.min(c[0], d[0]) - 1e-6 && p[0] <= Math.max(c[0], d[0]) + 1e-6 && p[1] >= Math.min(c[1], d[1]) - 1e-6 && p[1] <= Math.max(c[1], d[1]) + 1e-6;
+  return on(a) && on(b);
+});
+
+/** Where the reader sees a room's corners on the plan view: where its walls' TOP lines meet, as the view draws them. */
+function topTraces(frame, cam, room, cut) {
+  const q = room.map((p) => imageToPlan(frame, ...img(cam, p)));
+  const n = room.length;
+  const lines = room.map((a, i) => {
+    const s = viewShift(frame, onOutline(a, room[(i + 1) % n]) ? frame.wall : frame.wall * cut);
+    return { p: [q[i][0] + s[0], q[i][1] + s[1]], d: [q[(i + 1) % n][0] - q[i][0], q[(i + 1) % n][1] - q[i][1]] };
+  });
+  return room.map((_, i) => {
+    const A = lines[(i - 1 + n) % n]; const B = lines[i];
+    const cross = A.d[0] * B.d[1] - A.d[1] * B.d[0];
+    const t = ((B.p[0] - A.p[0]) * B.d[1] - (B.p[1] - A.p[1]) * B.d[0]) / cross;
+    const at = [A.p[0] + t * A.d[0], A.p[1] + t * A.d[1]];
+    return [((at[0] - frame.view.x0) * frame.view.perUnit) / frame.view.width, ((at[1] - frame.view.y0) * frame.view.perUnit) / frame.view.height];
+  });
+}
+
+test('the plan view draws a point at wall-top height in place, anything lower shifted toward the camera', () => {
+  const cam = camera();
+  const frame = frameOf(cam);
+  assert.deepEqual(viewShift(frame, frame.view.lift), [0, 0]);
+  // A point 1.35 m up at plan p is drawn where the view shows plan p + shift.
+  const p = imageToPlan(frame, ...img(cam, [3, 3]));
+  const s = viewShift(frame, frame.wall / 2);
+  const drawn = planToImage(frame, [p[0] + s[0], p[1] + s[1]], frame.view.lift);
+  const truth = img(cam, [3, 3], 1.35);
+  assert.ok(Math.hypot(drawn[0] - truth[0], drawn[1] - truth[1]) < 1e-9);
+});
+
+test('partitions cut lower are put back on their lines: the rooms are the truth, not the view\'s drawing', () => {
+  const cam = camera();
+  const frame = frameOf(cam);
+  const traced = (cutRatio) => {
+    const r = reading(cam, frame);
+    r.wallCutRatio = cutRatio;
+    for (const room of r.rooms) room.polygonPx = topTraces(frame, cam, TRUTH[room.key], 0.5);
+    return validateReconstruction(r, 1, { imageAspects: [ASPECT], frames: [{ image: 0, view: 1, frame: readFrame(frame) }] }).recon;
+  };
+  const recon = traced(0.5);
+  const by = Object.fromEntries(recon.rooms.map((x) => [x.key, x]));
+  for (const key of Object.keys(TRUTH)) {
+    assert.equal(by[key].geometry, 'PIXELS', key);
+    for (const p of TRUTH[key]) {
+      const q = by[key].polygon.find((c) => Math.hypot(c[0] - p[0], c[1] - p[1]) < 0.25);
+      assert.ok(q, `${key} corner ${JSON.stringify(p)} in ${JSON.stringify(by[key].polygon)}`);
+    }
+  }
+  assert.ok(recon.fidelity.partitionShiftM > 1.5 && recon.fidelity.partitionShiftM < 2.4, `shift ${recon.fidelity.partitionShiftM} m`);
+  // A reading that does not say how low the partitions are cut is taken as drawn: the same traces are metres off.
+  const living = traced(null).rooms.find((x) => x.key === 'living');
+  assert.ok(!living.polygon.some((c) => Math.hypot(c[0] - 6, c[1] - 4) < 0.3), JSON.stringify(living.polygon));
+});
+
+test('an untraced opening rides its wall when the room follows the picture', () => {
+  const cam = camera();
+  const frame = frameOf(cam);
+  const r = reading(cam, frame);
+  // On the reader's own living/bedroom line (x = 6.4), halfway along it; not traced.
+  r.openings.push({ key: 'door', kind: 'DOOR', at: [6.4, 2.2], atPx: null, pxImage: null, widthM: 0.9, heightM: null, sillM: null, confidence: 0.7, basis: 'OBSERVED' });
+  const { recon } = validateReconstruction(r, 1, { imageAspects: [ASPECT], frames: [{ image: 0, view: 1, frame: readFrame(frame) }] });
+  const door = recon.openings.find((o) => o.key === 'door');
+  assert.ok(Math.hypot(door.at[0] - 6, door.at[1] - 2) < 0.25, `on the true wall: ${JSON.stringify(door.at)}`);
+  assert.equal(door.geometry, 'ESTIMATE', 'its place along the wall is still the reader\'s');
+  assert.ok(!planDocument(recon, 'k').warnings.some((w) => w.code === 'OPENING_WITHOUT_WALL'), 'it still lands on a wall');
+});
+
+test('floor the picture shows and no room covers is reported; a door into it makes it a proposed room', () => {
+  const cam = camera();
+  const frame = frameOf(cam);
+  const short = (withDoor, unknowns = []) => {
+    const r = reading(cam, frame);
+    // The reader stopped the kitchen at y = 6: the far 4 × 2 m of the wing is in no room.
+    const k = r.rooms.find((x) => x.key === 'kitchen');
+    k.polygon = [[0.2, 4.3], [4.2, 4.3], [4.2, 6.2], [0.2, 6.2]];
+    k.polygonPx = [[0, 4], [4, 4], [4, 6], [0, 6]].map((p) => viewUv(frame, cam, p));
+    if (withDoor) r.openings.push({ key: 'store', kind: 'DOOR', at: [2.2, 6.2], atPx: null, pxImage: null, widthM: 0.8, heightM: null, sillM: null, confidence: 0.6, basis: 'OBSERVED' });
+    r.unknowns = unknowns;
+    return validateReconstruction(r, 1, { imageAspects: [ASPECT], frames: [{ image: 0, view: 1, frame: readFrame(frame) }] }).recon;
+  };
+  const silent = short(false);
+  assert.equal(silent.fidelity.uncovered.length, 1, JSON.stringify(silent.fidelity.uncovered));
+  assert.ok(Math.abs(silent.fidelity.uncovered[0].areaM2 - 8) < 1.2, `${silent.fidelity.uncovered[0].areaM2} m²`);
+  assert.equal(silent.fidelity.uncovered[0].candidate, null, 'nothing says a room is there: reported, never invented');
+  assert.ok(!silent.rooms.some((x) => x.candidate));
+  assert.ok(planDocument(silent, 'k').warnings.some((w) => w.code === 'UNREADABLE_REGION' && !w.elementId));
+
+  const doored = short(true);
+  const cand = doored.rooms.find((x) => x.candidate);
+  assert.ok(cand, 'a door leads into it: proposed');
+  assert.equal(cand.basis, 'INFERRED');
+  assert.ok(cand.confidence <= 0.3);
+  assert.equal(cand.kind, 'HALL', '8 m² is not a cupboard');
+  // It fills the gap: from the kitchen's far wall to the picture's own outline, the wing's width.
+  const xs = cand.polygon.map((p) => p[0]); const ys = cand.polygon.map((p) => p[1]);
+  const kitchenTop = Math.max(...doored.rooms.find((x) => x.key === 'kitchen').polygon.map((p) => p[1]));
+  const outlineTop = Math.max(...doored.fidelity.outline.map((p) => p[1]));
+  assert.ok(Math.abs(Math.min(...ys) - kitchenTop) < 0.15 && Math.abs(Math.max(...ys) - outlineTop) < 0.15 && Math.max(...xs) - Math.min(...xs) > 3.6,
+    `${JSON.stringify(cand.polygon)} between ${kitchenTop} and ${outlineTop}`);
+  assert.ok(planDocument(doored, 'k').rooms.some((x) => x.id === `r-${cand.key}` && /HOMATCH proposal/.test(x.evidence)));
+
+  // Named among the unknowns (the only such region): proposed as what was named.
+  assert.equal(short(false, ['a walk-in closet behind the kitchen']).rooms.find((x) => x.candidate)?.kind, 'STORAGE');
+});
+
+// ── The size: the reader's metres, checked against pieces of standard size ─
+
+/** Pieces of near-standard size, traced as the reader is asked: the centre of the top, the middle of its front edge. */
+function furnished(cam, frame, shrink, scaleConfidence) {
+  const r = reading(cam, frame);
+  // The reader's metres are the truth shrunk uniformly (its guess at the size), traced shape intact.
+  for (const room of r.rooms) room.polygon = TRUTH[room.key].map(([x, y]) => [x * shrink, y * shrink]);
+  r.scaleConfidence = scaleConfidence;
+  const piece = (key, type, at, facingDeg, widthM, depthM, heightM) => {
+    const rad = (facingDeg * Math.PI) / 180;
+    const front = [at[0] + Math.sin(rad) * depthM / 2, at[1] + Math.cos(rad) * depthM / 2];
+    return {
+      key, type, label: key, room: null, at: [at[0] * shrink, at[1] * shrink], atPx: uvOf(cam, at, heightM), frontPx: uvOf(cam, front, heightM), pxImage: 0,
+      facingDeg, widthM, depthM, heightM, color: null, material: null, style: null, form: null, secondaryColor: null, confidence: 0.8, basis: 'OBSERVED', seenIn: [0],
+    };
+  };
+  r.objects = [
+    piece('bed', 'BED_DOUBLE', [8, 2], 270, 1.6, 2.0, 0.55),
+    piece('wardrobe', 'WARDROBE', [9.6, 2], 270, 1.8, 0.6, 2.2),
+    piece('sofa', 'SOFA', [3, 2], 180, 2.2, 0.95, 0.8),
+    piece('run', 'KITCHEN_RUN', [2, 7.6], 180, 2.4, 0.6, 0.9),
+    piece('fridge', 'FRIDGE', [3.6, 7.6], 180, 0.6, 0.65, 1.9),
+  ];
+  return r;
+}
+
+test('the pieces of standard size check the reader\'s size: a plan read 30 % small is rescaled, as a whole', () => {
+  const cam = camera();
+  const frame = frameOf(cam);
+  const { recon } = validateReconstruction(furnished(cam, frame, 0.7, 0.3), 1, { imageAspects: [ASPECT], frames: [{ image: 0, view: 1, frame: readFrame(frame) }] });
+  const s = recon.fidelity.scale;
+  assert.equal(s.source, 'PIECES', JSON.stringify(s));
+  assert.ok(Math.abs(s.estimate - 1 / 0.7) < 0.1, `the pieces alone say ×${s.estimate}`);
+  assert.ok(s.factor > 1.2 && s.factor <= s.estimate + 1e-9, `applied ×${s.factor}, weighed against the reader's own confidence`);
+  assert.ok(s.pieces.length >= 3 && s.spread < 0.1, JSON.stringify(s));
+  // One factor for everything: the kitchen is still 4 × 4 in proportion, and the pieces stand in their rooms.
+  const by = Object.fromEntries(recon.rooms.map((x) => [x.key, x]));
+  const size = (poly) => [Math.max(...poly.map((p) => p[0])) - Math.min(...poly.map((p) => p[0])), Math.max(...poly.map((p) => p[1])) - Math.min(...poly.map((p) => p[1]))];
+  const [kw, kd] = size(by.kitchen.polygon);
+  assert.ok(Math.abs(kw / kd - 1) < 0.05, `kitchen ${kw} × ${kd}`);
+  const [lw] = size(by.living.polygon);
+  assert.ok(Math.abs(lw - 6 * 0.7 * s.factor) < 0.3, `living ${lw} m long at ×${s.factor}`);
+  const bed = recon.objects.find((o) => o.key === 'bed');
+  assert.ok(Math.abs(bed.at[0] - 8 * 0.7 * s.factor) < 0.3 && Math.abs(bed.at[1] - 2 * 0.7 * s.factor) < 0.3, JSON.stringify(bed.at));
+  // The picture's wall height follows the corrected size.
+  assert.ok(Math.abs(recon.fidelity.wallM - 2.7 * 0.7 * s.factor) < 0.15, `wall ${recon.fidelity.wallM}`);
+});
+
+test('a reader whose size the pieces confirm is left alone; too few pieces, or one kind, say nothing', () => {
+  const cam = camera();
+  const frame = frameOf(cam);
+  const fr = { imageAspects: [ASPECT], frames: [{ image: 0, view: 1, frame: readFrame(frame) }] };
+  const right = validateReconstruction(furnished(cam, frame, 1, 0.5), 1, fr).recon;
+  assert.equal(right.fidelity.scale.source, 'READER');
+  assert.equal(right.fidelity.scale.factor, 1);
+  assert.ok(Math.abs(right.fidelity.scale.estimate - 1) < 0.08);
+  const few = furnished(cam, frame, 0.7, 0.3);
+  few.objects = few.objects.slice(0, 2);
+  const none = validateReconstruction(few, 1, fr).recon;
+  assert.equal(none.fidelity.scale.factor, 1);
+  assert.equal(none.fidelity.scale.estimate, null);
+});
+
+test('the size estimate is a robust consensus: an outlier is trimmed, extents too short to trace are ignored', () => {
+  const s = (key, type, ratio, extent = 0.05) => ({ key, type, expectedHalfM: 1, measuredHalfM: 1 / ratio, extent, confidence: 0.8 });
+  const est = piecesScale([s('a', 'BED_DOUBLE', 1.5), s('b', 'BED_DOUBLE', 1.45), s('c', 'SOFA', 1.55), s('d', 'WARDROBE', 1.5), s('x', 'FRIDGE', 0.6), s('tiny', 'BEDSIDE', 3, 0.005)]);
+  assert.ok(est && Math.abs(est.estimate - 1.5) < 0.06, JSON.stringify(est));
+  assert.ok(!est.pieces.includes('x') && !est.pieces.includes('tiny'));
+  assert.equal(piecesScale([s('a', 'BED_DOUBLE', 1.5), s('b', 'BED_DOUBLE', 1.5), s('c', 'BED_DOUBLE', 1.5)]), null, 'one kind of piece is not independent evidence');
+  assert.equal(piecesScale([s('a', 'BED_DOUBLE', 1.5), s('c', 'SOFA', 1.5)]), null, 'two pieces are not a consensus');
 });

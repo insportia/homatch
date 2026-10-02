@@ -90,3 +90,71 @@ test('DNA: the applied design read back once; the same design is the same DNA', 
   const b = deriveDNA({ preferences: { ...DEFAULT_PREFERENCES, style: 'japandi' }, state, space, materials, sourceJobId: 'job-1' });
   assert.equal(dnaKey(a), dnaKey(b));
 });
+
+import { actionsFor, applyEdit, affectedViews, isAppearance } from '../renders/edits.ts';
+import { validateOperation } from '../operations.ts';
+
+function sofaDesign() {
+  const space = golden();
+  const living = space.rooms.find((r) => r.kind === 'LIVING');
+  const c = living.polygon.reduce((s, p) => ({ x: s.x + p.x / living.polygon.length, y: s.y + p.y / living.polygon.length }), { x: 0, y: 0 });
+  const sofa = { code: 'dev/sofa-3', category: 'SOFA', widthM: 2.0, depthM: 0.9, heightM: 0.8, procedural: { kind: 'SOFA' }, active: true,
+    capabilities: ['MOVABLE', 'ROTATABLE', 'REPLACEABLE'], materialSlots: [{ id: 'body', defaultColor: '#cfc6b8' }], variants: [], clearanceM: 0, placement: 'FLOOR', anchor: 'WALL', roomKinds: [] };
+  const assets = new Map([[sofa.code, sofa]]);
+  const ctx = { space, assets, materials: new Map() };
+  const make = (x, y) => ({ instanceId: 's1', assetId: sofa.code, roomId: living.id, position: { x, y: 0, z: y }, rotationY: 0, materialVariant: null, colorOverride: null, locked: false });
+  // A spot the engine itself accepts, with room to move 0.3 m north (the room is L-shaped; its centroid is on the stairs).
+  const xs = living.polygon.map((p) => p.x); const ys = living.polygon.map((p) => p.y);
+  let spot = null;
+  for (let y = Math.min(...ys) + 0.6; y < Math.max(...ys) - 0.6 && !spot; y += 0.25) {
+    for (let x = Math.min(...xs) + 0.6; x < Math.max(...xs) - 0.6 && !spot; x += 0.25) {
+      const ok = (yy) => !validateOperation(emptyDesignState(), { type: 'ADD_OBJECT', object: make(x, yy) }, ctx);
+      if (ok(y) && ok(y + 0.3)) spot = { x, y };
+    }
+  }
+  assert.ok(spot, 'a legal spot for a sofa in the living room');
+  const state = { ...emptyDesignState(), objects: [make(spot.x, spot.y)] };
+  return { space, living, state, assets, c: spot, ctx };
+}
+
+test('edits: a sofa offers colour, replace, move, rotate, remove; a wall offers paint; locks remove choices', () => {
+  const { state, assets, living } = sofaDesign();
+  const sofa = { color: '#010203', kind: 'OBJECT', id: 's1', roomId: living.id, coverage: 0.02, box: [0, 0, 1, 1] };
+  assert.deepEqual(actionsFor(sofa, state, assets), ['COLOR', 'REPLACE', 'MOVE', 'ROTATE', 'REMOVE']);
+  const wall = { color: '#040506', kind: 'WALL', id: 'wall:w1:L:r1', roomId: living.id, coverage: 0.1, box: [0, 0, 1, 1] };
+  assert.deepEqual(actionsFor(wall, state, assets), ['PAINT', 'MATERIAL']);
+  assert.deepEqual(actionsFor(wall, { ...state, locks: { ...state.locks, walls: true } }, assets), []);
+  assert.deepEqual(actionsFor({ ...sofa, id: 'nope' }, state, assets), []);
+  assert.ok(isAppearance('COLOR') && !isAppearance('MOVE'));
+});
+
+test('edits: a colour edit changes the design itself (what the walkthrough is built from)', () => {
+  const { state, ctx, living } = sofaDesign();
+  const r = applyEdit({ color: '#010203', kind: 'OBJECT', id: 's1', roomId: living.id, coverage: 0.02, box: [0, 0, 1, 1] }, { action: 'COLOR', color: '#2f4f3a' }, state, ctx, 'dark green');
+  assert.ok(r.ok);
+  assert.equal(r.kind, 'APPEARANCE');
+  assert.equal(r.state.objects[0].colorOverride, '#2f4f3a');
+  assert.equal(state.objects[0].colorOverride, null, 'the previous version is not mutated');
+});
+
+test('edits: a move is validated like any edit — through a wall is refused, inside the room is accepted', () => {
+  const { state, ctx, living, c } = sofaDesign();
+  const entry = { color: '#010203', kind: 'OBJECT', id: 's1', roomId: living.id, coverage: 0.02, box: [0, 0, 1, 1] };
+  const far = applyEdit(entry, { action: 'MOVE', to: { x: c.x + 40, y: c.y }, roomId: null }, state, ctx, '');
+  assert.equal(far.ok, false);
+  const near = applyEdit(entry, { action: 'MOVE', to: { x: c.x, y: c.y + 0.3 }, roomId: living.id }, state, ctx, '');
+  assert.ok(near.ok, JSON.stringify(near.rejection ?? null));
+  assert.equal(near.kind, 'SPATIAL');
+  assert.ok(Math.abs(near.state.objects[0].position.z - (c.y + 0.3)) < 1e-9);
+});
+
+test('edits: only the views that show the target are redone; a move also redoes the master', () => {
+  const legendWith = (id) => ({ width: 10, height: 10, entries: [{ color: '#000001', kind: 'OBJECT', id, roomId: null, coverage: 0.05, box: [0, 0, 1, 1] }] });
+  const views = [
+    { view: { id: 'master', kind: 'MASTER', roomId: null }, legend: legendWith('other') },
+    { view: { id: 'r1-v1', kind: 'ROOM', roomId: 'r1' }, legend: legendWith('s1') },
+    { view: { id: 'r2-v1', kind: 'ROOM', roomId: 'r2' }, legend: legendWith('other') },
+  ];
+  assert.deepEqual(affectedViews({ type: 'APPEARANCE', targetId: 's1', targetKind: 'OBJECT', color: '#000', materialId: null, label: '' }, views), ['r1-v1']);
+  assert.deepEqual(affectedViews({ type: 'SPATIAL', targetId: 's1', op: 'MOVE', detail: {} }, views, 'r2').sort(), ['master', 'r1-v1', 'r2-v1']);
+});

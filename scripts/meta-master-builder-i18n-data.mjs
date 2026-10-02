@@ -1164,6 +1164,7 @@ export const META_MASTER_BUILDER_STRINGS = {
   mm_b_cta_set_by_homatch: ["set by HOMATCH for this destination", "HOMATCH-მა ამ მიმართულებისთვის დააყენა", "задано HOMATCH для этого назначения", "bu hedef için HOMATCH tarafından ayarlandı", "حددته HOMATCH لهذه الوجهة", "הוגדר על ידי HOMATCH ליעד הזה"],
 
   // ── Final finish: pins, priority, measured image quality, new issues ──
+  mm_b_loc_kind_neighborhood: ['District', 'უბანი', 'Район', 'Semt', 'حي', 'שכונה'],
   mm_b_loc_kind_pin: ["Pinned area", "მონიშნული არეალი", "Отмеченная зона", "İşaretli bölge", "منطقة محددة", "אזור מסומן"],
   mm_b_reason_PRIORITY_CREATIVE_FIRST: [
     "Your priority creative is always included and runs first; results still decide what's shown most.",
@@ -1228,5 +1229,54 @@ export const META_MASTER_BUILDER_STRINGS = {
     "Seçilen bir dil Meta ile eşleştirilemedi. Kaldırıp yeniden ekleyin.",
     "تعذّرت مطابقة لغة مختارة مع Meta. احذفها وأضفها مجددًا.",
     "לא ניתן היה להתאים שפה שנבחרה ל-Meta. הסירו והוסיפו שוב.",
+  ],
+  // ── Validation issues for the new form parts (masterLogic LEAD_FORM_ISSUE_CODES) ──
+  mm_b_lf_issue_CUSTOM_QUESTION_LABEL: [
+    'Each of your questions needs wording (up to 80 characters).',
+    'თითოეულ თქვენს კითხვას ტექსტი სჭირდება (მაქს. 80 სიმბოლო).',
+    'У каждого вашего вопроса должен быть текст (до 80 символов).',
+    'Her sorunuzun bir metni olmalı (en fazla 80 karakter).',
+    'يحتاج كل سؤال من أسئلتك إلى نص (حتى 80 حرفًا).',
+    'כל שאלה שלכם צריכה ניסוח (עד 80 תווים).',
+  ],
+  mm_b_lf_issue_CUSTOM_QUESTION_OPTIONS: [
+    'Give each question 2–6 different answers, each up to 50 characters.',
+    'თითოეულ კითხვას მიეცით 2–6 განსხვავებული პასუხი, თითო მაქს. 50 სიმბოლო.',
+    'Дайте каждому вопросу 2–6 разных ответа, до 50 символов каждый.',
+    'Her soruya 2–6 farklı yanıt verin, her biri en fazla 50 karakter.',
+    'أعطِ كل سؤال من 2 إلى 6 إجابات مختلفة، كل منها حتى 50 حرفًا.',
+    'תנו לכל שאלה 2–6 תשובות שונות, עד 50 תווים כל אחת.',
+  ],
+  mm_b_lf_issue_QUESTION_SENSITIVE: [
+    'Remove a question about a sensitive topic (health, religion, ethnicity, finances and similar). Meta doesn’t allow them.',
+    'წაშალეთ კითხვა სენსიტიურ თემაზე (ჯანმრთელობა, რელიგია, ეთნიკურობა, ფინანსები და მსგავსი). Meta მათ არ უშვებს.',
+    'Уберите вопрос на чувствительную тему (здоровье, религия, национальность, финансы и т. п.). Meta их не допускает.',
+    'Hassas bir konudaki soruyu kaldırın (sağlık, din, etnik köken, finans vb.). Meta bunlara izin vermez.',
+    'احذف السؤال المتعلق بموضوع حساس (الصحة أو الدين أو العرق أو الأمور المالية وما شابه). لا يسمح بها Meta.',
+    'הסירו שאלה בנושא רגיש (בריאות, דת, מוצא, כספים וכדומה). Meta לא מאפשרת אותן.',
+  ],
+  mm_b_lf_issue_INTRO_TITLE: [
+    'The welcome screen needs a title (up to 60 characters), or turn it off.',
+    'მისალმების ეკრანს სათაური სჭირდება (მაქს. 60 სიმბოლო), ან გამორთეთ იგი.',
+    'Экрану приветствия нужен заголовок (до 60 символов) — или выключите его.',
+    'Karşılama ekranının bir başlığı olmalı (en fazla 60 karakter) ya da kapatın.',
+    'تحتاج شاشة الترحيب إلى عنوان (حتى 60 حرفًا)، أو أوقفها.',
+    'מסך הפתיחה צריך כותרת (עד 60 תווים), או כבו אותו.',
+  ],
+  mm_b_lf_issue_INTRO_POINTS: [
+    'Keep the welcome screen to five short points.',
+    'მისალმების ეკრანზე მაქსიმუმ ხუთი მოკლე პუნქტი დატოვეთ.',
+    'Оставьте на экране приветствия не больше пяти коротких пунктов.',
+    'Karşılama ekranında en fazla beş kısa madde olsun.',
+    'اجعل شاشة الترحيب خمس نقاط قصيرة على الأكثر.',
+    'השאירו במסך הפתיחה עד חמש נקודות קצרות.',
+  ],
+  mm_b_lf_issue_THANKS_TITLE_TOO_LONG: [
+    'Shorten the thank-you title to 60 characters.',
+    'შეამოკლეთ მადლობის სათაური 60 სიმბოლომდე.',
+    'Сократите заголовок благодарности до 60 символов.',
+    'Teşekkür başlığını 60 karaktere kısaltın.',
+    'اختصر عنوان الشكر إلى 60 حرفًا.',
+    'קצרו את כותרת התודה ל-60 תווים.',
   ],
 };

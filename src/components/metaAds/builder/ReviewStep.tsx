@@ -18,7 +18,7 @@ import { StrategyCard } from './StrategyCard';
 import { FundingCard } from './FundingCard';
 import { regionName } from './LocationPicker';
 import { advertiserCountryOf, effectiveRadiusKm, geographyGroups, housingRuleFor } from './masterLogic';
-import { More } from './FinishKit';
+import { Hint, More } from './FinishKit';
 import { languageName } from './AudienceStep';
 
 export function PlacementsStep({ campaign, status, creatives, recommended, patch }: {
@@ -45,6 +45,7 @@ export function PlacementsStep({ campaign, status, creatives, recommended, patch
 
   return (
     <StepShell eyebrow={t('madsb_step_placements')} title={t('madsb_pl_title')} lead={t('madsb_pl_lead')}>
+      <Hint k="mm_c_hint_placements" />
       <div className="grid gap-2 sm:grid-cols-2">
         <ChoiceCard active={mode === 'RECOMMENDED'} icon={<Wand2 className="h-4 w-4" />} title={t('mads_placements_reco')} body={t('madsb_pl_reco_d')}
           onClick={() => patch({ placements: { mode: 'RECOMMENDED' } }, { immediate: true })} />
@@ -134,12 +135,12 @@ export function ReviewStep({ campaign, status, creatives, totals, pricing, recom
   const pixel = selectedAsset(status, 'PIXEL');
   const form = (status?.assets ?? []).find((a) => a.kind === 'LEAD_FORM' && a.external_id === campaign.destination?.formId) ?? selectedAsset(status, 'LEAD_FORM');
   // The server's rule (engine.strategyInputFor → declaredSpecialAdCategories), not a guess.
-  const chosenLocs = campaign.targeting?.locations?.length ? campaign.targeting.locations : (status?.settings.countries ?? ['GE']).map((c) => ({ countryCode: c }));
+  const chosenLocs = campaign.targeting?.locations ?? [];
   const rule = housingRuleFor(campaign, chosenLocs, advertiserCountryOf(status));
   const housing = rule.restricted;
   const locs = campaign.targeting?.locations?.length
     ? campaign.targeting.locations.map((l) => (l.type === 'country' ? regionName(l.key, lang) : l.type === 'city' || l.type === 'pin' ? `${l.name} (+${t('mm_b_loc_radius_km', { km: String(effectiveRadiusKm(l.radiusKm, rule.minRadiusKm)) })})` : l.name))
-    : (status?.settings.countries ?? ['GE']).map((c) => regionName(c, lang));
+    : [t('mm_c_loc_none_chosen')];
   const langs = (campaign.targeting?.languages ?? []).map((l) => (l.code ? languageName(l.code, lang) : l.name));
   const priorityCount = creatives.filter((c) => c.priority && c.media.length).length;
   const eff = strategy?.targeting?.effective;

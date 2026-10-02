@@ -1,84 +1,49 @@
-// HOMATCH's map of where the ads run. Not a tile map and not a copy of any
-// ad tool: HOMATCH's own navy-and-gold drawing of Georgia (or of the world,
-// when the campaign reaches other countries), with every chosen city and pin
-// drawn as the real circle Meta will use — radius changes redraw it at once.
+// HOMATCH's map of where the ads run — CAMPAIGN TARGETS ONLY. Not a tile map
+// and not a copy of any ad tool: HOMATCH's own navy-and-gold drawing.
 //
-// Loaded lazily (the outlines are ~40 KB). Pins can be dropped only inside
-// Georgia, where HOMATCH knows the country of the point it sends.
+//   · Every chosen place is drawn once, numbered in the order of the list.
+//   · A city / pin is the real circle Meta will use (radius changes redraw it).
+//   · A neighbourhood or region is a marker (Meta draws its own area; no fake
+//     radius). A country is a marker on the country (Georgia: its outline).
+//   · A place is drawn only where its coordinates are known — Meta's, a pin's,
+//     or a known Georgian city. Anything else is listed as "not drawn", never
+//     placed at a guessed point.
+//   · The view fits all targets; with none, a neutral view and a hint. No
+//     device, IP, property or default point ever appears as a target.
+//
+// Loaded lazily (the outlines are ~40 KB). Pins can be dropped inside Georgia,
+// where HOMATCH knows the country of the point it sends.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import type { LocationChoiceRow } from '@/services/metaAds';
 import data from './geo/geoData.json';
-import { PLACES, circleRing, insideRings, placePoint, project, unproject } from './geo/places';
+import { circleRing, insideRings, placePoint, project, unproject } from './geo/places';
+import { mapTargets, type MapBox } from './geo/mapTargets';
 
 type Ring = Array<[number, number]>;
 const GEO = data as unknown as { georgia: Ring[]; neighbours: Record<string, Ring[]>; bbox: [number, number, number, number]; world: Ring[]; centroids: Record<string, [number, number]> };
-const ASPECT = 1.6;
 
 const pathOf = (rings: Ring[]) => rings.map((r) => `M${r.map(([lng, lat]) => project(lng, lat).map((v) => v.toFixed(3)).join(',')).join('L')}Z`).join('');
-
-interface Box { x: number; y: number; w: number; h: number }
-function boxOf(points: Array<[number, number]>, pad: number, minSpan: number): Box {
-  const xs = points.map((p) => p[0]);
-  const ys = points.map((p) => p[1]);
-  let x0 = Math.min(...xs); let x1 = Math.max(...xs); let y0 = Math.min(...ys); let y1 = Math.max(...ys);
-  const cx = (x0 + x1) / 2; const cy = (y0 + y1) / 2;
-  let w = Math.max(minSpan, (x1 - x0) * (1 + pad)); let h = Math.max(minSpan / ASPECT, (y1 - y0) * (1 + pad));
-  if (w / h < ASPECT) w = h * ASPECT; else h = w / ASPECT;
-  x0 = cx - w / 2; y0 = cy - h / 2; x1 = x0 + w; y1 = y0 + h;
-  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
-}
-
 const reduceMotion = () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
-export default function GeoMap({ locations, minRadiusKm, home, pinMode = false, onPin, className }: {
+export default function GeoMap({ locations, minRadiusKm, pinMode = false, onPin, className }: {
   locations: LocationChoiceRow[];
   /** Meta's floor where its housing rule applies — circles are drawn as they will run. */
   minRadiusKm: number | null;
-  /** The advertised property's own point, when known. */
-  home?: { lat: number; lng: number; label: string | null } | null;
   pinMode?: boolean;
   onPin?: (lat: number, lng: number) => void;
   className?: string;
 }) {
   const { t, lang } = useLanguage();
   const svgRef = useRef<SVGSVGElement>(null);
-  const world = locations.some((l) => l.countryCode && l.countryCode.toUpperCase() !== 'GE');
-
-  const shapes = useMemo(() => ({
-    georgia: pathOf(GEO.georgia),
-    neighbours: Object.values(GEO.neighbours).map(pathOf).join(''),
-    world: pathOf(GEO.world),
-  }), []);
-
-  const circles = locations.flatMap((l) => {
-    if (l.type !== 'city' && l.type !== 'pin') return [];
-    const p = placePoint(l);
-    if (!p) return [];
-    const km = Math.max(minRadiusKm ?? 0, Number(l.radiusKm ?? 17));
-    return [{ id: `${l.type}:${l.key}`, name: l.name, pin: l.type === 'pin', ...p, km, ring: circleRing(p.lat, p.lng, km) }];
-  });
-  const countries = [...new Set(locations.filter((l) => l.type === 'country').map((l) => l.key.toUpperCase()))];
-  const georgiaWhole = countries.includes('GE');
-  const unplaced = locations.filter((l) => (l.type === 'city' || l.type === 'region') && !placePoint(l) && (l.type === 'region' || !world)).length;
-
-  /* Where to look: the chosen circles, else all of Georgia; the world when abroad. */
-  const target: Box = useMemo(() => {
-    if (world) {
-      const pts = [...countries, 'GE'].map((c) => GEO.centroids[c]).filter(Boolean).map(([lng, lat]) => project(lng, lat));
-      return boxOf(pts, 0.9, 55);
-    }
-    if (circles.length && !georgiaWhole) {
-      const pts = circles.flatMap((c) => c.ring.map(([lng, lat]) => project(lng, lat)));
-      return boxOf(pts, 0.35, 0.35);
-    }
-    const [x0, y0, x1, y1] = GEO.bbox;
-    return boxOf([project(x0 + 0.5, y0 + 0.4), project(x1 - 0.5, y1 - 0.3)], 0.04, 1);
-  }, [world, countries.join(','), circles.map((c) => `${c.id}:${c.km}`).join(','), georgiaWhole]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shapes = useMemo(() => ({ georgia: pathOf(GEO.georgia), neighbours: Object.values(GEO.neighbours).map(pathOf).join(''), world: pathOf(GEO.world) }), []);
+  const m = useMemo(() => mapTargets(locations, minRadiusKm, { centroids: GEO.centroids, georgiaBbox: GEO.bbox, point: placePoint, ring: circleRing, project }),
+    [locations, minRadiusKm]);
+  const target = m.view;
 
   /* Glide to the new view instead of jumping. */
-  const [view, setView] = useState<Box>(target);
+  const [view, setView] = useState<MapBox>(target);
   const viewRef = useRef(view);
   useEffect(() => {
     const from = viewRef.current;
@@ -93,19 +58,24 @@ export default function GeoMap({ locations, minRadiusKm, home, pinMode = false, 
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [target]);
+  }, [target.x, target.y, target.w, target.h]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fs = view.w * 0.03;
   const dot = view.w * 0.007;
-  const label = (x: number, y: number, text: string, strong = false) => (
-    <text x={x} y={y} fontSize={strong ? fs * 1.05 : fs * 0.82} fontWeight={strong ? 700 : 500} textAnchor="middle"
-      fill={strong ? 'hsl(40 90% 72%)' : 'rgba(255,255,255,0.72)'} stroke="#0B1220" strokeWidth={fs * 0.28} paintOrder="stroke" strokeLinejoin="round">{text}</text>
-  );
-  const localName = (p: (typeof PLACES)[number]) => (lang === 'ka' ? p.ka : lang === 'ru' ? p.ru : p.en);
   const regionNames = (() => { try { return new Intl.DisplayNames([lang], { type: 'region' }); } catch { return null; } })();
+  const label = (x: number, y: number, text: string) => (
+    <text x={x} y={y} fontSize={fs * 0.9} fontWeight={700} textAnchor="middle" fill="hsl(40 90% 74%)"
+      stroke="#0B1220" strokeWidth={fs * 0.28} paintOrder="stroke" strokeLinejoin="round">{text}</text>
+  );
+  const marker = (x: number, y: number, n: number) => (
+    <>
+      <circle cx={x} cy={y} r={dot * 1.9} fill="hsl(40 90% 62%)" stroke="#0B1220" strokeWidth={dot * 0.4} />
+      <text x={x} y={y + dot * 0.75} fontSize={dot * 2.1} fontWeight={800} textAnchor="middle" fill="#161309">{n}</text>
+    </>
+  );
 
   const onClick = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (!pinMode || !onPin || world || !svgRef.current) return;
+    if (!pinMode || !onPin || !svgRef.current) return;
     const ctm = svgRef.current.getScreenCTM();
     if (!ctm) return;
     const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse());
@@ -113,96 +83,58 @@ export default function GeoMap({ locations, minRadiusKm, home, pinMode = false, 
     if (insideRings(GEO.georgia, lng, lat)) onPin(Math.round(lat * 1e5) / 1e5, Math.round(lng * 1e5) / 1e5);
   };
 
-  const summary = world
-    ? t('mm_f_map_aria_world', { n: String(countries.length + circles.length) })
-    : t('mm_f_map_aria_ge', { n: String(circles.length || (georgiaWhole ? 1 : 0)) });
+  const drawn = m.items.filter((i) => i.drawn);
+  const summary = m.items.length ? t('mm_c_map_aria', { n: String(m.items.length), drawn: String(drawn.length) }) : t('mm_c_map_empty');
 
   return (
-    <div className={cn('relative overflow-hidden rounded-2xl border border-[hsl(var(--gold-border))]/40 bg-[#0B1220] shadow-hover', className)} data-mm-map={world ? 'world' : 'georgia'}>
+    <div className={cn('relative overflow-hidden rounded-2xl border border-[hsl(var(--gold-border))]/40 bg-[#0B1220] shadow-hover', className)}
+      data-mm-map={m.scope} data-mm-map-targets={m.items.length} data-mm-map-drawn={drawn.length}>
       <svg ref={svgRef} role="img" aria-label={summary} viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
-        className={cn('block aspect-[16/10] w-full select-none', pinMode && !world ? 'cursor-crosshair' : '')} onClick={onClick}>
+        className={cn('block aspect-[16/10] w-full select-none', pinMode ? 'cursor-crosshair' : '')} onClick={onClick}>
         <defs>
           <radialGradient id="mm-map-sea" cx="50%" cy="35%" r="80%">
             <stop offset="0%" stopColor="#16233A" /><stop offset="100%" stopColor="#0B1220" />
           </radialGradient>
-          <linearGradient id="mm-map-land" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#1E2C46" /><stop offset="100%" stopColor="#15203A" />
-          </linearGradient>
         </defs>
         <rect x={view.x - view.w} y={view.y - view.h} width={view.w * 3} height={view.h * 3} fill="url(#mm-map-sea)" />
-        {world ? (
-          <>
-            <path d={shapes.world} fill="rgba(160,182,226,0.26)" stroke="rgba(205,218,245,0.45)" strokeWidth={0.7} vectorEffect="non-scaling-stroke" />
-            <path d={shapes.georgia} fill="hsl(40 90% 56% / 0.55)" stroke="hsl(40 90% 62%)" strokeWidth={1} vectorEffect="non-scaling-stroke" />
-            {[...countries, 'GE'].filter((c, i, a) => a.indexOf(c) === i).map((c) => {
-              const ctr = GEO.centroids[c];
-              if (!ctr) return null;
-              const [x, y] = project(ctr[0], ctr[1]);
-              const chosen = countries.includes(c);
-              return (
-                <g key={c} data-mm-map-country={c}>
-                  {chosen && <circle cx={x} cy={y} r={dot * 3.2} fill="hsl(40 90% 56% / 0.25)" className="motion-safe:animate-pulse" />}
-                  <circle cx={x} cy={y} r={dot * 1.4} fill={chosen ? 'hsl(40 90% 60%)' : '#fff'} />
-                  {label(x, y - dot * 3.2, regionNames?.of(c) ?? c, chosen)}
-                </g>
-              );
-            })}
-          </>
-        ) : (
-          <>
-            <path d={shapes.neighbours} fill="rgba(255,255,255,0.045)" stroke="rgba(255,255,255,0.10)" strokeWidth={0.6} vectorEffect="non-scaling-stroke" />
-            <path d={shapes.georgia} fill={georgiaWhole ? 'hsl(40 90% 56% / 0.22)' : 'url(#mm-map-land)'}
-              stroke="hsl(40 80% 60% / 0.9)" strokeWidth={1.4} vectorEffect="non-scaling-stroke" data-mm-map-ge={georgiaWhole ? 'whole' : ''} />
-            {PLACES.filter((p) => (p.major || (p.kind === 'district' && view.w < 0.6))
-              // A chosen area names itself: no second label on top of it.
-              && !circles.some((c) => Math.hypot((p.lat - c.lat) * 111, (p.lng - c.lng) * 111 * Math.cos(c.lat * Math.PI / 180)) < c.km)).map((p) => {
-              const [x, y] = project(p.lng, p.lat);
-              return (
-                <g key={p.id} opacity={0.9}>
-                  <circle cx={x} cy={y} r={dot * 0.7} fill="rgba(255,255,255,0.8)" />
-                  {label(x, y - dot * 1.6, localName(p))}
-                </g>
-              );
-            })}
-          </>
-        )}
-        {!world && circles.map((c, i) => {
-          const d = `M${c.ring.map(([lng, lat]) => project(lng, lat).join(',')).join('L')}Z`;
-          const [x, y] = project(c.lng, c.lat);
+        {/* Geography (never a target): land, Georgia's neighbours and Georgia's outline. */}
+        <path d={shapes.world} fill="rgba(160,182,226,0.16)" stroke="rgba(205,218,245,0.30)" strokeWidth={0.6} vectorEffect="non-scaling-stroke" />
+        <path d={shapes.neighbours} fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.10)" strokeWidth={0.6} vectorEffect="non-scaling-stroke" />
+        <path d={shapes.georgia} fill={m.georgiaWhole ? 'hsl(40 90% 56% / 0.24)' : 'rgba(30,44,70,0.85)'}
+          stroke={m.georgiaWhole ? 'hsl(40 90% 62%)' : 'rgba(205,218,245,0.45)'} strokeWidth={1.2} vectorEffect="non-scaling-stroke"
+          data-mm-map-ge={m.georgiaWhole ? 'whole' : ''} />
+        {/* Targets, in list order. */}
+        {m.items.filter((i) => i.drawn).map((i) => {
+          const [x, y] = project(i.lng!, i.lat!);
           return (
-            <g key={c.id} data-mm-map-circle={c.id} data-mm-map-km={c.km}>
-              <path d={d} fill="hsl(40 90% 56% / 0.18)" stroke="hsl(40 90% 62%)" strokeWidth={1.6} strokeDasharray={c.pin ? '5 4' : undefined} vectorEffect="non-scaling-stroke"
-                className="transition-[d] duration-300" />
-              <circle cx={x} cy={y} r={dot * 1.9} fill="hsl(40 90% 62%)" stroke="#0B1220" strokeWidth={dot * 0.4} />
-              <text x={x} y={y + dot * 0.75} fontSize={dot * 2.1} fontWeight={800} textAnchor="middle" fill="#161309">{i + 1}</text>
+            <g key={i.id} data-mm-map-target={i.id} data-mm-map-kind={i.kind} {...(i.ring ? { 'data-mm-map-circle': i.id, 'data-mm-map-km': i.km } : {})}>
+              {i.ring && (
+                <path d={`M${i.ring.map(([lng, lat]) => project(lng, lat).join(',')).join('L')}Z`} fill="hsl(40 90% 56% / 0.18)" stroke="hsl(40 90% 62%)"
+                  strokeWidth={1.6} strokeDasharray={i.kind === 'pin' ? '5 4' : undefined} vectorEffect="non-scaling-stroke" />
+              )}
+              {!i.ring && <circle cx={x} cy={y} r={dot * 3.4} fill="hsl(40 90% 56% / 0.22)" />}
+              {marker(x, y, i.n)}
+              {i.kind === 'country' && label(x, y - dot * 3.6, regionNames?.of(i.code ?? '') ?? i.name)}
             </g>
           );
         })}
-        {home && !world && (() => {
-          const [x, y] = project(home.lng, home.lat);
-          return (
-            <g data-mm-map-home="">
-              <circle cx={x} cy={y} r={dot * 2.4} fill="rgba(255,255,255,0.18)" />
-              <circle cx={x} cy={y} r={dot * 1.1} fill="#fff" stroke="hsl(40 90% 56%)" strokeWidth={dot * 0.5} />
-            </g>
-          );
-        })()}
       </svg>
       <span className="pointer-events-none absolute end-3 top-2.5 text-2xs font-semibold tracking-[0.14em] text-[hsl(40_90%_70%)]">HOMATCH</span>
-      {/* The legend under the map: numbered areas with their real radius, and what the view means. */}
+      {/* Legend: every target with its number and real radius; what is not drawn, and why. */}
       <div className="border-t border-white/10 px-3 py-2.5 text-2xs text-white/75" data-mm-map-legend="">
-        {!world && circles.length > 0 && (
-          <ul className="mb-1.5 flex flex-wrap gap-1.5">
-            {circles.map((c, i) => (
-              <li key={c.id} className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-white/[0.08] py-0.5 pe-2.5 ps-0.5">
-                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[hsl(40_90%_62%)] text-[11px] font-extrabold text-[#161309]">{i + 1}</span>
-                <span className="min-w-0 truncate" dir="auto">{c.name}</span>
-                <span className="shrink-0 font-semibold text-[hsl(40_90%_72%)]" dir="ltr">{c.km} km</span>
+        {m.items.length > 0 ? (
+          <ul className="mb-1 flex flex-wrap gap-1.5">
+            {m.items.map((i) => (
+              <li key={i.id} data-mm-map-legend-item={i.id} className={cn('inline-flex max-w-full items-center gap-1.5 rounded-full py-0.5 pe-2.5 ps-0.5', i.drawn ? 'bg-white/[0.08]' : 'border border-dashed border-white/25')}>
+                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[hsl(40_90%_62%)] text-[11px] font-extrabold text-[#161309]">{i.n}</span>
+                <span className="min-w-0 truncate" dir="auto">{i.kind === 'country' ? regionNames?.of(i.code ?? '') ?? i.name : i.name}</span>
+                {i.km != null && <span className="shrink-0 font-semibold text-[hsl(40_90%_72%)]" dir="ltr">{i.km} km</span>}
+                {!i.drawn && <span className="shrink-0 text-white/50">· {t('mm_c_map_not_drawn')}</span>}
               </li>
             ))}
           </ul>
-        )}
-        <span>{pinMode && !world ? t('mm_f_map_pin_hint') : world ? t('mm_f_map_world_note') : unplaced ? t('mm_f_map_unplaced', { n: String(unplaced) }) : georgiaWhole ? t('mm_f_map_whole_ge') : circles.length ? t('mm_f_map_live') : ''}</span>
+        ) : null}
+        <span>{pinMode ? t('mm_f_map_pin_hint') : m.items.length === 0 ? t('mm_c_map_empty') : m.items.some((i) => !i.drawn) ? t('mm_c_map_not_drawn_why') : t('mm_f_map_live')}</span>
       </div>
     </div>
   );

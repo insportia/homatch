@@ -23,14 +23,14 @@ const SCOPE_NAMES = /leads_retrieval|pages_manage_ads|pages_manage_metadata|ads_
 test('Instant Forms: the switch on but permissions missing is safely unavailable; granted is available', () => {
   const req = INSTANT_FORM_PERMISSIONS;
   const base = ['ads_management', 'ads_read', 'business_management', 'pages_show_list', 'pages_read_engagement', 'public_profile'];
-  assert.equal(instantFormsState({ goalEnabled: true, granted: base, required: req, offeredByLogin: false }), 'COMING_SOON', 'production today');
-  assert.equal(instantFormsState({ goalEnabled: true, granted: base, required: req, offeredByLogin: true }), 'RECONNECT');
-  // Available only when Meta also confirmed the Page's Lead Ads Terms (unknown is checked again, never assumed).
-  assert.equal(instantFormsState({ goalEnabled: true, granted: [...base, ...req], required: req, offeredByLogin: false, termsAccepted: true }), 'AVAILABLE');
-  assert.equal(instantFormsState({ goalEnabled: true, granted: [...base, ...req], required: req, offeredByLogin: false, termsAccepted: null }), 'RECHECK');
-  assert.equal(instantFormsState({ goalEnabled: true, granted: [...base, 'leads_retrieval'], required: req, offeredByLogin: false }), 'COMING_SOON', 'all three, not some');
-  assert.equal(instantFormsState({ goalEnabled: false, granted: [...base, ...req], required: req, offeredByLogin: true }), 'DISABLED');
-  assert.equal(instantFormsState({ goalEnabled: true, granted: [], required: req, offeredByLogin: false, mock: true }), 'AVAILABLE');
+  const ok = { tosField: true, readWithLeadPermissions: true, formsReadable: true };
+  assert.equal(instantFormsState({ goalEnabled: true, granted: base, required: req, check: null }), 'PERMISSIONS_MISSING', 'production token today');
+  // Available only when Meta also confirmed the Page's Lead Ads Terms and its forms (unknown is checked again, never assumed).
+  assert.equal(instantFormsState({ goalEnabled: true, granted: [...base, ...req], required: req, check: ok }), 'READY');
+  assert.equal(instantFormsState({ goalEnabled: true, granted: [...base, ...req], required: req, check: null }), 'TERMS_UNKNOWN');
+  assert.equal(instantFormsState({ goalEnabled: true, granted: [...base, 'leads_retrieval'], required: req, check: ok }), 'PERMISSIONS_MISSING', 'all three, not some');
+  assert.equal(instantFormsState({ goalEnabled: false, granted: [...base, ...req], required: req, check: ok }), 'DISABLED');
+  assert.equal(instantFormsState({ goalEnabled: true, granted: [], required: req, check: null, mock: true }), 'READY');
   assert.deepEqual(missingInstantFormScopes(base, req), ['leads_retrieval', 'pages_manage_ads', 'pages_manage_metadata']);
   // One list: the UI's copy equals the server's.
   assert.match(read('supabase/functions/_shared/metaAds.ts'), new RegExp(`INSTANT_FORM_SCOPES = ${JSON.stringify([...req]).replace(/"/g, "'").replace(/,/g, ', ').replace(/[[\]]/g, '\\$&')}`));
@@ -68,8 +68,9 @@ test('Instant Forms: no permission name is ever shown to a customer', () => {
   // reconnect, check again); "coming soon" stays unavailable. Ready still needs the server's AVAILABLE.
   assert.match(page, /const enabled = switchedOn && FORMS_ACTIONABLE\.has\(forms\);/);
   const copy = read('src/components/metaAds/builder/instantFormsCopy.ts');
-  assert.match(copy, /FORMS_ACTIONABLE: ReadonlySet<InstantFormsState> = new Set\(\['AVAILABLE', 'TERMS_REQUIRED', 'RECONNECT', 'RECHECK', 'PAGE_REQUIRED'\]\)/);
-  assert.doesNotMatch(copy.slice(copy.indexOf('FORMS_ACTIONABLE')), /'COMING_SOON'|'DISABLED'/, 'never the unavailable ones');
+  // Every state but the admin's switch can be resolved in the builder: Leads never looks permanently disabled.
+  assert.match(copy, /FORMS_ACTIONABLE: ReadonlySet<InstantFormsState> = new Set\(\[\s*'READY', 'PERMISSIONS_MISSING', 'TERMS_REQUIRED', 'TERMS_UNKNOWN', 'FORM_ACCESS_UNAVAILABLE', 'PAGE_UNAVAILABLE', 'META_ERROR',\s*\]\)/);
+  assert.doesNotMatch(copy.slice(copy.indexOf('FORMS_ACTIONABLE')), /'DISABLED'/, 'never the admin-disabled one');
 });
 
 test('Instant Forms: Admin sees the technical blocker — permission names and counts, never tokens', () => {

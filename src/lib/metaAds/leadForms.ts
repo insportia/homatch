@@ -75,16 +75,43 @@ const Q: Record<QualifyingKey, QuestionDef> = {
   },
 };
 
+/** Meta's intro screen (context_card): a title and up to five short points. */
+export interface LeadFormIntro { title: string; points: string[] }
+/** A customer-written multiple-choice question (Meta CUSTOM with options). */
+export interface CustomQuestion { label: string; options: string[] }
+
 export interface LeadFormSpec {
   name: string;
   headline?: string | null;
+  /** Optional intro screen before the questions. */
+  intro?: LeadFormIntro | null;
   /** Shown after submission (Meta's thank-you screen). */
+  thankYouTitle?: string | null;
   thankYouMessage?: string | null;
   contactFields: ContactField[];
   questions: QualifyingKey[];
+  /** The customer's own multiple-choice questions (Meta CUSTOM). */
+  customQuestions?: CustomQuestion[];
   privacyPolicyUrl: string;
   followUpUrl?: string | null;
   locale: FormLocale;
+}
+
+export const MAX_QUESTIONS = 5;
+export const MAX_INTRO_POINTS = 5;
+
+/*
+ * Topics Meta does not allow a lead form to ask about without its own special
+ * question types (or at all): health, religion, sexual orientation, politics,
+ * criminal history, trade-union membership, finances/IDs. A customer question
+ * that names one is refused here, in six languages — HOMATCH never sends it.
+ */
+const SENSITIVE_EN = /\b(health|medical|diseases?|disabled|disability|pregnan\w*|religion|religious|church|mosque|faith|sexual|orientation|gay|lesbian|political|politics|vote|criminal|convicted|arrested|ethnic|ethnicity|race|racial|nationality|passport|social security|national id|id number|credit card|bank account|iban|salary|income|debts?|credit score|age|date of birth|born)\b/i;
+const SENSITIVE_OTHER = /(ჯანმრთ|დაავად|რელიგ|სექსუალ|პოლიტიკ|ნასამართლ|ეთნიკ|ეროვნებ|პასპორტ|პირადი ნომ|ბარათ|ხელფას|შემოსავ|ასაკ|здоров|болезн|инвалид|беремен|религ|сексуал|ориентац|политич|судим|этнич|национальн|паспорт|номер карт|банковск|зарплат|доход|долг|возраст|sağlık|hastal|engelli|hamile|dini|cinsel|siyasi|sabıka|etnik|uyruk|pasaport|kimlik numar|kart numar|maaş|gelir|borç|yaşınız|صحة|مرض|إعاقة|حمل|ديانة|جنسي|سياس|سجل جنائي|عرق|جنسية|جواز|بطاقة ائتمان|راتب|دخل|ديون|عمرك|בריאות|מחלה|נכות|הריון|דת|מיני|פוליטי|פלילי|מוצא|לאום|דרכון|תעודת זהות|כרטיס אשראי|משכורת|הכנסה|חוב|גילך)/iu;
+
+export function isSensitiveQuestion(text: string): boolean {
+  const t = String(text ?? '');
+  return SENSITIVE_EN.test(t) || SENSITIVE_OTHER.test(t);
 }
 
 export interface LeadFormIssue { code: string; field: string }
@@ -98,7 +125,24 @@ export function validateLeadFormSpec(spec: LeadFormSpec): LeadFormIssue[] {
   const contacts = (spec.contactFields ?? []).filter((f) => CONTACT_FIELDS.includes(f));
   if (!contacts.includes('PHONE') && !contacts.includes('EMAIL')) issues.push({ code: 'CONTACT_FIELD_REQUIRED', field: 'contactFields' });
   if ((spec.questions ?? []).some((q) => !QUALIFYING_KEYS.includes(q))) issues.push({ code: 'QUESTION_UNKNOWN', field: 'questions' });
-  if ((spec.questions ?? []).length > 5) issues.push({ code: 'TOO_MANY_QUESTIONS', field: 'questions' });
+  const custom = spec.customQuestions ?? [];
+  if ((spec.questions ?? []).length + custom.length > MAX_QUESTIONS) issues.push({ code: 'TOO_MANY_QUESTIONS', field: 'questions' });
+  for (const c of custom) {
+    const label = String(c?.label ?? '').trim();
+    const options = (c?.options ?? []).map((o) => String(o ?? '').trim()).filter(Boolean);
+    if (!label || label.length > 80) issues.push({ code: 'CUSTOM_QUESTION_LABEL', field: 'customQuestions' });
+    if (options.length < 2 || options.length > 6 || options.some((o) => o.length > 50) || new Set(options.map((o) => o.toLowerCase())).size !== options.length) {
+      issues.push({ code: 'CUSTOM_QUESTION_OPTIONS', field: 'customQuestions' });
+    }
+    if (isSensitiveQuestion(label) || options.some(isSensitiveQuestion)) issues.push({ code: 'QUESTION_SENSITIVE', field: 'customQuestions' });
+  }
+  if (spec.intro) {
+    const title = String(spec.intro.title ?? '').trim();
+    const points = (spec.intro.points ?? []).map((x) => String(x ?? '').trim()).filter(Boolean);
+    if (!title || title.length > 60) issues.push({ code: 'INTRO_TITLE', field: 'intro' });
+    if (!points.length || points.length > MAX_INTRO_POINTS || points.some((x) => x.length > 80)) issues.push({ code: 'INTRO_POINTS', field: 'intro' });
+  }
+  if (String(spec.thankYouTitle ?? '').length > 60) issues.push({ code: 'THANKS_TITLE_TOO_LONG', field: 'thankYouTitle' });
   if (String(spec.headline ?? '').length > 60) issues.push({ code: 'HEADLINE_TOO_LONG', field: 'headline' });
   if (String(spec.thankYouMessage ?? '').length > 500) issues.push({ code: 'MESSAGE_TOO_LONG', field: 'thankYouMessage' });
   if (!(spec.locale in META_LOCALE)) issues.push({ code: 'LOCALE_UNSUPPORTED', field: 'locale' });
@@ -120,15 +164,23 @@ export function leadFormPayload(spec: LeadFormSpec): Record<string, unknown> {
     if (def.options) q.options = def.options.map((o) => ({ key: o.key, value: o.label[loc] }));
     questions.push(q);
   }
+  (spec.customQuestions ?? []).forEach((c, i) => {
+    const options = c.options.map((o) => o.trim()).filter(Boolean);
+    questions.push({ type: 'CUSTOM', key: `custom_${i + 1}`, label: c.label.trim(), options: options.map((o, j) => ({ key: `custom_${i + 1}_${j + 1}`, value: o })) });
+  });
+  const thanksTitle = String(spec.thankYouTitle || THANKS_TITLE[loc]).slice(0, 60);
   const payload: Record<string, unknown> = {
     name: spec.name.trim().slice(0, 100),
     locale: META_LOCALE[loc],
     questions: JSON.stringify(questions),
     privacy_policy: JSON.stringify({ url: spec.privacyPolicyUrl, link_text: PRIVACY_LINK_TEXT[loc] }),
     thank_you_page: JSON.stringify(spec.followUpUrl
-      ? { title: THANKS_TITLE[loc], body: String(spec.thankYouMessage || THANKS_BODY[loc]).slice(0, 500), button_type: 'VIEW_WEBSITE', button_text: VISIT[loc], website_url: spec.followUpUrl }
-      : { title: THANKS_TITLE[loc], body: String(spec.thankYouMessage || THANKS_BODY[loc]).slice(0, 500), button_type: 'NONE' }),
+      ? { title: thanksTitle, body: String(spec.thankYouMessage || THANKS_BODY[loc]).slice(0, 500), button_type: 'VIEW_WEBSITE', button_text: VISIT[loc], website_url: spec.followUpUrl }
+      : { title: thanksTitle, body: String(spec.thankYouMessage || THANKS_BODY[loc]).slice(0, 500), button_type: 'NONE' }),
   };
+  if (spec.intro) {
+    payload.context_card = JSON.stringify({ title: spec.intro.title.trim().slice(0, 60), style: 'LIST_STYLE', content: spec.intro.points.map((x) => x.trim()).filter(Boolean).slice(0, MAX_INTRO_POINTS) });
+  }
   if (spec.headline) payload.question_page_custom_headline = spec.headline.slice(0, 60);
   if (spec.followUpUrl) payload.follow_up_action_url = spec.followUpUrl;
   return payload;
@@ -139,9 +191,13 @@ export function leadFormPreview(spec: LeadFormSpec) {
   const loc = spec.locale;
   return {
     headline: spec.headline ?? null,
+    intro: spec.intro ? { title: spec.intro.title, points: spec.intro.points.filter((x) => x.trim()) } : null,
     contact: spec.contactFields,
-    questions: spec.questions.map((k) => ({ key: k, label: Q[k].label[loc], options: Q[k].options?.map((o) => o.label[loc]) ?? null })),
-    thankYou: { title: THANKS_TITLE[loc], body: spec.thankYouMessage || THANKS_BODY[loc] },
+    questions: [
+      ...spec.questions.map((k) => ({ key: k as string, label: Q[k].label[loc], options: Q[k].options?.map((o) => o.label[loc]) ?? null })),
+      ...(spec.customQuestions ?? []).map((c, i) => ({ key: `custom_${i + 1}`, label: c.label, options: c.options.filter((o) => o.trim()) })),
+    ],
+    thankYou: { title: spec.thankYouTitle || THANKS_TITLE[loc], body: spec.thankYouMessage || THANKS_BODY[loc] },
     privacyLinkText: PRIVACY_LINK_TEXT[loc],
   };
 }
@@ -157,4 +213,58 @@ export function mapLeadAnswers(fieldData: Array<{ name?: string; values?: string
     out[std] = v.slice(0, 500);
   }
   return out;
+}
+
+/* ── GUIDANCE: what HOMATCH suggests, from the campaign's own context ── */
+
+export interface FormContext {
+  /** The campaign advertises a property (HOMATCH listing or a property offer). */
+  isProperty: boolean;
+  /** SALE / RENT_LONG / RENT_SHORT / COMMERCIAL … (the offer's deal kind). */
+  dealKind?: string | null;
+  /** HOMATCH property type, when known (apartment, house, land, commercial…). */
+  propertyType?: string | null;
+}
+
+/**
+ * The questions HOMATCH proposes for this campaign — never applied without the
+ * owner. A property: the questions that tell a serious buyer or tenant apart,
+ * for the deal at hand. A service around property (renovation, design…):
+ * contact details only — HOMATCH does not guess a service's questions.
+ */
+export function suggestLeadQuestions(ctx: FormContext): QualifyingKey[] {
+  if (!ctx.isProperty) return [];
+  const deal = String(ctx.dealKind ?? '').toUpperCase();
+  const type = String(ctx.propertyType ?? '').toLowerCase();
+  const out: QualifyingKey[] = [];
+  if (!deal || deal === 'OTHER') out.push('buy_or_rent');
+  if (deal !== 'RENT_SHORT') out.push('timeframe');
+  if (deal === 'SALE' || !deal) out.push('budget');
+  if (!type || type === 'apartment' || type === 'house') out.push('agent_contact');
+  return [...new Set(out)].slice(0, MAX_QUESTIONS);
+}
+
+export type ReadinessState = 'ok' | 'warn' | 'todo';
+export interface ReadinessItem { key: 'basics' | 'contact' | 'questions' | 'privacy' | 'completion' | 'meta'; state: ReadinessState; code?: string }
+
+/** HOMATCH's own privacy policy page — it covers HOMATCH, not the advertiser's business. */
+export const HOMATCH_PRIVACY_HOST = /(^|\.)homatch\.live$/i;
+
+export function privacyIsHomatch(url: string | null | undefined): boolean {
+  try { return HOMATCH_PRIVACY_HOST.test(new URL(String(url ?? '')).hostname); } catch { return false; }
+}
+
+/** The readiness summary the owner reads before anything is sent to Meta. */
+export function leadFormReadiness(spec: LeadFormSpec): ReadinessItem[] {
+  const issues = validateLeadFormSpec(spec);
+  const has = (field: string) => issues.some((i) => i.field === field);
+  const nQuestions = spec.questions.length + (spec.customQuestions ?? []).length;
+  return [
+    { key: 'basics', state: has('name') || has('locale') || has('headline') || has('intro') ? 'todo' : 'ok' },
+    { key: 'contact', state: has('contactFields') ? 'todo' : 'ok' },
+    { key: 'questions', state: has('questions') || has('customQuestions') ? 'todo' : nQuestions === 0 ? 'warn' : 'ok', code: nQuestions === 0 ? 'NO_QUESTIONS' : undefined },
+    { key: 'privacy', state: has('privacyPolicyUrl') ? 'todo' : privacyIsHomatch(spec.privacyPolicyUrl) ? 'warn' : 'ok', code: privacyIsHomatch(spec.privacyPolicyUrl) ? 'PRIVACY_IS_HOMATCH' : undefined },
+    { key: 'completion', state: has('thankYouMessage') || has('thankYouTitle') || has('followUpUrl') ? 'todo' : 'ok' },
+    { key: 'meta', state: issues.length ? 'todo' : 'ok' },
+  ];
 }

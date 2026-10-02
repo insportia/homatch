@@ -22,7 +22,7 @@
 // and names the countries that cause it.
 
 export type Gender = 'ALL' | 'MALE' | 'FEMALE';
-export type LocationType = 'country' | 'region' | 'city' | 'pin';
+export type LocationType = 'country' | 'region' | 'city' | 'neighborhood' | 'pin';
 
 export interface LocationChoice {
   type: LocationType;
@@ -33,9 +33,12 @@ export interface LocationChoice {
   countryCode: string;
   /** Cities and pins: radius around it, kilometres. */
   radiusKm?: number | null;
-  /** Pins: the point Meta receives. Cities: where the map draws it (display only). */
+  /** Pins: the point Meta receives. Cities / neighbourhoods: where the map draws it
+   *  (display only, and only when Meta gave the coordinates). */
   lat?: number | null;
   lng?: number | null;
+  /** Neighbourhoods: Meta's own kind ('subcity' targets as geo_locations.subcities). */
+  metaType?: 'neighborhood' | 'subcity' | null;
 }
 
 /** A language the ads are shown in — Meta's locale key, from Meta's locale search. */
@@ -190,9 +193,9 @@ export function validateTargeting(intent: TargetingIntent): TargetingIssue[] {
   if (locs.length === 0) issues.push({ code: 'LOCATION_REQUIRED', field: 'locations' });
   if (locs.length > MAX_LOCATIONS) issues.push({ code: 'TOO_MANY_LOCATIONS', field: 'locations' });
   for (const l of locs) {
-    if (!['country', 'region', 'city', 'pin'].includes(l.type)) issues.push({ code: 'LOCATION_TYPE_INVALID', field: 'locations' });
+    if (!['country', 'region', 'city', 'neighborhood', 'pin'].includes(l.type)) issues.push({ code: 'LOCATION_TYPE_INVALID', field: 'locations' });
     else if (l.type === 'country' && !COUNTRY.test(String(l.key))) issues.push({ code: 'COUNTRY_CODE_INVALID', field: 'locations' });
-    else if ((l.type === 'region' || l.type === 'city') && !META_KEY.test(String(l.key))) issues.push({ code: 'LOCATION_KEY_INVALID', field: 'locations' });
+    else if ((l.type === 'region' || l.type === 'city' || l.type === 'neighborhood') && !META_KEY.test(String(l.key))) issues.push({ code: 'LOCATION_KEY_INVALID', field: 'locations' });
     else if (l.type === 'pin' && (!validLat(l.lat) || !validLng(l.lng))) issues.push({ code: 'PIN_INVALID', field: 'locations' });
     if (!COUNTRY.test(String(l.countryCode ?? ''))) issues.push({ code: 'LOCATION_COUNTRY_INVALID', field: 'locations' });
   }
@@ -231,7 +234,8 @@ export function normalizeIntent(raw: unknown, defaultCountries: string[]): Targe
           name: String(l.name ?? l.key).slice(0, 120),
           countryCode: String(l.countryCode ?? (l.type === 'country' ? l.key : '')).toUpperCase(),
           radiusKm: l.type === 'city' || l.type === 'pin' ? radius : null,
-          ...(l.type === 'city' || l.type === 'pin' ? { lat, lng } : {}),
+          ...(l.type === 'city' || l.type === 'pin' || l.type === 'neighborhood' ? { lat, lng } : {}),
+          ...(l.type === 'neighborhood' ? { metaType: l.metaType === 'subcity' ? 'subcity' as const : 'neighborhood' as const } : {}),
         };
       })
       : defaultCountries.map((c) => ({ type: 'country' as const, key: c.toUpperCase(), name: c.toUpperCase(), countryCode: c.toUpperCase() })),
@@ -290,6 +294,11 @@ export function applyTargeting(intent: TargetingIntent, specialAdCategories: str
   if (regions.length) geo.regions = regions;
   if (cities.length) geo.cities = cities;
   if (pins.length) geo.custom_locations = pins;
+  // Neighbourhoods are targeted as Meta named them — no radius (Meta draws their area).
+  const hoods = locs.filter((l) => l.type === 'neighborhood' && l.metaType !== 'subcity').map((l) => ({ key: l.key }));
+  const subcities = locs.filter((l) => l.type === 'neighborhood' && l.metaType === 'subcity').map((l) => ({ key: l.key }));
+  if (hoods.length) geo.neighborhoods = hoods;
+  if (subcities.length) geo.subcities = subcities;
 
   let ageMin = intent.ageMin;
   let ageMax = intent.ageMax;

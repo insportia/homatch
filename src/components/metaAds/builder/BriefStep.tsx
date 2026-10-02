@@ -14,6 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { briefHash, BRIEF_MAX, type BriefUnderstanding } from '@/lib/metaAds/audienceGuide';
 import { briefInterpret, localeSearch, type MetaCampaignRow, type TargetingIntentRow } from '@/services/metaAds';
+import { META_AGE_MAX, META_AGE_MIN } from '@/lib/metaAds/targeting';
 import { StepShell } from './ui';
 import { HelperCard, Pill } from './FinishKit';
 import { regionName } from './LocationPicker';
@@ -47,16 +48,17 @@ export function BriefStep({ campaign, patch, setCampaign, flush }: {
     patch({ brief_understanding: { ...u, [key]: list, edited: true } as BriefUnderstanding }, { immediate: true, keepPreflight: true });
   };
 
-  const targeting = campaign.targeting ?? null;
+  /* A fresh draft has no targeting yet: start one with NO places (a market is
+     who the people are, never a place chosen for them). */
+  const targeting: TargetingIntentRow = campaign.targeting ?? { locations: [], ageMin: META_AGE_MIN, ageMax: META_AGE_MAX, gender: 'ALL' };
   const applyMarkets = () => {
-    if (!u || !targeting) return;
+    if (!u) return;
     const intl = targeting.international ?? { enabled: true, intents: [], markets: [] };
     const intents = [...new Set([...intl.intents, ...u.audiences.filter((a) => a === 'FOREIGNERS_IN_COUNTRY' || a === 'MOVING_HERE' || a === 'INVESTORS_ABROAD')])];
     patch({ targeting: { ...targeting, international: { enabled: true, intents, markets: [...new Set([...intl.markets, ...u.markets])].slice(0, 10) } } as TargetingIntentRow }, { immediate: true });
     toast.success(t('mm_f_brief_applied'));
   };
   const applyLanguage = async (code: string) => {
-    if (!targeting) return;
     try {
       const r = await localeSearch(code);
       const hit = r.results?.[0];

@@ -669,17 +669,20 @@ test('admin: every campaign names its owner (name, email, ids) and search finds 
   await page.waitForSelector('[data-mm-admin-empty]');
 });
 
-test('builder: Leads on Facebook/Instagram unavailable reads as "coming soon" — no permission names anywhere', opts, async (t) => {
+test('builder: Leads without the lead permissions reads as "Reconnect Meta" — never "terms not accepted", no permission names anywhere', opts, async (t) => {
   if (skipReason) assert.fail(`meta ads builder gate could not run: ${skipReason}`);
-  const { page } = await boot(t, { width: 390, height: 844, lang: 'en', statusOver: { mode: 'REAL', connection: { instant_forms_available: false, instant_forms: 'COMING_SOON', granted_scopes: ['ads_management', 'ads_read', 'business_management', 'pages_show_list', 'pages_read_engagement'] } } });
+  // The production case: an old token (no lead permissions) — Meta's terms answer cannot be trusted yet.
+  const { page } = await boot(t, { width: 390, height: 844, lang: 'en', statusOver: { mode: 'REAL', connection: { instant_forms_available: false, instant_forms: 'PERMISSIONS_MISSING', lead_terms: 'UNKNOWN', lead_checked_at: '2026-10-02T06:44:03Z', granted_scopes: ['ads_management', 'ads_read', 'business_management', 'pages_show_list', 'pages_read_engagement'] } } });
   await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=goal`, { waitUntil: 'domcontentloaded' });
   await waitReady(page);
   const text = await page.evaluate(() => document.body.innerText);
-  assert.match(text, /Coming soon/);
+  assert.match(text, /Reconnect Meta to enable/);
+  assert.doesNotMatch(text, /Coming soon/);
   assert.doesNotMatch(text, /leads_retrieval|pages_manage_ads|pages_manage_metadata|permission/i);
   await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=destination`, { waitUntil: 'domcontentloaded' });
   await waitReady(page);
-  assert.equal(await page.locator('[data-mm-forms-state="COMING_SOON"]').count(), 1);
+  assert.equal(await page.locator('[data-mm-forms-state="PERMISSIONS_MISSING"]').count(), 1);
+  assert.equal(await page.locator('[data-mm-lf-row="terms"]').getAttribute('data-mm-lf-row-state'), 'unknown', 'unknown terms are never shown as refused');
   assert.doesNotMatch(await page.evaluate(() => document.body.innerText), /leads_retrieval|pages_manage_ads|pages_manage_metadata/);
 });
 
@@ -974,8 +977,8 @@ test('DOMAIN GUARD: an out-of-scope offer is told kindly in the builder, and the
 test('LEADS: unavailable forms offer ONE action — never a permission name, never a form builder that cannot work', opts, async (t) => {
   if (skipReason) assert.fail(`meta ads builder gate could not run: ${skipReason}`);
   const settings = { ...fixtures().status.settings, goalsEnabled: ['MESSAGES', 'LEADS_ON_META', 'PROMOTE'] };
-  for (const [state, action] of [['COMING_SOON', 'USE_MESSAGES'], ['RECONNECT', 'RECONNECT']]) {
-    const { page, calls } = await boot(t, { width: 390, height: 844, lang: 'en', statusOver: { settings, mode: 'REAL', connection: { instant_forms: state, instant_forms_available: false } },
+  for (const [state, action] of [['PAGE_UNAVAILABLE', 'USE_MESSAGES'], ['PERMISSIONS_MISSING', 'RECONNECT'], ['FORM_ACCESS_UNAVAILABLE', 'RECONNECT']]) {
+    const { page, calls } = await boot(t, { width: 390, height: 844, lang: 'en', statusOver: { settings, mode: 'REAL', connection: { instant_forms: state, instant_forms_available: false, lead_checked_at: '2026-10-02T06:44:03Z' } },
       campaignOver: { goal: 'LEADS_ON_META', destination: { type: 'META_FORM', formId: null } } });
     await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=destination`, { waitUntil: 'domcontentloaded' });
     await waitReady(page);
@@ -986,7 +989,7 @@ test('LEADS: unavailable forms offer ONE action — never a permission name, nev
     assert.doesNotMatch(text, /leads_retrieval|pages_manage_ads|pages_manage_metadata/);
     assert.doesNotMatch(text, /Create a HOMATCH lead form/, `${state}: no form builder`);
     if (action === 'USE_MESSAGES') {
-      await page.locator('[data-mm-forms-action]').click();
+      await page.locator('[data-mm-forms-action="USE_MESSAGES"]').click();
       await page.waitForTimeout(500);
       assert.equal(calls.patches.map((p) => p.goal).filter(Boolean).pop(), 'MESSAGES', 'one tap switches to messages');
     }
@@ -1000,7 +1003,7 @@ test('LEADS TERMS: Leads stays selectable; Meta\'s own terms page opens from HOM
   const pageId = assets.find((a) => a.kind === 'PAGE' && a.selected)?.external_id;
   for (const [width, height] of [[390, 844], [1440, 900]]) {
     const { page, calls } = await boot(t, { width, height, lang: 'ka',
-      statusOver: { settings, mode: 'REAL', connection: { instant_forms: 'TERMS_REQUIRED', instant_forms_next: 'AVAILABLE', lead_terms: false, instant_forms_available: true } },
+      statusOver: { settings, mode: 'REAL', connection: { instant_forms: 'TERMS_REQUIRED', instant_forms_next: 'READY', lead_terms: 'REQUIRED', lead_checked_at: '2026-10-02T06:44:03Z', instant_forms_available: true } },
       campaignOver: { goal: 'LEADS_ON_META', destination: { type: 'META_FORM', formId: null }, daily_budget_cents: 2500, duration_days: 7 } });
     // A stand-in for the browser window so the test can play the owner closing it — Meta's page itself is not loaded offline.
     await page.addInitScript(() => {
@@ -1037,7 +1040,7 @@ test('LEADS TERMS: Leads stays selectable; Meta\'s own terms page opens from HOM
       const body = JSON.parse(r.request().postData() || '{}');
       if (body.action !== 'forms_recheck') return r.fallback();
       calls.actions.push('forms_recheck');
-      return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ ok: true, pageId, checked: { page: true, terms: false } }) });
+      return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ ok: true, pageId, state: 'TERMS_REQUIRED', checked: { page: true, terms: 'REQUIRED' } }) });
     });
     await page.evaluate(() => { window.__opened[0].w.closed = true; });
     await page.waitForSelector('[data-mm-terms-flow="NOT_ACCEPTED"]', { timeout: 8000 });
@@ -1048,10 +1051,10 @@ test('LEADS TERMS: Leads stays selectable; Meta\'s own terms page opens from HOM
     await page.route('**/functions/v1/meta-ads-api', async (r) => {
       const body = JSON.parse(r.request().postData() || '{}');
       const ok = (o) => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(o) });
-      if (body.action === 'forms_recheck') { calls.actions.push('forms_recheck'); return ok({ ok: true, pageId, checked: { page: true, terms: true, formsReadable: true } }); }
+      if (body.action === 'forms_recheck') { calls.actions.push('forms_recheck'); return ok({ ok: true, pageId, state: 'READY', checked: { page: true, terms: 'ACCEPTED', formsReadable: true } }); }
       if (body.action === 'status') {
         const s = fixtures().status;
-        return ok({ ...s, mode: 'REAL', settings, connection: { ...s.connection, instant_forms: 'AVAILABLE', instant_forms_next: 'AVAILABLE', lead_terms: true, instant_forms_available: true } });
+        return ok({ ...s, mode: 'REAL', settings, connection: { ...s.connection, instant_forms: 'READY', instant_forms_next: 'READY', lead_terms: 'ACCEPTED', lead_checked_at: '2026-10-02T07:00:00Z', instant_forms_available: true } });
       }
       return r.fallback();
     });
@@ -1062,5 +1065,142 @@ test('LEADS TERMS: Leads stays selectable; Meta\'s own terms page opens from HOM
     assert.equal(calls.inserts, 0);
     assert.ok(!calls.actions.includes('launch') && !calls.actions.includes('deposit_checkout'));
     assert.match(page.url(), /draft=c1&step=destination/);
+  }
+});
+
+/* ── META ADS CLOSURE: empty audience, targets-only map, HOMATCH AI creatives, video ── */
+
+test('AUDIENCE: a new campaign starts with NO places; the map shows only the chosen targets and follows removals', opts, async (t) => {
+  if (skipReason) assert.fail(`meta ads builder gate could not run: ${skipReason}`);
+  for (const [width, height] of [[320, 640], [390, 844], [768, 1024], [1440, 900]]) {
+    const { page, calls } = await boot(t, { width, height, lang: 'en' });
+    await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=audience`, { waitUntil: 'domcontentloaded' });
+    await waitReady(page);
+    await page.waitForSelector('[data-mm-map]');
+    assert.equal(await page.locator('[data-mm-geo-empty]').count(), 1, `${width}: empty state, nothing chosen for the owner`);
+    assert.equal(await page.locator('[data-mm-loc]').count(), 0);
+    assert.equal(await page.locator('[data-mm-map]').getAttribute('data-mm-map'), 'empty');
+    assert.equal(await page.locator('[data-mm-map]').getAttribute('data-mm-map-targets'), '0');
+    assert.equal(await page.locator('[data-mm-map-target]').count(), 0, 'no device / IP / Georgia marker');
+    assert.equal(await page.locator('[data-mm-map-ge="whole"]').count(), 0);
+    assert.ok(await page.locator('[data-mm-map]').isVisible(), `${width}: the map is visible, not folded away`);
+    await page.waitForTimeout(400);
+    assert.equal(calls.patches.filter((p) => p.targeting?.locations?.length).length, 0, 'no location is ever saved on the owner\'s behalf');
+    assert.ok((await page.evaluate(LAYOUT)).overflow <= 1, `${width}: no horizontal overflow`);
+  }
+  const two = { targeting: { locations: [
+    { type: 'city', key: '2001', name: 'Tbilisi', countryCode: 'GE', radiusKm: 10, lat: 41.7151, lng: 44.8271 },
+    { type: 'city', key: '2002', name: 'Batumi', countryCode: 'GE', radiusKm: 15, lat: 41.6168, lng: 41.6367 },
+  ] } };
+  const { page, calls } = await boot(t, { width: 390, height: 844, lang: 'en', campaignOver: two });
+  await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=audience`, { waitUntil: 'domcontentloaded' });
+  await waitReady(page);
+  await page.waitForSelector('[data-mm-map-circle]');
+  assert.equal(await page.locator('[data-mm-map]').getAttribute('data-mm-map-targets'), '2', 'a restored draft keeps its places');
+  assert.equal(await page.locator('[data-mm-map-circle]').count(), 2);
+  assert.deepEqual(await page.locator('[data-mm-map-circle]').evaluateAll((els) => els.map((e) => e.getAttribute('data-mm-map-km'))), ['10', '15'], 'the real radius');
+  await page.locator('[data-mm-loc-remove]').first().click();
+  await page.waitForFunction(() => document.querySelector('[data-mm-map]')?.getAttribute('data-mm-map-targets') === '1');
+  assert.equal(await page.locator('[data-mm-map-circle]').count(), 1, 'removed from the map at once');
+  await page.waitForTimeout(800);
+  assert.equal(calls.patches.map((p) => p.targeting).filter(Boolean).pop()?.locations?.length, 1);
+});
+
+const aiJob = (o) => ({ id: 'j1', kind: 'ANALYSIS', status: 'DONE', stage: 'DONE', error: null, creativeId: 'cr1', conceptId: null, requested: null,
+  quotedCredits: null, chargedCredits: null, analysis: null, images: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), ...o });
+const ANALYSIS = { subject: 'A bright living room with a balcony', strengths: ['Natural light'], issues: [], concepts: [
+  { id: 'c1', title: 'Calm premium', angle: 'Quiet space in Vake', visual: 'Warm light', composition: 'Window on the right', cta: 'Book a viewing', safeArea: 'TOP' },
+  { id: 'c2', title: 'City value', angle: 'Close to everything', visual: 'Crisp daylight', composition: 'Wide frame', cta: 'Learn more', safeArea: 'BOTTOM' },
+] };
+const IMG = (i) => ({ index: i, width: 1024, height: 1536, discarded: false, url: `https://stubproj.supabase.co/storage/v1/object/sign/meta-ads-media/u1/ai/j2/${i}.png?token=t` });
+
+test('CREATIVE AI: nothing on upload; analysis only on the click and cached; the price before Generate; one paid job on a double click; Original + 3; selected variations become new creatives', opts, async (t) => {
+  if (skipReason) assert.fail(`meta ads builder gate could not run: ${skipReason}`);
+  for (const [width, height] of [[390, 844], [1440, 900]]) {
+    const settings = { ...fixtures().status.settings, aiCreativeEnabled: true };
+    const { page, calls } = await boot(t, { width, height, lang: 'en', statusOver: { settings } });
+    const ai = { analyze: 0, generate: [], jobPolls: 0, use: [] };
+    await page.route('**/functions/v1/meta-ads-api', async (r) => {
+      const body = JSON.parse(r.request().postData() || '{}');
+      const ok = (o, s = 200) => r.fulfill({ status: s, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(o) });
+      if (!String(body.action).startsWith('creative_ai_')) return r.fallback();
+      calls.actions.push(body.action);
+      if (body.action === 'creative_ai_jobs') return ok({ jobs: ai.analyze ? [aiJob({ analysis: ANALYSIS })] : [] });
+      if (body.action === 'creative_ai_analyze') { ai.analyze += 1; return ok({ cached: false, job: aiJob({ analysis: ANALYSIS }) }); }
+      if (body.action === 'creative_ai_quote') return ok({ quote: { variations: body.variations, unitCredits: 1.3, expectedCredits: 1.3 * body.variations, maxCredits: 1.63 * body.variations, balanceCredits: 50, enough: true, available: true } });
+      if (body.action === 'creative_ai_generate') { ai.generate.push(body); return ok({ job: aiJob({ id: 'j2', kind: 'GENERATION', status: 'RUNNING', stage: 'GENERATING', requested: 3, quotedCredits: 4.89 }), replay: false }, 202); }
+      if (body.action === 'creative_ai_job') { ai.jobPolls += 1; return ok({ job: aiJob({ id: 'j2', kind: 'GENERATION', status: 'DONE', stage: 'DONE', requested: 3, chargedCredits: 3.9, images: [IMG(1), IMG(2), IMG(3)] }) }); }
+      if (body.action === 'creative_ai_use') { ai.use.push(body); return ok({ created: body.picks.map((_, i) => `n${i}`) }); }
+      return ok({ ok: true });
+    });
+    await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=creative`, { waitUntil: 'domcontentloaded' });
+    await waitReady(page);
+    await page.waitForSelector('[data-mm-ai-improve]');
+    await page.waitForTimeout(500);
+    assert.equal(calls.actions.filter((a) => String(a).startsWith('creative_ai_')).length, 0, `${width}: no AI call before the click`);
+
+    await page.locator('[data-mm-ai-improve]').click();
+    await page.waitForSelector('[data-mm-ai-concept="c2"]');
+    assert.equal(ai.analyze, 1, 'one analysis, on the click');
+    assert.equal(await page.locator('[data-mm-ai-concept]').count(), 2);
+    assert.match(await page.locator('[data-mm-ai-generate]').innerText(), /Generate 3 variation\(s\) · 3\.90 Credits/, 'the price is shown before anything runs');
+    assert.equal(ai.generate.length, 0);
+
+    // Closing and re-opening reads the cached analysis — no new model call.
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('[data-mm-ai-panel]', { state: 'detached' });
+    await page.locator('[data-mm-ai-improve]').click();
+    await page.waitForSelector('[data-mm-ai-concept="c1"]');
+    assert.equal(ai.analyze, 1, 'cached: opening again does not analyse again');
+
+    await page.locator('[data-mm-ai-concept="c2"]').click();
+    await page.locator('[data-mm-ai-chip="view"]').click();
+    await page.locator('[data-mm-ai-generate]').click();
+    await page.waitForSelector('[data-mm-ai-confirm]');
+    assert.equal(ai.generate.length, 0, 'Generate only asks for confirmation');
+    await page.locator('[data-mm-ai-confirm-go]').dblclick();
+    await page.waitForSelector('[data-mm-ai-running], [data-mm-ai-gallery]');
+    await page.waitForTimeout(300);
+    assert.equal(ai.generate.length, 1, 'a double click starts one paid job');
+    assert.match(ai.generate[0].idempotencyKey, /^[0-9a-f-]{36}$/);
+    assert.equal(ai.generate[0].conceptId, 'c2');
+    assert.equal(ai.generate[0].variations, 3);
+    assert.ok(!('credits' in ai.generate[0]) && !('price' in ai.generate[0]), 'the browser never sends a price');
+    if (await page.locator('[data-mm-ai-running]').count()) assert.equal(await page.locator('[data-mm-ai-stage][data-state="active"]').count(), 1, 'a real stage, no percentage');
+
+    await page.waitForSelector('[data-mm-ai-gallery="3"]', { timeout: 10000 });
+    assert.equal(await page.locator('[data-mm-ai-original]').count(), 1, 'the original stays');
+    assert.equal(await page.locator('[data-mm-ai-variant]').count(), 3);
+    await page.locator('[data-mm-ai-variant="1"] button[aria-pressed]').click();
+    await page.locator('[data-mm-ai-variant="3"] button[aria-pressed]').click();
+    assert.equal(await page.locator('[data-mm-ai-role="1"]').inputValue(), 'PRIMARY');
+    await page.locator('[data-mm-ai-role="3"]').selectOption('TEST');
+    assert.ok((await page.evaluate(LAYOUT)).overflow <= 1, `${width}: the gallery fits`);
+    await page.locator('[data-mm-ai-use]').click();
+    await page.waitForSelector('[data-mm-ai-panel]', { state: 'detached' });
+    assert.deepEqual(ai.use[0].picks, [{ index: 1, role: 'PRIMARY' }, { index: 3, role: 'TEST' }]);
+    assert.equal(calls.creativePatches.filter((p) => p.media).length, 0, 'the original creative is never rewritten');
+  }
+});
+
+test('VIDEO: a real player (play, seek, mute, volume, full screen) and a cover chosen by hand or by HOMATCH — fits at 320', opts, async (t) => {
+  if (skipReason) assert.fail(`meta ads builder gate could not run: ${skipReason}`);
+  for (const [width, height, lang] of [[320, 640, 'en'], [1440, 900, 'ka']]) {
+    const { page } = await boot(t, { width, height, lang, creativeOver: { kind: 'VIDEO', media: [{ path: 'u1/v.mp4', mime: 'video/mp4', size: 900000, width: 1080, height: 1920, duration: 12 }] } });
+    await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=creative`, { waitUntil: 'domcontentloaded' });
+    await waitReady(page);
+    await page.waitForSelector('[data-mm-video-controls]');
+    for (const sel of ['[data-mm-video-play]', '[data-mm-video-seek]', '[data-mm-video-mute]', '[data-mm-video-full]', '[data-mm-video-use-frame]', '[data-mm-video-auto]']) {
+      assert.equal(await page.locator(sel).count(), 1, `${width}: ${sel}`);
+      assert.ok(await page.locator(sel).isVisible(), `${width}: ${sel} visible`);
+    }
+    assert.ok(await page.locator('[data-mm-video-play]').getAttribute('aria-label'), 'the play button is named');
+    assert.match(await page.locator('[data-mm-video-time]').innerText(), /0:00 \/ 0:12/, 'the duration is shown');
+    assert.equal(await page.locator('[data-mm-video-cover="meta"]').count(), 1, 'no cover chosen yet — said plainly');
+    await page.locator('[data-mm-video-mute]').click();
+    assert.equal(await page.locator('[data-mm-video-mute]').getAttribute('aria-pressed'), 'true', 'sound on');
+    const box = await page.locator('[data-mm-video-play]').boundingBox();
+    assert.ok(box.width >= 44 && box.height >= 44, 'touch target');
+    assert.ok((await page.evaluate(LAYOUT)).overflow <= 1, `${width}: no horizontal overflow`);
   }
 });

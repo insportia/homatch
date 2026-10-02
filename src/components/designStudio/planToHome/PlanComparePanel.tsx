@@ -57,7 +57,7 @@ export function PlanComparePanel({ plan, onClose, dark = false }: { plan: FloorP
       <div className="flex gap-1 px-3 py-2" role="tablist">
         {(['ORIGINAL', 'CLEAN', 'OVERLAY'] as const).map((m) => (
           <button key={m} type="button" role="tab" aria-selected={mode === m} onClick={() => setMode(m)}
-            className={cn('h-8 flex-1 rounded-full text-2xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]',
+            className={cn('h-8 min-w-0 flex-1 truncate whitespace-nowrap rounded-full px-2 text-2xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]',
               mode === m ? (dark ? 'bg-white text-[#0C1119]' : 'bg-[#0C1119] text-white') : (dark ? 'bg-white/10 text-white/80' : 'bg-[#F1F3F6] text-[#0C1119]'))}>
             {t(m === 'ORIGINAL' ? 'p2h_compare_original' : m === 'CLEAN' ? 'p2h_compare_homatch' : 'p2h_view_overlay')}
           </button>

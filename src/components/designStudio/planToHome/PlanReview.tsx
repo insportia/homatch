@@ -73,10 +73,17 @@ export function PlanReview({
   const rooms = [...doc.rooms, ...doc.balconies].filter((r) => !gone.has(r.id));
   const outdoor = (r: RoomPolygon) => r.kind === 'BALCONY' || r.kind === 'TERRACE';
   const roomName = (r: RoomPolygon) => t(`ds_room_${r.kind.toLowerCase()}`);
-  const roomSize = (r: RoomPolygon) => {
+  /* A room's size as measured against its printed one (the solver's check), else its extent. */
+  const measured = (r: RoomPolygon): [number, number] | null => {
+    const c = constraints?.checks.find((x) => x.elementId === r.id && x.measuredM.length === 2);
+    if (c) return [c.measuredM[0], c.measuredM[1]];
     if (!mpp) return null;
     const e = extentPx(r.polygon);
-    return sizeText(e.w * mpp, e.h * mpp, imperial);
+    return [e.w * mpp, e.h * mpp];
+  };
+  const roomSize = (r: RoomPolygon) => {
+    const m = measured(r);
+    return m ? sizeText(m[0], m[1], imperial) : null;
   };
   const footprint = useMemo(() => {
     const pts = doc.footprint?.length ? doc.footprint : doc.walls.filter((w) => w.kind === 'EXTERIOR').flatMap((w) => [w.start, w.end]);
@@ -98,10 +105,10 @@ export function PlanReview({
   return (
     <div className="flex min-h-0 flex-1 flex-col lg:flex-row" data-testid="plan-review">
       <div className="relative flex min-h-[44dvh] flex-1 flex-col bg-[#E9ECF0] lg:min-h-0">
-        <div className="flex shrink-0 items-center justify-center gap-1 p-2" role="tablist" aria-label={t('p2h_view_mode')}>
+        <div className="flex shrink-0 items-center gap-1 overflow-x-auto p-2 sm:justify-center" role="tablist" aria-label={t('p2h_view_mode')}>
           {(['CLEAN', 'OVERLAY', 'ORIGINAL'] as const).map((m) => (
             <button key={m} type="button" role="tab" aria-selected={mode === m} onClick={() => setMode(m)}
-              className={cn('h-9 rounded-full px-3.5 text-[13px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]', mode === m ? 'bg-[#0C1119] text-white' : 'bg-white/70 text-[#0C1119] hover:bg-white')}
+              className={cn('h-9 shrink-0 whitespace-nowrap rounded-full px-3 text-[13px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]', mode === m ? 'bg-[#0C1119] text-white' : 'bg-white/70 text-[#0C1119] hover:bg-white')}
               data-testid={`plan-mode-${m.toLowerCase()}`}>
               {t(`p2h_view_${m.toLowerCase()}`)}
             </button>
@@ -111,7 +118,7 @@ export function PlanReview({
           <div className="mx-auto max-w-[760px] overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-black/5">
             <PlanDrawing
               doc={doc} imageUrl={imageUrl} mode={mode} selection={selection} onSelect={setSelection} rejected={gone} metresPerPx={mpp}
-              roomLabel={(r) => ({ name: roomName(r), size: mpp ? (() => { const e = extentPx(r.polygon); return `${(e.w * mpp).toFixed(1)} × ${(e.h * mpp).toFixed(1)} m`; })() : null })}
+              roomLabel={(r) => { const m = measured(r); return { name: roomName(r), size: m ? `${m[0].toFixed(1)} × ${m[1].toFixed(1)} m` : null }; }}
             />
           </div>
           <p className="mx-auto mt-2 max-w-[760px] text-center text-2xs text-[#5B6472]">{t('p2h_tap_to_fix')}</p>
@@ -129,7 +136,7 @@ export function PlanReview({
             ) : null}
             {constraints && constraints.checks.length ? (
               <p className="mt-1 text-[13px] text-[#4A5263]" data-testid="plan-dims-agree">
-                {t('p2h_dims_checked', { n: String(constraints.checks.filter((c) => c.used).length), pct: (constraints.medianResidualPct * 100).toFixed(1) })}
+                {t('p2h_dims_checked', { n: String(constraints.checks.filter((c) => c.used).length), pct: constraints.medianResidualPct.toFixed(1) })}
               </p>
             ) : null}
             <ul className="mt-3 flex flex-wrap gap-1.5 text-[13px]" aria-label={t('p2h_found')}>

@@ -30,7 +30,8 @@
 import { beginExecution, recordUnbilledUsage, releaseExecution, settleExecution, type ExecutionGrant } from '../_shared/billing.ts';
 import { getObject, putObject } from '../_shared/objectStore.ts';
 import { renderPictureKey } from '../_shared/designStudio/renderKeys.ts';
-import { checkFinish, checkEdit, compositeInsideMask, maskFromIds, resizeMask, rgbToGray, type CheckResult, type RgbPixels } from '../_shared/designStudio/renderCheck.ts';
+import { checkFinish, rgbToGray, type CheckResult, type RgbPixels } from '../_shared/designStudio/renderCheck.ts';
+import { EDIT_HEARTBEAT_MS, editPixels, editRecovery, type AnswerMeta } from '../_shared/designStudio/editPipeline.ts';
 import { selectProvider, type ImageProvider, type ImageResult, type ProviderDeps } from '../_shared/designStudio/imageProviders.ts';
 
 /** The image model chosen for production (admin_settings, written by an administrator after the benchmark). */
@@ -328,7 +329,7 @@ async function readBytes(key: string, max: number): Promise<Uint8Array | null> {
 }
 
 
-const blenderFinish = (reason: string | null, check: CheckResult | null = null, r?: ImageResult) => ({
+const blenderFinish = (reason: string | null, check: CheckResult | null = null, r?: ImageResult | AnswerMeta) => ({
   provider: r ? r.provider : 'BLENDER', model: r ? r.model : null,
   check: check ? { accepted: check.accepted, edgeAgreement: check.edgeAgreement, maskAgreement: check.maskAgreement, reason: check.reason } : reason ? { accepted: false, edgeAgreement: null, maskAgreement: null, reason } : null,
   ms: r ? r.ms : null, usd: r ? r.cost.usd : null,
@@ -470,9 +471,6 @@ async function inBackground(work: () => Promise<unknown>): Promise<'BACKGROUND' 
   return 'DONE';
 }
 
-/** An edit whose background work died (instance recycled) is failed and its reservation released, not left FINISHING. */
-const EDIT_LEASE_MS = 10 * 60_000;
-
 export async function handleRenderStatus(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   const res = await callerOf(req);
@@ -486,11 +484,14 @@ export async function handleRenderStatus(req: Request): Promise<Response> {
   const { data: rows } = await ctx.caller.from('ds_renders').select('*').in('id', ids);
   const jobs = new Map<string, Row>();
   const budget = { finishes: FINISHES_PER_POLL };
-  const stale = Date.now() - EDIT_LEASE_MS;
+  // An edit whose background work died (an instance killed for memory or time cannot clean up)
+  // is failed and its reservation released here: within ~75 s of its last heartbeat, not left FINISHING.
+  const nowMs = Date.now();
   for (const row of rows ?? []) {
-    if (row.kind === 'EDIT' && row.status === 'FINISHING' && row.lease_at && Date.parse(row.lease_at) < stale) {
-      await failRender(ctx.admin, row, 'EDIT_TIMEOUT', null, { gpuUsd: null, aiUsd: null, aiKnown: false, provider: null, model: null, ms: 0, detail: { step: 'edit' } }, ['FINISHING']);
-    }
+    const lapse = editRecovery(row, nowMs);
+    if (!lapse) continue;
+    console.warn('[ds-render] edit recovered', row.id, lapse);
+    await failRender(ctx.admin, row, lapse, null, { gpuUsd: null, aiUsd: null, aiKnown: false, provider: null, model: null, ms: 0, detail: { step: 'edit', recovery: lapse } }, ['FINISHING']);
   }
   await inBackground(async () => { for (const row of rows ?? []) if (row.kind !== 'EDIT') await advance(req, ctx, row, jobs, budget); });
   const { data: out } = await ctx.caller.from('ds_renders').select(RECORD).in('id', ids);
@@ -557,51 +558,62 @@ export async function handleRenderEdit(req: Request): Promise<Response> {
     return json({ render: await again(), reused: true });
   }
 
-  const m = (res2?: ImageResult): Measured => ({
+  const m = (res2?: AnswerMeta | null): Measured => ({
     gpuUsd: null, aiUsd: res2 ? res2.cost.usd : 0, aiKnown: res2 ? res2.cost.basis === 'ESTIMATED' : true, provider: res2?.provider ?? null, model: res2?.model ?? null,
     ms: Date.now() - t0, detail: { step: 'edit', target_id: edit.targetId, target_kind: edit.targetKind },
   });
-  const fail = async (code: string, status: number, finish: Row | null = null, res2?: ImageResult) => {
+  const fail = async (code: string, status: number, finish: Row | null = null, res2?: AnswerMeta | null) => {
     await failRender(ctx.admin, row, code, finish, m(res2), ['FINISHING']);
     void status;
     return null;
   };
+  const edited = async () => {
+    const provider = selectProvider(deps, override, await configuredModel(ctx.admin));
+    if (!provider) return fail('EDIT_NOT_CONFIGURED', 503);
+    // The pixels (editPipeline.ts): each full-size buffer is released as soon as nothing needs it.
+    const o = await editPixels({
+      readImage: () => readBytes(row.base_key, MAX_PICTURE_BYTES),
+      readIds: () => readBytes(row.map_key, MAX_PICTURE_BYTES),
+      decode: decodeRgba, rgba: rgbaOf, encodePng,
+      edit: ({ image, mask, size }) => provider.edit({ image, mask, prompt: editPrompt(edit), size }),
+    }, entry.color);
+    if (!o.ok) {
+      console.warn('[ds-render] edit failed', row.id, o.code);
+      return fail(o.code, o.status, o.result ? blenderFinish(o.finishReason, o.check, o.result) : null, o.result);
+    }
+    const result = o.result as Extract<AnswerMeta, { ok: true }>;
+    const finish = blenderFinish(null, o.check, result);
+    const finalKey = await renderPictureKey(row, 'edit', 'image/png');
+    const stored = await putObject(finalKey, o.png, 'image/png').then(() => true).catch(() => false);
+    if (!stored) return fail('FINAL_NOT_STORED', 502, finish, result);
+    const cost = [{ stage: 'RENDERING', kind: 'IMAGE_MODEL', usd: result.cost.usd, basis: result.cost.basis === 'ESTIMATED' ? 'ESTIMATED' : 'NOT_AVAILABLE', detail: result.cost.detail }];
+    const nowIso = new Date().toISOString();
+    const { data: done } = await ctx.admin.from('ds_renders').update({
+      status: 'READY', final_key: finalKey, finish, cost, lease_at: null, updated_at: nowIso,
+      timings: { requestedAt: lease, readyAt: nowIso, editMs: result.ms, checkMs: o.checkMs, totalMs: Date.now() - t0 },
+    }).eq('id', row.id).eq('status', 'FINISHING').eq('lease_at', lease).select('*');
+    if (done?.length) {
+      const billing = await closeBilling(ctx.admin, done[0], 'SETTLE', m(result));
+      await ctx.admin.from('ds_renders').update({ billing, updated_at: new Date().toISOString() }).eq('id', row.id);
+    }
+    return null;
+  };
+  // Alive while it works: a heartbeat the status poll reads (editRecovery). A caught failure is
+  // failed here and its reservation released; a killed instance cannot do that, so the poll does.
+  // Both writes are compare-and-set on FINISHING + this lease: a finished edit is never touched.
+  const beat = () => ctx.admin.from('ds_renders').update({ timings: { ...(row.timings ?? {}), heartbeatAt: new Date().toISOString() } })
+    .eq('id', row.id).eq('status', 'FINISHING').eq('lease_at', lease).then(() => null, () => null);
   const work = async () => {
-  const provider = selectProvider(deps, override, await configuredModel(ctx.admin));
-  if (!provider) return fail('EDIT_NOT_CONFIGURED', 503);
-  const [imgBytes, idBytes] = await Promise.all([readBytes(row.base_key, MAX_PICTURE_BYTES), readBytes(row.map_key, MAX_PICTURE_BYTES)]);
-  const img = imgBytes ? decodeRgba(imgBytes) : null; const ids = idBytes ? decodeRgba(idBytes) : null;
-  if (!img?.ok || !ids?.ok) return fail('PICTURE_UNREADABLE', 422);
-  const raw = maskFromIds(ids.img, entry.color, 2);
-  if (!raw.pixels) return fail('TARGET_NOT_VISIBLE', 422);
-  const mask = raw.width === img.img.width && raw.height === img.img.height ? raw : { width: img.img.width, height: img.img.height, data: resizeMask(raw, img.img.width, img.img.height) };
-  // The image goes as PNG: OpenAI requires the image and its mask in the same format and size.
-  const png = encodePng(rgbaOf(img.img), img.img.width, img.img.height);
-  const result = await provider.edit({ image: { bytes: png, mime: 'image/png' }, mask, prompt: editPrompt(edit), size: { width: img.img.width, height: img.img.height } });
-  if (!result.ok) return fail(result.error, 502, blenderFinish(result.error, null, result), result);
-  const out = decodeRgba(result.bytes);
-  if (!out.ok) return fail(`EDIT_${out.reason}`, 502, blenderFinish(`EDIT_${out.reason}`, null, result), result);
-  const c0 = Date.now();
-  const check = checkEdit(rgbToGray(img.img), rgbToGray(out.img), mask);
-  const checkMs = Date.now() - c0;
-  const finish = blenderFinish(null, check, result);
-  if (!check.accepted) return fail('EDIT_REFUSED', 422, finish, result);
-  // Outside the mask the original pixels are kept exactly.
-  const merged = compositeInsideMask(img.img, out.img, mask);
-  const finalKey = await renderPictureKey(row, 'edit', 'image/png');
-  const stored = await putObject(finalKey, encodePng(rgbaOf(merged), merged.width, merged.height), 'image/png').then(() => true).catch(() => false);
-  if (!stored) return fail('FINAL_NOT_STORED', 502, finish, result);
-  const cost = [{ stage: 'RENDERING', kind: 'IMAGE_MODEL', usd: result.cost.usd, basis: result.cost.basis === 'ESTIMATED' ? 'ESTIMATED' : 'NOT_AVAILABLE', detail: result.cost.detail }];
-  const nowIso = new Date().toISOString();
-  const { data: done } = await ctx.admin.from('ds_renders').update({
-    status: 'READY', final_key: finalKey, finish, cost, lease_at: null, updated_at: nowIso,
-    timings: { requestedAt: lease, readyAt: nowIso, editMs: result.ms, checkMs, totalMs: Date.now() - t0 },
-  }).eq('id', row.id).eq('status', 'FINISHING').eq('lease_at', lease).select('*');
-  if (done?.length) {
-    const billing = await closeBilling(ctx.admin, done[0], 'SETTLE', m(result));
-    await ctx.admin.from('ds_renders').update({ billing, updated_at: new Date().toISOString() }).eq('id', row.id);
-  }
-  return null;
+    await beat();
+    const timer = setInterval(() => { void beat(); }, EDIT_HEARTBEAT_MS);
+    try {
+      await edited();
+    } catch (e) {
+      console.error('[ds-render] edit crashed', row.id, String((e as Error)?.message ?? e).slice(0, 120));
+      await fail(`EDIT_CRASHED:${String((e as Error)?.message ?? '').slice(0, 80)}`, 500);
+    } finally {
+      clearInterval(timer);
+    }
   };
   await inBackground(work);
   return json({ render: await again() });

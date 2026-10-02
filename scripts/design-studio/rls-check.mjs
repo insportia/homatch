@@ -915,8 +915,8 @@ if (FACTORY_MIGRATION) {
       ? ok("factory: a public link never carries a factory model's private key (the drawn piece stands in)") : bad('factory share leak', text.slice(0, 300));
   }
 
-  // ── renders (20261006120000): the owner reads, only the server writes; the DNA rides on the version.
-  //   DS_RENDERS_MIGRATION=supabase/migrations/20261006120000_design_studio_renders.sql (needs the factory and shares migrations)
+  // ── renders (20261007120000): the owner reads, only the server writes; the DNA rides on the version.
+  //   DS_RENDERS_MIGRATION=supabase/migrations/20261007120000_design_studio_renders.sql (needs the factory and shares migrations)
   const RENDERS_MIGRATION = process.env.DS_RENDERS_MIGRATION ?? null;
   if (RENDERS_MIGRATION && SHARES_MIGRATION) {
     // Minimal stubs of the billing registry the product rows land in.

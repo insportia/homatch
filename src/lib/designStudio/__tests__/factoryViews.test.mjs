@@ -114,7 +114,7 @@ test('the edge signs, verifies and returns every view\'s three files', () => {
   assert.match(src, /v\.objectMap \? await signed\('PUT', add\('VIEW_LEGEND'/);
   assert.match(src, /readLegend\(bytes/);
   assert.match(src, /NOT_PNG/);
-  const sql = fs.readFileSync(path.join(ROOT, 'supabase/migrations/20261006100000_design_studio_factory_views.sql'), 'utf8');
+  const sql = fs.readFileSync(path.join(ROOT, 'supabase/migrations/20261007110000_design_studio_factory_views.sql'), 'utf8');
   for (const role of ['VIEW', 'VIEW_IDS', 'VIEW_LEGEND']) assert.ok(sql.includes(`'${role}'`), role);
   assert.doesNotMatch(sql, /^\s*(BEGIN|COMMIT)\s*;/im, 'the runner owns the transaction');
 });

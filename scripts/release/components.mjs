@@ -178,7 +178,9 @@ export const COMPONENTS = {
   // Unit-run tests, and browser files no CI gate runs (manual suites:
   // test:surfaces, test:pwa, heroMobile) — changing them cannot change what
   // CI or production does.
-  TESTS: { paths: [/^tests\/(matrix|fixtures)\//, /(^|\/)__tests__\//, /^tests\/browser\/(harnessIsolation|fixtureShape|commSurfaces|commFixtures|pwaInstallSheet)\.(test\.)?mjs$/, /^tests\/mobile\/heroMobile\.test\.mjs$/] },
+  // tests/sql: local-Postgres fixture checks for migrations (run by hand with
+  // tests/sql/run-phase2.sh); no CI gate runs them and production never reads them.
+  TESTS: { paths: [/^tests\/(matrix|fixtures|sql)\//, /(^|\/)__tests__\//, /^tests\/browser\/(harnessIsolation|fixtureShape|commSurfaces|commFixtures|pwaInstallSheet)\.(test\.)?mjs$/, /^tests\/mobile\/heroMobile\.test\.mjs$/] },
   DATABASE: { paths: [/^supabase\/migrations\/[^/]+\.sql$/, /^supabase\/replay\//] },
   I18N: { paths: [/^src\/i18n\/translations\.ts$/] },
 };

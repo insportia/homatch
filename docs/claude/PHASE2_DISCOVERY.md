@@ -94,35 +94,57 @@ Code reading is not production proof; production facts are marked (prod).
 | Legacy security risk | RISK | run-matching v1 and classify-signals v1 deployed no-jwt **without auth** (v1 classify can spend OpenAI) |
 | Duplicates (LEGACY) | LEGACY | canonical_property_groups, intelligence_entities, ai_chat_leads, property_signal_candidates, credit_reservations, cost_events vs finance_provider_cost_events, two freshness policies, external-discovery-orchestrator, continuous-matching-worker, seed-discovery-queries, generate-search-profile |
 
-## Shortest safe path to two vertical slices
+## What was built (branch ccr-76ef455d-0qvt80)
 
-Slice 0 — safety (DONE on branch, tests in tests/matrix/phase2Discovery.test.mjs)
-- v1 run-matching / classify-signals: service-role callers only (403 otherwise).
-- External unlock: one idempotency key per dialog opening.
+Status words: BUILT = code + tests on the branch; PROVEN = executed in
+production with evidence (filled in by the release, not by this list).
 
-Slice A — FIND BUYERS / TENANTS (most of the chain exists)
-- SearchPlan(direction=DEMAND) compiled for every campaign (stored, inspectable).
-- Server-side pause/resume/stop that halts source jobs and releases the
-  unused reservation; job rediscovered on refresh.
-- Fair claim (per-campaign share) in the existing claim RPC (new version,
-  additive).
-- Telegram + forum demand under campaign control; prove one real campaign:
-  campaign → plan → queue → claim → worker MTProto → raw → classify →
-  freshness → run-matching-v2 → matches → preview → unlock path.
+| Area | What | Where |
+|---|---|---|
+| Safety | v1 run-matching / classify-signals service-role only; external-unlock key per dialog | `run-matching`, `classify-signals`, `ExternalContactUnlockModal.tsx` |
+| DiscoveryPlan | one envelope for SUPPLY and DEMAND; tranches 0–2; closed provider set; queue rows derived only from the plan (dedupe keys); stored per run | `research-core/discovery/discovery-plan.ts`, `discovery_search_plans` |
+| Queue | `claim_discovery_source_jobs_v2`: one job per run per pass, least-recently-served run first, per-provider caps (`discovery_provider_concurrency`), executor EDGE/WORKER, paused runs held | migration `20261008100000` |
+| Lifecycle | `discovery_control` pause / resume / stop (owner-checked, atomic) for both run kinds; pause expires before the reservation; stuck endings rescued | migration, `driver.ts` |
+| Find People | match-campaign stores the DEMAND plan, queues from it, exposes pause/resume/stop; Matches restores the open search on refresh; controls first on phones | `match-campaign`, `MatchesPage.tsx` |
+| Find Property | `find-property-run` (PAYG, product FIND_PROPERTY priced like FIND_CLIENTS); PORTAL jobs via `supply-discovery` mode `portal-job`; run ending resolves entities, matches, settles only delivered listings | `find-property-run`, `discoveryRun.ts`, `driver.ts` |
+| Root-cause fix | `supply_matches` shape `EXTERNAL_LISTING` (plan × external listing); before this no external listing could reach a customer's search | migration §7, `supply-matching` |
+| Community supply | Telegram/forum listing posts → `supply_observations` (deterministic extractor, field origins, backfill mode); order-insensitive fingerprint; results and delivery counted per entity; resolver scoped by city | `community-listing.ts`, `communitySupply.ts`, `classify-signals-v2` |
+| Worker route | `/discovery/fetch` on the official worker: token-only, every DNS answer public, pinned connection, no redirects, capped; `WorkerTransport` keeps allowlist/robots/rate limits on the edge | `official-worker/src/discovery/*`, `research-core/fetch/worker-transport.ts` |
+| Live checks | `source-audit` mode `live-check`: configured portals collect 2 rows per route; candidate hosts (MyHome, livo, ss, home, place) robots-first; rows in `discovery_source_live_checks` | `source-audit` |
+| Admin | `admin_discovery_intelligence()` + panel under /admin/discovery; Phase 2 switches; run live checks | migration `20261008100100`, `DiscoveryIntelligencePanel.tsx` |
+| UI | Find Property "Search outside HOMATCH": budget, real stages, source groups, pause/resume/stop, refresh-safe | `OutsideSearchPanel.tsx` |
 
-Slice B — FIND PROPERTY (supply must start flowing)
-- SearchPlan(direction=SUPPLY) from find-property-plan (already exists) →
-  PORTAL source jobs in the same queue (provider whitelist extended to the
-  native portal route), executed by supply-discovery's portal runtime.
-- Telegram SUPPLY posts become supply observations instead of being
-  discarded (structured extraction, provenance kept).
-- PAYG instead of plan-tier gating; COGS recorded (unknown ≠ 0).
-- Entity resolution scoped by city; supply-matching → supply_matches →
-  Find Property results with real stages.
-- P0 portals proven live from production: ss.ge, home.ge, place.ge; MyHome
-  and livo.ge re-audited from the runtime before any adapter is written.
+Not built (named, not hidden): browser rendering on the worker
+(WORKER_BROWSER route), a canonical DEMAND entity with cross-source demand
+dedup, one scorer for both directions, revalidation schedule for supply,
+R2 artifacts, MyHome/livo adapters (they wait for the live check),
+COGS×3/×10 strength pricing (owner decision pending).
 
-Later (after both slices are proven): Admin Intelligence views
-(observations/entities/clusters, job inspector, per-source cost), canonical
-demand entity + cross-source dedup, revalidation schedule, one scorer,
-R2 artifacts, mobile/RTL polish, legacy retirement.
+## Operating it
+
+Switches (all OFF after the migration; admin_settings, or /admin/discovery):
+
+| Key | Effect |
+|---|---|
+| `campaign_source_discovery_enabled` | Find Buyers campaigns queue Telegram/forum jobs for a gap |
+| `find_property_discovery_enabled` | customers may start a paid Find Property run |
+| `discovery_worker_route_enabled` + `discovery_worker_portal_adapters` | listed live portals fetch through the official worker |
+| `discovery_provider_concurrency` | per-provider in-flight caps for the claim |
+
+Enablement order for a first production proof: apply both migrations →
+deploy edge + worker → admin "Run live checks" → promote only portals that
+pass to `source_registry.lifecycle = LIVE_TESTED` (operator decision) →
+`classify-signals-v2` `{"mode":"community-supply-backfill"}` (zero cost) →
+switch on `find_property_discovery_enabled` → one owner-funded run.
+
+Recovery (§61): plans, runs, events, live checks and every observation live
+in Postgres (Supabase backups). Provider/switch configuration is
+`admin_settings` (in the migration defaults + this table). The worker is
+stateless apart from Railway variables (WORKER_TOKEN, TELEGRAM_*): a
+redeploy of `homatch-official-worker` restores it; the Telegram session
+string lives only in Railway variables and must be re-issued by the owner if
+lost. No R2 artifacts are produced by Phase 2 yet.
+
+Local proof of the migrations: `bash tests/sql/run-phase2.sh` (Postgres 16;
+applies both migrations twice to a fixture copied from production columns and
+runs the behavioural checks).

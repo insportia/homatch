@@ -385,6 +385,7 @@ def build_piece(o: dict, lib, collection):
     for m in mats:
         ob.data.materials.append(m)
     if form in BEND and kind in ("SOFA", "ARMCHAIR", "RECLINER"):
+        geo.slice_along_x(ob, 16)
         geo.bend(ob, BEND[form], "Z")
     fit(ob, W, D, H, exact=True)
     geo.metre_uvs(ob, "BOX")

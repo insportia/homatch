@@ -631,6 +631,21 @@ Phase 2 (Universal Discovery) is blocked until this is live and proven.
   a remote host in plan.mjs's `git archive | tar -x -C`), placementSearch timing (10.9 ms alone, 36 ms
   only under full-suite contention).
 
+## Design Studio golden apartment — first real E2E (branch `fix/design-studio-factory-golden`, 2026-10-02)
+
+- Project 8dfe8dfd-7297-40fb-90a8-23639bee5ed0. Runpod endpoint qtry95qmlfzsb0 (RTX A5000, OptiX),
+  template arm0q8wpxq. Pass 1 job 9a35262c COMPLETED: delay 5.1 s, execution 11.6 s, Blender 8.0 s,
+  render 6.4 s, $0.0022. Pass 2 job b8e1afb7: execution 52.9 s, $0.0101, every GLB FAILED at the edge.
+- Fixed on the branch (commit 699c968b, not yet merged): BAD_SPEC camera.near (compile clamp), meshopt
+  fallback buffers refused by modelInspect, factory-status verification race (atomic verifyingAt claim),
+  failed-output jobs reused forever, tint balanced against placeholder #ffffff (worker), metalness on
+  non-metals, curved sofa bent from 8-vertex boxes (worker slices first).
+- After merge: the GHCR workflow publishes `sha-<merge>` and `:main`; the owner must point Runpod
+  template arm0q8wpxq at `sha-<merge>` before the worker fixes apply. Then ONE rerun (the last allowed
+  correction iteration) through the UI.
+- Not fixed (class A, reading): bedroom 2 read 3.10x1.52 m and living 1.63 m deep (4 pieces unplaced),
+  west closet missing, glazed living/balcony wall read as solid. Camera verified within ~0.5%.
+
 ## Meta Ads final product finish (2026-10-01)
 - Meta Housing Special Ad Category is declared ONLY when a housing offer reaches US/territories,
   Canada (25 km floor) or Meta's European list (15 km floor) — Meta Business Help "About audiences

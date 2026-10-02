@@ -19,7 +19,7 @@ import { buildSpaceModel } from '../space.ts';
 import { buildDesign, emptyCorrections, matchAsset } from '../reconstruction.ts';
 import { normalizeDesignState, normalizeGenerated } from '../designState.ts';
 import { applyOperation } from '../operations.ts';
-import { fitCamera, projectPlan } from '../sourceCamera.ts';
+import { fitCamera, projectPlan, scaleFit, viewForCanvas } from '../sourceCamera.ts';
 import { pbrRepeat } from '../pbrMaps.ts';
 import { validateJobInput, STAGES, STAGE_COPY, LIVE_MODES, FACTORY_STAGE } from '../hybrid/contract.ts';
 import { resolveObjects } from '../hybrid/resolution.ts';
@@ -154,6 +154,28 @@ test('the canonical scene compiles to a valid, deterministic spec that keeps the
   assert.equal(v.objects.length, state.objects.length, 'every piece');
   assert.ok(v.objects.every((o) => o.provenance === 'OBSERVED' || o.provenance === 'INFERRED'), 'a reading is evidence, never a design choice');
   assert.deepEqual(v.camera.position, [40, -20, 30], 'three.js (x, up, −north) becomes plan (x, north, up)');
+});
+
+test('a real measured parallel camera compiles to a spec every validator accepts (the golden apartment\'s own fit)', () => {
+  // The fit HOMATCH measured on the golden apartment in production (2026-10-02). The walkthrough stands
+  // a telephoto 250 m away with a 150 m near plane for it; the first production build was refused on
+  // exactly that (camera.near), before any GPU was called.
+  const golden = { model: 'ORTHO', aspect: 1.282565130260521, s: 0.1088045476058042, t: [0.11146930975527171, 0.38078983291233887], rms: 0.0176, points: 100,
+    R: [0.6157923355647039, 0, -0.7879084968825802, 0.5668473373949916, -0.694561894072016, 0.44302129902669707, -0.5472512179502002, -0.7194329540013397, -0.4277058909448513] };
+  const scaled = scaleFit(golden, 1);
+  const pose = viewForCanvas(scaled, 1600, Math.round(1600 / scaled.aspect), [4.8, 2.6]);
+  assert.ok(pose.near > 100, `the walkthrough's near plane (${pose.near} m) is what used to be refused`);
+  const { state } = assemble(traced());
+  const spec = compileSceneSpec({
+    space: SPACE.space, state, assets: ASSET_MAP, materials: MATERIAL_MAP,
+    camera: { position: pose.position, target: pose.target, fov: pose.fov, near: pose.near, far: pose.far, aspect: scaled.aspect, background: '#ffffff', cut: { exteriorM: 1.4, interiorM: 0.77 } },
+    source: { kind: 'PICTURE', architecture: 'OBSERVED', furnishing: 'OBSERVED' }, render: { edge: 1600, samples: 128 }, outputs: { render: true, scene: false, objects: false },
+  });
+  const v = validateSceneSpec(JSON.parse(JSON.stringify(spec)));
+  assert.ok(v.camera.near <= 100 && v.camera.near < v.camera.far);
+  const dist = Math.hypot(...v.camera.position.map((x, i) => x - v.camera.target[i]));
+  assert.ok(v.camera.near < dist - 20, 'the near plane stays well in front of the home');
+  assert.ok(Math.abs(v.camera.fovDeg - pose.fov) < 1e-3, 'the view itself is unchanged');
 });
 
 test('surfaces wear what the walkthrough wears: chosen colours, catalogue materials at the same tile size, defaults otherwise', () => {
@@ -358,6 +380,15 @@ test('without the factory: the same bounded check on a browser still, nothing ex
   assert.ok(calls.browser >= 1 && calls.qa >= 1);
   assert.ok(r.state.objects.every((o) => !o.generated), 'no factory, no factory models');
   assert.ok(r.state.objects.length > 10, 'the home is still built');
+});
+
+test('without the factory, its stages are shown as skipped, never as done', async () => {
+  const states = new Map();
+  const { d } = deps({ startFactory: async () => ({ jobId: null, state: 'FAILED', error: 'BAD_SPEC:camera.near' }) });
+  d.onStage = (st, x) => states.set(st, x);
+  const r = await engine(d);
+  for (const st of ['ARCHITECTURE', 'FURNISHING', 'MATERIALS', 'LIGHTING']) assert.equal(states.get(st), 'SKIPPED', st);
+  assert.equal(r.passes[0].error, 'BAD_SPEC:camera.near', 'the refusal names the field');
 });
 
 test('a factory pass that fails or never ends: bounded in time, no half results', async () => {

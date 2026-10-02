@@ -381,3 +381,72 @@ def test_glb_json_reads_the_chunk(tmp_path):
     p = tmp_path / "x.glb"
     p.write_bytes(data)
     assert glb_json(p)["asset"]["version"] == "2.0"
+
+
+@needs_blender
+def test_a_curved_sofa_is_a_curve_not_a_row_of_boxes():
+    """A bend needs geometry to bend: the golden run's curved sofa came out as fragmented straight boxes."""
+    s = spec()
+    s["outputs"] = {"render": False, "scene": False, "objects": True}
+    base = next(o for o in s["objects"] if o["kind"] == "SOFA")
+    s["objects"] = [
+        {**base, "id": "sofa-straight", "form": "STRAIGHT", "at": [2.0, 2.0], "runtime": True, "group": "gsofastraight"},
+        {**base, "id": "sofa-curved", "form": "CURVED", "at": [5.0, 2.0], "runtime": True, "group": "gsofacurved"},
+    ]
+    tr = FakeTransfer()
+    out = pipeline_mod.run_job(parse_job(job(s, outputs={"objects": {"gsofastraight": R2 + "&a", "gsofacurved": R2 + "&b"}})), {**tools(), "gltf_transform": None}, tr)
+    def largest_gap(data: bytes) -> float:
+        """The longest stretch of the piece's length with no vertex, as a share of it. A bend only curves
+        what has vertices: a box with corners alone stays a flat chord between its ends."""
+        length = struct.unpack_from("<I", data, 12)[0]
+        gl = json.loads(data[20:20 + length])
+        bin_start = 20 + length + 8
+        pts = []
+        for m in gl["meshes"]:
+            for prim in m["primitives"]:
+                acc = gl["accessors"][prim["attributes"]["POSITION"]]
+                view = gl["bufferViews"][acc["bufferView"]]
+                off = bin_start + view.get("byteOffset", 0) + acc.get("byteOffset", 0)
+                stride = view.get("byteStride", 12)
+                pts += [struct.unpack_from("<3f", data, off + k * stride) for k in range(acc["count"])]
+        xs = sorted({round(q[0], 4) for q in pts})
+        return max(b - a for a, b in zip(xs, xs[1:])) / (xs[-1] - xs[0])
+
+    gaps = {url[-1]: largest_gap(data) for url, _n, _ct, data in tr.puts}
+    assert gaps["b"] < 0.12, f"a curved sofa has geometry along its whole length (largest empty span {gaps['b']:.2f})"
+    assert out["outputs"]["objects"]["gsofacurved"]["ok"] is True
+
+
+@needs_blender
+def test_a_tint_balances_the_texture_and_exports_a_valid_factor():
+    """The picture's colour is reached by balancing against the texture's real average (never the
+    catalogue's placeholder base colour); the export keeps glTF's baseColorFactor within 1."""
+    s = spec()
+    s["outputs"] = {"render": False, "scene": True, "objects": False}
+    for o in s["objects"]:
+        o["runtime"] = False
+        o["group"] = None
+    mid = "mat-oak-dark"
+    s["materials"].append({"id": mid, "baseColor": "#ffffff", "roughness": 1.0, "metalness": 0.0, "tileM": [1.5, 1.5], "rotationDeg": 0, "normalScale": 1.0})
+    floor = s["rooms"][0]["floor"]
+    for sf in s["surfaces"]:
+        if sf["id"] == floor:
+            sf["material"] = mid
+            sf["tint"] = "#d9d1c2"
+    buf = io.BytesIO()
+    Image.new("RGB", (32, 32), (110, 80, 50)).save(buf, "PNG")  # a mid-brown oak, much darker than the pale floor seen
+    j = job(s)
+    j["inputs"]["textures"] = {mid: {"albedo": R2 + "&albedo", "normal": None, "orm": None}}
+    j["outputs"] = {"scene": {"DESKTOP": R2, "MOBILE": R2}}
+    tr = FakeTransfer({R2 + "&albedo": buf.getvalue()})
+    pipeline_mod.run_job(parse_job(j), {**tools(), "gltf_transform": None}, tr)
+    gl = _glb_from(tr, "model/gltf-binary")
+    factors = [m["pbrMetallicRoughness"].get("baseColorFactor") for m in gl["materials"] if (m.get("pbrMetallicRoughness") or {}).get("baseColorTexture")]
+    assert factors and all(f is None or max(f[:3]) <= 1.0 + 1e-6 for f in factors), factors
+    if shutil.which("node") and os.environ.get("NODE_PATH"):
+        p = Path(tempfile.mkdtemp()) / "scene.glb"
+        p.write_bytes([x for x in tr.puts if x[2] == "model/gltf-binary"][0][3])
+        import subprocess as sp
+
+        r = sp.run([shutil.which("node"), str(WORKER / "validate.mjs"), str(p)], capture_output=True, text=True, check=False)
+        assert json.loads(r.stdout)["errors"] == 0, r.stdout

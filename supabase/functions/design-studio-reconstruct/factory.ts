@@ -132,7 +132,13 @@ export async function handleFactory(req: Request): Promise<Response> {
   const specSha = await sha256Hex(canonicalJson(spec));
   const idem = await sha256Hex(`${ENGINE_VERSION}|${project.id}|${pass}|${specSha}`);
   const { data: existing } = await admin.from('ds_factory_jobs').select('id, state').eq('project_id', project.id).eq('idempotency_key', idem).maybeSingle();
-  if (existing && existing.state !== 'FAILED' && existing.state !== 'CANCELLED') return json({ jobId: existing.id, state: existing.state, reused: true });
+  if (existing && existing.state !== 'FAILED' && existing.state !== 'CANCELLED') {
+    // The same pass is reused — unless an output of it failed verification: then it is built again,
+    // and the old rows (kept for the record) are detached so the new outputs are never mixed with them.
+    const { count: broken } = await admin.from('ds_factory_assets').select('id', { count: 'exact', head: true }).eq('job_id', existing.id).eq('state', 'FAILED');
+    if (!broken) return json({ jobId: existing.id, state: existing.state, reused: true });
+    await admin.from('ds_factory_assets').update({ job_id: null, updated_at: new Date().toISOString() }).eq('job_id', existing.id);
+  }
   const since = new Date(Date.now() - 3600_000).toISOString();
   const { count } = await admin.from('ds_factory_jobs').select('id', { count: 'exact', head: true }).eq('user_id', actorId).gte('created_at', since);
   if ((count ?? 0) >= HOURLY_JOBS) return json({ error: 'RATE_LIMITED' }, 429);
@@ -245,6 +251,16 @@ export async function handleFactoryStatus(req: Request): Promise<Response> {
   }
 
   const now = new Date().toISOString();
+  // Exactly one caller verifies a finished pass (two tabs, a reload or a retry may poll at once):
+  // a concurrent verifier would see files the first one is checking, or has just deleted, as broken.
+  // The claim is a compare-and-set on the row; a claim older than five minutes (a verifier that died) lapses.
+  const lapsed = new Date(Date.now() - 5 * 60_000).toISOString();
+  const { data: claimed } = await admin.from('ds_factory_jobs')
+    .update({ timings: { ...job.timings, verifyingAt: now } })
+    .eq('id', job.id).eq('state', 'RUNNING')
+    .or(`timings->>verifyingAt.is.null,timings->>verifyingAt.lt.${lapsed}`)
+    .select('id');
+  if (!claimed?.length) return json({ state: 'RUNNING', stage: null });
   const delayMs = Number(st.delayTime ?? NaN); const execMs = Number(st.executionTime ?? NaN);
   const out = st.output ?? {};
   const timings = { ...job.timings, finishedAt: now, queueAndColdStartMs: Number.isFinite(delayMs) ? delayMs : null, executionMs: Number.isFinite(execMs) ? execMs : null, worker: out.timings ?? null, factory: out.build?.timings ?? null };

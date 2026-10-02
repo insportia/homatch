@@ -245,11 +245,21 @@ function checkBuffers(p: Parsed) {
     } else if (p.container === 'GLB' && i === 0) {
       const bin = p.buffers.get(0);
       if (!bin || bin.length < byteLength) refuse('MALFORMED', 'BIN chunk shorter than buffer 0');
+    } else if (b?.extensions?.EXT_meshopt_compression?.fallback === true) {
+      // EXT_meshopt_compression: the uncompressed layout is a declared, data-less fallback buffer;
+      // its bytes come from compressed views into a real buffer (checked below).
     } else {
       refuse('MALFORMED', `buffer ${i} has no data`);
     }
   });
   arr(p.gltf.bufferViews).forEach((v, i) => {
+    const mo = v?.extensions?.EXT_meshopt_compression;
+    if (mo) {
+      // A compressed view's source must be real data inside the file.
+      if (!isIndex(mo.buffer, buffers) || buffers[mo.buffer]?.extensions?.EXT_meshopt_compression?.fallback === true) refuse('MALFORMED', `bufferView ${i} meshopt source`);
+      const so = mo.byteOffset ?? 0;
+      if (!Number.isInteger(so) || so < 0 || !Number.isInteger(mo.byteLength) || mo.byteLength <= 0 || so + mo.byteLength > buffers[mo.buffer].byteLength) refuse('MALFORMED', `bufferView ${i} meshopt range`);
+    }
     if (!isIndex(v?.buffer, buffers)) refuse('MALFORMED', `bufferView ${i} buffer`);
     const offset = v.byteOffset ?? 0;
     if (!Number.isInteger(offset) || offset < 0 || !Number.isInteger(v.byteLength) || v.byteLength <= 0) refuse('MALFORMED', `bufferView ${i} range`);

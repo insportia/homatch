@@ -1344,7 +1344,7 @@ test('META CONNECT: one tap = one attempt to Meta\'s own dialog with the way bac
     await page.waitForURL(/step=destination/, { timeout: 8000 });
     assert.doesNotMatch(page.url(), /connect=/, 'the result is consumed — a reload repeats nothing');
     await page.waitForTimeout(400);
-    assert.equal(calls.actions.slice(before).filter((a) => a === 'assets_refresh').length, 1, 'one canonical refresh');
+    assert.equal(calls.actions.slice(before).filter((a) => a === 'assets_refresh').length, 1, `one canonical refresh (${calls.actions.slice(before).join(',')})`);
     assert.equal(calls.inserts, 0, 'the same draft');
 
     // Cancelled at Meta: a calm line, the work kept, nothing refreshed.

@@ -286,3 +286,10 @@ test('CONNECT: "Meta connected" with ONE missing requirement when ad-account acc
   assert.equal(adsAccessMissing({ health: 'PERMISSION_MISSING', missing_scopes: ['pages_read_engagement'] }), false);
   assert.equal(adsAccessMissing({ health: 'CONNECTED', missing_scopes: [] }), false);
 });
+
+test('CONNECT: a return from Meta refreshes once — a stale ?connect= re-applied by a later step change is never a second return', () => {
+  const page = read('src/pages/outreach/MetaAdsCreatePage.tsx');
+  assert.match(page, /prev\.set\('step', next\); prev\.delete\('connect'\);/, 'a step change never carries ?connect= forward');
+  const hook = read('src/components/metaAds/builder/useMetaConnect.ts');
+  assert.match(hook, /if \(consumed && refreshFor !== `\$\{location\.pathname\}\$\{location\.search\}`\)/, 'consumed once per page load');
+});

@@ -111,7 +111,8 @@ export default function MetaAdsCreatePage() {
       const id = campaign.id;
       void briefInterpret(id, lang).then((r) => setCampaign((c) => (c && c.id === id ? { ...c, brief_understanding: r.understanding } : c) as never)).catch(() => undefined);
     }
-    setParams((prev) => { prev.set('step', next); return prev; }, { replace: false });
+    /* `prev` can be the search from before ?connect= was consumed: never carry it forward. */
+    setParams((prev) => { prev.set('step', next); prev.delete('connect'); return prev; }, { replace: false });
     if (field) focusField(field);
     else window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [flush, setParams, campaign, step, lang, setCampaign]);

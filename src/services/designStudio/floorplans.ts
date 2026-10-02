@@ -17,6 +17,7 @@ import { supabase } from '@/db/supabase';
 import type { FloorPlanDocument } from '@/services/developer/floorplan';
 import type { Anchor, DimensionString, ReviewDecisions } from '@/lib/designStudio/scale';
 import type { CanonicalSpace, GeometryState } from '@/lib/designStudio/types';
+import type { PlanUnderstanding } from '@/lib/designStudio/planToHome';
 import { uploadDesignFile } from './files';
 import { DesignStudioError } from './projects';
 
@@ -33,7 +34,18 @@ export interface FloorPlanRecord {
   image_width: number | null;
   image_height: number | null;
   status: 'UPLOADED' | 'INTERPRETING' | 'INTERPRETED' | 'FAILED';
-  interpretation: { doc: FloorPlanDocument; dimensionStrings: DimensionString[]; readVersion: string } | null;
+  /** A drawn plan, or a picture of the home read by the reconstruction. */
+  purpose?: 'PLAN' | 'REFERENCE';
+  interpretation: {
+    doc: FloorPlanDocument;
+    dimensionStrings: DimensionString[];
+    readVersion: string;
+    /** ds-read-2: what the model said, before HOMATCH fused it with the drawing's own lines. */
+    rawDoc?: FloorPlanDocument;
+    /** ds-read-2: scale solve, topology and the questions worth asking. */
+    understanding?: PlanUnderstanding;
+    timings?: { modelMs?: number; fuseMs?: number };
+  } | null;
   interpretation_error: string | null;
   corrections: Array<{ at: string; decisions: ReviewDecisions; anchors: Anchor[]; ceilingM: number | null }>;
   /** A reference picture's measured frame (pictureFrame.ts), when it is an isometric cut-away. */

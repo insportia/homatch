@@ -7,7 +7,7 @@ export const META_ACCEPT_STRINGS = {
   mads_check_targeting: ['Locations and audience', 'ლოკაციები და აუდიტორია', 'Места и аудитория', 'Konumlar ve hedef kitle', 'المواقع والجمهور', 'מיקומים וקהל'],
   mads_check_managed_access: ['HOMATCH advertising access', 'HOMATCH-ის სარეკლამო წვდომა', 'Доступ к рекламе HOMATCH', 'HOMATCH reklam erişimi', 'صلاحية الإعلان في HOMATCH', 'גישת הפרסום ב-HOMATCH'],
   mads_check_domain_scope: ['Real-estate advertising', 'უძრავი ქონების რეკლამა', 'Реклама недвижимости', 'Gayrimenkul reklamı', 'إعلان عقاري', 'פרסום נדל״ן'],
-  mm_r_check_other: ['Needs attention', 'საჭიროებს ყურადღებას', 'Требует внимания', 'İlgilenilmesi gerekiyor', 'يحتاج إلى انتباه', 'דורש תשומת לב'],
+  mm_r_check_other: ['Needs attention', 'ყურადღებას საჭიროებს', 'Требует внимания', 'İlgilenilmesi gerekiyor', 'يحتاج إلى انتباه', 'דורש תשומת לב'],
   mm_r_left: ['Left to fix: {{n}}', 'დარჩა გასასწორებელი: {{n}}', 'Осталось исправить: {{n}}', 'Düzeltilecek: {{n}}', 'المتبقي للإصلاح: {{n}}', 'נותר לתקן: {{n}}'],
   mm_r_fix: ['Fix', 'გასწორება', 'Исправить', 'Düzelt', 'إصلاح', 'תיקון'],
   mm_r_sev_blocker: ['Required', 'სავალდებულო', 'Обязательно', 'Gerekli', 'مطلوب', 'חובה'],
@@ -36,7 +36,7 @@ export const META_ACCEPT_STRINGS = {
   madsb_pfd_media_required: ['Add a photo or video', 'დაამატეთ ფოტო ან ვიდეო', 'Добавьте фото или видео', 'Bir fotoğraf veya video ekleyin', 'أضف صورة أو فيديو', 'הוסיפו תמונה או סרטון'],
   madsb_pfd_duration_below_minimum: ['Duration is below the minimum', 'ხანგრძლივობა მინიმუმზე ნაკლებია', 'Срок меньше минимального', 'Süre minimumun altında', 'المدة أقل من الحد الأدنى', 'משך הזמן קצר מהמינימום'],
   madsb_pfd_goal_unsupported: ['This goal is not available', 'ეს მიზანი ხელმისაწვდომი არ არის', 'Эта цель недоступна', 'Bu hedef kullanılamıyor', 'هذا الهدف غير متاح', 'היעד הזה אינו זמין'],
-  madsb_pfd_destination_goal_mismatch: ['The destination does not fit this goal', 'მიმართულება ამ მიზანს არ შეესაბამება', 'Место назначения не подходит для этой цели', 'Hedef konum bu amaca uymuyor', 'الوجهة لا تناسب هذا الهدف', 'היעד אינו מתאים למטרה הזו'],
+  madsb_pfd_destination_goal_mismatch: ['The destination does not fit this goal', 'დანიშნულება ამ მიზანს არ შეესაბამება', 'Место назначения не подходит для этой цели', 'Hedef konum bu amaca uymuyor', 'الوجهة لا تناسب هذا الهدف', 'היעד אינו מתאים למטרה הזו'],
   /* ── LOCATION: one universal search ── */
   mm_g_search_ph: ['Country, city, district or region — e.g. საქართველო, Tbilisi, Ваке', 'ქვეყანა, ქალაქი, უბანი ან რეგიონი — მაგ. საქართველო, თბილისი, Vake', 'Страна, город, район или регион — напр. საქართველო, Tbilisi, Ваке', 'Ülke, şehir, semt veya bölge — örn. საქართველო, Tbilisi, Ваке', 'دولة أو مدينة أو حي أو منطقة — مثل საქართველო أو Tbilisi أو Ваке', 'מדינה, עיר, שכונה או אזור — למשל საქართველო, Tbilisi, Ваке'],
   mm_g_countries_only: ['Countries are shown. Connect Meta to search cities and districts too.', 'ნაჩვენებია ქვეყნები. ქალაქებისა და უბნების საძიებლად დააკავშირეთ Meta.', 'Показаны страны. Подключите Meta, чтобы искать также города и районы.', 'Ülkeler gösteriliyor. Şehir ve semt aramak için Meta’yı bağlayın.', 'تظهر الدول. اربط Meta للبحث عن المدن والأحياء أيضًا.', 'מוצגות מדינות. חברו את Meta כדי לחפש גם ערים ושכונות.'],

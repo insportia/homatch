@@ -66,6 +66,7 @@ import { DownloadDialog } from './DownloadDialog';
 import { FactoryBuildDialog } from './FactoryBuildDialog';
 import { pictureStill, ReferencePanel, useReconstructionFor } from './ReferencePanel';
 import { PlanComparePanel, usePlanFor } from '../planToHome/PlanComparePanel';
+import { latestFlow, saveFlow } from '@/services/designStudio/planToHome';
 import { download } from './exportRender';
 import { fileSlug } from '@/lib/designStudio/exportFiles';
 
@@ -754,6 +755,18 @@ function Editor({
     autoWalked.current = true;
     enterWalk(null);
   }, [startWalkthrough, canvasReady, space, enterWalk]);
+
+  /* Plan-to-home instrumentation: how long the customer waited for an interactive home, once per plan. */
+  const mountedAt = useRef(performance.now());
+  const measured = useRef(false);
+  useEffect(() => {
+    if (!canvasReady || measured.current || !ownPlan) return;
+    const flow = latestFlow(ownPlan);
+    if (!flow || flow.timings?.firstInteractiveMs != null) return;
+    measured.current = true;
+    const ms = Math.round(performance.now() - mountedAt.current);
+    void saveFlow(ownPlan.id, { timings: { ...(flow.timings ?? {}), firstInteractiveMs: ms, firstWalkthroughMs: ms } }).catch(() => {});
+  }, [canvasReady, ownPlan]);
 
   const onPick = useCallback((target: PickTarget | null) => {
     if (controllerRef.current?.walking) return;

@@ -45,16 +45,22 @@ export async function drive(db: any, baseUrl: string, serviceKey: string, body: 
      and the same job be claimed twice. The driver ticks every minute. */
   report.sourceJobs = await runSourceJobs(db, baseUrl, serviceKey, settings, Math.min(5, Number(body.limit) || 1));
   report.campaigns = await advanceCampaigns(db, baseUrl, serviceKey, settings, started);
+  report.pauseExpired = await expirePausedCampaigns(db);
   report.rescued = await rescueStuck(db);
   report.elapsedMs = Date.now() - started;
   return { success: true, ...report };
 }
 
 async function runSourceJobs(db: any, baseUrl: string, serviceKey: string, settings: DiscoverySettings, limit: number) {
-  const { data: claimed, error } = await db.rpc('claim_discovery_source_jobs', {
+  /* v2: one job per run per pass (a large campaign cannot monopolise the
+     queue), per-provider concurrency caps, and only EDGE-executor jobs --
+     WORKER jobs are leased by the official Railway worker. */
+  const { data: claimed, error } = await db.rpc('claim_discovery_source_jobs_v2', {
     p_limit: limit,
     p_lease_seconds: settings.sourceJobLeaseSeconds,
     p_max_attempts: settings.sourceJobMaxAttempts,
+    p_executor: 'EDGE',
+    p_providers: null,
   });
   if (error) throw error;
   const results: Array<Record<string, unknown>> = [];
@@ -194,6 +200,43 @@ async function advanceCampaigns(db: any, baseUrl: string, serviceKey: string, se
   return results;
 }
 
+/**
+ * A paused campaign still holds its budget reservation, which expires one hour
+ * after it was taken. Before it lapses the campaign is stopped -- the driver
+ * then finishes it with what arrived and settles only what was delivered --
+ * rather than left to end as "reservation not held" with nothing to show.
+ */
+const PAUSE_STOP_BEFORE_EXPIRY_MS = 8 * 60_000;
+async function expirePausedCampaigns(db: any) {
+  const { data, error } = await db.from('matching_jobs')
+    .select('id,user_id,billing_grant,paused_at')
+    .eq('status', 'paused')
+    .not('discovery_deadline_at', 'is', null)
+    .limit(10);
+  if (error) throw error;
+  const stopped: string[] = [];
+  for (const row of (data ?? []) as any[]) {
+    const reservationId = (row.billing_grant as ExecutionGrant | null)?.reservationId;
+    let expiresAt = Number.POSITIVE_INFINITY;
+    if (reservationId) {
+      const { data: reservation } = await db.from('usage_reservations')
+        .select('expires_at,status').eq('id', reservationId).maybeSingle();
+      if (reservation?.expires_at) expiresAt = Date.parse(reservation.expires_at);
+    }
+    if (expiresAt - Date.now() > PAUSE_STOP_BEFORE_EXPIRY_MS) continue;
+    const { data: outcome } = await db.rpc('discovery_control', {
+      p_kind: 'MATCHING_JOB', p_id: row.id, p_user_id: row.user_id, p_action: 'stop',
+    });
+    if (outcome?.ok) {
+      await jobEvent(db, row.id, 'PAUSE_EXPIRED', {
+        message: 'The pause reached the end of the reserved budget window; the search finished with what had arrived',
+      }).catch(() => undefined);
+      stopped.push(row.id);
+    }
+  }
+  return stopped;
+}
+
 /** A job left in 'classifying' or 'ranking' by a tick that died. */
 async function rescueStuck(db: any) {
   const cutoff = new Date(Date.now() - STUCK_AFTER_MS).toISOString();
@@ -248,7 +291,7 @@ export async function adminRetry(db: any, jobId: string) {
     .update({ status: 'PENDING', next_attempt_at: new Date().toISOString(), last_error: null, cancel_reason: null, finished_at: null })
     .eq('matching_job_id', jobId)
     .in('status', ['FAILED', 'RETRY_WAIT'])
-    .in('provider', ['TELEGRAM', 'TELEGRAM_SOURCES', 'FORUM'])
+    .in('provider', ['TELEGRAM', 'TELEGRAM_SOURCES', 'FORUM', 'PORTAL'])
     .select('id');
   if (error) return { success: false, error: error.message };
   return { success: true, jobId, requeued: Array.isArray(data) ? data.length : 0 };

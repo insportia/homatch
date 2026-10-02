@@ -33,6 +33,10 @@ export interface DiscoverySettings {
   campaignSourceDiscoveryEnabled: boolean;
   /** How long an asynchronous campaign may wait for its source jobs. */
   campaignDiscoveryMinutes: number;
+  /** Phase 2: may a FIND PROPERTY run queue portal / Telegram supply jobs? */
+  findPropertyDiscoveryEnabled: boolean;
+  /** Phase 2: may the official worker lease WORKER-executor jobs? */
+  workerLeaseEnabled: boolean;
 }
 
 export const DISCOVERY_SETTING_KEYS = [
@@ -52,6 +56,8 @@ export const DISCOVERY_SETTING_KEYS = [
   'discovery_job_lease_seconds',
   'campaign_source_discovery_enabled',
   'campaign_discovery_minutes',
+  'find_property_discovery_enabled',
+  'discovery_worker_lease_enabled',
 ] as const;
 
 const unquote = (v: unknown) => (typeof v === 'string' ? v.replace(/^"|"$/g, '') : v);
@@ -92,6 +98,8 @@ export function parseDiscoverySettings(rows: Array<{ key: string; value: unknown
     /* Capped below the 60-minute reservation TTL, so a reservation is never
        swept out from under a campaign that is still running. */
     campaignDiscoveryMinutes: num(m.get('campaign_discovery_minutes'), 30, 5, 45),
+    findPropertyDiscoveryEnabled: bool(m.get('find_property_discovery_enabled'), false),
+    workerLeaseEnabled: bool(m.get('discovery_worker_lease_enabled'), false),
   };
 }
 

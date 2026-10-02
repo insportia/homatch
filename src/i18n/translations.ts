@@ -13887,6 +13887,14 @@ const en = {
   mm_x_connect_cancelled: 'The Meta connection was not completed.',
   mm_x_connect_failed: 'Meta could not complete the connection. Please try again.',
   mm_x_connect_kept: 'Your campaign is saved — you can try again any time.',
+
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_resume_search: 'Resume search',
+  p2d_stop_search: 'Stop and show results',
+  p2d_paused_note: 'Search paused. Nothing new is searched until you resume. Your budget stays reserved for up to an hour.',
+  p2d_resumed_toast: 'Search resumed',
+  p2d_stopping_toast: 'Finishing with what was found…',
+  p2d_control_error: 'This could not be done right now. Please try again.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -27688,6 +27696,14 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mm_x_connect_cancelled: 'Meta-სთან კავშირი არ დასრულებულა.',
   mm_x_connect_failed: 'Meta-მ კავშირი ვერ დაასრულა. გთხოვთ, სცადოთ ხელახლა.',
   mm_x_connect_kept: 'კამპანია შენახულია — შეგიძლიათ ნებისმიერ დროს ხელახლა სცადოთ.',
+
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_resume_search: 'ძიების გაგრძელება',
+  p2d_stop_search: 'შეჩერება და შედეგების ჩვენება',
+  p2d_paused_note: 'ძიება შეჩერებულია. გაგრძელებამდე ახალი არაფერი მოიძებნება. ბიუჯეტი დაჯავშნული რჩება მაქსიმუმ ერთი საათით.',
+  p2d_resumed_toast: 'ძიება გაგრძელდა',
+  p2d_stopping_toast: 'სრულდება ნაპოვნით…',
+  p2d_control_error: 'ახლა ეს ვერ მოხერხდა. გთხოვთ, სცადოთ ხელახლა.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -41480,6 +41496,14 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mm_x_connect_cancelled: 'Подключение к Meta не завершено.',
   mm_x_connect_failed: 'Meta не смогла завершить подключение. Попробуйте ещё раз.',
   mm_x_connect_kept: 'Кампания сохранена — можно попробовать снова в любой момент.',
+
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_resume_search: 'Возобновить поиск',
+  p2d_stop_search: 'Остановить и показать результаты',
+  p2d_paused_note: 'Поиск приостановлен. До возобновления ничего нового не ищется. Бюджет остаётся зарезервированным до одного часа.',
+  p2d_resumed_toast: 'Поиск возобновлён',
+  p2d_stopping_toast: 'Завершаем с тем, что найдено…',
+  p2d_control_error: 'Сейчас это не удалось. Попробуйте ещё раз.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -55270,6 +55294,14 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mm_x_connect_cancelled: 'Meta bağlantısı tamamlanmadı.',
   mm_x_connect_failed: 'Meta bağlantıyı tamamlayamadı. Lütfen tekrar deneyin.',
   mm_x_connect_kept: 'Kampanyanız kayıtlı — istediğiniz zaman tekrar deneyebilirsiniz.',
+
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_resume_search: 'Aramaya devam et',
+  p2d_stop_search: 'Durdur ve sonuçları göster',
+  p2d_paused_note: 'Arama duraklatıldı. Devam ettirene kadar yeni bir şey aranmaz. Bütçeniz en fazla bir saat ayrılmış kalır.',
+  p2d_resumed_toast: 'Arama devam ediyor',
+  p2d_stopping_toast: 'Bulunanlarla tamamlanıyor…',
+  p2d_control_error: 'Bu şu anda yapılamadı. Lütfen tekrar deneyin.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -69060,6 +69092,14 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mm_x_connect_cancelled: 'لم يكتمل الربط مع Meta.',
   mm_x_connect_failed: 'تعذّر على Meta إكمال الربط. حاول مرة أخرى.',
   mm_x_connect_kept: 'حملتك محفوظة — يمكنك المحاولة مجددًا في أي وقت.',
+
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_resume_search: 'استئناف البحث',
+  p2d_stop_search: 'إيقاف وعرض النتائج',
+  p2d_paused_note: 'تم إيقاف البحث مؤقتًا. لن يُبحث عن شيء جديد حتى تستأنف. تبقى ميزانيتك محجوزة لمدة تصل إلى ساعة.',
+  p2d_resumed_toast: 'تم استئناف البحث',
+  p2d_stopping_toast: 'جارٍ الإنهاء بما تم العثور عليه…',
+  p2d_control_error: 'تعذّر تنفيذ ذلك الآن. حاول مرة أخرى.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -82850,6 +82890,14 @@ const he: Partial<Record<TranslationKey, string>> = {
   mm_x_connect_cancelled: 'החיבור ל-Meta לא הושלם.',
   mm_x_connect_failed: 'Meta לא הצליחה להשלים את החיבור. נסו שוב.',
   mm_x_connect_kept: 'הקמפיין שמור — אפשר לנסות שוב בכל עת.',
+
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_resume_search: 'המשך החיפוש',
+  p2d_stop_search: 'עצירה והצגת התוצאות',
+  p2d_paused_note: 'החיפוש הושהה. שום דבר חדש לא ייחפש עד שתמשיכו. התקציב נשאר שמור עד שעה.',
+  p2d_resumed_toast: 'החיפוש חודש',
+  p2d_stopping_toast: 'מסיימים עם מה שנמצא…',
+  p2d_control_error: 'לא ניתן לעשות זאת כרגע. נסו שוב.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

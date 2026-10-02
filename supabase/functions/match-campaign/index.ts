@@ -2,7 +2,8 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { beginExecution, releaseExecution } from '../_shared/billing.ts';
 import { loadDiscoverySettings } from '../_shared/discoverySettings.ts';
 import { claimJobTransition, finalizeCampaignJob } from '../_shared/campaignRun.ts';
-import { queueCampaignSourceJobs } from '../_shared/campaignSources.ts';
+import { queuePlannedJobs, storePlan } from '../_shared/campaignSources.ts';
+import { compileDemandPlan } from '../../../src/research-core/discovery/discovery-plan.ts';
 import { fetchCurrentFx } from '../_shared/fx.ts';
 import {
   persistCampaignLanguages,
@@ -124,7 +125,8 @@ Deno.serve(async (req: Request) => {
       .from('properties')
       // country_code decides which languages this market is written in, so a
       // campaign cannot resolve its search languages without it.
-      .select('id,user_id,title,matching_status,facts:property_facts!property_id(country_code)')
+      .select('id,user_id,title,matching_status,transaction_type,property_type,'
+        + 'facts:property_facts!property_id(country_code,city,district,total_price,currency,bedrooms,area)')
       .eq('id', propertyId)
       .eq('is_deleted', false)
       .maybeSingle();
@@ -132,6 +134,34 @@ Deno.serve(async (req: Request) => {
     if (!property) return json({ error: 'Property not found' }, 404);
     if (property.user_id !== homatchUser.id && homatchUser.is_admin !== true) {
       return json({ error: 'Forbidden' }, 403);
+    }
+
+    /*
+     * PAUSE / RESUME / STOP — server-side, owner-checked and atomic
+     * (discovery_control). Pause holds the run's open source jobs; resume
+     * continues them with the window that was left; stop closes the window and
+     * the driver finishes with what arrived, settling only what was delivered.
+     * The client never edits a job or a campaign row to do this.
+     */
+    const controlAction = String(body.action || '').toLowerCase();
+    if (controlAction === 'pause' || controlAction === 'resume' || controlAction === 'stop') {
+      const controlJobId = String(body.jobId || '');
+      const { data: controlled } = await db.from('matching_jobs')
+        .select('id,property_id,user_id').eq('id', controlJobId).eq('property_id', propertyId).maybeSingle();
+      if (!controlled) return json({ error: 'That search does not belong to this property.', reasonCode: 'UNKNOWN_JOB' }, 404);
+      const { data: outcome, error: controlError } = await db.rpc('discovery_control', {
+        p_kind: 'MATCHING_JOB', p_id: controlJobId, p_user_id: controlled.user_id, p_action: controlAction,
+      });
+      if (controlError) throw controlError;
+      if (!outcome?.ok) return json({ error: 'This search cannot do that now.', reasonCode: outcome?.error ?? 'REFUSED', status: outcome?.status ?? null }, 409);
+      const controlEvent = { pause: 'CAMPAIGN_PAUSED', resume: 'CAMPAIGN_RESUMED', stop: 'CAMPAIGN_STOPPED' }[controlAction];
+      await event(db, controlJobId, controlEvent, {
+        message: controlAction === 'pause' ? 'Paused by the customer; no new source work starts until resume'
+          : controlAction === 'resume' ? 'Resumed by the customer; held source work continues'
+          : 'Stopped by the customer; the search finishes with what has arrived',
+        ...outcome,
+      }).catch(() => undefined);
+      return json({ success: true, jobId: controlJobId, ...outcome });
     }
 
     let campaignId = body.campaignId ? String(body.campaignId) : '';
@@ -450,6 +480,49 @@ Deno.serve(async (req: Request) => {
     if (settingsError) throw settingsError;
     const settings = Object.fromEntries((settingRows || []).map((row: any) => [row.key, scalar(row.value, null)]));
 
+    /*
+     * THE DISCOVERY PLAN, stored before any work: what this run will search,
+     * in which tranches, within which limits. Source jobs below are derived
+     * from it and nothing else (docs/claude/PHASE2_DISCOVERY.md).
+     */
+    const target = Math.max(1, Number(settings.external_discovery_min_strong_matches || 3));
+    const plan = compileDemandPlan({
+      market: countryCode || 'GE',
+      languages: languages.selection.languages,
+      property: {
+        transactionType: (property as any).transaction_type ?? null,
+        propertyType: (property as any).property_type ?? null,
+        city: facts?.city ?? null,
+        district: facts?.district ?? null,
+        price: facts?.total_price != null ? Number(facts.total_price) : null,
+        currency: facts?.currency ?? null,
+        bedrooms: facts?.bedrooms != null ? Number(facts.bedrooms) : null,
+        areaSqm: facts?.area != null ? Number(facts.area) : null,
+      },
+      switches: {
+        telegram: discovery.campaignSourceDiscoveryEnabled && discovery.telegramEnabled,
+        forum: discovery.campaignSourceDiscoveryEnabled && discovery.forumDiscoveryEnabled,
+        portals: false,
+        livePortalAdapters: [],
+      },
+      limits: {
+        maxCredits: requestedBudget,
+        deadlineMinutes: discovery.campaignDiscoveryMinutes,
+        targetResults: target,
+        activeDemandMaxDays: discovery.freshness.activeMaxDays,
+      },
+    });
+    const planId = await storePlan(db, { plan, userId: property.user_id, matchingJobId: jobId });
+    await updateJob(db, jobId, { search_plan_id: planId });
+    await event(db, jobId, 'SEARCH_PLAN_READY', {
+      message: 'Search plan ready',
+      planId,
+      direction: plan.direction,
+      tranches: plan.tranches.map((t) => ({ tranche: t.tranche, label: t.label, sourceClasses: t.sourceClasses })),
+      hardConstraints: plan.hardConstraints,
+      languages: plan.languages,
+    });
+
     await updateJob(db, jobId, {
       status: 'classifying',
       progress: 30,
@@ -663,18 +736,15 @@ Deno.serve(async (req: Request) => {
      * paid-provider consumer this replaced could only ever claim them.
      */
     const freshFromInternal = Number(internal.data?.matchesCreated || 0);
-    const target = Math.max(1, Number(settings.external_discovery_min_strong_matches || 3));
-    const sourcesAvailable = discovery.campaignSourceDiscoveryEnabled
-      && (discovery.telegramEnabled || discovery.forumDiscoveryEnabled);
+    const sourcesAvailable = plan.tranches.some((t) => t.tranche > 0);
 
     if (freshFromInternal < target && sourcesAvailable) {
-      const queued = await queueCampaignSourceJobs(db, {
-        jobId: jobId!,
+      const queued = await queuePlannedJobs(db, {
+        plan,
+        planId,
+        runKey: jobId!,
+        matchingJobId: jobId!,
         propertyId,
-        languages: languages.selection.languages,
-        telegram: discovery.telegramEnabled,
-        forum: discovery.forumDiscoveryEnabled,
-        countryCode: countryCode || 'GE',
       });
       if (queued.length > 0) {
         const deadline = new Date(Date.now() + discovery.campaignDiscoveryMinutes * 60_000).toISOString();

@@ -18,7 +18,7 @@ const RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring
 const STEP_M = 0.25;
 
 export function EditPanel({
-  entry, title, actions, colors, materials, replacements, position, rotation, busy, error, onChoice, onClose,
+  entry, title, actions, colors, materials, variants = [], replacements, position, rotation, busy, error, onChoice, onClose,
 }: {
   entry: MapEntry;
   title: string;
@@ -26,6 +26,8 @@ export function EditPanel({
   colors: string[];
   /** Floor or wall materials that fit this surface (catalogue). */
   materials: CatalogMaterial[];
+  /** A piece's own finishes (its catalogue variants: fabrics, woods). */
+  variants?: Array<{ id: string; name: string; colors: Record<string, string> }>;
   replacements: CatalogAsset[];
   /** The piece's current plan position (metres) and rotation, for MOVE / ROTATE. */
   position: { x: number; y: number } | null;
@@ -77,7 +79,21 @@ export function EditPanel({
               </div>
             </div>
           ) : null}
-          {(actions.includes('MATERIAL') || actions.includes('FINISH')) && materials.length ? (
+          {entry.kind === 'OBJECT' && actions.includes('MATERIAL') && variants.length ? (
+            <div>
+              <p className="mb-1.5 text-[13px] font-medium text-[#4A5263]">{t('rend_material')}</p>
+              <div className="grid grid-cols-3 gap-2">
+                {variants.slice(0, 9).map((v) => (
+                  <button key={v.id} type="button" disabled={busy} onClick={() => onChoice({ action: 'MATERIAL', variant: v.id }, v.name)}
+                    className={cn('flex flex-col gap-1 rounded-lg p-1 text-start text-2xs ring-1 ring-[#E1E4E8] hover:ring-[#0C1119] disabled:opacity-50', RING)}>
+                    <span className="flex h-9 overflow-hidden rounded-md" aria-hidden="true">{Object.values(v.colors).slice(0, 3).map((c) => <span key={c} className="flex-1" style={{ backgroundColor: c }} />)}</span>
+                    <span className="truncate px-0.5">{v.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {entry.kind !== 'OBJECT' && (actions.includes('MATERIAL') || actions.includes('FINISH')) && materials.length ? (
             <div>
               <p className="mb-1.5 text-[13px] font-medium text-[#4A5263]">{t('rend_material')}</p>
               <div className="grid grid-cols-3 gap-2">

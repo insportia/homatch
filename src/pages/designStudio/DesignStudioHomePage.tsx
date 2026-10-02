@@ -146,12 +146,30 @@ function Home() {
     return () => ctl.abort();
   }, [activeIds.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /**
+   * The versions that ARE this design: the head, and — through any factory builds on top of it (which
+   * add the walkthrough's baked models and change nothing a picture shows) — the version it was built from.
+   */
+  const sameDesign = useMemo(() => {
+    const out = new Set<string>();
+    if (!data) return out;
+    const byId = new Map(data.bundle.versions.map((v) => [v.id, v] as const));
+    let v: DesignVersionRecord | undefined = byId.get(data.head.id) ?? data.head;
+    while (v) {
+      out.add(v.id);
+      const built = (v.change_summary ?? []).some((c) => (c as { kind?: string })?.kind === 'FACTORY_BUILD');
+      if (!built || !v.parent_id) break;
+      v = byId.get(v.parent_id);
+    }
+    return out;
+  }, [data]);
+
   /** The master design shown: the newest ready picture of the dollhouse view, this design's own first. */
   const master = useMemo(() => {
     const ms = renders.filter((r) => r.view?.id === 'master');
-    const own = ms.filter((r) => r.version_id === data?.head.id);
+    const own = ms.filter((r) => sameDesign.has(r.version_id));
     return { ready: (own.find((r) => r.status === 'READY') ?? ms.find((r) => r.status === 'READY')) ?? null, working: own.find((r) => ACTIVE.has(r.status)) ?? ms.find((r) => ACTIVE.has(r.status)) ?? null, stale: !own.some((r) => r.status === 'READY') };
-  }, [renders, data?.head.id]);
+  }, [renders, sameDesign]);
   useEffect(() => {
     setMapUrl(null);
     if (master.ready) renderMapUrl(master.ready, 1800).then(setMapUrl).catch(() => {});
@@ -385,7 +403,7 @@ function Home() {
                 <EditPanel
                   entry={selected} title={labelFor(selected)} actions={actions}
                   colors={colourChoices(data.dna?.palette ?? data.state.palette, selObj?.colorOverride ?? data.state.surfaces[selected.id]?.color ?? null)}
-                  materials={fittingMaterials} replacements={selAsset ? replacements(selAsset, [...data.assets.values()]) : []}
+                  materials={fittingMaterials} variants={selAsset?.variants ?? []} replacements={selAsset ? replacements(selAsset, [...data.assets.values()]) : []}
                   position={selObj ? { x: selObj.position.x, y: selObj.position.z } : null} rotation={selObj?.rotationY ?? null}
                   busy={busy} error={error}
                   onChoice={(c, l) => { void onChoice(c, l); }} onClose={() => setSelected(null)}

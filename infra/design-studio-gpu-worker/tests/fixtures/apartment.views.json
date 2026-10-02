@@ -1,0 +1,55 @@
+[
+ {
+  "id": "v-master",
+  "kind": "MASTER",
+  "purpose": "DOLLHOUSE",
+  "roomId": null,
+  "position": [
+   35.8,
+   -22.8,
+   30.0
+  ],
+  "target": [
+   5.8,
+   7.2,
+   0.0
+  ],
+  "fovDeg": null,
+  "orthoScale": 17.0,
+  "aspect": 1.4,
+  "width": 700,
+  "height": 500,
+  "samples": 32,
+  "cut": {
+   "exteriorM": 1.1,
+   "interiorM": 1.0
+  },
+  "hideCeilings": true,
+  "objectMap": true
+ },
+ {
+  "id": "v-living",
+  "kind": "ROOM",
+  "purpose": "MAIN",
+  "roomId": "r-living",
+  "position": [
+   3.6,
+   2.4,
+   1.45
+  ],
+  "target": [
+   1.2,
+   9.0,
+   1.0
+  ],
+  "fovDeg": 62.0,
+  "orthoScale": null,
+  "aspect": 1.333,
+  "width": 480,
+  "height": 360,
+  "samples": 32,
+  "cut": null,
+  "hideCeilings": false,
+  "objectMap": true
+ }
+]

@@ -13,6 +13,7 @@ Blender headless and builds the scene from the spec:
 | Materials | HOMATCH catalogue materials as PBR (albedo, normal, roughness from ORM, tile size, rotation, the colour a picture showed as a tint) |
 | Lighting | sun and sky by time of day, a soft ceiling light per room |
 | Checking | a Cycles render from the source picture's own camera (with its section cut and background) for the visual check |
+| Views | optional `spec.views` (≤ 12): each planned view (an orthographic or long-lens dollhouse MASTER on a neutral studio ground, or an eye-level ROOM view) rendered at final quality (adaptive sampling, OptiX/OIDN denoiser), and with `objectMap` an exact id image (flat emission colours, 1 sample, Raw transform) plus its legend: every colour's canonical target (piece id, floor/ceiling surface, wall FACE SEGMENT surface, opening, stair), room, coverage and box (`worker/factory/views.py`). Job: `outputs.views[id] = {image, ids, legend}` signed PUTs; result: `outputs.views[id] = {ok, image, ids, legend, ms, idMs}` |
 | Exporting | the whole home as GLB (semantic node names: `floor:`, `wall:`, `door:`, `window:`, `railing:`, `ceiling:`, `obj:<instance>`), and one GLB per group of identical walkthrough pieces |
 
 Then every GLB is optimised (dedup, prune, KTX2 when textured, meshopt) and

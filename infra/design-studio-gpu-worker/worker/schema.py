@@ -20,6 +20,10 @@ MAX_MODEL_BYTES = 100 * 1024 * 1024
 MAX_RENDER_BYTES = 2 * 1024 * 1024
 MAX_SCENE_BYTES = 100 * 1024 * 1024
 MAX_OBJECT_BYTES = 12 * 1024 * 1024
+# A planned view (spec.views): the picture (JPEG), its id image (lossless PNG) and the legend (JSON).
+MAX_VIEW_BYTES = 6 * 1024 * 1024
+MAX_VIEW_IDS_BYTES = 8 * 1024 * 1024
+MAX_VIEW_LEGEND_BYTES = 1024 * 1024
 UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 # Only the storage endpoint may be fetched or written (no arbitrary URLs from a job).
 ALLOWED_HOST = re.compile(r"^[a-z0-9]+\.r2\.cloudflarestorage\.com$")
@@ -39,6 +43,7 @@ class Job:
     render_url: str | None
     scene_urls: dict  # tier -> URL
     object_urls: dict  # group -> URL
+    view_urls: dict = field(default_factory=dict)  # view id -> {image, ids, legend} URLs (ids/legend: only with objectMap)
     deadline_s: int = 900
     texture_size: dict = field(default_factory=lambda: {"DESKTOP": 2048, "MOBILE": 1024})
     object_texture_size: int = 1024
@@ -108,6 +113,21 @@ def parse_job(raw: object) -> Job:
             raise JobError("outputs.objects: exactly one URL per walkthrough group")
         object_urls = {g: _url(u, f"outputs.objects.{g}") for g, u in objs.items()}
 
+    view_urls: dict = {}
+    if spec["views"]:
+        vs = outputs.get("views") or {}
+        if not isinstance(vs, dict) or set(vs) != {v["id"] for v in spec["views"]}:
+            raise JobError("outputs.views: exactly one entry per planned view")
+        for v in spec["views"]:
+            entry = vs[v["id"]]
+            want_map = v["objectMap"]
+            keys = {"image", "ids", "legend"} if want_map else {"image"}
+            if not isinstance(entry, dict) or {k for k, u in entry.items() if u is not None} != keys:
+                raise JobError(f"outputs.views.{v['id']}: an image URL, and ids and legend URLs exactly when it has an object map")
+            view_urls[v["id"]] = {k: (_url(entry[k], f"outputs.views.{v['id']}.{k}") if k in keys else None) for k in ("image", "ids", "legend")}
+    elif outputs.get("views"):
+        raise JobError("outputs.views: the spec plans no views")
+
     limits = raw.get("limits") or {}
     if not isinstance(limits, dict):
         raise JobError("limits: an object")
@@ -122,4 +142,4 @@ def parse_job(raw: object) -> Job:
     if device not in ("AUTO", "CPU"):
         raise JobError("limits.device: AUTO or CPU")
     return Job(job_id=job_id, spec=spec, textures=textures, models=models, render_url=render_url, scene_urls=scene_urls,
-               object_urls=object_urls, deadline_s=deadline, texture_size=dict(tex), object_texture_size=obj_tex, device=device)
+               object_urls=object_urls, view_urls=view_urls, deadline_s=deadline, texture_size=dict(tex), object_texture_size=obj_tex, device=device)

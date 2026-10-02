@@ -10,6 +10,10 @@ import type { QaReport } from '@/lib/designStudio/hybrid/qa';
 import type { FactoryPoll } from '@/lib/designStudio/hybrid/orchestrate';
 import type { SceneBuildSpec } from '@/lib/designStudio/hybrid/sceneSpec';
 
+// A spec with `views` gets each planned view rendered in the same pass; its status then carries
+// outputs.views[viewId] = { image, ids, legend } (each a verified FactoryRef, or null).
+export type { FactoryPoll, FactoryRef, FactoryViewRefs } from '@/lib/designStudio/hybrid/orchestrate';
+
 async function call<T>(route: string, body: Record<string, unknown>): Promise<{ data: T | null; status: number; error: string | null }> {
   const { data, error } = await supabase.functions.invoke(`design-studio-reconstruct/${route}`, { body });
   if (error) {

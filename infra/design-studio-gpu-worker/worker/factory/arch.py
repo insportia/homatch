@@ -54,8 +54,11 @@ def build_ceilings(spec: dict, lib) -> list:
     return out
 
 
-def _pieces(wall: dict, height: float) -> list[tuple[float, float, float, float]]:
-    """(from, to, z0, z1) solid pieces of a wall of this height, around its openings."""
+def _pieces(wall: dict, height: float, split_faces: bool = False) -> list[tuple[float, float, float, float]]:
+    """(from, to, z0, z1) solid pieces of a wall of this height, around its openings.
+
+    With split_faces, a piece is also cut where a face segment begins or ends, so
+    each face segment (one room's side of the wall) is its own run of geometry."""
     length = math.hypot(wall["end"][0] - wall["start"][0], wall["end"][1] - wall["start"][1])
     ops = sorted(wall["openings"], key=lambda o: o["offsetM"])
     pieces = []
@@ -73,11 +76,37 @@ def _pieces(wall: dict, height: float) -> list[tuple[float, float, float, float]
         cur = max(cur, b)
     if cur < length - 1e-3:
         pieces.append((cur, length, 0.0, height))
+    if split_faces:
+        cuts = sorted({min(length, max(0.0, x)) for f in wall["faces"] for x in (f["from"], f["to"])})
+        split = []
+        for (a, b, z0, z1) in pieces:
+            edges = [a] + [x for x in cuts if a + 1e-3 < x < b - 1e-3] + [b]
+            split.extend((edges[k], edges[k + 1], z0, z1) for k in range(len(edges) - 1))
+        pieces = split
     return [p for p in pieces if p[1] - p[0] > 1e-3 and p[3] - p[2] > 1e-3]
 
 
-def build_walls(spec: dict, lib, height_for=None, name: str = "walls") -> list:
-    """Walls (and their openings' frames, glass and doors). `height_for(wall)` lowers them for a section cut."""
+def face_at(wall: dict, side: str, along: float):
+    """The face segment of one side of a wall at a distance along it (or None)."""
+    return next((f for f in wall["faces"] if f["side"] == side and f["from"] - 0.02 <= along <= f["to"] + 0.02), None)
+
+
+def wall_polygon_faces(ob, wall: dict) -> list:
+    """Per polygon of a built wall: its face segment (dict) or None for the wall's body (top, ends, reveals)."""
+    length, u, n, _ = geo.segment_frame(wall["start"], wall["end"])
+    origin = wall["start"]
+    out = []
+    for poly in ob.data.polygons:
+        c = poly.center
+        along = (c.x - origin[0]) * u[0] + (c.y - origin[1]) * u[1]
+        dn = poly.normal.x * n[0] + poly.normal.y * n[1]
+        out.append(None if abs(dn) < 0.7 else face_at(wall, "L" if dn > 0 else "R", along))
+    return out
+
+
+def build_walls(spec: dict, lib, height_for=None, name: str = "walls", split_faces: bool = False) -> list:
+    """Walls (and their openings' frames, glass and doors). `height_for(wall)` lowers them for a section cut;
+    `split_faces` cuts the geometry at every face segment's ends (a view's object map addresses each one)."""
     col = _collection(name)
     out = []
     _ROOMS["rooms"] = spec["rooms"]
@@ -88,7 +117,7 @@ def build_walls(spec: dict, lib, height_for=None, name: str = "walls") -> list:
         t = wall["thicknessM"]
         sx, sy = wall["start"]
         bm = bmesh.new()
-        for (a, b, z0, z1) in _pieces(wall, h):
+        for (a, b, z0, z1) in _pieces(wall, h, split_faces):
             piece = geo.box_bm(b - a, t, z1 - z0, (a + b) / 2, 0.0, z0)
             bm = geo.merge(bm, piece)
         geo.transform(bm, geo.rot_z(angle))
@@ -96,6 +125,7 @@ def build_walls(spec: dict, lib, height_for=None, name: str = "walls") -> list:
         ob = geo.new_object(f"wall:{wall['id']}", bm, None, collection=col)
         _dress_wall(ob, wall, lib, (sx, sy), u, n, length)
         ob["homatch"] = {"kind": "WALL", "wall": wall["id"], "exterior": wall["kind"] == "EXTERIOR"}
+        ob["hm_wall_index"] = spec["walls"].index(wall)
         out.append(ob)
         for o in wall["openings"]:
             out.extend(_opening(wall, o, h, lib, col, (sx, sy), angle, t))
@@ -114,17 +144,8 @@ def _dress_wall(ob, wall: dict, lib, origin, u, n, length: float) -> None:
         return slots[mat.name]
 
     body = slot_for(lib.wall_body())
-    for poly in me.polygons:
-        c = poly.center
-        along = (c.x - origin[0]) * u[0] + (c.y - origin[1]) * u[1]
-        dn = poly.normal.x * n[0] + poly.normal.y * n[1]
-        poly.material_index = body
-        if abs(dn) < 0.7:
-            continue
-        side = "L" if dn > 0 else "R"
-        face = next((f for f in wall["faces"] if f["side"] == side and f["from"] - 0.02 <= along <= f["to"] + 0.02), None)
-        if face is not None:
-            poly.material_index = slot_for(lib.surface(face["surface"], "#f7f5f1"))
+    for poly, face in zip(me.polygons, wall_polygon_faces(ob, wall)):
+        poly.material_index = body if face is None else slot_for(lib.surface(face["surface"], "#f7f5f1"))
     geo.metre_uvs(ob, "WALL", origin, u)
 
 

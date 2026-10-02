@@ -39,6 +39,7 @@
 import { BedDouble, Building2, Coins, MapPin, Ruler, SquareArrowOutUpRight } from 'lucide-react';
 import React from 'react';
 import { Fact, LinkAction } from '@/components/customer/surface';
+import { safeExternalUrl } from '@/lib/safeExternalUrl';
 
 /** What is being offered, each part already formatted and localised by the caller. */
 export interface ListingFacts {
@@ -52,6 +53,87 @@ export interface ListingFacts {
   area?: string | null;
 }
 
+/**
+ * Where a result came from, as the source gave it, with the labels already translated.
+ * Every link is checked again here (safeExternalUrl); one that is not a real http(s)
+ * URL is shown as text, never as a link.
+ */
+export interface ListingAttribution {
+  sourceLabel: string;
+  /** The channel, group, board or site name, or the platform when the registry has none. */
+  sourceName: string;
+  sourceUrl?: string | null;
+  threadLabel: string;
+  threadUrl?: string | null;
+  authorLabel: string;
+  authorName?: string | null;
+  authorUrl?: string | null;
+  originalLabel: string;
+  /** The post as written, public contacts included. */
+  originalText?: string | null;
+  showMore: string;
+  showLess: string;
+}
+
+const LONG_TEXT = 280;
+
+function OutLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer nofollow"
+      dir="auto"
+      className="break-all text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+    >
+      {children}
+    </a>
+  );
+}
+
+function SourceBlock({ attribution }: { attribution: ListingAttribution }) {
+  const [open, setOpen] = React.useState(false);
+  const sourceUrl = safeExternalUrl(attribution.sourceUrl);
+  const threadUrl = safeExternalUrl(attribution.threadUrl);
+  const authorUrl = safeExternalUrl(attribution.authorUrl);
+  const author = attribution.authorName ?? (authorUrl ? authorUrl.replace(/^https?:\/\//, '') : null);
+  const text = attribution.originalText ?? null;
+  const long = (text?.length ?? 0) > LONG_TEXT;
+  return (
+    <div className="mt-2.5 space-y-1 border-s-2 border-border ps-2.5 text-2xs leading-snug">
+      <p className="break-words text-muted-foreground">
+        {attribution.sourceLabel}:{' '}
+        {sourceUrl ? <OutLink href={sourceUrl}>{attribution.sourceName}</OutLink> : <span dir="auto">{attribution.sourceName}</span>}
+        {threadUrl ? <>{' · '}<OutLink href={threadUrl}>{attribution.threadLabel}</OutLink></> : null}
+      </p>
+      {author ? (
+        <p className="break-words text-muted-foreground">
+          {attribution.authorLabel}:{' '}
+          {authorUrl ? <OutLink href={authorUrl}>{author}</OutLink> : <span dir="auto">{author}</span>}
+        </p>
+      ) : null}
+      {text ? (
+        <div>
+          <p className="font-semibold text-foreground">{attribution.originalLabel}</p>
+          <p dir="auto" className={`whitespace-pre-wrap break-words text-foreground/90 ${long && !open ? 'line-clamp-4' : ''}`}>
+            {text}
+          </p>
+          {long ? (
+            <button
+              type="button"
+              aria-expanded={open}
+              onClick={() => setOpen((v) => !v)}
+              className="mt-0.5 inline-flex min-h-9 items-center font-semibold text-foreground underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+            >
+              {open ? attribution.showLess : attribution.showMore}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function ListingCard({
   headline,
   freshness,
@@ -63,6 +145,7 @@ export function ListingCard({
   broker,
   actionLabel,
   href,
+  attribution,
 }: {
   headline: string;
   /** How long ago it was published, in the reader's language. Null when unrecorded. */
@@ -85,7 +168,11 @@ export function ListingCard({
   broker?: { name: string; standing: string; provenance: string } | null;
   actionLabel: string;
   href?: string | null;
+  /** Where it came from: source, author, the post as written. */
+  attribution?: ListingAttribution | null;
 }) {
+  /* The one action opens the exact source, and only a real http(s) link. */
+  const actionHref = safeExternalUrl(href);
   /*
    * The fact row, built from what exists, capped at four.
    *
@@ -170,10 +257,13 @@ export function ListingCard({
         </div>
       ) : null}
 
+      {/* ── where it came from ───────────────────────────────────────── */}
+      {attribution ? <SourceBlock attribution={attribution} /> : null}
+
       {/* ── one action, and it leaves ───────────────────────────────── */}
-      {href ? (
+      {actionHref ? (
         <div className="mt-3 border-t border-border/50 pt-2.5">
-          <LinkAction label={actionLabel} href={href} icon={SquareArrowOutUpRight} />
+          <LinkAction label={actionLabel} href={actionHref} icon={SquareArrowOutUpRight} />
         </div>
       ) : null}
     </article>

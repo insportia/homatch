@@ -194,6 +194,31 @@ function ResultCard({ result }: { result: FindPropertyResult }) {
     return key ? t(key as never) : dimension;
   });
 
+  /*
+   * WHERE IT CAME FROM, for every external result: the channel / board / site, the
+   * author as the source shows them, and the post as written. One click opens the
+   * exact post (or listing), never only a channel's front page.
+   */
+  const a = result.attribution ?? null;
+  const platform = String(a?.platform ?? 'PORTAL').toUpperCase();
+  const community = platform !== 'PORTAL';
+  const platformName = t((platform === 'TELEGRAM' ? 'p2d_attr_platform_telegram'
+    : platform === 'FORUM' ? 'p2d_attr_platform_forum' : 'p2d_attr_platform_portal') as never);
+  const attribution = a ? {
+    sourceLabel: t('p2d_attr_source'),
+    sourceName: a.sourceName ?? platformName,
+    sourceUrl: a.sourceUrl,
+    threadLabel: t('p2d_attr_thread'),
+    threadUrl: a.threadUrl,
+    authorLabel: t('p2d_attr_posted_by'),
+    authorName: a.authorName,
+    authorUrl: a.authorUrl,
+    originalLabel: t('p2d_attr_original_text'),
+    originalText: a.originalText,
+    showMore: t('p2d_attr_show_more'),
+    showLess: t('p2d_attr_show_less'),
+  } : null;
+
   return (
     <ListingCard
       headline={listing.title ?? t('plan_result_untitled')}
@@ -219,8 +244,9 @@ function ResultCard({ result }: { result: FindPropertyResult }) {
         standing: t(broker.labelKey as never),
         provenance: `${t('broker_provenance_sources', { count: String(broker.provenance.seenOnSources) })} · ${t('broker_provenance_listings', { count: String(broker.provenance.listingsAttributed) })}`,
       } : null}
-      actionLabel={t('plan_result_open')}
-      href={listing.url}
+      actionLabel={a ? t(community ? 'p2d_attr_open_post' : 'p2d_attr_open_listing') : t('plan_result_open')}
+      href={a?.permalink ?? listing.url}
+      attribution={attribution}
     />
   );
 }

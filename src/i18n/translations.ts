@@ -14297,6 +14297,19 @@ const en = {
   rend_edit_failed: 'Your change is saved, but the picture could not be updated — nothing was charged.',
   rend_edit_retry: 'Update the picture again',
 
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_attr_open_post: 'Open original post',
+  p2d_attr_open_listing: 'Open original listing',
+  p2d_attr_posted_by: 'Posted by',
+  p2d_attr_source: 'Source',
+  p2d_attr_thread: 'Thread',
+  p2d_attr_original_text: 'Original post',
+  p2d_attr_show_more: 'Show full text',
+  p2d_attr_show_less: 'Show less',
+  p2d_attr_platform_telegram: 'Telegram',
+  p2d_attr_platform_forum: 'Forum',
+  p2d_attr_platform_portal: 'Property site',
+
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   sf_back: 'Back',
   sf_upload_title: 'Upload your floor plan',
@@ -14310,6 +14323,8 @@ const en = {
   sf_q_eyebrow: 'One quick question',
   sf_q_progress: 'Quick question {{n}} of {{total}}',
   sf_q_body: 'Your answer makes the home match your plan.',
+  sf_q_overall_width: 'Is your home really {{text}} wide?',
+  sf_q_overall_depth: 'Is your home really {{text}} deep?',
   sf_review_detail: 'Review plan in detail',
   sf_style_title: 'Choose your style',
   sf_style_body: 'Pick the look you love. You can change anything later.',
@@ -14346,17 +14361,6 @@ const en = {
   sf_stage_design: 'Designing your home',
   sf_stage_build: 'Creating the photorealistic design',
   sf_stage_finish: 'Making it ready to edit',
-  sf_result_title: 'Your home',
-  sf_your_home: 'Your home',
-  sf_your_plan: 'Your plan',
-  sf_edit_room: 'Edit a room',
-  sf_advanced: 'Advanced editor',
-
-  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
-  sf_q_overall_width: 'Is your home really {{text}} wide?',
-  sf_q_overall_depth: 'Is your home really {{text}} deep?',
-
-  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   sf_error_render: 'Your design could not be created this time — nothing was charged. Please try again.',
   sf_error_busy: 'Many designs are being created right now. Please try again in a few minutes.',
   sf_obj_sofa: 'Sofa',
@@ -14393,6 +14397,11 @@ const en = {
   sf_obj_floor: 'Floor',
   sf_obj_ceiling: 'Ceiling',
   sf_obj_other: 'Item',
+  sf_result_title: 'Your home',
+  sf_your_home: 'Your home',
+  sf_your_plan: 'Your plan',
+  sf_edit_room: 'Edit a room',
+  sf_advanced: 'Advanced editor',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -28604,6 +28613,19 @@ const ka: Partial<Record<TranslationKey, string>> = {
   rend_edit_failed: 'ცვლილება შენახულია, მაგრამ სურათის განახლება ვერ მოხერხდა — არაფერი ჩამოგეჭრათ.',
   rend_edit_retry: 'სურათის ხელახლა განახლება',
 
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_attr_open_post: 'ორიგინალი პოსტის გახსნა',
+  p2d_attr_open_listing: 'ორიგინალი განცხადების გახსნა',
+  p2d_attr_posted_by: 'ავტორი',
+  p2d_attr_source: 'წყარო',
+  p2d_attr_thread: 'თემა',
+  p2d_attr_original_text: 'ორიგინალი ტექსტი',
+  p2d_attr_show_more: 'სრული ტექსტის ჩვენება',
+  p2d_attr_show_less: 'ნაკლების ჩვენება',
+  p2d_attr_platform_telegram: 'Telegram',
+  p2d_attr_platform_forum: 'ფორუმი',
+  p2d_attr_platform_portal: 'უძრავი ქონების საიტი',
+
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   sf_back: 'უკან',
   sf_upload_title: 'ატვირთეთ თქვენი გეგმა',
@@ -28617,6 +28639,8 @@ const ka: Partial<Record<TranslationKey, string>> = {
   sf_q_eyebrow: 'ერთი სწრაფი კითხვა',
   sf_q_progress: 'სწრაფი კითხვა {{n}} / {{total}}',
   sf_q_body: 'თქვენი პასუხით სახლი ზუსტად შეესაბამება გეგმას.',
+  sf_q_overall_width: 'მართლა {{text}} არის თქვენი სახლის სიგანე?',
+  sf_q_overall_depth: 'მართლა {{text}} არის თქვენი სახლის სიღრმე?',
   sf_review_detail: 'გეგმის დეტალური გადახედვა',
   sf_style_title: 'აირჩიეთ სტილი',
   sf_style_body: 'აირჩიეთ სასურველი იერი. ყველაფრის შეცვლა მოგვიანებითაც შეიძლება.',
@@ -28653,17 +28677,6 @@ const ka: Partial<Record<TranslationKey, string>> = {
   sf_stage_design: 'თქვენი სახლის დიზაინი',
   sf_stage_build: 'ფოტორეალისტური დიზაინის შექმნა',
   sf_stage_finish: 'რედაქტირებისთვის მომზადება',
-  sf_result_title: 'თქვენი სახლი',
-  sf_your_home: 'თქვენი სახლი',
-  sf_your_plan: 'თქვენი გეგმა',
-  sf_edit_room: 'ოთახის რედაქტირება',
-  sf_advanced: 'გაფართოებული რედაქტორი',
-
-  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
-  sf_q_overall_width: 'მართლა {{text}} არის თქვენი სახლის სიგანე?',
-  sf_q_overall_depth: 'მართლა {{text}} არის თქვენი სახლის სიღრმე?',
-
-  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   sf_error_render: 'დიზაინის შექმნა ამჯერად ვერ მოხერხდა — არაფერი ჩამოგეჭრათ. გთხოვთ, სცადოთ თავიდან.',
   sf_error_busy: 'ამჟამად ბევრი დიზაინი იქმნება. გთხოვთ, სცადოთ რამდენიმე წუთში.',
   sf_obj_sofa: 'დივანი',
@@ -28700,6 +28713,11 @@ const ka: Partial<Record<TranslationKey, string>> = {
   sf_obj_floor: 'იატაკი',
   sf_obj_ceiling: 'ჭერი',
   sf_obj_other: 'ნივთი',
+  sf_result_title: 'თქვენი სახლი',
+  sf_your_home: 'თქვენი სახლი',
+  sf_your_plan: 'თქვენი გეგმა',
+  sf_edit_room: 'ოთახის რედაქტირება',
+  sf_advanced: 'გაფართოებული რედაქტორი',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -42902,6 +42920,19 @@ const ru: Partial<Record<TranslationKey, string>> = {
   rend_edit_failed: 'Изменение сохранено, но обновить изображение не удалось — ничего не списано.',
   rend_edit_retry: 'Обновить изображение снова',
 
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_attr_open_post: 'Открыть исходный пост',
+  p2d_attr_open_listing: 'Открыть исходное объявление',
+  p2d_attr_posted_by: 'Автор',
+  p2d_attr_source: 'Источник',
+  p2d_attr_thread: 'Тема',
+  p2d_attr_original_text: 'Исходный текст',
+  p2d_attr_show_more: 'Показать полностью',
+  p2d_attr_show_less: 'Свернуть',
+  p2d_attr_platform_telegram: 'Telegram',
+  p2d_attr_platform_forum: 'Форум',
+  p2d_attr_platform_portal: 'Сайт недвижимости',
+
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   sf_back: 'Назад',
   sf_upload_title: 'Загрузите план квартиры',
@@ -42915,6 +42946,8 @@ const ru: Partial<Record<TranslationKey, string>> = {
   sf_q_eyebrow: 'Один короткий вопрос',
   sf_q_progress: 'Короткий вопрос {{n}} из {{total}}',
   sf_q_body: 'Ваш ответ поможет точно повторить план.',
+  sf_q_overall_width: 'Ширина вашего дома действительно {{text}}?',
+  sf_q_overall_depth: 'Глубина вашего дома действительно {{text}}?',
   sf_review_detail: 'Подробно проверить план',
   sf_style_title: 'Выберите стиль',
   sf_style_body: 'Выберите то, что нравится. Всё можно изменить позже.',
@@ -42951,17 +42984,6 @@ const ru: Partial<Record<TranslationKey, string>> = {
   sf_stage_design: 'Проектируем ваш дом',
   sf_stage_build: 'Создаём фотореалистичный дизайн',
   sf_stage_finish: 'Готовим к редактированию',
-  sf_result_title: 'Ваш дом',
-  sf_your_home: 'Ваш дом',
-  sf_your_plan: 'Ваш план',
-  sf_edit_room: 'Изменить комнату',
-  sf_advanced: 'Расширенный редактор',
-
-  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
-  sf_q_overall_width: 'Ширина вашего дома действительно {{text}}?',
-  sf_q_overall_depth: 'Глубина вашего дома действительно {{text}}?',
-
-  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   sf_error_render: 'Не удалось создать дизайн — ничего не списано. Попробуйте ещё раз.',
   sf_error_busy: 'Сейчас создаётся много дизайнов. Попробуйте через несколько минут.',
   sf_obj_sofa: 'Диван',
@@ -42998,6 +43020,11 @@ const ru: Partial<Record<TranslationKey, string>> = {
   sf_obj_floor: 'Пол',
   sf_obj_ceiling: 'Потолок',
   sf_obj_other: 'Предмет',
+  sf_result_title: 'Ваш дом',
+  sf_your_home: 'Ваш дом',
+  sf_your_plan: 'Ваш план',
+  sf_edit_room: 'Изменить комнату',
+  sf_advanced: 'Расширенный редактор',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -57198,6 +57225,19 @@ const tr: Partial<Record<TranslationKey, string>> = {
   rend_edit_failed: 'Değişikliğiniz kaydedildi ancak görsel güncellenemedi — ücret alınmadı.',
   rend_edit_retry: 'Görseli yeniden güncelle',
 
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_attr_open_post: 'Orijinal gönderiyi aç',
+  p2d_attr_open_listing: 'Orijinal ilanı aç',
+  p2d_attr_posted_by: 'Paylaşan',
+  p2d_attr_source: 'Kaynak',
+  p2d_attr_thread: 'Konu',
+  p2d_attr_original_text: 'Orijinal metin',
+  p2d_attr_show_more: 'Tamamını göster',
+  p2d_attr_show_less: 'Daha az göster',
+  p2d_attr_platform_telegram: 'Telegram',
+  p2d_attr_platform_forum: 'Forum',
+  p2d_attr_platform_portal: 'Emlak sitesi',
+
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   sf_back: 'Geri',
   sf_upload_title: 'Kat planınızı yükleyin',
@@ -57211,6 +57251,8 @@ const tr: Partial<Record<TranslationKey, string>> = {
   sf_q_eyebrow: 'Kısa bir soru',
   sf_q_progress: 'Kısa soru {{n}} / {{total}}',
   sf_q_body: 'Cevabınız evin planınıza uymasını sağlar.',
+  sf_q_overall_width: 'Evinizin genişliği gerçekten {{text}} mi?',
+  sf_q_overall_depth: 'Evinizin derinliği gerçekten {{text}} mi?',
   sf_review_detail: 'Planı ayrıntılı incele',
   sf_style_title: 'Stilinizi seçin',
   sf_style_body: 'Sevdiğiniz görünümü seçin. Her şeyi sonra değiştirebilirsiniz.',
@@ -57247,17 +57289,6 @@ const tr: Partial<Record<TranslationKey, string>> = {
   sf_stage_design: 'Eviniz tasarlanıyor',
   sf_stage_build: 'Fotogerçekçi tasarım oluşturuluyor',
   sf_stage_finish: 'Düzenlemeye hazırlanıyor',
-  sf_result_title: 'Eviniz',
-  sf_your_home: 'Eviniz',
-  sf_your_plan: 'Planınız',
-  sf_edit_room: 'Bir odayı düzenle',
-  sf_advanced: 'Gelişmiş düzenleyici',
-
-  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
-  sf_q_overall_width: 'Evinizin genişliği gerçekten {{text}} mi?',
-  sf_q_overall_depth: 'Evinizin derinliği gerçekten {{text}} mi?',
-
-  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   sf_error_render: 'Tasarımınız bu kez oluşturulamadı — ücret alınmadı. Lütfen tekrar deneyin.',
   sf_error_busy: 'Şu anda çok sayıda tasarım oluşturuluyor. Lütfen birkaç dakika sonra tekrar deneyin.',
   sf_obj_sofa: 'Kanepe',
@@ -57294,6 +57325,11 @@ const tr: Partial<Record<TranslationKey, string>> = {
   sf_obj_floor: 'Zemin',
   sf_obj_ceiling: 'Tavan',
   sf_obj_other: 'Eşya',
+  sf_result_title: 'Eviniz',
+  sf_your_home: 'Eviniz',
+  sf_your_plan: 'Planınız',
+  sf_edit_room: 'Bir odayı düzenle',
+  sf_advanced: 'Gelişmiş düzenleyici',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -71494,6 +71530,19 @@ const ar: Partial<Record<TranslationKey, string>> = {
   rend_edit_failed: 'تم حفظ التغيير، لكن تعذّر تحديث الصورة — لم يُخصم شيء.',
   rend_edit_retry: 'حدّث الصورة مرة أخرى',
 
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_attr_open_post: 'فتح المنشور الأصلي',
+  p2d_attr_open_listing: 'فتح الإعلان الأصلي',
+  p2d_attr_posted_by: 'نشره',
+  p2d_attr_source: 'المصدر',
+  p2d_attr_thread: 'الموضوع',
+  p2d_attr_original_text: 'النص الأصلي',
+  p2d_attr_show_more: 'عرض النص كاملًا',
+  p2d_attr_show_less: 'عرض أقل',
+  p2d_attr_platform_telegram: 'تيليغرام',
+  p2d_attr_platform_forum: 'منتدى',
+  p2d_attr_platform_portal: 'موقع عقارات',
+
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   sf_back: 'رجوع',
   sf_upload_title: 'ارفع مخطط منزلك',
@@ -71507,6 +71556,8 @@ const ar: Partial<Record<TranslationKey, string>> = {
   sf_q_eyebrow: 'سؤال سريع واحد',
   sf_q_progress: 'سؤال سريع {{n}} من {{total}}',
   sf_q_body: 'إجابتك تجعل المنزل مطابقًا لمخططك.',
+  sf_q_overall_width: 'هل عرض منزلك فعلًا {{text}}؟',
+  sf_q_overall_depth: 'هل عمق منزلك فعلًا {{text}}؟',
   sf_review_detail: 'راجع المخطط بالتفصيل',
   sf_style_title: 'اختر أسلوبك',
   sf_style_body: 'اختر المظهر الذي تحبه. يمكنك تغيير أي شيء لاحقًا.',
@@ -71543,17 +71594,6 @@ const ar: Partial<Record<TranslationKey, string>> = {
   sf_stage_design: 'نصمم منزلك',
   sf_stage_build: 'ننشئ التصميم الواقعي',
   sf_stage_finish: 'نجهزه للتعديل',
-  sf_result_title: 'منزلك',
-  sf_your_home: 'منزلك',
-  sf_your_plan: 'مخططك',
-  sf_edit_room: 'عدّل غرفة',
-  sf_advanced: 'المحرر المتقدم',
-
-  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
-  sf_q_overall_width: 'هل عرض منزلك فعلًا {{text}}؟',
-  sf_q_overall_depth: 'هل عمق منزلك فعلًا {{text}}؟',
-
-  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   sf_error_render: 'تعذّر إنشاء تصميمك هذه المرة — لم يُخصم شيء. يرجى المحاولة مرة أخرى.',
   sf_error_busy: 'يتم إنشاء تصاميم كثيرة الآن. يرجى المحاولة بعد بضع دقائق.',
   sf_obj_sofa: 'أريكة',
@@ -71590,6 +71630,11 @@ const ar: Partial<Record<TranslationKey, string>> = {
   sf_obj_floor: 'أرضية',
   sf_obj_ceiling: 'سقف',
   sf_obj_other: 'قطعة',
+  sf_result_title: 'منزلك',
+  sf_your_home: 'منزلك',
+  sf_your_plan: 'مخططك',
+  sf_edit_room: 'عدّل غرفة',
+  sf_advanced: 'المحرر المتقدم',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -85790,6 +85835,19 @@ const he: Partial<Record<TranslationKey, string>> = {
   rend_edit_failed: 'השינוי נשמר, אך לא ניתן היה לעדכן את התמונה — לא חויבת.',
   rend_edit_retry: 'עדכן את התמונה שוב',
 
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_attr_open_post: 'פתיחת הפוסט המקורי',
+  p2d_attr_open_listing: 'פתיחת המודעה המקורית',
+  p2d_attr_posted_by: 'פורסם על ידי',
+  p2d_attr_source: 'מקור',
+  p2d_attr_thread: 'שרשור',
+  p2d_attr_original_text: 'הטקסט המקורי',
+  p2d_attr_show_more: 'הצגת הטקסט המלא',
+  p2d_attr_show_less: 'הצגה מקוצרת',
+  p2d_attr_platform_telegram: 'טלגרם',
+  p2d_attr_platform_forum: 'פורום',
+  p2d_attr_platform_portal: 'אתר נדל״ן',
+
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   sf_back: 'חזרה',
   sf_upload_title: 'העלו את תוכנית הדירה',
@@ -85803,6 +85861,8 @@ const he: Partial<Record<TranslationKey, string>> = {
   sf_q_eyebrow: 'שאלה קצרה אחת',
   sf_q_progress: 'שאלה קצרה {{n}} מתוך {{total}}',
   sf_q_body: 'התשובה שלכם תתאים את הבית לתוכנית.',
+  sf_q_overall_width: 'האם רוחב הבית באמת {{text}}?',
+  sf_q_overall_depth: 'האם עומק הבית באמת {{text}}?',
   sf_review_detail: 'בדיקה מפורטת של התוכנית',
   sf_style_title: 'בחרו סגנון',
   sf_style_body: 'בחרו את המראה שאתם אוהבים. אפשר לשנות הכול אחר כך.',
@@ -85839,17 +85899,6 @@ const he: Partial<Record<TranslationKey, string>> = {
   sf_stage_design: 'מעצבים את הבית שלכם',
   sf_stage_build: 'יוצרים את העיצוב הפוטוריאליסטי',
   sf_stage_finish: 'מכינים לעריכה',
-  sf_result_title: 'הבית שלכם',
-  sf_your_home: 'הבית שלכם',
-  sf_your_plan: 'התוכנית שלכם',
-  sf_edit_room: 'עריכת חדר',
-  sf_advanced: 'עורך מתקדם',
-
-  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
-  sf_q_overall_width: 'האם רוחב הבית באמת {{text}}?',
-  sf_q_overall_depth: 'האם עומק הבית באמת {{text}}?',
-
-  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   sf_error_render: 'לא ניתן היה ליצור את העיצוב הפעם — לא חויבת. נסו שוב.',
   sf_error_busy: 'כרגע נוצרים עיצובים רבים. נסו שוב בעוד כמה דקות.',
   sf_obj_sofa: 'ספה',
@@ -85886,6 +85935,11 @@ const he: Partial<Record<TranslationKey, string>> = {
   sf_obj_floor: 'רצפה',
   sf_obj_ceiling: 'תקרה',
   sf_obj_other: 'פריט',
+  sf_result_title: 'הבית שלכם',
+  sf_your_home: 'הבית שלכם',
+  sf_your_plan: 'התוכנית שלכם',
+  sf_edit_room: 'עריכת חדר',
+  sf_advanced: 'עורך מתקדם',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

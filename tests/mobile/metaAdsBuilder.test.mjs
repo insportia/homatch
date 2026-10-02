@@ -1362,6 +1362,36 @@ test('META CONNECT: one tap = one attempt to Meta\'s own dialog with the way bac
   }
 });
 
+/*
+ * THE RETURN FROM META WINS, WHATEVER FINISHES FIRST. The draft loads in
+ * parallel with the post-connect refresh; when it finished after the owner had
+ * been sent back to their step, it wrote the URL from the search it closed over
+ * at mount — resurrecting the consumed ?connect=ok and putting the owner back on
+ * Account. Here the draft is held until the step change has happened, so the
+ * losing order is the one tested, every run.
+ */
+test('META CONNECT: a draft that loads after the return never undoes it — same step, no ?connect= resurrected', opts, async (t) => {
+  if (skipReason) assert.fail(`meta ads builder gate could not run: ${skipReason}`);
+  const { page } = await boot(t, { width: 390, height: 844, lang: 'ka', statusOver: { mode: 'REAL', connection: { status: 'NOT_CONNECTED', health: 'NOT_CONNECTED', granted_scopes: [] } } });
+  let releaseDraft;
+  const stepChanged = new Promise((res) => { releaseDraft = res; });
+  await page.route('**/rest/v1/meta_campaigns**', async (r) => {
+    if (r.request().method() === 'GET') await stepChanged;
+    return r.fallback();
+  });
+  const draftServed = page.waitForResponse((res) => res.url().includes('/rest/v1/meta_campaigns') && res.request().method() === 'GET');
+  await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=account&from=destination&connect=ok`, { waitUntil: 'domcontentloaded' });
+  await page.waitForURL(/step=destination/, { timeout: 15000 });
+  releaseDraft();
+  await draftServed;
+  /* The draft's own URL write follows its load; the creatives read comes right after it. */
+  await page.waitForResponse((res) => res.url().includes('/rest/v1/meta_creatives'), { timeout: 15000 });
+  await waitReady(page);
+  assert.match(page.url(), /step=destination/, 'the owner stays on the step they came from');
+  assert.match(page.url(), /draft=c1/);
+  assert.doesNotMatch(page.url(), /connect=/, 'a consumed return is never written back');
+});
+
 test('MOBILE UX: on every step in Georgian at 320 and 390, no button clips its label, nothing leaves the screen, no word is split', opts, async (t) => {
   if (skipReason) assert.fail(`meta ads builder gate could not run: ${skipReason}`);
   const failures = [];

@@ -76,6 +76,12 @@ export const FORUM_GE: ForumSourceConfig = {
    * The name is in its own span, which is what the board uses it for.
    */
   authorPattern: /class=['"]normalname['"][^>]*>\s*<a[^>]*>([^<]{2,40})</i,
+  /*
+   * THE PROFILE, from the post's own "პროფილი" button: showuser=<member id>.
+   * Not the name link above -- that one is javascript:paste(...), a quoting
+   * helper, and must never become a customer-facing link.
+   */
+  authorProfile: { pattern: /[?&]showuser=(\d{1,12})\b/i, idGroup: 1 },
   datePattern: /#\d+\s*·\s*([^·]{6,40})·/,
   boilerplate: [
     /*

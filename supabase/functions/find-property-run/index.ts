@@ -114,7 +114,10 @@ Deno.serve(async (req: Request) => {
 
     const plan = compileSupplyPlan({
       plan: searchPlan as SearchPlan,
-      switches: { telegram: settings.telegramEnabled, forum: false, portals: true, livePortalAdapters },
+      switches: {
+        telegram: settings.telegramEnabled, forum: false, portals: true, livePortalAdapters,
+        workerRoutedAdapters: settings.workerRouteEnabled ? settings.workerRoutedAdapters : [],
+      },
       limits: {
         maxCredits: budget,
         deadlineMinutes: settings.campaignDiscoveryMinutes,

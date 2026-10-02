@@ -22,6 +22,7 @@ import { probeRecognizers } from './speech/SpeechRecognizerProbe.js';
 import { probeLanguageConfigs } from './speech/SpeechLanguageProbe.js';
 import { mountTelegramRoutes } from './telegram/routes.js';
 import { createGramJsDriver } from './telegram/GramJsDriver.js';
+import { mountDiscoveryRoutes } from './discovery/routes.js';
 
 const app = express();
 const ALLOWED_ORIGINS = new Set(['https://homatch.live', 'https://www.homatch.live']);
@@ -74,6 +75,9 @@ async function auth(req: any, res: any, next: any) {
 // Mounted before the routes below; token-only; inert until TELEGRAM_ENABLED.
 const telegram = mountTelegramRoutes(app, { token: TOKEN, driverFactory: createGramJsDriver });
 process.once('SIGTERM', () => { void telegram.shutdown(); });
+// Phase 2 discovery: one SSRF-guarded, address-pinned fetch hop for portal
+// jobs routed through the worker. Token-only; see discovery/routes.ts.
+mountDiscoveryRoutes(app, { token: TOKEN });
 
 app.get('/health', (_q: any, r: any) =>
   r.json({

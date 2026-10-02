@@ -46,7 +46,8 @@
 // confident about.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { createPortalRuntime } from '../../../src/research-core/market/runtime.ts';
+import { createPortalRuntime, PORTAL_USER_AGENT } from '../../../src/research-core/market/runtime.ts';
+import { WorkerTransport } from '../../../src/research-core/fetch/worker-transport.ts';
 import { structuredQuality } from '../../../src/research-core/parse/listing.ts';
 import { detectLanguage } from '../../../src/research-core/normalize/language.ts';
 import { contentHash } from '../../../src/research-core/normalize/hash.ts';
@@ -1651,7 +1652,18 @@ async function portalJob(db: any, body: any, started: number) {
       note: 'the registry does not have this adapter LIVE_TESTED/PRODUCTIVE and active; nothing was fetched' });
   }
 
-  const runtime = createPortalRuntime();
+  /*
+   * THE ROUTE. EDGE fetches from here; WORKER hands each hop to the official
+   * worker (pinned, SSRF-guarded). Allowlist, robots, rate limits and the
+   * redirect policy run here either way.
+   */
+  const route = String(body.executor ?? 'EDGE') === 'WORKER' ? 'WORKER' : 'EDGE';
+  const runtime = route === 'WORKER'
+    ? createPortalRuntime({ transport: new WorkerTransport({
+      baseUrl: Deno.env.get('WORKER_URL') || '', token: Deno.env.get('WORKER_TOKEN') || '',
+      userAgent: PORTAL_USER_AGENT, trace: String(body.trace ?? '').slice(0, 64) || undefined,
+    }) })
+    : createPortalRuntime();
   const adapter = runtime.registry.all().find((a) => a.id === adapterId);
   if (!adapter) {
     return json({ success: true, outcome: 'ADAPTER_MISSING', adapterId, observations: 0 });
@@ -1713,6 +1725,7 @@ async function portalJob(db: any, body: any, started: number) {
     success: true,
     outcome: 'OK',
     adapterId,
+    route,
     runId: body.runId ?? null,
     parsed: outcome.value.listings.length,
     observations: written.length,

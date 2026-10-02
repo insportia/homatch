@@ -193,7 +193,11 @@ values ('discovery_provider_concurrency', '{"TELEGRAM":1,"TELEGRAM_SOURCES":1,"F
 on conflict (key) do nothing;
 insert into public.admin_settings (key, value) values ('find_property_discovery_enabled', 'false'::jsonb)
 on conflict (key) do nothing;
-insert into public.admin_settings (key, value) values ('discovery_worker_lease_enabled', 'false'::jsonb)
+insert into public.admin_settings (key, value) values ('discovery_worker_route_enabled', 'false'::jsonb)
+on conflict (key) do nothing;
+/* Portal adapters whose network hops go through the official worker. Empty
+   until an operator routes one (e.g. a portal that refuses edge runtimes). */
+insert into public.admin_settings (key, value) values ('discovery_worker_portal_adapters', '[]'::jsonb)
 on conflict (key) do nothing;
 
 ------------------------------------------------------------------------------

@@ -50,6 +50,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { createPortalRuntime, PORTAL_SOURCE_POLICIES } from '../../../src/research-core/market/runtime.ts';
 import {
   auditSource,
+  disallowsEverything,
+  parseRobots,
   type AuditFinding,
   type FetchedDocument,
 } from '../../../src/research-core/discovery/source-audit.ts';
@@ -78,6 +80,9 @@ import {
 } from '../../../src/research-core/discovery/candidate-discovery.ts';
 import { createCandidateAuditPath } from '../../../src/research-core/net/candidate-host.ts';
 import { DohResolver } from '../../../src/research-core/net/doh-resolver.ts';
+import { WorkerTransport } from '../../../src/research-core/fetch/worker-transport.ts';
+import { candidateUrlShape } from '../../../src/research-core/net/candidate-host.ts';
+import { PORTAL_USER_AGENT } from '../../../src/research-core/market/runtime.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -140,6 +145,7 @@ Deno.serve(async (req: Request) => {
     if (mode === 'discover') return await discover(db, body, started);
     if (mode === 'audit') return await audit(db, body, started);
     if (mode === 'audit-community') return await auditCommunity(db, body, started);
+    if (mode === 'live-check') return await liveCheck(db, body, started);
 
     return json({
       error: `unknown mode "${mode}"; expected classify, discover, audit or audit-community`,
@@ -984,4 +990,112 @@ async function auditCommunity(
     results,
     elapsedMs: Date.now() - started,
   });
+}
+
+/*
+ * PHASE 2 — BOUNDED LIVE CHECKS (§64): before a source is called LIVE, read it
+ * for real, from production, on each route, and write down what happened.
+ *
+ *   Configured portal adapters: one tiny collection (Tbilisi, sale, 2 rows)
+ *     through the portal runtime -- allowlist, robots, rate limits as always.
+ *     Records whether collection worked, whether detail identity (id + URL)
+ *     came back, and whether the result normalised (a city and a price or an
+ *     area).
+ *   Candidate hosts with no adapter yet (MyHome, livo.ge, ...): robots.txt,
+ *     then the home page only if robots permits it, through the SSRF-guarded
+ *     candidate path. Records status, bytes, latency and whether the page is
+ *     server-rendered with listing data -- never the body.
+ *
+ * EDGE_HTTP always; WORKER_HTTP when the official worker is configured. Rows
+ * go to discovery_source_live_checks (admin-read). No customer, no spend.
+ */
+const LIVE_CHECK_HOSTS = ['www.myhome.ge', 'home.ss.ge', 'ss.ge', 'www.home.ge', 'livo.ge', 'place.ge'];
+
+async function liveCheck(db: ReturnType<typeof createClient>, body: Record<string, unknown>, started: number) {
+  const workerUrl = Deno.env.get('WORKER_URL') || '';
+  const workerToken = Deno.env.get('WORKER_TOKEN') || '';
+  const routes: Array<'EDGE_HTTP' | 'WORKER_HTTP'> = workerUrl && workerToken ? ['EDGE_HTTP', 'WORKER_HTTP'] : ['EDGE_HTTP'];
+  const transportFor = (route: string) => route === 'WORKER_HTTP'
+    ? new WorkerTransport({ baseUrl: workerUrl, token: workerToken, userAgent: PORTAL_USER_AGENT, trace: 'live-check' })
+    : undefined;
+  const requestedHosts = Array.isArray(body.hosts) ? (body.hosts as unknown[]).map(String) : LIVE_CHECK_HOSTS;
+  const hosts = requestedHosts.filter((h) => candidateUrlShape(`https://${h}/`).ok).slice(0, 8);
+  const adapterIds = Array.isArray(body.adapters) ? (body.adapters as unknown[]).map(String) : null;
+  const rows: Record<string, unknown>[] = [];
+  const budgetMs = 110_000;
+
+  for (const route of routes) {
+    const runtime = createPortalRuntime(transportFor(route) ? { transport: transportFor(route) } : {});
+    const adapters = runtime.registry.all().filter((a) => !adapterIds || adapterIds.includes(a.id));
+    for (const adapter of adapters) {
+      if (Date.now() - started > budgetMs) break;
+      const t0 = Date.now();
+      const query = {
+        id: `live-check-${adapter.id}`, transaction: 'SALE', countryCode: 'GE', city: 'Tbilisi',
+        propertyType: 'APARTMENT', district: null, subDistrict: null, projectName: null,
+        area: { min: null, max: null }, rooms: { min: null, max: null }, bedrooms: { min: null, max: null },
+        floor: { min: null, max: null }, price: { min: null, max: null }, priceCurrency: null,
+        languages: [], limit: 2, rationale: 'bounded live check',
+      };
+      let row: Record<string, unknown>;
+      try {
+        if (!adapter.supports(query as never)) {
+          row = { ok: false, limitation: 'UNSUPPORTED_QUERY' };
+        } else {
+          const outcome = await adapter.searchListings(query as never, runtime.context);
+          if (!outcome.ok) {
+            row = { ok: false, limitation: `${outcome.reason}${outcome.detail ? `: ${String(outcome.detail).slice(0, 160)}` : ''}` };
+          } else {
+            const listings = outcome.value.listings;
+            row = {
+              ok: listings.length > 0,
+              collection_items: listings.length,
+              detail_ok: listings.some((l) => !!l.externalId && !!l.url),
+              normalized_ok: listings.some((l) => !!l.listing.city && (!!l.listing.sale || !!l.listing.rent || !!l.listing.area)),
+              limitation: listings.length ? null : 'NO_ITEMS',
+              evidence: { networkRequests: outcome.value.networkRequests ?? null, sampleUrl: listings[0]?.url ?? null },
+            };
+          }
+        }
+      } catch (error) {
+        row = { ok: false, limitation: `ERROR: ${(error instanceof Error ? error.message : String(error)).slice(0, 160)}` };
+      }
+      rows.push({ source_key: adapter.id, market: 'GE', route, latency_ms: Date.now() - t0, evidence: {}, ...row });
+    }
+
+    const path = createCandidateAuditPath({ resolver: new DohResolver(), transport: transportFor(route) });
+    for (const host of hosts) {
+      if (Date.now() - started > budgetMs) break;
+      const t0 = Date.now();
+      const robots = await path.fetchCandidate(`https://${host}/robots.txt`, { maxBytes: 64_000 });
+      const disallow = robots.ok && robots.body ? parseRobots(robots.body).disallow : [];
+      if (robots.ok && disallowsEverything(disallow)) {
+        rows.push({ source_key: host, market: 'GE', route, ok: false, http_status: robots.status ?? null,
+          latency_ms: Date.now() - t0, limitation: 'ROBOTS_DISALLOWS_ALL', evidence: { robots: true } });
+        continue;
+      }
+      const home = await path.fetchCandidate(`https://${host}/`, { maxBytes: 600_000 });
+      const html = home.body ?? '';
+      rows.push({
+        source_key: host, market: 'GE', route,
+        ok: home.ok && (home.status ?? 0) < 400,
+        http_status: home.status ?? null,
+        latency_ms: Date.now() - t0,
+        limitation: home.ok ? (html.length < 2000 ? 'THIN_HTML (client-rendered?)' : null) : (home.refusal ?? 'FAILED'),
+        evidence: {
+          robotsReadable: robots.ok, robotsDisallowRules: disallow.length,
+          bytes: home.bytes ?? null, contentType: home.contentType ?? null,
+          redirects: (home.redirectChain ?? []).length,
+          nextData: html.includes('__NEXT_DATA__'), jsonLd: html.includes('application/ld+json'),
+          challenge: /cf-chl|captcha|challenge-platform|Just a moment/i.test(html),
+        },
+      });
+    }
+  }
+
+  if (rows.length) {
+    const { error } = await db.from('discovery_source_live_checks').insert(rows);
+    if (error) throw error;
+  }
+  return json({ success: true, mode: 'live-check', routes, checks: rows.length, rows, elapsedMs: Date.now() - started });
 }

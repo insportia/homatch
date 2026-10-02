@@ -87,6 +87,8 @@ export interface DiscoveryPlan {
   tranches: PlannedTranche[];
   /** Portal adapters to read (SUPPLY), in priority order. */
   portalAdapters: string[];
+  /** Adapters whose network hops go through the official worker. */
+  workerRoutedAdapters: string[];
   /** Telegram community searches, language-tagged (tranche 2). */
   queryVariants: Array<{ language: string; query: string }>;
   budget: { maxCredits: number | null };
@@ -99,6 +101,8 @@ export interface CompileSwitches {
   portals: boolean;
   /** Portal adapters that are LIVE_TESTED/PRODUCTIVE and active for the market. */
   livePortalAdapters: readonly string[];
+  /** Of those, the ones an operator routes through the official worker. */
+  workerRoutedAdapters?: readonly string[];
 }
 
 export interface CompileLimits {
@@ -179,6 +183,7 @@ export function compileDemandPlan(input: {
     freshness: { activeDemandMaxDays: input.limits.activeDemandMaxDays, revalidateAfterDays: REVALIDATE_AFTER_DAYS },
     tranches: trancheList('DEMAND', input.switches, false),
     portalAdapters: [],
+    workerRoutedAdapters: [],
     queryVariants: input.switches.telegram ? sourceQueriesFor(market, languages) : [],
     budget: { maxCredits: input.limits.maxCredits },
     stopping: {
@@ -231,6 +236,7 @@ export function compileSupplyPlan(input: {
     freshness: { activeDemandMaxDays: input.limits.activeDemandMaxDays, revalidateAfterDays: REVALIDATE_AFTER_DAYS },
     tranches: trancheList('SUPPLY', input.switches, portalAdapters.length > 0),
     portalAdapters,
+    workerRoutedAdapters: portalAdapters.filter((id) => (input.switches.workerRoutedAdapters ?? []).includes(id)),
     queryVariants: input.switches.telegram ? sourceQueriesFor(market, languages) : [],
     budget: { maxCredits: input.limits.maxCredits },
     stopping: {
@@ -279,7 +285,9 @@ export function plannedSourceJobs(plan: DiscoveryPlan, runKey: string): PlannedS
   if (has('PORTAL')) {
     plan.portalAdapters.forEach((adapterId, index) => {
       jobs.push({
-        provider: 'PORTAL', tranche: 1, executor: 'EDGE', platform: 'WEBSITE', language: 'multi',
+        provider: 'PORTAL', tranche: 1,
+        executor: plan.workerRoutedAdapters.includes(adapterId) ? 'WORKER' : 'EDGE',
+        platform: 'WEBSITE', language: 'multi',
         queryKind: 'PORTAL_COLLECT', priority: 68 - Math.min(index, 8), dedupeKey: `${runKey}:PORTAL:${adapterId}`,
         metadata: { ...base, adapterId, subject: plan.subject },
       });

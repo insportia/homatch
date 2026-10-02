@@ -35,8 +35,10 @@ export interface DiscoverySettings {
   campaignDiscoveryMinutes: number;
   /** Phase 2: may a FIND PROPERTY run queue portal / Telegram supply jobs? */
   findPropertyDiscoveryEnabled: boolean;
-  /** Phase 2: may the official worker lease WORKER-executor jobs? */
-  workerLeaseEnabled: boolean;
+  /** Phase 2: may portal jobs route their network hops through the official worker? */
+  workerRouteEnabled: boolean;
+  /** Phase 2: which portal adapters are routed through the worker. */
+  workerRoutedAdapters: string[];
 }
 
 export const DISCOVERY_SETTING_KEYS = [
@@ -57,7 +59,8 @@ export const DISCOVERY_SETTING_KEYS = [
   'campaign_source_discovery_enabled',
   'campaign_discovery_minutes',
   'find_property_discovery_enabled',
-  'discovery_worker_lease_enabled',
+  'discovery_worker_route_enabled',
+  'discovery_worker_portal_adapters',
 ] as const;
 
 const unquote = (v: unknown) => (typeof v === 'string' ? v.replace(/^"|"$/g, '') : v);
@@ -99,7 +102,9 @@ export function parseDiscoverySettings(rows: Array<{ key: string; value: unknown
        swept out from under a campaign that is still running. */
     campaignDiscoveryMinutes: num(m.get('campaign_discovery_minutes'), 30, 5, 45),
     findPropertyDiscoveryEnabled: bool(m.get('find_property_discovery_enabled'), false),
-    workerLeaseEnabled: bool(m.get('discovery_worker_lease_enabled'), false),
+    workerRouteEnabled: bool(m.get('discovery_worker_route_enabled'), false),
+    workerRoutedAdapters: Array.isArray(m.get('discovery_worker_portal_adapters'))
+      ? (m.get('discovery_worker_portal_adapters') as unknown[]).map(String) : [],
   };
 }
 

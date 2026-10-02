@@ -47,7 +47,12 @@ export async function drive(db: any, baseUrl: string, serviceKey: string, body: 
   /* One source job per tick: jobs run one after another and each may take
      up to ~150s, so claiming more than one would let the later leases lapse
      and the same job be claimed twice. The driver ticks every minute. */
-  report.sourceJobs = await runSourceJobs(db, baseUrl, serviceKey, settings, Math.min(5, Number(body.limit) || 1));
+  report.sourceJobs = await runSourceJobs(db, baseUrl, serviceKey, settings, Math.min(5, Number(body.limit) || 1), 'EDGE');
+  /* Portal jobs routed through the official worker: same claim, same lease;
+     the network hop is the worker's (supply-discovery picks the transport). */
+  if (settings.workerRouteEnabled) {
+    report.workerRoutedJobs = await runSourceJobs(db, baseUrl, serviceKey, settings, 1, 'WORKER');
+  }
   report.campaigns = await advanceCampaigns(db, baseUrl, serviceKey, settings, started);
   report.runs = await advanceRuns(db, baseUrl, serviceKey, started);
   report.pauseExpired = await expirePausedCampaigns(db);
@@ -58,7 +63,9 @@ export async function drive(db: any, baseUrl: string, serviceKey: string, body: 
   return { success: true, ...report };
 }
 
-async function runSourceJobs(db: any, baseUrl: string, serviceKey: string, settings: DiscoverySettings, limit: number) {
+async function runSourceJobs(
+  db: any, baseUrl: string, serviceKey: string, settings: DiscoverySettings, limit: number, executor: 'EDGE' | 'WORKER',
+) {
   /* v2: one job per run per pass (a large campaign cannot monopolise the
      queue), per-provider concurrency caps, and only EDGE-executor jobs --
      WORKER jobs are leased by the official Railway worker. */
@@ -66,8 +73,8 @@ async function runSourceJobs(db: any, baseUrl: string, serviceKey: string, setti
     p_limit: limit,
     p_lease_seconds: settings.sourceJobLeaseSeconds,
     p_max_attempts: settings.sourceJobMaxAttempts,
-    p_executor: 'EDGE',
-    p_providers: null,
+    p_executor: executor,
+    p_providers: executor === 'WORKER' ? ['PORTAL'] : null,
   });
   if (error) throw error;
   const results: Array<Record<string, unknown>> = [];

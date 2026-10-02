@@ -110,7 +110,7 @@ const PERMANENT = new Set(['NOT_CONFIGURED', 'DISABLED', 'AUTH_FAILED']);
 export async function executeSourceJob(
   baseUrl: string,
   serviceKey: string,
-  job: { id: string; provider: string | null; matching_job_id: string | null; discovery_run_id?: string | null; metadata: any },
+  job: { id: string; provider: string | null; matching_job_id: string | null; discovery_run_id?: string | null; executor?: string | null; metadata: any },
 ): Promise<SourceOutcome> {
   const provider = String(job.provider ?? '').toUpperCase();
   const trace = `campaign-${String(job.matching_job_id ?? job.discovery_run_id ?? job.id).slice(0, 8)}`;
@@ -162,7 +162,7 @@ export async function executeSourceJob(
     if (provider === 'PORTAL') {
       const meta = job.metadata ?? {};
       const { data } = await invokeFunction(baseUrl, serviceKey, 'supply-discovery', {
-        mode: 'portal-job', adapterId: meta.adapterId, subject: meta.subject,
+        mode: 'portal-job', adapterId: meta.adapterId, subject: meta.subject, executor: job.executor ?? 'EDGE',
         runId: job.discovery_run_id ?? null, limitPerSource: 6, trace,
       }, 150_000);
       const kind = String(data?.outcome ?? '');

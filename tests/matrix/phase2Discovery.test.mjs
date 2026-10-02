@@ -57,9 +57,10 @@ test('pause / resume / stop run on the server through discovery_control, owner-c
   assert.match(api, /if \(jobId\) await controlMatchingJob\(propertyId, jobId, 'pause'\)/, 'a running search is paused on the server first');
 });
 
-test('the driver claims through the fair v2 function, EDGE jobs only, and stops a pause before its reservation lapses', () => {
+test('the driver claims through the fair v2 function per executor, and stops a pause before its reservation lapses', () => {
   assert.match(DRIVER, /rpc\('claim_discovery_source_jobs_v2'/);
-  assert.match(DRIVER, /p_executor: 'EDGE'/);
+  assert.match(DRIVER, /p_executor: executor/);
+  assert.match(DRIVER, /runSourceJobs\(db, baseUrl, serviceKey, settings, Math\.min\(5, Number\(body\.limit\) \|\| 1\), 'EDGE'\)/);
   assert.doesNotMatch(DRIVER, /rpc\('claim_discovery_source_jobs',/);
   assert.match(DRIVER, /expirePausedCampaigns\(db\)/);
 });
@@ -160,4 +161,31 @@ test('the outside-search panel shows only real server state and never a provider
   assert.match(panel, /controlOutsideRun\(run\.id, action\)/);
   const page = read('src/pages/FindPropertyPage.tsx');
   assert.match(page, /<OutsideSearchPanel /);
+});
+
+// Worker route (Hybrid) and live checks
+test('portal hops route through the official worker only when an operator says so, with no service key on Railway', () => {
+  const sd = read('supabase/functions/supply-discovery/index.ts');
+  assert.match(sd, /new WorkerTransport\(\{/);
+  assert.match(sd, /String\(body\.executor \?\? 'EDGE'\) === 'WORKER'/);
+  const driver = read('supabase/functions/discovery-queue-worker/driver.ts');
+  assert.match(driver, /if \(settings\.workerRouteEnabled\)/);
+  assert.match(driver, /p_providers: executor === 'WORKER' \? \['PORTAL'\] : null/);
+  const worker = read('official-worker/src/discovery/SafeFetch.ts') + read('official-worker/src/discovery/routes.ts');
+  assert.doesNotMatch(worker, /SUPABASE_SERVICE_ROLE_KEY|service_role/, 'the worker holds no database authority');
+  assert.match(worker, /lookup: \(_host: string, options: any, callback: any\)/, 'the connection is pinned');
+  assert.match(worker, /answers\.some\(\(a\) => !isPublicAddress\(a\.address\)\)/, 'every DNS answer is checked');
+  assert.match(read('official-worker/src/index.ts'), /mountDiscoveryRoutes\(app, \{ token: TOKEN \}\)/);
+});
+
+test('live checks are bounded, robots-first, write only admin-read rows, and never store a page body', () => {
+  const sa = read('supabase/functions/source-audit/index.ts');
+  const fn = sa.slice(sa.indexOf('async function liveCheck'));
+  assert.match(fn, /disallowsEverything\(disallow\)/);
+  const robots = fn.indexOf("robots.txt`");
+  const home = fn.indexOf("https://${host}/`, { maxBytes");
+  assert.ok(robots > 0 && home > robots, 'robots.txt is read before the home page');
+  assert.match(fn, /from\('discovery_source_live_checks'\)\.insert\(rows\)/);
+  assert.doesNotMatch(fn, /body: html|html: html|evidence: \{[^}]*html[,}]/, 'no body is stored');
+  assert.ok(sa.includes("'www.myhome.ge'"), 'MyHome is re-audited from production');
 });

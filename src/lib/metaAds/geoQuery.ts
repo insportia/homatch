@@ -64,23 +64,34 @@ export function queryVariants(q: string): string[] {
   return out;
 }
 
-/** Country names in all six interface languages + English, so any of them finds the country. */
+const fold = (x: string) => x.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+/**
+ * Country names in all six interface languages + English, so any of them finds
+ * the country — and in any script: "საქართველო", "Sakartvelo", "Georgia",
+ * "Грузия", "Gürcistan" all find GE. Names come from the runtime's CLDR data
+ * (Intl.DisplayNames), compared both as written and transliterated to Latin;
+ * no hand-written country dictionary.
+ */
 export function countryNameMatches(code: string, needle: string, langs: readonly string[] = ['en', 'ka', 'ru', 'tr', 'ar', 'he']): boolean {
-  const n = String(needle ?? '').trim().toLowerCase();
+  const n = fold(String(needle ?? '').trim());
   if (!n) return true;
   if (code.toLowerCase() === n) return true;
-  const latin = NON_LATIN.test(n) ? transliterate(n) : null;
+  const latin = NON_LATIN.test(n) ? fold(transliterate(n)) : n;
   for (const l of langs) {
     let name = '';
     try { name = new Intl.DisplayNames([l], { type: 'region' }).of(code) ?? ''; } catch { /* runtime without this locale */ }
-    const low = name.toLowerCase();
-    if (low && (low.includes(n) || (latin && low.includes(latin)))) return true;
+    if (!name || name === code) continue;
+    const low = fold(name);
+    if (low.includes(n) || low.includes(latin)) return true;
+    if (NON_LATIN.test(name) && fold(transliterate(name)).includes(latin)) return true;
   }
   return false;
 }
 
-/** Meta's location types the builder searches, per tab. */
+/** Meta's location types the builder searches. `any` is the one universal search. */
 export const SEARCH_TYPES = {
+  any: ['region', 'city', 'neighborhood', 'subcity'],
   place: ['city', 'neighborhood', 'subcity'],
   region: ['region'],
 } as const;
@@ -90,4 +101,32 @@ export function locationTypeOf(metaType: string): 'city' | 'region' | 'neighborh
   if (metaType === 'region') return 'region';
   if (metaType === 'neighborhood' || metaType === 'subcity') return 'neighborhood';
   return 'city';
+}
+
+/**
+ * A street or an address cannot be targeted by name. What CAN be asked of
+ * Meta is the area around it: the other comma-separated parts ("Vake,
+ * Chavchavadze Ave 12" → "Vake"). Never the street itself, never a guess —
+ * an empty list means the owner places a pin instead.
+ */
+export function streetAreaParts(q: string): string[] {
+  return String(q ?? '').split(/[,،]/).map((p) => p.trim()).filter((p) => p.length >= 2 && !looksLikeStreet(p)).slice(0, 2);
+}
+
+type Ranked = { type: string; name: string; countryCode?: string | null };
+const TYPE_ORDER: Record<string, number> = { country: 0, region: 1, city: 2, neighborhood: 3 };
+
+/**
+ * One list, most likely first: an exact name match (in any script), then the
+ * preferred country's places, then Meta's own order. Stable otherwise.
+ */
+export function rankResults<T extends Ranked>(rows: T[], q: string, prefer?: string | null): T[] {
+  const n = fold(String(q ?? '').trim());
+  const latin = NON_LATIN.test(n) ? fold(transliterate(n)) : n;
+  const exact = (r: T) => { const x = fold(r.name); return x === n || x === latin || fold(transliterate(r.name)) === latin; };
+  return rows.map((r, i) => ({ r, i })).sort((a, b) =>
+    Number(exact(b.r)) - Number(exact(a.r))
+    || Number(!!prefer && b.r.countryCode === prefer) - Number(!!prefer && a.r.countryCode === prefer)
+    || (exact(a.r) ? (TYPE_ORDER[a.r.type] ?? 9) - (TYPE_ORDER[b.r.type] ?? 9) : 0)
+    || a.i - b.i).map((x) => x.r);
 }

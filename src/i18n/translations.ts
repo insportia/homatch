@@ -13915,6 +13915,11 @@ const en = {
   madsb_pfd_duration_below_minimum: 'Duration is below the minimum',
   madsb_pfd_goal_unsupported: 'This goal is not available',
   madsb_pfd_destination_goal_mismatch: 'The destination does not fit this goal',
+
+  /* ── META ADS — FINAL ACCEPTANCE ── */
+  mm_g_search_ph: 'Country, city, district or region — e.g. საქართველო, Tbilisi, Ваке',
+  mm_g_countries_only: 'Countries are shown. Connect Meta to search cities and districts too.',
+  mm_g_street_nearest: 'Meta cannot target a street. These are the nearest areas it can — or place a pin for the exact spot.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -27744,6 +27749,11 @@ const ka: Partial<Record<TranslationKey, string>> = {
   madsb_pfd_duration_below_minimum: 'ხანგრძლივობა მინიმუმზე ნაკლებია',
   madsb_pfd_goal_unsupported: 'ეს მიზანი ხელმისაწვდომი არ არის',
   madsb_pfd_destination_goal_mismatch: 'მიმართულება ამ მიზანს არ შეესაბამება',
+
+  /* ── META ADS — FINAL ACCEPTANCE ── */
+  mm_g_search_ph: 'ქვეყანა, ქალაქი, უბანი ან რეგიონი — მაგ. საქართველო, თბილისი, Vake',
+  mm_g_countries_only: 'ნაჩვენებია ქვეყნები. ქალაქებისა და უბნების საძიებლად დააკავშირეთ Meta.',
+  mm_g_street_nearest: 'Meta ქუჩაზე ტარგეტირებას ვერ აკეთებს. ეს უახლოესი არეალებია, რომლებზეც შეუძლია — ან ზუსტი ადგილისთვის დასვით ნიშნული.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -41564,6 +41574,11 @@ const ru: Partial<Record<TranslationKey, string>> = {
   madsb_pfd_duration_below_minimum: 'Срок меньше минимального',
   madsb_pfd_goal_unsupported: 'Эта цель недоступна',
   madsb_pfd_destination_goal_mismatch: 'Место назначения не подходит для этой цели',
+
+  /* ── META ADS — FINAL ACCEPTANCE ── */
+  mm_g_search_ph: 'Страна, город, район или регион — напр. საქართველო, Tbilisi, Ваке',
+  mm_g_countries_only: 'Показаны страны. Подключите Meta, чтобы искать также города и районы.',
+  mm_g_street_nearest: 'Meta не может нацелить рекламу на улицу. Вот ближайшие районы, которые она поддерживает, — или поставьте метку для точного места.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -55382,6 +55397,11 @@ const tr: Partial<Record<TranslationKey, string>> = {
   madsb_pfd_duration_below_minimum: 'Süre minimumun altında',
   madsb_pfd_goal_unsupported: 'Bu hedef kullanılamıyor',
   madsb_pfd_destination_goal_mismatch: 'Hedef konum bu amaca uymuyor',
+
+  /* ── META ADS — FINAL ACCEPTANCE ── */
+  mm_g_search_ph: 'Ülke, şehir, semt veya bölge — örn. საქართველო, Tbilisi, Ваке',
+  mm_g_countries_only: 'Ülkeler gösteriliyor. Şehir ve semt aramak için Meta’yı bağlayın.',
+  mm_g_street_nearest: 'Meta bir sokağı hedefleyemez. Hedefleyebildiği en yakın alanlar bunlar — ya da tam konum için bir iğne bırakın.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -69200,6 +69220,11 @@ const ar: Partial<Record<TranslationKey, string>> = {
   madsb_pfd_duration_below_minimum: 'المدة أقل من الحد الأدنى',
   madsb_pfd_goal_unsupported: 'هذا الهدف غير متاح',
   madsb_pfd_destination_goal_mismatch: 'الوجهة لا تناسب هذا الهدف',
+
+  /* ── META ADS — FINAL ACCEPTANCE ── */
+  mm_g_search_ph: 'دولة أو مدينة أو حي أو منطقة — مثل საქართველო أو Tbilisi أو Ваке',
+  mm_g_countries_only: 'تظهر الدول. اربط Meta للبحث عن المدن والأحياء أيضًا.',
+  mm_g_street_nearest: 'لا يستطيع Meta استهداف شارع. هذه أقرب المناطق التي يدعمها — أو ضع دبوسًا للموقع الدقيق.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -83018,6 +83043,11 @@ const he: Partial<Record<TranslationKey, string>> = {
   madsb_pfd_duration_below_minimum: 'משך הזמן קצר מהמינימום',
   madsb_pfd_goal_unsupported: 'היעד הזה אינו זמין',
   madsb_pfd_destination_goal_mismatch: 'היעד אינו מתאים למטרה הזו',
+
+  /* ── META ADS — FINAL ACCEPTANCE ── */
+  mm_g_search_ph: 'מדינה, עיר, שכונה או אזור — למשל საქართველო, Tbilisi, Ваке',
+  mm_g_countries_only: 'מוצגות מדינות. חברו את Meta כדי לחפש גם ערים ושכונות.',
+  mm_g_street_nearest: 'Meta לא יכולה לטרגט רחוב. אלה האזורים הקרובים שהיא תומכת בהם — או סמנו נעץ למיקום המדויק.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

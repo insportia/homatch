@@ -487,8 +487,9 @@ export interface StrategyPreview {
   };
 }
 export const strategyPreview = (campaignId: string) => call<StrategyPreview>('strategy_preview', { campaignId });
-export const geoSearch = (q: string, type: 'country' | 'region' | 'place', locale: string, country?: string) =>
-  call<{ results: Array<LocationChoiceRow & { region?: string | null; countryName?: string | null }>; reason?: string; street?: boolean; variant?: number }>('geo_search', { q, type, locale, country });
+/** The universal location search ('any'): countries, regions, cities, districts in one list. `prefer` ranks, never filters. */
+export const geoSearch = (q: string, type: 'any' | 'country' | 'region' | 'place', locale: string, country?: string, prefer?: string) =>
+  call<{ results: Array<LocationChoiceRow & { region?: string | null; countryName?: string | null; nearest?: boolean }>; reason?: string; street?: boolean; variant?: number }>('geo_search', { q, type, locale, country, prefer });
 /** Meta's locale keys for a language (type=adlocale), whole-language entry first. */
 export const localeSearch = (code: string) =>
   call<{ results: LanguageChoiceRow[]; reason?: string }>('locale_search', { code });

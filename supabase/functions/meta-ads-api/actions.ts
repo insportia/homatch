@@ -22,7 +22,7 @@ import { statusCounts } from '../../../src/lib/metaAds/uiStatus.ts';
 import { validateSetting, isCredentialKey } from '../../../src/lib/metaAds/adminSettings.ts';
 import { claimFingerprint, afterApproval, type NextAction } from '../../../src/lib/metaAds/moderation.ts';
 import { isTermsRefusal, missingInstantFormScopes } from '../../../src/lib/metaAds/instantForms.ts';
-import { countryNameMatches, locationTypeOf, looksLikeStreet, metaLocale, queryVariants, SEARCH_TYPES } from '../../../src/lib/metaAds/geoQuery.ts';
+import { countryNameMatches, locationTypeOf, looksLikeStreet, metaLocale, queryVariants, rankResults, SEARCH_TYPES, streetAreaParts } from '../../../src/lib/metaAds/geoQuery.ts';
 import { validateLeadFormSpec, leadFormPayload, leadFormPreview, META_LOCALE, type LeadFormSpec } from '../../../src/lib/metaAds/leadForms.ts';
 import { graph, MetaApiError, mockExternalId, hasScopes, INSTANT_FORM_SCOPES, type MetaMode } from '../_shared/metaAds.ts';
 import {
@@ -103,25 +103,42 @@ export async function handleAction(x: ActionCtx): Promise<Response | null> {
     switch (action) {
       /* ── LOCATIONS: Meta's own targeting catalogue ──────────────────── */
       case 'geo_search': {
+        /* ONE universal search: countries (CLDR names, every script, no Meta
+           call), then Meta's regions, cities and districts. A street finds the
+           area around it (streetAreaParts) and is flagged so the owner can
+           place a pin — a street is never silently turned into a city.
+           Instrumented with counts and timings only; the query is never logged. */
+        const started = Date.now();
         const q = String(body.q ?? '').trim().slice(0, 80);
-        const tab = body.type === 'country' ? 'country' : body.type === 'region' ? 'region' : 'place';
+        const tab = body.type === 'country' ? 'country' : body.type === 'region' ? 'region' : body.type === 'place' ? 'place' : 'any';
         const lang = String(body.locale ?? 'en').slice(0, 5);
+        const prefer = /^[A-Z]{2}$/.test(String(body.prefer ?? '')) ? String(body.prefer) : null;
         if (tab === 'country') return json({ results: countryMatches(q, lang) });
+        const countries = tab === 'any' && q.length >= 2 ? countryMatches(q, lang).slice(0, 4) : [];
+        const log = (extra: Record<string, unknown>) => console.log(JSON.stringify({
+          evt: 'meta_geo_search', tab, qlen: q.length, ms: Date.now() - started, countries: countries.length, ...extra,
+        }));
         if (q.length < 2) return json({ results: [] });
-        if (mode === 'MOCK') return json({ results: [], mode, reason: 'MOCK_MODE_NO_META_CATALOGUE' });
+        if (mode === 'MOCK') { log({ meta: 'mock' }); return json({ results: countries, mode, reason: 'MOCK_MODE_NO_META_CATALOGUE' }); }
         const token = await userToken(sb, uid);
-        if (!token) return json({ error: 'NOT_CONNECTED', code: 'NOT_CONNECTED' }, 400);
+        if (!token) {
+          // Countries never need Meta; places do.
+          if (tab === 'any') { log({ meta: 'not_connected' }); return json({ results: countries, reason: 'NOT_CONNECTED' }); }
+          return json({ error: 'NOT_CONNECTED', code: 'NOT_CONNECTED' }, 400);
+        }
         const country = /^[A-Z]{2}$/.test(String(body.country ?? '')) ? String(body.country) : null;
         const locale = metaLocale(lang);
         const types = SEARCH_TYPES[tab];
+        const street = looksLikeStreet(q);
         // As typed first; then the Latin spelling for Georgian / Cyrillic input.
-        const variants = queryVariants(q);
+        const variants = street ? streetAreaParts(q).flatMap(queryVariants) : queryVariants(q);
         let rows: any[] = [];
         let usedVariant = 0;
+        let cached = false;
         for (let v = 0; v < variants.length && !rows.length; v++) {
           const key = `${variants[v]}|${types.join(',')}|${locale}|${country ?? ''}`;
           const hit = geoCacheGet(key);
-          if (hit) { rows = hit; usedVariant = v; break; }
+          if (hit) { rows = hit; usedVariant = v; cached = true; break; }
           const params = new URLSearchParams({ type: 'adgeolocation', q: variants[v], location_types: JSON.stringify(types), limit: '20', locale });
           if (country) params.set('country_code', country);
           try {
@@ -131,7 +148,8 @@ export async function handleAction(x: ActionCtx): Promise<Response | null> {
             usedVariant = v;
           } catch (e) {
             console.log(JSON.stringify({ evt: 'meta_geo_search_failed', variant: v, types, code: e instanceof MetaApiError ? e.normalized.code : 'FAILED' }));
-            if (v === variants.length - 1) throw e;
+            // Countries still answer when Meta does not.
+            if (v === variants.length - 1) { if (countries.length) { log({ meta: 'failed' }); return json({ results: countries, reason: 'META_UNAVAILABLE' }); } throw e; }
           }
         }
         // Real coordinates for the map, only where Meta gives them (never invented).
@@ -152,18 +170,21 @@ export async function handleAction(x: ActionCtx): Promise<Response | null> {
             }
           } catch { /* the map then lists the place as "not drawn" — targeting is unaffected */ }
         }
+        const places = rows.map((r) => {
+          const t = locationTypeOf(String(r.type ?? (tab === 'region' ? 'region' : 'city')));
+          return {
+            type: t, key: String(r.key), name: String(r.name ?? ''), countryCode: String(r.country_code ?? ''),
+            region: r.region ?? null, countryName: r.country_name ?? null,
+            ...(t === 'neighborhood' && r.type === 'subcity' ? { metaType: 'subcity' } : {}),
+            ...(street ? { nearest: true } : {}),
+            ...(coords[String(r.key)] ?? {}),
+          };
+        });
+        log({ meta: cached ? 'cache' : 'graph', places: places.length, variant: usedVariant, street });
         return json({
           variant: usedVariant,
-          street: !rows.length && looksLikeStreet(q),
-          results: rows.map((r) => {
-            const t = locationTypeOf(String(r.type ?? (tab === 'region' ? 'region' : 'city')));
-            return {
-              type: t, key: String(r.key), name: String(r.name ?? ''), countryCode: String(r.country_code ?? ''),
-              region: r.region ?? null, countryName: r.country_name ?? null,
-              ...(t === 'neighborhood' && r.type === 'subcity' ? { metaType: 'subcity' } : {}),
-              ...(coords[String(r.key)] ?? {}),
-            };
-          }),
+          street,
+          results: rankResults([...(street ? [] : countries), ...places], q, prefer).slice(0, 24),
         });
       }
 

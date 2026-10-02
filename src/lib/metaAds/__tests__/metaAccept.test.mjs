@@ -105,3 +105,48 @@ test('copy: every new key has six real translations with the placeholders intact
     assert.ok(inAllLocales(k), `${k} applied`);
   }
 });
+
+/* ── LOCATION: one universal search ────────────────────────────────────── */
+
+test('LOCATION: "საქართველო" and every other spelling of Georgia finds GE — from CLDR, no dictionary', async () => {
+  const { countryNameMatches, rankResults, streetAreaParts, looksLikeStreet, queryVariants, SEARCH_TYPES } = await import('../geoQuery.ts');
+  for (const q of ['საქართველო', 'Sakartvelo', 'Georgia', 'Грузия', 'Gürcistan', 'جورجيا', 'גאורגיה', 'GE']) assert.ok(countryNameMatches('GE', q), q);
+  assert.ok(!countryNameMatches('DE', 'საქართველო'));
+  assert.ok(countryNameMatches('TR', 'Турция') && countryNameMatches('TR', 'თურქეთი'));
+  // Places: as typed, then the Latin spelling Meta's catalogue uses.
+  assert.deepEqual(queryVariants('თბილისი'), ['თბილისი', 'tbilisi']);
+  assert.deepEqual(queryVariants('Тбилиси'), ['Тбилиси', 'Tbilisi']);
+  assert.deepEqual(queryVariants('ბათუმი'), ['ბათუმი', 'batumi']);
+  assert.deepEqual(queryVariants('Батуми'), ['Батуми', 'Batumi']);
+  assert.deepEqual([...SEARCH_TYPES.any], ['region', 'city', 'neighborhood', 'subcity'], 'one search, every kind Meta targets');
+  // A street is never a city: only its other parts are asked, flagged as "nearest".
+  assert.ok(looksLikeStreet('ჭავჭავაძის გამზირი 12'));
+  assert.deepEqual(streetAreaParts('Vake, Chavchavadze Ave 12'), ['Vake']);
+  assert.deepEqual(streetAreaParts('ჭავჭავაძის გამზირი 12'), []);
+  // Ranking: an exact name (any script) first; the chosen country's places next.
+  const rows = [{ type: 'city', name: 'Tbilisi Avenue', countryCode: 'US' }, { type: 'city', name: 'Tbilisi', countryCode: 'GE' }];
+  assert.equal(rankResults(rows, 'თბილისი')[0].countryCode, 'GE');
+  assert.equal(rankResults([{ type: 'city', name: 'Batumi', countryCode: 'TR' }, { type: 'city', name: 'Batumi', countryCode: 'GE' }], 'Batumi', 'GE')[0].countryCode, 'GE');
+});
+
+test('LOCATION: no tabs — one search; typed subtitles; cache, coalescing, retry; countries without Meta', () => {
+  const picker = read('src/components/metaAds/builder/LocationPicker.tsx');
+  assert.doesNotMatch(picker, /const TABS|aria-pressed=\{type ===/, 'the Country/Region/City tabs are gone');
+  assert.match(picker, /geoSearch\(needle, 'any', lang, undefined, scopeCountry \?\? undefined\)/, 'the chosen country ranks, never filters');
+  assert.match(picker, /const INFLIGHT = new Map/, 'identical questions share a request');
+  assert.match(picker, /setTimeout\(r, 700\)/, 'one bounded retry with a pause');
+  assert.match(picker, /if \(id !== reqId\.current\) return;/, 'a superseded answer is dropped');
+  assert.match(picker, /needle\.length < MIN_CHARS/);
+  assert.doesNotMatch(picker, /geolocation|navigator\.geolocation|ipapi|ip-api/i, 'no device or IP location');
+  assert.match(picker, /export function placeSubtitle/);
+  const api = read('supabase/functions/meta-ads-api/actions.ts');
+  const geo = api.slice(api.indexOf("case 'geo_search'"), api.indexOf("case 'locale_search'"));
+  assert.match(geo, /: 'any';/, 'the universal search is the default');
+  assert.match(geo, /if \(tab === 'any'\) \{ log\(\{ meta: 'not_connected' \}\); return json\(\{ results: countries, reason: 'NOT_CONNECTED' \}\); \}/, 'countries work without Meta');
+  assert.match(geo, /evt: 'meta_geo_search', tab, qlen: q\.length/, 'instrumented — the length, never the words');
+  assert.doesNotMatch(geo, /evt: 'meta_geo_search'[^\n]*\bq: q\b/);
+  assert.match(geo, /street \? streetAreaParts\(q\)\.flatMap\(queryVariants\)/);
+  assert.match(geo, /\.\.\.\(street \? \{ nearest: true \} : \{\}\)/, 'a nearest area is labelled as such');
+  const aud = read('src/components/metaAds/builder/AudienceStep.tsx');
+  assert.match(aud, /data-mm-loc-chips=""/, 'chosen areas are removable chips');
+});

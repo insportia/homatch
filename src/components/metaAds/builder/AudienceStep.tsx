@@ -177,35 +177,56 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
             <LocationPicker scopeCountry={scope} full={locations.length >= MAX_LOCATIONS} onPick={onPick}
               onStreet={() => setPinMode(true)}
               isChosen={(r) => locations.some((l) => locationId(l) === `${r.type}:${r.key}`)} />
+            {/* Areas as removable chips; a city or a pin keeps its radius control. */}
+            {locations.some((l) => l.type !== 'city' && l.type !== 'pin') && (
+              <ul className="flex flex-wrap gap-1.5" aria-label={t('mm_b_loc_chosen')} data-mm-loc-chips="">
+                {locations.map((l, idx) => {
+                  if (l.type === 'city' || l.type === 'pin') return null;
+                  const id = locationId(l);
+                  const name = l.type === 'country' ? regionName(l.key, lang) : l.name;
+                  const narrowed = l.type === 'country' && refined.has(l.key);
+                  return (
+                    <li key={id} data-mm-loc={id} className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-[hsl(var(--gold-border))]/60 bg-[hsl(var(--gold-soft))] py-0.5 ps-1 text-[13px]">
+                      <span aria-hidden className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[hsl(var(--gold))] text-2xs font-extrabold text-[#161309]">{narrowed ? '·' : mapNumber(idx)}</span>
+                      <span className="min-w-0">
+                        <span className="font-semibold text-foreground break-words" dir="auto">{name}</span>
+                        <span className="ms-1 text-2xs text-muted-foreground">{narrowed ? t('mm_m_loc_refined') : t(`mm_b_loc_kind_${l.type === 'neighborhood' ? 'neighborhood' : l.type}`)}</span>
+                      </span>
+                      <button type="button" onClick={() => remove(id)} aria-label={t('mm_b_loc_remove', { place: name })} data-mm-loc-remove={id}
+                        className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
             <ul className="grid gap-2" aria-label={t('mm_b_loc_chosen')}>
               {locations.map((l, idx) => {
+                if (l.type !== 'city' && l.type !== 'pin') return null;
                 const id = locationId(l);
-                const name = l.type === 'country' ? regionName(l.key, lang) : l.name;
+                const name = l.name;
                 const radius = effectiveRadiusKm(l.radiusKm, rule.minRadiusKm);
-                const round = l.type === 'city' || l.type === 'pin';
-                const narrowed = l.type === 'country' && refined.has(l.key);
                 return (
                   <li key={id} data-mm-loc={id} className="rounded-2xl border border-[hsl(var(--gold-border))]/50 bg-gradient-to-r from-[hsl(var(--gold-soft))] to-card px-3.5 py-2.5">
                     <div className="flex items-center gap-2">
-                      <span aria-hidden className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[hsl(var(--gold))] text-2xs font-extrabold text-[#161309]">{narrowed ? '·' : mapNumber(idx)}</span>
+                      <span aria-hidden className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[hsl(var(--gold))] text-2xs font-extrabold text-[#161309]">{mapNumber(idx)}</span>
                       <span className="min-w-0 flex-1">
                         <span className="block text-sm font-semibold leading-snug text-foreground break-words" dir="auto">{name}</span>
-                        <span className="block text-2xs text-muted-foreground">{narrowed ? t('mm_m_loc_refined') : t(`mm_b_loc_kind_${l.type === 'neighborhood' ? 'neighborhood' : l.type}`)}</span>
+                        <span className="block text-2xs text-muted-foreground">{t(`mm_b_loc_kind_${l.type}`)}</span>
                       </span>
                       <button type="button" onClick={() => remove(id)} aria-label={t('mm_b_loc_remove', { place: name })} data-mm-loc-remove={id}
                         className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">
                         <X className="h-4 w-4" />
                       </button>
                     </div>
-                    {round && (
-                      <label className="mt-1.5 flex items-center gap-3">
-                        <span className="sr-only">{t('mm_b_loc_radius_label', { place: name })}</span>
-                        <input type="range" min={Math.max(1, minRadius)} max={CITY_RADIUS_KM_MAX} step={1} value={radius} data-mm-radius={id}
-                          onChange={(e) => setRadius(id, Number(e.target.value))}
-                          className="h-2 min-w-0 flex-1 cursor-pointer accent-[hsl(var(--gold))]" />
-                        <span className="w-16 shrink-0 whitespace-nowrap text-end text-[13px] font-semibold tabular-nums text-foreground" dir="ltr">{radius} km</span>
-                      </label>
-                    )}
+                    <label className="mt-1.5 flex items-center gap-3">
+                      <span className="sr-only">{t('mm_b_loc_radius_label', { place: name })}</span>
+                      <input type="range" min={Math.max(1, minRadius)} max={CITY_RADIUS_KM_MAX} step={1} value={radius} data-mm-radius={id}
+                        onChange={(e) => setRadius(id, Number(e.target.value))}
+                        className="h-2 min-w-0 flex-1 cursor-pointer accent-[hsl(var(--gold))]" />
+                      <span className="w-16 shrink-0 whitespace-nowrap text-end text-[13px] font-semibold tabular-nums text-foreground" dir="ltr">{radius} km</span>
+                    </label>
                   </li>
                 );
               })}

@@ -75,6 +75,8 @@ export interface MetaSettings {
   guardEnabled: boolean;
   /** AI narrative for meaningful events and summaries; never in the cycle by default. */
   aiSummaryEnabled: boolean;
+  /** The Facebook Login for Business configuration the Connect button opens (admin-switchable; null = the deployment default). */
+  loginConfigId: string | null;
 }
 
 /** Bounded numeric overrides on top of the analysis defaults. */
@@ -121,6 +123,8 @@ export async function loadSettings(sb: Sb): Promise<MetaSettings> {
     guardPolicy: guardPolicy(m.get('meta_ads_guard_policy')),
     guardEnabled: b('meta_ads_guard_enabled', true),
     aiSummaryEnabled: b('meta_ads_ai_summary_enabled', true),
+    loginConfigId: typeof m.get('meta_ads_login_config_id') === 'string' && /^\d{6,20}$/.test(m.get('meta_ads_login_config_id') as string)
+      ? m.get('meta_ads_login_config_id') as string : null,
   };
 }
 

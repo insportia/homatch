@@ -40,6 +40,8 @@ import {
 import { FORMS_ACTIONABLE, formsStateOf } from '@/components/metaAds/builder/instantFormsCopy';
 import { useMetaDraft } from '@/components/metaAds/builder/useMetaDraft';
 import { ALL_GOALS, STEPS, selectedAsset, stepGap, type StepKey } from '@/components/metaAds/builder/steps';
+import { focusField } from '@/components/metaAds/builder/focusField';
+import { GAP_TARGET, type IssueTarget } from '@/lib/metaAds/readiness';
 import { ChoiceCard, SaveIndicator, StepShell, Stepper, SummaryRow } from '@/components/metaAds/builder/ui';
 import { useConnectReturn } from '@/components/metaAds/builder/useMetaConnect';
 import { ConnectReturnNotice } from '@/components/metaAds/builder/ConnectReturnNotice';
@@ -98,7 +100,9 @@ export default function MetaAdsCreatePage() {
   const { campaign, setCampaign, patch, flush, saveState } = useMetaDraft(initial);
 
   const step: StepKey = (STEPS as readonly string[]).includes(params.get('step') ?? '') ? params.get('step') as StepKey : 'account';
-  const go = useCallback(async (next: StepKey) => {
+  /* With a field (a readiness deep link), the field is brought into view
+     and focused instead of the top of the step. */
+  const go = useCallback(async (next: StepKey, field?: string) => {
     await flush();
     /* Leaving the brief with new words: HOMATCH reads them in the background,
        so the review can already say what it understood. */
@@ -107,8 +111,10 @@ export default function MetaAdsCreatePage() {
       const id = campaign.id;
       void briefInterpret(id, lang).then((r) => setCampaign((c) => (c && c.id === id ? { ...c, brief_understanding: r.understanding } : c) as never)).catch(() => undefined);
     }
-    setParams((prev) => { prev.set('step', next); return prev; }, { replace: false });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    /* `prev` can be the search from before ?connect= was consumed: never carry it forward. */
+    setParams((prev) => { prev.set('step', next); prev.delete('connect'); return prev; }, { replace: false });
+    if (field) focusField(field);
+    else window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [flush, setParams, campaign, step, lang, setCampaign]);
 
   const reloadStatus = useCallback(async () => { setStatus(await getMetaStatus()); }, []);
@@ -264,6 +270,11 @@ export default function MetaAdsCreatePage() {
   const ctx = { status, campaign, creatives };
   const gaps = Object.fromEntries(STEPS.map((s) => [s, stepGap(s, ctx)])) as Record<StepKey, string | null>;
   const idx = STEPS.indexOf(step);
+  /* One tap from any readiness item to the field that resolves it. */
+  const fix = (target: IssueTarget) => void go(target.step as StepKey, target.field);
+  const fixGap = (s: StepKey) => { const g = gaps[s]; fix(g && GAP_TARGET[g] ? GAP_TARGET[g] : { step: s, field: s }); };
+  /* "N left": the steps before Review that still need something, in order. */
+  const openSteps = STEPS.filter((s) => s !== 'review' && s !== 'brief' && gaps[s]);
   const page = selectedAsset(status, 'PAGE');
   const ig = selectedAsset(status, 'INSTAGRAM');
   const acct = selectedAsset(status, 'AD_ACCOUNT');
@@ -351,7 +362,7 @@ export default function MetaAdsCreatePage() {
 
         <div className="mt-4 grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)_360px]">
           <aside className="lg:sticky lg:top-4 lg:self-start">
-            <Stepper steps={STEPS} current={step} gaps={gaps} onGo={(s) => void go(s)} />
+            <Stepper steps={STEPS} current={step} gaps={gaps} onGo={(s) => void go(s)} left={openSteps.length} onLeft={() => openSteps[0] && fixGap(openSteps[0])} />
             <div className="mt-3 hidden lg:block"><SaveIndicator state={saveState} /></div>
           </aside>
 
@@ -387,7 +398,7 @@ export default function MetaAdsCreatePage() {
             {step === 'goal' && (
               <StepShell eyebrow={t('madsb_step_goal')} title={t('madsb_goal_title')} lead={t('madsb_goal_lead')}>
                 <Hint k="mm_c_hint_goal" />
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid gap-2 sm:grid-cols-2" data-mm-field="goal">
                   {ALL_GOALS.map((g) => {
                     const switchedOn = (status?.settings.goalsEnabled ?? []).includes(g);
                     /* Leads on Facebook/Instagram is decided by the server
@@ -435,7 +446,7 @@ export default function MetaAdsCreatePage() {
               <ReviewStep campaign={campaign} status={status} creatives={creatives} totals={preview?.totals ?? null} pricing={pricing}
                 recommended={(preview?.recommendedPlacements as Placement[] | undefined) ?? placements}
                 preflight={preflight} running={running} onPreflight={doPreflight} canLaunch={canLaunch} launchHint={launchHint}
-                onLaunch={() => setConfirmOpen(true)} onEdit={(s) => void go(s as StepKey)}
+                onLaunch={() => setConfirmOpen(true)} onEdit={(s) => void go(s as StepKey)} onFix={fix}
                 strategy={strategy.preview} strategyLoading={strategy.loading} strategyFailed={strategy.failed}
                 nameSuggestion={nameSuggestion} onName={saveName}
                 insights={<ReviewInsights campaign={campaign} status={status} creatives={creatives} patch={patch} onEdit={(s) => void go(s as StepKey)} />} />
@@ -474,7 +485,12 @@ export default function MetaAdsCreatePage() {
           <div className={cn('order-first line-clamp-2 basis-full text-center text-2xs text-muted-foreground sm:order-none sm:line-clamp-none sm:min-w-0 sm:flex-1 sm:basis-auto sm:text-[13px]', step === 'review' && launchHint ? 'block' : 'hidden sm:block')}>
             {step === 'review' && launchHint ? <span id="mm-b-launch-hint-nav">{t(launchHint as never)}</span>
               : step === 'creative' && creativeBlocked ? <span className="text-destructive">{t('mm_b_blocking_continue')}</span>
-                : gaps[step] ? t(gaps[step] as never) : <SaveIndicator state={saveState} />}
+                : gaps[step] ? (
+                  <button type="button" onClick={() => fixGap(step)} data-mm-gap-link={gaps[step]}
+                    className="min-h-11 rounded-md px-1 underline decoration-dotted underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">
+                    {t(gaps[step] as never)}
+                  </button>
+                ) : <SaveIndicator state={saveState} />}
           </div>
           {idx < STEPS.length - 1 ? (
             /* Only a BLOCKING_ERROR creative advice holds Continue; every other step is advisory. */
@@ -550,7 +566,7 @@ function OfferStep({ campaign, properties, patch }: {
   useEffect(() => { setTitle((campaign.offer as { title?: string } | null)?.title ?? ''); }, [campaign.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <StepShell eyebrow={t('madsb_step_offer')} title={t('mads_step_what')} lead={t('madsb_offer_lead')}>
+    <StepShell eyebrow={t('madsb_step_offer')} title={t('mads_step_what')} lead={t('madsb_offer_lead')} data-mm-field="offer">
       {properties.length > 0 && (
         <div>
           <p className="mb-1.5 text-sm font-medium text-foreground">{t('madsb_offer_your_properties')}</p>

@@ -28,7 +28,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   exchangeCodeForToken, metaMode, graph, verifyOAuthState, sealToken, parseSignedRequest, scrubText, TokenEncryptionMissingError,
-  metaAppId, metaAppSecret, metaLoginConfigId,
+  metaAppId, metaAppSecret, metaLoginConfigId, BASE_SCOPES,
 } from '../_shared/metaAds.ts';
 import {
   CONFIRMATION_CODE, connectionIdentities, deletionResponse, hashMetaUserId, newConfirmationCode, signedRequestIdentities,
@@ -202,13 +202,13 @@ Deno.serve(async (req) => {
   if (!claimed?.length) return back('ok');
 
   try {
-    const { token, expiresIn } = await exchangeCodeForToken(code);
+    const { token, expiresIn, upgraded } = await exchangeCodeForToken(code);
     /* With a Login for Business configuration the token belongs to a
        business-integration system user; /me and /me/permissions answer for it. */
     const meRes = await graph('/me?fields=id', { token });
     /* debug_token (app token) names the token's own ids and granted scopes.
        Its failure never fails the connection — /me is always recorded. */
-    let debug: { user_id?: unknown; profile_id?: unknown; scopes?: unknown } | null = null;
+    let debug: { user_id?: unknown; profile_id?: unknown; scopes?: unknown; type?: unknown } | null = null;
     try {
       const d = await graph(`/debug_token?input_token=${encodeURIComponent(token)}`, { token: `${metaAppId()}|${metaAppSecret()}`, attempts: 1 });
       debug = (d.data ?? null) as typeof debug;
@@ -244,7 +244,7 @@ Deno.serve(async (req) => {
        20261001130000). debug_token uses the app token; its failure never
        fails the connection — /me is always recorded. */
     await sb.from('meta_connection_identities').delete().eq('connection_id', conn.id);
-    const identities = connectionIdentities(meRes.id, debug, !!metaLoginConfigId());
+    const identities = connectionIdentities(meRes.id, debug, typeof debug?.type === 'string' ? debug.type === 'SYSTEM_USER' : !!metaLoginConfigId());
     if (identities.length) {
       await sb.from('meta_connection_identities').insert(identities.map((i) => ({ connection_id: conn.id, ...i })));
     }
@@ -253,7 +253,12 @@ Deno.serve(async (req) => {
     await sb.from('meta_assets').update({ selected: false, status: 'UNAVAILABLE' })
       .eq('user_id', state.uid).contains('capabilities', { mock: true });
     await sb.from('meta_funnel_events').insert({ event: 'meta_connected', user_id: state.uid });
-    console.log(JSON.stringify({ tag: 'meta_oauth', event: 'connected', scopes: granted.length, returned: !!state.ret }));
+    /* What Meta granted, by name (scope names are not secrets), the token kind
+       and whether it was upgraded to long-lived — so "why can't I launch" has
+       an answer in the logs. Never the token. */
+    const missingBase = BASE_SCOPES.filter((s) => !granted.includes(s));
+    console.log(JSON.stringify({ tag: 'meta_oauth', event: 'connected', scopes: granted.length, missing: missingBase,
+      kind: typeof debug?.type === 'string' ? debug.type : null, upgraded, expires: expiresAt ? 'dated' : 'none', returned: !!state.ret }));
     return back('ok');
   } catch (err) {
     if (err instanceof TokenEncryptionMissingError) {

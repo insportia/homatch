@@ -821,6 +821,29 @@ Phase 2 (Universal Discovery) is blocked until this is live and proven.
   page decides any app routing.
 - Migration 20261007100000_meta_creative_ai_jobs_grants.sql: authenticated has SELECT only.
 
+## Meta Ads final acceptance (2026-10-02, branch claude/homatch-discovery-engine-rqdnza)
+
+- **Readiness**: `src/lib/metaAds/readiness.ts` maps every preflight check / detail
+  code → step → field; unknown codes are dropped (the check title still speaks),
+  scope names collapse to one "reconnect and allow ad account access" line. Every
+  row, "Left to fix: N" and the footer gap hint deep-link (`focusField.ts`).
+- **Location**: one universal search (`geo_search` type `any`): CLDR country names
+  in every script (no dictionary) + Meta regions/cities/districts, typed subtitles,
+  chips; a street asks only its other comma parts and is flagged `nearest` + pin.
+- **Connect**: `meta_ads_login_config_id` admin setting (seeded with 970930962712211,
+  the SYSTEM-USER config that shows "share business assets"). A USER-access-token
+  Login for Business config gives the standard consent with Page selection — it
+  must be created in the Meta App Dashboard, then set here. Short-lived user
+  tokens are exchanged server-side for long-lived; `expires_soon` asks to reconnect.
+- **Intelligence**: `homatchIntelligence.ts` — opt-in (`meta_campaigns.intelligence`),
+  hard constraints, evidence + cooldown + no-reversal. Suggest-only; APPLY stays the
+  owner's. No automated Meta rules created (deferred: needs live spend to verify).
+- **Lead Center**: `leadCenter.ts` + migration 20261008100100 (follow-ups, lost
+  reason, won date, quality, contact_key, `meta_lead_events` timeline) + 20261008100200
+  (Realtime publication). Drafts are copy-only, never sent.
+- **Privacy**: HOMATCH's /privacy covers the platform only — never prefilled; the
+  owner's own link from their previous HOMATCH form is reused with "Change".
+
 ## Phase 2 — Universal Discovery (branch ccr-76ef455d-0qvt80, 2026-10-02)
 
 - Gap map, build list, operations and recovery: docs/claude/PHASE2_DISCOVERY.md.
@@ -832,7 +855,7 @@ Phase 2 (Universal Discovery) is blocked until this is live and proven.
   (541 posts, 356 listings, all discarded as not-demand until Phase 2); no
   external listing had ever reached a Find Property search (supply_matches
   could not store the shape); 32 supply observations / 1 entity.
-- Migrations 20261008100000 (core) and 20261008100100 (admin intelligence):
+- Migrations 20261009100000 (core) and 20261009100100 (admin intelligence):
   written, proven on a local fixture (tests/sql/run-phase2.sh), NOT applied.
 - Every new switch defaults OFF; nothing changes for customers until an
   operator switches find_property_discovery_enabled /

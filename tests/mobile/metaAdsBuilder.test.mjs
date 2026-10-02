@@ -116,7 +116,7 @@ function fixtures() {
   return { campaign, status, creative, dashboard };
 }
 
-async function boot(t, { width, height, lang, admin = false, statusOver = null, campaignOver = null, creativeOver = null }) {
+async function boot(t, { width, height, lang, admin = false, statusOver = null, campaignOver = null, creativeOver = null, preflightOver = null }) {
   const { chromium } = resolvePlaywright();
   const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
@@ -167,7 +167,18 @@ async function boot(t, { width, height, lang, admin = false, statusOver = null, 
       if (body.action === 'status') return r.fulfill(json(fx.status));
       if (body.action === 'dashboard') return r.fulfill(json(fx.dashboard));
       if (body.action === 'plan_preview') return r.fulfill(json({ issues: [], totals: { mediaCents: 3500, feeCents: 315, totalCents: 3815, feePercent: 9 }, recommendedPlacements: ['facebook_feed', 'facebook_stories', 'instagram_feed', 'instagram_stories'], requirements: [], summary: null }));
-      if (body.action === 'preflight') return r.fulfill(json({ status: 'READY', warnings: 1, checks: [{ key: 'connection', state: 'READY', ok: true }, { key: 'integration_mode', state: 'WARNING', ok: true, detail: 'MOCK_MODE_NOTHING_REACHES_META' }] }));
+      if (body.action === 'preflight') return r.fulfill(json(preflightOver ?? { status: 'READY', warnings: 1, checks: [{ key: 'connection', state: 'READY', ok: true }, { key: 'integration_mode', state: 'WARNING', ok: true, detail: 'MOCK_MODE_NOTHING_REACHES_META' }] }));
+      // The universal location search, as the edge answers it: countries from CLDR names, then Meta's places.
+      if (body.action === 'geo_search') {
+        calls.bodies.push(body);
+        const q = String(body.q ?? '');
+        const GE = { type: 'country', key: 'GE', name: String(body.locale).startsWith('ka') ? 'საქართველო' : 'Georgia', countryCode: 'GE' };
+        const countryName = String(body.locale).startsWith('ka') ? 'საქართველო' : 'Georgia';
+        const TB = { type: 'city', key: '1958367', name: 'Tbilisi', countryCode: 'GE', countryName, region: 'Tbilisi', lat: 41.7151, lng: 44.8271 };
+        const VK = { type: 'neighborhood', key: '2340912', name: 'Vake', countryCode: 'GE', region: 'Tbilisi', metaType: 'neighborhood', lat: 41.709, lng: 44.75 };
+        const results = /საქართველო|georgia|грузия|sakartvelo/i.test(q) ? [GE] : /თბილისი|tbilisi|тбилиси/i.test(q) ? [TB] : /vake|ვაკე|ваке/i.test(q) ? [VK] : [];
+        return r.fulfill(json({ results, variant: 0, street: false }));
+      }
       if (body.action === 'ai_copy' && body.op === 'TRANSLATE') {
         calls.bodies.push(body);
         return r.fulfill(json({ variants: [{ primaryText: 'Bright apartment with a balcony in Vake.', headline: 'Vake 2BR', description: '' }] }));
@@ -228,6 +239,8 @@ const LAYOUT = () => ({
   // the mobile bottom nav or a floating button covering them is a broken builder.
   covered: [...document.querySelectorAll('[data-madsb-nav] button:not([disabled])')].filter((b) => {
     const r = b.getBoundingClientRect();
+    // A control not shown at this width (the footer's gap link below sm) cannot be covered.
+    if (r.width === 0 || r.height === 0) return false;
     const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
     return !hit || !b.contains(hit);
   }).length,
@@ -1331,7 +1344,7 @@ test('META CONNECT: one tap = one attempt to Meta\'s own dialog with the way bac
     await page.waitForURL(/step=destination/, { timeout: 8000 });
     assert.doesNotMatch(page.url(), /connect=/, 'the result is consumed — a reload repeats nothing');
     await page.waitForTimeout(400);
-    assert.equal(calls.actions.slice(before).filter((a) => a === 'assets_refresh').length, 1, 'one canonical refresh');
+    assert.equal(calls.actions.slice(before).filter((a) => a === 'assets_refresh').length, 1, `one canonical refresh (${calls.actions.slice(before).join(',')})`);
     assert.equal(calls.inserts, 0, 'the same draft');
 
     // Cancelled at Meta: a calm line, the work kept, nothing refreshed.
@@ -1364,3 +1377,88 @@ test('MOBILE UX: on every step in Georgian at 320 and 390, no button clips its l
   }
   assert.deepEqual(failures, []);
 });
+
+/* ── FINAL ACCEPTANCE: what the phone test found ─────────────────────────── */
+
+/* Screenshots for visual inspection, with the suite's own META_ADS_QA_SHOTS switch. */
+async function shot(page, name) {
+  if (!SHOTS) return;
+  mkdirSync(SHOTS, { recursive: true });
+  await page.screenshot({ path: join(SHOTS, `final-${name}.png`), fullPage: true });
+}
+
+test('FINAL: one universal location search — "საქართველო" finds Georgia, typed, added as a removable chip', opts, async (t) => {
+  const { page, calls } = await boot(t, { width: 390, height: 844, lang: 'ka', campaignOver: { targeting: { locations: [], ageMin: 18, ageMax: 65, gender: 'ALL' } } });
+  await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=audience`, { waitUntil: 'domcontentloaded' });
+  await waitReady(page);
+  assert.equal(await page.locator('[data-mm-field="locations"] [role="group"] button[aria-pressed]').count(), 0, 'no Country/Region/City tabs');
+  const input = page.locator('[data-mm-loc-search]');
+  await input.fill('საქართველო');
+  await page.waitForSelector('[data-mm-loc-result="country"]');
+  const sub = await page.locator('[data-mm-loc-result="country"]').first().innerText();
+  assert.match(sub, /ქვეყანა/, 'typed as Country');
+  const asked = calls.bodies.filter((b) => b.action === 'geo_search').at(-1);
+  assert.equal(asked.type, 'any');
+  await page.locator('[data-mm-loc-result="country"]').first().dispatchEvent('mousedown');
+  await page.waitForSelector('[data-mm-loc-chips] [data-mm-loc="country:GE"]');
+  await input.fill('თბილისი');
+  await page.waitForSelector('[data-mm-loc-result="city"]');
+  assert.match(await page.locator('[data-mm-loc-result="city"]').first().innerText(), /ქალაქი · .*საქართველო/, 'City · …, Georgia');
+  await shot(page, 'ka-390-audience-search');
+  assert.match(await page.locator('[data-mm-loc-chips] [data-mm-loc="country:GE"]').innerText(), /საქართველო/, 'the chip speaks Georgian');
+  await input.press('Escape'); // the open result list sits over the chips, as a combobox does
+  await page.locator('[data-mm-loc-chips] [data-mm-loc-remove="country:GE"]').evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  await page.locator('[data-mm-loc-chips] [data-mm-loc-remove="country:GE"]').click();
+  await page.waitForFunction(() => !document.querySelector('[data-mm-loc="country:GE"]'));
+});
+
+test('FINAL: a readiness item is a link — the field is in view, focused; no raw key anywhere', opts, async (t) => {
+  const { page } = await boot(t, { width: 390, height: 844, lang: 'ka', preflightOver: { status: 'NEEDS_CHANGES', warnings: 0, checks: [
+    { key: 'connection', state: 'READY', ok: true },
+    { key: 'targeting', state: 'ACTION_REQUIRED', ok: false, detail: 'LOCATION_REQUIRED' },
+    { key: 'permissions', state: 'ACTION_REQUIRED', ok: false, detail: 'ads_management,ads_read' },
+    { key: 'some_future_check', state: 'WARNING', ok: true, detail: 'SOME_FUTURE_CODE' },
+  ] } });
+  await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=review`, { waitUntil: 'domcontentloaded' });
+  await waitReady(page);
+  await page.locator('[data-mm-run-check]').click();
+  await page.waitForSelector('[data-mm-check="targeting"]');
+  const body = await page.locator('body').innerText();
+  assert.doesNotMatch(body, /mads_check_|madsb_pfd_|mm_r_|LOCATION_REQUIRED|ads_management|SOME_FUTURE_CODE/, 'no key, code or scope name on screen');
+  assert.equal(await page.locator('[data-mm-check="targeting"]').getAttribute('data-mm-check-sev'), 'BLOCKER');
+  assert.equal(await page.locator('[data-mm-check="some_future_check"]').getAttribute('data-mm-check-sev'), 'WARNING');
+  await shot(page, 'ka-390-review-check');
+  await page.locator('[data-mm-check="targeting"] button').click();
+  await page.waitForFunction(() => new URL(location.href).searchParams.get('step') === 'audience');
+  await page.waitForFunction(() => !!document.activeElement?.closest('[data-mm-field="locations"]'));
+  const inView = await page.evaluate(() => { const r = document.querySelector('[data-mm-field="locations"]').getBoundingClientRect(); return r.top < innerHeight && r.bottom > 0; });
+  assert.ok(inView, 'the field is on screen');
+});
+
+test('FINAL: HOMATCH Intelligence is off until turned on, and states its limits', opts, async (t) => {
+  const { page, calls } = await boot(t, { width: 390, height: 844, lang: 'ka' });
+  await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=audience`, { waitUntil: 'domcontentloaded' });
+  await waitReady(page);
+  const card = page.locator('[data-mm-intelligence]');
+  assert.equal(await card.getAttribute('data-mm-intelligence'), 'off');
+  await page.locator('[data-mm-intelligence-toggle]').click();
+  await page.waitForSelector('[data-mm-intelligence="on"] [data-mm-intelligence-never]');
+  await page.waitForFunction(() => true);
+  await page.waitForTimeout(400);
+  assert.ok(calls.patches.some((p) => p.intelligence?.enabled === true), 'saved to the draft');
+  assert.equal(await page.locator('[data-mm-intelligence-never] li').count(), 6);
+  await shot(page, 'ka-390-audience-intelligence');
+});
+
+test('FINAL: screenshots for visual inspection — every step in Georgian at 390, audience in ru/ar/he', opts, async (t) => {
+  if (!SHOTS) return;
+  for (const lang of ['ka', 'ru', 'ar', 'he']) {
+    const { page } = await boot(t, { width: 390, height: 844, lang });
+    for (const step of lang === 'ka' ? STEPS : ['audience', 'review']) {
+      await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=${step}`, { waitUntil: 'domcontentloaded' });
+      await waitReady(page);
+      await shot(page, `${lang}-390-${step}`);
+    }
+  }
+});
+

@@ -100,7 +100,7 @@ test('preflight details keep their values and never show a raw code', () => {
   assert.deepEqual(preflightDetails('SHORT_1250'), [{ key: 'madsb_pfd_short', value: '$12.50' }]);
   assert.deepEqual(preflightDetails('MIN_2_DAYS'), [{ key: 'madsb_pfd_min_days', value: '2' }]);
   assert.deepEqual(preflightDetails('ACCOUNT_CURRENCY_GEL'), [{ key: 'madsb_pfd_account_currency', value: 'GEL' }]);
-  assert.deepEqual(preflightDetails('ads_management,leads_retrieval').map((d) => d.key), ['madsb_pfd_permission', 'madsb_pfd_permission']);
+  assert.deepEqual(preflightDetails('ads_management,leads_retrieval').map((d) => d.key), ['mm_r_pfd_permissions'], 'one action, never scope names');
   assert.deepEqual(preflightDetails('NO_MEDIA,HEADLINE_REQUIRED').map((d) => d.key), ['madsb_pfd_no_media', 'madsb_pfd_headline_required']);
   assert.deepEqual(preflightDetails('meta_err_reconnect'), [{ key: 'meta_err_reconnect', value: '' }]);
 });

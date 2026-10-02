@@ -103,7 +103,7 @@ production with evidence (filled in by the release, not by this list).
 |---|---|---|
 | Safety | v1 run-matching / classify-signals service-role only; external-unlock key per dialog | `run-matching`, `classify-signals`, `ExternalContactUnlockModal.tsx` |
 | DiscoveryPlan | one envelope for SUPPLY and DEMAND; tranches 0–2; closed provider set; queue rows derived only from the plan (dedupe keys); stored per run | `research-core/discovery/discovery-plan.ts`, `discovery_search_plans` |
-| Queue | `claim_discovery_source_jobs_v2`: one job per run per pass, least-recently-served run first, per-provider caps (`discovery_provider_concurrency`), executor EDGE/WORKER, paused runs held | migration `20261008100000` |
+| Queue | `claim_discovery_source_jobs_v2`: one job per run per pass, least-recently-served run first, per-provider caps (`discovery_provider_concurrency`), executor EDGE/WORKER, paused runs held | migration `20261009100000` |
 | Lifecycle | `discovery_control` pause / resume / stop (owner-checked, atomic) for both run kinds; pause expires before the reservation; stuck endings rescued | migration, `driver.ts` |
 | Find People | match-campaign stores the DEMAND plan, queues from it, exposes pause/resume/stop; Matches restores the open search on refresh; controls first on phones | `match-campaign`, `MatchesPage.tsx` |
 | Find Property | `find-property-run` (PAYG, product FIND_PROPERTY priced like FIND_CLIENTS); PORTAL jobs via `supply-discovery` mode `portal-job`; run ending resolves entities, matches, settles only delivered listings | `find-property-run`, `discoveryRun.ts`, `driver.ts` |
@@ -111,7 +111,7 @@ production with evidence (filled in by the release, not by this list).
 | Community supply | Telegram/forum listing posts → `supply_observations` (deterministic extractor, field origins, backfill mode); order-insensitive fingerprint; results and delivery counted per entity; resolver scoped by city | `community-listing.ts`, `communitySupply.ts`, `classify-signals-v2` |
 | Worker route | `/discovery/fetch` on the official worker: token-only, every DNS answer public, pinned connection, no redirects, capped; `WorkerTransport` keeps allowlist/robots/rate limits on the edge | `official-worker/src/discovery/*`, `research-core/fetch/worker-transport.ts` |
 | Live checks | `source-audit` mode `live-check`: configured portals collect 2 rows per route; candidate hosts (MyHome, livo, ss, home, place) robots-first; rows in `discovery_source_live_checks` | `source-audit` |
-| Admin | `admin_discovery_intelligence()` + panel under /admin/discovery; Phase 2 switches; run live checks | migration `20261008100100`, `DiscoveryIntelligencePanel.tsx` |
+| Admin | `admin_discovery_intelligence()` + panel under /admin/discovery; Phase 2 switches; run live checks | migration `20261009100100`, `DiscoveryIntelligencePanel.tsx` |
 | UI | Find Property "Search outside HOMATCH": budget, real stages, source groups, pause/resume/stop, refresh-safe | `OutsideSearchPanel.tsx` |
 
 Not built (named, not hidden): browser rendering on the worker

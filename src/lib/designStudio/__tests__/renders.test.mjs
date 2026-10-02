@@ -220,3 +220,12 @@ test('consistency: the rebuilt picture is checked against the approved one — m
   assert.deepEqual(codes, ['EXTRA:lamp', 'MISSING:bed', 'MOVED:sofa']);
   assert.ok(r.agreement < 0.5);
 });
+
+import { stableJson } from '../stableJson.ts';
+
+test('architecture key: the same building is the same key whatever order a database returns keys in', () => {
+  const a = { answers: [{ questionId: 'DIMENSION:R6', kind: 'DIMENSION', value: [0.72, 1.466] }], n: 1 };
+  const b = { n: 1, answers: [{ kind: 'DIMENSION', value: [0.72, 1.466], questionId: 'DIMENSION:R6' }] };
+  assert.notEqual(JSON.stringify(a), JSON.stringify(b), 'plain JSON differs (the production bug)');
+  assert.equal(stableJson(a), stableJson(b));
+});

@@ -52,7 +52,7 @@ export interface MetaStatus {
   serviceBalance?: ServiceBalanceRow[];
   guard?: { accounts: GuardAccountRow[]; maxStrikes: number; enabled: boolean };
   connection: {
-    status: string; health?: MetaConnectionHealth; granted_scopes?: string[]; missing_scopes?: string[]; error_reason?: string | null;
+    status: string; health?: MetaConnectionHealth; granted_scopes?: string[]; missing_scopes?: string[]; error_reason?: string | null; expires_soon?: boolean;
     /** Instant Forms' extra permissions granted (goal LEADS_ON_META). */
     instant_forms_available?: boolean;
     /** The server's state (src/lib/metaAds/instantForms.ts). */
@@ -121,6 +121,8 @@ export interface MetaCampaignRow {
   owner_brief?: string;
   /** What HOMATCH understood from owner_brief (audienceGuide.BriefUnderstanding). */
   brief_understanding?: BriefUnderstanding | null;
+  /** HOMATCH Intelligence preference (homatchIntelligence.prefsOf) — off unless the owner turned it on. */
+  intelligence?: { enabled?: boolean; optimiseFor?: 'QUALITY' | 'VOLUME' } | null;
 }
 
 export interface LocationChoiceRow {
@@ -214,8 +216,9 @@ export const launchCampaign = (campaignId: string, idempotencyKey: string) =>
 export type AiCopyOp = 'GENERATE' | 'IMPROVE' | 'SHORTEN' | 'PROFESSIONAL' | 'ALTERNATIVES' | 'TRANSLATE';
 export interface AiCopyVariant { primaryText: string; headline: string; description: string }
 /** Suggestions only: nothing is saved until the customer accepts one. */
-export const aiCopy = (campaignId: string, op: AiCopyOp, language: string, current: Partial<AiCopyVariant>, notes = '') =>
-  call<{ variants: AiCopyVariant[] }>('ai_copy', { campaignId, op, language, current, notes });
+export type AiCopyField = 'AD' | 'FORM_HEADLINE' | 'FORM_INTRO' | 'FORM_THANKS' | 'BRIEF';
+export const aiCopy = (campaignId: string, op: AiCopyOp, language: string, current: Partial<AiCopyVariant>, notes = '', field: AiCopyField = 'AD', fresh = false) =>
+  call<{ variants: AiCopyVariant[]; cached?: boolean }>('ai_copy', { campaignId, op, language, current, notes, field, fresh });
 export const pauseCampaign = (campaignId: string) => call('pause', { campaignId });
 export const resumeCampaign = (campaignId: string) => call('resume', { campaignId });
 export const syncCampaign = (campaignId: string) =>
@@ -397,6 +400,19 @@ export interface MetaLeadRow {
   ad_external_id?: string | null; adset_external_id?: string | null; property_id?: string | null;
   /** Qualifying answers from a HOMATCH premium form (buy_or_rent, budget, …). */
   answers?: Record<string, string> | null; meta_created_time?: string | null;
+  /** Lead Center pipeline (owner-edited; won_at / lost_reason follow the status, DB guard). */
+  follow_up_at?: string | null; lost_reason?: string | null; won_at?: string | null;
+  quality?: 'HIGH' | 'MEDIUM' | 'LOW' | 'UNRATED'; quality_source?: 'AUTO' | 'MANUAL';
+  /** Groups one person's submissions (a per-owner hash) — never merges them. */
+  contact_key?: string | null;
+}
+export interface MetaLeadEventRow { id: number; kind: 'RECEIVED' | 'STATUS' | 'NOTE' | 'FOLLOW_UP' | 'QUALITY'; from_value: string | null; to_value: string | null; actor: string; at: string }
+/** The lead's timeline, newest first (written by database triggers only). */
+export async function listLeadEvents(leadId: string): Promise<MetaLeadEventRow[]> {
+  const { data, error } = await supabase.from('meta_lead_events').select('id,kind,from_value,to_value,actor,at')
+    .eq('lead_id', leadId).order('at', { ascending: false }).limit(100);
+  if (error) throw error;
+  return (data ?? []) as MetaLeadEventRow[];
 }
 /** The Leads Center pipeline. */
 export const LEAD_STATUSES = ['NEW', 'CONTACTED', 'QUALIFIED', 'VIEWING', 'NEGOTIATING', 'WON', 'LOST'] as const;
@@ -415,7 +431,9 @@ export async function listMetaLeads(filter: { campaignId?: string; status?: stri
   return rows;
 }
 
-export async function updateMetaLead(id: string, patch: { status?: string; note?: string }): Promise<void> {
+export async function updateMetaLead(id: string, patch: {
+  status?: string; note?: string; follow_up_at?: string | null; lost_reason?: string | null; quality?: string;
+}): Promise<void> {
   const { error } = await supabase.from('meta_leads').update(patch).eq('id', id);
   if (error) throw error;
 }
@@ -487,8 +505,9 @@ export interface StrategyPreview {
   };
 }
 export const strategyPreview = (campaignId: string) => call<StrategyPreview>('strategy_preview', { campaignId });
-export const geoSearch = (q: string, type: 'country' | 'region' | 'place', locale: string, country?: string) =>
-  call<{ results: Array<LocationChoiceRow & { region?: string | null; countryName?: string | null }>; reason?: string; street?: boolean; variant?: number }>('geo_search', { q, type, locale, country });
+/** The universal location search ('any'): countries, regions, cities, districts in one list. `prefer` ranks, never filters. */
+export const geoSearch = (q: string, type: 'any' | 'country' | 'region' | 'place', locale: string, country?: string, prefer?: string) =>
+  call<{ results: Array<LocationChoiceRow & { region?: string | null; countryName?: string | null; nearest?: boolean }>; reason?: string; street?: boolean; variant?: number }>('geo_search', { q, type, locale, country, prefer });
 /** Meta's locale keys for a language (type=adlocale), whole-language entry first. */
 export const localeSearch = (code: string) =>
   call<{ results: LanguageChoiceRow[]; reason?: string }>('locale_search', { code });

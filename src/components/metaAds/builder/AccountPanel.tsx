@@ -1,6 +1,7 @@
 // The Meta connection and asset picker, shared by the builder and the
 // workspace's Connections tab. Friendly names first; technical IDs only as
 // secondary detail. Never a token — the status call does not return one.
+import { adsAccessMissing as adsAccessMissingOf } from '@/lib/metaAds/readiness';
 import React, { useState } from 'react';
 import { CheckCircle2, Link2, RefreshCw, Loader2, ShieldAlert, Unplug, Facebook } from 'lucide-react';
 import { toast } from 'sonner';
@@ -42,7 +43,10 @@ export function AccountPanel({ status, onChanged, returnTo, compact }: {
     const r = await flow.connect();
     if (r && r !== 'ok') toast.error(t(r === 'TOKEN_ENCRYPTION_NOT_CONFIGURED' ? 'madsb_connect_encryption_missing' : 'mm_x_connect_failed'));
   };
-  const needsReconnect = health !== 'CONNECTED' && health !== 'NOT_CONNECTED';
+  /* The grant lacks ad-account access (ads_management / ads_read / business_management). */
+  const adsAccessMissing = adsAccessMissingOf({ ...status?.connection, health });
+  const expiresSoon = health === 'CONNECTED' && !!status?.connection?.expires_soon;
+  const needsReconnect = (health !== 'CONNECTED' && health !== 'NOT_CONNECTED') || expiresSoon;
   const refresh = async () => {
     setBusy('refresh');
     try { await refreshMetaAssets(); await onChanged(); toast.success(t('madsb_assets_refreshed')); }
@@ -74,7 +78,7 @@ export function AccountPanel({ status, onChanged, returnTo, compact }: {
 
   return (
     <div className="space-y-3">
-      <div className={cn('rounded-2xl border p-4 sm:p-5',
+      <div data-mm-field="connect" className={cn('rounded-2xl border p-4 sm:p-5',
         health === 'CONNECTED' ? 'border-[hsl(152_40%_40%)]/30 bg-[hsl(152_54%_28%)]/[0.06]' : 'border-[hsl(var(--gold-border))]/60 bg-[hsl(var(--gold-soft))]')}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-3">
@@ -84,7 +88,11 @@ export function AccountPanel({ status, onChanged, returnTo, compact }: {
                 : <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-[hsl(32_78%_36%)]" />}
             <div className="min-w-0">
               <p className="font-semibold text-foreground">{t(`madsb_health_${health.toLowerCase()}` as never)}</p>
-              <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">{t(`madsb_health_${health.toLowerCase()}_d` as never)}</p>
+              {/* ONE actionable line: what is missing, in product words — never a permission name. */}
+              <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground" data-mm-connect-missing={adsAccessMissing ? 'ads' : undefined}>
+                {t(adsAccessMissing ? 'mm_r_pfd_permissions' : `madsb_health_${health.toLowerCase()}_d` as never)}
+              </p>
+              {expiresSoon && <p className="mt-1 text-2xs font-medium text-[hsl(32_78%_32%)]" data-mm-connect-expiring="">{t('mm_x_connect_expiring')}</p>}
               {health === 'ERROR' && status?.connection?.error_reason === 'TOKEN_ENCRYPTION_NOT_CONFIGURED' && (
                 <p className="mt-1 text-2xs text-muted-foreground">{t('madsb_connect_encryption_missing')}</p>
               )}
@@ -124,7 +132,7 @@ export function AccountPanel({ status, onChanged, returnTo, compact }: {
         const options = assets.filter((a) => a.kind === kind && (!filter || filter(a)));
         const selected = options.find((a) => a.selected);
         return (
-          <div key={kind} className="rounded-2xl border border-border bg-card px-4 py-3.5 shadow-card">
+          <div key={kind} data-mm-field={kind === 'PAGE' ? 'page' : kind === 'AD_ACCOUNT' ? 'ad_account' : undefined} className="rounded-2xl border border-border bg-card px-4 py-3.5 shadow-card">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <p className="font-medium text-foreground">
                 {t(label as never)}{optional && <span className="ms-1.5 text-2xs font-normal text-muted-foreground">{t('madsb_optional')}</span>}

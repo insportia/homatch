@@ -19,12 +19,13 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import {
-  CONTACT_FIELDS, QUALIFYING_KEYS, MAX_QUESTIONS, MAX_INTRO_POINTS, leadFormPreview, leadFormReadiness, suggestLeadQuestions, validateLeadFormSpec, META_LOCALE,
+  CONTACT_FIELDS, QUALIFYING_KEYS, MAX_QUESTIONS, MAX_INTRO_POINTS, leadFormPreview, leadFormReadiness, suggestLeadQuestions, validateLeadFormSpec, META_LOCALE, privacyIsHomatch,
   type ContactField, type FormContext, type FormLocale, type LeadFormSpec, type QualifyingKey,
 } from '@/lib/metaAds/leadForms';
 import { createPremiumLeadForm } from '@/services/metaAds';
 import { leadFormIssueKey } from './masterLogic';
 import { FORMS_COPY } from './instantFormsCopy';
+import { SparkAssist } from './SparkAssist';
 import { Hint } from './FinishKit';
 import type { InstantFormsState } from '@/lib/metaAds/instantForms';
 
@@ -38,7 +39,11 @@ function languageName(code: string, ui: string): string {
   try { return new Intl.DisplayNames([ui], { type: 'language' }).of(code) ?? code; } catch { return code; }
 }
 
-export function LeadFormBuilder({ propertyId, onCreated, onCancel, formsState, context, pageName }: {
+export function LeadFormBuilder({ propertyId, onCreated, onCancel, formsState, context, pageName, knownPrivacyUrl = null, campaignId = null }: {
+  /** For ✨ suggestions written from this campaign's own facts. */
+  campaignId?: string | null;
+  /** The policy link from this owner's previous HOMATCH form (their own, never HOMATCH's) — offered, changeable. */
+  knownPrivacyUrl?: string | null;
   propertyId: string | null;
   /** Why Instant Forms may be unavailable (server-decided); product words only. */
   formsState?: InstantFormsState;
@@ -54,8 +59,11 @@ export function LeadFormBuilder({ propertyId, onCreated, onCancel, formsState, c
   const suggested = useMemo(() => suggestLeadQuestions(context ?? { isProperty: false }), [context]);
   const [spec, setSpec] = useState<LeadFormSpec>({
     name: '', headline: '', intro: null, thankYouTitle: '', thankYouMessage: '', contactFields: ['FULL_NAME', 'PHONE', 'EMAIL'],
-    questions: suggested, customQuestions: [], privacyPolicyUrl: '', followUpUrl: '', locale: uiLocale,
+    questions: suggested, customQuestions: [], privacyPolicyUrl: knownPrivacyUrl && !privacyIsHomatch(knownPrivacyUrl) ? knownPrivacyUrl : '', followUpUrl: '', locale: uiLocale,
   });
+  /* Reused from the owner's previous form until they type their own. */
+  const reused = !!knownPrivacyUrl && spec.privacyPolicyUrl === knownPrivacyUrl;
+  const privacyRef = React.useRef<HTMLInputElement>(null);
   const [section, setSection] = useState<SectionKey>('basics');
   const [screen, setScreen] = useState<Screen>('questions');
   const [busy, setBusy] = useState(false);
@@ -161,8 +169,11 @@ export function LeadFormBuilder({ propertyId, onCreated, onCancel, formsState, c
                 <span className="mb-1 flex items-baseline justify-between text-[13px] font-medium text-foreground">
                   {t('mm_b_lf_headline')}<span className="text-2xs font-normal text-muted-foreground" dir="ltr">{(spec.headline ?? '').length}/60</span>
                 </span>
-                <Input value={spec.headline ?? ''} maxLength={60} placeholder={t('mm_b_lf_headline_ph')} onChange={(e) => set({ headline: e.target.value })} />
+                <Input id="mm-lf-headline" value={spec.headline ?? ''} maxLength={60} placeholder={t('mm_b_lf_headline_ph')} onChange={(e) => set({ headline: e.target.value })} />
                 {fieldErr('headline')}
+                <SparkAssist campaignId={campaignId} field="FORM_HEADLINE" current={spec.headline ?? ''} language={spec.locale}
+                  onUse={(v) => set({ headline: v.slice(0, 60) })}
+                  onEdit={(v) => { set({ headline: v.slice(0, 60) }); requestAnimationFrame(() => document.getElementById('mm-lf-headline')?.focus()); }} />
               </label>
               <label className="block">
                 <span className="mb-1 block text-[13px] font-medium text-foreground">{t('mm_b_lf_locale')}</span>
@@ -268,8 +279,15 @@ export function LeadFormBuilder({ propertyId, onCreated, onCancel, formsState, c
           {section === 'privacy' && (
             <label className="block">
               <span className="mb-1 block text-[13px] font-medium text-foreground">{t('mm_c_lf_privacy_label')}</span>
-              <Input dir="ltr" inputMode="url" placeholder="https://" value={spec.privacyPolicyUrl} aria-invalid={!!issueFor('privacyPolicyUrl')}
+              <Input ref={privacyRef} dir="ltr" inputMode="url" placeholder="https://" value={spec.privacyPolicyUrl} aria-invalid={!!issueFor('privacyPolicyUrl')}
                 onChange={(e) => set({ privacyPolicyUrl: e.target.value })} data-mm-lf-privacy="" />
+              {reused && (
+                <span className="mt-1 flex flex-wrap items-center gap-2 text-2xs text-muted-foreground" data-mm-lf-privacy-reused="">
+                  {t('mm_k_privacy_reused')}
+                  <button type="button" className="min-h-11 rounded-full px-2 font-semibold text-[hsl(var(--gold-ink))] underline-offset-2 hover:underline"
+                    onClick={() => { set({ privacyPolicyUrl: '' }); privacyRef.current?.focus(); }}>{t('mm_k_privacy_change')}</button>
+                </span>
+              )}
               <Hint k="mm_c_lf_privacy_why" className="mt-1" />
               {fieldErr('privacyPolicyUrl')}
               {readiness.find((r) => r.key === 'privacy')?.code === 'PRIVACY_IS_HOMATCH' && (
@@ -287,8 +305,11 @@ export function LeadFormBuilder({ propertyId, onCreated, onCancel, formsState, c
               </label>
               <label className="block">
                 <span className="mb-1 block text-[13px] font-medium text-foreground">{t('mm_b_lf_thanks')}</span>
-                <Textarea rows={2} maxLength={500} value={spec.thankYouMessage ?? ''} placeholder={preview.thankYou.body} onChange={(e) => set({ thankYouMessage: e.target.value })} />
+                <Textarea id="mm-lf-thanks" rows={2} maxLength={500} value={spec.thankYouMessage ?? ''} placeholder={preview.thankYou.body} onChange={(e) => set({ thankYouMessage: e.target.value })} />
                 {fieldErr('thankYouMessage')}
+                <SparkAssist campaignId={campaignId} field="FORM_THANKS" current={spec.thankYouMessage ?? ''} language={spec.locale}
+                  onUse={(v) => set({ thankYouMessage: v.slice(0, 500) })}
+                  onEdit={(v) => { set({ thankYouMessage: v.slice(0, 500) }); requestAnimationFrame(() => document.getElementById('mm-lf-thanks')?.focus()); }} />
               </label>
               <label className="block">
                 <span className="mb-1 block text-[13px] font-medium text-foreground">{t('mm_b_lf_follow_up')} <span className="text-2xs font-normal text-muted-foreground">{t('madsb_optional')}</span></span>
@@ -300,12 +321,15 @@ export function LeadFormBuilder({ propertyId, onCreated, onCancel, formsState, c
           )}
 
           <div className="flex justify-between gap-2 pt-1">
-            <Button type="button" variant="ghost" size="sm" className="min-h-11 gap-1" disabled={sectionIndex === 0} onClick={() => setSection(SECTIONS[Math.max(0, sectionIndex - 1)])}>
-              <ChevronLeft className="h-4 w-4 rtl:rotate-180" />{t('madsb_back')}
-            </Button>
+            {/* Section moves are named for the section, so they never read as the page's own Back / Continue. */}
+            {sectionIndex > 0 ? (
+              <Button type="button" variant="ghost" size="sm" className="min-h-11 gap-1" data-mm-lf-prev="" onClick={() => setSection(SECTIONS[sectionIndex - 1])}>
+                <ChevronLeft className="h-4 w-4 rtl:rotate-180" />{t(`mm_c_lf_sec_${SECTIONS[sectionIndex - 1]}`)}
+              </Button>
+            ) : <span />}
             {sectionIndex < SECTIONS.length - 1 && (
-              <Button type="button" variant="outline" size="sm" className="min-h-11 gap-1" onClick={() => setSection(SECTIONS[sectionIndex + 1])}>
-                {t('madsb_continue')}<ChevronRight className="h-4 w-4 rtl:rotate-180" />
+              <Button type="button" variant="outline" size="sm" className="min-h-11 gap-1" data-mm-lf-next="" onClick={() => setSection(SECTIONS[sectionIndex + 1])}>
+                {t(`mm_c_lf_sec_${SECTIONS[sectionIndex + 1]}`)}<ChevronRight className="h-4 w-4 rtl:rotate-180" />
               </Button>
             )}
           </div>

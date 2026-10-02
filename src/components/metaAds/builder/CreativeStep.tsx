@@ -149,7 +149,7 @@ export function CreativeStep({ campaign, creatives, setCreatives, placements, on
   const blocked = adviceBlocks(advice);
 
   return (
-    <StepShell eyebrow={t('madsb_step_creative')} title={t('madsb_creative_title')} lead={t('madsb_creative_lead')}>
+    <StepShell eyebrow={t('madsb_step_creative')} data-mm-field="creative" title={t('madsb_creative_title')} lead={t('madsb_creative_lead')}>
       {/* Guidance folded: the editors come first; nothing here looks like a choice. */}
       <div className="flex flex-wrap gap-x-4">
         <More label={t('mm_m_creative_how')} data-mm-creative-how="">
@@ -160,7 +160,7 @@ export function CreativeStep({ campaign, creatives, setCreatives, placements, on
         </More>
         <More label={t('mm_m_media_sizes')} data-mm-media-sizes=""><MediaGuidance placements={placements} /></More>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2" data-mm-field="media">
         <input ref={fileRef} type="file" accept={ACCEPT} multiple className="hidden" onChange={(e) => upload(e.target.files)} />
         <Button type="button" onClick={() => fileRef.current?.click()} disabled={uploading > 0} className="gap-1.5">
           {uploading > 0 ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}{t('madsb_add_media')}
@@ -325,7 +325,7 @@ function CreativeEditor({ creative, goal, messagingApp, placements, advice, held
             <span className="mb-1 flex items-baseline justify-between text-[13px] font-medium text-foreground">
               <span className="min-w-0">{t('mm_m_field_primary')}</span><span className="shrink-0 text-2xs font-normal text-muted-foreground" dir="ltr">{creative.primary_text.length}/2200</span>
             </span>
-            <Textarea id={fid('primaryText')} rows={3} value={creative.primary_text} maxLength={2200}
+            <Textarea id={fid('primaryText')} data-mm-field="primary" rows={3} value={creative.primary_text} maxLength={2200}
               placeholder={t('mm_m_field_primary_ph')} onChange={(e) => edit({ primary_text: e.target.value })} />
             <span className="mt-0.5 block text-2xs text-muted-foreground">{t('madsb_field_primary_d')}</span>
           </label>
@@ -334,7 +334,7 @@ function CreativeEditor({ creative, goal, messagingApp, placements, advice, held
               <span className="mb-1 flex items-baseline justify-between text-[13px] font-medium text-foreground">
                 <span className="min-w-0">{t('madsb_field_headline')}</span><span className="shrink-0 text-2xs font-normal text-muted-foreground" dir="ltr">{creative.headline.length}/40</span>
               </span>
-              <Input id={fid('headline')} value={creative.headline} maxLength={255} placeholder={t('madsb_field_headline_ph')}
+              <Input id={fid('headline')} data-mm-field="headline" value={creative.headline} maxLength={255} placeholder={t('madsb_field_headline_ph')}
                 onChange={(e) => edit({ headline: e.target.value })} />
               <span className="mt-0.5 block text-2xs text-muted-foreground">{t('mm_m_field_headline_d')}</span>
             </label>

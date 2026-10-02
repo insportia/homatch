@@ -1,4 +1,4 @@
--- Behavioural checks for 20261008100000_phase2_universal_discovery.sql.
+-- Behavioural checks for 20261009100000_phase2_universal_discovery.sql.
 -- Run against a fixture with the migration applied; every check raises on failure.
 do $$
 declare

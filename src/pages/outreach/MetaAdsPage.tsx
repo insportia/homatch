@@ -409,7 +409,8 @@ function AudiencesTab({ enabled, connected, campaigns, onRetarget }: {
 /* ── CONNECTIONS ──────────────────────────────────────────────────────── */
 
 function ConnectionsTab({ status, onChanged }: { status: MetaStatus | null; onChanged: () => void }) {
-  return <AccountPanel status={status} onChanged={onChanged} />;
+  /* Back to this very tab after Meta's dialog — signed into the state like the builder's step. */
+  return <AccountPanel status={status} onChanged={onChanged} returnTo="/outreach/meta?tab=connections" />;
 }
 
 /* ── HELP ─────────────────────────────────────────────────────────────── */

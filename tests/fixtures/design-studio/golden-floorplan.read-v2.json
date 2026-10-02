@@ -1,0 +1,2831 @@
+{
+ "doc": {
+  "doors": [
+   {
+    "id": "D1",
+    "leaf": "DOUBLE",
+    "state": "UNVERIFIED",
+    "wallId": "E2",
+    "heightM": null,
+    "widthPx": 49,
+    "centerPx": {
+     "x": 362.5,
+     "y": 115
+    },
+    "evidence": "Paired door arcs at balcony",
+    "position": 0.4399,
+    "confidence": 0.91,
+    "sillHeightM": null,
+    "swingRoomId": "BALCONY"
+   },
+   {
+    "id": "D2",
+    "leaf": "DOUBLE",
+    "state": "UNVERIFIED",
+    "wallId": "I1",
+    "heightM": null,
+    "widthPx": 16,
+    "centerPx": {
+     "x": 390.5,
+     "y": 333
+    },
+    "evidence": "Paired door arcs in bedroom partition",
+    "position": 0.899,
+    "confidence": 0.6,
+    "sillHeightM": null,
+    "swingRoomId": "HALL"
+   },
+   {
+    "id": "D3",
+    "leaf": "HINGED",
+    "state": "UNVERIFIED",
+    "wallId": "I4",
+    "heightM": null,
+    "widthPx": 50,
+    "centerPx": {
+     "x": 328.5,
+     "y": 394.5
+    },
+    "evidence": "Single door arc",
+    "position": 0.245,
+    "confidence": 0.8,
+    "sillHeightM": null,
+    "swingRoomId": "HALL"
+   },
+   {
+    "id": "D4",
+    "leaf": "HINGED",
+    "state": "UNVERIFIED",
+    "wallId": "I5",
+    "heightM": null,
+    "widthPx": 13,
+    "centerPx": {
+     "x": 280.5,
+     "y": 445
+    },
+    "evidence": "Single door arc",
+    "position": 0.2825,
+    "confidence": 0.6,
+    "sillHeightM": null,
+    "swingRoomId": "HALL"
+   },
+   {
+    "id": "D5",
+    "leaf": "HINGED",
+    "state": "UNVERIFIED",
+    "wallId": "I7",
+    "heightM": null,
+    "widthPx": 116,
+    "centerPx": {
+     "x": 354.3,
+     "y": 570.5
+    },
+    "evidence": "Door arc at stair/living edge",
+    "position": 0.786,
+    "confidence": 0.8,
+    "sillHeightM": null,
+    "swingRoomId": "LIVING"
+   },
+   {
+    "id": "D6",
+    "leaf": "HINGED",
+    "state": "UNVERIFIED",
+    "wallId": "E3",
+    "heightM": null,
+    "widthPx": 42,
+    "centerPx": {
+     "x": 549,
+     "y": 681
+    },
+    "evidence": "Door arc opening to porch",
+    "position": 0.8381,
+    "confidence": 0.6,
+    "sillHeightM": null,
+    "swingRoomId": "PORCH"
+   },
+   {
+    "id": "D7",
+    "leaf": "HINGED",
+    "state": "UNVERIFIED",
+    "wallId": "E6",
+    "heightM": null,
+    "widthPx": 43,
+    "centerPx": {
+     "x": 374,
+     "y": 733
+    },
+    "evidence": "Door at porch boundary",
+    "position": 0.5012,
+    "confidence": 0.6,
+    "sillHeightM": null,
+    "swingRoomId": "LIVING"
+   },
+   {
+    "id": "hm-door1",
+    "leaf": null,
+    "state": "UNVERIFIED",
+    "wallId": "E2",
+    "heightM": null,
+    "widthPx": 49,
+    "centerPx": {
+     "x": 419.5,
+     "y": 115
+    },
+    "evidence": "Found in the drawing: a gap in a wall.",
+    "position": 0.6111,
+    "confidence": 0.7,
+    "sillHeightM": null,
+    "swingRoomId": null
+   },
+   {
+    "id": "hm-door2",
+    "leaf": null,
+    "state": "UNVERIFIED",
+    "wallId": "E5",
+    "heightM": null,
+    "widthPx": 52,
+    "centerPx": {
+     "x": 523,
+     "y": 702
+    },
+    "evidence": "Found in the drawing: a gap in a wall.",
+    "position": 0.8514,
+    "confidence": 0.7,
+    "sillHeightM": null,
+    "swingRoomId": null
+   },
+   {
+    "id": "hm-door3",
+    "leaf": null,
+    "state": "UNVERIFIED",
+    "wallId": "E6",
+    "heightM": null,
+    "widthPx": 53,
+    "centerPx": {
+     "x": 374,
+     "y": 655
+    },
+    "evidence": "Found in the drawing: a gap in a wall.",
+    "position": 0.1271,
+    "confidence": 0.7,
+    "sillHeightM": null,
+    "swingRoomId": null
+   },
+   {
+    "id": "hm-door4",
+    "leaf": null,
+    "state": "UNVERIFIED",
+    "wallId": "I2",
+    "heightM": null,
+    "widthPx": 49,
+    "centerPx": {
+     "x": 362.5,
+     "y": 357.5
+    },
+    "evidence": "Found in the drawing: a gap in a wall.",
+    "position": 0.4399,
+    "confidence": 0.7,
+    "sillHeightM": null,
+    "swingRoomId": null
+   },
+   {
+    "id": "hm-door5",
+    "leaf": null,
+    "state": "UNVERIFIED",
+    "wallId": "I2",
+    "heightM": null,
+    "widthPx": 49,
+    "centerPx": {
+     "x": 419.5,
+     "y": 357.5
+    },
+    "evidence": "Found in the drawing: a gap in a wall.",
+    "position": 0.6111,
+    "confidence": 0.7,
+    "sillHeightM": null,
+    "swingRoomId": null
+   },
+   {
+    "id": "hm-door6",
+    "leaf": null,
+    "state": "UNVERIFIED",
+    "wallId": "I3",
+    "heightM": null,
+    "widthPx": 111,
+    "centerPx": {
+     "x": 271.5,
+     "y": 420
+    },
+    "evidence": "Found in the drawing: a gap in a wall.",
+    "position": 0.4933,
+    "confidence": 0.7,
+    "sillHeightM": null,
+    "swingRoomId": null
+   },
+   {
+    "id": "hm-door7",
+    "leaf": null,
+    "state": "UNVERIFIED",
+    "wallId": "I4",
+    "heightM": null,
+    "widthPx": 70,
+    "centerPx": {
+     "x": 328.5,
+     "y": 473.5
+    },
+    "evidence": "Found in the drawing: a gap in a wall.",
+    "position": 0.7682,
+    "confidence": 0.7,
+    "sillHeightM": null,
+    "swingRoomId": null
+   },
+   {
+    "id": "hm-door8",
+    "leaf": null,
+    "state": "UNVERIFIED",
+    "wallId": "I7",
+    "heightM": null,
+    "widthPx": 74,
+    "centerPx": {
+     "x": 354.3,
+     "y": 394.5
+    },
+    "evidence": "Found in the drawing: a gap in a wall.",
+    "position": 0.1365,
+    "confidence": 0.7,
+    "sillHeightM": null,
+    "swingRoomId": null
+   }
+  ],
+  "rooms": [
+   {
+    "id": "R2",
+    "kind": "BEDROOM",
+    "label": "MASTERBEDROOM",
+    "state": "UNVERIFIED",
+    "polygon": [
+     {
+      "x": 219.5,
+      "y": 118.5
+     },
+     {
+      "x": 219.5,
+      "y": 353.5
+     },
+     {
+      "x": 386.5,
+      "y": 353.5
+     },
+     {
+      "x": 386.5,
+      "y": 118.5
+     }
+    ],
+    "evidence": "Printed room label and size",
+    "confidence": 0.96,
+    "statedAreaM2": null,
+    "dimensionText": "10'X14'"
+   },
+   {
+    "id": "R3",
+    "kind": "BEDROOM",
+    "label": "BEDROOM",
+    "state": "UNVERIFIED",
+    "polygon": [
+     {
+      "x": 394.5,
+      "y": 118.5
+     },
+     {
+      "x": 394.5,
+      "y": 353.5
+     },
+     {
+      "x": 545.5,
+      "y": 353.5
+     },
+     {
+      "x": 545.5,
+      "y": 118.5
+     }
+    ],
+    "evidence": "Printed room label and size",
+    "confidence": 0.96,
+    "statedAreaM2": null,
+    "dimensionText": "9'X14'"
+   },
+   {
+    "id": "R4",
+    "kind": "STORAGE",
+    "label": "WASH",
+    "state": "UNVERIFIED",
+    "polygon": [
+     {
+      "x": 219.5,
+      "y": 361.5
+     },
+     {
+      "x": 219.5,
+      "y": 417
+     },
+     {
+      "x": 324.5,
+      "y": 417
+     },
+     {
+      "x": 324.5,
+      "y": 361.5
+     }
+    ],
+    "evidence": "Printed room label and size",
+    "confidence": 0.9,
+    "statedAreaM2": null,
+    "dimensionText": "6'-4\"X4'-3\""
+   },
+   {
+    "id": "R5",
+    "kind": "WC",
+    "label": "LET.",
+    "state": "UNVERIFIED",
+    "polygon": [
+     {
+      "x": 219.5,
+      "y": 423
+     },
+     {
+      "x": 219.5,
+      "y": 504.5
+     },
+     {
+      "x": 276.5,
+      "y": 504.5
+     },
+     {
+      "x": 276.5,
+      "y": 423
+     }
+    ],
+    "evidence": "Printed label appears as LET.",
+    "confidence": 0.82,
+    "statedAreaM2": null,
+    "dimensionText": "3'-6\"X4'"
+   },
+   {
+    "id": "R6",
+    "kind": "BATHROOM",
+    "label": "BATH",
+    "state": "UNVERIFIED",
+    "polygon": [
+     {
+      "x": 284.5,
+      "y": 423
+     },
+     {
+      "x": 284.5,
+      "y": 504.5
+     },
+     {
+      "x": 324.5,
+      "y": 504.5
+     },
+     {
+      "x": 324.5,
+      "y": 423
+     }
+    ],
+    "evidence": "Printed room label and size",
+    "confidence": 0.94,
+    "statedAreaM2": null,
+    "dimensionText": "4'X4'"
+   },
+   {
+    "id": "R7",
+    "kind": "LIVING",
+    "label": "LIVING",
+    "state": "UNVERIFIED",
+    "polygon": [
+     {
+      "x": 357.8,
+      "y": 361.5
+     },
+     {
+      "x": 357.8,
+      "y": 626.9
+     },
+     {
+      "x": 380.5,
+      "y": 627.2
+     },
+     {
+      "x": 380.5,
+      "y": 632
+     },
+     {
+      "x": 377.5,
+      "y": 632
+     },
+     {
+      "x": 377.5,
+      "y": 698.5
+     },
+     {
+      "x": 545.5,
+      "y": 698.5
+     },
+     {
+      "x": 545.5,
+      "y": 361.5
+     }
+    ],
+    "evidence": "Printed room label and size",
+    "confidence": 0.9,
+    "statedAreaM2": null,
+    "dimensionText": "10'X20'"
+   },
+   {
+    "id": "R8",
+    "kind": "KITCHEN",
+    "label": "KITCHEN+DINING",
+    "state": "UNVERIFIED",
+    "polygon": [
+     {
+      "x": 219.5,
+      "y": 632.5
+     },
+     {
+      "x": 219.5,
+      "y": 833.5
+     },
+     {
+      "x": 370.5,
+      "y": 833.5
+     },
+     {
+      "x": 370.5,
+      "y": 632.5
+     }
+    ],
+    "evidence": "Printed room label and size",
+    "confidence": 0.84,
+    "statedAreaM2": null,
+    "dimensionText": "9'X12'"
+   }
+  ],
+  "texts": [
+   {
+    "id": "T1",
+    "box": {
+     "h": 11,
+     "w": 54,
+     "x": 365,
+     "y": 70
+    },
+    "role": "ROOM_LABEL",
+    "text": "BALCONY",
+    "roomId": "R1",
+    "confidence": 0.99
+   },
+   {
+    "id": "T2",
+    "box": {
+     "h": 10,
+     "w": 40,
+     "x": 378,
+     "y": 84
+    },
+    "role": "DIMENSION",
+    "text": "3'X20'",
+    "roomId": "R1",
+    "confidence": 0.99
+   },
+   {
+    "id": "T3",
+    "box": {
+     "h": 11,
+     "w": 91,
+     "x": 267,
+     "y": 228
+    },
+    "role": "ROOM_LABEL",
+    "text": "MASTERBEDROOM",
+    "roomId": "R2",
+    "confidence": 0.99
+   },
+   {
+    "id": "T4",
+    "box": {
+     "h": 10,
+     "w": 43,
+     "x": 294,
+     "y": 242
+    },
+    "role": "DIMENSION",
+    "text": "10'X14'",
+    "roomId": "R2",
+    "confidence": 0.99
+   },
+   {
+    "id": "T5",
+    "box": {
+     "h": 11,
+     "w": 57,
+     "x": 429,
+     "y": 228
+    },
+    "role": "ROOM_LABEL",
+    "text": "BEDROOM",
+    "roomId": "R3",
+    "confidence": 0.99
+   },
+   {
+    "id": "T6",
+    "box": {
+     "h": 10,
+     "w": 39,
+     "x": 443,
+     "y": 242
+    },
+    "role": "DIMENSION",
+    "text": "9'X14'",
+    "roomId": "R3",
+    "confidence": 0.99
+   },
+   {
+    "id": "T7",
+    "box": {
+     "h": 11,
+     "w": 36,
+     "x": 255,
+     "y": 381
+    },
+    "role": "ROOM_LABEL",
+    "text": "WASH",
+    "roomId": "R4",
+    "confidence": 0.99
+   },
+   {
+    "id": "T8",
+    "box": {
+     "h": 10,
+     "w": 72,
+     "x": 243,
+     "y": 395
+    },
+    "role": "DIMENSION",
+    "text": "6'-4\"X4'-3\"",
+    "roomId": "R4",
+    "confidence": 0.99
+   },
+   {
+    "id": "T9",
+    "box": {
+     "h": 10,
+     "w": 25,
+     "x": 239,
+     "y": 435
+    },
+    "role": "ROOM_LABEL",
+    "text": "LET.",
+    "roomId": "R5",
+    "confidence": 0.9
+   },
+   {
+    "id": "T10",
+    "box": {
+     "h": 10,
+     "w": 51,
+     "x": 240,
+     "y": 449
+    },
+    "role": "DIMENSION",
+    "text": "3'-6\"X4'",
+    "roomId": "R5",
+    "confidence": 0.99
+   },
+   {
+    "id": "T11",
+    "box": {
+     "h": 11,
+     "w": 32,
+     "x": 300,
+     "y": 457
+    },
+    "role": "ROOM_LABEL",
+    "text": "BATH",
+    "roomId": "R6",
+    "confidence": 0.99
+   },
+   {
+    "id": "T12",
+    "box": {
+     "h": 10,
+     "w": 33,
+     "x": 300,
+     "y": 476
+    },
+    "role": "DIMENSION",
+    "text": "4'X4'",
+    "roomId": "R6",
+    "confidence": 0.99
+   },
+   {
+    "id": "T13",
+    "box": {
+     "h": 11,
+     "w": 42,
+     "x": 443,
+     "y": 492
+    },
+    "role": "ROOM_LABEL",
+    "text": "LIVING",
+    "roomId": "R7",
+    "confidence": 0.99
+   },
+   {
+    "id": "T14",
+    "box": {
+     "h": 10,
+     "w": 46,
+     "x": 441,
+     "y": 506
+    },
+    "role": "DIMENSION",
+    "text": "10'X20'",
+    "roomId": "R7",
+    "confidence": 0.99
+   },
+   {
+    "id": "T15",
+    "box": {
+     "h": 10,
+     "w": 19,
+     "x": 382,
+     "y": 596
+    },
+    "role": "NOTE",
+    "text": "UP",
+    "roomId": null,
+    "confidence": 0.99
+   },
+   {
+    "id": "T16",
+    "box": {
+     "h": 11,
+     "w": 101,
+     "x": 241,
+     "y": 739
+    },
+    "role": "ROOM_LABEL",
+    "text": "KITCHEN+DINING",
+    "roomId": "R8",
+    "confidence": 0.99
+   },
+   {
+    "id": "T17",
+    "box": {
+     "h": 10,
+     "w": 40,
+     "x": 273,
+     "y": 753
+    },
+    "role": "DIMENSION",
+    "text": "9'X12'",
+    "roomId": "R8",
+    "confidence": 0.99
+   },
+   {
+    "id": "T18",
+    "box": {
+     "h": 11,
+     "w": 48,
+     "x": 428,
+     "y": 754
+    },
+    "role": "ROOM_LABEL",
+    "text": "PORCH",
+    "roomId": "R9",
+    "confidence": 0.99
+   },
+   {
+    "id": "T19",
+    "box": {
+     "h": 10,
+     "w": 38,
+     "x": 434,
+     "y": 768
+    },
+    "role": "DIMENSION",
+    "text": "10'X8'",
+    "roomId": "R9",
+    "confidence": 0.99
+   },
+   {
+    "id": "T20",
+    "box": {
+     "h": 15,
+     "w": 15,
+     "x": 642,
+     "y": 27
+    },
+    "role": "NORTH",
+    "text": "W",
+    "roomId": null,
+    "confidence": 0.99
+   },
+   {
+    "id": "T21",
+    "box": {
+     "h": 15,
+     "w": 14,
+     "x": 683,
+     "y": 68
+    },
+    "role": "NORTH",
+    "text": "N",
+    "roomId": null,
+    "confidence": 0.99
+   },
+   {
+    "id": "T22",
+    "box": {
+     "h": 15,
+     "w": 13,
+     "x": 644,
+     "y": 108
+    },
+    "role": "NORTH",
+    "text": "E",
+    "roomId": null,
+    "confidence": 0.99
+   },
+   {
+    "id": "T23",
+    "box": {
+     "h": 15,
+     "w": 14,
+     "x": 606,
+     "y": 68
+    },
+    "role": "NORTH",
+    "text": "S",
+    "roomId": null,
+    "confidence": 0.99
+   },
+   {
+    "id": "T24",
+    "box": {
+     "h": 14,
+     "w": 153,
+     "x": 274,
+     "y": 907
+    },
+    "role": "CONTACT",
+    "text": "Er. NAGESHWAR PARMAR",
+    "roomId": null,
+    "confidence": 0.99
+   },
+   {
+    "id": "T25",
+    "box": {
+     "h": 10,
+     "w": 112,
+     "x": 307,
+     "y": 923
+    },
+    "role": "CONTACT",
+    "text": "(B.E. CIVIL ENGINEER)",
+    "roomId": null,
+    "confidence": 0.98
+   },
+   {
+    "id": "T26",
+    "box": {
+     "h": 10,
+     "w": 27,
+     "x": 274,
+     "y": 936
+    },
+    "role": "CONTACT",
+    "text": "Mob:",
+    "roomId": null,
+    "confidence": 0.99
+   },
+   {
+    "id": "T27",
+    "box": {
+     "h": 10,
+     "w": 68,
+     "x": 305,
+     "y": 936
+    },
+    "role": "CONTACT",
+    "text": "9669501600",
+    "roomId": null,
+    "confidence": 0.99
+   },
+   {
+    "id": "T28",
+    "box": {
+     "h": 10,
+     "w": 142,
+     "x": 274,
+     "y": 948
+    },
+    "role": "CONTACT",
+    "text": "nageshparmar@gmail.com",
+    "roomId": null,
+    "confidence": 0.99
+   },
+   {
+    "id": "T29",
+    "box": {
+     "h": 10,
+     "w": 177,
+     "x": 274,
+     "y": 960
+    },
+    "role": "CONTACT",
+    "text": "- Add. - In front of jain warehouse, Diversion road, Bamgar",
+    "roomId": null,
+    "confidence": 0.94
+   },
+   {
+    "id": "T30",
+    "box": {
+     "h": 11,
+     "w": 176,
+     "x": 495,
+     "y": 910
+    },
+    "role": "OTHER",
+    "text": "CLINT NAME - MR. RAVI JI RATHOD",
+    "roomId": null,
+    "confidence": 0.98
+   },
+   {
+    "id": "T31",
+    "box": {
+     "h": 11,
+     "w": 151,
+     "x": 495,
+     "y": 927
+    },
+    "role": "OTHER",
+    "text": "PROJECT ADDRESS - AMLA",
+    "roomId": null,
+    "confidence": 0.98
+   },
+   {
+    "id": "T32",
+    "box": {
+     "h": 11,
+     "w": 156,
+     "x": 495,
+     "y": 947
+    },
+    "role": "TITLE",
+    "text": "DRAWING - GROUND FLOOR",
+    "roomId": null,
+    "confidence": 0.98
+   },
+   {
+    "id": "T33",
+    "box": {
+     "h": 47,
+     "w": 172,
+     "x": 49,
+     "y": 916
+    },
+    "role": "LOGO",
+    "text": "श्री राम कन्स्ट्रक्शन",
+    "roomId": null,
+    "confidence": 0.84
+   }
+  ],
+  "walls": [
+   {
+    "id": "E1",
+    "end": {
+     "x": 216,
+     "y": 837
+    },
+    "kind": "EXTERIOR",
+    "start": {
+     "x": 216,
+     "y": 115
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Continuous left exterior wall",
+    "confidence": 0.98,
+    "thicknessPx": 7
+   },
+   {
+    "id": "E2",
+    "end": {
+     "x": 549,
+     "y": 115
+    },
+    "kind": "EXTERIOR",
+    "start": {
+     "x": 216,
+     "y": 115
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Top exterior wall with openings",
+    "confidence": 0.98,
+    "thicknessPx": 7
+   },
+   {
+    "id": "E3",
+    "end": {
+     "x": 549,
+     "y": 790.3
+    },
+    "kind": "EXTERIOR",
+    "start": {
+     "x": 549,
+     "y": 115
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Right exterior wall",
+    "confidence": 0.95,
+    "thicknessPx": 7
+   },
+   {
+    "id": "E4",
+    "end": {
+     "x": 374,
+     "y": 837
+    },
+    "kind": "EXTERIOR",
+    "start": {
+     "x": 216,
+     "y": 837
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Kitchen exterior wall",
+    "confidence": 0.98,
+    "thicknessPx": 7
+   },
+   {
+    "id": "E5",
+    "end": {
+     "x": 549,
+     "y": 702
+    },
+    "kind": "EXTERIOR",
+    "start": {
+     "x": 374,
+     "y": 702
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Porch boundary",
+    "confidence": 0.9,
+    "thicknessPx": 7
+   },
+   {
+    "id": "E6",
+    "end": {
+     "x": 374,
+     "y": 837
+    },
+    "kind": "EXTERIOR",
+    "start": {
+     "x": 374,
+     "y": 628.5
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Kitchen/porch exterior wall",
+    "confidence": 0.95,
+    "thicknessPx": 7
+   },
+   {
+    "id": "I1",
+    "end": {
+     "x": 390.5,
+     "y": 357.5
+    },
+    "kind": "INTERIOR",
+    "start": {
+     "x": 390.5,
+     "y": 115
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Bedroom dividing wall",
+    "confidence": 0.98,
+    "thicknessPx": 8
+   },
+   {
+    "id": "I2",
+    "end": {
+     "x": 549,
+     "y": 357.5
+    },
+    "kind": "INTERIOR",
+    "start": {
+     "x": 216,
+     "y": 357.5
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Bedroom/lower-room boundary",
+    "confidence": 0.96,
+    "thicknessPx": 8
+   },
+   {
+    "id": "I3",
+    "end": {
+     "x": 328.5,
+     "y": 420
+    },
+    "kind": "INTERIOR",
+    "start": {
+     "x": 216,
+     "y": 420
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Wash boundary",
+    "confidence": 0.5,
+    "thicknessPx": 6
+   },
+   {
+    "id": "I4",
+    "end": {
+     "x": 328.5,
+     "y": 508.5
+    },
+    "kind": "INTERIOR",
+    "start": {
+     "x": 328.5,
+     "y": 357.5
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Wash/bath partition",
+    "confidence": 0.5,
+    "thicknessPx": 8
+   },
+   {
+    "id": "I5",
+    "end": {
+     "x": 280.5,
+     "y": 508.5
+    },
+    "kind": "INTERIOR",
+    "start": {
+     "x": 280.5,
+     "y": 420
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Let/bath partition",
+    "confidence": 0.92,
+    "thicknessPx": 8
+   },
+   {
+    "id": "I6",
+    "end": {
+     "x": 354.3,
+     "y": 508.5
+    },
+    "kind": "INTERIOR",
+    "start": {
+     "x": 216,
+     "y": 508.5
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Lower room boundary",
+    "confidence": 0.95,
+    "thicknessPx": 8
+   },
+   {
+    "id": "I7",
+    "end": {
+     "x": 354.3,
+     "y": 628.5
+    },
+    "kind": "INTERIOR",
+    "start": {
+     "x": 354.3,
+     "y": 357.5
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Stair/living boundary",
+    "confidence": 0.83,
+    "thicknessPx": 7
+   },
+   {
+    "id": "I8",
+    "end": {
+     "x": 377,
+     "y": 628.5
+    },
+    "kind": "INTERIOR",
+    "start": {
+     "x": 216,
+     "y": 628.5
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Stair boundary",
+    "confidence": 0.95,
+    "thicknessPx": 8
+   }
+  ],
+  "stairs": [
+   {
+    "id": "S1",
+    "state": "UNVERIFIED",
+    "treads": 11,
+    "polygon": [
+     {
+      "x": 218,
+      "y": 510
+     },
+     {
+      "x": 358,
+      "y": 510
+     },
+     {
+      "x": 358,
+      "y": 625
+     },
+     {
+      "x": 218,
+      "y": 625
+     }
+    ],
+    "evidence": "UP arrow and visible treads",
+    "direction": "UP",
+    "startEdge": [
+     {
+      "x": 218,
+      "y": 510
+     },
+     {
+      "x": 358,
+      "y": 510
+     }
+    ],
+    "confidence": 0.92
+   }
+  ],
+  "ignored": [
+   {
+    "id": "IG1",
+    "box": {
+     "h": 968,
+     "w": 688,
+     "x": 24,
+     "y": 16
+    },
+    "note": "Sheet border",
+    "role": "BORDER"
+   },
+   {
+    "id": "IG2",
+    "box": {
+     "h": 72,
+     "w": 656,
+     "x": 44,
+     "y": 899
+    },
+    "note": "Bottom title block",
+    "role": "TITLE_BLOCK"
+   },
+   {
+    "id": "IG3",
+    "box": {
+     "h": 101,
+     "w": 91,
+     "x": 603,
+     "y": 26
+    },
+    "note": "Compass graphic and cardinal labels",
+    "role": "COMPASS"
+   },
+   {
+    "id": "IG4",
+    "box": {
+     "h": 810,
+     "w": 377,
+     "x": 181,
+     "y": 38
+    },
+    "note": "Overall dimension lines and extension lines",
+    "role": "DIMENSION_LINES"
+   }
+  ],
+  "windows": [
+   {
+    "id": "W1",
+    "leaf": "SLIDING",
+    "state": "UNVERIFIED",
+    "wallId": "E2",
+    "heightM": null,
+    "widthPx": 60,
+    "centerPx": {
+     "x": 267,
+     "y": 115
+    },
+    "evidence": "Window symbol",
+    "position": 0.1532,
+    "confidence": 0.91,
+    "sillHeightM": null,
+    "swingRoomId": null
+   },
+   {
+    "id": "W2",
+    "leaf": "SLIDING",
+    "state": "UNVERIFIED",
+    "wallId": "E2",
+    "heightM": null,
+    "widthPx": 61,
+    "centerPx": {
+     "x": 498.5,
+     "y": 115
+    },
+    "evidence": "Window symbol",
+    "position": 0.8483,
+    "confidence": 0.9,
+    "sillHeightM": null,
+    "swingRoomId": null
+   },
+   {
+    "id": "W3",
+    "leaf": "SLIDING",
+    "state": "UNVERIFIED",
+    "wallId": "I2",
+    "heightM": null,
+    "widthPx": 64,
+    "centerPx": {
+     "x": 490,
+     "y": 357.5
+    },
+    "evidence": "Window symbol on bedroom wall",
+    "position": 0.8228,
+    "confidence": 0.88,
+    "sillHeightM": null,
+    "swingRoomId": null
+   },
+   {
+    "id": "W4",
+    "leaf": "SLIDING",
+    "state": "UNVERIFIED",
+    "wallId": "E4",
+    "heightM": null,
+    "widthPx": 34,
+    "centerPx": {
+     "x": 246,
+     "y": 837
+    },
+    "evidence": "Bottom exterior window",
+    "position": 0.1899,
+    "confidence": 0.6,
+    "sillHeightM": null,
+    "swingRoomId": null
+   },
+   {
+    "id": "W5",
+    "leaf": "SLIDING",
+    "state": "UNVERIFIED",
+    "wallId": "E4",
+    "heightM": null,
+    "widthPx": 59,
+    "centerPx": {
+     "x": 294.5,
+     "y": 837
+    },
+    "evidence": "Bottom exterior window",
+    "position": 0.4968,
+    "confidence": 0.84,
+    "sillHeightM": null,
+    "swingRoomId": null
+   },
+   {
+    "id": "W6",
+    "leaf": "SLIDING",
+    "state": "UNVERIFIED",
+    "wallId": "E5",
+    "heightM": null,
+    "widthPx": 42,
+    "centerPx": {
+     "x": 433,
+     "y": 702
+    },
+    "evidence": "Porch-side opening",
+    "position": 0.3371,
+    "confidence": 0.86,
+    "sillHeightM": null,
+    "swingRoomId": null
+   }
+  ],
+  "northDeg": 90,
+  "warnings": [
+   {
+    "code": "TEXT_READING_UNCERTAIN",
+    "detail": "The small Hindi logo text and some title-block wording are difficult to read exactly.",
+    "elementId": "T33"
+   },
+   {
+    "code": "ROOM_CLASS_UNCERTAIN",
+    "detail": "The drawing labels WASH and LET.; their functional categories are reported conservatively where needed.",
+    "elementId": "R4"
+   }
+  ],
+  "balconies": [
+   {
+    "id": "R1",
+    "kind": "BALCONY",
+    "label": "BALCONY",
+    "state": "UNVERIFIED",
+    "polygon": [
+     {
+      "x": 214,
+      "y": 61
+     },
+     {
+      "x": 548,
+      "y": 61
+     },
+     {
+      "x": 548,
+      "y": 114
+     },
+     {
+      "x": 214,
+      "y": 114
+     }
+    ],
+    "evidence": "Printed balcony label and size",
+    "confidence": 0.95,
+    "statedAreaM2": null,
+    "dimensionText": "3'X20'"
+   },
+   {
+    "id": "R9",
+    "kind": "TERRACE",
+    "label": "PORCH",
+    "state": "UNVERIFIED",
+    "polygon": [
+     {
+      "x": 377.5,
+      "y": 705.5
+     },
+     {
+      "x": 377.5,
+      "y": 790
+     },
+     {
+      "x": 545.5,
+      "y": 790
+     },
+     {
+      "x": 545.5,
+      "y": 705.5
+     }
+    ],
+    "evidence": "Printed porch label and size",
+    "confidence": 0.9,
+    "statedAreaM2": null,
+    "dimensionText": "10'X8'"
+   },
+   {
+    "id": "R1",
+    "kind": "BALCONY",
+    "label": "BALCONY",
+    "state": "UNVERIFIED",
+    "polygon": [
+     {
+      "x": 214,
+      "y": 61
+     },
+     {
+      "x": 548,
+      "y": 61
+     },
+     {
+      "x": 548,
+      "y": 114
+     },
+     {
+      "x": 214,
+      "y": 114
+     }
+    ],
+    "evidence": "Printed balcony label and size",
+    "confidence": 0.95,
+    "statedAreaM2": null,
+    "dimensionText": "3'X20'"
+   }
+  ],
+  "footprint": [
+   {
+    "x": 212.5,
+    "y": 111.5
+   },
+   {
+    "x": 552.5,
+    "y": 111.5
+   },
+   {
+    "x": 552.5,
+    "y": 790
+   },
+   {
+    "x": 370.5,
+    "y": 790
+   },
+   {
+    "x": 370.5,
+    "y": 840.5
+   },
+   {
+    "x": 212.5,
+    "y": 840.5
+   }
+  ],
+  "imageWidth": 736,
+  "imageHeight": 998,
+  "ceilingHeight": null,
+  "detectedScale": 0.0179885,
+  "scaleEvidence": "Solved from 8 of 12 printed sizes (median residual 1.1%).",
+  "sourceAssetId": "users/5157044e-9158-437a-86a2-e34d5ada82f7/design-studio-floorplans/e1415ef1-74e6-4603-8f68-46262f9be118/e2020a2a-a4bd-4c0a-b72b-35ee340e126d.jpg",
+  "scaleConfidence": 0.93,
+  "unknownElements": [],
+  "ceilingHeightSource": null,
+  "extractionConfidence": 0.5
+ },
+ "rawDoc": {
+  "doors": [
+   {
+    "id": "D1",
+    "leaf": "DOUBLE",
+    "state": "UNVERIFIED",
+    "wallId": "E2",
+    "heightM": null,
+    "widthPx": 16,
+    "centerPx": {
+     "x": 390,
+     "y": 115
+    },
+    "evidence": "Paired door arcs at balcony",
+    "position": 0.5253731343283582,
+    "confidence": 0.91,
+    "sillHeightM": null,
+    "swingRoomId": "BALCONY"
+   },
+   {
+    "id": "D2",
+    "leaf": "DOUBLE",
+    "state": "UNVERIFIED",
+    "wallId": "I1",
+    "heightM": null,
+    "widthPx": 16,
+    "centerPx": {
+     "x": 390,
+     "y": 333
+    },
+    "evidence": "Paired door arcs in bedroom partition",
+    "position": 0.889795918367347,
+    "confidence": 0.84,
+    "sillHeightM": null,
+    "swingRoomId": "HALL"
+   },
+   {
+    "id": "D3",
+    "leaf": "HINGED",
+    "state": "UNVERIFIED",
+    "wallId": "I4",
+    "heightM": null,
+    "widthPx": 15,
+    "centerPx": {
+     "x": 328,
+     "y": 420
+    },
+    "evidence": "Single door arc",
+    "position": 0.8513513513513513,
+    "confidence": 0.8,
+    "sillHeightM": null,
+    "swingRoomId": "HALL"
+   },
+   {
+    "id": "D4",
+    "leaf": "HINGED",
+    "state": "UNVERIFIED",
+    "wallId": "I5",
+    "heightM": null,
+    "widthPx": 13,
+    "centerPx": {
+     "x": 279,
+     "y": 445
+    },
+    "evidence": "Single door arc",
+    "position": 0.14473684210526316,
+    "confidence": 0.78,
+    "sillHeightM": null,
+    "swingRoomId": "HALL"
+   },
+   {
+    "id": "D5",
+    "leaf": "HINGED",
+    "state": "UNVERIFIED",
+    "wallId": "I8",
+    "heightM": null,
+    "widthPx": 45,
+    "centerPx": {
+     "x": 350,
+     "y": 627
+    },
+    "evidence": "Door arc at stair/living edge",
+    "position": 0.8301886792452831,
+    "confidence": 0.8,
+    "sillHeightM": null,
+    "swingRoomId": "LIVING"
+   },
+   {
+    "id": "D6",
+    "leaf": "HINGED",
+    "state": "UNVERIFIED",
+    "wallId": "E3",
+    "heightM": null,
+    "widthPx": 42,
+    "centerPx": {
+     "x": 526,
+     "y": 681
+    },
+    "evidence": "Door arc opening to porch",
+    "position": 0.8387573964497042,
+    "confidence": 0.78,
+    "sillHeightM": null,
+    "swingRoomId": "PORCH"
+   },
+   {
+    "id": "D7",
+    "leaf": "HINGED",
+    "state": "UNVERIFIED",
+    "wallId": "I10",
+    "heightM": null,
+    "widthPx": 18,
+    "centerPx": {
+     "x": 391,
+     "y": 703
+    },
+    "evidence": "Door at porch boundary",
+    "position": 0.09248554913294797,
+    "confidence": 0.74,
+    "sillHeightM": null,
+    "swingRoomId": "LIVING"
+   }
+  ],
+  "rooms": [
+   {
+    "id": "R1",
+    "kind": "BALCONY",
+    "label": "BALCONY",
+    "state": "UNVERIFIED",
+    "polygon": [
+     {
+      "x": 214,
+      "y": 61
+     },
+     {
+      "x": 548,
+      "y": 61
+     },
+     {
+      "x": 548,
+      "y": 114
+     },
+     {
+      "x": 214,
+      "y": 114
+     }
+    ],
+    "evidence": "Printed balcony label and size",
+    "confidence": 0.95,
+    "statedAreaM2": null,
+    "dimensionText": "3'X20'"
+   },
+   {
+    "id": "R2",
+    "kind": "BEDROOM",
+    "label": "MASTERBEDROOM",
+    "state": "UNVERIFIED",
+    "polygon": [
+     {
+      "x": 218,
+      "y": 115
+     },
+     {
+      "x": 390,
+      "y": 115
+     },
+     {
+      "x": 390,
+      "y": 357
+     },
+     {
+      "x": 218,
+      "y": 357
+     }
+    ],
+    "evidence": "Printed room label and size",
+    "confidence": 0.96,
+    "statedAreaM2": null,
+    "dimensionText": "10'X14'"
+   },
+   {
+    "id": "R3",
+    "kind": "BEDROOM",
+    "label": "BEDROOM",
+    "state": "UNVERIFIED",
+    "polygon": [
+     {
+      "x": 390,
+      "y": 115
+     },
+     {
+      "x": 548,
+      "y": 115
+     },
+     {
+      "x": 548,
+      "y": 357
+     },
+     {
+      "x": 390,
+      "y": 357
+     }
+    ],
+    "evidence": "Printed room label and size",
+    "confidence": 0.96,
+    "statedAreaM2": null,
+    "dimensionText": "9'X14'"
+   },
+   {
+    "id": "R4",
+    "kind": "UNKNOWN",
+    "label": "WASH",
+    "state": "UNVERIFIED",
+    "polygon": [
+     {
+      "x": 218,
+      "y": 357
+     },
+     {
+      "x": 328,
+      "y": 357
+     },
+     {
+      "x": 328,
+      "y": 420
+     },
+     {
+      "x": 218,
+      "y": 420
+     }
+    ],
+    "evidence": "Printed room label and size",
+    "confidence": 0.9,
+    "statedAreaM2": null,
+    "dimensionText": "6'-4\"X4'-3\""
+   },
+   {
+    "id": "R5",
+    "kind": "STORAGE",
+    "label": "LET.",
+    "state": "UNVERIFIED",
+    "polygon": [
+     {
+      "x": 218,
+      "y": 420
+     },
+     {
+      "x": 279,
+      "y": 420
+     },
+     {
+      "x": 279,
+      "y": 510
+     },
+     {
+      "x": 218,
+      "y": 510
+     }
+    ],
+    "evidence": "Printed label appears as LET.",
+    "confidence": 0.82,
+    "statedAreaM2": null,
+    "dimensionText": "3'-6\"X4'"
+   },
+   {
+    "id": "R6",
+    "kind": "BATHROOM",
+    "label": "BATH",
+    "state": "UNVERIFIED",
+    "polygon": [
+     {
+      "x": 279,
+      "y": 431
+     },
+     {
+      "x": 358,
+      "y": 431
+     },
+     {
+      "x": 358,
+      "y": 510
+     },
+     {
+      "x": 279,
+      "y": 510
+     }
+    ],
+    "evidence": "Printed room label and size",
+    "confidence": 0.94,
+    "statedAreaM2": null,
+    "dimensionText": "4'X4'"
+   },
+   {
+    "id": "R7",
+    "kind": "LIVING",
+    "label": "LIVING",
+    "state": "UNVERIFIED",
+    "polygon": [
+     {
+      "x": 358,
+      "y": 357
+     },
+     {
+      "x": 548,
+      "y": 357
+     },
+     {
+      "x": 548,
+      "y": 703
+     },
+     {
+      "x": 375,
+      "y": 703
+     },
+     {
+      "x": 375,
+      "y": 627
+     },
+     {
+      "x": 358,
+      "y": 627
+     }
+    ],
+    "evidence": "Printed room label and size",
+    "confidence": 0.9,
+    "statedAreaM2": null,
+    "dimensionText": "10'X20'"
+   },
+   {
+    "id": "R8",
+    "kind": "KITCHEN",
+    "label": "KITCHEN+DINING",
+    "state": "UNVERIFIED",
+    "polygon": [
+     {
+      "x": 218,
+      "y": 510
+     },
+     {
+      "x": 358,
+      "y": 510
+     },
+     {
+      "x": 375,
+      "y": 627
+     },
+     {
+      "x": 375,
+      "y": 839
+     },
+     {
+      "x": 218,
+      "y": 839
+     }
+    ],
+    "evidence": "Printed room label and size",
+    "confidence": 0.84,
+    "statedAreaM2": null,
+    "dimensionText": "9'X12'"
+   },
+   {
+    "id": "R9",
+    "kind": "UNKNOWN",
+    "label": "PORCH",
+    "state": "UNVERIFIED",
+    "polygon": [
+     {
+      "x": 375,
+      "y": 703
+     },
+     {
+      "x": 548,
+      "y": 703
+     },
+     {
+      "x": 548,
+      "y": 790
+     },
+     {
+      "x": 375,
+      "y": 790
+     }
+    ],
+    "evidence": "Printed porch label and size",
+    "confidence": 0.9,
+    "statedAreaM2": null,
+    "dimensionText": "10'X8'"
+   }
+  ],
+  "texts": [
+   {
+    "id": "T1",
+    "box": {
+     "h": 11,
+     "w": 54,
+     "x": 365,
+     "y": 70
+    },
+    "role": "ROOM_LABEL",
+    "text": "BALCONY",
+    "roomId": "R1",
+    "confidence": 0.99
+   },
+   {
+    "id": "T2",
+    "box": {
+     "h": 10,
+     "w": 40,
+     "x": 378,
+     "y": 84
+    },
+    "role": "DIMENSION",
+    "text": "3'X20'",
+    "roomId": "R1",
+    "confidence": 0.99
+   },
+   {
+    "id": "T3",
+    "box": {
+     "h": 11,
+     "w": 91,
+     "x": 267,
+     "y": 228
+    },
+    "role": "ROOM_LABEL",
+    "text": "MASTERBEDROOM",
+    "roomId": "R2",
+    "confidence": 0.99
+   },
+   {
+    "id": "T4",
+    "box": {
+     "h": 10,
+     "w": 43,
+     "x": 294,
+     "y": 242
+    },
+    "role": "DIMENSION",
+    "text": "10'X14'",
+    "roomId": "R2",
+    "confidence": 0.99
+   },
+   {
+    "id": "T5",
+    "box": {
+     "h": 11,
+     "w": 57,
+     "x": 429,
+     "y": 228
+    },
+    "role": "ROOM_LABEL",
+    "text": "BEDROOM",
+    "roomId": "R3",
+    "confidence": 0.99
+   },
+   {
+    "id": "T6",
+    "box": {
+     "h": 10,
+     "w": 39,
+     "x": 443,
+     "y": 242
+    },
+    "role": "DIMENSION",
+    "text": "9'X14'",
+    "roomId": "R3",
+    "confidence": 0.99
+   },
+   {
+    "id": "T7",
+    "box": {
+     "h": 11,
+     "w": 36,
+     "x": 255,
+     "y": 381
+    },
+    "role": "ROOM_LABEL",
+    "text": "WASH",
+    "roomId": "R4",
+    "confidence": 0.99
+   },
+   {
+    "id": "T8",
+    "box": {
+     "h": 10,
+     "w": 72,
+     "x": 243,
+     "y": 395
+    },
+    "role": "DIMENSION",
+    "text": "6'-4\"X4'-3\"",
+    "roomId": "R4",
+    "confidence": 0.99
+   },
+   {
+    "id": "T9",
+    "box": {
+     "h": 10,
+     "w": 25,
+     "x": 239,
+     "y": 435
+    },
+    "role": "ROOM_LABEL",
+    "text": "LET.",
+    "roomId": "R5",
+    "confidence": 0.9
+   },
+   {
+    "id": "T10",
+    "box": {
+     "h": 10,
+     "w": 51,
+     "x": 240,
+     "y": 449
+    },
+    "role": "DIMENSION",
+    "text": "3'-6\"X4'",
+    "roomId": "R5",
+    "confidence": 0.99
+   },
+   {
+    "id": "T11",
+    "box": {
+     "h": 11,
+     "w": 32,
+     "x": 300,
+     "y": 457
+    },
+    "role": "ROOM_LABEL",
+    "text": "BATH",
+    "roomId": "R6",
+    "confidence": 0.99
+   },
+   {
+    "id": "T12",
+    "box": {
+     "h": 10,
+     "w": 33,
+     "x": 300,
+     "y": 476
+    },
+    "role": "DIMENSION",
+    "text": "4'X4'",
+    "roomId": "R6",
+    "confidence": 0.99
+   },
+   {
+    "id": "T13",
+    "box": {
+     "h": 11,
+     "w": 42,
+     "x": 443,
+     "y": 492
+    },
+    "role": "ROOM_LABEL",
+    "text": "LIVING",
+    "roomId": "R7",
+    "confidence": 0.99
+   },
+   {
+    "id": "T14",
+    "box": {
+     "h": 10,
+     "w": 46,
+     "x": 441,
+     "y": 506
+    },
+    "role": "DIMENSION",
+    "text": "10'X20'",
+    "roomId": "R7",
+    "confidence": 0.99
+   },
+   {
+    "id": "T15",
+    "box": {
+     "h": 10,
+     "w": 19,
+     "x": 382,
+     "y": 596
+    },
+    "role": "NOTE",
+    "text": "UP",
+    "roomId": null,
+    "confidence": 0.99
+   },
+   {
+    "id": "T16",
+    "box": {
+     "h": 11,
+     "w": 101,
+     "x": 241,
+     "y": 739
+    },
+    "role": "ROOM_LABEL",
+    "text": "KITCHEN+DINING",
+    "roomId": "R8",
+    "confidence": 0.99
+   },
+   {
+    "id": "T17",
+    "box": {
+     "h": 10,
+     "w": 40,
+     "x": 273,
+     "y": 753
+    },
+    "role": "DIMENSION",
+    "text": "9'X12'",
+    "roomId": "R8",
+    "confidence": 0.99
+   },
+   {
+    "id": "T18",
+    "box": {
+     "h": 11,
+     "w": 48,
+     "x": 428,
+     "y": 754
+    },
+    "role": "ROOM_LABEL",
+    "text": "PORCH",
+    "roomId": "R9",
+    "confidence": 0.99
+   },
+   {
+    "id": "T19",
+    "box": {
+     "h": 10,
+     "w": 38,
+     "x": 434,
+     "y": 768
+    },
+    "role": "DIMENSION",
+    "text": "10'X8'",
+    "roomId": "R9",
+    "confidence": 0.99
+   },
+   {
+    "id": "T20",
+    "box": {
+     "h": 15,
+     "w": 15,
+     "x": 642,
+     "y": 27
+    },
+    "role": "NORTH",
+    "text": "W",
+    "roomId": null,
+    "confidence": 0.99
+   },
+   {
+    "id": "T21",
+    "box": {
+     "h": 15,
+     "w": 14,
+     "x": 683,
+     "y": 68
+    },
+    "role": "NORTH",
+    "text": "N",
+    "roomId": null,
+    "confidence": 0.99
+   },
+   {
+    "id": "T22",
+    "box": {
+     "h": 15,
+     "w": 13,
+     "x": 644,
+     "y": 108
+    },
+    "role": "NORTH",
+    "text": "E",
+    "roomId": null,
+    "confidence": 0.99
+   },
+   {
+    "id": "T23",
+    "box": {
+     "h": 15,
+     "w": 14,
+     "x": 606,
+     "y": 68
+    },
+    "role": "NORTH",
+    "text": "S",
+    "roomId": null,
+    "confidence": 0.99
+   },
+   {
+    "id": "T24",
+    "box": {
+     "h": 14,
+     "w": 153,
+     "x": 274,
+     "y": 907
+    },
+    "role": "CONTACT",
+    "text": "Er. NAGESHWAR PARMAR",
+    "roomId": null,
+    "confidence": 0.99
+   },
+   {
+    "id": "T25",
+    "box": {
+     "h": 10,
+     "w": 112,
+     "x": 307,
+     "y": 923
+    },
+    "role": "CONTACT",
+    "text": "(B.E. CIVIL ENGINEER)",
+    "roomId": null,
+    "confidence": 0.98
+   },
+   {
+    "id": "T26",
+    "box": {
+     "h": 10,
+     "w": 27,
+     "x": 274,
+     "y": 936
+    },
+    "role": "CONTACT",
+    "text": "Mob:",
+    "roomId": null,
+    "confidence": 0.99
+   },
+   {
+    "id": "T27",
+    "box": {
+     "h": 10,
+     "w": 68,
+     "x": 305,
+     "y": 936
+    },
+    "role": "CONTACT",
+    "text": "9669501600",
+    "roomId": null,
+    "confidence": 0.99
+   },
+   {
+    "id": "T28",
+    "box": {
+     "h": 10,
+     "w": 142,
+     "x": 274,
+     "y": 948
+    },
+    "role": "CONTACT",
+    "text": "nageshparmar@gmail.com",
+    "roomId": null,
+    "confidence": 0.99
+   },
+   {
+    "id": "T29",
+    "box": {
+     "h": 10,
+     "w": 177,
+     "x": 274,
+     "y": 960
+    },
+    "role": "CONTACT",
+    "text": "- Add. - In front of jain warehouse, Diversion road, Bamgar",
+    "roomId": null,
+    "confidence": 0.94
+   },
+   {
+    "id": "T30",
+    "box": {
+     "h": 11,
+     "w": 176,
+     "x": 495,
+     "y": 910
+    },
+    "role": "OTHER",
+    "text": "CLINT NAME - MR. RAVI JI RATHOD",
+    "roomId": null,
+    "confidence": 0.98
+   },
+   {
+    "id": "T31",
+    "box": {
+     "h": 11,
+     "w": 151,
+     "x": 495,
+     "y": 927
+    },
+    "role": "OTHER",
+    "text": "PROJECT ADDRESS - AMLA",
+    "roomId": null,
+    "confidence": 0.98
+   },
+   {
+    "id": "T32",
+    "box": {
+     "h": 11,
+     "w": 156,
+     "x": 495,
+     "y": 947
+    },
+    "role": "TITLE",
+    "text": "DRAWING - GROUND FLOOR",
+    "roomId": null,
+    "confidence": 0.98
+   },
+   {
+    "id": "T33",
+    "box": {
+     "h": 47,
+     "w": 172,
+     "x": 49,
+     "y": 916
+    },
+    "role": "LOGO",
+    "text": "श्री राम कन्स्ट्रक्शन",
+    "roomId": null,
+    "confidence": 0.84
+   }
+  ],
+  "walls": [
+   {
+    "id": "E1",
+    "end": {
+     "x": 214,
+     "y": 839
+    },
+    "kind": "EXTERIOR",
+    "start": {
+     "x": 214,
+     "y": 114
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Continuous left exterior wall",
+    "confidence": 0.98,
+    "thicknessPx": 6
+   },
+   {
+    "id": "E2",
+    "end": {
+     "x": 549,
+     "y": 115
+    },
+    "kind": "EXTERIOR",
+    "start": {
+     "x": 214,
+     "y": 115
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Top exterior wall with openings",
+    "confidence": 0.98,
+    "thicknessPx": 6
+   },
+   {
+    "id": "E3",
+    "end": {
+     "x": 548,
+     "y": 790
+    },
+    "kind": "EXTERIOR",
+    "start": {
+     "x": 548,
+     "y": 114
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Right exterior wall",
+    "confidence": 0.95,
+    "thicknessPx": 6
+   },
+   {
+    "id": "E4",
+    "end": {
+     "x": 375,
+     "y": 839
+    },
+    "kind": "EXTERIOR",
+    "start": {
+     "x": 214,
+     "y": 839
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Kitchen exterior wall",
+    "confidence": 0.98,
+    "thicknessPx": 6
+   },
+   {
+    "id": "E5",
+    "end": {
+     "x": 548,
+     "y": 703
+    },
+    "kind": "EXTERIOR",
+    "start": {
+     "x": 375,
+     "y": 703
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Porch boundary",
+    "confidence": 0.9,
+    "thicknessPx": 6
+   },
+   {
+    "id": "E6",
+    "end": {
+     "x": 375,
+     "y": 839
+    },
+    "kind": "EXTERIOR",
+    "start": {
+     "x": 375,
+     "y": 703
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Kitchen/porch exterior wall",
+    "confidence": 0.95,
+    "thicknessPx": 6
+   },
+   {
+    "id": "I1",
+    "end": {
+     "x": 390,
+     "y": 360
+    },
+    "kind": "INTERIOR",
+    "start": {
+     "x": 390,
+     "y": 115
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Bedroom dividing wall",
+    "confidence": 0.98,
+    "thicknessPx": 6
+   },
+   {
+    "id": "I2",
+    "end": {
+     "x": 548,
+     "y": 357
+    },
+    "kind": "INTERIOR",
+    "start": {
+     "x": 218,
+     "y": 357
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Bedroom/lower-room boundary",
+    "confidence": 0.96,
+    "thicknessPx": 6
+   },
+   {
+    "id": "I3",
+    "end": {
+     "x": 328,
+     "y": 420
+    },
+    "kind": "INTERIOR",
+    "start": {
+     "x": 218,
+     "y": 420
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Wash boundary",
+    "confidence": 0.84,
+    "thicknessPx": 6
+   },
+   {
+    "id": "I4",
+    "end": {
+     "x": 328,
+     "y": 431
+    },
+    "kind": "INTERIOR",
+    "start": {
+     "x": 328,
+     "y": 357
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Wash/bath partition",
+    "confidence": 0.87,
+    "thicknessPx": 6
+   },
+   {
+    "id": "I5",
+    "end": {
+     "x": 279,
+     "y": 510
+    },
+    "kind": "INTERIOR",
+    "start": {
+     "x": 279,
+     "y": 434
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Let/bath partition",
+    "confidence": 0.92,
+    "thicknessPx": 6
+   },
+   {
+    "id": "I6",
+    "end": {
+     "x": 358,
+     "y": 510
+    },
+    "kind": "INTERIOR",
+    "start": {
+     "x": 218,
+     "y": 510
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Lower room boundary",
+    "confidence": 0.95,
+    "thicknessPx": 6
+   },
+   {
+    "id": "I7",
+    "end": {
+     "x": 358,
+     "y": 625
+    },
+    "kind": "INTERIOR",
+    "start": {
+     "x": 358,
+     "y": 510
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Stair/living boundary",
+    "confidence": 0.8,
+    "thicknessPx": 6
+   },
+   {
+    "id": "I8",
+    "end": {
+     "x": 377,
+     "y": 627
+    },
+    "kind": "INTERIOR",
+    "start": {
+     "x": 218,
+     "y": 627
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Stair boundary",
+    "confidence": 0.95,
+    "thicknessPx": 6
+   },
+   {
+    "id": "I9",
+    "end": {
+     "x": 375,
+     "y": 839
+    },
+    "kind": "INTERIOR",
+    "start": {
+     "x": 375,
+     "y": 704
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Kitchen side wall",
+    "confidence": 0.95,
+    "thicknessPx": 6
+   },
+   {
+    "id": "I10",
+    "end": {
+     "x": 548,
+     "y": 703
+    },
+    "kind": "INTERIOR",
+    "start": {
+     "x": 375,
+     "y": 703
+    },
+    "state": "UNVERIFIED",
+    "evidence": "Living/porch boundary",
+    "confidence": 0.9,
+    "thicknessPx": 6
+   }
+  ],
+  "stairs": [
+   {
+    "id": "S1",
+    "state": "UNVERIFIED",
+    "treads": 11,
+    "polygon": [
+     {
+      "x": 218,
+      "y": 510
+     },
+     {
+      "x": 358,
+      "y": 510
+     },
+     {
+      "x": 358,
+      "y": 625
+     },
+     {
+      "x": 218,
+      "y": 625
+     }
+    ],
+    "evidence": "UP arrow and visible treads",
+    "direction": "UP",
+    "startEdge": [
+     {
+      "x": 218,
+      "y": 510
+     },
+     {
+      "x": 358,
+      "y": 510
+     }
+    ],
+    "confidence": 0.92
+   }
+  ],
+  "ignored": [
+   {
+    "id": "IG1",
+    "box": {
+     "h": 968,
+     "w": 688,
+     "x": 24,
+     "y": 16
+    },
+    "note": "Sheet border",
+    "role": "BORDER"
+   },
+   {
+    "id": "IG2",
+    "box": {
+     "h": 72,
+     "w": 656,
+     "x": 44,
+     "y": 899
+    },
+    "note": "Bottom title block",
+    "role": "TITLE_BLOCK"
+   },
+   {
+    "id": "IG3",
+    "box": {
+     "h": 101,
+     "w": 91,
+     "x": 603,
+     "y": 26
+    },
+    "note": "Compass graphic and cardinal labels",
+    "role": "COMPASS"
+   },
+   {
+    "id": "IG4",
+    "box": {
+     "h": 810,
+     "w": 377,
+     "x": 181,
+     "y": 38
+    },
+    "note": "Overall dimension lines and extension lines",
+    "role": "DIMENSION_LINES"
+   }
+  ],
+  "windows": [
+   {
+    "id": "W1",
+    "leaf": "SLIDING",
+    "state": "UNVERIFIED",
+    "wallId": "E2",
+    "heightM": null,
+    "widthPx": 65,
+    "centerPx": {
+     "x": 267,
+     "y": 115
+    },
+    "evidence": "Window symbol",
+    "position": 0.1582089552238806,
+    "confidence": 0.91,
+    "sillHeightM": null,
+    "swingRoomId": null
+   },
+   {
+    "id": "W2",
+    "leaf": "SLIDING",
+    "state": "UNVERIFIED",
+    "wallId": "E2",
+    "heightM": null,
+    "widthPx": 86,
+    "centerPx": {
+     "x": 489,
+     "y": 115
+    },
+    "evidence": "Window symbol",
+    "position": 0.8208955223880597,
+    "confidence": 0.9,
+    "sillHeightM": null,
+    "swingRoomId": null
+   },
+   {
+    "id": "W3",
+    "leaf": "SLIDING",
+    "state": "UNVERIFIED",
+    "wallId": "I2",
+    "heightM": null,
+    "widthPx": 78,
+    "centerPx": {
+     "x": 485,
+     "y": 357
+    },
+    "evidence": "Window symbol on bedroom wall",
+    "position": 0.8090909090909091,
+    "confidence": 0.88,
+    "sillHeightM": null,
+    "swingRoomId": null
+   },
+   {
+    "id": "W4",
+    "leaf": "SLIDING",
+    "state": "UNVERIFIED",
+    "wallId": "E4",
+    "heightM": null,
+    "widthPx": 34,
+    "centerPx": {
+     "x": 246,
+     "y": 839
+    },
+    "evidence": "Bottom exterior window",
+    "position": 0.19875776397515527,
+    "confidence": 0.84,
+    "sillHeightM": null,
+    "swingRoomId": null
+   },
+   {
+    "id": "W5",
+    "leaf": "SLIDING",
+    "state": "UNVERIFIED",
+    "wallId": "E4",
+    "heightM": null,
+    "widthPx": 34,
+    "centerPx": {
+     "x": 313,
+     "y": 839
+    },
+    "evidence": "Bottom exterior window",
+    "position": 0.6149068322981367,
+    "confidence": 0.84,
+    "sillHeightM": null,
+    "swingRoomId": null
+   },
+   {
+    "id": "W6",
+    "leaf": "SLIDING",
+    "state": "UNVERIFIED",
+    "wallId": "I10",
+    "heightM": null,
+    "widthPx": 87,
+    "centerPx": {
+     "x": 452,
+     "y": 703
+    },
+    "evidence": "Porch-side opening",
+    "position": 0.44508670520231214,
+    "confidence": 0.86,
+    "sillHeightM": null,
+    "swingRoomId": null
+   }
+  ],
+  "northDeg": 90,
+  "warnings": [
+   {
+    "code": "TEXT_READING_UNCERTAIN",
+    "detail": "The small Hindi logo text and some title-block wording are difficult to read exactly.",
+    "elementId": "T33"
+   },
+   {
+    "code": "ROOM_CLASS_UNCERTAIN",
+    "detail": "The drawing labels WASH and LET.; their functional categories are reported conservatively where needed.",
+    "elementId": "R4"
+   }
+  ],
+  "balconies": [
+   {
+    "id": "R1",
+    "kind": "BALCONY",
+    "label": "BALCONY",
+    "state": "UNVERIFIED",
+    "polygon": [
+     {
+      "x": 214,
+      "y": 61
+     },
+     {
+      "x": 548,
+      "y": 61
+     },
+     {
+      "x": 548,
+      "y": 114
+     },
+     {
+      "x": 214,
+      "y": 114
+     }
+    ],
+    "evidence": "Printed balcony label and size",
+    "confidence": 0.95,
+    "statedAreaM2": null,
+    "dimensionText": "3'X20'"
+   }
+  ],
+  "footprint": [
+   {
+    "x": 213,
+    "y": 113
+   },
+   {
+    "x": 552,
+    "y": 113
+   },
+   {
+    "x": 552,
+    "y": 790
+   },
+   {
+    "x": 375,
+    "y": 790
+   },
+   {
+    "x": 375,
+    "y": 840
+   },
+   {
+    "x": 213,
+    "y": 840
+   }
+  ],
+  "imageWidth": 736,
+  "imageHeight": 998,
+  "ceilingHeight": null,
+  "detectedScale": 0.0179,
+  "scaleEvidence": "Printed dimensions 20' - 0\" and 46' - 0\" provide scale.",
+  "sourceAssetId": "users/5157044e-9158-437a-86a2-e34d5ada82f7/design-studio-floorplans/e1415ef1-74e6-4603-8f68-46262f9be118/e2020a2a-a4bd-4c0a-b72b-35ee340e126d.jpg",
+  "scaleConfidence": 0.98,
+  "unknownElements": [],
+  "ceilingHeightSource": null,
+  "extractionConfidence": 0.74
+ },
+ "dimensionStrings": [
+  {
+   "to": {
+    "x": 552,
+    "y": 43
+   },
+   "from": {
+    "x": 213,
+    "y": 43
+   },
+   "text": "20' - 0\"",
+   "valueM": 6.096,
+   "evidence": "Top dimension line",
+   "confidence": 0.98
+  },
+  {
+   "to": {
+    "x": 187,
+    "y": 840
+   },
+   "from": {
+    "x": 187,
+    "y": 61
+   },
+   "text": "46' - 0\"",
+   "valueM": 14.0208,
+   "evidence": "Left vertical dimension line",
+   "confidence": 0.98
+  }
+ ],
+ "_note": "Production ds-read-2 model reading of golden-floorplan.jpg (ds_floorplans 512be919, 2026-10-02): rawDoc + dimension strings, and the fused doc production showed. Test fixture only."
+}

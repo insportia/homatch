@@ -2,9 +2,17 @@
 // pipeline status, per-status counts, campaign / status / search filters,
 // a private record drawer and CSV export. The campaign filter also reads
 // ?campaign=<id>, so a campaign page can deep-link into its own leads.
+//
+// A real-estate pipeline, not a generic CRM (lib/metaAds/leadCenter.ts):
+// the funnel with its costs (Meta's spend ÷ HOMATCH outcomes — no revenue, so
+// no ROAS), follow-ups today / overdue / upcoming in the owner's time zone,
+// "call first" order, explainable quality, one person's submissions counted
+// but never merged. New leads arrive through Realtime (RLS-scoped), no polling.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Download, Upload, Users, ChevronRight } from 'lucide-react';
+import { Download, Upload, Users, ChevronRight, Clock, Flame } from 'lucide-react';
+import { supabase } from '@/db/supabase';
+import { breakdownOf, followUpBucket, funnelOf, priorityOf, submissionsByContact } from '@/lib/metaAds/leadCenter';
 import { toast } from 'sonner';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { EmptyState, FilterRail } from '@/components/customer/surface';
@@ -20,6 +28,7 @@ import { LeadRecordDrawer, leadName } from './LeadRecordDrawer';
 import { LeadStatusSelect } from './LeadStatusSelect';
 
 const UUID = /^[0-9a-f-]{36}$/i;
+const PAGE = 50;
 
 export function LeadsCenter({ campaigns, importEnabled, onImport, reloadKey = 0 }: {
   campaigns: MetaCampaignRow[];
@@ -37,6 +46,27 @@ export function LeadsCenter({ campaigns, importEnabled, onImport, reloadKey = 0 
   const [leads, setLeads] = useState<MetaLeadRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [due, setDue] = useState<'ALL' | 'OVERDUE' | 'TODAY' | 'UPCOMING'>('ALL');
+  const [pageSize, setPageSize] = useState(PAGE);
+  const tz = useMemo(() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } }, []);
+
+  /* Realtime: a new or changed lead appears without a reload or a poller.
+     RLS decides what this owner receives; the row is merged by id. */
+  useEffect(() => {
+    const ch = supabase.channel('meta_leads_center')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'meta_leads' }, (payload) => {
+        const row = payload.new as MetaLeadRow | undefined;
+        if (!row?.id) return;
+        if (campaignId && row.campaign_id !== campaignId) return;
+        setLeads((prev) => {
+          const i = prev.findIndex((l) => l.id === row.id);
+          if (i >= 0) { const next = [...prev]; next[i] = { ...prev[i], ...row }; return next; }
+          return [row, ...prev];
+        });
+      })
+      .subscribe();
+    return () => { void supabase.removeChannel(ch); };
+  }, [campaignId]);
 
   // Debounce the search so each keystroke is not a query.
   useEffect(() => { const h = setTimeout(() => setQuery(search.trim()), 250); return () => clearTimeout(h); }, [search]);
@@ -61,7 +91,31 @@ export function LeadsCenter({ campaigns, importEnabled, onImport, reloadKey = 0 
     for (const l of leads) c[l.status] = (c[l.status] ?? 0) + 1;
     return c;
   }, [leads]);
-  const visible = statusFilter === 'ALL' ? leads : leads.filter(l => l.status === statusFilter);
+  const now = new Date();
+  const byStatus = statusFilter === 'ALL' ? leads : leads.filter(l => l.status === statusFilter);
+  const dueCounts = useMemo(() => {
+    const c = { OVERDUE: 0, TODAY: 0, UPCOMING: 0 } as Record<string, number>;
+    for (const l of leads) { const b = followUpBucket(l.follow_up_at, new Date(), tz); if (b && !['WON', 'LOST'].includes(l.status)) c[b] += 1; }
+    return c;
+  }, [leads, tz]);
+  /* "Call first": overdue follow-ups, fresh uncontacted leads, today's follow-ups, then quality. */
+  const ranked = useMemo(() => byStatus
+    .filter(l => due === 'ALL' || (followUpBucket(l.follow_up_at, now, tz) === due && !['WON', 'LOST'].includes(l.status)))
+    .map(l => ({ l, p: priorityOf(l as never, now, tz) }))
+    .sort((a, b) => b.p.score - a.p.score || Date.parse(b.l.received_at) - Date.parse(a.l.received_at)),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [byStatus, due, tz, leads]);
+  const visible = ranked.slice(0, pageSize);
+  const repeats = useMemo(() => submissionsByContact(leads as never), [leads]);
+  /* The funnel for what is filtered by campaign; spend is Meta's reported spend of those campaigns. */
+  const spend = useMemo(() => {
+    const pool = campaignId ? campaigns.filter(c => c.id === campaignId) : campaigns;
+    const sum = pool.reduce((n, c) => n + Number(c.spend_cents ?? 0), 0);
+    return sum > 0 ? sum : null;
+  }, [campaigns, campaignId]);
+  const funnel = useMemo(() => funnelOf(leads as never, spend), [leads, spend]);
+  const byCampaign = useMemo(() => (campaignId ? [] : breakdownOf(leads as never, 'campaign_id')), [leads, campaignId]);
+  const money = (minor: number | null) => (minor == null ? '—' : new Intl.NumberFormat(lang, { style: 'currency', currency: campaigns[0]?.currency || 'USD' }).format(minor / 100));
   const open = leads.find(l => l.id === openId) ?? null;
 
   const names = useMemo(() => new Map(campaigns.map(c => [c.id, c.name || t(`mads_goal_${c.goal.toLowerCase()}`)])), [campaigns, t]);
@@ -81,6 +135,8 @@ export function LeadsCenter({ campaigns, importEnabled, onImport, reloadKey = 0 
   };
   const noteSaved = (lead: MetaLeadRow, note: string) =>
     setLeads(prev => prev.map(l => (l.id === lead.id ? { ...l, note } : l)));
+  const leadPatched = (lead: MetaLeadRow, patch: Partial<MetaLeadRow>) =>
+    setLeads(prev => prev.map(l => (l.id === lead.id ? { ...l, ...patch } : l)));
 
   const doExport = async () => {
     try {
@@ -122,23 +178,68 @@ export function LeadsCenter({ campaigns, importEnabled, onImport, reloadKey = 0 
         </div>
       </div>
 
+      {/* THE FUNNEL — counts and rates from HOMATCH outcomes; costs from Meta's spend. No revenue → no ROAS. */}
+      {leads.length > 0 && (
+        <section aria-labelledby="mm-lc-funnel" data-mm-lc-funnel="" className="rounded-2xl border border-border bg-card p-3.5 shadow-card">
+          <h3 id="mm-lc-funnel" className="text-sm font-semibold text-foreground">{t('mm_lc_funnel_title')}</h3>
+          <dl className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {([['leads', funnel.leads, null, funnel.cost.perLead], ['qualified', funnel.qualified, funnel.rates.qualified, funnel.cost.perQualified],
+              ['viewing', funnel.viewing, funnel.rates.viewing, funnel.cost.perViewing], ['won', funnel.won, funnel.rates.won, funnel.cost.perWon]] as const)
+              .map(([k, n, rate, cost]) => (
+                <div key={k} className="rounded-xl bg-[hsl(var(--secondary))]/50 px-3 py-2" data-mm-lc-stage={k}>
+                  <dt className="text-2xs text-muted-foreground">{t(`mm_lc_stage_${k}`)}</dt>
+                  <dd className="text-lg font-bold tabular-nums text-foreground" dir="ltr">{n}{rate != null && <span className="ms-1 text-2xs font-medium text-muted-foreground">{rate}%</span>}</dd>
+                  <dd className="text-2xs text-muted-foreground">{t('mm_lc_cost_each', { amount: money(cost) })}</dd>
+                </div>
+              ))}
+          </dl>
+          <p className="mt-2 text-2xs leading-relaxed text-muted-foreground">{t(spend == null ? 'mm_lc_cost_unknown' : 'mm_lc_no_roas')}</p>
+          {byCampaign.length > 1 && (
+            <ul className="mt-2 space-y-1 text-[13px]" data-mm-lc-breakdown="">
+              {byCampaign.slice(0, 5).map(b => (
+                <li key={b.key} className="flex items-baseline justify-between gap-2">
+                  <span className="min-w-0 truncate" dir="auto">{campaignName(b.key) ?? '—'}</span>
+                  <span className="shrink-0 text-2xs text-muted-foreground">
+                    {t('mm_lc_breakdown_row', { leads: String(b.leads), qualified: String(b.qualified) })}
+                    {' · '}{b.enough ? `${b.qualifiedRate}%` : t('mm_lc_not_enough')}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
+      {/* FOLLOW-UPS — by the owner's own calendar day. */}
+      <FilterRail<'ALL' | 'OVERDUE' | 'TODAY' | 'UPCOMING'>
+        ariaLabel={t('mm_lc_followups')}
+        value={due}
+        onChange={(v) => { setDue(v); setPageSize(PAGE); }}
+        options={[
+          { value: 'ALL', label: t('mm_lc_due_ALL') },
+          { value: 'OVERDUE', label: t('mm_lc_due_OVERDUE'), count: dueCounts.OVERDUE },
+          { value: 'TODAY', label: t('mm_lc_due_TODAY'), count: dueCounts.TODAY },
+          { value: 'UPCOMING', label: t('mm_lc_due_UPCOMING'), count: dueCounts.UPCOMING },
+        ]}
+      />
+
       {/* Counts per status double as the status filter. */}
       <FilterRail<string>
         ariaLabel={t('mm_w_leads_counts_label')}
         value={statusFilter}
-        onChange={setStatusFilter}
+        onChange={(v) => { setStatusFilter(v); setPageSize(PAGE); }}
         options={[
           { value: 'ALL', label: t('mads_filter_all'), count: leads.length },
           ...LEAD_STATUSES.map(s => ({ value: s, label: t(`mm_w_lead_status_${s}`), count: counts[s] ?? 0 })),
         ]}
       />
 
-      {loading ? <Skeleton className="h-40 rounded-2xl" /> : visible.length === 0 ? (
+      {loading ? <Skeleton className="h-40 rounded-2xl" /> : ranked.length === 0 ? (
         <EmptyState icon={Users} title={t('mads_leads_empty_title')} body={t('mads_leads_empty_body')} />
       ) : (
         <ul className="space-y-2">
-          {visible.map(l => (
-            <li key={l.id} className="rounded-2xl border border-border bg-card shadow-card">
+          {visible.map(({ l, p }) => (
+            <li key={l.id} className="rounded-2xl border border-border bg-card shadow-card" data-mm-lc-lead={l.id} data-mm-lc-priority={p.reason ?? ''}>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
                 <button type="button" onClick={() => setOpenId(l.id)} title={t('mm_w_lead_open')}
                   className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-lg text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]">
@@ -146,6 +247,12 @@ export function LeadsCenter({ campaigns, importEnabled, onImport, reloadKey = 0 
                     <span className="block truncate font-semibold text-foreground">{leadName(l) || t('mads_lead_unnamed')}</span>
                     <span className="block truncate text-2xs text-muted-foreground">
                       {[campaignName(l.campaign_id), dateTime(l.received_at, lang)].filter(Boolean).join(' · ')}
+                    </span>
+                    <span className="mt-1 flex flex-wrap gap-1.5 text-2xs">
+                      {p.reason && <span className="inline-flex items-center gap-1 rounded-full bg-[hsl(var(--gold-soft))] px-2 py-0.5 font-semibold text-[hsl(var(--gold-ink))]"><Flame className="h-3 w-3" aria-hidden />{t(`mm_lc_pri_${p.reason}`)}</span>}
+                      {l.quality && l.quality !== 'UNRATED' && <span className="rounded-full border border-border px-2 py-0.5 text-muted-foreground" data-mm-lc-quality={l.quality}>{t(`mm_lc_q_${l.quality}`)}</span>}
+                      {l.follow_up_at && !['WON', 'LOST'].includes(l.status) && <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-muted-foreground"><Clock className="h-3 w-3" aria-hidden />{dateTime(l.follow_up_at, lang)}</span>}
+                      {l.contact_key && (repeats.get(l.contact_key) ?? 0) > 1 && <span className="rounded-full border border-border px-2 py-0.5 text-muted-foreground" data-mm-lc-repeat="">{t('mm_lc_repeat', { n: String(repeats.get(l.contact_key)) })}</span>}
                     </span>
                   </span>
                   <span className={cn('hidden shrink-0 rounded-full border px-2 py-0.5 text-[13px] font-medium sm:inline',
@@ -163,9 +270,15 @@ export function LeadsCenter({ campaigns, importEnabled, onImport, reloadKey = 0 
           ))}
         </ul>
       )}
+      {ranked.length > visible.length && (
+        <Button variant="outline" className="min-h-11 w-full" onClick={() => setPageSize(n => n + PAGE)} data-mm-lc-more="">
+          {t('mm_lc_more', { n: String(ranked.length - visible.length) })}
+        </Button>
+      )}
 
       <LeadRecordDrawer lead={open} campaignName={campaignName} onClose={() => setOpenId(null)}
-        onStatus={changeStatus} onNote={noteSaved} />
+        onStatus={changeStatus} onNote={noteSaved} onPatch={leadPatched}
+        repeats={open?.contact_key ? repeats.get(open.contact_key) ?? 1 : 1} />
     </div>
   );
 }

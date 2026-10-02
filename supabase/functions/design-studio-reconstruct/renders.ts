@@ -29,6 +29,7 @@
 
 import { beginExecution, recordUnbilledUsage, releaseExecution, settleExecution, type ExecutionGrant } from '../_shared/billing.ts';
 import { getObject, putObject } from '../_shared/objectStore.ts';
+import { renderPictureKey } from '../_shared/designStudio/renderKeys.ts';
 import { checkFinish, checkEdit, compositeInsideMask, maskFromIds, resizeMask, rgbToGray, type CheckResult, type RgbPixels } from '../_shared/designStudio/renderCheck.ts';
 import { selectProvider, type ImageProvider, type ImageResult, type ProviderDeps } from '../_shared/designStudio/imageProviders.ts';
 
@@ -326,8 +327,6 @@ async function readBytes(key: string, max: number): Promise<Uint8Array | null> {
   return b.length > 0 && b.length <= max ? b : null;
 }
 
-const finalKeyFor = (row: Row, suffix: string, mime: string) =>
-  `users/${row.user_id}/design-studio-thumbnails/${row.project_id}/${row.id}-${suffix}.${mime === 'image/jpeg' ? 'jpg' : mime === 'image/webp' ? 'webp' : 'png'}`;
 
 const blenderFinish = (reason: string | null, check: CheckResult | null = null, r?: ImageResult) => ({
   provider: r ? r.provider : 'BLENDER', model: r ? r.model : null,
@@ -388,7 +387,7 @@ async function finishRender(ctx: Ctx, row: Row, lease: string, refs: ViewRefs, g
         checkMs = Date.now() - c0;
         finish = blenderFinish(null, check, result);
         if (check.accepted) {
-          const key = finalKeyFor(row, 'final', result.mime);
+          const key = await renderPictureKey(row, 'final', result.mime);
           const stored = await putObject(key, result.bytes, result.mime).then(() => true).catch(() => false);
           if (stored) finalKey = key; else finish.check.reason = 'FINAL_NOT_STORED';
         }
@@ -589,7 +588,7 @@ export async function handleRenderEdit(req: Request): Promise<Response> {
   if (!check.accepted) return fail('EDIT_REFUSED', 422, finish, result);
   // Outside the mask the original pixels are kept exactly.
   const merged = compositeInsideMask(img.img, out.img, mask);
-  const finalKey = finalKeyFor(row, 'edit', 'image/png');
+  const finalKey = await renderPictureKey(row, 'edit', 'image/png');
   const stored = await putObject(finalKey, encodePng(rgbaOf(merged), merged.width, merged.height), 'image/png').then(() => true).catch(() => false);
   if (!stored) return fail('FINAL_NOT_STORED', 502, finish, result);
   const cost = [{ stage: 'RENDERING', kind: 'IMAGE_MODEL', usd: result.cost.usd, basis: result.cost.basis === 'ESTIMATED' ? 'ESTIMATED' : 'NOT_AVAILABLE', detail: result.cost.detail }];

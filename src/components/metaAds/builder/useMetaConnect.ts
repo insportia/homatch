@@ -56,8 +56,12 @@ export function useMetaConnect(opts: { returnTo?: string | null; onMockConnected
   return { state, busy: CONNECT_BUSY.has(state), connect, browser: typeof navigator !== 'undefined' ? browserKind(navigator.userAgent) : 'BROWSER' as const };
 }
 
-/* One refresh per return, however many components mount. */
+/* One refresh per return, however many components mount. A return from Meta
+   is always a fresh page load, so once one has been consumed in this page's
+   life, a ?connect= that reappears (a stale search re-applied by a later
+   navigation) is never treated as a second return. */
 let refreshFor: string | null = null;
+let consumed = false;
 let refreshing: Promise<void> | null = null;
 
 /**
@@ -75,6 +79,14 @@ export function useConnectReturn(reload: () => Promise<void> | void, enabled = t
   useEffect(() => {
     const r = connectResultOf(raw);
     if (!r || !enabled) return;
+    if (consumed && refreshFor !== `${location.pathname}${location.search}`) {
+      // Already handled in this page's life: just drop the parameter again.
+      params.delete('connect');
+      const q = params.toString();
+      navigate({ pathname: location.pathname, search: q ? `?${q}` : '' }, { replace: true });
+      return;
+    }
+    consumed = true;
     set(nextConnect(shared, { type: 'RETURNED', result: r }));
     setResult(r);
     try { localStorage.removeItem(RETURN_KEY); } catch { /* fine */ }

@@ -20,6 +20,14 @@ const BUYER_INTENT_TYPES = new Set([
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
+  /* Legacy v1, no callers: the canonical path is classify-signals-v2. It runs with the
+     service role, so only a service-role caller may reach it. */
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+  const bearer = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+  if (!serviceKey || bearer !== serviceKey) {
+    return new Response(JSON.stringify({ error: 'Internal only' }), { status: 403, headers: { ...CORS, 'Content-Type': 'application/json' } });
+  }
+
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!

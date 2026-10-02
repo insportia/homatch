@@ -4,6 +4,17 @@ audited: 2026-10-02 against main `80f09254` + read-only production
 (Supabase `ptxajsjhobhvsfhmutjn`, Railway `courteous-success`).
 Code reading is not production proof; production facts are marked (prod).
 
+## Owner decisions (2026-10-02)
+
+- Providers: DataForSEO / Apify stay RETIRED; Phase 2 uses native routes only.
+- Worker: HYBRID — the DB queue + claim RPC stay canonical; edge executes cheap
+  HTTP portal jobs; the official worker gets a NEW discovery module (no Verify
+  file touched) that claims Telegram and browser-needed portal jobs.
+- Find Property billing: PAYG like Find Buyers (reserve → settle measured
+  COGS → release); no new strength multipliers until the owner sets them.
+- Verify is FROZEN: no Verify file, prompt, route, billing or DB object is
+  changed; shared research-core modules are additive-only.
+
 ## Guardrails that shape the plan
 
 - **Verify is frozen.** Verify imports shared `src/research-core/` modules:
@@ -85,9 +96,9 @@ Code reading is not production proof; production facts are marked (prod).
 
 ## Shortest safe path to two vertical slices
 
-Slice 0 — safety (small PR, no behaviour for customers)
-- Close the unauthenticated v1 endpoints (run-matching, classify-signals).
-- Fix the external-unlock idempotency key.
+Slice 0 — safety (DONE on branch, tests in tests/matrix/phase2Discovery.test.mjs)
+- v1 run-matching / classify-signals: service-role callers only (403 otherwise).
+- External unlock: one idempotency key per dialog opening.
 
 Slice A — FIND BUYERS / TENANTS (most of the chain exists)
 - SearchPlan(direction=DEMAND) compiled for every campaign (stored, inspectable).

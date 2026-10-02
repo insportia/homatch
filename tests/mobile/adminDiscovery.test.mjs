@@ -120,6 +120,27 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', admin = true, 
     if (url.includes('/auth/v1/user')) return r.fulfill(json(fakeSession().user));
     if (url.includes('/auth/v1/token')) return r.fulfill(json(fakeSession()));
     if (url.includes('/rest/v1/users')) return r.fulfill(json(profile(admin)));
+    /* Phase 2 intelligence panel: a realistic, populated shape so it is covered. */
+    if (url.includes('/rest/v1/rpc/admin_discovery_intelligence')) {
+      return r.fulfill(json({
+        generated_at: new Date().toISOString(),
+        switches: { find_property_discovery_enabled: false, discovery_worker_route_enabled: false, discovery_worker_portal_adapters: [] },
+        runs: [{ id: 'run-1', user_id: 'u', status: 'SEARCHING', stage: 'SEARCHING_SOURCES', progress: 40, results_found: 0,
+          credits_charged: null, provider_cost_usd: null, failure_reason: null, started_at: new Date().toISOString(),
+          completed_at: null, elapsed_seconds: 120, source_jobs: { 'PORTAL:EDGE:DONE': 2, 'TELEGRAM:EDGE:PENDING': 1 } }],
+        plans_7d: { SUPPLY: 1, DEMAND: 3 },
+        queue: [{ provider: 'PORTAL', executor: 'EDGE', status: 'DONE', jobs: 2, oldest_waiting: null, last_activity: new Date().toISOString(), expired_leases: 0 }],
+        live_checks: [{ source_key: 'www.myhome.ge', route: 'EDGE_HTTP', market: 'GE', checked_at: new Date().toISOString(), ok: false,
+          http_status: 403, latency_ms: 812, collection_items: null, detail_ok: null, normalized_ok: null, limitation: 'THIN_HTML (client-rendered?)' }],
+        supply_by_adapter: [{ adapter_id: 'telegram-community', observations: 210, entities: 64, new_7d: 30, last_seen: new Date().toISOString(), valid: 0, gone: 0, avg_quality: 0.83 }],
+        entities: { total: 65, multi_observation: 20, multi_source: 3, observations: 242, resolved_observations: 230,
+          largest: [{ id: 'e1', city: 'batumi', transaction: 'RENT', property_type: 'APARTMENT', observation_count: 9, source_count: 1,
+            min_price: 700, max_price: 700, price_currency: 'USD', price_spread: 0, last_seen_at: new Date().toISOString() }] },
+        resolution_7d: { LIKELY_SAME_ENTITY: 40, DISTINCT: 120 },
+        matches: { external_listing: 5, external_intelligence: 72, internal_homatch: 0, demand_matches_30d: 3 },
+        community_supply: { listing_posts: 356, stored_as_supply: 210 },
+      }));
+    }
     if (url.includes('/rest/v1/rpc/admin_discovery_overview')) {
       calls.rpc += 1;
       if (rpc) return rpc(r, json);
@@ -163,8 +184,13 @@ const LAYOUT = () => ({
    a switch (forum_schedule_enabled) moves the expectation with it. */
 const EXPECTED_SWITCHES = (() => {
   const src = readFileSync(new URL('../../src/services/adminDiscovery.ts', import.meta.url), 'utf8');
-  const block = src.slice(src.indexOf('export const DISCOVERY_SWITCHES = ['), src.indexOf('] as const;', src.indexOf('export const DISCOVERY_SWITCHES = [')));
-  return (block.match(/'[a-z_]+'/g) ?? []).length;
+  const count = (name) => {
+    const start = src.indexOf(`export const ${name} = [`);
+    if (start < 0) return 0;
+    return (src.slice(start, src.indexOf('] as const;', start)).match(/'[a-z_]+'/g) ?? []).length;
+  };
+  /* The overview's switches plus the Phase 2 intelligence panel's own. */
+  return count('DISCOVERY_SWITCHES') + count('PHASE2_SWITCHES');
 })();
 
 for (const [width, height] of [[1440, 900], [390, 844]]) {
@@ -229,7 +255,10 @@ test('empty, error and loading states are honest', opts, async (t) => {
   await failing.page.waitForTimeout(800);
   const failed = await failing.page.evaluate(() => document.body.innerText);
   assert.match(failed, /FORBIDDEN|Could not load/, 'the failure is not said');
-  assert.equal(await failing.page.locator('[role="switch"]').count(), 0, 'switches rendered without data');
+  /* The OVERVIEW's switches; the Phase 2 intelligence panel loads on its own RPC. */
+  const overviewSwitches = await failing.page.evaluate(() => [...document.querySelectorAll('[role="switch"]')]
+    .filter((el) => !el.closest('[data-testid="discovery-intelligence"]')).length);
+  assert.equal(overviewSwitches, 0, 'switches rendered without data');
 
   let release;
   const gate = new Promise((res) => { release = res; });

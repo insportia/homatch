@@ -33,6 +33,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { loadDiscoverySettings } from '../_shared/discoverySettings.ts';
+import { recordCommunitySupply } from '../_shared/communitySupply.ts';
 import { CLASSIFIER_VERSION, DEMAND_LABELS, discoveryLabelFor, reusableVerdict, routeFor } from '../../../src/research-core/discovery/signal-taxonomy.ts';
 const CORS={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type'};
 const json=(d:any,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...CORS,'Content-Type':'application/json'}});
@@ -69,17 +70,31 @@ Deno.serve(async(req:Request)=>{
  }
 
  try{
-  const {batchSize=300,market='GE',source=null}=await req.json().catch(()=>({}));
+  const {batchSize=300,market='GE',source=null,mode=null}=await req.json().catch(()=>({}));
+  /*
+   * PHASE 2 BACKFILL: listing posts filtered out of demand before community
+   * supply existed. Deterministic, no model call, no spend; idempotent by
+   * (source_id, external_id). Already-classified rows keep their verdict.
+   */
+  if(mode==='community-supply-backfill'){
+    const {data:rows,error:readError}=await db.from('raw_signals').select('id,original_text,language,platform,author_is_agency,content_fingerprint,source_id,external_id,source_url,published_at,source:source_registry!source_id(country_code,language,city)')
+      .eq('classification_status','FILTERED_OUT').eq('research_direction','SUPPLY').in('platform',['TELEGRAM','FORUM'])
+      .order('discovered_at',{ascending:false}).limit(Math.min(500,Number(batchSize)||200));
+    if(readError)throw readError;
+    let recorded=0,unstructured=0,failed=0;
+    for(const row of rows??[]){try{if(await recordCommunitySupply(db,row as any))recorded++;else unstructured++;}catch(e){failed++;console.error('backfill failed',(row as any).id,e instanceof Error?e.message:String(e));}}
+    return json({success:true,mode,read:(rows??[]).length,recorded,unstructured,failed,modelCalls:0});
+  }
   /* The five-minute schedule does nothing until classifier_schedule_enabled
      is on: every call it makes spends model tokens. */
   if(source==='cron'){
     const discovery=await loadDiscoverySettings(db);
     if(!discovery.classifierScheduleEnabled)return json({success:true,skipped:'CLASSIFIER_SCHEDULE_DISABLED',processed:0});
   }
-  const {data:signals,error}=await db.from('raw_signals').select(`id,original_text,language,platform,classification_attempts,research_direction,author_is_agency,content_fingerprint,source:source_registry!source_id(country_code,language)`).eq('classification_status','PENDING').lt('classification_attempts',MAX_ATTEMPTS).order('classification_attempts',{ascending:true}).order('discovered_at',{ascending:true}).limit(Math.min(500,batchSize));
+  const {data:signals,error}=await db.from('raw_signals').select(`id,original_text,language,platform,classification_attempts,research_direction,author_is_agency,content_fingerprint,source_id,external_id,source_url,published_at,source:source_registry!source_id(country_code,language,city)`).eq('classification_status','PENDING').lt('classification_attempts',MAX_ATTEMPTS).order('classification_attempts',{ascending:true}).order('discovered_at',{ascending:true}).limit(Math.min(500,batchSize));
   if(error)throw error;if(!signals?.length)return json({success:true,processed:0,classified:0,filteredOut:0,deterministicFiltered:0,errors:0});
   const key=Deno.env.get('OPENAI_API_KEY')!;if(!key)return json({error:'OPENAI_API_KEY missing'},500);
-  let retried=0;let classified=0,filteredOut=0,deterministicFiltered=0,errors=0,totalCostUsd=0,modelOmitted=0,cacheHits=0;
+  let retried=0;let supplyObservations=0,supplyErrors=0;let classified=0,filteredOut=0,deterministicFiltered=0,errors=0,totalCostUsd=0,modelOmitted=0,cacheHits=0;
   /* Every verdict carries the nine-label taxonomy and the classifier version
      that produced it (research-core/discovery/signal-taxonomy.ts). */
   const labels:Record<string,number>={};
@@ -120,9 +135,12 @@ Deno.serve(async(req:Request)=>{
       await db.from('intent_profiles').delete().eq('signal_id',s.id);
       await db.from('raw_signals').update({classification_status:'FILTERED_OUT',intent_type:'PROPERTY_AD',intent_json:tag({intentType:'PROPERTY_AD',reason:'deterministic_direction',detail:why,researchDirection:direction||null,agencyVoice},{intentType:'PROPERTY_AD',agencyVoice,direction})}).eq('id',s.id);
       filteredOut++;deterministicFiltered++;
+      /* PHASE 2: not demand, but it may be SUPPLY. A listing becomes a supply observation. */
+      if(direction==='SUPPLY'){try{if(await recordCommunitySupply(db,s as any))supplyObservations++;}catch(e){supplyErrors++;console.error('community supply failed',s.id,e instanceof Error?e.message:String(e));}}
     } else if(isSupplyAd(String(s.original_text||''))){
       await db.from('intent_profiles').delete().eq('signal_id',s.id);
       await db.from('raw_signals').update({classification_status:'FILTERED_OUT',intent_type:'PROPERTY_AD',intent_json:tag({intentType:'PROPERTY_AD',reason:'deterministic_supply_filter'},{intentType:'PROPERTY_AD',direction:'SUPPLY'})}).eq('id',s.id);
+      try{if(await recordCommunitySupply(db,s as any))supplyObservations++;}catch(e){supplyErrors++;console.error('community supply failed',s.id,e instanceof Error?e.message:String(e));}
       filteredOut++;deterministicFiltered++;
     } else aiSignals.push(s);
   }
@@ -218,7 +236,7 @@ Deno.serve(async(req:Request)=>{
       if(!queueError)brokerReviewQueued=items.length;
     }
   }
-  return json({success:true,processed:signals.length,classified,filteredOut,deterministicFiltered,modelOmitted,cacheHits,errors,retried,totalCostUsd,classifierVersion:CLASSIFIER_VERSION,labels,brokerReviewQueued});
+  return json({success:true,processed:signals.length,classified,filteredOut,deterministicFiltered,modelOmitted,cacheHits,errors,retried,totalCostUsd,classifierVersion:CLASSIFIER_VERSION,labels,brokerReviewQueued,supplyObservations,supplyErrors});
  }catch(e){return json({error:e instanceof Error?e.message:String(e)},500)}
 });
 

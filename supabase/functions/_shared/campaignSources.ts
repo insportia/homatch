@@ -1,13 +1,16 @@
 // A campaign's SOURCE JOBS: what gets queued when current internal demand
 // falls short, and how the discovery driver executes one.
 //
-// Three kinds, all rows in discovery_query_queue with matching_job_id set:
+// Four kinds, rows in discovery_query_queue owned by a matching job (FIND
+// BUYERS/TENANTS) or a discovery run (FIND PROPERTY), derived from the run's
+// stored DiscoveryPlan (src/research-core/discovery/discovery-plan.ts):
 //
 //   TELEGRAM          read the enabled public Telegram targets now (the
 //                     official worker's MTProto session, through community-sync)
 //   TELEGRAM_SOURCES  search Telegram for public communities in the campaign's
 //                     languages and audit them (never joins anything)
 //   FORUM             read the permitted forum boards (demand-discovery)
+//   PORTAL            read one live portal adapter for a SUPPLY plan (supply-discovery)
 //
 // Provider cost of every kind is zero: Telegram and the forums charge nothing
 // per request. Classification of what they collect is metered separately.
@@ -16,58 +19,81 @@
 // so each still applies its own admin switch; a switch turned off between
 // queueing and execution cancels the job rather than running it.
 
-import { sourceQueriesFor } from '../../../src/research-core/discovery/telegram-sources.ts';
+import { type DiscoveryPlan, plannedSourceJobs } from '../../../src/research-core/discovery/discovery-plan.ts';
 import { invokeFunction, errorText } from './campaignRun.ts';
 
-export type SourceProvider = 'TELEGRAM' | 'TELEGRAM_SOURCES' | 'FORUM';
+export type SourceProvider = 'TELEGRAM' | 'TELEGRAM_SOURCES' | 'FORUM' | 'PORTAL';
 
 export interface QueuedSource { provider: SourceProvider; id: string }
 
-export async function queueCampaignSourceJobs(
+/** Store a run's DiscoveryPlan. Every run has one, even when nothing is queued. */
+export async function storePlan(
+  db: any,
+  opts: { plan: DiscoveryPlan; userId: string; matchingJobId?: string | null; discoveryRunId?: string | null },
+): Promise<string> {
+  const { data, error } = await db.from('discovery_search_plans').insert({
+    direction: opts.plan.direction,
+    user_id: opts.userId,
+    matching_job_id: opts.matchingJobId ?? null,
+    discovery_run_id: opts.discoveryRunId ?? null,
+    market: opts.plan.market,
+    plan: opts.plan,
+    plan_version: opts.plan.version,
+  }).select('id').single();
+  if (error) throw error;
+  return String(data.id);
+}
+
+/**
+ * Queue the source jobs a plan implies (plannedSourceJobs is the only place
+ * their shape is decided). Each row carries a dedupe key derived from the run,
+ * so a retried request finds the rows it already queued instead of adding a
+ * second set.
+ */
+export async function queuePlannedJobs(
   db: any,
   opts: {
-    jobId: string;
-    propertyId: string;
-    languages: string[];
-    telegram: boolean;
-    forum: boolean;
-    countryCode: string;
+    plan: DiscoveryPlan;
+    planId: string;
+    runKey: string;
+    matchingJobId?: string | null;
+    discoveryRunId?: string | null;
+    propertyId?: string | null;
   },
 ): Promise<QueuedSource[]> {
-  const market = (opts.countryCode || 'GE').toUpperCase();
-  const rows: Record<string, unknown>[] = [];
-  const base = {
-    property_id: opts.propertyId,
-    matching_job_id: opts.jobId,
+  const planned = plannedSourceJobs(opts.plan, opts.runKey);
+  if (!planned.length) return [];
+  const rows = planned.map((job) => ({
+    property_id: opts.propertyId ?? null,
+    matching_job_id: opts.matchingJobId ?? null,
+    discovery_run_id: opts.discoveryRunId ?? null,
+    search_plan_id: opts.planId,
+    search_direction: opts.plan.direction,
+    tranche: job.tranche,
+    executor: job.executor,
+    dedupe_key: job.dedupeKey,
     status: 'PENDING',
+    platform: job.platform,
+    language: job.language,
+    provider: job.provider,
+    query: job.dedupeKey,
+    query_kind: job.queryKind,
+    priority: job.priority,
+    metadata: job.metadata,
+    /* Native routes charge nothing per request; compute and AI are metered
+       where they happen, never assumed zero. */
     estimated_cost_usd: 0,
-  };
-  if (opts.telegram) {
-    rows.push({
-      ...base, platform: 'TELEGRAM', language: 'multi', provider: 'TELEGRAM',
-      query: `sync:${opts.jobId}`, query_kind: 'CAMPAIGN_SYNC', priority: 70,
-      metadata: { market },
-    });
-    const queries = sourceQueriesFor(market, opts.languages).map((q) => q.query);
-    if (queries.length) {
-      rows.push({
-        ...base, platform: 'TELEGRAM', language: opts.languages.join(',') || 'multi', provider: 'TELEGRAM_SOURCES',
-        query: `discover:${opts.jobId}`, query_kind: 'SOURCE_DISCOVERY', priority: 60,
-        metadata: { market, languages: opts.languages, queries },
-      });
-    }
-  }
-  if (opts.forum) {
-    rows.push({
-      ...base, platform: 'FORUM', language: 'multi', provider: 'FORUM',
-      query: `forum:${opts.jobId}`, query_kind: 'CAMPAIGN_FORUM', priority: 65,
-      metadata: { market },
-    });
-  }
-  if (!rows.length) return [];
+  }));
   const { data, error } = await db.from('discovery_query_queue').insert(rows).select('id,provider');
-  if (error) throw error;
-  return ((data ?? []) as Array<{ id: string; provider: SourceProvider }>).map((r) => ({ id: r.id, provider: r.provider }));
+  if (error && String(error.code) !== '23505') throw error;
+  if (!error) {
+    return ((data ?? []) as Array<{ id: string; provider: SourceProvider }>).map((r) => ({ id: r.id, provider: r.provider }));
+  }
+  /* A replay: return what the first request queued. */
+  const { data: existing, error: readError } = await db.from('discovery_query_queue')
+    .select('id,provider').in('dedupe_key', planned.map((job) => job.dedupeKey));
+  if (readError) throw readError;
+  return ((existing ?? []) as Array<{ id: string; provider: SourceProvider }>).map((r) => ({ id: r.id, provider: r.provider }));
 }
 
 export interface SourceOutcome {
@@ -84,10 +110,10 @@ const PERMANENT = new Set(['NOT_CONFIGURED', 'DISABLED', 'AUTH_FAILED']);
 export async function executeSourceJob(
   baseUrl: string,
   serviceKey: string,
-  job: { id: string; provider: string | null; matching_job_id: string | null; metadata: any },
+  job: { id: string; provider: string | null; matching_job_id: string | null; discovery_run_id?: string | null; executor?: string | null; metadata: any },
 ): Promise<SourceOutcome> {
   const provider = String(job.provider ?? '').toUpperCase();
-  const trace = `campaign-${String(job.matching_job_id ?? job.id).slice(0, 8)}`;
+  const trace = `campaign-${String(job.matching_job_id ?? job.discovery_run_id ?? job.id).slice(0, 8)}`;
   try {
     if (provider === 'TELEGRAM') {
       const { data } = await invokeFunction(baseUrl, serviceKey, 'community-sync',
@@ -131,6 +157,28 @@ export async function executeSourceJob(
         signalsNew: Number(data?.signalsNew ?? 0),
         sourcesPermitted: Number(data?.sourcesPermitted ?? 0),
       });
+    }
+
+    if (provider === 'PORTAL') {
+      const meta = job.metadata ?? {};
+      const { data } = await invokeFunction(baseUrl, serviceKey, 'supply-discovery', {
+        mode: 'portal-job', adapterId: meta.adapterId, subject: meta.subject, executor: job.executor ?? 'EDGE',
+        runId: job.discovery_run_id ?? null, limitPerSource: 6, trace,
+      }, 150_000);
+      const kind = String(data?.outcome ?? '');
+      if (kind === 'OK') {
+        return done(Number(data?.observations ?? 0), {
+          adapterId: meta.adapterId, parsed: Number(data?.parsed ?? 0),
+          discovered: Number(data?.discovered ?? 0), reused: Number(data?.reused ?? 0),
+          networkRequests: data?.networkRequests ?? null, entitiesTouched: data?.resolution?.entitiesTouched ?? null,
+        });
+      }
+      /* Not live, not supported, no adapter, a malformed job: retrying cannot help. */
+      if (['SOURCE_NOT_LIVE', 'ADAPTER_MISSING', 'UNSUPPORTED', 'BAD_JOB'].includes(kind)) {
+        return failed(`PORTAL_${kind}`);
+      }
+      /* A refusal or an error from the site: bounded retry with backoff. */
+      return retry(`PORTAL_${kind || 'ERROR'}: ${String(data?.detail ?? data?.error ?? '').slice(0, 200)}`, 300);
     }
 
     /* Retired or unknown providers are never executed. The claim function

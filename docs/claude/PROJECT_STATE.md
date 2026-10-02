@@ -843,3 +843,21 @@ Phase 2 (Universal Discovery) is blocked until this is live and proven.
   (Realtime publication). Drafts are copy-only, never sent.
 - **Privacy**: HOMATCH's /privacy covers the platform only — never prefilled; the
   owner's own link from their previous HOMATCH form is reused with "Change".
+
+## Phase 2 — Universal Discovery (branch ccr-76ef455d-0qvt80, 2026-10-02)
+
+- Gap map, build list, operations and recovery: docs/claude/PHASE2_DISCOVERY.md.
+- Owner decisions: DataForSEO/Apify stay RETIRED (native routes only); Hybrid
+  worker (DB queue canonical; portal hops can route through
+  homatch-official-worker; no DB credential on Railway); Find Property is
+  PAYG like Find Buyers (FIND_PROPERTY priced like FIND_CLIENTS); Verify FROZEN.
+- Production facts found (read-only): Telegram is the only live collector
+  (541 posts, 356 listings, all discarded as not-demand until Phase 2); no
+  external listing had ever reached a Find Property search (supply_matches
+  could not store the shape); 32 supply observations / 1 entity.
+- Migrations 20261009100000 (core) and 20261009100100 (admin intelligence):
+  written, proven on a local fixture (tests/sql/run-phase2.sh), NOT applied.
+- Every new switch defaults OFF; nothing changes for customers until an
+  operator switches find_property_discovery_enabled /
+  campaign_source_discovery_enabled on.
+

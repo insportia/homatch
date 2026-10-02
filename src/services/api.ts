@@ -1228,12 +1228,56 @@ export async function getCampaignLanguageCoverage(propertyId: string): Promise<L
   }));
 }
 
+/** A search that is still running or paused for this property, if any. */
+export const OPEN_MATCHING_JOB_STATUSES = [
+  'queued', 'analysing_property', 'generating_queries', 'searching_sources', 'collecting_results',
+  'normalizing', 'deduplicating', 'classifying', 'ranking', 'paused',
+] as const;
+
+export async function findOpenMatchingJob(
+  propertyId: string,
+): Promise<{ id: string; status: string } | null> {
+  const { data, error } = await supabase
+    .from('matching_jobs')
+    .select('id,status')
+    .eq('property_id', propertyId)
+    .in('status', OPEN_MATCHING_JOB_STATUSES as unknown as string[])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) return null;
+  return data ? { id: String(data.id), status: String(data.status) } : null;
+}
+
+/**
+ * Pause, resume or stop a running search on the SERVER (match-campaign →
+ * discovery_control). Pause holds the search's open source work, resume
+ * continues it, stop finishes with what arrived. Throws when refused, so the
+ * screen never reports a pause that did not happen.
+ */
+export async function controlMatchingJob(
+  propertyId: string,
+  jobId: string,
+  action: 'pause' | 'resume' | 'stop',
+): Promise<{ status: string }> {
+  const { data, error } = await supabase.functions.invoke('match-campaign', {
+    body: { propertyId, jobId, action },
+  });
+  if (error) throw new Error(`Could not ${action} the search: ${error.message}`);
+  if (!data?.success) throw new Error(`Could not ${action} the search: ${data?.reasonCode ?? 'refused'}`);
+  return { status: String(data.status ?? '') };
+}
+
 export async function pauseMatchingCampaign(
   propertyId: string,
-  userId: string
+  userId: string,
+  jobId?: string | null,
 ): Promise<void> {
   // "Pause" is a promise that the engine stops spending the customer's credits
   // on this property, so a pause that did not land must not be reported as one.
+  // A running search is paused on the server first; only then is the standing
+  // campaign marked paused.
+  if (jobId) await controlMatchingJob(propertyId, jobId, 'pause');
   const { error: campErr } = await supabase
     .from('matching_campaigns')
     .update({ status_v2: 'PAUSED' })

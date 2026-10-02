@@ -46,7 +46,8 @@
 // confident about.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { createPortalRuntime } from '../../../src/research-core/market/runtime.ts';
+import { createPortalRuntime, PORTAL_USER_AGENT } from '../../../src/research-core/market/runtime.ts';
+import { WorkerTransport } from '../../../src/research-core/fetch/worker-transport.ts';
 import { structuredQuality } from '../../../src/research-core/parse/listing.ts';
 import { detectLanguage } from '../../../src/research-core/normalize/language.ts';
 import { contentHash } from '../../../src/research-core/normalize/hash.ts';
@@ -168,6 +169,29 @@ const started = Date.now();
      * Attribution only. It cannot fetch, cannot create a campaign, cannot spend,
      * and cannot touch a directory listing.
      */
+    /*
+     * PHASE 2 — ONE PORTAL JOB OF A FIND PROPERTY RUN.
+     *
+     * The discovery driver calls this once per PORTAL source job. The scope is
+     * the run's stored DiscoveryPlan subject (what the customer confirmed),
+     * never a property's comparables envelope: here the customer's budget IS a
+     * filter. One adapter, only if the registry has it LIVE_TESTED/PRODUCTIVE
+     * and active. Observations go through the same persist() and the same
+     * entity resolution as every other sweep, so they become global
+     * intelligence any later search can reuse.
+     */
+    if (String(body.mode ?? '') === 'portal-job') {
+      return await portalJob(db, body, started);
+    }
+    /* PHASE 2: group what one market holds (portal listings and community
+       posts alike) into entities. No fetch; comparisons are recorded. */
+    if (String(body.mode ?? '') === 'resolve-market') {
+      const countryCode = String(body.countryCode || 'GE').toUpperCase();
+      const transaction = String(body.transaction || 'SALE').toUpperCase() === 'RENT' ? 'RENT' : 'SALE';
+      const resolution = await resolveMarket(db, countryCode, String(body.city || ''), transaction);
+      return json({ success: true, mode: 'resolve-market', countryCode, transaction, resolution, networkFetches: 0 });
+    }
+
     if (String(body.mode ?? '') === 'attribute-stored') {
       return await attributeStored(db, {
         limit: Math.max(1, Math.min(2000, Number(body.limit) || 500)),
@@ -1441,11 +1465,21 @@ async function recordSourceFailure(db: any, sourceId: string, reason: string) {
  * O(n²) sweep before that exists.
  */
 async function resolveMarket(db: any, countryCode: string, city: string, transaction: string) {
-  const { data: rows } = await db
+  /*
+   * SCOPED TO THE CITY, every spelling of it. The argument was accepted and
+   * never used, so the 60 newest rows of the whole country were compared --
+   * a Batumi repost could be pushed out by Tbilisi listings and never meet
+   * the post it duplicates. Entities never span cities, so the scope loses
+   * no merge and makes the 60 the right 60.
+   */
+  let query = db
     .from('supply_observations')
     .select('id,source_id,adapter_id,external_id,canonical_url,country_code,city,district,transaction,property_type,area_sqm,rooms,bedrooms,floor,sale_amount,sale_currency,content_fingerprint,structured_quality,entity_id')
     .eq('country_code', countryCode)
-    .eq('transaction', transaction)
+    .eq('transaction', transaction);
+  const spellings = city ? placeNamesFor(city) : [];
+  if (spellings.length) query = query.or(spellings.map((name) => `city.ilike.${name}`).join(','));
+  const { data: rows } = await query
     .order('updated_at', { ascending: false })
     .limit(60);
 
@@ -1588,4 +1622,120 @@ async function applyMerges(
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+async function portalJob(db: any, body: any, started: number) {
+  const adapterId = String(body.adapterId ?? '');
+  const subject = (body.subject ?? {}) as {
+    transaction?: string | null; propertyTypes?: string[]; countryCode?: string; city?: string | null;
+    districts?: string[]; price?: { min: number | null; max: number | null; currency: string | null } | null;
+    bedrooms?: { min: number | null; max: number | null } | null;
+    areaSqm?: { min: number | null; max: number | null } | null;
+  };
+  const countryCode = String(subject.countryCode || 'GE').toUpperCase();
+  const city = subject.city ? String(subject.city) : '';
+  const transaction = String(subject.transaction || 'SALE').toUpperCase() === 'RENT' ? 'RENT' : 'SALE';
+  if (!adapterId || !city) {
+    return json({ success: false, outcome: 'BAD_JOB', error: 'adapterId and a city are required' });
+  }
+
+  const { data: sourceRow } = await db
+    .from('source_registry')
+    .select('id,name,url,adapter_id,lifecycle,active,quality_score,priority_tier')
+    .eq('adapter_id', adapterId)
+    .eq('active', true)
+    .in('lifecycle', ['LIVE_TESTED', 'PRODUCTIVE'])
+    .limit(1)
+    .maybeSingle();
+  if (!sourceRow) {
+    return json({ success: true, outcome: 'SOURCE_NOT_LIVE', adapterId, observations: 0,
+      note: 'the registry does not have this adapter LIVE_TESTED/PRODUCTIVE and active; nothing was fetched' });
+  }
+
+  /*
+   * THE ROUTE. EDGE fetches from here; WORKER hands each hop to the official
+   * worker (pinned, SSRF-guarded). Allowlist, robots, rate limits and the
+   * redirect policy run here either way.
+   */
+  const route = String(body.executor ?? 'EDGE') === 'WORKER' ? 'WORKER' : 'EDGE';
+  const runtime = route === 'WORKER'
+    ? createPortalRuntime({ transport: new WorkerTransport({
+      baseUrl: Deno.env.get('WORKER_URL') || '', token: Deno.env.get('WORKER_TOKEN') || '',
+      userAgent: PORTAL_USER_AGENT, trace: String(body.trace ?? '').slice(0, 64) || undefined,
+    }) })
+    : createPortalRuntime();
+  const adapter = runtime.registry.all().find((a) => a.id === adapterId);
+  if (!adapter) {
+    return json({ success: true, outcome: 'ADAPTER_MISSING', adapterId, observations: 0 });
+  }
+
+  const propertyType = normalizeType((subject.propertyTypes ?? [])[0]);
+  const query = {
+    id: `find-${countryCode}-${city}-${transaction}-${adapterId}`.toLowerCase(),
+    transaction, countryCode, city,
+    propertyType,
+    district: (subject.districts ?? [])[0] ?? null,
+    subDistrict: null, projectName: null,
+    area: { min: subject.areaSqm?.min ?? null, max: subject.areaSqm?.max ?? null },
+    rooms: { min: null, max: null },
+    bedrooms: { min: subject.bedrooms?.min ?? null, max: subject.bedrooms?.max ?? null },
+    floor: { min: null, max: null },
+    /* FIND PROPERTY: the customer's budget is a real filter here. */
+    price: { min: subject.price?.min ?? null, max: subject.price?.max ?? null },
+    priceCurrency: subject.price?.currency ?? null,
+    languages: [],
+    limit: Math.max(1, Math.min(10, Number(body.limitPerSource) || 6)),
+    rationale: 'find-property run: scoped by the confirmed plan',
+  };
+
+  if (!adapter.supports(query as never)) {
+    return json({ success: true, outcome: 'UNSUPPORTED', adapterId, observations: 0 });
+  }
+
+  let outcome;
+  try {
+    outcome = await adapter.searchListings(query as never, runtime.context);
+  } catch (error) {
+    await recordSourceFailure(db, sourceRow.id, message(error));
+    return json({ success: false, outcome: 'ERROR', adapterId, error: message(error) });
+  }
+  if (!outcome.ok) {
+    await recordSourceFailure(db, sourceRow.id, `${outcome.reason}: ${outcome.detail ?? ''}`);
+    return json({ success: false, outcome: outcome.reason, adapterId, detail: outcome.detail ?? null });
+  }
+
+  let discovered = 0;
+  let reused = 0;
+  const written: string[] = [];
+  for (const portalListing of outcome.value.listings) {
+    const result = await persist(db, sourceRow as SourceRow, portalListing, countryCode);
+    if (!result) continue;
+    written.push(result.id);
+    if (result.isNew) discovered += 1; else reused += 1;
+  }
+  const nowIso = new Date().toISOString();
+  await db.from('source_registry').update({
+    last_collected_at: nowIso, last_successful_at: nowIso, failure_count: 0,
+    last_failure_reason: null, scanned_signal_count: outcome.value.listings.length ?? 0, updated_at: nowIso,
+  }).eq('id', sourceRow.id);
+
+  const resolution = written.length ? await resolveMarket(db, countryCode, city, transaction) : null;
+
+  return json({
+    success: true,
+    outcome: 'OK',
+    adapterId,
+    route,
+    runId: body.runId ?? null,
+    parsed: outcome.value.listings.length,
+    observations: written.length,
+    discovered,
+    reused,
+    networkRequests: outcome.value.networkRequests ?? null,
+    rejectedByEnvelope: outcome.value.rejectedByEnvelope ?? 0,
+    resolution,
+    /* No provider was called: native HTTP through the SSRF-guarded runtime. */
+    providerCostUsd: 0,
+    elapsedMs: Date.now() - started,
+  });
 }

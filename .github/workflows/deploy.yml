@@ -690,6 +690,10 @@ jobs:
             # needs a real user identity rather than a shared token that only
             # establishes that the caller knows the token.
             "find-property-plan"
+            # FIND PROPERTY, THE OUTSIDE SEARCH (Phase 2). Reserves a
+            # customer's budget and starts a discovery run for ONE customer's
+            # own search, so it needs a real user identity like its siblings.
+            "find-property-run"
             # ADMIN CONTROL CENTRE. admin-user360 was deployed by hand and
             # never registered, so a fix to it could not reach production.
             # Its user search interpolated the typed text into a PostgREST

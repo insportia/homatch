@@ -243,3 +243,101 @@ export async function readResults(limit = 20, subscriptionId?: string): Promise<
   }
   return data as ResultsResponse;
 }
+
+// ── PHASE 2: searching OUTSIDE HOMATCH (find-property-run) ────────────────
+//
+// A paid, budgeted run that searches live sources for listings that fit the
+// confirmed search. The run's state is read from the server every time, so
+// it survives a refresh, a second tab and a logout. The client never decides
+// a price: the budget is the customer's ceiling, settlement is the server's.
+
+export type OutsideRunStatus =
+  | 'QUEUED' | 'SEARCHING' | 'PAUSED' | 'MATCHING' | 'COMPLETED' | 'PARTIAL' | 'FAILED' | 'CANCELLED' | 'BUDGET_REACHED';
+
+export interface OutsideRun {
+  id: string;
+  status: OutsideRunStatus;
+  stage: string;
+  progress: number;
+  resultsFound: number;
+  creditsCharged: number | null;
+  failureReason: string | null;
+  startedAt: string;
+  completedAt: string | null;
+}
+
+export const OPEN_OUTSIDE_RUN: readonly OutsideRunStatus[] = ['QUEUED', 'SEARCHING', 'PAUSED', 'MATCHING'];
+
+/** The customer's current Find Property search, if they have one. */
+export async function latestSupplySearchId(): Promise<string | null> {
+  const { data } = await supabase
+    .from('active_search_subscriptions')
+    .select('id')
+    .eq('side', 'SUPPLY')
+    .eq('is_active', true)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data?.id ? String(data.id) : null;
+}
+
+export async function latestOutsideRun(subscriptionId: string): Promise<OutsideRun | null> {
+  const { data } = await supabase
+    .from('discovery_runs')
+    .select('id,status,stage,progress,results_found,credits_charged,failure_reason,started_at,completed_at')
+    .eq('subscription_id', subscriptionId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!data) return null;
+  return {
+    id: String(data.id),
+    status: data.status as OutsideRunStatus,
+    stage: String(data.stage ?? ''),
+    progress: Number(data.progress ?? 0),
+    resultsFound: Number(data.results_found ?? 0),
+    creditsCharged: data.credits_charged == null ? null : Number(data.credits_charged),
+    failureReason: data.failure_reason ? String(data.failure_reason) : null,
+    startedAt: String(data.started_at),
+    completedAt: data.completed_at ? String(data.completed_at) : null,
+  };
+}
+
+/** Customer-safe source activity: finished jobs per source group, never a provider name. */
+export async function outsideRunActivity(runId: string): Promise<Record<string, number>> {
+  const { data } = await supabase
+    .from('discovery_run_events')
+    .select('kind,payload')
+    .eq('run_id', runId)
+    .eq('kind', 'SOURCE_JOB_FINISHED')
+    .order('id', { ascending: true })
+    .limit(200);
+  const groups: Record<string, number> = {};
+  for (const row of (data ?? []) as Array<{ payload: { sourceGroup?: string } }>) {
+    const group = String(row.payload?.sourceGroup ?? 'HOMATCH');
+    groups[group] = (groups[group] ?? 0) + 1;
+  }
+  return groups;
+}
+
+export async function startOutsideSearch(
+  subscriptionId: string,
+  authorizedMaxCredits: number | null,
+  idempotencyKey: string,
+): Promise<{ runId: string | null; reasonCode: string | null }> {
+  const { data, error } = await supabase.functions.invoke('find-property-run', {
+    body: { action: 'start', subscriptionId, authorizedMaxCredits, idempotencyKey },
+  });
+  if (error) {
+    /* The function answers refusals with a reasonCode; surface it, never a raw error. */
+    const context = (error as { context?: Response }).context;
+    const body = context && typeof context.json === 'function' ? await context.json().catch(() => null) : null;
+    return { runId: null, reasonCode: String(body?.reasonCode ?? 'START_FAILED') };
+  }
+  return { runId: data?.runId ? String(data.runId) : null, reasonCode: data?.reasonCode ?? null };
+}
+
+export async function controlOutsideRun(runId: string, action: 'pause' | 'resume' | 'stop'): Promise<void> {
+  const { data, error } = await supabase.functions.invoke('find-property-run', { body: { action, runId } });
+  if (error || !data?.success) throw new Error(`Could not ${action} the search`);
+}

@@ -1,8 +1,9 @@
 import {
   AlertCircle, Bot, CalendarDays, Check, ExternalLink, Loader2, MessageSquare,
-  Eye, Pause, Play, Search, User, Zap,
+  Eye, Pause, Play, Search, Square, User, Zap,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
+import { cn } from '@/lib/utils';
 import { useNavigate, useParams } from 'react-router-dom';
 import { NativeMatchesPanel } from '@/components/matching/NativeMatchesPanel';
 import { toast } from 'sonner';
@@ -50,7 +51,7 @@ import {
   getCreditAccount, 
   getLastSettledSweep,getMatchCounts, 
   getMatches, 
-  getUnlockedMatch, markMatchPreviewed,nextMatchesCursor, pauseMatchingCampaign,startMatchingCampaign, unlockMatch, 
+  controlMatchingJob, findOpenMatchingJob, getUnlockedMatch, markMatchPreviewed,nextMatchesCursor, pauseMatchingCampaign,startMatchingCampaign, unlockMatch, 
   campaignStartErrorKey,
 } from '@/services/api';
 import { readProperty } from '@/services/propertyManagement';
@@ -374,6 +375,10 @@ function MatchesContent() {
   const [showBudget, setShowBudget] = useState(false);
   const [showPauseConfirm, setShowPauseConfirm] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  /* The running search is read from the server, so it survives a refresh, a
+     second tab and a logout: the page asks which search is open, it does not
+     remember one. */
+  const [jobPaused, setJobPaused] = useState(false);
   /** The last settled sweep, for the Expand Search offer. */
   const [lastSweep, setLastSweep] = useState<{
     id: string;
@@ -398,6 +403,11 @@ function MatchesContent() {
     setHasMore(matchData.length >= MATCHES_PAGE_SIZE);
     // Detect campaign status from match data
     setCampaignActive(matchData.some(m => m.status !== 'ARCHIVED'));
+    findOpenMatchingJob(propertyId)
+      .then((open) => {
+        if (open) { setActiveJobId(open.id); setJobPaused(open.status === 'paused'); }
+      })
+      .catch(() => undefined);
     /*
      * The campaign's own search-language configuration, read separately
      * because it is a FACT ABOUT THE CAMPAIGN and the matches are a fact
@@ -772,15 +782,33 @@ function MatchesContent() {
     if (!propertyId || !homatchUser) return;
     setCampaignLoading(true);
     try {
-      await pauseMatchingCampaign(propertyId, homatchUser.id);
+      await pauseMatchingCampaign(propertyId, homatchUser.id, activeJobId);
       setCampaignActive(false);
       setShowPauseConfirm(false);
+      if (activeJobId) setJobPaused(true);
       toast.success(t('matches_paused_toast'));
     } catch (err) {
       // Do not clear the active state on failure: the campaign is still
       // running and still spending credits, and the screen must say so.
       console.error(err);
       toast.error(t('matches_pause_error'));
+    } finally {
+      setCampaignLoading(false);
+    }
+  };
+
+  const handleControlJob = async (action: 'resume' | 'stop') => {
+    if (!propertyId || !activeJobId) return;
+    setCampaignLoading(true);
+    try {
+      await controlMatchingJob(propertyId, activeJobId, action);
+      setJobPaused(false);
+      /* A stopped search is finishing on the server; its controls go away. */
+      if (action === 'stop') setActiveJobId(null);
+      toast.success(t(action === 'resume' ? 'p2d_resumed_toast' : 'p2d_stopping_toast'));
+    } catch (err) {
+      console.error(err);
+      toast.error(t('p2d_control_error'));
     } finally {
       setCampaignLoading(false);
     }
@@ -899,22 +927,25 @@ function MatchesContent() {
       <p className="mb-2.5 text-2xs leading-snug text-muted-foreground">
         {t('matches_search_what')}
       </p>
-      <QuietAction
-        full
-        icon={Play}
-        busy={campaignLoading}
-        disabled={campaignLoading}
-        onClick={() => setShowBudget(true)}
-        label={t(discoverKey)}
-      />
+      {/* One search at a time: while one runs or is paused, its own controls are the actions. */}
+      {!jobRunning && (
+        <QuietAction
+          full
+          icon={Play}
+          busy={campaignLoading}
+          disabled={campaignLoading}
+          onClick={() => setShowBudget(true)}
+          label={t(discoverKey)}
+        />
+      )}
       {/*
         THE STOP, WHERE STOPPING MEANS SOMETHING.
         Not a page-level status control and not keyed off a mode — it appears while a job
         is genuinely running, and disappears when it is not. pauseMatchingCampaign and the
         campaign engine behind it are untouched.
       */}
-      {jobRunning && (
-        <div className="mt-2">
+      {jobRunning && !jobPaused && (
+        <div className="mt-2 space-y-2">
           <QuietAction
             full
             icon={Pause}
@@ -922,6 +953,35 @@ function MatchesContent() {
             disabled={campaignLoading}
             onClick={() => setShowPauseConfirm(true)}
             label={t('matches_pause_matching')}
+          />
+          <QuietAction
+            full
+            icon={Square}
+            busy={campaignLoading}
+            disabled={campaignLoading}
+            onClick={() => handleControlJob('stop')}
+            label={t('p2d_stop_search')}
+          />
+        </div>
+      )}
+      {jobRunning && jobPaused && (
+        <div className="mt-2 space-y-2" role="status">
+          <p className="text-2xs leading-snug text-muted-foreground">{t('p2d_paused_note')}</p>
+          <QuietAction
+            full
+            icon={Play}
+            busy={campaignLoading}
+            disabled={campaignLoading}
+            onClick={() => handleControlJob('resume')}
+            label={t('p2d_resume_search')}
+          />
+          <QuietAction
+            full
+            icon={Square}
+            busy={campaignLoading}
+            disabled={campaignLoading}
+            onClick={() => handleControlJob('stop')}
+            label={t('p2d_stop_search')}
           />
         </div>
       )}
@@ -1017,7 +1077,9 @@ function MatchesContent() {
           </div>
 
           {/* ── the rail: context and the campaign, never the header ──── */}
-          <aside className="min-w-0 space-y-3">
+          {/* While a search is running or paused, its progress and controls come
+              first on a phone; on wide screens the rail stays beside the results. */}
+          <aside className={cn('min-w-0 space-y-3', jobRunning && 'order-first xl:order-none')}>
             {property && (
               <div className="hm-discovery-panel p-3.5">
                 <p className="mb-1 text-2xs font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">

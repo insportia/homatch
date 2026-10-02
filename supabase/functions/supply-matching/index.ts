@@ -230,6 +230,21 @@ Deno.serve(async (req: Request) => {
       const demandRow = row as Record<string, unknown>;
       const signal = Array.isArray(demandRow.signal) ? demandRow.signal[0] : demandRow.signal;
       const signalId = String((signal as Record<string, unknown>)?.id ?? demandRow.signal_id);
+      /*
+       * A CUSTOMER'S OWN PLAN (Find Property) has no signal: the demand is a
+       * confirmed SearchPlan, and its match with an external listing is the
+       * EXTERNAL_LISTING shape keyed by (intent_profile_id, observation_id).
+       * Before Phase 2 this pair could not be stored at all, so no external
+       * listing ever reached a Find Property search.
+       */
+      const planDemand = demandRow.signal_id === null || demandRow.signal_id === undefined;
+      const planSubscription = planDemand
+        ? ((Array.isArray(demandRow.subscriptions) ? demandRow.subscriptions : [demandRow.subscriptions])
+          .filter(Boolean) as Array<Record<string, unknown>>).find((sub) => sub.side === 'SUPPLY') ?? null
+        : null;
+      /* A plan nobody owns any more (subscription gone or another side) gets no
+         external results written for it. */
+      const writeExternal = !planDemand || planSubscription !== null;
 
       /*
        * STRENGTH FROM WHAT THE ROW ACTUALLY SAYS.
@@ -473,11 +488,13 @@ Deno.serve(async (req: Request) => {
        * pair that failed, and a table full of refusals makes the ones that matter
        * harder to find. The counters above record how many were considered.
        */
-      if (!dryRun) {
+      if (!dryRun && writeExternal) {
         for (const entry of assessments) {
           const { error: writeError } = await db.from('supply_matches').upsert({
             intent_profile_id: demandRow.id as string,
-            signal_id: signalId,
+            signal_id: planDemand ? null : signalId,
+            source_kind: planDemand ? 'EXTERNAL_LISTING' : 'EXTERNAL_INTELLIGENCE',
+            ...(planDemand && planSubscription?.user_id ? { demand_user_id: String(planSubscription.user_id) } : {}),
             observation_id: entry.observationId,
             campaign_id: campaignId,
             compatibility: entry.assessment.compatibility,
@@ -495,7 +512,7 @@ Deno.serve(async (req: Request) => {
             listing_age_days: entry.ageDays,
             listing_age_basis: entry.ageBasis,
             updated_at: new Date().toISOString(),
-          }, { onConflict: 'signal_id,observation_id' });
+          }, { onConflict: planDemand ? 'intent_profile_id,observation_id' : 'signal_id,observation_id' });
 
           if (writeError) {
             /* NEVER SWALLOWED. A refused write that increments nothing is

@@ -30,7 +30,11 @@ import {
   type CampaignJobRef,
 } from '../_shared/campaignRun.ts';
 import { executeSourceJob } from '../_shared/campaignSources.ts';
+import {
+  claimRunTransition, failDiscoveryRun, finalizeDiscoveryRun, runEvent, updateRun, type RunRef,
+} from '../_shared/discoveryRun.ts';
 import { fetchCurrentFx } from '../_shared/fx.ts';
+import { sourceGroupOf } from '../../../src/research-core/discovery/discovery-plan.ts';
 
 const OPEN_SOURCE_STATES = ['PENDING', 'PROCESSING', 'RETRY_WAIT'];
 const STUCK_AFTER_MS = 12 * 60_000;
@@ -43,18 +47,34 @@ export async function drive(db: any, baseUrl: string, serviceKey: string, body: 
   /* One source job per tick: jobs run one after another and each may take
      up to ~150s, so claiming more than one would let the later leases lapse
      and the same job be claimed twice. The driver ticks every minute. */
-  report.sourceJobs = await runSourceJobs(db, baseUrl, serviceKey, settings, Math.min(5, Number(body.limit) || 1));
+  report.sourceJobs = await runSourceJobs(db, baseUrl, serviceKey, settings, Math.min(5, Number(body.limit) || 1), 'EDGE');
+  /* Portal jobs routed through the official worker: same claim, same lease;
+     the network hop is the worker's (supply-discovery picks the transport). */
+  if (settings.workerRouteEnabled) {
+    report.workerRoutedJobs = await runSourceJobs(db, baseUrl, serviceKey, settings, 1, 'WORKER');
+  }
   report.campaigns = await advanceCampaigns(db, baseUrl, serviceKey, settings, started);
+  report.runs = await advanceRuns(db, baseUrl, serviceKey, started);
+  report.pauseExpired = await expirePausedCampaigns(db);
+  report.runPauseExpired = await expirePausedRuns(db);
   report.rescued = await rescueStuck(db);
+  report.runsRescued = await rescueStuckRuns(db);
   report.elapsedMs = Date.now() - started;
   return { success: true, ...report };
 }
 
-async function runSourceJobs(db: any, baseUrl: string, serviceKey: string, settings: DiscoverySettings, limit: number) {
-  const { data: claimed, error } = await db.rpc('claim_discovery_source_jobs', {
+async function runSourceJobs(
+  db: any, baseUrl: string, serviceKey: string, settings: DiscoverySettings, limit: number, executor: 'EDGE' | 'WORKER',
+) {
+  /* v2: one job per run per pass (a large campaign cannot monopolise the
+     queue), per-provider concurrency caps, and only EDGE-executor jobs --
+     WORKER jobs are leased by the official Railway worker. */
+  const { data: claimed, error } = await db.rpc('claim_discovery_source_jobs_v2', {
     p_limit: limit,
     p_lease_seconds: settings.sourceJobLeaseSeconds,
     p_max_attempts: settings.sourceJobMaxAttempts,
+    p_executor: executor,
+    p_providers: executor === 'WORKER' ? ['PORTAL'] : null,
   });
   if (error) throw error;
   const results: Array<Record<string, unknown>> = [];
@@ -76,6 +96,12 @@ async function runSourceJobs(db: any, baseUrl: string, serviceKey: string, setti
       status: finishError ? `FINISH_FAILED: ${finishError.message}` : finalStatus,
       resultCount: outcome.resultCount, error: outcome.error,
     });
+    if (job.discovery_run_id) {
+      await runEvent(db, job.discovery_run_id, 'SOURCE_JOB_FINISHED', {
+        sourceGroup: sourceGroupOf(String(job.provider)), status: finalStatus ?? null,
+        resultCount: outcome.resultCount,
+      }).catch(() => undefined);
+    }
     if (job.matching_job_id) {
       await jobEvent(db, job.matching_job_id, 'SOURCE_JOB_FINISHED', {
         provider: job.provider, status: finalStatus ?? null, resultCount: outcome.resultCount,
@@ -194,6 +220,174 @@ async function advanceCampaigns(db: any, baseUrl: string, serviceKey: string, se
   return results;
 }
 
+/**
+ * A paused campaign still holds its budget reservation, which expires one hour
+ * after it was taken. Before it lapses the campaign is stopped -- the driver
+ * then finishes it with what arrived and settles only what was delivered --
+ * rather than left to end as "reservation not held" with nothing to show.
+ */
+const PAUSE_STOP_BEFORE_EXPIRY_MS = 8 * 60_000;
+async function expirePausedCampaigns(db: any) {
+  const { data, error } = await db.from('matching_jobs')
+    .select('id,user_id,billing_grant,paused_at')
+    .eq('status', 'paused')
+    .not('discovery_deadline_at', 'is', null)
+    .limit(10);
+  if (error) throw error;
+  const stopped: string[] = [];
+  for (const row of (data ?? []) as any[]) {
+    const reservationId = (row.billing_grant as ExecutionGrant | null)?.reservationId;
+    let expiresAt = Number.POSITIVE_INFINITY;
+    if (reservationId) {
+      const { data: reservation } = await db.from('usage_reservations')
+        .select('expires_at,status').eq('id', reservationId).maybeSingle();
+      if (reservation?.expires_at) expiresAt = Date.parse(reservation.expires_at);
+    }
+    if (expiresAt - Date.now() > PAUSE_STOP_BEFORE_EXPIRY_MS) continue;
+    const { data: outcome } = await db.rpc('discovery_control', {
+      p_kind: 'MATCHING_JOB', p_id: row.id, p_user_id: row.user_id, p_action: 'stop',
+    });
+    if (outcome?.ok) {
+      await jobEvent(db, row.id, 'PAUSE_EXPIRED', {
+        message: 'The pause reached the end of the reserved budget window; the search finished with what had arrived',
+      }).catch(() => undefined);
+      stopped.push(row.id);
+    }
+  }
+  return stopped;
+}
+
+/**
+ * FIND PROPERTY runs: the same three moves as a campaign. Wait while source
+ * jobs are open and the window is open; then claim the ending (one tick only),
+ * match the customer's plan against what is stored -- including everything
+ * this run just collected -- and settle only what was delivered.
+ */
+async function advanceRuns(db: any, baseUrl: string, serviceKey: string, started: number) {
+  const { data: waiting, error } = await db.from('discovery_runs')
+    .select('id,user_id,intent_profile_id,started_at,deadline_at,billing_grant')
+    .eq('status', 'SEARCHING')
+    .not('deadline_at', 'is', null)
+    .order('deadline_at', { ascending: true })
+    .limit(3);
+  if (error) throw error;
+  const results: Array<Record<string, unknown>> = [];
+  for (const row of (waiting ?? []) as any[]) {
+    if (Date.now() - started > 25_000) break;
+    const run: RunRef = { id: row.id, user_id: row.user_id, intent_profile_id: row.intent_profile_id, started_at: row.started_at };
+    const grant = (row.billing_grant ?? null) as ExecutionGrant | null;
+    const { data: sources, error: sourcesError } = await db.from('discovery_query_queue')
+      .select('id,provider,status,result_count').eq('discovery_run_id', row.id);
+    if (sourcesError) throw sourcesError;
+    const list = (sources ?? []) as any[];
+    const open = list.filter((s) => OPEN_SOURCE_STATES.includes(s.status));
+    const pastDeadline = Date.parse(row.deadline_at) <= Date.now();
+    if (open.length > 0 && !pastDeadline) {
+      await updateRun(db, row.id, {
+        stage: 'SEARCHING_SOURCES',
+        progress: Math.min(80, 20 + Math.round(60 * (list.length - open.length) / Math.max(1, list.length))),
+      }).catch(() => undefined);
+      results.push({ runId: row.id, waiting: open.length });
+      continue;
+    }
+    if (grant?.reservationId) {
+      const { data: reservation } = await db.from('usage_reservations').select('status').eq('id', grant.reservationId).maybeSingle();
+      if (reservation && reservation.status !== 'RESERVED') {
+        if (await claimRunTransition(db, row.id, ['SEARCHING'], { status: 'MATCHING' })) {
+          await failDiscoveryRun(db, row.id, null, 'RESERVATION_NOT_HELD',
+            `the search budget reservation is ${reservation.status}; nothing was charged`, 'BUDGET_REACHED');
+        }
+        results.push({ runId: row.id, ended: 'RESERVATION_NOT_HELD' });
+        continue;
+      }
+    }
+    if (!(await claimRunTransition(db, row.id, ['SEARCHING'], { status: 'MATCHING', stage: 'VALIDATING', progress: 85 }))) continue;
+    try {
+      if (open.length > 0) {
+        await db.from('discovery_query_queue')
+          .update({ status: 'CANCELLED', cancel_reason: 'RUN_DEADLINE', finished_at: new Date().toISOString() })
+          .eq('discovery_run_id', row.id).in('status', ['PENDING', 'RETRY_WAIT', 'PAUSED']);
+        await runEvent(db, row.id, 'SOURCE_DISCOVERY_DEADLINE', { stillOpen: open.length });
+      }
+      const summary = {
+        total: list.length,
+        done: list.filter((s) => s.status === 'DONE').length,
+        failed: list.filter((s) => s.status === 'FAILED').length,
+        cancelled: list.filter((s) => s.status === 'CANCELLED').length + open.length,
+        collected: list.reduce((n, s) => n + Number(s.result_count || 0), 0),
+      };
+      /* Group what was collected into entities before matching, so the
+         same flat posted five times is one property, not five results. */
+      const { data: planRow } = await db.from('discovery_search_plans')
+        .select('plan').eq('discovery_run_id', row.id).order('created_at', { ascending: false }).limit(1).maybeSingle();
+      const subject = (planRow?.plan as any)?.subject ?? null;
+      if (subject?.city) {
+        await invokeFunction(baseUrl, serviceKey, 'supply-discovery', {
+          mode: 'resolve-market', countryCode: subject.countryCode, city: subject.city, transaction: subject.transaction,
+        }, 120_000).catch((error) => runEvent(db, row.id, 'RESOLUTION_SKIPPED', { message: errorText(error) }));
+      }
+      await updateRun(db, row.id, { stage: 'MATCHING', progress: 90 }).catch(() => undefined);
+      let matching: any = null;
+      if (row.intent_profile_id) {
+        const res = await invokeFunction(baseUrl, serviceKey, 'supply-matching', {
+          intentProfileIds: [row.intent_profile_id], maxDemand: 1, trace: `run-${String(row.id).slice(0, 8)}`,
+        }, 150_000);
+        matching = res.data ?? null;
+      }
+      const ended = await finalizeDiscoveryRun(db, run, grant, {
+        sourceJobs: summary,
+        matching: matching ? { persisted: matching?.totals?.persisted ?? null, examined: matching?.totals?.candidatesRead ?? null } : null,
+        noResultsReason: summary.done === 0 ? 'SOURCES_UNAVAILABLE' : 'NO_MATCHING_LISTINGS_FOUND',
+      });
+      results.push({ runId: row.id, ended: ended.status, delivered: ended.delivered });
+    } catch (error) {
+      await failDiscoveryRun(db, row.id, grant, 'PIPELINE_ERROR', errorText(error));
+      results.push({ runId: row.id, ended: 'FAILED', error: errorText(error) });
+    }
+  }
+  return results;
+}
+
+/** A run left in MATCHING by a tick that died: release, never charge blind. */
+async function rescueStuckRuns(db: any) {
+  const cutoff = new Date(Date.now() - STUCK_AFTER_MS).toISOString();
+  const { data, error } = await db.from('discovery_runs')
+    .select('id,billing_grant').eq('status', 'MATCHING').lt('updated_at', cutoff).limit(5);
+  if (error) throw error;
+  const rescued: string[] = [];
+  for (const row of (data ?? []) as any[]) {
+    if (!(await claimRunTransition(db, row.id, ['MATCHING'], { status: 'FAILED' }))) continue;
+    await failDiscoveryRun(db, row.id, row.billing_grant ?? null, 'WORKER_STOPPED',
+      'the search stopped while finishing; the whole budget was released');
+    rescued.push(row.id);
+  }
+  return rescued;
+}
+
+async function expirePausedRuns(db: any) {
+  const { data, error } = await db.from('discovery_runs')
+    .select('id,user_id,billing_grant').eq('status', 'PAUSED').limit(10);
+  if (error) throw error;
+  const stopped: string[] = [];
+  for (const row of (data ?? []) as any[]) {
+    const reservationId = (row.billing_grant as ExecutionGrant | null)?.reservationId;
+    let expiresAt = Number.POSITIVE_INFINITY;
+    if (reservationId) {
+      const { data: reservation } = await db.from('usage_reservations').select('expires_at').eq('id', reservationId).maybeSingle();
+      if (reservation?.expires_at) expiresAt = Date.parse(reservation.expires_at);
+    }
+    if (expiresAt - Date.now() > PAUSE_STOP_BEFORE_EXPIRY_MS) continue;
+    const { data: outcome } = await db.rpc('discovery_control', {
+      p_kind: 'DISCOVERY_RUN', p_id: row.id, p_user_id: row.user_id, p_action: 'stop',
+    });
+    if (outcome?.ok) {
+      await runEvent(db, row.id, 'PAUSE_EXPIRED', {}).catch(() => undefined);
+      stopped.push(row.id);
+    }
+  }
+  return stopped;
+}
+
 /** A job left in 'classifying' or 'ranking' by a tick that died. */
 async function rescueStuck(db: any) {
   const cutoff = new Date(Date.now() - STUCK_AFTER_MS).toISOString();
@@ -248,7 +442,7 @@ export async function adminRetry(db: any, jobId: string) {
     .update({ status: 'PENDING', next_attempt_at: new Date().toISOString(), last_error: null, cancel_reason: null, finished_at: null })
     .eq('matching_job_id', jobId)
     .in('status', ['FAILED', 'RETRY_WAIT'])
-    .in('provider', ['TELEGRAM', 'TELEGRAM_SOURCES', 'FORUM'])
+    .in('provider', ['TELEGRAM', 'TELEGRAM_SOURCES', 'FORUM', 'PORTAL'])
     .select('id');
   if (error) return { success: false, error: error.message };
   return { success: true, jobId, requeued: Array.isArray(data) ? data.length : 0 };

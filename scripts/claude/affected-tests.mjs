@@ -39,7 +39,7 @@ const MAP = {
     browser: ['npm run build:harness && node --test tests/mobile/routeOverflow.test.mjs'],
   },
   DISCOVERY: {
-    unit: ['node --test tests/matrix/nativeMatching.test.mjs tests/matrix/nativePipeline.test.mjs tests/matrix/intentSources.test.mjs tests/matrix/matchPresentation.test.mjs tests/matrix/searchPlanPresentation.test.mjs'],
+    unit: ['node --test tests/matrix/nativeMatching.test.mjs tests/matrix/nativePipeline.test.mjs tests/matrix/intentSources.test.mjs tests/matrix/matchPresentation.test.mjs tests/matrix/searchPlanPresentation.test.mjs tests/matrix/phase2Discovery.test.mjs tests/matrix/discoveryEngine.test.mjs'],
     browser: [],
   },
   ADMIN: {

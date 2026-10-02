@@ -324,7 +324,12 @@ test('the auditor reaches an unvetted host over the candidate path, never the po
    */
   const worker = readFileSync('supabase/functions/source-audit/index.ts', 'utf8');
 
-  const auditFn = worker.slice(worker.indexOf('async function audit('));
+  /* The audit function only. The file also holds live-check (Phase 2), which
+     reads CONFIGURED portals through the portal runtime and unvetted hosts
+     through the candidate path -- the same separation, asserted below. */
+  const auditStart = worker.indexOf('async function audit(');
+  const auditEnd = worker.indexOf('\nasync function ', auditStart + 10);
+  const auditFn = worker.slice(auditStart, auditEnd > 0 ? auditEnd : undefined);
   assert.match(auditFn, /createCandidateAuditPath\(\{ resolver: new DohResolver\(\) \}\)/,
     'the audit mode does not use the candidate-host path');
   assert.equal(/createPortalRuntime\(/.test(auditFn), false,
@@ -335,6 +340,14 @@ test('the auditor reaches an unvetted host over the candidate path, never the po
   assert.match(discoverFn, /createPortalRuntime\(\)/);
   assert.equal(/createCandidateAuditPath/.test(discoverFn), false,
     'discovery reads implemented portals under the candidate policy, which is the wrong posture');
+});
+
+test('live checks keep the separation: configured portals via the portal runtime, unvetted hosts via the candidate path', () => {
+  const worker = readFileSync('supabase/functions/source-audit/index.ts', 'utf8');
+  const live = worker.slice(worker.indexOf('async function liveCheck('));
+  assert.match(live, /createCandidateAuditPath\(\{ resolver: new DohResolver\(\)/);
+  assert.match(live, /for \(const host of hosts\)[\s\S]*path\.fetchCandidate/);
+  assert.equal(/createPortalRuntime\([^)]*\)[\s\S]*fetchCandidate\(`https:\/\/\$\{host\}/.test(live.slice(0, live.indexOf('const path ='))), false);
 });
 
 test('the evidence sentence carries only what was measured', () => {

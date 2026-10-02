@@ -187,7 +187,7 @@ function CampaignPanel({
   const handlePauseConfirmed = async () => {
     setLoading(true);
     try {
-      await pauseMatchingCampaign(propertyId, userId);
+      await pauseMatchingCampaign(propertyId, userId, activeJobId);
       setActive(false);
       setShowPauseConfirm(false);
       toast.success(t('matches_paused_toast'));

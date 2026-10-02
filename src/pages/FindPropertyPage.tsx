@@ -44,6 +44,7 @@ import { toast } from 'sonner';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { DiscoveryState, ListingCard } from '@/components/customer/ListingCard';
 import { NativeMatchesPanel } from '@/components/matching/NativeMatchesPanel';
+import { OutsideSearchPanel } from '@/components/matching/OutsideSearchPanel';
 import { HomatchSearchComposer, HowItWorks } from '@/components/customer/SearchComposer';
 import {
   type PlanRowData, SearchPlanSummary,
@@ -913,6 +914,10 @@ export default function FindPropertyPage() {
                   from the plan they confirmed or from what they said in a conversation.
                   Renders nothing when there are none. */}
               <NativeMatchesPanel role="SEEKER" className="w-full max-w-3xl" />
+
+              {/* Searching OUTSIDE HOMATCH: a budgeted run over live portals and
+                  communities, with real stages. Renders nothing without a search. */}
+              <OutsideSearchPanel className="w-full max-w-3xl" onFinished={() => { void load(); }} />
 
               {loadingResults && (
                 <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">

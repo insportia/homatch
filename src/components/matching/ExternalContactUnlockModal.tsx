@@ -57,8 +57,13 @@ export function ExternalContactUnlockModal({ open, onClose, matchId, creditBalan
    */
   const revealedRef = useRef(false);
 
-  // Stable idempotency key per match
-  const idempotencyKey = `unlock_${matchId}_${Date.now().toString(36)}`;
+  // One idempotency key per opening of the dialog for a match: preview and
+  // confirm (and any retry of confirm) must send the same key, so it is
+  // minted when the dialog opens, never on render.
+  const idempotencyKey = React.useMemo(
+    () => `unlock_${matchId}_${Date.now().toString(36)}`,
+    [open, matchId],
+  );
 
   useEffect(() => {
     if (!open || !matchId) return;

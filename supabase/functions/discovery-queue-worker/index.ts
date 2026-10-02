@@ -70,6 +70,20 @@ Deno.serve(async (req: Request) => {
       const out = await r.json().catch(() => ({}));
       return json({ success: r.ok, healthy: out?.healthy === true, error: out?.error ?? null, mode: out?.mode ?? null });
     }
+    /* Phase 2: bounded live checks of the priority sources, for an admin.
+       Reads sources the way production does (both routes) and records the
+       result in discovery_source_live_checks; no customer, no spend. */
+    if (mode === 'admin_live_check') {
+      if (!(await isAdminCaller(req, db))) return json({ error: 'Admin only' }, 403);
+      const r = await fetch(`${baseUrl}/functions/v1/source-audit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
+        body: JSON.stringify({ mode: 'live-check', source: 'admin' }),
+        signal: AbortSignal.timeout(140_000),
+      });
+      const out = await r.json().catch(() => ({}));
+      return json({ success: r.ok && out?.success === true, checks: Number(out?.checks ?? 0), routes: out?.routes ?? [], error: out?.error ?? null });
+    }
     if (!(await isAuthorized(req, db, serviceKey))) return json({ error: 'Internal only' }, 403);
     if (mode === 'health' || mode === 'audit') return json(await audit(db));
     /* The campaign discovery driver (see driver.ts): source jobs for

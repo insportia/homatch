@@ -227,8 +227,9 @@ export function openAiUsage(payload: any): ImageUsage | null {
 export function openAiProvider(model: string, deps: ProviderDeps): ImageProvider {
   const prices = priceTable(deps.env);
   const now = deps.now ?? Date.now;
+  // Maximum visual quality is the product's promise: a setting may raise it, never lower it below high.
   const quality = (deps.env('DS_RENDER_QUALITY') ?? 'high').toLowerCase();
-  const q = ['low', 'medium', 'high', 'xhigh', 'max', 'auto'].includes(quality) ? quality : 'high';
+  const q = ['high', 'xhigh', 'max'].includes(quality) ? quality : 'high';
   const call = async (form: FormData): Promise<ImageResult> => {
     const t0 = now();
     const key = deps.env('OPENAI_API_KEY');
@@ -327,24 +328,29 @@ export function geminiProvider(model: string, deps: ProviderDeps): ImageProvider
 const isProvider = (v: unknown): v is ProviderId => v === 'OPENAI' || v === 'GEMINI';
 
 /**
- * The provider for this request: the admin override when given (already
- * verified as an administrator by the caller) and valid, else the
- * environment's choice, else the default. A model not on the provider's list
- * falls back to its default model. Null when that provider has no key.
+ * THE PRODUCTION PROVIDER IS OPENAI — a product decision, enforced here.
+ *
+ * Every customer-facing photoreal render (master, room views, extra angles,
+ * masked edits, refinements, regenerations) is finished by OpenAI. Nothing —
+ * an admin override, the admin setting, the environment, a benchmark result —
+ * can select another provider for a customer job: only the OpenAI MODEL is
+ * configurable, and only within OpenAI's own list (admin override → admin
+ * setting design_studio_render_model → DS_RENDER_MODEL → the default).
+ * Gemini stays in this file for isolated, non-production benchmarking only
+ * (geminiProvider is never called by a route; tests/matrix guards it).
+ * Null when OpenAI has no key.
  */
+export const PRODUCTION_PROVIDER: ProviderId = 'OPENAI';
+
 export function selectProvider(
   deps: ProviderDeps, override: { provider?: unknown; model?: unknown } | null = null,
-  /** The production choice recorded after the benchmark (admin_settings design_studio_render_model): wins over the environment. */
   configured: { provider?: unknown; model?: unknown } | null = null,
 ): ImageProvider | null {
-  const envProvider = (deps.env('DS_RENDER_PROVIDER') ?? '').toUpperCase();
-  const confProvider = typeof configured?.provider === 'string' ? configured.provider.toUpperCase() : '';
-  const provider: ProviderId = isProvider(override?.provider) ? override!.provider as ProviderId
-    : isProvider(confProvider) ? confProvider : isProvider(envProvider) ? envProvider : DEFAULT_PROVIDER;
-  const wanted = typeof override?.model === 'string' && isProvider(override?.provider) ? override.model
-    : isProvider(confProvider) && typeof configured?.model === 'string' ? configured.model : deps.env('DS_RENDER_MODEL') ?? '';
-  const model = PROVIDER_MODELS[provider].includes(wanted) ? wanted : DEFAULT_MODEL[provider];
-  const keyName = provider === 'OPENAI' ? 'OPENAI_API_KEY' : 'GEMINI_API_KEY';
-  if (!deps.env(keyName)) return null;
-  return provider === 'OPENAI' ? openAiProvider(model, deps) : geminiProvider(model, deps);
+  const openAi = (m: unknown): m is string => typeof m === 'string' && PROVIDER_MODELS.OPENAI.includes(m);
+  const model = openAi(override?.model) ? override!.model as string
+    : openAi(configured?.model) ? configured!.model as string
+      : openAi(deps.env('DS_RENDER_MODEL')) ? deps.env('DS_RENDER_MODEL') as string
+        : DEFAULT_MODEL.OPENAI;
+  if (!deps.env('OPENAI_API_KEY')) return null;
+  return openAiProvider(model, deps);
 }

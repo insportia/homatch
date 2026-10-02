@@ -134,9 +134,13 @@ test('selection: env choice, safe default, admin override validated, no key → 
   assert.equal(selectProvider(depsOf(f, { OPENAI_API_KEY: KEY })).model, DEFAULT_MODEL.OPENAI);
   assert.equal(selectProvider(depsOf(f, { OPENAI_API_KEY: KEY, DS_RENDER_MODEL: 'gpt-image-2.5-flare' })).model, 'gpt-image-2.5-flare');
   assert.equal(selectProvider(depsOf(f, { OPENAI_API_KEY: KEY, DS_RENDER_MODEL: 'dall-e-9' })).model, 'gpt-image-2', 'an unknown model falls back');
-  assert.equal(selectProvider(depsOf(f, { GEMINI_API_KEY: KEY, DS_RENDER_PROVIDER: 'gemini' })).id, 'GEMINI');
-  const o = selectProvider(depsOf(f, { OPENAI_API_KEY: KEY, GEMINI_API_KEY: KEY }), { provider: 'GEMINI', model: 'gemini-3.1-flash-image' });
-  assert.deepEqual([o.id, o.model], ['GEMINI', 'gemini-3.1-flash-image']);
-  assert.equal(selectProvider(depsOf(f, { OPENAI_API_KEY: KEY }), { provider: 'GEMINI', model: 'gemini-3-pro-image' }), null, 'no Gemini key');
+  // OpenAI only: no environment, setting or override can select Gemini for a customer job.
+  assert.equal(selectProvider(depsOf(f, { OPENAI_API_KEY: KEY, GEMINI_API_KEY: KEY, DS_RENDER_PROVIDER: 'gemini' })).id, 'OPENAI');
+  assert.equal(selectProvider(depsOf(f, { OPENAI_API_KEY: KEY, GEMINI_API_KEY: KEY }), { provider: 'GEMINI', model: 'gemini-3.1-flash-image' }).id, 'OPENAI');
+  assert.equal(selectProvider(depsOf(f, { OPENAI_API_KEY: KEY, GEMINI_API_KEY: KEY }), null, { provider: 'GEMINI', model: 'gemini-3-pro-image' }).id, 'OPENAI');
+  assert.equal(selectProvider(depsOf(f, { OPENAI_API_KEY: KEY }), null, { provider: 'GEMINI', model: 'gemini-3-pro-image' }).model, 'gpt-image-2', 'a Gemini model name never leaks into the OpenAI call');
+  assert.equal(selectProvider(depsOf(f, { OPENAI_API_KEY: KEY }), { model: 'gpt-image-2.5-sunburst' }).model, 'gpt-image-2.5-sunburst', 'the OpenAI model stays configurable');
+  assert.equal(selectProvider(depsOf(f, { OPENAI_API_KEY: KEY }), null, { model: 'gpt-image-2.5-flare' }).model, 'gpt-image-2.5-flare');
+  assert.equal(selectProvider(depsOf(f, { GEMINI_API_KEY: KEY })), null, 'no OpenAI key: no render, never a fallback to Gemini');
   assert.equal(selectProvider(depsOf(f, {})), null);
 });

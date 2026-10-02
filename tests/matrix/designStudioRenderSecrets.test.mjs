@@ -71,3 +71,17 @@ test('the admin-only provider override is checked by is_admin() on the server', 
   assert.match(routes, /rpc\('is_admin'\)/);
   assert.match(routes, /'ADMIN_ONLY'/);
 });
+
+test('photoreal renders are OpenAI-only: no production route can reach the Gemini provider', () => {
+  const fs = { readdirSync, readFileSync };
+  const path = { join };
+  const dir = join(process.cwd(), 'supabase/functions');
+  const routes = [];
+  const walk = (d) => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, f.name); if (f.isDirectory()) { if (f.name !== '__tests__') walk(p); } else if (/\.ts$/.test(f.name) && !/imageProviders\.ts$/.test(f.name) && /design-studio|designStudio/.test(p)) routes.push([p, fs.readFileSync(p, 'utf8')]); } };
+  walk(dir);
+  for (const [p, src] of routes) assert.ok(!/geminiProvider|generativelanguage\.googleapis\.com/.test(src), `${p} must not reach Gemini`);
+  const sel = fs.readFileSync(path.join(dir, '_shared/designStudio/imageProviders.ts'), 'utf8');
+  const body = sel.slice(sel.indexOf('export function selectProvider'), sel.indexOf('\n}\n', sel.indexOf('export function selectProvider')));
+  assert.ok(!/gemini/i.test(body), 'selectProvider never names Gemini');
+  assert.ok(/return openAiProvider\(model, deps\)/.test(body));
+});

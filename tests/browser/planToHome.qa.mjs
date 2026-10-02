@@ -19,7 +19,7 @@
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import zlib from 'node:zlib';
 import {
   BASE, OUT, check as report, chromium, createStore, findChrome, openContext, overflowX, qaCatalogAssets, qaCatalogMaterials, startServer, wire,
@@ -85,13 +85,83 @@ function wireFactory(page, store) {
   });
 }
 
+/* The render service, as the browser sees it: quotes, one factory pass per start (the fake factory
+   above), status that finishes after a poll, and appearance edits. Pictures are the factory's own
+   sample dollhouse render with an id map whose two regions are mapped to the design's sofa and the
+   living-room floor (the real map comes from Blender's id pass). */
+function wireRenders(page, store) {
+  const master = readFileSync(path.join(FIXTURE, 'qa-master.jpg'));
+  const ids = readFileSync(path.join(FIXTURE, 'qa-master-ids.png'));
+  store.objects.set('users/hm1/qa/master.jpg', { body: master, type: 'image/jpeg' });
+  store.objects.set('users/hm1/qa/master-ids.png', { body: ids, type: 'image/png' });
+  store.renderCalls = { quote: 0, start: 0, edit: 0, status: 0 };
+  const now = () => new Date().toISOString();
+  const legendFor = (versionId) => {
+    const v = store.db.ds_versions.find((x) => x.id === versionId);
+    const src = store.db.ds_spatial_sources.find((x) => x.id === v?.source_id);
+    const living = src?.canonical?.scene?.floors?.find((f) => f.kind === 'LIVING');
+    const sofa = (v?.state?.objects ?? []).find((o) => /sofa/.test(o.assetId)) ?? (v?.state?.objects ?? [])[0];
+    const entries = [];
+    if (sofa) entries.push({ color: '#0a0b0c', kind: 'OBJECT', id: sofa.instanceId, roomId: sofa.roomId, coverage: 0.017, box: [0.33, 0.48, 0.47, 0.6] });
+    if (living) entries.push({ color: '#0d0e0f', kind: 'FLOOR', id: `floor:${living.id}`, roomId: living.id, coverage: 0.07, box: [0.25, 0.4, 0.55, 0.7] });
+    return { width: 1600, height: 1143, entries };
+  };
+  const ready = (r) => Object.assign(r, { status: 'READY', base_key: 'users/hm1/qa/master.jpg', final_key: 'users/hm1/qa/master.jpg', map_key: 'users/hm1/qa/master-ids.png', legend: legendFor(r.version_id), finish: { provider: 'OPENAI', model: 'qa', check: { accepted: true, edgeAgreement: 0.9, maskAgreement: 0.9, reason: null }, ms: 1, usd: 0 }, updated_at: now() });
+  return page.route(/\/functions\/v1\/design-studio-reconstruct\/render-(quote|start|status|edit)$/, async (route) => {
+    const req = route.request();
+    const body = JSON.parse(req.postData() || '{}');
+    const json = (b, status = 200) => route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(b) });
+    const kind = req.url().split('render-').pop();
+    store.renderCalls[kind] += 1;
+    if (kind === 'quote') {
+      const per = { DS_MASTER_RENDER: 6, DS_ROOM_RENDER: 5, DS_RENDER_EDIT: 4 }[body.product];
+      const views = typeof body.views === 'number' ? body.views : 1;
+      return json({ token: `q.${body.versionId}.${body.product}.${views}`, product: body.product, views, credits: per * views, expiresAt: new Date(Date.now() + 600000).toISOString(), charged: false });
+    }
+    if (kind === 'start') {
+      const existing = store.db.ds_renders.filter((r) => r.idempotency_key === body.idempotencyKey);
+      if (existing.length) return json({ renders: existing });
+      // One factory pass for every view (the same spec is the same job).
+      const key = createHash('sha256').update(JSON.stringify(body.spec)).digest('hex') + '|1';
+      let job = [...store.factoryJobs.values()].find((j) => j.key === key);
+      if (!job) { job = { id: `job-${store.factoryJobs.size + 1}`, key, polls: 0 }; store.factoryJobs.set(job.id, job); }
+      const rows = body.views.map((v) => ({
+        id: randomUUID(), project_id: body.projectId, user_id: 'hm1', version_id: body.versionId, kind: v.kind, parent_id: null, view: v,
+        status: 'QUEUED', factory_job_id: job.id, base_key: null, map_key: null, final_key: null, legend: null, finish: null, edit: null,
+        billing: { credits: null, reservationId: null, state: 'NOT_CHARGED' }, error: null, idempotency_key: body.idempotencyKey, created_at: now(), updated_at: now(),
+      }));
+      store.db.ds_renders.push(...rows);
+      return json({ renders: rows });
+    }
+    if (kind === 'status') {
+      const rows = store.db.ds_renders.filter((r) => body.renderIds.includes(r.id));
+      for (const r of rows) {
+        if (r.status === 'READY') continue;
+        r.polls = (r.polls ?? 0) + 1;
+        r.status = r.polls < 2 ? 'RENDERING' : r.polls < 3 ? 'FINISHING' : 'READY';
+        if (r.status === 'READY') ready(r);
+      }
+      return json({ renders: rows });
+    }
+    // edit
+    const parent = store.db.ds_renders.find((r) => r.id === body.renderId);
+    if (!parent) return json({ error: 'NOT_FOUND' }, 404);
+    const existing = store.db.ds_renders.find((r) => r.idempotency_key === body.idempotencyKey);
+    if (existing) return json({ render: existing });
+    const row = ready({ id: randomUUID(), project_id: parent.project_id, user_id: 'hm1', version_id: body.newVersionId, kind: 'EDIT', parent_id: parent.id, view: parent.view, edit: body.edit, idempotency_key: body.idempotencyKey, billing: { credits: null, reservationId: null, state: 'NOT_CHARGED' }, error: null, created_at: now() });
+    store.db.ds_renders.push(row);
+    return json({ render: row });
+  });
+}
+
 async function run(browser, { width, height, lang, touch }) {
   const errors = [];
-  const store = createStore({ ds_catalog_assets: qaCatalogAssets(), ds_catalog_materials: qaCatalogMaterials() });
+  const store = createStore({ ds_catalog_assets: qaCatalogAssets(), ds_catalog_materials: qaCatalogMaterials(), ds_renders: [] });
   const ctx = await openContext(browser, { width, height, lang, touch });
   const page = await ctx.newPage();
   await wire(page, store, errors);
   await wireFactory(page, store);
+  await wireRenders(page, store);
   // The reading: the recorded model output through HOMATCH's real fusion.
   await page.route(/\/functions\/v1\/design-studio-reconstruct\/floorplan$/, async (route) => {
     const body = JSON.parse(route.request().postData() || '{}');
@@ -170,11 +240,58 @@ async function run(browser, { width, height, lang, touch }) {
   await page.reload();
   await page.getByTestId('plan-generating').waitFor({ timeout: 20000 });
   check(`${tag}: a reload during generation resumes it`, true);
-  await page.waitForURL(/\/walkthrough$/, { timeout: 120000 });
+  await page.waitForURL(/\/home$/, { timeout: 120000 });
   check(`${tag}: one design request (${store.aiRequests.length})`, store.aiRequests.length === 1, String(store.aiRequests.length));
   check(`${tag}: one factory job across the reload (${store.factoryJobs.size})`, store.factoryJobs.size === 1 && jobsBefore === 1, `${jobsBefore} → ${store.factoryJobs.size}`);
   const versions = store.db.ds_versions.map((v) => v.origin).join(',');
   check(`${tag}: versions Original → AI → factory (${versions})`, /ORIGINAL/.test(versions) && /AI/.test(versions) && /BRANCH/.test(versions), versions);
+  check(`${tag}: the master design was started once, with the generation (${store.renderCalls.start})`, store.renderCalls.start >= 1 && store.db.ds_renders.filter((r) => r.view?.id === 'master').length === 1);
+  check(`${tag}: the design's DNA is kept with its versions`, store.db.ds_versions.filter((v) => v.design_dna?.version === 'ds-dna-1').length >= 2);
+
+  // ── The home: the master design, touched and changed ──────────────────
+  await page.getByTestId('design-home').waitFor({ timeout: 20000 });
+  await page.getByTestId('render-viewer').waitFor({ timeout: 60000 });
+  await page.waitForTimeout(1500); // the id map loads after the picture
+  await page.screenshot({ path: path.join(OUT, `p2h-home-${tag}.png`) });
+  check(`${tag}: no horizontal overflow on the home`, (await overflowX(page)) <= 1, String(await overflowX(page)));
+  const img = page.getByTestId('render-viewer').locator('img').first();
+  const box = await img.boundingBox();
+  await page.mouse.click(box.x + box.width * 0.40, box.y + box.height * 0.54);
+  await page.getByTestId('edit-panel').waitFor({ timeout: 10000 });
+  await page.screenshot({ path: path.join(OUT, `p2h-edit-${tag}.png`) });
+  const swatch = page.getByTestId('edit-panel').locator('button[aria-label]').filter({ hasNot: page.locator('svg') }).first();
+  const colour = (await swatch.getAttribute('aria-label') ?? '').match(/#[0-9a-f]{6}/i)?.[0] ?? null;
+  await swatch.click();
+  await page.getByTestId('confirm-price').waitFor({ timeout: 10000 });
+  await page.screenshot({ path: path.join(OUT, `p2h-confirm-${tag}.png`) });
+  await page.getByTestId('confirm-run').dblclick();
+  for (let i = 0; i < 40 && !store.db.ds_renders.some((r) => r.kind === 'EDIT'); i += 1) await page.waitForTimeout(250);
+  check(`${tag}: one appearance edit rendered, double tap or not (${store.db.ds_renders.filter((r) => r.kind === 'EDIT').length})`, store.db.ds_renders.filter((r) => r.kind === 'EDIT').length === 1);
+  const project = store.db.ds_projects[0];
+  const head = () => store.db.ds_versions.find((v) => v.id === store.db.ds_projects[0].head_version_id);
+  const sofaColour = () => (head()?.state?.objects ?? []).find((o) => /sofa/.test(o.assetId))?.colorOverride ?? null;
+  check(`${tag}: the edit is the design's own (sofa ${sofaColour()} = ${colour})`, !!colour && sofaColour()?.toLowerCase() === colour.toLowerCase(), `${sofaColour()} vs ${colour}`);
+  void project;
+
+  // ── Rooms: one view of the living room, priced first, appearing when ready ──
+  await page.getByTestId('home-tab-rooms').click();
+  await page.getByTestId('room-pick').first().waitFor({ timeout: 10000 });
+  const living = page.getByTestId('room-pick').filter({ hasText: /Living|მისაღები/ }).first();
+  await living.getByRole('radio', { name: '1' }).click();
+  await page.getByTestId('rooms-quote').click();
+  await page.getByTestId('rooms-offer').waitFor({ timeout: 10000 });
+  await page.getByTestId('rooms-confirm').click();
+  await page.getByTestId('room-shot').first().waitFor({ timeout: 30000 });
+  for (let i = 0; i < 40 && (await page.locator('[data-testid="room-shot"][data-status="READY"]').count()) === 0; i += 1) await page.waitForTimeout(500);
+  await page.screenshot({ path: path.join(OUT, `p2h-rooms-${tag}.png`) });
+  check(`${tag}: a room view arrives (${await page.locator('[data-testid="room-shot"][data-status="READY"]').count()})`, (await page.locator('[data-testid="room-shot"][data-status="READY"]').count()) >= 1);
+
+  // ── The walkthrough is built from the approved design (the edited sofa included) ──
+  await page.getByTestId('home-tab-walk').click();
+  await page.getByTestId('home-walk-start').click();
+  await page.waitForURL(/\/walkthrough$/, { timeout: 120000 });
+  check(`${tag}: the walkthrough's design keeps the edit (${sofaColour()})`, sofaColour()?.toLowerCase() === colour?.toLowerCase());
+  check(`${tag}: the walkthrough design is a factory build of the edited version`, (head()?.change_summary ?? []).some((c) => c.kind === 'FACTORY_BUILD'));
   await page.locator('canvas').first().waitFor({ timeout: 30000 });
   await page.waitForTimeout(2500);
   await page.screenshot({ path: path.join(OUT, `p2h-walkthrough-${tag}.png`) });

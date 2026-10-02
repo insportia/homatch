@@ -17,6 +17,7 @@ import { supabase } from '@/db/supabase';
 import type { FloorPlanDocument } from '@/services/developer/floorplan';
 import type { Anchor, DimensionString, ReviewDecisions } from '@/lib/designStudio/scale';
 import type { CanonicalSpace, GeometryState } from '@/lib/designStudio/types';
+import type { PlanUnderstanding } from '@/lib/designStudio/planToHome';
 import { uploadDesignFile } from './files';
 import { DesignStudioError } from './projects';
 
@@ -33,7 +34,18 @@ export interface FloorPlanRecord {
   image_width: number | null;
   image_height: number | null;
   status: 'UPLOADED' | 'INTERPRETING' | 'INTERPRETED' | 'FAILED';
-  interpretation: { doc: FloorPlanDocument; dimensionStrings: DimensionString[]; readVersion: string } | null;
+  interpretation: {
+    doc: FloorPlanDocument;
+    dimensionStrings: DimensionString[];
+    readVersion: string;
+    /** ds-read-2: exactly what the model said, before fusion with the drawing's pixels (same element ids). */
+    rawDoc?: FloorPlanDocument;
+    /** ds-read-2: printed-size checks, topology issues, the questions worth asking, room adjacency. */
+    understanding?: PlanUnderstanding | null;
+    timings?: { modelMs?: number; fuseMs?: number; rasterMs?: number; raster?: string };
+    /** Set when the reading was reused from an earlier upload of the same picture. */
+    cachedFrom?: string;
+  } | null;
   interpretation_error: string | null;
   corrections: Array<{ at: string; decisions: ReviewDecisions; anchors: Anchor[]; ceilingM: number | null }>;
   /** A reference picture's measured frame (pictureFrame.ts), when it is an isometric cut-away. */

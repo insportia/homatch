@@ -202,6 +202,29 @@ test('the floor-plan reader treats the upload as untrusted and stores only a pro
   assert.ok(!/rpc\(['"](charge|debit|reserve|settle)\w*/i.test(code), 'reading charges before billing is confirmed');
 });
 
+test('plan reading v2: the same picture is never paid for twice, and the raw reading is kept beside the fused one', () => {
+  const fn = read('supabase/functions/design-studio-reconstruct/floorplan.ts');
+  // The cache is per customer, per exact bytes, per reader version, plans only.
+  assert.match(fn, /\.eq\('user_id', plan\.user_id\)\.eq\('sha256', sha256\)\.eq\('status', 'INTERPRETED'\)\.eq\('purpose', 'PLAN'\)/);
+  assert.match(fn, /\.eq\('interpretation->>readVersion', DS_READ_VERSION\)/);
+  const cacheAt = fn.indexOf("interpretation->>readVersion");
+  assert.ok(cacheAt > 0 && cacheAt < fn.indexOf("fetch('https://api.openai.com/v1/responses'"), 'the cache is consulted before the model is called');
+  // Fusion runs on the bytes already checked, and the model's own reading is stored untouched.
+  assert.match(fn, /understand\(\{ doc: reading\.doc/);
+  assert.match(fn, /rawDoc: reading\.doc/);
+  assert.match(fn, /readVersion: reading\.readVersion/);
+  assert.match(read('supabase/functions/_shared/designStudio/floorplanRead.ts'), /export const DS_READ_VERSION = 'ds-read-2';/);
+  // Decoding is bounded and never fatal: an undecodable picture is fused without its raster.
+  const dec = read('supabase/functions/design-studio-reconstruct/rasterDecode.ts');
+  assert.match(dec, /MAX_MEGAPIXELS = \d+;/);
+  assert.match(dec, /catch \{\s*return \{ ok: false, reason: 'DECODE_FAILED' \}/);
+  // The deterministic half never calls a model and never touches the network.
+  for (const f of fs.readdirSync('supabase/functions/_shared/designStudio/planRead')) {
+    const src = read(`supabase/functions/_shared/designStudio/planRead/${f}`);
+    assert.ok(!/fetch\(|Deno\.|from 'npm:|from 'jsr:|https:\/\//.test(src), `${f} must stay pure`);
+  }
+});
+
 test('the customer path creates geometry only through the checking RPC', () => {
   const svc = read('src/services/designStudio/floorplans.ts');
   assert.match(svc, /rpc\('ds_create_floorplan_source'/);

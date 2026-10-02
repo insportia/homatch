@@ -10,6 +10,7 @@ import React, { useState } from 'react';
 import { Loader2, Sparkles, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from './MetaButton';
+import { SparkAssist } from './SparkAssist';
 import { Textarea } from '@/components/ui/textarea';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { briefHash, BRIEF_MAX, type BriefUnderstanding } from '@/lib/metaAds/audienceGuide';
@@ -94,6 +95,9 @@ export function BriefStep({ campaign, patch, setCampaign, flush }: {
           onChange={(e) => patch({ owner_brief: e.target.value }, { keepPreflight: true })} />
         <span className="mt-1 block text-2xs text-muted-foreground">{t('mm_f_brief_optional')}</span>
       </label>
+      <SparkAssist campaignId={campaign.id} field="BRIEF" current={text}
+        onUse={(v) => patch({ owner_brief: v.slice(0, BRIEF_MAX) }, { keepPreflight: true })}
+        onEdit={(v) => { patch({ owner_brief: v.slice(0, BRIEF_MAX) }, { keepPreflight: true }); requestAnimationFrame(() => document.getElementById('mm-f-brief')?.focus()); }} />
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" onClick={read} disabled={busy || !text.trim()} className="gap-1.5" data-mm-brief-read="">
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}{t(u && !fresh ? 'mm_f_brief_reread' : 'mm_f_brief_read')}

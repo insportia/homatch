@@ -11,6 +11,8 @@
 // real translation). Add a key here only when that's a deliberate decision,
 // never to silence a real missing translation.
 export const ALLOW_DUPLICATE_KEYS = new Set([
+  // HOMATCH Intelligence is the product's own name, the same in every language.
+  'mm_i_title',
   // Meta placements and the product name, as Meta itself labels them in every locale.
   'mm_c_pl_MARKETPLACE',
   'mm_c_pl_MESSENGER',

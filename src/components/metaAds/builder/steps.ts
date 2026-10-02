@@ -5,6 +5,7 @@ import type { MetaAsset, MetaCampaignRow, MetaCreativeRow, MetaStatus } from '@/
 // Relative, with the extension, so node:test can import this module directly.
 import { GOAL_SPECS, isHttpsUrl } from '../../../lib/metaAds/payload.ts';
 import type { MetaGoal } from '../../../lib/metaAds/strategy.ts';
+import { DETAIL_KEYS } from '../../../lib/metaAds/readiness.ts';
 
 export const STEPS = ['account', 'offer', 'goal', 'destination', 'audience', 'budget', 'creative', 'placements', 'brief', 'review'] as const;
 export type StepKey = (typeof STEPS)[number];
@@ -100,26 +101,35 @@ export function urlProblem(url: string | undefined | null): string | null {
 
 /**
  * A preflight detail code → i18n keys. Codes that carry a value (SHORT_1234,
- * ACCOUNT_CURRENCY_GEL, MIN_2_DAYS) keep it as {{value}}; permission names are
- * shown as they are, because they are what Meta's own screens call them.
+ * ACCOUNT_CURRENCY_GEL, MIN_2_DAYS) keep it as {{value}}. Missing Meta
+ * permissions read as ONE action ("reconnect and allow ad account access"),
+ * never as scope names. A code HOMATCH has no copy for is left out — the
+ * check's own title still says what needs attention (readiness.ts).
  */
 export function preflightDetails(detail: string): Array<{ key: string; value: string }> {
-  return detail.split(',').filter(Boolean).slice(0, 4).map((raw) => {
+  const out: Array<{ key: string; value: string }> = [];
+  for (const raw of detail.split(',').filter(Boolean).slice(0, 4)) {
     const code = raw.trim();
     let m: RegExpMatchArray | null;
-    if ((m = code.match(/^SHORT_(\d+)$/))) return { key: 'madsb_pfd_short', value: `$${(Number(m[1]) / 100).toFixed(2)}` };
-    if ((m = code.match(/^MIN_(\d+)_DAYS$/))) return { key: 'madsb_pfd_min_days', value: m[1] };
-    if ((m = code.match(/^ACCOUNT_STATUS_(\d+)$/))) return { key: 'madsb_pfd_account_status', value: m[1] };
-    if ((m = code.match(/^ACCOUNT_CURRENCY_(\w+)$/))) return { key: 'madsb_pfd_account_currency', value: m[1] };
-    if (code.startsWith('meta_err')) return { key: code, value: '' };
+    let row: { key: string; value: string } | null;
+    if ((m = code.match(/^SHORT_(\d+)$/))) row = { key: 'madsb_pfd_short', value: `$${(Number(m[1]) / 100).toFixed(2)}` };
+    else if ((m = code.match(/^MIN_(\d+)_DAYS$/))) row = { key: 'madsb_pfd_min_days', value: m[1] };
+    else if ((m = code.match(/^ACCOUNT_STATUS_(\d+)$/))) row = { key: 'madsb_pfd_account_status', value: m[1] };
+    else if ((m = code.match(/^ACCOUNT_CURRENCY_([A-Z]{3})$/))) row = { key: 'madsb_pfd_account_currency', value: m[1] };
+    else if (/^meta_err_[a-z_]+$/.test(code)) row = { key: code, value: '' };
     // Real-estate scope (domainScope.ts): one kind sentence, never the matched words.
-    if (code === 'LEAD_TERMS_REQUIRED') return { key: 'mm_l_pfd_terms', value: '' };
-    if (code.startsWith('BLOCKED_OUT_OF_SCOPE')) return { key: 'mm_m_scope_blocked', value: '' };
-    if (code.startsWith('IN_REVIEW')) return { key: 'mm_m_scope_review', value: '' };
-    if (code === 'APPROVED_BY_REVIEW' || /^(HOMATCH_PROPERTY|PROPERTY_OFFER|REAL_ESTATE_SERVICE)$/.test(code)) return { key: 'mm_m_scope_ok', value: '' };
-    if (/^[a-z_]+$/.test(code)) return { key: 'madsb_pfd_permission', value: code };
-    return { key: `madsb_pfd_${code.toLowerCase()}`, value: code };
-  });
+    else if (code === 'LEAD_TERMS_REQUIRED') row = { key: 'mm_l_pfd_terms', value: '' };
+    else if (code.startsWith('BLOCKED_OUT_OF_SCOPE')) row = { key: 'mm_m_scope_blocked', value: '' };
+    else if (code.startsWith('IN_REVIEW')) row = { key: 'mm_m_scope_review', value: '' };
+    else if (code === 'APPROVED_BY_REVIEW' || /^(HOMATCH_PROPERTY|PROPERTY_OFFER|REAL_ESTATE_SERVICE)$/.test(code)) row = { key: 'mm_m_scope_ok', value: '' };
+    else if (/^[a-z_]+$/.test(code)) row = { key: 'mm_r_pfd_permissions', value: '' };
+    else {
+      const key = `madsb_pfd_${code.toLowerCase()}`;
+      row = DETAIL_KEYS.has(key) ? { key, value: '' } : null;
+    }
+    if (row && !out.some((o) => o.key === row!.key)) out.push(row);
+  }
+  return out;
 }
 
 /** The automation this campaign will actually get, by goal. */

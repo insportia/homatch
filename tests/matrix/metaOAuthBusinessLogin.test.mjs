@@ -21,7 +21,8 @@ test('one OAuth implementation: meta-oauth is the only callback function', () =>
 });
 
 test('the dialog uses the Login for Business configuration with the code grant', () => {
-  assert.match(shared, /configId: metaLoginConfigId\(\)/);
+  assert.match(shared, /configId: metaLoginConfigId\(configOverride\)/, 'the admin setting can switch the configuration');
+  assert.match(api, /oauthStartUrl\(await signOAuthState\(\{ uid, nonce, ret \}\), settings\.loginConfigId\)/);
   assert.match(shared, /Deno\.env\.get\('META_LOGIN_CONFIG_ID'\) \?\? META_LOGIN_CONFIG_ID_DEFAULT/);
   const lib = read('src/lib/metaAds/oauth.ts');
   assert.match(lib, /q\.set\('config_id', configId\)/);
@@ -29,10 +30,11 @@ test('the dialog uses the Login for Business configuration with the code grant',
   assert.match(api, /oauthStartUrl\(/, 'oauth_start builds the dialog through the shared adapter');
 });
 
-test('a system-user token is not passed through fb_exchange_token', () => {
+test('a system-user token is not passed through fb_exchange_token; a short-lived user token is upgraded server-side', () => {
   const ex = shared.slice(shared.indexOf('export async function exchangeCodeForToken'), shared.indexOf('/* ── SIGNED REQUESTS'));
-  const cfgBranch = ex.indexOf('if (metaLoginConfigId())');
-  assert.ok(cfgBranch > 0 && cfgBranch < ex.indexOf("grant_type: 'fb_exchange_token'"), 'the configuration path returns before the legacy exchange');
+  const longBranch = ex.indexOf('if (expiresIn === null || expiresIn >= LONG_LIVED_SECONDS) return { token, expiresIn, upgraded: false };');
+  assert.ok(longBranch > 0 && longBranch < ex.indexOf("grant_type: 'fb_exchange_token'"), 'an undated (system-user) or long-lived token returns before the exchange');
+  assert.match(shared, /const LONG_LIVED_SECONDS = 7 \* 86_400;/);
 });
 
 test('callback: signed state + one-time nonce on the caller\'s own row (tenant isolation)', () => {
@@ -102,7 +104,7 @@ test('a connection records every Meta identity it was made with; reconnect repla
   const cb = fn.slice(fn.indexOf('await exchangeCodeForToken(code)'));
   assert.match(cb, /graph\(`\/debug_token\?input_token=\$\{encodeURIComponent\(token\)\}`/);
   assert.match(cb, /from\('meta_connection_identities'\)\.delete\(\)\.eq\('connection_id', conn\.id\)/);
-  assert.match(cb, /connectionIdentities\(meRes\.id, debug, !!metaLoginConfigId\(\)\)/);
+  assert.match(cb, /connectionIdentities\(meRes\.id, debug, typeof debug\?\.type === 'string' \? debug\.type === 'SYSTEM_USER' : !!metaLoginConfigId\(\)\)/);
   const m = read('supabase/migrations/20261001130000_meta_data_deletion_requests.sql');
   assert.match(m, /references public\.meta_connections\(id\) on delete cascade/);
   assert.match(m, /revoke all on public\.meta_connection_identities from anon, authenticated/);

@@ -7,7 +7,10 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { META_MASTER_CAMPAIGN_STRINGS as S } from '../../../../../scripts/meta-master-campaign-i18n-data.mjs';
+import { META_MASTER_CAMPAIGN_STRINGS } from '../../../../../scripts/meta-master-campaign-i18n-data.mjs';
+import { META_ACCEPT_STRINGS } from '../../../../../scripts/meta-accept-i18n-data.mjs';
+// The campaign page's copy, plus the HOMATCH Intelligence labels it shares with the builder.
+const S = { ...META_MASTER_CAMPAIGN_STRINGS, ...META_ACCEPT_STRINGS };
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '../../../../..');

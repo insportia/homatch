@@ -68,7 +68,7 @@ const DISCREPANCY_TEXT: Record<Discrepancy, string> = {
 const SETTING_ERROR: Record<string, string> = {
   REASON_REQUIRED: 'mm_a_err_reason', UNKNOWN_SETTING: 'mm_a_err_unknown', NOT_BOOLEAN: 'mm_a_err_type', NOT_NUMBER: 'mm_a_err_type',
   NOT_OBJECT: 'mm_a_json_object_required', BAD_GOAL: 'mm_a_err_value', BAD_COUNTRY: 'mm_a_err_value', BAD_BILLING: 'mm_a_err_value',
-  BAD_VERSION: 'mm_a_err_value', EMPTY_LIST: 'mm_a_err_value', OUT_OF_RANGE: 'mm_a_err_range', NOT_INTEGER: 'mm_a_err_integer',
+  BAD_VERSION: 'mm_a_err_value', BAD_CONFIG_ID: 'mm_a_err_value', EMPTY_LIST: 'mm_a_err_value', OUT_OF_RANGE: 'mm_a_err_range', NOT_INTEGER: 'mm_a_err_integer',
   TOO_PRECISE: 'mm_a_err_precision', TOO_LARGE: 'mm_a_err_value', MIN_ABOVE_MAX: 'mm_a_err_min_max', AUDIT_FAILED: 'mm_a_err_audit',
   FORBIDDEN: 'mm_a_err_forbidden', NOT_OPEN: 'mm_a_err_not_open',
 };

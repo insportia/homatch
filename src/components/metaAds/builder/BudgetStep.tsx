@@ -40,7 +40,7 @@ export function BudgetStep({ campaign, status, patch, totals, pricing, strategy 
     <StepShell eyebrow={t('madsb_step_budget')} title={t('madsb_budget_title')} lead={t('madsb_budget_lead')}>
       <Hint k="mm_c_hint_budget" />
       <div className="grid gap-4 sm:grid-cols-2">
-        <label className="block">
+        <label className="block" data-mm-field="daily">
           <span className="mb-1 block text-sm font-medium text-foreground">{t('mads_budget_daily')}</span>
           <div className="flex items-center gap-2">
             <span className="text-lg font-bold" dir="ltr">$</span>
@@ -55,7 +55,7 @@ export function BudgetStep({ campaign, status, patch, totals, pricing, strategy 
             {t(dailyError ?? 'madsb_budget_min_hint', { min: money(minDaily) })}
           </span>
         </label>
-        <label className="block">
+        <label className="block" data-mm-field="days">
           <span className="mb-1 block text-sm font-medium text-foreground">{t('mads_budget_days')}</span>
           <Hint k="mm_c_hint_schedule" className="mb-1" />
           <Input inputMode="numeric" dir="ltr" value={days} aria-invalid={!!daysError}

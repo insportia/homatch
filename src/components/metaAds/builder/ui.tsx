@@ -6,11 +6,11 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import type { StepKey } from './steps';
 import type { SaveState } from './useMetaDraft';
 
-export function StepShell({ eyebrow, title, lead, children }: {
-  eyebrow?: string; title: string; lead?: React.ReactNode; children: React.ReactNode;
+export function StepShell({ eyebrow, title, lead, children, 'data-mm-field': field }: {
+  eyebrow?: string; title: string; lead?: React.ReactNode; children: React.ReactNode; 'data-mm-field'?: string;
 }) {
   return (
-    <section className="rounded-2xl border border-border bg-card p-4 shadow-card sm:p-6">
+    <section data-mm-field={field} className="rounded-2xl border border-border bg-card p-4 shadow-card sm:p-6">
       {eyebrow && <p className="text-2xs font-semibold uppercase tracking-[0.14em] text-[hsl(var(--gold-ink))]">{eyebrow}</p>}
       <h2 className="mt-1 font-display text-xl font-semibold text-foreground sm:text-2xl">{title}</h2>
       {lead && <div className="mt-1.5 max-w-2xl text-sm leading-relaxed text-muted-foreground">{lead}</div>}
@@ -80,8 +80,10 @@ export function SaveIndicator({ state }: { state: SaveState }) {
   );
 }
 
-export function Stepper({ steps, current, gaps, onGo }: {
+export function Stepper({ steps, current, gaps, onGo, left = 0, onLeft }: {
   steps: readonly StepKey[]; current: StepKey; gaps: Record<StepKey, string | null>; onGo: (s: StepKey) => void;
+  /** Steps that still need something; tapping goes to the first one's field. */
+  left?: number; onLeft?: () => void;
 }) {
   const { t } = useLanguage();
   const idx = steps.indexOf(current);
@@ -93,6 +95,12 @@ export function Stepper({ steps, current, gaps, onGo }: {
           <span className="font-semibold text-foreground">{t(`madsb_step_${current}` as never)}</span>
           <span className="text-muted-foreground" dir="ltr">{idx + 1} / {steps.length}</span>
         </div>
+        {left > 0 && onLeft && (
+          <button type="button" onClick={onLeft} data-mm-left={left}
+            className="mt-1.5 inline-flex min-h-11 items-center gap-1.5 rounded-full border border-[hsl(var(--gold-border))]/70 bg-[hsl(var(--gold-soft))] px-3 text-[13px] font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">
+            <CircleDot className="h-3.5 w-3.5 text-[hsl(32_78%_40%)]" aria-hidden />{t('mm_r_left', { n: String(left) })}
+          </button>
+        )}
         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[hsl(var(--secondary))]">
           <div className="h-full rounded-full bg-[hsl(var(--gold))] transition-all" style={{ width: `${((idx + 1) / steps.length) * 100}%` }} />
         </div>
@@ -119,6 +127,12 @@ export function Stepper({ steps, current, gaps, onGo }: {
           );
         })}
       </ol>
+      {left > 0 && onLeft && (
+        <button type="button" onClick={onLeft} data-mm-left-desktop={left}
+          className="mt-2 hidden min-h-11 w-full items-center gap-1.5 rounded-lg px-2.5 text-start text-[13px] font-semibold text-[hsl(var(--gold-ink))] hover:bg-[hsl(var(--gold-soft))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))] lg:flex">
+          <CircleDot className="h-3.5 w-3.5 shrink-0" aria-hidden />{t('mm_r_left', { n: String(left) })}
+        </button>
+      )}
     </nav>
   );
 }

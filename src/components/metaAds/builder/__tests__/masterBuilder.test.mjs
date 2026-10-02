@@ -82,7 +82,8 @@ test('HOMATCH check: explained up front, the disabled Launch says why, copy clai
   assert.match(review, /aria-describedby=\{launchHint \? 'mm-b-launch-hint' : undefined\}/);
   assert.match(review, /\{launchHint && <p id="mm-b-launch-hint" data-mm-launch-hint=""/);
   // A failed check lists what needs attention (the existing per-check list).
-  assert.match(review, /preflight\.checks\.map\(\(ch\) =>/);
+  assert.match(review, /const rows = \[...preflight\.checks\]\.sort\(/);
+  assert.match(review, /\{rows\.map\(\(ch\) =>/);
   // Honest copy: it checks, it adjusts only Housing audience settings, everything else is listed to fix.
   const [en] = S.mm_b_check_notice_body;
   assert.match(en, /connection, ad account, budget, creatives, destination and audience/);

@@ -28,7 +28,8 @@ import {
   type LocationChoiceRow, type MetaAudienceRow, type MetaCampaignRow, type MetaCreativeRow, type MetaStatus, type TargetingIntentRow,
 } from '@/services/metaAds';
 import { ChoiceCard, StepShell } from './ui';
-import { LocationPicker, regionName } from './LocationPicker';
+import { countryLabel, LocationPicker, regionName } from './LocationPicker';
+import { IntelligenceCard } from './IntelligenceCard';
 import { BreadthGuide, Fold, HelperCard, Hint, LearningCard, More, Pill, Section } from './FinishKit';
 import { addLocation, advertiserCountryOf, effectiveRadiusKm, geographyGroups, housingNormalized, housingRuleFor, isNarrowAudience, locationId, refinedCountries } from './masterLogic';
 
@@ -162,7 +163,7 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
       <Section id="mm-f-where" emoji="📍" title={t('mm_m_where_title')} aside={<span className="text-2xs text-muted-foreground" dir="ltr">{locations.length}/{MAX_LOCATIONS}</span>}>
         <Hint k="mm_c_hint_location" />
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:items-start">
-          <div className="min-w-0 space-y-3">
+          <div className="min-w-0 space-y-3" data-mm-field="locations">
             {locations.length > 0 ? (
               <div data-mm-geo-summary="" className="rounded-xl border border-[hsl(var(--gold-border))]/60 bg-[hsl(var(--gold-soft))] px-3.5 py-2.5">
                 <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-[hsl(var(--gold-ink))]">{t('mm_m_geo_runs')}</p>
@@ -177,35 +178,56 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
             <LocationPicker scopeCountry={scope} full={locations.length >= MAX_LOCATIONS} onPick={onPick}
               onStreet={() => setPinMode(true)}
               isChosen={(r) => locations.some((l) => locationId(l) === `${r.type}:${r.key}`)} />
+            {/* Areas as removable chips; a city or a pin keeps its radius control. */}
+            {locations.some((l) => l.type !== 'city' && l.type !== 'pin') && (
+              <ul className="flex flex-wrap gap-1.5" aria-label={t('mm_b_loc_chosen')} data-mm-loc-chips="">
+                {locations.map((l, idx) => {
+                  if (l.type === 'city' || l.type === 'pin') return null;
+                  const id = locationId(l);
+                  const name = l.type === 'country' ? countryLabel({ key: l.key, name: l.name }, lang) : l.name;
+                  const narrowed = l.type === 'country' && refined.has(l.key);
+                  return (
+                    <li key={id} data-mm-loc={id} className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-[hsl(var(--gold-border))]/60 bg-[hsl(var(--gold-soft))] py-0.5 ps-1 text-[13px]">
+                      <span aria-hidden className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[hsl(var(--gold))] text-2xs font-extrabold text-[#161309]">{narrowed ? '·' : mapNumber(idx)}</span>
+                      <span className="min-w-0">
+                        <span className="font-semibold text-foreground break-words" dir="auto">{name}</span>
+                        <span className="ms-1 text-2xs text-muted-foreground">{narrowed ? t('mm_m_loc_refined') : t(`mm_b_loc_kind_${l.type === 'neighborhood' ? 'neighborhood' : l.type}`)}</span>
+                      </span>
+                      <button type="button" onClick={() => remove(id)} aria-label={t('mm_b_loc_remove', { place: name })} data-mm-loc-remove={id}
+                        className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
             <ul className="grid gap-2" aria-label={t('mm_b_loc_chosen')}>
               {locations.map((l, idx) => {
+                if (l.type !== 'city' && l.type !== 'pin') return null;
                 const id = locationId(l);
-                const name = l.type === 'country' ? regionName(l.key, lang) : l.name;
+                const name = l.name;
                 const radius = effectiveRadiusKm(l.radiusKm, rule.minRadiusKm);
-                const round = l.type === 'city' || l.type === 'pin';
-                const narrowed = l.type === 'country' && refined.has(l.key);
                 return (
                   <li key={id} data-mm-loc={id} className="rounded-2xl border border-[hsl(var(--gold-border))]/50 bg-gradient-to-r from-[hsl(var(--gold-soft))] to-card px-3.5 py-2.5">
                     <div className="flex items-center gap-2">
-                      <span aria-hidden className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[hsl(var(--gold))] text-2xs font-extrabold text-[#161309]">{narrowed ? '·' : mapNumber(idx)}</span>
+                      <span aria-hidden className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[hsl(var(--gold))] text-2xs font-extrabold text-[#161309]">{mapNumber(idx)}</span>
                       <span className="min-w-0 flex-1">
                         <span className="block text-sm font-semibold leading-snug text-foreground break-words" dir="auto">{name}</span>
-                        <span className="block text-2xs text-muted-foreground">{narrowed ? t('mm_m_loc_refined') : t(`mm_b_loc_kind_${l.type === 'neighborhood' ? 'neighborhood' : l.type}`)}</span>
+                        <span className="block text-2xs text-muted-foreground">{t(`mm_b_loc_kind_${l.type}`)}</span>
                       </span>
                       <button type="button" onClick={() => remove(id)} aria-label={t('mm_b_loc_remove', { place: name })} data-mm-loc-remove={id}
                         className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]">
                         <X className="h-4 w-4" />
                       </button>
                     </div>
-                    {round && (
-                      <label className="mt-1.5 flex items-center gap-3">
-                        <span className="sr-only">{t('mm_b_loc_radius_label', { place: name })}</span>
-                        <input type="range" min={Math.max(1, minRadius)} max={CITY_RADIUS_KM_MAX} step={1} value={radius} data-mm-radius={id}
-                          onChange={(e) => setRadius(id, Number(e.target.value))}
-                          className="h-2 min-w-0 flex-1 cursor-pointer accent-[hsl(var(--gold))]" />
-                        <span className="w-16 shrink-0 whitespace-nowrap text-end text-[13px] font-semibold tabular-nums text-foreground" dir="ltr">{radius} km</span>
-                      </label>
-                    )}
+                    <label className="mt-1.5 flex items-center gap-3">
+                      <span className="sr-only">{t('mm_b_loc_radius_label', { place: name })}</span>
+                      <input type="range" min={Math.max(1, minRadius)} max={CITY_RADIUS_KM_MAX} step={1} value={radius} data-mm-radius={id}
+                        onChange={(e) => setRadius(id, Number(e.target.value))}
+                        className="h-2 min-w-0 flex-1 cursor-pointer accent-[hsl(var(--gold))]" />
+                      <span className="w-16 shrink-0 whitespace-nowrap text-end text-[13px] font-semibold tabular-nums text-foreground" dir="ltr">{radius} km</span>
+                    </label>
                   </li>
                 );
               })}
@@ -265,7 +287,7 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
       </Fold>
 
       {/* 🗣️ LANGUAGES — open when the copy is in a language worth matching. */}
-      <Fold id="lang" emoji="🗣️" title={t('mm_f_lang_title')} summary={langSummary} defaultOpen={languages.length > 0 || !!intl?.enabled}>
+      <Fold id="lang" field="languages" emoji="🗣️" title={t('mm_f_lang_title')} summary={langSummary} defaultOpen={languages.length > 0 || !!intl?.enabled}>
         <p className="text-[13px] leading-relaxed text-muted-foreground">{t('mm_f_lang_body')}</p>
         <Hint k="mm_c_hint_languages" />
         {copyLangs[0] && (
@@ -287,7 +309,7 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
 
       {/* 👥 WHO — three kinds of setting, never confused (targeting.audienceAuthority):
           META REQUIRED (named, with the fix) · HOMATCH RECOMMENDED (advice) · USER CHOICE. */}
-      <Fold id="who" emoji="👥" title={t('mm_b_who_title')} summary={rule.restricted ? t('mm_m_who_meta') : whoSummary}
+      <Fold id="who" field="who" emoji="👥" title={t('mm_b_who_title')} summary={rule.restricted ? t('mm_m_who_meta') : whoSummary}
         defaultOpen={rule.restricted || narrow}>
         <Hint k="mm_c_hint_advantage" />
         {rule.restricted ? (
@@ -344,7 +366,7 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
       {/* Shown only when the customer has a ready audience to choose. */}
       {(readyAudiences.length > 0 || !!campaign.audience_id) && (
         <Section id="mm-f-aud" emoji="🤝" title={t('madsb_review_audience_type')}>
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-2 sm:grid-cols-2" data-mm-field="audience_type">
             <ChoiceCard active={!campaign.audience_id} icon={<Users className="h-4 w-4" />} title={t('mads_audience_broad')} body={t('madsb_audience_broad_d')}
               onClick={() => patch({ audience_id: null }, { immediate: true })} />
             {readyAudiences.map((a) => (
@@ -354,6 +376,10 @@ export function AudienceStep({ campaign, status, audiences, creatives = [], patc
           </div>
         </Section>
       )}
+
+      {/* ✨ HOMATCH INTELLIGENCE — optional; suggests within the owner's limits, never acts alone. */}
+      <IntelligenceCard value={campaign.intelligence} housingRestricted={rule.restricted}
+        onChange={(next) => patch({ intelligence: next } as Partial<MetaCampaignRow>, { immediate: true })} />
 
       <More label={t('mm_f_how_learning')}><LearningCard compact /></More>
     </StepShell>

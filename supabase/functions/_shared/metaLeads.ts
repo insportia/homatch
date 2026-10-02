@@ -11,6 +11,8 @@ import { notify } from './notify.ts';
 import { mapLeadAnswers } from '../../../src/lib/metaAds/leadForms.ts';
 import { NEW_LEAD, normLocale, t6 } from '../../../src/lib/metaAds/messages.ts';
 import { scrubPii } from '../../../src/lib/metaAds/events.ts';
+import { autoQuality, contactMaterial } from '../../../src/lib/metaAds/leadCenter.ts';
+import { sha256Hex } from '../../../src/lib/metaAds/hashing.ts';
 
 export interface LeadValue { leadgen_id: string; page_id?: string; form_id?: string; ad_id?: string; created_time?: number }
 
@@ -66,12 +68,18 @@ export async function ingestLead(sb: any, value: LeadValue): Promise<{ inserted:
     if (lead.created_time) createdTime = new Date(String(lead.created_time)).toISOString();
   }
 
+  /* One person's submissions are grouped by a key scoped to this owner (a
+     hash, never the phone itself); each submission stays its own row. The
+     first quality rating comes from the person's own answers. */
+  const material = contactMaterial({ fields, answers });
+  const contactKey = material ? await sha256Hex(`${uid}|${material}`) : null;
+  const { quality } = autoQuality({ fields, answers });
   const { error } = await sb.from('meta_leads').insert({
     user_id: uid, campaign_id: campaignId, source: 'META_LEADGEN',
     external_lead_id: String(value.leadgen_id), form_external_id: value.form_id ?? null,
     ad_external_id: value.ad_id ? String(value.ad_id) : null, adset_external_id: adsetId, property_id: propertyId,
     answers, meta_created_time: createdTime,
-    fields, status: 'NEW',
+    fields, status: 'NEW', contact_key: contactKey, quality, quality_source: 'AUTO',
   });
   if (error && !String(error.message).includes('duplicate')) throw error;
   if (!error) {

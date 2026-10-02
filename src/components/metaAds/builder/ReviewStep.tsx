@@ -4,7 +4,7 @@
 // the chosen goal (payload.ts, engine.ts, meta-webhooks, the maintenance
 // cron). A line is added here only when the code behind it exists.
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, Loader2, ShieldCheck, Wand2, XCircle, AlertTriangle } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Loader2, ShieldCheck, Wand2, XCircle, AlertTriangle } from 'lucide-react';
 import { Button } from './MetaButton';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
@@ -13,6 +13,7 @@ import type { MetaGoal } from '@/lib/metaAds/strategy';
 import { money, type MetaCampaignRow, type MetaCreativeRow, type MetaStatus, type PreflightResult, type StrategyPreview } from '@/services/metaAds';
 import { ChoiceCard, StepShell, SummaryRow, VerdictBadge } from './ui';
 import { selectedAsset, preflightDetails, handledTasks } from './steps';
+import { checkTitleKey, issueTarget, severityOf, type IssueTarget } from '@/lib/metaAds/readiness';
 import { FinancialSummary, type Totals } from './BudgetStep';
 import { StrategyCard } from './StrategyCard';
 import { FundingCard } from './FundingCard';
@@ -44,7 +45,7 @@ export function PlacementsStep({ campaign, status, creatives, recommended, patch
   };
 
   return (
-    <StepShell eyebrow={t('madsb_step_placements')} title={t('madsb_pl_title')} lead={t('madsb_pl_lead')}>
+    <StepShell eyebrow={t('madsb_step_placements')} title={t('madsb_pl_title')} lead={t('madsb_pl_lead')} data-mm-field="placements">
       <Hint k="mm_c_hint_placements" />
       <div className="grid gap-2 sm:grid-cols-2">
         <ChoiceCard active={mode === 'RECOMMENDED'} icon={<Wand2 className="h-4 w-4" />} title={t('mads_placements_reco')} body={t('madsb_pl_reco_d')}
@@ -114,7 +115,9 @@ export function CampaignNameField({ value, suggestion, onSave }: { value: string
   );
 }
 
-export function ReviewStep({ campaign, status, creatives, totals, pricing, recommended, preflight, running, onPreflight, onLaunch, canLaunch, launchHint = null, onEdit, strategy = null, strategyLoading = false, strategyFailed = false, nameSuggestion = '', onName, insights = null }: {
+export function ReviewStep({ campaign, status, creatives, totals, pricing, recommended, preflight, running, onPreflight, onLaunch, canLaunch, launchHint = null, onEdit, onFix, strategy = null, strategyLoading = false, strategyFailed = false, nameSuggestion = '', onName, insights = null }: {
+  /** A readiness item tapped: go to its step and field (lib/metaAds/readiness.ts). */
+  onFix?: (target: IssueTarget) => void;
   /** The campaign explained, what to expect and the holistic check (ReviewInsights). */
   insights?: React.ReactNode;
   /** The suggested HOMATCH name and where an edited one is saved. */
@@ -197,26 +200,52 @@ export function ReviewStep({ campaign, status, creatives, totals, pricing, recom
               preflight.status === 'READY' ? 'bg-[hsl(152_54%_28%)]/25 text-[hsl(152_60%_70%)]' : 'bg-[hsl(0_70%_50%)]/20 text-[hsl(0_80%_78%)]')}>
               {t(preflight.status === 'READY' ? (preflight.warnings ? 'madsb_pf_ready_warnings' : 'madsb_pf_ready') : preflight.status === 'MANUAL_REVIEW' ? 'mads_preflight_review' : 'madsb_pf_action')}
             </p>
-            <ul className="mt-3 space-y-1.5 text-sm">
-              {preflight.checks.map((ch) => {
-                const state = ch.state ?? (ch.ok ? 'READY' : 'ACTION_REQUIRED');
-                return (
-                  <li key={ch.key} className="flex items-start gap-2">
-                    {state === 'READY' ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(152_60%_55%)]" />
-                      : state === 'WARNING' ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(38_92%_60%)]" />
-                        : <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(0_70%_62%)]" />}
-                    <span className="min-w-0">
-                      <span className={state === 'READY' ? 'text-white/85' : 'text-white'}>{t(`mads_check_${ch.key}` as never)}</span>
-                      {ch.detail && state !== 'READY' && (
-                        <span className="block text-2xs text-white/55">
-                          {preflightDetails(ch.detail).map(({ key, value }) => t(key as never, { value })).join(' · ')}
-                        </span>
-                      )}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
+            {(() => {
+              /* BLOCKER first, then WARNING; what is fine stays listed, quietly, last. */
+              const rank = (ch: { state?: string; ok?: boolean }) => ({ BLOCKER: 0, WARNING: 1 } as Record<string, number>)[severityOf(ch.state, ch.ok) ?? ''] ?? 2;
+              const rows = [...preflight.checks].sort((a, b) => rank(a) - rank(b));
+              const open = rows.filter((ch) => severityOf(ch.state, ch.ok) === 'BLOCKER').length;
+              return (
+                <>
+                  {open > 0 && onFix && (
+                    <button type="button" data-mm-check-left={open} onClick={() => { const f = rows[0]; onFix(issueTarget(f.key, f.detail)); }}
+                      className="mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-full border border-white/25 px-3 text-[13px] font-semibold text-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_60%)]">
+                      {t('mm_r_left', { n: String(open) })}<ArrowRight className="h-3.5 w-3.5 rtl:rotate-180" aria-hidden />
+                    </button>
+                  )}
+                  <ul className="mt-3 space-y-1 text-sm">
+                    {rows.map((ch) => {
+                      const sev = severityOf(ch.state, ch.ok);
+                      const details = ch.detail && sev ? preflightDetails(ch.detail).map(({ key, value }) => t(key as never, { value })).join(' · ') : '';
+                      const body = (
+                        <>
+                          {sev === null ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(152_60%_55%)]" />
+                            : sev === 'WARNING' ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(38_92%_60%)]" />
+                              : <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(0_70%_62%)]" />}
+                          <span className="min-w-0 flex-1">
+                            <span className={sev === null ? 'text-white/85' : 'font-medium text-white'}>{t(checkTitleKey(ch.key) as never)}</span>
+                            {sev && <span className="ms-1.5 text-2xs uppercase tracking-wide text-white/50">{t(sev === 'BLOCKER' ? 'mm_r_sev_blocker' : 'mm_r_sev_warning')}</span>}
+                            {details && <span className="block text-2xs text-white/60">{details}</span>}
+                            {/* Under the text, never a column beside it: the title keeps the width. */}
+                            {sev && onFix && <span className="mt-0.5 block text-2xs font-semibold text-[hsl(38_92%_66%)]">{t('mm_r_fix')} →</span>}
+                          </span>
+                        </>
+                      );
+                      return (
+                        <li key={ch.key} data-mm-check={ch.key} data-mm-check-sev={sev ?? 'OK'}>
+                          {sev && onFix ? (
+                            <button type="button" onClick={() => onFix(issueTarget(ch.key, ch.detail))}
+                              className="flex min-h-11 w-full items-start gap-2 rounded-lg px-1.5 py-1.5 text-start hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_60%)]">
+                              {body}
+                            </button>
+                          ) : <div className="flex items-start gap-2 px-1.5 py-1">{body}</div>}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </>
+              );
+            })()}
           </>
         )}
         <div className="mt-4 flex flex-wrap items-center gap-2">

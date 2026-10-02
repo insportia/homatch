@@ -37,7 +37,7 @@ export function FundingCard({ funding, currency, billing, loading }: {
   };
 
   return (
-    <section data-mm-funding="" aria-labelledby="mm-b-funding" className="overflow-hidden rounded-2xl border border-border bg-card shadow-card">
+    <section data-mm-funding="" data-mm-field="funding" aria-labelledby="mm-b-funding" className="overflow-hidden rounded-2xl border border-border bg-card shadow-card">
       <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-5">
         <h3 id="mm-b-funding" className="flex items-center gap-2 text-sm font-semibold text-foreground">
           <Wallet className="h-4 w-4 text-[hsl(var(--gold-ink))]" aria-hidden />{t('mm_b_funding_title')}

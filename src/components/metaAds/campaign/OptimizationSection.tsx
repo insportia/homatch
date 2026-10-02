@@ -4,6 +4,8 @@
 import React, { useState } from 'react';
 import { Check, Loader2 } from 'lucide-react';
 import { actOnRecommendation, type CampaignDetail, type RecommendationAct, type RecommendationRow } from '@/services/metaAds';
+import { decide, prefsOf, proposalOf, type Decision } from '@/lib/metaAds/homatchIntelligence';
+import type { Recommendation } from '@/lib/metaAds/analysis';
 import { adNamer, Card, Chip, EvidenceChip, Muted, errorText, type Fmt, type T, type Tone } from './shared';
 
 const REC_TYPES = ['KEEP', 'MONITOR', 'TEST', 'REALLOCATE', 'REDUCE', 'INCREASE', 'REFRESH_CREATIVE', 'PAUSE', 'EXPAND', 'NARROW', 'COLLECT_DATA'];
@@ -45,6 +47,20 @@ export function OptimizationSection({ t, fmt, d, onChanged }: { t: T; fmt: Fmt; 
   const snoozed = recs.filter((r) => r.status === 'SNOOZED' && !isOpen(r));
   const applied = recs.filter((r) => r.status === 'APPLIED');
 
+  /* HOMATCH Intelligence (when the owner turned it on): each suggestion read
+     against the hard limits — within limits, needs approval, or held. It
+     never applies anything; APPLY stays the owner's. */
+  const intel = prefsOf(d.campaign.intelligence);
+  const verdictOf = (r: RecommendationRow): Decision | null => {
+    if (!intel.enabled) return null;
+    const p = proposalOf({ type: r.type, affected: r.affected, confidence: r.confidence, reasonCodes: r.reason_codes ?? [],
+      proposedDailyMinor: r.proposed?.dailyBudgetCents } as unknown as Recommendation);
+    if (!p) return null;
+    const locIds = (d.campaign.targeting?.locations ?? []).map((l) => `${l.type}:${l.key}`);
+    return decide([p], intel, { approvedDailyMinor: Number(d.campaign.daily_budget_cents ?? 0), status: d.campaign.status,
+      approvedLocationIds: locIds, housingRestricted: (d.campaign.special_ad_categories ?? []).includes('HOUSING'), exclusions: [] },
+    [], Date.now())[0] ?? null;
+  };
   const target = (affected: string) => (affected.startsWith('ad:') ? adName(affected.slice(3)) : t('mm_c_affected_campaign'));
   const metricValue = (metric: string, v: number | null) => (metric === 'CTR' ? fmt.pct(v, 2) : fmt.money(v));
 
@@ -100,6 +116,7 @@ export function OptimizationSection({ t, fmt, d, onChanged }: { t: T; fmt: Fmt; 
     <div className="space-y-4">
       <Card id="mm-recs" title={t('mm_c_opt_title')}>
         <Muted className="mb-3">{t('mm_c_opt_lead')}</Muted>
+        <p className="mb-3 text-2xs text-muted-foreground" data-mm-intel-state={intel.enabled ? 'on' : 'off'}>✨ {t(intel.enabled ? 'mm_i_state_on' : 'mm_i_state_off')}</p>
         {open.length + snoozed.length + applied.length === 0 ? <Muted>{t('mm_c_rec_none')}</Muted> : (
           <ul className="space-y-3" data-mm-recs="">
             {open.map((r) => {
@@ -108,6 +125,11 @@ export function OptimizationSection({ t, fmt, d, onChanged }: { t: T; fmt: Fmt; 
               return (
                 <li key={r.id} className="rounded-xl border border-border p-3">
                   {recBody(r)}
+                  {(() => { const v = verdictOf(r); return v ? (
+                    <p className="mt-1.5 text-2xs font-semibold text-[hsl(var(--gold-ink))]" data-mm-intel-verdict={v.verdict}>
+                      ✨ {t(`mm_i_verdict_${v.verdict}`)}{v.reason && v.verdict === 'NEEDS_APPROVAL' ? ` · ${t(`mm_i_reason_${v.reason}`)}` : ''}
+                    </p>
+                  ) : null; })()}
                   {!r.actionable ? <Muted className="mt-2">{t('mm_c_rec_info_only')}</Muted>
                     : !applicable ? <Muted className="mt-2">{t('mm_c_rec_needs_evidence')}</Muted> : null}
                   <div className="mt-3 flex flex-wrap gap-2">

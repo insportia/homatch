@@ -6,6 +6,7 @@
 // browser edits drafts through RLS; everything that talks to Meta or to the
 // ledger happens here under service role, behind the admin kill switches,
 // with idempotency keys. The Meta-facing work itself is in engine.ts.
+import { sha256Hex } from '../../../src/lib/metaAds/hashing.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   buildPlan, validatePlanInput, computeTotals, canTransition, type MetaGoal,
@@ -167,6 +168,8 @@ Deno.serve(async (req) => {
               lead_terms: mode === 'MOCK' ? 'ACCEPTED' : leadTermsEvidence(leadCheck),
               lead_checked_at: formPage?.capabilities?.leadgen_tos_checked_at ?? null,
               token_expires_at: conn.token_expires_at, last_checked_at: conn.last_checked_at,
+              // A dated (user) token within a week of lapsing: ask for a reconnect before launch fails.
+              expires_soon: Number.isFinite(expiresAt) && expiresAt > Date.now() && expiresAt - Date.now() < 7 * 86_400_000,
               // A named reason only (e.g. TOKEN_ENCRYPTION_NOT_CONFIGURED), never a raw error.
               error_reason: typeof conn.last_error === 'string' && /^[A-Z_]{3,64}$/.test(conn.last_error) ? conn.last_error : null }
             : { status: 'DISCONNECTED', health: 'NOT_CONNECTED', granted_scopes: [], missing_scopes: [] },
@@ -206,7 +209,7 @@ Deno.serve(async (req) => {
            into the signed state — so the callback returns there even when the
            dialog finishes in a different browser context. */
         const ret = safeReturnPath(body.returnTo);
-        return json({ mode, url: oauthStartUrl(await signOAuthState({ uid, nonce, ret })) });
+        return json({ mode, url: oauthStartUrl(await signOAuthState({ uid, nonce, ret }), settings.loginConfigId) });
       }
 
       case 'oauth_mock_connect': {
@@ -693,6 +696,8 @@ Deno.serve(async (req) => {
         const op = String(body.op ?? 'GENERATE');
         if (!['GENERATE', 'IMPROVE', 'SHORTEN', 'PROFESSIONAL', 'ALTERNATIVES', 'TRANSLATE'].includes(op)) return json({ error: 'bad op' }, 400);
         const language = String(body.language ?? 'ka').slice(0, 5);
+        // Which text is being written: the ad, a lead-form field, or the owner's brief.
+        const field = ['AD', 'FORM_HEADLINE', 'FORM_INTRO', 'FORM_THANKS', 'BRIEF'].includes(String(body.field)) ? String(body.field) : 'AD';
         const context = await copyContext(sb, uid, c);
         const current = {
           primaryText: String(body.current?.primaryText ?? '').slice(0, 2200),
@@ -700,9 +705,14 @@ Deno.serve(async (req) => {
           description: String(body.current?.description ?? '').slice(0, 255),
         };
         const notes = String(body.notes ?? '').slice(0, 600);
+        /* The same question within 10 minutes is answered from memory: "Try
+           another" asks again on purpose (body.fresh), nothing else pays twice. */
+        const cacheKey = await sha256Hex(JSON.stringify([uid, c.id, op, field, language, current, notes, c.updated_at]));
+        const memo = !body.fresh ? copyCacheGet(cacheKey) : null;
+        if (memo) return json({ variants: memo, cached: true });
         const result = await callLlm({
           system: COPY_SYSTEM,
-          user: JSON.stringify({ op, targetLanguage: language, goal: c.goal, destinationType: c.destination?.type ?? null, context, current, notes }),
+          user: JSON.stringify({ op, field, targetLanguage: language, goal: c.goal, destinationType: c.destination?.type ?? null, context, current, notes }),
           json: true, maxTokens: 700, timeoutMs: 25_000,
         });
         const parsed = (result.parsed ?? {}) as { variants?: Array<Record<string, unknown>> };
@@ -712,6 +722,8 @@ Deno.serve(async (req) => {
           description: String(v.description ?? '').slice(0, 255),
         })).filter((v) => v.primaryText || v.headline)
           .filter((v) => !/(guaranteed|გარანტირებულ|гарантир|garantili|مضمون|מובטח)/i.test(`${v.primaryText} ${v.headline}`))
+          // Human words, not a brochure: the usual AI clichés are dropped, not shown.
+          .filter((v) => !COPY_CLICHES.test(`${v.primaryText} ${v.headline} ${v.description}`))
           // Facts stay facts: no number the customer never gave (a price, a size,
           // a floor), and a translation keeps every number of the original.
           .filter((v) => {
@@ -723,6 +735,7 @@ Deno.serve(async (req) => {
           });
         if (!result.ok || variants.length === 0) return json({ error: 'AI_NO_RESULT', code: 'AI_NO_RESULT' }, 502);
         await sb.from('meta_funnel_events').insert({ event: `ai_copy_${op.toLowerCase()}`, user_id: uid });
+        copyCacheSet(cacheKey, variants);
         return json({ variants, usage: { inputTokens: result.inputTokens, outputTokens: result.outputTokens, model: result.model } });
       }
 
@@ -1152,8 +1165,16 @@ const COPY_SYSTEM = [
   'primaryText: up to ~3 short lines; headline: up to 40 characters; description: optional, up to 30 characters.',
   'op GENERATE: write fresh copy. IMPROVE: improve current. SHORTEN: shorter version of current. PROFESSIONAL: more professional tone of current.',
   'ALTERNATIVES: three different angles. TRANSLATE: translate and adapt current so it reads naturally to native speakers of targetLanguage — keep every fact, number, price, size and place exactly; adapt tone, not content. Use notes for the audience (e.g. buyers moving from abroad).',
+  'field: AD is the ad itself. FORM_HEADLINE: the lead form headline (headline only, up to 60 characters). FORM_INTRO: the form greeting (primaryText, 2 short lines). FORM_THANKS: the thank-you message after sending (primaryText, 1–2 sentences, says what happens next). BRIEF: the owner describing, in first person, who the ad is for and what is strongest about the offer (primaryText) — about intent and readiness, never about protected characteristics.',
+  'Sound like a real person who knows the place: short sentences, concrete details from context. No clichés ("dream home", "don\'t miss out", "unlock", "nestled", "oasis", "elevate", "look no further"), no exclamation chains, no emoji runs.',
   'Reply with JSON only: {"variants":[{"primaryText":"","headline":"","description":""}]} — 1 variant, or 3 for ALTERNATIVES.',
 ].join('\n');
+
+/* The clichés a reader spots as machine-written, in the six languages. */
+const COPY_CLICHES = /(dream home|don'?t miss (out|this)|look no further|nestled|oasis|elevate your|unlock your|სიზმრების სახლ|ოცნების სახლ|не упустите|дом вашей мечты|hayalinizdeki ev|kaçırmayın|منزل أحلامك|لا تفوت|בית החלומות|אל תפספסו)/i;
+const COPY_CACHE = new Map<string, { at: number; v: unknown[] }>();
+function copyCacheGet(k: string) { const e = COPY_CACHE.get(k); return e && Date.now() - e.at < 600_000 ? e.v : null; }
+function copyCacheSet(k: string, v: unknown[]) { if (COPY_CACHE.size > 300) COPY_CACHE.clear(); COPY_CACHE.set(k, { at: Date.now(), v }); }
 
 async function copyContext(sb: any, uid: string, c: any): Promise<Record<string, unknown>> {
   const ctx: Record<string, unknown> = { offer: c.offer ?? null };

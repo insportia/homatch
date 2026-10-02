@@ -334,3 +334,28 @@ export function compositeInsideMask(original: RgbPixels, edited: RgbPixels, mask
   }
   return { width: original.width, height: original.height, data: out, channels: original.channels };
 }
+
+/**
+ * compositeInsideMask written INTO `dest` — the same pixels, without a copy of
+ * the picture or a resized copy of the answer (at 2400×1504 each is ~14 MB, and
+ * the edge runtime's memory limit is what killed a production edit). An answer
+ * at another size is sampled where it is needed with resizeRgbNearest's exact
+ * mapping. `dest` is changed and returned.
+ */
+export function compositeInsideMaskInto(dest: RgbPixels, edited: RgbPixels, mask: { width: number; height: number; data: Uint8Array }): RgbPixels {
+  const W = dest.width; const H = dest.height;
+  const m = mask.width === W && mask.height === H ? mask.data : resizeMask(mask, W, H);
+  const same = edited.width === W && edited.height === H;
+  const ch = dest.channels; const ech = edited.channels;
+  for (let y = 0; y < H; y += 1) {
+    const sy = same ? y : Math.min(edited.height - 1, Math.floor((y + 0.5) * edited.height / H));
+    for (let x = 0; x < W; x += 1) {
+      const i = y * W + x;
+      if (!m[i]) continue;
+      const sx = same ? x : Math.min(edited.width - 1, Math.floor((x + 0.5) * edited.width / W));
+      const s = (sy * edited.width + sx) * ech;
+      for (let k = 0; k < 3; k += 1) dest.data[i * ch + k] = edited.data[s + k];
+    }
+  }
+  return dest;
+}

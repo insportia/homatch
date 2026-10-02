@@ -14292,6 +14292,10 @@ const en = {
   p2d_admin_col_deal: 'Deal · type',
   p2d_admin_col_sources_n: 'Sources',
   p2d_admin_col_price: 'Price',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  rend_edit_failed: 'Your change is saved, but the picture could not be updated — nothing was charged.',
+  rend_edit_retry: 'Update the picture again',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -28498,6 +28502,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   p2d_admin_col_deal: 'გარიგება · ტიპი',
   p2d_admin_col_sources_n: 'წყაროები',
   p2d_admin_col_price: 'ფასი',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  rend_edit_failed: 'ცვლილება შენახულია, მაგრამ სურათის განახლება ვერ მოხერხდა — არაფერი ჩამოგეჭრათ.',
+  rend_edit_retry: 'სურათის ხელახლა განახლება',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -42695,6 +42703,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   p2d_admin_col_deal: 'Сделка · тип',
   p2d_admin_col_sources_n: 'Источники',
   p2d_admin_col_price: 'Цена',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  rend_edit_failed: 'Изменение сохранено, но обновить изображение не удалось — ничего не списано.',
+  rend_edit_retry: 'Обновить изображение снова',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -56890,6 +56902,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   p2d_admin_col_deal: 'İşlem · tür',
   p2d_admin_col_sources_n: 'Kaynaklar',
   p2d_admin_col_price: 'Fiyat',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  rend_edit_failed: 'Değişikliğiniz kaydedildi ancak görsel güncellenemedi — ücret alınmadı.',
+  rend_edit_retry: 'Görseli yeniden güncelle',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -71085,6 +71101,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   p2d_admin_col_deal: 'الصفقة · النوع',
   p2d_admin_col_sources_n: 'المصادر',
   p2d_admin_col_price: 'السعر',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  rend_edit_failed: 'تم حفظ التغيير، لكن تعذّر تحديث الصورة — لم يُخصم شيء.',
+  rend_edit_retry: 'حدّث الصورة مرة أخرى',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -85280,6 +85300,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   p2d_admin_col_deal: 'עסקה · סוג',
   p2d_admin_col_sources_n: 'מקורות',
   p2d_admin_col_price: 'מחיר',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  rend_edit_failed: 'השינוי נשמר, אך לא ניתן היה לעדכן את התמונה — לא חויבת.',
+  rend_edit_retry: 'עדכן את התמונה שוב',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

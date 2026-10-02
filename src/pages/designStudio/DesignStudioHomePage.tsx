@@ -31,9 +31,9 @@ import { compileSceneSpec } from '@/lib/designStudio/hybrid/compileSpec';
 import { designChecks } from '@/lib/designStudio/hybrid/designChecks';
 import { runDesignBuild } from '@/lib/designStudio/hybrid/designBuild';
 import { planMasterView, planRoomViews, maxRoomViews } from '@/lib/designStudio/renders/cameras';
-import type { MapEntry, ObjectMap, PropertyDesignDNA, RenderProduct, RenderQuote, RenderRecord, SpecView } from '@/lib/designStudio/renders/contract';
+import type { MapEntry, ObjectMap, PropertyDesignDNA, RenderEdit, RenderProduct, RenderQuote, RenderRecord, SpecView } from '@/lib/designStudio/renders/contract';
 import { compareMaps, type ConsistencyReport } from '@/lib/designStudio/renders/consistency';
-import { actionsFor, applyEdit, colourChoices, replacements, type EditChoice } from '@/lib/designStudio/renders/edits';
+import { actionsFor, applyEdit, colourChoices, failedEditFor, replacements, type EditChoice } from '@/lib/designStudio/renders/edits';
 import { REJECTION_KEY } from '@/lib/designStudio/rejectionKeys';
 import { planCamera } from '@/components/designStudio/workspace/FactoryBuildDialog';
 import { assetsByCode, listAssets, listMaterials } from '@/services/designStudio/catalog';
@@ -237,6 +237,24 @@ function Home() {
     }
   };
 
+  /** The head's picture edit that failed (nothing was charged): the customer can ask for it again. */
+  const failedEdit = useMemo(() => (data ? failedEditFor(renders, data.head.id) : null), [renders, data]);
+  const retryEdit = async () => {
+    if (!data || !failedEdit) return;
+    setError(null);
+    const { failed, retryKey } = failedEdit;
+    const edit = failed.edit as Extract<RenderEdit, { type: 'APPEARANCE' }>;
+    const parent = renders.find((r) => r.id === failed.parent_id && r.status === 'READY');
+    const target = parent?.legend?.entries.find((e) => e.id === edit.targetId);
+    if (!parent || !target) { setError(t('rend_error_generic')); return; }
+    await confirmPrice('DS_RENDER_EDIT', 1, t('rend_confirm_appearance', { what: labelFor(target) }), async (shown) => {
+      const q = await quoteRender({ projectId, versionId: data.head.id, product: 'DS_RENDER_EDIT', views: 1 });
+      if (!q.quote || q.quote.credits !== shown.credits) throw new Error('DS_PRICE_CHANGED');
+      const e = await editRender({ renderId: parent.id, edit, newVersionId: data.head.id, quote: q.quote, idempotencyKey: retryKey });
+      if (!e.render) throw new Error(e.error ?? 'EDIT_FAILED');
+    });
+  };
+
   /** Render views of a design version through the factory (one pass for all of them). */
   const renderViews = async (versionId: string, state: DesignState, views: SpecView[], product: RenderProduct, confirmed: number) => {
     if (!data) return;
@@ -425,6 +443,14 @@ function Home() {
                 />
               ) : null}
             </div>
+            {failedEdit && !master.working ? (
+              <div role="alert" className="mt-3 flex flex-wrap items-center gap-3 rounded-xl bg-white px-4 py-3 text-[14px] text-[hsl(0_66%_34%)] ring-1 ring-[hsl(0_66%_80%)]" data-testid="edit-failed">
+                <span className="min-w-0 flex-1">{t('rend_edit_failed')}</span>
+                <button type="button" onClick={() => { void retryEdit(); }} disabled={busy} className={cn('inline-flex h-10 items-center rounded-xl bg-[#0C1119] px-4 text-[14px] font-semibold text-white disabled:opacity-60', RING)} data-testid="edit-retry">
+                  {t('rend_edit_retry')}
+                </button>
+              </div>
+            ) : null}
             <div className="mt-4 flex flex-wrap gap-2">
               <button type="button" onClick={() => setTab('ROOMS')} className={cn('inline-flex h-11 items-center gap-2 rounded-xl bg-white px-4 text-[15px] font-semibold ring-1 ring-[#D5D9E0] hover:ring-[#0C1119]', RING)}>
                 <ImageIcon className="h-4 w-4" aria-hidden="true" />{t('rend_cta_rooms')}

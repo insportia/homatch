@@ -229,3 +229,22 @@ test('architecture key: the same building is the same key whatever order a datab
   assert.notEqual(JSON.stringify(a), JSON.stringify(b), 'plain JSON differs (the production bug)');
   assert.equal(stableJson(a), stableJson(b));
 });
+
+test('a failed picture edit of the head design is offered again, with a fresh request key each time', async () => {
+  const { failedEditFor } = await import('../renders/edits.ts');
+  const head = 'b0000000-0000-4000-8000-000000000001';
+  const master = { id: 'm1', version_id: 'v0', kind: 'MASTER', status: 'READY', view: { id: 'master' }, parent_id: null, edit: null, created_at: '2026-10-02T14:00:00Z' };
+  const edit = (id, status, at, over = {}) => ({ id, version_id: head, kind: 'EDIT', status, view: { id: 'master' }, parent_id: 'm1', edit: { type: 'APPEARANCE', targetId: 'sofa', targetKind: 'OBJECT', color: null, materialId: 'sage', label: 'Sage' }, created_at: at, ...over });
+  assert.equal(failedEditFor([master], head), null, 'no edit, nothing to offer');
+  assert.equal(failedEditFor([master, edit('e1', 'FINISHING', '2026-10-02T14:02:44Z')], head), null, 'still working: no offer (the badge shows)');
+  const first = failedEditFor([master, edit('e1', 'FAILED', '2026-10-02T14:02:44Z')], head);
+  assert.equal(first.failed.id, 'e1');
+  assert.equal(first.retryKey, `edit-${head}-r1`, 'not the failed request\'s own key (edit-<version>), which the server would hand back as is');
+  const second = failedEditFor([master, edit('e1', 'FAILED', '2026-10-02T14:02:44Z'), edit('e2', 'FAILED', '2026-10-02T14:05:00Z')], head);
+  assert.equal(second.failed.id, 'e2');
+  assert.equal(second.retryKey, `edit-${head}-r2`, 'each attempt its own key; the same attempt repeated is the same key (no double request)');
+  assert.equal(failedEditFor([master, edit('e1', 'FAILED', '2026-10-02T14:02:44Z'), edit('e2', 'FINISHING', '2026-10-02T14:05:00Z')], head), null, 'a retry in flight supersedes it');
+  assert.equal(failedEditFor([master, edit('e1', 'FAILED', '2026-10-02T14:02:44Z'), { ...master, id: 'm2', version_id: head, created_at: '2026-10-02T14:06:00Z' }], head), null, 'a new master of the head supersedes it');
+  assert.equal(failedEditFor([master, edit('e1', 'FAILED', '2026-10-02T14:02:44Z')], 'other-version'), null, 'only the head design');
+  assert.equal(failedEditFor([master, edit('e1', 'FAILED', '2026-10-02T14:02:44Z', { edit: { type: 'SPATIAL' } })], head), null, 'only picture (appearance) edits are redone this way');
+});

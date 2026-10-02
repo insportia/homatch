@@ -18,7 +18,7 @@
 import type { CatalogAsset, CatalogMaterial } from '../catalog.ts';
 import type { DesignState } from '../designState.ts';
 import { applyOperation, validateOperation, type Operation, type OperationContext, type Rejection } from '../operations.ts';
-import type { MapEntry, ObjectMap, RenderEdit, SpecView } from './contract.ts';
+import type { MapEntry, ObjectMap, RenderEdit, RenderRecord, SpecView } from './contract.ts';
 
 export type EditAction = 'COLOR' | 'MATERIAL' | 'REPLACE' | 'MOVE' | 'ROTATE' | 'REMOVE' | 'PAINT' | 'FINISH' | 'OPEN_CLOSE' | 'LIGHT';
 
@@ -162,3 +162,19 @@ export function replacements(current: CatalogAsset, all: CatalogAsset[]): Catalo
 }
 
 export type { CatalogMaterial };
+
+/**
+ * The head design's picture edit that failed and was not redone. The change is
+ * in the design, the picture is not: the customer is told (nothing was charged)
+ * and can try again. The retry needs a fresh request key: the failed request is
+ * finished — its credits were returned — and the server would hand it back as is.
+ */
+export function failedEditFor(renders: RenderRecord[], headVersionId: string): { failed: RenderRecord; retryKey: string } | null {
+  const edits = renders.filter((r) => r.kind === 'EDIT' && r.version_id === headVersionId).sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const last = edits[0];
+  if (!last || last.status !== 'FAILED' || !last.parent_id || last.edit?.type !== 'APPEARANCE') return null;
+  // Anything else for this view of the head (a redo, a new render) supersedes the failure.
+  const viewId = last.view?.id;
+  if (renders.some((r) => r.version_id === headVersionId && r.view?.id === viewId && r.status !== 'FAILED' && r.status !== 'CANCELLED')) return null;
+  return { failed: last, retryKey: `edit-${headVersionId}-r${edits.length}` };
+}

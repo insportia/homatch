@@ -76,7 +76,7 @@ async function signed(method: 'GET' | 'PUT', key: string): Promise<string> {
   return url;
 }
 
-async function callerOf(req: Request) {
+export async function callerOf(req: Request) {
   const authHeader = req.headers.get('Authorization') ?? '';
   if (!authHeader) return { error: json({ error: 'UNAUTHENTICATED' }, 401) };
   const caller = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, { global: { headers: { Authorization: authHeader } } });
@@ -108,7 +108,12 @@ function mapsOf(pbr: Row): { albedo: string; normal: string | null; orm: string 
   return null;
 }
 
-export async function handleFactory(req: Request): Promise<Response> {
+/**
+ * `billedBy: 'RENDER'` — called by render-start, which has already confirmed and
+ * reserved the customer's money for this pass (renders.ts): the "billing is on,
+ * confirmation required" refusal does not apply to it.
+ */
+export async function handleFactory(req: Request, opts: { billedBy?: 'RENDER' } = {}): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   const ctx = await callerOf(req);
   if ('error' in ctx) return ctx.error!;
@@ -136,7 +141,7 @@ export async function handleFactory(req: Request): Promise<Response> {
     if (!v || v.project_id !== project.id) return json({ error: 'NOT_FOUND' }, 404);
   }
   const { data: billingOn } = await admin.rpc('billing_setting_bool', { p_key: 'design_studio_billing_enabled', p_default: false });
-  if (billingOn === true) return json({ error: 'BILLING_CONFIRMATION_REQUIRED' }, 409);
+  if (billingOn === true && opts.billedBy !== 'RENDER') return json({ error: 'BILLING_CONFIRMATION_REQUIRED' }, 409);
 
   // Idempotent: the same spec at the same pass is the same job (a retry never pays twice).
   const specSha = await sha256Hex(canonicalJson(spec));

@@ -219,22 +219,23 @@ PROVENANCE        discovery/attribution.ts (#66 contract) + alsoSeenAt
 BILLING           findPropertySettlement.ts (per delivered PROPERTY) · matches (per person)
 ```
 
-- **Browser discovery worker** — `official-worker/src/discovery/BrowserRender.ts`,
-  `POST /discovery/render` (token-only). Not Verify's browser: own Chromium per
-  render, no profile/extension/session; every request the page makes is
-  fulfilled by the pinned `SafeFetch` hop (public unicast only), images / fonts /
-  media / websockets refused, ≤3 navigations, ≤80 subrequests, ≤12 MB in,
-  ≤45 s, concurrency 1 (max 2), scripts stripped from output (JSON data blocks
-  kept), challenge / login wall reported and never worked around, honest UA.
-  Switches (all OFF / absent): worker env `DISCOVERY_BROWSER_ENABLED=true` +
-  `DISCOVERY_BROWSER_HOSTS` allowlist; edge `admin_settings.discovery_browser_enabled`.
-  Edge side: `fetch/browser-transport.ts` (`BrowserTransport`, `RoutingTransport`,
-  metered `usage`, `estimatedCostUsd`). The edge keeps allowlist, robots, rate
-  limits, lease; the worker never receives the service-role key. **Not
-  deployed**: enabling needs a worker deploy and two Railway variables (owner).
+- **Browser discovery worker** — NOT IN THIS RELEASE. `homatch-official-worker`
+  also runs Verify, so any `official-worker/` change redeploys Verify's host;
+  the worker side (`official-worker/src/discovery/BrowserRender.ts`,
+  `POST /discovery/render`, real-Chromium tests) is prepared at commit
+  `658a6a74` and ships in its own worker release when the owner approves the
+  MyHome proof. Design: own Chromium per render (not Verify's browser), every
+  request fulfilled by the pinned `SafeFetch` hop (public unicast only),
+  images/fonts/media/websockets refused, ≤3 navigations, ≤80 subrequests,
+  ≤12 MB, ≤45 s, concurrency 1, scripts stripped (JSON data kept), challenge /
+  login wall reported and never worked around, honest UA. Switches (all OFF /
+  absent): worker `DISCOVERY_BROWSER_ENABLED=true` + `DISCOVERY_BROWSER_HOSTS`,
+  edge `admin_settings.discovery_browser_enabled`. Edge side (in this release,
+  inert until then): `fetch/browser-transport.ts`.
 - **Candidates** — `adapters/portal/candidates.ts`: registered only by
-  `createPortalRuntime({ includeCandidates: true })`, i.e. the source-audit live
-  check. Routes come from the site's robots.txt `Sitemap:` declarations; a
+  `discovery/audit-runtime.ts` (`createAuditPortalRuntime`), i.e. the source-audit
+  live check. `market/runtime.ts` is unchanged: Verify imports it, so Phase 2
+  never edits it. Routes come from the site's robots.txt `Sitemap:` declarations; a
   listing is a URL with a 6–10 digit id; fields from schema.org/OpenGraph plus
   multilingual text patterns. A passing check is evidence to pin a captured
   configuration; it promotes nothing.

@@ -36,8 +36,6 @@ import {
   ESTATEMARKET_GE, HOME24_GE, HOME_GE, MAKLER_GE, PLACE_GE, REALTING, ZARAYA,
 } from '../adapters/portal/sources.ts';
 import { latinNameFor } from '../normalize/place.ts';
-import { candidateAdapters, CANDIDATE_POLICIES } from '../adapters/portal/candidates.ts';
-import { RoutingTransport } from '../fetch/browser-transport.ts';
 
 /**
  * Portals this build knows how to read.
@@ -377,18 +375,6 @@ export interface PortalRuntimeOptions {
   /** Shared across a process so concurrent jobs actually join each other. */
   coalescer?: RequestCoalescer;
   documentCache?: Map<string, { document: AdapterDocument; expiresAt: number }>;
-  /**
-   * PHASE 2: also register the CANDIDATE adapters (myhome.ge, livo.ge) and
-   * their policies. Only the source-audit live check passes this; customer
-   * runs, campaigns and Verify never see a candidate.
-   */
-  includeCandidates?: boolean;
-  /**
-   * PHASE 2: the discovery browser (fetch/browser-transport.ts). Used only for
-   * hosts whose policy allows browser rendering; everything else keeps
-   * `transport`. Absent = no browser at all.
-   */
-  browserTransport?: Transport;
 }
 
 /**
@@ -426,16 +412,9 @@ export function portalHostAllowlist(policies: SourcePolicy[] = PORTAL_SOURCE_POL
 
 export function createPortalRuntime(options: PortalRuntimeOptions = {}): PortalRuntime {
   const now = options.now ?? (() => Date.now());
-  const policies = options.includeCandidates ? [...PORTAL_SOURCE_POLICIES, ...CANDIDATE_POLICIES] : PORTAL_SOURCE_POLICIES;
-  const sourcePolicies = new SourceAccessPolicyRegistry(policies);
-  const allowlist = portalHostAllowlist(policies);
-  const baseTransport = options.transport ?? new FetchTransport({ maxBytes: 4_000_000, userAgent: PORTAL_USER_AGENT });
-  /* Hosts whose policy permits the discovery browser; empty for every non-candidate source. */
-  const browserHosts = policies.filter((p) => p.browserRenderingAllowed).flatMap((p) => [...(p.hosts ?? []), ...p.domains]);
-  const routing = options.browserTransport && browserHosts.length
-    ? new RoutingTransport(baseTransport, options.browserTransport, browserHosts)
-    : null;
-  const transport: Transport = routing ?? baseTransport;
+  const sourcePolicies = new SourceAccessPolicyRegistry(PORTAL_SOURCE_POLICIES);
+  const allowlist = portalHostAllowlist();
+  const transport = options.transport ?? new FetchTransport({ maxBytes: 4_000_000, userAgent: PORTAL_USER_AGENT });
 
   /*
    * robots.txt is fetched through the same transport, never through a bare
@@ -531,7 +510,7 @@ export function createPortalRuntime(options: PortalRuntimeOptions = {}): PortalR
         body: result.body,
         contentType: result.contentType?.mime ?? null,
         retrievedAt: new Date(now()).toISOString(),
-        via: routing?.usesBrowser(url) ? 'browser' : 'http',
+        via: 'http',
       };
       if (result.status >= 200 && result.status < 300) {
         documents.set(key, { document, expiresAt: now() + policy.cacheTtlMs });
@@ -788,10 +767,6 @@ export function createPortalRuntime(options: PortalRuntimeOptions = {}): PortalR
         { transaction: 'SALE', url: 'https://estatemarket.ge/zk/next-collection/', propertyType: 'APARTMENT' },
       ],
     }));
-
-  if (options.includeCandidates) {
-    for (const candidate of candidateAdapters()) registry.register(candidate);
-  }
 
   const context: AdapterContext = {
     fetchDocument,

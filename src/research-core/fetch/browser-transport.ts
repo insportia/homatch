@@ -1,5 +1,7 @@
 // HOMATCH RESEARCH CORE — one page render, performed by the official worker's
-// DISCOVERY browser (official-worker/src/discovery/BrowserRender.ts).
+// DISCOVERY browser (official-worker/src/discovery/BrowserRender.ts -- prepared at
+// commit 658a6a74, shipped in its own worker release; until then the worker has no
+// /discovery/render and every call is a typed refusal).
 //
 // PHASE 2. A source whose pages only exist after JavaScript runs is read
 // through POST {worker}/discovery/render. Everything above the transport still

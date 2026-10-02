@@ -100,7 +100,7 @@ export const SOURCE_CAPABILITIES: readonly SourceCapability[] = [
     retrieval: 'WORKER_BROWSER', authRequired: null, publicData: PORTAL_PUBLIC,
     exactLink: 'YES', authorProfile: 'SOMETIMES', contacts: 'SOMETIMES', fixture: 'SYNTHETIC', cost: 'PAID_BROWSER',
     blocker: 'Answers 403 to every non-browser client (site and api.myhome.ge, 2026-09-20); production registry lifecycle BLOCKED. Page shape never captured: the sandbox cannot reach it.',
-    action: 'Enable the discovery browser route (owner approval), run the WORKER_BROWSER live check; a challenge page is recorded as BLOCKED, never worked around.',
+    action: 'Ship the discovery browser in its own homatch-official-worker release (code prepared at 658a6a74), enable it for www.myhome.ge only (owner approval), run the WORKER_BROWSER live check; a challenge page is recorded as BLOCKED, never worked around.',
   },
   {
     key: 'livo-ge', label: 'livo.ge', kind: 'PORTAL', platform: 'PORTAL',

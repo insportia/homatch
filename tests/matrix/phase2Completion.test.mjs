@@ -98,7 +98,7 @@ test('boundaries: Verify, Meta Ads, Design Studio and shared billing are not tou
   const discovery = ['src/research-core/discovery/cross-source-dedupe.ts', 'src/research-core/discovery/discovery-entity.ts',
     'src/research-core/discovery/source-capabilities.ts', 'src/research-core/match/unified-score.ts',
     'src/research-core/adapters/portal/candidates.ts', 'src/research-core/fetch/browser-transport.ts',
-    'src/research-core/adapters/social/meta-graph-discovery.ts', 'official-worker/src/discovery/BrowserRender.ts'];
+    'src/research-core/adapters/social/meta-graph-discovery.ts', 'src/research-core/discovery/audit-runtime.ts'];
   for (const f of discovery) {
     assert.ok(existsSync(join(root, f)), f);
     assert.doesNotMatch(code(f), /from ['"][^'"]*(verify|metaAds|design-studio|_shared\/billing)[^'"]*['"]/i, f);
@@ -134,4 +134,16 @@ test('backfill: deterministic, $0, cursor-paged, idempotent, dry-run capable —
   assert.doesNotMatch(block, /openai|OPENAI_API_KEY|cost_events|wallet_|billing/i);
   assert.ok(cs.indexOf("Deno.env.get('OPENAI_API_KEY')") > end, 'the model key is not even read on the backfill path');
   assert.match(code('supabase/functions/_shared/communitySupply.ts'), /onConflict: 'source_id,external_id'/);
+});
+
+test('Verify isolation: nothing Verify imports changed, and the worker that runs Verify is not in this release', () => {
+  /* market/runtime.ts is imported by research-agent and the market lane; the Phase 2
+     live-check runtime is a separate module, so Verify's bundle is unchanged. */
+  const runtime = code('src/research-core/market/runtime.ts');
+  assert.doesNotMatch(runtime, /candidates|browser-transport|includeCandidates|browserTransport/);
+  for (const f of ['supabase/functions/research-agent/index.ts', 'supabase/functions/verify-synthesis/index.ts', 'supabase/functions/verification-handoff/index.ts']) {
+    assert.doesNotMatch(read(f), /audit-runtime|candidates\.ts|browser-transport|cross-source-dedupe|discovery-entity/, f);
+  }
+  assert.ok(!existsSync(join(root, 'official-worker/src/discovery/BrowserRender.ts')), 'the discovery browser ships in its own worker release, not this one');
+  assert.match(code('supabase/functions/source-audit/index.ts'), /createAuditPortalRuntime\(/);
 });

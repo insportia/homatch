@@ -50,6 +50,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { createPortalRuntime, PORTAL_SOURCE_POLICIES } from '../../../src/research-core/market/runtime.ts';
 import { BrowserTransport, estimatedCostUsd } from '../../../src/research-core/fetch/browser-transport.ts';
 import { CANDIDATE_RENDERING } from '../../../src/research-core/adapters/portal/candidates.ts';
+import { createAuditPortalRuntime } from '../../../src/research-core/discovery/audit-runtime.ts';
 import {
   auditSource,
   disallowsEverything,
@@ -1042,7 +1043,7 @@ async function liveCheck(db: ReturnType<typeof createClient>, body: Record<strin
       ? new BrowserTransport({ baseUrl: workerUrl, token: workerToken, trace: 'live-check' })
       : undefined;
     /* Candidates (myhome.ge, livo.ge) run here and nowhere else; see adapters/portal/candidates.ts. */
-    const runtime = createPortalRuntime({ includeCandidates: true, ...(transportFor(route) ? { transport: transportFor(route) } : {}), ...(browser ? { browserTransport: browser } : {}) });
+    const runtime = createAuditPortalRuntime({ ...(transportFor(route) ? { transport: transportFor(route) } : {}), ...(browser ? { browserTransport: browser } : {}) });
     const adapters = runtime.registry.all()
       .filter((a) => !adapterIds || adapterIds.includes(a.id))
       .filter((a) => route !== 'WORKER_BROWSER' || CANDIDATE_RENDERING[a.id] === 'BROWSER');

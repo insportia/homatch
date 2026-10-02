@@ -21,8 +21,8 @@
 //                        language convention shared by place.ge and home.ge;
 //                        otherwise the page's own Offer decides
 //
-// They are registered ONLY when createPortalRuntime({ includeCandidates: true })
-// asks -- which only the source-audit live check does -- so no Find Property
+// They are registered ONLY by discovery/audit-runtime.ts (createAuditPortalRuntime),
+// which only the source-audit live check uses -- so no Find Property
 // run, campaign or Verify comparable can reach them. A passing live check is
 // evidence to pin a real configuration from (captured fixture, exact routes);
 // it does not promote anything by itself.

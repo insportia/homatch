@@ -4,8 +4,10 @@
 // answers. LIVE_TESTED is only ever set by a production live check.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { createPortalRuntime } from '../market/runtime.ts';
+import { createAuditPortalRuntime } from '../discovery/audit-runtime.ts';
 import { runtimePortalAdapterIds } from '../discovery/portal-selection.ts';
 import { MYHOME_GE, LIVO_GE, declaredSitemaps, childSitemaps, unwrapRenderedText } from '../adapters/portal/candidates.ts';
 import { BrowserTransport, RoutingTransport, estimatedCostUsd } from '../fetch/browser-transport.ts';
@@ -46,7 +48,7 @@ test('candidates are invisible to every customer path and visible only to the li
   const normal = createPortalRuntime().registry.all().map((a) => a.id);
   assert.ok(!normal.includes('myhome-ge') && !normal.includes('livo-ge'));
   assert.ok(!runtimePortalAdapterIds().includes('myhome-ge'));
-  const audit = createPortalRuntime({ includeCandidates: true }).registry.all().map((a) => a.id);
+  const audit = createAuditPortalRuntime().registry.all().map((a) => a.id);
   assert.ok(audit.includes('myhome-ge') && audit.includes('livo-ge'));
 });
 
@@ -74,7 +76,7 @@ test('a candidate reads robots → sitemap → listing pages and normalizes them
     'https://livo.ge/ka/iyideba/bina/7654321': listingPage('7654321', { price: 99000, rooms: 2, area: 55 }),
   };
   const transport = fakeTransport(pages);
-  const runtime = createPortalRuntime({ includeCandidates: true, transport, documentCache: new Map() });
+  const runtime = createAuditPortalRuntime({ transport, documentCache: new Map() });
   const livo = runtime.registry.all().find((a) => a.id === 'livo-ge');
   const outcome = await livo.searchListings(QUERY, runtime.context);
   assert.ok(outcome.ok, JSON.stringify(outcome));
@@ -90,7 +92,7 @@ test('a candidate reads robots → sitemap → listing pages and normalizes them
 
 test('a candidate with no declared sitemap refuses rather than guessing paths', async () => {
   const transport = fakeTransport({ 'https://livo.ge/robots.txt': 'User-agent: *\nAllow: /\n' });
-  const runtime = createPortalRuntime({ includeCandidates: true, transport, documentCache: new Map() });
+  const runtime = createAuditPortalRuntime({ transport, documentCache: new Map() });
   const outcome = await runtime.registry.all().find((a) => a.id === 'livo-ge').searchListings(QUERY, runtime.context);
   assert.equal(outcome.ok, false);
   assert.equal(outcome.reason, 'PARSE_FAILED');
@@ -115,7 +117,7 @@ test('myhome.ge goes through the discovery browser; every other host stays on pl
       return { url: request.url, status: 200, headers: { 'content-type': 'text/html' }, body, bytes: body.length, truncated: false, durationMs: 1 };
     },
   };
-  const runtime = createPortalRuntime({ includeCandidates: true, transport: http, browserTransport: browser, documentCache: new Map() });
+  const runtime = createAuditPortalRuntime({ transport: http, browserTransport: browser, documentCache: new Map() });
   const myhome = runtime.registry.all().find((a) => a.id === 'myhome-ge');
   const outcome = await myhome.searchListings(QUERY, runtime.context);
   assert.ok(outcome.ok, JSON.stringify(outcome));
@@ -129,9 +131,11 @@ test('myhome.ge goes through the discovery browser; every other host stays on pl
 });
 
 test('without a browser transport the browser-only host is never rendered, and no normal runtime routes anything to a browser', async () => {
+  /* market/runtime.ts (Verify imports it) has no candidate and no browser option at all. */
   const runtime = createPortalRuntime({ browserTransport: { name: 'x', pinsAddresses: true, async send() { throw new Error('must not be called'); } } });
-  const doc = runtime.registry.all().map((a) => a.id);
-  assert.ok(!doc.includes('myhome-ge'));
+  assert.ok(!runtime.registry.all().map((a) => a.id).includes('myhome-ge'));
+  const src = readFileSync(new URL('../market/runtime.ts', import.meta.url), 'utf8');
+  assert.doesNotMatch(src, /candidates|browser-transport|includeCandidates|browserTransport/);
 });
 
 test('BrowserTransport: token, typed refusals, metering and a documented cost estimate', async () => {

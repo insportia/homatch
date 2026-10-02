@@ -1,9 +1,7 @@
 // routes.ts — the discovery HTTP surface of the official worker (PHASE 2).
 //
 // POST /discovery/fetch performs ONE SSRF-guarded, address-pinned HTTP hop for
-// HOMATCH discovery (SafeFetch.ts). POST /discovery/render performs ONE bounded
-// render of an allowlisted public page in the discovery browser
-// (BrowserRender.ts) -- off unless DISCOVERY_BROWSER_ENABLED=true. Callers are HOMATCH edge functions holding
+// HOMATCH discovery (SafeFetch.ts). Callers are HOMATCH edge functions holding
 // WORKER_TOKEN; a signed-in Supabase user is NOT accepted, so no browser can
 // turn the worker into a fetcher. The edge runtime decides what may be fetched
 // (allowlist, robots, rate limits) and follows redirects itself; this hop
@@ -15,7 +13,6 @@
 
 import { URL } from 'node:url';
 import { discoveryFetchLoad, safeFetch, SafeFetchError } from './SafeFetch.js';
-import { browserRenderLoad, renderPage, RenderError } from './BrowserRender.js';
 
 export function mountDiscoveryRoutes(app: any, options: { token: string }) {
   const tokenOnly = (req: any, res: any, next: any) => {
@@ -28,7 +25,7 @@ export function mountDiscoveryRoutes(app: any, options: { token: string }) {
   };
 
   app.get('/health/discovery', tokenOnly, (_req: any, res: any) => {
-    res.json({ ok: true, fetch: discoveryFetchLoad(), render: browserRenderLoad() });
+    res.json({ ok: true, fetch: discoveryFetchLoad() });
   });
 
   app.post('/discovery/fetch', tokenOnly, async (req: any, res: any) => {
@@ -49,27 +46,6 @@ export function mountDiscoveryRoutes(app: any, options: { token: string }) {
     } catch (error) {
       const kind = error instanceof SafeFetchError ? error.kind : 'NETWORK_ERROR';
       log({ event: 'fetch', ok: false, host, kind, trace });
-      return res.json({ ok: false, error: { kind, message: kind } });
-    }
-  });
-
-  app.post('/discovery/render', tokenOnly, async (req: any, res: any) => {
-    const body = req.body ?? {};
-    const trace = String(req.headers['x-homatch-trace'] || '').slice(0, 64) || null;
-    let host: string | null = null;
-    try { host = new URL(String(body.url || '')).hostname; } catch { host = null; }
-    try {
-      const result = await renderPage({
-        url: String(body.url || ''),
-        timeoutMs: Number(body.timeoutMs) || undefined,
-        maxBytes: Number(body.maxBytes) || undefined,
-      });
-      log({ event: 'render', ok: true, host, status: result.status, bytes: result.bytes, subrequests: result.subrequests,
-        refused: result.refusedRequests, transferBytes: result.transferBytes, ms: result.renderMs, trace });
-      return res.json({ ok: true, render: result });
-    } catch (error) {
-      const kind = error instanceof RenderError ? error.kind : 'NETWORK_ERROR';
-      log({ event: 'render', ok: false, host, kind, trace });
       return res.json({ ok: false, error: { kind, message: kind } });
     }
   });

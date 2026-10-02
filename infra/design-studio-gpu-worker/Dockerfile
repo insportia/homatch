@@ -47,4 +47,9 @@ RUN mkdir -p /tmp/st && printf '{"spec":"/app/selftest/apartment.spec.json","tex
     && python3 -c "import json; r=json.load(open('/tmp/st/report.json')); assert r['ok'], r; print('factory selftest', r['counts'])" \
     && rm -rf /tmp/st
 
+# The commit this image was built from (the GHCR workflow passes github.sha); every job reports it
+# as result.worker.revision. Last, so a new commit never invalidates the layers above.
+ARG HM_IMAGE_REVISION=""
+ENV HM_IMAGE_REVISION=${HM_IMAGE_REVISION}
+
 CMD ["python3", "-u", "-m", "worker.serve"]

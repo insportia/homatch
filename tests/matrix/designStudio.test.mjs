@@ -202,6 +202,29 @@ test('the floor-plan reader treats the upload as untrusted and stores only a pro
   assert.ok(!/rpc\(['"](charge|debit|reserve|settle)\w*/i.test(code), 'reading charges before billing is confirmed');
 });
 
+test('plan reading v2: the same picture is never paid for twice, and the raw reading is kept beside the fused one', () => {
+  const fn = read('supabase/functions/design-studio-reconstruct/floorplan.ts');
+  // The cache is per customer, per exact bytes, per reader version, plans only.
+  assert.match(fn, /\.eq\('user_id', plan\.user_id\)\.eq\('sha256', sha256\)\.eq\('status', 'INTERPRETED'\)\.eq\('purpose', 'PLAN'\)/);
+  assert.match(fn, /\.eq\('interpretation->>readVersion', DS_READ_VERSION\)/);
+  const cacheAt = fn.indexOf("interpretation->>readVersion");
+  assert.ok(cacheAt > 0 && cacheAt < fn.indexOf("fetch('https://api.openai.com/v1/responses'"), 'the cache is consulted before the model is called');
+  // Fusion runs on the bytes already checked, and the model's own reading is stored untouched.
+  assert.match(fn, /understand\(\{ doc: reading\.doc/);
+  assert.match(fn, /rawDoc: reading\.doc/);
+  assert.match(fn, /readVersion: reading\.readVersion/);
+  assert.match(read('supabase/functions/_shared/designStudio/floorplanRead.ts'), /export const DS_READ_VERSION = 'ds-read-2';/);
+  // Decoding is bounded and never fatal: an undecodable picture is fused without its raster.
+  const dec = read('supabase/functions/design-studio-reconstruct/rasterDecode.ts');
+  assert.match(dec, /MAX_MEGAPIXELS = \d+;/);
+  assert.match(dec, /catch \{\s*return \{ ok: false, reason: 'DECODE_FAILED' \}/);
+  // The deterministic half never calls a model and never touches the network.
+  for (const f of fs.readdirSync('supabase/functions/_shared/designStudio/planRead')) {
+    const src = read(`supabase/functions/_shared/designStudio/planRead/${f}`);
+    assert.ok(!/fetch\(|Deno\.|from 'npm:|from 'jsr:|https:\/\//.test(src), `${f} must stay pure`);
+  }
+});
+
 test('the customer path creates geometry only through the checking RPC', () => {
   const svc = read('src/services/designStudio/floorplans.ts');
   assert.match(svc, /rpc\('ds_create_floorplan_source'/);
@@ -289,6 +312,23 @@ test('style codes and plan shape stay in step between server and browser', () =>
     assert.match(server, new RegExp(`${field}: `), `server plan lacks ${field}`);
     assert.match(client, new RegExp(`${field}: `), `browser plan lacks ${field}`);
   }
+});
+
+test('the customer look is the same contract on the server and in the browser', () => {
+  const browser = read('src/lib/designStudio/planToHome.ts');
+  const server = read('supabase/functions/_shared/designStudio/designIntent.ts');
+  const list = (src, name) => (src.match(new RegExp(`${name} = \\[([^\\]]+)\\]`)) ?? [])[1]?.replace(/\s/g, '');
+  for (const name of ['MOODS', 'FLOOR_DIRECTIONS', 'WALL_DIRECTIONS', 'ACCENTS', 'PALETTES', 'FURNISHING_LEVELS']) {
+    assert.ok(list(browser, name), `browser lacks ${name}`);
+    assert.equal(list(server, name), list(browser, name), `${name} drifted between server and browser`);
+  }
+  const cap = (src) => src.match(/FURNISHING_CAP: Record<FurnishingLevel, number> = (\{[^}]+\})/)[1];
+  assert.equal(cap(server), cap(browser), 'FURNISHING_CAP drifted');
+  const fn = read('supabase/functions/design-studio-reconstruct/design.ts');
+  assert.match(fn, /offerFor\(fullCtx, brief\.preferences\)/, 'the model is not limited to what fits the look');
+  assert.match(fn, /intent: \{\s*plan, preferences: brief\.preferences, model: MODEL/, 'the validated intent is not recorded on the job');
+  assert.match(read('supabase/functions/_shared/designStudio/aiPlan.ts'), /applyIntent\(/, 'the plan is not held to the look');
+  assert.match(read('src/services/designStudio/ai.ts'), /export async function designFromPreferences\(/);
 });
 
 test('an AI proposal reaches a design only through the operation validator, as AI with its job', () => {

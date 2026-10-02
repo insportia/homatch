@@ -11,6 +11,7 @@ from __future__ import annotations
 import copy
 import io
 import json
+import math
 import os
 import re
 import shutil
@@ -450,3 +451,408 @@ def test_a_tint_balances_the_texture_and_exports_a_valid_factor():
 
         r = sp.run([shutil.which("node"), str(WORKER / "validate.mjs"), str(p)], capture_output=True, text=True, check=False)
         assert json.loads(r.stdout)["errors"] == 0, r.stdout
+
+
+# ── D. stairs, door leaves, the image revision ────────────────────────
+
+STAIRS = json.loads((HERE / "fixtures" / "stairs.spec.json").read_text())
+PARTS = json.loads((HERE / "fixtures" / "stairs.parts.json").read_text())
+
+
+def test_stairs_and_leaves_are_read_and_absent_means_none():
+    v = validate_spec(STAIRS)
+    assert len(v["stairs"]) == 1 and v["stairs"][0]["treads"] == 15 and v["stairs"][0]["direction"] == "UP"
+    leaves = {o["id"]: o["leaf"] for w in v["walls"] for o in w["openings"] if o["leaf"]}
+    assert leaves == {"d-bed": "DOUBLE", "d-bath": "SLIDING", "d-hall": "HINGED", "win-bed": "FIXED"}
+    plain = validate_spec(SPEC)
+    assert plain["stairs"] == [] and all(o["leaf"] is None and o["swing"] is None for w in plain["walls"] for o in w["openings"])
+
+
+@pytest.mark.parametrize("mutate, why", [
+    (lambda s: s["stairs"][0].update(treads=2), "treads"),
+    (lambda s: s["stairs"][0].update(treads=26), "treads"),
+    (lambda s: s["stairs"][0].update(treads=12.5), "whole number"),
+    (lambda s: s["stairs"][0].update(runM=0.2), "runM"),
+    (lambda s: s["stairs"][0].update(riseM=9), "riseM"),
+    (lambda s: s["stairs"][0].update(direction="SIDEWAYS"), "direction"),
+    (lambda s: s["stairs"][0].update(b=s["stairs"][0]["a"]), "width"),
+    (lambda s: s["stairs"][0].update(id="x y"), "id"),
+    (lambda s: s.update(stairs=[dict(s["stairs"][0], id=f"s-{i}") for i in range(9)]), "more than 8"),
+    (lambda s: s["stairs"].append(dict(s["stairs"][0])), "duplicate"),
+    (lambda s: s.update(stairs="many"), "list"),
+    (lambda s: next(w for w in s["walls"] if w["openings"])["openings"][0].update(leaf="REVOLVING"), "leaf"),
+    (lambda s: next(w for w in s["walls"] if w["openings"])["openings"][0].update(swing="UP"), "swing"),
+])
+def test_a_malformed_stair_or_leaf_is_refused(mutate, why):
+    s = copy.deepcopy(STAIRS)
+    mutate(s)
+    with pytest.raises(SpecError, match=re.escape(why)):
+        validate_spec(s)
+
+
+def test_stair_parts_match_the_walkthrough_exactly():
+    """worker/stair_parts.py and src/lib/designStudio/stairParts.ts build the same staircase (shared fixture)."""
+    from worker.stair_parts import stair_parts, stair_sides
+
+    st = validate_spec(STAIRS)["stairs"][0]
+    sides = stair_sides(st, validate_spec(STAIRS)["walls"])
+    assert sides == (PARTS["sides"]["openA"], PARTS["sides"]["openB"])
+    for got, want in ((stair_parts(st, *sides), PARTS["up"]), (stair_parts(dict(st, direction="DOWN"), True, True), PARTS["down"]),
+                      (stair_parts(st, False, False), PARTS["walled"])):
+        assert [p["kind"] for p in got] == [p["kind"] for p in want]
+        for g, w in zip(got, want):
+            for a, b in zip([*g["centre"], *g["size"], g["pitch"]], [*w["centre"], *w["size"], w["pitch"]]):
+                assert abs(a - b) < 2e-4, (g, w)
+
+
+def test_every_job_reports_the_image_revision_and_is_safe_without_it(monkeypatch):
+    monkeypatch.setenv("HM_IMAGE_REVISION", "0123456789abcdef0123456789abcdef01234567")
+    assert handle({"input": {"jobId": "nope"}})["worker"] == {"revision": "0123456789abcdef0123456789abcdef01234567"}
+    monkeypatch.setenv("HM_IMAGE_REVISION", "not a sha; rm -rf /")
+    assert handle({"input": {"jobId": "nope"}})["worker"] == {"revision": None}
+    monkeypatch.delenv("HM_IMAGE_REVISION", raising=False)
+    assert handle({"input": {"jobId": "nope"}})["worker"] == {"revision": None}
+
+
+def test_the_image_bakes_its_revision_from_the_workflow():
+    docker = (HERE.parent / "Dockerfile").read_text()
+    assert "ARG HM_IMAGE_REVISION" in docker and "ENV HM_IMAGE_REVISION=${HM_IMAGE_REVISION}" in docker
+    wf = (HERE.parents[2] / ".github" / "workflows" / "design-studio-gpu-worker-image.yml").read_text()
+    assert "HM_IMAGE_REVISION=${{ github.sha }}" in wf
+
+
+def _accessor_bounds(gl: dict, node: dict):
+    mesh = gl["meshes"][node["mesh"]]
+    lo = [math.inf] * 3
+    hi = [-math.inf] * 3
+    for prim in mesh["primitives"]:
+        acc = gl["accessors"][prim["attributes"]["POSITION"]]
+        lo = [min(a, b) for a, b in zip(lo, acc["min"])]
+        hi = [max(a, b) for a, b in zip(hi, acc["max"])]
+    t = node.get("translation", [0, 0, 0])
+    return [a + o for a, o in zip(lo, t)], [b + o for b, o in zip(hi, t)]
+
+
+@pytest.fixture(scope="module")
+def built_stairs():
+    if blender_path() is None:
+        pytest.skip("Blender is not installed here")
+    s = copy.deepcopy(STAIRS)
+    s["outputs"] = {"render": False, "scene": True, "objects": False}
+    j = job(s)
+    j["outputs"] = {"scene": {"DESKTOP": R2, "MOBILE": R2}}
+    tr = FakeTransfer()
+    out = pipeline_mod.run_job(parse_job(j), {**tools(), "gltf_transform": None}, tr)
+    return out, _glb_from(tr, "model/gltf-binary")
+
+
+@needs_blender
+def test_the_factory_builds_a_staircase_inside_its_footprint(built_stairs):
+    out, gl = built_stairs
+    assert out["build"]["counts"]["stairs"] == 1
+    by = {n.get("name", ""): n for n in gl["nodes"] if "mesh" in n}
+    for role in ("wood", "paint", "metal", "well"):
+        assert f"stair:s-1:{role}" in by, sorted(n for n in by if n.startswith("stair"))
+    st = STAIRS["stairs"][0]
+    # Footprint in plan: x 1..4, y 0.15..1.15; glTF is (x, up, -north).
+    lo, hi = _accessor_bounds(gl, by["stair:s-1:wood"])
+    assert 0.9 < lo[0] and hi[0] < 4.1, (lo, hi)
+    assert -1.2 < lo[2] and hi[2] < -0.1, (lo, hi)
+    assert lo[1] > -0.01 and abs(hi[1] - st["riseM"]) < 0.02, "the top tread is the upper floor; the rail stops below the ceiling"
+    # Treads and risers: two boxes per step at least (8 vertices each, before bevels).
+    wood_verts = sum(gl["accessors"][p["attributes"]["POSITION"]]["count"] for p in gl["meshes"][by["stair:s-1:wood"]["mesh"]]["primitives"])
+    paint_verts = sum(gl["accessors"][p["attributes"]["POSITION"]]["count"] for p in gl["meshes"][by["stair:s-1:paint"]["mesh"]]["primitives"])
+    assert wood_verts >= 15 * 8 and paint_verts >= (15 + 2) * 8
+
+
+@needs_blender
+def test_the_factory_hangs_door_leaves_by_how_they_close(built_stairs):
+    _, gl = built_stairs
+    names = [n.get("name", "") for n in gl["nodes"] if "mesh" in n]
+
+    def parts_of(oid):
+        return [n for n in names if n.startswith(f"door:{oid}:")]
+
+    # Every door has its frame (two jambs and a head = 3 parts); leaves add to that.
+    assert len(parts_of("d-bed")) == 3 + 4, "DOUBLE: two panelled leaves, each a slab and handles"
+    assert len(parts_of("d-hall")) == 3 + 2, "HINGED: one leaf and its handles"
+    assert len(parts_of("d-bath")) == 3 + 2, "SLIDING: one panel and its handles, slid along the wall"
+    assert len(parts_of("d-entry")) == 3 + 2, "an undescribed door keeps one hinged leaf"
+    assert any(n.startswith("window:win-bed:") for n in names), "a FIXED window keeps its glass"
+
+
+def _verts(gl: dict, node: dict) -> int:
+    return sum(gl["accessors"][p["attributes"]["POSITION"]]["count"] for p in gl["meshes"][node["mesh"]]["primitives"])
+
+
+@needs_blender
+def test_a_flight_cuts_its_hole_in_the_ceiling_going_up_and_the_floor_going_down(built_stairs):
+    _, gl = built_stairs
+    by = {n.get("name", ""): n for n in gl["nodes"] if "mesh" in n}
+    assert _verts(gl, by["ceiling:r-living"]) > _verts(gl, by["ceiling:r-bed"]), "the living room's ceiling is cut over the flight"
+    assert _verts(gl, by["floor:r-living"]) == _verts(gl, by["floor:r-bed"]), "an UP flight leaves the floor whole"
+    s = copy.deepcopy(STAIRS)
+    s["stairs"][0]["direction"] = "DOWN"
+    s["outputs"] = {"render": False, "scene": True, "objects": False}
+    j = job(s)
+    j["outputs"] = {"scene": {"DESKTOP": R2, "MOBILE": R2}}
+    tr = FakeTransfer()
+    pipeline_mod.run_job(parse_job(j), {**tools(), "gltf_transform": None}, tr)
+    down = _glb_from(tr, "model/gltf-binary")
+    dby = {n.get("name", ""): n for n in down["nodes"] if "mesh" in n}
+    assert _verts(down, dby["floor:r-living"]) > _verts(down, dby["floor:r-bed"]), "a DOWN flight opens the floor"
+    lo, hi = _accessor_bounds(down, dby["stair:s-1:wood"])
+    assert lo[1] < -2.0 and abs(hi[1]) < 1.2, "it descends below the floor; its rail rises above it"
+    assert "stair:s-1:metal" in dby, "guarded round the well"
+
+
+# ── E. planned views and their object maps ───────────────────────────
+
+VIEWS = json.loads((HERE / "fixtures" / "apartment.views.json").read_text())
+
+
+def views_spec() -> dict:
+    s = spec()
+    s["outputs"] = {"render": False, "scene": False, "objects": False}
+    for o in s["objects"]:
+        o["runtime"] = False
+        o["group"] = None
+    # The two views the TS side validates too (src/lib/designStudio/__tests__/factoryViews.test.mjs).
+    s["views"] = copy.deepcopy(VIEWS)
+    return s
+
+
+def views_job(s: dict | None = None) -> dict:
+    s = s or views_spec()
+    j = job(s)
+    j["outputs"] = {"views": {v["id"]: {"image": R2 + f"&{v['id']}-image", "ids": R2 + f"&{v['id']}-ids", "legend": R2 + f"&{v['id']}-legend"} for v in s["views"]}}
+    return j
+
+
+def test_planned_views_are_read_and_absent_means_none():
+    v = validate_spec(views_spec())
+    assert [x["id"] for x in v["views"]] == ["v-master", "v-living"]
+    assert v["views"][0]["orthoScale"] == 17.0 and v["views"][0]["fovDeg"] is None and v["views"][1]["roomId"] == "r-living"
+    assert validate_spec(SPEC)["views"] == []
+    j = parse_job(views_job())
+    assert set(j.view_urls) == {"v-master", "v-living"} and all(set(u) == {"image", "ids", "legend"} for u in j.view_urls.values())
+    assert parse_job(job()).view_urls == {}
+
+
+@pytest.mark.parametrize("mutate, why", [
+    (lambda s: s["views"][0].update(fovDeg=40.0), "either fovDeg or orthoScale"),
+    (lambda s: s["views"][1].update(fovDeg=None), "either fovDeg or orthoScale"),
+    (lambda s: s["views"][1].update(fovDeg=5), "fovDeg"),
+    (lambda s: s["views"][0].update(orthoScale=500), "orthoScale"),
+    (lambda s: s["views"][0].update(width=4096), "width"),
+    (lambda s: s["views"][0].update(height=300.5), "whole number"),
+    (lambda s: s["views"][0].update(samples=2048), "samples"),
+    (lambda s: s["views"][0].update(aspect=9), "aspect"),
+    (lambda s: s["views"][0].update(position=[float("nan"), 0, 0]), "position"),
+    (lambda s: s["views"][0].update(position=[9999, 0, 0]), "position"),
+    (lambda s: s["views"][0].update(target=s["views"][0]["position"]), "looks at itself"),
+    (lambda s: s["views"][0].update(kind="DRONE"), "kind"),
+    (lambda s: s["views"][0].update(purpose="ART"), "purpose"),
+    (lambda s: s["views"][0].update(roomId="r-nowhere"), "unknown room"),
+    (lambda s: s["views"][0].update(cut={"exteriorM": 0.1, "interiorM": 1}), "cut"),
+    (lambda s: s["views"][0].update(hideCeilings="yes"), "hideCeilings"),
+    (lambda s: s["views"][0].update(objectMap=1), "objectMap"),
+    (lambda s: s["views"][0].update(id="v master"), "id"),
+    (lambda s: s["views"].append(dict(s["views"][0])), "duplicate"),
+    (lambda s: s.update(views=[dict(s["views"][0], id=f"v-{i}") for i in range(13)]), "more than 12"),
+])
+def test_a_malformed_view_is_refused(mutate, why):
+    s = views_spec()
+    mutate(s)
+    with pytest.raises(SpecError, match=re.escape(why)):
+        validate_spec(s)
+
+
+@pytest.mark.parametrize("mutate, why", [
+    (lambda j: j["outputs"]["views"].pop("v-living"), "one entry per planned view"),
+    (lambda j: j["outputs"]["views"]["v-master"].pop("legend"), "object map"),
+    (lambda j: j["outputs"]["views"]["v-master"].update(image="https://evil.example.com/x"), "storage endpoint"),
+    (lambda j: j["outputs"].update(views={"v-other": {"image": R2}}), "one entry per planned view"),
+])
+def test_a_view_output_set_must_match_the_plan(mutate, why):
+    j = views_job()
+    mutate(j)
+    with pytest.raises(JobError, match=why):
+        parse_job(j)
+
+
+def test_view_outputs_without_planned_views_are_refused():
+    j = job()
+    j["outputs"]["views"] = {"v": {"image": R2}}
+    with pytest.raises(JobError, match="plans no views"):
+        parse_job(j)
+
+
+VIEWS_SAMPLES = os.environ.get("HM_VIEWS_SAMPLES_DIR")
+EXT = {"image/jpeg": "jpg", "image/png": "png", "application/json": "json"}
+
+
+@pytest.fixture(scope="module")
+def built_views():
+    if blender_path() is None:
+        pytest.skip("Blender is not installed here")
+    tr = FakeTransfer()
+    stages: list[str] = []
+    out = pipeline_mod.run_job(parse_job(views_job()), {**tools(), "gltf_transform": None}, tr, progress=stages.append)
+    by_url = {p[0]: p for p in tr.puts}
+    if VIEWS_SAMPLES:
+        d = Path(VIEWS_SAMPLES)
+        d.mkdir(parents=True, exist_ok=True)
+        for url, (_, _, ctype, data) in by_url.items():
+            (d / (url.split("&")[-1] + "." + EXT[ctype])).write_bytes(data)
+        (d / "build-report.json").write_text(json.dumps({"views": out["outputs"]["views"], "build": out["build"].get("views"), "timings": out["build"].get("timings")}, indent=1))
+    return out, by_url, stages
+
+
+def _put(by_url: dict, vid: str, what: str) -> bytes:
+    return by_url[R2 + f"&{vid}-{what}"][3]
+
+
+@needs_blender
+def test_every_planned_view_is_rendered_opaque_at_its_size_with_its_object_map(built_views):
+    out, by_url, stages = built_views
+    assert stages.count("RENDERING") == 2, stages
+    views = out["outputs"]["views"]
+    assert set(views) == {"v-master", "v-living"}
+    for v in views_spec()["views"]:
+        o = views[v["id"]]
+        assert o["ok"] is True, o
+        jpg = Image.open(io.BytesIO(_put(by_url, v["id"], "image")))
+        assert jpg.format == "JPEG" and jpg.size == (v["width"], v["height"]) and o["image"]["width"] == v["width"]
+        assert o["image"]["bytes"] == len(_put(by_url, v["id"], "image")) and o["image"]["quality"] >= 88
+        px = list(jpg.convert("L").getdata())
+        mean = sum(px) / len(px)
+        assert sum((q - mean) ** 2 for q in px) / len(px) > 50, "a picture of the home, not an empty frame"
+        ids = Image.open(io.BytesIO(_put(by_url, v["id"], "ids")))
+        assert ids.format == "PNG" and ids.size == (v["width"], v["height"]) and ids.mode == "RGB"
+        assert o["ms"] > 0 and o["idMs"] > 0
+    assert out["build"]["views"]["v-master"]["unmatchedPixels"] == 0
+
+
+@needs_blender
+def test_the_id_picture_holds_exactly_the_legend_s_colours(built_views):
+    _, by_url, _ = built_views
+    for vid in ("v-master", "v-living"):
+        ids = Image.open(io.BytesIO(_put(by_url, vid, "ids"))).convert("RGB")
+        legend = json.loads(_put(by_url, vid, "legend"))
+        assert legend["width"] == ids.size[0] and legend["height"] == ids.size[1]
+        counts = {f"#{r:02x}{g:02x}{b:02x}": n for n, (r, g, b) in ids.getcolors(1 << 20)}
+        legend_colours = [e["color"] for e in legend["entries"]]
+        assert len(legend_colours) == len(set(legend_colours)), "no two targets share a colour"
+        assert set(counts) - {"#000000"} == set(legend_colours), "no blended colours: every pixel is one target's"
+        assert sum(e["coverage"] for e in legend["entries"]) <= 1.0 + 1e-6
+        total = ids.size[0] * ids.size[1]
+        for e in legend["entries"]:
+            assert abs(e["coverage"] - counts[e["color"]] / total) < 1e-5
+            x0, y0, x1, y1 = e["box"]
+            assert 0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1
+        assert {e["kind"] for e in legend["entries"]} <= {"OBJECT", "FLOOR", "WALL", "CEILING", "STAIRS", "DOOR", "WINDOW", "OTHER"}
+
+
+@needs_blender
+def test_the_dollhouse_map_names_the_pieces_floors_and_wall_faces_by_their_spec_ids(built_views):
+    _, by_url, _ = built_views
+    s = views_spec()
+    legend = json.loads(_put(by_url, "v-master", "legend"))
+    by_kind: dict = {}
+    for e in legend["entries"]:
+        by_kind.setdefault(e["kind"], {})[e["id"]] = e
+    spec_ids = {o["id"] for o in s["objects"]}
+    assert set(by_kind["OBJECT"]) <= spec_ids
+    # From above with the ceilings off and the walls cut, every piece of a real footprint is in sight.
+    big = {o["id"] for o in s["objects"] if o["size"]["w"] * o["size"]["d"] >= 0.3}
+    assert big <= set(by_kind["OBJECT"]), sorted(big - set(by_kind["OBJECT"]))
+    assert by_kind["OBJECT"]["rc-9-bed1x"]["roomId"] == "r-bed1"
+    assert set(by_kind["FLOOR"]) == {r["floor"] for r in s["rooms"]}, "every room's floor"
+    assert "CEILING" not in by_kind, "ceilings are hidden in a dollhouse"
+    faces = {f["surface"] for w in s["walls"] for f in w["faces"]}
+    walls = set(by_kind["WALL"])
+    assert walls <= faces and len(walls) >= 6, walls
+    assert all(by_kind["WALL"][sid]["roomId"] == sid.rsplit(":", 1)[-1] for sid in walls)
+    # One wall, several rooms: each room's face segment of it is its own region.
+    assert any(len({f["surface"] for f in w["faces"] if f["side"] == side} & walls) >= 2 for w in s["walls"] for side in ("L", "R")), walls
+    assert "WINDOW" in by_kind or "DOOR" in by_kind
+
+
+@needs_blender
+def test_a_room_view_keeps_its_ceiling_and_full_height_walls(built_views):
+    _, by_url, _ = built_views
+    legend = json.loads(_put(by_url, "v-living", "legend"))
+    kinds = {e["kind"] for e in legend["entries"]}
+    ids = {e["id"] for e in legend["entries"]}
+    assert "ceiling:r-living" in ids and "floor:r-living" in ids
+    assert "WALL" in kinds and "OBJECT" in kinds
+    assert sum(e["coverage"] for e in legend["entries"] if e["kind"] == "WALL") > 0.1, "an eye-level room picture is mostly walls"
+
+
+@needs_blender
+def test_a_spec_without_views_builds_exactly_as_before(built):
+    out, _ = built
+    assert "views" not in out["outputs"] and "views" not in out["build"]
+
+
+# ── F. the views' look (render-only) ─────────────────────────────────
+
+def _mask(ids: Image.Image, colours: set[str]) -> list[bool]:
+    return [f"#{r:02x}{g:02x}{b:02x}" in colours for (r, g, b) in ids.convert("RGB").getdata()]
+
+
+@needs_blender
+def test_a_room_view_is_exposed_on_its_walls_and_reads_bright(built_views):
+    out, by_url, _ = built_views
+    rep = out["build"]["views"]["v-living"]
+    assert rep["exposure"]["on"] == "walls" and -2.0 <= rep["exposure"]["ev"] <= 4.0, rep["exposure"]
+    assert out["build"]["views"]["v-master"]["exposure"]["on"] == "fixed"
+    legend = json.loads(_put(by_url, "v-living", "legend"))
+    walls = {e["color"] for e in legend["entries"] if e["kind"] == "WALL"}
+    ids = Image.open(io.BytesIO(_put(by_url, "v-living", "ids")))
+    grey = list(Image.open(io.BytesIO(_put(by_url, "v-living", "image"))).convert("L").getdata())
+    wall_px = [g for g, m in zip(grey, _mask(ids, walls)) if m]
+    mean = sum(wall_px) / len(wall_px)
+    assert 140 <= mean <= 235, f"white walls by day read light, not dim and not blown out ({mean:.0f})"
+
+
+@needs_blender
+def test_catalogue_maps_are_worn_in_a_view_and_the_look_never_reaches_an_export():
+    s = views_spec()
+    s["views"] = [dict(s["views"][0], width=420, height=300, samples=8)]
+    s["outputs"] = {"render": False, "scene": True, "objects": False}
+    mid = "mat-check"
+    s["materials"].append({"id": mid, "baseColor": "#808080", "roughness": 0.6, "metalness": 0.0, "tileM": [0.8, 0.8], "rotationDeg": 0, "normalScale": 1.0})
+    floor = next(r for r in s["rooms"] if r["id"] == "r-living")["floor"]
+    for sf in s["surfaces"]:
+        if sf["id"] == floor:
+            sf["material"] = mid
+            sf["tint"] = None
+    chk = Image.new("RGB", (64, 64))
+    chk.putdata([(30, 30, 30) if ((x // 32) + (y // 32)) % 2 else (235, 235, 235) for y in range(64) for x in range(64)])
+    buf = io.BytesIO()
+    chk.save(buf, "PNG")
+    j = views_job(s)
+    j["inputs"]["textures"] = {mid: {"albedo": R2 + "&albedo", "normal": None, "orm": None}}
+    j["outputs"]["scene"] = {"DESKTOP": R2 + "&d", "MOBILE": R2 + "&m"}
+    tr = FakeTransfer({R2 + "&albedo": buf.getvalue()})
+    out = pipeline_mod.run_job(parse_job(j), {**tools(), "gltf_transform": None}, tr)
+    by_url = {p[0]: p for p in tr.puts}
+    legend = json.loads(_put(by_url, "v-master", "legend"))
+    ids = Image.open(io.BytesIO(_put(by_url, "v-master", "ids")))
+    grey = list(Image.open(io.BytesIO(_put(by_url, "v-master", "image"))).convert("L").getdata())
+
+    def spread(surface: str) -> float:
+        colour = next(e["color"] for e in legend["entries"] if e["id"] == surface)
+        px = [g for g, m in zip(grey, _mask(ids, {colour})) if m]
+        mean = sum(px) / len(px)
+        return (sum((p - mean) ** 2 for p in px) / len(px)) ** 0.5
+
+    plain_floor = next(r for r in s["rooms"] if r["id"] == "r-bed1")["floor"]
+    assert spread(floor) > 2 * spread(plain_floor) and spread(floor) > 15, "the checker map is on the living floor in the view"
+    gl = _glb_from(tr, "model/gltf-binary")
+    names = {m.get("name", "") for m in gl.get("materials", [])} | {n.get("name", "") for n in gl["nodes"]}
+    assert not any(x.startswith(("look:", "wall-cap", "portal", "studio-ground", "hm-id:", "view-camera")) for x in names), sorted(names)
+    assert not any(n.startswith("wall:") and n.endswith(".001") for n in names), "a view's walls are gone before the export"
+    assert out["outputs"]["views"]["v-master"]["ok"] is True

@@ -40,6 +40,16 @@ const PROVIDER = 'runpod';
 const MAX_RENDER_BYTES = 2 * 1024 * 1024;
 const MAX_SCENE_BYTES = 100 * 1024 * 1024;
 const MAX_PIECE_BYTES = 12 * 1024 * 1024;
+/** A planned view (spec.views): its picture (JPEG), id image (PNG) and legend (JSON) — worker schema.py limits. */
+const MAX_VIEW_BYTES = 6 * 1024 * 1024;
+const MAX_VIEW_IDS_BYTES = 8 * 1024 * 1024;
+const MAX_VIEW_LEGEND_BYTES = 1024 * 1024;
+const VIEW_ROLES = ['VIEW', 'VIEW_IDS', 'VIEW_LEGEND'] as const;
+type ViewRole = typeof VIEW_ROLES[number];
+const isViewRole = (r: unknown): r is ViewRole => (VIEW_ROLES as readonly unknown[]).includes(r);
+const VIEW_PART: Record<ViewRole, 'image' | 'ids' | 'legend'> = { VIEW: 'image', VIEW_IDS: 'ids', VIEW_LEGEND: 'legend' };
+const VIEW_EXT: Record<ViewRole, string> = { VIEW: 'jpg', VIEW_IDS: 'png', VIEW_LEGEND: 'json' };
+const MAP_KINDS = new Set(['OBJECT', 'FLOOR', 'WALL', 'CEILING', 'STAIRS', 'DOOR', 'WINDOW', 'OTHER']);
 /** Factory passes one account may start per hour (a runaway client, not a price). */
 const HOURLY_JOBS = 30;
 /** Catalogue files the worker may read: public or licensed delivery classes only. */
@@ -66,7 +76,7 @@ async function signed(method: 'GET' | 'PUT', key: string): Promise<string> {
   return url;
 }
 
-async function callerOf(req: Request) {
+export async function callerOf(req: Request) {
   const authHeader = req.headers.get('Authorization') ?? '';
   if (!authHeader) return { error: json({ error: 'UNAUTHENTICATED' }, 401) };
   const caller = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, { global: { headers: { Authorization: authHeader } } });
@@ -98,7 +108,12 @@ function mapsOf(pbr: Row): { albedo: string; normal: string | null; orm: string 
   return null;
 }
 
-export async function handleFactory(req: Request): Promise<Response> {
+/**
+ * `billedBy: 'RENDER'` — called by render-start, which has already confirmed and
+ * reserved the customer's money for this pass (renders.ts): the "billing is on,
+ * confirmation required" refusal does not apply to it.
+ */
+export async function handleFactory(req: Request, opts: { billedBy?: 'RENDER' } = {}): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   const ctx = await callerOf(req);
   if ('error' in ctx) return ctx.error!;
@@ -126,7 +141,7 @@ export async function handleFactory(req: Request): Promise<Response> {
     if (!v || v.project_id !== project.id) return json({ error: 'NOT_FOUND' }, 404);
   }
   const { data: billingOn } = await admin.rpc('billing_setting_bool', { p_key: 'design_studio_billing_enabled', p_default: false });
-  if (billingOn === true) return json({ error: 'BILLING_CONFIRMATION_REQUIRED' }, 409);
+  if (billingOn === true && opts.billedBy !== 'RENDER') return json({ error: 'BILLING_CONFIRMATION_REQUIRED' }, 409);
 
   // Idempotent: the same spec at the same pass is the same job (a retry never pays twice).
   const specSha = await sha256Hex(canonicalJson(spec));
@@ -172,9 +187,11 @@ export async function handleFactory(req: Request): Promise<Response> {
 
   const base = `users/${actorId}`;
   const rows: Row[] = [];
-  const add = (role: 'RENDER' | 'SCENE' | 'PIECE', tier: string, group: string | null) => {
+  const add = (role: 'RENDER' | 'SCENE' | 'PIECE' | ViewRole, tier: string, group: string | null) => {
     const id = crypto.randomUUID();
-    const key = role === 'RENDER' ? `${base}/design-studio-thumbnails/${project.id}/${id}.jpg` : `${base}/design-studio-models/${project.id}/${id}.glb`;
+    const key = role === 'RENDER' ? `${base}/design-studio-thumbnails/${project.id}/${id}.jpg`
+      : isViewRole(role) ? `${base}/design-studio-thumbnails/${project.id}/${id}.${VIEW_EXT[role]}`
+      : `${base}/design-studio-models/${project.id}/${id}.glb`;
     rows.push({ id, project_id: project.id, user_id: actorId, job_id: job.id, role, tier, group_key: group, object_key: key, provider: PROVIDER, state: 'PENDING' });
     return key;
   };
@@ -185,11 +202,22 @@ export async function handleFactory(req: Request): Promise<Response> {
     outputs.objects = {};
     for (const g of new Set(spec.objects.filter((o) => o.runtime && o.group).map((o) => o.group as string))) outputs.objects[g] = await signed('PUT', add('PIECE', 'RUNTIME', g));
   }
+  if (spec.views?.length) {
+    // Every planned view: its picture, and (with an object map) the id image and legend, keyed by the view's id.
+    outputs.views = {};
+    for (const v of spec.views) {
+      outputs.views[v.id] = {
+        image: await signed('PUT', add('VIEW', 'VIEW', v.id)),
+        ids: v.objectMap ? await signed('PUT', add('VIEW_IDS', 'VIEW', v.id)) : null,
+        legend: v.objectMap ? await signed('PUT', add('VIEW_LEGEND', 'VIEW', v.id)) : null,
+      };
+    }
+  }
   if (rows.length) await admin.from('ds_factory_assets').insert(rows);
 
   const input = {
     jobId: job.id, spec, inputs: { textures, models }, outputs,
-    limits: { deadlineS: 900, textureSize: { DESKTOP: 2048, MOBILE: 1024 }, objectTextureSize: 1024, device: 'AUTO' },
+    limits: { deadlineS: spec.views?.length ? 1800 : 900, textureSize: { DESKTOP: 2048, MOBILE: 1024 }, objectTextureSize: 1024, device: 'AUTO' },
   };
   const r = await fetch(`https://api.runpod.ai/v2/${gpu.endpoint}/run`, {
     method: 'POST', headers: { authorization: `Bearer ${gpu.key}`, 'content-type': 'application/json' }, body: JSON.stringify({ input }),
@@ -205,6 +233,33 @@ export async function handleFactory(req: Request): Promise<Response> {
 }
 
 const isJpeg = (b: Uint8Array) => b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
+const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+const isPng = (b: Uint8Array) => b.length > 8 && PNG_MAGIC.every((x, i) => b[i] === x);
+const LEGEND_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$/;
+
+/**
+ * A view's legend as the worker wrote it (renders/contract.ts ObjectMap), or null: the id image's own
+ * size, and every entry a target of a known kind with a unique #rrggbb colour, its coverage and a box
+ * inside the picture; coverage sums to at most the whole picture.
+ */
+export function readLegend(bytes: Uint8Array, width: number | null, height: number | null): { width: number; height: number; entries: number } | null {
+  let raw: Row;
+  try { raw = JSON.parse(new TextDecoder().decode(bytes)); } catch { return null; }
+  if (!raw || typeof raw !== 'object' || !Number.isInteger(raw.width) || !Number.isInteger(raw.height) || !Array.isArray(raw.entries) || raw.entries.length > 4000) return null;
+  if ((width != null && raw.width !== width) || (height != null && raw.height !== height)) return null;
+  const unit = (x: unknown) => typeof x === 'number' && Number.isFinite(x) && x >= 0 && x <= 1;
+  const colours = new Set<string>();
+  let total = 0;
+  for (const e of raw.entries) {
+    if (!e || typeof e.color !== 'string' || !/^#[0-9a-f]{6}$/.test(e.color) || e.color === '#000000' || colours.has(e.color)) return null;
+    if (!MAP_KINDS.has(e.kind) || typeof e.id !== 'string' || !LEGEND_ID.test(e.id)) return null;
+    if (e.roomId != null && (typeof e.roomId !== 'string' || !LEGEND_ID.test(e.roomId))) return null;
+    if (!unit(e.coverage) || !Array.isArray(e.box) || e.box.length !== 4 || !e.box.every(unit)) return null;
+    colours.add(e.color);
+    total += e.coverage;
+  }
+  return total <= 1 + 1e-4 ? { width: raw.width, height: raw.height, entries: raw.entries.length } : null;
+}
 
 /** What the client may use: each output's effective asset (a deduplicated one points at the copy that is kept). */
 async function resolved(admin: Row, jobId: string) {
@@ -218,10 +273,17 @@ async function resolved(admin: Row, jobId: string) {
     const use = twin && twin.state === 'READY' ? twin : a.state === 'READY' ? a : null;
     return use ? { assetId: use.id, key: use.object_key, sha256: use.sha256, bytes: use.bytes } : null;
   };
+  const views: Record<string, { image: Row; ids: Row; legend: Row }> = {};
+  for (const a of rows.filter((x) => isViewRole(x.role))) {
+    const v = views[a.group_key] ?? (views[a.group_key] = { image: null, ids: null, legend: null });
+    v[VIEW_PART[a.role as ViewRole]] = eff(a);
+  }
   return {
     render: rows.filter((a) => a.role === 'RENDER').map(eff)[0] ?? null,
     scene: Object.fromEntries(rows.filter((a) => a.role === 'SCENE').map((a) => [a.tier, eff(a)])),
     pieces: Object.fromEntries(rows.filter((a) => a.role === 'PIECE').map((a) => [a.group_key, eff(a)])),
+    // Only when the pass planned views: a status without them is exactly what it was.
+    ...(Object.keys(views).length ? { views } : {}),
   };
 }
 
@@ -293,7 +355,10 @@ export async function handleFactoryStatus(req: Request): Promise<Response> {
   };
   const desktopId = pending.find((a) => a.role === 'SCENE' && a.tier === 'DESKTOP')?.id ?? null;
   for (const a of pending) {
-    const o: Row = a.role === 'RENDER' ? out.outputs?.render : a.role === 'SCENE' ? out.outputs?.scene?.[a.tier] : out.outputs?.objects?.[a.group_key];
+    // A view reports its three files together; a view that did not render ({ ok: false }) fails all three.
+    const view: Row = isViewRole(a.role) ? out.outputs?.views?.[a.group_key] : null;
+    const o: Row = a.role === 'RENDER' ? out.outputs?.render : a.role === 'SCENE' ? out.outputs?.scene?.[a.tier]
+      : isViewRole(a.role) ? (view && view.ok !== false ? view[VIEW_PART[a.role]] : view) : out.outputs?.objects?.[a.group_key];
     if (a.role === 'SCENE' && o?.sameAs === 'DESKTOP' && desktopId) {
       // Identical tiers: one file, the other row points at it.
       await deleteObject(a.object_key).catch(() => null);
@@ -301,7 +366,8 @@ export async function handleFactoryStatus(req: Request): Promise<Response> {
       continue;
     }
     if (!o || o.ok === false || !o.sha256) { await fail(a, o?.error ?? 'NOT_BUILT'); continue; }
-    const limit = a.role === 'RENDER' ? MAX_RENDER_BYTES : a.role === 'SCENE' ? MAX_SCENE_BYTES : MAX_PIECE_BYTES;
+    const limit = a.role === 'RENDER' ? MAX_RENDER_BYTES : a.role === 'SCENE' ? MAX_SCENE_BYTES : a.role === 'VIEW' ? MAX_VIEW_BYTES
+      : a.role === 'VIEW_IDS' ? MAX_VIEW_IDS_BYTES : a.role === 'VIEW_LEGEND' ? MAX_VIEW_LEGEND_BYTES : MAX_PIECE_BYTES;
     // Re-read what arrived: size, hash, and a full inspection, before anything uses it.
     const head = await headObject(a.object_key);
     if (!head.exists || !head.size || head.size > limit || head.size !== o.bytes) { await fail(a, 'SIZE'); continue; }
@@ -311,6 +377,17 @@ export async function handleFactoryStatus(req: Request): Promise<Response> {
     if (a.role === 'RENDER') {
       if (!isJpeg(bytes)) { await fail(a, 'NOT_JPEG'); continue; }
       await keep(a, bytes, sha, { width: o.width ?? null, height: o.height ?? null });
+      continue;
+    }
+    if (a.role === 'VIEW' || a.role === 'VIEW_IDS') {
+      if (a.role === 'VIEW' ? !isJpeg(bytes) : !isPng(bytes)) { await fail(a, a.role === 'VIEW' ? 'NOT_JPEG' : 'NOT_PNG'); continue; }
+      await keep(a, bytes, sha, { width: o.width ?? null, height: o.height ?? null, ms: (a.role === 'VIEW' ? view?.ms : view?.idMs) ?? null });
+      continue;
+    }
+    if (a.role === 'VIEW_LEGEND') {
+      const legend = readLegend(bytes, view?.ids?.width ?? null, view?.ids?.height ?? null);
+      if (!legend) { await fail(a, 'BAD_LEGEND'); continue; }
+      await keep(a, bytes, sha, legend);
       continue;
     }
     const inspected = inspectModel(bytes);

@@ -65,6 +65,9 @@ import { ShareDialog } from './ShareDialog';
 import { DownloadDialog } from './DownloadDialog';
 import { FactoryBuildDialog } from './FactoryBuildDialog';
 import { pictureStill, ReferencePanel, useReconstructionFor } from './ReferencePanel';
+import { PlanComparePanel, usePlanFor } from '../planToHome/PlanComparePanel';
+import { REJECTION_KEY } from '@/lib/designStudio/rejectionKeys';
+import { latestFlow, saveFlow } from '@/services/designStudio/planToHome';
 import { download } from './exportRender';
 import { fileSlug } from '@/lib/designStudio/exportFiles';
 
@@ -122,16 +125,6 @@ const TOOL_BUTTON =
 /** Below lg the panels are sheets; above it they are columns and a sheet must never open. */
 const isPhoneLayout = () => typeof window !== 'undefined' && !!window.matchMedia?.('(max-width: 1023px)').matches;
 
-const REJECTION_KEY: Record<string, string> = {
-  PLACEMENT_BLOCKED: 'ds_reject_op_placement',
-  OBJECT_LOCKED: 'ds_reject_op_kept',
-  CATEGORY_LOCKED: 'ds_reject_op_category_locked',
-  UNKNOWN_ASSET: 'ds_reject_op_asset',
-  INACTIVE_ASSET: 'ds_reject_op_asset',
-  MATERIAL_NOT_FOR_SURFACE: 'ds_reject_op_material',
-  TOO_MANY_OBJECTS: 'ds_reject_op_too_many',
-  NOT_ALLOWED_FOR_ASSET: 'ds_reject_op_not_allowed',
-};
 
 /** Loads the version's design state and the catalogue, then hands over to the editor. */
 export function DesignWorkspace(props: DesignWorkspaceProps) {
@@ -691,6 +684,9 @@ function Editor({
   // The pictures this design was read from (if it was): shown on request, never over the whole view.
   const reference = useReconstructionFor(bundle.project.id, source);
   const [referenceOpen, setReferenceOpen] = useState(false);
+  const [planOpen, setPlanOpen] = useState(false);
+  const ownPlan = usePlanFor(source.kind === 'FLOORPLAN_SCENE' ? source.floorplan_id : null);
+  const planShown = !!ownPlan?.interpretation && ownPlan.purpose !== 'REFERENCE';
   const [walkRoom, setWalkRoom] = useState<string | null>(null);
   const [canvasReady, setCanvasReady] = useState(false);
   const walkModel = useRef<ReturnType<typeof buildWalkModel> | null>(null);
@@ -750,6 +746,18 @@ function Editor({
     autoWalked.current = true;
     enterWalk(null);
   }, [startWalkthrough, canvasReady, space, enterWalk]);
+
+  /* Plan-to-home instrumentation: how long the customer waited for an interactive home, once per plan. */
+  const mountedAt = useRef(performance.now());
+  const measured = useRef(false);
+  useEffect(() => {
+    if (!canvasReady || measured.current || !ownPlan) return;
+    const flow = latestFlow(ownPlan);
+    if (!flow || flow.timings?.firstInteractiveMs != null) return;
+    measured.current = true;
+    const ms = Math.round(performance.now() - mountedAt.current);
+    void saveFlow(ownPlan.id, { timings: { ...(flow.timings ?? {}), firstInteractiveMs: ms, firstWalkthroughMs: ms } }).catch(() => {});
+  }, [canvasReady, ownPlan]);
 
   const onPick = useCallback((target: PickTarget | null) => {
     if (controllerRef.current?.walking) return;
@@ -1062,6 +1070,11 @@ function Editor({
           <button type="button" className={cn(TOOL_BUTTON, 'hidden md:inline-flex')} disabled={!activeRoomId} onClick={() => activeRoomId && focusRoom(activeRoomId)} aria-label={t('ds_view_room')}>
             <Scan className="h-4 w-4" aria-hidden="true" /><span className="hidden 2xl:inline">{t('ds_view_room')}</span>
           </button>
+          {planShown ? (
+            <button type="button" className={TOOL_BUTTON} aria-pressed={planOpen} onClick={() => setPlanOpen((v) => !v)} aria-label={t('p2h_compare_button')} title={t('p2h_compare_button')} data-testid="ds-plan-compare">
+              <SquareDashed className="h-4 w-4" aria-hidden="true" /><span className="hidden xl:inline">{t('p2h_compare_button')}</span>
+            </button>
+          ) : null}
           {reference ? (
             <button type="button" className={TOOL_BUTTON} disabled={walking} aria-pressed={referenceOpen} onClick={() => setReferenceOpen((v) => !v)} aria-label={t('ds_recon_reference')} title={t('ds_recon_reference')} data-testid="ds-reference">
               <ImageIcon className="h-4 w-4" aria-hidden="true" /><span className="hidden xl:inline">{t('ds_recon_reference')}</span>
@@ -1157,6 +1170,13 @@ function Editor({
                   <span className="hidden lg:inline">{t('ds_walk_photo')}</span>
                   <span className="sr-only lg:hidden">{t('ds_walk_photo')}</span>
                 </button>
+                {planShown ? (
+                  <button type="button" onClick={() => setPlanOpen((v) => !v)} aria-pressed={planOpen} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px] font-medium text-white/85 ring-1 ring-white/20 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]" data-testid="walk-plan-compare">
+                    <SquareDashed className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span className="hidden lg:inline">{t('p2h_compare_button')}</span>
+                    <span className="sr-only lg:hidden">{t('p2h_compare_button')}</span>
+                  </button>
+                ) : null}
                 <button type="button" onClick={() => setShareOpen('WALKTHROUGH')} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px] font-medium text-white/85 ring-1 ring-white/20 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]">
                   <Share2 className="h-3.5 w-3.5" aria-hidden="true" />
                   <span className="hidden lg:inline">{t('ds_share_walkthrough')}</span>
@@ -1171,6 +1191,7 @@ function Editor({
               onExit={exitWalk}
             />
           ) : null}
+          {planShown && planOpen && ownPlan ? <PlanComparePanel plan={ownPlan} dark={walking} onClose={() => setPlanOpen(false)} /> : null}
           {reference && referenceOpen && !walking ? (
             <ReferencePanel data={reference} source={source} controller={controllerRef.current} onClose={() => setReferenceOpen(false)} />
           ) : null}

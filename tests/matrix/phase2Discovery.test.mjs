@@ -151,7 +151,8 @@ test('reposts collapse: results and the delivery count are per property (entity)
 });
 
 test('the outside-search panel shows only real server state and never a provider, cost or raw error', () => {
-  const panel = read('src/components/matching/OutsideSearchPanel.tsx');
+  const panel = read('src/components/matching/OutsideSearchPanel.tsx')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   assert.match(panel, /latestOutsideRun\(id\)/, 'the run is read from the server, so a refresh keeps it');
   assert.match(panel, /setInterval\(\(\) => \{ void refresh\(\); \}, 5000\)/);
   assert.match(panel, /productCode="FIND_PROPERTY"/);

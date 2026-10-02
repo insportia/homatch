@@ -37,7 +37,7 @@ import {
   angleDiff, angleOf, bboxOf, boxPoly, centroid, dist, dropCollinear, frame, interiorPoint, lerp, lineDist, lineIntersection,
   median, medianExtents, pointInPoly, polyArea, projT, round1, roundPt, segDist, squareRing, weightedMedian,
 } from './geom.ts';
-import { detectTreads, runsOf, scanWall, snapWall, type Raster, type Run } from './raster.ts';
+import { detectTreads, runsOf, scanWall, snapWall, swingEvidence, type Raster, type Run } from './raster.ts';
 import { buildGrid, componentCells, forEachCellIn, freeCellNear, labelComponents, outline, paintPolygon, type CellBox, type Grid } from './regions.ts';
 import { parseDimension } from './dimensions.ts';
 import { OUTDOOR_KINDS, settleKind } from './roomKinds.ts';
@@ -233,8 +233,37 @@ function joinEnds(ws: WW[], maxSnapPx: number): void {
   }
 }
 
-/** Carry a dangling end across a door-sized gap to the wall it points at. Returns true when it did. */
-function bridgeEnd(a: WW, endIdx: 0 | 1, ws: WW[], minPx: number, maxPx: number): boolean {
+/** Distance from p to the nearest side of a polygon. */
+function boundaryDist(p: Pt, poly: Pt[]): number {
+  let d = Infinity;
+  for (let i = 0; i < poly.length; i += 1) d = Math.min(d, segDist(p, poly[i], poly[(i + 1) % poly.length]));
+  return d;
+}
+
+/** True when a→b runs through a room's inside (not along one of its sides). */
+function crossesRoom(a: Pt, b: Pt, rooms: Pt[][], clearPx: number): boolean {
+  for (const poly of rooms) {
+    if (poly.length < 3) continue;
+    let deep = 0;
+    let n = 0;
+    for (let k = 1; k < 10; k += 1) {
+      const p = lerp(a, b, k / 10);
+      n += 1;
+      if (pointInPoly(p, poly) && boundaryDist(p, poly) > clearPx) deep += 1;
+    }
+    if (deep / n >= 0.3) return true;
+  }
+  return false;
+}
+
+/**
+ * Carry a dangling end across a door-sized gap to the wall it points at
+ * (that gap is a doorway). Only when the gap looks like one: never through
+ * a room's inside (a wall the reading ended short on purpose, inside a small
+ * bathroom, is not carried through it), and with a door's swing drawn in
+ * the gap. Returns true when it did.
+ */
+function bridgeEnd(a: WW, endIdx: 0 | 1, ws: WW[], minPx: number, maxPx: number, ctx: { r: Raster; rooms: Pt[][]; T: number }): boolean {
   const P = endIdx === 0 ? a.w.start : a.w.end;
   const Q = endIdx === 0 ? a.w.end : a.w.start;
   const { u } = frame(Q, P);
@@ -250,7 +279,15 @@ function bridgeEnd(a: WW, endIdx: 0 | 1, ws: WW[], minPx: number, maxPx: number)
     const s = (X.x - P.x) * u.x + (X.y - P.y) * u.y;
     const clear = s - b.T / 2;
     if (clear < minPx || clear > maxPx) continue;
-    if (!best || s < best.s) best = { X, s };
+    if (best && s >= best.s) continue;
+    const face = { x: P.x + u.x * clear, y: P.y + u.y * clear };
+    // A doorway shows its door's swing. A wall the reading ended short of
+    // another on purpose (inside a small bathroom) has none there, and is not
+    // carried through the room; only an unmistakable swing outweighs a
+    // reading's room outline (outlines are sketched).
+    const swing = swingEvidence(ctx.r, P, face);
+    if (swing < (crossesRoom(P, face, ctx.rooms, Math.max(ctx.T, a.T)) ? 0.75 : 0.45)) continue;
+    best = { X, s };
   }
   if (!best) return false;
   if (endIdx === 0) a.w.start = best.X; else a.w.end = best.X;
@@ -303,6 +340,11 @@ export function fuse(input: FuseInput): FuseResult {
   const newId = (prefix: string) => { let k = 1; while (ids.has(`hm-${prefix}${k}`)) k += 1; const id = `hm-${prefix}${k}`; ids.add(id); return id; };
 
   // ── 1. Rooms: kinds from labels; printed sizes; outdoor spaces apart ────
+  // A room listed twice (as a room and as a balcony) is one room.
+  const seenRoom = new Set<string>();
+  const once = (rm: Room) => (seenRoom.has(rm.id) ? false : (seenRoom.add(rm.id), true));
+  doc.rooms = doc.rooms.filter(once);
+  doc.balconies = doc.balconies.filter(once);
   for (const room of [...doc.rooms, ...doc.balconies]) {
     let text = room.dimensionText ?? null;
     let source: 'READING' | 'EVIDENCE' = 'READING';
@@ -357,6 +399,13 @@ export function fuse(input: FuseInput): FuseResult {
     ws.forEach((x, i) => {
       let s = first[i];
       if (s && T0 && Math.abs(s.thicknessPx - T0) / T0 > 0.35) s = snapOne(x, T0) ?? s;
+      if (!s || s.strength < 0.1) {
+        // A wall that is mostly doorways (a wash's wall with two doors in
+        // it) has ink only at its ends: look along all of it, and accept a
+        // band of the drawing's own thickness.
+        const full = snapWall(r, x.w.start, x.w.end, { priorPx: T0 ?? x.w.thicknessPx, searchPx: Math.max(20, 2.5 * (T0 ?? 8)), maxThickPx: maxThick, fullSpan: true });
+        if (full && full.strength >= 0.1 && (!T0 || Math.abs(full.thicknessPx - T0) / T0 <= 0.35)) s = full;
+      }
       if (!s || s.strength < 0.1) { x.T = x.w.thicknessPx ?? T0 ?? 6; x.strength = 0; return; }
       x.w.start = s.start;
       x.w.end = s.end;
@@ -494,9 +543,10 @@ export function fuse(input: FuseInput): FuseResult {
       }
     }
     joinEnds(ws, maxSnap);
+    const bridgeCtx = { r, rooms: [...doc.rooms, ...doc.balconies].map((rm) => rm.polygon), T };
     for (const x of ws) {
       for (const endIdx of [0, 1] as const) {
-        if (!x.anchored[endIdx]) bridgeEnd(x, endIdx, ws, doorMinPx, doorMaxPx);
+        if (!x.anchored[endIdx]) bridgeEnd(x, endIdx, ws, doorMinPx, doorMaxPx, bridgeCtx);
       }
     }
     ws = mergeCollinear(ws, doorMaxPx, meta.mergedWalls);
@@ -543,13 +593,20 @@ export function fuse(input: FuseInput): FuseResult {
   // nearest, otherwise whichever nearby wall has an open gap right there
   // (a reading often names the neighbouring wall of a corner).
   const reachPx = m2px(0.3, 0.01);
-  const gapAt = (x: WW, c: Pt, widthPx: number) => {
+  // A door fits a gap of a door's width (a double or sliding leaf, wider);
+  // the stair side of a hall or an open arch is not a door.
+  const doorFits = (o: Opening, g: Gap) => g.widthPx <= (o.leaf === 'HINGED' || o.leaf === 'NONE' ? 1 : 1.6) * doorMaxPx;
+  const gapAt = (x: WW, c: Pt, o: Opening, type: 'DOOR' | 'WINDOW', named: WW | null) => {
     const L = wlen(x.w);
     const t = projT(c, x.w.start, x.w.end);
-    const slack = 0.5 * (widthPx / L);
-    return gaps.filter((gg) => gg.wallId === x.w.id && !claimed.has(gg) && t >= gg.t0 - slack && t <= gg.t1 + slack)
+    const slack = 0.5 * (o.widthPx / L);
+    return gaps.filter((gg) => gg.wallId === x.w.id && !claimed.has(gg) && t >= gg.t0 - slack && t <= gg.t1 + slack
+      // A door takes a glazed gap only on the wall it names (a glazed door), never a neighbour's window.
+      && (type === 'WINDOW' || ((gg.kind !== 'WINDOW' || x === named) && doorFits(o, gg))))
       .sort((p, q) => dist(p.center, c) - dist(q.center, c))[0] ?? null;
   };
+  // Centres the drawing does not show an opening at: settled after every centre had its chance.
+  const unconfirmed = new Map<string, { wall: WW; center: Pt }>();
   for (const { o, type } of openings) {
     if (!o.centerPx) continue;
     const c = o.centerPx;
@@ -559,7 +616,7 @@ export function fuse(input: FuseInput): FuseResult {
     let g: Gap | null = null;
     let bestScore = Infinity;
     for (const x of near) {
-      const gg = gapAt(x, c, o.widthPx);
+      const gg = gapAt(x, c, o, type, named);
       const score = segDist(c, x.w.start, x.w.end) - (x === named ? x.T / 2 : 0) - (gg ? 2 * reachPx : 0);
       if (score < bestScore) { bestScore = score; host = x; g = gg; }
     }
@@ -570,14 +627,32 @@ export function fuse(input: FuseInput): FuseResult {
       claimed.add(g);
       placed.set(o.id, { wall: host, center: g.center, widthPx: g.widthPx, source: 'CENTER', agree: (g.kind === 'WINDOW') === (type === 'WINDOW') ? 1 : 0.4 });
     } else {
-      placed.set(o.id, { wall: host, center: lerp(host.w.start, host.w.end, t), widthPx: o.widthPx, source: 'CENTER', agree: r ? 0.6 : 1 });
+      unconfirmed.set(o.id, { wall: host, center: lerp(host.w.start, host.w.end, t) });
+    }
+  }
+  // A centre with no gap where it points is usually a little off (a double
+  // door's centre on the leaves' shared post, a door read beside the wall it
+  // is in): the nearest free gap of its kind within about a door's width.
+  if (r) {
+    const farPx = m2px(0.8, 0.025);
+    for (const { o, type } of openings) {
+      if (!unconfirmed.has(o.id) || !o.centerPx) continue;
+      const c = o.centerPx;
+      const g = gaps
+        .filter((gg) => !claimed.has(gg) && dist(gg.center, c) <= Math.max(farPx, o.widthPx)
+          && (type === 'WINDOW' ? gg.kind === 'WINDOW' : gg.kind !== 'WINDOW' && doorFits(o, gg)))
+        .sort((p, q) => dist(p.center, c) - dist(q.center, c))[0];
+      if (!g) continue;
+      claimed.add(g);
+      unconfirmed.delete(o.id);
+      placed.set(o.id, { wall: wallById.get(g.wallId)!, center: g.center, widthPx: g.widthPx, source: 'CENTER', agree: 1 });
     }
   }
   // (b) The rest: matched to unclaimed gaps by wall, width, type and (when credible) position.
   if (r) {
     const cands: Array<{ id: string; g: Gap; cost: number }> = [];
     for (const { o, type } of openings) {
-      if (placed.has(o.id)) continue;
+      if (placed.has(o.id) || unconfirmed.has(o.id)) continue;
       const claimedWall = resolveWall(o.wallId);
       const modelWall = raw.walls.find((w) => w.id === o.wallId);
       for (const g of gaps) {
@@ -614,14 +689,22 @@ export function fuse(input: FuseInput): FuseResult {
         centerPx: roundPt(p.center), confidence: p.agree < 1 ? Math.min(o.confidence, 0.6) : o.confidence,
       };
     }
-    const host = resolveWall(o.wallId);
+    const u = unconfirmed.get(o.id);
+    const host = u ? u.wall : resolveWall(o.wallId);
     if (!host) return null;
     // The same opening read twice: an unplaced one beside a placed one of its type.
-    const nominal = lerp(host.w.start, host.w.end, clamp01(o.position));
+    const nominal = u ? o.centerPx! : lerp(host.w.start, host.w.end, clamp01(o.position));
     const twin = r ? [...placed.entries()].find(([id, p]) => isWindow(id) === isWindow(o.id) && dist(p.center, nominal) <= Math.max(pxPerM, o.widthPx)) : null;
     if (twin) {
       meta.droppedOpenings.push({ id: o.id, duplicateOf: twin[0] });
       return null;
+    }
+    if (u) {
+      // Where the reading drew it: the drawing neither shows it nor rules it out.
+      const t = clamp01(projT(u.center, host.w.start, host.w.end));
+      meta.openingSource[o.id] = 'CENTER';
+      meta.openingTypeAgreement[o.id] = r ? 0.6 : 1;
+      return { ...o, wallId: host.w.id, position: Math.round(t * 10000) / 10000, widthPx: round1(Math.min(o.widthPx, wlen(host.w) * 0.98)), centerPx: roundPt(u.center), confidence: r ? Math.min(o.confidence, 0.6) : o.confidence };
     }
     meta.openingSource[o.id] = 'MODEL';
     meta.openingTypeAgreement[o.id] = r ? 0.5 : 1;
@@ -630,10 +713,29 @@ export function fuse(input: FuseInput): FuseResult {
   };
   doc.doors = doc.doors.map(finish).filter(Boolean) as Opening[];
   doc.windows = doc.windows.map(finish).filter(Boolean) as Opening[];
-  // (c) Gaps nobody claimed are openings the reading missed.
+  // (c) Gaps nobody claimed are openings the reading missed — but only on
+  // strong evidence. A bare hole in a wall band is as often a drafting
+  // artefact (a T-junction's open face, a stub's end, a wall drawn past
+  // its corner) as a doorway, so a new door needs its swing drawn and a new
+  // window its glazing; neither is added at a junction, nor beside an
+  // opening the reading already has. A reading that drew every opening's
+  // centre has looked closely, so its silence weighs more.
+  const centred = openings.length > 0 && openings.every(({ o }) => !!o.centerPx);
+  const minSwing = centred ? 0.6 : 0.45;
+  const placedOpenings = [...doc.doors, ...doc.windows].filter((o) => o.centerPx);
+  const atJunction = (g: Gap) => ws.some((x) => x.w.id !== g.wallId
+    && angleDiff(wallAngle(x.w), wallAngle(wallById.get(g.wallId)!.w)) >= 30
+    && segDist(g.center, x.w.start, x.w.end) <= x.T / 2 + 1.5 * T);
   for (const g of gaps) {
     if (claimed.has(g)) continue;
     const isWindow = g.kind === 'WINDOW';
+    if (isWindow ? g.widthPx < doorMinPx : g.widthPx < doorMinPx || g.widthPx > doorMaxPx) continue;
+    if (atJunction(g)) continue;
+    if (placedOpenings.some((o) => dist(o.centerPx!, g.center) < (g.widthPx + o.widthPx) / 2)) continue;
+    if (!isWindow) {
+      const host = wallById.get(g.wallId)!.w;
+      if (swingEvidence(r!, lerp(host.start, host.end, g.t0), lerp(host.start, host.end, g.t1)) < minSwing) continue;
+    }
     const id = newId(isWindow ? 'win' : 'door');
     const o: Opening = {
       id, wallId: g.wallId, position: Math.round(((g.t0 + g.t1) / 2) * 10000) / 10000, widthPx: round1(g.widthPx),

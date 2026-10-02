@@ -191,7 +191,7 @@ export interface SnappedWall {
  * across the wall. Null when there is no band: the model drew a wall the ink
  * does not have.
  */
-export function snapWall(r: Raster, a: Pt, b: Pt, opts: { searchPx?: number; priorPx?: number | null; maxThickPx?: number } = {}): SnappedWall | null {
+export function snapWall(r: Raster, a: Pt, b: Pt, opts: { searchPx?: number; priorPx?: number | null; maxThickPx?: number; fullSpan?: boolean } = {}): SnappedWall | null {
   const f = r.factor;
   const A = { x: a.x / f, y: a.y / f };
   const B = { x: b.x / f, y: b.y / f };
@@ -201,8 +201,11 @@ export function snapWall(r: Raster, a: Pt, b: Pt, opts: { searchPx?: number; pri
   const maxT = Math.max(3, (opts.maxThickPx ?? 40) / f);
   const p = new Float64Array(2 * S + 1);
   let count = 0;
-  const s0 = len * 0.1;
-  const s1 = len * 0.9;
+  // The middle 80% by default (the ends are where crossing walls are). A
+  // wall that is mostly doorways has its ink only AT the ends, so `fullSpan`
+  // looks at all of it.
+  const s0 = opts.fullSpan ? 0 : len * 0.1;
+  const s1 = opts.fullSpan ? len : len * 0.9;
   const step = Math.max(1, (s1 - s0) / 400);
   for (let s = s0; s <= s1; s += step) {
     count += 1;
@@ -250,6 +253,48 @@ export function snapWall(r: Raster, a: Pt, b: Pt, opts: { searchPx?: number; pri
     shiftPx: mid,
     strength: Math.max(0, Math.min(1, score)),
   };
+}
+
+/**
+ * How much of a door's swing is inked across the gap a→b, 0–1. A hinged
+ * leaf is drawn as a quarter circle centred on one end of its opening with
+ * the opening's width as radius; this samples that arc for each of the four
+ * ways a leaf can hang (either end, either side) and returns the best. The
+ * arc's ends (near the wall line and near the drawn leaf) are left out, so
+ * neither the wall nor the leaf itself counts as a swing; ink inside the
+ * arc counts against it.
+ */
+export function swingEvidence(r: Raster, a: Pt, b: Pt): number {
+  const f = r.factor;
+  const { len: w, u, n } = frame(a, b);
+  if (w < 4 * f) return 0;
+  let best = 0;
+  const hinges: Array<[Pt, Pt]> = [[a, u], [b, { x: -u.x, y: -u.y }]];
+  for (const [H, dir] of hinges) {
+    for (const side of [1, -1]) {
+      let hit = 0;
+      let inside = 0;
+      let tot = 0;
+      const inked = (vx: number, vy: number, lo: number, hi: number) => {
+        for (let rr = lo; rr <= hi; rr += 0.75 * f) if (at(r, r.faint, (H.x + vx * rr) / f, (H.y + vy * rr) / f)) return true;
+        return false;
+      };
+      for (let deg = 12; deg <= 78; deg += 3) {
+        const th = (deg * Math.PI) / 180;
+        const vx = Math.cos(th) * dir.x + Math.sin(th) * side * n.x;
+        const vy = Math.cos(th) * dir.y + Math.sin(th) * side * n.y;
+        tot += 1;
+        // A leaf is a little shorter or longer than the measured gap.
+        if (inked(vx, vy, 0.78 * w, 1.1 * w)) hit += 1;
+        // The swept space inside the arc is clear: hatching, treads or a
+        // fill would "hit" any arc drawn through them.
+        if (inked(vx, vy, 0.35 * w, 0.6 * w)) inside += 1;
+      }
+      const score = tot ? (hit - inside) / tot : 0;
+      if (score > best) best = score;
+    }
+  }
+  return best;
 }
 
 export type BandState = 0 | 1 | 2; // 0 nothing, 1 wall, 2 window (glazing lines inside the band)

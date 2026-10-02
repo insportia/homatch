@@ -32,6 +32,7 @@ import { assetsByCode, listAssets, listMaterials } from './catalog';
 import { designFromPreferences } from './ai';
 import { quoteRender, saveDesignDna, startRenders } from './renders';
 import { planMasterView } from '@/lib/designStudio/renders/cameras';
+import { stableJson } from '@/lib/designStudio/stableJson';
 import { deriveDNA } from '@/lib/designStudio/renders/dna';
 import type { PropertyDesignDNA } from '@/lib/designStudio/renders/contract';
 import { factoryStatus, startFactory, visualQa } from './factory';
@@ -127,9 +128,15 @@ export interface GenerateResult {
 
 export type ArchitectureInput = Pick<GenerateInput, 'userId' | 'projectId' | 'plan' | 'doc' | 'decisions' | 'anchors' | 'calibration' | 'ceilingM' | 'ceilingSource' | 'versionName'> & { answers?: PlanAnswer[] };
 
-/** What the reviewed architecture depends on: a different review is a different building. */
-export function reviewKeyOf(input: Pick<ArchitectureInput, 'decisions' | 'anchors' | 'calibration' | 'ceilingM'> & { answers?: PlanAnswer[] }): string {
-  return JSON.stringify([input.answers ?? [], input.decisions, input.anchors, input.ceilingM, Math.round(input.calibration.metresPerPx * 1e9)]);
+/**
+ * The building itself, as a key: the sha-256 of the canonical scene HOMATCH would build from this review.
+ * Two reviews that build the same building are the same architecture (nothing is rebuilt); any change
+ * that moves a wall, a door or the scale is a different one.
+ */
+export async function architectureKey(canonical: CanonicalSpace): Promise<string> {
+  const text = stableJson({ scene: canonical.scene, metresPerPx: Math.round((canonical.metresPerPx ?? 0) * 1e9), state: canonical.geometryState });
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 /**
@@ -141,13 +148,13 @@ export function reviewKeyOf(input: Pick<ArchitectureInput, 'decisions' | 'anchor
 export async function prepareArchitecture(input: ArchitectureInput): Promise<{ sourceId: string; originalId: string; canonical: CanonicalSpace; space: ReturnType<typeof buildSpaceModel> }> {
   const plan = (await getFloorPlan(input.plan.id)) ?? input.plan;
   const flow = latestFlow(plan);
-  const key = reviewKeyOf({ ...input, answers: input.answers ?? flow?.answers ?? [] });
+  const built = buildCanonical(input.doc, input.decisions, input.calibration, input.ceilingM, input.ceilingSource);
+  if (!built.ok) throw new DesignStudioError('DS_PLAN_NOT_BUILDABLE', built.problems.join(','));
+  const key = await architectureKey(built.canonical);
   let sourceId = flow?.reviewKey === key ? flow?.sourceId ?? null : null;
   if (sourceId && !(await getSourceFull(sourceId))) sourceId = null;
   let originalId = sourceId ? flow?.originalVersionId ?? null : null;
   if (!sourceId) {
-    const built = buildCanonical(input.doc, input.decisions, input.calibration, input.ceilingM, input.ceilingSource);
-    if (!built.ok) throw new DesignStudioError('DS_PLAN_NOT_BUILDABLE', built.problems.join(','));
     sourceId = await createFloorPlanSource({
       floorplanId: input.plan.id, canonical: built.canonical, geometryState: input.calibration.geometryState, anchors: input.anchors,
     });

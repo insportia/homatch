@@ -102,3 +102,37 @@ test('the grammar notes what a room is missing and when colours scatter', () => 
 test('style codes are the ones the server offers', () => {
   assert.deepEqual([...STYLE_CODES].sort(), ['classic', 'contemporary', 'industrial', 'japandi', 'luxury', 'mediterranean', 'scandinavian', 'warm-minimal']);
 });
+
+/* ── The customer's look (plan-to-home) ─────────────────────────────── */
+
+const convertAt = (a, furnishing, over = {}) => planToOperations(a, { state: emptyDesignState(), space, ctx, assets, materials, idPrefix: 'ai-t', furnishing, ...over });
+
+test('the furnishing level caps what a room receives, and the classic flow is uncapped', () => {
+  const four = alt([room('r-living', { furniture: ['dev/sofa-3', 'dev/coffee-table', 'dev/rug-large', 'dev/sofa-2'] })]);
+  const essential = convertAt(four, 'ESSENTIAL');
+  assert.equal(essential.summary.added, 3);
+  assert.deepEqual(essential.skipped.map((s) => [s.code, s.reason]), [['dev/sofa-2', 'FURNISHING_CAP']]);
+  assert.equal(convertAt(four, 'UNFURNISHED').summary.added, 0);
+  assert.ok(convert(four).summary.added >= 3);
+});
+
+test('room semantics: nothing in a corridor, only outdoor pieces outside', () => {
+  const corridor = { ...space, rooms: space.rooms.map((r) => (r.id === 'r-hall' ? { ...r, kind: 'CORRIDOR' } : r)) };
+  const p = convertAt(alt([room('r-hall', { furniture: ['dev/wardrobe'], wallColor: '#f2eee6' })]), 'FULL', { space: corridor });
+  assert.equal(p.summary.added, 0);
+  assert.deepEqual(p.skipped.map((s) => s.reason), ['WRONG_ROOM']);
+  assert.ok(p.summary.surfaces > 0, 'the corridor walls were not painted');
+  const balcony = { ...space, rooms: space.rooms.map((r) => (r.id === 'r-bed' ? { ...r, kind: 'BALCONY' } : r)) };
+  assert.deepEqual(convertAt(alt([room('r-bed', { furniture: ['dev/sofa-2'] })]), 'FULL', { space: balcony }).skipped.map((s) => s.reason), ['WRONG_ROOM']);
+});
+
+test('no piece stands on the stairs', () => {
+  const living = space.rooms.find((r) => r.id === 'r-living');
+  const stairs = [{ id: 'st-1', a: { x: 0, y: 0 }, b: { x: 1, y: 0 }, runM: 3, riseM: 2.7, treads: 15, direction: 'UP', polygon: living.polygon }];
+  const p = convertAt(alt([room('r-living', { furniture: ['dev/coffee-table'] })]), 'FULL', { space: { ...space, stairs } });
+  assert.equal(p.summary.added, 0);
+  // Refused here, or never offered by a placement engine that already walks around stairs.
+  assert.ok(p.skipped.length === 1 && ['ON_STAIRS', 'NO_SPACE'].includes(p.skipped[0].reason), JSON.stringify(p.skipped));
+  // Without stairs the same piece is placed.
+  assert.equal(convertAt(alt([room('r-living', { furniture: ['dev/coffee-table'] })]), 'FULL').summary.added, 1);
+});

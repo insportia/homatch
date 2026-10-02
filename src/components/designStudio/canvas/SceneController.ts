@@ -20,7 +20,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { applyFinish, patternOfMaterial, type SurfacePattern } from './finishTextures.ts';
 import { balanceTo, PbrTextureLoader, shedPbr, wearPbr } from './pbrTextures';
-import { selectPbrMaps, type PbrSelection } from '@/lib/designStudio/pbrMaps';
+import { selectPbrMaps, surfaceMetalness, type PbrSelection } from '@/lib/designStudio/pbrMaps';
 import {
   ceilingSurfaceId, floorSurfaceId, wallSlabPlacement, type SpaceModel, type SpaceRoom,
 } from '@/lib/designStudio/space';
@@ -1016,7 +1016,7 @@ export class SceneController {
       for (const { material: m, original } of list) {
         if (sel && mat) {
           // An imported material on a model part: its maps on the part's own UVs.
-          this.dressPbr(m, sel, a?.color ?? mat.pbr.baseColor, a?.color ?? null, finishRoughness ?? mat.pbr.roughness ?? 1, mat.pbr.metalness ?? 1,
+          this.dressPbr(m, sel, a?.color ?? mat.pbr.baseColor, a?.color ?? null, finishRoughness ?? mat.pbr.roughness ?? 1, surfaceMetalness(mat),
             () => !!this.partMaterials.get(id)?.some((x) => x.material === m));
           continue;
         }
@@ -1030,7 +1030,7 @@ export class SceneController {
           m.color.set(color);
           m.map = null;
           m.roughness = finishRoughness ?? mat?.pbr.roughness ?? 0.9;
-          m.metalness = mat?.pbr.metalness ?? 0;
+          m.metalness = mat ? surfaceMetalness(mat) : 0;
         } else {
           m.color.copy(original.color);
           m.map = original.map;
@@ -1052,14 +1052,14 @@ export class SceneController {
       // a hand-made one keeps the flat-colour path below, unchanged.
       const sel = mat ? selectPbrMaps(mat.pbr, this.quality.tier, this.quality.maxTextureSize) : null;
       if (sel && mat) {
-        this.dressPbr(m, sel, a?.color ?? mat.pbr.baseColor, a?.color ?? null, finishRoughness ?? mat.pbr.roughness ?? 1, mat.pbr.metalness ?? 1,
+        this.dressPbr(m, sel, a?.color ?? mat.pbr.baseColor, a?.color ?? null, finishRoughness ?? mat.pbr.roughness ?? 1, surfaceMetalness(mat),
           () => this.surfaceMaterials.get(id) === m, a?.tint ?? null);
         continue;
       }
       if (m.userData.pbrSig) { shedPbr(m); m.userData.pbrSig = null; }
       m.color.set(color ?? (m.userData.baseColor as number));
       m.roughness = finishRoughness ?? mat?.pbr.roughness ?? 0.9;
-      m.metalness = mat?.pbr.metalness ?? 0;
+      m.metalness = mat ? surfaceMetalness(mat) : 0;
       // A floor wears its pattern: the chosen material's own kind, else what
       // the reading saw (herringbone, tile…). No pattern is ever invented.
       if (id.startsWith('floor:')) {

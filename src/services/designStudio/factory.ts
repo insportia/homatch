@@ -15,7 +15,11 @@ async function call<T>(route: string, body: Record<string, unknown>): Promise<{ 
   if (error) {
     const status = (error as { context?: { status?: number } }).context?.status ?? 500;
     let code: string | null = null;
-    try { code = (await (error as { context?: Response }).context?.json?.())?.error ?? null; } catch { /* no body */ }
+    try {
+      const body = await (error as { context?: Response }).context?.json?.();
+      // A refused spec names the field (path): kept, so a report says what was wrong, not just that something was.
+      code = body?.error ? (typeof body.path === 'string' ? `${body.error}:${body.path.slice(0, 80)}` : body.error) : null;
+    } catch { /* no body */ }
     return { data: null, status, error: code ?? error.message };
   }
   return { data: data as T, status: 200, error: null };

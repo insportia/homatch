@@ -158,7 +158,8 @@ class Library:
             mix.blend_type = "MULTIPLY"
             mix.inputs["Factor"].default_value = 1.0
             links.new(albedo.outputs["Color"], mix.inputs[6])
-            mix.inputs[7].default_value = rgba(_tint_factor(tint, m["baseColor"]))
+            mix.label = "hm-tint"
+            mix.inputs[7].default_value = (*balance_to(tint, image_mean(albedo.image)), 1.0)
             links.new(mix.outputs[2], bsdf.inputs["Base Color"])
         else:
             links.new(albedo.outputs["Color"], bsdf.inputs["Base Color"])
@@ -235,13 +236,43 @@ def _dark(hex_color: str) -> bool:
     return 0.2126 * r + 0.7152 * g + 0.0722 * b < 70
 
 
-def _tint_factor(seen: str, base: str) -> str:
-    """The multiply that moves a texture's average (≈ its catalogue base colour) toward the colour seen; bounded."""
-    def ch(h, i):
-        return int(h.lstrip("#")[i:i + 2], 16) / 255
+def image_mean(img) -> tuple[float, float, float] | None:
+    """A texture's average colour, linear (what the walkthrough measures before it balances a tint)."""
+    try:
+        small = img.copy()
+        small.scale(16, 16)
+        px = list(small.pixels[:])
+        bpy.data.images.remove(small)
+    except Exception:  # noqa: BLE001 - an unreadable image is not balanced
+        return None
+    n = len(px) // 4
+    if not n:
+        return None
+    mean = [sum(px[c::4]) / n for c in range(3)]
+    # Pixels of an 8-bit sRGB image arrive display-encoded; the balance is computed in linear light.
+    if img.colorspace_settings.name.lower().startswith("srgb"):
+        mean = [srgb_to_linear(v) for v in mean]
+    return (mean[0], mean[1], mean[2])
 
-    out = []
-    for i in (0, 2, 4):
-        k = max(0.25, min(2.4, ch(seen, i) / max(ch(base, i), 0.01)))
-        out.append(max(0, min(255, round(min(1.0, k) * 255))))
-    return "#%02x%02x%02x" % tuple(out)
+
+def balance_to(seen: str, mean: tuple[float, float, float] | None) -> tuple[float, float, float]:
+    """The multiply that moves a texture's average to the colour a picture showed (pbrTextures.balanceTo):
+    bounded 0.25..2.4 per channel, so the grain stays and a texture is never pushed into a caricature."""
+    target = rgba(seen)[:3]
+    if mean is None:
+        return target
+    return tuple(max(0.25, min(2.4, t / max(m, 0.01))) for t, m in zip(target, mean))  # type: ignore[return-value]
+
+
+def clamp_tints_for_export() -> int:
+    """glTF baseColorFactor is at most 1: a brightening balance stays in the render, the export is clamped."""
+    n = 0
+    for mat in bpy.data.materials:
+        if not mat.use_nodes:
+            continue
+        for node in mat.node_tree.nodes:
+            if node.label == "hm-tint":
+                c = node.inputs[7].default_value
+                node.inputs[7].default_value = (min(1.0, c[0]), min(1.0, c[1]), min(1.0, c[2]), 1.0)
+                n += 1
+    return n

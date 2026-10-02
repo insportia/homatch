@@ -268,3 +268,23 @@ test('names are split into words the way exporters write them', () => {
   assert.deepEqual(tokens('wall-north 2'), ['wall', 'north']);
   assert.deepEqual(tokens(null), []);
 });
+
+// A model the Design Studio scene factory ships: meshopt-compressed by glTF-Transform, so its
+// uncompressed layout is a data-less fallback buffer (valid EXT_meshopt_compression; the Khronos
+// validator reports 0 errors). The first production golden run lost every factory model to this.
+test('a meshopt-compressed factory model is accepted, its fallback buffer and compressed views checked', async () => {
+  const { readFileSync } = await import('node:fs');
+  const bytes = new Uint8Array(readFileSync(new URL('./fixtures/factory-armchair.meshopt.glb', import.meta.url)));
+  const ok = inspectModel(bytes);
+  assert.equal(ok.ok, true, JSON.stringify(ok));
+  assert.equal(ok.analysis.stats.triangles, 824, 'the decoded layout is what the factory built');
+  // Forge the compressed view to point past its source buffer: refused, never read out of bounds.
+  const chunkLen = new DataView(bytes.buffer, bytes.byteOffset).getUint32(12, true);
+  const json = JSON.parse(new TextDecoder().decode(bytes.subarray(20, 20 + chunkLen)));
+  const view = json.bufferViews.find((v) => v.extensions?.EXT_meshopt_compression);
+  view.extensions.EXT_meshopt_compression.byteLength = 10_000_000;
+  const forged = glb(json, Buffer.from(bytes.subarray(20 + chunkLen + 8)));
+  const bad = inspectModel(forged);
+  assert.equal(bad.ok, false);
+  assert.equal(bad.reason, 'MALFORMED');
+});

@@ -142,6 +142,24 @@ def bend(ob, angle: float, axis: str = "Z") -> None:
     apply_modifiers(ob)
 
 
+def slice_along_x(ob, n: int) -> None:
+    """Cut a mesh into n slices across its length (planes normal to x): a bend then curves smoothly."""
+    me = ob.data
+    xs = [v.co.x for v in me.vertices]
+    if not xs:
+        return
+    lo, hi = min(xs), max(xs)
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    for i in range(1, n):
+        x = lo + (hi - lo) * i / n
+        geom = list(bm.verts) + list(bm.edges) + list(bm.faces)
+        bmesh.ops.bisect_plane(bm, geom=geom, plane_co=(x, 0.0, 0.0), plane_no=(1.0, 0.0, 0.0))
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+
+
 def apply_modifiers(ob) -> None:
     dg = bpy.context.evaluated_depsgraph_get()
     ev = ob.evaluated_get(dg)

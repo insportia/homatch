@@ -29,7 +29,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from worker.factory import arch, furniture  # noqa: E402
-from worker.factory.materials import Library, rgba  # noqa: E402
+from worker.factory.materials import Library, clamp_tints_for_export, rgba  # noqa: E402
 from worker.spec import validate_spec  # noqa: E402
 
 
@@ -168,6 +168,7 @@ def hide(objs, hidden: bool) -> None:
 
 
 def export_glb(path: Path, objs) -> None:
+    clamp_tints_for_export()
     bpy.ops.object.select_all(action="DESELECT")
     for o in objs:
         o.hide_set(False)

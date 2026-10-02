@@ -279,7 +279,8 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<E
 
   // Without the factory: the same bounded check on a browser still; nothing is exported.
   if (factory !== 'USED') {
-    for (const s of ['ARCHITECTURE', 'FURNISHING', 'MATERIALS', 'LIGHTING'] as Stage[]) { run(s); done(s); }
+    // The factory's stages did not run: they are shown as skipped, never as done.
+    for (const s of ['ARCHITECTURE', 'FURNISHING', 'MATERIALS', 'LIGHTING'] as Stage[]) skip(s);
     for (let pass = 1; pass <= QA_PLANNED_PASSES; pass += 1) {
       const still = await deps.browserRender(built.state);
       if (!still) break;

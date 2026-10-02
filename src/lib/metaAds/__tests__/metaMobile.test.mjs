@@ -31,8 +31,10 @@ const page = read('src/pages/outreach/MetaAdsCreatePage.tsx');
 test('A: one bottom bar on phones — the builder bar covers the app nav, respects the safe area, and the page reserves its height', () => {
   assert.match(page, /data-madsb-nav="" className="fixed inset-x-0 bottom-0 z-\[60\] md:z-30/, 'above the app bottom nav (z-50), at the very bottom');
   assert.doesNotMatch(page, /bottom-\[calc\(3\.75rem/, 'never stacked above the app nav');
-  assert.match(page, /pb-\[calc\(0\.625rem\+env\(safe-area-inset-bottom,0px\)\)\]/, 'the bar pads the home indicator');
-  assert.match(page, /pb-\[calc\(6\.5rem\+env\(safe-area-inset-bottom,0px\)\)\]/, 'the last control scrolls clear of the bar');
+  assert.match(page, /pb-\[calc\(0\.5rem\+env\(safe-area-inset-bottom,0px\)\)\]/, 'the bar pads the home indicator');
+  // The bar's REAL height (hint line, two-line labels, safe area) is measured and reserved.
+  assert.match(page, /new ResizeObserver\(\(\) => setNavH\(Math\.ceil\(el\.getBoundingClientRect\(\)\.height\)\)\)/, 'the bar is measured');
+  assert.match(page, /pb-\[calc\(var\(--mm-nav-h,6\.5rem\)\+1rem\)\]/, 'the last control scrolls clear of the bar');
   assert.equal((page.match(/min-h-11 shrink-0/g) ?? []).length, 3, 'Back, Continue and Launch are 44px targets');
   // The hero and the check notice once, at the start — later steps start with the work.
   assert.match(page, /step !== 'account' && 'hidden md:block'/);
@@ -47,7 +49,10 @@ test('A: money stays on one line; Georgian words never split in the middle', () 
   const funding = read(`${B}/FundingCard.tsx`);
   for (const dd of funding.match(/<dd className=\{?[`"]shrink-0[^>]*/g) ?? []) assert.match(dd, /whitespace-nowrap/, dd);
   for (const f of fs.readdirSync(path.join(ROOT, B)).filter((x) => x.endsWith('.tsx'))) {
-    assert.doesNotMatch(read(`${B}/${f}`), /overflow-wrap:anywhere|break-all/, `${f}: words break only where they must`);
+    const src = read(`${B}/${f}`);
+    assert.doesNotMatch(src, /break-all/, `${f}: words break only where they must`);
+    // `anywhere` only for a technical value (a URL), which is always marked dir="ltr".
+    for (const m of src.matchAll(/<[^<>]*overflow-wrap:anywhere[^<>]*>/g)) assert.match(m[0], /dir="ltr"/, `${f}: anywhere only on a URL`);
   }
 });
 

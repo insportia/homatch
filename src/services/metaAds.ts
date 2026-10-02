@@ -80,7 +80,8 @@ export interface MetaStatus {
   };
 }
 export const getMetaStatus = () => call<MetaStatus>('status');
-export const startMetaOAuth = () => call<{ url?: string; mockConnect?: boolean; mode: string }>('oauth_start');
+/** `returnTo` (a HOMATCH Meta Ads path) is validated and sealed into the signed state server-side. */
+export const startMetaOAuth = (returnTo?: string | null) => call<{ url?: string; mockConnect?: boolean; mode: string }>('oauth_start', returnTo ? { returnTo } : {});
 export const mockConnect = () => call('oauth_mock_connect');
 export const refreshMetaAssets = () => call('assets_refresh');
 /** Ask Meta again: permissions, the Page's Lead Ads Terms, form access. Never accepts anything. */

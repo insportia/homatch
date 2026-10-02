@@ -37,9 +37,9 @@ test('a system-user token is not passed through fb_exchange_token', () => {
 
 test('callback: signed state + one-time nonce on the caller\'s own row (tenant isolation)', () => {
   assert.match(fn, /const state = await verifyOAuthState\(url\.searchParams\.get\('state'\) \?\? ''\)/);
-  assert.match(fn, /\.select\('id,oauth_nonce'\)\.eq\('user_id', state\.uid\)\.maybeSingle\(\)/);
+  assert.match(fn, /\.select\('id,oauth_nonce,status,last_checked_at'\)\.eq\('user_id', state\.uid\)\.maybeSingle\(\)/);
   assert.match(fn, /conn\.oauth_nonce !== state\.nonce/);
-  assert.match(fn, /update\(\{ oauth_nonce: null \}\)\.eq\('id', conn\.id\)/, 'the nonce is single-use');
+  assert.match(fn, /update\(\{ oauth_nonce: null \}\)\s*\.eq\('id', conn\.id\)\.eq\('oauth_nonce', state\.nonce\)/, 'the nonce is single-use, claimed atomically');
   assert.match(shared, /return verifyState\(metaAppSecret\(\), state\)/);
 });
 
@@ -147,5 +147,7 @@ test('a system-user token that cannot answer /me/permissions still connects, and
   assert.match(api, /settle\('\/me\/businesses/, 'each asset list is read on its own');
   assert.match(api, /client_business_id/);
   assert.match(api, /filter\(\(k\) => readKinds\.has\(k\)\)/, 'a refused list never retires its assets');
-  assert.match(read('src/pages/outreach/MetaAdsPage.tsx'), /refreshMetaAssets\(\)\.catch\(\(\) => undefined\)\.then\(\(\) => boot\(\)\)/);
+  // After the callback: one shared refresh (assets + permissions + lead check), then the status.
+  assert.match(read('src/components/metaAds/builder/useMetaConnect.ts'), /await refreshMetaAssets\(\)\.catch\(\(\) => undefined\);\s*await reload\(\);/);
+  assert.match(read('src/pages/outreach/MetaAdsPage.tsx'), /useConnectReturn\(boot, !builderReturn\)/);
 });

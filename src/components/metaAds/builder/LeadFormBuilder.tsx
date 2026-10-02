@@ -12,7 +12,7 @@
 import React, { useMemo, useState } from 'react';
 import { Check, ChevronLeft, ChevronRight, Loader2, Plus, ShieldAlert, Trash2, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
+import { Button } from './MetaButton';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';

@@ -352,11 +352,11 @@ export function metaLoginConfigId(): string {
 }
 
 /** state = base64url(payload).hmac — bound to the user and the nonce, expiring. */
-export function signOAuthState(payload: { uid: string; nonce: string }): Promise<string> {
+export function signOAuthState(payload: { uid: string; nonce: string; ret?: string | null }): Promise<string> {
   return signState(metaAppSecret(), payload);
 }
 
-export function verifyOAuthState(state: string): Promise<{ uid: string; nonce: string } | null> {
+export function verifyOAuthState(state: string): Promise<{ uid: string; nonce: string; ret: string | null } | null> {
   return verifyState(metaAppSecret(), state);
 }
 

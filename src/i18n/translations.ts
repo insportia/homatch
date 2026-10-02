@@ -13876,6 +13876,17 @@ const en = {
 
   /* ── META ADS MASTER — BUILDER ── */
   mm_b_loc_kind_neighborhood: 'District',
+
+  /* ── META ADS — CONNECT / RECONNECT ── */
+  mm_x_connect_meta: 'Connect Meta',
+  mm_x_reconnect_meta: 'Reconnect Meta',
+  mm_x_connect_opening: 'Opening Meta…',
+  mm_x_connect_inapp: 'You opened HOMATCH inside another app. If Meta asks, continue in your phone’s browser — your campaign is saved.',
+  mm_x_connected: 'Meta is connected',
+  mm_x_connect_refreshing: 'Checking your permissions and Pages…',
+  mm_x_connect_cancelled: 'The Meta connection was not completed.',
+  mm_x_connect_failed: 'Meta could not complete the connection. Please try again.',
+  mm_x_connect_kept: 'Your campaign is saved — you can try again any time.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -27666,6 +27677,17 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── META ADS MASTER — BUILDER ── */
   mm_b_loc_kind_neighborhood: 'უბანი',
+
+  /* ── META ADS — CONNECT / RECONNECT ── */
+  mm_x_connect_meta: 'Meta-ს დაკავშირება',
+  mm_x_reconnect_meta: 'Meta-ს ხელახლა დაკავშირება',
+  mm_x_connect_opening: 'Meta იხსნება…',
+  mm_x_connect_inapp: 'HOMATCH სხვა აპლიკაციის შიგნით გახსენით. თუ Meta მოგთხოვთ, გააგრძელეთ ტელეფონის ბრაუზერში — კამპანია შენახულია.',
+  mm_x_connected: 'Meta დაკავშირებულია',
+  mm_x_connect_refreshing: 'ვამოწმებთ ნებართვებსა და გვერდებს…',
+  mm_x_connect_cancelled: 'Meta-სთან კავშირი არ დასრულებულა.',
+  mm_x_connect_failed: 'Meta-მ კავშირი ვერ დაასრულა. გთხოვთ, სცადოთ ხელახლა.',
+  mm_x_connect_kept: 'კამპანია შენახულია — შეგიძლიათ ნებისმიერ დროს ხელახლა სცადოთ.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -41447,6 +41469,17 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── META ADS MASTER — BUILDER ── */
   mm_b_loc_kind_neighborhood: 'Район',
+
+  /* ── META ADS — CONNECT / RECONNECT ── */
+  mm_x_connect_meta: 'Подключить Meta',
+  mm_x_reconnect_meta: 'Переподключить Meta',
+  mm_x_connect_opening: 'Открываем Meta…',
+  mm_x_connect_inapp: 'HOMATCH открыт внутри другого приложения. Если Meta попросит, продолжите в браузере телефона — кампания сохранена.',
+  mm_x_connected: 'Meta подключена',
+  mm_x_connect_refreshing: 'Проверяем разрешения и страницы…',
+  mm_x_connect_cancelled: 'Подключение к Meta не завершено.',
+  mm_x_connect_failed: 'Meta не смогла завершить подключение. Попробуйте ещё раз.',
+  mm_x_connect_kept: 'Кампания сохранена — можно попробовать снова в любой момент.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -55226,6 +55259,17 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── META ADS MASTER — BUILDER ── */
   mm_b_loc_kind_neighborhood: 'Semt',
+
+  /* ── META ADS — CONNECT / RECONNECT ── */
+  mm_x_connect_meta: 'Meta’yı bağla',
+  mm_x_reconnect_meta: 'Meta’yı yeniden bağla',
+  mm_x_connect_opening: 'Meta açılıyor…',
+  mm_x_connect_inapp: 'HOMATCH’i başka bir uygulamanın içinde açtınız. Meta isterse telefonunuzun tarayıcısında devam edin — kampanyanız kayıtlı.',
+  mm_x_connected: 'Meta bağlandı',
+  mm_x_connect_refreshing: 'İzinleriniz ve Sayfalarınız kontrol ediliyor…',
+  mm_x_connect_cancelled: 'Meta bağlantısı tamamlanmadı.',
+  mm_x_connect_failed: 'Meta bağlantıyı tamamlayamadı. Lütfen tekrar deneyin.',
+  mm_x_connect_kept: 'Kampanyanız kayıtlı — istediğiniz zaman tekrar deneyebilirsiniz.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -69005,6 +69049,17 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── META ADS MASTER — BUILDER ── */
   mm_b_loc_kind_neighborhood: 'حي',
+
+  /* ── META ADS — CONNECT / RECONNECT ── */
+  mm_x_connect_meta: 'ربط Meta',
+  mm_x_reconnect_meta: 'إعادة ربط Meta',
+  mm_x_connect_opening: 'جارٍ فتح Meta…',
+  mm_x_connect_inapp: 'فتحت HOMATCH داخل تطبيق آخر. إذا طلب Meta ذلك، تابع في متصفح هاتفك — حملتك محفوظة.',
+  mm_x_connected: 'تم ربط Meta',
+  mm_x_connect_refreshing: 'جارٍ التحقق من الأذونات والصفحات…',
+  mm_x_connect_cancelled: 'لم يكتمل الربط مع Meta.',
+  mm_x_connect_failed: 'تعذّر على Meta إكمال الربط. حاول مرة أخرى.',
+  mm_x_connect_kept: 'حملتك محفوظة — يمكنك المحاولة مجددًا في أي وقت.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -82784,6 +82839,17 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── META ADS MASTER — BUILDER ── */
   mm_b_loc_kind_neighborhood: 'שכונה',
+
+  /* ── META ADS — CONNECT / RECONNECT ── */
+  mm_x_connect_meta: 'חיבור Meta',
+  mm_x_reconnect_meta: 'חיבור Meta מחדש',
+  mm_x_connect_opening: 'פותחים את Meta…',
+  mm_x_connect_inapp: 'פתחתם את HOMATCH בתוך אפליקציה אחרת. אם Meta תבקש, המשיכו בדפדפן של הטלפון — הקמפיין שמור.',
+  mm_x_connected: 'Meta מחוברת',
+  mm_x_connect_refreshing: 'בודקים הרשאות ודפים…',
+  mm_x_connect_cancelled: 'החיבור ל-Meta לא הושלם.',
+  mm_x_connect_failed: 'Meta לא הצליחה להשלים את החיבור. נסו שוב.',
+  mm_x_connect_kept: 'הקמפיין שמור — אפשר לנסות שוב בכל עת.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

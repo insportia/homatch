@@ -9,7 +9,7 @@
 import React, { useState } from 'react';
 import { Loader2, Sparkles, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
+import { Button } from './MetaButton';
 import { Textarea } from '@/components/ui/textarea';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { briefHash, BRIEF_MAX, type BriefUnderstanding } from '@/lib/metaAds/audienceGuide';

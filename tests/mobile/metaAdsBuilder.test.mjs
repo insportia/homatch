@@ -1204,3 +1204,163 @@ test('VIDEO: a real player (play, seek, mute, volume, full screen) and a cover c
     assert.ok((await page.evaluate(LAYOUT)).overflow <= 1, `${width}: no horizontal overflow`);
   }
 });
+
+/* ── MOBILE UX HARDENING: the production screenshots as layout invariants ── */
+
+/* Every word of the summary values stays whole, buttons contain their text,
+   edit targets are 44px, nothing overlaps or leaves the screen. */
+const GEOMETRY = () => {
+  const vw = document.documentElement.clientWidth;
+  const out = { overflow: document.documentElement.scrollWidth - vw, split: [], narrow: [], offscreen: [], overlap: [], clipped: [], smallTargets: [] };
+  const box = (el) => el.getBoundingClientRect();
+  for (const row of document.querySelectorAll('[data-mm-row]')) {
+    const v = row.querySelector('[data-mm-row-value]');
+    const e = row.querySelector('[data-mm-row-edit]');
+    const rv = box(v);
+    if (rv.width < 120) out.narrow.push(`${v.textContent.slice(0, 30)} → ${Math.round(rv.width)}px`);
+    if (box(row).right > vw + 1 || box(row).left < -1) out.offscreen.push(v.textContent.slice(0, 30));
+    if (e) {
+      const re = box(e);
+      if (re.height < 43.5 || re.width < 43.5) out.smallTargets.push(`edit ${Math.round(re.width)}×${Math.round(re.height)}`);
+      const ix = Math.min(rv.right, re.right) - Math.max(rv.left, re.left);
+      const iy = Math.min(rv.bottom, re.bottom) - Math.max(rv.top, re.top);
+      if (ix > 1 && iy > 1) out.overlap.push(v.textContent.slice(0, 30));
+    }
+    // A normal word must never be broken across lines.
+    const walker = document.createTreeWalker(v, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const text = n.textContent;
+      for (const m of text.matchAll(/\S{2,}/g)) {
+        const r = document.createRange();
+        r.setStart(n, m.index); r.setEnd(n, m.index + m[0].length);
+        const lines = new Set([...r.getClientRects()].filter((q) => q.width > 0).map((q) => Math.round(q.top)));
+        if (lines.size > 1) out.split.push(m[0]);
+      }
+    }
+  }
+  for (const b of document.querySelectorAll('main button, [data-madsb-nav] button')) {
+    const rb = box(b);
+    if (!rb.width || !rb.height) continue;
+    if (b.scrollHeight > b.clientHeight + 2 || b.scrollWidth > b.clientWidth + 2) out.clipped.push(`"${b.textContent.trim().slice(0, 40)}" ${b.scrollWidth}×${b.scrollHeight} in ${b.clientWidth}×${b.clientHeight}`);
+    if (rb.right > vw + 1 || rb.left < -1) out.offscreen.push(`button "${b.textContent.trim().slice(0, 30)}"`);
+  }
+  return out;
+};
+
+test('MOBILE UX: the review summary reflows in Georgian — "Facebook/Instagram-ზე" whole, "$5.00 × 7" together, Edit 44px, the check button contains its text, nothing under the bar', opts, async (t) => {
+  if (skipReason) assert.fail(`meta ads builder gate could not run: ${skipReason}`);
+  const campaignOver = { goal: 'LEADS_ON_META', daily_budget_cents: 500, duration_days: 7, name: 'ვაკის ორსაძინებლიანი ბინა',
+    targeting: { locations: [{ type: 'city', key: '2001', name: 'თბილისი', countryCode: 'GE', radiusKm: 10, lat: 41.7151, lng: 44.8271 }] } };
+  const failures = [];
+  const runs = [[390, 844, 'ka'], [320, 640, 'ka'], [360, 760, 'ka'], [430, 932, 'ka'], [768, 1024, 'ka'], [1440, 900, 'ka'], [390, 600, 'ka'],
+    [390, 844, 'en'], [390, 844, 'ru'], [390, 844, 'ar'], [390, 844, 'he'], [390, 844, 'tr']];
+  for (const [width, height, lang] of runs) {
+    const { page } = await boot(t, { width, height, lang, campaignOver });
+    await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=review`, { waitUntil: 'domcontentloaded' });
+    await waitReady(page);
+    await page.waitForSelector('[data-mm-review-summary] [data-mm-row]');
+    const tag = `${lang} ${width}×${height}`;
+    const g = await page.evaluate(GEOMETRY);
+    if (g.overflow > 1) failures.push(`${tag}: horizontal overflow ${g.overflow}px`);
+    for (const k of ['split', 'narrow', 'offscreen', 'overlap', 'clipped', 'smallTargets']) if (g[k].length) failures.push(`${tag}: ${k} ${JSON.stringify(g[k].slice(0, 4))}`);
+    const budget = await page.locator('[data-mm-review-summary] [data-mm-row-value] span[dir="ltr"]').first();
+    const bb = await budget.evaluate((el) => ({ lines: new Set([...el.getClientRects()].map((r) => Math.round(r.top))).size, text: el.textContent }));
+    if (bb.lines !== 1) failures.push(`${tag}: "${bb.text}" wraps`);
+    if (lang === 'ka') {
+      const text = await page.locator('[data-mm-review-summary]').innerText();
+      if (!/Facebook\/Instagram-ზე/.test(text)) failures.push(`${tag}: the destination text is not shown whole`);
+    }
+    const check = page.locator('[data-mm-run-check]');
+    const cb = await check.evaluate((el) => ({ h: el.getBoundingClientRect().height, clipped: el.scrollHeight > el.clientHeight + 2 }));
+    if (cb.h < 43.5 || cb.clipped) failures.push(`${tag}: the check button ${JSON.stringify(cb)}`);
+    const b = await page.evaluate(BOTTOM);
+    if (!b.lastClear) failures.push(`${tag}: the last control is under the bar — ${b.what}`);
+    const nav = await page.evaluate(() => {
+      const n = document.querySelector('[data-madsb-nav]').getBoundingClientRect();
+      const btns = [...document.querySelectorAll('[data-madsb-nav] button')].map((x) => x.getBoundingClientRect());
+      return { h: n.height, small: btns.filter((r) => r.height < 43.5).length, vh: window.innerHeight };
+    });
+    if (nav.small) failures.push(`${tag}: a bar button under 44px`);
+    if (nav.h > (width < 768 ? 120 : 90)) failures.push(`${tag}: the bar is ${Math.round(nav.h)}px tall`);
+    if (lang === 'ar' || lang === 'he') {
+      const dir = await page.evaluate(() => document.documentElement.getAttribute('dir'));
+      if (dir !== 'rtl') failures.push(`${tag}: not RTL`);
+      const sides = await page.locator('[data-mm-review-summary] [data-mm-row]').first().evaluate((row) => {
+        const v = row.querySelector('[data-mm-row-value]').getBoundingClientRect(); const e = row.querySelector('[data-mm-row-edit]').getBoundingClientRect();
+        return e.right <= v.left + 1;
+      });
+      if (!sides) failures.push(`${tag}: Edit is not on the trailing (left) side in RTL`);
+    }
+  }
+  assert.deepEqual(failures, []);
+});
+
+test('META CONNECT: one tap = one attempt to Meta\'s own dialog with the way back sealed; return → same draft and step, one refresh; cancel keeps the work', opts, async (t) => {
+  if (skipReason) assert.fail(`meta ads builder gate could not run: ${skipReason}`);
+  for (const [width, height] of [[390, 844], [1440, 900]]) {
+    const { page, calls } = await boot(t, { width, height, lang: 'ka', statusOver: { mode: 'REAL', connection: { status: 'NOT_CONNECTED', health: 'NOT_CONNECTED', granted_scopes: [] } } });
+    const starts = [];
+    let dialogLoads = 0;
+    await page.route('**/functions/v1/meta-ads-api', async (r) => {
+      const body = JSON.parse(r.request().postData() || '{}');
+      if (body.action !== 'oauth_start') return r.fallback();
+      starts.push(body);
+      await new Promise((res) => setTimeout(res, 150)); // a real round trip: the double tap lands while preparing
+      return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
+        body: JSON.stringify({ mode: 'REAL', url: 'https://www.facebook.com/v26.0/dialog/oauth?client_id=1&state=s' }) });
+    });
+    await page.route('https://www.facebook.com/**', (r) => { dialogLoads += 1; return r.fulfill({ status: 200, contentType: 'text/html', body: '<title>Meta</title>' }); });
+    await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=account&from=destination`, { waitUntil: 'domcontentloaded' });
+    await waitReady(page);
+    const btn = page.locator('[data-mm-connect="connect"]');
+    assert.match(await btn.innerText(), /Meta-ს დაკავშირება/);
+    const bb = await btn.boundingBox();
+    assert.ok(bb.height >= 43.5, 'a 44px target');
+    await btn.dblclick();
+    await page.waitForURL(/facebook\.com/, { timeout: 8000 });
+    assert.equal(starts.length, 1, `${width}: a double tap starts ONE attempt`);
+    assert.equal(starts[0].returnTo, '/outreach/meta/create?draft=c1&step=account&from=destination', 'the way back is this draft and step');
+    assert.equal(dialogLoads, 1, 'Meta\'s dialog opened once, in this tab');
+
+    // Back from Meta: connected.
+    const before = calls.actions.length;
+    await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=account&from=destination&connect=ok`, { waitUntil: 'domcontentloaded' });
+    await waitReady(page);
+    await page.waitForSelector('[data-mm-connect-return="ok"]');
+    assert.match(await page.locator('[data-mm-connect-return]').innerText(), /Meta დაკავშირებულია/);
+    await page.waitForURL(/step=destination/, { timeout: 8000 });
+    assert.doesNotMatch(page.url(), /connect=/, 'the result is consumed — a reload repeats nothing');
+    await page.waitForTimeout(400);
+    assert.equal(calls.actions.slice(before).filter((a) => a === 'assets_refresh').length, 1, 'one canonical refresh');
+    assert.equal(calls.inserts, 0, 'the same draft');
+
+    // Cancelled at Meta: a calm line, the work kept, nothing refreshed.
+    const before2 = calls.actions.length;
+    await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=account&connect=denied`, { waitUntil: 'domcontentloaded' });
+    await waitReady(page);
+    await page.waitForSelector('[data-mm-connect-return="denied"]');
+    const msg = await page.locator('[data-mm-connect-return]').innerText();
+    assert.match(msg, /Meta-სთან კავშირი არ დასრულებულა/);
+    assert.match(msg, /კამპანია შენახულია/);
+    assert.doesNotMatch(msg, /access_denied|error_reason|user_denied/);
+    assert.equal(calls.actions.slice(before2).filter((a) => a === 'assets_refresh').length, 0);
+    assert.match(page.url(), /draft=c1&step=account/);
+    assert.ok((await page.evaluate(LAYOUT)).overflow <= 1);
+  }
+});
+
+test('MOBILE UX: on every step in Georgian at 320 and 390, no button clips its label, nothing leaves the screen, no word is split', opts, async (t) => {
+  if (skipReason) assert.fail(`meta ads builder gate could not run: ${skipReason}`);
+  const failures = [];
+  for (const [width, height] of [[320, 640], [390, 844]]) {
+    const { page } = await boot(t, { width, height, lang: 'ka', campaignOver: { daily_budget_cents: 500, duration_days: 7 } });
+    for (const step of STEPS) {
+      await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=${step}`, { waitUntil: 'domcontentloaded' });
+      await waitReady(page);
+      const g = await page.evaluate(GEOMETRY);
+      if (g.overflow > 1) failures.push(`${width} ${step}: overflow ${g.overflow}px`);
+      for (const k of ['split', 'offscreen', 'overlap', 'clipped', 'smallTargets']) if (g[k].length) failures.push(`${width} ${step}: ${k} ${JSON.stringify(g[k].slice(0, 3))}`);
+    }
+  }
+  assert.deepEqual(failures, []);
+});

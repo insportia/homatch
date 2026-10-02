@@ -4,15 +4,16 @@
 import React, { useState } from 'react';
 import { CheckCircle2, Link2, RefreshCw, Loader2, ShieldAlert, Unplug, Facebook } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
+import { Button } from './MetaButton';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
 import {
-  startMetaOAuth, mockConnect, refreshMetaAssets, selectMetaAsset, disconnectMeta,
+  refreshMetaAssets, selectMetaAsset, disconnectMeta,
   type MetaAsset, type MetaStatus,
 } from '@/services/metaAds';
 
-export const RETURN_KEY = 'homatch_meta_return_to';
+import { useMetaConnect } from './useMetaConnect';
+export { RETURN_KEY } from './useMetaConnect';
 
 const ACCOUNT_STATUS: Record<number, string> = { 1: 'ACTIVE', 2: 'DISABLED', 3: 'UNSETTLED', 7: 'PENDING_RISK_REVIEW', 8: 'PENDING_SETTLEMENT', 9: 'IN_GRACE_PERIOD', 100: 'PENDING_CLOSURE', 101: 'CLOSED' };
 
@@ -35,20 +36,13 @@ export function AccountPanel({ status, onChanged, returnTo, compact }: {
   // missing, so the owner can fix it here; every other state means reconnect.
   const connectedish = health === 'CONNECTED' || health === 'PERMISSION_MISSING' || health === 'NO_ELIGIBLE_AD_ACCOUNT';
 
+  /* One action: Meta's official login dialog in this tab, back to this very draft and step. */
+  const flow = useMetaConnect({ returnTo, onMockConnected: async () => { toast.success(t('mads_connected_ok')); await onChanged(); } });
   const connect = async () => {
-    setBusy('connect');
-    try {
-      const r = await startMetaOAuth();
-      if (r.url) {
-        try { if (returnTo) localStorage.setItem(RETURN_KEY, returnTo); } catch { /* fine */ }
-        window.location.href = r.url;
-        return;
-      }
-      if (r.mockConnect) { await mockConnect(); toast.success(t('mads_connected_ok')); await onChanged(); }
-    } catch (e: any) {
-      toast.error(t(e?.code === 'TOKEN_ENCRYPTION_NOT_CONFIGURED' ? 'madsb_connect_encryption_missing' : 'mads_load_failed'));
-    } finally { setBusy(null); }
+    const r = await flow.connect();
+    if (r && r !== 'ok') toast.error(t(r === 'TOKEN_ENCRYPTION_NOT_CONFIGURED' ? 'madsb_connect_encryption_missing' : 'mm_x_connect_failed'));
   };
+  const needsReconnect = health !== 'CONNECTED' && health !== 'NOT_CONNECTED';
   const refresh = async () => {
     setBusy('refresh');
     try { await refreshMetaAssets(); await onChanged(); toast.success(t('madsb_assets_refreshed')); }
@@ -106,10 +100,11 @@ export function AccountPanel({ status, onChanged, returnTo, compact }: {
                 <RefreshCw className={cn('h-3.5 w-3.5', busy === 'refresh' && 'animate-spin')} />{t('mads_conn_refresh')}
               </Button>
             )}
-            <Button size="sm" onClick={connect} disabled={busy !== null}
-              className={cn('gap-1.5', health === 'NOT_CONNECTED' && 'bg-[#1877F2] text-white hover:bg-[#166FE0]')}>
-              {busy === 'connect' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : health === 'NOT_CONNECTED' ? <Facebook className="h-3.5 w-3.5" /> : <Link2 className="h-3.5 w-3.5" />}
-              {t(health === 'NOT_CONNECTED' ? 'madsb_login_facebook' : 'mads_conn_reconnect')}
+            <Button size="sm" onClick={connect} disabled={busy !== null || flow.busy} aria-busy={flow.busy || undefined}
+              data-mm-connect={health === 'NOT_CONNECTED' ? 'connect' : 'reconnect'} data-mm-connect-state={flow.state}
+              className={cn('gap-1.5', (health === 'NOT_CONNECTED' || needsReconnect) && 'bg-[#1877F2] text-white hover:bg-[#166FE0]')}>
+              {flow.busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : health === 'NOT_CONNECTED' ? <Facebook className="h-3.5 w-3.5" /> : <Link2 className="h-3.5 w-3.5" />}
+              {t(flow.busy ? 'mm_x_connect_opening' : health === 'NOT_CONNECTED' ? 'mm_x_connect_meta' : 'mm_x_reconnect_meta')}
             </Button>
             {connectedish && !compact && (
               <Button variant="ghost" size="sm" onClick={disconnect} disabled={busy !== null} className="gap-1.5 text-muted-foreground">
@@ -118,6 +113,11 @@ export function AccountPanel({ status, onChanged, returnTo, compact }: {
             )}
           </div>
         </div>
+        {/* Opened inside another app's browser: Meta may ask to continue in the phone's browser — said once, plainly. */}
+        {flow.browser === 'OTHER_IN_APP' && health !== 'CONNECTED' && (
+          <p className="mt-2 text-2xs leading-relaxed text-muted-foreground" data-mm-connect-inapp="">{t('mm_x_connect_inapp')}</p>
+        )}
+        <span className="sr-only" role="status" aria-live="polite">{flow.busy ? t('mm_x_connect_opening') : ''}</span>
       </div>
 
       {connectedish && rows.map(({ kind, label, hint, optional, filter }) => {

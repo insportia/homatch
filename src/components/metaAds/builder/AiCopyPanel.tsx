@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import { Sparkles, Loader2, Check, X, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
-import { Button } from '@/components/ui/button';
+import { Button } from './MetaButton';
 import { Textarea } from '@/components/ui/textarea';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';

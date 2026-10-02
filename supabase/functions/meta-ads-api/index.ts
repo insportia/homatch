@@ -32,6 +32,7 @@ import { handleAction } from './actions.ts';
 import { afterTerms, instantFormsState, isTermsRefusal, leadCheckOf, leadTermsEvidence } from '../../../src/lib/metaAds/instantForms.ts';
 import { readManagedState, setApproved, LifecycleError, assertNotSuspended } from './lifecycle.ts';
 import { monitorCampaign, monitorUser, maybeScanDuplicates, lifecycleEvent, runBriefs, emptyMonitorReport, statusChangeNotice } from './monitor.ts';
+import { safeReturnPath } from '../../../src/lib/metaAds/oauth.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -201,7 +202,11 @@ Deno.serve(async (req) => {
         await sb.from('meta_connections').upsert(
           { user_id: uid, oauth_nonce: nonce, oauth_started_at: new Date().toISOString() },
           { onConflict: 'user_id' });
-        return json({ mode, url: oauthStartUrl(await signOAuthState({ uid, nonce })) });
+        /* Where to come back to (the same draft and step), validated and sealed
+           into the signed state — so the callback returns there even when the
+           dialog finishes in a different browser context. */
+        const ret = safeReturnPath(body.returnTo);
+        return json({ mode, url: oauthStartUrl(await signOAuthState({ uid, nonce, ret })) });
       }
 
       case 'oauth_mock_connect': {

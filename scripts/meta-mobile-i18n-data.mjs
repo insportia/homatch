@@ -12,10 +12,10 @@ export const META_MOBILE_STRINGS = {
 
   // ── Where ───────────────────────────────────────────────────────────────
   mm_m_where_title: ['Where should we advertise?', 'სად გავუშვათ რეკლამა?', 'Где показывать рекламу?', 'Reklamı nerede gösterelim?', 'أين نعرض الإعلان؟', 'איפה נפרסם?'],
-  mm_m_geo_runs: ['Your ad will run in', 'რეკლამა გავა აქ', 'Реклама будет показана', 'Reklamınız şurada yayınlanacak', 'سيُعرض إعلانك في', 'המודעה תוצג ב'],
+  mm_m_geo_runs: ['Your ad will run in', 'რეკლამა გამოჩნდება აქ', 'Реклама будет показана', 'Reklamınız şurada yayınlanacak', 'سيُعرض إعلانك في', 'המודעה תוצג ב'],
   mm_m_loc_refined: [
     'Only the places you chose inside it',
-    'მხოლოდ მასში არჩეული ადგილები',
+    'მხოლოდ თქვენ მიერ არჩეული ადგილები',
     'Только выбранные в ней места',
     'Yalnızca içinde seçtiğiniz yerler',
     'فقط الأماكن التي اخترتها داخلها',
@@ -23,7 +23,7 @@ export const META_MOBILE_STRINGS = {
   ],
   mm_m_precise: [
     'Precise location: pin and radius',
-    'ზუსტი ლოკაცია: წერტილი და რადიუსი',
+    'ზუსტი მდებარეობა: წერტილი და რადიუსი',
     'Точное место: метка и радиус',
     'Tam konum: iğne ve yarıçap',
     'موقع دقيق: دبوس ونطاق',
@@ -55,7 +55,7 @@ export const META_MOBILE_STRINGS = {
   ],
   mm_m_meta_rule_us_advertiser: [
     'Your Meta ad account is registered in the United States, so Meta requires property ads to reach all adults of every gender, with areas of at least {{km}} km. This is Meta\'s rule, not a HOMATCH choice.',
-    'თქვენი Meta სარეკლამო ანგარიში აშშ-შია რეგისტრირებული, ამიტომ Meta მოითხოვს, რომ ქონების რეკლამამ ყველა ზრდასრულს მიაღწიოს, ნებისმიერი სქესის, მინიმუმ {{km}} კმ რადიუსით. ეს Meta-ს წესია და არა HOMATCH-ის არჩევანი.',
+    'თქვენი Meta-ს სარეკლამო ანგარიში აშშ-შია რეგისტრირებული, ამიტომ Meta მოითხოვს, რომ ქონების რეკლამამ ყველა ზრდასრულს მიაღწიოს, ნებისმიერი სქესის, მინიმუმ {{km}} კმ რადიუსით. ეს Meta-ს წესია და არა HOMATCH-ის არჩევანი.',
     'Ваш рекламный аккаунт Meta зарегистрирован в США, поэтому Meta требует, чтобы реклама недвижимости охватывала всех взрослых любого пола, с зонами не меньше {{km}} км. Это правило Meta, а не выбор HOMATCH.',
     'Meta reklam hesabınız ABD\'de kayıtlı; bu nedenle Meta, emlak reklamlarının her cinsiyetten tüm yetişkinlere en az {{km}} km\'lik alanlarla ulaşmasını şart koşar. Bu bir Meta kuralıdır, HOMATCH tercihi değildir.',
     'حسابك الإعلاني في Meta مسجل في الولايات المتحدة، لذا تشترط Meta أن تصل إعلانات العقارات إلى جميع البالغين من كل الأجناس، بمناطق لا تقل عن {{km}} كم. هذه قاعدة Meta وليست اختيار HOMATCH.',
@@ -64,8 +64,8 @@ export const META_MOBILE_STRINGS = {
 
   // ── Creative ────────────────────────────────────────────────────────────
   mm_m_creative_how: ['How ad versions work', 'როგორ მუშაობს რეკლამის ვერსიები', 'Как работают версии рекламы', 'Reklam sürümleri nasıl çalışır', 'كيف تعمل نسخ الإعلان', 'איך עובדות גרסאות המודעה'],
-  mm_m_media_sizes: ['Best image sizes', 'სურათის საუკეთესო ზომები', 'Лучшие размеры изображений', 'En iyi görsel boyutları', 'أفضل مقاسات الصور', 'גדלי התמונה המומלצים'],
-  mm_m_priority_make: ['Make priority', 'პრიორიტეტად მონიშვნა', 'Сделать приоритетным', 'Öncelikli yap', 'اجعله أولوية', 'סימון כעדיפות'],
+  mm_m_media_sizes: ['Best image sizes', 'სურათის რეკომენდებული ზომები', 'Лучшие размеры изображений', 'En iyi görsel boyutları', 'أفضل مقاسات الصور', 'גדלי התמונה המומלצים'],
+  mm_m_priority_make: ['Make priority', 'პრიორიტეტად დაყენება', 'Сделать приоритетным', 'Öncelikli yap', 'اجعله أولوية', 'סימון כעדיפות'],
   mm_m_priority_on: ['Priority', 'პრიორიტეტი', 'Приоритет', 'Öncelikli', 'أولوية', 'עדיפות'],
   mm_m_priority_explain: [
     'HOMATCH will consider this version first, though other versions may turn out to work better as results come in.',
@@ -107,7 +107,7 @@ export const META_MOBILE_STRINGS = {
     'سطر إضافي واحد تحت العنوان — تفصيل يستحق المعرفة، مثل المساحة أو ميزة رئيسية.',
     'שורה נוספת אחת מתחת לכותרת — פרט שכדאי לדעת, כמו השטח או יתרון מרכזי.',
   ],
-  mm_m_ai_help: ['Help me with HOMATCH AI', 'დამეხმაროს HOMATCH AI', 'Помощь HOMATCH AI', 'HOMATCH AI yardım etsin', 'ساعدني عبر HOMATCH AI', 'עזרה מ-HOMATCH AI'],
+  mm_m_ai_help: ['Help me with HOMATCH AI', 'HOMATCH AI დამეხმაროს', 'Помощь HOMATCH AI', 'HOMATCH AI yardım etsin', 'ساعدني عبر HOMATCH AI', 'עזרה מ-HOMATCH AI'],
 
   // ── Real-estate scope ───────────────────────────────────────────────────
   mm_m_scope_blocked_title: [
@@ -128,7 +128,7 @@ export const META_MOBILE_STRINGS = {
   ],
   mm_m_scope_review_title: [
     'A HOMATCH specialist will take a quick look',
-    'HOMATCH-ის სპეციალისტი სწრაფად გადახედავს',
+    'HOMATCH-ის სპეციალისტი სწრაფად გადაამოწმებს',
     'Специалист HOMATCH быстро посмотрит',
     'Bir HOMATCH uzmanı hızlıca bakacak',
     'سيلقي مختص من HOMATCH نظرة سريعة',
@@ -180,10 +180,10 @@ export const META_MOBILE_STRINGS = {
   mm_m_admin_domain: ['Real-estate scope', 'უძრავი ქონების დანიშნულება', 'Сфера недвижимости', 'Gayrimenkul kapsamı', 'نطاق العقارات', 'תחום הנדל״ן'],
 
   // ── Review ──────────────────────────────────────────────────────────────
-  mm_m_review_ready: ['Ready to continue', 'მზადაა გასაგრძელებლად', 'Готово к продолжению', 'Devam etmeye hazır', 'جاهز للمتابعة', 'מוכן להמשך'],
+  mm_m_review_ready: ['Ready to continue', 'მზად ხართ გასაგრძელებლად', 'Готово к продолжению', 'Devam etmeye hazır', 'جاهز للمتابعة', 'מוכן להמשך'],
   mm_m_review_suggestions: [
     'Ready to continue · {{n}} suggestion(s)',
-    'მზადაა გასაგრძელებლად · {{n}} რჩევა',
+    'მზად ხართ გასაგრძელებლად · {{n}} რჩევა',
     'Готово к продолжению · советов: {{n}}',
     'Devam etmeye hazır · {{n}} öneri',
     'جاهز للمتابعة · {{n}} اقتراح',
@@ -220,7 +220,7 @@ export const META_MOBILE_STRINGS = {
     'HOMATCH משתמש עכשיו בתוצאות ש-Meta מדווחת — אילו גרסאות, מיקומים וקבוצות מגיבים — כדי להמליץ על שיפורים. שום דבר לא משתנה בלי האישור שלכם.',
   ],
   // ── Lead Ads Terms (accepted by the owner in Meta's own window) ─────────
-  mm_l_terms_cta: ['Accept Meta\'s terms', 'Meta-ს პირობებთან დათანხმება', 'Принять условия Meta', 'Meta koşullarını kabul et', 'الموافقة على شروط Meta', 'אישור התנאים של Meta'],
+  mm_l_terms_cta: ['Accept Meta\'s terms', 'Meta-ს პირობებზე დათანხმება', 'Принять условия Meta', 'Meta koşullarını kabul et', 'الموافقة على شروط Meta', 'אישור התנאים של Meta'],
   mm_l_terms_body: [
     'Almost ready: Meta asks your Page to accept its Lead Ads terms once. They open on Meta\'s own page — read them there and press Meta\'s Accept button.',
     'თითქმის მზადაა: Meta ითხოვს, რომ თქვენმა გვერდმა ერთხელ დაეთანხმოს მის ლიდების რეკლამების პირობებს. ისინი Meta-ს საკუთარ გვერდზე გაიხსნება — წაიკითხეთ და დააჭირეთ Meta-ს დათანხმების ღილაკს.',
@@ -229,7 +229,7 @@ export const META_MOBILE_STRINGS = {
     'أوشكت على الانتهاء: تطلب Meta من صفحتك الموافقة على شروط إعلانات العملاء المحتملين مرة واحدة. تُفتح على صفحة Meta نفسها — اقرأها هناك واضغط زر الموافقة لدى Meta.',
     'כמעט מוכן: Meta מבקשת מהדף שלכם לאשר פעם אחת את תנאי מודעות הלידים. הם נפתחים בדף של Meta עצמה — קראו אותם שם ולחצו על כפתור האישור של Meta.',
   ],
-  mm_l_goal_terms: ['Accept Meta\'s terms', 'საჭიროა Meta-ს პირობები', 'Нужны условия Meta', 'Meta koşulları gerekli', 'تتطلب شروط Meta', 'נדרשים תנאי Meta'],
+  mm_l_goal_terms: ['Accept Meta\'s terms', 'საჭიროა Meta-ს პირობებზე დათანხმება', 'Нужны условия Meta', 'Meta koşulları gerekli', 'تتطلب شروط Meta', 'נדרשים תנאי Meta'],
   mm_l_recheck_body: [
     'Meta hasn\'t confirmed your Page\'s Lead Ads status yet. Check with Meta to continue.',
     'Meta-ს ჯერ არ დაუდასტურებია თქვენი გვერდის ლიდების რეკლამების სტატუსი. გასაგრძელებლად გადაამოწმეთ Meta-ში.',
@@ -255,7 +255,7 @@ export const META_MOBILE_STRINGS = {
     'أكدت Meta: وافقت صفحتك على شروط إعلانات العملاء المحتملين.',
     'Meta אישרה: הדף שלכם אישר את תנאי מודעות הלידים.',
   ],
-  mm_l_terms_done: ['Meta terms accepted', 'Meta-ს პირობები მიღებულია', 'Условия Meta приняты', 'Meta koşulları kabul edildi', 'تم قبول شروط Meta', 'התנאים של Meta אושרו'],
+  mm_l_terms_done: ['Meta terms accepted', 'Meta-ს პირობები დადასტურებულია', 'Условия Meta приняты', 'Meta koşulları kabul edildi', 'تم قبول شروط Meta', 'התנאים של Meta אושרו'],
   mm_l_next: ['Next: {{next}}', 'შემდეგი ნაბიჯი: {{next}}', 'Далее: {{next}}', 'Sonraki adım: {{next}}', 'التالي: {{next}}', 'השלב הבא: {{next}}'],
   mm_l_not_accepted: [
     'Meta doesn\'t show the terms as accepted yet. You can open them again whenever you\'re ready.',

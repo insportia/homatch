@@ -455,6 +455,25 @@ async function advance(req: Request, ctx: Ctx, row: Row, jobs: Map<string, Row>,
   }
 }
 
+/**
+ * Slow work (a photoreal finish or edit: up to a minute or two at high quality) runs after the
+ * answer, kept alive by EdgeRuntime.waitUntil, so no request ever waits on an image model and no
+ * edge time limit is reached. The finishing lease makes a second poll harmless. Where the runtime
+ * has no waitUntil the work is awaited (the old, slower behaviour), never skipped.
+ */
+async function inBackground(work: () => Promise<unknown>): Promise<'BACKGROUND' | 'DONE'> {
+  const run = () => work().catch((e) => console.error('[ds-render] background', String(e).slice(0, 200)));
+  try {
+    const rt = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
+    if (rt?.waitUntil) { rt.waitUntil(run()); return 'BACKGROUND'; }
+  } catch { /* fall through */ }
+  await run();
+  return 'DONE';
+}
+
+/** An edit whose background work died (instance recycled) is failed and its reservation released, not left FINISHING. */
+const EDIT_LEASE_MS = 10 * 60_000;
+
 export async function handleRenderStatus(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   const res = await callerOf(req);
@@ -468,7 +487,13 @@ export async function handleRenderStatus(req: Request): Promise<Response> {
   const { data: rows } = await ctx.caller.from('ds_renders').select('*').in('id', ids);
   const jobs = new Map<string, Row>();
   const budget = { finishes: FINISHES_PER_POLL };
-  for (const row of rows ?? []) await advance(req, ctx, row, jobs, budget);
+  const stale = Date.now() - EDIT_LEASE_MS;
+  for (const row of rows ?? []) {
+    if (row.kind === 'EDIT' && row.status === 'FINISHING' && row.lease_at && Date.parse(row.lease_at) < stale) {
+      await failRender(ctx.admin, row, 'EDIT_TIMEOUT', null, { gpuUsd: null, aiUsd: null, aiKnown: false, provider: null, model: null, ms: 0, detail: { step: 'edit' } }, ['FINISHING']);
+    }
+  }
+  await inBackground(async () => { for (const row of rows ?? []) if (row.kind !== 'EDIT') await advance(req, ctx, row, jobs, budget); });
   const { data: out } = await ctx.caller.from('ds_renders').select(RECORD).in('id', ids);
   return json({ renders: out ?? [] });
 }
@@ -539,8 +564,10 @@ export async function handleRenderEdit(req: Request): Promise<Response> {
   });
   const fail = async (code: string, status: number, finish: Row | null = null, res2?: ImageResult) => {
     await failRender(ctx.admin, row, code, finish, m(res2), ['FINISHING']);
-    return json({ render: await again(), error: code }, status);
+    void status;
+    return null;
   };
+  const work = async () => {
   const provider = selectProvider(deps, override, await configuredModel(ctx.admin));
   if (!provider) return fail('EDIT_NOT_CONFIGURED', 503);
   const [imgBytes, idBytes] = await Promise.all([readBytes(row.base_key, MAX_PICTURE_BYTES), readBytes(row.map_key, MAX_PICTURE_BYTES)]);
@@ -575,5 +602,8 @@ export async function handleRenderEdit(req: Request): Promise<Response> {
     const billing = await closeBilling(ctx.admin, done[0], 'SETTLE', m(result));
     await ctx.admin.from('ds_renders').update({ billing, updated_at: new Date().toISOString() }).eq('id', row.id);
   }
+  return null;
+  };
+  await inBackground(work);
   return json({ render: await again() });
 }

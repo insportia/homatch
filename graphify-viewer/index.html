@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="referrer" content="no-referrer">
+<title>HOMATCH Architecture</title>
+<link rel="stylesheet" href="viewer.css">
+</head>
+<body>
+<header class="bar">
+  <div class="id">
+    <h1>HOMATCH Architecture</h1>
+    <p class="rev"><span id="branch">…</span> @ <code id="sha">…</code><span class="sep">·</span><span id="gen">loading</span></p>
+  </div>
+  <button id="state" class="badge" type="button" aria-describedby="alert" title="Graph status">CHECKING</button>
+</header>
+<div id="alert" class="alert" role="status" hidden></div>
+<nav class="tabs" role="tablist" aria-label="Views" id="tabs"></nav>
+<div class="subbar" id="subbar">
+  <div class="mode" role="group" aria-label="Rendering">
+    <button type="button" data-mode="graph" aria-pressed="true">Graph</button>
+    <button type="button" data-mode="callflow" aria-pressed="false">Call flow</button>
+  </div>
+  <span id="stats" class="stats"></span>
+  <a id="open" class="open" href="#" target="_blank" rel="noopener">Full screen ↗</a>
+</div>
+<main id="stage">
+  <iframe id="frame" title="Graphify view" referrerpolicy="no-referrer"></iframe>
+  <section id="panel" class="panel" hidden></section>
+</main>
+<script src="viewer.js"></script>
+</body>
+</html>

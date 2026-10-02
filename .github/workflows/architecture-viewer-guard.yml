@@ -1,0 +1,55 @@
+# HOMATCH Architecture viewer — the access guard.
+#
+# The viewer (graphify-viewer/, a SEPARATE Vercel project) shows HOMATCH's
+# internal architecture and must never answer an unauthenticated request.
+# This job asks for every kind of file it serves with NO credentials and
+# fails if any of them comes back: the page, the status, the full graph,
+# a preset, a trace, the freshness function.
+#
+# Pass   401/403, or a redirect to Vercel's login (Vercel Authentication)
+# Skip   404 DEPLOYMENT_NOT_FOUND — the project does not exist yet
+# Fail   anything that serves content (2xx) or an unexpected redirect
+#
+# No secrets: it only proves what an anonymous visitor gets. Nothing in
+# HOMATCH's release depends on it.
+
+name: Architecture viewer access guard
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 6 * * *'
+  push:
+    branches: [main]
+    paths: ['graphify-viewer/**', '.github/workflows/architecture-viewer-guard.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: architecture-viewer-guard
+  cancel-in-progress: true
+
+jobs:
+  anonymous-is-refused:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      VIEWER: ${{ vars.ARCHITECTURE_VIEWER_URL || 'https://homatch-architecture.vercel.app' }}
+    steps:
+      - name: Every served path refuses an anonymous request
+        run: |
+          set -u
+          fail=0; missing=0
+          for path in / /index.html /status.json /g/data/graph.json /g/views/design-studio/graph.html /g/views/meta-ads/graph.json /g/traces.json /api/freshness; do
+            code=$(curl -s -o body.txt -w '%{http_code}' --max-time 20 "$VIEWER$path")
+            loc=$(curl -s -o /dev/null -w '%{redirect_url}' --max-time 20 "$VIEWER$path")
+            if [ "$code" = 401 ] || [ "$code" = 403 ]; then verdict=REFUSED
+            elif [ "${code#3}" != "$code" ] && echo "$loc" | grep -Eq '^https://vercel\.com/(login|sso-api)'; then verdict=REFUSED
+            elif [ "$code" = 404 ] && grep -q 'DEPLOYMENT_NOT_FOUND' body.txt; then verdict=NOT_DEPLOYED; missing=1
+            else verdict=EXPOSED; fail=1
+            fi
+            echo "$verdict  $code  $path"
+          done
+          if [ "$fail" = 1 ]; then echo "::error::the architecture viewer served content without authentication"; exit 1; fi
+          if [ "$missing" = 1 ]; then echo "::notice::viewer not deployed at $VIEWER — nothing to guard yet"; fi

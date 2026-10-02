@@ -11,12 +11,13 @@ import type { CatalogAsset, CatalogMaterial } from '../catalog.ts';
 import type { DesignState, ObjectInstance } from '../designState.ts';
 import { seenColors, shapedAsset } from '../objectShape.ts';
 import { pbrRepeat, surfaceMetalness } from '../pbrMaps.ts';
+import type { SpecView as PlannedView } from '../renders/contract.ts';
 import type { Point, SpaceModel } from '../space.ts';
 import { ceilingSurfaceId, floorSurfaceId } from '../space.ts';
 import {
   objectGroup, RUNTIME_KINDS, SPEC_FORMS, SPEC_KINDS, SPEC_LEAVES, SPEC_LIMITS, SPEC_PATTERNS, SPEC_VERSION,
   type Provenance, type SceneBuildSpec, type SpecCamera, type SpecKind, type SpecLeaf, type SpecMaterial, type SpecObject,
-  type SpecOpening, type SpecStair, type SpecSurface, type XY,
+  type SpecOpening, type SpecStair, type SpecSurface, type SpecView, type XY,
 } from './sceneSpec.ts';
 
 /** The furthest near plane a spec may carry (sceneSpec validator, edge and worker alike). */
@@ -35,6 +36,11 @@ export interface CompileInput {
   camera: { position: [number, number, number]; target: [number, number, number]; fov: number; near: number; far: number; aspect: number; background: string | null; cut: { exteriorM: number; interiorM: number } | null } | null;
   render?: { edge?: number; samples?: number };
   outputs: SceneBuildSpec['outputs'];
+  /**
+   * Planned views (a planner decides them; the compiler only carries them), rendered in the same
+   * pass with their object maps. Absent or empty: the spec has no `views` key and hashes as before.
+   */
+  views?: readonly PlannedView[];
 }
 
 const r3 = (x: number) => Math.round(x * 1000) / 1000;
@@ -92,6 +98,17 @@ const SUN: Record<string, [number, number, number]> = {
 
 /** The direction toward the sun, unit length. */
 const unit = (v: [number, number, number]): [number, number, number] => { const n = Math.hypot(...v) || 1; return [r3(v[0] / n), r3(v[1] / n), r3(v[2] / n)]; };
+
+/** A planned view as the spec carries it (a copy: the planner's object is never shared with the spec). */
+function carryView(v: PlannedView): SpecView {
+  return {
+    id: v.id, kind: v.kind, purpose: v.purpose, roomId: v.roomId,
+    position: [v.position[0], v.position[1], v.position[2]], target: [v.target[0], v.target[1], v.target[2]],
+    fovDeg: v.fovDeg, orthoScale: v.orthoScale, aspect: v.aspect, width: v.width, height: v.height, samples: v.samples,
+    cut: v.cut ? { exteriorM: v.cut.exteriorM, interiorM: v.cut.interiorM } : null,
+    hideCeilings: v.hideCeilings, objectMap: v.objectMap,
+  };
+}
 
 export function compileSceneSpec(input: CompileInput): SceneBuildSpec {
   const { space, state, assets, materials } = input;
@@ -196,6 +213,7 @@ export function compileSceneSpec(input: CompileInput): SceneBuildSpec {
     frames: lower(state.frames) ?? DEFAULT_FINISH.frames,
     lighting: { timeOfDay: l.timeOfDay as SceneBuildSpec['lighting']['timeOfDay'], temperature: l.temperature, interior: Math.max(0, Math.min(1, l.interiorIntensity)), sun: unit(SUN[l.timeOfDay] ?? SUN.DAY) },
     camera: cam,
+    ...(input.views?.length ? { views: input.views.map(carryView) } : {}),
     render: { width, height, samples: Math.max(1, Math.min(512, Math.round(input.render?.samples ?? 96))) },
     outputs: input.outputs,
   };

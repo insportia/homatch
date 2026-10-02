@@ -32,6 +32,7 @@ const SHARE_ORIGIN_MIGRATION = process.argv[9] ?? null;
 const ORIGINAL_MIGRATION = process.argv[10] ?? null;
 const FRAME_MIGRATION = process.argv[11] ?? null;
 const FACTORY_MIGRATION = process.argv[12] ?? null;
+const VIEWS_MIGRATION = process.argv[13] ?? null;
 const db = new PGlite({ extensions: { pgcrypto } });
 let failures = 0;
 const ok = (name) => console.log(`  ok   ${name}`);
@@ -879,6 +880,26 @@ if (FACTORY_MIGRATION) {
   await expectError('factory: anon has no access', 'permission denied', () => as('anon', (tx) => tx.query('select * from ds_factory_assets')));
   await expectError('factory: the owner cannot write the ledger', 'permission denied', () => as(A, (tx) => tx.query(`update ds_factory_jobs set state='COMPLETED' where id=$1`, [job.id])));
   await expectError('factory: the owner cannot insert outputs', 'permission denied', () => as(A, (tx) => tx.query(`insert into ds_factory_assets (id,project_id,user_id,role,tier,object_key,provider) values ($1,$2,$3,'SCENE','DESKTOP',$4,'x')`, [ids[3], pG.id, UA, key('design-studio-models', ids[3], 'glb')])));
+  if (VIEWS_MIGRATION) {
+    await db.exec(fs.readFileSync(VIEWS_MIGRATION, 'utf8'));
+    await db.exec(fs.readFileSync(VIEWS_MIGRATION, 'utf8'));
+    ok('factory views: migration applies and re-applies over recorded outputs');
+    const v = ['71000000-0000-4000-8000-000000000001', '71000000-0000-4000-8000-000000000002', '71000000-0000-4000-8000-000000000003', '71000000-0000-4000-8000-000000000004'];
+    await asset(v[0], 'VIEW', 'VIEW', 'v-master', key('design-studio-thumbnails', v[0], 'jpg'));
+    await asset(v[1], 'VIEW_IDS', 'VIEW', 'v-master', key('design-studio-thumbnails', v[1], 'png'));
+    await asset(v[2], 'VIEW_LEGEND', 'VIEW', 'v-master', key('design-studio-thumbnails', v[2], 'json'));
+    ok("factory views: a view's picture, id image and legend are recorded in the project's own folder");
+    await expectError('factory views: a view without its view id is refused', 'check', () => asset(v[3], 'VIEW', 'VIEW', null, key('design-studio-thumbnails', v[3], 'jpg')));
+    await expectError('factory views: an id image stored as a JPEG is refused', 'check', () => asset(v[3], 'VIEW_IDS', 'VIEW', 'v-master', key('design-studio-thumbnails', v[3], 'jpg')));
+    await expectError('factory views: a legend in the model folder is refused', 'check', () => asset(v[3], 'VIEW_LEGEND', 'VIEW', 'v-master', key('design-studio-models', v[3], 'json')));
+    await expectError('factory views: a view in the render tier is refused', 'check', () => asset(v[3], 'VIEW', 'QA', 'v-master', key('design-studio-thumbnails', v[3], 'jpg')));
+    await expectError('factory views: a render still needs its own tier', 'check', () => asset(v[3], 'RENDER', 'VIEW', null, key('design-studio-thumbnails', v[3], 'jpg')));
+    await expectError('factory views: an unknown role is refused', 'check', () => asset(v[3], 'POSTER', 'VIEW', 'v-master', key('design-studio-thumbnails', v[3], 'jpg')));
+    const seen = await as(A, (tx) => tx.query(`select id from ds_factory_assets where project_id=$1 and tier='VIEW'`, [pG.id]));
+    seen.rows.length === 3 ? ok('factory views: the owner reads their view files') : bad('factory views owner read', String(seen.rows.length));
+    const other = await as(B, (tx) => tx.query(`select id from ds_factory_assets where tier='VIEW'`));
+    other.rows.length === 0 ? ok('factory views: another customer sees nothing') : bad('factory views isolation', String(other.rows.length));
+  }
   if (SHARES_MIGRATION) {
     const scene = { schema: 1, geometryState: 'CALIBRATED', scene: { floors: [{ id: 'r1', kind: 'LIVING', areaM2: 20 }], walls: [] } };
     const fp = await as(A, (tx) => one(tx, `insert into ds_floorplans (project_id,user_id,object_key,mime,bytes,purpose) values ($1,$2,$3,'image/jpeg',1000,'REFERENCE') returning id`, [pG.id, UA, `users/${UA}/design-studio-floorplans/${pG.id}/g.jpg`]));

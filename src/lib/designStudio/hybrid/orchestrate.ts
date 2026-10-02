@@ -26,10 +26,20 @@ import { resolveObjects, type ObjectDecision } from './resolution.ts';
 import type { SceneBuildSpec } from './sceneSpec.ts';
 
 export interface FactoryRef { assetId: string; key: string; sha256: string | null; bytes: number | null }
+/**
+ * One planned view's files (spec.views): the picture (JPEG), its id image (PNG) and legend
+ * (renders/contract.ts ObjectMap, JSON). ids / legend are null without an object map or when
+ * an output failed verification; a view that did not render has all three null.
+ */
+export interface FactoryViewRefs { image: FactoryRef | null; ids: FactoryRef | null; legend: FactoryRef | null }
 export interface FactoryPoll {
   state: 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'UNAVAILABLE';
   stage?: string | null;
-  outputs?: { render: FactoryRef | null; scene: Partial<Record<'DESKTOP' | 'MOBILE', FactoryRef | null>>; pieces: Record<string, FactoryRef | null> };
+  outputs?: {
+    render: FactoryRef | null; scene: Partial<Record<'DESKTOP' | 'MOBILE', FactoryRef | null>>; pieces: Record<string, FactoryRef | null>;
+    /** Present only when the pass planned views, keyed by view id. */
+    views?: Record<string, FactoryViewRefs>;
+  };
   timings?: Record<string, unknown>;
   cost?: Array<{ usd: number | null; basis: string; detail: string }>;
   result?: Record<string, unknown> | null;

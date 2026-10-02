@@ -21,7 +21,13 @@ export const SPEC_LIMITS = {
   objects: 300, materials: 48, surfaces: 1500, colorSlots: 12, coord: 200, size: [0.02, 12] as const, height: 6,
   renderEdge: [256, 2560] as const, samples: [1, 512] as const,
   stairs: 8, treads: [3, 25] as const, stairRunM: [0.5, 12] as const, stairWidthM: [0.5, 6] as const,
+  views: 12, viewEdge: [256, 3072] as const, viewSamples: [1, 1024] as const, viewFovDeg: [10, 100] as const,
+  viewOrthoM: [1, 200] as const, viewAspect: [0.3, 4] as const, viewCoord: 500,
 };
+
+/** Planned views (renders/contract.ts SpecView): what a view is and what it is for. */
+export const VIEW_KINDS = ['MASTER', 'ROOM'] as const;
+export const VIEW_PURPOSES = ['DOLLHOUSE', 'MAIN', 'REVERSE', 'FUNCTION', 'DETAIL', 'CONNECTION'] as const;
 
 /** How an opening closes (floorplan OpeningLeaf). Optional: absent means the drawing did not say. */
 export const SPEC_LEAVES = ['HINGED', 'DOUBLE', 'SLIDING', 'NONE', 'FRENCH', 'FIXED', 'CASEMENT'] as const;
@@ -128,6 +134,29 @@ export interface SpecCamera {
   cut: { exteriorM: number; interiorM: number } | null;
 }
 
+/**
+ * A planned view the factory renders at final quality, with its object map
+ * (renders/contract.ts SpecView, the same shape). Perspective (fovDeg) or
+ * orthographic (orthoScale: metres the picture's height covers), never both.
+ */
+export interface SpecView {
+  id: string;
+  kind: typeof VIEW_KINDS[number];
+  purpose: typeof VIEW_PURPOSES[number];
+  roomId: string | null;
+  position: XYZ;
+  target: XYZ;
+  fovDeg: number | null;
+  orthoScale: number | null;
+  aspect: number;
+  width: number;
+  height: number;
+  samples: number;
+  cut: { exteriorM: number; interiorM: number } | null;
+  hideCeilings: boolean;
+  objectMap: boolean;
+}
+
 export interface SceneBuildSpec {
   version: typeof SPEC_VERSION;
   units: 'm';
@@ -148,6 +177,12 @@ export interface SceneBuildSpec {
   frames: string;
   lighting: { timeOfDay: 'DAY' | 'SUNSET' | 'EVENING' | 'NIGHT'; temperature: 'WARM' | 'NEUTRAL' | 'COOL'; interior: number; sun: XYZ };
   camera: SpecCamera | null;
+  /**
+   * Additive and optional (still hm-scene-1): planned views rendered in the
+   * same pass, each with its object map. Left out when there are none, so a
+   * spec without views hashes exactly as before.
+   */
+  views?: SpecView[];
   render: { width: number; height: number; samples: number };
   outputs: { render: boolean; scene: boolean; objects: boolean };
 }
@@ -305,6 +340,28 @@ export function validateSceneSpec(raw: unknown): SceneBuildSpec {
       background: hexOrNull(c.background, 'camera.background'), cut,
     };
   })(obj(r.camera, 'camera'));
+  const roomIds = new Set(rooms.map((m) => m.id));
+  const int = (v: unknown, p: string, lo: number, hi: number) => { const n = num(v, p, lo, hi); return Number.isInteger(n) ? n : fail(p, 'not a whole number'); };
+  const views: SpecView[] = r.views == null ? [] : arr(r.views, 'views', SPEC_LIMITS.views).map((v, i) => {
+    const q = obj(v, `views[${i}]`);
+    const p = `views[${i}]`;
+    const position = xyz(q.position, `${p}.position`, SPEC_LIMITS.viewCoord);
+    const target = xyz(q.target, `${p}.target`, SPEC_LIMITS.viewCoord);
+    if (Math.hypot(target[0] - position[0], target[1] - position[1], target[2] - position[2]) < 0.01) fail(`${p}.target`, 'the camera looks at itself');
+    const fovDeg = q.fovDeg == null ? null : num(q.fovDeg, `${p}.fovDeg`, ...SPEC_LIMITS.viewFovDeg);
+    const orthoScale = q.orthoScale == null ? null : num(q.orthoScale, `${p}.orthoScale`, ...SPEC_LIMITS.viewOrthoM);
+    if ((fovDeg == null) === (orthoScale == null)) fail(`${p}.fovDeg`, 'either fovDeg or orthoScale');
+    const cut = q.cut == null ? null : ((k) => ({ exteriorM: num(k.exteriorM, `${p}.cut.exteriorM`, 0.2, SPEC_LIMITS.height), interiorM: num(k.interiorM, `${p}.cut.interiorM`, 0.2, SPEC_LIMITS.height) }))(obj(q.cut, `${p}.cut`));
+    return {
+      id: id(q.id, `${p}.id`), kind: oneOf(q.kind, `${p}.kind`, VIEW_KINDS), purpose: oneOf(q.purpose, `${p}.purpose`, VIEW_PURPOSES),
+      roomId: q.roomId == null ? null : typeof q.roomId === 'string' && roomIds.has(q.roomId) ? q.roomId : fail(`${p}.roomId`, 'unknown room'),
+      position, target, fovDeg, orthoScale, aspect: num(q.aspect, `${p}.aspect`, ...SPEC_LIMITS.viewAspect),
+      width: int(q.width, `${p}.width`, ...SPEC_LIMITS.viewEdge), height: int(q.height, `${p}.height`, ...SPEC_LIMITS.viewEdge),
+      samples: int(q.samples, `${p}.samples`, ...SPEC_LIMITS.viewSamples), cut,
+      hideCeilings: bool(q.hideCeilings, `${p}.hideCeilings`), objectMap: bool(q.objectMap, `${p}.objectMap`),
+    };
+  });
+  if (new Set(views.map((v) => v.id)).size !== views.length) fail('views', 'duplicate id');
   const rr = obj(r.render, 'render');
   const out = obj(r.outputs, 'outputs');
   return {
@@ -318,6 +375,7 @@ export function validateSceneSpec(raw: unknown): SceneBuildSpec {
       interior: num(l.interior, 'lighting.interior', 0, 1), sun: xyz(l.sun, 'lighting.sun', 10),
     },
     camera,
+    ...(views.length ? { views } : {}),
     render: { width: num(rr.width, 'render.width', ...SPEC_LIMITS.renderEdge), height: num(rr.height, 'render.height', ...SPEC_LIMITS.renderEdge), samples: num(rr.samples, 'render.samples', ...SPEC_LIMITS.samples) },
     outputs: { render: bool(out.render, 'outputs.render'), scene: bool(out.scene, 'outputs.scene'), objects: bool(out.objects, 'outputs.objects') },
   };

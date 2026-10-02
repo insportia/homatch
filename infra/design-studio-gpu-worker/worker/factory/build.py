@@ -8,9 +8,10 @@ params.json (written by the worker, never by a customer or a model):
   device      "AUTO" | "CPU"
   report      path of the build report JSON
 
-Writes: render.png (the source camera, transparent background), scene.glb (the
-whole home, semantic node names), objects/<group>.glb (one model per group of
-identical walkthrough pieces), and the report.
+Writes: render.png (the source camera, transparent background), view-<id>.png,
+view-<id>-ids.png and view-<id>-legend.json per planned view (views.py),
+scene.glb (the whole home, semantic node names), objects/<group>.glb (one model
+per group of identical walkthrough pieces), and the report.
 """
 from __future__ import annotations
 
@@ -28,7 +29,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from worker.factory import arch, furniture  # noqa: E402
+from worker.factory import arch, furniture, views  # noqa: E402
 from worker.factory.materials import Library, clamp_tints_for_export, rgba  # noqa: E402
 from worker.spec import validate_spec  # noqa: E402
 
@@ -240,10 +241,12 @@ def main(params_path: str) -> dict:
     stage("LIGHTING")
     light(spec)
 
-    if spec["outputs"]["render"] and spec["camera"]:
+    want_render = bool(spec["outputs"]["render"] and spec["camera"])
+    if want_render or spec["views"]:
+        report["device"] = configure_render(spec, params.get("device", "AUTO"))
+    if want_render:
         stage("RENDERING")
         t = time.perf_counter()
-        report["device"] = configure_render(spec, params.get("device", "AUTO"))
         camera(spec)
         cut = spec["camera"]["cut"]
         cut_walls = []
@@ -260,6 +263,11 @@ def main(params_path: str) -> dict:
         hide(ceilings, False)
         report["timings"]["render"] = _ms(t)
         report["render"] = {"width": spec["render"]["width"], "height": spec["render"]["height"], "samples": spec["render"]["samples"], "background": spec["camera"]["background"]}
+
+    if spec["views"]:
+        t = time.perf_counter()
+        report["views"] = views.render_views(spec, lib, out, {"walls": walls, "ceilings": ceilings, "device": report["device"]}, stage, hide)
+        report["timings"]["views"] = _ms(t)
 
     if spec["outputs"]["scene"] or spec["outputs"]["objects"]:
         stage("EXPORTING")

@@ -11,6 +11,7 @@
     { id: 'supabase-database', label: 'Supabase / DB' },
     { id: 'infrastructure', label: 'Infrastructure' },
     { id: 'runpod-blender', label: 'Runpod / Blender' },
+    { id: 'changes', label: 'What changed', panel: true },
     { id: 'traces', label: 'Traces', panel: true },
     { id: 'history', label: 'History', panel: true },
   ];
@@ -95,7 +96,7 @@
     $('subbar').hidden = !!v.panel;
     if (v.panel) {
       frame.hidden = true; frame.removeAttribute('src'); panel.hidden = false;
-      (v.id === 'traces' ? renderTraces : renderHistory)(panel);
+      ({ traces: renderTraces, history: renderHistory, changes: renderChanges })[v.id](panel);
       return;
     }
     const file = `${base(v)}/${mode === 'callflow' ? 'callflow' : 'graph'}.html`;
@@ -147,8 +148,36 @@
     panel.innerHTML = html;
   }
 
+  async function renderChanges(panel) {
+    panel.innerHTML = '<p>Loading changes…</p>';
+    cache.changes ??= await getJson('g/changes.json');
+    const c = cache.changes;
+    if (!c) {
+      panel.innerHTML = '<div class="empty"><h2>What changed</h2><p>No comparison yet: the first graph has nothing to compare with. From the next build on, every refresh shows what appeared and disappeared — and new nodes glow green in the preset graphs.</p></div>';
+      return;
+    }
+    const t = c.totals;
+    const card = (n, label, cls) => `<div class="card ${cls}"><b>${cls === 'plus' ? '+' : '−'}${Number(n).toLocaleString()}</b><span>${esc(label)}</span></div>`;
+    const max = Math.max(1, ...Object.values(c.perView).map((v) => Math.max(v.added, v.removed)));
+    const label = Object.fromEntries(VIEWS.map((v) => [v.id, v.label]));
+    const bars = Object.entries(c.perView).map(([id, v]) => `<div class="bar-row"><a href="#${esc(id)}">${esc(label[id] || id)}</a>
+      <div class="bars"><i class="plus" style="width:${(100 * v.added) / max}%"></i><i class="minus" style="width:${(100 * v.removed) / max}%"></i></div>
+      <span><span class="plus">+${v.added}</span> <span class="minus">−${v.removed}</span></span></div>`).join('');
+    const group = (list) => {
+      const files = new Map();
+      for (const n of list) { const f = n.file || '(external)'; if (!files.has(f)) files.set(f, []); files.get(f).push(n.label); }
+      return [...files].map(([f, labels]) => `<details><summary><code>${esc(f)}</code> <small>${labels.length}</small></summary><div class="chips">${labels.map((l) => `<code>${esc(l)}</code>`).join(' ')}</div></details>`).join('');
+    };
+    panel.innerHTML = `<h2>What changed <small class="muted">${esc(short(c.from))} → ${esc(short(c.to))} · ${esc(when(c.at))}</small></h2>
+      <div class="cards">${card(t.nodesAdded, 'nodes added', 'plus')}${card(t.nodesRemoved, 'nodes removed', 'minus')}${card(t.edgesAdded, 'edges added', 'plus')}${card(t.edgesRemoved, 'edges removed', 'minus')}</div>
+      <h2>By area</h2><div class="bar-list">${bars}</div>
+      <p class="muted">Open an area: its new nodes glow green; tap the green badge to fly to them.</p>
+      <h2>Added <small class="muted">${c.added.length < t.nodesAdded ? `first ${c.added.length} of ${t.nodesAdded}` : ''}</small></h2>${c.added.length ? group(c.added) : '<p class="muted">Nothing.</p>'}
+      <h2>Removed <small class="muted">${c.removed.length < t.nodesRemoved ? `first ${c.removed.length} of ${t.nodesRemoved}` : ''}</small></h2>${c.removed.length ? group(c.removed) : '<p class="muted">Nothing.</p>'}`;
+  }
+
   function renderHistory(panel) {
-    const rows = (status.history || []).map((h) => `<tr><td>${esc(when(h.at))}</td><td>${esc(h.branch)}</td><td><code>${esc(short(h.sha))}</code></td><td class="r-${esc(h.result)}">${esc(h.result.toUpperCase())}${h.reason ? `<br><small>${esc(h.reason)}</small>` : ''}</td><td>${h.deployment && h.result === 'built' ? `<a href="https://${esc(h.deployment)}/" target="_blank" rel="noopener">open</a>` : ''}</td></tr>`).join('');
+    const rows = (status.history || []).map((h) => `<tr><td>${esc(when(h.at))}</td><td>${esc(h.branch)}</td><td><code>${esc(short(h.sha))}</code></td><td class="r-${esc(h.result)}">${esc(h.result.toUpperCase())}${h.reason ? `<br><small>${esc(h.reason)}</small>` : ''}</td><td>${h.delta ? `<span class="plus">+${esc(h.delta.nodesAdded)}</span> <span class="minus">−${esc(h.delta.nodesRemoved)}</span>` : '—'}</td><td>${h.deployment && h.result === 'built' ? `<a href="https://${esc(h.deployment)}/" target="_blank" rel="noopener">open</a>` : ''}</td></tr>`).join('');
     const g = status.graph;
     panel.innerHTML = `<h2>This graph</h2>${g ? `<table><tbody>
       <tr><th>Graph commit</th><td><code>${esc(g.sha)}</code></td></tr>
@@ -161,7 +190,37 @@
     </tbody></table>` : '<p>No graph.</p>'}
     <h2>Recent builds (last ${status.history?.length || 0})</h2>
     <p>Every successful build stays openable at its own protected deployment URL.</p>
-    <table><thead><tr><th>When</th><th>Branch</th><th>Commit</th><th>Result</th><th>Viewer</th></tr></thead><tbody>${rows}</tbody></table>`;
+    <table><thead><tr><th>When</th><th>Branch</th><th>Commit</th><th>Result</th><th>Nodes</th><th>Viewer</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+
+  /* Live: re-read status.json every 30 s; a new graph (or a failed refresh)
+     announces itself instead of waiting for a reload. Freshness every 2 min. */
+  function startLive() {
+    const dot = $('live');
+    const loadedKey = `${status.state}|${status.graph?.sha}|${status.revision?.sha}`;
+    let last = Date.now();
+    const tick = async () => {
+      if (document.hidden) return;
+      const s = await getJson(`status.json?t=${Date.now()}`);
+      last = Date.now();
+      dot.dataset.ok = s ? '1' : '0';
+      dot.title = `${s ? 'live' : 'offline'} · checked ${new Date(last).toLocaleTimeString()}`;
+      if (!s) return;
+      const key = `${s.state}|${s.graph?.sha}|${s.revision?.sha}`;
+      if (key !== loadedKey) {
+        const a = $('alert');
+        a.dataset.tone = s.state === 'CURRENT' ? 'ok' : 'bad';
+        a.innerHTML = s.state === 'CURRENT'
+          ? `New architecture ready — <code>${esc(s.revision?.branch)} @ ${esc(short(s.revision?.sha))}</code>${s.graph?.delta ? ` (<span class="plus">+${esc(s.graph.delta.nodesAdded)}</span> / <span class="minus">−${esc(s.graph.delta.nodesRemoved)}</span> nodes)` : ''}. <button type="button" class="reload">Show it</button>`
+          : `Graph refresh ${esc(s.state.replace('_', ' ').toLowerCase())} for <code>${esc(short(s.failure?.attemptedSha))}</code>. <button type="button" class="reload">Reload</button>`;
+        a.hidden = false;
+        a.querySelector('.reload').onclick = () => location.reload();
+      }
+    };
+    setInterval(tick, 30000);
+    setInterval(() => { if (!document.hidden && status.state === 'CURRENT') freshness(); }, 120000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - last > 30000) tick(); });
+    dot.title = `live · checked ${new Date().toLocaleTimeString()}`;
   }
 
   function route() { show((location.hash || '#design-studio').slice(1)); }
@@ -184,5 +243,6 @@
     const live = header();
     route();
     if (live) freshness();
+    startLive();
   })();
 })();

@@ -14,7 +14,7 @@ import { mkdtempSync, writeFileSync, mkdirSync, cpSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { scanText, scanTree, forbiddenSources, graphRelevant, nextStatus, mobilePatch, HISTORY_LIMIT } from '../../graphify-viewer/build.mjs';
+import { scanText, scanTree, forbiddenSources, graphRelevant, nextStatus, mobilePatch, enhancePatch, graphDiff, ALLOWED_HOST, HISTORY_LIMIT } from '../../graphify-viewer/build.mjs';
 import { trace, shortestPath, digest, VIEWS } from '../../scripts/claude/graphify.mjs';
 
 const require = createRequire(import.meta.url);
@@ -168,5 +168,35 @@ test('the Build Output API directory lives in the viewer Root Directory; config 
   assert.equal(v.outputDirectory, undefined, 'Build Output API: no static outputDirectory alongside it');
   assert.match(v.ignoreCommand, /VERCEL_ENV" = production \] && exit 1/, 'production always rebuilds the graph');
   const app = JSON.parse(readFileSync(new URL('../../vercel.json', import.meta.url), 'utf8'));
-  assert.equal(app.ignoreCommand, "git diff --quiet HEAD^ HEAD -- . ':(exclude)graphify-viewer'", 'viewer-only commits do not rebuild the customer app');
+  assert.equal(app.ignoreCommand, "git diff --quiet HEAD^ HEAD -- . ':(exclude)graphify-viewer' ':(exclude)docs' ':(exclude)tests/matrix' ':(exclude)*.md'", 'viewer/docs/test-only commits do not rebuild the customer app');
+});
+
+test('only Vercel team-scoped hosts are served (the bare <project>.vercel.app leaked on 2026-10-02)', async () => {
+  const re = new RegExp(ALLOWED_HOST);
+  for (const h of ['homatch-architecture-insportia.vercel.app', 'homatch-architecture-git-main-insportia.vercel.app', 'homatch-architecture-a1b2c3-insportia.vercel.app']) assert.ok(re.test(h), h);
+  for (const h of ['homatch-architecture.vercel.app', 'architecture.homatch.live', 'x-insportia.vercel.app.evil.com']) assert.ok(!re.test(h), h);
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../../graphify-viewer/build.mjs', import.meta.url), 'utf8');
+  const first = src.slice(src.indexOf('routes: ['), src.indexOf("{ handle: 'filesystem' }"));
+  assert.match(first, /missing: \[\{ type: 'host', value: ALLOWED_HOST \}\], status: 404/, 'the host check precedes files and functions');
+});
+
+test('what changed: node/edge delta and per-area counts', () => {
+  const prev = { nodes: [{ id: 'a', label: 'a()', source_file: 'src/lib/metaAds/x.ts' }, { id: 'b', label: 'b()', source_file: 'src/x.ts' }], links: [{ source: 'a', target: 'b', relation: 'calls' }] };
+  const next = { nodes: [{ id: 'a', label: 'a()', source_file: 'src/lib/metaAds/x.ts' }, { id: 'c', label: 'c()', source_file: 'src/lib/metaAds/y.ts' }], links: [{ source: 'a', target: 'c', relation: 'calls' }] };
+  const d = graphDiff(prev, next);
+  assert.deepEqual(d.totals, { nodesAdded: 1, nodesRemoved: 1, edgesAdded: 1, edgesRemoved: 1 });
+  assert.deepEqual(d.addedIds, ['c']);
+  assert.deepEqual(d.perView['meta-ads'], { added: 1, removed: 0 });
+  assert.deepEqual(d.removed, [{ label: 'b()', file: 'src/x.ts' }]);
+});
+
+test('Graphify pages get the tuning once, after Graphify\'s own script', () => {
+  const html = '<html><head></head><body><script>const network = 1;</script></body></html>';
+  const once = enhancePatch(html, '../../changes.json');
+  assert.ok(once.indexOf('homatch-enhance') > once.indexOf('const network'));
+  assert.match(once, /hideEdgesOnZoom/);
+  assert.match(once, /changes\.json/);
+  assert.equal(enhancePatch(once, '../../changes.json'), once);
+  assert.doesNotMatch(enhancePatch(html, null), /changes\.json/);
 });

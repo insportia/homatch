@@ -3,7 +3,7 @@
   "buildCommand": "pnpm run build",
   "outputDirectory": "dist",
   "installCommand": "pnpm install --frozen-lockfile",
-  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . ':(exclude)graphify-viewer'",
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . ':(exclude)graphify-viewer' ':(exclude)docs' ':(exclude)tests/matrix' ':(exclude)*.md'",
   "rewrites": [
     { "source": "/w/:token", "destination": "/share.html" },
     { "source": "/d/:token", "destination": "/share.html" },

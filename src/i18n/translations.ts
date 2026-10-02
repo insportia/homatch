@@ -13793,6 +13793,23 @@ const en = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_issue_on_stairs: 'That would stand on the stairs.',
   ds_issue_blocks_stairs: 'That would block the way onto the stairs.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  rend_tab_look: 'Look',
+  rend_tab_place: 'Place',
+  rend_colour: 'Colour',
+  rend_paint: 'Paint',
+  rend_use_colour: 'Use {{colour}}',
+  rend_material: 'Material',
+  rend_move: 'Move',
+  rend_move_north: 'Move back',
+  rend_move_south: 'Move forward',
+  rend_move_west: 'Move left',
+  rend_move_east: 'Move right',
+  rend_rotate: 'Turn',
+  rend_remove: 'Remove',
+  rend_replace: 'Replace with',
+  rend_place_note: 'HOMATCH checks walls, doors and walkways before redrawing.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -27500,6 +27517,23 @@ const ka: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_issue_on_stairs: 'ეს კიბეზე აღმოჩნდებოდა.',
   ds_issue_blocks_stairs: 'ეს კიბისკენ გასასვლელს გადაკეტავდა.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  rend_tab_look: 'იერი',
+  rend_tab_place: 'ადგილი',
+  rend_colour: 'ფერი',
+  rend_paint: 'შეღებვა',
+  rend_use_colour: 'გამოიყენე {{colour}}',
+  rend_material: 'მასალა',
+  rend_move: 'გადაადგილება',
+  rend_move_north: 'უკან გაწევა',
+  rend_move_south: 'წინ გაწევა',
+  rend_move_west: 'მარცხნივ გაწევა',
+  rend_move_east: 'მარჯვნივ გაწევა',
+  rend_rotate: 'შემობრუნება',
+  rend_remove: 'წაშლა',
+  rend_replace: 'შეცვალე',
+  rend_place_note: 'HOMATCH გადახატვამდე ამოწმებს კედლებს, კარებს და გასასვლელებს.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -41198,6 +41232,23 @@ const ru: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_issue_on_stairs: 'Это окажется на лестнице.',
   ds_issue_blocks_stairs: 'Это загородит проход к лестнице.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  rend_tab_look: 'Вид',
+  rend_tab_place: 'Место',
+  rend_colour: 'Цвет',
+  rend_paint: 'Покраска',
+  rend_use_colour: 'Использовать {{colour}}',
+  rend_material: 'Материал',
+  rend_move: 'Переместить',
+  rend_move_north: 'Сдвинуть назад',
+  rend_move_south: 'Сдвинуть вперёд',
+  rend_move_west: 'Сдвинуть влево',
+  rend_move_east: 'Сдвинуть вправо',
+  rend_rotate: 'Повернуть',
+  rend_remove: 'Убрать',
+  rend_replace: 'Заменить на',
+  rend_place_note: 'HOMATCH проверит стены, двери и проходы, прежде чем перерисовать.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -54894,6 +54945,23 @@ const tr: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_issue_on_stairs: 'Bu merdivenin üzerinde kalır.',
   ds_issue_blocks_stairs: 'Bu merdivene giden yolu kapatır.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  rend_tab_look: 'Görünüm',
+  rend_tab_place: 'Yerleşim',
+  rend_colour: 'Renk',
+  rend_paint: 'Boya',
+  rend_use_colour: '{{colour}} kullan',
+  rend_material: 'Malzeme',
+  rend_move: 'Taşı',
+  rend_move_north: 'Geri taşı',
+  rend_move_south: 'İleri taşı',
+  rend_move_west: 'Sola taşı',
+  rend_move_east: 'Sağa taşı',
+  rend_rotate: 'Döndür',
+  rend_remove: 'Kaldır',
+  rend_replace: 'Şununla değiştir',
+  rend_place_note: 'HOMATCH yeniden çizmeden önce duvarları, kapıları ve geçişleri kontrol eder.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -68590,6 +68658,23 @@ const ar: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_issue_on_stairs: 'سيكون ذلك فوق السلالم.',
   ds_issue_blocks_stairs: 'سيعيق ذلك الطريق إلى السلالم.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  rend_tab_look: 'المظهر',
+  rend_tab_place: 'المكان',
+  rend_colour: 'اللون',
+  rend_paint: 'الطلاء',
+  rend_use_colour: 'استخدم {{colour}}',
+  rend_material: 'الخامة',
+  rend_move: 'تحريك',
+  rend_move_north: 'حرّك للخلف',
+  rend_move_south: 'حرّك للأمام',
+  rend_move_west: 'حرّك لليسار',
+  rend_move_east: 'حرّك لليمين',
+  rend_rotate: 'تدوير',
+  rend_remove: 'إزالة',
+  rend_replace: 'استبدل بـ',
+  rend_place_note: 'يتحقق HOMATCH من الجدران والأبواب والممرات قبل إعادة الرسم.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -82286,6 +82371,23 @@ const he: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   ds_issue_on_stairs: 'זה יעמוד על המדרגות.',
   ds_issue_blocks_stairs: 'זה יחסום את הגישה למדרגות.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  rend_tab_look: 'מראה',
+  rend_tab_place: 'מיקום',
+  rend_colour: 'צבע',
+  rend_paint: 'צבע קיר',
+  rend_use_colour: 'השתמש ב־{{colour}}',
+  rend_material: 'חומר',
+  rend_move: 'הזזה',
+  rend_move_north: 'הזז אחורה',
+  rend_move_south: 'הזז קדימה',
+  rend_move_west: 'הזז שמאלה',
+  rend_move_east: 'הזז ימינה',
+  rend_rotate: 'סיבוב',
+  rend_remove: 'הסרה',
+  rend_replace: 'החלף ב־',
+  rend_place_note: 'HOMATCH בודק קירות, דלתות ומעברים לפני ציור מחדש.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

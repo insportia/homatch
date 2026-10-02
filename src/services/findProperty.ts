@@ -130,6 +130,8 @@ export interface FindPropertyResult {
    * Every field is null when the source did not give it; links are server-validated.
    */
   attribution?: SourceAttribution | null;
+  /** The same property seen on other sources; each keeps its own exact link. */
+  alsoSeenAt?: SourceAttribution[];
   supply?: { role: string | null; broker: BrokerDisclosure | null };
 }
 

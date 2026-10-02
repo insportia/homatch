@@ -39,6 +39,8 @@ import {
   discloseBroker,
 } from '../../../src/research-core/match/broker-identity.ts';
 import { attributionFor, rawSignalIdOf } from '../../../src/research-core/discovery/attribution.ts';
+import { fromObservationRow } from '../../../src/research-core/discovery/discovery-entity.ts';
+import { dedupe } from '../../../src/research-core/discovery/cross-source-dedupe.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -142,7 +144,7 @@ Deno.serve(async (req: Request) => {
         + 'id,city,district,transaction,property_type,sale_amount,sale_currency,'
         + 'rent_amount,rent_currency,area_sqm,rooms,bedrooms,title,canonical_url,'
         + 'published_at,first_seen_at,last_verified_at,detected_language,adapter_id,'
-        + 'supply_role,broker_id,entity_id,source_id,field_origins,'
+        + 'supply_role,broker_id,entity_id,source_id,field_origins,content_fingerprint,'
         /*
          * THE BROKER, WHEN THERE IS ONE -- from broker_intelligence, which is the
          * table of firms we FOUND. Note what is not joined and cannot be: this
@@ -244,7 +246,27 @@ Deno.serve(async (req: Request) => {
       for (const s of sourceRows ?? []) sources.set(String(s.id), s as Record<string, unknown>);
     }
 
-    const results = distinct.map((row: Record<string, unknown>) => {
+    /*
+     * ONE RESULT PER PROPERTY ACROSS SOURCES (discovery/cross-source-dedupe.ts).
+     * The entity resolver links observations of one supply_entity; this also
+     * catches what it never sees -- the same Telegram ad in three channels,
+     * the same flat on a portal and in a group -- on evidence (same post, same
+     * text, a shared contact WITH matching area and rooms/price, the same
+     * coordinates). Conflicts veto; uncertain pairs stay separate. Pure, no
+     * query: everything it reads was loaded above.
+     */
+    const signalOf = (row: Record<string, unknown>) => signals.get(rawSignalIdOf(observationOf(row)?.field_origins) ?? '') ?? null;
+    const sourceOf = (row: Record<string, unknown>) =>
+      sources.get(String(signalOf(row)?.source_id ?? observationOf(row)?.source_id ?? '')) ?? null;
+    const { keyOf: propertyKeyOf } = dedupe(distinct.filter((row: Record<string, unknown>) => observationOf(row))
+      .map((row: Record<string, unknown>) => ({
+        id: String(row.id),
+        entity: fromObservationRow(observationOf(row) as never, signalOf(row) as never, sourceOf(row) as never),
+        entityId: (observationOf(row)?.entity_id as string | null) ?? null,
+        fingerprint: (observationOf(row)?.content_fingerprint as string | null) ?? null,
+      })));
+
+    const allResults = distinct.map((row: Record<string, unknown>) => {
       const observation = observationOf(row);
       const signal = signals.get(rawSignalIdOf(observation?.field_origins) ?? '') ?? null;
       const attribution = observation
@@ -323,6 +345,22 @@ Deno.serve(async (req: Request) => {
         supply: brokerBlock(observation, registered, now),
       };
     });
+
+    /* Best score first (the order matches arrived in); every other place the
+       same property was seen stays as provenance on the kept result. */
+    const keptByProperty = new Map<string, (typeof allResults)[number] & { alsoSeenAt: unknown[] }>();
+    const results: Array<(typeof allResults)[number] & { alsoSeenAt: unknown[] }> = [];
+    for (const result of allResults) {
+      const key = propertyKeyOf.get(String(result.id)) ?? String(result.id);
+      const kept = keptByProperty.get(key);
+      if (kept) {
+        if (result.attribution) kept.alsoSeenAt.push(result.attribution);
+        continue;
+      }
+      const entry = { ...result, alsoSeenAt: [] as unknown[] };
+      keptByProperty.set(key, entry);
+      results.push(entry);
+    }
 
     /*
      * BROKER DISCOVERY, when — and only when — this search opted in.

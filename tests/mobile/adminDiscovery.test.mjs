@@ -208,6 +208,8 @@ for (const [width, height] of [[1440, 900], [390, 844]]) {
       if (l.sections < 5) failures.push(`${lang} ${width}: ${l.sections} sections`);
       if ((lang === 'ar' || lang === 'he') && l.dir !== 'rtl') failures.push(`${lang} ${width}: not RTL`);
       for (const v of ['2787', '3770', '23', '1830']) if (!l.text.includes(v)) failures.push(`${lang} ${width}: value ${v} missing`);
+      /* Source readiness: every named source, statuses as codes, LinkedIn honestly BLOCKED. */
+      for (const v of ['myhome.ge', 'livo.ge', 'LinkedIn', 'Facebook groups', 'BLOCKED', 'WORKER_BROWSER']) if (!l.text.includes(v)) failures.push(`${lang} ${width}: readiness ${v} missing`);
       if (/admin_disc_|mjp_status_|undefined/.test(l.text)) failures.push(`${lang} ${width}: raw key or undefined on screen`);
       if (/searching_sources|budget_reached|partially_completed/.test(l.text)) failures.push(`${lang} ${width}: raw job status on screen`);
       if (l.clippedActions) failures.push(`${lang} ${width}: ${l.clippedActions} action(s) outside the viewport`);

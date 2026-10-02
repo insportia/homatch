@@ -73,6 +73,9 @@ export interface ListingAttribution {
   originalText?: string | null;
   showMore: string;
   showLess: string;
+  /** The same property on other sources (cross-source dedupe), each an exact link. */
+  alsoSeenLabel?: string;
+  alsoSeen?: Array<{ name: string; url: string | null }>;
 }
 
 const LONG_TEXT = 280;
@@ -99,6 +102,9 @@ function SourceBlock({ attribution }: { attribution: ListingAttribution }) {
   const author = attribution.authorName ?? (authorUrl ? authorUrl.replace(/^https?:\/\//, '') : null);
   const text = attribution.originalText ?? null;
   const long = (text?.length ?? 0) > LONG_TEXT;
+  const alsoSeen = (attribution.alsoSeen ?? [])
+    .map((s) => ({ name: s.name, url: safeExternalUrl(s.url) }))
+    .filter((s): s is { name: string; url: string } => !!s.url);
   return (
     <div className="mt-2.5 space-y-1 border-s-2 border-border ps-2.5 text-2xs leading-snug">
       <p className="break-words text-muted-foreground">
@@ -110,6 +116,17 @@ function SourceBlock({ attribution }: { attribution: ListingAttribution }) {
         <p className="break-words text-muted-foreground">
           {attribution.authorLabel}:{' '}
           {authorUrl ? <OutLink href={authorUrl}>{author}</OutLink> : <span dir="auto">{author}</span>}
+        </p>
+      ) : null}
+      {alsoSeen.length ? (
+        <p className="break-words text-muted-foreground">
+          {attribution.alsoSeenLabel}:{' '}
+          {alsoSeen.map((s, i) => (
+            <React.Fragment key={s.url}>
+              {i > 0 ? ' · ' : null}
+              <OutLink href={s.url}>{s.name}</OutLink>
+            </React.Fragment>
+          ))}
         </p>
       ) : null}
       {text ? (

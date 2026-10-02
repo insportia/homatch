@@ -165,3 +165,148 @@ lost. No R2 artifacts are produced by Phase 2 yet.
 Local proof of the migrations: `bash tests/sql/run-phase2.sh` (Postgres 16;
 applies both migrations twice to a fixture copied from production columns and
 runs the behavioural checks).
+
+## Phase 2 completion (continuation after #66, base `2be7037c`)
+
+Status words: IMPLEMENTED = code on the branch; FIXTURE_TESTED = tests on
+captured (CAPTURED) or written (DOC_SHAPED / SYNTHETIC) fixtures; LIVE_TESTED =
+a real production proof (a passing `discovery_source_live_checks` row or real
+collected rows) — never claimed from code or fixtures. The single source of
+truth is `src/research-core/discovery/source-capabilities.ts`
+(`SOURCE_CAPABILITIES` + `sourceStatus()`), rendered in /admin/discovery
+("Source readiness").
+
+### Source matrix (2026-10-02, code + read-only production)
+
+| Source | Implementation | Fixture | Live tested (prod evidence) | Retrieval | Status now | Blocker / next step |
+|---|---|---|---|---|---|---|
+| ss.ge / home.ss.ge | IMPLEMENTED (`ss-ge`) | CAPTURED | yes — 15 observations 2026-09-25; no live-check row yet | EDGE_HTTP | READY until 2026-10-09 (proof = 09-25 production rows) | run the live check before the window closes |
+| myhome.ge | CANDIDATE (`myhome-ge`, live check only) | SYNTHETIC | no | WORKER_BROWSER | BLOCKED | 403 to non-browser clients; registry BLOCKED; needs browser route on + live check |
+| livo.ge | CANDIDATE (`livo-ge`) | SYNTHETIC | no | EDGE_HTTP | BLOCKED | never surveyed; not in registry; live check reads robots-declared sitemaps |
+| place.ge | IMPLEMENTED | CAPTURED | yes (4 obs, 09-25) | EDGE_HTTP | READY until 2026-10-09 | live check |
+| home.ge | IMPLEMENTED | CAPTURED | yes (2 obs, 09-25) | EDGE_HTTP | READY until 2026-10-09 | live check |
+| home24.ge | IMPLEMENTED | CAPTURED | yes (3 obs, 09-25) | EDGE_HTTP | READY until 2026-10-09 | live check |
+| zaraya (zarayaproperties.com) | IMPLEMENTED | CAPTURED | yes (2 obs, 09-25) | EDGE_HTTP | READY until 2026-10-09 | live check |
+| realting.com | IMPLEMENTED | CAPTURED | yes (3 obs, 09-25) | EDGE_HTTP | READY until 2026-10-09 | live check |
+| estatemarket.ge | IMPLEMENTED | CAPTURED | yes (3 obs, 09-25) | EDGE_HTTP | READY until 2026-10-09 | live check |
+| makler.ge | IMPLEMENTED | CAPTURED | no | EDGE_HTTP | BLOCKED (awaiting proof) | live check + registry row |
+| Telegram | IMPLEMENTED | CAPTURED | yes — collecting today (618 raw signals; 23 forward supply obs) | TELEGRAM_MTPROTO | READY | backfill waits for approval |
+| forum.ge | IMPLEMENTED | CAPTURED | yes (744 raw signals, last 09-26) | EDGE_HTTP | DISABLED (switch off) | `forum_discovery_enabled` |
+| Facebook Pages | ACCESS_GATED (`meta-graph-discovery.ts`) | DOC_SHAPED | no | OFFICIAL_API | BLOCKED | needs Page Public Content Access under a discovery-only Meta app (owner decision) |
+| Facebook groups | NOT_IMPLEMENTED | — | no | NONE | BLOCKED | Groups API removed 2024-04-22; login-walled; Apify retired |
+| Instagram | ACCESS_GATED | DOC_SHAPED | no | OFFICIAL_API | BLOCKED | linked professional account + App Review |
+| LinkedIn | NOT_IMPLEMENTED | — | no | NONE | BLOCKED | no third-party content API; login wall; ToS; LINKEDIN_SCRAPE forbidden in repo |
+
+The older anonymous `adapters/facebook.ts` / `instagram.ts` HTML readers stay
+unwired (they meet login walls and carry a text-hash id fallback); nothing
+calls them.
+
+### Architecture
+
+```
+SOURCE ADAPTERS   portal (configured / ss-ge / candidates) · Telegram · forum · Meta Graph
+      ↓
+NORMALIZATION     discovery/discovery-entity.ts  (SUPPLY and DEMAND, one shape; public-contacts.ts)
+      ↓
+DEDUPE            discovery/cross-source-dedupe.ts
+      ↓
+SCORING           match/unified-score.ts = assessMatch relevance × evidence quality
+      ↓
+MATCHING          supply-matching (Find Property) · run-matching-v2 (Find Buyers)
+      ↓
+PROVENANCE        discovery/attribution.ts (#66 contract) + alsoSeenAt
+      ↓
+BILLING           findPropertySettlement.ts (per delivered PROPERTY) · matches (per person)
+```
+
+- **Browser discovery worker** — `official-worker/src/discovery/BrowserRender.ts`,
+  `POST /discovery/render` (token-only). Not Verify's browser: own Chromium per
+  render, no profile/extension/session; every request the page makes is
+  fulfilled by the pinned `SafeFetch` hop (public unicast only), images / fonts /
+  media / websockets refused, ≤3 navigations, ≤80 subrequests, ≤12 MB in,
+  ≤45 s, concurrency 1 (max 2), scripts stripped from output (JSON data blocks
+  kept), challenge / login wall reported and never worked around, honest UA.
+  Switches (all OFF / absent): worker env `DISCOVERY_BROWSER_ENABLED=true` +
+  `DISCOVERY_BROWSER_HOSTS` allowlist; edge `admin_settings.discovery_browser_enabled`.
+  Edge side: `fetch/browser-transport.ts` (`BrowserTransport`, `RoutingTransport`,
+  metered `usage`, `estimatedCostUsd`). The edge keeps allowlist, robots, rate
+  limits, lease; the worker never receives the service-role key. **Not
+  deployed**: enabling needs a worker deploy and two Railway variables (owner).
+- **Candidates** — `adapters/portal/candidates.ts`: registered only by
+  `createPortalRuntime({ includeCandidates: true })`, i.e. the source-audit live
+  check. Routes come from the site's robots.txt `Sitemap:` declarations; a
+  listing is a URL with a 6–10 digit id; fields from schema.org/OpenGraph plus
+  multilingual text patterns. A passing check is evidence to pin a captured
+  configuration; it promotes nothing.
+- **Dedupe** — deterministic, evidence-named. Supply: same permalink / source id /
+  resolved entity / order-insensitive text fingerprint / image key; or a shared
+  public contact WITH same city + transaction + area (±3%) + rooms or price
+  (±2%); or coordinates ≤30 m + area + rooms. Demand: same author profile or a
+  shared contact with an agreeing request (transaction + city), or near-verbatim
+  re-post (3-shingle Jaccard ≥0.8). Vetoes: transaction, city, type, district,
+  area >3%, rooms, price >10% (supply); rooms/bedrooms >1, disjoint budget
+  (15% slack), >30 days apart (demand). Complete-linkage veto across clusters;
+  a blocking key shared by >200 items is ignored (portal-wide phone). Wired:
+  Find Property results (one card per property, other sources in
+  `alsoSeenAt`), Find Property settlement (one charge per property, resolver
+  entities never split), Find Buyers (one match per person per property,
+  `duplicatePerson` counter).
+- **Scoring** — `score = relevance × (0.5 + 0.5 × quality)`; relevance is
+  `assessMatch` (both directions, conflicts = 0); quality of the candidate =
+  recency .35, completeness .25, explicitness .20, contactability .10, source
+  prior .10 (`QUALITY_FACTORS`, each with its reason). Every pair returns
+  `explanation`. Find Property ranking uses it (supply-matching); Find Buyers
+  keeps run-matching-v2's live 0–100 scorer for now — moving its ranking
+  changes a live paid product and needs an owner decision.
+- **Revalidation** — `discovery/supply-revalidation.ts` + `revalidate-supply`:
+  portal listings re-read through the SAME adapter extraction and compared
+  field by field (price ±3% material, area ±3%, rooms); 404/410 → REMOVED;
+  unreadable page → UNKNOWN (not a verification); `content_fingerprint` never
+  overwritten; `field_origins.revalidation` keeps checkedAt, availability, HTTP
+  status, confidence, changed fields and price history. Community posts are not
+  portal-fetched. Intended cadence RENT 3 d / SALE 7 d, ≤25 per run. **No cron.**
+
+### Telegram backlog (read-only audit + local dry run, 2026-10-02)
+
+Pending: 396 FILTERED_OUT SUPPLY posts with no observation (377 Telegram, 19
+forum) + 23 already stored. Local dry run of the production extractor over
+those rows: **306 new observations** (303 Telegram, 3 forum), 90 stay raw
+(no city, or neither price nor area), 23 existing rewritten in place; every
+one keeps its exact permalink, author and original text; 63 carry a public
+contact. Cross-source dedupe folds the 329 listings into **75 distinct
+properties** (largest cluster: one ad reposted 14 times). Cost **$0**: no
+model call (the OpenAI key is not read on that path), no `cost_events`, no
+reservation. Idempotent upsert on `(source_id, external_id)`; cursor-paged
+(`after`) and `dryRun` capable. It cannot create customer charges: it starts no
+run, and settlement counts only matches created inside a paid run's window,
+one per property. **Verdict: safe to run once approved** (`{"mode":
+"community-supply-backfill","batchSize":500}`; optional `"dryRun":true` first).
+
+### R2 / evidence artifacts
+
+Not needed for activation. The database already keeps what evidence requires:
+exact permalink, original text (≤4000 chars in attribution), field origins,
+revalidation history. Allowed later, only where justified: (1) a browser
+render's sanitized HTML for a FAILED or DISPUTED extraction, ≤3 MB each, 30-day
+retention, ≤1 GB total; (2) image perceptual hashes (stored as text keys, not
+images). Never: bulk page archives, images themselves, private content.
+
+### COGS by retrieval method (measured where possible)
+
+| Method | COGS per item | Basis |
+|---|---|---|
+| Portal HTTP (edge) | ≈ $0 | Supabase edge invocations within plan |
+| Worker HTTP hop | ≈ $0.00001 | Railway CPU seconds (estimate) |
+| Telegram MTProto | ≈ $0 marginal | existing worker; no API fee |
+| Deterministic extraction / dedupe / scoring | $0 | pure code |
+| OpenAI classification (gpt-4o-mini, demand) | **$0.000124 avg, $0.00046 p95** per signal | measured: 130 intent_profiles with ai_cost_usd |
+| Discovery browser render | ≈ $0.0001–0.0003 per page | estimate from Railway rates (`BROWSER_COGS_USD_PER_SECOND`), to be replaced by measured render time |
+| Meta Graph API | $0 (rate-limited) | official API has no per-call fee; access not granted |
+
+Current Find Property unit price (`billing_price_quote`, product
+FIND_PROPERTY): 25 credits ($2.50) per delivered property, reference COGS 59¢.
+Measured marginal COGS per delivered listing is under 1¢ for every route above.
+**Recommendation (no change made):** keep per-delivered-property PAYG with
+zero-delivered = zero charge; consider replacing the 59¢ reference COGS with the
+measured route costs after the controlled live proofs. Pricing changes need
+owner approval.

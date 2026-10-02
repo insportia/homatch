@@ -552,6 +552,21 @@ test('the core is consumed only through its deliberate integration points', () =
      */
     'supabase/functions/source-audit/index.ts',
     /*
+     * PHASE 2 COMPLETION — two more deliberate seams, both read-only uses of
+     * pure modules:
+     *
+     * findPropertySettlement counts one charge per PROPERTY: it normalizes the
+     * delivered observations (discovery-entity.ts) and groups them with the
+     * shared cross-source dedupe, so the bill and the screen agree on what one
+     * property is. It fetches nothing and decides no price.
+     *
+     * DiscoveryIntelligencePanel renders the source readiness matrix
+     * (source-capabilities.ts: the static matrix and sourceStatus()) inside the
+     * Admin shell. It imports no fetch path, adapter or runtime.
+     */
+    'supabase/functions/_shared/findPropertySettlement.ts',
+    'src/components/admin/DiscoveryIntelligencePanel.tsx',
+    /*
      * PHASE 2 — UNIVERSAL DISCOVERY (docs/claude/PHASE2_DISCOVERY.md).
      *
      * find-property-run compiles a FIND PROPERTY run's DiscoveryPlan from the

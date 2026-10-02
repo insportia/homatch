@@ -48,6 +48,8 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { createPortalRuntime, PORTAL_SOURCE_POLICIES } from '../../../src/research-core/market/runtime.ts';
+import { BrowserTransport, estimatedCostUsd } from '../../../src/research-core/fetch/browser-transport.ts';
+import { CANDIDATE_RENDERING } from '../../../src/research-core/adapters/portal/candidates.ts';
 import {
   auditSource,
   disallowsEverything,
@@ -1006,16 +1008,27 @@ async function auditCommunity(
  *     candidate path. Records status, bytes, latency and whether the page is
  *     server-rendered with listing data -- never the body.
  *
- * EDGE_HTTP always; WORKER_HTTP when the official worker is configured. Rows
- * go to discovery_source_live_checks (admin-read). No customer, no spend.
+ * EDGE_HTTP always; WORKER_HTTP when the official worker is configured;
+ * WORKER_BROWSER only when admin_settings.discovery_browser_enabled is true
+ * (candidate hosts that need a browser; render cost recorded in evidence). Rows
+ * go to discovery_source_live_checks (admin-read). No customer charge; browser renders are metered.
  */
 const LIVE_CHECK_HOSTS = ['www.myhome.ge', 'home.ss.ge', 'ss.ge', 'www.home.ge', 'livo.ge', 'place.ge'];
 
 async function liveCheck(db: ReturnType<typeof createClient>, body: Record<string, unknown>, started: number) {
   const workerUrl = Deno.env.get('WORKER_URL') || '';
   const workerToken = Deno.env.get('WORKER_TOKEN') || '';
-  const routes: Array<'EDGE_HTTP' | 'WORKER_HTTP'> = workerUrl && workerToken ? ['EDGE_HTTP', 'WORKER_HTTP'] : ['EDGE_HTTP'];
-  const transportFor = (route: string) => route === 'WORKER_HTTP'
+  /*
+   * WORKER_BROWSER runs only when the operator switched the discovery browser
+   * on (admin_settings.discovery_browser_enabled, absent = off) AND the worker
+   * is configured. It renders only the candidate hosts that need a browser.
+   */
+  const { data: browserSetting } = await db.from('admin_settings').select('value').eq('key', 'discovery_browser_enabled').maybeSingle();
+  const browserOn = (browserSetting as { value?: unknown } | null)?.value === true;
+  const routes: Array<'EDGE_HTTP' | 'WORKER_HTTP' | 'WORKER_BROWSER'> = workerUrl && workerToken
+    ? (browserOn ? ['EDGE_HTTP', 'WORKER_HTTP', 'WORKER_BROWSER'] : ['EDGE_HTTP', 'WORKER_HTTP'])
+    : ['EDGE_HTTP'];
+  const transportFor = (route: string) => route === 'WORKER_HTTP' || route === 'WORKER_BROWSER'
     ? new WorkerTransport({ baseUrl: workerUrl, token: workerToken, userAgent: PORTAL_USER_AGENT, trace: 'live-check' })
     : undefined;
   const requestedHosts = Array.isArray(body.hosts) ? (body.hosts as unknown[]).map(String) : LIVE_CHECK_HOSTS;
@@ -1025,11 +1038,18 @@ async function liveCheck(db: ReturnType<typeof createClient>, body: Record<strin
   const budgetMs = 110_000;
 
   for (const route of routes) {
-    const runtime = createPortalRuntime(transportFor(route) ? { transport: transportFor(route) } : {});
-    const adapters = runtime.registry.all().filter((a) => !adapterIds || adapterIds.includes(a.id));
+    const browser = route === 'WORKER_BROWSER'
+      ? new BrowserTransport({ baseUrl: workerUrl, token: workerToken, trace: 'live-check' })
+      : undefined;
+    /* Candidates (myhome.ge, livo.ge) run here and nowhere else; see adapters/portal/candidates.ts. */
+    const runtime = createPortalRuntime({ includeCandidates: true, ...(transportFor(route) ? { transport: transportFor(route) } : {}), ...(browser ? { browserTransport: browser } : {}) });
+    const adapters = runtime.registry.all()
+      .filter((a) => !adapterIds || adapterIds.includes(a.id))
+      .filter((a) => route !== 'WORKER_BROWSER' || CANDIDATE_RENDERING[a.id] === 'BROWSER');
     for (const adapter of adapters) {
       if (Date.now() - started > budgetMs) break;
       const t0 = Date.now();
+      const usageBefore = browser ? { ...browser.usage } : null;
       const query = {
         id: `live-check-${adapter.id}`, transaction: 'SALE', countryCode: 'GE', city: 'Tbilisi',
         propertyType: 'APARTMENT', district: null, subDistrict: null, projectName: null,
@@ -1060,9 +1080,20 @@ async function liveCheck(db: ReturnType<typeof createClient>, body: Record<strin
       } catch (error) {
         row = { ok: false, limitation: `ERROR: ${(error instanceof Error ? error.message : String(error)).slice(0, 160)}` };
       }
-      rows.push({ source_key: adapter.id, market: 'GE', route, latency_ms: Date.now() - t0, evidence: {}, ...row });
+      if (browser && usageBefore) {
+        const used = {
+          renders: browser.usage.renders - usageBefore.renders,
+          renderMs: browser.usage.renderMs - usageBefore.renderMs,
+          transferBytes: browser.usage.transferBytes - usageBefore.transferBytes,
+          refusals: browser.usage.refusals - usageBefore.refusals,
+        };
+        row.evidence = { ...(row.evidence as Record<string, unknown> ?? {}), browser: used, estimatedCostUsd: estimatedCostUsd(used) };
+      }
+      rows.push({ source_key: adapter.id, market: 'GE', route, latency_ms: Date.now() - t0, evidence: {}, ...row,
+        ...(CANDIDATE_RENDERING[adapter.id] ? { evidence: { ...(row.evidence as Record<string, unknown> ?? {}), candidate: true } } : {}) });
     }
 
+    if (route === 'WORKER_BROWSER') continue;
     const path = createCandidateAuditPath({ resolver: new DohResolver(), transport: transportFor(route) });
     for (const host of hosts) {
       if (Date.now() - started > budgetMs) break;

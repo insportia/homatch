@@ -124,7 +124,8 @@ in HOMATCH imports it, and its failure cannot affect homatch.live, Supabase,
 Railway or Runpod.
 
 ```
-push to main ─► Vercel (viewer project) build ─► node graphify-viewer/build.mjs
+push to main ─► Vercel (viewer project, Root Directory graphify-viewer/) ─► node build.mjs
+                 │  → graphify-viewer/.vercel/output (Build Output API, INSIDE the Root Directory)
                  │  same scripts/claude/graphify.mjs as Claude Code (code-only, no LLM,
                  │  no credential in Graphify's environment)
                  ├─ secret scan of every published file + excluded-path check → fail closed
@@ -174,10 +175,15 @@ push to main ─► Vercel (viewer project) build ─► node graphify-viewer/bu
 - **Manual refresh**: Vercel → homatch-architecture → Deployments → latest
   production → Redeploy (or push to main). The build cache carries the
   history; "Redeploy without cache" starts history afresh.
-- **Preview branches**: the ignore step builds `main` always and other
-  branches only if they match the project env `VIEWER_PREVIEW_BRANCHES`
-  (regex) **and** contain `graphify-viewer/build.mjs` — branches without
-  the viewer never produce a failing check.
+- **Which commits build** (repo config, overrides the dashboard):
+  - viewer: `graphify-viewer/vercel.json` `ignoreCommand` — production
+    (main) always rebuilds the graph; a preview builds only when the commit
+    touched `graphify-viewer/`, `scripts/claude/graphify.mjs` or
+    `.graphifyignore`.
+  - customer app: root `vercel.json` `ignoreCommand`
+    `git diff --quiet HEAD^ HEAD -- . ':(exclude)graphify-viewer'` — a commit
+    that only changes `graphify-viewer/` does not rebuild homatch.live.
+    Anything else (or an unreadable HEAD^) builds as before.
 
 ### Same truth for Claude (cloud or local)
 
@@ -197,22 +203,26 @@ drift (same commit, 18 nodes fewer). Then `graphify query /
 path / explain` as above. Claude does **not** read the hosted viewer: it
 rebuilds the same graph from the same commit and proves equality by digest.
 
-### Owner setup (one time)
+### Vercel project settings (homatch-architecture)
 
-The Claude Vercel connector cannot create projects in the `insportia` team
-(403). In the Vercel dashboard:
+The project exists (`prj_oRMiFPyvDLKzugaO6fuWOLgoZauj`). One source of
+truth: the repository. Dashboard settings that the repo overrides should be
+left at their defaults.
 
-1. **Add New → Project → Import** `insportia/homatch`. Name:
-   `homatch-architecture`. Framework preset: **Other**. Root directory:
-   `./`. Build command: `node graphify-viewer/build.mjs`. Install command:
-   `echo no-install-needed`. Output directory: default. Add env
-   `VIEWER_PREVIEW_BRANCHES` = `ccr-76ef455d-0qvt80` (optional). Deploy —
-   the first build from `main` fails until this PR merges; that is
-   expected and serves nothing.
-2. **Settings → Deployment Protection → Vercel Authentication: Enabled,
-   Standard Protection** (all deployments except custom domains). Add no
-   custom domain.
-3. **Settings → Git → Ignored Build Step → Custom**:
-   `[ -f graphify-viewer/build.mjs ] || exit 0; [ "$VERCEL_GIT_COMMIT_REF" = main ] && exit 1; echo "$VERCEL_GIT_COMMIT_REF" | grep -Eqx "${VIEWER_PREVIEW_BRANCHES:-^$}" && exit 1; exit 0`
-4. Tell Claude the project exists; it then deploys the branch, runs the
-   access guard, and proves the rest.
+| Setting | Value | Source |
+|---|---|---|
+| Git repository / production branch | `insportia/homatch` / `main` | dashboard |
+| Root Directory | `graphify-viewer` | dashboard (only setting the repo cannot express) |
+| Include files outside the Root Directory | **on** (the graph indexes the whole repo) | dashboard |
+| Framework, Build, Install command | `null` / `node build.mjs` / `echo no-install-needed` | `graphify-viewer/vercel.json` |
+| Output Directory | none — Build Output API `graphify-viewer/.vercel/output` | `build.mjs` |
+| Ignored Build Step | see "Which commits build" | `graphify-viewer/vercel.json` |
+| Deployment Protection | Vercel Authentication, Standard (all but custom domains); no custom domain | dashboard |
+
+Why the first deployments failed (2026-10-02): with Root Directory unset the
+project read the repo-root `vercel.json` (the customer app's: vite, `dist`),
+so its first READY build (c028ec49) was the customer app, not the viewer.
+After Root Directory became `graphify-viewer`, `build.mjs` still wrote
+`<repo>/.vercel/output`; Vercel looks inside the Root Directory, found
+nothing, fell back to `public`, and failed. `build.mjs` now writes inside
+`graphify-viewer/`.

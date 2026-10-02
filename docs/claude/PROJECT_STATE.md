@@ -820,3 +820,21 @@ Phase 2 (Universal Discovery) is blocked until this is live and proven.
   has no supported mechanism, so none is attempted (no URI schemes). Facebook's own dialog
   page decides any app routing.
 - Migration 20261007100000_meta_creative_ai_jobs_grants.sql: authenticated has SELECT only.
+
+## Phase 2 — Universal Discovery (branch ccr-76ef455d-0qvt80, 2026-10-02)
+
+- Gap map, build list, operations and recovery: docs/claude/PHASE2_DISCOVERY.md.
+- Owner decisions: DataForSEO/Apify stay RETIRED (native routes only); Hybrid
+  worker (DB queue canonical; portal hops can route through
+  homatch-official-worker; no DB credential on Railway); Find Property is
+  PAYG like Find Buyers (FIND_PROPERTY priced like FIND_CLIENTS); Verify FROZEN.
+- Production facts found (read-only): Telegram is the only live collector
+  (541 posts, 356 listings, all discarded as not-demand until Phase 2); no
+  external listing had ever reached a Find Property search (supply_matches
+  could not store the shape); 32 supply observations / 1 entity.
+- Migrations 20261008100000 (core) and 20261008100100 (admin intelligence):
+  written, proven on a local fixture (tests/sql/run-phase2.sh), NOT applied.
+- Every new switch defaults OFF; nothing changes for customers until an
+  operator switches find_property_discovery_enabled /
+  campaign_source_discovery_enabled on.
+

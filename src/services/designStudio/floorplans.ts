@@ -40,11 +40,13 @@ export interface FloorPlanRecord {
     doc: FloorPlanDocument;
     dimensionStrings: DimensionString[];
     readVersion: string;
-    /** ds-read-2: what the model said, before HOMATCH fused it with the drawing's own lines. */
+    /** ds-read-2: exactly what the model said, before fusion with the drawing's pixels (same element ids). */
     rawDoc?: FloorPlanDocument;
-    /** ds-read-2: scale solve, topology and the questions worth asking. */
-    understanding?: PlanUnderstanding;
-    timings?: { modelMs?: number; fuseMs?: number };
+    /** ds-read-2: printed-size checks, topology issues, the questions worth asking, room adjacency. */
+    understanding?: PlanUnderstanding | null;
+    timings?: { modelMs?: number; fuseMs?: number; rasterMs?: number; raster?: string };
+    /** Set when the reading was reused from an earlier upload of the same picture. */
+    cachedFrom?: string;
   } | null;
   interpretation_error: string | null;
   corrections: Array<{ at: string; decisions: ReviewDecisions; anchors: Anchor[]; ceilingM: number | null }>;

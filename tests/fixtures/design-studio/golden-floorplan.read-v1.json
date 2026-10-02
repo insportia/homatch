@@ -1,0 +1,89 @@
+{
+  "_note": "The production ds-read-1 reading of golden-floorplan.jpg (ds_floorplans 363f03d8, 2026-10-02), evidence strings trimmed. A test fixture: never used by production code.",
+  "readVersion": "ds-read-1",
+  "doc": {
+    "imageWidth": 736, "imageHeight": 998,
+    "detectedScale": 0.01795, "scaleConfidence": 0.98,
+    "ceilingHeight": null, "ceilingHeightSource": null, "extractionConfidence": 0.72,
+    "sourceAssetId": "fixture/golden-floorplan.jpg",
+    "walls": [
+      {"id": "W1", "kind": "EXTERIOR", "start": {"x": 213, "y": 113}, "end": {"x": 213, "y": 839}, "thicknessPx": 8, "confidence": 0.99, "state": "UNVERIFIED"},
+      {"id": "W2", "kind": "EXTERIOR", "start": {"x": 213, "y": 113}, "end": {"x": 552, "y": 113}, "thicknessPx": 8, "confidence": 0.99, "state": "UNVERIFIED"},
+      {"id": "W3", "kind": "EXTERIOR", "start": {"x": 550, "y": 113}, "end": {"x": 550, "y": 790}, "thicknessPx": 8, "confidence": 0.96, "state": "UNVERIFIED"},
+      {"id": "W4", "kind": "EXTERIOR", "start": {"x": 213, "y": 839}, "end": {"x": 375, "y": 839}, "thicknessPx": 8, "confidence": 0.98, "state": "UNVERIFIED"},
+      {"id": "W5", "kind": "EXTERIOR", "start": {"x": 375, "y": 704}, "end": {"x": 375, "y": 839}, "thicknessPx": 8, "confidence": 0.86, "state": "UNVERIFIED"},
+      {"id": "W6", "kind": "INTERIOR", "start": {"x": 390, "y": 113}, "end": {"x": 390, "y": 360}, "thicknessPx": 8, "confidence": 0.98, "state": "UNVERIFIED"},
+      {"id": "W7", "kind": "INTERIOR", "start": {"x": 213, "y": 357}, "end": {"x": 337, "y": 357}, "thicknessPx": 8, "confidence": 0.95, "state": "UNVERIFIED"},
+      {"id": "W8", "kind": "INTERIOR", "start": {"x": 390, "y": 359}, "end": {"x": 550, "y": 359}, "thicknessPx": 8, "confidence": 0.96, "state": "UNVERIFIED"},
+      {"id": "W9", "kind": "INTERIOR", "start": {"x": 213, "y": 420}, "end": {"x": 327, "y": 420}, "thicknessPx": 8, "confidence": 0.82, "state": "UNVERIFIED"},
+      {"id": "W10", "kind": "INTERIOR", "start": {"x": 327, "y": 357}, "end": {"x": 327, "y": 420}, "thicknessPx": 8, "confidence": 0.84, "state": "UNVERIFIED"},
+      {"id": "W11", "kind": "INTERIOR", "start": {"x": 327, "y": 420}, "end": {"x": 357, "y": 420}, "thicknessPx": 8, "confidence": 0.82, "state": "UNVERIFIED"},
+      {"id": "W12", "kind": "INTERIOR", "start": {"x": 357, "y": 432}, "end": {"x": 357, "y": 511}, "thicknessPx": 8, "confidence": 0.94, "state": "UNVERIFIED"},
+      {"id": "W13", "kind": "INTERIOR", "start": {"x": 213, "y": 511}, "end": {"x": 357, "y": 511}, "thicknessPx": 8, "confidence": 0.95, "state": "UNVERIFIED"},
+      {"id": "W14", "kind": "INTERIOR", "start": {"x": 278, "y": 433}, "end": {"x": 278, "y": 511}, "thicknessPx": 8, "confidence": 0.87, "state": "UNVERIFIED"},
+      {"id": "W15", "kind": "INTERIOR", "start": {"x": 213, "y": 627}, "end": {"x": 375, "y": 627}, "thicknessPx": 8, "confidence": 0.93, "state": "UNVERIFIED"},
+      {"id": "W16", "kind": "INTERIOR", "start": {"x": 375, "y": 704}, "end": {"x": 375, "y": 839}, "thicknessPx": 8, "confidence": 0.82, "state": "UNVERIFIED"}
+    ],
+    "doors": [
+      {"id": "D1", "wallId": "W6", "position": 1, "widthPx": 55, "sillHeightM": null, "heightM": null, "confidence": 0.92, "state": "UNVERIFIED", "evidence": "Double-swing door from balcony into central partition, approximately y=113-169."},
+      {"id": "D2", "wallId": "W6", "position": 1, "widthPx": 58, "sillHeightM": null, "heightM": null, "confidence": 0.93, "state": "UNVERIFIED", "evidence": "Door opening between bedroom area and living area, approximately y=304-360."},
+      {"id": "D3", "wallId": "W7", "position": 1, "widthPx": 18, "sillHeightM": null, "heightM": null, "confidence": 0.78, "state": "UNVERIFIED"},
+      {"id": "D4", "wallId": "W9", "position": 1, "widthPx": 20, "sillHeightM": null, "heightM": null, "confidence": 0.75, "state": "UNVERIFIED"},
+      {"id": "D5", "wallId": "W14", "position": 1, "widthPx": 24, "sillHeightM": null, "heightM": null, "confidence": 0.72, "state": "UNVERIFIED"},
+      {"id": "D6", "wallId": "W15", "position": 1, "widthPx": 58, "sillHeightM": null, "heightM": null, "confidence": 0.9, "state": "UNVERIFIED"},
+      {"id": "D7", "wallId": "W5", "position": 0, "widthPx": 34, "sillHeightM": null, "heightM": null, "confidence": 0.75, "state": "UNVERIFIED"}
+    ],
+    "windows": [
+      {"id": "WIN1", "wallId": "W2", "position": 1, "widthPx": 64, "sillHeightM": null, "heightM": null, "confidence": 0.9, "state": "UNVERIFIED"},
+      {"id": "WIN2", "wallId": "W2", "position": 1, "widthPx": 86, "sillHeightM": null, "heightM": null, "confidence": 0.9, "state": "UNVERIFIED"},
+      {"id": "WIN3", "wallId": "W8", "position": 1, "widthPx": 78, "sillHeightM": null, "heightM": null, "confidence": 0.88, "state": "UNVERIFIED"},
+      {"id": "WIN4", "wallId": "W4", "position": 1, "widthPx": 92, "sillHeightM": null, "heightM": null, "confidence": 0.88, "state": "UNVERIFIED"},
+      {"id": "WIN5", "wallId": "W15", "position": 1, "widthPx": 88, "sillHeightM": null, "heightM": null, "confidence": 0.86, "state": "UNVERIFIED"}
+    ],
+    "rooms": [
+      {"id": "R1", "kind": "UNKNOWN", "label": "MASTERBEDROOM", "polygon": [{"x": 216, "y": 116}, {"x": 386, "y": 116}, {"x": 386, "y": 354}, {"x": 216, "y": 354}], "statedAreaM2": null, "confidence": 0.98, "state": "UNVERIFIED", "evidence": "Label reads MASTERBEDROOM 10'X14'."},
+      {"id": "R2", "kind": "BEDROOM", "label": "BEDROOM", "polygon": [{"x": 395, "y": 116}, {"x": 547, "y": 116}, {"x": 547, "y": 355}, {"x": 395, "y": 355}], "statedAreaM2": null, "confidence": 0.98, "state": "UNVERIFIED", "evidence": "Label reads BEDROOM 9'X14'."},
+      {"id": "R3", "kind": "KITCHEN", "label": "KITCHEN+DINING", "polygon": [{"x": 216, "y": 514}, {"x": 354, "y": 514}, {"x": 354, "y": 701}, {"x": 372, "y": 701}, {"x": 372, "y": 836}, {"x": 216, "y": 836}], "statedAreaM2": null, "confidence": 0.9, "state": "UNVERIFIED", "evidence": "Label reads KITCHEN+DINING 9'X12'."},
+      {"id": "R4", "kind": "LIVING", "label": "LIVING", "polygon": [{"x": 395, "y": 363}, {"x": 547, "y": 363}, {"x": 547, "y": 686}, {"x": 530, "y": 703}, {"x": 377, "y": 703}, {"x": 377, "y": 681}, {"x": 356, "y": 681}, {"x": 356, "y": 514}, {"x": 395, "y": 514}], "statedAreaM2": null, "confidence": 0.86, "state": "UNVERIFIED", "evidence": "Label reads LIVING 10'X20'."},
+      {"id": "R5", "kind": "UNKNOWN", "label": "WASH", "polygon": [{"x": 216, "y": 360}, {"x": 324, "y": 360}, {"x": 324, "y": 418}, {"x": 354, "y": 432}, {"x": 354, "y": 508}, {"x": 216, "y": 508}], "statedAreaM2": null, "confidence": 0.78, "state": "UNVERIFIED", "evidence": "Label reads WASH 6'-4\"X4'-3\"."},
+      {"id": "R6", "kind": "WC", "label": "LET", "polygon": [{"x": 216, "y": 436}, {"x": 276, "y": 436}, {"x": 276, "y": 508}, {"x": 216, "y": 508}], "statedAreaM2": null, "confidence": 0.9, "state": "UNVERIFIED", "evidence": "Label reads LET 3'-6\"X4'."},
+      {"id": "R7", "kind": "BATHROOM", "label": "BATH", "polygon": [{"x": 285, "y": 434}, {"x": 355, "y": 434}, {"x": 355, "y": 508}, {"x": 285, "y": 508}], "statedAreaM2": null, "confidence": 0.92, "state": "UNVERIFIED", "evidence": "Label reads BATH 4'X4'."},
+      {"id": "R9", "kind": "UNKNOWN", "label": "PORCH", "polygon": [{"x": 378, "y": 707}, {"x": 547, "y": 707}, {"x": 547, "y": 789}, {"x": 378, "y": 789}], "statedAreaM2": null, "confidence": 0.78, "state": "UNVERIFIED", "evidence": "Label reads PORCH 10'X8'."}
+    ],
+    "balconies": [
+      {"id": "R8", "kind": "BALCONY", "label": "BALCONY", "polygon": [{"x": 213, "y": 61}, {"x": 552, "y": 61}, {"x": 552, "y": 112}, {"x": 213, "y": 112}], "statedAreaM2": null, "confidence": 0.84, "state": "UNVERIFIED", "evidence": "Printed BALCONY 3'X20'."}
+    ],
+    "unknownElements": [
+      {"id": "U1", "note": "Stair flight with UP arrow and multiple tread lines in the central lower portion of the plan.", "confidence": 0.99},
+      {"id": "U2", "note": "Compass/north graphic at the upper right.", "confidence": 0.99},
+      {"id": "U3", "note": "Title block, company logo, contact information and project information at the bottom of the drawing.", "confidence": 0.99},
+      {"id": "U4", "note": "Outer rounded sheet border/frame.", "confidence": 0.99}
+    ],
+    "warnings": [
+      {"code": "PARTIAL_BOUNDARY", "detail": "The lower and right boundaries of the porch are not fully represented by continuous wall lines.", "elementId": "R9"},
+      {"code": "AMBIGUOUS_OPENINGS", "detail": "Several small openings around the wash, bath, stair and porch transitions are difficult to distinguish.", "elementId": null}
+    ]
+  },
+  "dimensionStrings": [
+    {"valueM": 6.096, "from": {"x": 212, "y": 44}, "to": {"x": 552, "y": 44}, "confidence": 0.99, "evidence": "Printed 20'-0\"."},
+    {"valueM": 14.0208, "from": {"x": 187, "y": 61}, "to": {"x": 187, "y": 839}, "confidence": 0.99, "evidence": "Printed 46'-0\"."},
+    {"valueM": 0.9144, "from": {"x": 213, "y": 61}, "to": {"x": 213, "y": 113}, "confidence": 0.88, "evidence": "Printed balcony depth 3'."},
+    {"valueM": 6.096, "from": {"x": 213, "y": 61}, "to": {"x": 552, "y": 61}, "confidence": 0.88, "evidence": "Printed balcony width 20'."},
+    {"valueM": 3.048, "from": {"x": 216, "y": 116}, "to": {"x": 386, "y": 116}, "confidence": 0.9, "evidence": "Printed master bedroom width 10'."},
+    {"valueM": 4.2672, "from": {"x": 216, "y": 116}, "to": {"x": 216, "y": 354}, "confidence": 0.9, "evidence": "Printed master bedroom length 14'."},
+    {"valueM": 2.7432, "from": {"x": 395, "y": 116}, "to": {"x": 547, "y": 116}, "confidence": 0.9, "evidence": "Printed bedroom width 9'."},
+    {"valueM": 4.2672, "from": {"x": 395, "y": 116}, "to": {"x": 395, "y": 355}, "confidence": 0.9, "evidence": "Printed bedroom length 14'."},
+    {"valueM": 1.9304, "from": {"x": 216, "y": 360}, "to": {"x": 324, "y": 360}, "confidence": 0.83, "evidence": "Printed wash dimension 6'-4\"."},
+    {"valueM": 1.2954, "from": {"x": 216, "y": 360}, "to": {"x": 216, "y": 418}, "confidence": 0.83, "evidence": "Printed wash dimension 4'-3\"."},
+    {"valueM": 1.0668, "from": {"x": 216, "y": 436}, "to": {"x": 276, "y": 436}, "confidence": 0.88, "evidence": "Printed LET dimension 3'-6\"."},
+    {"valueM": 1.2192, "from": {"x": 216, "y": 436}, "to": {"x": 216, "y": 508}, "confidence": 0.88, "evidence": "Printed LET dimension 4'."},
+    {"valueM": 1.2192, "from": {"x": 285, "y": 434}, "to": {"x": 355, "y": 434}, "confidence": 0.9, "evidence": "Printed BATH dimension 4'."},
+    {"valueM": 1.2192, "from": {"x": 285, "y": 434}, "to": {"x": 285, "y": 508}, "confidence": 0.9, "evidence": "Printed BATH dimension 4'."},
+    {"valueM": 3.048, "from": {"x": 395, "y": 363}, "to": {"x": 547, "y": 363}, "confidence": 0.88, "evidence": "Printed living dimension 10'."},
+    {"valueM": 6.096, "from": {"x": 395, "y": 363}, "to": {"x": 395, "y": 686}, "confidence": 0.88, "evidence": "Printed living dimension 20'."},
+    {"valueM": 2.7432, "from": {"x": 216, "y": 514}, "to": {"x": 354, "y": 514}, "confidence": 0.88, "evidence": "Printed kitchen+dining dimension 9'."},
+    {"valueM": 3.6576, "from": {"x": 216, "y": 514}, "to": {"x": 216, "y": 701}, "confidence": 0.88, "evidence": "Printed kitchen+dining dimension 12'."},
+    {"valueM": 3.048, "from": {"x": 378, "y": 707}, "to": {"x": 547, "y": 707}, "confidence": 0.86, "evidence": "Printed porch dimension 10'."},
+    {"valueM": 2.4384, "from": {"x": 378, "y": 707}, "to": {"x": 378, "y": 789}, "confidence": 0.86, "evidence": "Printed porch dimension 8'."}
+  ]
+}

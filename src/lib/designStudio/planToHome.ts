@@ -121,6 +121,8 @@ export interface ConstraintReport {
   /** Median |residual| over the checks used. */
   medianResidualPct: number;
   worstResidualPct: number;
+  /** Set when the x and y scales disagree by more than 3% (a stretched scan or screenshot). */
+  anisotropy?: { xMetresPerPx: number; yMetresPerPx: number; ratio: number } | null;
 }
 
 export type TopologyIssueCode =

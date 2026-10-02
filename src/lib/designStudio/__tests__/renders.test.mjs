@@ -8,7 +8,7 @@ import { understand } from '../../../../supabase/functions/_shared/designStudio/
 import { buildCanonical } from '../scale.ts';
 import { buildSpaceModel, pointInPolygon } from '../space.ts';
 import { emptyDesignState } from '../designState.ts';
-import { planMasterView, planRoomViews, maxRoomViews } from '../renders/cameras.ts';
+import { planMasterView, planRoomViews, maxRoomViews, occludedShare, tallPieces, MAX_OCCLUSION } from '../renders/cameras.ts';
 import { deriveDNA } from '../renders/dna.ts';
 import { dnaKey } from '../renders/contract.ts';
 import { DEFAULT_PREFERENCES } from '../planToHome.ts';
@@ -72,6 +72,43 @@ test('room views: a person stands clear of the furniture, and the defining piece
   const views = planRoomViews(space, bed.id, 3, { state, assets });
   for (const v of views) assert.ok(Math.hypot(v.position[0] - c.x, v.position[1] - c.y) > 1.2, `${v.id} is not standing in the bed`);
   assert.ok(views.some((v) => v.purpose === 'FUNCTION' || v.purpose === 'MAIN'));
+});
+
+test('occlusion: a tall piece in front of the subject blocks the frame; beside it, behind it, or as the subject it does not', () => {
+  const eye = [0, 0, 1.55]; const look = [5, 0, 1.25];
+  const box = (cx, cy, h = 2.2, rot = 0) => ({ cx, cy, hw: 0.6, hd: 0.3, rot, z0: 0, z1: h });
+  assert.ok(occludedShare(eye, look, 55, 1.5, [box(1.0, 0)]) > MAX_OCCLUSION, 'a wardrobe a metre ahead fills the picture');
+  assert.equal(occludedShare(eye, look, 55, 1.5, [box(1.0, 4)]), 0, 'beside the view');
+  assert.equal(occludedShare(eye, look, 55, 1.5, [box(7.0, 0)]), 0, 'behind the subject');
+  assert.equal(occludedShare(eye, look, 55, 1.5, [box(5.0, 0)]), 0, 'the subject itself');
+  // Three metres off, broadside (turned: its 1.2 m width across the view) blocks more than end-on: rotation is honoured.
+  const broadside = occludedShare(eye, look, 55, 1.5, [box(3.0, 0, 2.2, Math.PI / 2)]);
+  const endOn = occludedShare(eye, look, 55, 1.5, [box(3.0, 0)]);
+  assert.ok(broadside > endOn && endOn > 0, `${broadside} > ${endOn}`);
+  assert.equal(occludedShare(eye, look, 55, 1.5, []), 0);
+});
+
+test('room views: no view is taken from behind a wardrobe (tall pieces > 1.8 m checked against every candidate)', () => {
+  const space = golden();
+  const living = space.rooms.find((r) => r.kind === 'LIVING');
+  const c = living.polygon.reduce((s, p) => ({ x: s.x + p.x / living.polygon.length, y: s.y + p.y / living.polygon.length }), { x: 0, y: 0 });
+  const plain = planRoomViews(space, living.id, 5, { state: emptyDesignState(), assets: new Map() });
+  // A wardrobe right in front of where the first view stood, facing its subject.
+  const v0 = plain[0];
+  const dx = v0.target[0] - v0.position[0]; const dy = v0.target[1] - v0.position[1]; const n = Math.hypot(dx, dy);
+  const at = { x: v0.position[0] + (dx / n) * 1.0, y: v0.position[1] + (dy / n) * 1.0 };
+  const state = { ...emptyDesignState(), objects: [{ instanceId: 'w1', assetId: 'wardrobe', roomId: living.id, position: { x: at.x, y: 0, z: at.y }, rotationY: Math.atan2(dy, dx) + Math.PI / 2, materialVariant: null, colorOverride: null, locked: false }] };
+  const assets = new Map([['wardrobe', asset('wardrobe', 'WARDROBE', 1.6, 0.6, 2.2)]]);
+  const tall = tallPieces(living, state, assets);
+  assert.equal(tall.length, 1);
+  assert.ok(occludedShare([v0.position[0], v0.position[1], v0.position[2]], v0.target, v0.fovDeg, v0.aspect, tall) > MAX_OCCLUSION, 'the old first view would be blocked');
+  const views = planRoomViews(space, living.id, 5, { state, assets });
+  assert.ok(views.length >= 1);
+  for (const v of views) assert.ok(occludedShare(v.position, v.target, v.fovDeg, v.aspect, tall) <= MAX_OCCLUSION, `${v.id} sees past the wardrobe`);
+  // A low piece in the same place blocks nothing.
+  const low = new Map([['wardrobe', asset('wardrobe', 'SOFA', 1.6, 0.6, 0.9)]]);
+  assert.equal(tallPieces(living, state, low).length, 0);
+  assert.ok(c);
 });
 
 test('DNA: the applied design read back once; the same design is the same DNA', () => {

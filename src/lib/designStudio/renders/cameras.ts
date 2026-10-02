@@ -16,6 +16,7 @@
 
 import type { DesignState } from '../designState.ts';
 import type { CatalogAsset } from '../catalog.ts';
+import { shapedAsset } from '../objectShape.ts';
 import type { Point, SpaceModel, SpaceRoom } from '../space.ts';
 import { pointInPolygon } from '../space.ts';
 import type { SpecView, ViewPurpose } from './contract.ts';
@@ -91,6 +92,9 @@ export function planMasterView(space: SpaceModel, opts: { aspect?: number; quali
   };
 }
 
+/** Where a room view aims, in height: a detail looks at the piece, the others across the room. */
+const lookHeight = (purpose: ViewPurpose) => (purpose === 'DETAIL' ? 0.75 : 1.25);
+
 interface Candidate { purpose: ViewPurpose; at: Point; look: Point; fov: number; score: number }
 
 const dist = (a: Point, b: Point) => Math.hypot(b.x - a.x, b.y - a.y);
@@ -132,6 +136,81 @@ function standable(p: Point, room: SpaceRoom, state: DesignState, assets: Readon
   return true;
 }
 
+// ── Occlusion ────────────────────────────────────────────────────────
+
+/** A piece this tall stands between a camera and the room (wardrobes, tall shelves, fridges). */
+export const OCCLUDER_MIN_HEIGHT_M = 1.8;
+/** A view whose frame is more than this share blocked by a tall piece in front of its subject is not taken. */
+export const MAX_OCCLUSION = 0.25;
+
+/** A piece's box in plan: centre, half width / depth along its own axes, rotation, and its height span. */
+export interface PieceBox { cx: number; cy: number; hw: number; hd: number; rot: number; z0: number; z1: number }
+
+/** The room's tall pieces (≥ OCCLUDER_MIN_HEIGHT_M), as boxes, at the size they are drawn. */
+export function tallPieces(room: SpaceRoom, state: DesignState, assets: ReadonlyMap<string, CatalogAsset>): PieceBox[] {
+  const out: PieceBox[] = [];
+  for (const o of state.objects) {
+    const base = assets.get(o.assetId);
+    if (!base) continue;
+    const a = shapedAsset(base, o);
+    if (a.heightM < OCCLUDER_MIN_HEIGHT_M) continue;
+    const at = { x: o.position.x, y: o.position.z };
+    if (o.roomId !== room.id && !pointInPolygon(at, room.polygon)) continue;
+    out.push({ cx: at.x, cy: at.y, hw: a.widthM / 2, hd: a.depthM / 2, rot: o.rotationY, z0: o.position.y, z1: o.position.y + a.heightM });
+  }
+  return out;
+}
+
+/** Where a ray (origin o, direction d) enters a box, or null. */
+function hitBox(o: [number, number, number], d: [number, number, number], b: PieceBox): number | null {
+  const c = Math.cos(-b.rot); const s = Math.sin(-b.rot);
+  const ox = (o[0] - b.cx) * c - (o[1] - b.cy) * s; const oy = (o[0] - b.cx) * s + (o[1] - b.cy) * c;
+  const dx = d[0] * c - d[1] * s; const dy = d[0] * s + d[1] * c;
+  let t0 = 0; let t1 = Infinity;
+  for (const [p, q, lo, hi] of [[ox, dx, -b.hw, b.hw], [oy, dy, -b.hd, b.hd], [o[2], d[2], b.z0, b.z1]] as const) {
+    if (Math.abs(q) < 1e-12) { if (p < lo || p > hi) return null; continue; }
+    let a = (lo - p) / q; let z = (hi - p) / q;
+    if (a > z) [a, z] = [z, a];
+    t0 = Math.max(t0, a); t1 = Math.min(t1, z);
+    if (t0 > t1) return null;
+  }
+  return t0;
+}
+
+/**
+ * The share of a perspective frame (a 32 × 20 grid of rays) that meets a tall piece before the
+ * subject the view looks at. The piece that IS the subject (its box holds the look point) never
+ * counts: a wardrobe framed on purpose is not in the way.
+ */
+export function occludedShare(
+  eye: [number, number, number], look: [number, number, number], fovDeg: number, aspect: number, boxes: readonly PieceBox[],
+): number {
+  const subject = { x: look[0], y: look[1] };
+  const inBox = (b: PieceBox) => {
+    const c = Math.cos(-b.rot); const s = Math.sin(-b.rot);
+    const x = (subject.x - b.cx) * c - (subject.y - b.cy) * s; const y = (subject.x - b.cx) * s + (subject.y - b.cy) * c;
+    return Math.abs(x) <= b.hw + 0.05 && Math.abs(y) <= b.hd + 0.05;
+  };
+  const blockers = boxes.filter((b) => !inBox(b));
+  if (!blockers.length) return 0;
+  const dir: [number, number, number] = [look[0] - eye[0], look[1] - eye[1], look[2] - eye[2]];
+  const reach = Math.hypot(look[0] - eye[0], look[1] - eye[1]);
+  const { f, right, up } = basis(dir);
+  const tv = Math.tan((fovDeg * Math.PI) / 360); const th = tv * aspect;
+  const W = 32; const H = 20;
+  let hits = 0;
+  for (let i = 0; i < W; i += 1) {
+    for (let j = 0; j < H; j += 1) {
+      const u = ((i + 0.5) / W) * 2 - 1; const v = ((j + 0.5) / H) * 2 - 1;
+      const d: [number, number, number] = [0, 1, 2].map((k) => f[k] + right[k] * u * th + up[k] * v * tv) as [number, number, number];
+      const flat = Math.hypot(d[0], d[1]) || 1e-9;
+      // Only what stands before the subject's distance (measured in plan) is in the way.
+      if (blockers.some((b) => { const t = hitBox(eye, d, b); return t !== null && t * flat < reach; })) hits += 1;
+    }
+  }
+  return hits / (W * H);
+}
+
 /**
  * Up to `n` views of one room, each looking a clearly different way.
  * Interior photography: lens ≈ 24–28 mm (about 60–70° vertical at 3:2
@@ -150,6 +229,7 @@ export function planRoomViews(
   const keys = anchors(room, design.state, design.assets);
   const doorsIn = space.doors.filter((d) => pointInPolygon(pull(d.centre, c, 0.5), room.polygon) || dist(d.centre, c) < 0.1);
   const cands: Candidate[] = [];
+  const tall = tallPieces(room, design.state, design.assets);
   const add = (purpose: ViewPurpose, at: Point, look: Point, fov: number, score: number) => {
     if (dist(at, look) < 1.2) return;
     if (!standable(at, room, design.state, design.assets)) {
@@ -157,6 +237,8 @@ export function planRoomViews(
       for (let m = 0.2; m <= 1.0; m += 0.2) { const p = pull(at, look, m); if (standable(p, room, design.state, design.assets)) { at = p; break; } }
       if (!standable(at, room, design.state, design.assets)) return;
     }
+    // A wardrobe or tall shelf filling the frame in front of what the view is for: not a photograph.
+    if (tall.length && occludedShare([at.x, at.y, EYE_M], [look.x, look.y, lookHeight(purpose)], fov, aspect, tall) > MAX_OCCLUSION) return;
     cands.push({ purpose, at, look, fov, score });
   };
 
@@ -202,7 +284,7 @@ export function planRoomViews(
   return chosen.map((v, i) => ({
     id: `${roomId}-v${i + 1}`, kind: 'ROOM', purpose: v.purpose, roomId,
     position: [r3(v.at.x), r3(v.at.y), EYE_M],
-    target: [r3(v.look.x), r3(v.look.y), v.purpose === 'DETAIL' ? 0.75 : 1.25],
+    target: [r3(v.look.x), r3(v.look.y), lookHeight(v.purpose)],
     fovDeg: v.fov, orthoScale: null, aspect: r3(aspect),
     width, height: Math.round(width / aspect), samples: q.samples,
     cut: null, hideCeilings: false, objectMap: true,

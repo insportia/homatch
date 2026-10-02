@@ -794,3 +794,65 @@ def test_a_room_view_keeps_its_ceiling_and_full_height_walls(built_views):
 def test_a_spec_without_views_builds_exactly_as_before(built):
     out, _ = built
     assert "views" not in out["outputs"] and "views" not in out["build"]
+
+
+# ── F. the views' look (render-only) ─────────────────────────────────
+
+def _mask(ids: Image.Image, colours: set[str]) -> list[bool]:
+    return [f"#{r:02x}{g:02x}{b:02x}" in colours for (r, g, b) in ids.convert("RGB").getdata()]
+
+
+@needs_blender
+def test_a_room_view_is_exposed_on_its_walls_and_reads_bright(built_views):
+    out, by_url, _ = built_views
+    rep = out["build"]["views"]["v-living"]
+    assert rep["exposure"]["on"] == "walls" and -2.0 <= rep["exposure"]["ev"] <= 4.0, rep["exposure"]
+    assert out["build"]["views"]["v-master"]["exposure"]["on"] == "fixed"
+    legend = json.loads(_put(by_url, "v-living", "legend"))
+    walls = {e["color"] for e in legend["entries"] if e["kind"] == "WALL"}
+    ids = Image.open(io.BytesIO(_put(by_url, "v-living", "ids")))
+    grey = list(Image.open(io.BytesIO(_put(by_url, "v-living", "image"))).convert("L").getdata())
+    wall_px = [g for g, m in zip(grey, _mask(ids, walls)) if m]
+    mean = sum(wall_px) / len(wall_px)
+    assert 140 <= mean <= 235, f"white walls by day read light, not dim and not blown out ({mean:.0f})"
+
+
+@needs_blender
+def test_catalogue_maps_are_worn_in_a_view_and_the_look_never_reaches_an_export():
+    s = views_spec()
+    s["views"] = [dict(s["views"][0], width=420, height=300, samples=8)]
+    s["outputs"] = {"render": False, "scene": True, "objects": False}
+    mid = "mat-check"
+    s["materials"].append({"id": mid, "baseColor": "#808080", "roughness": 0.6, "metalness": 0.0, "tileM": [0.8, 0.8], "rotationDeg": 0, "normalScale": 1.0})
+    floor = next(r for r in s["rooms"] if r["id"] == "r-living")["floor"]
+    for sf in s["surfaces"]:
+        if sf["id"] == floor:
+            sf["material"] = mid
+            sf["tint"] = None
+    chk = Image.new("RGB", (64, 64))
+    chk.putdata([(30, 30, 30) if ((x // 32) + (y // 32)) % 2 else (235, 235, 235) for y in range(64) for x in range(64)])
+    buf = io.BytesIO()
+    chk.save(buf, "PNG")
+    j = views_job(s)
+    j["inputs"]["textures"] = {mid: {"albedo": R2 + "&albedo", "normal": None, "orm": None}}
+    j["outputs"]["scene"] = {"DESKTOP": R2 + "&d", "MOBILE": R2 + "&m"}
+    tr = FakeTransfer({R2 + "&albedo": buf.getvalue()})
+    out = pipeline_mod.run_job(parse_job(j), {**tools(), "gltf_transform": None}, tr)
+    by_url = {p[0]: p for p in tr.puts}
+    legend = json.loads(_put(by_url, "v-master", "legend"))
+    ids = Image.open(io.BytesIO(_put(by_url, "v-master", "ids")))
+    grey = list(Image.open(io.BytesIO(_put(by_url, "v-master", "image"))).convert("L").getdata())
+
+    def spread(surface: str) -> float:
+        colour = next(e["color"] for e in legend["entries"] if e["id"] == surface)
+        px = [g for g, m in zip(grey, _mask(ids, {colour})) if m]
+        mean = sum(px) / len(px)
+        return (sum((p - mean) ** 2 for p in px) / len(px)) ** 0.5
+
+    plain_floor = next(r for r in s["rooms"] if r["id"] == "r-bed1")["floor"]
+    assert spread(floor) > 2 * spread(plain_floor) and spread(floor) > 15, "the checker map is on the living floor in the view"
+    gl = _glb_from(tr, "model/gltf-binary")
+    names = {m.get("name", "") for m in gl.get("materials", [])} | {n.get("name", "") for n in gl["nodes"]}
+    assert not any(x.startswith(("look:", "wall-cap", "portal", "studio-ground", "hm-id:", "view-camera")) for x in names), sorted(names)
+    assert not any(n.startswith("wall:") and n.endswith(".001") for n in names), "a view's walls are gone before the export"
+    assert out["outputs"]["views"]["v-master"]["ok"] is True

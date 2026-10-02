@@ -141,7 +141,7 @@ Deno.serve(async (req: Request) => {
         + 'id,city,district,transaction,property_type,sale_amount,sale_currency,'
         + 'rent_amount,rent_currency,area_sqm,rooms,bedrooms,title,canonical_url,'
         + 'published_at,first_seen_at,last_verified_at,detected_language,adapter_id,'
-        + 'supply_role,broker_id,'
+        + 'supply_role,broker_id,entity_id,'
         /*
          * THE BROKER, WHEN THERE IS ONE -- from broker_intelligence, which is the
          * table of firms we FOUND. Note what is not joined and cannot be: this
@@ -194,7 +194,22 @@ Deno.serve(async (req: Request) => {
     }
     const now = new Date();
 
-    const results = (matches ?? []).map((row: Record<string, unknown>) => {
+    /*
+     * ONE RESULT PER PROPERTY. The same flat posted in five places is five
+     * observations of one supply_entity; the customer sees it once, at its
+     * best score (rows arrive best first, so the first kept wins).
+     */
+    const seenEntities = new Set<string>();
+    const distinct = (matches ?? []).filter((row: Record<string, unknown>) => {
+      const joined: unknown = Array.isArray(row.observation) ? row.observation[0] : row.observation;
+      const entityId = (joined as Record<string, unknown> | null)?.entity_id;
+      if (!entityId) return true;
+      if (seenEntities.has(String(entityId))) return false;
+      seenEntities.add(String(entityId));
+      return true;
+    });
+
+    const results = distinct.map((row: Record<string, unknown>) => {
       const joined: unknown = Array.isArray(row.observation)
         ? row.observation[0]
         : row.observation;

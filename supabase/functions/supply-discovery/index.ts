@@ -182,6 +182,14 @@ const started = Date.now();
     if (String(body.mode ?? '') === 'portal-job') {
       return await portalJob(db, body, started);
     }
+    /* PHASE 2: group what one market holds (portal listings and community
+       posts alike) into entities. No fetch; comparisons are recorded. */
+    if (String(body.mode ?? '') === 'resolve-market') {
+      const countryCode = String(body.countryCode || 'GE').toUpperCase();
+      const transaction = String(body.transaction || 'SALE').toUpperCase() === 'RENT' ? 'RENT' : 'SALE';
+      const resolution = await resolveMarket(db, countryCode, String(body.city || ''), transaction);
+      return json({ success: true, mode: 'resolve-market', countryCode, transaction, resolution, networkFetches: 0 });
+    }
 
     if (String(body.mode ?? '') === 'attribute-stored') {
       return await attributeStored(db, {
@@ -1456,11 +1464,21 @@ async function recordSourceFailure(db: any, sourceId: string, reason: string) {
  * O(n²) sweep before that exists.
  */
 async function resolveMarket(db: any, countryCode: string, city: string, transaction: string) {
-  const { data: rows } = await db
+  /*
+   * SCOPED TO THE CITY, every spelling of it. The argument was accepted and
+   * never used, so the 60 newest rows of the whole country were compared --
+   * a Batumi repost could be pushed out by Tbilisi listings and never meet
+   * the post it duplicates. Entities never span cities, so the scope loses
+   * no merge and makes the 60 the right 60.
+   */
+  let query = db
     .from('supply_observations')
     .select('id,source_id,adapter_id,external_id,canonical_url,country_code,city,district,transaction,property_type,area_sqm,rooms,bedrooms,floor,sale_amount,sale_currency,content_fingerprint,structured_quality,entity_id')
     .eq('country_code', countryCode)
-    .eq('transaction', transaction)
+    .eq('transaction', transaction);
+  const spellings = city ? placeNamesFor(city) : [];
+  if (spellings.length) query = query.or(spellings.map((name) => `city.ilike.${name}`).join(','));
+  const { data: rows } = await query
     .order('updated_at', { ascending: false })
     .limit(60);
 

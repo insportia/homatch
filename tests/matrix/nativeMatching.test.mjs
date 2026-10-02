@@ -97,10 +97,13 @@ test('the external path keeps its own identity', () => {
   /* The external upsert still keys on the signal and the observation, and never sets a
      property — the two paths share a table and must not share a row shape. */
   const externalWrite = worker.slice(
-    worker.indexOf("onConflict: 'signal_id,observation_id'") - 2000,
-    worker.indexOf("onConflict: 'signal_id,observation_id'") + 60,
+    worker.indexOf("'signal_id,observation_id' })") - 2000,
+    worker.indexOf("'signal_id,observation_id' })") + 60,
   );
-  assert.match(externalWrite, /signal_id: signalId/, 'the external write lost its signal');
+  /* Phase 2: a customer's own plan (no signal) writes the EXTERNAL_LISTING shape;
+     an external demand signal still keeps its signal and EXTERNAL_INTELLIGENCE. */
+  assert.match(externalWrite, /signal_id: planDemand \? null : signalId/, 'the external write lost its signal');
+  assert.match(externalWrite, /source_kind: planDemand \? 'EXTERNAL_LISTING' : 'EXTERNAL_INTELLIGENCE'/);
   assert.match(externalWrite, /observation_id: entry\.observationId/,
     'the external write lost its observation');
   assert.ok(!externalWrite.includes('property_id:'),

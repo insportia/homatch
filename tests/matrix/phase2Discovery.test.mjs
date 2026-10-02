@@ -127,3 +127,25 @@ test('a run ends by counting only what it delivered, settling measured cost, unk
   assert.match(driver, /rescueStuckRuns\(db\)/);
   assert.match(driver, /expirePausedRuns\(db\)/);
 });
+
+// Slice B — community supply
+test('a listing post filtered out of demand also becomes a supply observation, deterministically', () => {
+  const cls = read('supabase/functions/classify-signals-v2/index.ts');
+  const lib = read('supabase/functions/_shared/communitySupply.ts');
+  assert.match(cls, /recordCommunitySupply\(db,s as any\)/);
+  assert.match(cls, /mode==='community-supply-backfill'/);
+  assert.match(cls, /modelCalls:0/, 'the backfill never calls a model');
+  assert.match(lib, /onConflict: 'source_id,external_id'/, 'a re-read updates, never duplicates');
+  assert.match(lib, /field_origins: \{ \.\.\.listing\.origins, rawSignalId: signal\.id \}/, 'provenance kept per field');
+  assert.doesNotMatch(lib, /first_seen_at/, 'first seen is set once, by insert');
+});
+
+test('reposts collapse: results and the delivery count are per property (entity), resolution scoped by city', () => {
+  const fp = read('supabase/functions/find-property/index.ts');
+  assert.match(fp, /seenEntities/);
+  assert.match(read('supabase/functions/_shared/discoveryRun.ts'), /entity_id \?\? r\.observation_id/);
+  const sd = read('supabase/functions/supply-discovery/index.ts');
+  const resolver = sd.slice(sd.indexOf('async function resolveMarket'));
+  assert.match(resolver.slice(0, 1500), /placeNamesFor\(city\)/);
+  assert.match(read('supabase/functions/discovery-queue-worker/driver.ts'), /mode: 'resolve-market'/);
+});

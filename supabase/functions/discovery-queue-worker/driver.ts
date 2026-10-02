@@ -294,7 +294,7 @@ async function advanceRuns(db: any, baseUrl: string, serviceKey: string, started
         continue;
       }
     }
-    if (!(await claimRunTransition(db, row.id, ['SEARCHING'], { status: 'MATCHING', stage: 'MATCHING', progress: 85 }))) continue;
+    if (!(await claimRunTransition(db, row.id, ['SEARCHING'], { status: 'MATCHING', stage: 'VALIDATING', progress: 85 }))) continue;
     try {
       if (open.length > 0) {
         await db.from('discovery_query_queue')
@@ -309,6 +309,17 @@ async function advanceRuns(db: any, baseUrl: string, serviceKey: string, started
         cancelled: list.filter((s) => s.status === 'CANCELLED').length + open.length,
         collected: list.reduce((n, s) => n + Number(s.result_count || 0), 0),
       };
+      /* Group what was collected into entities before matching, so the
+         same flat posted five times is one property, not five results. */
+      const { data: planRow } = await db.from('discovery_search_plans')
+        .select('plan').eq('discovery_run_id', row.id).order('created_at', { ascending: false }).limit(1).maybeSingle();
+      const subject = (planRow?.plan as any)?.subject ?? null;
+      if (subject?.city) {
+        await invokeFunction(baseUrl, serviceKey, 'supply-discovery', {
+          mode: 'resolve-market', countryCode: subject.countryCode, city: subject.city, transaction: subject.transaction,
+        }, 120_000).catch((error) => runEvent(db, row.id, 'RESOLUTION_SKIPPED', { message: errorText(error) }));
+      }
+      await updateRun(db, row.id, { stage: 'MATCHING', progress: 90 }).catch(() => undefined);
       let matching: any = null;
       if (row.intent_profile_id) {
         const res = await invokeFunction(baseUrl, serviceKey, 'supply-matching', {

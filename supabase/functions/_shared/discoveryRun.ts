@@ -55,14 +55,19 @@ export async function finalizeDiscoveryRun(
   const now = Date.now();
   let delivered = 0;
   if (run.intent_profile_id) {
-    const { count, error } = await db.from('supply_matches')
-      .select('id', { count: 'exact', head: true })
+    /* Counted per PROPERTY: reposts of one flat are one delivery. */
+    const { data: rows, error } = await db.from('supply_matches')
+      .select('observation_id,observation:supply_observations!observation_id(entity_id)')
       .eq('intent_profile_id', run.intent_profile_id)
       .eq('source_kind', 'EXTERNAL_LISTING')
       .eq('compatibility', 'COMPATIBLE')
-      .gte('created_at', run.started_at);
+      .gte('created_at', run.started_at)
+      .limit(1000);
     if (error) throw error;
-    delivered = Number(count ?? 0);
+    delivered = new Set(((rows ?? []) as any[]).map((r) => {
+      const o = Array.isArray(r.observation) ? r.observation[0] : r.observation;
+      return String(o?.entity_id ?? r.observation_id);
+    })).size;
   }
 
   /* Measured provider spend of this run's source jobs. Native routes report

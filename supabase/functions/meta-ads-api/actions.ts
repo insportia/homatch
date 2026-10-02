@@ -546,7 +546,9 @@ export async function handleAction(x: ActionCtx): Promise<Response | null> {
         await sb.from('meta_assets').update({ selected: false }).eq('user_id', uid).eq('kind', 'LEAD_FORM');
         const { data: asset } = await sb.from('meta_assets').upsert({
           user_id: uid, kind: 'LEAD_FORM', external_id: externalId, name: String(spec.name).trim().slice(0, 100), parent_external_id: page.external_id,
-          selected: true, status: 'ACTIVE', capabilities: { created_by_homatch: true, questions: spec.questions, locale: META_LOCALE[spec.locale] ?? 'en_US', mock: mode === 'MOCK' },
+          selected: true, status: 'ACTIVE', capabilities: { created_by_homatch: true, questions: spec.questions, locale: META_LOCALE[spec.locale] ?? 'en_US', mock: mode === 'MOCK',
+            // The owner's own public policy link, offered again for their next form (never HOMATCH's).
+            privacy_url: String(spec.privacyPolicyUrl ?? '').trim().slice(0, 500) || null },
         }, { onConflict: 'user_id,kind,external_id' }).select('id,external_id,name').single();
         await sb.from('meta_funnel_events').insert({ event: 'lead_form_created', user_id: uid });
         await x.audit(sb, uid, 'META_LEAD_FORM_CREATE', externalId, { questions: spec.questions });

@@ -216,8 +216,9 @@ export const launchCampaign = (campaignId: string, idempotencyKey: string) =>
 export type AiCopyOp = 'GENERATE' | 'IMPROVE' | 'SHORTEN' | 'PROFESSIONAL' | 'ALTERNATIVES' | 'TRANSLATE';
 export interface AiCopyVariant { primaryText: string; headline: string; description: string }
 /** Suggestions only: nothing is saved until the customer accepts one. */
-export const aiCopy = (campaignId: string, op: AiCopyOp, language: string, current: Partial<AiCopyVariant>, notes = '') =>
-  call<{ variants: AiCopyVariant[] }>('ai_copy', { campaignId, op, language, current, notes });
+export type AiCopyField = 'AD' | 'FORM_HEADLINE' | 'FORM_INTRO' | 'FORM_THANKS' | 'BRIEF';
+export const aiCopy = (campaignId: string, op: AiCopyOp, language: string, current: Partial<AiCopyVariant>, notes = '', field: AiCopyField = 'AD', fresh = false) =>
+  call<{ variants: AiCopyVariant[]; cached?: boolean }>('ai_copy', { campaignId, op, language, current, notes, field, fresh });
 export const pauseCampaign = (campaignId: string) => call('pause', { campaignId });
 export const resumeCampaign = (campaignId: string) => call('resume', { campaignId });
 export const syncCampaign = (campaignId: string) =>

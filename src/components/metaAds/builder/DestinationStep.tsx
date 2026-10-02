@@ -216,7 +216,8 @@ function LeadFormPicker({ status, campaign, setDest, reloadStatus, patch }: {
               <Plus className="h-3.5 w-3.5" />{t('mm_b_lf_open')}
             </Button>
           ) : (
-            <LeadFormBuilder propertyId={campaign.property_id} formsState={formsState} pageName={page?.name ?? null}
+            <LeadFormBuilder propertyId={campaign.property_id} formsState={formsState} pageName={page?.name ?? null} campaignId={campaign.id}
+              knownPrivacyUrl={forms.map((f) => (f.capabilities as { privacy_url?: string | null } | undefined)?.privacy_url).find((u): u is string => !!u) ?? null}
               context={{
                 isProperty: !!campaign.property_id || (campaign.offer as { isProperty?: boolean } | null)?.isProperty === true,
                 dealKind: (campaign.offer as { dealKind?: string } | null)?.dealKind ?? null,

@@ -14021,6 +14021,18 @@ const en = {
   mm_lc_ev_NOTE: 'Note updated',
   mm_lc_ev_FOLLOW_UP: 'Follow-up set',
   mm_lc_ev_QUALITY: 'Quality: {{to}}',
+
+  /* ── META ADS — FINAL ACCEPTANCE ── */
+  mm_k_spark_write: 'Write with HOMATCH',
+  mm_k_spark_improve: 'Improve with HOMATCH',
+  mm_k_spark_suggestion: 'HOMATCH suggestion',
+  mm_k_spark_use: 'Use',
+  mm_k_spark_again: 'Try another',
+  mm_k_spark_edit: 'Use and edit',
+  mm_k_spark_dismiss: 'Not now',
+  mm_k_spark_note: 'Written only from facts HOMATCH has about this campaign. Your text changes only when you press Use.',
+  mm_k_privacy_reused: 'Your policy link from your previous form.',
+  mm_k_privacy_change: 'Change',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -27956,6 +27968,18 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mm_lc_ev_NOTE: 'შენიშვნა განახლდა',
   mm_lc_ev_FOLLOW_UP: 'კონტაქტის დრო დაინიშნა',
   mm_lc_ev_QUALITY: 'ხარისხი: {{to}}',
+
+  /* ── META ADS — FINAL ACCEPTANCE ── */
+  mm_k_spark_write: 'დაწერეთ HOMATCH-ით',
+  mm_k_spark_improve: 'გააუმჯობესეთ HOMATCH-ით',
+  mm_k_spark_suggestion: 'HOMATCH-ის შეთავაზება',
+  mm_k_spark_use: 'გამოყენება',
+  mm_k_spark_again: 'სხვა ვარიანტი',
+  mm_k_spark_edit: 'გამოყენება და რედაქტირება',
+  mm_k_spark_dismiss: 'ახლა არა',
+  mm_k_spark_note: 'დაწერილია მხოლოდ იმ ფაქტებით, რაც HOMATCH-მა ამ კამპანიაზე იცის. თქვენი ტექსტი შეიცვლება მხოლოდ მაშინ, როცა „გამოყენებას“ დააჭერთ.',
+  mm_k_privacy_reused: 'თქვენი წინა ფორმის კონფიდენციალურობის ბმული.',
+  mm_k_privacy_change: 'შეცვლა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -41882,6 +41906,18 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mm_lc_ev_NOTE: 'Заметка обновлена',
   mm_lc_ev_FOLLOW_UP: 'Назначен контакт',
   mm_lc_ev_QUALITY: 'Качество: {{to}}',
+
+  /* ── META ADS — FINAL ACCEPTANCE ── */
+  mm_k_spark_write: 'Написать с HOMATCH',
+  mm_k_spark_improve: 'Улучшить с HOMATCH',
+  mm_k_spark_suggestion: 'Предложение HOMATCH',
+  mm_k_spark_use: 'Использовать',
+  mm_k_spark_again: 'Другой вариант',
+  mm_k_spark_edit: 'Взять и править',
+  mm_k_spark_dismiss: 'Не сейчас',
+  mm_k_spark_note: 'Написано только по фактам, которые HOMATCH знает об этой кампании. Ваш текст изменится, только когда вы нажмёте «Использовать».',
+  mm_k_privacy_reused: 'Ссылка на вашу политику из прошлой формы.',
+  mm_k_privacy_change: 'Изменить',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -55806,6 +55842,18 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mm_lc_ev_NOTE: 'Not güncellendi',
   mm_lc_ev_FOLLOW_UP: 'Takip ayarlandı',
   mm_lc_ev_QUALITY: 'Kalite: {{to}}',
+
+  /* ── META ADS — FINAL ACCEPTANCE ── */
+  mm_k_spark_write: 'HOMATCH ile yaz',
+  mm_k_spark_improve: 'HOMATCH ile iyileştir',
+  mm_k_spark_suggestion: 'HOMATCH önerisi',
+  mm_k_spark_use: 'Kullan',
+  mm_k_spark_again: 'Başka bir tane',
+  mm_k_spark_edit: 'Kullan ve düzenle',
+  mm_k_spark_dismiss: 'Şimdi değil',
+  mm_k_spark_note: 'Yalnızca HOMATCH’in bu kampanya hakkında bildiği gerçeklerle yazıldı. Metniniz yalnızca Kullan’a bastığınızda değişir.',
+  mm_k_privacy_reused: 'Önceki formunuzdaki gizlilik politikası bağlantınız.',
+  mm_k_privacy_change: 'Değiştir',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -69730,6 +69778,18 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mm_lc_ev_NOTE: 'تم تحديث الملاحظة',
   mm_lc_ev_FOLLOW_UP: 'تم تحديد المتابعة',
   mm_lc_ev_QUALITY: 'الجودة: {{to}}',
+
+  /* ── META ADS — FINAL ACCEPTANCE ── */
+  mm_k_spark_write: 'اكتب مع HOMATCH',
+  mm_k_spark_improve: 'حسّن مع HOMATCH',
+  mm_k_spark_suggestion: 'اقتراح HOMATCH',
+  mm_k_spark_use: 'استخدام',
+  mm_k_spark_again: 'جرّب غيره',
+  mm_k_spark_edit: 'استخدم وعدّل',
+  mm_k_spark_dismiss: 'ليس الآن',
+  mm_k_spark_note: 'مكتوب فقط من الحقائق التي يعرفها HOMATCH عن هذه الحملة. لا يتغير نصك إلا عند الضغط على «استخدام».',
+  mm_k_privacy_reused: 'رابط سياستك من نموذجك السابق.',
+  mm_k_privacy_change: 'تغيير',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -83654,6 +83714,18 @@ const he: Partial<Record<TranslationKey, string>> = {
   mm_lc_ev_NOTE: 'ההערה עודכנה',
   mm_lc_ev_FOLLOW_UP: 'נקבע מעקב',
   mm_lc_ev_QUALITY: 'איכות: {{to}}',
+
+  /* ── META ADS — FINAL ACCEPTANCE ── */
+  mm_k_spark_write: 'לכתוב עם HOMATCH',
+  mm_k_spark_improve: 'לשפר עם HOMATCH',
+  mm_k_spark_suggestion: 'הצעה של HOMATCH',
+  mm_k_spark_use: 'להשתמש',
+  mm_k_spark_again: 'לנסות אחר',
+  mm_k_spark_edit: 'להשתמש ולערוך',
+  mm_k_spark_dismiss: 'לא עכשיו',
+  mm_k_spark_note: 'נכתב רק מעובדות ש-HOMATCH יודעת על הקמפיין הזה. הטקסט שלכם משתנה רק כשתלחצו „להשתמש“.',
+  mm_k_privacy_reused: 'הקישור למדיניות שלכם מהטופס הקודם.',
+  mm_k_privacy_change: 'שינוי',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

@@ -161,4 +161,16 @@ export const META_ACCEPT_STRINGS = {
   mm_lc_ev_NOTE: ["Note updated", "შენიშვნა განახლდა", "Заметка обновлена", "Not güncellendi", "تم تحديث الملاحظة", "ההערה עודכנה"],
   mm_lc_ev_FOLLOW_UP: ["Follow-up set", "კონტაქტის დრო დაინიშნა", "Назначен контакт", "Takip ayarlandı", "تم تحديد المتابعة", "נקבע מעקב"],
   mm_lc_ev_QUALITY: ["Quality: {{to}}", "ხარისხი: {{to}}", "Качество: {{to}}", "Kalite: {{to}}", "الجودة: {{to}}", "איכות: {{to}}"],
+
+  /* ── COPY ASSIST + PRIVACY ── */
+  mm_k_spark_write: ["Write with HOMATCH", "დაწერეთ HOMATCH-ით", "Написать с HOMATCH", "HOMATCH ile yaz", "اكتب مع HOMATCH", "לכתוב עם HOMATCH"],
+  mm_k_spark_improve: ["Improve with HOMATCH", "გააუმჯობესეთ HOMATCH-ით", "Улучшить с HOMATCH", "HOMATCH ile iyileştir", "حسّن مع HOMATCH", "לשפר עם HOMATCH"],
+  mm_k_spark_suggestion: ["HOMATCH suggestion", "HOMATCH-ის შეთავაზება", "Предложение HOMATCH", "HOMATCH önerisi", "اقتراح HOMATCH", "הצעה של HOMATCH"],
+  mm_k_spark_use: ["Use", "გამოყენება", "Использовать", "Kullan", "استخدام", "להשתמש"],
+  mm_k_spark_again: ["Try another", "სხვა ვარიანტი", "Другой вариант", "Başka bir tane", "جرّب غيره", "לנסות אחר"],
+  mm_k_spark_edit: ["Use and edit", "გამოყენება და რედაქტირება", "Взять и править", "Kullan ve düzenle", "استخدم وعدّل", "להשתמש ולערוך"],
+  mm_k_spark_dismiss: ["Not now", "ახლა არა", "Не сейчас", "Şimdi değil", "ليس الآن", "לא עכשיו"],
+  mm_k_spark_note: ["Written only from facts HOMATCH has about this campaign. Your text changes only when you press Use.", "დაწერილია მხოლოდ იმ ფაქტებით, რაც HOMATCH-მა ამ კამპანიაზე იცის. თქვენი ტექსტი შეიცვლება მხოლოდ მაშინ, როცა „გამოყენებას“ დააჭერთ.", "Написано только по фактам, которые HOMATCH знает об этой кампании. Ваш текст изменится, только когда вы нажмёте «Использовать».", "Yalnızca HOMATCH’in bu kampanya hakkında bildiği gerçeklerle yazıldı. Metniniz yalnızca Kullan’a bastığınızda değişir.", "مكتوب فقط من الحقائق التي يعرفها HOMATCH عن هذه الحملة. لا يتغير نصك إلا عند الضغط على «استخدام».", "נכתב רק מעובדות ש-HOMATCH יודעת על הקמפיין הזה. הטקסט שלכם משתנה רק כשתלחצו „להשתמש“."],
+  mm_k_privacy_reused: ["Your policy link from your previous form.", "თქვენი წინა ფორმის კონფიდენციალურობის ბმული.", "Ссылка на вашу политику из прошлой формы.", "Önceki formunuzdaki gizlilik politikası bağlantınız.", "رابط سياستك من نموذجك السابق.", "הקישור למדיניות שלכם מהטופס הקודם."],
+  mm_k_privacy_change: ["Change", "შეცვლა", "Изменить", "Değiştir", "تغيير", "שינוי"],
 };

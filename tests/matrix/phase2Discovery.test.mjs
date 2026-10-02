@@ -189,3 +189,14 @@ test('live checks are bounded, robots-first, write only admin-read rows, and nev
   assert.doesNotMatch(fn, /body: html|html: html|evidence: \{[^}]*html[,}]/, 'no body is stored');
   assert.ok(sa.includes("'www.myhome.ge'"), 'MyHome is re-audited from production');
 });
+
+test('admin intelligence is one admin-only read, inside the Admin shell, with no secrets or text', () => {
+  const sql = read('supabase/migrations/20261008100100_phase2_admin_intelligence.sql');
+  assert.match(sql, /if not public\.is_admin\(\) then\s+raise exception 'FORBIDDEN'/);
+  assert.match(sql, /key not like '%token%'/);
+  assert.doesNotMatch(sql, /original_text|description|phone|insert into|update public|delete from/i);
+  assert.match(read('src/pages/admin/AdminDiscoveryPage.tsx'), /<DiscoveryIntelligencePanel \/>/);
+  const fn = read('supabase/functions/discovery-queue-worker/index.ts');
+  const live = fn.slice(fn.indexOf("mode === 'admin_live_check'"), fn.indexOf("mode === 'admin_live_check'") + 300);
+  assert.match(live, /isAdminCaller\(req, db\)/);
+});

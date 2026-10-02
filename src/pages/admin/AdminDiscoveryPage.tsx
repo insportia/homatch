@@ -19,6 +19,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { intlLocaleFor } from '@/components/workspace/primitives';
 import { statusLabel } from '@/components/matching/MatchingJobProgress';
+import { DiscoveryIntelligencePanel } from '@/components/admin/DiscoveryIntelligencePanel';
 import {
   DISCOVERY_SWITCHES, getDiscoveryOverview, retryCampaignSources, setDiscoverySwitch, settingOn, stopCampaignJob, testTelegramHealth,
   type DiscoveryOverview, type DiscoverySwitch,
@@ -322,6 +323,9 @@ export default function AdminDiscoveryPage() {
           </Panel>
         </>
       )}
+
+      {/* Phase 2: is HOMATCH learning? Runs, routes, live checks, supply, entities. */}
+      <DiscoveryIntelligencePanel />
     </div>
   );
 }

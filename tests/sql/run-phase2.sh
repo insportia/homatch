@@ -16,3 +16,8 @@ M="$root/supabase/migrations/20261008100000_phase2_universal_discovery.sql"
 $P -d p2fx -1 -f "$M" 2>/dev/null
 $P -d p2fx -1 -f "$M" 2>/dev/null
 $P -d p2fx -f "$here/phase2_discovery_queue.sql"
+$P -d p2fx -f "$here/phase2_fixture_admin.sql"
+M2="$root/supabase/migrations/20261008100100_phase2_admin_intelligence.sql"
+$P -d p2fx -1 -f "$M2"
+$P -d p2fx -1 -f "$M2"
+$P -d p2fx -f "$here/phase2_admin_intelligence.sql"

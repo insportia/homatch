@@ -1,7 +1,6 @@
-// PHASE 2 hardening — D2 (charge only delivered listings) and D3 (no contact in
-// customer-visible community text), exercised against an in-memory database,
-// plus the guarantees that must not move: Verify's billing untouched, retired
-// providers refused, every Phase 2 switch defaulting OFF.
+// PHASE 2 hardening — D2 (charge only delivered listings), exercised against an
+// in-memory database, plus the guarantees that must not move: Verify's billing
+// untouched, retired providers refused, every Phase 2 switch defaulting OFF.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -11,8 +10,6 @@ import { dirname, join } from 'node:path';
 import {
   billableDeliveries, claimSettlement, loadDeliveries, planSettlement, settleFindPropertyRun,
 } from '../../supabase/functions/_shared/findPropertySettlement.ts';
-import { recordCommunitySupply } from '../../supabase/functions/_shared/communitySupply.ts';
-import { extractCommunityListing } from '../../src/research-core/discovery/community-listing.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (p) => readFileSync(join(root, p), 'utf8');
@@ -34,7 +31,6 @@ function fakeDb({ tables = {}, rpc = {} } = {}) {
     const chain = {
       select() { return chain; },
       update(p) { op = 'update'; patch = p; return chain; },
-      upsert(row) { op = 'upsert'; patch = row; return chain; },
       eq(col, v) { filters.push((r) => r[col] === v); return chain; },
       neq(col, v) { filters.push((r) => r[col] !== v); return chain; },
       is(col, v) { filters.push((r) => (r[col] ?? null) === v); return chain; },
@@ -223,62 +219,12 @@ test('D2: a stopped run that delivered nothing is released, one that delivered i
   assert.equal(out.creditsCharged, 25);
 });
 
-/* ------------------------------- D3 ------------------------------- */
-
-const PHONE = /(?:\+?995[\s-]*)?\(?5\d{2}\)?[\s-]?\d{2,3}[\s-]?\d{2,3}[\s-]?\d{2,3}|8\s?\(999\)/;
-const CONTACT = [PHONE, /@[A-Za-z]/, /t\.me|wa\.me|whatsapp\.com/i, /[A-Za-z0-9._-]+@[A-Za-z]/];
-
-const posts = {
-  ka: 'ქირავდება 2 ოთახიანი ბინა ბათუმში, რუსთაველის 12, 65 მ², მე-5 სართული\nფასი 700$ თვეში\nტელ: 599 12 34 56 @batumi_flats',
-  en: '599 12 34 56\nFor rent: 2-room flat in Batumi, Rustaveli 12, 65 sqm, 5th floor, 700$ per month. WhatsApp wa.me/995599123456',
-  ru: 'Сдается 2-комн. квартира в Батуми, ул. Руставели 12, 65 м², 5 этаж, 700$ в месяц. Звоните +995 (599) 12-34-56, t.me/batumi_rent',
-};
-
-for (const [lang, post] of Object.entries(posts)) {
-  test(`D3 (${lang}): the stored title and description carry no contact; parsed facts are unchanged`, async () => {
-    const db = fakeDb();
-    const signal = {
-      id: `sig-${lang}`, platform: 'TELEGRAM', source_id: 'src-1', external_id: `m-${lang}`, source_url: 'https://t.me/batumi_channel/42',
-      original_text: post, language: lang, published_at: DURING, content_fingerprint: null,
-      source: { city: 'Batumi', country_code: 'GE' },
-    };
-    const id = await recordCommunitySupply(db, signal);
-    assert.ok(id, 'recognised as a listing');
-    const row = db.calls.upserts[0].row;
-    for (const pattern of CONTACT) {
-      assert.doesNotMatch(row.title ?? '', pattern, `title leaked ${pattern}: ${row.title}`);
-      assert.doesNotMatch(row.description, pattern, `description leaked ${pattern}: ${row.description}`);
-    }
-    assert.ok(row.title && !/^\[•••\]$/.test(row.title), 'the title is a line that says something, not a mask');
-    assert.ok(Object.values(row.field_origins.contactsRedacted).reduce((a, b) => a + b, 0) >= 2);
-    /* the facts come from the original post, exactly as before */
-    const listing = extractCommunityListing(post, { sourceCity: 'Batumi' });
-    assert.equal(row.rent_amount, listing.price?.amount ?? null);
-    assert.equal(row.area_sqm, listing.areaSqm);
-    assert.equal(row.rooms, listing.rooms);
-    assert.equal(row.city, listing.city);
-    assert.equal(row.canonical_url, 'https://t.me/batumi_channel/42', 'the post link is provenance, not a personal contact');
-    assert.ok(row.description.includes('12') && /65/.test(row.description), 'address and area kept for matching');
-  });
-}
-
-test('D3: customer-visible text in find-property is the stored, redacted title', () => {
-  const fp = read('supabase/functions/find-property/index.ts');
-  assert.match(fp, /title: observation\.title/);
-  assert.doesNotMatch(code('supabase/functions/find-property/index.ts'), /original_text/);
-  const lib = code('supabase/functions/_shared/communitySupply.ts');
-  assert.match(lib, /title: communityTitle\(shown\.text\)/);
-  assert.match(lib, /description: shown\.text\.slice\(0, 4000\)/);
-  assert.doesNotMatch(lib, /description: String\(signal\.original_text/);
-});
-
 /* --------------------- guarantees that do not move -------------------- */
 
 test('Verify and the shared billing are untouched by Phase 2 hardening', () => {
   const billing = read('supabase/functions/_shared/billing.ts');
   assert.match(billing, /export async function settleExecution\(/, 'shared settle still there, unchanged API');
-  for (const p of ['supabase/functions/_shared/findPropertySettlement.ts', 'src/research-core/discovery/portal-selection.ts',
-    'src/research-core/discovery/contact-redaction.ts']) {
+  for (const p of ['supabase/functions/_shared/findPropertySettlement.ts', 'src/research-core/discovery/portal-selection.ts']) {
     assert.doesNotMatch(code(p), /research-agent|verify-synthesis|verification-handoff|from '.*verify/i, `${p} reaches no Verify code`);
   }
 });

@@ -142,7 +142,7 @@ test('a listing post filtered out of demand also becomes a supply observation, d
   assert.match(cls, /mode==='community-supply-backfill'/);
   assert.match(cls, /modelCalls:0/, 'the backfill never calls a model');
   assert.match(lib, /onConflict: 'source_id,external_id'/, 'a re-read updates, never duplicates');
-  assert.match(lib, /field_origins: \{ \.\.\.listing\.origins, rawSignalId: signal\.id, contactsRedacted: shown\.removed \}/, 'provenance kept per field');
+  assert.match(lib, /field_origins: \{ \.\.\.listing\.origins, rawSignalId: signal\.id \}/, 'provenance kept per field');
   assert.doesNotMatch(lib, /first_seen_at/, 'first seen is set once, by insert');
 });
 

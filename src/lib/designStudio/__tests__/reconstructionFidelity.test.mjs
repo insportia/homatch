@@ -126,3 +126,91 @@ test('a mistraced point does not drag the plan: the camera fit drops it', () => 
   const { recon } = validateReconstruction(raw, 1, { imageAspects: [ASPECT] });
   assert.ok(recon.fidelity && recon.fidelity.errorPct < 5, JSON.stringify(recon.fidelity));
 });
+
+// ── From rooms to a plan document: snapping, glazing, sizes ───────────────
+
+/** A plain reading in the reader's metres, nothing traced. */
+const plain = (rooms, openings = [], objects = []) => validateReconstruction({
+  view: 'AERIAL', scaleConfidence: 0.5, scaleEvidence: null, ceilingHeightM: null,
+  rooms: rooms.map(([key, kind, polygon, outdoor = false]) => ({ key, kind, label: null, polygon, polygonPx: [], pxImage: null, outdoor, confidence: 0.8, basis: 'OBSERVED' })),
+  openings: openings.map(([key, kind, at, widthM, heightM = null, sillM = null]) => ({ key, kind, at, atPx: null, pxImage: null, widthM, heightM, sillM, confidence: 0.7, basis: 'OBSERVED' })),
+  objects: objects.map(([key, type, room, at, widthM, depthM]) => ({ key, type, label: key, room, at, atPx: null, frontPx: null, pxImage: null, facingDeg: 0, widthM, depthM, heightM: 0.5, color: null, material: null, style: null, form: null, secondaryColor: null, confidence: 0.8, basis: 'OBSERVED', seenIn: [0] })),
+  surfaces: [], palette: [], styleWords: [], cameras: [], unknowns: [],
+}, 1).recon;
+const rect = (x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+
+test('nearly-equal lines snap together, but a run of them never chains a narrow room away', () => {
+  // A 0.9 m closet between two rooms, and above it a row of slices whose edges step 0.12 m
+  // apart from one side of the closet to the other: single-linkage would make it all one line.
+  const slices = [2.0, 2.12, 2.24, 2.36, 2.48, 2.6, 2.72, 2.84, 2.9];
+  const rooms = [['a', 'BEDROOM', rect(0, 0, 2, 3)], ['closet', 'STORAGE', rect(2, 0, 2.9, 3)], ['b', 'BEDROOM', rect(2.9, 0, 5, 3)],
+    ...slices.slice(0, -1).map((x, i) => [`s${i}`, 'HALL', rect(x, 3, slices[i + 1], 10)])];
+  const snapped = snapRooms(plain(rooms).rooms);
+  const closet = snapped.find((r) => r.key === 'closet');
+  assert.ok(closet, 'the closet survives');
+  const xs = closet.polygon.map((p) => p[0]);
+  assert.ok(Math.max(...xs) - Math.min(...xs) >= 0.7, `closet ${Math.max(...xs) - Math.min(...xs)} m wide`);
+  // And two lines 4 cm apart are still one wall.
+  const two = snapRooms(plain([['p', 'LIVING', rect(0, 0, 3, 3)], ['q', 'BEDROOM', rect(3.04, 0, 6, 3)]]).rooms);
+  assert.equal(Math.max(...two[0].polygon.map((p) => p[0])), Math.min(...two[1].polygon.map((p) => p[0])));
+});
+
+test('a small room is a room: a 0.6 m² cupboard is kept', () => {
+  const recon = plain([['hall', 'HALL', rect(0, 0, 3, 2)], ['cupboard', 'STORAGE', rect(3, 0, 3.6, 1)]]);
+  assert.ok(snapRooms(recon.rooms).some((r) => r.key === 'cupboard'));
+});
+
+test('glazing onto a balcony runs floor to ceiling; other windows keep their sill', () => {
+  const recon = plain(
+    [['living', 'LIVING', rect(0, 1.8, 4, 6)], ['bed', 'BEDROOM', rect(4, 1.8, 8, 6)], ['balcony', 'BALCONY', rect(0, 0, 8, 1.8), true]],
+    [
+      ['slide', 'BALCONY_DOOR', [1.2, 1.8], 1.6, 2.2], // a glazed door: full height
+      ['pane', 'WINDOW', [3.2, 1.8], 0.9], // a narrow window, no sill given: left to the generator
+      ['wall-of-glass', 'WINDOW', [6, 1.8], 3.0], // most of the bedroom's side
+      ['side', 'WINDOW', [8, 4], 3.6], // a wide window on a plain outer wall: not glazing to the outside
+    ],
+  );
+  const doc = planDocument(recon, 'k');
+  const el = (id) => [...doc.doors, ...doc.windows].find((o) => o.id === id);
+  assert.equal(el('d-slide').sillHeightM, 0);
+  assert.ok(el('d-slide').heightM >= 2.5, `balcony door ${el('d-slide').heightM} m`);
+  assert.equal(el('win-wall-of-glass').sillHeightM, 0);
+  assert.ok(el('win-wall-of-glass').heightM >= 2.5);
+  assert.equal(el('win-pane').sillHeightM, null);
+  assert.equal(el('win-side').sillHeightM, null);
+  assert.equal(el('win-side').heightM, null);
+});
+
+test('openings on one wall never overlap: a door claims its place first', () => {
+  const recon = plain([['living', 'LIVING', rect(0, 0, 4, 4)]], [['win', 'WINDOW', [2.3, 4], 1.0], ['door', 'DOOR', [2, 4], 0.9]]);
+  const doc = planDocument(recon, 'k');
+  const door = doc.doors.find((d) => d.id === 'd-door');
+  const win = doc.windows.find((w) => w.id === 'win-win');
+  assert.equal(door.widthPx, 90, 'the door keeps its width');
+  assert.equal(door.wallId, win.wallId);
+  const len = 4 * 100;
+  const span = (o) => [o.position * len - o.widthPx / 2, o.position * len + o.widthPx / 2];
+  const [a, b] = [span(door), span(win)];
+  assert.ok(a[1] <= b[0] + 1e-6 || b[1] <= a[0] + 1e-6, `${a} vs ${b}`);
+});
+
+test('glazing wider than one wall runs on across the walls that continue its line', () => {
+  // The balcony is in front of the living room only: its line and the bedroom's plain front are two walls.
+  const recon = plain(
+    [['living', 'LIVING', rect(0, 1.8, 4, 6)], ['bed', 'BEDROOM', rect(4, 1.8, 8, 6)], ['balcony', 'BALCONY', rect(0, 0, 4, 1.8), true]],
+    [['front', 'WINDOW', [4, 1.8], 5.0, 2.4, 0]],
+  );
+  const doc = planDocument(recon, 'k');
+  const parts = doc.windows.filter((w) => String(w.id).startsWith('win-front'));
+  assert.equal(parts.length, 2, JSON.stringify(doc.windows));
+  assert.notEqual(parts[0].wallId, parts[1].wallId);
+  assert.ok(Math.abs(parts.reduce((s, w) => s + w.widthPx, 0) - 500) < 30, `${parts.map((w) => w.widthPx)}`);
+});
+
+test('a room that cannot hold the bed read in it says the plan is measured short', () => {
+  const tight = planDocument(plain([['bed', 'BEDROOM', rect(0, 0, 3.1, 1.52)]], [], [['b', 'BED_DOUBLE', 'bed', [1.5, 0.7], 1.6, 2.0]]), 'k');
+  const w = tight.warnings.find((x) => x.code === 'AREA_MISMATCH');
+  assert.ok(w && w.elementId === 'r-bed' && /short/.test(w.detail), JSON.stringify(tight.warnings));
+  const roomy = planDocument(plain([['bed', 'BEDROOM', rect(0, 0, 3.4, 3.2)]], [], [['b', 'BED_DOUBLE', 'bed', [1.5, 1.5], 1.6, 2.0]]), 'k');
+  assert.ok(!roomy.warnings.some((x) => x.code === 'AREA_MISMATCH'));
+});

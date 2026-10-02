@@ -101,7 +101,10 @@ test('the design is built: pieces placed legally near where they were seen, with
   const { state, report } = buildDesign(recon, emptyCorrections(), space, ASSETS, MATERIALS, { referenceImageIds: ['img-1'] });
   assert.ok(report.placed.length >= 28, `${report.placed.length} placed; unplaced ${JSON.stringify(report.unplaced)}`);
   assert.deepEqual(report.unmatched.map((u) => u.type).sort(), ['ARTWORK'], 'only artwork has no catalogue family');
-  assert.ok(report.placed.every((p) => p.moved <= 0.9));
+  // Near where it was seen; a piece with no place in its own room may stand just across a door, and says so.
+  const relocated = new Map(report.relocated.map((r) => [r.key, r]));
+  assert.ok(report.placed.every((p) => p.moved <= (relocated.has(p.key) ? 1.5 : 0.9)), JSON.stringify(report.placed.filter((p) => p.moved > 0.9)));
+  for (const r of relocated.values()) assert.notEqual(r.from, r.to);
   for (const o of state.objects) {
     assert.equal(o.provenance.source, 'IMAGE_RECONSTRUCTION');
     assert.deepEqual(o.provenance.images, ['img-1']);
@@ -114,6 +117,23 @@ test('the design is built: pieces placed legally near where they were seen, with
   // Survives a save and a reload.
   const again = normalizeDesignState(JSON.parse(JSON.stringify(state)));
   assert.deepEqual(again.objects.map((o) => o.provenance), state.objects.map((o) => o.provenance));
+});
+
+test('a piece with no place in its own room stands just across a door, says so — never a bed, never into a bathroom', () => {
+  const { recon, space } = built();
+  const { state, report } = buildDesign(recon, emptyCorrections(), space, ASSETS, MATERIALS);
+  // The fixture's bedside read against the lobby wall of bedroom 2 has no place in that room.
+  const side = report.relocated.find((r) => r.key === 'bed2-side-1');
+  assert.ok(side, JSON.stringify(report));
+  assert.deepEqual([side.from, side.to], ['r-bed2', 'r-lobby']);
+  assert.equal(state.objects.find((o) => o.provenance.ref === 'bed2-side-1').roomId, 'r-lobby');
+  const kind = (id) => space.rooms.find((r) => r.id === id).kind;
+  for (const r of report.relocated) {
+    assert.notEqual(kind(r.to), 'BATHROOM');
+    assert.ok(!['BED_DOUBLE', 'BED_SINGLE', 'SOFA', 'KITCHEN_RUN', 'SHOWER', 'WARDROBE'].includes(recon.objects.find((o) => o.key === r.key).type));
+  }
+  // The armchair read on the far side of the living room is not carried 7 m into the bathroom: it is reported.
+  assert.ok(report.unplaced.some((u) => u.key === 'armchair-2'));
 });
 
 test('an edit by the customer confirms a reconstructed piece', () => {

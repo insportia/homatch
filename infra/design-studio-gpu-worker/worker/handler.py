@@ -8,6 +8,7 @@ secret is ever logged or returned.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -38,7 +39,22 @@ def _gpu() -> str | None:
         return None
 
 
+REVISION = re.compile(r"^[0-9a-f]{7,40}$")
+
+
+def worker_info() -> dict:
+    """Which image this is: the git commit baked in at build (HM_IMAGE_REVISION), or null when it was not."""
+    rev = (os.environ.get("HM_IMAGE_REVISION") or "").strip().lower()
+    return {"revision": rev if REVISION.match(rev) else None}
+
+
 def handle(event: dict) -> dict:
+    out = _handle(event)
+    out["worker"] = worker_info()
+    return out
+
+
+def _handle(event: dict) -> dict:
     payload = (event or {}).get("input") or {}
     t = tools()
     if payload.get("health") is True:

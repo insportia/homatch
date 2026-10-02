@@ -101,7 +101,10 @@ test('the design is built: pieces placed legally near where they were seen, with
   const { state, report } = buildDesign(recon, emptyCorrections(), space, ASSETS, MATERIALS, { referenceImageIds: ['img-1'] });
   assert.ok(report.placed.length >= 28, `${report.placed.length} placed; unplaced ${JSON.stringify(report.unplaced)}`);
   assert.deepEqual(report.unmatched.map((u) => u.type).sort(), ['ARTWORK'], 'only artwork has no catalogue family');
-  assert.ok(report.placed.every((p) => p.moved <= 0.9));
+  // Near where it was seen; a piece with no place in its own room may stand just across a door, and says so.
+  const relocated = new Map(report.relocated.map((r) => [r.key, r]));
+  assert.ok(report.placed.every((p) => p.moved <= (relocated.has(p.key) ? 1.5 : 0.9)), JSON.stringify(report.placed.filter((p) => p.moved > 0.9)));
+  for (const r of relocated.values()) assert.notEqual(r.from, r.to);
   for (const o of state.objects) {
     assert.equal(o.provenance.source, 'IMAGE_RECONSTRUCTION');
     assert.deepEqual(o.provenance.images, ['img-1']);
@@ -114,6 +117,23 @@ test('the design is built: pieces placed legally near where they were seen, with
   // Survives a save and a reload.
   const again = normalizeDesignState(JSON.parse(JSON.stringify(state)));
   assert.deepEqual(again.objects.map((o) => o.provenance), state.objects.map((o) => o.provenance));
+});
+
+test('a piece with no place in its own room stands just across a door, says so — never a bed, never into a bathroom', () => {
+  const { recon, space } = built();
+  const { state, report } = buildDesign(recon, emptyCorrections(), space, ASSETS, MATERIALS);
+  // The fixture's bedside read against the lobby wall of bedroom 2 has no place in that room.
+  const side = report.relocated.find((r) => r.key === 'bed2-side-1');
+  assert.ok(side, JSON.stringify(report));
+  assert.deepEqual([side.from, side.to], ['r-bed2', 'r-lobby']);
+  assert.equal(state.objects.find((o) => o.provenance.ref === 'bed2-side-1').roomId, 'r-lobby');
+  const kind = (id) => space.rooms.find((r) => r.id === id).kind;
+  for (const r of report.relocated) {
+    assert.notEqual(kind(r.to), 'BATHROOM');
+    assert.ok(!['BED_DOUBLE', 'BED_SINGLE', 'SOFA', 'KITCHEN_RUN', 'SHOWER', 'WARDROBE'].includes(recon.objects.find((o) => o.key === r.key).type));
+  }
+  // The armchair read on the far side of the living room is not carried 7 m into the bathroom: it is reported.
+  assert.ok(report.unplaced.some((u) => u.key === 'armchair-2'));
 });
 
 test('an edit by the customer confirms a reconstructed piece', () => {
@@ -198,4 +218,54 @@ test('the browser and the server read reconstructions with the same code (byte-i
     const b = fs.readFileSync(path.join(process.cwd(), 'src/lib/designStudio', file), 'utf8');
     assert.equal(b.replace(/\r\n/g, '\n'), a.replace(/\r\n/g, '\n'), file);
   }
+});
+
+// ── The golden apartment, from its real production reading ───────────────
+//
+// The production analysis (rooms traced on the plan view, pieces traced on the
+// picture, metres at the reader's own size) re-run through the deterministic
+// half against the frame measured from the same picture. Its bedrooms came out
+// 1.52 and 2.10 m deep and its beds could not be placed: the partitions were
+// drawn ~0.7 m off on the plan view, and the size was ~1/3 short (the beds'
+// own traces say so).
+
+const PROD = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'src/lib/designStudio/__tests__/fixtures/golden-apartment.prod-analysis.json'), 'utf8'));
+const GOLDEN_FRAME = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'src/lib/designStudio/__tests__/fixtures/golden-apartment.frame.json'), 'utf8'));
+// Heights are not stored with the analysis; ordinary ones for the kind.
+const HEIGHT = { BED_DOUBLE: 0.55, BEDSIDE: 0.55, WARDROBE: 2.3, KITCHEN_RUN: 0.9, FRIDGE: 2.0, SOFA: 0.8, ARMCHAIR: 0.8, CHAIR: 0.8, DINING_TABLE: 0.75, COFFEE_TABLE: 0.4, RUG: 0.01, TV_UNIT: 0.5, SHOWER: 2.1, VANITY: 0.85, TOILET: 0.45, PLANT: 1.2, PLANTER: 0.6, OUTDOOR_CHAIR: 0.85, OUTDOOR_TABLE: 0.7, ARTWORK: 1 };
+
+function goldenReplay() {
+  const raw = {
+    view: 'AERIAL', scaleConfidence: PROD.scaleConfidence, scaleEvidence: null, ceilingHeightM: null, wallCutRatio: PROD.wallCutRatio, frameColor: null,
+    rooms: PROD.rooms.map((r) => ({ key: r.key, kind: r.kind, label: null, polygon: r.polygon, polygonPx: r.px.points, pxImage: 1, outdoor: !!r.outdoor, confidence: 0.8, basis: 'OBSERVED' })),
+    openings: PROD.openings.map((o) => ({ key: o.key, kind: o.kind, at: o.at, atPx: o.px.points[0], pxImage: o.px.image, widthM: o.widthM, heightM: o.heightM ?? null, sillM: o.sillM ?? null, confidence: 0.7, basis: 'OBSERVED' })),
+    objects: PROD.objects.map((o) => ({ key: o.key, type: o.type, label: o.key, room: o.room, at: o.at, atPx: o.px.points[0], frontPx: o.px.points[1], pxImage: o.px.image, facingDeg: o.facingDeg,
+      widthM: o.widthM, depthM: o.depthM, heightM: HEIGHT[o.type] ?? 0.8, color: null, material: null, style: null, form: null, secondaryColor: null, confidence: 0.8, basis: 'OBSERVED', seenIn: [0] })),
+    surfaces: [], palette: [], styleWords: [], cameras: [], unknowns: [],
+  };
+  const frame = GOLDEN_FRAME;
+  const { recon } = validateReconstruction(raw, 1, { imageAspects: [frame.width / frame.height], frames: [{ image: 0, view: 1, frame }] });
+  const doc = planDocument(recon, 'users/u/design-studio-floorplans/p/ref.jpg');
+  const decisions = { rejected: [], roomKinds: {} };
+  const result = buildCanonical(doc, decisions, calibrate(doc, decisions, [], estimateScale(doc, [])), 2.7);
+  assert.ok(result.ok, JSON.stringify(result).slice(0, 300));
+  const space = buildSpaceModel(result.canonical.scene);
+  return { recon, doc, space, report: buildDesign(recon, emptyCorrections(), space, ASSETS, MATERIALS).report };
+}
+const depth = (poly) => Math.max(...poly.map((p) => p[1])) - Math.min(...poly.map((p) => p[1]));
+
+test('golden apartment: the beds set the size, the partitions stand where they are, and the beds are placed', () => {
+  const { recon, report } = goldenReplay();
+  const s = recon.fidelity.scale;
+  assert.equal(s.source, 'PIECES', JSON.stringify(s));
+  assert.ok(s.estimate > 1.3 && s.factor > 1.15, JSON.stringify(s));
+  assert.ok(s.pieces.includes('north_bed') && s.pieces.includes('south_bed'));
+  const by = Object.fromEntries(recon.rooms.map((r) => [r.key, r]));
+  // Production: 1.63 (living), 1.52 and 2.10 (bedrooms). The picture: living ≈ 1.26 × a bedroom, the bedrooms within ~6 %.
+  const [living, south, north] = ['room_living', 'room_bedroom_2', 'room_bedroom_1'].map((k) => depth(by[k].polygon));
+  assert.ok(south > 1.7, `south bedroom ${south} m deep`);
+  assert.ok(north / south < 1.25, `bedrooms ${south} / ${north}`);
+  assert.ok(living / south > 1.2, `living ${living} vs bedroom ${south}`);
+  for (const bed of ['north_bed', 'south_bed']) assert.ok(report.placed.some((p) => p.key === bed), `${bed}: unplaced ${JSON.stringify(report.unplaced)}`);
+  assert.ok(report.unplaced.length <= 2, JSON.stringify(report.unplaced));
 });

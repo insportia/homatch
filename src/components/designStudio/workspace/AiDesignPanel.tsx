@@ -39,6 +39,7 @@ const SKIP_KEY: Record<string, string> = {
   OBJECT_LOCKED: 'ds_ai_skip_kept',
   CATEGORY_LOCKED: 'ds_ai_skip_kept',
   PLACEMENT_BLOCKED: 'ds_ai_skip_no_space',
+  ON_STAIRS: 'ds_ai_skip_no_space',
 };
 
 const BUTTON = 'inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-[#D5D9E0] px-3 text-[13px] font-medium text-[#0C1119] hover:bg-[#F4F5F7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)] disabled:opacity-50';

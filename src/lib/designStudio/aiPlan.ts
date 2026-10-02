@@ -14,12 +14,18 @@
 // Every operation is validated against the design as it stands at that
 // point; one that is refused (a kept piece, a wall, a door swing) is left
 // out and REPORTED, never forced in. Same plan + same design = same result.
+//
+// The customer's look (plan-to-home): the server already held the plan to
+// it; here the furnishing cap and the room semantics are checked again
+// (nothing in a corridor or on stairs, only outdoor pieces outside), and no
+// piece may stand on the built stairs (SpaceModel.stairs).
 
 import type { CatalogAsset, CatalogMaterial } from './catalog.ts';
 import type { DesignState, ObjectInstance } from './designState.ts';
 import { applyOperation, validateOperation, type Operation, type OperationContext, type RejectionCode } from './operations.ts';
-import { autoPlace, roomOf } from './placement.ts';
-import { floorSurfaceId, surfacesOfRoom, type SpaceModel } from './space.ts';
+import { autoPlace, footprint, obbCorners, roomOf } from './placement.ts';
+import { FURNISHING_CAP, type DesignPreferences, type FurnishingLevel } from './planToHome.ts';
+import { floorSurfaceId, pointInPolygon, surfacesOfRoom, type Point, type SpaceModel } from './space.ts';
 
 /** Mirrors PlanAlternative on the server (a matrix test keeps them in step). */
 export interface PlanRoom {
@@ -44,9 +50,44 @@ export interface ValidatedPlan {
   version: string;
   alternatives: PlanAlternative[];
   dropped: Record<string, number>;
+  /** The look the server held the plan to (plan-to-home flow only). */
+  intent?: { preferences: DesignPreferences; filled: Record<string, number> } | null;
 }
 
-export type SkipReason = 'NO_SPACE' | 'UNKNOWN_ASSET' | 'UNKNOWN_MATERIAL' | 'ALREADY_THERE' | 'WRONG_ROOM' | RejectionCode;
+export type SkipReason = 'NO_SPACE' | 'UNKNOWN_ASSET' | 'UNKNOWN_MATERIAL' | 'ALREADY_THERE' | 'WRONG_ROOM' | 'ON_STAIRS' | 'FURNISHING_CAP' | RejectionCode;
+
+/** Rooms that receive no furniture, and rooms that take only outdoor pieces (mirrors designIntent.ts). */
+const EMPTY_KINDS = new Set(['CORRIDOR', 'STAIRS', 'STAIRCASE', 'STORAGE']);
+const OUTDOOR_KINDS = new Set(['BALCONY', 'TERRACE']);
+const outdoorPiece = (a: CatalogAsset) => a.category.toUpperCase() === 'OUTDOOR' || /PLANT/i.test(a.subcategory ?? '');
+/** Room semantics of the plan-to-home flow: nothing in a corridor or on stairs; outside only outdoor pieces and plants, inside no outdoor furniture. */
+function semanticFit(a: CatalogAsset, kind: string): boolean {
+  if (EMPTY_KINDS.has(kind)) return false;
+  if (OUTDOOR_KINDS.has(kind)) return outdoorPiece(a);
+  return a.category.toUpperCase() !== 'OUTDOOR' || /PLANT/i.test(a.subcategory ?? '');
+}
+
+/** Does a piece's footprint at this spot touch a flight of stairs? */
+export function onStairs(space: SpaceModel, asset: Pick<CatalogAsset, 'widthM' | 'depthM'>, at: Point, rotation: number): boolean {
+  const stairs = space.stairs ?? [];
+  if (!stairs.length) return false;
+  const box = obbCorners(footprint(asset, at, rotation));
+  const cross = (p: Point, q: Point, r: Point, s: Point) => {
+    const d = (a: Point, b: Point, c: Point) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+    return d(p, q, r) * d(p, q, s) < 0 && d(r, s, p) * d(r, s, q) < 0;
+  };
+  for (const st of stairs) {
+    const poly = st.polygon as Point[];
+    if (poly.length < 3) continue;
+    if (box.some((p) => pointInPolygon(p, poly)) || poly.some((p) => pointInPolygon(p, box))) return true;
+    for (let i = 0; i < 4; i += 1) {
+      for (let j = 0; j < poly.length; j += 1) {
+        if (cross(box[i], box[(i + 1) % 4], poly[j], poly[(j + 1) % poly.length])) return true;
+      }
+    }
+  }
+  return false;
+}
 
 export interface Skipped {
   roomId: string | null;
@@ -82,6 +123,8 @@ export function planToOperations(
     materials: CatalogMaterial[];
     /** Deterministic instance ids: `${idPrefix}-${n}`. */
     idPrefix: string;
+    /** The customer's furnishing level: at most FURNISHING_CAP pieces added per room. */
+    furnishing?: FurnishingLevel;
   },
 ): Proposal {
   let working = input.state;
@@ -145,23 +188,30 @@ export function planToOperations(
       else if (attempt({ type: 'ASSIGN_MATERIAL', surfaceIds: [floorSurfaceId(room.id)], materialId: m.id }, { roomId: room.id, what: 'FLOOR', code: m.code })) summary.surfaces += 1;
     }
 
+    const cap = input.furnishing ? FURNISHING_CAP[input.furnishing] : Infinity;
+    let addedHere = 0;
     for (const code of plan.furniture) {
       const asset = input.assets.get(code);
       if (!asset) { skipped.push({ roomId: room.id, what: 'FURNITURE', code, reason: 'UNKNOWN_ASSET' }); continue; }
-      if (asset.roomKinds.length && !asset.roomKinds.includes(room.kind)) { skipped.push({ roomId: room.id, what: 'FURNITURE', code, reason: 'WRONG_ROOM' }); continue; }
+      if (addedHere >= cap) { skipped.push({ roomId: room.id, what: 'FURNITURE', code, reason: 'FURNISHING_CAP' }); continue; }
+      if ((asset.roomKinds.length && !asset.roomKinds.includes(room.kind)) || (input.furnishing && !semanticFit(asset, room.kind))) {
+        skipped.push({ roomId: room.id, what: 'FURNITURE', code, reason: 'WRONG_ROOM' });
+        continue;
+      }
       if (working.objects.some((o) => o.roomId === room.id && o.assetId === code) && !plan.clearFurniture) {
         skipped.push({ roomId: room.id, what: 'FURNITURE', code, reason: 'ALREADY_THERE' });
         continue;
       }
       const spot = autoPlace({ space: input.space, assets: input.assets, objects: working.objects }, asset, room);
       if (!spot) { skipped.push({ roomId: room.id, what: 'FURNITURE', code, reason: 'NO_SPACE' }); continue; }
+      if (onStairs(input.space, asset, spot.at, spot.rotation)) { skipped.push({ roomId: room.id, what: 'FURNITURE', code, reason: 'ON_STAIRS' }); continue; }
       n += 1;
       const object: ObjectInstance = {
         instanceId: `${input.idPrefix}-${n}`, assetId: code, roomId: room.id,
         position: { x: spot.at.x, y: 0, z: spot.at.y }, rotationY: spot.rotation,
         materialVariant: null, colorOverride: null, locked: false,
       };
-      if (attempt({ type: 'ADD_OBJECT', object }, { roomId: room.id, what: 'FURNITURE', code })) summary.added += 1;
+      if (attempt({ type: 'ADD_OBJECT', object }, { roomId: room.id, what: 'FURNITURE', code })) { summary.added += 1; addedHere += 1; }
     }
     if (ops.length > before) touched.add(room.id);
   }

@@ -232,7 +232,38 @@ export interface BuildReport {
   unmatched: Array<{ key: string; type: ObjectType; label: string }>;
   /** Matched, but no legal place for it could be found near where it was seen. */
   unplaced: Array<{ key: string; assetId: string }>;
+  /** Placed, but not in the room it was read in (no place there): in a room that one opens onto. */
+  relocated: Array<{ key: string; from: string; to: string }>;
   surfaces: number;
+}
+
+/** How far across a door a piece may be found from where it was seen. */
+const NEIGHBOUR_REACH_M = 1;
+const WET = new Set<string>(['BATHROOM', 'WC']);
+
+/**
+ * The rooms `roomId` opens onto through a door, of the same kind of space
+ * (indoors with indoors, a balcony with a terrace; never into or out of a
+ * bathroom), within NEIGHBOUR_REACH_M of `near`, nearest first.
+ */
+export function connectedRooms(space: SpaceModel, roomId: string, near: Point): string[] {
+  const own = space.rooms.find((r) => r.id === roomId);
+  if (!own) return [];
+  const found = new Set<string>();
+  for (const door of space.doors) {
+    const wall = space.walls.find((w) => w.id === door.wallId);
+    if (!wall) continue;
+    const n = wallFrame(wall.mesh).normalL;
+    const sides = [1, -1].map((k) => space.rooms.find((r) => pointInPolygon({ x: door.centre.x + n.x * 0.42 * k, y: door.centre.y + n.y * 0.42 * k }, r.polygon)) ?? null);
+    if (!sides.some((r) => r?.id === roomId)) continue;
+    for (const r of sides) if (r && r.id !== roomId && r.outdoor === own.outdoor && !WET.has(r.kind) && !WET.has(own.kind)) found.add(r.id);
+  }
+  const dist = (id: string) => {
+    const poly = space.rooms.find((r) => r.id === id)!.polygon;
+    const q = nearestInside(poly, near, 0);
+    return Math.hypot(q.x - near.x, q.y - near.y);
+  };
+  return [...found].filter((id) => dist(id) <= NEIGHBOUR_REACH_M).sort((a, b) => dist(a) - dist(b) || a.localeCompare(b));
 }
 
 /** Degrees clockwise from north (what the reader reports) → the design's rotation. */
@@ -367,7 +398,7 @@ export function buildDesign(
   const roomIdOf = options.roomIdOf ?? ((k: string) => `r-${k}`);
   const byCode = new Map(assets.map((a) => [a.code, a]));
   const state = emptyDesignState();
-  const report: BuildReport = { placed: [], unmatched: [], unplaced: [], surfaces: 0 };
+  const report: BuildReport = { placed: [], unmatched: [], unplaced: [], relocated: [], surfaces: 0 };
   const ctx: PlacementContext = { space, assets: byCode, objects: state.objects };
   const rejected = new Set(corrections.rejected);
   const confirmed = new Set(corrections.confirmed);
@@ -399,6 +430,9 @@ export function buildDesign(
     let spot: { at: Point; roomId: string } | null = null;
     let rotation = 0;
     const read = rotationFromFacing(o.facingDeg);
+    // A piece read at a slant (a facing guessed from a trace) that cannot stand so is tried square to the walls.
+    const square = Math.round(read / (Math.PI / 2)) * (Math.PI / 2);
+    const turns = [0, Math.PI / 2, -Math.PI / 2, Math.PI, ...(Math.abs(read - square) > 1e-6 ? [0, Math.PI / 2, -Math.PI / 2, Math.PI].map((t) => square + t - read) : [])];
     // Standing as seen in a door's zone is allowed only while that door can still be walked through.
     const probe = (rot: number) => (p: Point, roomId: string, doors: string[]) => doorsPassable(space, byCode, [...state.objects, {
       instanceId: '__probe', assetId: own.code, roomId, position: { x: p.x, y: 0, z: p.y }, rotationY: rot, materialVariant: null, colorOverride: null, locked: false, shape,
@@ -417,14 +451,33 @@ export function buildDesign(
     // even where it narrows a passage. A small piece that could only stand in a doorway is left out
     // (and reported), so every door stays usable.
     for (const last of ESSENTIAL.has(o.type) ? [true, false] : [true]) {
-      for (const turn of [0, Math.PI / 2, -Math.PI / 2, Math.PI]) {
+      for (const turn of turns) {
         if (spot) break;
         const pose = settle(space, asset, o.type, hintInSpace, seen0, read + turn);
         spot = legalSpot(ctx, asset, pose.at, pose.rotation, hintInSpace ?? nearestRoom(space, pose.at), hintInSpace, 'TOUCH', 1.5, last ? probe(pose.rotation) : undefined);
         rotation = pose.rotation;
       }
     }
+    // Still no place in the room it was read in (a room read too small for it, a piece at its
+    // edge): the rooms that room opens onto through a door, of the same kind of space (indoors or
+    // out), nearest first. Reported as moved, never silently. Not for a piece its room is about
+    // (a bed, the kitchen, a shower…): that one belongs where it was seen, or is reported left out.
+    let movedTo: string | null = null;
+    if (!spot && hintInSpace && !ESSENTIAL.has(o.type)) {
+      for (const next of connectedRooms(space, hintInSpace, seen0)) {
+        for (const turn of turns) {
+          const pose = settle(space, asset, o.type, next, seen0, read + turn);
+          spot = legalSpot(ctx, asset, pose.at, pose.rotation, next, next, 'TOUCH', 1, probe(pose.rotation));
+          // Still near where it was seen: just across the door, not anywhere in the next room.
+          if (spot && Math.hypot(spot.at.x - seen0.x, spot.at.y - seen0.y) > NEIGHBOUR_REACH_M + 0.5) spot = null;
+          rotation = pose.rotation;
+          if (spot) break;
+        }
+        if (spot) { movedTo = next; break; }
+      }
+    }
     if (!spot) { report.unplaced.push({ key: o.key, assetId: own.code }); continue; }
+    if (movedTo && hintInSpace) report.relocated.push({ key: o.key, from: hintInSpace, to: movedTo });
     n += 1;
     const provenance: ObjectProvenance = {
       source: 'IMAGE_RECONSTRUCTION',

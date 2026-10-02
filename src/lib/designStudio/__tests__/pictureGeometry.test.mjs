@@ -146,3 +146,17 @@ test('the plan view is never the home\'s mirror image (the axes keep the picture
     assert.ok(Math.cos(r(a)) * Math.sin(r(b)) - Math.sin(r(a)) * Math.cos(r(b)) > 0, `yaw ${yaw}: ${axes.floorDeg}`);
   }
 });
+
+test('one stray column at the silhouette\'s end (a pane of glass read as background) does not set the wall height', () => {
+  const cam = camera(35, 38, 26, 250, 90);
+  const img = render(cam);
+  const clean = footprintFromSilhouette(img, W, H);
+  // The column just inside the left end loses its upper half to the background colour.
+  let x0 = 0;
+  while (x0 < W && ![...Array(H).keys()].some((y) => img[y * W + x0] !== 250)) x0 += 1;
+  const x = x0 + 2;
+  const ys = [...Array(H).keys()].filter((y) => img[y * W + x] !== 250);
+  for (const y of ys.slice(0, Math.floor(ys.length / 2))) img[y * W + x] = 250;
+  const stray = footprintFromSilhouette(img, W, H);
+  assert.ok(stray && Math.abs(stray.wallPx - clean.wallPx) <= 2, `wall ${stray?.wallPx} px vs ${clean.wallPx} px`);
+});

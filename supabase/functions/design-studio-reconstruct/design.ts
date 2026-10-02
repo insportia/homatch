@@ -2,6 +2,11 @@
 //
 //   POST …/design-studio-reconstruct/design { versionId, brief }   (signed-in customer, own version)
 //
+// brief.preferences (optional, the plan-to-home flow): the customer's chosen
+// look. The model is then shown only the materials and pieces that fit it,
+// and the plan is held to it after the model (designIntent.ts). Without it
+// the classic brief behaves exactly as before.
+//
 // Reads the version, its space and the relevant slice of the catalogue AS
 // THE CALLER (RLS decides what exists), asks the model for a plan in a fixed
 // schema, and returns only what validatePlan() lets through. It never writes
@@ -25,6 +30,7 @@ import {
   buildUserMessage, DS_AI_VERSION, normalizeBrief, SCHEMA, SYSTEM, validatePlan,
   type PlanAssetContext, type PlanContext, type PlanLocks, type PlanMaterialContext, type PlanRoomContext,
 } from '../_shared/designStudio/aiPlan.ts';
+import { offerFor } from '../_shared/designStudio/designIntent.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -49,6 +55,7 @@ const NO_LOCKS: PlanLocks = { layout: false, furniture: false, walls: false, flo
 
 export async function handleDesign(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+  const t0 = Date.now();
   const authHeader = req.headers.get('Authorization') ?? '';
   if (!authHeader) return json({ error: 'UNAUTHENTICATED' }, 401);
 
@@ -109,17 +116,24 @@ export async function handleDesign(req: Request): Promise<Response> {
     code: a.code, name: a.name, category: a.category, subcategory: a.subcategory, roomKinds: a.room_kinds ?? [],
     styleTags: a.style_tags ?? [], widthM: Number(a.width_m), depthM: Number(a.depth_m),
   }));
-  const { data: materialRows } = await caller.from('ds_catalog_materials')
-    .select('code, name, applies_to, style_tags, pbr').eq('active', true).limit(200);
+  // color_tags arrives with the catalogue-import migration; until it is applied, read without it.
+  const materialQuery = (cols: string) => caller.from('ds_catalog_materials').select(cols).eq('active', true).limit(200);
+  let { data: materialRows, error: materialError } = await materialQuery('code, name, category, applies_to, style_tags, color_family, color_tags, pbr');
+  if (materialError) ({ data: materialRows } = await materialQuery('code, name, category, applies_to, style_tags, color_family, pbr'));
   const materials: PlanMaterialContext[] = (materialRows ?? []).map((m: any) => ({
     code: m.code, name: m.name, appliesTo: m.applies_to ?? [], styleTags: m.style_tags ?? [],
     color: typeof m.pbr?.baseColor === 'string' ? m.pbr.baseColor : null,
+    category: m.category ?? null, colorFamily: m.color_family ?? null, colorTags: m.color_tags ?? [],
+    textured: !!(m.pbr?.maps?.albedo || m.pbr?.mapsByRes),
   }));
-  const ctx: PlanContext = { rooms, assets, materials, locks, existing };
+  const fullCtx: PlanContext = { rooms, assets, materials, locks, existing };
+  // The chosen look narrows what the model may pick from; the classic brief sees everything.
+  const offered = brief.preferences ? offerFor(fullCtx, brief.preferences) : null;
+  const ctx: PlanContext = offered ? offered.ctx : fullCtx;
 
   const { data: job } = await admin.from('ds_jobs').insert({
     user_id: version.user_id, project_id: version.project_id, kind: 'AI_DESIGN', status: 'RUNNING',
-    input: { versionId: version.id, brief, locks, assets: assets.length, materials: materials.length },
+    input: { versionId: version.id, brief, locks, assets: ctx.assets.length, materials: ctx.materials.length, ...(offered ? { offer: offered.offer } : {}) },
     model: MODEL, started_at: new Date().toISOString(),
   }).select('id').single();
   const jobId = (job as { id?: string } | null)?.id ?? null;
@@ -152,11 +166,14 @@ export async function handleDesign(req: Request): Promise<Response> {
   } catch {
     payload = null;
   }
+  const modelMs = Date.now() - started;
   const text = payload ? textOf(payload) : '';
   if (!text) return fail('DESIGN_FAILED');
   let raw: unknown;
   try { raw = JSON.parse(text); } catch { return fail('DESIGN_BAD_SHAPE'); }
+  const validating = Date.now();
   const plan = validatePlan(raw, ctx, brief);
+  const validateMs = Date.now() - validating;
   if (!plan.alternatives.length) return fail('DESIGN_EMPTY');
 
   // ── What it cost: priced from the book, never charged ──────────────
@@ -166,7 +183,16 @@ export async function handleDesign(req: Request): Promise<Response> {
 
   await admin.from('ds_jobs').update({
     status: 'SUCCEEDED', finished_at: new Date().toISOString(), cost_cents: cents,
-    output: { plan, dropped: plan.dropped },
+    output: {
+      plan, dropped: plan.dropped,
+      // The validated design intent HOMATCH applies: plan + the look + who proposed it + how long it took.
+      ...(brief.preferences ? {
+        intent: {
+          plan, preferences: brief.preferences, model: MODEL, offer: offered?.offer ?? null,
+          timings: { contextMs: started - t0, modelMs, validateMs, totalMs: Date.now() - t0 },
+        },
+      } : {}),
+    },
   }).eq('id', jobId);
 
   return json({ state: 'READY', jobId, plan, billing: 'NOT_CHARGED' });

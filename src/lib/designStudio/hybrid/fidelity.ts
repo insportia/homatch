@@ -55,7 +55,7 @@ export function fidelityReport(input: {
   const placed = new Set(state.objects.map((o) => o.provenance?.ref).filter(Boolean));
   const covered = observed.filter((o) => placed.has(o.key)).length;
   const coverage = observed.length ? covered / observed.length : 1;
-  d.push({ name: 'inventory', value: `${covered}/${observed.length} observed pieces placed; ${seen('inventory')}`, gate: both(coverage >= 0.95 ? 'PASS' : coverage >= 0.85 ? 'WARN' : 'FAIL', gateOf(dims.inventory)), note: [build.unplaced.length ? `left out: ${build.unplaced.map((u) => u.key).join(', ')}` : '', why(['objectMissing', 'objectExtra'])].filter(Boolean).join('; ') });
+  d.push({ name: 'inventory', value: `${covered}/${observed.length} observed pieces placed; ${seen('inventory')}`, gate: both(coverage >= 0.95 ? 'PASS' : coverage >= 0.85 ? 'WARN' : 'FAIL', gateOf(dims.inventory)), note: [build.unplaced.length ? `left out: ${build.unplaced.map((u) => u.key).join(', ')}` : '', build.relocated?.length ? `placed in a connected room: ${build.relocated.map((u) => u.key).join(', ')}` : '', why(['objectMissing', 'objectExtra'])].filter(Boolean).join('; ') });
   // Placement: how far pieces had to move from where they were seen.
   const moved = build.placed.map((p) => p.moved).sort((a, b) => a - b);
   const median = moved.length ? moved[Math.floor(moved.length / 2)] : 0;

@@ -631,6 +631,44 @@ Phase 2 (Universal Discovery) is blocked until this is live and proven.
   a remote host in plan.mjs's `git archive | tar -x -C`), placementSearch timing (10.9 ms alone, 36 ms
   only under full-suite contention).
 
+## Design Studio "your plan → your designed home" (same branch, 2026-10-02) — NOT yet deployed
+
+- Two sources of truth: GEOMETRY = the validated reconstruction (spatial source); DESIGN = PropertyDesignDNA
+  (ds_versions.design_dna, ds-dna-1) + the approved DesignState. Renders are Blender views (worker
+  views.py/look.py: dollhouse master + eye-level room views, exact object-id maps) finished by OpenAI
+  (only provider in production: selectProvider is OpenAI-only; model via admin_settings
+  `design_studio_render_model` → DS_RENDER_MODEL → gpt-image-2; quality ≥ high; Gemini unreachable from routes)
+  and checked against Blender (renderCheck.ts); refused finishes keep Blender's picture.
+- Routes (design-studio-reconstruct): render-quote / render-start / render-status / render-edit; finishes and
+  edits run in EdgeRuntime.waitUntil. ds_renders (owner read-only). Products DS_MASTER_RENDER /
+  DS_ROOM_RENDER / DS_RENDER_EDIT: PROPOSED prices 6 / 5 / 4 credits (renderPricing.ts) — owner decision;
+  charging follows design_studio_billing_enabled (still false → quotes say "not charged during the preview").
+- Home hub /design-studio/:id/home (Plan · 3D design · Rooms · Walkthrough): tap-to-edit through the object map
+  (edits = DesignState operations → new version; Undo = previous version), room views N per room,
+  walkthrough = factory build of the approved version + object-map consistency check against the master.
+- Migrations to apply after merge (MCP apply_migration, byte-exact): 20261007110000_design_studio_factory_views,
+  20261007120000_design_studio_renders (renumbered after main's meta_ads 20261006100000/20261007100000).
+
+## Design Studio plan-to-home (branch `feat/design-studio-plan-to-home`, 2026-10-02)
+
+- PR #55 merged as 43080be3 (factory fixes); Runpod template arm0q8wpxq set to `sha-43080be3…`
+  (endpoint qtry95qmlfzsb0 unchanged). After this branch merges the template must move to its new sha.
+- Customer path (FloorPlanFlow): upload → reading (ds-read-2: model + deterministic fusion with the
+  raster, `_shared/designStudio/planRead/`, browser copies in `src/lib/designStudio/planRead/`) →
+  review (PlanReview: clean plan, printed-size solve, ≤6 questions, tap-to-fix) → look (DesignChooser,
+  DesignPreferences) → generate (services/designStudio/planToHome.ts generateHome: resumable, flow
+  pointer on ds_floorplans.corrections[-1].flow; factory idempotent by spec) → /walkthrough.
+  "Your plan" compare panel in editor and walkthrough. Reading cache by (user, sha256, ds-read-2).
+- Stairs + opening leaves end to end (generator, space, walkthrough, placement, spec, worker).
+  Stairs are solid obstacles (not climbable); one storey only.
+- Picture reader: partitions corrected for their lower cut, coverage check, full-height balcony glazing,
+  scale checked against standard pieces (strong consensus replaces the reader's self-reported size).
+- Golden floor plan (local, recorded v1 reading + fusion): scale 0.64% off, rooms ≤3.6% from printed,
+  15/15 openings within 0.054 m, stairs carved from kitchen, 1 question. Browser QA
+  tests/browser/planToHome.qa.mjs 26/26 (1440 en, 390 ka, reload mid-generation = one factory job).
+- Not yet proven in production: ds-read-2 prompt against the live model, edge image decode under Deno
+  (jpeg-js/fast-png verified in Node only), walkthrough with factory GLBs on the golden floor plan.
+
 ## Design Studio golden apartment — first real E2E (branch `fix/design-studio-factory-golden`, 2026-10-02)
 
 - Project 8dfe8dfd-7297-40fb-90a8-23639bee5ed0. Runpod endpoint qtry95qmlfzsb0 (RTX A5000, OptiX),

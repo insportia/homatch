@@ -11,14 +11,15 @@ export type StageStatus = 'PENDING' | 'RUNNING' | 'DONE' | 'SKIPPED';
 export const freshStages = (): Record<Stage, StageStatus> => Object.fromEntries(STAGES.map((s) => [s, 'PENDING'])) as Record<Stage, StageStatus>;
 const STATE_KEY: Record<StageStatus, string> = { PENDING: 'ds_gen_state_pending', RUNNING: 'ds_gen_state_running', DONE: 'ds_gen_state_done', SKIPPED: 'ds_gen_state_skipped' };
 
-export function GenerationStages({ stages, title, only, tone = 'light' }: { stages: Record<Stage, StageStatus>; title: string; only?: readonly Stage[]; tone?: 'light' | 'dark' }) {
+export function GenerationStages({ stages, title, only, tone = 'light', since }: { stages: Record<Stage, StageStatus>; title: string; only?: readonly Stage[]; tone?: 'light' | 'dark'; /** When the run began (a resumed run keeps counting from then). */ since?: number }) {
   const { t } = useLanguage();
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
-    const t0 = Date.now();
+    const t0 = since ?? Date.now();
+    setElapsed(Math.max(0, Math.floor((Date.now() - t0) / 1000)));
     const id = window.setInterval(() => setElapsed(Math.floor((Date.now() - t0) / 1000)), 1000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [since]);
   const dark = tone === 'dark';
   return (
     <section className="mx-auto grid w-full max-w-md content-center gap-4" role="status" aria-live="polite" data-testid="generation-stages">

@@ -17,6 +17,13 @@
 //
 // Pure: no I/O. The edge function (design-studio-reconstruct/design) does the calling.
 
+import {
+  ACCENTS, applyIntent, describePreferences, FLOOR_DIRECTIONS, FURNISHING_LEVELS, MOODS, PALETTES, WALL_DIRECTIONS,
+  type DesignPreferences,
+} from './designIntent.ts';
+
+export type { DesignPreferences } from './designIntent.ts';
+
 export const DS_AI_VERSION = 'ds-ai-1';
 
 /** Kept in step with src/lib/designStudio/grammar.ts (a matrix test compares them). */
@@ -134,7 +141,11 @@ export interface PlanAssetContext {
   code: string; name: string; category: string; subcategory: string | null;
   roomKinds: string[]; styleTags: string[]; widthM: number; depthM: number;
 }
-export interface PlanMaterialContext { code: string; name: string; appliesTo: string[]; styleTags: string[]; color: string | null }
+export interface PlanMaterialContext {
+  code: string; name: string; appliesTo: string[]; styleTags: string[]; color: string | null;
+  /** Surface family (WOOD, STONE, TILE, FLOOR, WALL…), colour words and whether the colour comes from a texture. */
+  category?: string | null; colorFamily?: string | null; colorTags?: string[]; textured?: boolean;
+}
 export interface PlanLocks {
   layout: boolean; furniture: boolean; walls: boolean; floor: boolean; kitchen: boolean; colors: boolean; lighting: boolean;
 }
@@ -154,6 +165,29 @@ export interface Brief {
   /** Rooms in scope; empty = the whole home. */
   roomIds: string[];
   alternatives: number;
+  /** The customer's chosen look (the plan-to-home flow); null for the classic brief. */
+  preferences: DesignPreferences | null;
+}
+
+const DEFAULT_PREFERENCES: DesignPreferences = {
+  style: 'contemporary', mood: 'WARM', floor: 'LIGHT_WOOD', walls: 'WARM_WHITE', accent: 'BLACK_METAL',
+  palette: 'WARM', furnishing: 'FULL', brief: '',
+};
+
+/** Server copy of src/lib/designStudio/planToHome.ts normalizePreferences: bounded and type-exact, or the default for each bad field. */
+export function normalizePreferences(raw: unknown): DesignPreferences {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const pick = <T extends string>(v: unknown, set: readonly T[], d: T): T => (set.includes(v as T) ? v as T : d);
+  return {
+    style: r.style === null ? null : pick(r.style, STYLE_CODES, DEFAULT_PREFERENCES.style as StyleCode),
+    mood: pick(r.mood, MOODS, DEFAULT_PREFERENCES.mood),
+    floor: pick(r.floor, FLOOR_DIRECTIONS, DEFAULT_PREFERENCES.floor),
+    walls: pick(r.walls, WALL_DIRECTIONS, DEFAULT_PREFERENCES.walls),
+    accent: pick(r.accent, ACCENTS, DEFAULT_PREFERENCES.accent),
+    palette: pick(r.palette, PALETTES, DEFAULT_PREFERENCES.palette),
+    furnishing: pick(r.furnishing, FURNISHING_LEVELS, DEFAULT_PREFERENCES.furnishing),
+    brief: typeof r.brief === 'string' ? cleanText(r.brief, MAX_BRIEF_CHARS) : '',
+  };
 }
 
 /** A brief from the browser, bounded and typed; anything else is dropped. */
@@ -164,7 +198,16 @@ export function normalizeBrief(raw: unknown, roomIds: Set<string>): Brief {
   const text = typeof r.text === 'string' ? cleanText(r.text, MAX_BRIEF_CHARS) : '';
   const rooms = Array.isArray(r.roomIds) ? r.roomIds.filter((id): id is string => typeof id === 'string' && roomIds.has(id)) : [];
   const n = Number(r.alternatives);
-  return { styleCode: style, palette, text, roomIds: [...new Set(rooms)], alternatives: Number.isInteger(n) ? Math.min(MAX_ALTERNATIVES, Math.max(1, n)) : 2 };
+  const preferences = r.preferences && typeof r.preferences === 'object' ? normalizePreferences(r.preferences) : null;
+  // The chosen look is the source of truth: its style (null = the customer's own words) and its brief.
+  return {
+    styleCode: preferences ? preferences.style as StyleCode | null : style,
+    palette,
+    text: preferences && !text ? preferences.brief : text,
+    roomIds: [...new Set(rooms)],
+    alternatives: Number.isInteger(n) && r.alternatives != null ? Math.min(MAX_ALTERNATIVES, Math.max(1, n)) : preferences ? 1 : 2,
+    preferences,
+  };
 }
 
 function cleanText(s: string, max: number): string {
@@ -187,10 +230,12 @@ export function buildUserMessage(brief: Brief, ctx: PlanContext): string {
   const lines = [
     `Propose ${brief.alternatives} alternative design${brief.alternatives > 1 ? 's' : ''}.`,
     '',
-    'STYLE: ' + (brief.styleCode ? `${brief.styleCode} — ${STYLE_GUIDE[brief.styleCode]}` : 'not chosen; infer from the brief, default to contemporary'),
+    'STYLE: ' + (brief.styleCode ? `${brief.styleCode} — ${STYLE_GUIDE[brief.styleCode]}`
+      : brief.preferences ? 'custom — no named style; the brief of the customer describes the look' : 'not chosen; infer from the brief, default to contemporary'),
     brief.palette.length ? `PREFERRED PALETTE: ${brief.palette.join(', ')}` : 'PREFERRED PALETTE: none',
     `CUSTOMER BRIEF (taste only): ${brief.text ? JSON.stringify(brief.text) : 'none'}`,
     '',
+    ...(brief.preferences ? [...describePreferences(brief.preferences, ctx), ''] : []),
     'KEEP:',
     ...(keep.length ? keep : ['- nothing in particular']),
     '',
@@ -238,6 +283,8 @@ export interface ValidatedPlan {
   alternatives: PlanAlternative[];
   /** How many proposed items were removed by validation, and why (for audit). */
   dropped: Record<string, number>;
+  /** The look the plan was held to, and what HOMATCH added to honour it (plan-to-home flow only). */
+  intent?: { preferences: DesignPreferences; filled: Record<string, number> } | null;
 }
 
 const KITCHEN_CATEGORIES = new Set(['KITCHEN']);
@@ -253,6 +300,7 @@ export function validatePlan(raw: unknown, ctx: PlanContext, brief: Brief): Vali
   const list = Array.isArray((raw as { alternatives?: unknown })?.alternatives) ? (raw as { alternatives: unknown[] }).alternatives : [];
 
   const alternatives: PlanAlternative[] = [];
+  const filled: Record<string, number> = {};
   for (const item of list.slice(0, brief.alternatives)) {
     const a = (item ?? {}) as Record<string, unknown>;
     const style = typeof a.styleCode === 'string' && (STYLE_CODES as readonly string[]).includes(a.styleCode) ? a.styleCode as StyleCode : null;
@@ -320,19 +368,31 @@ export function validatePlan(raw: unknown, ctx: PlanContext, brief: Brief): Vali
         clearFurniture = false;
       }
 
-      if (!wallColor && !wallMaterial && !floorMaterial && !furniture.length && !clearFurniture) continue;
+      if (!brief.preferences && !wallColor && !wallMaterial && !floorMaterial && !furniture.length && !clearFurniture) continue;
       planRooms.push({ roomId, wallColor, wallMaterial, floorMaterial, clearFurniture, furniture });
     }
 
-    if (!planRooms.length && !palette.length && !lighting) { drop('EMPTY_ALTERNATIVE'); continue; }
+    let rooms_ = planRooms;
+    if (brief.preferences) {
+      const held = applyIntent({ rooms: planRooms, palette, lighting }, ctx, brief, brief.preferences, drop);
+      rooms_ = held.rooms;
+      palette = held.palette;
+      lighting = held.lighting;
+      for (const [k, v] of Object.entries(held.filled)) filled[k] = (filled[k] ?? 0) + v;
+    }
+
+    if (!rooms_.length && !palette.length && !lighting) { drop('EMPTY_ALTERNATIVE'); continue; }
     alternatives.push({
       title: cleanText(typeof a.title === 'string' ? a.title : '', 60) || 'Proposal',
       rationale: cleanText(typeof a.rationale === 'string' ? a.rationale : '', 300),
-      styleCode: style,
+      styleCode: brief.preferences ? (brief.styleCode ?? style) : style,
       palette,
       lighting,
-      rooms: planRooms,
+      rooms: rooms_,
     });
   }
-  return { version: DS_AI_VERSION, alternatives, dropped };
+  return {
+    version: DS_AI_VERSION, alternatives, dropped,
+    ...(brief.preferences ? { intent: { preferences: brief.preferences, filled } } : {}),
+  };
 }

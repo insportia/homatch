@@ -27,7 +27,8 @@ import { rebaseDesign } from '@/lib/designStudio/scale';
 import { FloorPlanFlow } from '@/components/designStudio/FloorPlanFlow';
 import { ReconstructionFlow } from '@/components/designStudio/ReconstructionFlow';
 import { ModelImportFlow } from '@/components/designStudio/ModelImportFlow';
-import { getFloorPlan, type FloorPlanRecord } from '@/services/designStudio/floorplans';
+import { getFloorPlan, latestFloorPlan, type FloorPlanRecord } from '@/services/designStudio/floorplans';
+import { latestFlow } from '@/services/designStudio/planToHome';
 import {
   createOriginalVersion, createVersion, developerCurrentPins, getProject, getVersion, setActiveSource, setHeadVersion,
   type ProjectBundle,
@@ -71,6 +72,8 @@ function ProjectLoader() {
   const [reconFlow, setReconFlow] = useState<null | { planSource: SpatialSourceRecord | null }>(
     () => (params.get('start') === 'image' ? { planSource: null } : null),
   );
+  /* A floor plan whose path to a finished home was left part-way (reload, closed tab): it resumes. */
+  const [resumePlan, setResumePlan] = useState<FloorPlanRecord | null>(null);
 
   // A reload of an open project (rename, archive, new version) refreshes the
   // data behind the workspace without taking it down and putting it back.
@@ -80,6 +83,12 @@ function ProjectLoader() {
     if (!loaded.current) setStage('PROJECT');
     try {
       const next = await getProject(projectId);
+      if (next && !loaded.current) {
+        const plan = await latestFloorPlan(projectId).catch(() => null);
+        const flowStep = latestFlow(plan)?.step;
+        const unfinished = plan && ((flowStep && flowStep !== 'DONE') || plan.status === 'INTERPRETING' || plan.status === 'UPLOADED');
+        if (unfinished) { setResumePlan(plan); setFlow((f) => f ?? { recalibrate: null, from: null }); }
+      }
       if (next) {
         if (!loaded.current) setStage('SOURCE');
         const units = next.sources.filter((s) => s.kind === 'DEVELOPER_UNIT' && s.dev_unit_id).map((s) => s.dev_unit_id as string);
@@ -214,8 +223,16 @@ function ProjectLoader() {
         projectId={bundle.project.id}
         projectName={bundle.project.name}
         existing={flow.recalibrate}
+        resume={flow.recalibrate ? null : resumePlan}
         onBuilt={(id, scale) => { void onBuilt(id, scale); }}
-        onCancel={() => { setFlow(null); clearStart(); }}
+        onDone={() => {
+          setFlow(null);
+          setResumePlan(null);
+          loaded.current = false;
+          navigate(`/design-studio/${bundle.project.id}/home`, { replace: true });
+          void load();
+        }}
+        onCancel={() => { setFlow(null); setResumePlan(null); clearStart(); }}
       />
     );
   }

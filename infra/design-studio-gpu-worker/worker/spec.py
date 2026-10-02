@@ -14,7 +14,10 @@ SPEC_VERSION = "hm-scene-1"
 LIMITS = {
     "rooms": 80, "polygon_points": 64, "walls": 400, "openings": 16, "faces": 24, "railings": 120,
     "objects": 300, "materials": 48, "surfaces": 1500, "color_slots": 12, "coord": 200.0, "height": 6.0,
+    "stairs": 8, "treads": (3, 25), "stair_run": (0.5, 12.0), "stair_width": (0.5, 6.0),
 }
+# How an opening closes (sceneSpec.ts SPEC_LEAVES). Optional: absent means the plan did not say.
+LEAVES = {"HINGED", "DOUBLE", "SLIDING", "NONE", "FRENCH", "FIXED", "CASEMENT"}
 KINDS = {
     "SOFA", "ARMCHAIR", "TABLE", "ROUND_TABLE", "CABINET", "SHELF", "BED", "RUG", "LAMP", "PLANT", "CHAIR", "STOOL",
     "KITCHEN_RUN", "VANITY", "PLANTER", "WARDROBE", "DRESSER", "FRIDGE", "RECLINER", "TV_UNIT", "SHOWER", "TOILET",
@@ -178,6 +181,9 @@ def validate_spec(raw) -> dict:
                 "id": _id(o.get("id"), "opening.id"), "kind": _one(o.get("kind"), "opening.kind", {"DOOR", "WINDOW"}),
                 "offsetM": _num(o.get("offsetM"), "offsetM", wd / 2 - 0.01, length - wd / 2 + 0.01), "widthM": wd,
                 "sillM": sill, "heightM": _num(o.get("heightM"), "heightM", 0.1, h - sill),
+                # Additive (still hm-scene-1): None when the plan does not say how it closes.
+                "leaf": None if o.get("leaf") is None else _one(o.get("leaf"), "opening.leaf", LEAVES),
+                "swing": None if o.get("swing") is None else _one(o.get("swing"), "opening.swing", {"L", "R"}),
             })
         faces = []
         for j, f in enumerate(_arr(w.get("faces"), f"walls[{i}].faces", LIMITS["faces"])):
@@ -193,6 +199,25 @@ def validate_spec(raw) -> dict:
     for i, q in enumerate(_arr(r.get("railings"), "railings", LIMITS["railings"])):
         q = _obj(q, f"railings[{i}]")
         railings.append({"id": _id(q.get("id"), "railing.id"), "a": _xy(q.get("a"), "railing.a"), "b": _xy(q.get("b"), "railing.b"), "heightM": _num(q.get("heightM"), "railing.heightM", 0.5, 1.6)})
+
+    # Stairs: additive and optional (still hm-scene-1); absent is none.
+    stairs = []
+    raw_stairs = r.get("stairs")
+    for i, q in enumerate([] if raw_stairs is None else _arr(raw_stairs, "stairs", LIMITS["stairs"])):
+        q = _obj(q, f"stairs[{i}]")
+        p = f"stairs[{i}]"
+        a, b = _xy(q.get("a"), f"{p}.a"), _xy(q.get("b"), f"{p}.b")
+        _num(math.hypot(b[0] - a[0], b[1] - a[1]), f"{p}.width", *LIMITS["stair_width"])
+        treads = _num(q.get("treads"), f"{p}.treads", *LIMITS["treads"])
+        if treads != int(treads):
+            raise SpecError(f"{p}.treads: not a whole number")
+        stairs.append({
+            "id": _id(q.get("id"), f"{p}.id"), "a": a, "b": b, "runM": _num(q.get("runM"), f"{p}.runM", *LIMITS["stair_run"]),
+            "riseM": _num(q.get("riseM"), f"{p}.riseM", 0.5, H), "treads": int(treads),
+            "direction": _one(q.get("direction"), f"{p}.direction", {"UP", "DOWN"}),
+        })
+    if len({s["id"] for s in stairs}) != len(stairs):
+        raise SpecError("stairs: duplicate id")
 
     objects = []
     seen = set()
@@ -244,7 +269,7 @@ def validate_spec(raw) -> dict:
     rr = _obj(r.get("render"), "render")
     outs = _obj(r.get("outputs"), "outputs")
     out.update({
-        "rooms": rooms, "walls": walls, "railings": railings, "surfaces": surfaces, "materials": materials, "objects": objects,
+        "rooms": rooms, "walls": walls, "railings": railings, "stairs": stairs, "surfaces": surfaces, "materials": materials, "objects": objects,
         "frames": _hex(r.get("frames"), "frames"),
         "lighting": {
             "timeOfDay": _one(lt.get("timeOfDay"), "lighting.timeOfDay", {"DAY", "SUNSET", "EVENING", "NIGHT"}),

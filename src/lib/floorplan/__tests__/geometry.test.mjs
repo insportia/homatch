@@ -210,3 +210,106 @@ test('validate() alone never throws on a malformed document', () => {
   assert.ok(result.skips.some((s) => s.code === 'DEGENERATE_WALL'));
   assert.ok(result.skips.some((s) => s.code === 'ROOM_TOO_FEW_POINTS'));
 });
+
+// ── Stairs and opening leaves (ds-read-2) ─────────────────────────────────
+
+/** A 1.0 m x 3.0 m flight against the west wall of the living room (x 30..130 px, y 200..500 px). */
+const flight = (over = {}) => ({
+  id: 's-1', confidence: 0.9, state: 'VERIFIED', direction: 'UP', treads: null,
+  polygon: [{ x: 30, y: 200 }, { x: 130, y: 200 }, { x: 130, y: 500 }, { x: 30, y: 500 }],
+  startEdge: null, ...over,
+});
+
+test('a plan without stairs or leaves produces exactly the scene it always did (no new keys)', () => {
+  const { scene } = generateScene(fixture());
+  assert.equal('stairs' in scene, false, 'no stairs key when none were built');
+  for (const w of scene.walls) for (const o of w.openings) {
+    assert.equal('leaf' in o, false);
+    assert.equal('swing' in o, false);
+  }
+  const none = generateScene(fixture({ stairs: [] })).scene;
+  assert.equal(JSON.stringify(none), JSON.stringify(scene), 'an empty stairs list changes nothing');
+  const unverified = generateScene(fixture({ stairs: [flight({ state: 'UNVERIFIED' })] })).scene;
+  assert.equal(JSON.stringify(unverified), JSON.stringify(scene), 'an unverified flight is not built and changes nothing');
+});
+
+test('a verified flight with a drawn start edge: metres, footprint on the left, treads counted', () => {
+  const { scene } = generateScene(fixture({ stairs: [flight({ startEdge: [{ x: 30, y: 500 }, { x: 130, y: 500 }], treads: 14 })] }));
+  assert.equal(scene.stairs.length, 1);
+  const st = scene.stairs[0];
+  // y flips: pixel y 500 is plan y 1.0; the flight climbs north to plan y 4.0.
+  assert.deepEqual([st.a, st.b].map((p) => [p.x, p.y]).sort(), [[0.3, 1], [1.3, 1]]);
+  assert.equal(st.runM, 3);
+  assert.equal(st.riseM, 2.7);
+  assert.equal(st.treads, 14);
+  assert.equal(st.direction, 'UP');
+  const left = { x: -(st.b.y - st.a.y), y: st.b.x - st.a.x };
+  const mid = { x: (st.a.x + st.b.x) / 2 + left.x * 0.5, y: (st.a.y + st.b.y) / 2 + left.y * 0.5 };
+  assert.ok(mid.y > 1, 'the footprint lies to the left of a->b');
+  assert.equal(st.polygon.length, 4);
+  assert.equal(JSON.stringify(generateScene(fixture({ stairs: [flight({ startEdge: [{ x: 30, y: 500 }, { x: 130, y: 500 }], treads: 14 })] })).scene), JSON.stringify(scene), 'deterministic');
+});
+
+test('without a drawn start edge, the flight starts at the short end nearer a door (deterministic)', () => {
+  // Door d-1 sits mid-way on the dividing wall at plan (4, 3): both short ends are 2.5 m and 3.5 m away.
+  const { scene } = generateScene(fixture({ stairs: [flight()] }));
+  const st = scene.stairs[0];
+  assert.equal(st.a.y, st.b.y, 'the start edge is a short (horizontal) end');
+  assert.equal(st.a.y, 4, 'the north end (plan y 4) is nearer the door at y 3 than the south end (y 1)');
+  assert.equal(st.runM, 3);
+  assert.equal(st.treads, 11, 'round(3.0 / 0.27) = 11');
+  // No door at all: the end with more clearance from the walls (both 1 m from the south / north walls): tie -> lower coordinate.
+  const noDoor = generateScene(fixture({ doors: [], stairs: [flight()] })).scene.stairs[0];
+  assert.equal(noDoor.a.y, 1);
+});
+
+test('treads are clamped to 3..25, DOWN is kept and UNKNOWN builds as UP', () => {
+  const many = generateScene(fixture({ stairs: [flight({ treads: 60 })] })).scene.stairs[0];
+  assert.equal(many.treads, 25);
+  const few = generateScene(fixture({ stairs: [flight({ treads: 1 })] })).scene.stairs[0];
+  assert.equal(few.treads, 3);
+  assert.equal(generateScene(fixture({ stairs: [flight({ direction: 'DOWN' })] })).scene.stairs[0].direction, 'DOWN');
+  assert.equal(generateScene(fixture({ stairs: [flight({ direction: 'UNKNOWN' })] })).scene.stairs[0].direction, 'UP');
+});
+
+test('a degenerate flight is skipped with a code; the building still builds', () => {
+  const bad = [
+    flight({ id: 's-few', polygon: [{ x: 0, y: 0 }, { x: 10, y: 10 }] }),
+    flight({ id: 's-flat', polygon: [{ x: 30, y: 200 }, { x: 130, y: 200 }, { x: 230, y: 200 }] }),
+    flight({ id: 's-narrow', startEdge: [{ x: 30, y: 500 }, { x: 40, y: 500 }] }),
+  ];
+  const { scene, validation } = generateScene(fixture({ stairs: bad }));
+  assert.ok(scene);
+  assert.equal('stairs' in scene, false);
+  const codes = Object.fromEntries(validation.skips.map((s) => [s.elementId, s.code]));
+  assert.equal(codes['s-few'], 'STAIR_TOO_FEW_POINTS');
+  assert.equal(codes['s-flat'], 'STAIR_ZERO_AREA');
+  assert.equal(codes['s-narrow'], 'STAIR_DEGENERATE');
+});
+
+test('stairs never move the plan: the extent and the walls are the same with or without them', () => {
+  const plain = generateScene(fixture()).scene;
+  const withStairs = generateScene(fixture({ stairs: [flight()] })).scene;
+  assert.deepEqual(withStairs.extent, plain.extent);
+  assert.deepEqual(withStairs.walls, plain.walls);
+});
+
+test('a leaf travels into the opening; FRENCH is full height; swingRoomId becomes the side', () => {
+  const doors = [{
+    id: 'd-1', wallId: 'w-mid', position: 0.5, widthPx: 90, sillHeightM: 0, heightM: 2.1,
+    confidence: 0.9, state: 'VERIFIED', leaf: 'HINGED', swingRoomId: 'r-2',
+  }, {
+    id: 'd-2', wallId: 'w-s', position: 0.25, widthPx: 140, sillHeightM: null, heightM: null,
+    confidence: 0.9, state: 'VERIFIED', leaf: 'FRENCH',
+  }];
+  const { scene } = generateScene(fixture({ doors }));
+  const d1 = scene.walls.find((w) => w.id === 'w-mid').openings.find((o) => o.id === 'd-1');
+  assert.equal(d1.leaf, 'HINGED');
+  // w-mid runs from pixel (400,0) to (400,600): plan north to south, so its left (L) is east: r-2.
+  assert.equal(d1.swing, 'L');
+  const d2 = scene.walls.find((w) => w.id === 'w-s').openings.find((o) => o.id === 'd-2');
+  assert.equal(d2.leaf, 'FRENCH');
+  assert.equal(d2.sillM, 0);
+  assert.equal(d2.heightM, 2.5, 'a French door runs to the ceiling less a 0.2 m lintel');
+  assert.equal('swing' in d2, false, 'no swing without a swingRoomId');
+});

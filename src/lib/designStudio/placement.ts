@@ -15,6 +15,9 @@
 //          piece, tight access in front. Shown as specific feedback; the
 //          customer decides. Placement is never pretended to be perfect.
 //
+// Stairs are built architecture: nothing stands on a flight's footprint,
+// and nothing solid stands in the STAIR_APPROACH_M in front of its start.
+//
 // When the space's dimensions are ESTIMATED, every finding is "based on the
 // current estimate", and the interface says so.
 
@@ -22,6 +25,7 @@ import { isFlat, type CatalogAsset } from './catalog.ts';
 import type { ObjectInstance } from './designState.ts';
 import { shapedAsset } from './objectShape.ts';
 import { pointInPolygon, wallFrame, type Point, type SpaceModel, type SpaceRoom } from './space.ts';
+import type { StairMesh } from '../floorplan/geometry.ts';
 
 export interface Obb {
   cx: number;
@@ -126,7 +130,8 @@ export function footprint(asset: Pick<CatalogAsset, 'widthM' | 'depthM'>, at: Po
 }
 
 export type PlacementIssueCode =
-  | 'NO_ROOM' | 'OUTSIDE_ROOM' | 'THROUGH_WALL' | 'BLOCKS_DOOR' | 'OVERLAPS_OBJECT' | 'TIGHT_ACCESS';
+  | 'NO_ROOM' | 'OUTSIDE_ROOM' | 'THROUGH_WALL' | 'BLOCKS_DOOR' | 'OVERLAPS_OBJECT' | 'TIGHT_ACCESS'
+  | 'ON_STAIRS' | 'BLOCKS_STAIRS';
 
 export interface PlacementIssue {
   code: PlacementIssueCode;
@@ -152,6 +157,8 @@ export interface PlacementWorld {
   room: SpaceRoom;
   walls: Array<{ id: string; box: SolidBox }>;
   doors: Array<{ id: string; box: SolidBox }>;
+  /** Each flight's footprint and the approach in front of its start (both kept free). */
+  stairs: Array<{ id: string; box: SolidBox; approach: SolidBox }>;
   objects: Array<{ id: string; box: SolidBox; asset: CatalogAsset; flat: boolean; object: ObjectInstance }>;
 }
 
@@ -184,7 +191,57 @@ export function placementWorld(ctx: PlacementContext, room: SpaceRoom): Placemen
       box: solidBox(footprint(asset, { x: o.position.x, y: o.position.z }, o.rotationY)),
     });
   }
-  return { room, walls, doors, objects };
+  const stairs = (ctx.space.stairs ?? []).map((st) => ({
+    id: st.id, box: solidBox(stairObb(st)), approach: solidBox(stairApproach(st)),
+  }));
+  return { room, walls, doors, stairs, objects };
+}
+
+/** Clear floor kept in front of a flight's first step. */
+export const STAIR_APPROACH_M = 0.9;
+
+/** A flight's footprint as an oriented box: its width along a→b, its run to the left of it. */
+export function stairObb(st: Pick<StairMesh, 'a' | 'b' | 'runM'>): Obb {
+  const dx = st.b.x - st.a.x;
+  const dy = st.b.y - st.a.y;
+  const w = Math.hypot(dx, dy) || 1;
+  const along = { x: dx / w, y: dy / w };
+  const climb = { x: -along.y, y: along.x };
+  return {
+    cx: st.a.x + along.x * (w / 2) + climb.x * (st.runM / 2),
+    cy: st.a.y + along.y * (w / 2) + climb.y * (st.runM / 2),
+    hw: w / 2, hd: st.runM / 2, angle: Math.atan2(dy, dx),
+  };
+}
+
+/** The approach: the flight's width, STAIR_APPROACH_M deep, in front of its start edge. */
+export function stairApproach(st: Pick<StairMesh, 'a' | 'b'>, depth = STAIR_APPROACH_M): Obb {
+  const dx = st.b.x - st.a.x;
+  const dy = st.b.y - st.a.y;
+  const w = Math.hypot(dx, dy) || 1;
+  const along = { x: dx / w, y: dy / w };
+  const back = { x: along.y, y: -along.x };
+  return {
+    cx: st.a.x + along.x * (w / 2) + back.x * (depth / 2),
+    cy: st.a.y + along.y * (w / 2) + back.y * (depth / 2),
+    hw: w / 2, hd: depth / 2, angle: Math.atan2(dy, dx),
+  };
+}
+
+/**
+ * The first flight a box stands on (or, with `approach`, stands in front
+ * of), as an issue; null when the stairs are clear of it.
+ */
+export function hitsStairs(world: PlacementWorld, box: SolidBox, approach: boolean): PlacementIssue | null {
+  for (const st of world.stairs) {
+    if (solidOverlap(box, st.box)) return { code: 'ON_STAIRS', severity: 'BLOCK', relatedId: st.id };
+  }
+  if (approach) {
+    for (const st of world.stairs) {
+      if (solidOverlap(box, st.approach)) return { code: 'BLOCKS_STAIRS', severity: 'BLOCK', relatedId: st.id };
+    }
+  }
+  return null;
 }
 
 export const insideRoom = (world: PlacementWorld, box: SolidBox) => box.corners.every((p) => pointInPolygon(p, world.room.polygon));
@@ -255,6 +312,9 @@ export function evaluateInWorld(
   if (!insideRoom(world, box)) issues.push({ code: 'OUTSIDE_ROOM', severity: 'BLOCK' });
   const wall = hitsWall(world, box);
   if (wall) issues.push({ code: 'THROUGH_WALL', severity: 'BLOCK', relatedId: wall });
+  // A rug, a picture or a ceiling light may sit before a flight; never on it.
+  const stairs = hitsStairs(world, box, !isFlat(asset) && asset.placement === 'FLOOR');
+  if (stairs) issues.push(stairs);
 
   if (!isFlat(asset)) {
     for (const door of world.doors) {

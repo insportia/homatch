@@ -198,6 +198,8 @@ def main(params_path: str) -> dict:
     trim = arch.build_baseboards(spec, lib)
     rails = arch.build_railings(spec, lib)
     ceilings = arch.build_ceilings(spec, lib)
+    stairs, wells = arch.build_stairs(spec, lib, floors, ceilings)
+    ceilings = ceilings + wells  # a flight's ceiling well shows and hides with the ceilings
     report["timings"]["architecture"] = _ms(t)
 
     stage("FURNISHING")
@@ -224,12 +226,12 @@ def main(params_path: str) -> dict:
     report["timings"]["furnishing"] = _ms(t)
     report["counts"] = {
         "rooms": len(floors), "walls": len(spec["walls"]), "openings": sum(len(w["openings"]) for w in spec["walls"]),
-        "railings": len(spec["railings"]), "pieces": len(pieces), "piecesFailed": sum(1 for v in report["objects"].values() if not v["ok"]),
+        "railings": len(spec["railings"]), "stairs": len(spec["stairs"]), "pieces": len(pieces), "piecesFailed": sum(1 for v in report["objects"].values() if not v["ok"]),
         "materials": len(bpy.data.materials),
     }
     stage("MATERIALS")
     t = time.perf_counter()
-    arch_objs = floors + walls + trim + rails
+    arch_objs = floors + walls + trim + rails + stairs
     report["counts"]["texturedSurfaces"] = lib.apply_textures(arch_objs + ceilings)
     report["counts"]["texturedMaterials"] = len({m["id"] for m in spec["materials"] if m["id"] in (params.get("textures") or {})})
     if lib.missing_maps:

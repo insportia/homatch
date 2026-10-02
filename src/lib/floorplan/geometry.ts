@@ -30,7 +30,7 @@
 
 import type {
   FloorPlanDocument, WallSegment, Opening, RoomPolygon, PixelPoint, MetrePoint,
-  RoomKind,
+  RoomKind, StairFlight,
 } from '@/services/developer/floorplan';
 
 // ── What comes out ─────────────────────────────────────────────────────────
@@ -59,6 +59,12 @@ export interface OpeningMesh {
   heightM: number;
   /** How it closes (OpeningLeaf); absent when the drawing does not say. */
   leaf?: import('@/services/developer/floorplan').OpeningLeaf | null;
+  /**
+   * The face of the wall a swinging leaf opens towards (L: left walking
+   * start→end), resolved from the drawing's swingRoomId. Absent when the
+   * drawing does not say; a renderer then swings into the larger room.
+   */
+  swing?: 'L' | 'R';
 }
 
 /**
@@ -66,6 +72,11 @@ export interface OpeningMesh {
  * front, the flight's full width) and climbs `runM` in the direction
  * perpendicular to a→b that points into its footprint, `treads` equal steps
  * up to `riseM`.
+ *
+ * The generator orders a and b so that the footprint lies on the LEFT of a→b
+ * (the climb direction is (-dy, dx) normalised), so every consumer can take
+ * the left normal without testing the polygon; `stairFrame` does exactly that.
+ * DOWN flights descend from a→b (a stairwell); UP flights climb from it.
  */
 export interface StairMesh {
   id: string;
@@ -118,7 +129,8 @@ export const GENERATOR_VERSION = 'homatch-geo-1';
 export type GeometryProblemCode =
   | 'NO_SCALE' | 'NO_CEILING_HEIGHT' | 'NO_EXTERIOR_WALLS' | 'NO_ROOMS'
   | 'DEGENERATE_WALL' | 'ROOM_TOO_FEW_POINTS' | 'ROOM_ZERO_AREA'
-  | 'OPENING_WITHOUT_WALL' | 'OPENING_WIDER_THAN_WALL' | 'OPENING_OFF_WALL';
+  | 'OPENING_WITHOUT_WALL' | 'OPENING_WIDER_THAN_WALL' | 'OPENING_OFF_WALL'
+  | 'STAIR_TOO_FEW_POINTS' | 'STAIR_ZERO_AREA' | 'STAIR_DEGENERATE';
 
 export interface GeometryProblem {
   code: GeometryProblemCode;
@@ -184,7 +196,31 @@ export function validate(doc: FloorPlanDocument): ValidationResult {
     }
   }
 
+  if (doc.detectedScale != null && doc.detectedScale > 0) {
+    for (const stair of (doc.stairs ?? []).filter(isVerified)) {
+      const problem = stairProblem(stair, doc.detectedScale);
+      if (problem) skips.push({ code: problem, elementId: stair.id });
+    }
+  }
+
   return { ok: problems.length === 0, problems, skips };
+}
+
+/** The smallest flight worth building: a person's width, two treads deep. */
+const MIN_STAIR_WIDTH_M = 0.5;
+const MIN_STAIR_RUN_M = 0.5;
+
+function stairProblem(stair: StairFlight, scale: number): GeometryProblemCode | null {
+  const poly = Array.isArray(stair.polygon) ? stair.polygon : [];
+  if (poly.length < 3) return 'STAIR_TOO_FEW_POINTS';
+  if (!poly.every((p) => Number.isFinite(p?.x) && Number.isFinite(p?.y))) return 'STAIR_DEGENERATE';
+  if (Math.abs(shoelace(poly)) / 2 * scale * scale < 0.25) return 'STAIR_ZERO_AREA';
+  if (stair.startEdge) {
+    const [a, b] = stair.startEdge;
+    if (!a || !b || !Number.isFinite(a.x + a.y + b.x + b.y)) return 'STAIR_DEGENERATE';
+    if (pxLength(a, b) * scale < MIN_STAIR_WIDTH_M) return 'STAIR_DEGENERATE';
+  }
+  return null;
 }
 
 // ── Normalisation ──────────────────────────────────────────────────────────
@@ -251,6 +287,7 @@ function buildWalls(
       const end = project(wall.end);
       const lengthM = Math.hypot(end.x - start.x, end.y - start.y);
       const openings = collectOpenings(doc, wall, scale, lengthM, skipped);
+      resolveSwings(doc, wall, openings, start, end, lengthM, project);
       return {
         id: wall.id,
         kind: wall.kind,
@@ -273,6 +310,43 @@ function buildWalls(
  * if an operator drags the wall's endpoints — the correction moves the hole
  * rather than orphaning it.
  */
+/** Ray casting in metres; enough to tell which side of a wall a room is on. */
+function insideRing(p: MetrePoint, ring: MetrePoint[]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+    const a = ring[i];
+    const b = ring[j];
+    if ((a.y > p.y) !== (b.y > p.y) && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+/**
+ * The side a swinging leaf opens to, from the room the drawing says it opens
+ * into: probe 0.3 m beyond each face at the opening's centre. Only set when
+ * the opening has a swinging leaf and exactly one face finds that room.
+ */
+function resolveSwings(
+  doc: FloorPlanDocument, wall: WallSegment, openings: OpeningMesh[],
+  start: MetrePoint, end: MetrePoint, lengthM: number, project: (p: PixelPoint) => MetrePoint,
+) {
+  const swingers = new Set(['HINGED', 'DOUBLE', 'FRENCH']);
+  const byId = new Map([...doc.doors, ...doc.windows].filter((o) => o.wallId === wall.id).map((o) => [o.id, o]));
+  for (const mesh of openings) {
+    const source = byId.get(mesh.id);
+    if (!source?.swingRoomId || !mesh.leaf || !swingers.has(mesh.leaf)) continue;
+    const room = [...doc.rooms, ...doc.balconies].find((r) => r.id === source.swingRoomId && isVerified(r));
+    if (!room || room.polygon.length < 3) continue;
+    const ring = room.polygon.map(project);
+    const len = lengthM || 1;
+    const dir = { x: (end.x - start.x) / len, y: (end.y - start.y) / len };
+    const c = { x: start.x + dir.x * mesh.offsetM, y: start.y + dir.y * mesh.offsetM };
+    const left = insideRing({ x: c.x - dir.y * 0.3, y: c.y + dir.x * 0.3 }, ring);
+    const right = insideRing({ x: c.x + dir.y * 0.3, y: c.y - dir.x * 0.3 }, ring);
+    if (left !== right) mesh.swing = left ? 'L' : 'R';
+  }
+}
+
 function collectOpenings(
   doc: FloorPlanDocument,
   wall: WallSegment,
@@ -280,21 +354,149 @@ function collectOpenings(
   wallLengthM: number,
   skipped: Set<string>,
 ): OpeningMesh[] {
-  const make = (opening: Opening, kind: 'DOOR' | 'WINDOW'): OpeningMesh => ({
-    id: opening.id,
-    kind,
-    offsetM: Math.round(opening.position * wallLengthM * 10000) / 10000,
-    widthM: Math.round(opening.widthPx * scale * 10000) / 10000,
-    sillM: opening.sillHeightM ?? (kind === 'DOOR' ? 0 : DEFAULT_WINDOW_SILL_M),
-    heightM: opening.heightM
-      ?? (kind === 'DOOR' ? DEFAULT_DOOR_HEIGHT_M : DEFAULT_WINDOW_HEIGHT_M),
-  });
+  const ceiling = doc.ceilingHeight as number;
+  const make = (opening: Opening, kind: 'DOOR' | 'WINDOW'): OpeningMesh => {
+    // A FRENCH leaf is a full-height glazed door (a balcony's): it starts at
+    // the floor and stops a lintel short of the ceiling, unless drawn otherwise.
+    const french = opening.leaf === 'FRENCH';
+    const mesh: OpeningMesh = {
+      id: opening.id,
+      kind,
+      offsetM: Math.round(opening.position * wallLengthM * 10000) / 10000,
+      widthM: Math.round(opening.widthPx * scale * 10000) / 10000,
+      sillM: opening.sillHeightM ?? (kind === 'DOOR' || french ? 0 : DEFAULT_WINDOW_SILL_M),
+      heightM: opening.heightM
+        ?? (french ? fullHeightDoorM(ceiling) : kind === 'DOOR' ? DEFAULT_DOOR_HEIGHT_M : DEFAULT_WINDOW_HEIGHT_M),
+    };
+    // Present only when the drawing says: a reading without leaves produces
+    // exactly the scene it always did, so cached Developer scenes stay valid.
+    if (opening.leaf) mesh.leaf = opening.leaf;
+    return mesh;
+  };
 
   const usable = (o: Opening) => isVerified(o) && o.wallId === wall.id && !skipped.has(o.id);
   return [
     ...doc.doors.filter(usable).map((o) => make(o, 'DOOR')),
     ...doc.windows.filter(usable).map((o) => make(o, 'WINDOW')),
   ].sort((a, b) => a.offsetM - b.offsetM);
+}
+
+/** A full-height door: the ceiling less a 0.2 m lintel, never lower than an ordinary door. */
+function fullHeightDoorM(ceiling: number): number {
+  return Math.max(DEFAULT_DOOR_HEIGHT_M, Math.round((ceiling - 0.2) * 10000) / 10000);
+}
+
+// ── Stairs ─────────────────────────────────────────────────────────────────
+
+/** An ordinary going (tread depth), for counting treads the drawing did not. */
+const TYPICAL_GOING_M = 0.27;
+export const MIN_STAIR_TREADS = 3;
+export const MAX_STAIR_TREADS = 25;
+
+/** Unit vectors of a flight: along its start edge, and up the climb (left of a→b). */
+export function stairFrame(stair: Pick<StairMesh, 'a' | 'b'>) {
+  const dx = stair.b.x - stair.a.x;
+  const dy = stair.b.y - stair.a.y;
+  const widthM = Math.hypot(dx, dy) || 1;
+  const along = { x: dx / widthM, y: dy / widthM };
+  return { along, climb: { x: -along.y, y: along.x }, widthM };
+}
+
+const dot = (p: MetrePoint, d: MetrePoint) => p.x * d.x + p.y * d.y;
+
+function segmentDistance(p: MetrePoint, a: MetrePoint, b: MetrePoint): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  const t = len2 > 0 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2)) : 0;
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+
+/**
+ * WHERE A FLIGHT STARTS, WHEN THE DRAWING DOES NOT SAY.
+ *
+ * The footprint's frame is taken from its longest edge; a flight climbs along
+ * its longer extent, so the two candidate start edges are the short ends of
+ * that oriented box. Of the two, deterministically:
+ *   1. the end nearer a verified door (edge midpoint, within 4 m, by more
+ *      than 1 cm) — a flight is stepped onto from the circulation;
+ *   2. otherwise the end with more clearance from the nearest wall — the top
+ *      of a flight usually lands against a wall, its foot does not;
+ *   3. otherwise (a tie) the end at the lower coordinate along the run.
+ */
+function inferStartEdge(
+  ring: MetrePoint[], doorCentres: MetrePoint[], walls: Array<{ start: MetrePoint; end: MetrePoint }>,
+): [MetrePoint, MetrePoint] {
+  let longest = 0;
+  let axis = { x: 1, y: 0 };
+  for (let i = 0; i < ring.length; i += 1) {
+    const p = ring[i];
+    const q = ring[(i + 1) % ring.length];
+    const len = Math.hypot(q.x - p.x, q.y - p.y);
+    if (len > longest + 1e-9) { longest = len; axis = { x: (q.x - p.x) / len, y: (q.y - p.y) / len }; }
+  }
+  const perp = { x: -axis.y, y: axis.x };
+  const us = ring.map((p) => dot(p, axis));
+  const vs = ring.map((p) => dot(p, perp));
+  const alongAxis = Math.max(...us) - Math.min(...us) >= Math.max(...vs) - Math.min(...vs);
+  const run = alongAxis ? axis : perp;
+  const span = alongAxis ? perp : axis;
+  const rs = alongAxis ? us : vs;
+  const ss = alongAxis ? vs : us;
+  const [r0, r1, s0, s1] = [Math.min(...rs), Math.max(...rs), Math.min(...ss), Math.max(...ss)];
+  const at = (r: number, s: number): MetrePoint => ({ x: run.x * r + span.x * s, y: run.y * r + span.y * s });
+  const ends = [r0, r1].map((r) => ({
+    edge: [at(r, s0), at(r, s1)] as [MetrePoint, MetrePoint],
+    mid: at(r, (s0 + s1) / 2),
+  }));
+  const nearestDoor = (m: MetrePoint) => Math.min(Infinity, ...doorCentres.map((d) => Math.hypot(d.x - m.x, d.y - m.y)));
+  const [d0, d1] = ends.map((e) => nearestDoor(e.mid));
+  if (Math.min(d0, d1) <= 4 && Math.abs(d0 - d1) > 0.01) return d0 < d1 ? ends[0].edge : ends[1].edge;
+  const clearance = (m: MetrePoint) => Math.min(Infinity, ...walls.map((w) => segmentDistance(m, w.start, w.end)));
+  const [c0, c1] = ends.map((e) => clearance(e.mid));
+  if (Number.isFinite(c0) && Number.isFinite(c1) && Math.abs(c0 - c1) > 0.01) return c0 > c1 ? ends[0].edge : ends[1].edge;
+  return ends[0].edge;
+}
+
+/**
+ * A verified flight in metres: projected and rounded like every other
+ * element, a and b ordered so the footprint lies to the left of a→b.
+ * Null when what is left after projection is too small to climb.
+ */
+function buildStair(
+  stair: StairFlight,
+  project: (p: PixelPoint) => MetrePoint,
+  ceiling: number,
+  doorCentres: MetrePoint[],
+  walls: Array<{ start: MetrePoint; end: MetrePoint }>,
+): StairMesh | null {
+  const round = (n: number) => Math.round(n * 10000) / 10000;
+  let ring = stair.polygon.map(project);
+  if (shoelace(ring) < 0) ring = [...ring].reverse();
+  let [a, b] = stair.startEdge
+    ? [project(stair.startEdge[0]), project(stair.startEdge[1])]
+    : inferStartEdge(ring, doorCentres, walls);
+  let cx = 0;
+  let cy = 0;
+  for (const p of ring) { cx += p.x; cy += p.y; }
+  const centre = { x: cx / ring.length, y: cy / ring.length };
+  if ((b.x - a.x) * (centre.y - a.y) - (b.y - a.y) * (centre.x - a.x) < 0) [a, b] = [b, a];
+  const { climb, widthM } = stairFrame({ a, b });
+  const runM = Math.max(...ring.map((p) => (p.x - a.x) * climb.x + (p.y - a.y) * climb.y));
+  if (!(widthM >= MIN_STAIR_WIDTH_M) || !(runM >= MIN_STAIR_RUN_M)) return null;
+  const drawn = stair.treads != null && Number.isFinite(stair.treads) ? Math.round(stair.treads) : null;
+  const treads = Math.max(MIN_STAIR_TREADS, Math.min(MAX_STAIR_TREADS, drawn ?? Math.round(runM / TYPICAL_GOING_M)));
+  return {
+    id: stair.id,
+    a: { x: round(a.x), y: round(a.y) },
+    b: { x: round(b.x), y: round(b.y) },
+    runM: round(runM),
+    riseM: ceiling,
+    treads,
+    // A flight whose direction the drawing does not show is built going up.
+    direction: stair.direction === 'DOWN' ? 'DOWN' : 'UP',
+    polygon: ring.map((p) => ({ x: round(p.x), y: round(p.y) })),
+  };
 }
 
 function buildFloor(
@@ -355,6 +557,21 @@ export function generateScene(doc: FloorPlanDocument): GenerateResult {
     ...balconies.map((b) => buildFloor(b, project, true)),
   ];
 
+  // Stairs: verified flights only, and never part of the extent (a flight sits
+  // inside the rooms, and a plan without stairs must not move).
+  const doorCentres = walls.flatMap((w) => {
+    const len = w.lengthM || 1;
+    return w.openings.filter((o) => o.kind === 'DOOR').map((o) => ({
+      x: w.start.x + ((w.end.x - w.start.x) / len) * o.offsetM,
+      y: w.start.y + ((w.end.y - w.start.y) / len) * o.offsetM,
+    }));
+  });
+  const stairs = (doc.stairs ?? [])
+    .filter(isVerified)
+    .filter((s) => !skipped.has(s.id))
+    .map((s) => buildStair(s, project, doc.ceilingHeight as number, doorCentres, walls))
+    .filter((s): s is StairMesh => s != null);
+
   // Everything shifted so the plan's own minimum corner is the origin: a scene
   // centred on the drawing rather than on wherever the image happened to sit.
   const xs = [...walls.flatMap((w) => [w.start.x, w.end.x]), ...floors.flatMap((f) => f.polygon.map((p) => p.x))];
@@ -374,6 +591,13 @@ export function generateScene(doc: FloorPlanDocument): GenerateResult {
     centroid: { x: round(f.centroid.x - minX), y: round(f.centroid.y - minY) },
   }));
 
+  const shiftedStairs = stairs.map((st) => ({
+    ...st,
+    a: { x: round(st.a.x - minX), y: round(st.a.y - minY) },
+    b: { x: round(st.b.x - minX), y: round(st.b.y - minY) },
+    polygon: shift(st.polygon, minX, minY),
+  }));
+
   const built = {
     walls: shiftedWalls.length,
     doors: shiftedWalls.reduce((n, w) => n + w.openings.filter((o) => o.kind === 'DOOR').length, 0),
@@ -391,6 +615,9 @@ export function generateScene(doc: FloorPlanDocument): GenerateResult {
       ceilingHeightM: doc.ceilingHeight as number,
       walls: shiftedWalls,
       floors: shiftedFloors,
+      // Absent, not empty, when nothing was built: a plan without stairs
+      // produces exactly the scene it always did.
+      ...(shiftedStairs.length ? { stairs: shiftedStairs } : {}),
       extent: {
         width: round((xs.length ? Math.max(...xs) : 0) - minX),
         depth: round((ys.length ? Math.max(...ys) : 0) - minY),

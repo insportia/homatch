@@ -195,6 +195,8 @@ export function buildDsDocument(
     windows: keep(doc.windows).map(accept),
     rooms: keep(doc.rooms).map((r) => accept({ ...r, kind: (decisions.roomKinds[r.id] ?? r.kind) as typeof r.kind })),
     balconies: keep(doc.balconies).map(accept),
+    // Stairs are architecture the customer kept, like a wall; absent stays absent.
+    ...(doc.stairs ? { stairs: keep(doc.stairs).map(accept) } : {}),
   };
 }
 

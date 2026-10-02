@@ -11,6 +11,7 @@ from __future__ import annotations
 import copy
 import io
 import json
+import math
 import os
 import re
 import shutil
@@ -450,3 +451,156 @@ def test_a_tint_balances_the_texture_and_exports_a_valid_factor():
 
         r = sp.run([shutil.which("node"), str(WORKER / "validate.mjs"), str(p)], capture_output=True, text=True, check=False)
         assert json.loads(r.stdout)["errors"] == 0, r.stdout
+
+
+# ── D. stairs, door leaves, the image revision ────────────────────────
+
+STAIRS = json.loads((HERE / "fixtures" / "stairs.spec.json").read_text())
+PARTS = json.loads((HERE / "fixtures" / "stairs.parts.json").read_text())
+
+
+def test_stairs_and_leaves_are_read_and_absent_means_none():
+    v = validate_spec(STAIRS)
+    assert len(v["stairs"]) == 1 and v["stairs"][0]["treads"] == 15 and v["stairs"][0]["direction"] == "UP"
+    leaves = {o["id"]: o["leaf"] for w in v["walls"] for o in w["openings"] if o["leaf"]}
+    assert leaves == {"d-bed": "DOUBLE", "d-bath": "SLIDING", "d-hall": "HINGED", "win-bed": "FIXED"}
+    plain = validate_spec(SPEC)
+    assert plain["stairs"] == [] and all(o["leaf"] is None and o["swing"] is None for w in plain["walls"] for o in w["openings"])
+
+
+@pytest.mark.parametrize("mutate, why", [
+    (lambda s: s["stairs"][0].update(treads=2), "treads"),
+    (lambda s: s["stairs"][0].update(treads=26), "treads"),
+    (lambda s: s["stairs"][0].update(treads=12.5), "whole number"),
+    (lambda s: s["stairs"][0].update(runM=0.2), "runM"),
+    (lambda s: s["stairs"][0].update(riseM=9), "riseM"),
+    (lambda s: s["stairs"][0].update(direction="SIDEWAYS"), "direction"),
+    (lambda s: s["stairs"][0].update(b=s["stairs"][0]["a"]), "width"),
+    (lambda s: s["stairs"][0].update(id="x y"), "id"),
+    (lambda s: s.update(stairs=[dict(s["stairs"][0], id=f"s-{i}") for i in range(9)]), "more than 8"),
+    (lambda s: s["stairs"].append(dict(s["stairs"][0])), "duplicate"),
+    (lambda s: s.update(stairs="many"), "list"),
+    (lambda s: next(w for w in s["walls"] if w["openings"])["openings"][0].update(leaf="REVOLVING"), "leaf"),
+    (lambda s: next(w for w in s["walls"] if w["openings"])["openings"][0].update(swing="UP"), "swing"),
+])
+def test_a_malformed_stair_or_leaf_is_refused(mutate, why):
+    s = copy.deepcopy(STAIRS)
+    mutate(s)
+    with pytest.raises(SpecError, match=re.escape(why)):
+        validate_spec(s)
+
+
+def test_stair_parts_match_the_walkthrough_exactly():
+    """worker/stair_parts.py and src/lib/designStudio/stairParts.ts build the same staircase (shared fixture)."""
+    from worker.stair_parts import stair_parts, stair_sides
+
+    st = validate_spec(STAIRS)["stairs"][0]
+    sides = stair_sides(st, validate_spec(STAIRS)["walls"])
+    assert sides == (PARTS["sides"]["openA"], PARTS["sides"]["openB"])
+    for got, want in ((stair_parts(st, *sides), PARTS["up"]), (stair_parts(dict(st, direction="DOWN"), True, True), PARTS["down"]),
+                      (stair_parts(st, False, False), PARTS["walled"])):
+        assert [p["kind"] for p in got] == [p["kind"] for p in want]
+        for g, w in zip(got, want):
+            for a, b in zip([*g["centre"], *g["size"], g["pitch"]], [*w["centre"], *w["size"], w["pitch"]]):
+                assert abs(a - b) < 2e-4, (g, w)
+
+
+def test_every_job_reports_the_image_revision_and_is_safe_without_it(monkeypatch):
+    monkeypatch.setenv("HM_IMAGE_REVISION", "0123456789abcdef0123456789abcdef01234567")
+    assert handle({"input": {"jobId": "nope"}})["worker"] == {"revision": "0123456789abcdef0123456789abcdef01234567"}
+    monkeypatch.setenv("HM_IMAGE_REVISION", "not a sha; rm -rf /")
+    assert handle({"input": {"jobId": "nope"}})["worker"] == {"revision": None}
+    monkeypatch.delenv("HM_IMAGE_REVISION", raising=False)
+    assert handle({"input": {"jobId": "nope"}})["worker"] == {"revision": None}
+
+
+def test_the_image_bakes_its_revision_from_the_workflow():
+    docker = (HERE.parent / "Dockerfile").read_text()
+    assert "ARG HM_IMAGE_REVISION" in docker and "ENV HM_IMAGE_REVISION=${HM_IMAGE_REVISION}" in docker
+    wf = (HERE.parents[2] / ".github" / "workflows" / "design-studio-gpu-worker-image.yml").read_text()
+    assert "HM_IMAGE_REVISION=${{ github.sha }}" in wf
+
+
+def _accessor_bounds(gl: dict, node: dict):
+    mesh = gl["meshes"][node["mesh"]]
+    lo = [math.inf] * 3
+    hi = [-math.inf] * 3
+    for prim in mesh["primitives"]:
+        acc = gl["accessors"][prim["attributes"]["POSITION"]]
+        lo = [min(a, b) for a, b in zip(lo, acc["min"])]
+        hi = [max(a, b) for a, b in zip(hi, acc["max"])]
+    t = node.get("translation", [0, 0, 0])
+    return [a + o for a, o in zip(lo, t)], [b + o for b, o in zip(hi, t)]
+
+
+@pytest.fixture(scope="module")
+def built_stairs():
+    if blender_path() is None:
+        pytest.skip("Blender is not installed here")
+    s = copy.deepcopy(STAIRS)
+    s["outputs"] = {"render": False, "scene": True, "objects": False}
+    j = job(s)
+    j["outputs"] = {"scene": {"DESKTOP": R2, "MOBILE": R2}}
+    tr = FakeTransfer()
+    out = pipeline_mod.run_job(parse_job(j), {**tools(), "gltf_transform": None}, tr)
+    return out, _glb_from(tr, "model/gltf-binary")
+
+
+@needs_blender
+def test_the_factory_builds_a_staircase_inside_its_footprint(built_stairs):
+    out, gl = built_stairs
+    assert out["build"]["counts"]["stairs"] == 1
+    by = {n.get("name", ""): n for n in gl["nodes"] if "mesh" in n}
+    for role in ("wood", "paint", "metal", "well"):
+        assert f"stair:s-1:{role}" in by, sorted(n for n in by if n.startswith("stair"))
+    st = STAIRS["stairs"][0]
+    # Footprint in plan: x 1..4, y 0.15..1.15; glTF is (x, up, -north).
+    lo, hi = _accessor_bounds(gl, by["stair:s-1:wood"])
+    assert 0.9 < lo[0] and hi[0] < 4.1, (lo, hi)
+    assert -1.2 < lo[2] and hi[2] < -0.1, (lo, hi)
+    assert lo[1] > -0.01 and abs(hi[1] - st["riseM"]) < 0.02, "the top tread is the upper floor; the rail stops below the ceiling"
+    # Treads and risers: two boxes per step at least (8 vertices each, before bevels).
+    wood_verts = sum(gl["accessors"][p["attributes"]["POSITION"]]["count"] for p in gl["meshes"][by["stair:s-1:wood"]["mesh"]]["primitives"])
+    paint_verts = sum(gl["accessors"][p["attributes"]["POSITION"]]["count"] for p in gl["meshes"][by["stair:s-1:paint"]["mesh"]]["primitives"])
+    assert wood_verts >= 15 * 8 and paint_verts >= (15 + 2) * 8
+
+
+@needs_blender
+def test_the_factory_hangs_door_leaves_by_how_they_close(built_stairs):
+    _, gl = built_stairs
+    names = [n.get("name", "") for n in gl["nodes"] if "mesh" in n]
+
+    def parts_of(oid):
+        return [n for n in names if n.startswith(f"door:{oid}:")]
+
+    # Every door has its frame (two jambs and a head = 3 parts); leaves add to that.
+    assert len(parts_of("d-bed")) == 3 + 4, "DOUBLE: two panelled leaves, each a slab and handles"
+    assert len(parts_of("d-hall")) == 3 + 2, "HINGED: one leaf and its handles"
+    assert len(parts_of("d-bath")) == 3 + 2, "SLIDING: one panel and its handles, slid along the wall"
+    assert len(parts_of("d-entry")) == 3 + 2, "an undescribed door keeps one hinged leaf"
+    assert any(n.startswith("window:win-bed:") for n in names), "a FIXED window keeps its glass"
+
+
+def _verts(gl: dict, node: dict) -> int:
+    return sum(gl["accessors"][p["attributes"]["POSITION"]]["count"] for p in gl["meshes"][node["mesh"]]["primitives"])
+
+
+@needs_blender
+def test_a_flight_cuts_its_hole_in_the_ceiling_going_up_and_the_floor_going_down(built_stairs):
+    _, gl = built_stairs
+    by = {n.get("name", ""): n for n in gl["nodes"] if "mesh" in n}
+    assert _verts(gl, by["ceiling:r-living"]) > _verts(gl, by["ceiling:r-bed"]), "the living room's ceiling is cut over the flight"
+    assert _verts(gl, by["floor:r-living"]) == _verts(gl, by["floor:r-bed"]), "an UP flight leaves the floor whole"
+    s = copy.deepcopy(STAIRS)
+    s["stairs"][0]["direction"] = "DOWN"
+    s["outputs"] = {"render": False, "scene": True, "objects": False}
+    j = job(s)
+    j["outputs"] = {"scene": {"DESKTOP": R2, "MOBILE": R2}}
+    tr = FakeTransfer()
+    pipeline_mod.run_job(parse_job(j), {**tools(), "gltf_transform": None}, tr)
+    down = _glb_from(tr, "model/gltf-binary")
+    dby = {n.get("name", ""): n for n in down["nodes"] if "mesh" in n}
+    assert _verts(down, dby["floor:r-living"]) > _verts(down, dby["floor:r-bed"]), "a DOWN flight opens the floor"
+    lo, hi = _accessor_bounds(down, dby["stair:s-1:wood"])
+    assert lo[1] < -2.0 and abs(hi[1]) < 1.2, "it descends below the floor; its rail rises above it"
+    assert "stair:s-1:metal" in dby, "guarded round the well"

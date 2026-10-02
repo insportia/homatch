@@ -41,7 +41,7 @@
 
 import { isFlat, type CatalogAsset } from './catalog.ts';
 import {
-  evaluatePlacement, footprint, frontOf, frontZone, hitsWall, insideRoom, placementWorld, rotationFacing,
+  evaluatePlacement, footprint, frontOf, frontZone, hitsStairs, hitsWall, insideRoom, placementWorld, rotationFacing,
   solidBox, solidOverlap, zoneClear,
   type PlacementContext, type PlacementIssue, type PlacementWorld, type SolidBox,
 } from './placement.ts';
@@ -231,6 +231,7 @@ export function searchPlacement(
   const acceptable = (box: SolidBox): boolean => {
     evaluations += 1;
     if (!legal(box)) return false;
+    if (hitsStairs(world, box, !flat && !ceiling && !wallMounted)) return false;
     if (flat || ceiling) return true;
     for (const d of world.doors) if (solidOverlap(box, d.box)) return false;
     for (const o of world.objects) {

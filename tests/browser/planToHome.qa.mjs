@@ -28,7 +28,7 @@
 //   E  PHOTOS (the unified OpenAI-first flow): three photos → look over, remove,
 //      add → analysis (left mid-way and resumed) → one detail → Style (more
 //      options, surprise me) → Quality → Generate (reload mid-way, Snake while
-//      it is made, READY over the game) → the Result: before / after, edit,
+//      it is made, READY above the game) → the Result: before / after, edit,
 //      another room, another option. One reading, one specification per
 //      design, one picture per design; no reconstruction, no factory.
 //                                                              390/ka, 1440/en
@@ -851,10 +851,10 @@ async function photoPath(browser, { width, height, lang, touch }) {
   } else {
     await page.keyboard.press('ArrowUp'); await page.keyboard.press('KeyA');
   }
-  await page.getByTestId('snake-ready').waitFor({ timeout: 90000 });
+  await page.getByTestId('snake-ready-view').waitFor({ timeout: 90000 });
   await shot('snake-ready');
-  if (lang === 'ka') check(`${tag}: ready copy over the game`, (await page.getByTestId('snake-ready').innerText()).includes('შენი დიზაინი მზადაა') && (await page.getByTestId('snake-ready').innerText()).includes('თამაშის გაგრძელება'));
-  check(`${tag}: ready never navigates away from the game by itself`, !/\/home$/.test(page.url()));
+  if (lang === 'ka') check(`${tag}: ready copy above the game, which goes on`, (await page.getByTestId('snake-bar').innerText()).includes('შედეგი მზადაა') && (await page.getByTestId('snake-ready-view').innerText()).includes('შედეგის ნახვა'));
+  check(`${tag}: ready never navigates away from the game by itself`, !/\/home$/.test(page.url()) && (await page.getByTestId('snake-board').count()) === 1);
   await page.getByTestId('snake-ready-view').click();
   await page.waitForURL(/\/home$/, { timeout: 20000 });
 
@@ -952,6 +952,7 @@ async function photoFailures(browser, { width, height, lang, touch }) {
       await page.screenshot({ path: path.join(OUT, `ph-retry-${width}-${lang}.png`) });
       await s.noOverflow(tag, 'retry');
       check(`${tag}: a reading that failed says so truthfully (not "could not read")`, await page.getByTestId('plan-retry').isVisible() && await page.getByTestId('retry-later').isVisible());
+      check(`${tag}: the recovery shows the real state: photos kept, the reading continues`, (await page.locator('[data-step="UPLOAD"][data-state="KEPT"]').count()) === 1 && (await page.locator('[data-step="ANALYSIS"][data-state="RESUME"]').count()) === 1);
       await page.getByTestId('plan-retry').click();
       await page.getByTestId('look-style').waitFor({ timeout: 30000 });
       const refs = store.db.ds_floorplans.filter((f) => f.purpose === 'REFERENCE').length;

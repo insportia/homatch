@@ -14973,6 +14973,28 @@ const en = {
   mm_ct_add: 'Add text & layout',
   mm_ct_dialog_title: 'Text & layout',
   mm_ct_dialog_lead: 'HOMATCH sets your words as real text over the picture. Your original upload is never changed.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_rec_title: 'Your design could not be finished',
+  dsx_rec_body: 'Your uploads and the work already done are saved. Try again and HOMATCH continues from where the process stopped.',
+  dsx_rec_kept_note: 'Steps already finished are not repeated.',
+  dsx_rec_step_upload_photos: 'Your photos',
+  dsx_rec_step_upload_plan: 'Your plan',
+  dsx_rec_step_analysis_photos: 'Understanding your photos',
+  dsx_rec_step_analysis_plan: 'Reading your plan',
+  dsx_rec_step_design: 'Designing your space',
+  dsx_rec_step_image: 'The visualisation',
+  dsx_rec_saved: 'Saved',
+  dsx_rec_resume: 'Continues from here',
+  dsx_rec_back: 'Back to project',
+  dsx_sn_ready: 'Your result is ready',
+  dsx_sn_view_result: 'View result',
+  dsx_sn_start: 'Swipe or tap an arrow to start',
+  dsx_sn_help2: 'Swipe, or tap the board or the arrows. Keyboard: arrows or WASD, Space pauses.',
+  dsx_sn_up: 'Up',
+  dsx_sn_down: 'Down',
+  dsx_sn_left: 'Left',
+  dsx_sn_right: 'Right',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -29860,6 +29882,28 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mm_ct_add: 'ტექსტის და განლაგების დამატება',
   mm_ct_dialog_title: 'ტექსტი და განლაგება',
   mm_ct_dialog_lead: 'HOMATCH თქვენს სიტყვებს სურათზე ნამდვილ ტექსტად განათავსებს. თქვენი ორიგინალი ფაილი არ იცვლება.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_rec_title: 'დიზაინის შექმნა ვერ დასრულდა',
+  dsx_rec_body: 'შენი ატვირთული მასალა და უკვე შესრულებული სამუშაო შენახულია. შეგიძლია სცადო თავიდან და HOMATCH გააგრძელებს იქიდან, სადაც პროცესი შეჩერდა.',
+  dsx_rec_kept_note: 'უკვე დასრულებული ნაბიჯები აღარ განმეორდება.',
+  dsx_rec_step_upload_photos: 'ატვირთული ფოტოები',
+  dsx_rec_step_upload_plan: 'ატვირთული გეგმა',
+  dsx_rec_step_analysis_photos: 'ფოტოების ანალიზი',
+  dsx_rec_step_analysis_plan: 'გეგმის წაკითხვა',
+  dsx_rec_step_design: 'დიზაინის შემუშავება',
+  dsx_rec_step_image: 'ვიზუალიზაცია',
+  dsx_rec_saved: 'შენახულია',
+  dsx_rec_resume: 'აქედან გაგრძელდება',
+  dsx_rec_back: 'პროექტზე დაბრუნება',
+  dsx_sn_ready: 'შედეგი მზადაა',
+  dsx_sn_view_result: 'შედეგის ნახვა',
+  dsx_sn_start: 'დასაწყებად გაასრიალე თითი ან დააჭირე ისარს',
+  dsx_sn_help2: 'გაასრიალე თითი ან შეეხე დაფას ან ისრებს. კლავიატურა: ისრები ან WASD, Space — პაუზა.',
+  dsx_sn_up: 'ზემოთ',
+  dsx_sn_down: 'ქვემოთ',
+  dsx_sn_left: 'მარცხნივ',
+  dsx_sn_right: 'მარჯვნივ',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -44738,6 +44782,28 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mm_ct_add: 'Добавить текст и макет',
   mm_ct_dialog_title: 'Текст и макет',
   mm_ct_dialog_lead: 'HOMATCH размещает ваши слова на изображении как настоящий текст. Исходный файл не меняется.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_rec_title: 'Не удалось завершить создание дизайна',
+  dsx_rec_body: 'Загруженные материалы и уже выполненная работа сохранены. Попробуйте снова — HOMATCH продолжит с того места, где процесс остановился.',
+  dsx_rec_kept_note: 'Уже выполненные шаги не повторяются.',
+  dsx_rec_step_upload_photos: 'Ваши фото',
+  dsx_rec_step_upload_plan: 'Ваш план',
+  dsx_rec_step_analysis_photos: 'Анализ фото',
+  dsx_rec_step_analysis_plan: 'Чтение плана',
+  dsx_rec_step_design: 'Разработка дизайна',
+  dsx_rec_step_image: 'Визуализация',
+  dsx_rec_saved: 'Сохранено',
+  dsx_rec_resume: 'Продолжится отсюда',
+  dsx_rec_back: 'Вернуться к проекту',
+  dsx_sn_ready: 'Результат готов',
+  dsx_sn_view_result: 'Посмотреть результат',
+  dsx_sn_start: 'Проведите пальцем или нажмите стрелку, чтобы начать',
+  dsx_sn_help2: 'Проводите пальцем или нажимайте на поле или стрелки. Клавиатура: стрелки или WASD, пробел — пауза.',
+  dsx_sn_up: 'Вверх',
+  dsx_sn_down: 'Вниз',
+  dsx_sn_left: 'Влево',
+  dsx_sn_right: 'Вправо',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -59614,6 +59680,28 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mm_ct_add: 'Metin ve düzen ekle',
   mm_ct_dialog_title: 'Metin ve düzen',
   mm_ct_dialog_lead: 'HOMATCH sözlerinizi görselin üzerine gerçek metin olarak yerleştirir. Orijinal dosyanız değişmez.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_rec_title: 'Tasarım tamamlanamadı',
+  dsx_rec_body: 'Yüklediğiniz dosyalar ve tamamlanan işler kaydedildi. Tekrar deneyin; HOMATCH işlemin durduğu yerden devam eder.',
+  dsx_rec_kept_note: 'Tamamlanan adımlar tekrarlanmaz.',
+  dsx_rec_step_upload_photos: 'Fotoğraflarınız',
+  dsx_rec_step_upload_plan: 'Planınız',
+  dsx_rec_step_analysis_photos: 'Fotoğrafların analizi',
+  dsx_rec_step_analysis_plan: 'Planın okunması',
+  dsx_rec_step_design: 'Tasarımın hazırlanması',
+  dsx_rec_step_image: 'Görselleştirme',
+  dsx_rec_saved: 'Kaydedildi',
+  dsx_rec_resume: 'Buradan devam eder',
+  dsx_rec_back: 'Projeye dön',
+  dsx_sn_ready: 'Sonuç hazır',
+  dsx_sn_view_result: 'Sonucu gör',
+  dsx_sn_start: 'Başlamak için kaydırın veya bir oka dokunun',
+  dsx_sn_help2: 'Kaydırın ya da tahtaya veya oklara dokunun. Klavye: oklar veya WASD, Boşluk duraklatır.',
+  dsx_sn_up: 'Yukarı',
+  dsx_sn_down: 'Aşağı',
+  dsx_sn_left: 'Sol',
+  dsx_sn_right: 'Sağ',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -74490,6 +74578,28 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mm_ct_add: 'إضافة نص وتخطيط',
   mm_ct_dialog_title: 'النص والتخطيط',
   mm_ct_dialog_lead: 'يضع HOMATCH كلماتك على الصورة كنص حقيقي. لا يتغيّر ملفك الأصلي أبدًا.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_rec_title: 'تعذّر إكمال إنشاء التصميم',
+  dsx_rec_body: 'ما رفعته والعمل المُنجَز محفوظان. حاول مجددًا وسيتابع HOMATCH من حيث توقفت العملية.',
+  dsx_rec_kept_note: 'لن تتكرر الخطوات المنجزة.',
+  dsx_rec_step_upload_photos: 'صورك',
+  dsx_rec_step_upload_plan: 'مخططك',
+  dsx_rec_step_analysis_photos: 'تحليل الصور',
+  dsx_rec_step_analysis_plan: 'قراءة المخطط',
+  dsx_rec_step_design: 'إعداد التصميم',
+  dsx_rec_step_image: 'التصوّر المرئي',
+  dsx_rec_saved: 'محفوظ',
+  dsx_rec_resume: 'سيُستأنف من هنا',
+  dsx_rec_back: 'العودة إلى المشروع',
+  dsx_sn_ready: 'النتيجة جاهزة',
+  dsx_sn_view_result: 'عرض النتيجة',
+  dsx_sn_start: 'اسحب أو اضغط على سهم للبدء',
+  dsx_sn_help2: 'اسحب أو اضغط على اللوحة أو الأسهم. لوحة المفاتيح: الأسهم أو WASD، والمسافة للإيقاف المؤقت.',
+  dsx_sn_up: 'أعلى',
+  dsx_sn_down: 'أسفل',
+  dsx_sn_left: 'يسار',
+  dsx_sn_right: 'يمين',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -89366,6 +89476,28 @@ const he: Partial<Record<TranslationKey, string>> = {
   mm_ct_add: 'הוספת טקסט ופריסה',
   mm_ct_dialog_title: 'טקסט ופריסה',
   mm_ct_dialog_lead: 'HOMATCH מציבה את המילים שלכם על התמונה כטקסט אמיתי. הקובץ המקורי לא משתנה.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_rec_title: 'לא הצלחנו להשלים את יצירת העיצוב',
+  dsx_rec_body: 'מה שהעליתם והעבודה שכבר הושלמה שמורים. נסו שוב ו־HOMATCH ימשיך מהמקום שבו התהליך נעצר.',
+  dsx_rec_kept_note: 'שלבים שכבר הושלמו לא יחזרו על עצמם.',
+  dsx_rec_step_upload_photos: 'התמונות שלכם',
+  dsx_rec_step_upload_plan: 'התוכנית שלכם',
+  dsx_rec_step_analysis_photos: 'ניתוח התמונות',
+  dsx_rec_step_analysis_plan: 'קריאת התוכנית',
+  dsx_rec_step_design: 'הכנת העיצוב',
+  dsx_rec_step_image: 'ההדמיה',
+  dsx_rec_saved: 'נשמר',
+  dsx_rec_resume: 'ימשיך מכאן',
+  dsx_rec_back: 'חזרה לפרויקט',
+  dsx_sn_ready: 'התוצאה מוכנה',
+  dsx_sn_view_result: 'צפייה בתוצאה',
+  dsx_sn_start: 'החליקו או הקישו על חץ כדי להתחיל',
+  dsx_sn_help2: 'החליקו או הקישו על הלוח או על החצים. מקלדת: חצים או WASD, רווח עוצר.',
+  dsx_sn_up: 'למעלה',
+  dsx_sn_down: 'למטה',
+  dsx_sn_left: 'שמאלה',
+  dsx_sn_right: 'ימינה',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

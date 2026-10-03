@@ -52,7 +52,7 @@ import { cn } from '@/lib/utils';
 import { PlanReview } from './planToHome/PlanReview';
 import { DesignChooser } from './planToHome/DesignChooser';
 import { QualityStep, QuickQuestionStep, RING, StyleStep, SURFACE, surpriseStyle } from './planToHome/SimpleSteps';
-import { AnalysisStep, FailureStep, GeneratingStep, PlanUploadStep } from './unified/Screens';
+import { AnalysisStep, FailureStep, GeneratingStep, PlanUploadStep, READING_RECOVERY, type Recovery, useReadyResult } from './unified/Screens';
 
 /**
  * PREPARING is the understanding screen while the confirmed reading becomes the
@@ -422,6 +422,9 @@ export function FloorPlanFlow({
     } catch (e) {
       if (e instanceof DesignStudioError && (e.code === 'DS_STILL_WORKING' || e.code === 'DS_WATCH_STOPPED')) return;
       const code = e instanceof DesignStudioError ? e.code : '';
+      // What the server confirmed on the way (the specification) is in the plan's record: the recovery shows it.
+      const stored = await getFloorPlan(plan.id).catch(() => null);
+      if (stored) setPlan(stored);
       // The plan was already read and accepted: a failed design is technical — always "try again", never "a clearer plan".
       setGenFailure({ retryable: true, message: ERROR_KEY[code] ? t(ERROR_KEY[code]) : null });
     } finally {
@@ -467,6 +470,12 @@ export function FloorPlanFlow({
 
   const genSince = useRef(Date.now());
   const onViewResult = useCallback(() => { if (doneVersion) onDone(doneVersion); }, [doneVersion, onDone]);
+  // A failure keeps every finished step on the server: the recovery says which (the specification is recorded once it succeeded).
+  const readyVersion = useReadyResult(projectId, step === 'READ_FAILED' || !!genFailure);
+  const genRecovery: Recovery = latestFlow(plan)?.specJobId
+    ? { done: ['UPLOAD', 'ANALYSIS', 'DESIGN'], resumeAt: 'IMAGE' }
+    : { done: ['UPLOAD', 'ANALYSIS'], resumeAt: 'DESIGN' };
+  const openProject = readyVersion ? () => onDone(readyVersion) : undefined;
 
   const needsDoc = step === 'QUICK' || step === 'REVIEW' || step === 'STYLE' || step === 'QUALITY' || step === 'CUSTOM' || step === 'GENERATING';
   const current = quick[0] ?? null;
@@ -488,7 +497,7 @@ export function FloorPlanFlow({
       ) : null}
 
       {step === 'READ_FAILED' ? (
-        <FailureStep source="PLAN" retryable={readFail?.retryable !== false} message={null} busy={busy}
+        <FailureStep source="PLAN" retryable={readFail?.retryable !== false} message={null} busy={busy} recovery={READING_RECOVERY} onOpenProject={openProject}
           onRetry={() => { void retryReading(); }} onLater={onCancel} onChooseFile={() => { setPlan(null); setReadFail(null); setStep('UPLOAD'); }} />
       ) : null}
 
@@ -546,7 +555,7 @@ export function FloorPlanFlow({
 
       {step === 'GENERATING' ? (
         <GeneratingStep source="PLAN" stage={runStageOf(stages)} since={startFlow?.startedAt ? Date.parse(startFlow.startedAt) : genSince.current}
-          done={!!doneVersion} failure={genFailure} busy={busy}
+          done={!!doneVersion} failure={genFailure} busy={busy} recovery={genRecovery} onOpenProject={openProject}
           onView={onViewResult} onRetry={() => { void generate(savedPrefs(), true); }} onLater={onCancel}
           onChooseFile={() => { setPlan(null); setGenFailure(null); setStep('UPLOAD'); }} />
       ) : null}

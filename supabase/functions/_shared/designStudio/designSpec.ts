@@ -260,6 +260,7 @@ ARCHITECTURE IS IMMUTABLE. Look at the source picture yourself and read HOMATCH'
 - Where the picture and the evidence disagree, do not invent an answer: record the conflict and resolve it conservatively (keep what is drawn or built; never add or remove a room, a door or a window).
 - Questions the reader could not settle are uncertain: say so, keep the element as drawn.
 - Answers the customer gave are authoritative.
+- Room ids: use the ids in HOMATCH's evidence. A space the picture shows that the evidence does not list gets an id of the form visual:short-name (letters, digits, - or _).
 
 THE INTERIOR IS YOURS. Interpret the chosen look and quality for THIS property: furniture and its placement within the rooms, materials, flooring, wall and ceiling treatment, cabinetry, lighting fixtures and composition, palette, textures, textiles, rugs, plants, art and accessories, the visual hierarchy and the premium detailing the quality level deserves. Design every visible room so the home reads as one coherent design, and describe what a top designer would choose for it.
 
@@ -337,22 +338,52 @@ const HEX = /^#[0-9a-f]{6}$/i;
 const clip = (v: unknown, n: number) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n) : '');
 const list = (v: unknown, n: number, each: number) => (Array.isArray(v) ? v.map((x) => clip(x, each)).filter(Boolean).slice(0, n) : []);
 
+const VISUAL_ID = /^visual:[A-Za-z0-9_-]{1,30}$/;
+
+/** "visual:…" for a space the picture shows that the evidence does not list (from the model's id, else its name). */
+function visualId(r: { id: string; name: string }, i: number): string {
+  const slug = (v: string) => v.replace(/^visual:/i, '').normalize('NFKD').replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30);
+  return `visual:${slug(r.id) || slug(r.name) || `space-${i + 1}`}`;
+}
+
 /**
- * The specification, bounded and checked, or null. Room ids must be the
- * evidence's own (or "visual:…" for a space only the picture shows); the image
- * instruction must be substantial; the palette must be real colours.
+ * Why a specification cannot be used (empty when it can). Room ids must be the
+ * evidence's own or "visual:…". A photograph's evidence is partial (one photo
+ * may show the whole home while its reading names one room), so there a space
+ * the evidence does not list is kept as "visual:…"; a floor plan's evidence is
+ * the whole plan, so an invented room there is refused. The image instruction
+ * must be substantial; the palette must be real colours.
  */
-export function validateSpec(raw: unknown, evidence: PropertyEvidence): DesignSpec | null {
+export function specProblems(raw: unknown, evidence: PropertyEvidence): string[] {
   const o = raw as Record<string, any>;
-  if (!o || typeof o !== 'object' || !o.architecture || !o.design || !o.generation) return null;
+  if (!o || typeof o !== 'object' || !o.architecture || !o.design || !o.generation) return ['SECTIONS_MISSING'];
+  const known = new Set(evidence.rooms.map((r) => r.id));
+  const problems: string[] = [];
+  const rooms = Array.isArray(o.architecture.rooms) ? o.architecture.rooms.slice(0, 60) : [];
+  if (!rooms.length) problems.push('NO_ROOMS');
+  if (evidence.sourceKind !== 'PHOTO') {
+    for (const r of rooms) {
+      const id = clip(r?.id, 40);
+      if (!known.has(id) && !VISUAL_ID.test(id)) problems.push(`UNKNOWN_ROOM:${id.slice(0, 30)}`);
+    }
+  }
+  const palette = Array.isArray(o.design.palette) ? o.design.palette.filter((p: any) => HEX.test(p?.hex) && PALETTE_ROLES.includes(p?.role)) : [];
+  if (palette.length < 3) problems.push('PALETTE_TOO_SMALL');
+  if (clip(o.generation.imageInstruction, 12000).length < 200) problems.push('INSTRUCTION_TOO_SHORT');
+  return problems.slice(0, 12);
+}
+
+/** The specification, bounded and checked, or null (specProblems says why). */
+export function validateSpec(raw: unknown, evidence: PropertyEvidence): DesignSpec | null {
+  if (specProblems(raw, evidence).length) return null;
+  const o = raw as Record<string, any>;
   const known = new Set(evidence.rooms.map((r) => r.id));
   const a = o.architecture; const d = o.design; const g = o.generation;
-  const rooms = Array.isArray(a.rooms) ? a.rooms.slice(0, 60).map((r: any) => ({ id: clip(r?.id, 40), name: clip(r?.name, 60), kind: clip(r?.kind, 20), keep: clip(r?.keep, 300) })) : [];
-  if (rooms.some((r: { id: string }) => !known.has(r.id) && !/^visual:[A-Za-z0-9_-]{1,30}$/.test(r.id))) return null;
-  const palette = Array.isArray(d.palette) ? d.palette.slice(0, 12).filter((p: any) => HEX.test(p?.hex) && PALETTE_ROLES.includes(p?.role)).map((p: any) => ({ name: clip(p.name, 40), hex: String(p.hex).toLowerCase(), role: p.role })) : [];
+  const rooms = a.rooms.slice(0, 60).map((r: any) => ({ id: clip(r?.id, 40), name: clip(r?.name, 60), kind: clip(r?.kind, 20), keep: clip(r?.keep, 300) }))
+    .map((r: { id: string; name: string; kind: string; keep: string }, i: number) => (known.has(r.id) || VISUAL_ID.test(r.id) ? r : { ...r, id: visualId(r, i) }));
+  const palette = d.palette.slice(0, 12).filter((p: any) => HEX.test(p?.hex) && PALETTE_ROLES.includes(p?.role)).map((p: any) => ({ name: clip(p.name, 40), hex: String(p.hex).toLowerCase(), role: p.role }));
   const lighting = d.lighting ?? {};
   const instruction = clip(g.imageInstruction, 12000);
-  if (instruction.length < 200 || palette.length < 3 || !rooms.length) return null;
   return {
     architecture: {
       sourceReading: clip(a.sourceReading, 600), immutable: list(a.immutable, 40, 300), rooms,

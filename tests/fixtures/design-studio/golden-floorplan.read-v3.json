@@ -1,0 +1,112 @@
+{
+  "note": "Production ds-read-2 reading of golden-floorplan.1bit.png (2026-10-03, the 1-bit PNG a customer uploaded). rawDoc and dimensionStrings exactly as the model returned them; title-block contact/title texts and the storage path removed (personal data, irrelevant to geometry).",
+  "readVersion": "ds-read-2",
+  "rawDoc": {
+    "doors": [
+      {"id": "d1", "leaf": "FRENCH", "state": "UNVERIFIED", "wallId": "w1", "heightM": null, "widthPx": 54, "centerPx": {"x": 389, "y": 115}, "evidence": "Double door arcs opening to balcony", "position": 0.5222551928783383, "confidence": 0.86, "sillHeightM": null, "swingRoomId": "BALCONY"},
+      {"id": "d2", "leaf": "DOUBLE", "state": "UNVERIFIED", "wallId": "w7", "heightM": null, "widthPx": 55, "centerPx": {"x": 389, "y": 332}, "evidence": "Double swing arcs between bedrooms", "position": 0.8857142857142857, "confidence": 0.82, "sillHeightM": null, "swingRoomId": "BEDROOM"},
+      {"id": "d3", "leaf": "HINGED", "state": "UNVERIFIED", "wallId": "w14", "heightM": null, "widthPx": 52, "centerPx": {"x": 348, "y": 665}, "evidence": "Single swing at stair/living side", "position": 0.8333333333333334, "confidence": 0.78, "sillHeightM": null, "swingRoomId": "LIVING"},
+      {"id": "d4", "leaf": "HINGED", "state": "UNVERIFIED", "wallId": "w16", "heightM": null, "widthPx": 53, "centerPx": {"x": 522, "y": 681}, "evidence": "Door between living and porch", "position": 1, "confidence": 0.8, "sillHeightM": null, "swingRoomId": "LIVING"},
+      {"id": "d5", "leaf": "HINGED", "state": "UNVERIFIED", "wallId": "w17", "heightM": null, "widthPx": 39, "centerPx": {"x": 375, "y": 680}, "evidence": "Opening at kitchen/porch corner", "position": 0, "confidence": 0.65, "sillHeightM": null, "swingRoomId": "KITCHEN+DÍNING"}
+    ],
+    "rooms": [
+      {"id": "r1", "kind": "LIVING", "label": "LIVING", "state": "UNVERIFIED", "polygon": [{"x": 358, "y": 357}, {"x": 550, "y": 357}, {"x": 550, "y": 699}, {"x": 375, "y": 699}, {"x": 375, "y": 628}, {"x": 356, "y": 628}, {"x": 356, "y": 511}, {"x": 358, "y": 511}], "evidence": "Printed room label and enclosing walls", "confidence": 0.82, "statedAreaM2": null, "dimensionText": "10'X20'"},
+      {"id": "r2", "kind": "BEDROOM", "label": "MASTER BEDROOM", "state": "UNVERIFIED", "polygon": [{"x": 214, "y": 116}, {"x": 388, "y": 116}, {"x": 388, "y": 355}, {"x": 214, "y": 355}], "evidence": "Printed room label and dimensions", "confidence": 0.92, "statedAreaM2": null, "dimensionText": "10'X14'"},
+      {"id": "r3", "kind": "BEDROOM", "label": "BEDROOM", "state": "UNVERIFIED", "polygon": [{"x": 390, "y": 116}, {"x": 549, "y": 116}, {"x": 549, "y": 355}, {"x": 390, "y": 355}], "evidence": "Printed room label and dimensions", "confidence": 0.92, "statedAreaM2": null, "dimensionText": "8'X14'"},
+      {"id": "r4", "kind": "KITCHEN", "label": "KITCHEN+DÍNING", "state": "UNVERIFIED", "polygon": [{"x": 214, "y": 630}, {"x": 374, "y": 630}, {"x": 374, "y": 839}, {"x": 214, "y": 839}], "evidence": "Printed room label and dimensions", "confidence": 0.8, "statedAreaM2": null, "dimensionText": "9'X12'"},
+      {"id": "r5", "kind": "TERRACE", "label": "PORCH", "state": "UNVERIFIED", "polygon": [{"x": 376, "y": 700}, {"x": 549, "y": 700}, {"x": 549, "y": 839}, {"x": 376, "y": 839}], "evidence": "Printed room label and dimensions", "confidence": 0.8, "statedAreaM2": null, "dimensionText": "10'X8'"},
+      {"id": "r6", "kind": "STORAGE", "label": "WASH", "state": "UNVERIFIED", "polygon": [{"x": 214, "y": 357}, {"x": 326, "y": 357}, {"x": 326, "y": 432}, {"x": 214, "y": 432}], "evidence": "Printed room label and dimensions", "confidence": 0.85, "statedAreaM2": null, "dimensionText": "6'-4\"X4'-3\""},
+      {"id": "r7", "kind": "WC", "label": "LET", "state": "UNVERIFIED", "polygon": [{"x": 214, "y": 434}, {"x": 277, "y": 434}, {"x": 277, "y": 510}, {"x": 214, "y": 510}], "evidence": "Printed room label and dimensions", "confidence": 0.82, "statedAreaM2": null, "dimensionText": "3'-6\"X4'"},
+      {"id": "r8", "kind": "BATHROOM", "label": "BATH", "state": "UNVERIFIED", "polygon": [{"x": 279, "y": 434}, {"x": 355, "y": 434}, {"x": 355, "y": 510}, {"x": 279, "y": 510}], "evidence": "Printed room label and dimensions", "confidence": 0.86, "statedAreaM2": null, "dimensionText": "4'X4'"}
+    ],
+    "texts": [
+      {"id": "t1", "box": {"h": 10, "w": 43, "x": 367, "y": 29}, "role": "DIMENSION", "text": "20'-0\"", "roomId": null, "confidence": 0.9},
+      {"id": "t2", "box": {"h": 11, "w": 56, "x": 367, "y": 70}, "role": "ROOM_LABEL", "text": "BALCONY", "roomId": "r9", "confidence": 0.98},
+      {"id": "t3", "box": {"h": 10, "w": 34, "x": 378, "y": 84}, "role": "DIMENSION", "text": "3'X20'", "roomId": "r9", "confidence": 0.95},
+      {"id": "t4", "box": {"h": 12, "w": 102, "x": 268, "y": 228}, "role": "ROOM_LABEL", "text": "MASTER BEDROOM", "roomId": "r2", "confidence": 0.98},
+      {"id": "t5", "box": {"h": 10, "w": 40, "x": 302, "y": 243}, "role": "DIMENSION", "text": "10'X14'", "roomId": "r2", "confidence": 0.98},
+      {"id": "t6", "box": {"h": 12, "w": 58, "x": 432, "y": 228}, "role": "ROOM_LABEL", "text": "BEDROOM", "roomId": "r3", "confidence": 0.98},
+      {"id": "t7", "box": {"h": 10, "w": 35, "x": 451, "y": 243}, "role": "DIMENSION", "text": "8'X14'", "roomId": "r3", "confidence": 0.98},
+      {"id": "t8", "box": {"h": 11, "w": 37, "x": 255, "y": 379}, "role": "ROOM_LABEL", "text": "WASH", "roomId": "r6", "confidence": 0.98},
+      {"id": "t9", "box": {"h": 11, "w": 62, "x": 243, "y": 394}, "role": "DIMENSION", "text": "6'-4\"X4'-3\"", "roomId": "r6", "confidence": 0.93},
+      {"id": "t10", "box": {"h": 10, "w": 19, "x": 240, "y": 434}, "role": "ROOM_LABEL", "text": "LET", "roomId": "r7", "confidence": 0.98},
+      {"id": "t11", "box": {"h": 10, "w": 48, "x": 224, "y": 448}, "role": "DIMENSION", "text": "3'-6\"X4'", "roomId": "r7", "confidence": 0.93},
+      {"id": "t12", "box": {"h": 11, "w": 34, "x": 299, "y": 461}, "role": "ROOM_LABEL", "text": "BATH", "roomId": "r8", "confidence": 0.98},
+      {"id": "t13", "box": {"h": 10, "w": 27, "x": 303, "y": 476}, "role": "DIMENSION", "text": "4'X4'", "roomId": "r8", "confidence": 0.98},
+      {"id": "t14", "box": {"h": 11, "w": 44, "x": 443, "y": 491}, "role": "ROOM_LABEL", "text": "LIVING", "roomId": "r1", "confidence": 0.98},
+      {"id": "t15", "box": {"h": 10, "w": 43, "x": 443, "y": 505}, "role": "DIMENSION", "text": "10'X20'", "roomId": "r1", "confidence": 0.98},
+      {"id": "t16", "box": {"h": 11, "w": 18, "x": 385, "y": 597}, "role": "NOTE", "text": "UP", "roomId": null, "confidence": 0.98},
+      {"id": "t17", "box": {"h": 12, "w": 93, "x": 241, "y": 739}, "role": "ROOM_LABEL", "text": "KITCHEN+DINING", "roomId": "r4", "confidence": 0.95},
+      {"id": "t18", "box": {"h": 10, "w": 37, "x": 269, "y": 754}, "role": "DIMENSION", "text": "9'X12'", "roomId": "r4", "confidence": 0.98},
+      {"id": "t19", "box": {"h": 11, "w": 45, "x": 428, "y": 756}, "role": "ROOM_LABEL", "text": "PORCH", "roomId": "r5", "confidence": 0.98},
+      {"id": "t20", "box": {"h": 10, "w": 35, "x": 434, "y": 771}, "role": "DIMENSION", "text": "10'X8'", "roomId": "r5", "confidence": 0.98},
+      {"id": "t21", "box": {"h": 11, "w": 10, "x": 207, "y": 57}, "role": "NORTH", "text": "N", "roomId": null, "confidence": 0.9},
+      {"id": "t22", "box": {"h": 12, "w": 12, "x": 643, "y": 28}, "role": "NORTH", "text": "W", "roomId": null, "confidence": 0.99},
+      {"id": "t23", "box": {"h": 12, "w": 10, "x": 645, "y": 108}, "role": "NORTH", "text": "E", "roomId": null, "confidence": 0.99},
+      {"id": "t24", "box": {"h": 12, "w": 10, "x": 606, "y": 68}, "role": "NORTH", "text": "S", "roomId": null, "confidence": 0.99},
+      {"id": "t25", "box": {"h": 12, "w": 10, "x": 683, "y": 68}, "role": "NORTH", "text": "N", "roomId": null, "confidence": 0.99}
+    ],
+    "walls": [
+      {"id": "w1", "end": {"x": 550, "y": 115}, "kind": "EXTERIOR", "start": {"x": 213, "y": 115}, "state": "UNVERIFIED", "evidence": "Upper exterior wall line", "confidence": 0.9, "thicknessPx": 6},
+      {"id": "w2", "end": {"x": 213, "y": 840}, "kind": "EXTERIOR", "start": {"x": 213, "y": 115}, "state": "UNVERIFIED", "evidence": "Left exterior wall", "confidence": 0.95, "thicknessPx": 6},
+      {"id": "w3", "end": {"x": 550, "y": 790}, "kind": "EXTERIOR", "start": {"x": 550, "y": 115}, "state": "UNVERIFIED", "evidence": "Right exterior wall", "confidence": 0.93, "thicknessPx": 6},
+      {"id": "w4", "end": {"x": 375, "y": 840}, "kind": "EXTERIOR", "start": {"x": 213, "y": 840}, "state": "UNVERIFIED", "evidence": "Kitchen lower exterior wall", "confidence": 0.9, "thicknessPx": 6},
+      {"id": "w5", "end": {"x": 337, "y": 356}, "kind": "INTERIOR", "start": {"x": 213, "y": 356}, "state": "UNVERIFIED", "evidence": "Bedroom and wash partition", "confidence": 0.9, "thicknessPx": 6},
+      {"id": "w6", "end": {"x": 550, "y": 356}, "kind": "INTERIOR", "start": {"x": 445, "y": 356}, "state": "UNVERIFIED", "evidence": "Bedroom and living partition", "confidence": 0.88, "thicknessPx": 6},
+      {"id": "w7", "end": {"x": 389, "y": 360}, "kind": "INTERIOR", "start": {"x": 389, "y": 115}, "state": "UNVERIFIED", "evidence": "Bedroom dividing wall", "confidence": 0.92, "thicknessPx": 7},
+      {"id": "w8", "end": {"x": 327, "y": 421}, "kind": "INTERIOR", "start": {"x": 327, "y": 356}, "state": "UNVERIFIED", "evidence": "Washroom partition", "confidence": 0.8, "thicknessPx": 6},
+      {"id": "w9", "end": {"x": 356, "y": 433}, "kind": "INTERIOR", "start": {"x": 327, "y": 433}, "state": "UNVERIFIED", "evidence": "Bath partition", "confidence": 0.76, "thicknessPx": 6},
+      {"id": "w10", "end": {"x": 356, "y": 511}, "kind": "INTERIOR", "start": {"x": 356, "y": 433}, "state": "UNVERIFIED", "evidence": "Bath and living partition", "confidence": 0.85, "thicknessPx": 6},
+      {"id": "w11", "end": {"x": 237, "y": 433}, "kind": "INTERIOR", "start": {"x": 213, "y": 433}, "state": "UNVERIFIED", "evidence": "Wash and toilet partition", "confidence": 0.8, "thicknessPx": 6},
+      {"id": "w12", "end": {"x": 278, "y": 511}, "kind": "INTERIOR", "start": {"x": 278, "y": 433}, "state": "UNVERIFIED", "evidence": "Toilet partition", "confidence": 0.85, "thicknessPx": 6},
+      {"id": "w13", "end": {"x": 356, "y": 511}, "kind": "INTERIOR", "start": {"x": 213, "y": 511}, "state": "UNVERIFIED", "evidence": "Lower bathroom and stair boundary", "confidence": 0.9, "thicknessPx": 6},
+      {"id": "w14", "end": {"x": 375, "y": 628}, "kind": "INTERIOR", "start": {"x": 213, "y": 628}, "state": "UNVERIFIED", "evidence": "Stair and kitchen boundary", "confidence": 0.84, "thicknessPx": 6},
+      {"id": "w15", "end": {"x": 375, "y": 699}, "kind": "INTERIOR", "start": {"x": 375, "y": 628}, "state": "UNVERIFIED", "evidence": "Kitchen side wall", "confidence": 0.82, "thicknessPx": 6},
+      {"id": "w16", "end": {"x": 496, "y": 699}, "kind": "INTERIOR", "start": {"x": 375, "y": 699}, "state": "UNVERIFIED", "evidence": "Porch upper boundary", "confidence": 0.82, "thicknessPx": 6},
+      {"id": "w17", "end": {"x": 375, "y": 840}, "kind": "EXTERIOR", "start": {"x": 375, "y": 699}, "state": "UNVERIFIED", "evidence": "Kitchen/porch separation", "confidence": 0.8, "thicknessPx": 6},
+      {"id": "w18", "end": {"x": 375, "y": 840}, "kind": "EXTERIOR", "start": {"x": 213, "y": 840}, "state": "UNVERIFIED", "evidence": "Lower kitchen wall", "confidence": 0.9, "thicknessPx": 6},
+      {"id": "w19", "end": {"x": 213, "y": 628}, "kind": "INTERIOR", "start": {"x": 213, "y": 511}, "state": "UNVERIFIED", "evidence": "Stair enclosure edge", "confidence": 0.78, "thicknessPx": 6}
+    ],
+    "stairs": [
+      {"id": "s1", "state": "UNVERIFIED", "treads": 9, "polygon": [{"x": 214, "y": 511}, {"x": 356, "y": 511}, {"x": 356, "y": 628}, {"x": 214, "y": 628}], "evidence": "UP label and repeated tread lines", "direction": "UP", "startEdge": [{"x": 356, "y": 574}, {"x": 356, "y": 628}], "confidence": 0.86}
+    ],
+    "ignored": [
+      {"id": "i1", "box": {"h": 968, "w": 690, "x": 23, "y": 15}, "note": "Rounded drawing-sheet border", "role": "BORDER"},
+      {"id": "i2", "box": {"h": 95, "w": 93, "x": 600, "y": 26}, "note": "Compass graphic with cardinal labels", "role": "COMPASS"},
+      {"id": "i3", "box": {"h": 825, "w": 380, "x": 180, "y": 28}, "note": "Dimension extension and witness lines", "role": "DIMENSION_LINES"},
+      {"id": "i4", "box": {"h": 70, "w": 650, "x": 45, "y": 898}, "note": "Bottom title and information block", "role": "TITLE_BLOCK"},
+      {"id": "i5", "box": {"h": 67, "w": 207, "x": 47, "y": 900}, "note": "Logo and company mark", "role": "LOGO"}
+    ],
+    "windows": [
+      {"id": "win1", "leaf": "FIXED", "state": "UNVERIFIED", "wallId": "w1", "heightM": null, "widthPx": 82, "centerPx": {"x": 274, "y": 115}, "evidence": "Window marking in upper left exterior wall", "position": 0.18100890207715134, "confidence": 0.72, "sillHeightM": null, "swingRoomId": null},
+      {"id": "win2", "leaf": "FIXED", "state": "UNVERIFIED", "wallId": "w1", "heightM": null, "widthPx": 79, "centerPx": {"x": 497, "y": 115}, "evidence": "Window marking in upper right exterior wall", "position": 0.8427299703264095, "confidence": 0.72, "sillHeightM": null, "swingRoomId": null},
+      {"id": "win3", "leaf": "FIXED", "state": "UNVERIFIED", "wallId": "w5", "heightM": null, "widthPx": 109, "centerPx": {"x": 274, "y": 356}, "evidence": "Window-like line in partition", "position": 0.49193548387096775, "confidence": 0.68, "sillHeightM": null, "swingRoomId": null},
+      {"id": "win4", "leaf": "FIXED", "state": "UNVERIFIED", "wallId": "w6", "heightM": null, "widthPx": 79, "centerPx": {"x": 496, "y": 356}, "evidence": "Window-like line in partition", "position": 0.4857142857142857, "confidence": 0.68, "sillHeightM": null, "swingRoomId": null},
+      {"id": "win5", "leaf": "FIXED", "state": "UNVERIFIED", "wallId": "w4", "heightM": null, "widthPx": 66, "centerPx": {"x": 292, "y": 840}, "evidence": "Lower exterior window marking", "position": 0.4876543209876543, "confidence": 0.65, "sillHeightM": null, "swingRoomId": null}
+    ],
+    "northDeg": 0,
+    "warnings": [
+      {"code": "GEOMETRY_AMBIGUOUS", "detail": "Some window symbols are represented by short parallel line marks without a clear sash type.", "elementId": "win1"}
+    ],
+    "balconies": [
+      {"id": "r9", "kind": "BALCONY", "label": "BALCONY", "state": "UNVERIFIED", "polygon": [{"x": 213, "y": 80}, {"x": 550, "y": 80}, {"x": 550, "y": 114}, {"x": 213, "y": 114}], "evidence": "Printed balcony label and upper boundary", "confidence": 0.78, "statedAreaM2": null, "dimensionText": "3'X20'"}
+    ],
+    "footprint": [{"x": 212, "y": 112}, {"x": 552, "y": 112}, {"x": 552, "y": 791}, {"x": 550, "y": 840}, {"x": 375, "y": 840}, {"x": 212, "y": 840}],
+    "imageWidth": 736,
+    "imageHeight": 998,
+    "ceilingHeight": null,
+    "detectedScale": 0.0181,
+    "scaleEvidence": "Printed 20'-0\" dimension spans approximately 337 px across the plan.",
+    "sourceAssetId": "fixture",
+    "scaleConfidence": 0.82,
+    "unknownElements": [
+      {"id": "u1", "note": "Dashed horizontal and vertical lines around the plan, likely dimension/reference lines; exact drafting purpose unclear.", "confidence": 0.7}
+    ],
+    "ceilingHeightSource": null,
+    "extractionConfidence": 0.65
+  },
+  "dimensionStrings": [
+    {"to": {"x": 550, "y": 38}, "from": {"x": 213, "y": 38}, "text": "20'-0\"", "valueM": 6.096, "evidence": "Top overall dimension", "confidence": 0.86},
+    {"to": {"x": 184, "y": 840}, "from": {"x": 184, "y": 115}, "text": "44'-8\"", "valueM": 13.6144, "evidence": "Vertical overall dimension", "confidence": 0.62}
+  ]
+}

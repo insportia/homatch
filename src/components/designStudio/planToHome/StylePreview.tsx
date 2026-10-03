@@ -12,8 +12,8 @@ const FLOOR: Record<string, [string, string]> = {
   LIGHT_WOOD: ['#d9bf98', '#c8ab82'], DARK_WOOD: ['#6b4a32', '#57391f'], STONE: ['#d3cec5', '#bdb7ad'],
   MARBLE: ['#efece8', '#d6d0c8'], CONCRETE: ['#b9b9b6', '#a3a3a0'], TILE: ['#e8e6e1', '#cfccc5'],
 };
-const WALL: Record<string, string> = { WARM_WHITE: '#f4eee3', COOL_WHITE: '#eef1f4', GREIGE: '#d9d2c7', PLASTER: '#e7dccd', DEEP: '#4b5a5c' };
-const METAL: Record<string, string> = { BLACK_METAL: '#1d1f22', BRASS: '#b08d57', CHROME: '#b9bfc5', NATURAL_WOOD: '#a77b52' };
+const WALL: Record<string, string> = { WARM_WHITE: '#f4eee3', COOL_WHITE: '#eef1f4', GREIGE: '#d9d2c7', PLASTER: '#e7dccd', SAGE: '#c9d1c0', SKY: '#d6e0e8', BLUSH: '#ead7d0', TERRACOTTA: '#c27a5a', DEEP: '#4b5a5c' };
+const METAL: Record<string, string> = { BLACK_METAL: '#1d1f22', BRASS: '#b08d57', COPPER: '#b06f45', BRONZE: '#6f5235', CHROME: '#b9bfc5', MATTE_WHITE: '#efefec', NATURAL_WOOD: '#a77b52' };
 
 export function StylePreview({ style, className }: { style: LookStyle; className?: string }) {
   const p = lookPreferences(style, 'HIGH_QUALITY');

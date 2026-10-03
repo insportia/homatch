@@ -13,6 +13,7 @@ import { STYLE_CODES, STYLE_SWATCHES } from '@/lib/designStudio/grammar';
 import {
   ACCENTS, FLOOR_DIRECTIONS, FURNISHING_LEVELS, MOODS, PALETTES, WALL_DIRECTIONS, type DesignPreferences,
 } from '@/lib/designStudio/planToHome';
+import { isPresetBrief } from '@/lib/designStudio/lookPresets';
 import { cn } from '@/lib/utils';
 
 /** What each material direction looks like, drawn (never a photo that could pass for the result). */
@@ -24,8 +25,12 @@ export const FLOOR_SWATCH: Record<string, string> = {
   CONCRETE: 'radial-gradient(circle at 70% 40%,#b9b9b6,#9d9d9a)',
   TILE: 'repeating-linear-gradient(0deg,#e8e6e1 0 18px,#cfccc5 18px 19px),repeating-linear-gradient(90deg,transparent 0 18px,#cfccc5 18px 19px)',
 };
-export const WALL_SWATCH: Record<string, string> = { WARM_WHITE: '#f6f1e7', COOL_WHITE: '#f2f4f6', GREIGE: '#d9d2c7', PLASTER: '#e7dccd', DEEP: '#4b5a5c' };
-export const ACCENT_SWATCH: Record<string, string> = { BLACK_METAL: '#1d1f22', BRASS: '#b08d57', CHROME: '#c7ccd1', NATURAL_WOOD: '#a77b52' };
+export const WALL_SWATCH: Record<string, string> = {
+  WARM_WHITE: '#f6f1e7', COOL_WHITE: '#f2f4f6', GREIGE: '#d9d2c7', PLASTER: '#e7dccd', SAGE: '#c9d1c0', SKY: '#d6e0e8', BLUSH: '#ead7d0', TERRACOTTA: '#c27a5a', DEEP: '#4b5a5c',
+};
+export const ACCENT_SWATCH: Record<string, string> = {
+  BLACK_METAL: '#1d1f22', BRASS: '#b08d57', COPPER: '#b06f45', BRONZE: '#6f5235', CHROME: '#c7ccd1', MATTE_WHITE: '#efefec', NATURAL_WOOD: '#a77b52',
+};
 const MOOD_SWATCH: Record<string, [string, string]> = {
   WARM: ['#f3d9b1', '#c98b55'], BRIGHT: ['#ffffff', '#dfe9f2'], CALM: ['#dfe7e3', '#a9bdb5'], DRAMATIC: ['#2b2f36', '#8a6b4a'],
   NATURAL: ['#e4dccb', '#8e9b74'], ELEGANT: ['#ece6dd', '#6d5a4a'], COZY: ['#e9cfb5', '#8c5a3c'],
@@ -56,6 +61,8 @@ export function DesignChooser({ value, onChange, onGenerate, busy, onBack, price
 }) {
   const { t } = useLanguage();
   const set = <K extends keyof DesignPreferences>(k: K, v: DesignPreferences[K]) => onChange({ ...value, [k]: v });
+  // Only what the customer wrote is shown: a look's own words (saved by an older page) are HOMATCH's, never theirs.
+  const brief = isPresetBrief(value.brief) ? '' : value.brief;
   const swatch = (on: boolean) => cn('relative flex flex-col items-stretch gap-1.5 rounded-xl p-1.5 text-start text-[13px] font-medium transition-shadow', RING,
     on ? 'ring-2 ring-[#0C1119]' : 'ring-1 ring-[#E1E4E8] hover:ring-[#9AA1AD]');
 
@@ -163,7 +170,7 @@ export function DesignChooser({ value, onChange, onGenerate, busy, onBack, price
           <label className="block">
             <span className="mb-2.5 block text-[13px] font-semibold uppercase tracking-[0.1em] text-[#4A5263]">{t(value.style === null ? 'p2h_brief_custom' : 'p2h_brief')}</span>
             <textarea
-              value={value.brief} maxLength={600} rows={3}
+              value={brief} maxLength={600} rows={3}
               onChange={(e) => set('brief', e.target.value)}
               placeholder={t('p2h_brief_placeholder')}
               className="w-full rounded-xl border border-[#D5D9E0] bg-white px-3.5 py-3 text-[15px] leading-relaxed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]"
@@ -182,7 +189,7 @@ export function DesignChooser({ value, onChange, onGenerate, busy, onBack, price
         ) : null}
         <div className="mx-auto flex w-full max-w-3xl items-center gap-2 p-4 sm:px-6">
           <button type="button" onClick={onBack} className={cn('h-12 rounded-xl border border-[#D5D9E0] px-4 text-[15px] font-medium hover:bg-[#F4F5F7]', RING)}>{t('p2h_back_to_plan')}</button>
-          <button type="button" onClick={onGenerate} disabled={busy || !price || (value.style === null && value.brief.trim().length < 3)}
+          <button type="button" onClick={onGenerate} disabled={busy || !price || (value.style === null && brief.trim().length < 3)}
             className={cn('inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-[hsl(38_92%_56%)] px-5 text-[16px] font-semibold text-[#0C1119] hover:bg-[hsl(38_92%_50%)] disabled:opacity-50', RING)}
             data-testid="design-generate">
             <Sparkles className="h-5 w-5" aria-hidden="true" />{price ? t('p2h_generate_credits', { credits: String(price.credits) }) : t('p2h_generate')}

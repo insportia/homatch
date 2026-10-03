@@ -255,10 +255,10 @@ function wireGeneration(page, store) {
       if (job.input.then && !chain.renderId) {
         const roomId = job.input.mode === 'ROOM' ? job.input.roomId : null;
         const row = {
-          id: randomUUID(), project_id: job.project_id, user_id: 'hm1', version_id: chain.versionId, kind: roomId ? 'ROOM' : 'MASTER', parent_id: job.input.parentRenderId ?? null,
+          id: randomUUID(), project_id: job.project_id, user_id: 'hm1', version_id: chain.versionId, kind: roomId ? 'ROOM' : 'MASTER', parent_id: null, // the table: kind = EDIT exactly when parent_id is set
           view: { id: roomId ? `room-${roomId}` : 'master', kind: roomId ? 'ROOM' : 'MASTER', purpose: roomId ? 'MAIN' : 'DOLLHOUSE', roomId, generator: 'OPENAI', mode: job.input.mode },
           status: 'QUEUED', factory_job_id: null, base_key: null, map_key: null, final_key: null, legend: null,
-          finish: { generator: 'OPENAI_FIRST', mode: job.input.mode, specJobId: job.id, sourceKey: job.output.sourceKey, roomId, look: job.input.look, provider: 'OPENAI', model: null, check: null }, edit: null,
+          finish: { generator: 'OPENAI_FIRST', mode: job.input.mode, specJobId: job.id, sourceKey: job.output.sourceKey, parentRenderId: job.input.parentRenderId ?? null, roomId, look: job.input.look, provider: 'OPENAI', model: null, check: null }, edit: null,
           billing: { credits: 6, reservationId: null, state: 'NOT_CHARGED' }, error: null, idempotency_key: `chain-${job.id}`, created_at: now(), updated_at: now(),
         };
         store.db.ds_renders.push(row);

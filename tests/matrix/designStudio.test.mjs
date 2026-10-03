@@ -856,6 +856,53 @@ test('a design that did not finish: the recovery shows the server\'s real state 
   assert.match(code('src/services/designStudio/designRun.ts'), /renderId = await renderDirectly\(input, versionId, progress\.specJobId, attempt\)/);
 });
 
+test('a variant, a style, a quality or a room can be recorded: parent_id belongs to edits alone', () => {
+  // Production, 2026-10-03: every VARIANT and ROOM render was refused by the table (RENDER_NOT_RECORDED), because
+  // ds_renders holds kind = 'EDIT' exactly when parent_id is set, and the generated render set parent_id.
+  assert.match(read('supabase/migrations/20261007120000_design_studio_renders.sql'), /\(kind = 'EDIT'\) = \(parent_id IS NOT NULL\)/);
+  const gen = code('supabase/functions/design-studio-reconstruct/generate.ts');
+  assert.match(gen, /kind: view\.kind, view, status: 'QUEUED', parent_id: null,/);
+  assert.match(gen, /parentRenderId: parent\?\.id \?\? null/, 'the approved picture is recorded in finish');
+  assert.match(gen, /const parentId = row\.parent_id \?\? row\.finish\?\.parentRenderId \?\? null;/, 'and read from there');
+  assert.doesNotMatch(gen, /kind: view\.kind[^\n]*parent_id: parent/);
+  // A Result generation that did not finish is asked again with the SAME key (resumed, never paid twice).
+  const result = code('src/components/designStudio/unified/DesignResult.tsx');
+  assert.match(result, /void generate\(failedRun, true\)/);
+  assert.match(result, /status=\{working \? 'PROCESSING' : failedRun \? 'FAILED' : 'READY'\}/, 'Snake never calls a failure ready');
+});
+
+test('the customer never sees HOMATCH\'s prompt words; the look\'s words reach the designer from the server', () => {
+  const looks = code('src/lib/designStudio/lookPresets.ts');
+  assert.match(looks, /furnishing: q\.furnishing,\s*brief: '',/, 'a look leaves the customer\'s brief empty');
+  assert.match(code('src/components/designStudio/planToHome/DesignChooser.tsx'), /const brief = isPresetBrief\(value\.brief\) \? '' : value\.brief;/);
+  assert.match(code('src/components/designStudio/planToHome/DesignChooser.tsx'), /value=\{brief\}/);
+  const spec = code('supabase/functions/_shared/designStudio/designSpec.ts');
+  assert.match(spec, /const words = d\.look \? lookWords\(d\.look\.style, d\.look\.quality\) : null;/);
+  assert.match(spec, /const brief = isPresetBrief\(p\.brief\) \? '' : p\.brief;/);
+  // "Customise details" is a premium way in, not a small link.
+  assert.match(code('src/components/designStudio/planToHome/SimpleSteps.tsx'), /data-testid="look-customize"[\s\S]{0,40}|onClick=\{onCustomize\}\s*className=\{cn\('group flex w-full/);
+  // More colours, the same list in the browser and on the server.
+  for (const f of ['src/lib/designStudio/planToHome.ts', 'supabase/functions/_shared/designStudio/designIntent.ts']) {
+    assert.match(code(f), /WALL_DIRECTIONS = \['WARM_WHITE', 'COOL_WHITE', 'GREIGE', 'PLASTER', 'SAGE', 'SKY', 'BLUSH', 'TERRACOTTA', 'DEEP'\]/, f);
+    assert.match(code(f), /ACCENTS = \['BLACK_METAL', 'BRASS', 'COPPER', 'BRONZE', 'CHROME', 'MATTE_WHITE', 'NATURAL_WOOD'\]/, f);
+  }
+});
+
+test('Snake: "Play again" is a real button press (the board never captures a press on a button); it is offered while a 3D tour is built', () => {
+  assert.match(code('src/components/games/SnakeGame.tsx'), /if \(e\.target instanceof Element && e\.target\.closest\('button'\)\) return;\s*gesture\.current =/);
+  const walk = code('src/components/designStudio/unified/WalkthroughPanel.tsx');
+  assert.match(walk, /lazy\(\(\) => import\('@\/components\/games\/SnakeGame'\)\)/);
+  assert.match(walk, /status=\{walk\.state === 'READY' \? 'READY' : walk\.state === 'FAILED' \|\| walk\.state === 'CANCELLED' \? 'FAILED' : 'PROCESSING'\}/);
+});
+
+test('a walkthrough link opens the walkthrough: it never resumes a design under way', () => {
+  // Production, project 9a747384: a later plan's run left at GENERATING sent "open the 3D tour" back through
+  // analysis, direction and design.
+  const page = code('src/pages/designStudio/DesignStudioWorkspacePage.tsx');
+  assert.match(page, /if \(!photoDone && !walkthroughRoute\) \{ setResumePhoto\(photo\); setPhotoFlow\(true\); \}/);
+  assert.match(page, /if \(unfinished && !walkthroughRoute\) \{ setResumePlan\(plan\);/);
+});
+
 test('the protected edit pipeline (PR #65) is untouched; the 3D walkthrough is the server-built one', () => {
   // The legacy browser-driven walkthrough stays held back.
   assert.match(code('src/lib/designStudio/walkthroughOffer.ts'), /export const WALKTHROUGH_OFFERED = false;/);

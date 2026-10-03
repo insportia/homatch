@@ -10,7 +10,7 @@
 // ("Customise details") are a quiet link away.
 
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, ArrowRight, Check, Loader2, RefreshCw, Sparkles } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, ChevronRight, Loader2, RefreshCw, Sparkles } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { FloorPlanDocument } from '@/services/developer/floorplan';
 import type { PlanAnswer, PlanQuestion } from '@/lib/designStudio/planToHome';
@@ -142,7 +142,19 @@ export function QualityStep({ value, onChange, onBack, onGenerate, onCustomize, 
   const { t } = useLanguage();
   return (
     <Screen wide center eyebrow={t('dsx_ql_eyebrow')} title={t('dsx_ql_title')} body={t('dsx_ql_body')} onBack={onBack} testId="look-quality"
-      aside={onCustomize ? <button type="button" onClick={onCustomize} className={QUIET} data-testid="look-customize">{t('sf_customize')}</button> : undefined}
+      aside={onCustomize ? (
+        // The way to say it in one's own words: easy to see, premium, never a small link.
+        <button type="button" onClick={onCustomize}
+          className={cn('group flex w-full items-center gap-4 rounded-[22px] bg-[#0C1119] p-4 text-start text-white shadow-[0_18px_40px_-24px_rgba(12,17,25,0.6)] ring-1 ring-[hsl(38_92%_56%)]/35 transition-transform hover:-translate-y-0.5 sm:max-w-xl sm:p-5', RING)}
+          data-testid="look-customize">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[hsl(38_92%_56%)] text-[#0C1119]" aria-hidden="true"><Sparkles className="h-5 w-5" /></span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[16px] font-semibold">{t('sf_customize')}</span>
+            <span className="mt-0.5 block text-[13px] leading-snug text-white/70">{t('dsx_customize_sub')}</span>
+          </span>
+          <ChevronRight className="h-5 w-5 shrink-0 text-[hsl(38_92%_62%)] transition-transform group-hover:translate-x-0.5 rtl:rotate-180" aria-hidden="true" />
+        </button>
+      ) : undefined}
       action={(
         <>
           <p className="text-center text-[13px] text-[#5B6472] sm:me-auto sm:text-start" data-testid="look-price">

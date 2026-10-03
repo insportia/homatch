@@ -105,8 +105,10 @@ export function MarketplaceSearchExperience({ deepSearchAvailable }: { deepSearc
     try {
       const r = await understand(text);
       setBriefAndDraft(r.brief);
-    } catch {
-      /* The model being unavailable is not a dead end: every question is asked instead. */
+    } catch (e) {
+      /* The model being unavailable (or the per-user quota reached) is not a dead end:
+         every question is asked instead, and nothing is charged or queued. */
+      if (e instanceof MarketplaceError && e.code === 'RATE_LIMIT_EXCEEDED') toast.message(t('mps_error_rate_limited'));
       setBriefAndDraft(emptyBrief(text));
     } finally {
       setBusy(false);

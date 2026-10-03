@@ -12,6 +12,7 @@
 --   discovery_marketplace_properties    the processed, ranked canonical properties of a search
 --   claim_marketplace_worker_runs() concurrent, bounded leasing to an authenticated worker (service role)
 --   admin_marketplace_search_intelligence()  admin-only observability
+--   consume_marketplace_rate_limit()  atomic per-user quota on rate_limit_events (service role)
 --   admin_settings.marketplace_search_enabled  seeded OFF
 --
 -- WHY NEW TABLES AND NOT discovery_runs: discovery_runs is the billed,
@@ -283,6 +284,67 @@ $function$;
 
 revoke all on function public.claim_marketplace_worker_runs(text, integer, integer) from public, anon, authenticated;
 grant execute on function public.claim_marketplace_worker_runs(text, integer, integer) to service_role;
+
+-------------------------------------------------------------------------------
+-- 8b. Per-user rate limit for OpenAI-backed actions (understand)
+--
+-- Reuses the platform's rate_limit_events table and the RATE_LIMIT_EXCEEDED /
+-- 429 contract other HOMATCH functions use, but makes count-and-record ONE
+-- atomic step: a per-(user, operation) advisory lock serialises concurrent
+-- requests, so a burst of parallel calls can never all pass the count. Two
+-- windows (a short burst window and a daily one); the reply carries the
+-- seconds until the oldest event in the exhausted window leaves it.
+-------------------------------------------------------------------------------
+create or replace function public.consume_marketplace_rate_limit(
+  p_user_id uuid, p_operation text,
+  p_burst_limit integer, p_burst_seconds integer,
+  p_daily_limit integer, p_daily_seconds integer)
+returns jsonb
+language plpgsql
+security definer
+set search_path to ''
+as $function$
+declare
+  v_burst integer;
+  v_daily integer;
+  v_retry integer;
+begin
+  if p_user_id is null or coalesce(p_operation, '') = '' then
+    return jsonb_build_object('allowed', false, 'retry_after_seconds', greatest(1, p_burst_seconds), 'reason', 'NO_SUBJECT');
+  end if;
+  perform pg_advisory_xact_lock(hashtext('marketplace_rate_limit:' || p_operation || ':' || p_user_id::text));
+
+  select count(*) filter (where e.created_at > now() - make_interval(secs => p_burst_seconds)),
+         count(*) filter (where e.created_at > now() - make_interval(secs => p_daily_seconds))
+    into v_burst, v_daily
+    from public.rate_limit_events e
+   where e.user_id = p_user_id and e.operation = p_operation
+     and e.created_at > now() - make_interval(secs => greatest(p_burst_seconds, p_daily_seconds));
+
+  if v_burst >= p_burst_limit then
+    select greatest(1, ceil(extract(epoch from (min(e.created_at) + make_interval(secs => p_burst_seconds) - now())))::integer)
+      into v_retry from (select created_at from public.rate_limit_events
+                          where user_id = p_user_id and operation = p_operation
+                            and created_at > now() - make_interval(secs => p_burst_seconds)
+                          order by created_at desc limit p_burst_limit) e;
+    return jsonb_build_object('allowed', false, 'retry_after_seconds', coalesce(v_retry, p_burst_seconds), 'window', 'BURST');
+  end if;
+  if v_daily >= p_daily_limit then
+    select greatest(1, ceil(extract(epoch from (min(e.created_at) + make_interval(secs => p_daily_seconds) - now())))::integer)
+      into v_retry from (select created_at from public.rate_limit_events
+                          where user_id = p_user_id and operation = p_operation
+                            and created_at > now() - make_interval(secs => p_daily_seconds)
+                          order by created_at desc limit p_daily_limit) e;
+    return jsonb_build_object('allowed', false, 'retry_after_seconds', coalesce(v_retry, p_daily_seconds), 'window', 'DAILY');
+  end if;
+
+  insert into public.rate_limit_events (user_id, operation) values (p_user_id, p_operation);
+  return jsonb_build_object('allowed', true, 'remaining_burst', p_burst_limit - v_burst - 1, 'remaining_daily', p_daily_limit - v_daily - 1);
+end;
+$function$;
+
+revoke all on function public.consume_marketplace_rate_limit(uuid, text, integer, integer, integer, integer) from public, anon, authenticated;
+grant execute on function public.consume_marketplace_rate_limit(uuid, text, integer, integer, integer, integer) to service_role;
 
 -------------------------------------------------------------------------------
 -- 9. Admin observability (read-only, admin-only; no listing text, no contacts, no tokens)

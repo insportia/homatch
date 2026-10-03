@@ -229,3 +229,21 @@ test('source-level: new paths are owned by the DISCOVERY component', () => {
   assert.ok(existsSync(join(root, 'tests/sql/run-marketplace.sh')));
   assert.equal(relative(root, join(root, MIG)), MIG);
 });
+
+test('understand: atomic per-user quota checked BEFORE any model call; 429 with Retry-After; fails closed', () => {
+  const ms = code(MS);
+  const u = ms.indexOf("if (action === 'understand')");
+  const quota = ms.indexOf('consumeUnderstandQuota(db, userId)', u);
+  const model = ms.indexOf('openaiStructured(', u);
+  assert.ok(u > 0 && quota > u && model > quota, 'the quota is consumed before OpenAI is called');
+  assert.match(ms, /429, \{ 'Retry-After': String\(quota\.retryAfterSeconds\) \}/);
+  assert.match(ms, /code: 'RATE_LIMIT_EXCEEDED'/, 'the same contract investment-consultant uses');
+  const sh = code(SH);
+  assert.match(sh, /rpc\('consume_marketplace_rate_limit'/);
+  assert.match(sh, /window: 'UNAVAILABLE'/, 'an unreadable quota refuses the call');
+  assert.doesNotMatch(sh, /from ['"][^'"]*\/comm\//, 'no Communications import');
+  const sql = read(MIG);
+  assert.match(sql, /pg_advisory_xact_lock\(hashtext\('marketplace_rate_limit:'/);
+  assert.match(sql, /insert into public\.rate_limit_events \(user_id, operation\)/);
+  assert.match(sql, /revoke all on function public\.consume_marketplace_rate_limit\(uuid, text, integer, integer, integer, integer\) from public, anon, authenticated/);
+});

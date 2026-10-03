@@ -14737,6 +14737,9 @@ const en = {
   mps_total_found: '{{n}} matching properties found',
   mps_total_note: 'Every matching property is here. The strongest options come first.',
   mps_shown_of: 'Showing {{shown}} of {{total}}',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_error_rate_limited: 'You have made many requests in a short time. We will clarify the details with a few questions instead.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -29388,6 +29391,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mps_total_found: 'ნაპოვნია {{n}} შესაბამისი ქონება',
   mps_total_note: 'აქ ყველა შესაბამისი ქონებაა. ყველაზე ძლიერი ვარიანტები პირველ რიგში ჩანს.',
   mps_shown_of: 'ნაჩვენებია {{shown}} {{total}} დან',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_error_rate_limited: 'მოკლე დროში ბევრი მოთხოვნა გაიგზავნა. ამჯერად დეტალებს რამდენიმე კითხვით დავაზუსტებთ.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -44030,6 +44036,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mps_total_found: 'Найдено подходящих объектов: {{n}}',
   mps_total_note: 'Здесь все подходящие объекты. Самые сильные варианты показаны первыми.',
   mps_shown_of: 'Показано {{shown}} из {{total}}',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_error_rate_limited: 'За короткое время отправлено много запросов. Пока уточним детали несколькими вопросами.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -58670,6 +58679,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mps_total_found: '{{n}} uygun mülk bulundu',
   mps_total_note: 'Uygun mülklerin tamamı burada. En güçlü seçenekler önce gösterilir.',
   mps_shown_of: '{{total}} sonuçtan {{shown}} gösteriliyor',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_error_rate_limited: 'Kısa sürede çok fazla istek gönderildi. Bu sefer ayrıntıları birkaç soruyla netleştireceğiz.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -73310,6 +73322,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mps_total_found: 'تم العثور على {{n}} عقارات مناسبة',
   mps_total_note: 'كل العقارات المناسبة هنا. تظهر الخيارات الأقوى أولًا.',
   mps_shown_of: 'يُعرض {{shown}} من {{total}}',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_error_rate_limited: 'تم إرسال طلبات كثيرة في وقت قصير. سنحدد التفاصيل هذه المرة ببضعة أسئلة.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -87950,6 +87965,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   mps_total_found: 'נמצאו {{n}} נכסים מתאימים',
   mps_total_note: 'כל הנכסים המתאימים נמצאים כאן. האפשרויות החזקות ביותר מוצגות ראשונות.',
   mps_shown_of: 'מוצגים {{shown}} מתוך {{total}}',
+
+  /* ── FIND PROPERTY — MARKETPLACE SEARCH ── */
+  mps_error_rate_limited: 'נשלחו בקשות רבות בזמן קצר. הפעם נדייק את הפרטים בכמה שאלות.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

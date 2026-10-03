@@ -15,7 +15,22 @@ $P -c "drop database if exists mpfx" -c "create database mpfx"
 $P -d mpfx -f "$here/phase2_fixture.sql"
 $P -d mpfx -1 -f "$root/supabase/migrations/20261009100000_phase2_universal_discovery.sql" 2>/dev/null
 $P -d mpfx -f "$here/phase2_fixture_admin.sql"
+$P -d mpfx -f "$here/marketplace_fixture.sql"
 M="$root/supabase/migrations/20261010100000_marketplace_search_foundation.sql"
 $P -d mpfx -1 -f "$M"
 $P -d mpfx -1 -f "$M"
 $P -d mpfx -f "$here/marketplace_search.sql"
+
+rl_out="$(mktemp)"
+# Rate limit under REAL concurrency: 25 parallel sessions for one user, burst limit 10.
+$P -d mpfx -c "delete from public.rate_limit_events" -c "insert into public.users(id) values ('00000000-0000-4000-8000-0000000000aa') on conflict do nothing"
+for i in $(seq 1 25); do
+  $P -d mpfx -tAc "select (public.consume_marketplace_rate_limit('00000000-0000-4000-8000-0000000000aa','mps_understand',10,600,40,86400)->>'allowed')" &
+done > "$rl_out"
+wait
+allowed=$(grep -c '^true$' "$rl_out"); denied=$(grep -c '^false$' "$rl_out")
+rows=$($P -d mpfx -tAc "select count(*) from public.rate_limit_events where operation='mps_understand'")
+if [ "$allowed" != "10" ] || [ "$denied" != "15" ] || [ "$rows" != "10" ]; then
+  echo "RATE LIMIT CONCURRENCY: FAIL allowed=$allowed denied=$denied rows=$rows"; exit 1
+fi
+echo "RATE LIMIT CONCURRENCY: PASS (25 parallel → 10 allowed, 15 refused, 10 recorded)"

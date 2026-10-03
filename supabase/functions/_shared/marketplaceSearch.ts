@@ -30,6 +30,45 @@ import { estimatedProviderCost } from './providerCost.ts';
 type Db = any;
 
 export const MARKETPLACE_SWITCH = 'marketplace_search_enabled';
+/**
+ * Per-user quota for the OpenAI-backed `understand` action. Conservative: a
+ * person refining one request rarely needs more than a handful of readings.
+ * Enforced atomically in Postgres (consume_marketplace_rate_limit) on the
+ * platform's rate_limit_events table.
+ */
+export const UNDERSTAND_RATE_LIMIT = {
+  operation: 'marketplace_search_understand',
+  burstLimit: 10,
+  burstSeconds: 10 * 60,
+  dailyLimit: 40,
+  dailySeconds: 24 * 60 * 60,
+} as const;
+
+export type RateLimitDecision =
+  | { allowed: true }
+  | { allowed: false; retryAfterSeconds: number; window: 'BURST' | 'DAILY' | 'UNAVAILABLE' };
+
+/** Fails CLOSED: if the quota cannot be read, the paid call does not happen. */
+export async function consumeUnderstandQuota(db: Db, userId: string): Promise<RateLimitDecision> {
+  const L = UNDERSTAND_RATE_LIMIT;
+  try {
+    const { data, error } = await db.rpc('consume_marketplace_rate_limit', {
+      p_user_id: userId, p_operation: L.operation,
+      p_burst_limit: L.burstLimit, p_burst_seconds: L.burstSeconds,
+      p_daily_limit: L.dailyLimit, p_daily_seconds: L.dailySeconds,
+    });
+    if (error || !data) return { allowed: false, retryAfterSeconds: 60, window: 'UNAVAILABLE' };
+    if (data.allowed === true) return { allowed: true };
+    return {
+      allowed: false,
+      retryAfterSeconds: Math.max(1, Math.trunc(Number(data.retry_after_seconds)) || L.burstSeconds),
+      window: data.window === 'DAILY' ? 'DAILY' : 'BURST',
+    };
+  } catch {
+    return { allowed: false, retryAfterSeconds: 60, window: 'UNAVAILABLE' };
+  }
+}
+
 /** PostgREST returns at most 1000 rows per request; every full read pages at this size. */
 export const PAGE_ROWS = 1000;
 

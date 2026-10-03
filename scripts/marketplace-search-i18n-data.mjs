@@ -476,6 +476,14 @@ export const MARKETPLACE_SEARCH_STRINGS = {
   mps_error_not_ready: ["We don't have everything the search needs yet.", 'ძიებისთვის ჯერ ყველა საჭირო ინფორმაცია არ გვაქვს.', 'Для поиска пока не хватает информации.', 'Arama için henüz gereken her şeye sahip değiliz.', 'لا تتوفر لدينا بعد كل المعلومات اللازمة للبحث.', 'עדיין אין לנו את כל מה שהחיפוש צריך.'],
   mps_error_paused: ['Searching is paused right now. Please try again a little later.', 'ძიება ამ წუთას შეჩერებულია. სცადე ცოტა მოგვიანებით.', 'Поиск сейчас приостановлен. Попробуйте чуть позже.', 'Arama şu anda duraklatıldı. Lütfen biraz sonra tekrar deneyin.', 'البحث متوقف حاليًا. يُرجى المحاولة بعد قليل.', 'החיפוש מושהה כרגע. נסו שוב מעט מאוחר יותר.'],
   mps_error_generic: ['Something went wrong. Please try again.', 'რაღაც არ გამოვიდა. სცადე თავიდან.', 'Что-то пошло не так. Попробуйте ещё раз.', 'Bir sorun oluştu. Lütfen tekrar deneyin.', 'حدث خطأ ما. يُرجى المحاولة مرة أخرى.', 'משהו השתבש. נסו שוב.'],
+  mps_error_rate_limited: [
+    'You have made many requests in a short time. We will clarify the details with a few questions instead.',
+    'მოკლე დროში ბევრი მოთხოვნა გაიგზავნა. ამჯერად დეტალებს რამდენიმე კითხვით დავაზუსტებთ.',
+    'За короткое время отправлено много запросов. Пока уточним детали несколькими вопросами.',
+    'Kısa sürede çok fazla istek gönderildi. Bu sefer ayrıntıları birkaç soruyla netleştireceğiz.',
+    'تم إرسال طلبات كثيرة في وقت قصير. سنحدد التفاصيل هذه المرة ببضعة أسئلة.',
+    'נשלחו בקשות רבות בזמן קצר. הפעם נדייק את הפרטים בכמה שאלות.',
+  ],
   mps_dropped_place: ["We couldn't recognise this place", 'ეს ადგილი ვერ ამოვიცანით', 'Не удалось распознать это место', 'Bu yeri tanıyamadık', 'لم نتمكن من التعرف على هذا المكان', 'לא הצלחנו לזהות את המקום הזה'],
   mps_dropped_currency: ['We need the price in US dollars', 'ფასი დოლარში გვჭირდება', 'Нужна цена в долларах', 'Fiyatı dolar olarak almamız gerekiyor', 'نحتاج السعر بالدولار الأمريكي', 'אנחנו צריכים את המחיר בדולרים'],
 

@@ -137,3 +137,33 @@ begin
   if has_function_privilege('authenticated', 'public.claim_marketplace_worker_runs(text, integer, integer)', 'execute') then raise exception 'claim callable by users'; end if;
   raise notice 'MARKETPLACE PRIVILEGE CHECKS: PASS';
 end $$;
+
+-- rate limit: per user, per operation, burst then daily window, retry-after, service-role only.
+do $$
+declare a uuid; b uuid; r jsonb; i int;
+begin
+  insert into public.users default values returning id into a;
+  insert into public.users default values returning id into b;
+  for i in 1..3 loop
+    r := public.consume_marketplace_rate_limit(a, 'mps_understand', 3, 600, 5, 86400);
+    if not (r->>'allowed')::boolean then raise exception 'call % refused early: %', i, r; end if;
+  end loop;
+  r := public.consume_marketplace_rate_limit(a, 'mps_understand', 3, 600, 5, 86400);
+  if (r->>'allowed')::boolean or r->>'window' <> 'BURST' then raise exception 'burst not enforced: %', r; end if;
+  if (r->>'retry_after_seconds')::int not between 1 and 600 then raise exception 'retry-after: %', r; end if;
+  r := public.consume_marketplace_rate_limit(b, 'mps_understand', 3, 600, 5, 86400);
+  if not (r->>'allowed')::boolean then raise exception 'another user was limited: %', r; end if;
+  r := public.consume_marketplace_rate_limit(a, 'other_op', 3, 600, 5, 86400);
+  if not (r->>'allowed')::boolean then raise exception 'another operation was limited: %', r; end if;
+  -- daily window: age the burst out, then the daily limit holds
+  update public.rate_limit_events set created_at = now() - interval '20 minutes' where user_id = a and operation = 'mps_understand';
+  r := public.consume_marketplace_rate_limit(a, 'mps_understand', 3, 600, 5, 86400);
+  if not (r->>'allowed')::boolean then raise exception 'burst window did not slide: %', r; end if;
+  r := public.consume_marketplace_rate_limit(a, 'mps_understand', 3, 600, 5, 86400);
+  r := public.consume_marketplace_rate_limit(a, 'mps_understand', 3, 600, 5, 86400);
+  if (r->>'allowed')::boolean or r->>'window' <> 'DAILY' then raise exception 'daily not enforced: %', r; end if;
+  if has_function_privilege('authenticated', 'public.consume_marketplace_rate_limit(uuid, text, integer, integer, integer, integer)', 'execute') then
+    raise exception 'rate limit callable by users';
+  end if;
+  raise notice 'MARKETPLACE RATE LIMIT CHECKS: PASS';
+end $$;

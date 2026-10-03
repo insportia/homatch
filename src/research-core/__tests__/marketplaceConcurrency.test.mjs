@@ -156,3 +156,22 @@ test('genuinely nonmatching records are the only ones filtered: wrong district, 
   const valid = out.properties.length;
   assert.equal(valid + out.excluded.length, out.stats.uniqueProperties);
 });
+
+test('heartbeat extends the run’s own lease, capped at its deadline', () => {
+  const first = leaseUntil(NOW, at(600), 120);
+  const later = leaseUntil(new Date(NOW.getTime() + 90_000), at(600), 120);
+  assert.ok(Date.parse(later) > Date.parse(first), 'a heartbeat 90 s later moves the lease forward');
+  assert.equal(reapDecision(run({ leaseExpiresAt: later }), new Date(NOW.getTime() + 150_000)), null, 'the extended lease is still live after the original expiry');
+  assert.equal(leaseUntil(NOW, at(60), 120), at(60));
+});
+
+test('a failed worker never suppresses another worker’s results', () => {
+  const out = processSearch({ request: F.FIXTURE_REQUEST, candidates: F.fixtureCandidates(F.OTHER_LISTINGS.slice(0, 3)), now: NOW });
+  const status = deriveSearchStatus('SEARCHING', [
+    { workerId: 'ok', status: 'COMPLETE', deadlineAt: at(300), returnedCount: 3 },
+    { workerId: 'broken', status: 'FAILED', deadlineAt: at(300), returnedCount: 0 },
+    { workerId: 'late', status: 'TIMED_OUT', deadlineAt: at(-1), returnedCount: 0 },
+  ], { properties: out.properties.length, strongMatches: out.stats.strongMatches });
+  assert.equal(status.status, 'PARTIAL_COMPLETE');
+  assert.ok(out.properties.length >= 3, 'the successful worker’s properties are all there');
+});

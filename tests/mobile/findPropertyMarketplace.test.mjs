@@ -101,7 +101,7 @@ function summary(status, { empty = false, output = OUTPUT } = {}) {
   };
 }
 
-async function boot(t, { width = 1440, height = 900, lang = 'en', enabled = true, timeline = ['SEARCHING', 'RESULTS_AVAILABLE', 'COMPLETE'], empty = false, resumeStatus = null, output = OUTPUT } = {}) {
+async function boot(t, { rateLimited = false, width = 1440, height = 900, lang = 'en', enabled = true, timeline = ['SEARCHING', 'RESULTS_AVAILABLE', 'COMPLETE'], empty = false, resumeStatus = null, output = OUTPUT } = {}) {
   const { chromium } = resolvePlaywright();
   const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
@@ -125,6 +125,9 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', enabled = true
       const body = JSON.parse(req.postData() ?? '{}');
       state.calls.push(body.action);
       if (body.action === 'capabilities') return r.fulfill(json({ marketplaceEnabled: enabled, activeSources: enabled ? 5 : 0, deepSearchAvailable: false }));
+      if (body.action === 'understand' && rateLimited) {
+        return r.fulfill({ ...json({ error: 'RATE_LIMIT_EXCEEDED', code: 'RATE_LIMIT_EXCEEDED', retryAfterSeconds: 120 }, 429), headers: { 'access-control-allow-origin': '*', 'retry-after': '120' } });
+      }
       if (body.action === 'understand') {
         const raw = /80/.test(body.text) ? F.COMPLETE_MODEL_OUTPUT : F.INCOMPLETE_MODEL_OUTPUT;
         const brief = briefFromModel(raw, body.text);
@@ -365,6 +368,18 @@ test('ranking is not hiding: 800 valid matching properties are all reachable in 
   const keys = await page.locator('section[aria-labelledby^="mps-g-"] article').count();
   assert.equal(keys, 800, 'every valid property is on the page once the customer scrolls');
   assert.ok(await overflow(page) <= 1);
+});
+
+test('rate limited understand: a clear message, then the questions; nothing breaks', opts, async (t) => {
+  const { page, state } = await boot(t, { lang: 'en', rateLimited: true });
+  await page.goto(`${BASE}/find-property`, { waitUntil: 'domcontentloaded' });
+  await page.locator('#mps-mode-title').waitFor({ timeout: 30000 });
+  await page.locator('section[aria-labelledby="mps-mode-title"] article').first().locator('button').click();
+  await page.locator('textarea').fill(F.COMPLETE_TEXT);
+  await page.locator('form button[type="submit"]').click();
+  await page.getByText('You have made many requests in a short time', { exact: false }).waitFor({ timeout: 15000 });
+  await page.getByRole('heading', { name: 'What are you looking for?' }).waitFor();
+  assert.equal(state.starts, 0, 'no search was started');
 });
 
 test('partial and empty results say so, without technical errors', opts, async (t) => {

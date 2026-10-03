@@ -31,15 +31,16 @@ import {
 import { compareProperties } from '../../../src/research-core/marketplace/comparison.ts';
 import { RESULT_GROUPS, type ResultGroup } from '../../../src/research-core/marketplace/pipeline.ts';
 import {
-  loadMarketplaceSwitches, openaiStructured, processAndStore, recordAiUsage,
+  consumeUnderstandQuota, loadMarketplaceSwitches, openaiStructured, processAndStore, recordAiUsage,
 } from '../_shared/marketplaceSearch.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Expose-Headers': 'Retry-After',
 };
-const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), {
-  status, headers: { ...CORS, 'Content-Type': 'application/json' },
+const json = (value: unknown, status = 200, extra: Record<string, string> = {}) => new Response(JSON.stringify(value), {
+  status, headers: { ...CORS, 'Content-Type': 'application/json', ...extra },
 });
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** A search with no worker answer within this long is closed by its own deadline. */
@@ -134,6 +135,13 @@ Deno.serve(async (req: Request) => {
     if (action === 'understand') {
       const text = String(body.text ?? '').trim().slice(0, 2000);
       if (text.length < 3) return json({ error: 'TEXT_REQUIRED' }, 400);
+      /* Per-user quota BEFORE any model call; atomic in Postgres, fails closed. */
+      const quota = await consumeUnderstandQuota(db, userId);
+      if (!quota.allowed) {
+        console.warn('marketplace-search understand rate_limited', quota.window);
+        return json({ error: 'RATE_LIMIT_EXCEEDED', code: 'RATE_LIMIT_EXCEEDED', retryAfterSeconds: quota.retryAfterSeconds },
+          429, { 'Retry-After': String(quota.retryAfterSeconds) });
+      }
       const r = await openaiStructured({
         name: 'homatch_search_brief', instructions: SEARCH_BRIEF_INSTRUCTIONS, input: text, schema: SEARCH_BRIEF_JSON_SCHEMA, maxOutputTokens: 900,
       });

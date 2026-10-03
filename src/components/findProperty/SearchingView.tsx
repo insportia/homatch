@@ -58,7 +58,7 @@ export function SearchingView({ t, search, onViewResults, onCancel }: {
               </li>
             ))}
           </ol>
-          <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <dl className="grid grid-cols-2 gap-3">
             {[
               ['mps_counter_discovered', c.listingsDiscovered],
               ['mps_counter_validated', c.listingsValidated],

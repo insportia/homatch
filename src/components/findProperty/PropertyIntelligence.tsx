@@ -44,11 +44,11 @@ export function PropertyIntelligence({ t, p, open, onOpenChange, isRTL, property
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side={isRTL ? 'left' : 'right'} className="hm-discovery w-full overflow-y-auto bg-background p-0 sm:max-w-xl">
         <div className="relative aspect-[16/9] w-full bg-[#0C1119]">
-          {p.images[0] ? <img src={p.images[0]} alt="" referrerPolicy="no-referrer" className="h-full w-full object-cover" /> : null}
+          {p.images[0] ? <img src={p.images[0]} alt="" referrerPolicy="no-referrer" className="h-full w-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : null}
         </div>
         {p.images.length > 1 ? (
           <div className="flex gap-2 overflow-x-auto px-5 pt-3" aria-label={t('mps_photos')}>
-            {p.images.slice(1, 9).map((src) => <img key={src} src={src} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-16 w-24 shrink-0 rounded-lg object-cover" />)}
+            {p.images.slice(1, 9).map((src) => <img key={src} src={src} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-16 w-24 shrink-0 rounded-lg object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />)}
           </div>
         ) : null}
         <div className="space-y-6 p-5 sm:p-6">

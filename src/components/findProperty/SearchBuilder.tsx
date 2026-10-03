@@ -340,7 +340,7 @@ export function ConfirmCard({ t, brief, onStart, onChange, onAddCondition, start
           </button>
         ) : null}
         <div className="flex flex-col gap-3 sm:flex-row">
-          <button type="button" className={primary} onClick={onStart} disabled={starting}>
+          <button type="button" className={primary} onClick={onStart} disabled={starting} data-action="mps-start">
             {starting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
             {t('mps_ready_start')}
           </button>

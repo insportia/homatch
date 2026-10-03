@@ -17,26 +17,32 @@ export function advantageText(a: { code: string; delta: number | null }, t: T) {
 }
 
 function Hero({ p, t }: { p: PropertyView; t: T }) {
-  const img = p.images[0];
+  const [failed, setFailed] = React.useState(false);
+  const img = failed ? null : p.images[0];
   return (
     <div className="relative aspect-[16/10] w-full overflow-hidden bg-[#0C1119]">
       {img ? (
-        <img src={img} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.02]" />
+        <img src={img} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)}
+          className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.02]" />
       ) : (
         <div className="grid h-full w-full place-items-center bg-[radial-gradient(ellipse_80%_70%_at_50%_0%,hsl(38_92%_56%/0.18),transparent_65%)]">
           <Building className="h-10 w-10 text-white/25" aria-hidden="true" />
         </div>
       )}
       <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/55 to-transparent" aria-hidden="true" />
-      {p.sourceCount > 1 ? (
-        <span className="absolute start-3 top-3 inline-flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1 text-xs font-semibold text-[#0C1119]">
-          <Layers className="h-3.5 w-3.5" aria-hidden="true" />{t('mps_sources_n', { n: p.sourceCount })}
-        </span>
-      ) : null}
-      {p.priceDiscrepancy?.significant ? (
-        <span className="absolute end-3 top-3 inline-flex items-center gap-1 rounded-full bg-[hsl(38_92%_56%)] px-2.5 py-1 text-xs font-semibold text-[#0C1119]">
-          <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />{t('mps_price_diff_badge')}
-        </span>
+      {p.sourceCount > 1 || p.priceDiscrepancy?.significant ? (
+        <div className="absolute inset-x-3 top-3 flex flex-wrap gap-1.5">
+          {p.sourceCount > 1 ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1 text-xs font-semibold text-[#0C1119]">
+              <Layers className="h-3.5 w-3.5" aria-hidden="true" />{t('mps_sources_n', { n: p.sourceCount })}
+            </span>
+          ) : null}
+          {p.priceDiscrepancy?.significant ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-[hsl(38_92%_56%)] px-2.5 py-1 text-xs font-semibold text-[#0C1119]">
+              <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />{t('mps_price_diff_badge')}
+            </span>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

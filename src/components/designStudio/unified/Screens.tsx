@@ -356,7 +356,7 @@ export function FailureStep({ source, retryable, message, recovery = READING_REC
                   {/* On a phone the state goes under the step, so a long Georgian step name is never broken mid-word. */}
                   <span className="min-w-0 flex-1">
                     <span className={cn('block', here && 'font-semibold')}>{t(RECOVERY_LABEL[id][source])}</span>
-                    <span className={cn('block text-[12px] sm:hidden', kept ? 'text-[hsl(152_55%_30%)]' : 'font-medium text-[hsl(36_60%_32%)]')}>{t(kept ? 'dsx_rec_saved' : 'dsx_rec_resume')}</span>
+                    <span className={cn('block text-2xs sm:hidden', kept ? 'text-[hsl(152_55%_30%)]' : 'font-medium text-[hsl(36_60%_32%)]')}>{t(kept ? 'dsx_rec_saved' : 'dsx_rec_resume')}</span>
                   </span>
                   <span className={cn('hidden shrink-0 text-[13px] sm:inline', kept ? 'text-[hsl(152_55%_30%)]' : 'font-medium text-[hsl(36_60%_32%)]')}>{t(kept ? 'dsx_rec_saved' : 'dsx_rec_resume')}</span>
                 </li>

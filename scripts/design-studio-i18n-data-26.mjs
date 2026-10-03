@@ -8,12 +8,12 @@ export const DS_STRINGS_26 = {
   // ── Landing ─────────────────────────────────────────────────────────────
   dsx_eyebrow: ['Design Studio', 'Design Studio', 'Design Studio', 'Design Studio', 'Design Studio', 'Design Studio'],
   dsx_landing_title: [
-    'See your space with a new design',
-    'ნახე შენი სივრცე ახალი დიზაინით',
-    'Посмотрите на своё пространство в новом дизайне',
-    'Mekânınızı yeni bir tasarımla görün',
-    'شاهد مساحتك بتصميم جديد',
-    'ראו את החלל שלכם בעיצוב חדש',
+    'Create a space that is truly yours!',
+    'შექმენი სივრცე, რომელიც ნამდვილად შენია!',
+    'Создайте пространство, которое по-настоящему ваше!',
+    'Gerçekten size ait bir alan yaratın!',
+    'اصنع مساحة تكون لك حقًا!',
+    'צרו חלל שהוא באמת שלכם!',
   ],
   dsx_landing_body: [
     'Upload photos or a floor plan, choose the style you like, and HOMATCH will create a new design made for your space.',

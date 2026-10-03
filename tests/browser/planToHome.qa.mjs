@@ -756,7 +756,7 @@ async function photoPath(browser, { width, height, lang, touch }) {
   check(`${tag}: Photos and Floor plan are equal ways in (${Math.round(a.width)}x${Math.round(a.height)} / ${Math.round(b.width)}x${Math.round(b.height)})`, Math.abs(a.width - b.width) <= 2 && (width < 640 || Math.abs(a.height - b.height) <= 2));
   if (lang === 'ka') {
     const t = await text();
-    for (const copy of ['ნახე შენი სივრცე ახალი დიზაინით', 'ფოტოების ატვირთვა', 'გეგმის ატვირთვა', 'ატვირთე არსებული სივრცის ფოტოები და ნახე როგორ შეიძლება შეიცვალოს მისი დიზაინი.']) check(`${tag}: landing copy "${copy}"`, t.includes(copy));
+    for (const copy of ['შექმენი სივრცე, რომელიც ნამდვილად შენია!', 'განაახლე, გადააწყე და განავითარე შენთვის სასურველი გეგმარება', 'ფოტოების ატვირთვა', 'გეგმის ატვირთვა', 'ატვირთე არსებული სივრცის ფოტოები და ნახე როგორ შეიძლება შეიცვალოს მისი დიზაინი.']) check(`${tag}: landing copy "${copy}"`, t.includes(copy));
     check(`${tag}: no "reconstruction" framing on the landing`, !t.includes('სახლის აღდგენა სურათებიდან'));
   }
   await page.getByTestId('ds-start-photos').click();

@@ -954,7 +954,7 @@ test('MOBILE: priority is a binary ☆/★ toggle with words, aria-pressed and a
   const text = await page.evaluate(() => document.body.innerText);
   assert.match(text, /დაწერეთ თქვენი სარეკლამო ტექსტი \/ აღწერა/);
   assert.match(text, /მოკლე მთავარი ფრაზა, რომელსაც მომხმარებელი პირველ რიგში დაინახავს/);
-  assert.match(await page.locator('[data-madsb-ai]').first().innerText(), /დამეხმაროს HOMATCH AI/);
+  assert.match(await page.locator('[data-madsb-ai]').first().innerText(), /HOMATCH AI დამეხმაროს/);
   const box = await toggle.boundingBox();
   assert.ok(box.height >= 44, `44px target (${box.height})`);
   assert.equal((await page.evaluate(LAYOUT)).overflow <= 1, true, 'no overflow at 320px');
@@ -1033,7 +1033,7 @@ test('LEADS TERMS: Leads stays selectable; Meta\'s own terms page opens from HOM
     await waitReady(page);
     await page.waitForSelector('[data-mm-forms-state="TERMS_REQUIRED"]');
     assert.equal(await page.locator('[data-mm-terms-open]').count(), 1, 'one obvious action');
-    assert.match(await page.locator('[data-mm-terms-open]').innerText(), /Meta-ს პირობებთან დათანხმება/);
+    assert.match(await page.locator('[data-mm-terms-open]').innerText(), /Meta-ს პირობებზე დათანხმება/);
     assert.doesNotMatch(await page.evaluate(() => document.body.innerText), /leads_retrieval|pages_manage/);
     await page.locator('[data-mm-terms-open]').click();
     const opened = await page.evaluate(() => window.__opened.map((o) => ({ href: o.w.location.href, opener: o.w.opener, features: o.features })));
@@ -1353,7 +1353,7 @@ test('META CONNECT: one tap = one attempt to Meta\'s own dialog with the way bac
     await waitReady(page);
     await page.waitForSelector('[data-mm-connect-return="denied"]');
     const msg = await page.locator('[data-mm-connect-return]').innerText();
-    assert.match(msg, /Meta-სთან კავშირი არ დასრულებულა/);
+    assert.match(msg, /Meta-ში კავშირი არ დასრულებულა/);
     assert.match(msg, /კამპანია შენახულია/);
     assert.doesNotMatch(msg, /access_denied|error_reason|user_denied/);
     assert.equal(calls.actions.slice(before2).filter((a) => a === 'assets_refresh').length, 0);

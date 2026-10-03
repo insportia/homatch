@@ -279,6 +279,7 @@ function ProjectLoader() {
           navigate(`/design-studio/${bundle.project.id}/home`, { replace: true });
         }}
         onCancel={() => { setPhotoFlow(false); setResumePhoto(null); clearStart(); navigate('/design-studio'); }}
+        onFloorPlan={(plan) => { setPhotoFlow(false); setResumePhoto(null); clearStart(); setResumePlan(plan); setFlow({ recalibrate: null, from: null }); }}
       />
     );
   }

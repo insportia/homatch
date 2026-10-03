@@ -422,7 +422,8 @@ export function FloorPlanFlow({
     } catch (e) {
       if (e instanceof DesignStudioError && (e.code === 'DS_STILL_WORKING' || e.code === 'DS_WATCH_STOPPED')) return;
       const code = e instanceof DesignStudioError ? e.code : '';
-      setGenFailure({ retryable: !(e instanceof DesignStudioFailure) || e.retryable, message: ERROR_KEY[code] ? t(ERROR_KEY[code]) : null });
+      // The plan was already read and accepted: a failed design is technical — always "try again", never "a clearer plan".
+      setGenFailure({ retryable: true, message: ERROR_KEY[code] ? t(ERROR_KEY[code]) : null });
     } finally {
       running.current = false;
       setBusy(false);

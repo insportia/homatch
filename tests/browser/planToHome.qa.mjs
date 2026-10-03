@@ -708,7 +708,8 @@ function wirePhotos(page, store) {
     const attempt = store.photoReads;
     setTimeout(() => {
       if (store.photoFail && attempt === 1) {
-        Object.assign(recon, { status: 'FAILED', error: store.photoFail === 'TERMINAL' ? 'TERMINAL:UNSUPPORTED_PHOTOS' : 'RETRYABLE:READING_FAILED', updated_at: now() });
+        const error = { TERMINAL: 'TERMINAL:UNSUPPORTED_PHOTOS', FLOOR_PLAN: 'TERMINAL:IS_FLOOR_PLAN' }[store.photoFail] ?? 'RETRYABLE:READING_FAILED';
+        Object.assign(recon, { status: 'FAILED', error, updated_at: now() });
         return;
       }
       const u = photoUnderstanding(recon.reference_ids.length);
@@ -906,6 +907,33 @@ async function photoPath(browser, { width, height, lang, touch }) {
   await s.ctx.close();
 }
 
+/* ── G: an ordinary black-and-white 2D floor plan (labels, dimensions) sent through PHOTOS — production 2026-10-03.
+   The photo reading says "this is a floor plan"; the same file continues as the project's floor plan, is read by
+   the floor-plan reading and reaches Style. It is never answered "try a clearer photo or plan". ── */
+async function planThroughPhotos(browser, { width, height, lang, touch }) {
+  const tag = `${width}-${lang} plan-through-photos`;
+  const s = await open(browser, { width, height, lang, touch, reading: 'v1' });
+  const { page, store } = s;
+  store.photoFail = 'FLOOR_PLAN';
+  await wirePhotos(page, store);
+  await page.goto(`${BASE}/design-studio`);
+  await page.getByTestId('ds-start-photos').click();
+  await page.getByTestId('photo-file-first').setInputFiles(GOLDEN_JPG);
+  await page.getByTestId('photo-continue').click();
+  await page.getByTestId('plan-to-home').waitFor({ timeout: 40000 });
+  const reached = await untilStep(page, ['STYLE', 'QUICK', 'REVIEW'], 40000);
+  check(`${tag}: the plan went on to the floor-plan reading and reached ${reached}`, reached === 'STYLE', String(reached));
+  check(`${tag}: never "a clearer photo or plan"`, (await page.getByTestId('ds-unsupported').count()) === 0);
+  const plans = store.db.ds_floorplans.filter((f) => f.purpose === 'PLAN');
+  const refs = store.db.ds_floorplans.filter((f) => f.purpose === 'REFERENCE');
+  check(`${tag}: the same uploaded file became the plan (no second upload)`, plans.length === 1 && refs.length === 1 && plans[0].object_key === refs[0].object_key);
+  check(`${tag}: read once as a plan (${store.readCalls}), once as photos (${store.photoReads})`, store.readCalls === 1 && store.photoReads === 1);
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: path.join(OUT, `ph-plan-through-photos-${width}-${lang}.png`) });
+  check(`${tag}: no page errors`, s.errors.length === 0, s.errors.join('\n        '));
+  await s.ctx.close();
+}
+
 /* ── F: photos that fail — retry without uploading again; unusable photos ask for another file ── */
 async function photoFailures(browser, { width, height, lang, touch }) {
   for (const kind of ['RETRYABLE', 'TERMINAL']) {
@@ -967,6 +995,10 @@ async function main() {
     if (!only || only === 'E') {
       await photoPath(browser, { width: 390, height: 844, lang: 'ka', touch: true });
       await photoPath(browser, { width: 1440, height: 900, lang: 'en', touch: false });
+    }
+    if (!only || only === 'G') {
+      await planThroughPhotos(browser, { width: 390, height: 844, lang: 'ka', touch: true });
+      await planThroughPhotos(browser, { width: 1440, height: 900, lang: 'en', touch: false });
     }
     if (!only || only === 'F') {
       await photoFailures(browser, { width: 390, height: 844, lang: 'en', touch: true });

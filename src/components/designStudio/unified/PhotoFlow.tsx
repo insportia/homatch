@@ -31,7 +31,8 @@ import { runDesign, type RunStage } from '@/services/designStudio/designRun';
 import { quoteRender } from '@/services/designStudio/renders';
 import { signedUrls } from '@/services/designStudio/files';
 import { referencesById, type ReconstructionRecord } from '@/services/designStudio/reconstructions';
-import { flowOf, savePhotoFlow, startPhotoProject, understandingOf, understandPhotos, uploadPhotos } from '@/services/designStudio/photos';
+import { flowOf, planFromPhotos, savePhotoFlow, startPhotoProject, understandingOf, understandPhotos, uploadPhotos } from '@/services/designStudio/photos';
+import type { FloorPlanRecord } from '@/services/designStudio/floorplans';
 import { QualityStep, RING, StyleStep, SURFACE, surpriseStyle } from '../planToHome/SimpleSteps';
 import { AnalysisStep, DetailQuestionStep, FailureStep, GeneratingStep, PhotoUploadStep } from './Screens';
 
@@ -55,13 +56,15 @@ function initialStep(r: ReconstructionRecord | null): Step {
   return step === 'DONE' ? 'GENERATING' : step;
 }
 
-export function PhotoFlow({ userId, projectId, projectName, resume, onDone, onCancel }: {
+export function PhotoFlow({ userId, projectId, projectName, resume, onDone, onCancel, onFloorPlan }: {
   userId: string;
   projectId: string;
   projectName: string;
   /** The project's photo work, when the page was opened on a project already under way. */
   resume: ReconstructionRecord | null;
   onDone: (versionId: string) => void;
+  /** What was uploaded is a floor plan: continue in the floor-plan flow with the same file (nothing uploaded again). */
+  onFloorPlan: (plan: FloorPlanRecord) => void;
   onCancel: () => void;
 }) {
   const { t, lang } = useLanguage();
@@ -153,6 +156,7 @@ export function PhotoFlow({ userId, projectId, projectName, resume, onDone, onCa
         void savePhotoFlow(read, { step: next === 'QUESTION' ? 'QUESTION' : 'STYLE' }).then(setRecon).catch(() => {});
       } catch (e) {
         if (signal.cancelled) return;
+        if (e instanceof DesignStudioFailure && e.code === 'DS_IS_FLOOR_PLAN') { void toPlan(); return; }
         if (e instanceof DesignStudioFailure) { setReadFail({ retryable: e.retryable }); setStep('FAILED'); return; }
         // Still working after a long wait: keep watching (the work carries on regardless).
         window.setTimeout(() => { if (!signal.cancelled) setReadTick((n) => n + 1); }, 3000);
@@ -161,6 +165,14 @@ export function PhotoFlow({ userId, projectId, projectName, resume, onDone, onCa
     void watch();
     return () => { signal.cancelled = true; };
   }, [step, recon?.id, readTick]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** The upload is a floor plan: the same file goes on as the project's plan. */
+  const toPlan = async () => {
+    if (!recon) return;
+    try { onFloorPlan(await planFromPhotos(recon)); } catch { setReadFail({ retryable: true }); setStep('FAILED'); }
+  };
+  // A project left on that answer (reload, another device) continues the same way.
+  useEffect(() => { if (step === 'FAILED' && /^TERMINAL:IS_FLOOR_PLAN/.test(recon?.error ?? '')) void toPlan(); }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const retryReading = () => {
     setReadFail(null);
@@ -231,7 +243,7 @@ export function PhotoFlow({ userId, projectId, projectName, resume, onDone, onCa
     } catch (e) {
       if (e instanceof DesignStudioError && (e.code === 'DS_STILL_WORKING' || e.code === 'DS_WATCH_STOPPED')) return;
       const code = e instanceof DesignStudioError ? e.code : '';
-      setGenFailure({ retryable: !(e instanceof DesignStudioFailure) || e.retryable, message: ERROR_KEY[code] ? t(ERROR_KEY[code]) : null });
+      setGenFailure({ retryable: true, message: ERROR_KEY[code] ? t(ERROR_KEY[code]) : null });
     } finally {
       running.current = false;
       setBusy(false);

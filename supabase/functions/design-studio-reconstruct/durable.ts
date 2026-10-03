@@ -34,7 +34,7 @@ export function readFailure(stored: string | null | undefined): { category: Fail
 /** Input problems the customer must fix (another file); everything else is worth asking again. */
 const TERMINAL_CODES = new Set([
   'FILE_MISSING', 'FILE_TOO_LARGE', 'NOT_A_SUPPORTED_IMAGE', 'IMAGE_SIZE_UNREADABLE', 'INVALID_KEY',
-  'SOURCE_MISSING', 'UNREADABLE_SOURCE', 'NOTHING_READ', 'REFERENCE_MISSING', 'UNSUPPORTED_PHOTOS',
+  'SOURCE_MISSING', 'UNREADABLE_SOURCE', 'NOTHING_READ', 'REFERENCE_MISSING', 'UNSUPPORTED_PHOTOS', 'IS_FLOOR_PLAN',
 ]);
 export const categoryOf = (code: string): FailureCategory => (TERMINAL_CODES.has(code) ? 'TERMINAL' : 'RETRYABLE');
 

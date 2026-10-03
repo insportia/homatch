@@ -429,21 +429,67 @@ export function reachableRooms(space: SpaceModel, model: WalkModel, opts: { star
   const given = opts.start ? (isFree(model, opts.start) ? opts.start : nearestFree(model, opts.start, 1.0)) : null;
   const start = opts.start ? given : byRoom.get(hub.id)!.map((p) => nearestFree(model, p, 0.4)).find((p): p is Point => !!p);
   if (!start) return reach;
+  const reached = walkableFrom(model, start);
   for (const room of space.rooms) {
     if (opts.only && !opts.only.has(room.id)) continue;
     const goals = [...(byRoom.get(room.id) ?? [])];
     let entered = false;
     for (const g of goals) {
       const free = isFree(model, g) ? g : nearestFree(model, g, 0.3);
-      if (free && (Math.hypot(free.x - start.x, free.y - start.y) < 1e-6 || findPath(model, start, free, { throughDoors: true, maxCells: 20000 }))) { entered = true; break; }
+      if (free && reached(free)) { entered = true; break; }
     }
     if (!entered && room.id === hub.id) entered = true;
     if (!entered) continue;
     // Inside: some free floor of the room clear of its doorways is reachable too. Several spots spread over the
     // room are tried, so one pocket beside a bed does not count the whole room as cut off.
-    if (insideGoals(model, room, goals).some((g) => findPath(model, start, g, { throughDoors: true, maxCells: 20000 }))) reach.add(room.id);
+    if (insideGoals(model, room, goals).some(reached)) reach.add(room.id);
   }
   return reach;
+}
+
+/**
+ * Everywhere a person can walk from `start`, doors opened on the way: one flood over the same 15 cm grid and
+ * corner rule the route finder walks (so a room check is a lookup, not a search). A point counts as reached when
+ * a reached cell is within one cell of it, as a route's goal does.
+ */
+function walkableFrom(model: WalkModel, start: Point, maxCells = 20000): (p: Point) => boolean {
+  const G = 0.15;
+  const closed = model.closedDoors;
+  model.closedDoors = new Set();
+  const free = new Map<string, boolean>();
+  const freeAt = (x: number, y: number) => {
+    const k = `${x.toFixed(3)},${y.toFixed(3)}`;
+    let v = free.get(k);
+    if (v === undefined) { v = isFree(model, { x, y }); free.set(k, v); }
+    return v;
+  };
+  const at = (i: number, j: number) => ({ x: start.x + i * G, y: start.y + j * G });
+  const seen = new Set<string>(['0,0']);
+  try {
+    const queue: Array<[number, number]> = [[0, 0]];
+    for (let q = 0; q < queue.length && seen.size < maxCells; q += 1) {
+      const [i, j] = queue[q];
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+        const ni = i + di; const nj = j + dj; const k = `${ni},${nj}`;
+        if (seen.has(k)) continue;
+        const n = at(ni, nj);
+        if (!freeAt(n.x, n.y)) continue;
+        if (di !== 0 && dj !== 0) {
+          const a = at(i + di, j); const b = at(i, j + dj);
+          if (!freeAt(a.x, a.y) || !freeAt(b.x, b.y) || !freeAt(start.x + (i + di / 2) * G, start.y + (j + dj / 2) * G)) continue;
+        }
+        seen.add(k);
+        queue.push([ni, nj]);
+      }
+    }
+  } finally {
+    model.closedDoors = closed;
+  }
+  return (p: Point) => {
+    const ci = Math.round((p.x - start.x) / G); const cj = Math.round((p.y - start.y) / G);
+    for (let di = -1; di <= 1; di += 1) for (let dj = -1; dj <= 1; dj += 1) if (seen.has(`${ci + di},${cj + dj}`)) return true;
+    return false;
+  };
 }
 
 /** Up to eight free spots inside the room at least 0.6 m from its door sides, spread from its centre outwards. */

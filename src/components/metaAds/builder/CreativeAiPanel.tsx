@@ -17,16 +17,17 @@ import { Link } from 'react-router-dom';
 import { AlertTriangle, Check, Eye, Loader2, RefreshCw, Sparkles, Trash2, Type, Undo2, Wand2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from './MetaButton';
-import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { ANALYSIS_VERSION, GENERATION_STAGES, INSTRUCTION_MAX, MAX_VARIATIONS, parseOverlayIntent } from '@/lib/metaAds/creativeAi';
 import {
-  aiAnalyze, aiComposeSave, aiDiscard, aiGenerate, aiJob, aiJobs, aiQuote, aiUse,
-  type AiJob, type AiQuote, type MetaCreativeRow,
+  aiAnalyze, aiCompose, aiComposeSave, aiDiscard, aiGenerate, aiJob, aiJobs, aiQuote, aiUse,
+  type AiJob, type AiQuote, type ComposeSource, type MetaCreativeRow,
 } from '@/services/metaAds';
 import { useMediaUrl } from './CreativeStep';
+import { ensureCreativeFonts } from './creativeFonts';
 import type { ComposeSpec } from '@/lib/metaAds/creativeLayout';
 
 const CreativeComposer = lazy(() => import('./CreativeComposer'));
@@ -37,8 +38,8 @@ const CHIPS = ['premium', 'view', 'investment', 'less_text', 'keep_building'] as
 const POLL_MS = 3000;
 /** The selection key of the customer's own upload (variants are 1…3). */
 const ORIGINAL = 0;
-/** Where the customer is: original → AI variants → choose → text & layout → final creative. */
-const STEPS = ['original', 'variants', 'choose', 'text', 'final'] as const;
+/** Where the customer is: instruction → generate → choose → finished creative. Text & layout is optional, never a step. */
+const STEPS = ['instruction', 'generate', 'choose', 'final'] as const;
 
 /** Errors the panel explains in words; anything else reads as a plain failure. */
 const KNOWN_ERRORS = ['INSUFFICIENT_CREDITS', 'AI_UNAVAILABLE', 'RATE_LIMITED', 'BUSY', 'INSTRUCTION_NOT_ALLOWED', 'ANALYSIS_FAILED',
@@ -72,7 +73,9 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
   const [job, setJob] = useState<AiJob | null>(null);
   const [starting, setStarting] = useState(false);
   const [picked, setPicked] = useState<Record<number, Role>>({});
-  const [preview, setPreview] = useState<{ url: string; label: string } | null>(null);
+  const [preview, setPreview] = useState<{ url?: string; svg?: string; label: string } | null>(null);
+  /* The finished creative of each card (HOMATCH text over the visual), for "View". */
+  const [finished, setFinished] = useState<Record<number, string>>({});
   const [using, setUsing] = useState(false);
   /* The variations being composed (Use → the final creative, approved before anything is created). */
   const [composeFor, setComposeFor] = useState<number[] | null>(null);
@@ -169,8 +172,29 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
     } catch { toast.error(t('mads_load_failed')); }
   };
 
-  /* Use = compose first: nothing is created before the customer sees the final creative. */
-  const use = (indexes: number[]) => { if (indexes.length && !using) setComposeFor(indexes); };
+  /* Use = the finished creatives the cards already show, created at once. Text & layout is optional. */
+  const use = async (indexes: number[]) => {
+    if (!indexes.length || using) return;
+    setUsing(true);
+    try {
+      let created = 0;
+      const needEdit: number[] = [];
+      for (const i of indexes) {
+        if (i === ORIGINAL) {
+          try { const d = await aiCompose({ creativeId: creative.id }); await aiComposeSave(creative.id, d.spec); created += 1; } catch { needEdit.push(i); }
+          continue;
+        }
+        if (!job) continue;
+        const r = await aiUse(job.id, [{ index: i, role: picked[i] ?? ('SECONDARY' as Role) }]);
+        created += r.created.length;
+        if (r.refused?.length) needEdit.push(i);
+      }
+      if (created) { toast.success(t('mm_c_ai_used', { n: String(created) })); onCreated(); }
+      // Only what could not be finished as shown (e.g. no headline) opens the editor.
+      if (needEdit.length) setComposeFor(needEdit); else onOpenChange(false);
+    } catch { toast.error(t('mads_load_failed')); }
+    finally { setUsing(false); }
+  };
   const create = async (specs: ComposeSpec[]) => {
     if (!composeFor || using) return;
     setUsing(true);
@@ -201,7 +225,7 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
   const stageIndex = running ? Math.max(0, GENERATION_STAGES.indexOf(job!.stage as never)) : -1;
   const chosen = useMemo(() => Object.keys(picked).map(Number).sort((a, b) => a - b), [picked]);
   const intent = useMemo(() => parseOverlayIntent(instruction, overlayText), [instruction, overlayText]);
-  const step = composeFor ? 3 : job?.status === 'DONE' ? 2 : 1;
+  const step = job?.status === 'DONE' ? (composeFor ? 3 : 2) : running ? 1 : 0;
   const ideas = useMemo(() => concepts.map((c) => c.copy).filter((x): x is NonNullable<typeof x> => !!x?.headline), [concepts]);
   const toggle = (index: number) => setPicked((p) => {
     const n = { ...p };
@@ -215,14 +239,12 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
       <DialogContent className="max-h-[92dvh] max-w-[calc(100%-1rem)] overflow-y-auto p-4 sm:p-6 md:max-w-3xl" data-mm-ai-panel="">
         <DialogHeader className="pr-10 text-start">
           <DialogTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-[hsl(var(--gold-ink))]" />{t('mm_cx_title')}</DialogTitle>
-          <DialogDescription className="space-y-1 text-[13px] leading-relaxed">
-            <span className="block font-medium text-foreground">{t('mm_cx_lead1')}</span>
-            <span className="block">{t('mm_cx_lead2')}</span>
-            <span className="block">{t('mm_cx_lead3')}</span>
+          <DialogDescription className="text-[13px] leading-relaxed">
+            {t('mm_cx_lead1')} {t('mm_cx_lead3')}
           </DialogDescription>
         </DialogHeader>
 
-        {/* Where the customer is — five plain steps. */}
+        {/* Where the customer is — four plain steps. */}
         <ol className="flex flex-wrap gap-x-3 gap-y-1.5 text-2xs" aria-label={t('mm_cx_steps')} data-mm-ai-steps={STEPS[step]}>
           {STEPS.map((s, i) => (
             <li key={s} data-mm-ai-step={s} data-state={i < step ? 'done' : i === step ? 'active' : 'todo'} aria-current={i === step ? 'step' : undefined}
@@ -231,12 +253,12 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
                 i < step ? 'border-[hsl(var(--gold))] bg-[hsl(var(--gold))] text-[#161309]' : i === step ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))]' : 'border-border')}>
                 {i < step ? <Check className="h-3 w-3" /> : i + 1}
               </span>
-              {t(`mm_cx_step_${s}` as never)}
+              {t(`mm_cy_step_${s}` as never)}
             </li>
           ))}
         </ol>
 
-        {step < 2 && (
+        {step === 0 && (
           <div className="rounded-2xl border border-[hsl(var(--gold-border))]/50 bg-[hsl(var(--gold-soft))]/40 p-3" data-mm-ai-info="">
             <p className="mb-1 text-[13px] font-semibold text-foreground">{t('mm_cx_info_title')}</p>
             <ul className="grid gap-x-4 gap-y-1 text-[13px] text-foreground/90 sm:grid-cols-2">
@@ -294,22 +316,17 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
               </p>
             )}
 
-            {/* The words on the creative: typeset by HOMATCH later, never drawn by the image model. */}
-            {!refineFrom && (
-              <label className="block" data-mm-ai-overlay-field="">
-                <span className="mb-1 block text-[13px] font-medium">{t('mm_cx_overlay_label')} <span className="text-2xs font-normal text-muted-foreground">{t('madsb_optional')}</span></span>
-                <Input dir="auto" value={overlayText} maxLength={90} onChange={(e) => setOverlayText(e.target.value)} placeholder={t('mm_cx_overlay_ph')} data-mm-ai-overlay="" />
-                <span className="mt-1 block text-2xs leading-relaxed text-muted-foreground">{t('mm_cx_overlay_help')}</span>
-              </label>
-            )}
+            {/* ONE instruction: what to improve, and — in the same words — what the creative should say.
+                The wording is set on the finished creative by HOMATCH; the customer never has to know how. */}
             <label className="block">
-              <span className="mb-1 block text-[13px] font-medium">{t(refineFrom ? 'mm_c_ai_refine_label' : 'mm_cx_instruction')} <span className="text-2xs font-normal text-muted-foreground">{t('madsb_optional')}</span></span>
-              <Input dir="auto" value={instruction} maxLength={INSTRUCTION_MAX} onChange={(e) => setInstruction(e.target.value)} placeholder={t('mm_cx_instruction_ph')} data-mm-ai-instruction="" />
+              <span className="mb-1 block text-[13px] font-medium">{t(refineFrom ? 'mm_c_ai_refine_label' : 'mm_cy_instruction')} <span className="text-2xs font-normal text-muted-foreground">{t('madsb_optional')}</span></span>
+              <Textarea dir="auto" rows={2} value={instruction} maxLength={INSTRUCTION_MAX} onChange={(e) => setInstruction(e.target.value)} placeholder={t('mm_cy_instruction_ph')} data-mm-ai-instruction="" />
+              {!refineFrom && <span className="mt-1 block text-2xs leading-relaxed text-muted-foreground">{t('mm_cy_instruction_help')}</span>}
             </label>
             {intent.overlay && (
               <p className="flex items-start gap-1.5 rounded-lg bg-[hsl(var(--secondary))]/60 px-2.5 py-1.5 text-2xs text-foreground" data-mm-ai-overlay-parsed={intent.overlay.placement ?? ''}>
                 <Type className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-                <span className="min-w-0 [overflow-wrap:break-word]">{t(intent.overlay.placement ? `mm_cx_overlay_parsed_${intent.overlay.placement}` as never : 'mm_cx_overlay_parsed', { text: intent.overlay.text })}</span>
+                <span className="min-w-0 [overflow-wrap:break-word]">{t('mm_cy_overlay_parsed', { text: intent.overlay.text })}</span>
               </p>
             )}
             <div className="flex flex-wrap gap-1.5">
@@ -406,7 +423,7 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
                 <h3 className="text-base font-semibold">{t('mm_cx_choose_title')}</h3>
                 {job.chargedCredits != null && <span className="text-2xs text-muted-foreground" data-mm-ai-charged={job.chargedCredits}>{t('mm_c_ai_charged', { credits: job.chargedCredits.toFixed(2), n: String(live.length) })}</span>}
               </div>
-              <p className="text-[13px] text-muted-foreground">{t('mm_cx_choose_desc')}</p>
+              <p className="text-[13px] text-muted-foreground">{t('mm_cy_choose_desc')}</p>
             </div>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               {/* The exact upload — framed differently from the AI variants, never mistaken for one. */}
@@ -434,7 +451,9 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
                 return (
                   <figure key={im.index} className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-border p-1.5" data-mm-ai-variant={im.index} data-selected={sel ? 'true' : 'false'}>
                     <div className={cn('relative overflow-hidden rounded-xl', sel && 'ring-2 ring-[hsl(var(--gold-border))]')}>
-                      {im.url && <img src={im.url} alt={name} className="aspect-square w-full object-cover" />}
+                      {/* The finished creative — the visual with its text already set — exactly what "Use" creates. */}
+                      <FinishedPreview source={{ jobId: job.id, index: im.index }} fallbackUrl={im.url} alt={name}
+                        onReady={(svg) => setFinished((f) => (f[im.index] === svg ? f : { ...f, [im.index]: svg }))} />
                       {sel && <span className="absolute start-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full bg-[hsl(var(--gold))] text-[#161309]"><Check className="h-3.5 w-3.5" /></span>}
                       <button type="button" className="absolute end-1 top-1 grid h-9 w-9 place-items-center rounded-lg bg-black/55 text-white" onClick={() => discard(im.index)} aria-label={t('mm_c_ai_remove', { n: String(im.index) })} data-mm-ai-remove={im.index}><Trash2 className="h-4 w-4" /></button>
                     </div>
@@ -451,7 +470,11 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
                       </p>
                     )}
                     <CardActions t={t} selected={!!sel} label={name}
-                      onView={() => im.url && setPreview({ url: im.url, label: name })} onPick={() => toggle(im.index)} pickAttr={String(im.index)} />
+                      onView={() => (finished[im.index] ? setPreview({ svg: finished[im.index], label: name }) : im.url && setPreview({ url: im.url, label: name }))} onPick={() => toggle(im.index)} pickAttr={String(im.index)} />
+                    <button type="button" onClick={() => setComposeFor([im.index])} data-mm-ai-edit={im.index}
+                      className="inline-flex min-h-9 items-center justify-center gap-1 rounded-lg px-1 text-center text-2xs font-medium leading-snug text-[hsl(var(--gold-ink))] underline-offset-2 hover:underline">
+                      <Type className="h-3.5 w-3.5 shrink-0" aria-hidden />{t('mm_cy_edit')}
+                    </button>
                     {sel && (
                       <select value={sel} onChange={(e) => setPicked((p) => ({ ...p, [im.index]: e.target.value as Role }))} aria-label={t('mm_c_ai_role')}
                         className="h-9 w-full rounded-md border border-border bg-background px-1.5 text-2xs" data-mm-ai-role={im.index}>
@@ -462,10 +485,9 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
                 );
               })}
             </div>
-            <p className="text-2xs text-muted-foreground" data-mm-ai-visual-only="">{t('mm_ct_visual_only')}</p>
             <div className="flex flex-wrap gap-2">
               <Button type="button" className="min-h-11 w-full gap-1.5 sm:w-auto" disabled={!chosen.length || using} onClick={() => use(chosen)} data-mm-ai-use="">
-                <Type className="h-4 w-4" />{t('mm_cx_continue', { n: String(chosen.length) })}
+                {using ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}{t('mm_cy_use', { n: String(chosen.length) })}
               </Button>
             </div>
           </section>
@@ -473,7 +495,9 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
 
         {preview && (
           <div className="fixed inset-0 z-[60] grid place-items-center bg-black/85 p-3" role="dialog" aria-modal="true" aria-label={preview.label} onClick={() => setPreview(null)} data-mm-ai-large="">
-            <img src={preview.url} alt={preview.label} className="max-h-[85dvh] max-w-full rounded-xl object-contain" />
+            {preview.svg
+              ? <div className="max-h-[85dvh] w-full max-w-md overflow-hidden rounded-xl [&_svg]:block [&_svg]:h-auto [&_svg]:max-h-[85dvh] [&_svg]:w-full" dangerouslySetInnerHTML={{ __html: preview.svg }} />
+              : <img src={preview.url} alt={preview.label} className="max-h-[85dvh] max-w-full rounded-xl object-contain" />}
             <button type="button" className="absolute end-3 top-3 grid h-11 w-11 place-items-center rounded-full bg-white/15 text-white" onClick={() => setPreview(null)} aria-label={t('mm_c_ai_close_preview')} autoFocus><X className="h-5 w-5" /></button>
           </div>
         )}
@@ -499,5 +523,24 @@ function CardActions({ t, selected, label, onView, onPick, pickAttr }: {
       </button>
     </div>
   );
+}
+
+/** A variation as the customer will receive it: the server's composition of the visual + its text (free; no model). */
+function FinishedPreview({ source, fallbackUrl, alt, onReady }: { source: ComposeSource; fallbackUrl: string | null; alt: string; onReady: (svg: string) => void }) {
+  const [svg, setSvg] = useState<string | null>(null);
+  const key = JSON.stringify(source);
+  useEffect(() => {
+    let live = true;
+    Promise.all([ensureCreativeFonts(), aiCompose(source)]).then(([fonts, r]) => {
+      if (!live || !fonts || !r.svg) return;
+      setSvg(r.svg); onReady(r.svg);
+    }).catch(() => undefined);
+    return () => { live = false; };
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  return svg
+    ? <div role="img" aria-label={alt} className="[&_svg]:block [&_svg]:h-auto [&_svg]:w-full" data-mm-ai-finished="" dangerouslySetInnerHTML={{ __html: svg }} />
+    : fallbackUrl
+      ? <div className="relative"><img src={fallbackUrl} alt={alt} className="aspect-[4/5] w-full object-cover opacity-70" /><Loader2 className="absolute inset-0 m-auto h-5 w-5 animate-spin text-white" aria-hidden /></div>
+      : <span className="block aspect-[4/5] w-full bg-[hsl(var(--secondary))]" />;
 }
 

@@ -327,7 +327,12 @@ test('circulation removes the least furniture that frees the way: the corrected 
   const lSpace = buildSpaceModel(lScene);
   const lAssets = new Map(lPlanAssetRows.map((r) => { const a = assetFromRow(r); return [a.code, a]; }));
   const none = new Map();
+  const t0 = performance.now();
   const { state, report } = buildWalkthrough({ space: lSpace, base: emptyDesignState(), plan: lPlanPlan, assets: lAssets, materialsByCode: none, materialsById: none, idPrefix: 'walk-l' });
+  // The edge plan step has 2 s of CPU in all: the repair answers each reachability question with one flood, not a
+  // search per goal (the search-per-goal version took ~1.8 s here and production stopped it for CPU time).
+  const ms = performance.now() - t0;
+  assert.ok(ms < 1000, `${Math.round(ms)} ms`);
   const where = (code) => state.objects.filter((o) => o.assetId === code).map((o) => o.roomId).sort();
   assert.deepEqual(where('dev/bed-double'), ['r2', 'r3'], JSON.stringify(report.items.filter((i) => i.outcome === 'DROPPED')));
   assert.deepEqual(where('dev/sofa-3'), ['r1']);

@@ -163,7 +163,7 @@ test('E: creative fields explain themselves; priority is an unmistakable ☆/★
 
 /* ── F · DOMAIN GUARD ──────────────────────────────────────────────────── */
 
-test('F: the real-estate ecosystem is allowed; clearly unrelated or high-risk ads are blocked; borderline goes to a person', () => {
+test('F: property and any lawful product, service or business are allowed; only high-risk ads are blocked; mixed high-risk goes to a person', () => {
   const v = (texts, extra = {}) => classifyDomainScope({ hasProperty: false, offer: { isProperty: false, title: '' }, texts, ...extra }).decision;
   for (const s of [
     'Apartment renovation in Tbilisi — kitchens and bathrooms',
@@ -177,10 +177,15 @@ test('F: the real-estate ecosystem is allowed; clearly unrelated or high-risk ad
     'شقة للبيع في تبليسي',
     'דירה להשכרה בבטומי',
   ]) assert.equal(v([s]), 'ALLOWED', s);
-  for (const s of ['Online casino bonus', 'Sports betting odds today', 'Bitcoin trading signals', 'Every new sneaker 50% off', 'Pizza delivery in 30 minutes', 'კაზინო ბონუსი']) {
+  // Ordinary lawful businesses run without a real-estate signal and without a person checking them.
+  for (const s of ['Every new sneaker 50% off', 'Pizza delivery in 30 minutes', 'Moving company, fast and careful', 'კერამიკული ფილების მაღაზია',
+    'Ремонт смартфонов за час', 'Online English lessons for kids', 'Yoga studio — first class free', 'مطعم سوشي جديد']) {
+    assert.deepEqual(classifyDomainScope({ hasProperty: false, offer: { isProperty: false, title: '' }, texts: [s] }).decision, 'ALLOWED', s);
+  }
+  assert.equal(classifyDomainScope({ hasProperty: false, offer: { isProperty: false, title: 'Pizza delivery' }, texts: [] }).reason, 'GENERAL_OFFER');
+  for (const s of ['Online casino bonus', 'Sports betting odds today', 'Bitcoin trading signals', 'კაზინო ბონუსი']) {
     assert.equal(v([s]), 'BLOCKED_OUT_OF_SCOPE', s);
   }
-  assert.equal(v(['Moving company, fast and careful']), 'NEEDS_REVIEW', 'no clear signal: a person decides');
   assert.equal(v(['Apartment with a casino bonus']), 'NEEDS_REVIEW', 'mixed: a person decides');
   assert.equal(classifyDomainScope({ hasProperty: true, texts: ['Two bedrooms in Vake'] }).decision, 'ALLOWED');
   assert.equal(classifyDomainScope({ hasProperty: true, texts: ['Flat next to the casino'] }).decision, 'NEEDS_REVIEW', 'a property is never refused by a word');
@@ -217,8 +222,8 @@ test('F: the server decides — preflight, and again at launch; a frontend that 
   assert.doesNotMatch(dc, /fetch\(|openai|anthropic|gemini|callAi|aiJson/i);
   // The customer reads one kind sentence, never the matched words.
   assert.deepEqual(preflightDetails('BLOCKED_OUT_OF_SCOPE:GAMBLING'), [{ key: 'mm_m_scope_blocked', value: '' }]);
-  assert.deepEqual(preflightDetails('IN_REVIEW:NO_REAL_ESTATE_SIGNAL'), [{ key: 'mm_m_scope_review', value: '' }]);
-  assert.equal(M.mm_m_scope_blocked[1], 'HOMATCH Ads შექმნილია უძრავი ქონებისა და მასთან დაკავშირებული სერვისებისთვის. ეს რეკლამა ამ მიმართულებას არ შეესაბამება. შეგიძლიათ შექმნათ უძრავ ქონებასთან დაკავშირებული კამპანია.');
+  assert.deepEqual(preflightDetails('IN_REVIEW:MIXED_SIGNALS'), [{ key: 'mm_m_scope_review', value: '' }]);
+  assert.equal(M.mm_m_scope_blocked[1], 'HOMATCH-ით აზარტული თამაშების, ზრდასრულთა შინაარსის, ნარკოტიკების და კრიპტოვაჭრობის რეკლამა შეუძლებელია. შეგიძლიათ დაარეკლამოთ ნებისმიერი სხვა კანონიერი პროდუქტი, სერვისი ან ბიზნესი.');
   assert.match(page, /code === 'OUT_OF_SCOPE'|'OUT_OF_SCOPE'/);
 });
 

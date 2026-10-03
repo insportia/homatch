@@ -33,7 +33,7 @@ const POLL_MS = 3000;
 
 /** Errors the panel explains in words; anything else reads as a plain failure. */
 const KNOWN_ERRORS = ['INSUFFICIENT_CREDITS', 'AI_UNAVAILABLE', 'RATE_LIMITED', 'BUSY', 'INSTRUCTION_NOT_ALLOWED', 'ANALYSIS_FAILED',
-  'GENERATION_FAILED', 'TIMED_OUT', 'PRICING_UNAVAILABLE', 'IMAGE_REQUIRED'];
+  'GENERATION_FAILED', 'TIMED_OUT', 'PRICING_UNAVAILABLE', 'IMAGE_REQUIRED', 'START_FAILED'];
 const codeOf = (e: unknown) => String((e as { code?: string })?.code ?? (e as { body?: { code?: string } })?.body?.code ?? 'FAILED');
 
 export default function CreativeAiPanel({ open, onOpenChange, creative, onCreated }: {
@@ -52,6 +52,10 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
   const [variations, setVariations] = useState(MAX_VARIATIONS);
   const [quote, setQuote] = useState<AiQuote | null>(null);
   const [quoting, setQuoting] = useState(false);
+  /* The AI generation cost could not be read: said as that (never a property's
+     price), with a retry — not a spinner that never ends. */
+  const [quoteFailed, setQuoteFailed] = useState(false);
+  const [quoteTry, setQuoteTry] = useState(0);
   const [confirming, setConfirming] = useState(false);
   const [refineFrom, setRefineFrom] = useState<{ jobId: string; index: number } | null>(null);
   const [job, setJob] = useState<AiJob | null>(null);
@@ -92,12 +96,18 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
   useEffect(() => {
     if (!open || !analysis) return;
     let live = true;
-    setQuoting(true);
+    setQuoting(true); setQuoteFailed(false);
     aiQuote(count, !!refineFrom).then((r) => { if (live) setQuote(r.quote); })
-      .catch((e) => { if (live) { setQuote(null); setError(codeOf(e)); } })
+      .catch((e) => {
+        if (!live) return;
+        setQuote(null); setQuoteFailed(true);
+        // The cost box says it (with a retry); only a different reason needs the banner.
+        const c = codeOf(e);
+        if (c !== 'FAILED' && c !== 'PRICING_UNAVAILABLE') setError(c);
+      })
       .finally(() => { if (live) setQuoting(false); });
     return () => { live = false; };
-  }, [open, analysis, count, refineFrom]);
+  }, [open, analysis, count, refineFrom, quoteTry]);
 
   /* ── a running job: poll its real stage ── */
   useEffect(() => {
@@ -166,7 +176,7 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92dvh] max-w-[calc(100%-1rem)] overflow-y-auto p-4 sm:p-6 md:max-w-3xl" data-mm-ai-panel="">
-        <DialogHeader>
+        <DialogHeader className="pr-10">
           <DialogTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-[hsl(var(--gold-ink))]" />{t('mm_c_ai_title')}</DialogTitle>
           <DialogDescription>{t('mm_c_ai_lead')}</DialogDescription>
         </DialogHeader>
@@ -192,12 +202,18 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
                 <RefreshCw className="h-3.5 w-3.5" />{t('mm_c_ai_reanalyze')}
               </Button>
             </div>
-            <div role="radiogroup" aria-label={t('mm_c_ai_concepts')} className="grid gap-2 md:grid-cols-3">
+            {/* Two readable columns at most: a Georgian paragraph never squeezed into a third of a dialog. */}
+            <div role="radiogroup" aria-label={t('mm_c_ai_concepts')} className="grid gap-2.5 sm:grid-cols-2">
               {concepts.map((c) => (
                 <button key={c.id} type="button" role="radio" aria-checked={concept === c.id} onClick={() => setConcept(c.id)} data-mm-ai-concept={c.id}
-                  className={cn('rounded-xl border p-3 text-start text-2xs leading-relaxed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]',
-                    concept === c.id ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))]' : 'border-border hover:bg-[hsl(var(--secondary))]/60')}>
-                  <span className="mb-1 flex items-center gap-1.5 text-[13px] font-semibold text-foreground">{concept === c.id && <Check className="h-3.5 w-3.5" />}{c.title}</span>
+                  className={cn('min-w-0 rounded-2xl border bg-card p-3.5 text-start text-2xs leading-relaxed transition-colors [overflow-wrap:break-word] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]',
+                    concept === c.id ? 'border-[hsl(var(--gold-border))] ring-1 ring-[hsl(var(--gold-border))]' : 'border-border hover:border-[hsl(var(--gold-border))]/60')}>
+                  <span className="mb-1 flex items-start gap-1.5 text-[13px] font-semibold leading-snug text-foreground">
+                    <span className={cn('mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border', concept === c.id ? 'border-[hsl(var(--gold))] bg-[hsl(var(--gold))] text-[#161309]' : 'border-border')} aria-hidden>
+                      {concept === c.id && <Check className="h-3 w-3" />}
+                    </span>
+                    <span className="min-w-0">{c.title}</span>
+                  </span>
                   <span className="block text-foreground/90">{c.angle}</span>
                   <span className="mt-1 block text-muted-foreground"><b>{t('mm_c_ai_visual')}:</b> {c.visual}</span>
                   <span className="block text-muted-foreground"><b>{t('mm_c_ai_composition')}:</b> {c.composition}</span>
@@ -236,9 +252,20 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
               </div>
             )}
 
-            <div className="rounded-xl border border-[hsl(var(--gold-border))]/50 bg-[hsl(var(--gold-soft))]/40 p-3" data-mm-ai-quote={quote ? quote.expectedCredits : ''}>
-              {quoting || !quote ? (
-                <p className="flex items-center gap-2 text-[13px] text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />{t('mm_c_ai_pricing')}</p>
+            {/* The AI generation cost — a cost of this tool, never the price of what is advertised. */}
+            <div className="rounded-2xl border border-border bg-[hsl(var(--secondary))]/35 p-3.5" data-mm-ai-quote={quote ? quote.expectedCredits : ''}>
+              <p className="mb-1 text-2xs font-semibold uppercase tracking-[0.12em] text-muted-foreground" data-mm-ai-cost-title="">{t('mm_u_ai_cost_title')}</p>
+              {quoting ? (
+                <p className="flex items-center gap-2 text-[13px] text-muted-foreground" role="status"><Loader2 className="h-3.5 w-3.5 animate-spin" />{t('mm_c_ai_pricing')}</p>
+              ) : !quote ? (
+                quoteFailed ? (
+                  <div className="flex flex-wrap items-center gap-2" data-mm-ai-quote-failed="">
+                    <p className="min-w-0 flex-1 text-[13px] text-muted-foreground">{t('mm_c_ai_err_pricing_unavailable')}</p>
+                    <Button type="button" variant="outline" size="sm" className="min-h-11 gap-1.5" onClick={() => { setError(null); setQuoteTry((n) => n + 1); }} data-mm-ai-quote-retry="">
+                      <RefreshCw className="h-3.5 w-3.5" />{t('mm_u_retry')}
+                    </Button>
+                  </div>
+                ) : null
               ) : (
                 <>
                   <p className="text-[13px] text-foreground">{t('mm_c_ai_price_line', { n: String(count), credits: quote.expectedCredits.toFixed(2), max: quote.maxCredits.toFixed(2) })}</p>

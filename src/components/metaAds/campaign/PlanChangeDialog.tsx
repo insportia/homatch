@@ -85,7 +85,7 @@ export function PlanChangeDialog({ kind, t, fmt, open, onOpenChange, onDone, cam
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!busy) onOpenChange(o); }}>
       <DialogContent className="max-h-[90dvh] w-[calc(100vw-2rem)] max-w-md overflow-y-auto rounded-2xl">
-        <DialogHeader>
+        <DialogHeader className="pr-10">
           <DialogTitle>{t(kind === 'budget' ? 'mm_c_budget_title' : 'mm_c_duration_title')}</DialogTitle>
           <DialogDescription>{t('mm_c_budget_lead')}</DialogDescription>
         </DialogHeader>

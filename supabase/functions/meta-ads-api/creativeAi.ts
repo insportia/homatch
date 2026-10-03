@@ -32,6 +32,7 @@ import {
 } from '../../../src/lib/metaAds/creativeAi.ts';
 import type { ExecutionGrant } from '../_shared/billing.ts';
 import { estimatedProviderCost } from '../_shared/providerCost.ts';
+import { scrubText } from '../_shared/metaAds.ts';
 import type { ActionCtx } from './actions.ts';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
@@ -425,11 +426,15 @@ export async function handleCreativeAi(x: ActionCtx): Promise<Response | null> {
       });
       if (!grant.ok) {
         await sb.from('meta_creative_ai_jobs').update({ status: 'FAILED', stage: 'FAILED', error: grant.reason ?? 'BILLING', updated_at: new Date().toISOString() }).eq('id', job.id);
-        log('generation_refused', { jobId: job.id, reason: grant.reason });
+        // The billing reason and its message (scrubbed, no secrets) — so "why didn't it start" has an answer in the logs.
+        log('generation_refused', { jobId: job.id, reason: grant.reason, message: scrubText(String(grant.message ?? '')).slice(0, 160) });
         if (grant.reason === 'INSUFFICIENT_CREDITS' || grant.reason === 'BELOW_MIN_VIABLE_BUDGET') {
           return json({ error: 'INSUFFICIENT_CREDITS', code: 'INSUFFICIENT_CREDITS', balance: grant.budget?.availableCredits ?? null, needed: grant.estimateMaxCredits }, 402);
         }
-        return json({ error: 'PRICING_UNAVAILABLE', code: 'PRICING_UNAVAILABLE' }, 503);
+        // Only a real pricing/product state is "the cost can't be calculated"; anything else is a start
+        // failure, said as one — never as a missing price.
+        const pricing = ['PRODUCT_PRICING_INACTIVE', 'PAYG_DISABLED', 'PRODUCT_DISABLED', 'NOT_FOUND'].includes(String(grant.reason));
+        return json({ error: pricing ? 'PRICING_UNAVAILABLE' : 'START_FAILED', code: pricing ? 'PRICING_UNAVAILABLE' : 'START_FAILED' }, 503);
       }
       await sb.from('meta_creative_ai_jobs').update({ reservation_id: grant.reservationId, quoted_credits: grant.reservedCredits, updated_at: new Date().toISOString() }).eq('id', job.id);
       log('generation_reserved', { jobId: job.id, variations, reserved: grant.reservedCredits });

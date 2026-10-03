@@ -46,6 +46,11 @@ test('offer: a property, or another offer with a name — and clearing is a real
   assert.equal(stepGap('offer', ctx({ offer: { isProperty: false, title: '  ' } })), 'madsb_gap_offer_title');
   assert.equal(stepGap('offer', ctx({ offer: { isProperty: false, title: 'Studio for rent' } })), null);
   assert.equal(stepGap('offer', ctx({ property_id: 'uuid' })), null);
+  // A property that is not on HOMATCH, described: answered — never a lingering "unresolved" mark.
+  assert.equal(stepGap('offer', ctx({ offer: { isProperty: true, dealKind: 'SALE', title: '3-room flat in Saburtalo' } })), null);
+  assert.equal(stepGap('offer', ctx({ offer: { isProperty: true, dealKind: 'SALE', title: '' } })), 'madsb_gap_offer_title');
+  // Any lawful product or service, described: answered.
+  assert.equal(stepGap('offer', ctx({ offer: { isProperty: false, dealKind: 'OTHER', title: 'კერამიკული ფილების მაღაზია' } })), null);
 });
 
 test('destination depends on the goal', () => {

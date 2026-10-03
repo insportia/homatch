@@ -37,9 +37,11 @@ export function stepGap(step: StepKey, ctx: StepContext): string | null {
       return null;
     case 'offer': {
       if (c.property_id) return null;
+      // Another product or service: described in a few words is answered, whichever
+      // kind was picked (a property not on HOMATCH, or anything else).
       const offer = c.offer as { isProperty?: boolean; title?: string } | null;
-      if (offer && offer.isProperty === false && String(offer.title ?? '').trim()) return null;
-      return offer && offer.isProperty === false ? 'madsb_gap_offer_title' : 'madsb_gap_offer';
+      if (!offer) return 'madsb_gap_offer';
+      return String(offer.title ?? '').trim() ? null : 'madsb_gap_offer_title';
     }
     case 'goal':
       return (status?.settings.goalsEnabled ?? []).includes(goal) ? null : 'madsb_gap_goal';

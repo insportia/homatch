@@ -64,8 +64,9 @@ function ProjectLoader() {
   const { projectId = '', versionId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  // /design-studio/:projectId/walkthrough opens the head version at eye level.
-  const walkthroughRoute = location.pathname.endsWith('/walkthrough');
+  // /design-studio/:projectId/walkthrough opens the head version at eye level;
+  // /design-studio/:projectId/walkthrough/:versionId a walkthrough the server built (WalkthroughPanel).
+  const walkthroughRoute = /\/walkthrough(\/[^/]+)?\/?$/.test(location.pathname);
   const { homatchUser } = useAuth();
   const { t } = useLanguage();
   const [bundle, setBundle] = useState<ProjectBundle | null | undefined>(undefined);

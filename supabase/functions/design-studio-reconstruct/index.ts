@@ -16,6 +16,10 @@
 //   POST …/design-studio-reconstruct/design-spec           OpenAI's Design Specification from the customer's own source (generate.ts)
 //   POST …/design-studio-reconstruct/render-generate       an OpenAI-first picture (MASTER / ROOM / VARIANT): quoted, reserved, generated
 //   POST …/design-studio-reconstruct/render-generate-step  generated pictures advanced: image → scene → edit map → settle
+//   POST …/design-studio-reconstruct/walkthrough-create    a 3D walkthrough of an approved design, owned by the server (walkthrough.ts)
+//   POST …/design-studio-reconstruct/walkthrough-status    its real state; a due step is taken
+//   POST …/design-studio-reconstruct/walkthrough-retry     a failed one resumed from its saved work
+//   POST …/design-studio-reconstruct/walkthrough-tick      the reconciler (pg_cron, x-cron-token): due walkthroughs and unwatched factory jobs
 //
 // One function because the project is on a plan that caps how many edge
 // functions it may have, and production is at that cap: two new functions
@@ -35,6 +39,7 @@ import { handleProjectDelete } from './project.ts';
 import { handleRenderEdit, handleRenderQuote, handleRenderStart, handleRenderStatus } from './renders.ts';
 import { handleReconstruct } from './reconstruct.ts';
 import { handleDesignSpec, handleRenderGenerate, handleRenderGenerateStep } from './generate.ts';
+import { handleWalkthroughCreate, handleWalkthroughRetry, handleWalkthroughStatus, handleWalkthroughTick } from './walkthrough.ts';
 
 serve((req) => {
   const route = new URL(req.url).pathname.replace(/\/+$/, '').split('/').pop();
@@ -53,5 +58,9 @@ serve((req) => {
   if (route === 'design-spec') return handleDesignSpec(req);
   if (route === 'render-generate') return handleRenderGenerate(req);
   if (route === 'render-generate-step') return handleRenderGenerateStep(req);
+  if (route === 'walkthrough-create') return handleWalkthroughCreate(req);
+  if (route === 'walkthrough-status') return handleWalkthroughStatus(req);
+  if (route === 'walkthrough-retry') return handleWalkthroughRetry(req);
+  if (route === 'walkthrough-tick') return handleWalkthroughTick(req);
   return handleReconstruct(req);
 });

@@ -14,7 +14,8 @@
 //
 // Every generation is server-owned (designRun.ts): priced first, confirmed by
 // the customer, then made whether or not this page stays open; the page only
-// follows it. The 3D experience is held back (walkthroughOffer.ts).
+// follows it. A floor-plan design also offers its 3D walkthrough
+// (WalkthroughPanel): made by the server, it carries on with the page closed.
 
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -27,7 +28,6 @@ import type { MapEntry, RenderProduct, RenderRecord } from '@/lib/designStudio/r
 import type { EditChoice } from '@/lib/designStudio/renders/edits';
 import { colourChoices } from '@/lib/designStudio/renders/edits';
 import { aiActionsFor, aiAppearanceEdit, aiWhat, isAiEntry } from '@/lib/designStudio/renders/aiEdits';
-import { WALKTHROUGH_OFFERED } from '@/lib/designStudio/walkthroughOffer';
 import type { DesignVersionRecord } from '@/lib/designStudio/types';
 import { createVersion, setHeadVersion, type ProjectBundle } from '@/services/designStudio/projects';
 import { editRender, listRenders, pollRenders, quoteRender, renderMapUrl, renderPictureUrls } from '@/services/designStudio/renders';
@@ -38,6 +38,7 @@ import { signedUrls } from '@/services/designStudio/files';
 import { RenderViewer } from '@/components/designStudio/renders/RenderViewer';
 import { EditPanel } from '@/components/designStudio/renders/EditPanel';
 import { STAGE_KEY } from './Screens';
+import { WalkthroughPanel } from './WalkthroughPanel';
 
 const SnakeGame = lazy(() => import('@/components/games/SnakeGame'));
 
@@ -334,7 +335,6 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
           {others.length ? (
             <button type="button" onClick={() => document.getElementById('ds-rooms')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className={CHIP} data-testid="home-rooms">{t('dsx_other_room')}</button>
           ) : null}
-          {WALKTHROUGH_OFFERED ? <button type="button" className={CHIP} onClick={() => navigate(`/design-studio/${projectId}/walkthrough`)} data-testid="home-walk">{t('dsx_3d')}</button> : null}
         </div>
 
         {working ? (
@@ -346,6 +346,11 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
             </div>
             <button type="button" onClick={() => setPlaying(true)} className={cn('h-11 rounded-full bg-[hsl(38_92%_56%)] px-4 text-[14px] font-semibold text-[#0C1119]', RING)} data-testid="snake-play">{t('dsx_sn_play')}</button>
           </section>
+        ) : null}
+
+        {/* ── The 3D walkthrough of the design shown (a floor plan has rooms to walk) ── */}
+        {data.sourceKind === 'FLOOR_PLAN' && hero ? (
+          <WalkthroughPanel projectId={projectId} designVersionId={hero.version_id ?? data.head.id} renderId={hero.id} />
         ) : null}
 
         {/* ── Your options ───────────────────────────────────────────── */}

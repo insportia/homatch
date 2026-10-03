@@ -14904,6 +14904,26 @@ const en = {
   mm_u_ai_cost_title: 'AI generation cost',
   mm_u_retry: 'Try again',
   mm_c_ai_err_start_failed: 'Generation couldn’t start. Nothing was charged — try again in a moment.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_title: '3D walkthrough',
+  dsx_walk_body: 'Walk through this design at eye level: the rooms, doors and windows of your plan, furnished in this style.',
+  dsx_walk_create: 'Create 3D walkthrough',
+  dsx_walk_step_planning: 'Planning each room',
+  dsx_walk_step_building: 'Building the 3D home',
+  dsx_walk_step_finishing: 'Checking the result',
+  dsx_walk_step_ready: 'Ready',
+  dsx_walk_leave_ok: 'This continues even if you close the page. Come back any time.',
+  dsx_walk_open: 'Open 3D walkthrough',
+  dsx_walk_again: 'Make a new walkthrough',
+  dsx_walk_failed: 'The 3D walkthrough could not be finished.',
+  dsx_walk_failed_retry: 'Nothing is lost: try again and HOMATCH continues from where it stopped.',
+  dsx_walk_failed_final: 'Please try again later or create a new walkthrough.',
+  dsx_walk_retry: 'Try again',
+  dsx_walk_unavailable: 'The 3D walkthrough is not available right now. Please try again later.',
+  dsx_walk_previous: 'Earlier walkthroughs',
+  dsx_walk_rev: 'Walkthrough {{n}}',
+  dsx_walk_version_name: '3D walkthrough {{n}}',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -29722,6 +29742,26 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mm_u_ai_cost_title: 'AI გენერაციის ღირებულება',
   mm_u_retry: 'ხელახლა ცდა',
   mm_c_ai_err_start_failed: 'გენერაცია ვერ დაიწყო. არაფერი ჩამოგეჭრათ — ცოტა ხანში სცადეთ ხელახლა.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_title: '3D ტური',
+  dsx_walk_body: 'გაიარე ეს დიზაინი თვალის სიმაღლიდან: შენი გეგმის ოთახები, კარები და ფანჯრები, ამ სტილით მოწყობილი.',
+  dsx_walk_create: '3D ტურის შექმნა',
+  dsx_walk_step_planning: 'თითოეული ოთახის დაგეგმვა',
+  dsx_walk_step_building: '3D სახლის აწყობა',
+  dsx_walk_step_finishing: 'შედეგის შემოწმება',
+  dsx_walk_step_ready: 'მზადაა',
+  dsx_walk_leave_ok: 'პროცესი გაგრძელდება გვერდის დახურვის შემთხვევაშიც. დაბრუნდი ნებისმიერ დროს.',
+  dsx_walk_open: '3D ტურის გახსნა',
+  dsx_walk_again: 'ახალი ტურის შექმნა',
+  dsx_walk_failed: '3D ტურის დასრულება ვერ მოხერხდა.',
+  dsx_walk_failed_retry: 'არაფერი დაკარგულა: სცადე თავიდან და HOMATCH გააგრძელებს იქიდან, სადაც შეჩერდა.',
+  dsx_walk_failed_final: 'სცადე მოგვიანებით ან შექმენი ახალი ტური.',
+  dsx_walk_retry: 'თავიდან ცდა',
+  dsx_walk_unavailable: '3D ტური ამჟამად მიუწვდომელია. სცადე მოგვიანებით.',
+  dsx_walk_previous: 'წინა ტურები',
+  dsx_walk_rev: 'ტური {{n}}',
+  dsx_walk_version_name: '3D ტური {{n}}',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -44531,6 +44571,26 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mm_u_ai_cost_title: 'Стоимость AI-генерации',
   mm_u_retry: 'Повторить',
   mm_c_ai_err_start_failed: 'Генерацию не удалось запустить. Ничего не списано — попробуйте чуть позже.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_title: '3D-прогулка',
+  dsx_walk_body: 'Пройдитесь по этому дизайну на уровне глаз: комнаты, двери и окна вашего плана, обставленные в этом стиле.',
+  dsx_walk_create: 'Создать 3D-прогулку',
+  dsx_walk_step_planning: 'Планируем каждую комнату',
+  dsx_walk_step_building: 'Строим 3D-дом',
+  dsx_walk_step_finishing: 'Проверяем результат',
+  dsx_walk_step_ready: 'Готово',
+  dsx_walk_leave_ok: 'Работа продолжится, даже если вы закроете страницу. Возвращайтесь в любое время.',
+  dsx_walk_open: 'Открыть 3D-прогулку',
+  dsx_walk_again: 'Создать новую прогулку',
+  dsx_walk_failed: 'Не удалось завершить 3D-прогулку.',
+  dsx_walk_failed_retry: 'Ничего не потеряно: попробуйте снова, и HOMATCH продолжит с того места, где остановился.',
+  dsx_walk_failed_final: 'Попробуйте позже или создайте новую прогулку.',
+  dsx_walk_retry: 'Попробовать снова',
+  dsx_walk_unavailable: '3D-прогулка сейчас недоступна. Попробуйте позже.',
+  dsx_walk_previous: 'Предыдущие прогулки',
+  dsx_walk_rev: 'Прогулка {{n}}',
+  dsx_walk_version_name: '3D-прогулка {{n}}',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -59338,6 +59398,26 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mm_u_ai_cost_title: 'AI üretim maliyeti',
   mm_u_retry: 'Tekrar dene',
   mm_c_ai_err_start_failed: 'Üretim başlatılamadı. Ücret alınmadı — birazdan tekrar deneyin.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_title: '3D gezinti',
+  dsx_walk_body: 'Bu tasarımı göz hizasından gezin: planınızın odaları, kapıları ve pencereleri, bu stille döşenmiş olarak.',
+  dsx_walk_create: '3D gezinti oluştur',
+  dsx_walk_step_planning: 'Her oda planlanıyor',
+  dsx_walk_step_building: '3D ev oluşturuluyor',
+  dsx_walk_step_finishing: 'Sonuç kontrol ediliyor',
+  dsx_walk_step_ready: 'Hazır',
+  dsx_walk_leave_ok: 'Sayfayı kapatsanız bile devam eder. İstediğiniz zaman geri dönün.',
+  dsx_walk_open: '3D gezintiyi aç',
+  dsx_walk_again: 'Yeni gezinti oluştur',
+  dsx_walk_failed: '3D gezinti tamamlanamadı.',
+  dsx_walk_failed_retry: 'Hiçbir şey kaybolmadı: tekrar deneyin, HOMATCH kaldığı yerden devam eder.',
+  dsx_walk_failed_final: 'Lütfen daha sonra tekrar deneyin veya yeni bir gezinti oluşturun.',
+  dsx_walk_retry: 'Tekrar dene',
+  dsx_walk_unavailable: '3D gezinti şu anda kullanılamıyor. Lütfen daha sonra tekrar deneyin.',
+  dsx_walk_previous: 'Önceki gezintiler',
+  dsx_walk_rev: 'Gezinti {{n}}',
+  dsx_walk_version_name: '3D gezinti {{n}}',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -74145,6 +74225,26 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mm_u_ai_cost_title: 'تكلفة الإنشاء بالذكاء الاصطناعي',
   mm_u_retry: 'إعادة المحاولة',
   mm_c_ai_err_start_failed: 'تعذّر بدء الإنشاء. لم يُخصم شيء — حاول مجددًا بعد قليل.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_title: 'جولة ثلاثية الأبعاد',
+  dsx_walk_body: 'تجوّل في هذا التصميم على مستوى النظر: غرف مخططك وأبوابه ونوافذه، مؤثثة بهذا الطراز.',
+  dsx_walk_create: 'إنشاء جولة ثلاثية الأبعاد',
+  dsx_walk_step_planning: 'تخطيط كل غرفة',
+  dsx_walk_step_building: 'بناء المنزل ثلاثي الأبعاد',
+  dsx_walk_step_finishing: 'التحقق من النتيجة',
+  dsx_walk_step_ready: 'جاهز',
+  dsx_walk_leave_ok: 'يستمر العمل حتى لو أغلقت الصفحة. عد في أي وقت.',
+  dsx_walk_open: 'فتح الجولة ثلاثية الأبعاد',
+  dsx_walk_again: 'إنشاء جولة جديدة',
+  dsx_walk_failed: 'تعذّر إكمال الجولة ثلاثية الأبعاد.',
+  dsx_walk_failed_retry: 'لم يضِع شيء: حاول مجددًا وسيتابع HOMATCH من حيث توقف.',
+  dsx_walk_failed_final: 'يرجى المحاولة لاحقًا أو إنشاء جولة جديدة.',
+  dsx_walk_retry: 'حاول مجددًا',
+  dsx_walk_unavailable: 'الجولة ثلاثية الأبعاد غير متاحة حاليًا. يرجى المحاولة لاحقًا.',
+  dsx_walk_previous: 'الجولات السابقة',
+  dsx_walk_rev: 'الجولة {{n}}',
+  dsx_walk_version_name: 'جولة ثلاثية الأبعاد {{n}}',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -88952,6 +89052,26 @@ const he: Partial<Record<TranslationKey, string>> = {
   mm_u_ai_cost_title: 'עלות היצירה ב-AI',
   mm_u_retry: 'נסו שוב',
   mm_c_ai_err_start_failed: 'לא ניתן היה להתחיל את היצירה. לא חויבתם — נסו שוב בעוד רגע.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_title: 'סיור תלת־ממדי',
+  dsx_walk_body: 'טיילו בעיצוב הזה בגובה העיניים: החדרים, הדלתות והחלונות של התוכנית שלכם, מרוהטים בסגנון הזה.',
+  dsx_walk_create: 'יצירת סיור תלת־ממדי',
+  dsx_walk_step_planning: 'מתכננים כל חדר',
+  dsx_walk_step_building: 'בונים את הבית בתלת־ממד',
+  dsx_walk_step_finishing: 'בודקים את התוצאה',
+  dsx_walk_step_ready: 'מוכן',
+  dsx_walk_leave_ok: 'התהליך ממשיך גם אם תסגרו את הדף. אפשר לחזור בכל זמן.',
+  dsx_walk_open: 'פתיחת הסיור התלת־ממדי',
+  dsx_walk_again: 'יצירת סיור חדש',
+  dsx_walk_failed: 'לא הצלחנו להשלים את הסיור התלת־ממדי.',
+  dsx_walk_failed_retry: 'שום דבר לא אבד: נסו שוב ו־HOMATCH ימשיך מהמקום שבו עצר.',
+  dsx_walk_failed_final: 'נסו שוב מאוחר יותר או צרו סיור חדש.',
+  dsx_walk_retry: 'נסו שוב',
+  dsx_walk_unavailable: 'הסיור התלת־ממדי אינו זמין כרגע. נסו שוב מאוחר יותר.',
+  dsx_walk_previous: 'סיורים קודמים',
+  dsx_walk_rev: 'סיור {{n}}',
+  dsx_walk_version_name: 'סיור תלת־ממדי {{n}}',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

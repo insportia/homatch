@@ -31,7 +31,7 @@
 import type {
   FloorPlanDocument, WallSegment, Opening, RoomPolygon, PixelPoint, MetrePoint,
   RoomKind, StairFlight,
-} from '@/services/developer/floorplan';
+} from '../../services/developer/floorplan.ts';
 
 // ── What comes out ─────────────────────────────────────────────────────────
 
@@ -58,7 +58,7 @@ export interface OpeningMesh {
   sillM: number;
   heightM: number;
   /** How it closes (OpeningLeaf); absent when the drawing does not say. */
-  leaf?: import('@/services/developer/floorplan').OpeningLeaf | null;
+  leaf?: import('../../services/developer/floorplan.ts').OpeningLeaf | null;
   /**
    * The face of the wall a swinging leaf opens towards (L: left walking
    * start→end), resolved from the drawing's swingRoomId. Absent when the

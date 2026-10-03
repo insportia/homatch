@@ -54,7 +54,7 @@ const MAP_KINDS = new Set(['OBJECT', 'FLOOR', 'WALL', 'CEILING', 'STAIRS', 'DOOR
 const HOURLY_JOBS = 30;
 /** Catalogue files the worker may read: public or licensed delivery classes only. */
 const CATALOG_READABLE = /^design-studio\/catalog\/(public|licensed)\/(materials|models)\/hma_[0-9a-z]{26}\/hmv_[0-9a-z]{26}\/[A-Za-z0-9_./-]+$/;
-const FACTORY_STAGES = new Set(['ARCHITECTURE', 'FURNISHING', 'MATERIALS', 'LIGHTING', 'RENDERING', 'EXPORTING', 'OPTIMIZING']);
+export const FACTORY_STAGES: ReadonlySet<string> = new Set(['ARCHITECTURE', 'FURNISHING', 'MATERIALS', 'LIGHTING', 'RENDERING', 'EXPORTING', 'OPTIMIZING']);
 const QA_MODEL = Deno.env.get('OPENAI_DS_QA_MODEL') || Deno.env.get('OPENAI_DS_RECONSTRUCT_MODEL') || Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
 
 export function factoryConfig() {
@@ -142,6 +142,24 @@ export async function handleFactory(req: Request, opts: { billedBy?: 'RENDER' } 
   }
   const { data: billingOn } = await admin.rpc('billing_setting_bool', { p_key: 'design_studio_billing_enabled', p_default: false });
   if (billingOn === true && opts.billedBy !== 'RENDER') return json({ error: 'BILLING_CONFIRMATION_REQUIRED' }, 409);
+  const out = await submitPass(admin, gpu, { projectId: project.id, actorId, reconstructionId: body.reconstructionId ?? null, versionId: body.versionId ?? null, pass, spec });
+  return json(out.body, out.status);
+}
+
+/**
+ * One factory pass for an owned project and an already-validated spec — the
+ * caller has checked ownership and billing. Idempotent per (engine, project,
+ * pass, spec): asked again while the pass lives, it answers the same job (and
+ * so the same provider job); the provider job id is recorded the moment the
+ * provider accepts it. Shared by the factory route and the walkthrough.
+ */
+export async function submitPass(
+  admin: Row, gpu: NonNullable<ReturnType<typeof factoryConfig>>,
+  a: { projectId: string; actorId: string; reconstructionId: string | null; versionId: string | null; pass: number; spec: SceneBuildSpec },
+): Promise<{ status: number; body: Row }> {
+  const { actorId, pass, spec } = a;
+  const project = { id: a.projectId };
+  const reply = (body: Row, status = 200) => ({ status, body });
 
   // Idempotent: the same spec at the same pass is the same job (a retry never pays twice).
   const specSha = await sha256Hex(canonicalJson(spec));
@@ -151,12 +169,12 @@ export async function handleFactory(req: Request, opts: { billedBy?: 'RENDER' } 
     // The same pass is reused — unless an output of it failed verification: then it is built again,
     // and the old rows (kept for the record) are detached so the new outputs are never mixed with them.
     const { count: broken } = await admin.from('ds_factory_assets').select('id', { count: 'exact', head: true }).eq('job_id', existing.id).eq('state', 'FAILED');
-    if (!broken) return json({ jobId: existing.id, state: existing.state, reused: true });
+    if (!broken) return reply({ jobId: existing.id, state: existing.state, reused: true });
     await admin.from('ds_factory_assets').update({ job_id: null, updated_at: new Date().toISOString() }).eq('job_id', existing.id);
   }
   const since = new Date(Date.now() - 3600_000).toISOString();
   const { count } = await admin.from('ds_factory_jobs').select('id', { count: 'exact', head: true }).eq('user_id', actorId).gte('created_at', since);
-  if ((count ?? 0) >= HOURLY_JOBS) return json({ error: 'RATE_LIMITED' }, 429);
+  if ((count ?? 0) >= HOURLY_JOBS) return reply({ error: 'RATE_LIMITED' }, 429);
 
   // The catalogue files the spec names, resolved from the catalogue itself.
   const materialIds = spec.materials.map((m) => m.id).filter((id) => UUID.test(id));
@@ -179,11 +197,11 @@ export async function handleFactory(req: Request, opts: { billedBy?: 'RENDER' } 
   for (const o of spec.objects) if (o.kind === 'MODEL' && (!o.model || !models[o.model])) { o.kind = 'CABINET'; o.model = null; }
 
   const { data: job, error: jobErr } = await admin.from('ds_factory_jobs').upsert({
-    project_id: project.id, user_id: actorId, reconstruction_id: body.reconstructionId ?? null, version_id: body.versionId ?? null,
+    project_id: project.id, user_id: actorId, reconstruction_id: a.reconstructionId, version_id: a.versionId,
     source_kind: spec.source.kind, pass, idempotency_key: idem, spec_sha256: specSha, engine_version: ENGINE_VERSION,
     state: 'QUEUED', provider: PROVIDER, spec, timings: { requestedAt: new Date().toISOString() }, cost: [], error: null, result: null,
   }, { onConflict: 'project_id,idempotency_key' }).select('id').single();
-  if (jobErr || !job) return json({ error: 'JOB_NOT_RECORDED' }, 500);
+  if (jobErr || !job) return reply({ error: 'JOB_NOT_RECORDED' }, 500);
 
   const base = `users/${actorId}`;
   const rows: Row[] = [];
@@ -226,10 +244,10 @@ export async function handleFactory(req: Request, opts: { billedBy?: 'RENDER' } 
   if (!run?.id) {
     await admin.from('ds_factory_jobs').update({ state: 'FAILED', error: `PROVIDER_REFUSED_${r?.status ?? 'NETWORK'}`, updated_at: new Date().toISOString() }).eq('id', job.id);
     await admin.from('ds_factory_assets').update({ state: 'FAILED' }).eq('job_id', job.id);
-    return json({ error: 'FACTORY_UNAVAILABLE' }, 502);
+    return reply({ error: 'FACTORY_UNAVAILABLE' }, 502);
   }
   await admin.from('ds_factory_jobs').update({ state: 'RUNNING', provider_job_id: String(run.id), updated_at: new Date().toISOString() }).eq('id', job.id);
-  return json({ jobId: job.id, state: 'RUNNING', textured: Object.keys(textures).length, models: Object.keys(models).length });
+  return reply({ jobId: job.id, state: 'RUNNING', textured: Object.keys(textures).length, models: Object.keys(models).length });
 }
 
 const isJpeg = (b: Uint8Array) => b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
@@ -296,20 +314,47 @@ export async function handleFactoryStatus(req: Request): Promise<Response> {
   try { body = await req.json(); } catch { return json({ error: 'BAD_REQUEST' }, 400); }
   if (!UUID.test(String(body.jobId))) return json({ error: 'BAD_REQUEST' }, 400);
   // RLS decides who may see it.
-  const { data: job } = await caller.from('ds_factory_jobs').select('id, project_id, state, provider_job_id, timings, cost, result, error').eq('id', body.jobId).maybeSingle();
+  const { data: job } = await caller.from('ds_factory_jobs').select(JOB_FIELDS).eq('id', body.jobId).maybeSingle();
   if (!job) return json({ error: 'NOT_FOUND' }, 404);
-  const done = (state: string, extra: Row = {}) => resolved(admin, job.id).then((outputs) => json({ state, outputs, ...extra }));
+  return json(await settlePass(admin, job));
+}
+
+export const JOB_FIELDS = 'id, project_id, state, provider_job_id, timings, cost, result, error';
+
+/** RunPod's answer about one job: the HTTP status (null when the request itself failed) and its body. */
+export async function providerStatus(gpu: NonNullable<ReturnType<typeof factoryConfig>>, providerJobId: string): Promise<{ http: number | null; body: Row }> {
+  const r = await fetch(`https://api.runpod.ai/v2/${gpu.endpoint}/status/${encodeURIComponent(providerJobId)}`, { headers: { authorization: `Bearer ${gpu.key}` } }).catch(() => null);
+  if (!r) return { http: null, body: null };
+  const body: Row = await r.json().catch(() => null);
+  return { http: r.status, body };
+}
+
+/** Ask RunPod to stop a job (its deadline passed): best effort, never throws. The provider's HTTP status, or null. */
+export async function cancelProviderJob(gpu: NonNullable<ReturnType<typeof factoryConfig>>, providerJobId: string): Promise<number | null> {
+  const r = await fetch(`https://api.runpod.ai/v2/${gpu.endpoint}/cancel/${encodeURIComponent(providerJobId)}`, { method: 'POST', headers: { authorization: `Bearer ${gpu.key}` } }).catch(() => null);
+  await r?.body?.cancel().catch(() => null);
+  return r ? r.status : null;
+}
+
+/**
+ * A pass's state, asked of the provider and — once it has finished — settled
+ * exactly once: every output re-read, hashed and inspected, or the pass failed
+ * and its files deleted. `given` is the provider's answer when the caller
+ * already has it. The answer is the factory-status body.
+ */
+export async function settlePass(admin: Row, job: Row, given?: { http: number | null; body: Row }): Promise<Row> {
+  const done = (state: string, extra: Row = {}) => resolved(admin, job.id).then((outputs) => ({ state, outputs, ...extra }));
   if (job.state === 'COMPLETED' || job.state === 'FAILED' || job.state === 'CANCELLED') return done(job.state, { timings: job.timings, cost: job.cost, result: job.result, error: job.error });
   const gpu = factoryConfig();
-  if (!gpu || !job.provider_job_id) return json({ state: job.state });
-  const r = await fetch(`https://api.runpod.ai/v2/${gpu.endpoint}/status/${encodeURIComponent(job.provider_job_id)}`, { headers: { authorization: `Bearer ${gpu.key}` } }).catch(() => null);
-  const st: Row = r && r.ok ? await r.json().catch(() => null) : null;
-  if (!st) return json({ state: job.state });
+  if (!gpu || !job.provider_job_id) return { state: job.state };
+  const answer = given ?? await providerStatus(gpu, job.provider_job_id);
+  const st: Row = answer.http !== null && answer.http >= 200 && answer.http < 300 ? answer.body : null;
+  if (!st) return { state: job.state };
   const status = String(st.status ?? '');
   if (status === 'IN_QUEUE' || status === 'IN_PROGRESS') {
     // The worker's real stage while it runs (progress_update), from a fixed set — never free text.
     const stage = typeof st.output?.stage === 'string' && FACTORY_STAGES.has(st.output.stage) ? st.output.stage : null;
-    return json({ state: status === 'IN_QUEUE' ? 'QUEUED' : 'RUNNING', stage });
+    return { state: status === 'IN_QUEUE' ? 'QUEUED' : 'RUNNING', stage };
   }
 
   const now = new Date().toISOString();
@@ -322,7 +367,7 @@ export async function handleFactoryStatus(req: Request): Promise<Response> {
     .eq('id', job.id).eq('state', 'RUNNING')
     .or(`timings->>verifyingAt.is.null,timings->>verifyingAt.lt.${lapsed}`)
     .select('id');
-  if (!claimed?.length) return json({ state: 'RUNNING', stage: null });
+  if (!claimed?.length) return { state: 'RUNNING', stage: null };
   const delayMs = Number(st.delayTime ?? NaN); const execMs = Number(st.executionTime ?? NaN);
   const out = st.output ?? {};
   const timings = { ...job.timings, finishedAt: now, queueAndColdStartMs: Number.isFinite(delayMs) ? delayMs : null, executionMs: Number.isFinite(execMs) ? execMs : null, worker: out.timings ?? null, factory: out.build?.timings ?? null };

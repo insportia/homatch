@@ -14,7 +14,7 @@
 // Pure: no three.js, no network.
 
 import type { FloorMesh, GeneratedScene, StairMesh, WallMesh } from '../floorplan/geometry.ts';
-import type { RoomKind } from '@/services/developer/floorplan';
+import type { RoomKind } from '../../services/developer/floorplan.ts';
 
 export interface Point { x: number; y: number }
 
@@ -164,6 +164,42 @@ function toRoom(floor: FloorMesh): SpaceRoom {
   };
 }
 
+/** Rooms a flight of stairs can never fill: living space the reading itself named. */
+const LIVED_IN: ReadonlySet<string> = new Set(['LIVING', 'BEDROOM', 'KITCHEN', 'BATHROOM', 'WC']);
+/** A "flight" covering at least this share of such a room is a misreading, not architecture. */
+export const STAIR_FILLS_ROOM = 0.8;
+
+/**
+ * The flights a home really has. Plan reading also looks for flights the model
+ * missed, by tread-like evenly spaced lines; in a drawing that has such lines
+ * inside a bedroom (production, 2026-10-03: both bedrooms of a one-staircase
+ * plan read as flights) the "stairs" fill the whole room. A flight that covers
+ * most of a room the reading named as lived-in space is that misreading: it is
+ * left out of the space, so nothing is built, walked into or furnished around
+ * it. A flight in its own compartment, a hall or open to a living room is kept.
+ */
+export function credibleStairs(stairs: StairMesh[], rooms: Array<Pick<SpaceRoom, 'kind' | 'polygon'>>): StairMesh[] {
+  const STEP = 0.1;
+  return stairs.filter((st) => {
+    const flight = st.polygon as Point[];
+    if (flight.length < 3) return true;
+    return !rooms.some((room) => {
+      if (!LIVED_IN.has(room.kind)) return false;
+      const b = boundsOf(room.polygon);
+      let inside = 0; let covered = 0;
+      for (let x = b.minX + STEP / 2; x < b.maxX; x += STEP) {
+        for (let y = b.minY + STEP / 2; y < b.maxY; y += STEP) {
+          const p = { x, y };
+          if (!pointInPolygon(p, room.polygon)) continue;
+          inside += 1;
+          if (pointInPolygon(p, flight)) covered += 1;
+        }
+      }
+      return inside > 0 && covered / inside >= STAIR_FILLS_ROOM;
+    });
+  });
+}
+
 export function buildSpaceModel(scene: GeneratedScene): SpaceModel {
   const rooms = scene.floors.map(toRoom);
 
@@ -236,7 +272,7 @@ export function buildSpaceModel(scene: GeneratedScene): SpaceModel {
     }
   }
 
-  return { ceilingHeightM: scene.ceilingHeightM, extent: scene.extent, rooms, walls, doors, surfaces, stairs: scene.stairs ?? [] };
+  return { ceilingHeightM: scene.ceilingHeightM, extent: scene.extent, rooms, walls, doors, surfaces, stairs: credibleStairs(scene.stairs ?? [], rooms) };
 }
 
 /** Every surface that belongs to one room: its floor, ceiling and the wall faces looking into it. */

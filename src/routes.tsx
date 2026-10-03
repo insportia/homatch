@@ -333,6 +333,7 @@ export const routes: RouteConfig[] = [
   { name: 'Design Studio project',   path: '/design-studio/:projectId',                     element: <DesignStudioWorkspacePage />, public: false, visible: false },
   { name: 'Design Studio version',   path: '/design-studio/:projectId/design/:versionId',   element: <DesignStudioWorkspacePage />, public: false, visible: false },
   { name: 'Design Studio walkthrough', path: '/design-studio/:projectId/walkthrough',       element: <DesignStudioWorkspacePage />, public: false, visible: false },
+  { name: 'Design Studio walkthrough version', path: '/design-studio/:projectId/walkthrough/:versionId', element: <DesignStudioWorkspacePage />, public: false, visible: false },
   { name: 'Design Studio home',      path: '/design-studio/:projectId/home',                element: <DesignStudioHomePage />,      public: false, visible: false },
   // 'My Deals' / '/cases' route intentionally removed from the product
   // (2026-09-06 mandate) — see the CasesPage import comment above.

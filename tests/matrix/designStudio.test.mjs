@@ -813,11 +813,18 @@ test('Snake only watches: no service, no database, no job control', () => {
   assert.match(code('src/lib/games/snake.ts'), /export function step\(/);
 });
 
-test('the protected edit pipeline (PR #65) and the walkthrough gate are untouched', () => {
+test('the protected edit pipeline (PR #65) is untouched; the 3D walkthrough is the server-built one', () => {
+  // The legacy browser-driven walkthrough stays held back.
   assert.match(code('src/lib/designStudio/walkthroughOffer.ts'), /export const WALKTHROUGH_OFFERED = false;/);
   const result = code('src/components/designStudio/unified/DesignResult.tsx');
   assert.match(result, /editRender\(\{ renderId: hero\.id, edit, newVersionId: v\.id, quote: q\.quote/, 'edits go through the stable render-edit route');
-  assert.match(result, /WALKTHROUGH_OFFERED \?/, 'the 3D experience is offered only when the gate opens');
+  assert.doesNotMatch(result, /WALKTHROUGH_OFFERED/, 'the Result never offers the browser-driven walkthrough');
+  assert.match(result, /data\.sourceKind === 'FLOOR_PLAN' && hero \? \(\s*<WalkthroughPanel /, 'a floor-plan design offers its walkthrough; a photo project has no rooms to walk');
+  // The walkthrough is made by the server: the page never drives the factory, RunPod or a build.
+  for (const file of ['src/components/designStudio/unified/WalkthroughPanel.tsx', 'src/services/designStudio/walkthrough.ts']) {
+    for (const banned of [/startFactory/, /factoryStatus/, /runDesignBuild/, /compileSceneSpec/, /runpod/i, /setTimeout\(\s*\(\)\s*=>\s*start/]) assert.doesNotMatch(code(file), banned, `${file}: ${banned}`);
+  }
+  assert.match(code('src/services/designStudio/walkthrough.ts'), /design-studio-reconstruct\/\$\{route\}/);
 });
 
 test('a floor plan sent through Photos continues as a floor plan, and a technical failure never blames the picture', () => {

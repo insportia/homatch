@@ -918,3 +918,13 @@ Base: main `53489d04` (PR #68 live: design-studio-reconstruct v22). Scope: front
   the Design Studio library (`services/designStudio/status.ts`) instead.
 - Production record `29423f13` (project `9a747384`) still READING with a RUNNING job — untouched; it is a
   legacy reconstruct row (the new routes never claim it); recover only with owner approval.
+
+## Design Studio 3D walkthrough, server-owned (branch `feat/design-studio-walkthrough`, 2026-10-03)
+
+- `ds_walkthroughs` (migration `20261013100000`): QUEUED → PLANNING → SUBMITTED → RUNNING → PROCESSING_RESULT → READY | FAILED | CANCELLED. Claims are compare-and-set on `attempts`, lease 4 min, bounded per-step attempts, provider deadline 35 min (then cancelled at RunPod). Identity = (engine, project, design version, its state revision, walkthrough revision).
+- Routes on `design-studio-reconstruct`: `walkthrough-create | -status | -retry | -tick`. Lifecycle rules: `src/lib/designStudio/walkthrough/lifecycle.ts`; build (placement/circulation/finishes): `src/lib/designStudio/walkthrough/build.ts`; OpenAI scene plan + matching: `supabase/functions/_shared/designStudio/walkthrough/scenePlan.ts`.
+- Reconciler: pg_cron `homatch-ds-walkthrough-reconciler` (every minute). Needs Vault `ds_walkthrough_token` (created by the migration) AND `ds_gateway_anon_key` (the PUBLIC anon key, set once by the operator via `vault.create_secret`; never in git). Without the latter the gateway refuses the tick and walkthroughs advance only while someone polls.
+- The tick also settles factory jobs left RUNNING by browser-driven builds (> 40 min untouched): verified if finished, FAILED `PROVIDER_LOST` if RunPod no longer knows them, cancelled if still running after 2 h.
+- `credibleStairs` (space.ts): a flight covering ≥ 80% of a LIVING/BEDROOM/KITCHEN/BATHROOM/WC room is dropped from the space (plan-reading false positive seen on the 149f8b85/f89d1e16 plan: both bedrooms read as stairs).
+- Known reading defect on that same plan (NOT fixed here): the two bedroom→living doors were read as one door in the bedroom partition, so in the stored geometry the bedrooms connect to each other and not to the living room.
+- Customer billing stays off; cost lines OPENAI_SCENE_PLAN / RUNPOD_GPU / STORAGE are internal.

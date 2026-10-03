@@ -1215,15 +1215,13 @@ async function checkpoint12(browser) {
   await page.getByTestId('ds-delete-dialog').waitFor();
   const submit = page.getByTestId('ds-delete-submit');
   check('delete: says what is removed and that it cannot be undone', await page.getByText(/cannot be undone/).isVisible());
-  check('delete: nothing happens until the exact name is typed', await submit.isDisabled());
-  await page.getByTestId('ds-delete-confirm').fill('Vake flat, redesign');
-  check('delete: a near-miss name is still refused', await submit.isDisabled());
-  await page.getByTestId('ds-delete-confirm').fill('Vake flat, redesigned');
-  check('delete: the exact name enables it', await submit.isEnabled());
+  // Simple: one question, the project named, one red button (no name to type).
+  check('delete: names the project and asks once', (await page.getByTestId('ds-delete-name').innerText()) === 'Vake flat, redesigned' && await submit.isEnabled());
+  check('delete: no name to type', (await page.getByTestId('ds-delete-confirm').count()) === 0);
   await page.screenshot({ path: path.join(OUT, 'cp12-delete-confirm-1440-en.png') });
   await submit.click();
   await page.getByTestId('ds-delete-dialog').waitFor({ state: 'detached', timeout: 10000 });
-  check('delete: the server route is asked, with the typed name', store.deletes?.length === 1
+  check('delete: the server route is asked, with the project's own name (the server still checks it)', store.deletes?.length === 1
     && store.deletes[0].projectId === project.id && store.deletes[0].confirmName === 'Vake flat, redesigned');
   check('delete: gone from Active', (await page.getByRole('link', { name: 'Vake flat, redesigned' }).count()) === 0);
   await page.getByRole('tab', { name: 'Archived' }).click();

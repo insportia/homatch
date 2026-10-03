@@ -536,19 +536,19 @@ function DeleteProjectDialog({
   project, onClose, onDeleted,
 }: { project: ProjectListItem | null; onClose: () => void; onDeleted: () => void }) {
   const { t } = useLanguage();
-  const [typed, setTyped] = useState('');
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { setTyped(''); setError(null); setWorking(false); }, [project]);
-  const matches = !!project && typed.trim() === project.name.trim();
+  useEffect(() => { setError(null); setWorking(false); }, [project]);
 
+  // One clear question and one red button: the customer is not asked to type the name. The server still checks
+  // the name it is sent (the page sends the project's own), so nothing is deleted by a stray call.
   const remove = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!project || !matches) return;
+    if (!project || working) return;
     setWorking(true);
     setError(null);
     try {
-      await deleteProjectPermanently(project.id, typed.trim());
+      await deleteProjectPermanently(project.id, project.name.trim());
       onDeleted();
     } catch {
       setError(t('ds_delete_error'));
@@ -564,17 +564,14 @@ function DeleteProjectDialog({
           <DialogDescription>{t('ds_delete_body')}</DialogDescription>
         </DialogHeader>
         <form onSubmit={remove} className="space-y-4">
-          <label className="block text-sm text-foreground" htmlFor="ds-delete-confirm">
-            {t('ds_delete_confirm_label', { name: project?.name ?? '' })}
-          </label>
-          <Input id="ds-delete-confirm" value={typed} autoComplete="off" onChange={(e) => setTyped(e.target.value)} data-testid="ds-delete-confirm" />
+          {project ? <p className="text-sm font-semibold text-foreground" data-testid="ds-delete-name">{project.name}</p> : null}
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
           <div className="flex justify-end gap-2">
             <button type="button" className="h-10 rounded-lg px-4 text-sm font-medium text-muted-foreground hover:bg-secondary" onClick={onClose} disabled={working}>
               {t('ds_action_cancel')}
             </button>
             <button type="submit" className="inline-flex h-10 items-center gap-2 rounded-lg bg-destructive px-4 text-sm font-semibold text-destructive-foreground disabled:opacity-50"
-              disabled={!matches || working} data-testid="ds-delete-submit">
+              disabled={!project || working} data-testid="ds-delete-submit">
               {working ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Trash2 className="h-4 w-4" aria-hidden="true" />}
               {t('ds_action_delete_permanent')}
             </button>

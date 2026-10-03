@@ -14,7 +14,7 @@ export const META_CONNECT_STRINGS = {
   ],
   mm_x_connected: ['Meta is connected', 'Meta დაკავშირებულია', 'Meta подключена', 'Meta bağlandı', 'تم ربط Meta', 'Meta מחוברת'],
   mm_x_connect_refreshing: ['Checking your permissions and Pages…', 'ვამოწმებთ ნებართვებსა და გვერდებს…', 'Проверяем разрешения и страницы…', 'İzinleriniz ve Sayfalarınız kontrol ediliyor…', 'جارٍ التحقق من الأذونات والصفحات…', 'בודקים הרשאות ודפים…'],
-  mm_x_connect_cancelled: ['The Meta connection was not completed.', 'Meta-სთან კავშირი არ დასრულებულა.', 'Подключение к Meta не завершено.', 'Meta bağlantısı tamamlanmadı.', 'لم يكتمل الربط مع Meta.', 'החיבור ל-Meta לא הושלם.'],
+  mm_x_connect_cancelled: ['The Meta connection was not completed.', 'Meta-ში კავშირი არ დასრულებულა.', 'Подключение к Meta не завершено.', 'Meta bağlantısı tamamlanmadı.', 'لم يكتمل الربط مع Meta.', 'החיבור ל-Meta לא הושלם.'],
   mm_x_connect_failed: ['Meta could not complete the connection. Please try again.', 'Meta-მ კავშირი ვერ დაასრულა. გთხოვთ, სცადოთ ხელახლა.', 'Meta не смогла завершить подключение. Попробуйте ещё раз.', 'Meta bağlantıyı tamamlayamadı. Lütfen tekrar deneyin.', 'تعذّر على Meta إكمال الربط. حاول مرة أخرى.', 'Meta לא הצליחה להשלים את החיבור. נסו שוב.'],
   mm_x_connect_kept: ['Your campaign is saved — you can try again any time.', 'კამპანია შენახულია — შეგიძლიათ ნებისმიერ დროს ხელახლა სცადოთ.', 'Кампания сохранена — можно попробовать снова в любой момент.', 'Kampanyanız kayıtlı — istediğiniz zaman tekrar deneyebilirsiniz.', 'حملتك محفوظة — يمكنك المحاولة مجددًا في أي وقت.', 'הקמפיין שמור — אפשר לנסות שוב בכל עת.'],
 };

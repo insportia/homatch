@@ -82,3 +82,19 @@ test('the library status comes from the server rows: work first, then a waiting 
   assert.equal(statusOf({ ...none, renders: [{ status: 'READY' }, { status: 'RENDERING' }] }, now), 'WORKING');
   assert.equal(statusOf({ ...none, photos: [{ status: 'FAILED' }] }, now), 'FAILED');
 });
+
+test('abandoned work is not "in progress" forever: a reading or picture whose row stopped moving no longer says WORKING', async () => {
+  // Production, project 9a747384: a photo reading left at READING (its instance lost, 2026-10-03 06:53) kept the
+  // library saying "Design Studio is working on your project" a day later, over a finished design.
+  const { statusOf, STALE_MS } = await import('../../../lib/designStudio/projectStatus.ts');
+  const now = Date.parse('2026-10-04T10:00:00Z');
+  const ago = (ms) => new Date(now - ms).toISOString();
+  const ready = [{ status: 'READY', updated_at: ago(3600_000) }];
+  const stuck = { renders: ready, readings: [], photos: [{ status: 'READING', updated_at: ago(24 * 3600_000) }], designs: [] };
+  assert.equal(statusOf(stuck, now), 'READY', 'the finished design shows, not a reading lost a day ago');
+  assert.equal(statusOf({ ...stuck, photos: [{ status: 'READING', updated_at: ago(60_000) }] }, now), 'WORKING', 'a reading under way still shows');
+  assert.equal(statusOf({ renders: [{ status: 'RENDERING', updated_at: ago(STALE_MS + 1000) }], readings: [], photos: [], designs: [] }, now), null);
+  assert.equal(statusOf({ renders: [{ status: 'RENDERING', updated_at: ago(30_000) }], readings: [], photos: [], designs: [] }, now), 'WORKING');
+  assert.equal(statusOf({ renders: [], readings: [{ status: 'INTERPRETING', updated_at: ago(STALE_MS * 4) }], photos: [], designs: [] }, now), null);
+  assert.ok(STALE_MS > 8 * 60_000, 'longer than the server\'s own lease, so live work is never dropped');
+});

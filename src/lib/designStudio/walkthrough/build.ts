@@ -24,15 +24,15 @@
 // output of this file. Same plan + same design + same catalogue = the same
 // design, byte for byte.
 
+import { onStairs } from '../aiPlan.ts';
 import type { CatalogAsset, CatalogMaterial } from '../catalog.ts';
 import { isFlat } from '../catalog.ts';
 import type { DesignState, ObjectInstance } from '../designState.ts';
-import { applyOperation, validateOperation, type Operation, type OperationContext } from '../operations.ts';
-import { candidatePositions, evaluateInWorld, placementWorld, snapToWall, type PlacementIssue } from '../placement.ts';
-import { onStairs } from '../aiPlan.ts';
-import { buildWalkModel, findPath, isFree, nearestFree, type WalkModel } from '../navigation.ts';
-import { shapedAsset, type ObjectShape } from '../objectShape.ts';
-import { ceilingSurfaceId, floorSurfaceId, pointInPolygon, surfacesOfRoom, wallFrame, type Point, type SpaceModel, type SpaceRoom } from '../space.ts';
+import { BODY_RADIUS_M, buildWalkModel, distanceToObb, findPath, isFree, nearestFree, type WalkModel } from '../navigation.ts';
+import { type ObjectShape, shapedAsset } from '../objectShape.ts';
+import { applyOperation, type Operation, type OperationContext, validateOperation } from '../operations.ts';
+import { candidatePositions, evaluateInWorld, footprint, type Obb, type PlacementIssue, placementWorld, snapToWall } from '../placement.ts';
+import { ceilingSurfaceId, floorSurfaceId, type Point, pointInPolygon, type SpaceModel, type SpaceRoom, surfacesOfRoom, wallFrame } from '../space.ts';
 
 // ── The rooms, as the model is shown them ────────────────────────────────────
 
@@ -205,7 +205,7 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
     apply({ type: 'REMOVE_OBJECT', instanceId: obj.instanceId });
   }
   let n = 0;
-  const placedOrder: Array<{ roomId: string; instanceId: string; flat: boolean; area: number; report: ItemReport }> = [];
+  const placedOrder: Array<{ roomId: string; instanceId: string; flat: boolean; area: number; box: Obb; report: ItemReport }> = [];
   for (const pr of input.plan.rooms) {
     const room = rooms.get(pr.roomId);
     if (!room) continue;
@@ -234,26 +234,62 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
       entry.reason = found.kept || !item.pose ? null : found.why;
       entry.movedM = found.movedM;
       entry.warnings = found.verdict === 'TIGHT' ? ['TIGHT_ACCESS'] : [];
-      placedOrder.push({ roomId: room.id, instanceId: object.instanceId, flat: isFlat(asset), area: asset.widthM * asset.depthM, report: entry });
+      placedOrder.push({ roomId: room.id, instanceId: object.instanceId, flat: isFlat(asset), area: asset.widthM * asset.depthM, box: footprint(asset, found.at, found.rotation), report: entry });
     }
   }
 
   // ── Circulation: furnishing never cuts a room off ──
-  const before = reachableRooms(space, buildWalkModel(space, [], assets));
+  // Measured from one fixed way in (found on the bare plan), so a piece standing there cannot move the question.
+  const empty = buildWalkModel(space, [], assets);
+  const start = circulationStart(space, empty);
+  const before = reachableRooms(space, empty, { start });
   report.circulation.reachableBefore = [...before].sort();
   report.circulation.checked = space.rooms.filter((r) => !r.outdoor || before.has(r.id)).map((r) => r.id).sort();
   for (let guard = 0; guard < 40; guard += 1) {
-    const after = reachableRooms(space, buildWalkModel(space, working.objects, assets));
+    const furnished = buildWalkModel(space, working.objects, assets);
+    const after = reachableRooms(space, furnished, { start });
     const lost = [...before].filter((id) => !after.has(id)).sort();
     report.circulation.reachableAfter = [...after].sort();
-    if (!lost.length) break;
-    // The most recently placed standing piece of a cut-off room goes first; then of the room it is reached through.
-    const victim = [...placedOrder].reverse().find((p) => !p.flat && lost.includes(p.roomId) && p.report.outcome !== 'DROPPED')
-      ?? [...placedOrder].reverse().find((p) => !p.flat && p.report.outcome !== 'DROPPED');
-    if (!victim) break;
-    apply({ type: 'REMOVE_OBJECT', instanceId: victim.instanceId });
-    victim.report.outcome = 'DROPPED'; victim.report.reason = 'CIRCULATION'; victim.report.instanceId = null;
-    if (!report.circulation.repaired.includes(victim.roomId)) report.circulation.repaired.push(victim.roomId);
+    if (!lost.length || !start) break;
+    // What is in the way: of the standing pieces nearest the bare plan's route to a cut-off room, the least floor
+    // whose removal lets the walk back into it: one piece, or two smaller ones (a desk and its chair rather than
+    // the bed). When nothing near the route does, the first piece on it; with no route at all, the latest standing
+    // piece of a cut-off room.
+    const standing = placedOrder.filter((p) => !p.flat && p.report.outcome !== 'DROPPED');
+    let victims: Array<typeof placedOrder[number]> = [];
+    for (const id of lost) {
+      const room = space.rooms.find((r) => r.id === id);
+      const goal = room ? freeInside(empty, room) : null;
+      const route = goal ? findPath(empty, start, goal, { throughDoors: true, maxCells: 20000 }) : null;
+      if (!route) continue;
+      const pts = routePoints([start, ...route]);
+      const near = standing
+        .map((p) => ({ p, d: Math.min(...pts.map((q) => distanceToObb(q, p.box))) }))
+        .filter((x) => x.d < 1.5)
+        .sort((a, b) => a.d - b.d)
+        .slice(0, 12);
+      const reopens = (set: Array<typeof placedOrder[number]>) => {
+        const gone = new Set(set.map((p) => p.instanceId));
+        const without = working.objects.filter((o) => !gone.has(o.instanceId));
+        return reachableRooms(space, buildWalkModel(space, without, assets), { start, only: new Set([id]) }).has(id);
+      };
+      const sets: Array<Array<typeof placedOrder[number]>> = near.map(({ p }) => [p]);
+      const closest = near.slice(0, 6).map((x) => x.p);
+      for (let a = 0; a < closest.length; a += 1) for (let b = a + 1; b < closest.length; b += 1) sets.push([closest[a], closest[b]]);
+      const floor = (set: Array<typeof placedOrder[number]>) => set.reduce((sum, p) => sum + p.area, 0);
+      // Stable: equal floor keeps the nearer (earlier) candidate.
+      const ranked = sets.map((set, i) => ({ set, i, f: floor(set) })).sort((x, y) => x.f - y.f || x.i - y.i);
+      victims = ranked.find((x) => reopens(x.set))?.set ?? [];
+      if (!victims.length) { const first = near.find((x) => x.d < BODY_RADIUS_M + 0.02)?.p; if (first) victims = [first]; }
+      if (victims.length) break;
+    }
+    if (!victims.length) { const last = [...standing].reverse().find((p) => lost.includes(p.roomId)); if (last) victims = [last]; }
+    if (!victims.length) break;
+    for (const victim of victims) {
+      apply({ type: 'REMOVE_OBJECT', instanceId: victim.instanceId });
+      victim.report.outcome = 'DROPPED'; victim.report.reason = 'CIRCULATION'; victim.report.instanceId = null;
+      if (!report.circulation.repaired.includes(victim.roomId)) report.circulation.repaired.push(victim.roomId);
+    }
   }
 
   for (const it of report.items) {
@@ -343,7 +379,40 @@ function doorSides(space: SpaceModel): Array<{ doorId: string; p: Point }> {
  * opening doors on the way, and then on to the middle of the room (or as near
  * as the furniture allows).
  */
-export function reachableRooms(space: SpaceModel, model: WalkModel): Set<string> {
+/** Points every 10 cm along a route. */
+function routePoints(route: Point[]): Point[] {
+  const out: Point[] = [];
+  for (let i = 0; i < route.length; i += 1) {
+    out.push(route[i]);
+    if (i + 1 >= route.length) break;
+    const a = route[i]; const b = route[i + 1];
+    const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 0.1));
+    for (let k = 1; k < n; k += 1) out.push({ x: a.x + ((b.x - a.x) * k) / n, y: a.y + ((b.y - a.y) * k) / n });
+  }
+  return out;
+}
+
+/** The way in walkability is measured from: a free door side of the room with the most doors (ties: larger, then id). */
+export function circulationStart(space: SpaceModel, model: WalkModel): Point | null {
+  const { byRoom } = doorSidesByRoom(space);
+  const hub = [...space.rooms].filter((r) => !r.outdoor && (byRoom.get(r.id)?.length ?? 0) > 0)
+    .sort((a, b) => (byRoom.get(b.id)!.length - byRoom.get(a.id)!.length) || b.areaM2 - a.areaM2 || (a.id < b.id ? -1 : 1))[0];
+  if (!hub) return null;
+  return byRoom.get(hub.id)!.map((p) => nearestFree(model, p, 0.4)).find((p): p is Point => !!p) ?? null;
+}
+
+function doorSidesByRoom(space: SpaceModel): { byRoom: Map<string, Point[]> } {
+  const roomOfPoint = (p: Point) => space.rooms.find((r) => pointInPolygon(p, r.polygon))?.id ?? null;
+  const byRoom = new Map<string, Point[]>();
+  for (const s of doorSides(space)) {
+    const id = roomOfPoint(s.p);
+    if (!id) continue;
+    (byRoom.get(id) ?? byRoom.set(id, []).get(id)!).push(s.p);
+  }
+  return { byRoom };
+}
+
+export function reachableRooms(space: SpaceModel, model: WalkModel, opts: { start?: Point | null; only?: Set<string> } = {}): Set<string> {
   const sides = doorSides(space);
   const roomOfPoint = (p: Point) => space.rooms.find((r) => pointInPolygon(p, r.polygon))?.id ?? null;
   const byRoom = new Map<string, Point[]>();
@@ -357,11 +426,12 @@ export function reachableRooms(space: SpaceModel, model: WalkModel): Set<string>
     .sort((a, b) => (byRoom.get(b.id)!.length - byRoom.get(a.id)!.length) || b.areaM2 - a.areaM2 || (a.id < b.id ? -1 : 1))[0];
   const reach = new Set<string>();
   if (!hub) return reach;
-  const start = byRoom.get(hub.id)!.map((p) => nearestFree(model, p, 0.4)).find((p): p is Point => !!p);
+  const given = opts.start ? (isFree(model, opts.start) ? opts.start : nearestFree(model, opts.start, 1.0)) : null;
+  const start = opts.start ? given : byRoom.get(hub.id)!.map((p) => nearestFree(model, p, 0.4)).find((p): p is Point => !!p);
   if (!start) return reach;
   for (const room of space.rooms) {
+    if (opts.only && !opts.only.has(room.id)) continue;
     const goals = [...(byRoom.get(room.id) ?? [])];
-    const centre = freeInside(model, room);
     let entered = false;
     for (const g of goals) {
       const free = isFree(model, g) ? g : nearestFree(model, g, 0.3);
@@ -369,10 +439,27 @@ export function reachableRooms(space: SpaceModel, model: WalkModel): Set<string>
     }
     if (!entered && room.id === hub.id) entered = true;
     if (!entered) continue;
-    // Inside: the middle of the room (or the nearest free spot to it, inside it) is reachable too.
-    if (centre && findPath(model, start, centre, { throughDoors: true, maxCells: 20000 })) reach.add(room.id);
+    // Inside: some free floor of the room clear of its doorways is reachable too. Several spots spread over the
+    // room are tried, so one pocket beside a bed does not count the whole room as cut off.
+    if (insideGoals(model, room, goals).some((g) => findPath(model, start, g, { throughDoors: true, maxCells: 20000 }))) reach.add(room.id);
   }
   return reach;
+}
+
+/** Up to eight free spots inside the room at least 0.6 m from its door sides, spread from its centre outwards. */
+function insideGoals(model: WalkModel, room: SpaceRoom, doorSides: Point[]): Point[] {
+  const xs = room.polygon.map((p) => p.x); const ys = room.polygon.map((p) => p.y);
+  const free: Point[] = [];
+  for (let x = Math.min(...xs) + 0.15; x < Math.max(...xs); x += 0.3) {
+    for (let y = Math.min(...ys) + 0.15; y < Math.max(...ys); y += 0.3) {
+      const q = { x, y };
+      if (pointInPolygon(q, room.polygon) && isFree(model, q) && doorSides.every((d) => Math.hypot(d.x - x, d.y - y) > 0.6)) free.push(q);
+    }
+  }
+  const c = room.centroid;
+  free.sort((a, b) => Math.hypot(a.x - c.x, a.y - c.y) - Math.hypot(b.x - c.x, b.y - c.y));
+  if (free.length <= 8) return free;
+  return Array.from({ length: 8 }, (_, i) => free[Math.round((i * (free.length - 1)) / 7)]);
 }
 
 /** The free spot nearest the room's centre that is inside the room (never one found through a wall). */

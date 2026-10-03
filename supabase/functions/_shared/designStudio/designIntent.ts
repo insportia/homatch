@@ -31,10 +31,10 @@ export type Mood = typeof MOODS[number];
 export const FLOOR_DIRECTIONS = ['LIGHT_WOOD', 'DARK_WOOD', 'STONE', 'MARBLE', 'CONCRETE', 'TILE'] as const;
 export type FloorDirection = typeof FLOOR_DIRECTIONS[number];
 
-export const WALL_DIRECTIONS = ['WARM_WHITE', 'COOL_WHITE', 'GREIGE', 'PLASTER', 'DEEP'] as const;
+export const WALL_DIRECTIONS = ['WARM_WHITE', 'COOL_WHITE', 'GREIGE', 'PLASTER', 'SAGE', 'SKY', 'BLUSH', 'TERRACOTTA', 'DEEP'] as const;
 export type WallDirection = typeof WALL_DIRECTIONS[number];
 
-export const ACCENTS = ['BLACK_METAL', 'BRASS', 'CHROME', 'NATURAL_WOOD'] as const;
+export const ACCENTS = ['BLACK_METAL', 'BRASS', 'COPPER', 'BRONZE', 'CHROME', 'MATTE_WHITE', 'NATURAL_WOOD'] as const;
 export type Accent = typeof ACCENTS[number];
 
 export const PALETTES = ['WARM', 'NEUTRAL', 'COOL'] as const;
@@ -85,6 +85,10 @@ export const WALL_FAMILIES: Record<WallDirection, Family> = {
   COOL_WHITE: { hex: '#f6f7f7', words: 'crisp cool whites (very light, neutral to slightly blue)', test: (L, _a, b, C) => L >= 88 && C <= 10 && b < 3.5 },
   GREIGE: { hex: '#d8d0c3', words: 'greige: grey-beige mid-light neutrals', test: (L, a, b, C) => L >= 62 && L < 90 && C <= 14 && b >= 0 && a >= -3 },
   PLASTER: { hex: '#e4d8c6', words: 'mineral plaster tones: chalky warm off-whites, sand and clay', test: (L, a, b, C) => L >= 68 && L <= 93 && C >= 3 && C <= 24 && b > 0 && a >= -2 },
+  SAGE: { hex: '#c9d1c0', words: 'soft sage: muted grey-greens, mid-light', test: (L, _a, _b, C, h) => L >= 60 && L <= 90 && C >= 4 && C <= 24 && h >= 95 && h <= 175 },
+  SKY: { hex: '#d6e0e8', words: 'airy pale blues and blue-greys', test: (L, _a, _b, C, h) => L >= 72 && L <= 95 && C >= 3 && C <= 22 && h >= 195 && h <= 290 },
+  BLUSH: { hex: '#ead7d0', words: 'muted blush and dusty rose, soft and light', test: (L, _a, _b, C, h) => L >= 70 && L <= 93 && C >= 4 && C <= 26 && (h <= 60 || h >= 330) },
+  TERRACOTTA: { hex: '#c27a5a', words: 'earthy terracotta and clay', test: (L, _a, _b, C, h) => L >= 40 && L <= 70 && C >= 20 && C <= 58 && h >= 25 && h <= 68 },
   DEEP: { hex: '#3f4348', words: 'deep, saturated-but-muted dark walls (charcoal, ink, forest, oxblood)', test: (L, _a, _b, C) => L <= 50 && C <= 45 },
 };
 
@@ -92,7 +96,10 @@ export const WALL_FAMILIES: Record<WallDirection, Family> = {
 export const ACCENT_FAMILIES: Record<Accent, Family> = {
   BLACK_METAL: { hex: '#232323', words: 'matt black metal', test: (L, _a, _b, C) => L <= 25 && C <= 12 },
   BRASS: { hex: '#b08d57', words: 'brushed brass', test: (L, _a, _b, C, h) => L >= 45 && L <= 78 && C >= 18 && C <= 60 && h >= 55 && h <= 95 },
+  COPPER: { hex: '#b06f45', words: 'brushed copper', test: (L, _a, _b, C, h) => L >= 38 && L <= 65 && C >= 25 && C <= 60 && h >= 35 && h <= 68 },
+  BRONZE: { hex: '#6f5235', words: 'dark oiled bronze', test: (L, _a, _b, C, h) => L >= 22 && L <= 50 && C >= 12 && C <= 40 && h >= 45 && h <= 90 },
   CHROME: { hex: '#c9ccd0', words: 'polished chrome and steel', test: (L, _a, _b, C) => L >= 65 && L <= 92 && C <= 8 },
+  MATTE_WHITE: { hex: '#efefec', words: 'matt white hardware and fittings', test: (L, _a, _b, C) => L >= 88 && C <= 8 },
   NATURAL_WOOD: { hex: '#a47a52', words: 'natural mid-tone wood', test: (L, _a, _b, C, h) => L >= 35 && L <= 70 && C >= 15 && C <= 45 && h >= 45 && h <= 85 },
 };
 

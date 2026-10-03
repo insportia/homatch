@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
-import { LOOK_QUALITIES, LOOK_STYLES, lookPreferences, readLook } from '../lookPresets.ts';
+import { LOOK_QUALITIES, LOOK_STYLES, lookPreferences, readLook, isPresetBrief, lookWords } from '../lookPresets.ts';
 import { DEFAULT_PREFERENCES, FURNISHING_CAP, normalizePreferences } from '../planToHome.ts';
 import { STYLE_CODES } from '../grammar.ts';
 import { isCritical, isNecessary, MAX_QUICK, necessaryQuestions, WEAK } from '../quickQuestions.ts';
@@ -24,7 +24,10 @@ test('every Style × Quality gives a valid, normalised, deterministic DesignPref
     assert.deepEqual(p, normalizePreferences(p), `${s}/${q} survives normalisation unchanged`);
     assert.deepEqual(p, lookPreferences(s, q), `${s}/${q} is deterministic`);
     assert.ok(STYLE_CODES.includes(p.style), `${s}/${q}: a real style code (${p.style})`);
-    assert.ok(p.brief.length > 0 && p.brief.length <= 600, `${s}/${q}: a briefed direction within 600 characters`);
+    // The look's words are HOMATCH's, read by the server (lookWords); the customer's brief stays theirs (empty here).
+    assert.equal(p.brief, '', `${s}/${q}: no preset words in the customer's brief`);
+    const w = lookWords(s, q);
+    assert.ok(w && w.length > 0 && w.length <= 600 && isPresetBrief(w), `${s}/${q}: HOMATCH's own words within 600 characters`);
     seen.add(JSON.stringify(p));
   }
   assert.equal(seen.size, 18, 'eighteen distinct directions');
@@ -38,7 +41,8 @@ test('quality sets how fully rooms are furnished and how rich the materials are;
     assert.ok(!['MARBLE', 'STONE'].includes(budget.floor), `${s}: no marble or stone at smart budget (${budget.floor})`);
     assert.ok(!['TILE', 'CONCRETE'].includes(premium.floor), `${s}: no tile or concrete at premium (${premium.floor})`);
     for (const p of [budget, high, premium]) assert.equal(p.style, high.style, `${s}: the style code does not depend on quality`);
-    assert.match(budget.brief, /Smart budget/); assert.match(high.brief, /High quality/); assert.match(premium.brief, /Premium/);
+    assert.match(lookWords('MODERN', 'SMART_BUDGET'), /Smart budget/); assert.match(lookWords('MODERN', 'HIGH_QUALITY'), /High quality/); assert.match(lookWords('MODERN', 'PREMIUM'), /Premium/);
+    assert.equal(isPresetBrief('warm modern, light oak, no marble'), false, 'what a customer writes is never mistaken for preset words');
   }
   assert.deepEqual(new Set(LOOK_STYLES.map((s) => lookPreferences(s, 'HIGH_QUALITY').style)).size, 6, 'six styles, six style codes');
   assert.equal(lookPreferences('LUXURY', 'HIGH_QUALITY').floor, 'MARBLE');

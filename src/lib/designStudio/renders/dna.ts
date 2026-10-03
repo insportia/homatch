@@ -21,8 +21,8 @@ const WET = new Set(['BATHROOM', 'WC']);
 const OUTDOOR = new Set(['BALCONY', 'TERRACE']);
 const lower = (c: string | null | undefined) => (c && /^#[0-9a-f]{6}$/i.test(c) ? c.toLowerCase() : null);
 
-const ACCENT_METAL: Record<DesignPreferences['accent'], string> = { BLACK_METAL: '#1d1f22', BRASS: '#b08d57', CHROME: '#c7ccd1', NATURAL_WOOD: '#a77b52' };
-const WALL_DEFAULT: Record<DesignPreferences['walls'], string> = { WARM_WHITE: '#f3eee4', COOL_WHITE: '#f1f3f5', GREIGE: '#d9d2c7', PLASTER: '#e6dccd', DEEP: '#4b5a5c' };
+const ACCENT_METAL: Record<DesignPreferences['accent'], string> = { BLACK_METAL: '#1d1f22', BRASS: '#b08d57', COPPER: '#b06f45', BRONZE: '#6f5235', CHROME: '#c7ccd1', MATTE_WHITE: '#efefec', NATURAL_WOOD: '#a77b52' };
+const WALL_DEFAULT: Record<DesignPreferences['walls'], string> = { WARM_WHITE: '#f3eee4', COOL_WHITE: '#f1f3f5', GREIGE: '#d9d2c7', PLASTER: '#e6dccd', SAGE: '#c9d1c0', SKY: '#d6e0e8', BLUSH: '#ead7d0', TERRACOTTA: '#c27a5a', DEEP: '#4b5a5c' };
 const MOOD_LIGHT: Record<DesignPreferences['mood'], PropertyDesignDNA['lighting']> = {
   WARM: { timeOfDay: 'DAY', temperature: 'WARM', interior: 0.65 },
   BRIGHT: { timeOfDay: 'DAY', temperature: 'NEUTRAL', interior: 0.55 },

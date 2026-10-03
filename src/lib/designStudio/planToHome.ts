@@ -27,10 +27,10 @@ export type Mood = typeof MOODS[number];
 export const FLOOR_DIRECTIONS = ['LIGHT_WOOD', 'DARK_WOOD', 'STONE', 'MARBLE', 'CONCRETE', 'TILE'] as const;
 export type FloorDirection = typeof FLOOR_DIRECTIONS[number];
 
-export const WALL_DIRECTIONS = ['WARM_WHITE', 'COOL_WHITE', 'GREIGE', 'PLASTER', 'DEEP'] as const;
+export const WALL_DIRECTIONS = ['WARM_WHITE', 'COOL_WHITE', 'GREIGE', 'PLASTER', 'SAGE', 'SKY', 'BLUSH', 'TERRACOTTA', 'DEEP'] as const;
 export type WallDirection = typeof WALL_DIRECTIONS[number];
 
-export const ACCENTS = ['BLACK_METAL', 'BRASS', 'CHROME', 'NATURAL_WOOD'] as const;
+export const ACCENTS = ['BLACK_METAL', 'BRASS', 'COPPER', 'BRONZE', 'CHROME', 'MATTE_WHITE', 'NATURAL_WOOD'] as const;
 export type Accent = typeof ACCENTS[number];
 
 export const PALETTES = ['WARM', 'NEUTRAL', 'COOL'] as const;

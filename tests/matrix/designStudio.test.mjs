@@ -871,6 +871,30 @@ test('a variant, a style, a quality or a room can be recorded: parent_id belongs
   assert.match(result, /status=\{working \? 'PROCESSING' : failedRun \? 'FAILED' : 'READY'\}/, 'Snake never calls a failure ready');
 });
 
+test('the customer never sees HOMATCH\'s prompt words; the look\'s words reach the designer from the server', () => {
+  const looks = code('src/lib/designStudio/lookPresets.ts');
+  assert.match(looks, /furnishing: q\.furnishing,\s*brief: '',/, 'a look leaves the customer\'s brief empty');
+  assert.match(code('src/components/designStudio/planToHome/DesignChooser.tsx'), /const brief = isPresetBrief\(value\.brief\) \? '' : value\.brief;/);
+  assert.match(code('src/components/designStudio/planToHome/DesignChooser.tsx'), /value=\{brief\}/);
+  const spec = code('supabase/functions/_shared/designStudio/designSpec.ts');
+  assert.match(spec, /const words = d\.look \? lookWords\(d\.look\.style, d\.look\.quality\) : null;/);
+  assert.match(spec, /const brief = isPresetBrief\(p\.brief\) \? '' : p\.brief;/);
+  // "Customise details" is a premium way in, not a small link.
+  assert.match(code('src/components/designStudio/planToHome/SimpleSteps.tsx'), /data-testid="look-customize"[\s\S]{0,40}|onClick=\{onCustomize\}\s*className=\{cn\('group flex w-full/);
+  // More colours, the same list in the browser and on the server.
+  for (const f of ['src/lib/designStudio/planToHome.ts', 'supabase/functions/_shared/designStudio/designIntent.ts']) {
+    assert.match(code(f), /WALL_DIRECTIONS = \['WARM_WHITE', 'COOL_WHITE', 'GREIGE', 'PLASTER', 'SAGE', 'SKY', 'BLUSH', 'TERRACOTTA', 'DEEP'\]/, f);
+    assert.match(code(f), /ACCENTS = \['BLACK_METAL', 'BRASS', 'COPPER', 'BRONZE', 'CHROME', 'MATTE_WHITE', 'NATURAL_WOOD'\]/, f);
+  }
+});
+
+test('Snake: "Play again" is a real button press (the board never captures a press on a button); it is offered while a 3D tour is built', () => {
+  assert.match(code('src/components/games/SnakeGame.tsx'), /if \(e\.target instanceof Element && e\.target\.closest\('button'\)\) return;\s*gesture\.current =/);
+  const walk = code('src/components/designStudio/unified/WalkthroughPanel.tsx');
+  assert.match(walk, /lazy\(\(\) => import\('@\/components\/games\/SnakeGame'\)\)/);
+  assert.match(walk, /status=\{walk\.state === 'READY' \? 'READY' : walk\.state === 'FAILED' \|\| walk\.state === 'CANCELLED' \? 'FAILED' : 'PROCESSING'\}/);
+});
+
 test('the protected edit pipeline (PR #65) is untouched; the 3D walkthrough is the server-built one', () => {
   // The legacy browser-driven walkthrough stays held back.
   assert.match(code('src/lib/designStudio/walkthroughOffer.ts'), /export const WALKTHROUGH_OFFERED = false;/);

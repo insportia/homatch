@@ -5,13 +5,16 @@
 // steps shown are the server's own states, never a percentage. Asking twice
 // (a double click, a second tab) is the same walkthrough.
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Box, Check, Loader2, RotateCcw } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { PROGRESS_STEPS, type ProgressStep } from '@/lib/designStudio/walkthrough/lifecycle';
 import { createWalkthrough, retryWalkthrough, walkthroughHref, walkthroughStatus, type Walkthrough } from '@/services/designStudio/walkthrough';
+
+// The same game as every long wait: it only watches the walkthrough's real state (this panel keeps following it).
+const SnakeGame = lazy(() => import('@/components/games/SnakeGame'));
 
 const RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#F7F4EF]';
 const DARK = cn('inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[#0C1119] px-5 text-[15px] font-semibold text-white disabled:opacity-60', RING);
@@ -30,6 +33,7 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId }: { pro
   const [loaded, setLoaded] = useState(false);
   const [asking, setAsking] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const [playing, setPlaying] = useState(false);
   const alive = useRef(true);
   useEffect(() => () => { alive.current = false; }, []);
 
@@ -115,8 +119,19 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId }: { pro
             ))}
           </ol>
           <p className="mt-3 text-[13px] text-[#5B6472]">{t('dsx_walk_leave_ok')}</p>
+          <button type="button" onClick={() => setPlaying(true)} className={cn('mt-4 inline-flex h-11 items-center rounded-full bg-[hsl(38_92%_56%)] px-5 text-[14px] font-semibold text-[#0C1119]', RING)} data-testid="walk-snake-play">{t('dsx_sn_play')}</button>
         </div>
       )}
+
+      {playing && walk ? (
+        <Suspense fallback={null}>
+          <SnakeGame
+            status={walk.state === 'READY' ? 'READY' : walk.state === 'FAILED' || walk.state === 'CANCELLED' ? 'FAILED' : 'PROCESSING'}
+            stageLabel={walk.progress && walk.progress !== 'FAILED' && walk.progress !== 'CANCELLED' ? t(STEP_KEY[walk.progress]) : t('dsx_walk_title')}
+            onView={() => { setPlaying(false); if (walk.state === 'READY' && walk.walkVersionId) navigate(walkthroughHref(projectId, walk.walkVersionId)); }}
+            onClose={() => setPlaying(false)} />
+        </Suspense>
+      ) : null}
 
       {earlier.length ? (
         <div className="mt-5 border-t border-[#EFEAE2] pt-4">

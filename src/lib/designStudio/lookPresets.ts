@@ -7,6 +7,10 @@
 // briefed with — coherently, the same way every time. The detailed fields stay
 // in the contract: "Customise details" starts from what this produced.
 //
+// Those words are HOMATCH's own: the server reads them for the chosen look
+// (lookWords). They never go in the customer's brief, which holds only what the
+// customer wrote themselves.
+//
 // Pure, deterministic, no I/O.
 
 import { normalizePreferences, type DesignPreferences } from './planToHome.ts';
@@ -88,8 +92,21 @@ export function lookPreferences(style: LookStyle, quality: LookQuality): DesignP
     style: s.style, mood: s.mood, walls: s.walls, accent: s.accent, palette: s.palette,
     floor: q.floorSwap[s.floor] ?? s.floor,
     furnishing: q.furnishing,
-    brief: `${s.words} ${q.words}`,
+    brief: '',
   });
+}
+
+/** HOMATCH's own words for a look, for the designer (the server reads them; the customer never sees them). */
+export function lookWords(style: string, quality: string): string | null {
+  const s = STYLE[style as LookStyle]; const q = QUALITY[quality as LookQuality];
+  return s && q ? `${s.words} ${q.words}` : null;
+}
+
+/** A brief that is HOMATCH's preset words (saved by an older page), not anything the customer wrote. */
+export function isPresetBrief(brief: string | null | undefined): boolean {
+  const b = (brief ?? '').trim();
+  if (!b) return false;
+  return LOOK_STYLES.some((st) => LOOK_QUALITIES.some((ql) => lookWords(st, ql) === b));
 }
 
 /** A saved choice, checked; null when either half is missing or unknown. */

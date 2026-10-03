@@ -222,6 +222,9 @@ export default function SnakeGame({ status, stageLabel, onView, onClose }: {
 
   // The board: swipes turn as the finger moves; a tap turns towards it. Only the board takes the gesture.
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    // A press on a button over the board ("Play again") is the button's: capturing it here would send the
+    // release to the board and the button's click would never happen.
+    if (e.target instanceof Element && e.target.closest('button')) return;
     gesture.current = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* an old browser: the gesture still ends on this board */ }
     e.currentTarget.dataset.on = '1';

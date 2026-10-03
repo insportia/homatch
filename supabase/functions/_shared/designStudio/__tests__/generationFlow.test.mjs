@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { driveUntilMap, GEN_LEASE_MS, genNext, MAX_SCENE_ATTEMPTS, runImageStep, runMapStep, runSceneStep } from '../generationFlow.ts';
+import { driveUntilMap, GEN_LEASE_MS, genNext, MAX_MAP_ATTEMPTS, MAX_SCENE_ATTEMPTS, runImageStep, runMapStep, runSceneStep } from '../generationFlow.ts';
 
 const W = 120; const H = 80;
 function picture() {
@@ -166,4 +166,27 @@ test('no reference picture: failed before anything is asked or paid', async () =
 test('a factory render row is never touched by the generation flow', () => {
   assert.equal(genNext({ status: 'QUEUED', factory_job_id: 'job-1', timings: { ai: { step: 'IMAGE' } } }, Date.now()).action, 'NONE');
   assert.equal(genNext({ status: 'QUEUED', factory_job_id: null, timings: {} }, Date.now()).action, 'NONE');
+});
+
+test('a map step whose invocation keeps dying is not tried forever: the picture is finished and shown without its edit map', async () => {
+  // Production 2026-10-03: the map step was killed by the edge CPU budget; the lease lapsed and it was claimed again, forever.
+  const h = harness();
+  await driveUntilMap(h.io, h.row());
+  const decode = h.io.decode;
+  h.io.decode = () => { throw new Error('worker killed (CPU budget)'); };
+  for (let i = 0; i < MAX_MAP_ATTEMPTS; i += 1) {
+    await assert.rejects(runMapStep(h.io, h.row()));
+    assert.equal(h.row().status, 'FINISHING', 'still finishing while attempts remain');
+    h.tick(GEN_LEASE_MS + 1000); // the dead invocation's lease lapses
+  }
+  h.io.decode = decode;
+  await runMapStep(h.io, h.row());
+  const done = h.row();
+  assert.equal(done.status, 'READY', 'the picture is the result');
+  assert.ok(done.final_key);
+  assert.equal(done.map_key, null);
+  assert.deepEqual(done.finish.editMap, { state: 'UNAVAILABLE', reason: 'MAP_BUDGET' });
+  assert.equal(done.timings.ai.mapAttempts, MAX_MAP_ATTEMPTS + 1);
+  assert.equal(h.calls.settle, 1, 'settled once');
+  assert.equal(h.calls.image, 1, 'never a second picture');
 });

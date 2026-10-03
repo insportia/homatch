@@ -68,6 +68,7 @@ const TG_TEXT = 'Сдается 2-комн. квартира в Батуми, у
 const TG = 'https://t.me/moonlightbatumi2023/4521';
 const FORUM_POST = 'https://forum.ge/?showtopic=33976335&view=findpost&p=14172410';
 const LISTING = 'https://home.ss.ge/ka/udzravi-qoneba/iyideba-2-otaxiani-bina-vakeshi-36733497';
+const ALSO = 'https://t.me/batumi_rent_2/88';
 
 const result = (id, listing, attribution, extra = {}) => ({
   id, intentId: 'i1', score: 0.82, deal: 'RENT', roles: { demand: 'TENANT', supply: null },
@@ -80,7 +81,12 @@ const result = (id, listing, attribution, extra = {}) => ({
 const RESULTS = [
   result('tg', { title: 'Сдается 2-комн. квартира в Батуми', url: TG, source: 'telegram-community' }, {
     platform: 'TELEGRAM', sourceName: 'moonlightbatumi2023', sourceUrl: 'https://t.me/moonlightbatumi2023', threadUrl: null,
-    permalink: TG, authorName: '@konttin', authorUrl: 'https://t.me/konttin', originalText: TG_TEXT }),
+    permalink: TG, authorName: '@konttin', authorUrl: 'https://t.me/konttin', originalText: TG_TEXT }, {
+    /* The same flat seen elsewhere (cross-source dedupe): every source keeps its exact link. */
+    alsoSeenAt: [
+      { platform: 'TELEGRAM', sourceName: 'batumi_rent_2', sourceUrl: null, threadUrl: null, permalink: ALSO, authorName: null, authorUrl: null, originalText: null },
+      { platform: 'FACEBOOK', sourceName: null, sourceUrl: null, threadUrl: null, permalink: 'javascript:alert(1)', authorName: null, authorUrl: null, originalText: null },
+    ] }),
   result('forum', { title: 'ვყიდი ბინას ვაკეში', url: FORUM_POST, source: 'forum-community' }, {
     platform: 'FORUM', sourceName: 'forum.ge', sourceUrl: 'https://forum.ge/', threadUrl: 'https://forum.ge/?showtopic=33976335',
     permalink: FORUM_POST, authorName: 'kukurino', authorUrl: 'https://forum.ge/?showuser=90411',
@@ -136,7 +142,7 @@ test('one click to the exact source, with channel, thread, author and the post a
   await open(page);
   const links = await anchors(page);
   const find = (href) => links.find((l) => l.href === href);
-  for (const href of [TG, 'https://t.me/moonlightbatumi2023', 'https://t.me/konttin', FORUM_POST,
+  for (const href of [TG, ALSO, 'https://t.me/moonlightbatumi2023', 'https://t.me/konttin', FORUM_POST,
     'https://forum.ge/?showtopic=33976335', 'https://forum.ge/?showuser=90411', LISTING, 'https://home.ss.ge/']) {
     const link = find(href);
     assert.ok(link, `link to ${href}`);
@@ -145,6 +151,8 @@ test('one click to the exact source, with channel, thread, author and the post a
     assert.match(link.rel, /noreferrer/);
   }
   assert.equal(find('https://t.me/konttin').text, '@konttin');
+  assert.equal(find(ALSO).text, 'batumi_rent_2', 'the other source is named and opens its exact post');
+  assert.match(await page.textContent('main'), /Also posted at/);
   assert.equal(find('https://forum.ge/?showuser=90411').text, 'kukurino');
   assert.ok(links.some((l) => l.href === TG && /Open original post/.test(l.text)), 'the action names the post');
   assert.ok(links.some((l) => l.href === LISTING && /Open original listing/.test(l.text)));

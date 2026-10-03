@@ -55,6 +55,8 @@ import { judgeDemandFreshness } from '../../../src/research-core/match/demand-fr
 import { attributionFrom } from '../../../src/research-core/match/broker-attribution.ts';
 import { placeNamesFor } from '../../../src/research-core/normalize/place.ts';
 import { judgeDelivery } from '../../../src/research-core/discovery/revalidation.ts';
+import { candidateQuality, unifiedScore } from '../../../src/research-core/match/unified-score.ts';
+import { fromObservationRow } from '../../../src/research-core/discovery/discovery-entity.ts';
 import {
   ageCeilingMs,
   describeCeiling,
@@ -350,7 +352,7 @@ Deno.serve(async (req: Request) => {
           + 'rent_amount,rent_currency,area_sqm,rooms,bedrooms,published_at,'
           + 'first_seen_at,last_seen_at,last_verified_at,content_changed_at,expires_at,'
           + 'content_fingerprint,validation_state,failed_checks,adapter_id,source_status,'
-          + 'supply_role,broker_id,title,description')
+          + 'supply_role,broker_id,title,description,canonical_url,external_id,field_origins,country_code,detected_language')
         .or(cityFilter)
         /* Newest publications first, undated at the end. With a hard cap of
            MAX_CANDIDATES rows, an UNORDERED read let ancient rows crowd out
@@ -362,7 +364,7 @@ Deno.serve(async (req: Request) => {
       totals.candidatesRead += (candidates ?? []).length;
       totals.reusedFromStore += (candidates ?? []).length;
 
-      const assessments: Array<{ observationId: string; assessment: ReturnType<typeof assessMatch>; ageDays: number | null; ageBasis: string; freshnessFactor: number }> = [];
+      const assessments: Array<{ observationId: string; assessment: ReturnType<typeof assessMatch>; ageDays: number | null; ageBasis: string; freshnessFactor: number; quality: number }> = [];
 
       for (const candidate of candidates ?? []) {
         const supplyRow = candidate as Record<string, unknown>;
@@ -472,15 +474,21 @@ Deno.serve(async (req: Request) => {
             ageDays: listingAgeDays,
             ageBasis: ceiling.basis,
             freshnessFactor: supplyFreshness.factor,
+            /* The unified contract (match/unified-score.ts): the listing's own
+               evidence quality -- recency, completeness, explicitness,
+               contactability, source -- from the same normalized entity Find
+               Buyers uses. Never decides compatibility. */
+            quality: candidateQuality(fromObservationRow(supplyRow as never)).quality,
           });
         }
       }
 
       /* Rank by compatibility DECAYED BY AGE, so a perfect-fit stale listing
-         sits below a good-fit fresh one. find-property then orders by the
-         stored match_score, so the customer sees the same order. */
+         sits below a good-fit fresh one, then by the unified evidence quality
+         (recency is part of it). find-property orders by the stored
+         match_score, so the customer sees the same order. */
       const rankedScore = (e: (typeof assessments)[number]) =>
-        Math.round(e.assessment.score * e.freshnessFactor * 100) / 100;
+        Math.round(unifiedScore(e.assessment.score * e.freshnessFactor, e.quality) * 100) / 100;
       assessments.sort((a, b) => rankedScore(b) - rankedScore(a));
 
       /*

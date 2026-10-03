@@ -34,6 +34,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { loadDiscoverySettings } from '../_shared/discoverySettings.ts';
 import { recordCommunitySupply } from '../_shared/communitySupply.ts';
+import { extractCommunityListing } from '../../../src/research-core/discovery/community-listing.ts';
+import { safeWebUrl } from '../../../src/research-core/discovery/source-link.ts';
 import { CLASSIFIER_VERSION, DEMAND_LABELS, discoveryLabelFor, reusableVerdict, routeFor } from '../../../src/research-core/discovery/signal-taxonomy.ts';
 const CORS={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type'};
 const json=(d:any,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{...CORS,'Content-Type':'application/json'}});
@@ -70,20 +72,31 @@ Deno.serve(async(req:Request)=>{
  }
 
  try{
-  const {batchSize=300,market='GE',source=null,mode=null}=await req.json().catch(()=>({}));
+  const {batchSize=300,market='GE',source=null,mode=null,after:afterRaw=null,dryRun:dryRunRaw=false}=await req.json().catch(()=>({}));
   /*
    * PHASE 2 BACKFILL: listing posts filtered out of demand before community
    * supply existed. Deterministic, no model call, no spend; idempotent by
    * (source_id, external_id). Already-classified rows keep their verdict.
    */
   if(mode==='community-supply-backfill'){
-    const {data:rows,error:readError}=await db.from('raw_signals').select('id,original_text,language,platform,author_is_agency,content_fingerprint,source_id,external_id,source_url,published_at,source:source_registry!source_id(country_code,language,city)')
-      .eq('classification_status','FILTERED_OUT').eq('research_direction','SUPPLY').in('platform',['TELEGRAM','FORUM'])
-      .order('discovered_at',{ascending:false}).limit(Math.min(500,Number(batchSize)||200));
+    /* Oldest first with a cursor, so repeated calls walk the whole backlog
+       instead of re-reading the newest 500. dryRun reads and extracts but
+       writes nothing (the readiness report runs it that way). */
+    const after=typeof afterRaw==='string'&&!Number.isNaN(Date.parse(afterRaw))?afterRaw:null;
+    const dryRun=dryRunRaw===true;
+    let query=db.from('raw_signals').select('id,original_text,language,platform,author_is_agency,content_fingerprint,source_id,external_id,source_url,published_at,discovered_at,source:source_registry!source_id(country_code,language,city)')
+      .eq('classification_status','FILTERED_OUT').eq('research_direction','SUPPLY').in('platform',['TELEGRAM','FORUM']);
+    if(after)query=query.gt('discovered_at',after);
+    const {data:rows,error:readError}=await query.order('discovered_at',{ascending:true}).order('id',{ascending:true}).limit(Math.min(500,Number(batchSize)||200));
     if(readError)throw readError;
-    let recorded=0,unstructured=0,failed=0;
-    for(const row of rows??[]){try{if(await recordCommunitySupply(db,row as any))recorded++;else unstructured++;}catch(e){failed++;console.error('backfill failed',(row as any).id,e instanceof Error?e.message:String(e));}}
-    return json({success:true,mode,read:(rows??[]).length,recorded,unstructured,failed,modelCalls:0});
+    let recorded=0,unstructured=0,failed=0,wouldRecord=0;
+    for(const row of rows??[]){
+      if(dryRun){if(safeWebUrl((row as any).source_url)&&extractCommunityListing(String((row as any).original_text??''),{sourceCity:(Array.isArray((row as any).source)?(row as any).source[0]:(row as any).source)?.city??null}))wouldRecord++;else unstructured++;continue;}
+      try{if(await recordCommunitySupply(db,row as any))recorded++;else unstructured++;}catch(e){failed++;console.error('backfill failed',(row as any).id,e instanceof Error?e.message:String(e));}
+    }
+    const last=(rows??[]).at(-1) as any;
+    return json({success:true,mode,dryRun,read:(rows??[]).length,recorded,wouldRecord,unstructured,failed,modelCalls:0,
+      nextCursor:(rows??[]).length===Math.min(500,Number(batchSize)||200)&&last?last.discovered_at:null});
   }
   /* The five-minute schedule does nothing until classifier_schedule_enabled
      is on: every call it makes spends model tokens. */

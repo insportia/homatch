@@ -25,8 +25,12 @@
 //   * first matched during this run (created_at >= started_at); an upsert keeps
 //     created_at, so a listing re-scored by a later run is not billed again
 //   * the observation not INVALID or REMOVED
-//   * one per PROPERTY: observations of one supply_entity count once, and a
-//     property already delivered to this plan before the run is not billed again
+//   * one per PROPERTY: observations of one supply_entity count once, and so do
+//     observations cross-source dedupe proves are one property (the same ad in
+//     three Telegram channels, a portal listing and its repost: same post,
+//     same text, a shared contact with matching area and rooms/price, the
+//     same coordinates -- discovery/cross-source-dedupe.ts); a property
+//     already delivered to this plan before the run is not billed again
 //
 // IDEMPOTENT. Only the caller whose conditional update moves the run from
 // MATCHING with credits_charged still null settles; any repeat returns what
@@ -34,17 +38,47 @@
 // is no longer RESERVED.
 
 import type { ExecutionGrant } from './billing.ts';
+import { fromObservationRow } from '../../../src/research-core/discovery/discovery-entity.ts';
+import { dedupe } from '../../../src/research-core/discovery/cross-source-dedupe.ts';
 
 type Json = Record<string, unknown>;
 
 export const NOT_BILLABLE_VALIDATION = ['INVALID', 'REMOVED'];
 
+type DeliveredObservation = { entity_id?: string | null; validation_state?: string | null; content_fingerprint?: string | null } & Record<string, unknown>;
+
 export interface DeliveryRow {
   observation_id: string;
   created_at: string;
   compatibility?: string | null;
-  observation?: { entity_id?: string | null; validation_state?: string | null }
-    | Array<{ entity_id?: string | null; validation_state?: string | null }> | null;
+  observation?: DeliveredObservation | DeliveredObservation[] | null;
+}
+
+/**
+ * observation_id → the property it is (pure). Observations the entity resolver
+ * already linked (one supply_entity) are ALWAYS one property -- dedupe can only
+ * join more, never split them; the rest are joined on cross-source evidence.
+ */
+export function propertyKeys(rows: readonly DeliveryRow[]): Map<string, string> {
+  const representative = new Map<string, string>();
+  const items = [];
+  const seen = new Set<string>();
+  const itemIds = new Set<string>();
+  for (const row of rows) {
+    if (seen.has(row.observation_id)) continue;
+    seen.add(row.observation_id);
+    const o = (Array.isArray(row.observation) ? row.observation[0] : row.observation) ?? {};
+    const entityId = (o.entity_id as string | null) ?? null;
+    const id = entityId ? `entity:${entityId}` : `obs:${row.observation_id}`;
+    representative.set(row.observation_id, id);
+    if (itemIds.has(id)) continue;
+    itemIds.add(id);
+    items.push({ id, entity: fromObservationRow(o as never), fingerprint: (o.content_fingerprint as string | null) ?? null });
+  }
+  const { keyOf } = dedupe(items);
+  const out = new Map<string, string>();
+  for (const [observationId, id] of representative) out.set(observationId, keyOf.get(id) ?? id);
+  return out;
 }
 
 export interface Deliveries {
@@ -58,10 +92,11 @@ export interface Deliveries {
 export function billableDeliveries(rows: readonly DeliveryRow[], runStartedAt: string): Deliveries {
   const started = Date.parse(runStartedAt);
   const excluded = { incompatible: 0, unusable: 0, duplicate: 0, previouslyDelivered: 0 };
+  const property = propertyKeys(rows);
   const usable = (row: DeliveryRow) => {
     const o = Array.isArray(row.observation) ? row.observation[0] : row.observation;
     const state = String(o?.validation_state ?? '').toUpperCase();
-    return { key: String(o?.entity_id ?? row.observation_id), ok: !NOT_BILLABLE_VALIDATION.includes(state) };
+    return { key: property.get(row.observation_id) ?? String(o?.entity_id ?? row.observation_id), ok: !NOT_BILLABLE_VALIDATION.includes(state) };
   };
   const compatible = (row: DeliveryRow) => (row.compatibility ?? 'COMPATIBLE') === 'COMPATIBLE';
 
@@ -107,7 +142,10 @@ export function planSettlement(input: {
 export async function loadDeliveries(db: any, intentProfileId: string | null, runStartedAt: string): Promise<Deliveries> {
   if (!intentProfileId) return billableDeliveries([], runStartedAt);
   const { data, error } = await db.from('supply_matches')
-    .select('observation_id,created_at,compatibility,observation:supply_observations!observation_id(entity_id,validation_state)')
+    .select('observation_id,created_at,compatibility,observation:supply_observations!observation_id('
+      + 'entity_id,validation_state,content_fingerprint,adapter_id,external_id,canonical_url,transaction,property_type,'
+      + 'country_code,city,district,sale_amount,sale_currency,rent_amount,rent_currency,area_sqm,rooms,bedrooms,'
+      + 'published_at,description,field_origins)')
     .eq('intent_profile_id', intentProfileId)
     .eq('source_kind', 'EXTERNAL_LISTING')
     .limit(5000);

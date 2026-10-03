@@ -15,6 +15,7 @@ import { Switch } from '@/components/ui/switch';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { intlLocaleFor } from '@/components/workspace/primitives';
+import { SOURCE_CAPABILITIES, sourceStatus } from '@/research-core/discovery/source-capabilities.ts';
 import {
   PHASE2_SWITCHES, getDiscoveryIntelligence, runSourceLiveChecks, setPhase2Switch, settingOn,
   type DiscoveryIntelligence, type Phase2Switch,
@@ -130,6 +131,39 @@ function IntelligenceContent() {
           {t('p2d_admin_worker_portals')}{' '}
           <code dir="ltr">{JSON.stringify(data.switches.discovery_worker_portal_adapters ?? [])}</code>
         </p>
+      </Panel>
+
+      <Panel title={t('p2d_admin_readiness')}>
+        <p className="mb-2 text-2xs text-muted-foreground">{t('p2d_admin_readiness_note')}</p>
+        <Scroll>
+          <table className="w-full min-w-[40rem] text-xs">
+            <thead><tr className="text-muted-foreground">
+              {['p2d_admin_col_source', 'p2d_admin_col_status', 'p2d_admin_col_method', 'p2d_admin_col_live_tested', 'p2d_admin_col_checked', 'p2d_admin_col_reason']
+                .map((k) => <th key={k} className="py-1 text-start font-medium">{t(k as never)}</th>)}
+            </tr></thead>
+            <tbody>
+              {SOURCE_CAPABILITIES.map((cap) => {
+                const lastCollectedAt = data.supply_by_adapter.find((a) => a.adapter_id === cap.adapterId)?.last_seen ?? null;
+                const switchKey = cap.platform === 'FORUM' ? 'forum_discovery_enabled' : cap.platform === 'TELEGRAM' ? 'telegram_discovery_enabled' : null;
+                const status = sourceStatus(cap, {
+                  liveChecks: data.live_checks,
+                  lastCollectedAt,
+                  enabled: switchKey ? settingOn(data.switches[switchKey]) : undefined,
+                });
+                return (
+                  <tr key={cap.key} className="border-t border-border/60 align-top">
+                    <td className="py-1.5 font-medium" dir="ltr">{cap.label}</td>
+                    <td className={cn('py-1.5 font-semibold', status.status === 'READY' ? 'text-[hsl(152_54%_30%)]' : status.status === 'DEGRADED' ? 'text-[hsl(38_92%_35%)]' : 'text-muted-foreground')} dir="ltr">{status.status}</td>
+                    <td className="py-1.5" dir="ltr">{cap.retrieval}</td>
+                    <td className="py-1.5">{yes(status.liveTested)}</td>
+                    <td className="py-1.5 whitespace-nowrap">{status.lastProofAt ? when(status.lastProofAt, locale) : '—'}</td>
+                    <td className="py-1.5 max-w-[22rem] break-words text-muted-foreground" dir="ltr">{status.reason}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Scroll>
       </Panel>
 
       <Panel

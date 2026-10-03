@@ -14310,6 +14310,19 @@ const en = {
   p2d_attr_platform_forum: 'Forum',
   p2d_attr_platform_portal: 'Property site',
 
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_attr_also_seen: 'Also posted at',
+  p2d_attr_platform_facebook: 'Facebook',
+  p2d_attr_platform_instagram: 'Instagram',
+
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_admin_readiness: 'Source readiness',
+  p2d_admin_readiness_note: 'READY needs a passing live check or real collected rows in the last 14 days. Code alone is never READY.',
+  p2d_admin_col_status: 'Status',
+  p2d_admin_col_method: 'Retrieval',
+  p2d_admin_col_live_tested: 'Live tested',
+  p2d_admin_col_reason: 'Reason',
+
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   sf_back: 'Back',
   sf_upload_title: 'Upload your floor plan',
@@ -28626,6 +28639,19 @@ const ka: Partial<Record<TranslationKey, string>> = {
   p2d_attr_platform_forum: 'ფორუმი',
   p2d_attr_platform_portal: 'უძრავი ქონების საიტი',
 
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_attr_also_seen: 'ასევე გამოქვეყნებულია',
+  p2d_attr_platform_facebook: 'Facebook',
+  p2d_attr_platform_instagram: 'Instagram',
+
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_admin_readiness: 'წყაროების მზადყოფნა',
+  p2d_admin_readiness_note: 'READY-ს სჭირდება წარმატებული ცოცხალი შემოწმება ან რეალურად შეგროვებული ჩანაწერები ბოლო 14 დღეში. მხოლოდ კოდი არასდროს არის READY.',
+  p2d_admin_col_status: 'სტატუსი',
+  p2d_admin_col_method: 'მიღების მეთოდი',
+  p2d_admin_col_live_tested: 'ცოცხლად შემოწმებული',
+  p2d_admin_col_reason: 'მიზეზი',
+
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   sf_back: 'უკან',
   sf_upload_title: 'ატვირთეთ თქვენი გეგმა',
@@ -42933,6 +42959,19 @@ const ru: Partial<Record<TranslationKey, string>> = {
   p2d_attr_platform_forum: 'Форум',
   p2d_attr_platform_portal: 'Сайт недвижимости',
 
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_attr_also_seen: 'Также опубликовано',
+  p2d_attr_platform_facebook: 'Facebook',
+  p2d_attr_platform_instagram: 'Instagram',
+
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_admin_readiness: 'Готовность источников',
+  p2d_admin_readiness_note: 'Для READY нужна успешная живая проверка или реально собранные записи за последние 14 дней. Одного кода недостаточно.',
+  p2d_admin_col_status: 'Статус',
+  p2d_admin_col_method: 'Способ получения',
+  p2d_admin_col_live_tested: 'Проверено вживую',
+  p2d_admin_col_reason: 'Причина',
+
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   sf_back: 'Назад',
   sf_upload_title: 'Загрузите план квартиры',
@@ -57237,6 +57276,19 @@ const tr: Partial<Record<TranslationKey, string>> = {
   p2d_attr_platform_telegram: 'Telegram',
   p2d_attr_platform_forum: 'Forum',
   p2d_attr_platform_portal: 'Emlak sitesi',
+
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_attr_also_seen: 'Ayrıca yayınlandığı yer',
+  p2d_attr_platform_facebook: 'Facebook',
+  p2d_attr_platform_instagram: 'Instagram',
+
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_admin_readiness: 'Kaynak hazırlığı',
+  p2d_admin_readiness_note: 'READY için son 14 günde başarılı bir canlı kontrol veya gerçekten toplanmış kayıtlar gerekir. Yalnızca kod asla READY değildir.',
+  p2d_admin_col_status: 'Durum',
+  p2d_admin_col_method: 'Erişim yöntemi',
+  p2d_admin_col_live_tested: 'Canlı test',
+  p2d_admin_col_reason: 'Neden',
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   sf_back: 'Geri',
@@ -71543,6 +71595,19 @@ const ar: Partial<Record<TranslationKey, string>> = {
   p2d_attr_platform_forum: 'منتدى',
   p2d_attr_platform_portal: 'موقع عقارات',
 
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_attr_also_seen: 'نُشر أيضًا في',
+  p2d_attr_platform_facebook: 'فيسبوك',
+  p2d_attr_platform_instagram: 'إنستغرام',
+
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_admin_readiness: 'جاهزية المصادر',
+  p2d_admin_readiness_note: 'تتطلب حالة READY فحصًا حيًا ناجحًا أو سجلات جُمعت فعليًا خلال آخر 14 يومًا. الشيفرة وحدها ليست READY أبدًا.',
+  p2d_admin_col_status: 'الحالة',
+  p2d_admin_col_method: 'طريقة الجلب',
+  p2d_admin_col_live_tested: 'مُختبر حيًا',
+  p2d_admin_col_reason: 'السبب',
+
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   sf_back: 'رجوع',
   sf_upload_title: 'ارفع مخطط منزلك',
@@ -85847,6 +85912,19 @@ const he: Partial<Record<TranslationKey, string>> = {
   p2d_attr_platform_telegram: 'טלגרם',
   p2d_attr_platform_forum: 'פורום',
   p2d_attr_platform_portal: 'אתר נדל״ן',
+
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_attr_also_seen: 'פורסם גם ב־',
+  p2d_attr_platform_facebook: 'פייסבוק',
+  p2d_attr_platform_instagram: 'אינסטגרם',
+
+  /* ── PHASE 2 — UNIVERSAL DISCOVERY ── */
+  p2d_admin_readiness: 'מוכנות מקורות',
+  p2d_admin_readiness_note: 'READY דורש בדיקה חיה שעברה או רשומות שנאספו בפועל ב־14 הימים האחרונים. קוד לבדו אף פעם אינו READY.',
+  p2d_admin_col_status: 'סטטוס',
+  p2d_admin_col_method: 'שיטת שליפה',
+  p2d_admin_col_live_tested: 'נבדק חי',
+  p2d_admin_col_reason: 'סיבה',
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   sf_back: 'חזרה',

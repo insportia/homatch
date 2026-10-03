@@ -3,6 +3,8 @@ import {
   FRESHNESS_COLUMNS, gateForDelivery, loadFreshnessPolicy,
 } from '../_shared/evidenceFreshness.ts';
 import { judgeActiveDemand } from '../../../src/research-core/discovery/freshness-policy.ts';
+import { fromDemandSignal } from '../../../src/research-core/discovery/discovery-entity.ts';
+import { dedupe } from '../../../src/research-core/discovery/cross-source-dedupe.ts';
 import { loadDiscoverySettings } from '../_shared/discoverySettings.ts';
 import {
   bedroomsGate, budgetGate, cityGate, converterFrom, marketCitySpellings, ratesFromPayload, ratesFromTable,
@@ -236,13 +238,56 @@ Deno.serve(async (req: Request) => {
       const chunk = signalIds.slice(offset, offset + 200);
       const { data, error } = await db
         .from('intent_profiles')
-        .select(`id,signal_id,intent_type,country,city,district,neighborhoods,transaction_type,property_types,bedrooms_min,bedrooms_max,area_min,area_max,budget_min,budget_max,currency,language,intent_confidence,specificity_score,actionability_score,original_text,translated_text,ai_cost_usd,created_at,signal:raw_signals!signal_id(id,platform,property_id,published_at,source_url,classification_status,intent_type,original_text,${FRESHNESS_COLUMNS},source:source_registry!source_id(quality_score))`)
+        .select(`id,signal_id,intent_type,country,city,district,neighborhoods,transaction_type,property_types,bedrooms_min,bedrooms_max,area_min,area_max,budget_min,budget_max,currency,language,intent_confidence,specificity_score,actionability_score,original_text,translated_text,ai_cost_usd,created_at,signal:raw_signals!signal_id(id,platform,property_id,published_at,source_url,parent_url,external_id,author_public_name,author_public_url,profile_url,content_fingerprint,classification_status,intent_type,original_text,${FRESHNESS_COLUMNS},source:source_registry!source_id(quality_score))`)
         .in('signal_id', chunk)
         .order('created_at', { ascending: false });
       if (error) throw error;
       profiles.push(...(data || []));
     }
     profiles.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+
+    /*
+     * ONE PERSON, HOWEVER MANY PLACES THEY POSTED (discovery/cross-source-dedupe.ts).
+     * The same tenant writing the same request in two Telegram groups and on
+     * forum.ge is three signals and one person. Signals are clustered on
+     * evidence -- the same author profile or a shared public contact with an
+     * agreeing request, or the same request re-posted near-verbatim -- and a
+     * conflict (transaction, city, budget, rooms, >30 days apart) vetoes.
+     * A person already matched to this property, through ANY of their
+     * signals, is not matched (or sold) again.
+     */
+    const personOf = new Map<string, string>();
+    {
+      const items = [];
+      for (const profile of profiles.slice(0, requested)) {
+        const signal = Array.isArray(profile.signal) ? profile.signal[0] : profile.signal;
+        if (!signal || !profile.signal_id) continue;
+        items.push({
+          id: String(profile.signal_id),
+          entity: fromDemandSignal(signal, {
+            transaction: profile.transaction_type === 'RENT' || profile.transaction_type === 'SALE' ? profile.transaction_type : null,
+            propertyType: Array.isArray(profile.property_types) ? profile.property_types[0] ?? null : null,
+            country: profile.country ?? null, city: profile.city ?? null, district: profile.district ?? null,
+            budgetMin: profile.budget_min ?? null, budgetMax: profile.budget_max ?? null, currency: profile.currency ?? null,
+            bedrooms: profile.bedrooms_min ?? null, origin: 'MODEL',
+          }),
+          fingerprint: signal.content_fingerprint ?? null,
+        });
+      }
+      const seenSignal = new Set<string>();
+      const { keyOf } = dedupe(items.filter((i) => (seenSignal.has(i.id) ? false : (seenSignal.add(i.id), true))));
+      for (const [signalId, person] of keyOf) personOf.set(signalId, person);
+    }
+    const matchedPeople = new Set<string>();
+    {
+      const { data: matchedRows, error: matchedError } = await db.from('matches')
+        .select('signal_id').eq('property_id', property.id).limit(10000);
+      if (matchedError) throw matchedError;
+      for (const row of matchedRows ?? []) {
+        if (row.signal_id) matchedPeople.add(personOf.get(String(row.signal_id)) ?? String(row.signal_id));
+      }
+    }
+    let duplicatePerson = 0;
 
     let created = 0;
     let skipped = 0;
@@ -429,6 +474,8 @@ Deno.serve(async (req: Request) => {
         .maybeSingle();
       if (existingError) throw existingError;
       if (existing) { skipped++; alreadyMatched++; continue; }
+      const person = personOf.get(String(profile.signal_id)) ?? String(profile.signal_id);
+      if (matchedPeople.has(person)) { skipped++; duplicatePerson++; continue; }
 
       const scored = score(property, facts, profile, { city: cityVerdict, budget: budgetVerdict, bedrooms: bedroomsVerdict });
       if (scored.score < 20) { skipped++; continue; }
@@ -565,6 +612,7 @@ Deno.serve(async (req: Request) => {
         continue;
       }
       created++;
+      matchedPeople.add(person);
       best = Math.max(best, finalScore);
       buckets[finalScore >= 80 ? '80-100' : finalScore >= 50 ? '50-79' : '20-49']++;
     }
@@ -590,6 +638,8 @@ Deno.serve(async (req: Request) => {
       rejectedBedrooms,
       rejectedSelfSourced,
       alreadyMatched,
+      /* The same person through another of their signals (cross-source dedupe). */
+      duplicatePerson,
       /*
        * Refused because the evidence was not fresh enough to deliver, and how
        * many re-checks that scheduled. A run that produced nothing because

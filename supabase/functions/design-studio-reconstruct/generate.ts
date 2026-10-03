@@ -203,7 +203,8 @@ async function specJob(admin: Row, actorId: string, projectId: string, jobId: un
 // ── design-spec ──────────────────────────────────────────────────────────
 
 const productOf = (mode: GenerationMode): RenderProduct => (mode === 'ROOM' ? 'DS_ROOM_RENDER' : 'DS_MASTER_RENDER');
-const SPEC_TERMINAL = new Set(['SOURCE_MISSING', 'ROOM_UNKNOWN', 'SPEC_INVALID']);
+// Only a room that does not exist is final; an invalid or missing specification is a technical failure worth asking again.
+const SPEC_TERMINAL = new Set(['ROOM_UNKNOWN']);
 const specFailure = (code: string) => failure(SPEC_TERMINAL.has(code) ? 'TERMINAL' : 'RETRYABLE', code);
 
 /** The job a request names (its idempotency key): a success first, then one in progress, then the latest. */

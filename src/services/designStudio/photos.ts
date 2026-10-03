@@ -92,3 +92,18 @@ export async function photoProjectOf(projectId: string): Promise<ReconstructionR
 export async function photosOf(recon: ReconstructionRecord): Promise<FloorPlanRecord[]> {
   return referencesById(recon.reference_ids);
 }
+
+/**
+ * A floor plan sent through Photos (the reading answered IS_FLOOR_PLAN): the same uploaded file becomes the
+ * project's floor plan, read by the floor-plan reading — the customer uploads nothing again.
+ */
+export async function planFromPhotos(recon: ReconstructionRecord): Promise<FloorPlanRecord> {
+  const [ref] = await referencesById(recon.reference_ids.slice(0, 1));
+  if (!ref) throw new DesignStudioError('DS_FILE_MISSING');
+  const { data, error } = await supabase.from('ds_floorplans').insert({
+    project_id: recon.project_id, user_id: recon.user_id, object_key: ref.object_key, mime: ref.mime, bytes: ref.bytes,
+    sha256: (ref as unknown as { sha256?: string | null }).sha256 ?? null, image_width: ref.image_width, image_height: ref.image_height,
+  }).select('*').single();
+  if (error) throw new DesignStudioError('DS_REQUEST_FAILED', error.message);
+  return data as FloorPlanRecord;
+}

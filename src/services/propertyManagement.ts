@@ -382,6 +382,7 @@ export async function setPublication(
  * destructive-to-spending direction is automatic and the spending direction is not.
  */
 export async function archiveProperty(propertyId: string): Promise<void> {
+  if (await viaAvailabilityRpc(propertyId, false)) return;
   const { data, error } = await supabase
     .from('properties')
     .update({
@@ -397,6 +398,7 @@ export async function archiveProperty(propertyId: string): Promise<void> {
 
 /** Bring it back. Matching stays paused; see archiveProperty. */
 export async function unarchiveProperty(propertyId: string): Promise<void> {
+  if (await viaAvailabilityRpc(propertyId, true)) return;
   const { data, error } = await supabase
     .from('properties')
     .update({ archived_at: null, updated_at: new Date().toISOString() })
@@ -404,6 +406,21 @@ export async function unarchiveProperty(propertyId: string): Promise<void> {
     .select('id');
   if (error) throw new Error(error.message);
   if (!data || data.length === 0) throw new Error('That property is no longer available.');
+}
+
+/*
+ * ARCHIVING GOES THROUGH THE SERVER, because the direct UPDATE above cannot work in
+ * production: authenticated was never granted UPDATE on archived_at (the column
+ * grants of 20260911170000 predate the column), so the database refused it.
+ * set_property_availability is owner-checked and does the same two writes. The
+ * direct path stays only for a database that does not have the function yet.
+ */
+async function viaAvailabilityRpc(propertyId: string, available: boolean): Promise<boolean> {
+  const { error } = await supabase.rpc('set_property_availability', { p_property_id: propertyId, p_available: available });
+  if (!error) return true;
+  const missing = error.code === 'PGRST202' || /could not find the function/i.test(error.message);
+  if (missing) return false;
+  throw new Error(error.message);
 }
 
 /**

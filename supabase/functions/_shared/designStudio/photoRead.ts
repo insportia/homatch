@@ -32,7 +32,8 @@ export const PHOTO_ROOM_KINDS = [
 export type PhotoRoomKind = typeof PHOTO_ROOM_KINDS[number];
 const OUTDOOR = new Set<PhotoRoomKind>(['BALCONY', 'TERRACE']);
 
-export const PHOTO_UNUSABLE = ['NOT_A_SPACE', 'EXTERIOR_ONLY', 'TOO_DARK', 'TOO_BLURRY', 'TOO_CLOSE', 'NOT_A_PHOTO'] as const;
+/** FLOOR_PLAN: a 2D plan drawing — not unusable material, the wrong door: it is read as a floor plan instead. */
+export const PHOTO_UNUSABLE = ['NOT_A_SPACE', 'EXTERIOR_ONLY', 'TOO_DARK', 'TOO_BLURRY', 'TOO_CLOSE', 'NOT_A_PHOTO', 'FLOOR_PLAN'] as const;
 export const CONDITIONS = ['SHELL', 'NEEDS_RENOVATION', 'FINISHED_EMPTY', 'FURNISHED', 'UNKNOWN'] as const;
 export const QUESTION_KINDS = ['ROOM_PURPOSE', 'SAME_ROOM', 'KEEP_ELEMENT'] as const;
 export const OPENING_TYPES = ['WINDOW', 'DOOR', 'BALCONY_DOOR', 'ARCH', 'OPENING'] as const;
@@ -121,7 +122,7 @@ export const PHOTO_SYSTEM = `You are HOMATCH's interior architect. A homeowner u
 1. Group the photos by room. Two photos are the SAME room only when they clearly share the same walls, windows, floor and fixed elements seen from another angle; otherwise they are different rooms. Every usable photo belongs to exactly one room (photo index -> roomId). Room ids are r1, r2, r3… in the order rooms first appear.
 2. For each room: its purpose (kind), a short label in the customer's language, the photos that show it, the best photo to redesign (primaryPhoto: wide, level, well lit), the fixed architecture you can SEE (windows, doors, balcony doors, arches, radiators, columns, beams, stairs, built-in kitchen and plumbing walls, sanitary fittings, fireplaces), its openings with the photo they are seen in, and its condition.
 3. Never invent what no photo shows: no unseen room, wall, window or door. If a part of a room is not visible, say nothing about it.
-4. A photo that cannot be redesigned (not an interior space, only the outside of a building, too dark, too blurry, a close-up of an object, a drawing or screenshot) is marked unusable with the reason. If NO photo is usable, usable = false.
+4. A photo that cannot be redesigned (not an interior space, only the outside of a building, too dark, too blurry, a close-up of an object, a screenshot) is marked unusable with the reason. A 2D architectural floor plan (a drawing of walls, rooms and openings seen from above, often with labels and dimensions) is marked unusable with the reason FLOOR_PLAN — HOMATCH reads it as a plan instead. A rendering or 3D visualisation of an interior IS usable: design over it like a photo. If NO photo is usable, usable = false.
 5. Ask a question ONLY when the answer changes the design and cannot be seen: the purpose of a room that could be several things, whether two similar photos are the same room, whether an element (a partition, a built-in unit) must stay. At most 3 questions, each with 2 to 4 short options and the option you would choose. Do not ask about style, budget, colours or anything the customer will choose later. Most projects need no question.
 6. heroRoomId: the room the first design should show (the main living space, else the room with the best photo).
 
@@ -226,10 +227,12 @@ export function validatePhotoReading(raw: unknown, photoCount: number): PhotoUnd
   }
 
   const usable = rooms.length > 0 && o.usable !== false;
+  // Nothing designable, and what was sent is a floor plan: the honest answer is "read it as a plan", not "unusable".
+  const planOnly = !usable && (o.unusable === 'FLOOR_PLAN' || photos.some((p) => p.unusable === 'FLOOR_PLAN'));
   const hero = typeof o.heroRoomId === 'string' && roomIds.has(o.heroRoomId) ? o.heroRoomId : rooms[0]?.id ?? null;
   return {
     kind: 'PHOTO_UNDERSTANDING', version: PHOTO_READ_VERSION,
-    usable, unusable: usable ? null : oneOf(PHOTO_UNUSABLE, o.unusable, photos[0]?.unusable ?? 'NOT_A_SPACE'),
+    usable, unusable: usable ? null : planOnly ? 'FLOOR_PLAN' : oneOf(PHOTO_UNUSABLE, o.unusable, photos[0]?.unusable ?? 'NOT_A_SPACE'),
     propertyKind: oneOf(['APARTMENT', 'HOUSE', 'OFFICE', 'COMMERCIAL', 'UNKNOWN'] as const, o.propertyKind, 'UNKNOWN'),
     summary: clip(o.summary, 400), currentStyle: clip(o.currentStyle, 200),
     light: oneOf(['BRIGHT', 'MODERATE', 'DIM'] as const, o.light, 'MODERATE'),

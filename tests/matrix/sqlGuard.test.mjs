@@ -64,16 +64,15 @@ test('settings: destructive and spending operations are never pre-approved; the 
     assert.ok(ask.includes(must), `${must} must ask`);
   }
   assert.ok(!allow.some((r) => /^Bash\(curl/.test(r)), 'a curl URL glob is a prefix match: never pre-approved');
-  // No blanket Supabase or shell grant, ever.
   for (const never of ['mcp__Supabase', 'mcp__Supabase__*', 'Bash(*)', 'Bash']) {
     assert.ok(!allow.includes(never), `${never} must not be blanket-allowed`);
   }
-  // The owner allows the two SQL tools without a prompt (64bed5ef) ONLY because the
-  // PreToolUse SQL hook still decides every call: allowed ⇒ the hook must be wired.
+  /* Repository policy: execute_sql and apply_migration MAY be pre-allowed (no routine
+     prompt), but only because the sql-guard PreToolUse hook still decides every call. */
   const hook = settings.hooks.PreToolUse.find((h) => /execute_sql/.test(h.matcher) && /apply_migration/.test(h.matcher));
-  assert.ok(hook && /sql-guard\.mjs/.test(hook.hooks[0].command), 'the SQL hook guards execute_sql and apply_migration');
-  for (const guarded of ['mcp__Supabase__execute_sql', 'mcp__Supabase__apply_migration']) {
-    if (allow.includes(guarded)) assert.ok(hook, `${guarded} is allowed only behind the SQL hook`);
+  assert.ok(hook && /sql-guard\.mjs/.test(hook.hooks[0].command));
+  for (const tool of ['mcp__Supabase__execute_sql', 'mcp__Supabase__apply_migration']) {
+    if (allow.includes(tool)) assert.ok(new RegExp(hook.matcher).test(tool), `${tool} is allowed only behind the sql-guard hook`);
   }
   assert.ok(existsSync(join(ROOT, '.claude/hooks/sql-guard.mjs')));
   assert.doesNotMatch(JSON.stringify(settings), /(sk_|sbp_|eyJ|ghp_|token=)/, 'no secret in project settings');

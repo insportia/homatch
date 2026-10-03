@@ -183,6 +183,8 @@ async function readPhotos(admin: Row, recon: Row, ordered: Row[], jobId: string 
     ? admin.from('ds_jobs').update({ status, error, cost_cents: cost.aiCents, finished_at: new Date().toISOString(), output: { kind: 'PHOTO_UNDERSTANDING', rooms: u.rooms.length, questions: u.questions.length, usable: u.usable } }).eq('id', jobId)
     : Promise.resolve();
 
+  // A floor plan sent as a photo: not unusable — the page hands it to the floor-plan reading (IS_FLOOR_PLAN).
+  if (!u.usable && u.unusable === 'FLOOR_PLAN') { await fail('IS_FLOOR_PLAN', u); await finish('FAILED', failure('TERMINAL', 'IS_FLOOR_PLAN')); return; }
   // Nothing here can be designed over: say so truthfully (another photo), never "could not read".
   if (!u.usable) { await fail('UNSUPPORTED_PHOTOS', u); await finish('FAILED', failure('TERMINAL', 'UNSUPPORTED_PHOTOS')); return; }
 

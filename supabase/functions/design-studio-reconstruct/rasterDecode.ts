@@ -10,7 +10,9 @@
 
 import jpeg from 'npm:jpeg-js@0.4.4';
 import { decode as decodePng } from 'npm:fast-png@6.2.0';
+import { inflate } from 'npm:pako@2.1.0';
 import { toGray } from '../_shared/designStudio/planRead/raster.ts';
+import { decodeLowDepthPng, lowDepthGray } from '../_shared/designStudio/planRead/png.ts';
 import type { GrayImage } from '../_shared/designStudio/planRead/types.ts';
 
 const MAX_MEGAPIXELS = 12;
@@ -27,6 +29,11 @@ export function decodeGray(bytes: Uint8Array, type: string, size: { width: numbe
       return { ok: true, gray: toGray(img.data, img.width, img.height, 4) };
     }
     if (type === 'image/png') {
+      // 1-, 2- and 4-bit greyscale or indexed (scans and exported plans): read by the
+      // specification, not by the general decoder (production 2026-10-03: it returned
+      // a clean 1-bit plan inverted and broken into dots).
+      const low = decodeLowDepthPng(bytes, (z) => inflate(z));
+      if (low) return { ok: true, gray: toGray(lowDepthGray(low), low.width, low.height, 1) };
       const img = decodePng(bytes);
       let data: Uint8Array;
       let channels = img.channels;

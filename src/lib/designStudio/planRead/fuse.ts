@@ -66,6 +66,26 @@ export interface FuseMeta {
   /** Each room's printed dimension and where it came from. */
   roomDimension: Record<string, { text: string; source: 'READING' | 'EVIDENCE'; confidence: number }>;
   rasterUsed: boolean;
+  /**
+   * How much of the reading's own walls the drawing's ink confirms (median share
+   * of each wall's length), measured before the ink is trusted; null without a raster.
+   */
+  rasterQuality: number | null;
+  /** Why a supplied raster was not used for geometry (its ink does not confirm the walls). */
+  rasterRejected: 'WEAK_INK' | null;
+  /**
+   * Doors read ON the end of a wall where the wall line across that end is
+   * open (door-sized gaps beside the junction): the doorway(s) seen from the
+   * junction, not a door between the two rooms beside the wall they were read on.
+   */
+  junctionDoorways: Array<{ id: string; wallId: string; junction: Pt; gapsPx: number[]; doorways: string[] }>;
+  /** Where every opening came from and where it ended up (audit; never shown to customers). */
+  openingProvenance: Record<string, {
+    kind: 'DOOR' | 'WINDOW'; source: 'MODEL' | 'RASTER';
+    modelWallId: string | null; modelCenter: Pt | null; modelWidthPx: number | null;
+    wallId: string | null; center: Pt | null; widthPx: number | null; confidence: number;
+    outcome: 'PLACED' | 'DUPLICATE' | 'JUNCTION_DOORWAY' | 'NO_WALL';
+  }>;
 }
 
 export interface FuseResult { doc: PlanDoc; dimensionStrings: DimString[]; meta: FuseMeta }
@@ -78,6 +98,8 @@ interface WW {
 }
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
+/** The share of the reading's walls (median) the ink must confirm before fusion trusts it. */
+export const MIN_RASTER_QUALITY = 0.4;
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
 // ── Scale prior (for thresholds only; the solve comes later) ───────────────
@@ -330,11 +352,11 @@ export interface FuseInput { doc: PlanDoc; dimensionStrings: DimString[]; raster
 export function fuse(input: FuseInput): FuseResult {
   const raw = input.doc;
   const doc: PlanDoc = clone(raw);
-  const r = input.raster ?? null;
+  let r = input.raster ?? null;
   const meta: FuseMeta = {
     priorScale: null, wallThicknessPx: null, axisDeg: null, roomKind: {}, roomGeometry: {}, openingSource: {},
     openingTypeAgreement: {}, wallInk: {}, inferredWalls: [], mergedWalls: [], removedWalls: [], droppedOpenings: [], stairEvidence: {},
-    uncovered: [], footprintSource: null, roomDimension: {}, rasterUsed: !!r,
+    uncovered: [], footprintSource: null, roomDimension: {}, rasterUsed: !!r, rasterQuality: null, rasterRejected: null, junctionDoorways: [], openingProvenance: {},
   };
   const ids = new Set<string>([...doc.walls, ...doc.doors, ...doc.windows, ...doc.rooms, ...doc.balconies, ...(doc.stairs ?? [])].map((e) => e.id));
   const newId = (prefix: string) => { let k = 1; while (ids.has(`hm-${prefix}${k}`)) k += 1; const id = `hm-${prefix}${k}`; ids.add(id); return id; };
@@ -390,9 +412,11 @@ export function fuse(input: FuseInput): FuseResult {
 
   let ws: WW[] = doc.walls.map((w) => ({ w: { ...w }, T: w.thicknessPx ?? T0 ?? 6, strength: 0, anchored: [false, false] as [boolean, boolean] }));
 
+  const unsnapped = ws.map((x) => ({ ...x, w: { ...x.w, start: { ...x.w.start }, end: { ...x.w.end } }, anchored: [...x.anchored] as [boolean, boolean] }));
   if (r) {
+    const ink = r;
     const maxThick = scale ? Math.max(6, 0.6 / scale) : 0.04 * maxSide;
-    const snapOne = (x: WW, prior: number | null) => snapWall(r, x.w.start, x.w.end, { priorPx: prior, searchPx: Math.max(20, 2.5 * (prior ?? 8)), maxThickPx: maxThick });
+    const snapOne = (x: WW, prior: number | null) => snapWall(ink, x.w.start, x.w.end, { priorPx: prior, searchPx: Math.max(20, 2.5 * (prior ?? 8)), maxThickPx: maxThick });
     const first = ws.map((x) => snapOne(x, x.w.thicknessPx ?? T0));
     const strong = first.filter((s) => s && s.strength >= 0.5).map((s) => s!.thicknessPx);
     if (strong.length >= 2) T0 = median(strong);
@@ -403,7 +427,7 @@ export function fuse(input: FuseInput): FuseResult {
         // A wall that is mostly doorways (a wash's wall with two doors in
         // it) has ink only at its ends: look along all of it, and accept a
         // band of the drawing's own thickness.
-        const full = snapWall(r, x.w.start, x.w.end, { priorPx: T0 ?? x.w.thicknessPx, searchPx: Math.max(20, 2.5 * (T0 ?? 8)), maxThickPx: maxThick, fullSpan: true });
+        const full = snapWall(ink, x.w.start, x.w.end, { priorPx: T0 ?? x.w.thicknessPx, searchPx: Math.max(20, 2.5 * (T0 ?? 8)), maxThickPx: maxThick, fullSpan: true });
         if (full && full.strength >= 0.1 && (!T0 || Math.abs(full.thicknessPx - T0) / T0 <= 0.35)) s = full;
       }
       if (!s || s.strength < 0.1) { x.T = x.w.thicknessPx ?? T0 ?? 6; x.strength = 0; return; }
@@ -412,6 +436,33 @@ export function fuse(input: FuseInput): FuseResult {
       x.T = T0 && s.strength < 0.4 && Math.abs(s.thicknessPx - T0) / T0 > 0.3 ? T0 : s.thicknessPx;
       x.strength = s.strength;
     });
+  }
+  // ── 2a. Is the ink good enough to judge the walls by? ───────────────────
+  // Everything below that uses the raster can move a wall, bridge a doorway
+  // shut and count on finding it again as a gap, or add an opening or a
+  // flight of stairs. That is only safe when the drawing's ink actually shows
+  // the walls the reading found (measured on the walls as snapped to the ink).
+  // A drawing whose ink confirms little of them (a dotted or broken scan, a
+  // thresholded copy) cannot confirm or deny anything: the reading is fused as
+  // if there were no raster, with the walls as the reading drew them, and that
+  // is recorded (production 2026-10-03: on such a drawing both bedroom
+  // doorways were bridged shut and never found again, and "stairs" were found
+  // in the bedrooms).
+  if (r && ws.length) {
+    const t = T0 ?? 6;
+    const minG = Math.max(1.5 * t, m2px(0.4, 0.012));
+    const covers = ws.filter((x) => wlen(x.w) >= 2 * minG)
+      .map((x) => gapsOf(r!, { ...x, anchored: [true, true] }, minG, m2px(3.6, 0.1)).coverage)
+      .sort((a, b) => a - b);
+    const quality = covers.length ? covers[Math.floor(covers.length / 2)] : null;
+    meta.rasterQuality = quality == null ? null : Math.round(quality * 100) / 100;
+    if (quality != null && quality < MIN_RASTER_QUALITY) {
+      r = null;
+      meta.rasterUsed = false;
+      meta.rasterRejected = 'WEAK_INK';
+      ws = unsnapped;
+      T0 = Number.isFinite(modelT) ? modelT : null;
+    }
   }
   meta.wallThicknessPx = T0;
   const T = T0 ?? 6;
@@ -713,6 +764,95 @@ export function fuse(input: FuseInput): FuseResult {
   };
   doc.doors = doc.doors.map(finish).filter(Boolean) as Opening[];
   doc.windows = doc.windows.map(finish).filter(Boolean) as Opening[];
+
+  // (b2) A door read ON the end of a wall, where the wall line across that end
+  // is open — a door-sized gap between the junction and the next wall along
+  // that line — is that doorway seen from the junction: two doors hinged on a
+  // partition's end (one into each room) are drawn as two swings meeting
+  // there, and a reading calls them "a double door" on the partition. It does
+  // not connect the two rooms beside the partition. The doorway is the gap
+  // the reading's own walls leave open: the wall is carried to the partition's
+  // face and the doorway is that span, nothing wider (production 2026-10-03:
+  // both bedrooms opened only into each other).
+  const junctionGaps = (host: WW, E: Pt) => {
+    const { n: v } = frame(host.w.start, host.w.end);
+    const along = (q: Pt) => (q.x - E.x) * v.x + (q.y - E.y) * v.y;
+    const pieces = ws.filter((x) => x !== host && angleDiff(wallAngle(x.w), wallAngle(host.w)) >= 60
+      && lineDist(E, x.w.start, x.w.end) <= x.T / 2 + host.T + 2)
+      .map((x) => ({ x, a: Math.min(along(x.w.start), along(x.w.end)), b: Math.max(along(x.w.start), along(x.w.end)) }));
+    const out: Array<{ piece: WW; dir: 1 | -1; free: number }> = [];
+    for (const dir of [1, -1] as const) {
+      // The line runs straight through the junction on this side: no doorway there.
+      if (pieces.some(({ a, b }) => (dir > 0 ? b > host.T / 2 && a <= host.T / 2 : a < -host.T / 2 && b >= -host.T / 2))) continue;
+      const next = pieces.map((q) => ({ q, d: dir > 0 ? q.a : -q.b })).filter(({ d }) => d > host.T / 2).sort((p1, p2) => p1.d - p2.d)[0];
+      if (!next) continue;
+      const free = next.d - host.T / 2;
+      if (free >= doorMinPx && free <= 1.6 * doorMaxPx) out.push({ piece: next.q.x, dir, free });
+    }
+    return { out, v };
+  };
+  const moved = new Set<string>();
+  const kept: Opening[] = [];
+  for (const d of doc.doors) {
+    const host = wallById.get(d.wallId);
+    if (!host || !d.centerPx) { kept.push(d); continue; }
+    const ends = [host.w.start, host.w.end];
+    const E = dist(d.centerPx, ends[0]) <= dist(d.centerPx, ends[1]) ? ends[0] : ends[1];
+    if (dist(d.centerPx, E) > d.widthPx / 2 + host.T + 2) { kept.push(d); continue; }
+    const { out, v } = junctionGaps(host, E);
+    if (!out.length) { kept.push(d); continue; }
+    const ids: string[] = [];
+    for (const [k, gap] of out.entries()) {
+      // Carry the wall piece to the partition's face, then the doorway is the span it crossed.
+      const w = gap.piece.w;
+      // The partition's face, on the piece's OWN line (the piece stays straight; only its end moves).
+      const raw = { x: E.x + v.x * gap.dir * (host.T / 2), y: E.y + v.y * gap.dir * (host.T / 2) };
+      const { u: pu } = frame(w.start, w.end);
+      const k0 = (raw.x - w.start.x) * pu.x + (raw.y - w.start.y) * pu.y;
+      const face = { x: w.start.x + pu.x * k0, y: w.start.y + pu.y * k0 };
+      const nearStart = dist(w.start, face) <= dist(w.end, face);
+      const far = nearStart ? w.end : w.start;
+      const near = nearStart ? w.start : w.end;
+      if (nearStart) w.start = face; else w.end = face;
+      gap.piece.anchored[nearStart ? 0 : 1] = true;
+      moved.add(w.id);
+      const mid = lerp(face, near, 0.5);
+      const id = k === 0 ? d.id : newId('door');
+      ids.push(id);
+      kept.push({
+        ...d, id, wallId: w.id, centerPx: roundPt(mid), widthPx: round1(Math.max(1, gap.free - 2)),
+        position: Math.round(clamp01(projT(mid, w.start, w.end)) * 10000) / 10000,
+        confidence: Math.min(d.confidence, 0.7),
+        evidence: `${d.evidence ?? 'Door'} — a doorway where its swings meet (the wall line is open there).`,
+      });
+      meta.openingSource[id] = 'MODEL';
+      void far;
+    }
+    meta.junctionDoorways.push({ id: d.id, wallId: host.w.id, junction: roundPt(E), gapsPx: out.map((g) => Math.round(g.free * 10) / 10), doorways: ids });
+  }
+  doc.doors = kept;
+  // A wall that was carried to a junction keeps its other openings where they were drawn.
+  if (moved.size) {
+    for (const o of [...doc.doors, ...doc.windows]) {
+      const host = wallById.get(o.wallId);
+      if (!host || !moved.has(host.w.id) || !o.centerPx) continue;
+      o.position = Math.round(clamp01(projT(o.centerPx, host.w.start, host.w.end)) * 10000) / 10000;
+    }
+  }
+
+  // Provenance: every opening the reading had, where it came from and where it ended up.
+  for (const [list, kind] of [[raw.doors, 'DOOR'], [raw.windows, 'WINDOW']] as const) {
+    for (const o of list) {
+      const now = (kind === 'DOOR' ? doc.doors : doc.windows).find((x) => x.id === o.id) ?? null;
+      const outcome = meta.junctionDoorways.some((j) => j.id === o.id) ? 'JUNCTION_DOORWAY' : now ? 'PLACED'
+        : meta.droppedOpenings.some((x) => x.id === o.id) ? 'DUPLICATE' : 'NO_WALL';
+      meta.openingProvenance[o.id] = {
+        kind, source: 'MODEL', modelWallId: o.wallId ?? null, modelCenter: o.centerPx ? roundPt(o.centerPx) : null, modelWidthPx: o.widthPx ?? null,
+        wallId: now?.wallId ?? null, center: now?.centerPx ? roundPt(now.centerPx) : null, widthPx: now?.widthPx ?? null,
+        confidence: now?.confidence ?? o.confidence, outcome,
+      };
+    }
+  }
   // (c) Gaps nobody claimed are openings the reading missed — but only on
   // strong evidence. A bare hole in a wall band is as often a drafting
   // artefact (a T-junction's open face, a stub's end, a wall drawn past
@@ -732,6 +872,10 @@ export function fuse(input: FuseInput): FuseResult {
     if (isWindow ? g.widthPx < doorMinPx : g.widthPx < doorMinPx || g.widthPx > doorMaxPx) continue;
     if (atJunction(g)) continue;
     if (placedOpenings.some((o) => dist(o.centerPx!, g.center) < (g.widthPx + o.widthPx) / 2)) continue;
+    // Glazing right beside a window the reading drew, on the same wall, is that window (a frame or
+    // mullion mark split its glazing in the drawing): within the reading's own width of it, not a new one.
+    if (isWindow && doc.windows.some((o) => o.wallId === g.wallId && o.centerPx
+      && dist(o.centerPx, g.center) < Math.max(o.widthPx, raw.windows.find((x) => x.id === o.id)?.widthPx ?? 0) + g.widthPx / 2)) continue;
     if (!isWindow) {
       const host = wallById.get(g.wallId)!.w;
       if (swingEvidence(r!, lerp(host.start, host.end, g.t0), lerp(host.start, host.end, g.t1)) < minSwing) continue;
@@ -745,6 +889,10 @@ export function fuse(input: FuseInput): FuseResult {
     };
     meta.openingSource[id] = 'RASTER';
     meta.openingTypeAgreement[id] = isWindow ? 0.9 : 0.75;
+    meta.openingProvenance[id] = {
+      kind: isWindow ? 'WINDOW' : 'DOOR', source: 'RASTER', modelWallId: null, modelCenter: null, modelWidthPx: null,
+      wallId: g.wallId, center: roundPt(g.center), widthPx: round1(g.widthPx), confidence: 0.7, outcome: 'PLACED',
+    };
     (isWindow ? doc.windows : doc.doors).push(o);
   }
 

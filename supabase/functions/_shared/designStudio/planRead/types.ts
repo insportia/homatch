@@ -168,7 +168,18 @@ export interface PlanUnderstanding {
   issues: TopologyIssue[];
   questions: PlanQuestion[];
   adjacency: Record<string, string[]>;
+  /** Who can walk to whom through the reconstructed walls (a validation signal; never shown to customers). */
+  connectivity?: Connectivity;
 }
+
+/** One way between two rooms: a door (its id) or a stretch of shared boundary with no wall on it. */
+export interface ConnectivityEdge { a: string; b: string; via: string }
+export interface ConnectivitySignal {
+  code: 'PRIVATE_ROOM_VIA_PRIVATE_ONLY' | 'HABITABLE_UNREACHABLE' | 'DOOR_CONNECTS_NOTHING';
+  rooms: string[];
+  detail: string;
+}
+export interface Connectivity { edges: ConnectivityEdge[]; reachable: string[]; signals: ConnectivitySignal[] }
 
 /** A grayscale picture: one byte per pixel, row-major. */
 export interface GrayImage { width: number; height: number; data: Uint8Array }

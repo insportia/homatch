@@ -16,7 +16,7 @@ import type { DimString, GrayImage, PlanDoc, PlanUnderstanding } from './types.t
 import { prepareRaster, type Raster } from './raster.ts';
 import { fuse, type FuseMeta } from './fuse.ts';
 import { scaleConfidence, solveScale, type ScaleReport } from './solve.ts';
-import { checkTopology } from './topology.ts';
+import { checkTopology, connectivityOf } from './topology.ts';
 import { buildQuestions, type QuestionEvidence } from './questions.ts';
 import { polyArea, roundPt } from './geom.ts';
 
@@ -44,6 +44,10 @@ export interface FusionSummary {
   roomGeometry: FuseMeta['roomGeometry'];
   placeholderRooms: string[];
   evidence: QuestionEvidence;
+  rasterQuality: FuseMeta['rasterQuality'];
+  rasterRejected: FuseMeta['rasterRejected'];
+  junctionDoorways: FuseMeta['junctionDoorways'];
+  openingProvenance: FuseMeta['openingProvenance'];
 }
 
 export interface UnderstandResult {
@@ -117,11 +121,12 @@ export function understand(input: UnderstandInput): UnderstandResult {
     doc,
     rawDoc: input.doc,
     dimensionStrings: fused.dimensionStrings,
-    understanding: { readVersion: PLAN_READ_VERSION, constraints: report, issues: topo.issues, questions, adjacency: topo.adjacency },
+    understanding: { readVersion: PLAN_READ_VERSION, constraints: report, issues: topo.issues, questions, adjacency: topo.adjacency, connectivity: connectivityOf(doc, topo.entrances) },
     fusion: {
       rasterUsed: meta.rasterUsed, axisDeg: meta.axisDeg, wallThicknessPx: meta.wallThicknessPx, footprintSource: meta.footprintSource,
       mergedWalls: meta.mergedWalls, inferredWalls: meta.inferredWalls, removedWalls: meta.removedWalls, droppedOpenings: meta.droppedOpenings,
       openingSource: meta.openingSource, roomGeometry: meta.roomGeometry, placeholderRooms: placeholders, evidence,
+      rasterQuality: meta.rasterQuality, rasterRejected: meta.rasterRejected, junctionDoorways: meta.junctionDoorways, openingProvenance: meta.openingProvenance,
     },
     timings: { rasterMs: Math.round(t1 - t0), fuseMs: Math.round(t2 - t1), solveMs: Math.round(t3 - t2) },
   };

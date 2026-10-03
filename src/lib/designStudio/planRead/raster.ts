@@ -101,6 +101,15 @@ export function prepareRaster(img: GrayImage, maxSide = 1600): Raster {
       }
     }
   }
+  // A plan is mostly paper. A drawing that is mostly DARK is a negative (light
+  // lines on a dark ground: a blueprint scan, an inverted export, a 1-bit file
+  // whose zero is the paper): it is turned the right way round first, so its
+  // lines are its ink (production 2026-10-03: a negative read as solid ink, so
+  // no wall had a doorway and "stairs" were found in the bedrooms).
+  let darkHalf = 0;
+  for (let i = 0; i < grey.length; i += 1) if (grey[i] < 128) darkHalf += 1;
+  const negative = darkHalf > grey.length / 2;
+  if (negative) for (let i = 0; i < grey.length; i += 1) grey[i] = 255 - grey[i];
   const hist = new Float64Array(256);
   for (let i = 0; i < grey.length; i += 1) hist[grey[i]] += 1;
   // Paper is the most common bright level; ink is everything clearly darker.

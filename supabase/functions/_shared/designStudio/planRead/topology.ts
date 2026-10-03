@@ -9,7 +9,7 @@
 //
 // Pure and dependency-free (Deno + Node + browser).
 
-import type { Opening, PlanDoc, Pt, Room, TopologyIssue } from './types.ts';
+import type { Connectivity, ConnectivityEdge, ConnectivitySignal, Opening, PlanDoc, Pt, Room, TopologyIssue } from './types.ts';
 import { angleDiff, angleOf, bboxOf, dist, frame, lerp, lineDist, pointInPoly, polyArea, projT, segDist } from './geom.ts';
 
 export interface TopologyInput {
@@ -205,4 +205,110 @@ export function checkTopology(input: TopologyInput): TopologyResult {
     issues.push({ code: 'ROOM_UNREACHABLE', elementIds: [r.id], severity: OUTDOOR.has(r.kind) ? 'INFO' : 'WARN', detail: 'no door or opening leads into it' });
   }
   return { issues, adjacency, entrances };
+}
+
+// ── Connectivity: who can walk to whom through the walls as reconstructed ───
+//
+// A validation signal, not a repair: rooms are nodes; an edge is a door (by
+// its id) or a stretch of shared boundary at least a doorway wide with no
+// wall on it (an open plan). Unlike `adjacency` above (rooms that merely
+// touch), a wall between two rooms is respected. It flags what a home rarely
+// is: a bedroom reached only through another bedroom, a lived-in room nobody
+// can walk into, a door with no room on one side. Nothing is invented to make
+// the graph connected; a flag means "this reading is uncertain here".
+
+const PRIVATE = new Set(['BEDROOM']);
+const LIVED_IN = new Set(['LIVING', 'BEDROOM', 'KITCHEN', 'BATHROOM', 'WC', 'HALL', 'CORRIDOR', 'UNKNOWN']);
+
+export function connectivityOf(doc: PlanDoc, entrances: string[]): Connectivity {
+  const rooms = [...doc.rooms, ...doc.balconies];
+  const T = (() => {
+    const t = doc.walls.map((w) => w.thicknessPx ?? 0).filter((n) => n > 0).sort((a, b) => a - b);
+    return t.length ? t[t.length >> 1] : 6;
+  })();
+  const pxPerM = doc.detectedScale ? 1 / doc.detectedScale : Math.max(doc.imageWidth, doc.imageHeight) / 20;
+  const doorway = 0.6 * pxPerM;
+  const walled = (p: Pt) => doc.walls.some((w) => segDist(p, w.start, w.end) <= (w.thicknessPx ?? T) / 2 + 2);
+  const edges: ConnectivityEdge[] = [];
+  const signals: ConnectivitySignal[] = [];
+  const wallById = new Map(doc.walls.map((w) => [w.id, w]));
+  for (const o of doc.doors) {
+    const w = wallById.get(o.wallId);
+    if (!w) continue;
+    const c = o.centerPx ?? lerp(w.start, w.end, o.position);
+    const { u, n } = frame(w.start, w.end);
+    const reach = (w.thicknessPx ?? T) / 2 + Math.max(4, T);
+    // Across the door's whole span (a room outline can start part-way along a doorway).
+    const sideOf = (sgn: number) => {
+      for (const f of [0, -0.3, 0.3, -0.45, 0.45]) {
+        const q = { x: c.x + u.x * f * o.widthPx + n.x * sgn * reach, y: c.y + u.y * f * o.widthPx + n.y * sgn * reach };
+        const hit = roomAt(q, rooms);
+        if (hit) return hit;
+      }
+      return null;
+    };
+    const A = sideOf(1);
+    const B = sideOf(-1);
+    if (A && B && A !== B) edges.push({ a: A.id, b: B.id, via: o.id });
+    else if ((!A || !B) && w.kind === 'INTERIOR') signals.push({ code: 'DOOR_CONNECTS_NOTHING', rooms: [A, B].filter(Boolean).map((r) => r!.id), detail: `${o.id} on ${w.id} has no room on one side` });
+  }
+  // Open boundaries: a doorway-wide run of shared edge with no wall on it.
+  for (let i = 0; i < rooms.length; i += 1) {
+    const r = rooms[i];
+    const ring = r.polygon;
+    const runs = new Map<string, number>();
+    const best = new Map<string, number>();
+    for (let k = 0; k < ring.length; k += 1) {
+      const a = ring[k];
+      const b = ring[(k + 1) % ring.length];
+      const L = dist(a, b);
+      if (L < 4) continue;
+      const { n } = frame(a, b);
+      const inward = pointInPoly({ x: (a.x + b.x) / 2 + n.x * 2, y: (a.y + b.y) / 2 + n.y * 2 }, ring) ? 1 : -1;
+      runs.clear();
+      for (let s = 2; s < L; s += 2) {
+        const p = lerp(a, b, s / L);
+        let other: Room | null = null;
+        for (const reachOut of [3, T / 2 + 3, T + 4]) {
+          other = roomAt({ x: p.x - n.x * inward * reachOut, y: p.y - n.y * inward * reachOut }, rooms.filter((o) => o !== r));
+          if (other) break;
+        }
+        for (const id of [...runs.keys()]) if (!other || other.id !== id) runs.set(id, 0);
+        if (!other || walled(p)) { if (other) runs.set(other.id, 0); continue; }
+        const run = (runs.get(other.id) ?? 0) + 2;
+        runs.set(other.id, run);
+        best.set(other.id, Math.max(best.get(other.id) ?? 0, run));
+      }
+    }
+    for (const [id, run] of best) if (run >= doorway && r.id < id) edges.push({ a: r.id, b: id, via: 'OPEN' });
+  }
+  const adj = new Map<string, Set<string>>(rooms.map((r) => [r.id, new Set<string>()]));
+  for (const e of edges) { adj.get(e.a)?.add(e.b); adj.get(e.b)?.add(e.a); }
+  // From the way in (or the main living space when none is drawn).
+  const starts = new Set<string>();
+  for (const id of entrances) for (const e of edges) if (e.via === id) { starts.add(e.a); starts.add(e.b); }
+  for (const id of entrances) {
+    const o = doc.doors.find((d) => d.id === id);
+    const w = o && wallById.get(o.wallId);
+    if (!o || !w) continue;
+    const c = o.centerPx ?? lerp(w.start, w.end, o.position);
+    const { n } = frame(w.start, w.end);
+    for (const sgn of [1, -1]) { const rr = roomAt({ x: c.x + n.x * sgn * (T + 4), y: c.y + n.y * sgn * (T + 4) }, rooms); if (rr) starts.add(rr.id); }
+  }
+  if (!starts.size) {
+    const hub = doc.rooms.filter((r) => r.kind === 'LIVING').sort((a, b) => polyArea(b.polygon) - polyArea(a.polygon))[0] ?? doc.rooms[0];
+    if (hub) starts.add(hub.id);
+  }
+  const seen = new Set(starts);
+  const queue = [...starts];
+  while (queue.length) { const id = queue.shift()!; for (const nb of adj.get(id) ?? []) if (!seen.has(nb)) { seen.add(nb); queue.push(nb); } }
+  for (const r of doc.rooms) {
+    if (!seen.has(r.id) && LIVED_IN.has(r.kind)) signals.push({ code: 'HABITABLE_UNREACHABLE', rooms: [r.id], detail: `${r.kind} ${r.id}: no door or open boundary reaches it from the way in` });
+    if (PRIVATE.has(r.kind)) {
+      const nbs = [...(adj.get(r.id) ?? [])].map((id) => rooms.find((x) => x.id === id)!).filter((x) => x && !OUTDOOR.has(x.kind));
+      if (nbs.length && nbs.every((x) => PRIVATE.has(x.kind))) signals.push({ code: 'PRIVATE_ROOM_VIA_PRIVATE_ONLY', rooms: [r.id, ...nbs.map((x) => x.id)], detail: `${r.id} is reached only through ${nbs.map((x) => x.id).join(', ')}` });
+    }
+  }
+  edges.sort((p, q) => (p.a + p.b + p.via < q.a + q.b + q.via ? -1 : 1));
+  return { edges, reachable: [...seen].sort(), signals };
 }

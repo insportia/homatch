@@ -13,7 +13,7 @@
 // shapes that the deterministic engine, the persistence layer and the
 // renderer all agree on.
 
-import type { GeneratedScene } from '@/lib/floorplan/geometry';
+import type { GeneratedScene } from '../floorplan/geometry.ts';
 
 /** PHOTO_SET: pictures of the space, designed over directly (no reconstructed 3D home). */
 export type SpatialSourceKind = 'DEVELOPER_UNIT' | 'UPLOADED_MODEL' | 'FLOORPLAN_SCENE' | 'PHOTO_SET';

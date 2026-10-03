@@ -136,11 +136,13 @@ function ProjectLoader() {
   const resolution = useMemo(() => bundle
     ? resolveSpatialSource({
       sources: bundle.sources,
-      preferredSourceId: bundle.project.active_source_id,
+      // A version opened by its id (a walkthrough, a design) stands on the geometry it was made on;
+      // otherwise the project's active geometry.
+      preferredSourceId: (versionId && bundle.versions.find((v) => v.id === versionId)?.source_id) || bundle.project.active_source_id,
       developerCurrent: current,
       supportedGenerators: SUPPORTED_GENERATORS,
     })
-    : null, [bundle, current]);
+    : null, [bundle, current, versionId]);
 
   /* A space with no design yet gets its Original — once, never overwriting. */
   const [preparing, setPreparing] = useState(false);

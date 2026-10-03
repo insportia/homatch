@@ -20,6 +20,7 @@
 //   POST …/design-studio-reconstruct/walkthrough-status    its real state; a due step is taken
 //   POST …/design-studio-reconstruct/walkthrough-retry     a failed one resumed from its saved work
 //   POST …/design-studio-reconstruct/walkthrough-tick      the reconciler (pg_cron, x-cron-token): due walkthroughs and unwatched factory jobs
+//   POST …/design-studio-reconstruct/walkthrough-geometry  a design revision on corrected geometry (the same drawing read again)
 //
 // One function because the project is on a plan that caps how many edge
 // functions it may have, and production is at that cap: two new functions
@@ -39,7 +40,7 @@ import { handleProjectDelete } from './project.ts';
 import { handleRenderEdit, handleRenderQuote, handleRenderStart, handleRenderStatus } from './renders.ts';
 import { handleReconstruct } from './reconstruct.ts';
 import { handleDesignSpec, handleRenderGenerate, handleRenderGenerateStep } from './generate.ts';
-import { handleWalkthroughCreate, handleWalkthroughRetry, handleWalkthroughStatus, handleWalkthroughTick } from './walkthrough.ts';
+import { handleWalkthroughCreate, handleWalkthroughGeometry, handleWalkthroughRetry, handleWalkthroughStatus, handleWalkthroughTick } from './walkthrough.ts';
 
 serve((req) => {
   const route = new URL(req.url).pathname.replace(/\/+$/, '').split('/').pop();
@@ -62,5 +63,6 @@ serve((req) => {
   if (route === 'walkthrough-status') return handleWalkthroughStatus(req);
   if (route === 'walkthrough-retry') return handleWalkthroughRetry(req);
   if (route === 'walkthrough-tick') return handleWalkthroughTick(req);
+  if (route === 'walkthrough-geometry') return handleWalkthroughGeometry(req);
   return handleReconstruct(req);
 });

@@ -18,7 +18,7 @@
 // shared HOMATCH generator, fed only the elements the customer kept.
 
 import { generateScene } from '../floorplan/geometry.ts';
-import type { FloorPlanDocument, PixelPoint } from '@/services/developer/floorplan';
+import type { FloorPlanDocument, PixelPoint } from '../../services/developer/floorplan.ts';
 import type { CanonicalSpace, GeometryState } from './types.ts';
 import type { DesignState } from './designState.ts';
 import { DS_GENERATOR_VERSION } from './engine.ts';

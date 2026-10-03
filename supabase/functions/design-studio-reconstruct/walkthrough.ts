@@ -7,6 +7,10 @@
 //   POST …/design-studio-reconstruct/walkthrough-retry   { walkthroughId } → a FAILED one, resumed from its saved work
 //   POST …/design-studio-reconstruct/walkthrough-tick    (pg_cron, x-cron-token) → every due walkthrough moved on,
 //        and factory jobs nobody watches any more settled against their provider
+//   POST …/design-studio-reconstruct/walkthrough-geometry { designVersionId, floorplanId }
+//        → a design revision on CORRECTED geometry: the same drawing read again (floorplanId, same image), built
+//          by the same code the browser uses, created through the checking RPC; the design (its DNA, its Design
+//          Specification job) carried onto it as a child of the approved version. Nothing earlier is changed.
 //
 // The lifecycle and its rules live in src/lib/designStudio/walkthrough/lifecycle.ts:
 // every step is claimed with a compare-and-set on the row (its attempts
@@ -43,6 +47,7 @@ import { meterAiCall } from './metering.ts';
 import { assetFromRow, materialFromRow, type CatalogAsset, type CatalogMaterial } from '../../../src/lib/designStudio/catalog.ts';
 import { normalizeDesignState, type DesignState } from '../../../src/lib/designStudio/designState.ts';
 import { buildSpaceModel, type SpaceModel } from '../../../src/lib/designStudio/space.ts';
+import { buildCanonical } from '../../../src/lib/designStudio/scale.ts';
 import { compileSceneSpec } from '../../../src/lib/designStudio/hybrid/compileSpec.ts';
 import { buildWalkthrough, roomSketches } from '../../../src/lib/designStudio/walkthrough/build.ts';
 import {
@@ -99,20 +104,99 @@ function publicOf(row: Row) {
   };
 }
 
+// ── Lineage: a design and its revisions on corrected geometry ────────────────
+
+const CORRECTED = 'GEOMETRY_CORRECTED';
+const isCorrection = (v: Row) => Array.isArray(v?.change_summary) && v.change_summary.some((c: Row) => c?.kind === CORRECTED);
+
+/** The design and every geometry correction of it (newest first): one walkthrough history across them. */
+async function lineageOf(admin: Row, designVersionId: string): Promise<string[]> {
+  const { data: self } = await admin.from('ds_versions').select('id, parent_id, change_summary').eq('id', designVersionId).maybeSingle();
+  const root = self && isCorrection(self) && self.parent_id ? self.parent_id : designVersionId;
+  const { data: kids } = await admin.from('ds_versions').select('id, change_summary, created_at').eq('parent_id', root).order('created_at', { ascending: false });
+  return [...(kids ?? []).filter(isCorrection).map((k: Row) => k.id), root];
+}
+
 // ── Routes ──────────────────────────────────────────────────────────────────
+
+/**
+ * A design revision on corrected geometry. The same drawing read again (a new
+ * plan row of the same image, re-fused by the current reader at no model cost)
+ * becomes a new spatial source through the checking RPC, built by the same code
+ * the browser builds with; the approved design is carried onto it — same DNA,
+ * same Design Specification job — as its child. The approved design, its
+ * picture, its walkthroughs and the project's active geometry are not touched.
+ */
+export async function handleWalkthroughGeometry(req: Request): Promise<Response> {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+  const ctx = await callerOf(req);
+  if ('error' in ctx) return ctx.error!;
+  const { caller, admin, actorId } = ctx;
+  let body: { designVersionId?: string; floorplanId?: string };
+  try { body = await req.json(); } catch { return json({ error: 'BAD_REQUEST' }, 400); }
+  if (!UUID.test(String(body.designVersionId)) || !UUID.test(String(body.floorplanId))) return json({ error: 'BAD_REQUEST' }, 400);
+  const { data: version } = await caller.from('ds_versions').select('id, project_id, user_id, source_id, name, state, style_tags, job_id, design_dna, archived_at, change_summary').eq('id', body.designVersionId).maybeSingle();
+  if (!version || version.archived_at || String(version.user_id) !== actorId || isCorrection(version)) return json({ error: 'NOT_FOUND' }, 404);
+  const { data: source } = await admin.from('ds_spatial_sources').select('id, kind, floorplan_id, canonical, geometry_state').eq('id', version.source_id).maybeSingle();
+  if (!source || source.kind !== 'FLOORPLAN_SCENE' || !source.floorplan_id) return json({ error: 'WALKTHROUGH_NEEDS_FLOOR_PLAN' }, 409);
+  const { data: plans } = await admin.from('ds_floorplans').select('id, project_id, user_id, status, sha256, interpretation, corrections').in('id', [source.floorplan_id, body.floorplanId]);
+  const before = (plans ?? []).find((f: Row) => f.id === source.floorplan_id);
+  const again = (plans ?? []).find((f: Row) => f.id === body.floorplanId);
+  // The same drawing (by its bytes), read again, in this project, by this customer.
+  if (!before || !again || again.id === before.id || again.project_id !== version.project_id || String(again.user_id) !== actorId) return json({ error: 'NOT_FOUND' }, 404);
+  if (again.status !== 'INTERPRETED' || !again.interpretation?.doc) return json({ error: 'FLOORPLAN_NOT_INTERPRETED' }, 409);
+  if (!before.sha256 || before.sha256 !== again.sha256) return json({ error: 'NOT_THE_SAME_DRAWING' }, 409);
+
+  // Built exactly as the browser builds it (scale.buildCanonical): the customer's decisions on that drawing, its ceiling.
+  const last = Array.isArray(before.corrections) ? before.corrections[before.corrections.length - 1] : null;
+  const decisions = last?.decisions && Array.isArray(last.decisions.rejected) ? last.decisions : { rejected: [], roomKinds: {} };
+  const constraints = again.interpretation.understanding?.constraints ?? null;
+  const metresPerPx = Number(constraints?.metresPerPx ?? again.interpretation.doc.detectedScale);
+  if (!Number.isFinite(metresPerPx) || metresPerPx <= 0) return json({ error: 'NO_SCALE' }, 409);
+  const old = source.canonical ?? {};
+  const ceilingM = Number(old.scene?.ceilingHeightM) || 2.7;
+  const built = buildCanonical(again.interpretation.doc, decisions, { metresPerPx, geometryState: 'ESTIMATED', uncertainty: constraints?.uncertainty ?? null, conflict: false, implied: [] },
+    ceilingM, old.ceilingSource === 'CUSTOMER' || old.ceilingSource === 'DRAWING' ? old.ceilingSource : 'TYPICAL');
+  if (!built.ok) return json({ error: 'PLAN_NOT_BUILDABLE', problems: built.problems }, 409);
+
+  // One corrected source per re-read (asked again, the same one).
+  const { data: existing } = await admin.from('ds_spatial_sources').select('id').eq('floorplan_id', again.id).eq('status', 'READY').order('created_at', { ascending: false }).limit(1).maybeSingle();
+  let sourceId: string | null = existing?.id ?? null;
+  if (!sourceId) {
+    const { data: created, error } = await caller.rpc('ds_create_floorplan_source', {
+      p_floorplan_id: again.id, p_canonical: built.canonical, p_geometry_state: 'ESTIMATED',
+      p_calibration: { anchors: [], metresPerPx: built.canonical.metresPerPx, uncertainty: built.canonical.scaleUncertainty }, p_generator_version: built.canonical.generatorVersion,
+    });
+    if (error || !created) return json({ error: 'SOURCE_NOT_RECORDED' }, 500);
+    sourceId = String(created);
+  }
+  const id = await uuidFrom(`ds-walk-geometry:${version.id}:${sourceId}`);
+  const { error: verr } = await admin.from('ds_versions').upsert({
+    id, project_id: version.project_id, user_id: version.user_id, source_id: sourceId, parent_id: version.id,
+    name: version.name, origin: 'AI', job_id: version.job_id, state: version.state, style_tags: version.style_tags ?? [],
+    change_summary: [{ kind: CORRECTED, fromSourceId: source.id, toSourceId: sourceId, floorplanId: again.id, readFrom: again.interpretation.cachedFrom ?? null }],
+    design_dna: version.design_dna ?? null,
+  }, { onConflict: 'id', ignoreDuplicates: true });
+  if (verr) return json({ error: 'VERSION_NOT_RECORDED' }, 500);
+  return json({ sourceId, designVersionId: id, fromSourceId: source.id, floorplanId: again.id });
+}
 
 export async function handleWalkthroughCreate(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   const ctx = await callerOf(req);
   if ('error' in ctx) return ctx.error!;
   const { caller, admin, actorId } = ctx;
-  let body: { designVersionId?: string; renderId?: string | null; newRevision?: boolean; name?: string };
+  let body: { designVersionId?: string; renderId?: string | null; newRevision?: boolean; name?: string; reusePlanFrom?: string | null };
   try { body = await req.json(); } catch { return json({ error: 'BAD_REQUEST' }, 400); }
   if (!UUID.test(String(body.designVersionId))) return json({ error: 'BAD_REQUEST' }, 400);
   if (body.renderId != null && !UUID.test(String(body.renderId))) return json({ error: 'BAD_REQUEST' }, 400);
+  if (body.reusePlanFrom != null && !UUID.test(String(body.reusePlanFrom))) return json({ error: 'BAD_REQUEST' }, 400);
 
-  // The design, as the caller may see it; only its owner builds a walkthrough of it.
-  const { data: version } = await caller.from('ds_versions').select('id, project_id, user_id, source_id, revision, job_id, design_dna, archived_at').eq('id', body.designVersionId).maybeSingle();
+  // The design, as the caller may see it; only its owner builds a walkthrough of it. A design with a revision
+  // on corrected geometry is walked on the newest one (the drawing as it really is).
+  const lineage = await lineageOf(admin, String(body.designVersionId));
+  const target = lineage[0] ?? body.designVersionId;
+  const { data: version } = await caller.from('ds_versions').select('id, project_id, user_id, source_id, revision, job_id, design_dna, archived_at, parent_id').eq('id', target).maybeSingle();
   if (!version || version.archived_at || String(version.user_id) !== actorId) return json({ error: 'NOT_FOUND' }, 404);
   const { data: project } = await admin.from('ds_projects').select('id, user_id, deleting_at').eq('id', version.project_id).maybeSingle();
   if (!project || project.deleting_at || String(project.user_id) !== actorId) return json({ error: 'NOT_FOUND' }, 404);
@@ -122,16 +206,25 @@ export async function handleWalkthroughCreate(req: Request): Promise<Response> {
   if (await billingOn(admin)) return json({ error: 'BILLING_CONFIRMATION_REQUIRED' }, 409);
   if (!factoryConfig()) return json({ error: 'FACTORY_NOT_CONFIGURED' }, 503);
 
-  // Identity: this design at this state, at the walkthrough revision asked for.
-  const { data: latest } = await admin.from('ds_walkthroughs').select('*').eq('design_version_id', version.id).order('revision', { ascending: false }).limit(1).maybeSingle();
+  // A plan already made for this design (an earlier walkthrough of it): reused as it is, never asked for again.
+  let reuse: Row = null;
+  if (body.reusePlanFrom) {
+    const { data: w } = await caller.from('ds_walkthroughs').select('id, project_id, design_version_id, scene_plan').eq('id', body.reusePlanFrom).maybeSingle();
+    if (!w || w.project_id !== version.project_id || !w.scene_plan || !lineage.includes(w.design_version_id)) return json({ error: 'PLAN_NOT_REUSABLE' }, 409);
+    reuse = w;
+  }
+  // Identity: this design at this state, at the walkthrough revision asked for (counted across its geometry revisions).
+  const { data: latestOwn } = await admin.from('ds_walkthroughs').select('*').eq('design_version_id', version.id).order('revision', { ascending: false }).limit(1).maybeSingle();
+  const { data: latestAny } = await admin.from('ds_walkthroughs').select('*').in('design_version_id', lineage).order('revision', { ascending: false }).limit(1).maybeSingle();
+  const latest = latestOwn ?? (latestAny ? { ...latestAny, revision: latestAny.revision } : null);
   if (latest && body.newRevision && !isTerminal(latest.state)) return json({ walkthrough: publicOf(latest), created: false }, 202);
   const keyOf = (revision: number) => sha256Hex(identityText({ projectId: project.id, designVersionId: version.id, designRevision: Number(version.revision) || 0, revision }));
   // The latest walkthrough is answered again for the same design state; a changed design (or an explicit request) gets the next one.
-  let revision = body.newRevision ? (latest?.revision ?? 0) + 1 : (latest?.revision ?? 1);
+  let revision = body.newRevision || (!latestOwn && latestAny) ? (latestAny?.revision ?? 0) + 1 : (latestOwn?.revision ?? 1);
   let key = await keyOf(revision);
   let { data: same } = await admin.from('ds_walkthroughs').select('*').eq('project_id', project.id).eq('idempotency_key', key).maybeSingle();
-  if (!same && latest && !body.newRevision) {
-    revision = latest.revision + 1;
+  if (!same && latestOwn && !body.newRevision) {
+    revision = (latestAny?.revision ?? latestOwn.revision) + 1;
     key = await keyOf(revision);
     ({ data: same } = await admin.from('ds_walkthroughs').select('*').eq('project_id', project.id).eq('idempotency_key', key).maybeSingle());
   }
@@ -149,7 +242,7 @@ export async function handleWalkthroughCreate(req: Request): Promise<Response> {
   await admin.from('ds_walkthroughs').upsert({
     project_id: project.id, user_id: actorId, design_version_id: version.id, source_id: source.id, spec_job_id: specJobId,
     render_id: body.renderId ?? null, revision, idempotency_key: key, state: 'QUEUED',
-    timings: { requestedAt: iso(Date.now()), name: name || null, designRevision: Number(version.revision) || 0 },
+    timings: { requestedAt: iso(Date.now()), name: name || null, designRevision: Number(version.revision) || 0, ...(reuse ? { reusePlanFrom: reuse.id } : {}) },
   }, { onConflict: 'project_id,idempotency_key', ignoreDuplicates: true });
   const { data: row } = await admin.from('ds_walkthroughs').select('*').eq('project_id', project.id).eq('idempotency_key', key).maybeSingle();
   if (!row) return json({ error: 'NOT_RECORDED' }, 500);
@@ -167,12 +260,16 @@ export async function handleWalkthroughStatus(req: Request): Promise<Response> {
   // RLS decides who may see it.
   let row: Row = null;
   if (UUID.test(String(body.walkthroughId))) row = (await caller.from('ds_walkthroughs').select('*').eq('id', body.walkthroughId).maybeSingle()).data;
-  else if (UUID.test(String(body.designVersionId))) row = (await caller.from('ds_walkthroughs').select('*').eq('design_version_id', body.designVersionId).order('revision', { ascending: false }).limit(1).maybeSingle()).data;
+  else if (UUID.test(String(body.designVersionId))) {
+    const lineage = await lineageOf(admin, String(body.designVersionId));
+    row = (await caller.from('ds_walkthroughs').select('*').in('design_version_id', lineage).order('revision', { ascending: false }).order('created_at', { ascending: false }).limit(1).maybeSingle()).data;
+  }
   else return json({ error: 'BAD_REQUEST' }, 400);
   if (!row) return json({ walkthrough: null, history: [] });
   // A poll is a driver too: a due step is taken (in the background, under the same lease rules).
   if (!isTerminal(row.state) && nextStep(row as WalkRow, Date.now()).kind !== 'WAIT') await inBackground('walkthrough-status', () => drive(admin, row.id, 60_000, { singlePass: true }));
-  const { data: all } = await caller.from('ds_walkthroughs').select('*').eq('design_version_id', row.design_version_id).order('revision', { ascending: false }).limit(10);
+  const lineage = await lineageOf(admin, row.design_version_id);
+  const { data: all } = await caller.from('ds_walkthroughs').select('*').in('design_version_id', lineage).order('revision', { ascending: false }).limit(10);
   return json({ walkthrough: publicOf(row), history: (all ?? []).map(publicOf) });
 }
 
@@ -372,11 +469,22 @@ async function plan(admin: Row, row: Row): Promise<void> {
     ctx: offered.ctx, rooms: roomSketches(space),
   };
 
-  const apiKey = Deno.env.get('OPENAI_API_KEY');
-  if (!apiKey) { await release(admin, row, { error: 'PLAN_UNAVAILABLE', next_check_at: iso(Date.now() + 60_000) }); return; }
   const started = Date.now();
   let payload: Row = null;
-  try {
+  let reused: ValidatedScenePlan | null = null;
+  if (typeof row.timings?.reusePlanFrom === 'string') {
+    // The plan an earlier walkthrough of this design made: the same rooms, the same choices, no new model call.
+    // Only rooms this geometry has are kept; every pose is placed again by HOMATCH's engine below.
+    const { data: w } = await admin.from('ds_walkthroughs').select('scene_plan, project_id').eq('id', row.timings.reusePlanFrom).maybeSingle();
+    const plan0 = w?.project_id === row.project_id ? w?.scene_plan as ValidatedScenePlan | null : null;
+    if (plan0?.rooms) {
+      const ids = new Set(space.rooms.map((r) => r.id));
+      reused = { ...plan0, rooms: plan0.rooms.filter((r) => ids.has(r.roomId)) };
+    }
+  }
+  const apiKey = Deno.env.get('OPENAI_API_KEY');
+  if (!reused && !apiKey) { await release(admin, row, { error: 'PLAN_UNAVAILABLE', next_check_at: iso(Date.now() + 60_000) }); return; }
+  if (!reused) try {
     const r = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify(sceneRequest(MODEL, input)),
     });
@@ -385,10 +493,12 @@ async function plan(admin: Row, row: Row): Promise<void> {
   const text = payload ? textOf(payload) : '';
   let raw: unknown = null;
   try { raw = text ? JSON.parse(text) : null; } catch { raw = null; }
-  const validated: ValidatedScenePlan | null = raw ? validateScenePlan(raw, input) : null;
+  const validated: ValidatedScenePlan | null = reused ?? (raw ? validateScenePlan(raw, input) : null);
   const aiCost = payload ? await meterAiCall(admin, { userId: row.user_id, productCode: 'DS_AI_DESIGN', jobRef: row.id, model: MODEL, startedAt: started }, payload, { step: 'walkthrough_scene_plan', walkthrough: row.id }) : null;
-  const costLine = { kind: 'OPENAI_SCENE_PLAN', model: MODEL, usd: aiCost?.aiCents == null ? null : aiCost.aiCents / 100, basis: aiCost?.aiCents == null ? 'NOT_AVAILABLE' : 'ESTIMATED', tokens: payload?.usage ?? null, ms: Date.now() - started, attempt: row.plan_attempts };
-  const cost = [...(Array.isArray(row.cost) ? row.cost : []), ...(payload ? [costLine] : [])];
+  const costLine = reused
+    ? { kind: 'OPENAI_SCENE_PLAN', model: null, usd: 0, basis: 'REUSED', reusedFrom: row.timings.reusePlanFrom, tokens: null, ms: 0, attempt: row.plan_attempts }
+    : { kind: 'OPENAI_SCENE_PLAN', model: MODEL, usd: aiCost?.aiCents == null ? null : aiCost.aiCents / 100, basis: aiCost?.aiCents == null ? 'NOT_AVAILABLE' : 'ESTIMATED', tokens: payload?.usage ?? null, ms: Date.now() - started, attempt: row.plan_attempts };
+  const cost = [...(Array.isArray(row.cost) ? row.cost : []), ...(payload || reused ? [costLine] : [])];
   if (!validated || !validated.rooms.length) {
     await release(admin, row, { error: payload ? 'PLAN_INVALID' : 'PLAN_UNAVAILABLE', cost, next_check_at: iso(Date.now() + 15_000) });
     return;
@@ -418,7 +528,7 @@ async function plan(admin: Row, row: Row): Promise<void> {
 
   const report = {
     build: built.report, dropped: validated.dropped, filled: validated.filled, approximations: validated.approximations, omitted: validated.omitted,
-    rooms: validated.rooms.length, model: MODEL, offer: offered.offer, planMs: Date.now() - started,
+    rooms: validated.rooms.length, model: reused ? null : MODEL, offer: offered.offer, planMs: Date.now() - started, reusedFrom: reused ? row.timings.reusePlanFrom : null,
   };
   await release(admin, row, {
     state: 'PLANNING', scene_plan: validated, plan_report: report, walk_version_id: walkId, cost, error: null, next_check_at: iso(Date.now()),

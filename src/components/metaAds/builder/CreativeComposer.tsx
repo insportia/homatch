@@ -180,7 +180,7 @@ export default function CreativeComposer({ items, ideas = [], submitLabel, busy,
                 {ideas.slice(0, 3).map((idea, i) => (
                   <button key={i} type="button" dir="auto" data-mm-composer-idea={i}
                     onClick={() => setCopy((c) => (c ? { ...c, headline: idea.headline, ...(idea.subheadline ? { subheadline: idea.subheadline } : {}), ...(idea.cta ? { cta: idea.cta } : {}) } : c))}
-                    className="min-h-11 rounded-xl border border-border px-3 py-2 text-start text-[13px] leading-snug [overflow-wrap:anywhere] hover:border-[hsl(var(--gold-border))] hover:bg-[hsl(var(--gold-soft))]/50">
+                    className="min-h-11 rounded-xl border border-border px-3 py-2 text-start text-[13px] leading-snug [overflow-wrap:break-word] hover:border-[hsl(var(--gold-border))] hover:bg-[hsl(var(--gold-soft))]/50">
                     <span className="font-semibold">{idea.headline}</span>{idea.subheadline ? <span className="block text-2xs text-muted-foreground">{idea.subheadline}</span> : null}
                   </button>
                 ))}

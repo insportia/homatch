@@ -309,7 +309,7 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
             {intent.overlay && (
               <p className="flex items-start gap-1.5 rounded-lg bg-[hsl(var(--secondary))]/60 px-2.5 py-1.5 text-2xs text-foreground" data-mm-ai-overlay-parsed={intent.overlay.placement ?? ''}>
                 <Type className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-                <span className="min-w-0 [overflow-wrap:anywhere]">{t(intent.overlay.placement ? `mm_cx_overlay_parsed_${intent.overlay.placement}` as never : 'mm_cx_overlay_parsed', { text: intent.overlay.text })}</span>
+                <span className="min-w-0 [overflow-wrap:break-word]">{t(intent.overlay.placement ? `mm_cx_overlay_parsed_${intent.overlay.placement}` as never : 'mm_cx_overlay_parsed', { text: intent.overlay.text })}</span>
               </p>
             )}
             <div className="flex flex-wrap gap-1.5">

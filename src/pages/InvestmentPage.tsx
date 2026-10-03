@@ -36,8 +36,8 @@
 // portalled control inside the canvas — native selects, plain buttons,
 // inline disclosure.
 
-import React, { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import React, { useEffect, useRef, useState } from 'react';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, RotateCcw, Search } from 'lucide-react';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import PageMeta from '@/components/common/PageMeta';
@@ -83,6 +83,7 @@ export default function InvestmentPage() {
     applyEvidenceOffer,
     reset,
     attachProperty,
+    attachListing,
   } = session;
 
   /* A property can be handed in from anywhere in the app: the detail page,
@@ -93,6 +94,17 @@ export default function InvestmentPage() {
     if (!propertyId) return;
     void attachProperty(propertyId);
   }, [propertyId, attachProperty]);
+
+  /* A Find Property result has no HOMATCH record; it arrives as router state
+     (the same shape the Mortgage prefill uses) and only its stated facts apply. */
+  const location = useLocation();
+  const handoff = (location.state as { findProperty?: Parameters<typeof attachListing>[0] } | null)?.findProperty;
+  const handedOff = useRef<string | null>(null);
+  useEffect(() => {
+    if (!handoff || handedOff.current === handoff.propertyKey) return;
+    handedOff.current = handoff.propertyKey;
+    attachListing(handoff);
+  }, [handoff, attachListing]);
 
   useEffect(() => {
     if (!homatchUser) return;

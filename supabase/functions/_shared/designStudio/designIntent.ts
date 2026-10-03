@@ -191,6 +191,10 @@ export function wallFits(m: PlanMaterialContext, dir: WallDirection): boolean {
     case 'COOL_WHITE': return t.includes('WHITE');
     case 'GREIGE': return t.some((x) => x === 'BEIGE' || x === 'GRAY' || x === 'TAUPE');
     case 'PLASTER': return false;
+    case 'SAGE': return t.includes('GREEN') || /(sage|olive|eucalyptus)/i.test(text(m));
+    case 'SKY': return t.includes('BLUE') || /(sky|powder blue|light blue)/i.test(text(m));
+    case 'BLUSH': return t.includes('PINK') || /(blush|rose|dusty pink)/i.test(text(m));
+    case 'TERRACOTTA': return t.some((x) => x === 'TERRACOTTA' || x === 'ORANGE' || x === 'RUST') || /(terracotta|clay|rust)/i.test(text(m));
     case 'DEEP': return t.includes('BLACK') || /\b(dark|charcoal|anthracite|navy|black|ink)\b/.test(text(m));
   }
 }

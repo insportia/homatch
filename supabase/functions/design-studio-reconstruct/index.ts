@@ -34,7 +34,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { handleDesign } from './design.ts';
 import { handleFloorplan } from './floorplan.ts';
-import { handlePhotos } from './photos.ts';
+import { handlePhotoRooms, handlePhotos } from './photos.ts';
 import { handleFactory, handleFactoryDiscard, handleFactoryStatus, handleQa } from './factory.ts';
 import { handleProjectDelete } from './project.ts';
 import { handleRenderEdit, handleRenderQuote, handleRenderStart, handleRenderStatus } from './renders.ts';
@@ -47,6 +47,7 @@ serve((req) => {
   if (route === 'design') return handleDesign(req);
   if (route === 'floorplan') return handleFloorplan(req);
   if (route === 'photos') return handlePhotos(req);
+  if (route === 'photo-rooms') return handlePhotoRooms(req);
   if (route === 'project-delete') return handleProjectDelete(req);
   if (route === 'factory') return handleFactory(req);
   if (route === 'factory-status') return handleFactoryStatus(req);

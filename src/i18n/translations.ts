@@ -15071,6 +15071,24 @@ const en = {
   p2h_accent_copper: 'Copper',
   p2h_accent_bronze: 'Bronze',
   p2h_accent_matte_white: 'Matte white',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_wish_title: 'Tell us exactly what design you want',
+  dsx_wish_sub: 'In your own words: HOMATCH turns it into a detailed design and a new picture.',
+  dsx_wish_placeholder: 'e.g. warmer light, a dark green sofa, an oak dining table for six, more plants',
+  dsx_wish_send: 'Create',
+  dsx_wish_confirm: 'Your design, in your words',
+  dsx_wish_label: 'Your design',
+  dsx_edit_list_title: 'What would you like to change?',
+  dsx_edit_list_body: 'Choose an item: HOMATCH changes only that, everything else stays.',
+  dsx_edit_list_empty: 'There is nothing to change in this picture yet.',
+  dsx_edit_group_home: 'Whole home',
+  dsx_photo_tour_body: 'A 3D tour needs your home\'s walls, doors and sizes. Add its floor plan and HOMATCH builds the tour.',
+  dsx_photo_tour_cta: 'Add the floor plan',
+  dsx_find_rooms_body: 'This picture shows your whole home. HOMATCH can find each room in it, so you can design them one by one. Nothing is uploaded again.',
+  dsx_find_rooms_cta: 'Find the rooms',
+  dsx_find_rooms_same: 'HOMATCH found no other rooms in this picture.',
+  dsx_find_rooms_failed: 'The rooms could not be found right now. Try again a little later.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -30056,6 +30074,24 @@ const ka: Partial<Record<TranslationKey, string>> = {
   p2h_accent_copper: 'სპილენძი',
   p2h_accent_bronze: 'ბრინჯაო',
   p2h_accent_matte_white: 'მქრქალი თეთრი',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_wish_title: 'მოგვწერეთ ზუსტად როგორი დიზაინით გსურთ რენდერის აწყობა?',
+  dsx_wish_sub: 'შენი სიტყვებით: HOMATCH დეტალურ დიზაინად აქცევს და ახალ სურათს შექმნის.',
+  dsx_wish_placeholder: 'მაგ.: უფრო თბილი განათება, მუქი მწვანე დივანი, მუხის სასადილო მაგიდა 6 კაცზე, მეტი მცენარე',
+  dsx_wish_send: 'შექმნა',
+  dsx_wish_confirm: 'შენი დიზაინი, შენი სიტყვებით',
+  dsx_wish_label: 'შენი დიზაინი',
+  dsx_edit_list_title: 'რისი შეცვლა გინდა?',
+  dsx_edit_list_body: 'აირჩიე ნივთი: HOMATCH მხოლოდ მას შეცვლის, დანარჩენი უცვლელი დარჩება.',
+  dsx_edit_list_empty: 'ამ სურათზე შესაცვლელი ნივთები ჯერ არ არის.',
+  dsx_edit_group_home: 'მთელი სახლი',
+  dsx_photo_tour_body: '3D ტურისთვის საჭიროა სახლის კედლები, კარები და ზომები. ატვირთე ბინის გეგმა და HOMATCH ტურს ააწყობს.',
+  dsx_photo_tour_cta: 'გეგმის დამატება',
+  dsx_find_rooms_body: 'ეს სურათი მთელ სახლს აჩვენებს. HOMATCH იპოვის მასში თითოეულ ოთახს, რომ ცალ-ცალკე დააგენერირო. ხელახლა ატვირთვა საჭირო არ არის.',
+  dsx_find_rooms_cta: 'ოთახების პოვნა',
+  dsx_find_rooms_same: 'ამ სურათზე სხვა ოთახი ვერ ვიპოვეთ.',
+  dsx_find_rooms_failed: 'ოთახების პოვნა ახლა ვერ მოხერხდა. სცადე ცოტა მოგვიანებით.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -45032,6 +45068,24 @@ const ru: Partial<Record<TranslationKey, string>> = {
   p2h_accent_copper: 'Медь',
   p2h_accent_bronze: 'Бронза',
   p2h_accent_matte_white: 'Матовый белый',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_wish_title: 'Напишите, какой именно дизайн вы хотите',
+  dsx_wish_sub: 'Своими словами: HOMATCH превратит это в детальный дизайн и новое изображение.',
+  dsx_wish_placeholder: 'напр.: теплее свет, тёмно-зелёный диван, дубовый обеденный стол на шестерых, больше растений',
+  dsx_wish_send: 'Создать',
+  dsx_wish_confirm: 'Ваш дизайн, вашими словами',
+  dsx_wish_label: 'Ваш дизайн',
+  dsx_edit_list_title: 'Что вы хотите изменить?',
+  dsx_edit_list_body: 'Выберите предмет: HOMATCH изменит только его, всё остальное останется.',
+  dsx_edit_list_empty: 'На этом изображении пока нечего менять.',
+  dsx_edit_group_home: 'Весь дом',
+  dsx_photo_tour_body: 'Для 3D-прогулки нужны стены, двери и размеры дома. Добавьте план, и HOMATCH построит прогулку.',
+  dsx_photo_tour_cta: 'Добавить план',
+  dsx_find_rooms_body: 'На этом изображении весь дом. HOMATCH найдёт в нём каждую комнату, чтобы вы оформили их по отдельности. Ничего не нужно загружать заново.',
+  dsx_find_rooms_cta: 'Найти комнаты',
+  dsx_find_rooms_same: 'HOMATCH не нашёл на этом изображении других комнат.',
+  dsx_find_rooms_failed: 'Сейчас не удалось найти комнаты. Попробуйте чуть позже.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -60006,6 +60060,24 @@ const tr: Partial<Record<TranslationKey, string>> = {
   p2h_accent_copper: 'Bakır',
   p2h_accent_bronze: 'Bronz',
   p2h_accent_matte_white: 'Mat beyaz',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_wish_title: 'Tam olarak nasıl bir tasarım istediğinizi yazın',
+  dsx_wish_sub: 'Kendi kelimelerinizle: HOMATCH bunu ayrıntılı bir tasarıma ve yeni bir görsele dönüştürür.',
+  dsx_wish_placeholder: 'ör. daha sıcak ışık, koyu yeşil bir kanepe, altı kişilik meşe yemek masası, daha fazla bitki',
+  dsx_wish_send: 'Oluştur',
+  dsx_wish_confirm: 'Sizin sözlerinizle tasarımınız',
+  dsx_wish_label: 'Tasarımınız',
+  dsx_edit_list_title: 'Neyi değiştirmek istersiniz?',
+  dsx_edit_list_body: 'Bir öğe seçin: HOMATCH yalnızca onu değiştirir, gerisi aynı kalır.',
+  dsx_edit_list_empty: 'Bu görselde henüz değiştirilecek bir şey yok.',
+  dsx_edit_group_home: 'Tüm ev',
+  dsx_photo_tour_body: '3D gezinti için evinizin duvarları, kapıları ve ölçüleri gerekir. Kat planını ekleyin, HOMATCH gezintiyi oluşturur.',
+  dsx_photo_tour_cta: 'Kat planını ekle',
+  dsx_find_rooms_body: 'Bu görsel evinizin tamamını gösteriyor. HOMATCH içindeki her odayı bulabilir, böylece onları tek tek tasarlayabilirsiniz. Yeniden yükleme gerekmez.',
+  dsx_find_rooms_cta: 'Odaları bul',
+  dsx_find_rooms_same: 'HOMATCH bu görselde başka oda bulamadı.',
+  dsx_find_rooms_failed: 'Odalar şu anda bulunamadı. Biraz sonra tekrar deneyin.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -74980,6 +75052,24 @@ const ar: Partial<Record<TranslationKey, string>> = {
   p2h_accent_copper: 'نحاس',
   p2h_accent_bronze: 'برونز',
   p2h_accent_matte_white: 'أبيض مطفأ',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_wish_title: 'اكتب لنا بالضبط التصميم الذي تريده',
+  dsx_wish_sub: 'بكلماتك: يحوّله HOMATCH إلى تصميم مفصّل وصورة جديدة.',
+  dsx_wish_placeholder: 'مثلًا: إضاءة أدفأ، أريكة خضراء داكنة، طاولة طعام من البلوط لستة أشخاص، نباتات أكثر',
+  dsx_wish_send: 'إنشاء',
+  dsx_wish_confirm: 'تصميمك بكلماتك',
+  dsx_wish_label: 'تصميمك',
+  dsx_edit_list_title: 'ما الذي تريد تغييره؟',
+  dsx_edit_list_body: 'اختر عنصرًا: يغيّره HOMATCH وحده ويبقى الباقي كما هو.',
+  dsx_edit_list_empty: 'لا يوجد ما يمكن تغييره في هذه الصورة بعد.',
+  dsx_edit_group_home: 'المنزل كله',
+  dsx_photo_tour_body: 'تحتاج الجولة ثلاثية الأبعاد إلى جدران منزلك وأبوابه ومقاساته. أضف المخطط وسيبني HOMATCH الجولة.',
+  dsx_photo_tour_cta: 'إضافة المخطط',
+  dsx_find_rooms_body: 'تُظهر هذه الصورة منزلك كله. يستطيع HOMATCH إيجاد كل غرفة فيها لتصممها واحدة تلو الأخرى، دون رفع أي شيء من جديد.',
+  dsx_find_rooms_cta: 'إيجاد الغرف',
+  dsx_find_rooms_same: 'لم يجد HOMATCH غرفًا أخرى في هذه الصورة.',
+  dsx_find_rooms_failed: 'تعذّر إيجاد الغرف الآن. حاول مجددًا بعد قليل.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -89954,6 +90044,24 @@ const he: Partial<Record<TranslationKey, string>> = {
   p2h_accent_copper: 'נחושת',
   p2h_accent_bronze: 'ברונזה',
   p2h_accent_matte_white: 'לבן מט',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_wish_title: 'כתבו לנו בדיוק איזה עיצוב אתם רוצים',
+  dsx_wish_sub: 'במילים שלכם: HOMATCH יהפוך את זה לעיצוב מפורט ולתמונה חדשה.',
+  dsx_wish_placeholder: 'למשל: תאורה חמה יותר, ספה ירוקה כהה, שולחן אוכל מעץ אלון לשישה, יותר צמחים',
+  dsx_wish_send: 'יצירה',
+  dsx_wish_confirm: 'העיצוב שלכם, במילים שלכם',
+  dsx_wish_label: 'העיצוב שלכם',
+  dsx_edit_list_title: 'מה תרצו לשנות?',
+  dsx_edit_list_body: 'בחרו פריט: HOMATCH ישנה רק אותו, כל השאר יישאר.',
+  dsx_edit_list_empty: 'אין עדיין מה לשנות בתמונה הזו.',
+  dsx_edit_group_home: 'כל הבית',
+  dsx_photo_tour_body: 'סיור תלת־ממדי צריך את הקירות, הדלתות והמידות של הבית. הוסיפו את התוכנית ו־HOMATCH יבנה את הסיור.',
+  dsx_photo_tour_cta: 'הוספת התוכנית',
+  dsx_find_rooms_body: 'התמונה הזו מציגה את כל הבית. HOMATCH יכול למצוא בה כל חדר, כדי שתעצבו אותם אחד־אחד. אין צורך להעלות מחדש.',
+  dsx_find_rooms_cta: 'מציאת החדרים',
+  dsx_find_rooms_same: 'HOMATCH לא מצא חדרים נוספים בתמונה הזו.',
+  dsx_find_rooms_failed: 'לא הצלחנו למצוא את החדרים כרגע. נסו שוב מעט מאוחר יותר.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

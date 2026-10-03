@@ -19,7 +19,7 @@
 
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, Columns2, Download, Expand, Layers, Loader2, Pencil, RefreshCw, RotateCcw, Shuffle, SlidersHorizontal, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, Box, Check, Columns2, Download, Expand, Layers, Loader2, Pencil, RefreshCw, RotateCcw, Shuffle, SlidersHorizontal, Sparkles, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
@@ -30,15 +30,15 @@ import { colourChoices } from '@/lib/designStudio/renders/edits';
 import { aiActionsFor, aiAppearanceEdit, aiWhat, isAiEntry } from '@/lib/designStudio/renders/aiEdits';
 import type { DesignVersionRecord } from '@/lib/designStudio/types';
 import { createVersion, setHeadVersion, type ProjectBundle } from '@/services/designStudio/projects';
-import { editRender, listRenders, pollRenders, quoteRender, renderMapUrl, renderPictureUrls } from '@/services/designStudio/renders';
+import { editRender, listRenders, pollRenders, quoteRender, renderPictureUrls } from '@/services/designStudio/renders';
 import { generationStep, isGenerated, stepGenerated } from '@/services/designStudio/generation';
 import { runDesign, type RunStage } from '@/services/designStudio/designRun';
 import { DesignStudioError } from '@/services/designStudio/errors';
 import { signedUrls } from '@/services/designStudio/files';
-import { RenderViewer } from '@/components/designStudio/renders/RenderViewer';
 import { EditPanel } from '@/components/designStudio/renders/EditPanel';
 import { STAGE_KEY } from './Screens';
 import { WalkthroughPanel } from './WalkthroughPanel';
+import { findPhotoRooms } from '@/services/designStudio/photoRooms';
 
 const SnakeGame = lazy(() => import('@/components/games/SnakeGame'));
 
@@ -70,10 +70,12 @@ const roomOf = (r: RenderRecord): string | null => (r.view?.kind === 'ROOM' ? (r
 interface GenInput {
   mode: 'VARIANT' | 'ROOM'; key: string; label: string; credits: number;
   style?: LookStyle | null; quality?: LookQuality | null; roomId?: string | null; parentRenderId?: string | null;
+  /** What the customer wrote for this version (their wishes; HOMATCH's designer interprets them). */
+  note?: string | null;
 }
 
 export function DesignResult({ data, onReload }: { data: ResultData; onReload: () => Promise<void> }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const navigate = useNavigate();
   const { homatchUser } = useAuth();
   const projectId = data.bundle.project.id;
@@ -82,7 +84,6 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
   const [heroId, setHeroId] = useState<string | null>(null);
   const [mode, setMode] = useState<'VIEW' | 'COMPARE' | 'EDIT'>('VIEW');
   const [beforeUrl, setBeforeUrl] = useState<string | null>(null);
-  const [mapUrl, setMapUrl] = useState<string | null>(null);
   const [selected, setSelected] = useState<MapEntry | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
   const [sheet, setSheet] = useState<'STYLE' | 'QUALITY' | { roomId: string } | null>(null);
@@ -161,10 +162,6 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
     setBeforeUrl(null);
     if (key) signedUrls([key], 1800).then((m) => setBeforeUrl(m.get(key) ?? null)).catch(() => {});
   }, [hero?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    setMapUrl(null);
-    if (hero && mode === 'EDIT') renderMapUrl(hero, 1800).then(setMapUrl).catch(() => {});
-  }, [hero?.id, mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const roomLabel = useCallback((id: string | null | undefined) => data.rooms.find((r) => r.id === id)?.label ?? null, [data.rooms]);
   const labelFor = useCallback((e: MapEntry) => {
@@ -199,7 +196,7 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
       const result = await runDesign({
         projectId, versionId: data.head.id, mode: input.mode, key: input.key, look: { style, quality }, preferences: lookPreferences(style, quality),
         roomId: input.roomId ?? null, parentRenderId: input.parentRenderId ?? hero.id, confirmedCredits: input.credits, versionName: t('p2h_version_design'), retry,
-        change: input.style || input.quality ? { style: input.style ?? null, quality: input.quality ?? null } : null,
+        change: input.style || input.quality || input.note ? { style: input.style ?? null, quality: input.quality ?? null, note: input.note ?? null } : null,
         onStage: (stage) => { if (alive.current) setWorking({ label: input.label, stage }); },
       });
       if (!alive.current) return;
@@ -221,9 +218,30 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
 
   const nonce = () => Math.random().toString(36).slice(2, 10);
   const retryFailed = () => { if (failedRun && !working) void generate(failedRun, true); };
-  const askVariant = () => offer('DS_MASTER_RENDER', data.head.id, t('dsx_variant'), t('dsx_variant_body'), async (credits) => {
-    void generate({ mode: 'VARIANT', key: `var-${hero!.id}-${nonce()}`, label: t('dsx_variant'), credits });
-  });
+  // The rooms of a whole-home photo, read again from the same photos (nothing uploaded again).
+  const [findingRooms, setFindingRooms] = useState(false);
+  const [roomsNote, setRoomsNote] = useState<string | null>(null);
+  const findRooms = async () => {
+    if (findingRooms) return;
+    setFindingRooms(true);
+    const r = await findPhotoRooms(projectId, lang);
+    if (!alive.current) return;
+    setFindingRooms(false);
+    if ('error' in r) { setRoomsNote(t('dsx_find_rooms_failed')); return; }
+    if (r.state === 'SAME') { setRoomsNote(t('dsx_find_rooms_same')); return; }
+    await onReload();
+  };
+  // The customer's own words for a new version: HOMATCH's designer turns them into the full design (never shown).
+  const [wish, setWish] = useState('');
+  const [wishOpen, setWishOpen] = useState(false);
+  const askWish = () => {
+    const note = wish.trim();
+    if (note.length < 3 || !hero) return;
+    void offer('DS_MASTER_RENDER', data.head.id, t('dsx_wish_confirm'), note.length > 160 ? `${note.slice(0, 160)}…` : note, async (credits) => {
+      setWish(''); setWishOpen(false);
+      void generate({ mode: 'VARIANT', key: `wish-${hero.id}-${nonce()}`, label: t('dsx_wish_label'), credits, note });
+    });
+  };
   const askStyle = (style: LookStyle) => offer('DS_MASTER_RENDER', data.head.id, `${t('dsx_change_style')} · ${t(`sf_style_${style.toLowerCase()}`)}`, null, async (credits) => {
     void generate({ mode: 'VARIANT', key: `sty-${hero!.id}-${style}-${nonce()}`, label: t('dsx_change_style'), credits, style });
   });
@@ -275,6 +293,12 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
   };
 
   const heroUrl = hero ? urls.get(hero.id) ?? null : null;
+  const editGroups = useMemo(() => {
+    const entries = (hero?.legend?.entries ?? []).filter((e) => isAiEntry(e) && aiActionsFor(e).length > 0 && e.coverage >= 0.002);
+    const by = new Map<string, MapEntry[]>();
+    for (const e of entries) { const k = e.roomId ?? ''; (by.get(k) ?? by.set(k, []).get(k)!).push(e); }
+    return [...by.entries()].map(([k, list]) => ({ key: k || 'home', label: (k && roomLabel(k)) || t('dsx_edit_group_home'), entries: list.sort((a, b) => b.coverage - a.coverage) }));
+  }, [hero?.id, hero?.legend, roomLabel, t]); // eslint-disable-line react-hooks/exhaustive-deps
   // The picture is in private storage behind a short-lived link: fetched and saved as a file (a cross-origin
   // link cannot be given a file name); if that is refused, it opens in a new tab to be saved from there.
   const [downloading, setDownloading] = useState(false);
@@ -337,21 +361,39 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
             </div>
           ) : mode === 'COMPARE' && beforeUrl ? (
             <CompareSlider before={beforeUrl} after={heroUrl} />
-          ) : mode === 'EDIT' ? (
-            <RenderViewer imageUrl={heroUrl} idsUrl={mapUrl} legend={hero.legend} editable={(e) => isAiEntry(e) && aiActionsFor(e).length > 0}
-              selectedId={selected?.id ?? null} onSelect={(e) => { setError(null); setSelected(e); }} alt={t('rend_master_alt')} labelFor={labelFor} />
           ) : (
             <img src={heroUrl} alt={t('rend_master_alt')} className="block w-full" data-testid="render-viewer" />
           )}
-          {mode === 'EDIT' ? (
-            <p className="pointer-events-none absolute inset-x-3 top-3 mx-auto w-fit rounded-full bg-[#0C1119]/85 px-4 py-2 text-[13px] font-medium text-white" data-testid="edit-hint">{t('dsx_edit_body')}</p>
-          ) : null}
           {mode === 'EDIT' && selected && hero ? (
             <EditPanel entry={selected} title={labelFor(selected)} actions={aiActionsFor(selected)} colors={colourChoices(((data.head as unknown as { design_dna?: { palette?: string[] } | null }).design_dna?.palette) ?? [], null)}
               materials={[]} replacements={[]} position={null} rotation={null} busy={busy} error={error}
               onChoice={(c, l) => { void onChoice(c, l); }} onClose={() => setSelected(null)} />
           ) : null}
         </div>
+
+        {mode === 'EDIT' && hero ? (
+          <section className="mt-4 rounded-[22px] bg-white p-4 ring-1 ring-[#E7E1D8] sm:p-5" aria-labelledby="ds-edit-title" data-testid="edit-list">
+            <h2 id="ds-edit-title" className="text-[16px] font-semibold">{t('dsx_edit_list_title')}</h2>
+            <p className="mt-1 text-[14px] text-[#5B6472]">{t('dsx_edit_list_body')}</p>
+            <div className="mt-3 space-y-2">
+              {editGroups.length ? editGroups.map((g, i) => (
+                <details key={g.key} open={i === 0} className="group rounded-2xl bg-[#F7F4EF] px-4 py-3" data-testid="edit-group">
+                  <summary className={cn('flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-[15px] font-semibold [&::-webkit-details-marker]:hidden', RING)}>
+                    {g.label}<span className="text-[13px] font-medium text-[#5B6472]">{g.entries.length}</span>
+                  </summary>
+                  <ul className="mt-2 flex flex-wrap gap-2">
+                    {g.entries.map((e) => (
+                      <li key={e.id}>
+                        <button type="button" onClick={() => { setError(null); setSelected(e); }} aria-pressed={selected?.id === e.id}
+                          className={cn(CHIP, selected?.id === e.id && 'ring-2 ring-[#0C1119]')} data-testid="edit-item">{isAiEntry(e) ? t(`sf_obj_${aiWhat(e) ?? 'other'}`) : labelFor(e)}</button>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )) : <p className="text-[14px] text-[#5B6472]">{t('dsx_edit_list_empty')}</p>}
+            </div>
+          </section>
+        ) : null}
 
         {/* ── Ways to look ───────────────────────────────────────────── */}
         {hero && heroUrl ? (
@@ -378,7 +420,7 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
 
         {/* ── What to make next ──────────────────────────────────────── */}
         <div className="mt-6 flex flex-wrap gap-2" data-testid="home-actions">
-          <button type="button" onClick={() => { void askVariant(); }} disabled={!hero || !!working} className={CHIP} data-testid="home-variant"><Shuffle className="h-4 w-4" aria-hidden="true" />{t('dsx_variant')}</button>
+          <button type="button" onClick={() => { setWishOpen(true); window.setTimeout(() => document.getElementById('ds-wish')?.focus(), 50); }} disabled={!hero || !!working} className={CHIP} data-testid="home-variant"><Shuffle className="h-4 w-4" aria-hidden="true" />{t('dsx_variant')}</button>
           <button type="button" onClick={() => setSheet('STYLE')} disabled={!hero || !!working} className={CHIP} data-testid="home-style"><Sparkles className="h-4 w-4" aria-hidden="true" />{t('dsx_change_style')}</button>
           <button type="button" onClick={() => setSheet('QUALITY')} disabled={!hero || !!working} className={CHIP} data-testid="home-quality"><Layers className="h-4 w-4" aria-hidden="true" />{t('dsx_change_quality')}</button>
           {others.length ? (
@@ -394,6 +436,30 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
               <p className="text-[13px] text-white/70">{t(STAGE_KEY[working.stage])} · {t('dsx_leave_ok')}</p>
             </div>
             <button type="button" onClick={() => setPlaying(true)} className={cn('h-11 rounded-full bg-[hsl(38_92%_56%)] px-4 text-[14px] font-semibold text-[#0C1119]', RING)} data-testid="snake-play">{t('dsx_sn_play')}</button>
+          </section>
+        ) : null}
+
+        {hero ? (
+          <section className={cn('mt-5 rounded-[24px] bg-[#0C1119] p-4 text-white ring-1 ring-[hsl(38_92%_56%)]/35 sm:p-5', wishOpen && 'shadow-[0_18px_40px_-24px_rgba(12,17,25,0.7)]')} aria-labelledby="ds-wish-title" data-testid="home-wish">
+            <div className="flex items-start gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[hsl(38_92%_56%)] text-[#0C1119]" aria-hidden="true"><Sparkles className="h-5 w-5" /></span>
+              <div className="min-w-0 flex-1">
+                <h2 id="ds-wish-title" className="text-[16px] font-semibold">{t('dsx_wish_title')}</h2>
+                <p className="mt-0.5 text-[13px] leading-snug text-white/70">{t('dsx_wish_sub')}</p>
+              </div>
+            </div>
+            <label htmlFor="ds-wish" className="sr-only">{t('dsx_wish_title')}</label>
+            <textarea id="ds-wish" value={wish} onChange={(e) => setWish(e.target.value)} onFocus={() => setWishOpen(true)} maxLength={600} rows={wishOpen ? 4 : 2}
+              placeholder={t('dsx_wish_placeholder')} disabled={!!working}
+              className="mt-3 w-full resize-none rounded-2xl bg-white/[0.07] px-4 py-3 text-[15px] leading-relaxed text-white ring-1 ring-white/15 placeholder:text-white/45 focus:outline-none focus:ring-2 focus:ring-[hsl(38_92%_56%)]"
+              data-testid="home-wish-text" />
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <span className="text-[13px] text-white/50 tabular-nums">{wish.length}/600</span>
+              <button type="button" onClick={askWish} disabled={wish.trim().length < 3 || !!working || busy}
+                className={cn('inline-flex h-11 items-center gap-2 rounded-full bg-[hsl(38_92%_56%)] px-5 text-[14px] font-semibold text-[#0C1119] disabled:cursor-not-allowed disabled:opacity-50', RING)} data-testid="home-wish-send">
+                <Sparkles className="h-4 w-4" aria-hidden="true" />{t('dsx_wish_send')}
+              </button>
+            </div>
           </section>
         ) : null}
 
@@ -420,6 +486,23 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
           <WalkthroughPanel projectId={projectId} designVersionId={hero.version_id ?? data.head.id} renderId={hero.id} />
         ) : null}
 
+        {/* ── A photo has no walls to walk: the 3D tour is built from the home's plan, added here ── */}
+        {data.sourceKind === 'PHOTO' && hero ? (
+          <section className="mt-8 overflow-hidden rounded-[24px] bg-[#0C1119] p-5 text-white ring-1 ring-[hsl(38_92%_56%)]/35 sm:p-6" aria-labelledby="ds-photo-tour-title" data-testid="photo-tour">
+            <div className="flex items-start gap-4">
+              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[hsl(38_92%_56%)] text-[#0C1119]" aria-hidden="true"><Box className="h-6 w-6" /></span>
+              <div className="min-w-0 flex-1">
+                <h2 id="ds-photo-tour-title" className="font-display text-[20px] font-semibold">{t('dsx_walk_title')}</h2>
+                <p className="mt-1 text-[14px] leading-relaxed text-white/75">{t('dsx_photo_tour_body')}</p>
+              </div>
+            </div>
+            <button type="button" onClick={() => navigate(`/design-studio/${projectId}?start=floorplan`)}
+              className={cn('mt-5 inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[hsl(38_92%_56%)] px-6 text-[15px] font-semibold text-[#0C1119] sm:w-auto', RING)} data-testid="photo-tour-plan">
+              {t('dsx_photo_tour_cta')}
+            </button>
+          </section>
+        ) : null}
+
         {/* ── Your options ───────────────────────────────────────────── */}
         {masters.length > 1 ? (
           <section className="mt-8" aria-labelledby="ds-variants-title">
@@ -438,6 +521,19 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
         ) : null}
 
         {/* ── Other rooms ────────────────────────────────────────────── */}
+        {data.sourceKind === 'PHOTO' && hero && !others.length ? (
+          <section className="mt-8 rounded-[22px] bg-white p-4 ring-1 ring-[#E7E1D8] sm:p-5" aria-labelledby="ds-find-rooms-title" data-testid="find-rooms">
+            <h2 id="ds-find-rooms-title" className="font-display text-[18px] font-semibold">{t('dsx_rooms_title')}</h2>
+            <p className="mt-1 text-[14px] leading-relaxed text-[#4A5263]">{roomsNote ?? t('dsx_find_rooms_body')}</p>
+            {!roomsNote ? (
+              <button type="button" onClick={() => { void findRooms(); }} disabled={findingRooms}
+                className={cn('mt-4 inline-flex h-11 items-center gap-2 rounded-full bg-[#0C1119] px-5 text-[14px] font-semibold text-white disabled:opacity-60', RING)} data-testid="find-rooms-run">
+                {findingRooms ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Sparkles className="h-4 w-4" aria-hidden="true" />}{t('dsx_find_rooms_cta')}
+              </button>
+            ) : null}
+          </section>
+        ) : null}
+
         {others.length ? (
           <section id="ds-rooms" className="mt-8 scroll-mt-16" aria-labelledby="ds-rooms-title" data-testid="home-rooms-list">
             <h2 id="ds-rooms-title" className="font-display text-[20px] font-semibold">{t('dsx_rooms_title')}</h2>

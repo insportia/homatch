@@ -49,7 +49,7 @@ import {
   quoteMatches, quoteSecret, RENDER_PRICING, renderRowKey, reservationKey, sha256Hex, validIdempotencyKey, verifyQuote, type QuoteClaims,
 } from '../_shared/designStudio/renderPricing.ts';
 import {
-  buildEvidence, directionFrom, dnaFromSpec, imageInstruction, isGenerationMode, modeContextProblem, specProblems, specRequest, validateSpec,
+  buildEvidence, directionFrom, dnaFromSpec, imageInstruction, isGenerationMode, modeContextProblem, roomFromWholeHome, specProblems, specRequest, validateSpec,
   type DesignSpec, type GenerationMode, type ModeContext, type PropertyEvidence,
 } from '../_shared/designStudio/designSpec.ts';
 import { sceneRequest, validateScene, type SceneElement } from '../_shared/designStudio/sceneMap.ts';
@@ -276,7 +276,7 @@ export async function handleDesignSpec(req: Request): Promise<Response> {
   const change = (mode === 'VARIANT' || (mode === 'ROOM' && evidence.sourceKind === 'PHOTO')) && body.change && typeof body.change === 'object' ? {
     style: typeof body.change.style === 'string' && /^[A-Z_]{2,20}$/.test(body.change.style) ? body.change.style : null,
     quality: typeof body.change.quality === 'string' && /^[A-Z_]{2,20}$/.test(body.change.quality) ? body.change.quality : null,
-    note: typeof body.change.note === 'string' ? body.change.note.replace(/[\u0000-\u001f]/g, ' ').slice(0, 200) : null,
+    note: typeof body.change.note === 'string' ? body.change.note.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 600) || null : null,
   } : null;
   const modeCtx: ModeContext = { mode, evidence, direction, room, change, approvedSpec };
 
@@ -503,7 +503,9 @@ function genIo(admin: Row): GenIo {
     async reference(row) {
       const out = await specOf(row);
       // The customer's own picture: always for photos (each room drawn over its own photo), the plan for a plan's master.
-      const key = row.timings?.ai?.mode === 'MASTER' || out?.evidence?.sourceKind === 'PHOTO' ? out?.sourceKey : null;
+      // ...except a room seen only in a whole-home view: it is drawn from the approved design, like a plan's room.
+      const fromDesign = out?.mode === 'ROOM' && !!out?.evidence && roomFromWholeHome({ evidence: out.evidence, room: out.room });
+      const key = !fromDesign && (row.timings?.ai?.mode === 'MASTER' || out?.evidence?.sourceKind === 'PHOTO') ? out?.sourceKey : null;
       if (key) return readImage(key, MAX_SOURCE_BYTES);
       // The approved picture it continues from (recorded in finish; parent_id belongs to edits).
       const parentId = row.parent_id ?? row.finish?.parentRenderId ?? null;

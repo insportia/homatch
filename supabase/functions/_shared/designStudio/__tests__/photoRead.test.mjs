@@ -147,3 +147,31 @@ test('the reader is told a rendering of an interior is usable and a 2D plan is F
   assert.match(PHOTO_SYSTEM, /2D architectural floor plan[^.]*FLOOR_PLAN/);
   assert.match(PHOTO_SYSTEM, /rendering or 3D visualisation of an interior IS usable/);
 });
+
+test('a whole-home view (one 3D picture of the whole flat) is every room it shows, each drawn from the approved design', () => {
+  // Production, project a6f4d744: one isometric picture of a whole flat was read as ONE room, so the dashboard had no
+  // rooms to design. A whole-home view may now be the picture of several rooms.
+  const whole = {
+    usable: true, unusable: null, propertyKind: 'APARTMENT', summary: 'A whole flat in one 3D view', currentStyle: 'modern', light: 'BRIGHT',
+    rooms: [
+      { id: 'r1', kind: 'KITCHEN_LIVING', label: 'Kitchen-living', photos: [0], primaryPhoto: 0, fixed: [], openings: [], condition: 'FURNISHED', confidence: 0.95 },
+      { id: 'r2', kind: 'BEDROOM', label: 'Bedroom', photos: [0], primaryPhoto: 0, fixed: [], openings: [], condition: 'FURNISHED', confidence: 0.9 },
+      { id: 'r3', kind: 'BATHROOM', label: 'Bathroom', photos: [0], primaryPhoto: 0, fixed: [], openings: [], condition: 'FURNISHED', confidence: 0.8 },
+    ],
+    photos: [{ index: 0, roomId: 'r1', usable: true, unusable: null, view: 'isometric view of the whole flat', wholeHome: true }],
+    questions: [], heroRoomId: 'r1',
+  };
+  const u = validatePhotoReading(whole, 1);
+  assert.deepEqual(u.rooms.map((r) => r.id), ['r1', 'r2', 'r3']);
+  assert.ok(u.rooms.every((r) => r.wholeHome && r.primaryPhoto === 0));
+  assert.equal(u.photos[0].wholeHome, true);
+  const ev = photoEvidence(u, []);
+  assert.ok(ev.rooms.every((r) => r.view === 'WHOLE_HOME'));
+  // An ordinary photo still belongs to exactly one room.
+  const plain = validatePhotoReading({ ...whole, photos: [{ ...whole.photos[0], wholeHome: false }] }, 1);
+  assert.deepEqual(plain.rooms.map((r) => r.id), ['r1']);
+  assert.equal(plain.rooms[0].wholeHome, false);
+  // The reader is told how to read such a picture, and the schema carries it.
+  assert.match(photoReadRequest('m', [{ dataUrl: 'data:image/png;base64,AA==', width: 10, height: 10 }], 'English').input[0].content, /WHOLE-HOME view/);
+  assert.ok(PHOTO_SCHEMA.properties.photos.items.required.includes('wholeHome'));
+});

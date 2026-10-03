@@ -8,7 +8,13 @@
 //   claim   lease QUEUED runs addressed to it (claim_marketplace_worker_runs;
 //           a worker that is not ACTIVE and enabled receives nothing)
 //   report  send results for a run it holds: validated (worker-contract.ts),
-//           bounded, URL-checked; partial batches allowed; terminal is final
+//           bounded, URL-checked; partial batches allowed; terminal is final;
+//           a FAILED report marked retryable is re-queued within the retry budget
+//   heartbeat  extend this run's own lease while it is still working
+//
+// CONCURRENT: every eligible worker received its own runs at dispatch and
+// claims them independently, in parallel, within per-provider and global
+// bounds (claim_marketplace_worker_runs; policy in dispatch.ts).
 //
 // Every report re-processes the search (deterministic pipeline), so results
 // from fast workers are visible while slow ones are still searching.
@@ -20,7 +26,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   canTransition, validateWorkerReport, type WorkerRunStatus,
 } from '../../../src/research-core/marketplace/worker-contract.ts';
-import { processAndStore } from '../_shared/marketplaceSearch.ts';
+import { DEFAULT_LEASE_SECONDS, leaseUntil, retryDecision } from '../../../src/research-core/marketplace/dispatch.ts';
+import { processAndStore, reapRuns } from '../_shared/marketplaceSearch.ts';
 
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), {
   status, headers: { 'Content-Type': 'application/json' },
@@ -56,7 +63,7 @@ Deno.serve(async (req: Request) => {
   const token = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '');
   if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(workerId) || token.length < 32) return json({ error: 'Unauthorized' }, 401);
   const { data: worker } = await db.from('discovery_marketplace_workers')
-    .select('worker_id,source_key,state,enabled,token_hash').eq('worker_id', workerId).maybeSingle();
+    .select('worker_id,source_key,state,enabled,token_hash,max_attempts').eq('worker_id', workerId).maybeSingle();
   const presented = await sha256Hex(token);
   if (!worker?.token_hash || !sameHex(presented, worker.token_hash)) return json({ error: 'Unauthorized' }, 401);
   if (worker.state !== 'ACTIVE' || !worker.enabled) return json({ error: 'WORKER_NOT_ACTIVE' }, 403);
@@ -68,25 +75,50 @@ Deno.serve(async (req: Request) => {
   const action = String(body.action ?? '');
 
   try {
+    const leaseSeconds = Math.max(15, Math.min(900, Math.trunc(Number(body.leaseSeconds)) || DEFAULT_LEASE_SECONDS));
+    const maxAttempts = Number(worker.max_attempts) || 3;
+
     if (action === 'claim') {
-      const { data, error } = await db.rpc('claim_marketplace_worker_runs', { p_worker_id: workerId, p_limit: Number(body.limit) || 5 });
+      /* Free this worker's lapsed leases first (retry or close each run on its own), then claim
+         within the per-provider and global bounds the SQL enforces atomically. */
+      const { data: stale } = await db.from('discovery_marketplace_worker_runs')
+        .select('id,worker_id,status,attempts,returned_count,lease_expires_at,deadline_at,errors')
+        .eq('worker_id', workerId).in('status', ['SEARCHING', 'RESULTS_RECEIVED', 'PROCESSING'])
+        .lte('lease_expires_at', new Date().toISOString()).limit(200);
+      await reapRuns(db, (stale ?? []) as Array<Record<string, unknown>>, () => maxAttempts);
+      const { data, error } = await db.rpc('claim_marketplace_worker_runs', {
+        p_worker_id: workerId, p_limit: Number(body.limit) || 5, p_lease_seconds: leaseSeconds,
+      });
       if (error) throw new Error(error.message);
-      return json({ runs: (data ?? []).map((r: Record<string, unknown>) => ({ runId: r.id, deadlineAt: r.deadline_at, request: r.request })) });
+      return json({ runs: (data ?? []).map((r: Record<string, unknown>) => ({
+        runId: r.id, deadlineAt: r.deadline_at, leaseExpiresAt: r.lease_expires_at, attempt: r.attempts, request: r.request,
+      })) });
+    }
+
+    /* Each report or heartbeat is about ONE run the worker holds; other runs are never touched. */
+    const runId = String(body.runId ?? '');
+    if (!UUID.test(runId)) return json({ error: 'BAD_RUN' }, 400);
+    const { data: run } = await db.from('discovery_marketplace_worker_runs')
+      .select('id,search_id,worker_id,status,attempts,discovered_count,returned_count,rejected_count,deadline_at').eq('id', runId).maybeSingle();
+    /* A worker can report only on its own run. */
+    if (!run || run.worker_id !== workerId) return json({ error: 'NOT_FOUND' }, 404);
+
+    if (action === 'heartbeat') {
+      if (!['SEARCHING', 'RESULTS_RECEIVED', 'PROCESSING'].includes(run.status)) return json({ error: 'RUN_CLOSED', status: run.status }, 409);
+      const lease = leaseUntil(new Date(), run.deadline_at, leaseSeconds);
+      await db.from('discovery_marketplace_worker_runs').update({ lease_expires_at: lease, last_heartbeat_at: new Date().toISOString() })
+        .eq('id', run.id).eq('status', run.status);
+      return json({ leaseExpiresAt: lease });
     }
 
     if (action === 'report') {
-      const runId = String(body.runId ?? '');
-      if (!UUID.test(runId)) return json({ error: 'BAD_RUN' }, 400);
-      const { data: run } = await db.from('discovery_marketplace_worker_runs')
-        .select('id,search_id,worker_id,status,discovered_count,returned_count,rejected_count,deadline_at').eq('id', runId).maybeSingle();
-      /* A worker can report only on its own run. */
-      if (!run || run.worker_id !== workerId) return json({ error: 'NOT_FOUND' }, 404);
       const v = validateWorkerReport(body.result, worker.source_key);
       if (!v.ok) return json({ error: 'INVALID_REPORT', reason: v.reason }, 422);
       const report = v.report;
       if (!canTransition(run.status as WorkerRunStatus, report.status)) return json({ error: 'RUN_CLOSED', status: run.status }, 409);
 
-      const now = new Date().toISOString();
+      const nowDate = new Date();
+      const now = nowDate.toISOString();
       if (report.listings.length) {
         const rows = report.listings.map((c) => ({
           search_id: run.search_id, worker_run_id: run.id, source_key: worker.source_key, source_listing_id: c.sourceListingId,
@@ -95,19 +127,27 @@ Deno.serve(async (req: Request) => {
         const { error } = await db.from('discovery_marketplace_listings').upsert(rows, { onConflict: 'search_id,source_key,source_listing_id' });
         if (error) throw new Error(error.message);
       }
+      const returned = (Number(run.returned_count) || 0) + report.listings.length;
+      /* A transient failure with budget left goes back to the queue; it never fails the search. */
+      const requeue = report.status === 'FAILED'
+        && retryDecision({ attempts: Number(run.attempts) || 0, deadlineAt: run.deadline_at, returnedCount: returned }, report.retryable, nowDate, maxAttempts) === 'REQUEUE';
       await db.from('discovery_marketplace_worker_runs').update({
-        status: report.status,
+        status: requeue ? 'QUEUED' : report.status,
         discovered_count: Math.max(Number(run.discovered_count) || 0, report.discoveredCount),
-        returned_count: (Number(run.returned_count) || 0) + report.listings.length,
+        returned_count: returned,
         rejected_count: (Number(run.rejected_count) || 0) + report.rejected.length,
         errors: report.errors,
         metrics: report.metrics,
         query_applied: report.queryApplied,
-        completed_at: report.final ? now : null,
+        /* Every non-final report is also a heartbeat: the lease is this run's own. */
+        lease_expires_at: report.final || requeue ? null : leaseUntil(nowDate, run.deadline_at, leaseSeconds),
+        last_heartbeat_at: now,
+        completed_at: report.final && !requeue ? now : null,
         updated_at: now,
-      }).eq('id', run.id);
+      }).eq('id', run.id).eq('status', run.status);
+      /* Results from this worker are processed now, whatever the others are doing. */
       const outcome = await processAndStore(db, run.search_id);
-      return json({ accepted: report.listings.length, rejected: report.rejected, searchStatus: outcome?.status ?? null });
+      return json({ accepted: report.listings.length, rejected: report.rejected, requeued: requeue, searchStatus: outcome?.status ?? null });
     }
 
     return json({ error: 'UNKNOWN_ACTION' }, 400);

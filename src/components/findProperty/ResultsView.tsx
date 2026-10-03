@@ -1,5 +1,5 @@
 import { Loader2, RotateCcw, Search } from 'lucide-react';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { ResultGroup } from '@/research-core/marketplace/pipeline';
 import { type PropertyView, type SearchSummary, searchResults } from '@/services/marketplaceSearch';
 import { PropertyCard } from './PropertyCard';
@@ -10,7 +10,7 @@ const GROUPS: Array<{ group: ResultGroup; title: string; body?: string; size: nu
   { group: 'BEST', title: 'mps_group_best', size: 6 },
   { group: 'OWNER', title: 'mps_group_owner', size: 6 },
   { group: 'UPGRADE', title: 'mps_group_upgrade', body: 'mps_group_upgrade_body', size: 3 },
-  { group: 'MORE', title: 'mps_group_more', size: 12 },
+  { group: 'MORE', title: 'mps_group_more', size: 24 },
 ];
 
 function GroupSection({ t, search, group, title, body, size, onOpen, compare, onToggleCompare, version }: {
@@ -25,13 +25,25 @@ function GroupSection({ t, search, group, title, body, size, onOpen, compare, on
     setLoading(true);
     try {
       const page = await searchResults(search.id, group, offset, size);
-      setItems((cur) => (offset === 0 ? page.items : [...cur, ...page.items]));
+      setItems((cur) => {
+        if (offset === 0) return page.items;
+        const seen = new Set(cur.map((p) => p.key));
+        return [...cur, ...page.items.filter((p) => !seen.has(p.key))];
+      });
       setNext(page.nextOffset);
     } finally {
       setLoading(false);
     }
   }, [search.id, group, size]);
   useEffect(() => { if (total) void load(0); else setItems([]); }, [total, version, load]);
+  const sentinel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = sentinel.current;
+    if (!el || next === null || loading || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver((entries) => { if (entries.some((e) => e.isIntersecting)) void load(next); }, { rootMargin: '600px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [next, loading, load]);
   if (!total) return null;
   return (
     <section aria-labelledby={`mps-g-${group}`} className="space-y-4">
@@ -44,12 +56,20 @@ function GroupSection({ t, search, group, title, body, size, onOpen, compare, on
           <PropertyCard key={p.key} p={p} t={t} onOpen={() => onOpen(p)} compareSelected={compare.includes(p.key)} onToggleCompare={() => onToggleCompare(p)} />
         ))}
       </div>
-      {next !== null ? (
-        <button type="button" onClick={() => void load(next)} disabled={loading}
-          className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-border bg-card px-5 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))]">
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}{t('mps_show_more')}
-        </button>
+      {items.length < total ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-sm text-muted-foreground" aria-live="polite">{t('mps_shown_of', { shown: items.length, total })}</p>
+          {next !== null ? (
+            <button type="button" onClick={() => void load(next)} disabled={loading}
+              className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-border bg-card px-5 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))]">
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}{t('mps_show_more')}
+            </button>
+          ) : null}
+        </div>
       ) : null}
+      {/* Progressive loading: the next page arrives as the customer reaches the end, so
+          hundreds of results never render at once and none is ever out of reach. */}
+      <div ref={sentinel} aria-hidden="true" className="h-px" />
     </section>
   );
 }
@@ -59,7 +79,8 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
   onNewSearch: () => void; onChangeCriteria: (field: 'price' | 'area') => void; deepSearchAvailable: boolean; version: number;
 }) {
   const chips = criteriaChips(search.brief, t);
-  const totalShown = Object.values(search.groups).reduce((s, n) => s + n, 0);
+  /* The real number of valid matching properties; ranking groups partition it, never cap it. */
+  const totalShown = search.totalProperties ?? Object.values(search.groups).reduce((s, n) => s + n, 0);
   return (
     <div className="space-y-10">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -71,6 +92,13 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
           <Search className="h-4 w-4" aria-hidden="true" />{t('mps_new_search')}
         </button>
       </div>
+
+      {totalShown > 0 ? (
+        <div className="space-y-1">
+          <p className="font-display text-xl font-semibold text-foreground sm:text-2xl" data-testid="mps-total">{t('mps_total_found', { n: totalShown })}</p>
+          <p className="text-sm text-muted-foreground">{t('mps_total_note')}</p>
+        </div>
+      ) : null}
 
       {!search.terminal ? (
         <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">

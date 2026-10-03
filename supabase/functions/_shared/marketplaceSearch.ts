@@ -18,18 +18,62 @@ import {
   RESULTS_INTELLIGENCE_INSTRUCTIONS, RESULTS_INTELLIGENCE_JSON_SCHEMA,
 } from '../../../src/research-core/marketplace/results-intelligence.ts';
 import {
-  deriveSearchStatus, isTerminalSearch, timedOut, type SearchStatus, type WorkerRunState,
+  deriveSearchStatus, isTerminalSearch, type SearchStatus, type WorkerRunState,
 } from '../../../src/research-core/marketplace/lifecycle.ts';
 import type { ExternalListingCandidate, MarketplaceSearchRequest, WorkerRunStatus } from '../../../src/research-core/marketplace/worker-contract.ts';
 import { converterFrom, ratesFromTable } from '../../../src/research-core/match/structured-gates.ts';
 import type { AiUsage, SearchTelemetry } from '../../../src/research-core/marketplace/telemetry.ts';
+import { type RunLease, reapDecision } from '../../../src/research-core/marketplace/dispatch.ts';
 import { estimatedProviderCost } from './providerCost.ts';
 
 // deno-lint-ignore no-explicit-any
 type Db = any;
 
 export const MARKETPLACE_SWITCH = 'marketplace_search_enabled';
-export const MAX_LISTINGS_PER_SEARCH = 5000;
+/** PostgREST returns at most 1000 rows per request; every full read pages at this size. */
+export const PAGE_ROWS = 1000;
+
+/**
+ * Read EVERY row of a query, page by page. A single select silently stops at
+ * the server's row cap, which would drop listings and so hide valid results.
+ */
+// deno-lint-ignore no-explicit-any
+export async function readAll<T>(query: (from: number, to: number) => any): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE_ROWS) {
+    const { data, error } = await query(from, from + PAGE_ROWS - 1);
+    if (error) throw new Error(error.message);
+    out.push(...((data ?? []) as T[]));
+    if (!data || data.length < PAGE_ROWS) return out;
+  }
+}
+
+/**
+ * Apply lease/deadline decisions (dispatch.ts) to non-terminal runs: an expired
+ * lease is re-queued while its retry budget lasts, a run that already delivered
+ * keeps its results as PARTIAL, a run past its deadline closes. Each run is
+ * decided alone; no run's failure touches another.
+ */
+export async function reapRuns(db: Db, rows: Array<Record<string, unknown>>, maxAttemptsOf: (workerId: string) => number, now = new Date()) {
+  const changed: Array<{ id: string; status: string }> = [];
+  for (const r of rows) {
+    const lease: RunLease = {
+      id: String(r.id), workerId: String(r.worker_id), status: r.status as WorkerRunStatus, attempts: Number(r.attempts) || 0,
+      returnedCount: Number(r.returned_count) || 0, leaseExpiresAt: (r.lease_expires_at as string) ?? null, deadlineAt: String(r.deadline_at),
+    };
+    const d = reapDecision(lease, now, maxAttemptsOf(lease.workerId));
+    if (!d) continue;
+    const update = d.action === 'REQUEUE'
+      ? { status: 'QUEUED', lease_expires_at: null, updated_at: now.toISOString() }
+      : { status: d.status, lease_expires_at: null, completed_at: now.toISOString(), updated_at: now.toISOString(),
+          errors: [...((r.errors as unknown[]) ?? []), { code: d.reason, message: '' }] };
+    /* Guarded on the status we decided from, so a concurrent report always wins. */
+    const { data } = await db.from('discovery_marketplace_worker_runs').update(update)
+      .eq('id', lease.id).eq('status', lease.status).select('id,status');
+    if (data?.length) { changed.push({ id: lease.id, status: update.status }); r.status = update.status; }
+  }
+  return changed;
+}
 
 export const searchModel = () =>
   Deno.env.get('OPENAI_SEARCH_MODEL') ?? Deno.env.get('OPENAI_FAST_MODEL') ?? Deno.env.get('OPENAI_MODEL') ?? 'gpt-4o-mini';
@@ -129,23 +173,23 @@ export async function processAndStore(db: Db, searchId: string, now = new Date()
   if (search.status === 'CANCELLED') return { status: 'CANCELLED', properties: 0, strongMatches: 0 };
 
   const { data: runRows } = await db.from('discovery_marketplace_worker_runs')
-    .select('id,worker_id,status,deadline_at,returned_count,metrics').eq('search_id', searchId);
+    .select('id,worker_id,status,deadline_at,returned_count,attempts,lease_expires_at,errors,metrics').eq('search_id', searchId);
+  const workerIds = [...new Set((runRows ?? []).map((r: Record<string, unknown>) => String(r.worker_id)))];
+  const { data: workerRows } = workerIds.length
+    ? await db.from('discovery_marketplace_workers').select('worker_id,max_attempts').in('worker_id', workerIds)
+    : { data: [] };
+  const attemptsOf = new Map<string, number>((workerRows ?? []).map((w: { worker_id: string; max_attempts: number }) => [w.worker_id, Number(w.max_attempts) || 3] as [string, number]));
+  await reapRuns(db, (runRows ?? []) as Array<Record<string, unknown>>, (id) => attemptsOf.get(id) ?? 3, now);
   const runs: WorkerRunState[] = (runRows ?? []).map((r: Record<string, unknown>) => ({
     workerId: String(r.worker_id), status: r.status as WorkerRunStatus, deadlineAt: r.deadline_at as string, returnedCount: Number(r.returned_count) || 0,
   }));
-  const overdue = timedOut(runs, now);
-  if (overdue.length) {
-    await db.from('discovery_marketplace_worker_runs')
-      .update({ status: 'TIMED_OUT', completed_at: now.toISOString(), updated_at: now.toISOString() })
-      .eq('search_id', searchId).in('worker_id', overdue)
-      .in('status', ['QUEUED', 'SEARCHING', 'RESULTS_RECEIVED', 'PROCESSING']);
-    for (const r of runs) if (overdue.includes(r.workerId)) r.status = 'TIMED_OUT';
-  }
 
-  const { data: listingRows } = await db.from('discovery_marketplace_listings')
-    .select('raw,worker_run_id').eq('search_id', searchId).order('created_at', { ascending: true }).limit(MAX_LISTINGS_PER_SEARCH);
-  const workerOfRun = new Map((runRows ?? []).map((r: Record<string, unknown>) => [r.id, String(r.worker_id)]));
-  const candidates = (listingRows ?? []).map((l: { raw: ExternalListingCandidate; worker_run_id: string }) => ({
+  /* EVERY listing every worker reported, paged: nothing is dropped at a row cap. */
+  const listingRows = await readAll<{ raw: ExternalListingCandidate; worker_run_id: string }>((from, to) =>
+    db.from('discovery_marketplace_listings').select('raw,worker_run_id').eq('search_id', searchId)
+      .order('created_at', { ascending: true }).order('id', { ascending: true }).range(from, to));
+  const workerOfRun = new Map<string, string>((runRows ?? []).map((r: Record<string, unknown>) => [String(r.id), String(r.worker_id)] as [string, string]));
+  const candidates = listingRows.map((l) => ({
     workerId: workerOfRun.get(l.worker_run_id) ?? 'unknown', candidate: l.raw,
   }));
 
@@ -185,8 +229,10 @@ export async function processAndStore(db: Db, searchId: string, now = new Date()
     await db.from('discovery_marketplace_properties').upsert(batch, { onConflict: 'search_id,property_key' });
   }
   const keep = rows.map((r) => r.property_key);
-  const { data: existing } = await db.from('discovery_marketplace_properties').select('property_key').eq('search_id', searchId);
-  const stale = (existing ?? []).map((e: { property_key: string }) => e.property_key).filter((k: string) => !keep.includes(k));
+  const existing = await readAll<{ property_key: string }>((from, to) =>
+    db.from('discovery_marketplace_properties').select('property_key').eq('search_id', searchId).order('property_key').range(from, to));
+  const keepSet = new Set(keep);
+  const stale = existing.map((e) => e.property_key).filter((k) => !keepSet.has(k));
   for (const batch of chunk(stale, 200)) {
     await db.from('discovery_marketplace_properties').delete().eq('search_id', searchId).in('property_key', batch);
   }

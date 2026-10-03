@@ -33,6 +33,8 @@ export interface SearchSummary {
     strongMatches: number; sourcesCompleted: number; sourcesTotal: number;
   };
   groups: Record<ResultGroup, number>;
+  /** Every valid matching property across all groups (exact database count). */
+  totalProperties: number;
   partial: boolean;
   unavailable: 'NO_SOURCES' | 'FAILED' | null;
 }

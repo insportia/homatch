@@ -9,26 +9,8 @@
  */
 export const MARKETPLACE_SEARCH_STRINGS = {
   /* ── Mode selection (APPROVED ka) ── */
-  mps_mode_title: ['Find the best property for you', 'იპოვე შენთვის საუკეთესო უძრავი ქონება', 'Найдите лучшую недвижимость для себя', 'Size en uygun mülkü bulun', 'اعثر على أفضل عقار يناسبك', 'מצאו את הנכס הטוב ביותר עבורכם'],
-  mps_mode_subtitle: [
-    'Tell me what you are looking for and HOMATCH will help you refine your request. The more specific you are about what you want, the better the result will be.',
-    'მომიყევი რას ეძებ და HOMATCH დაგეხმარება მოთხოვნის დაზუსტებაში. რაც უფრო კონკრეტულად აღწერ შენს სურვილებს, მით უკეთესი იქნება შედეგიც.',
-    'Расскажите, что вы ищете, и HOMATCH поможет уточнить запрос. Чем конкретнее вы опишете свои пожелания, тем лучше будет результат.',
-    'Ne aradığınızı anlatın, HOMATCH talebinizi netleştirmenize yardımcı olsun. İsteklerinizi ne kadar net anlatırsanız sonuç o kadar iyi olur.',
-    'أخبرني بما تبحث عنه وسيساعدك HOMATCH على تحديد طلبك. كلما وصفت رغباتك بدقة أكبر، كانت النتيجة أفضل.',
-    'ספרו לי מה אתם מחפשים ו־HOMATCH יעזור לדייק את הבקשה. ככל שתתארו את הרצונות שלכם בצורה מדויקת יותר, כך התוצאה תהיה טובה יותר.',
-  ],
   mps_marketplace_title: ['Marketplace Search', 'Marketplace Search', 'Marketplace Search', 'Marketplace Search', 'Marketplace Search', 'Marketplace Search'],
   mps_marketplace_badge: ['Free', 'უფასო', 'Бесплатно', 'Ücretsiz', 'مجاني', 'חינם'],
-  mps_marketplace_description: [
-    'Search for property on several marketplaces at once. HOMATCH collects current listings, combines listings for the same property, compares prices and helps you find the best options.',
-    'ერთდროულად მოძებნე უძრავი ქონება სხვადასხვა მარკეტფლეისზე. HOMATCH შეაგროვებს მიმდინარე განცხადებებს, გააერთიანებს ერთსა და იმავე ქონებაზე განთავსებულ განცხადებებს, შეადარებს ფასებს და დაგეხმარება საუკეთესო ვარიანტების აღმოჩენაში.',
-    'Ищите недвижимость сразу на нескольких площадках. HOMATCH соберёт актуальные объявления, объединит объявления об одном и том же объекте, сравнит цены и поможет найти лучшие варианты.',
-    'Mülkleri aynı anda birden fazla ilan sitesinde arayın. HOMATCH güncel ilanları toplar, aynı mülke ait ilanları birleştirir, fiyatları karşılaştırır ve en iyi seçenekleri bulmanıza yardımcı olur.',
-    'ابحث عن العقارات في عدة منصات في وقت واحد. يجمع HOMATCH الإعلانات الحالية، ويوحّد الإعلانات الخاصة بالعقار نفسه، ويقارن الأسعار ويساعدك على اكتشاف أفضل الخيارات.',
-    'חפשו נכסים בכמה אתרי מודעות בבת אחת. HOMATCH אוסף את המודעות העדכניות, מאחד מודעות של אותו נכס, משווה מחירים ועוזר לכם למצוא את האפשרויות הטובות ביותר.',
-  ],
-  mps_marketplace_cta: ["Let's start searching", 'დავიწყოთ ძიება', 'Начнём поиск', 'Aramaya başlayalım', 'لنبدأ البحث', 'בואו נתחיל לחפש'],
   mps_deep_title: ['Deep Search', 'Deep Search', 'Deep Search', 'Deep Search', 'Deep Search', 'Deep Search'],
   mps_deep_description: [
     'Want to search more widely? Deep Search looks beyond marketplaces, in different languages and in different types of public sources. This way we may find options that do not appear on ordinary marketplaces.',
@@ -66,6 +48,97 @@ export const MARKETPLACE_SEARCH_STRINGS = {
     'זהו חיפוש נוסף. אפשר להשתמש בתוצאות של Marketplace Search גם בלי Deep Search.',
   ],
   mps_hero_subtitle: ['Marketplace Search', 'Marketplace Search', 'Marketplace Search', 'Marketplace Search', 'Marketplace Search', 'Marketplace Search'],
+
+  /* ── v2 approved copy (ka verbatim; title has no punctuation by decision) ── */
+  mps_mode_title: [
+    'One request across hundreds of marketplaces and every matching listing in one place',
+    'შენი მოთხოვნა ასობით მარკეტფლეისი ყველა შესაბამისი განცხადება ერთ სივრცეში',
+    'Один запрос сотни площадок и все подходящие объявления в одном месте',
+    'Tek talep yüzlerce ilan sitesi ve tüm uygun ilanlar tek bir yerde',
+    'طلب واحد مئات المنصات وكل الإعلانات المناسبة في مكان واحد',
+    'בקשה אחת מאות אתרי מודעות וכל המודעות המתאימות במקום אחד',
+  ],
+  mps_mode_intro_1: [
+    'Stop losing hours searching different sites, seeing the same listings again and comparing dozens of pages with each other.',
+    'აღარ დაკარგო საათები სხვადასხვა საიტზე ძებნაში, ერთი და იმავე განცხადებების ნახვასა და ათობით გვერდის ერთმანეთთან შედარებაში.',
+    'Хватит тратить часы на поиск по разным сайтам, просмотр одних и тех же объявлений и сравнение десятков страниц.',
+    'Farklı sitelerde arama yapmak, aynı ilanları tekrar görmek ve onlarca sayfayı birbiriyle karşılaştırmak için saatler harcamayın.',
+    'لا تُضِع الساعات في البحث عبر مواقع مختلفة ومشاهدة الإعلانات نفسها ومقارنة عشرات الصفحات ببعضها.',
+    'אל תבזבזו עוד שעות על חיפוש באתרים שונים, צפייה באותן מודעות שוב ושוב והשוואה בין עשרות עמודים.',
+  ],
+  mps_mode_intro_2: [
+    'Just tell HOMATCH what you are looking for.',
+    'უბრალოდ უთხარი HOMATCH-ს რას ეძებ.',
+    'Просто скажите HOMATCH, что вы ищете.',
+    "Sadece HOMATCH'e ne aradığınızı söyleyin.",
+    'فقط أخبر HOMATCH بما تبحث عنه.',
+    'פשוט ספרו ל־HOMATCH מה אתם מחפשים.',
+  ],
+  mps_mode_intro_3: [
+    'We search at the same time for listings that match your request in Georgia and on the foreign platforms where Georgian property is published.',
+    'ჩვენ ერთდროულად მოვძებნით შენს მოთხოვნასთან შესაბამის განცხადებებს საქართველოში და იმ უცხოურ პლატფორმებზეც, სადაც საქართველოს უძრავი ქონება ქვეყნდება.',
+    'Мы одновременно найдём объявления, подходящие под ваш запрос, в Грузии и на зарубежных платформах, где публикуется грузинская недвижимость.',
+    "Talebinize uygun ilanları aynı anda Gürcistan'da ve Gürcistan mülklerinin yayımlandığı yabancı platformlarda ararız.",
+    'سنبحث في الوقت نفسه عن الإعلانات المطابقة لطلبك في جورجيا وعلى المنصات الأجنبية التي تُنشر فيها عقارات جورجيا.',
+    'נחפש במקביל מודעות שמתאימות לבקשה שלכם בגאורגיה ובפלטפורמות בחו״ל שבהן מתפרסמים נכסים בגאורגיה.',
+  ],
+  mps_mode_intro_4: [
+    'In a few minutes you get collected, filtered results tailored to your request in one place, so your time goes into making the right choice, not into searching.',
+    'რამდენიმე წუთში ერთ სივრცეში მიიღებ შეგროვებულ, გაფილტრულ და შენს მოთხოვნაზე მორგებულ შედეგებს, რათა დრო ძიებაზე კი არა, სწორი არჩევანის გაკეთებაზე დახარჯო.',
+    'Через несколько минут вы получите в одном месте собранные, отфильтрованные и подобранные под ваш запрос результаты, чтобы тратить время не на поиск, а на правильный выбор.',
+    'Birkaç dakika içinde toplanmış, filtrelenmiş ve talebinize göre uyarlanmış sonuçları tek bir yerde alırsınız; böylece zamanınızı aramaya değil, doğru seçimi yapmaya ayırırsınız.',
+    'خلال دقائق ستحصل في مكان واحد على نتائج مجمّعة ومُصفّاة ومناسبة لطلبك، لتقضي وقتك في اتخاذ القرار الصحيح لا في البحث.',
+    'בתוך כמה דקות תקבלו במקום אחד תוצאות שנאספו, סוננו והותאמו לבקשה שלכם, כדי שהזמן שלכם ילך לבחירה הנכונה ולא לחיפוש.',
+  ],
+  mps_marketplace_tagline: [
+    'One request. Many sources. Far less searching.',
+    'ერთი მოთხოვნა. ბევრი წყარო. ბევრად ნაკლები ძებნა.',
+    'Один запрос. Много источников. Гораздо меньше поиска.',
+    'Tek talep. Çok kaynak. Çok daha az arama.',
+    'طلب واحد. مصادر كثيرة. بحث أقل بكثير.',
+    'בקשה אחת. מקורות רבים. הרבה פחות חיפוש.',
+  ],
+  mps_marketplace_description: [
+    'Tell us what type of property you are looking for, where and with what budget. HOMATCH does the rest.',
+    'მიუთითე რა ტიპის ქონებას ეძებ, სად და რა ბიუჯეტით. დანარჩენ სამუშაოს HOMATCH შეასრულებს.',
+    'Укажите, какую недвижимость вы ищете, где и с каким бюджетом. Остальное сделает HOMATCH.',
+    'Ne tür bir mülk aradığınızı, nerede ve hangi bütçeyle olduğunu belirtin. Gerisini HOMATCH yapar.',
+    'حدّد نوع العقار الذي تبحث عنه وأين وبأي ميزانية. وسيتولى HOMATCH الباقي.',
+    'ציינו איזה סוג נכס אתם מחפשים, איפה ובאיזה תקציב. את השאר HOMATCH יעשה.',
+  ],
+  mps_marketplace_description_2: [
+    'We search current listings across different sources, combine duplicate listings of the same property, compare prices and details, and show you the options closest to your request first.',
+    'ჩვენ მოვძებნით მიმდინარე განცხადებებს სხვადასხვა წყაროში, გავაერთიანებთ ერთი და იმავე ქონების დუბლირებულ განცხადებებს, შევადარებთ ფასებსა და ინფორმაციას და შენს მოთხოვნასთან ყველაზე ახლოს მდგომ ვარიანტებს პირველ რიგში გაჩვენებთ.',
+    'Мы найдём актуальные объявления в разных источниках, объединим дубли одного и того же объекта, сравним цены и данные и первыми покажем варианты, ближе всего к вашему запросу.',
+    'Farklı kaynaklardaki güncel ilanları arar, aynı mülkün tekrarlanan ilanlarını birleştirir, fiyatları ve bilgileri karşılaştırır ve talebinize en yakın seçenekleri önce gösteririz.',
+    'سنبحث عن الإعلانات الحالية في مصادر مختلفة، ونوحّد الإعلانات المكررة للعقار نفسه، ونقارن الأسعار والمعلومات، ونعرض لك أولًا الخيارات الأقرب إلى طلبك.',
+    'נחפש מודעות עדכניות במקורות שונים, נאחד מודעות כפולות של אותו נכס, נשווה מחירים ומידע ונציג לכם קודם את האפשרויות הקרובות ביותר לבקשה שלכם.',
+  ],
+  mps_marketplace_cta: ['Find property for me', 'მომიძებნე ქონება', 'Найдите мне недвижимость', 'Benim için mülk bul', 'ابحث لي عن عقار', 'מצאו לי נכס'],
+  mps_searching_title: ['HOMATCH is already searching for you', 'HOMATCH უკვე ეძებს შენთვის', 'HOMATCH уже ищет для вас', 'HOMATCH sizin için aramaya başladı', 'HOMATCH يبحث من أجلك الآن', 'HOMATCH כבר מחפש בשבילכם'],
+  mps_searching_body: [
+    'Results appear step by step, as soon as we receive them from different sources.',
+    'შედეგები გამოჩნდება ეტაპობრივად, როგორც კი სხვადასხვა წყაროდან მივიღებთ.',
+    'Результаты будут появляться постепенно, как только мы получим их из разных источников.',
+    'Sonuçlar farklı kaynaklardan geldikçe adım adım görünecek.',
+    'ستظهر النتائج تدريجيًا فور وصولها من مصادر مختلفة.',
+    'התוצאות יופיעו בהדרגה, ברגע שנקבל אותן ממקורות שונים.',
+  ],
+  mps_snake_status: ['Search continues...', 'ძიება გრძელდება...', 'Поиск продолжается...', 'Arama sürüyor...', 'البحث مستمر...', 'החיפוש נמשך...'],
+  mps_snake_ready: ['Results are ready', 'შედეგები მზადაა', 'Результаты готовы', 'Sonuçlar hazır', 'النتائج جاهزة', 'התוצאות מוכנות'],
+  mps_snake_ready_cta: ['View', 'ნახვა', 'Смотреть', 'Gör', 'عرض', 'צפייה'],
+  mps_snake_close: ['Close the game', 'თამაშის დახურვა', 'Закрыть игру', 'Oyunu kapat', 'إغلاق اللعبة', 'סגירת המשחק'],
+  mps_snake_open: ['Open Snake', 'Snake ის გახსნა', 'Открыть Snake', "Snake'i aç", 'فتح Snake', 'פתיחת Snake'],
+  mps_total_found: ['{{n}} matching properties found', 'ნაპოვნია {{n}} შესაბამისი ქონება', 'Найдено подходящих объектов: {{n}}', '{{n}} uygun mülk bulundu', 'تم العثور على {{n}} عقارات مناسبة', 'נמצאו {{n}} נכסים מתאימים'],
+  mps_total_note: [
+    'Every matching property is here. The strongest options come first.',
+    'აქ ყველა შესაბამისი ქონებაა. ყველაზე ძლიერი ვარიანტები პირველ რიგში ჩანს.',
+    'Здесь все подходящие объекты. Самые сильные варианты показаны первыми.',
+    'Uygun mülklerin tamamı burada. En güçlü seçenekler önce gösterilir.',
+    'كل العقارات المناسبة هنا. تظهر الخيارات الأقوى أولًا.',
+    'כל הנכסים המתאימים נמצאים כאן. האפשרויות החזקות ביותר מוצגות ראשונות.',
+  ],
+  mps_shown_of: ['Showing {{shown}} of {{total}}', 'ნაჩვენებია {{shown}} {{total}} დან', 'Показано {{shown}} из {{total}}', '{{total}} sonuçtan {{shown}} gösteriliyor', 'يُعرض {{shown}} من {{total}}', 'מוצגים {{shown}} מתוך {{total}}'],
 
   /* ── First message (APPROVED ka) ── */
   mps_intro_title: ["Tell me what you're looking for 🏡", 'მომიყევი, რას ეძებ 🏡', 'Расскажите, что вы ищете 🏡', 'Ne aradığınızı anlatın 🏡', 'أخبرني بما تبحث عنه 🏡', 'ספרו לי מה אתם מחפשים 🏡'],
@@ -207,7 +280,6 @@ export const MARKETPLACE_SEARCH_STRINGS = {
   mps_ready_change: ['Change', 'შეცვლა', 'Изменить', 'Değiştir', 'تغيير', 'שינוי'],
 
   /* ── Searching (APPROVED ka where given) ── */
-  mps_searching_title: ['Searching for you', 'ვეძებთ შენთვის', 'Ищем для вас', 'Sizin için arıyoruz', 'نبحث من أجلك', 'מחפשים בשבילכם'],
   mps_sources_progress: ['{{done}} of {{total}} sources checked', 'შემოწმებულია {{done}} წყარო {{total}} დან', 'Проверено источников: {{done}} из {{total}}', '{{total}} kaynaktan {{done}} tanesi kontrol edildi', 'تم فحص {{done}} من {{total}} مصادر', 'נבדקו {{done}} מתוך {{total}} מקורות'],
   mps_stages_label: ['Search stages', 'ძიების ეტაპები', 'Этапы поиска', 'Arama aşamaları', 'مراحل البحث', 'שלבי החיפוש'],
   mps_stage_searching: ['Searching current listings', 'ვეძებთ მიმდინარე განცხადებებს', 'Ищем актуальные объявления', 'Güncel ilanları arıyoruz', 'نبحث في الإعلانات الحالية', 'מחפשים מודעות עדכניות'],
@@ -232,17 +304,13 @@ export const MARKETPLACE_SEARCH_STRINGS = {
     'החיפוש עדיין נמשך. אפשר לראות את התוצאות כבר עכשיו, ואת שאר האפשרויות נוסיף ברגע שהוא יסתיים.',
   ],
   mps_progressive_cta: ['See results', 'შედეგების ნახვა', 'Посмотреть результаты', 'Sonuçları gör', 'عرض النتائج', 'לצפייה בתוצאות'],
-  mps_found_n: ["We've already found {{n}} interesting options", 'უკვე ვიპოვეთ {{n}} საინტერესო ვარიანტი', 'Уже найдено интересных вариантов: {{n}}', 'Şimdiden {{n}} ilginç seçenek bulduk', 'وجدنا بالفعل {{n}} خيارات مثيرة للاهتمام', 'כבר מצאנו {{n}} אפשרויות מעניינות'],
   mps_cancel: ['Stop search', 'ძიების შეწყვეტა', 'Остановить поиск', 'Aramayı durdur', 'إيقاف البحث', 'עצירת החיפוש'],
   mps_unavailable_title: ['The search could not run this time', 'ძიება ამჯერად ვერ შესრულდა', 'Сейчас поиск выполнить не удалось', 'Arama bu sefer yapılamadı', 'تعذّر إجراء البحث هذه المرة', 'החיפוש לא בוצע הפעם'],
   mps_unavailable_no_sources: ['No source is available for this search right now.', 'ამ ეტაპზე ამ ძიებისთვის ხელმისაწვდომი წყარო არ არის.', 'Сейчас для этого поиска нет доступных источников.', 'Şu anda bu arama için uygun bir kaynak yok.', 'لا يوجد مصدر متاح لهذا البحث حاليًا.', 'כרגע אין מקור זמין לחיפוש הזה.'],
   mps_unavailable_failed: ['The sources could not be checked. Please try again a little later.', 'წყაროების შემოწმება ვერ მოხერხდა. სცადე ცოტა მოგვიანებით.', 'Не удалось проверить источники. Попробуйте чуть позже.', 'Kaynaklar kontrol edilemedi. Lütfen biraz sonra tekrar deneyin.', 'تعذّر فحص المصادر. يُرجى المحاولة بعد قليل.', 'לא ניתן היה לבדוק את המקורות. נסו שוב מעט מאוחר יותר.'],
 
   /* ── Snake (APPROVED ka for the CTA) ── */
-  mps_snake_cta: ['Play while HOMATCH searches', 'ითამაშე სანამ HOMATCH ეძებს', 'Поиграйте, пока HOMATCH ищет', 'HOMATCH ararken oynayın', 'العب بينما يبحث HOMATCH', 'שחקו בזמן ש־HOMATCH מחפש'],
   mps_snake_game: ['Snake', 'Snake', 'Snake', 'Snake', 'Snake', 'Snake'],
-  mps_snake_back: ['View search', 'ძიების ნახვა', 'Смотреть поиск', 'Aramayı gör', 'عرض البحث', 'צפייה בחיפוש'],
-  mps_snake_optional: ['Optional. The search keeps going meanwhile.', 'სურვილისამებრ. ძიება ამ დროს გრძელდება.', 'По желанию. Поиск тем временем продолжается.', 'İsteğe bağlı. Arama bu sırada devam eder.', 'اختياري. يستمر البحث في الأثناء.', 'לא חובה. החיפוש ממשיך בינתיים.'],
   mps_snake_score: ['Score: {{n}}', 'ქულა: {{n}}', 'Счёт: {{n}}', 'Skor: {{n}}', 'النقاط: {{n}}', 'ניקוד: {{n}}'],
   mps_snake_pause: ['Pause', 'პაუზა', 'Пауза', 'Duraklat', 'إيقاف مؤقت', 'השהיה'],
   mps_snake_play: ['Play', 'თამაში', 'Играть', 'Oyna', 'لعب', 'שחקו'],
@@ -443,3 +511,6 @@ export const MARKETPLACE_SEARCH_STRINGS = {
   mps_admin_col_components: ['Ranking components', 'რანჟირების კომპონენტები', 'Компоненты ранжирования', 'Sıralama bileşenleri', 'مكوّنات الترتيب', 'רכיבי דירוג'],
   mps_admin_no_workers: ['No worker is registered.', 'რეგისტრირებული ვორქერი არ არის.', 'Нет зарегистрированных воркеров.', 'Kayıtlı çalışan yok.', 'لا يوجد عامل مسجّل.', 'אין עובד רשום.'],
 };
+
+/* Keys this workstream retired; the applier removes them from every bundle (idempotent). */
+export const MARKETPLACE_SEARCH_RETIRED = ['mps_mode_subtitle', 'mps_snake_cta', 'mps_snake_optional', 'mps_snake_back', 'mps_found_n'];

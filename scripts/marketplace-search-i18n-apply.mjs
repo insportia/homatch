@@ -8,7 +8,8 @@
  */
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MARKETPLACE_SEARCH_STRINGS } from './marketplace-search-i18n-data.mjs';
+import fs from 'node:fs';
+import { MARKETPLACE_SEARCH_RETIRED, MARKETPLACE_SEARCH_STRINGS } from './marketplace-search-i18n-data.mjs';
 import { splice, validate } from './lib/i18nSplice.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -31,4 +32,15 @@ if (result.collisions.length) {
   console.error(`[${TAG}] collisions (left untouched): ${result.collisions.join(', ')}`);
   process.exit(1);
 }
+/* Retired keys: removed from all six bundles, whole lines only; a no-op once gone. */
+let source = fs.readFileSync(FILE, 'utf8');
+let removed = 0;
+for (const key of MARKETPLACE_SEARCH_RETIRED) {
+  if (MARKETPLACE_SEARCH_STRINGS[key]) throw new Error(`[${TAG}] ${key} is both retired and defined`);
+  const line = new RegExp(`^  ${key}: .*,\\n`, 'gm');
+  source = source.replace(line, () => { removed += 1; return ''; });
+}
+fs.writeFileSync(FILE, source, 'utf8');
+
+console.log(`[${TAG}] ${removed} retired line(s) removed.`);
 console.log(`[${TAG}] ${result.added} value(s) added, ${result.unchanged} unchanged, ${result.keys} key(s).`);

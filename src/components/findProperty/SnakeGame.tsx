@@ -26,7 +26,7 @@ function freeCell(snake: Cell[], seed: number): Cell {
   return { x: 0, y: 0 };
 }
 
-export function SnakeGame({ t, notice }: { t: T; notice?: React.ReactNode }) {
+export function SnakeGame({ t, autoFocus = false }: { t: T; autoFocus?: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const board = useRef<HTMLDivElement>(null);
   const state = useRef({ snake: [{ x: 8, y: 9 }, { x: 7, y: 9 }, { x: 6, y: 9 }] as Cell[], dir: 'R' as Dir, next: 'R' as Dir, food: { x: 12, y: 9 } as Cell, seed: 1 });
@@ -71,7 +71,17 @@ export function SnakeGame({ t, notice }: { t: T; notice?: React.ReactNode }) {
     if (!running && !over) setRunning(true);
   }, [running, over]);
 
-  useEffect(() => { draw(); }, [draw]);
+  useEffect(() => { draw(); if (autoFocus) board.current?.focus(); }, [draw, autoFocus]);
+
+  /* While a finger is on the board the page must not scroll: a swipe is a turn, not a scroll.
+     Native listener because React's touch handlers are passive and cannot preventDefault. */
+  useEffect(() => {
+    const el = board.current;
+    if (!el) return;
+    const stop = (e: TouchEvent) => { e.preventDefault(); };
+    el.addEventListener('touchmove', stop, { passive: false });
+    return () => el.removeEventListener('touchmove', stop);
+  }, []);
 
   useEffect(() => {
     if (!running) return;
@@ -131,6 +141,15 @@ export function SnakeGame({ t, notice }: { t: T; notice?: React.ReactNode }) {
           else if (e.key === ' ') { e.preventDefault(); if (over) reset(); else setRunning((r) => !r); }
         }}
         onPointerDown={(e) => { touch.current = { x: e.clientX, y: e.clientY }; }}
+        onPointerMove={(e) => {
+          const start = touch.current;
+          if (!start || e.pointerType === 'mouse') return;
+          const dx = e.clientX - start.x;
+          const dy = e.clientY - start.y;
+          if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return;
+          turn(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'R' : 'L') : (dy > 0 ? 'D' : 'U'));
+          touch.current = { x: e.clientX, y: e.clientY };
+        }}
         onPointerUp={(e) => {
           const start = touch.current;
           touch.current = null;
@@ -149,7 +168,6 @@ export function SnakeGame({ t, notice }: { t: T; notice?: React.ReactNode }) {
             <p className="text-sm font-medium text-white">{over ? t('mps_snake_over', { n: score }) : t('mps_snake_hint')}</p>
           </div>
         )}
-        {notice ? <div className="absolute inset-x-3 bottom-3">{notice}</div> : null}
       </div>
     </div>
   );

@@ -83,12 +83,57 @@ begin
   raise notice 'MARKETPLACE SEARCH CHECKS: PASS';
 end $$;
 
+-- concurrency: runs of one search are claimable in parallel by different workers; per-provider and
+-- global bounds hold; the retry budget is enforced; a claim sets an independent lease.
+do $$
+declare u uuid; s1 uuid; s2 uuid; n int; lease timestamptz;
+begin
+  insert into public.users default values returning id into u;
+  insert into public.discovery_marketplace_workers(worker_id, source_key, source_name, execution_mode, state, enabled, max_concurrency, max_attempts)
+  values ('w-a', 'a', 'A', 'HTTP', 'ACTIVE', true, 1, 2), ('w-b', 'b', 'B', 'BROWSER', 'ACTIVE', true, 2, 3);
+  insert into public.discovery_marketplace_searches(user_id, idempotency_key, status, brief, request) values (u, 'conc-00001', 'DISPATCHING', '{}', '{}') returning id into s1;
+  insert into public.discovery_marketplace_searches(user_id, idempotency_key, status, brief, request) values (u, 'conc-00002', 'DISPATCHING', '{}', '{}') returning id into s2;
+  insert into public.discovery_marketplace_worker_runs(search_id, worker_id, request, deadline_at) values
+    (s1, 'w-a', '{}', now() + interval '10 minutes'), (s2, 'w-a', '{}', now() + interval '10 minutes'),
+    (s1, 'w-b', '{}', now() + interval '10 minutes'), (s2, 'w-b', '{}', now() + interval '10 minutes');
+
+  -- w-b is not blocked by w-a: both workers hold leases on the SAME search at once
+  select count(*) into n from public.claim_marketplace_worker_runs('w-a', 5, 60);
+  if n <> 1 then raise exception 'per-provider bound 1 gave %', n; end if;
+  select count(*) into n from public.claim_marketplace_worker_runs('w-b', 5, 60);
+  if n <> 2 then raise exception 'w-b should claim both runs in parallel, got %', n; end if;
+  select count(*) into n from public.claim_marketplace_worker_runs('w-a', 5, 60);
+  if n <> 0 then raise exception 'w-a exceeded its bound (%)', n; end if;
+  select lease_expires_at into lease from public.discovery_marketplace_worker_runs where worker_id = 'w-a' and status = 'SEARCHING';
+  if lease is null or lease > now() + interval '61 seconds' then raise exception 'lease not set/capped: %', lease; end if;
+
+  -- global bound: 3 live leases, limit 3 → nothing more for anyone
+  insert into public.admin_settings(key, value) values ('marketplace_max_concurrent_runs', '3'::jsonb)
+    on conflict (key) do update set value = excluded.value;
+  update public.discovery_marketplace_workers set max_concurrency = 5 where worker_id = 'w-a';
+  select count(*) into n from public.claim_marketplace_worker_runs('w-a', 5, 60);
+  if n <> 0 then raise exception 'global bound ignored (%)', n; end if;
+
+  -- an expired lease frees its slot
+  update public.discovery_marketplace_worker_runs set lease_expires_at = now() - interval '1 second' where worker_id = 'w-b';
+  select count(*) into n from public.claim_marketplace_worker_runs('w-a', 5, 60);
+  if n <> 1 then raise exception 'expired leases still counted (%)', n; end if;
+
+  -- retry budget: a re-queued run past max_attempts is never claimed again
+  update public.discovery_marketplace_worker_runs set status = 'QUEUED', attempts = 2, lease_expires_at = null where worker_id = 'w-a';
+  select count(*) into n from public.claim_marketplace_worker_runs('w-a', 5, 60);
+  if n <> 0 then raise exception 'claimed beyond max_attempts (%)', n; end if;
+
+  update public.admin_settings set value = '40'::jsonb where key = 'marketplace_max_concurrent_runs';
+  raise notice 'MARKETPLACE CONCURRENCY CHECKS: PASS';
+end $$;
+
 -- privileges: customers cannot read or write any marketplace table directly; the hash column is never granted
 do $$
 begin
   if has_table_privilege('authenticated', 'public.discovery_marketplace_listings', 'insert') then raise exception 'authenticated can insert listings'; end if;
   if has_table_privilege('anon', 'public.discovery_marketplace_searches', 'select') then raise exception 'anon can read searches'; end if;
   if has_column_privilege('authenticated', 'public.discovery_marketplace_workers', 'token_hash', 'select') then raise exception 'token_hash readable'; end if;
-  if has_function_privilege('authenticated', 'public.claim_marketplace_worker_runs(text, integer)', 'execute') then raise exception 'claim callable by users'; end if;
+  if has_function_privilege('authenticated', 'public.claim_marketplace_worker_runs(text, integer, integer)', 'execute') then raise exception 'claim callable by users'; end if;
   raise notice 'MARKETPLACE PRIVILEGE CHECKS: PASS';
 end $$;

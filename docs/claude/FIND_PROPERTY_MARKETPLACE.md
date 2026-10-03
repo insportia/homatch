@@ -57,6 +57,26 @@ User → Search Builder → OpenAI Search Intelligence (call 1, strict schema)
 | Snake game | **Did not exist anywhere in the repository or its history**; a small isolated `SnakeGame.tsx` was added (owner decision flagged) |
 | `_shared/fx.ts` | **NOT USED** — imports a Verify module; operator `fx_rates` only |
 
+## Concurrent orchestration (never sequential)
+
+- **Dispatch:** `start` inserts one run per eligible ACTIVE worker in a single batch.
+  Every worker claims its own runs immediately; nothing waits for another worker.
+- **Bounds:** `claim_marketplace_worker_runs` takes an advisory lock and grants at most
+  min(requested, worker `max_concurrency` − its live leases, `marketplace_max_concurrent_runs`
+  − all live leases). Default per-provider 2, global 40.
+- **Independent failure boundaries:** each run has its own lease (`lease_expires_at`, extended
+  by every report and by `heartbeat`), deadline and retry budget (`max_attempts`). An expired
+  lease is re-queued; a run that already delivered closes PARTIAL and keeps its results; a
+  retryable FAILED report is re-queued (`dispatch.ts`: `reapDecision`, `retryDecision`).
+- **Progressive:** every report re-processes the search from all listings received so far
+  (read page by page; no row cap). Results are visible as soon as one real property exists.
+- **Persistence:** the search is a server job. Refresh, navigation and Snake never touch it; a
+  start key bound to the criteria plus a server check for an identical open search prevent
+  duplicates.
+- **No hidden results:** Best matches, From owners and Worth considering are ranking layers;
+  every valid property is in exactly one group, counts are exact database counts, and every
+  group pages to the end (infinite loading in the UI).
+
 ## Adding a marketplace worker (MyHomeAgent, SSAgent, PlaceAgent, …)
 
 Nothing in Find Property changes. For e.g. `myhome-agent`:

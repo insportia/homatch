@@ -79,7 +79,7 @@ test('migration: additive, switch seeded OFF, RLS on, service-role writes, admin
   assert.match(sql, /'marketplace_search_enabled', 'false'::jsonb/);
   assert.match(sql, /enable row level security/);
   assert.match(sql, /using \(public\.is_admin\(\)\)/);
-  assert.match(sql, /revoke all on function public\.claim_marketplace_worker_runs\(text, integer\) from public, anon, authenticated/);
+  assert.match(sql, /revoke all on function public\.claim_marketplace_worker_runs\(text, integer, integer\) from public, anon, authenticated/);
   assert.match(sql, /constraint discovery_marketplace_workers_enabled_requires_active check \(not enabled or state = 'ACTIVE'\)/);
   const grant = sql.match(/grant select \(([^)]*)\)\s*on public\.discovery_marketplace_workers/);
   assert.ok(grant && !grant[1].includes('token_hash'));
@@ -114,15 +114,28 @@ test('approved Georgian copy is used verbatim', () => {
   const tr = read('src/i18n/translations.ts');
   const ka = tr.slice(tr.indexOf('const ka: Partial'), tr.indexOf('const ru: Partial'));
   for (const s of [
-    'იპოვე შენთვის საუკეთესო უძრავი ქონება',
     'მომიყევი, რას ეძებ 🏡',
     'ყველაფერი მზადაა ✨',
     'ფასებში სხვაობა ვიპოვეთ',
     'დაკავშირებამდე გადაამოწმე მიმდინარე ფასი და პირობები.',
-    'ითამაშე სანამ HOMATCH ეძებს',
+    'შენი მოთხოვნა ასობით მარკეტფლეისი ყველა შესაბამისი განცხადება ერთ სივრცეში',
+    'აღარ დაკარგო საათები სხვადასხვა საიტზე ძებნაში, ერთი და იმავე განცხადებების ნახვასა და ათობით გვერდის ერთმანეთთან შედარებაში.',
+    'უბრალოდ უთხარი HOMATCH-ს რას ეძებ.',
+    'ჩვენ ერთდროულად მოვძებნით შენს მოთხოვნასთან შესაბამის განცხადებებს საქართველოში და იმ უცხოურ პლატფორმებზეც, სადაც საქართველოს უძრავი ქონება ქვეყნდება.',
+    'რამდენიმე წუთში ერთ სივრცეში მიიღებ შეგროვებულ, გაფილტრულ და შენს მოთხოვნაზე მორგებულ შედეგებს, რათა დრო ძიებაზე კი არა, სწორი არჩევანის გაკეთებაზე დახარჯო.',
+    'ერთი მოთხოვნა. ბევრი წყარო. ბევრად ნაკლები ძებნა.',
+    'მიუთითე რა ტიპის ქონებას ეძებ, სად და რა ბიუჯეტით. დანარჩენ სამუშაოს HOMATCH შეასრულებს.',
+    'ჩვენ მოვძებნით მიმდინარე განცხადებებს სხვადასხვა წყაროში, გავაერთიანებთ ერთი და იმავე ქონების დუბლირებულ განცხადებებს, შევადარებთ ფასებსა და ინფორმაციას და შენს მოთხოვნასთან ყველაზე ახლოს მდგომ ვარიანტებს პირველ რიგში გაჩვენებთ.',
+    'მომიძებნე ქონება',
+    'HOMATCH უკვე ეძებს შენთვის',
+    'შედეგები გამოჩნდება ეტაპობრივად, როგორც კი სხვადასხვა წყაროდან მივიღებთ.',
+    'ძიება გრძელდება...',
+    'შედეგები მზადაა',
     'ზუსტი შესაბამისობა ჯერ ვერ ვიპოვეთ',
     'ეს ვარიანტები შენს მაქსიმალურ ბიუჯეტს ოდნავ აჭარბებს, თუმცა რეალური უპირატესობები აქვს. გაჩვენებთ მხოლოდ იმ შემთხვევებში, როცა დამატებით ფასს მნიშვნელოვანი განსხვავება ახლავს.',
   ]) assert.ok(ka.includes(s), s);
+  assert.ok(!tr.includes('მარკეტპლეის'), 'the word is მარკეტფლეისი, never მარკეტპლეისი');
+  assert.match(ka, /^ {2}mps_mode_title: 'შენი მოთხოვნა ასობით მარკეტფლეისი ყველა შესაბამისი განცხადება ერთ სივრცეში',$/m, 'the title carries no added punctuation');
   assert.doesNotMatch(ka.match(/^ {2}mps_[\s\S]*?(?=\n\n {2}\/\*|$)/m)?.[0] ?? '', /შესატყვისი/, 'match is დამთხვევა');
 });
 
@@ -156,13 +169,50 @@ test('every dynamic mps_ key used by the interface exists in all six bundles', a
 });
 
 test('Snake is optional, self-contained and never touches the search', () => {
+  for (const f of ['src/components/findProperty/SnakeGame.tsx', 'src/components/findProperty/SnakeThumbnail.tsx']) {
+    assert.doesNotMatch(code(f), /services\/|supabase|searchStatus|startSearch|cancelSearch|understand\(/, f);
+  }
   const snake = code('src/components/findProperty/SnakeGame.tsx');
-  assert.doesNotMatch(snake, /services\/|supabase|searchStatus|cancelSearch/);
   assert.match(snake, /ArrowUp/);
   assert.match(snake, /w: 'U'/);
   assert.match(snake, /onPointerUp/);
+  assert.match(snake, /addEventListener\('touchmove', stop, \{ passive: false \}\)/, 'a swipe never scrolls the page');
+  const exp = code('src/components/findProperty/MarketplaceSearchExperience.tsx');
+  assert.match(exp, /const \[playing, setPlaying\] = useState\(false\)/, 'not playing by default');
+  assert.match(exp, /<SnakeOverlay t=\{t\} open=\{playing\}/, 'the game lives at page level, above the search');
+  assert.match(exp, /view === 'SEARCH' && !playing && search\?\.terminal/, 'the search finishing never closes the game');
   const view = code('src/components/findProperty/SearchingView.tsx');
-  assert.match(view, /useState\(false\)/, 'not playing by default');
+  assert.match(view, /<SnakeThumbnail t=\{t\} onOpen=\{onPlay\}/);
+  assert.doesNotMatch(view, /mps_snake_cta|mps_snake_optional/);
+});
+
+test('concurrent orchestration: one batch dispatch, bounded parallel claims, independent leases and retries', () => {
+  const ms = code(MS);
+  assert.match(ms, /\.insert\(eligible\.map\(/, 'every eligible worker gets its run in one insert');
+  const wi = code(WI);
+  assert.match(wi, /p_lease_seconds: leaseSeconds/);
+  assert.match(wi, /action === 'heartbeat'/);
+  assert.match(wi, /retryDecision\(/);
+  assert.match(wi, /reapRuns\(/);
+  const sh = code(SH);
+  assert.match(sh, /readAll<\{ raw: ExternalListingCandidate/, 'every listing is read, page by page');
+  assert.doesNotMatch(sh, /\.limit\(MAX_LISTINGS/);
+  const sql = read(MIG);
+  assert.match(sql, /pg_advisory_xact_lock/);
+  assert.match(sql, /v_worker\.max_concurrency - v_worker_live/);
+  assert.match(sql, /greatest\(1, v_global\) - v_global_live/);
+  assert.match(sql, /'marketplace_max_concurrent_runs', '40'::jsonb/);
+});
+
+test('results are never capped: exact counts, a real total, every group pages to the end', () => {
+  const ms = code(MS);
+  assert.match(ms, /count: 'exact', head: true/);
+  assert.match(ms, /totalProperties:/);
+  assert.doesNotMatch(ms, /select\('result_group'\)/, 'no row-capped counting');
+  const rv = code('src/components/findProperty/ResultsView.tsx');
+  assert.match(rv, /IntersectionObserver/);
+  assert.match(rv, /mps_total_found/);
+  assert.match(rv, /mps_shown_of/);
 });
 
 test('no fake progress: the searching view renders only server counters', () => {

@@ -1,7 +1,7 @@
-import { ArrowRight, CheckCircle2, Circle, Gamepad2, Loader2, XCircle } from 'lucide-react';
-import React, { useState } from 'react';
+import { ArrowRight, CheckCircle2, Circle, Loader2, XCircle } from 'lucide-react';
+import React from 'react';
 import type { SearchSummary } from '@/services/marketplaceSearch';
-import { SnakeGame } from './SnakeGame';
+import { SnakeThumbnail } from './SnakeThumbnail';
 import type { T } from './format';
 
 const STAGE_KEY: Record<string, string> = {
@@ -14,18 +14,12 @@ const STAGE_KEY: Record<string, string> = {
  * from the server; there is no animated percentage. The stage list moves only
  * when its counter does. Snake is optional and never blocks anything.
  */
-export function SearchingView({ t, search, onViewResults, onCancel }: {
-  t: T; search: SearchSummary; onViewResults: () => void; onCancel: () => void;
+export function SearchingView({ t, search, onViewResults, onCancel, onPlay }: {
+  t: T; search: SearchSummary; onViewResults: () => void; onCancel: () => void; onPlay: () => void;
 }) {
-  const [playing, setPlaying] = useState(false);
   const c = search.counters;
-  const ready = search.status === 'RESULTS_AVAILABLE' && c.strongMatches > 0;
-  const notice = ready ? (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white/95 px-3 py-2 text-sm text-[#0C1119] shadow-hover" role="status">
-      <span className="font-medium">{t('mps_found_n', { n: c.strongMatches })}</span>
-      <button type="button" onClick={onViewResults} className="font-semibold underline underline-offset-4">{t('mps_progressive_cta')}</button>
-    </div>
-  ) : null;
+  /* Real results exist (from whichever sources finished): they can be opened now. */
+  const ready = (search.status === 'RESULTS_AVAILABLE' || search.terminal) && (search.totalProperties ?? c.uniqueProperties) > 0;
 
   if (search.unavailable) {
     return (
@@ -37,13 +31,14 @@ export function SearchingView({ t, search, onViewResults, onCancel }: {
   }
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+    <div className="grid gap-5 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] lg:items-start">
       <section aria-labelledby="mps-searching" className="relative overflow-hidden rounded-2xl bg-[#0C1119] p-6 text-white shadow-hover sm:p-8">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_60%_at_0%_0%,hsl(38_92%_56%/0.16),transparent_60%)] motion-safe:animate-pulse" aria-hidden="true" />
         <div className="relative space-y-6">
           <div className="space-y-1">
             <h2 id="mps-searching" className="font-display text-2xl font-semibold tracking-[-0.02em]">{t('mps_searching_title')}</h2>
-            <p className="text-sm text-white/70" aria-live="polite">
+            <p className="text-[15px] text-white/80">{t('mps_searching_body')}</p>
+            <p className="text-sm text-white/60" aria-live="polite">
               {c.sourcesTotal ? t('mps_sources_progress', { done: c.sourcesCompleted, total: c.sourcesTotal }) : null}
             </p>
           </div>
@@ -87,27 +82,9 @@ export function SearchingView({ t, search, onViewResults, onCancel }: {
         </div>
       </section>
 
-      <section aria-label={t('mps_snake_cta')} className="hm-discovery-panel space-y-4 p-5 sm:p-6">
-        {playing ? (
-          <>
-            <SnakeGame t={t} notice={notice} />
-            <button type="button" onClick={() => setPlaying(false)}
-              className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-card px-5 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))]">
-              {t('mps_snake_back')}
-            </button>
-          </>
-        ) : (
-          <div className="flex h-full flex-col items-start justify-center gap-4 py-6">
-            <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#0C1119] text-[hsl(38_92%_60%)]" aria-hidden="true"><Gamepad2 className="h-6 w-6" /></span>
-            <p className="font-display text-xl font-semibold text-foreground">{t('mps_snake_cta')}</p>
-            <p className="text-sm text-muted-foreground">{t('mps_snake_optional')}</p>
-            <button type="button" onClick={() => setPlaying(true)}
-              className="inline-flex min-h-[48px] items-center gap-2 rounded-xl bg-[#0C1119] px-6 text-[15px] font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold))] focus-visible:ring-offset-2">
-              {t('mps_snake_game')}
-            </button>
-          </div>
-        )}
-      </section>
+      <aside className="space-y-3 lg:pt-1">
+        <SnakeThumbnail t={t} onOpen={onPlay} searching={!search.terminal} />
+      </aside>
     </div>
   );
 }

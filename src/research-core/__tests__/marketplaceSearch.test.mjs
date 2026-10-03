@@ -504,10 +504,11 @@ test('lifecycle: independent workers — one failure never fails the search; par
   assert.equal(deriveSearchStatus('CANCELLED', [complete], { properties: 9, strongMatches: 9 }).status, 'CANCELLED');
 });
 
-test('progressive results only when real strong matches exist; a slow worker does not hold them back', () => {
+test('progressive results as soon as one real property exists; a slow worker does not hold them back', () => {
   const { complete, searching } = F.WORKER_RUNS;
   assert.equal(deriveSearchStatus('SEARCHING', [complete, searching], { properties: 6, strongMatches: 3 }).status, 'RESULTS_AVAILABLE');
-  assert.equal(deriveSearchStatus('SEARCHING', [complete, searching], { properties: 2, strongMatches: 2 }).status, 'SEARCHING');
+  assert.equal(deriveSearchStatus('SEARCHING', [complete, searching], { properties: 1, strongMatches: 0 }).status, 'RESULTS_AVAILABLE');
+  assert.equal(deriveSearchStatus('SEARCHING', [complete, searching], { properties: 0, strongMatches: 0 }).status, 'SEARCHING');
   assert.equal(deriveSearchStatus('SEARCHING', [{ ...searching, status: 'RESULTS_RECEIVED' }], { properties: 0, strongMatches: 0 }).status, 'PROCESSING');
 });
 

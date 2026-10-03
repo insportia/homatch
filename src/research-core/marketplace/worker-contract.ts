@@ -395,6 +395,8 @@ export function validateCandidate(raw: unknown, workerSource: string, now = new 
 export interface ValidatedReport {
   status: WorkerRunStatus;
   final: boolean;
+  /** A FAILED report the worker marks transient (rate limit, timeout): eligible for a retry. */
+  retryable: boolean;
   discoveredCount: number;
   listings: ExternalListingCandidate[];
   rejected: CandidateRejection[];
@@ -443,6 +445,7 @@ export function validateWorkerReport(raw: unknown, workerSource: string, now = n
     report: {
       status: statusRaw,
       final: isTerminalWorkerStatus(statusRaw),
+      retryable: statusRaw === 'FAILED' && r.retryable === true,
       discoveredCount: intIn(r.discoveredCount, 0, 1_000_000) ?? listings.length,
       listings,
       rejected,

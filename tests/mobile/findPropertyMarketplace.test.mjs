@@ -82,12 +82,12 @@ const OUTPUT = processSearch({ request: F.FIXTURE_REQUEST, candidates: liveCandi
 const BRIEF_COMPLETE = briefFromModel(F.COMPLETE_MODEL_OUTPUT, F.COMPLETE_TEXT);
 const SEARCH_BRIEF = briefFromModel({ ...F.COMPLETE_MODEL_OUTPUT, priceMinUsd: 130000, priceMaxUsd: 170000 }, F.COMPLETE_TEXT.replace('$120,000', '$130,000').replace('$160,000', '$170,000'));
 
-function summary(status, { empty = false } = {}) {
+function summary(status, { empty = false, output = OUTPUT } = {}) {
   const terminal = ['COMPLETE', 'PARTIAL_COMPLETE', 'FAILED', 'CANCELLED'].includes(status);
   const processed = status !== 'SEARCHING';
   const groups = { BEST: 0, OWNER: 0, UPGRADE: 0, MORE: 0 };
-  if (processed && !empty) for (const p of OUTPUT.properties) groups[p.group] += 1;
-  const s = OUTPUT.stats;
+  if (processed && !empty) for (const p of output.properties) groups[p.group] += 1;
+  const s = output.stats;
   return {
     id: '11111111-1111-4111-8111-111111111111', status, terminal, brief: SEARCH_BRIEF, createdAt: new Date().toISOString(),
     resultsAvailableAt: processed ? new Date().toISOString() : null,
@@ -97,11 +97,11 @@ function summary(status, { empty = false } = {}) {
       listingsDiscovered: processed ? s.raw : 4, listingsValidated: processed ? s.validated : 0, uniqueProperties: processed && !empty ? s.uniqueProperties : 0,
       strongMatches: processed && !empty ? s.strongMatches : 0, sourcesCompleted: terminal ? 5 : processed ? 3 : 1, sourcesTotal: 5,
     },
-    groups, partial: status === 'PARTIAL_COMPLETE', unavailable: null,
+    groups, totalProperties: Object.values(groups).reduce((a, b) => a + b, 0), partial: status === 'PARTIAL_COMPLETE', unavailable: null,
   };
 }
 
-async function boot(t, { width = 1440, height = 900, lang = 'en', enabled = true, timeline = ['SEARCHING', 'RESULTS_AVAILABLE', 'COMPLETE'], empty = false, resumeStatus = null } = {}) {
+async function boot(t, { width = 1440, height = 900, lang = 'en', enabled = true, timeline = ['SEARCHING', 'RESULTS_AVAILABLE', 'COMPLETE'], empty = false, resumeStatus = null, output = OUTPUT } = {}) {
   const { chromium } = resolvePlaywright();
   const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
@@ -112,7 +112,7 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', enabled = true
     ['sb-stubproj-auth-token', fakeSession(), lang]);
   const page = await ctx.newPage();
   const json = (b, status = 200) => ({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(b) });
-  const state = { started: resumeStatus !== null, polls: 0, calls: [] };
+  const state = { started: resumeStatus !== null, polls: 0, calls: [], starts: 0 };
   await page.route('**', async (r) => {
     const req = r.request();
     const url = req.url();
@@ -134,21 +134,22 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', enabled = true
         const readiness = evaluateReadiness(body.brief);
         if (readiness.state !== 'READY') return r.fulfill(json({ error: 'SEARCH_NOT_READY', readiness }, 422));
         state.started = true;
-        return r.fulfill(json({ search: summary('SEARCHING') }, 202));
+        state.starts += 1;
+        return r.fulfill(json({ search: summary('SEARCHING', { output }) }, 202));
       }
       if (body.action === 'status') {
         if (!state.started) return r.fulfill(json({ search: null }));
-        if (resumeStatus) return r.fulfill(json({ search: summary(resumeStatus, { empty }) }));
+        if (resumeStatus) return r.fulfill(json({ search: summary(resumeStatus, { empty, output }) }));
         const i = Math.min(state.polls, timeline.length - 1);
         state.polls += 1;
-        return r.fulfill(json({ search: summary(timeline[i], { empty }) }));
+        return r.fulfill(json({ search: summary(timeline[i], { empty, output }) }));
       }
       if (body.action === 'results') {
-        const page = empty ? { items: [], total: 0, nextOffset: null } : pageResults(OUTPUT, body.group, body.offset ?? 0, body.limit ?? 12);
+        const page = empty ? { items: [], total: 0, nextOffset: null } : pageResults(output, body.group, body.offset ?? 0, body.limit ?? 12);
         return r.fulfill(json({ group: body.group, items: page.items.map(publicView), total: page.total, nextOffset: page.nextOffset }));
       }
       if (body.action === 'property') {
-        const p = OUTPUT.properties.find((x) => x.key === body.key);
+        const p = output.properties.find((x) => x.key === body.key);
         return r.fulfill(p ? json({ property: publicView(p), request: F.FIXTURE_REQUEST }) : json({ error: 'NOT_FOUND' }, 404));
       }
       if (body.action === 'compare') {
@@ -168,16 +169,20 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', enabled = true
 }
 
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-async function shot(page, name) {
+async function shot(page, name, { fullPage = true } = {}) {
   if (!SHOTS) return;
   mkdirSync(SHOTS, { recursive: true });
-  await page.screenshot({ path: join(SHOTS, `${name}.png`), fullPage: true });
+  await page.screenshot({ path: join(SHOTS, `${name}.png`), fullPage });
 }
 
 /** Mode → intro → complete request → confirmation. */
-async function toConfirm(page) {
+async function toConfirm(page, modeShot = null) {
   await page.goto(`${BASE}/find-property`, { waitUntil: 'domcontentloaded' });
   await page.locator('#mps-mode-title').waitFor({ timeout: 30000 });
+  if (modeShot) {
+    if (await overflow(page) > 1) throw new Error(`${modeShot}: mode screen overflows`);
+    await shot(page, modeShot);
+  }
   await page.locator('section[aria-labelledby="mps-mode-title"] article').first().locator('button').click();
   await page.locator('textarea').fill(F.COMPLETE_TEXT);
   await page.locator('form button[type="submit"]').click();
@@ -189,7 +194,9 @@ test('ka, 1440: complete request → READY without questions → search → grou
   await page.goto(`${BASE}/find-property`, { waitUntil: 'domcontentloaded' });
   await page.locator('#mps-mode-title').waitFor({ timeout: 30000 });
   const mode = await page.textContent('main');
-  for (const s of ['იპოვე შენთვის საუკეთესო უძრავი ქონება', 'Marketplace Search', 'უფასო', 'დავიწყოთ ძიება', 'Deep Search']) assert.ok(mode.includes(s), s);
+  for (const s of ['შენი მოთხოვნა ასობით მარკეტფლეისი ყველა შესაბამისი განცხადება ერთ სივრცეში', 'უბრალოდ უთხარი HOMATCH-ს რას ეძებ.',
+    'ერთი მოთხოვნა. ბევრი წყარო. ბევრად ნაკლები ძებნა.', 'Marketplace Search', 'უფასო', 'მომიძებნე ქონება', 'Deep Search']) assert.ok(mode.includes(s), s);
+  assert.ok(!mode.includes('მარკეტპლეის'));
   const deep = page.locator('section[aria-labelledby="mps-mode-title"] article').nth(1).locator('button');
   assert.equal(await deep.isDisabled(), true, 'Deep Search never starts a fake search');
   await shot(page, 'ka-1440-mode');
@@ -213,14 +220,17 @@ test('ka, 1440: complete request → READY without questions → search → grou
   await page.locator('#mps-searching').waitFor({ timeout: 15000 });
   assert.ok(state.calls.includes('start'));
   const searching = await page.textContent('main');
-  assert.ok(searching.includes('ვეძებთ მიმდინარე განცხადებებს'));
+  for (const s of ['HOMATCH უკვე ეძებს შენთვის', 'შედეგები გამოჩნდება ეტაპობრივად, როგორც კი სხვადასხვა წყაროდან მივიღებთ.', 'ვეძებთ მიმდინარე განცხადებებს', 'ძიება გრძელდება...']) {
+    assert.ok(searching.includes(s), s);
+  }
+  assert.ok(!searching.includes('ითამაშე სანამ HOMATCH ეძებს'), 'the old Snake text block is gone');
   assert.doesNotMatch(searching, /\d+%/, 'no percentage is shown');
   await shot(page, 'ka-1440-searching');
 
   await page.locator('section[aria-labelledby="mps-g-BEST"] article').first().waitFor({ timeout: 30000 });
   await page.locator('section[aria-labelledby="mps-g-UPGRADE"] article').first().waitFor({ timeout: 30000 });
   const results = await page.textContent('main');
-  for (const s of ['საუკეთესო ვარიანტები', 'ღირს განხილვა', 'სხვა შესაბამისი ვარიანტები', 'რატომ გირჩევს HOMATCH', 'ნაპოვნია 3 წყაროში', 'ფასებში სხვაობა',
+  for (const s of [`ნაპოვნია ${OUTPUT.properties.length} შესაბამისი ქონება`, 'საუკეთესო ვარიანტები', 'ღირს განხილვა', 'სხვა შესაბამისი ვარიანტები', 'რატომ გირჩევს HOMATCH', 'ნაპოვნია 3 წყაროში', 'ფასებში სხვაობა',
     '+3.5% შენს მაქსიმალურ ბიუჯეტზე მეტი', 'რატომ ღირს განხილვა', 'გინდა უფრო ფართოდ მოვძებნოთ?']) {
     assert.ok(results.includes(s), `results show ${s}`);
   }
@@ -284,24 +294,77 @@ test('en, 1440: incomplete request asks only what is missing, one question at a 
   assert.ok((await page.textContent('main')).includes('Everything is ready ✨'));
 });
 
-test('progressive results, Snake while searching, refresh resumes the search', opts, async (t) => {
-  const { page } = await boot(t, { lang: 'en', width: 390, height: 844, timeline: ['SEARCHING', 'SEARCHING', 'RESULTS_AVAILABLE', 'RESULTS_AVAILABLE', 'RESULTS_AVAILABLE', 'RESULTS_AVAILABLE'] });
+test('Snake: a thumbnail opens the game at once; keys, WASD and swipe work; the search goes on and is never duplicated', opts, async (t) => {
+  const { page, state } = await boot(t, { lang: 'ka', width: 390, height: 844, timeline: ['SEARCHING', 'SEARCHING', 'RESULTS_AVAILABLE', 'COMPLETE'] });
   await toConfirm(page);
-  await page.getByRole('button', { name: 'Start search' }).click();
+  /* A double click starts ONE search. */
+  await page.locator('[data-action="mps-start"]').dblclick();
   await page.locator('#mps-searching').waitFor({ timeout: 15000 });
-  await page.getByRole('button', { name: 'Snake', exact: true }).click();
-  const board = page.getByRole('application');
-  await board.focus();
-  await page.keyboard.press('ArrowDown');
-  await page.waitForTimeout(400);
+  assert.equal(state.starts, 1, 'one search for a double click');
+  await shot(page, 'ka-390-searching');
+
+  await page.locator('[data-action="mps-snake-open"]').click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('application').waitFor();
+  assert.equal(await page.locator('#mps-snake-intro').count(), 0, 'no intermediate screen');
+  await page.keyboard.press('ArrowUp');
+  await page.waitForTimeout(300);
   await page.keyboard.press('d');
-  assert.ok((await page.textContent('main')).includes('Score:'));
-  await page.getByText("We've already found", { exact: false }).first().waitFor({ timeout: 20000 });
-  await shot(page, 'en-390-snake-progressive');
-  assert.ok(await overflow(page) <= 1, 'no horizontal overflow while playing');
+  await page.waitForTimeout(300);
+  await page.keyboard.press('s');
+  const scoreText = await dialog.textContent();
+  assert.match(scoreText, /ქულა: \d+/);
+  /* A swipe on the board turns the snake and never scrolls the page. */
+  const box = await dialog.getByRole('application').boundingBox();
+  const before = await page.evaluate(() => window.scrollY);
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 - 80, box.y + box.height / 2, { steps: 6 });
+  await page.mouse.up();
+  assert.equal(await page.evaluate(() => window.scrollY), before);
+  await shot(page, 'ka-390-snake', { fullPage: false });
+
+  /* Results arrive while playing: a quiet notice, and the game stays open even after the search completes. */
+  await dialog.getByText('შედეგები მზადაა').first().waitFor({ timeout: 30000 });
+  await page.waitForTimeout(5000);
+  assert.equal(await page.getByRole('dialog').count(), 1, 'the search finishing never closes the game');
+  await shot(page, 'ka-390-snake-ready', { fullPage: false });
+  assert.ok(state.calls.filter((c) => c === 'status').length >= 2, 'the search kept polling while the game was open');
+  assert.equal(state.starts, 1, 'opening Snake never started another search');
+
+  await page.getByRole('button', { name: 'თამაშის დახურვა' }).click();
+  assert.equal(await page.getByRole('dialog').count(), 0);
+  await page.locator('section[aria-labelledby="mps-g-BEST"] article').first().waitFor({ timeout: 30000 });
+  assert.match(page.url(), /search=11111111-1111-4111-8111-111111111111/, 'closing returns to the same search');
+
+  /* Refresh: the same search is restored, nothing is restarted. */
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.locator('#mps-searching').waitFor({ timeout: 30000 });
-  assert.match(page.url(), /search=11111111-1111-4111-8111-111111111111/, 'the search survives a refresh');
+  await page.locator('section[aria-labelledby="mps-g-BEST"] article').first().waitFor({ timeout: 30000 });
+  assert.equal(state.starts, 1, 'refresh never duplicates the search');
+  assert.ok(await overflow(page) <= 1);
+  await shot(page, 'ka-390-results');
+});
+
+test('ranking is not hiding: 800 valid matching properties are all reachable in the browser', opts, async (t) => {
+  const many = Array.from({ length: 800 }, (_, i) => F.listing({
+    source: 'source-a', sourceListingId: `v${i}`, price: 130000 + (i * 37) % 40000, areaSqm: 80 + (i % 30), floor: 1 + (i % 25), images: [],
+    observedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+  }));
+  const big = processSearch({ request: F.FIXTURE_REQUEST, candidates: F.fixtureCandidates(many) });
+  assert.equal(big.properties.length, 800);
+  const { page } = await boot(t, { lang: 'en', resumeStatus: 'COMPLETE', output: big });
+  await page.goto(`${BASE}/find-property`, { waitUntil: 'domcontentloaded' });
+  await page.getByTestId('mps-total').waitFor({ timeout: 30000 });
+  assert.equal(await page.getByTestId('mps-total').textContent(), '800 matching properties found');
+  for (let i = 0; i < 200; i++) {
+    const n = await page.locator('section[aria-labelledby^="mps-g-"] article').count();
+    if (n >= 800) break;
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.waitForTimeout(150);
+  }
+  const keys = await page.locator('section[aria-labelledby^="mps-g-"] article').count();
+  assert.equal(keys, 800, 'every valid property is on the page once the customer scrolls');
+  assert.ok(await overflow(page) <= 1);
 });
 
 test('partial and empty results say so, without technical errors', opts, async (t) => {
@@ -352,7 +415,7 @@ test('1440px and 390px, six locales: mode, confirmation, results and property sh
   for (const width of [1440, 390]) {
     for (const lang of LOCALES) {
       const { page } = await boot(t, { width, height: width < 700 ? 844 : 900, lang });
-      await toConfirm(page);
+      await toConfirm(page, `${lang}-${width}-mode`);
       if (await overflow(page) > 1) failures.push(`${lang} ${width}: confirm overflow`);
       const dir = await page.evaluate(() => document.documentElement.getAttribute('dir'));
       if (['ar', 'he'].includes(lang) && dir !== 'rtl') failures.push(`${lang}: not RTL`);

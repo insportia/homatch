@@ -16,15 +16,29 @@ import { ResultsView } from './ResultsView';
 import { BuilderIntro, SearchBuilder } from './SearchBuilder';
 import { SearchModeSelect } from './SearchModeSelect';
 import { SearchingView } from './SearchingView';
+import { SnakeOverlay } from './SnakeThumbnail';
 
 type View = 'LOADING' | 'MODE' | 'INTRO' | 'BUILD' | 'SEARCH' | 'RESULTS';
 const POLL_MS = 4000;
 const DRAFT_KEY = 'homatch.findProperty.draft.v1';
+const START_KEY = 'homatch.findProperty.startKey.v1';
 
 /* Per-viewer convenience only: an unsent draft survives a refresh. The search itself lives on the server. */
 const readDraft = (): SearchIntelligenceBrief | null => {
   try { const raw = sessionStorage.getItem(DRAFT_KEY); return raw ? sanitizeBrief(JSON.parse(raw)) : null; } catch { return null; }
 };
+/* The start's idempotency key survives a refresh or reconnect, so a retried start replays the same search. */
+/* Bound to the exact criteria it was issued for: edited criteria get a new key, never an old search. */
+const startKey = (criteria: string): string => {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(START_KEY) ?? 'null') as { key: string; criteria: string } | null;
+    if (saved && saved.criteria === criteria) return saved.key;
+    const fresh = crypto.randomUUID();
+    sessionStorage.setItem(START_KEY, JSON.stringify({ key: fresh, criteria }));
+    return fresh;
+  } catch { return crypto.randomUUID(); }
+};
+const clearStartKey = () => { try { sessionStorage.removeItem(START_KEY); } catch { /* storage unavailable */ } };
 const writeDraft = (b: SearchIntelligenceBrief | null) => {
   try { if (b) sessionStorage.setItem(DRAFT_KEY, JSON.stringify(b)); else sessionStorage.removeItem(DRAFT_KEY); } catch { /* storage unavailable */ }
 };
@@ -42,6 +56,7 @@ export function MarketplaceSearchExperience({ deepSearchAvailable }: { deepSearc
   const [compare, setCompare] = useState<string[]>([]);
   const [comparison, setComparison] = useState<{ a: PropertyView; b: PropertyView; rows: ComparisonRow[] } | null>(null);
   const idempotency = useRef<string | null>(null);
+  const [playing, setPlaying] = useState(false);
   const searchId = params.get('search');
 
   const setBriefAndDraft = useCallback((b: SearchIntelligenceBrief | null) => { setBrief(b); writeDraft(b); }, []);
@@ -102,12 +117,14 @@ export function MarketplaceSearchExperience({ deepSearchAvailable }: { deepSearc
   const doStart = async () => {
     if (!brief) return;
     setBusy(true);
-    idempotency.current ??= crypto.randomUUID();
+    const criteria = JSON.stringify({ ...brief, originalText: '' });
+    idempotency.current = startKey(criteria);
     try {
       const r = await startSearch(brief, idempotency.current);
       setSearch(r.search);
       setParams({ search: r.search.id });
       writeDraft(null);
+      clearStartKey();
       setView('SEARCH');
       idempotency.current = null;
     } catch (e) {
@@ -154,10 +171,10 @@ export function MarketplaceSearchExperience({ deepSearchAvailable }: { deepSearc
           onReset={() => { setBriefAndDraft(null); setView('INTRO'); }} />
       )}
       {view === 'SEARCH' && search && (
-        <SearchingView t={t} search={search} onViewResults={() => setView('RESULTS')}
+        <SearchingView t={t} search={search} onViewResults={() => setView('RESULTS')} onPlay={() => setPlaying(true)}
           onCancel={async () => { try { const r = await cancelSearch(search.id); setSearch(r.search); } catch { /* ignore */ } newSearch(); }} />
       )}
-      {view === 'SEARCH' && search?.terminal && (search.counters.uniqueProperties > 0 || !search.unavailable) ? (
+      {view === 'SEARCH' && !playing && search?.terminal && (search.counters.uniqueProperties > 0 || !search.unavailable) ? (
         <ResultsRedirect onGo={() => setView('RESULTS')} />
       ) : null}
       {view === 'RESULTS' && search && (
@@ -183,6 +200,11 @@ export function MarketplaceSearchExperience({ deepSearchAvailable }: { deepSearc
         </div>
       ) : null}
 
+      {/* The game lives at page level: the search keeps polling underneath, and the search
+          finishing never closes it. Only the customer closes it. */}
+      <SnakeOverlay t={t} open={playing} onClose={() => setPlaying(false)}
+        resultsReady={!!search && search.totalProperties > 0}
+        onViewResults={() => { setPlaying(false); setView('RESULTS'); }} />
       <PropertyIntelligence t={t} p={open} open={!!open} onOpenChange={(o) => { if (!o) setOpen(null); }} isRTL={isRTL}
         propertyType={search?.brief.propertyType?.value ?? null}
         compareSelected={!!open && compare.includes(open.key)} onCompare={() => { if (open) toggleCompare(open); }} />

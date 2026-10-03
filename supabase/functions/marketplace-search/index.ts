@@ -55,9 +55,14 @@ async function summary(db: Db, search: Record<string, unknown>) {
   const states: WorkerRunState[] = (runs ?? []).map((r: Record<string, unknown>) => ({
     workerId: String(r.worker_id), status: r.status as WorkerRunState['status'], deadlineAt: String(r.deadline_at), returnedCount: Number(r.returned_count) || 0,
   }));
-  const { data: groups } = await db.from('discovery_marketplace_properties').select('result_group').eq('search_id', search.id);
+  /* Exact per-group counts from the database (count queries, no row cap): the number a
+     customer sees is always the number of properties they can open. */
   const counts: Record<string, number> = { BEST: 0, OWNER: 0, UPGRADE: 0, MORE: 0 };
-  for (const g of groups ?? []) counts[g.result_group] = (counts[g.result_group] ?? 0) + 1;
+  await Promise.all(RESULT_GROUPS.map(async (g) => {
+    const { count } = await db.from('discovery_marketplace_properties').select('id', { count: 'exact', head: true })
+      .eq('search_id', search.id).eq('result_group', g);
+    counts[g] = Number(count ?? 0);
+  }));
   const stats = (search.stats ?? {}) as Record<string, number>;
   const status = search.status as SearchStatus;
   return {
@@ -81,6 +86,8 @@ async function summary(db: Db, search: Record<string, unknown>) {
       sourcesTotal: states.length,
     },
     groups: counts,
+    /* Every valid matching property, across all groups; ranking groups never cap it. */
+    totalProperties: Object.values(counts).reduce((a, b) => a + b, 0),
     /* Partial: some sources could not be checked. Which ones, and why, is Admin's business. */
     partial: status === 'PARTIAL_COMPLETE',
     unavailable: status === 'FAILED' ? (search.failure_reason === 'NO_ELIGIBLE_WORKERS' ? 'NO_SOURCES' : 'FAILED') : null,
@@ -148,6 +155,19 @@ Deno.serve(async (req: Request) => {
       if (readiness.state !== 'READY') return json({ error: 'SEARCH_NOT_READY', readiness }, 422);
       if (switches.providersKilled) return json({ error: 'SOURCES_PAUSED' }, 409);
 
+      /* NO DUPLICATE SEARCH. A reconnect, refresh or second tab that lost its idempotency key
+         still reaches the customer's open search for the same request instead of a new one. */
+      const criteria = (b: ReturnType<typeof sanitizeBrief>) => {
+        const { originalText: _t, originalLanguage: _l, ...rest } = toSearchPlanDraft(b);
+        return JSON.stringify(rest);
+      };
+      const sameRequest = criteria(brief);
+      const { data: open } = await db.from('discovery_marketplace_searches').select('*').eq('user_id', userId)
+        .in('status', ['CREATED', 'READY', 'DISPATCHING', 'SEARCHING', 'PROCESSING', 'RESULTS_AVAILABLE'])
+        .gte('created_at', new Date(Date.now() - 60 * 60 * 1000).toISOString()).order('created_at', { ascending: false }).limit(10);
+      const twin = (open ?? []).find((o: Record<string, unknown>) => criteria(sanitizeBrief(o.brief)) === sameRequest);
+      if (twin) return json({ search: await summary(db, twin), replayed: true });
+
       const { data: plan, error: planErr } = await db.from('discovery_search_plans').insert({
         direction: 'SUPPLY', user_id: userId, market: brief.country, plan_kind: 'MARKETPLACE', plan_version: 1,
         plan: { kind: 'MARKETPLACE', brief, readiness, searchPlanDraft: toSearchPlanDraft(brief) },
@@ -175,6 +195,8 @@ Deno.serve(async (req: Request) => {
         completed_at: eligible.length ? null : now.toISOString(),
       }).select('*').single();
       if (searchErr || !search) throw new Error(`search insert failed: ${searchErr?.message ?? 'no row'}`);
+      /* CONCURRENT DISPATCH: one run per eligible worker, all in ONE insert. Every worker can
+         claim its run immediately and independently; nothing waits for another worker. */
       if (eligible.length) {
         await db.from('discovery_marketplace_worker_runs').insert(eligible.map((w) => ({
           search_id: searchId, worker_id: w.workerId, request: { ...request, maxResults: w.maxResults },

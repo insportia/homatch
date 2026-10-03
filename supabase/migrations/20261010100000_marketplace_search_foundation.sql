@@ -10,7 +10,7 @@
 --   discovery_marketplace_worker_runs   one worker's part of one search
 --   discovery_marketplace_listings  raw worker candidates (source truth) + normalised copy
 --   discovery_marketplace_properties    the processed, ranked canonical properties of a search
---   claim_marketplace_worker_runs() lease work to an authenticated worker (service role)
+--   claim_marketplace_worker_runs() concurrent, bounded leasing to an authenticated worker (service role)
 --   admin_marketplace_search_intelligence()  admin-only observability
 --   admin_settings.marketplace_search_enabled  seeded OFF
 --
@@ -58,6 +58,10 @@ create table if not exists public.discovery_marketplace_workers (
   supported_filters    text[] not null default '{}',
   timeout_ms           integer not null default 120000 check (timeout_ms between 1000 and 900000),
   max_results          integer not null default 200 check (max_results between 1 and 2000),
+  /* Per-provider bound: live leases this worker may hold at once (dispatch.ts). */
+  max_concurrency      integer not null default 2 check (max_concurrency between 1 and 50),
+  /* Retry budget per run: an expired lease or a retryable failure is re-queued until this. */
+  max_attempts         integer not null default 3 check (max_attempts between 1 and 10),
   state                text not null default 'REGISTERED'
                          check (state in ('REGISTERED', 'TESTING', 'PROVEN', 'ACTIVE', 'DISABLED', 'BLOCKED')),
   enabled              boolean not null default false,
@@ -127,6 +131,9 @@ create table if not exists public.discovery_marketplace_worker_runs (
   metrics              jsonb not null default '{}'::jsonb,
   attempts             integer not null default 0,
   claimed_at           timestamptz,
+  /* Independent lease per run: extended by every report/heartbeat, reaped when it lapses. */
+  lease_expires_at     timestamptz,
+  last_heartbeat_at    timestamptz,
   started_at           timestamptz,
   completed_at         timestamptz,
   deadline_at          timestamptz not null,
@@ -134,6 +141,9 @@ create table if not exists public.discovery_marketplace_worker_runs (
   updated_at           timestamptz not null default now(),
   unique (search_id, worker_id)
 );
+create index if not exists discovery_marketplace_worker_runs_inflight_idx
+  on public.discovery_marketplace_worker_runs (worker_id, lease_expires_at)
+  where status in ('SEARCHING', 'RESULTS_RECEIVED', 'PROCESSING');
 create index if not exists discovery_marketplace_worker_runs_claim_idx
   on public.discovery_marketplace_worker_runs (worker_id, status, created_at)
   where status in ('QUEUED', 'SEARCHING', 'RESULTS_RECEIVED');
@@ -206,38 +216,73 @@ grant select (worker_id, source_key, source_name, source_type, execution_mode, s
   on public.discovery_marketplace_workers to authenticated;
 
 -------------------------------------------------------------------------------
--- 8. Leasing work to a worker (called by marketplace-worker-ingest only)
+-- 8. Leasing work (called by marketplace-worker-ingest only)
+--
+-- Concurrent by construction: every eligible worker has its own QUEUED runs and
+-- claims them independently; no run waits for another worker. Bounded: a claim
+-- takes at most min(requested, worker max_concurrency - its live leases,
+-- global limit - all live leases). The advisory lock makes the two counts and
+-- the claim one atomic step, so parallel claims can never exceed the bounds.
 -------------------------------------------------------------------------------
-create or replace function public.claim_marketplace_worker_runs(p_worker_id text, p_limit integer default 5)
+drop function if exists public.claim_marketplace_worker_runs(text, integer);
+create or replace function public.claim_marketplace_worker_runs(
+  p_worker_id text, p_limit integer default 5, p_lease_seconds integer default 120)
 returns setof public.discovery_marketplace_worker_runs
 language plpgsql
 security definer
 set search_path to ''
 as $function$
+declare
+  v_worker public.discovery_marketplace_workers%rowtype;
+  v_global integer;
+  v_global_live integer;
+  v_worker_live integer;
+  v_slots integer;
+  v_lease integer := greatest(15, least(coalesce(p_lease_seconds, 120), 900));
 begin
   /* A worker that is not ACTIVE and enabled gets nothing, whatever it asks for. */
-  if not exists (select 1 from public.discovery_marketplace_workers w
-                  where w.worker_id = p_worker_id and w.state = 'ACTIVE' and w.enabled) then
+  select * into v_worker from public.discovery_marketplace_workers w
+   where w.worker_id = p_worker_id and w.state = 'ACTIVE' and w.enabled;
+  if not found then
     return;
   end if;
+
+  perform pg_advisory_xact_lock(hashtext('discovery_marketplace_claim'));
+
+  v_global := coalesce((select nullif(value #>> '{}', '')::integer from public.admin_settings
+                         where key = 'marketplace_max_concurrent_runs'), 40);
+  select count(*) filter (where true), count(*) filter (where r.worker_id = p_worker_id)
+    into v_global_live, v_worker_live
+    from public.discovery_marketplace_worker_runs r
+   where r.status in ('SEARCHING', 'RESULTS_RECEIVED', 'PROCESSING') and r.lease_expires_at > now();
+
+  v_slots := least(greatest(1, least(coalesce(p_limit, 5), 20)),
+                   v_worker.max_concurrency - v_worker_live,
+                   greatest(1, v_global) - v_global_live);
+  if v_slots <= 0 then
+    return;
+  end if;
+
   return query
   update public.discovery_marketplace_worker_runs r
      set status = 'SEARCHING', claimed_at = now(), started_at = coalesce(r.started_at, now()),
-         attempts = r.attempts + 1, updated_at = now()
+         lease_expires_at = least(now() + make_interval(secs => v_lease), r.deadline_at),
+         last_heartbeat_at = now(), attempts = r.attempts + 1, updated_at = now()
    where r.id in (
      select q.id from public.discovery_marketplace_worker_runs q
        join public.discovery_marketplace_searches s on s.id = q.search_id
       where q.worker_id = p_worker_id and q.status = 'QUEUED' and q.deadline_at > now()
+        and q.attempts < v_worker.max_attempts
         and s.status not in ('CANCELLED', 'FAILED', 'COMPLETE', 'PARTIAL_COMPLETE')
       order by q.created_at
-      limit greatest(1, least(coalesce(p_limit, 5), 20))
+      limit v_slots
       for update of q skip locked)
   returning r.*;
 end;
 $function$;
 
-revoke all on function public.claim_marketplace_worker_runs(text, integer) from public, anon, authenticated;
-grant execute on function public.claim_marketplace_worker_runs(text, integer) to service_role;
+revoke all on function public.claim_marketplace_worker_runs(text, integer, integer) from public, anon, authenticated;
+grant execute on function public.claim_marketplace_worker_runs(text, integer, integer) to service_role;
 
 -------------------------------------------------------------------------------
 -- 9. Admin observability (read-only, admin-only; no listing text, no contacts, no tokens)
@@ -309,4 +354,9 @@ grant execute on function public.admin_marketplace_search_intelligence(uuid) to 
 insert into public.admin_settings (key, value, description)
 values ('marketplace_search_enabled', 'false'::jsonb,
         'Marketplace Search (free, worker fan-out). OFF until a worker is proven and the owner enables it.')
+on conflict (key) do nothing;
+
+insert into public.admin_settings (key, value, description)
+values ('marketplace_max_concurrent_runs', '40'::jsonb,
+        'Global bound on live marketplace worker leases across all workers (per-worker bound: discovery_marketplace_workers.max_concurrency).')
 on conflict (key) do nothing;

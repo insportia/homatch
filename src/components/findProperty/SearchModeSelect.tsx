@@ -13,19 +13,22 @@ export function SearchModeSelect({ t, onMarketplace, deepSearchAvailable }: {
   deepSearchAvailable: boolean;
 }) {
   return (
-    <section aria-labelledby="mps-mode-title" className="space-y-6">
-      <div className="max-w-3xl space-y-2">
-        <h2 id="mps-mode-title" className="font-display text-2xl font-semibold leading-tight tracking-[-0.02em] text-foreground sm:text-[28px]">
+    <section aria-labelledby="mps-mode-title" className="space-y-6 sm:space-y-8">
+      <div className="max-w-3xl space-y-3">
+        <h2 id="mps-mode-title" className="font-display text-[26px] font-semibold leading-[1.2] tracking-[-0.02em] text-foreground sm:text-[34px]">
           {t('mps_mode_title')}
         </h2>
-        <p className="text-[15px] leading-relaxed text-muted-foreground">{t('mps_mode_subtitle')}</p>
+        <p className="text-[15px] leading-relaxed text-muted-foreground sm:text-base">{t('mps_mode_intro_1')}</p>
+        <p className="text-[15px] font-semibold leading-relaxed text-foreground sm:text-base">{t('mps_mode_intro_2')}</p>
+        <p className="text-[15px] leading-relaxed text-muted-foreground sm:text-base">{t('mps_mode_intro_3')}</p>
+        <p className="text-[15px] leading-relaxed text-muted-foreground sm:text-base">{t('mps_mode_intro_4')}</p>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
-        <article className="hm-discovery-panel hm-discovery-focus relative flex flex-col overflow-hidden p-6 sm:p-8">
+        <article className="hm-discovery-panel hm-discovery-focus relative flex flex-col overflow-hidden p-5 sm:p-8">
           <div className="pointer-events-none absolute -end-16 -top-16 h-48 w-48 rounded-full bg-[hsl(var(--gold)/0.10)] blur-2xl" aria-hidden="true" />
           <div className="flex flex-wrap items-center gap-3">
-            <span className="grid h-11 w-11 place-items-center rounded-xl bg-[#0C1119] text-[hsl(38_92%_60%)]" aria-hidden="true">
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#0C1119] text-[hsl(38_92%_60%)] sm:h-11 sm:w-11" aria-hidden="true">
               <Layers className="h-5 w-5" />
             </span>
             <h3 className="font-display text-xl font-semibold tracking-[-0.01em] text-foreground">{t('mps_marketplace_title')}</h3>
@@ -33,8 +36,10 @@ export function SearchModeSelect({ t, onMarketplace, deepSearchAvailable }: {
               {t('mps_marketplace_badge')}
             </span>
           </div>
-          <p className="mt-4 max-w-[60ch] text-[15px] leading-relaxed text-foreground/80">{t('mps_marketplace_description')}</p>
-          <div className="mt-6 flex-1" />
+          <p className="mt-4 font-display text-lg font-semibold leading-snug text-foreground">{t('mps_marketplace_tagline')}</p>
+          <p className="mt-2 max-w-[60ch] text-[15px] leading-relaxed text-foreground/80">{t('mps_marketplace_description')}</p>
+          <p className="mt-2 max-w-[60ch] text-[15px] leading-relaxed text-foreground/70">{t('mps_marketplace_description_2')}</p>
+          <div className="mt-5 sm:mt-6 sm:flex-1" />
           <button
             type="button"
             onClick={onMarketplace}
@@ -57,11 +62,11 @@ export function DeepSearchCard({ t, available, variant }: { t: T; available: boo
   return (
     <article
       aria-labelledby={`mps-deep-${variant}`}
-      className="relative flex flex-col overflow-hidden rounded-2xl bg-[#0C1119] p-6 text-white shadow-hover sm:p-8"
+      className="relative flex flex-col overflow-hidden rounded-2xl bg-[#0C1119] p-5 text-white shadow-hover sm:p-8"
     >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_100%_0%,hsl(38_92%_56%/0.18),transparent_60%)]" aria-hidden="true" />
       <div className="relative flex items-center gap-3">
-        <span className="grid h-11 w-11 place-items-center rounded-xl border border-white/15 text-[hsl(38_92%_60%)]" aria-hidden="true">
+        <span className="grid h-10 w-10 place-items-center rounded-xl border border-white/15 text-[hsl(38_92%_60%)] sm:h-11 sm:w-11" aria-hidden="true">
           <Telescope className="h-5 w-5" />
         </span>
         <h3 id={`mps-deep-${variant}`} className="font-display text-xl font-semibold tracking-[-0.01em]">
@@ -74,7 +79,7 @@ export function DeepSearchCard({ t, available, variant }: { t: T; available: boo
       <p className="relative mt-3 max-w-[60ch] text-sm leading-relaxed text-white/60">
         {mode ? t('mps_deep_supporting') : t('mps_deep_results_secondary')}
       </p>
-      <div className="relative mt-6 flex-1" />
+      <div className="relative mt-5 sm:mt-6 sm:flex-1" />
       <div className="relative flex flex-wrap items-center gap-3">
         <button
           type="button"

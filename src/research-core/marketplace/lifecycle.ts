@@ -17,8 +17,11 @@ export const SEARCH_STATUSES: readonly SearchStatus[] = [
 export const TERMINAL_SEARCH_STATUSES: readonly SearchStatus[] = ['COMPLETE', 'PARTIAL_COMPLETE', 'FAILED', 'CANCELLED'];
 export const isTerminalSearch = (s: SearchStatus) => TERMINAL_SEARCH_STATUSES.includes(s);
 
-/** Results may be shown before every worker finishes once this many strong matches exist. */
-export const PROGRESSIVE_MIN_STRONG = 3;
+/**
+ * Results become visible as soon as ONE real property exists, whichever worker
+ * produced it: completed sources never wait for slow ones.
+ */
+export const PROGRESSIVE_MIN_PROPERTIES = 1;
 
 export interface WorkerRunState {
   workerId: string;
@@ -50,7 +53,7 @@ export function deriveSearchStatus(current: SearchStatus, runs: readonly WorkerR
     const allComplete = runs.every((r) => r.status === 'COMPLETE');
     return { status: allComplete ? 'COMPLETE' : 'PARTIAL_COMPLETE', failureReason: null };
   }
-  if (counts.strongMatches >= PROGRESSIVE_MIN_STRONG) return { status: 'RESULTS_AVAILABLE', failureReason: null };
+  if (counts.properties >= PROGRESSIVE_MIN_PROPERTIES) return { status: 'RESULTS_AVAILABLE', failureReason: null };
   if (runs.some((r) => r.status === 'RESULTS_RECEIVED' || r.status === 'PROCESSING')) return { status: 'PROCESSING', failureReason: null };
   if (runs.some((r) => r.status === 'SEARCHING')) return { status: 'SEARCHING', failureReason: null };
   return { status: current === 'CREATED' || current === 'READY' ? 'DISPATCHING' : current, failureReason: null };

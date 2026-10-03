@@ -1,0 +1,87 @@
+// HOMATCH Design Studio — the Result as a dashboard: the customer's own words
+// for a new version, edits chosen from a list, the rooms of a whole-home
+// photo, and the 3D tour of a photo project (from its floor plan).
+//
+// Order is [en, ka, ru, tr, ar, he].
+
+export const DS_STRINGS_30 = {
+  dsx_wish_title: [
+    'Tell us exactly what design you want',
+    'მოგვწერეთ ზუსტად როგორი დიზაინით გსურთ რენდერის აწყობა?',
+    'Напишите, какой именно дизайн вы хотите',
+    'Tam olarak nasıl bir tasarım istediğinizi yazın',
+    'اكتب لنا بالضبط التصميم الذي تريده',
+    'כתבו לנו בדיוק איזה עיצוב אתם רוצים',
+  ],
+  dsx_wish_sub: [
+    'In your own words: HOMATCH turns it into a detailed design and a new picture.',
+    'შენი სიტყვებით: HOMATCH დეტალურ დიზაინად აქცევს და ახალ სურათს შექმნის.',
+    'Своими словами: HOMATCH превратит это в детальный дизайн и новое изображение.',
+    'Kendi kelimelerinizle: HOMATCH bunu ayrıntılı bir tasarıma ve yeni bir görsele dönüştürür.',
+    'بكلماتك: يحوّله HOMATCH إلى تصميم مفصّل وصورة جديدة.',
+    'במילים שלכם: HOMATCH יהפוך את זה לעיצוב מפורט ולתמונה חדשה.',
+  ],
+  dsx_wish_placeholder: [
+    'e.g. warmer light, a dark green sofa, an oak dining table for six, more plants',
+    'მაგ.: უფრო თბილი განათება, მუქი მწვანე დივანი, მუხის სასადილო მაგიდა 6 კაცზე, მეტი მცენარე',
+    'напр.: теплее свет, тёмно-зелёный диван, дубовый обеденный стол на шестерых, больше растений',
+    'ör. daha sıcak ışık, koyu yeşil bir kanepe, altı kişilik meşe yemek masası, daha fazla bitki',
+    'مثلًا: إضاءة أدفأ، أريكة خضراء داكنة، طاولة طعام من البلوط لستة أشخاص، نباتات أكثر',
+    'למשל: תאורה חמה יותר, ספה ירוקה כהה, שולחן אוכל מעץ אלון לשישה, יותר צמחים',
+  ],
+  dsx_wish_send: ['Create', 'შექმნა', 'Создать', 'Oluştur', 'إنشاء', 'יצירה'],
+  dsx_wish_confirm: ['Your design, in your words', 'შენი დიზაინი, შენი სიტყვებით', 'Ваш дизайн, вашими словами', 'Sizin sözlerinizle tasarımınız', 'تصميمك بكلماتك', 'העיצוב שלכם, במילים שלכם'],
+  dsx_wish_label: ['Your design', 'შენი დიზაინი', 'Ваш дизайн', 'Tasarımınız', 'تصميمك', 'העיצוב שלכם'],
+  dsx_edit_list_title: ['What would you like to change?', 'რისი შეცვლა გინდა?', 'Что вы хотите изменить?', 'Neyi değiştirmek istersiniz?', 'ما الذي تريد تغييره؟', 'מה תרצו לשנות?'],
+  dsx_edit_list_body: [
+    'Choose an item: HOMATCH changes only that, everything else stays.',
+    'აირჩიე ნივთი: HOMATCH მხოლოდ მას შეცვლის, დანარჩენი უცვლელი დარჩება.',
+    'Выберите предмет: HOMATCH изменит только его, всё остальное останется.',
+    'Bir öğe seçin: HOMATCH yalnızca onu değiştirir, gerisi aynı kalır.',
+    'اختر عنصرًا: يغيّره HOMATCH وحده ويبقى الباقي كما هو.',
+    'בחרו פריט: HOMATCH ישנה רק אותו, כל השאר יישאר.',
+  ],
+  dsx_edit_list_empty: [
+    'There is nothing to change in this picture yet.',
+    'ამ სურათზე შესაცვლელი ნივთები ჯერ არ არის.',
+    'На этом изображении пока нечего менять.',
+    'Bu görselde henüz değiştirilecek bir şey yok.',
+    'لا يوجد ما يمكن تغييره في هذه الصورة بعد.',
+    'אין עדיין מה לשנות בתמונה הזו.',
+  ],
+  dsx_edit_group_home: ['Whole home', 'მთელი სახლი', 'Весь дом', 'Tüm ev', 'المنزل كله', 'כל הבית'],
+  dsx_photo_tour_body: [
+    'A 3D tour needs your home\'s walls, doors and sizes. Add its floor plan and HOMATCH builds the tour.',
+    '3D ტურისთვის საჭიროა სახლის კედლები, კარები და ზომები. ატვირთე ბინის გეგმა და HOMATCH ტურს ააწყობს.',
+    'Для 3D-прогулки нужны стены, двери и размеры дома. Добавьте план, и HOMATCH построит прогулку.',
+    '3D gezinti için evinizin duvarları, kapıları ve ölçüleri gerekir. Kat planını ekleyin, HOMATCH gezintiyi oluşturur.',
+    'تحتاج الجولة ثلاثية الأبعاد إلى جدران منزلك وأبوابه ومقاساته. أضف المخطط وسيبني HOMATCH الجولة.',
+    'סיור תלת־ממדי צריך את הקירות, הדלתות והמידות של הבית. הוסיפו את התוכנית ו־HOMATCH יבנה את הסיור.',
+  ],
+  dsx_photo_tour_cta: ['Add the floor plan', 'გეგმის დამატება', 'Добавить план', 'Kat planını ekle', 'إضافة المخطط', 'הוספת התוכנית'],
+  dsx_find_rooms_body: [
+    'This picture shows your whole home. HOMATCH can find each room in it, so you can design them one by one. Nothing is uploaded again.',
+    'ეს სურათი მთელ სახლს აჩვენებს. HOMATCH იპოვის მასში თითოეულ ოთახს, რომ ცალ-ცალკე დააგენერირო. ხელახლა ატვირთვა საჭირო არ არის.',
+    'На этом изображении весь дом. HOMATCH найдёт в нём каждую комнату, чтобы вы оформили их по отдельности. Ничего не нужно загружать заново.',
+    'Bu görsel evinizin tamamını gösteriyor. HOMATCH içindeki her odayı bulabilir, böylece onları tek tek tasarlayabilirsiniz. Yeniden yükleme gerekmez.',
+    'تُظهر هذه الصورة منزلك كله. يستطيع HOMATCH إيجاد كل غرفة فيها لتصممها واحدة تلو الأخرى، دون رفع أي شيء من جديد.',
+    'התמונה הזו מציגה את כל הבית. HOMATCH יכול למצוא בה כל חדר, כדי שתעצבו אותם אחד־אחד. אין צורך להעלות מחדש.',
+  ],
+  dsx_find_rooms_cta: ['Find the rooms', 'ოთახების პოვნა', 'Найти комнаты', 'Odaları bul', 'إيجاد الغرف', 'מציאת החדרים'],
+  dsx_find_rooms_same: [
+    'HOMATCH found no other rooms in this picture.',
+    'ამ სურათზე სხვა ოთახი ვერ ვიპოვეთ.',
+    'HOMATCH не нашёл на этом изображении других комнат.',
+    'HOMATCH bu görselde başka oda bulamadı.',
+    'لم يجد HOMATCH غرفًا أخرى في هذه الصورة.',
+    'HOMATCH לא מצא חדרים נוספים בתמונה הזו.',
+  ],
+  dsx_find_rooms_failed: [
+    'The rooms could not be found right now. Try again a little later.',
+    'ოთახების პოვნა ახლა ვერ მოხერხდა. სცადე ცოტა მოგვიანებით.',
+    'Сейчас не удалось найти комнаты. Попробуйте чуть позже.',
+    'Odalar şu anda bulunamadı. Biraz sonra tekrar deneyin.',
+    'تعذّر إيجاد الغرف الآن. حاول مجددًا بعد قليل.',
+    'לא הצלחנו למצוא את החדרים כרגע. נסו שוב מעט מאוחר יותר.',
+  ],
+};

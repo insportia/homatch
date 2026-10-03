@@ -104,7 +104,8 @@ function ProjectLoader() {
         const photo = await photoProjectOf(projectId).catch(() => null);
         if (photo) {
           const photoDone = flowOf(photo)?.step === 'DONE';
-          if (photoDone && !walkthroughRoute) { navigate(`/design-studio/${projectId}/home`, { replace: true }); return; }
+          // ...unless the customer asked for something else here (a plan for the 3D tour: ?start=floorplan).
+          if (photoDone && !walkthroughRoute && !entry.current.start) { navigate(`/design-studio/${projectId}/home`, { replace: true }); return; }
           // A walkthrough link opens the walkthrough: it never resumes a design under way (that is the project's own page).
           if (!photoDone && !walkthroughRoute) { setResumePhoto(photo); setPhotoFlow(true); }
         }

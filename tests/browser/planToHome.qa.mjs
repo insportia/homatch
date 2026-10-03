@@ -466,7 +466,8 @@ async function zeroQuestionPath(browser, { width, height, lang, touch }) {
     f?.look?.style === 'LUXURY' && f?.look?.quality === 'PREMIUM' && f?.preferences?.style === 'luxury' && f?.preferences?.furnishing === 'STAGED' && f?.preferences?.floor === 'MARBLE');
   const specBody = store.gen.specBodies[0] ?? {};
   check(`${tag}: OpenAI's specification is asked with the customer's look and quality as direction (${JSON.stringify(specBody.look)})`,
-    specBody.mode === 'MASTER' && specBody.look?.style === 'LUXURY' && specBody.look?.quality === 'PREMIUM' && /Premium: top-tier natural materials/.test(specBody.preferences?.brief ?? ''));
+    // The look's own words are HOMATCH's (the server adds them); the customer's brief carries only what they wrote.
+    specBody.mode === 'MASTER' && specBody.look?.style === 'LUXURY' && specBody.look?.quality === 'PREMIUM' && (specBody.preferences?.brief ?? '') === '');
   check(`${tag}: flow recorded DONE with timings`, f?.step === 'DONE' && typeof f?.timings?.analysisMs === 'number');
 
   // ── The result: the unified Result of an OpenAI-first design; the edit pipeline exactly as before ──
@@ -487,13 +488,10 @@ async function zeroQuestionPath(browser, { width, height, lang, touch }) {
   await s.shot('compare');
   await s.noOverflow(tag, 'before / after');
   await page.getByTestId('home-compare').click();
-  // Edit: tap a piece in the picture.
+  // Edit: choose a piece from the list under the picture (nothing is drawn over the picture).
   await page.getByTestId('home-edit').click();
-  await page.getByTestId('edit-hint').waitFor({ timeout: 10000 });
-  await page.waitForTimeout(1500); // the id map loads after the picture
-  const img = page.getByTestId('render-viewer').locator('img').first();
-  const box = await img.boundingBox();
-  await page.mouse.click(box.x + box.width * 0.40, box.y + box.height * 0.54);
+  await page.getByTestId('edit-list').waitFor({ timeout: 10000 });
+  await page.getByTestId('edit-item').filter({ hasText: /sofa|დივანი|Sofa/i }).first().click();
   await page.getByTestId('edit-panel').waitFor({ timeout: 10000 });
   await s.shot('edit');
   const swatch = page.getByTestId('edit-panel').locator('button[aria-label]').filter({ hasNot: page.locator('svg') }).first();
@@ -893,10 +891,12 @@ async function photoPath(browser, { width, height, lang, touch }) {
   await page.getByTestId('room-view').waitFor({ timeout: 60000 });
   const room = store.db.ds_renders.find((r) => r.view?.kind === 'ROOM');
   check(`${tag}: the room is drawn over its own photo (${room?.view?.roomId})`, room?.view?.roomId === 'r2' && room.finish?.sourceKey === store.db.ds_floorplans.find((f) => f.id === recon.reference_ids[1])?.object_key);
-  // Another option of the same design.
+  // Another option, in the customer's own words (never something unasked).
   await page.getByTestId('home-variant').click();
+  await page.getByTestId('home-wish-text').fill('a dark green sofa and warmer light');
+  if (lang === 'ka') check(`${tag}: the wish box asks in the customer's language`, (await page.getByTestId('home-wish').innerText()).includes('მოგვწერეთ ზუსტად როგორი დიზაინით გსურთ რენდერის აწყობა?'));
+  await page.getByTestId('home-wish-send').click();
   await page.getByTestId('confirm-price').waitFor({ timeout: 10000 });
-  if (lang === 'ka') check(`${tag}: variant copy`, (await page.locator('[role="dialog"]').innerText()).includes('შევინარჩუნებთ შენს სივრცეს, სტილს და ხარისხს, დიზაინის დეტალებს კი თავიდან შევქმნით.'));
   await page.getByTestId('confirm-run').click();
   await page.getByTestId('home-variants').waitFor({ timeout: 60000 });
   await page.waitForTimeout(500);

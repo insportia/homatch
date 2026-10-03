@@ -903,6 +903,30 @@ test('a walkthrough link opens the walkthrough: it never resumes a design under 
   assert.match(page, /if \(unfinished && !walkthroughRoute\) \{ setResumePlan\(plan\);/);
 });
 
+test('the Result is a dashboard: the customer\'s own words for a new version, edits from a list, rooms of a whole-home photo, the 3D tour', () => {
+  const result = code('src/components/designStudio/unified/DesignResult.tsx');
+  // "Another option" never makes something unasked: it opens the customer's own words, sent as the version's note.
+  assert.match(result, /data-testid="home-wish"/);
+  assert.match(result, /key: `wish-\$\{hero\.id\}-\$\{nonce\(\)\}`, label: t\('dsx_wish_label'\), credits, note/);
+  assert.match(result, /change: input\.style \|\| input\.quality \|\| input\.note \?/);
+  assert.doesNotMatch(result, /const askVariant =/);
+  // Edits are chosen from a tidy list (no outlines drawn over the picture).
+  assert.doesNotMatch(result, /RenderViewer/);
+  assert.match(result, /data-testid="edit-list"/);
+  // A photo project: its rooms found again from the same photos, and its 3D tour from its plan.
+  assert.match(result, /findPhotoRooms\(projectId, lang\)/);
+  assert.match(result, /navigate\(`\/design-studio\/\$\{projectId\}\?start=floorplan`\)/);
+  assert.match(code('src/pages/designStudio/DesignStudioWorkspacePage.tsx'), /if \(photoDone && !walkthroughRoute && !entry\.current\.start\)/);
+  assert.match(code('supabase/functions/design-studio-reconstruct/index.ts'), /if \(route === 'photo-rooms'\) return handlePhotoRooms\(req\);/);
+  const photos = code('supabase/functions/design-studio-reconstruct/photos.ts');
+  // Sources stay immutable: found rooms are a NEW source and a deterministic child of the design shown.
+  assert.match(photos, /supersedes_id: source\.id/);
+  assert.match(photos, /const childId = await uuidFrom\(`ds-photo-rooms:\$\{head\.id\}`\);/);
+  assert.match(photos, /u\.rooms\.length > before\.rooms\.length && heroPhoto != null/, 'only more rooms, and the design\'s own picture kept');
+  assert.match(photos, /await meterAiCall\(admin, \{ userId: head\.user_id, productCode: PRODUCT/, 'the reading is metered');
+  assert.doesNotMatch(photos, /from\('ds_spatial_sources'\)\.update/, 'a ready source is never changed');
+});
+
 test('the protected edit pipeline (PR #65) is untouched; the 3D walkthrough is the server-built one', () => {
   // The legacy browser-driven walkthrough stays held back.
   assert.match(code('src/lib/designStudio/walkthroughOffer.ts'), /export const WALKTHROUGH_OFFERED = false;/);

@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import {
-  ALWAYS_IMMUTABLE, buildEvidence, directionFrom, dnaFromSpec, imageInstruction, modeContextProblem, referenceOf, SPEC_SCHEMA, specProblems, specRequest, validateSpec,
+  ALWAYS_IMMUTABLE, ALWAYS_NEGATIVE, buildEvidence, directionFrom, dnaFromSpec, imageInstruction, modeContextProblem, referenceOf, roomFromWholeHome, SPEC_SCHEMA, specProblems, specRequest, validateSpec,
 } from '../designSpec.ts';
 import { understand } from '../planRead/understand.ts';
 
@@ -224,4 +224,21 @@ test('the direction is bounded: bad fields fall back, the customer\'s words cann
   assert.equal(d.preferences.mood, 'WARM');
   assert.equal(d.preferences.furnishing, 'STAGED');
   assert.ok(d.preferences.brief.length <= 600 && !/\u0000/.test(d.preferences.brief));
+});
+
+test('a room of a whole-home view is an eye-level picture of it IN the approved design; the customer\'s words lead a variant; nothing outside the home', () => {
+  const ev = { sourceKind: 'PHOTO', scale: { metresPerPx: null, uncertaintyPct: null, overallM: null, printedSizes: 0 }, stairs: [], rooms: [{ id: 'r1', kind: 'LIVING', label: 'Living', outdoor: false }, { id: 'r2', kind: 'BEDROOM', label: 'Bedroom', outdoor: false, view: 'WHOLE_HOME' }], openings: [] };
+  const room = { mode: 'ROOM', evidence: ev, direction: DIRECTION, room: { id: 'r2', name: 'Bedroom' }, change: null, approvedSpec: null };
+  assert.equal(roomFromWholeHome(room), true);
+  assert.equal(roomFromWholeHome({ ...room, room: { id: 'r1', name: 'Living' } }), false);
+  const task = specRequest('m', room, { source: SOURCE, master: MASTER }).input[1].content[0].text;
+  assert.match(task, /eye-level architectural photograph of room r2/, 'drawn from the approved design, not over the whole-home photo');
+  const spec = validateSpec(sampleSpec({ rooms: ev.rooms, openings: [] }), ev);
+  assert.match(imageInstruction(spec, room), /This picture is the approved design of the customer's home\. Produce an eye-level/);
+  // A variant from the customer's own words: OpenAI makes them the heart of it (never shown back to the customer).
+  const wish = { mode: 'VARIANT', evidence: ev, direction: DIRECTION, room: null, change: { style: null, quality: null, note: 'dark green sofa, warmer light' }, approvedSpec: spec };
+  assert.match(specRequest('m', wish, { source: SOURCE, master: MASTER }).input[1].content[0].text, /in their own words[^]*dark green sofa, warmer light[^]*heart of this version/);
+  // Every picture: nothing outside the home's walls and floor.
+  assert.ok(ALWAYS_NEGATIVE.includes('no furniture or objects outside the walls or floor of the home'));
+  assert.ok(ALWAYS_IMMUTABLE.some((l) => /nothing outside the building/.test(l)));
 });

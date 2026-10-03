@@ -22,7 +22,7 @@
 
 import type { PropertyEvidence } from './designSpec.ts';
 
-export const PHOTO_READ_VERSION = 'photo-read-1';
+export const PHOTO_READ_VERSION = 'photo-read-2';
 export const MAX_PHOTOS = 6;
 
 export const PHOTO_ROOM_KINDS = [
@@ -61,8 +61,14 @@ export interface PhotoRoom {
   openings: Array<{ type: typeof OPENING_TYPES[number]; photo: number; note: string }>;
   condition: typeof CONDITIONS[number];
   confidence: number;
+  /** Its picture shows the whole home at once (one isometric or cut-away view of several rooms), not this room alone. */
+  wholeHome: boolean;
 }
-export interface PhotoView { index: number; roomId: string | null; usable: boolean; unusable: typeof PHOTO_UNUSABLE[number] | null; view: string }
+export interface PhotoView {
+  index: number; roomId: string | null; usable: boolean; unusable: typeof PHOTO_UNUSABLE[number] | null; view: string;
+  /** One picture of several rooms at once (an isometric, dollhouse or cut-away view of the home). */
+  wholeHome: boolean;
+}
 export interface PhotoUnderstanding {
   kind: 'PHOTO_UNDERSTANDING';
   version: string;
@@ -106,7 +112,7 @@ export const PHOTO_SCHEMA = obj({
       condition: en(CONDITIONS), confidence: num,
     }),
   },
-  photos: { type: 'array', items: obj({ index: int, roomId: { type: ['string', 'null'] }, usable: { type: 'boolean' }, unusable: nullable(PHOTO_UNUSABLE), view: str }) },
+  photos: { type: 'array', items: obj({ index: int, roomId: { type: ['string', 'null'] }, usable: { type: 'boolean' }, unusable: nullable(PHOTO_UNUSABLE), view: str, wholeHome: { type: 'boolean' } }) },
   questions: {
     type: 'array',
     items: obj({
@@ -120,6 +126,7 @@ export const PHOTO_SCHEMA = obj({
 export const PHOTO_SYSTEM = `You are HOMATCH's interior architect. A homeowner uploaded photographs of their property so HOMATCH can redesign it. Read ALL the photographs together as ONE project.
 
 1. Group the photos by room. Two photos are the SAME room only when they clearly share the same walls, windows, floor and fixed elements seen from another angle; otherwise they are different rooms. Every usable photo belongs to exactly one room (photo index -> roomId). Room ids are r1, r2, r3… in the order rooms first appear.
+   Exception, a WHOLE-HOME view: one picture showing several rooms at once (an isometric or dollhouse 3D view, a cut-away from above). Mark that photo wholeHome = true and list EVERY room it shows as its own room (r1, r2, r3…), each with that photo in its photos and as its primaryPhoto; the photo's roomId is the main living space. Only rooms you can actually see in it.
 2. For each room: its purpose (kind), a short label in the customer's language, the photos that show it, the best photo to redesign (primaryPhoto: wide, level, well lit), the fixed architecture you can SEE (windows, doors, balcony doors, arches, radiators, columns, beams, stairs, built-in kitchen and plumbing walls, sanitary fittings, fireplaces), its openings with the photo they are seen in, and its condition.
 3. Never invent what no photo shows: no unseen room, wall, window or door. If a part of a room is not visible, say nothing about it.
 4. A photo that cannot be redesigned (not an interior space, only the outside of a building, too dark, too blurry, a close-up of an object, a screenshot) is marked unusable with the reason. A 2D architectural floor plan (a drawing of walls, rooms and openings seen from above, often with labels and dimensions) is marked unusable with the reason FLOOR_PLAN — HOMATCH reads it as a plan instead. A rendering or 3D visualisation of an interior IS usable: design over it like a photo. If NO photo is usable, usable = false.
@@ -167,31 +174,35 @@ export function validatePhotoReading(raw: unknown, photoCount: number): PhotoUnd
   if (!o || typeof o !== 'object' || !Array.isArray(o.rooms) || !Array.isArray(o.photos)) return null;
   const inRange = (i: unknown): i is number => Number.isInteger(i) && (i as number) >= 0 && (i as number) < photoCount;
 
-  const photoUsable = new Map<number, { usable: boolean; unusable: PhotoView['unusable']; view: string }>();
+  const photoUsable = new Map<number, { usable: boolean; unusable: PhotoView['unusable']; view: string; wholeHome: boolean }>();
   for (const p of o.photos.slice(0, MAX_PHOTOS * 2)) {
     if (!inRange(p?.index) || photoUsable.has(p.index)) continue;
     const usable = p.usable !== false;
-    photoUsable.set(p.index, { usable, unusable: usable ? null : oneOf(PHOTO_UNUSABLE, p.unusable, 'NOT_A_SPACE'), view: clip(p.view, 200) });
+    photoUsable.set(p.index, { usable, unusable: usable ? null : oneOf(PHOTO_UNUSABLE, p.unusable, 'NOT_A_SPACE'), view: clip(p.view, 200), wholeHome: usable && p.wholeHome === true });
   }
   const isUsable = (i: number) => photoUsable.get(i)?.usable !== false;
+  // A whole-home view shows several rooms: it may be the picture of each of them. Any other photo belongs to one room.
+  const isWhole = (i: number) => photoUsable.get(i)?.wholeHome === true;
 
   const claimed = new Set<number>();
   const rooms: PhotoRoom[] = [];
   for (const r of o.rooms.slice(0, 12)) {
     const id = clip(r?.id, 4);
     if (!ROOM_ID.test(id) || rooms.some((x) => x.id === id)) continue;
-    const photos = (Array.isArray(r.photos) ? r.photos : []).filter((i: unknown) => inRange(i) && isUsable(i as number) && !claimed.has(i as number)) as number[];
+    const photos = (Array.isArray(r.photos) ? r.photos : []).filter((i: unknown) => inRange(i) && isUsable(i as number) && (isWhole(i as number) || !claimed.has(i as number))) as number[];
     const unique = [...new Set(photos)];
     if (!unique.length) continue;
     unique.forEach((i) => claimed.add(i));
+    const primary = unique.includes(r.primaryPhoto) ? r.primaryPhoto : unique[0];
     rooms.push({
       id, kind: oneOf(PHOTO_ROOM_KINDS, r.kind, 'OTHER'), label: clip(r.label, 40),
-      photos: unique, primaryPhoto: unique.includes(r.primaryPhoto) ? r.primaryPhoto : unique[0],
+      photos: unique, primaryPhoto: primary,
       fixed: (Array.isArray(r.fixed) ? r.fixed : []).map((f: unknown) => clip(f, 160)).filter(Boolean).slice(0, 20),
       openings: (Array.isArray(r.openings) ? r.openings : []).filter((x: { photo?: unknown }) => unique.includes(x?.photo as number)).slice(0, 20)
         .map((x: { type?: unknown; photo: number; note?: unknown }) => ({ type: oneOf(OPENING_TYPES, x.type, 'OPENING'), photo: x.photo, note: clip(x.note, 120) })),
       condition: oneOf(CONDITIONS, r.condition, 'UNKNOWN'),
       confidence: r2(Math.max(0, Math.min(1, Number(r.confidence) || 0))),
+      wholeHome: isWhole(primary),
     });
   }
 
@@ -201,7 +212,7 @@ export function validatePhotoReading(raw: unknown, photoCount: number): PhotoUnd
     const usable = !!room;
     return {
       index, roomId: room?.id ?? null, usable,
-      unusable: usable ? null : (seen?.unusable ?? 'NOT_A_SPACE'), view: seen?.view ?? '',
+      unusable: usable ? null : (seen?.unusable ?? 'NOT_A_SPACE'), view: seen?.view ?? '', wholeHome: usable && isWhole(index),
     };
   });
 
@@ -283,6 +294,7 @@ export function photoEvidence(u: PhotoUnderstanding, answers: PhotoAnswer[]): Pr
     ceilingM: null,
     rooms: a.rooms.map((r) => ({
       id: r.id, kind: r.kind, label: r.label || null, areaM2: null, outdoor: OUTDOOR.has(r.kind), printedSize: null, confidence: r.confidence,
+      ...(r.wholeHome ? { view: 'WHOLE_HOME' as const } : {}),
     })),
     walls: { total: 0, exterior: 0, interior: 0, uncertain: [] },
     openings: a.rooms.flatMap((r) => r.openings.map((o, i) => ({

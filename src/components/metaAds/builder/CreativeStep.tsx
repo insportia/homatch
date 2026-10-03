@@ -1,12 +1,13 @@
 // THE AD ITSELF — media guidance, validated uploads, the real ad fields, and
 // HOMATCH AI inline.
 import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { Clock, ImagePlus, Languages, Loader2, Trash2, Sparkles, Smartphone, Square, RectangleVertical, XCircle } from 'lucide-react';
+import { Clock, ImagePlus, Languages, Loader2, Trash2, Sparkles, Smartphone, Square, RectangleVertical, Type, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from './MetaButton';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
@@ -14,7 +15,7 @@ import { checkMedia, ctaOptions, PLACEMENTS, resolveCta, type Placement } from '
 import type { MetaGoal } from '@/lib/metaAds/strategy';
 import type { AdviceItem } from '@/lib/metaAds/creativeAdvice';
 import {
-  addCreative, addCopyVersion, removeCreative, updateCreative, readMediaFacts, creativeMediaUrl, listCreatives,
+  addCreative, addCopyVersion, removeCreative, updateCreative, readMediaFacts, creativeMediaUrl, listCreatives, aiComposeSave,
   type MetaCampaignRow, type MetaCreativeRow, type AiCopyVariant, type StrategySummaryRow,
 } from '@/services/metaAds';
 import { StepShell, VerdictBadge } from './ui';
@@ -28,6 +29,7 @@ import { VideoCreative } from './VideoCreative';
 
 /* HOMATCH AI creative intelligence: its code loads only when a customer asks for it. */
 const CreativeAiPanel = lazy(() => import('./CreativeAiPanel'));
+const CreativeComposer = lazy(() => import('./CreativeComposer'));
 
 export const ACCEPT = 'image/jpeg,image/png,image/webp,video/mp4,video/quicktime';
 
@@ -110,6 +112,9 @@ export function CreativeStep({ campaign, creatives, setCreatives, placements, on
   const { homatchUser } = useAuth();
   /* Never opened by an upload: only the customer's "Improve with HOMATCH AI" click sets this. */
   const [improveFor, setImproveFor] = useState<string | null>(null);
+  /* The text layer of one image creative: edited and re-exported, never re-generated. */
+  const [composeFor, setComposeFor] = useState<string | null>(null);
+  const [composing, setComposing] = useState(false);
   const { t } = useLanguage();
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(0);
@@ -179,12 +184,43 @@ export function CreativeStep({ campaign, creatives, setCreatives, placements, on
             catch { toast.error(t('mads_load_failed')); }
           }}
           onAi={(target) => openAi(cr.id, target ?? null)} wantedLanguages={wanted} onFocus={() => onFocusCreative(cr.id)}
-          onImprove={aiCreativeEnabled ? () => setImproveFor(cr.id) : undefined} />
+          onImprove={aiCreativeEnabled ? () => setImproveFor(cr.id) : undefined}
+          onCompose={() => setComposeFor(cr.id)} />
       ))}
       {blocked && (
         <p id="mm-b-blocking-hint" data-mm-blocking="" className="flex items-start gap-2 rounded-xl border border-destructive/35 bg-destructive/10 px-3.5 py-2.5 text-[13px] text-destructive" role="status">
           <XCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />{t('mm_b_blocking_summary')}
         </p>
+      )}
+      {composeFor && creatives.some((c) => c.id === composeFor) && (
+        <Dialog open onOpenChange={(v) => { if (!v && !composing) setComposeFor(null); }}>
+          <DialogContent className="max-h-[92dvh] max-w-[calc(100%-1rem)] overflow-y-auto p-4 sm:p-6 md:max-w-3xl" data-mm-compose-dialog="">
+            <DialogHeader className="pr-10">
+              <DialogTitle className="flex items-center gap-2"><Type className="h-4 w-4 text-[hsl(var(--gold-ink))]" />{t('mm_ct_dialog_title')}</DialogTitle>
+              <DialogDescription>{t('mm_ct_dialog_lead')}</DialogDescription>
+            </DialogHeader>
+            <Suspense fallback={<Loader2 className="h-5 w-5 animate-spin" />}>
+              {(() => {
+                const cr = creatives.find((c) => c.id === composeFor)!;
+                const edit = !!cr.media[0]?.ai?.composition;
+                return (
+                  <CreativeComposer items={[{ key: cr.id, source: { creativeId: cr.id }, label: '', spec: cr.media[0]?.ai?.composition?.spec ?? null }]}
+                    submitLabel={t(edit ? 'mm_ct_save' : 'mm_ct_create', { n: '1' })} busy={composing}
+                    onSubmit={async ([spec]) => {
+                      setComposing(true);
+                      try {
+                        await aiComposeSave(cr.id, spec);
+                        setCreatives(await listCreatives(campaign.id));
+                        toast.success(t(edit ? 'mm_ct_saved' : 'mm_c_ai_used', { n: '1' }));
+                        setComposeFor(null);
+                      } catch { toast.error(t('mm_ct_failed')); }
+                      finally { setComposing(false); }
+                    }} />
+                );
+              })()}
+            </Suspense>
+          </DialogContent>
+        </Dialog>
       )}
       {improveFor && creatives.some((c) => c.id === improveFor) && (
         <Suspense fallback={null}>
@@ -212,13 +248,15 @@ export function CreativeStep({ campaign, creatives, setCreatives, placements, on
   );
 }
 
-function CreativeEditor({ creative, goal, messagingApp, placements, advice, heldBack, onChange, onRemove, onAi, onFocus, wantedLanguages = [], onImprove }: {
+function CreativeEditor({ creative, goal, messagingApp, placements, advice, heldBack, onChange, onRemove, onAi, onFocus, wantedLanguages = [], onImprove, onCompose }: {
   creative: MetaCreativeRow; goal: MetaGoal; messagingApp: string | null; placements: Placement[];
   advice: AdviceItem[]; heldBack: boolean;
   onChange: (c: MetaCreativeRow) => void; onRemove: () => void; onAi: (target?: string | null) => void; onFocus: () => void;
   wantedLanguages?: string[];
   /** Present only when HOMATCH AI creatives are on; images only. */
   onImprove?: () => void;
+  /** Add (plain photo) or edit (composed creative) the HOMATCH text layer. */
+  onCompose?: () => void;
 }) {
   const { t, lang } = useLanguage();
   const copyLang = detectCopyLanguage(`${creative.primary_text} ${creative.headline}`);
@@ -292,10 +330,15 @@ function CreativeEditor({ creative, goal, messagingApp, placements, advice, held
             ? <VideoCreative creative={creative} url={url} onChange={onChange} />
             : url ? <img src={url} alt="" className="aspect-square w-full rounded-xl object-cover" />
               : <Skeleton className="aspect-square w-full rounded-xl" />}
-          {m0?.ai && (
+          {m0?.ai && m0.ai.index != null && (
             <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-[hsl(var(--gold-soft))] px-2 py-0.5 text-2xs font-semibold text-foreground" data-mm-ai-badge={m0.ai.index}>
               <Sparkles className="h-3 w-3 text-[hsl(var(--gold-ink))]" aria-hidden />{t('mm_c_ai_badge', { n: String(m0.ai.index) })}
             </span>
+          )}
+          {onCompose && !isVideo && url && String(m0?.mime ?? '').startsWith('image/') && (m0?.ai?.composition || !m0?.ai) && (
+            <Button type="button" variant="outline" size="sm" className="mt-2 min-h-11 w-full gap-1.5" onClick={onCompose} data-mm-compose-edit={m0?.ai?.composition ? 'edit' : 'add'}>
+              <Type className="h-3.5 w-3.5" />{t(m0?.ai?.composition ? 'mm_ct_edit' : 'mm_ct_add')}
+            </Button>
           )}
           {onImprove && !isVideo && !m0?.ai && url && (
             <Button type="button" variant="outline" size="sm" className="mt-2 min-h-11 w-full gap-1.5 border-[hsl(var(--gold-border))]/70" onClick={onImprove} data-mm-ai-improve="">

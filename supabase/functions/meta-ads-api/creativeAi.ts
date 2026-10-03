@@ -16,9 +16,21 @@
 //                         release when none were. Runs in the background; the
 //                         job row carries the real stage.
 //   creative_ai_job       poll one job (stage, outcome, signed previews).
-//   creative_ai_use       turn chosen generated images into NEW creatives with
-//                         lineage. The original upload is never written to.
+//   creative_ai_compose   the TEXT layer: HOMATCH typesets the customer's copy
+//                         over one visual (composer.ts) and returns the live
+//                         preview + legibility checks. No model call, no charge.
+//   creative_ai_use       turn chosen generated visuals into NEW creatives: each
+//                         is composed and exported (visual + HOMATCH typography)
+//                         into the PNG Meta receives; the clean visual and the
+//                         composition are stored with it. Original never written.
+//   creative_ai_compose_save  edit the text/layout of a composed creative (a
+//                         re-export — zero image-model calls), or compose a
+//                         plain uploaded photo into a NEW creative.
 //   creative_ai_discard   hide one variation from the gallery (lineage kept).
+//
+// The image model draws the VISUAL ONLY (generationPrompt is English and
+// picture-only; every visual is then checked for stray lettering). No
+// customer-facing word is ever generated as pixels.
 //
 // Provider: OpenAI (the platform's existing AI provider) — vision through the
 // Responses API, images through gpt-image-1 edits. Keys stay in the function
@@ -26,10 +38,12 @@
 // and never returned to the client.
 
 import {
-  ANALYSIS_SCHEMA, analysisFingerprint, analysisSystemPrompt, analysisUserText, clampVariations, generationPrompt,
-  roleToCreative, sanitizeInstruction, sizeForAspect, tokenCostCents, validateAnalysis, validGeneratedImage,
-  type AiStage, type AssetRole, type CreativeAnalysis, type CreativeContext,
+  ANALYSIS_SCHEMA, TEXT_CHECK_PROMPT, TEXT_CHECK_SCHEMA, analysisFingerprint, analysisSystemPrompt, analysisUserText, clampVariations,
+  defaultComposeSpec, generationPrompt, roleToCreative, sanitizeInstruction, sizeForAspect, tokenCostCents, validateAnalysis,
+  validGeneratedImage, variationLayouts,
+  type AiStage, type AssetRole, type CreativeAnalysis, type CreativeConcept, type CreativeContext,
 } from '../../../src/lib/metaAds/creativeAi.ts';
+import { CREATIVE_ENGINE_VERSION, normalizeSpec } from '../../../src/lib/metaAds/creativeLayout.ts';
 import type { ExecutionGrant } from '../_shared/billing.ts';
 import { estimatedProviderCost } from '../_shared/providerCost.ts';
 import { scrubText } from '../_shared/metaAds.ts';
@@ -55,6 +69,8 @@ const UUID = /^[0-9a-f-]{36}$/i;
 /* The wallet gateway is loaded on first paid use: it pulls the Supabase client
    from a URL, and the action router (and its Node tests) must not load it eagerly. */
 const billing = () => import('../_shared/billing.ts');
+/* The composer pulls wasm + npm modules: loaded only when a text layer is composed. */
+const composer = () => import('./composer.ts');
 
 const log = (event: string, data: Record<string, unknown>) => console.log(JSON.stringify({ tag: 'meta_creative_ai', event, ...data }));
 
@@ -134,6 +150,7 @@ async function publicJob(sb: Sb, j: any) {
     analysis: j.kind === 'ANALYSIS' && j.status === 'DONE' ? j.result : null,
     images: j.kind === 'ANALYSIS' ? [] : await Promise.all(images.map(async (im: any) => ({
       index: im.index, width: im.width, height: im.height, discarded: !!im.discarded, url: im.discarded ? null : await signed(sb, im.path),
+      layout: im.layout ?? null, textArtifacts: im.textArtifacts ?? null,
     }))),
     createdAt: j.created_at, updatedAt: j.updated_at,
   };
@@ -215,6 +232,91 @@ async function runAnalysis(sb: Sb, uid: string, jobId: string, src: { path: stri
   return validateAnalysis(parsed);
 }
 
+/* ── VISUAL TEXT CHECK ─────────────────────────────────────────────── */
+/**
+ * Does a generated visual carry stray lettering? A HOMATCH cost (cost_events),
+ * never the customer's: the answer marks the variation so the customer is told
+ * before using it. null = the check itself could not run.
+ */
+async function textInVisual(sb: Sb, jobId: string, bytes: Uint8Array): Promise<boolean | null> {
+  const apiKey = Deno.env.get('OPENAI_API_KEY');
+  if (!apiKey) return null;
+  try {
+    const r = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: VISION_MODEL,
+        input: [
+          { role: 'system', content: TEXT_CHECK_PROMPT },
+          { role: 'user', content: [{ type: 'input_image', image_url: `data:image/png;base64,${b64(bytes)}` }] },
+        ],
+        text: { format: { type: 'json_schema', name: 'meta_visual_text_check', strict: true, schema: TEXT_CHECK_SCHEMA } },
+      }),
+    });
+    const p = r.ok ? await r.json() : null;
+    if (!p) { log('text_check_provider_error', { jobId, status: r.status }); return null; }
+    const inTok = Number(p?.usage?.input_tokens ?? 0), outTok = Number(p?.usage?.output_tokens ?? 0);
+    const inCost = await estimatedProviderCost(sb, { provider: 'OPENAI', unit: 'INPUT_TOKEN', units: inTok, model: VISION_MODEL });
+    const outCost = await estimatedProviderCost(sb, { provider: 'OPENAI', unit: 'OUTPUT_TOKEN', units: outTok, model: VISION_MODEL });
+    const raw = inCost != null && outCost != null ? inCost + outCost : null;
+    await sb.from('cost_events').insert({
+      provider: 'OPENAI', operation_type: 'meta_ads_creative_text_check', source: 'meta-ads-api',
+      units: inTok + outTok, cost_usd: raw ?? 0, success: true, cache_hit: false, pricing_state: raw == null ? 'UNPRICED' : 'ESTIMATED',
+    });
+    const v = JSON.parse(textOf(p))?.containsText;
+    return typeof v === 'boolean' ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/* ── TEXT LAYER (composition) ──────────────────────────────────────── */
+type ComposeSource = { visualPath: string; width: number | null; height: number | null; job?: any; image?: any; creative?: any; concept?: CreativeConcept | null };
+
+/** The visual a composition is typeset over — always the customer's own, never a path from the client. */
+async function composeSource(sb: Sb, uid: string, body: any): Promise<ComposeSource | null> {
+  if (UUID.test(String(body.jobId ?? ''))) {
+    const { data: j } = await sb.from('meta_creative_ai_jobs').select('*').eq('id', String(body.jobId)).eq('user_id', uid).eq('status', 'DONE').maybeSingle();
+    if (!j || j.kind === 'ANALYSIS') return null;
+    const im = (j.result?.images ?? []).find((i: any) => i.index === Number(body.index) && !i.discarded);
+    if (!im || !String(im.path).startsWith(`${uid}/`)) return null;
+    let concept: CreativeConcept | null = null;
+    if (j.input?.analysisJobId) {
+      const { data: an } = await sb.from('meta_creative_ai_jobs').select('result').eq('id', j.input.analysisJobId).eq('user_id', uid).maybeSingle();
+      concept = (an?.result?.concepts ?? []).find((c: any) => c.id === j.input?.conceptId) ?? null;
+    }
+    return { visualPath: im.path, width: im.width ?? null, height: im.height ?? null, job: j, image: im, concept };
+  }
+  const cr = await ownCreative(sb, uid, body.creativeId);
+  if (!cr) return null;
+  const m0 = Array.isArray(cr.media) ? cr.media[0] : null;
+  const vp = m0?.ai?.visualPath;
+  if (vp && String(vp).startsWith(`${uid}/`)) return { visualPath: String(vp), width: m0.ai.visualWidth ?? null, height: m0.ai.visualHeight ?? null, creative: cr };
+  const src = sourceOf(uid, cr);
+  return src ? { visualPath: src.path, width: src.width, height: src.height, creative: cr } : null;
+}
+
+/** Compose → export → store. A composition that fails a legibility check is refused, never exported. */
+async function exportComposite(sb: Sb, uid: string, src: ComposeSource, spec: unknown) {
+  const bytes = await download(sb, src.visualPath);
+  if (!bytes) return { error: 'SOURCE_UNAVAILABLE' as const };
+  const { composeOver, exportPng } = await composer();
+  const composed = await composeOver(bytes, spec);
+  if ('error' in composed) return { error: composed.error };
+  if (!composed.composition.ok) return { error: 'COMPOSITION_INVALID' as const, record: composed.record };
+  const out = await exportPng(composed);
+  const path = `${uid}/composed/${crypto.randomUUID()}.png`;
+  const { error } = await sb.storage.from(BUCKET).upload(path, out.png, { contentType: 'image/png', upsert: false });
+  if (error) return { error: 'SAVE_FAILED' as const };
+  return {
+    media: {
+      path, mime: 'image/png', size: out.png.length, width: out.width, height: out.height,
+      composition: { ...composed.record, engine: CREATIVE_ENGINE_VERSION, spec: composed.composition.spec, pngSha256: out.sha256, visualPath: src.visualPath },
+    },
+  };
+}
+
 /* ── GENERATION (background) ───────────────────────────────────────── */
 async function runGeneration(sb: Sb, args: {
   uid: string; jobId: string; grant: ExecutionGrant; src: { path: string; mime: string; width: number | null; height: number | null };
@@ -232,7 +334,9 @@ async function runGeneration(sb: Sb, args: {
     const apiKey = Deno.env.get('OPENAI_API_KEY');
     const bytes = await download(sb, src.path);
     if (!apiKey || !bytes) throw new Error('SOURCE_UNAVAILABLE');
-    const prompts = Array.from({ length: variations }, (_, i) => generationPrompt({ analysis, concept, ctx, instruction, variation: i, refine }));
+    // Each variation is generated FOR a layout: its calm area is where HOMATCH will typeset the copy.
+    const layouts = variationLayouts(concept, variations);
+    const prompts = Array.from({ length: variations }, (_, i) => generationPrompt({ analysis, concept, ctx, instruction, variation: i, refine, layout: layouts[i % layouts.length] }));
 
     await setStage(sb, jobId, 'GENERATING');
     const started = Date.now();
@@ -251,8 +355,8 @@ async function runGeneration(sb: Sb, args: {
     }));
 
     await setStage(sb, jobId, 'CHECKING');
-    const good: Array<{ bytes: Uint8Array; inTok: number; outTok: number; estimated: boolean }> = [];
-    for (const c of calls) {
+    const good: Array<{ bytes: Uint8Array; inTok: number; outTok: number; estimated: boolean; layout: string; textArtifacts: boolean | null }> = [];
+    for (const [ci, c] of calls.entries()) {
       const p = c.status === 'fulfilled' ? c.value : null;
       const b = p?.data?.[0]?.b64_json ? unb64(String(p.data[0].b64_json)) : null;
       if (!b || !validGeneratedImage(b, { width: w, height: h })) continue;
@@ -262,17 +366,22 @@ async function runGeneration(sb: Sb, args: {
         inTok: hasUsage ? Number(p.usage.input_tokens ?? 0) : 0,
         outTok: hasUsage ? Number(p.usage.output_tokens) : OUTPUT_TOKENS_BY_SIZE[size] ?? 1584,
         estimated: !hasUsage,
+        layout: layouts[ci % layouts.length],
+        textArtifacts: null,
       });
     }
+    // The visual layer must carry no lettering: each delivered visual is checked and marked.
+    const flags = await Promise.all(good.map((g) => textInVisual(sb, jobId, g.bytes)));
+    flags.forEach((f, i) => { good[i].textArtifacts = f; });
 
     await setStage(sb, jobId, 'SAVING');
-    const images: Array<{ index: number; path: string; width: number; height: number; size: number }> = [];
+    const images: Array<{ index: number; path: string; width: number; height: number; size: number; layout: string; textArtifacts: boolean | null }> = [];
     for (const g of good) {
       const index = images.length + 1;
       const path = `${uid}/ai/${jobId}/${index}.png`;
       const { error } = await sb.storage.from(BUCKET).upload(path, g.bytes, { contentType: 'image/png', upsert: false });
       if (error) continue;
-      images.push({ index, path, width: w, height: h, size: g.bytes.length });
+      images.push({ index, path, width: w, height: h, size: g.bytes.length, layout: g.layout, textArtifacts: g.textArtifacts });
       usage.inputTokens += g.inTok; usage.outputTokens += g.outTok; usage.estimated ||= g.estimated;
     }
 
@@ -472,31 +581,84 @@ export async function handleCreativeAi(x: ActionCtx): Promise<Response | null> {
       return json({ ok: true });
     }
 
+    case 'creative_ai_compose': {
+      // The live preview of the final creative: HOMATCH typography over the visual. No model call, no charge.
+      const src = await composeSource(sb, uid, body);
+      if (!src) return json({ error: 'NOT_FOUND', code: 'NOT_FOUND' }, 404);
+      const spec = body.spec ?? defaultComposeSpec({ concept: src.concept, headline: src.creative?.headline ?? null, layout: src.image?.layout ?? null, width: src.width, height: src.height });
+      const bytes = await download(sb, src.visualPath);
+      if (!bytes) return json({ error: 'SOURCE_UNAVAILABLE', code: 'SOURCE_UNAVAILABLE' }, 404);
+      const { composeOver } = await composer();
+      const composed = await composeOver(bytes, spec);
+      if ('error' in composed) return json({ error: composed.error, code: composed.error }, composed.error === 'UNSUPPORTED_SOURCE' ? 400 : 503);
+      const url = await signed(sb, src.visualPath);
+      const prefix = `hmc${String(body.index ?? '')}${String(body.jobId ?? body.creativeId ?? '').slice(0, 8)}`.replace(/[^a-z0-9]/gi, '');
+      return json({ spec: composed.composition.spec, composition: composed.record, svg: url ? composed.previewSvg(url, prefix) : null });
+    }
+
+    case 'creative_ai_compose_save': {
+      // A text/layout edit re-exports from the stored clean visual: zero image-model calls, nothing charged.
+      const cr = await ownCreative(sb, uid, body.creativeId);
+      if (!cr) return json({ error: 'NOT_FOUND', code: 'NOT_FOUND' }, 404);
+      const src = await composeSource(sb, uid, { creativeId: cr.id });
+      if (!src) return json({ error: 'IMAGE_REQUIRED', code: 'IMAGE_REQUIRED' }, 400);
+      const out = await exportComposite(sb, uid, src, normalizeSpec(body.spec));
+      if ('error' in out) return json({ error: out.error, code: out.error, composition: (out as any).record ?? null }, out.error === 'COMPOSITION_INVALID' ? 422 : 503);
+      const { composition, ...file } = out.media;
+      const m0 = cr.media[0];
+      if (m0?.ai?.visualPath) {
+        // Already a composed creative: the same creative gets the new export; its clean visual is kept.
+        const media = [{ ...file, ai: { ...m0.ai, composition } }];
+        await sb.from('meta_creatives').update({ media, updated_at: new Date().toISOString() }).eq('id', cr.id).eq('user_id', uid);
+        log('composition_saved', { creativeId: cr.id, edit: true });
+        return json({ creativeId: cr.id, updated: true });
+      }
+      // A plain upload stays as it is; its composed version is a NEW creative with lineage.
+      const { data: row, error } = await sb.from('meta_creatives').insert({
+        user_id: uid, campaign_id: cr.campaign_id, kind: 'IMAGE', sort: Number(cr.sort ?? 0) + 1,
+        media: [{ ...file, ai: { sourceCreativeId: cr.id, sourcePath: src.visualPath, visualPath: src.visualPath, visualWidth: src.width, visualHeight: src.height, composition } }],
+        headline: cr.headline, primary_text: cr.primary_text, description: cr.description ?? '', cta: cr.cta, destination_url: cr.destination_url ?? null,
+        priority: false,
+      }).select('id').single();
+      if (error || !row) return json({ error: 'FAILED', code: 'FAILED' }, 500);
+      log('composition_saved', { creativeId: row.id, edit: false });
+      return json({ creativeId: row.id, updated: false });
+    }
+
     case 'creative_ai_use': {
       const { data: j } = await sb.from('meta_creative_ai_jobs').select('*').eq('id', String(body.jobId ?? '')).eq('user_id', uid).eq('status', 'DONE').maybeSingle();
       if (!j || j.kind === 'ANALYSIS') return json({ error: 'NOT_FOUND', code: 'NOT_FOUND' }, 404);
       const cr = await ownCreative(sb, uid, j.creative_id);
       if (!cr || !cr.campaign_id) return json({ error: 'NOT_FOUND', code: 'NOT_FOUND' }, 404);
-      const picks = (Array.isArray(body.picks) ? body.picks : []).slice(0, 3)
-        .map((p: any) => ({ index: Number(p?.index), role: (['PRIMARY', 'SECONDARY', 'TEST'].includes(p?.role) ? p.role : 'SECONDARY') as AssetRole }));
+      // One composed export per request: an export is ~1 s of CPU and an edge request has ~2 s.
+      // The panel sends the chosen variations one by one.
+      const picks = (Array.isArray(body.picks) ? body.picks : []).slice(0, 1)
+        .map((p: any) => ({ index: Number(p?.index), role: (['PRIMARY', 'SECONDARY', 'TEST'].includes(p?.role) ? p.role : 'SECONDARY') as AssetRole, spec: p?.spec ?? null }));
       const { data: existing } = await sb.from('meta_creatives').select('id,media').eq('campaign_id', cr.campaign_id).eq('user_id', uid);
-      const used = new Set((existing ?? []).map((e: any) => String(e.media?.[0]?.path ?? '')));
+      const used = new Set((existing ?? []).map((e: any) => String(e.media?.[0]?.ai?.visualPath ?? e.media?.[0]?.path ?? '')));
       const created: string[] = [];
+      const refused: Array<{ index: number; code: string; checks?: unknown }> = [];
       for (const p of picks) {
-        const im = (j.result?.images ?? []).find((i: any) => i.index === p.index && !i.discarded);
-        if (!im || used.has(im.path)) continue;
+        const src = await composeSource(sb, uid, { jobId: j.id, index: p.index });
+        if (!src || used.has(src.visualPath)) continue;
+        // What Meta receives is the composed creative: the visual + HOMATCH typography, never model-drawn text.
+        const spec = p.spec ? normalizeSpec(p.spec) : defaultComposeSpec({ concept: src.concept, headline: cr.headline, layout: src.image?.layout ?? null, width: src.width, height: src.height });
+        const out = await exportComposite(sb, uid, src, spec);
+        if ('error' in out) { refused.push({ index: p.index, code: String(out.error), checks: (out as any).record?.checks }); continue; }
         const role = roleToCreative(p.role);
+        const { composition, ...file } = out.media;
         const { data: row, error } = await sb.from('meta_creatives').insert({
           user_id: uid, campaign_id: cr.campaign_id, kind: 'IMAGE', sort: Number(cr.sort ?? 0) + role.sortBias + p.index,
-          media: [{ path: im.path, mime: 'image/png', size: im.size ?? null, width: im.width, height: im.height,
-            ai: { jobId: j.id, analysisJobId: j.input?.analysisJobId ?? null, conceptId: j.input?.conceptId ?? null, sourcePath: j.input?.sourcePath ?? null, sourceCreativeId: cr.id, index: im.index, role: p.role } }],
+          media: [{ ...file,
+            ai: { jobId: j.id, analysisJobId: j.input?.analysisJobId ?? null, conceptId: j.input?.conceptId ?? null, sourcePath: j.input?.sourcePath ?? null, sourceCreativeId: cr.id, index: p.index, role: p.role,
+              visualPath: src.visualPath, visualWidth: src.width, visualHeight: src.height, composition } }],
           headline: cr.headline, primary_text: cr.primary_text, description: cr.description ?? '', cta: cr.cta, destination_url: cr.destination_url ?? null,
           priority: role.priority,
         }).select('id').single();
-        if (!error && row) { created.push(row.id); used.add(im.path); }
+        if (!error && row) { created.push(row.id); used.add(src.visualPath); }
       }
-      log('variations_used', { jobId: j.id, created: created.length });
-      return json({ created });
+      log('variations_used', { jobId: j.id, created: created.length, refused: refused.length });
+      return json({ created, refused });
     }
 
     default:

@@ -133,7 +133,9 @@ export const COMPONENTS = {
     suites: ['developer', 'onboarding', 'floorplan', 'mobile:routes'],
   },
   META_ADS: {
-    paths: [/^src\/(components\/metaAds|components\/admin\/metaAds|lib\/metaAds)\//, /^src\/pages\/(outreach\/MetaAds|admin\/AdminMetaAds)/, /^src\/services\/metaAds\.ts$/, fn('meta-ads-api', 'meta-oauth', 'meta-webhooks'), /^\.github\/workflows\/meta-ads-[^/]+\.ya?ml$/],
+    paths: [/^src\/(components\/metaAds|components\/admin\/metaAds|lib\/metaAds)\//, /^src\/pages\/(outreach\/MetaAds|admin\/AdminMetaAds)/, /^src\/services\/metaAds\.ts$/, fn('meta-ads-api', 'meta-oauth', 'meta-webhooks'), /^\.github\/workflows\/meta-ads-[^/]+\.ya?ml$/,
+      // The creative text layer's pinned fonts + wasm (preview and edge export load the same files).
+      /^public\/creative-engine\//],
     suites: ['mobile:meta-ads'],
     proofs: ['Meta Ads: meta-ads-api PROVEN_EXACT; status_sync cron executing'],
   },

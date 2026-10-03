@@ -7,12 +7,14 @@
 //   V1–V3, choose one or several (Primary / Secondary / Test), use, refine.
 //
 // The original upload never changes; chosen variations become NEW creatives
-// with their lineage. Nothing is charged without the confirm click, and the
+// with their lineage — each one COMPOSED first: the AI made the visual only,
+// and the customer approves the final creative (HOMATCH typography over the
+// visual, CreativeComposer) exactly as Meta will receive it. Nothing is charged without the confirm click, and the
 // confirm's idempotency key is minted once — a double click or a retry can
 // never start (or charge) a second job.
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Check, Eye, Loader2, RefreshCw, Sparkles, Trash2, Undo2, Wand2, X } from 'lucide-react';
+import { AlertTriangle, Check, Eye, Loader2, RefreshCw, Sparkles, Trash2, Undo2, Wand2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from './MetaButton';
 import { Input } from '@/components/ui/input';
@@ -25,6 +27,9 @@ import {
   type AiJob, type AiQuote, type MetaCreativeRow,
 } from '@/services/metaAds';
 import { useMediaUrl } from './CreativeStep';
+import type { ComposeSpec } from '@/lib/metaAds/creativeLayout';
+
+const CreativeComposer = lazy(() => import('./CreativeComposer'));
 
 type Role = 'PRIMARY' | 'SECONDARY' | 'TEST';
 const ROLES: Role[] = ['PRIMARY', 'SECONDARY', 'TEST'];
@@ -63,6 +68,8 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
   const [picked, setPicked] = useState<Record<number, Role>>({});
   const [preview, setPreview] = useState<{ url: string; label: string } | null>(null);
   const [using, setUsing] = useState(false);
+  /* The variations being composed (Use → the final creative, approved before anything is created). */
+  const [composeFor, setComposeFor] = useState<number[] | null>(null);
   const keyRef = useRef<string | null>(null);
 
   /* ── open: history first (free), analysis only if none is cached ── */
@@ -153,16 +160,23 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
     } catch { toast.error(t('mads_load_failed')); }
   };
 
-  const use = async (indexes: number[]) => {
-    if (!job || !indexes.length || using) return;
+  /* Use = compose first: nothing is created before the customer sees the final creative. */
+  const use = (indexes: number[]) => { if (job && indexes.length && !using) setComposeFor(indexes); };
+  const create = async (specs: ComposeSpec[]) => {
+    if (!job || !composeFor || using) return;
     setUsing(true);
     try {
       // Unpicked (Use all) = Secondary: a normal creative; Primary only where the customer said so.
-      const picks = indexes.map((i) => ({ index: i, role: picked[i] ?? ('SECONDARY' as Role) }));
-      const r = await aiUse(job.id, picks);
-      toast.success(t('mm_c_ai_used', { n: String(r.created.length) }));
+      // One composed export per request (the server's CPU budget): the chosen variations go one by one.
+      let created = 0, refused = 0;
+      for (const [k, i] of composeFor.entries()) {
+        const r = await aiUse(job.id, [{ index: i, role: picked[i] ?? ('SECONDARY' as Role), spec: specs[k] }]);
+        created += r.created.length; refused += r.refused?.length ?? 0;
+      }
+      if (refused) toast.error(t('mm_ct_refused', { n: String(refused) }));
+      if (created) toast.success(t('mm_c_ai_used', { n: String(created) }));
       onCreated();
-      onOpenChange(false);
+      if (!refused) onOpenChange(false);
     } catch { toast.error(t('mads_load_failed')); }
     finally { setUsing(false); }
   };
@@ -194,7 +208,7 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
           </div>
         )}
 
-        {analysis?.analysis && !running && (
+        {analysis?.analysis && !running && !composeFor && (
           <section className="space-y-3" data-mm-ai-concepts={concepts.length}>
             <div className="flex flex-wrap items-start justify-between gap-2">
               <p className="min-w-0 flex-1 text-[13px] text-muted-foreground"><span className="font-semibold text-foreground">{t('mm_c_ai_sees')}</span> {analysis.analysis.subject}</p>
@@ -310,7 +324,16 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
           </section>
         )}
 
-        {job?.status === 'DONE' && (
+        {job?.status === 'DONE' && composeFor && (
+          <Suspense fallback={<Loader2 className="h-5 w-5 animate-spin" />}>
+            <CreativeComposer
+              items={composeFor.map((i) => ({ key: String(i), source: { jobId: job.id, index: i }, label: t('mm_c_ai_variant', { n: String(i) }), textArtifacts: job.images.find((im) => im.index === i)?.textArtifacts ?? null }))}
+              submitLabel={t('mm_ct_create', { n: String(composeFor.length) })} busy={using}
+              onSubmit={create} onBack={() => setComposeFor(null)} />
+          </Suspense>
+        )}
+
+        {job?.status === 'DONE' && !composeFor && (
           <section className="space-y-3" data-mm-ai-gallery={live.length}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-sm font-semibold">{t('mm_c_ai_gallery')}</h3>
@@ -345,6 +368,11 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
                         <button type="button" className="grid h-9 w-9 place-items-center rounded-lg bg-black/55 text-white" onClick={() => discard(im.index)} aria-label={t('mm_c_ai_remove', { n: String(im.index) })} data-mm-ai-remove={im.index}><Trash2 className="h-4 w-4" /></button>
                       </div>
                     </div>
+                    {im.textArtifacts && (
+                      <p className="flex items-start gap-1 text-2xs text-[hsl(32_78%_30%)]" data-mm-ai-artifacts={im.index}>
+                        <AlertTriangle className="mt-px h-3 w-3 shrink-0" aria-hidden />{t('mm_ct_artifacts_short')}
+                      </p>
+                    )}
                     <figcaption className="flex flex-wrap items-center gap-1 text-2xs">
                       <span className="font-semibold">{t('mm_c_ai_variant', { n: String(im.index) })}</span>
                       {sel && (
@@ -363,6 +391,7 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
               })}
             </div>
             <p className="text-2xs text-muted-foreground">{t('mm_c_ai_roles_note')}</p>
+            <p className="text-2xs text-muted-foreground" data-mm-ai-visual-only="">{t('mm_ct_visual_only')}</p>
             <div className="flex flex-wrap gap-2">
               <Button type="button" className="min-h-11 gap-1.5" disabled={!chosen.length || using} onClick={() => use(chosen)} data-mm-ai-use="">
                 {using ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}{t('mm_c_ai_use_selected', { n: String(chosen.length) })}

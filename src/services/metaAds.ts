@@ -2,6 +2,7 @@
 // everything that touches Meta or money goes through the meta-ads-api
 // edge function. Nothing in this file talks to Meta directly.
 import type { BriefUnderstanding } from '@/lib/metaAds/audienceGuide';
+import type { ComposeSpec } from '@/lib/metaAds/creativeLayout';
 import { supabase } from '@/db/supabase';
 
 const FN = 'meta-ads-api';
@@ -233,7 +234,11 @@ export interface MediaMeta {
   /** Videos: the cover still (a separate file — the video is never altered). */
   cover?: { path: string; t: number; auto: boolean } | null;
   /** Lineage of a HOMATCH AI variation: original → analysis → job → this image. */
-  ai?: { jobId: string; analysisJobId?: string | null; conceptId?: string | null; sourcePath?: string | null; sourceCreativeId?: string | null; index: number; role?: string } | null;
+  ai?: {
+    jobId?: string; analysisJobId?: string | null; conceptId?: string | null; sourcePath?: string | null; sourceCreativeId?: string | null; index?: number; role?: string;
+    /** A composed creative: the clean visual it was typeset over, and the approved text layer (re-editable without a new image). */
+    visualPath?: string | null; composition?: { spec: ComposeSpec; copy: Record<string, string>; layout: string; aspect: string } | null;
+  } | null;
 }
 export interface MetaCreativeRow {
   id: string; campaign_id: string | null; kind: 'IMAGE' | 'VIDEO' | 'CAROUSEL';
@@ -368,9 +373,16 @@ export async function creativeMediaUrl(path: string): Promise<string> {
 
 /* ── HOMATCH AI CREATIVES (explicit, cached, billed — meta-ads-api/creativeAi.ts) ── */
 
-export interface AiConcept { id: string; title: string; angle: string; visual: string; composition: string; cta: string; safeArea: string }
+export interface AiConcept {
+  id: string; title: string; angle: string; visual: string; composition: string; cta: string; safeArea: string;
+  layout?: string; copy?: { headline: string; headlineShort: string; subheadline: string; cta: string } | null;
+}
 export interface AiAnalysis { subject: string; strengths: string[]; issues: string[]; concepts: AiConcept[] }
-export interface AiImage { index: number; width: number; height: number; discarded: boolean; url: string | null }
+export interface AiImage {
+  index: number; width: number; height: number; discarded: boolean; url: string | null;
+  /** The layout the visual was generated for; whether the post-generation check found stray lettering (null = not checked). */
+  layout?: string | null; textArtifacts?: boolean | null;
+}
 export interface AiJob {
   id: string; kind: 'ANALYSIS' | 'GENERATION' | 'REFINE'; status: 'RUNNING' | 'DONE' | 'FAILED'; stage: string; error: string | null;
   creativeId: string; conceptId: string | null; requested: number | null;
@@ -388,8 +400,20 @@ export const aiGenerate = (p: { creativeId: string; analysisJobId: string; conce
 export const aiJob = (jobId: string) => call<{ job: AiJob }>('creative_ai_job', { jobId });
 export const aiJobs = (creativeId: string) => call<{ jobs: AiJob[] }>('creative_ai_jobs', { creativeId });
 export const aiDiscard = (jobId: string, index: number, restore = false) => call<{ ok: boolean }>('creative_ai_discard', { jobId, index, restore });
-export const aiUse = (jobId: string, picks: Array<{ index: number; role: 'PRIMARY' | 'SECONDARY' | 'TEST' }>) =>
-  call<{ created: string[] }>('creative_ai_use', { jobId, picks });
+/** Each pick carries the text layer the customer approved in the composer; the server composes and exports it. */
+export const aiUse = (jobId: string, picks: Array<{ index: number; role: 'PRIMARY' | 'SECONDARY' | 'TEST'; spec?: ComposeSpec }>) =>
+  call<{ created: string[]; refused?: Array<{ index: number; code: string }> }>('creative_ai_use', { jobId, picks });
+
+/** One composed preview: HOMATCH typography over the visual (no model call, no charge). */
+export interface ComposePreview {
+  spec: ComposeSpec;
+  composition: { layout: string; requestedLayout: string; aspect: string; ok: boolean; dir: 'ltr' | 'rtl'; copy: Record<string, string>; checks: Array<{ code: string; field?: string; blocking: boolean; detail?: string }>; sizes: Record<string, number>; lines: Record<string, string[]> };
+  svg: string | null;
+}
+export type ComposeSource = { jobId: string; index: number } | { creativeId: string };
+export const aiCompose = (source: ComposeSource, spec?: ComposeSpec) => call<ComposePreview>('creative_ai_compose', { ...source, ...(spec ? { spec } : {}) });
+/** A text/layout edit of a composed creative (re-export only), or a plain photo composed into a NEW creative. */
+export const aiComposeSave = (creativeId: string, spec: ComposeSpec) => call<{ creativeId: string; updated: boolean }>('creative_ai_compose_save', { creativeId, spec });
 
 /* ── LEADS ──────────────────────────────────────────────────────────── */
 

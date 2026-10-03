@@ -129,7 +129,7 @@ export function findInnerTransactions(sql) {
  */
 const DOMAIN_RULES = [
   ['VERIFY', [/^src\/pages\/Verify/, /^src\/pages\/ContractResultPage/, /^src\/verify\//, /^src\/components\/verify/i, /^supabase\/functions\/(research-agent|verify-synthesis|verification-handoff|browserbase-handoff)\//]],
-  ['PUBLIC_HOMEPAGE', [/^src\/pages\/HomePage/, /^src\/components\/home\//, /^src\/site\//, /^src\/pages\/(AboutPage|PricingPage|PartnersPage|DevelopersPage|PrivacyPage|TermsPage|BrokersPage|ProductEntryPage)/, /^public\//, /^scripts\/build-sitemap/]],
+  ['PUBLIC_HOMEPAGE', [/^src\/pages\/HomePage/, /^src\/components\/home\//, /^src\/site\//, /^src\/pages\/(AboutPage|PricingPage|PartnersPage|DevelopersPage|PrivacyPage|TermsPage|BrokersPage|ProductEntryPage)/, /^public\/(?!creative-engine\/)/, /^scripts\/build-sitemap/]],
   ['OWNER', [/^src\/pages\/property\//, /^src\/components\/property\//, /^src\/components\/owner/i]],
   ['DISCOVERY', [/^src\/pages\/(FindPropertyPage|ActiveSearchPage)/, /^src\/components\/matching\//, /^src\/research-core\/(match|discovery|intent)\//, /^supabase\/functions\/(supply-matching|find-property|find-property-plan|run-matching|run-matching-v2|ingest-live-chat)\//]],
   ['ADMIN', [/^src\/pages\/admin\//, /^src\/admin\//, /^src\/components\/admin/i, /^src\/components\/studio\//, /^supabase\/functions\/(admin-user360|impersonate-user)\//]],

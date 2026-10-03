@@ -87,6 +87,10 @@ import {
   unarchiveProperty,
 } from '@/services/propertyManagement';
 import type { Property } from '@/types/types';
+import { FreshnessChip, MediaUnavailable, SourceChip } from '@/components/property/OwnerLifecycle';
+import { coverImage } from '@/property/gallery';
+import { type PropertyLifecycle, needsAttention, safeExternalUrl } from '@/property/lifecycle';
+import { fetchLifecycle } from '@/services/propertyLifecycle';
 
 /** A price, or nothing. Never a zero standing in for "not priced yet". */
 /*
@@ -234,10 +238,12 @@ function ContactNeeded({ id }: { id: string }) {
 }
 
 function PropertyRow({
-  property, intel, onAct, onConfirm,
+  property, intel, life, onAct, onConfirm,
 }: {
   property: Property;
   intel: PortfolioIntelligence | undefined;
+  /** The server's lifecycle answer; undefined while unknown, never guessed. */
+  life?: PropertyLifecycle;
   onAct: (property: Property, action: 'PUBLISH' | 'PAUSE' | 'UNARCHIVE') => void;
   onConfirm: (pending: PendingAction) => void;
 }) {
@@ -247,8 +253,15 @@ function PropertyRow({
     Record<string, unknown> | null | undefined;
 
   const id = String(property.id);
-  const cover = (property.cover_photo_url as string | null)
-    ?? (facts?.cover_image as string | null) ?? null;
+  /* The same ordering as the detail page: a HOMATCH-managed photo always leads, so a
+     dead link on another site never stands in front of a photo the owner uploaded. */
+  const cover = coverImage({
+    coverPhotoUrl: (property.cover_photo_url as string | null) ?? (facts?.cover_image as string | null) ?? null,
+    photos: (property as unknown as { photos?: Parameters<typeof coverImage>[0]['photos'] }).photos ?? null,
+    galleryImages: (facts?.gallery_images as string[] | null) ?? null,
+  });
+  const [mediaFailed, setMediaFailed] = useState(false);
+  const markMediaFailed = useCallback(() => setMediaFailed(true), []);
   const price = priceLabel(facts?.total_price as number | null, facts?.currency as string | null, locale);
   const perSqm = priceLabel(facts?.price_per_sqm as number | null, facts?.currency as string | null, locale);
   /* In the reader's script. "Krtsanisi, Tbilisi" sat on a Georgian page under a Georgian
@@ -275,6 +288,7 @@ function PropertyRow({
     typeof bedrooms === 'number' && bedrooms > 0 ? `${bedrooms} ${t('prop_unit_bedrooms')}` : null,
   ].filter(Boolean).join(' · ');
 
+  /* A photo that cannot be shown SAYS so — never a blank grey box. */
   const media = (
     <MediaWell hasMedia={Boolean(cover)}>
       {cover ? (
@@ -283,11 +297,24 @@ function PropertyRow({
           alt={String(property.title ?? t('prop_untitled'))}
           className="absolute inset-0 h-full w-full object-cover"
           pending={<div className="absolute inset-0 animate-pulse bg-[hsl(var(--secondary))]" />}
-          fallback={null}
+          fallback={<MediaUnavailable compact imported={imported} propertyId={id} sourceUrl={safeExternalUrl(facts?.source_url as string | null)} sourceStatus={life?.source_status ?? null} />}
+          onUnavailable={markMediaFailed}
         />
       ) : null}
       {imported && <SourceMark label={t('prop_source_imported')} />}
     </MediaWell>
+  );
+  const attention = !archived && needsAttention(life ?? null, imported, mediaFailed);
+  const lifecycleLine = (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <FreshnessChip life={life} />
+      <SourceChip life={life} imported={imported} />
+      {attention && (
+        <Link to={`/property/${id}`} data-testid="pow-attention" className="text-2xs font-semibold text-[hsl(var(--gold-ink))] underline-offset-2 hover:underline">
+          {life?.freshness_state && life.freshness_state !== 'ACTIVE' ? t('pow_renew_free') : t('pow_needs_attention')}
+        </Link>
+      )}
+    </div>
   );
 
   /* A historical property keeps every action except starting a NEW search; the line
@@ -451,6 +478,7 @@ function PropertyRow({
 
         <div className="flex min-w-0 flex-col justify-center gap-2.5 border-s border-border px-5 py-4">
           <StatusMark status={status} archived={archived} />
+          {lifecycleLine}
           <IntelLine
             total={intel?.total ?? 0}
             fresh={intel?.fresh ?? 0}
@@ -485,6 +513,7 @@ function PropertyRow({
           </div>
 
           <FactLine items={factItems} />
+          {lifecycleLine}
 
           <div className="border-t border-border pt-3 space-y-2.5">
             <IntelLine
@@ -555,6 +584,7 @@ export default function MyPropertiesPage() {
   const [view, setView] = useState<PortfolioView>('ACTIVE');
   const [properties, setProperties] = useState<Property[]>([]);
   const [intel, setIntel] = useState<Map<string, PortfolioIntelligence>>(new Map());
+  const [lifecycle, setLifecycle] = useState<Map<string, PropertyLifecycle>>(new Map());
   const [counts, setCounts] = useState({ active: 0, archived: 0 });
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState<string | null>(null);
@@ -573,7 +603,10 @@ export default function MyPropertiesPage() {
       setProperties(rows);
       setCounts(totals);
       /* One query for the whole page, after the list is known. */
-      setIntel(await portfolioIntelligence(rows.map((row) => String(row.id))));
+      const ids = rows.map((row) => String(row.id));
+      const [byIntel, byLife] = await Promise.all([portfolioIntelligence(ids), fetchLifecycle(ids)]);
+      setIntel(byIntel);
+      setLifecycle(byLife);
     } catch (error) {
       /*
        * A PERMISSION FAILURE IS A REAL STATE. RLS returns an error rather than an empty
@@ -755,6 +788,7 @@ export default function MyPropertiesPage() {
                   key={String(property.id)}
                   property={property}
                   intel={intel.get(String(property.id))}
+                  life={lifecycle.get(String(property.id))}
                   onAct={(p, a) => { void act(p, a); }}
                   onConfirm={setPending}
                 />

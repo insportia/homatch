@@ -32,12 +32,24 @@ export interface GallerySource {
   galleryImages?: string[] | null;
 }
 
+/** A HOMATCH-managed storage key, as opposed to an address on someone else's host. */
+export function isManagedImage(value: string | null | undefined): boolean {
+  const key = String(value ?? '').trim();
+  return key.length > 0 && !/^(https?:|data:|blob:)/i.test(key);
+}
+
 /**
  * One ordered, de-duplicated list of image addresses.
  *
- * THE OWNER'S COVER LEADS, whether it came from the photo table or from the property
- * row. They chose it, and an interface that opens on a different photo is quietly
- * overruling them.
+ * HOMATCH-MANAGED PHOTOS FIRST, ALWAYS. A photo the owner uploaded lives in our own
+ * storage and loads as long as HOMATCH does; an imported listing's photo is a link to
+ * another site's file and stops loading the day that site removes it. So a broken
+ * external link can never stand in front of a working managed photo: managed keys
+ * lead (the owner's chosen cover first, then their order), and external addresses —
+ * the importer's cover and gallery — follow, still shown, still counted, never first.
+ *
+ * Within each group THE OWNER'S COVER LEADS. They chose it, and an interface that
+ * opens on a different photo is quietly overruling them.
  *
  * `storage_path` is preferred over `public_url` for the same reason the upload path
  * stores a key: `property-photos` is a private bucket, a URL into it expires, and
@@ -46,12 +58,12 @@ export interface GallerySource {
  */
 export function galleryImages(source: GallerySource): string[] {
   const seen = new Set<string>();
-  const out: string[] = [];
+  const ordered: string[] = [];
   const push = (value: string | null | undefined) => {
     const key = String(value ?? '').trim();
     if (!key || seen.has(key)) return;
     seen.add(key);
-    out.push(key);
+    ordered.push(key);
   };
 
   const rows = [...(source.photos ?? [])].sort((a, b) => {
@@ -68,5 +80,11 @@ export function galleryImages(source: GallerySource): string[] {
   push(source.coverPhotoUrl);
   for (const image of source.galleryImages ?? []) push(image);
 
-  return out;
+  /* Stable partition: managed first, external after, each in the order above. */
+  return [...ordered.filter(isManagedImage), ...ordered.filter((key) => !isManagedImage(key))];
+}
+
+/** The photo a card shows: the first of the same ordering. */
+export function coverImage(source: GallerySource): string | null {
+  return galleryImages(source)[0] ?? null;
 }

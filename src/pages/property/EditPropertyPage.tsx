@@ -48,6 +48,7 @@ import {
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
+import { renewProperty } from '@/services/propertyLifecycle';
 import { PrivateImage } from '@/components/common/PrivateImage';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { OWNER_SURFACE } from '@/components/customer/surface';
@@ -339,7 +340,13 @@ export default function EditPropertyPage() {
         }
       }
 
-      toast.success(t('prop_saved'));
+      /*
+       * AN OWNER WHO SAVES HAS CONFIRMED THE PROPERTY IS CURRENT, so a successful save
+       * also renews its 30-day window (free, server-side, idempotent). Best-effort: a
+       * save the database accepted is still a save if the renewal could not run.
+       */
+      const renewed = await renewProperty(id).then((r) => r.ok && r.renewed === true).catch(() => false);
+      toast.success(renewed ? t('pow_saved_and_renewed') : t('prop_saved'));
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error));

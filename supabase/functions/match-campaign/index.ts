@@ -164,6 +164,20 @@ Deno.serve(async (req: Request) => {
       return json({ success: true, jobId: controlJobId, ...outcome });
     }
 
+    /*
+     * FRESHNESS. A property its owner has not confirmed for 30 days is not freshly
+     * confirmed inventory, so a NEW search does not start for it (pause, resume and
+     * stop above are unaffected). Renewal is free and restores it. Read separately
+     * so a database without the lifecycle columns yet keeps working exactly as before.
+     */
+    const { data: freshness, error: freshnessError } = await db
+      .from('properties').select('freshness_anchor_at').eq('id', propertyId).maybeSingle();
+    if (freshnessError && !String(freshnessError.message ?? '').includes('freshness_anchor_at')) throw freshnessError;
+    const anchor = freshness?.freshness_anchor_at ? Date.parse(String(freshness.freshness_anchor_at)) : NaN;
+    if (Number.isFinite(anchor) && Date.now() - anchor >= 30 * 86_400_000) {
+      return json({ error: 'This property has expired. Renew it (free) to restart discovery.', reasonCode: 'PROPERTY_EXPIRED' }, 409);
+    }
+
     let campaignId = body.campaignId ? String(body.campaignId) : '';
     if (campaignId) {
       const { data: requestedCampaign } = await db

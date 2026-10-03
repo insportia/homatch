@@ -232,6 +232,7 @@ function Launcher() {
             {t('dsx_landing_title')}
           </h1>
           <p className="mt-4 max-w-[40rem] text-[15px] leading-relaxed text-white/70 sm:text-[17px]">{t('dsx_landing_body')}</p>
+          <p className="mt-3 max-w-[40rem] text-[15px] leading-relaxed text-white/70 sm:text-[17px]" data-testid="ds-landing-more">{t('dsx_landing_more')}</p>
 
           <div className="mt-8 grid gap-3 sm:grid-cols-2 sm:gap-5">
             <EntryCard icon={<ImagePlus className="h-6 w-6" aria-hidden="true" />} title={t('dsx_photos_title')} body={t('dsx_photos_body')} cta={t('dsx_photos_cta')}

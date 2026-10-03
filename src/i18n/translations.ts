@@ -14743,7 +14743,7 @@ const en = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_eyebrow: 'Design Studio',
-  dsx_landing_title: 'See your space with a new design',
+  dsx_landing_title: 'Create a space that is truly yours!',
   dsx_landing_body: 'Upload photos or a floor plan, choose the style you like, and HOMATCH will create a new design made for your space.',
   dsx_photos_title: 'Photos',
   dsx_photos_body: 'Upload photos of your space and see how its design could change.',
@@ -15089,6 +15089,9 @@ const en = {
   dsx_find_rooms_cta: 'Find the rooms',
   dsx_find_rooms_same: 'HOMATCH found no other rooms in this picture.',
   dsx_find_rooms_failed: 'The rooms could not be found right now. Try again a little later.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_landing_more: 'Renew, rearrange and develop the layout you want with the help of HOMATCH intelligence. Experience your property in a new way with an interactive 3D tour.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -29746,7 +29749,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_eyebrow: 'Design Studio',
-  dsx_landing_title: 'ნახე შენი სივრცე ახალი დიზაინით',
+  dsx_landing_title: 'შექმენი სივრცე, რომელიც ნამდვილად შენია!',
   dsx_landing_body: 'ატვირთე ფოტოები ან სახლის გეგმა, აირჩიე სასურველი სტილი და HOMATCH შექმნის შენს სივრცეზე მორგებულ ახალ დიზაინს.',
   dsx_photos_title: 'ფოტოები',
   dsx_photos_body: 'ატვირთე არსებული სივრცის ფოტოები და ნახე როგორ შეიძლება შეიცვალოს მისი დიზაინი.',
@@ -30092,6 +30095,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   dsx_find_rooms_cta: 'ოთახების პოვნა',
   dsx_find_rooms_same: 'ამ სურათზე სხვა ოთახი ვერ ვიპოვეთ.',
   dsx_find_rooms_failed: 'ოთახების პოვნა ახლა ვერ მოხერხდა. სცადე ცოტა მოგვიანებით.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_landing_more: 'განაახლე, გადააწყე და განავითარე შენთვის სასურველი გეგმარება HOMATCH-ის ინტელექტის დახმარებით. შეიგრძენი შენი ქონება ახლებურად ინტერაქტიული 3D ტურით.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -44740,7 +44746,7 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_eyebrow: 'Design Studio',
-  dsx_landing_title: 'Посмотрите на своё пространство в новом дизайне',
+  dsx_landing_title: 'Создайте пространство, которое по-настоящему ваше!',
   dsx_landing_body: 'Загрузите фотографии или план, выберите стиль, и HOMATCH создаст новый дизайн, подобранный под ваше пространство.',
   dsx_photos_title: 'Фотографии',
   dsx_photos_body: 'Загрузите фотографии пространства и посмотрите, каким может стать его дизайн.',
@@ -45086,6 +45092,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   dsx_find_rooms_cta: 'Найти комнаты',
   dsx_find_rooms_same: 'HOMATCH не нашёл на этом изображении других комнат.',
   dsx_find_rooms_failed: 'Сейчас не удалось найти комнаты. Попробуйте чуть позже.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_landing_more: 'Обновите, переставьте и развивайте желаемую планировку с помощью интеллекта HOMATCH. Почувствуйте свою недвижимость по-новому благодаря интерактивной 3D-прогулке.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -59732,7 +59741,7 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_eyebrow: 'Design Studio',
-  dsx_landing_title: 'Mekânınızı yeni bir tasarımla görün',
+  dsx_landing_title: 'Gerçekten size ait bir alan yaratın!',
   dsx_landing_body: 'Fotoğraf ya da kat planı yükleyin, beğendiğiniz stili seçin; HOMATCH mekânınıza özel yeni bir tasarım oluştursun.',
   dsx_photos_title: 'Fotoğraflar',
   dsx_photos_body: 'Mekânınızın fotoğraflarını yükleyin ve tasarımının nasıl değişebileceğini görün.',
@@ -60078,6 +60087,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   dsx_find_rooms_cta: 'Odaları bul',
   dsx_find_rooms_same: 'HOMATCH bu görselde başka oda bulamadı.',
   dsx_find_rooms_failed: 'Odalar şu anda bulunamadı. Biraz sonra tekrar deneyin.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_landing_more: 'HOMATCH zekâsının yardımıyla istediğiniz yerleşimi yenileyin, yeniden düzenleyin ve geliştirin. Etkileşimli 3D gezintiyle mülkünüzü yepyeni bir şekilde hissedin.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -74724,7 +74736,7 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_eyebrow: 'Design Studio',
-  dsx_landing_title: 'شاهد مساحتك بتصميم جديد',
+  dsx_landing_title: 'اصنع مساحة تكون لك حقًا!',
   dsx_landing_body: 'ارفع صورًا أو مخطط المنزل، واختر الطراز الذي يعجبك، وسيصمّم HOMATCH تصميمًا جديدًا يناسب مساحتك.',
   dsx_photos_title: 'الصور',
   dsx_photos_body: 'ارفع صور مساحتك الحالية وشاهد كيف يمكن أن يتغيّر تصميمها.',
@@ -75070,6 +75082,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   dsx_find_rooms_cta: 'إيجاد الغرف',
   dsx_find_rooms_same: 'لم يجد HOMATCH غرفًا أخرى في هذه الصورة.',
   dsx_find_rooms_failed: 'تعذّر إيجاد الغرف الآن. حاول مجددًا بعد قليل.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_landing_more: 'جدّد مخططك المفضل وأعد ترتيبه وطوّره بمساعدة ذكاء HOMATCH. واختبر عقارك بطريقة جديدة عبر جولة تفاعلية ثلاثية الأبعاد.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -89716,7 +89731,7 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_eyebrow: 'Design Studio',
-  dsx_landing_title: 'ראו את החלל שלכם בעיצוב חדש',
+  dsx_landing_title: 'צרו חלל שהוא באמת שלכם!',
   dsx_landing_body: 'העלו תמונות או תוכנית, בחרו את הסגנון שאתם אוהבים, ו־HOMATCH ייצור עיצוב חדש שמותאם לחלל שלכם.',
   dsx_photos_title: 'תמונות',
   dsx_photos_body: 'העלו תמונות של החלל הקיים וראו איך העיצוב שלו יכול להשתנות.',
@@ -90062,6 +90077,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   dsx_find_rooms_cta: 'מציאת החדרים',
   dsx_find_rooms_same: 'HOMATCH לא מצא חדרים נוספים בתמונה הזו.',
   dsx_find_rooms_failed: 'לא הצלחנו למצוא את החדרים כרגע. נסו שוב מעט מאוחר יותר.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_landing_more: 'חדשו, סדרו מחדש ופתחו את התכנון הרצוי לכם בעזרת האינטליגנציה של HOMATCH. חוו את הנכס שלכם מחדש בסיור תלת־ממדי אינטראקטיבי.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

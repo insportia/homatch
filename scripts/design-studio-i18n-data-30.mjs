@@ -5,6 +5,14 @@
 // Order is [en, ka, ru, tr, ar, he].
 
 export const DS_STRINGS_30 = {
+  dsx_landing_more: [
+    'Renew, rearrange and develop the layout you want with the help of HOMATCH intelligence. Experience your property in a new way with an interactive 3D tour.',
+    'განაახლე, გადააწყე და განავითარე შენთვის სასურველი გეგმარება HOMATCH-ის ინტელექტის დახმარებით. შეიგრძენი შენი ქონება ახლებურად ინტერაქტიული 3D ტურით.',
+    'Обновите, переставьте и развивайте желаемую планировку с помощью интеллекта HOMATCH. Почувствуйте свою недвижимость по-новому благодаря интерактивной 3D-прогулке.',
+    'HOMATCH zekâsının yardımıyla istediğiniz yerleşimi yenileyin, yeniden düzenleyin ve geliştirin. Etkileşimli 3D gezintiyle mülkünüzü yepyeni bir şekilde hissedin.',
+    'جدّد مخططك المفضل وأعد ترتيبه وطوّره بمساعدة ذكاء HOMATCH. واختبر عقارك بطريقة جديدة عبر جولة تفاعلية ثلاثية الأبعاد.',
+    'חדשו, סדרו מחדש ופתחו את התכנון הרצוי לכם בעזרת האינטליגנציה של HOMATCH. חוו את הנכס שלכם מחדש בסיור תלת־ממדי אינטראקטיבי.',
+  ],
   dsx_wish_title: [
     'Tell us exactly what design you want',
     'მოგვწერეთ ზუსტად როგორი დიზაინით გსურთ რენდერის აწყობა?',

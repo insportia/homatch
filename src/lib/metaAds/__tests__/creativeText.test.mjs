@@ -17,7 +17,7 @@ import {
   normalizeCopyText, normalizeSpec, renderCreativeSvg, scrimAlphaFor, textDirection, typesetText,
 } from '../creativeLayout.ts';
 import {
-  ANALYSIS_VERSION, NO_TEXT_RULE, defaultComposeSpec, generationPrompt, safeVisualBrief, validateAnalysis, variationLayouts,
+  ANALYSIS_VERSION, NO_TEXT_RULE, SOURCE_RULE, analysisSystemPrompt, defaultComposeSpec, generationPrompt, parseOverlayIntent, safeVisualBrief, validateAnalysis, variationLayouts,
 } from '../creativeAi.ts';
 
 const ROOT = new URL('../../../../', import.meta.url);
@@ -101,7 +101,7 @@ test('the visual brief the image model gets is English and picture-only; anythin
     { title: 'Calm', angle: 'Quiet', visual: 'Warm', composition: 'Wide', cta: 'Write', safeArea: 'BOTTOM', layout: 'OVERLAY_BOTTOM', visualBrief: 'Golden-hour light across the floor.', copy: { headline: 'იპოვე შენი სახლი', headlineShort: 'შენი სახლი', subheadline: 'ვაკე, 78 მ²', cta: 'მოგვწერეთ' } },
     { title: 'City', angle: 'Close', visual: 'Day', composition: 'Tight', cta: 'Call', safeArea: 'TOP' },
   ] });
-  assert.equal(ANALYSIS_VERSION, 2, 'v2: cached v1 analyses (which mixed copy into the picture direction) are not reused');
+  assert.ok(ANALYSIS_VERSION >= 3, 'cached older analyses (copy mixed into the picture direction; no source rule) are not reused');
   assert.equal(v2.concepts[0].layout, 'OVERLAY_BOTTOM');
   assert.equal(v2.concepts[0].copy.headline, 'იპოვე შენი სახლი', 'the copy is structured data for the text layer');
   assert.equal(v2.concepts[1].layout, 'EDITORIAL_TOP', 'a v1-style concept maps its safe area onto a layout');
@@ -300,11 +300,73 @@ test('generation stays idempotent: one job per confirmed click; each variation i
   assert.match(srv, /IDEMPOTENCY_KEY_REQUIRED/);
   assert.match(srv, /eq\('idempotency_key', key\)/);
   assert.match(srv, /replay: true/);
-  assert.match(srv, /const layouts = variationLayouts\(concept, variations\)/);
+  assert.match(srv, /const layouts = variationLayouts\(concept, variations, args\.overlay\?\.placement \?\? null\)/);
   assert.match(srv, /layout: layouts\[i % layouts\.length\]/);
   assert.match(srv, /const flags = await Promise\.all\(good\.map\(\(g\) => textInVisual\(sb, jobId, g\.bytes\)\)\)/);
   assert.match(srv, /operation_type: 'meta_ads_creative_text_check'/, 'the check is a HOMATCH cost, never the customer’s');
   const panel = read('src/components/metaAds/builder/CreativeAiPanel.tsx');
   assert.match(panel, /keyRef\.current \?\?= crypto\.randomUUID\(\)/);
-  assert.match(panel, /const use = \(indexes: number\[\]\) => \{ if \(job && indexes\.length && !using\) setComposeFor\(indexes\); \}/, 'Use opens the final-creative composer first');
+  assert.match(panel, /const use = \(indexes: number\[\]\) => \{ if \(indexes\.length && !using\) setComposeFor\(indexes\); \}/, 'Use opens the final-creative composer first');
+  assert.match(panel, /Number\(\(an\.analysis as \{ version\?: number \} \| null\)\?\.version \?\? 0\) >= ANALYSIS_VERSION/, 'an older cached analysis is analysed again (free), never reused');
+});
+
+
+/* ── Closure: the source is the subject; text requests go to the text layer ── */
+
+test('SOURCE PRESERVATION: every image prompt says the upload IS the advertised subject — a floor plan stays a floor plan', () => {
+  const a = validateAnalysis({ subject: 'Two 3D floor plans of an apartment', strengths: [], issues: [], concepts: [{ ...PROD_CONCEPT }, { ...PROD_CONCEPT }] });
+  const p = generationPrompt({ analysis: a, concept: a.concepts[0], ctx: {}, variation: 0 });
+  assert.ok(p.includes(SOURCE_RULE));
+  assert.match(p, /authoritative marketing subject/);
+  assert.match(p, /floor plan[^.]*keep it that kind of image/);
+  assert.match(p, /Do NOT redesign it, furnish it, reconstruct it as a different apartment or 3D interior/);
+  assert.match(p, /Do not crop away or remove important parts of the source/);
+  assert.doesNotMatch(p, /Premium real-estate advertising photograph/, 'no generic interior brief that invites a redesign');
+  assert.ok(p.indexOf(SOURCE_RULE) < p.indexOf('Visual direction'), 'the source rule comes before any styling');
+  assert.match(analysisSystemPrompt('Georgian'), /not interior design, architecture or floor-plan redesign/);
+});
+
+test('NATURAL-LANGUAGE TEXT REQUESTS become text-layer intent, never image-prompt text', () => {
+  const cases = [
+    ['ფოტოზე ეწეროს ფასი $160,000', { text: 'ფასი $160,000', field: 'offer', placement: null }],
+    ['ზემოთ დაწერე იყიდება', { text: 'იყიდება', field: 'headline', placement: 'top' }],
+    ['მინდა ეწეროს პარკინგი საჩუქრად', { text: 'პარკინგი საჩუქრად', field: 'headline', placement: null }],
+    ['headline იყოს ახალი ბინა ვაკეში', { text: 'ახალი ბინა ვაკეში', field: 'headline', placement: null }],
+    ['ფოტოზე ზემოთ ეწეროს ახალი ბინა ვაკეში', { text: 'ახალი ბინა ვაკეში', field: 'headline', placement: 'top' }],
+    ['ღილაკზე ეწეროს მოგვწერეთ', { text: 'მოგვწერეთ', field: 'cta', placement: null }],
+    ['Make it brighter. Write "New flats in Vake" at the top', { text: 'New flats in Vake', field: 'headline', placement: 'top' }],
+    ['напиши сверху: Новая квартира', { text: 'Новая квартира', field: 'headline', placement: 'top' }],
+  ];
+  for (const [input, want] of cases) assert.deepEqual(parseOverlayIntent(input).overlay, want, input);
+  assert.equal(parseOverlayIntent('Make it more premium').overlay, null, 'a look request is not a text request');
+  assert.equal(parseOverlayIntent('უფრო ნათელი გახადე. ქვემოთ ეწეროს "ფასი შეთავაზებით"').visual, 'უფრო ნათელი გახადე.', 'only the look reaches the image model');
+  // The dedicated field always wins, in the customer's exact characters.
+  assert.deepEqual(parseOverlayIntent('ზემოთ', 'პარკინგით, ფასი მხოლოდ შეთავაზებით').overlay, { text: 'პარკინგით, ფასი მხოლოდ შეთავაზებით', field: 'headline', placement: 'top' });
+  // Placement chooses every variation's layout; the wording lands in the text layer verbatim.
+  assert.deepEqual(variationLayouts({ layout: 'OVERLAY_BOTTOM', safeArea: 'BOTTOM' }, 3, 'top'), ['EDITORIAL_TOP', 'EDITORIAL_TOP', 'EDITORIAL_TOP']);
+  const spec = defaultComposeSpec({ concept: null, headline: 'x', width: 1024, height: 1536, overlay: { text: 'ფასი $160,000', field: 'offer', placement: 'top' } });
+  assert.deepEqual([spec.layout, spec.copy.offer], ['EDITORIAL_TOP', 'ფასი $160,000']);
+  const c = composeCreative(spec, M);
+  assertSound(c, 'overlay intent');
+  assert.equal(typesetText(c).offer, 'ფასი $160,000', 'exactly the requested characters');
+  // Server: the wording is stored for the text layer; the image prompt only ever gets the remainder.
+  const srv = read('supabase/functions/meta-ads-api/creativeAi.ts');
+  assert.match(srv, /const intent = parseOverlayIntent\(body\.instruction, body\.overlayText\);\s*const ins = sanitizeInstruction\(intent\.visual\);/);
+  assert.match(srv, /overlay: intent\.overlay/);
+  const prompt = generationPrompt({ analysis: { subject: 'A flat' }, concept: { id: 'c1', title: 't', angle: 'a', visual: 'v', composition: 'c', cta: 'x', safeArea: 'TOP' }, ctx: {}, instruction: parseOverlayIntent('უფრო ნათელი. ზემოთ ეწეროს ახალი ბინა').visual, variation: 0 });
+  assert.doesNotMatch(prompt, /ახალი ბინა/, 'the requested words never reach the image model');
+});
+
+test('closure UI: plain purpose, five steps, the original apart, View/Choose, the text field, no clipped actions', () => {
+  const panel = read('src/components/metaAds/builder/CreativeAiPanel.tsx');
+  for (const k of ['mm_cx_title', 'mm_cx_lead1', 'mm_cx_info_title', 'mm_cx_overlay_label', 'mm_cx_overlay_help', 'mm_cx_choose_title', 'mm_cx_original_sub', 'mm_cx_generate_cta']) assert.ok(panel.includes(k), k);
+  assert.match(panel, /const STEPS = \['original', 'variants', 'choose', 'text', 'final'\]/);
+  assert.match(panel, /data-mm-ai-original="" data-selected/, 'the original is selectable and framed apart');
+  assert.match(panel, /aiComposeSave\(creative\.id, specs\[k\]\)/, 'the original is composed into a NEW creative, never rewritten');
+  const tr = read('src/i18n/translations.ts');
+  for (const ka of ['HOMATCH AI კრეატივებისთვის', 'გააუმჯობესე არსებული ფოტო ან კრეატივი რეკლამისთვის.', 'რა გინდა ეწეროს კრეატივზე?', 'მაგ. პარკინგით, ფასი მხოლოდ შეთავაზებით', 'აირჩიე საუკეთესო ვარიანტი', 'შენი ატვირთული ფოტო', 'ტექსტის იდეები', 'აირჩიე რა ეწეროს კრეატივზე და როგორ განთავსდეს ტექსტი.', '{{n}} ვარიანტის შექმნა · {{credits}} კრედიტი']) assert.ok(tr.includes(ka), ka);
+  const copy = read('src/components/metaAds/builder/AiCopyPanel.tsx');
+  assert.match(copy, /grid-cols-\[repeat\(auto-fill,minmax\(min\(100%,10\.5rem\),1fr\)\)\]/, 'action columns as wide as the label needs');
+  assert.match(copy, /h-auto min-h-11 justify-start gap-1\.5 whitespace-normal/, 'labels wrap instead of clipping');
+  assert.doesNotMatch(copy, /grid grid-cols-2 gap-2/);
 });

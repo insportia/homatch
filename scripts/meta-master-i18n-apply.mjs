@@ -23,6 +23,7 @@ import { META_CONNECT_STRINGS } from './meta-connect-i18n-data.mjs';
 import { META_ACCEPT_STRINGS } from './meta-accept-i18n-data.mjs';
 import { META_FINAL_UX_STRINGS } from './meta-final-ux-i18n-data.mjs';
 import { META_CREATIVE_TEXT_STRINGS } from './meta-creative-text-i18n-data.mjs';
+import { META_CREATIVE_CLOSURE_STRINGS } from './meta-creative-closure-i18n-data.mjs';
 import { splice, validate } from './lib/i18nSplice.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -42,6 +43,7 @@ const PARTS = [
   ['META ADS — FINAL ACCEPTANCE', 'meta-accept-i18n', META_ACCEPT_STRINGS],
   ['META ADS — FINAL UX', 'meta-final-ux-i18n', META_FINAL_UX_STRINGS],
   ['META ADS — CREATIVE TEXT LAYER', 'meta-creative-text-i18n', META_CREATIVE_TEXT_STRINGS],
+  ['META ADS — CREATIVE INTELLIGENCE CLOSURE', 'meta-creative-closure-i18n', META_CREATIVE_CLOSURE_STRINGS],
 ];
 
 // One key, one owner: the parts must not define the same key twice.

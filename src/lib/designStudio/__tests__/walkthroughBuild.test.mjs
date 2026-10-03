@@ -285,3 +285,25 @@ test('the real plan furnishes both bedrooms, keeps every room reachable, and bui
   for (const id of ['r1', 'r4']) assert.ok(before.has(id), `${id} not reachable on the bare plan: ${[...before]}`);
   assert.ok(ms < 1500, `${Math.round(ms)} ms`);
 });
+
+import { validateSceneSpec } from '../hybrid/sceneSpec.ts';
+import { retryableFailure } from '../walkthrough/lifecycle.ts';
+
+test('the real plan compiles to a spec the factory accepts (an opening read past its wall stays on the wall)', () => {
+  const real = buildSpaceModel(realScene);
+  const compile = () => compileSceneSpec({ space: real, state: emptyDesignState(), assets, materials: materialsById, source: { kind: 'DESIGN', architecture: 'OBSERVED', furnishing: 'DESIGN' }, camera: null, outputs: { render: false, scene: false, objects: true } });
+  const spec = compile();
+  assert.doesNotThrow(() => validateSceneSpec(JSON.parse(JSON.stringify(spec))));
+  const d1 = spec.walls.find((w) => w.id === 'w7').openings.find((o) => o.id === 'd1');
+  assert.ok(d1.offsetM >= d1.widthM / 2 && Math.abs(d1.offsetM - 0.4163) < 0.1, JSON.stringify(d1));
+  // A valid opening is untouched.
+  const d3 = spec.walls.find((w) => w.id === 'w14').openings.find((o) => o.id === 'd3');
+  assert.deepEqual([d3.offsetM, d3.widthM], [2.893, 0.954]);
+});
+
+test('a refused spec is HOMATCH\'s failure: the customer may try again once it is fixed', () => {
+  assert.equal(retryableFailure('BAD_SPEC_walls[5].openings[0].offsetM'), true);
+  assert.equal(retryableFailure('PROVIDER_LOST'), true);
+  assert.equal(retryableFailure('NO_SPACE_MODEL'), false);
+  assert.equal(retryableFailure(null), false);
+});

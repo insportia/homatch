@@ -186,3 +186,7 @@ export const RETRYABLE_FAILURES = new Set([
   'PROVIDER_FAILED', 'PROVIDER_TIMED_OUT', 'PROVIDER_CANCELLED', 'PROVIDER_WORKER_ERROR', 'PROVIDER_WORKER_LOST', 'TOO_MANY_ATTEMPTS', 'FACTORY_UNAVAILABLE',
   'RESULT_INVALID', 'FACTORY_JOB_MISSING', 'WALK_VERSION_MISSING',
 ]);
+
+/** May the customer try again? A refused spec or a step that threw is HOMATCH's own failure: retried once it is fixed. */
+export const retryableFailure = (code: string | null | undefined): boolean =>
+  !!code && (RETRYABLE_FAILURES.has(code) || code.startsWith('BAD_SPEC') || code.startsWith('STEP_'));

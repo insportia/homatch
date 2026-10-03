@@ -153,7 +153,13 @@ export function compileSceneSpec(input: CompileInput): SceneBuildSpec {
   const walls = space.walls.slice(0, 400).map((w) => ({
     id: w.id, kind: w.kind, start: rp(w.mesh.start), end: rp(w.mesh.end), thicknessM: r3(w.mesh.thicknessM), heightM: r3(w.mesh.heightM),
     openings: w.mesh.openings.slice(0, 16).map((o) => {
-      const opening: SpecOpening = { id: o.id, kind: o.kind, offsetM: r3(o.offsetM), widthM: r3(o.widthM), sillM: r3(o.sillM), heightM: r3(o.heightM) };
+      // An opening lies on its own wall (the spec validator, edge and worker alike). A reading can put one a few
+      // centimetres past the wall's end (production 2026-10-03: a door 7.9 cm past a partition): it is kept on the
+      // wall — narrowed only if the wall is shorter than it. A valid opening compiles exactly as before.
+      const length = Math.hypot(w.mesh.end.x - w.mesh.start.x, w.mesh.end.y - w.mesh.start.y);
+      const widthM = Math.min(o.widthM, Math.max(0.05, length - 0.02));
+      const offsetM = Math.min(Math.max(o.offsetM, widthM / 2), length - widthM / 2);
+      const opening: SpecOpening = { id: o.id, kind: o.kind, offsetM: r3(offsetM), widthM: r3(widthM), sillM: r3(o.sillM), heightM: r3(o.heightM) };
       // Only what the plan said: an opening without a leaf compiles exactly as before.
       if (o.leaf && (SPEC_LEAVES as readonly string[]).includes(o.leaf)) opening.leaf = o.leaf as SpecLeaf;
       if (o.swing === 'L' || o.swing === 'R') opening.swing = o.swing;

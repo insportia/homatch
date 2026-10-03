@@ -19,20 +19,16 @@
 // only an explicit retry of a failed picture asks for a new one.
 
 import type { FloorPlanDocument } from '@/services/developer/floorplan';
-import { copyState } from '@/lib/designStudio/versioning';
-import { emptyDesignState, normalizeDesignState } from '@/lib/designStudio/designState';
 import { buildCanonical, type Calibration, type ReviewDecisions } from '@/lib/designStudio/scale';
 import { buildSpaceModel } from '@/lib/designStudio/space';
 import type { CanonicalSpace } from '@/lib/designStudio/types';
 import type { Stage } from '@/lib/designStudio/hybrid/contract';
 import type { DesignPreferences, FlowTimings, PlanAnswer } from '@/lib/designStudio/planToHome';
-import { quoteRender, saveDesignDna } from './renders';
-import { generateRender, generationStep, requestDesignSpec, stepGenerated } from './generation';
+import { runDesign } from './designRun';
 import { stableJson } from '@/lib/designStudio/stableJson';
-import type { RenderRecord } from '@/lib/designStudio/renders/contract';
 import { createFloorPlanSource, getFloorPlan, type FloorPlanRecord } from './floorplans';
 import {
-  createOriginalVersion, createVersion, DesignStudioError, getProject, getSourceFull, getVersion, setActiveSource,
+  createOriginalVersion, DesignStudioError, getProject, getSourceFull, setActiveSource,
 } from './projects';
 import type { Anchor } from '@/lib/designStudio/scale';
 import { supabase } from '@/db/supabase';
@@ -205,81 +201,33 @@ export async function generateHome(input: GenerateInput): Promise<GenerateResult
   flow = latestFlow(await getFloorPlan(input.plan.id)) ?? flow;
   input.onStage('MEASURING', 'DONE');
 
-  // ── 2. OpenAI's Design Specification of THIS property, and the design version it stands behind ──
+  // ── 2–4. OpenAI's Design Specification, the design version and the master picture: owned by the server ──
+  // (designRun.ts). The run's key is the design (the Original × the direction): asking again — a reload,
+  // another device — follows the same run and never pays for a step twice.
   input.onStage('PLANNING', 'RUNNING');
-  let designId = flow.designVersionId ?? null;
-  if (!designId) {
-    const t0 = now();
-    const directionKey = (await sha256(stableJson({ look: input.look ?? null, preferences: input.preferences }))).slice(0, 16);
-    const { spec, error } = await requestDesignSpec({
-      projectId: input.projectId, versionId: arch.originalId, mode: 'MASTER', idempotencyKey: `p2h-spec-${arch.originalId}-${directionKey}`,
-      look: input.look ?? null, preferences: input.preferences,
-    });
-    if (!spec) throw new DesignStudioError(error === 'RATE_LIMITED' ? 'DS_RATE_LIMITED' : 'DS_AI_FAILED', error ?? undefined);
-    const original = await getVersion(arch.originalId);
-    const created = await createVersion({
-      userId: input.userId, projectId: input.projectId, sourceId: arch.sourceId, parentId: arch.originalId, origin: 'AI', jobId: spec.jobId,
-      name: input.versionName('design'), state: copyState(normalizeDesignState(original?.state ?? emptyDesignState())) as unknown as Record<string, unknown>,
-      styleTags: input.preferences.style ? [input.preferences.style] : [],
-      changeSummary: [{ kind: 'AI_DESIGN_SPEC', generator: 'OPENAI_FIRST', jobId: spec.jobId, look: input.look ?? null, preferences: input.preferences, conflicts: spec.summary.conflicts }],
-    });
-    designId = created.id;
-    timings.designIntentMs = now() - t0;
-    await saveDesignDna(designId, spec.dna);
-    await save({ designVersionId: designId, specJobId: spec.jobId });
-  }
-  input.onStage('PLANNING', 'DONE');
-
-  // ── 3. The photorealistic master: ONE OpenAI picture from the customer's own source ──
-  input.onStage('ARCHITECTURE', 'DONE');
-  let renderId = flow.masterRenderId ?? null;
-  let attempt = flow.masterAttempt ?? 0;
-  if (renderId) {
-    const known = (await stepGenerated([renderId]))?.[0] ?? null;
-    if (known?.status === 'FAILED' || known?.status === 'CANCELLED') {
-      if (!input.retry) throw new DesignStudioError('DS_RENDER_FAILED', known.error ?? undefined);
-      renderId = null; attempt += 1; // an explicit retry is a new picture; a reload never is
-    }
-  }
-  if (!renderId) {
-    if (!flow.specJobId) throw new DesignStudioError('DS_AI_FAILED', 'SPEC_MISSING');
-    const quoted = await quoteRender({ projectId: input.projectId, versionId: designId, product: 'DS_MASTER_RENDER', views: 1 });
-    if (!quoted.quote) throw new DesignStudioError('DS_RENDER_FAILED', quoted.error ?? undefined);
-    if (input.confirmedCredits != null && quoted.quote.credits !== input.confirmedCredits) throw new DesignStudioError('DS_PRICE_CHANGED');
-    const started = await generateRender({
-      quote: quoted.quote, projectId: input.projectId, versionId: designId, specJobId: flow.specJobId, mode: 'MASTER', idempotencyKey: `p2h-ai-master-${designId}-${attempt}`,
-    });
-    if (!started.render) throw new DesignStudioError('DS_RENDER_FAILED', started.error ?? undefined);
-    renderId = started.render.id;
-    await save({ masterRenderId: renderId, masterAttempt: attempt });
-  }
-
-  // ── 4. Followed (and moved on) until it is ready: image → what is in it → its edit map ──
+  const t0 = now();
+  const directionKey = (await sha256(stableJson({ look: input.look ?? null, preferences: input.preferences }))).slice(0, 16);
+  const run = await runDesign({
+    projectId: input.projectId, versionId: arch.originalId, mode: 'MASTER', key: `p2h-run-${arch.originalId}-${directionKey}`,
+    look: input.look ?? null, preferences: input.preferences, confirmedCredits: input.confirmedCredits, versionName: input.versionName('design'),
+    retry: input.retry, pollMs: input.pollMs, timeoutMs: input.passTimeoutMs,
+    progress: { specJobId: flow.specJobId ?? null, designVersionId: flow.designVersionId ?? null, renderId: flow.masterRenderId ?? null, renderAttempt: flow.masterAttempt ?? 0 },
+    onProgress: async (p) => {
+      if (p.designVersionId && !timings.designIntentMs) timings.designIntentMs = now() - t0;
+      await save({ specJobId: p.specJobId ?? null, designVersionId: p.designVersionId ?? null, masterRenderId: p.renderId ?? null, masterAttempt: p.renderAttempt ?? 0 });
+    },
+    onStage: (stage) => {
+      if (stage === 'DESIGN') return;
+      input.onStage('PLANNING', 'DONE'); input.onStage('ARCHITECTURE', 'DONE');
+      const furnish = stage === 'IMAGE' ? 'RUNNING' : 'DONE';
+      input.onStage('FURNISHING', furnish); input.onStage('MATERIALS', furnish); input.onStage('LIGHTING', furnish);
+      if (stage === 'RESULT') input.onStage('CHECKING', 'RUNNING');
+    },
+  });
   const t1 = now();
-  const deadline = t1 + (input.passTimeoutMs ?? 15 * 60_000);
-  const show = (step: ReturnType<typeof generationStep>) => {
-    const running = (s: Stage) => input.onStage(s, 'RUNNING');
-    const done = (s: Stage) => input.onStage(s, 'DONE');
-    if (step === 'QUEUED' || step === 'IMAGE') { running('FURNISHING'); running('MATERIALS'); running('LIGHTING'); return; }
-    done('FURNISHING'); done('MATERIALS'); done('LIGHTING');
-    if (step === 'SCENE') { running('CHECKING'); return; }
-    done('CHECKING');
-    if (step === 'MAP') { running('PREPARING'); return; }
-    done('PREPARING');
-  };
-  let last: RenderRecord | null = null;
-  while (now() < deadline) {
-    const rows = await stepGenerated([renderId]);
-    last = rows?.[0] ?? last;
-    const step = generationStep(last);
-    show(step);
-    if (step === 'READY') break;
-    if (step === 'FAILED') throw new DesignStudioError('DS_RENDER_FAILED', last?.error ?? undefined);
-    await new Promise((ok) => setTimeout(ok, input.pollMs ?? 2500));
-  }
-  if (generationStep(last) !== 'READY') throw new DesignStudioError('DS_RENDER_FAILED', 'TIMEOUT');
+  input.onStage('CHECKING', 'DONE'); input.onStage('PREPARING', 'DONE');
   timings.factoryExecMs = now() - t1;
   input.onStage('FINALIZING', 'DONE');
-  await save({ step: 'DONE', factory: null });
-  return { versionId: designId, factory: 'NOT_USED', renderKey: last?.final_key ?? null, timings };
+  await save({ step: 'DONE', factory: null, designVersionId: run.versionId, masterRenderId: run.render.id });
+  return { versionId: run.versionId, factory: 'NOT_USED', renderKey: run.render.final_key ?? null, timings };
 }

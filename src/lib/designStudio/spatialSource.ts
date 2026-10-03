@@ -11,7 +11,8 @@
 //   A  a published Developer Digital Twin apartment, still current
 //   B  the customer's own ingested 3D model
 //   C  a CALIBRATED or VERIFIED floor-plan scene
-//   D  an ESTIMATED floor-plan scene
+//   D  an ESTIMATED floor-plan scene, or a PHOTO_SET (the pictures themselves;
+//      designed over directly and never opened in the 3D editor)
 //   E  nothing usable
 //
 // An explicit choice the customer made (the project's active source) wins
@@ -70,6 +71,8 @@ export function tierOf(source: SpatialSourceRecord): Exclude<SourceTier, 'E'> {
       return 'B';
     case 'FLOORPLAN_SCENE':
       return source.geometry_state === 'ESTIMATED' ? 'D' : 'C';
+    case 'PHOTO_SET':
+      return 'D';
   }
 }
 
@@ -105,6 +108,10 @@ export function unusableReason(
         return 'INCOMPATIBLE_GENERATOR';
       }
       return null;
+    }
+    case 'PHOTO_SET': {
+      const refs = (source.provenance as { referenceIds?: unknown } | null | undefined)?.referenceIds;
+      return Array.isArray(refs) && refs.length > 0 ? null : 'MISSING_PAYLOAD';
     }
   }
 }

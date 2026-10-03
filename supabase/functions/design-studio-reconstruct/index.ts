@@ -1,7 +1,8 @@
 // HOMATCH DESIGN STUDIO — the server-side work, one deployed function.
 //
 //   POST …/design-studio-reconstruct            pictures of a home → a scene  (reconstruct.ts)
-//   POST …/design-studio-reconstruct/floorplan  a floor-plan image → a plan   (floorplan.ts)
+//   POST …/design-studio-reconstruct/floorplan  a floor-plan image → a plan   (floorplan.ts; server-owned, answers at once)
+//   POST …/design-studio-reconstruct/photos     the customer's photos → one understanding + a PHOTO_SET source (photos.ts; server-owned)
 //   POST …/design-studio-reconstruct/design     a version + brief  → a plan   (design.ts)
 //   POST …/design-studio-reconstruct/project-delete  permanently delete a project (project.ts)
 //   POST …/design-studio-reconstruct/factory          one Blender scene-factory pass (factory.ts)
@@ -28,6 +29,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { handleDesign } from './design.ts';
 import { handleFloorplan } from './floorplan.ts';
+import { handlePhotos } from './photos.ts';
 import { handleFactory, handleFactoryDiscard, handleFactoryStatus, handleQa } from './factory.ts';
 import { handleProjectDelete } from './project.ts';
 import { handleRenderEdit, handleRenderQuote, handleRenderStart, handleRenderStatus } from './renders.ts';
@@ -38,6 +40,7 @@ serve((req) => {
   const route = new URL(req.url).pathname.replace(/\/+$/, '').split('/').pop();
   if (route === 'design') return handleDesign(req);
   if (route === 'floorplan') return handleFloorplan(req);
+  if (route === 'photos') return handlePhotos(req);
   if (route === 'project-delete') return handleProjectDelete(req);
   if (route === 'factory') return handleFactory(req);
   if (route === 'factory-status') return handleFactoryStatus(req);

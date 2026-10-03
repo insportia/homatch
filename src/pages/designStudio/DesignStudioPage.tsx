@@ -1,10 +1,12 @@
 // HOMATCH DESIGN STUDIO — the launcher.
 //
-// Not a dashboard of cards. One structural band that says what the product
-// is and offers the three ways in (your property, your 3D model, your floor
-// plan), and one white working surface listing the design projects you
-// already have. Choosing a way in creates a project and goes straight into
-// the workspace; the launcher never asks for something HOMATCH already has.
+// One structural band that says what the product is and offers its two ways
+// in, side by side and equal: PHOTOS of the space as it is, or the FLOOR PLAN.
+// Both go into the same OpenAI-first flow (upload → analysis → style →
+// quality → the design). The other ways in (your property, your 3D model)
+// stay one quiet line below. Under it, the projects you already have, each
+// with where it is (in progress, one detail needed, design ready, did not
+// finish) read from the server — work continues there while you are away.
 //
 // Entry with context:
 //   /design-studio?property=<uuid>  from Property Details — the picker opens
@@ -15,7 +17,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Archive, ArchiveRestore, ArrowRight, Box, FileImage, Loader2, MoreHorizontal, Pencil, Search, Trash2, X, ImagePlus } from 'lucide-react';
+import { Archive, ArchiveRestore, ArrowRight, Box, FileImage, Home as HomeIcon, Loader2, MoreHorizontal, Pencil, Search, Trash2, X, ImagePlus } from 'lucide-react';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { PRODUCT_SURFACE } from '@/components/customer/surface';
@@ -41,11 +43,7 @@ import { resolveSpatialSource } from '@/lib/designStudio/spatialSource';
 import { signedUrls } from '@/services/designStudio/files';
 import { SUPPORTED_GENERATORS } from '@/lib/designStudio/engine';
 import { cn } from '@/lib/utils';
-
-const GOLD_BUTTON =
-  'inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[hsl(38_92%_54%)] px-5 text-[15px] font-semibold text-[#161309] '
-  + 'transition-colors hover:bg-[hsl(38_92%_60%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]/60 '
-  + 'focus-visible:ring-offset-2 focus-visible:ring-offset-[#0C1119] disabled:opacity-60';
+import { projectStatuses, type ProjectStatus } from '@/services/designStudio/status';
 
 const QUIET_BUTTON =
   'inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-white/20 px-4 text-[15px] font-medium text-white/90 '
@@ -89,6 +87,7 @@ function Launcher() {
   const [thumbs, setThumbs] = useState<Map<string, string>>(new Map());
   const [renaming, setRenaming] = useState<ProjectListItem | null>(null);
   const [deleting, setDeleting] = useState<ProjectListItem | null>(null);
+  const [statuses, setStatuses] = useState<Map<string, ProjectStatus>>(new Map());
 
   const userId = homatchUser?.id ?? '';
 
@@ -107,6 +106,20 @@ function Launcher() {
 
   // A deletion that was interrupted is finished quietly on the next visit.
   useEffect(() => { void resumePendingDeletions(userId); }, [userId]);
+
+  // Where each project is, from the server (work continues there while the customer is away).
+  useEffect(() => {
+    const ids = (projects ?? []).map((p) => p.id);
+    if (!ids.length) return;
+    let stop = false;
+    let working = false;
+    const read = () => projectStatuses(ids).then((m) => { if (!stop) { working = [...m.values()].includes('WORKING'); setStatuses(m); } }).catch(() => {});
+    void read();
+    // Followed only while something is under way.
+    const id = window.setInterval(() => { if (working) void read(); }, 15_000);
+    return () => { stop = true; window.clearInterval(id); };
+  }, [projects]); // eslint-disable-line react-hooks/exhaustive-deps
+  const workingProject = useMemo(() => (projects ?? []).find((p) => statuses.get(p.id) === 'WORKING') ?? null, [projects, statuses]);
 
   // Version thumbnails live in R2; a short-lived URL is minted to show them.
   useEffect(() => {
@@ -175,14 +188,14 @@ function Launcher() {
   }, [navigate, t, userId]);
 
   /* A project for a drawing or a model the customer has: its flow opens at once. */
-  const startFrom = useCallback(async (kind: 'floorplan' | 'model' | 'image') => {
+  const startFrom = useCallback(async (kind: 'floorplan' | 'model' | 'photos') => {
     if (!userId) return;
     setBusy(true);
     setActionError(null);
     try {
       const project = await createProject({
         userId,
-        name: t(kind === 'model' ? 'ds_default_project_model' : kind === 'image' ? 'ds_default_project_image' : 'ds_default_project_floorplan'),
+        name: t(kind === 'model' ? 'ds_default_project_model' : kind === 'photos' ? 'ds_default_project_image' : 'ds_default_project_floorplan'),
       });
       navigate(`/design-studio/${project.id}?start=${kind}`);
     } catch (error) {
@@ -210,55 +223,54 @@ function Launcher() {
 
   return (
     <div className="min-h-[calc(100dvh-4rem)]">
-      {/* ── The structural band ─────────────────────────────────────── */}
-      <section className="relative overflow-hidden bg-[#0C1119] text-white">
-        <div className="mx-auto grid w-full max-w-[86rem] gap-8 px-4 py-10 sm:px-6 md:py-14 lg:grid-cols-[minmax(0,1fr)_22rem] lg:px-8">
-          <div className="min-w-0">
-            <p className="text-[13px] font-semibold uppercase tracking-[0.12em] text-[hsl(38_92%_62%)]">
-              {t('ds_brand')}
-            </p>
-            <h1 className="mt-3 max-w-[40rem] font-display text-[1.75rem] font-semibold leading-[1.15] tracking-tight sm:text-[2.25rem]">
-              {t('ds_launcher_title')}
-            </h1>
-            <p className="mt-3 max-w-[38rem] text-[15px] leading-relaxed text-white/70 sm:text-base">
-              {t('ds_launcher_subtitle')}
-            </p>
+      {/* ── The structural band: what it is, and its two ways in ────── */}
+      <section className="relative overflow-hidden bg-[#0C1119] text-white" data-testid="ds-landing">
+        <div className="pointer-events-none absolute -end-40 -top-40 h-[28rem] w-[28rem] rounded-full bg-[hsl(38_92%_56%)]/10 blur-3xl" aria-hidden="true" />
+        <div className="relative mx-auto w-full max-w-[86rem] px-4 py-10 sm:px-6 md:py-16 lg:px-8">
+          <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[hsl(38_92%_62%)]">{t('dsx_eyebrow')}</p>
+          <h1 className="mt-3 max-w-[44rem] text-balance font-display text-[1.9rem] font-semibold leading-[1.12] tracking-tight sm:text-[2.75rem]">
+            {t('dsx_landing_title')}
+          </h1>
+          <p className="mt-4 max-w-[40rem] text-[15px] leading-relaxed text-white/70 sm:text-[17px]">{t('dsx_landing_body')}</p>
 
-            <div className="mt-7 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap">
-              <button type="button" className={GOLD_BUTTON} onClick={() => setPickerOpen(true)} disabled={busy}>
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
-                {t('ds_action_choose_property')}
-                <ArrowRight className={cn('h-4 w-4', 'rtl:rotate-180')} aria-hidden="true" />
-              </button>
-              <button type="button" className={QUIET_BUTTON} disabled={busy} onClick={() => { void startFrom('image'); }} data-testid="ds-start-image">
-                <ImagePlus className="h-4 w-4" aria-hidden="true" />
-                {t('ds_action_start_image')}
-              </button>
-              <button type="button" className={QUIET_BUTTON} disabled={busy} onClick={() => { void startFrom('model'); }} aria-describedby="ds-formats">
-                <Box className="h-4 w-4" aria-hidden="true" />
-                {t('ds_action_upload_model')}
-              </button>
-              <button type="button" className={QUIET_BUTTON} disabled={busy} onClick={() => { void startFrom('floorplan'); }}>
-                <FileImage className="h-4 w-4" aria-hidden="true" />
-                {t('ds_action_use_floorplan')}
-              </button>
-            </div>
-            <p id="ds-formats" className="mt-2.5 text-[13px] text-white/55">{t('ds_mi_formats_note')}</p>
-
-            {actionError ? (
-              <p role="alert" className="mt-4 rounded-lg border border-[hsl(0_66%_60%)]/40 bg-[hsl(0_66%_44%)]/15 px-3 py-2 text-sm text-white">
-                {actionError}
-              </p>
-            ) : null}
+          <div className="mt-8 grid gap-3 sm:grid-cols-2 sm:gap-5">
+            <EntryCard icon={<ImagePlus className="h-6 w-6" aria-hidden="true" />} title={t('dsx_photos_title')} body={t('dsx_photos_body')} cta={t('dsx_photos_cta')}
+              disabled={busy} onClick={() => { void startFrom('photos'); }} testId="ds-start-photos" art="PHOTOS" />
+            <EntryCard icon={<FileImage className="h-6 w-6" aria-hidden="true" />} title={t('dsx_plan_title')} body={t('dsx_plan_body')} cta={t('dsx_plan_cta')}
+              disabled={busy} onClick={() => { void startFrom('floorplan'); }} testId="ds-start-floorplan" art="PLAN" />
           </div>
-          <RoomSketch className="hidden h-auto w-full text-white/80 lg:block" />
+
+          <div className="mt-6 flex flex-wrap items-center gap-2">
+            <span className="me-1 text-[13px] text-white/55">{t('dsx_more_ways')}</span>
+            <button type="button" className={QUIET_BUTTON} onClick={() => setPickerOpen(true)} disabled={busy} data-testid="ds-start-property">
+              <HomeIcon className="h-4 w-4" aria-hidden="true" />{t('ds_action_choose_property')}
+            </button>
+            <button type="button" className={QUIET_BUTTON} disabled={busy} onClick={() => { void startFrom('model'); }} aria-describedby="ds-formats">
+              <Box className="h-4 w-4" aria-hidden="true" />{t('ds_action_upload_model')}
+            </button>
+          </div>
+          <p id="ds-formats" className="mt-2 text-2xs text-white/45">{t('ds_mi_formats_note')}</p>
+
+          {workingProject ? (
+            <Link to={`/design-studio/${workingProject.id}`} className="mt-6 flex items-center gap-3 rounded-2xl bg-white/[0.06] px-4 py-3 text-[14px] ring-1 ring-white/10 hover:bg-white/[0.1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]" data-testid="ds-working-banner">
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin text-[hsl(38_92%_62%)]" aria-hidden="true" />
+              <span className="min-w-0 flex-1 truncate">{t('dsx_bg_working')} · {workingProject.name}</span>
+              <ArrowRight className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
+            </Link>
+          ) : null}
+
+          {actionError ? (
+            <p role="alert" className="mt-4 rounded-lg border border-[hsl(0_66%_60%)]/40 bg-[hsl(0_66%_44%)]/15 px-3 py-2 text-sm text-white">
+              {actionError}
+            </p>
+          ) : null}
         </div>
       </section>
 
       {/* ── The working surface: your design projects ───────────────── */}
       <section className="mx-auto w-full max-w-[86rem] px-4 pb-[calc(3rem+env(safe-area-inset-bottom))] pt-8 sm:px-6 lg:px-8">
         <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border pb-3">
-          <h2 className="font-display text-lg font-semibold text-foreground">{t('ds_projects_title')}</h2>
+          <h2 className="font-display text-lg font-semibold text-foreground">{t('dsx_my_projects')}</h2>
           <div role="tablist" aria-label={t('ds_projects_title')} className="flex gap-1">
             {(['ACTIVE', 'ARCHIVED'] as const).map((v) => (
               <button
@@ -296,6 +308,7 @@ function Launcher() {
                 key={project.id}
                 project={project}
                 thumbUrl={project.thumbnail_key ? thumbs.get(project.thumbnail_key) ?? null : null}
+                status={statuses.get(project.id) ?? null}
                 locale={lang}
                 onArchive={() => changeStatus(project.id, project.status === 'ACTIVE' ? 'ARCHIVED' : 'ACTIVE')}
                 onRename={() => setRenaming(project)}
@@ -338,10 +351,47 @@ function Launcher() {
   );
 }
 
+const STATUS: Record<ProjectStatus, { key: string; cls: string }> = {
+  WORKING: { key: 'dsx_status_working', cls: 'bg-[hsl(38_92%_56%)]/18 text-[hsl(36_70%_26%)]' },
+  QUESTION: { key: 'dsx_status_question', cls: 'bg-[hsl(210_80%_50%)]/12 text-[hsl(210_70%_30%)]' },
+  READY: { key: 'dsx_status_ready', cls: 'bg-[hsl(152_55%_38%)]/14 text-[hsl(152_60%_24%)]' },
+  FAILED: { key: 'dsx_status_failed', cls: 'bg-[hsl(0_66%_44%)]/10 text-[hsl(0_66%_34%)]' },
+};
+
+/** One way in: a large, equal card (photos, or the floor plan). */
+function EntryCard({ icon, title, body, cta, onClick, disabled, testId, art }: {
+  icon: React.ReactNode; title: string; body: string; cta: string; onClick: () => void; disabled: boolean; testId: string; art: 'PHOTOS' | 'PLAN';
+}) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} data-testid={testId}
+      className="group relative flex flex-col overflow-hidden rounded-[26px] bg-white/[0.05] p-5 text-start ring-1 ring-white/10 transition-colors hover:bg-white/[0.08] hover:ring-[hsl(38_92%_56%)]/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)] disabled:opacity-60 sm:p-7">
+      <span className="flex items-start gap-4">
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[hsl(38_92%_56%)] text-[#161309]" aria-hidden="true">{icon}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-display text-[20px] font-semibold sm:text-[24px]">{title}</span>
+          <span className="mt-1.5 block text-[14px] leading-relaxed text-white/70 sm:text-[15px]">{body}</span>
+        </span>
+      </span>
+      <span className="mt-5 hidden h-28 overflow-hidden rounded-2xl bg-[#121a26] ring-1 ring-white/5 sm:block" aria-hidden="true">
+        {art === 'PHOTOS' ? (
+          <span className="flex h-full items-center justify-center gap-2 px-4">
+            {[0, 1, 2].map((i) => (
+              <span key={i} className={cn('h-20 w-28 rounded-lg bg-gradient-to-br ring-1 ring-white/10', i === 0 ? '-rotate-6 from-[#3b4a5a] to-[#1d2733]' : i === 1 ? 'from-[#7a5a43] to-[#3d2b1f]' : 'rotate-6 from-[#b6bfa7]/70 to-[#2f4f3a]')} />
+            ))}
+          </span>
+        ) : <RoomSketch className="h-full w-full p-3 text-white/60" />}
+      </span>
+      <span className="mt-5 inline-flex h-12 items-center justify-center gap-2 rounded-full bg-[hsl(38_92%_54%)] px-6 text-[15px] font-semibold text-[#161309] transition-colors group-hover:bg-[hsl(38_92%_60%)] sm:self-start">
+        {cta}<ArrowRight className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
+      </span>
+    </button>
+  );
+}
+
 function ProjectRow({
-  project, thumbUrl, locale, onArchive, onRename, onDelete,
+  project, thumbUrl, status, locale, onArchive, onRename, onDelete,
 }: {
-  project: ProjectListItem; thumbUrl: string | null; locale: string;
+  project: ProjectListItem; thumbUrl: string | null; status: ProjectStatus | null; locale: string;
   onArchive: () => void; onRename: () => void; onDelete: () => void;
 }) {
   const { t } = useLanguage();
@@ -382,7 +432,11 @@ function ProjectRow({
           <p className="line-clamp-2 break-words text-[13px] text-muted-foreground">{propertyLine || unitLine}</p>
         ) : null}
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-          <SpaceStatus sources={project.sources} activeSourceId={project.active_source_id} />
+          {status ? (
+            <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-2xs font-semibold', STATUS[status].cls)} data-testid="project-status" data-status={status}>
+              {status === 'WORKING' ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" /> : null}{t(STATUS[status].key)}
+            </span>
+          ) : <SpaceStatus sources={project.sources} activeSourceId={project.active_source_id} />}
           {project.headVersion ? (
             <span className="text-[13px] text-muted-foreground">
               {t('ds_project_latest_version', { name: project.headVersion.name })}

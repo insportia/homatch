@@ -6,6 +6,14 @@
 // why — a stale developer publication, a failed import — instead of opening
 // an empty canvas that pretends to be the property.
 //
+// PHOTOS ARE THE OPENAI-FIRST PATH. A new photo project (?start=photos, and the
+// old ?start=image link) opens the PhotoFlow — never the reconstruction, the
+// catalogue, Blender or this 3D editor — and a project whose photo work is
+// under way resumes it on the server's step. A photo project's space is a
+// PHOTO_SET: it has no 3D home to edit, so it always opens on its Result.
+// The reconstruction flow stays only for "furnish from pictures" inside an
+// existing floor-plan design (the advanced editor).
+//
 // FULL-VIEWPORT BY DESIGN. The workspace is a focused tool: the global rail
 // and the shell's bottom bar would take a third of the width from the 3D
 // canvas, which is the product. It stays inside the signed-in application
@@ -26,6 +34,9 @@ import { normalizeDesignState } from '@/lib/designStudio/designState';
 import { rebaseDesign } from '@/lib/designStudio/scale';
 import { FloorPlanFlow } from '@/components/designStudio/FloorPlanFlow';
 import { ReconstructionFlow } from '@/components/designStudio/ReconstructionFlow';
+import { PhotoFlow } from '@/components/designStudio/unified/PhotoFlow';
+import { flowOf, photoProjectOf } from '@/services/designStudio/photos';
+import type { ReconstructionRecord } from '@/services/designStudio/reconstructions';
 import { ModelImportFlow } from '@/components/designStudio/ModelImportFlow';
 import { getFloorPlan, latestFloorPlan, type FloorPlanRecord } from '@/services/designStudio/floorplans';
 import { latestFlow } from '@/services/designStudio/planToHome';
@@ -68,10 +79,11 @@ function ProjectLoader() {
   );
   /* A customer's own 3D model (launcher or no-space panel). */
   const [modelFlow, setModelFlow] = useState(() => params.get('start') === 'model');
-  /* Pictures of a home read into a design (launcher, no-space panel, or "furnish from pictures"). */
-  const [reconFlow, setReconFlow] = useState<null | { planSource: SpatialSourceRecord | null }>(
-    () => (params.get('start') === 'image' ? { planSource: null } : null),
-  );
+  /* Pictures furnishing an existing floor-plan design (the advanced editor's "furnish from pictures" only). */
+  const [reconFlow, setReconFlow] = useState<null | { planSource: SpatialSourceRecord | null }>(null);
+  /* The customer's photos, designed over by OpenAI (launcher, no-space panel, or a project under way). */
+  const [photoFlow, setPhotoFlow] = useState(() => params.get('start') === 'photos' || params.get('start') === 'image');
+  const [resumePhoto, setResumePhoto] = useState<ReconstructionRecord | null>(null);
   /* A floor plan whose path to a finished home was left part-way (reload, closed tab): it resumes. */
   const [resumePlan, setResumePlan] = useState<FloorPlanRecord | null>(null);
   /* A home generated from a floor plan opens on its result; the editor only when asked for (?editor=1). */
@@ -87,6 +99,13 @@ function ProjectLoader() {
     try {
       const next = await getProject(projectId);
       if (next && !loaded.current) {
+        // A photo project: under way → its flow resumes on the server's step; finished → its Result.
+        const photo = await photoProjectOf(projectId).catch(() => null);
+        if (photo) {
+          const photoDone = flowOf(photo)?.step === 'DONE';
+          if (photoDone && !walkthroughRoute) { navigate(`/design-studio/${projectId}/home`, { replace: true }); return; }
+          if (!photoDone) { setResumePhoto(photo); setPhotoFlow(true); }
+        }
         const plan = await latestFloorPlan(projectId).catch(() => null);
         const flowStep = latestFlow(plan)?.step;
         const unfinished = plan && ((flowStep && flowStep !== 'DONE') || plan.status === 'INTERPRETING' || plan.status === 'UPLOADED');
@@ -247,6 +266,23 @@ function ProjectLoader() {
     );
   }
 
+  if (bundle && homatchUser && photoFlow) {
+    return (
+      <PhotoFlow
+        userId={homatchUser.id}
+        projectId={bundle.project.id}
+        projectName={bundle.project.name}
+        resume={resumePhoto}
+        onDone={() => {
+          setPhotoFlow(false);
+          setResumePhoto(null);
+          navigate(`/design-studio/${bundle.project.id}/home`, { replace: true });
+        }}
+        onCancel={() => { setPhotoFlow(false); setResumePhoto(null); clearStart(); navigate('/design-studio'); }}
+      />
+    );
+  }
+
   if (bundle && homatchUser && reconFlow) {
     return (
       <ReconstructionFlow
@@ -274,9 +310,14 @@ function ProjectLoader() {
   if (bundle && resolution && !resolution.source) {
     return (
       <div className="h-[100dvh]">
-        <NoSpacePanel project={bundle.project} rejected={resolution.rejected} onChanged={load} onFloorPlan={() => setFlow({ recalibrate: null, from: null })} onModel={() => setModelFlow(true)} onImage={() => setReconFlow({ planSource: null })} />
+        <NoSpacePanel project={bundle.project} rejected={resolution.rejected} onChanged={load} onFloorPlan={() => setFlow({ recalibrate: null, from: null })} onModel={() => setModelFlow(true)} onImage={() => setPhotoFlow(true)} />
       </div>
     );
+  }
+
+  // A photo project has no 3D home: it always opens on its Result (the editor never opens on photos).
+  if (bundle && resolution?.source?.kind === 'PHOTO_SET' && !walkthroughRoute) {
+    return <PhotoHomeRedirect to={`/design-studio/${bundle.project.id}/home`} />;
   }
 
   if (!bundle || !resolution?.source || stage !== 'READY') {
@@ -317,6 +358,12 @@ function ProjectLoader() {
       homeHref={hasHome ? `/design-studio/${projectId}/home` : undefined}
     />
   );
+}
+
+function PhotoHomeRedirect({ to }: { to: string }) {
+  const navigate = useNavigate();
+  useEffect(() => { navigate(to, { replace: true }); }, [navigate, to]);
+  return <div className="grid h-[100dvh] place-items-center bg-[#F7F4EF]"><Loader2 className="h-6 w-6 animate-spin text-[#0C1119]" aria-hidden="true" /></div>;
 }
 
 function CenteredMessage({ title }: { title: string }) {

@@ -30,6 +30,8 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   'p2d_attr_platform_instagram',
   // HOMATCH Intelligence is the product's own name, the same in every language.
   'mm_i_title',
+  // Design Studio is the product's own name; the owner's approved eyebrow keeps it untranslated.
+  'dsx_eyebrow',
   // Meta placements and the product name, as Meta itself labels them in every locale.
   'mm_c_pl_MARKETPLACE',
   'mm_c_pl_MESSENGER',

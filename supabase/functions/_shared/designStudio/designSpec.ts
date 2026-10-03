@@ -41,8 +41,15 @@ export const isGenerationMode = (v: unknown): v is GenerationMode => GENERATION_
 /** What the customer's source is: a drawing of the layout, or a photograph of the place. */
 export type SourceKind = 'FLOOR_PLAN' | 'PHOTO';
 
-/** The picture each mode is drawn from: the customer's own source, or the approved master design. */
-export const referenceOf = (mode: GenerationMode): 'SOURCE' | 'MASTER' => (mode === 'MASTER' ? 'SOURCE' : 'MASTER');
+/**
+ * The picture each mode is drawn from. A floor plan: the plan for the master,
+ * then the approved master (a room or a variant is a picture OF that design).
+ * Photos: always the customer's own photo of the target room — its walls,
+ * windows and camera are the real ones; the approved design rides along as
+ * the specification, so every room shares one design identity.
+ */
+export const referenceOf = (mode: GenerationMode, sourceKind: SourceKind = 'FLOOR_PLAN'): 'SOURCE' | 'MASTER' =>
+  (mode === 'MASTER' || sourceKind === 'PHOTO' ? 'SOURCE' : 'MASTER');
 
 // ── 1. HOMATCH's structured evidence ────────────────────────────────────────
 
@@ -264,8 +271,12 @@ const MODE_TASK: Record<GenerationMode, (ctx: ModeContext) => string> = {
   MASTER: (c) => c.evidence.sourceKind === 'FLOOR_PLAN'
     ? 'MODE MASTER: the first picture is the customer\'s floor plan. Specify one photorealistic picture of the WHOLE home as a three-quarter cut-away (dollhouse) view seen from above at about 45 degrees: walls cut at about 1.2 m, ceilings removed, every room visible, the layout and orientation exactly as drawn.'
     : 'MODE MASTER: the first picture is a photograph of the customer\'s property. Specify the same view, from the same camera, redesigned.',
-  ROOM: (c) => `MODE ROOM: the first picture is the customer's source, the second is the APPROVED design of this home. Specify an eye-level architectural photograph of room ${c.room?.id ?? ''}${c.room?.name ? ` (${c.room.name})` : ''} as it is in that approved design: the same materials, palette, furniture character, lighting and architecture. Do not redesign it.`,
-  VARIANT: (c) => `MODE VARIANT: the first picture is the customer's source, the second is the APPROVED design of this home. Specify a controlled alternative of the SAME property from the same camera as the approved design. Requested change: ${c.change ? JSON.stringify(c.change) : 'another version in the same look'}. Keep the architecture identical; ${c.change?.style ? 'reinterpret the interior in the new style' : c.change?.quality ? 'keep the design identity and change the material, detailing and furnishing level' : 'keep the look and quality, redesign the aesthetic details'}.`,
+  ROOM: (c) => c.evidence.sourceKind === 'PHOTO'
+    ? `MODE ROOM: the first picture is the customer's photograph of room ${c.room?.id ?? ''}${c.room?.name ? ` (${c.room.name})` : ''}; the second is the APPROVED design of another room of the same home. Specify this room redesigned from exactly the same camera, ${c.change?.style ? `in the ${c.change.style.toLowerCase().replace('_', ' ')} style, keeping the approved design's quality and level of detail` : 'in the SAME design identity: the same palette, materials, furniture character and lighting'}, adapted to this room's purpose. Keep this photo's architecture.`
+    : `MODE ROOM: the first picture is the customer's source, the second is the APPROVED design of this home. Specify an eye-level architectural photograph of room ${c.room?.id ?? ''}${c.room?.name ? ` (${c.room.name})` : ''} as it is in that approved design: the same materials, palette, furniture character, lighting and architecture. Do not redesign it.`,
+  VARIANT: (c) => c.evidence.sourceKind === 'PHOTO'
+    ? `MODE VARIANT: the first picture is the customer's photograph, the second is the APPROVED design of it. Specify a controlled alternative from exactly the same camera. Requested change: ${c.change ? JSON.stringify(c.change) : 'another version in the same look'}. Keep the architecture identical; ${c.change?.style ? 'reinterpret the interior in the new style' : c.change?.quality ? 'keep the design identity and change the material, detailing and furnishing level' : 'keep the look and quality, redesign the furniture, decor and details'}.`
+    : `MODE VARIANT: the first picture is the customer's source, the second is the APPROVED design of this home. Specify a controlled alternative of the SAME property from the same camera as the approved design. Requested change: ${c.change ? JSON.stringify(c.change) : 'another version in the same look'}. Keep the architecture identical; ${c.change?.style ? 'reinterpret the interior in the new style' : c.change?.quality ? 'keep the design identity and change the material, detailing and furnishing level' : 'keep the look and quality, redesign the aesthetic details'}.`,
 };
 
 export interface ModeContext {
@@ -294,7 +305,7 @@ export function modeContextProblem(ctx: ModeContext, images: { source: boolean; 
  * attached; ROOM and VARIANT attach the approved master as the second picture
  * and carry the approved specification as continuity.
  */
-export function specRequest(model: string, ctx: ModeContext, images: { source: string; master?: string | null }) {
+export function specRequest(model: string, ctx: ModeContext, images: { source: string; master?: string | null; context?: string[] }) {
   const content: Array<Record<string, unknown>> = [
     { type: 'input_text', text: MODE_TASK[ctx.mode](ctx) },
     { type: 'input_text', text: `HOMATCH STRUCTURED EVIDENCE (supporting context; the picture is primary):\n${JSON.stringify(ctx.evidence)}` },
@@ -306,6 +317,11 @@ export function specRequest(model: string, ctx: ModeContext, images: { source: s
   if (ctx.mode !== 'MASTER' && images.master) {
     content.push({ type: 'input_text', text: 'APPROVED DESIGN: the picture every later picture of this home must match.' });
     content.push({ type: 'input_image', image_url: images.master });
+  }
+  // Photos: the project's other photographs, so the design is one home (context only; the SOURCE is redesigned).
+  for (const [i, url] of (images.context ?? []).slice(0, 5).entries()) {
+    content.push({ type: 'input_text', text: `OTHER PHOTO ${i + 1} OF THE SAME PROPERTY (context only; not redesigned here):` });
+    content.push({ type: 'input_image', image_url: url });
   }
   return {
     model,
@@ -379,8 +395,12 @@ const MODE_FRAME: Record<GenerationMode, (spec: DesignSpec, ctx: ModeContext) =>
   MASTER: (_s, c) => c.evidence.sourceKind === 'FLOOR_PLAN'
     ? 'Turn THIS floor plan into one photorealistic architectural photograph of the same home: a three-quarter cut-away (dollhouse) view from above at about 45 degrees, walls cut at about 1.2 m, ceilings removed, every room of the plan visible in its drawn place and orientation.'
     : 'Redesign the interior shown in THIS photograph as a photorealistic architectural photograph from exactly the same camera position, lens and framing.',
-  ROOM: (_s, c) => `This picture is the approved design of the customer's home. Produce an eye-level professional architectural photograph of ${c.room?.name ?? 'the room'} (${c.room?.id ?? ''}) in THIS design: the same materials, palette, furniture character, lighting and architecture, as if photographed standing in that room.`,
-  VARIANT: (_s, c) => `This picture is the approved design of the customer's home. Produce a controlled alternative of the SAME property from exactly the same camera: ${c.change?.style ? `the interior reinterpreted in the ${c.change.style.toLowerCase().replace('_', ' ')} style` : c.change?.quality ? `the same design identity at the ${c.change.quality.toLowerCase().replace('_', ' ')} quality level` : 'another version of the same look and quality'}${c.change?.note ? `; ${c.change.note}` : ''}.`,
+  ROOM: (_s, c) => c.evidence.sourceKind === 'PHOTO'
+    ? `Redesign the room in THIS photograph (${c.room?.name ?? c.room?.id ?? 'the room'}) as a photorealistic architectural photograph from exactly the same camera position, lens and framing, ${c.change?.style ? `in the ${c.change.style.toLowerCase().replace('_', ' ')} style` : 'in the approved design identity of this home'}.`
+    : `This picture is the approved design of the customer's home. Produce an eye-level professional architectural photograph of ${c.room?.name ?? 'the room'} (${c.room?.id ?? ''}) in THIS design: the same materials, palette, furniture character, lighting and architecture, as if photographed standing in that room.`,
+  VARIANT: (_s, c) => c.evidence.sourceKind === 'PHOTO'
+    ? `Redesign the interior shown in THIS photograph again, from exactly the same camera position, lens and framing: ${c.change?.style ? `the interior in the ${c.change.style.toLowerCase().replace('_', ' ')} style` : c.change?.quality ? `the same design identity at the ${c.change.quality.toLowerCase().replace('_', ' ')} quality level` : 'another version of the same look and quality with new furniture, decor and details'}${c.change?.note ? `; ${c.change.note}` : ''}.`
+    : `This picture is the approved design of the customer's home. Produce a controlled alternative of the SAME property from exactly the same camera: ${c.change?.style ? `the interior reinterpreted in the ${c.change.style.toLowerCase().replace('_', ' ')} style` : c.change?.quality ? `the same design identity at the ${c.change.quality.toLowerCase().replace('_', ' ')} quality level` : 'another version of the same look and quality'}${c.change?.note ? `; ${c.change.note}` : ''}.`,
 };
 
 const bullets = (title: string, items: string[]) => (items.length ? `${title}\n${items.map((s) => `- ${s}`).join('\n')}` : '');

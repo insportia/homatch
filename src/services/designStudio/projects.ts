@@ -28,13 +28,9 @@ const VERSION_SUMMARY =
  * A server refusal, translated to something the interface can name.
  * The DS_* codes are raised by the migration's guards and functions.
  */
-export class DesignStudioError extends Error {
-  readonly code: string;
-  constructor(code: string, message?: string) {
-    super(message ?? code);
-    this.code = code;
-  }
-}
+// The error every Design Studio service throws (its own module, so pure helpers can use it without the client).
+import { DesignStudioError } from './errors.ts';
+export { DesignStudioError };
 
 function fail(error: { message?: string } | null | undefined): never {
   const message = error?.message ?? 'UNKNOWN';

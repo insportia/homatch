@@ -134,6 +134,16 @@ export function verticalFov(hfovDeg: number, aspect: number): number {
  * near the room's edge, look across its depth toward the light, with a
  * field of view that holds the room.
  */
+/** How far one can see from `at` along a heading before a wall (metres, capped). */
+function sightAlong(walk: WalkModel, at: Point, heading: number, max = 12): number {
+  let seen = 0;
+  for (let t = 0.25; t <= max; t += 0.25) {
+    if (!clearSight(walk, at, { x: at.x + Math.cos(heading) * t, y: at.y + Math.sin(heading) * t })) break;
+    seen = t;
+  }
+  return seen;
+}
+
 export function roomShot(space: SpaceModel, walk: WalkModel, roomId: string, aspect = 16 / 9): CameraShot | null {
   const room = space.rooms.find((r) => r.id === roomId);
   if (!room) return null;
@@ -174,15 +184,21 @@ export function roomShot(space: SpaceModel, walk: WalkModel, roomId: string, asp
       }
     }
     const hfov = Math.min(MAX_HFOV, Math.max(MIN_HFOV, ((spread * 2) * 180) / Math.PI + 8));
-    const target = { x: at.x + Math.cos(look) * Math.max(1, depth * 0.6), y: at.y + Math.sin(look) * Math.max(1, depth * 0.6) };
+    // What is actually seen straight ahead: the corners of a notched room can lie behind a wall a step away.
+    const seen = Math.min(depth, sightAlong(walk, at, look));
+    if (seen < 1.5) continue;
+    const target = { x: at.x + Math.cos(look) * Math.max(1, seen * 0.6), y: at.y + Math.sin(look) * Math.max(1, seen * 0.6) };
     if (!clearSight(walk, at, target)) continue;
-    const score = depth + inView.length * 1.5 - Math.max(0, hfov - 80) * 0.05;
+    const score = seen + inView.length * 1.5 - Math.max(0, hfov - 80) * 0.05;
     if (!best || score > best.score + 1e-9) best = { score, at, target, hfov };
   }
   if (!best) {
     const at = nearestFree(walk, c, 1.5);
     if (!at) return null;
-    const target = { x: at.x + 1, y: at.y };
+    // Face the most open direction, never a fixed one (that can be a wall at arm's length).
+    let open = 0; let far = -1;
+    for (let k = 0; k < 16; k += 1) { const a = (k / 16) * Math.PI * 2; const d = sightAlong(walk, at, a); if (d > far) { far = d; open = a; } }
+    const target = { x: at.x + Math.cos(open), y: at.y + Math.sin(open) };
     return { kind: 'ROOM', roomId, position: at, height: EYE_HEIGHT_M, target, targetHeight: EYE_HEIGHT_M - 0.15, fov: verticalFov(75, aspect) };
   }
   return {

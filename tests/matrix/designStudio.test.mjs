@@ -848,3 +848,16 @@ test('the edit map fits an edge invocation: refinement runs in a window, and a d
   const flow = code('supabase/functions/_shared/designStudio/generationFlow.ts');
   assert.match(flow, /if \(tries > MAX_MAP_ATTEMPTS\) editMap = \{ state: 'UNAVAILABLE', reason: 'MAP_BUDGET' \};/);
 });
+
+test('a walkthrough on corrected geometry: the same drawing, the checking RPC, the design carried, the plan reused at no model cost', () => {
+  const w = code('supabase/functions/design-studio-reconstruct/walkthrough.ts');
+  assert.match(w, /caller\.rpc\('ds_create_floorplan_source'/, 'geometry only through the checking RPC, as the customer');
+  assert.match(w, /before\.sha256 !== again\.sha256\) return json\(\{ error: 'NOT_THE_SAME_DRAWING' \}/, 'only the same drawing read again');
+  assert.match(w, /parent_id: version\.id,[\s\S]{0,200}origin: 'AI', job_id: version\.job_id/, 'the design is carried as a child, with its own Design Specification job');
+  assert.match(w, /design_dna: version\.design_dna \?\? null/);
+  assert.match(w, /!lineage\.includes\(w\.design_version_id\)\) return json\(\{ error: 'PLAN_NOT_REUSABLE' \}/, 'a plan is reused only within the same design');
+  assert.match(w, /basis: 'REUSED'/, 'a reused plan is recorded as no model cost');
+  assert.doesNotMatch(w, /setActiveSource|active_source_id/, 'the project keeps its geometry; nothing earlier is changed');
+  // An opened version stands on the geometry it was made on.
+  assert.match(code('src/pages/designStudio/DesignStudioWorkspacePage.tsx'), /preferredSourceId: \(versionId && bundle\.versions\.find\(\(v\) => v\.id === versionId\)\?\.source_id\) \|\| bundle\.project\.active_source_id/);
+});

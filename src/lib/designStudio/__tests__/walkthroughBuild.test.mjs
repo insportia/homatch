@@ -307,3 +307,14 @@ test('a refused spec is HOMATCH\'s failure: the customer may try again once it i
   assert.equal(retryableFailure('NO_SPACE_MODEL'), false);
   assert.equal(retryableFailure(null), false);
 });
+
+import { roomShot } from '../cameraDirector.ts';
+
+test('a room jump into the notched living room of the real plan faces open space, not a wall', () => {
+  const real = buildSpaceModel(realScene);
+  const model = buildWalkModel(real, [], assets);
+  const shot = roomShot(real, model, 'r1');
+  assert.ok(shot);
+  const ahead = Math.hypot(shot.target.x - shot.position.x, shot.target.y - shot.position.y) / 0.6;
+  assert.ok(ahead >= 2, `sees ${ahead.toFixed(2)} m ahead`);
+});

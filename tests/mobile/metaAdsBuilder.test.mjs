@@ -1131,9 +1131,24 @@ const ANALYSIS = { subject: 'A bright living room with a balcony', strengths: ['
 ] };
 const IMG = (i) => ({ index: i, width: 1024, height: 1536, discarded: false, url: `https://stubproj.supabase.co/storage/v1/object/sign/meta-ads-media/u1/ai/j2/${i}.png?token=t` });
 
+/** Buttons or labels in the AI panel whose text is cut off (wider or taller than their box). */
+const CLIPPED = () => {
+  const out = [];
+  for (const el of document.querySelectorAll('[data-mm-ai-panel] button, [data-mm-ai-panel] label > span, [data-mm-ai-panel] summary')) {
+    if (!el.offsetParent || !el.clientWidth) continue;
+    // Text cut inside its own box…
+    if (el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 2) { out.push(el.textContent.trim().slice(0, 40)); continue; }
+    // …or the box itself pushed out of its card / the dialog.
+    const box = el.getBoundingClientRect();
+    const host = (el.closest('figure') ?? el.closest('[data-mm-ai-panel]')).getBoundingClientRect();
+    if (box.left < host.left - 1 || box.right > host.right + 1) out.push(`outside: ${el.textContent.trim().slice(0, 40)}`);
+  }
+  return out;
+};
+
 test('CREATIVE AI: nothing on upload; analysis only on the click and cached; the price before Generate; one paid job on a double click; Original + 3; selected variations become new creatives', opts, async (t) => {
   if (skipReason) assert.fail(`meta ads builder gate could not run: ${skipReason}`);
-  for (const [width, height] of [[390, 844], [1440, 900]]) {
+  for (const [width, height] of [[360, 740], [390, 844], [430, 932], [768, 1024], [1024, 768], [1440, 900]]) {
     const settings = { ...fixtures().status.settings, aiCreativeEnabled: true };
     const { page, calls } = await boot(t, { width, height, lang: 'en', statusOver: { settings } });
     const ai = { analyze: 0, generate: [], jobPolls: 0, use: [], compose: [] };
@@ -1142,8 +1157,8 @@ test('CREATIVE AI: nothing on upload; analysis only on the click and cached; the
       const ok = (o, s = 200) => r.fulfill({ status: s, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(o) });
       if (!String(body.action).startsWith('creative_ai_')) return r.fallback();
       calls.actions.push(body.action);
-      if (body.action === 'creative_ai_jobs') return ok({ jobs: ai.analyze ? [aiJob({ analysis: ANALYSIS })] : [] });
-      if (body.action === 'creative_ai_analyze') { ai.analyze += 1; return ok({ cached: false, job: aiJob({ analysis: ANALYSIS }) }); }
+      if (body.action === 'creative_ai_jobs') return ok({ jobs: ai.analyze ? [aiJob({ analysis: { ...ANALYSIS, version: 3 } })] : [] });
+      if (body.action === 'creative_ai_analyze') { ai.analyze += 1; return ok({ cached: false, job: aiJob({ analysis: { ...ANALYSIS, version: 3 } }) }); }
       if (body.action === 'creative_ai_quote') return ok({ quote: { variations: body.variations, unitCredits: 1.3, expectedCredits: 1.3 * body.variations, maxCredits: 1.63 * body.variations, balanceCredits: 50, enough: true, available: true } });
       if (body.action === 'creative_ai_generate') { ai.generate.push(body); return ok({ job: aiJob({ id: 'j2', kind: 'GENERATION', status: 'RUNNING', stage: 'GENERATING', requested: 3, quotedCredits: 4.89 }), replay: false }, 202); }
       if (body.action === 'creative_ai_job') { ai.jobPolls += 1; return ok({ job: aiJob({ id: 'j2', kind: 'GENERATION', status: 'DONE', stage: 'DONE', requested: 3, chargedCredits: 3.9, images: [IMG(1), IMG(2), IMG(3)] }) }); }
@@ -1177,8 +1192,16 @@ test('CREATIVE AI: nothing on upload; analysis only on the click and cached; the
     await page.waitForSelector('[data-mm-ai-concept="c1"]');
     assert.equal(ai.analyze, 1, 'cached: opening again does not analyse again');
 
+    // Purpose first, in one glance; then the words for the creative go to the TEXT layer, not the image model.
+    assert.equal(await page.locator('[data-mm-ai-info] li').count(), 4, 'what HOMATCH AI does — four plain lines');
+    assert.equal(await page.locator('[data-mm-ai-step][aria-current="step"]').getAttribute('data-mm-ai-step'), 'variants');
     await page.locator('[data-mm-ai-concept="c2"]').click();
     await page.locator('[data-mm-ai-chip="view"]').click();
+    await page.locator('[data-mm-ai-instruction]').fill('უფრო ნათელი. ზემოთ ეწეროს ახალი ბინა ვაკეში');
+    await page.waitForSelector('[data-mm-ai-overlay-parsed="top"]');
+    assert.match(await page.locator('[data-mm-ai-overlay-parsed]').innerText(), /ახალი ბინა ვაკეში/, 'the request is understood as text for the creative');
+    await page.locator('[data-mm-ai-overlay]').fill('პარკინგით, ფასი მხოლოდ შეთავაზებით');
+    assert.ok((await page.evaluate(CLIPPED)).length === 0, `${width}: no clipped labels: ${JSON.stringify(await page.evaluate(CLIPPED))}`);
     await page.locator('[data-mm-ai-generate]').click();
     await page.waitForSelector('[data-mm-ai-confirm]');
     assert.equal(ai.generate.length, 0, 'Generate only asks for confirmation');
@@ -1189,16 +1212,21 @@ test('CREATIVE AI: nothing on upload; analysis only on the click and cached; the
     assert.match(ai.generate[0].idempotencyKey, /^[0-9a-f-]{36}$/);
     assert.equal(ai.generate[0].conceptId, 'c2');
     assert.equal(ai.generate[0].variations, 3);
+    assert.equal(ai.generate[0].overlayText, 'პარკინგით, ფასი მხოლოდ შეთავაზებით', 'the exact words go with the job, for the text layer');
     assert.ok(!('credits' in ai.generate[0]) && !('price' in ai.generate[0]), 'the browser never sends a price');
     if (await page.locator('[data-mm-ai-running]').count()) assert.equal(await page.locator('[data-mm-ai-stage][data-state="active"]').count(), 1, 'a real stage, no percentage');
 
     await page.waitForSelector('[data-mm-ai-gallery="3"]', { timeout: 10000 });
     assert.equal(await page.locator('[data-mm-ai-original]').count(), 1, 'the original stays');
+    assert.match(await page.locator('[data-mm-ai-original]').innerText(), /Original[\s\S]*Your uploaded photo/, 'the original is named as the upload');
+    assert.equal(await page.locator('[data-mm-ai-step][aria-current="step"]').getAttribute('data-mm-ai-step'), 'choose');
+    assert.ok((await page.evaluate(CLIPPED)).length === 0, `${width}: gallery labels: ${JSON.stringify(await page.evaluate(CLIPPED))}`);
     assert.equal(await page.locator('[data-mm-ai-variant]').count(), 3);
     await page.locator('[data-mm-ai-variant="1"] button[aria-pressed]').click();
     await page.locator('[data-mm-ai-variant="3"] button[aria-pressed]').click();
     assert.equal(await page.locator('[data-mm-ai-role="1"]').inputValue(), 'PRIMARY');
     await page.locator('[data-mm-ai-role="3"]').selectOption('TEST');
+    assert.deepEqual(await page.evaluate(CLIPPED), [], `${width}: chosen cards keep their actions inside`);
     assert.ok((await page.evaluate(LAYOUT)).overflow <= 1, `${width}: the gallery fits`);
     await page.locator('[data-mm-ai-use]').click();
     // Use → the FINAL creative first: HOMATCH typography over each visual, approved before anything is created.
@@ -1206,6 +1234,7 @@ test('CREATIVE AI: nothing on upload; analysis only on the click and cached; the
     assert.equal(ai.use.length, 0, 'nothing is created before the composed creative is seen');
     assert.equal(await page.locator('[data-mm-composer-preview] svg text').first().textContent(), 'Calm living in Vake', 'the preview is real text');
     assert.ok((await page.evaluate(LAYOUT)).overflow <= 1, `${width}: the composer fits`);
+    assert.ok((await page.evaluate(CLIPPED)).length === 0, `${width}: composer labels: ${JSON.stringify(await page.evaluate(CLIPPED))}`);
     await page.locator('[data-mm-composer-field="headline"]').fill('');
     await page.waitForSelector('[data-mm-composer-check="HEADLINE_REQUIRED"]');
     assert.ok(await page.locator('[data-mm-composer-submit]').isDisabled(), 'an invalid text layer cannot be confirmed');

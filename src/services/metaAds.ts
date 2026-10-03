@@ -395,7 +395,7 @@ export const aiAnalyze = (creativeId: string, locale: string, force = false) =>
   call<{ cached: boolean; job: AiJob }>('creative_ai_analyze', { creativeId, locale, force, idempotencyKey: crypto.randomUUID() });
 export const aiQuote = (variations: number, refine = false) => call<{ quote: AiQuote }>('creative_ai_quote', { variations, refine });
 /** `idempotencyKey` is minted ONCE per confirmed click and reused on retry — the server never charges a key twice. */
-export const aiGenerate = (p: { creativeId: string; analysisJobId: string; conceptId: string; instruction?: string; variations: number; idempotencyKey: string; locale: string; fromJobId?: string; fromIndex?: number }) =>
+export const aiGenerate = (p: { creativeId: string; analysisJobId: string; conceptId: string; instruction?: string; overlayText?: string; variations: number; idempotencyKey: string; locale: string; fromJobId?: string; fromIndex?: number }) =>
   call<{ job: AiJob; replay: boolean }>('creative_ai_generate', p);
 export const aiJob = (jobId: string) => call<{ job: AiJob }>('creative_ai_job', { jobId });
 export const aiJobs = (creativeId: string) => call<{ jobs: AiJob[] }>('creative_ai_jobs', { creativeId });

@@ -126,3 +126,24 @@ test('the photo master\'s instruction keeps the customer\'s camera', () => {
   const room = imageInstruction(spec, { mode: 'ROOM', evidence: ev, direction: directionFrom({}), room: { id: 'r2', name: 'Bedroom' } });
   assert.match(room, /Redesign the room in THIS photograph \(Bedroom\)/);
 });
+
+test('a 2D floor plan sent as a photo is "read it as a plan" (FLOOR_PLAN), never "unusable material"', () => {
+  // What production saw for an ordinary black-and-white plan with labels and dimensions (2026-10-03).
+  const u = validatePhotoReading({
+    usable: false, unusable: 'NOT_A_PHOTO', propertyKind: 'APARTMENT', summary: 'a floor plan drawing', currentStyle: '', light: 'BRIGHT',
+    rooms: [], photos: [{ index: 0, roomId: null, usable: false, unusable: 'FLOOR_PLAN', view: 'floor plan drawing' }], questions: [], heroRoomId: null,
+  }, 1);
+  assert.equal(u.usable, false);
+  assert.equal(u.unusable, 'FLOOR_PLAN', 'the route hands it to the floor-plan reading');
+  const overall = validatePhotoReading({ ...reading(), usable: false, unusable: 'FLOOR_PLAN', rooms: [], photos: [{ index: 0, usable: false, unusable: 'NOT_A_PHOTO' }] }, 1);
+  assert.equal(overall.unusable, 'FLOOR_PLAN', 'an overall floor-plan verdict is honoured too');
+  const dark = validatePhotoReading({ ...reading(), usable: false, unusable: 'TOO_DARK', rooms: [], photos: [{ index: 0, usable: false, unusable: 'TOO_DARK' }] }, 1);
+  assert.equal(dark.unusable, 'TOO_DARK', 'genuinely unusable photos stay unusable');
+});
+
+test('the reader is told a rendering of an interior is usable and a 2D plan is FLOOR_PLAN', async () => {
+  const { PHOTO_SYSTEM, PHOTO_UNUSABLE } = await import('../photoRead.ts');
+  assert.ok(PHOTO_UNUSABLE.includes('FLOOR_PLAN'));
+  assert.match(PHOTO_SYSTEM, /2D architectural floor plan[^.]*FLOOR_PLAN/);
+  assert.match(PHOTO_SYSTEM, /rendering or 3D visualisation of an interior IS usable/);
+});

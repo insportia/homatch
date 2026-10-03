@@ -819,3 +819,17 @@ test('the protected edit pipeline (PR #65) and the walkthrough gate are untouche
   assert.match(result, /editRender\(\{ renderId: hero\.id, edit, newVersionId: v\.id, quote: q\.quote/, 'edits go through the stable render-edit route');
   assert.match(result, /WALKTHROUGH_OFFERED \?/, 'the 3D experience is offered only when the gate opens');
 });
+
+test('a floor plan sent through Photos continues as a floor plan, and a technical failure never blames the picture', () => {
+  const route = code('supabase/functions/design-studio-reconstruct/photos.ts');
+  assert.match(route, /u\.unusable === 'FLOOR_PLAN'\) \{ await fail\('IS_FLOOR_PLAN'/, 'a plan is handed on, not refused');
+  const flow = code('src/components/designStudio/unified/PhotoFlow.tsx');
+  assert.match(flow, /e\.code === 'DS_IS_FLOOR_PLAN'\) \{ void toPlan\(\)/);
+  assert.match(flow, /onFloorPlan\(await planFromPhotos\(recon\)\)/, 'the same uploaded file; nothing uploaded again');
+  assert.match(code('src/pages/designStudio/DesignStudioWorkspacePage.tsx'), /onFloorPlan=\{\(plan\) => \{[^}]*setFlow\(\{ recalibrate: null, from: null \}\)/);
+  // A failed design is technical (its source was already accepted): always the retry screen, never "a clearer photo or plan".
+  for (const rel of ['src/components/designStudio/unified/PhotoFlow.tsx', 'src/components/designStudio/FloorPlanFlow.tsx']) {
+    assert.match(code(rel), /setGenFailure\(\{ retryable: true,/, rel);
+  }
+  assert.match(code('supabase/functions/design-studio-reconstruct/generate.ts'), /const SPEC_TERMINAL = new Set\(\['ROOM_UNKNOWN'\]\);/);
+});

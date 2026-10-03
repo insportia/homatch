@@ -553,7 +553,10 @@ test('the browser deletes only through the server, and a deleting project is gon
   const page = read('src/pages/designStudio/DesignStudioPage.tsx');
   assert.match(page, /ds_action_rename/);
   assert.match(page, /ds_action_delete_permanent/);
-  assert.match(page, /typed\.trim\(\) === project\.name\.trim\(\)/, 'deleting needs the typed name');
+  // One question and one button (no name to type); the server still checks the name it is sent.
+  assert.match(page, /await deleteProjectPermanently\(project\.id, project\.name\.trim\(\)\);/, 'the page sends the project name itself');
+  assert.doesNotMatch(page, /ds-delete-confirm/, 'no name to type');
+  assert.match(read('supabase/functions/design-studio-reconstruct/project.ts'), /body\.confirmName\.trim\(\) !== String\(visible\.name\)\.trim\(\)/, 'the server still checks it');
   assert.match(page, /resumePendingDeletions\(userId\)/, 'an interrupted deletion is never finished');
 });
 

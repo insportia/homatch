@@ -113,15 +113,16 @@ export function Stepper({ steps, current, gaps, onGo, left = 0, onLeft }: {
           return (
             <li key={s}>
               <button type="button" onClick={() => onGo(s)} aria-current={active ? 'step' : undefined}
-                className={cn('flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-start text-sm transition-colors',
+                className={cn('flex min-h-11 w-full items-start gap-2.5 rounded-xl px-2.5 py-2 text-start text-sm leading-snug transition-colors',
                   active ? 'bg-[hsl(var(--gold-soft))] font-semibold text-foreground' : 'text-muted-foreground hover:bg-[hsl(var(--secondary))]')}>
-                <span className={cn('grid h-6 w-6 shrink-0 place-items-center rounded-full border text-2xs font-semibold',
+                <span className={cn('mt-px grid h-6 w-6 shrink-0 place-items-center rounded-full border text-2xs font-semibold',
                   done && i < idx ? 'border-[hsl(152_40%_40%)]/40 bg-[hsl(152_54%_28%)]/10 text-[hsl(152_54%_26%)]'
                     : active ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold))] text-[#161309]' : 'border-border')}>
                   {done && i < idx ? <Check className="h-3.5 w-3.5" /> : i + 1}
                 </span>
-                <span className="min-w-0 flex-1 truncate">{t(`madsb_step_${s}` as never)}</span>
-                {!done && i < idx && <CircleDot className="h-3.5 w-3.5 text-[hsl(32_78%_40%)]" aria-label={t('madsb_step_incomplete')} />}
+                {/* The whole name, wrapping onto a second line when needed — never an accidental "…". */}
+                <span className="mt-0.5 min-w-0 flex-1 [overflow-wrap:break-word] [word-break:normal]">{t(`madsb_step_${s}` as never)}</span>
+                {!done && i < idx && <CircleDot className="mt-1 h-3.5 w-3.5 shrink-0 text-[hsl(32_78%_40%)]" aria-label={t('madsb_step_incomplete')} />}
               </button>
             </li>
           );

@@ -1143,12 +1143,12 @@ export const META_MASTER_BUILDER_STRINGS = {
   // ── Campaign name on review ───────────────────────────────────────────
   mm_b_name_label: ["Campaign name", "კამპანიის სახელი", "Название кампании", "Kampanya adı", "اسم الحملة", "שם הקמפיין"],
   mm_b_name_note: [
-    "Shown in HOMATCH so you can recognise the campaign. You can change it later; it doesn't affect the check or delivery.",
-    "ჩანს HOMATCH-ში, რომ კამპანია მარტივად იცნოთ. შეგიძლიათ მოგვიანებით შეცვალოთ; ის არ მოქმედებს შემოწმებასა და ჩვენებაზე.",
-    "Отображается в HOMATCH, чтобы вы узнавали кампанию. Его можно изменить позже; на проверку и показы оно не влияет.",
-    "Kampanyayı tanıyabilmeniz için HOMATCH'te gösterilir. Daha sonra değiştirebilirsiniz; kontrolü veya yayını etkilemez.",
-    "يظهر في HOMATCH لتتعرّف على الحملة. يمكنك تغييره لاحقًا؛ ولا يؤثر على الفحص أو العرض.",
-    "מוצג ב-HOMATCH כדי שתזהו את הקמפיין. אפשר לשנות אותו אחר כך; הוא לא משפיע על הבדיקה או על ההצגה.",
+    "This name is only for you: it helps you tell campaigns apart in HOMATCH (Meta also shows it in your Ads Manager). People who see the ad never see it, and it doesn’t change how the ad runs. Write anything you like.",
+    "ეს სახელი მხოლოდ თქვენთვისაა — HOMATCH-ში კამპანიების მარტივად გასარჩევად (Meta მას თქვენს რეკლამების მენეჯერშიც აჩვენებს). რეკლამის მნახველები ამ სახელს ვერ ხედავენ და ის რეკლამის მუშაობაზე გავლენას არ ახდენს. შეგიძლიათ დაწეროთ, რაც გსურთ.",
+    "Это название только для вас: оно помогает различать кампании в HOMATCH (Meta также показывает его в вашем Ads Manager). Люди, которые видят рекламу, его не видят, и оно не влияет на показ. Пишите что угодно.",
+    "Bu ad yalnızca sizin için: HOMATCH’te kampanyaları ayırt etmenize yardımcı olur (Meta bunu Reklam Yöneticinizde de gösterir). Reklamı görenler bu adı görmez ve reklamın yayınını etkilemez. İstediğinizi yazabilirsiniz.",
+    "هذا الاسم لك وحدك: يساعدك على التمييز بين الحملات في HOMATCH (ويظهر أيضًا في مدير إعلانات Meta لديك). لا يراه من يشاهد الإعلان، ولا يؤثر في عرض الإعلان. اكتب ما تشاء.",
+    "השם הזה רק בשבילכם: הוא עוזר להבחין בין קמפיינים ב-HOMATCH (Meta מציגה אותו גם במנהל המודעות שלכם). מי שרואה את המודעה לא רואה אותו, והוא לא משנה את הצגת המודעה. כתבו מה שתרצו.",
   ],
 
   // ── Builder: product polish — Instant Forms state, smart audience, CTA ──

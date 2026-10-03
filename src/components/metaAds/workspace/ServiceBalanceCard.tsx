@@ -88,7 +88,7 @@ export function ServiceBalanceCard({ rows, feePercent, billing }: {
 
       {!noDepositNeeded && <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="flex max-h-[calc(100dvh-2rem)] max-w-[calc(100%-2rem)] flex-col overflow-hidden p-0 md:max-w-sm">
-          <DialogHeader className="shrink-0 px-6 pt-6">
+          <DialogHeader className="shrink-0 pl-6 pr-14 pt-6">
             <DialogTitle>{t('mads_add_funds')}</DialogTitle>
             <DialogDescription>{balanceCopy.dialog}</DialogDescription>
           </DialogHeader>

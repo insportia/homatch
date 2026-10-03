@@ -103,7 +103,7 @@ export const META_MASTER_CAMPAIGN_STRINGS = {
   // ── Calm error messages ─────────────────────────────────────────────────
   mm_c_err_META_CONNECTION_NEEDS_ATTENTION: [
     "Your Meta connection needs attention. Reconnect Meta in Connections, then try again.",
-    "Meta-სთან კავშირს ყურადღება სჭირდება. ხელახლა დაუკავშირდით Meta-ს „კავშირებში“ და სცადეთ თავიდან.",
+    "Meta-ში კავშირს ყურადღება სჭირდება. ხელახლა დაუკავშირდით Meta-ს „კავშირებში“ და სცადეთ თავიდან.",
     "Подключение к Meta требует внимания. Переподключите Meta в разделе «Подключения» и попробуйте снова.",
     "Meta bağlantınızın ilgilenilmesi gerekiyor. Bağlantılar bölümünden Meta'yı yeniden bağlayıp tekrar deneyin.",
     "يحتاج اتصالك بـ Meta إلى مراجعة. أعد ربط Meta من قسم الاتصالات ثم حاول مجددًا.",
@@ -266,7 +266,7 @@ export const META_MASTER_CAMPAIGN_STRINGS = {
     "אין עדיין תוצאות מ-Meta. המספרים יופיעו כאן כש-Meta תתחיל להציג ו-HOMATCH תסנכרן את הנתונים הראשונים.",
   ],
   mm_c_summary_title: ["What's happening", "რა ხდება", "Что происходит", "Neler oluyor", "ما الذي يحدث", "מה קורה"],
-  mm_c_summary_none: ["A summary appears after the first sync with Meta.", "შეჯამება გამოჩნდება Meta-სთან პირველი სინქრონიზაციის შემდეგ.", "Сводка появится после первой синхронизации с Meta.", "Özet, Meta ile ilk eşitlemeden sonra görünür.", "يظهر الملخص بعد أول مزامنة مع Meta.", "הסיכום יופיע אחרי הסנכרון הראשון עם Meta."],
+  mm_c_summary_none: ["A summary appears after the first sync with Meta.", "შეჯამება გამოჩნდება Meta-ში პირველი სინქრონიზაციის შემდეგ.", "Сводка появится после первой синхронизации с Meta.", "Özet, Meta ile ilk eşitlemeden sonra görünür.", "يظهر الملخص بعد أول مزامنة مع Meta.", "הסיכום יופיע אחרי הסנכרון הראשון עם Meta."],
   mm_c_health_title: ["Campaign health", "კამპანიის მდგომარეობა", "Состояние кампании", "Kampanya sağlığı", "صحة الحملة", "מצב הקמפיין"],
   mm_c_health_none: ["Health checks start once the campaign is live on Meta.", "მდგომარეობის შემოწმება დაიწყება, როცა კამპანია Meta-ზე გაეშვება.", "Проверки состояния начнутся после запуска кампании в Meta.", "Sağlık kontrolleri kampanya Meta'da yayına girince başlar.", "تبدأ فحوص الصحة بعد إطلاق الحملة على Meta.", "בדיקות המצב יתחילו כשהקמפיין יעלה ב-Meta."],
   mm_c_evidence_label: ["Evidence", "მტკიცებულება", "Надёжность данных", "Kanıt düzeyi", "مستوى الأدلة", "רמת ראיות"],
@@ -531,7 +531,7 @@ export const META_MASTER_CAMPAIGN_STRINGS = {
   mm_tl_protective_pause: ["Paused as a precaution by Campaign Guard", "სიფრთხილის მიზნით შეჩერდა კამპანიის დაცვის მიერ", "Приостановлена защитой кампании в качестве меры предосторожности", "Kampanya Koruması tarafından önlem olarak duraklatıldı", "أوقفتها حماية الحملة مؤقتًا على سبيل الاحتياط", "הושהה כאמצעי זהירות על ידי הגנת הקמפיין"],
   mm_tl_protective_pause_copy: ["The copied campaign was paused as a precaution", "დაკოპირებული კამპანია სიფრთხილის მიზნით შეჩერდა", "Скопированная кампания приостановлена в качестве меры предосторожности", "Kopyalanan kampanya önlem olarak duraklatıldı", "أُوقفت الحملة المنسوخة مؤقتًا على سبيل الاحتياط", "הקמפיין המועתק הושהה כאמצעי זהירות"],
   mm_tl_recommendation_applied: ["Recommendation applied: {{type}}", "რეკომენდაცია გამოყენებულია: {{type}}", "Рекомендация применена: {{type}}", "Öneri uygulandı: {{type}}", "طُبّقت التوصية: {{type}}", "ההמלצה הוחלה: {{type}}"],
-  mm_tl_synced: ["Synced with Meta", "სინქრონიზებულია Meta-სთან", "Синхронизировано с Meta", "Meta ile eşitlendi", "تمت المزامنة مع Meta", "סונכרן עם Meta"],
+  mm_tl_synced: ["Synced with Meta", "სინქრონიზებულია Meta-ში", "Синхронизировано с Meta", "Meta ile eşitlendi", "تمت المزامنة مع Meta", "סונכרן עם Meta"],
 
   // ── Campaign Guard incidents (reused by other surfaces) ─────────────────
   mm_guard_changed_in_meta: [
@@ -544,7 +544,7 @@ export const META_MASTER_CAMPAIGN_STRINGS = {
   ],
   mm_guard_connection_attention: [
     "Access to the Meta assets this campaign uses has changed. Please check your Meta connection in HOMATCH.",
-    "Meta-ს რესურსებზე, რომლებსაც ეს კამპანია იყენებს, წვდომა შეიცვალა. გთხოვთ, შეამოწმოთ Meta-სთან კავშირი HOMATCH-ში.",
+    "Meta-ს რესურსებზე, რომლებსაც ეს კამპანია იყენებს, წვდომა შეიცვალა. გთხოვთ, შეამოწმოთ Meta-ში კავშირი HOMATCH-ში.",
     "Изменился доступ к ресурсам Meta, которые использует эта кампания. Проверьте подключение к Meta в HOMATCH.",
     "Bu kampanyanın kullandığı Meta varlıklarına erişim değişti. Lütfen HOMATCH'teki Meta bağlantınızı kontrol edin.",
     "تغيّر الوصول إلى أصول Meta التي تستخدمها هذه الحملة. يُرجى التحقق من اتصالك بـ Meta في HOMATCH.",
@@ -672,7 +672,7 @@ export const META_MASTER_CAMPAIGN_STRINGS = {
   // ── Live activity (campaign detail) ─────────────────────────────────
   mm_c_live_title: ["Live activity", "ცოცხალი აქტივობა", "Активность в реальном времени", "Canlı etkinlik", "النشاط المباشر", "פעילות חיה"],
   mm_c_live_state_SUBMITTED: ["Sent to Meta — waiting for Meta to confirm", "გაგზავნილია Meta-ში — ველოდებით Meta-ს დადასტურებას", "Отправлено в Meta — ждём подтверждения Meta", "Meta'ya gönderildi — Meta'nın onayı bekleniyor", "أُرسلت إلى Meta — بانتظار تأكيد Meta", "נשלח ל-Meta — ממתינים לאישור Meta"],
-  mm_c_live_state_META_REVIEW: ["Meta is reviewing the campaign", "Meta კამპანიას განიხილავს", "Meta проверяет кампанию", "Meta kampanyayı inceliyor", "تراجع Meta الحملة", "Meta בודקת את הקמפיין"],
+  mm_c_live_state_META_REVIEW: ["Meta is reviewing the campaign", "Meta-ს კამპანიას განიხილავს", "Meta проверяет кампанию", "Meta kampanyayı inceliyor", "تراجع Meta الحملة", "Meta בודקת את הקמפיין"],
   mm_c_live_state_ACTIVE: ["Delivering on Meta", "რეკლამა Meta-ზე გადის", "Показывается в Meta", "Meta'da yayında", "يُعرض على Meta", "מוצג ב-Meta"],
   mm_c_live_state_PAUSED: ["Paused — not delivering", "შეჩერებულია — რეკლამა არ გადის", "Приостановлено — не показывается", "Duraklatıldı — yayında değil", "متوقفة مؤقتًا — لا تُعرض", "מושהה — לא מוצג"],
   mm_c_live_state_COMPLETED: ["Completed", "დასრულებულია", "Завершено", "Tamamlandı", "اكتملت", "הסתיים"],
@@ -687,7 +687,7 @@ export const META_MASTER_CAMPAIGN_STRINGS = {
   mm_c_live_budget: ["Budget", "ბიუჯეტი", "Бюджет", "Bütçe", "الميزانية", "תקציב"],
   mm_c_live_budget_v: ["{{amount}} / day · {{days}} days", "{{amount}} / დღე · {{days}} დღე", "{{amount}} / день · {{days}} дн.", "{{amount}} / gün · {{days}} gün", "{{amount}} / يوم · {{days}} أيام", "{{amount}} / יום · {{days}} ימים"],
   mm_c_live_ends: ["Scheduled end", "დაგეგმილი დასრულება", "Плановое окончание", "Planlanan bitiş", "الانتهاء المجدول", "סיום מתוכנן"],
-  mm_c_live_synced: ["Last synced with Meta", "ბოლო სინქრონიზაცია Meta-სთან", "Последняя синхронизация с Meta", "Meta ile son eşitleme", "آخر مزامنة مع Meta", "סנכרון אחרון עם Meta"],
+  mm_c_live_synced: ["Last synced with Meta", "ბოლო სინქრონიზაცია Meta-ში", "Последняя синхронизация с Meta", "Meta ile son eşitleme", "آخر مزامنة مع Meta", "סנכרון אחרון עם Meta"],
   mm_c_live_next: ["Next scheduled check", "მომდევნო დაგეგმილი შემოწმება", "Следующая плановая проверка", "Sonraki planlı kontrol", "الفحص المجدول التالي", "הבדיקה המתוזמנת הבאה"],
   mm_c_live_next_v: ["around {{time}}", "დაახლოებით {{time}}", "около {{time}}", "yaklaşık {{time}}", "نحو {{time}}", "בסביבות {{time}}"],
   mm_c_live_waiting: ["Waiting for Meta's first delivery data", "ველოდებით Meta-ს პირველ მონაცემებს რეკლამის ჩვენებაზე", "Ждём первых данных Meta о показах", "Meta'nın ilk yayın verileri bekleniyor", "بانتظار أولى بيانات العرض من Meta", "ממתינים לנתוני ההצגה הראשונים מ-Meta"],
@@ -762,7 +762,7 @@ export const META_MASTER_CAMPAIGN_STRINGS = {
   mm_as_found_DELIVERING: ["The campaign is delivering. No change is recommended yet — there is not enough evidence for one.", "კამპანია ჩვენებაშია. ცვლილება ჯერ არ არის რეკომენდებული — ამისთვის საკმარისი მონაცემები ჯერ არ არის.", "Кампания показывается. Изменения пока не рекомендуются — для этого недостаточно данных.", "Kampanya yayında. Henüz bir değişiklik önerilmiyor — bunun için yeterli kanıt yok.", "الحملة قيد العرض. لا يُوصى بأي تغيير بعد — لا توجد أدلة كافية لذلك.", "הקמפיין מוצג. עדיין אין המלצה לשינוי — אין מספיק ראיות לכך."],
   mm_as_found_PAUSED: ["The campaign is paused: no delivery and no new data.", "კამპანია შეჩერებულია: ჩვენება არ მიმდინარეობს და ახალი მონაცემები არ გროვდება.", "Кампания приостановлена: показов и новых данных нет.", "Kampanya duraklatıldı: yayın ve yeni veri yok.", "الحملة متوقفة مؤقتًا: لا عرض ولا بيانات جديدة.", "הקמפיין מושהה: אין הצגה ואין נתונים חדשים."],
   mm_as_found_ENDED: ["The campaign has ended. Its final results are below.", "კამპანია დასრულდა. საბოლოო შედეგები ქვემოთაა.", "Кампания завершена. Итоговые результаты ниже.", "Kampanya sona erdi. Nihai sonuçlar aşağıda.", "انتهت الحملة. النتائج النهائية أدناه.", "הקמפיין הסתיים. התוצאות הסופיות מופיעות למטה."],
-  mm_as_found_REJECTED: ["Meta did not approve the ads.", "Meta-მ რეკლამები არ დაადასტურა.", "Meta не одобрила объявления.", "Meta reklamları onaylamadı.", "لم توافق Meta على الإعلانات.", "Meta לא אישרה את המודעות."],
+  mm_as_found_REJECTED: ["Meta did not approve the ads.", "Meta-მ რეკლამები არ დაამტკიცა.", "Meta не одобрила объявления.", "Meta reklamları onaylamadı.", "لم توافق Meta على الإعلانات.", "Meta לא אישרה את המודעות."],
   mm_as_found_NOT_LAUNCHED: ["The campaign has not been sent to Meta yet.", "კამპანია Meta-ში ჯერ არ გაგზავნილა.", "Кампания ещё не отправлена в Meta.", "Kampanya henüz Meta'ya gönderilmedi.", "لم تُرسل الحملة إلى Meta بعد.", "הקמפיין עוד לא נשלח ל-Meta."],
   mm_as_doing_REVIEW: ["Waiting for Meta's review decision. You'll be notified when it changes.", "ველოდებით Meta-ს გადაწყვეტილებას. ცვლილების შემთხვევაში შეგატყობინებთ.", "Ждём решения Meta. Мы сообщим, когда оно изменится.", "Meta'nın inceleme kararı bekleniyor. Değiştiğinde bildirilirsiniz.", "بانتظار قرار مراجعة Meta. سنُعلمك عند تغيّره.", "ממתינים להחלטת Meta. נעדכן אתכם כשהיא תשתנה."],
   mm_as_doing_WAITING_DATA: ["Checking Meta every minute for the first delivery data.", "ყოველ წუთს ვამოწმებთ Meta-ს პირველი მონაცემების მისაღებად.", "Каждую минуту проверяем Meta на первые данные о показах.", "İlk yayın verisi için Meta her dakika kontrol ediliyor.", "نفحص Meta كل دقيقة بحثًا عن أول بيانات عرض.", "בודקים את Meta בכל דקה לנתוני ההצגה הראשונים."],

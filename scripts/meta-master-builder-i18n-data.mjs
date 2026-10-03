@@ -114,7 +114,7 @@ export const META_MASTER_BUILDER_STRINGS = {
   ],
   mm_b_loc_mock: [
     "Region and city search uses Meta's own location list and needs a live Meta connection. Countries work now.",
-    "რეგიონისა და ქალაქის ძიება Meta-ს ადგილების სიას იყენებს და Meta-სთან აქტიური კავშირი სჭირდება. ქვეყნების არჩევა უკვე შეგიძლიათ.",
+    "რეგიონისა და ქალაქის ძიება Meta-ს ადგილების სიას იყენებს და Meta-ში აქტიური კავშირი სჭირდება. ქვეყნების არჩევა უკვე შეგიძლიათ.",
     "Поиск регионов и городов использует список мест Meta и требует активного подключения к Meta. Страны можно выбрать уже сейчас.",
     "Bölge ve şehir araması Meta'nın konum listesini kullanır ve etkin bir Meta bağlantısı gerektirir. Ülkeleri şimdi seçebilirsiniz.",
     "يعتمد البحث عن المناطق والمدن على قائمة مواقع Meta ويتطلب اتصالًا فعّالًا بـ Meta. يمكنك اختيار الدول الآن.",
@@ -771,7 +771,7 @@ export const META_MASTER_BUILDER_STRINGS = {
   ],
   mm_b_lf_permission: [
     "Instant Forms need a few extra Meta permissions on your connection. Your draft is safe — reconnect Meta from the Account step and grant them, or choose a website or message goal for now.",
-    "მყისიერ ფორმებს თქვენს კავშირზე Meta-ს რამდენიმე დამატებითი ნებართვა სჭირდება. თქვენი მონახაზი შენახულია — ხელახლა დააკავშირეთ Meta ანგარიშის ნაბიჯიდან და მიეცით ნებართვები, ან ამჯერად აირჩიეთ ვებსაიტის ან შეტყობინების მიზანი.",
+    "მყისიერ ფორმებს თქვენს კავშირზე Meta-ს რამდენიმე დამატებითი ნებართვა სჭირდება. თქვენი მონახაზი შენახულია — ხელახლა დააკავშირეთ Meta-ს ანგარიშის ნაბიჯიდან და მიეცით ნებართვები, ან ამჯერად აირჩიეთ ვებსაიტის ან შეტყობინების მიზანი.",
     "Для мгновенных форм нужны дополнительные разрешения Meta. Черновик сохранён — переподключите Meta на шаге «Аккаунт» и выдайте их или пока выберите цель с сайтом или сообщениями.",
     "Anında Formlar, bağlantınızda birkaç ek Meta izni gerektirir. Taslağınız güvende; Hesap adımından Meta'yı yeniden bağlayıp izinleri verin veya şimdilik web sitesi ya da mesaj hedefi seçin.",
     "تحتاج النماذج الفورية إلى بعض أذونات Meta الإضافية على اتصالك. مسودتك محفوظة — أعد ربط Meta من خطوة الحساب وامنح الأذونات، أو اختر هدف الموقع أو الرسائل مؤقتًا.",
@@ -1094,7 +1094,7 @@ export const META_MASTER_BUILDER_STRINGS = {
   ],
   mm_b_check_notice_body: [
     "Before anything is sent to Meta, the check reviews your connection, ad account, budget, creatives, destination and audience. HOMATCH sets up the technical details for you; anything that needs your decision is listed for you to fix. Once the check passes, you can create the campaign.",
-    "Meta-ზე გაგზავნამდე შემოწმება ამოწმებს კავშირს, სარეკლამო ანგარიშს, ბიუჯეტს, კრეატივებს, მიმართულებას და აუდიტორიას. ტექნიკურ დეტალებს HOMATCH თავად აწყობს, ხოლო ყველაფერს, რაც თქვენს გადაწყვეტილებას საჭიროებს, ჩამოგითვლით გასასწორებლად. წარმატებული შემოწმების შემდეგ შეძლებთ კამპანიის შექმნას.",
+    "Meta-ზე გაგზავნამდე შემოწმება ამოწმებს კავშირს, სარეკლამო ანგარიშს, ბიუჯეტს, კრეატივებს, დანიშნულებას და აუდიტორიას. ტექნიკურ დეტალებს HOMATCH თავად აწყობს, ხოლო ყველაფერს, რაც თქვენს გადაწყვეტილებას საჭიროებს, ჩამოგითვლით გასასწორებლად. წარმატებული შემოწმების შემდეგ შეძლებთ კამპანიის შექმნას.",
     "До отправки в Meta проверка смотрит подключение, рекламный аккаунт, бюджет, креативы, назначение и аудиторию. Технические детали HOMATCH настраивает сам; всё, что требует вашего решения, будет перечислено. После успешной проверки можно создать кампанию.",
     "Meta'ya bir şey gönderilmeden önce kontrol; bağlantınızı, reklam hesabınızı, bütçenizi, kreatiflerinizi, hedefinizi ve kitlenizi inceler. Teknik ayrıntıları HOMATCH kendisi ayarlar; kararınızı gerektiren her şey düzeltmeniz için listelenir. Kontrol başarıyla geçince kampanyayı oluşturabilirsiniz.",
     "قبل إرسال أي شيء إلى Meta، يراجع الفحص الربط والحساب الإعلاني والميزانية والتصاميم والوجهة والجمهور. تتولى HOMATCH التفاصيل التقنية بنفسها، وكل ما يحتاج إلى قرارك يُعرض عليك لتصحيحه. بعد نجاح الفحص يمكنك إنشاء الحملة.",
@@ -1156,12 +1156,12 @@ export const META_MASTER_BUILDER_STRINGS = {
   mm_b_goal_soon: ["Coming soon", "მალე", "Скоро", "Yakında", "قريبًا", "בקרוב"],
   mm_b_goal_reconnect: ["Reconnect Meta to enable", "ჩასართავად ხელახლა დააკავშირეთ Meta", "Переподключите Meta, чтобы включить", "Etkinleştirmek için Meta'yı yeniden bağlayın", "أعد ربط Meta للتفعيل", "חברו מחדש את Meta כדי להפעיל"],
   mm_b_lf_soon: ["Collecting leads directly on Facebook/Instagram will be available soon. Until then you can collect leads through your website or messages.", "Facebook/Instagram ლიდების მიღება მალე იქნება ხელმისაწვდომი. მანამდე ლიდების მიღება შეგიძლიათ ვებსაიტით ან შეტყობინებებით.", "Сбор заявок прямо в Facebook/Instagram скоро станет доступен. А пока заявки можно получать через сайт или сообщения.", "Facebook/Instagram üzerinden doğrudan potansiyel müşteri toplama yakında kullanılabilecek. O zamana kadar web siteniz veya mesajlar üzerinden toplayabilirsiniz.", "سيتوفر جمع العملاء المحتملين مباشرةً على Facebook/Instagram قريبًا. حتى ذلك الحين يمكنك جمعهم عبر موقعك أو الرسائل.", "קבלת לידים ישירות בפייסבוק/אינסטגרם תהיה זמינה בקרוב. עד אז אפשר לקבל לידים דרך האתר או בהודעות."],
-  mm_b_lf_reconnect: ["To collect leads on Facebook/Instagram, reconnect Meta once from the Account step. Your draft is kept.", "Facebook/Instagram ლიდების მისაღებად ერთხელ ხელახლა დააკავშირეთ Meta ანგარიშის ნაბიჯიდან. თქვენი მონახაზი შენახულია.", "Чтобы получать заявки в Facebook/Instagram, один раз переподключите Meta на шаге «Аккаунт». Черновик сохранится.", "Facebook/Instagram'da potansiyel müşteri toplamak için Hesap adımından Meta'yı bir kez yeniden bağlayın. Taslağınız korunur.", "لجمع العملاء المحتملين على Facebook/Instagram، أعد ربط Meta مرة واحدة من خطوة الحساب. تبقى مسودتك محفوظة.", "כדי לקבל לידים בפייסבוק/אינסטגרם, חברו מחדש את Meta פעם אחת משלב החשבון. הטיוטה נשמרת."],
+  mm_b_lf_reconnect: ["To collect leads on Facebook/Instagram, reconnect Meta once from the Account step. Your draft is kept.", "Facebook/Instagram ლიდების მისაღებად ერთხელ ხელახლა დააკავშირეთ Meta-ს ანგარიშის ნაბიჯიდან. თქვენი მონახაზი შენახულია.", "Чтобы получать заявки в Facebook/Instagram, один раз переподключите Meta на шаге «Аккаунт». Черновик сохранится.", "Facebook/Instagram'da potansiyel müşteri toplamak için Hesap adımından Meta'yı bir kez yeniden bağlayın. Taslağınız korunur.", "لجمع العملاء المحتملين على Facebook/Instagram، أعد ربط Meta مرة واحدة من خطوة الحساب. تبقى مسودتك محفوظة.", "כדי לקבל לידים בפייסבוק/אינסטגרם, חברו מחדש את Meta פעם אחת משלב החשבון. הטיוטה נשמרת."],
   mm_b_smart_title: ["HOMATCH smart audience", "HOMATCH-ის ჭკვიანი აუდიტორია", "Умная аудитория HOMATCH", "HOMATCH akıllı kitle", "جمهور HOMATCH الذكي", "הקהל החכם של HOMATCH"],
   mm_b_smart_body: ["From your property, location and goal, HOMATCH builds the recommended audience. Adjust what you want below — HOMATCH handles the technical details.", "თქვენი ქონების, მდებარეობისა და მიზნის მიხედვით HOMATCH ავტომატურად აწყობს რეკომენდებულ აუდიტორიას. ქვემოთ შეცვალეთ სასურველი პარამეტრები — ტექნიკურ დეტალებს HOMATCH თავად მართავს.", "По вашему объекту, локации и цели HOMATCH сам собирает рекомендуемую аудиторию. Настройте ниже то, что хотите, — технические детали HOMATCH берёт на себя.", "Mülkünüze, konumunuza ve hedefinize göre HOMATCH önerilen kitleyi kurar. İstediğinizi aşağıda ayarlayın — teknik ayrıntıları HOMATCH yönetir.", "بناءً على عقارك وموقعه وهدف الحملة، تبني HOMATCH الجمهور الموصى به. عدّل ما تريد أدناه — وتتولى HOMATCH التفاصيل التقنية.", "לפי הנכס, המיקום ומטרת הקמפיין, HOMATCH בונה את הקהל המומלץ. שנו למטה מה שתרצו — את הפרטים הטכניים HOMATCH מנהלת."],
   mm_b_smart_fixed: ["HOMATCH set up this audience for your property ad.", "ეს აუდიტორია HOMATCH-მა თქვენი ქონების რეკლამისთვის თავად დააყენა.", "Эту аудиторию HOMATCH настроил для рекламы вашего объекта.", "Bu kitleyi HOMATCH emlak reklamınız için ayarladı.", "أعدّت HOMATCH هذا الجمهور لإعلان عقارك.", "את הקהל הזה HOMATCH הגדירה עבור מודעת הנכס שלכם."],
   mm_b_smart_property: ["HOMATCH smart audience for property ads", "HOMATCH-ის ჭკვიანი აუდიტორია ქონების რეკლამისთვის", "Умная аудитория HOMATCH для рекламы недвижимости", "Emlak reklamları için HOMATCH akıllı kitle", "جمهور HOMATCH الذكي لإعلانات العقارات", "הקהל החכם של HOMATCH למודעות נדל\"ן"],
-  mm_b_cta_set_by_homatch: ["set by HOMATCH for this destination", "HOMATCH-მა ამ მიმართულებისთვის დააყენა", "задано HOMATCH для этого назначения", "bu hedef için HOMATCH tarafından ayarlandı", "حددته HOMATCH لهذه الوجهة", "הוגדר על ידי HOMATCH ליעד הזה"],
+  mm_b_cta_set_by_homatch: ["set by HOMATCH for this destination", "HOMATCH-მა ამ დანიშნულებისთვის დააყენა", "задано HOMATCH для этого назначения", "bu hedef için HOMATCH tarafından ayarlandı", "حددته HOMATCH لهذه الوجهة", "הוגדר על ידי HOMATCH ליעד הזה"],
 
   // ── Final finish: pins, priority, measured image quality, new issues ──
   mm_b_loc_kind_neighborhood: ['District', 'უბანი', 'Район', 'Semt', 'حي', 'שכונה'],
@@ -1224,7 +1224,7 @@ export const META_MASTER_BUILDER_STRINGS = {
   ],
   mm_b_issue_LANGUAGE_KEY_INVALID: [
     "A chosen language couldn't be matched with Meta. Remove it and add it again.",
-    "არჩეული ენა Meta-სთან ვერ დაკავშირდა. წაშალეთ და თავიდან დაამატეთ.",
+    "არჩეული ენა Meta-ში ვერ დაკავშირდა. წაშალეთ და თავიდან დაამატეთ.",
     "Выбранный язык не удалось сопоставить с Meta. Удалите и добавьте снова.",
     "Seçilen bir dil Meta ile eşleştirilemedi. Kaldırıp yeniden ekleyin.",
     "تعذّرت مطابقة لغة مختارة مع Meta. احذفها وأضفها مجددًا.",

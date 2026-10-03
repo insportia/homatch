@@ -4,7 +4,7 @@
 //   B  clickability: selected / disabled / priority states never colour alone
 //   C  location: refinements coexist with countries; one effective geography
 //   D  audience: META REQUIRED vs HOMATCH RECOMMENDED vs USER CHOICE; the advertiser's own country
-//   E  creative: field help, ☆/★ priority, "დამეხმაროს HOMATCH AI"
+//   E  creative: field help, ☆/★ priority, "HOMATCH AI დამეხმაროს"
 //   F  domain guard: classifier, preflight, launch re-check (no frontend bypass), admin evidence, no AI
 //   G  leads: one customer action, admin cause, no fake availability
 //   H  intelligence: one learning model — NEW / COLLECTING / USING_SIGNALS
@@ -149,7 +149,7 @@ test('E: creative fields explain themselves; priority is an unmistakable ☆/★
   assert.match(cr, /mm_m_priority_on' : 'mm_m_priority_make'/);
   assert.match(cr, /aria-describedby=\{`mm-m-prio-\$\{creative\.id\}`\}/, 'the explanation is announced');
   for (const k of ['mm_m_field_primary', 'mm_m_field_primary_ph', 'mm_m_field_headline_d', 'mm_m_field_description_d', 'mm_m_ai_help']) assert.match(cr, new RegExp(k));
-  assert.equal(M.mm_m_ai_help[1], 'დამეხმაროს HOMATCH AI');
+  assert.equal(M.mm_m_ai_help[1], 'HOMATCH AI დამეხმაროს');
   assert.equal(M.mm_m_field_primary[1], 'დაწერეთ თქვენი სარეკლამო ტექსტი / აღწერა');
   assert.equal(M.mm_m_field_headline_d[1], 'მოკლე მთავარი ფრაზა, რომელსაც მომხმარებელი პირველ რიგში დაინახავს.');
   assert.equal(M.mm_m_priority_explain[1], 'ამ კრეატივს HOMATCH პირველ რიგში გაითვალისწინებს, თუმცა შედეგების მიხედვით სხვა კრეატივებიც შეიძლება უკეთ იმუშაოს.');
@@ -346,6 +346,6 @@ test('G2: HOMATCH opens Meta\'s own terms page and re-checks with Meta — it ne
   assert.match(engine, /leadTermsEvidence\(leadCheckOf\(page\?\.capabilities\)\) === 'REQUIRED'\) add\('lead_terms', 'ACTION_REQUIRED', 'LEAD_TERMS_REQUIRED'\)/, 'preflight holds it on evidence only');
   // The Leads goal stays selectable when the owner can resolve it here.
   assert.match(page, /const enabled = switchedOn && FORMS_ACTIONABLE\.has\(forms\);/);
-  assert.equal(M.mm_l_terms_cta[1], 'Meta-ს პირობებთან დათანხმება');
+  assert.equal(M.mm_l_terms_cta[1], 'Meta-ს პირობებზე დათანხმება');
   for (const [k, v] of Object.entries(M)) if (k.startsWith('mm_l_')) for (const x of v) assert.doesNotMatch(x, /leads_retrieval|pages_manage|permission/i, k);
 });

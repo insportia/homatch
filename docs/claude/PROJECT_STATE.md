@@ -1,6 +1,6 @@
 # PROJECT STATE
 
-last_updated: 2026-10-01
+last_updated: 2026-10-03
 maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
@@ -186,6 +186,15 @@ MATTERS right now, verify against the live systems, not this file)
   look direction and a render-cost budget; checkpoint 11
   runs the customer's acceptance render end to end with a hand-authored
   reading in place of the model).
+
+## Find Property — Marketplace Search foundation (branch ccr-76ef455d-0qvt80, 2026-10-03) — NOT ACTIVE
+
+- Built: brief/readiness/worker contract/pipeline (`src/research-core/marketplace`), edge
+  `marketplace-search` + `marketplace-worker-ingest`, UI `src/components/findProperty`, admin panel.
+- Migration `20261010100000_marketplace_search_foundation.sql` prepared and locally proven; NOT applied.
+- `marketplace_search_enabled` seeded OFF → `/find-property` keeps the legacy experience.
+- No marketplace worker registered. Deep Search shown as not yet available.
+- Map and activation checklist: `docs/claude/FIND_PROPERTY_MARKETPLACE.md`.
 
 ## Deferred / known-open (do not "fix" casually)
 

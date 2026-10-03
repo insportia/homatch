@@ -230,7 +230,8 @@ export const DB_OBJECT_OWNERS = [
   [/^public\.(mortgage)/, 'MORTGAGE'],
   [/^public\.(expat)/, 'EXPATS'],
   [/^public\.(research_|verify|verification|deal_room)/, 'VERIFY'],
-  [/^public\.(billing|credit|payment|wallet|cost_events|ledger|unlock)/, 'BILLING'],
+  // homatch_refuse_spend_while_viewed: the BEFORE INSERT guard on credit_ledger / usage_reservations.
+  [/^public\.(billing|credit|payment|wallet|cost_events|ledger|unlock|homatch_refuse_spend_while_viewed$)/, 'BILLING'],
   [/^public\.(discovery|supply_|demand_|match|search_profile|active_search|social_discovery|source_)/, 'DISCOVERY'],
 ];
 

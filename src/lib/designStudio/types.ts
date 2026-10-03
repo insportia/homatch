@@ -15,7 +15,8 @@
 
 import type { GeneratedScene } from '@/lib/floorplan/geometry';
 
-export type SpatialSourceKind = 'DEVELOPER_UNIT' | 'UPLOADED_MODEL' | 'FLOORPLAN_SCENE';
+/** PHOTO_SET: pictures of the space, designed over directly (no reconstructed 3D home). */
+export type SpatialSourceKind = 'DEVELOPER_UNIT' | 'UPLOADED_MODEL' | 'FLOORPLAN_SCENE' | 'PHOTO_SET';
 
 /**
  * How much the geometry can be trusted as a measurement.

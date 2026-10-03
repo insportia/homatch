@@ -20,6 +20,7 @@ import type { CanonicalSpace, GeometryState } from '@/lib/designStudio/types';
 import type { PlanUnderstanding } from '@/lib/designStudio/planToHome';
 import { uploadDesignFile } from './files';
 import { DesignStudioError } from './projects';
+import { storedFailure, watchOperation } from './durable';
 
 export const PLAN_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'] as const;
 export const MAX_PLAN_BYTES = 25 * 1024 * 1024;
@@ -135,18 +136,28 @@ export async function uploadFloorPlan(input: { userId: string; projectId: string
   return data as FloorPlanRecord;
 }
 
-/** Ask HOMATCH to read the drawing. Returns when the reading is stored (or failed). */
-export async function interpretFloorPlan(floorplanId: string): Promise<void> {
-  const { error } = await supabase.functions.invoke('design-studio-reconstruct/floorplan', { body: { floorplanId } });
-  if (error) {
-    let code = 'DS_READING_FAILED';
-    try {
-      const body = await (error as { context?: Response }).context?.json();
-      if (typeof body?.reason === 'string') code = `DS_${body.reason}`;
-      else if (typeof body?.error === 'string') code = `DS_${body.error}`;
-    } catch { /* keep the generic code */ }
-    throw new DesignStudioError(code);
-  }
+/**
+ * Ask HOMATCH to read the drawing and watch until it is read (or failed).
+ * The server owns the reading: leaving the page never stops it, and calling
+ * this again for the same plan never starts a second one.
+ */
+export async function interpretFloorPlan(floorplanId: string, opts: { retry?: boolean; signal?: { cancelled: boolean } } = {}): Promise<void> {
+  let retry = !!opts.retry;
+  await watchOperation({
+    signal: opts.signal,
+    kick: () => {
+      const body = { floorplanId, retry };
+      retry = false; // one explicit retry per tap; later asks only watch
+      return supabase.functions.invoke('design-studio-reconstruct/floorplan', { body });
+    },
+    poll: async () => {
+      const plan = await getFloorPlan(floorplanId);
+      if (!plan) return { state: 'FAILED', code: 'FILE_MISSING', retryable: false };
+      if (plan.status === 'INTERPRETED' && plan.interpretation) return { state: 'DONE' };
+      if (plan.status === 'FAILED') return { state: 'FAILED', ...storedFailure(plan.interpretation_error) };
+      return null;
+    },
+  });
 }
 
 export async function latestFloorPlan(projectId: string): Promise<FloorPlanRecord | null> {

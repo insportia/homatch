@@ -69,9 +69,10 @@ export const DS_STRINGS_25 = {
   sf_style_minimal_line: ['Calm, light and uncluttered', 'მშვიდი, ნათელი და თავისუფალი', 'Спокойно, светло, ничего лишнего', 'Sakin, aydınlık ve sade', 'هادئ وفاتح وخالٍ من الفوضى', 'רגוע, בהיר ונקי'],
   sf_style_classic: ['Classic', 'კლასიკური', 'Классика', 'Klasik', 'كلاسيكي', 'קלאסי'],
   sf_style_classic_line: ['Timeless, warm woods and detail', 'მარადიული, თბილი ხე და დეტალები', 'Вне времени, тёплое дерево и детали', 'Zamansız, sıcak ahşap ve detay', 'خالد، أخشاب دافئة وتفاصيل', 'נצחי, עץ חם ופרטים'],
-  sf_style_luxury: ['Luxury', 'ლუქსი', 'Люкс', 'Lüks', 'فاخر', 'יוקרתי'],
+  // The owner's approved names (the stored ids are unchanged).
+  sf_style_luxury: ['Luxury', 'ლუქს', 'Люкс', 'Lüks', 'فاخر', 'יוקרתי'],
   sf_style_luxury_line: ['Marble, brass and drama', 'მარმარილო, სპილენძი და ეფექტი', 'Мрамор, латунь и эффектность', 'Mermer, pirinç ve görkem', 'رخام ونحاس وفخامة', 'שיש, פליז ודרמה'],
-  sf_style_warm_cozy: ['Warm & Cozy', 'თბილი და მყუდრო', 'Тёплый и уютный', 'Sıcak ve Rahat', 'دافئ ومريح', 'חם ונעים'],
+  sf_style_warm_cozy: ['Warm modern', 'თბილი თანამედროვე', 'Тёплый современный', 'Sıcak modern', 'عصري دافئ', 'מודרני חם'],
   sf_style_warm_cozy_line: ['Soft textures, natural wood', 'რბილი ტექსტურები, ბუნებრივი ხე', 'Мягкие текстуры, натуральное дерево', 'Yumuşak dokular, doğal ahşap', 'ملمس ناعم وخشب طبيعي', 'מרקמים רכים, עץ טבעי'],
   sf_style_contemporary: ['Contemporary', 'კონტემპორარი', 'Контемпорари', 'Çağdaş', 'معاصر', 'עכשווי'],
   sf_style_contemporary_line: ['Stone, earthy tones, refined', 'ქვა, მიწისფერი ტონები, დახვეწილი', 'Камень, природные тона, изысканно', 'Taş, toprak tonları, zarif', 'حجر وألوان ترابية وأناقة', 'אבן, גוונים ארציים, מעודן'],

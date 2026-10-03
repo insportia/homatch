@@ -131,7 +131,7 @@ export async function measurePicture(image: Blob): Promise<{ frame: PictureFrame
  * The customer's ORIGINAL is always kept, unchanged; when it is bigger than
  * the reading size a separate analysis copy is what HOMATCH reads.
  */
-export async function uploadReference(input: { userId: string; projectId: string; file: File }): Promise<FloorPlanRecord> {
+export async function uploadReference(input: { userId: string; projectId: string; file: File; measure?: boolean }): Promise<FloorPlanRecord> {
   const prepared = await prepareReferenceImage(input.file);
   const derived = prepared.blob !== input.file;
   const { key } = await uploadDesignFile({
@@ -148,7 +148,8 @@ export async function uploadReference(input: { userId: string; projectId: string
     : key;
   const analysisSha = await sha256Hex(prepared.blob);
   // What the picture itself says about its geometry, and its plan view: optional evidence.
-  const measured = await measurePicture(prepared.blob);
+  // (Not for a photo project: the photo itself is designed over; nothing is rebuilt from it.)
+  const measured = input.measure === false ? null : await measurePicture(prepared.blob);
   const planView = measured
     ? await uploadDesignFile({
       accountId: input.userId, projectId: input.projectId, category: 'design-studio-floorplans',

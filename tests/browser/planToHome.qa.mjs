@@ -25,8 +25,17 @@
 //      disputed door, a weakly inferred wall): asked one at a time, resumed on
 //      the next after a reload, never repeated, then Style and Generate.
 //                                                              390/ka, 1440/en
+//   E  PHOTOS (the unified OpenAI-first flow): three photos → look over, remove,
+//      add → analysis (left mid-way and resumed) → one detail → Style (more
+//      options, surprise me) → Quality → Generate (reload mid-way, Snake while
+//      it is made, READY over the game) → the Result: before / after, edit,
+//      another room, another option. One reading, one specification per
+//      design, one picture per design; no reconstruction, no factory.
+//                                                              390/ka, 1440/en
+//   F  PHOTOS that fail: a retryable failure offers "try again" (nothing is
+//      uploaded again); unusable photos ask for another file.  390/en, 390/he
 // No page errors, no horizontal overflow, no duplicate paid work.
-// QA_ONLY=A|B|C|D runs one of them while iterating.
+// QA_ONLY=A|B|C|D|E|F runs one of them while iterating.
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -189,7 +198,7 @@ function wireRenders(page, store) {
  * painted in the fixture id picture's own colours). The picture is the fixture photograph.
  */
 function wireGeneration(page, store) {
-  store.gen = { specCalls: 0, specBodies: [], generateCalls: 0, stepCalls: 0, imageCalls: 0, specJobs: new Map() };
+  store.gen = { specCalls: 0, specRuns: 0, specBodies: [], generateCalls: 0, stepCalls: 0, imageCalls: 0, specJobs: new Map() };
   const now = () => new Date().toISOString();
   const json = (route, b, status = 200) => route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(b) });
   const legendFor = (versionId) => {
@@ -205,19 +214,57 @@ function wireGeneration(page, store) {
     const body = JSON.parse(route.request().postData() || '{}');
     const kind = route.request().url().split('/').pop();
     if (kind === 'design-spec') {
+      // As generate.ts: the same key is the same job; it is written in the background (answered at once,
+      // RUNNING), then DONE; with `then` (the confirmed quote) the server itself makes the design version
+      // and the render — the page only follows.
       store.gen.specCalls += 1; store.gen.specBodies.push(body);
-      await new Promise((r) => setTimeout(r, 400));
       let job = store.gen.specJobs.get(body.idempotencyKey);
       if (!job) {
-        job = { id: randomUUID(), user_id: 'hm1', project_id: body.projectId, kind: 'AI_DESIGN', status: 'SUCCEEDED', output: { kind: 'DESIGN_SPEC', mode: body.mode, look: body.look } };
+        store.gen.specRuns += 1;
+        job = { id: randomUUID(), user_id: 'hm1', project_id: body.projectId, kind: 'AI_DESIGN', status: 'RUNNING', input: { ...body }, output: null, ready: Date.now() + 1200 };
         store.db.ds_jobs.push(job); store.gen.specJobs.set(body.idempotencyKey, job);
+        return json(route, { state: 'RUNNING', jobId: job.id }, 202);
       }
+      if (job.status === 'RUNNING' && Date.now() < job.ready) return json(route, { state: 'RUNNING', jobId: job.id }, 202);
       const dna = {
-        version: 'ds-dna-1', preferences: body.preferences, palette: ['#f2f0eb', '#c8a27a', '#2b2d30', '#9fae94'],
+        version: 'ds-dna-1', preferences: job.input.preferences, palette: ['#f2f0eb', '#c8a27a', '#2b2d30', '#9fae94'],
         finishes: { floor: { materialId: null, color: '#c8a27a' }, wetFloor: { materialId: null, color: '#d8d2c8' }, outdoorFloor: { materialId: null, color: '#d8d2c8' }, walls: { materialId: null, color: '#f2f0eb' }, accentWall: null, ceiling: { color: '#f5f2ed' }, cabinetry: { color: '#c8a27a', materialId: null }, metal: '#2b2d30' },
         lighting: { timeOfDay: 'DAY', temperature: 'WARM', interior: 0.7 }, look: ['clean modern lines'], sourceJobId: job.id,
       };
-      return json(route, { jobId: job.id, mode: body.mode, dna, summary: { style: 'Clean modern lines', quality: 'Premium natural materials', palette: [], conflicts: 0 } });
+      if (job.status === 'RUNNING') {
+        const source = store.db.ds_spatial_sources.find((x) => x.id === store.db.ds_versions.find((v) => v.id === job.input.versionId)?.source_id);
+        const keys = source?.kind === 'PHOTO_SET' ? (source.provenance.referenceIds ?? []).map((id) => store.db.ds_floorplans.find((f) => f.id === id)?.object_key) : [];
+        const u = source?.canonical?.understanding;
+        const room = u?.rooms?.find((r) => r.id === (job.input.mode === 'ROOM' ? job.input.roomId : u.heroRoomId)) ?? u?.rooms?.[0];
+        const sourceKey = source?.kind === 'PHOTO_SET' ? keys[room?.primaryPhoto ?? 0] : store.db.ds_floorplans.find((f) => f.id === source?.floorplan_id)?.object_key;
+        Object.assign(job, { status: 'SUCCEEDED', output: { kind: 'DESIGN_SPEC', mode: job.input.mode, look: job.input.look, dna, sourceKey, room: job.input.roomId ? { id: job.input.roomId } : null, chain: {} } });
+      }
+      const chain = job.output.chain;
+      if (job.input.then && !chain.versionId) {
+        const base = store.db.ds_versions.find((v) => v.id === job.input.versionId);
+        if (job.input.mode === 'ROOM') chain.versionId = base.id;
+        else {
+          const v = { id: randomUUID(), project_id: base.project_id, user_id: 'hm1', source_id: base.source_id, parent_id: base.id, name: job.input.then.versionName, origin: 'AI', job_id: job.id,
+            state: base.state ?? {}, style_tags: [], change_summary: [{ kind: 'AI_DESIGN_SPEC', generator: 'OPENAI_FIRST', jobId: job.id, mode: job.input.mode }], design_dna: dna, revision: 0,
+            archived_at: null, thumbnail_key: null, created_at: now(), updated_at: now() };
+          store.db.ds_versions.push(v);
+          store.db.ds_projects.find((p) => p.id === base.project_id).head_version_id = v.id;
+          chain.versionId = v.id;
+        }
+      }
+      if (job.input.then && !chain.renderId) {
+        const roomId = job.input.mode === 'ROOM' ? job.input.roomId : null;
+        const row = {
+          id: randomUUID(), project_id: job.project_id, user_id: 'hm1', version_id: chain.versionId, kind: roomId ? 'ROOM' : 'MASTER', parent_id: job.input.parentRenderId ?? null,
+          view: { id: roomId ? `room-${roomId}` : 'master', kind: roomId ? 'ROOM' : 'MASTER', purpose: roomId ? 'MAIN' : 'DOLLHOUSE', roomId, generator: 'OPENAI', mode: job.input.mode },
+          status: 'QUEUED', factory_job_id: null, base_key: null, map_key: null, final_key: null, legend: null,
+          finish: { generator: 'OPENAI_FIRST', mode: job.input.mode, specJobId: job.id, sourceKey: job.output.sourceKey, roomId, look: job.input.look, provider: 'OPENAI', model: null, check: null }, edit: null,
+          billing: { credits: 6, reservationId: null, state: 'NOT_CHARGED' }, error: null, idempotency_key: `chain-${job.id}`, created_at: now(), updated_at: now(),
+        };
+        store.db.ds_renders.push(row);
+        chain.renderId = row.id;
+      }
+      return json(route, { state: 'DONE', jobId: job.id, mode: job.input.mode, dna, summary: { style: 'Clean modern lines', quality: 'Premium natural materials', palette: [], conflicts: 0 }, ...(job.input.then ? { chain } : {}) });
     }
     if (kind === 'render-generate') {
       store.gen.generateCalls += 1;
@@ -238,6 +285,9 @@ function wireGeneration(page, store) {
     const rows = store.db.ds_renders.filter((r) => (body.renderIds ?? []).includes(r.id));
     for (const r of rows) {
       if (r.factory_job_id || r.finish?.generator !== 'OPENAI_FIRST') continue;
+      // A scenario may make each step take real time (a picture takes minutes in production).
+      if (store.gen.minStepMs && Date.now() - (r.stepAt ?? 0) < store.gen.minStepMs) continue;
+      r.stepAt = Date.now();
       if (r.status === 'QUEUED') { r.status = 'RENDERING'; store.gen.imageCalls += 1; }
       else if (r.status === 'RENDERING') Object.assign(r, { status: 'FINISHING', final_key: 'users/hm1/qa/master.jpg' });
       else if (r.status === 'FINISHING') Object.assign(r, { status: 'READY', map_key: 'users/hm1/qa/master-ids.png', legend: legendFor(r.version_id), finish: { ...r.finish, model: 'gpt-image-2', editMap: { state: 'READY', entries: 2 } } });
@@ -263,10 +313,14 @@ async function open(browser, { width, height, lang, touch, reading }) {
     const body = JSON.parse(route.request().postData() || '{}');
     const plan = store.db.ds_floorplans.find((f) => f.id === body.floorplanId);
     if (!plan || !store.objects.has(plan.object_key)) return route.fulfill({ status: 404, body: '{}' });
+    const reply = (b, status = 200) => route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(b) });
+    // As floorplan.ts: a reading in progress or done is answered, never started again.
+    if (plan.status === 'INTERPRETED') return reply({ state: 'INTERPRETED' });
+    if (plan.status === 'INTERPRETING') return reply({ state: 'RUNNING' }, 202);
     store.readCalls += 1;
-    await new Promise((r) => setTimeout(r, 1200));
-    Object.assign(plan, { status: 'INTERPRETED', interpretation: await goldenInterpretation(plan.object_key, reading) });
-    return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ state: 'INTERPRETED' }) });
+    plan.status = 'INTERPRETING';
+    setTimeout(async () => { Object.assign(plan, { status: 'INTERPRETED', interpretation: await goldenInterpretation(plan.object_key, reading) }); }, 1200);
+    return reply({ state: 'RUNNING' }, 202);
   });
   // The AI designer answers in the room ids the plan produced.
   await page.route(/\/functions\/v1\/design-studio-reconstruct\/design$/, async (route) => {
@@ -305,8 +359,7 @@ async function open(browser, { width, height, lang, touch, reading }) {
   const start = async (tag) => {
     await page.goto(`${BASE}/design-studio`);
     await page.getByTestId('ds-launcher').waitFor({ timeout: 20000 }).catch(() => {});
-    const usePlan = page.locator('button').filter({ hasText: /plan|გეგმ|план|plan|مخطط|תוכנית/i }).last();
-    await usePlan.click();
+    await page.getByTestId('ds-start-floorplan').click();
     await page.getByTestId('plan-to-home').waitFor({ timeout: 20000 });
     await page.getByTestId('simple-upload').waitFor({ timeout: 10000 });
     await page.waitForTimeout(300);
@@ -315,7 +368,10 @@ async function open(browser, { width, height, lang, touch, reading }) {
     check(`${tag}: the upload screen has no stepper`, (await page.locator('[aria-label] ol li[aria-current]').count()) === 0);
     const t0 = Date.now();
     await page.getByTestId('plan-file').setInputFiles(GOLDEN_JPG);
-    await page.getByTestId('plan-reading').waitFor({ timeout: 10000 });
+    await page.getByTestId('plan-ready').waitFor({ timeout: 10000 });
+    await shot('plan-ready');
+    await page.getByTestId('plan-upload-continue').click();
+    await page.getByTestId('plan-reading').waitFor({ timeout: 15000 });
     await shot('reading');
     return t0;
   };
@@ -344,14 +400,14 @@ async function generateAndResume(s, tag, generateId) {
   await s.shot('generating');
   await s.noOverflow(tag, 'generating');
   const shown = await page.getByTestId('generation-stages').locator('li[data-stage]').count();
-  check(`${tag}: four customer stages, no percentage (${shown})`, shown === 4 && !/%/.test(await page.getByTestId('generation-stages').innerText()));
+  check(`${tag}: three customer stages, no percentage (${shown})`, shown === 3 && !/%/.test(await page.getByTestId('generation-stages').innerText()));
   const rowsBefore = store.db.ds_renders.length;
   await page.reload();
   await page.getByTestId('plan-generating').waitFor({ timeout: 20000 });
   check(`${tag}: a reload during generation resumes it`, true);
   await page.waitForURL(/\/home$/, { timeout: 120000 });
   const masters = store.db.ds_renders.filter((r) => r.view?.id === 'master');
-  check(`${tag}: one Design Specification (${store.gen.specCalls})`, store.gen.specCalls === 1, String(store.gen.specCalls));
+  check(`${tag}: one Design Specification across the double tap and the reload (${store.gen.specRuns} run, ${store.gen.specCalls} asks)`, store.gen.specRuns === 1, String(store.gen.specRuns));
   check(`${tag}: ONE OpenAI picture across the double tap and the reload (${store.gen.imageCalls})`, store.gen.imageCalls === 1 && masters.length === 1 && rowsBefore === 1, `${rowsBefore} → ${masters.length}`);
   check(`${tag}: no factory, no Blender, no render-start, no legacy design intent (${store.factoryStarts}/${store.factoryPolls}/${store.renderCalls.start}/${store.aiRequests.length})`,
     store.factoryStarts === 0 && store.factoryPolls === 0 && store.renderCalls.start === 0 && store.aiRequests.length === 0);
@@ -374,9 +430,12 @@ async function zeroQuestionPath(browser, { width, height, lang, touch }) {
   await s.shot('style');
   await s.noOverflow(tag, 'style');
   const cards = await page.locator('[data-testid^="look-style-"]').count();
-  check(`${tag}: six style cards (${cards})`, cards === 6, String(cards));
+  check(`${tag}: four looks first (${cards})`, cards === 4, String(cards));
+  await page.getByTestId('look-more').click();
+  const all = await page.locator('[data-testid^="look-style-"]').count();
+  check(`${tag}: "see more options" shows all six (${all})`, all === 6, String(all));
   check(`${tag}: Next waits for a style`, !(await page.getByTestId('look-next').isEnabled()));
-  const small = await page.locator('[data-testid^="look-style-"], [data-testid="look-next"]').evaluateAll((els) => els.filter((e) => e.getBoundingClientRect().height < 48).length);
+  const small = await page.locator('[data-testid^="look-style-"], [data-testid="look-next"], [data-testid="look-more"], [data-testid="look-surprise"]').evaluateAll((els) => els.filter((e) => e.getBoundingClientRect().height < 48).length);
   check(`${tag}: style targets are at least 48 px`, small === 0, String(small));
   const sources = store.db.ds_spatial_sources.length;
   await s.reloadAt(tag, 'STYLE', 'look-style');
@@ -410,17 +469,28 @@ async function zeroQuestionPath(browser, { width, height, lang, touch }) {
     specBody.mode === 'MASTER' && specBody.look?.style === 'LUXURY' && specBody.look?.quality === 'PREMIUM' && /Premium: top-tier natural materials/.test(specBody.preferences?.brief ?? ''));
   check(`${tag}: flow recorded DONE with timings`, f?.step === 'DONE' && typeof f?.timings?.analysisMs === 'number');
 
-  // ── The result: the picture first; the edit pipeline exactly as before ──
+  // ── The result: the unified Result of an OpenAI-first design; the edit pipeline exactly as before ──
   await page.getByTestId('design-home').waitFor({ timeout: 20000 });
   await page.getByTestId('render-viewer').waitFor({ timeout: 60000 });
-  await page.waitForTimeout(1500); // the id map loads after the picture
+  await page.waitForTimeout(800);
   await s.shot('home');
   await s.noOverflow(tag, 'the result');
-  check(`${tag}: the result opens on the picture (no tabs)`, (await page.locator('[data-testid^="home-tab-"]').count()) === 0 && (await page.getByTestId('design-home').getAttribute('data-view')) === 'HOME');
+  check(`${tag}: an OpenAI-first plan opens on the unified Result`, (await page.getByTestId('design-home').getAttribute('data-source')) === 'FLOOR_PLAN');
   check(`${tag}: no walkthrough offered until it is proven`, (await page.getByTestId('home-walk').count()) === 0 && (await page.getByTestId('home-walk-start').count()) === 0);
   check(`${tag}: the advanced editor is reachable`, await page.getByTestId('home-advanced').isVisible());
   const viewer = await page.getByTestId('home-render').boundingBox();
   check(`${tag}: the picture dominates (${Math.round(viewer.width)} of ${width})`, viewer.width >= width * (width < 600 ? 0.88 : 0.6), String(viewer.width));
+  for (const id of ['home-variant', 'home-style', 'home-quality', 'home-compare', 'home-edit']) check(`${tag}: ${id} is offered`, await page.getByTestId(id).isVisible());
+  // Before / after: the customer's plan against the design.
+  await page.getByTestId('home-compare').click();
+  await page.getByTestId('compare').waitFor({ timeout: 10000 });
+  await s.shot('compare');
+  await s.noOverflow(tag, 'before / after');
+  await page.getByTestId('home-compare').click();
+  // Edit: tap a piece in the picture.
+  await page.getByTestId('home-edit').click();
+  await page.getByTestId('edit-hint').waitFor({ timeout: 10000 });
+  await page.waitForTimeout(1500); // the id map loads after the picture
   const img = page.getByTestId('render-viewer').locator('img').first();
   const box = await img.boundingBox();
   await page.mouse.click(box.x + box.width * 0.40, box.y + box.height * 0.54);
@@ -438,16 +508,9 @@ async function zeroQuestionPath(browser, { width, height, lang, touch }) {
   check(`${tag}: the edit targets what OpenAI saw (${edited?.edit?.targetId} ${edited?.edit?.color} = ${colour})`,
     edited?.edit?.type === 'APPEARANCE' && edited.edit.targetId === 'ai:sofa:1' && edited.edit.targetKind === 'OBJECT' && !!colour && edited.edit.color === colour.toLowerCase() && edited.edit.label === 'sofa');
   check(`${tag}: the edit is a new version of the design, recorded`, (head()?.change_summary ?? []).some((c) => c.kind === 'RENDER_EDIT' && c.edit?.targetId === 'ai:sofa:1'));
-
-  // ── Rooms: OpenAI's own room pictures come later (ROOM mode, PR4); a Blender view of an empty plan is never offered ──
-  check(`${tag}: no Blender room views on an OpenAI home`, (await page.getByTestId('home-rooms').count()) === 0);
-  await page.getByTestId('home-plan').click();
-  await page.getByTestId('home-back').waitFor({ timeout: 10000 });
-  await s.shot('plan');
-  await s.noOverflow(tag, 'your plan');
-  await page.getByTestId('home-back').click();
-  await page.getByTestId('home-render').waitFor({ timeout: 10000 });
-  check(`${tag}: the plan always leads back to the home`, true);
+  // Rooms: OpenAI pictures of this design's rooms (ROOM mode), never Blender views of an empty plan.
+  check(`${tag}: the plan's other rooms are offered (${await page.getByTestId('room-card').count()})`, (await page.getByTestId('room-card').count()) > 0);
+  check(`${tag}: still no factory pass, no render-start (${store.factoryStarts}/${store.renderCalls.start})`, store.factoryStarts === 0 && store.renderCalls.start === 0);
 
   // ── Navigation: the project opens on its home; the editor only on purpose, with a way back ──
   const id = store.db.ds_projects[0].id;
@@ -504,6 +567,7 @@ async function oneQuestionPath(browser, { width, height, lang, touch }) {
   check(`${tag}: the detailed review continues to Style`, true);
   check(`${tag}: the same review never builds the architecture twice (${sources} → ${store.db.ds_spatial_sources.length})`, sources === 1 && store.db.ds_spatial_sources.length === 1);
 
+  await page.getByTestId('look-more').click();
   await page.getByTestId('look-style-WARM_COZY').click();
   await page.getByTestId('look-next').click();
   await page.getByTestId('look-quality-SMART_BUDGET').click();
@@ -605,6 +669,280 @@ async function rtl(browser, { width, height, lang, touch }) {
   await s.ctx.close();
 }
 
+/* ── Photos: the server's photo understanding (photos.ts), as the browser sees it ── */
+
+/** What OpenAI's one reading of the photos says: two rooms (photos 0 and 2 are the same living room), one detail to ask. */
+function photoUnderstanding(count) {
+  const two = count >= 2;
+  return {
+    kind: 'PHOTO_UNDERSTANDING', version: 'photo-read-1', usable: true, unusable: null, propertyKind: 'APARTMENT', summary: 'qa', currentStyle: 'dated', light: 'BRIGHT',
+    rooms: [
+      { id: 'r1', kind: 'LIVING', label: 'Living room', photos: count >= 3 ? [0, 2] : [0], primaryPhoto: 0, fixed: ['two windows'], openings: [], condition: 'FURNISHED', confidence: 0.9 },
+      ...(two ? [{ id: 'r2', kind: 'BEDROOM', label: 'Second room', photos: [1], primaryPhoto: 1, fixed: [], openings: [], condition: 'SHELL', confidence: 0.6 }] : []),
+    ],
+    photos: Array.from({ length: count }, (_, i) => ({ index: i, roomId: i === 1 && two ? 'r2' : 'r1', usable: true, unusable: null, view: '' })),
+    questions: two ? [{ id: 'q1', kind: 'ROOM_PURPOSE', question: 'Is the second room a bedroom or a study?', options: [{ id: 'BEDROOM', label: 'Bedroom' }, { id: 'OFFICE', label: 'Study' }], suggested: 'BEDROOM', roomId: 'r2', photos: [1] }] : [],
+    heroRoomId: 'r1',
+  };
+}
+
+function wirePhotos(page, store) {
+  store.photoAsks = 0;
+  store.photoReads = 0;
+  const now = () => new Date().toISOString();
+  return page.route(/\/functions\/v1\/design-studio-reconstruct\/photos$/, async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}');
+    const reply = (b, status = 200) => route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(b) });
+    const recon = store.db.ds_reconstructions.find((r) => r.id === body.reconstructionId);
+    if (!recon) return reply({ error: 'NOT_FOUND' }, 404);
+    store.photoAsks += 1;
+    // As photos.ts: understood → READ; in progress → RUNNING; a stored failure → as stored unless the customer retried.
+    if ((recon.status === 'READ' || recon.status === 'BUILT') && recon.analysis?.kind === 'PHOTO_UNDERSTANDING') return reply({ state: 'READ', sourceId: recon.built_source_id, versionId: recon.built_version_id });
+    if (recon.status === 'READING') return reply({ state: 'RUNNING' }, 202);
+    if (recon.status === 'FAILED') {
+      const [category, code] = String(recon.error).split(':');
+      if (category === 'TERMINAL' || !body.retry) return reply({ state: 'FAILED', reason: code, retryable: category !== 'TERMINAL' });
+    }
+    store.photoReads += 1;
+    Object.assign(recon, { status: 'READING', error: null, updated_at: now() });
+    const attempt = store.photoReads;
+    setTimeout(() => {
+      if (store.photoFail && attempt === 1) {
+        Object.assign(recon, { status: 'FAILED', error: store.photoFail === 'TERMINAL' ? 'TERMINAL:UNSUPPORTED_PHOTOS' : 'RETRYABLE:READING_FAILED', updated_at: now() });
+        return;
+      }
+      const u = photoUnderstanding(recon.reference_ids.length);
+      const source = {
+        id: randomUUID(), project_id: recon.project_id, user_id: 'hm1', kind: 'PHOTO_SET', status: 'READY', geometry_state: 'ESTIMATED', editability: 'GENERATED',
+        dev_unit_id: null, upstream: null, floorplan_id: recon.reference_ids[0], model_object_key: null, model_sha256: null, model_bytes: null, model_mime: null,
+        canonical: { kind: 'PHOTO_SET', understanding: u }, calibration: null, generator_version: 'photo-read-1',
+        provenance: { origin: 'CUSTOMER_PHOTOS', reconstructionId: recon.id, referenceIds: recon.reference_ids, generator: 'OPENAI_FIRST' }, failure: null, supersedes_id: null, created_at: now(),
+      };
+      store.db.ds_spatial_sources.push(source);
+      const original = { id: randomUUID(), project_id: recon.project_id, user_id: 'hm1', source_id: source.id, parent_id: null, name: 'Original', origin: 'ORIGINAL', state: {}, state_schema: 1, revision: 0,
+        style_tags: [], change_summary: [{ kind: 'PHOTOS_UNDERSTOOD' }], thumbnail_key: null, archived_at: null, design_dna: null, created_at: now(), updated_at: now() };
+      store.db.ds_versions.push(original);
+      Object.assign(store.db.ds_projects.find((p) => p.id === recon.project_id), { active_source_id: source.id, head_version_id: original.id });
+      Object.assign(recon, { status: 'READ', analysis: u, model: 'qa', built_source_id: source.id, built_version_id: original.id, updated_at: now() });
+    }, 1500);
+    return reply({ state: 'RUNNING' }, 202);
+  });
+}
+
+const photoFiles = (n) => {
+  const body = readFileSync(path.join(FIXTURE, 'qa-master.jpg'));
+  return Array.from({ length: n }, (_, i) => ({ name: `room-${i + 1}.jpg`, mimeType: 'image/jpeg', buffer: body }));
+};
+
+/* ── E: PHOTOS → the design, server-owned; Snake while it is made ── */
+async function photoPath(browser, { width, height, lang, touch }) {
+  const tag = `${width}-${lang} photos`;
+  const s = await open(browser, { width, height, lang, touch, reading: 'v1' });
+  const { page, store } = s;
+  await wirePhotos(page, store);
+  store.gen.minStepMs = 3500;
+  const legacy = [];
+  page.on('request', (r) => { if (/\/functions\/v1\/design-studio-reconstruct\/?$|\/(factory|factory-status|render-start|qa)$/.test(r.url().split('?')[0])) legacy.push(r.url()); });
+  const shot = (name) => page.screenshot({ path: path.join(OUT, `ph-${name}-${width}-${lang}.png`) });
+  const text = async () => page.locator('body').innerText();
+
+  await page.goto(`${BASE}/design-studio`);
+  await page.getByTestId('ds-landing').waitFor({ timeout: 20000 });
+  await page.waitForTimeout(400);
+  await shot('landing');
+  await s.noOverflow(tag, 'the landing');
+  const a = await page.getByTestId('ds-start-photos').boundingBox();
+  const b = await page.getByTestId('ds-start-floorplan').boundingBox();
+  // Side by side (and the same height) on a large screen; one above the other, the same width, on a phone.
+  check(`${tag}: Photos and Floor plan are equal ways in (${Math.round(a.width)}x${Math.round(a.height)} / ${Math.round(b.width)}x${Math.round(b.height)})`, Math.abs(a.width - b.width) <= 2 && (width < 640 || Math.abs(a.height - b.height) <= 2));
+  if (lang === 'ka') {
+    const t = await text();
+    for (const copy of ['ნახე შენი სივრცე ახალი დიზაინით', 'ფოტოების ატვირთვა', 'გეგმის ატვირთვა', 'ატვირთე არსებული სივრცის ფოტოები და ნახე როგორ შეიძლება შეიცვალოს მისი დიზაინი.']) check(`${tag}: landing copy "${copy}"`, t.includes(copy));
+    check(`${tag}: no "reconstruction" framing on the landing`, !t.includes('სახლის აღდგენა სურათებიდან'));
+  }
+  await page.getByTestId('ds-start-photos').click();
+  await page.getByTestId('photo-upload').waitFor({ timeout: 20000 });
+  await page.waitForTimeout(300);
+  await shot('upload');
+  await s.noOverflow(tag, 'photo upload');
+  if (lang === 'ka') {
+    const t = await text();
+    for (const copy of ['ატვირთე სივრცის ფოტოები', 'ფოტოების არჩევა', 'მაქსიმუმ 6 ფოტო · JPG, PNG ან WebP']) check(`${tag}: upload copy "${copy}"`, t.includes(copy));
+  }
+  await page.getByTestId('photo-file-first').setInputFiles(photoFiles(3));
+  await page.getByTestId('photo-ready').waitFor({ timeout: 10000 });
+  check(`${tag}: three photos to look over`, (await page.getByTestId('photo-grid').locator('img').count()) === 3);
+  await page.getByTestId('photo-remove').last().click();
+  check(`${tag}: a photo can be removed`, (await page.getByTestId('photo-grid').locator('img').count()) === 2);
+  await page.getByTestId('photo-file').setInputFiles(photoFiles(1));
+  check(`${tag}: and added again`, (await page.getByTestId('photo-grid').locator('img').count()) === 3);
+  await page.waitForTimeout(300);
+  await shot('ready');
+  await s.noOverflow(tag, 'photos ready');
+  if (lang === 'ka') check(`${tag}: ready copy`, (await text()).includes('ფოტოები მზადაა') && (await text()).includes('გაგრძელება') && (await text()).includes('ფოტოების შეცვლა'));
+  await page.getByTestId('photo-continue').click();
+  await page.getByTestId('plan-reading').waitFor({ timeout: 30000 });
+  await shot('analysis');
+  await s.noOverflow(tag, 'analysis');
+  check(`${tag}: the analysis says the page may be left`, await page.getByTestId('leave-ok').isVisible());
+  if (lang === 'ka') check(`${tag}: analysis copy`, (await text()).includes('ვაკვირდებით შენს სივრცეს') && (await text()).includes('შეგიძლია სხვა გვერდზე გადახვიდე. მუშაობა გაგრძელდება.'));
+  const refs = store.db.ds_floorplans.filter((f) => f.purpose === 'REFERENCE').length;
+  check(`${tag}: three photos uploaded once (${refs})`, refs === 3, String(refs));
+
+  // Leave in the middle of the analysis: the reading carries on; back on the project, it resumes — never "could not read".
+  const projectId = store.db.ds_projects[0].id;
+  await page.goto(`${BASE}/design-studio`);
+  await page.getByTestId('ds-landing').waitFor({ timeout: 20000 });
+  await page.getByTestId('project-status').first().waitFor({ timeout: 10000 }).catch(() => {});
+  await shot('library');
+  const status = await page.getByTestId('project-status').first().getAttribute('data-status').catch(() => null);
+  check(`${tag}: the library shows the project's server-side status (${status})`, ['WORKING', 'QUESTION'].includes(String(status)), String(status));
+  await page.goto(`${BASE}/design-studio/${projectId}`);
+  await page.getByTestId('quick-question').waitFor({ timeout: 30000 });
+  check(`${tag}: left and resumed: ONE reading (${store.photoReads}), never a failure`, store.photoReads === 1 && (await page.getByTestId('ds-retry').count()) === 0, String(store.photoReads));
+  await page.waitForTimeout(300);
+  await shot('question');
+  await s.noOverflow(tag, 'the detail');
+  if (lang === 'ka') check(`${tag}: question copy`, (await text()).includes('ერთი დეტალი დაგვრჩა') && (await text()).includes('ეს დაგვეხმარება დიზაინი შენს სივრცეს უკეთ მოვარგოთ.'));
+  await page.getByTestId('question-option-OFFICE').click();
+  await page.getByTestId('question-continue').click();
+  await page.getByTestId('look-style').waitFor({ timeout: 10000 });
+  const recon = store.db.ds_reconstructions.at(-1);
+  for (let i = 0; i < 40 && !(recon.corrections?.flow?.answers ?? []).length; i += 1) await page.waitForTimeout(150);
+  check(`${tag}: the answer is kept on the project`, (recon.corrections?.flow?.answers ?? []).some((x) => x.questionId === 'q1' && x.value === 'OFFICE'));
+  if (lang === 'ka') check(`${tag}: style copy`, (await text()).includes('როგორი სივრცე გინდა?') && (await text()).includes('სხვა ვარიანტების ნახვა') && (await text()).includes('გამაკვირვე') && (await text()).includes('შემდეგი'));
+  await page.getByTestId('look-surprise').click();
+  check(`${tag}: "surprise me" chooses a look`, (await page.locator('[data-testid^="look-style-"][aria-checked="true"]').count()) === 1);
+  await page.getByTestId('look-style-LUXURY').click();
+  await page.waitForTimeout(300);
+  await shot('style');
+  await s.noOverflow(tag, 'style');
+  if (lang === 'ka') check(`${tag}: approved style names`, (await text()).includes('ლუქს') && (await text()).includes('თანამედროვე'));
+  await page.getByTestId('look-next').click();
+  await page.getByTestId('look-quality').waitFor({ timeout: 10000 });
+  await page.getByTestId('look-price').getByText(/\d/).waitFor({ timeout: 10000 }).catch(() => {});
+  await page.getByTestId('look-quality-PREMIUM').click();
+  await page.waitForTimeout(300);
+  await shot('quality');
+  await s.noOverflow(tag, 'quality');
+  if (lang === 'ka') check(`${tag}: quality copy`, (await text()).includes('აირჩიე შედეგის ხარისხი') && (await text()).includes('ჩემი დიზაინის შექმნა'));
+
+  // Generate: a double tap is one run; a reload in the middle resumes it.
+  for (let i = 0; i < 40 && !(await page.getByTestId('look-generate').isEnabled()); i += 1) await page.waitForTimeout(150);
+  await page.getByTestId('look-generate').dblclick();
+  await page.getByTestId('plan-generating').waitFor({ timeout: 15000 });
+  for (let i = 0; i < 60 && !store.db.ds_renders.length; i += 1) await page.waitForTimeout(250);
+  await page.reload();
+  await page.getByTestId('plan-generating').waitFor({ timeout: 20000 });
+  if (lang === 'ka') check(`${tag}: generation copy`, (await text()).includes('ვქმნით შენს ახალ სივრცეს') && (await text()).includes('შენი დიზაინი იქმნება'));
+  await page.getByTestId('snake-offer').waitFor({ timeout: 15000 });
+  await shot('generating');
+  await s.noOverflow(tag, 'generating');
+  await page.getByTestId('snake-play').click();
+  await page.getByTestId('snake-game').waitFor({ timeout: 15000 });
+  await page.waitForTimeout(600);
+  await shot('snake');
+  check(`${tag}: Snake shows the work's real stage, not a game timer`, /\S/.test(await page.getByTestId('snake-job').innerText()));
+  if (touch) {
+    const board = await page.getByTestId('snake-board').boundingBox();
+    await page.mouse.move(board.x + board.width / 2, board.y + board.height / 2);
+    await page.mouse.down(); await page.mouse.move(board.x + board.width / 2, board.y + board.height / 2 - 80); await page.mouse.up();
+  } else {
+    await page.keyboard.press('ArrowUp'); await page.keyboard.press('KeyA');
+  }
+  await page.getByTestId('snake-ready').waitFor({ timeout: 90000 });
+  await shot('snake-ready');
+  if (lang === 'ka') check(`${tag}: ready copy over the game`, (await page.getByTestId('snake-ready').innerText()).includes('შენი დიზაინი მზადაა') && (await page.getByTestId('snake-ready').innerText()).includes('თამაშის გაგრძელება'));
+  check(`${tag}: ready never navigates away from the game by itself`, !/\/home$/.test(page.url()));
+  await page.getByTestId('snake-ready-view').click();
+  await page.waitForURL(/\/home$/, { timeout: 20000 });
+
+  // The Result.
+  await page.getByTestId('design-home').waitFor({ timeout: 20000 });
+  await page.getByTestId('render-viewer').waitFor({ timeout: 30000 });
+  await page.waitForTimeout(800);
+  await shot('result');
+  await s.noOverflow(tag, 'the result');
+  check(`${tag}: a photo project's Result`, (await page.getByTestId('design-home').getAttribute('data-source')) === 'PHOTO');
+  if (lang === 'ka') {
+    const t = await text();
+    for (const copy of ['ნახე შენი სივრცე ახალი დიზაინით', 'სხვა ვარიანტი', 'სტილის შეცვლა', 'ხარისხის შეცვლა', 'სხვა ოთახის შექმნა', 'რედაქტირება', 'სხვა ოთახები', 'ამ ოთახის შექმნა']) check(`${tag}: result copy "${copy}"`, t.includes(copy));
+  }
+  check(`${tag}: no advanced 3D editor on a photo project`, (await page.getByTestId('home-advanced').count()) === 0);
+  const masters = store.db.ds_renders.filter((r) => r.view?.id === 'master');
+  check(`${tag}: ONE reading, ONE specification, ONE picture across the double tap and the reload (${store.photoReads}/${store.gen.specRuns}/${store.gen.imageCalls}/${masters.length})`,
+    store.photoReads === 1 && store.gen.specRuns === 1 && store.gen.imageCalls === 1 && masters.length === 1);
+  check(`${tag}: the master is drawn over the customer's own photo of the hero room`, masters[0]?.finish?.sourceKey === store.db.ds_floorplans.find((f) => f.id === recon.reference_ids[0])?.object_key);
+  check(`${tag}: no reconstruction, factory or render-start request (${legacy.length})`, legacy.length === 0, legacy.join(' '));
+
+  await page.getByTestId('home-compare').click();
+  await page.getByTestId('compare').waitFor({ timeout: 10000 });
+  await shot('compare');
+  if (lang === 'ka') check(`${tag}: before / after labels`, (await page.getByTestId('compare').innerText()).includes('მანამდე') && (await page.getByTestId('compare').innerText()).includes('ახალი დიზაინი'));
+  await page.getByTestId('home-compare').click();
+
+  // Another room: its own photo, the same design identity; priced, confirmed, server-owned.
+  check(`${tag}: the other room is offered`, (await page.getByTestId('room-card').count()) === 1);
+  await page.getByTestId('room-create').click();
+  await page.getByTestId('home-sheet').waitFor({ timeout: 10000 });
+  await shot('room-sheet');
+  await page.getByTestId('room-same-style').click();
+  await page.getByTestId('confirm-price').waitFor({ timeout: 10000 });
+  await page.getByTestId('confirm-run').click();
+  await page.getByTestId('room-view').waitFor({ timeout: 60000 });
+  const room = store.db.ds_renders.find((r) => r.view?.kind === 'ROOM');
+  check(`${tag}: the room is drawn over its own photo (${room?.view?.roomId})`, room?.view?.roomId === 'r2' && room.finish?.sourceKey === store.db.ds_floorplans.find((f) => f.id === recon.reference_ids[1])?.object_key);
+  // Another option of the same design.
+  await page.getByTestId('home-variant').click();
+  await page.getByTestId('confirm-price').waitFor({ timeout: 10000 });
+  if (lang === 'ka') check(`${tag}: variant copy`, (await page.locator('[role="dialog"]').innerText()).includes('შევინარჩუნებთ შენს სივრცეს, სტილს და ხარისხს, დიზაინის დეტალებს კი თავიდან შევქმნით.'));
+  await page.getByTestId('confirm-run').click();
+  await page.getByTestId('home-variants').waitFor({ timeout: 60000 });
+  await page.waitForTimeout(500);
+  await shot('variants');
+  await s.noOverflow(tag, 'the result with options');
+  check(`${tag}: one specification per design: master, room, option (${store.gen.specRuns})`, store.gen.specRuns === 3, String(store.gen.specRuns));
+  check(`${tag}: no page errors`, s.errors.length === 0, s.errors.join('\n        '));
+  await s.ctx.close();
+}
+
+/* ── F: photos that fail — retry without uploading again; unusable photos ask for another file ── */
+async function photoFailures(browser, { width, height, lang, touch }) {
+  for (const kind of ['RETRYABLE', 'TERMINAL']) {
+    const tag = `${width}-${lang} photo-failure-${kind.toLowerCase()}`;
+    const s = await open(browser, { width, height, lang, touch, reading: 'v1' });
+    const { page, store } = s;
+    store.photoFail = kind;
+    await wirePhotos(page, store);
+    await page.goto(`${BASE}/design-studio`);
+    await page.getByTestId('ds-start-photos').click();
+    await page.getByTestId('photo-file-first').setInputFiles(photoFiles(1));
+    await page.getByTestId('photo-continue').click();
+    if (kind === 'RETRYABLE') {
+      await page.getByTestId('ds-retry').waitFor({ timeout: 30000 });
+      await page.waitForTimeout(300);
+      await page.screenshot({ path: path.join(OUT, `ph-retry-${width}-${lang}.png`) });
+      await s.noOverflow(tag, 'retry');
+      check(`${tag}: a reading that failed says so truthfully (not "could not read")`, await page.getByTestId('plan-retry').isVisible() && await page.getByTestId('retry-later').isVisible());
+      await page.getByTestId('plan-retry').click();
+      await page.getByTestId('look-style').waitFor({ timeout: 30000 });
+      const refs = store.db.ds_floorplans.filter((f) => f.purpose === 'REFERENCE').length;
+      check(`${tag}: "try again" read again without uploading again (${store.photoReads} reads, ${refs} upload)`, store.photoReads === 2 && refs === 1);
+    } else {
+      await page.getByTestId('ds-unsupported').waitFor({ timeout: 30000 });
+      await page.waitForTimeout(300);
+      await page.screenshot({ path: path.join(OUT, `ph-unsupported-${width}-${lang}.png`) });
+      await s.noOverflow(tag, 'unsupported');
+      check(`${tag}: unusable photos ask for another file, not a retry`, (await page.getByTestId('plan-retry').count()) === 0);
+      await page.getByTestId('choose-another').click();
+      await page.getByTestId('photo-upload').waitFor({ timeout: 10000 });
+    }
+    check(`${tag}: right-to-left where it should be`, lang !== 'he' || (await page.evaluate(() => document.documentElement.dir)) === 'rtl');
+    check(`${tag}: no page errors`, s.errors.length === 0, s.errors.join('\n        '));
+    await s.ctx.close();
+  }
+}
+
 async function main() {
   const server = await startServer();
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
@@ -625,6 +963,14 @@ async function main() {
     if (!only || only === 'C') {
       await rtl(browser, { width: 390, height: 844, lang: 'ar', touch: true });
       await rtl(browser, { width: 1440, height: 900, lang: 'he', touch: false });
+    }
+    if (!only || only === 'E') {
+      await photoPath(browser, { width: 390, height: 844, lang: 'ka', touch: true });
+      await photoPath(browser, { width: 1440, height: 900, lang: 'en', touch: false });
+    }
+    if (!only || only === 'F') {
+      await photoFailures(browser, { width: 390, height: 844, lang: 'en', touch: true });
+      await photoFailures(browser, { width: 390, height: 844, lang: 'he', touch: true });
     }
   } finally {
     await browser.close().catch(() => {});

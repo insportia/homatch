@@ -1136,7 +1136,7 @@ test('CREATIVE AI: nothing on upload; analysis only on the click and cached; the
   for (const [width, height] of [[390, 844], [1440, 900]]) {
     const settings = { ...fixtures().status.settings, aiCreativeEnabled: true };
     const { page, calls } = await boot(t, { width, height, lang: 'en', statusOver: { settings } });
-    const ai = { analyze: 0, generate: [], jobPolls: 0, use: [] };
+    const ai = { analyze: 0, generate: [], jobPolls: 0, use: [], compose: [] };
     await page.route('**/functions/v1/meta-ads-api', async (r) => {
       const body = JSON.parse(r.request().postData() || '{}');
       const ok = (o, s = 200) => r.fulfill({ status: s, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(o) });
@@ -1147,7 +1147,14 @@ test('CREATIVE AI: nothing on upload; analysis only on the click and cached; the
       if (body.action === 'creative_ai_quote') return ok({ quote: { variations: body.variations, unitCredits: 1.3, expectedCredits: 1.3 * body.variations, maxCredits: 1.63 * body.variations, balanceCredits: 50, enough: true, available: true } });
       if (body.action === 'creative_ai_generate') { ai.generate.push(body); return ok({ job: aiJob({ id: 'j2', kind: 'GENERATION', status: 'RUNNING', stage: 'GENERATING', requested: 3, quotedCredits: 4.89 }), replay: false }, 202); }
       if (body.action === 'creative_ai_job') { ai.jobPolls += 1; return ok({ job: aiJob({ id: 'j2', kind: 'GENERATION', status: 'DONE', stage: 'DONE', requested: 3, chargedCredits: 3.9, images: [IMG(1), IMG(2), IMG(3)] }) }); }
-      if (body.action === 'creative_ai_use') { ai.use.push(body); return ok({ created: body.picks.map((_, i) => `n${i}`) }); }
+      if (body.action === 'creative_ai_use') { ai.use.push(body); return ok({ created: body.picks.map((_, i) => `n${i}`), refused: [] }); }
+      if (body.action === 'creative_ai_compose') {
+        // The server's composition (the real one is tested in creativeText.test.mjs): an SVG with real text.
+        ai.compose.push(body);
+        const spec = body.spec ?? { layout: body.index === 3 ? 'OVERLAY_BOTTOM' : 'EDITORIAL_BOTTOM', aspect: '4:5', theme: 'INK', copy: { headline: 'Calm living in Vake', cta: 'Book a viewing' } };
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350"><rect width="1080" height="1350" fill="#0E1626"/><text x="72" y="1000" font-family="HMC Sans" font-size="64" font-weight="700" fill="#fff">${spec.copy.headline}</text></svg>`;
+        return ok({ spec, svg, composition: { layout: spec.layout, requestedLayout: spec.layout, aspect: spec.aspect, ok: !!spec.copy.headline, dir: 'ltr', copy: spec.copy, checks: spec.copy.headline ? [] : [{ code: 'HEADLINE_REQUIRED', field: 'headline', blocking: true }], sizes: {}, lines: {} } });
+      }
       return ok({ ok: true });
     });
     await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=creative`, { waitUntil: 'domcontentloaded' });
@@ -1194,8 +1201,22 @@ test('CREATIVE AI: nothing on upload; analysis only on the click and cached; the
     await page.locator('[data-mm-ai-role="3"]').selectOption('TEST');
     assert.ok((await page.evaluate(LAYOUT)).overflow <= 1, `${width}: the gallery fits`);
     await page.locator('[data-mm-ai-use]').click();
+    // Use → the FINAL creative first: HOMATCH typography over each visual, approved before anything is created.
+    await page.waitForSelector('[data-mm-composer="2"] [data-mm-composer-ready]', { timeout: 10000 });
+    assert.equal(ai.use.length, 0, 'nothing is created before the composed creative is seen');
+    assert.equal(await page.locator('[data-mm-composer-preview] svg text').first().textContent(), 'Calm living in Vake', 'the preview is real text');
+    assert.ok((await page.evaluate(LAYOUT)).overflow <= 1, `${width}: the composer fits`);
+    await page.locator('[data-mm-composer-field="headline"]').fill('');
+    await page.waitForSelector('[data-mm-composer-check="HEADLINE_REQUIRED"]');
+    assert.ok(await page.locator('[data-mm-composer-submit]').isDisabled(), 'an invalid text layer cannot be confirmed');
+    await page.locator('[data-mm-composer-field="headline"]').fill('იპოვე შენი სახლი ვაკეში');
+    await page.waitForSelector('[data-mm-composer-ready]');
+    await page.waitForFunction(() => !document.querySelector('[data-mm-composer-submit]')?.hasAttribute('disabled'));
+    assert.equal(ai.generate.length, 1, 'editing the text never starts a new generation');
+    await page.locator('[data-mm-composer-submit]').click();
     await page.waitForSelector('[data-mm-ai-panel]', { state: 'detached' });
-    assert.deepEqual(ai.use[0].picks, [{ index: 1, role: 'PRIMARY' }, { index: 3, role: 'TEST' }]);
+    assert.deepEqual(ai.use.map((u) => u.picks.map((p) => [p.index, p.role, p.spec.copy.headline])), [[[1, 'PRIMARY', 'იპოვე შენი სახლი ვაკეში']], [[3, 'TEST', 'იპოვე შენი სახლი ვაკეში']]], 'one export per request, each with the approved Georgian text');
+    assert.deepEqual(ai.use.map((u) => u.picks[0].spec.layout), ['EDITORIAL_BOTTOM', 'OVERLAY_BOTTOM'], 'each variation keeps its own layout');
     assert.equal(calls.creativePatches.filter((p) => p.media).length, 0, 'the original creative is never rewritten');
   }
 });

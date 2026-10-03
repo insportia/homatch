@@ -196,6 +196,28 @@ MATTERS right now, verify against the live systems, not this file)
 - No marketplace worker registered. Deep Search shown as not yet available.
 - Map and activation checklist: `docs/claude/FIND_PROPERTY_MARKETPLACE.md`.
 
+## Billing hotfix + Meta Creative text layer (2026-10-03)
+
+- PR #74 (bbd48040) MERGED; migration `fix_spend_while_viewed_trigger` applied
+  once (ledger 20261003123604). wallet_reserve works again; one real Creative
+  Intelligence generation proved reserve→settle once (job 93e84e09, 1.20 credits
+  charged of 1.63 held, 0.43 released, one gpt-image-1 call).
+- That generation exposed malformed Georgian drawn INTO the image ("Oინ Views"):
+  the analysis concept (Georgian) told the image model to add a headline, and
+  the source was an editor screenshot. Fix (branch
+  claude/homatch-discovery-engine-rqdnza): the image model draws the VISUAL ONLY
+  (English, picture-only prompt + NO_TEXT_RULE; ANALYSIS_VERSION 2 with
+  structured copy + English visualBrief; a text-artifact check per visual as
+  HOMATCH cost). HOMATCH typesets all ad copy: `src/lib/metaAds/creativeLayout.ts`
+  (5 layouts, 1:1/4:5/9:16, HarfBuzz-measured wrapping, own bidi runs, WCAG
+  checks) → ONE SVG serializer for the browser preview and the edge PNG export
+  (`meta-ads-api/composer.ts`, resvg-wasm). Pinned fonts/wasm in
+  `public/creative-engine/` (SHA-256 checked by the edge; fetched from
+  CREATIVE_ASSET_ORIGIN, default https://www.homatch.live — the FRONTEND must be
+  deployed for the edge composer to work). Composed creatives store the clean
+  `visualPath` + composition; text/layout edits re-export with zero model calls.
+  One export per request (~1.2 s CPU of the 2 s edge budget).
+
 ## Deferred / known-open (do not "fix" casually)
 
 - Active Search has no dedicated UI surface yet (backend + notify exist).

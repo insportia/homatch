@@ -46,7 +46,7 @@ import { buildSpaceModel, type SpaceModel } from '../../../src/lib/designStudio/
 import { compileSceneSpec } from '../../../src/lib/designStudio/hybrid/compileSpec.ts';
 import { buildWalkthrough, roomSketches } from '../../../src/lib/designStudio/walkthrough/build.ts';
 import {
-  decidePoll, identityText, isTerminal, nextStep, progressOf, PROVIDER_DEADLINE_MS, readProviderStatus, RETRYABLE_FAILURES,
+  decidePoll, identityText, isTerminal, nextStep, progressOf, PROVIDER_DEADLINE_MS, readProviderStatus, retryableFailure,
   type WalkRow,
 } from '../../../src/lib/designStudio/walkthrough/lifecycle.ts';
 
@@ -93,7 +93,7 @@ function publicOf(row: Row) {
   return {
     id: row.id, designVersionId: row.design_version_id, revision: row.revision, state: row.state, progress: progressOf(row.state),
     stage: row.stage ?? null, walkVersionId: row.state === 'READY' ? row.walk_version_id : null, error: code,
-    retryable: row.state === 'FAILED' && !!code && RETRYABLE_FAILURES.has(code) && (row.timings?.manualRetries ?? 0) < MANUAL_RETRIES,
+    retryable: row.state === 'FAILED' && retryableFailure(code) && (row.timings?.manualRetries ?? 0) < MANUAL_RETRIES,
     createdAt: row.created_at, readyAt: row.ready_at ?? null,
     summary: row.state === 'READY' && row.plan_report?.build?.counts ? { pieces: (row.plan_report.build.counts.planned ?? 0) + (row.plan_report.build.counts.corrected ?? 0) + (row.plan_report.build.counts.placed ?? 0), rooms: row.plan_report.rooms ?? null } : null,
   };

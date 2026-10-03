@@ -719,8 +719,14 @@ test('the first result is OpenAI\'s: no factory, RunPod, Blender, GLB or 3D asse
   for (const banned of [/runDesignBuild/, /startFactory/, /startRenders/, /listAssets/, /assetsByCode/, /designFromPreferences/, /planToOperations/, /compileSceneSpec/, /factoryStatus/]) {
     assert.doesNotMatch(gen, banned, `generateHome: ${banned}`);
   }
-  assert.match(gen, /requestDesignSpec\(/);
-  assert.match(gen, /generateRender\(/);
+  // The design and its picture are one server-owned run (designRun.ts): spec → version → render, never the factory.
+  assert.match(gen, /runDesign\(/);
+  const run = code('src/services/designStudio/designRun.ts');
+  assert.match(run, /design-studio-reconstruct\/design-spec/);
+  assert.match(run, /generateRender\(/);
+  for (const banned of [/startFactory/, /startRenders/, /factoryStatus/, /compileSceneSpec/, /listAssets/, /runpod/i, /blender/i]) {
+    assert.doesNotMatch(run, banned, `designRun: ${banned}`);
+  }
   const spec = code('supabase/functions/_shared/designStudio/designSpec.ts');
   assert.doesNotMatch(spec, /catalog|asset|materialCode/i, 'the specification never sees a catalogue');
   assert.match(spec, /type: 'input_image', image_url: images\.source/, 'the customer\'s own picture reaches OpenAI');
@@ -728,3 +734,88 @@ test('the first result is OpenAI\'s: no factory, RunPod, Blender, GLB or 3D asse
   assert.match(code('src/lib/designStudio/walkthroughOffer.ts'), /export const WALKTHROUGH_OFFERED = false;/);
 });
 
+
+/* ── The unified OpenAI-first product: photos, durable work, the Result, Snake ── */
+
+test('a photo project is OpenAI-first: never the reconstruction, catalogue, factory, Blender or RunPod', () => {
+  const flow = code('src/components/designStudio/unified/PhotoFlow.tsx');
+  for (const banned of [/ReconstructionFlow/, /runReconstruction/, /measurePicture/, /startFactory/, /startRenders/, /compileSceneSpec/, /listAssets/, /catalog/i, /runpod/i, /blender/i, /DesignWorkspace/]) {
+    assert.doesNotMatch(flow, banned, `PhotoFlow: ${banned}`);
+  }
+  assert.match(flow, /understandPhotos\(/, 'the photos are understood by the server-owned route');
+  assert.match(flow, /runDesign\(/, 'the design is the server-owned OpenAI-first run');
+  const route = code('supabase/functions/design-studio-reconstruct/photos.ts');
+  for (const banned of [/factory/i, /runpod/i, /blender/i, /catalog/i, /reconstructRead/, /planDocument/]) {
+    assert.doesNotMatch(route, banned, `photos.ts: ${banned}`);
+  }
+  assert.match(route, /photoReadRequest\(MODEL, images, language\)/, 'every photo goes to OpenAI in one reading');
+  assert.match(route, /kind: 'PHOTO_SET'/, 'the project gets a photo source, not a reconstructed home');
+  const service = code('src/services/designStudio/photos.ts');
+  assert.match(service, /uploadReference\(\{ userId: input\.userId, projectId: input\.projectId, file, measure: false \}\)/, 'nothing is measured or rebuilt from a photo');
+});
+
+test('every Design Studio entry to photos opens the PhotoFlow; the reconstruction flow survives only inside an existing plan design', () => {
+  const ws = code('src/pages/designStudio/DesignStudioWorkspacePage.tsx');
+  assert.match(ws, /params\.get\('start'\) === 'photos' \|\| params\.get\('start'\) === 'image'/, 'new links and the old ?start=image link both open the PhotoFlow');
+  assert.match(ws, /useState<null \| \{ planSource: SpatialSourceRecord \| null \}>\(null\)/, 'nothing opens the reconstruction flow from a launcher link');
+  assert.match(ws, /onImage=\{\(\) => setPhotoFlow\(true\)\}/);
+  assert.match(ws, /onFurnishFromPictures=\{resolution\.source\.kind === 'FLOORPLAN_SCENE'/, 'kept for compatibility, inside an existing floor-plan design only');
+  assert.match(ws, /resolution\?\.source\?\.kind === 'PHOTO_SET'/, 'a photo project never opens the 3D editor');
+  const launcher = code('src/pages/designStudio/DesignStudioPage.tsx');
+  assert.match(launcher, /startFrom\('photos'\)/);
+  assert.match(launcher, /startFrom\('floorplan'\)/);
+  assert.doesNotMatch(launcher, /startFrom\('image'\)/);
+});
+
+test('reading, understanding and designing are owned by the server: answered at once, claimed once, taken over when abandoned', () => {
+  const durable = code('supabase/functions/design-studio-reconstruct/durable.ts');
+  assert.match(durable, /EdgeRuntime/);
+  for (const rel of ['supabase/functions/design-studio-reconstruct/floorplan.ts', 'supabase/functions/design-studio-reconstruct/photos.ts']) {
+    const src = code(rel);
+    assert.match(src, /isFresh\(/, `${rel}: a live reading is answered, never started twice`);
+    assert.match(src, /\.eq\('updated_at', \w+\.updated_at\)/, `${rel}: the claim is a compare-and-set`);
+    assert.match(src, /inBackground\(/, `${rel}: the work continues after the answer`);
+    assert.match(src, /json\(\{ state: 'RUNNING' \}, 202\)/, `${rel}: the request answers at once`);
+    assert.match(src, /!body\.retry/, `${rel}: a stored failure is only asked again on the customer's own retry`);
+    assert.doesNotMatch(src, /return json\(\{ error: 'ALREADY_RUNNING' \}, 409\);/, `${rel}: a reading in progress is not an error for the durable page`);
+  }
+  // A page loaded before the change (no durable flag) still gets the old, synchronous answer during a rollout.
+  assert.match(code('supabase/functions/design-studio-reconstruct/floorplan.ts'), /if \(!body\.durable\) \{[\s\S]*?await work\(\);/);
+  assert.match(code('supabase/functions/design-studio-reconstruct/generate.ts'), /if \(!body\.durable\) \{[\s\S]*?await writeSpec\(/);
+  assert.match(code('src/services/designStudio/floorplans.ts'), /durable: true/);
+  assert.match(code('src/services/designStudio/designRun.ts'), /durable: true/);
+  const gen = code('supabase/functions/design-studio-reconstruct/generate.ts');
+  assert.match(gen, /isFresh\(prior\.started_at\)/, 'a design in progress is answered, not paid for again');
+  assert.match(gen, /failure\('RETRYABLE', 'ABANDONED'\)/, 'an abandoned design is taken over');
+  assert.match(gen, /status: 'CANCELLED', error: 'DUPLICATE'/, 'two racing identical requests: one stands down before spending');
+  assert.match(gen, /uuidFrom\(`ds-chain:\$\{job\.id\}:version`\)/, 'the chain\'s design version is made once (a deterministic id)');
+  assert.match(gen, /kick\(ctx\.authorization, 'render-generate-step'/, 'the edit map is started by the server, not the page');
+  const client = code('src/services/designStudio/durable.ts');
+  assert.match(client, /DS_STILL_WORKING/, 'giving up watching is not a failure of the work');
+});
+
+test('the photo set source: an append-only migration, and the client knows it is never a 3D home', () => {
+  const sql = read('supabase/migrations/20261010100100_design_studio_photo_set_source.sql');
+  assert.match(sql, /'FLOORPLAN_SCENE','PHOTO_SET'/);
+  assert.match(sql, /jsonb_array_length\(provenance->'referenceIds'\) BETWEEN 1 AND 6/);
+  assert.doesNotMatch(sql, /\bDROP TABLE\b|\bDELETE FROM\b|\bTRUNCATE\b|\bBEGIN;|\bCOMMIT;/i, 'additive, and the runner owns the transaction');
+  assert.match(code('src/lib/designStudio/types.ts'), /'PHOTO_SET'/);
+});
+
+test('Snake only watches: no service, no database, no job control', () => {
+  const game = code('src/components/games/SnakeGame.tsx');
+  for (const banned of [/@\/services\//, /supabase/i, /functions\.invoke/, /runDesign/, /fetch\(/]) {
+    assert.doesNotMatch(game, banned, `SnakeGame: ${banned}`);
+  }
+  assert.match(game, /status: WatchedStatus/);
+  const screens = code('src/components/designStudio/unified/Screens.tsx');
+  assert.match(screens, /lazy\(\(\) => import\('@\/components\/games\/SnakeGame'\)\)/, 'loaded only when someone plays');
+  assert.match(code('src/lib/games/snake.ts'), /export function step\(/);
+});
+
+test('the protected edit pipeline (PR #65) and the walkthrough gate are untouched', () => {
+  assert.match(code('src/lib/designStudio/walkthroughOffer.ts'), /export const WALKTHROUGH_OFFERED = false;/);
+  const result = code('src/components/designStudio/unified/DesignResult.tsx');
+  assert.match(result, /editRender\(\{ renderId: hero\.id, edit, newVersionId: v\.id, quote: q\.quote/, 'edits go through the stable render-edit route');
+  assert.match(result, /WALKTHROUGH_OFFERED \?/, 'the 3D experience is offered only when the gate opens');
+});

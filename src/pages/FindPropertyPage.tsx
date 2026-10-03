@@ -73,6 +73,8 @@ import {
   type SearchPlan,
 } from '@/services/findProperty';
 import { brokerDiscoveryPricing, type BrokerDiscoveryPricing } from '@/services/brokers';
+import { MarketplaceSearchExperience } from '@/components/findProperty/MarketplaceSearchExperience';
+import { type MarketplaceCapabilities, getCapabilities } from '@/services/marketplaceSearch';
 
 const GOALS: readonly SearchGoal[] = ['BUY', 'RENT', 'SHORT_STAY', 'INVEST', 'COMMERCIAL', 'LAND'];
 
@@ -259,7 +261,7 @@ function ResultCard({ result }: { result: FindPropertyResult }) {
   );
 }
 
-export default function FindPropertyPage() {
+function LegacyFindPropertyPage() {
   const { t, lang } = useLanguage();
   const [stage, setStage] = useState<Stage>('DESCRIBE');
   const [text, setText] = useState('');
@@ -1011,6 +1013,41 @@ export default function FindPropertyPage() {
             </div>
           )}
         </CustomerSurface>
+      </AppLayout>
+    </RouteGuard>
+  );
+}
+
+/*
+ * FIND PROPERTY, TWO GENERATIONS ON ONE ROUTE.
+ *
+ * The rebuilt experience (Marketplace Search + Deep Search) is shown only when
+ * the server says Marketplace Search is enabled (admin_settings
+ * marketplace_search_enabled, seeded OFF). Until then -- and whenever the
+ * service cannot be reached -- the existing Find Property above renders exactly
+ * as before, so shipping this code changes nothing a customer sees.
+ */
+export default function FindPropertyPage() {
+  const [caps, setCaps] = useState<MarketplaceCapabilities | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void getCapabilities().then((c) => { if (alive) setCaps(c); });
+    return () => { alive = false; };
+  }, []);
+  if (!caps) {
+    return (
+      <RouteGuard>
+        <AppLayout noPadding surfaceClass={DISCOVERY_SURFACE}>
+          <CustomerSurface className="space-y-5 pt-6"><Skeleton className="h-40 rounded-2xl" /></CustomerSurface>
+        </AppLayout>
+      </RouteGuard>
+    );
+  }
+  if (!caps.marketplaceEnabled) return <LegacyFindPropertyPage />;
+  return (
+    <RouteGuard>
+      <AppLayout noPadding surfaceClass={DISCOVERY_SURFACE}>
+        <MarketplaceSearchExperience deepSearchAvailable={caps.deepSearchAvailable} />
       </AppLayout>
     </RouteGuard>
   );

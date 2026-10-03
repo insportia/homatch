@@ -11,6 +11,17 @@
 // real translation). Add a key here only when that's a deliberate decision,
 // never to silence a real missing translation.
 export const ALLOW_DUPLICATE_KEYS = new Set([
+  // Find Property: Marketplace Search, Deep Search and Snake are product names, the same
+  // in every language; "Villa", "m²" and "/ m²" are written identically in Turkish.
+  'mps_marketplace_title',
+  'mps_deep_title',
+  'mps_deep_cta',
+  'mps_hero_subtitle',
+  'mps_snake_game',
+  'mps_admin_title',
+  'mps_pt_VILLA',
+  'mps_value_area',
+  'mps_per_sqm',
   // Find Property attribution: Telegram is the platform's own name; "Forum" is the
   // Georgian-board word in Turkish/English alike.
   'p2d_attr_platform_telegram',
@@ -19,6 +30,8 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   'p2d_attr_platform_instagram',
   // HOMATCH Intelligence is the product's own name, the same in every language.
   'mm_i_title',
+  // Design Studio is the product's own name; the owner's approved eyebrow keeps it untranslated.
+  'dsx_eyebrow',
   // Meta placements and the product name, as Meta itself labels them in every locale.
   'mm_c_pl_MARKETPLACE',
   'mm_c_pl_MESSENGER',

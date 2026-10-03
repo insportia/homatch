@@ -66,7 +66,6 @@
       "Bash(vercel deploy*)",
       "Bash(railway status*)",
       "Bash(railway logs*)",
-
       "mcp__github__get_*",
       "mcp__github__list_*",
       "mcp__github__search_*",
@@ -88,20 +87,19 @@
       "mcp__github__pull_request_review_write",
       "mcp__github__add_comment_to_pending_review",
       "mcp__github__resolve_review_thread",
-
       "mcp__Supabase__list_*",
       "mcp__Supabase__get_*",
       "mcp__Supabase__search_docs",
       "mcp__Supabase__query_logs",
       "mcp__Supabase__generate_typescript_types",
       "mcp__Supabase__deploy_edge_function",
-
+      "mcp__Supabase__execute_sql",
+      "mcp__Supabase__apply_migration",
       "mcp__Vercel__get_*",
       "mcp__Vercel__list_*",
       "mcp__Vercel__search_vercel_documentation",
       "mcp__Vercel__web_fetch_vercel_url",
       "mcp__Vercel__get_access_to_vercel_url",
-
       "mcp__Railway__list-*",
       "mcp__Railway__get-*",
       "mcp__Railway__describe-*",
@@ -110,7 +108,17 @@
       "mcp__Railway__search-docs",
       "mcp__Railway__fetch-docs",
       "mcp__Railway__whoami",
-      "mcp__Railway__http-*"
+      "mcp__Railway__http-*",
+      "mcp__Supabase__get_publishable_keys",
+      "Bash(supabase status*)",
+      "Bash(supabase functions serve*)",
+      "Bash(supabase functions download*)",
+      "Bash(supabase db lint*)",
+      "Bash(supabase db diff*)",
+      "Bash(supabase gen types*)",
+      "Bash(gh status*)",
+      "Bash(vercel whoami*)",
+      "Bash(railway whoami*)"
     ],
     "ask": [
       "Bash(sudo *)",
@@ -142,7 +150,6 @@
       "mcp__Supabase__merge_branch",
       "mcp__Supabase__rebase_branch",
       "mcp__Supabase__restore_project",
-      "mcp__Supabase__get_publishable_keys",
       "mcp__Vercel__get_auth_token",
       "mcp__Vercel__get_project_token",
       "mcp__Vercel__get_edge_config_token",

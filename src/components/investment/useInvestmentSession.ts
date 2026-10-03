@@ -96,6 +96,12 @@ export interface MarketPreset {
   labelKey: string;
 }
 
+export interface FindPropertyHandoff {
+  propertyKey: string; askingPrice: number | null; currency: string | null; areaSqm: number | null;
+  rooms: number | null; bedrooms: number | null; floor: number | null; city: string | null;
+  district: string | null; propertyType: string | null; condition: string | null;
+}
+
 export interface InvestmentSession {
   strategy: StrategyId | null;
   selectStrategy: (strategy: StrategyId | null) => void;
@@ -124,6 +130,8 @@ export interface InvestmentSession {
   applyEvidenceOffer: (comparison: AssumptionComparison, kind: OfferKind) => void;
   reset: () => void;
   attachProperty: (propertyId: string) => Promise<void>;
+  /** Facts handed over by a Find Property result (no HOMATCH record behind it). */
+  attachListing: (handoff: FindPropertyHandoff) => void;
   propertyBusy: boolean;
   propertyError: string | null;
 }
@@ -512,6 +520,32 @@ export function useInvestmentSession(): InvestmentSession {
     [track],
   );
 
+  /* ── Attaching a Find Property result ──────────────────────────────
+     A marketplace property has no HOMATCH record, so it arrives as the
+     facts Find Property already holds (research-core/marketplace/handoff.ts).
+     Same rule as attachProperty: only what was stated, origin PROPERTY. */
+  const attachListing = useCallback(
+    (handoff: FindPropertyHandoff) => {
+      const patch: ContextPatch = {};
+      if (handoff.askingPrice) { patch.purchasePrice = handoff.askingPrice; patch.askingPrice = handoff.askingPrice; }
+      if (handoff.currency) patch.currency = handoff.currency;
+      if (handoff.areaSqm) patch.areaSqm = handoff.areaSqm;
+      if (handoff.rooms) patch.rooms = handoff.rooms;
+      if (handoff.bedrooms) patch.bedrooms = handoff.bedrooms;
+      if (handoff.floor) patch.floor = handoff.floor;
+      if (handoff.city) patch.city = handoff.city;
+      if (handoff.district) patch.district = handoff.district;
+      if (handoff.propertyType) patch.propertyType = handoff.propertyType;
+      if (handoff.condition) patch.condition = handoff.condition;
+      setContext(
+        (current) =>
+          applyPatch(current, patch, 'PROPERTY', { source: `find-property:${handoff.propertyKey.slice(0, 24)}` }).context,
+      );
+      track('INVESTMENT_PROPERTY_ATTACHED');
+    },
+    [track],
+  );
+
   return {
     strategy,
     selectStrategy,
@@ -534,6 +568,7 @@ export function useInvestmentSession(): InvestmentSession {
     applyEvidenceOffer,
     reset,
     attachProperty,
+    attachListing,
     propertyBusy,
     propertyError,
   };

@@ -567,6 +567,25 @@ test('the core is consumed only through its deliberate integration points', () =
     'supabase/functions/_shared/findPropertySettlement.ts',
     'src/components/admin/DiscoveryIntelligencePanel.tsx',
     /*
+     * FIND PROPERTY — MARKETPLACE SEARCH (research-core/marketplace).
+     *
+     * The edge functions run the pure brief/readiness/pipeline modules; the
+     * customer screens import the same brief, readiness and handoff modules
+     * (and types) so the client asks exactly the questions the server gate
+     * checks. None of these seams imports a fetch path, adapter or runtime:
+     * the marketplace modules are pure data in, data out.
+     */
+    'supabase/functions/_shared/marketplaceSearch.ts',
+    'supabase/functions/marketplace-search/index.ts',
+    'supabase/functions/marketplace-worker-ingest/index.ts',
+    'src/services/marketplaceSearch.ts',
+    'src/components/findProperty/CompareView.tsx',
+    'src/components/findProperty/MarketplaceSearchExperience.tsx',
+    'src/components/findProperty/PropertyIntelligence.tsx',
+    'src/components/findProperty/ResultsView.tsx',
+    'src/components/findProperty/SearchBuilder.tsx',
+    'src/components/findProperty/format.ts',
+    /*
      * PHASE 2 — UNIVERSAL DISCOVERY (docs/claude/PHASE2_DISCOVERY.md).
      *
      * find-property-run compiles a FIND PROPERTY run's DiscoveryPlan from the

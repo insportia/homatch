@@ -694,6 +694,10 @@ jobs:
             # customer's budget and starts a discovery run for ONE customer's
             # own search, so it needs a real user identity like its siblings.
             "find-property-run"
+            # FIND PROPERTY, MARKETPLACE SEARCH. Free, but it reads and changes
+            # ONE customer's own searches and resolves that customer from the
+            # token, so it needs a real user identity like its siblings.
+            "marketplace-search"
             # ADMIN CONTROL CENTRE. admin-user360 was deployed by hand and
             # never registered, so a fix to it could not reach production.
             # Its user search interpolated the typed text into a PostgREST
@@ -820,6 +824,10 @@ jobs:
             "social-collect"
             "spend-cap-check"
             "discovery-queue-worker"
+            # Marketplace workers report here. A worker is not a user: it
+            # authenticates with its own registry token (sha256 hash stored),
+            # never a JWT and never a Supabase key.
+            "marketplace-worker-ingest"
             "continuous-matching-worker"
             "run-matching-v2"
             # The Verify orchestrator. It belongs in THIS list, not the JWT one:

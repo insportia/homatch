@@ -14,16 +14,16 @@
 // never start (or charge) a second job.
 import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, Check, Eye, Loader2, RefreshCw, Sparkles, Trash2, Undo2, Wand2, X } from 'lucide-react';
+import { AlertTriangle, Check, Eye, Loader2, RefreshCw, Sparkles, Trash2, Type, Undo2, Wand2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from './MetaButton';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
-import { GENERATION_STAGES, INSTRUCTION_MAX, MAX_VARIATIONS } from '@/lib/metaAds/creativeAi';
+import { ANALYSIS_VERSION, GENERATION_STAGES, INSTRUCTION_MAX, MAX_VARIATIONS, parseOverlayIntent } from '@/lib/metaAds/creativeAi';
 import {
-  aiAnalyze, aiDiscard, aiGenerate, aiJob, aiJobs, aiQuote, aiUse,
+  aiAnalyze, aiComposeSave, aiDiscard, aiGenerate, aiJob, aiJobs, aiQuote, aiUse,
   type AiJob, type AiQuote, type MetaCreativeRow,
 } from '@/services/metaAds';
 import { useMediaUrl } from './CreativeStep';
@@ -35,6 +35,10 @@ type Role = 'PRIMARY' | 'SECONDARY' | 'TEST';
 const ROLES: Role[] = ['PRIMARY', 'SECONDARY', 'TEST'];
 const CHIPS = ['premium', 'view', 'investment', 'less_text', 'keep_building'] as const;
 const POLL_MS = 3000;
+/** The selection key of the customer's own upload (variants are 1…3). */
+const ORIGINAL = 0;
+/** Where the customer is: original → AI variants → choose → text & layout → final creative. */
+const STEPS = ['original', 'variants', 'choose', 'text', 'final'] as const;
 
 /** Errors the panel explains in words; anything else reads as a plain failure. */
 const KNOWN_ERRORS = ['INSUFFICIENT_CREDITS', 'AI_UNAVAILABLE', 'RATE_LIMITED', 'BUSY', 'INSTRUCTION_NOT_ALLOWED', 'ANALYSIS_FAILED',
@@ -54,6 +58,8 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
   const [error, setError] = useState<string | null>(null);
   const [concept, setConcept] = useState<string | null>(null);
   const [instruction, setInstruction] = useState('');
+  /* "What should the creative say?" — the TEXT layer's wording, never sent to the image model as text to draw. */
+  const [overlayText, setOverlayText] = useState('');
   const [variations, setVariations] = useState(MAX_VARIATIONS);
   const [quote, setQuote] = useState<AiQuote | null>(null);
   const [quoting, setQuoting] = useState(false);
@@ -91,8 +97,10 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
       if (!live) return;
       const an = jobs.find((j) => j.kind === 'ANALYSIS' && j.status === 'DONE') ?? null;
       const gen = jobs.find((j) => j.kind !== 'ANALYSIS' && j.status !== 'FAILED') ?? null;
-      setAnalysis(an); setConcept(an?.analysis?.concepts[0]?.id ?? null); setJob(gen);
-      if (!an) void runAnalysis(false);
+      // An analysis from an older version (it mixed ad copy into the picture direction) is not reused.
+      const current = an && Number((an.analysis as { version?: number } | null)?.version ?? 0) >= ANALYSIS_VERSION ? an : null;
+      setAnalysis(current); setConcept(current?.analysis?.concepts[0]?.id ?? null); setJob(gen);
+      if (!current) void runAnalysis(false);
     }).catch((e) => { if (live) setError(codeOf(e)); })
       .finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
@@ -139,6 +147,7 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
     try {
       const r = await aiGenerate({
         creativeId: creative.id, analysisJobId: analysis.id, conceptId: concept, instruction: instruction.trim() || undefined,
+        overlayText: overlayText.trim() || undefined,
         variations: count, idempotencyKey: keyRef.current, locale: lang,
         ...(refineFrom ? { fromJobId: refineFrom.jobId, fromIndex: refineFrom.index } : {}),
       });
@@ -161,15 +170,20 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
   };
 
   /* Use = compose first: nothing is created before the customer sees the final creative. */
-  const use = (indexes: number[]) => { if (job && indexes.length && !using) setComposeFor(indexes); };
+  const use = (indexes: number[]) => { if (indexes.length && !using) setComposeFor(indexes); };
   const create = async (specs: ComposeSpec[]) => {
-    if (!job || !composeFor || using) return;
+    if (!composeFor || using) return;
     setUsing(true);
     try {
-      // Unpicked (Use all) = Secondary: a normal creative; Primary only where the customer said so.
-      // One composed export per request (the server's CPU budget): the chosen variations go one by one.
+      // Primary only where the customer said so. One composed export per request (the server's CPU budget):
+      // the chosen visuals go one by one. The original upload is composed into a NEW creative; it never changes.
       let created = 0, refused = 0;
       for (const [k, i] of composeFor.entries()) {
+        if (i === ORIGINAL) {
+          try { await aiComposeSave(creative.id, specs[k]); created += 1; } catch { refused += 1; }
+          continue;
+        }
+        if (!job) { refused += 1; continue; }
         const r = await aiUse(job.id, [{ index: i, role: picked[i] ?? ('SECONDARY' as Role), spec: specs[k] }]);
         created += r.created.length; refused += r.refused?.length ?? 0;
       }
@@ -185,15 +199,53 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
   const live = (job?.images ?? []).filter((i) => !i.discarded && i.url);
   const running = job?.status === 'RUNNING';
   const stageIndex = running ? Math.max(0, GENERATION_STAGES.indexOf(job!.stage as never)) : -1;
-  const chosen = useMemo(() => Object.keys(picked).map(Number), [picked]);
+  const chosen = useMemo(() => Object.keys(picked).map(Number).sort((a, b) => a - b), [picked]);
+  const intent = useMemo(() => parseOverlayIntent(instruction, overlayText), [instruction, overlayText]);
+  const step = composeFor ? 3 : job?.status === 'DONE' ? 2 : 1;
+  const ideas = useMemo(() => concepts.map((c) => c.copy).filter((x): x is NonNullable<typeof x> => !!x?.headline), [concepts]);
+  const toggle = (index: number) => setPicked((p) => {
+    const n = { ...p };
+    if (n[index] != null) delete n[index];
+    else n[index] = index === ORIGINAL || Object.values(n).includes('PRIMARY') ? 'SECONDARY' : 'PRIMARY';
+    return n;
+  });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92dvh] max-w-[calc(100%-1rem)] overflow-y-auto p-4 sm:p-6 md:max-w-3xl" data-mm-ai-panel="">
-        <DialogHeader className="pr-10">
-          <DialogTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-[hsl(var(--gold-ink))]" />{t('mm_c_ai_title')}</DialogTitle>
-          <DialogDescription>{t('mm_c_ai_lead')}</DialogDescription>
+        <DialogHeader className="pr-10 text-start">
+          <DialogTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-[hsl(var(--gold-ink))]" />{t('mm_cx_title')}</DialogTitle>
+          <DialogDescription className="space-y-1 text-[13px] leading-relaxed">
+            <span className="block font-medium text-foreground">{t('mm_cx_lead1')}</span>
+            <span className="block">{t('mm_cx_lead2')}</span>
+            <span className="block">{t('mm_cx_lead3')}</span>
+          </DialogDescription>
         </DialogHeader>
+
+        {/* Where the customer is — five plain steps. */}
+        <ol className="flex flex-wrap gap-x-3 gap-y-1.5 text-2xs" aria-label={t('mm_cx_steps')} data-mm-ai-steps={STEPS[step]}>
+          {STEPS.map((s, i) => (
+            <li key={s} data-mm-ai-step={s} data-state={i < step ? 'done' : i === step ? 'active' : 'todo'} aria-current={i === step ? 'step' : undefined}
+              className={cn('inline-flex items-center gap-1.5', i === step ? 'font-semibold text-foreground' : 'text-muted-foreground')}>
+              <span className={cn('grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[11px]',
+                i < step ? 'border-[hsl(var(--gold))] bg-[hsl(var(--gold))] text-[#161309]' : i === step ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))]' : 'border-border')}>
+                {i < step ? <Check className="h-3 w-3" /> : i + 1}
+              </span>
+              {t(`mm_cx_step_${s}` as never)}
+            </li>
+          ))}
+        </ol>
+
+        {step < 2 && (
+          <div className="rounded-2xl border border-[hsl(var(--gold-border))]/50 bg-[hsl(var(--gold-soft))]/40 p-3" data-mm-ai-info="">
+            <p className="mb-1 text-[13px] font-semibold text-foreground">{t('mm_cx_info_title')}</p>
+            <ul className="grid gap-x-4 gap-y-1 text-[13px] text-foreground/90 sm:grid-cols-2">
+              {(['1', '2', '3', '4'] as const).map((k) => (
+                <li key={k} className="flex items-start gap-1.5"><Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[hsl(var(--gold-ink))]" aria-hidden />{t(`mm_cx_info_${k}` as never)}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {error && (
           <p role="alert" data-mm-ai-error={error} className="rounded-xl border border-destructive/35 bg-destructive/10 px-3 py-2 text-[13px] text-destructive">
@@ -210,14 +262,15 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
 
         {analysis?.analysis && !running && !composeFor && (
           <section className="space-y-3" data-mm-ai-concepts={concepts.length}>
-            <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
               <p className="min-w-0 flex-1 text-[13px] text-muted-foreground"><span className="font-semibold text-foreground">{t('mm_c_ai_sees')}</span> {analysis.analysis.subject}</p>
-              <Button type="button" variant="ghost" size="sm" className="min-h-11 gap-1.5" onClick={() => runAnalysis(true)} disabled={analyzing} data-mm-ai-reanalyze="">
+              <Button type="button" variant="ghost" size="sm" className="min-h-11 gap-1.5 self-start" onClick={() => runAnalysis(true)} disabled={analyzing} data-mm-ai-reanalyze="">
                 <RefreshCw className="h-3.5 w-3.5" />{t('mm_c_ai_reanalyze')}
               </Button>
             </div>
             {/* Two readable columns at most: a Georgian paragraph never squeezed into a third of a dialog. */}
-            <div role="radiogroup" aria-label={t('mm_c_ai_concepts')} className="grid gap-2.5 sm:grid-cols-2">
+            <p className="text-sm font-semibold">{t('mm_cx_directions')}</p>
+            <div role="radiogroup" aria-label={t('mm_cx_directions')} className="grid gap-2.5 sm:grid-cols-2">
               {concepts.map((c) => (
                 <button key={c.id} type="button" role="radio" aria-checked={concept === c.id} onClick={() => setConcept(c.id)} data-mm-ai-concept={c.id}
                   className={cn('min-w-0 rounded-2xl border bg-card p-3.5 text-start text-2xs leading-relaxed transition-colors [overflow-wrap:break-word] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--gold-border))]',
@@ -229,10 +282,6 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
                     <span className="min-w-0">{c.title}</span>
                   </span>
                   <span className="block text-foreground/90">{c.angle}</span>
-                  <span className="mt-1 block text-muted-foreground"><b>{t('mm_c_ai_visual')}:</b> {c.visual}</span>
-                  <span className="block text-muted-foreground"><b>{t('mm_c_ai_composition')}:</b> {c.composition}</span>
-                  <span className="block text-muted-foreground"><b>{t('mm_c_ai_cta')}:</b> {c.cta}</span>
-                  {c.safeArea !== 'NONE' && <span className="block text-muted-foreground"><b>{t('mm_c_ai_safe')}:</b> {t(`mm_c_ai_safe_${c.safeArea.toLowerCase()}` as never)}</span>}
                 </button>
               ))}
             </div>
@@ -245,10 +294,24 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
               </p>
             )}
 
+            {/* The words on the creative: typeset by HOMATCH later, never drawn by the image model. */}
+            {!refineFrom && (
+              <label className="block" data-mm-ai-overlay-field="">
+                <span className="mb-1 block text-[13px] font-medium">{t('mm_cx_overlay_label')} <span className="text-2xs font-normal text-muted-foreground">{t('madsb_optional')}</span></span>
+                <Input dir="auto" value={overlayText} maxLength={90} onChange={(e) => setOverlayText(e.target.value)} placeholder={t('mm_cx_overlay_ph')} data-mm-ai-overlay="" />
+                <span className="mt-1 block text-2xs leading-relaxed text-muted-foreground">{t('mm_cx_overlay_help')}</span>
+              </label>
+            )}
             <label className="block">
-              <span className="mb-1 block text-[13px] font-medium">{t(refineFrom ? 'mm_c_ai_refine_label' : 'mm_c_ai_instruction')} <span className="text-2xs font-normal text-muted-foreground">{t('madsb_optional')}</span></span>
-              <Input value={instruction} maxLength={INSTRUCTION_MAX} onChange={(e) => setInstruction(e.target.value)} placeholder={t('mm_c_ai_instruction_ph')} data-mm-ai-instruction="" />
+              <span className="mb-1 block text-[13px] font-medium">{t(refineFrom ? 'mm_c_ai_refine_label' : 'mm_cx_instruction')} <span className="text-2xs font-normal text-muted-foreground">{t('madsb_optional')}</span></span>
+              <Input dir="auto" value={instruction} maxLength={INSTRUCTION_MAX} onChange={(e) => setInstruction(e.target.value)} placeholder={t('mm_cx_instruction_ph')} data-mm-ai-instruction="" />
             </label>
+            {intent.overlay && (
+              <p className="flex items-start gap-1.5 rounded-lg bg-[hsl(var(--secondary))]/60 px-2.5 py-1.5 text-2xs text-foreground" data-mm-ai-overlay-parsed={intent.overlay.placement ?? ''}>
+                <Type className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                <span className="min-w-0 [overflow-wrap:anywhere]">{t(intent.overlay.placement ? `mm_cx_overlay_parsed_${intent.overlay.placement}` as never : 'mm_cx_overlay_parsed', { text: intent.overlay.text })}</span>
+              </p>
+            )}
             <div className="flex flex-wrap gap-1.5">
               {CHIPS.map((c) => (
                 <button key={c} type="button" className="min-h-9 rounded-full border border-border px-3 text-2xs hover:bg-[hsl(var(--secondary))]"
@@ -258,7 +321,7 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
 
             {!refineFrom && (
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[13px] font-medium">{t('mm_c_ai_count')}</span>
+                <span className="text-[13px] font-medium">{t('mm_cx_count')}</span>
                 {[1, 2, 3].map((n) => (
                   <button key={n} type="button" aria-pressed={variations === n} onClick={() => setVariations(n)} data-mm-ai-count={n}
                     className={cn('grid h-11 w-11 place-items-center rounded-lg border text-[13px] font-semibold', variations === n ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))]' : 'border-border')}>{n}</button>
@@ -286,7 +349,7 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
                   <p className="mt-0.5 text-2xs text-muted-foreground">{t('mm_c_ai_price_fair', { balance: quote.balanceCredits.toFixed(2) })}</p>
                   {!confirming ? (
                     <Button type="button" className="mt-2 min-h-11 w-full gap-1.5 sm:w-auto" disabled={!concept || !quote.enough || !quote.available} onClick={() => setConfirming(true)} data-mm-ai-generate="">
-                      <Wand2 className="h-4 w-4" />{t(refineFrom ? 'mm_c_ai_refine_cta' : 'mm_c_ai_generate_cta', { n: String(count), credits: quote.expectedCredits.toFixed(2) })}
+                      <Wand2 className="h-4 w-4" />{t(refineFrom ? 'mm_c_ai_refine_cta' : 'mm_cx_generate_cta', { n: String(count), credits: quote.expectedCredits.toFixed(2) })}
                     </Button>
                   ) : (
                     <div className="mt-2 space-y-2 rounded-lg border border-border bg-background p-2.5" data-mm-ai-confirm="">
@@ -324,10 +387,13 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
           </section>
         )}
 
-        {job?.status === 'DONE' && composeFor && (
+        {composeFor && (
           <Suspense fallback={<Loader2 className="h-5 w-5 animate-spin" />}>
             <CreativeComposer
-              items={composeFor.map((i) => ({ key: String(i), source: { jobId: job.id, index: i }, label: t('mm_c_ai_variant', { n: String(i) }), textArtifacts: job.images.find((im) => im.index === i)?.textArtifacts ?? null }))}
+              items={composeFor.map((i) => i === ORIGINAL
+                ? { key: 'original', source: { creativeId: creative.id }, label: t('mm_cx_original') }
+                : { key: String(i), source: { jobId: job!.id, index: i }, label: t('mm_cx_variant', { n: String(i) }), textArtifacts: job!.images.find((im) => im.index === i)?.textArtifacts ?? null })}
+              ideas={ideas}
               submitLabel={t('mm_ct_create', { n: String(composeFor.length) })} busy={using}
               onSubmit={create} onBack={() => setComposeFor(null)} />
           </Suspense>
@@ -335,70 +401,71 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
 
         {job?.status === 'DONE' && !composeFor && (
           <section className="space-y-3" data-mm-ai-gallery={live.length}>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold">{t('mm_c_ai_gallery')}</h3>
-              {job.chargedCredits != null && <span className="text-2xs text-muted-foreground" data-mm-ai-charged={job.chargedCredits}>{t('mm_c_ai_charged', { credits: job.chargedCredits.toFixed(2), n: String(live.length) })}</span>}
+            <div className="space-y-0.5">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <h3 className="text-base font-semibold">{t('mm_cx_choose_title')}</h3>
+                {job.chargedCredits != null && <span className="text-2xs text-muted-foreground" data-mm-ai-charged={job.chargedCredits}>{t('mm_c_ai_charged', { credits: job.chargedCredits.toFixed(2), n: String(live.length) })}</span>}
+              </div>
+              <p className="text-[13px] text-muted-foreground">{t('mm_cx_choose_desc')}</p>
             </div>
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-              <figure className="space-y-1" data-mm-ai-original="">
-                <button type="button" className="block w-full overflow-hidden rounded-xl border-2 border-border" onClick={() => originalUrl && setPreview({ url: originalUrl, label: t('mm_c_ai_original') })}>
-                  {originalUrl ? <img src={originalUrl} alt={t('mm_c_ai_original')} className="aspect-square w-full object-cover" /> : <span className="block aspect-square w-full bg-[hsl(var(--secondary))]" />}
-                </button>
-                <figcaption className="text-2xs font-semibold">{t('mm_c_ai_original')} · <span className="font-normal text-muted-foreground">{t('mm_c_ai_original_kept')}</span></figcaption>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              {/* The exact upload — framed differently from the AI variants, never mistaken for one. */}
+              <figure className="flex min-w-0 flex-col gap-1.5 rounded-2xl border-2 border-dashed border-border p-1.5" data-mm-ai-original="" data-selected={picked[ORIGINAL] != null ? 'true' : 'false'}>
+                <div className={cn('relative overflow-hidden rounded-xl', picked[ORIGINAL] != null && 'ring-2 ring-[hsl(var(--gold-border))]')}>
+                  {originalUrl ? <img src={originalUrl} alt={t('mm_cx_original')} className="aspect-square w-full object-cover" /> : <span className="block aspect-square w-full bg-[hsl(var(--secondary))]" />}
+                </div>
+                <figcaption className="px-0.5">
+                  <span className="block text-[13px] font-semibold leading-tight">{t('mm_cx_original')}</span>
+                  <span className="block text-2xs text-muted-foreground">{t('mm_cx_original_sub')}</span>
+                </figcaption>
+                <CardActions t={t} selected={picked[ORIGINAL] != null} label={t('mm_cx_original')}
+                  onView={() => originalUrl && setPreview({ url: originalUrl, label: t('mm_cx_original') })} onPick={() => toggle(ORIGINAL)} pickAttr="original" />
               </figure>
               {job.images.map((im) => {
                 const sel = picked[im.index];
+                const name = t('mm_cx_variant', { n: String(im.index) });
                 if (im.discarded) {
                   return (
-                    <div key={im.index} className="grid aspect-square place-items-center rounded-xl border border-dashed border-border text-2xs text-muted-foreground" data-mm-ai-removed={im.index}>
+                    <div key={im.index} className="grid min-h-40 place-items-center rounded-2xl border border-dashed border-border text-2xs text-muted-foreground" data-mm-ai-removed={im.index}>
                       <button type="button" className="inline-flex min-h-11 items-center gap-1 px-2" onClick={() => discard(im.index, true)}><Undo2 className="h-3.5 w-3.5" />{t('mm_c_ai_restore', { n: String(im.index) })}</button>
                     </div>
                   );
                 }
                 return (
-                  <figure key={im.index} className="space-y-1" data-mm-ai-variant={im.index} data-selected={sel ? 'true' : 'false'}>
-                    <div className={cn('relative overflow-hidden rounded-xl border-2', sel ? 'border-[hsl(var(--gold-border))]' : 'border-transparent')}>
-                      <button type="button" aria-pressed={!!sel} aria-label={t('mm_c_ai_select', { n: String(im.index) })} className="block w-full"
-                        onClick={() => setPicked((p) => { const n = { ...p }; if (n[im.index]) delete n[im.index]; else n[im.index] = Object.values(n).includes('PRIMARY') ? 'SECONDARY' : 'PRIMARY'; return n; })}>
-                        {im.url && <img src={im.url} alt={t('mm_c_ai_variant', { n: String(im.index) })} className="aspect-square w-full object-cover" />}
-                        {sel && <span className="absolute start-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full bg-[hsl(var(--gold))] text-[#161309]"><Check className="h-3.5 w-3.5" /></span>}
-                      </button>
-                      <div className="absolute end-1 top-1 flex gap-1">
-                        <button type="button" className="grid h-9 w-9 place-items-center rounded-lg bg-black/55 text-white" onClick={() => im.url && setPreview({ url: im.url, label: t('mm_c_ai_variant', { n: String(im.index) }) })} aria-label={t('mm_c_ai_preview', { n: String(im.index) })} data-mm-ai-preview={im.index}><Eye className="h-4 w-4" /></button>
-                        <button type="button" className="grid h-9 w-9 place-items-center rounded-lg bg-black/55 text-white" onClick={() => discard(im.index)} aria-label={t('mm_c_ai_remove', { n: String(im.index) })} data-mm-ai-remove={im.index}><Trash2 className="h-4 w-4" /></button>
-                      </div>
+                  <figure key={im.index} className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-border p-1.5" data-mm-ai-variant={im.index} data-selected={sel ? 'true' : 'false'}>
+                    <div className={cn('relative overflow-hidden rounded-xl', sel && 'ring-2 ring-[hsl(var(--gold-border))]')}>
+                      {im.url && <img src={im.url} alt={name} className="aspect-square w-full object-cover" />}
+                      {sel && <span className="absolute start-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full bg-[hsl(var(--gold))] text-[#161309]"><Check className="h-3.5 w-3.5" /></span>}
+                      <button type="button" className="absolute end-1 top-1 grid h-9 w-9 place-items-center rounded-lg bg-black/55 text-white" onClick={() => discard(im.index)} aria-label={t('mm_c_ai_remove', { n: String(im.index) })} data-mm-ai-remove={im.index}><Trash2 className="h-4 w-4" /></button>
                     </div>
-                    {im.textArtifacts && (
-                      <p className="flex items-start gap-1 text-2xs text-[hsl(32_78%_30%)]" data-mm-ai-artifacts={im.index}>
-                        <AlertTriangle className="mt-px h-3 w-3 shrink-0" aria-hidden />{t('mm_ct_artifacts_short')}
-                      </p>
-                    )}
-                    <figcaption className="flex flex-wrap items-center gap-1 text-2xs">
-                      <span className="font-semibold">{t('mm_c_ai_variant', { n: String(im.index) })}</span>
-                      {sel && (
-                        <select value={sel} onChange={(e) => setPicked((p) => ({ ...p, [im.index]: e.target.value as Role }))} aria-label={t('mm_c_ai_role')}
-                          className="h-8 rounded-md border border-border bg-background px-1 text-2xs" data-mm-ai-role={im.index}>
-                          {ROLES.map((r) => <option key={r} value={r}>{t(`mm_c_ai_role_${r.toLowerCase()}` as never)}</option>)}
-                        </select>
-                      )}
-                      <button type="button" className="ms-auto inline-flex min-h-9 items-center gap-1 text-[hsl(var(--gold-ink))] underline-offset-2 hover:underline" data-mm-ai-refine={im.index}
+                    <figcaption className="flex flex-wrap items-center justify-between gap-1 px-0.5">
+                      <span className="text-[13px] font-semibold leading-tight">{name}</span>
+                      <button type="button" className="inline-flex min-h-9 items-center gap-1 text-2xs text-[hsl(var(--gold-ink))] underline-offset-2 hover:underline" data-mm-ai-refine={im.index}
                         onClick={() => { setRefineFrom({ jobId: job.id, index: im.index }); setConfirming(false); setInstruction(''); }}>
                         <Wand2 className="h-3 w-3" />{t('mm_c_ai_refine')}
                       </button>
                     </figcaption>
+                    {im.textArtifacts && (
+                      <p className="flex items-start gap-1 px-0.5 text-2xs text-[hsl(32_78%_30%)]" data-mm-ai-artifacts={im.index}>
+                        <AlertTriangle className="mt-px h-3 w-3 shrink-0" aria-hidden />{t('mm_ct_artifacts_short')}
+                      </p>
+                    )}
+                    <CardActions t={t} selected={!!sel} label={name}
+                      onView={() => im.url && setPreview({ url: im.url, label: name })} onPick={() => toggle(im.index)} pickAttr={String(im.index)} />
+                    {sel && (
+                      <select value={sel} onChange={(e) => setPicked((p) => ({ ...p, [im.index]: e.target.value as Role }))} aria-label={t('mm_c_ai_role')}
+                        className="h-9 w-full rounded-md border border-border bg-background px-1.5 text-2xs" data-mm-ai-role={im.index}>
+                        {ROLES.map((r) => <option key={r} value={r}>{t(`mm_c_ai_role_${r.toLowerCase()}` as never)}</option>)}
+                      </select>
+                    )}
                   </figure>
                 );
               })}
             </div>
-            <p className="text-2xs text-muted-foreground">{t('mm_c_ai_roles_note')}</p>
             <p className="text-2xs text-muted-foreground" data-mm-ai-visual-only="">{t('mm_ct_visual_only')}</p>
             <div className="flex flex-wrap gap-2">
-              <Button type="button" className="min-h-11 gap-1.5" disabled={!chosen.length || using} onClick={() => use(chosen)} data-mm-ai-use="">
-                {using ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}{t('mm_c_ai_use_selected', { n: String(chosen.length) })}
-              </Button>
-              <Button type="button" variant="outline" className="min-h-11" disabled={!live.length || using} onClick={() => use(live.map((i) => i.index))} data-mm-ai-use-all="">{t('mm_c_ai_use_all')}</Button>
-              <Button type="button" variant="ghost" className="min-h-11 gap-1.5" onClick={() => { setPicked({}); onOpenChange(false); }} data-mm-ai-keep-original="">
-                <Undo2 className="h-4 w-4" />{t('mm_c_ai_keep_original')}
+              <Button type="button" className="min-h-11 w-full gap-1.5 sm:w-auto" disabled={!chosen.length || using} onClick={() => use(chosen)} data-mm-ai-use="">
+                <Type className="h-4 w-4" />{t('mm_cx_continue', { n: String(chosen.length) })}
               </Button>
             </div>
           </section>
@@ -414,3 +481,23 @@ export default function CreativeAiPanel({ open, onOpenChange, creative, onCreate
     </Dialog>
   );
 }
+
+/** "View" and "Choose" — two plain, equally sized actions on every card. */
+function CardActions({ t, selected, label, onView, onPick, pickAttr }: {
+  t: (k: never, v?: Record<string, string>) => string; selected: boolean; label: string; onView: () => void; onPick: () => void; pickAttr: string;
+}) {
+  return (
+    <div className="mt-auto grid grid-cols-1 gap-1.5">
+      <button type="button" onClick={onView} aria-label={`${t('mm_cx_view' as never)} · ${label}`} data-mm-ai-preview={pickAttr}
+        className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg border border-border px-1.5 text-2xs font-semibold leading-tight hover:bg-[hsl(var(--secondary))]">
+        <Eye className="h-3.5 w-3.5 shrink-0" aria-hidden />{t('mm_cx_view' as never)}
+      </button>
+      <button type="button" onClick={onPick} aria-pressed={selected} aria-label={`${t((selected ? 'mm_cx_picked' : 'mm_cx_pick') as never)} · ${label}`} data-mm-ai-pick={pickAttr}
+        className={cn('inline-flex min-h-10 items-center justify-center gap-1 rounded-lg border px-1.5 text-2xs font-semibold leading-tight',
+          selected ? 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold))] text-[#161309]' : 'border-[hsl(var(--gold-border))] hover:bg-[hsl(var(--gold-soft))]')}>
+        <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />{t((selected ? 'mm_cx_picked' : 'mm_cx_pick') as never)}
+      </button>
+    </div>
+  );
+}
+

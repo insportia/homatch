@@ -80,17 +80,26 @@ export function AiCopyPanel({ open, onOpenChange, campaignId, current, onAccept,
             <span className="mb-1 block text-[13px] font-medium text-foreground">{t('madsb_ai_notes')}</span>
             <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t('madsb_ai_notes_ph')} maxLength={600} />
           </label>
-          <div className="grid grid-cols-2 gap-2">
-            {OPS.map((op) => {
-              const needsText = op !== 'GENERATE' && op !== 'ALTERNATIVES';
-              return (
-                <Button key={op} type="button" variant={op === 'GENERATE' ? 'default' : 'outline'} size="sm"
-                  disabled={busy !== null || (needsText && !hasCurrent)} onClick={() => run(op)} className="justify-start gap-1.5">
-                  {busy === op ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                  {t(`madsb_ai_op_${op.toLowerCase()}` as never)}
-                </Button>
-              );
-            })}
+          <div className="space-y-2" data-mm-ai-ideas="">
+            <div>
+              <p className="text-sm font-semibold text-foreground">{t('mm_cx_ideas_title')}</p>
+              <p className="text-[13px] text-muted-foreground">{t('mm_cx_ideas_desc')}</p>
+            </div>
+            {/* Columns as wide as a Georgian label needs: one column on a narrow phone, two or more when they fit.
+                Labels wrap (at most two lines) instead of being clipped. */}
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,10.5rem),1fr))] gap-2">
+              {OPS.map((op) => {
+                const needsText = op !== 'GENERATE' && op !== 'ALTERNATIVES';
+                return (
+                  <Button key={op} type="button" variant={op === 'GENERATE' ? 'default' : 'outline'} size="sm" data-mm-ai-op={op}
+                    disabled={busy !== null || (needsText && !hasCurrent)} onClick={() => run(op)}
+                    className="h-auto min-h-11 justify-start gap-1.5 whitespace-normal py-2 text-start leading-snug">
+                    {busy === op ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 shrink-0" />}
+                    <span className="min-w-0 [overflow-wrap:break-word]">{t(`madsb_ai_op_${op.toLowerCase()}` as never)}</span>
+                  </Button>
+                );
+              })}
+            </div>
           </div>
 
           {variants.length > 0 && (

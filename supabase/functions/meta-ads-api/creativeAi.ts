@@ -39,9 +39,9 @@
 
 import {
   ANALYSIS_SCHEMA, TEXT_CHECK_PROMPT, TEXT_CHECK_SCHEMA, analysisFingerprint, analysisSystemPrompt, analysisUserText, clampVariations,
-  defaultComposeSpec, generationPrompt, roleToCreative, sanitizeInstruction, sizeForAspect, tokenCostCents, validateAnalysis,
+  defaultComposeSpec, generationPrompt, parseOverlayIntent, roleToCreative, sanitizeInstruction, sizeForAspect, tokenCostCents, validateAnalysis,
   validGeneratedImage, variationLayouts,
-  type AiStage, type AssetRole, type CreativeAnalysis, type CreativeConcept, type CreativeContext,
+  type AiStage, type AssetRole, type CreativeAnalysis, type CreativeConcept, type CreativeContext, type OverlayIntent,
 } from '../../../src/lib/metaAds/creativeAi.ts';
 import { CREATIVE_ENGINE_VERSION, normalizeSpec } from '../../../src/lib/metaAds/creativeLayout.ts';
 import type { ExecutionGrant } from '../_shared/billing.ts';
@@ -321,6 +321,7 @@ async function exportComposite(sb: Sb, uid: string, src: ComposeSource, spec: un
 async function runGeneration(sb: Sb, args: {
   uid: string; jobId: string; grant: ExecutionGrant; src: { path: string; mime: string; width: number | null; height: number | null };
   analysis: CreativeAnalysis; analysisJobId: string; conceptId: string; ctx: CreativeContext; instruction: string; variations: number; refine: boolean;
+  overlay: OverlayIntent | null;
 }) {
   const { uid, jobId, grant, src, analysis, ctx, instruction, variations, refine } = args;
   const concept = analysis.concepts.find((c) => c.id === args.conceptId)!;
@@ -335,7 +336,7 @@ async function runGeneration(sb: Sb, args: {
     const bytes = await download(sb, src.path);
     if (!apiKey || !bytes) throw new Error('SOURCE_UNAVAILABLE');
     // Each variation is generated FOR a layout: its calm area is where HOMATCH will typeset the copy.
-    const layouts = variationLayouts(concept, variations);
+    const layouts = variationLayouts(concept, variations, args.overlay?.placement ?? null);
     const prompts = Array.from({ length: variations }, (_, i) => generationPrompt({ analysis, concept, ctx, instruction, variation: i, refine, layout: layouts[i % layouts.length] }));
 
     await setStage(sb, jobId, 'GENERATING');
@@ -509,7 +510,10 @@ export async function handleCreativeAi(x: ActionCtx): Promise<Response | null> {
       if (!an || an.creative_id !== cr.id || !analysis?.concepts?.some((c) => c.id === body.conceptId)) {
         return json({ error: 'ANALYSIS_REQUIRED', code: 'ANALYSIS_REQUIRED' }, 400);
       }
-      const ins = sanitizeInstruction(body.instruction);
+      // "Write X on the photo" is a TEXT-layer request: the wording is kept for HOMATCH's typography,
+      // and only the rest (the look of the picture) can reach the image model.
+      const intent = parseOverlayIntent(body.instruction, body.overlayText);
+      const ins = sanitizeInstruction(intent.visual);
       if (ins.rejected) return json({ error: 'INSTRUCTION_NOT_ALLOWED', code: 'INSTRUCTION_NOT_ALLOWED' }, 400);
       const variations = clampVariations(body.variations, refine);
       const { count: running } = await sb.from('meta_creative_ai_jobs').select('id', { count: 'exact', head: true })
@@ -519,7 +523,7 @@ export async function handleCreativeAi(x: ActionCtx): Promise<Response | null> {
 
       const { data: job, error } = await sb.from('meta_creative_ai_jobs').insert({
         user_id: uid, campaign_id: cr.campaign_id, creative_id: cr.id, kind: refine ? 'REFINE' : 'GENERATION', idempotency_key: key, stage: 'QUEUED',
-        input: { sourcePath: src.path, analysisJobId: an.id, conceptId: body.conceptId, instruction: ins.text, variations,
+        input: { sourcePath: src.path, analysisJobId: an.id, conceptId: body.conceptId, instruction: ins.text, variations, overlay: intent.overlay,
           ...(refine ? { fromJobId: body.fromJobId, fromIndex: Number(body.fromIndex) } : {}) },
       }).select('*').single();
       if (error) {
@@ -549,7 +553,7 @@ export async function handleCreativeAi(x: ActionCtx): Promise<Response | null> {
       log('generation_reserved', { jobId: job.id, variations, reserved: grant.reservedCredits });
 
       const ctx = await contextOf(sb, uid, cr, locale);
-      const work = runGeneration(sb, { uid, jobId: job.id, grant, src, analysis, conceptId: String(body.conceptId), ctx, instruction: ins.text, variations, refine, analysisJobId: an.id });
+      const work = runGeneration(sb, { uid, jobId: job.id, grant, src, analysis, conceptId: String(body.conceptId), ctx, instruction: ins.text, variations, refine, analysisJobId: an.id, overlay: intent.overlay });
       if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(work);
       else await work;
       const { data: now } = await sb.from('meta_creative_ai_jobs').select('*').eq('id', job.id).single();
@@ -585,7 +589,7 @@ export async function handleCreativeAi(x: ActionCtx): Promise<Response | null> {
       // The live preview of the final creative: HOMATCH typography over the visual. No model call, no charge.
       const src = await composeSource(sb, uid, body);
       if (!src) return json({ error: 'NOT_FOUND', code: 'NOT_FOUND' }, 404);
-      const spec = body.spec ?? defaultComposeSpec({ concept: src.concept, headline: src.creative?.headline ?? null, layout: src.image?.layout ?? null, width: src.width, height: src.height });
+      const spec = body.spec ?? defaultComposeSpec({ concept: src.concept, headline: src.creative?.headline ?? null, layout: src.image?.layout ?? null, width: src.width, height: src.height, overlay: src.job?.input?.overlay ?? null });
       const bytes = await download(sb, src.visualPath);
       if (!bytes) return json({ error: 'SOURCE_UNAVAILABLE', code: 'SOURCE_UNAVAILABLE' }, 404);
       const { composeOver } = await composer();
@@ -642,7 +646,7 @@ export async function handleCreativeAi(x: ActionCtx): Promise<Response | null> {
         const src = await composeSource(sb, uid, { jobId: j.id, index: p.index });
         if (!src || used.has(src.visualPath)) continue;
         // What Meta receives is the composed creative: the visual + HOMATCH typography, never model-drawn text.
-        const spec = p.spec ? normalizeSpec(p.spec) : defaultComposeSpec({ concept: src.concept, headline: cr.headline, layout: src.image?.layout ?? null, width: src.width, height: src.height });
+        const spec = p.spec ? normalizeSpec(p.spec) : defaultComposeSpec({ concept: src.concept, headline: cr.headline, layout: src.image?.layout ?? null, width: src.width, height: src.height, overlay: src.job?.input?.overlay ?? null });
         const out = await exportComposite(sb, uid, src, spec);
         if ('error' in out) { refused.push({ index: p.index, code: String(out.error), checks: (out as any).record?.checks }); continue; }
         const role = roleToCreative(p.role);

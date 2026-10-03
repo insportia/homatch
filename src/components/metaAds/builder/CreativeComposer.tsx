@@ -20,12 +20,19 @@ import { aiCompose, type ComposePreview, type ComposeSource } from '@/services/m
 import { ensureCreativeFonts } from './creativeFonts';
 
 const EDIT_FIELDS: CopyField[] = ['headline', 'subheadline', 'offer', 'cta', 'brand', 'badge'];
+/** The three fields everyone needs; price, brand and badge wait behind "more". */
+const MAIN_FIELDS: CopyField[] = ['headline', 'subheadline', 'cta'];
+const MORE_FIELDS: CopyField[] = ['offer', 'brand', 'badge'];
+/** Plain names for the main fields; the rest keep their own. */
+const fieldKey = (f: CopyField) => (MAIN_FIELDS.includes(f) ? `mm_cx_f_${f}` : `mm_ct_field_${f}`);
 const DEBOUNCE_MS = 450;
 
 export interface ComposerItem { key: string; source: ComposeSource; label: string; textArtifacts?: boolean | null; spec?: ComposeSpec | null }
 
-export default function CreativeComposer({ items, submitLabel, busy, onSubmit, onBack }: {
+export default function CreativeComposer({ items, ideas = [], submitLabel, busy, onSubmit, onBack }: {
   items: ComposerItem[];
+  /** Ready-made copy from Creative Intelligence ("text ideas"); one tap fills the fields. */
+  ideas?: Array<{ headline: string; subheadline?: string; cta?: string }>;
   submitLabel: string;
   busy?: boolean;
   /** One approved spec per item, in order. */
@@ -103,6 +110,16 @@ export default function CreativeComposer({ items, submitLabel, busy, onSubmit, o
   const activeItem = items.find((i) => i.key === active);
 
   const set = (f: CopyField, v: string) => setCopy((c) => (c ? { ...c, [f]: v.slice(0, COPY_LIMITS[f]) } : c));
+  const renderField = (f: CopyField) => (
+    <label key={f} className="block">
+      <span className="mb-1 flex items-baseline justify-between gap-2 text-[13px] font-medium">
+        <span>{t(fieldKey(f) as never)}{f !== 'headline' && <span className="ms-1 text-2xs font-normal text-muted-foreground">{t('madsb_optional')}</span>}</span>
+        <span className="text-2xs tabular-nums text-muted-foreground" dir="ltr">{(copy?.[f] ?? '').length}/{COPY_LIMITS[f]}</span>
+      </span>
+      <Input dir="auto" value={copy?.[f] ?? ''} maxLength={COPY_LIMITS[f]} onChange={(e) => set(f, e.target.value)}
+        aria-invalid={blocking.some((c) => c.field === f) || undefined} data-mm-composer-field={f} />
+    </label>
+  );
 
   return (
     <section className="space-y-3" data-mm-composer={items.length} data-mm-composer-state={stale ? 'composing' : allOk ? 'ok' : 'blocked'}>
@@ -113,7 +130,10 @@ export default function CreativeComposer({ items, submitLabel, busy, onSubmit, o
               <ChevronLeft className="h-4 w-4 rtl:rotate-180" />
             </button>
           )}
-          <h3 className="text-sm font-semibold">{t('mm_ct_title')}</h3>
+          <div className="min-w-0">
+            <h3 className="text-base font-semibold">{t('mm_cx_text_title')}</h3>
+            <p className="text-[13px] text-muted-foreground">{t('mm_cx_text_desc')}</p>
+          </div>
         </div>
         <p className="text-2xs text-muted-foreground" data-mm-composer-free="">{t('mm_ct_free_note')}</p>
       </div>
@@ -152,16 +172,28 @@ export default function CreativeComposer({ items, submitLabel, busy, onSubmit, o
         </figure>
 
         <div className="min-w-0 space-y-3">
-          {copy && EDIT_FIELDS.map((f) => (
-            <label key={f} className="block">
-              <span className="mb-1 flex items-baseline justify-between gap-2 text-[13px] font-medium">
-                <span>{t(`mm_ct_field_${f}` as never)}{f !== 'headline' && <span className="ms-1 text-2xs font-normal text-muted-foreground">{t('madsb_optional')}</span>}</span>
-                <span className="text-2xs tabular-nums text-muted-foreground" dir="ltr">{(copy[f] ?? '').length}/{COPY_LIMITS[f]}</span>
-              </span>
-              <Input dir="auto" value={copy[f] ?? ''} maxLength={COPY_LIMITS[f]} onChange={(e) => set(f, e.target.value)}
-                aria-invalid={blocking.some((c) => c.field === f) || undefined} data-mm-composer-field={f} />
-            </label>
-          ))}
+          {copy && ideas.length > 0 && (
+            <div className="space-y-1.5" data-mm-composer-ideas={ideas.length}>
+              <p className="text-[13px] font-semibold">{t('mm_cx_ideas_title')}</p>
+              <p className="text-2xs text-muted-foreground">{t('mm_cx_ideas_desc')}</p>
+              <div className="flex flex-col gap-1.5">
+                {ideas.slice(0, 3).map((idea, i) => (
+                  <button key={i} type="button" dir="auto" data-mm-composer-idea={i}
+                    onClick={() => setCopy((c) => (c ? { ...c, headline: idea.headline, ...(idea.subheadline ? { subheadline: idea.subheadline } : {}), ...(idea.cta ? { cta: idea.cta } : {}) } : c))}
+                    className="min-h-11 rounded-xl border border-border px-3 py-2 text-start text-[13px] leading-snug [overflow-wrap:anywhere] hover:border-[hsl(var(--gold-border))] hover:bg-[hsl(var(--gold-soft))]/50">
+                    <span className="font-semibold">{idea.headline}</span>{idea.subheadline ? <span className="block text-2xs text-muted-foreground">{idea.subheadline}</span> : null}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {copy && MAIN_FIELDS.map((f) => renderField(f))}
+          {copy && (
+            <details className="group rounded-xl border border-border px-3 py-1.5" data-mm-composer-more="" open={MORE_FIELDS.some((f) => !!copy[f]) || undefined}>
+              <summary className="flex min-h-10 cursor-pointer list-none items-center text-[13px] font-medium">{t('mm_cx_more_fields')}</summary>
+              <div className="space-y-3 pb-2 pt-1">{MORE_FIELDS.map((f) => renderField(f))}</div>
+            </details>
+          )}
 
           <fieldset>
             <legend className="mb-1 text-[13px] font-medium">{t('mm_ct_layout')}</legend>
@@ -202,13 +234,13 @@ export default function CreativeComposer({ items, submitLabel, busy, onSubmit, o
             {failed && <p className="flex items-start gap-1.5 text-2xs text-destructive"><XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{t(failed === 'COMPOSER_UNAVAILABLE' ? 'mm_ct_unavailable' : 'mm_ct_failed')}</p>}
             {blocking.map((c, i) => (
               <p key={`${c.code}${i}`} className="flex items-start gap-1.5 text-2xs text-destructive" data-mm-composer-check={c.code}>
-                <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />{t(`mm_ct_check_${c.code.toLowerCase()}` as never, { field: c.field ? t(`mm_ct_field_${c.field}` as never) : '' })}
+                <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />{t(`mm_ct_check_${c.code.toLowerCase()}` as never, { field: c.field ? t(fieldKey(c.field as CopyField) as never) : '' })}
               </p>
             ))}
             {notes.map((c, i) => (
               <p key={`${c.code}${i}`} className="flex items-start gap-1.5 text-2xs text-muted-foreground" data-mm-composer-note={c.code}>
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-                {t(`mm_ct_check_${c.code.toLowerCase()}` as never, { field: c.field ? t(`mm_ct_field_${c.field}` as never) : '' })}{c.detail && c.code === 'MIXED_SCRIPT_WORD' ? `: ${c.detail}` : ''}
+                {t(`mm_ct_check_${c.code.toLowerCase()}` as never, { field: c.field ? t(fieldKey(c.field as CopyField) as never) : '' })}{c.detail && c.code === 'MIXED_SCRIPT_WORD' ? `: ${c.detail}` : ''}
               </p>
             ))}
             {!failed && !stale && allOk && current && (

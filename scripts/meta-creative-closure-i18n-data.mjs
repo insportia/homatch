@@ -139,3 +139,40 @@ export const META_CREATIVE_CLOSURE_STRINGS = {
     'בחרו אפשרות מוכנה או כתבו טקסט משלכם.',
   ],
 };
+
+// The simplified flow: instruction → generate → choose → finished creative.
+// Text & layout is an optional edit, never a step; text requests live in the one instruction.
+export const META_CREATIVE_FLOW_STRINGS = {
+  mm_cy_step_instruction: ['Instruction', 'ინსტრუქცია', 'Задание', 'Talimat', 'التعليمات', 'הנחיה'],
+  mm_cy_step_generate: ['Generate', 'შექმნა', 'Создание', 'Oluştur', 'الإنشاء', 'יצירה'],
+  mm_cy_step_choose: ['Choose', 'არჩევა', 'Выбор', 'Seçim', 'الاختيار', 'בחירה'],
+  mm_cy_step_final: ['Finished creative', 'მზა კრეატივი', 'Готовый креатив', 'Hazır kreatif', 'التصميم الجاهز', 'קריאייטיב מוכן'],
+  mm_cy_instruction: ['What should HOMATCH improve?', 'რა გააუმჯობესოს HOMATCH-მა?', 'Что улучшить HOMATCH?', 'HOMATCH neyi iyileştirsin?', 'ما الذي تريد أن يحسّنه HOMATCH؟', 'מה HOMATCH תשפר?'],
+  mm_cy_instruction_ph: [
+    'e.g. Brighter, cleaner background. At the top write: New flat in Vake',
+    'მაგ. უფრო ნათელი, სუფთა ფონი. ზემოთ ეწეროს: ახალი ბინა ვაკეში',
+    'напр. Светлее, чище фон. Сверху напиши: Новая квартира в Ваке',
+    'örn. Daha aydınlık, sade arka plan. Üstte yazsın: Vake’de yeni daire',
+    'مثلًا: خلفية أنظف وأكثر إشراقًا. اكتب في الأعلى: شقة جديدة في فاكي',
+    'למשל: רקע בהיר ונקי יותר. למעלה ייכתב: דירה חדשה בוואקה',
+  ],
+  mm_cy_instruction_help: [
+    'Want text on the creative? Just write it here too.',
+    'გინდა კრეატივზე ტექსტი ეწეროს? უბრალოდ აქვე დაწერე.',
+    'Нужен текст на креативе? Просто напишите его здесь.',
+    'Kreatifte metin mi istiyorsunuz? Buraya yazmanız yeterli.',
+    'تريد نصًا على التصميم؟ اكتبه هنا أيضًا.',
+    'רוצים טקסט על הקריאייטיב? פשוט כתבו אותו כאן.',
+  ],
+  mm_cy_overlay_parsed: ['On the creative: “{{text}}”', 'კრეატივზე დაიწერება: „{{text}}“', 'На креативе будет: «{{text}}»', 'Kreatifte yazacak: “{{text}}”', 'على التصميم: «{{text}}»', 'על הקריאייטיב: „{{text}}”'],
+  mm_cy_choose_desc: [
+    'These are finished creatives. Choose the ones to use in your ad.',
+    'ეს უკვე მზა კრეატივებია. აირჩიე, რომელი გამოიყენო რეკლამაში.',
+    'Это готовые креативы. Выберите, какие использовать в рекламе.',
+    'Bunlar hazır kreatifler. Reklamda kullanacaklarınızı seçin.',
+    'هذه تصاميم جاهزة. اختر ما تريد استخدامه في الإعلان.',
+    'אלה קריאייטיבים מוכנים. בחרו את אלה שתשתמשו בהם במודעה.',
+  ],
+  mm_cy_use: ['Use ({{n}})', 'გამოყენება ({{n}})', 'Использовать ({{n}})', 'Kullan ({{n}})', 'استخدام ({{n}})', 'שימוש ({{n}})'],
+  mm_cy_edit: ['Change text & layout', 'ტექსტისა და განლაგების შეცვლა', 'Изменить текст и макет', 'Metni ve düzeni değiştir', 'تغيير النص والتخطيط', 'שינוי טקסט ופריסה'],
+};

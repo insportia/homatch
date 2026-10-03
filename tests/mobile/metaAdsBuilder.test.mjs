@@ -1194,13 +1194,14 @@ test('CREATIVE AI: nothing on upload; analysis only on the click and cached; the
 
     // Purpose first, in one glance; then the words for the creative go to the TEXT layer, not the image model.
     assert.equal(await page.locator('[data-mm-ai-info] li').count(), 4, 'what HOMATCH AI does — four plain lines');
-    assert.equal(await page.locator('[data-mm-ai-step][aria-current="step"]').getAttribute('data-mm-ai-step'), 'variants');
+    assert.equal(await page.locator('[data-mm-ai-step][aria-current="step"]').getAttribute('data-mm-ai-step'), 'instruction');
+    assert.deepEqual(await page.locator('[data-mm-ai-step]').evaluateAll((els) => els.map((e) => e.getAttribute('data-mm-ai-step'))), ['instruction', 'generate', 'choose', 'final'], 'four steps — text & layout is not one of them');
+    assert.equal(await page.locator('[data-mm-ai-overlay]').count(), 0, 'one instruction field — text requests go in the same words');
     await page.locator('[data-mm-ai-concept="c2"]').click();
     await page.locator('[data-mm-ai-chip="view"]').click();
     await page.locator('[data-mm-ai-instruction]').fill('უფრო ნათელი. ზემოთ ეწეროს ახალი ბინა ვაკეში');
     await page.waitForSelector('[data-mm-ai-overlay-parsed="top"]');
     assert.match(await page.locator('[data-mm-ai-overlay-parsed]').innerText(), /ახალი ბინა ვაკეში/, 'the request is understood as text for the creative');
-    await page.locator('[data-mm-ai-overlay]').fill('პარკინგით, ფასი მხოლოდ შეთავაზებით');
     assert.ok((await page.evaluate(CLIPPED)).length === 0, `${width}: no clipped labels: ${JSON.stringify(await page.evaluate(CLIPPED))}`);
     await page.locator('[data-mm-ai-generate]').click();
     await page.waitForSelector('[data-mm-ai-confirm]');
@@ -1212,7 +1213,7 @@ test('CREATIVE AI: nothing on upload; analysis only on the click and cached; the
     assert.match(ai.generate[0].idempotencyKey, /^[0-9a-f-]{36}$/);
     assert.equal(ai.generate[0].conceptId, 'c2');
     assert.equal(ai.generate[0].variations, 3);
-    assert.equal(ai.generate[0].overlayText, 'პარკინგით, ფასი მხოლოდ შეთავაზებით', 'the exact words go with the job, for the text layer');
+    assert.match(ai.generate[0].instruction, /ზემოთ ეწეროს ახალი ბინა ვაკეში/, 'the text request travels in the instruction; the server sets it on the creative');
     assert.ok(!('credits' in ai.generate[0]) && !('price' in ai.generate[0]), 'the browser never sends a price');
     if (await page.locator('[data-mm-ai-running]').count()) assert.equal(await page.locator('[data-mm-ai-stage][data-state="active"]').count(), 1, 'a real stage, no percentage');
 
@@ -1228,24 +1229,24 @@ test('CREATIVE AI: nothing on upload; analysis only on the click and cached; the
     await page.locator('[data-mm-ai-role="3"]').selectOption('TEST');
     assert.deepEqual(await page.evaluate(CLIPPED), [], `${width}: chosen cards keep their actions inside`);
     assert.ok((await page.evaluate(LAYOUT)).overflow <= 1, `${width}: the gallery fits`);
-    await page.locator('[data-mm-ai-use]').click();
-    // Use → the FINAL creative first: HOMATCH typography over each visual, approved before anything is created.
-    await page.waitForSelector('[data-mm-composer="2"] [data-mm-composer-ready]', { timeout: 10000 });
-    assert.equal(ai.use.length, 0, 'nothing is created before the composed creative is seen');
-    assert.equal(await page.locator('[data-mm-composer-preview] svg text').first().textContent(), 'Calm living in Vake', 'the preview is real text');
-    assert.ok((await page.evaluate(LAYOUT)).overflow <= 1, `${width}: the composer fits`);
+    // The cards ARE the finished creatives: the visual with its text already set.
+    await page.waitForSelector('[data-mm-ai-variant="1"] [data-mm-ai-finished] svg text');
+    assert.equal(await page.locator('[data-mm-ai-variant="1"] [data-mm-ai-finished] svg text').first().textContent(), 'Calm living in Vake', 'real text on the finished card');
+    // Text & layout is OPTIONAL: open it for one card, then go back without changing anything.
+    await page.locator('[data-mm-ai-edit="3"]').click();
+    await page.waitForSelector('[data-mm-composer="1"] [data-mm-composer-ready]', { timeout: 10000 });
     assert.ok((await page.evaluate(CLIPPED)).length === 0, `${width}: composer labels: ${JSON.stringify(await page.evaluate(CLIPPED))}`);
     await page.locator('[data-mm-composer-field="headline"]').fill('');
     await page.waitForSelector('[data-mm-composer-check="HEADLINE_REQUIRED"]');
     assert.ok(await page.locator('[data-mm-composer-submit]').isDisabled(), 'an invalid text layer cannot be confirmed');
-    await page.locator('[data-mm-composer-field="headline"]').fill('იპოვე შენი სახლი ვაკეში');
-    await page.waitForSelector('[data-mm-composer-ready]');
-    await page.waitForFunction(() => !document.querySelector('[data-mm-composer-submit]')?.hasAttribute('disabled'));
-    assert.equal(ai.generate.length, 1, 'editing the text never starts a new generation');
-    await page.locator('[data-mm-composer-submit]').click();
+    await page.locator('[data-mm-composer-back]').click();
+    await page.waitForSelector('[data-mm-ai-gallery="3"]');
+    assert.equal(ai.use.length, 0);
+    // Use → created at once, as shown. No required extra step.
+    await page.locator('[data-mm-ai-use]').click();
     await page.waitForSelector('[data-mm-ai-panel]', { state: 'detached' });
-    assert.deepEqual(ai.use.map((u) => u.picks.map((p) => [p.index, p.role, p.spec.copy.headline])), [[[1, 'PRIMARY', 'იპოვე შენი სახლი ვაკეში']], [[3, 'TEST', 'იპოვე შენი სახლი ვაკეში']]], 'one export per request, each with the approved Georgian text');
-    assert.deepEqual(ai.use.map((u) => u.picks[0].spec.layout), ['EDITORIAL_BOTTOM', 'OVERLAY_BOTTOM'], 'each variation keeps its own layout');
+    assert.deepEqual(ai.use.map((u) => u.picks.map((p) => [p.index, p.role, p.spec ?? null])), [[[1, 'PRIMARY', null]], [[3, 'TEST', null]]], 'one export per request; the server composes the finished creative the card showed');
+    assert.equal(ai.generate.length, 1, 'choosing and using never start a new generation');
     assert.equal(calls.creativePatches.filter((p) => p.media).length, 0, 'the original creative is never rewritten');
   }
 });

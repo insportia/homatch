@@ -337,7 +337,7 @@ function CreativeEditor({ creative, goal, messagingApp, placements, advice, held
           )}
           {onCompose && !isVideo && url && String(m0?.mime ?? '').startsWith('image/') && (m0?.ai?.composition || !m0?.ai) && (
             <Button type="button" variant="outline" size="sm" className="mt-2 min-h-11 w-full gap-1.5" onClick={onCompose} data-mm-compose-edit={m0?.ai?.composition ? 'edit' : 'add'}>
-              <Type className="h-3.5 w-3.5" />{t(m0?.ai?.composition ? 'mm_ct_edit' : 'mm_ct_add')}
+              <Type className="h-3.5 w-3.5" />{t(m0?.ai?.composition ? 'mm_cy_edit' : 'mm_ct_add')}
             </Button>
           )}
           {onImprove && !isVideo && !m0?.ai && url && (

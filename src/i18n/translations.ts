@@ -15020,6 +15020,19 @@ const en = {
   mm_cx_ideas_title: 'Text ideas',
   mm_cx_ideas_desc: 'Pick a ready option or write your own text.',
 
+  /* ── META ADS — CREATIVE INTELLIGENCE FLOW ── */
+  mm_cy_step_instruction: 'Instruction',
+  mm_cy_step_generate: 'Generate',
+  mm_cy_step_choose: 'Choose',
+  mm_cy_step_final: 'Finished creative',
+  mm_cy_instruction: 'What should HOMATCH improve?',
+  mm_cy_instruction_ph: 'e.g. Brighter, cleaner background. At the top write: New flat in Vake',
+  mm_cy_instruction_help: 'Want text on the creative? Just write it here too.',
+  mm_cy_overlay_parsed: 'On the creative: “{{text}}”',
+  mm_cy_choose_desc: 'These are finished creatives. Choose the ones to use in your ad.',
+  mm_cy_use: 'Use ({{n}})',
+  mm_cy_edit: 'Change text & layout',
+
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_rec_title: 'Your design could not be finished',
   dsx_rec_body: 'Your uploads and the work already done are saved. Try again and HOMATCH continues from where the process stopped.',
@@ -29975,6 +29988,19 @@ const ka: Partial<Record<TranslationKey, string>> = {
   mm_cx_ideas_title: 'ტექსტის იდეები',
   mm_cx_ideas_desc: 'აირჩიე მზა ვარიანტი ან დაწერე შენი ტექსტი.',
 
+  /* ── META ADS — CREATIVE INTELLIGENCE FLOW ── */
+  mm_cy_step_instruction: 'ინსტრუქცია',
+  mm_cy_step_generate: 'შექმნა',
+  mm_cy_step_choose: 'არჩევა',
+  mm_cy_step_final: 'მზა კრეატივი',
+  mm_cy_instruction: 'რა გააუმჯობესოს HOMATCH-მა?',
+  mm_cy_instruction_ph: 'მაგ. უფრო ნათელი, სუფთა ფონი. ზემოთ ეწეროს: ახალი ბინა ვაკეში',
+  mm_cy_instruction_help: 'გინდა კრეატივზე ტექსტი ეწეროს? უბრალოდ აქვე დაწერე.',
+  mm_cy_overlay_parsed: 'კრეატივზე დაიწერება: „{{text}}“',
+  mm_cy_choose_desc: 'ეს უკვე მზა კრეატივებია. აირჩიე, რომელი გამოიყენო რეკლამაში.',
+  mm_cy_use: 'გამოყენება ({{n}})',
+  mm_cy_edit: 'ტექსტისა და განლაგების შეცვლა',
+
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_rec_title: 'დიზაინის შექმნა ვერ დასრულდა',
   dsx_rec_body: 'შენი ატვირთული მასალა და უკვე შესრულებული სამუშაო შენახულია. შეგიძლია სცადო თავიდან და HOMATCH გააგრძელებს იქიდან, სადაც პროცესი შეჩერდა.',
@@ -44921,6 +44947,19 @@ const ru: Partial<Record<TranslationKey, string>> = {
   mm_cx_ideas_title: 'Идеи текста',
   mm_cx_ideas_desc: 'Выберите готовый вариант или напишите свой текст.',
 
+  /* ── META ADS — CREATIVE INTELLIGENCE FLOW ── */
+  mm_cy_step_instruction: 'Задание',
+  mm_cy_step_generate: 'Создание',
+  mm_cy_step_choose: 'Выбор',
+  mm_cy_step_final: 'Готовый креатив',
+  mm_cy_instruction: 'Что улучшить HOMATCH?',
+  mm_cy_instruction_ph: 'напр. Светлее, чище фон. Сверху напиши: Новая квартира в Ваке',
+  mm_cy_instruction_help: 'Нужен текст на креативе? Просто напишите его здесь.',
+  mm_cy_overlay_parsed: 'На креативе будет: «{{text}}»',
+  mm_cy_choose_desc: 'Это готовые креативы. Выберите, какие использовать в рекламе.',
+  mm_cy_use: 'Использовать ({{n}})',
+  mm_cy_edit: 'Изменить текст и макет',
+
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_rec_title: 'Не удалось завершить создание дизайна',
   dsx_rec_body: 'Загруженные материалы и уже выполненная работа сохранены. Попробуйте снова — HOMATCH продолжит с того места, где процесс остановился.',
@@ -59864,6 +59903,19 @@ const tr: Partial<Record<TranslationKey, string>> = {
   mm_cx_more_fields: 'Daha fazla: fiyat, marka, rozet',
   mm_cx_ideas_title: 'Metin fikirleri',
   mm_cx_ideas_desc: 'Hazır bir seçenek seçin veya kendi metninizi yazın.',
+
+  /* ── META ADS — CREATIVE INTELLIGENCE FLOW ── */
+  mm_cy_step_instruction: 'Talimat',
+  mm_cy_step_generate: 'Oluştur',
+  mm_cy_step_choose: 'Seçim',
+  mm_cy_step_final: 'Hazır kreatif',
+  mm_cy_instruction: 'HOMATCH neyi iyileştirsin?',
+  mm_cy_instruction_ph: 'örn. Daha aydınlık, sade arka plan. Üstte yazsın: Vake’de yeni daire',
+  mm_cy_instruction_help: 'Kreatifte metin mi istiyorsunuz? Buraya yazmanız yeterli.',
+  mm_cy_overlay_parsed: 'Kreatifte yazacak: “{{text}}”',
+  mm_cy_choose_desc: 'Bunlar hazır kreatifler. Reklamda kullanacaklarınızı seçin.',
+  mm_cy_use: 'Kullan ({{n}})',
+  mm_cy_edit: 'Metni ve düzeni değiştir',
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_rec_title: 'Tasarım tamamlanamadı',
@@ -74809,6 +74861,19 @@ const ar: Partial<Record<TranslationKey, string>> = {
   mm_cx_ideas_title: 'أفكار للنص',
   mm_cx_ideas_desc: 'اختر خيارًا جاهزًا أو اكتب نصك.',
 
+  /* ── META ADS — CREATIVE INTELLIGENCE FLOW ── */
+  mm_cy_step_instruction: 'التعليمات',
+  mm_cy_step_generate: 'الإنشاء',
+  mm_cy_step_choose: 'الاختيار',
+  mm_cy_step_final: 'التصميم الجاهز',
+  mm_cy_instruction: 'ما الذي تريد أن يحسّنه HOMATCH؟',
+  mm_cy_instruction_ph: 'مثلًا: خلفية أنظف وأكثر إشراقًا. اكتب في الأعلى: شقة جديدة في فاكي',
+  mm_cy_instruction_help: 'تريد نصًا على التصميم؟ اكتبه هنا أيضًا.',
+  mm_cy_overlay_parsed: 'على التصميم: «{{text}}»',
+  mm_cy_choose_desc: 'هذه تصاميم جاهزة. اختر ما تريد استخدامه في الإعلان.',
+  mm_cy_use: 'استخدام ({{n}})',
+  mm_cy_edit: 'تغيير النص والتخطيط',
+
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_rec_title: 'تعذّر إكمال إنشاء التصميم',
   dsx_rec_body: 'ما رفعته والعمل المُنجَز محفوظان. حاول مجددًا وسيتابع HOMATCH من حيث توقفت العملية.',
@@ -89752,6 +89817,19 @@ const he: Partial<Record<TranslationKey, string>> = {
   mm_cx_more_fields: 'עוד: מחיר, מותג, תג',
   mm_cx_ideas_title: 'רעיונות לטקסט',
   mm_cx_ideas_desc: 'בחרו אפשרות מוכנה או כתבו טקסט משלכם.',
+
+  /* ── META ADS — CREATIVE INTELLIGENCE FLOW ── */
+  mm_cy_step_instruction: 'הנחיה',
+  mm_cy_step_generate: 'יצירה',
+  mm_cy_step_choose: 'בחירה',
+  mm_cy_step_final: 'קריאייטיב מוכן',
+  mm_cy_instruction: 'מה HOMATCH תשפר?',
+  mm_cy_instruction_ph: 'למשל: רקע בהיר ונקי יותר. למעלה ייכתב: דירה חדשה בוואקה',
+  mm_cy_instruction_help: 'רוצים טקסט על הקריאייטיב? פשוט כתבו אותו כאן.',
+  mm_cy_overlay_parsed: 'על הקריאייטיב: „{{text}}”',
+  mm_cy_choose_desc: 'אלה קריאייטיבים מוכנים. בחרו את אלה שתשתמשו בהם במודעה.',
+  mm_cy_use: 'שימוש ({{n}})',
+  mm_cy_edit: 'שינוי טקסט ופריסה',
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_rec_title: 'לא הצלחנו להשלים את יצירת העיצוב',

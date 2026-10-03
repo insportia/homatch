@@ -306,7 +306,7 @@ test('generation stays idempotent: one job per confirmed click; each variation i
   assert.match(srv, /operation_type: 'meta_ads_creative_text_check'/, 'the check is a HOMATCH cost, never the customer’s');
   const panel = read('src/components/metaAds/builder/CreativeAiPanel.tsx');
   assert.match(panel, /keyRef\.current \?\?= crypto\.randomUUID\(\)/);
-  assert.match(panel, /const use = \(indexes: number\[\]\) => \{ if \(indexes\.length && !using\) setComposeFor\(indexes\); \}/, 'Use opens the final-creative composer first');
+  assert.match(panel, /if \(needEdit\.length\) setComposeFor\(needEdit\); else onOpenChange\(false\);/, 'only a creative that cannot be finished as shown opens the editor');
   assert.match(panel, /Number\(\(an\.analysis as \{ version\?: number \} \| null\)\?\.version \?\? 0\) >= ANALYSIS_VERSION/, 'an older cached analysis is analysed again (free), never reused');
 });
 
@@ -359,12 +359,15 @@ test('NATURAL-LANGUAGE TEXT REQUESTS become text-layer intent, never image-promp
 
 test('closure UI: plain purpose, five steps, the original apart, View/Choose, the text field, no clipped actions', () => {
   const panel = read('src/components/metaAds/builder/CreativeAiPanel.tsx');
-  for (const k of ['mm_cx_title', 'mm_cx_lead1', 'mm_cx_info_title', 'mm_cx_overlay_label', 'mm_cx_overlay_help', 'mm_cx_choose_title', 'mm_cx_original_sub', 'mm_cx_generate_cta']) assert.ok(panel.includes(k), k);
-  assert.match(panel, /const STEPS = \['original', 'variants', 'choose', 'text', 'final'\]/);
+  for (const k of ['mm_cx_title', 'mm_cx_lead1', 'mm_cx_info_title', 'mm_cy_instruction', 'mm_cy_instruction_help', 'mm_cx_choose_title', 'mm_cx_original_sub', 'mm_cx_generate_cta', 'mm_cy_use', 'mm_cy_edit']) assert.ok(panel.includes(k), k);
+  assert.match(panel, /const STEPS = \['instruction', 'generate', 'choose', 'final'\]/, 'text & layout is not a step');
+  assert.doesNotMatch(panel, /data-mm-ai-overlay=""/, 'one instruction field');
+  assert.match(panel, /<FinishedPreview source=\{\{ jobId: job\.id, index: im\.index \}\}/, 'the cards are the finished creatives');
+  assert.match(panel, /const r = await aiUse\(job\.id, \[\{ index: i, role: picked\[i\] \?\? \('SECONDARY' as Role\) \}\]\);/, 'Use creates what the card shows — no required editor');
   assert.match(panel, /data-mm-ai-original="" data-selected/, 'the original is selectable and framed apart');
   assert.match(panel, /aiComposeSave\(creative\.id, specs\[k\]\)/, 'the original is composed into a NEW creative, never rewritten');
   const tr = read('src/i18n/translations.ts');
-  for (const ka of ['HOMATCH AI კრეატივებისთვის', 'გააუმჯობესე არსებული ფოტო ან კრეატივი რეკლამისთვის.', 'რა გინდა ეწეროს კრეატივზე?', 'მაგ. პარკინგით, ფასი მხოლოდ შეთავაზებით', 'აირჩიე საუკეთესო ვარიანტი', 'შენი ატვირთული ფოტო', 'ტექსტის იდეები', 'აირჩიე რა ეწეროს კრეატივზე და როგორ განთავსდეს ტექსტი.', '{{n}} ვარიანტის შექმნა · {{credits}} კრედიტი']) assert.ok(tr.includes(ka), ka);
+  for (const ka of ['HOMATCH AI კრეატივებისთვის', 'გააუმჯობესე არსებული ფოტო ან კრეატივი რეკლამისთვის.', 'აირჩიე საუკეთესო ვარიანტი', 'შენი ატვირთული ფოტო', 'ტექსტის იდეები', 'აირჩიე რა ეწეროს კრეატივზე და როგორ განთავსდეს ტექსტი.', '{{n}} ვარიანტის შექმნა · {{credits}} კრედიტი', 'ტექსტისა და განლაგების შეცვლა', 'მზა კრეატივი']) assert.ok(tr.includes(ka), ka);
   const copy = read('src/components/metaAds/builder/AiCopyPanel.tsx');
   assert.match(copy, /grid-cols-\[repeat\(auto-fill,minmax\(min\(100%,10\.5rem\),1fr\)\)\]/, 'action columns as wide as the label needs');
   assert.match(copy, /h-auto min-h-11 justify-start gap-1\.5 whitespace-normal/, 'labels wrap instead of clipping');

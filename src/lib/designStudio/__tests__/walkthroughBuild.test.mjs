@@ -318,3 +318,30 @@ test('a room jump into the notched living room of the real plan faces open space
   const ahead = Math.hypot(shot.target.x - shot.position.x, shot.target.y - shot.position.y) / 0.6;
   assert.ok(ahead >= 2, `sees ${ahead.toFixed(2)} m ahead`);
 });
+
+import { assetFromRow } from '../catalog.ts';
+import { assetRows as lPlanAssetRows, plan as lPlanPlan } from './fixtures/correctedLPlanWalk.mjs';
+
+test('circulation removes the least furniture that frees the way: the corrected plan keeps its beds, sofa, desk and table', () => {
+  const lScene = JSON.parse(readFileSync(new URL('./fixtures/correctedLPlanScene.json', import.meta.url), 'utf8'));
+  const lSpace = buildSpaceModel(lScene);
+  const lAssets = new Map(lPlanAssetRows.map((r) => { const a = assetFromRow(r); return [a.code, a]; }));
+  const none = new Map();
+  const { state, report } = buildWalkthrough({ space: lSpace, base: emptyDesignState(), plan: lPlanPlan, assets: lAssets, materialsByCode: none, materialsById: none, idPrefix: 'walk-l' });
+  const where = (code) => state.objects.filter((o) => o.assetId === code).map((o) => o.roomId).sort();
+  assert.deepEqual(where('dev/bed-double'), ['r2', 'r3'], JSON.stringify(report.items.filter((i) => i.outcome === 'DROPPED')));
+  assert.deepEqual(where('dev/sofa-3'), ['r1']);
+  assert.deepEqual(where('dev/desk'), ['r3']);
+  assert.deepEqual(where('dev/dining-table-4'), ['r4']);
+  assert.deepEqual(where('dev/kitchen-run'), ['r4']);
+  // Production dropped 31 of 37 pieces here; only small pieces may go for the way through.
+  assert.ok(state.objects.length >= 25, `${state.objects.length} pieces`);
+  for (const i of report.items.filter((x) => x.reason === 'CIRCULATION')) {
+    const a = lAssets.get(i.code);
+    assert.ok(a.widthM * a.depthM < 1, `${i.code} dropped for circulation`);
+  }
+  const before = reachableRooms(lSpace, buildWalkModel(lSpace, [], lAssets));
+  const after = reachableRooms(lSpace, buildWalkModel(lSpace, state.objects, lAssets));
+  for (const id of ['r1', 'r2', 'r3', 'r4']) assert.ok(before.has(id), `${id} not reachable on the bare plan`);
+  for (const id of before) assert.ok(after.has(id), `${id} cut off`);
+});

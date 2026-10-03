@@ -147,3 +147,12 @@ test('rasterising and colours are deterministic', () => {
   assert.equal(new Set(colours).size, 200);
   assert.ok(colours.every((c) => /^#[0-9a-f]{6}$/.test(c) && c !== '#000000'));
 });
+
+test('windowed refinement is exactly the whole-picture refinement (golden id picture + legend)', async () => {
+  // 2c579bac… was produced by the whole-picture implementation before refinement ran in a window around each
+  // element (production 2026-10-03: the map exceeded the edge CPU budget). Same pixels, same legend, ~10× less CPU.
+  const { createHash } = await import('node:crypto');
+  const map = buildEditMap(scene().img, elements, new Set(['R1']));
+  const hash = createHash('sha256').update(map.ids.data).update(JSON.stringify(map.legend)).digest('hex').slice(0, 16);
+  assert.equal(hash, '2c579bac02a0d34f');
+});

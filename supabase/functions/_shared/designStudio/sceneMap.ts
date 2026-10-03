@@ -191,6 +191,40 @@ export interface Refined { mask: Uint8Array; method: 'REFINED' | 'OUTLINE'; iou:
  * outline itself is the mask.
  */
 export function refineElement(work: Work, el: SceneElement): Refined | null {
+  // Every step below only reaches the outline, its band (≤ 0.08 × √area) and one pixel more, so the same
+  // algorithm runs on a window around the element — identical masks, at the element's cost instead of the
+  // whole picture's (the edit map must fit an edge invocation's CPU budget: production 2026-10-03).
+  const W = work.w; const H = work.h;
+  const xs = el.outline.map((q) => q[0] * W); const ys = el.outline.map((q) => q[1] * H);
+  const bx0 = Math.floor(Math.min(...xs)); const bx1 = Math.ceil(Math.max(...xs));
+  const by0 = Math.floor(Math.min(...ys)); const by1 = Math.ceil(Math.max(...ys));
+  const reach = Math.max(2, Math.ceil(0.08 * Math.sqrt(Math.max(1, (bx1 - bx0) * (by1 - by0))))) + 4;
+  const cx0 = Math.max(0, bx0 - reach); const cy0 = Math.max(0, by0 - reach);
+  const cx1 = Math.min(W, bx1 + reach); const cy1 = Math.min(H, by1 + reach);
+  const cw = cx1 - cx0; const ch = cy1 - cy0;
+  if (cw <= 0 || ch <= 0) return null;
+  if (cw === W && ch === H) return refineIn(work, el);
+  const rgb = new Float32Array(cw * ch * 3); const grad = new Float32Array(cw * ch);
+  for (let y = 0; y < ch; y += 1) {
+    const src = (cy0 + y) * W + cx0;
+    rgb.set(work.rgb.subarray(src * 3, (src + cw) * 3), y * cw * 3);
+    grad.set(work.grad.subarray(src, src + cw), y * cw);
+    // The picture's own edge row/column has no gradient; inside the window it must stay that way.
+  }
+  const local: SceneElement = {
+    ...el,
+    outline: el.outline.map(([x, y]) => [(x * W - cx0) / cw, (y * H - cy0) / ch] as [number, number]),
+    inside: el.inside.map(([x, y]) => [(x * W - cx0) / cw, (y * H - cy0) / ch] as [number, number]),
+  };
+  const r = refineIn({ w: cw, h: ch, rgb, grad }, local, { w: W, h: H, x0: cx0, y0: cy0 });
+  if (!r) return null;
+  const mask = new Uint8Array(W * H);
+  for (let y = 0; y < ch; y += 1) mask.set(r.mask.subarray(y * cw, (y + 1) * cw), (cy0 + y) * W + cx0);
+  return { mask, method: r.method, iou: r.iou };
+}
+
+/** The refinement itself, on a picture or on a window of it (`frame`: where the window sits in the picture). */
+function refineIn(work: Work, el: SceneElement, frame?: { w: number; h: number; x0: number; y0: number }): Refined | null {
   const { w, h, rgb, grad } = work;
   const P = rasterPolygon(el.outline, w, h);
   const area = count(P);
@@ -198,7 +232,14 @@ export function refineElement(work: Work, el: SceneElement): Refined | null {
   const side = Math.sqrt(area);
   let core = erode(P, w, h, Math.max(1, Math.round(0.12 * side)));
   if (count(core) < 4) core = P;
-  const seeds = el.inside.map(([x, y]) => Math.min(h - 1, Math.floor(y * h)) * w + Math.min(w - 1, Math.floor(x * w))).filter((i) => P[i]);
+  // Seeds in the picture's own pixel grid (a window maps them back exactly).
+  const seeds = (frame
+    ? el.inside.map(([x, y]) => {
+      const gx = Math.min(frame.w - 1, Math.floor(((x * w) + frame.x0) / frame.w * frame.w)) - frame.x0;
+      const gy = Math.min(frame.h - 1, Math.floor(((y * h) + frame.y0) / frame.h * frame.h)) - frame.y0;
+      return gx >= 0 && gy >= 0 && gx < w && gy < h ? gy * w + gx : -1;
+    })
+    : el.inside.map(([x, y]) => Math.min(h - 1, Math.floor(y * h)) * w + Math.min(w - 1, Math.floor(x * w)))).filter((i) => i >= 0 && P[i]);
   // The colour of the thing: its seeds (with their neighbours) or its core.
   const sample: number[] = [];
   if (seeds.length) for (const s of seeds) { const sx = s % w; const sy = (s - sx) / w; for (let dy = -2; dy <= 2; dy += 1) for (let dx = -2; dx <= 2; dx += 1) { const xx = sx + dx; const yy = sy + dy; if (xx >= 0 && yy >= 0 && xx < w && yy < h && P[yy * w + xx]) sample.push(yy * w + xx); } }

@@ -833,3 +833,11 @@ test('a floor plan sent through Photos continues as a floor plan, and a technica
   }
   assert.match(code('supabase/functions/design-studio-reconstruct/generate.ts'), /const SPEC_TERMINAL = new Set\(\['ROOM_UNKNOWN'\]\);/);
 });
+
+test('the edit map fits an edge invocation: refinement runs in a window, and a dying map step is not retried forever', () => {
+  const map = code('supabase/functions/_shared/designStudio/sceneMap.ts');
+  assert.match(map, /export const MAP_MAX_SIDE = 768;/, 'precision is not traded away');
+  assert.match(map, /return refineIn\(\{ w: cw, h: ch, rgb, grad \}, local, \{ w: W, h: H, x0: cx0, y0: cy0 \}\)|const r = refineIn\(\{ w: cw, h: ch, rgb, grad \}, local/);
+  const flow = code('supabase/functions/_shared/designStudio/generationFlow.ts');
+  assert.match(flow, /if \(tries > MAX_MAP_ATTEMPTS\) editMap = \{ state: 'UNAVAILABLE', reason: 'MAP_BUDGET' \};/);
+});

@@ -428,7 +428,7 @@ export function LeadFormBuilder({ propertyId, onCreated, onCancel, formsState, c
       {/* The only path to Meta: an explicit confirmation. */}
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-md" data-mm-lf-confirm="">
-          <DialogHeader>
+          <DialogHeader className="pr-10">
             <DialogTitle>{t('mm_c_lf_confirm_title')}</DialogTitle>
             <DialogDescription>{t('mm_c_lf_confirm_body')}</DialogDescription>
           </DialogHeader>

@@ -266,7 +266,7 @@ function ImportDialog({ open, onClose, onDone }: { open: boolean; onClose: () =>
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
       <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-md">
-        <DialogHeader><DialogTitle>{t('mads_import_title')}</DialogTitle></DialogHeader>
+        <DialogHeader className="pr-10"><DialogTitle>{t('mads_import_title')}</DialogTitle></DialogHeader>
         <p className="text-sm text-muted-foreground">{t('mads_import_desc')}</p>
         <input type="file" accept=".csv,text/csv" className="text-sm"
           onChange={e => e.target.files?.[0] && parse(e.target.files[0])} />
@@ -369,7 +369,7 @@ function AudiencesTab({ enabled, connected, campaigns, onRetarget }: {
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-md">
-          <DialogHeader><DialogTitle>{t('mads_aud_create')}</DialogTitle></DialogHeader>
+          <DialogHeader className="pr-10"><DialogTitle>{t('mads_aud_create')}</DialogTitle></DialogHeader>
           {termsNeeded ? (
             <>
               <p className="text-sm leading-relaxed text-foreground">{t('mads_terms_body')}</p>

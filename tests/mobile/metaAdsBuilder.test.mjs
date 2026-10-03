@@ -316,7 +316,7 @@ test('offer can be selected, changed and unselected; Back/Continue move through 
   await waitReady(page);
 
   const property = page.locator('button[aria-pressed]', { hasText: 'Vake two-bedroom' });
-  const other = page.locator('button[aria-pressed]', { hasText: 'Another offer' });
+  const other = page.locator('button[aria-pressed]', { hasText: 'Another product or service' });
   await property.click();
   assert.equal(await property.getAttribute('aria-pressed'), 'true');
   await property.click();
@@ -954,7 +954,7 @@ test('MOBILE: priority is a binary ☆/★ toggle with words, aria-pressed and a
   const text = await page.evaluate(() => document.body.innerText);
   assert.match(text, /დაწერეთ თქვენი სარეკლამო ტექსტი \/ აღწერა/);
   assert.match(text, /მოკლე მთავარი ფრაზა, რომელსაც მომხმარებელი პირველ რიგში დაინახავს/);
-  assert.match(await page.locator('[data-madsb-ai]').first().innerText(), /დამეხმაროს HOMATCH AI/);
+  assert.match(await page.locator('[data-madsb-ai]').first().innerText(), /HOMATCH AI დამეხმაროს/);
   const box = await toggle.boundingBox();
   assert.ok(box.height >= 44, `44px target (${box.height})`);
   assert.equal((await page.evaluate(LAYOUT)).overflow <= 1, true, 'no overflow at 320px');
@@ -967,10 +967,14 @@ test('DOMAIN GUARD: an out-of-scope offer is told kindly in the builder, and the
   await waitReady(page);
   await page.locator('[data-mm-offer-title]').fill('Online casino bonus');
   await page.waitForSelector('[data-mm-scope="BLOCKED_OUT_OF_SCOPE"]');
-  assert.match(await page.locator('[data-mm-scope]').innerText(), /უძრავი ქონებისა და მასთან დაკავშირებული სერვისებისთვის/);
+  assert.match(await page.locator('[data-mm-scope]').innerText(), /აზარტული თამაშების/);
   await page.locator('[data-mm-offer-title]').fill('Apartment renovation in Tbilisi');
   await page.waitForTimeout(200);
   assert.equal(await page.locator('[data-mm-scope]').count(), 0, 'real-estate services are welcome');
+  // Any ordinary lawful business is welcome too — no real-estate signal, no review card.
+  await page.locator('[data-mm-offer-title]').fill('Pizza delivery in 30 minutes');
+  await page.waitForTimeout(200);
+  assert.equal(await page.locator('[data-mm-scope]').count(), 0, 'a lawful non-real-estate business is not flagged');
   // Even if the browser said nothing, the server's preflight decides — and the customer reads one kind sentence.
   await page.route('**/functions/v1/meta-ads-api', async (r) => {
     const body = JSON.parse(r.request().postData() || '{}');
@@ -982,7 +986,7 @@ test('DOMAIN GUARD: an out-of-scope offer is told kindly in the builder, and the
   await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=review`, { waitUntil: 'domcontentloaded' });
   await waitReady(page);
   await page.locator('[data-mm-run-check]').click();
-  await page.waitForFunction(() => /უძრავი ქონებისა და მასთან დაკავშირებული სერვისებისთვის/.test(document.body.innerText), null, { timeout: 8000 });
+  await page.waitForFunction(() => /აზარტული თამაშების/.test(document.body.innerText), null, { timeout: 8000 });
   assert.doesNotMatch(await page.evaluate(() => document.body.innerText), /GAMBLING|casino/i, 'never the matched words');
   assert.equal(await page.locator('[data-madsb-nav] button').last().isDisabled(), true, 'nothing to launch');
 });
@@ -1033,7 +1037,7 @@ test('LEADS TERMS: Leads stays selectable; Meta\'s own terms page opens from HOM
     await waitReady(page);
     await page.waitForSelector('[data-mm-forms-state="TERMS_REQUIRED"]');
     assert.equal(await page.locator('[data-mm-terms-open]').count(), 1, 'one obvious action');
-    assert.match(await page.locator('[data-mm-terms-open]').innerText(), /Meta-ს პირობებთან დათანხმება/);
+    assert.match(await page.locator('[data-mm-terms-open]').innerText(), /Meta-ს პირობებზე დათანხმება/);
     assert.doesNotMatch(await page.evaluate(() => document.body.innerText), /leads_retrieval|pages_manage/);
     await page.locator('[data-mm-terms-open]').click();
     const opened = await page.evaluate(() => window.__opened.map((o) => ({ href: o.w.location.href, opener: o.w.opener, features: o.features })));
@@ -1353,7 +1357,7 @@ test('META CONNECT: one tap = one attempt to Meta\'s own dialog with the way bac
     await waitReady(page);
     await page.waitForSelector('[data-mm-connect-return="denied"]');
     const msg = await page.locator('[data-mm-connect-return]').innerText();
-    assert.match(msg, /Meta-სთან კავშირი არ დასრულებულა/);
+    assert.match(msg, /Meta-ში კავშირი არ დასრულებულა/);
     assert.match(msg, /კამპანია შენახულია/);
     assert.doesNotMatch(msg, /access_denied|error_reason|user_denied/);
     assert.equal(calls.actions.slice(before2).filter((a) => a === 'assets_refresh').length, 0);
@@ -1492,3 +1496,93 @@ test('FINAL: screenshots for visual inspection — every step in Georgian at 390
   }
 });
 
+
+
+/* ── FINAL UX: the owner's reported scenario ─────────────────────────────── */
+
+test('FINAL UX: "another product or service" is a complete answer — no review card, no unresolved mark, an internal-only note; the AI cost is a cost, a failed start is said truthfully, one job on a double click', opts, async (t) => {
+  if (skipReason) assert.fail(`meta ads builder gate could not run: ${skipReason}`);
+  for (const [width, height] of [[390, 844], [1440, 900]]) {
+    const settings = { ...fixtures().status.settings, aiCreativeEnabled: true };
+    const { page } = await boot(t, { width, height, lang: 'ka', statusOver: { settings }, campaignOver: { property_id: null, offer: null } });
+    const ai = { generate: [], quotes: 0 };
+    await page.route('**/functions/v1/meta-ads-api', async (r) => {
+      const body = JSON.parse(r.request().postData() || '{}');
+      const ok = (o, st = 200) => r.fulfill({ status: st, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(o) });
+      if (!String(body.action).startsWith('creative_ai_')) return r.fallback();
+      if (body.action === 'creative_ai_jobs') return ok({ jobs: [aiJob({ analysis: ANALYSIS })] });
+      if (body.action === 'creative_ai_analyze') return ok({ cached: true, job: aiJob({ analysis: ANALYSIS }) });
+      // The first quote fails (the AI cost cannot be read); the retry succeeds.
+      if (body.action === 'creative_ai_quote') {
+        ai.quotes += 1;
+        if (ai.quotes === 1) return ok({ error: 'PRICING_UNAVAILABLE', code: 'PRICING_UNAVAILABLE' }, 503);
+        return ok({ quote: { variations: body.variations, unitCredits: 1.3, expectedCredits: 1.3 * body.variations, maxCredits: 1.63 * body.variations, balanceCredits: 50, enough: true, available: true } });
+      }
+      // The server could not start the job (e.g. a billing refusal): said as that, nothing charged.
+      if (body.action === 'creative_ai_generate') { ai.generate.push(body); return ok({ error: 'START_FAILED', code: 'START_FAILED' }, 503); }
+      return ok({ ok: true });
+    });
+
+    // Step 2: the non-HOMATCH path, an ordinary lawful business, no property, no price.
+    await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=offer`, { waitUntil: 'domcontentloaded' });
+    await waitReady(page);
+    await page.getByRole('button', { name: /სხვა პროდუქტი ან სერვისი/ }).click();
+    await page.locator('[data-mm-offer-title]').fill('კერამიკული ფილების მაღაზია');
+    await page.waitForTimeout(700);
+    assert.equal(await page.locator('[data-mm-scope]').count(), 0, `${width}: a lawful product needs no review and shows no warning`);
+    assert.match(await page.locator('[data-mm-internal-note="offer"]').innerText(), /რეკლამაში ის არ ჩანს/, 'the name is said to be internal');
+    for (const kind of [/^პროდუქტი ან სერვისი/, /^უძრავი ქონება/]) {
+      await page.getByRole('button', { name: kind }).click();
+      await page.waitForTimeout(400);
+      await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=goal`, { waitUntil: 'domcontentloaded' });
+      await waitReady(page);
+      if (width >= 1024) {
+        assert.equal(await page.locator('[data-madsb-stepper] [aria-label="საჭიროებს ყურადღებას"]').count(), 0, `${width} ${kind}: Step 2 is complete — no unresolved mark`);
+      }
+      await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=offer`, { waitUntil: 'domcontentloaded' });
+      await waitReady(page);
+    }
+    const g = await page.evaluate(GEOMETRY);
+    for (const k of ['split', 'offscreen', 'overlap', 'clipped']) assert.deepEqual(g[k], [], `${width} offer: ${k}`);
+
+    // Desktop: every step name readable — no accidental ellipsis in the rail.
+    if (width >= 1024) {
+      const cut = await page.evaluate(() => [...document.querySelectorAll('[data-madsb-stepper] ol li button span')]
+        .filter((el) => getComputedStyle(el).textOverflow === 'ellipsis' || el.scrollWidth > el.clientWidth + 1).map((el) => el.textContent));
+      assert.deepEqual(cut, [], 'no step name is cut');
+    }
+
+    // Creative Intelligence: works with no property and no price; the AI cost is named as such.
+    await page.goto(`${BASE}/outreach/meta/create?draft=c1&step=creative`, { waitUntil: 'domcontentloaded' });
+    await waitReady(page);
+    await page.locator('[data-mm-ai-improve]').first().click();
+    await page.waitForSelector('[data-mm-ai-concept]');
+    await page.waitForSelector('[data-mm-ai-quote-failed]');
+    // The title never runs under the dialog's close button (every line of its text, not the box).
+    const underClose = await page.evaluate(() => {
+      const panel = document.querySelector('[data-mm-ai-panel]');
+      const title = panel?.querySelector('h2');
+      const close = [...(panel?.querySelectorAll('button') ?? [])].find((b) => getComputedStyle(b).position === 'absolute');
+      if (!title || !close) return 'missing';
+      const c = close.getBoundingClientRect();
+      const range = document.createRange(); range.selectNodeContents(title);
+      return [...range.getClientRects()].some((r) => r.width > 0 && r.left < c.right && r.right > c.left && r.top < c.bottom && r.bottom > c.top);
+    });
+    assert.equal(underClose, false, `${width}: the title is clear of the close button`);
+    assert.match(await page.locator('[data-mm-ai-quote-failed]').innerText(), /AI გენერაციის ღირებულება/, 'a failed quote is the AI cost, never a price of the offer');
+    assert.equal(await page.locator('[data-mm-ai-error]').count(), 0, 'one message, in the cost box');
+    await page.locator('[data-mm-ai-quote-retry]').click();
+    await page.waitForSelector('[data-mm-ai-generate]');
+    assert.match(await page.locator('[data-mm-ai-cost-title]').innerText(), /AI გენერაციის ღირებულება/);
+    assert.doesNotMatch(await page.locator('[data-mm-ai-panel]').innerText(), /ფასი ახლა მიუწვდომელია/, 'the old "price unavailable" wording is gone');
+    await page.locator('[data-mm-ai-generate]').click();
+    await page.locator('[data-mm-ai-confirm-go]').dblclick();
+    await page.waitForSelector('[data-mm-ai-error="START_FAILED"]');
+    await page.waitForTimeout(300);
+    assert.equal(ai.generate.length, 1, `${width}: a double click sends one request`);
+    assert.match(await page.locator('[data-mm-ai-error]').innerText(), /გენერაცია ვერ დაიწყო\. არაფერი ჩამოგეჭრათ/, 'a failed start is said truthfully');
+    assert.ok(!('price' in ai.generate[0]) && !('credits' in ai.generate[0]), 'the browser never sends a price');
+    assert.ok((await page.evaluate(LAYOUT)).overflow <= 1, `${width}: the dialog fits`);
+    if (SHOTS) await page.screenshot({ path: join(SHOTS, `final-ux-ka-${width}-creative-ai.png`) });
+  }
+});

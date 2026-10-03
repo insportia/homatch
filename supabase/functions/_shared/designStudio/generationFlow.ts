@@ -31,6 +31,8 @@ export interface AiProgress {
   mode: GenMode;
   specJobId: string;
   imageRequestedAt?: string | null;
+  /** How many times the edit-map step was claimed (an invocation killed mid-map leaves a lapsed lease). */
+  mapAttempts?: number;
   imageAt?: string | null;
   sceneAttempts?: number;
   sceneJobId?: string | null;
@@ -99,6 +101,8 @@ export interface GenIo {
 }
 
 const iso = (ms: number) => new Date(ms).toISOString();
+/** After this many map attempts die, the picture is finished without its edit map (it is still the result). */
+export const MAX_MAP_ATTEMPTS = 2;
 const merged = (row: Row, ai: Partial<AiProgress>) => ({ ...(row.timings ?? {}), ai: { ...(aiOf(row) ?? {}), ...ai } });
 
 /** IMAGE: one recorded request, one picture. */
@@ -153,12 +157,16 @@ export async function runSceneStep(io: GenIo, row: Row): Promise<'STORED' | 'SKI
 /** MAP: the edit map, READY, the money settled once. A picture without a map is still the design (just not object-editable). */
 export async function runMapStep(io: GenIo, row: Row): Promise<'READY' | 'BUSY'> {
   const lease = iso(io.now());
-  const claimed = await io.claim(row, ['FINISHING'], { lease_at: lease });
+  // Each claim is counted: a map step whose invocation died (a lapsed lease) is not tried forever.
+  const tries = (aiOf(row)?.mapAttempts ?? 0) + 1;
+  const claimed = await io.claim(row, ['FINISHING'], { lease_at: lease, timings: merged(row, { mapAttempts: tries }) });
   if (!claimed) return 'BUSY';
   const ai = aiOf(claimed)!;
   let mapKey: string | null = null; let legend: Row = null;
   let editMap: Record<string, unknown> = { state: 'UNAVAILABLE', reason: ai.sceneJobId ? null : 'NO_SCENE' };
-  if (ai.sceneJobId && claimed.final_key) {
+  // Two attempts already died: the picture is the result — it is shown without its edit map rather than never.
+  if (tries > MAX_MAP_ATTEMPTS) editMap = { state: 'UNAVAILABLE', reason: 'MAP_BUDGET' };
+  else if (ai.sceneJobId && claimed.final_key) {
     const [elements, bytes, rooms] = await Promise.all([io.loadScene(ai.sceneJobId), io.readPicture(claimed.final_key), io.rooms(claimed)]);
     const decoded = bytes ? io.decode(bytes) : null;
     if (!elements?.length) editMap = { state: 'UNAVAILABLE', reason: 'NO_SCENE' };

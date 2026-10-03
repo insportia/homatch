@@ -1,11 +1,25 @@
 // HOMATCH DESIGN STUDIO — OPENAI-FIRST GENERATION (the customer's design).
 //
-//   design-spec          { projectId, versionId, mode, look, preferences, roomId?, parentRenderId?, change?, idempotencyKey }
-//                        → { jobId, mode, dna, summary }
-//       OpenAI sees the customer's own source picture (and, for ROOM / VARIANT,
-//       the approved master) with HOMATCH's structured evidence beside it, and
-//       writes the Design Specification (designSpec.ts). Kept as the customer's
-//       own AI_DESIGN job: the design's lineage.
+//   design-spec          { projectId, versionId, mode, look, preferences, roomId?, parentRenderId?, change?, idempotencyKey, retry?, then? }
+//                        → 202 { state: 'RUNNING', jobId }
+//                        | { state: 'DONE', jobId, mode, dna, summary, chain? }
+//                        | { state: 'FAILED', reason, retryable }
+//       OpenAI sees the customer's own source (the floor plan, or the photos;
+//       for ROOM / VARIANT also the approved master) with HOMATCH's structured
+//       evidence beside it, and writes the Design Specification (designSpec.ts).
+//       Kept as the customer's own AI_DESIGN job: the design's lineage.
+//       SERVER-OWNED (durable.ts): the request records the job and answers at
+//       once; the specification is written in the background, so leaving the
+//       page never stops it. The same idempotencyKey is the same job (never a
+//       second paid call); a job whose instance was lost is taken over; a
+//       stored failure is answered as stored, and only retry: true writes again.
+//       A page from before this change (no `durable: true`) still gets the old
+//       answer: the specification written in the request, { jobId, mode, dna,
+//       summary }, or an error code.
+//       then: { quoteToken, versionName } — the customer confirmed the price
+//       up front, so the server carries on by itself: the design version, the
+//       render (reserved once), its picture and its edit map, each step started
+//       in a fresh invocation (kick), nothing waiting for the page.
 //
 //   render-generate      { quoteToken, projectId, versionId, specJobId, mode, roomId?, parentRenderId?, idempotencyKey }
 //                        → { render }
@@ -42,6 +56,8 @@ import { sceneRequest, validateScene, type SceneElement } from '../_shared/desig
 import { driveUntilMap, genNext, runMapStep, type GenIo, type ImageAnswer } from '../_shared/designStudio/generationFlow.ts';
 import { dnaKey, type PropertyDesignDNA, type RenderProduct } from '../../../src/lib/designStudio/renders/contract.ts';
 import { meterAiCall, priceAiCall, tokensOf } from './metering.ts';
+import { failure, isFresh, kick, readFailure } from './durable.ts';
+import { photoEvidence, photoOfRoom, type PhotoAnswer, type PhotoUnderstanding } from '../_shared/designStudio/photoRead.ts';
 import { decodeRgba, encodePng, rgbaOf } from './rasterRgba.ts';
 
 const CORS = {
@@ -64,7 +80,7 @@ const RECORD = 'id, project_id, version_id, kind, parent_id, view, status, facto
 
 // deno-lint-ignore no-explicit-any
 type Row = any;
-type Ctx = { caller: Row; admin: Row; actorId: string };
+type Ctx = { caller: Row; admin: Row; actorId: string; authorization: string };
 
 async function callerOf(req: Request): Promise<Ctx | { error: Response }> {
   const authHeader = req.headers.get('Authorization') ?? '';
@@ -77,7 +93,7 @@ async function callerOf(req: Request): Promise<Ctx | { error: Response }> {
   if (refused) return { error: refused };
   const { data: actor } = await admin.from('users').select('id').eq('auth_id', auth.user.id).maybeSingle();
   if (!actor?.id) return { error: json({ error: 'UNAUTHENTICATED' }, 401) };
-  return { caller, admin, actorId: String(actor.id) };
+  return { caller, admin, actorId: String(actor.id), authorization: authHeader };
 }
 
 async function billingOn(admin: Row): Promise<boolean> {
@@ -138,14 +154,35 @@ async function ownedVersion(ctx: Ctx, projectId: string, versionId: string) {
   return { project, version };
 }
 
-/** The customer's source: the floor plan behind this version's space (read as the caller), its reading and answers. */
-async function sourceOf(ctx: Ctx, version: Row) {
-  const { data: source } = await ctx.caller.from('ds_spatial_sources').select('id, floorplan_id').eq('id', version.source_id).maybeSingle();
+/** The customer's source behind this version's space (read as the caller): a floor plan, or the project's photos. */
+type Source =
+  | { kind: 'FLOOR_PLAN'; plan: Row; answers: Row[]; ceilingM: number | null }
+  | { kind: 'PHOTO'; understanding: PhotoUnderstanding; answers: PhotoAnswer[]; keys: string[] };
+
+async function sourceOf(ctx: Ctx, version: Row): Promise<Source | null> {
+  const { data: source } = await ctx.caller.from('ds_spatial_sources').select('id, kind, floorplan_id, canonical, provenance').eq('id', version.source_id).maybeSingle();
+  if (source?.kind === 'PHOTO_SET') {
+    const understanding = source.canonical?.understanding as PhotoUnderstanding | undefined;
+    const ids: string[] = Array.isArray(source.provenance?.referenceIds) ? source.provenance.referenceIds.map(String) : [];
+    if (understanding?.kind !== 'PHOTO_UNDERSTANDING' || !ids.length) return null;
+    const { data: refs } = await ctx.caller.from('ds_floorplans').select('id, object_key').in('id', ids);
+    const byId = new Map((refs ?? []).map((r: Row) => [r.id, r.object_key]));
+    const keys = ids.map((id) => byId.get(id)).filter(Boolean) as string[];
+    if (keys.length !== ids.length) return null;
+    const reconId = String(source.provenance?.reconstructionId ?? '');
+    const { data: recon } = UUID.test(reconId)
+      ? await ctx.caller.from('ds_reconstructions').select('corrections').eq('id', reconId).maybeSingle()
+      : { data: null };
+    const answers: PhotoAnswer[] = (Array.isArray(recon?.corrections?.flow?.answers) ? recon.corrections.flow.answers : [])
+      .filter((x: Row) => typeof x?.questionId === 'string' && typeof x?.value === 'string')
+      .slice(0, 10).map((x: Row) => ({ questionId: x.questionId.slice(0, 8), value: x.value.slice(0, 24) }));
+    return { kind: 'PHOTO', understanding, answers, keys };
+  }
   if (!source?.floorplan_id) return null;
   const { data: plan } = await ctx.caller.from('ds_floorplans').select('id, object_key, interpretation, corrections').eq('id', source.floorplan_id).maybeSingle();
   if (!plan?.object_key || !plan.interpretation?.doc) return null;
   const last = Array.isArray(plan.corrections) ? plan.corrections[plan.corrections.length - 1] : null;
-  return { plan, answers: Array.isArray(last?.flow?.answers) ? last.flow.answers : [], ceilingM: typeof last?.ceilingM === 'number' ? last.ceilingM : null };
+  return { kind: 'FLOOR_PLAN', plan, answers: Array.isArray(last?.flow?.answers) ? last.flow.answers : [], ceilingM: typeof last?.ceilingM === 'number' ? last.ceilingM : null };
 }
 
 /** An approved render to continue from (ROOM / VARIANT): the caller's own, READY, with its picture and spec. */
@@ -165,6 +202,20 @@ async function specJob(admin: Row, actorId: string, projectId: string, jobId: un
 
 // ── design-spec ──────────────────────────────────────────────────────────
 
+const productOf = (mode: GenerationMode): RenderProduct => (mode === 'ROOM' ? 'DS_ROOM_RENDER' : 'DS_MASTER_RENDER');
+// Only a room that does not exist is final; an invalid or missing specification is a technical failure worth asking again.
+const SPEC_TERMINAL = new Set(['ROOM_UNKNOWN']);
+const specFailure = (code: string) => failure(SPEC_TERMINAL.has(code) ? 'TERMINAL' : 'RETRYABLE', code);
+
+/** The job a request names (its idempotency key): a success first, then one in progress, then the latest. */
+async function jobFor(ctx: Ctx, projectId: string, key: string): Promise<Row | null> {
+  const { data } = await ctx.admin.from('ds_jobs').select('id, status, input, output, error, started_at, created_at')
+    .eq('user_id', ctx.actorId).eq('project_id', projectId).eq('kind', 'AI_DESIGN').eq('input->>idempotencyKey', key)
+    .neq('status', 'CANCELLED').order('created_at', { ascending: false }).limit(10);
+  const rows: Row[] = data ?? [];
+  return rows.find((r) => r.status === 'SUCCEEDED' && r.output?.kind === 'DESIGN_SPEC') ?? rows.find((r) => r.status === 'RUNNING') ?? rows[0] ?? null;
+}
+
 export async function handleDesignSpec(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   const res = await callerOf(req);
@@ -177,18 +228,41 @@ export async function handleDesignSpec(req: Request): Promise<Response> {
   const owned = await ownedVersion(ctx, body.projectId, body.versionId);
   if (!owned) return json({ error: 'NOT_FOUND' }, 404);
 
-  // The same request is the same specification (no second paid call).
-  const { data: same } = await ctx.admin.from('ds_jobs').select('id, status, output').eq('user_id', ctx.actorId).eq('project_id', owned.project.id)
-    .eq('kind', 'AI_DESIGN').eq('input->>idempotencyKey', body.idempotencyKey).order('created_at', { ascending: false }).limit(1);
-  const prior = same?.[0];
-  if (prior?.status === 'SUCCEEDED' && prior.output?.kind === 'DESIGN_SPEC') return json(answerOf(prior.id, prior.output));
-  if (prior?.status === 'RUNNING') return json({ error: 'SPEC_RUNNING' }, 409);
+  // The same request is the same specification (no second paid call), wherever it got to.
+  const prior = await jobFor(ctx, owned.project.id, String(body.idempotencyKey));
+  if (prior?.status === 'SUCCEEDED') {
+    const chain = prior.input?.then ? await advanceChain(ctx, owned, prior, String(body.idempotencyKey)) : null;
+    return json({ state: 'DONE', ...answerOf(prior.id, prior.output), ...(chain ? { chain } : {}) });
+  }
+  if (prior?.status === 'RUNNING') {
+    if (isFresh(prior.started_at)) return body.durable ? json({ state: 'RUNNING', jobId: prior.id }, 202) : json({ error: 'SPEC_RUNNING' }, 409);
+    // Its instance was lost (the lease lapsed): exactly one request takes it over.
+    const { data: won } = await ctx.admin.from('ds_jobs').update({ status: 'FAILED', error: failure('RETRYABLE', 'ABANDONED'), finished_at: new Date().toISOString() })
+      .eq('id', prior.id).eq('status', 'RUNNING').select('id');
+    if (!won?.length) return json({ state: 'RUNNING', jobId: prior.id }, 202);
+  } else if (prior?.status === 'FAILED' && body.durable) {
+    const f = readFailure(prior.error);
+    if (f?.category === 'TERMINAL' || !body.retry) return json({ state: 'FAILED', reason: f?.code ?? 'UNKNOWN', retryable: f?.category !== 'TERMINAL' });
+  }
+
+  // The price the customer confirmed, checked now: the chain will spend it without asking again.
+  let then: Row = null;
+  if (body.then && typeof body.then === 'object') {
+    const secret = await quoteSecret(env);
+    if (!secret) return json({ error: 'QUOTE_NOT_CONFIGURED' }, 503);
+    const q = await verifyQuote(body.then.quoteToken, secret);
+    if (!q.ok) return json({ error: q.reason }, q.reason === 'QUOTE_EXPIRED' ? 410 : 400);
+    if (!quoteMatches(q.claims, { userId: ctx.actorId, projectId: owned.project.id, versionId: owned.version.id, product: productOf(mode), views: 1 })) return json({ error: 'QUOTE_MISMATCH' }, 409);
+    if ((await billingOn(ctx.admin)) !== q.claims.charged) return json({ error: 'QUOTE_STALE' }, 409);
+    const name = typeof body.then.versionName === 'string' ? body.then.versionName.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 80) : '';
+    then = { claims: q.claims, versionName: name || 'Design' };
+  }
 
   const src = await sourceOf(ctx, owned.version);
   if (!src) return json({ error: 'SOURCE_MISSING' }, 409);
-  const evidence: PropertyEvidence = buildEvidence({
-    doc: src.plan.interpretation.doc, understanding: src.plan.interpretation.understanding ?? null, answers: src.answers, sourceKind: 'FLOOR_PLAN', ceilingM: src.ceilingM,
-  });
+  const evidence: PropertyEvidence = src.kind === 'PHOTO'
+    ? photoEvidence(src.understanding, src.answers)
+    : buildEvidence({ doc: src.plan.interpretation.doc, understanding: src.plan.interpretation.understanding ?? null, answers: src.answers, sourceKind: 'FLOOR_PLAN', ceilingM: src.ceilingM });
   const direction = directionFrom({ look: body.look, preferences: body.preferences });
   let approved: Row = null; let approvedSpec: DesignSpec | null = null;
   if (mode !== 'MASTER') {
@@ -198,61 +272,154 @@ export async function handleDesignSpec(req: Request): Promise<Response> {
   }
   const room = mode === 'ROOM' && typeof body.roomId === 'string'
     ? { id: body.roomId, name: evidence.rooms.find((r) => r.id === body.roomId)?.label ?? null } : null;
-  const change = mode === 'VARIANT' && body.change && typeof body.change === 'object' ? {
+  // A variant's change; a photo room may also be asked in another style ("სხვა სტილი").
+  const change = (mode === 'VARIANT' || (mode === 'ROOM' && evidence.sourceKind === 'PHOTO')) && body.change && typeof body.change === 'object' ? {
     style: typeof body.change.style === 'string' && /^[A-Z_]{2,20}$/.test(body.change.style) ? body.change.style : null,
     quality: typeof body.change.quality === 'string' && /^[A-Z_]{2,20}$/.test(body.change.quality) ? body.change.quality : null,
     note: typeof body.change.note === 'string' ? body.change.note.replace(/[\u0000-\u001f]/g, ' ').slice(0, 200) : null,
   } : null;
   const modeCtx: ModeContext = { mode, evidence, direction, room, change, approvedSpec };
 
-  const [source, master] = await Promise.all([
-    readImage(src.plan.object_key, MAX_SOURCE_BYTES),
-    approved ? readImage(approved.final_key, MAX_PICTURE_BYTES) : Promise.resolve(null),
-  ]);
-  const problem = modeContextProblem(modeCtx, { source: !!source, master: !!master });
-  if (problem) return json({ error: problem }, 409);
-
   const since = new Date(Date.now() - 3600_000).toISOString();
   const { count } = await ctx.admin.from('ds_jobs').select('id', { count: 'exact', head: true }).eq('user_id', ctx.actorId).eq('kind', 'AI_DESIGN').gte('created_at', since);
   if ((count ?? 0) >= SPECS_PER_HOUR) return json({ error: 'RATE_LIMITED' }, 429);
-  const apiKey = Deno.env.get('OPENAI_API_KEY');
-  if (!apiKey) return json({ error: 'DESIGN_UNAVAILABLE' }, 503);
+  if (!Deno.env.get('OPENAI_API_KEY')) return json({ error: 'DESIGN_UNAVAILABLE' }, 503);
 
   const { data: job } = await ctx.admin.from('ds_jobs').insert({
     user_id: ctx.actorId, project_id: owned.project.id, kind: 'AI_DESIGN', status: 'RUNNING', model: SPEC_MODEL, started_at: new Date().toISOString(),
-    input: { idempotencyKey: body.idempotencyKey, mode, versionId: owned.version.id, parentRenderId: approved?.id ?? null, roomId: room?.id ?? null, generator: 'OPENAI_FIRST' },
+    input: {
+      idempotencyKey: body.idempotencyKey, mode, versionId: owned.version.id, parentRenderId: approved?.id ?? null, roomId: room?.id ?? null,
+      sourceKind: evidence.sourceKind, generator: 'OPENAI_FIRST', ...(then ? { then } : {}),
+    },
   }).select('id').single();
   const jobId = (job as { id?: string } | null)?.id;
   if (!jobId) return json({ error: 'JOB_FAILED' }, 500);
-  const fail = async (reason: string, status = 422) => {
-    await ctx.admin.from('ds_jobs').update({ status: 'FAILED', error: reason, finished_at: new Date().toISOString() }).eq('id', jobId);
-    return json({ error: reason }, status);
+  // Two identical requests that raced: the earliest stays, the other stands down before spending anything.
+  const { data: first } = await ctx.admin.from('ds_jobs').select('id').eq('user_id', ctx.actorId).eq('project_id', owned.project.id).eq('kind', 'AI_DESIGN')
+    .eq('input->>idempotencyKey', body.idempotencyKey).eq('status', 'RUNNING').order('created_at', { ascending: true }).order('id', { ascending: true }).limit(1);
+  if (first?.[0]?.id && first[0].id !== jobId) {
+    await ctx.admin.from('ds_jobs').update({ status: 'CANCELLED', error: 'DUPLICATE', finished_at: new Date().toISOString() }).eq('id', jobId);
+    return json({ state: 'RUNNING', jobId: first[0].id }, 202);
+  }
+
+  if (!body.durable) {
+    // A page from before this change waits for the specification in the request, as it always did.
+    const done = await writeSpec(ctx, { jobId, modeCtx, src, approved }).catch(() => false);
+    const { data: after } = await ctx.admin.from('ds_jobs').select('status, output, error').eq('id', jobId).maybeSingle();
+    if (done && after?.status === 'SUCCEEDED') return json(answerOf(jobId, after.output));
+    return json({ error: readFailure(after?.error)?.code ?? 'SPEC_FAILED' }, 422);
+  }
+  const chainBody = { ...body, retry: false };
+  await inBackground(async () => {
+    try {
+      const done = await writeSpec(ctx, { jobId, modeCtx, src, approved });
+      // The customer confirmed the price: the next step starts in its own invocation.
+      if (done && then) await kick(ctx.authorization, 'design-spec', chainBody);
+    } catch (e) {
+      await ctx.admin.from('ds_jobs').update({ status: 'FAILED', error: failure('RETRYABLE', `CRASHED:${String((e as Error)?.message ?? e).slice(0, 60)}`), finished_at: new Date().toISOString() })
+        .eq('id', jobId).eq('status', 'RUNNING');
+    }
+  });
+  return json({ state: 'RUNNING', jobId }, 202);
+}
+
+/** The specification itself (background): the source pictures, OpenAI, validation, the cost, the job. */
+async function writeSpec(ctx: Ctx, a: { jobId: string; modeCtx: ModeContext; src: Source; approved: Row }): Promise<boolean> {
+  const { jobId, modeCtx, src, approved } = a;
+  const fail = async (code: string) => {
+    await ctx.admin.from('ds_jobs').update({ status: 'FAILED', error: specFailure(code), finished_at: new Date().toISOString() }).eq('id', jobId).eq('status', 'RUNNING');
+    return false;
   };
+  // The picture this design is drawn over: the plan, or the photo of the room asked for (the hero room for the master).
+  let sourceKey: string; let contextKeys: string[] = [];
+  if (src.kind === 'PHOTO') {
+    const roomId = modeCtx.mode === 'ROOM' ? modeCtx.room?.id : modeCtx.mode === 'VARIANT' ? approved?.finish?.roomId ?? null : null;
+    const index = photoOfRoom(src.understanding, roomId) ?? 0;
+    sourceKey = src.keys[index];
+    contextKeys = src.keys.filter((_, i) => i !== index).slice(0, 5);
+  } else {
+    sourceKey = src.plan.object_key;
+  }
+  const [source, master, ...context] = await Promise.all([
+    readImage(sourceKey, MAX_SOURCE_BYTES),
+    approved ? readImage(approved.final_key, MAX_PICTURE_BYTES) : Promise.resolve(null),
+    ...contextKeys.map((k) => readImage(k, MAX_SOURCE_BYTES)),
+  ]);
+  const problem = modeContextProblem(modeCtx, { source: !!source, master: !!master });
+  if (problem) return fail(problem);
+  const apiKey = Deno.env.get('OPENAI_API_KEY');
+  if (!apiKey) return fail('DESIGN_UNAVAILABLE');
 
   const started = Date.now();
-  // deno-lint-ignore no-explicit-any
-  let payload: any = null;
+  let payload: Row = null;
   try {
     const r = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(specRequest(SPEC_MODEL, modeCtx, { source: dataUrl(source!), master: master ? dataUrl(master) : null })),
+      body: JSON.stringify(specRequest(SPEC_MODEL, modeCtx, {
+        source: dataUrl(source!), master: master ? dataUrl(master) : null,
+        context: context.filter(Boolean).map((img) => dataUrl(img!)),
+      })),
     });
     payload = r.ok ? await r.json() : null;
   } catch { payload = null; }
   const text = payload ? textOf(payload) : '';
-  if (!text) return fail('SPEC_FAILED', 502);
+  if (!text) return fail('SPEC_FAILED');
   let raw: unknown;
   try { raw = JSON.parse(text); } catch { return fail('SPEC_BAD_SHAPE'); }
-  const spec = validateSpec(raw, evidence);
+  const spec = validateSpec(raw, modeCtx.evidence);
   if (!spec) return fail('SPEC_INVALID');
-  const cost = await meterAiCall(ctx.admin, { userId: ctx.actorId, productCode: 'DS_AI_DESIGN', jobRef: jobId, model: SPEC_MODEL, startedAt: started }, payload, { step: 'design_spec', mode });
-  const dna = dnaFromSpec(spec, direction.preferences, jobId);
+  const cost = await meterAiCall(ctx.admin, { userId: ctx.actorId, productCode: 'DS_AI_DESIGN', jobRef: jobId, model: SPEC_MODEL, startedAt: started }, payload, { step: 'design_spec', mode: modeCtx.mode, source: modeCtx.evidence.sourceKind });
+  const dna = dnaFromSpec(spec, modeCtx.direction.preferences, jobId);
   const output = {
-    kind: 'DESIGN_SPEC', mode, spec, evidence, direction, room, change, dna, sourceKey: src.plan.object_key,
+    kind: 'DESIGN_SPEC', mode: modeCtx.mode, spec, evidence: modeCtx.evidence, direction: modeCtx.direction, room: modeCtx.room ?? null, change: modeCtx.change ?? null, dna, sourceKey,
     parentRenderId: approved?.id ?? null, approvedSpecJobId: approved?.finish?.specJobId ?? null, model: SPEC_MODEL, ms: Date.now() - started,
   };
-  await ctx.admin.from('ds_jobs').update({ status: 'SUCCEEDED', output, cost_cents: cost.aiCents, finished_at: new Date().toISOString() }).eq('id', jobId);
-  return json(answerOf(jobId, output));
+  const { data: saved } = await ctx.admin.from('ds_jobs').update({ status: 'SUCCEEDED', output, cost_cents: cost.aiCents, finished_at: new Date().toISOString() })
+    .eq('id', jobId).eq('status', 'RUNNING').select('id');
+  return !!saved?.length;
+}
+
+/**
+ * The confirmed chain after the specification, idempotent at every step: the
+ * design version (MASTER / VARIANT; a deterministic id, made once), then the
+ * render (startGenerated: one row, one reservation). Asked again, it only
+ * makes sure the picture keeps moving. A step that cannot go on is answered
+ * as chain.error; the page then finishes it the ordinary way (quote → render).
+ */
+async function advanceChain(ctx: Ctx, owned: { project: Row; version: Row }, job: Row, idempotencyKey: string): Promise<Row> {
+  const then = job.input.then; const mode = job.output.mode as GenerationMode;
+  const chain: Row = { ...(job.output.chain ?? {}) };
+  const keep = () => ctx.admin.from('ds_jobs').update({ output: { ...job.output, chain } }).eq('id', job.id);
+  if (!chain.versionId) {
+    if (mode === 'ROOM') chain.versionId = owned.version.id;
+    else {
+      const id = await uuidFrom(`ds-chain:${job.id}:version`);
+      const { data: base } = await ctx.admin.from('ds_versions').select('state').eq('id', owned.version.id).maybeSingle();
+      const style = job.output.direction?.preferences?.style;
+      const { error } = await ctx.admin.from('ds_versions').upsert({
+        id, project_id: owned.project.id, user_id: ctx.actorId, source_id: owned.version.source_id, parent_id: owned.version.id,
+        name: then.versionName, origin: 'AI', job_id: job.id, state: base?.state ?? {}, style_tags: typeof style === 'string' ? [style] : [],
+        change_summary: [{ kind: 'AI_DESIGN_SPEC', generator: 'OPENAI_FIRST', jobId: job.id, mode, look: job.output.direction?.look ?? null, conflicts: job.output.spec?.architecture?.conflicts?.length ?? 0 }],
+        design_dna: job.output.dna,
+      }, { onConflict: 'id', ignoreDuplicates: true });
+      if (error) return { ...chain, error: 'VERSION_NOT_RECORDED' };
+      chain.versionId = id;
+      await ctx.admin.from('ds_projects').update({ head_version_id: id }).eq('id', owned.project.id);
+    }
+    await keep();
+  }
+  const { data: version } = await ctx.admin.from('ds_versions').select('id, project_id, source_id, archived_at, design_dna').eq('id', chain.versionId).maybeSingle();
+  if (!version || version.project_id !== owned.project.id) return { ...chain, error: 'VERSION_NOT_RECORDED' };
+  const parent = mode === 'MASTER' ? null : await approvedRender(ctx, owned.project.id, job.output.parentRenderId);
+  if (mode !== 'MASTER' && !parent) return { ...chain, error: 'MASTER_MISSING' };
+  // Billing switched since the customer confirmed: they confirmed something else.
+  if (!chain.renderId && (await billingOn(ctx.admin)) !== then.claims.charged) return { ...chain, error: 'QUOTE_STALE' };
+  const started = await startGenerated(ctx, {
+    projectId: owned.project.id, version, job, parent, mode, roomId: mode === 'ROOM' ? job.output.room?.id ?? null : null, claims: then.claims, idempotencyKey,
+  });
+  if ('error' in started) return { ...chain, error: started.error };
+  if (!chain.renderId && started.render?.id) { chain.renderId = started.render.id; await keep(); }
+  return { ...chain, render: started.render ?? null };
 }
 
 function answerOf(jobId: string, output: Row) {
@@ -330,7 +497,8 @@ function genIo(admin: Row): GenIo {
     },
     async reference(row) {
       const out = await specOf(row);
-      const key = row.timings?.ai?.mode === 'MASTER' ? out?.sourceKey : null;
+      // The customer's own picture: always for photos (each room drawn over its own photo), the plan for a plan's master.
+      const key = row.timings?.ai?.mode === 'MASTER' || out?.evidence?.sourceKind === 'PHOTO' ? out?.sourceKey : null;
       if (key) return readImage(key, MAX_SOURCE_BYTES);
       if (!row.parent_id) return null;
       const { data: parent } = await admin.from('ds_renders').select('final_key, user_id, project_id').eq('id', row.parent_id).maybeSingle();
@@ -418,10 +586,10 @@ function genIo(admin: Row): GenIo {
 
 // ── render-generate ──────────────────────────────────────────────────────
 
-const VIEW = (mode: GenerationMode, roomId: string | null) => ({
+const VIEW = (mode: GenerationMode, roomId: string | null, photo = false) => ({
   id: mode === 'ROOM' ? `room-${roomId}` : 'master', kind: mode === 'ROOM' ? 'ROOM' : 'MASTER', purpose: mode === 'ROOM' ? 'MAIN' : 'DOLLHOUSE', roomId,
   position: [0, 0, 0], target: [0, 0, 0], fovDeg: null, orthoScale: null, aspect: SIZE.width / SIZE.height, width: SIZE.width, height: SIZE.height,
-  samples: 0, cut: null, hideCeilings: mode !== 'ROOM', objectMap: true, generator: 'OPENAI', mode,
+  samples: 0, cut: null, hideCeilings: !photo && mode !== 'ROOM', objectMap: true, generator: 'OPENAI', mode, ...(photo ? { source: 'PHOTO' } : {}),
 });
 
 export async function handleRenderGenerate(req: Request): Promise<Response> {
@@ -451,21 +619,39 @@ export async function handleRenderGenerate(req: Request): Promise<Response> {
   if (!quoteMatches(claims, { userId: ctx.actorId, projectId: owned.project.id, versionId: owned.version.id, product, views: 1 })) return json({ error: 'QUOTE_MISMATCH' }, 409);
   if ((await billingOn(ctx.admin)) !== claims.charged) return json({ error: 'QUOTE_STALE' }, 409);
 
-  const view = VIEW(mode, roomId);
-  const key = await renderRowKey(ctx.actorId, String(body.idempotencyKey), 'START', view.id);
-  const respond = async (status = 200, extra: Record<string, unknown> = {}) => {
-    const { data } = await ctx.admin.from('ds_renders').select(RECORD).eq('user_id', ctx.actorId).eq('idempotency_key', key).maybeSingle();
-    return json({ render: data ?? null, ...extra }, status);
-  };
+  const out = await startGenerated(ctx, { projectId: owned.project.id, version: owned.version, job, parent, mode, roomId, claims, idempotencyKey: String(body.idempotencyKey) });
+  return 'error' in out ? json({ error: out.error }, out.status) : json({ render: out.render, ...(out.reused ? { reused: true } : {}) });
+}
+
+/**
+ * One generated render, started once: the same idempotency key is the same
+ * row (never a second picture, never a second reservation). Money first, then
+ * the row, then IMAGE → SCENE in the background, then the edit map in a fresh
+ * invocation (kick), so the whole picture is made without the page.
+ */
+async function startGenerated(ctx: Ctx, a: {
+  projectId: string; version: Row; job: Row; parent: Row; mode: GenerationMode; roomId: string | null; claims: QuoteClaims; idempotencyKey: string;
+}): Promise<{ render: Row; reused?: boolean } | { error: string; status: number }> {
+  const { mode, roomId, parent, job, claims } = a;
+  const product = productOf(mode);
+  const view = VIEW(mode, roomId, job.output?.evidence?.sourceKind === 'PHOTO');
+  const key = await renderRowKey(ctx.actorId, a.idempotencyKey, 'START', view.id);
+  const record = async () => (await ctx.admin.from('ds_renders').select(RECORD).eq('user_id', ctx.actorId).eq('idempotency_key', key).maybeSingle()).data ?? null;
+  const drive = (row: Row) => inBackground(async () => {
+    await driveUntilMap(genIo(ctx.admin), row);
+    // The edit map takes a whole invocation's CPU: its own request, as the same customer.
+    await kick(ctx.authorization, 'render-generate-step', { renderIds: [row.id] });
+  });
   const { data: existing } = await ctx.admin.from('ds_renders').select('*').eq('user_id', ctx.actorId).eq('idempotency_key', key).maybeSingle();
   if (existing) {
-    // The same Generate again (a double tap, a reload): the same row, never a second picture.
-    if (genNext(existing, Date.now()).action === 'IMAGE' || genNext(existing, Date.now()).action === 'SCENE') await inBackground(() => driveUntilMap(genIo(ctx.admin), existing));
-    return respond(200, { reused: true });
+    // The same Generate again (a double tap, a reload, the chain asked twice): the same row, never a second picture.
+    const step = genNext(existing, Date.now()).action;
+    if (step === 'IMAGE' || step === 'SCENE') await drive(existing);
+    return { render: await record(), reused: true };
   }
   const since = new Date(Date.now() - 3600_000).toISOString();
   const { count } = await ctx.admin.from('ds_renders').select('id', { count: 'exact', head: true }).eq('user_id', ctx.actorId).gte('created_at', since);
-  if ((count ?? 0) + 1 > RENDERS_PER_HOUR) return json({ error: 'RATE_LIMITED' }, 429);
+  if ((count ?? 0) + 1 > RENDERS_PER_HOUR) return { error: 'RATE_LIMITED', status: 429 };
 
   // Money first.
   const credits = RENDER_PRICING.creditsPerView[product];
@@ -474,15 +660,15 @@ export async function handleRenderGenerate(req: Request): Promise<Response> {
   if (claims.charged) {
     grant = await beginExecution(ctx.admin, {
       userId: ctx.actorId, productCode: product, idempotencyKey: reservationKey(key), jobRef: key,
-      authorizedMaxCredits: credits, requireFullBudget: true, allowIncluded: false, metadata: { ds_project_id: owned.project.id, ds_view_id: view.id, quoted_credits: credits, generator: 'OPENAI_FIRST' },
+      authorizedMaxCredits: credits, requireFullBudget: true, allowIncluded: false, metadata: { ds_project_id: a.projectId, ds_view_id: view.id, quoted_credits: credits, generator: 'OPENAI_FIRST' },
     });
-    if (!grant.ok || !grant.reservationId) return json({ error: grant.reason ?? 'ERROR' }, grant.reason === 'INSUFFICIENT_CREDITS' || grant.reason === 'BELOW_MIN_VIABLE_BUDGET' ? 402 : 409);
+    if (!grant.ok || !grant.reservationId) return { error: grant.reason ?? 'ERROR', status: grant.reason === 'INSUFFICIENT_CREDITS' || grant.reason === 'BELOW_MIN_VIABLE_BUDGET' ? 402 : 409 };
     billing = { credits, reservationId: grant.reservationId, state: 'RESERVED', productCode: product, planCode: grant.planCode, pricingVersion: grant.pricingVersion };
   }
-  const dna = owned.version.design_dna?.version === 'ds-dna-1' ? await sha256Hex(dnaKey(owned.version.design_dna)) : null;
+  const dna = a.version.design_dna?.version === 'ds-dna-1' ? await sha256Hex(dnaKey(a.version.design_dna)) : null;
   const now = new Date().toISOString();
   const { error: insErr } = await ctx.admin.from('ds_renders').upsert({
-    project_id: owned.project.id, user_id: ctx.actorId, version_id: owned.version.id, kind: view.kind, view, status: 'QUEUED', parent_id: parent?.id ?? null,
+    project_id: a.projectId, user_id: ctx.actorId, version_id: a.version.id, kind: view.kind, view, status: 'QUEUED', parent_id: parent?.id ?? null,
     idempotency_key: key, billing, dna_key: dna, cost: [],
     quote: { product, views: 1, credits: claims.credits, charged: claims.charged, expiresAt: new Date(claims.exp).toISOString(), override: null },
     finish: { generator: 'OPENAI_FIRST', mode, specJobId: job.id, sourceKey: job.output.sourceKey, parentRenderId: parent?.id ?? null, roomId, look: job.output.direction?.look ?? null, provider: 'OPENAI', model: null, check: null },
@@ -490,11 +676,11 @@ export async function handleRenderGenerate(req: Request): Promise<Response> {
   }, { onConflict: 'user_id,idempotency_key', ignoreDuplicates: true });
   if (insErr) {
     if (grant) await releaseExecution(ctx.admin, grant, 'RENDER_NOT_RECORDED').catch(() => null);
-    return json({ error: 'RENDER_NOT_RECORDED' }, 500);
+    return { error: 'RENDER_NOT_RECORDED', status: 500 };
   }
   const { data: row } = await ctx.admin.from('ds_renders').select('*').eq('user_id', ctx.actorId).eq('idempotency_key', key).maybeSingle();
-  if (row) await inBackground(() => driveUntilMap(genIo(ctx.admin), row));
-  return respond(200);
+  if (row) await drive(row);
+  return { render: await record() };
 }
 
 // ── render-generate-step ─────────────────────────────────────────────────

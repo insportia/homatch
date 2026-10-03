@@ -20,6 +20,7 @@ import {
   PHASE2_SWITCHES, getDiscoveryIntelligence, runSourceLiveChecks, setPhase2Switch, settingOn,
   type DiscoveryIntelligence, type Phase2Switch,
 } from '@/services/adminDiscovery';
+import { AdminMarketplacePanel } from '@/components/findProperty/AdminMarketplacePanel';
 
 const Panel = ({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) => (
   <section className="rounded-2xl border border-border bg-card p-4 shadow-card">
@@ -324,5 +325,11 @@ class PanelBoundary extends React.Component<{ children: React.ReactNode }, { fai
 }
 
 export function DiscoveryIntelligencePanel() {
-  return <PanelBoundary><IntelligenceContent /></PanelBoundary>;
+  return (
+    <>
+      <PanelBoundary><IntelligenceContent /></PanelBoundary>
+      {/* Marketplace Search observability: its own boundary and its own RPC. */}
+      <div className="mt-4"><AdminMarketplacePanel /></div>
+    </>
+  );
 }

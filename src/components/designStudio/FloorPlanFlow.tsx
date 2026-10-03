@@ -1,7 +1,10 @@
 // FROM A FLOOR PLAN TO A PHOTOREALISTIC HOME — the customer's path.
 //
-//   1. Upload      PNG / JPEG / WebP, or a PDF (page 1 is rendered here)
-//   2. Understand  HOMATCH reads the drawing and checks it against itself
+//   1. Upload      PNG / JPEG / WebP, or a PDF (page 1 is rendered here); the
+//                  plan is shown back ("ready") before anything is sent
+//   2. Understand  HOMATCH reads the drawing and checks it against itself —
+//                  SERVER-OWNED (floorplan.ts): leaving the page never stops it,
+//                  a failure says whether trying again (no upload) can help
 //   3. (Ask)       ONE quick question at a time, and only when HOMATCH's own
 //                  evidence is genuinely weak (quickQuestions.ts) — otherwise
 //                  the reading goes straight on. The full review of the plan
@@ -9,10 +12,11 @@
 //   4. Style       six looks, one tap
 //   5. Quality     Smart budget / High quality / Premium, the price, Generate.
 //                  "Customise details" opens the detailed look (DesignChooser).
-//   6. Generate    OpenAI-first (planToHome.ts generateHome): architecture cached
-//                  by its key, OpenAI's Design Specification from the customer's
-//                  own source, ONE photorealistic master picture and its edit map
-//                  — no Blender, resumable, never paid for twice
+//   6. Generate    OpenAI-first (planToHome.ts generateHome → designRun.ts): the
+//                  architecture cached by its key, then the server owns the rest —
+//                  OpenAI's Design Specification, the design version, ONE
+//                  photorealistic master picture and its edit map. No Blender;
+//                  resumable from anywhere; never paid for twice. Snake on request.
 //   7. Result      the home opens on its photorealistic picture
 //
 // Every step is kept on the plan's review entry, so a reload lands where the
@@ -35,6 +39,8 @@ import { necessaryQuestions } from '@/lib/designStudio/quickQuestions';
 import { freshStages, type StageStatus } from '@/components/designStudio/GenerationStages';
 import type { Stage } from '@/lib/designStudio/hybrid/contract';
 import { DesignStudioError } from '@/services/designStudio/projects';
+import { DesignStudioFailure } from '@/services/designStudio/durable';
+import type { RunStage } from '@/services/designStudio/designRun';
 import {
   createFloorPlanSource, getFloorPlan, interpretFloorPlan, recordReview, uploadFloorPlan, type FloorPlanRecord,
 } from '@/services/designStudio/floorplans';
@@ -45,15 +51,14 @@ import { signedUrls } from '@/services/designStudio/files';
 import { cn } from '@/lib/utils';
 import { PlanReview } from './planToHome/PlanReview';
 import { DesignChooser } from './planToHome/DesignChooser';
-import {
-  BuildingStep, QualityStep, QuickQuestionStep, RING, StyleStep, SURFACE, UnderstandingStep, UploadStep,
-} from './planToHome/SimpleSteps';
+import { QualityStep, QuickQuestionStep, RING, StyleStep, SURFACE, surpriseStyle } from './planToHome/SimpleSteps';
+import { AnalysisStep, FailureStep, GeneratingStep, PlanUploadStep } from './unified/Screens';
 
 /**
  * PREPARING is the understanding screen while the confirmed reading becomes the
  * home's architecture (cached by its key, so a reload re-enters it for free).
  */
-type Step = 'UPLOAD' | 'READING' | 'QUICK' | 'REVIEW' | 'PREPARING' | 'STYLE' | 'QUALITY' | 'CUSTOM' | 'GENERATING';
+type Step = 'UPLOAD' | 'READING' | 'READ_FAILED' | 'QUICK' | 'REVIEW' | 'PREPARING' | 'STYLE' | 'QUALITY' | 'CUSTOM' | 'GENERATING';
 type SavePatch = Parameters<typeof saveFlow>[1];
 
 const ERROR_KEY: Record<string, string> = {
@@ -68,11 +73,19 @@ const ERROR_KEY: Record<string, string> = {
   DS_PLAN_NOT_BUILDABLE: 'p2h_error_not_buildable',
   DS_AI_UNAVAILABLE: 'p2h_error_design',
   DS_AI_FAILED: 'p2h_error_design',
-  DS_PRICE_CHANGED: 'p2h_error_price_changed',
+  DS_PRICE_CHANGED: 'dsx_price_changed',
+  DS_INSUFFICIENT_CREDITS: 'dsx_no_credits',
   DS_SOURCE_MISSING: 'p2h_error_not_buildable',
   DS_RENDER_FAILED: 'sf_error_render',
   DS_RATE_LIMITED: 'sf_error_busy',
 };
+
+/** The customer's three stages, from the detailed ones the generation reports. */
+function runStageOf(stages: Record<Stage, StageStatus>): RunStage {
+  if (stages.CHECKING === 'RUNNING' || stages.CHECKING === 'DONE' || stages.PREPARING === 'RUNNING') return 'RESULT';
+  if (stages.FURNISHING === 'RUNNING' || stages.FURNISHING === 'DONE') return 'IMAGE';
+  return 'DESIGN';
+}
 
 const INPUT = 'h-10 w-full rounded-lg border border-[#D5D9E0] bg-white px-3 text-[15px] text-[#0C1119] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]';
 
@@ -85,6 +98,7 @@ const isImperial = (doc: FloorPlanDocument | null) => !!doc && [
 function resumeStep(plan: FloorPlanRecord | null, flow: FlowRecord | null, recalibrating: boolean): Step {
   if (!plan) return 'UPLOAD';
   if (plan.status === 'INTERPRETING' || plan.status === 'UPLOADED') return 'READING';
+  if (plan.status === 'FAILED') return 'READ_FAILED';
   if (!plan.interpretation) return 'UPLOAD';
   if (recalibrating) return 'REVIEW';
   if (flow?.step === 'GENERATING') return 'GENERATING';
@@ -118,8 +132,10 @@ export function FloorPlanFlow({
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [localPreview, setLocalPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [stage, setStage] = useState<'UPLOADING' | 'READING'>('READING');
-  const [readingSince, setReadingSince] = useState<number>(() => Date.now());
+  /** A reading that failed: worth trying again (the plan is kept), or another file. */
+  const [readFail, setReadFail] = useState<{ retryable: boolean } | null>(() => (start?.status === 'FAILED' ? { retryable: !/^TERMINAL:/.test(start.interpretation_error ?? '') } : null));
+  /** The finished design (generation): the result opens on it. */
+  const [doneVersion, setDoneVersion] = useState<string | null>(null);
   const last = start?.corrections?.[start.corrections.length - 1];
   const [decisions, setDecisions] = useState<ReviewDecisions>(last?.decisions ?? { rejected: [], roomKinds: {} });
   const [answers, setAnswers] = useState<PlanAnswer[]>(startFlow?.answers ?? []);
@@ -132,7 +148,7 @@ export function FloorPlanFlow({
   const [prefs, setPrefs] = useState<DesignPreferences>(() => normalizePreferences(startFlow?.preferences ?? DEFAULT_PREFERENCES));
   const [stages, setStages] = useState<Record<Stage, StageStatus>>(freshStages);
   const [busy, setBusy] = useState(false);
-  const [genFailed, setGenFailed] = useState(false);
+  const [genFailure, setGenFailure] = useState<{ retryable: boolean; message: string | null } | null>(null);
   const [problems, setProblems] = useState<string[]>([]);
   /* The master design's price, quoted by the server for this home and shown before Generate. */
   const [quote, setQuote] = useState<RenderQuote | null>(null);
@@ -181,53 +197,74 @@ export function FloorPlanFlow({
     setStep(asked.length ? 'QUICK' : 'PREPARING');
   };
 
-  // ── Reading ────────────────────────────────────────────────────────────
+  // ── Reading: the server owns it; this page only watches ──────────────────
+  const watching = useRef<{ cancelled: boolean } | null>(null);
+  useEffect(() => () => { if (watching.current) watching.current.cancelled = true; }, []);
+  const watchReading = async (planId: string, retry: boolean) => {
+    const signal = { cancelled: false };
+    watching.current = signal;
+    const t1 = performance.now();
+    try {
+      await interpretFloorPlan(planId, { retry, signal });
+      const read = await getFloorPlan(planId);
+      if (!read?.interpretation) throw new DesignStudioFailure('READING_FAILED', true);
+      timings.current.analysisMs = Math.round(performance.now() - t1);
+      const asked = necessaryQuestions(read.interpretation.understanding?.questions ?? [], []);
+      const given = latestFlow(read)?.answers ?? [];
+      const saved = latestFlow(read) ? read : await saveFlow(read.id, { step: 'REVIEW', answers: [], timings: timings.current, review: asked.length ? 'QUICK' : 'AUTO' });
+      setAnswers(given);
+      setPlan(saved);
+      afterReading(saved, given);
+    } catch (e) {
+      if (signal.cancelled) return;
+      if (e instanceof DesignStudioFailure) { setReadFail({ retryable: e.retryable }); setStep('READ_FAILED'); return; }
+      // Still working after a long wait (or the connection is gone): keep watching quietly.
+      if (e instanceof DesignStudioError && e.code === 'DS_STILL_WORKING') { window.setTimeout(() => { if (!signal.cancelled) void watchReading(planId, false); }, 5000); return; }
+      fail(e);
+      setStep('UPLOAD');
+    }
+  };
+
   const onFile = async (file: File) => {
     if (running.current) return;
     running.current = true;
     setError(null);
-    setStep('READING');
-    setStage('UPLOADING');
-    setReadingSince(Date.now());
-    if (file.type.startsWith('image/')) setLocalPreview(URL.createObjectURL(file));
+    setReadFail(null);
+    setBusy(true);
     try {
       const t0 = performance.now();
       const created = await uploadFloorPlan({ userId, projectId, file });
       timings.current.uploadMs = Math.round(performance.now() - t0);
+      if (file.type.startsWith('image/')) setLocalPreview(URL.createObjectURL(file));
       setPlan(created);
-      setStage('READING');
-      const t1 = performance.now();
-      await interpretFloorPlan(created.id);
-      const read = await getFloorPlan(created.id);
-      if (!read?.interpretation) throw new DesignStudioError('DS_READING_FAILED');
-      timings.current.analysisMs = Math.round(performance.now() - t1);
-      timings.current.reviewReadyMs = Math.round(performance.now() - t0);
-      const asked = necessaryQuestions(read.interpretation.understanding?.questions ?? [], []);
-      const saved = await saveFlow(read.id, { step: 'REVIEW', answers: [], timings: timings.current, review: asked.length ? 'QUICK' : 'AUTO' });
-      setAnswers([]);
-      setPlan(saved);
-      afterReading(saved, []);
+      setStep('READING');
     } catch (e) {
       fail(e);
       setStep('UPLOAD');
     } finally {
       running.current = false;
+      setBusy(false);
     }
   };
 
-  // A reading still under way when the page was opened: wait for it.
+  // Reading (just started, after a reload, or on another device): watch it to its end.
+  const retryNext = useRef(false);
   useEffect(() => {
-    if (step !== 'READING' || running.current || !plan) return;
-    let stop = false;
-    const id = window.setInterval(async () => {
-      const next = await getFloorPlan(plan.id).catch(() => null);
-      if (stop || !next) return;
-      if (next.status === 'INTERPRETED' && next.interpretation) { setPlan(next); afterReading(next, latestFlow(next)?.answers ?? []); }
-      else if (next.status === 'FAILED') { setError(t('ds_fp_error_generic')); setStep('UPLOAD'); }
-    }, 3000);
-    return () => { stop = true; window.clearInterval(id); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- afterReading reads only its arguments
-  }, [step, plan, t]);
+    if (step !== 'READING' || !plan) return;
+    const retry = retryNext.current;
+    retryNext.current = false;
+    void watchReading(plan.id, retry);
+    return () => { if (watching.current) watching.current.cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one watch per READING entry
+  }, [step, plan?.id]);
+
+  const retryReading = async () => {
+    if (!plan || busy) return;
+    setReadFail(null);
+    // The plan is already the server's: asked again (the next watch carries the retry), nothing is uploaded.
+    retryNext.current = true;
+    setStep('READING');
+  };
 
   // ── Scale and the detailed review's controls ────────────────────────────
   const estimate = useMemo(() => (doc ? estimateScale(doc, dims) : null), [doc, dims]);
@@ -358,7 +395,7 @@ export function FloorPlanFlow({
     if (!plan || !doc || !calibration || running.current || !preferences) return;
     running.current = true;
     setBusy(true);
-    setGenFailed(false);
+    setGenFailure(null);
     setError(null);
     setStep('GENERATING');
     setStages(() => {
@@ -381,15 +418,17 @@ export function FloorPlanFlow({
         versionName: (k) => t(k === 'original' ? 'ds_version_original' : k === 'design' ? 'p2h_version_design' : 'p2h_version_factory'),
         onStage: mark,
       });
-      onDone(result.versionId);
+      setDoneVersion(result.versionId);
     } catch (e) {
-      setGenFailed(true);
-      fail(e);
+      if (e instanceof DesignStudioError && (e.code === 'DS_STILL_WORKING' || e.code === 'DS_WATCH_STOPPED')) return;
+      const code = e instanceof DesignStudioError ? e.code : '';
+      // The plan was already read and accepted: a failed design is technical — always "try again", never "a clearer plan".
+      setGenFailure({ retryable: true, message: ERROR_KEY[code] ? t(ERROR_KEY[code]) : null });
     } finally {
       running.current = false;
       setBusy(false);
     }
-  }, [plan, doc, calibration, answers, decisions, anchors, ceilingM, ceilingFinal, ceilingSource, userId, projectId, projectName, t, onDone, quote, style, quality]);
+  }, [plan, doc, calibration, answers, decisions, anchors, ceilingM, ceilingFinal, ceilingSource, userId, projectId, projectName, t, quote, style, quality]);
 
   /** A retry or a resumed run uses exactly what was saved when Generate was pressed. */
   const savedPrefs = (): DesignPreferences => {
@@ -426,6 +465,9 @@ export function FloorPlanFlow({
     </div>
   ) : null;
 
+  const genSince = useRef(Date.now());
+  const onViewResult = useCallback(() => { if (doneVersion) onDone(doneVersion); }, [doneVersion, onDone]);
+
   const needsDoc = step === 'QUICK' || step === 'REVIEW' || step === 'STYLE' || step === 'QUALITY' || step === 'CUSTOM' || step === 'GENERATING';
   const current = quick[0] ?? null;
 
@@ -439,10 +481,15 @@ export function FloorPlanFlow({
         <p className="min-w-0 truncate font-display text-[15px] font-semibold">{projectName}</p>
       </header>
 
-      {step === 'UPLOAD' ? <UploadStep onFile={(f) => { void onFile(f); }} error={error} /> : null}
+      {step === 'UPLOAD' ? <PlanUploadStep onContinue={(f) => { void onFile(f); }} error={error} busy={busy} /> : null}
 
       {step === 'READING' || step === 'PREPARING' ? (
-        <UnderstandingStep image={localPreview ?? imageUrl} stage={step === 'READING' ? stage : 'READING'} since={readingSince} />
+        <AnalysisStep source="PLAN" images={[localPreview ?? imageUrl].filter((u): u is string => !!u)} />
+      ) : null}
+
+      {step === 'READ_FAILED' ? (
+        <FailureStep source="PLAN" retryable={readFail?.retryable !== false} message={null} busy={busy}
+          onRetry={() => { void retryReading(); }} onLater={onCancel} onChooseFile={() => { setPlan(null); setReadFail(null); setStep('UPLOAD'); }} />
       ) : null}
 
       {step === 'QUICK' && doc && current ? (
@@ -473,7 +520,8 @@ export function FloorPlanFlow({
 
       {step === 'STYLE' ? (
         <StyleStep value={style} onChange={(s) => { setStyle(s); persistNow({ look: { style: s, quality: quality ?? 'HIGH_QUALITY' } }); }}
-          onNext={goQuality} onDetail={openDetail} />
+          onNext={goQuality} onDetail={openDetail}
+          onSurprise={() => { const s = surpriseStyle(style); setStyle(s); persistNow({ look: { style: s, quality: quality ?? 'HIGH_QUALITY' } }); }} />
       ) : null}
 
       {step === 'QUALITY' ? (
@@ -497,8 +545,10 @@ export function FloorPlanFlow({
       ) : null}
 
       {step === 'GENERATING' ? (
-        <BuildingStep stages={stages} since={startFlow?.startedAt ? Date.parse(startFlow.startedAt) : undefined}
-          failed={genFailed} error={error} busy={busy} onRetry={() => { void generate(savedPrefs(), true); }} />
+        <GeneratingStep source="PLAN" stage={runStageOf(stages)} since={startFlow?.startedAt ? Date.parse(startFlow.startedAt) : genSince.current}
+          done={!!doneVersion} failure={genFailure} busy={busy}
+          onView={onViewResult} onRetry={() => { void generate(savedPrefs(), true); }} onLater={onCancel}
+          onChooseFile={() => { setPlan(null); setGenFailure(null); setStep('UPLOAD'); }} />
       ) : null}
 
       {needsDoc && !doc ? (

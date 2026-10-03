@@ -92,7 +92,7 @@ export function ControlsBar({ t, fmt, d, onChanged, onEditBudget, onEditDuration
         <DialogContent className="w-[calc(100vw-2rem)] max-w-md rounded-2xl">
           {confirm && (
             <>
-              <DialogHeader>
+              <DialogHeader className="pr-10">
                 <DialogTitle>{t(`mm_c_confirm_${confirm}_title`)}</DialogTitle>
                 <DialogDescription>{t(`mm_c_confirm_${confirm}_body`)}</DialogDescription>
               </DialogHeader>

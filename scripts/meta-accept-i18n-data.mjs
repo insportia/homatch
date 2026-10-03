@@ -6,7 +6,14 @@ export const META_ACCEPT_STRINGS = {
   /* ── READINESS: every check and code has words; every item is a link ── */
   mads_check_targeting: ['Locations and audience', 'ლოკაციები და აუდიტორია', 'Места и аудитория', 'Konumlar ve hedef kitle', 'المواقع والجمهور', 'מיקומים וקהל'],
   mads_check_managed_access: ['HOMATCH advertising access', 'HOMATCH-ის სარეკლამო წვდომა', 'Доступ к рекламе HOMATCH', 'HOMATCH reklam erişimi', 'صلاحية الإعلان في HOMATCH', 'גישת הפרסום ב-HOMATCH'],
-  mads_check_domain_scope: ['Real-estate advertising', 'უძრავი ქონების რეკლამა', 'Реклама недвижимости', 'Gayrimenkul reklamı', 'إعلان عقاري', 'פרסום נדל״ן'],
+  mads_check_domain_scope: [
+    "Advertising category",
+    "რეკლამის კატეგორია",
+    "Категория рекламы",
+    "Reklam kategorisi",
+    "فئة الإعلان",
+    "קטגוריית הפרסום",
+  ],
   mm_r_check_other: ['Needs attention', 'ყურადღებას საჭიროებს', 'Требует внимания', 'İlgilenilmesi gerekiyor', 'يحتاج إلى انتباه', 'דורש תשומת לב'],
   mm_r_left: ['Left to fix: {{n}}', 'დარჩა გასასწორებელი: {{n}}', 'Осталось исправить: {{n}}', 'Düzeltilecek: {{n}}', 'المتبقي للإصلاح: {{n}}', 'נותר לתקן: {{n}}'],
   mm_r_fix: ['Fix', 'გასწორება', 'Исправить', 'Düzelt', 'إصلاح', 'תיקון'],

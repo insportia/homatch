@@ -41,10 +41,20 @@ interface PrivateImageProps {
    * caller got before this existed.
    */
   pending?: ReactNode;
+  /**
+   * Told once when an address could not be shown (minting refused, or the host
+   * would not serve it), so a caller can explain WHY instead of showing a blank.
+   */
+  onUnavailable?: () => void;
+}
+
+/** An absolute http(s) address: a portal's own image, hotlinked. */
+function isExternal(value: string | null | undefined): boolean {
+  return /^https?:/i.test(String(value ?? ''));
 }
 
 export function PrivateImage({
-  src, alt, className, loading = 'lazy', fallback = null, pending,
+  src, alt, className, loading = 'lazy', fallback = null, pending, onUnavailable,
 }: PrivateImageProps) {
   const [resolved, setResolved] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -57,10 +67,16 @@ export function PrivateImage({
       // The path can change while a signature is in flight — a gallery being
       // scrolled, a cover being swapped. Whatever came back for the previous
       // path is not what this component should now be showing.
-      if (live) setResolved(url);
+      if (!live) return;
+      setResolved(url);
+      if (!url && src) setFailed(true);
     });
     return () => { live = false; };
   }, [src]);
+
+  useEffect(() => {
+    if (failed && src) onUnavailable?.();
+  }, [failed, src, onUnavailable]);
 
   /*
    * FAILED IS CHECKED FIRST, and there is no src-less pending state: with nothing to
@@ -76,6 +92,10 @@ export function PrivateImage({
       alt={alt}
       className={className}
       loading={loading}
+      /* An imported listing's photo is the portal's own file. Sending no referrer is
+         what the Find Property cards already do for the same hosts: it tells the host
+         nothing about our page, and hosts that refuse foreign referrers still serve. */
+      referrerPolicy={isExternal(resolved) ? 'no-referrer' : undefined}
       onError={() => setFailed(true)}
     />
   );

@@ -4,7 +4,7 @@
 //   B  clickability: selected / disabled / priority states never colour alone
 //   C  location: refinements coexist with countries; one effective geography
 //   D  audience: META REQUIRED vs HOMATCH RECOMMENDED vs USER CHOICE; the advertiser's own country
-//   E  creative: field help, ☆/★ priority, "დამეხმაროს HOMATCH AI"
+//   E  creative: field help, ☆/★ priority, "HOMATCH AI დამეხმაროს"
 //   F  domain guard: classifier, preflight, launch re-check (no frontend bypass), admin evidence, no AI
 //   G  leads: one customer action, admin cause, no fake availability
 //   H  intelligence: one learning model — NEW / COLLECTING / USING_SIGNALS
@@ -149,7 +149,7 @@ test('E: creative fields explain themselves; priority is an unmistakable ☆/★
   assert.match(cr, /mm_m_priority_on' : 'mm_m_priority_make'/);
   assert.match(cr, /aria-describedby=\{`mm-m-prio-\$\{creative\.id\}`\}/, 'the explanation is announced');
   for (const k of ['mm_m_field_primary', 'mm_m_field_primary_ph', 'mm_m_field_headline_d', 'mm_m_field_description_d', 'mm_m_ai_help']) assert.match(cr, new RegExp(k));
-  assert.equal(M.mm_m_ai_help[1], 'დამეხმაროს HOMATCH AI');
+  assert.equal(M.mm_m_ai_help[1], 'HOMATCH AI დამეხმაროს');
   assert.equal(M.mm_m_field_primary[1], 'დაწერეთ თქვენი სარეკლამო ტექსტი / აღწერა');
   assert.equal(M.mm_m_field_headline_d[1], 'მოკლე მთავარი ფრაზა, რომელსაც მომხმარებელი პირველ რიგში დაინახავს.');
   assert.equal(M.mm_m_priority_explain[1], 'ამ კრეატივს HOMATCH პირველ რიგში გაითვალისწინებს, თუმცა შედეგების მიხედვით სხვა კრეატივებიც შეიძლება უკეთ იმუშაოს.');
@@ -163,7 +163,7 @@ test('E: creative fields explain themselves; priority is an unmistakable ☆/★
 
 /* ── F · DOMAIN GUARD ──────────────────────────────────────────────────── */
 
-test('F: the real-estate ecosystem is allowed; clearly unrelated or high-risk ads are blocked; borderline goes to a person', () => {
+test('F: property and any lawful product, service or business are allowed; only high-risk ads are blocked; mixed high-risk goes to a person', () => {
   const v = (texts, extra = {}) => classifyDomainScope({ hasProperty: false, offer: { isProperty: false, title: '' }, texts, ...extra }).decision;
   for (const s of [
     'Apartment renovation in Tbilisi — kitchens and bathrooms',
@@ -177,10 +177,15 @@ test('F: the real-estate ecosystem is allowed; clearly unrelated or high-risk ad
     'شقة للبيع في تبليسي',
     'דירה להשכרה בבטומי',
   ]) assert.equal(v([s]), 'ALLOWED', s);
-  for (const s of ['Online casino bonus', 'Sports betting odds today', 'Bitcoin trading signals', 'Every new sneaker 50% off', 'Pizza delivery in 30 minutes', 'კაზინო ბონუსი']) {
+  // Ordinary lawful businesses run without a real-estate signal and without a person checking them.
+  for (const s of ['Every new sneaker 50% off', 'Pizza delivery in 30 minutes', 'Moving company, fast and careful', 'კერამიკული ფილების მაღაზია',
+    'Ремонт смартфонов за час', 'Online English lessons for kids', 'Yoga studio — first class free', 'مطعم سوشي جديد']) {
+    assert.deepEqual(classifyDomainScope({ hasProperty: false, offer: { isProperty: false, title: '' }, texts: [s] }).decision, 'ALLOWED', s);
+  }
+  assert.equal(classifyDomainScope({ hasProperty: false, offer: { isProperty: false, title: 'Pizza delivery' }, texts: [] }).reason, 'GENERAL_OFFER');
+  for (const s of ['Online casino bonus', 'Sports betting odds today', 'Bitcoin trading signals', 'კაზინო ბონუსი']) {
     assert.equal(v([s]), 'BLOCKED_OUT_OF_SCOPE', s);
   }
-  assert.equal(v(['Moving company, fast and careful']), 'NEEDS_REVIEW', 'no clear signal: a person decides');
   assert.equal(v(['Apartment with a casino bonus']), 'NEEDS_REVIEW', 'mixed: a person decides');
   assert.equal(classifyDomainScope({ hasProperty: true, texts: ['Two bedrooms in Vake'] }).decision, 'ALLOWED');
   assert.equal(classifyDomainScope({ hasProperty: true, texts: ['Flat next to the casino'] }).decision, 'NEEDS_REVIEW', 'a property is never refused by a word');
@@ -217,8 +222,8 @@ test('F: the server decides — preflight, and again at launch; a frontend that 
   assert.doesNotMatch(dc, /fetch\(|openai|anthropic|gemini|callAi|aiJson/i);
   // The customer reads one kind sentence, never the matched words.
   assert.deepEqual(preflightDetails('BLOCKED_OUT_OF_SCOPE:GAMBLING'), [{ key: 'mm_m_scope_blocked', value: '' }]);
-  assert.deepEqual(preflightDetails('IN_REVIEW:NO_REAL_ESTATE_SIGNAL'), [{ key: 'mm_m_scope_review', value: '' }]);
-  assert.equal(M.mm_m_scope_blocked[1], 'HOMATCH Ads შექმნილია უძრავი ქონებისა და მასთან დაკავშირებული სერვისებისთვის. ეს რეკლამა ამ მიმართულებას არ შეესაბამება. შეგიძლიათ შექმნათ უძრავ ქონებასთან დაკავშირებული კამპანია.');
+  assert.deepEqual(preflightDetails('IN_REVIEW:MIXED_SIGNALS'), [{ key: 'mm_m_scope_review', value: '' }]);
+  assert.equal(M.mm_m_scope_blocked[1], 'HOMATCH-ით აზარტული თამაშების, ზრდასრულთა შინაარსის, ნარკოტიკების და კრიპტოვაჭრობის რეკლამა შეუძლებელია. შეგიძლიათ დაარეკლამოთ ნებისმიერი სხვა კანონიერი პროდუქტი, სერვისი ან ბიზნესი.');
   assert.match(page, /code === 'OUT_OF_SCOPE'|'OUT_OF_SCOPE'/);
 });
 
@@ -346,6 +351,6 @@ test('G2: HOMATCH opens Meta\'s own terms page and re-checks with Meta — it ne
   assert.match(engine, /leadTermsEvidence\(leadCheckOf\(page\?\.capabilities\)\) === 'REQUIRED'\) add\('lead_terms', 'ACTION_REQUIRED', 'LEAD_TERMS_REQUIRED'\)/, 'preflight holds it on evidence only');
   // The Leads goal stays selectable when the owner can resolve it here.
   assert.match(page, /const enabled = switchedOn && FORMS_ACTIONABLE\.has\(forms\);/);
-  assert.equal(M.mm_l_terms_cta[1], 'Meta-ს პირობებთან დათანხმება');
+  assert.equal(M.mm_l_terms_cta[1], 'Meta-ს პირობებზე დათანხმება');
   for (const [k, v] of Object.entries(M)) if (k.startsWith('mm_l_')) for (const x of v) assert.doesNotMatch(x, /leads_retrieval|pages_manage|permission/i, k);
 });

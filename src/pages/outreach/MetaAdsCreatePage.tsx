@@ -268,10 +268,10 @@ export default function MetaAdsCreatePage() {
   if (!campaign) {
     return (
       <AppLayout noPadding>
-        <div className="mx-auto grid w-full max-w-[86rem] gap-5 px-4 py-6 sm:px-6 lg:grid-cols-[220px_minmax(0,1fr)_360px] lg:px-8">
+        <div className="mx-auto grid w-full max-w-[86rem] gap-5 px-4 py-6 sm:px-6 lg:grid-cols-[236px_minmax(0,1fr)] xl:grid-cols-[236px_minmax(0,1fr)_340px] lg:px-8">
           <Skeleton className="hidden h-80 rounded-2xl lg:block" />
           <div className="space-y-3"><Skeleton className="h-10 rounded-xl" /><Skeleton className="h-72 rounded-2xl" /></div>
-          <Skeleton className="hidden h-96 rounded-2xl lg:block" />
+          <Skeleton className="hidden h-96 rounded-2xl xl:block" />
         </div>
       </AppLayout>
     );
@@ -370,7 +370,7 @@ export default function MetaAdsCreatePage() {
           <div className="mt-3 rounded-xl border border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] px-4 py-2.5 text-[13px] text-[hsl(var(--gold-ink))]">{t('mads_mock_banner')}</div>
         )}
 
-        <div className="mt-4 grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)_360px]">
+        <div className="mt-4 grid gap-5 lg:grid-cols-[236px_minmax(0,1fr)] xl:grid-cols-[236px_minmax(0,1fr)_340px]">
           <aside className="lg:sticky lg:top-4 lg:self-start">
             <Stepper steps={STEPS} current={step} gaps={gaps} onGo={(s) => void go(s)} left={openSteps.length} onLeft={() => openSteps[0] && fixGap(openSteps[0])} />
             <div className="mt-3 hidden lg:block"><SaveIndicator state={saveState} /></div>
@@ -519,7 +519,7 @@ export default function MetaAdsCreatePage() {
       {/* THE MONEY MOMENT — everything that will be submitted, spelled out. */}
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent className="max-h-[90vh] max-w-[calc(100%-2rem)] overflow-y-auto md:max-w-md">
-          <DialogHeader><DialogTitle>{t('mads_confirm_title')}</DialogTitle></DialogHeader>
+          <DialogHeader className="pr-10"><DialogTitle>{t('mads_confirm_title')}</DialogTitle></DialogHeader>
           <dl className="space-y-1.5 text-sm">
             {[
               [t('mads_conn_page'), page?.name ?? '—'],
@@ -605,14 +605,16 @@ function OfferStep({ campaign, properties, patch }: {
           <Button variant="outline" size="sm" className="gap-1.5" onClick={() => navigate('/property/add')}><Plus className="h-3.5 w-3.5" />{t('madsb_offer_add_property')}</Button>
         </div>
       )}
-      <ChoiceCard active={otherActive} icon={<Building2 className="h-4 w-4" />} title={t('mads_offer_other')} body={t('madsb_offer_other_d')}
+      <ChoiceCard active={otherActive} icon={<Building2 className="h-4 w-4" />} title={t('mm_u_offer_other')} body={t('madsb_offer_other_d')}
         onClick={() => patch(otherActive ? { offer: null } : { property_id: null, offer: { isProperty: false, dealKind: 'OTHER', title } } as never, { immediate: true })} />
       {otherActive && (
         <div className="space-y-3 rounded-xl border border-border p-3.5">
           <label className="block">
             <span className="mb-1 block text-sm font-medium text-foreground">{t('madsb_offer_title_label')}</span>
-            <Input data-mm-offer-title="" placeholder={t('mads_offer_title_ph')} value={title} maxLength={120}
+            <Input data-mm-offer-title="" placeholder={t('mm_u_offer_title_ph')} value={title} maxLength={120} aria-describedby="mm-offer-title-note"
               onChange={(e) => { setTitle(e.target.value); patch({ offer: { ...(offer ?? { isProperty: false, dealKind: 'OTHER' }), title: e.target.value } } as never); }} />
+            {/* Internal to HOMATCH: people who see the ad never see this name. */}
+            <span id="mm-offer-title-note" className="mt-1.5 block text-2xs leading-relaxed text-muted-foreground" data-mm-internal-note="offer">{t('mm_u_offer_title_note')}</span>
           </label>
           <div>
             <p className="mb-1.5 text-sm font-medium text-foreground">{t('madsb_offer_kind')}</p>
@@ -658,11 +660,11 @@ function PreLogin() {
         <StepShell title={t('mads_step_what')}>
           <div className="grid gap-2 sm:grid-cols-2">
             <ChoiceCard active={!other} icon={<Home className="h-4 w-4" />} title={t('mads_offer_property_signin')} onClick={() => setLocal((v) => ({ ...v, offer: null }))} />
-            <ChoiceCard active={other} icon={<Building2 className="h-4 w-4" />} title={t('mads_offer_other')}
+            <ChoiceCard active={other} icon={<Building2 className="h-4 w-4" />} title={t('mm_u_offer_other')}
               onClick={() => setLocal((v) => ({ ...v, offer: other ? null : { isProperty: false, dealKind: 'OTHER', title: v.offer?.title ?? '' } }))} />
           </div>
           {other && (
-            <Input placeholder={t('mads_offer_title_ph')} value={local.offer?.title ?? ''}
+            <Input placeholder={t('mm_u_offer_title_ph')} value={local.offer?.title ?? ''}
               onChange={(e) => setLocal((v) => ({ ...v, offer: { ...(v.offer ?? { isProperty: false, dealKind: 'OTHER' }), title: e.target.value } }))} />
           )}
         </StepShell>

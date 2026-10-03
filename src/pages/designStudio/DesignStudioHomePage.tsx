@@ -1,5 +1,10 @@
 // YOUR HOME — the result of "Generate my home".
 //
+// An OpenAI-first project (photos, or a floor plan whose design OpenAI made)
+// opens on the unified Result (unified/DesignResult.tsx): before / after,
+// edit, another option, style, quality, other rooms. Everything below is the
+// earlier result, kept for projects designed before it.
+//
 // The photorealistic picture of the whole home IS the page: tap a piece or a
 // surface in it to change it. Everything else is a quiet step away:
 //
@@ -50,15 +55,57 @@ import { WALKTHROUGH_OFFERED } from '@/lib/designStudio/walkthroughOffer';
 import { aiActionsFor, aiAppearanceEdit, aiWhat, isAiEntry } from '@/lib/designStudio/renders/aiEdits';
 import { isGenerated } from '@/services/designStudio/generation';
 import { signedUrls } from '@/services/designStudio/files';
+import { referencesById } from '@/services/designStudio/reconstructions';
+import { DesignResult, type ResultData } from '@/components/designStudio/unified/DesignResult';
+import { isPhotoUnderstanding, roomKindKey, type PhotoUnderstanding } from '@/lib/designStudio/photoProject';
 
 export default function DesignStudioHomePage() {
   return (
     <RouteGuard>
       <DesignStudioGate>
-        <Home />
+        <HomeEntry />
       </DesignStudioGate>
     </RouteGuard>
   );
+}
+
+/** Which result a project opens on: the unified one for OpenAI-first designs, else the earlier one. */
+type Entry = { kind: 'RESULT'; data: Omit<ResultData, 'rooms'> & { rooms: Array<{ id: string; kind: string; label: string | null; photoUrl: string | null }> } } | { kind: 'LEGACY' } | null;
+
+async function loadEntry(projectId: string): Promise<Entry> {
+  const bundle = await getProject(projectId);
+  if (!bundle?.project.head_version_id || !bundle.project.active_source_id) return { kind: 'LEGACY' };
+  const [head, source] = await Promise.all([getVersion(bundle.project.head_version_id), getSourceFull(bundle.project.active_source_id)]);
+  if (!head || !source) return { kind: 'LEGACY' };
+  if (source.kind === 'PHOTO_SET') {
+    const u = (source.canonical as { understanding?: unknown } | null)?.understanding;
+    const understanding = isPhotoUnderstanding(u) ? (u as PhotoUnderstanding) : null;
+    const ids = Array.isArray((source.provenance as { referenceIds?: unknown })?.referenceIds) ? ((source.provenance as { referenceIds: string[] }).referenceIds) : [];
+    const refs = await referencesById(ids).catch(() => []);
+    const keys = refs.map((r) => r.object_key);
+    const signed = keys.length ? await signedUrls(keys, 1800).catch(() => new Map<string, string>()) : new Map<string, string>();
+    const rooms = (understanding?.rooms ?? []).map((r) => ({ id: r.id, kind: r.kind, label: r.label || null, photoUrl: signed.get(keys[r.primaryPhoto] ?? '') ?? null }));
+    return { kind: 'RESULT', data: { bundle, head, sourceKind: 'PHOTO', rooms, heroRoomId: understanding?.heroRoomId ?? null } };
+  }
+  const renders = await listRenders(projectId);
+  if (!renders.some((r) => isGenerated(r))) return { kind: 'LEGACY' };
+  const canonical = (source.canonical as CanonicalSpace | null) ?? null;
+  const rooms = canonical?.scene ? buildSpaceModel(canonical.scene).rooms.map((r) => ({ id: r.id, kind: r.kind, label: r.label ?? null, photoUrl: null })) : [];
+  return { kind: 'RESULT', data: { bundle, head, sourceKind: 'FLOOR_PLAN', rooms, heroRoomId: null } };
+}
+
+function HomeEntry() {
+  useSurfaceTheme('light');
+  const { projectId = '' } = useParams();
+  const { t } = useLanguage();
+  const [entry, setEntry] = useState<Entry | undefined>(undefined);
+  const load = useCallback(async () => { setEntry(await loadEntry(projectId).catch(() => ({ kind: 'LEGACY' as const }))); }, [projectId]);
+  useEffect(() => { void load(); }, [load]);
+  if (entry === undefined) return <div className="grid h-[100dvh] place-items-center bg-[#F7F4EF] text-[#0C1119]"><Loader2 className="h-6 w-6 animate-spin" aria-label={t('ds_loading_project')} /></div>;
+  if (!entry || entry.kind === 'LEGACY') return <Home />;
+  // Room names in the customer's words: the reading's own label, else the kind.
+  const rooms = entry.data.rooms.map((r) => ({ id: r.id, label: r.label ?? t(roomKindKey(r.kind)), photoUrl: r.photoUrl }));
+  return <DesignResult data={{ ...entry.data, rooms }} onReload={load} />;
 }
 
 /** The result first; the rooms and the plan are one quiet step away, always with a way back. */

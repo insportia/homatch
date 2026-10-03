@@ -804,6 +804,8 @@ export function campaignStartErrorKey(error: unknown): { key: string; vars: Reco
   if (['INSUFFICIENT_CREDITS', 'BELOW_MIN_VIABLE_BUDGET'].includes(error.reasonCode)) {
     return { key: 'campaign_err_balance', vars: {} };
   }
+  /* An expired property is not freshly confirmed inventory; renewal is free. */
+  if (error.reasonCode === 'PROPERTY_EXPIRED') return { key: 'pow_discovery_expired_error', vars: {} };
   return null;
 }
 
@@ -834,6 +836,18 @@ export async function startMatchingCampaign(
   discoverBrokers?: boolean,
 ): Promise<{ jobId: string; campaignId: string } | null> {
   // 1. Upsert campaign record
+  /*
+   * FRESHNESS FIRST, BEFORE ANYTHING IS SWITCHED ON. An expired property is not
+   * freshly confirmed inventory (the database refuses the activation and
+   * match-campaign refuses the start); asking here means nothing is half-activated
+   * and the owner hears the one thing to do: renew, which is free.
+   */
+  const { data: lifecycle } = await supabase.rpc('my_property_lifecycle', { p_property_ids: [propertyId] });
+  const life = Array.isArray(lifecycle) ? lifecycle[0] as { freshness_state?: string } | undefined : undefined;
+  if (life?.freshness_state === 'EXPIRED') {
+    throw new CampaignStartError('This property has expired; renew it to restart discovery.', 'PROPERTY_EXPIRED', null);
+  }
+
   let campaignId: string;
   const { data: existing } = await supabase
     .from('matching_campaigns')
@@ -878,7 +892,11 @@ export async function startMatchingCampaign(
       .from('properties')
       .update({ matching_status: 'ACTIVE' })
       .eq('id', propertyId);
-    if (propErr) throw new Error(`Could not activate the property: ${propErr.message}`);
+    /* The database refuses to switch an expired property back on; that refusal is the
+       owner's "renew first", not a broken write. */
+    if (propErr) throw propErr.message.includes('PROPERTY_EXPIRED')
+      ? new CampaignStartError(propErr.message, 'PROPERTY_EXPIRED', null)
+      : new Error(`Could not activate the property: ${propErr.message}`);
 
     campaignId = existing.id;
   } else {

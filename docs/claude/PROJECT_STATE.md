@@ -1,6 +1,6 @@
 # PROJECT STATE
 
-last_updated: 2026-10-01
+last_updated: 2026-10-03
 maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
@@ -186,6 +186,15 @@ MATTERS right now, verify against the live systems, not this file)
   look direction and a render-cost budget; checkpoint 11
   runs the customer's acceptance render end to end with a hand-authored
   reading in place of the model).
+
+## Find Property — Marketplace Search foundation (branch ccr-76ef455d-0qvt80, 2026-10-03) — NOT ACTIVE
+
+- Built: brief/readiness/worker contract/pipeline (`src/research-core/marketplace`), edge
+  `marketplace-search` + `marketplace-worker-ingest`, UI `src/components/findProperty`, admin panel.
+- Migration `20261010100000_marketplace_search_foundation.sql` prepared and locally proven; NOT applied.
+- `marketplace_search_enabled` seeded OFF → `/find-property` keeps the legacy experience.
+- No marketplace worker registered. Deep Search shown as not yet available.
+- Map and activation checklist: `docs/claude/FIND_PROPERTY_MARKETPLACE.md`.
 
 ## Deferred / known-open (do not "fix" casually)
 
@@ -870,3 +879,42 @@ Phase 2 (Universal Discovery) is blocked until this is live and proven.
   operator switches find_property_discovery_enabled /
   campaign_source_discovery_enabled on.
 
+
+## Design Studio unified OpenAI-first rebuild (branch `feat/design-studio-unified`, 2026-10-03) — NOT merged, NOT deployed
+
+Base: main `53489d04` (PR #68 live: design-studio-reconstruct v22). Scope: frontend + `design-studio-reconstruct` + ONE migration.
+
+- **Photos are first class.** Launcher: two equal cards (Photos / Floor plan); `?start=photos` (and the old
+  `?start=image`) open `unified/PhotoFlow.tsx`. Up to 6 photos → `design-studio-reconstruct/photos` (photos.ts):
+  ONE OpenAI reading of all photos (`_shared/designStudio/photoRead.ts`: same room vs different rooms, fixed
+  elements, ≤3 questions, unusable flag) → a `PHOTO_SET` spatial source + Original version (server-side) →
+  Style → Quality → `designRun.ts` → the Result. Never ReconstructionFlow, catalogue, factory, Blender, RunPod
+  or the 3D editor (a PHOTO_SET project always opens on `/home`).
+- **Server-owned work** (`design-studio-reconstruct/durable.ts`): floorplan, photos and design-spec answer at
+  once (202 RUNNING) and continue via `EdgeRuntime.waitUntil`; CAS claim on `updated_at`/job status; lease
+  8 min then takeover; failures stored `RETRYABLE:<CODE>` / `TERMINAL:<CODE>`; only `retry: true` asks again.
+  design-spec with `then: { quoteToken, versionName }` chains by itself: AI version (deterministic id
+  `uuidFrom('ds-chain:<job>:version')`) → render (startGenerated, reserved once) → IMAGE/SCENE → `kick`
+  render-generate-step for MAP. Clients send `durable: true`; a request WITHOUT it gets the old synchronous
+  answer (rollout safety for open tabs).
+- **Migration (prepared, tested on PGlite, NOT applied):** `20261010100100_design_studio_photo_set_source.sql`
+  — adds `PHOTO_SET` to the kind check and its payload rule. The photos route cannot create its source until
+  it is applied: **apply it before (or with) the edge deploy.**
+- **Result** (`unified/DesignResult.tsx`) for photo projects and OpenAI-first plan projects: before/after,
+  edit (render-edit, PR #65 pipeline untouched), another option / style / quality (VARIANT), other rooms
+  (ROOM; photos: drawn over that room's own photo; "another style" allowed for photos). Legacy Result kept for
+  earlier projects.
+- **Snake**: `src/lib/games/snake.ts` + `src/components/games/SnakeGame.tsx` (lazy); watches status only.
+- Copy: `scripts/design-studio-i18n-data-26.mjs` (`dsx_*`, owner-approved Georgian verbatim); data-25
+  `sf_style_luxury` / `sf_style_warm_cozy` renamed (ids unchanged). CONTEMPORARY keeps its name; no
+  Scandinavian id exists (not added).
+- **Legacy map:** RETAINED — ReconstructionFlow (only "furnish from pictures" inside an existing floor-plan
+  design), the legacy home Result (projects without OpenAI renders), factory/Blender (3D walkthrough, gated
+  off). DISCONNECTED — launcher → ReconstructionFlow, NoSpacePanel → ReconstructionFlow, photos → editor.
+  SAFE TO REMOVE LATER (not removed) — `UploadStep/UnderstandingStep/BuildingStep` (deleted already),
+  `requestDesignSpec` (unused), old `sf_upload_*`/`sf_reading_*`/`sf_building_*` keys, `tests/browser/designStudio.qa.mjs`
+  photo checkpoints (stale; still click `ds-start-image`).
+- Not integrated: the global JobCenter (`background_jobs` is Verify-coupled shared infra). Status lives in
+  the Design Studio library (`services/designStudio/status.ts`) instead.
+- Production record `29423f13` (project `9a747384`) still READING with a RUNNING job — untouched; it is a
+  legacy reconstruct row (the new routes never claim it); recover only with owner approval.

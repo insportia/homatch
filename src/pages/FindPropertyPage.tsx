@@ -202,8 +202,11 @@ function ResultCard({ result }: { result: FindPropertyResult }) {
   const a = result.attribution ?? null;
   const platform = String(a?.platform ?? 'PORTAL').toUpperCase();
   const community = platform !== 'PORTAL';
-  const platformName = t((platform === 'TELEGRAM' ? 'p2d_attr_platform_telegram'
-    : platform === 'FORUM' ? 'p2d_attr_platform_forum' : 'p2d_attr_platform_portal') as never);
+  const platformKey = (p: string) => (p === 'TELEGRAM' ? 'p2d_attr_platform_telegram'
+    : p === 'FORUM' ? 'p2d_attr_platform_forum'
+      : p === 'FACEBOOK' ? 'p2d_attr_platform_facebook'
+        : p === 'INSTAGRAM' ? 'p2d_attr_platform_instagram' : 'p2d_attr_platform_portal');
+  const platformName = t(platformKey(platform) as never);
   const attribution = a ? {
     sourceLabel: t('p2d_attr_source'),
     sourceName: a.sourceName ?? platformName,
@@ -217,6 +220,11 @@ function ResultCard({ result }: { result: FindPropertyResult }) {
     originalText: a.originalText,
     showMore: t('p2d_attr_show_more'),
     showLess: t('p2d_attr_show_less'),
+    alsoSeenLabel: t('p2d_attr_also_seen'),
+    alsoSeen: (result.alsoSeenAt ?? []).map((o) => ({
+      name: o.sourceName ?? t(platformKey(String(o.platform ?? 'PORTAL').toUpperCase()) as never),
+      url: o.permalink,
+    })),
   } : null;
 
   return (

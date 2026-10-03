@@ -30,7 +30,11 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { createPortalRuntime } from '../../../src/research-core/market/runtime.ts';
-import { contentHash } from '../../../src/research-core/normalize/hash.ts';
+import { extractListing } from '../../../src/research-core/adapters/portal/family.ts';
+import { sourceById, sourceForUrl } from '../../../src/research-core/adapters/portal/sources.ts';
+import {
+  judgeRevalidation, revalidationMethod, snapshotOfListing, snapshotOfRow, SUPPLY_REVALIDATION_POLICY,
+} from '../../../src/research-core/discovery/supply-revalidation.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -71,7 +75,7 @@ Deno.serve(async (req: Request) => {
   const started = Date.now();
   try {
     const body = await req.json().catch(() => ({}));
-    const limit = Math.max(1, Math.min(25, Number(body.limit) || 10));
+    const limit = Math.max(1, Math.min(SUPPLY_REVALIDATION_POLICY.MAX_PER_RUN, Number(body.limit) || 10));
 
     /*
      * The oldest sightings first, and only ones at or past their window.
@@ -80,9 +84,13 @@ Deno.serve(async (req: Request) => {
      */
     const { data: due, error } = await db
       .from('supply_observations')
-      .select('id,adapter_id,canonical_url,content_fingerprint,last_seen_at,validation_state,'
+      .select('id,adapter_id,canonical_url,content_fingerprint,last_seen_at,validation_state,transaction,'
+        + 'sale_amount,sale_currency,rent_amount,rent_currency,area_sqm,rooms,field_origins,'
         + 'source:source_registry!source_id(lifecycle,access_finding)')
       .lte('expires_at', new Date().toISOString())
+      /* Community posts are not portal pages: their deletion is visible only to
+         the channel reader (supply-revalidation.ts revalidationMethod). */
+      .not('adapter_id', 'like', '%-community')
       .order('expires_at', { ascending: true })
       .limit(limit);
     if (error) throw error;
@@ -106,12 +114,15 @@ Deno.serve(async (req: Request) => {
       const now = new Date().toISOString();
 
       let outcome: string;
-      let fingerprint: string | null = null;
       let detail: string | null = null;
+      let judged: ReturnType<typeof judgeRevalidation> | null = null;
+      let current: ReturnType<typeof snapshotOfListing> | null = null;
+      let httpStatus: number | null = null;
+      const before = snapshotOfRow(row as never);
 
-      if (!row.canonical_url) {
+      if (revalidationMethod(row as never).method !== 'PORTAL_REFETCH') {
         outcome = 'UNKNOWN';
-        detail = 'the observation carries no URL';
+        detail = revalidationMethod(row as never).reason;
       } else if (BLOCKED_LIFECYCLES.has(lifecycle)) {
         /* A blocked source is not requested. Not now, not by a worker. */
         outcome = 'INACCESSIBLE';
@@ -124,32 +135,23 @@ Deno.serve(async (req: Request) => {
       } else {
         try {
           const page = await runtime.context.fetchDocument(row.canonical_url, { forceRefresh: true });
-          if (page.status === 404 || page.status === 410) {
-            /*
-             * GONE, AND THAT IS INFORMATION. The listing sold, or was
-             * withdrawn, or the portal reorganised. REMOVED is recorded and
-             * the row stays: what it said, and when, is still true.
-             */
-            outcome = 'REMOVED';
-            detail = `HTTP ${page.status}`;
-          } else if (page.status >= 400) {
-            outcome = 'INACCESSIBLE';
-            detail = `HTTP ${page.status}`;
-          } else {
-            /*
-             * Fingerprinted on the page's own text, the same way the first
-             * sighting was. A body that hashes the same is the same listing
-             * saying the same thing; a different hash is new evidence, and
-             * the difference is what content_changed_at records.
-             *
-             * NOT a re-parse. Deciding here whether the PRICE moved would
-             * mean a second extraction path that could disagree with the
-             * adapter, and two readers of one page is how a field ends up
-             * with two truths.
-             */
-            fingerprint = contentHash(page.body);
-            outcome = fingerprint === row.content_fingerprint ? 'UNCHANGED_VALID' : 'CHANGED_VALID';
+          httpStatus = page.status;
+          /*
+           * RE-READ WITH THE SAME READER. The page goes through the adapter
+           * configuration that first extracted it (family.ts extractListing),
+           * so price, area and rooms are compared field by field -- never a
+           * whole-page hash, which changes with every ad and counter on the
+           * page and used to report every listing as changed.
+           */
+          const config = sourceById(String(row.adapter_id ?? '')) ?? sourceForUrl(String(row.canonical_url));
+          if (page.status >= 200 && page.status < 300 && config) {
+            const extracted = extractListing(page.body, page.url || row.canonical_url, config);
+            if (extracted.ok && extracted.listing) current = snapshotOfListing(extracted.listing as never, (row.transaction as string | null) ?? null);
           }
+          judged = judgeRevalidation({ status: page.status, before, after: current });
+          outcome = judged.outcome;
+          if (outcome === 'REMOVED' || outcome === 'INACCESSIBLE') detail = `HTTP ${page.status}`;
+          else if (outcome === 'UNKNOWN') detail = config ? 'the page answered but its adapter could not read it' : 'no adapter configuration reads this page';
         } catch (error) {
           outcome = 'INACCESSIBLE';
           detail = message(error);
@@ -165,12 +167,32 @@ Deno.serve(async (req: Request) => {
        * question nobody answered is the exact fabrication this contract
        * exists to prevent.
        */
-      const conclusive = outcome === 'UNCHANGED_VALID' || outcome === 'CHANGED_VALID'
-        || outcome === 'REMOVED';
+      const conclusive = judged?.conclusive === true;
 
+      /* What this check found, kept with the row: last checked, availability,
+         HTTP answer, price movement and how sure the comparison was. */
+      const origins = (row.field_origins && typeof row.field_origins === 'object') ? row.field_origins as Record<string, unknown> : {};
+      const history = Array.isArray((origins.revalidation as Record<string, unknown> | undefined)?.priceHistory)
+        ? ((origins.revalidation as Record<string, unknown>).priceHistory as unknown[]).slice(-9) : [];
+      const priceChange = judged?.comparison?.priceChange ?? null;
       const update: Record<string, unknown> = {
         last_revalidation_outcome: outcome,
         updated_at: now,
+        field_origins: {
+          ...origins,
+          revalidation: {
+            checkedAt: now,
+            outcome,
+            httpStatus,
+            availability: outcome === 'REMOVED' ? 'REMOVED' : conclusive ? 'AVAILABLE' : 'UNKNOWN',
+            confidence: judged?.confidence ?? 0,
+            changedFields: judged?.comparison?.changedFields ?? [],
+            detail,
+            priceHistory: priceChange && judged?.comparison?.changedFields.includes('price')
+              ? [...history, { at: now, from: priceChange.from, to: priceChange.to, currency: priceChange.currency }]
+              : history,
+          },
+        },
       };
 
       if (conclusive) {
@@ -182,9 +204,16 @@ Deno.serve(async (req: Request) => {
         if (outcome !== 'REMOVED') {
           update.expires_at = new Date(Date.parse(now) + WINDOW_DAYS * 86_400_000).toISOString();
         }
-        if (outcome === 'CHANGED_VALID' && fingerprint) {
-          update.content_fingerprint = fingerprint;
+        if (outcome === 'CHANGED_VALID' && current) {
+          /* The listing now says this. content_fingerprint is NOT touched: it is
+             the listing's own text identity, which dedupe relies on. */
           update.content_changed_at = now;
+          if (current.price !== null && current.currency) {
+            if (row.transaction === 'RENT') { update.rent_amount = current.price; update.rent_currency = current.currency; }
+            else { update.sale_amount = current.price; update.sale_currency = current.currency; }
+          }
+          if (current.areaSqm !== null) update.area_sqm = current.areaSqm;
+          if (current.rooms !== null) update.rooms = current.rooms;
           changed += 1;
         }
       } else {

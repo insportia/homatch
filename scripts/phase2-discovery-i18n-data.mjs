@@ -117,3 +117,27 @@ Object.assign(PHASE2_DISCOVERY_STRINGS, {
   p2d_attr_platform_forum: ['Forum', 'ფორუმი', 'Форум', 'Forum', 'منتدى', 'פורום'],
   p2d_attr_platform_portal: ['Property site', 'უძრავი ქონების საიტი', 'Сайт недвижимости', 'Emlak sitesi', 'موقع عقارات', 'אתר נדל״ן'],
 });
+
+// Find Property: the same property seen on other sources (cross-source dedupe keeps every source).
+Object.assign(PHASE2_DISCOVERY_STRINGS, {
+  p2d_attr_also_seen: ['Also posted at', 'ასევე გამოქვეყნებულია', 'Также опубликовано', 'Ayrıca yayınlandığı yer', 'نُشر أيضًا في', 'פורסם גם ב־'],
+  p2d_attr_platform_facebook: ['Facebook', 'Facebook', 'Facebook', 'Facebook', 'فيسبوك', 'פייסבוק'],
+  p2d_attr_platform_instagram: ['Instagram', 'Instagram', 'Instagram', 'Instagram', 'إنستغرام', 'אינסטגרם'],
+});
+
+// Admin: per-source readiness (source-capabilities.ts). Status codes stay as codes.
+Object.assign(PHASE2_DISCOVERY_STRINGS, {
+  p2d_admin_readiness: A('Source readiness', 'წყაროების მზადყოფნა', 'Готовность источников', 'Kaynak hazırlığı', 'جاهزية المصادر', 'מוכנות מקורות'),
+  p2d_admin_readiness_note: A(
+    'READY needs a passing live check or real collected rows in the last 14 days. Code alone is never READY.',
+    'READY-ს სჭირდება წარმატებული ცოცხალი შემოწმება ან რეალურად შეგროვებული ჩანაწერები ბოლო 14 დღეში. მხოლოდ კოდი არასდროს არის READY.',
+    'Для READY нужна успешная живая проверка или реально собранные записи за последние 14 дней. Одного кода недостаточно.',
+    'READY için son 14 günde başarılı bir canlı kontrol veya gerçekten toplanmış kayıtlar gerekir. Yalnızca kod asla READY değildir.',
+    'تتطلب حالة READY فحصًا حيًا ناجحًا أو سجلات جُمعت فعليًا خلال آخر 14 يومًا. الشيفرة وحدها ليست READY أبدًا.',
+    'READY דורש בדיקה חיה שעברה או רשומות שנאספו בפועל ב־14 הימים האחרונים. קוד לבדו אף פעם אינו READY.'),
+  p2d_admin_col_status: A('Status', 'სტატუსი', 'Статус', 'Durum', 'الحالة', 'סטטוס'),
+  p2d_admin_col_method: A('Retrieval', 'მიღების მეთოდი', 'Способ получения', 'Erişim yöntemi', 'طريقة الجلب', 'שיטת שליפה'),
+  p2d_admin_col_live_tested: A('Live tested', 'ცოცხლად შემოწმებული', 'Проверено вживую', 'Canlı test', 'مُختبر حيًا', 'נבדק חי'),
+  p2d_admin_col_reason: A('Reason', 'მიზეზი', 'Причина', 'Neden', 'السبب', 'סיבה'),
+});
+

@@ -19,7 +19,9 @@ test('P1: find-property resolves provenance in two batched reads, never per resu
   assert.match(fn, /source_id,field_origins/, 'observations carry their provenance pointer');
   assert.match(fn, /from\('raw_signals'\)\s*\.select\('id,platform,source_id,source_url,parent_url,author_public_name,author_public_url,profile_url,original_text'\)\s*\.in\('id', signalIds\)/);
   assert.match(fn, /from\('source_registry'\)\s*\.select\('id,name,url'\)\.in\('id', sourceIds\)/);
-  const map = fn.slice(fn.indexOf('const results = distinct.map('));
+  const start = fn.indexOf('const allResults = distinct.map(');
+  assert.ok(start > 0, 'results are built in one map over the distinct rows');
+  const map = fn.slice(start);
   assert.doesNotMatch(map.slice(0, map.indexOf('supply: brokerBlock(')), /await db|\.from\(/, 'no query inside the per-result map');
   assert.match(fn, /url: attribution\?\.permalink \?\? null/, 'the action opens the validated exact link');
   assert.match(fn, /^\s*attribution,$/m, 'attribution is returned with every result');

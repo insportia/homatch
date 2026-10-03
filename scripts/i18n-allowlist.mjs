@@ -15,6 +15,8 @@ export const ALLOW_DUPLICATE_KEYS = new Set([
   // Georgian-board word in Turkish/English alike.
   'p2d_attr_platform_telegram',
   'p2d_attr_platform_forum',
+  'p2d_attr_platform_facebook',
+  'p2d_attr_platform_instagram',
   // HOMATCH Intelligence is the product's own name, the same in every language.
   'mm_i_title',
   // Meta placements and the product name, as Meta itself labels them in every locale.

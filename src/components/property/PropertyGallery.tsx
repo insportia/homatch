@@ -55,11 +55,29 @@ function Empty({ label }: { label: string }) {
   );
 }
 
-export function PropertyGallery({ source, title }: { source: GallerySource; title: string }) {
+export function PropertyGallery({
+  source, title, unavailable, ratio = 'banner',
+}: {
+  source: GallerySource;
+  title: string;
+  /** What to say when the primary image cannot be shown (the owner page explains why). */
+  unavailable?: React.ReactNode;
+  /** 'banner' is the 16:7 strip; 'hero' is the owner workspace's first-screen photograph. */
+  ratio?: 'banner' | 'hero';
+}) {
+  /* 'hero' fills its column's height on desktop, so the photograph never ends above
+     the identity column beside it and leaves a block of nothing underneath. */
+  const frame = ratio === 'hero'
+    ? 'aspect-[4/3] sm:aspect-[16/10] lg:aspect-auto lg:min-h-[24rem] lg:flex-1'
+    : 'aspect-[16/9] sm:aspect-[16/7]';
+  const outer = ratio === 'hero' ? 'flex flex-col gap-2 lg:h-full' : 'space-y-2';
   const { t } = useLanguage();
   const images = useMemo(() => galleryImages(source), [source]);
   const [index, setIndex] = useState(0);
   const [open, setOpen] = useState(false);
+  /* Which addresses could not be shown. A photo that failed has nothing to enlarge, and
+     the lightbox control would sit on top of the explanation's own buttons. */
+  const [failed, setFailed] = useState<Set<string>>(() => new Set());
 
   const count = images.length;
   const safeIndex = count > 0 ? Math.min(index, count - 1) : 0;
@@ -86,8 +104,9 @@ export function PropertyGallery({ source, title }: { source: GallerySource; titl
 
   if (count === 0) {
     return (
-      <div className="aspect-[16/9] w-full overflow-hidden rounded-xl bg-secondary/40 sm:aspect-[16/7]">
-        <Empty label={t('gallery_no_photos')} />
+      <div className={cn(outer)}><div className={cn('relative w-full overflow-hidden rounded-xl bg-secondary/40', frame)}>
+        {unavailable ?? <Empty label={t('gallery_no_photos')} />}
+      </div>
       </div>
     );
   }
@@ -99,25 +118,26 @@ export function PropertyGallery({ source, title }: { source: GallerySource; titl
   );
 
   return (
-    <div className="space-y-2">
+    <div className={outer}>
       {/* ── THE PRIMARY IMAGE ─────────────────────────────────────────── */}
-      <div className="relative aspect-[16/9] w-full overflow-hidden rounded-xl bg-secondary/40 sm:aspect-[16/7]">
+      <div className={cn('relative w-full overflow-hidden rounded-xl bg-secondary/40', frame)}>
         <PrivateImage
           src={images[safeIndex]}
           alt={title}
           loading="eager"
           className="absolute inset-0 h-full w-full object-cover"
           pending={<div className="absolute inset-0 animate-pulse bg-secondary/60" />}
-          fallback={<Empty label={t('gallery_unavailable')} />}
+          fallback={unavailable ?? <Empty label={t('gallery_unavailable')} />}
+          onUnavailable={() => setFailed((prev) => (prev.has(images[safeIndex]) ? prev : new Set(prev).add(images[safeIndex])))}
         />
 
         {/* Opening the lightbox is the whole point of the primary image. */}
-        <button
+        {!failed.has(images[safeIndex]) && <button
           type="button"
           onClick={() => setOpen(true)}
           aria-label={t('gallery_open_full')}
           className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
-        />
+        />}
 
         {count > 1 && (
           <>
@@ -142,10 +162,10 @@ export function PropertyGallery({ source, title }: { source: GallerySource; titl
 
         <div className="pointer-events-none absolute bottom-2 end-2 flex items-center gap-1.5">
           {count > 1 && counter}
-          <span className="flex items-center gap-1 rounded-full bg-background/85 px-2.5 py-1 text-[13px] text-foreground shadow-sm backdrop-blur">
+          {!failed.has(images[safeIndex]) && <span className="flex items-center gap-1 rounded-full bg-background/85 px-2.5 py-1 text-[13px] text-foreground shadow-sm backdrop-blur">
             <Expand className="h-3 w-3" aria-hidden="true" />
             <span className="break-words">{t('gallery_open_full')}</span>
-          </span>
+          </span>}
         </div>
       </div>
 

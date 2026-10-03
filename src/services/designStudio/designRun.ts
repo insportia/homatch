@@ -112,7 +112,7 @@ export async function runDesign(input: RunInput): Promise<RunResult> {
   while (!renderId) {
     stop();
     const { reply, status } = await askSpec({
-      projectId: input.projectId, versionId: input.versionId, mode: input.mode, idempotencyKey: input.key,
+      projectId: input.projectId, versionId: input.versionId, mode: input.mode, idempotencyKey: input.key, durable: true,
       look: input.look, preferences: input.preferences, roomId: input.roomId ?? null, parentRenderId: input.parentRenderId ?? null,
       change: input.change ?? null, retry, then: quoteToken ? { quoteToken, versionName: input.versionName } : undefined,
     });

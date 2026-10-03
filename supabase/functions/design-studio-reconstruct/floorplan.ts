@@ -23,6 +23,8 @@
 // the page never stops it. Asking again is safe: a reading in progress answers
 // RUNNING, a finished one INTERPRETED, an abandoned one (lease lapsed) is
 // taken over, and a failure is stored with its category (durable.ts).
+// A page loaded before this change (no `durable: true`) still gets the old
+// answer: the reading done in the request, then INTERPRETED or FAILED.
 //
 // It never writes geometry, never creates a spatial source and never marks
 // anything verified. Money: DS_FLOORPLAN_READ is registered, measured and
@@ -85,7 +87,7 @@ export async function handleFloorplan(req: Request): Promise<Response> {
   const refused = await refuseIfImpersonating(admin, authHeader, CORS);
   if (refused) return refused;
 
-  let body: { floorplanId?: string; retry?: boolean };
+  let body: { floorplanId?: string; retry?: boolean; durable?: boolean };
   try { body = await req.json(); } catch { return json({ error: 'BAD_REQUEST' }, 400); }
   if (!body.floorplanId || typeof body.floorplanId !== 'string') return json({ error: 'BAD_REQUEST' }, 400);
 
@@ -95,10 +97,10 @@ export async function handleFloorplan(req: Request): Promise<Response> {
   if (!plan) return json({ error: 'NOT_FOUND' }, 404);
   if (plan.status === 'INTERPRETED') return json({ state: 'INTERPRETED' });
   // A reading in progress is answered, never started twice.
-  if (plan.status === 'INTERPRETING' && isFresh(plan.updated_at)) return json({ state: 'RUNNING' }, 202);
+  if (plan.status === 'INTERPRETING' && isFresh(plan.updated_at)) return body.durable ? json({ state: 'RUNNING' }, 202) : json({ error: 'ALREADY_RUNNING' }, 409);
   const failed = plan.status === 'FAILED' ? readFailure(plan.interpretation_error) : null;
   // A failure is answered as stored; only an explicit retry (the customer's tap) reads again.
-  if (failed && (failed.category === 'TERMINAL' || !body.retry)) return json({ state: 'FAILED', reason: failed.code, retryable: failed.category !== 'TERMINAL' });
+  if (body.durable && failed && (failed.category === 'TERMINAL' || !body.retry)) return json({ state: 'FAILED', reason: failed.code, retryable: failed.category !== 'TERMINAL' });
   const expectedPrefix = `users/${plan.user_id}/design-studio-floorplans/${plan.project_id}/`;
   if (!String(plan.object_key).startsWith(expectedPrefix)) return json({ error: 'INVALID_KEY' }, 400);
 
@@ -120,14 +122,22 @@ export async function handleFloorplan(req: Request): Promise<Response> {
   }).select('id').single();
   const jobId = (job as { id?: string } | null)?.id;
 
-  await inBackground('floorplan', async () => {
+  const work = async () => {
     try {
       await readPlan(admin, plan, jobId);
     } catch (e) {
       await admin.from('ds_floorplans').update({ status: 'FAILED', interpretation_error: failure('RETRYABLE', 'CRASHED') }).eq('id', plan.id).eq('status', 'INTERPRETING');
       if (jobId) await admin.from('ds_jobs').update({ status: 'FAILED', error: failure('RETRYABLE', `CRASHED:${String((e as Error)?.message ?? e).slice(0, 80)}`), finished_at: new Date().toISOString() }).eq('id', jobId);
     }
-  });
+  };
+  if (!body.durable) {
+    // A page from before this change waits for the answer in the request, as it always did.
+    await work();
+    const { data: after } = await admin.from('ds_floorplans').select('status, interpretation_error').eq('id', plan.id).maybeSingle();
+    if (after?.status === 'INTERPRETED') return json({ state: 'INTERPRETED' });
+    return json({ state: 'FAILED', reason: readFailure(after?.interpretation_error)?.code ?? 'READING_FAILED' }, 422);
+  }
+  await inBackground('floorplan', work);
   return json({ state: 'RUNNING' }, 202);
 }
 

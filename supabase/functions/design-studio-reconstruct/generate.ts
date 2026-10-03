@@ -13,6 +13,9 @@
 //       page never stops it. The same idempotencyKey is the same job (never a
 //       second paid call); a job whose instance was lost is taken over; a
 //       stored failure is answered as stored, and only retry: true writes again.
+//       A page from before this change (no `durable: true`) still gets the old
+//       answer: the specification written in the request, { jobId, mode, dna,
+//       summary }, or an error code.
 //       then: { quoteToken, versionName } — the customer confirmed the price
 //       up front, so the server carries on by itself: the design version, the
 //       render (reserved once), its picture and its edit map, each step started
@@ -231,12 +234,12 @@ export async function handleDesignSpec(req: Request): Promise<Response> {
     return json({ state: 'DONE', ...answerOf(prior.id, prior.output), ...(chain ? { chain } : {}) });
   }
   if (prior?.status === 'RUNNING') {
-    if (isFresh(prior.started_at)) return json({ state: 'RUNNING', jobId: prior.id }, 202);
+    if (isFresh(prior.started_at)) return body.durable ? json({ state: 'RUNNING', jobId: prior.id }, 202) : json({ error: 'SPEC_RUNNING' }, 409);
     // Its instance was lost (the lease lapsed): exactly one request takes it over.
     const { data: won } = await ctx.admin.from('ds_jobs').update({ status: 'FAILED', error: failure('RETRYABLE', 'ABANDONED'), finished_at: new Date().toISOString() })
       .eq('id', prior.id).eq('status', 'RUNNING').select('id');
     if (!won?.length) return json({ state: 'RUNNING', jobId: prior.id }, 202);
-  } else if (prior?.status === 'FAILED') {
+  } else if (prior?.status === 'FAILED' && body.durable) {
     const f = readFailure(prior.error);
     if (f?.category === 'TERMINAL' || !body.retry) return json({ state: 'FAILED', reason: f?.code ?? 'UNKNOWN', retryable: f?.category !== 'TERMINAL' });
   }
@@ -298,6 +301,13 @@ export async function handleDesignSpec(req: Request): Promise<Response> {
     return json({ state: 'RUNNING', jobId: first[0].id }, 202);
   }
 
+  if (!body.durable) {
+    // A page from before this change waits for the specification in the request, as it always did.
+    const done = await writeSpec(ctx, { jobId, modeCtx, src, approved }).catch(() => false);
+    const { data: after } = await ctx.admin.from('ds_jobs').select('status, output, error').eq('id', jobId).maybeSingle();
+    if (done && after?.status === 'SUCCEEDED') return json(answerOf(jobId, after.output));
+    return json({ error: readFailure(after?.error)?.code ?? 'SPEC_FAILED' }, 422);
+  }
   const chainBody = { ...body, retry: false };
   await inBackground(async () => {
     try {

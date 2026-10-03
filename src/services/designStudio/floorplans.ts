@@ -146,7 +146,7 @@ export async function interpretFloorPlan(floorplanId: string, opts: { retry?: bo
   await watchOperation({
     signal: opts.signal,
     kick: () => {
-      const body = { floorplanId, retry };
+      const body = { floorplanId, retry, durable: true };
       retry = false; // one explicit retry per tap; later asks only watch
       return supabase.functions.invoke('design-studio-reconstruct/floorplan', { body });
     },

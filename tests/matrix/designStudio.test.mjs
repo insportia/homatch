@@ -777,8 +777,13 @@ test('reading, understanding and designing are owned by the server: answered at 
     assert.match(src, /inBackground\(/, `${rel}: the work continues after the answer`);
     assert.match(src, /json\(\{ state: 'RUNNING' \}, 202\)/, `${rel}: the request answers at once`);
     assert.match(src, /!body\.retry/, `${rel}: a stored failure is only asked again on the customer's own retry`);
-    assert.doesNotMatch(src, /ALREADY_RUNNING/, `${rel}: a reading in progress is not an error`);
+    assert.doesNotMatch(src, /return json\(\{ error: 'ALREADY_RUNNING' \}, 409\);/, `${rel}: a reading in progress is not an error for the durable page`);
   }
+  // A page loaded before the change (no durable flag) still gets the old, synchronous answer during a rollout.
+  assert.match(code('supabase/functions/design-studio-reconstruct/floorplan.ts'), /if \(!body\.durable\) \{[\s\S]*?await work\(\);/);
+  assert.match(code('supabase/functions/design-studio-reconstruct/generate.ts'), /if \(!body\.durable\) \{[\s\S]*?await writeSpec\(/);
+  assert.match(code('src/services/designStudio/floorplans.ts'), /durable: true/);
+  assert.match(code('src/services/designStudio/designRun.ts'), /durable: true/);
   const gen = code('supabase/functions/design-studio-reconstruct/generate.ts');
   assert.match(gen, /isFresh\(prior\.started_at\)/, 'a design in progress is answered, not paid for again');
   assert.match(gen, /failure\('RETRYABLE', 'ABANDONED'\)/, 'an abandoned design is taken over');

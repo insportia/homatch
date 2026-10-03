@@ -1,13 +1,12 @@
-// YOUR PLAN → YOUR DESIGNED HOME.
+// YOUR HOME — the result of "Generate my home".
 //
-// What a customer comes back to after "Generate my home": their plan, the
-// master design of the whole home (a picture they can touch and change),
-// pictures of the rooms they choose, and the walkthrough — all of ONE home.
+// The photorealistic picture of the whole home IS the page: tap a piece or a
+// surface in it to change it. Everything else is a quiet step away:
 //
+//   ROOMS        eye-level pictures of chosen rooms ("Edit a room")
 //   PLAN         the upload and HOMATCH's reading of it, side by side
-//   3D DESIGN    the master design; tap a piece or a surface to change it
-//   ROOMS        eye-level pictures of chosen rooms, as many as wanted
-//   WALKTHROUGH  the same approved design, built by the factory, walked
+//   EDITOR       the advanced editor, entered only on purpose (?editor=1)
+//   WALKTHROUGH  held back (walkthroughOffer.ts) until it is proven correct
 //
 // Every change here is a change to the design (a new version; Undo goes
 // back), and the walkthrough is built from the design — so what was changed
@@ -15,7 +14,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Footprints, Image as ImageIcon, Loader2, Map as MapIcon, RotateCcw, Sparkles } from 'lucide-react';
+import { ArrowLeft, Footprints, Image as ImageIcon, Loader2, Map as MapIcon, RotateCcw, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { DesignStudioGate } from '@/components/designStudio/DesignStudioGate';
 import { useAuth } from '@/contexts/AuthContext';
@@ -46,6 +45,10 @@ import { EditPanel } from '@/components/designStudio/renders/EditPanel';
 import { PlanDrawing } from '@/components/designStudio/planToHome/PlanDrawing';
 import { applyAnswers } from '@/lib/designStudio/planRead';
 import { latestFlow } from '@/services/designStudio/planToHome';
+import { readLook } from '@/lib/designStudio/lookPresets';
+import { WALKTHROUGH_OFFERED } from '@/lib/designStudio/walkthroughOffer';
+import { aiActionsFor, aiAppearanceEdit, aiWhat, isAiEntry } from '@/lib/designStudio/renders/aiEdits';
+import { isGenerated } from '@/services/designStudio/generation';
 import { signedUrls } from '@/services/designStudio/files';
 
 export default function DesignStudioHomePage() {
@@ -58,7 +61,8 @@ export default function DesignStudioHomePage() {
   );
 }
 
-type Tab = 'PLAN' | 'DESIGN' | 'ROOMS' | 'WALK';
+/** The result first; the rooms and the plan are one quiet step away, always with a way back. */
+type Tab = 'HOME' | 'ROOMS' | 'PLAN';
 const RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]';
 const ACTIVE: ReadonlySet<RenderRecord['status']> = new Set(['QUOTED', 'QUEUED', 'RENDERING', 'FINISHING']);
 
@@ -106,7 +110,7 @@ function Home() {
   const [data, setData] = useState<HomeData | null | undefined>(undefined);
   const [renders, setRenders] = useState<RenderRecord[]>([]);
   const [urls, setUrls] = useState<Map<string, string>>(new Map());
-  const [tab, setTab] = useState<Tab>('DESIGN');
+  const [tab, setTab] = useState<Tab>('HOME');
   const [selected, setSelected] = useState<MapEntry | null>(null);
   const [mapUrl, setMapUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -177,9 +181,15 @@ function Home() {
   }, [master.ready?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const ctx = useMemo(() => (data ? { space: data.space, assets: data.assets, materials: data.materials } : null), [data]);
-  const editable = useCallback((e: MapEntry) => (data ? actionsFor(e, data.state, data.assets).length > 0 : false), [data]);
+  const editable = useCallback((e: MapEntry) => (data ? (isAiEntry(e) ? aiActionsFor(e) : actionsFor(e, data.state, data.assets)).length > 0 : false), [data]);
   const labelFor = useCallback((e: MapEntry) => {
     if (!data) return '';
+    if (isAiEntry(e)) {
+      // What OpenAI saw there ("Sofa", "Wall"), and the room it is in when it knows.
+      const room = e.roomId ? data.space.rooms.find((r) => r.id === e.roomId) : null;
+      const what = t(`sf_obj_${aiWhat(e) ?? 'other'}`);
+      return room ? `${what} · ${t(`ds_room_${room.kind.toLowerCase()}`)}` : what;
+    }
     if (e.kind === 'OBJECT') {
       const o = data.state.objects.find((x) => x.instanceId === e.id);
       return (o && data.assets.get(o.assetId)?.name) ?? t('rend_piece');
@@ -218,6 +228,7 @@ function Home() {
   const onChoice = async (choice: EditChoice, label: string) => {
     if (!data || !ctx || !selected || !master.ready) return;
     setError(null);
+    if (isAiEntry(selected)) { await onAiChoice(selected, choice, label); return; }
     const r = applyEdit(selected, choice, data.state, ctx, label);
     if (!r.ok) { setError(reject(r.rejection.code, (r.rejection as { placement?: Array<{ code: string }> }).placement)); return; }
     const title = labelFor(selected);
@@ -235,6 +246,25 @@ function Home() {
         await renderViews(v.id, r.state, [master.ready!.view ?? planMasterView(data.space)], 'DS_MASTER_RENDER', shown.credits);
       });
     }
+  };
+
+  /**
+   * A change to a picture OpenAI made: the same priced, versioned, one-tap edit through the same edit
+   * pipeline (render-edit), inside the target's own mask. The design state is unchanged (the picture is
+   * the design); the edit is recorded on the new version.
+   */
+  const onAiChoice = async (entry: MapEntry, choice: EditChoice, label: string) => {
+    if (!data || !master.ready) return;
+    const edit = aiAppearanceEdit(entry, choice, label);
+    if (!edit) return;
+    const title = labelFor(entry);
+    await confirmPrice('DS_RENDER_EDIT', 1, t('rend_confirm_appearance', { what: title }), async (shown) => {
+      const v = await commitVersion(data.state, t('rend_version_edit', { what: title }), { kind: 'RENDER_EDIT', edit, generator: 'OPENAI_FIRST' });
+      const q = await quoteRender({ projectId, versionId: v.id, product: 'DS_RENDER_EDIT', views: 1 });
+      if (!q.quote || q.quote.credits !== shown.credits) throw new Error('DS_PRICE_CHANGED');
+      const e = await editRender({ renderId: master.ready!.id, edit, newVersionId: v.id, quote: q.quote, idempotencyKey: `edit-${v.id}` });
+      if (!e.render) throw new Error(e.error ?? 'EDIT_FAILED');
+    });
   };
 
   /** The head's picture edit that failed (nothing was charged): the customer can ask for it again. */
@@ -338,13 +368,13 @@ function Home() {
     }
   };
 
-  if (data === undefined) return <div className="grid h-[100dvh] place-items-center bg-[#0C1119] text-white"><Loader2 className="h-6 w-6 animate-spin" aria-label={t('ds_loading_project')} /></div>;
+  if (data === undefined) return <div className="grid h-[100dvh] place-items-center bg-[#F7F4EF] text-[#0C1119]"><Loader2 className="h-6 w-6 animate-spin" aria-label={t('ds_loading_project')} /></div>;
   if (data === null) {
     return (
-      <div className="grid h-[100dvh] place-items-center px-4 text-center">
+      <div className="grid h-[100dvh] place-items-center bg-[#F7F4EF] px-4 text-center text-[#0C1119]">
         <div>
           <p className="text-[15px]">{t('rend_home_missing')}</p>
-          <Link to={`/design-studio/${projectId}`} className="mt-3 inline-flex text-sm font-medium underline">{t('rend_open_editor')}</Link>
+          <Link to={`/design-studio/${projectId}?editor=1`} className="mt-3 inline-flex text-sm font-medium underline">{t('rend_open_editor')}</Link>
         </div>
       </div>
     );
@@ -352,69 +382,67 @@ function Home() {
 
   const selObj = selected?.kind === 'OBJECT' ? data.state.objects.find((o) => o.instanceId === selected.id) ?? null : null;
   const selAsset = selObj ? data.assets.get(selObj.assetId) : undefined;
-  const actions = selected ? actionsFor(selected, data.state, data.assets) : [];
+  const actions = selected ? (isAiEntry(selected) ? aiActionsFor(selected) : actionsFor(selected, data.state, data.assets)) : [];
+  /** The master is OpenAI's own picture: its rooms are pictures OpenAI makes (PR4), never Blender views of an empty plan. */
+  const aiHome = renders.some((r) => isGenerated(r)) || (master.ready?.legend?.entries ?? []).some((e) => isAiEntry(e));
   const fittingMaterials = selected ? [...data.materials.values()].filter((m) => m.active && (m.appliesTo ?? []).includes(selected.kind === 'FLOOR' ? 'FLOOR' : 'WALL')) : [];
-  const doc = data.plan?.interpretation?.doc ? applyAnswers(data.plan.interpretation.doc, latestFlow(data.plan)?.answers ?? []) : null;
-  const tabs: Array<[Tab, string, React.ComponentType<{ className?: string }>]> = [
-    ['PLAN', 'rend_tab_plan', MapIcon], ['DESIGN', 'rend_tab_design', Sparkles], ['ROOMS', 'rend_tab_rooms', ImageIcon], ['WALK', 'rend_tab_walk', Footprints],
-  ];
+  const flow = latestFlow(data.plan);
+  const doc = data.plan?.interpretation?.doc ? applyAnswers(data.plan.interpretation.doc, flow?.answers ?? []) : null;
+  const look = readLook(flow?.look);
+  const back = (
+    <button type="button" onClick={() => { setTab('HOME'); setSelected(null); }} className={cn('-ms-2 mb-4 inline-flex min-h-11 items-center gap-1.5 rounded-full px-2 text-[14px] font-medium text-[#4A5263] hover:text-[#0C1119]', RING)} data-testid="home-back">
+      <ArrowLeft className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />{t('sf_your_home')}
+    </button>
+  );
+  const QUIET_ACTION = cn('inline-flex min-h-12 items-center gap-2 rounded-full bg-white px-5 text-[15px] font-medium ring-1 ring-[#E7E1D8] hover:ring-[#0C1119]', RING);
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-[#F4F5F7] text-[#0C1119]" data-testid="design-home">
-      <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 bg-[#0C1119] px-3 text-white">
-        <Link to="/design-studio" aria-label={t('ds_back_to_projects')} className={cn('grid h-9 w-9 place-items-center rounded-lg hover:bg-white/10', RING)}>
-          <ArrowLeft className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
+    <div className="flex min-h-[100dvh] flex-col bg-[#F7F4EF] text-[#0C1119]" data-testid="design-home" data-view={tab}>
+      <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-1 bg-[#F7F4EF]/95 px-2 backdrop-blur sm:px-6">
+        <Link to="/design-studio" aria-label={t('ds_back_to_projects')} className={cn('grid h-11 w-11 place-items-center rounded-full hover:bg-black/5', RING)}>
+          <ArrowLeft className="h-5 w-5 rtl:rotate-180" aria-hidden="true" />
         </Link>
         <p className="min-w-0 flex-1 truncate font-display text-[15px] font-semibold">{data.bundle.project.name}</p>
         {data.head.parent_id ? (
-          <button type="button" onClick={() => { void undo(); }} disabled={busy} className={cn('inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-white/85 ring-1 ring-white/20 hover:bg-white/10 disabled:opacity-50', RING)} data-testid="home-undo">
+          <button type="button" onClick={() => { void undo(); }} disabled={busy} aria-label={t('rend_undo')} className={cn('inline-flex h-11 items-center gap-1.5 rounded-full px-3 text-[14px] font-medium text-[#4A5263] hover:bg-black/5 hover:text-[#0C1119] disabled:opacity-50', RING)} data-testid="home-undo">
             <RotateCcw className="h-4 w-4" aria-hidden="true" /><span className="hidden sm:inline">{t('rend_undo')}</span>
           </button>
         ) : null}
-        <Link to={`/design-studio/${projectId}`} className={cn('hidden h-9 items-center rounded-lg px-2.5 text-[13px] font-medium text-white/85 ring-1 ring-white/20 hover:bg-white/10 sm:inline-flex', RING)}>{t('rend_open_editor')}</Link>
+        <Link to={`/design-studio/${projectId}?editor=1`} className={cn('inline-flex h-11 items-center gap-1.5 rounded-full px-3 text-[14px] font-medium text-[#4A5263] hover:bg-black/5 hover:text-[#0C1119]', RING)} data-testid="home-advanced">
+          <SlidersHorizontal className="h-4 w-4" aria-hidden="true" /><span className="hidden sm:inline">{t('sf_advanced')}</span><span className="sr-only sm:hidden">{t('sf_advanced')}</span>
+        </Link>
       </header>
-      <nav className="sticky top-14 z-10 flex gap-1 overflow-x-auto border-b border-[#E1E4E8] bg-white px-2 py-2 sm:justify-center" role="tablist" aria-label={t('rend_tabs')}>
-        {tabs.map(([k, key, Icon]) => (
-          <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => { setTab(k); setSelected(null); }}
-            className={cn('inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full px-4 text-[14px] font-semibold', RING, tab === k ? 'bg-[#0C1119] text-white' : 'text-[#0C1119] hover:bg-[#F1F3F6]')}
-            data-testid={`home-tab-${k.toLowerCase()}`}>
-            <Icon className="h-4 w-4" aria-hidden="true" />{t(key)}
-          </button>
-        ))}
-      </nav>
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-3 py-4 sm:px-6">
-        {error ? <p role="alert" className="mb-3 rounded-lg bg-[hsl(0_66%_44%)]/10 px-4 py-3 text-[14px] text-[hsl(0_66%_34%)]">{error}</p> : null}
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-10 pt-2 sm:px-8 sm:pt-6">
+        {error ? <p role="alert" className="mb-3 rounded-2xl bg-[hsl(0_66%_44%)]/10 px-4 py-3 text-[14px] text-[hsl(0_66%_34%)]">{error}</p> : null}
 
         {tab === 'PLAN' ? (
-          <section className="grid gap-4 md:grid-cols-2" aria-label={t('rend_tab_plan')}>
+          <section aria-label={t('sf_your_plan')}>
+            {back}
+            <h1 className="font-display text-[26px] font-semibold sm:text-[32px]">{t('sf_your_plan')}</h1>
             {doc ? (
-              <>
-                <figure className="overflow-hidden rounded-2xl bg-white ring-1 ring-black/5">
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                <figure className="overflow-hidden rounded-[22px] bg-white">
                   <PlanDrawing doc={doc} imageUrl={planUrl} mode="ORIGINAL" />
-                  <figcaption className="px-4 py-2 text-[13px] text-[#4A5263]">{t('p2h_compare_original')}</figcaption>
+                  <figcaption className="px-4 py-3 text-[13px] text-[#5B6472]">{t('p2h_compare_original')}</figcaption>
                 </figure>
-                <figure className="overflow-hidden rounded-2xl bg-white ring-1 ring-black/5">
+                <figure className="overflow-hidden rounded-[22px] bg-white">
                   <PlanDrawing doc={doc} imageUrl={planUrl} mode="CLEAN" rejected={new Set((data.plan?.corrections ?? [])[(data.plan?.corrections ?? []).length - 1]?.decisions?.rejected ?? [])} roomLabel={(r) => ({ name: t(`ds_room_${r.kind.toLowerCase()}`), size: null })} />
-                  <figcaption className="px-4 py-2 text-[13px] text-[#4A5263]">{t('p2h_compare_homatch')}</figcaption>
+                  <figcaption className="px-4 py-3 text-[13px] text-[#5B6472]">{t('p2h_compare_homatch')}</figcaption>
                 </figure>
-              </>
-            ) : <p className="text-[14px] text-[#4A5263]">{t('rend_plan_none')}</p>}
+              </div>
+            ) : <p className="mt-4 text-[14px] text-[#5B6472]">{t('rend_plan_none')}</p>}
           </section>
         ) : null}
 
-        {tab === 'DESIGN' ? (
-          <section aria-label={t('rend_tab_design')}>
-            <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-              <div>
-                <h1 className="font-display text-2xl font-semibold">{t('rend_master_title')}</h1>
-                <p className="text-[14px] text-[#4A5263]">{t(master.ready ? 'rend_master_hint' : 'rend_master_wait')}</p>
-              </div>
-              {master.ready?.finish && master.ready.finish.provider === 'BLENDER' && master.ready.finish.check && !master.ready.finish.check.accepted ? (
-                <p className="text-2xs text-[#5B6472]">{t('rend_finish_refused')}</p>
-              ) : null}
+        {tab === 'HOME' ? (
+          // One column on a phone (the actions after the picture); on a large screen the actions sit beside the title, above the fold.
+          <section aria-label={t('sf_your_home')} className="grid sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end sm:gap-x-6">
+            <div className="mb-4 sm:mb-6">
+              {look ? <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[hsl(36_60%_32%)]" data-testid="home-look">{t(`sf_style_${look.style.toLowerCase()}`)} · {t(`sf_quality_${look.quality.toLowerCase()}`)}</p> : null}
+              <h1 className="mt-1 font-display text-[28px] font-semibold leading-tight sm:text-[40px]">{t('sf_result_title')}</h1>
             </div>
-            <div className="relative overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
+            <div className="relative overflow-hidden rounded-[22px] bg-white shadow-[0_24px_60px_-30px_rgba(12,17,25,0.35)] sm:col-span-2 sm:rounded-[28px]" data-testid="home-render">
               {master.ready && urls.get(master.ready.id) ? (
                 <RenderViewer
                   imageUrl={urls.get(master.ready.id)!} idsUrl={master.stale ? null : mapUrl} legend={master.stale ? null : master.ready.legend}
@@ -422,10 +450,10 @@ function Home() {
                   alt={t('rend_master_alt')} labelFor={labelFor}
                 />
               ) : (
-                <div className="grid aspect-[16/10] place-items-center bg-[radial-gradient(circle_at_50%_40%,#ffffff,#eceff3)]" role="status" aria-live="polite" data-testid="master-working">
-                  <div className="text-center">
-                    <Loader2 className="mx-auto h-6 w-6 animate-spin text-[#4A5263]" aria-hidden="true" />
-                    <p className="mt-3 text-[15px] font-medium">{t(master.working?.status === 'FINISHING' ? 'rend_status_finishing' : master.working?.status === 'RENDERING' ? 'rend_status_rendering' : master.working ? 'rend_status_queued' : 'rend_status_none')}</p>
+                <div className="grid aspect-[4/3] place-items-center bg-[#FBFAF7] sm:aspect-[16/10]" role="status" aria-live="polite" data-testid="master-working">
+                  <div className="px-6 text-center">
+                    <Loader2 className="mx-auto h-6 w-6 animate-spin text-[#5B6472]" aria-hidden="true" />
+                    <p className="mt-3 text-[16px] font-medium">{t(master.working?.status === 'FINISHING' ? 'rend_status_finishing' : master.working?.status === 'RENDERING' ? 'rend_status_rendering' : master.working ? 'rend_status_queued' : 'rend_status_none')}</p>
                   </div>
                 </div>
               )}
@@ -443,50 +471,54 @@ function Home() {
                 />
               ) : null}
             </div>
+            {master.ready ? <p className="mt-3 text-[14px] text-[#5B6472] sm:col-span-2">{t('rend_master_hint')}</p> : null}
+            {master.ready?.finish && master.ready.finish.provider === 'BLENDER' && master.ready.finish.check && !master.ready.finish.check.accepted ? (
+              <p className="mt-1 text-2xs text-[#5B6472] sm:col-span-2">{t('rend_finish_refused')}</p>
+            ) : null}
             {failedEdit && !master.working ? (
-              <div role="alert" className="mt-3 flex flex-wrap items-center gap-3 rounded-xl bg-white px-4 py-3 text-[14px] text-[hsl(0_66%_34%)] ring-1 ring-[hsl(0_66%_80%)]" data-testid="edit-failed">
+              <div role="alert" className="mt-3 flex flex-wrap items-center gap-3 rounded-2xl bg-white px-4 py-3 text-[14px] text-[hsl(0_66%_34%)] ring-1 ring-[hsl(0_66%_80%)] sm:col-span-2" data-testid="edit-failed">
                 <span className="min-w-0 flex-1">{t('rend_edit_failed')}</span>
-                <button type="button" onClick={() => { void retryEdit(); }} disabled={busy} className={cn('inline-flex h-10 items-center rounded-xl bg-[#0C1119] px-4 text-[14px] font-semibold text-white disabled:opacity-60', RING)} data-testid="edit-retry">
+                <button type="button" onClick={() => { void retryEdit(); }} disabled={busy} className={cn('inline-flex h-11 items-center rounded-full bg-[#0C1119] px-5 text-[14px] font-semibold text-white disabled:opacity-60', RING)} data-testid="edit-retry">
                   {t('rend_edit_retry')}
                 </button>
               </div>
             ) : null}
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button type="button" onClick={() => setTab('ROOMS')} className={cn('inline-flex h-11 items-center gap-2 rounded-xl bg-white px-4 text-[15px] font-semibold ring-1 ring-[#D5D9E0] hover:ring-[#0C1119]', RING)}>
-                <ImageIcon className="h-4 w-4" aria-hidden="true" />{t('rend_cta_rooms')}
+            <div className="order-last mt-6 flex flex-wrap gap-2 sm:order-none sm:col-start-2 sm:row-start-1 sm:mb-6 sm:mt-0 sm:justify-end" data-testid="home-actions">
+              {!aiHome ? (
+                <button type="button" onClick={() => { setTab('ROOMS'); setSelected(null); }} className={QUIET_ACTION} data-testid="home-rooms">
+                  <ImageIcon className="h-4 w-4" aria-hidden="true" />{t('sf_edit_room')}
+                </button>
+              ) : null}
+              <button type="button" onClick={() => { setTab('PLAN'); setSelected(null); }} className={QUIET_ACTION} data-testid="home-plan">
+                <MapIcon className="h-4 w-4" aria-hidden="true" />{t('sf_your_plan')}
               </button>
-              <button type="button" onClick={() => { void walk(); }} disabled={walkPrep === 'BUILDING'} className={cn('inline-flex h-11 items-center gap-2 rounded-xl bg-[hsl(38_92%_56%)] px-4 text-[15px] font-semibold text-[#0C1119] hover:bg-[hsl(38_92%_50%)] disabled:opacity-60', RING)} data-testid="home-walk">
-                {walkPrep === 'BUILDING' ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Footprints className="h-4 w-4" aria-hidden="true" />}
-                {t(walkPrep === 'BUILDING' ? 'rend_walk_preparing' : 'rend_cta_walk')}
-              </button>
+              {WALKTHROUGH_OFFERED ? (
+                <button type="button" onClick={() => { void walk(); }} disabled={walkPrep === 'BUILDING'} className={cn(QUIET_ACTION, 'disabled:opacity-60')} data-testid="home-walk">
+                  {walkPrep === 'BUILDING' ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Footprints className="h-4 w-4" aria-hidden="true" />}
+                  {t(walkPrep === 'BUILDING' ? 'rend_walk_preparing' : 'rend_cta_walk')}
+                </button>
+              ) : null}
             </div>
+            {WALKTHROUGH_OFFERED && walkPrep === 'FAILED' ? <p role="alert" className="mt-3 text-[14px] text-[hsl(0_66%_34%)] sm:col-span-2">{t('rend_walk_failed')}</p> : null}
           </section>
         ) : null}
 
-        {tab === 'ROOMS' ? <RoomsTab data={data} renders={renders} urls={urls} onOrder={async (views, confirmed) => { await renderViews(data.head.id, data.state, views, 'DS_ROOM_RENDER', confirmed); await reload(); }} quote={(n) => quoteRender({ projectId, versionId: data.head.id, product: 'DS_ROOM_RENDER', views: n })} /> : null}
-
-        {tab === 'WALK' ? (
-          <section className="mx-auto max-w-xl rounded-2xl bg-white p-6 text-center shadow-sm ring-1 ring-black/5" aria-label={t('rend_tab_walk')}>
-            <Footprints className="mx-auto h-8 w-8" aria-hidden="true" />
-            <h2 className="mt-3 font-display text-xl font-semibold">{t('rend_walk_title')}</h2>
-            <p className="mt-2 text-[14px] text-[#4A5263]">{t('rend_walk_body')}</p>
-            <button type="button" onClick={() => { void walk(); }} disabled={walkPrep === 'BUILDING'} className={cn('mt-5 inline-flex h-12 items-center gap-2 rounded-xl bg-[#0C1119] px-6 text-[16px] font-semibold text-white disabled:opacity-60', RING)} data-testid="home-walk-start">
-              {walkPrep === 'BUILDING' ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <ArrowRight className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />}
-              {t(walkPrep === 'BUILDING' ? 'rend_walk_preparing' : 'rend_cta_walk')}
-            </button>
-            {walkPrep === 'FAILED' ? <p role="alert" className="mt-3 text-[14px] text-[hsl(0_66%_34%)]">{t('rend_walk_failed')}</p> : null}
-          </section>
+        {tab === 'ROOMS' ? (
+          <>
+            {back}
+            <RoomsTab data={data} renders={renders} urls={urls} onOrder={async (views, confirmed) => { await renderViews(data.head.id, data.state, views, 'DS_ROOM_RENDER', confirmed); await reload(); }} quote={(n) => quoteRender({ projectId, versionId: data.head.id, product: 'DS_ROOM_RENDER', views: n })} />
+          </>
         ) : null}
       </main>
 
       {pending ? (
         <div className="fixed inset-0 z-40 grid place-items-end bg-black/40 sm:place-items-center" role="dialog" aria-modal="true" aria-labelledby="home-confirm-title">
-          <div className="w-full max-w-md rounded-t-2xl bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-xl sm:rounded-2xl">
+          <div className="w-full max-w-md rounded-t-[24px] bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-xl sm:rounded-[24px]">
             <h2 id="home-confirm-title" className="text-[17px] font-semibold">{pending.title}</h2>
             <p className="mt-2 text-[15px]" data-testid="confirm-price">{t(pending.charged ? 'p2h_price_charged' : 'p2h_price_not_charged', { credits: String(pending.credits) })}</p>
             <div className="mt-5 flex gap-2">
-              <button type="button" onClick={() => setPending(null)} disabled={busy} className={cn('h-11 flex-1 rounded-xl border border-[#D5D9E0] text-[15px] font-medium', RING)}>{t('general_cancel')}</button>
-              <button type="button" onClick={() => { void runPending(); }} disabled={busy} className={cn('inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[#0C1119] text-[15px] font-semibold text-white disabled:opacity-60', RING)} data-testid="confirm-run">
+              <button type="button" onClick={() => setPending(null)} disabled={busy} className={cn('h-12 flex-1 rounded-full border border-[#D5D9E0] text-[15px] font-medium', RING)}>{t('general_cancel')}</button>
+              <button type="button" onClick={() => { void runPending(); }} disabled={busy} className={cn('inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-[#0C1119] text-[15px] font-semibold text-white disabled:opacity-60', RING)} data-testid="confirm-run">
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}{t('rend_confirm')}
               </button>
             </div>

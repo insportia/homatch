@@ -1,21 +1,26 @@
-// FROM A FLOOR PLAN TO A HOME YOU CAN WALK THROUGH — the customer's path.
+// FROM A FLOOR PLAN TO A PHOTOREALISTIC HOME — the customer's path.
 //
 //   1. Upload      PNG / JPEG / WebP, or a PDF (page 1 is rendered here)
-//   2. Understand  HOMATCH reads the drawing and checks it against itself:
-//                  printed sizes against each other, rooms against walls
-//   3. Confirm     the plan as HOMATCH understood it; only the questions its
-//                  evidence could not settle; anything can be tapped and fixed
-//   4. Look        style, mood, floors, walls, accents, furnishing, own words
-//   5. Generate    the AI designer's intent, placed by HOMATCH, built by the
-//                  Blender factory — resumable, never paid for twice
-//   6. Walk        the walkthrough opens on the result
+//   2. Understand  HOMATCH reads the drawing and checks it against itself
+//   3. (Ask)       ONE quick question at a time, and only when HOMATCH's own
+//                  evidence is genuinely weak (quickQuestions.ts) — otherwise
+//                  the reading goes straight on. The full review of the plan
+//                  is always one link away ("Review plan in detail").
+//   4. Style       six looks, one tap
+//   5. Quality     Smart budget / High quality / Premium, the price, Generate.
+//                  "Customise details" opens the detailed look (DesignChooser).
+//   6. Generate    OpenAI-first (planToHome.ts generateHome): architecture cached
+//                  by its key, OpenAI's Design Specification from the customer's
+//                  own source, ONE photorealistic master picture and its edit map
+//                  — no Blender, resumable, never paid for twice
+//   7. Result      the home opens on its photorealistic picture
 //
 // Every step is kept on the plan's review entry, so a reload lands where the
-// customer was. Recalibrating an existing space uses the same review and
+// customer was. Recalibrating an existing space uses the detailed review and
 // rebuilds the space only (no new design).
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, FileImage, Loader2, RefreshCw, Upload } from 'lucide-react';
+import { ArrowLeft, FileImage } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { FloorPlanDocument } from '@/services/developer/floorplan';
 import {
@@ -25,21 +30,31 @@ import { applyAnswers, solvePlan } from '@/lib/designStudio/planRead';
 import {
   DEFAULT_PREFERENCES, normalizePreferences, type DesignPreferences, type FlowTimings, type PlanAnswer,
 } from '@/lib/designStudio/planToHome';
-import { freshStages, GenerationStages, type StageStatus } from '@/components/designStudio/GenerationStages';
+import { lookPreferences, readLook, type LookQuality, type LookStyle } from '@/lib/designStudio/lookPresets';
+import { necessaryQuestions } from '@/lib/designStudio/quickQuestions';
+import { freshStages, type StageStatus } from '@/components/designStudio/GenerationStages';
 import type { Stage } from '@/lib/designStudio/hybrid/contract';
 import { DesignStudioError } from '@/services/designStudio/projects';
 import {
   createFloorPlanSource, getFloorPlan, interpretFloorPlan, recordReview, uploadFloorPlan, type FloorPlanRecord,
 } from '@/services/designStudio/floorplans';
-import { generateHome, latestFlow, prepareArchitecture, saveFlow } from '@/services/designStudio/planToHome';
+import { generateHome, latestFlow, prepareArchitecture, saveFlow, type FlowRecord } from '@/services/designStudio/planToHome';
 import { quoteRender } from '@/services/designStudio/renders';
 import type { RenderQuote } from '@/lib/designStudio/renders/contract';
 import { signedUrls } from '@/services/designStudio/files';
 import { cn } from '@/lib/utils';
 import { PlanReview } from './planToHome/PlanReview';
 import { DesignChooser } from './planToHome/DesignChooser';
+import {
+  BuildingStep, QualityStep, QuickQuestionStep, RING, StyleStep, SURFACE, UnderstandingStep, UploadStep,
+} from './planToHome/SimpleSteps';
 
-type Step = 'UPLOAD' | 'READING' | 'REVIEW' | 'DESIGN' | 'GENERATING';
+/**
+ * PREPARING is the understanding screen while the confirmed reading becomes the
+ * home's architecture (cached by its key, so a reload re-enters it for free).
+ */
+type Step = 'UPLOAD' | 'READING' | 'QUICK' | 'REVIEW' | 'PREPARING' | 'STYLE' | 'QUALITY' | 'CUSTOM' | 'GENERATING';
+type SavePatch = Parameters<typeof saveFlow>[1];
 
 const ERROR_KEY: Record<string, string> = {
   DS_PLAN_TYPE: 'ds_fp_error_type',
@@ -55,15 +70,29 @@ const ERROR_KEY: Record<string, string> = {
   DS_AI_FAILED: 'p2h_error_design',
   DS_PRICE_CHANGED: 'p2h_error_price_changed',
   DS_SOURCE_MISSING: 'p2h_error_not_buildable',
+  DS_RENDER_FAILED: 'sf_error_render',
+  DS_RATE_LIMITED: 'sf_error_busy',
 };
 
 const INPUT = 'h-10 w-full rounded-lg border border-[#D5D9E0] bg-white px-3 text-[15px] text-[#0C1119] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]';
-const GEN_STAGES: readonly Stage[] = ['MEASURING', 'PLANNING', 'ARCHITECTURE', 'FURNISHING', 'MATERIALS', 'LIGHTING', 'CHECKING', 'PREPARING', 'FINALIZING'];
 
 /** A drawing in feet and inches: sizes are shown in both. */
 const isImperial = (doc: FloorPlanDocument | null) => !!doc && [
   ...(doc.texts ?? []).map((x) => x.text), ...doc.rooms.map((r) => r.dimensionText ?? ''), doc.scaleEvidence ?? '',
 ].some((s) => /\d\s*['′]|\bft\b|\bfeet\b/i.test(s));
+
+/** Where a saved flow resumes. The reading's own questions decide QUICK vs straight on. */
+function resumeStep(plan: FloorPlanRecord | null, flow: FlowRecord | null, recalibrating: boolean): Step {
+  if (!plan) return 'UPLOAD';
+  if (plan.status === 'INTERPRETING' || plan.status === 'UPLOADED') return 'READING';
+  if (!plan.interpretation) return 'UPLOAD';
+  if (recalibrating) return 'REVIEW';
+  if (flow?.step === 'GENERATING') return 'GENERATING';
+  if (flow?.step === 'DESIGN') return flow.lookStep === 'QUALITY' ? 'QUALITY' : flow.lookStep === 'CUSTOM' ? 'CUSTOM' : 'STYLE';
+  if (flow?.review === 'DETAIL') return 'REVIEW';
+  const asked = necessaryQuestions(plan.interpretation.understanding?.questions ?? [], flow?.answers ?? []);
+  return asked.length ? 'QUICK' : 'PREPARING';
+}
 
 export function FloorPlanFlow({
   userId, projectId, projectName, existing, resume, onBuilt, onDone, onCancel,
@@ -76,7 +105,7 @@ export function FloorPlanFlow({
   /** A plan whose path was left part-way (reload, closed tab): continue it. */
   resume?: FloorPlanRecord | null;
   onBuilt: (sourceId: string, metresPerPx: number) => void;
-  /** The home is built: open its walkthrough on this version. */
+  /** The home is built: open it on this version. */
   onDone: (versionId: string) => void;
   onCancel: () => void;
 }) {
@@ -84,12 +113,7 @@ export function FloorPlanFlow({
   const recalibrating = !!existing;
   const start = existing ?? resume ?? null;
   const startFlow = latestFlow(start);
-  const initialStep: Step = !start ? 'UPLOAD'
-    : start.status === 'INTERPRETING' || start.status === 'UPLOADED' ? 'READING'
-      : startFlow?.step === 'GENERATING' ? 'GENERATING'
-        : startFlow?.step === 'DESIGN' ? 'DESIGN'
-          : start.interpretation ? 'REVIEW' : 'UPLOAD';
-  const [step, setStep] = useState<Step>(initialStep);
+  const [step, setStep] = useState<Step>(() => resumeStep(start, startFlow, recalibrating));
   const [plan, setPlan] = useState<FloorPlanRecord | null>(start);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [localPreview, setLocalPreview] = useState<string | null>(null);
@@ -101,6 +125,10 @@ export function FloorPlanFlow({
   const [answers, setAnswers] = useState<PlanAnswer[]>(startFlow?.answers ?? []);
   const [anchors, setAnchors] = useState<Anchor[]>(last?.anchors ?? []);
   const [ceiling, setCeiling] = useState<string>(last?.ceilingM ? String(last.ceilingM) : '');
+  const savedLook = readLook(startFlow?.look);
+  const [style, setStyle] = useState<LookStyle | null>(savedLook?.style ?? null);
+  const [quality, setQuality] = useState<LookQuality | null>(savedLook?.quality ?? 'HIGH_QUALITY');
+  /** The detailed look — only the customer's own when they opened "Customise details". */
   const [prefs, setPrefs] = useState<DesignPreferences>(() => normalizePreferences(startFlow?.preferences ?? DEFAULT_PREFERENCES));
   const [stages, setStages] = useState<Record<Stage, StageStatus>>(freshStages);
   const [busy, setBusy] = useState(false);
@@ -117,7 +145,9 @@ export function FloorPlanFlow({
   const dims = reading?.dimensionStrings ?? [];
   const doc = useMemo(() => (baseDoc ? applyAnswers(baseDoc, answers) : null), [baseDoc, answers]);
   const constraints = useMemo(() => (doc ? solvePlan(doc, dims, answers) ?? reading?.understanding?.constraints ?? null : null), [doc, dims, answers, reading]);
-  const questions = reading?.understanding?.questions ?? [];
+  const questions = useMemo(() => reading?.understanding?.questions ?? [], [reading]);
+  const quick = useMemo(() => necessaryQuestions(questions, answers), [questions, answers]);
+  const quickTotal = useMemo(() => necessaryQuestions(questions, []).length, [questions]);
 
   useEffect(() => {
     if (!plan?.object_key) return;
@@ -128,6 +158,27 @@ export function FloorPlanFlow({
   const fail = (e: unknown) => {
     const code = e instanceof DesignStudioError ? e.code : '';
     setError(t(ERROR_KEY[code] ?? 'ds_fp_error_generic'));
+  };
+
+  // ── Saving: one write at a time, so two quick steps never overwrite each other ──
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  const persistNow = useCallback((patch: SavePatch) => {
+    if (!plan) return;
+    const id = plan.id;
+    queue.current = queue.current.then(() => saveFlow(id, patch)).catch(() => {});
+  }, [plan]);
+  const persist = useRef<number | null>(null);
+  const keep = useCallback((patch: SavePatch) => {
+    if (!plan) return;
+    if (persist.current) window.clearTimeout(persist.current);
+    persist.current = window.setTimeout(() => persistNow(patch), 700);
+  }, [plan, persistNow]);
+
+  /** After the reading: ask only what HOMATCH genuinely needs, else go straight on. */
+  const afterReading = (read: FloorPlanRecord, given: PlanAnswer[]) => {
+    if (recalibrating) { setStep('REVIEW'); return; }
+    const asked = necessaryQuestions(read.interpretation?.understanding?.questions ?? [], given);
+    setStep(asked.length ? 'QUICK' : 'PREPARING');
   };
 
   // ── Reading ────────────────────────────────────────────────────────────
@@ -151,8 +202,11 @@ export function FloorPlanFlow({
       if (!read?.interpretation) throw new DesignStudioError('DS_READING_FAILED');
       timings.current.analysisMs = Math.round(performance.now() - t1);
       timings.current.reviewReadyMs = Math.round(performance.now() - t0);
-      setPlan(await saveFlow(read.id, { step: 'REVIEW', answers: [], timings: timings.current }));
-      setStep('REVIEW');
+      const asked = necessaryQuestions(read.interpretation.understanding?.questions ?? [], []);
+      const saved = await saveFlow(read.id, { step: 'REVIEW', answers: [], timings: timings.current, review: asked.length ? 'QUICK' : 'AUTO' });
+      setAnswers([]);
+      setPlan(saved);
+      afterReading(saved, []);
     } catch (e) {
       fail(e);
       setStep('UPLOAD');
@@ -168,20 +222,14 @@ export function FloorPlanFlow({
     const id = window.setInterval(async () => {
       const next = await getFloorPlan(plan.id).catch(() => null);
       if (stop || !next) return;
-      if (next.status === 'INTERPRETED' && next.interpretation) { setPlan(next); setStep('REVIEW'); }
+      if (next.status === 'INTERPRETED' && next.interpretation) { setPlan(next); afterReading(next, latestFlow(next)?.answers ?? []); }
       else if (next.status === 'FAILED') { setError(t('ds_fp_error_generic')); setStep('UPLOAD'); }
     }, 3000);
     return () => { stop = true; window.clearInterval(id); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- afterReading reads only its arguments
   }, [step, plan, t]);
 
-  // ── Review: every change kept, so a reload never loses it ───────────────
-  const persist = useRef<number | null>(null);
-  const keep = useCallback((patch: Parameters<typeof saveFlow>[1]) => {
-    if (!plan) return;
-    if (persist.current) window.clearTimeout(persist.current);
-    persist.current = window.setTimeout(() => { void saveFlow(plan.id, patch).catch(() => {}); }, 700);
-  }, [plan]);
-
+  // ── Scale and the detailed review's controls ────────────────────────────
   const estimate = useMemo(() => (doc ? estimateScale(doc, dims) : null), [doc, dims]);
   const calibration: Calibration | null = useMemo(() => {
     if (!doc) return null;
@@ -192,10 +240,7 @@ export function FloorPlanFlow({
   const ceilingM = Number(ceiling) > 1.8 && Number(ceiling) < 8 ? Number(ceiling) : null;
   const ceilingFinal = ceilingM ?? doc?.ceilingHeight ?? DEFAULT_CEILING_M;
   // An unmeasured ceiling is recorded as typical, never as a fact.
-  const ceilingSource = ((plan: { ceilingHeight: number | null }): 'CUSTOMER' | 'DRAWING' | 'TYPICAL' => {
-    const doc = plan;
-    return ceilingM ? 'CUSTOMER' : doc.ceilingHeight ? 'DRAWING' : 'TYPICAL';
-  })(doc ?? { ceilingHeight: null });
+  const ceilingSource: 'CUSTOMER' | 'DRAWING' | 'TYPICAL' = ceilingM ? 'CUSTOMER' : doc?.ceilingHeight ? 'DRAWING' : 'TYPICAL';
 
   const setAnchor = (next: Anchor | null, kind: Anchor['kind']) => {
     setAnchors((list) => {
@@ -211,11 +256,23 @@ export function FloorPlanFlow({
     return String(a.kind === 'WALL_LENGTH' ? a.valueM : a.valueM2);
   };
 
-  const continueToDesign = async () => {
+  const requestQuote = useCallback(async (versionId: string) => {
+    setQuoteFailed(false);
+    const q = await quoteRender({ projectId, versionId, product: 'DS_MASTER_RENDER', views: 1 });
+    setQuote(q.quote);
+    setQuoteFailed(!q.quote);
+  }, [projectId]);
+
+  /**
+   * The confirmed reading becomes the home's architecture (cached by its key:
+   * the same reading never builds it twice). `auto`: nobody pressed anything,
+   * so a plan that cannot be built opens the detailed review instead of failing.
+   */
+  const continueToDesign = async (auto = false) => {
     if (!plan || !doc || busy) return;
-    if (!calibration) { setProblems(['NO_SCALE']); return; }
+    if (!calibration) { setProblems(['NO_SCALE']); if (auto) setStep('REVIEW'); return; }
     const check = buildCanonical(doc, decisions, calibration, ceilingFinal, ceilingSource);
-    if (!check.ok) { setProblems(check.problems); return; }
+    if (!check.ok) { setProblems(check.problems); if (auto) setStep('REVIEW'); return; }
     setProblems([]);
     setBusy(true);
     try {
@@ -225,38 +282,80 @@ export function FloorPlanFlow({
         onBuilt(sourceId, calibration.metresPerPx);
         return;
       }
+      await queue.current;
       await saveFlow(plan.id, { answers, decisions, anchors, ceilingM });
-      // The confirmed plan becomes the home's architecture now: the Look step can quote it, and it is never rebuilt for a new look.
       const arch = await prepareArchitecture({
         userId, projectId, plan, doc, decisions, anchors, calibration, ceilingM: ceilingFinal, ceilingSource, answers,
         versionName: (k) => t(k === 'original' ? 'ds_version_original' : k === 'design' ? 'p2h_version_design' : 'p2h_version_factory'),
       });
-      setPlan(await saveFlow(plan.id, { step: 'DESIGN' }));
-      setStep('DESIGN');
+      setPlan(await saveFlow(plan.id, { step: 'DESIGN', lookStep: 'STYLE' }));
+      setStep('STYLE');
       void requestQuote(arch.originalId);
     } catch (e) {
       fail(e);
+      if (auto) setStep('REVIEW');
     } finally {
       setBusy(false);
     }
   };
 
-  const requestQuote = useCallback(async (versionId: string) => {
-    setQuoteFailed(false);
-    const q = await quoteRender({ projectId, versionId, product: 'DS_MASTER_RENDER', views: 1 });
-    setQuote(q.quote);
-    setQuoteFailed(!q.quote);
-  }, [projectId]);
-  // A reload on the Look step quotes again (a quote lives ten minutes).
+  // Nothing to ask (or the last quick answer given): build the architecture on its own, once per entry.
+  const preparing = useRef(false);
   useEffect(() => {
-    if (step !== 'DESIGN' || quote || quoteFailed) return;
+    if (step !== 'PREPARING') { preparing.current = false; return; }
+    if (preparing.current || busy || !doc) return;
+    preparing.current = true;
+    void continueToDesign(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per PREPARING entry
+  }, [step, doc, busy]);
+
+  // A quick step with nothing left to ask goes straight on.
+  useEffect(() => { if (step === 'QUICK' && reading && !quick.length) setStep('PREPARING'); }, [step, reading, quick.length]);
+
+  // A reload on Style / Quality quotes again (a quote lives ten minutes).
+  useEffect(() => {
+    if (!(step === 'STYLE' || step === 'QUALITY' || step === 'CUSTOM') || quote || quoteFailed) return;
     const original = latestFlow(plan)?.originalVersionId;
     if (original) void requestQuote(original);
   }, [step, quote, quoteFailed, plan, requestQuote]);
 
+  // ── The quick question ──────────────────────────────────────────────────
+  const answerQuick = (a: PlanAnswer) => {
+    if (busy) return;
+    const next = [...answers.filter((x) => x.questionId !== a.questionId), a];
+    setAnswers(next);
+    persistNow({ answers: next, review: 'QUICK' });
+    if (!necessaryQuestions(questions, next).length) setStep('PREPARING');
+  };
+  const openDetail = () => {
+    setError(null);
+    setStep('REVIEW');
+    persistNow({ step: 'REVIEW', review: 'DETAIL' });
+  };
+
+  // ── Style → Quality → (Customise) ───────────────────────────────────────
+  const goStyle = () => { setStep('STYLE'); persistNow({ lookStep: 'STYLE' }); };
+  const goQuality = () => {
+    if (!style) return;
+    const q = quality ?? 'HIGH_QUALITY';
+    setQuality(q);
+    setStep('QUALITY');
+    persistNow({ lookStep: 'QUALITY', look: { style, quality: q }, preferences: lookPreferences(style, q) });
+  };
+  const goCustom = () => {
+    if (!style || !quality) return;
+    // The detailed look starts from what the two choices produced.
+    const p = lookPreferences(style, quality);
+    setPrefs(p);
+    setStep('CUSTOM');
+    persistNow({ lookStep: 'CUSTOM', preferences: p });
+  };
+  /** What Generate sends from Quality: exactly what Style × Quality produced. */
+  const chosen = (): DesignPreferences | null => (style && quality ? lookPreferences(style, quality) : null);
+
   // ── Generate: resumable; a double tap is one run ────────────────────────
-  const generate = useCallback(async () => {
-    if (!plan || !doc || !calibration || running.current) return;
+  const generate = useCallback(async (preferences: DesignPreferences | null, retry = false) => {
+    if (!plan || !doc || !calibration || running.current || !preferences) return;
     running.current = true;
     setBusy(true);
     setGenFailed(false);
@@ -269,11 +368,15 @@ export function FloorPlanFlow({
     });
     const mark = (s: Stage, st: 'RUNNING' | 'DONE' | 'SKIPPED') => setStages((cur) => ({ ...cur, [s]: st }));
     try {
-      const fresh = await saveFlow(plan.id, { step: 'GENERATING', answers, preferences: prefs, decisions, anchors, ceilingM, timings: timings.current, ...(quote ? { confirmedCredits: quote.credits } : {}) });
+      await queue.current;
+      const fresh = await saveFlow(plan.id, {
+        step: 'GENERATING', answers, preferences, decisions, anchors, ceilingM, timings: timings.current,
+        ...(style && quality ? { look: { style, quality } } : {}), ...(quote ? { confirmedCredits: quote.credits } : {}),
+      });
       setPlan(fresh);
       const result = await generateHome({
         userId, projectId, projectName, plan: fresh, doc, decisions, anchors, calibration,
-        ceilingM: ceilingFinal, ceilingSource, preferences: prefs,
+        ceilingM: ceilingFinal, ceilingSource, preferences, look: style && quality ? { style, quality } : null, retry,
         confirmedCredits: quote?.credits ?? latestFlow(fresh)?.confirmedCredits ?? null,
         versionName: (k) => t(k === 'original' ? 'ds_version_original' : k === 'design' ? 'p2h_version_design' : 'p2h_version_factory'),
         onStage: mark,
@@ -286,19 +389,23 @@ export function FloorPlanFlow({
       running.current = false;
       setBusy(false);
     }
-  }, [plan, doc, calibration, answers, prefs, decisions, anchors, ceilingM, ceilingFinal, ceilingSource, userId, projectId, projectName, t, onDone, quote]);
+  }, [plan, doc, calibration, answers, decisions, anchors, ceilingM, ceilingFinal, ceilingSource, userId, projectId, projectName, t, onDone, quote, style, quality]);
+
+  /** A retry or a resumed run uses exactly what was saved when Generate was pressed. */
+  const savedPrefs = (): DesignPreferences => {
+    const saved = latestFlow(plan)?.preferences;
+    return saved ? normalizePreferences(saved) : chosen() ?? prefs;
+  };
 
   // A generation that was running when the page was left: carry on.
   const resumed = useRef(false);
   useEffect(() => {
     if (step === 'GENERATING' && !resumed.current && !running.current && doc && calibration) {
       resumed.current = true;
-      void generate();
+      void generate(savedPrefs());
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- savedPrefs reads the plan of this render
   }, [step, doc, calibration, generate]);
-
-  const stepIndex = { UPLOAD: 0, READING: 0, REVIEW: 1, DESIGN: 2, GENERATING: 3 }[step];
-  const stepKeys = recalibrating ? ['p2h_step_upload', 'p2h_step_confirm'] : ['p2h_step_upload', 'p2h_step_confirm', 'p2h_step_look', 'p2h_step_build'];
 
   const advanced = doc ? (
     <div className="space-y-3">
@@ -319,52 +426,28 @@ export function FloorPlanFlow({
     </div>
   ) : null;
 
+  const needsDoc = step === 'QUICK' || step === 'REVIEW' || step === 'STYLE' || step === 'QUALITY' || step === 'CUSTOM' || step === 'GENERATING';
+  const current = quick[0] ?? null;
+
   return (
-    <div className="flex h-[100dvh] flex-col bg-[#F4F5F7] text-[#0C1119]" data-testid="plan-to-home" data-step={step}>
-      <header className="flex h-14 shrink-0 items-center gap-3 bg-[#0C1119] px-3 text-white">
-        <button type="button" onClick={onCancel} aria-label={t('ds_action_cancel')} className="grid h-9 w-9 place-items-center rounded-lg hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]">
-          <ArrowLeft className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
+    <div className={cn('flex h-[100dvh] flex-col', SURFACE)} data-testid="plan-to-home" data-step={step}>
+      <header className="flex h-14 shrink-0 items-center gap-2 px-2 sm:px-6">
+        <button type="button" onClick={onCancel} aria-label={t('ds_action_cancel')}
+          className={cn('grid h-11 w-11 place-items-center rounded-full text-[#0C1119] hover:bg-black/5', RING)} data-testid="plan-cancel">
+          <ArrowLeft className="h-5 w-5 rtl:rotate-180" aria-hidden="true" />
         </button>
-        <div className="min-w-0">
-          <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-[hsl(38_92%_62%)]">{t('ds_fp_title')}</p>
-          <p className="truncate font-display text-[15px] font-semibold">{projectName}</p>
-        </div>
-        <ol className="ms-auto flex items-center gap-1.5 text-[13px]" aria-label={t('ds_fp_steps')}>
-          {stepKeys.map((key, i) => (
-            <li key={key} aria-current={i === stepIndex ? 'step' : undefined} className="flex items-center gap-1.5">
-              <span className={cn('grid h-6 w-6 place-items-center rounded-full text-2xs font-semibold', i < stepIndex ? 'bg-white/20 text-white' : i === stepIndex ? 'bg-[hsl(38_92%_56%)] text-[#0C1119]' : 'bg-white/10 text-white/50')}>{i + 1}</span>
-              <span className={cn('hidden md:inline', i === stepIndex ? 'font-semibold text-white' : 'text-white/55')}>{t(key)}</span>
-            </li>
-          ))}
-        </ol>
+        <p className="min-w-0 truncate font-display text-[15px] font-semibold">{projectName}</p>
       </header>
 
-      {step === 'UPLOAD' || step === 'READING' ? (
-        <div className="grid flex-1 place-items-center overflow-y-auto px-4 py-8">
-          <div className="w-full max-w-xl">
-            {step === 'UPLOAD' ? (
-              <>
-                <h1 className="font-display text-2xl font-semibold">{t('p2h_upload_title')}</h1>
-                <p className="mt-2 text-[15px] leading-relaxed text-[#4A5263]">{t('p2h_upload_body')}</p>
-                <label
-                  className="mt-6 flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-[#B8BFCA] bg-white px-6 py-14 text-center transition-colors hover:border-[#0C1119] focus-within:ring-2 focus-within:ring-[hsl(38_92%_56%)]"
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) void onFile(f); }}
-                  data-testid="plan-drop"
-                >
-                  <Upload className="h-9 w-9 text-[#4A5263]" aria-hidden="true" />
-                  <span className="text-[16px] font-semibold">{t('ds_fp_choose_file')}</span>
-                  <span className="text-[13px] text-[#4A5263]">{t('ds_fp_file_types')}</span>
-                  <input type="file" accept="image/png,image/jpeg,image/webp,application/pdf" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void onFile(f); }} data-testid="plan-file" />
-                </label>
-              </>
-            ) : (
-              <ReadingView image={localPreview ?? imageUrl} stage={stage} since={readingSince} />
-            )}
-            {error ? <p role="alert" className="mt-4 rounded-lg bg-[hsl(0_66%_44%)]/10 px-4 py-3 text-[14px] text-[hsl(0_66%_34%)]">{error}</p> : null}
-            <p className="mt-4 text-[13px] text-[#4A5263]">{t('ds_fp_privacy')}</p>
-          </div>
-        </div>
+      {step === 'UPLOAD' ? <UploadStep onFile={(f) => { void onFile(f); }} error={error} /> : null}
+
+      {step === 'READING' || step === 'PREPARING' ? (
+        <UnderstandingStep image={localPreview ?? imageUrl} stage={step === 'READING' ? stage : 'READING'} since={readingSince} />
+      ) : null}
+
+      {step === 'QUICK' && doc && current ? (
+        <QuickQuestionStep question={current} index={Math.max(0, quickTotal - quick.length)} total={quickTotal}
+          doc={doc} imageUrl={imageUrl} onAnswer={answerQuick} onDetail={openDetail} busy={busy} />
       ) : null}
 
       {step === 'REVIEW' && doc ? (
@@ -388,71 +471,39 @@ export function FloorPlanFlow({
         </>
       ) : null}
 
-      {step === 'DESIGN' ? (
+      {step === 'STYLE' ? (
+        <StyleStep value={style} onChange={(s) => { setStyle(s); persistNow({ look: { style: s, quality: quality ?? 'HIGH_QUALITY' } }); }}
+          onNext={goQuality} onDetail={openDetail} />
+      ) : null}
+
+      {step === 'QUALITY' ? (
+        <QualityStep value={quality}
+          onChange={(q) => { setQuality(q); if (style) persistNow({ look: { style, quality: q }, preferences: lookPreferences(style, q) }); }}
+          onBack={goStyle} onGenerate={() => { void generate(chosen()); }} onCustomize={goCustom}
+          busy={busy} price={quote ? { credits: quote.credits, charged: quote.charged } : null} priceUnavailable={quoteFailed}
+          onRetryPrice={() => { const o = latestFlow(plan)?.originalVersionId; if (o) void requestQuote(o); }} />
+      ) : null}
+
+      {step === 'CUSTOM' ? (
         <DesignChooser
           value={prefs}
           onChange={(p) => { setPrefs(p); keep({ preferences: p }); }}
-          onGenerate={() => { void generate(); }}
+          onGenerate={() => { void generate(prefs); }}
           busy={busy}
           price={quote ? { credits: quote.credits, charged: quote.charged } : null}
           priceUnavailable={quoteFailed}
-          onBack={() => { setStep('REVIEW'); keep({ step: 'REVIEW' }); }}
+          onBack={() => { setStep('QUALITY'); persistNow({ lookStep: 'QUALITY' }); }}
         />
       ) : null}
 
       {step === 'GENERATING' ? (
-        <div className="grid flex-1 place-items-center overflow-y-auto px-4 py-8" data-testid="plan-generating">
-          <div className="w-full max-w-md space-y-5">
-            <GenerationStages stages={stages} title={t('p2h_generating_title')} only={GEN_STAGES}
-              since={startFlow?.startedAt ? Date.parse(startFlow.startedAt) : undefined} />
-            <p className="text-center text-[13px] text-[#4A5263]">{t('p2h_generating_leave')}</p>
-            {genFailed ? (
-              <div className="space-y-3 text-center">
-                {error ? <p role="alert" className="rounded-lg bg-[hsl(0_66%_44%)]/10 px-4 py-3 text-[14px] text-[hsl(0_66%_34%)]">{error}</p> : null}
-                <button type="button" onClick={() => { void generate(); }} disabled={busy}
-                  className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#0C1119] px-5 text-[15px] font-semibold text-white disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]"
-                  data-testid="plan-retry">
-                  <RefreshCw className="h-4 w-4" aria-hidden="true" />{t('p2h_retry')}
-                </button>
-              </div>
-            ) : null}
-          </div>
-        </div>
+        <BuildingStep stages={stages} since={startFlow?.startedAt ? Date.parse(startFlow.startedAt) : undefined}
+          failed={genFailed} error={error} busy={busy} onRetry={() => { void generate(savedPrefs(), true); }} />
       ) : null}
 
-      {(step === 'REVIEW' || step === 'DESIGN' || step === 'GENERATING') && !doc ? (
+      {needsDoc && !doc ? (
         <div className="grid flex-1 place-items-center text-[#4A5263]"><FileImage className="h-8 w-8" aria-hidden="true" /></div>
       ) : null}
-    </div>
-  );
-}
-
-/** Reading: the customer's own drawing, being read — real stages, real time, no percentages. */
-function ReadingView({ image, stage, since }: { image: string | null; stage: 'UPLOADING' | 'READING'; since: number }) {
-  const { t } = useLanguage();
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => { const id = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(id); }, []);
-  const secs = Math.max(0, Math.floor((now - since) / 1000));
-  return (
-    <div className="space-y-5" role="status" aria-live="polite" data-testid="plan-reading">
-      <h1 className="font-display text-2xl font-semibold">{t('p2h_reading_title')}</h1>
-      <div className="relative overflow-hidden rounded-2xl bg-white ring-1 ring-black/5">
-        {image ? <img src={image} alt="" className="mx-auto max-h-[46dvh] w-auto object-contain opacity-90" /> : <div className="h-56" />}
-        <div className="hm-plan-scan pointer-events-none absolute inset-x-0 h-24" aria-hidden="true" />
-      </div>
-      <ol className="space-y-2 text-[15px]">
-        {([['UPLOADING', 'p2h_stage_upload'], ['READING', 'p2h_stage_read']] as const).map(([s, key]) => {
-          const order = ['UPLOADING', 'READING'];
-          const at = order.indexOf(stage); const i = order.indexOf(s);
-          return (
-            <li key={s} className={cn('flex items-center gap-2', i < at ? 'text-[#4A5263]' : i === at ? 'font-medium' : 'text-[#9AA1AD]')}>
-              {i === at ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <span className="inline-block h-4 w-4 text-center text-[hsl(152_55%_38%)]">{i < at ? '✓' : ''}</span>}
-              {t(key)}
-            </li>
-          );
-        })}
-      </ol>
-      <p className="text-[13px] text-[#4A5263]">{t('p2h_reading_hint', { s: String(secs) })}</p>
     </div>
   );
 }

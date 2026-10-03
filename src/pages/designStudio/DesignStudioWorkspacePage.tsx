@@ -74,6 +74,9 @@ function ProjectLoader() {
   );
   /* A floor plan whose path to a finished home was left part-way (reload, closed tab): it resumes. */
   const [resumePlan, setResumePlan] = useState<FloorPlanRecord | null>(null);
+  /* A home generated from a floor plan opens on its result; the editor only when asked for (?editor=1). */
+  const [hasHome, setHasHome] = useState(false);
+  const entry = useRef({ editor: params.get('editor') === '1', start: params.get('start') });
 
   // A reload of an open project (rename, archive, new version) refreshes the
   // data behind the workspace without taking it down and putting it back.
@@ -88,6 +91,13 @@ function ProjectLoader() {
         const flowStep = latestFlow(plan)?.step;
         const unfinished = plan && ((flowStep && flowStep !== 'DONE') || plan.status === 'INTERPRETING' || plan.status === 'UPLOADED');
         if (unfinished) { setResumePlan(plan); setFlow((f) => f ?? { recalibrate: null, from: null }); }
+        if (flowStep === 'DONE') {
+          setHasHome(true);
+          if (!walkthroughRoute && !versionId && !entry.current.editor && !entry.current.start) {
+            navigate(`/design-studio/${projectId}/home`, { replace: true });
+            return;
+          }
+        }
       }
       if (next) {
         if (!loaded.current) setStage('SOURCE');
@@ -99,7 +109,7 @@ function ProjectLoader() {
     } catch {
       setFailed(true);
     }
-  }, [projectId]);
+  }, [projectId, walkthroughRoute, versionId, navigate]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -303,7 +313,8 @@ function ProjectLoader() {
       onRecalibrate={resolution.source.kind === 'FLOORPLAN_SCENE' ? () => { void startRecalibration(resolution.source!); } : undefined}
       onFurnishFromPictures={resolution.source.kind === 'FLOORPLAN_SCENE' ? () => setReconFlow({ planSource: resolution.source! }) : undefined}
       startWalkthrough={walkthroughRoute}
-      onWalkthroughExit={walkthroughRoute ? () => navigate(`/design-studio/${projectId}`, { replace: true }) : undefined}
+      onWalkthroughExit={walkthroughRoute ? () => navigate(hasHome ? `/design-studio/${projectId}/home` : `/design-studio/${projectId}`, { replace: true }) : undefined}
+      homeHref={hasHome ? `/design-studio/${projectId}/home` : undefined}
     />
   );
 }

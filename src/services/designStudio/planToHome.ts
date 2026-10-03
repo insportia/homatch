@@ -1,41 +1,35 @@
-// FROM A REVIEWED PLAN TO A HOME YOU CAN WALK THROUGH — resumable, never paid twice.
+// FROM A REVIEWED PLAN TO THE CUSTOMER'S DESIGNED HOME — OpenAI is the designer;
+// resumable, never paid twice.
 //
 //   architecture   the reviewed plan → HOMATCH's generator → a spatial source
-//   original       the space's empty Original version
-//   design         the customer's preferences → the AI designer's validated
-//                  intent → HOMATCH's placement engine → an AI version
-//   factory        that design → the Blender scene factory (Runpod) → the
-//                  walkthrough's models, verified and stored → a version
+//                  and its empty Original (the evidence, and the future 3D's input)
+//   design         OpenAI reads the customer's own source picture with HOMATCH's
+//                  structured evidence and writes the Design Specification →
+//                  an AI version behind it (its DNA from the spec)
+//   master         ONE OpenAI picture from the customer's own source, then what is
+//                  in it and its edit map → the photorealistic Result
+//
+// No Blender, no RunPod, no GLB and no 3D asset library on this path: Blender is
+// downstream, for the 3D walkthrough only (PR2).
 //
 // Every step first looks for its own result (recorded on the plan's review
 // entry, and in the database itself) and reuses it. A reload, a closed tab or a
-// lost connection therefore resumes where it was: the factory job is keyed by
-// its spec's sha256 on the server, so asking again returns the same job and its
-// outputs, never a second GPU run; the AI design is never re-requested once its
-// version exists.
+// lost connection therefore resumes where it was: the specification and the
+// render are keyed, so asking again returns the same job and the same picture;
+// only an explicit retry of a failed picture asks for a new one.
 
 import type { FloorPlanDocument } from '@/services/developer/floorplan';
-import { planToOperations } from '@/lib/designStudio/aiPlan';
-import type { CatalogAsset, CatalogMaterial } from '@/lib/designStudio/catalog';
 import { copyState } from '@/lib/designStudio/versioning';
 import { emptyDesignState, normalizeDesignState } from '@/lib/designStudio/designState';
 import { buildCanonical, type Calibration, type ReviewDecisions } from '@/lib/designStudio/scale';
 import { buildSpaceModel } from '@/lib/designStudio/space';
 import type { CanonicalSpace } from '@/lib/designStudio/types';
-import { compileSceneSpec } from '@/lib/designStudio/hybrid/compileSpec';
-import { designChecks } from '@/lib/designStudio/hybrid/designChecks';
-import { runDesignBuild } from '@/lib/designStudio/hybrid/designBuild';
 import type { Stage } from '@/lib/designStudio/hybrid/contract';
-import { FURNISHING_CAP, type DesignPreferences, type FlowTimings, type PlanAnswer } from '@/lib/designStudio/planToHome';
-import { planCamera } from '@/components/designStudio/workspace/FactoryBuildDialog';
-import { assetsByCode, listAssets, listMaterials } from './catalog';
-import { designFromPreferences } from './ai';
-import { quoteRender, saveDesignDna, startRenders } from './renders';
-import { planMasterView } from '@/lib/designStudio/renders/cameras';
+import type { DesignPreferences, FlowTimings, PlanAnswer } from '@/lib/designStudio/planToHome';
+import { quoteRender, saveDesignDna } from './renders';
+import { generateRender, generationStep, requestDesignSpec, stepGenerated } from './generation';
 import { stableJson } from '@/lib/designStudio/stableJson';
-import { deriveDNA } from '@/lib/designStudio/renders/dna';
-import type { PropertyDesignDNA } from '@/lib/designStudio/renders/contract';
-import { factoryStatus, startFactory, visualQa } from './factory';
+import type { RenderRecord } from '@/lib/designStudio/renders/contract';
 import { createFloorPlanSource, getFloorPlan, type FloorPlanRecord } from './floorplans';
 import {
   createOriginalVersion, createVersion, DesignStudioError, getProject, getSourceFull, getVersion, setActiveSource,
@@ -59,8 +53,20 @@ export interface FlowRecord {
   /** The credits the customer confirmed for the master design (a different quote stops and asks). */
   confirmedCredits?: number | null;
   factory?: 'USED' | 'UNAVAILABLE' | 'FAILED' | null;
+  /** Who made the design: OpenAI from the customer's own source (no factory on this path). */
+  generator?: 'OPENAI_FIRST' | null;
+  /** OpenAI's Design Specification (an AI_DESIGN job): the design's lineage. */
+  specJobId?: string | null;
+  /** The master picture's attempt: only an explicit retry of a failed picture moves it on. */
+  masterAttempt?: number | null;
   timings?: FlowTimings;
   startedAt?: string | null;
+  /** How the reading was confirmed: on its own, by quick questions, or in the detailed review. */
+  review?: 'AUTO' | 'QUICK' | 'DETAIL' | null;
+  /** Which part of "how should it feel" the customer is on. */
+  lookStep?: 'STYLE' | 'QUALITY' | 'CUSTOM' | null;
+  /** The two simple choices (lookPresets.ts); `preferences` is what they produced, or the customer's own details. */
+  look?: { style: string; quality: string } | null;
 }
 
 export type ReviewEntry = FloorPlanRecord['corrections'][number] & { flow?: FlowRecord };
@@ -111,17 +117,22 @@ export interface GenerateInput {
   ceilingM: number;
   ceilingSource: 'CUSTOMER' | 'DRAWING' | 'TYPICAL';
   preferences: DesignPreferences;
+  /** The customer's two choices (Style × Quality), when they made them: creative direction for OpenAI. */
+  look?: { style: string; quality: string } | null;
   /** What the customer confirmed for the master design (from the Look step's quote). */
   confirmedCredits: number | null;
   versionName: (key: 'original' | 'design' | 'factory') => string;
   onStage: (stage: Stage, status: 'RUNNING' | 'DONE' | 'SKIPPED') => void;
-  /** The factory pass may take minutes; it is polled until this. */
+  /** The customer pressed Retry on a failed picture: a new picture may be made. A reload never is a retry. */
+  retry?: boolean;
+  /** The master is followed until this. */
   passTimeoutMs?: number;
+  pollMs?: number;
 }
 
 export interface GenerateResult {
   versionId: string;
-  factory: 'USED' | 'UNAVAILABLE' | 'FAILED';
+  factory: 'USED' | 'UNAVAILABLE' | 'FAILED' | 'NOT_USED';
   renderKey: string | null;
   timings: FlowTimings;
 }
@@ -159,7 +170,7 @@ export async function prepareArchitecture(input: ArchitectureInput): Promise<{ s
       floorplanId: input.plan.id, canonical: built.canonical, geometryState: input.calibration.geometryState, anchors: input.anchors,
     });
     // A new building: everything designed on the previous one is no longer this flow's.
-    await saveFlow(input.plan.id, { sourceId, reviewKey: key, originalVersionId: null, designVersionId: null, factoryVersionId: null, factoryJobId: null, masterRenderId: null });
+    await saveFlow(input.plan.id, { sourceId, reviewKey: key, originalVersionId: null, designVersionId: null, factoryVersionId: null, factoryJobId: null, masterRenderId: null, specJobId: null, masterAttempt: null });
   }
   await setActiveSource(input.projectId, sourceId);
   const source = await getSourceFull(sourceId);
@@ -177,6 +188,7 @@ export async function prepareArchitecture(input: ArchitectureInput): Promise<{ s
 }
 
 const now = () => Date.now();
+const sha256 = async (text: string) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))].map((b) => b.toString(16).padStart(2, '0')).join('');
 
 export async function generateHome(input: GenerateInput): Promise<GenerateResult> {
   const timings: FlowTimings = { ...(latestFlow(input.plan)?.timings ?? {}) };
@@ -185,113 +197,89 @@ export async function generateHome(input: GenerateInput): Promise<GenerateResult
     const next = await saveFlow(input.plan.id, { ...patch, timings });
     flow = latestFlow(next) ?? flow;
   };
-  await save({ step: 'GENERATING', preferences: input.preferences, startedAt: flow.startedAt ?? new Date().toISOString() });
+  await save({ step: 'GENERATING', preferences: input.preferences, generator: 'OPENAI_FIRST', startedAt: flow.startedAt ?? new Date().toISOString() });
 
-  // ── 1–2. Architecture and the Original (normally done when the review was confirmed) ──
+  // ── 1. The architecture (normally done when the reading was confirmed): the evidence, and the future 3D's input ──
   input.onStage('MEASURING', 'RUNNING');
   const arch = await prepareArchitecture(input);
   flow = latestFlow(await getFloorPlan(input.plan.id)) ?? flow;
-  const { sourceId, originalId, canonical, space } = arch;
   input.onStage('MEASURING', 'DONE');
 
-  // ── 3. The design: AI intent, placed by HOMATCH ─────────────────────────
+  // ── 2. OpenAI's Design Specification of THIS property, and the design version it stands behind ──
   input.onStage('PLANNING', 'RUNNING');
   let designId = flow.designVersionId ?? null;
-  const [browse, materials] = await Promise.all([listAssets({ limit: 500 }), listMaterials()]);
-  const assets = new Map<string, CatalogAsset>(browse.map((a) => [a.code, a]));
-  const materialMap = new Map<string, CatalogMaterial>(materials.map((m) => [m.id, m]));
   if (!designId) {
     const t0 = now();
-    const { jobId, plan } = await designFromPreferences({ versionId: originalId, preferences: input.preferences });
-    const alt = plan.alternatives[0];
-    if (!alt) throw new DesignStudioError('DS_AI_FAILED');
-    // The level the customer chose is a ceiling the AI's list is cut to, never padded past.
-    const cap = FURNISHING_CAP[input.preferences.furnishing];
-    const capped = { ...alt, rooms: alt.rooms.map((r) => ({ ...r, furniture: r.furniture.slice(0, Math.max(cap, 0)) })) };
-    const wanted = [...new Set(capped.rooms.flatMap((r) => r.furniture))].filter((c) => !assets.has(c));
-    if (wanted.length) for (const a of await assetsByCode(wanted)) assets.set(a.code, a);
-    const original = await getVersion(originalId);
-    const basis = normalizeDesignState(original?.state ?? emptyDesignState());
-    const proposal = planToOperations(capped, {
-      state: basis, space, ctx: { space, assets, materials: materialMap }, assets, materials, idPrefix: `p2h-${jobId.slice(0, 8)}`, furnishing: input.preferences.furnishing,
+    const directionKey = (await sha256(stableJson({ look: input.look ?? null, preferences: input.preferences }))).slice(0, 16);
+    const { spec, error } = await requestDesignSpec({
+      projectId: input.projectId, versionId: arch.originalId, mode: 'MASTER', idempotencyKey: `p2h-spec-${arch.originalId}-${directionKey}`,
+      look: input.look ?? null, preferences: input.preferences,
     });
+    if (!spec) throw new DesignStudioError(error === 'RATE_LIMITED' ? 'DS_RATE_LIMITED' : 'DS_AI_FAILED', error ?? undefined);
+    const original = await getVersion(arch.originalId);
     const created = await createVersion({
-      userId: input.userId, projectId: input.projectId, sourceId, parentId: originalId, origin: 'AI', jobId,
-      name: input.versionName('design'), state: copyState(proposal.state) as unknown as Record<string, unknown>,
+      userId: input.userId, projectId: input.projectId, sourceId: arch.sourceId, parentId: arch.originalId, origin: 'AI', jobId: spec.jobId,
+      name: input.versionName('design'), state: copyState(normalizeDesignState(original?.state ?? emptyDesignState())) as unknown as Record<string, unknown>,
       styleTags: input.preferences.style ? [input.preferences.style] : [],
-      changeSummary: [{ kind: 'PLAN_TO_HOME_DESIGN', preferences: input.preferences, summary: proposal.summary, skipped: proposal.skipped.length }],
+      changeSummary: [{ kind: 'AI_DESIGN_SPEC', generator: 'OPENAI_FIRST', jobId: spec.jobId, look: input.look ?? null, preferences: input.preferences, conflicts: spec.summary.conflicts }],
     });
     designId = created.id;
     timings.designIntentMs = now() - t0;
-    await saveDesignDna(designId, deriveDNA({ preferences: input.preferences, state: proposal.state, space, materials: materialMap, sourceJobId: jobId }));
-    await save({ designVersionId: designId });
+    await saveDesignDna(designId, spec.dna);
+    await save({ designVersionId: designId, specJobId: spec.jobId });
   }
   input.onStage('PLANNING', 'DONE');
 
-  // ── 4. The factory: the same design is the same job ─────────────────────
-  if (flow.factoryVersionId) {
-    for (const s of ['ARCHITECTURE', 'FURNISHING', 'MATERIALS', 'LIGHTING', 'CHECKING', 'PREPARING', 'FINALIZING'] as Stage[]) input.onStage(s, 'DONE');
-    await save({ step: 'DONE' });
-    return { versionId: flow.factoryVersionId, factory: 'USED', renderKey: null, timings };
+  // ── 3. The photorealistic master: ONE OpenAI picture from the customer's own source ──
+  input.onStage('ARCHITECTURE', 'DONE');
+  let renderId = flow.masterRenderId ?? null;
+  let attempt = flow.masterAttempt ?? 0;
+  if (renderId) {
+    const known = (await stepGenerated([renderId]))?.[0] ?? null;
+    if (known?.status === 'FAILED' || known?.status === 'CANCELLED') {
+      if (!input.retry) throw new DesignStudioError('DS_RENDER_FAILED', known.error ?? undefined);
+      renderId = null; attempt += 1; // an explicit retry is a new picture; a reload never is
+    }
   }
-  const design = await getVersion(designId);
-  const state = normalizeDesignState(design?.state ?? emptyDesignState());
-  for (const o of state.objects) if (!assets.has(o.assetId)) for (const a of await assetsByCode([o.assetId])) assets.set(a.code, a);
-  const checks = designChecks(space, state, assets, canonical);
-  const master = planMasterView(space);
+  if (!renderId) {
+    if (!flow.specJobId) throw new DesignStudioError('DS_AI_FAILED', 'SPEC_MISSING');
+    const quoted = await quoteRender({ projectId: input.projectId, versionId: designId, product: 'DS_MASTER_RENDER', views: 1 });
+    if (!quoted.quote) throw new DesignStudioError('DS_RENDER_FAILED', quoted.error ?? undefined);
+    if (input.confirmedCredits != null && quoted.quote.credits !== input.confirmedCredits) throw new DesignStudioError('DS_PRICE_CHANGED');
+    const started = await generateRender({
+      quote: quoted.quote, projectId: input.projectId, versionId: designId, specJobId: flow.specJobId, mode: 'MASTER', idempotencyKey: `p2h-ai-master-${designId}-${attempt}`,
+    });
+    if (!started.render) throw new DesignStudioError('DS_RENDER_FAILED', started.error ?? undefined);
+    renderId = started.render.id;
+    await save({ masterRenderId: renderId, masterAttempt: attempt });
+  }
+
+  // ── 4. Followed (and moved on) until it is ready: image → what is in it → its edit map ──
   const t1 = now();
-  const result = await runDesignBuild({ state: copyState(state), checks: checks.dimensions, passTimeoutMs: input.passTimeoutMs ?? 20 * 60_000 }, {
-    // One pass builds the walkthrough's models, the plan-check render AND the master design (the dollhouse view).
-    startFactory: async (spec) => {
-      const quoted = await quoteRender({ projectId: input.projectId, versionId: designId, product: 'DS_MASTER_RENDER', views: 1 });
-      if (!quoted.quote) return { jobId: null, state: 'FAILED', error: quoted.error };
-      if (input.confirmedCredits != null && quoted.quote.credits !== input.confirmedCredits) throw new DesignStudioError('DS_PRICE_CHANGED');
-      const started = await startRenders({ quote: quoted.quote, projectId: input.projectId, versionId: designId, views: [master], spec, idempotencyKey: `p2h-master-${designId}` });
-      const first = started.renders[0];
-      if (!first?.factory_job_id) return { jobId: null, state: started.error === 'FACTORY_NOT_CONFIGURED' ? 'UNAVAILABLE' : 'FAILED', error: started.error };
-      await save({ masterRenderId: first.id });
-      return { jobId: first.factory_job_id, state: 'QUEUED', error: null };
-    },
-    factoryStatus,
-    compile: (s, outputs) => compileSceneSpec({
-      space, state: s, assets, materials: materialMap, camera: planCamera(space), views: [master],
-      source: { kind: 'FLOOR_PLAN', architecture: 'OBSERVED', furnishing: 'DESIGN' }, render: { edge: 1600, samples: 96 }, outputs,
-    }),
-    planQa: async (renderAssetId) => visualQa({
-      floorplanId: input.plan.id, renderAssetId, objects: [], rooms: space.rooms.map((r) => ({ key: r.id, kind: r.kind })),
-    }).catch(() => null),
-    sleep: (ms) => new Promise((res) => setTimeout(res, ms)),
-    now,
-    onStage: input.onStage,
-  });
-  if (result.jobId) await save({ factoryJobId: result.jobId });
-  const ft = result.timings;
-  timings.factoryExecMs = now() - t1;
-  timings.optimizeMs = ft.find((x) => x.stage === 'PREPARING')?.ms ?? undefined;
-
-  if (result.factory !== 'USED') {
-    // The design still opens in HOMATCH's own walkthrough; the factory's absence is reported, not hidden.
-    for (const s of ['ARCHITECTURE', 'FURNISHING', 'MATERIALS', 'LIGHTING', 'CHECKING', 'PREPARING'] as Stage[]) input.onStage(s, 'SKIPPED');
-    await save({ step: 'DONE', factory: result.factory });
-    return { versionId: designId, factory: result.factory, renderKey: null, timings };
+  const deadline = t1 + (input.passTimeoutMs ?? 15 * 60_000);
+  const show = (step: ReturnType<typeof generationStep>) => {
+    const running = (s: Stage) => input.onStage(s, 'RUNNING');
+    const done = (s: Stage) => input.onStage(s, 'DONE');
+    if (step === 'QUEUED' || step === 'IMAGE') { running('FURNISHING'); running('MATERIALS'); running('LIGHTING'); return; }
+    done('FURNISHING'); done('MATERIALS'); done('LIGHTING');
+    if (step === 'SCENE') { running('CHECKING'); return; }
+    done('CHECKING');
+    if (step === 'MAP') { running('PREPARING'); return; }
+    done('PREPARING');
+  };
+  let last: RenderRecord | null = null;
+  while (now() < deadline) {
+    const rows = await stepGenerated([renderId]);
+    last = rows?.[0] ?? last;
+    const step = generationStep(last);
+    show(step);
+    if (step === 'READY') break;
+    if (step === 'FAILED') throw new DesignStudioError('DS_RENDER_FAILED', last?.error ?? undefined);
+    await new Promise((ok) => setTimeout(ok, input.pollMs ?? 2500));
   }
-
-  input.onStage('FINALIZING', 'RUNNING');
-  const t2 = now();
-  const created = await createVersion({
-    userId: input.userId, projectId: input.projectId, sourceId, parentId: designId, origin: 'BRANCH',
-    name: input.versionName('factory'), state: copyState(result.state) as unknown as Record<string, unknown>,
-    changeSummary: [{
-      kind: 'FACTORY_BUILD', jobId: result.jobId, verdict: result.verdict, persistedBytes: result.persistedBytes,
-      dimensions: result.dimensions.map((d) => ({ name: d.name, gate: d.gate, value: d.value })), cost: result.cost,
-      timings: result.timings, provenance: { architecture: 'SOURCE_DERIVED', furnishing: 'DESIGN_CHOICE' },
-    }],
-  });
-  timings.persistMs = now() - t2;
-  const dnaRow = await getVersion(designId);
-  const dna = (dnaRow as { design_dna?: PropertyDesignDNA | null } | null)?.design_dna ?? null;
-  if (dna) await saveDesignDna(created.id, dna);
+  if (generationStep(last) !== 'READY') throw new DesignStudioError('DS_RENDER_FAILED', 'TIMEOUT');
+  timings.factoryExecMs = now() - t1;
   input.onStage('FINALIZING', 'DONE');
-  await save({ step: 'DONE', factory: 'USED', factoryVersionId: created.id });
-  return { versionId: created.id, factory: 'USED', renderKey: result.render?.key ?? null, timings };
+  await save({ step: 'DONE', factory: null });
+  return { versionId: designId, factory: 'NOT_USED', renderKey: last?.final_key ?? null, timings };
 }

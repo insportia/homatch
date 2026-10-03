@@ -192,6 +192,11 @@ verify_jwt = false
 [functions.ingest-live-chat]
 verify_jwt = false
 
+# Marketplace workers report results here on their own registry token (hash in
+# discovery_marketplace_workers.token_hash), never on a user JWT.
+[functions.marketplace-worker-ingest]
+verify_jwt = false
+
 # find-property is deliberately ABSENT from this file too, and for the same reason as
 # community-intelligence below: it verifies the JWT, which is the default, so there is
 # nothing to preserve across a manual deploy. It is in the workflow's JWT loop because it

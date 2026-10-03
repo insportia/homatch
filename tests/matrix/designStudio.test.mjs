@@ -895,6 +895,14 @@ test('Snake: "Play again" is a real button press (the board never captures a pre
   assert.match(walk, /status=\{walk\.state === 'READY' \? 'READY' : walk\.state === 'FAILED' \|\| walk\.state === 'CANCELLED' \? 'FAILED' : 'PROCESSING'\}/);
 });
 
+test('a walkthrough link opens the walkthrough: it never resumes a design under way', () => {
+  // Production, project 9a747384: a later plan's run left at GENERATING sent "open the 3D tour" back through
+  // analysis, direction and design.
+  const page = code('src/pages/designStudio/DesignStudioWorkspacePage.tsx');
+  assert.match(page, /if \(!photoDone && !walkthroughRoute\) \{ setResumePhoto\(photo\); setPhotoFlow\(true\); \}/);
+  assert.match(page, /if \(unfinished && !walkthroughRoute\) \{ setResumePlan\(plan\);/);
+});
+
 test('the protected edit pipeline (PR #65) is untouched; the 3D walkthrough is the server-built one', () => {
   // The legacy browser-driven walkthrough stays held back.
   assert.match(code('src/lib/designStudio/walkthroughOffer.ts'), /export const WALKTHROUGH_OFFERED = false;/);

@@ -105,12 +105,13 @@ function ProjectLoader() {
         if (photo) {
           const photoDone = flowOf(photo)?.step === 'DONE';
           if (photoDone && !walkthroughRoute) { navigate(`/design-studio/${projectId}/home`, { replace: true }); return; }
-          if (!photoDone) { setResumePhoto(photo); setPhotoFlow(true); }
+          // A walkthrough link opens the walkthrough: it never resumes a design under way (that is the project's own page).
+          if (!photoDone && !walkthroughRoute) { setResumePhoto(photo); setPhotoFlow(true); }
         }
         const plan = await latestFloorPlan(projectId).catch(() => null);
         const flowStep = latestFlow(plan)?.step;
         const unfinished = plan && ((flowStep && flowStep !== 'DONE') || plan.status === 'INTERPRETING' || plan.status === 'UPLOADED');
-        if (unfinished) { setResumePlan(plan); setFlow((f) => f ?? { recalibrate: null, from: null }); }
+        if (unfinished && !walkthroughRoute) { setResumePlan(plan); setFlow((f) => f ?? { recalibrate: null, from: null }); }
         if (flowStep === 'DONE') {
           setHasHome(true);
           if (!walkthroughRoute && !versionId && !entry.current.editor && !entry.current.start) {

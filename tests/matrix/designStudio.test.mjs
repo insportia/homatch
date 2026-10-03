@@ -795,7 +795,7 @@ test('reading, understanding and designing are owned by the server: answered at 
 });
 
 test('the photo set source: an append-only migration, and the client knows it is never a 3D home', () => {
-  const sql = read('supabase/migrations/20261010100000_design_studio_photo_set_source.sql');
+  const sql = read('supabase/migrations/20261010100100_design_studio_photo_set_source.sql');
   assert.match(sql, /'FLOORPLAN_SCENE','PHOTO_SET'/);
   assert.match(sql, /jsonb_array_length\(provenance->'referenceIds'\) BETWEEN 1 AND 6/);
   assert.doesNotMatch(sql, /\bDROP TABLE\b|\bDELETE FROM\b|\bTRUNCATE\b|\bBEGIN;|\bCOMMIT;/i, 'additive, and the runner owns the transaction');

@@ -897,7 +897,7 @@ Base: main `53489d04` (PR #68 live: design-studio-reconstruct v22). Scope: front
   `uuidFrom('ds-chain:<job>:version')`) → render (startGenerated, reserved once) → IMAGE/SCENE → `kick`
   render-generate-step for MAP. Clients send `durable: true`; a request WITHOUT it gets the old synchronous
   answer (rollout safety for open tabs).
-- **Migration (prepared, tested on PGlite, NOT applied):** `20261010100000_design_studio_photo_set_source.sql`
+- **Migration (prepared, tested on PGlite, NOT applied):** `20261010100100_design_studio_photo_set_source.sql`
   — adds `PHOTO_SET` to the kind check and its payload rule. The photos route cannot create its source until
   it is applied: **apply it before (or with) the edge deploy.**
 - **Result** (`unified/DesignResult.tsx`) for photo projects and OpenAI-first plan projects: before/after,

@@ -505,8 +505,10 @@ function genIo(admin: Row): GenIo {
       // The customer's own picture: always for photos (each room drawn over its own photo), the plan for a plan's master.
       const key = row.timings?.ai?.mode === 'MASTER' || out?.evidence?.sourceKind === 'PHOTO' ? out?.sourceKey : null;
       if (key) return readImage(key, MAX_SOURCE_BYTES);
-      if (!row.parent_id) return null;
-      const { data: parent } = await admin.from('ds_renders').select('final_key, user_id, project_id').eq('id', row.parent_id).maybeSingle();
+      // The approved picture it continues from (recorded in finish; parent_id belongs to edits).
+      const parentId = row.parent_id ?? row.finish?.parentRenderId ?? null;
+      if (!parentId) return null;
+      const { data: parent } = await admin.from('ds_renders').select('final_key, user_id, project_id').eq('id', parentId).maybeSingle();
       return parent?.final_key && parent.user_id === row.user_id && parent.project_id === row.project_id ? readImage(parent.final_key, MAX_PICTURE_BYTES) : null;
     },
     async instruction(row) {
@@ -673,7 +675,9 @@ async function startGenerated(ctx: Ctx, a: {
   const dna = a.version.design_dna?.version === 'ds-dna-1' ? await sha256Hex(dnaKey(a.version.design_dna)) : null;
   const now = new Date().toISOString();
   const { error: insErr } = await ctx.admin.from('ds_renders').upsert({
-    project_id: a.projectId, user_id: ctx.actorId, version_id: a.version.id, kind: view.kind, view, status: 'QUEUED', parent_id: parent?.id ?? null,
+    // parent_id is an EDIT's own column (the table holds kind = EDIT exactly when parent_id is set): a variant or a
+    // room records the approved picture it continues from in finish.parentRenderId instead.
+    project_id: a.projectId, user_id: ctx.actorId, version_id: a.version.id, kind: view.kind, view, status: 'QUEUED', parent_id: null,
     idempotency_key: key, billing, dna_key: dna, cost: [],
     quote: { product, views: 1, credits: claims.credits, charged: claims.charged, expiresAt: new Date(claims.exp).toISOString(), override: null },
     finish: { generator: 'OPENAI_FIRST', mode, specJobId: job.id, sourceKey: job.output.sourceKey, parentRenderId: parent?.id ?? null, roomId, look: job.output.direction?.look ?? null, provider: 'OPENAI', model: null, check: null },

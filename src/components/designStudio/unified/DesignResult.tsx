@@ -19,7 +19,7 @@
 
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, Columns2, Layers, Loader2, Pencil, RotateCcw, Shuffle, SlidersHorizontal, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, Check, Columns2, Download, Expand, Layers, Loader2, Pencil, RefreshCw, RotateCcw, Shuffle, SlidersHorizontal, Sparkles, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
@@ -66,6 +66,12 @@ interface Working { label: string; stage: RunStage }
 const pictureOf = (r: RenderRecord) => r.status === 'READY' && !!(r.final_key ?? r.base_key) && (isGenerated(r) || r.kind === 'EDIT');
 const roomOf = (r: RenderRecord): string | null => (r.view?.kind === 'ROOM' ? (r.view.roomId ?? null) : null);
 
+/** One generation the Result asks for (a variant, a style, a quality, a room): its key is its identity on the server. */
+interface GenInput {
+  mode: 'VARIANT' | 'ROOM'; key: string; label: string; credits: number;
+  style?: LookStyle | null; quality?: LookQuality | null; roomId?: string | null; parentRenderId?: string | null;
+}
+
 export function DesignResult({ data, onReload }: { data: ResultData; onReload: () => Promise<void> }) {
   const { t } = useLanguage();
   const navigate = useNavigate();
@@ -84,6 +90,16 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
   const [playing, setPlaying] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A generation that did not finish: asked again with the SAME key, so the server resumes it (a recorded
+  // specification and design are reused, never paid again). Kept per project in this browser across a reload.
+  const failedKey = `hm-ds-failed-run:${projectId}`;
+  const [failedRun, setFailedRun] = useState<GenInput | null>(() => {
+    try { const v = window.localStorage.getItem(failedKey); return v ? JSON.parse(v) as GenInput : null; } catch { return null; }
+  });
+  const keepFailed = useCallback((run: GenInput | null) => {
+    setFailedRun(run);
+    try { if (run) window.localStorage.setItem(failedKey, JSON.stringify(run)); else window.localStorage.removeItem(failedKey); } catch { /* private mode */ }
+  }, [failedKey]);
   const alive = useRef(true);
   useEffect(() => () => { alive.current = false; }, []);
 
@@ -171,8 +187,10 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
   };
 
   /** One server-owned generation, followed here (and picked up again on return). */
-  const generate = async (input: { mode: 'VARIANT' | 'ROOM'; key: string; label: string; credits: number; style?: LookStyle | null; quality?: LookQuality | null; roomId?: string | null }) => {
+  const generate = async (input: GenInput, retry = false) => {
     if (!hero) return;
+    keepFailed(null);
+    setError(null);
     const base = look ?? { style: 'MODERN', quality: 'HIGH_QUALITY' };
     const style = (input.style ?? base.style) as LookStyle;
     const quality = (input.quality ?? base.quality) as LookQuality;
@@ -180,7 +198,7 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
     try {
       const result = await runDesign({
         projectId, versionId: data.head.id, mode: input.mode, key: input.key, look: { style, quality }, preferences: lookPreferences(style, quality),
-        roomId: input.roomId ?? null, parentRenderId: hero.id, confirmedCredits: input.credits, versionName: t('p2h_version_design'),
+        roomId: input.roomId ?? null, parentRenderId: input.parentRenderId ?? hero.id, confirmedCredits: input.credits, versionName: t('p2h_version_design'), retry,
         change: input.style || input.quality ? { style: input.style ?? null, quality: input.quality ?? null } : null,
         onStage: (stage) => { if (alive.current) setWorking({ label: input.label, stage }); },
       });
@@ -191,13 +209,18 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
       setMode('VIEW');
     } catch (e) {
       if (e instanceof DesignStudioError && (e.code === 'DS_STILL_WORKING' || e.code === 'DS_WATCH_STOPPED')) return;
-      if (alive.current) fail(e);
+      if (!alive.current) return;
+      const code = e instanceof DesignStudioError ? e.code : '';
+      // A price that moved or missing credits is the customer's to decide; anything else is ours to resume.
+      if (code === 'DS_PRICE_CHANGED' || code === 'DS_INSUFFICIENT_CREDITS') fail(e);
+      else keepFailed({ ...input, parentRenderId: input.parentRenderId ?? hero.id });
     } finally {
       if (alive.current) setWorking(null);
     }
   };
 
   const nonce = () => Math.random().toString(36).slice(2, 10);
+  const retryFailed = () => { if (failedRun && !working) void generate(failedRun, true); };
   const askVariant = () => offer('DS_MASTER_RENDER', data.head.id, t('dsx_variant'), t('dsx_variant_body'), async (credits) => {
     void generate({ mode: 'VARIANT', key: `var-${hero!.id}-${nonce()}`, label: t('dsx_variant'), credits });
   });
@@ -252,6 +275,26 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
   };
 
   const heroUrl = hero ? urls.get(hero.id) ?? null : null;
+  // The picture is in private storage behind a short-lived link: fetched and saved as a file (a cross-origin
+  // link cannot be given a file name); if that is refused, it opens in a new tab to be saved from there.
+  const [downloading, setDownloading] = useState(false);
+  const download = async () => {
+    if (!heroUrl || downloading) return;
+    setDownloading(true);
+    try {
+      const blob = await (await fetch(heroUrl)).blob();
+      const ext = blob.type === 'image/jpeg' ? 'jpg' : blob.type === 'image/webp' ? 'webp' : 'png';
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = href; a.download = `homatch-design-${(hero?.id ?? 'picture').slice(0, 8)}.${ext}`;
+      document.body.appendChild(a); a.click(); a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(href), 10_000);
+    } catch {
+      window.open(heroUrl, '_blank', 'noopener');
+    } finally {
+      setDownloading(false);
+    }
+  };
   const heroRoom = hero ? roomOf(hero) ?? data.heroRoomId : data.heroRoomId;
   const others = data.rooms.filter((r) => r.id !== (data.heroRoomId ?? ''));
 
@@ -323,6 +366,12 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
                 {mode === 'EDIT' ? <Check className="h-4 w-4" aria-hidden="true" /> : <Pencil className="h-4 w-4" aria-hidden="true" />}{t(mode === 'EDIT' ? 'dsx_edit_done' : 'dsx_edit')}
               </button>
             ) : null}
+            <button type="button" onClick={() => window.open(heroUrl, '_blank', 'noopener')} className={CHIP} data-testid="home-open">
+              <Expand className="h-4 w-4" aria-hidden="true" />{t('dsx_open_full')}
+            </button>
+            <button type="button" onClick={() => { void download(); }} disabled={downloading} className={CHIP} data-testid="home-download">
+              {downloading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Download className="h-4 w-4" aria-hidden="true" />}{t('dsx_download')}
+            </button>
             {heroRoom && roomLabel(heroRoom) ? <span className="ms-auto text-[13px] text-[#5B6472]">{roomLabel(heroRoom)}</span> : null}
           </div>
         ) : null}
@@ -345,6 +394,24 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
               <p className="text-[13px] text-white/70">{t(STAGE_KEY[working.stage])} · {t('dsx_leave_ok')}</p>
             </div>
             <button type="button" onClick={() => setPlaying(true)} className={cn('h-11 rounded-full bg-[hsl(38_92%_56%)] px-4 text-[14px] font-semibold text-[#0C1119]', RING)} data-testid="snake-play">{t('dsx_sn_play')}</button>
+          </section>
+        ) : null}
+
+        {failedRun && !working ? (
+          <section className="mt-5 rounded-[22px] bg-white p-4 ring-1 ring-[#E7E1D8] sm:p-5" role="alert" data-testid="home-recovery">
+            <div className="flex items-start gap-3">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[hsl(38_92%_56%)]/15 text-[hsl(36_60%_32%)]" aria-hidden="true"><RotateCcw className="h-4 w-4" /></span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[15px] font-semibold">{t('dsx_rec_title')} · {failedRun.label}</p>
+                <p className="mt-1 text-[14px] leading-relaxed text-[#4A5263]">{t('dsx_rec_result_body')}</p>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <button type="button" onClick={() => keepFailed(null)} className={cn('inline-flex min-h-11 items-center justify-center rounded-full px-5 text-[14px] font-medium ring-1 ring-[#D9D1C4] hover:ring-[#0C1119]', RING)} data-testid="home-recovery-later">{t('dsx_later')}</button>
+              <button type="button" onClick={retryFailed} className={cn('inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-[hsl(38_92%_56%)] px-5 text-[14px] font-semibold text-[#0C1119]', RING)} data-testid="home-recovery-retry">
+                <RefreshCw className="h-4 w-4" aria-hidden="true" />{t('dsx_retry')}
+              </button>
+            </div>
           </section>
         ) : null}
 
@@ -451,7 +518,7 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
 
       {playing ? (
         <Suspense fallback={null}>
-          <SnakeGame status={working ? 'PROCESSING' : 'READY'} stageLabel={t(STAGE_KEY[working?.stage ?? 'RESULT'])}
+          <SnakeGame status={working ? 'PROCESSING' : failedRun ? 'FAILED' : 'READY'} stageLabel={t(STAGE_KEY[working?.stage ?? 'RESULT'])}
             onView={() => { setPlaying(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }} onClose={() => setPlaying(false)} />
         </Suspense>
       ) : null}

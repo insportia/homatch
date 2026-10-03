@@ -15054,6 +15054,13 @@ const en = {
   dsx_sn_down: 'Down',
   dsx_sn_left: 'Left',
   dsx_sn_right: 'Right',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_rec_result_body: 'Nothing is lost. Try again and HOMATCH continues from where it stopped; steps already finished are not repeated.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_open_full: 'Full size',
+  dsx_download: 'Download',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -30022,6 +30029,13 @@ const ka: Partial<Record<TranslationKey, string>> = {
   dsx_sn_down: 'ქვემოთ',
   dsx_sn_left: 'მარცხნივ',
   dsx_sn_right: 'მარჯვნივ',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_rec_result_body: 'არაფერი დაკარგულა. სცადე თავიდან და HOMATCH გააგრძელებს იქიდან, სადაც შეჩერდა; უკვე დასრულებული ნაბიჯები აღარ განმეორდება.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_open_full: 'სრულ ზომაზე',
+  dsx_download: 'ჩამოტვირთვა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -44981,6 +44995,13 @@ const ru: Partial<Record<TranslationKey, string>> = {
   dsx_sn_down: 'Вниз',
   dsx_sn_left: 'Влево',
   dsx_sn_right: 'Вправо',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_rec_result_body: 'Ничего не потеряно. Попробуйте снова — HOMATCH продолжит с того места, где остановился; уже выполненные шаги не повторяются.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_open_full: 'Во весь размер',
+  dsx_download: 'Скачать',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -59938,6 +59959,13 @@ const tr: Partial<Record<TranslationKey, string>> = {
   dsx_sn_down: 'Aşağı',
   dsx_sn_left: 'Sol',
   dsx_sn_right: 'Sağ',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_rec_result_body: 'Hiçbir şey kaybolmadı. Tekrar deneyin; HOMATCH kaldığı yerden devam eder, tamamlanan adımlar tekrarlanmaz.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_open_full: 'Tam boyut',
+  dsx_download: 'İndir',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -74895,6 +74923,13 @@ const ar: Partial<Record<TranslationKey, string>> = {
   dsx_sn_down: 'أسفل',
   dsx_sn_left: 'يسار',
   dsx_sn_right: 'يمين',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_rec_result_body: 'لم يضع شيء. حاول مجددًا وسيتابع HOMATCH من حيث توقف، ولن تتكرر الخطوات المنجزة.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_open_full: 'بالحجم الكامل',
+  dsx_download: 'تنزيل',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -89852,6 +89887,13 @@ const he: Partial<Record<TranslationKey, string>> = {
   dsx_sn_down: 'למטה',
   dsx_sn_left: 'שמאלה',
   dsx_sn_right: 'ימינה',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_rec_result_body: 'שום דבר לא אבד. נסו שוב ו־HOMATCH ימשיך מהמקום שבו עצר; שלבים שכבר הושלמו לא יחזרו על עצמם.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_open_full: 'בגודל מלא',
+  dsx_download: 'הורדה',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

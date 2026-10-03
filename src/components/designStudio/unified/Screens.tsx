@@ -338,13 +338,13 @@ export function FailureStep({ source, retryable, message, recovery = READING_REC
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto" data-testid="ds-retry" data-resume={recovery.resumeAt}>
       <div className="m-auto w-full max-w-[520px] px-4 py-6 sm:py-10">
-        <section className="rounded-[28px] bg-white p-6 shadow-[0_1px_2px_rgba(12,17,25,0.04),0_12px_32px_-16px_rgba(12,17,25,0.18)] ring-1 ring-[#E7E1D8] sm:p-8" aria-labelledby="ds-retry-title">
+        <section className="rounded-[28px] bg-white p-5 shadow-[0_1px_2px_rgba(12,17,25,0.04),0_12px_32px_-16px_rgba(12,17,25,0.18)] ring-1 ring-[#E7E1D8] sm:p-8" aria-labelledby="ds-retry-title">
           <span className="grid h-11 w-11 place-items-center rounded-full bg-[hsl(38_92%_56%)]/15 text-[hsl(36_60%_32%)]" aria-hidden="true">
             <RotateCcw className="h-5 w-5" />
           </span>
           <h1 id="ds-retry-title" className="mt-4 text-balance font-display text-[24px] font-semibold leading-[1.2] tracking-[-0.01em] sm:text-[28px]">{t('dsx_rec_title')}</h1>
           <p className="mt-2 text-[15px] leading-relaxed text-[#4A5263]">{t('dsx_rec_body')}</p>
-          <ol className="mt-5 space-y-2.5 rounded-2xl bg-[#F7F4EF] p-4" data-testid="recovery-steps">
+          <ol className="mt-5 space-y-2.5 rounded-2xl bg-[#F7F4EF] p-3.5 sm:p-4" data-testid="recovery-steps">
             {shown.map((id) => {
               const kept = recovery.done.includes(id);
               const here = id === recovery.resumeAt;
@@ -353,8 +353,12 @@ export function FailureStep({ source, retryable, message, recovery = READING_REC
                   <span className={cn('grid h-6 w-6 shrink-0 place-items-center rounded-full', kept ? 'bg-[hsl(152_55%_38%)]/12 text-[hsl(152_55%_32%)]' : 'bg-[hsl(38_92%_56%)]/20')} aria-hidden="true">
                     {kept ? <Check className="h-3.5 w-3.5" /> : <span className="h-2 w-2 rounded-full bg-[hsl(38_92%_46%)]" />}
                   </span>
-                  <span className={cn('min-w-0 flex-1', here && 'font-semibold')}>{t(RECOVERY_LABEL[id][source])}</span>
-                  <span className={cn('shrink-0 text-[13px]', kept ? 'text-[hsl(152_55%_30%)]' : 'font-medium text-[hsl(36_60%_32%)]')}>{t(kept ? 'dsx_rec_saved' : 'dsx_rec_resume')}</span>
+                  {/* On a phone the state goes under the step, so a long Georgian step name is never broken mid-word. */}
+                  <span className="min-w-0 flex-1">
+                    <span className={cn('block', here && 'font-semibold')}>{t(RECOVERY_LABEL[id][source])}</span>
+                    <span className={cn('block text-[12px] sm:hidden', kept ? 'text-[hsl(152_55%_30%)]' : 'font-medium text-[hsl(36_60%_32%)]')}>{t(kept ? 'dsx_rec_saved' : 'dsx_rec_resume')}</span>
+                  </span>
+                  <span className={cn('hidden shrink-0 text-[13px] sm:inline', kept ? 'text-[hsl(152_55%_30%)]' : 'font-medium text-[hsl(36_60%_32%)]')}>{t(kept ? 'dsx_rec_saved' : 'dsx_rec_resume')}</span>
                 </li>
               );
             })}

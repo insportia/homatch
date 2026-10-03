@@ -856,6 +856,21 @@ test('a design that did not finish: the recovery shows the server\'s real state 
   assert.match(code('src/services/designStudio/designRun.ts'), /renderId = await renderDirectly\(input, versionId, progress\.specJobId, attempt\)/);
 });
 
+test('a variant, a style, a quality or a room can be recorded: parent_id belongs to edits alone', () => {
+  // Production, 2026-10-03: every VARIANT and ROOM render was refused by the table (RENDER_NOT_RECORDED), because
+  // ds_renders holds kind = 'EDIT' exactly when parent_id is set, and the generated render set parent_id.
+  assert.match(read('supabase/migrations/20261007120000_design_studio_renders.sql'), /\(kind = 'EDIT'\) = \(parent_id IS NOT NULL\)/);
+  const gen = code('supabase/functions/design-studio-reconstruct/generate.ts');
+  assert.match(gen, /kind: view\.kind, view, status: 'QUEUED', parent_id: null,/);
+  assert.match(gen, /parentRenderId: parent\?\.id \?\? null/, 'the approved picture is recorded in finish');
+  assert.match(gen, /const parentId = row\.parent_id \?\? row\.finish\?\.parentRenderId \?\? null;/, 'and read from there');
+  assert.doesNotMatch(gen, /kind: view\.kind[^\n]*parent_id: parent/);
+  // A Result generation that did not finish is asked again with the SAME key (resumed, never paid twice).
+  const result = code('src/components/designStudio/unified/DesignResult.tsx');
+  assert.match(result, /void generate\(failedRun, true\)/);
+  assert.match(result, /status=\{working \? 'PROCESSING' : failedRun \? 'FAILED' : 'READY'\}/, 'Snake never calls a failure ready');
+});
+
 test('the protected edit pipeline (PR #65) is untouched; the 3D walkthrough is the server-built one', () => {
   // The legacy browser-driven walkthrough stays held back.
   assert.match(code('src/lib/designStudio/walkthroughOffer.ts'), /export const WALKTHROUGH_OFFERED = false;/);

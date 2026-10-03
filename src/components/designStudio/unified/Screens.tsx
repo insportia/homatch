@@ -9,10 +9,11 @@
 // what it is — saved and worth trying again, or a file that cannot be used.
 
 import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, FileText, ImagePlus, Loader2, Plus, RefreshCw, Upload, X } from 'lucide-react';
+import { Check, FileText, ImagePlus, Loader2, Plus, RefreshCw, RotateCcw, Upload, X } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import type { RunStage } from '@/services/designStudio/designRun';
+import { listRenders } from '@/services/designStudio/renders';
 import { PRIMARY, QUIET, RING, Screen } from '../planToHome/SimpleSteps';
 
 const SnakeGame = lazy(() => import('@/components/games/SnakeGame'));
@@ -223,10 +224,13 @@ export function DetailQuestionStep({ question, options, suggested, images, onAns
 const STAGES: RunStage[] = ['DESIGN', 'IMAGE', 'RESULT'];
 export const STAGE_KEY: Record<RunStage, string> = { DESIGN: 'dsx_stage_design', IMAGE: 'dsx_stage_image', RESULT: 'dsx_stage_result' };
 
-export function GeneratingStep({ source, stage, since, done, failure, onView, onRetry, onLater, onChooseFile, busy }: {
+export function GeneratingStep({ source, stage, since, done, failure, recovery, onOpenProject, onView, onRetry, onLater, onChooseFile, busy }: {
   source: Source; stage: RunStage; since: number | null; done: boolean;
   /** The run failed: retryable (try again without uploading) or not (another file). */
   failure: { retryable: boolean; message: string | null } | null;
+  /** What the server has kept of this run, and where trying again continues. */
+  recovery?: Recovery;
+  onOpenProject?: () => void;
   onView: () => void; onRetry: () => void; onLater: () => void; onChooseFile: () => void; busy: boolean;
 }) {
   const { t } = useLanguage();
@@ -243,7 +247,7 @@ export function GeneratingStep({ source, stage, since, done, failure, onView, on
   const status = failure ? 'FAILED' : done ? 'READY' : 'PROCESSING';
 
   if (failure && !playing) {
-    return <FailureStep source={source} retryable={failure.retryable} message={failure.message} onRetry={onRetry} onLater={onLater} onChooseFile={onChooseFile} busy={busy} />;
+    return <FailureStep source={source} retryable={failure.retryable} message={failure.message} recovery={recovery} onOpenProject={onOpenProject} onRetry={onRetry} onLater={onLater} onChooseFile={onChooseFile} busy={busy} />;
   }
   return (
     <Screen eyebrow={t('dsx_gen_eyebrow')} title={t('dsx_gen_title')} body={t(source === 'PHOTOS' ? 'dsx_gen_body' : 'dsx_gen_body_plan')} testId="plan-generating">
@@ -284,10 +288,44 @@ export function GeneratingStep({ source, stage, since, done, failure, onView, on
   );
 }
 
-// ── It did not finish: try again (nothing is uploaded again), or another file ──
+// ── It did not finish: what is kept, and try again from where it stopped ──
 
-export function FailureStep({ source, retryable, message, onRetry, onLater, onChooseFile, busy }: {
-  source: Source; retryable: boolean; message: string | null; onRetry: () => void; onLater: () => void; onChooseFile: () => void; busy: boolean;
+/** The steps of making a design, as the customer sees them. */
+export type RecoveryStepId = 'UPLOAD' | 'ANALYSIS' | 'DESIGN' | 'IMAGE';
+/** What the server has kept (each step here is stored there) and the step trying again starts with. */
+export interface Recovery { done: RecoveryStepId[]; resumeAt: RecoveryStepId }
+const RECOVERY_STEPS: RecoveryStepId[] = ['UPLOAD', 'ANALYSIS', 'DESIGN', 'IMAGE'];
+const RECOVERY_LABEL: Record<RecoveryStepId, Record<Source, string>> = {
+  UPLOAD: { PHOTOS: 'dsx_rec_step_upload_photos', PLAN: 'dsx_rec_step_upload_plan' },
+  ANALYSIS: { PHOTOS: 'dsx_rec_step_analysis_photos', PLAN: 'dsx_rec_step_analysis_plan' },
+  DESIGN: { PHOTOS: 'dsx_rec_step_design', PLAN: 'dsx_rec_step_design' },
+  IMAGE: { PHOTOS: 'dsx_rec_step_image', PLAN: 'dsx_rec_step_image' },
+};
+/** Reading the upload did not finish: the upload is kept, the reading is asked again. */
+export const READING_RECOVERY: Recovery = { done: ['UPLOAD'], resumeAt: 'ANALYSIS' };
+
+/** The version of the project's latest finished picture (the project can be opened on it), or null. */
+export function useReadyResult(projectId: string, active: boolean): string | null {
+  const [version, setVersion] = useState<string | null>(null);
+  useEffect(() => {
+    if (!active) return;
+    let stop = false;
+    void listRenders(projectId).then((rows) => {
+      const ready = rows.find((r) => r.status === 'READY' && !!r.final_key);
+      if (!stop) setVersion(ready?.version_id ?? null);
+    }).catch(() => {});
+    return () => { stop = true; };
+  }, [projectId, active]);
+  return version;
+}
+
+export function FailureStep({ source, retryable, message, recovery = READING_RECOVERY, onOpenProject, onRetry, onLater, onChooseFile, busy }: {
+  source: Source; retryable: boolean; message: string | null;
+  /** The real state of the work (never assumed): what is kept, and where trying again continues. */
+  recovery?: Recovery;
+  /** Shown only when the project already has a finished result it can be opened on. */
+  onOpenProject?: () => void;
+  onRetry: () => void; onLater: () => void; onChooseFile: () => void; busy: boolean;
 }) {
   const { t } = useLanguage();
   if (!retryable) {
@@ -296,18 +334,47 @@ export function FailureStep({ source, retryable, message, onRetry, onLater, onCh
         action={<button type="button" onClick={onChooseFile} className={PRIMARY} data-testid="choose-another">{t('dsx_unsup_cta')}</button>} />
     );
   }
+  const shown = RECOVERY_STEPS.slice(0, Math.max(RECOVERY_STEPS.indexOf(recovery.resumeAt) + 1, 1));
   return (
-    <Screen title={t('dsx_fail_title')} body={t(source === 'PHOTOS' ? 'dsx_fail_body_photos' : 'dsx_fail_body_plan')} testId="ds-retry"
-      action={(
-        <>
-          <button type="button" onClick={onLater} className={SECONDARY} data-testid="retry-later">{t('dsx_later')}</button>
-          <button type="button" onClick={onRetry} disabled={busy} className={PRIMARY} data-testid="plan-retry">
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <RefreshCw className="h-4 w-4" aria-hidden="true" />}{t('dsx_retry')}
-          </button>
-        </>
-      )}>
-      {message ? <p className={ALERT}>{message}</p> : null}
-    </Screen>
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto" data-testid="ds-retry" data-resume={recovery.resumeAt}>
+      <div className="m-auto w-full max-w-[520px] px-4 py-6 sm:py-10">
+        <section className="rounded-[28px] bg-white p-6 shadow-[0_1px_2px_rgba(12,17,25,0.04),0_12px_32px_-16px_rgba(12,17,25,0.18)] ring-1 ring-[#E7E1D8] sm:p-8" aria-labelledby="ds-retry-title">
+          <span className="grid h-11 w-11 place-items-center rounded-full bg-[hsl(38_92%_56%)]/15 text-[hsl(36_60%_32%)]" aria-hidden="true">
+            <RotateCcw className="h-5 w-5" />
+          </span>
+          <h1 id="ds-retry-title" className="mt-4 text-balance font-display text-[24px] font-semibold leading-[1.2] tracking-[-0.01em] sm:text-[28px]">{t('dsx_rec_title')}</h1>
+          <p className="mt-2 text-[15px] leading-relaxed text-[#4A5263]">{t('dsx_rec_body')}</p>
+          <ol className="mt-5 space-y-2.5 rounded-2xl bg-[#F7F4EF] p-4" data-testid="recovery-steps">
+            {shown.map((id) => {
+              const kept = recovery.done.includes(id);
+              const here = id === recovery.resumeAt;
+              return (
+                <li key={id} className="flex items-center gap-3 text-[15px]" data-step={id} data-state={kept ? 'KEPT' : here ? 'RESUME' : 'PENDING'}>
+                  <span className={cn('grid h-6 w-6 shrink-0 place-items-center rounded-full', kept ? 'bg-[hsl(152_55%_38%)]/12 text-[hsl(152_55%_32%)]' : 'bg-[hsl(38_92%_56%)]/20')} aria-hidden="true">
+                    {kept ? <Check className="h-3.5 w-3.5" /> : <span className="h-2 w-2 rounded-full bg-[hsl(38_92%_46%)]" />}
+                  </span>
+                  <span className={cn('min-w-0 flex-1', here && 'font-semibold')}>{t(RECOVERY_LABEL[id][source])}</span>
+                  <span className={cn('shrink-0 text-[13px]', kept ? 'text-[hsl(152_55%_30%)]' : 'font-medium text-[hsl(36_60%_32%)]')}>{t(kept ? 'dsx_rec_saved' : 'dsx_rec_resume')}</span>
+                </li>
+              );
+            })}
+          </ol>
+          {recovery.done.length ? <p className="mt-3 text-[13px] text-[#5B6472]" data-testid="recovery-note">{t('dsx_rec_kept_note')}</p> : null}
+          {message ? <p className={cn(ALERT, 'mt-4')}>{message}</p> : null}
+          <div className="mt-6 flex flex-col gap-2 sm:flex-row-reverse sm:items-center">
+            <button type="button" onClick={onRetry} disabled={busy} className={PRIMARY} data-testid="plan-retry">
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <RefreshCw className="h-4 w-4" aria-hidden="true" />}{t('dsx_retry')}
+            </button>
+            <button type="button" onClick={onLater} className={SECONDARY} data-testid="retry-later">{t('dsx_later')}</button>
+          </div>
+          {onOpenProject ? (
+            <div className="mt-3 flex justify-center sm:justify-start">
+              <button type="button" onClick={onOpenProject} className={QUIET} data-testid="retry-open-project">{t('dsx_rec_back')}</button>
+            </div>
+          ) : null}
+        </section>
+      </div>
+    </div>
   );
 }
 

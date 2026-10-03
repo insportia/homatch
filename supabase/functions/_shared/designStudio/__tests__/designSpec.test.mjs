@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import {
-  ALWAYS_IMMUTABLE, buildEvidence, directionFrom, dnaFromSpec, imageInstruction, modeContextProblem, referenceOf, SPEC_SCHEMA, specRequest, validateSpec,
+  ALWAYS_IMMUTABLE, buildEvidence, directionFrom, dnaFromSpec, imageInstruction, modeContextProblem, referenceOf, SPEC_SCHEMA, specProblems, specRequest, validateSpec,
 } from '../designSpec.ts';
 import { understand } from '../planRead/understand.ts';
 
@@ -118,6 +118,33 @@ test('the specification is validated: real room ids, real colours, a substantial
   for (const k of ['immutable', 'rooms', 'openings', 'adjacency', 'indoorOutdoor', 'fixedElements', 'conflicts']) assert.ok(SPEC_SCHEMA.properties.architecture.required.includes(k), k);
   for (const k of ['styleInterpretation', 'qualityInterpretation', 'materials', 'palette', 'furnishing', 'lighting', 'cabinetry', 'textilesAndDecor', 'continuity']) assert.ok(SPEC_SCHEMA.properties.design.required.includes(k), k);
   for (const k of ['mustRemain', 'mayChange', 'camera', 'photorealism', 'negative', 'imageInstruction', 'continuityInstruction']) assert.ok(SPEC_SCHEMA.properties.generation.required.includes(k), k);
+});
+
+test('a photograph that shows the whole home: spaces its reading did not list are kept as visual:…, never a failure', () => {
+  // Production, project a6f4d744: one isometric photo of a whole flat, read as one kitchen-living room (r1). A
+  // specification naming the bedrooms and the hall was refused outright (SPEC_INVALID), every time it was asked.
+  const ev = { sourceKind: 'PHOTO', rooms: [{ id: 'r1', kind: 'KITCHEN_LIVING', label: 'Kitchen-living', outdoor: false }], openings: [] };
+  const whole = { ...sampleSpec(ev), architecture: { ...sampleSpec(ev).architecture, rooms: [
+    { id: 'r1', name: 'Kitchen-living', kind: 'KITCHEN_LIVING', keep: 'As shown.' },
+    { id: 'r2', name: 'Bedroom', kind: 'BEDROOM', keep: 'As shown.' },
+    { id: 'Hallway 1', name: 'Hall', kind: 'HALL', keep: 'As shown.' },
+    { id: '', name: 'Балкон', kind: 'BALCONY', keep: 'Stays outdoors.' },
+  ] } };
+  assert.deepEqual(specProblems(whole, ev), []);
+  const spec = validateSpec(whole, ev);
+  assert.ok(spec);
+  assert.deepEqual(spec.architecture.rooms.map((r) => r.id), ['r1', 'visual:r2', 'visual:Hallway-1', 'visual:space-4']);
+  assert.ok(spec.architecture.rooms.every((r) => /^(r1|visual:[A-Za-z0-9_-]{1,30})$/.test(r.id)));
+  // Stable: a stored specification checked again (the render reads it back) is the same specification.
+  assert.deepEqual(validateSpec(spec, ev), spec);
+  // A floor plan's evidence is the whole plan: an invented room there is still refused, and the reason is given.
+  const plan = evidence();
+  const invented = { ...sampleSpec(plan), architecture: { ...sampleSpec(plan).architecture, rooms: [{ id: 'R999', name: 'x', kind: 'LIVING', keep: '' }] } };
+  assert.deepEqual(specProblems(invented, plan), ['UNKNOWN_ROOM:R999']);
+  assert.deepEqual(specProblems({ ...sampleSpec(plan), generation: { ...sampleSpec(plan).generation, imageInstruction: 'x' } }, plan), ['INSTRUCTION_TOO_SHORT']);
+  assert.deepEqual(specProblems(null, plan), ['SECTIONS_MISSING']);
+  // The model is told the rule it is held to.
+  assert.match(specRequest('m', { mode: 'MASTER', evidence: ev, direction: DIRECTION, room: null, change: null, approvedSpec: null }, { source: SOURCE }).input[0].content, /visual:short-name/);
 });
 
 test('the image instruction is project-specific and separates IMMUTABLE architecture from the CREATIVE interior', () => {

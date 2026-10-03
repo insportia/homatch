@@ -34,7 +34,7 @@ import { referencesById, type ReconstructionRecord } from '@/services/designStud
 import { flowOf, planFromPhotos, savePhotoFlow, startPhotoProject, understandingOf, understandPhotos, uploadPhotos } from '@/services/designStudio/photos';
 import type { FloorPlanRecord } from '@/services/designStudio/floorplans';
 import { QualityStep, RING, StyleStep, SURFACE, surpriseStyle } from '../planToHome/SimpleSteps';
-import { AnalysisStep, DetailQuestionStep, FailureStep, GeneratingStep, PhotoUploadStep } from './Screens';
+import { AnalysisStep, DetailQuestionStep, FailureStep, GeneratingStep, PhotoUploadStep, READING_RECOVERY, type Recovery, useReadyResult } from './Screens';
 
 type Step = 'UPLOAD' | 'READING' | 'FAILED' | 'QUESTION' | 'STYLE' | 'QUALITY' | 'GENERATING';
 
@@ -220,12 +220,13 @@ export function PhotoFlow({ userId, projectId, projectName, resume, onDone, onCa
     setBusy(true);
     setGenFailure(null);
     setStep('GENERATING');
+    let rec: ReconstructionRecord = recon;
     try {
       const current = flowOf(recon);
       const runKey = current?.runKey ?? `ph-run-${originalId}-${await sha16(stableJson({ look, answers }))}`;
       const startedAt = current?.startedAt && current.step === 'GENERATING' ? current.startedAt : new Date().toISOString();
       genSince.current = Date.parse(startedAt);
-      let rec = await savePhotoFlow(recon, { step: 'GENERATING', look, answers, runKey, startedAt, ...(quote ? { confirmedCredits: quote.credits } : {}) });
+      rec = await savePhotoFlow(recon, { step: 'GENERATING', look, answers, runKey, startedAt, ...(quote ? { confirmedCredits: quote.credits } : {}) });
       setRecon(rec);
       const f = flowOf(rec);
       const result = await runDesign({
@@ -243,6 +244,8 @@ export function PhotoFlow({ userId, projectId, projectName, resume, onDone, onCa
     } catch (e) {
       if (e instanceof DesignStudioError && (e.code === 'DS_STILL_WORKING' || e.code === 'DS_WATCH_STOPPED')) return;
       const code = e instanceof DesignStudioError ? e.code : '';
+      // What the server confirmed on the way (the specification, the design) is in the record: the recovery shows it.
+      setRecon(rec);
       setGenFailure({ retryable: true, message: ERROR_KEY[code] ? t(ERROR_KEY[code]) : null });
     } finally {
       running.current = false;
@@ -261,6 +264,13 @@ export function PhotoFlow({ userId, projectId, projectName, resume, onDone, onCa
   }, [step, recon, originalId, generate]);
 
   const onViewResult = useCallback(() => { if (doneVersion) onDone(doneVersion); }, [doneVersion, onDone]);
+  // A failure keeps every finished step on the server: the recovery says which (the specification is recorded once it succeeded).
+  const failed = step === 'FAILED' || !!genFailure;
+  const readyVersion = useReadyResult(projectId, failed);
+  const genRecovery: Recovery = flow?.specJobId
+    ? { done: ['UPLOAD', 'ANALYSIS', 'DESIGN'], resumeAt: 'IMAGE' }
+    : { done: ['UPLOAD', 'ANALYSIS'], resumeAt: 'DESIGN' };
+  const openProject = readyVersion ? () => onDone(readyVersion) : undefined;
   const chooseAnother = () => { setRecon(null); setUrls([]); setLocalUrls([]); setReadFail(null); setGenFailure(null); setAnswers([]); setStep('UPLOAD'); };
   const q = open[0] ?? null;
   const qImages = q ? (q.photos.length ? q.photos : (u?.rooms.find((r) => r.id === q.roomId)?.photos ?? [])).map((i) => images[i]).filter(Boolean) : [];
@@ -278,7 +288,7 @@ export function PhotoFlow({ userId, projectId, projectName, resume, onDone, onCa
       {step === 'UPLOAD' ? <PhotoUploadStep onContinue={(f) => { void onPhotos(f); }} error={error} busy={busy} progress={progress} /> : null}
       {step === 'READING' ? <AnalysisStep source="PHOTOS" images={images} /> : null}
       {step === 'FAILED' ? (
-        <FailureStep source="PHOTOS" retryable={readFail?.retryable !== false} message={null} busy={busy}
+        <FailureStep source="PHOTOS" retryable={readFail?.retryable !== false} message={null} busy={busy} recovery={READING_RECOVERY} onOpenProject={openProject}
           onRetry={retryReading} onLater={onCancel} onChooseFile={chooseAnother} />
       ) : null}
       {step === 'QUESTION' && q ? (
@@ -294,7 +304,7 @@ export function PhotoFlow({ userId, projectId, projectName, resume, onDone, onCa
           price={quote ? { credits: quote.credits, charged: quote.charged } : null} priceUnavailable={quoteFailed} onRetryPrice={() => { void requestQuote(); }} />
       ) : null}
       {step === 'GENERATING' ? (
-        <GeneratingStep source="PHOTOS" stage={stage} since={genSince.current} done={!!doneVersion} failure={genFailure} busy={busy}
+        <GeneratingStep source="PHOTOS" stage={stage} since={genSince.current} done={!!doneVersion} failure={genFailure} busy={busy} recovery={genRecovery} onOpenProject={openProject}
           onView={onViewResult} onRetry={() => { void generate(true); }} onLater={onCancel} onChooseFile={chooseAnother} />
       ) : null}
     </div>

@@ -49,7 +49,7 @@ import {
   quoteMatches, quoteSecret, RENDER_PRICING, renderRowKey, reservationKey, sha256Hex, validIdempotencyKey, verifyQuote, type QuoteClaims,
 } from '../_shared/designStudio/renderPricing.ts';
 import {
-  buildEvidence, directionFrom, dnaFromSpec, imageInstruction, isGenerationMode, modeContextProblem, specRequest, validateSpec,
+  buildEvidence, directionFrom, dnaFromSpec, imageInstruction, isGenerationMode, modeContextProblem, specProblems, specRequest, validateSpec,
   type DesignSpec, type GenerationMode, type ModeContext, type PropertyEvidence,
 } from '../_shared/designStudio/designSpec.ts';
 import { sceneRequest, validateScene, type SceneElement } from '../_shared/designStudio/sceneMap.ts';
@@ -326,8 +326,8 @@ export async function handleDesignSpec(req: Request): Promise<Response> {
 /** The specification itself (background): the source pictures, OpenAI, validation, the cost, the job. */
 async function writeSpec(ctx: Ctx, a: { jobId: string; modeCtx: ModeContext; src: Source; approved: Row }): Promise<boolean> {
   const { jobId, modeCtx, src, approved } = a;
-  const fail = async (code: string) => {
-    await ctx.admin.from('ds_jobs').update({ status: 'FAILED', error: specFailure(code), finished_at: new Date().toISOString() }).eq('id', jobId).eq('status', 'RUNNING');
+  const fail = async (code: string, extra: Row = {}) => {
+    await ctx.admin.from('ds_jobs').update({ status: 'FAILED', error: specFailure(code), finished_at: new Date().toISOString(), ...extra }).eq('id', jobId).eq('status', 'RUNNING');
     return false;
   };
   // The picture this design is drawn over: the plan, or the photo of the room asked for (the hero room for the master).
@@ -362,19 +362,24 @@ async function writeSpec(ctx: Ctx, a: { jobId: string; modeCtx: ModeContext; src
     });
     payload = r.ok ? await r.json() : null;
   } catch { payload = null; }
+  // OpenAI answered: the call is paid whatever the answer turns out to be, so it is metered before it is judged.
+  const cost = payload
+    ? await meterAiCall(ctx.admin, { userId: ctx.actorId, productCode: 'DS_AI_DESIGN', jobRef: jobId, model: SPEC_MODEL, startedAt: started }, payload, { step: 'design_spec', mode: modeCtx.mode, source: modeCtx.evidence.sourceKind })
+    : null;
+  const paid = cost ? { cost_cents: cost.aiCents } : {};
   const text = payload ? textOf(payload) : '';
-  if (!text) return fail('SPEC_FAILED');
+  if (!text) return fail('SPEC_FAILED', paid);
   let raw: unknown;
-  try { raw = JSON.parse(text); } catch { return fail('SPEC_BAD_SHAPE'); }
+  try { raw = JSON.parse(text); } catch { return fail('SPEC_BAD_SHAPE', paid); }
   const spec = validateSpec(raw, modeCtx.evidence);
-  if (!spec) return fail('SPEC_INVALID');
-  const cost = await meterAiCall(ctx.admin, { userId: ctx.actorId, productCode: 'DS_AI_DESIGN', jobRef: jobId, model: SPEC_MODEL, startedAt: started }, payload, { step: 'design_spec', mode: modeCtx.mode, source: modeCtx.evidence.sourceKind });
+  // Why it was refused stays with the job (codes only, never the customer's content), so a failure is diagnosable.
+  if (!spec) return fail('SPEC_INVALID', { ...paid, output: { kind: 'SPEC_REJECTED', problems: specProblems(raw, modeCtx.evidence), model: SPEC_MODEL, ms: Date.now() - started } });
   const dna = dnaFromSpec(spec, modeCtx.direction.preferences, jobId);
   const output = {
     kind: 'DESIGN_SPEC', mode: modeCtx.mode, spec, evidence: modeCtx.evidence, direction: modeCtx.direction, room: modeCtx.room ?? null, change: modeCtx.change ?? null, dna, sourceKey,
     parentRenderId: approved?.id ?? null, approvedSpecJobId: approved?.finish?.specJobId ?? null, model: SPEC_MODEL, ms: Date.now() - started,
   };
-  const { data: saved } = await ctx.admin.from('ds_jobs').update({ status: 'SUCCEEDED', output, cost_cents: cost.aiCents, finished_at: new Date().toISOString() })
+  const { data: saved } = await ctx.admin.from('ds_jobs').update({ status: 'SUCCEEDED', output, cost_cents: cost?.aiCents ?? null, finished_at: new Date().toISOString() })
     .eq('id', jobId).eq('status', 'RUNNING').select('id');
   return !!saved?.length;
 }

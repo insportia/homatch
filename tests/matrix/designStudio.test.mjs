@@ -813,6 +813,49 @@ test('Snake only watches: no service, no database, no job control', () => {
   assert.match(code('src/lib/games/snake.ts'), /export function step\(/);
 });
 
+test('Snake plays smoothly on its own clock: one frame loop, no interval, everything it adds it removes', () => {
+  const game = code('src/components/games/SnakeGame.tsx');
+  assert.match(game, /requestAnimationFrame\(frame\)/);
+  assert.match(game, /cancelAnimationFrame\(raf\)/, 'the loop stops when the game closes');
+  assert.doesNotMatch(game, /setInterval\(/, 'no runaway timer');
+  assert.equal((game.match(/addEventListener\(/g) ?? []).length, (game.match(/removeEventListener\(/g) ?? []).length, 'every listener is removed');
+  assert.match(game, /ro\.disconnect\(\)/);
+  // The game is a ref read by the loop; React state changes only when the score or the state does.
+  assert.match(game, /const engine = useRef</);
+  assert.doesNotMatch(game, /setGame\(/);
+  assert.match(game, /between\(/, 'drawn between cells, not jumping');
+  assert.match(game, /tickMs\(e\.g\.score/, 'speed from the rules, not the refresh rate');
+  // Only the board and the pad take touch gestures; the pad never mirrors in a right-to-left language.
+  assert.match(game, /ref=\{board\}[\s\S]{0,80}touch-none/);
+  assert.match(game, /ref=\{pad\} dir="ltr" className="[^"]*touch-none/);
+  assert.doesNotMatch(game, /document\.body\.style|overflow-hidden';|preventDefault\(\);\s*\}\s*,\s*\{ passive: false \}/, 'the page itself is never locked from scrolling');
+  // Ready while playing is said above the board; the game is neither paused nor left.
+  assert.match(game, /dsx_sn_ready/);
+  assert.match(game, /dsx_sn_view_result/);
+  assert.doesNotMatch(game, /status === 'READY'[^\n]*togglePause/);
+});
+
+test('a design that did not finish: the recovery shows the server\'s real state and continues from the failed step', () => {
+  const screens = code('src/components/designStudio/unified/Screens.tsx');
+  assert.match(screens, /dsx_rec_title/);
+  assert.match(screens, /dsx_rec_body/);
+  assert.match(screens, /data-state=\{kept \? 'KEPT' : here \? 'RESUME' : 'PENDING'\}/);
+  assert.match(screens, /onOpenProject \? \(/, '"back to project" only when there is a result to open');
+  assert.match(screens, /r\.status === 'READY' && !!r\.final_key/);
+  // The steps shown are the ones the server recorded (the specification id is saved only once it succeeded).
+  assert.match(code('src/components/designStudio/unified/PhotoFlow.tsx'), /flow\?\.specJobId\s*\?\s*\{ done: \['UPLOAD', 'ANALYSIS', 'DESIGN'\], resumeAt: 'IMAGE' \}/);
+  assert.match(code('src/components/designStudio/FloorPlanFlow.tsx'), /latestFlow\(plan\)\?\.specJobId\s*\?\s*\{ done: \['UPLOAD', 'ANALYSIS', 'DESIGN'\], resumeAt: 'IMAGE' \}/);
+  assert.match(code('src/components/designStudio/FloorPlanFlow.tsx'), /const stored = await getFloorPlan\(plan\.id\)/, 'the record is read back before the recovery is shown');
+  // The server: a refused specification is metered (OpenAI was paid) and says why, by code only.
+  const gen = code('supabase/functions/design-studio-reconstruct/generate.ts');
+  const metered = gen.indexOf('const cost = payload');
+  assert.ok(metered > 0 && metered < gen.indexOf("return fail('SPEC_INVALID'"), 'metered before it is judged');
+  assert.match(gen, /kind: 'SPEC_REJECTED', problems: specProblems\(raw, modeCtx\.evidence\)/);
+  // A retry reuses what succeeded: the same key finds the specification first, and a failed picture keeps it.
+  assert.match(gen, /rows\.find\(\(r\) => r\.status === 'SUCCEEDED' && r\.output\?\.kind === 'DESIGN_SPEC'\)/);
+  assert.match(code('src/services/designStudio/designRun.ts'), /renderId = await renderDirectly\(input, versionId, progress\.specJobId, attempt\)/);
+});
+
 test('the protected edit pipeline (PR #65) is untouched; the 3D walkthrough is the server-built one', () => {
   // The legacy browser-driven walkthrough stays held back.
   assert.match(code('src/lib/designStudio/walkthroughOffer.ts'), /export const WALKTHROUGH_OFFERED = false;/);

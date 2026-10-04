@@ -37,11 +37,18 @@ import { fetchCurrentFx } from '../_shared/fx.ts';
 import { sourceGroupOf } from '../../../src/research-core/discovery/discovery-plan.ts';
 import { executeSocialJob } from '../_shared/findBuyers/executor.ts';
 import { queueTelegramFallback, sweepStaleActorRuns } from '../_shared/findBuyers/campaign.ts';
+import { runWorkerPool } from '../../../src/research-core/findBuyers/workerPool.ts';
 
 /* The providers the native pass runs. APIFY_MEMO23 has its own pass. */
 const NATIVE_PROVIDERS = ['TELEGRAM', 'TELEGRAM_SOURCES', 'FORUM', 'PORTAL'];
-/* The social pass stops claiming after this long, inside one tick. */
-const SOCIAL_PASS_MS = 30_000;
+/* The social pass stops claiming after this long, inside one tick: the
+   minute cron tick plus this window leaves at most a short gap between
+   passes, so a slot freed late in a tick is refilled early in the next. */
+const SOCIAL_PASS_MS = 45_000;
+/* A lane with nothing runnable naps this long before looking again. */
+const SOCIAL_IDLE_MS = 2_000;
+/* Queue priority of a job whose provider run has started (see runSocialJob). */
+const POLL_PRIORITY = 10_000;
 
 const OPEN_SOURCE_STATES = ['PENDING', 'PROCESSING', 'RETRY_WAIT'];
 const STUCK_AFTER_MS = 12 * 60_000;
@@ -138,51 +145,77 @@ async function runSourceJobs(
 }
 
 /**
- * FIND BUYERS social jobs (provider APIFY_MEMO23). Each claim starts or polls
- * one provider run, so claims are short; the pass repeats until the queue has
- * nothing runnable or the time box closes. A still-running provider run goes
- * back as RETRY_WAIT without consuming an attempt.
+ * FIND BUYERS social jobs (provider APIFY_MEMO23), through a bounded worker
+ * pool: N lanes (N = discovery_provider_concurrency.APIFY_MEMO23, 4 to start)
+ * each claim one job, run it and immediately claim the next, so a freed lane
+ * is refilled at once and a slow job holds only its own lane. Each claim
+ * starts or polls one provider run; a still-running run goes back as
+ * RETRY_WAIT without consuming an attempt and is polled again inside the same
+ * pass when it comes due. How many provider runs are in flight is decided by
+ * the reservation (find_buyers_reserve_actor_run: GLOBAL_BUSY / ACTOR_BUSY),
+ * never by this loop.
  */
 async function runSocialJobs(db: any, settings: DiscoverySettings) {
   const started = Date.now();
-  const results: Array<Record<string, unknown>> = [];
-  while (Date.now() - started < SOCIAL_PASS_MS) {
-    const { data: claimed, error } = await db.rpc('claim_discovery_source_jobs_v2', {
-      p_limit: 4, p_lease_seconds: 180, p_max_attempts: settings.sourceJobMaxAttempts,
-      p_executor: 'EDGE', p_providers: ['APIFY_MEMO23'],
+  const { data: caps } = await db.from('admin_settings').select('value').eq('key', 'discovery_provider_concurrency').maybeSingle();
+  const lanes = Math.max(1, Math.min(20, Number(caps?.value?.APIFY_MEMO23) || 4));
+  const pool = await runWorkerPool<any, Record<string, unknown>>({
+    lanes,
+    deadline: started + SOCIAL_PASS_MS,
+    now: () => Date.now(),
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    idleMs: SOCIAL_IDLE_MS,
+    staggerMs: 150,
+    claim: async () => {
+      const { data: claimed, error } = await db.rpc('claim_discovery_source_jobs_v2', {
+        p_limit: 1, p_lease_seconds: 180, p_max_attempts: settings.sourceJobMaxAttempts,
+        p_executor: 'EDGE', p_providers: ['APIFY_MEMO23'],
+      });
+      if (error) throw new Error(error.message);
+      return ((claimed ?? []) as any[])[0] ?? null;
+    },
+    hasOpenWork: async () => {
+      const { count } = await db.from('discovery_query_queue').select('id', { count: 'exact', head: true })
+        .eq('provider', 'APIFY_MEMO23').in('status', ['PENDING', 'RETRY_WAIT', 'PROCESSING']);
+      return Number(count || 0) > 0;
+    },
+    run: (job) => runSocialJob(db, settings, job),
+  });
+  return { lanes, claimed: pool.claimed, maxInFlight: pool.maxInFlight, jobs: pool.results };
+}
+
+async function runSocialJob(db: any, settings: DiscoverySettings, job: any): Promise<Record<string, unknown>> {
+  let outcome;
+  try { outcome = await executeSocialJob(db, job); }
+  catch (e) { outcome = { outcome: 'RETRY' as const, resultCount: 0, error: errorText(e).slice(0, 300), retrySeconds: 60, costUsd: null, metadata: {} }; }
+  let status: string | null = null;
+  if (outcome.outcome === 'WAIT') {
+    /* A started run is polled ahead of every unstarted job: polls are what
+       free slots, so jobs waiting for a slot can never starve them. */
+    if (outcome.metadata?.actorRunId && Number(job.priority ?? 0) < POLL_PRIORITY) {
+      await db.from('discovery_query_queue').update({ priority: POLL_PRIORITY })
+        .eq('id', job.id).eq('claim_token', job.claim_token);
+    }
+    const { data } = await db.rpc('finish_discovery_source_job_wait', {
+      p_job_id: job.id, p_claim_token: job.claim_token, p_retry_seconds: outcome.retrySeconds ?? 10, p_metadata: outcome.metadata,
     });
-    if (error) { results.push({ error: error.message }); break; }
-    const jobs = (claimed ?? []) as any[];
-    if (!jobs.length) break;
-    await Promise.all(jobs.map(async (job) => {
-      let outcome;
-      try { outcome = await executeSocialJob(db, job); }
-      catch (e) { outcome = { outcome: 'RETRY' as const, resultCount: 0, error: errorText(e).slice(0, 300), retrySeconds: 60, costUsd: null, metadata: {} }; }
-      let status: string | null = null;
-      if (outcome.outcome === 'WAIT') {
-        const { data } = await db.rpc('finish_discovery_source_job_wait', {
-          p_job_id: job.id, p_claim_token: job.claim_token, p_retry_seconds: outcome.retrySeconds ?? 20, p_metadata: outcome.metadata,
-        });
-        status = data ?? null;
-      } else {
-        const { data, error: finishError } = await db.rpc('finish_discovery_source_job', {
-          p_job_id: job.id, p_claim_token: job.claim_token, p_outcome: outcome.outcome, p_result_count: outcome.resultCount,
-          /* Booked provider cost (measured or reported); null = not measured. */
-          p_cost_usd: outcome.costUsd, p_error: outcome.error, p_retry_seconds: outcome.retrySeconds,
-          p_max_attempts: settings.sourceJobMaxAttempts, p_metadata: outcome.metadata,
-        });
-        status = finishError ? `FINISH_FAILED: ${finishError.message}` : data;
-        if (job.matching_job_id && outcome.outcome !== 'RETRY') {
-          await jobEvent(db, job.matching_job_id, 'SOCIAL_JOB_FINISHED', {
-            stage: job.metadata?.stage ?? null, language: job.language ?? null, status,
-            qualified: outcome.resultCount, error: outcome.error, providerCostUsd: outcome.costUsd,
-          }).catch(() => undefined);
-        }
-      }
-      results.push({ id: job.id, stage: job.metadata?.stage ?? null, outcome: outcome.outcome, status });
-    }));
+    status = data ?? null;
+  } else {
+    const { data, error: finishError } = await db.rpc('finish_discovery_source_job', {
+      p_job_id: job.id, p_claim_token: job.claim_token, p_outcome: outcome.outcome, p_result_count: outcome.resultCount,
+      /* Booked provider cost (measured or reported); null = not measured. */
+      p_cost_usd: outcome.costUsd, p_error: outcome.error, p_retry_seconds: outcome.retrySeconds,
+      p_max_attempts: settings.sourceJobMaxAttempts, p_metadata: outcome.metadata,
+    });
+    status = finishError ? `FINISH_FAILED: ${finishError.message}` : data;
+    if (job.matching_job_id && outcome.outcome !== 'RETRY') {
+      await jobEvent(db, job.matching_job_id, 'SOCIAL_JOB_FINISHED', {
+        stage: job.metadata?.stage ?? null, language: job.language ?? null, status,
+        qualified: outcome.resultCount, error: outcome.error, providerCostUsd: outcome.costUsd,
+      }).catch(() => undefined);
+    }
   }
-  return results;
+  return { id: job.id, stage: job.metadata?.stage ?? null, outcome: outcome.outcome, status };
 }
 
 async function advanceCampaigns(db: any, baseUrl: string, serviceKey: string, settings: DiscoverySettings, started: number) {

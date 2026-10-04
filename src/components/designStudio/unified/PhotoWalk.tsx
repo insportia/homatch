@@ -13,14 +13,16 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { clampWalk, PHOTO_CAMERAS, photoMesh, roomShapedDepth, walkBounds } from '@/lib/designStudio/photo3d/depthMesh';
 import { estimateDepth } from '@/lib/designStudio/photo3d/estimateDepth';
+import { signedUrls } from '@/services/designStudio/files';
 
-export interface WalkPhoto { id: string; url: string; label: string; kind: 'ROOM' | 'MASTER' }
+/** A picture to step into: its storage key (signed afresh when entered — a page left open outlives a link). */
+export interface WalkPhoto { id: string; url: string; key?: string | null; label: string; kind: 'ROOM' | 'MASTER' }
 
 const RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]';
 const ROUND = cn('grid h-11 w-11 place-items-center rounded-full bg-white/10 text-white ring-1 ring-white/20 hover:bg-white/20', RING);
 const SPEED = 0.9;
 
-type Phase = { kind: 'LOADING'; progress: number | null } | { kind: 'READY'; approximate: boolean } | { kind: 'FAILED' };
+type Phase = { kind: 'LOADING'; progress: number | null } | { kind: 'READY'; approximate: boolean } | { kind: 'FAILED'; code: string };
 
 export function PhotoWalk({ photos, initialId, onClose }: { photos: WalkPhoto[]; initialId: string; onClose: () => void }) {
   const { t, isRTL } = useLanguage();
@@ -139,21 +141,31 @@ export function PhotoWalk({ photos, initialId, onClose }: { photos: WalkPhoto[];
       renderer.render(scene, camera);
     };
 
+    let stage = 'START';
     (async () => {
       try {
-        const res = await fetch(photo.url);
-        if (!res.ok) throw new Error('PICTURE');
-        const blob = await res.blob();
+        // A fresh link to the picture (the one the page holds may have expired), then the one it has.
+        const links = [...new Set([photo.key ? (await signedUrls([photo.key], 900).catch(() => new Map<string, string>())).get(photo.key) : null, photo.url].filter((x): x is string => !!x))];
+        let blob: Blob | null = null;
+        for (const link of links) {
+          const res = await fetch(link, { cache: 'no-store' }).catch(() => null);
+          stage = res ? `PICTURE_${res.status}` : 'PICTURE_NETWORK';
+          if (res?.ok) { blob = await res.blob(); break; }
+        }
+        if (!blob) throw new Error(stage);
+        stage = 'DECODE';
         const url = URL.createObjectURL(blob);
         const img = new Image();
         img.src = url;
         await img.decode();
+        stage = 'DEPTH';
         if (disposed) { URL.revokeObjectURL(url); return; }
         // The picture's own depth; a device that cannot estimate it still enters the picture, on a room's shape.
         let approximate = false;
         const depth = await estimateDepth(photo.id, blob, (p) => { if (!disposed) setPhase({ kind: 'LOADING', progress: p }); })
           .catch(() => { approximate = true; return roomShapedDepth(); });
         if (disposed) { URL.revokeObjectURL(url); return; }
+        stage = 'MESH';
         const aspect = img.naturalWidth / Math.max(1, img.naturalHeight);
         const mesh = photoMesh(depth, aspect, cam);
         bounds = walkBounds(mesh);
@@ -181,8 +193,10 @@ export function PhotoWalk({ photos, initialId, onClose }: { photos: WalkPhoto[];
         URL.revokeObjectURL(url);
         setPhase({ kind: 'READY', approximate });
         frame = requestAnimationFrame(tick);
-      } catch {
-        if (!disposed) setPhase({ kind: 'FAILED' });
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error('[photo-walk]', stage, e);
+        if (!disposed) setPhase({ kind: 'FAILED', code: stage });
       }
     })();
 
@@ -239,6 +253,7 @@ export function PhotoWalk({ photos, initialId, onClose }: { photos: WalkPhoto[];
           <div className="absolute inset-0 grid place-items-center bg-[#0C1119]" role="alert" data-testid="photo-walk-failed">
             <div className="flex max-w-sm flex-col items-center gap-3 px-6 text-center">
               <p className="text-[15px] font-semibold">{t('dsx_photo3d_failed')}</p>
+              <p className="text-2xs text-white/50" data-testid="photo-walk-code">{phase.code}</p>
               <button type="button" onClick={retry} className={cn('inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 text-[15px] font-semibold text-[#0C1119]', RING)}>
                 <RotateCcw className="h-4 w-4" aria-hidden="true" />{t('dsx_walk_retry')}
               </button>

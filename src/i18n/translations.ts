@@ -15323,6 +15323,11 @@ const en = {
   fbx_fresh_skipped: '{{count}} older items were skipped.',
   fbx_fresh_badge: 'Last 30 days only',
 
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_price_range: '≈ {{est}} credits · at most {{max}}',
+  dsx_price_range_preview: '≈ {{est}} credits (at most {{max}}) — not charged during the preview.',
+  dsx_walk_price_title: 'Create the 3D walkthrough',
+
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   fbl_state_idle: 'Ready to search when you are',
   fbl_state_preparing: 'Preparing the search…',
@@ -15383,6 +15388,11 @@ const en = {
   fbl_pill_paused: 'Search is paused',
   fbl_pill_results: '{{n}} new matches',
   fbl_open_live: 'Open the live search',
+  fbl_admin_state: 'Lifecycle',
+  fbl_admin_work: 'Work Q/R/D/F/P · runs',
+  fbl_admin_signals: 'Signals analysed',
+  fbl_admin_new: 'New results',
+  fbl_admin_stop_reason: 'Stop reason',
   fbl_gallery_count: '{{n}} photos',
   fbl_gallery_more: '{{n}} more photos',
   fbl_media_photos: 'Photos',
@@ -15392,13 +15402,6 @@ const en = {
   fbl_media_nothing_new: 'No new photos on the listing',
   fbl_media_recent: 'Photos were refreshed a few minutes ago',
   fbl_media_failed: 'The listing could not be read right now',
-
-  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
-  fbl_admin_state: 'Lifecycle',
-  fbl_admin_work: 'Work Q/R/D/F/P · runs',
-  fbl_admin_signals: 'Signals analysed',
-  fbl_admin_new: 'New results',
-  fbl_admin_stop_reason: 'Stop reason',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -30636,6 +30639,11 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fbx_fresh_skipped: 'გამოტოვებულია {{count}} ძველი ჩანაწერი.',
   fbx_fresh_badge: 'მხოლოდ ბოლო 30 დღე',
 
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_price_range: '≈ {{est}} კრედიტი · მაქსიმუმ {{max}}',
+  dsx_price_range_preview: '≈ {{est}} კრედიტი (მაქსიმუმ {{max}}) — წინასწარი ვერსიის დროს არ ჩამოგეჭრებათ.',
+  dsx_walk_price_title: '3D ტურის შექმნა',
+
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   fbl_state_idle: 'ძებნა მზადაა დასაწყებად',
   fbl_state_preparing: 'ძებნას ვამზადებთ…',
@@ -30696,6 +30704,11 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fbl_pill_paused: 'ძებნა დაპაუზებულია',
   fbl_pill_results: '{{n}} ახალი დამთხვევა',
   fbl_open_live: 'ცოცხალი ძებნის ნახვა',
+  fbl_admin_state: 'სასიცოცხლო ციკლი',
+  fbl_admin_work: 'სამუშაო რ/მ/დ/ჩ/პ · გაშვება',
+  fbl_admin_signals: 'გაანალიზებული სიგნალები',
+  fbl_admin_new: 'ახალი შედეგები',
+  fbl_admin_stop_reason: 'შეჩერების მიზეზი',
   fbl_gallery_count: '{{n}} ფოტო',
   fbl_gallery_more: 'კიდევ {{n}} ფოტო',
   fbl_media_photos: 'ფოტოები',
@@ -30705,13 +30718,6 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fbl_media_nothing_new: 'განცხადებაზე ახალი ფოტო არ არის',
   fbl_media_recent: 'ფოტოები რამდენიმე წუთის წინ განახლდა',
   fbl_media_failed: 'განცხადების წაკითხვა ამ ეტაპზე ვერ მოხერხდა',
-
-  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
-  fbl_admin_state: 'სასიცოცხლო ციკლი',
-  fbl_admin_work: 'სამუშაო რ/მ/დ/ჩ/პ · გაშვება',
-  fbl_admin_signals: 'გაანალიზებული სიგნალები',
-  fbl_admin_new: 'ახალი შედეგები',
-  fbl_admin_stop_reason: 'შეჩერების მიზეზი',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -45940,6 +45946,11 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fbx_fresh_skipped: 'Пропущено старых записей: {{count}}.',
   fbx_fresh_badge: 'Только последние 30 дней',
 
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_price_range: '≈ {{est}} кредитов · не более {{max}}',
+  dsx_price_range_preview: '≈ {{est}} кредитов (не более {{max}}) — во время предпросмотра не списываются.',
+  dsx_walk_price_title: 'Создать 3D-прогулку',
+
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   fbl_state_idle: 'Поиск готов к запуску',
   fbl_state_preparing: 'Готовим поиск…',
@@ -46000,6 +46011,11 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fbl_pill_paused: 'Поиск приостановлен',
   fbl_pill_results: 'Новых совпадений: {{n}}',
   fbl_open_live: 'Открыть живой поиск',
+  fbl_admin_state: 'Жизненный цикл',
+  fbl_admin_work: 'Работа О/В/Г/С/П · запуски',
+  fbl_admin_signals: 'Сигналов проанализировано',
+  fbl_admin_new: 'Новые результаты',
+  fbl_admin_stop_reason: 'Причина остановки',
   fbl_gallery_count: 'Фото: {{n}}',
   fbl_gallery_more: 'Ещё фото: {{n}}',
   fbl_media_photos: 'Фото',
@@ -46009,13 +46025,6 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fbl_media_nothing_new: 'Новых фото в объявлении нет',
   fbl_media_recent: 'Фото обновлялись несколько минут назад',
   fbl_media_failed: 'Не удалось прочитать объявление',
-
-  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
-  fbl_admin_state: 'Жизненный цикл',
-  fbl_admin_work: 'Работа О/В/Г/С/П · запуски',
-  fbl_admin_signals: 'Сигналов проанализировано',
-  fbl_admin_new: 'Новые результаты',
-  fbl_admin_stop_reason: 'Причина остановки',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -61242,6 +61251,11 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fbx_fresh_skipped: '{{count}} eski öğe atlandı.',
   fbx_fresh_badge: 'Yalnızca son 30 gün',
 
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_price_range: '≈ {{est}} kredi · en fazla {{max}}',
+  dsx_price_range_preview: '≈ {{est}} kredi (en fazla {{max}}) — önizleme sırasında ücret alınmaz.',
+  dsx_walk_price_title: '3D turu oluştur',
+
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   fbl_state_idle: 'Arama başlatılmaya hazır',
   fbl_state_preparing: 'Arama hazırlanıyor…',
@@ -61302,6 +61316,11 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fbl_pill_paused: 'Arama duraklatıldı',
   fbl_pill_results: '{{n}} yeni eşleşme',
   fbl_open_live: 'Canlı aramayı aç',
+  fbl_admin_state: 'Yaşam döngüsü',
+  fbl_admin_work: 'İş S/Ç/T/B/D · çalıştırma',
+  fbl_admin_signals: 'İncelenen sinyal',
+  fbl_admin_new: 'Yeni sonuçlar',
+  fbl_admin_stop_reason: 'Durma nedeni',
   fbl_gallery_count: '{{n}} fotoğraf',
   fbl_gallery_more: '{{n}} fotoğraf daha',
   fbl_media_photos: 'Fotoğraflar',
@@ -61311,13 +61330,6 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fbl_media_nothing_new: 'İlanda yeni fotoğraf yok',
   fbl_media_recent: 'Fotoğraflar birkaç dakika önce yenilendi',
   fbl_media_failed: 'İlan şu anda okunamadı',
-
-  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
-  fbl_admin_state: 'Yaşam döngüsü',
-  fbl_admin_work: 'İş S/Ç/T/B/D · çalıştırma',
-  fbl_admin_signals: 'İncelenen sinyal',
-  fbl_admin_new: 'Yeni sonuçlar',
-  fbl_admin_stop_reason: 'Durma nedeni',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -76544,6 +76556,11 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fbx_fresh_skipped: 'تم تخطي {{count}} من العناصر الأقدم.',
   fbx_fresh_badge: 'آخر 30 يومًا فقط',
 
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_price_range: '≈ {{est}} رصيد · بحد أقصى {{max}}',
+  dsx_price_range_preview: '≈ {{est}} رصيد (بحد أقصى {{max}}) — لا يُخصم خلال المعاينة.',
+  dsx_walk_price_title: 'إنشاء الجولة ثلاثية الأبعاد',
+
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   fbl_state_idle: 'البحث جاهز للبدء',
   fbl_state_preparing: 'جارٍ تجهيز البحث…',
@@ -76604,6 +76621,11 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fbl_pill_paused: 'البحث متوقف مؤقتًا',
   fbl_pill_results: '{{n}} تطابقات جديدة',
   fbl_open_live: 'فتح البحث المباشر',
+  fbl_admin_state: 'دورة الحياة',
+  fbl_admin_work: 'العمل ق/ج/م/ف/إ · تشغيل',
+  fbl_admin_signals: 'إشارات محللة',
+  fbl_admin_new: 'نتائج جديدة',
+  fbl_admin_stop_reason: 'سبب التوقف',
   fbl_gallery_count: '{{n}} صور',
   fbl_gallery_more: '{{n}} صور أخرى',
   fbl_media_photos: 'الصور',
@@ -76613,13 +76635,6 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fbl_media_nothing_new: 'لا توجد صور جديدة في الإعلان',
   fbl_media_recent: 'تم تحديث الصور قبل دقائق',
   fbl_media_failed: 'تعذّرت قراءة الإعلان الآن',
-
-  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
-  fbl_admin_state: 'دورة الحياة',
-  fbl_admin_work: 'العمل ق/ج/م/ف/إ · تشغيل',
-  fbl_admin_signals: 'إشارات محللة',
-  fbl_admin_new: 'نتائج جديدة',
-  fbl_admin_stop_reason: 'سبب التوقف',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -91846,6 +91861,11 @@ const he: Partial<Record<TranslationKey, string>> = {
   fbx_fresh_skipped: 'דולגו {{count}} פריטים ישנים.',
   fbx_fresh_badge: '30 הימים האחרונים בלבד',
 
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_price_range: '≈ {{est}} קרדיטים · לכל היותר {{max}}',
+  dsx_price_range_preview: '≈ {{est}} קרדיטים (לכל היותר {{max}}) — לא יחויב בתקופת התצוגה המקדימה.',
+  dsx_walk_price_title: 'יצירת סיור תלת־ממדי',
+
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   fbl_state_idle: 'החיפוש מוכן להתחלה',
   fbl_state_preparing: 'מכינים את החיפוש…',
@@ -91906,6 +91926,11 @@ const he: Partial<Record<TranslationKey, string>> = {
   fbl_pill_paused: 'החיפוש מושהה',
   fbl_pill_results: '{{n}} התאמות חדשות',
   fbl_open_live: 'פתיחת החיפוש החי',
+  fbl_admin_state: 'מחזור חיים',
+  fbl_admin_work: 'עבודה ת/ר/ה/נ/מ · ריצות',
+  fbl_admin_signals: 'אותות שנותחו',
+  fbl_admin_new: 'תוצאות חדשות',
+  fbl_admin_stop_reason: 'סיבת עצירה',
   fbl_gallery_count: '{{n}} תמונות',
   fbl_gallery_more: 'עוד {{n}} תמונות',
   fbl_media_photos: 'תמונות',
@@ -91915,13 +91940,6 @@ const he: Partial<Record<TranslationKey, string>> = {
   fbl_media_nothing_new: 'אין תמונות חדשות במודעה',
   fbl_media_recent: 'התמונות רועננו לפני כמה דקות',
   fbl_media_failed: 'לא ניתן היה לקרוא את המודעה כעת',
-
-  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
-  fbl_admin_state: 'מחזור חיים',
-  fbl_admin_work: 'עבודה ת/ר/ה/נ/מ · ריצות',
-  fbl_admin_signals: 'אותות שנותחו',
-  fbl_admin_new: 'תוצאות חדשות',
-  fbl_admin_stop_reason: 'סיבת עצירה',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

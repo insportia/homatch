@@ -536,7 +536,7 @@ export function FloorPlanFlow({
         <QualityStep value={quality}
           onChange={(q) => { setQuality(q); if (style) persistNow({ look: { style, quality: q }, preferences: lookPreferences(style, q) }); }}
           onBack={goStyle} onGenerate={() => { void generate(chosen()); }} onCustomize={goCustom}
-          busy={busy} price={quote ? { credits: quote.credits, charged: quote.charged } : null} priceUnavailable={quoteFailed}
+          busy={busy} price={quote ? { credits: quote.credits, est: quote.est, charged: quote.charged } : null} priceUnavailable={quoteFailed}
           onRetryPrice={() => { const o = latestFlow(plan)?.originalVersionId; if (o) void requestQuote(o); }} />
       ) : null}
 
@@ -546,7 +546,7 @@ export function FloorPlanFlow({
           onChange={(p) => { setPrefs(p); keep({ preferences: p }); }}
           onGenerate={() => { void generate(prefs); }}
           busy={busy}
-          price={quote ? { credits: quote.credits, charged: quote.charged } : null}
+          price={quote ? { credits: quote.credits, est: quote.est, charged: quote.charged } : null}
           priceUnavailable={quoteFailed}
           onBack={() => { setStep('QUALITY'); persistNow({ lookStep: 'QUALITY' }); }}
         />

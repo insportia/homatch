@@ -43,6 +43,7 @@ import { EditPanel } from '@/components/designStudio/renders/EditPanel';
 import { STAGE_KEY } from './Screens';
 import { WalkthroughPanel } from './WalkthroughPanel';
 import { findPhotoRooms } from '@/services/designStudio/photoRooms';
+import { priceWords } from '@/lib/designStudio/renders/priceWords';
 
 const SnakeGame = lazy(() => import('@/components/games/SnakeGame'));
 
@@ -77,7 +78,7 @@ export interface ResultData {
 }
 
 /** What a pending paid action is, its price, and what Confirm does. */
-interface Pending { title: string; body: string | null; credits: number; charged: boolean; run: () => Promise<void> }
+interface Pending { title: string; body: string | null; credits: number; est?: number; charged: boolean; run: () => Promise<void> }
 /** A design being made right now (followed here; owned by the server). */
 interface Working { label: string; stage: RunStage }
 
@@ -212,11 +213,11 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
   };
 
   /** Price first: the customer sees it and confirms; nothing is spent before that. */
-  const offer = async (product: RenderProduct, versionId: string, title: string, body: string | null, run: (credits: number) => Promise<void>) => {
+  const offer = async (product: RenderProduct, versionId: string, title: string, body: string | null, run: (credits: number) => Promise<void>, mode: 'VARIANT' | null = null) => {
     setError(null);
-    const q = await quoteRender({ projectId, versionId, product, views: 1 });
+    const q = await quoteRender({ projectId, versionId, product, views: 1, mode });
     if (!q.quote) { setError(t('rend_error_quote')); return; }
-    setPending({ title, body, credits: q.quote.credits, charged: q.quote.charged, run: () => run(q.quote!.credits) });
+    setPending({ title, body, credits: q.quote.credits, est: q.quote.est, charged: q.quote.charged, run: () => run(q.quote!.credits) });
   };
 
   /** One server-owned generation, followed here (and picked up again on return). */
@@ -277,17 +278,17 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
     void offer('DS_MASTER_RENDER', data.head.id, t('dsx_wish_confirm'), note.length > 160 ? `${note.slice(0, 160)}…` : note, async (credits) => {
       setWish(''); setWishOpen(false);
       void generate({ mode: 'VARIANT', key: `wish-${hero.id}-${nonce()}`, label: t('dsx_wish_label'), credits, note });
-    });
+    }, 'VARIANT');
   };
   const askStyle = (style: LookStyle) => offer('DS_MASTER_RENDER', data.head.id, `${t('dsx_change_style')} · ${t(`sf_style_${style.toLowerCase()}`)}`, null, async (credits) => {
     void generate({ mode: 'VARIANT', key: `sty-${hero!.id}-${style}-${nonce()}`, label: t('dsx_change_style'), credits, style });
-  });
+  }, 'VARIANT');
   const askQuality = (quality: LookQuality) => offer('DS_MASTER_RENDER', data.head.id, `${t('dsx_change_quality')} · ${t(`sf_quality_${quality.toLowerCase()}`)}`, null, async (credits) => {
     void generate({ mode: 'VARIANT', key: `qly-${hero!.id}-${quality}-${nonce()}`, label: t('dsx_change_quality'), credits, quality });
-  });
+  }, 'VARIANT');
   const askFocus = (focus: typeof FOCUSES[number]) => offer('DS_MASTER_RENDER', data.head.id, t(FOCUS_KEY[focus]), null, async (credits) => {
     void generate({ mode: 'VARIANT', key: `foc-${hero!.id}-${focus}-${nonce()}`, label: t(FOCUS_KEY[focus]), credits, focus });
-  });
+  }, 'VARIANT');
   const askRoom = (roomId: string, style: LookStyle | null) => {
     const chosen = refs;
     if (!chosen.length) return;
@@ -704,7 +705,7 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
           <div className="w-full max-w-md rounded-t-[24px] bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-xl sm:rounded-[24px]">
             <h2 id="home-confirm-title" className="text-[17px] font-semibold">{pending.title}</h2>
             {pending.body ? <p className="mt-2 text-[15px] leading-relaxed text-[#4A5263]">{pending.body}</p> : null}
-            <p className="mt-3 text-[15px] font-medium" data-testid="confirm-price">{t(pending.charged ? 'p2h_price_charged' : 'p2h_price_not_charged', { credits: String(pending.credits) })}</p>
+            <p className="mt-3 text-[15px] font-medium" data-testid="confirm-price">{priceWords(t, pending)}</p>
             <div className="mt-5 flex gap-2">
               <button type="button" onClick={() => setPending(null)} disabled={busy} className={cn('h-12 flex-1 rounded-full border border-[#D5D9E0] text-[15px] font-medium', RING)}>{t('general_cancel')}</button>
               <button type="button" onClick={() => { void confirm(); }} disabled={busy} className={cn(DARK, 'flex-1')} data-testid="confirm-run">

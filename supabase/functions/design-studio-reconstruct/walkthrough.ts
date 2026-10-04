@@ -62,6 +62,7 @@ import { getObject } from '../_shared/objectStore.ts';
 import { SCHEMA as RECON_SCHEMA, SYSTEM as RECON_SYSTEM, validateReconstruction } from '../_shared/designStudio/reconstructRead.ts';
 import { inferredSpace, mostlyInferred, WALK_SPACE_BRIEF } from '../../../src/lib/designStudio/walkthrough/inferredSpace.ts';
 import { meterAiCall } from './metering.ts';
+import { closeWalkthroughBilling, reserveWalkthrough, WALK_PRODUCT } from './walkthroughBilling.ts';
 import { assetFromRow, materialFromRow, type CatalogAsset, type CatalogMaterial } from '../../../src/lib/designStudio/catalog.ts';
 import { normalizeDesignState, type DesignState } from '../../../src/lib/designStudio/designState.ts';
 import { buildSpaceModel, type SpaceModel } from '../../../src/lib/designStudio/space.ts';
@@ -398,9 +399,12 @@ export async function handleWalkthroughCreate(req: Request): Promise<Response> {
   const ctx = await callerOf(req);
   if ('error' in ctx) return ctx.error!;
   const { caller, admin, actorId } = ctx;
-  let body: { designVersionId?: string; renderId?: string | null; newRevision?: boolean; name?: string; reusePlanFrom?: string | null };
+  let body: { designVersionId?: string; renderId?: string | null; newRevision?: boolean; name?: string; reusePlanFrom?: string | null; quoteToken?: unknown };
   try { body = await req.json(); } catch { return json({ error: 'BAD_REQUEST' }, 400); }
   if (!UUID.test(String(body.designVersionId))) return json({ error: 'BAD_REQUEST' }, 400);
+  // While Design Studio charges, a walkthrough runs only on a confirmed quote (its maximum is reserved below).
+  const charging = await billingOn(admin);
+  if (charging && body.quoteToken == null) return json({ error: 'BILLING_CONFIRMATION_REQUIRED' }, 409);
   if (body.renderId != null && !UUID.test(String(body.renderId))) return json({ error: 'BAD_REQUEST' }, 400);
   if (body.reusePlanFrom != null && !UUID.test(String(body.reusePlanFrom))) return json({ error: 'BAD_REQUEST' }, 400);
 
@@ -419,7 +423,6 @@ export async function handleWalkthroughCreate(req: Request): Promise<Response> {
   if (source?.kind === 'PHOTO_SET') {
     let onPlan = await designOnPlan(admin, version, project.id);
     if (!onPlan) {
-      if (await billingOn(admin)) return json({ error: 'BILLING_CONFIRMATION_REQUIRED' }, 409);
       const { data: photo } = await admin.from('ds_spatial_sources').select('id, kind, canonical, provenance').eq('id', version.source_id).maybeSingle();
       const space = await reconstructSpace(admin, { actorId, authorization: req.headers.get('Authorization') ?? '', project, version, photoSource: photo, renderId: body.renderId ?? null, body });
       if (space.state === 'RUNNING') return json({ walkthrough: null, reconstructing: true }, 202);
@@ -432,7 +435,6 @@ export async function handleWalkthroughCreate(req: Request): Promise<Response> {
   }
   // A walkthrough walks a floor plan's measured rooms.
   if (!source || source.kind !== 'FLOORPLAN_SCENE' || !source.canonical?.scene?.floors?.length) return json({ error: 'WALKTHROUGH_NEEDS_FLOOR_PLAN', missing: ['WALLS', 'DOORS', 'ROOM_SIZES'] }, 409);
-  if (await billingOn(admin)) return json({ error: 'BILLING_CONFIRMATION_REQUIRED' }, 409);
   if (!factoryConfig()) return json({ error: 'FACTORY_NOT_CONFIGURED' }, 503);
 
   // A plan already made for this design (an earlier walkthrough of it): reused as it is, never asked for again.
@@ -465,12 +467,16 @@ export async function handleWalkthroughCreate(req: Request): Promise<Response> {
   const { count } = await admin.from('ds_walkthroughs').select('id', { count: 'exact', head: true }).eq('user_id', actorId).gte('created_at', since);
   if ((count ?? 0) >= HOURLY) return json({ error: 'RATE_LIMITED' }, 429);
 
+  // Money first: the confirmed maximum is held before any provider work (the same key holds it once).
+  const money = await reserveWalkthrough(admin, { actorId, projectId: project.id, versionId: String(body.designVersionId), quoteToken: body.quoteToken, key, charged: charging });
+  if ('error' in money) return json({ error: money.error }, money.status);
+
   const name = typeof body.name === 'string' ? body.name.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 60) : '';
   const specJobId = typeof version.design_dna?.sourceJobId === 'string' && UUID.test(version.design_dna.sourceJobId) ? version.design_dna.sourceJobId : version.job_id ?? null;
   // ON CONFLICT DO NOTHING: two requests racing for the same key end on one row.
   await admin.from('ds_walkthroughs').upsert({
     project_id: project.id, user_id: actorId, design_version_id: version.id, source_id: source.id, spec_job_id: specJobId,
-    render_id: body.renderId ?? null, revision, idempotency_key: key, state: 'QUEUED',
+    render_id: body.renderId ?? null, revision, idempotency_key: key, state: 'QUEUED', billing: money.billing,
     timings: {
       requestedAt: iso(Date.now()), name: name || null, designRevision: Number(version.revision) || 0, ...(reuse ? { reusePlanFrom: reuse.id } : {}),
       // Walked on a space reconstructed from the pictures (never a measured plan): kept, so the Result can say so.
@@ -511,18 +517,27 @@ export async function handleWalkthroughRetry(req: Request): Promise<Response> {
   const ctx = await callerOf(req);
   if ('error' in ctx) return ctx.error!;
   const { caller, admin, actorId } = ctx;
-  let body: { walkthroughId?: string };
+  let body: { walkthroughId?: string; quoteToken?: unknown };
   try { body = await req.json(); } catch { return json({ error: 'BAD_REQUEST' }, 400); }
   if (!UUID.test(String(body.walkthroughId))) return json({ error: 'BAD_REQUEST' }, 400);
   const { data: row } = await caller.from('ds_walkthroughs').select('*').eq('id', body.walkthroughId).maybeSingle();
   if (!row || String(row.user_id) !== actorId) return json({ error: 'NOT_FOUND' }, 404);
   if (row.state !== 'FAILED') return json({ walkthrough: publicOf(row) });
   if (!publicOf(row).retryable) return json({ error: 'NOT_RETRYABLE', walkthrough: publicOf(row) }, 409);
-  if (await billingOn(admin)) return json({ error: 'BILLING_CONFIRMATION_REQUIRED' }, 409);
+  // A failed walkthrough released its credits: trying again is a new confirmed reservation (the work already
+  // saved — a plan, a finished pass — is reused, and only new provider work is measured into its settlement).
+  const charging = await billingOn(admin);
+  if (charging && body.quoteToken == null) return json({ error: 'BILLING_CONFIRMATION_REQUIRED' }, 409);
+  const money = await reserveWalkthrough(admin, {
+    actorId, projectId: row.project_id, versionId: String(row.design_version_id), quoteToken: body.quoteToken,
+    key: `${row.idempotency_key}:retry${(Number(row.timings?.manualRetries) || 0) + 1}`, charged: charging,
+  });
+  if ('error' in money) return json({ error: money.error }, money.status);
 
   // Resume from the work already saved: a plan is never asked for again, a live provider job is polled again,
   // a finished one is processed again; only a job proven dead is replaced.
-  const patch: Row = { error: null, lease_at: null, next_check_at: iso(Date.now()), attempts: 0, updated_at: iso(Date.now()), timings: { ...row.timings, manualRetries: (row.timings?.manualRetries ?? 0) + 1, retriedAt: iso(Date.now()) } };
+  // The new attempt's money; the GPU already in the ledger from earlier attempts is carried, never recorded again.
+  const patch: Row = { error: null, lease_at: null, next_check_at: iso(Date.now()), attempts: 0, updated_at: iso(Date.now()), billing: { ...money.billing, ledgeredGpuUsd: Number(row.billing?.ledgeredGpuUsd) || 0 }, timings: { ...row.timings, manualRetries: (row.timings?.manualRetries ?? 0) + 1, retriedAt: iso(Date.now()) } };
   // A walkthrough judged unlike its picture is planned again (told what failed), never re-judged unchanged.
   // A walkthrough built and then judged unlike its picture by the visual check is judged again (the build is kept):
   // the rules of that check may have changed since; a new plan is not needed to look again.
@@ -646,6 +661,7 @@ async function fail(admin: Row, row: Row, code: string, extra: Row = {}): Promis
     }
   }
   await release(admin, row, { ...extra, state: 'FAILED', error: code.slice(0, 120), stage: null, timings: { ...row.timings, ...(extra.timings ?? {}), failedAt: iso(Date.now()) } });
+  await closeWalkthroughBilling(admin, row.id, 'RELEASE');
 }
 
 /** A factory job that will never be processed: failed, its unwritten outputs released. */
@@ -827,7 +843,7 @@ async function plan(admin: Row, row: Row): Promise<void> {
   try { raw = text ? JSON.parse(text) : null; } catch { raw = null; }
   const validated: ValidatedScenePlan | null = reused ?? (raw ? validateScenePlan(raw, input, refInput ? { reference: { view: refInput.view, home } } : {}) : null);
   const step = refInput ? (replan ? 'walkthrough_reference_replan' : 'walkthrough_reference_plan') : 'walkthrough_scene_plan';
-  const aiCost = payload ? await meterAiCall(admin, { userId: row.user_id, productCode: 'DS_AI_DESIGN', jobRef: row.id, model: MODEL, startedAt: started }, payload, { step, walkthrough: row.id }) : null;
+  const aiCost = payload ? await meterAiCall(admin, { userId: row.user_id, productCode: WALK_PRODUCT, jobRef: row.id, model: MODEL, startedAt: started }, payload, { step, walkthrough: row.id }) : null;
   const costLine = reused
     ? { kind: 'OPENAI_SCENE_PLAN', model: null, usd: 0, basis: 'REUSED', reusedFrom, tokens: null, ms: 0, attempt: row.plan_attempts }
     : { kind: 'OPENAI_SCENE_PLAN', model: MODEL, usd: aiCost?.aiCents == null ? null : aiCost.aiCents / 100, basis: aiCost?.aiCents == null ? 'NOT_AVAILABLE' : 'ESTIMATED', tokens: payload?.usage ?? null, ms: Date.now() - started, attempt: row.plan_attempts, step };
@@ -936,12 +952,14 @@ async function walkableSpec(admin: Row, row: Row): Promise<{ spec: SceneBuildSpe
 async function submit(admin: Row, row: Row): Promise<void> {
   const gpu = factoryConfig();
   if (!gpu) { await release(admin, row, { error: 'FACTORY_NOT_CONFIGURED', next_check_at: iso(Date.now() + 120_000) }); return; }
-  if (await billingOn(admin)) { await fail(admin, row, 'BILLING_CONFIRMATION_REQUIRED'); return; }
+  // Charging on: provider work starts only on a held reservation (a walkthrough made before charging was switched on has none).
+  if ((await billingOn(admin)) && row.billing?.state !== 'RESERVED') { await fail(admin, row, 'BILLING_CONFIRMATION_REQUIRED'); return; }
   const built = await walkableSpec(admin, row);
   if ('error' in built) { await fail(admin, row, built.error); return; }
   // Nothing for the factory to build (every piece is drawn by the walkthrough itself): ready as it is.
   if (!built.spec.objects.some((o) => o.runtime && o.group) && !built.spec.outputs.render) {
     await release(admin, row, { state: 'READY', stage: 'NO_FACTORY_PIECES', ready_at: iso(Date.now()), error: null, timings: { ...row.timings, readyAt: iso(Date.now()) } });
+    await closeWalkthroughBilling(admin, row.id, 'SETTLE');
     return;
   }
   const out = await submitPass(admin, gpu, { projectId: row.project_id, actorId: row.user_id, reconstructionId: null, versionId: row.walk_version_id, pass: 1, spec: built.spec });
@@ -1031,7 +1049,8 @@ async function processResult(admin: Row, row: Row, answer: { http: number | null
   const persisted = Number(settled.result?.persistedBytes ?? 0) || 0;
   const gpuLines = (Array.isArray(settled.cost) ? settled.cost : []).map((c: Row) => ({ kind: 'RUNPOD_GPU', usd: c.usd ?? null, basis: c.basis ?? 'NOT_AVAILABLE', detail: c.detail ?? null, executionMs: settled.timings?.executionMs ?? null, queueMs: settled.timings?.queueAndColdStartMs ?? null }));
   const storage = { kind: 'STORAGE', bytes: persisted, usdPerMonth: Math.round((persisted / 1e9) * STORAGE_USD_PER_GB_MONTH * 1e6) / 1e6, basis: 'ESTIMATED' };
-  const cost = [...(Array.isArray(row.cost) ? row.cost.filter((c: Row) => c.kind !== 'RUNPOD_GPU' && c.kind !== 'STORAGE' && c.kind !== 'OPENAI_REFERENCE_QA') : []), ...gpuLines, storage, ...(visual?.costLine ? [visual.costLine] : [])];
+  // Every factory pass that ran is a GPU cost (a resubmitted one too): only this pass's own lines are replaced.
+  const cost = [...(Array.isArray(row.cost) ? row.cost.filter((c: Row) => (c.kind !== 'RUNPOD_GPU' || !String(c.detail ?? '').includes(String(job.id))) && c.kind !== 'STORAGE' && c.kind !== 'OPENAI_REFERENCE_QA') : []), ...gpuLines, storage, ...(visual?.costLine ? [visual.costLine] : [])];
   const factoryReport = { pieces: Object.keys(pieces).length, attached, missing, persistedBytes: persisted };
   if (visual?.summary.state === 'FAILED' && visual.summary.code) {
     await fail(admin, row, visual.summary.code, {
@@ -1045,6 +1064,7 @@ async function processResult(admin: Row, row: Row, answer: { http: number | null
     plan_report: { ...(row.plan_report ?? {}), factory: factoryReport, ...(visual ? { visualQa: visual.summary } : {}) },
     timings: { ...row.timings, readyAt: iso(Date.now()), factory: settled.timings ?? null },
   });
+  await closeWalkthroughBilling(admin, row.id, 'SETTLE');
 }
 
 /**
@@ -1087,7 +1107,7 @@ async function referenceViewQa(admin: Row, row: Row, render: Row | null, state: 
     });
     payload = r.ok ? await r.json() : null;
   } catch { payload = null; }
-  const cost = payload ? await meterAiCall(admin, { userId: row.user_id, productCode: 'DS_AI_DESIGN', jobRef: row.id, model: QA_MODEL, startedAt: started }, payload, { step: 'walkthrough_reference_qa', walkthrough: row.id }) : null;
+  const cost = payload ? await meterAiCall(admin, { userId: row.user_id, productCode: WALK_PRODUCT, jobRef: row.id, model: QA_MODEL, startedAt: started }, payload, { step: 'walkthrough_reference_qa', walkthrough: row.id }) : null;
   const costLine = payload ? { kind: 'OPENAI_REFERENCE_QA', model: QA_MODEL, usd: cost?.aiCents == null ? null : cost.aiCents / 100, basis: cost?.aiCents == null ? 'NOT_AVAILABLE' : 'ESTIMATED', tokens: payload?.usage ?? null, ms: Date.now() - started } : null;
   const text = payload ? textOf(payload) : '';
   let raw: unknown = null;

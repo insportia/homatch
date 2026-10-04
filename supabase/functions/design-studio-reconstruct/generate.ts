@@ -46,7 +46,7 @@ import { accountKey } from '../_shared/storage/keys.ts';
 import { renderPictureKey, uuidFrom } from '../_shared/designStudio/renderKeys.ts';
 import { selectProvider, type ProviderDeps } from '../_shared/designStudio/imageProviders.ts';
 import {
-  quoteMatches, quoteSecret, RENDER_PRICING, renderRowKey, reservationKey, sha256Hex, validIdempotencyKey, verifyQuote, type QuoteClaims,
+  quoteMatches, quoteSecret, renderRowKey, reservationKey, sha256Hex, validIdempotencyKey, verifyQuote, type QuoteClaims,
 } from '../_shared/designStudio/renderPricing.ts';
 import {
   buildEvidence, directionFrom, dnaFromSpec, imageInstruction, isChangeFocus, isGenerationMode, MAX_REFERENCES, modeContextProblem, roomFromWholeHome, specProblems, specRequest, validateSpec,
@@ -485,19 +485,50 @@ function grantOf(row: Row): ExecutionGrant {
 }
 const cents = (usd: number | null) => (usd == null ? undefined : Math.round(usd * 100 * 10000) / 10000);
 
+/**
+ * The design specification this render was drawn from is part of what the render cost. Its AI call is already
+ * recorded in usage_events (DS_AI_DESIGN, job_ref = the spec job); it is priced into exactly ONE settlement — the
+ * first render of that specification to settle claims it atomically. A retry or a second picture of the same
+ * specification (it was not paid for again) never claims it twice. Returns its landed cents (0 when not this one's).
+ */
+async function claimSpecCost(admin: Row, row: Row): Promise<number> {
+  const specJobId = row.timings?.ai?.specJobId ?? row.finish?.specJobId;
+  if (!specJobId) return 0;
+  const { data: job } = await admin.from('ds_jobs').select('id, user_id, output').eq('id', specJobId).maybeSingle();
+  if (!job || String(job.user_id) !== String(row.user_id)) return 0;
+  const owner = job.output?.billedWithRender ?? null;
+  if (owner && owner !== row.id) return 0;
+  if (!owner) {
+    const { data: won } = await admin.from('ds_jobs').update({ output: { ...(job.output ?? {}), billedWithRender: row.id } })
+      .eq('id', job.id).is('output->>billedWithRender', null).select('id');
+    if (!won?.length) return 0;
+  }
+  const { data: rows } = await admin.from('usage_events').select('landed_cogs_cents').eq('user_id', row.user_id).eq('product_code', 'DS_AI_DESIGN').eq('job_ref', String(specJobId));
+  return (rows ?? []).reduce((sum: number, r: Row) => sum + (Number(r.landed_cogs_cents) || 0), 0);
+}
+
 /** Settle (READY) or release (FAILED), or record the unbilled COGS; unknown stays unknown. Stores the result. Never throws. */
 async function closeGenerated(admin: Row, row: Row, outcome: 'SETTLE' | 'RELEASE', m: { aiUsd: number | null; aiKnown: boolean; provider: string | null; model: string | null; ms: number; detail: Record<string, unknown> }): Promise<Row> {
   const b = row.billing ?? {};
+  const ai = row.timings?.ai ?? {};
   const usage = {
     provider: (m.provider ?? 'openai').toLowerCase(), providerOperation: 'image_generation', model: m.model ?? undefined, durationMs: m.ms,
     aiCostCents: cents(m.aiUsd), pricingState: (m.aiKnown ? 'ESTIMATED' : 'UNPRICED') as 'ESTIMATED' | 'UNPRICED',
-    metadata: { ...m.detail, ds_render_id: row.id, cost_known: m.aiKnown, image_model_usd: m.aiUsd, generator: 'OPENAI_FIRST' },
+    // Itemised: the picture and its object map (the click-to-edit scene read) are separate provider calls.
+    metadata: {
+      ...m.detail, ds_render_id: row.id, cost_known: m.aiKnown, image_model_usd: ai.imageUsd ?? null, object_map_usd: ai.sceneUsd ?? null,
+      object_map_job: ai.sceneJobId ?? null, total_ai_usd: m.aiUsd, spec_job: ai.specJobId ?? null, generator: 'OPENAI_FIRST',
+    },
   };
   let next: Row = b;
   try {
     if (b.state === 'RESERVED' && b.reservationId) {
       const grant = grantOf(row);
-      if (outcome === 'SETTLE') { const s = await settleExecution(admin, grant, usage, 'SUCCESS'); next = { ...b, state: 'SETTLED', chargedCredits: s.chargedCredits, releasedCredits: s.releasedCredits }; }
+      if (outcome === 'SETTLE') {
+        const specLanded = await claimSpecCost(admin, row);
+        const s = await settleExecution(admin, grant, { ...usage, alreadyLedgeredLandedCents: specLanded }, 'SUCCESS');
+        next = { ...b, state: 'SETTLED', chargedCredits: s.chargedCredits, releasedCredits: s.releasedCredits, clamped: s.clamped, specLandedCents: specLanded };
+      }
       else { await releaseExecution(admin, grant, row.error ?? 'GENERATION_FAILED', usage); next = { ...b, state: 'RELEASED' }; }
     } else if (b.state === 'NOT_CHARGED' && !b.metered) {
       const { data: ent } = await admin.rpc('billing_entitlements', { p_user_id: row.user_id });
@@ -640,9 +671,10 @@ function genIo(admin: Row): GenIo {
       if (!data?.length) return false;
       const ai = data[0].timings?.ai ?? {};
       // Asked and unanswered, or answered at an unknown price: unknown, never zero.
-      const known = !ai.imageRequestedAt || (ai.imageKnown === true);
+      const known = (!ai.imageRequestedAt || (ai.imageKnown === true)) && (ai.sceneKnown ?? true);
+      // Everything the provider was paid for before the failure: the image and, when it was asked, the object map.
       await closeGenerated(admin, { ...data[0], error: code }, 'RELEASE', {
-        aiUsd: known ? (ai.imageUsd ?? 0) : null, aiKnown: known, provider: 'OPENAI', model: data[0].finish?.model ?? null, ms: 0, detail: { step: 'failed', code },
+        aiUsd: known ? (ai.imageUsd ?? 0) + (ai.sceneUsd ?? 0) : null, aiKnown: known, provider: 'OPENAI', model: data[0].finish?.model ?? null, ms: 0, detail: { step: 'failed', code },
       });
       return true;
     },
@@ -718,14 +750,14 @@ async function startGenerated(ctx: Ctx, a: {
   const { count } = await ctx.admin.from('ds_renders').select('id', { count: 'exact', head: true }).eq('user_id', ctx.actorId).gte('created_at', since);
   if ((count ?? 0) + 1 > RENDERS_PER_HOUR) return { error: 'RATE_LIMITED', status: 429 };
 
-  // Money first.
-  const credits = RENDER_PRICING.creditsPerView[product];
+  // Money first: the maximum the customer confirmed is what is reserved; the settlement charges the measured cost.
+  const credits = claims.credits;
   let billing: Row = { credits, reservationId: null, state: 'NOT_CHARGED', productCode: product };
   let grant: ExecutionGrant | null = null;
   if (claims.charged) {
     grant = await beginExecution(ctx.admin, {
       userId: ctx.actorId, productCode: product, idempotencyKey: reservationKey(key), jobRef: key,
-      authorizedMaxCredits: credits, requireFullBudget: true, allowIncluded: false, metadata: { ds_project_id: a.projectId, ds_view_id: view.id, quoted_credits: credits, generator: 'OPENAI_FIRST' },
+      authorizedMaxCredits: credits, budgetIsCeiling: true, requireFullBudget: true, allowIncluded: false, metadata: { ds_project_id: a.projectId, ds_view_id: view.id, quoted_credits: credits, quoted_estimate: claims.est, quoted_minimum: claims.min, generator: 'OPENAI_FIRST' },
     });
     if (!grant.ok || !grant.reservationId) return { error: grant.reason ?? 'ERROR', status: grant.reason === 'INSUFFICIENT_CREDITS' || grant.reason === 'BELOW_MIN_VIABLE_BUDGET' ? 402 : 409 };
     billing = { credits, reservationId: grant.reservationId, state: 'RESERVED', productCode: product, planCode: grant.planCode, pricingVersion: grant.pricingVersion };

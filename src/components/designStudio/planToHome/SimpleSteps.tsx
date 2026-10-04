@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils';
 import { PlanDrawing } from './PlanDrawing';
 import { QuestionChoices, questionText, selectionFor } from './PlanReview';
 import { StylePreview } from './StylePreview';
+import { priceShort, priceWords } from '@/lib/designStudio/renders/priceWords';
 
 /** The calm surface every simple screen shares. */
 export const SURFACE = 'bg-[#F7F4EF] text-[#0C1119]';
@@ -131,7 +132,7 @@ export function StyleStep({ value, onChange, onNext, onDetail }: {
 
 export function QualityStep({ value, onChange, onBack, onGenerate, onCustomize, busy, price, priceUnavailable, onRetryPrice }: {
   value: LookQuality | null; onChange: (q: LookQuality) => void; onBack: () => void; onGenerate: () => void; onCustomize?: () => void;
-  busy: boolean; price: { credits: number; charged: boolean } | null; priceUnavailable: boolean; onRetryPrice: () => void;
+  busy: boolean; price: { credits: number; charged: boolean; est?: number | null } | null; priceUnavailable: boolean; onRetryPrice: () => void;
 }) {
   const { t } = useLanguage();
   return (
@@ -152,7 +153,7 @@ export function QualityStep({ value, onChange, onBack, onGenerate, onCustomize, 
       action={(
         <>
           <p className="text-center text-[13px] text-[#5B6472] sm:me-auto sm:text-start" data-testid="look-price">
-            {price ? t(price.charged ? 'p2h_price_charged' : 'p2h_price_not_charged', { credits: String(price.credits) })
+            {price ? priceWords(t, price)
               : priceUnavailable ? (
                 <button type="button" onClick={onRetryPrice} className={cn('inline-flex items-center gap-1 underline underline-offset-4', RING)} data-testid="look-price-retry">
                   <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />{t('sf_price_retry')}

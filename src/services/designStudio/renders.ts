@@ -36,7 +36,11 @@ async function call<T>(route: string, body: Record<string, unknown>): Promise<Re
 /** A fresh idempotency key for one customer action (reuse it when retrying that same action). */
 export const newRenderRequestKey = (): string => `ds-${crypto.randomUUID()}`;
 
-export async function quoteRender(input: { projectId: string; versionId: string; product: RenderProduct; views: number }): Promise<{ quote: RenderQuote | null; error: string | null }> {
+export async function quoteRender(input: {
+  projectId: string; versionId: string; product: RenderProduct | 'DS_WALKTHROUGH'; views: number;
+  /** A mode with its own measured reference (VARIANT: no plan reading); the server decides what it means. */
+  mode?: 'VARIANT' | null;
+}): Promise<{ quote: RenderQuote | null; error: string | null }> {
   const r = await call<RenderQuote>('render-quote', input);
   return r.data?.token ? { quote: r.data, error: null } : { quote: null, error: r.error ?? 'QUOTE_FAILED' };
 }

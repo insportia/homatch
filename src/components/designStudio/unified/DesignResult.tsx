@@ -372,12 +372,13 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
   const heroRoom = hero ? roomOf(hero) ?? data.heroRoomId : data.heroRoomId;
   // The pictures one can step into: the one shown first, then each room's own generated picture.
   const walkPhotos = useMemo(() => {
-    const out: Array<{ id: string; url: string; label: string; kind: 'ROOM' | 'MASTER' }> = [];
-    if (hero && heroUrl) out.push({ id: hero.id, url: heroUrl, kind: roomOf(hero) ? 'ROOM' : 'MASTER', label: roomOf(hero) ? roomLabel(roomOf(hero)) ?? t('dsx_photo3d_this') : t('dsx_photo3d_this') });
+    const out: Array<{ id: string; url: string; key: string | null; label: string; kind: 'ROOM' | 'MASTER' }> = [];
+    const keyOf = (r: RenderRecord) => r.final_key ?? r.base_key ?? null;
+    if (hero && heroUrl) out.push({ id: hero.id, url: heroUrl, key: keyOf(hero), kind: roomOf(hero) ? 'ROOM' : 'MASTER', label: roomOf(hero) ? roomLabel(roomOf(hero)) ?? t('dsx_photo3d_this') : t('dsx_photo3d_this') });
     for (const [roomId, r] of roomShots) {
       const url = urls.get(r.id);
       if (!url || r.id === hero?.id) continue;
-      out.push({ id: r.id, url, kind: 'ROOM', label: roomLabel(roomId) ?? t('dsx_photo3d_room') });
+      out.push({ id: r.id, url, key: keyOf(r), kind: 'ROOM', label: roomLabel(roomId) ?? t('dsx_photo3d_room') });
     }
     return out.slice(0, 12);
   }, [hero, heroUrl, roomShots, urls, roomLabel, t]);

@@ -64,6 +64,9 @@ test('the 3D tour card opens the picture itself first; the depth model loads onl
   const panel = readFileSync(new URL('../../../components/designStudio/unified/WalkthroughPanel.tsx', import.meta.url), 'utf8');
   assert.match(panel, /const PhotoWalk = lazy\(\(\) => import\('\.\/PhotoWalk'\)\);/);
   assert.match(panel, /data-testid="photo3d-enter"/);
+  // With a picture, the 3D tour IS the picture: nothing else on the card, nothing asked of the server.
+  assert.ok(panel.indexOf('if (photoTour) {') > 0 && panel.indexOf('if (photoTour) {') < panel.indexOf('if (!loaded) return null;'));
+  assert.match(panel, /if \(!photoTour\) void read\(\);/);
   const result = readFileSync(new URL('../../../components/designStudio/unified/DesignResult.tsx', import.meta.url), 'utf8');
   assert.match(result, /renderId=\{hero\.id\} photos=\{walkPhotos\}/);
   const depth = readFileSync(new URL('../photo3d/estimateDepth.ts', import.meta.url), 'utf8');
@@ -71,4 +74,7 @@ test('the 3D tour card opens the picture itself first; the depth model loads onl
   assert.doesNotMatch(depth, /^import .*@huggingface/m, 'never a static import (it would enter the main bundle)');
   const walk = readFileSync(new URL('../../../components/designStudio/unified/PhotoWalk.tsx', import.meta.url), 'utf8');
   assert.match(walk, /new THREE\.MeshBasicMaterial\(\{ map: texture/, 'unlit: the picture\'s own light and colour');
+  // A page left open outlives its picture link: the picture is signed afresh when entered, and a failure names its step.
+  assert.match(walk, /signedUrls\(\[photo\.key\], 900\)/);
+  assert.match(walk, /setPhase\(\{ kind: 'FAILED', code: stage \}\)/);
 });

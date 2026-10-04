@@ -13,9 +13,10 @@
 // same request; a closed page changes nothing). A tour walked on a
 // reconstructed space carries a quiet note once it is ready.
 //
-// First of all, STEP INSIDE THE PICTURE (PhotoWalk): the design picture the
-// customer is looking at, made 3D on their own device — every element is the
-// picture's own. The walkable model of the plan below is the second option.
+// With a design picture, the 3D tour IS that picture made 3D (PhotoWalk), on
+// the customer's own device — every element is the picture's own, nothing is
+// rebuilt. The server-built walkthrough of the plan below is used only where
+// there is no picture to step into.
 
 import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -69,7 +70,9 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, photos 
     if (!r.error) { setWalk(r.walkthrough); setHistory(r.history); }
     setLoaded(true);
   }, [designVersionId]);
-  useEffect(() => { setWalk(null); setHistory([]); setLoaded(false); void read(); }, [read]);
+  // With a picture to step into there is nothing to ask the server.
+  const photoTour = photos.length > 0;
+  useEffect(() => { setWalk(null); setHistory([]); setLoaded(false); if (!photoTour) void read(); }, [read, photoTour]);
 
   // Following it while it works (the page is only a watcher; the server carries on without it).
   useEffect(() => {
@@ -114,6 +117,30 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, photos 
     if (r.walkthrough) setWalk(r.walkthrough); else setProblem(t('dsx_walk_unavailable'));
   };
 
+  if (photoTour) {
+    return (
+      <section className="mt-8 rounded-[22px] bg-white p-4 ring-1 ring-[#E7E1D8] sm:p-6" aria-labelledby="ds-walk-title" data-testid="walk-panel">
+        <div className="flex items-start gap-3">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#0C1119] text-white"><Box className="h-5 w-5" aria-hidden="true" /></span>
+          <div className="min-w-0 flex-1">
+            <h2 id="ds-walk-title" className="font-display text-[20px] font-semibold">{t('dsx_walk_title')}</h2>
+            <p className="mt-1 text-[14px] text-[#5B6472]">{t('dsx_photo3d_body')}</p>
+          </div>
+        </div>
+        <div className="mt-4" data-testid="photo3d-entry">
+          <button type="button" onClick={() => setInside(true)} className={DARK} data-testid="photo3d-enter">
+            <Footprints className="h-4 w-4" aria-hidden="true" />{t('dsx_walk_open')}
+          </button>
+          <p className="mt-2 text-[13px] leading-relaxed text-[#5B6472]">{t('dsx_photo3d_note')}</p>
+        </div>
+        {inside ? (
+          <Suspense fallback={null}>
+            <PhotoWalk photos={photos} initialId={photos[0].id} onClose={() => setInside(false)} />
+          </Suspense>
+        ) : null}
+      </section>
+    );
+  }
   if (!loaded) return null;
   const current = walk?.progress && walk.progress !== 'FAILED' && walk.progress !== 'CANCELLED' ? PROGRESS_STEPS.indexOf(walk.progress) : -1;
   const earlier = history.filter((h) => h.id !== walk?.id && h.state === 'READY' && h.walkVersionId);
@@ -124,27 +151,9 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, photos 
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#0C1119] text-white"><Box className="h-5 w-5" aria-hidden="true" /></span>
         <div className="min-w-0 flex-1">
           <h2 id="ds-walk-title" className="font-display text-[20px] font-semibold">{t('dsx_walk_title')}</h2>
-          <p className="mt-1 text-[14px] text-[#5B6472]">{t(photos.length ? 'dsx_photo3d_body' : 'dsx_walk_body')}</p>
+          <p className="mt-1 text-[14px] text-[#5B6472]">{t('dsx_walk_body')}</p>
         </div>
       </div>
-
-      {photos.length ? (
-        <div className="mt-4" data-testid="photo3d-entry">
-          <button type="button" onClick={() => setInside(true)} className={DARK} data-testid="photo3d-enter">
-            <Footprints className="h-4 w-4" aria-hidden="true" />{t('dsx_photo3d_enter')}
-          </button>
-          <p className="mt-2 text-[13px] leading-relaxed text-[#5B6472]">{t('dsx_photo3d_note')}</p>
-          <div className="mt-5 border-t border-[#EFEAE2] pt-4">
-            <h3 className="text-[15px] font-semibold text-[#0C1119]">{t('dsx_walk_model_title')}</h3>
-            <p className="mt-1 text-[13px] text-[#5B6472]">{t('dsx_walk_body')}</p>
-          </div>
-        </div>
-      ) : null}
-      {inside && photos.length ? (
-        <Suspense fallback={null}>
-          <PhotoWalk photos={photos} initialId={photos[0].id} onClose={() => setInside(false)} />
-        </Suspense>
-      ) : null}
 
       {problem ? <p role="alert" className="mt-3 rounded-2xl bg-[hsl(0_66%_44%)]/10 px-4 py-3 text-[14px] text-[hsl(0_66%_34%)]">{problem}</p> : null}
 

@@ -15,10 +15,20 @@
 //              then rings around the proposal); a pose with only a tight
 //              access zone is the last resort, and a piece with no safe
 //              place is dropped and reported — never forced in
-//   circulation every room that could be reached through its doors before
-//              furnishing must still be reachable after it (a walking body,
-//              doors opened on the way); a room that is not loses its most
-//              recently placed pieces until it is
+//   plan       one coherent solution per room before anything stands: no
+//              second dining table or island, no duplicated singletons
+//              (walkability.ts redundantPieces); after placement a crowded
+//              room gives up its least important pieces, and a room missing
+//              the piece that makes it what it is (a living room's sofa, a
+//              bedroom's bed) gets one from the catalogue
+//   circulation every room a comfortable walk reached before furnishing is
+//              still reached after it — with the comfort margin, not a 2 cm
+//              gap (COMFORT_RADIUS_M) — and no narrow strip is left for a
+//              body to squeeze into and get stuck (strandedFloor). What is in
+//              the way MOVES first (decor, chairs, side tables, tables, large
+//              pieces, the room's own bed or kitchen last) and is dropped
+//              only when no clean pose fixes it; then everything is walked
+//              again (bounded passes). The result carries its gate.
 //
 // The floor plan is never touched: no wall, door, window, room or stair is an
 // output of this file. Same plan + same design + same catalogue = the same
@@ -28,7 +38,10 @@ import { onStairs } from '../aiPlan.ts';
 import type { CatalogAsset, CatalogMaterial } from '../catalog.ts';
 import { isFlat } from '../catalog.ts';
 import type { DesignState, ObjectInstance } from '../designState.ts';
-import { BODY_RADIUS_M, buildWalkModel, distanceToObb, findPath, isFree, nearestFree, type WalkModel } from '../navigation.ts';
+import { BODY_RADIUS_M, COMFORT_RADIUS_M, buildWalkModel, distanceToObb, findPath, isFree, nearestFree, type WalkModel } from '../navigation.ts';
+import {
+  DENSITY_MAX, density, densityChecked, essentialRole, redundantPieces, repairRank, servesRole, strandedFloor, type WalkGate,
+} from './walkability.ts';
 import { type ObjectShape, shapedAsset } from '../objectShape.ts';
 import { applyOperation, type Operation, type OperationContext, validateOperation } from '../operations.ts';
 import { candidatePositions, evaluateInWorld, footprint, type Obb, type PlacementIssue, placementWorld, snapToWall } from '../placement.ts';
@@ -131,6 +144,10 @@ export interface BuildReport {
   finishes: Array<{ roomId: string; what: string; applied: boolean; reason: string | null }>;
   circulation: { checked: string[]; reachableBefore: string[]; reachableAfter: string[]; repaired: string[] };
   counts: { planned: number; corrected: number; placed: number; dropped: number };
+  /** The walkability gate the design passed (or, never expected, what is left). */
+  gate?: WalkGate;
+  /** Pieces moved (not dropped) to open a way. */
+  relocated?: number;
 }
 
 export interface BuildInput {
@@ -205,12 +222,16 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
     apply({ type: 'REMOVE_OBJECT', instanceId: obj.instanceId });
   }
   let n = 0;
-  const placedOrder: Array<{ roomId: string; instanceId: string; flat: boolean; area: number; box: Obb; report: ItemReport }> = [];
+  const placedOrder: Array<{ roomId: string; instanceId: string; flat: boolean; area: number; box: Obb; report: ItemReport; asset: CatalogAsset; rank: number; essential: boolean }> = [];
   for (const pr of input.plan.rooms) {
     const room = rooms.get(pr.roomId);
     if (!room) continue;
     // Big standing pieces first (they need the walls), rugs and other flat pieces last.
-    const order = pr.items.map((item, i) => ({ item, i, asset: assets.get(item.code) }))
+    // One coherent solution: the redundant table, island or duplicated singleton never stands at all.
+    const known = pr.items.map((item) => ({ item, asset: assets.get(item.code) })).filter((x): x is { item: BuildItem; asset: CatalogAsset } => !!x.asset);
+    const redundant = redundantPieces(room.kind, room.areaM2, known.map((x) => ({ item: x.item, asset: x.asset, planned: !!x.item.pose })));
+    for (const item of redundant) report.items.push({ roomId: room.id, code: item.code, type: item.type, instanceId: null, outcome: 'DROPPED', reason: 'REDUNDANT', movedM: null, warnings: [] });
+    const order = pr.items.filter((item) => !redundant.has(item)).map((item, i) => ({ item, i, asset: assets.get(item.code) }))
       .filter((x): x is { item: BuildItem; i: number; asset: CatalogAsset } => !!x.asset)
       .sort((a, b) => Number(isFlat(a.asset)) - Number(isFlat(b.asset)) || b.asset.widthM * b.asset.depthM - a.asset.widthM * a.asset.depthM || a.i - b.i);
     for (const { item, asset: own } of order) {
@@ -234,63 +255,205 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
       entry.reason = found.kept || !item.pose ? null : found.why;
       entry.movedM = found.movedM;
       entry.warnings = found.verdict === 'TIGHT' ? ['TIGHT_ACCESS'] : [];
-      placedOrder.push({ roomId: room.id, instanceId: object.instanceId, flat: isFlat(asset), area: asset.widthM * asset.depthM, box: footprint(asset, found.at, found.rotation), report: entry });
+      placedOrder.push({ roomId: room.id, instanceId: object.instanceId, flat: isFlat(asset), area: asset.widthM * asset.depthM, box: footprint(asset, found.at, found.rotation), report: entry, asset, rank: repairRank(asset), essential: false });
     }
   }
 
-  // ── Circulation: furnishing never cuts a room off ──
+  // ── Balance: crowded rooms give up their least important pieces; a room missing its piece gets one ──
+  const standingIn = (roomId: string) => placedOrder.filter((p) => p.roomId === roomId && !p.flat && p.report.outcome !== 'DROPPED');
+  const drop = (p: typeof placedOrder[number], reason: string) => {
+    apply({ type: 'REMOVE_OBJECT', instanceId: p.instanceId });
+    p.report.outcome = 'DROPPED'; p.report.reason = reason; p.report.instanceId = null;
+  };
+  for (const room of space.rooms) {
+    if (!planned.has(room.id) || !densityChecked(room.kind)) continue;
+    const essential = essentialRole(room.kind);
+    for (let guard = 0; guard < 12 && density(room, standingIn(room.id).map((p) => p.area)) > DENSITY_MAX; guard += 1) {
+      const victim = [...standingIn(room.id)].filter((p) => !(essential && servesRole(p.asset, essential)))
+        .sort((a, b) => a.rank - b.rank || a.area - b.area)[0];
+      if (!victim) break;
+      drop(victim, 'OVERFURNISHED');
+    }
+  }
+  for (const pr of input.plan.rooms) {
+    const room = rooms.get(pr.roomId);
+    const role = room ? essentialRole(room.kind) : null;
+    if (!room || !role || room.areaM2 < 5) continue;
+    const have = standingIn(room.id).find((p) => servesRole(p.asset, role));
+    if (have) { have.essential = true; continue; }
+    // The catalogue's best piece for the role: the design's style first, then the size that suits the room.
+    const target = role === 'BED' ? (room.areaM2 >= 10 ? 3.2 : 2.0) : role === 'SOFA' ? (room.areaM2 >= 18 ? 2.0 : 1.5) : role === 'TABLE' ? 1.4 : 1.8;
+    const options = [...assets.values()].filter((a) => a.active !== false && a.placement === 'FLOOR' && servesRole(a, role)
+      && (!a.roomKinds?.length || a.roomKinds.includes(room.kind)))
+      .sort((a, b) => Number(b.styleTags?.includes(input.plan.styleCode ?? '')) - Number(a.styleTags?.includes(input.plan.styleCode ?? ''))
+        || Math.abs(a.widthM * a.depthM - target) - Math.abs(b.widthM * b.depthM - target) || (a.code < b.code ? -1 : 1))
+      .slice(0, 5);
+    for (const asset of options) {
+      const found = findPose(space, assets, working.objects, room, asset, { code: asset.code, type: role, pose: null, scale: 1, color: null, origin: 'PROGRAMME' } as BuildItem);
+      if (!found) continue;
+      n += 1;
+      const object: ObjectInstance = {
+        instanceId: `${input.idPrefix}-${n}`, assetId: asset.code, roomId: room.id,
+        position: { x: r3(found.at.x), y: 0, z: r3(found.at.y) }, rotationY: Math.round(found.rotation * 1e6) / 1e6,
+        materialVariant: null, colorOverride: null, locked: false,
+      };
+      if (apply({ type: 'ADD_OBJECT', object })) continue;
+      const entry: ItemReport = { roomId: room.id, code: asset.code, type: role, instanceId: object.instanceId, outcome: 'PLACED', reason: 'ESSENTIAL', movedM: null, warnings: [] };
+      report.items.push(entry);
+      placedOrder.push({ roomId: room.id, instanceId: object.instanceId, flat: false, area: asset.widthM * asset.depthM, box: footprint(asset, found.at, found.rotation), report: entry, asset, rank: repairRank(asset), essential: true });
+      break;
+    }
+  }
+
+  // ── Circulation: a comfortable walk everywhere it went before, and no narrow trap ──
   // Measured from one fixed way in (found on the bare plan), so a piece standing there cannot move the question.
+  const comfortModel = (objects: ObjectInstance[]) => { const m = buildWalkModel(space, objects, assets); m.radius = COMFORT_RADIUS_M; return m; };
   const empty = buildWalkModel(space, [], assets);
+  const emptyComfort = comfortModel([]);
   const start = circulationStart(space, empty);
   const before = reachableRooms(space, empty, { start });
+  // Rooms a comfortable walk reaches on the bare plan must stay comfortable; the rest (a narrow plan) at least walkable.
+  const comfortBefore = start ? reachableRooms(space, emptyComfort, { start }) : new Set<string>();
   report.circulation.reachableBefore = [...before].sort();
   report.circulation.checked = space.rooms.filter((r) => !r.outdoor || before.has(r.id)).map((r) => r.id).sort();
-  for (let guard = 0; guard < 40; guard += 1) {
-    const furnished = buildWalkModel(space, working.objects, assets);
-    const after = reachableRooms(space, furnished, { start });
-    const lost = [...before].filter((id) => !after.has(id)).sort();
-    report.circulation.reachableAfter = [...after].sort();
-    if (!lost.length || !start) break;
-    // What is in the way: of the standing pieces nearest the bare plan's route to a cut-off room, the least floor
-    // whose removal lets the walk back into it: one piece, or two smaller ones (a desk and its chair rather than
-    // the bed). When nothing near the route does, the first piece on it; with no route at all, the latest standing
-    // piece of a cut-off room.
-    const standing = placedOrder.filter((p) => !p.flat && p.report.outcome !== 'DROPPED');
-    let victims: Array<typeof placedOrder[number]> = [];
-    for (const id of lost) {
+  // Comfortable rooms are judged by the comfortable walk alone (it implies the body's); the body's own walk is only
+  // asked for the rooms a narrow plan reaches at all (one flood each, not two).
+  const bodyOnly = [...before].filter((id) => !comfortBefore.has(id));
+  const lostRooms = (objects: ObjectInstance[], only?: string) => {
+    const lost: string[] = [];
+    const check = only ? [only] : [...before];
+    if (check.some((id) => comfortBefore.has(id))) {
+      const comfort = reachableRooms(space, comfortModel(objects), { start });
+      for (const id of check) if (comfortBefore.has(id) && !comfort.has(id)) lost.push(id);
+    }
+    if (check.some((id) => bodyOnly.includes(id))) {
+      const body = reachableRooms(space, buildWalkModel(space, objects, assets), { start });
+      for (const id of check) if (bodyOnly.includes(id) && !body.has(id)) lost.push(id);
+    }
+    return lost.sort();
+  };
+  const bareReach = start ? bareComfortReach(space, assets, start) : undefined;
+  const trapsOf = (objects: ObjectInstance[], only?: string) => stranded(space, objects, assets, start, only, bareReach);
+  const standing = () => placedOrder.filter((p) => !p.flat && p.report.outcome !== 'DROPPED');
+  const objectOf = (p: typeof placedOrder[number]) => working.objects.find((o) => o.instanceId === p.instanceId)!;
+  let relocated = 0;
+  /** Move a piece to another clean pose in its room for which `fixes` holds; true when it moved. */
+  const relocate = (p: typeof placedOrder[number], fixes: (objects: ObjectInstance[]) => boolean, avoid: Point[] = []): boolean => {
+    const room = rooms.get(p.roomId);
+    const obj = objectOf(p);
+    if (!room || !obj) return false;
+    const others = working.objects.filter((o) => o.instanceId !== p.instanceId);
+    for (const pose of cleanPoses(space, assets, others, room, p.asset, 5)) {
+      if (Math.hypot(pose.at.x - obj.position.x, pose.at.y - obj.position.z) < 0.1) continue;
+      // Still on the way it blocks: cannot be the fix (no walk is needed to know).
+      if (avoid.length) { const box = footprint(p.asset, pose.at, pose.rotation); if (avoid.some((q) => distanceToObb(q, box) < COMFORT_RADIUS_M)) continue; }
+      const moved: ObjectInstance = { ...obj, position: { x: r3(pose.at.x), y: 0, z: r3(pose.at.y) }, rotationY: Math.round(pose.rotation * 1e6) / 1e6 };
+      const trial = [...others, moved];
+      if (!fixes(trial)) continue;
+      working = { ...working, objects: working.objects.map((o) => (o.instanceId === p.instanceId ? moved : o)) };
+      p.box = footprint(p.asset, pose.at, pose.rotation);
+      if (p.report.outcome === 'PLANNED') p.report.outcome = 'CORRECTED';
+      p.report.reason = p.report.reason ?? 'CIRCULATION_MOVED';
+      relocated += 1;
+      if (!report.circulation.repaired.includes(p.roomId)) report.circulation.repaired.push(p.roomId);
+      return true;
+    }
+    return false;
+  };
+  /**
+   * Of `candidates` (most expendable first): the first that MOVES to fix it; else the first that may be DROPPED and
+   * does; else a pair that may be dropped (a desk and its chair rather than the bed); else, last, a larger or
+   * essential piece moved. Bounded: the plan step has one edge invocation's CPU.
+   */
+  const repairWith = (candidates: Array<typeof placedOrder[number]>, fixes: (objects: ObjectInstance[]) => boolean, mayDrop: (p: typeof placedOrder[number]) => boolean, avoid: Point[] = []): boolean => {
+    const note = (p: typeof placedOrder[number]) => { if (!report.circulation.repaired.includes(p.roomId)) report.circulation.repaired.push(p.roomId); };
+    // Moved first: the two most expendable pieces, and the two largest movable ones (a table moved beats four chairs lost).
+    const largest = [...candidates].filter((p) => p.rank <= 4).sort((a, b) => b.area - a.area).slice(0, 2);
+    const movers = [...new Set([...candidates.slice(0, 2), ...largest])];
+    for (const p of movers) if (relocate(p, fixes, avoid)) return true;
+    const droppable = candidates.filter(mayDrop);
+    // Tier by tier (decor, chairs, side tables, tables, large pieces): one piece, then two of that tier or below —
+    // two dining chairs go before the dining table does.
+    const fixedWithout = (gone: Set<string>) => fixes(working.objects.filter((o) => !gone.has(o.instanceId)));
+    for (let tier = 0; tier <= 4; tier += 1) {
+      const pool = droppable.filter((p) => p.rank <= tier);
+      for (const p of pool.filter((x) => x.rank === tier).slice(0, 4)) {
+        if (fixedWithout(new Set([p.instanceId]))) { drop(p, 'CIRCULATION'); note(p); return true; }
+      }
+      const few = pool.slice(0, 4);
+      for (let a = 0; a < few.length; a += 1) {
+        for (let b = a + 1; b < few.length; b += 1) {
+          if (Math.max(few[a].rank, few[b].rank) !== tier) continue;
+          if (fixedWithout(new Set([few[a].instanceId, few[b].instanceId]))) { drop(few[a], 'CIRCULATION'); drop(few[b], 'CIRCULATION'); note(few[a]); return true; }
+        }
+      }
+    }
+    for (const p of candidates.filter((x) => !movers.includes(x)).slice(0, 2)) if (relocate(p, fixes, avoid)) return true;
+    return false;
+  };
+  const byRank = (list: Array<typeof placedOrder[number]>) => [...list].sort((a, b) => Number(a.essential) - Number(b.essential) || a.rank - b.rank || a.area - b.area);
+
+  for (let guard = 0; guard < 30 && start; guard += 1) {
+    const lost = lostRooms(working.objects);
+    if (lost.length) {
+      const id = lost[0];
       const room = space.rooms.find((r) => r.id === id);
       const goal = room ? freeInside(empty, room) : null;
       const route = goal ? findPath(empty, start, goal, { throughDoors: true, maxCells: 20000 }) : null;
-      if (!route) continue;
-      const pts = routePoints([start, ...route]);
-      const near = standing
-        .map((p) => ({ p, d: Math.min(...pts.map((q) => distanceToObb(q, p.box))) }))
-        .filter((x) => x.d < 1.5)
-        .sort((a, b) => a.d - b.d)
-        .slice(0, 12);
-      const reopens = (set: Array<typeof placedOrder[number]>) => {
-        const gone = new Set(set.map((p) => p.instanceId));
-        const without = working.objects.filter((o) => !gone.has(o.instanceId));
-        return reachableRooms(space, buildWalkModel(space, without, assets), { start, only: new Set([id]) }).has(id);
-      };
-      const sets: Array<Array<typeof placedOrder[number]>> = near.map(({ p }) => [p]);
-      const closest = near.slice(0, 6).map((x) => x.p);
-      for (let a = 0; a < closest.length; a += 1) for (let b = a + 1; b < closest.length; b += 1) sets.push([closest[a], closest[b]]);
-      const floor = (set: Array<typeof placedOrder[number]>) => set.reduce((sum, p) => sum + p.area, 0);
-      // Stable: equal floor keeps the nearer (earlier) candidate.
-      const ranked = sets.map((set, i) => ({ set, i, f: floor(set) })).sort((x, y) => x.f - y.f || x.i - y.i);
-      victims = ranked.find((x) => reopens(x.set))?.set ?? [];
-      if (!victims.length) { const first = near.find((x) => x.d < BODY_RADIUS_M + 0.02)?.p; if (first) victims = [first]; }
-      if (victims.length) break;
+      const pts = route ? routePoints([start, ...route]) : [];
+      const near = standing().map((p) => ({ p, d: pts.length ? Math.min(...pts.map((q) => distanceToObb(q, p.box))) : (p.roomId === id ? 0 : Infinity) }))
+        .filter((x) => x.d < 1.5).map((x) => x.p);
+      const fixes = (objects: ObjectInstance[]) => !lostRooms(objects, id).length;
+      // Small and mid pieces give way first; a large one (a wardrobe, a sofa) only when none of them can.
+      if (repairWith(byRank(near), fixes, (p) => !p.essential && p.rank <= 3, pts)) continue;
+      if (repairWith(byRank(near).filter((p) => p.rank <= 4), fixes, (p) => !p.essential && p.rank <= 4, pts)) continue;
+      // Nothing near the route alone does it: the least important standing piece of the cut-off room goes.
+      const last = byRank(standing().filter((p) => p.roomId === id))[0];
+      if (last && !last.essential && last.rank < 5) { drop(last, 'CIRCULATION'); continue; }
+      break;
     }
-    if (!victims.length) { const last = [...standing].reverse().find((p) => lost.includes(p.roomId)); if (last) victims = [last]; }
-    if (!victims.length) break;
-    for (const victim of victims) {
-      apply({ type: 'REMOVE_OBJECT', instanceId: victim.instanceId });
-      victim.report.outcome = 'DROPPED'; victim.report.reason = 'CIRCULATION'; victim.report.instanceId = null;
-      if (!report.circulation.repaired.includes(victim.roomId)) report.circulation.repaired.push(victim.roomId);
-    }
+    const traps = trapsOf(working.objects);
+    if (!traps.length) break;
+    const t = traps[0];
+    // The pieces that make the strip narrow: within reach of it.
+    const near = standing().filter((p) => t.cells.some((c) => distanceToObb(c, p.box) < COMFORT_RADIUS_M + 0.1));
+    const fixes = (objects: ObjectInstance[]) => {
+      const left = trapsOf(objects, t.roomId).reduce((s, x) => s + x.areaM2, 0);
+      return left < t.areaM2 - 0.05 && !lostRooms(objects, t.roomId).length;
+    };
+    // A trap is never fixed by dropping a bed, a sofa or the kitchen: only small and mid pieces may go.
+    if (!repairWith(byRank(near), fixes, (p) => !p.essential && p.rank <= 3, t.cells)) break;
   }
+
+  // ── Last resort (bounded): a room still cut off, or a trap still there, loses what stands in it or by it —
+  //    anything but sanitary fittings and the kitchen — rather than a walkthrough nobody can walk.
+  for (let guard = 0; guard < 8 && start; guard += 1) {
+    const lost = lostRooms(working.objects);
+    const traps = lost.length ? [] : trapsOf(working.objects);
+    if (!lost.length && !traps.length) break;
+    const where = lost[0] ?? traps[0].roomId;
+    const cells = traps[0]?.cells ?? [];
+    const victim = byRank(standing().filter((p) => p.rank < 5 && (p.roomId === where || cells.some((c) => distanceToObb(c, p.box) < COMFORT_RADIUS_M + 0.1))))
+      .sort((a, b) => Number(a.essential) - Number(b.essential) || a.rank - b.rank)[0];
+    if (!victim) break;
+    drop(victim, 'CIRCULATION');
+    if (!report.circulation.repaired.includes(victim.roomId)) report.circulation.repaired.push(victim.roomId);
+  }
+
+  // ── The gate: what the walk is left with ──
+  const finalTraps = trapsOf(working.objects);
+  const unreachable = start ? lostRooms(working.objects) : [];
+  report.circulation.reachableAfter = start ? [...reachableRooms(space, buildWalkModel(space, working.objects, assets), { start })].sort() : [];
+  const crowded = space.rooms.filter((r) => planned.has(r.id) && densityChecked(r.kind) && density(r, standingIn(r.id).map((p) => p.area)) > DENSITY_MAX + 0.08).map((r) => r.id);
+  const missingEssential = input.plan.rooms.map((pr) => rooms.get(pr.roomId)).filter((r): r is SpaceRoom => !!r && r.areaM2 >= 5)
+    .filter((r) => { const role = essentialRole(r.kind); return !!role && !standingIn(r.id).some((p) => servesRole(p.asset, role)); }).map((r) => r.id);
+  const furnishedModel = buildWalkModel(space, working.objects, assets);
+  const spawn = circulationStart(space, furnishedModel);
+  report.relocated = relocated;
+  report.gate = {
+    ok: !unreachable.length && !finalTraps.length && !!spawn,
+    unreachable, traps: finalTraps.map((t) => ({ roomId: t.roomId, areaM2: t.areaM2 })), crowded, missingEssential, spawnValid: !!spawn && isFree(furnishedModel, spawn),
+  };
 
   for (const it of report.items) {
     if (it.outcome === 'PLANNED') report.counts.planned += 1;
@@ -299,6 +462,23 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
     else report.counts.dropped += 1;
   }
   return { state: working, report };
+}
+
+/**
+ * Clean poses for a piece in its room (the engine's candidates, clean only), at most `max`, spread over the room
+ * (every k-th of them): a piece moved to open a way goes somewhere really different, not 25 cm along.
+ */
+function cleanPoses(space: SpaceModel, assets: Map<string, CatalogAsset>, objects: ObjectInstance[], room: SpaceRoom, asset: CatalogAsset, max: number): Array<{ at: Point; rotation: number }> {
+  const ctx = { space, assets, objects };
+  const world = placementWorld(ctx, room);
+  const all: Array<{ at: Point; rotation: number }> = [];
+  for (const c of candidatePositions(ctx, asset, room).slice(0, 120)) {
+    if (!pointInPolygon(c.at, room.polygon) || onStairs(space, asset, c.at, c.rotation)) continue;
+    if (verdictOf(evaluateInWorld(world, asset, c.at, c.rotation)) !== 'CLEAN') continue;
+    all.push(c);
+  }
+  if (all.length <= max) return all;
+  return Array.from({ length: max }, (_, i) => all[Math.round((i * (all.length - 1)) / (max - 1))]);
 }
 
 /**
@@ -359,6 +539,25 @@ function findPose(
 }
 
 // ── Reachability ─────────────────────────────────────────────────────────────
+
+/**
+ * The comfortable floor a comfortable walk from `start` does not reach, room by room (walkability.ts
+ * strandedFloor on the furnished space at the comfort margin): the trap a bed and a wardrobe make together.
+ */
+export function stranded(space: SpaceModel, objects: ObjectInstance[], assets: Map<string, CatalogAsset>, start: Point | null, only?: string, bare?: (p: Point) => boolean) {
+  if (!start) return [];
+  const roomy = buildWalkModel(space, objects, assets);
+  roomy.radius = COMFORT_RADIUS_M;
+  const before = bare ?? bareComfortReach(space, assets, start);
+  return strandedFloor(space, roomy, walkableFrom(roomy, start), only, before);
+}
+
+/** Where the comfortable walk goes with no furniture at all (the plan's own reach). */
+export function bareComfortReach(space: SpaceModel, assets: Map<string, CatalogAsset>, start: Point): (p: Point) => boolean {
+  const bare = buildWalkModel(space, [], assets);
+  bare.radius = COMFORT_RADIUS_M;
+  return walkableFrom(bare, start);
+}
 
 /** Points just either side of every door (where a body stands to walk through it). */
 function doorSides(space: SpaceModel): Array<{ doorId: string; p: Point }> {
@@ -454,32 +653,32 @@ export function reachableRooms(space: SpaceModel, model: WalkModel, opts: { star
  */
 function walkableFrom(model: WalkModel, start: Point, maxCells = 20000): (p: Point) => boolean {
   const G = 0.15;
+  // Cells by number (i, j within ±2^15 cells: 4.9 km): no strings in the hot loop.
+  const K = (i: number, j: number) => (i + 32768) * 65536 + (j + 32768);
   const closed = model.closedDoors;
   model.closedDoors = new Set();
-  const free = new Map<string, boolean>();
-  const freeAt = (x: number, y: number) => {
-    const k = `${x.toFixed(3)},${y.toFixed(3)}`;
+  const free = new Map<number, boolean>();
+  // Half-cell points (diagonal corners) are keyed on a doubled grid.
+  const freeAt2 = (i2: number, j2: number) => {
+    const k = K(i2, j2);
     let v = free.get(k);
-    if (v === undefined) { v = isFree(model, { x, y }); free.set(k, v); }
+    if (v === undefined) { v = isFree(model, { x: start.x + (i2 * G) / 2, y: start.y + (j2 * G) / 2 }); free.set(k, v); }
     return v;
   };
-  const at = (i: number, j: number) => ({ x: start.x + i * G, y: start.y + j * G });
-  const seen = new Set<string>(['0,0']);
+  const seen = new Set<number>([K(0, 0)]);
   try {
-    const queue: Array<[number, number]> = [[0, 0]];
-    for (let q = 0; q < queue.length && seen.size < maxCells; q += 1) {
-      const [i, j] = queue[q];
+    const qi: number[] = [0]; const qj: number[] = [0];
+    for (let q = 0; q < qi.length && seen.size < maxCells; q += 1) {
+      const i = qi[q]; const j = qj[q];
       for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
-        const ni = i + di; const nj = j + dj; const k = `${ni},${nj}`;
+        const ni = i + di; const nj = j + dj; const k = K(ni, nj);
         if (seen.has(k)) continue;
-        const n = at(ni, nj);
-        if (!freeAt(n.x, n.y)) continue;
+        if (!freeAt2(ni * 2, nj * 2)) continue;
         if (di !== 0 && dj !== 0) {
-          const a = at(i + di, j); const b = at(i, j + dj);
-          if (!freeAt(a.x, a.y) || !freeAt(b.x, b.y) || !freeAt(start.x + (i + di / 2) * G, start.y + (j + dj / 2) * G)) continue;
+          if (!freeAt2((i + di) * 2, j * 2) || !freeAt2(i * 2, (j + dj) * 2) || !freeAt2(i * 2 + di, j * 2 + dj)) continue;
         }
         seen.add(k);
-        queue.push([ni, nj]);
+        qi.push(ni); qj.push(nj);
       }
     }
   } finally {
@@ -487,7 +686,7 @@ function walkableFrom(model: WalkModel, start: Point, maxCells = 20000): (p: Poi
   }
   return (p: Point) => {
     const ci = Math.round((p.x - start.x) / G); const cj = Math.round((p.y - start.y) / G);
-    for (let di = -1; di <= 1; di += 1) for (let dj = -1; dj <= 1; dj += 1) if (seen.has(`${ci + di},${cj + dj}`)) return true;
+    for (let di = -1; di <= 1; di += 1) for (let dj = -1; dj <= 1; dj += 1) if (seen.has(K(ci + di, cj + dj))) return true;
     return false;
   };
 }

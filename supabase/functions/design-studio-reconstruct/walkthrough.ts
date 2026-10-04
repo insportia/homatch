@@ -727,6 +727,8 @@ async function plan(admin: Row, row: Row): Promise<void> {
     space, base, assets, materialsByCode: byCode, materialsById: byId, idPrefix: `walk-${row.revision}`,
     plan: { lighting: validated.lighting, palette: validated.palette, styleCode: preferences.style, rooms: validated.rooms },
   });
+  // The walkability gate (walkthrough/walkability.ts): a walkthrough nobody can walk comfortably is never READY.
+  if (built.report.gate && !built.report.gate.ok) { await fail(admin, row, 'NOT_WALKABLE'); return; }
 
   // Saved as its own version of the design (the approved one is never touched); the same id on a re-plan.
   const walkId = await uuidFrom(`ds-walk:${row.id}:version`);

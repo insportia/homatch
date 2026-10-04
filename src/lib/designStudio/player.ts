@@ -17,9 +17,13 @@ import type { Point } from './space.ts';
 
 export const WALK_SPEED_M_S = 1.35;
 export const BRISK_SPEED_M_S = 2.2;
-/** How quickly a walk builds up and eases off (m/s²): a step, not a jolt. */
-export const ACCEL_M_S2 = 6.5;
-export const DECEL_M_S2 = 9.0;
+/** How quickly a walk builds up and eases off (m/s²): a step, not a jolt — and no long glide after the thumb lifts. */
+export const ACCEL_M_S2 = 8.0;
+export const DECEL_M_S2 = 13.0;
+/** The thumb stick: a small push does nothing (a resting thumb is not a step), and the response is gentle near the centre. */
+export const STICK_DEAD_ZONE = 0.15;
+/** Touch looking turns a little less per pixel than a mouse: a thumb drag is long and coarse. */
+export const TOUCH_LOOK_RAD_PER_PX = 0.0021;
 export const PITCH_MIN = -1.2;
 export const PITCH_MAX = 1.0;
 /** How far a person reaches to open, switch or sit (metres from the eye). */
@@ -99,6 +103,26 @@ export function stepBody(model: WalkModel, pos: Point, vel: Point, wish: Point, 
   const next = move(model, pos, { x: v.x * dt, y: v.y * dt });
   const achieved = dt > 0 ? { x: (next.x - pos.x) / dt, y: (next.y - pos.y) / dt } : v;
   return { pos: next, vel: achieved };
+}
+
+/**
+ * The thumb stick as walking input: inside the dead zone nothing; beyond it the push is rescaled to 0…1 and eased
+ * (a slight push is a slow step in narrow places, a full push a normal walk — never a run).
+ */
+export function stickInput(x: number, y: number): { x: number; y: number } {
+  const len = Math.hypot(x, y);
+  if (len <= STICK_DEAD_ZONE) return { x: 0, y: 0 };
+  const m = Math.min(1, (len - STICK_DEAD_ZONE) / (1 - STICK_DEAD_ZONE));
+  const eased = m ** 1.4;
+  return { x: (x / len) * eased, y: (y / len) * eased };
+}
+
+/**
+ * A tap, as opposed to a drag (looking) or a thumb on the stick: short and nearly still. Only a tap uses anything;
+ * a finger is held to a tighter bound than a mouse.
+ */
+export function isTap(ms: number, movedPx: number, mouse: boolean): boolean {
+  return mouse ? ms < 450 && movedPx < 8 : ms < 350 && movedPx < 6;
 }
 
 /** Turn the head by a pointer movement (pixels), per the visitor's settings. */

@@ -218,6 +218,42 @@ MATTERS right now, verify against the live systems, not this file)
   `visualPath` + composition; text/layout edits re-export with zero model calls.
   One export per request (~1.2 s CPU of the 2 s edge budget).
 
+## Find Buyers end-to-end finish (branch claude/nifty-hopper-snzn2d, 2026-10-04) — NOT merged
+
+- Source truth: job_state splits checked / communities / qualified per source
+  (the "Telegram 33" = 2 messages + 31 registered communities, 0 qualified);
+  readiness returns the data-driven discovery network. Migration
+  20261018090000 (unapplied) also adds registry `output_contract_verified_at`
+  and `last_verified_at` and returns them from admin_find_buyers_center.
+- Actor catalog (research-core/findBuyers/actorCatalog.ts): PRIMARY_DISCOVERY
+  = FB_GROUP_SEARCH, FB_GROUP_POSTS, TIKTOK, LINKEDIN_POSTS, REDDIT, QUORA,
+  BLUESKY; ENRICHMENT = LINKEDIN_GROUPS, FB/IG/YOUTUBE_COMMENTS,
+  IG_PROFILE_POSTS, X_PROFILE, THREADS_PROFILE, VK_POSTS_COMMENTS;
+  UNSUITABLE = TELEGRAM_CHANNEL (native reader covers it). Lifecycle derived:
+  REGISTERED → VERIFIED (free Apify metadata) → PROVEN (real run, real text +
+  https URL) → ACTIVE. verifyActor no longer sets health HEALTHY.
+- Hard gates before ranking (demandTaxonomy.ts): a rent request under a SALE
+  search was relabelled BUYER_HIGH by tenantize and could become a lead; now
+  WRONG_TRANSACTION. One disposition per candidate in run metadata.
+- Importer: source registry (src/import/sourceAdapters.ts: MYHOME, SS);
+  MyHome portal-homepage answer → LISTING_NOT_AVAILABLE; refresh cooldown
+  fixed (MEDIA_REFRESH no longer overwritten).
+- Apify restored (owner-authorised 2026-10-04) for memo23 only: no longer in
+  RETIRED_PROVIDERS (DataForSEO is). Admin → Providers APIFY card: Test =
+  memo23Client.accountCheck (GET /users/me, free, no run); Enable/Disable =
+  provider_disabled_list, enforced in loadFindBuyersSettings (executor refuses
+  APIFY_DISABLED_BY_ADMIN, in-flight runs aborted then polled to book cost),
+  find_buyers_reserve_actor_run (refuses before any reservation) and
+  find_buyers_readiness (social off). Presets never change Apify's state; its
+  switch is usable under the legacy provider_kill_switch. Generic APIFY queue
+  jobs / reconcile / social-collect stay non-executable (APIFY_ONLY_VIA_MEMO23).
+  Production provider_disabled_list still contains APIFY: enabling is an
+  intentional owner action after deploy.
+- Production: all 16 actors enabled=false, pricing/contract unverified,
+  find_buyers_social_enabled=false. Apify is unreachable from CCR containers;
+  verification must run through Admin → Discovery → Find Buyers → Actors →
+  Verify (server-side, free). No paid call, search or charge was made.
+
 ## Deferred / known-open (do not "fix" casually)
 
 - Active Search has no dedicated UI surface yet (backend + notify exist).

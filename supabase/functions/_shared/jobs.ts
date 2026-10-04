@@ -123,7 +123,8 @@ function retiredJob(job: string, provider: 'DATAFORSEO' | 'APIFY'): JobResult {
     job,
     success: false,
     processed: 0,
-    errors: [`PROVIDER_RETIRED: ${provider}`],
+    /* DataForSEO is retired; generic Apify collection stays deleted (Apify runs only via memo23). */
+    errors: [provider === 'APIFY' ? 'APIFY_ONLY_VIA_MEMO23' : `PROVIDER_RETIRED: ${provider}`],
     duration_ms: 0,
   };
 }

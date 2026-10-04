@@ -5,7 +5,7 @@
 import { actorDefinition, Memo23Error } from './memo23Client.ts';
 
 export async function verifyActor(db: any, actorKey: string) {
-  const { data: actor } = await db.from('find_buyers_actor_registry').select('actor_key,actor_id,input_contract').eq('actor_key', actorKey).maybeSingle();
+  const { data: actor } = await db.from('find_buyers_actor_registry').select('actor_key,actor_id,input_contract,health').eq('actor_key', actorKey).maybeSingle();
   if (!actor) return { success: false, error: 'UNKNOWN_ACTOR' };
   try {
     const def = await actorDefinition(actor.actor_id);
@@ -20,7 +20,10 @@ export async function verifyActor(db: any, actorKey: string) {
       pricing_verified_at: priced ? verifiedAt : null,
       input_contract: { ...(actor.input_contract ?? {}), schemaProperties: def.schemaProperties, pricingRaw: def.pricing.raw ?? null },
       input_contract_verified_at: def.schemaProperties.length ? verifiedAt : null,
-      health: 'HEALTHY',
+      /* Metadata is not a run: health only moves on a real execution. A
+         previous failed verification (DEGRADED/FAILED) is cleared to UNKNOWN. */
+      ...(['DEGRADED', 'FAILED'].includes(actor.health) ? { health: 'UNKNOWN' } : {}),
+      last_verified_at: verifiedAt,
       last_error: priced ? null : 'pricing not stated by Apify; set it manually and mark verified',
       updated_at: verifiedAt,
     }).eq('actor_key', actorKey);

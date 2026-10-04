@@ -133,6 +133,8 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', admin = false,
   if (process.env.FB_DEBUG) page.on('pageerror', (e) => console.log('PAGEERROR', e.message, e.stack?.split('\n').slice(0, 3).join(' | ')));
   const translateCalls = [];
   const matchRequests = [];
+  const settingWrites = [];
+  const healthTests = [];
   const json = (b, status = 200) => ({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(b) });
   await page.route('**', async (r) => {
     const req = r.request();
@@ -178,11 +180,27 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', admin = false,
       }
       return r.fulfill(json({}));
     }
+    /* Admin → Providers, shaped like production: kill switch on, APIFY in the disabled list. */
+    if (url.includes('/rest/v1/provider_health')) return r.fulfill(json(PROVIDER_HEALTH));
+    if (url.includes('/rest/v1/admin_settings')) return r.fulfill(json(PROVIDER_SETTINGS));
+    if (url.includes('/rpc/admin_set_setting')) { settingWrites.push(JSON.parse(req.postData() ?? '{}')); return r.fulfill(json(null)); }
+    if (url.includes('/functions/v1/provider-health-check')) {
+      const body = JSON.parse(req.postData() ?? '{}');
+      healthTests.push(body);
+      return r.fulfill(json({ provider: body.provider, status: 'REAL_TEST_PASSED', latency_ms: 120, error: null }));
+    }
     if (url.includes('/rest/v1/')) return r.fulfill(json(wantsObject ? {} : []));
     return r.fulfill(json({}));
   });
-  return { page, translateCalls, matchRequests };
+  return { page, translateCalls, matchRequests, settingWrites, healthTests };
 }
+
+const hp = (provider, status) => ({ provider, status, last_error: null, latency_ms: null, success_count: 3, failure_count: 0, last_tested_at: null, updated_at: '2026-10-04T10:00:00Z' });
+const PROVIDER_HEALTH = [hp('APIFY', 'REAL_TEST_PASSED'), hp('DATAFORSEO', 'REAL_TEST_PASSED'), hp('OPENAI', 'REAL_TEST_PASSED')];
+const PROVIDER_SETTINGS = [
+  { key: 'provider_kill_switch', value: true },
+  { key: 'provider_disabled_list', value: ['APIFY', 'DATAFORSEO', 'ZENROWS', 'SCRAPINGBEE', 'BRIGHTDATA'] },
+];
 
 async function open(page) {
   await page.goto(`${BASE}/property/${PROPERTY_ID}/matches`, { waitUntil: 'domcontentloaded' });
@@ -295,7 +313,7 @@ test('live search module: server state, real source nodes only, real counts, the
   const main = await page.textContent('main');
   assert.match(main, /Searching — first results are in/);
   assert.match(main, /sources working/);
-  assert.match(main, /signals analysed/);
+  assert.match(main, /signals checked/);
   assert.match(main, /Saved results/, 'stored results are their own section');
   const net = await page.getAttribute('svg[role="img"][aria-label^="Live search network"]', 'aria-label');
   assert.equal(net, 'Live search network. Sources: FACEBOOK, VK, REDDIT', 'only sources the campaign queued');
@@ -433,6 +451,80 @@ test('phones 320–430px (ka, en, ar): the page and the search dialog fit, scrol
       } else failures.push(`${where}: launch control missing`);
       await page.context().close();
     }
+  }
+  assert.deepEqual(failures, []);
+});
+
+/* ── THE OWNER'S FIRST REAL RUN (job 7517daa6): Telegram read 2 messages and
+   registered 31 communities; 0 qualified. Social actors were switched off. ── */
+const REAL_RUN = {
+  readiness: { ready: true, reason: null, sources: ['TELEGRAM'], network: [
+    { family: 'TELEGRAM', state: 'AVAILABLE' }, { family: 'FACEBOOK', state: 'DISABLED' }, { family: 'INSTAGRAM', state: 'DISABLED' },
+    { family: 'TIKTOK', state: 'DISABLED' }, { family: 'FORUM', state: 'DISABLED' },
+  ] },
+  campaign: { ...STATUS_SEARCHING.campaign, state: 'COMPLETED_NO_RESULTS', active: false, executed: true, completedAt: ago(0.05),
+    sources: [{ source: 'TELEGRAM', state: 'DONE', total: 2, running: 0, queued: 0, done: 2, failed: 0, results: 2, checked: 2, communities: 31, qualified: 0 }],
+    queue: { total: 2, queued: 0, running: 0, done: 2, failed: 0, cancelled: 0, paused: 0 }, runs: { inFlight: 0, succeeded: 0, failed: 0 },
+    signalsAnalyzed: 0, signalsChecked: 2, communitiesFound: 31, newResults: 0, newLeads: 0, newMatches: 0, strong: 0 },
+};
+
+test('the real run reads truthfully: 2 checked + 31 communities, 0 qualified; READY now; Telegram searched, social off', opts, async (t) => {
+  const { page } = await boot(t, { status: REAL_RUN });
+  await open(page);
+  await page.waitForSelector('[data-testid="fbl-source-outcomes"]', { timeout: 15000 });
+  const main = await page.textContent('main');
+  assert.match(main, /Telegram · 2 signals checked · 31 new communities found · 0 qualified matches/);
+  assert.doesNotMatch(main, /33/, 'raw items and communities are never summed into one number');
+  assert.match(main, /Ready to search/, 'the current state is READY, not the last outcome');
+  assert.match(main, /Last search \(.+\): Search finished — no new active demand/, 'the last outcome is a dated history line');
+  const states = await page.$$eval('svg[role="img"] g[data-state]', (gs) => gs.map((g) => [g.querySelector('text')?.textContent, g.getAttribute('data-state'), !!g.querySelector('[class*="-run"], [class*="-breathe"]')]));
+  assert.deepEqual(states.find((x) => x[0] === 'Telegram'), ['Telegram', 'DONE', false]);
+  for (const name of ['Facebook', 'Instagram', 'TikTok', 'Forum']) {
+    const n = states.find((x) => x[0] === name);
+    assert.ok(n, `${name} is shown in the network`);
+    assert.equal(n[1], 'DISABLED', `${name} is shown as switched off`);
+    assert.equal(n[2], false, `${name} never animates`);
+  }
+  assert.match(await page.textContent('[data-testid="fbl-network-legend"]'), /Searched.*Available.*Switched off/);
+});
+
+test('Admin → Providers: APIFY is live (Test + Enable, memo23 scope note, usable under the legacy kill switch); DATAFORSEO stays retired', opts, async (t) => {
+  const failures = [];
+  for (const [width, lang] of [[1440, 'en'], [390, 'ka'], [390, 'ar']]) {
+    const { page, settingWrites, healthTests } = await boot(t, { width, height: width < 700 ? 844 : 900, lang, admin: true });
+    await page.goto(`${BASE}/admin/providers`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('[data-testid="apify-scope"]', { timeout: 30000 });
+    const card = page.locator('div.rounded-xl, div[class*="card"]').filter({ has: page.locator('[data-testid="apify-scope"]') }).last();
+    const buttons = card.getByRole('button');
+    const cardText = await card.innerText();
+    if (!/APIFY/.test(cardText) || /OPENAI|DATAFORSEO/.test(cardText)) failures.push(`${lang} ${width}: locator is not the APIFY card alone`);
+    if ((await buttons.count()) !== 2) failures.push(`${lang} ${width}: APIFY card has ${await buttons.count()} buttons (Test + Enable expected)`);
+    const retiredText = await page.evaluate(() => document.body.innerText);
+    const dfsCard = page.locator('div.rounded-xl, div[class*="card"]').filter({ hasText: 'DATAFORSEO' }).filter({ hasNotText: 'OPENAI' }).filter({ hasNotText: 'memo23' }).last();
+    if (!/DATAFORSEO/.test(await dfsCard.innerText())) failures.push(`${lang} ${width}: DATAFORSEO card not found`);
+    if ((await dfsCard.getByRole('button').count()) !== 0) failures.push(`${lang} ${width}: DATAFORSEO card offers a control`);
+    if (/admin_providers_|undefined|NaN/.test(retiredText)) failures.push(`${lang} ${width}: raw key / undefined / NaN`);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    if (overflow > 1) failures.push(`${lang} ${width}: overflow ${overflow}px`);
+    if (lang === 'ar' && (await page.evaluate(() => document.documentElement.dir)) !== 'rtl') failures.push('ar: not rtl');
+
+    /* Test = the free account check, for APIFY. */
+    await buttons.nth(0).click();
+    await page.waitForTimeout(300);
+    if (!healthTests.some((b) => b.provider === 'APIFY')) failures.push(`${lang} ${width}: Test did not call provider-health-check for APIFY`);
+
+    /* Enable works although the legacy kill switch is on, and writes the server switch (DataForSEO stays in). */
+    const enable = buttons.nth(1);
+    if (await enable.isDisabled()) failures.push(`${lang} ${width}: APIFY Enable is disabled under the legacy kill switch`);
+    else {
+      await enable.click();
+      await page.waitForTimeout(300);
+      const w = settingWrites.find((x) => x.p_key === 'provider_disabled_list');
+      if (!w) failures.push(`${lang} ${width}: Enable wrote nothing`);
+      else if (w.p_value.includes('APIFY') || !w.p_value.includes('DATAFORSEO')) failures.push(`${lang} ${width}: wrong list ${JSON.stringify(w.p_value)}`);
+    }
+    if (SHOTS) await page.screenshot({ path: join(SHOTS, `admin-providers-${width}-${lang}.png`), fullPage: true });
+    await page.context().close();
   }
   assert.deepEqual(failures, []);
 });

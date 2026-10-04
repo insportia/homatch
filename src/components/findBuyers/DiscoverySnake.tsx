@@ -1,10 +1,14 @@
 // The HOMATCH Snake as live-search language — not a game.
 //
-// PROPERTY → HOMATCH → the public sources this campaign ACTUALLY queued. Every
-// node and every movement is a server fact (find_buyers_campaign_status):
+// PROPERTY → HOMATCH → the DISCOVERY NETWORK: every registered source family
+// (find_buyers_readiness.network) merged with what this search ACTUALLY ran
+// (find_buyers_job_state.sources). Every node and every movement is a server
+// fact:
+//   AVAILABLE / NOT_SELECTED  could be used, did not run: a quiet solid node
+//   DISABLED                  switched off: a faint dashed node, never moves
 //   QUEUED   a hollow node, waiting
 //   RUNNING  the gold signal travels out to the source; the node breathes
-//   results  a return pulse travels back toward HOMATCH
+//   qualified  a return pulse travels back toward HOMATCH (qualified matches, never raw items)
 //   DONE     the node resolves (gold); FAILED the node degrades, others go on
 //   PAUSING  movement slows and no new path lights; PAUSED everything is still
 // No source is ever drawn that the campaign did not queue. With reduced
@@ -12,16 +16,15 @@
 // labels and the counts beside it).
 import React, { useId } from 'react';
 import { sourceStyle } from '@/components/findBuyers/brand';
-import type { SourceNode } from '@/services/findBuyers';
-import type { Motion } from '@/findBuyers/campaignView';
+import type { Motion, NetworkNode } from '@/findBuyers/campaignView';
 
 const W = 640;
-const ROW = 46;
 
 export function DiscoverySnake({
   sources, motion, propertyLabel, homatchLabel, ariaLabel,
 }: {
-  sources: SourceNode[];
+  /** The network: executed sources first, then available, then switched off. */
+  sources: NetworkNode[];
   motion: Motion;
   propertyLabel: string;
   homatchLabel: string;
@@ -29,6 +32,7 @@ export function DiscoverySnake({
 }) {
   const uid = useId().replace(/:/g, '');
   const n = Math.max(1, sources.length);
+  const ROW = n > 7 ? 34 : n > 4 ? 40 : 46;
   const H = Math.max(176, n * ROW + 36);
   const cy = H / 2;
   const px = 64; const hx = 236; const sx = 520;
@@ -61,7 +65,7 @@ export function DiscoverySnake({
 
       {/* property → HOMATCH */}
       <line x1={px + 22} y1={cy} x2={hx - 30} y2={cy} stroke="hsl(40 80% 60% / 0.35)" strokeWidth="2" />
-      {moving && sources.length === 0 && (
+      {moving && !sources.some((x) => x.executed) && (
         <line x1={px + 22} y1={cy} x2={hx - 30} y2={cy} stroke={`url(#g${uid})`} strokeWidth="2.5" strokeLinecap="round" className={`s${uid}-run`} />
       )}
 
@@ -75,32 +79,34 @@ export function DiscoverySnake({
         const failed = s.state === 'FAILED';
         const done = s.state === 'DONE';
         const running = s.state === 'RUNNING';
+        const off = s.state === 'DISABLED';
+        const idle = s.state === 'AVAILABLE' || s.state === 'NOT_SELECTED';
         return (
-          <g key={s.source}>
-            <path d={d} fill="none" stroke={failed ? 'hsl(350 60% 70% / 0.45)' : 'hsl(40 80% 60% / 0.22)'}
-              strokeWidth="1.6" strokeDasharray={failed || s.state === 'CANCELLED' ? '4 5' : undefined} />
+          <g key={s.source} opacity={off ? 0.42 : idle ? 0.7 : 1} data-state={s.state}>
+            <path d={d} fill="none" stroke={failed ? 'hsl(350 60% 70% / 0.45)' : off ? 'hsl(218 25% 70% / 0.35)' : 'hsl(40 80% 60% / 0.22)'}
+              strokeWidth={off || idle ? 1 : 1.6} strokeDasharray={failed || off || s.state === 'CANCELLED' ? '4 5' : idle ? '2 6' : undefined} />
             {running && moving && (
               <path d={d} fill="none" stroke={`url(#g${uid})`} strokeWidth="2.6" strokeLinecap="round" className={`s${uid}-run`} />
             )}
             {running && !moving && <path d={d} fill="none" stroke="hsl(40 90% 62% / 0.7)" strokeWidth="2" />}
-            {s.results > 0 && moving && (
+            {s.qualified > 0 && moving && (
               <path d={back} fill="none" stroke="hsl(45 100% 80%)" strokeWidth="3.4" strokeLinecap="round" className={`s${uid}-back`} />
             )}
             {done && <path d={d} fill="none" stroke="hsl(40 90% 60% / 0.65)" strokeWidth="1.8" />}
 
             <g className={running && moving ? `s${uid}-breathe` : undefined}>
-              <circle cx={sx} cy={y} r="19"
+              <circle cx={sx} cy={y} r={ROW < 40 ? 15 : 19}
                 fill={done ? `url(#g${uid})` : failed ? 'hsl(350 35% 22%)' : running ? 'hsl(218 50% 20%)' : 'hsl(218 45% 15%)'}
-                stroke={failed ? 'hsl(350 65% 66%)' : done || running ? 'hsl(40 94% 64%)' : 'hsl(40 60% 70% / 0.45)'}
-                strokeWidth={running ? 2.4 : 1.6} strokeDasharray={s.state === 'QUEUED' ? '3 3' : undefined} />
-              <Icon x={sx - 9} y={y - 9} width={18} height={18}
+                stroke={failed ? 'hsl(350 65% 66%)' : done || running ? 'hsl(40 94% 64%)' : off ? 'hsl(218 25% 70% / 0.5)' : 'hsl(40 60% 70% / 0.45)'}
+                strokeWidth={running ? 2.4 : 1.6} strokeDasharray={s.state === 'QUEUED' || off ? '3 3' : undefined} />
+              <Icon x={sx - (ROW < 40 ? 7 : 9)} y={y - (ROW < 40 ? 7 : 9)} width={ROW < 40 ? 14 : 18} height={ROW < 40 ? 14 : 18}
                 color={done ? 'hsl(218 52% 11%)' : failed ? 'hsl(350 70% 75%)' : '#fff'} aria-hidden="true" />
             </g>
             <text x={sx + 28} y={y + 4} fontSize="13" fontWeight="600" fill={failed ? 'hsl(350 60% 80%)' : 'hsl(218 30% 92%)'}>{st.label}</text>
-            {s.results > 0 && (
+            {s.qualified > 0 && (
               <g>
                 <rect x={sx + 28 + st.label.length * 7.6 + 6} y={y - 9} rx="8" width="30" height="17" fill={`url(#g${uid})`} />
-                <text x={sx + 28 + st.label.length * 7.6 + 21} y={y + 3.5} fontSize="11" fontWeight="700" textAnchor="middle" fill="hsl(218 52% 11%)">{s.results}</text>
+                <text x={sx + 28 + st.label.length * 7.6 + 21} y={y + 3.5} fontSize="11" fontWeight="700" textAnchor="middle" fill="hsl(218 52% 11%)">{s.qualified}</text>
               </g>
             )}
           </g>

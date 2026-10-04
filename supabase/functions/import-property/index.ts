@@ -1,5 +1,6 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { extractListingMedia, IMPORTED_GALLERY_MAX, mergeGallery } from '../../../src/import/listingMedia.ts';
+import { resolveListingSource } from '../../../src/import/sourceAdapters.ts';
 
 // ============================================================
 // HOMATCH — import-property Edge Function v4
@@ -197,6 +198,8 @@ interface FallbackStep {
   status: number | string;
   size?: number;
   reason?: string;
+  /** Set when an alternate public address of the same listing was tried. */
+  url?: string;
 }
 
 // Count non-null/undefined fields in an object
@@ -1312,6 +1315,10 @@ Deno.serve(async (req) => {
     if (!f?.source_url) {
       return Response.json({ success: false, error: 'No source listing', error_code: 'NO_SOURCE' }, { status: 422, headers: CORS });
     }
+    /* Photos are refreshed only from a registered listing source. */
+    if (!resolveListingSource(String(f.source_url))) {
+      return Response.json({ success: false, error: 'Unsupported listing source', error_code: 'UNSUPPORTED_SOURCE' }, { status: 422, headers: CORS });
+    }
     /* At most one refresh per property every 10 minutes. */
     const { data: recent } = await supabase.from('property_imports').select('id,created_at,photos_found,photos_candidates')
       .eq('property_id', refreshPropertyId).eq('fetch_strategy', 'MEDIA_REFRESH').gte('created_at', new Date(Date.now() - 10 * 60_000).toISOString())
@@ -1336,7 +1343,10 @@ Deno.serve(async (req) => {
 
   const updateImport = async (updates: Record<string, unknown>) => {
     if (!importId) return;
-    await supabase.from('property_imports').update(updates).eq('id', importId);
+    /* A refresh row keeps fetch_strategy = MEDIA_REFRESH: the once-per-10-minutes
+       limit reads it. The strategy actually used stays in render_provider_used. */
+    const row = refreshTarget ? (({ fetch_strategy: _f, ...rest }) => rest)(updates as Record<string, unknown> & { fetch_strategy?: unknown }) : updates;
+    await supabase.from('property_imports').update(row).eq('id', importId);
   };
 
   // ── Step 1: Validate URL (SSRF block-list) ───────────────
@@ -1433,49 +1443,67 @@ Deno.serve(async (req) => {
     return hasPrice || hasArea || hasNextData || hasEmbedded || hasJsonLd || hasOgMeta;
   };
 
+  /* THE LISTING ITSELF, NOT JUST "A PAGE WITH PRICES". For a supported source
+     (src/import/sourceAdapters.ts) a page counts only when it shows THIS
+     listing; a portal homepage or search page with other listings' prices does
+     not. Unknown domains keep the generic content test. */
+  const resolvedSource = resolveListingSource(rawUrl);
+  const isTheListing = (h: string): boolean =>
+    hasListingContent(h) && (!resolvedSource || resolvedSource.adapter.showsListing(h, resolvedSource.listingId));
+  let listingNotShown = false;
+
   // ── Layer 1: Direct fetch (always attempted first) ────────
   // Even for known CF-protected domains, the SSR initial HTML often contains
   // __NEXT_DATA__ / embedded state with full listing data — try direct first
   // and only escalate to paid render providers if it fails or returns a CF challenge.
-  try {
-    const resp = await safeFetch(rawUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9,ka;q=0.8',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Cache-Control': 'no-cache',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-      },
-      signal: AbortSignal.timeout(20000),
-    });
-    const candidate = await resp.text();
-    httpStatusUsed = resp.status;
-    responseSizeUsed = candidate.length;
+  /* The original URL first, then the source's other public addresses for the
+     same listing (e.g. MyHome /pr/<id>/). Direct, free fetches only. */
+  for (const target of resolvedSource ? resolvedSource.candidates : [rawUrl]) {
+    if (html && fetchStrategy === 'DIRECT') break;
+    try {
+      const resp = await safeFetch(target, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9,ka;q=0.8',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Cache-Control': 'no-cache',
+          'Sec-Fetch-Dest': 'document',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-Site': 'none',
+        },
+        signal: AbortSignal.timeout(20000),
+      });
+      const candidate = await resp.text();
+      httpStatusUsed = resp.status;
+      responseSizeUsed = candidate.length;
 
-    if (resp.ok && hasListingContent(candidate)) {
-      html = candidate;
-      fetchStrategy = 'DIRECT';
-      fallbackChain.push({ strategy: 'direct', status: resp.status, size: candidate.length });
-      console.log(`[import-property] Direct fetch succeeded, size=${candidate.length}`);
-    } else {
-      const reason = isCloudflareChallenge(candidate)
-        ? 'cloudflare_challenge'
-        : resp.ok ? 'incomplete_content' : `http_${resp.status}`;
-      cfBlocked = isCloudflareChallenge(candidate);
-      fallbackChain.push({ strategy: 'direct', status: resp.status, size: candidate.length, reason });
-      console.warn(`[import-property] Direct fetch inadequate (${reason}, size=${candidate.length}) — trying render providers`);
-      // Keep partial HTML so extraction can still attempt even if incomplete
-      if (candidate.length > 500 && !isCloudflareChallenge(candidate)) {
+      if (resp.ok && isTheListing(candidate)) {
         html = candidate;
-        fetchStrategy = 'DIRECT_PARTIAL';
+        fetchStrategy = 'DIRECT';
+        listingNotShown = false;
+        fallbackChain.push({ strategy: 'direct', status: resp.status, size: candidate.length, ...(target !== rawUrl ? { url: target } : {}) });
+        console.log(`[import-property] Direct fetch succeeded, size=${candidate.length}`);
+      } else {
+        const notThisListing = resp.ok && !isCloudflareChallenge(candidate) && !!resolvedSource && hasListingContent(candidate);
+        const reason = isCloudflareChallenge(candidate)
+          ? 'cloudflare_challenge'
+          : notThisListing ? 'listing_not_shown' : resp.ok ? 'incomplete_content' : `http_${resp.status}`;
+        cfBlocked = cfBlocked || isCloudflareChallenge(candidate);
+        if (notThisListing || (resp.ok && resolvedSource && !isCloudflareChallenge(candidate))) listingNotShown = true;
+        fallbackChain.push({ strategy: 'direct', status: resp.status, size: candidate.length, reason, ...(target !== rawUrl ? { url: target } : {}) });
+        console.warn(`[import-property] Direct fetch inadequate (${reason}, size=${candidate.length})`);
+        // Unknown domains keep partial HTML so extraction can still attempt; a
+        // supported source's non-listing page is never extracted as the listing.
+        if (!resolvedSource && candidate.length > 500 && !isCloudflareChallenge(candidate) && !html) {
+          html = candidate;
+          fetchStrategy = 'DIRECT_PARTIAL';
+        }
       }
+    } catch (e) {
+      fallbackChain.push({ strategy: 'direct', status: 'error', reason: String(e) });
+      console.warn('[import-property] Direct fetch threw:', e);
     }
-  } catch (e) {
-    fallbackChain.push({ strategy: 'direct', status: 'error', reason: String(e) });
-    console.warn('[import-property] Direct fetch threw:', e);
   }
 
   // ── Layer 2: ZenRows with antibot + JS render ─────────────
@@ -1502,7 +1530,7 @@ Deno.serve(async (req) => {
       httpStatusUsed = zr.status;
       responseSizeUsed = candidate.length;
 
-      if (zr.ok && hasListingContent(candidate)) {
+      if (zr.ok && isTheListing(candidate)) {
         html = candidate;
         fetchStrategy = 'ZENROWS';
         cfBlocked = false;
@@ -1515,7 +1543,7 @@ Deno.serve(async (req) => {
         fallbackChain.push({ strategy: 'zenrows', status: zr.status, size: candidate.length, reason });
         console.warn(`[import-property] ZenRows inadequate (${reason}) — trying ScrapingBee`);
         // Keep partial HTML in case ScrapingBee also fails — use best available
-        if (candidate.length > html.length && !isCloudflareChallenge(candidate)) {
+        if (!resolvedSource && candidate.length > html.length && !isCloudflareChallenge(candidate)) {
           html = candidate;
           fetchStrategy = 'ZENROWS';
         }
@@ -1548,7 +1576,7 @@ Deno.serve(async (req) => {
       httpStatusUsed = sb.status;
       responseSizeUsed = candidate.length;
 
-      if (sb.ok && hasListingContent(candidate)) {
+      if (sb.ok && isTheListing(candidate)) {
         html = candidate;
         fetchStrategy = 'SCRAPINGBEE';
         cfBlocked = false;
@@ -1560,7 +1588,7 @@ Deno.serve(async (req) => {
           : sb.ok ? 'incomplete_content' : `http_${sb.status}`;
         fallbackChain.push({ strategy: 'scrapingbee', status: sb.status, size: candidate.length, reason });
         console.warn(`[import-property] ScrapingBee inadequate (${reason})`);
-        if (candidate.length > html.length && !isCloudflareChallenge(candidate)) {
+        if (!resolvedSource && candidate.length > html.length && !isCloudflareChallenge(candidate)) {
           html = candidate;
           fetchStrategy = 'SCRAPINGBEE';
         }
@@ -1576,9 +1604,13 @@ Deno.serve(async (req) => {
   // ── All layers exhausted — no usable HTML ─────────────────
   if (!html) {
     const providersConfigured = !!(zenrowsKey || scrapingbeeKey);
-    const errorCode = cfBlocked
-      ? (providersConfigured ? 'SOURCE_BLOCKED' : 'RENDER_PROVIDER_UNAVAILABLE')
-      : 'EXTRACTION_FAILED';
+    /* The page answered but is not this listing (homepage, search, removed
+       listing): say so, rather than "could not be read". */
+    const errorCode = listingNotShown && !cfBlocked
+      ? 'LISTING_NOT_AVAILABLE'
+      : cfBlocked
+        ? (providersConfigured ? 'SOURCE_BLOCKED' : 'RENDER_PROVIDER_UNAVAILABLE')
+        : 'EXTRACTION_FAILED';
     await updateImport({
       status: 'FAILED',
       error_code: errorCode,
@@ -1591,7 +1623,7 @@ Deno.serve(async (req) => {
     });
     return Response.json(
       { success: false, error_code: errorCode, fetch_strategy: fetchStrategy, fallback_chain: fallbackChain },
-      { status: cfBlocked ? 422 : 503, headers: CORS },
+      { status: cfBlocked || errorCode === 'LISTING_NOT_AVAILABLE' ? 422 : 503, headers: CORS },
     );
   }
 
@@ -1619,7 +1651,10 @@ Deno.serve(async (req) => {
   facts.source_domain = domain;
 
   // 1. Domain-specific adapters
-  const adapted = isMyHome ? adaptMyHome(html, rawUrl) : (isSS ? adaptSS(html, rawUrl) : null);
+  /* Field extraction per registered source (src/import/sourceAdapters.ts ids). */
+  const SOURCE_EXTRACTORS: Record<string, (h: string, u: string) => Partial<ExtractedFacts> | null> = { myhome: adaptMyHome, ss: adaptSS };
+  const extractor = resolvedSource ? SOURCE_EXTRACTORS[resolvedSource.adapter.id] : undefined;
+  const adapted = extractor ? extractor(html, rawUrl) : null;
   if (adapted) {
     for (const [k, v] of Object.entries(adapted)) {
       if (v !== undefined && v !== null) {
@@ -1636,7 +1671,7 @@ Deno.serve(async (req) => {
     }
   }
 
-  const adapterUsed = isMyHome ? 'myhome' : isSS ? 'ss' : 'universal';
+  const adapterUsed = resolvedSource?.adapter.id ?? 'universal';
 
   // ── Gallery extraction ────────────────────────────────────
   // Priority order:

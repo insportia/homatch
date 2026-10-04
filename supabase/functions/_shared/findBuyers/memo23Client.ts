@@ -1,6 +1,7 @@
 // THE ONLY CODE THAT TALKS TO APIFY — and only to memo23 Actors.
 //
-// The generic APIFY provider stays retired (retiredProviders.ts). This module
+// The generic Apify execution stays deleted (retiredProviders.ts); Apify is a
+// live provider again (owner, 2026-10-04) ONLY through this module, which
 // exists because the owner authorised memo23 Actors for FIND BUYERS / FIND
 // TENANTS (2026-10-04). It:
 //   * reads APIFY_API_TOKEN from the edge environment, server-side only;
@@ -8,7 +9,8 @@
 //   * refuses any Actor id that is not a memo23 Actor;
 //   * caps every run at the reservation (maxItems + maxTotalChargeUsd).
 //
-// Callers: _shared/findBuyers/executor.ts (runs) and the admin verify action.
+// Callers: _shared/findBuyers/executor.ts (runs), the admin verify action and
+// provider-health-check (accountCheck: one free account read, never a run).
 
 const API = 'https://api.apify.com/v2';
 
@@ -110,6 +112,15 @@ export async function datasetItems(datasetId: string, limit: number): Promise<{ 
   const total = Number(res.headers.get('x-apify-pagination-total'));
   const items = await res.json().catch(() => []);
   return { items: Array.isArray(items) ? items : [], total: Number.isFinite(total) ? total : null };
+}
+
+/**
+ * Admin → Providers "Test" for APIFY: one free account read (GET /users/me).
+ * Starts no run, names no Actor, costs nothing; returns no secret.
+ */
+export async function accountCheck(): Promise<{ ok: true; username: string | null; plan: string | null }> {
+  const me = (await call('GET', '/users/me', undefined, 15_000))?.data ?? {};
+  return { ok: true, username: typeof me.username === 'string' ? me.username : null, plan: typeof me.plan?.id === 'string' ? me.plan.id : null };
 }
 
 /** The Actor's current definition: pricing and input schema, for admin verification. */

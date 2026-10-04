@@ -167,7 +167,7 @@ export const COMPONENTS = {
   // Customer product surfaces without a dedicated suite of their own: the
   // route sweeps, the shell and the tasks suite are what render them.
   PRODUCT: {
-    paths: [/^src\/(pages|components|lib|services|campaign|dealroom|documents|investment|jobs|property|surfaces)\//],
+    paths: [/^src\/(pages|components|lib|services|campaign|dealroom|documents|import|investment|jobs|property|surfaces)\//],
     suites: ['mobile:routes', 'mobile:shell', 'mobile:tasks'],
   },
   // Edge functions whose consumers reach them only over HTTP and that no

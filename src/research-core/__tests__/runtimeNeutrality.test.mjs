@@ -222,6 +222,9 @@ test('the core is consumed only through its deliberate integration points', () =
      * this seam, never the core.
      */
     'src/findBuyers/searchDna.ts',
+    /* The admin seam onto the Actor catalog: class and lifecycle come from the
+       same pure rules the planner and cost bound use. */
+    'src/findBuyers/actorCatalog.ts',
     'supabase/functions/atomic-unlock/index.ts',
     'supabase/functions/classify-signals-v2/index.ts',
     'src/matching/currentDemand.ts',

@@ -15405,6 +15405,31 @@ const en = {
 
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   fbl_admin_work_hint: 'queued / running / done / failed / paused · runs in flight',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbl_state_ready: 'Ready to search',
+  fbl_state_cannot_start: 'Search sources are switched off right now',
+  fbl_last_search: 'Last search ({{date}}): {{state}}',
+  fbl_net_searched: 'Searched',
+  fbl_net_available: 'Available',
+  fbl_net_off: 'Switched off',
+  fbl_m_checked: 'signals checked',
+  fbl_m_qualified: 'qualified matches',
+  fbl_src_checked: '{{n}} signals checked',
+  fbl_src_communities: '{{n}} new communities found',
+  fbl_src_qualified: '{{n}} qualified matches',
+  fbl_media_listing_gone: 'The source no longer shows this listing publicly (it may have been removed or moved)',
+  fbl_media_unsupported: 'Photos can only be refreshed from a supported listing site',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbx_admin_class: 'Class',
+  fbx_admin_lifecycle: 'Lifecycle',
+  fbx_admin_output_proven: 'Output proven by a real run',
+  fbx_admin_last_verified: 'Last verified',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  admin_providers_apify_scope: 'Live for Find Buyers / Find Tenants only: registered memo23 Actors through one controlled client. Test is a free account check and never runs an Actor. Disable stops every memo23 run. Actors are switched one by one in Discovery → Find Buyers → Actors.',
+  admin_providers_apify_treasury_note: 'Switched on and off by the APIFY provider card above.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -30724,6 +30749,31 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   fbl_admin_work_hint: 'რიგში / მიმდინარე / დასრულებული / ჩავარდნილი / დაპაუზებული · მიმდინარე გაშვებები',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbl_state_ready: 'ძებნისთვის მზადაა',
+  fbl_state_cannot_start: 'საძიებო წყაროები ამჟამად გამორთულია',
+  fbl_last_search: 'ბოლო ძებნა ({{date}}): {{state}}',
+  fbl_net_searched: 'მოძებნილი',
+  fbl_net_available: 'ხელმისაწვდომი',
+  fbl_net_off: 'გამორთული',
+  fbl_m_checked: 'შემოწმებული სიგნალი',
+  fbl_m_qualified: 'შესაფერისი დამთხვევა',
+  fbl_src_checked: '{{n}} სიგნალი შემოწმდა',
+  fbl_src_communities: '{{n}} ახალი საზოგადოება მოიძებნა',
+  fbl_src_qualified: '{{n}} შესაფერისი დამთხვევა',
+  fbl_media_listing_gone: 'წყარო ამ განცხადებას საჯაროდ აღარ აჩვენებს (შესაძლოა წაიშალა ან მისამართი შეიცვალა)',
+  fbl_media_unsupported: 'ფოტოების განახლება მხოლოდ მხარდაჭერილი საიტის განცხადებიდანაა შესაძლებელი',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbx_admin_class: 'კლასი',
+  fbx_admin_lifecycle: 'სტატუსი',
+  fbx_admin_output_proven: 'შედეგი დადასტურებულია რეალური გაშვებით',
+  fbx_admin_last_verified: 'ბოლო შემოწმება',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  admin_providers_apify_scope: 'აქტიურია მხოლოდ მყიდველების / მოიჯარეების ძებნისთვის: რეგისტრირებული memo23 Actor-ები ერთი კონტროლირებადი კლიენტით. შემოწმება ანგარიშის უფასო გადამოწმებაა და Actor-ს არასდროს უშვებს. გამორთვა ყველა memo23 გაშვებას აჩერებს. Actor-ები ცალ-ცალკე ირთვება: Discovery → Find Buyers → Actors.',
+  admin_providers_apify_treasury_note: 'ირთვება და ითიშება ზემოთ, APIFY-ის პროვაიდერის ბარათიდან.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -46034,6 +46084,31 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   fbl_admin_work_hint: 'в очереди / выполняется / готово / сбой / пауза · запуски в работе',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbl_state_ready: 'Готово к поиску',
+  fbl_state_cannot_start: 'Источники поиска сейчас отключены',
+  fbl_last_search: 'Последний поиск ({{date}}): {{state}}',
+  fbl_net_searched: 'Проверено',
+  fbl_net_available: 'Доступно',
+  fbl_net_off: 'Отключено',
+  fbl_m_checked: 'сигналов проверено',
+  fbl_m_qualified: 'подходящих совпадений',
+  fbl_src_checked: 'проверено сигналов: {{n}}',
+  fbl_src_communities: 'найдено новых сообществ: {{n}}',
+  fbl_src_qualified: 'подходящих совпадений: {{n}}',
+  fbl_media_listing_gone: 'Источник больше не показывает это объявление публично (возможно, оно удалено или перенесено)',
+  fbl_media_unsupported: 'Обновить фото можно только из объявления на поддерживаемом сайте',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbx_admin_class: 'Класс',
+  fbx_admin_lifecycle: 'Жизненный цикл',
+  fbx_admin_output_proven: 'Вывод подтверждён реальным запуском',
+  fbx_admin_last_verified: 'Последняя проверка',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  admin_providers_apify_scope: 'Работает только для поиска покупателей / арендаторов: зарегистрированные Actor memo23 через один контролируемый клиент. Проверка — бесплатный запрос к аккаунту, Actor не запускается. Отключение останавливает все запуски memo23. Actor включаются по одному: Discovery → Find Buyers → Actors.',
+  admin_providers_apify_treasury_note: 'Включается и отключается карточкой провайдера APIFY выше.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -61342,6 +61417,31 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   fbl_admin_work_hint: 'sırada / çalışıyor / tamam / başarısız / duraklatıldı · süren çalıştırmalar',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbl_state_ready: 'Aramaya hazır',
+  fbl_state_cannot_start: 'Arama kaynakları şu anda kapalı',
+  fbl_last_search: 'Son arama ({{date}}): {{state}}',
+  fbl_net_searched: 'Arandı',
+  fbl_net_available: 'Kullanılabilir',
+  fbl_net_off: 'Kapalı',
+  fbl_m_checked: 'kontrol edilen sinyal',
+  fbl_m_qualified: 'uygun eşleşme',
+  fbl_src_checked: '{{n}} sinyal kontrol edildi',
+  fbl_src_communities: '{{n}} yeni topluluk bulundu',
+  fbl_src_qualified: '{{n}} uygun eşleşme',
+  fbl_media_listing_gone: 'Kaynak bu ilanı artık herkese açık göstermiyor (kaldırılmış veya taşınmış olabilir)',
+  fbl_media_unsupported: 'Fotoğraflar yalnızca desteklenen bir ilan sitesinden yenilenebilir',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbx_admin_class: 'Sınıf',
+  fbx_admin_lifecycle: 'Yaşam döngüsü',
+  fbx_admin_output_proven: 'Çıktı gerçek bir çalıştırmayla kanıtlandı',
+  fbx_admin_last_verified: 'Son doğrulama',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  admin_providers_apify_scope: 'Yalnızca Alıcı / Kiracı Bul için etkin: tek bir kontrollü istemci üzerinden kayıtlı memo23 Actor\'ları. Test, ücretsiz bir hesap kontrolüdür ve hiçbir Actor çalıştırmaz. Devre dışı bırakmak tüm memo23 çalıştırmalarını durdurur. Actor\'lar tek tek açılır: Discovery → Find Buyers → Actors.',
+  admin_providers_apify_treasury_note: 'Yukarıdaki APIFY sağlayıcı kartından açılıp kapatılır.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -76650,6 +76750,31 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   fbl_admin_work_hint: 'في الانتظار / قيد التشغيل / منجز / فاشل / متوقف مؤقتًا · تشغيلات جارية',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbl_state_ready: 'جاهز للبحث',
+  fbl_state_cannot_start: 'مصادر البحث متوقفة حاليًا',
+  fbl_last_search: 'آخر بحث ({{date}}): {{state}}',
+  fbl_net_searched: 'تم البحث',
+  fbl_net_available: 'متاح',
+  fbl_net_off: 'متوقف',
+  fbl_m_checked: 'إشارات تم فحصها',
+  fbl_m_qualified: 'تطابقات مؤهلة',
+  fbl_src_checked: 'تم فحص {{n}} إشارات',
+  fbl_src_communities: 'تم العثور على {{n}} مجتمعات جديدة',
+  fbl_src_qualified: '{{n}} تطابقات مؤهلة',
+  fbl_media_listing_gone: 'المصدر لم يعد يعرض هذا الإعلان علنًا (ربما حُذف أو نُقل)',
+  fbl_media_unsupported: 'لا يمكن تحديث الصور إلا من موقع إعلانات مدعوم',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbx_admin_class: 'الفئة',
+  fbx_admin_lifecycle: 'دورة الحياة',
+  fbx_admin_output_proven: 'المخرجات مثبتة بتشغيل حقيقي',
+  fbx_admin_last_verified: 'آخر تحقق',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  admin_providers_apify_scope: 'مفعّل فقط للبحث عن المشترين / المستأجرين: Actors ‏memo23 المسجّلة عبر عميل واحد خاضع للرقابة. الاختبار فحص مجاني للحساب ولا يشغّل أي Actor. التعطيل يوقف كل تشغيلات memo23. تُفعَّل الـ Actors واحدًا واحدًا من Discovery → Find Buyers → Actors.',
+  admin_providers_apify_treasury_note: 'يُشغَّل ويُوقَف من بطاقة مزوّد APIFY أعلاه.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -91958,6 +92083,31 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   fbl_admin_work_hint: 'בתור / רץ / הושלם / נכשל / מושהה · ריצות פעילות',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbl_state_ready: 'מוכן לחיפוש',
+  fbl_state_cannot_start: 'מקורות החיפוש כבויים כרגע',
+  fbl_last_search: 'החיפוש האחרון ({{date}}): {{state}}',
+  fbl_net_searched: 'נסרק',
+  fbl_net_available: 'זמין',
+  fbl_net_off: 'כבוי',
+  fbl_m_checked: 'אותות שנבדקו',
+  fbl_m_qualified: 'התאמות מתאימות',
+  fbl_src_checked: '{{n}} אותות נבדקו',
+  fbl_src_communities: '{{n}} קהילות חדשות נמצאו',
+  fbl_src_qualified: '{{n}} התאמות מתאימות',
+  fbl_media_listing_gone: 'המקור כבר לא מציג את המודעה הזו בפומבי (ייתכן שהוסרה או הועברה)',
+  fbl_media_unsupported: 'אפשר לרענן תמונות רק ממודעה באתר נתמך',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbx_admin_class: 'סיווג',
+  fbx_admin_lifecycle: 'מחזור חיים',
+  fbx_admin_output_proven: 'הפלט הוכח בהרצה אמיתית',
+  fbx_admin_last_verified: 'אימות אחרון',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  admin_providers_apify_scope: 'פעיל רק לחיפוש קונים / שוכרים: Actors רשומים של memo23 דרך לקוח מבוקר אחד. הבדיקה היא בדיקת חשבון חינמית ואינה מריצה Actor. השבתה עוצרת כל הרצה של memo23. ה-Actors מופעלים אחד-אחד ב-Discovery → Find Buyers → Actors.',
+  admin_providers_apify_treasury_note: 'מופעל ומושבת מכרטיס הספק APIFY למעלה.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

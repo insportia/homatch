@@ -99,6 +99,15 @@ async function start(db: any, job: any, campaign: any, settings: FindBuyersSetti
       return out({ outcome: 'FAILED', error: 'START_INTERRUPTED' });
     }
     if (existing && existing.status !== 'RESERVED') return out({ outcome: 'FAILED', error: `RUN_${existing.status}` });
+    /* Still RESERVED: the gates are checked again — the actor may have been
+       disabled since the reservation was taken. */
+    if (reservation.actorEnabled === false) {
+      await db.rpc('find_buyers_book_run_cost', {
+        p_run_id: runId, p_status: 'RELEASED', p_actual_micros: 0, p_cost_basis: 'NOT_STARTED', p_results_billed: 0,
+        p_items_fetched: 0, p_error: 'ACTOR_DISABLED_BEFORE_START', p_billing: {},
+      });
+      return out({ outcome: 'CANCELLED', error: 'ACTOR_DISABLED' });
+    }
   }
 
   /* Incremental reading: only content newer than the source's last check (≤30 days). */
@@ -109,7 +118,7 @@ async function start(db: any, job: any, campaign: any, settings: FindBuyersSetti
     const last = src?.last_checked_at ? Date.parse(src.last_checked_at) - 6 * 3_600_000 : 0;
     since = new Date(Math.max(Date.parse(since), last)).toISOString();
   }
-  const limit = Number(reservation.requestedLimit);
+  const limit = Math.max(1, Math.min(Number(reservation.requestedLimit) || Number(actor.probe_size) || 1, Number(actor.max_results) || 100));
   const { input, dropped } = buildInput(stage, { query: meta.query ?? null, targetUrl: meta.targetUrl ?? null, size: limit, since }, actor.input_contract ?? null);
   /* STARTING before the provider call, and only from RESERVED and unbooked:
      a campaign that ended meanwhile has already released this reservation. */
@@ -138,7 +147,8 @@ async function start(db: any, job: any, campaign: any, settings: FindBuyersSetti
     const e = error instanceof Memo23Error ? error : new Memo23Error(scrub(String(error)), 0, true);
     /* The provider refused the start (an HTTP answer, so no run exists): back to
        RESERVED, then release. A network error is ambiguous — booked UNKNOWN. */
-    if (e.status === 0) {
+    /* Network errors and 5xx answers are ambiguous: the run may exist. */
+    if (e.status === 0 || e.status >= 500) {
       await db.rpc('find_buyers_book_run_cost', {
         p_run_id: runId, p_status: 'ABORTED', p_actual_micros: null, p_cost_basis: 'UNKNOWN', p_results_billed: null,
         p_items_fetched: 0, p_error: `START_AMBIGUOUS: ${e.message}`, p_billing: {},
@@ -169,15 +179,17 @@ async function poll(db: any, job: any, campaign: any, settings: FindBuyersSettin
 
   let r: any = null;
   if (!run.cost_booked_at) {
-    try { r = await getRun(run.provider_run_id); } catch (error) {
+    const providerRunId = run.provider_run_id ?? meta.providerRunId ?? null;
+    if (!providerRunId) return out({ outcome: 'WAIT', retrySeconds: 45, metadata: { lastPollError: 'NO_PROVIDER_RUN_ID' } });
+    try { r = await getRun(providerRunId); } catch (error) {
       return out({ outcome: 'WAIT', retrySeconds: 45, metadata: { lastPollError: scrub(String(error)) } });
     }
     if (!r) return out({ outcome: 'WAIT', retrySeconds: 45 });
     if (!TERMINAL_RUN_STATES.has(String(r.status))) {
       const startedAt = Date.parse(run.started_at ?? run.created_at);
       if (Date.now() - startedAt > (Number(actor?.timeout_seconds ?? 300) + 120) * 1000) {
-        await abortRun(run.provider_run_id);
-        r = await getRun(run.provider_run_id).catch(() => r);
+        await abortRun(providerRunId);
+        r = await getRun(providerRunId).catch(() => r);
         if (!TERMINAL_RUN_STATES.has(String(r?.status))) return out({ outcome: 'WAIT', retrySeconds: 30, metadata: { aborting: true } });
       } else {
         return out({ outcome: 'WAIT', retrySeconds: POLL_SECONDS });
@@ -188,7 +200,7 @@ async function poll(db: any, job: any, campaign: any, settings: FindBuyersSettin
   /* Results: whatever the run produced, even when it failed part way. */
   let items: unknown[] = [];
   let total: number | null = null;
-  const datasetId = run.dataset_id ?? r?.defaultDatasetId ?? null;
+  const datasetId = run.dataset_id ?? meta.datasetId ?? r?.defaultDatasetId ?? null;
   if (datasetId) {
     try { ({ items, total } = await datasetItems(datasetId, Number(run.requested_limit) + 10)); }
     catch (error) { if (!run.cost_booked_at) return out({ outcome: 'WAIT', retrySeconds: 30, metadata: { lastPollError: scrub(String(error)) } }); }
@@ -228,19 +240,23 @@ async function poll(db: any, job: any, campaign: any, settings: FindBuyersSettin
     items_fetched: items.length, useful_results: result.useful, qualified_leads: result.qualified, strong_leads: result.strong,
     stale_dropped: result.staleDropped,
   }).eq('id', run.id);
-  if (meta.sourceId) {
+  /* Stats once per run: a replayed poll (lease lost after booking) adds nothing twice. */
+  const { data: firstApply } = await db.from('find_buyers_actor_runs').update({ stats_applied_at: new Date().toISOString() })
+    .eq('id', run.id).is('stats_applied_at', null).select('id');
+  const applyStats = Array.isArray(firstApply) && firstApply.length === 1;
+  if (applyStats && meta.sourceId) {
     const { data: src } = await db.from('source_registry').select('posts_observed,fb_spend_micros,fb_qualified_leads,fb_strong_leads').eq('id', meta.sourceId).maybeSingle();
     if (src) await db.from('source_registry').update({
       posts_observed: Number(src.posts_observed || 0) + normalized.length,
       fb_spend_micros: Number(src.fb_spend_micros || 0) + Number(costMicros || 0),
       fb_qualified_leads: Number(src.fb_qualified_leads || 0) + result.qualified,
       fb_strong_leads: Number(src.fb_strong_leads || 0) + result.strong,
-      last_checked_at: new Date().toISOString(),
-      ...(bookStatus === 'SUCCEEDED' ? { last_successful_at: new Date().toISOString() } : {}),
+      /* The read window advances only after a successful read. */
+      ...(bookStatus === 'SUCCEEDED' ? { last_checked_at: new Date().toISOString(), last_successful_at: new Date().toISOString() } : {}),
       ...(result.qualified > 0 ? { last_useful_at: new Date().toISOString() } : {}),
     }).eq('id', meta.sourceId);
   }
-  if (meta.query && ['FB_GROUP_SEARCH', 'TIKTOK_SEARCH', 'LINKEDIN_POSTS', 'LINKEDIN_GROUPS', 'VK_WALL', 'REDDIT_SEARCH', 'QUORA_SEARCH', 'BLUESKY_SEARCH'].includes(stage)) {
+  if (applyStats && meta.query && ['FB_GROUP_SEARCH', 'TIKTOK_SEARCH', 'LINKEDIN_POSTS', 'LINKEDIN_GROUPS', 'VK_WALL', 'REDDIT_SEARCH', 'QUORA_SEARCH', 'BLUESKY_SEARCH'].includes(stage)) {
     await bumpQueryStats(db, network, job.language ?? 'multi', String(meta.query), Number(costMicros || 0), normalized.length, result);
   }
 

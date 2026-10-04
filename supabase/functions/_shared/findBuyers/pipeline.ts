@@ -75,6 +75,8 @@ export interface PipelineCtx {
   sourceId: string | null;
   sourceYield: number | null;
   now?: number;
+  /** Judging comments HOMATCH already stored: read them, never re-write them. */
+  reusing?: boolean;
 }
 
 export interface PipelineResult {
@@ -145,13 +147,14 @@ async function processGroups(ctx: PipelineCtx, groups: NormalizedItem[], out: Pi
       /* Discovery registers; it never switches a source on for other collectors. */
       active: false,
       quality_score: Math.round(score * 100) / 10,
-      last_checked_at: new Date().toISOString(),
+      /* No last_checked_at here: discovering a group is not reading it; its
+         first read must cover the full 30-day window. */
     };
     const { data: existing } = await db.from('source_registry').select('id,languages,last_checked_at').eq('platform', network).eq('external_id', row.external_id).maybeSingle();
     let sourceId: string | null = existing?.id ?? null;
     if (existing) {
       const langs = [...new Set([...(existing.languages ?? []), ...row.languages])];
-      await db.from('source_registry').update({ languages: langs, member_count: row.member_count, last_checked_at: row.last_checked_at }).eq('id', existing.id);
+      await db.from('source_registry').update({ languages: langs, member_count: row.member_count }).eq('id', existing.id);
     } else {
       const { data: ins } = await db.from('source_registry').insert(row).select('id').maybeSingle();
       sourceId = ins?.id ?? null;
@@ -238,11 +241,20 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
     /* Never PENDING: classify-signals-v2 must not re-classify (and re-pay for) these. */
     classification_status: 'FILTERED_OUT',
   }));
-  const { data: upserted, error } = await db.from('raw_signals')
-    .upsert(rows, { onConflict: 'platform,external_id', ignoreDuplicates: false })
-    .select('id,external_id');
-  if (error) throw error;
-  const idMap = new Map(((upserted ?? []) as any[]).map((r) => [r.external_id, r.id as string]));
+  /* One row per external id (inline comments and truncated ids can repeat;
+     a repeated key would fail the whole upsert). Reused comments are not
+     re-written: their attribution and last_seen_at stay the original's. */
+  const unique = [...new Map(rows.map((r) => [r.external_id, r])).values()];
+  let idMap: Map<string, string>;
+  if (ctx.reusing) {
+    idMap = new Map(knownMap.size ? [...knownMap.values()].map((r: any) => [r.external_id, r.id as string]) : []);
+  } else {
+    const { data: upserted, error } = await db.from('raw_signals')
+      .upsert(unique, { onConflict: 'platform,external_id', ignoreDuplicates: false })
+      .select('id,external_id');
+    if (error) throw error;
+    idMap = new Map(((upserted ?? []) as any[]).map((r) => [r.external_id, r.id as string]));
+  }
 
   /* Already assessed for THIS campaign → a duplicate, skip. */
   const signalIds = [...idMap.values()];
@@ -296,8 +308,9 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
     assessed.push({ item, signalId, facts, similarity, simResult, ageDays, language: detectLanguage(item.text), parent, ctx: ictx, verdict, cacheKey, commentsDecision, fingerprint, why });
   }
 
-  /* The model only for ambiguous text — one batched, schema-bound call per 30. */
-  const ambiguous = assessed.filter((a) => a.verdict?.needsModel && a.item.text.length >= 3);
+  /* The model only for ambiguous text — one batched, schema-bound call per 30,
+     at most 3 calls per claim (the rest stay UNCERTAIN: never a lead). */
+  const ambiguous = assessed.filter((a) => a.verdict?.needsModel && a.item.text.length >= 3).slice(0, 90);
   for (let i = 0; i < ambiguous.length; i += 30) {
     const batch = ambiguous.slice(i, i + 30);
     const res = await openAiJson<{ items: Array<{ id: string; intent_class: string }> }>(ctx.book, INTENT_SYSTEM_PROMPT, {
@@ -308,7 +321,7 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
     }, INTENT_MODEL_SCHEMA, { maxTokens: 120 + batch.length * 60 });
     out.aiCalls++;
     await recordAiCost(db, {
-      key: `ai:intent:${ctx.runId}:${i}`, matchingJobId: campaign.matching_job_id, kind: 'AI', operation: 'INTENT',
+      key: `ai:intent:${ctx.runId}:${ctx.stage}:${ctx.parent?.externalId ?? '-'}:${i}`, matchingJobId: campaign.matching_job_id, kind: 'AI', operation: 'INTENT',
       result: res, metadata: { items: batch.length, stage: ctx.stage },
     }).catch(() => undefined);
     const byId = new Map((res.data?.items ?? []).map((x) => [String(x.id), x]));
@@ -415,7 +428,7 @@ async function reuseStoredComments(ctx: PipelineCtx, parent: ParentContext, out:
   }));
   const commentStage: Stage = ctx.stage === 'FB_GROUP_POSTS' ? 'FB_COMMENTS' : ctx.stage === 'IG_PROFILE_POSTS' ? 'IG_COMMENTS'
     : ctx.stage === 'TIKTOK_SEARCH' ? 'TIKTOK_COMMENTS' : ctx.stage === 'REDDIT_SEARCH' ? 'REDDIT_COMMENTS' : ctx.stage;
-  const sub = await processItems({ ...ctx, parent, stage: commentStage }, items);
+  const sub = await processItems({ ...ctx, parent, stage: commentStage, reusing: true }, items);
   out.reused += items.length;
   out.qualified += sub.qualified; out.strong += sub.strong; out.duplicates += sub.duplicates; out.useful += sub.useful;
   out.staleDropped += sub.staleDropped;

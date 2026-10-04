@@ -178,6 +178,8 @@ create table if not exists public.find_buyers_actor_runs (
   strong_leads integer not null default 0,
   /* 30-day rule: items older than 30 days / undated, dropped before persistence. */
   stale_dropped integer not null default 0,
+  /* Source/query stats are added once per run, even if processing is replayed. */
+  stats_applied_at timestamptz,
   reason jsonb not null default '{}'::jsonb,
   provider_billing jsonb not null default '{}'::jsonb,
   error text,
@@ -567,8 +569,11 @@ begin
     if v_existing.matching_job_id <> p_matching_job_id then
       return jsonb_build_object('ok', false, 'reason', 'IDEMPOTENCY_KEY_REUSED');
     end if;
+    select * into v_a from public.find_buyers_actor_registry where actor_key = p_actor_key;
     return jsonb_build_object('ok', true, 'replay', true, 'runId', v_existing.id, 'status', v_existing.status,
-                              'reservedMicros', v_existing.reserved_micros);
+                              'reservedMicros', v_existing.reserved_micros, 'requestedLimit', v_existing.requested_limit,
+                              'actorId', v_existing.actor_id, 'timeoutSeconds', v_a.timeout_seconds,
+                              'actorEnabled', v_a.enabled and not v_a.emergency_disabled and v_a.health <> 'DISABLED');
   end if;
   if v_c.finalized_at is not null then return jsonb_build_object('ok', false, 'reason', 'CAMPAIGN_FINALIZED'); end if;
 
@@ -592,7 +597,8 @@ begin
   v_estimate := v_a.start_fee_micros + ceil(v_limit::numeric * v_a.price_per_1k_micros / 1000)::bigint;
 
   select count(*) into v_running from public.find_buyers_actor_runs
-   where actor_key = p_actor_key and status in ('RESERVED', 'STARTING', 'RUNNING');
+   where actor_key = p_actor_key and status in ('RESERVED', 'STARTING', 'RUNNING') and cost_booked_at is null
+     and created_at > now() - interval '2 hours';
   if v_running >= v_a.concurrency then
     return jsonb_build_object('ok', false, 'reason', 'ACTOR_BUSY', 'retry', true);
   end if;

@@ -36,12 +36,12 @@ import {
 import { fetchCurrentFx } from '../_shared/fx.ts';
 import { sourceGroupOf } from '../../../src/research-core/discovery/discovery-plan.ts';
 import { executeSocialJob } from '../_shared/findBuyers/executor.ts';
-import { queueTelegramFallback } from '../_shared/findBuyers/campaign.ts';
+import { queueTelegramFallback, sweepStaleActorRuns } from '../_shared/findBuyers/campaign.ts';
 
 /* The providers the native pass runs. APIFY_MEMO23 has its own pass. */
 const NATIVE_PROVIDERS = ['TELEGRAM', 'TELEGRAM_SOURCES', 'FORUM', 'PORTAL'];
 /* The social pass stops claiming after this long, inside one tick. */
-const SOCIAL_PASS_MS = 40_000;
+const SOCIAL_PASS_MS = 30_000;
 
 const OPEN_SOURCE_STATES = ['PENDING', 'PROCESSING', 'RETRY_WAIT'];
 const STUCK_AFTER_MS = 12 * 60_000;
@@ -68,8 +68,11 @@ export async function drive(db: any, baseUrl: string, serviceKey: string, body: 
   if (settings.workerRouteEnabled) {
     report.workerRoutedJobs = await runSourceJobs(db, baseUrl, serviceKey, settings, 1, 'WORKER');
   }
-  report.campaigns = await advanceCampaigns(db, baseUrl, serviceKey, settings, started);
-  report.runs = await advanceRuns(db, baseUrl, serviceKey, started);
+  /* Endings get their own clock: a busy social pass must never starve the
+     finishing (and settling) of campaigns whose window closed. */
+  report.socialSweep = await sweepStaleActorRuns(db).catch((e) => ({ error: errorText(e) }));
+  report.campaigns = await advanceCampaigns(db, baseUrl, serviceKey, settings, Date.now());
+  report.runs = await advanceRuns(db, baseUrl, serviceKey, Date.now());
   report.pauseExpired = await expirePausedCampaigns(db);
   report.runPauseExpired = await expirePausedRuns(db);
   report.rescued = await rescueStuck(db);

@@ -12,7 +12,7 @@ import { buildPropertyDna, type PropertyDna } from '../../../../src/research-cor
 import { buildQueryPlan, mergeModelQueries, QUERY_PLAN_VERSION, type QueryPlan } from '../../../../src/research-core/findBuyers/queryPlanner.ts';
 import { initialSocialJobs, type KnownSource, type PlannedSocialJob } from '../../../../src/research-core/findBuyers/campaignPlan.ts';
 import { SEARCH_LANGUAGES } from '../../../../src/research-core/findBuyers/languages.ts';
-import { abortRun, getRun, runCost, TERMINAL_RUN_STATES } from './memo23Client.ts';
+import { abortRun, datasetItems, getRun, runCost, TERMINAL_RUN_STATES } from './memo23Client.ts';
 import { openAiJson, parsePriceBook, recordAiCost } from './openai.ts';
 
 export interface FindBuyersSettings {
@@ -248,46 +248,94 @@ export async function startSocialCampaign(db: any, input: StartSocialInput, sett
 export async function finishSocialCampaign(db: any, matchingJobId: string, reason: string) {
   const { data: camp } = await db.from('find_buyers_campaigns').select('matching_job_id,finalized_at').eq('matching_job_id', matchingJobId).maybeSingle();
   if (!camp) return { social: false };
-  const { data: open } = await db.from('find_buyers_actor_runs')
-    .select('id,provider_run_id,status,actor_key,requested_limit').eq('matching_job_id', matchingJobId).in('status', ['RESERVED', 'STARTING', 'RUNNING']);
-  let aborted = 0; let released = 0;
-  for (const run of (open ?? []) as any[]) {
-    if (!run.provider_run_id && run.status === 'STARTING') {
-      /* Being created right now: its id is not known yet. Book UNKNOWN cost at
-         the reservation (never zero); the executor aborts the run it gets back. */
-      await db.rpc('find_buyers_book_run_cost', {
-        p_run_id: run.id, p_status: 'ABORTED', p_actual_micros: null, p_cost_basis: 'UNKNOWN',
-        p_results_billed: null, p_items_fetched: 0, p_error: `ENDED_DURING_START: ${reason}`, p_billing: {},
-      });
-      aborted++;
-      continue;
-    }
-    if (!run.provider_run_id) {
-      await db.rpc('find_buyers_book_run_cost', {
-        p_run_id: run.id, p_status: 'RELEASED', p_actual_micros: 0, p_cost_basis: 'NOT_STARTED',
-        p_results_billed: 0, p_items_fetched: 0, p_error: `NOT_STARTED: ${reason}`, p_billing: {},
-      });
-      released++;
-      continue;
-    }
-    let r: any = null;
-    try {
-      r = await getRun(run.provider_run_id);
-      if (r && !TERMINAL_RUN_STATES.has(String(r.status))) { await abortRun(run.provider_run_id); r = await getRun(run.provider_run_id).catch(() => r); aborted++; }
-    } catch { /* cost stays unknown: booked as UNKNOWN below, never as 0 */ }
-    const billed = r?.stats?.datasetItemCount ?? r?.stats?.itemCount ?? null;
-    const cost = r ? runCost(r, billed != null ? Number(billed) : null) : { micros: null, basis: 'UNKNOWN' as const, billing: {} };
-    await db.rpc('find_buyers_book_run_cost', {
-      p_run_id: run.id, p_status: String(r?.status ?? '') === 'SUCCEEDED' ? 'SUCCEEDED' : 'ABORTED',
-      p_actual_micros: cost.micros, p_cost_basis: cost.basis, p_results_billed: billed, p_items_fetched: 0,
-      p_error: `CAMPAIGN_ENDING: ${reason}`, p_billing: cost.billing,
-    });
-  }
+  const closed = await closeOpenRuns(db, matchingJobId, reason);
   const stats = await campaignStats(db, matchingJobId);
   await db.from('find_buyers_campaigns').update({
     stats, stop_reason: reason, finalized_at: new Date().toISOString(), last_activity_at: new Date().toISOString(),
   }).eq('matching_job_id', matchingJobId).is('finalized_at', null);
-  return { social: true, aborted, released, leads: stats.qualified };
+  return { social: true, ...closed, leads: stats.qualified };
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Close every unbooked run of one campaign: release, abort + book, never $0 for a run that may exist. */
+export async function closeOpenRuns(db: any, matchingJobId: string, reason: string) {
+  const { data: open } = await db.from('find_buyers_actor_runs')
+    .select('id,provider_run_id,dataset_id,status,actor_key,requested_limit')
+    .eq('matching_job_id', matchingJobId).in('status', ['RESERVED', 'STARTING', 'RUNNING']).is('cost_booked_at', null);
+  let aborted = 0; let released = 0;
+  for (const run of (open ?? []) as any[]) {
+    const res = await closeRun(db, run, reason);
+    if (res === 'RELEASED') released++; else aborted++;
+  }
+  return { aborted, released };
+}
+
+export async function closeRun(db: any, run: any, reason: string): Promise<'RELEASED' | 'BOOKED'> {
+  if (!run.provider_run_id && run.status === 'RESERVED') {
+    const { data } = await db.rpc('find_buyers_book_run_cost', {
+      p_run_id: run.id, p_status: 'RELEASED', p_actual_micros: 0, p_cost_basis: 'NOT_STARTED',
+      p_results_billed: 0, p_items_fetched: 0, p_error: `NOT_STARTED: ${reason}`, p_billing: {},
+    });
+    if (data?.booked) return 'RELEASED';
+    /* Refused: it moved to STARTING meanwhile — fall through to UNKNOWN. */
+  }
+  if (!run.provider_run_id) {
+    /* Being created (or creation was interrupted): the id is not known. Book
+       UNKNOWN cost at the reservation (never zero); the executor aborts the
+       run it gets back. */
+    await db.rpc('find_buyers_book_run_cost', {
+      p_run_id: run.id, p_status: 'ABORTED', p_actual_micros: null, p_cost_basis: 'UNKNOWN',
+      p_results_billed: null, p_items_fetched: 0, p_error: `ENDED_DURING_START: ${reason}`, p_billing: {},
+    });
+    return 'BOOKED';
+  }
+  let r: any = null;
+  try {
+    r = await getRun(run.provider_run_id);
+    if (r && !TERMINAL_RUN_STATES.has(String(r.status))) {
+      await abortRun(run.provider_run_id);
+      /* Events charged during the abort count: wait briefly for a terminal state. */
+      for (let i = 0; i < 4 && r && !TERMINAL_RUN_STATES.has(String(r.status)); i++) {
+        await sleep(1500);
+        r = await getRun(run.provider_run_id).catch(() => r);
+      }
+    }
+  } catch { /* cost stays unknown: booked as UNKNOWN below, never as 0 */ }
+  let billed: number | null = null;
+  const datasetId = run.dataset_id ?? r?.defaultDatasetId ?? null;
+  if (datasetId) {
+    try { const d = await datasetItems(datasetId, 1); billed = d.total; } catch { billed = null; }
+  }
+  const cost = r ? runCost(r, billed) : { micros: null, basis: 'UNKNOWN' as const, billing: {} };
+  const st = String(r?.status ?? '');
+  const status = st === 'SUCCEEDED' ? 'SUCCEEDED' : st === 'TIMED-OUT' ? 'TIMED_OUT' : st === 'FAILED' ? 'FAILED' : 'ABORTED';
+  await db.rpc('find_buyers_book_run_cost', {
+    p_run_id: run.id, p_status: status, p_actual_micros: cost.micros, p_cost_basis: cost.basis, p_results_billed: billed,
+    p_items_fetched: 0, p_error: `CAMPAIGN_ENDING: ${reason}`, p_billing: cost.billing,
+  });
+  return 'BOOKED';
+}
+
+/**
+ * Safety net for runs no one is watching any more (an executor that died, a
+ * campaign finished elsewhere): unbooked runs older than 2 hours, or of a
+ * finalized campaign, are closed and booked. Bounded per tick.
+ */
+export async function sweepStaleActorRuns(db: any) {
+  const cutoff = new Date(Date.now() - 2 * 3_600_000).toISOString();
+  const { data } = await db.from('find_buyers_actor_runs')
+    .select('id,provider_run_id,dataset_id,status,actor_key,requested_limit,matching_job_id,created_at,campaign:find_buyers_campaigns(finalized_at)')
+    .in('status', ['RESERVED', 'STARTING', 'RUNNING']).is('cost_booked_at', null).limit(20);
+  let closed = 0;
+  for (const run of (data ?? []) as any[]) {
+    const camp = Array.isArray(run.campaign) ? run.campaign[0] : run.campaign;
+    if (!(camp?.finalized_at || run.created_at < cutoff)) continue;
+    await closeRun(db, run, 'STALE_SWEEP').catch(() => undefined);
+    closed++;
+    if (closed >= 5) break;
+  }
+  return { closed };
 }
 
 /** Customer-safe counters (no actor ids, no costs). */

@@ -102,7 +102,7 @@ test('every new switch is off and no Actor runs unverified', () => {
   assert.doesNotMatch(MIGRATION, /pricing_verified_at\)\s*values/i);
   const seeds = MIGRATION.slice(MIGRATION.indexOf('insert into public.find_buyers_actor_registry'), MIGRATION.indexOf('on conflict (actor_key) do nothing'));
   for (const id of seeds.match(/'memo23~[a-z0-9-]+'/g) ?? []) assert.match(id, /^'memo23~/);
-  assert.equal((seeds.match(/'memo23~/g) ?? []).length, 10, 'ten memo23 Actors registered');
+  assert.equal((seeds.match(/'memo23~/g) ?? []).length, 16, 'sixteen memo23 Actors registered');
 });
 
 test('the generic APIFY provider stays retired; the new provider has its own key', () => {

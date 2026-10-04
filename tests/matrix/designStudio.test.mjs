@@ -871,7 +871,9 @@ test('a variant, a style, a quality or a room can be recorded: parent_id belongs
   // A Result generation that did not finish is asked again with the SAME key (resumed, never paid twice).
   const result = code('src/components/designStudio/unified/DesignResult.tsx');
   assert.match(result, /void generate\(failedRun, true\)/);
-  assert.match(result, /status=\{working \? 'PROCESSING' : failedRun \? 'FAILED' : 'READY'\}/, 'Snake never calls a failure ready');
+  // Busy is a single generation or the 3D tour's rooms.
+  assert.match(result, /const occupied = !!working \|\| !!tour;/);
+  assert.match(result, /status=\{occupied \? 'PROCESSING' : failedRun \? 'FAILED' : 'READY'\}/, 'Snake never calls a failure ready');
 });
 
 test('the customer never sees HOMATCH\'s prompt words; the look\'s words reach the designer from the server', () => {

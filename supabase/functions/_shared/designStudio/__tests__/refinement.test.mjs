@@ -261,7 +261,10 @@ test('E: the 3D tour starts from the project; a photo design walks on the projec
 
 test('F: a double tap is one operation (room, confirm, walkthrough)', () => {
   const result = code('src/components/designStudio/unified/DesignResult.tsx');
-  assert.match(result, /key: `room-\$\{data\.head\.id\.slice\(0, 8\)\}-\$\{roomId\.slice\(0, 40\)\}-\$\{style \?\? 'same'\}-\$\{fingerprint\(chosen\)\}`/, 'a room\'s key has no randomness');
+  // One key for a room (a single room and the 3D tour alike), with no randomness in it.
+  assert.match(result, /const roomKey = \(roomId: string, style: LookStyle \| null, chosen: string\[\]\) => `room-\$\{data\.head\.id\.slice\(0, 8\)\}-\$\{roomId\.slice\(0, 40\)\}-\$\{style \?\? 'same'\}-\$\{fingerprint\(chosen\)\}`;/, 'a room\'s key has no randomness');
+  assert.match(result, /mode: 'ROOM', key: roomKey\(roomId, style, chosen\),/);
+  assert.match(result, /key: roomKey\(roomId, null, run\.refs\)/);
   assert.match(result, /if \(!pending \|\| busy \|\| confirming\.current\) return;/);
   const panel = code('src/components/designStudio/unified/WalkthroughPanel.tsx');
   assert.match(panel, /if \(asking \|\| inFlight\.current\) return;/);

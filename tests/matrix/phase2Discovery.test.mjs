@@ -76,10 +76,12 @@ test('v2 holds a paused run (never cancels it) and claims only native providers'
 
 test('the Matches screen finds the open search on load, so a refresh keeps progress and controls', () => {
   const page = read('src/pages/property/MatchesPage.tsx');
-  assert.match(page, /findOpenMatchingJob\(propertyId\)/);
-  assert.match(page, /setJobPaused\(open\.status === 'paused'\)/);
-  assert.match(page, /p2d_resume_search/);
-  assert.match(page, /jobRunning && 'order-first xl:order-none'/, 'controls first on a phone while a search runs');
+  /* The server's lifecycle (find_buyers_campaign_status), read on every mount: a refresh
+     or a second tab shows the same running/paused search and its controls. */
+  assert.match(page, /useCampaignStatus\(propertyId\)/);
+  assert.match(page, /const activeJobId = liveCampaign\?\.jobId \?\? null;/);
+  assert.match(page, /onResume=\{\(\) => handleControlJob\('resume'\)\}/);
+  assert.ok(page.indexOf('<LiveSearchModule') < page.indexOf('<FindBuyersResults'), 'the live search comes before the results on every width');
 });
 
 // Slice B — FIND PROPERTY

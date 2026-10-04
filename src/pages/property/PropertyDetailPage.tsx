@@ -11,7 +11,10 @@ import { RouteGuard } from '@/components/common/RouteGuard';
 import { OWNER_SURFACE } from '@/components/customer/surface';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { NavGlyphIcon } from '@/components/layouts/NavGlyph';
-import { MatchingJobProgress } from '@/components/matching/MatchingJobProgress';
+import { NAVY_BAND } from '@/components/findBuyers/brand';
+import { SearchDna } from '@/components/findBuyers/SearchDna';
+import { useCampaignStatus } from '@/hooks/useCampaignStatus';
+import { campaignView } from '@/findBuyers/campaignView';
 import { PropertyReference } from '@/components/owner/ContactPhoneField';
 import { FactLine, OWNER_ICON, OWNER_SECONDARY } from '@/components/owner/portfolio';
 import { CanonicalGroupBanner } from '@/components/property/CanonicalGroupBanner';
@@ -19,6 +22,8 @@ import {
   FreshnessChip, ManageInHomatch, MediaUnavailable, PropertyStatusPanel, SourceChip,
 } from '@/components/property/OwnerLifecycle';
 import { PropertyGallery } from '@/components/property/PropertyGallery';
+import { galleryImages } from '@/property/gallery';
+import { MediaRefresh } from '@/components/property/MediaRefresh';
 import { PropertyTrustBadge } from '@/components/property/PropertyTrustBadge';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
@@ -37,7 +42,7 @@ import { cn } from '@/lib/utils';
 import { type PropertyLifecycle, safeExternalUrl } from '@/property/lifecycle';
 import { intelligenceActionFor, isImported } from '@/property/rules';
 import {
-  type CampaignSearchLanguageChoice, calculateMatchability, campaignStartErrorKey, getCreditAccount,
+  type CampaignSearchLanguageChoice, calculateMatchability, campaignStartErrorKey, controlMatchingJob, getCreditAccount,
   getMatchCounts, getProperty, pauseMatchingCampaign, softDeleteProperty, startMatchingCampaign,
 } from '@/services/api';
 import { fetchLifecycle, renewProperty } from '@/services/propertyLifecycle';
@@ -70,50 +75,31 @@ import type { CreditAccount, Property } from '@/types/types';
 // unlock behaviour changes here.
 
 function MatchabilityPanel({ score, improvements }: { score: number; improvements: string[] }) {
-  /* The hints arrive as i18n keys; a module that cannot know the reader's
-     language must not choose their words. */
+  /* How searchable this listing is (completeness of the facts a search uses) —
+     a number, a word and a slim gold bar, in the page's own language; no donut.
+     The hints arrive as i18n keys. */
   const { t } = useLanguage();
-  const color = score >= 70 ? '#4ade80' : score >= 40 ? 'hsl(38 92% 55%)' : '#6b7ba0';
-  const circumference = 2 * Math.PI * 28;
-  const dash = (score / 100) * circumference;
-
+  const word = score >= 70 ? t('prop_matchability_excellent') : score >= 40 ? t('prop_matchability_good') : t('prop_matchability_improve');
   return (
-    <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-      <div className="flex items-center gap-2 mb-1">
-        <Zap className="h-4 w-4 text-primary" />
-        <h3 className="text-sm font-semibold text-foreground">{t('match_score_label')}</h3>
+    <div className="hm-owner-panel space-y-3 p-5">
+      <p className="text-2xs font-bold uppercase tracking-[0.14em] text-[hsl(34_90%_34%)]">{t('match_score_label')}</p>
+      <div className="flex items-baseline gap-2.5">
+        <span className="font-display text-3xl font-bold leading-none tabular-nums text-foreground" dir="ltr">{score}%</span>
+        <span className="min-w-0 text-sm font-semibold text-foreground break-words">{word}</span>
       </div>
-      <div className="flex items-center gap-5">
-        <div className="relative w-16 h-16 shrink-0">
-          <svg viewBox="0 0 64 64" className="transform -rotate-90">
-            <circle cx="32" cy="32" r="28" fill="none" stroke="hsl(var(--secondary))" strokeWidth="5" />
-            <circle
-              cx="32" cy="32" r="28" fill="none"
-              stroke={color} strokeWidth="5"
-              strokeDasharray={`${dash} ${circumference - dash}`}
-              strokeLinecap="round"
-              style={{ transition: 'stroke-dasharray 0.5s ease' }}
-            />
-          </svg>
-          <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-foreground">
-            {score}%
-          </span>
-        </div>
-        <p className="min-w-0 text-sm text-muted-foreground">
-          {score >= 70 ? t('prop_matchability_excellent') : score >= 40 ? t('prop_matchability_good') : t('prop_matchability_improve')}
-        </p>
+      <div className="h-1.5 overflow-hidden rounded-full bg-[hsl(40_60%_88%)]" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={score} aria-label={t('match_score_label')}>
+        <div className="h-full rounded-full bg-[linear-gradient(90deg,hsl(42_96%_62%),hsl(34_90%_50%))]" style={{ width: `${Math.max(2, score)}%` }} />
       </div>
       {improvements.length > 0 && (
-        <div className="space-y-2 pt-2 border-t border-border/50">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t('match_improve')}</p>
-          {improvements.slice(0, 4).map((hint) => (
-            <div key={hint} className="flex items-start gap-2 min-w-0">
-              <AlertCircle className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
+        <ul className="space-y-1.5 pt-1">
+          {improvements.slice(0, 3).map((hint) => (
+            <li key={hint} className="flex min-w-0 items-start gap-2 text-xs text-muted-foreground">
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[hsl(34_90%_40%)]" aria-hidden="true" />
               {/* An i18n KEY, not a sentence. */}
-              <p className="text-xs text-muted-foreground break-words min-w-0">{t(hint as never)}</p>
-            </div>
+              <span className="min-w-0 break-words">{t(hint as never)}</span>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
     </div>
   );
@@ -186,14 +172,13 @@ function QuickActions({ actions }: { actions: QuickAction[] }) {
 // ── BUYER / TENANT DISCOVERY ─────────────────────────────────────────────────────
 
 function DiscoverySection({
-  propertyId, userId, transactionType, initialActive, matchCounts, creditBalance, life, contactReady,
+  propertyId, userId, transactionType, matchCounts, creditBalance, life, contactReady,
   onNavigateMatches, onCountsRefresh, onRenewed,
 }: {
   propertyId: string;
   userId: string;
   /** SALE, RENT or INVESTMENT. Decides what this property is looking FOR. */
   transactionType?: string | null;
-  initialActive: boolean;
   matchCounts: { total: number; newCount: number; strongCount: number };
   creditBalance: number;
   life: PropertyLifecycle | null | undefined;
@@ -203,14 +188,29 @@ function DiscoverySection({
   onRenewed: () => void;
 }) {
   const { t } = useLanguage();
-  const [active, setActive] = useState(initialActive);
   const [loading, setLoading] = useState(false);
   const [renewing, setRenewing] = useState(false);
   const [showPauseConfirm, setShowPauseConfirm] = useState(false);
-  const [activeJobId, setActiveJobId] = useState<string | null>(null);
   /* Nothing is spent until the customer names the ceiling. */
   const [showBudget, setShowBudget] = useState(false);
-  useEffect(() => { setActive(initialActive); }, [initialActive]);
+  /* THE SEARCH STATE IS THE SERVER'S (find_buyers_campaign_status), never the
+     property's standing matching flag: a property can be "ACTIVE" with nothing
+     running, and a paused search is not a stopped one. */
+  const { status, refresh } = useCampaignStatus(propertyId);
+  const campaign = status?.campaign ?? null;
+  const view = campaign ? campaignView({
+    state: campaign.state, sources: campaign.sources, queue: campaign.queue,
+    signalsAnalyzed: campaign.signalsAnalyzed, newResults: campaign.newResults, strong: campaign.strong,
+  }) : null;
+  const live = Boolean(view?.live);
+  const readiness = status?.readiness ?? null;
+  const wasLive = React.useRef(live);
+  useEffect(() => {
+    if (wasLive.current && !live) {
+      getMatchCounts(propertyId).then(onCountsRefresh).catch(() => undefined);
+    }
+    wasLive.current = live;
+  }, [live, propertyId, onCountsRefresh]);
 
   /* The server's answer. EXPIRED means not freshly confirmed inventory: history and
      matches stay, a NEW search waits for the (free) renewal. */
@@ -229,29 +229,26 @@ function DiscoverySection({
         discoverBrokers === true,
       );
       if (!result?.jobId) throw new Error('No job ID returned from match-campaign');
-      setActive(true);
-      setActiveJobId(result.jobId);
       toast.success(t('matches_campaign_started_toast'));
     } catch (e) {
       const refused = campaignStartErrorKey(e);
       toast.error(refused ? t(refused.key as never, refused.vars) : t('matches_start_failed'));
     } finally {
+      await refresh();
       setLoading(false);
     }
   };
 
-  const handlePauseConfirmed = async () => {
+  const control = async (action: 'pause' | 'resume') => {
     setLoading(true);
     try {
-      await pauseMatchingCampaign(propertyId, userId, activeJobId);
-      setActive(false);
-      setShowPauseConfirm(false);
-      toast.success(t('matches_paused_toast'));
+      if (action === 'pause') { await pauseMatchingCampaign(propertyId, userId, campaign?.jobId ?? null); setShowPauseConfirm(false); }
+      else if (campaign?.jobId) await controlMatchingJob(propertyId, campaign.jobId, 'resume');
     } catch (err) {
-      // Still active, still spending. Saying "paused" here would be a lie.
       console.error(err);
-      toast.error(t('matches_pause_error'));
+      toast.error(t(action === 'pause' ? 'matches_pause_error' : 'p2d_control_error'));
     } finally {
+      await refresh();
       setLoading(false);
     }
   };
@@ -276,29 +273,39 @@ function DiscoverySection({
     : t('matches_start_matching');
 
   const stateLabel = expired ? t('pow_discovery_state_paused_expired')
-    : active ? t('matches_matching_active') : t('matches_matching_paused');
+    : view ? t(view.headlineKey as never) : t('fbl_state_idle');
 
   return (
     <section aria-labelledby="pow-discovery-title" data-testid="pow-discovery" className="hm-owner-panel overflow-hidden">
       <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
-        {/* Left: what this is and where it stands. */}
-        <div className="space-y-4 bg-[#0C1119] p-5 text-white sm:p-6">
+        {/* Left: what this is and where the search stands — the server's state. */}
+        <div className={cn('space-y-4 p-5 text-white sm:p-6', NAVY_BAND)}>
           <div className="space-y-1.5">
             <h2 id="pow-discovery-title" className="font-display text-lg font-semibold tracking-[-0.01em] break-words">
               {t('pow_discovery_title')}
             </h2>
-            <p className="text-2xs leading-relaxed text-white/75 break-words">{t('pow_discovery_body')}</p>
+            <p className="text-2xs leading-relaxed text-[hsl(218_40%_85%)] break-words">{t('pow_discovery_body')}</p>
           </div>
-          <span data-testid="pow-discovery-state" className="inline-flex items-center gap-1.5 rounded-full border border-white/20 px-2.5 py-1 text-2xs font-semibold">
+          <span data-testid="pow-discovery-state" role="status" className="inline-flex items-center gap-1.5 rounded-full bg-white/5 px-2.5 py-1 text-2xs font-semibold ring-1 ring-inset ring-[hsl(40_80%_60%/0.45)]">
             {expired
               ? <AlertCircle className="h-3.5 w-3.5 text-[hsl(38_92%_62%)]" aria-hidden="true" />
-              : active
-                ? <span className="h-1.5 w-1.5 rounded-full bg-[hsl(38_92%_60%)] animate-pulse" aria-hidden="true" />
-                : <Pause className="h-3.5 w-3.5 text-white/70" aria-hidden="true" />}
+              : view?.motion === 'active'
+                ? <span className="h-1.5 w-1.5 rounded-full bg-[hsl(38_92%_60%)] motion-safe:animate-pulse" aria-hidden="true" />
+                : view?.control === 'resume' || view?.control === 'pausing'
+                  ? <Pause className="h-3.5 w-3.5 text-[hsl(40_94%_64%)]" aria-hidden="true" />
+                  : <span className="h-1.5 w-1.5 rounded-full bg-[hsl(40_94%_64%)]" aria-hidden="true" />}
             <span className="break-words">{stateLabel}</span>
           </span>
+          {live && view && (
+            <p className="text-2xs leading-relaxed text-[hsl(218_40%_85%)]">
+              {t('fbl_live_line', { working: String(view.metrics.sourcesWorking), signals: String(view.metrics.signals), possible: String(view.metrics.possible) })}
+            </p>
+          )}
+          {!live && readiness && !readiness.ready && !expired && (
+            <p className="text-2xs leading-relaxed text-[hsl(350_80%_88%)]" role="status">{t('fbl_not_ready')}</p>
+          )}
           <div className="flex items-center justify-between gap-3 border-t border-white/10 pt-3 text-2xs">
-            <span className="text-white/70">{t('prop_balance_label')}</span>
+            <span className="text-[hsl(218_40%_85%)]">{t('prop_balance_label')}</span>
             <Link to="/credits" className="inline-flex items-center gap-1 font-semibold text-[hsl(38_92%_66%)] hover:underline">
               <Zap className="h-3 w-3" aria-hidden="true" />
               <span dir="ltr">{creditBalance.toFixed(2)} CR</span>
@@ -306,17 +313,18 @@ function DiscoverySection({
           </div>
         </div>
 
-        {/* Right: the numbers and the actions. */}
+        {/* Right: stored results (not the live search), and the one action that fits. */}
         <div className="space-y-4 p-5 sm:p-6">
+          <p className="text-2xs font-bold uppercase tracking-[0.14em] text-[hsl(34_90%_34%)]">{t('fbl_results_heading')}</p>
           <div className="grid grid-cols-3 gap-2.5" data-testid="pow-discovery-counts">
             {[
               { key: 'total', label: t('prop_stat_total'), value: matchCounts.total, highlight: false },
               { key: 'new', label: t('prop_stat_new'), value: matchCounts.newCount, highlight: matchCounts.newCount > 0 },
               { key: 'strong', label: t('prop_stat_strong'), value: matchCounts.strongCount, highlight: matchCounts.strongCount > 0 },
             ].map(({ key, label, value, highlight }) => (
-              <div key={key} className="rounded-xl bg-secondary/50 p-3 text-center">
-                <p className={cn('font-display text-2xl font-semibold tabular-nums', highlight ? 'text-[hsl(var(--gold-ink))]' : 'text-foreground')} dir="ltr">{value}</p>
-                <p className="text-2xs text-muted-foreground break-words">{label}</p>
+              <div key={key} className="rounded-xl bg-[hsl(42_100%_97%)] p-3 text-center ring-1 ring-inset ring-[hsl(40_70%_86%)]">
+                <p className={cn('font-display text-2xl font-semibold tabular-nums', highlight ? 'text-[hsl(34_90%_36%)]' : 'text-[hsl(218_45%_14%)]')} dir="ltr">{value}</p>
+                <p className="text-2xs text-[hsl(218_28%_38%)] break-words">{label}</p>
               </div>
             ))}
           </div>
@@ -338,50 +346,45 @@ function DiscoverySection({
           )}
 
           <div className="flex flex-wrap gap-2">
-            {matchCounts.total > 0 && (
-              <Button variant="outline" onClick={onNavigateMatches} className="h-auto min-h-10 gap-1.5 whitespace-normal border-border">
-                <span className="break-words">{t('prop_view_matches')}</span>
+            {(matchCounts.total > 0 || live) && (
+              <Button variant="outline" onClick={onNavigateMatches} className="h-auto min-h-10 gap-1.5 whitespace-normal border-[hsl(40_70%_80%)]">
+                <span className="break-words">{t(live ? 'fbl_open_live' : 'prop_view_matches')}</span>
                 <ChevronRight className="h-3.5 w-3.5 rtl:rotate-180" aria-hidden="true" />
               </Button>
             )}
-            {!expired && (active ? (
-              <Button variant="outline" onClick={() => setShowPauseConfirm(true)} disabled={loading} className="h-auto min-h-10 gap-1.5 whitespace-normal border-border text-muted-foreground">
+            {!expired && view?.control === 'pause' && (
+              <Button variant="outline" onClick={() => setShowPauseConfirm(true)} disabled={loading} className="h-auto min-h-10 gap-1.5 whitespace-normal border-[hsl(40_70%_80%)]">
                 {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Pause className="h-3.5 w-3.5" />}
-                {t('matches_pause_matching')}
+                {t('fbl_pause')}
               </Button>
-            ) : contactReady ? (
-              <Button onClick={() => setShowBudget(true)} disabled={loading} className="h-auto min-h-10 gap-1.5 whitespace-normal bg-primary font-semibold text-primary-foreground hover:bg-primary/90">
+            )}
+            {!expired && view?.control === 'pausing' && (
+              <span role="status" aria-busy="true" className="inline-flex h-auto min-h-10 items-center gap-1.5 whitespace-normal rounded-md border border-[hsl(40_70%_80%)] px-4 text-sm font-medium opacity-70">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />{t('fbl_pausing')}
+              </span>
+            )}
+            {!expired && view?.control === 'resume' && (
+              <Button onClick={() => void control('resume')} disabled={loading} className="h-auto min-h-10 gap-1.5 whitespace-normal bg-[hsl(38_92%_54%)] font-semibold text-[#161309] hover:bg-[hsl(38_92%_60%)]">
+                {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+                {t('fbl_resume')}
+              </Button>
+            )}
+            {!expired && !live && (contactReady ? (
+              <Button onClick={() => setShowBudget(true)} disabled={loading || (readiness ? !readiness.ready : false)} className="h-auto min-h-10 gap-1.5 whitespace-normal bg-[hsl(38_92%_54%)] font-semibold text-[#161309] hover:bg-[hsl(38_92%_60%)]">
                 {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
                 <span className="break-words">{startLabel}</span>
               </Button>
             ) : (
               /* A search cannot start without somewhere to send people: the same place
                  says the one thing that has to happen first. */
-              <Link to={`/property/${propertyId}/edit#contact`} className="inline-flex min-h-10 items-center gap-1.5 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
+              <Link to={`/property/${propertyId}/edit#contact`} className="inline-flex min-h-10 items-center gap-1.5 rounded-md bg-[hsl(38_92%_54%)] px-4 text-sm font-semibold text-[#161309] hover:bg-[hsl(38_92%_60%)]">
                 <Phone className="h-3.5 w-3.5" aria-hidden="true" />
                 <span className="break-words">{t('contact_phone_add')}</span>
               </Link>
             ))}
           </div>
-          {!contactReady && !expired && (
-            <p className="text-2xs text-muted-foreground break-words">{t('contact_phone_missing_body')}</p>
-          )}
-
-          {activeJobId && (
-            <MatchingJobProgress
-              jobId={activeJobId}
-              propertyId={propertyId}
-              onComplete={(job) => {
-                getMatchCounts(propertyId).then(onCountsRefresh).catch((err) => {
-                  console.error('[PropertyDetailPage] failed to refresh match counts:', err);
-                });
-                if (job.matches_created > 0) {
-                  toast.success(t('matches_job_complete_toast', { count: job.matches_created }));
-                } else if (job.status === 'partially_completed' || job.status === 'budget_reached') {
-                  toast.warning(t('matches_job_partial_toast'));
-                }
-              }}
-            />
+          {!contactReady && !expired && !live && (
+            <p className="text-2xs text-[hsl(218_28%_38%)] break-words">{t('contact_phone_missing_body')}</p>
           )}
         </div>
       </div>
@@ -407,12 +410,12 @@ function DiscoverySection({
         <AlertDialogContent className="max-w-[calc(100%-2rem)] md:max-w-md bg-card border-border">
           <AlertDialogHeader>
             <AlertDialogTitle>{t('matches_pause_confirm')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('matches_pause_confirm_desc')}</AlertDialogDescription>
+            <AlertDialogDescription>{t('fbl_pause_confirm_desc')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="border-border">{t('general_cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handlePauseConfirmed} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              {t('matches_pause_campaign_btn')}
+            <AlertDialogAction onClick={() => void control('pause')} className="bg-[hsl(218_52%_11%)] text-[hsl(40_94%_64%)] hover:bg-[hsl(218_52%_16%)]">
+              {t('fbl_pause')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -503,7 +506,11 @@ function PropertyDetailContent() {
   const isPrivate = property.source_type === 'PRIVATE_LISTING';
   const imported = isImported(property.source_type as string | null);
   const sourceUrl = safeExternalUrl(facts?.source_url ?? null);
-  const { score, improvements } = calculateMatchability(facts ?? null);
+  const gallery = galleryImages({
+    coverPhotoUrl: property.cover_photo_url, photos: property.photos,
+    galleryImages: (facts as { gallery_images?: string[] } | null)?.gallery_images ?? null,
+  });
+  const { score, improvements } = calculateMatchability(facts ?? null, gallery.length);
   const locationParts = [
     placeName(facts?.neighborhood, lang),
     placeName(facts?.district, lang),
@@ -545,9 +552,6 @@ function PropertyDetailContent() {
     facts?.air_conditioning ? t('prop_ac_label') : null,
   ].filter(Boolean) as string[];
   const hasAbout = detailFacts.length > 0 || amenities.length > 0 || Boolean(facts?.description);
-  /* A column with nothing in it is the dead space this page was rebuilt to remove, so
-     the side column exists only when it has something to say. */
-  const hasAside = imported || Boolean(property.search_profile);
 
   const contactReady = hasContactReadiness(property);
   const action = intelligenceActionFor(property.transaction_type as string | null);
@@ -712,7 +716,6 @@ function PropertyDetailContent() {
             propertyId={id}
             userId={homatchUser.id}
             transactionType={property.transaction_type}
-            initialActive={property.matching_status === 'ACTIVE'}
             matchCounts={matchCounts}
             creditBalance={Number(creditAccount?.balance ?? 0)}
             life={life}
@@ -723,49 +726,43 @@ function PropertyDetailContent() {
           />
         )}
 
-        {/* ── 4. THE INFORMATION ── */}
-        <section data-testid="pow-info" className="grid gap-6 lg:grid-cols-12">
-          <div className={cn('min-w-0 space-y-6', hasAside ? 'lg:col-span-8' : 'lg:col-span-12')}>
+        {/* ── 4. THE INFORMATION: one editorial system, no giant empty cards ── */}
+        <section data-testid="pow-info" className="grid gap-4 lg:grid-cols-12">
+          <div className="min-w-0 space-y-4 lg:col-span-8">
             {hasAbout && (
-              <div className="hm-owner-panel space-y-5 p-5 sm:p-6">
+              <div className="hm-owner-panel space-y-4 p-5">
                 <SectionTitle>{t('pow_section_about')}</SectionTitle>
                 {detailFacts.length > 0 && (
-                  <div className="space-y-2.5">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('pow_section_features')}</p>
-                    <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
-                      {detailFacts.map((fact) => <Fact key={fact.label} icon={fact.icon} label={fact.label} value={fact.value} />)}
-                    </div>
+                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                    {detailFacts.map((fact) => <Fact key={fact.label} icon={fact.icon} label={fact.label} value={fact.value} />)}
                   </div>
                 )}
                 {amenities.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('prop_amenities_label')}</p>
-                    <div className="flex flex-wrap gap-2">
-                      {amenities.map((label) => <AmenityChip key={label} label={label} />)}
-                    </div>
+                  <div className="flex flex-wrap gap-2" aria-label={t('prop_amenities_label')}>
+                    {amenities.map((label) => <AmenityChip key={label} label={label} />)}
                   </div>
                 )}
                 {facts?.description && (
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('prop_description_label')}</p>
-                    <p className="max-w-[75ch] whitespace-pre-line text-sm leading-relaxed text-muted-foreground" dir="auto">{facts.description}</p>
-                  </div>
+                  <p className="max-w-[75ch] whitespace-pre-line border-t border-[hsl(40_60%_88%)] pt-3 text-sm leading-relaxed text-muted-foreground" dir="auto">{facts.description}</p>
                 )}
               </div>
             )}
-            {/* The property's quality, beside its facts rather than in a sidebar. */}
-            {/* auto-fit: when the trust badge has nothing to show, the score takes the row
-                rather than sitting in half of it beside a hole. */}
-            <div className="grid gap-4 md:grid-cols-[repeat(auto-fit,minmax(18rem,1fr))]">
-              <MatchabilityPanel score={score} improvements={improvements} />
-              {id && <PropertyTrustBadge propertyId={id} />}
+            {/* WHAT A SEARCH LOOKS FOR, from the property's real facts (never a stale "1+"). */}
+            <div className="hm-owner-panel space-y-2 p-5">
+              <p className="text-2xs font-bold uppercase tracking-[0.14em] text-[hsl(34_90%_34%)]">{t('prop_search_profile_label')}</p>
+              <SearchDna facts={facts ? {
+                transaction_type: property.transaction_type, property_type: property.property_type,
+                city: facts.city, district: facts.district, bedrooms: facts.bedrooms, rooms: facts.rooms,
+                area: facts.area, total_price: facts.total_price, currency: facts.currency,
+              } : null} />
             </div>
           </div>
 
-          {hasAside && <aside className="min-w-0 space-y-4 lg:col-span-4">
+          <aside className="min-w-0 space-y-4 lg:col-span-4">
+            <MatchabilityPanel score={score} improvements={improvements} />
             {imported && (
               <div data-testid="pow-source-card" className="hm-owner-panel space-y-3 p-5">
-                <p className="text-sm font-semibold text-foreground">{t('pow_section_source')}</p>
+                <p className="text-2xs font-bold uppercase tracking-[0.14em] text-[hsl(34_90%_34%)]">{t('pow_section_source')}</p>
                 <dl className="space-y-1.5 text-2xs">
                   {facts?.source_domain && (
                     <div className="flex justify-between gap-3"><dt className="text-muted-foreground">{t('pow_source_site')}</dt><dd className="font-medium text-foreground break-all" dir="ltr">{String(facts.source_domain).replace(/^www\./, '')}</dd></div>
@@ -776,9 +773,11 @@ function PropertyDetailContent() {
                   {life?.imported_at && (
                     <div className="flex justify-between gap-3"><dt className="text-muted-foreground">{t('pow_imported_at')}</dt><dd className="font-medium text-foreground" dir="ltr">{new Date(life.imported_at).toLocaleDateString()}</dd></div>
                   )}
+                  <div className="flex justify-between gap-3"><dt className="text-muted-foreground">{t('fbl_media_photos')}</dt><dd className="font-medium text-foreground tabular-nums" dir="ltr">{gallery.length}</dd></div>
                 </dl>
+                {isOwner && id && <MediaRefresh propertyId={id} storedCount={gallery.length} sourceDomain={facts?.source_domain ?? null} onRefreshed={onRenewed} />}
                 {sourceUrl && (
-                  <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-9 items-center gap-1.5 text-2xs font-semibold text-[hsl(var(--primary))] hover:underline">
+                  <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-9 items-center gap-1.5 text-2xs font-semibold text-[hsl(34_90%_36%)] hover:underline">
                     <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                     {t('pow_open_listing')}
                   </a>
@@ -786,22 +785,8 @@ function PropertyDetailContent() {
               </div>
             )}
             {imported && isOwner && id && <ManageInHomatch propertyId={id} />}
-            {property.search_profile && (
-              <div className="hm-owner-panel p-5">
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{t('prop_search_profile_label')}</h3>
-                <p className="text-xs text-muted-foreground break-words">
-                  {t('prop_search_profile_desc')}{' '}
-                  {[
-                    property.search_profile.transaction_type,
-                    property.search_profile.city,
-                    property.search_profile.district,
-                    property.search_profile.min_bedrooms ? t('prop_min_beds_suffix', { n: property.search_profile.min_bedrooms }) : null,
-                    property.search_profile.min_price ? t('prop_from_price_prefix', { price: property.search_profile.min_price?.toLocaleString() ?? '', currency: property.search_profile.currency ?? '' }) : null,
-                  ].filter(Boolean).join(' · ')}
-                </p>
-              </div>
-            )}
-          </aside>}
+            {id && <PropertyTrustBadge propertyId={id} />}
+          </aside>
         </section>
       </div>
 

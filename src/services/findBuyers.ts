@@ -65,10 +65,10 @@ export interface PotentialLead {
   author_profile_url: string | null;
 }
 
-/** Leads for one property, strongest first (RLS: the owner's own rows only). */
+/** Current leads (30-day rule at read time) for one property, strongest first (RLS: the owner's own rows only). */
 export async function getPropertyLeads(propertyId: string, limit = 60): Promise<PotentialLead[]> {
   const { data, error } = await supabase
-    .from('find_buyers_leads')
+    .from('find_buyers_current_leads')
     .select('id,matching_job_id,counterpart,source,intent_class,overall_score,strength,similarity,intent_score,score_components,evidence,signal_count,signal_at,seen_before,language,created_at,author_name,author_profile_url')
     .eq('property_id', propertyId)
     .order('overall_score', { ascending: false })
@@ -178,4 +178,80 @@ export async function setFindBuyersSetting(key: string, value: unknown) {
 export function usd(micros: number | null | undefined, digits = 2): string {
   if (micros == null || !Number.isFinite(Number(micros))) return '—';
   return `$${(Number(micros) / 1_000_000).toFixed(digits)}`;
+}
+
+/* ── the authoritative campaign lifecycle (find_buyers_campaign_status) ── */
+
+export type CampaignLifecycleState =
+  | 'PREPARING' | 'QUEUED' | 'SEARCHING' | 'PARTIAL_RESULTS' | 'PAUSING' | 'PAUSED'
+  | 'COMPLETED_WITH_RESULTS' | 'COMPLETED_NO_RESULTS' | 'DEGRADED_COMPLETED' | 'FAILED' | 'UNAVAILABLE' | 'CANCELLED';
+
+export interface SourceNode {
+  source: string;
+  state: 'QUEUED' | 'RUNNING' | 'DONE' | 'FAILED' | 'CANCELLED';
+  total: number; running: number; queued: number; done: number; failed: number; results: number;
+}
+
+export interface CampaignLifecycle {
+  jobId: string;
+  campaignId: string | null;
+  state: CampaignLifecycleState;
+  stage: 'FINISHING' | null;
+  active: boolean;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  pausedAt: string | null;
+  lastActivityAt: string | null;
+  transaction: 'SALE' | 'RENT' | null;
+  languages: string[] | null;
+  queue: { total: number; queued: number; running: number; done: number; failed: number; cancelled: number; paused: number };
+  runs: { inFlight: number; succeeded: number; failed: number };
+  sources: SourceNode[];
+  signalsAnalyzed: number;
+  staleSkipped: number;
+  duplicatesRemoved: number;
+  newResults: number;
+  newLeads: number;
+  newMatches: number;
+  strong: number;
+  executed: boolean;
+  failureReason: string | null;
+}
+
+export interface SearchReadiness {
+  ready: boolean;
+  reason: 'DISCOVERY_SWITCHED_OFF' | 'NO_ELIGIBLE_SOURCE' | 'DISCOVERY_UNAVAILABLE' | null;
+  sources: string[];
+}
+
+export interface CampaignStatus { readiness: SearchReadiness | null; campaign: CampaignLifecycle | null }
+
+/** One server read: can a search run, and what the latest campaign is doing. */
+export async function getCampaignStatus(propertyId: string): Promise<CampaignStatus | null> {
+  const { data, error } = await supabase.rpc('find_buyers_campaign_status', { p_property_id: propertyId });
+  if (error || !data || typeof data !== 'object') return null;
+  const d = data as { readiness?: SearchReadiness | null; campaign?: CampaignLifecycle | null };
+  return {
+    readiness: d.readiness ?? null,
+    campaign: d.campaign ? { ...d.campaign, sources: Array.isArray(d.campaign.sources) ? d.campaign.sources : [] } : null,
+  };
+}
+
+/** One page of leads, strongest first, stable order (server-side range). */
+export async function getPropertyLeadsPage(propertyId: string, page: number, pageSize: number): Promise<{ rows: PotentialLead[]; total: number }> {
+  const from = Math.max(0, page - 1) * pageSize;
+  const { data, error, count } = await supabase
+    .from('find_buyers_current_leads')
+    .select('id,matching_job_id,counterpart,source,intent_class,overall_score,strength,similarity,intent_score,score_components,evidence,signal_count,signal_at,seen_before,language,created_at,author_name,author_profile_url', { count: 'exact' })
+    .eq('property_id', propertyId)
+    .order('overall_score', { ascending: false })
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: true })
+    .range(from, from + pageSize - 1);
+  if (error) return { rows: [], total: 0 };
+  return {
+    rows: ((data ?? []) as unknown as PotentialLead[]).map((l) => ({ ...l, evidence: Array.isArray(l.evidence) ? l.evidence : [] })),
+    total: Number(count ?? 0),
+  };
 }

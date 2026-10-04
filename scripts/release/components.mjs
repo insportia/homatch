@@ -255,4 +255,5 @@ export const I18N_KEY_OWNERS = [
   [/^auth_/, 'AUTH_SECURITY'],
   [/^admin_/, 'ADMIN'],
   [/^fbx_/, 'DISCOVERY'],
+  [/^fbl_/, 'DISCOVERY'],
 ];

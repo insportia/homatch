@@ -1,0 +1,182 @@
+// The live Find Buyers / Find Tenants module: one place that says whether a
+// search is running, paused or finished, where it is searching right now and
+// how much real work has happened. Every state comes from the server
+// (find_buyers_campaign_status → campaignView); the module only renders it.
+import React from 'react';
+import { AlertTriangle, CalendarCheck2, Loader2, Pause, Play, Radar, Square } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { GOLD_FILL, GOLD_TEXT, NAVY_BAND } from '@/components/findBuyers/brand';
+import { DiscoverySnake } from '@/components/findBuyers/DiscoverySnake';
+import { SearchDna, type DnaFacts } from '@/components/findBuyers/SearchDna';
+import { campaignView } from '@/findBuyers/campaignView';
+import type { CampaignStatus } from '@/services/findBuyers';
+
+const ON_NAVY_SOFT = 'text-[hsl(218_40%_85%)]';
+
+function Metric({ value, label, accent = false }: { value: number; label: string; accent?: boolean }) {
+  return (
+    <div className="min-w-0 rounded-xl bg-white/[0.04] px-3 py-2.5 ring-1 ring-inset ring-white/10">
+      <p className={cn('font-display text-xl font-bold leading-none tabular-nums', accent ? GOLD_TEXT : 'text-white')}>{value}</p>
+      <p className={cn('mt-1 text-2xs leading-snug', ON_NAVY_SOFT)}>{label}</p>
+    </div>
+  );
+}
+
+export function LiveSearchModule({
+  status, facts, counterpart, propertyLabel, busy, launchLabel, onLaunch, onPause, onResume, onStop, id,
+}: {
+  status: CampaignStatus | null;
+  facts: DnaFacts | null;
+  counterpart: 'BUYER' | 'TENANT' | null;
+  propertyLabel: string;
+  busy: boolean;
+  launchLabel: string;
+  onLaunch: () => void;
+  onPause: () => void;
+  onResume: () => void;
+  onStop: () => void;
+  id?: string;
+}) {
+  const { t } = useLanguage();
+  const c = status?.campaign ?? null;
+  const view = c ? campaignView({
+    state: c.state, sources: c.sources, queue: c.queue, signalsAnalyzed: c.signalsAnalyzed, newResults: c.newResults, strong: c.strong,
+  }) : null;
+  const live = Boolean(view?.live);
+  const readiness = status?.readiness ?? null;
+  const tenant = counterpart === 'TENANT';
+  const showNetwork = Boolean(c && (live || c.sources.length > 0));
+
+  const button = (o: { label: string; icon: React.ComponentType<{ className?: string }>; onClick?: () => void; primary?: boolean; disabled?: boolean; spinning?: boolean }) => (
+    <button
+      type="button"
+      onClick={o.onClick}
+      disabled={busy || o.disabled}
+      aria-busy={o.spinning || undefined}
+      className={cn(
+        'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-70',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(218_52%_11%)]',
+        o.primary
+          ? `${GOLD_FILL} text-[hsl(218_52%_11%)] shadow-[0_10px_24px_-12px_hsl(38_92%_45%/0.9)] enabled:hover:-translate-y-px`
+          : 'bg-white/5 text-white ring-1 ring-inset ring-[hsl(40_80%_60%/0.55)] enabled:hover:bg-white/10',
+      )}
+    >
+      {o.spinning || (busy && !o.disabled) ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" /> : <o.icon className="h-4 w-4 shrink-0" aria-hidden="true" />}
+      <span className="break-words text-start">{o.label}</span>
+    </button>
+  );
+
+  return (
+    <section id={id} aria-labelledby="fbl-title" aria-live="polite"
+      className={cn('relative overflow-hidden rounded-2xl p-4 text-white ring-1 ring-inset ring-[hsl(40_80%_55%/0.35)] shadow-[0_18px_40px_-24px_hsl(218_60%_8%/0.9)] sm:p-5', NAVY_BAND)}>
+      {/* ── status line ── */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', GOLD_FILL)}>
+            <Radar className="h-5 w-5 text-[hsl(218_52%_11%)]" aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <p className={cn('text-2xs font-bold uppercase tracking-[0.14em]', GOLD_TEXT)}>{t(tenant ? 'fbl_eyebrow_tenants' : 'fbl_eyebrow_buyers')}</p>
+            <h2 id="fbl-title" className="flex items-center gap-2 font-display text-base font-semibold leading-snug sm:text-lg">
+              {live && view?.motion === 'active' && (
+                <span className="relative flex h-2.5 w-2.5 shrink-0" aria-hidden="true">
+                  <span className="absolute inline-flex h-full w-full rounded-full bg-[hsl(40_94%_64%)] opacity-70 motion-safe:animate-ping" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[hsl(40_94%_64%)]" />
+                </span>
+              )}
+              <span className="break-words">{view ? t(view.headlineKey) : t('fbl_state_idle')}</span>
+            </h2>
+          </div>
+        </div>
+        {/* ── the one control that matches the state ── */}
+        <div className="flex flex-wrap gap-2">
+          {view?.control === 'pause' && button({ icon: Pause, label: t('fbl_pause'), onClick: onPause })}
+          {view?.control === 'pausing' && button({ icon: Pause, label: t('fbl_pausing'), disabled: true, spinning: true })}
+          {view?.control === 'resume' && button({ icon: Play, label: t('fbl_resume'), onClick: onResume, primary: true })}
+          {view?.canStop && button({ icon: Square, label: t('fbl_stop'), onClick: onStop })}
+          {!live && button({
+            icon: Play, label: launchLabel, onClick: onLaunch, primary: true, disabled: readiness ? !readiness.ready : false,
+          })}
+        </div>
+      </div>
+
+      {view?.control === 'pausing' && (
+        <p className={cn('mt-3 rounded-xl bg-white/5 px-3 py-2 text-2xs leading-relaxed ring-1 ring-inset ring-white/10', ON_NAVY_SOFT)} role="status">
+          {t('fbl_pausing_note')}
+        </p>
+      )}
+      {!live && readiness && !readiness.ready && (
+        <p className="mt-3 flex items-start gap-2 rounded-xl bg-[hsl(350_60%_50%/0.12)] px-3 py-2 text-2xs leading-relaxed text-[hsl(350_80%_88%)] ring-1 ring-inset ring-[hsl(350_60%_60%/0.35)]" role="status">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span>{t('fbl_not_ready')}</span>
+        </p>
+      )}
+
+      <div className={cn('mt-4 grid gap-4', showNetwork && 'lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]')}>
+        {showNetwork && c && (
+          <div className="min-w-0 rounded-xl bg-[hsl(218_55%_8%/0.55)] p-2 ring-1 ring-inset ring-white/10" dir="ltr">
+            <DiscoverySnake
+              sources={c.sources}
+              motion={view?.motion ?? 'still'}
+              propertyLabel={t('fbl_node_property')}
+              homatchLabel="HOMATCH"
+              ariaLabel={t('fbl_network_aria', { sources: c.sources.map((s) => s.source).join(', ') || '—' })}
+            />
+            {c.sources.length === 0 && live && (
+              <p className={cn('px-2 pb-2 text-center text-2xs', ON_NAVY_SOFT)} dir="auto">{t('fbl_preparing_note')}</p>
+            )}
+          </div>
+        )}
+        <div className="min-w-0 space-y-4">
+          {c && view && (live || c.executed) && (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <Metric value={view.metrics.sourcesWorking} label={t('fbl_m_working')} accent={view.metrics.sourcesWorking > 0} />
+              <Metric value={view.metrics.sourcesDone} label={t('fbl_m_done')} />
+              <Metric value={view.metrics.signals} label={t('fbl_m_signals')} />
+              <Metric value={view.metrics.possible} label={t('fbl_m_possible')} accent={view.metrics.possible > 0} />
+              <Metric value={view.metrics.strong} label={t('fbl_m_strong')} accent={view.metrics.strong > 0} />
+              <Metric value={c.staleSkipped} label={t('fbl_m_stale')} />
+            </div>
+          )}
+          {c && !live && (
+            <p className={cn('text-2xs leading-relaxed', ON_NAVY_SOFT)}>
+              {t(c.state === 'UNAVAILABLE' ? 'fbl_last_unavailable_note' : c.state === 'COMPLETED_NO_RESULTS' ? 'fbl_last_zero_note'
+                : c.state === 'COMPLETED_WITH_RESULTS' ? 'fbl_last_results_note' : 'fbl_last_other_note', { n: String(c.newResults) })}
+            </p>
+          )}
+          <SearchDna facts={facts} onDark />
+          <p className={cn('flex items-center gap-1.5 text-2xs', ON_NAVY_SOFT)}>
+            <CalendarCheck2 className={cn('h-3.5 w-3.5 shrink-0', GOLD_TEXT)} aria-hidden="true" />{t('fbx_fresh_rule')}
+          </p>
+          <span className="sr-only">{propertyLabel}</span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** A compact, persistent status entry while the module is scrolled away. */
+export function SearchStatusPill({ status, counterpart, onOpen }: {
+  status: CampaignStatus | null; counterpart: 'BUYER' | 'TENANT' | null; onOpen: () => void;
+}) {
+  const { t } = useLanguage();
+  const c = status?.campaign;
+  if (!c || !c.active) return null;
+  const paused = c.state === 'PAUSED';
+  const label = paused ? t('fbl_pill_paused')
+    : c.newResults > 0 ? t('fbl_pill_results', { n: String(c.newResults) })
+    : t(counterpart === 'TENANT' ? 'fbl_pill_running_tenants' : 'fbl_pill_running_buyers');
+  return (
+    <button type="button" onClick={onOpen}
+      className={cn('fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] start-4 z-40 inline-flex min-h-11 max-w-[calc(100vw-6rem)] items-center gap-2 rounded-full px-4 text-sm font-semibold text-white shadow-[0_14px_30px_-12px_hsl(218_60%_8%/0.9)] ring-1 ring-inset ring-[hsl(40_80%_55%/0.45)] md:bottom-6', NAVY_BAND)}>
+      <span className="relative flex h-2.5 w-2.5 shrink-0" aria-hidden="true">
+        {!paused && <span className="absolute inline-flex h-full w-full rounded-full bg-[hsl(40_94%_64%)] opacity-70 motion-safe:animate-ping" />}
+        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[hsl(40_94%_64%)]" />
+      </span>
+      <span className="truncate">{label}</span>
+    </button>
+  );
+}
+
+export default LiveSearchModule;

@@ -608,6 +608,47 @@ export function nextMatchesCursor(page: Match[]): string | undefined {
   return `${last.match_score}|${last.created_at}`;
 }
 
+/**
+ * ONE PAGE OF MATCHES, NUMBERED, SERVER-SIDE.
+ *
+ * The page the customer asked for and the total that makes "page 3 of 7"
+ * true, in a stable order (score, then newest, then id). Current demand and
+ * history are separate queries with the same 30-day rule matching/currentDemand
+ * applies on the client: an opened (UNLOCKED) match is always current; every
+ * other match is current only while its demand is dated inside the window
+ * (undated is history — undatedEligible is false). Nothing is fetched and then
+ * hidden.
+ */
+export async function getMatchesPaged(propertyId: string, opts: {
+  page: number;
+  pageSize: number;
+  scope: 'current' | 'history';
+  filter?: 'all' | 'new' | 'strong';
+  now?: number;
+}): Promise<{ rows: Match[]; total: number }> {
+  const now = opts.now ?? Date.now();
+  const from = new Date(now - 30 * 86_400_000).toISOString();
+  const until = new Date(now + 24 * 3_600_000).toISOString();
+  const start = Math.max(0, opts.page - 1) * opts.pageSize;
+  let q = supabase
+    .from('matches')
+    .select(MATCH_COLUMNS_WITH_DEMAND_DATE, { count: 'exact' })
+    .eq('property_id', propertyId)
+    .neq('status', 'REJECTED');
+  q = opts.scope === 'current'
+    ? q.or(`status.eq.UNLOCKED,and(demand_published_at.gte.${from},demand_published_at.lte.${until})`)
+    : q.neq('status', 'UNLOCKED').or(`demand_published_at.is.null,demand_published_at.lt.${from},demand_published_at.gt.${until}`);
+  if (opts.filter === 'new') q = q.eq('status', 'NEW');
+  if (opts.filter === 'strong') q = q.in('signal_strength', ['STRONG', 'VERY_STRONG', 'EXCEPTIONAL']);
+  const { data, error, count } = await q
+    .order('match_score', { ascending: false })
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: true })
+    .range(start, start + opts.pageSize - 1);
+  if (error) return { rows: [], total: 0 };
+  return { rows: Array.isArray(data) ? (data as unknown as Match[]) : [], total: Number(count ?? 0) };
+}
+
 export async function getMatchCounts(propertyId: string): Promise<{
   total: number;
   newCount: number;
@@ -806,6 +847,8 @@ export function campaignStartErrorKey(error: unknown): { key: string; vars: Reco
   }
   /* An expired property is not freshly confirmed inventory; renewal is free. */
   if (error.reasonCode === 'PROPERTY_EXPIRED') return { key: 'pow_discovery_expired_error', vars: {} };
+  /* No discovery source can run right now: refused before anything was reserved. */
+  if (error.reasonCode === 'DISCOVERY_UNAVAILABLE') return { key: 'fbl_unavailable_error', vars: {} };
   return null;
 }
 
@@ -1283,6 +1326,11 @@ export async function controlMatchingJob(
   });
   if (error) throw new Error(`Could not ${action} the search: ${error.message}`);
   if (!data?.success) throw new Error(`Could not ${action} the search: ${data?.reasonCode ?? 'refused'}`);
+  /* A resumed search is this property's search again: undo what pause marked. */
+  if (action === 'resume') {
+    await supabase.from('matching_campaigns').update({ status_v2: 'ACTIVE' }).eq('property_id', propertyId);
+    await supabase.from('properties').update({ matching_status: 'ACTIVE' }).eq('id', propertyId);
+  }
   return { status: String(data.status ?? '') };
 }
 
@@ -1951,7 +1999,7 @@ export async function suspendLiveChatUser(userId: string, reportId: string, reas
   await supabase.from('live_chat_reports').update({ status: 'USER_SUSPENDED', resolved_at: new Date().toISOString() }).eq('id', reportId);
 }
 
-export function calculateMatchability(facts: Partial<PropertyFacts> | null): {
+export function calculateMatchability(facts: Partial<PropertyFacts> | null, photoCount = 0): {
   score: number;
   improvements: string[];
 } {
@@ -1979,10 +2027,12 @@ export function calculateMatchability(facts: Partial<PropertyFacts> | null): {
     { pass: !!facts.bedrooms, weight: 8, hint: 'prop_hint_add_bedrooms' },
     { pass: !!facts.bathrooms, weight: 4, hint: undefined },
     { pass: !!facts.description && (facts.description?.length ?? 0) > 50, weight: 12, hint: 'prop_hint_add_description' },
-    { pass: !!facts.new_build !== undefined, weight: 5, hint: undefined },
+    /* Known either way (true or false) — the old `!!x !== undefined` was always true. */
+    { pass: facts.new_build === true || facts.new_build === false, weight: 5, hint: undefined },
     { pass: !!facts.condition, weight: 5, hint: 'prop_hint_add_condition' },
     { pass: (facts.parking || facts.elevator || facts.balcony) === true, weight: 5, hint: 'prop_hint_add_amenities' },
-    { pass: false, weight: 6, hint: 'prop_hint_add_photos' }, // photos counted externally
+    /* Three or more photos (owner uploads + the source gallery, de-duplicated by the caller). */
+    { pass: photoCount >= 3, weight: 6, hint: 'prop_hint_add_photos' },
   ];
 
   const maxScore = checks.reduce((s, c) => s + c.weight, 0);

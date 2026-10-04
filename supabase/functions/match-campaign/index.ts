@@ -1,11 +1,14 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { beginExecution, releaseExecution } from '../_shared/billing.ts';
+import { ACTIVE_SEARCH_STATUSES, abandonClaim, claimSearch } from '../_shared/findBuyers/startClaim.ts';
 import { loadDiscoverySettings } from '../_shared/discoverySettings.ts';
-import { claimJobTransition, finalizeCampaignJob } from '../_shared/campaignRun.ts';
+import { claimJobTransition, failCampaignJob, finalizeCampaignJob } from '../_shared/campaignRun.ts';
 import { queuePlannedJobs, storePlan } from '../_shared/campaignSources.ts';
 import { compileDemandPlan } from '../../../src/research-core/discovery/discovery-plan.ts';
 import { creditsPerUsd, loadFindBuyersSettings, minimumCredits, startSocialCampaign } from '../_shared/findBuyers/campaign.ts';
 import { translateLeadText } from '../_shared/findBuyers/translate.ts';
+import { discoveryReadiness } from '../_shared/findBuyers/readiness.ts';
+import { outcomeWithoutExternalWork } from '../../../src/research-core/findBuyers/readiness.ts';
 import { fetchCurrentFx } from '../_shared/fx.ts';
 import {
   persistCampaignLanguages,
@@ -353,8 +356,9 @@ Deno.serve(async (req: Request) => {
         .from('matching_jobs')
         .select('id,status')
         .eq('property_id', propertyId)
-        .in('status', ['queued', 'analysing_property', 'generating_queries', 'searching_sources',
-          'collecting_results', 'normalizing', 'deduplicating', 'classifying', 'ranking'])
+        /* A paused search is still this property's search: resume it,
+           never reserve a second budget beside it. */
+        .in('status', [...ACTIVE_SEARCH_STATUSES])
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -412,40 +416,29 @@ Deno.serve(async (req: Request) => {
         maxBudgetCredits: discovery.campaignMaxCredits,
       }, 400);
     }
-    const grant = await beginExecution(db, {
-      userId: homatchUser.id,
-      productCode: 'FIND_CLIENTS',
-      idempotencyKey: `findclients:${idempotencyKey}`,
-      jobRef: propertyId,
-      authorizedMaxCredits: requestedBudget,
-      allowIncluded: false,
-      budgetIsCeiling: true,
-      /* A balance below the budget is refused, not quietly shrunk: the
-         customer chose this ceiling and is told if it cannot be reserved. */
-      requireFullBudget: true,
-      metadata: { campaignId, propertyId, campaignBudgetCredits: requestedBudget },
-    });
-    grantRef = grant;
-
-    if (!grant.ok) {
-      const { data: ent } = await db.rpc('billing_entitlements', { p_user_id: homatchUser.id });
+    /*
+     * SEARCH READINESS, BEFORE ANY CREDIT IS RESERVED. A campaign with no
+     * executable discovery path (social switch off or no eligible Actor, and
+     * native source discovery off) would only re-read stored demand and then
+     * "finish" -- production 2026-10-04 did exactly that in 220 ms and charged
+     * for it. It is refused here instead; nothing is reserved or created.
+     */
+    const readiness = await discoveryReadiness(db, discovery, findBuyers);
+    if (!readiness.ready) {
       return json({
-        error: grant.reason === 'BELOW_MIN_VIABLE_BUDGET'
-          ? 'This search needs a little more balance to be worth running.'
-          : 'This search needs Credits to continue.',
-        reasonCode: grant.reason ?? 'BILLING_REQUIRED',
-        planCode: grant.planCode,
-        walletBalance: Number(ent?.wallet?.balance ?? 0),
-        // What they would need, so the client can say it rather than showing a
-        // dead-end "insufficient balance".
-        minViableBudgetCredits: grant.minViableBudgetCredits,
-        budget: grant.budget ?? null,
-        firstTopupPromoAvailable: !!ent?.first_topup_promo_available,
-      }, 402);
+        error: 'Search is not available right now.',
+        reasonCode: 'DISCOVERY_UNAVAILABLE',
+        readinessReason: readiness.reason,
+      }, 409);
     }
-
+    /*
+     * ONE ACTIVE SEARCH PER PROPERTY, CLAIMED BEFORE ANY CREDIT IS RESERVED.
+     * The job row is the claim (uidx_matching_jobs_one_active_per_property):
+     * of two simultaneous starts exactly one inserts it; the other resolves to
+     * the running search above without reserving anything.
+     */
     const startedAt = new Date().toISOString();
-    const { data: createdJob, error: jobError } = await db.from('matching_jobs').insert({
+    const claim = await claimSearch(db, {
       property_id: propertyId,
       campaign_id: campaignId,
       user_id: property.user_id,
@@ -467,11 +460,52 @@ Deno.serve(async (req: Request) => {
       search_languages: languages.selection.languages,
       search_language_mode: languages.selection.mode,
       started_at: startedAt,
-      /* So the discovery driver can settle this run after the request ends. */
-      billing_grant: grant,
-    }).select('id').single();
-    if (jobError || !createdJob) throw jobError || new Error('Could not create matching job');
-    jobId = String(createdJob.id);
+    }, propertyId, idempotencyKey);
+    if (!claim.ok) {
+      /* Another start for this property (or this very request) holds the
+         claim: nothing is reserved, charged or queued for this one. */
+      return json({ success: true, idempotent: true, alreadyRunning: true, jobId: claim.existing?.id ?? null, campaignId, status: claim.existing?.status ?? null });
+    }
+    jobId = claim.jobId;
+
+    const grant = await beginExecution(db, {
+      userId: homatchUser.id,
+      productCode: 'FIND_CLIENTS',
+      idempotencyKey: `findclients:${idempotencyKey}`,
+      jobRef: propertyId,
+      authorizedMaxCredits: requestedBudget,
+      allowIncluded: false,
+      budgetIsCeiling: true,
+      /* A balance below the budget is refused, not quietly shrunk: the
+         customer chose this ceiling and is told if it cannot be reserved. */
+      requireFullBudget: true,
+      metadata: { campaignId, propertyId, campaignBudgetCredits: requestedBudget },
+    });
+    grantRef = grant;
+
+    if (!grant.ok) {
+      /* Nothing was reserved, so the search never started: give the claim back. */
+      await abandonClaim(db, jobId);
+      jobId = null;
+      const { data: ent } = await db.rpc('billing_entitlements', { p_user_id: homatchUser.id });
+      return json({
+        error: grant.reason === 'BELOW_MIN_VIABLE_BUDGET'
+          ? 'This search needs a little more balance to be worth running.'
+          : 'This search needs Credits to continue.',
+        reasonCode: grant.reason ?? 'BILLING_REQUIRED',
+        planCode: grant.planCode,
+        walletBalance: Number(ent?.wallet?.balance ?? 0),
+        // What they would need, so the client can say it rather than showing a
+        // dead-end "insufficient balance".
+        minViableBudgetCredits: grant.minViableBudgetCredits,
+        budget: grant.budget ?? null,
+        firstTopupPromoAvailable: !!ent?.first_topup_promo_available,
+      }, 402);
+    }
+
+    /* So the discovery driver can settle this run after the request ends. */
+    const { error: grantError } = await db.from('matching_jobs').update({ billing_grant: grant }).eq('id', jobId);
+    if (grantError) throw grantError;
 
     await event(db, jobId, 'JOB_STARTED', {
       message: 'Matching started from existing Homatch research',
@@ -843,6 +877,28 @@ Deno.serve(async (req: Request) => {
           partialBudget: grant.partialBudget,
         },
       }, 202);
+    }
+
+    /*
+     * NOTHING EXTERNAL WAS QUEUED. With internal results the campaign ends as
+     * before (it found current demand). With none, no discovery work exists:
+     * the campaign is UNAVAILABLE, its reservation is released in full and it
+     * is never reported as "finished with 0 results".
+     */
+    if (outcomeWithoutExternalWork(freshFromInternal) === 'UNAVAILABLE') {
+      if (await claimJobTransition(db, jobId!, ['classifying', 'analysing_property', 'queued'], { status: 'ranking' })) {
+        await failCampaignJob(db, {
+          id: jobId!, property_id: propertyId, campaign_id: campaignId, started_at: startedAt,
+        }, grant, 'DISCOVERY_UNAVAILABLE', 'no discovery source could start; nothing was charged');
+      }
+      return json({
+        success: false,
+        jobId,
+        campaignId,
+        status: 'failed',
+        reasonCode: 'DISCOVERY_UNAVAILABLE',
+        billing: { funding: grant.funding, creditsCharged: 0, creditsAuthorized: grant.authorizedMaxCredits },
+      }, 409);
     }
 
     await event(db, jobId!, sourcesAvailable ? 'SOURCE_DISCOVERY_NOT_NEEDED' : 'SOURCE_DISCOVERY_OFF', {

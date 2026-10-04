@@ -228,7 +228,8 @@ export async function failCampaignJob(
   await updateJob(db, job.id, {
     status,
     progress: 100,
-    current_step: status === 'budget_reached' ? 'Stopped at the budget you set' : 'The search could not finish',
+    current_step: status === 'budget_reached' ? 'Stopped at the budget you set'
+      : reason === 'DISCOVERY_UNAVAILABLE' ? 'The search could not start' : 'The search could not finish',
     failure_reason: reason,
     error_message: detail.slice(0, 1000),
     completed_at: new Date().toISOString(),

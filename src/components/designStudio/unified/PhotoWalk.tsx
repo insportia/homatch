@@ -253,7 +253,7 @@ export function PhotoWalk({ photos, initialId, onClose }: { photos: WalkPhoto[];
           <div className="absolute inset-0 grid place-items-center bg-[#0C1119]" role="alert" data-testid="photo-walk-failed">
             <div className="flex max-w-sm flex-col items-center gap-3 px-6 text-center">
               <p className="text-[15px] font-semibold">{t('dsx_photo3d_failed')}</p>
-              <p className="text-[12px] text-white/50" data-testid="photo-walk-code">{phase.code}</p>
+              <p className="text-2xs text-white/50" data-testid="photo-walk-code">{phase.code}</p>
               <button type="button" onClick={retry} className={cn('inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 text-[15px] font-semibold text-[#0C1119]', RING)}>
                 <RotateCcw className="h-4 w-4" aria-hidden="true" />{t('dsx_walk_retry')}
               </button>

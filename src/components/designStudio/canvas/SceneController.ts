@@ -31,12 +31,12 @@ import type { QualityProfile } from '@/lib/designStudio/quality';
 import type { CatalogAsset, CatalogMaterial } from '@/lib/designStudio/catalog';
 import type { DesignState, ObjectInstance } from '@/lib/designStudio/designState';
 import { PAINTABLE_ROLES, type PartRole } from '@/lib/designStudio/modelParts';
-import { EYE_HEIGHT_M, doorsOnRoute, findPath, nearestFree, setDoorClosed, type WalkModel } from '@/lib/designStudio/navigation';
+import { EYE_HEIGHT_M, doorsOnRoute, findPath, isFree, nearestFree, recoverPosition, setDoorClosed, type WalkModel } from '@/lib/designStudio/navigation';
 import {
   easeInOut as easeInOutCubic, isActiveState, validateInteractions, type ActionCode, type InteractionRole, type InteractionSpec,
 } from '@/lib/designStudio/interactions';
 import {
-  DEFAULT_SETTINGS, REACH_M, canWalk, look, normalizeSettings, postureTransition, stepBody, wishVelocity,
+  DEFAULT_SETTINGS, REACH_M, TOUCH_LOOK_RAD_PER_PX, canWalk, isTap, look, normalizeSettings, postureTransition, stepBody, stickInput, wishVelocity,
   type PlayerSettings, type Posture,
 } from '@/lib/designStudio/player';
 import { LivingRuntime, type LiveEntry } from './livingRuntime';
@@ -1921,6 +1921,11 @@ export class SceneController {
   private aimBox: THREE.Box3Helper | null = null;
   private aimQueued = false;
   private lastPointer: { x: number; y: number } | null = null;
+  /**
+   * The visitor is on a touch screen (the last input was a finger): walking near something only highlights it,
+   * the hint with its buttons waits for a tap on the thing itself (PROXIMITY NEVER EXECUTES, nor pops a card).
+   */
+  private touchInput = false;
   private onAimChange?: (hint: AimHint | null) => void;
   private onSeatChange?: (posture: 'SIT' | 'LIE' | null) => void;
 
@@ -1982,9 +1987,11 @@ export class SceneController {
     return { role, open: t.entry ? isActiveState(t.entry.machine, state!) : false, actions };
   }
 
-  private setAim(t: { entry: LiveEntry | null; objectId: string | null; node: THREE.Object3D } | null) {
+  private setAim(t: { entry: LiveEntry | null; objectId: string | null; node: THREE.Object3D } | null, quiet = false) {
     const same = this.aimed && t && this.aimed.entry === t.entry && this.aimed.objectId === t.objectId;
+    if (same && !quiet && this.aimQuiet) { this.aimQuiet = false; this.onAimChange?.(this.hintFor(this.aimed)); return; }
     if (same || (!this.aimed && !t)) return;
+    this.aimQuiet = quiet;
     this.aimed = t && this.hintFor(t) ? t : null;
     if (this.aimBox) { this.overlayGroup.remove(this.aimBox); this.aimBox.geometry.dispose(); (this.aimBox.material as THREE.Material).dispose(); this.aimBox = null; }
     if (this.aimed) {
@@ -1994,9 +2001,12 @@ export class SceneController {
       this.overlayGroup.add(this.aimBox);
     }
     this.renderer.domElement.style.cursor = this.aimed ? 'pointer' : (this.walk ? 'crosshair' : '');
-    this.onAimChange?.(this.hintFor(this.aimed));
+    // Quiet (a touch visitor merely walking near it): the highlight only — no card, no buttons, no action.
+    this.onAimChange?.(quiet ? null : this.hintFor(this.aimed));
     this.requestRender();
   }
+
+  private aimQuiet = false;
 
   private refreshAimBox() {
     if (this.aimBox && this.aimed) this.aimBox.box.setFromObject(this.aimed.node);
@@ -2019,7 +2029,8 @@ export class SceneController {
         return;
       }
       if (this.aimClear !== null) { window.clearTimeout(this.aimClear); this.aimClear = null; }
-      this.setAim(hit);
+      // A finger walking or looking around never opens a card: what is in reach is only highlighted.
+      this.setAim(hit, this.touchInput && !this.lastPointer);
     });
   }
 
@@ -2649,7 +2660,9 @@ export class SceneController {
   /** The on-screen joystick: x strafes, y walks (up = forward), each −1…1. */
   setWalkStick(x: number, y: number) {
     if (!this.walk) return;
-    this.walk.stick = { x: Math.max(-1, Math.min(1, x)), y: Math.max(-1, Math.min(1, y)) };
+    this.touchInput = true;
+    // Dead zone and a gentle curve (player.ts stickInput): a resting thumb never walks, a slight push creeps.
+    this.walk.stick = stickInput(Math.max(-1, Math.min(1, x)), Math.max(-1, Math.min(1, y)));
     if (x || y) this.walk.glide = this.walk.seated ? this.walk.glide : null;
     this.requestRender();
   }
@@ -2658,7 +2671,7 @@ export class SceneController {
   lookBy(dxPx: number, dyPx: number) {
     const w = this.walk;
     if (!w) return;
-    const next = look(w.yaw, w.pitch, dxPx, dyPx, this.settings);
+    const next = look(w.yaw, w.pitch, dxPx, dyPx, this.settings, TOUCH_LOOK_RAD_PER_PX);
     w.yaw = next.yaw; w.pitch = next.pitch;
     this.placeWalkCamera();
     this.lastPointer = null;
@@ -2669,6 +2682,7 @@ export class SceneController {
   /** Interact with whatever is at a screen point (a tap the overlay received). */
   tapAt(clientX: number, clientY: number): boolean {
     if (!this.walk) return false;
+    // The ray from the tapped point itself (no radius): the visible thing under the finger, within reach, or nothing.
     const hit = this.targetAt(clientX, clientY);
     if (!hit) return false;
     this.setAim(hit);
@@ -2837,7 +2851,8 @@ export class SceneController {
     const py = locked ? rect.top + rect.height / 2 : y;
     const hit = this.targetAt(px, py);
     let part: NonNullable<ReturnType<typeof this.gestures.get>>['part'] = null;
-    if (hit?.entry && this.living.canScrub(hit.entry)) {
+    // Only a mouse drags a door or a drawer by hand: a finger dragging is ALWAYS looking around, wherever it began.
+    if (mouse && hit?.entry && this.living.canScrub(hit.entry)) {
       const axis = this.scrubAxis(hit.entry.key);
       if (axis) part = { key: hit.entry.key, ...axis, lastT: axis.t0, lastAt: performance.now(), fling: 0 };
     }
@@ -2866,7 +2881,7 @@ export class SceneController {
     }
     if (g.part) return;
     if (w.route && g.moved > 6) this.cancelRoute(false);
-    const next = look(w.yaw, w.pitch, dx, dy, this.settings);
+    const next = look(w.yaw, w.pitch, dx, dy, this.settings, g.mouse ? undefined : TOUCH_LOOK_RAD_PER_PX);
     w.yaw = next.yaw;
     w.pitch = next.pitch;
     this.placeWalkCamera();
@@ -2882,7 +2897,8 @@ export class SceneController {
       this.requestRender();
       return;
     }
-    const quick = performance.now() - g.t < 450 && g.moved < 8;
+    // A tap, not a drag: short and nearly still (a finger that looked around, even a little, never uses anything).
+    const quick = isTap(performance.now() - g.t, g.moved, g.mouse);
     if (!quick) return;
     const rect = this.renderer.domElement.getBoundingClientRect();
     const px = g.locked ? rect.left + rect.width / 2 : x;
@@ -2899,6 +2915,7 @@ export class SceneController {
 
   private onLookDown = (e: PointerEvent) => {
     if (!this.walk || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    this.touchInput = e.pointerType !== 'mouse';
     this.beginGesture(e.pointerId, e.clientX, e.clientY, e.pointerType === 'mouse');
     if (!this.pointerLocked) this.renderer.domElement.setPointerCapture?.(e.pointerId);
   };
@@ -2911,6 +2928,7 @@ export class SceneController {
     if (!g) {
       if (e.pointerType === 'mouse') {
         // Hover: point at something that can be used, and it says so.
+        this.touchInput = false;
         this.lastPointer = { x: e.clientX, y: e.clientY };
         this.queueAim();
       }
@@ -2991,8 +3009,8 @@ export class SceneController {
     const input = {
       forward: Math.max(-1, Math.min(1, k('KeyW') + k('ArrowUp') - k('KeyS') - k('ArrowDown') - w.stick.y)),
       strafe: Math.max(-1, Math.min(1, k('KeyD') + k('ArrowRight') - k('KeyA') - k('ArrowLeft') + w.stick.x)),
-      // A full push of the stick is a brisk walk, like Shift on a keyboard.
-      brisk: w.brisk || Math.hypot(w.stick.x, w.stick.y) > 0.96,
+      // The stick walks at a person's pace (a full push is a walk, never a run): Shift alone walks briskly.
+      brisk: w.brisk,
     };
     const wantsToMove = input.forward !== 0 || input.strafe !== 0;
     if (w.route) {
@@ -3007,6 +3025,12 @@ export class SceneController {
     const wish = wishVelocity(input, w.yaw, this.settings);
     const moving = Math.hypot(w.vel.x, w.vel.y) > 1e-3;
     if (!wantsToMove && !moving) return false;
+    // Safety net only: a body standing somewhere it cannot be (a door closed on it, a numerical edge) is eased to
+    // the nearest free floor, never a reload. A body that is free is never moved by this.
+    if (wantsToMove && !isFree(w.model, w.pos)) {
+      const safe = recoverPosition(w.model, w.pos);
+      if (safe && (safe.x !== w.pos.x || safe.y !== w.pos.y)) { this.glideTo(safe, w.yaw, w.eye, w.pitch, 250); return true; }
+    }
     const body = stepBody(w.model, w.pos, w.vel, wish, dt);
     w.pos = body.pos;
     w.vel = body.vel;

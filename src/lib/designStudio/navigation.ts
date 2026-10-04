@@ -11,8 +11,11 @@
 //     (one storey is walked; the flight is architecture to look at)
 //   · the space itself: the body must stay in a room or in a doorway
 //
-// A blocked move slides along the obstacle instead of stopping dead, and a
-// long step is taken in small sub-steps so nothing can be tunnelled through.
+// A blocked move slides along the obstacle instead of stopping dead (the
+// step is turned toward the free side, keeping the part of it that points
+// that way), and a long step is taken in small sub-steps so nothing can be
+// tunnelled through. Small decorative pieces (a plant, a lamp, a stool, a
+// vase) are SOFT: seen, never a wall the body sticks to (softPiece).
 // Deterministic and pure; the renderer only asks where the body may go.
 
 import type { CatalogAsset } from './catalog.ts';
@@ -25,6 +28,10 @@ export const EYE_HEIGHT_M = 1.6;
 export const BODY_RADIUS_M = 0.22;
 /** Pieces lower than this are stepped over (rugs, low platforms). */
 export const STEP_OVER_M = 0.3;
+/** A walking body plus the room to pass without steering pixel-perfectly: what a route must leave free (0.7 m wide). */
+export const COMFORT_RADIUS_M = 0.35;
+/** A floor piece this small (m² footprint) that is decor, a plant, a lamp or a stool never blocks the body. */
+export const SOFT_FOOTPRINT_M2 = 0.2;
 const SUBSTEP_M = 0.08;
 const DOORWAY_REACH_M = 0.45;
 
@@ -85,12 +92,37 @@ export function buildWalkModel(space: SpaceModel, objects: ObjectInstance[], ass
   for (const o of objects) {
     const own = assets.get(o.assetId);
     const a = own ? shapedAsset(own, o) : undefined;
-    if (!a || a.placement !== 'FLOOR' || a.heightM < STEP_OVER_M) continue;
+    if (!a || a.placement !== 'FLOOR' || a.heightM < STEP_OVER_M || softPiece(a)) continue;
     furniture.push(footprint(a, { x: o.position.x, y: o.position.z }, o.rotationY));
   }
 
   const stairs = (space.stairs ?? []).map((st) => st.polygon).filter((p) => p.length >= 3);
   return { space, walls, furniture, doors: space.doors.map((d) => d.centre), stairs, doorways, closedDoors: new Set(), radius: BODY_RADIUS_M };
+}
+
+/**
+ * Collision classes: STRUCTURAL (walls, stairs, closed doors) and MAJOR furniture block the body; a small
+ * decorative piece is SOFT (drawn, never a trap): a plant, a lamp, a stool or decor under SOFT_FOOTPRINT_M2.
+ */
+export function softPiece(a: Pick<CatalogAsset, 'category' | 'subcategory' | 'code' | 'widthM' | 'depthM'>): boolean {
+  if (a.widthM * a.depthM >= SOFT_FOOTPRINT_M2) return false;
+  const words = [a.category, a.subcategory, a.code].filter(Boolean).join(' ').toUpperCase();
+  return /PLANT|PLANTER|LAMP|LIGHT|DECOR|VASE|STOOL|OTTOMAN|POUF|SCULPTURE|ACCESSOR/.test(words);
+}
+
+/** Whether a body of radius `r` fits at `p` (the model's own radius is restored). */
+export function freeWith(model: WalkModel, p: Point, r: number): boolean {
+  const own = model.radius;
+  model.radius = r;
+  try { return isFree(model, p); } finally { model.radius = own; }
+}
+
+/**
+ * Where a body that ended up somewhere it cannot be (a door closed on it, a numerical edge) stands again: the
+ * nearest free point. A safety net only: a body that is free is never moved.
+ */
+export function recoverPosition(model: WalkModel, p: Point): Point | null {
+  return isFree(model, p) ? p : nearestFree(model, p, 2);
 }
 
 /** Distance from a point to an oriented box (0 inside). */
@@ -128,10 +160,38 @@ export function inSpace(model: WalkModel, p: Point): boolean {
   return model.doors.some((d) => Math.hypot(d.x - p.x, d.y - p.y) <= DOORWAY_REACH_M);
 }
 
+// A 1 m bucket index of the solid boxes, built once per obstacle list: a free-space question looks only at the
+// boxes near the point (the same answer as looking at all of them, for any radius up to INDEX_REACH_M).
+const INDEX_CELL_M = 1;
+const INDEX_REACH_M = 0.6;
+const indexes = new WeakMap<Obb[], Map<string, Obb[]>>();
+function indexOf(list: Obb[]): Map<string, Obb[]> {
+  let idx = indexes.get(list);
+  if (idx) return idx;
+  idx = new Map();
+  for (const b of list) {
+    const r = Math.hypot(b.hw, b.hd) + INDEX_REACH_M;
+    for (let i = Math.floor((b.cx - r) / INDEX_CELL_M); i <= Math.floor((b.cx + r) / INDEX_CELL_M); i += 1) {
+      for (let j = Math.floor((b.cy - r) / INDEX_CELL_M); j <= Math.floor((b.cy + r) / INDEX_CELL_M); j += 1) {
+        const k = `${i},${j}`;
+        (idx.get(k) ?? idx.set(k, []).get(k)!).push(b);
+      }
+    }
+  }
+  indexes.set(list, idx);
+  return idx;
+}
+function blockedBy(list: Obb[], p: Point, radius: number): boolean {
+  if (radius > INDEX_REACH_M) { for (const b of list) if (distanceToObb(p, b) < radius) return true; return false; }
+  const near = indexOf(list).get(`${Math.floor(p.x / INDEX_CELL_M)},${Math.floor(p.y / INDEX_CELL_M)}`);
+  if (near) for (const b of near) if (distanceToObb(p, b) < radius) return true;
+  return false;
+}
+
 export function isFree(model: WalkModel, p: Point): boolean {
   if (!inSpace(model, p)) return false;
-  for (const w of model.walls) if (distanceToObb(p, w) < model.radius) return false;
-  for (const f of model.furniture) if (distanceToObb(p, f) < model.radius) return false;
+  if (blockedBy(model.walls, p, model.radius)) return false;
+  if (blockedBy(model.furniture, p, model.radius)) return false;
   for (const s of model.stairs ?? []) if (distanceToPolygon(p, s) < model.radius) return false;
   for (const id of model.closedDoors) {
     const leaf = model.doorways.get(id);
@@ -155,18 +215,79 @@ export function move(model: WalkModel, from: Point, delta: Point): Point {
   if (length === 0) return from;
   const steps = Math.max(1, Math.ceil(length / SUBSTEP_M));
   let p = from;
+  const dx = delta.x / steps;
+  const dy = delta.y / steps;
   for (let i = 0; i < steps; i += 1) {
-    const dx = delta.x / steps;
-    const dy = delta.y / steps;
     const full = { x: p.x + dx, y: p.y + dy };
     if (isFree(model, full)) { p = full; continue; }
-    const alongX = { x: p.x + dx, y: p.y };
-    if (Math.abs(dx) > 1e-9 && isFree(model, alongX)) { p = alongX; continue; }
-    const alongY = { x: p.x, y: p.y + dy };
-    if (Math.abs(dy) > 1e-9 && isFree(model, alongY)) { p = alongY; continue; }
-    break;
+    const next = slide(model, p, dx, dy);
+    if (!next) break;
+    p = next;
   }
   return p;
+}
+
+/** Turns a blocked step may take toward the free side (radians), smallest first: the slide keeps cos(turn) of it. */
+const SLIDE_TURNS = [0.35, 0.7, 1.05];
+
+/** The outward normal of the solid box nearest `p` (walls and standing furniture), or null when none is in reach. */
+function contactNormal(model: WalkModel, p: Point): Point | null {
+  let best: { d: number; n: Point } | null = null;
+  for (const list of [model.walls, model.furniture]) {
+    const near = indexOf(list).get(`${Math.floor(p.x / INDEX_CELL_M)},${Math.floor(p.y / INDEX_CELL_M)}`) ?? [];
+    for (const b of near) {
+      const c = Math.cos(b.angle); const s = Math.sin(b.angle);
+      const dx = p.x - b.cx; const dy = p.y - b.cy;
+      const lx = dx * c + dy * s; const ly = -dx * s + dy * c;
+      const qx = Math.max(-b.hw, Math.min(b.hw, lx)); const qy = Math.max(-b.hd, Math.min(b.hd, ly));
+      let nx = lx - qx; let ny = ly - qy;
+      const d = Math.hypot(nx, ny);
+      if (d < 1e-9) continue; // inside: no outward direction to read
+      nx /= d; ny /= d;
+      if (!best || d < best.d) best = { d, n: { x: nx * c - ny * s, y: nx * s + ny * c } };
+    }
+  }
+  return best && best.d < model.radius + 0.1 ? best.n : null;
+}
+
+/**
+ * A blocked sub-step, slid along what blocks it: the part of the step that pushes into the nearest solid is
+ * removed and the rest is walked (pushing straight into a wall goes nowhere — no sideways drift); where that is
+ * not enough (a corner, a door jamb), the step turned a little to either side, else along one axis; null when every
+ * way is closed. No sticking on a diagonal into a sofa, no stutter at a corner.
+ */
+function slide(model: WalkModel, p: Point, dx: number, dy: number): Point | null {
+  const len = Math.hypot(dx, dy);
+  const n = contactNormal(model, { x: p.x + dx, y: p.y + dy });
+  if (n) {
+    const into = dx * n.x + dy * n.y;
+    if (into < 0) {
+      const tx = dx - n.x * into; const ty = dy - n.y * into;
+      if (Math.hypot(tx, ty) < len * 0.08) return null; // head-on: stand, do not drift
+      for (const k of [1, 0.5]) {
+        const q = { x: p.x + tx * k, y: p.y + ty * k };
+        if (isFree(model, q)) return q;
+      }
+    }
+  }
+  for (const turn of SLIDE_TURNS) {
+    const keep = Math.cos(turn);
+    for (const sign of [1, -1]) {
+      const a = turn * sign;
+      const c = Math.cos(a); const s = Math.sin(a);
+      const q = { x: p.x + (dx * c - dy * s) * keep, y: p.y + (dx * s + dy * c) * keep };
+      // Turned steps never push further into what is nearest (they would drift along a wall pushed head-on).
+      if (n && (q.x - p.x) * n.x + (q.y - p.y) * n.y < -1e-9 && Math.abs((dx * n.x + dy * n.y) / (len || 1)) > 0.92) continue;
+      if (isFree(model, q)) return q;
+    }
+  }
+  if (len > 0) {
+    const alongX = { x: p.x + dx, y: p.y };
+    if (Math.abs(dx) > 1e-9 && isFree(model, alongX)) return alongX;
+    const alongY = { x: p.x, y: p.y + dy };
+    if (Math.abs(dy) > 1e-9 && isFree(model, alongY)) return alongY;
+  }
+  return null;
 }
 
 /** The nearest free point to `p` (searching outward in rings), or null. */

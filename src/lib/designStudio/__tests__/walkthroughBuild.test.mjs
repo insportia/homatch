@@ -7,7 +7,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildWalkthrough, reachableRooms, roomSketches } from '../walkthrough/build.ts';
+import { buildWalkthrough, circulationStart, reachableRooms, roomSketches } from '../walkthrough/build.ts';
 import {
   decidePoll, identityText, LEASE_MS, MAX_ATTEMPTS, MAX_PLAN_ATTEMPTS, MAX_RESULT_ATTEMPTS, MAX_SUBMIT_ATTEMPTS, nextStep, progressOf,
   PROVIDER_DEADLINE_MS, readProviderStatus,
@@ -336,12 +336,18 @@ test('circulation removes the least furniture that frees the way: the corrected 
   const where = (code) => state.objects.filter((o) => o.assetId === code).map((o) => o.roomId).sort();
   assert.deepEqual(where('dev/bed-double'), ['r2', 'r3'], JSON.stringify(report.items.filter((i) => i.outcome === 'DROPPED')));
   assert.deepEqual(where('dev/sofa-3'), ['r1']);
-  assert.deepEqual(where('dev/desk'), ['r3']);
-  assert.deepEqual(where('dev/dining-table-4'), ['r4']);
+  // The kitchen stays a kitchen. Its 4-seat table and chairs leave no comfortable walk round them anywhere in a
+  // 10 m² kitchen with its run and fridge: with the comfort margin the table gives way (CIRCULATION), never the run.
   assert.deepEqual(where('dev/kitchen-run'), ['r4']);
-  // Production dropped 31 of 37 pieces here; only small pieces may go for the way through.
-  assert.ok(state.objects.length >= 25, `${state.objects.length} pieces`);
-  for (const i of report.items.filter((x) => x.reason === 'CIRCULATION')) {
+  const table = report.items.find((i) => i.code === 'dev/dining-table-4');
+  assert.ok(where('dev/dining-table-4').length === 1 || table.reason === 'CIRCULATION', JSON.stringify(table));
+  // Walkability is now judged with a comfort margin (a 0.7 m passage, not a body's 0.44 m): the study's desk and its
+  // chair narrowed the only way into r3 below that, and no single clean pose clears it, so they give way — the bed,
+  // the room's own piece, never does. Production dropped 31 of 37 pieces here; only small and mid pieces may go.
+  assert.ok(where('dev/desk').length === 0 || where('dev/desk')[0] === 'r3');
+  assert.ok(state.objects.length >= 18, `${state.objects.length} pieces`);
+  assert.equal(report.gate.ok, true, JSON.stringify(report.gate));
+  for (const i of report.items.filter((x) => x.reason === 'CIRCULATION' && x.code !== 'dev/dining-table-4')) {
     const a = lAssets.get(i.code);
     assert.ok(a.widthM * a.depthM < 1, `${i.code} dropped for circulation`);
   }
@@ -349,4 +355,9 @@ test('circulation removes the least furniture that frees the way: the corrected 
   const after = reachableRooms(lSpace, buildWalkModel(lSpace, state.objects, lAssets));
   for (const id of ['r1', 'r2', 'r3', 'r4']) assert.ok(before.has(id), `${id} not reachable on the bare plan`);
   for (const id of before) assert.ok(after.has(id), `${id} cut off`);
+  // ...and comfortably: the same walk with the comfort margin still reaches every room it reached on the bare plan.
+  const roomy = (objects) => { const m = buildWalkModel(lSpace, objects, lAssets); m.radius = 0.35; return reachableRooms(lSpace, m, { start: circulationStart(lSpace, buildWalkModel(lSpace, [], lAssets)) }); };
+  const comfortBefore = roomy([]);
+  const comfortAfter = roomy(state.objects);
+  for (const id of comfortBefore) assert.ok(comfortAfter.has(id), `${id} not comfortably reachable`);
 });

@@ -16,7 +16,7 @@
 // shots drive the walkthrough's entry, its room-to-room tour, and later a
 // cinematic path (a sequence of shots along the room graph).
 
-import { EYE_HEIGHT_M, isFree, nearestFree, type WalkModel } from './navigation.ts';
+import { COMFORT_RADIUS_M, EYE_HEIGHT_M, isFree, nearestFree, type WalkModel } from './navigation.ts';
 import { roomContaining, wallFrame, type Point, type SpaceModel, type SpaceRoom } from './space.ts';
 
 export interface CameraShot {
@@ -144,7 +144,25 @@ function sightAlong(walk: WalkModel, at: Point, heading: number, max = 12): numb
   return seen;
 }
 
+/**
+ * A room's shot (a room shortcut lands here): first among spots with a comfortable margin all round (never pressed
+ * against a wardrobe, a wall or a bed), then — only if the room has none — among spots the body merely fits.
+ */
 export function roomShot(space: SpaceModel, walk: WalkModel, roomId: string, aspect = 16 / 9): CameraShot | null {
+  const own = walk.radius;
+  try {
+    for (const r of [Math.max(own, COMFORT_RADIUS_M), own]) {
+      walk.radius = r;
+      const shot = roomShotAt(space, walk, roomId, aspect, r > own);
+      if (shot) return shot;
+    }
+    return null;
+  } finally {
+    walk.radius = own;
+  }
+}
+
+function roomShotAt(space: SpaceModel, walk: WalkModel, roomId: string, aspect: number, strict: boolean): CameraShot | null {
   const room = space.rooms.find((r) => r.id === roomId);
   if (!room) return null;
   const c = room.centroid;
@@ -194,7 +212,7 @@ export function roomShot(space: SpaceModel, walk: WalkModel, roomId: string, asp
   }
   if (!best) {
     const at = nearestFree(walk, c, 1.5);
-    if (!at) return null;
+    if (!at || (strict && roomContaining(space, at) !== room.id)) return null;
     // Face the most open direction, never a fixed one (that can be a wall at arm's length).
     let open = 0; let far = -1;
     for (let k = 0; k < 16; k += 1) { const a = (k / 16) * Math.PI * 2; const d = sightAlong(walk, at, a); if (d > far) { far = d; open = a; } }

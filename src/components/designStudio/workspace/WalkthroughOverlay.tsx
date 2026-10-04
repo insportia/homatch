@@ -432,7 +432,8 @@ function StickZone({ controller, label }: { controller: SceneController | null; 
     controller?.setWalkStick(0, 0);
     if (knob.current) knob.current.style.transform = 'translate(0px, 0px)';
     if (base.current) base.current.style.display = 'none';
-    if (a.moved < 10 && performance.now() - a.t < 350) controller?.tapAt(e.clientX, e.clientY);
+    // A quick, still touch is a tap on what is under it; any stick movement is walking, never an interaction.
+    if (a.moved < 6 && performance.now() - a.t < 300) controller?.tapAt(e.clientX, e.clientY);
   };
 
   return (

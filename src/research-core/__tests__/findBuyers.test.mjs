@@ -227,5 +227,6 @@ test('Reddit, Quora and Bluesky are probed in their realistic languages when ena
   assert.deepEqual(jobs.filter((j) => j.stage === 'QUORA_SEARCH').map((j) => j.language), ['en']);
   assert.deepEqual(jobs.filter((j) => j.stage === 'BLUESKY_SEARCH').map((j) => j.language), ['en', 'ru', 'tr']);
   const { input } = buildInput('REDDIT_SEARCH', { query: 'relocating to tbilisi', size: 20 }, null);
-  assert.equal(input.time, 'month', 'Reddit search asks for the last month only');
+  assert.equal(input.mode, 'searchGlobal', 'Reddit runs a site-wide search (required mode)');
+  assert.deepEqual(input.searchQueries, ['relocating to tbilisi']);
 });

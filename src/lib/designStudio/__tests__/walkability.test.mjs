@@ -138,8 +138,16 @@ test('planning rules: one coherent solution per room, a rank for what gives way,
   const plan = code('supabase/functions/_shared/designStudio/walkthrough/scenePlan.ts');
   assert.match(plan, /ONE dining solution per kitchen or dining area/);
   assert.match(plan, /Follow the approved design's composition/);
-  // A walkthrough that fails the gate is never READY.
-  assert.match(code('supabase/functions/design-studio-reconstruct/walkthrough.ts'), /if \(built\.report\.gate && !built\.report\.gate\.ok\) \{ await fail\(admin, row, 'NOT_WALKABLE'\); return; \}/);
+  // A walkthrough that fails the gate is never READY: without a picture the walkability gate decides (NOT_WALKABLE);
+  // with one, the fidelity gate (which puts NOT_WALKABLE first) does; a failure ends in a replan or fail(), and
+  // the version is only saved after it.
+  const route = code('supabase/functions/design-studio-reconstruct/walkthrough.ts');
+  assert.match(route, /const failing = fidelity \? fidelity\.code : built\.report\.gate && !built\.report\.gate\.ok \? 'NOT_WALKABLE' : null;/);
+  const gateAt = route.indexOf('const failing = fidelity');
+  const failAt = route.indexOf('await fail(admin, row, failing', gateAt);
+  const saveAt = route.indexOf("const walkId = await uuidFrom(`ds-walk:${row.id}:version`)", gateAt);
+  assert.ok(gateAt > 0 && failAt > gateAt && saveAt > failAt, 'the gate is decided before the walkable version is saved');
+  assert.match(route.slice(gateAt, saveAt), /if \(failing\) \{[\s\S]*return;\n    \}\n    await fail\(admin, row, failing,[\s\S]*return;\n  \}/);
 });
 
 test('CASES 3–5: walking near something never uses it; a tap uses it once; a drag that starts on it only looks', () => {

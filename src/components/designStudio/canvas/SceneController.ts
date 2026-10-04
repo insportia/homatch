@@ -159,6 +159,9 @@ function lightRig(l: { timeOfDay: TimeOfDayEnv; temperature: 'WARM' | 'NEUTRAL' 
 
 /** How long a hover aim lingers over bare floor (time to reach the hint with the mouse). */
 const AIM_LINGER_MS = 1200;
+/** A step through a doorway takes about this long (seconds), at up to this pace. */
+const THROUGH_S = 1.1;
+const THROUGH_MAX_M_S = 4.2;
 
 const WALK_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 
@@ -171,6 +174,11 @@ export interface WalkCallbacks {
   /** Esc (or the mouse released by Esc): open the walkthrough menu. */
   onMenu?: () => void;
   onLock?: (locked: boolean) => void;
+  /**
+   * A click or tap that found nothing to use, at a screen point (the captured mouse: the screen centre). The page may
+   * take it (a doorway's navigation point there); true means it was taken.
+   */
+  onClickPoint?: (x: number, y: number) => boolean;
 }
 
 /** Where a cut-away picture cuts the home: its outer walls, and its partitions (often lower). */
@@ -287,7 +295,7 @@ export class SceneController {
     brisk: boolean;
     posture: Posture;
     /** A route being walked for the visitor (Live Here). */
-    route: { points: Point[]; i: number; doors: Set<string>; face: Point; faceHeight: number; done: (arrived: boolean) => void; stuck?: number } | null;
+    route: { points: Point[]; i: number; doors: Set<string>; face: Point; faceHeight: number; done: (arrived: boolean) => void; stuck?: number; pace?: number } | null;
   } | null = null;
 
   constructor(mount: HTMLElement, quality: QualityProfile, options: { reducedMotion?: boolean } = {}) {
@@ -1927,6 +1935,7 @@ export class SceneController {
    */
   private touchInput = false;
   private onAimChange?: (hint: AimHint | null) => void;
+  private onClickPoint?: (x: number, y: number) => boolean;
   private onSeatChange?: (posture: 'SIT' | 'LIE' | null) => void;
 
   private objectIdOf(node: THREE.Object3D): string | null {
@@ -2029,8 +2038,9 @@ export class SceneController {
         return;
       }
       if (this.aimClear !== null) { window.clearTimeout(this.aimClear); this.aimClear = null; }
-      // A finger walking or looking around never opens a card: what is in reach is only highlighted.
-      this.setAim(hit, this.touchInput && !this.lastPointer);
+      // Walking, looking or hovering never opens a card: what is in reach is only highlighted. The card and its
+      // actions come with an explicit click, tap or E on the thing itself.
+      this.setAim(hit, true);
     });
   }
 
@@ -2160,21 +2170,31 @@ export class SceneController {
     return this.startRoute(stand, at, height);
   }
 
-  /** Walk (a real route) to a Camera Director pose — the guided tour. Without a route, a cut. */
-  routeTo(pose: WalkPose): Promise<boolean> {
+  /**
+   * Walk (a real route) to a Camera Director pose — the guided tour. Without a route, a cut.
+   * `through: true` is a step through a doorway (a navigation point): the same collision-safe route, at a pace that
+   * takes about a second whatever the distance; with reduced motion, a cut to the same pose.
+   */
+  routeTo(pose: WalkPose, opts: { through?: boolean } = {}): Promise<boolean> {
     const w = this.walk;
     if (!w) return Promise.resolve(false);
     if (w.seated) this.standUp();
     this.normalFrustum();
     this.camera.fov = pose.fov;
     this.camera.updateProjectionMatrix();
-    return this.startRoute(pose.position, pose.target, EYE_HEIGHT_M - 0.25).then((ok) => {
+    if (opts.through && this.reducedMotion) {
+      if (w.route) this.cancelRoute(false);
+      this.walkTo(pose);
+      this.reportRoom();
+      return Promise.resolve(true);
+    }
+    return this.startRoute(pose.position, pose.target, EYE_HEIGHT_M - 0.25, opts.through ? THROUGH_S : 0).then((ok) => {
       if (!ok && this.walk && !this.walk.route) this.walkTo(pose);
       return ok;
     });
   }
 
-  private startRoute(stand: Point, face: Point, faceHeight: number): Promise<boolean> {
+  private startRoute(stand: Point, face: Point, faceHeight: number, seconds = 0): Promise<boolean> {
     const w = this.walk;
     if (!w) return Promise.resolve(false);
     if (w.route) this.cancelRoute(false);
@@ -2182,8 +2202,15 @@ export class SceneController {
     const route = goal ? findPath(w.model, w.pos, goal, { throughDoors: true }) : null;
     if (!route) return Promise.resolve(false);
     const doors = new Set(doorsOnRoute(w.model, w.pos, route));
+    // A timed route (through a doorway): the pace that covers it in about `seconds`, never slower than a walk.
+    let pace: number | undefined;
+    if (seconds > 0) {
+      let len = 0; let a = w.pos;
+      for (const b of route) { len += Math.hypot(b.x - a.x, b.y - a.y); a = b; }
+      pace = Math.max(1.2, Math.min(THROUGH_MAX_M_S, len / seconds));
+    }
     return new Promise((resolve) => {
-      w.route = { points: route, i: 0, doors, face, faceHeight, done: resolve };
+      w.route = { points: route, i: 0, doors, face, faceHeight, done: resolve, pace };
       w.vel = { x: 0, y: 0 };
       w.glide = null;
       this.requestRender();
@@ -2210,7 +2237,7 @@ export class SceneController {
     for (const id of r.doors) {
       const leaf = w.model.doorways.get(id);
       if (!leaf || !w.model.closedDoors.has(id)) { r.doors.delete(id); continue; }
-      if (Math.hypot(leaf.cx - w.pos.x, leaf.cy - w.pos.y) < 1.4) {
+      if (Math.hypot(leaf.cx - w.pos.x, leaf.cy - w.pos.y) < (r.pace ? Math.max(1.4, r.pace * 0.7) : 1.4)) {
         const e = [...this.living.all()].find((x) => x.doorId === id);
         if (e) this.living.act(e.key, 'OPEN');
         r.doors.delete(id);
@@ -2234,8 +2261,9 @@ export class SceneController {
     // Turn toward the way at a comfortable rate, then walk.
     const want = Math.atan2(dy, dx);
     const turn = Math.atan2(Math.sin(want - w.yaw), Math.cos(want - w.yaw));
-    w.yaw += Math.sign(turn) * Math.min(Math.abs(turn), 2.4 * dt);
-    const speed = Math.min(1, dist / 0.5) * 1.2 * this.settings.speed;
+    const pace = r.pace ?? 1.2;
+    w.yaw += Math.sign(turn) * Math.min(Math.abs(turn), 2.4 * Math.max(1, pace / 1.2) * dt);
+    const speed = Math.min(1, dist / (r.pace ? 0.8 : 0.5)) * pace * this.settings.speed;
     const wish = { x: (dx / dist) * speed, y: (dy / dist) * speed };
     const before = w.pos;
     const body = stepBody(w.model, w.pos, w.vel, Math.abs(turn) > 1.2 ? { x: 0, y: 0 } : wish, dt);
@@ -2263,6 +2291,7 @@ export class SceneController {
     this.onMenu = on.onMenu;
     this.onLockChange = on.onLock;
     this.onPostureChange = on.onPosture;
+    this.onClickPoint = on.onClickPoint;
     on.onRoom?.(w.room);
     on.onAim?.(this.hintFor(this.aimed));
     on.onPosture?.(w.posture);
@@ -2626,6 +2655,7 @@ export class SceneController {
     this.view = 'OVERVIEW';
     this.resetInteractives();
     this.onAimChange = undefined;
+    this.onClickPoint = undefined;
     this.onSeatChange = undefined;
     this.onMenu = undefined;
     this.onLockChange = undefined;
@@ -2909,6 +2939,8 @@ export class SceneController {
       this.performAimed();
       return;
     }
+    // Nothing to use there: the page's own targets (a doorway's navigation point under the captured mouse's centre).
+    if (this.onClickPoint?.(px, py)) return;
     // A click on empty space captures the mouse for looking (desktop).
     if (g.mouse && !g.locked) this.lockPointer();
   }

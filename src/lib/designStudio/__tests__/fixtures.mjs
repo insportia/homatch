@@ -112,3 +112,88 @@ export function testMaterials() {
     ['m-warm-white', m('m-warm-white', ['WALL', 'CEILING'], '#f2eee6')],
   ]);
 }
+
+/*
+ * The whole-home tour fixture: eight rooms, every one reached through a real
+ * doorway, 12 x 10 m at 1 px = 1 cm (typed by a person, never a real home).
+ *
+ *   +--------------+---------+---------+
+ *   |              | BED 1   | BED 2   |
+ *   |   LIVING     |         |         |
+ *   |              +----d----+----d----+
+ *   |              d    CORRIDOR       |
+ *   +------d-------+--d------+----d----+
+ *   |   KITCHEN    |  BATH   |ENTRANCE d <- entry door (east)
+ *   |              |         |         |
+ *   +------d-------+---------+---------+
+ *   |   BALCONY    |
+ *   +--------------+
+ *
+ * `omit` drops doors by id (an unreachable room for the reachability tests).
+ */
+export function tourApartmentDoc({ omit = [] } = {}) {
+  const door = (id, wallId, position, widthPx) => O(id, wallId, position, widthPx, { sillHeightM: 0, heightM: 2.1 });
+  return {
+    sourceAssetId: 'fixture-tour',
+    imageWidth: 1200,
+    imageHeight: 1000,
+    detectedScale: 0.01,
+    scaleConfidence: 1,
+    scaleEvidence: 'fixture',
+    ceilingHeight: 2.7,
+    ceilingHeightSource: 'OPERATOR',
+    walls: [
+      W('w-n', 0, 0, 1200, 0, 'EXTERIOR'),
+      W('w-e', 1200, 0, 1200, 850, 'EXTERIOR'),
+      W('w-s1', 1200, 850, 600, 850, 'EXTERIOR'),
+      W('w-s2', 600, 850, 0, 850, 'EXTERIOR'),
+      W('w-w', 0, 850, 0, 0, 'EXTERIOR'),
+      W('w-bw', 0, 1000, 0, 850, 'EXTERIOR'),
+      W('w-bs', 600, 1000, 0, 1000, 'EXTERIOR'),
+      W('w-be', 600, 850, 600, 1000, 'EXTERIOR'),
+      W('w-i1', 600, 0, 600, 850),
+      W('w-i2', 0, 500, 600, 500),
+      W('w-i3', 900, 0, 900, 400),
+      W('w-i4', 600, 400, 1200, 400),
+      W('w-i5', 600, 550, 1200, 550),
+      W('w-i6', 850, 550, 850, 850),
+    ],
+    doors: [
+      door('d-entry', 'w-e', 700 / 850, 100),
+      door('d-entry-corr', 'w-i5', 425 / 600, 90),
+      door('d-living', 'w-i1', 450 / 850, 80),
+      door('d-bed1', 'w-i4', 150 / 600, 90),
+      door('d-bed2', 'w-i4', 450 / 600, 90),
+      door('d-bath', 'w-i5', 125 / 600, 80),
+      door('d-kitchen', 'w-i2', 0.5, 90),
+      door('d-balcony', 'w-s2', 0.5, 90),
+    ].filter((d) => !omit.includes(d.id)),
+    windows: [
+      O('win-living', 'w-w', 0.75, 180, { sillHeightM: 0.9, heightM: 1.4 }),
+      O('win-kitchen', 'w-w', 0.25, 120, { sillHeightM: 0.9, heightM: 1.4 }),
+      O('win-bed1', 'w-n', 0.62, 120, { sillHeightM: 0.9, heightM: 1.4 }),
+      O('win-bed2', 'w-n', 0.88, 120, { sillHeightM: 0.9, heightM: 1.4 }),
+    ],
+    rooms: [
+      R('r-living', 'LIVING', 'Living', [[0, 0], [600, 0], [600, 500], [0, 500]], 30),
+      R('r-bed1', 'BEDROOM', 'Bedroom 1', [[600, 0], [900, 0], [900, 400], [600, 400]], 12),
+      R('r-bed2', 'BEDROOM', 'Bedroom 2', [[900, 0], [1200, 0], [1200, 400], [900, 400]], 12),
+      R('r-corr', 'CORRIDOR', 'Corridor', [[600, 400], [1200, 400], [1200, 550], [600, 550]], 9),
+      R('r-kitchen', 'KITCHEN', 'Kitchen', [[0, 500], [600, 500], [600, 850], [0, 850]], 21),
+      R('r-bath', 'BATHROOM', 'Bathroom', [[600, 550], [850, 550], [850, 850], [600, 850]], 7.5),
+      R('r-entry', 'HALL', 'Entrance', [[850, 550], [1200, 550], [1200, 850], [850, 850]], 10.5),
+    ],
+    balconies: [
+      R('r-balcony', 'BALCONY', 'Balcony', [[0, 850], [600, 850], [600, 1000], [0, 1000]], 9),
+    ],
+    unknownElements: [],
+    warnings: [],
+    extractionConfidence: 1,
+  };
+}
+
+export function tourApartmentScene(opts) {
+  const { scene, validation } = generateScene(tourApartmentDoc(opts));
+  if (!scene) throw new Error(`tour fixture does not build: ${JSON.stringify(validation.problems)}`);
+  return scene;
+}

@@ -15327,6 +15327,17 @@ const en = {
   dsx_price_range: '≈ {{est}} credits · at most {{max}}',
   dsx_price_range_preview: '≈ {{est}} credits (at most {{max}}) — not charged during the preview.',
   dsx_walk_price_title: 'Create the 3D walkthrough',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_go_to: 'Go to {{room}}',
+  ds_walk_back: 'Back',
+  ds_walk_plan: 'Plan',
+  ds_walk_plan_title: 'The whole home — choose a room',
+  ds_walk_you_are_here: 'You are here',
+  ds_walk_door_hint: 'Each doorway shows where it leads — choose one to walk through.',
+  dsx_walk_share: 'Share the 3D tour',
+  dsx_walk_ready_note: 'Your whole home in one walk: you start at the entrance and go room to room through the real doorways.',
+  dsx_photo3d_secondary: 'Or step into the design picture',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -30568,6 +30579,17 @@ const ka: Partial<Record<TranslationKey, string>> = {
   dsx_price_range: '≈ {{est}} კრედიტი · მაქსიმუმ {{max}}',
   dsx_price_range_preview: '≈ {{est}} კრედიტი (მაქსიმუმ {{max}}) — წინასწარი ვერსიის დროს არ ჩამოგეჭრებათ.',
   dsx_walk_price_title: '3D ტურის შექმნა',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_go_to: 'გადასვლა: {{room}}',
+  ds_walk_back: 'უკან',
+  ds_walk_plan: 'გეგმა',
+  ds_walk_plan_title: 'მთელი ბინა — აირჩიეთ ოთახი',
+  ds_walk_you_are_here: 'თქვენ აქ ხართ',
+  ds_walk_door_hint: 'ყოველ კართან წერია, სად მიდის — აირჩიეთ და გაიარეთ.',
+  dsx_walk_share: '3D ტურის გაზიარება',
+  dsx_walk_ready_note: 'მთელი ბინა ერთ ტურში: იწყებთ შესასვლელიდან და ოთახიდან ოთახში ნამდვილი კარებით გადადიხართ.',
+  dsx_photo3d_secondary: 'ან შედით დიზაინის სურათში',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -45800,6 +45822,17 @@ const ru: Partial<Record<TranslationKey, string>> = {
   dsx_price_range: '≈ {{est}} кредитов · не более {{max}}',
   dsx_price_range_preview: '≈ {{est}} кредитов (не более {{max}}) — во время предпросмотра не списываются.',
   dsx_walk_price_title: 'Создать 3D-прогулку',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_go_to: 'Перейти: {{room}}',
+  ds_walk_back: 'Назад',
+  ds_walk_plan: 'План',
+  ds_walk_plan_title: 'Вся квартира — выберите комнату',
+  ds_walk_you_are_here: 'Вы здесь',
+  ds_walk_door_hint: 'У каждого дверного проёма указано, куда он ведёт, — выберите и пройдите.',
+  dsx_walk_share: 'Поделиться 3D-прогулкой',
+  dsx_walk_ready_note: 'Вся квартира за одну прогулку: вы начинаете у входа и переходите из комнаты в комнату через настоящие двери.',
+  dsx_photo3d_secondary: 'Или войдите в изображение дизайна',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -61030,6 +61063,17 @@ const tr: Partial<Record<TranslationKey, string>> = {
   dsx_price_range: '≈ {{est}} kredi · en fazla {{max}}',
   dsx_price_range_preview: '≈ {{est}} kredi (en fazla {{max}}) — önizleme sırasında ücret alınmaz.',
   dsx_walk_price_title: '3D turu oluştur',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_go_to: '{{room}} alanına geç',
+  ds_walk_back: 'Geri',
+  ds_walk_plan: 'Kat planı',
+  ds_walk_plan_title: 'Tüm ev — bir oda seçin',
+  ds_walk_you_are_here: 'Buradasınız',
+  ds_walk_door_hint: 'Her kapı nereye açıldığını gösterir — geçmek için birini seçin.',
+  dsx_walk_share: '3D turu paylaş',
+  dsx_walk_ready_note: 'Tüm eviniz tek bir turda: girişten başlar, gerçek kapılardan odadan odaya geçersiniz.',
+  dsx_photo3d_secondary: 'Ya da tasarım görseline adım atın',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -76260,6 +76304,17 @@ const ar: Partial<Record<TranslationKey, string>> = {
   dsx_price_range: '≈ {{est}} رصيد · بحد أقصى {{max}}',
   dsx_price_range_preview: '≈ {{est}} رصيد (بحد أقصى {{max}}) — لا يُخصم خلال المعاينة.',
   dsx_walk_price_title: 'إنشاء الجولة ثلاثية الأبعاد',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_go_to: 'الانتقال إلى {{room}}',
+  ds_walk_back: 'رجوع',
+  ds_walk_plan: 'المخطط',
+  ds_walk_plan_title: 'المنزل بالكامل — اختر غرفة',
+  ds_walk_you_are_here: 'أنت هنا',
+  ds_walk_door_hint: 'كل مدخل يبيّن إلى أين يؤدي — اختر واحدًا لتعبره.',
+  dsx_walk_share: 'مشاركة الجولة ثلاثية الأبعاد',
+  dsx_walk_ready_note: 'منزلك بالكامل في جولة واحدة: تبدأ من المدخل وتنتقل من غرفة إلى أخرى عبر الأبواب الحقيقية.',
+  dsx_photo3d_secondary: 'أو ادخل إلى صورة التصميم',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -91490,6 +91545,17 @@ const he: Partial<Record<TranslationKey, string>> = {
   dsx_price_range: '≈ {{est}} קרדיטים · לכל היותר {{max}}',
   dsx_price_range_preview: '≈ {{est}} קרדיטים (לכל היותר {{max}}) — לא יחויב בתקופת התצוגה המקדימה.',
   dsx_walk_price_title: 'יצירת סיור תלת־ממדי',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  ds_walk_go_to: 'מעבר אל {{room}}',
+  ds_walk_back: 'חזרה',
+  ds_walk_plan: 'תוכנית',
+  ds_walk_plan_title: 'כל הבית — בחרו חדר',
+  ds_walk_you_are_here: 'אתם כאן',
+  ds_walk_door_hint: 'כל פתח מראה לאן הוא מוביל — בחרו אחד כדי לעבור דרכו.',
+  dsx_walk_share: 'שיתוף הסיור התלת־ממדי',
+  dsx_walk_ready_note: 'כל הבית בסיור אחד: מתחילים בכניסה ועוברים מחדר לחדר דרך הדלתות האמיתיות.',
+  dsx_photo3d_secondary: 'או היכנסו לתמונת העיצוב',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

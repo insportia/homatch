@@ -1167,19 +1167,19 @@ function Editor({
               onRoomChange={setWalkRoom}
               actions={space ? (
                 <>
-                <button type="button" onClick={() => { void takePhoto(); }} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px] font-medium text-white/85 ring-1 ring-white/20 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]">
+                <button type="button" onClick={() => { void takePhoto(); }} className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2 text-[13px] font-medium text-white/85 ring-1 ring-white/20 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]">
                   <Camera className="h-3.5 w-3.5" aria-hidden="true" />
                   <span className="hidden lg:inline">{t('ds_walk_photo')}</span>
                   <span className="sr-only lg:hidden">{t('ds_walk_photo')}</span>
                 </button>
                 {planShown ? (
-                  <button type="button" onClick={() => setPlanOpen((v) => !v)} aria-pressed={planOpen} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px] font-medium text-white/85 ring-1 ring-white/20 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]" data-testid="walk-plan-compare">
+                  <button type="button" onClick={() => setPlanOpen((v) => !v)} aria-pressed={planOpen} className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2 text-[13px] font-medium text-white/85 ring-1 ring-white/20 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]" data-testid="walk-plan-compare">
                     <SquareDashed className="h-3.5 w-3.5" aria-hidden="true" />
                     <span className="hidden lg:inline">{t('p2h_compare_button')}</span>
                     <span className="sr-only lg:hidden">{t('p2h_compare_button')}</span>
                   </button>
                 ) : null}
-                <button type="button" onClick={() => setShareOpen('WALKTHROUGH')} className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px] font-medium text-white/85 ring-1 ring-white/20 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]">
+                <button type="button" onClick={() => setShareOpen('WALKTHROUGH')} data-testid="walk-share" className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2 text-[13px] font-medium text-white/85 ring-1 ring-white/20 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]">
                   <Share2 className="h-3.5 w-3.5" aria-hidden="true" />
                   <span className="hidden lg:inline">{t('ds_share_walkthrough')}</span>
                   <span className="sr-only lg:hidden">{t('ds_share_walkthrough')}</span>
@@ -1191,6 +1191,8 @@ function Editor({
               onRoom={walkToRoom}
               onReset={resetWalk}
               onExit={exitWalk}
+              space={space}
+              walkModel={walkModel.current}
             />
           ) : null}
           {planShown && planOpen && ownPlan ? <PlanComparePanel plan={ownPlan} dark={walking} onClose={() => setPlanOpen(false)} /> : null}

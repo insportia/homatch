@@ -13,14 +13,17 @@
 // same request; a closed page changes nothing). A tour walked on a
 // reconstructed space carries a quiet note once it is ready.
 //
-// With a design picture, the 3D tour IS that picture made 3D (PhotoWalk), on
-// the customer's own device — every element is the picture's own, nothing is
-// rebuilt. The server-built walkthrough of the plan below is used only where
-// there is no picture to step into.
+// The 3D tour is the WHOLE HOME as one continuous interior: the plan's
+// geometry and doors, furnished from the selected design, entered at the
+// entrance at eye level and walked room to room through the real doorways
+// (DesignWorkspace / WalkthroughOverlay). Once it is ready it can be opened
+// and shared (the same public link as everywhere: ShareDialog, /w/<token>).
+// Stepping into a single design picture (PhotoWalk) stays available as a
+// secondary option; it is never the tour itself.
 
 import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, Check, Footprints, Info, Loader2, RotateCcw } from 'lucide-react';
+import { Box, Check, Footprints, Image as ImageIcon, Info, Loader2, RotateCcw, Share2 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { PROGRESS_STEPS, type ProgressStep } from '@/lib/designStudio/walkthrough/lifecycle';
@@ -28,10 +31,11 @@ import type { WalkPhoto } from './PhotoWalk';
 import { createWalkthrough, retryWalkthrough, walkthroughHref, walkthroughStatus, type Walkthrough } from '@/services/designStudio/walkthrough';
 import { quoteRender } from '@/services/designStudio/renders';
 import { priceWords } from '@/lib/designStudio/renders/priceWords';
+import { ShareDialog } from '@/components/designStudio/workspace/ShareDialog';
 
 // The same game as every long wait: it only watches the walkthrough's real state (this panel keeps following it).
 const SnakeGame = lazy(() => import('@/components/games/SnakeGame'));
-// Three.js and the depth model load only when a picture is entered.
+// Three.js and the depth model load only when a picture is entered (the secondary option).
 const PhotoWalk = lazy(() => import('./PhotoWalk'));
 
 const RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#F7F4EF]';
@@ -46,12 +50,10 @@ const working = (w: Walkthrough | null) => !!w && w.state !== 'READY' && w.state
 /** How often a space being reconstructed is asked after (the same request: never a second reading). */
 const SPACE_POLL_MS = 6000;
 
-export function WalkthroughPanel({ projectId, designVersionId, renderId, photos = [], needsRoomPhotos = false }: {
+export function WalkthroughPanel({ projectId, designVersionId, renderId, photos = [] }: {
   projectId: string; designVersionId: string; renderId: string | null;
-  /** The design's eye-level room pictures to step into (the room shown first). */
+  /** The design's eye-level room pictures one may also step into (secondary; the tour is the whole home). */
   photos?: WalkPhoto[];
-  /** A picture design: its tour walks its rooms' eye-level pictures — when it has none yet, the card says how to make them. */
-  needsRoomPhotos?: boolean;
 }) {
   const { t } = useLanguage();
   const navigate = useNavigate();
@@ -63,6 +65,7 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, photos 
   const [playing, setPlaying] = useState(false);
   const [reconstructing, setReconstructing] = useState(false);
   const [inside, setInside] = useState(false);
+  const [sharing, setSharing] = useState(false);
   // One request per tap: a second tap before the first answer is the same tap.
   const inFlight = useRef(false);
   const alive = useRef(true);
@@ -74,9 +77,7 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, photos 
     if (!r.error) { setWalk(r.walkthrough); setHistory(r.history); }
     setLoaded(true);
   }, [designVersionId]);
-  // With a picture to step into there is nothing to ask the server.
-  const photoTour = photos.length > 0 || needsRoomPhotos;
-  useEffect(() => { setWalk(null); setHistory([]); setLoaded(false); if (!photoTour) void read(); }, [read, photoTour]);
+  useEffect(() => { setWalk(null); setHistory([]); setLoaded(false); void read(); }, [read]);
 
   // Following it while it works (the page is only a watcher; the server carries on without it).
   useEffect(() => {
@@ -134,39 +135,6 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, photos 
     if (r.walkthrough) setWalk(r.walkthrough); else setProblem(t('dsx_walk_unavailable'));
   };
 
-  if (photoTour) {
-    return (
-      <section className="mt-8 rounded-[22px] bg-white p-4 ring-1 ring-[#E7E1D8] sm:p-6" aria-labelledby="ds-walk-title" data-testid="walk-panel">
-        <div className="flex items-start gap-3">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#0C1119] text-white"><Box className="h-5 w-5" aria-hidden="true" /></span>
-          <div className="min-w-0 flex-1">
-            <h2 id="ds-walk-title" className="font-display text-[20px] font-semibold">{t('dsx_walk_title')}</h2>
-            <p className="mt-1 text-[14px] text-[#5B6472]">{t('dsx_photo3d_body')}</p>
-          </div>
-        </div>
-        {photos.length ? (
-          <div className="mt-4" data-testid="photo3d-entry">
-            <button type="button" onClick={() => setInside(true)} className={DARK} data-testid="photo3d-enter">
-              <Footprints className="h-4 w-4" aria-hidden="true" />{t('dsx_walk_open')}
-            </button>
-            <p className="mt-2 text-[13px] leading-relaxed text-[#5B6472]">{t('dsx_photo3d_note')}</p>
-          </div>
-        ) : (
-          // Only a picture of the whole home from above: there is no eye level in it. The rooms' own pictures are made below.
-          <div className="mt-4" data-testid="photo3d-rooms-needed">
-            <p className="text-[14px] leading-relaxed text-[#0C1119]">{t('dsx_photo3d_rooms_needed')}</p>
-            <button type="button" onClick={() => (document.getElementById('ds-rooms') ?? document.getElementById('ds-find-rooms-title'))?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-              className={cn(DARK, 'mt-3')} data-testid="photo3d-rooms-cta">{t('dsx_photo3d_rooms_cta')}</button>
-          </div>
-        )}
-        {inside && photos.length ? (
-          <Suspense fallback={null}>
-            <PhotoWalk photos={photos} initialId={photos[0].id} onClose={() => setInside(false)} />
-          </Suspense>
-        ) : null}
-      </section>
-    );
-  }
   if (!loaded) return null;
   const current = walk?.progress && walk.progress !== 'FAILED' && walk.progress !== 'CANCELLED' ? PROGRESS_STEPS.indexOf(walk.progress) : -1;
   const earlier = history.filter((h) => h.id !== walk?.id && h.state === 'READY' && h.walkVersionId);
@@ -200,9 +168,15 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, photos 
       ) : walk.state === 'READY' && walk.walkVersionId ? (
         <div className="mt-4">
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => navigate(walkthroughHref(projectId, walk.walkVersionId!))} className={DARK} data-testid="walk-open">{t('dsx_walk_open')}</button>
+            <button type="button" onClick={() => navigate(walkthroughHref(projectId, walk.walkVersionId!))} className={DARK} data-testid="walk-open">
+              <Footprints className="h-4 w-4" aria-hidden="true" />{t('dsx_walk_open')}
+            </button>
+            <button type="button" onClick={() => setSharing(true)} className={CHIP} data-testid="walk-share-open">
+              <Share2 className="h-4 w-4" aria-hidden="true" />{t('dsx_walk_share')}
+            </button>
             <button type="button" onClick={() => { void priced(() => start(true)); }} disabled={asking} className={CHIP} data-testid="walk-again">{t('dsx_walk_again')}</button>
           </div>
+          <p className="mt-3 text-[13px] leading-relaxed text-[#5B6472]" data-testid="walk-ready-note">{t('dsx_walk_ready_note')}</p>
           {walk.inferred ? (
             <p className="mt-3 flex items-start gap-2 text-[13px] leading-relaxed text-[#5B6472]" data-testid="walk-inferred-note"><Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />{t('dsx_walk_inferred_note')}</p>
           ) : null}
@@ -255,6 +229,33 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, photos 
             </div>
           </div>
         </div>
+      ) : null}
+
+      {sharing && walk?.walkVersionId ? (
+        <ShareDialog
+          projectId={projectId}
+          versionId={walk.walkVersionId}
+          versionName={t('dsx_walk_version_name', { n: String(walk.revision) })}
+          versionNames={new Map(history.filter((h) => h.walkVersionId).map((h) => [h.walkVersionId!, t('dsx_walk_version_name', { n: String(h.revision) })] as const))}
+          beforeCreate={async () => {}}
+          initialType="WALKTHROUGH"
+          onClose={() => setSharing(false)}
+        />
+      ) : null}
+
+      {photos.length ? (
+        // Secondary: one design picture made 3D on this device. The tour above is the whole home.
+        <div className="mt-5 border-t border-[#EFEAE2] pt-4" data-testid="photo3d-entry">
+          <button type="button" onClick={() => setInside(true)} className={CHIP} data-testid="photo3d-enter">
+            <ImageIcon className="h-4 w-4" aria-hidden="true" />{t('dsx_photo3d_secondary')}
+          </button>
+          <p className="mt-2 text-[13px] leading-relaxed text-[#5B6472]">{t('dsx_photo3d_note')}</p>
+        </div>
+      ) : null}
+      {inside && photos.length ? (
+        <Suspense fallback={null}>
+          <PhotoWalk photos={photos} initialId={photos[0].id} onClose={() => setInside(false)} />
+        </Suspense>
       ) : null}
 
       {earlier.length ? (

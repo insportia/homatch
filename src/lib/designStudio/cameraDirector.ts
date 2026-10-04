@@ -234,7 +234,13 @@ export function entryShot(space: SpaceModel, walk: WalkModel, aspect = 16 / 9, g
     const raw = { x: door.centre.x + Math.cos(dir) * 0.7, y: door.centre.y + Math.sin(dir) * 0.7 };
     const at = nearestFree(walk, raw, 0.6);
     if (at && roomContaining(space, at) === room.id) {
-      const target = { x: at.x + Math.cos(dir) * 2, y: at.y + Math.sin(dir) * 2 };
+      // Facing on into the home: toward the nearest doorway onward from the entry room that can be seen from here
+      // (a small hall's far wall is not a view); without one, straight in from the front door.
+      const onward = graph.links
+        .filter((l) => l.b && (l.a === room.id || l.b === room.id) && l.doorId !== graph.entryDoorId && clearSight(walk, at, l.at))
+        .sort((p, q) => Math.hypot(p.at.x - at.x, p.at.y - at.y) - Math.hypot(q.at.x - at.x, q.at.y - at.y))[0];
+      const look = onward ? angleOf(at, onward.at) : dir;
+      const target = { x: at.x + Math.cos(look) * 2, y: at.y + Math.sin(look) * 2 };
       return { kind: 'ENTRY', roomId: room.id, position: at, height: EYE_HEIGHT_M, target, targetHeight: EYE_HEIGHT_M - 0.1, fov: verticalFov(78, aspect) };
     }
   }

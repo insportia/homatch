@@ -572,7 +572,7 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
 
         {/* ── The 3D walkthrough of the design shown: always from this project (a photo design's space is reconstructed by the server) ── */}
         {hero ? (
-          <WalkthroughPanel projectId={projectId} designVersionId={hero.version_id ?? data.head.id} renderId={hero.id} photos={walkPhotos} needsRoomPhotos />
+          <WalkthroughPanel projectId={projectId} designVersionId={hero.version_id ?? data.head.id} renderId={hero.id} photos={walkPhotos} />
         ) : null}
 
         {/* ── Your options ───────────────────────────────────────────── */}

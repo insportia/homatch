@@ -965,3 +965,21 @@ Base: main `53489d04` (PR #68 live: design-studio-reconstruct v22). Scope: front
 - Premium navy/gold UI (cards, live panel, launch, Matches rail); DB audit + code review findings fixed.
 - OWNER-ONLY LIVE TEST: Claude never runs a paid discovery. Deployed state = switches OFF, Actors disabled,
   awaiting the owner's first real campaign (whose results are preserved as normal production data).
+
+## Design Studio whole-home 3D tour correction (branch `claude/design-studio-refinement-r34f6c`, 2026-10-04)
+
+- Root cause of "the 3D tour is a picture / Share disappeared": #100 (7bc52a6) made `WalkthroughPanel`
+  PhotoWalk-primary whenever the design had room pictures (`needsRoomPhotos` always set by DesignResult), so the
+  panel never read or created the server plan walkthrough, and Share (which lives in the walk route) was unreachable.
+  Engine (SceneController, WalkthroughOverlay, navigation, cameraDirector, ShareViewer) unchanged since #96 de55734.
+- Correction: the panel is the server whole-plan walkthrough again (Open + Share on READY via the same ShareDialog,
+  WALKTHROUGH, `/w/<token>`); PhotoWalk is a secondary "step into the picture" chip, never the tour.
+- Whole-home tour: `src/lib/designStudio/tour.ts` (planTour: entry pose, rooms reachable through passable doorways,
+  door navigation points with landing poses), `workspace/TourNavigation.tsx` (doorway names anchored in 3D, plan
+  sheet), WalkthroughOverlay (Back, Plan, reachable room chips, door hint), SceneController `routeTo(pose,
+  { through: true })` ≈ 1.1 s collision-safe route, reduced motion = cut; ambient aim is highlight-only (cards only
+  on explicit click/tap/E). entryShot faces the nearest visible onward doorway. A WALKTHROUGH share auto-enters at
+  the entrance.
+- Tests: `src/lib/designStudio/__tests__/tour.test.mjs` (eight-room fixture `tourApartmentDoc`), browser checkpoint
+  `QA_ONLY=tour node tests/browser/designStudio.qa.mjs`.
+- Rollback: revert the PR's merge commit (frontend only; no migration, no edge/worker change) → back to main 07091d7.

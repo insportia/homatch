@@ -244,15 +244,15 @@ test('C: the Result shows a room picture only once one was generated; never the 
 
 // ── E ────────────────────────────────────────────────────────────────────
 
-test('E: the 3D tour starts from the project; a photo design walks on the project\'s plan, carrying its design', () => {
+test('E: the 3D tour starts from the project; a photo design walks on the project\'s plan, else on a space reconstructed from its pictures', () => {
   const walk = code('supabase/functions/design-studio-reconstruct/walkthrough.ts');
-  assert.match(walk, /if \(source\?\.kind === 'PHOTO_SET'\) \{\s*const onPlan = await designOnPlan\(admin, version, project\.id\);/);
+  assert.match(walk, /if \(source\?\.kind === 'PHOTO_SET'\) \{\s*let onPlan = await designOnPlan\(admin, version, project\.id\);/);
   assert.match(walk, /const id = await uuidFrom\(`ds-walk-photo-design:\$\{version\.id\}:\$\{plan\.id\}`\);/, 'asked again, the same version');
   assert.match(walk, /design_dna: version\.design_dna \?\? null,\s*\}, \{ onConflict: 'id', ignoreDuplicates: true \}\);\s*if \(error\) return null;/, 'the design (DNA → its specification) is carried onto the plan');
-  assert.match(walk, /missing: \['WALLS', 'DOORS', 'ROOM_SIZES'\], have: \['DESIGN', 'PHOTOS'\]/, 'what is missing, exactly');
+  // Never "add a plan": the space is reconstructed (src/lib/designStudio/__tests__/inferredSpace.test.mjs).
+  assert.match(walk, /const space = await reconstructSpace\(admin,/);
   const panel = code('src/components/designStudio/unified/WalkthroughPanel.tsx');
-  assert.match(panel, /else if \(r\.error === 'WALKTHROUGH_NEEDS_FLOOR_PLAN'\) setNeedsPlan\(true\);/);
-  assert.match(panel, /data-testid="walk-missing"/);
+  assert.doesNotMatch(panel, /walk-needs-plan|walk-missing|onAddPlan/);
   const result = code('src/components/designStudio/unified/DesignResult.tsx');
   assert.doesNotMatch(result, /data-testid="photo-tour"/, 'no generic "upload again" card');
 });

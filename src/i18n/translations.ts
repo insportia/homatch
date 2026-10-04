@@ -15119,6 +15119,10 @@ const en = {
   dsx_walk_missing_ROOM_SIZES: 'the size of each room',
   dsx_walk_needs_hint: 'Add the floor plan to this project (a drawing, a photo or a screenshot of it) and the tour starts from this design. Nothing else is uploaded again.',
   dsx_walk_needs_cta: 'Add the floor plan',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_step_space: 'Reconstructing the space from your design',
+  dsx_walk_inferred_note: 'The 3D space was built from the existing visual material and may partly differ from the exact plan.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -30152,6 +30156,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
   dsx_walk_missing_ROOM_SIZES: 'თითოეული ოთახის ზომა',
   dsx_walk_needs_hint: 'დაამატეთ ამ პროექტს გეგმა (ნახაზი, ფოტო ან სქრინშოტი) და ტური ამ დიზაინიდან დაიწყება. სხვა არაფრის ხელახლა ატვირთვა არ არის საჭირო.',
   dsx_walk_needs_cta: 'გეგმის დამატება',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_step_space: 'HOMATCH აღადგენს სივრცეს თქვენი დიზაინიდან',
+  dsx_walk_inferred_note: '3D სივრცე შექმნილია არსებული ვიზუალური მასალის საფუძველზე და შესაძლოა ზუსტ გეგმას ნაწილობრივ განსხვავდებოდეს.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -45176,6 +45184,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
   dsx_walk_missing_ROOM_SIZES: 'размеры каждой комнаты',
   dsx_walk_needs_hint: 'Добавьте в проект планировку (чертёж, фото или скриншот), и прогулка начнётся по этому дизайну. Больше ничего загружать заново не нужно.',
   dsx_walk_needs_cta: 'Добавить планировку',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_step_space: 'HOMATCH восстанавливает пространство по вашему дизайну',
+  dsx_walk_inferred_note: '3D-пространство создано на основе имеющихся изображений и может частично отличаться от точной планировки.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -60198,6 +60210,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
   dsx_walk_missing_ROOM_SIZES: 'her odanın ölçüsü',
   dsx_walk_needs_hint: 'Bu projeye kat planını ekleyin (çizim, fotoğraf veya ekran görüntüsü), tur bu tasarımdan başlasın. Başka hiçbir şeyi yeniden yüklemeniz gerekmez.',
   dsx_walk_needs_cta: 'Kat planını ekle',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_step_space: 'HOMATCH alanı tasarımınızdan yeniden kuruyor',
+  dsx_walk_inferred_note: '3D alan mevcut görsel malzemeye dayanılarak oluşturuldu ve kesin plandan kısmen farklı olabilir.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -75220,6 +75236,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
   dsx_walk_missing_ROOM_SIZES: 'مقاس كل غرفة',
   dsx_walk_needs_hint: 'أضف مخطط الطابق إلى هذا المشروع (رسماً أو صورة أو لقطة شاشة) وستبدأ الجولة من هذا التصميم. لا حاجة لرفع أي شيء آخر من جديد.',
   dsx_walk_needs_cta: 'إضافة المخطط',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_step_space: 'يعيد HOMATCH بناء المساحة من تصميمك',
+  dsx_walk_inferred_note: 'أُنشئت المساحة ثلاثية الأبعاد من المواد المرئية المتوفرة وقد تختلف جزئياً عن المخطط الدقيق.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -90242,6 +90262,10 @@ const he: Partial<Record<TranslationKey, string>> = {
   dsx_walk_missing_ROOM_SIZES: 'הגודל של כל חדר',
   dsx_walk_needs_hint: 'הוסיפו לפרויקט את תוכנית הדירה (שרטוט, תמונה או צילום מסך) והסיור יתחיל מהעיצוב הזה. אין צורך להעלות שום דבר אחר מחדש.',
   dsx_walk_needs_cta: 'הוספת תוכנית',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_step_space: 'HOMATCH משחזר את החלל מהעיצוב שלכם',
+  dsx_walk_inferred_note: 'החלל התלת־ממדי נבנה על סמך החומר החזותי הקיים ועשוי להיות שונה חלקית מהתוכנית המדויקת.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

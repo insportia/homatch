@@ -22,6 +22,8 @@ export interface Walkthrough {
   retryable: boolean;
   createdAt: string;
   readyAt: string | null;
+  /** Walked on a space reconstructed from the pictures (no measured plan). */
+  inferred?: boolean;
 }
 
 async function call<T>(route: string, body: Record<string, unknown>): Promise<{ data: T | null; code: string | null }> {
@@ -33,8 +35,9 @@ async function call<T>(route: string, body: Record<string, unknown>): Promise<{ 
 }
 
 export async function createWalkthrough(input: { designVersionId: string; renderId?: string | null; newRevision?: boolean; name?: string }) {
-  const r = await call<{ walkthrough: Walkthrough; created: boolean }>('walkthrough-create', input as unknown as Record<string, unknown>);
-  return { walkthrough: r.data?.walkthrough ?? null, error: r.code };
+  const r = await call<{ walkthrough: Walkthrough | null; created?: boolean; reconstructing?: boolean }>('walkthrough-create', input as unknown as Record<string, unknown>);
+  // reconstructing: the server is reconstructing the space from the project's pictures; asking again follows it.
+  return { walkthrough: r.data?.walkthrough ?? null, reconstructing: r.data?.reconstructing === true, error: r.code };
 }
 
 export async function walkthroughStatus(input: { walkthroughId?: string; designVersionId?: string }) {

@@ -22,7 +22,7 @@
 // (WalkthroughPanel): made by the server, it carries on with the page closed.
 
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { ArrowLeft, Check, ChevronDown, Columns2, Download, Expand, Layers, Loader2, Pencil, RefreshCw, RotateCcw, Shuffle, SlidersHorizontal, Sparkles, Wand2, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -98,7 +98,6 @@ interface GenInput {
 
 export function DesignResult({ data, onReload }: { data: ResultData; onReload: () => Promise<void> }) {
   const { t, lang } = useLanguage();
-  const navigate = useNavigate();
   const { homatchUser } = useAuth();
   const projectId = data.bundle.project.id;
   const [renders, setRenders] = useState<RenderRecord[]>([]);
@@ -556,10 +555,9 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
           </section>
         ) : null}
 
-        {/* ── The 3D walkthrough of the design shown: started from this project (photos walk on its floor plan, if it has one) ── */}
+        {/* ── The 3D walkthrough of the design shown: always from this project (a photo design's space is reconstructed by the server) ── */}
         {hero ? (
-          <WalkthroughPanel projectId={projectId} designVersionId={hero.version_id ?? data.head.id} renderId={hero.id}
-            onAddPlan={data.sourceKind === 'PHOTO' ? () => navigate(`/design-studio/${projectId}?start=floorplan`) : undefined} />
+          <WalkthroughPanel projectId={projectId} designVersionId={hero.version_id ?? data.head.id} renderId={hero.id} />
         ) : null}
 
         {/* ── Your options ───────────────────────────────────────────── */}

@@ -29,6 +29,13 @@
 //              pieces, the room's own bed or kitchen last) and is dropped
 //              only when no clean pose fixes it; then everything is walked
 //              again (bounded passes). The result carries its gate.
+//   reference  a piece the selected picture shows clearly (a reference-locked
+//              anchor: BuildItem.lock) is placed first and only ever NUDGED:
+//              a small move, then a small scale-down, then a small turn,
+//              within its lock — never searched for room-wide, never moved
+//              away to open a way, never given up for density or decor. If it
+//              has no safe place within its lock it is reported dropped and
+//              the reference-fidelity gate (fidelity.ts) fails the build.
 //
 // The floor plan is never touched: no wall, door, window, room or stair is an
 // output of this file. Same plan + same design + same catalogue = the same
@@ -106,6 +113,10 @@ export interface BuildItem {
   scale: number;
   color: string | null;
   origin: 'PLANNED' | 'PROGRAMME';
+  /** The selected picture's id for this piece (reference-locked plans). */
+  refKey?: string | null;
+  /** Reference-locked: how far it may be nudged and turned (fidelity.ts anchorLock); it never moves further. */
+  lock?: { maxShiftM: number; maxTurnDeg: number } | null;
 }
 export interface BuildRoom {
   roomId: string;
@@ -138,6 +149,10 @@ export interface ItemReport {
   movedM: number | null;
   /** Findings it was accepted with (only ever TIGHT_ACCESS). */
   warnings: string[];
+  /** The picture's id for it (reference-locked plans). */
+  refKey?: string | null;
+  /** Reference-locked (nudged within its lock only). */
+  locked?: boolean;
 }
 export interface BuildReport {
   items: ItemReport[];
@@ -222,25 +237,39 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
     apply({ type: 'REMOVE_OBJECT', instanceId: obj.instanceId });
   }
   let n = 0;
-  const placedOrder: Array<{ roomId: string; instanceId: string; flat: boolean; area: number; box: Obb; report: ItemReport; asset: CatalogAsset; rank: number; essential: boolean }> = [];
+  type Placed = { roomId: string; instanceId: string; flat: boolean; area: number; box: Obb; report: ItemReport; asset: CatalogAsset; rank: number; essential: boolean; lock?: { at: Point; rotation: number; maxShiftM: number; maxTurnDeg: number } };
+  const placedOrder: Placed[] = [];
   for (const pr of input.plan.rooms) {
     const room = rooms.get(pr.roomId);
     if (!room) continue;
     // Big standing pieces first (they need the walls), rugs and other flat pieces last.
     // One coherent solution: the redundant table, island or duplicated singleton never stands at all.
     const known = pr.items.map((item) => ({ item, asset: assets.get(item.code) })).filter((x): x is { item: BuildItem; asset: CatalogAsset } => !!x.asset);
-    const redundant = redundantPieces(room.kind, room.areaM2, known.map((x) => ({ item: x.item, asset: x.asset, planned: !!x.item.pose })));
-    for (const item of redundant) report.items.push({ roomId: room.id, code: item.code, type: item.type, instanceId: null, outcome: 'DROPPED', reason: 'REDUNDANT', movedM: null, warnings: [] });
+    // The picture's anchors are kept before anything else of their kind.
+    const known1 = [...known].sort((a, b) => Number(!!(b.item.lock && b.item.pose)) - Number(!!(a.item.lock && a.item.pose)));
+    const redundant = redundantPieces(room.kind, room.areaM2, known1.map((x) => ({ item: x.item, asset: x.asset, planned: !!x.item.pose })));
+    // What the picture clearly shows is never "redundant" (it is the design).
+    for (const item of [...redundant]) if (item.lock && item.pose) redundant.delete(item);
+    for (const item of redundant) report.items.push({ roomId: room.id, code: item.code, type: item.type, instanceId: null, outcome: 'DROPPED', reason: 'REDUNDANT', movedM: null, warnings: [], ...(item.refKey ? { refKey: item.refKey } : {}) });
+    // The picture's anchors stand first (nothing else takes their place), then big standing pieces, flat ones last.
+    const isLocked = (item: BuildItem) => !!(item.lock && item.pose);
     const order = pr.items.filter((item) => !redundant.has(item)).map((item, i) => ({ item, i, asset: assets.get(item.code) }))
       .filter((x): x is { item: BuildItem; i: number; asset: CatalogAsset } => !!x.asset)
-      .sort((a, b) => Number(isFlat(a.asset)) - Number(isFlat(b.asset)) || b.asset.widthM * b.asset.depthM - a.asset.widthM * a.asset.depthM || a.i - b.i);
+      .sort((a, b) => Number(isLocked(b.item)) - Number(isLocked(a.item)) || Number(isFlat(a.asset)) - Number(isFlat(b.asset)) || b.asset.widthM * b.asset.depthM - a.asset.widthM * a.asset.depthM || a.i - b.i);
     for (const { item, asset: own } of order) {
-      const shape = shapeAt(own, item.scale);
-      const asset = shapedAsset(own, { shape });
-      const found = findPose(space, assets, working.objects, room, asset, item);
-      const entry: ItemReport = { roomId: room.id, code: item.code, type: item.type, instanceId: null, outcome: 'DROPPED', reason: null, movedM: null, warnings: [] };
+      let shape = shapeAt(own, item.scale);
+      let asset = shapedAsset(own, { shape });
+      let found: ReturnType<typeof findPose> = null;
+      if (isLocked(item)) {
+        const near = findLockedPose(space, assets, working.objects, room, own, item);
+        if (near) { found = near; shape = shapeAt(own, near.scale); asset = shapedAsset(own, { shape }); }
+      } else found = findPose(space, assets, working.objects, room, asset, item);
+      const entry: ItemReport = {
+        roomId: room.id, code: item.code, type: item.type, instanceId: null, outcome: 'DROPPED', reason: null, movedM: null, warnings: [],
+        ...(item.refKey ? { refKey: item.refKey } : {}), ...(isLocked(item) ? { locked: true } : {}),
+      };
       report.items.push(entry);
-      if (!found) { entry.reason = 'NO_SAFE_PLACE'; continue; }
+      if (!found) { entry.reason = isLocked(item) ? 'ANCHOR_NO_SAFE_PLACE' : 'NO_SAFE_PLACE'; continue; }
       n += 1;
       const object: ObjectInstance = {
         instanceId: `${input.idPrefix}-${n}`, assetId: item.code, roomId: room.id,
@@ -255,7 +284,10 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
       entry.reason = found.kept || !item.pose ? null : found.why;
       entry.movedM = found.movedM;
       entry.warnings = found.verdict === 'TIGHT' ? ['TIGHT_ACCESS'] : [];
-      placedOrder.push({ roomId: room.id, instanceId: object.instanceId, flat: isFlat(asset), area: asset.widthM * asset.depthM, box: footprint(asset, found.at, found.rotation), report: entry, asset, rank: repairRank(asset), essential: false });
+      const lock = isLocked(item) && item.lock && item.pose
+        ? { at: { x: room.bounds.minX + item.pose.x, y: room.bounds.minY + item.pose.y }, rotation: item.pose.rotationDeg * DEG, maxShiftM: item.lock.maxShiftM, maxTurnDeg: item.lock.maxTurnDeg }
+        : undefined;
+      placedOrder.push({ roomId: room.id, instanceId: object.instanceId, flat: isFlat(asset), area: asset.widthM * asset.depthM, box: footprint(asset, found.at, found.rotation), report: entry, asset, rank: repairRank(asset), essential: false, ...(lock ? { lock } : {}) });
     }
   }
 
@@ -269,7 +301,7 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
     if (!planned.has(room.id) || !densityChecked(room.kind)) continue;
     const essential = essentialRole(room.kind);
     for (let guard = 0; guard < 12 && density(room, standingIn(room.id).map((p) => p.area)) > DENSITY_MAX; guard += 1) {
-      const victim = [...standingIn(room.id)].filter((p) => !(essential && servesRole(p.asset, essential)))
+      const victim = [...standingIn(room.id)].filter((p) => !p.lock && !(essential && servesRole(p.asset, essential)))
         .sort((a, b) => a.rank - b.rank || a.area - b.area)[0];
       if (!victim) break;
       drop(victim, 'OVERFURNISHED');
@@ -343,7 +375,9 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
     const obj = objectOf(p);
     if (!room || !obj) return false;
     const others = working.objects.filter((o) => o.instanceId !== p.instanceId);
-    for (const pose of cleanPoses(space, assets, others, room, p.asset, 5)) {
+    // A reference-locked piece is only nudged within its lock, never sent elsewhere in the room.
+    const poses = p.lock ? lockedPoses(space, assets, others, room, p.asset, p.lock) : cleanPoses(space, assets, others, room, p.asset, 5);
+    for (const pose of poses) {
       if (Math.hypot(pose.at.x - obj.position.x, pose.at.y - obj.position.z) < 0.1) continue;
       // Still on the way it blocks: cannot be the fix (no walk is needed to know).
       if (avoid.length) { const box = footprint(p.asset, pose.at, pose.rotation); if (avoid.some((q) => distanceToObb(q, box) < COMFORT_RADIUS_M)) continue; }
@@ -371,7 +405,7 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
     const largest = [...candidates].filter((p) => p.rank <= 4).sort((a, b) => b.area - a.area).slice(0, 2);
     const movers = [...new Set([...candidates.slice(0, 2), ...largest])];
     for (const p of movers) if (relocate(p, fixes, avoid)) return true;
-    const droppable = candidates.filter(mayDrop);
+    const droppable = candidates.filter((p) => !p.lock && mayDrop(p));
     // Tier by tier (decor, chairs, side tables, tables, large pieces): one piece, then two of that tier or below —
     // two dining chairs go before the dining table does.
     const fixedWithout = (gone: Set<string>) => fixes(working.objects.filter((o) => !gone.has(o.instanceId)));
@@ -408,7 +442,7 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
       if (repairWith(byRank(near), fixes, (p) => !p.essential && p.rank <= 3, pts)) continue;
       if (repairWith(byRank(near).filter((p) => p.rank <= 4), fixes, (p) => !p.essential && p.rank <= 4, pts)) continue;
       // Nothing near the route alone does it: the least important standing piece of the cut-off room goes.
-      const last = byRank(standing().filter((p) => p.roomId === id))[0];
+      const last = byRank(standing().filter((p) => p.roomId === id && !p.lock))[0];
       if (last && !last.essential && last.rank < 5) { drop(last, 'CIRCULATION'); continue; }
       break;
     }
@@ -433,7 +467,7 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
     if (!lost.length && !traps.length) break;
     const where = lost[0] ?? traps[0].roomId;
     const cells = traps[0]?.cells ?? [];
-    const victim = byRank(standing().filter((p) => p.rank < 5 && (p.roomId === where || cells.some((c) => distanceToObb(c, p.box) < COMFORT_RADIUS_M + 0.1))))
+    const victim = byRank(standing().filter((p) => p.rank < 5 && !p.lock && (p.roomId === where || cells.some((c) => distanceToObb(c, p.box) < COMFORT_RADIUS_M + 0.1))))
       .sort((a, b) => Number(a.essential) - Number(b.essential) || a.rank - b.rank)[0];
     if (!victim) break;
     drop(victim, 'CIRCULATION');
@@ -480,6 +514,77 @@ function cleanPoses(space: SpaceModel, assets: Map<string, CatalogAsset>, object
   if (all.length <= max) return all;
   return Array.from({ length: max }, (_, i) => all[Math.round((i * (all.length - 1)) / (max - 1))]);
 }
+
+/**
+ * Clean poses within a reference lock: rings around the picture's pose up to its radius, at its rotation, then
+ * turned by up to its angle; nearest first. Bounded (a few dozen judgements).
+ */
+function lockedPoses(space: SpaceModel, assets: Map<string, CatalogAsset>, objects: ObjectInstance[], room: SpaceRoom, asset: CatalogAsset, lock: { at: Point; rotation: number; maxShiftM: number; maxTurnDeg: number }, max = 6): Array<{ at: Point; rotation: number }> {
+  const ctx = { space, assets, objects };
+  const world = placementWorld(ctx, room);
+  const out: Array<{ at: Point; rotation: number }> = [];
+  for (const c of lockCandidates(lock)) {
+    if (!pointInPolygon(c.at, room.polygon) || onStairs(space, asset, c.at, c.rotation)) continue;
+    if (verdictOf(evaluateInWorld(world, asset, c.at, c.rotation)) !== 'CLEAN') continue;
+    out.push(c);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+/** The poses a locked piece may take, in repair order: the picture's pose, small moves, then small turns with small moves. */
+function lockCandidates(lock: { at: Point; rotation: number; maxShiftM: number; maxTurnDeg: number }): Array<{ at: Point; rotation: number; turn: number }> {
+  const rings: Array<{ r: number; n: number }> = [{ r: 0, n: 1 }];
+  for (let r = 0.1; r <= lock.maxShiftM + 1e-9; r += 0.1) rings.push({ r, n: Math.max(8, Math.round((2 * Math.PI * r) / 0.12)) });
+  const turns = [0, ...[10, 20].filter((d) => d <= lock.maxTurnDeg).flatMap((d) => [d, -d])];
+  const out: Array<{ at: Point; rotation: number; turn: number }> = [];
+  for (const t of turns) {
+    for (const { r, n } of rings) {
+      for (let k = 0; k < n; k += 1) {
+        const a = (k / n) * Math.PI * 2;
+        out.push({ at: { x: lock.at.x + Math.cos(a) * r, y: lock.at.y + Math.sin(a) * r }, rotation: lock.rotation + t * DEG, turn: t });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Where a reference-locked piece stands, in the repair order (fidelity first): the picture's pose; a small move
+ * (within its lock); the same at a slightly smaller scale (never under SCALE_FLOOR of the catalogue size); a small
+ * turn. Clean only: a locked piece is never accepted with a tight access zone. Null: no safe place within its lock.
+ */
+function findLockedPose(
+  space: SpaceModel, assets: Map<string, CatalogAsset>, objects: ObjectInstance[], room: SpaceRoom, own: CatalogAsset, item: BuildItem,
+): { at: Point; rotation: number; kept: boolean; why: string | null; movedM: number | null; verdict: Verdict; scale: number } | null {
+  if (!item.pose || !item.lock) return null;
+  const lock = { at: { x: room.bounds.minX + item.pose.x, y: room.bounds.minY + item.pose.y }, rotation: item.pose.rotationDeg * DEG, maxShiftM: item.lock.maxShiftM, maxTurnDeg: item.lock.maxTurnDeg };
+  const ctx = { space, assets, objects };
+  const world = placementWorld(ctx, room);
+  const scales = [item.scale, ...[0.94, 0.88].map((k) => r3(Math.max(SCALE_FLOOR, item.scale * k))).filter((x) => x < item.scale - 0.005)];
+  const cands = lockCandidates(lock);
+  let firstIssue: string | null = null;
+  // Position before scale, scale before orientation.
+  for (const turnPhase of [false, true]) {
+    for (const scale of scales) {
+      const asset = shapedAsset(own, { shape: shapeAt(own, scale) });
+      for (const c of cands) {
+        if ((c.turn !== 0) !== turnPhase) continue;
+        if (!pointInPolygon(c.at, room.polygon) || onStairs(space, asset, c.at, c.rotation)) continue;
+        const issues = evaluateInWorld(world, asset, c.at, c.rotation);
+        if (!firstIssue && c.turn === 0 && scale === item.scale && c.at === cands[0].at) firstIssue = issues.find((i) => i.code !== 'TIGHT_ACCESS')?.code ?? (issues.length ? 'TIGHT_ACCESS' : null);
+        if (verdictOf(issues) !== 'CLEAN') continue;
+        const movedM = r3(Math.hypot(c.at.x - lock.at.x, c.at.y - lock.at.y));
+        const kept = movedM < 0.005 && c.turn === 0 && scale === item.scale;
+        return { at: c.at, rotation: c.rotation, kept, why: kept ? null : firstIssue ?? 'COLLISION', movedM, verdict: 'CLEAN', scale };
+      }
+    }
+  }
+  return null;
+}
+
+/** A locked piece is never scaled below this share of its catalogue size to fit (scenePlan SCALE_MIN). */
+const SCALE_FLOOR = 0.85;
 
 /**
  * Where one piece stands: the plan's pose when it is clean; otherwise the

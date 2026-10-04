@@ -15402,6 +15402,9 @@ const en = {
   fbl_media_nothing_new: 'No new photos on the listing',
   fbl_media_recent: 'Photos were refreshed a few minutes ago',
   fbl_media_failed: 'The listing could not be read right now',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbl_admin_work_hint: 'queued / running / done / failed / paused · runs in flight',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -30718,6 +30721,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fbl_media_nothing_new: 'განცხადებაზე ახალი ფოტო არ არის',
   fbl_media_recent: 'ფოტოები რამდენიმე წუთის წინ განახლდა',
   fbl_media_failed: 'განცხადების წაკითხვა ამ ეტაპზე ვერ მოხერხდა',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbl_admin_work_hint: 'რიგში / მიმდინარე / დასრულებული / ჩავარდნილი / დაპაუზებული · მიმდინარე გაშვებები',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -46025,6 +46031,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fbl_media_nothing_new: 'Новых фото в объявлении нет',
   fbl_media_recent: 'Фото обновлялись несколько минут назад',
   fbl_media_failed: 'Не удалось прочитать объявление',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbl_admin_work_hint: 'в очереди / выполняется / готово / сбой / пауза · запуски в работе',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -61330,6 +61339,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fbl_media_nothing_new: 'İlanda yeni fotoğraf yok',
   fbl_media_recent: 'Fotoğraflar birkaç dakika önce yenilendi',
   fbl_media_failed: 'İlan şu anda okunamadı',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbl_admin_work_hint: 'sırada / çalışıyor / tamam / başarısız / duraklatıldı · süren çalıştırmalar',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -76635,6 +76647,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fbl_media_nothing_new: 'لا توجد صور جديدة في الإعلان',
   fbl_media_recent: 'تم تحديث الصور قبل دقائق',
   fbl_media_failed: 'تعذّرت قراءة الإعلان الآن',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbl_admin_work_hint: 'في الانتظار / قيد التشغيل / منجز / فاشل / متوقف مؤقتًا · تشغيلات جارية',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -91940,6 +91955,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   fbl_media_nothing_new: 'אין תמונות חדשות במודעה',
   fbl_media_recent: 'התמונות רועננו לפני כמה דקות',
   fbl_media_failed: 'לא ניתן היה לקרוא את המודעה כעת',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbl_admin_work_hint: 'בתור / רץ / הושלם / נכשל / מושהה · ריצות פעילות',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

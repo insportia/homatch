@@ -267,7 +267,7 @@ export function FindBuyersControlCenter() {
               <span key="s" title={`job ${c.matching_job_id} · campaign ${c.campaign_id ?? '—'} · property ${c.property_id}`}>{when(c.created_at)}</span>,
               /* The server's lifecycle (find_buyers_job_state), the same one the owner sees. */
               <span key="st" className="font-semibold">{String(c.lifecycle?.state ?? '—')}</span>,
-              <span key="w" dir="ltr" title="queued / running / done / failed / paused · runs in flight" className="tabular-nums">
+              <span key="w" dir="ltr" title={t('fbl_admin_work_hint')} className="tabular-nums">
                 {n(c.lifecycle?.queue?.queued)}/{n(c.lifecycle?.queue?.running)}/{n(c.lifecycle?.queue?.done)}/{n(c.lifecycle?.queue?.failed)}/{n(c.lifecycle?.queue?.paused)} · {n(c.lifecycle?.runs?.inFlight)}
               </span>,
               n(c.lifecycle?.signalsAnalyzed),

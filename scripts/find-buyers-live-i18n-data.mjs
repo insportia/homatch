@@ -172,6 +172,7 @@ export const FIND_BUYERS_LIVE_STRINGS = {
   /* ── admin control center ── */
   fbl_admin_state: ['Lifecycle', 'სასიცოცხლო ციკლი', 'Жизненный цикл', 'Yaşam döngüsü', 'دورة الحياة', 'מחזור חיים'],
   fbl_admin_work: ['Work Q/R/D/F/P · runs', 'სამუშაო რ/მ/დ/ჩ/პ · გაშვება', 'Работа О/В/Г/С/П · запуски', 'İş S/Ç/T/B/D · çalıştırma', 'العمل ق/ج/م/ف/إ · تشغيل', 'עבודה ת/ר/ה/נ/מ · ריצות'],
+  fbl_admin_work_hint: ['queued / running / done / failed / paused · runs in flight', 'რიგში / მიმდინარე / დასრულებული / ჩავარდნილი / დაპაუზებული · მიმდინარე გაშვებები', 'в очереди / выполняется / готово / сбой / пауза · запуски в работе', 'sırada / çalışıyor / tamam / başarısız / duraklatıldı · süren çalıştırmalar', 'في الانتظار / قيد التشغيل / منجز / فاشل / متوقف مؤقتًا · تشغيلات جارية', 'בתור / רץ / הושלם / נכשל / מושהה · ריצות פעילות'],
   fbl_admin_signals: ['Signals analysed', 'გაანალიზებული სიგნალები', 'Сигналов проанализировано', 'İncelenen sinyal', 'إشارات محللة', 'אותות שנותחו'],
   fbl_admin_new: ['New results', 'ახალი შედეგები', 'Новые результаты', 'Yeni sonuçlar', 'نتائج جديدة', 'תוצאות חדשות'],
   fbl_admin_stop_reason: ['Stop reason', 'შეჩერების მიზეზი', 'Причина остановки', 'Durma nedeni', 'سبب التوقف', 'סיבת עצירה'],

@@ -359,9 +359,9 @@ function DiscoverySection({
               </Button>
             )}
             {!expired && view?.control === 'pausing' && (
-              <Button variant="outline" disabled className="h-auto min-h-10 gap-1.5 whitespace-normal border-[hsl(40_70%_80%)]">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />{t('fbl_pausing')}
-              </Button>
+              <span role="status" aria-busy="true" className="inline-flex h-auto min-h-10 items-center gap-1.5 whitespace-normal rounded-md border border-[hsl(40_70%_80%)] px-4 text-sm font-medium opacity-70">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />{t('fbl_pausing')}
+              </span>
             )}
             {!expired && view?.control === 'resume' && (
               <Button onClick={() => void control('resume')} disabled={loading} className="h-auto min-h-10 gap-1.5 whitespace-normal bg-[hsl(38_92%_54%)] font-semibold text-[#161309] hover:bg-[hsl(38_92%_60%)]">

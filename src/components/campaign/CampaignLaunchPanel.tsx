@@ -25,6 +25,9 @@ import { Separator } from '@/components/ui/separator';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { brokerDiscoveryPricing, type BrokerDiscoveryPricing } from '@/services/brokers';
 import { getFindBuyersConfig, type FindBuyersConfig } from '@/services/findBuyers';
+import { CalendarCheck2, Radar, Wallet } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { GOLD_FILL, GOLD_TEXT, NAVY_BAND } from '@/components/findBuyers/brand';
 import {
   type CampaignLanguageState,
   type CampaignSearchLanguageChoice,
@@ -107,10 +110,25 @@ export function CampaignLaunchPanel({
   return (
     <div className="space-y-4">
       {findBuyers ? (
-        <div className="space-y-1.5">
-          <p className="font-display text-base font-semibold leading-snug text-foreground">{t('fbx_heading')}</p>
-          <p className="text-sm leading-relaxed text-muted-foreground">{t('fbx_supporting')}</p>
-          <p className="text-2xs text-muted-foreground">{t('fbx_languages_note')}</p>
+        <div className={cn('relative overflow-hidden rounded-2xl p-4 text-white ring-1 ring-inset ring-[hsl(40_80%_55%/0.4)]', NAVY_BAND)}>
+          <div className="flex items-start gap-3">
+            <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', GOLD_FILL)}>
+              <Radar className="h-5 w-5 text-[hsl(218_52%_11%)]" aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <p className="font-display text-base font-semibold leading-snug">{t('fbx_heading')}</p>
+              <p className="mt-1 text-sm leading-relaxed text-[hsl(218_40%_86%)]">{t('fbx_supporting')}</p>
+            </div>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-1.5" aria-label={t('fbx_languages_note')}>
+            {['ka', 'ru', 'en', 'ar', 'he', 'tr'].map((l) => (
+              <span key={l} className={cn('rounded-lg px-2 py-0.5 text-2xs font-bold uppercase', GOLD_FILL, 'text-[hsl(218_52%_11%)]')}>{l}</span>
+            ))}
+            <span className="inline-flex items-center gap-1 rounded-lg bg-white/10 px-2 py-0.5 text-2xs font-semibold text-[hsl(40_94%_72%)] ring-1 ring-inset ring-white/15">
+              <CalendarCheck2 className="h-3.5 w-3.5" aria-hidden="true" />{t('fbx_fresh_badge')}
+            </span>
+          </div>
+          <p className="sr-only">{t('fbx_languages_note')}</p>
         </div>
       ) : (
         <SearchLanguagePicker
@@ -146,14 +164,16 @@ export function CampaignLaunchPanel({
       <Separator />
 
       {findBuyers ? (
-        <div className="space-y-1">
-          <p className="text-sm font-semibold text-foreground">{t('fbx_budget_heading')}</p>
+        <div className="space-y-1.5 rounded-2xl bg-[linear-gradient(135deg,hsl(43_100%_96%),hsl(40_100%_92%))] p-3.5 ring-1 ring-inset ring-[hsl(40_80%_78%)]">
+          <p className="flex items-center gap-2 text-sm font-semibold text-[hsl(218_45%_14%)]">
+            <Wallet className="h-4 w-4 text-[hsl(34_90%_36%)]" aria-hidden="true" />{t('fbx_budget_heading')}
+          </p>
           {fbConfig ? (
-            <p className="text-2xs font-medium text-foreground" dir="auto">
+            <p className={cn('inline-flex rounded-full px-2.5 py-0.5 text-2xs font-bold', NAVY_BAND, GOLD_TEXT)} dir="auto">
               {t('fbx_budget_minimum', { credits: fbConfig.minCredits.toLocaleString(), usd: String(fbConfig.minUsd) })}
             </p>
           ) : null}
-          <p className="text-2xs leading-relaxed text-muted-foreground">{t('fbx_budget_helper')}</p>
+          <p className="text-2xs leading-relaxed text-[hsl(218_28%_32%)]">{t('fbx_budget_helper')}</p>
         </div>
       ) : null}
 

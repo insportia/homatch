@@ -211,4 +211,16 @@ export const FIND_BUYERS_STRINGS = {
   fbx_admin_estimated: ['Estimated', 'შეფასებული', 'Оценка', 'Tahmini', 'المقدّر', 'הערכה'],
   fbx_admin_actual: ['Actual', 'ფაქტობრივი', 'Факт', 'Gerçekleşen', 'الفعلي', 'בפועל'],
   fbx_admin_state: ['Cost state', 'ხარჯის მდგომარეობა', 'Статус затрат', 'Maliyet durumu', 'حالة التكلفة', 'מצב העלות'],
+
+  /* ── the 30-day rule ────────────────────────────────────────────────── */
+  fbx_fresh_rule: [
+    'Only public signals from the last 30 days. Older or undated posts never enter HOMATCH.',
+    'მხოლოდ ბოლო 30 დღის საჯარო სიგნალები. უფრო ძველი ან თარიღის გარეშე პოსტები HOMATCH-ში საერთოდ არ შემოდის.',
+    'Только публичные сигналы за последние 30 дней. Более старые или недатированные посты в HOMATCH не попадают.',
+    'Yalnızca son 30 günün herkese açık sinyalleri. Daha eski veya tarihsiz gönderiler HOMATCH’e hiç girmez.',
+    'إشارات عامة من آخر 30 يومًا فقط. المنشورات الأقدم أو غير المؤرخة لا تدخل HOMATCH أبدًا.',
+    'רק אותות ציבוריים מ-30 הימים האחרונים. פוסטים ישנים יותר או ללא תאריך אינם נכנסים ל-HOMATCH.',
+  ],
+  fbx_fresh_skipped: ['{{count}} older items were skipped.', 'გამოტოვებულია {{count}} ძველი ჩანაწერი.', 'Пропущено старых записей: {{count}}.', '{{count}} eski öğe atlandı.', 'تم تخطي {{count}} من العناصر الأقدم.', 'דולגו {{count}} פריטים ישנים.'],
+  fbx_fresh_badge: ['Last 30 days only', 'მხოლოდ ბოლო 30 დღე', 'Только последние 30 дней', 'Yalnızca son 30 gün', 'آخر 30 يومًا فقط', '30 הימים האחרונים בלבד'],
 };

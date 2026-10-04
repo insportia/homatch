@@ -17,6 +17,7 @@ const walk = (dir, out = []) => {
 };
 
 const CARD = read('src/components/findBuyers/PotentialBuyerCard.tsx');
+const BRAND = read('src/components/findBuyers/brand.tsx');
 const PANEL = read('src/components/findBuyers/FindBuyersCampaignPanel.tsx');
 const RESULTS = read('src/components/findBuyers/FindBuyersResults.tsx');
 const SERVICE = read('src/services/findBuyers.ts');
@@ -53,7 +54,9 @@ test('the result card: provenance via safe links, original text kept, translatio
   assert.match(CARD, /translateLeadSignal\(propertyId, lead\.id, best\.signalId, lang\)/, 'translation targets the UI language');
   assert.match(CARD, /fbx_original_lang/);
   assert.doesNotMatch(CARD, /\b(ml|mr|pl|pr)-\d|text-left|text-right|left-\d|right-\d/, 'logical properties only (RTL)');
-  assert.ok((CARD.match(/min-h-11/g) ?? []).length >= 2, '44px-class targets for links and translate');
+  assert.ok((BRAND.match(/min-h-11/g) ?? []).length >= 2, '44px-class targets for framed and primary actions');
+  assert.match(CARD, /FRAMED_ACTION/); assert.match(CARD, /PRIMARY_ACTION/);
+  assert.doesNotMatch(CARD + BRAND, /text-muted-foreground|text-gray-|text-slate-|bg-gray-|bg-slate-/, 'no neutral greys on the premium card');
   assert.match(CARD, /min-w-0/, 'no horizontal overflow from long words');
   assert.match(CARD, /break-words/);
 });

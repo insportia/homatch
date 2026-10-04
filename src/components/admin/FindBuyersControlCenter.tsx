@@ -250,7 +250,7 @@ export function FindBuyersControlCenter() {
                 <span>{t('fbx_admin_cpq')}: <b dir="ltr">{per(n(a.spend_micros), n(a.qualified_leads))}</b></span>
                 <span>{t('fbx_admin_latency')}: <b dir="ltr">{a.latency_p50_ms == null ? '—' : `${Math.round(n(a.latency_p50_ms) / 1000)}s`}</b></span>
                 <span>{t('fbx_admin_last_run')}: <b>{when(a.last_run_at)}</b></span>
-                <span className="col-span-2">{t('fbx_admin_caps')}: <b dir="ltr">{usd(a.daily_spend_cap_micros)}/d · {usd(a.campaign_spend_cap_micros)}/campaign · probe {a.probe_size} · max {a.max_results}</b></span>
+                <span className="col-span-2">{t('fbx_admin_caps')}: <b dir="ltr">{`${t('fbx_admin_daily_cap')}: ${usd(a.daily_spend_cap_micros)} · ${t('fbx_admin_campaign_cap')}: ${usd(a.campaign_spend_cap_micros)} · ${t('fbx_admin_probe')}: ${a.probe_size} · ${t('fbx_admin_max_results')}: ${a.max_results}`}</b></span>
               </div>
               {a.last_error ? <p className="mt-1.5 break-words text-2xs text-destructive">{t('fbx_admin_last_error')}: {a.last_error}</p> : null}
               {editing === a.actor_key ? <ActorEditor actor={a} onSaved={() => { setEditing(null); void load(); }} /> : null}
@@ -320,7 +320,7 @@ export function FindBuyersControlCenter() {
               <span key="e" dir="ltr">{usd(l.estimated_micros, 4)}</span>,
               <span key="a" dir="ltr">{l.actual_micros == null ? '—' : usd(l.actual_micros, 4)}</span>,
               `${l.cost_state}${l.cost_basis ? ` · ${l.cost_basis}` : ''}${l.after_settlement ? ' · post-settle' : ''}`,
-              <span key="st" className={l.error ? 'text-destructive' : ''}>{l.status}{l.error ? ` · ${l.error}` : ''}{l.retry_of ? ' · retry' : ''}</span>,
+              <span key="st" className={l.error ? 'text-destructive' : ''}>{l.status}{l.error ? ` · ${l.error}` : ''}{l.retry_of ? ' ↻' : ''}</span>,
             ])}
           />
         </div>

@@ -191,7 +191,7 @@ test('1440px and 390px, six locales: cards render, RTL for ar/he, no horizontal 
       const layout = await page.evaluate(() => ({
         overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
         dir: document.documentElement.getAttribute('dir'),
-        cards: document.querySelectorAll('article.hm-discovery-panel a[href^="https://www.facebook.com"]').length,
+        cards: document.querySelectorAll('article[aria-label] a[href^="https://www.facebook.com"]').length,
         small: [...document.querySelectorAll('article footer a')].filter((a) => a.getBoundingClientRect().height < 43).length,
       }));
       if (layout.overflow > 1) failures.push(`${lang} ${width}: horizontal overflow ${layout.overflow}px`);

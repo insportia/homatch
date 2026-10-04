@@ -15293,6 +15293,11 @@ const en = {
   fbx_admin_estimated: 'Estimated',
   fbx_admin_actual: 'Actual',
   fbx_admin_state: 'Cost state',
+
+  /* ── FIND BUYERS / FIND TENANTS (memo23 social intelligence) ── */
+  fbx_fresh_rule: 'Only public signals from the last 30 days. Older or undated posts never enter HOMATCH.',
+  fbx_fresh_skipped: '{{count}} older items were skipped.',
+  fbx_fresh_badge: 'Last 30 days only',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -30500,6 +30505,11 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fbx_admin_estimated: 'შეფასებული',
   fbx_admin_actual: 'ფაქტობრივი',
   fbx_admin_state: 'ხარჯის მდგომარეობა',
+
+  /* ── FIND BUYERS / FIND TENANTS (memo23 social intelligence) ── */
+  fbx_fresh_rule: 'მხოლოდ ბოლო 30 დღის საჯარო სიგნალები. უფრო ძველი ან თარიღის გარეშე პოსტები HOMATCH-ში საერთოდ არ შემოდის.',
+  fbx_fresh_skipped: 'გამოტოვებულია {{count}} ძველი ჩანაწერი.',
+  fbx_fresh_badge: 'მხოლოდ ბოლო 30 დღე',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -45698,6 +45708,11 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fbx_admin_estimated: 'Оценка',
   fbx_admin_actual: 'Факт',
   fbx_admin_state: 'Статус затрат',
+
+  /* ── FIND BUYERS / FIND TENANTS (memo23 social intelligence) ── */
+  fbx_fresh_rule: 'Только публичные сигналы за последние 30 дней. Более старые или недатированные посты в HOMATCH не попадают.',
+  fbx_fresh_skipped: 'Пропущено старых записей: {{count}}.',
+  fbx_fresh_badge: 'Только последние 30 дней',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -60894,6 +60909,11 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fbx_admin_estimated: 'Tahmini',
   fbx_admin_actual: 'Gerçekleşen',
   fbx_admin_state: 'Maliyet durumu',
+
+  /* ── FIND BUYERS / FIND TENANTS (memo23 social intelligence) ── */
+  fbx_fresh_rule: 'Yalnızca son 30 günün herkese açık sinyalleri. Daha eski veya tarihsiz gönderiler HOMATCH’e hiç girmez.',
+  fbx_fresh_skipped: '{{count}} eski öğe atlandı.',
+  fbx_fresh_badge: 'Yalnızca son 30 gün',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -76090,6 +76110,11 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fbx_admin_estimated: 'المقدّر',
   fbx_admin_actual: 'الفعلي',
   fbx_admin_state: 'حالة التكلفة',
+
+  /* ── FIND BUYERS / FIND TENANTS (memo23 social intelligence) ── */
+  fbx_fresh_rule: 'إشارات عامة من آخر 30 يومًا فقط. المنشورات الأقدم أو غير المؤرخة لا تدخل HOMATCH أبدًا.',
+  fbx_fresh_skipped: 'تم تخطي {{count}} من العناصر الأقدم.',
+  fbx_fresh_badge: 'آخر 30 يومًا فقط',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -91286,6 +91311,11 @@ const he: Partial<Record<TranslationKey, string>> = {
   fbx_admin_estimated: 'הערכה',
   fbx_admin_actual: 'בפועל',
   fbx_admin_state: 'מצב העלות',
+
+  /* ── FIND BUYERS / FIND TENANTS (memo23 social intelligence) ── */
+  fbx_fresh_rule: 'רק אותות ציבוריים מ-30 הימים האחרונים. פוסטים ישנים יותר או ללא תאריך אינם נכנסים ל-HOMATCH.',
+  fbx_fresh_skipped: 'דולגו {{count}} פריטים ישנים.',
+  fbx_fresh_badge: '30 הימים האחרונים בלבד',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

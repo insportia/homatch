@@ -470,7 +470,10 @@ async function upsertLead(ctx: PipelineCtx, a: Assessed): Promise<'QUALIFIED' | 
     similarity: Math.round(a.similarity), ageDays: a.ageDays, sourceQuality: ctx.sourceYield != null ? Math.min(1, 0.4 + ctx.sourceYield * 2) : null,
     specific: Boolean(a.facts.bedrooms || a.facts.price || a.facts.district || a.facts.areaSqm),
     text: clip(a.item.text, 600) ?? '', url: a.item.url, parentUrl: a.parent?.url ?? null, parentExcerpt: a.parent?.excerpt ?? null,
-    language: a.language, publishedAt: a.item.publishedAt, explanation: JSON.stringify(a.why),
+    /* The evidence time ingest judged: an undated comment was admitted on its
+       parent post's publication date, never on the time it was observed. */
+    language: a.language, publishedAt: a.item.publishedAt ?? (a.item.kind === 'COMMENT' ? a.parent?.publishedAt ?? null : null),
+    explanation: JSON.stringify(a.why),
   };
   const { data: existing } = await db.from('find_buyers_leads').select('id,evidence').eq('matching_job_id', campaign.matching_job_id).eq('person_id', person.id).maybeSingle();
   const prior: LeadSignal[] = Array.isArray(existing?.evidence) ? existing.evidence : [];

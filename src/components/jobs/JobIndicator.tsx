@@ -151,20 +151,25 @@ export const JobIndicator: React.FC = () => {
           type="button"
           onClick={() => setOpen(true)}
           /*
-           * STACKED ABOVE THE ASSISTANT BUTTON, NOT ON TOP OF IT.
-           *
-           * AIFloatingButton sits at `bottom-20 md:bottom-6` on the same
-           * corner. This used to sit at `bottom-24 sm:bottom-6`, so the two
-           * overlapped on every phone width -- and the breakpoints disagreed
-           * as well (sm vs md), giving a second, different overlap between
-           * 640 and 768px. These clear it at both sizes and follow the same
-           * breakpoint, so the two controls stack instead of colliding.
+           * PHONE: A 44px BADGE IN THE ASSISTANT'S COLUMN, NEVER A PILL ACROSS
+           * THE CONTENT. The wide pill sat over cards and text on every phone.
+           * Below md it is a round spinner with the running count, stacked
+           * directly above the assistant button (AIFloatingButton: the bottom
+           * nav's 3.75rem + safe-area + 0.75rem) with the same edge inset, so
+           * the two controls form one narrow column at the screen edge. The
+           * full sentence stays as the accessible name.
+           * DESKTOP (md+): the compact pill, above the assistant button.
            */
-          className="fixed bottom-32 md:bottom-24 end-4 z-40 max-w-[calc(100vw-2rem)] inline-flex items-center gap-2 rounded-full border border-border bg-card/95 px-4 py-2.5 shadow-lg backdrop-blur transition-colors hover:bg-accent"
-          aria-label={t('job_center_title')}
+          className="fixed bottom-[calc(7.75rem+env(safe-area-inset-bottom,0px))] end-4 z-40 inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card/95 shadow-lg backdrop-blur transition-colors hover:bg-accent md:bottom-24 md:end-6 md:h-auto md:w-auto md:max-w-[calc(100vw-3rem)] md:gap-2 md:px-4 md:py-2.5"
+          aria-label={active.length === 1
+            ? t('job_indicator_one')
+            : t('job_indicator_many').replace('{n}', String(active.length))}
         >
           <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" aria-hidden="true" />
-          <span className="text-sm font-medium truncate">
+          <span className="absolute -top-1 -end-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-2xs font-bold tabular-nums text-primary-foreground md:hidden" aria-hidden="true">
+            {active.length}
+          </span>
+          <span className="hidden truncate text-sm font-medium md:inline" aria-hidden="true">
             {active.length === 1
               ? t('job_indicator_one')
               : t('job_indicator_many').replace('{n}', String(active.length))}

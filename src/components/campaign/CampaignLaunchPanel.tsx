@@ -164,12 +164,12 @@ export function CampaignLaunchPanel({
       <Separator />
 
       {findBuyers ? (
-        <div className="space-y-1.5 rounded-2xl bg-[linear-gradient(135deg,hsl(43_100%_96%),hsl(40_100%_92%))] p-3.5 ring-1 ring-inset ring-[hsl(40_80%_78%)]">
+        <div className="min-w-0 space-y-1.5 rounded-2xl bg-[linear-gradient(135deg,hsl(43_100%_96%),hsl(40_100%_92%))] p-3.5 ring-1 ring-inset ring-[hsl(40_80%_78%)]">
           <p className="flex items-center gap-2 text-sm font-semibold text-[hsl(218_45%_14%)]">
             <Wallet className="h-4 w-4 text-[hsl(34_90%_36%)]" aria-hidden="true" />{t('fbx_budget_heading')}
           </p>
           {fbConfig ? (
-            <p className={cn('inline-flex rounded-full px-2.5 py-0.5 text-2xs font-bold', NAVY_BAND, GOLD_TEXT)} dir="auto">
+            <p className={cn('inline-block max-w-full rounded-full px-2.5 py-0.5 text-2xs font-bold [overflow-wrap:anywhere]', NAVY_BAND, GOLD_TEXT)} dir="auto">
               {t('fbx_budget_minimum', { credits: fbConfig.minCredits.toLocaleString(), usd: String(fbConfig.minUsd) })}
             </p>
           ) : null}

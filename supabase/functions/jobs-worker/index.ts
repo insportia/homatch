@@ -128,11 +128,29 @@ const DOC_ERROR_KEY: Record<string, string> = {
   REQUIRES_OCR: 'doc_error_requires_ocr',
 };
 
+/*
+ * Every matching_job_status, mapped. A status missing here fell through to
+ * PROCESSING forever: a search that ended `partially_completed` (finished, no
+ * new current demand) or `budget_reached` kept "1 task running" on every page
+ * and was heartbeated on every tick. Finished is finished; only the stages of a
+ * live search (and a paused one, still the property's search) stay active.
+ */
 const MATCHING_STATE: Record<string, string> = {
   queued: 'QUEUED',
+  analysing_property: 'PROCESSING',
+  generating_queries: 'PROCESSING',
+  searching_sources: 'PROCESSING',
+  collecting_results: 'PROCESSING',
+  normalizing: 'PROCESSING',
+  deduplicating: 'PROCESSING',
+  classifying: 'PROCESSING',
+  ranking: 'PROCESSING',
+  paused: 'PROCESSING',
   running: 'PROCESSING',
   succeeded: 'COMPLETED',
   completed: 'COMPLETED',
+  partially_completed: 'COMPLETED',
+  budget_reached: 'COMPLETED',
   failed: 'FAILED',
   cancelled: 'CANCELLED',
 };

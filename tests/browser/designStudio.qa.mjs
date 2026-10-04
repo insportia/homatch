@@ -1221,7 +1221,7 @@ async function checkpoint12(browser) {
   await page.screenshot({ path: path.join(OUT, 'cp12-delete-confirm-1440-en.png') });
   await submit.click();
   await page.getByTestId('ds-delete-dialog').waitFor({ state: 'detached', timeout: 10000 });
-  check('delete: the server route is asked, with the project's own name (the server still checks it)', store.deletes?.length === 1
+  check("delete: the server route is asked, with the project's own name (the server still checks it)", store.deletes?.length === 1
     && store.deletes[0].projectId === project.id && store.deletes[0].confirmName === 'Vake flat, redesigned');
   check('delete: gone from Active', (await page.getByRole('link', { name: 'Vake flat, redesigned' }).count()) === 0);
   await page.getByRole('tab', { name: 'Archived' }).click();

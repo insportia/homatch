@@ -147,11 +147,11 @@ test('a photograph that shows the whole home: spaces its reading did not list ar
   assert.match(specRequest('m', { mode: 'MASTER', evidence: ev, direction: DIRECTION, room: null, change: null, approvedSpec: null }, { source: SOURCE }).input[0].content, /visual:short-name/);
 });
 
-test('the image instruction is project-specific and separates IMMUTABLE architecture from the CREATIVE interior', () => {
+test('the image instruction is project-specific and separates the SOURCE TRUTH (architecture) from the DESIGN INTENT (interior)', () => {
   const ev = evidence();
   const spec = validateSpec(sampleSpec(ev), ev);
   const text = imageInstruction(spec, { mode: 'MASTER', evidence: ev, direction: DIRECTION });
-  const imm = text.indexOf('IMMUTABLE'); const cre = text.indexOf('CREATIVE');
+  const imm = text.indexOf('SOURCE TRUTH'); const cre = text.indexOf('DESIGN INTENT');
   assert.ok(imm > 0 && cre > imm, 'architecture first, then the design');
   assert.ok(text.includes(ALWAYS_IMMUTABLE[0]));
   assert.match(text, /Turn THIS floor plan/);
@@ -180,11 +180,11 @@ test('ROOM: the same engine with the approved master, its spec and the room — 
   assert.match(JSON.stringify(body), new RegExp(room.id));
   assert.equal(referenceOf('ROOM'), 'MASTER', 'drawn from the approved master');
   const text = imageInstruction(approved, ctx);
-  assert.match(text, /approved design of the customer's home/);
+  assert.match(text, /generated design of the customer's home they selected as the reference/);
   assert.match(text, /eye-level/);
   assert.match(text, /CONTINUITY — THE SAME HOME AND THE SAME DESIGN/);
   assert.match(text, /#f2f0eb/, 'the approved palette');
-  assert.ok(text.indexOf('IMMUTABLE') < text.indexOf('CREATIVE'));
+  assert.ok(text.indexOf('SOURCE TRUTH') < text.indexOf('DESIGN INTENT'));
 });
 
 test('VARIANT: the same property from the same camera, with the requested change only', () => {
@@ -234,7 +234,7 @@ test('a room of a whole-home view is an eye-level picture of it IN the approved 
   const task = specRequest('m', room, { source: SOURCE, master: MASTER }).input[1].content[0].text;
   assert.match(task, /eye-level architectural photograph of room r2/, 'drawn from the approved design, not over the whole-home photo');
   const spec = validateSpec(sampleSpec({ rooms: ev.rooms, openings: [] }), ev);
-  assert.match(imageInstruction(spec, room), /This picture is the approved design of the customer's home\. Produce an eye-level/);
+  assert.match(imageInstruction(spec, room), /THE FIRST image is the generated design of the customer's home they selected as the reference\. Produce an eye-level/);
   // A variant from the customer's own words: OpenAI makes them the heart of it (never shown back to the customer).
   const wish = { mode: 'VARIANT', evidence: ev, direction: DIRECTION, room: null, change: { style: null, quality: null, note: 'dark green sofa, warmer light' }, approvedSpec: spec };
   assert.match(specRequest('m', wish, { source: SOURCE, master: MASTER }).input[1].content[0].text, /in their own words[^]*dark green sofa, warmer light[^]*heart of this version/);

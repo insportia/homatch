@@ -51,7 +51,7 @@ import { signedUrls } from '@/services/designStudio/files';
 import { cn } from '@/lib/utils';
 import { PlanReview } from './planToHome/PlanReview';
 import { DesignChooser } from './planToHome/DesignChooser';
-import { QualityStep, QuickQuestionStep, RING, StyleStep, SURFACE, surpriseStyle } from './planToHome/SimpleSteps';
+import { QualityStep, QuickQuestionStep, RING, StyleStep, SURFACE } from './planToHome/SimpleSteps';
 import { AnalysisStep, FailureStep, GeneratingStep, PlanUploadStep, READING_RECOVERY, type Recovery, useReadyResult } from './unified/Screens';
 
 /**
@@ -529,8 +529,7 @@ export function FloorPlanFlow({
 
       {step === 'STYLE' ? (
         <StyleStep value={style} onChange={(s) => { setStyle(s); persistNow({ look: { style: s, quality: quality ?? 'HIGH_QUALITY' } }); }}
-          onNext={goQuality} onDetail={openDetail}
-          onSurprise={() => { const s = surpriseStyle(style); setStyle(s); persistNow({ look: { style: s, quality: quality ?? 'HIGH_QUALITY' } }); }} />
+          onNext={goQuality} onDetail={openDetail} />
       ) : null}
 
       {step === 'QUALITY' ? (

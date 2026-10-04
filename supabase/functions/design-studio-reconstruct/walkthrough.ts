@@ -107,7 +107,32 @@ function publicOf(row: Row) {
 // ── Lineage: a design and its revisions on corrected geometry ────────────────
 
 const CORRECTED = 'GEOMETRY_CORRECTED';
-const isCorrection = (v: Row) => Array.isArray(v?.change_summary) && v.change_summary.some((c: Row) => c?.kind === CORRECTED);
+/** A photo design carried onto the project's measured plan, for its walkthrough (designOnPlan). */
+const ON_PLAN = 'DESIGN_ON_PLAN';
+const isCorrection = (v: Row) => Array.isArray(v?.change_summary) && v.change_summary.some((c: Row) => c?.kind === CORRECTED || c?.kind === ON_PLAN);
+
+/**
+ * A design made from photos, on the newest measured plan of the same project: its child version on that plan's
+ * geometry with the same DNA and Design Specification job (a deterministic id: asked again, the same version; the
+ * photo design itself is never touched). Null when the project has no buildable plan.
+ */
+async function designOnPlan(admin: Row, version: Row, projectId: string): Promise<{ version: Row; source: Row } | null> {
+  const { data: plans } = await admin.from('ds_spatial_sources').select('id, kind, status, canonical, created_at').eq('project_id', projectId)
+    .eq('kind', 'FLOORPLAN_SCENE').eq('status', 'READY').order('created_at', { ascending: false }).limit(5);
+  const plan = (plans ?? []).find((p: Row) => p.canonical?.scene?.floors?.length && Array.isArray(p.canonical?.scene?.walls));
+  if (!plan) return null;
+  const { data: original } = await admin.from('ds_versions').select('state').eq('source_id', plan.id).eq('origin', 'ORIGINAL').limit(1).maybeSingle();
+  const id = await uuidFrom(`ds-walk-photo-design:${version.id}:${plan.id}`);
+  const { error } = await admin.from('ds_versions').upsert({
+    id, project_id: projectId, user_id: version.user_id, source_id: plan.id, parent_id: version.id,
+    name: version.name ?? 'Design', origin: 'AI', job_id: version.job_id, state: original?.state ?? {}, style_tags: version.style_tags ?? [],
+    change_summary: [{ kind: ON_PLAN, fromSourceId: version.source_id, toSourceId: plan.id }],
+    design_dna: version.design_dna ?? null,
+  }, { onConflict: 'id', ignoreDuplicates: true });
+  if (error) return null;
+  const { data: made } = await admin.from('ds_versions').select('id, project_id, user_id, source_id, revision, job_id, design_dna, archived_at, parent_id, name, style_tags').eq('id', id).maybeSingle();
+  return made ? { version: made, source: plan } : null;
+}
 
 /** The design and every geometry correction of it (newest first): one walkthrough history across them. */
 async function lineageOf(admin: Row, designVersionId: string): Promise<string[]> {
@@ -194,15 +219,24 @@ export async function handleWalkthroughCreate(req: Request): Promise<Response> {
 
   // The design, as the caller may see it; only its owner builds a walkthrough of it. A design with a revision
   // on corrected geometry is walked on the newest one (the drawing as it really is).
-  const lineage = await lineageOf(admin, String(body.designVersionId));
+  let lineage = await lineageOf(admin, String(body.designVersionId));
   const target = lineage[0] ?? body.designVersionId;
-  const { data: version } = await caller.from('ds_versions').select('id, project_id, user_id, source_id, revision, job_id, design_dna, archived_at, parent_id').eq('id', target).maybeSingle();
+  let { data: version } = await caller.from('ds_versions').select('id, project_id, user_id, source_id, revision, job_id, design_dna, archived_at, parent_id, name, style_tags').eq('id', target).maybeSingle();
   if (!version || version.archived_at || String(version.user_id) !== actorId) return json({ error: 'NOT_FOUND' }, 404);
   const { data: project } = await admin.from('ds_projects').select('id, user_id, deleting_at').eq('id', version.project_id).maybeSingle();
   if (!project || project.deleting_at || String(project.user_id) !== actorId) return json({ error: 'NOT_FOUND' }, 404);
-  const { data: source } = await admin.from('ds_spatial_sources').select('id, kind, status, canonical').eq('id', version.source_id).maybeSingle();
-  // A walkthrough walks a floor plan's measured rooms: a photo project has none.
-  if (!source || source.kind !== 'FLOORPLAN_SCENE' || !source.canonical?.scene?.floors?.length) return json({ error: 'WALKTHROUGH_NEEDS_FLOOR_PLAN' }, 409);
+  let { data: source } = await admin.from('ds_spatial_sources').select('id, kind, status, canonical').eq('id', version.source_id).maybeSingle();
+  // A design made from photos: walked on the measured plan this project already has (nothing uploaded again),
+  // carrying the design — its DNA and Design Specification — onto that geometry. Without one, the answer names
+  // exactly what is missing: the photos show the design, not the walls, doors and room sizes a walk needs.
+  if (source?.kind === 'PHOTO_SET') {
+    const onPlan = await designOnPlan(admin, version, project.id);
+    if (!onPlan) return json({ error: 'WALKTHROUGH_NEEDS_FLOOR_PLAN', missing: ['WALLS', 'DOORS', 'ROOM_SIZES'], have: ['DESIGN', 'PHOTOS'] }, 409);
+    ({ version, source } = onPlan);
+    lineage = await lineageOf(admin, version.id);
+  }
+  // A walkthrough walks a floor plan's measured rooms.
+  if (!source || source.kind !== 'FLOORPLAN_SCENE' || !source.canonical?.scene?.floors?.length) return json({ error: 'WALKTHROUGH_NEEDS_FLOOR_PLAN', missing: ['WALLS', 'DOORS', 'ROOM_SIZES'] }, 409);
   if (await billingOn(admin)) return json({ error: 'BILLING_CONFIRMATION_REQUIRED' }, 409);
   if (!factoryConfig()) return json({ error: 'FACTORY_NOT_CONFIGURED' }, 503);
 

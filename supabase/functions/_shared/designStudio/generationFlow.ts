@@ -82,9 +82,11 @@ export interface GenIo {
   /** Update while holding `lease`; null when the lease was lost. */
   save(row: Row, lease: string, patch: Row): Promise<Row | null>;
   reference(row: Row): Promise<{ bytes: Uint8Array; mime: string } | null>;
+  /** The further pictures the model sees after the reference (a room's selected design references); none by default. */
+  references?(row: Row): Promise<Array<{ bytes: Uint8Array; mime: string }>>;
   instruction(row: Row): Promise<string | null>;
   size(row: Row): { width: number; height: number };
-  image(input: { base: { bytes: Uint8Array; mime: string }; prompt: string; size: { width: number; height: number } }): Promise<ImageAnswer>;
+  image(input: { base: { bytes: Uint8Array; mime: string }; prompt: string; size: { width: number; height: number }; refs?: Array<{ bytes: Uint8Array; mime: string }> }): Promise<ImageAnswer>;
   putPicture(row: Row, bytes: Uint8Array, mime: string): Promise<string | null>;
   readPicture(key: string): Promise<Uint8Array | null>;
   scene(row: Row, picture: { bytes: Uint8Array; mime: string }): Promise<{ elements: SceneElement[]; usd: number | null } | null>;
@@ -112,13 +114,13 @@ export async function runImageStep(io: GenIo, row: Row): Promise<'STORED' | 'FAI
   if (!claimed) return 'BUSY';
   const ai = aiOf(claimed)!;
   if (ai.imageRequestedAt && !claimed.final_key) { await io.fail(claimed, 'GENERATION_INTERRUPTED', lease); return 'FAILED'; }
-  const [reference, prompt] = await Promise.all([io.reference(claimed), io.instruction(claimed)]);
+  const [reference, prompt, refs] = await Promise.all([io.reference(claimed), io.instruction(claimed), io.references ? io.references(claimed) : Promise.resolve([])]);
   if (!reference) { await io.fail(claimed, 'REFERENCE_MISSING', lease); return 'FAILED'; }
   if (!prompt) { await io.fail(claimed, 'SPEC_MISSING', lease); return 'FAILED'; }
   // Recorded first: from here on a lost worker means "asked", never "ask again".
   const asked = await io.save(claimed, lease, { timings: merged(claimed, { imageRequestedAt: iso(io.now()) }) });
   if (!asked) return 'BUSY';
-  const answer = await io.image({ base: reference, prompt, size: io.size(asked) });
+  const answer = await io.image({ base: reference, prompt, size: io.size(asked), ...(refs.length ? { refs } : {}) });
   if (!answer.ok || !answer.bytes || !answer.mime) {
     const failed = await io.save(asked, lease, { timings: merged(asked, { imageUsd: answer.cost.usd, imageKnown: answer.cost.basis === 'ESTIMATED' }) });
     await io.fail(failed ?? asked, `IMAGE_${answer.error ?? 'FAILED'}`.slice(0, 120), lease);

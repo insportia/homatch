@@ -911,7 +911,7 @@ test('the Result is a dashboard: the customer\'s own words for a new version, ed
   // "Another option" never makes something unasked: it opens the customer's own words, sent as the version's note.
   assert.match(result, /data-testid="home-wish"/);
   assert.match(result, /key: `wish-\$\{hero\.id\}-\$\{nonce\(\)\}`, label: t\('dsx_wish_label'\), credits, note/);
-  assert.match(result, /change: input\.style \|\| input\.quality \|\| input\.note \?/);
+  assert.match(result, /change: input\.style \|\| input\.quality \|\| input\.note \|\| input\.focus \?/);
   assert.doesNotMatch(result, /const askVariant =/);
   // Edits are chosen from a tidy list (no outlines drawn over the picture).
   assert.doesNotMatch(result, /RenderViewer/);
@@ -936,7 +936,9 @@ test('the protected edit pipeline (PR #65) is untouched; the 3D walkthrough is t
   const result = code('src/components/designStudio/unified/DesignResult.tsx');
   assert.match(result, /editRender\(\{ renderId: hero\.id, edit, newVersionId: v\.id, quote: q\.quote/, 'edits go through the stable render-edit route');
   assert.doesNotMatch(result, /WALKTHROUGH_OFFERED/, 'the Result never offers the browser-driven walkthrough');
-  assert.match(result, /data\.sourceKind === 'FLOOR_PLAN' && hero \? \(\s*<WalkthroughPanel /, 'a floor-plan design offers its walkthrough; a photo project has no rooms to walk');
+  // Every design offers its walkthrough from the project; a photo design walks on the project's plan, or is told exactly what is missing.
+  assert.match(result, /\{hero \? \(\s*<WalkthroughPanel projectId=\{projectId\}/, 'one walkthrough panel for every design');
+  assert.match(result, /onAddPlan=\{data\.sourceKind === 'PHOTO' \?/);
   // The walkthrough is made by the server: the page never drives the factory, RunPod or a build.
   for (const file of ['src/components/designStudio/unified/WalkthroughPanel.tsx', 'src/services/designStudio/walkthrough.ts']) {
     for (const banned of [/startFactory/, /factoryStatus/, /runDesignBuild/, /compileSceneSpec/, /runpod/i, /setTimeout\(\s*\(\)\s*=>\s*start/]) assert.doesNotMatch(code(file), banned, `${file}: ${banned}`);

@@ -49,7 +49,7 @@ import {
   quoteMatches, quoteSecret, RENDER_PRICING, renderRowKey, reservationKey, sha256Hex, validIdempotencyKey, verifyQuote, type QuoteClaims,
 } from '../_shared/designStudio/renderPricing.ts';
 import {
-  buildEvidence, directionFrom, dnaFromSpec, imageInstruction, isGenerationMode, modeContextProblem, roomFromWholeHome, specProblems, specRequest, validateSpec,
+  buildEvidence, directionFrom, dnaFromSpec, imageInstruction, isChangeFocus, isGenerationMode, MAX_REFERENCES, modeContextProblem, roomFromWholeHome, specProblems, specRequest, validateSpec,
   type DesignSpec, type GenerationMode, type ModeContext, type PropertyEvidence,
 } from '../_shared/designStudio/designSpec.ts';
 import { sceneRequest, validateScene, type SceneElement } from '../_shared/designStudio/sceneMap.ts';
@@ -167,8 +167,10 @@ async function sourceOf(ctx: Ctx, version: Row): Promise<Source | null> {
     if (understanding?.kind !== 'PHOTO_UNDERSTANDING' || !ids.length) return null;
     const { data: refs } = await ctx.caller.from('ds_floorplans').select('id, object_key').in('id', ids);
     const byId = new Map((refs ?? []).map((r: Row) => [r.id, r.object_key]));
-    const keys = ids.map((id) => byId.get(id)).filter(Boolean) as string[];
-    if (keys.length !== ids.length) return null;
+    const originals = ids.map((id) => byId.get(id)).filter(Boolean) as string[];
+    if (originals.length !== ids.length) return null;
+    // A screen capture is designed from the property picture the server isolated in it (photos.ts); the upload stays as it was.
+    const keys = originals.map((k, i) => normalizedKeyOf(understanding, i, k));
     const reconId = String(source.provenance?.reconstructionId ?? '');
     const { data: recon } = UUID.test(reconId)
       ? await ctx.caller.from('ds_reconstructions').select('corrections').eq('id', reconId).maybeSingle()
@@ -183,6 +185,13 @@ async function sourceOf(ctx: Ctx, version: Row): Promise<Source | null> {
   if (!plan?.object_key || !plan.interpretation?.doc) return null;
   const last = Array.isArray(plan.corrections) ? plan.corrections[plan.corrections.length - 1] : null;
   return { kind: 'FLOOR_PLAN', plan, answers: Array.isArray(last?.flow?.answers) ? last.flow.answers : [], ceilingM: typeof last?.ceilingM === 'number' ? last.ceilingM : null };
+}
+
+/** The isolated property picture of photo i (a screen capture), when the server made one in the same project folder; else the upload. */
+function normalizedKeyOf(u: PhotoUnderstanding, i: number, original: string): string {
+  const k = u.photos?.[i]?.normalizedKey;
+  const folder = original.slice(0, original.lastIndexOf('/') + 1);
+  return typeof k === 'string' && folder && k.startsWith(folder) && !k.includes('..') ? k : original;
 }
 
 /** An approved render to continue from (ROOM / VARIANT): the caller's own, READY, with its picture and spec. */
@@ -265,10 +274,24 @@ export async function handleDesignSpec(req: Request): Promise<Response> {
     : buildEvidence({ doc: src.plan.interpretation.doc, understanding: src.plan.interpretation.understanding ?? null, answers: src.answers, sourceKind: 'FLOOR_PLAN', ceilingM: src.ceilingM });
   const direction = directionFrom({ look: body.look, preferences: body.preferences });
   let approved: Row = null; let approvedSpec: DesignSpec | null = null;
+  // ROOM: the generated design(s) the customer selected as the design reference — exactly those, never a substitute.
+  let references: Row[] = [];
+  if (mode === 'ROOM' && body.referenceRenderIds != null) {
+    const ids = Array.isArray(body.referenceRenderIds) ? [...new Set<string>(body.referenceRenderIds.map(String))] : [];
+    if (!ids.length || ids.length > MAX_REFERENCES || ids.some((id) => !UUID.test(id))) return json({ error: 'BAD_REQUEST' }, 400);
+    references = await Promise.all(ids.map((id) => approvedRender(ctx, owned.project.id, id)));
+    // A room is drawn from designs, not from another room's picture.
+    if (references.some((r) => !r || r.kind === 'ROOM')) return json({ error: 'REFERENCE_MISSING' }, 409);
+  }
   if (mode !== 'MASTER') {
-    approved = await approvedRender(ctx, owned.project.id, body.parentRenderId);
-    const parentJob = approved ? await specJob(ctx.admin, ctx.actorId, owned.project.id, approved.finish?.specJobId) : null;
-    approvedSpec = parentJob ? validateSpec(parentJob.output.spec, evidence) : null;
+    approved = references[0] ?? await approvedRender(ctx, owned.project.id, body.parentRenderId);
+    if (approved && !references.length) references = [approved];
+    // The design's specification: the first reference that has one (an edited picture carries its design's).
+    for (const r of references.length ? references : [approved]) {
+      const job = r ? await specJob(ctx.admin, ctx.actorId, owned.project.id, r.finish?.specJobId) : null;
+      approvedSpec = job ? validateSpec(job.output.spec, evidence) : null;
+      if (approvedSpec) break;
+    }
   }
   const room = mode === 'ROOM' && typeof body.roomId === 'string'
     ? { id: body.roomId, name: evidence.rooms.find((r) => r.id === body.roomId)?.label ?? null } : null;
@@ -277,8 +300,10 @@ export async function handleDesignSpec(req: Request): Promise<Response> {
     style: typeof body.change.style === 'string' && /^[A-Z_]{2,20}$/.test(body.change.style) ? body.change.style : null,
     quality: typeof body.change.quality === 'string' && /^[A-Z_]{2,20}$/.test(body.change.quality) ? body.change.quality : null,
     note: typeof body.change.note === 'string' ? body.change.note.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 600) || null : null,
+    focus: mode === 'VARIANT' && isChangeFocus(body.change.focus) ? body.change.focus : null,
   } : null;
-  const modeCtx: ModeContext = { mode, evidence, direction, room, change, approvedSpec };
+  const referenceRenderIds = references.map((r) => String(r.id));
+  const modeCtx: ModeContext = { mode, evidence, direction, room, change, approvedSpec, ...(mode === 'ROOM' ? { references: referenceRenderIds.length } : {}) };
 
   const since = new Date(Date.now() - 3600_000).toISOString();
   const { count } = await ctx.admin.from('ds_jobs').select('id', { count: 'exact', head: true }).eq('user_id', ctx.actorId).eq('kind', 'AI_DESIGN').gte('created_at', since);
@@ -289,6 +314,7 @@ export async function handleDesignSpec(req: Request): Promise<Response> {
     user_id: ctx.actorId, project_id: owned.project.id, kind: 'AI_DESIGN', status: 'RUNNING', model: SPEC_MODEL, started_at: new Date().toISOString(),
     input: {
       idempotencyKey: body.idempotencyKey, mode, versionId: owned.version.id, parentRenderId: approved?.id ?? null, roomId: room?.id ?? null,
+      ...(mode === 'ROOM' ? { referenceRenderIds } : {}),
       sourceKind: evidence.sourceKind, generator: 'OPENAI_FIRST', ...(then ? { then } : {}),
     },
   }).select('id').single();
@@ -304,7 +330,7 @@ export async function handleDesignSpec(req: Request): Promise<Response> {
 
   if (!body.durable) {
     // A page from before this change waits for the specification in the request, as it always did.
-    const done = await writeSpec(ctx, { jobId, modeCtx, src, approved }).catch(() => false);
+    const done = await writeSpec(ctx, { jobId, modeCtx, src, approved, references }).catch(() => false);
     const { data: after } = await ctx.admin.from('ds_jobs').select('status, output, error').eq('id', jobId).maybeSingle();
     if (done && after?.status === 'SUCCEEDED') return json(answerOf(jobId, after.output));
     return json({ error: readFailure(after?.error)?.code ?? 'SPEC_FAILED' }, 422);
@@ -312,7 +338,7 @@ export async function handleDesignSpec(req: Request): Promise<Response> {
   const chainBody = { ...body, retry: false };
   await inBackground(async () => {
     try {
-      const done = await writeSpec(ctx, { jobId, modeCtx, src, approved });
+      const done = await writeSpec(ctx, { jobId, modeCtx, src, approved, references });
       // The customer confirmed the price: the next step starts in its own invocation.
       if (done && then) await kick(ctx.authorization, 'design-spec', chainBody);
     } catch (e) {
@@ -324,8 +350,10 @@ export async function handleDesignSpec(req: Request): Promise<Response> {
 }
 
 /** The specification itself (background): the source pictures, OpenAI, validation, the cost, the job. */
-async function writeSpec(ctx: Ctx, a: { jobId: string; modeCtx: ModeContext; src: Source; approved: Row }): Promise<boolean> {
-  const { jobId, modeCtx, src, approved } = a;
+async function writeSpec(ctx: Ctx, a: { jobId: string; modeCtx: ModeContext; src: Source; approved: Row; references?: Row[] }): Promise<boolean> {
+  const { jobId, src, approved } = a;
+  let modeCtx = a.modeCtx;
+  const extraRefs = (a.references ?? []).filter((r) => r.id !== approved?.id);
   const fail = async (code: string, extra: Row = {}) => {
     await ctx.admin.from('ds_jobs').update({ status: 'FAILED', error: specFailure(code), finished_at: new Date().toISOString(), ...extra }).eq('id', jobId).eq('status', 'RUNNING');
     return false;
@@ -337,15 +365,22 @@ async function writeSpec(ctx: Ctx, a: { jobId: string; modeCtx: ModeContext; src
     const index = photoOfRoom(src.understanding, roomId) ?? 0;
     sourceKey = src.keys[index];
     contextKeys = src.keys.filter((_, i) => i !== index).slice(0, 5);
+    // A screen capture: the designer and the image model are told what it is (isolated, or not).
+    const shot = src.understanding.photos?.[index];
+    if (shot?.screenshot) modeCtx = { ...modeCtx, evidence: { ...modeCtx.evidence, sourceCapture: shot.normalizedKey && sourceKey === shot.normalizedKey ? 'SCREENSHOT_CROPPED' : 'SCREENSHOT' } };
   } else {
     sourceKey = src.plan.object_key;
   }
-  const [source, master, ...context] = await Promise.all([
+  const [source, master, ...rest] = await Promise.all([
     readImage(sourceKey, MAX_SOURCE_BYTES),
     approved ? readImage(approved.final_key, MAX_PICTURE_BYTES) : Promise.resolve(null),
+    ...extraRefs.map((r) => readImage(r.final_key, MAX_PICTURE_BYTES)),
     ...contextKeys.map((k) => readImage(k, MAX_SOURCE_BYTES)),
   ]);
-  const problem = modeContextProblem(modeCtx, { source: !!source, master: !!master });
+  const refImages = rest.slice(0, extraRefs.length);
+  const context = rest.slice(extraRefs.length);
+  // Every selected reference is seen, or the design is not made (never silently fewer).
+  const problem = modeContextProblem(modeCtx, { source: !!source, master: !!master }) ?? (refImages.some((x) => !x) ? 'REFERENCE_MISSING' : null);
   if (problem) return fail(problem);
   const apiKey = Deno.env.get('OPENAI_API_KEY');
   if (!apiKey) return fail('DESIGN_UNAVAILABLE');
@@ -357,6 +392,7 @@ async function writeSpec(ctx: Ctx, a: { jobId: string; modeCtx: ModeContext; src
       method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(specRequest(SPEC_MODEL, modeCtx, {
         source: dataUrl(source!), master: master ? dataUrl(master) : null,
+        references: refImages.map((img) => dataUrl(img!)),
         context: context.filter(Boolean).map((img) => dataUrl(img!)),
       })),
     });
@@ -378,6 +414,7 @@ async function writeSpec(ctx: Ctx, a: { jobId: string; modeCtx: ModeContext; src
   const output = {
     kind: 'DESIGN_SPEC', mode: modeCtx.mode, spec, evidence: modeCtx.evidence, direction: modeCtx.direction, room: modeCtx.room ?? null, change: modeCtx.change ?? null, dna, sourceKey,
     parentRenderId: approved?.id ?? null, approvedSpecJobId: approved?.finish?.specJobId ?? null, model: SPEC_MODEL, ms: Date.now() - started,
+    ...(modeCtx.mode === 'ROOM' ? { referenceRenderIds: [...(approved ? [String(approved.id)] : []), ...extraRefs.map((r) => String(r.id))] } : {}),
   };
   const { data: saved } = await ctx.admin.from('ds_jobs').update({ status: 'SUCCEEDED', output, cost_cents: cost?.aiCents ?? null, finished_at: new Date().toISOString() })
     .eq('id', jobId).eq('status', 'RUNNING').select('id');
@@ -513,6 +550,23 @@ function genIo(admin: Row): GenIo {
       const { data: parent } = await admin.from('ds_renders').select('final_key, user_id, project_id').eq('id', parentId).maybeSingle();
       return parent?.final_key && parent.user_id === row.user_id && parent.project_id === row.project_id ? readImage(parent.final_key, MAX_PICTURE_BYTES) : null;
     },
+    async references(row) {
+      // A room's selected design references, after the reference above: all of them over its own photo, the rest over a design.
+      const out = await specOf(row);
+      const ids: string[] = out?.mode === 'ROOM' && Array.isArray(out.referenceRenderIds) ? out.referenceRenderIds.map(String) : [];
+      if (!ids.length) return [];
+      const overPhoto = out.evidence?.sourceKind === 'PHOTO' && !roomFromWholeHome({ evidence: out.evidence, room: out.room });
+      const parentId = row.parent_id ?? row.finish?.parentRenderId ?? null;
+      const wanted = overPhoto ? ids : ids.filter((id) => id !== parentId);
+      if (!wanted.length) return [];
+      const { data } = await admin.from('ds_renders').select('id, final_key, user_id, project_id').in('id', wanted);
+      const byId = new Map((data ?? []).map((r: Row) => [String(r.id), r]));
+      const pics = await Promise.all(wanted.map((id) => {
+        const r = byId.get(id);
+        return r?.final_key && r.user_id === row.user_id && r.project_id === row.project_id ? readImage(r.final_key, MAX_PICTURE_BYTES) : Promise.resolve(null);
+      }));
+      return pics.filter(Boolean) as Array<{ bytes: Uint8Array; mime: string }>;
+    },
     async instruction(row) {
       const out = await specOf(row);
       if (!out) return null;
@@ -522,13 +576,15 @@ function genIo(admin: Row): GenIo {
         const { data } = await admin.from('ds_jobs').select('output, user_id').eq('id', out.approvedSpecJobId).maybeSingle();
         approvedSpec = data?.user_id === row.user_id ? validateSpec(data?.output?.spec, out.evidence) : null;
       }
-      return spec ? imageInstruction(spec, { mode: out.mode, evidence: out.evidence, direction: out.direction, room: out.room, change: out.change, approvedSpec }) : null;
+      const references = Array.isArray(out.referenceRenderIds) ? out.referenceRenderIds.length : undefined;
+      return spec ? imageInstruction(spec, { mode: out.mode, evidence: out.evidence, direction: out.direction, room: out.room, change: out.change, approvedSpec, ...(references ? { references } : {}) }) : null;
     },
     size: () => SIZE,
     async image(input): Promise<ImageAnswer> {
       const provider = selectProvider(deps, null, await configuredModel(admin));
       if (!provider) return { ok: false, provider: 'OPENAI', model: '', error: 'PROVIDER_NOT_CONFIGURED', ms: 0, cost: { usd: null, basis: 'UNPRICED' } };
-      const r = await provider.finish({ base: { bytes: input.base.bytes, mime: input.base.mime as 'image/png' }, prompt: input.prompt, size: input.size });
+      const refs = (input.refs ?? []).map((x) => ({ bytes: x.bytes, mime: x.mime as 'image/png' }));
+      const r = await provider.finish({ base: { bytes: input.base.bytes, mime: input.base.mime as 'image/png' }, prompt: input.prompt, size: input.size, ...(refs.length ? { refs } : {}) });
       return r.ok ? { ok: true, provider: r.provider, model: r.model, bytes: r.bytes, mime: r.mime, ms: r.ms, cost: r.cost } : { ok: false, provider: r.provider, model: r.model, error: r.error, ms: r.ms, cost: r.cost };
     },
     async putPicture(row, bytes, mime) {
@@ -682,7 +738,14 @@ async function startGenerated(ctx: Ctx, a: {
     project_id: a.projectId, user_id: ctx.actorId, version_id: a.version.id, kind: view.kind, view, status: 'QUEUED', parent_id: null,
     idempotency_key: key, billing, dna_key: dna, cost: [],
     quote: { product, views: 1, credits: claims.credits, charged: claims.charged, expiresAt: new Date(claims.exp).toISOString(), override: null },
-    finish: { generator: 'OPENAI_FIRST', mode, specJobId: job.id, sourceKey: job.output.sourceKey, parentRenderId: parent?.id ?? null, roomId, look: job.output.direction?.look ?? null, provider: 'OPENAI', model: null, check: null },
+    // The relationships, server-owned: the spec job, the picture drawn over (the normalized source for a screen capture),
+    // the approved design it continues from and, for a room, exactly the generated designs selected as its references.
+    finish: {
+      generator: 'OPENAI_FIRST', mode, specJobId: job.id, sourceKey: job.output.sourceKey, parentRenderId: parent?.id ?? null, roomId, look: job.output.direction?.look ?? null,
+      ...(mode === 'ROOM' ? { referenceRenderIds: Array.isArray(job.output.referenceRenderIds) ? job.output.referenceRenderIds : parent ? [parent.id] : [] } : {}),
+      ...(mode === 'VARIANT' && job.output.change?.focus ? { focus: job.output.change.focus } : {}),
+      provider: 'OPENAI', model: null, check: null,
+    },
     timings: { requestedAt: now, ai: { step: 'IMAGE', mode, specJobId: job.id } },
   }, { onConflict: 'user_id,idempotency_key', ignoreDuplicates: true });
   if (insErr) {

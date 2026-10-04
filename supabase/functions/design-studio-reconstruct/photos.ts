@@ -25,9 +25,11 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { serviceClient } from '../_shared/billing.ts';
 import { refuseIfImpersonating } from '../_shared/impersonation.ts';
-import { getObject, headObject } from '../_shared/objectStore.ts';
+import { getObject, headObject, putObject } from '../_shared/objectStore.ts';
+import { accountKey } from '../_shared/storage/keys.ts';
+import { decodeRgba, encodeJpeg } from './rasterRgba.ts';
 import { imageSize, sniffType } from '../_shared/designStudio/floorplanRead.ts';
-import { PHOTO_READ_VERSION, photoOfRoom, photoReadRequest, validatePhotoReading, type PhotoUnderstanding } from '../_shared/designStudio/photoRead.ts';
+import { cropScaleRgba, PHOTO_READ_VERSION, photoOfRoom, photoReadRequest, subjectCrop, validatePhotoReading, type PhotoUnderstanding } from '../_shared/designStudio/photoRead.ts';
 import { uuidFrom } from '../_shared/designStudio/renderKeys.ts';
 import { meterAiCall } from './metering.ts';
 import { categoryOf, failure, inBackground, isFresh, readFailure } from './durable.ts';
@@ -132,7 +134,7 @@ export async function handlePhotos(req: Request): Promise<Response> {
   return json({ state: 'RUNNING' }, 202);
 }
 
-type Image = { dataUrl: string; width: number; height: number };
+type Image = { dataUrl: string; width: number; height: number; bytes: Uint8Array };
 
 /** The project's photos, checked byte by byte, as the reading sees them; or the reason they cannot be read. */
 async function loadImages(admin: Row, ordered: Row[]): Promise<{ images: Image[] } | { code: string }> {
@@ -151,7 +153,7 @@ async function loadImages(admin: Row, ordered: Row[]): Promise<{ images: Image[]
     if (!type || !IMAGE_TYPES.has(type)) return { code: 'NOT_A_SUPPORTED_IMAGE' };
     const size = imageSize(bytes.subarray(0, Math.min(bytes.length, 256 * 1024)));
     if (!size || size.width < 64 || size.height < 64 || size.width > 20000 || size.height > 20000) return { code: 'IMAGE_SIZE_UNREADABLE' };
-    images.push({ dataUrl: `data:${type};base64,${base64(bytes)}`, width: size.width, height: size.height });
+    images.push({ dataUrl: `data:${type};base64,${base64(bytes)}`, width: size.width, height: size.height, bytes });
     await admin.from('ds_floorplans').update({ image_width: size.width, image_height: size.height }).eq('id', ref.id);
   }
   return { images };
@@ -205,10 +207,43 @@ async function readPhotos(admin: Row, recon: Row, ordered: Row[], jobId: string 
   // Nothing here can be designed over: say so truthfully (another photo), never "could not read".
   if (!u.usable) { await fail('UNSUPPORTED_PHOTOS', u); await finish('FAILED', failure('TERMINAL', 'UNSUPPORTED_PHOTOS')); return; }
 
-  await admin.from('ds_reconstructions').update({ status: 'READ', analysis: u, model: MODEL, error: null }).eq('id', recon.id);
-  const made = await ensurePhotoSource(admin, { ...recon, analysis: u }, u, originalName);
+  // A screen capture: the property picture inside it is isolated (the upload stays as it was, for provenance).
+  const isolated = await isolateScreens(recon, ordered, images, u);
+  await admin.from('ds_reconstructions').update({ status: 'READ', analysis: isolated, model: MODEL, error: null }).eq('id', recon.id);
+  const made = await ensurePhotoSource(admin, { ...recon, analysis: isolated }, isolated, originalName);
   if (!made) { await fail('SOURCE_NOT_RECORDED'); return; }
   await finish('SUCCEEDED', null);
+}
+
+/**
+ * Screen captures with the property's picture inside them: that picture, cropped from where the reader found it
+ * (widened by a margin, never narrowed) and stored beside the upload as the photo's normalizedKey — the source every
+ * design of it is drawn over, so no interface is ever redesigned. Deterministic keys (asked again, the same object);
+ * a picture that cannot be decoded here (WebP, too large) keeps its upload and the designer is told what to ignore.
+ * Never fails the reading. No model call: the reader already found the picture.
+ */
+async function isolateScreens(recon: Row, ordered: Row[], images: Image[], u: PhotoUnderstanding): Promise<PhotoUnderstanding> {
+  const photos = [...u.photos];
+  for (const [i, p] of photos.entries()) {
+    const img = images[i]; const ref = ordered[i];
+    if (!p.usable || !p.screenshot || !img || !ref) continue;
+    const rect = subjectCrop(p.subject, img.width, img.height);
+    if (!rect || img.width * img.height > 16_000_000) continue;
+    try {
+      const decoded = decodeRgba(img.bytes);
+      if (!decoded.ok || decoded.img.channels !== 4 || decoded.img.width !== img.width || decoded.img.height !== img.height) continue;
+      const cut = cropScaleRgba(decoded.img, rect);
+      const key = accountKey({
+        accountId: recon.user_id, category: 'design-studio-floorplans', entityId: recon.project_id,
+        objectId: await uuidFrom(`ds-photo-subject:${ref.id}:${rect.left},${rect.top},${rect.width},${rect.height}`), contentType: 'image/jpeg',
+      });
+      await putObject(key, encodeJpeg(cut.data, cut.width, cut.height), 'image/jpeg');
+      photos[i] = { ...p, normalizedKey: key };
+    } catch (e) {
+      console.error('[ds-photos] isolate', String(e).slice(0, 120));
+    }
+  }
+  return { ...u, photos };
 }
 
 /**
@@ -329,7 +364,7 @@ export async function handlePhotoRooms(req: Request): Promise<Response> {
     return json({ state: 'SAME', rooms: before.rooms.length });
   }
   const hero = u.rooms.find((r) => r.primaryPhoto === heroPhoto && r.id === u.heroRoomId) ?? u.rooms.find((r) => r.primaryPhoto === heroPhoto)!;
-  const understanding: PhotoUnderstanding = { ...u, heroRoomId: hero.id, questions: [] };
+  const understanding: PhotoUnderstanding = await isolateScreens({ user_id: head.user_id, project_id: project.id }, ordered, loaded.images, { ...u, heroRoomId: hero.id, questions: [] });
 
   const { data: made, error } = await admin.from('ds_spatial_sources').insert({
     project_id: project.id, user_id: head.user_id, kind: 'PHOTO_SET', status: 'READY', geometry_state: 'ESTIMATED', editability: 'GENERATED',

@@ -59,7 +59,8 @@ export interface ImageProvider {
   id: ProviderId;
   models: readonly string[];
   model: string;
-  finish(input: { base: ImageBytes; prompt: string; size: Size }): Promise<ImageResult>;
+  /** refs: further pictures the model sees after the base (the selected design references); the base is always first. */
+  finish(input: { base: ImageBytes; prompt: string; size: Size; refs?: ImageBytes[] }): Promise<ImageResult>;
   edit(input: { image: ImageBytes; mask: EditMask; prompt: string; size: Size }): Promise<ImageResult>;
 }
 
@@ -194,11 +195,16 @@ const ext = (m: ImageMime) => (m === 'image/png' ? 'png' : m === 'image/jpeg' ? 
 // ── OpenAI ────────────────────────────────────────────────────────────────
 
 /** The multipart request (exported for tests: field names are the contract with the provider). */
-export function openAiEditRequest(input: { model: string; prompt: string; image: ImageBytes; maskPng: Uint8Array | null; size: Size; quality: string }): FormData {
+export function openAiEditRequest(input: { model: string; prompt: string; image: ImageBytes; maskPng: Uint8Array | null; size: Size; quality: string; refs?: ImageBytes[] }): FormData {
   const form = new FormData();
   form.append('model', input.model);
   form.append('prompt', input.prompt);
-  form.append('image', new Blob([input.image.bytes], { type: input.image.mime }), `image.${ext(input.image.mime)}`);
+  const refs = input.maskPng ? [] : (input.refs ?? []).slice(0, 4);
+  if (!refs.length) form.append('image', new Blob([input.image.bytes], { type: input.image.mime }), `image.${ext(input.image.mime)}`);
+  else {
+    // Several pictures: image[] in order, the base first (the picture the answer is framed on).
+    [input.image, ...refs].forEach((img, i) => form.append('image[]', new Blob([img.bytes], { type: img.mime }), `image-${i}.${ext(img.mime)}`));
+  }
   if (input.maskPng) form.append('mask', new Blob([input.maskPng], { type: 'image/png' }), 'mask.png');
   form.append('size', openAiSize(input.size));
   form.append('quality', input.quality);
@@ -250,7 +256,7 @@ export function openAiProvider(model: string, deps: ProviderDeps): ImageProvider
   };
   return {
     id: 'OPENAI', models: PROVIDER_MODELS.OPENAI, model,
-    finish: ({ base, prompt, size }) => call(openAiEditRequest({ model, prompt, image: base, maskPng: null, size, quality: q })),
+    finish: ({ base, prompt, size, refs }) => call(openAiEditRequest({ model, prompt, image: base, maskPng: null, size, quality: q, refs })),
     edit: ({ image, mask, prompt, size }) => call(openAiEditRequest({ model, prompt, image, maskPng: deps.encodePng(openAiMaskRgba(mask), mask.width, mask.height), size, quality: q })),
   };
 }

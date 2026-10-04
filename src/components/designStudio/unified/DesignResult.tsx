@@ -9,8 +9,12 @@
 //   Another option   a VARIANT: the same space, style and quality, new details
 //   Change style     a VARIANT in another style
 //   Change quality   a VARIANT at another quality
-//   Other rooms      a ROOM: that room's own photo (or the plan's room) in the
-//                    same design identity, or in another style
+//   More changes     a VARIANT with one focus (palette, materials, furniture,
+//                    lighting, flooring, walls, decor, more minimal / premium /
+//                    bright): a code; what it means is the server's (designSpec.ts)
+//   Other rooms      a ROOM drawn from the generated design(s) the customer
+//                    selects as the design reference (the source stays the
+//                    architecture); a room shows a picture only once one was made
 //
 // Every generation is server-owned (designRun.ts): priced first, confirmed by
 // the customer, then made whether or not this page stays open; the page only
@@ -19,7 +23,7 @@
 
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Box, Check, Columns2, Download, Expand, Layers, Loader2, Pencil, RefreshCw, RotateCcw, Shuffle, SlidersHorizontal, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, Columns2, Download, Expand, Layers, Loader2, Pencil, RefreshCw, RotateCcw, Shuffle, SlidersHorizontal, Sparkles, Wand2, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
@@ -46,6 +50,20 @@ const RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring
 const ACTIVE: ReadonlySet<RenderRecord['status']> = new Set(['QUOTED', 'QUEUED', 'RENDERING', 'FINISHING']);
 const CHIP = cn('inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-4 text-[14px] font-medium text-[#0C1119] ring-1 ring-[#E1D9CC] hover:ring-[#0C1119] disabled:opacity-50', RING);
 const DARK = cn('inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[#0C1119] px-5 text-[15px] font-semibold text-white disabled:opacity-60', RING);
+/** "More changes": one focus each; the server holds what each means (designSpec.ts CHANGE_FOCUS). */
+const FOCUSES = ['PALETTE', 'MATERIALS', 'FURNITURE', 'LIGHTING', 'FLOORING', 'WALLS', 'DECOR', 'MINIMAL', 'PREMIUM', 'BRIGHTER'] as const;
+const FOCUS_KEY: Record<typeof FOCUSES[number], string> = {
+  PALETTE: 'dsx_focus_PALETTE', MATERIALS: 'dsx_focus_MATERIALS', FURNITURE: 'dsx_focus_FURNITURE', LIGHTING: 'dsx_focus_LIGHTING', FLOORING: 'dsx_focus_FLOORING',
+  WALLS: 'dsx_focus_WALLS', DECOR: 'dsx_focus_DECOR', MINIMAL: 'dsx_focus_MINIMAL', PREMIUM: 'dsx_focus_PREMIUM', BRIGHTER: 'dsx_focus_BRIGHTER',
+};
+/** The most generated designs one room may be drawn from (the server's MAX_REFERENCES). */
+const MAX_REFS = 4;
+/** A short, stable fingerprint of the selected references (the room's idempotency key stays under the server's 128 characters). */
+const fingerprint = (ids: string[]) => {
+  let h = 0x811c9dc5;
+  for (const c of [...ids].sort().join(',')) { h ^= c.charCodeAt(0); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(36);
+};
 
 export interface ResultRoom { id: string; label: string; photoUrl: string | null }
 
@@ -70,6 +88,10 @@ const roomOf = (r: RenderRecord): string | null => (r.view?.kind === 'ROOM' ? (r
 interface GenInput {
   mode: 'VARIANT' | 'ROOM'; key: string; label: string; credits: number;
   style?: LookStyle | null; quality?: LookQuality | null; roomId?: string | null; parentRenderId?: string | null;
+  /** ROOM: the generated designs selected as its design reference (sent as they are; never substituted). */
+  refs?: string[] | null;
+  /** VARIANT: a "More changes" focus. */
+  focus?: typeof FOCUSES[number] | null;
   /** What the customer wrote for this version (their wishes; HOMATCH's designer interprets them). */
   note?: string | null;
 }
@@ -124,11 +146,26 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
     const seen = new Set<string>();
     return pictures.filter((r) => !roomOf(r)).filter((r) => (seen.has(r.version_id) ? false : (seen.add(r.version_id), true))).slice(0, 12);
   }, [pictures]);
+  // A room's picture is one GENERATED for it (pictures are generated renders and their edits), never the customer's upload.
   const roomShots = useMemo(() => {
     const m = new Map<string, RenderRecord>();
     for (const r of pictures) { const id = roomOf(r); if (id && !m.has(id)) m.set(id, r); }
     return m;
   }, [pictures]);
+  // The design reference for rooms: the generated designs the customer selected (default: the design shown).
+  const [refPick, setRefPick] = useState<string[] | null>(null);
+  const refs = useMemo(() => {
+    const ok = new Set(masters.map((r) => r.id));
+    const picked = (refPick ?? []).filter((id) => ok.has(id));
+    if (picked.length) return picked.slice(0, MAX_REFS);
+    const shown = hero && !roomOf(hero) ? hero.id : masters[0]?.id;
+    return shown ? [shown] : [];
+  }, [refPick, masters, hero]);
+  const toggleRef = (id: string) => setRefPick(() => {
+    const cur = refs;
+    if (cur.includes(id)) return cur.length > 1 ? cur.filter((x) => x !== id) : cur;
+    return cur.length >= MAX_REFS ? cur : [...cur, id];
+  });
   const active = useMemo(() => renders.filter((r) => ACTIVE.has(r.status)), [renders]);
   const look = useMemo(() => readLook((hero?.finish as unknown as { look?: unknown } | null)?.look ?? null), [hero]);
 
@@ -196,7 +233,8 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
       const result = await runDesign({
         projectId, versionId: data.head.id, mode: input.mode, key: input.key, look: { style, quality }, preferences: lookPreferences(style, quality),
         roomId: input.roomId ?? null, parentRenderId: input.parentRenderId ?? hero.id, confirmedCredits: input.credits, versionName: t('p2h_version_design'), retry,
-        change: input.style || input.quality || input.note ? { style: input.style ?? null, quality: input.quality ?? null, note: input.note ?? null } : null,
+        referenceRenderIds: input.mode === 'ROOM' && input.refs?.length ? input.refs : null,
+        change: input.style || input.quality || input.note || input.focus ? { style: input.style ?? null, quality: input.quality ?? null, note: input.note ?? null, focus: input.focus ?? null } : null,
         onStage: (stage) => { if (alive.current) setWorking({ label: input.label, stage }); },
       });
       if (!alive.current) return;
@@ -248,10 +286,20 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
   const askQuality = (quality: LookQuality) => offer('DS_MASTER_RENDER', data.head.id, `${t('dsx_change_quality')} · ${t(`sf_quality_${quality.toLowerCase()}`)}`, null, async (credits) => {
     void generate({ mode: 'VARIANT', key: `qly-${hero!.id}-${quality}-${nonce()}`, label: t('dsx_change_quality'), credits, quality });
   });
-  const askRoom = (roomId: string, style: LookStyle | null) => offer('DS_ROOM_RENDER', data.head.id, `${t('dsx_room_create')} · ${roomLabel(roomId) ?? ''}`, null, async (credits) => {
-    // The same room in the same style is the same picture: asking twice never pays twice.
-    void generate({ mode: 'ROOM', key: `room-${data.head.id}-${roomId}-${style ?? 'same'}`, label: roomLabel(roomId) ?? t('dsx_other_room'), credits, roomId, style });
+  const askFocus = (focus: typeof FOCUSES[number]) => offer('DS_MASTER_RENDER', data.head.id, t(FOCUS_KEY[focus]), null, async (credits) => {
+    void generate({ mode: 'VARIANT', key: `foc-${hero!.id}-${focus}-${nonce()}`, label: t(FOCUS_KEY[focus]), credits, focus });
   });
+  const askRoom = (roomId: string, style: LookStyle | null) => {
+    const chosen = refs;
+    if (!chosen.length) return;
+    return offer('DS_ROOM_RENDER', data.head.id, `${t('dsx_room_create')} · ${roomLabel(roomId) ?? ''}`, t('dsx_room_from_refs', { n: String(chosen.length) }), async (credits) => {
+      // The same room, style and references are the same picture: asking twice (a double tap, a reload) never pays twice.
+      void generate({
+        mode: 'ROOM', key: `room-${data.head.id.slice(0, 8)}-${roomId.slice(0, 40)}-${style ?? 'same'}-${fingerprint(chosen)}`,
+        label: roomLabel(roomId) ?? t('dsx_other_room'), credits, roomId, style, refs: chosen, parentRenderId: chosen[0],
+      });
+    });
+  };
 
   /** An edit inside one target's own mask (the stable edit pipeline). The design's picture changes; nothing moves. */
   const onChoice = async (choice: EditChoice, label: string) => {
@@ -275,10 +323,13 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
     });
   };
 
+  // A second tap before the first one's state lands is the same tap (never a second paid request).
+  const confirming = useRef(false);
   const confirm = async () => {
-    if (!pending || busy) return;
+    if (!pending || busy || confirming.current) return;
+    confirming.current = true;
     setBusy(true);
-    try { await pending.run(); setPending(null); } catch (e) { fail(e); setPending(null); } finally { setBusy(false); }
+    try { await pending.run(); setPending(null); } catch (e) { fail(e); setPending(null); } finally { setBusy(false); confirming.current = false; }
   };
   const showVersion = async (r: RenderRecord) => {
     setHeroId(r.id);
@@ -428,6 +479,30 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
           ) : null}
         </div>
 
+        {/* ── More changes: one focus each, a variant of the design shown (the server holds what each means) ── */}
+        {hero ? (
+          <details className="group mt-3 rounded-[20px] bg-white ring-1 ring-[#E7E1D8]" data-testid="home-more">
+            <summary className={cn('flex min-h-12 cursor-pointer list-none items-center gap-2 rounded-[20px] px-4 text-[15px] font-semibold [&::-webkit-details-marker]:hidden', RING)} data-testid="home-more-toggle">
+              <Wand2 className="h-4 w-4 shrink-0 text-[hsl(36_60%_32%)]" aria-hidden="true" /><span className="min-w-0 flex-1">{t('dsx_more_changes')}</span>
+              <ChevronDown className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180" aria-hidden="true" />
+            </summary>
+            <ul className="grid grid-cols-1 gap-2 px-3 pb-3 min-[400px]:grid-cols-2 sm:grid-cols-3" data-testid="home-more-list">
+              {FOCUSES.map((f) => (
+                <li key={f}>
+                  <button type="button" onClick={() => { void askFocus(f); }} disabled={!!working || busy}
+                    className={cn('flex min-h-11 w-full items-center rounded-2xl bg-[#F7F4EF] px-4 py-2 text-start text-[14px] font-medium leading-snug hover:bg-[#EFEAE2] disabled:opacity-50', RING)} data-testid={`home-focus-${f}`}>{t(FOCUS_KEY[f])}</button>
+                </li>
+              ))}
+              {hero.legend ? (
+                <li>
+                  <button type="button" onClick={() => { setMode('EDIT'); setSelected(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }} disabled={!!working}
+                    className={cn('flex min-h-11 w-full items-center gap-2 rounded-2xl bg-[#F7F4EF] px-4 py-2 text-start text-[14px] font-medium leading-snug hover:bg-[#EFEAE2] disabled:opacity-50', RING)} data-testid="home-focus-EDIT"><Pencil className="h-4 w-4 shrink-0" aria-hidden="true" />{t('dsx_focus_EDIT')}</button>
+                </li>
+              ) : null}
+            </ul>
+          </details>
+        ) : null}
+
         {working ? (
           <section className="mt-5 flex flex-wrap items-center gap-3 rounded-[22px] bg-[#0C1119] p-4 text-white sm:p-5" role="status" aria-live="polite" data-testid="home-working">
             <Loader2 className="h-5 w-5 shrink-0 animate-spin text-[hsl(38_92%_62%)]" aria-hidden="true" />
@@ -481,26 +556,10 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
           </section>
         ) : null}
 
-        {/* ── The 3D walkthrough of the design shown (a floor plan has rooms to walk) ── */}
-        {data.sourceKind === 'FLOOR_PLAN' && hero ? (
-          <WalkthroughPanel projectId={projectId} designVersionId={hero.version_id ?? data.head.id} renderId={hero.id} />
-        ) : null}
-
-        {/* ── A photo has no walls to walk: the 3D tour is built from the home's plan, added here ── */}
-        {data.sourceKind === 'PHOTO' && hero ? (
-          <section className="mt-8 overflow-hidden rounded-[24px] bg-[#0C1119] p-5 text-white ring-1 ring-[hsl(38_92%_56%)]/35 sm:p-6" aria-labelledby="ds-photo-tour-title" data-testid="photo-tour">
-            <div className="flex items-start gap-4">
-              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[hsl(38_92%_56%)] text-[#0C1119]" aria-hidden="true"><Box className="h-6 w-6" /></span>
-              <div className="min-w-0 flex-1">
-                <h2 id="ds-photo-tour-title" className="font-display text-[20px] font-semibold">{t('dsx_walk_title')}</h2>
-                <p className="mt-1 text-[14px] leading-relaxed text-white/75">{t('dsx_photo_tour_body')}</p>
-              </div>
-            </div>
-            <button type="button" onClick={() => navigate(`/design-studio/${projectId}?start=floorplan`)}
-              className={cn('mt-5 inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[hsl(38_92%_56%)] px-6 text-[15px] font-semibold text-[#0C1119] sm:w-auto', RING)} data-testid="photo-tour-plan">
-              {t('dsx_photo_tour_cta')}
-            </button>
-          </section>
+        {/* ── The 3D walkthrough of the design shown: started from this project (photos walk on its floor plan, if it has one) ── */}
+        {hero ? (
+          <WalkthroughPanel projectId={projectId} designVersionId={hero.version_id ?? data.head.id} renderId={hero.id}
+            onAddPlan={data.sourceKind === 'PHOTO' ? () => navigate(`/design-studio/${projectId}?start=floorplan`) : undefined} />
         ) : null}
 
         {/* ── Your options ───────────────────────────────────────────── */}
@@ -537,20 +596,52 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
         {others.length ? (
           <section id="ds-rooms" className="mt-8 scroll-mt-16" aria-labelledby="ds-rooms-title" data-testid="home-rooms-list">
             <h2 id="ds-rooms-title" className="font-display text-[20px] font-semibold">{t('dsx_rooms_title')}</h2>
+            {/* 1. The design reference: the generated design(s) rooms are drawn from (never an upload). */}
+            {masters.length ? (
+              <div className="mt-3 rounded-[20px] bg-white p-3 ring-1 ring-[#E7E1D8] sm:p-4" data-testid="room-refs">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                  <p className="text-[15px] font-semibold">{t('dsx_ref_title')}</p>
+                  <p className="text-[13px] text-[#5B6472]" data-testid="room-refs-count">{t('dsx_ref_selected', { n: String(refs.length) })}</p>
+                </div>
+                <p className="mt-0.5 text-[13px] leading-snug text-[#5B6472]">{t('dsx_ref_body')}</p>
+                <ul className="mt-3 flex gap-2 overflow-x-auto pb-1">
+                  {masters.map((r) => {
+                    const on = refs.includes(r.id);
+                    return (
+                      <li key={r.id} className="shrink-0">
+                        <button type="button" onClick={() => toggleRef(r.id)} aria-pressed={on} aria-label={t('dsx_ref_pick')} disabled={masters.length < 2 && on}
+                          className={cn('relative block w-28 overflow-hidden rounded-[14px] bg-[#EFEAE2] sm:w-32', RING, on ? 'ring-2 ring-[#0C1119]' : 'opacity-70 ring-1 ring-[#E7E1D8] hover:opacity-100')} data-testid="room-ref">
+                          {urls.get(r.id) ? <img src={urls.get(r.id)} alt="" className="aspect-[3/2] w-full object-cover" loading="lazy" /> : <span className="block aspect-[3/2]" />}
+                          {on ? <span className="absolute end-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full bg-[#0C1119] text-white" aria-hidden="true"><Check className="h-3.5 w-3.5" /></span> : null}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : null}
+            {/* 2. The rooms: a picture only once one was generated for it; otherwise the way to make it. */}
             <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {others.map((room) => {
                 const shot = roomShots.get(room.id);
-                const img = shot ? urls.get(shot.id) : room.photoUrl;
+                const img = shot ? urls.get(shot.id) : null;
                 return (
-                  <li key={room.id} className="overflow-hidden rounded-[20px] bg-white ring-1 ring-[#E7E1D8]" data-testid="room-card">
-                    {img ? <img src={img} alt="" className="aspect-[3/2] w-full object-cover" loading="lazy" /> : <div className="aspect-[3/2] bg-[#EFEAE2]" />}
+                  <li key={room.id} className="overflow-hidden rounded-[20px] bg-white ring-1 ring-[#E7E1D8]" data-testid="room-card" data-generated={shot ? 'yes' : 'no'}>
+                    {shot ? (
+                      img ? <img src={img} alt="" className="aspect-[3/2] w-full object-cover" loading="lazy" data-testid="room-shot" /> : <div className="aspect-[3/2] bg-[#EFEAE2]" />
+                    ) : (
+                      <div className="flex aspect-[5/2] flex-col items-center justify-center gap-2 sm:aspect-[3/2] bg-[radial-gradient(120%_90%_at_50%_0%,#1A2231_0%,#0C1119_70%)] px-4 text-center text-white" data-testid="room-empty">
+                        <span className="grid h-10 w-10 place-items-center rounded-full bg-[hsl(38_92%_56%)]/15 text-[hsl(38_92%_62%)]" aria-hidden="true"><Sparkles className="h-5 w-5" /></span>
+                        <p className="text-[13px] text-white/70">{t('dsx_room_not_yet')}</p>
+                      </div>
+                    )}
                     <div className="flex flex-wrap items-center gap-2 p-3">
                       <p className="min-w-0 flex-1 text-[15px] font-semibold">{room.label}</p>
                       {shot ? (
                         <button type="button" onClick={() => { void showVersion(shot); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className={cn(CHIP, 'min-h-10')} data-testid="room-view">{t('dsx_view')}</button>
-                      ) : (
-                        <button type="button" onClick={() => setSheet({ roomId: room.id })} disabled={!hero || !!working} className={cn(DARK, 'min-h-10 px-4 text-[14px]')} data-testid="room-create">{t('dsx_room_create')}</button>
-                      )}
+                      ) : null}
+                      <button type="button" onClick={() => setSheet({ roomId: room.id })} disabled={!hero || !!working || !refs.length}
+                        className={cn(shot ? CHIP : DARK, 'min-h-10 px-4 text-[14px]')} data-testid="room-create">{t('dsx_room_create')}</button>
                     </div>
                   </li>
                 );

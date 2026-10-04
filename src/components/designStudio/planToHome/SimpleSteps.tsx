@@ -87,12 +87,12 @@ export function QuickQuestionStep({ question, index, total, doc, imageUrl, onAns
 /** The first looks shown; the rest are one tap away ("See more options"). */
 const FIRST_STYLES = 4;
 
-export function StyleStep({ value, onChange, onNext, onDetail, onSurprise }: {
-  value: LookStyle | null; onChange: (s: LookStyle) => void; onNext: () => void; onDetail?: () => void; onSurprise: () => void;
+export function StyleStep({ value, onChange, onNext, onDetail }: {
+  value: LookStyle | null; onChange: (s: LookStyle) => void; onNext: () => void; onDetail?: () => void;
 }) {
   const { t } = useLanguage();
   const [more, setMore] = useState(() => !!value && LOOK_STYLES.indexOf(value) >= FIRST_STYLES);
-  // A look chosen beyond the first ones ("surprise me", a resumed choice) is always shown.
+  // A look chosen beyond the first ones (a resumed choice) is always shown.
   useEffect(() => { if (value && LOOK_STYLES.indexOf(value) >= FIRST_STYLES) setMore(true); }, [value]);
   const shown = more ? LOOK_STYLES : LOOK_STYLES.slice(0, FIRST_STYLES);
   return (
@@ -100,7 +100,6 @@ export function StyleStep({ value, onChange, onNext, onDetail, onSurprise }: {
       aside={(
         <>
           {!more ? <button type="button" onClick={() => setMore(true)} className={QUIET} data-testid="look-more">{t('dsx_st_more')}</button> : null}
-          <button type="button" onClick={onSurprise} className={QUIET} data-testid="look-surprise"><Sparkles className="h-4 w-4" aria-hidden="true" />{t('dsx_st_surprise')}</button>
           {onDetail ? <button type="button" onClick={onDetail} className={QUIET} data-testid="review-detail">{t('sf_review_detail')}</button> : null}
         </>
       )}
@@ -127,11 +126,6 @@ export function StyleStep({ value, onChange, onNext, onDetail, onSurprise }: {
   );
 }
 
-/** "Surprise me": one of the looks, never the one already chosen. */
-export function surpriseStyle(current: LookStyle | null, rnd: () => number = Math.random): LookStyle {
-  const pool = LOOK_STYLES.filter((s) => s !== current);
-  return pool[Math.min(pool.length - 1, Math.floor(rnd() * pool.length))];
-}
 
 // ── 4. Quality ─────────────────────────────────────────────────────────────
 

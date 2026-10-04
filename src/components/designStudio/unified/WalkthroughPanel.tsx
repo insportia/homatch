@@ -6,13 +6,16 @@
 // (a double click, a second tab) is the same walkthrough.
 //
 // It starts from what the project already has: a floor-plan design at once; a
-// photo design on the project's floor plan, if it has one. Only when the
-// project truly lacks it does the panel say exactly what is missing (the
-// walls, the doors, the room sizes) and offer to add the plan (onAddPlan).
+// photo design on the project's floor plan, if it has one, else on a space the
+// server reconstructs from the project's own pictures and generated designs
+// (never a request to upload the property again). While that space is being
+// reconstructed the panel says so and keeps following it (asking again is the
+// same request; a closed page changes nothing). A tour walked on a
+// reconstructed space carries a quiet note once it is ready.
 
 import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, Check, Loader2, Map as MapIcon, RotateCcw } from 'lucide-react';
+import { Box, Check, Info, Loader2, RotateCcw } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { PROGRESS_STEPS, type ProgressStep } from '@/lib/designStudio/walkthrough/lifecycle';
@@ -30,14 +33,10 @@ const STEP_KEY: Record<ProgressStep, string> = {
 const POLL_MS = 5000;
 const working = (w: Walkthrough | null) => !!w && w.state !== 'READY' && w.state !== 'FAILED' && w.state !== 'CANCELLED';
 
-/** What a photo design lacks for a walk (the server's `missing`), in the customer's words. */
-const MISSING = ['dsx_walk_missing_WALLS', 'dsx_walk_missing_DOORS', 'dsx_walk_missing_ROOM_SIZES'] as const;
+/** How often a space being reconstructed is asked after (the same request: never a second reading). */
+const SPACE_POLL_MS = 6000;
 
-export function WalkthroughPanel({ projectId, designVersionId, renderId, onAddPlan }: {
-  projectId: string; designVersionId: string; renderId: string | null;
-  /** A photo design: where the floor plan is added, when the project has none. */
-  onAddPlan?: () => void;
-}) {
+export function WalkthroughPanel({ projectId, designVersionId, renderId }: { projectId: string; designVersionId: string; renderId: string | null }) {
   const { t } = useLanguage();
   const navigate = useNavigate();
   const [walk, setWalk] = useState<Walkthrough | null>(null);
@@ -46,7 +45,7 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, onAddPl
   const [asking, setAsking] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
-  const [needsPlan, setNeedsPlan] = useState(false);
+  const [reconstructing, setReconstructing] = useState(false);
   // One request per tap: a second tap before the first answer is the same tap.
   const inFlight = useRef(false);
   const alive = useRef(true);
@@ -76,10 +75,24 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, onAddPl
     const r = await createWalkthrough({ designVersionId, renderId, newRevision, name: t('dsx_walk_version_name', { n: String(revision) }) }).finally(() => { inFlight.current = false; });
     if (!alive.current) return;
     setAsking(false);
-    if (r.walkthrough) { setNeedsPlan(false); setWalk(r.walkthrough); void read(r.walkthrough.id); }
-    else if (r.error === 'WALKTHROUGH_NEEDS_FLOOR_PLAN') setNeedsPlan(true);
-    else setProblem(t('dsx_walk_unavailable'));
+    if (r.walkthrough) { setReconstructing(false); setWalk(r.walkthrough); void read(r.walkthrough.id); }
+    else if (r.reconstructing) setReconstructing(true);
+    else { setReconstructing(false); setProblem(t('dsx_walk_unavailable')); }
   };
+  // The space is being reconstructed on the server: the same request again until the walkthrough exists.
+  useEffect(() => {
+    if (!reconstructing || walk) return;
+    const timer = setInterval(() => { void start(false); }, SPACE_POLL_MS);
+    return () => clearInterval(timer);
+  }, [reconstructing, walk]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Back on the page while the server reconstructs the space (or with the tour already asked): picked up again.
+  useEffect(() => {
+    if (!loaded || walk) return;
+    try { if (window.sessionStorage.getItem(`hm-ds-walk:${designVersionId}`) === '1') void start(false); } catch { /* private mode */ }
+  }, [loaded]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    try { if (reconstructing) window.sessionStorage.setItem(`hm-ds-walk:${designVersionId}`, '1'); else if (walk) window.sessionStorage.removeItem(`hm-ds-walk:${designVersionId}`); } catch { /* private mode */ }
+  }, [reconstructing, walk, designVersionId]);
   const retry = async () => {
     if (!walk || asking) return;
     setAsking(true); setProblem(null);
@@ -105,26 +118,29 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, onAddPl
 
       {problem ? <p role="alert" className="mt-3 rounded-2xl bg-[hsl(0_66%_44%)]/10 px-4 py-3 text-[14px] text-[hsl(0_66%_34%)]">{problem}</p> : null}
 
-      {!walk && needsPlan ? (
-        <div className="mt-4 rounded-2xl bg-[#F7F4EF] p-4" role="status" data-testid="walk-needs-plan">
-          <p className="text-[15px] font-semibold">{t('dsx_walk_needs_title')}</p>
-          <p className="mt-1 text-[14px] leading-relaxed text-[#4A5263]">{t('dsx_walk_needs_body')}</p>
-          <ul className="mt-2 space-y-1" data-testid="walk-missing">
-            {MISSING.map((m) => <li key={m} className="flex items-center gap-2 text-[14px] font-medium"><span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(38_92%_56%)]" aria-hidden="true" />{t(m)}</li>)}
-          </ul>
-          <p className="mt-2 text-[13px] leading-relaxed text-[#5B6472]">{t('dsx_walk_needs_hint')}</p>
-          {onAddPlan ? (
-            <button type="button" onClick={onAddPlan} className={cn(DARK, 'mt-3 w-full sm:w-auto')} data-testid="walk-add-plan"><MapIcon className="h-4 w-4" aria-hidden="true" />{t('dsx_walk_needs_cta')}</button>
-          ) : null}
+      {!walk && reconstructing ? (
+        <div className="mt-4" role="status" aria-live="polite" data-testid="walk-reconstructing">
+          <ol className="space-y-2">
+            <li className="flex items-center gap-2 text-[15px] font-semibold text-[#0C1119]" aria-current="step" data-testid="walk-step-space"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />{t('dsx_walk_step_space')}</li>
+            {PROGRESS_STEPS.filter((s) => s !== 'READY').map((s) => (
+              <li key={s} className="flex items-center gap-2 text-[15px] text-[#9AA1AC]"><span className="inline-block h-4 w-4" aria-hidden="true" />{t(STEP_KEY[s])}</li>
+            ))}
+          </ol>
+          <p className="mt-3 text-[13px] text-[#5B6472]">{t('dsx_walk_leave_ok')}</p>
         </div>
       ) : !walk ? (
         <button type="button" onClick={() => { void start(false); }} disabled={asking} className={cn(DARK, 'mt-4')} data-testid="walk-create">
           {asking ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}{t('dsx_walk_create')}
         </button>
       ) : walk.state === 'READY' && walk.walkVersionId ? (
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => navigate(walkthroughHref(projectId, walk.walkVersionId!))} className={DARK} data-testid="walk-open">{t('dsx_walk_open')}</button>
-          <button type="button" onClick={() => { void start(true); }} disabled={asking} className={CHIP} data-testid="walk-again">{t('dsx_walk_again')}</button>
+        <div className="mt-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => navigate(walkthroughHref(projectId, walk.walkVersionId!))} className={DARK} data-testid="walk-open">{t('dsx_walk_open')}</button>
+            <button type="button" onClick={() => { void start(true); }} disabled={asking} className={CHIP} data-testid="walk-again">{t('dsx_walk_again')}</button>
+          </div>
+          {walk.inferred ? (
+            <p className="mt-3 flex items-start gap-2 text-[13px] leading-relaxed text-[#5B6472]" data-testid="walk-inferred-note"><Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />{t('dsx_walk_inferred_note')}</p>
+          ) : null}
         </div>
       ) : walk.state === 'FAILED' || walk.state === 'CANCELLED' ? (
         <div className="mt-4" role="alert" data-testid="walk-failed">

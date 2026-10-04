@@ -200,13 +200,18 @@ function wireRenders(page, store) {
  */
 function wireGeneration(page, store) {
   store.gen = { specCalls: 0, specRuns: 0, specBodies: [], generateCalls: 0, stepCalls: 0, imageCalls: 0, specJobs: new Map() };
-  // The walkthrough, as walkthrough.ts answers a photo project with no floor plan: exactly what is missing.
-  store.walk = { creates: 0 };
+  // The walkthrough, as walkthrough.ts answers a photo project with no floor plan: the space is reconstructed from
+  // the project's pictures (the first ask starts it, later asks follow it), then the walkthrough exists.
+  store.walk = { creates: 0, readings: 0, walk: null, started: 0 };
   void page.route(/\/functions\/v1\/design-studio-reconstruct\/(walkthrough-create|walkthrough-status)$/, (route) => {
     const headers = { 'access-control-allow-origin': '*' };
-    if (route.request().url().endsWith('walkthrough-status')) return route.fulfill({ status: 200, contentType: 'application/json', headers, body: JSON.stringify({ walkthrough: null, history: [] }) });
+    const reply = (b, status = 200) => route.fulfill({ status, contentType: 'application/json', headers, body: JSON.stringify(b) });
+    if (route.request().url().endsWith('walkthrough-status')) return reply({ walkthrough: store.walk.walk, history: store.walk.walk ? [store.walk.walk] : [] });
     store.walk.creates += 1;
-    return route.fulfill({ status: 409, contentType: 'application/json', headers, body: JSON.stringify({ error: 'WALKTHROUGH_NEEDS_FLOOR_PLAN', missing: ['WALLS', 'DOORS', 'ROOM_SIZES'], have: ['DESIGN', 'PHOTOS'] }) });
+    if (!store.walk.started) { store.walk.started = Date.now(); store.walk.readings += 1; }
+    if (Date.now() - store.walk.started < 4000) return reply({ walkthrough: null, reconstructing: true }, 202);
+    store.walk.walk ??= { id: randomUUID(), designVersionId: null, revision: 1, state: 'READY', progress: 'READY', stage: null, walkVersionId: randomUUID(), error: null, retryable: false, createdAt: now(), readyAt: now(), inferred: true, summary: null };
+    return reply({ walkthrough: store.walk.walk, created: false }, 202);
   });
   const now = () => new Date().toISOString();
   const json = (route, b, status = 200) => route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(b) });
@@ -903,15 +908,20 @@ async function photoPath(browser, { width, height, lang, touch }) {
   await shot('more-changes');
   await s.noOverflow(tag, 'more changes open');
   await page.getByTestId('home-more-toggle').click();
-  // The 3D tour starts from the project: with no floor plan in it, exactly what is missing (never a generic upload screen).
+  // The 3D tour starts from the project: no floor plan in it, so the server reconstructs the space (never an upload).
   await page.getByTestId('walk-create').click();
-  await page.getByTestId('walk-needs-plan').waitFor({ timeout: 10000 });
-  check(`${tag}: the 3D tour names exactly what is missing (walls, doors, room sizes)`, (await page.locator('[data-testid="walk-missing"] li').count()) === 3 && (await page.getByTestId('walk-add-plan').isVisible()));
-  if (lang === 'ka') check(`${tag}: missing-evidence copy`, (await page.getByTestId('walk-needs-plan').innerText()).includes('სად გადის კედლები'));
-  check(`${tag}: one walkthrough request for the tap (${store.walk.creates})`, store.walk.creates === 1);
-  await page.getByTestId('walk-needs-plan').scrollIntoViewIfNeeded();
-  await shot('walk-needs-plan');
-  await s.noOverflow(tag, 'the 3D tour evidence message');
+  await page.getByTestId('walk-reconstructing').waitFor({ timeout: 10000 });
+  check(`${tag}: the 3D tour starts reconstructing at once (no upload request)`, (await page.getByTestId('walk-needs-plan').count()) === 0 && (await page.getByTestId('walk-add-plan').count()) === 0);
+  await page.getByTestId('walk-reconstructing').scrollIntoViewIfNeeded();
+  await shot('walk-reconstructing');
+  await s.noOverflow(tag, 'the 3D tour reconstructing');
+  await page.getByTestId('walk-open').waitFor({ timeout: 20000 });
+  check(`${tag}: the tour opens, with the quiet reconstructed-space note`, await page.getByTestId('walk-inferred-note').isVisible());
+  if (lang === 'ka') check(`${tag}: reconstructed-space note copy`, (await page.getByTestId('walk-inferred-note').innerText()).includes('არსებული ვიზუალური მასალის საფუძველზე'));
+  check(`${tag}: one reading of the space for the tap and the follow-ups (${store.walk.readings} reading, ${store.walk.creates} asks)`, store.walk.readings === 1);
+  await page.getByTestId('walk-inferred-note').scrollIntoViewIfNeeded();
+  await shot('walk-ready');
+  await s.noOverflow(tag, 'the 3D tour ready');
   await page.getByTestId('room-create').click();
   await page.getByTestId('home-sheet').waitFor({ timeout: 10000 });
   await shot('room-sheet');

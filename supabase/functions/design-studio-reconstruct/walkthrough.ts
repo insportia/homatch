@@ -42,7 +42,10 @@ import { offerFor } from '../_shared/designStudio/designIntent.ts';
 import { sceneRequest, validateScenePlan, type SceneInput, type ValidatedScenePlan } from '../_shared/designStudio/walkthrough/scenePlan.ts';
 import { validateSceneSpec, SpecError, type SceneBuildSpec } from '../_shared/designStudio/hybrid/sceneSpec.ts';
 import { callerOf, cancelProviderJob, factoryConfig, FACTORY_STAGES, JOB_FIELDS, providerStatus, settlePass, submitPass } from './factory.ts';
-import { inBackground } from './durable.ts';
+import { failure, inBackground, isFresh, kick, readFailure } from './durable.ts';
+import { getObject } from '../_shared/objectStore.ts';
+import { SCHEMA as RECON_SCHEMA, SYSTEM as RECON_SYSTEM, validateReconstruction } from '../_shared/designStudio/reconstructRead.ts';
+import { inferredSpace, mostlyInferred, WALK_SPACE_BRIEF } from '../../../src/lib/designStudio/walkthrough/inferredSpace.ts';
 import { meterAiCall } from './metering.ts';
 import { assetFromRow, materialFromRow, type CatalogAsset, type CatalogMaterial } from '../../../src/lib/designStudio/catalog.ts';
 import { normalizeDesignState, type DesignState } from '../../../src/lib/designStudio/designState.ts';
@@ -67,6 +70,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MODEL = Deno.env.get('OPENAI_DS_WALK_MODEL') || Deno.env.get('OPENAI_DS_DESIGN_MODEL') || Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
 /** New walkthroughs one account may start per hour (a runaway client, not a price). */
 const HOURLY = 6;
+/** The model that reads a photo design's pictures into a walkable space (the reconstruction reader's). */
+const SPACE_MODEL = Deno.env.get('OPENAI_DS_RECONSTRUCT_MODEL') || Deno.env.get('OPENAI_DS_FLOORPLAN_MODEL') || Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
+/** Readings of one project's space, at most (each a paid call): a failure is retried automatically up to this. */
+const SPACE_ATTEMPTS = 3;
 /** Manual retries of one walkthrough after it failed (each resumes from saved work). */
 const MANUAL_RETRIES = 3;
 /** R2 storage, per GB-month (an estimate for the internal cost line, never a charge). */
@@ -100,6 +107,8 @@ function publicOf(row: Row) {
     stage: row.stage ?? null, walkVersionId: row.state === 'READY' ? row.walk_version_id : null, error: code,
     retryable: row.state === 'FAILED' && retryableFailure(code) && (row.timings?.manualRetries ?? 0) < MANUAL_RETRIES,
     createdAt: row.created_at, readyAt: row.ready_at ?? null,
+    // The space was reconstructed from the pictures (no measured plan): the Result says so, quietly.
+    inferred: row.timings?.inferred === true,
     summary: row.state === 'READY' && row.plan_report?.build?.counts ? { pieces: (row.plan_report.build.counts.planned ?? 0) + (row.plan_report.build.counts.corrected ?? 0) + (row.plan_report.build.counts.placed ?? 0), rooms: row.plan_report.rooms ?? null } : null,
   };
 }
@@ -117,9 +126,11 @@ const isCorrection = (v: Row) => Array.isArray(v?.change_summary) && v.change_su
  * photo design itself is never touched). Null when the project has no buildable plan.
  */
 async function designOnPlan(admin: Row, version: Row, projectId: string): Promise<{ version: Row; source: Row } | null> {
-  const { data: plans } = await admin.from('ds_spatial_sources').select('id, kind, status, canonical, created_at').eq('project_id', projectId)
+  const { data: plans } = await admin.from('ds_spatial_sources').select('id, kind, status, canonical, provenance, created_at').eq('project_id', projectId)
     .eq('kind', 'FLOORPLAN_SCENE').eq('status', 'READY').order('created_at', { ascending: false }).limit(5);
-  const plan = (plans ?? []).find((p: Row) => p.canonical?.scene?.floors?.length && Array.isArray(p.canonical?.scene?.walls));
+  // A measured plan always wins over a space reconstructed from pictures.
+  const plan = (plans ?? []).filter((p: Row) => p.canonical?.scene?.floors?.length && Array.isArray(p.canonical?.scene?.walls))
+    .sort((a: Row, b: Row) => Number(a.provenance?.inferred === true) - Number(b.provenance?.inferred === true))[0];
   if (!plan) return null;
   const { data: original } = await admin.from('ds_versions').select('state').eq('source_id', plan.id).eq('origin', 'ORIGINAL').limit(1).maybeSingle();
   const id = await uuidFrom(`ds-walk-photo-design:${version.id}:${plan.id}`);
@@ -132,6 +143,163 @@ async function designOnPlan(admin: Row, version: Row, projectId: string): Promis
   if (error) return null;
   const { data: made } = await admin.from('ds_versions').select('id, project_id, user_id, source_id, revision, job_id, design_dna, archived_at, parent_id, name, style_tags').eq('id', id).maybeSingle();
   return made ? { version: made, source: plan } : null;
+}
+
+/**
+ * A photo design with no measured plan: its space, reconstructed from the pictures the project already has (the
+ * customer's own, isolated from a screenshot where that was done, then the generated designs), by the
+ * reconstruction reader, completed, built, walked and repaired (inferredSpace.ts) into an ESTIMATED floor-plan
+ * source that only this walkthrough uses. One reading per photo source (the architecture's evidence): asked again,
+ * the same job; a lost instance is taken over; a failure is retried automatically, at most SPACE_ATTEMPTS readings.
+ * Nothing is written to the project's active source, its plans, or any property data.
+ */
+async function reconstructSpace(admin: Row, a: { actorId: string; authorization: string; project: Row; version: Row; photoSource: Row; renderId: string | null; body: Row }):
+  Promise<{ state: 'READY' } | { state: 'RUNNING' } | { state: 'FAILED'; code: string }> {
+  const key = await sha256Hex(`walk-space:v1:${a.photoSource.id}`);
+  const { data: jobs } = await admin.from('ds_jobs').select('id, status, output, error, started_at, created_at').eq('user_id', a.actorId).eq('project_id', a.project.id)
+    .eq('kind', 'RECONSTRUCT').eq('input->>purpose', 'WALK_SPACE').eq('input->>key', key).order('created_at', { ascending: false }).limit(10);
+  const rows: Row[] = jobs ?? [];
+  if (rows.some((j) => j.status === 'SUCCEEDED' && j.output?.sourceId)) return { state: 'READY' };
+  const running = rows.find((j) => j.status === 'RUNNING');
+  if (running && isFresh(running.started_at)) return { state: 'RUNNING' };
+  if (running) {
+    // Its instance was lost: exactly one request takes it over.
+    const { data: won } = await admin.from('ds_jobs').update({ status: 'FAILED', error: failure('RETRYABLE', 'ABANDONED'), finished_at: new Date().toISOString() })
+      .eq('id', running.id).eq('status', 'RUNNING').select('id');
+    if (!won?.length) return { state: 'RUNNING' };
+  }
+  const failed = rows.filter((j) => j.status === 'FAILED');
+  const terminal = failed.find((j) => readFailure(j.error)?.category === 'TERMINAL');
+  if (terminal) return { state: 'FAILED', code: readFailure(terminal.error)?.code ?? 'SPACE_UNAVAILABLE' };
+  if (failed.length + (running ? 1 : 0) >= SPACE_ATTEMPTS) return { state: 'FAILED', code: readFailure(failed[0]?.error)?.code ?? 'SPACE_UNAVAILABLE' };
+  if (!Deno.env.get('OPENAI_API_KEY')) return { state: 'FAILED', code: 'SPACE_UNAVAILABLE' };
+
+  const { data: job } = await admin.from('ds_jobs').insert({
+    user_id: a.actorId, project_id: a.project.id, kind: 'RECONSTRUCT', status: 'RUNNING', model: SPACE_MODEL, started_at: new Date().toISOString(),
+    input: { purpose: 'WALK_SPACE', key, photoSourceId: a.photoSource.id, designVersionId: a.version.id, generator: 'OPENAI_FIRST' },
+  }).select('id').single();
+  const jobId = (job as { id?: string } | null)?.id;
+  if (!jobId) return { state: 'FAILED', code: 'JOB_FAILED' };
+  // Two taps that raced: the earliest job stays, the other stands down before spending anything.
+  const { data: first } = await admin.from('ds_jobs').select('id').eq('user_id', a.actorId).eq('project_id', a.project.id).eq('kind', 'RECONSTRUCT')
+    .eq('input->>key', key).eq('status', 'RUNNING').order('created_at', { ascending: true }).order('id', { ascending: true }).limit(1);
+  if (first?.[0]?.id && first[0].id !== jobId) {
+    await admin.from('ds_jobs').update({ status: 'CANCELLED', error: 'DUPLICATE', finished_at: new Date().toISOString() }).eq('id', jobId);
+    return { state: 'RUNNING' };
+  }
+  await inBackground('walkthrough-space', async () => {
+    const done = await readSpace(admin, { ...a, jobId }).catch(async (e) => {
+      await admin.from('ds_jobs').update({ status: 'FAILED', error: failure('RETRYABLE', `CRASHED:${String((e as Error)?.message ?? e).slice(0, 60)}`), finished_at: new Date().toISOString() })
+        .eq('id', jobId).eq('status', 'RUNNING');
+      return false;
+    });
+    // The space exists: the walkthrough starts in its own invocation, with or without the page.
+    if (done) await kick(a.authorization, 'walkthrough-create', { designVersionId: a.body.designVersionId, renderId: a.renderId, name: a.body.name ?? null });
+  });
+  return { state: 'RUNNING' };
+}
+
+const MAX_SPACE_BYTES = 12 * 1024 * 1024;
+const MAX_SPACE_TOTAL = 36 * 1024 * 1024;
+function sniffImage(b: Uint8Array): string | null {
+  if (b[0] === 0x89 && b[1] === 0x50) return 'image/png';
+  if (b[0] === 0xff && b[1] === 0xd8) return 'image/jpeg';
+  if (b[0] === 0x52 && b[1] === 0x49 && b[8] === 0x57 && b[9] === 0x45) return 'image/webp';
+  return null;
+}
+function b64(bytes: Uint8Array): string {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+/** The reading itself (background): the pictures, the reader, the completion, the ESTIMATED source. */
+async function readSpace(admin: Row, a: { actorId: string; project: Row; version: Row; photoSource: Row; renderId: string | null; jobId: string }): Promise<boolean> {
+  const fail = async (code: string, terminal = false, extra: Row = {}) => {
+    await admin.from('ds_jobs').update({ status: 'FAILED', error: failure(terminal ? 'TERMINAL' : 'RETRYABLE', code), finished_at: new Date().toISOString(), ...extra }).eq('id', a.jobId).eq('status', 'RUNNING');
+    return false;
+  };
+  // The customer's own pictures first (the architecture; a screenshot's isolated picture where one was made), hero first.
+  const u = a.photoSource.canonical?.understanding ?? null;
+  const ids: string[] = Array.isArray(a.photoSource.provenance?.referenceIds) ? a.photoSource.provenance.referenceIds.map(String) : [];
+  const { data: refs } = await admin.from('ds_floorplans').select('id, object_key, user_id, project_id').in('id', ids.length ? ids : ['00000000-0000-0000-0000-000000000000']);
+  const byId = new Map((refs ?? []).filter((r: Row) => r.project_id === a.project.id).map((r: Row) => [r.id, r.object_key]));
+  const hero = u?.rooms?.find((r: Row) => r.id === u?.heroRoomId)?.primaryPhoto ?? 0;
+  const sourceKeys = ids.map((id, i) => {
+    const original = byId.get(id) as string | undefined;
+    const norm = u?.photos?.[i]?.normalizedKey;
+    const folder = original ? original.slice(0, original.lastIndexOf('/') + 1) : '';
+    return typeof norm === 'string' && folder && norm.startsWith(folder) && !norm.includes('..') ? norm : original;
+  }).map((k, i) => ({ k, i })).filter((x): x is { k: string; i: number } => !!x.k).sort((x, y) => Number(y.i === hero) - Number(x.i === hero)).map((x) => x.k).slice(0, 4);
+  // Then the generated designs of this home: the one shown first, then the others and its rooms.
+  const { data: renders } = await admin.from('ds_renders').select('id, kind, status, final_key, user_id, created_at').eq('project_id', a.project.id).eq('user_id', a.actorId)
+    .eq('status', 'READY').not('final_key', 'is', null).order('created_at', { ascending: false }).limit(12);
+  const designKeys = (renders ?? []).sort((x: Row, y: Row) => Number(y.id === a.renderId) - Number(x.id === a.renderId)).map((r: Row) => String(r.final_key)).slice(0, 3);
+  const images: Array<{ url: string; source: boolean }> = [];
+  let total = 0;
+  for (const [i, key] of [...sourceKeys, ...designKeys].entries()) {
+    const res = await getObject(key).catch(() => null);
+    if (!res?.ok) { await res?.arrayBuffer().catch(() => null); continue; }
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const type = sniffImage(bytes);
+    if (!type || bytes.length > MAX_SPACE_BYTES || total + bytes.length > MAX_SPACE_TOTAL) continue;
+    total += bytes.length;
+    images.push({ url: `data:${type};base64,${b64(bytes)}`, source: i < sourceKeys.length });
+  }
+  // Nothing at all to read the home from: the only honest failure.
+  if (!images.length) return fail('NO_PICTURES', true);
+  const nSource = images.filter((x) => x.source).length;
+  const rooms = (u?.rooms ?? []).map((r: Row) => `${r.label || r.kind} (${r.kind})${r.fixed?.length ? `: ${r.fixed.slice(0, 6).join('; ')}` : ''}`).slice(0, 12);
+  const content: Row[] = [{
+    type: 'input_text',
+    text: `Here are ${images.length} pictures of the SAME home, numbered 0 to ${images.length - 1}. Pictures 0 to ${Math.max(0, nSource - 1)} are the customer's own source pictures${nSource < images.length ? `; pictures ${nSource} to ${images.length - 1} are generated designs of it` : ''}. Merge them into one home and rebuild it as structured data in the plan frame. Write labels in English; keep every code exactly as listed.\n\n${WALK_SPACE_BRIEF}${rooms.length ? `\n\nHOMATCH already read these rooms from the source pictures:\n- ${rooms.join('\n- ')}` : ''}`,
+  }];
+  images.forEach((img, i) => {
+    content.push({ type: 'input_text', text: `Picture ${i} (${img.source ? 'source' : 'generated design'}):` });
+    content.push({ type: 'input_image', image_url: img.url });
+  });
+  const apiKey = Deno.env.get('OPENAI_API_KEY');
+  if (!apiKey) return fail('SPACE_UNAVAILABLE');
+  const started = Date.now();
+  let payload: Row = null;
+  try {
+    const r = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: SPACE_MODEL, input: [{ role: 'system', content: RECON_SYSTEM }, { role: 'user', content }],
+        text: { format: { type: 'json_schema', name: 'ds_reconstruction', strict: false, schema: RECON_SCHEMA } }, reasoning: { effort: 'high' },
+      }),
+    });
+    payload = r.ok ? await r.json() : null;
+  } catch { payload = null; }
+  // Answered: paid whatever the answer turns out to be, so metered before it is judged.
+  const cost = payload ? await meterAiCall(admin, { userId: a.actorId, productCode: 'DS_RECONSTRUCT', jobRef: a.jobId, model: SPACE_MODEL, startedAt: started }, payload,
+    { purpose: 'WALK_SPACE', pictures: images.length, source_pictures: nSource, generator: 'OPENAI_FIRST' }) : null;
+  const paid = cost ? { cost_cents: cost.aiCents } : {};
+  const text = payload ? textOf(payload) : '';
+  if (!text) return fail('SPACE_READING_FAILED', false, paid);
+  let raw: unknown;
+  try { raw = JSON.parse(text); } catch { return fail('SPACE_BAD_SHAPE', false, paid); }
+  const { recon } = validateReconstruction(raw, images.length);
+  const space = inferredSpace(recon, `walk-space:${a.photoSource.id}`);
+  if ('problems' in space) return fail(`SPACE_NOT_BUILDABLE:${space.problems.slice(0, 3).join(',')}`, false, paid);
+
+  // An ESTIMATED floor-plan source of this project, marked inferred, used only by the walkthrough.
+  const { data: made, error } = await admin.from('ds_spatial_sources').insert({
+    project_id: a.project.id, user_id: a.actorId, kind: 'FLOORPLAN_SCENE', status: 'READY', geometry_state: 'ESTIMATED', editability: 'GENERATED',
+    canonical: space.canonical, calibration: { metresPerPx: space.canonical.metresPerPx, inferred: true },
+    generator_version: space.canonical.generatorVersion,
+    provenance: {
+      origin: 'INFERRED_FOR_WALKTHROUGH', inferred: true, verified: false, fromSourceId: a.photoSource.id, designVersionId: a.version.id, jobId: a.jobId,
+      repairs: space.repairs, spawn: space.spawn, reachable: space.reachable, unreachable: space.unreachable, basis: space.basis, generator: 'OPENAI_FIRST',
+    },
+  }).select('id').single();
+  if (error || !made?.id) return fail('SOURCE_NOT_RECORDED', false, paid);
+  await admin.from('ds_jobs').update({
+    status: 'SUCCEEDED', finished_at: new Date().toISOString(), ...paid,
+    output: { kind: 'WALK_SPACE', sourceId: made.id, rooms: space.reachable.length + space.unreachable.length, repairs: space.repairs.length, basis: space.basis, mostlyInferred: mostlyInferred(space.basis) },
+  }).eq('id', a.jobId).eq('status', 'RUNNING');
+  return true;
 }
 
 /** The design and every geometry correction of it (newest first): one walkthrough history across them. */
@@ -225,13 +393,21 @@ export async function handleWalkthroughCreate(req: Request): Promise<Response> {
   if (!version || version.archived_at || String(version.user_id) !== actorId) return json({ error: 'NOT_FOUND' }, 404);
   const { data: project } = await admin.from('ds_projects').select('id, user_id, deleting_at').eq('id', version.project_id).maybeSingle();
   if (!project || project.deleting_at || String(project.user_id) !== actorId) return json({ error: 'NOT_FOUND' }, 404);
-  let { data: source } = await admin.from('ds_spatial_sources').select('id, kind, status, canonical').eq('id', version.source_id).maybeSingle();
+  let { data: source } = await admin.from('ds_spatial_sources').select('id, kind, status, canonical, provenance').eq('id', version.source_id).maybeSingle();
   // A design made from photos: walked on the measured plan this project already has (nothing uploaded again),
-  // carrying the design — its DNA and Design Specification — onto that geometry. Without one, the answer names
-  // exactly what is missing: the photos show the design, not the walls, doors and room sizes a walk needs.
+  // carrying the design — its DNA and Design Specification — onto that geometry. Without one, its space is
+  // reconstructed from the pictures the project already has (reconstructSpace): never a request to upload again.
   if (source?.kind === 'PHOTO_SET') {
-    const onPlan = await designOnPlan(admin, version, project.id);
-    if (!onPlan) return json({ error: 'WALKTHROUGH_NEEDS_FLOOR_PLAN', missing: ['WALLS', 'DOORS', 'ROOM_SIZES'], have: ['DESIGN', 'PHOTOS'] }, 409);
+    let onPlan = await designOnPlan(admin, version, project.id);
+    if (!onPlan) {
+      if (await billingOn(admin)) return json({ error: 'BILLING_CONFIRMATION_REQUIRED' }, 409);
+      const { data: photo } = await admin.from('ds_spatial_sources').select('id, kind, canonical, provenance').eq('id', version.source_id).maybeSingle();
+      const space = await reconstructSpace(admin, { actorId, authorization: req.headers.get('Authorization') ?? '', project, version, photoSource: photo, renderId: body.renderId ?? null, body });
+      if (space.state === 'RUNNING') return json({ walkthrough: null, reconstructing: true }, 202);
+      if (space.state === 'FAILED') return json({ error: 'SPACE_UNAVAILABLE', reason: space.code }, 409);
+      onPlan = await designOnPlan(admin, version, project.id);
+      if (!onPlan) return json({ walkthrough: null, reconstructing: true }, 202);
+    }
     ({ version, source } = onPlan);
     lineage = await lineageOf(admin, version.id);
   }
@@ -276,7 +452,11 @@ export async function handleWalkthroughCreate(req: Request): Promise<Response> {
   await admin.from('ds_walkthroughs').upsert({
     project_id: project.id, user_id: actorId, design_version_id: version.id, source_id: source.id, spec_job_id: specJobId,
     render_id: body.renderId ?? null, revision, idempotency_key: key, state: 'QUEUED',
-    timings: { requestedAt: iso(Date.now()), name: name || null, designRevision: Number(version.revision) || 0, ...(reuse ? { reusePlanFrom: reuse.id } : {}) },
+    timings: {
+      requestedAt: iso(Date.now()), name: name || null, designRevision: Number(version.revision) || 0, ...(reuse ? { reusePlanFrom: reuse.id } : {}),
+      // Walked on a space reconstructed from the pictures (never a measured plan): kept, so the Result can say so.
+      ...(source.provenance?.inferred === true ? { inferred: true } : {}),
+    },
   }, { onConflict: 'project_id,idempotency_key', ignoreDuplicates: true });
   const { data: row } = await admin.from('ds_walkthroughs').select('*').eq('project_id', project.id).eq('idempotency_key', key).maybeSingle();
   if (!row) return json({ error: 'NOT_RECORDED' }, 500);

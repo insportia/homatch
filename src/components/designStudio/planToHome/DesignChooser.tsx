@@ -15,6 +15,7 @@ import {
 } from '@/lib/designStudio/planToHome';
 import { isPresetBrief } from '@/lib/designStudio/lookPresets';
 import { cn } from '@/lib/utils';
+import { priceShort, priceWords } from '@/lib/designStudio/renders/priceWords';
 
 /** What each material direction looks like, drawn (never a photo that could pass for the result). */
 export const FLOOR_SWATCH: Record<string, string> = {
@@ -56,7 +57,7 @@ export function DesignChooser({ value, onChange, onGenerate, busy, onBack, price
   busy: boolean;
   onBack: () => void;
   /** The server's quote for the master design, shown before anything is generated. */
-  price?: { credits: number; charged: boolean } | null;
+  price?: { credits: number; charged: boolean; est?: number | null } | null;
   priceUnavailable?: boolean;
 }) {
   const { t } = useLanguage();
@@ -182,7 +183,7 @@ export function DesignChooser({ value, onChange, onGenerate, busy, onBack, price
       <div className="sticky bottom-0 border-t border-[#E4E6EA] bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
         {price ? (
           <p className="mx-auto w-full max-w-3xl px-4 pt-3 text-[13px] text-[#4A5263] sm:px-6" data-testid="design-price">
-            {t(price.charged ? 'p2h_price_charged' : 'p2h_price_not_charged', { credits: String(price.credits) })}
+            {priceWords(t, price)}
           </p>
         ) : priceUnavailable ? (
           <p className="mx-auto w-full max-w-3xl px-4 pt-3 text-[13px] text-[hsl(32_78%_34%)] sm:px-6">{t('p2h_price_unavailable')}</p>
@@ -192,7 +193,7 @@ export function DesignChooser({ value, onChange, onGenerate, busy, onBack, price
           <button type="button" onClick={onGenerate} disabled={busy || !price || (value.style === null && brief.trim().length < 3)}
             className={cn('inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-[hsl(38_92%_56%)] px-5 text-[16px] font-semibold text-[#0C1119] hover:bg-[hsl(38_92%_50%)] disabled:opacity-50', RING)}
             data-testid="design-generate">
-            <Sparkles className="h-5 w-5" aria-hidden="true" />{price ? t('p2h_generate_credits', { credits: String(price.credits) }) : t('p2h_generate')}
+            <Sparkles className="h-5 w-5" aria-hidden="true" />{price ? t('p2h_generate_credits', { credits: priceShort(price) }) : t('p2h_generate')}
           </button>
         </div>
       </div>

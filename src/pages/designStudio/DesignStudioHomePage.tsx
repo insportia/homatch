@@ -58,6 +58,7 @@ import { signedUrls } from '@/services/designStudio/files';
 import { referencesById } from '@/services/designStudio/reconstructions';
 import { DesignResult, type ResultData } from '@/components/designStudio/unified/DesignResult';
 import { isPhotoUnderstanding, roomKindKey, type PhotoUnderstanding } from '@/lib/designStudio/photoProject';
+import { priceWords } from '@/lib/designStudio/renders/priceWords';
 
 export default function DesignStudioHomePage() {
   return (
@@ -146,7 +147,7 @@ async function loadHome(projectId: string): Promise<HomeData | null> {
 }
 
 /** A pending paid action: what it is, its price, and what happens on "Confirm". */
-interface Pending { title: string; credits: number; charged: boolean; run: () => Promise<void> }
+interface Pending { title: string; credits: number; est?: number; charged: boolean; run: () => Promise<void> }
 
 function Home() {
   useSurfaceTheme('light');
@@ -258,7 +259,7 @@ function Home() {
     if (!data) return;
     const q = await quoteRender({ projectId, versionId: data.head.id, product, views });
     if (!q.quote) { setError(t('rend_error_quote')); return; }
-    setPending({ title, credits: q.quote.credits, charged: q.quote.charged, run: () => run(q.quote!) });
+    setPending({ title, credits: q.quote.credits, est: q.quote.est, charged: q.quote.charged, run: () => run(q.quote!) });
   };
 
   /** A new version of the design (the change), made head; the DNA travels with it. */
@@ -562,7 +563,7 @@ function Home() {
         <div className="fixed inset-0 z-40 grid place-items-end bg-black/40 sm:place-items-center" role="dialog" aria-modal="true" aria-labelledby="home-confirm-title">
           <div className="w-full max-w-md rounded-t-[24px] bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-xl sm:rounded-[24px]">
             <h2 id="home-confirm-title" className="text-[17px] font-semibold">{pending.title}</h2>
-            <p className="mt-2 text-[15px]" data-testid="confirm-price">{t(pending.charged ? 'p2h_price_charged' : 'p2h_price_not_charged', { credits: String(pending.credits) })}</p>
+            <p className="mt-2 text-[15px]" data-testid="confirm-price">{priceWords(t, pending)}</p>
             <div className="mt-5 flex gap-2">
               <button type="button" onClick={() => setPending(null)} disabled={busy} className={cn('h-12 flex-1 rounded-full border border-[#D5D9E0] text-[15px] font-medium', RING)}>{t('general_cancel')}</button>
               <button type="button" onClick={() => { void runPending(); }} disabled={busy} className={cn('inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-[#0C1119] text-[15px] font-semibold text-white disabled:opacity-60', RING)} data-testid="confirm-run">
@@ -587,7 +588,7 @@ function RoomsTab({ data, renders, urls, onOrder, quote }: {
   const design = useMemo(() => ({ state: data.state, assets: data.assets }), [data]);
   const rooms = data.space.rooms;
   const [chosen, setChosen] = useState<Record<string, number>>({});
-  const [offer, setOffer] = useState<{ views: SpecView[]; credits: number; charged: boolean } | null>(null);
+  const [offer, setOffer] = useState<{ views: SpecView[]; credits: number; est?: number; charged: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [open, setOpen] = useState<RenderRecord | null>(null);
@@ -600,7 +601,7 @@ function RoomsTab({ data, renders, urls, onOrder, quote }: {
     if (!views.length) return;
     const q = await quote(views.length);
     if (!q.quote) { setErr(t('rend_error_quote')); return; }
-    setOffer({ views, credits: q.quote.credits, charged: q.quote.charged });
+    setOffer({ views, credits: q.quote.credits, est: q.quote.est, charged: q.quote.charged });
   };
   const go = async () => {
     if (!offer || busy) return;
@@ -643,7 +644,7 @@ function RoomsTab({ data, renders, urls, onOrder, quote }: {
       </div>
       {offer ? (
         <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl bg-white p-4 ring-1 ring-[#0C1119]" data-testid="rooms-offer">
-          <p className="flex-1 text-[15px]">{t(offer.charged ? 'p2h_price_charged' : 'p2h_price_not_charged', { credits: String(offer.credits) })}</p>
+          <p className="flex-1 text-[15px]">{priceWords(t, offer)}</p>
           <button type="button" onClick={() => setOffer(null)} className={cn('h-10 rounded-lg border border-[#D5D9E0] px-4 text-[14px]', RING)}>{t('general_cancel')}</button>
           <button type="button" onClick={() => { void go(); }} disabled={busy} className={cn('inline-flex h-10 items-center gap-2 rounded-lg bg-[#0C1119] px-4 text-[14px] font-semibold text-white disabled:opacity-50', RING)} data-testid="rooms-confirm">
             {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}{t('rend_confirm')}

@@ -34,7 +34,8 @@ async function call<T>(route: string, body: Record<string, unknown>): Promise<{ 
   return { data: null, code: code ?? 'NETWORK' };
 }
 
-export async function createWalkthrough(input: { designVersionId: string; renderId?: string | null; newRevision?: boolean; name?: string }) {
+/** `quoteToken`: the confirmed DS_WALKTHROUGH quote (required by the server while Design Studio charges; its maximum is reserved). */
+export async function createWalkthrough(input: { designVersionId: string; renderId?: string | null; newRevision?: boolean; name?: string; quoteToken?: string | null }) {
   const r = await call<{ walkthrough: Walkthrough | null; created?: boolean; reconstructing?: boolean }>('walkthrough-create', input as unknown as Record<string, unknown>);
   // reconstructing: the server is reconstructing the space from the project's pictures; asking again follows it.
   return { walkthrough: r.data?.walkthrough ?? null, reconstructing: r.data?.reconstructing === true, error: r.code };
@@ -45,8 +46,8 @@ export async function walkthroughStatus(input: { walkthroughId?: string; designV
   return { walkthrough: r.data?.walkthrough ?? null, history: r.data?.history ?? [], error: r.code };
 }
 
-export async function retryWalkthrough(walkthroughId: string) {
-  const r = await call<{ walkthrough: Walkthrough }>('walkthrough-retry', { walkthroughId });
+export async function retryWalkthrough(walkthroughId: string, quoteToken: string | null = null) {
+  const r = await call<{ walkthrough: Walkthrough }>('walkthrough-retry', { walkthroughId, ...(quoteToken ? { quoteToken } : {}) });
   return { walkthrough: r.data?.walkthrough ?? null, error: r.code };
 }
 

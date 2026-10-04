@@ -139,9 +139,13 @@ export type RenderProduct = 'DS_MASTER_RENDER' | 'DS_ROOM_RENDER' | 'DS_RENDER_E
 export interface RenderQuote {
   /** Signed by the server; a start must present it unchanged and before it expires. */
   token: string;
-  product: RenderProduct;
+  product: RenderProduct | 'DS_WALKTHROUGH';
   views: number;
+  /** The MAXIMUM: what the customer confirms and what is reserved; the charge is the measured cost, never above it. */
   credits: number;
+  /** The minimum and the estimate shown beside it (server-priced from measured cost; 0.1 credit). */
+  min: number;
+  est: number;
   expiresAt: string;
   /** False while Design Studio charging is switched off: shown, confirmed, not charged. */
   charged: boolean;

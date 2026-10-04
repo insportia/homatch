@@ -25,6 +25,7 @@ import { detectLanguage } from '../../../../src/research-core/findBuyers/languag
 import { buildWhy, type WhyMatched } from '../../../../src/research-core/findBuyers/explain.ts';
 import { cityMentioned, mentionsPlace } from '../../../../src/research-core/findBuyers/places.ts';
 import { judgeFreshness, MAX_SIGNAL_AGE_DAYS } from '../../../../src/research-core/findBuyers/freshness.ts';
+import { dateProvenance, emptyDispositions, freshnessBucket, hardGate, publicIntent, type DispositionCounts } from '../../../../src/research-core/findBuyers/demandTaxonomy.ts';
 import { openAiJson, recordAiCost, type PriceBook } from './openai.ts';
 
 export interface CampaignRow {
@@ -91,6 +92,9 @@ export interface PipelineResult {
   groupsFound: number;
   followUps: FollowUp[];
   aiCalls: number;
+  /** One primary disposition per content candidate (groups/communities excluded); sums to candidates. */
+  dispositions: DispositionCounts;
+  candidates: number;
 }
 
 const DAY = 86_400_000;
@@ -99,7 +103,7 @@ const ageDaysOf = (iso: string | null, now: number) => (iso ? Math.max(0, (now -
 const clip = (s: string | null | undefined, n: number) => (s ? (s.length > n ? `${s.slice(0, n - 1)}…` : s) : null);
 
 export async function processItems(ctx: PipelineCtx, items: NormalizedItem[]): Promise<PipelineResult> {
-  const out: PipelineResult = { items: items.length, useful: 0, qualified: 0, strong: 0, duplicates: 0, reused: 0, staleDropped: 0, groupsFound: 0, followUps: [], aiCalls: 0 };
+  const out: PipelineResult = { items: items.length, useful: 0, qualified: 0, strong: 0, duplicates: 0, reused: 0, staleDropped: 0, groupsFound: 0, followUps: [], aiCalls: 0, dispositions: emptyDispositions(), candidates: 0 };
   if (!items.length) return out;
   const groups = items.filter((i) => i.kind === 'GROUP');
   if (groups.length) await processGroups(ctx, groups, out);
@@ -198,13 +202,15 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
   const flat: Array<{ item: NormalizedItem; inlineParent: NormalizedItem | null; ageDays: number | null }> = [];
   for (const it of items) {
     const postVerdict = judgeFreshness(it, ctx.parent?.publishedAt ?? null, { now, maxDays: MAX_SIGNAL_AGE_DAYS });
+    out.candidates++;
     if (postVerdict.keep) flat.push({ item: it, inlineParent: null, ageDays: postVerdict.ageDays });
-    else out.staleDropped++;
+    else { out.staleDropped++; out.dispositions[postVerdict.reason === 'STALE' ? 'STALE' : 'UNDATED']++; }
     for (const c of it.inlineComments) {
       /* A stale post's comments are judged on their own dates only. */
       const v = judgeFreshness(c, postVerdict.keep ? it.publishedAt : null, { now, maxDays: MAX_SIGNAL_AGE_DAYS });
+      out.candidates++;
       if (v.keep) flat.push({ item: c, inlineParent: postVerdict.keep ? it : null, ageDays: v.ageDays });
-      else out.staleDropped++;
+      else { out.staleDropped++; out.dispositions[v.reason === 'STALE' ? 'STALE' : 'UNDATED']++; }
     }
   }
   if (!flat.length) return;
@@ -265,8 +271,8 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
   const postCtx = new Map<string, ParentContext>();
   for (const { item, inlineParent, ageDays: freshAge } of flat) {
     const signalId = idMap.get(extId(item));
-    if (!signalId) continue;
-    if (doneSet.has(signalId)) { out.duplicates++; continue; }
+    if (!signalId) { out.dispositions.UNDECIDED++; continue; }
+    if (doneSet.has(signalId)) { out.duplicates++; out.dispositions.DUPLICATE++; continue; }
     const fingerprint = contentFingerprint(item.text);
     const prior = knownMap.get(extId(item));
     if (prior && prior.content_fingerprint === fingerprint) out.reused++;
@@ -359,6 +365,10 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
       research_direction: qualifying ? 'DEMAND' : a.facts.stance === 'OFFER' ? 'SUPPLY' : 'UNKNOWN',
       intent_json: {
         ...prior,
+        /* Market side from the text's own transaction (never the campaign's), and date provenance. */
+        publicIntent: publicIntent(a.verdict.intentClass, a.facts.transaction),
+        ...(() => { const d = dateProvenance(a.item.publishedAt, a.parent?.publishedAt ?? null);
+          return { dateSource: d.dateSource, dateConfidence: d.dateConfidence, freshness: freshnessBucket(d.evidenceAt, now) }; })(),
         m23cache: { ...(prior?.m23cache ?? {}), [a.cacheKey]: { intentClass: a.verdict.intentClass, score: a.verdict.score, method: a.verdict.method } },
       },
     }).eq('id', a.signalId);
@@ -383,13 +393,16 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
     }
   }
 
-  /* Leads. */
+  /* Leads. Hard gates first (undecided, supply/agent/discussion, the other
+     transaction), then ranking; every assessed candidate gets one disposition. */
   for (const a of assessed) {
-    if (!a.verdict || !QUALIFYING.has(a.verdict.intentClass)) continue;
+    const gate = hardGate({ campaign: campaign.transaction, intentClass: a.verdict?.intentClass, method: a.verdict?.method, statedTransaction: a.facts.transaction });
+    if (gate) { out.dispositions[gate]++; continue; }
     const res = await upsertLead(ctx, a);
-    if (res === 'QUALIFIED') out.qualified++;
-    else if (res === 'STRONG') { out.qualified++; out.strong++; }
-    else if (res === 'DUPLICATE') out.duplicates++;
+    if (res === 'QUALIFIED') { out.qualified++; out.dispositions.QUALIFIED++; }
+    else if (res === 'STRONG') { out.qualified++; out.strong++; out.dispositions.QUALIFIED++; }
+    else if (res === 'DUPLICATE') { out.duplicates++; out.dispositions.DUPLICATE++; }
+    else out.dispositions.BELOW_THRESHOLD++;
   }
 }
 
@@ -432,6 +445,8 @@ async function reuseStoredComments(ctx: PipelineCtx, parent: ParentContext, out:
   out.reused += items.length;
   out.qualified += sub.qualified; out.strong += sub.strong; out.duplicates += sub.duplicates; out.useful += sub.useful;
   out.staleDropped += sub.staleDropped;
+  out.candidates += sub.candidates;
+  for (const [d, n] of Object.entries(sub.dispositions)) out.dispositions[d as keyof DispositionCounts] += n;
   return true;
 }
 

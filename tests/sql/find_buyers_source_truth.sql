@@ -43,4 +43,15 @@ begin
   assert not exists (select 1 from jsonb_array_elements(r -> 'network') x where x ->> 'state' = 'AVAILABLE'), 'everything off -> nothing AVAILABLE: ' || r::text;
 end $$;
 
+/* Actor verification truth: the admin center carries the new columns. */
+do $$
+declare a jsonb;
+begin
+  update public.find_buyers_actor_registry set last_verified_at = now() where actor_key = (select min(actor_key) from public.find_buyers_actor_registry);
+  perform set_config('app.admin', 'on', true);
+  select x into a from jsonb_array_elements(public.admin_find_buyers_center(30) -> 'actors') x where x ? 'last_verified_at' and x ->> 'last_verified_at' is not null limit 1;
+  assert a is not null and a ? 'output_contract_verified_at' and a ->> 'output_contract_verified_at' is null, 'admin sees verification columns: ' || coalesce(a::text, 'none');
+  perform set_config('app.admin', '', true);
+end $$;
+
 select 'FIND BUYERS SOURCE TRUTH CHECKS PASS';

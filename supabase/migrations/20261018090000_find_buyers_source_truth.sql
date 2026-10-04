@@ -9,7 +9,12 @@
 -- readiness read returns the whole discovery network (every registered source
 -- family, AVAILABLE or DISABLED) so the screen can show what was searched,
 -- what could be, and what is switched off -- without a hardcoded list.
--- Additive: two functions replaced, no data or switch changes.
+-- Actor verification truth: the registry also records when a real run proved
+-- the output contract (output_contract_verified_at) and when anything was
+-- last verified (last_verified_at). Metadata verification never marks an
+-- Actor healthy; only a real run does. The admin center returns both columns.
+-- Additive: two columns added (nullable, no backfill), three functions
+-- replaced, no data or switch changes.
 
 
 create or replace function public.find_buyers_job_state(p_job_id uuid)
@@ -197,3 +202,124 @@ as $function$
 $function$;
 revoke all on function public.find_buyers_readiness() from public, anon;
 grant execute on function public.find_buyers_readiness() to authenticated, service_role;
+
+
+------------------------------------------------------------------------------
+-- Actor verification truth.
+------------------------------------------------------------------------------
+alter table public.find_buyers_actor_registry
+  add column if not exists output_contract_verified_at timestamptz,
+  add column if not exists last_verified_at timestamptz;
+
+create or replace function public.admin_find_buyers_center(p_days integer default 30)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path to ''
+as $function$
+declare
+  v_since timestamptz := case when coalesce(p_days, 0) <= 0 then '-infinity'::timestamptz
+                              else now() - make_interval(days => p_days) end;
+  v jsonb;
+begin
+  if not public.is_admin() then raise exception 'FORBIDDEN'; end if;
+
+  with camp as (
+    select c.*,
+      coalesce((select sum(coalesce(l.actual_micros, l.estimated_micros)) from public.find_buyers_cost_ledger l
+                 where l.matching_job_id = c.matching_job_id and l.kind = 'PROVIDER' and l.idempotency_key like 'book:%'), 0) as provider_micros,
+      coalesce((select sum(l.actual_micros) from public.find_buyers_cost_ledger l
+                 where l.matching_job_id = c.matching_job_id and l.kind = 'AI'), 0) as ai_micros,
+      coalesce((select sum(l.actual_micros) from public.find_buyers_cost_ledger l
+                 where l.matching_job_id = c.matching_job_id and l.kind = 'TRANSLATION'), 0) as translation_micros,
+      coalesce((select sum(l.actual_micros) from public.find_buyers_cost_ledger l
+                 where l.matching_job_id = c.matching_job_id and l.kind = 'OTHER'), 0) as other_micros,
+      coalesce((select sum(r.reserved_micros) from public.find_buyers_actor_runs r
+                 where r.matching_job_id = c.matching_job_id and r.status in ('RESERVED','STARTING','RUNNING')), 0) as reserved_micros,
+      (select count(*) from public.find_buyers_leads fl where fl.matching_job_id = c.matching_job_id) as leads,
+      (select count(*) from public.find_buyers_leads fl where fl.matching_job_id = c.matching_job_id and fl.strength = 'STRONG') as strong,
+      (select u.settled_credits from public.usage_reservations u
+        where u.id = nullif(j.billing_grant->>'reservationId','')::uuid) as credits_charged,
+      j.status::text as job_status
+      from public.find_buyers_campaigns c
+      join public.matching_jobs j on j.id = c.matching_job_id
+     where c.created_at >= v_since
+  )
+  select jsonb_build_object(
+    'generated_at', now(),
+    'window_days', p_days,
+    'switches', coalesce((select jsonb_object_agg(key, value) from public.admin_settings
+                           where key like 'find_buyers_%' and key not like '%token%'), '{}'::jsonb),
+    'overview', (select jsonb_build_object(
+        'campaigns', count(*),
+        'credits_committed', coalesce(sum(credits_committed), 0),
+        'customer_value_micros', coalesce(sum(customer_value_micros), 0),
+        /* Revenue = what settlement actually charged, never the authorised budget. */
+        'revenue_micros', coalesce(sum(floor(coalesce(credits_charged, 0) * 1000000 / credits_per_usd)), 0)::bigint,
+        'provider_micros', coalesce(sum(provider_micros), 0),
+        'ai_micros', coalesce(sum(ai_micros), 0),
+        'translation_micros', coalesce((select sum(actual_micros) from public.find_buyers_cost_ledger
+                                         where kind = 'TRANSLATION' and occurred_at >= v_since), 0),
+        'other_micros', coalesce(sum(other_micros), 0),
+        'qualified_leads', coalesce(sum(leads), 0),
+        'strong_leads', coalesce(sum(strong), 0)) from camp),
+    'campaigns', coalesce((select jsonb_agg(x order by x.created_at desc) from (
+        select matching_job_id, campaign_id, property_id, user_id, transaction, credits_committed, credits_per_usd,
+               credits_charged, floor(coalesce(credits_charged, 0) * 1000000 / credits_per_usd)::bigint as revenue_micros,
+               customer_value_micros, provider_budget_micros, reserved_micros, provider_micros, ai_micros,
+               translation_micros, other_micros,
+               provider_micros + ai_micros + translation_micros + other_micros as total_cogs_micros,
+               languages, stats, leads, strong, job_status, stop_reason, created_at, last_activity_at, finalized_at,
+               public.find_buyers_job_state(matching_job_id) as lifecycle
+          from camp order by created_at desc limit 100) x), '[]'::jsonb),
+    'actors', coalesce((select jsonb_agg(a order by a.source, a.priority desc) from (
+        select g.actor_key, g.actor_id, g.source, g.purpose, g.role, g.enabled, g.emergency_disabled,
+               case when not g.enabled or g.emergency_disabled then 'DISABLED' else g.health end as health,
+               g.pricing_model, g.price_per_1k_micros, g.start_fee_micros, g.currency, g.pricing_source,
+               g.pricing_verified_at, g.input_contract_verified_at, g.output_contract_verified_at, g.last_verified_at, g.priority, g.max_results, g.probe_size,
+               g.deepen_steps, g.timeout_seconds, g.retry_cap, g.concurrency, g.daily_spend_cap_micros,
+               g.campaign_spend_cap_micros, g.fallback_actor_key, g.last_error, g.last_run_at,
+               (select count(*) from public.find_buyers_actor_runs r where r.actor_key = g.actor_key and r.created_at >= v_since) as runs,
+               (select count(*) from public.find_buyers_actor_runs r where r.actor_key = g.actor_key and r.created_at >= v_since and r.status = 'SUCCEEDED') as succeeded,
+               (select count(*) from public.find_buyers_actor_runs r where r.actor_key = g.actor_key and r.created_at >= v_since and r.status in ('FAILED','ABORTED','TIMED_OUT')) as failed,
+               (select coalesce(sum(r.results_billed), 0) from public.find_buyers_actor_runs r where r.actor_key = g.actor_key and r.created_at >= v_since) as results_billed,
+               (select coalesce(sum(r.useful_results), 0) from public.find_buyers_actor_runs r where r.actor_key = g.actor_key and r.created_at >= v_since) as useful_results,
+               (select coalesce(sum(r.qualified_leads), 0) from public.find_buyers_actor_runs r where r.actor_key = g.actor_key and r.created_at >= v_since) as qualified_leads,
+               (select coalesce(sum(r.strong_leads), 0) from public.find_buyers_actor_runs r where r.actor_key = g.actor_key and r.created_at >= v_since) as strong_leads,
+               (select coalesce(sum(coalesce(r.actual_micros, case when r.status in ('RESERVED','STARTING','RUNNING','RELEASED') then 0 else r.reserved_micros end)), 0)
+                  from public.find_buyers_actor_runs r where r.actor_key = g.actor_key and r.created_at >= v_since) as spend_micros,
+               (select percentile_disc(0.5) within group (order by r.latency_ms) from public.find_buyers_actor_runs r
+                 where r.actor_key = g.actor_key and r.created_at >= v_since and r.latency_ms is not null) as latency_p50_ms
+          from public.find_buyers_actor_registry g) a), '[]'::jsonb),
+    'sources', coalesce((select jsonb_agg(s) from (
+        select sr.id, sr.platform::text as platform, sr.name, sr.url, sr.city, sr.languages, sr.member_count,
+               sr.discovered_via, sr.created_at as first_discovered, sr.last_checked_at, sr.posts_observed,
+               sr.fb_spend_micros, sr.fb_qualified_leads, sr.fb_strong_leads, sr.quality_score, sr.access_state, sr.lifecycle,
+               case when sr.fb_qualified_leads > 0 then sr.fb_spend_micros / sr.fb_qualified_leads end as cost_per_qualified_micros
+          from public.source_registry sr
+         where sr.discovered_via like 'memo23:%' or sr.fb_spend_micros > 0 or sr.fb_qualified_leads > 0
+         order by sr.fb_qualified_leads desc, sr.last_checked_at desc nulls last limit 200) s), '[]'::jsonb),
+    'languages', coalesce((select jsonb_agg(lg) from (
+        select lang,
+               coalesce((select sum(coalesce(r.actual_micros, case when r.status in ('RESERVED','STARTING','RUNNING','RELEASED') then 0 else r.reserved_micros end))
+                           from public.find_buyers_actor_runs r
+                          where r.language = lang and r.created_at >= v_since), 0) as spend_micros,
+               (select count(*) from public.find_buyers_assessments fa where fa.language = lang and fa.created_at >= v_since) as signals,
+               (select count(*) from public.find_buyers_leads fl where fl.language = lang and fl.created_at >= v_since) as qualified,
+               (select count(*) from public.find_buyers_leads fl where fl.language = lang and fl.created_at >= v_since and fl.strength = 'STRONG') as strong
+          from unnest(array['ka','ru','en','ar','he','tr']) as lang) lg), '[]'::jsonb),
+    'ledger', coalesce((select jsonb_agg(l order by l.occurred_at desc) from (
+        select l.id, l.occurred_at, l.matching_job_id, l.kind, l.provider, l.actor_key, l.actor_run_id, l.provider_run_id,
+               l.operation, l.model, l.requested_limit, l.billed_units, l.estimated_micros, l.actual_micros, l.cost_state,
+               l.cost_basis, l.status, l.error, l.retry_of, l.after_settlement, r.source
+          from public.find_buyers_cost_ledger l
+          left join public.find_buyers_actor_runs r on r.id = l.actor_run_id
+         where l.occurred_at >= v_since
+         order by l.occurred_at desc limit 300) l), '[]'::jsonb)
+  ) into v;
+  return v;
+end;
+$function$;
+revoke all on function public.admin_find_buyers_center(integer) from public, anon;
+grant execute on function public.admin_find_buyers_center(integer) to authenticated;

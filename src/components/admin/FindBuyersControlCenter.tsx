@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import {
   getFindBuyersCenter, setFindBuyersSetting, updateActor, usd, verifyActorFromApify, type FindBuyersCenter,
 } from '@/services/findBuyers';
+import { actorLifecycle, classifyActor } from '@/findBuyers/actorCatalog';
 
 type Tab = 'overview' | 'actors' | 'campaigns' | 'sources' | 'languages' | 'ledger';
 const TABS: Tab[] = ['overview', 'actors', 'campaigns', 'sources', 'languages', 'ledger'];
@@ -216,6 +217,10 @@ export function FindBuyersControlCenter() {
                 <div className="min-w-0">
                   <p className="text-sm font-semibold">{a.actor_key} <span className="text-2xs font-normal text-muted-foreground">· {a.source} · {a.purpose} · {a.role}</span></p>
                   <p className="break-all text-2xs text-muted-foreground" dir="ltr">{a.actor_id}</p>
+                  <p className="mt-1 flex flex-wrap gap-1.5 text-2xs" data-testid="fbx-actor-class">
+                    <span className="rounded border border-border px-1.5 py-0.5">{t('fbx_admin_class')}: <b dir="ltr">{classifyActor(a.actor_key).cls}</b></span>
+                    <span className="rounded border border-border px-1.5 py-0.5">{t('fbx_admin_lifecycle')}: <b dir="ltr">{actorLifecycle(a as Parameters<typeof actorLifecycle>[0])}</b></span>
+                  </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-2xs">
                   <HealthDot health={a.health} />
@@ -238,6 +243,8 @@ export function FindBuyersControlCenter() {
               <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-2xs sm:grid-cols-4 lg:grid-cols-6">
                 <span>{t('fbx_admin_price')}: <b dir="ltr">{a.pricing_model} {a.price_per_1k_micros == null ? '—' : `${usd(a.price_per_1k_micros, 3)}/1K`}</b></span>
                 <span>{t('fbx_admin_price_verified')}: <b>{a.pricing_verified_at ? when(a.pricing_verified_at) : t('fbx_admin_not_verified')}</b></span>
+                <span>{t('fbx_admin_output_proven')}: <b>{a.output_contract_verified_at ? when(a.output_contract_verified_at) : t('fbx_admin_not_verified')}</b></span>
+                <span>{t('fbx_admin_last_verified')}: <b>{when(a.last_verified_at)}</b></span>
                 <span>{t('fbx_admin_runs')}: <b>{n(a.runs)}</b></span>
                 <span>{t('fbx_admin_success_rate')}: <b>{pct(n(a.succeeded), n(a.runs))}</b></span>
                 <span>{t('fbx_admin_error_rate')}: <b>{pct(n(a.failed), n(a.runs))}</b></span>

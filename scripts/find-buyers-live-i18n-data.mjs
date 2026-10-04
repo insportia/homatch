@@ -202,4 +202,9 @@ export const FIND_BUYERS_LIVE_STRINGS = {
   fbl_src_qualified: ['{{n}} qualified matches', '{{n}} შესაფერისი დამთხვევა', 'подходящих совпадений: {{n}}', '{{n}} uygun eşleşme', '{{n}} تطابقات مؤهلة', '{{n}} התאמות מתאימות'],
   fbl_media_listing_gone: ['The source no longer shows this listing publicly (it may have been removed or moved)', 'წყარო ამ განცხადებას საჯაროდ აღარ აჩვენებს (შესაძლოა წაიშალა ან მისამართი შეიცვალა)', 'Источник больше не показывает это объявление публично (возможно, оно удалено или перенесено)', 'Kaynak bu ilanı artık herkese açık göstermiyor (kaldırılmış veya taşınmış olabilir)', 'المصدر لم يعد يعرض هذا الإعلان علنًا (ربما حُذف أو نُقل)', 'המקור כבר לא מציג את המודעה הזו בפומבי (ייתכן שהוסרה או הועברה)'],
   fbl_media_unsupported: ['Photos can only be refreshed from a supported listing site', 'ფოტოების განახლება მხოლოდ მხარდაჭერილი საიტის განცხადებიდანაა შესაძლებელი', 'Обновить фото можно только из объявления на поддерживаемом сайте', 'Fotoğraflar yalnızca desteklenen bir ilan sitesinden yenilenebilir', 'لا يمكن تحديث الصور إلا من موقع إعلانات مدعوم', 'אפשר לרענן תמונות רק ממודעה באתר נתמך'],
+  /* ── admin: Actor class and proof (codes shown as-is) ── */
+  fbx_admin_class: ['Class', 'კლასი', 'Класс', 'Sınıf', 'الفئة', 'סיווג'],
+  fbx_admin_lifecycle: ['Lifecycle', 'სტატუსი', 'Жизненный цикл', 'Yaşam döngüsü', 'دورة الحياة', 'מחזור חיים'],
+  fbx_admin_output_proven: ['Output proven by a real run', 'შედეგი დადასტურებულია რეალური გაშვებით', 'Вывод подтверждён реальным запуском', 'Çıktı gerçek bir çalıştırmayla kanıtlandı', 'المخرجات مثبتة بتشغيل حقيقي', 'הפלט הוכח בהרצה אמיתית'],
+  fbx_admin_last_verified: ['Last verified', 'ბოლო შემოწმება', 'Последняя проверка', 'Son doğrulama', 'آخر تحقق', 'אימות אחרון'],
 };

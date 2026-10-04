@@ -15420,6 +15420,12 @@ const en = {
   fbl_src_qualified: '{{n}} qualified matches',
   fbl_media_listing_gone: 'The source no longer shows this listing publicly (it may have been removed or moved)',
   fbl_media_unsupported: 'Photos can only be refreshed from a supported listing site',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbx_admin_class: 'Class',
+  fbx_admin_lifecycle: 'Lifecycle',
+  fbx_admin_output_proven: 'Output proven by a real run',
+  fbx_admin_last_verified: 'Last verified',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -30754,6 +30760,12 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fbl_src_qualified: '{{n}} შესაფერისი დამთხვევა',
   fbl_media_listing_gone: 'წყარო ამ განცხადებას საჯაროდ აღარ აჩვენებს (შესაძლოა წაიშალა ან მისამართი შეიცვალა)',
   fbl_media_unsupported: 'ფოტოების განახლება მხოლოდ მხარდაჭერილი საიტის განცხადებიდანაა შესაძლებელი',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbx_admin_class: 'კლასი',
+  fbx_admin_lifecycle: 'სტატუსი',
+  fbx_admin_output_proven: 'შედეგი დადასტურებულია რეალური გაშვებით',
+  fbx_admin_last_verified: 'ბოლო შემოწმება',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -46079,6 +46091,12 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fbl_src_qualified: 'подходящих совпадений: {{n}}',
   fbl_media_listing_gone: 'Источник больше не показывает это объявление публично (возможно, оно удалено или перенесено)',
   fbl_media_unsupported: 'Обновить фото можно только из объявления на поддерживаемом сайте',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbx_admin_class: 'Класс',
+  fbx_admin_lifecycle: 'Жизненный цикл',
+  fbx_admin_output_proven: 'Вывод подтверждён реальным запуском',
+  fbx_admin_last_verified: 'Последняя проверка',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -61402,6 +61420,12 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fbl_src_qualified: '{{n}} uygun eşleşme',
   fbl_media_listing_gone: 'Kaynak bu ilanı artık herkese açık göstermiyor (kaldırılmış veya taşınmış olabilir)',
   fbl_media_unsupported: 'Fotoğraflar yalnızca desteklenen bir ilan sitesinden yenilenebilir',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbx_admin_class: 'Sınıf',
+  fbx_admin_lifecycle: 'Yaşam döngüsü',
+  fbx_admin_output_proven: 'Çıktı gerçek bir çalıştırmayla kanıtlandı',
+  fbx_admin_last_verified: 'Son doğrulama',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -76725,6 +76749,12 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fbl_src_qualified: '{{n}} تطابقات مؤهلة',
   fbl_media_listing_gone: 'المصدر لم يعد يعرض هذا الإعلان علنًا (ربما حُذف أو نُقل)',
   fbl_media_unsupported: 'لا يمكن تحديث الصور إلا من موقع إعلانات مدعوم',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbx_admin_class: 'الفئة',
+  fbx_admin_lifecycle: 'دورة الحياة',
+  fbx_admin_output_proven: 'المخرجات مثبتة بتشغيل حقيقي',
+  fbx_admin_last_verified: 'آخر تحقق',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -92048,6 +92078,12 @@ const he: Partial<Record<TranslationKey, string>> = {
   fbl_src_qualified: '{{n}} התאמות מתאימות',
   fbl_media_listing_gone: 'המקור כבר לא מציג את המודעה הזו בפומבי (ייתכן שהוסרה או הועברה)',
   fbl_media_unsupported: 'אפשר לרענן תמונות רק ממודעה באתר נתמך',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbx_admin_class: 'סיווג',
+  fbx_admin_lifecycle: 'מחזור חיים',
+  fbx_admin_output_proven: 'הפלט הוכח בהרצה אמיתית',
+  fbx_admin_last_verified: 'אימות אחרון',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

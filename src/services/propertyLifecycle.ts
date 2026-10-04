@@ -38,3 +38,19 @@ export async function setPropertyAvailability(propertyId: string, available: boo
   const { error } = await supabase.rpc('set_property_availability', { p_property_id: propertyId, p_available: available });
   if (error) throw new Error(error.message);
 }
+
+/**
+ * Re-read the property's still-live source listing and merge any photos the
+ * first import missed (import-property, refreshPropertyId). Same property id;
+ * existing photos and owner uploads are kept.
+ */
+export async function refreshPropertyMedia(propertyId: string): Promise<{ refreshed: boolean; stored: number; sourcePhotos: number | null; reason?: string }> {
+  const { data, error } = await supabase.functions.invoke('import-property', { body: { refreshPropertyId: propertyId } });
+  if (error || !data?.success) throw new Error(error?.message ?? String(data?.error_code ?? 'refresh failed'));
+  return {
+    refreshed: Boolean(data.refreshed),
+    stored: Number(data.stored ?? 0),
+    sourcePhotos: data.sourcePhotos != null ? Number(data.sourcePhotos) : null,
+    reason: data.reason ? String(data.reason) : undefined,
+  };
+}

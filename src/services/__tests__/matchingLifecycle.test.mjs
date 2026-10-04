@@ -107,10 +107,12 @@ test('pausing reports failure instead of claiming a pause that did not happen', 
     const page = fs.readFileSync(path.join(ROOT, 'src', 'pages', 'property', p), 'utf8');
     const handler = page.slice(page.indexOf('pauseMatchingCampaign(propertyId'));
     assert.match(handler.slice(0, 700), /matches_pause_error/, `${p} must surface a failed pause`);
-    // The active flag must not be cleared on the failure path — the campaign is
-    // still running and still spending credits.
+    // Nothing claims a pause the server did not record: the page re-reads the
+    // server's lifecycle (PAUSING → PAUSED) instead of setting a local flag, and
+    // no "paused" toast is shown on the success path.
     const success = handler.slice(0, handler.indexOf('catch'));
-    assert.match(success, /set(Campaign)?Active\(false\)/);
+    assert.doesNotMatch(success, /set(Campaign)?Active\(false\)|matches_paused_toast/);
+    assert.match(handler.slice(0, 900), /await refresh(Status)?\(\)/, `${p} re-reads the server state after pausing`);
   }
 });
 

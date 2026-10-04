@@ -400,7 +400,7 @@ test('the pulsing campaign banner and the publication CTAs are deferred, not del
      a result the campaign already found. */
   assert.ok(page.includes('DeeperSearchPanel'),
     'Expand Search must not be caught up in the deferral');
-  assert.ok(page.includes('MatchingJobProgress'),
+  assert.ok(page.includes('<LiveSearchModule'),
     'live job progress must not be caught up in the deferral');
 });
 

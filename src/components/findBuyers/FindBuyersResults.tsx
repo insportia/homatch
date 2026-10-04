@@ -1,64 +1,66 @@
 // Potential buyers / tenants from public conversations, for one property.
 // Strongest first; one card per person (several signals fold into one lead).
-// The empty state promises nothing: it says what happened and what a larger
-// budget would do.
+// Server pages in a stable order. While a search runs, new leads never
+// reshuffle the page being read: a banner offers them instead (unless the
+// list is still empty, then they simply appear).
 
-import React, { useCallback, useEffect, useState } from 'react';
-import { CalendarCheck2, Radar, Users } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { CalendarCheck2, RefreshCw, Sparkles, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { GOLD_FILL, GOLD_TEXT, NAVY_BAND } from '@/components/findBuyers/brand';
 import { PotentialBuyerCard } from '@/components/findBuyers/PotentialBuyerCard';
-import { getLatestCampaignState, getPropertyLeads, type PotentialLead } from '@/services/findBuyers';
+import { PageNav } from '@/components/findBuyers/PageNav';
+import { getPropertyLeadsPage, type PotentialLead } from '@/services/findBuyers';
+import { arrivalAction } from '@/findBuyers/campaignView';
+
+export const LEADS_PAGE_SIZE = 9;
 
 export function FindBuyersResults({
-  propertyId,
-  counterpart,
-  refreshKey,
-  searching,
-  onCount,
+  propertyId, counterpart, liveSignal, page, onPage, onCount,
 }: {
   propertyId: string;
   counterpart: 'BUYER' | 'TENANT' | null;
-  refreshKey: number;
-  searching: boolean;
+  /** Grows when the server reports new leads (status.campaign.newLeads); null until the first read. */
+  liveSignal: number | null;
+  page: number;
+  onPage: (p: number) => void;
   onCount?: (n: number) => void;
 }) {
   const { t } = useLanguage();
-  const [leads, setLeads] = useState<PotentialLead[] | null>(null);
-  const [finishedEmpty, setFinishedEmpty] = useState(false);
+  const [rows, setRows] = useState<PotentialLead[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [pending, setPending] = useState(false);
+  /* The first server read is the baseline, not an arrival. */
+  const seenSignal = useRef<number | null>(liveSignal);
+  const topRef = useRef<HTMLElement | null>(null);
 
-  const load = useCallback(async () => {
-    const rows = await getPropertyLeads(propertyId);
-    setLeads(rows);
-    onCount?.(rows.length);
-    if (!rows.length && !searching) {
-      const last = await getLatestCampaignState(propertyId).catch(() => null);
-      setFinishedEmpty(Boolean(last?.finalized_at));
-    } else setFinishedEmpty(false);
-  }, [propertyId, searching, onCount]);
+  const load = useCallback(async (p: number) => {
+    const res = await getPropertyLeadsPage(propertyId, p, LEADS_PAGE_SIZE);
+    setRows(res.rows);
+    setTotal(res.total);
+    onCount?.(res.total);
+    setPending(false);
+  }, [propertyId, onCount]);
 
-  useEffect(() => { void load(); }, [load, refreshKey]);
+  useEffect(() => { void load(page); }, [load, page]);
+
+  /* New leads reported by the live search. */
+  useEffect(() => {
+    if (liveSignal === null || liveSignal === seenSignal.current) return;
+    if (seenSignal.current === null) { seenSignal.current = liveSignal; return; }
+    const action = arrivalAction(rows?.length ?? 0, seenSignal.current, liveSignal);
+    seenSignal.current = liveSignal;
+    if (action === 'auto') void load(page);
+    else if (action === 'offer') setPending(true);
+  }, [liveSignal, rows, load, page]);
 
   const tenant = counterpart === 'TENANT';
-  if (leads === null) return null;
-  if (!leads.length) {
-    if (!finishedEmpty) return null;
-    return (
-      <section className={cn('relative overflow-hidden rounded-2xl px-6 py-10 text-center text-white ring-1 ring-inset ring-[hsl(40_80%_55%/0.35)]', NAVY_BAND)}>
-        <span className={cn('mx-auto flex h-14 w-14 items-center justify-center rounded-2xl shadow-[0_10px_26px_-10px_hsl(38_92%_50%/0.8)]', GOLD_FILL)}>
-          <Radar className="h-7 w-7 text-[hsl(218_52%_11%)]" aria-hidden="true" />
-        </span>
-        <p className="mt-4 font-display text-lg font-semibold">{t(tenant ? 'fbx_empty_title_tenants' : 'fbx_empty_title_buyers')}</p>
-        <p className="mx-auto mt-1.5 max-w-lg text-sm leading-relaxed text-[hsl(218_40%_85%)]">{t('fbx_empty_body')}</p>
-        <p className="mx-auto mt-3 inline-flex items-center gap-1.5 rounded-full bg-white/5 px-3 py-1 text-2xs text-[hsl(218_40%_85%)] ring-1 ring-inset ring-white/10">
-          <CalendarCheck2 className={cn('h-3.5 w-3.5', GOLD_TEXT)} aria-hidden="true" />{t('fbx_fresh_rule')}
-        </p>
-      </section>
-    );
-  }
+  if (rows === null || (rows.length === 0 && total === 0)) return null;
+  const totalPages = Math.max(1, Math.ceil(total / LEADS_PAGE_SIZE));
+
   return (
-    <section aria-labelledby="fbx-results-title" className="space-y-3">
+    <section ref={topRef} aria-labelledby="fbx-results-title" className="space-y-3">
       <div className="flex flex-wrap items-center gap-2.5">
         <span className={cn('flex h-9 w-9 items-center justify-center rounded-xl shadow-[0_6px_16px_-8px_hsl(38_92%_45%/0.8)]', GOLD_FILL)}>
           <Users className="h-[18px] w-[18px] text-[hsl(218_52%_11%)]" aria-hidden="true" />
@@ -66,14 +68,24 @@ export function FindBuyersResults({
         <h2 id="fbx-results-title" className="font-display text-base font-semibold text-[hsl(218_45%_14%)]">
           {t(tenant ? 'fbx_results_title_tenants' : 'fbx_results_title_buyers')}
         </h2>
-        <span className={cn('inline-block rounded-full px-2.5 py-0.5 text-2xs font-bold tabular-nums', NAVY_BAND, GOLD_TEXT)}>{leads.length}</span>
+        <span className={cn('inline-block rounded-full px-2.5 py-0.5 text-2xs font-bold tabular-nums', NAVY_BAND, GOLD_TEXT)}>{total}</span>
         <span className="inline-flex items-center gap-1 rounded-full bg-[hsl(42_100%_94%)] px-2.5 py-0.5 text-2xs font-semibold text-[hsl(34_90%_32%)] ring-1 ring-inset ring-[hsl(40_80%_78%)]">
           <CalendarCheck2 className="h-3.5 w-3.5" aria-hidden="true" />{t('fbx_fresh_badge')}
         </span>
       </div>
+      {pending && (
+        <button type="button" onClick={() => { onPage(1); void load(1); topRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }}
+          className={cn('flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white ring-1 ring-inset ring-[hsl(40_80%_55%/0.5)]', NAVY_BAND)}
+          role="status">
+          <Sparkles className={cn('h-4 w-4', GOLD_TEXT)} aria-hidden="true" />
+          <span>{t('fbl_new_results_banner')}</span>
+          <RefreshCw className="h-4 w-4 opacity-80" aria-hidden="true" />
+        </button>
+      )}
       <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
-        {leads.map((lead) => <PotentialBuyerCard key={lead.id} lead={lead} propertyId={propertyId} />)}
+        {rows.map((lead) => <PotentialBuyerCard key={lead.id} lead={lead} propertyId={propertyId} />)}
       </div>
+      <PageNav page={Math.min(page, totalPages)} totalPages={totalPages} onPage={onPage} label={t('fbl_leads_pages')} />
     </section>
   );
 }

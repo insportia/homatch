@@ -18,6 +18,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
+import { matchDetailRows } from './propertyFixture.mjs';
 
 const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
@@ -101,7 +102,24 @@ const LEADS = [
   }),
 ];
 
-async function boot(t, { width = 1440, height = 900, lang = 'en', admin = false } = {}) {
+const STATUS_SEARCHING = {
+  readiness: { ready: true, reason: null, sources: ['FACEBOOK', 'VK'] },
+  campaign: {
+    jobId: 'job1', campaignId: 'c1', state: 'PARTIAL_RESULTS', stage: null, active: true, createdAt: ago(0.01), startedAt: ago(0.01),
+    completedAt: null, pausedAt: null, lastActivityAt: ago(0.001), transaction: 'SALE', languages: ['ka', 'ru', 'en', 'ar', 'he', 'tr'],
+    queue: { total: 9, queued: 3, running: 4, done: 2, failed: 0, cancelled: 0, paused: 0 }, runs: { inFlight: 4, succeeded: 2, failed: 0 },
+    sources: [
+      { source: 'FACEBOOK', state: 'RUNNING', total: 5, running: 3, queued: 1, done: 1, failed: 0, results: 2 },
+      { source: 'VK', state: 'RUNNING', total: 3, running: 1, queued: 1, done: 1, failed: 0, results: 1 },
+      { source: 'REDDIT', state: 'QUEUED', total: 1, running: 0, queued: 1, done: 0, failed: 0, results: 0 },
+    ],
+    signalsAnalyzed: 38, staleSkipped: 6, duplicatesRemoved: 2, newResults: 3, newLeads: 3, newMatches: 0, strong: 1, executed: true, failureReason: null,
+  },
+};
+const withState = (state, over = {}) => ({ ...STATUS_SEARCHING, campaign: { ...STATUS_SEARCHING.campaign, state, ...over } });
+const MATCHES = matchDetailRows(30, PROPERTY_ID).map((m) => ({ ...m, demand_published_at: ago(3) }));
+
+async function boot(t, { width = 1440, height = 900, lang = 'en', admin = false, status = STATUS_SEARCHING, matches = [] } = {}) {
   const { chromium } = resolvePlaywright();
   const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
@@ -114,6 +132,7 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', admin = false 
   if (process.env.FB_DEBUG) page.on('console', (m) => { if (m.type() === 'error') console.log('CONSOLE', m.text().slice(0, 400)); });
   if (process.env.FB_DEBUG) page.on('pageerror', (e) => console.log('PAGEERROR', e.message, e.stack?.split('\n').slice(0, 3).join(' | ')));
   const translateCalls = [];
+  const matchRequests = [];
   const json = (b, status = 200) => ({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(b) });
   await page.route('**', async (r) => {
     const req = r.request();
@@ -129,7 +148,22 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', admin = false 
     /* The other admin panels answer with an honest error: this suite covers Find Buyers only. */
     if (url.includes('/rpc/admin_discovery_')) return r.fulfill(json({ message: 'not in this fixture' }, 400));
     if (url.includes('/rest/v1/properties')) return r.fulfill(json(wantsObject ? property : [property]));
-    if (url.includes('/rest/v1/find_buyers_leads')) return r.fulfill(json(LEADS));
+    if (url.includes('/rest/v1/find_buyers_leads')) {
+      return r.fulfill({ ...json(LEADS), headers: { 'access-control-allow-origin': '*', 'access-control-expose-headers': 'content-range', 'content-range': `0-${LEADS.length - 1}/${LEADS.length}` } });
+    }
+    if (url.includes('/rpc/find_buyers_campaign_status')) return r.fulfill(json(status));
+    if (url.includes('/rest/v1/matches')) {
+      /* Server pages: honour offset/limit (or Range) and report the total. */
+      matchRequests.push(url);
+      const u = new URL(url);
+      const history = (u.searchParams.get('or') ?? '').includes('is.null');
+      const rows = history ? [] : matches;
+      const offset = Number(u.searchParams.get('offset') ?? 0);
+      const limit = Number(u.searchParams.get('limit') ?? rows.length);
+      const page = rows.slice(offset, offset + limit);
+      return r.fulfill({ ...json(page), headers: { 'access-control-allow-origin': '*', 'access-control-expose-headers': 'content-range',
+        'content-range': rows.length ? `${offset}-${offset + page.length - 1}/${rows.length}` : `*/0` } });
+    }
     if (url.includes('/rpc/find_buyers_public_config')) return r.fulfill(json({ minUsd: 10, creditsPerUsd: 10, minCredits: 100 }));
     if (url.includes('/functions/v1/match-campaign')) {
       const body = JSON.parse(req.postData() ?? '{}');
@@ -142,7 +176,7 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', admin = false 
     if (url.includes('/rest/v1/')) return r.fulfill(json(wantsObject ? {} : []));
     return r.fulfill(json({}));
   });
-  return { page, translateCalls };
+  return { page, translateCalls, matchRequests };
 }
 
 async function open(page) {
@@ -214,7 +248,8 @@ test('1440px and 390px, six locales: cards render, RTL for ar/he, no horizontal 
 const CENTER = {
   generated_at: new Date().toISOString(), window_days: 30, switches: { find_buyers_social_enabled: false },
   overview: { campaigns: 2, credits_committed: 200, customer_value_micros: 20000000, revenue_micros: 13400000, provider_micros: 4100000, ai_micros: 23000, translation_micros: 1200, other_micros: 0, qualified_leads: 9, strong_leads: 3 },
-  campaigns: [{ matching_job_id: 'job1', transaction: 'SALE', credits_committed: 100, credits_per_usd: 10, credits_charged: 67, revenue_micros: 6700000, customer_value_micros: 10000000, provider_budget_micros: 5000000, reserved_micros: 0, provider_micros: 2100000, ai_micros: 11000, translation_micros: 600, other_micros: 0, total_cogs_micros: 2111600, leads: 5, strong: 2, job_status: 'completed', created_at: ago(1), last_activity_at: ago(1) }],
+  campaigns: [{ matching_job_id: 'job1', transaction: 'SALE', credits_committed: 100, credits_per_usd: 10, credits_charged: 67, revenue_micros: 6700000, customer_value_micros: 10000000, provider_budget_micros: 5000000, reserved_micros: 0, provider_micros: 2100000, ai_micros: 11000, translation_micros: 600, other_micros: 0, total_cogs_micros: 2111600, leads: 5, strong: 2, job_status: 'completed', created_at: ago(1), last_activity_at: ago(1),
+    lifecycle: { state: 'COMPLETED_WITH_RESULTS', queue: { queued: 0, running: 0, done: 9, failed: 1, paused: 0 }, runs: { inFlight: 0 }, signalsAnalyzed: 412, newResults: 5 } }],
   actors: [{ actor_key: 'FB_COMMENTS', actor_id: 'memo23~facebook-comments-scraper', source: 'FACEBOOK', purpose: 'COMMENTS', role: 'PRIMARY', enabled: true, emergency_disabled: false, health: 'HEALTHY', pricing_model: 'PAY_PER_RESULT', price_per_1k_micros: 500000, start_fee_micros: 0, pricing_verified_at: ago(2), priority: 85, max_results: 100, probe_size: 20, timeout_seconds: 300, retry_cap: 1, concurrency: 2, daily_spend_cap_micros: 5000000, campaign_spend_cap_micros: 2000000, runs: 12, succeeded: 11, failed: 1, results_billed: 640, useful_results: 210, qualified_leads: 7, strong_leads: 3, spend_micros: 320000, latency_p50_ms: 41000, last_run_at: ago(0.1), last_error: 'RUN_TIMED-OUT' }],
   sources: [{ id: 's', platform: 'FACEBOOK', name: 'Квартиры в Тбилиси — аренда и продажа без посредников', url: 'https://www.facebook.com/groups/1', city: 'Tbilisi', languages: ['ru'], member_count: 48210, first_discovered: ago(5), last_checked_at: ago(1), posts_observed: 120, fb_spend_micros: 900000, fb_qualified_leads: 4, cost_per_qualified_micros: 225000, access_state: 'PUBLIC', lifecycle: 'DISCOVERED' }],
   languages: ['ka', 'ru', 'en', 'ar', 'he', 'tr'].map((lang, i) => ({ lang, spend_micros: 100000 * i, signals: 10 * i, qualified: i, strong: i > 3 ? 1 : 0 })),
@@ -246,4 +281,79 @@ test('admin Find Buyers control center: every tab renders at 1440px and 390px (e
     }
   }
   assert.deepEqual(failures, []);
+});
+
+test('live search module: server state, real source nodes only, real counts, the one control that fits', opts, async (t) => {
+  const { page } = await boot(t);
+  await open(page);
+  await page.waitForSelector('text=Buyer budget', { timeout: 15000 });
+  const main = await page.textContent('main');
+  assert.match(main, /Searching — first results are in/);
+  assert.match(main, /sources working/);
+  assert.match(main, /signals analysed/);
+  assert.match(main, /Saved results/, 'stored results are their own section');
+  const net = await page.getAttribute('svg[role="img"][aria-label^="Live search network"]', 'aria-label');
+  assert.equal(net, 'Live search network. Sources: FACEBOOK, VK, REDDIT', 'only sources the campaign queued');
+  assert.equal(await page.getByRole('button', { name: 'Pause search' }).count(), 1);
+  assert.equal(await page.getByRole('button', { name: 'Continue search' }).count(), 0);
+  assert.doesNotMatch(main, /75%/, 'no invented percentage');
+  assert.doesNotMatch(main, /New matches are in/, 'the first server read is a baseline, not an arrival');
+  assert.match(main, /Buyer budget/, 'the search profile is derived from the property facts');
+  assert.match(main, /2 bedrooms/, 'the real bedroom count, never a stale "1+"');
+  /* Scrolled away: a compact status entry stays reachable. */
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await page.waitForSelector('text=3 new matches', { timeout: 5000 });
+});
+
+test('pause states: PAUSING says runs are finishing (no pause button), PAUSED offers continue', opts, async (t) => {
+  for (const [state, expectText, button] of [['PAUSING', /Pausing the search/, 'Pausing…'], ['PAUSED', /Search is paused/, 'Continue search']]) {
+    const { page } = await boot(t, { status: withState(state, state === 'PAUSED' ? { runs: { inFlight: 0, succeeded: 2, failed: 0 } } : {}) });
+    await open(page);
+    const main = await page.textContent('main');
+    assert.match(main, expectText);
+    assert.equal(await page.getByRole('button', { name: 'Pause search' }).count(), 0, `${state}: no pause button`);
+    assert.ok(await page.getByRole('button', { name: button }).count() >= 1, `${state}: ${button}`);
+    if (state === 'PAUSING') assert.match(main, /no new source will start/);
+    await page.context().close();
+  }
+});
+
+test('a search that could not start never reads as "finished, 0 results"; launch is disabled while not ready', opts, async (t) => {
+  const status = { readiness: { ready: false, reason: 'DISCOVERY_SWITCHED_OFF', sources: [] },
+    campaign: { ...STATUS_SEARCHING.campaign, state: 'UNAVAILABLE', active: false, sources: [], executed: false, newResults: 0, newLeads: 0,
+      queue: { total: 0, queued: 0, running: 0, done: 0, failed: 0, cancelled: 0, paused: 0 }, runs: { inFlight: 0, succeeded: 0, failed: 0 } } };
+  const { page } = await boot(t, { status });
+  await open(page);
+  const main = await page.textContent('main');
+  assert.match(main, /The search could not start/);
+  assert.doesNotMatch(main, /Search finished — no new active demand/);
+  assert.match(main, /discovery sources are not switched on yet/);
+  assert.equal(await page.getByRole('button', { name: 'Find Buyers' }).first().isDisabled(), true);
+});
+
+test('numbered server pages: page 2 is a server request, kept in the URL, Back returns to page 1', opts, async (t) => {
+  const { page, matchRequests } = await boot(t, { matches: MATCHES, status: withState('COMPLETED_WITH_RESULTS', { active: false }) });
+  await open(page);
+  await page.waitForSelector('nav[aria-label="Match pages"]');
+  assert.equal(await page.locator('nav[aria-label="Match pages"] [aria-current="page"]').textContent(), '1');
+  await page.getByRole('button', { name: 'Page 2' }).click();
+  await page.waitForFunction(() => new URLSearchParams(location.search).get('page') === '2');
+  await page.waitForFunction(() => document.querySelector('nav[aria-label="Match pages"] [aria-current="page"]')?.textContent === '2');
+  assert.ok(matchRequests.some((u) => /offset=12/.test(u)), 'page 2 asked the server for offset 12');
+  await page.goBack();
+  await page.waitForFunction(() => !new URLSearchParams(location.search).get('page'));
+  assert.doesNotMatch(await page.textContent('main'), /Show more|მეტის ჩვენება/);
+});
+
+test('an Arabic excerpt reads right-to-left inside a left-to-right card (Georgian UI stays LTR)', opts, async (t) => {
+  const { page } = await boot(t, { lang: 'ka' });
+  await open(page);
+  const dirs = await page.evaluate((txt) => {
+    const q = [...document.querySelectorAll('blockquote')].find((b) => b.textContent?.includes(txt.slice(0, 12)));
+    const card = q?.closest('article');
+    return { quote: q ? getComputedStyle(q.querySelector('bdi') ?? q).direction : null, card: card ? getComputedStyle(card).direction : null, html: document.documentElement.dir };
+  }, AR_TEXT);
+  assert.equal(dirs.card, 'ltr');
+  assert.equal(dirs.html, 'ltr');
+  assert.equal(dirs.quote, 'rtl');
 });

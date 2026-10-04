@@ -28,6 +28,11 @@ function token(): string {
   return t;
 }
 
+/** Is the provider credential present? (Readiness only; the token itself never leaves this file.) */
+export function providerConfigured(): boolean {
+  return Boolean(Deno.env.get('APIFY_API_TOKEN'));
+}
+
 /** memo23~name or memo23/name; nothing else may be executed. */
 export function assertMemo23ActorId(actorId: string): string {
   const id = String(actorId ?? '').trim().replace('/', '~');

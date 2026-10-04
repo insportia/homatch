@@ -18,7 +18,7 @@ const walk = (dir, out = []) => {
 
 const CARD = read('src/components/findBuyers/PotentialBuyerCard.tsx');
 const BRAND = read('src/components/findBuyers/brand.tsx');
-const PANEL = read('src/components/findBuyers/FindBuyersCampaignPanel.tsx');
+const PANEL = read('src/components/findBuyers/LiveSearchModule.tsx');
 const RESULTS = read('src/components/findBuyers/FindBuyersResults.tsx');
 const SERVICE = read('src/services/findBuyers.ts');
 const PIPELINE = read('supabase/functions/_shared/findBuyers/pipeline.ts');
@@ -128,4 +128,61 @@ test('memo23 jobs run through a bounded pool with a global run cap (no batch of 
   assert.match(SLOTS, /value ->> 'APIFY_MEMO23'\)::int from public\.admin_settings\s+where key = 'discovery_provider_concurrency'\), 4\)/);
   assert.match(SLOTS, /'reason', 'GLOBAL_BUSY', 'retry', true/);
   assert.doesNotMatch(SLOTS, /update public\.admin_settings|insert into public\.admin_settings/, 'the cap is not changed by this migration');
+});
+
+test('A/X. readiness is checked before any credit is reserved; zero executable work never settles a charge', () => {
+  const gate = MATCH.indexOf('const readiness = await discoveryReadiness(db, discovery, findBuyers);');
+  const reserve = MATCH.indexOf('const grant = await beginExecution(db, {');
+  assert.ok(gate > 0 && reserve > 0 && gate < reserve, 'readiness gate precedes beginExecution');
+  assert.match(MATCH, /reasonCode: 'DISCOVERY_UNAVAILABLE',\s+readinessReason: readiness\.reason,\s+\}, 409\)/);
+  /* After planning: nothing external queued and nothing found → released, failed/DISCOVERY_UNAVAILABLE. */
+  const unavailable = MATCH.slice(MATCH.indexOf("if (outcomeWithoutExternalWork(freshFromInternal) === 'UNAVAILABLE') {"));
+  assert.ok(unavailable.length > 0);
+  const block = unavailable.slice(0, unavailable.indexOf("await event(db, jobId!, sourcesAvailable ? 'SOURCE_DISCOVERY_NOT_NEEDED'"));
+  assert.match(block, /failCampaignJob\(db, \{[\s\S]*?\}, grant, 'DISCOVERY_UNAVAILABLE'/);
+  assert.doesNotMatch(block, /finalizeCampaignJob|settleExecution/, 'the unavailable path never settles');
+  assert.match(block, /creditsCharged: 0/);
+  assert.match(RUN, /if \(grant\) await releaseExecution\(db, grant, reason\.toLowerCase\(\)\)/, 'failCampaignJob releases the whole reservation');
+});
+
+test('L. a paused search is still the property\'s search: no second campaign or reservation beside it', () => {
+  const block = MATCH.slice(MATCH.indexOf('ONE RUNNING SEARCH PER PROPERTY'), MATCH.indexOf('const discovery = await loadDiscoverySettings(db);'));
+  assert.match(block, /'classifying', 'ranking', 'paused'\]/);
+  assert.match(block, /alreadyRunning: true/);
+});
+
+test('lifecycle truth migration: one state derivation, PAUSING polls, truthful notices', () => {
+  const L = read('supabase/migrations/20261016090000_find_buyers_lifecycle_truth.sql');
+  assert.match(L, /create or replace function public\.find_buyers_job_state\(p_job_id uuid\)/);
+  assert.match(L, /when not v_executed then 'UNAVAILABLE'/, 'no work ran → never completed-zero');
+  assert.match(L, /or \(j\.status::text = 'paused' and upper\(coalesce\(q\.provider, ''\)\) = 'APIFY_MEMO23'\s+and nullif\(q\.metadata ->> 'actorRunId', ''\) is not null\)\)/);
+  assert.match(L, /and not \(upper\(coalesce\(provider, ''\)\) = 'APIFY_MEMO23' and nullif\(metadata ->> 'actorRunId', ''\) is not null\)/);
+  assert.match(L, /'ძებნა ამ ეტაპზე ვერ დაიწყო'/);
+  assert.match(L, /'ძებნა დასრულდა — ამ ეტაპზე ახალი აქტიური მოთხოვნა ვერ მოიძებნა'/);
+  assert.match(L, /'მყიდველების ძებნა დაიწყო'/);
+  assert.match(L, /'პირველი შესაბამისობები უკვე ვიპოვეთ'/);
+  assert.doesNotMatch(L, /update public\.admin_settings|insert into public\.admin_settings/, 'no switch or setting changes');
+  assert.match(L, /revoke all on function public\.find_buyers_job_state\(uuid\) from public, anon, authenticated;/);
+});
+
+test('owner screens read the server lifecycle, never infer it from stored matches', () => {
+  const PAGE = read('src/pages/property/MatchesPage.tsx');
+  const DETAIL = read('src/pages/property/PropertyDetailPage.tsx');
+  for (const src of [PAGE, DETAIL]) {
+    assert.match(src, /useCampaignStatus\(/);
+    assert.doesNotMatch(src, /MatchingJobProgress/, 'the old client-derived progress widget is gone');
+  }
+  assert.doesNotMatch(PAGE, /matches_load_more/, 'numbered pages, no "show more"');
+  assert.match(PAGE, /getMatchesPaged\(propertyId, \{ page: matchPage/);
+  assert.doesNotMatch(DETAIL, /initialActive=\{property\.matching_status === 'ACTIVE'\}/);
+  assert.doesNotMatch(read('src/components/findBuyers/DiscoverySnake.tsx'), /setInterval|Math\.random/, 'the network animates server facts, no scripted loop');
+});
+
+test('T/W. the importer keeps every listing photo and records media health', () => {
+  const IMP = read('supabase/functions/import-property/index.ts');
+  assert.doesNotMatch(IMP, /slice\(0,\s*5\)/, 'no five-photo cap on an external gallery');
+  assert.match(IMP, /extractListingMedia\(html, \{ listingId: listingIdForMedia \|\| null/);
+  assert.match(IMP, /photos_candidates: media\.candidates/);
+  assert.match(IMP, /const merged = mergeGallery\(existing, facts\.gallery_images \?\? \[\]\);/);
+  assert.doesNotMatch(IMP.slice(IMP.indexOf('MEDIA REFRESH OF AN EXISTING PROPERTY')), /from\('property_photos'\)\.(delete|update|insert)/, 'owner uploads are never touched');
 });

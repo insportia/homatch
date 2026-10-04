@@ -338,7 +338,7 @@ export function SourceQuote({ text, label }: { text: string; label: string }) {
           than the same line upright, and the start-edge rule already says "this is
           somebody else's text". dir="auto" so a Latin excerpt inside an RTL page takes
           its own direction. */}
-      <p dir="auto" className="mt-0.5 line-clamp-1 text-2xs text-foreground/90">
+      <p dir="auto" className="mt-0.5 line-clamp-1 text-start text-2xs text-foreground/90 [unicode-bidi:plaintext]">
         {text}
       </p>
     </div>

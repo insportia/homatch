@@ -952,7 +952,7 @@ Base: main `53489d04` (PR #68 live: design-studio-reconstruct v22). Scope: front
 - Customer billing stays off; cost lines OPENAI_SCENE_PLAN / RUNPOD_GPU / STORAGE are internal.
 - REFERENCE-LOCKED reconstruction ("step inside this image", 2026-10-04): a walkthrough created with a `render_id` treats that READY render as the visual ground truth. PLAN loads its bytes (sha256 → `timings.reference` provenance: referenceImageId, referenceAssetKey, referenceImageSha256, sourceDesignVersionId, generationJobId, sceneMapJobId, aspect, view ROOM/MASTER) and sends it as `input_image` with its SCENE_MAP (the generation-time scene DNA) to OpenAI → `ds-scene-plan-2` (per piece basis OBSERVED/STRONGLY_INFERRED/INFERRED/UNKNOWN, real size, imagePx, zone, importance, referenceLocked; reference room + camera, ROOM or HOME frame). Anchors are locked in build.ts (nudge ≤ `anchorLock`, then small scale, then ≤ 20° turn; never relocated room-wide or dropped for decor/density). `walkthrough/fidelity.ts` gates the build: NOT_WALKABLE, REFERENCE_OBJECT_MISSING / LAYOUT / ZONE / SCALE / CAMERA_MISMATCH, OVER/UNDERFURNISHED (corner clusters fail even when walkable). One automatic replan (second plan attempt, told the findings), then FAILED; manual retry of a REFERENCE_* failure re-plans. SUBMIT renders the reference view (factory `outputs.render`, camera from the plan); PROCESS runs one vision check (`REFERENCE_QA_SYSTEM`, QA_SCHEMA) — gross failures fail, an unavailable check is recorded as such (`plan_report.visualQa`), never as a pass. Plan cache key `timings.planKey` = (picture sha, spec job, version, source); `reusePlanFrom` refuses a plan made for another picture. No migration (jsonb only). Walkthroughs without `render_id` keep the specification plan (`ds-scene-plan-1`) unchanged.
 
-## Find Buyers / Find Tenants — memo23 social intelligence (branch `claude/nifty-hopper-snzn2d`, 2026-10-04) — NOT merged, NOT deployed
+## Find Buyers / Find Tenants — memo23 social intelligence (2026-10-04) — merged #102, #106; migrations 20261014090000/100000/20261015090000 applied
 
 - Owner reversed the Apify retirement for memo23 Actors only (provider `APIFY_MEMO23`); generic APIFY stays retired.
 - Map + activation order: docs/claude/PHASE2_DISCOVERY.md § Find Buyers / Find Tenants.
@@ -965,3 +965,22 @@ Base: main `53489d04` (PR #68 live: design-studio-reconstruct v22). Scope: front
 - Premium navy/gold UI (cards, live panel, launch, Matches rail); DB audit + code review findings fixed.
 - OWNER-ONLY LIVE TEST: Claude never runs a paid discovery. Deployed state = switches OFF, Actors disabled,
   awaiting the owner's first real campaign (whose results are preserved as normal production data).
+
+### Find Buyers lifecycle truth + UX consolidation (2026-10-04, after the owner's first live test)
+
+- Production case: campaign ee2f0b74 / job 693e6d75 finished 220 ms after creation with 0 queue jobs and
+  0 actor runs (find_buyers_social_enabled=false, 0 actors enabled/verified, campaign_source_discovery_enabled=false),
+  settled 25 credits for internal matching only and notified "Your client search finished: 0 new matches".
+- Fix (migration `20261016090000_find_buyers_lifecycle_truth.sql` + match-campaign + UI): readiness gate before any
+  reservation (409 DISCOVERY_UNAVAILABLE); planning that queues nothing and finds nothing → failed/DISCOVERY_UNAVAILABLE,
+  reservation released; ONE server state derivation `find_buyers_job_state` (owner: `find_buyers_campaign_status`,
+  admin: center `lifecycle`); pause = PAUSING (started memo23 runs still polled/booked) → PAUSED; notifications
+  follow the lifecycle (localised); paused counted in one-search-per-property.
+- Owner UI: live search module (server-driven Snake network, real counts, pause/pausing/resume), search DNA from facts,
+  stored results separated from live search, numbered server pages (URL state), no-reshuffle arrivals, status pill;
+  property page discovery/info redesign; listing-quality panel (photos counted, new_build bug fixed).
+- Media: importer keeps every listing photo (no 5-cap on external galleries; `src/import/listingMedia.ts`), records
+  media health (photos_candidates), and `refreshPropertyId` merges a live source gallery into an existing property
+  (owner/admin; owner uploads untouched). The owner page auto-refreshes once when an imported property holds ≤1 photo.
+- Open owner decision: the 25 credits settled by the failed 693e6d75 campaign (reservation 1a7b4d83) — refund needs
+  explicit owner confirmation (money movement).

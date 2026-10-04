@@ -214,6 +214,14 @@ test('the core is consumed only through its deliberate integration points', () =
     'supabase/functions/_shared/findBuyers/executor.ts',
     'supabase/functions/_shared/findBuyers/pipeline.ts',
     'supabase/functions/_shared/findBuyers/translate.ts',
+    /* Launch readiness: the pure decideReadiness rule (research-core/findBuyers/readiness). */
+    'supabase/functions/_shared/findBuyers/readiness.ts',
+    /*
+     * The one UI seam onto the Find Buyers core: owner screens show what a search
+     * looks for through the same Property DNA the search uses. Components import
+     * this seam, never the core.
+     */
+    'src/findBuyers/searchDna.ts',
     'supabase/functions/atomic-unlock/index.ts',
     'supabase/functions/classify-signals-v2/index.ts',
     'src/matching/currentDemand.ts',

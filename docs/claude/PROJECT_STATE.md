@@ -960,4 +960,8 @@ Base: main `53489d04` (PR #68 live: design-studio-reconstruct v22). Scope: front
   (`bash tests/sql/run-find-buyers.sh`), NOT applied. Everything inert until applied + deployed + switched on.
 - Credit rate unchanged (10 credits = $1): the $10 minimum is 100 credits (`find_buyers_min_usd` × `credits_per_usd`).
   The brief's "1,000 credits = $10" would need `credits_per_usd` = 100 — a global pricing decision left to the owner.
-- Production proof (a bounded $10 campaign) not run: needs the owner to verify/enable Actors and fund it.
+- Networks: Facebook, Instagram, TikTok, VK, Telegram (fallback), LinkedIn, Reddit, Quora, Bluesky, X, Threads, YouTube.
+- 30-day rule enforced at ingest (older/undated content never stored); shown in the campaign panel.
+- Premium navy/gold UI (cards, live panel, launch, Matches rail); DB audit + code review findings fixed.
+- OWNER-ONLY LIVE TEST: Claude never runs a paid discovery. Deployed state = switches OFF, Actors disabled,
+  awaiting the owner's first real campaign (whose results are preserved as normal production data).

@@ -334,7 +334,26 @@ IG_PROFILE_POSTS `memo23~apify-instagram-profile-scraper`, IG_COMMENTS
 VK_POSTS_COMMENTS `memo23~vk-posts-comments-scraper`, TELEGRAM_CHANNEL
 `memo23~telegram-channel-scraper` (fallback), LINKEDIN_GROUPS
 `memo23~linkedin-search-groups-scraper`, LINKEDIN_POSTS `memo23~linkedin-posts-scraper`.
-All seeded **disabled, price unverified**.
+Added 2026-10-04 (owner): REDDIT `memo23~reddit-scraper` (search last month +
+gated comments), QUORA `memo23~quora-scraper` (questions + answers), BLUESKY
+`memo23~bluesky-scraper` (date-filtered search), X_PROFILE `memo23~twitter-x-scraper`,
+THREADS_PROFILE `memo23~threads-scraper`, YOUTUBE_COMMENTS
+`memo23~youtube-comments-scraper` (the last three on registry sources only).
+All seeded **disabled, price unverified**. memo23 spend books as
+`cost_provider` `APIFY_MEMO23` (migration `20261014090000`, apply first).
+
+**30-day rule at ingest** (`src/research-core/findBuyers/freshness.ts`):
+content older than 30 days, undated or future-dated is dropped before
+persistence, classification or any model call; an undated comment is kept
+only under a dated, fresh parent; every date-capable Actor gets a 30-day
+floor; skipped counts are recorded (`find_buyers_actor_runs.stale_dropped`)
+and shown to the customer.
+
+**Owner-only live test.** No paid discovery is run by Claude for QA. After
+deployment every switch stays OFF and every Actor disabled; the owner
+verifies/enables Actors, switches `find_buyers_social_enabled` on and starts
+the first real campaign. Its results are real production data — persisted
+normally, never wiped or marked as fixtures.
 
 Activation order (each step observable in /admin/discovery → Find Buyers):
 apply the migration → deploy `match-campaign`, `discovery-queue-worker`,

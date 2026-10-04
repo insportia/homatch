@@ -983,3 +983,23 @@ Base: main `53489d04` (PR #68 live: design-studio-reconstruct v22). Scope: front
 - Tests: `src/lib/designStudio/__tests__/tour.test.mjs` (eight-room fixture `tourApartmentDoc`), browser checkpoint
   `QA_ONLY=tour node tests/browser/designStudio.qa.mjs`.
 - Rollback: revert the PR's merge commit (frontend only; no migration, no edge/worker change) → back to main 07091d7.
+
+## Design Studio selected render → spatial design graph (same branch, 2026-10-04) — NOT merged, NOT deployed
+
+- Problem: the selected render (e.g. MASTER 7f9e6825 on 32624177) reached the walkthrough only as a text scene plan;
+  every piece was a generic catalogue/procedural item; visual QA 4/10 UNRELIABLE still became READY.
+- Pipeline now (`design-studio-reconstruct/walkthrough.ts` plan step): `designEvidence.ts` (server-side, private
+  storage via service client, nothing signed or exposed) reads the render's legend + id image (`ds_renders.legend`,
+  `map_key`), the SCENE_MAP job and the source-room provenance → `lib/designStudio/walkthrough/regionAppearance.ts`
+  (per-region colours measured from render pixels through the id image) → `designGraph.ts` buildDesignGraph
+  (architecture from the space = truth; design from spec + scene map + legend + pixels) → graphToBuildPlan →
+  buildWalkthrough → applyGraphLook (semantic design forms, colours, PBR materials resolved from the catalogue) →
+  fidelityOf promotion gate (recall ≥ 0.8, generic ≤ 0.2, material ≥ 0.8, regions ≥ 0.8, walkable).
+- Design forms (browser procedural + Runpod factory parity): SHAKER kitchen, CLUB armchair, TV_WALL, UPHOLSTERED bed,
+  BUILT_IN wardrobe, FLUTED vanity, BORDERED rug. `plan_report.designGraph` stores graph + promotion; the public
+  walkthrough carries `fidelity {promoted, reasons}`; the panel shows `dsx_walk_fidelity_note` when not promoted.
+- Local real-project proof (scratchpad, customer data not committed): before generic 25/25, invented 7, materials 0;
+  after important recall 22/22, generic 0, materials 1.0, regions 1.0, promoted. Pixel measurement and textures
+  unprovable locally (sandbox blocks supabase.co) — needs the production re-run.
+- Owed: deploy design-studio-reconstruct + Runpod worker image; re-run walkthrough on 32624177 (approval required:
+  paid OpenAI plan/QA + Runpod GPU, est ≤ $0.10).

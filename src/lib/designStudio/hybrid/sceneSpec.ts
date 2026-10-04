@@ -50,8 +50,10 @@ export const RUNTIME_KINDS: ReadonlySet<SpecKind> = new Set<SpecKind>([
   'SOFA', 'ARMCHAIR', 'RECLINER', 'TABLE', 'ROUND_TABLE', 'BED', 'RUG', 'PLANT', 'PLANTER', 'CHAIR', 'STOOL',
 ]);
 
-/** The forms a reading names (reconstructRead OBJECT_FORMS). */
-export const SPEC_FORMS = ['STRAIGHT', 'ROUNDED', 'CURVED', 'ROUND', 'OVAL', 'SHELL', 'L_SHAPED', 'U_SHAPED'] as const;
+/** The forms a reading names (reconstructRead OBJECT_FORMS) and a design gives (objectShape DESIGN_FORMS). */
+export const SPEC_FORMS = ['STRAIGHT', 'ROUNDED', 'CURVED', 'ROUND', 'OVAL', 'SHELL', 'L_SHAPED', 'U_SHAPED',
+  // The forms a DESIGN gives a piece (walkthrough/designGraph.ts; built by the factory's furniture.py DESIGN_BUILDERS).
+  'SHAKER', 'CLUB', 'TV_WALL', 'UPHOLSTERED', 'BUILT_IN', 'FLUTED', 'BORDERED'] as const;
 /** The surface patterns a reading or material names (finishTextures SurfacePattern). */
 export const SPEC_PATTERNS = ['WOOD_PLANK', 'WOOD_HERRINGBONE', 'TILE', 'STONE', 'CONCRETE', 'CARPET', 'PAINT', 'FABRIC', 'WOOD_GRAIN', 'LEATHER'] as const;
 

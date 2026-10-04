@@ -97,6 +97,31 @@ function carcass(g: THREE.Group, W: number, H: number, D: number, y0: number, ma
 }
 
 /**
+ * How the fronts of the piece being built are made (a design form sets it for one build): plain slab, a framed
+ * shaker front (a raised frame round a recessed panel), or vertical flutes. Reset after every build.
+ */
+let FRONT_STYLE: 'SLAB' | 'FRAMED' | 'FLUTED' = 'SLAB';
+
+/** The face of a front, in its own style: added to the hinged panel's group so it swings with it. */
+function frontFace(pivot: THREE.Object3D, w: number, h: number, y0: number, xc: number, mat: THREE.Material) {
+  if (FRONT_STYLE === 'FRAMED' && w > 0.14 && h > 0.14) {
+    const rail = Math.min(0.06, w * 0.14);
+    pivot.add(box(w - 0.006, rail, 0.012, xc, y0 + h - rail, -0.026, mat));
+    pivot.add(box(w - 0.006, rail, 0.012, xc, y0, -0.026, mat));
+    pivot.add(box(rail, h - 2 * rail, 0.012, xc - w / 2 + rail / 2 + 0.003, y0 + rail, -0.026, mat));
+    pivot.add(box(rail, h - 2 * rail, 0.012, xc + w / 2 - rail / 2 - 0.003, y0 + rail, -0.026, mat));
+  } else if (FRONT_STYLE === 'FLUTED' && w > 0.1) {
+    const n = Math.max(4, Math.round(w / 0.035));
+    for (let i = 0; i < n; i += 1) {
+      const flute = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, h - 0.02, 8, 1, false, 0, Math.PI), mat);
+      flute.position.set(xc - w / 2 + (w * (i + 0.5)) / n, y0 + h / 2, -0.02);
+      flute.rotation.y = Math.PI / 2;
+      pivot.add(flute);
+    }
+  }
+}
+
+/**
  * A hinged front: a group at the hinge (front edge, one side), the panel
  * hanging off it. `side` -1 hinges on the left (opens +angle), +1 on the right.
  */
@@ -109,7 +134,10 @@ function hingedFront(
   pivot.position.set(side < 0 ? x0 - w / 2 : x0 + w / 2, 0, frontZ);
   const panel = box(w - 0.004, h, 0.02, side < 0 ? w / 2 : -w / 2, y0, -0.01, mat);
   pivot.add(panel);
-  pivot.add(box(0.015, Math.min(0.25, h * 0.3), 0.02, side < 0 ? w - 0.05 : -(w - 0.05), y0 + h * 0.45, -0.03, handle));
+  frontFace(pivot, w - 0.004, h, y0, side < 0 ? w / 2 : -w / 2, mat);
+  if (FRONT_STYLE === 'SLAB') pivot.add(box(0.015, Math.min(0.25, h * 0.3), 0.02, side < 0 ? w - 0.05 : -(w - 0.05), y0 + h * 0.45, -0.03, handle));
+  // A design front: a slim bar pull, standing proud of the frame.
+  else pivot.add(box(0.012, Math.min(0.16, h * 0.22), 0.012, side < 0 ? w - 0.06 : -(w - 0.06), y0 + (h > 1.2 ? h * 0.45 : h - Math.min(0.16, h * 0.22) - 0.06), -0.045, handle));
   g.add(pivot);
   specs.push({ id, kind: 'HINGED', role, axis: 'y', open: side < 0 ? 1.65 : -1.65, durationMs: 650 });
 }
@@ -208,10 +236,21 @@ function mergeStatic(g: THREE.Group) {
 export function buildProcedural(kind: ProceduralKind, asset: CatalogAsset, colors: SlotColors, form: string | null = null): THREE.Group {
   const g = new THREE.Group();
   const specs: InteractionSpec[] = [];
-  const handleMat = material('#8a8d92', 0.35, 0.6);
+  // A design form's hardware is aged brass; a plain piece keeps its brushed steel.
+  const designed = form === 'SHAKER' || form === 'BUILT_IN' || form === 'FLUTED' || form === 'TV_WALL';
+  const handleMat = designed ? material('#b08a55', 0.32, 0.85) : material('#8a8d92', 0.35, 0.6);
+  FRONT_STYLE = form === 'SHAKER' || form === 'BUILT_IN' || form === 'TV_WALL' ? 'FRAMED' : form === 'FLUTED' ? 'FLUTED' : 'SLAB';
+  try {
+    return buildPiece(kind, asset, colors, form, g, specs, handleMat);
+  } finally {
+    FRONT_STYLE = 'SLAB';
+  }
+}
+
+function buildPiece(kind: ProceduralKind, asset: CatalogAsset, colors: SlotColors, form: string | null, g: THREE.Group, specs: InteractionSpec[], handleMat: THREE.Material): THREE.Group {
   const W = asset.widthM;
   const D = asset.depthM;
-  const H = asset.heightM;
+  let H = asset.heightM;
   const c = (slot: string, fallback: string) => colors[slot] ?? fallback;
   const slot = (id: string) => asset.materialSlots.find((s) => s.id === id);
   // One material per slot per piece: every box of the body shares it (fewer state changes, and mergeable).
@@ -260,6 +299,29 @@ export function buildProcedural(kind: ProceduralKind, asset: CatalogAsset, color
       break;
     }
     case 'ARMCHAIR': {
+      if (form === 'CLUB') {
+        // A deep club chair: a low upholstered base, a curved back that wraps into rolled arms, a thick seat
+        // cushion, short tapered wooden legs.
+        const body = mat('body', '#4d5842');
+        const legM = mat('legs', '#4b3022');
+        for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+          const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.014, 0.12, 10), legM);
+          leg.position.set(sx * (W / 2 - 0.08), 0.06, sz * (D / 2 - 0.08));
+          g.add(leg);
+        }
+        g.add(soft(W, 0.22, D, 0, 0.12, 0, body, 0.08)); // base
+        g.add(soft(W - 0.26, 0.16, D - 0.2, 0, 0.32, -0.05, body, 0.07)); // seat cushion
+        g.add(soft(W - 0.06, H - 0.3, 0.2, 0, 0.3, D / 2 - 0.1, body, 0.09)); // back
+        for (const sx of [-1, 1]) {
+          g.add(soft(0.15, 0.3, D - 0.04, sx * (W / 2 - 0.075), 0.3, 0, body, 0.07)); // arm
+          const roll = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, D - 0.06, 20), body);
+          roll.rotation.x = Math.PI / 2;
+          roll.position.set(sx * (W / 2 - 0.075), 0.6, 0);
+          g.add(roll); // rolled arm
+        }
+        specs.push(seatsAlong(W, 1, 1.1, 0.03));
+        break;
+      }
       if (form === 'SHELL' || form === 'ROUNDED' || form === 'CURVED') {
         shellLounge(g, W, D, H, mat('body', '#b9a58a'), mat('legs', '#5b4432'));
         specs.push(seatsAlong(W, 1, 1.05, 0.02));
@@ -323,6 +385,62 @@ export function buildProcedural(kind: ProceduralKind, asset: CatalogAsset, color
       break;
     }
     case 'TV_UNIT': {
+      if (form === 'TV_WALL') {
+        // A built-in television wall: full-height framed panelling across the piece's width, the screen set into a
+        // recessed niche, a low framed console beneath, open shelves either side and a warm light line.
+        const body = mat('body', '#4b3022');
+        const wallH = 2.42;
+        const backZ = D / 2 - 0.02;
+        g.add(box(W, wallH, 0.04, 0, 0, backZ, body)); // the panelled wall
+        const panels = Math.max(3, Math.round(W / 0.5));
+        const pw = W / panels;
+        for (let i = 0; i < panels; i += 1) {
+          const xc = -W / 2 + pw * (i + 0.5);
+          // A raised moulding round each upper panel.
+          const y0 = 1.02; const ph = wallH - y0 - 0.12;
+          g.add(box(pw - 0.06, 0.03, 0.015, xc, y0, backZ - 0.025, body));
+          g.add(box(pw - 0.06, 0.03, 0.015, xc, y0 + ph, backZ - 0.025, body));
+          g.add(box(0.03, ph, 0.015, xc - pw / 2 + 0.045, y0, backZ - 0.025, body));
+          g.add(box(0.03, ph, 0.015, xc + pw / 2 - 0.045, y0, backZ - 0.025, body));
+        }
+        g.add(box(W + 0.04, 0.06, 0.08, 0, wallH - 0.06, backZ - 0.02, body)); // cornice
+        // The console: framed fronts, a top, standing on a recessed plinth.
+        const consoleH = Math.min(0.55, Math.max(0.42, H));
+        g.add(box(W - 0.04, 0.06, D - 0.12, 0, 0, -0.02, material('#1a1512', 0.9)));
+        g.add(box(W, consoleH - 0.08, D - 0.04, 0, 0.06, 0, body));
+        g.add(box(W + 0.02, 0.03, D, 0, consoleH - 0.02, 0, body));
+        const fronts = Math.max(2, Math.round(W / 0.55));
+        const fw = W / fronts;
+        for (let i = 0; i < fronts; i += 1) hingedFront(g, specs, `door-${i + 1}`, 'CABINET', -W / 2 + fw * (i + 0.5), fw, 0.08, consoleH - 0.12, -D / 2 + 0.02, i % 2 === 0 ? -1 : 1, body, handleMat);
+        // The screen in its niche.
+        const sw = Math.min(1.5, W * 0.6);
+        const sh = sw * 0.5625;
+        const sy = consoleH + 0.22;
+        g.add(box(sw + 0.16, sh + 0.16, 0.02, 0, sy - 0.08, backZ - 0.03, material('#2a211b', 0.85))); // the niche
+        const black = material('#111214', 0.4, 0.3);
+        g.add(box(sw + 0.02, sh + 0.02, 0.03, 0, sy, backZ - 0.055, black));
+        const screen = part(g, 'screen');
+        const panel = new THREE.Mesh(new THREE.PlaneGeometry(sw, sh), new THREE.MeshStandardMaterial({ color: '#0b0c0e', roughness: 0.25, metalness: 0.1 }));
+        panel.position.set(0, sy + 0.01 + sh / 2, backZ - 0.072);
+        panel.rotation.y = Math.PI;
+        screen.add(panel);
+        // Open shelves either side of the screen, with a few books and a vase.
+        for (const sx of [-1, 1]) {
+          const x = sx * (sw / 2 + Math.min(0.32, (W - sw) / 4) + 0.06);
+          if (Math.abs(x) + 0.2 > W / 2) continue;
+          for (const y of [sy + 0.05, sy + sh * 0.6]) {
+            g.add(box(0.36, 0.025, 0.22, x, y, backZ - 0.13, body));
+            g.add(box(0.05, 0.2, 0.15, x - 0.08, y + 0.025, backZ - 0.13, material('#b88768', 0.8)));
+            g.add(box(0.04, 0.18, 0.15, x - 0.025, y + 0.025, backZ - 0.13, material('#cbbba3', 0.8)));
+            g.add(cylinder(0.045, 0.16, x + 0.09, y + 0.025, backZ - 0.13, material('#d8c2a5', 0.5), 16));
+          }
+        }
+        // A warm light line under the cornice.
+        const glow = new THREE.MeshStandardMaterial({ color: '#ffd9a8', emissive: new THREE.Color('#ffc98a'), emissiveIntensity: 1.2 });
+        g.add(box(W - 0.1, 0.012, 0.02, 0, wallH - 0.085, backZ - 0.06, glow));
+        specs.push({ id: 'tv', kind: 'SWITCH', role: 'TV', durationMs: 450, effects: [{ id: 'picture', type: 'SCREEN', part: 'screen', color: '#ffffff', intensity: 1.1 }] });
+        break;
+      }
       if (H > 0.9) {
         // A screen on its own stand, not a console.
         const stand = screenOnStand(g, W, D, H, material('#111214', 0.4, 0.3));
@@ -359,13 +477,18 @@ export function buildProcedural(kind: ProceduralKind, asset: CatalogAsset, color
     }
     case 'WARDROBE': {
       const body = mat('body', '#ebe7e0');
-      carcass(g, W, H, D - 0.02, 0, body, 3);
-      g.add(cylinder(0.012, W - 0.04, 0, H * 0.78, 0.02, handleMat).rotateZ(Math.PI / 2)); // hanging rail
+      // Built in: floor to ceiling, framed doors on a plinth, a cornice line at the top.
+      const Hw = form === 'BUILT_IN' ? Math.max(H, 2.5) : H;
+      const plinth = form === 'BUILT_IN' ? 0.08 : 0;
+      if (plinth) g.add(box(W - 0.04, plinth, D - 0.08, 0, 0, 0.02, material('#1a1512', 0.9)));
+      carcass(g, W, Hw - plinth, D - 0.02, plinth, body, 3);
+      g.add(cylinder(0.012, W - 0.04, 0, Hw * 0.78, 0.02, handleMat).rotateZ(Math.PI / 2)); // hanging rail
+      if (form === 'BUILT_IN') g.add(box(W + 0.04, 0.06, D + 0.02, 0, Hw - 0.06, 0, body));
       const doors = Math.max(2, Math.round(W / 0.6));
       const w = W / doors;
       for (let i = 0; i < doors; i += 1) {
         const x0 = -W / 2 + w * (i + 0.5);
-        hingedFront(g, specs, `door-${i + 1}`, 'WARDROBE', x0, w, 0.01, H - 0.02, -D / 2 + 0.01, i % 2 === 0 ? -1 : 1, body, handleMat);
+        hingedFront(g, specs, `door-${i + 1}`, 'WARDROBE', x0, w, plinth + 0.01, Hw - plinth - (form === 'BUILT_IN' ? 0.08 : 0.02), -D / 2 + 0.01, i % 2 === 0 ? -1 : 1, body, handleMat);
       }
       break;
     }
@@ -434,7 +557,17 @@ export function buildProcedural(kind: ProceduralKind, asset: CatalogAsset, color
       for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.add(box(0.05, 0.08, 0.05, sx * (W / 2 - 0.06), 0, sz * (D / 2 - 0.12), frame));
       g.add(soft(W, 0.24, D - 0.08, 0, 0.08, -0.04, frame, 0.02)); // frame
       g.add(soft(W - 0.08, top - 0.33, D - 0.2, 0, 0.33, -0.06, white, 0.05)); // mattress
-      g.add(soft(W + 0.02, Math.min(H - 0.1, 0.62), 0.09, 0, top - 0.12, D / 2 - 0.045, head, 0.04)); // upholstered headboard
+      if (form === 'UPHOLSTERED') {
+        // A fully upholstered bed: the frame in the upholstery, a tall channel-tufted headboard rising well above the
+        // pillows, its channels as separate soft ribs.
+        const uph = mat('body', '#cbbba3');
+        const hbH = 1.2;
+        g.add(soft(W + 0.12, hbH, 0.12, 0, 0.08, D / 2 - 0.02, uph, 0.05));
+        const ribs = Math.max(5, Math.round((W + 0.08) / 0.18));
+        for (let i = 0; i < ribs; i += 1) g.add(soft((W + 0.08) / ribs - 0.012, hbH - 0.16, 0.05, -((W + 0.08) / 2) + ((W + 0.08) * (i + 0.5)) / ribs, 0.16, D / 2 - 0.085, uph, 0.022));
+      } else {
+        g.add(soft(W + 0.02, Math.min(H - 0.1, 0.62), 0.09, 0, top - 0.12, D / 2 - 0.045, head, 0.04)); // upholstered headboard
+      }
       // The duvet and pillows are parts: a bed can be made, or slept in.
       const duvetD = (D - 0.2) * 0.74;
       const duvet = part(g, 'duvet', 0, top, -0.06 - (D - 0.2) * 0.13);
@@ -479,6 +612,21 @@ export function buildProcedural(kind: ProceduralKind, asset: CatalogAsset, color
       break;
     }
     case 'RUG': {
+      if (form === 'BORDERED') {
+        // A hand-knotted rug: its field, a border in the second colour and a fine inner line.
+        const h = Math.max(0.01, H);
+        const field = mat('body', '#d8c2a5');
+        const border = material(c('accent', '#b88768'), 0.95);
+        applyFinish(border, 'FABRIC', FINISH_SIZE, false, FINISH_ANISO);
+        const b = Math.min(0.16, Math.min(W, D) * 0.08);
+        g.add(box(W, h, D, 0, 0, 0, border));
+        g.add(box(W - 2 * b, h + 0.002, D - 2 * b, 0, 0, 0, field));
+        g.add(box(W - 2 * b - 0.08, h + 0.004, 0.02, 0, 0, D / 2 - b - 0.06, border));
+        g.add(box(W - 2 * b - 0.08, h + 0.004, 0.02, 0, 0, -D / 2 + b + 0.06, border));
+        g.add(box(0.02, h + 0.004, D - 2 * b - 0.1, W / 2 - b - 0.06, 0, 0, border));
+        g.add(box(0.02, h + 0.004, D - 2 * b - 0.1, -W / 2 + b + 0.06, 0, 0, border));
+        break;
+      }
       g.add(box(W, Math.max(0.008, H), D, 0, 0, 0, mat('body', '#d9cfbf')));
       break;
     }
@@ -537,6 +685,9 @@ export function buildProcedural(kind: ProceduralKind, asset: CatalogAsset, color
     }
     case 'KITCHEN_RUN':
     case 'VANITY': {
+      // A shaker run's shape is its full height to the top of the wall cabinets; the counters stand at 0.9 m.
+      const fullH = H;
+      if (form === 'SHAKER' && H > 1.6) H = 0.9;
       const body = mat('body', '#eeebe5');
       const top = mat('top', '#d7d2ca');
       g.add(box(W, 0.1, D - 0.06, 0, 0, 0.03, material('#2a2a2a', 0.9)));
@@ -559,7 +710,18 @@ export function buildProcedural(kind: ProceduralKind, asset: CatalogAsset, color
         g.add(box(Math.min(0.5, W * 0.7), 0.012, D * 0.55, 0, H - 0.005, -0.02, material('#f7f7f5', 0.3)));
         faucet(g, specs, 'tap', 0, H, D / 2 - 0.08, D * 0.35, 0.02, chrome);
         const mirror = part(g, 'mirror', 0, H + 0.35, D / 2 - 0.02);
-        mirror.add(box(Math.min(0.9, W), 0.7, 0.025, 0, 0, 0, material('#dfe6ea', 0.05, 0.6)));
+        if (form === 'FLUTED') {
+          // A round, softly backlit mirror on a brass ring.
+          const r = Math.min(0.36, W * 0.4);
+          const disc = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.02, 48), material('#dfe6ea', 0.05, 0.6));
+          disc.rotation.x = Math.PI / 2; disc.position.set(0, r, 0);
+          mirror.add(disc);
+          const ring = new THREE.Mesh(new THREE.TorusGeometry(r + 0.01, 0.012, 10, 48), handleMat);
+          ring.position.set(0, r, -0.012);
+          mirror.add(ring);
+        } else {
+          mirror.add(box(Math.min(0.9, W), 0.7, 0.025, 0, 0, 0, material('#dfe6ea', 0.05, 0.6)));
+        }
         specs.push({ id: 'mirror-light', kind: 'SWITCH', role: 'MIRROR', durationMs: 300, effects: [{ id: 'glow', type: 'LIGHT', part: 'mirror', color: '#fff4e6', intensity: 1.4, distance: 3 }] });
         break;
       }
@@ -661,6 +823,21 @@ export function buildProcedural(kind: ProceduralKind, asset: CatalogAsset, color
             { from: 'READY', to: 'SIPPING', action: 'DRINK' },
           ],
         } as InteractionSpec);
+      }
+      if (form === 'SHAKER') {
+        // Wall cabinets above the run: framed doors with brass pulls, a light line under them over the worktop.
+        const wy = H + 0.55;
+        const wh = Math.max(0.5, (fullH > 1.6 ? fullH : 2.3) - wy);
+        const wd = Math.min(0.36, D * 0.6);
+        const wz = D / 2 - wd / 2;
+        carcass(g, W, wh, wd, wy, body, 1);
+        const wf = Math.max(1, Math.round(W / 0.5));
+        const ww = W / wf;
+        for (let i = 0; i < wf; i += 1) hingedFront(g, specs, `wall-door-${i + 1}`, 'CABINET', -W / 2 + ww * (i + 0.5), ww, wy + 0.005, wh - 0.01, D / 2 - wd + 0.01, i % 2 === 0 ? -1 : 1, body, handleMat);
+        const glow = new THREE.MeshStandardMaterial({ color: '#ffe2b8', emissive: new THREE.Color('#ffcf94'), emissiveIntensity: 1.1 });
+        g.add(box(W - 0.06, 0.01, 0.03, 0, wy - 0.012, D / 2 - wd + 0.05, glow));
+        // A splashback in the worktop's stone between the run and the wall cabinets.
+        g.add(box(W, wy - H, 0.012, 0, H, D / 2 - 0.006, top));
       }
       break;
     }

@@ -69,6 +69,8 @@ import { buildSpaceModel, type SpaceModel } from '../../../src/lib/designStudio/
 import { buildCanonical } from '../../../src/lib/designStudio/scale.ts';
 import { compileSceneSpec } from '../../../src/lib/designStudio/hybrid/compileSpec.ts';
 import { buildWalkthrough, roomSketches } from '../../../src/lib/designStudio/walkthrough/build.ts';
+import { applyGraphLook, buildDesignGraph, fidelityOf, graphToBuildPlan, type Promotion, type SpatialDesignGraph } from '../../../src/lib/designStudio/walkthrough/designGraph.ts';
+import { loadDesignEvidence } from './designEvidence.ts';
 import { anchorLock, feedbackOf, homeOrigin, referenceCameraPose, referenceFidelity, visualVerdict, type FidelityReport } from '../../../src/lib/designStudio/walkthrough/fidelity.ts';
 import { buildWalkModel, isFree, nearestFree } from '../../../src/lib/designStudio/navigation.ts';
 import {
@@ -129,6 +131,10 @@ function publicOf(row: Row) {
     createdAt: row.created_at, readyAt: row.ready_at ?? null,
     // The space was reconstructed from the pictures (no measured plan): the Result says so, quietly.
     inferred: row.timings?.inferred === true,
+    // Is it, measurably, the selected design (walkthrough/designGraph.ts PROMOTION_RULES)? null: no design to compare.
+    fidelity: row.state === 'READY' && row.plan_report?.designGraph?.promotion
+      ? { promoted: row.plan_report.designGraph.promotion.promoted === true && row.plan_report?.visualQa?.state !== 'FAILED', reasons: row.plan_report.designGraph.promotion.reasons ?? [] }
+      : row.state === 'READY' && row.render_id ? { promoted: false, reasons: ['NO_DESIGN_GRAPH'] } : null,
     summary: row.state === 'READY' && row.plan_report?.build?.counts ? { pieces: (row.plan_report.build.counts.planned ?? 0) + (row.plan_report.build.counts.corrected ?? 0) + (row.plan_report.build.counts.placed ?? 0), rooms: row.plan_report.rooms ?? null } : null,
   };
 }
@@ -708,6 +714,8 @@ interface Reference {
     sourceDesignVersionId: string | null; generationJobId: string | null; sceneMapJobId: string | null; designVersionId: string; loadedAt: string;
   };
   dataUrl: string;
+  /** The render's own bytes (its pixels are measured per region: designEvidence.ts). Never stored. */
+  bytes: Uint8Array;
   sceneMap: ReferenceInput['sceneMap'];
 }
 
@@ -742,6 +750,7 @@ async function loadReference(admin: Row, row: Row): Promise<Reference | { code: 
       sceneMapJobId: job?.id ?? null, designVersionId: row.design_version_id, loadedAt: iso(Date.now()),
     },
     dataUrl: `data:${mime};base64,${b64(bytes)}`,
+    bytes,
     sceneMap,
   };
 }
@@ -861,9 +870,20 @@ async function plan(admin: Row, row: Row): Promise<void> {
   const base = normalizeDesignState(version.state);
   const roomsById = new Map(space.rooms.map((r) => [r.id, r]));
   const buildStarted = Date.now();
+  // THE SELECTED DESIGN AS A GRAPH (walkthrough/designGraph.ts): the render's scene map, legend and measured
+  // pixels, the specification's words and the plan's poses. With it, the walkthrough is built from what the render
+  // shows — nothing invented, every piece in its design form and colours; without it (no render evidence), the plan.
+  const evidence = reference ? await loadDesignEvidence(admin, row, space, version.source_id, reference.bytes).catch(() => null) : null;
+  const graph: SpatialDesignGraph | null = evidence && evidence.sourceRooms.length && evidence.sceneMap.some((e) => e.kind === 'OBJECT')
+    ? buildDesignGraph({
+      space, spec, sceneMap: evidence.sceneMap, legend: evidence.legend, sourceRooms: evidence.sourceRooms, scenePlan: validated, appearance: evidence.appearance,
+      source: { renderId: String(row.render_id), sceneMapJobId: provenance?.sceneMapJobId ?? null, specJobId: row.spec_job_id ?? null },
+    })
+    : null;
+  const graphPlan = graph ? { ...graphToBuildPlan(graph, space, cat.materials, assets), styleCode: preferences.style } : null;
   const built = buildWalkthrough({
     space, base, assets, materialsByCode: byCode, materialsById: byId, idPrefix: `walk-${row.revision}`,
-    plan: {
+    plan: graphPlan ?? {
       lighting: validated.lighting, palette: validated.palette, styleCode: preferences.style,
       rooms: validated.rooms.map((pr) => ({
         ...pr,
@@ -872,8 +892,12 @@ async function plan(admin: Row, row: Row): Promise<void> {
     },
   });
   const buildMs = Date.now() - buildStarted;
-  // The gates: walkability always (walkthrough/walkability.ts); against the picture when there is one (fidelity.ts).
-  const fidelity: FidelityReport | null = validated.reference
+  // The design's look on the built pieces, and the promotion gate: is this, measurably, the selected design?
+  const walkState: DesignState = graph ? applyGraphLook(graph, space, built.state, built.report, assets) : built.state;
+  const promotion: Promotion | null = graph ? fidelityOf(graph, walkState, built.report, built.report.gate?.ok !== false) : null;
+  // The gates: walkability always (walkthrough/walkability.ts); against the picture when there is one (fidelity.ts)
+  // — for a graph build, its own promotion gate replaces the plan-vs-anchor comparison.
+  const fidelity: FidelityReport | null = validated.reference && !graph
     ? referenceFidelity({ space, plan: validated, build: built.report, objects: built.state.objects, assets, aspect: provenance?.aspect ?? null })
     : null;
   const failing = fidelity ? fidelity.code : built.report.gate && !built.report.gate.ok ? 'NOT_WALKABLE' : null;
@@ -904,17 +928,23 @@ async function plan(admin: Row, row: Row): Promise<void> {
   const name = (typeof row.timings?.name === 'string' && row.timings.name) || `3D ${row.revision}`;
   const { error: insertErr } = await admin.from('ds_versions').upsert({
     id: walkId, project_id: version.project_id, user_id: version.user_id, source_id: version.source_id, parent_id: version.id,
-    name, origin: 'AI', job_id: version.job_id, state: built.state, style_tags: version.style_tags ?? [],
+    name, origin: 'AI', job_id: version.job_id, state: walkState, style_tags: version.style_tags ?? [],
     change_summary: [{ kind: 'WALKTHROUGH', walkthroughId: row.id, revision: row.revision, plan: validated.version, ...(provenance ? { referenceImageId: provenance.referenceImageId, referenceImageSha256: provenance.referenceImageSha256 } : {}) }],
     design_dna: version.design_dna ?? null,
   }, { onConflict: 'id', ignoreDuplicates: true });
   if (insertErr) { await release(admin, row, { error: 'VERSION_NOT_RECORDED', cost, timings, next_check_at: iso(Date.now() + 15_000) }); return; }
-  await admin.from('ds_versions').update({ state: built.state }).eq('id', walkId);
+  await admin.from('ds_versions').update({ state: walkState }).eq('id', walkId);
 
   const report = {
     build: built.report, dropped: validated.dropped, filled: validated.filled, approximations: validated.approximations, omitted: validated.omitted,
     rooms: validated.rooms.length, model: reused ? null : MODEL, offer: offered.offer, planMs: Date.now() - started, reusedFrom,
     reference: referenceReport, ...(row.plan_report?.firstAttempt ? { firstAttempt: row.plan_report.firstAttempt } : {}),
+    // The selected design as built: its graph (for audit), what was read, the promotion verdict, and the pieces it
+    // binds (the factory never swaps them for generic models).
+    designGraph: graph ? {
+      version: graph.version, source: graph.source, roomMap: graph.roomMap, evidence: evidence?.report ?? null, promotion,
+      bound: built.report.items.filter((i) => i.refKey && i.instanceId).map((i) => i.instanceId), graph,
+    } : (reference ? { version: null, promotion: { promoted: false, reasons: ['NO_DESIGN_GRAPH'], metrics: null }, evidence: evidence?.report ?? null } : null),
   };
   await release(admin, row, {
     state: 'PLANNING', scene_plan: validated, plan_report: report, walk_version_id: walkId, cost, error: null, next_check_at: iso(Date.now()), timings,
@@ -1035,9 +1065,11 @@ async function processResult(admin: Row, row: Row, answer: { http: number | null
   if (!walk) { await fail(admin, row, 'WALK_VERSION_MISSING'); return; }
   const state = normalizeDesignState(walk.state);
   let attached = 0; let missing = 0;
+  // Pieces built from the selected design are drawn by HOMATCH in their design form: never a generic factory model.
+  const bound = new Set<string>(Array.isArray(row.plan_report?.designGraph?.bound) ? row.plan_report.designGraph.bound : []);
   for (const obj of state.objects) {
     const g = groupOf.get(obj.instanceId);
-    if (!g) continue;
+    if (!g || bound.has(obj.instanceId)) continue;
     const ref = pieces[g];
     if (ref?.assetId && ref.key) { obj.generated = { assetId: ref.assetId, key: ref.key, sha256: ref.sha256 ?? null }; attached += 1; } else { delete obj.generated; missing += 1; }
   }

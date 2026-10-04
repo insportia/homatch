@@ -70,6 +70,14 @@ export const DS_STRINGS_35 = {
     'منزلك بالكامل في جولة واحدة: تبدأ من المدخل وتنتقل من غرفة إلى أخرى عبر الأبواب الحقيقية.',
     'כל הבית בסיור אחד: מתחילים בכניסה ועוברים מחדר לחדר דרך הדלתות האמיתיות.',
   ],
+  dsx_walk_fidelity_note: [
+    'This tour does not yet fully match your selected design — some pieces or finishes are approximations. Create a new tour to rebuild it from the design.',
+    'ეს ტური ჯერ სრულად არ ემთხვევა არჩეულ დიზაინს — ზოგი ნივთი ან მასალა მიახლოებითია. შექმენით ახალი ტური, რომ დიზაინიდან თავიდან აიგოს.',
+    'Эта прогулка пока не полностью соответствует выбранному дизайну — часть предметов или отделки приблизительна. Создайте новую прогулку, чтобы пересобрать её по дизайну.',
+    'Bu tur henüz seçtiğiniz tasarımla tam olarak eşleşmiyor — bazı parçalar veya yüzeyler yaklaşık. Tasarımdan yeniden oluşturmak için yeni bir tur oluşturun.',
+    'هذه الجولة لا تطابق تصميمك المختار بالكامل بعد — بعض القطع أو التشطيبات تقريبية. أنشئ جولة جديدة لإعادة بنائها من التصميم.',
+    'הסיור הזה עדיין לא תואם במלואו את העיצוב שבחרתם — חלק מהפריטים או מהגימורים משוערים. צרו סיור חדש כדי לבנות אותו מחדש מהעיצוב.',
+  ],
   dsx_photo3d_secondary: [
     'Or step into the design picture',
     'ან შედით დიზაინის სურათში',

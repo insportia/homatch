@@ -15338,6 +15338,9 @@ const en = {
   dsx_walk_share: 'Share the 3D tour',
   dsx_walk_ready_note: 'Your whole home in one walk: you start at the entrance and go room to room through the real doorways.',
   dsx_photo3d_secondary: 'Or step into the design picture',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_fidelity_note: 'This tour does not yet fully match your selected design — some pieces or finishes are approximations. Create a new tour to rebuild it from the design.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -30590,6 +30593,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   dsx_walk_share: '3D ტურის გაზიარება',
   dsx_walk_ready_note: 'მთელი ბინა ერთ ტურში: იწყებთ შესასვლელიდან და ოთახიდან ოთახში ნამდვილი კარებით გადადიხართ.',
   dsx_photo3d_secondary: 'ან შედით დიზაინის სურათში',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_fidelity_note: 'ეს ტური ჯერ სრულად არ ემთხვევა არჩეულ დიზაინს — ზოგი ნივთი ან მასალა მიახლოებითია. შექმენით ახალი ტური, რომ დიზაინიდან თავიდან აიგოს.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -45833,6 +45839,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   dsx_walk_share: 'Поделиться 3D-прогулкой',
   dsx_walk_ready_note: 'Вся квартира за одну прогулку: вы начинаете у входа и переходите из комнаты в комнату через настоящие двери.',
   dsx_photo3d_secondary: 'Или войдите в изображение дизайна',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_fidelity_note: 'Эта прогулка пока не полностью соответствует выбранному дизайну — часть предметов или отделки приблизительна. Создайте новую прогулку, чтобы пересобрать её по дизайну.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -61074,6 +61083,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   dsx_walk_share: '3D turu paylaş',
   dsx_walk_ready_note: 'Tüm eviniz tek bir turda: girişten başlar, gerçek kapılardan odadan odaya geçersiniz.',
   dsx_photo3d_secondary: 'Ya da tasarım görseline adım atın',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_fidelity_note: 'Bu tur henüz seçtiğiniz tasarımla tam olarak eşleşmiyor — bazı parçalar veya yüzeyler yaklaşık. Tasarımdan yeniden oluşturmak için yeni bir tur oluşturun.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -76315,6 +76327,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   dsx_walk_share: 'مشاركة الجولة ثلاثية الأبعاد',
   dsx_walk_ready_note: 'منزلك بالكامل في جولة واحدة: تبدأ من المدخل وتنتقل من غرفة إلى أخرى عبر الأبواب الحقيقية.',
   dsx_photo3d_secondary: 'أو ادخل إلى صورة التصميم',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_fidelity_note: 'هذه الجولة لا تطابق تصميمك المختار بالكامل بعد — بعض القطع أو التشطيبات تقريبية. أنشئ جولة جديدة لإعادة بنائها من التصميم.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -91556,6 +91571,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   dsx_walk_share: 'שיתוף הסיור התלת־ממדי',
   dsx_walk_ready_note: 'כל הבית בסיור אחד: מתחילים בכניסה ועוברים מחדר לחדר דרך הדלתות האמיתיות.',
   dsx_photo3d_secondary: 'או היכנסו לתמונת העיצוב',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_fidelity_note: 'הסיור הזה עדיין לא תואם במלואו את העיצוב שבחרתם — חלק מהפריטים או מהגימורים משוערים. צרו סיור חדש כדי לבנות אותו מחדש מהעיצוב.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

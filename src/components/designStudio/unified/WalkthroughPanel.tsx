@@ -177,6 +177,12 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, photos 
             <button type="button" onClick={() => { void priced(() => start(true)); }} disabled={asking} className={CHIP} data-testid="walk-again">{t('dsx_walk_again')}</button>
           </div>
           <p className="mt-3 text-[13px] leading-relaxed text-[#5B6472]" data-testid="walk-ready-note">{t('dsx_walk_ready_note')}</p>
+          {walk.fidelity && !walk.fidelity.promoted ? (
+            // Honest: this tour does not yet carry the selected design closely enough (never presented as if it did).
+            <p className="mt-3 flex items-start gap-2 rounded-2xl bg-[hsl(38_92%_56%)]/12 px-3 py-2 text-[13px] leading-relaxed text-[#5B4A1E]" data-testid="walk-fidelity-note">
+              <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />{t('dsx_walk_fidelity_note')}
+            </p>
+          ) : null}
           {walk.inferred ? (
             <p className="mt-3 flex items-start gap-2 text-[13px] leading-relaxed text-[#5B6472]" data-testid="walk-inferred-note"><Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />{t('dsx_walk_inferred_note')}</p>
           ) : null}

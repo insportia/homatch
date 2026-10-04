@@ -35,6 +35,13 @@ import {
 } from '../_shared/discoveryRun.ts';
 import { fetchCurrentFx } from '../_shared/fx.ts';
 import { sourceGroupOf } from '../../../src/research-core/discovery/discovery-plan.ts';
+import { executeSocialJob } from '../_shared/findBuyers/executor.ts';
+import { queueTelegramFallback, sweepStaleActorRuns } from '../_shared/findBuyers/campaign.ts';
+
+/* The providers the native pass runs. APIFY_MEMO23 has its own pass. */
+const NATIVE_PROVIDERS = ['TELEGRAM', 'TELEGRAM_SOURCES', 'FORUM', 'PORTAL'];
+/* The social pass stops claiming after this long, inside one tick. */
+const SOCIAL_PASS_MS = 30_000;
 
 const OPEN_SOURCE_STATES = ['PENDING', 'PROCESSING', 'RETRY_WAIT'];
 const STUCK_AFTER_MS = 12 * 60_000;
@@ -47,15 +54,25 @@ export async function drive(db: any, baseUrl: string, serviceKey: string, body: 
   /* One source job per tick: jobs run one after another and each may take
      up to ~150s, so claiming more than one would let the later leases lapse
      and the same job be claimed twice. The driver ticks every minute. */
-  report.sourceJobs = await runSourceJobs(db, baseUrl, serviceKey, settings, Math.min(5, Number(body.limit) || 1), 'EDGE');
+  /* Native (Telegram/forum/portal) and social (memo23) passes run side by
+     side: a 150s Telegram job must not starve short social claims. */
+  const [sourceJobs, socialJobs] = await Promise.all([
+    runSourceJobs(db, baseUrl, serviceKey, settings, Math.min(5, Number(body.limit) || 1), 'EDGE'),
+    runSocialJobs(db, settings),
+  ]);
+  report.sourceJobs = sourceJobs;
+  report.socialJobs = socialJobs;
   /* Portal jobs routed through the official worker: this edge driver still
      claims, leases, runs and finishes them; only each HTTP fetch hop goes to
      the Railway official worker (supply-discovery picks the transport). */
   if (settings.workerRouteEnabled) {
     report.workerRoutedJobs = await runSourceJobs(db, baseUrl, serviceKey, settings, 1, 'WORKER');
   }
-  report.campaigns = await advanceCampaigns(db, baseUrl, serviceKey, settings, started);
-  report.runs = await advanceRuns(db, baseUrl, serviceKey, started);
+  /* Endings get their own clock: a busy social pass must never starve the
+     finishing (and settling) of campaigns whose window closed. */
+  report.socialSweep = await sweepStaleActorRuns(db).catch((e) => ({ error: errorText(e) }));
+  report.campaigns = await advanceCampaigns(db, baseUrl, serviceKey, settings, Date.now());
+  report.runs = await advanceRuns(db, baseUrl, serviceKey, Date.now());
   report.pauseExpired = await expirePausedCampaigns(db);
   report.runPauseExpired = await expirePausedRuns(db);
   report.rescued = await rescueStuck(db);
@@ -77,7 +94,7 @@ async function runSourceJobs(
     p_lease_seconds: settings.sourceJobLeaseSeconds,
     p_max_attempts: settings.sourceJobMaxAttempts,
     p_executor: executor,
-    p_providers: executor === 'WORKER' ? ['PORTAL'] : null,
+    p_providers: executor === 'WORKER' ? ['PORTAL'] : NATIVE_PROVIDERS,
   });
   if (error) throw error;
   const results: Array<Record<string, unknown>> = [];
@@ -110,7 +127,60 @@ async function runSourceJobs(
         provider: job.provider, status: finalStatus ?? null, resultCount: outcome.resultCount,
         error: outcome.error, providerCostUsd: 0,
       }).catch(() => undefined);
+      /* Native Telegram could not collect: memo23 Telegram covers the known
+         channels for this campaign (only if that Actor is enabled). */
+      if (job.provider === 'TELEGRAM' && (finalStatus === 'FAILED' || finalStatus === 'CANCELLED')) {
+        await queueTelegramFallback(db, job.matching_job_id).catch(() => undefined);
+      }
     }
+  }
+  return results;
+}
+
+/**
+ * FIND BUYERS social jobs (provider APIFY_MEMO23). Each claim starts or polls
+ * one provider run, so claims are short; the pass repeats until the queue has
+ * nothing runnable or the time box closes. A still-running provider run goes
+ * back as RETRY_WAIT without consuming an attempt.
+ */
+async function runSocialJobs(db: any, settings: DiscoverySettings) {
+  const started = Date.now();
+  const results: Array<Record<string, unknown>> = [];
+  while (Date.now() - started < SOCIAL_PASS_MS) {
+    const { data: claimed, error } = await db.rpc('claim_discovery_source_jobs_v2', {
+      p_limit: 4, p_lease_seconds: 180, p_max_attempts: settings.sourceJobMaxAttempts,
+      p_executor: 'EDGE', p_providers: ['APIFY_MEMO23'],
+    });
+    if (error) { results.push({ error: error.message }); break; }
+    const jobs = (claimed ?? []) as any[];
+    if (!jobs.length) break;
+    await Promise.all(jobs.map(async (job) => {
+      let outcome;
+      try { outcome = await executeSocialJob(db, job); }
+      catch (e) { outcome = { outcome: 'RETRY' as const, resultCount: 0, error: errorText(e).slice(0, 300), retrySeconds: 60, costUsd: null, metadata: {} }; }
+      let status: string | null = null;
+      if (outcome.outcome === 'WAIT') {
+        const { data } = await db.rpc('finish_discovery_source_job_wait', {
+          p_job_id: job.id, p_claim_token: job.claim_token, p_retry_seconds: outcome.retrySeconds ?? 20, p_metadata: outcome.metadata,
+        });
+        status = data ?? null;
+      } else {
+        const { data, error: finishError } = await db.rpc('finish_discovery_source_job', {
+          p_job_id: job.id, p_claim_token: job.claim_token, p_outcome: outcome.outcome, p_result_count: outcome.resultCount,
+          /* Booked provider cost (measured or reported); null = not measured. */
+          p_cost_usd: outcome.costUsd, p_error: outcome.error, p_retry_seconds: outcome.retrySeconds,
+          p_max_attempts: settings.sourceJobMaxAttempts, p_metadata: outcome.metadata,
+        });
+        status = finishError ? `FINISH_FAILED: ${finishError.message}` : data;
+        if (job.matching_job_id && outcome.outcome !== 'RETRY') {
+          await jobEvent(db, job.matching_job_id, 'SOCIAL_JOB_FINISHED', {
+            stage: job.metadata?.stage ?? null, language: job.language ?? null, status,
+            qualified: outcome.resultCount, error: outcome.error, providerCostUsd: outcome.costUsd,
+          }).catch(() => undefined);
+        }
+      }
+      results.push({ id: job.id, stage: job.metadata?.stage ?? null, outcome: outcome.outcome, status });
+    }));
   }
   return results;
 }

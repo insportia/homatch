@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { isRetiredProvider, retiredReason, RETIRED_PROVIDERS } from '../_shared/retiredProviders.ts';
 import { drive, adminStop, adminRetry } from './driver.ts';
+import { verifyActor } from '../_shared/findBuyers/admin.ts';
 
 // DATAFORSEO AND APIFY ARE RETIRED, AND THIS WORKER CAN NO LONGER REACH THEM.
 //
@@ -83,6 +84,13 @@ Deno.serve(async (req: Request) => {
       });
       const out = await r.json().catch(() => ({}));
       return json({ success: r.ok && out?.success === true, checks: Number(out?.checks ?? 0), routes: out?.routes ?? [], error: out?.error ?? null });
+    }
+    /* FIND BUYERS: re-read one memo23 Actor's current price and input schema
+       from Apify and record them (verified now). Never enables the Actor and
+       never returns the token. */
+    if (mode === 'admin_actor_verify') {
+      if (!(await isAdminCaller(req, db))) return json({ error: 'Admin only' }, 403);
+      return json(await verifyActor(db, String(body.actorKey || '')));
     }
     if (!(await isAuthorized(req, db, serviceKey))) return json({ error: 'Internal only' }, 403);
     if (mode === 'health' || mode === 'audit') return json(await audit(db));

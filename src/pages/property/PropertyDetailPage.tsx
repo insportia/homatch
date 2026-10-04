@@ -396,6 +396,7 @@ function DiscoverySection({
           <CampaignLaunchPanel
             propertyId={propertyId}
             productCode="FIND_CLIENTS"
+            counterpart={String(transactionType ?? '').toUpperCase() === 'RENT' ? 'TENANT' : 'BUYER'}
             onRun={(authorized, languages, discoverBrokers) => void handleStart(authorized, languages, discoverBrokers)}
             running={loading}
           />

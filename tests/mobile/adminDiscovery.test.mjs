@@ -189,8 +189,12 @@ const EXPECTED_SWITCHES = (() => {
     if (start < 0) return 0;
     return (src.slice(start, src.indexOf('] as const;', start)).match(/'[a-z_]+'/g) ?? []).length;
   };
-  /* The overview's switches plus the Phase 2 intelligence panel's own. */
-  return count('DISCOVERY_SWITCHES') + count('PHASE2_SWITCHES');
+  /* The overview's switches plus the Phase 2 intelligence panel's own, plus
+     the Find Buyers control center's product switch (src/services/findBuyers.ts). */
+  const fb = readFileSync(new URL('../../src/services/findBuyers.ts', import.meta.url), 'utf8');
+  const fbStart = fb.indexOf('export const FIND_BUYERS_SWITCHES = [');
+  const fbCount = fbStart < 0 ? 0 : (fb.slice(fbStart, fb.indexOf('] as const;', fbStart)).match(/'[a-z_]+'/g) ?? []).length;
+  return count('DISCOVERY_SWITCHES') + count('PHASE2_SWITCHES') + fbCount;
 })();
 
 for (const [width, height] of [[1440, 900], [390, 844]]) {
@@ -259,7 +263,7 @@ test('empty, error and loading states are honest', opts, async (t) => {
   assert.match(failed, /FORBIDDEN|Could not load/, 'the failure is not said');
   /* The OVERVIEW's switches; the Phase 2 intelligence panel loads on its own RPC. */
   const overviewSwitches = await failing.page.evaluate(() => [...document.querySelectorAll('[role="switch"]')]
-    .filter((el) => !el.closest('[data-testid="discovery-intelligence"]')).length);
+    .filter((el) => !el.closest('[data-testid="discovery-intelligence"]') && !el.closest('[data-testid="find-buyers-center"]')).length);
   assert.equal(overviewSwitches, 0, 'switches rendered without data');
 
   let release;

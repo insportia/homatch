@@ -24,6 +24,10 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { brokerDiscoveryPricing, type BrokerDiscoveryPricing } from '@/services/brokers';
+import { getFindBuyersConfig, type FindBuyersConfig } from '@/services/findBuyers';
+import { CalendarCheck2, Radar, Wallet } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { GOLD_FILL, GOLD_TEXT, NAVY_BAND } from '@/components/findBuyers/brand';
 import {
   type CampaignLanguageState,
   type CampaignSearchLanguageChoice,
@@ -35,9 +39,12 @@ export function CampaignLaunchPanel({
   productCode,
   onRun,
   running = false,
+  counterpart = null,
 }: {
   propertyId: string;
   productCode: string;
+  /** BUYER for a sale, TENANT for a rental: decides the words, never the price. */
+  counterpart?: 'BUYER' | 'TENANT' | null;
   onRun: (
     authorizedMaxCredits: number | null,
     languages: CampaignSearchLanguageChoice,
@@ -52,6 +59,17 @@ export function CampaignLaunchPanel({
      catalogue and shown before launch — never a silent extra spend. */
   const [discoverBrokers, setDiscoverBrokers] = useState(false);
   const [brokerPricing, setBrokerPricing] = useState<BrokerDiscoveryPricing | null>(null);
+  /* FIND BUYERS / FIND TENANTS searches all six languages, always, and has a
+     $10 minimum expressed in wallet credits (server-authoritative). */
+  const findBuyers = productCode === 'FIND_CLIENTS';
+  const [fbConfig, setFbConfig] = useState<FindBuyersConfig | null>(null);
+  useEffect(() => {
+    if (!findBuyers) return;
+    let alive = true;
+    getFindBuyersConfig().then((c) => { if (alive) setFbConfig(c); }).catch(() => {});
+    return () => { alive = false; };
+  }, [findBuyers]);
+  const tenant = counterpart === 'TENANT';
   useEffect(() => {
     let alive = true;
     brokerDiscoveryPricing().then((p) => { if (alive) setBrokerPricing(p); }).catch(() => {});
@@ -91,13 +109,36 @@ export function CampaignLaunchPanel({
 
   return (
     <div className="space-y-4">
-      <SearchLanguagePicker
-        value={languages}
-        onChange={setLanguages}
-        countryCode={state?.countryCode ?? 'GE'}
-        evidence={state?.evidence as never}
-        alreadyDiscovered={state?.discovered}
-      />
+      {findBuyers ? (
+        <div className={cn('relative overflow-hidden rounded-2xl p-4 text-white ring-1 ring-inset ring-[hsl(40_80%_55%/0.4)]', NAVY_BAND)}>
+          <div className="flex items-start gap-3">
+            <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', GOLD_FILL)}>
+              <Radar className="h-5 w-5 text-[hsl(218_52%_11%)]" aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <p className="font-display text-base font-semibold leading-snug">{t('fbx_heading')}</p>
+              <p className="mt-1 text-sm leading-relaxed text-[hsl(218_40%_86%)]">{t('fbx_supporting')}</p>
+            </div>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-1.5" aria-label={t('fbx_languages_note')}>
+            {['ka', 'ru', 'en', 'ar', 'he', 'tr'].map((l) => (
+              <span key={l} className={cn('rounded-lg px-2 py-0.5 text-2xs font-bold uppercase', GOLD_FILL, 'text-[hsl(218_52%_11%)]')}>{l}</span>
+            ))}
+            <span className="inline-flex items-center gap-1 rounded-lg bg-white/10 px-2 py-0.5 text-2xs font-semibold text-[hsl(40_94%_72%)] ring-1 ring-inset ring-white/15">
+              <CalendarCheck2 className="h-3.5 w-3.5" aria-hidden="true" />{t('fbx_fresh_badge')}
+            </span>
+          </div>
+          <p className="sr-only">{t('fbx_languages_note')}</p>
+        </div>
+      ) : (
+        <SearchLanguagePicker
+          value={languages}
+          onChange={setLanguages}
+          countryCode={state?.countryCode ?? 'GE'}
+          evidence={state?.evidence as never}
+          alreadyDiscovered={state?.discovered}
+        />
+      )}
 
       {brokerPricing?.active && (
         <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-card p-3">
@@ -122,7 +163,23 @@ export function CampaignLaunchPanel({
 
       <Separator />
 
+      {findBuyers ? (
+        <div className="space-y-1.5 rounded-2xl bg-[linear-gradient(135deg,hsl(43_100%_96%),hsl(40_100%_92%))] p-3.5 ring-1 ring-inset ring-[hsl(40_80%_78%)]">
+          <p className="flex items-center gap-2 text-sm font-semibold text-[hsl(218_45%_14%)]">
+            <Wallet className="h-4 w-4 text-[hsl(34_90%_36%)]" aria-hidden="true" />{t('fbx_budget_heading')}
+          </p>
+          {fbConfig ? (
+            <p className={cn('inline-flex rounded-full px-2.5 py-0.5 text-2xs font-bold', NAVY_BAND, GOLD_TEXT)} dir="auto">
+              {t('fbx_budget_minimum', { credits: fbConfig.minCredits.toLocaleString(), usd: String(fbConfig.minUsd) })}
+            </p>
+          ) : null}
+          <p className="text-2xs leading-relaxed text-[hsl(218_28%_32%)]">{t('fbx_budget_helper')}</p>
+        </div>
+      ) : null}
+
       <SearchBudgetOffer
+        minCredits={findBuyers ? fbConfig?.minCredits : undefined}
+        ctaLabel={findBuyers ? t(tenant ? 'fbx_start_tenants' : 'fbx_start_buyers') : undefined}
         productCode={productCode}
         /*
          * What the budget is being asked to cover. Not the number of
@@ -133,7 +190,7 @@ export function CampaignLaunchPanel({
          * count the offer is built from.
          */
         expectedUnits={1}
-        onRun={(authorized) => onRun(authorized, {
+        onRun={(authorized) => onRun(authorized, findBuyers ? { mode: 'ALL', selected: [] } : {
           mode: languages.mode,
           // Under AUTO and ALL the ticks are irrelevant and the server
           // ignores them; sending them anyway keeps the payload the same

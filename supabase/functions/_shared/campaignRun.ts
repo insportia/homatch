@@ -17,6 +17,7 @@
 //      status update below means only one of them ever gets to.
 
 import { settleExecution, releaseExecution, type ExecutionGrant } from './billing.ts';
+import { finishSocialCampaign } from './findBuyers/campaign.ts';
 import {
   judgeActiveDemand,
   type ActiveDemandFreshnessPolicy,
@@ -96,6 +97,8 @@ export interface CampaignJobRef {
 export interface FinalizeResult {
   status: 'completed' | 'partially_completed';
   freshMatches: number;
+  /** FIND BUYERS: potential buyers/tenants from public social demand, this run. */
+  socialLeads: number;
   stillCurrentFromEarlier: number;
   creditsCharged: number;
   costUsd: number;
@@ -113,6 +116,13 @@ export async function finalizeCampaignJob(
   policy: ActiveDemandFreshnessPolicy,
   context: { sourceJobs?: Json; internal?: Json; noResultsReason?: string | null } = {},
 ): Promise<FinalizeResult> {
+  /* Social provider runs end FIRST: abort what is still open and book its
+     cost, so the cost_events read below (settlement COGS) is complete. */
+  await finishSocialCampaign(db, job.id, 'FINALIZE').catch((error) =>
+    jobEvent(db, job.id, 'SOCIAL_FINISH_FAILED', { message: errorText(error) }).catch(() => undefined));
+  const { count: socialCount } = await db.from('find_buyers_leads')
+    .select('id', { count: 'exact', head: true }).eq('matching_job_id', job.id);
+  const socialLeads = Number(socialCount ?? 0);
   const now = Date.now();
   const [createdRes, earlierRes, costRes] = await Promise.all([
     db.from('matches').select('id,demand_published_at')
@@ -157,9 +167,10 @@ export async function finalizeCampaignJob(
         metadata: {
           quality_tier: grant.qualityTier,
           fresh_matches: freshMatches,
+          social_leads: socialLeads,
           active_window_days: policy.activeMaxDays,
         },
-      }, freshMatches > 0 ? 'SUCCESS' : 'PARTIAL');
+      }, freshMatches + socialLeads > 0 ? 'SUCCESS' : 'PARTIAL');
       creditsCharged = settled.chargedCredits;
     } catch (error) {
       /* The reservation's own expiry sweeper reconciles it; the job still ends. */
@@ -167,20 +178,21 @@ export async function finalizeCampaignJob(
     }
   }
 
-  const status = freshMatches > 0 ? 'completed' : 'partially_completed';
+  const found = freshMatches + socialLeads;
+  const status = found > 0 ? 'completed' : 'partially_completed';
   const days = policy.activeMaxDays;
   await updateJob(db, job.id, {
     status,
     progress: 100,
-    current_step: freshMatches > 0
-      ? `Found ${freshMatches} new potentially interested people (posted in the last ${days} days)`
+    current_step: found > 0
+      ? `Found ${found} new potentially interested people (posted in the last ${days} days)`
       : `No new current demand found (last ${days} days)`,
     matches_created: freshMatches,
     matches_found: freshMatches,
     fresh_matches_created: freshMatches,
     candidates_after_filter: freshMatches,
     cost_usd_total: costUsd,
-    failure_reason: freshMatches > 0 ? null : (context.noResultsReason ?? 'NO_CURRENT_DEMAND_FOUND'),
+    failure_reason: found > 0 ? null : (context.noResultsReason ?? 'NO_CURRENT_DEMAND_FOUND'),
     completed_at: new Date().toISOString(),
   });
   await jobEvent(db, job.id, 'JOB_COMPLETE', {
@@ -188,6 +200,7 @@ export async function finalizeCampaignJob(
       ? `Found ${freshMatches} new potentially interested people whose demand is from the last ${days} days`
       : `No new potentially interested people with demand from the last ${days} days`,
     freshMatches,
+    socialLeads,
     stillCurrentFromEarlier,
     activeWindowDays: days,
     creditsCharged,
@@ -196,7 +209,7 @@ export async function finalizeCampaignJob(
     internal: context.internal ?? null,
   });
 
-  return { status, freshMatches, stillCurrentFromEarlier, creditsCharged, costUsd };
+  return { status, freshMatches, socialLeads, stillCurrentFromEarlier, creditsCharged, costUsd };
 }
 
 /** End a job that could not finish: release the whole reservation, say why. */
@@ -204,6 +217,9 @@ export async function failCampaignJob(
   db: any, job: CampaignJobRef, grant: ExecutionGrant | null, reason: string, detail: string,
   status: 'failed' | 'budget_reached' | 'cancelled' = 'failed',
 ) {
+  /* Open provider runs are aborted and their cost booked (HOMATCH absorbs it:
+     the customer's whole reservation is released below). */
+  await finishSocialCampaign(db, job.id, reason).catch(() => undefined);
   if (grant) await releaseExecution(db, grant, reason.toLowerCase()).catch(() => undefined);
   await db.from('discovery_query_queue')
     .update({ status: 'CANCELLED', cancel_reason: reason, finished_at: new Date().toISOString(), lease_expires_at: null })

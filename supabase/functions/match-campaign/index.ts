@@ -4,6 +4,8 @@ import { loadDiscoverySettings } from '../_shared/discoverySettings.ts';
 import { claimJobTransition, finalizeCampaignJob } from '../_shared/campaignRun.ts';
 import { queuePlannedJobs, storePlan } from '../_shared/campaignSources.ts';
 import { compileDemandPlan } from '../../../src/research-core/discovery/discovery-plan.ts';
+import { creditsPerUsd, loadFindBuyersSettings, minimumCredits, startSocialCampaign } from '../_shared/findBuyers/campaign.ts';
+import { translateLeadText } from '../_shared/findBuyers/translate.ts';
 import { fetchCurrentFx } from '../_shared/fx.ts';
 import {
   persistCampaignLanguages,
@@ -126,7 +128,8 @@ Deno.serve(async (req: Request) => {
       // country_code decides which languages this market is written in, so a
       // campaign cannot resolve its search languages without it.
       .select('id,user_id,title,matching_status,transaction_type,property_type,'
-        + 'facts:property_facts!property_id(country_code,city,district,total_price,currency,bedrooms,area)')
+        + 'facts:property_facts!property_id(country_code,city,district,neighborhood,latitude,longitude,total_price,currency,'
+        + 'bedrooms,rooms,area,floor,total_floors,condition,building_type,new_build,parking,balcony,terrace,elevator,furnished,view)')
       .eq('id', propertyId)
       .eq('is_deleted', false)
       .maybeSingle();
@@ -162,6 +165,19 @@ Deno.serve(async (req: Request) => {
         ...outcome,
       }).catch(() => undefined);
       return json({ success: true, jobId: controlJobId, ...outcome });
+    }
+
+    /*
+     * TRANSLATE one lead's public text into the reader's UI language. Owner
+     * only (the property check above), cached, costed as TRANSLATION COGS.
+     * The original text is never replaced.
+     */
+    if (controlAction === 'translate') {
+      const out = await translateLeadText(db, {
+        leadId: String(body.leadId || ''), signalId: String(body.signalId || ''),
+        targetLang: String(body.targetLang || '').toLowerCase(), propertyId,
+      });
+      return json(out, out.ok ? 200 : out.error === 'NOT_FOUND' ? 404 : 422);
     }
 
     /*
@@ -372,14 +388,21 @@ Deno.serve(async (req: Request) => {
      * funds a campaign -- HOMATCH is PAYG-only.
      */
     const discovery = await loadDiscoverySettings(db);
+    /* FIND BUYERS / FIND TENANTS minimum: $10 (find_buyers_min_usd), expressed
+       in the wallet's own credits through credits_per_usd — never a second
+       credit rate. The older campaign_min_credits floor still applies. */
+    const findBuyers = await loadFindBuyersSettings(db);
+    const walletRate = await creditsPerUsd(db);
+    const campaignMinCredits = Math.max(discovery.campaignMinCredits, minimumCredits(findBuyers.minUsd, walletRate));
     const requestedBudget = body.authorizedMaxCredits != null
       ? Number(body.authorizedMaxCredits)
-      : discovery.campaignDefaultCredits;
-    if (!Number.isFinite(requestedBudget) || requestedBudget < discovery.campaignMinCredits) {
+      : Math.max(discovery.campaignDefaultCredits, campaignMinCredits);
+    if (!Number.isFinite(requestedBudget) || requestedBudget < campaignMinCredits) {
       return json({
-        error: `A campaign budget starts at ${discovery.campaignMinCredits} Credits.`,
+        error: `A campaign budget starts at ${campaignMinCredits} Credits.`,
         reasonCode: 'BELOW_CAMPAIGN_MINIMUM',
-        minBudgetCredits: discovery.campaignMinCredits,
+        minBudgetCredits: campaignMinCredits,
+        minBudgetUsd: findBuyers.minUsd,
       }, 400);
     }
     if (discovery.campaignMaxCredits !== null && requestedBudget > discovery.campaignMaxCredits) {
@@ -752,24 +775,53 @@ Deno.serve(async (req: Request) => {
     const freshFromInternal = Number(internal.data?.matchesCreated || 0);
     const sourcesAvailable = plan.tranches.some((t) => t.tranche > 0);
 
+    /*
+     * FIND BUYERS / FIND TENANTS — public social demand (memo23 Actors),
+     * six languages, budget-aware. Queued whenever the product switch is on:
+     * the customer's budget pays for external discovery, not only for a gap
+     * in internal demand. Native Telegram stays primary (queued below).
+     */
+    let socialQueued = 0;
+    try {
+      const social = await startSocialCampaign(db, {
+        matchingJobId: jobId!, campaignId, propertyId, userId: property.user_id, credits: requestedBudget,
+        property: property as any, facts: facts ?? null, planId,
+        nativeTelegramActive: discovery.campaignSourceDiscoveryEnabled && discovery.telegramEnabled,
+      }, findBuyers);
+      socialQueued = social.queued;
+      await event(db, jobId!, social.queued > 0 ? 'SOCIAL_DISCOVERY_QUEUED' : 'SOCIAL_DISCOVERY_SKIPPED', {
+        message: social.queued > 0
+          ? `Queued ${social.queued} public-demand probes across sources and languages`
+          : 'Public social discovery did not start',
+        reason: social.reason, queued: social.queued, reusedSources: (social as any).reusedSources ?? 0,
+        languages: (social as any).languages ?? [], providerBudgetMicros: social.economics.providerBudgetMicros,
+        missingPropertyFields: social.dna.missing,
+      });
+    } catch (error) {
+      await event(db, jobId!, 'SOCIAL_DISCOVERY_FAILED', { message: message(error) }).catch(() => undefined);
+    }
+
+    let queued: Awaited<ReturnType<typeof queuePlannedJobs>> = [];
     if (freshFromInternal < target && sourcesAvailable) {
-      const queued = await queuePlannedJobs(db, {
+      queued = await queuePlannedJobs(db, {
         plan,
         planId,
         runKey: jobId!,
         matchingJobId: jobId!,
         propertyId,
       });
+    }
+    if (queued.length > 0 || socialQueued > 0) {
+      const deadline = new Date(Date.now() + discovery.campaignDiscoveryMinutes * 60_000).toISOString();
+      await updateJob(db, jobId!, {
+        status: 'searching_sources',
+        progress: 45,
+        current_step: 'Discovering relevant sources',
+        discovery_deadline_at: deadline,
+        query_packs_created: queued.length + socialQueued,
+        provider_results: { internal_data: 'DONE', source_discovery: 'QUEUED' },
+      });
       if (queued.length > 0) {
-        const deadline = new Date(Date.now() + discovery.campaignDiscoveryMinutes * 60_000).toISOString();
-        await updateJob(db, jobId!, {
-          status: 'searching_sources',
-          progress: 45,
-          current_step: 'Searching Telegram and forums for current demand',
-          discovery_deadline_at: deadline,
-          query_packs_created: queued.length,
-          provider_results: { internal_data: 'DONE', source_discovery: 'QUEUED' },
-        });
         await event(db, jobId!, 'SOURCE_DISCOVERY_QUEUED', {
           message: `Queued ${queued.length} source searches for current demand`,
           sources: queued,
@@ -778,19 +830,19 @@ Deno.serve(async (req: Request) => {
           deadline,
           providerCostUsd: 0,
         });
-        return json({
-          success: true,
-          async: true,
-          jobId,
-          campaignId,
-          status: 'searching_sources',
-          billing: {
-            funding: grant.funding,
-            creditsAuthorized: grant.authorizedMaxCredits,
-            partialBudget: grant.partialBudget,
-          },
-        }, 202);
       }
+      return json({
+        success: true,
+        async: true,
+        jobId,
+        campaignId,
+        status: 'searching_sources',
+        billing: {
+          funding: grant.funding,
+          creditsAuthorized: grant.authorizedMaxCredits,
+          partialBudget: grant.partialBudget,
+        },
+      }, 202);
     }
 
     await event(db, jobId!, sourcesAvailable ? 'SOURCE_DISCOVERY_NOT_NEEDED' : 'SOURCE_DISCOVERY_OFF', {

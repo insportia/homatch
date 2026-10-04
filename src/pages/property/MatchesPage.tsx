@@ -1,6 +1,6 @@
 import {
   AlertCircle, Bot, CalendarDays, Check, ExternalLink, Loader2, MessageSquare,
-  Eye, Pause, Play, Search, Square, User, Zap,
+  Eye, Home, Pause, Play, Radar, Search, Square, User, Zap,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -22,6 +22,9 @@ import { LeadStateControl } from '@/components/broker/LeadStateControl';
 import { ExternalContactUnlockModal } from '@/components/matching/ExternalContactUnlockModal';
 import { ExternalSitesCard } from '@/components/matching/ExternalSitesCard';
 import { MatchingJobProgress } from '@/components/matching/MatchingJobProgress';
+import { FindBuyersCampaignPanel } from '@/components/findBuyers/FindBuyersCampaignPanel';
+import { FindBuyersResults } from '@/components/findBuyers/FindBuyersResults';
+import { FRAMED_ACTION, GOLD_FILL, GOLD_TEXT, NAVY_BAND } from '@/components/findBuyers/brand';
 import {
   AlertDialog, AlertDialogAction,AlertDialogCancel, AlertDialogContent, 
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -380,6 +383,11 @@ function MatchesContent() {
      second tab and a logout: the page asks which search is open, it does not
      remember one. */
   const [jobPaused, setJobPaused] = useState(false);
+  /* Potential buyers/tenants from public conversations refresh as the
+     running search qualifies more of them. */
+  const [leadRefresh, setLeadRefresh] = useState(0);
+  const bumpLeads = useCallback(() => setLeadRefresh((n) => n + 1), []);
+  const [leadCount, setLeadCount] = useState(0);
   /** The last settled sweep, for the Expand Search offer. */
   const [lastSweep, setLastSweep] = useState<{
     id: string;
@@ -831,7 +839,8 @@ function MatchesContent() {
   const counterpart = counterpartFor(property?.transaction_type);
   const slug = counterpart ? counterpart.toLowerCase() : null;
   const titleKey = slug ? `matches_title_${slug}` : 'matches_title';
-  const discoverKey = slug ? `matches_find_${slug}` : 'matches_start_matching';
+  const discoverKey = counterpart === 'BUYER' ? 'fbx_find_buyers' : counterpart === 'TENANT' ? 'fbx_find_tenants'
+    : slug ? `matches_find_${slug}` : 'matches_start_matching';
   /* What the list is about: the owner's own title, else the address they entered, else
      the city. Their own property, so there is no visibility rule to apply here. */
   const propertyLabel = property?.title
@@ -920,70 +929,48 @@ function MatchesContent() {
    */
   const jobRunning = Boolean(activeJobId);
 
-  const searchModule = (
-    <div className="hm-discovery-panel p-3.5">
-      <p className="mb-1 text-2xs font-semibold uppercase tracking-[0.12em] text-foreground">
-        {t('matches_search_module')}
-      </p>
-      <p className="mb-2.5 text-2xs leading-snug text-muted-foreground">
-        {t('matches_search_what')}
-      </p>
-      {/* One search at a time: while one runs or is paused, its own controls are the actions. */}
-      {!jobRunning && (
-        <QuietAction
-          full
-          icon={Play}
-          busy={campaignLoading}
-          disabled={campaignLoading}
-          onClick={() => setShowBudget(true)}
-          label={t(discoverKey)}
-        />
+  /* Rail controls on the navy frame: gold-filled primary, gold-framed secondary. */
+  const railButton = (props: { label: string; icon: React.ComponentType<{ className?: string }>; onClick: () => void; primary?: boolean }) => (
+    <button
+      type="button"
+      onClick={props.onClick}
+      disabled={campaignLoading}
+      className={cn(
+        'inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-3.5 text-sm font-semibold transition-all disabled:opacity-60',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(218_52%_11%)]',
+        props.primary
+          ? `${GOLD_FILL} text-[hsl(218_52%_11%)] shadow-[0_10px_24px_-12px_hsl(38_92%_45%/0.9)] hover:-translate-y-px`
+          : 'bg-white/5 text-white ring-1 ring-inset ring-[hsl(40_80%_60%/0.55)] hover:bg-white/10 hover:ring-[hsl(40_94%_64%)]',
       )}
-      {/*
-        THE STOP, WHERE STOPPING MEANS SOMETHING.
-        Not a page-level status control and not keyed off a mode — it appears while a job
-        is genuinely running, and disappears when it is not. pauseMatchingCampaign and the
-        campaign engine behind it are untouched.
-      */}
+    >
+      {campaignLoading ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : <props.icon className="h-4 w-4 shrink-0" />}
+      <span className="break-words text-start">{props.label}</span>
+    </button>
+  );
+
+  const searchModule = (
+    <div className={cn('relative overflow-hidden rounded-2xl p-4 text-white ring-1 ring-inset ring-[hsl(40_80%_55%/0.35)] shadow-[0_18px_40px_-24px_hsl(218_60%_8%/0.9)]', NAVY_BAND)}>
+      <div className="flex items-center gap-2.5">
+        <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', GOLD_FILL)}>
+          <Radar className="h-[18px] w-[18px] text-[hsl(218_52%_11%)]" aria-hidden="true" />
+        </span>
+        <p className={cn('text-2xs font-bold uppercase tracking-[0.14em]', GOLD_TEXT)}>{t('matches_search_module')}</p>
+      </div>
+      <p className="mb-3 mt-2 text-2xs leading-snug text-[hsl(218_40%_85%)]">{t('matches_search_what')}</p>
+      {/* One search at a time: while one runs or is paused, its own controls are the actions. */}
+      {!jobRunning && railButton({ primary: true, icon: Play, onClick: () => setShowBudget(true), label: t(discoverKey) })}
+      {/* THE STOP, WHERE STOPPING MEANS SOMETHING: only while a job genuinely runs. */}
       {jobRunning && !jobPaused && (
-        <div className="mt-2 space-y-2">
-          <QuietAction
-            full
-            icon={Pause}
-            busy={campaignLoading}
-            disabled={campaignLoading}
-            onClick={() => setShowPauseConfirm(true)}
-            label={t('matches_pause_matching')}
-          />
-          <QuietAction
-            full
-            icon={Square}
-            busy={campaignLoading}
-            disabled={campaignLoading}
-            onClick={() => handleControlJob('stop')}
-            label={t('p2d_stop_search')}
-          />
+        <div className="space-y-2">
+          {railButton({ icon: Pause, onClick: () => setShowPauseConfirm(true), label: t('matches_pause_matching') })}
+          {railButton({ icon: Square, onClick: () => handleControlJob('stop'), label: t('p2d_stop_search') })}
         </div>
       )}
       {jobRunning && jobPaused && (
-        <div className="mt-2 space-y-2" role="status">
-          <p className="text-2xs leading-snug text-muted-foreground">{t('p2d_paused_note')}</p>
-          <QuietAction
-            full
-            icon={Play}
-            busy={campaignLoading}
-            disabled={campaignLoading}
-            onClick={() => handleControlJob('resume')}
-            label={t('p2d_resume_search')}
-          />
-          <QuietAction
-            full
-            icon={Square}
-            busy={campaignLoading}
-            disabled={campaignLoading}
-            onClick={() => handleControlJob('stop')}
-            label={t('p2d_stop_search')}
-          />
+        <div className="space-y-2" role="status">
+          <p className="text-2xs leading-snug text-[hsl(218_40%_85%)]">{t('p2d_paused_note')}</p>
+          {railButton({ primary: true, icon: Play, onClick: () => handleControlJob('resume'), label: t('p2d_resume_search') })}
+          {railButton({ icon: Square, onClick: () => handleControlJob('stop'), label: t('p2d_stop_search') })}
         </div>
       )}
     </div>
@@ -1010,7 +997,8 @@ function MatchesContent() {
             eyebrow={propertyLabel}
             title={t(titleKey)}
             subtitle={t('matches_count_line', {
-              total: String(counts.total),
+              /* HOMATCH matches plus potential buyers/tenants from public conversations. */
+              total: String(counts.total + leadCount),
               new: String(counts.newCount),
             })}
           />
@@ -1029,14 +1017,23 @@ function MatchesContent() {
         {propertyId ? <NativeMatchesPanel propertyId={propertyId} role="OWNER" className="hm-discovery-panel" /> : null}
 
         <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_17rem]">
-          <div className="min-w-0">
+          <div className="min-w-0 space-y-4">
+            {propertyId ? (
+              <FindBuyersResults
+                propertyId={propertyId}
+                counterpart={counterpart === 'TENANT' ? 'TENANT' : counterpart === 'BUYER' ? 'BUYER' : null}
+                refreshKey={leadRefresh}
+                searching={jobRunning}
+                onCount={setLeadCount}
+              />
+            ) : null}
             {loading ? (
               <div className="grid gap-2.5 md:grid-cols-2 2xl:grid-cols-3">
                 {[1, 2, 3, 4].map((i) => (
                   <div key={i} className="hm-discovery-panel h-[15rem] animate-pulse p-3.5" />
                 ))}
               </div>
-            ) : filteredMatches.length === 0 ? (
+            ) : filteredMatches.length === 0 && leadCount > 0 ? null : filteredMatches.length === 0 ? (
               <EmptyState
                 icon={Search}
                 title={t('matches_empty')}
@@ -1082,22 +1079,25 @@ function MatchesContent() {
               first on a phone; on wide screens the rail stays beside the results. */}
           <aside className={cn('min-w-0 space-y-3', jobRunning && 'order-first xl:order-none')}>
             {property && (
-              <div className="hm-discovery-panel p-3.5">
-                <p className="mb-1 text-2xs font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
-                  {t('matches_rail_property')}
-                </p>
-                <p className="font-display text-sm font-semibold leading-snug text-foreground">
-                  {propertyLabel ?? t('matches_rail_untitled')}
-                </p>
-                {railFacts.length > 0 && (
-                  <p className="mt-1 text-2xs text-muted-foreground">{railFacts.join(' · ')}</p>
-                )}
-                <div className="mt-2.5">
-                  <QuietAction
-                    full
-                    onClick={() => navigate(`/property/${propertyId}`)}
-                    label={t('matches_rail_open')}
-                  />
+              <div className="overflow-hidden rounded-2xl border border-[hsl(40_70%_80%)] bg-white shadow-[0_10px_28px_-18px_hsl(218_60%_15%/0.45)]">
+                <div className={cn('flex items-center gap-2 px-3.5 py-2.5', NAVY_BAND)}>
+                  <Home className={cn('h-4 w-4', GOLD_TEXT)} aria-hidden="true" />
+                  <p className={cn('text-2xs font-bold uppercase tracking-[0.14em]', GOLD_TEXT)}>{t('matches_rail_property')}</p>
+                </div>
+                <div className="p-3.5">
+                  <p className="font-display text-sm font-semibold leading-snug text-[hsl(218_45%_14%)]">
+                    {propertyLabel ?? t('matches_rail_untitled')}
+                  </p>
+                  {railFacts.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {railFacts.map((f) => (
+                        <span key={f} className="rounded-full bg-[hsl(42_100%_94%)] px-2.5 py-0.5 text-2xs font-semibold text-[hsl(34_90%_30%)] ring-1 ring-inset ring-[hsl(40_80%_78%)]">{f}</span>
+                      ))}
+                    </div>
+                  )}
+                  <button type="button" onClick={() => navigate(`/property/${propertyId}`)} className={cn(FRAMED_ACTION, 'mt-3 w-full justify-center text-sm')}>
+                    <Eye className="h-4 w-4 text-[hsl(34_90%_40%)]" aria-hidden="true" />{t('matches_rail_open')}
+                  </button>
                 </div>
               </div>
             )}
@@ -1105,10 +1105,15 @@ function MatchesContent() {
             {searchModule}
 
             {activeJobId && (
+              <FindBuyersCampaignPanel jobId={activeJobId} running={jobRunning} paused={jobPaused} onProgress={bumpLeads} />
+            )}
+
+            {activeJobId && (
               <MatchingJobProgress
                 jobId={activeJobId}
                 propertyId={propertyId}
                 onComplete={(job) => {
+                  bumpLeads();
                   if (job.matches_created > 0) {
                     toast.success(t('matches_job_complete_toast', { count: String(job.matches_created) }));
                     loadData();
@@ -1274,12 +1279,13 @@ function MatchesContent() {
       <Dialog open={showBudget} onOpenChange={setShowBudget}>
         <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{t('matches_start_matching')}</DialogTitle>
+            <DialogTitle>{t(counterpart === 'TENANT' ? 'fbx_find_tenants' : 'fbx_find_buyers')}</DialogTitle>
             <DialogDescription className="sr-only">{t('budget_choose_title')}</DialogDescription>
           </DialogHeader>
           <CampaignLaunchPanel
             propertyId={propertyId ?? ''}
             productCode="FIND_CLIENTS"
+            counterpart={counterpart === 'TENANT' ? 'TENANT' : 'BUYER'}
             onRun={(authorized, languages, discoverBrokers) => void handleStartMatching(authorized, languages, discoverBrokers)}
             running={campaignLoading}
           />

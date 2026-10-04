@@ -41,11 +41,17 @@ const read = (p) => readFileSync(p, 'utf8');
 const code = (p) => stripComments(read(p));
 const fnCode = (name) => code(join(FUNCTIONS, name));
 
+/* The ONE exception, authorised by the owner on 2026-10-04 for FIND BUYERS /
+   FIND TENANTS: memo23 Actors through a single client that refuses any other
+   Actor. The generic APIFY provider (and DataForSEO) stay retired below. */
+const MEMO23_CLIENT = join(FUNCTIONS, '_shared', 'findBuyers', 'memo23Client.ts');
+
 test('no edge code names a DataForSEO or Apify endpoint', () => {
   const hits = [];
   for (const file of walk(FUNCTIONS)) {
     const src = code(file);
     for (const host of [/dataforseo\.com/i, /apify\.com/i]) {
+      if (file === MEMO23_CLIENT && String(host) === String(/apify\.com/i)) continue;
       if (host.test(src)) hits.push(`${relative(root, file)} → ${host}`);
     }
   }
@@ -60,10 +66,29 @@ test('no edge code reads the retired providers’ credentials', () => {
   for (const file of walk(FUNCTIONS)) {
     const src = code(file);
     for (const cred of [/APIFY_API_TOKEN/, /APIFY_[A-Z]+_ACTOR_ID/, /DATAFORSEO_LOGIN/, /DATAFORSEO_PASSWORD/]) {
+      if (file === MEMO23_CLIENT && String(cred) === String(/APIFY_API_TOKEN/)) continue;
       if (cred.test(src)) hits.push(`${relative(root, file)} → ${cred}`);
     }
   }
   assert.deepEqual(hits, [], `retired provider credentials are read:\n${hits.join('\n')}`);
+});
+
+test('the memo23 client is the only Apify door, runs memo23 Actors only, and never leaks the token', () => {
+  const src = code(MEMO23_CLIENT);
+  assert.match(src, /\^memo23~\[a-z0-9\]/, 'Actor ids are restricted to memo23');
+  assert.match(src, /assertMemo23ActorId\(actorId\)/);
+  assert.match(src, /maxTotalChargeUsd/, 'every run is capped at its reservation');
+  assert.match(src, /function scrub/, 'errors are scrubbed of the token');
+  assert.doesNotMatch(src, /console\.(log|error|warn)\([^)]*token/i, 'the token is never logged');
+  assert.equal((read(MEMO23_CLIENT).match(/APIFY_API_TOKEN/g) ?? []).length >= 1, true);
+  /* No other edge file reads the token or names the host (asserted above), and
+     nothing in the frontend may name either. */
+  const front = [];
+  const walkSrc = (dir) => { for (const e of readdirSync(dir)) { const f = join(dir, e); if (statSync(f).isDirectory()) walkSrc(f); else if (/\.(ts|tsx)$/.test(e) && /APIFY_API_TOKEN|api\.apify\.com/.test(read(f))) front.push(relative(root, f)); } };
+  walkSrc(join(root, 'src'));
+  assert.deepEqual(front, [], 'the frontend never names the Apify token or API');
+  /* The new provider key is not the retired one. */
+  assert.match(fnCode('_shared/retiredProviders.ts'), /RETIRED_PROVIDERS = \['DATAFORSEO', 'APIFY'\] as const/);
 });
 
 test('the retired-provider list is the one both names come from', () => {

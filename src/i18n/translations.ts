@@ -15142,6 +15142,9 @@ const en = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_photo3d_approx: 'Approximate depth on this device · drag to look around',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_measuring: 'Measuring the depth of the picture…',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -30198,6 +30201,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_photo3d_approx: 'ამ მოწყობილობაზე სიღრმე მიახლოებითია · გადაათრიე მიმოსახედად',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_measuring: 'ფოტოს სიღრმე იზომება…',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -45245,6 +45251,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_photo3d_approx: 'На этом устройстве глубина приблизительная · проведите, чтобы осмотреться',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_measuring: 'Измеряем глубину изображения…',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -60290,6 +60299,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_photo3d_approx: 'Bu cihazda derinlik yaklaşık · etrafa bakmak için sürükleyin',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_measuring: 'Görselin derinliği ölçülüyor…',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -75335,6 +75347,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_photo3d_approx: 'العمق تقريبي على هذا الجهاز · اسحب للنظر حولك',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_measuring: 'نقيس عمق الصورة…',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -90380,6 +90395,9 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_photo3d_approx: 'במכשיר הזה העומק משוער · גררו כדי להביט סביב',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_measuring: 'מודדים את עומק התמונה…',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

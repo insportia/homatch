@@ -70,11 +70,20 @@ test('the 3D tour card opens the picture itself first; the depth model loads onl
   const result = readFileSync(new URL('../../../components/designStudio/unified/DesignResult.tsx', import.meta.url), 'utf8');
   assert.match(result, /renderId=\{hero\.id\} photos=\{walkPhotos\}/);
   const depth = readFileSync(new URL('../photo3d/estimateDepth.ts', import.meta.url), 'utf8');
-  assert.match(depth, /await import\('@huggingface\/transformers'\)/);
-  assert.doesNotMatch(depth, /^import .*@huggingface/m, 'never a static import (it would enter the main bundle)');
+  // Off the page's thread (a slow phone never freezes the page), the picture reduced to the model's size first,
+  // and a hard time limit after which the picture still opens.
+  assert.match(depth, /new Worker\(new URL\('\.\/depth\.worker\.ts', import\.meta\.url\), \{ type: 'module' \}\)/);
+  assert.match(depth, /export const DEPTH_INPUT = 518;/);
+  assert.match(depth, /export const DEPTH_TIMEOUT_MS = 40_000;/);
+  assert.doesNotMatch(depth, /^import .*@huggingface/m, 'the library lives in the worker, never the main bundle');
+  const worker = readFileSync(new URL('../photo3d/depth.worker.ts', import.meta.url), 'utf8');
+  assert.match(worker, /device: 'wasm', dtype: 'q8'/);
   const walk = readFileSync(new URL('../../../components/designStudio/unified/PhotoWalk.tsx', import.meta.url), 'utf8');
   assert.match(walk, /new THREE\.MeshBasicMaterial\(\{ map: texture/, 'unlit: the picture\'s own light and colour');
   // A page left open outlives its picture link: the picture is signed afresh when entered, and a failure names its step.
   assert.match(walk, /signedUrls\(\[photo\.key\], 900\)/);
+  // The wait says what it is doing, and has the same game as every long wait.
+  assert.match(walk, /dsx_photo3d_measuring/);
+  assert.match(walk, /const SnakeGame = lazy\(\(\) => import\('@\/components\/games\/SnakeGame'\)\);/);
   assert.match(walk, /setPhase\(\{ kind: 'FAILED', code: stage \}\)/);
 });

@@ -1,63 +1,62 @@
-// The picture's depth, estimated in the browser (Depth Anything V2, small, ONNX through transformers.js).
+// The picture's depth, estimated on the customer's device (Depth Anything V2,
+// small, ONNX through transformers.js) — in a Web Worker (depth.worker.ts), so
+// the page stays responsive and its time limit always holds.
 //
-// Runs on the customer's device: no server, no GPU job, no new service, no
-// key. The model (≈ 27 MB quantised) is fetched once from the Hugging Face CDN
-// and kept in the browser's cache; the library itself is loaded only when a
-// picture is entered (a separate chunk, never in the main bundle). WebGPU when
-// the device has it, WebAssembly otherwise.
+// No server, no GPU job, no new service, no key. The model (≈ 27 MB
+// quantised) is fetched once from the Hugging Face CDN and kept in the
+// browser's cache; the worker and the library load only when a picture is
+// entered. The picture is reduced to the model's own size first (the model
+// sees ~518 px whatever it is given; a full-size picture only costs time).
 
 import type { DepthMap } from './depthMesh';
 
 export const DEPTH_MODEL = 'onnx-community/depth-anything-v2-small';
+/** The model's own input size: the picture is reduced to this on its longer side before it is measured. */
+export const DEPTH_INPUT = 518;
+/** Nothing (a stalled download, a slow device) keeps the customer waiting longer than this. */
+export const DEPTH_TIMEOUT_MS = 40_000;
 
-type Progress = (fraction: number | null) => void;
-type Estimator = (image: unknown) => Promise<unknown>;
+export type DepthProgress = { stage: 'DOWNLOADING'; fraction: number } | { stage: 'MEASURING' };
 
-/** A model that has not arrived (a blocked or stalled network) never keeps the customer waiting longer than this. */
-export const DEPTH_TIMEOUT_MS = 60_000;
-const within = <T,>(p: Promise<T>, ms: number): Promise<T> => new Promise((resolve, reject) => {
-  const timer = setTimeout(() => reject(new Error('DEPTH_TIMEOUT')), ms);
-  p.then((v) => { clearTimeout(timer); resolve(v); }, (e) => { clearTimeout(timer); reject(e); });
-});
-
-let estimator: Promise<Estimator> | null = null;
+let worker: Worker | null = null;
+let next = 1;
 const cache = new Map<string, DepthMap>();
 
-async function load(progress: Progress): Promise<Estimator> {
-  const tf = await import('@huggingface/transformers');
-  tf.env.allowLocalModels = false;
-  const files = new Map<string, { loaded: number; total: number }>();
-  const progress_callback = (info: unknown) => {
-    const p = info as { status?: string; file?: string; loaded?: number; total?: number } | null;
-    if (p?.status !== 'progress' || typeof p.file !== 'string') return;
-    files.set(p.file, { loaded: Number(p.loaded) || 0, total: Number(p.total) || 0 });
-    const all = [...files.values()];
-    const total = all.reduce((s, f) => s + f.total, 0);
-    progress(total > 0 ? all.reduce((s, f) => s + f.loaded, 0) / total : null);
-  };
-  const gpu = typeof navigator !== 'undefined' && 'gpu' in navigator;
-  if (gpu) {
-    try {
-      return await tf.pipeline('depth-estimation', DEPTH_MODEL, { device: 'webgpu', dtype: 'fp16', progress_callback }) as unknown as Estimator;
-    } catch { /* no usable adapter: WebAssembly below */ }
-  }
-  return await tf.pipeline('depth-estimation', DEPTH_MODEL, { device: 'wasm', dtype: 'q8', progress_callback }) as unknown as Estimator;
+/** The picture at the model's size, as RGBA pixels. */
+export function reducedPixels(img: CanvasImageSource & { width: number; height: number }, naturalWidth: number, naturalHeight: number) {
+  const s = Math.min(1, DEPTH_INPUT / Math.max(naturalWidth, naturalHeight));
+  const width = Math.max(1, Math.round(naturalWidth * s)); const height = Math.max(1, Math.round(naturalHeight * s));
+  const canvas = document.createElement('canvas');
+  canvas.width = width; canvas.height = height;
+  const g = canvas.getContext('2d', { willReadFrequently: true });
+  if (!g) throw new Error('NO_CANVAS');
+  g.drawImage(img, 0, 0, width, height);
+  return { width, height, rgba: g.getImageData(0, 0, width, height).data.buffer };
 }
 
 /** The depth of the picture behind `key` (asked again, the same answer from memory). */
-export async function estimateDepth(key: string, picture: Blob, progress: Progress = () => {}): Promise<DepthMap> {
+export function estimateDepth(key: string, img: HTMLImageElement, progress: (p: DepthProgress) => void = () => {}): Promise<DepthMap> {
   const hit = cache.get(key);
-  if (hit) return hit;
-  if (!estimator) estimator = load(progress).catch((e) => { estimator = null; throw e; });
-  const run = await within(estimator, DEPTH_TIMEOUT_MS);
-  const tf = await import('@huggingface/transformers');
-  const image = await tf.RawImage.fromBlob(picture);
-  type Out = { predicted_depth?: { data?: ArrayLike<number>; dims?: number[] } };
-  const out = (await within(run(image), DEPTH_TIMEOUT_MS)) as Out | Out[];
-  const t = Array.isArray(out) ? out[0]?.predicted_depth : out?.predicted_depth;
-  if (!t?.data || !Array.isArray(t.dims)) throw new Error('NO_DEPTH');
-  const dims = t.dims.slice(-2) as number[];
-  const map: DepthMap = { data: t.data, height: dims[0], width: dims[1] };
-  cache.set(key, map);
-  return map;
+  if (hit) return Promise.resolve(hit);
+  const px = reducedPixels(img, img.naturalWidth, img.naturalHeight);
+  if (!worker) worker = new Worker(new URL('./depth.worker.ts', import.meta.url), { type: 'module' });
+  const w = worker;
+  const id = next++;
+  return new Promise<DepthMap>((resolve, reject) => {
+    const done = (fn: () => void) => { clearTimeout(timer); w.removeEventListener('message', on); w.removeEventListener('error', fail); fn(); };
+    // A worker that stalls is ended: the next picture starts a fresh one.
+    const timer = setTimeout(() => done(() => { w.terminate(); if (worker === w) worker = null; reject(new Error('DEPTH_TIMEOUT')); }), DEPTH_TIMEOUT_MS);
+    const fail = () => done(() => { w.terminate(); if (worker === w) worker = null; reject(new Error('DEPTH_WORKER')); });
+    const on = (e: MessageEvent) => {
+      const m = e.data as { id: number; progress?: number; measuring?: boolean; depth?: DepthMap; error?: string };
+      if (m?.id !== id) return;
+      if (typeof m.progress === 'number') progress({ stage: 'DOWNLOADING', fraction: m.progress });
+      else if (m.measuring) progress({ stage: 'MEASURING' });
+      else if (m.depth) done(() => { cache.set(key, m.depth!); resolve(m.depth!); });
+      else if (m.error) done(() => reject(new Error(m.error)));
+    };
+    w.addEventListener('message', on);
+    w.addEventListener('error', fail);
+    w.postMessage({ id, ...px }, [px.rgba]);
+  });
 }

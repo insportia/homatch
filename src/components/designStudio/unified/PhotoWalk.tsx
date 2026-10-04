@@ -6,7 +6,7 @@
 // this design (its rooms) are one tap away. What the picture does not show
 // stays open rather than invented, and the walk ends where the picture does.
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, RotateCcw, X } from 'lucide-react';
 import * as THREE from 'three';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -18,16 +18,20 @@ import { signedUrls } from '@/services/designStudio/files';
 /** A picture to step into: its storage key (signed afresh when entered — a page left open outlives a link). */
 export interface WalkPhoto { id: string; url: string; key?: string | null; label: string; kind: 'ROOM' | 'MASTER' }
 
+// The same game as every long wait, watching this one.
+const SnakeGame = lazy(() => import('@/components/games/SnakeGame'));
+
 const RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]';
 const ROUND = cn('grid h-11 w-11 place-items-center rounded-full bg-white/10 text-white ring-1 ring-white/20 hover:bg-white/20', RING);
 const SPEED = 0.9;
 
-type Phase = { kind: 'LOADING'; progress: number | null } | { kind: 'READY'; approximate: boolean } | { kind: 'FAILED'; code: string };
+type Phase = { kind: 'LOADING'; progress: number | null; measuring?: boolean } | { kind: 'READY'; approximate: boolean } | { kind: 'FAILED'; code: string };
 
 export function PhotoWalk({ photos, initialId, onClose }: { photos: WalkPhoto[]; initialId: string; onClose: () => void }) {
   const { t, isRTL } = useLanguage();
   const [activeId, setActiveId] = useState(initialId);
   const [attempt, setAttempt] = useState(0);
+  const [playing, setPlaying] = useState(false);
   const [phase, setPhase] = useState<Phase>({ kind: 'LOADING', progress: null });
   const host = useRef<HTMLDivElement>(null);
   const stick = useRef<HTMLDivElement>(null);
@@ -162,7 +166,10 @@ export function PhotoWalk({ photos, initialId, onClose }: { photos: WalkPhoto[];
         if (disposed) { URL.revokeObjectURL(url); return; }
         // The picture's own depth; a device that cannot estimate it still enters the picture, on a room's shape.
         let approximate = false;
-        const depth = await estimateDepth(photo.id, blob, (p) => { if (!disposed) setPhase({ kind: 'LOADING', progress: p }); })
+        const depth = await estimateDepth(photo.id, img, (p) => {
+          if (disposed) return;
+          setPhase(p.stage === 'MEASURING' ? { kind: 'LOADING', progress: null, measuring: true } : { kind: 'LOADING', progress: p.fraction });
+        })
           .catch(() => { approximate = true; return roomShapedDepth(); });
         if (disposed) { URL.revokeObjectURL(url); return; }
         stage = 'MESH';
@@ -244,8 +251,9 @@ export function PhotoWalk({ photos, initialId, onClose }: { photos: WalkPhoto[];
           <div className="absolute inset-0 grid place-items-center bg-[#0C1119]" role="status" aria-live="polite" data-testid="photo-walk-loading">
             <div className="flex flex-col items-center gap-3 px-6 text-center">
               <Loader2 className="h-7 w-7 animate-spin" aria-hidden="true" />
-              <p className="text-[15px] font-semibold">{t('dsx_photo3d_loading')}</p>
-              {phase.progress != null ? <p className="text-[13px] text-white/70">{Math.round(phase.progress * 100)}%</p> : null}
+              <p className="text-[15px] font-semibold">{t(phase.measuring ? 'dsx_photo3d_measuring' : 'dsx_photo3d_loading')}</p>
+              {phase.progress != null && !phase.measuring ? <p className="text-[13px] text-white/70">{Math.round(phase.progress * 100)}%</p> : null}
+              <button type="button" onClick={() => setPlaying(true)} className={cn('mt-2 inline-flex h-11 items-center rounded-full bg-[hsl(38_92%_56%)] px-5 text-[14px] font-semibold text-[#0C1119]', RING)} data-testid="photo-walk-snake">{t('dsx_sn_play')}</button>
             </div>
           </div>
         ) : null}
@@ -268,6 +276,14 @@ export function PhotoWalk({ photos, initialId, onClose }: { photos: WalkPhoto[];
           <div ref={knob} className="h-12 w-12 rounded-full bg-white/70" />
         </div>
       </div>
+      {playing ? (
+        <Suspense fallback={null}>
+          <SnakeGame
+            status={phase.kind === 'READY' ? 'READY' : phase.kind === 'FAILED' ? 'FAILED' : 'PROCESSING'}
+            stageLabel={t(phase.kind === 'LOADING' && phase.measuring ? 'dsx_photo3d_measuring' : 'dsx_photo3d_loading')}
+            onView={() => setPlaying(false)} onClose={() => setPlaying(false)} />
+        </Suspense>
+      ) : null}
     </div>
   );
 }

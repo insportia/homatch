@@ -113,3 +113,19 @@ test('the generic APIFY provider stays retired; the new provider has its own key
   assert.match(MIGRATION, /v_allowed text\[\] := array\['TELEGRAM', 'TELEGRAM_SOURCES', 'FORUM', 'PORTAL', 'APIFY_MEMO23'\]/);
   assert.doesNotMatch(MIGRATION, /'APIFY'\s*,\s*'FIND_BUYERS_ACTOR_RUN'.*provider_disabled_list/s);
 });
+
+test('memo23 jobs run through a bounded pool with a global run cap (no batch of four)', () => {
+  const SLOTS = read('supabase/migrations/20261015090000_find_buyers_global_run_slots.sql');
+  const social = DRIVER.slice(DRIVER.indexOf('async function runSocialJobs'), DRIVER.indexOf('async function runSocialJob('));
+  assert.match(social, /runWorkerPool</, 'the social pass is the worker pool');
+  assert.match(social, /p_limit: 1,/, 'each lane claims one job at a time');
+  assert.doesNotMatch(social, /Promise\.all\(jobs\.map/, 'no claim-N-then-wait-for-all-N batch');
+  assert.match(DRIVER, /const SOCIAL_PASS_MS = 45_000;/);
+  assert.match(DRIVER, /priority: POLL_PRIORITY/, 'started runs are polled ahead of unstarted jobs');
+  assert.match(EXECUTOR, /reason === 'GLOBAL_BUSY'\) return out\(\{ outcome: 'WAIT'/, 'a full pool waits, never cancels');
+  assert.match(EXECUTOR, /const POLL_SECONDS = 10;/);
+  assert.match(SLOTS, /pg_advisory_xact_lock\(hashtext\('find_buyers:memo23_global_slots'\)\)/);
+  assert.match(SLOTS, /value ->> 'APIFY_MEMO23'\)::int from public\.admin_settings\s+where key = 'discovery_provider_concurrency'\), 4\)/);
+  assert.match(SLOTS, /'reason', 'GLOBAL_BUSY', 'retry', true/);
+  assert.doesNotMatch(SLOTS, /update public\.admin_settings|insert into public\.admin_settings/, 'the cap is not changed by this migration');
+});

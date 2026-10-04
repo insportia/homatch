@@ -29,7 +29,8 @@ export interface SocialOutcome {
   metadata: Record<string, unknown>;
 }
 
-const POLL_SECONDS = 20;
+/* A running provider run is looked at again this soon (the queue's minimum). */
+const POLL_SECONDS = 10;
 const out = (o: Partial<SocialOutcome> & { outcome: SocialOutcome['outcome'] }): SocialOutcome =>
   ({ resultCount: 0, error: null, retrySeconds: null, costUsd: null, metadata: {}, ...o });
 
@@ -76,6 +77,9 @@ async function start(db: any, job: any, campaign: any, settings: FindBuyersSetti
   if (!reservation?.ok) {
     const reason = String(reservation?.reason ?? 'UNKNOWN');
     if (reason === 'ACTOR_BUSY') return out({ outcome: 'WAIT', retrySeconds: 30, metadata: { lastWait: 'ACTOR_BUSY' } });
+    /* Every global memo23 slot is taken: look again shortly (a slot frees as
+       soon as a running run is booked). */
+    if (reason === 'GLOBAL_BUSY') return out({ outcome: 'WAIT', retrySeconds: 10, metadata: { lastWait: 'GLOBAL_BUSY' } });
     if (['CAMPAIGN_BUDGET', 'ACTOR_CAMPAIGN_CAP', 'ACTOR_DAILY_CAP'].includes(reason)) {
       return out({ outcome: 'BUDGET_REACHED', error: reason, metadata: { budget: reservation } });
     }

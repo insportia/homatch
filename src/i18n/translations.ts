@@ -15143,6 +15143,9 @@ const en = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_photo3d_approx: 'Approximate depth on this device · drag to look around',
 
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_measuring: 'Measuring the depth of the picture…',
+
   /* ── FIND BUYERS / FIND TENANTS (memo23 social intelligence) ── */
   fbx_find_buyers: 'Find Buyers',
   fbx_find_tenants: 'Find Tenants',
@@ -30372,6 +30375,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_photo3d_approx: 'ამ მოწყობილობაზე სიღრმე მიახლოებითია · გადაათრიე მიმოსახედად',
 
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_measuring: 'ფოტოს სიღრმე იზომება…',
+
   /* ── FIND BUYERS / FIND TENANTS (memo23 social intelligence) ── */
   fbx_find_buyers: 'მყიდველების პოვნა',
   fbx_find_tenants: 'მოიჯარეების პოვნა',
@@ -45592,6 +45598,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_photo3d_approx: 'На этом устройстве глубина приблизительная · проведите, чтобы осмотреться',
 
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_measuring: 'Измеряем глубину изображения…',
+
   /* ── FIND BUYERS / FIND TENANTS (memo23 social intelligence) ── */
   fbx_find_buyers: 'Найти покупателей',
   fbx_find_tenants: 'Найти арендаторов',
@@ -60809,6 +60818,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_photo3d_approx: 'Bu cihazda derinlik yaklaşık · etrafa bakmak için sürükleyin',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_measuring: 'Görselin derinliği ölçülüyor…',
 
   /* ── FIND BUYERS / FIND TENANTS (memo23 social intelligence) ── */
   fbx_find_buyers: 'Alıcı bul',
@@ -76028,6 +76040,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_photo3d_approx: 'العمق تقريبي على هذا الجهاز · اسحب للنظر حولك',
 
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_measuring: 'نقيس عمق الصورة…',
+
   /* ── FIND BUYERS / FIND TENANTS (memo23 social intelligence) ── */
   fbx_find_buyers: 'العثور على مشترين',
   fbx_find_tenants: 'العثور على مستأجرين',
@@ -91245,6 +91260,9 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_photo3d_approx: 'במכשיר הזה העומק משוער · גררו כדי להביט סביב',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_measuring: 'מודדים את עומק התמונה…',
 
   /* ── FIND BUYERS / FIND TENANTS (memo23 social intelligence) ── */
   fbx_find_buyers: 'מציאת קונים',

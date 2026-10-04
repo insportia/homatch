@@ -69,7 +69,7 @@ begin
                      where l.matching_job_id = p_job_id and upper(l.source) = q.src
                        and public.find_buyers_signal_is_current(l.signal_at))
                  + (select count(*) from public.matches m
-                     where m.job_id = p_job_id and upper(coalesce(m.preview_platform, '')) = q.src and m.status::text <> 'REJECTED'
+                     where m.job_id = p_job_id and upper(coalesce(m.preview_platform::text, '')) = q.src and m.status::text <> 'REJECTED'
                        and (m.status::text = 'UNLOCKED' or (m.demand_published_at >= now() - interval '30 days'
                                                             and m.demand_published_at <= now() + interval '24 hours'))),
       'state', case

@@ -64,7 +64,7 @@ const profile = { id: 'u1', auth_id: 'u1', email: 'owner@example.test', is_admin
 const PROPERTY_ID = '11111111-1111-1111-1111-111111111111';
 const property = {
   id: PROPERTY_ID, user_id: 'u1', title: '2-bedroom apartment in Krtsanisi', transaction_type: 'SALE', property_type: 'APARTMENT',
-  is_deleted: false, created_at: new Date().toISOString(), photos: [],
+  contact_phone_e164: '+995555123456', is_deleted: false, created_at: new Date().toISOString(), photos: [],
   facts: [{ city: 'Tbilisi', district: 'Krtsanisi', total_price: 120000, currency: 'USD', bedrooms: 2, area: 75 }],
 };
 const ago = (d) => new Date(Date.now() - d * 86_400_000).toISOString();
@@ -119,7 +119,7 @@ const STATUS_SEARCHING = {
 const withState = (state, over = {}) => ({ ...STATUS_SEARCHING, campaign: { ...STATUS_SEARCHING.campaign, state, ...over } });
 const MATCHES = matchDetailRows(30, PROPERTY_ID).map((m) => ({ ...m, demand_published_at: ago(3) }));
 
-async function boot(t, { width = 1440, height = 900, lang = 'en', admin = false, status = STATUS_SEARCHING, matches = [] } = {}) {
+async function boot(t, { width = 1440, height = 900, lang = 'en', admin = false, status = STATUS_SEARCHING, matches = [], jobs = [] } = {}) {
   const { chromium } = resolvePlaywright();
   const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
@@ -137,7 +137,8 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', admin = false,
   await page.route('**', async (r) => {
     const req = r.request();
     const url = req.url();
-    if (url.startsWith(BASE)) return r.continue();
+    /* Real fonts: Georgian/Arabic/Hebrew glyph widths are what lay the page out in production. */
+    if (url.startsWith(BASE) || url.startsWith('https://fonts.googleapis.com/') || url.startsWith('https://fonts.gstatic.com/')) return r.continue();
     if (req.method() === 'OPTIONS') return r.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' } });
     if (url.includes('/auth/v1/user')) return r.fulfill(json(fakeSession().user));
     if (url.includes('/auth/v1/token')) return r.fulfill(json(fakeSession()));
@@ -164,6 +165,10 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', admin = false,
       return r.fulfill({ ...json(page), headers: { 'access-control-allow-origin': '*', 'access-control-expose-headers': 'content-range',
         'content-range': rows.length ? `${offset}-${offset + page.length - 1}/${rows.length}` : `*/0` } });
     }
+    if (url.includes('/rpc/billing_budget_offer')) return r.fulfill(json({ ok: true, offer: 'PAYG_FULL', estimate_min_credits: 17.5, estimate_max_credits: 32.5, available_balance: 99832.03, min_viable_budget_credits: 50 }));
+    if (url.includes('/rpc/billing_my_budget_choices')) return r.fulfill(json({ ok: true, balance: 99832.03, min_viable: 50, allow_custom: true, recommended: 100,
+      presets: [100, 250, 500, 1000].map((c) => ({ credits: c, affordable: true, viable: true, recommended: c === 100 })) }));
+    if (url.includes('/rpc/background_jobs_mine')) return r.fulfill(json(jobs));
     if (url.includes('/rpc/find_buyers_public_config')) return r.fulfill(json({ minUsd: 10, creditsPerUsd: 10, minCredits: 100 }));
     if (url.includes('/functions/v1/match-campaign')) {
       const body = JSON.parse(req.postData() ?? '{}');
@@ -356,4 +361,78 @@ test('an Arabic excerpt reads right-to-left inside a left-to-right card (Georgia
   assert.equal(dirs.card, 'ltr');
   assert.equal(dirs.html, 'ltr');
   assert.equal(dirs.quote, 'rtl');
+});
+
+/* ── MOBILE FIT: the property page and the search dialog on real phone widths ── */
+const IDLE = { readiness: { ready: true, reason: null, sources: ['TELEGRAM'] },
+  campaign: { ...STATUS_SEARCHING.campaign, state: 'UNAVAILABLE', active: false, sources: [], executed: false, newResults: 0, newLeads: 0,
+    queue: { total: 0, queued: 0, running: 0, done: 0, failed: 0, cancelled: 0, paused: 0 }, runs: { inFlight: 0, succeeded: 0, failed: 0 } } };
+const RUNNING_ELSEWHERE = [{ id: 'bg1', productType: 'VERIFY', subjectType: 'RESEARCH_JOB', subjectId: 'r1', state: 'PROCESSING',
+  progress: 40, currentStage: 'x', resultRef: '/verify?job=r1', stages: [], metadata: {}, createdAt: ago(0.01), updatedAt: ago(0.001) }];
+
+test('phones 320–430px (ka, en, ar): the page and the search dialog fit, scroll, and the task badge covers nothing', opts, async (t) => {
+  const failures = [];
+  for (const width of [320, 360, 375, 390, 412, 430]) {
+    for (const lang of ['ka', 'en', 'ar']) {
+      const { page } = await boot(t, { width, height: 760, lang, status: IDLE, jobs: RUNNING_ELSEWHERE });
+      await page.goto(`${BASE}/property/${PROPERTY_ID}`, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('a[href$="/matches"]', { timeout: 30000 });
+      await page.evaluate(() => document.fonts.ready);
+      await page.waitForTimeout(600);
+      const where = `${lang} ${width}`;
+      const l = await page.evaluate(() => {
+        const vw = document.documentElement.clientWidth;
+        const primary = document.querySelector('main a[href$="/matches"]').getBoundingClientRect();
+        const badge = document.querySelector('button.fixed.end-4');
+        const b = badge?.getBoundingClientRect();
+        window.scrollTo(0, document.documentElement.scrollHeight);
+        return { overflow: document.documentElement.scrollWidth - vw, vw, primaryW: primary.width, primaryH: primary.height,
+          badge: b ? { w: b.width, h: b.height, label: badge.getAttribute('aria-label') } : null,
+          scrolledToEnd: Math.abs(window.scrollY + innerHeight - document.documentElement.scrollHeight) < 2 && window.scrollY > 0 };
+      });
+      if (l.overflow > 0) failures.push(`${where}: page wider than the screen by ${l.overflow}px`);
+      if (l.primaryW < l.vw * 0.6 || l.primaryH > 80) failures.push(`${where}: primary action squeezed (${Math.round(l.primaryW)}×${Math.round(l.primaryH)})`);
+      if (!l.badge) failures.push(`${where}: running-task badge missing`);
+      else {
+        if (l.badge.w > 48 || l.badge.h > 48) failures.push(`${where}: task badge ${l.badge.w}×${l.badge.h} spans the content`);
+        if ((l.badge.label ?? '').trim().length < 4) failures.push(`${where}: task badge has no accessible name`);
+      }
+      if (!l.scrolledToEnd) failures.push(`${where}: page does not scroll to its end`);
+      /* The search dialog. */
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.goto(`${BASE}/property/${PROPERTY_ID}/matches`, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('text=Buyer budget, text=მყიდველის ბიუჯეტი, text=ميزانية', { timeout: 30000 }).catch(() => {});
+      await page.waitForTimeout(1500);
+      const launch = page.locator('section[aria-labelledby="fbl-title"] button').last();
+      if (await launch.count()) {
+        await launch.click();
+        await page.waitForSelector('[role="dialog"]', { timeout: 10000 });
+        await page.evaluate(() => document.fonts.ready);
+        await page.waitForTimeout(800);
+        const d = await page.evaluate(() => {
+          const dlg = document.querySelector('[role="dialog"]');
+          const r = dlg.getBoundingClientRect();
+          const outside = [...dlg.querySelectorAll('*')].filter((e) => {
+            if (e.classList.contains('sr-only')) return false;
+            const b = e.getBoundingClientRect();
+            return b.width > 0 && (b.right > r.right + 1 || b.left < r.left - 1);
+          }).map((e) => (e.textContent || e.tagName).trim().slice(0, 30));
+          const budget = [...dlg.querySelectorAll('p')].find((p) => /\$10/.test(p.textContent ?? ''));
+          return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, vw: innerWidth, vh: innerHeight,
+            scrolls: dlg.scrollHeight > dlg.clientHeight ? getComputedStyle(dlg).overflowY : 'fits', outside: outside.slice(0, 5),
+            budgetFits: budget ? budget.getBoundingClientRect().right <= r.right + 1 : true,
+            pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+        });
+        if (d.top < 0 || d.bottom > d.vh + 1) failures.push(`${where}: dialog leaves the screen (${Math.round(d.top)}..${Math.round(d.bottom)} of ${d.vh})`);
+        if (d.left < 0 || d.right > d.vw + 1) failures.push(`${where}: dialog wider than the screen`);
+        if (!['auto', 'scroll', 'fits'].includes(d.scrolls)) failures.push(`${where}: dialog taller than the screen and cannot scroll`);
+        if (d.outside.length) failures.push(`${where}: dialog content outside the dialog: ${d.outside.join(' | ')}`);
+        if (!d.budgetFits) failures.push(`${where}: budget badge wider than the dialog`);
+        if (d.pageOverflow > 0) failures.push(`${where}: page overflow with dialog open`);
+        if (SHOTS) { mkdirSync(SHOTS, { recursive: true }); await page.screenshot({ path: join(SHOTS, `fit-dialog-${width}-${lang}.png`) }); }
+      } else failures.push(`${where}: launch control missing`);
+      await page.context().close();
+    }
+  }
+  assert.deepEqual(failures, []);
 });

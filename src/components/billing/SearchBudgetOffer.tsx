@@ -193,9 +193,9 @@ export function SearchBudgetOffer({
         </p>
       ) : (
         <div className="mt-2 space-y-1 text-sm">
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-muted-foreground">{t('cost_estimated_usage')}</span>
-            <span className="font-medium" dir="ltr">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+            <span className="min-w-0 text-muted-foreground">{t('cost_estimated_usage')}</span>
+            <span className="whitespace-nowrap font-medium" dir="ltr">
               {cr(offer.estimate_min_credits)}–{cr(offer.estimate_max_credits)} {t('cost_credits')}
             </span>
           </div>

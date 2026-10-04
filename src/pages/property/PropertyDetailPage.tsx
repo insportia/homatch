@@ -391,7 +391,7 @@ function DiscoverySection({
 
       {/* The ceiling is chosen before anything is spent. */}
       <Dialog open={showBudget} onOpenChange={setShowBudget}>
-        <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md max-h-[85dvh] overflow-y-auto">
+        <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md max-h-[85dvh] overflow-y-auto [&>*]:min-w-0">
           <DialogHeader>
             <DialogTitle className="break-words">{startLabel}</DialogTitle>
             <DialogDescription className="sr-only">{t('budget_choose_title')}</DialogDescription>
@@ -681,7 +681,7 @@ function PropertyDetailContent() {
             <div className="flex flex-wrap items-center gap-2">
               <Link
                 to={contactReady ? `/property/${id}/matches` : `/property/${id}/edit#contact`}
-                className="inline-flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-[hsl(38_92%_54%)] px-4 py-2 text-2xs font-bold text-[#161309] transition-colors hover:bg-[hsl(38_92%_60%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                className="inline-flex min-h-10 min-w-0 basis-full items-center justify-center gap-1.5 rounded-lg bg-[hsl(38_92%_54%)] sm:basis-0 sm:flex-1 px-4 py-2 text-2xs font-bold text-[#161309] transition-colors hover:bg-[hsl(38_92%_60%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
               >
                 {!contactReady && <Phone className="h-3.5 w-3.5 shrink-0" />}
                 <span className="break-words text-center leading-snug">{contactReady ? ownerAction : t('contact_phone_add')}</span>

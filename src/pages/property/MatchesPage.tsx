@@ -1262,9 +1262,9 @@ function MatchesContent() {
         it hands back is what becomes authorized_max_credits.
       */}
       <Dialog open={showBudget} onOpenChange={setShowBudget}>
-        <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md">
+        <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md max-h-[85dvh] overflow-y-auto [&>*]:min-w-0">
           <DialogHeader>
-            <DialogTitle>{t(counterpart === 'TENANT' ? 'fbx_find_tenants' : 'fbx_find_buyers')}</DialogTitle>
+            <DialogTitle className="break-words">{t(counterpart === 'TENANT' ? 'fbx_find_tenants' : 'fbx_find_buyers')}</DialogTitle>
             <DialogDescription className="sr-only">{t('budget_choose_title')}</DialogDescription>
           </DialogHeader>
           <CampaignLaunchPanel

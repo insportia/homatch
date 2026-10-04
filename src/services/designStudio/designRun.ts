@@ -102,7 +102,7 @@ export async function runDesign(input: RunInput): Promise<RunResult> {
   input.onStage?.('DESIGN');
   let quoteToken: string | null = null;
   if (!progress.renderId) {
-    const quoted = await quoteRender({ projectId: input.projectId, versionId: input.versionId, product: productOf(input.mode), views: 1 });
+    const quoted = await quoteRender({ projectId: input.projectId, versionId: input.versionId, product: productOf(input.mode), views: 1, mode: input.mode === 'VARIANT' ? 'VARIANT' : null });
     if (!quoted.quote) throw new DesignStudioFailure(quoted.error ?? 'QUOTE_FAILED', true);
     if (input.confirmedCredits != null && quoted.quote.credits !== input.confirmedCredits) throw new DesignStudioFailure('PRICE_CHANGED', true);
     quoteToken = quoted.quote.token;
@@ -168,7 +168,7 @@ export async function runDesign(input: RunInput): Promise<RunResult> {
 
 /** The ordinary path (quote → render-generate) for a design whose specification exists. */
 async function renderDirectly(input: RunInput, versionId: string, specJobId: string, attempt: number): Promise<string> {
-  const quoted = await quoteRender({ projectId: input.projectId, versionId: input.mode === 'ROOM' ? input.versionId : versionId, product: productOf(input.mode), views: 1 });
+  const quoted = await quoteRender({ projectId: input.projectId, versionId: input.mode === 'ROOM' ? input.versionId : versionId, product: productOf(input.mode), views: 1, mode: input.mode === 'VARIANT' ? 'VARIANT' : null });
   if (!quoted.quote) throw new DesignStudioFailure(quoted.error ?? 'QUOTE_FAILED', true);
   if (input.confirmedCredits != null && quoted.quote.credits !== input.confirmedCredits) throw new DesignStudioFailure('PRICE_CHANGED', true);
   const started = await generateRender({

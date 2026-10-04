@@ -15322,6 +15322,11 @@ const en = {
   fbx_fresh_rule: 'Only public signals from the last 30 days. Older or undated posts never enter HOMATCH.',
   fbx_fresh_skipped: '{{count}} older items were skipped.',
   fbx_fresh_badge: 'Last 30 days only',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_price_range: '≈ {{est}} credits · at most {{max}}',
+  dsx_price_range_preview: '≈ {{est}} credits (at most {{max}}) — not charged during the preview.',
+  dsx_walk_price_title: 'Create the 3D walkthrough',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -30558,6 +30563,11 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fbx_fresh_rule: 'მხოლოდ ბოლო 30 დღის საჯარო სიგნალები. უფრო ძველი ან თარიღის გარეშე პოსტები HOMATCH-ში საერთოდ არ შემოდის.',
   fbx_fresh_skipped: 'გამოტოვებულია {{count}} ძველი ჩანაწერი.',
   fbx_fresh_badge: 'მხოლოდ ბოლო 30 დღე',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_price_range: '≈ {{est}} კრედიტი · მაქსიმუმ {{max}}',
+  dsx_price_range_preview: '≈ {{est}} კრედიტი (მაქსიმუმ {{max}}) — წინასწარი ვერსიის დროს არ ჩამოგეჭრებათ.',
+  dsx_walk_price_title: '3D ტურის შექმნა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -45785,6 +45795,11 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fbx_fresh_rule: 'Только публичные сигналы за последние 30 дней. Более старые или недатированные посты в HOMATCH не попадают.',
   fbx_fresh_skipped: 'Пропущено старых записей: {{count}}.',
   fbx_fresh_badge: 'Только последние 30 дней',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_price_range: '≈ {{est}} кредитов · не более {{max}}',
+  dsx_price_range_preview: '≈ {{est}} кредитов (не более {{max}}) — во время предпросмотра не списываются.',
+  dsx_walk_price_title: 'Создать 3D-прогулку',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -61010,6 +61025,11 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fbx_fresh_rule: 'Yalnızca son 30 günün herkese açık sinyalleri. Daha eski veya tarihsiz gönderiler HOMATCH’e hiç girmez.',
   fbx_fresh_skipped: '{{count}} eski öğe atlandı.',
   fbx_fresh_badge: 'Yalnızca son 30 gün',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_price_range: '≈ {{est}} kredi · en fazla {{max}}',
+  dsx_price_range_preview: '≈ {{est}} kredi (en fazla {{max}}) — önizleme sırasında ücret alınmaz.',
+  dsx_walk_price_title: '3D turu oluştur',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -76235,6 +76255,11 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fbx_fresh_rule: 'إشارات عامة من آخر 30 يومًا فقط. المنشورات الأقدم أو غير المؤرخة لا تدخل HOMATCH أبدًا.',
   fbx_fresh_skipped: 'تم تخطي {{count}} من العناصر الأقدم.',
   fbx_fresh_badge: 'آخر 30 يومًا فقط',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_price_range: '≈ {{est}} رصيد · بحد أقصى {{max}}',
+  dsx_price_range_preview: '≈ {{est}} رصيد (بحد أقصى {{max}}) — لا يُخصم خلال المعاينة.',
+  dsx_walk_price_title: 'إنشاء الجولة ثلاثية الأبعاد',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -91460,6 +91485,11 @@ const he: Partial<Record<TranslationKey, string>> = {
   fbx_fresh_rule: 'רק אותות ציבוריים מ-30 הימים האחרונים. פוסטים ישנים יותר או ללא תאריך אינם נכנסים ל-HOMATCH.',
   fbx_fresh_skipped: 'דולגו {{count}} פריטים ישנים.',
   fbx_fresh_badge: '30 הימים האחרונים בלבד',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_price_range: '≈ {{est}} קרדיטים · לכל היותר {{max}}',
+  dsx_price_range_preview: '≈ {{est}} קרדיטים (לכל היותר {{max}}) — לא יחויב בתקופת התצוגה המקדימה.',
+  dsx_walk_price_title: 'יצירת סיור תלת־ממדי',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

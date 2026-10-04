@@ -867,7 +867,11 @@ test('settlement is still actual usage, and still clamped, under a partial budge
   assert.match(settle, /v_charge := v_res\.authorized_max_credits;/);
   // The gateway prices the ACTUAL measured cost, not the estimate.
   const gw = read(path.join(FN, '_shared', 'billing.ts'));
-  assert.match(gw, /p_landed_cogs_cents: landedCogsCents > 0 \? landedCogsCents : null/);
+  // Measured: this run's own landed cost, plus measured work of the same run already in the ledger (priced, not re-recorded).
+  assert.match(gw, /const pricedLandedCents = landedCogsCents \+ Math\.max\(0, n\(usage\.alreadyLedgeredLandedCents\)\);/);
+  assert.match(gw, /p_landed_cogs_cents: pricedLandedCents > 0 \? pricedLandedCents : null/);
+  // The usage event still records only this settlement's own cost.
+  assert.match(gw, /landed_cogs_cents: landedCogsCents,/);
 });
 
 test('the gateway never authorises more than the customer has, or than they agreed', () => {

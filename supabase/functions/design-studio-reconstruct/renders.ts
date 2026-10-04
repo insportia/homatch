@@ -47,7 +47,7 @@ async function configuredModel(admin: { from: (t: string) => any }): Promise<{ p
 }
 import { editPrompt, finishPrompt, validateLegend, validateSpecView } from '../_shared/designStudio/renderPrompt.ts';
 import {
-  isRenderProduct, productForView, QUOTE_TTL_MS, quoteCredits, quoteMatches, quoteSecret, RENDER_PRICING, renderRowKey, reservationKey,
+  isPricedProduct, priceRange, productForView, QUOTE_TTL_MS, quoteMatches, quoteSecret, RENDER_PRICING, renderRowKey, reservationKey, scaleCredits,
   sha256Hex, signQuote, validIdempotencyKey, verifyQuote, type QuoteClaims,
 } from '../_shared/designStudio/renderPricing.ts';
 import { SpecError, validateSceneSpec } from '../_shared/designStudio/hybrid/sceneSpec.ts';
@@ -168,21 +168,28 @@ export async function handleRenderQuote(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   const ctx = await callerOf(req);
   if ('error' in ctx) return ctx.error!;
-  let body: { projectId?: string; versionId?: string; product?: unknown; views?: unknown };
+  let body: { projectId?: string; versionId?: string; product?: unknown; views?: unknown; mode?: unknown };
   try { body = await req.json(); } catch { return json({ error: 'BAD_REQUEST' }, 400); }
-  if (!UUID.test(String(body.projectId)) || !UUID.test(String(body.versionId)) || !isRenderProduct(body.product)) return json({ error: 'BAD_REQUEST' }, 400);
+  if (!UUID.test(String(body.projectId)) || !UUID.test(String(body.versionId)) || !isPricedProduct(body.product)) return json({ error: 'BAD_REQUEST' }, 400);
+  const product = body.product;
   const views = typeof body.views === 'number' ? body.views : Array.isArray(body.views) ? body.views.length : NaN;
-  const credits = quoteCredits(body.product, views);
-  if (credits == null) return json({ error: 'BAD_VIEWS', max: RENDER_PRICING.maxViews[body.product] }, 422);
+  // A mode only selects which measured reference figures price the quote (a variant has no plan reading); never a price.
+  const mode = typeof body.mode === 'string' && /^[A-Z_]{2,20}$/.test(body.mode) ? body.mode : null;
   if (!(await ownedVersion(ctx as Ctx, body.projectId!, body.versionId!))) return json({ error: 'NOT_FOUND' }, 404);
   const secret = await quoteSecret(env);
   if (!secret) return json({ error: 'QUOTE_NOT_CONFIGURED' }, 503);
+  // Priced by the canonical engine from measured reference COGS, at the plan the reservation will be made under.
+  const { data: ent } = await ctx.admin.rpc('billing_entitlements', { p_user_id: ctx.actorId });
+  const planCode = String((ent as { plan_code?: string } | null)?.plan_code ?? 'FREE').toUpperCase();
+  const priced = await priceRange(ctx.admin, { product, mode, planCode, views });
+  if ('error' in priced) return priced.error === 'BAD_VIEWS' ? json({ error: 'BAD_VIEWS', max: RENDER_PRICING.maxViews[product] }, 422) : json({ error: 'QUOTE_UNAVAILABLE', reason: priced.error }, 503);
   const charged = await billingOn(ctx.admin);
+  const { min, est, max } = priced.range;
   const claims: QuoteClaims = {
-    v: 1, u: ctx.actorId, p: body.projectId!, ver: body.versionId!, product: body.product, views, credits, charged,
+    v: 1, u: ctx.actorId, p: body.projectId!, ver: body.versionId!, product, views, credits: max, min, est, mode, charged,
     exp: Date.now() + QUOTE_TTL_MS, n: crypto.randomUUID(),
   };
-  return json({ token: await signQuote(claims, secret), product: claims.product, views, credits, expiresAt: new Date(claims.exp).toISOString(), charged });
+  return json({ token: await signQuote(claims, secret), product, views, credits: max, min, est, expiresAt: new Date(claims.exp).toISOString(), charged });
 }
 
 async function checkQuote(token: unknown, want: Parameters<typeof quoteMatches>[1], admin: Row): Promise<{ claims: QuoteClaims } | { error: Response }> {
@@ -201,7 +208,7 @@ async function reserveFor(admin: Row, userId: string, product: RenderProduct, cr
   if (!charged) return { ok: true as const, billing: { credits, reservationId: null, state: 'NOT_CHARGED', productCode: product } };
   const grant = await beginExecution(admin, {
     userId, productCode: product, idempotencyKey: reservationKey(rowKey), jobRef: rowKey,
-    authorizedMaxCredits: credits, requireFullBudget: true, allowIncluded: false, metadata: { ...meta, quoted_credits: credits },
+    authorizedMaxCredits: credits, budgetIsCeiling: true, requireFullBudget: true, allowIncluded: false, metadata: { ...meta, quoted_credits: credits },
   });
   if (!grant.ok || !grant.reservationId) return { ok: false as const, reason: grant.reason ?? 'ERROR', grant };
   return {
@@ -235,7 +242,8 @@ export async function handleRenderStart(req: Request): Promise<Response> {
   if (!owned) return json({ error: 'NOT_FOUND' }, 404);
   const q = await checkQuote(body.quoteToken, { userId: ctx.actorId, projectId: owned.project.id, versionId: owned.version.id, product, views: vs.length }, ctx.admin);
   if ('error' in q) return q.error;
-  const perView = RENDER_PRICING.creditsPerView[product];
+  // Each view reserves its share of the confirmed maximum.
+  const perView = scaleCredits(q.claims.credits / vs.length, 1);
 
   // The same request is the same rows.
   const keys = await Promise.all(vs.map((v) => renderRowKey(ctx.actorId, String(body.idempotencyKey), 'START', v.id)));
@@ -613,7 +621,7 @@ export async function handleRenderEdit(req: Request): Promise<Response> {
   if (prior) return json({ render: prior, reused: true });
   if ((await recentRenders(ctx.admin, ctx.actorId)) >= RENDERS_PER_HOUR) return json({ error: 'RATE_LIMITED' }, 429);
 
-  const credits = RENDER_PRICING.creditsPerView.DS_RENDER_EDIT;
+  const credits = q.claims.credits;
   const r = await reserveFor(ctx.admin, ctx.actorId, 'DS_RENDER_EDIT', credits, key, q.claims.charged, { ds_project_id: parent.project_id, ds_parent_render: parent.id });
   if (!r.ok) return json({ error: r.reason }, r.reason === 'INSUFFICIENT_CREDITS' || r.reason === 'BELOW_MIN_VIABLE_BUDGET' ? 402 : 409);
   const lease = new Date().toISOString();

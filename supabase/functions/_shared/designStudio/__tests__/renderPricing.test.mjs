@@ -4,22 +4,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  QUOTE_TTL_MS, quoteCredits, quoteMatches, quoteSecret, RENDER_PRICING, renderRowKey, reservationKey, signQuote, validIdempotencyKey, verifyQuote,
+  QUOTE_TTL_MS, quoteMatches, quoteSecret, RENDER_PRICING, renderRowKey, reservationKey, signQuote, validIdempotencyKey, validViews, verifyQuote,
 } from '../renderPricing.ts';
 
 const SECRET = 'x'.repeat(48);
 const claims = (over = {}) => ({
-  v: 1, u: 'user-1', p: 'proj-1', ver: 'ver-1', product: 'DS_ROOM_RENDER', views: 3, credits: quoteCredits('DS_ROOM_RENDER', 3),
+  v: 1, u: 'user-1', p: 'proj-1', ver: 'ver-1', product: 'DS_ROOM_RENDER', views: 3, credits: 18.3, min: 15.9, est: 16.5, mode: null,
   charged: false, exp: Date.now() + QUOTE_TTL_MS, n: 'nonce', ...over,
 });
 
-test('prices are proposed, positive and per view; out-of-bounds view counts are refused', () => {
-  assert.equal(RENDER_PRICING.status, 'PROPOSED');
-  for (const p of ['DS_MASTER_RENDER', 'DS_ROOM_RENDER', 'DS_RENDER_EDIT']) assert.ok(RENDER_PRICING.creditsPerView[p] > 0, `${p} is never zero`);
-  assert.equal(quoteCredits('DS_ROOM_RENDER', 3), RENDER_PRICING.creditsPerView.DS_ROOM_RENDER * 3);
-  assert.equal(quoteCredits('DS_ROOM_RENDER', 0), null);
-  assert.equal(quoteCredits('DS_RENDER_EDIT', 2), null);
-  assert.equal(quoteCredits('DS_MASTER_RENDER', 1.5), null);
+test('no price lives in code: only view bounds (a runaway client) and the 0.1-credit precision', () => {
+  assert.equal(RENDER_PRICING.creditsPerView, undefined);
+  assert.equal(RENDER_PRICING.creditDp, 1);
+  assert.equal(validViews('DS_ROOM_RENDER', 3), true);
+  assert.equal(validViews('DS_ROOM_RENDER', 0), false);
+  assert.equal(validViews('DS_RENDER_EDIT', 2), false);
+  assert.equal(validViews('DS_MASTER_RENDER', 1.5), false);
+  assert.equal(validViews('DS_WALKTHROUGH', 1), true);
 });
 
 test('a signed quote verifies and round-trips its claims', async () => {
@@ -61,8 +62,9 @@ test('a quote matches only its own caller, project, version, product and view co
   assert.equal(quoteMatches(c, { ...want, versionId: 'ver-2' }), false);
   assert.equal(quoteMatches(c, { ...want, product: 'DS_MASTER_RENDER' }), false);
   assert.equal(quoteMatches(c, { ...want, views: 2 }), false);
-  // A quote whose credits disagree with the server's table (an old price) does not match.
-  assert.equal(quoteMatches({ ...c, credits: 1 }, want), false);
+  // Its figures are the server's (signed): a quote with no positive maximum never matches.
+  assert.equal(quoteMatches({ ...c, credits: 0 }, want), false);
+  assert.equal(quoteMatches({ ...c, views: 13 }, { ...want, views: 13 }), false, 'beyond the product\'s view bound');
 });
 
 test('the quote secret is its own env var, else derived from the service key (never the key itself)', async () => {

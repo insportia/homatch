@@ -300,7 +300,7 @@ export function PhotoFlow({ userId, projectId, projectName, resume, onDone, onCa
       {step === 'QUALITY' ? (
         <QualityStep value={quality} onChange={setQuality} onBack={() => { setStep('STYLE'); void save({ step: 'STYLE' }); }}
           onGenerate={() => { void generate(false); }} busy={busy}
-          price={quote ? { credits: quote.credits, charged: quote.charged } : null} priceUnavailable={quoteFailed} onRetryPrice={() => { void requestQuote(); }} />
+          price={quote ? { credits: quote.credits, est: quote.est, charged: quote.charged } : null} priceUnavailable={quoteFailed} onRetryPrice={() => { void requestQuote(); }} />
       ) : null}
       {step === 'GENERATING' ? (
         <GeneratingStep source="PHOTOS" stage={stage} since={genSince.current} done={!!doneVersion} failure={genFailure} busy={busy} recovery={genRecovery} onOpenProject={openProject}

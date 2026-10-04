@@ -26,6 +26,8 @@ import { cn } from '@/lib/utils';
 import { PROGRESS_STEPS, type ProgressStep } from '@/lib/designStudio/walkthrough/lifecycle';
 import type { WalkPhoto } from './PhotoWalk';
 import { createWalkthrough, retryWalkthrough, walkthroughHref, walkthroughStatus, type Walkthrough } from '@/services/designStudio/walkthrough';
+import { quoteRender } from '@/services/designStudio/renders';
+import { priceWords } from '@/lib/designStudio/renders/priceWords';
 
 // The same game as every long wait: it only watches the walkthrough's real state (this panel keeps following it).
 const SnakeGame = lazy(() => import('@/components/games/SnakeGame'));
@@ -84,12 +86,25 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, photos 
     return () => clearInterval(timer);
   }, [walk?.id, walk?.state, read]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The price, server-quoted from measured cost: confirmed before anything is spent while Design Studio charges
+  // (the maximum is reserved; the charge is what it really cost). Kept for the requests that follow the same tap.
+  const [priceAsk, setPriceAsk] = useState<{ credits: number; est: number; charged: boolean; go: () => void } | null>(null);
+  const token = useRef<string | null>(null);
+  const priced = async (go: () => Promise<void>) => {
+    if (asking || inFlight.current) return;
+    setProblem(null);
+    const q = await quoteRender({ projectId, versionId: designVersionId, product: 'DS_WALKTHROUGH', views: 1 }).catch(() => ({ quote: null }));
+    if (!alive.current) return;
+    token.current = q.quote?.token ?? null;
+    if (q.quote?.charged) { const quote = q.quote; setPriceAsk({ credits: quote.credits, est: quote.est, charged: true, go: () => { void go(); } }); return; }
+    void go();
+  };
   const start = async (newRevision = false) => {
     if (asking || inFlight.current) return;
     inFlight.current = true;
     setAsking(true); setProblem(null);
     const revision = newRevision ? (history[0]?.revision ?? walk?.revision ?? 0) + 1 : (walk?.revision ?? 1);
-    const r = await createWalkthrough({ designVersionId, renderId, newRevision, name: t('dsx_walk_version_name', { n: String(revision) }) }).finally(() => { inFlight.current = false; });
+    const r = await createWalkthrough({ designVersionId, renderId, newRevision, name: t('dsx_walk_version_name', { n: String(revision) }), quoteToken: token.current }).finally(() => { inFlight.current = false; });
     if (!alive.current) return;
     setAsking(false);
     if (r.walkthrough) { setReconstructing(false); setWalk(r.walkthrough); void read(r.walkthrough.id); }
@@ -113,7 +128,7 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, photos 
   const retry = async () => {
     if (!walk || asking) return;
     setAsking(true); setProblem(null);
-    const r = await retryWalkthrough(walk.id);
+    const r = await retryWalkthrough(walk.id, token.current);
     if (!alive.current) return;
     setAsking(false);
     if (r.walkthrough) setWalk(r.walkthrough); else setProblem(t('dsx_walk_unavailable'));
@@ -179,14 +194,14 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, photos 
           <p className="mt-3 text-[13px] text-[#5B6472]">{t('dsx_walk_leave_ok')}</p>
         </div>
       ) : !walk ? (
-        <button type="button" onClick={() => { void start(false); }} disabled={asking} className={cn(DARK, 'mt-4')} data-testid="walk-create">
+        <button type="button" onClick={() => { void priced(() => start(false)); }} disabled={asking} className={cn(DARK, 'mt-4')} data-testid="walk-create">
           {asking ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}{t('dsx_walk_create')}
         </button>
       ) : walk.state === 'READY' && walk.walkVersionId ? (
         <div className="mt-4">
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => navigate(walkthroughHref(projectId, walk.walkVersionId!))} className={DARK} data-testid="walk-open">{t('dsx_walk_open')}</button>
-            <button type="button" onClick={() => { void start(true); }} disabled={asking} className={CHIP} data-testid="walk-again">{t('dsx_walk_again')}</button>
+            <button type="button" onClick={() => { void priced(() => start(true)); }} disabled={asking} className={CHIP} data-testid="walk-again">{t('dsx_walk_again')}</button>
           </div>
           {walk.inferred ? (
             <p className="mt-3 flex items-start gap-2 text-[13px] leading-relaxed text-[#5B6472]" data-testid="walk-inferred-note"><Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />{t('dsx_walk_inferred_note')}</p>
@@ -198,9 +213,9 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, photos 
           <p className="mt-1 text-[14px] text-[#5B6472]">{t(walk.retryable ? 'dsx_walk_failed_retry' : 'dsx_walk_failed_final')}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {walk.retryable ? (
-              <button type="button" onClick={() => { void retry(); }} disabled={asking} className={DARK} data-testid="walk-retry"><RotateCcw className="h-4 w-4" aria-hidden="true" />{t('dsx_walk_retry')}</button>
+              <button type="button" onClick={() => { void priced(retry); }} disabled={asking} className={DARK} data-testid="walk-retry"><RotateCcw className="h-4 w-4" aria-hidden="true" />{t('dsx_walk_retry')}</button>
             ) : (
-              <button type="button" onClick={() => { void start(true); }} disabled={asking} className={CHIP} data-testid="walk-again">{t('dsx_walk_again')}</button>
+              <button type="button" onClick={() => { void priced(() => start(true)); }} disabled={asking} className={CHIP} data-testid="walk-again">{t('dsx_walk_again')}</button>
             )}
           </div>
         </div>
@@ -227,6 +242,19 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, photos 
             onView={() => { setPlaying(false); if (walk.state === 'READY' && walk.walkVersionId) navigate(walkthroughHref(projectId, walk.walkVersionId)); }}
             onClose={() => setPlaying(false)} />
         </Suspense>
+      ) : null}
+
+      {priceAsk ? (
+        <div className="fixed inset-0 z-40 grid place-items-end bg-black/40 sm:place-items-center" role="dialog" aria-modal="true" aria-labelledby="walk-price-title">
+          <div className="w-full max-w-md rounded-t-[24px] bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-xl sm:rounded-[24px]">
+            <h2 id="walk-price-title" className="text-[17px] font-semibold">{t('dsx_walk_price_title')}</h2>
+            <p className="mt-3 text-[15px] font-medium" data-testid="walk-price">{priceWords(t, priceAsk)}</p>
+            <div className="mt-5 flex gap-2">
+              <button type="button" onClick={() => setPriceAsk(null)} className={cn('h-12 flex-1 rounded-full border border-[#D5D9E0] text-[15px] font-medium', RING)}>{t('general_cancel')}</button>
+              <button type="button" onClick={() => { const go = priceAsk.go; setPriceAsk(null); go(); }} className={cn(DARK, 'flex-1')} data-testid="walk-price-confirm">{t('dsx_price_confirm')}</button>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {earlier.length ? (

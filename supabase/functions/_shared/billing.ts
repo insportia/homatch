@@ -100,6 +100,13 @@ export interface ActualUsage {
   pricingState?: 'ACTUAL' | 'ESTIMATED' | 'PARTIAL' | 'UNPRICED' | 'ZERO_REAL';
   metadata?: Record<string, unknown>;
   failureReason?: string;
+  /**
+   * Landed COGS (cents) of this run's own earlier provider work that is ALREADY recorded in usage_events under its
+   * own rows (e.g. an AI plan made just before the reserved work). It is counted in the PRICE of this settlement
+   * only — never written again as cost, so COGS reporting is not doubled. The caller must make sure the same
+   * earlier work is counted in at most one settlement.
+   */
+  alreadyLedgeredLandedCents?: number;
 }
 
 export function serviceClient(): SupabaseClient {
@@ -384,7 +391,9 @@ export async function settleExecution(
     fee_cents: 0,
     landed_cogs_cents: landedCogsCents,
     failure_reason: usage.failureReason ?? null,
-    metadata: usage.metadata ?? {},
+    metadata: (usage.alreadyLedgeredLandedCents ?? 0) > 0
+      ? { ...(usage.metadata ?? {}), already_ledgered_landed_cents: round4(usage.alreadyLedgeredLandedCents ?? 0) }
+      : usage.metadata ?? {},
   };
 
   if (grant.funding === 'INCLUDED') {
@@ -397,10 +406,11 @@ export async function settleExecution(
   // Price the ACTUAL work at the plan the job started under, not the plan the
   // customer is on now. Cancelling Premium mid-search must not reprice a
   // running Maximum search.
+  const pricedLandedCents = landedCogsCents + Math.max(0, n(usage.alreadyLedgeredLandedCents));
   const { data: quote } = await sb.rpc('billing_price_quote', {
     p_product_code: grant.productCode,
     p_plan_code: grant.planCode,
-    p_landed_cogs_cents: landedCogsCents > 0 ? landedCogsCents : null,
+    p_landed_cogs_cents: pricedLandedCents > 0 ? pricedLandedCents : null,
   });
   const actualCredits = n(quote?.[0]?.credits, grant.estimateMaxCredits);
 

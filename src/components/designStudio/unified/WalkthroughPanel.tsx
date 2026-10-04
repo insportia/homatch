@@ -44,10 +44,12 @@ const working = (w: Walkthrough | null) => !!w && w.state !== 'READY' && w.state
 /** How often a space being reconstructed is asked after (the same request: never a second reading). */
 const SPACE_POLL_MS = 6000;
 
-export function WalkthroughPanel({ projectId, designVersionId, renderId, photos = [] }: {
+export function WalkthroughPanel({ projectId, designVersionId, renderId, photos = [], needsRoomPhotos = false }: {
   projectId: string; designVersionId: string; renderId: string | null;
-  /** The design's pictures to step into: the one shown first, then its rooms. */
+  /** The design's eye-level room pictures to step into (the room shown first). */
   photos?: WalkPhoto[];
+  /** A picture design: its tour walks its rooms' eye-level pictures — when it has none yet, the card says how to make them. */
+  needsRoomPhotos?: boolean;
 }) {
   const { t } = useLanguage();
   const navigate = useNavigate();
@@ -71,7 +73,7 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, photos 
     setLoaded(true);
   }, [designVersionId]);
   // With a picture to step into there is nothing to ask the server.
-  const photoTour = photos.length > 0;
+  const photoTour = photos.length > 0 || needsRoomPhotos;
   useEffect(() => { setWalk(null); setHistory([]); setLoaded(false); if (!photoTour) void read(); }, [read, photoTour]);
 
   // Following it while it works (the page is only a watcher; the server carries on without it).
@@ -127,13 +129,22 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, photos 
             <p className="mt-1 text-[14px] text-[#5B6472]">{t('dsx_photo3d_body')}</p>
           </div>
         </div>
-        <div className="mt-4" data-testid="photo3d-entry">
-          <button type="button" onClick={() => setInside(true)} className={DARK} data-testid="photo3d-enter">
-            <Footprints className="h-4 w-4" aria-hidden="true" />{t('dsx_walk_open')}
-          </button>
-          <p className="mt-2 text-[13px] leading-relaxed text-[#5B6472]">{t('dsx_photo3d_note')}</p>
-        </div>
-        {inside ? (
+        {photos.length ? (
+          <div className="mt-4" data-testid="photo3d-entry">
+            <button type="button" onClick={() => setInside(true)} className={DARK} data-testid="photo3d-enter">
+              <Footprints className="h-4 w-4" aria-hidden="true" />{t('dsx_walk_open')}
+            </button>
+            <p className="mt-2 text-[13px] leading-relaxed text-[#5B6472]">{t('dsx_photo3d_note')}</p>
+          </div>
+        ) : (
+          // Only a picture of the whole home from above: there is no eye level in it. The rooms' own pictures are made below.
+          <div className="mt-4" data-testid="photo3d-rooms-needed">
+            <p className="text-[14px] leading-relaxed text-[#0C1119]">{t('dsx_photo3d_rooms_needed')}</p>
+            <button type="button" onClick={() => (document.getElementById('ds-rooms') ?? document.getElementById('ds-find-rooms-title'))?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              className={cn(DARK, 'mt-3')} data-testid="photo3d-rooms-cta">{t('dsx_photo3d_rooms_cta')}</button>
+          </div>
+        )}
+        {inside && photos.length ? (
           <Suspense fallback={null}>
             <PhotoWalk photos={photos} initialId={photos[0].id} onClose={() => setInside(false)} />
           </Suspense>

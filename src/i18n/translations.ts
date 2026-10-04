@@ -15145,6 +15145,10 @@ const en = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_photo3d_measuring: 'Measuring the depth of the picture…',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_rooms_needed: 'The tour walks through eye-level pictures of each room of this design. This picture shows the whole home from above, so there is no eye level to enter yet: create the rooms\' pictures below and the tour opens with them.',
+  dsx_photo3d_rooms_cta: 'Create the rooms\' pictures',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -30204,6 +30208,10 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_photo3d_measuring: 'ფოტოს სიღრმე იზომება…',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_rooms_needed: 'ტური ამ დიზაინის თითოეული ოთახის თვალის სიმაღლიდან გადაღებულ ფოტოებში დადის. ეს ფოტო მთელ სახლს ზემოდან აჩვენებს, ამიტომ თვალის სიმაღლე მასში ჯერ არ არის: ქვემოთ შექმენი ოთახების ფოტოები და ტური მათით გაიხსნება.',
+  dsx_photo3d_rooms_cta: 'ოთახების ფოტოების შექმნა',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -45254,6 +45262,10 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_photo3d_measuring: 'Измеряем глубину изображения…',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_rooms_needed: 'Тур проходит по снимкам каждой комнаты этого дизайна на уровне глаз. Это изображение показывает весь дом сверху, поэтому войти пока некуда: создайте снимки комнат ниже, и тур откроется с ними.',
+  dsx_photo3d_rooms_cta: 'Создать снимки комнат',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -60302,6 +60314,10 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_photo3d_measuring: 'Görselin derinliği ölçülüyor…',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_rooms_needed: 'Tur, bu tasarımın her odasının göz hizasından görsellerinde dolaşır. Bu görsel evin tamamını yukarıdan gösteriyor, yani henüz girilecek göz hizası yok: odaların görsellerini aşağıda oluşturun, tur onlarla açılır.',
+  dsx_photo3d_rooms_cta: 'Oda görsellerini oluştur',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -75350,6 +75366,10 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_photo3d_measuring: 'نقيس عمق الصورة…',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_rooms_needed: 'تتجول الجولة في صور كل غرفة من هذا التصميم على مستوى النظر. هذه الصورة تُظهر المنزل كله من الأعلى، فلا يوجد بعد مستوى نظر للدخول: أنشئ صور الغرف أدناه وستُفتح الجولة بها.',
+  dsx_photo3d_rooms_cta: 'إنشاء صور الغرف',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -90398,6 +90418,10 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_photo3d_measuring: 'מודדים את עומק התמונה…',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_rooms_needed: 'הסיור עובר בתמונות בגובה העיניים של כל חדר בעיצוב הזה. התמונה הזו מציגה את כל הבית מלמעלה, ולכן אין בה עדיין גובה עיניים להיכנס אליו: צרו למטה את תמונות החדרים והסיור ייפתח איתן.',
+  dsx_photo3d_rooms_cta: 'יצירת תמונות החדרים',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

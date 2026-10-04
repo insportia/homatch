@@ -25,7 +25,7 @@ const RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring
 const ROUND = cn('grid h-11 w-11 place-items-center rounded-full bg-white/10 text-white ring-1 ring-white/20 hover:bg-white/20', RING);
 const SPEED = 0.9;
 
-type Phase = { kind: 'LOADING'; progress: number | null; measuring?: boolean } | { kind: 'READY'; approximate: boolean } | { kind: 'FAILED'; code: string };
+type Phase = { kind: 'LOADING'; progress: number | null; measuring?: boolean } | { kind: 'READY'; approximate: boolean; reason?: string } | { kind: 'FAILED'; code: string };
 
 export function PhotoWalk({ photos, initialId, onClose }: { photos: WalkPhoto[]; initialId: string; onClose: () => void }) {
   const { t, isRTL } = useLanguage();
@@ -166,11 +166,12 @@ export function PhotoWalk({ photos, initialId, onClose }: { photos: WalkPhoto[];
         if (disposed) { URL.revokeObjectURL(url); return; }
         // The picture's own depth; a device that cannot estimate it still enters the picture, on a room's shape.
         let approximate = false;
+        let reason = '';
         const depth = await estimateDepth(photo.id, img, (p) => {
           if (disposed) return;
           setPhase(p.stage === 'MEASURING' ? { kind: 'LOADING', progress: null, measuring: true } : { kind: 'LOADING', progress: p.fraction });
         })
-          .catch(() => { approximate = true; return roomShapedDepth(); });
+          .catch((e) => { approximate = true; reason = String((e as Error)?.message ?? e).slice(0, 60); return roomShapedDepth(); });
         if (disposed) { URL.revokeObjectURL(url); return; }
         stage = 'MESH';
         const aspect = img.naturalWidth / Math.max(1, img.naturalHeight);
@@ -198,7 +199,7 @@ export function PhotoWalk({ photos, initialId, onClose }: { photos: WalkPhoto[];
           scene.background = new THREE.Color(`rgb(${Math.round((r / px) * 0.45)}, ${Math.round((gg / px) * 0.45)}, ${Math.round((b / px) * 0.45)})`);
         }
         URL.revokeObjectURL(url);
-        setPhase({ kind: 'READY', approximate });
+        setPhase({ kind: 'READY', approximate, reason });
         frame = requestAnimationFrame(tick);
       } catch (e) {
         // eslint-disable-next-line no-console
@@ -269,7 +270,8 @@ export function PhotoWalk({ photos, initialId, onClose }: { photos: WalkPhoto[];
           </div>
         ) : null}
         {phase.kind === 'READY' ? (
-          <p className="pointer-events-none absolute inset-x-0 top-3 mx-auto w-fit max-w-[90%] rounded-full bg-black/45 px-4 py-2 text-center text-[13px] text-white" data-testid="photo-walk-hint">{t(phase.approximate ? 'dsx_photo3d_approx' : 'dsx_photo3d_hint')}</p>
+          <p className="pointer-events-none absolute inset-x-0 top-3 mx-auto w-fit max-w-[90%] rounded-full bg-black/45 px-4 py-2 text-center text-[13px] text-white" data-testid="photo-walk-hint">{t(phase.approximate ? 'dsx_photo3d_approx' : 'dsx_photo3d_hint')}
+            {phase.approximate && phase.reason ? <span className="block text-2xs text-white/60" data-testid="photo-walk-approx-reason">{phase.reason}</span> : null}</p>
         ) : null}
         <div ref={stick} className={cn('absolute bottom-[max(env(safe-area-inset-bottom),20px)] start-5 grid h-28 w-28 touch-none place-items-center rounded-full ring-2 ring-white/40', phase.kind === 'READY' ? '' : 'hidden')}
           aria-label={t('dsx_photo3d_move')} role="application" data-testid="photo-walk-stick">

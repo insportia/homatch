@@ -125,6 +125,22 @@ export const DS_STRINGS_33 = {
     'غرفة',
     'חדר',
   ],
+  dsx_photo3d_rooms_needed: [
+    'The tour walks through eye-level pictures of each room of this design. This picture shows the whole home from above, so there is no eye level to enter yet: create the rooms\' pictures below and the tour opens with them.',
+    'ტური ამ დიზაინის თითოეული ოთახის თვალის სიმაღლიდან გადაღებულ ფოტოებში დადის. ეს ფოტო მთელ სახლს ზემოდან აჩვენებს, ამიტომ თვალის სიმაღლე მასში ჯერ არ არის: ქვემოთ შექმენი ოთახების ფოტოები და ტური მათით გაიხსნება.',
+    'Тур проходит по снимкам каждой комнаты этого дизайна на уровне глаз. Это изображение показывает весь дом сверху, поэтому войти пока некуда: создайте снимки комнат ниже, и тур откроется с ними.',
+    'Tur, bu tasarımın her odasının göz hizasından görsellerinde dolaşır. Bu görsel evin tamamını yukarıdan gösteriyor, yani henüz girilecek göz hizası yok: odaların görsellerini aşağıda oluşturun, tur onlarla açılır.',
+    'تتجول الجولة في صور كل غرفة من هذا التصميم على مستوى النظر. هذه الصورة تُظهر المنزل كله من الأعلى، فلا يوجد بعد مستوى نظر للدخول: أنشئ صور الغرف أدناه وستُفتح الجولة بها.',
+    'הסיור עובר בתמונות בגובה העיניים של כל חדר בעיצוב הזה. התמונה הזו מציגה את כל הבית מלמעלה, ולכן אין בה עדיין גובה עיניים להיכנס אליו: צרו למטה את תמונות החדרים והסיור ייפתח איתן.',
+  ],
+  dsx_photo3d_rooms_cta: [
+    'Create the rooms\' pictures',
+    'ოთახების ფოტოების შექმნა',
+    'Создать снимки комнат',
+    'Oda görsellerini oluştur',
+    'إنشاء صور الغرف',
+    'יצירת תמונות החדרים',
+  ],
   dsx_walk_model_title: [
     'Walkable model of the plan',
     'გეგმის გასავლელი მოდელი',

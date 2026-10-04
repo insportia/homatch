@@ -1,10 +1,10 @@
 import {
   AlertCircle, Bot, CalendarDays, Check, ExternalLink, Loader2, MessageSquare,
-  Eye, Home, Pause, Play, Radar, Search, Square, User, Zap,
+  Eye, Home, Search, Sparkles, User, Zap,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { NativeMatchesPanel } from '@/components/matching/NativeMatchesPanel';
 import { toast } from 'sonner';
 import type { DiscoveryHeadroom } from '@/campaign/searchExpansion';
@@ -14,17 +14,19 @@ import { LanguageCoveragePanel } from '@/components/campaign/LanguageCoveragePan
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { OpportunityCard, OverflowGlyph } from '@/components/customer/OpportunityCard';
 import {CustomerSurface,
-  DISCOVERY_SURFACE, EmptyState, FilterRail, PageHero, QuietAction,
+  DISCOVERY_SURFACE, EmptyState, FilterRail, PageHero,
 } from '@/components/customer/surface';
 import { AppLayout } from '@/components/layouts/AppLayout';
 import { CommunityOutreachPanel } from '@/components/matching/CommunityOutreachPanel';
 import { LeadStateControl } from '@/components/broker/LeadStateControl';
 import { ExternalContactUnlockModal } from '@/components/matching/ExternalContactUnlockModal';
 import { ExternalSitesCard } from '@/components/matching/ExternalSitesCard';
-import { MatchingJobProgress } from '@/components/matching/MatchingJobProgress';
-import { FindBuyersCampaignPanel } from '@/components/findBuyers/FindBuyersCampaignPanel';
 import { FindBuyersResults } from '@/components/findBuyers/FindBuyersResults';
-import { FRAMED_ACTION, GOLD_FILL, GOLD_TEXT, NAVY_BAND } from '@/components/findBuyers/brand';
+import { LiveSearchModule, SearchStatusPill } from '@/components/findBuyers/LiveSearchModule';
+import { PageNav } from '@/components/findBuyers/PageNav';
+import { FRAMED_ACTION, GOLD_TEXT, NAVY_BAND } from '@/components/findBuyers/brand';
+import { useCampaignStatus } from '@/hooks/useCampaignStatus';
+import { arrivalAction, parsePage } from '@/findBuyers/campaignView';
 import {
   AlertDialog, AlertDialogAction,AlertDialogCancel, AlertDialogContent, 
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -53,8 +55,8 @@ import {
   type CampaignSearchLanguageChoice,getCampaignLanguageState,
   getCreditAccount, 
   getLastSettledSweep,getMatchCounts, 
-  getMatches, 
-  controlMatchingJob, findOpenMatchingJob, getUnlockedMatch, markMatchPreviewed,nextMatchesCursor, pauseMatchingCampaign,startMatchingCampaign, unlockMatch, 
+  getMatchesPaged, 
+  controlMatchingJob, getUnlockedMatch, markMatchPreviewed, pauseMatchingCampaign,startMatchingCampaign, unlockMatch, 
   campaignStartErrorKey,
 } from '@/services/api';
 import { readProperty } from '@/services/propertyManagement';
@@ -334,11 +336,25 @@ function MatchesContent() {
   const { id: propertyId } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
+  /* The current page of current-demand matches plus (when opened) the current
+     page of history; isHistoryMatch separates them for rendering. */
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(false);
-  const MATCHES_PAGE_SIZE = 20;
+  const MATCHES_PAGE_SIZE = 12;
+  /* NUMBERED PAGES IN THE URL: refresh keeps the page, Back/Forward walk pages. */
+  const [searchParams, setSearchParams] = useSearchParams();
+  const matchPage = Math.max(1, Number.parseInt(searchParams.get('page') ?? '1', 10) || 1);
+  const historyPage = Math.max(1, Number.parseInt(searchParams.get('hp') ?? '1', 10) || 1);
+  const leadPage = Math.max(1, Number.parseInt(searchParams.get('lp') ?? '1', 10) || 1);
+  const setPageParam = useCallback((key: 'page' | 'hp' | 'lp', value: number) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value <= 1) next.delete(key); else next.set(key, String(value));
+      return next;
+    });
+  }, [setSearchParams]);
+  const [currentTotal, setCurrentTotal] = useState(0);
+  const [historyTotal, setHistoryTotal] = useState(0);
   const [counts, setCounts] = useState({ total: 0, newCount: 0, strongCount: 0 });
   /*
    * THE PROPERTY, BECAUSE THE PAGE COULD NOT NAME WHAT IT WAS ABOUT.
@@ -369,7 +385,13 @@ function MatchesContent() {
   const [revealMatch, setRevealMatch] = useState<{ match: Match; unlock: MatchUnlock } | null>(null);
 
   // Campaign
-  const [campaignActive, setCampaignActive] = useState(false);
+  /* THE CAMPAIGN IS READ FROM THE SERVER, NOT REMEMBERED. find_buyers_campaign_status
+     says whether a search runs, pauses or finished; a refresh, a remount or a second tab
+     reads the same thing, and nothing here starts or restarts a search. */
+  const { status: campaignStatus, refresh: refreshStatus } = useCampaignStatus(propertyId);
+  const liveCampaign = campaignStatus?.campaign?.active ? campaignStatus.campaign : null;
+  const activeJobId = liveCampaign?.jobId ?? null;
+  const campaignActive = Boolean(liveCampaign);
   /* The campaign's resolved search languages, so the coverage panel can
      name a language that has produced nothing yet rather than omitting it. */
   const [campaignLanguages, setCampaignLanguages] = useState<string[]>([]);
@@ -378,16 +400,9 @@ function MatchesContent() {
      may spend. Wallet balance is not campaign budget. */
   const [showBudget, setShowBudget] = useState(false);
   const [showPauseConfirm, setShowPauseConfirm] = useState(false);
-  const [activeJobId, setActiveJobId] = useState<string | null>(null);
-  /* The running search is read from the server, so it survives a refresh, a
-     second tab and a logout: the page asks which search is open, it does not
-     remember one. */
-  const [jobPaused, setJobPaused] = useState(false);
-  /* Potential buyers/tenants from public conversations refresh as the
-     running search qualifies more of them. */
-  const [leadRefresh, setLeadRefresh] = useState(0);
-  const bumpLeads = useCallback(() => setLeadRefresh((n) => n + 1), []);
   const [leadCount, setLeadCount] = useState(0);
+  /* New current-demand matches the live search reported while a page is being read. */
+  const [matchesPending, setMatchesPending] = useState(false);
   /** The last settled sweep, for the Expand Search offer. */
   const [lastSweep, setLastSweep] = useState<{
     id: string;
@@ -399,24 +414,18 @@ function MatchesContent() {
   const loadData = useCallback(async () => {
     if (!propertyId || !homatchUser) return;
     setLoading(true);
-    const [matchData, countData, credits] = await Promise.all([
-      getMatches(propertyId, undefined, MATCHES_PAGE_SIZE),
+    const [current, history, countData, credits] = await Promise.all([
+      getMatchesPaged(propertyId, { page: matchPage, pageSize: MATCHES_PAGE_SIZE, scope: 'current', filter }),
+      getMatchesPaged(propertyId, { page: historyPage, pageSize: MATCHES_PAGE_SIZE, scope: 'history', filter }),
       getMatchCounts(propertyId),
       getCreditAccount(homatchUser.id),
     ]);
-    setMatches(matchData);
+    setMatches([...current.rows, ...history.rows]);
+    setCurrentTotal(current.total);
+    setHistoryTotal(history.total);
     setCounts(countData);
     setCreditAccount(credits);
-    // getMatches() caps a page at MATCHES_PAGE_SIZE — a full page means there's
-    // likely more beyond it (confirmed or not by the next loadMore() call).
-    setHasMore(matchData.length >= MATCHES_PAGE_SIZE);
-    // Detect campaign status from match data
-    setCampaignActive(matchData.some(m => m.status !== 'ARCHIVED'));
-    findOpenMatchingJob(propertyId)
-      .then((open) => {
-        if (open) { setActiveJobId(open.id); setJobPaused(open.status === 'paused'); }
-      })
-      .catch(() => undefined);
+    setMatchesPending(false);
     /*
      * The campaign's own search-language configuration, read separately
      * because it is a FACT ABOUT THE CAMPAIGN and the matches are a fact
@@ -455,28 +464,36 @@ function MatchesContent() {
       .catch(() => setLastSweep(null));
 
     setLoading(false);
-  }, [propertyId, homatchUser]);
+  }, [propertyId, homatchUser, matchPage, historyPage, filter]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // getMatches() already supports cursor pagination (composite match_score +
-  // created_at seek cursor — see nextMatchesCursor()), but nothing called it with
-  // pagination args before, so any property with more than MATCHES_PAGE_SIZE
-  // matches silently showed only its top page forever. This wires a real
-  // "Load more" action on top of it.
-  const loadMore = useCallback(async () => {
-    if (!propertyId || loadingMore || !hasMore) return;
-    setLoadingMore(true);
-    const cursor = nextMatchesCursor(matches);
-    if (!cursor) { setHasMore(false); setLoadingMore(false); return; }
-    const nextPage = await getMatches(propertyId, cursor, MATCHES_PAGE_SIZE);
-    setMatches(prev => {
-      const seen = new Set(prev.map(m => m.id));
-      return [...prev, ...nextPage.filter(m => !seen.has(m.id))];
-    });
-    setHasMore(nextPage.length >= MATCHES_PAGE_SIZE);
-    setLoadingMore(false);
-  }, [propertyId, matches, hasMore, loadingMore]);
+  /* A page number past the end (results shrank, or a typed URL) falls back to the last page. */
+  useEffect(() => {
+    const pages = Math.max(1, Math.ceil(currentTotal / MATCHES_PAGE_SIZE));
+    const clamped = parsePage(String(matchPage), pages);
+    if (!loading && currentTotal > 0 && clamped !== matchPage) setPageParam('page', clamped);
+  }, [currentTotal, matchPage, loading, setPageParam]);
+
+  /*
+   * LIVE ARRIVALS NEVER RESHUFFLE THE PAGE BEING READ. When the search reports new
+   * current matches, an empty list simply loads them; a list being read gets a
+   * "new matches" banner instead. When the search ends, the page reloads once so
+   * totals and the history split are final.
+   */
+  const lastMatchSignal = React.useRef<number | null>(null);
+  const lastLive = React.useRef<boolean>(false);
+  useEffect(() => {
+    const c = campaignStatus?.campaign;
+    const signal = c?.newMatches ?? 0;
+    if (lastMatchSignal.current === null) { lastMatchSignal.current = signal; lastLive.current = Boolean(c?.active); return; }
+    const action = arrivalAction(matches.length, lastMatchSignal.current, signal);
+    lastMatchSignal.current = signal;
+    if (action === 'auto') void loadData();
+    else if (action === 'offer') setMatchesPending(true);
+    if (lastLive.current && !c?.active) void loadData();
+    lastLive.current = Boolean(c?.active);
+  }, [campaignStatus, matches.length, loadData]);
 
   const filteredMatches = matches.filter(m => {
     if (filter === 'new') return m.status === 'NEW';
@@ -498,7 +515,7 @@ function MatchesContent() {
   const isHistory = (m: Match) => isHistoryMatch(m);
   const currentMatches = filteredMatches.filter((m) => !isHistory(m));
   const historyMatches = filteredMatches.filter(isHistory);
-  const [showHistory, setShowHistory] = useState(false);
+  const [showHistory, setShowHistory] = useState(() => searchParams.has('hp'));
 
   const renderMatchCard = (match: Match, history: boolean) => {
                   const tier = fitTier(match.signal_strength);
@@ -777,12 +794,12 @@ function MatchesContent() {
         discoverBrokers === true,
       );
       if (!result?.jobId) throw new Error('No job ID returned from match-campaign');
-      setCampaignActive(true);
-      setActiveJobId(result.jobId);
       toast.success(t('matches_campaign_started_toast'));
     } catch (e) {
       { const refused = campaignStartErrorKey(e); toast.error(refused ? t(refused.key, refused.vars) : t('matches_start_failed')); }
     } finally {
+      /* Whatever happened, the server says what the campaign is now. */
+      await refreshStatus();
       setCampaignLoading(false);
     }
   };
@@ -792,10 +809,9 @@ function MatchesContent() {
     setCampaignLoading(true);
     try {
       await pauseMatchingCampaign(propertyId, homatchUser.id, activeJobId);
-      setCampaignActive(false);
       setShowPauseConfirm(false);
-      if (activeJobId) setJobPaused(true);
-      toast.success(t('matches_paused_toast'));
+      /* No "paused" toast: the module says PAUSING (runs finishing) or PAUSED, from the server. */
+      await refreshStatus();
     } catch (err) {
       // Do not clear the active state on failure: the campaign is still
       // running and still spending credits, and the screen must say so.
@@ -811,9 +827,7 @@ function MatchesContent() {
     setCampaignLoading(true);
     try {
       await controlMatchingJob(propertyId, activeJobId, action);
-      setJobPaused(false);
-      /* A stopped search is finishing on the server; its controls go away. */
-      if (action === 'stop') setActiveJobId(null);
+      await refreshStatus();
       toast.success(t(action === 'resume' ? 'p2d_resumed_toast' : 'p2d_stopping_toast'));
     } catch (err) {
       console.error(err);
@@ -909,72 +923,25 @@ function MatchesContent() {
     { value: 'strong' as const, label: t('matches_filter_strong'), count: counts.strongCount },
   ];
 
-  /*
-   * THE CAMPAIGN CONTROLS ARE NO LONGER THE HEADER.
-   *
-   * "Pause matching" was a full-weight outlined button at the top right of a page about
-   * results, and it is the deferred Active Search concept wearing a different label: it
-   * asks the customer to hold a mode in their head before they have read anything. It is
-   * NOT removed, because stopping something that spends money must stay reachable — it
-   * moves into the search module beside the results, where the campaign is the subject.
-   */
-  /*
-   * A JOB IS RUNNING, AS OPPOSED TO A MODE BEING ON.
-   *
-   * `campaignActive` is `matchData.some(m => m.status !== 'ARCHIVED')` — the existence of
-   * any non-archived match — so it is true for every property that has ever matched
-   * anything, and a page keyed off it reports a search running that finished weeks ago.
-   * `activeJobId` comes from a job this session started or found, which is the only thing
-   * that makes "stop" a meaningful offer.
-   */
+  /* A live campaign (running, pausing or paused) — from the server, never inferred
+     from whether old matches exist. */
   const jobRunning = Boolean(activeJobId);
-
-  /* Rail controls on the navy frame: gold-filled primary, gold-framed secondary. */
-  const railButton = (props: { label: string; icon: React.ComponentType<{ className?: string }>; onClick: () => void; primary?: boolean }) => (
-    <button
-      type="button"
-      onClick={props.onClick}
-      disabled={campaignLoading}
-      className={cn(
-        'inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-3.5 text-sm font-semibold transition-all disabled:opacity-60',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(218_52%_11%)]',
-        props.primary
-          ? `${GOLD_FILL} text-[hsl(218_52%_11%)] shadow-[0_10px_24px_-12px_hsl(38_92%_45%/0.9)] hover:-translate-y-px`
-          : 'bg-white/5 text-white ring-1 ring-inset ring-[hsl(40_80%_60%/0.55)] hover:bg-white/10 hover:ring-[hsl(40_94%_64%)]',
-      )}
-    >
-      {campaignLoading ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : <props.icon className="h-4 w-4 shrink-0" />}
-      <span className="break-words text-start">{props.label}</span>
-    </button>
-  );
-
-  const searchModule = (
-    <div className={cn('relative overflow-hidden rounded-2xl p-4 text-white ring-1 ring-inset ring-[hsl(40_80%_55%/0.35)] shadow-[0_18px_40px_-24px_hsl(218_60%_8%/0.9)]', NAVY_BAND)}>
-      <div className="flex items-center gap-2.5">
-        <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', GOLD_FILL)}>
-          <Radar className="h-[18px] w-[18px] text-[hsl(218_52%_11%)]" aria-hidden="true" />
-        </span>
-        <p className={cn('text-2xs font-bold uppercase tracking-[0.14em]', GOLD_TEXT)}>{t('matches_search_module')}</p>
-      </div>
-      <p className="mb-3 mt-2 text-2xs leading-snug text-[hsl(218_40%_85%)]">{t('matches_search_what')}</p>
-      {/* One search at a time: while one runs or is paused, its own controls are the actions. */}
-      {!jobRunning && railButton({ primary: true, icon: Play, onClick: () => setShowBudget(true), label: t(discoverKey) })}
-      {/* THE STOP, WHERE STOPPING MEANS SOMETHING: only while a job genuinely runs. */}
-      {jobRunning && !jobPaused && (
-        <div className="space-y-2">
-          {railButton({ icon: Pause, onClick: () => setShowPauseConfirm(true), label: t('matches_pause_matching') })}
-          {railButton({ icon: Square, onClick: () => handleControlJob('stop'), label: t('p2d_stop_search') })}
-        </div>
-      )}
-      {jobRunning && jobPaused && (
-        <div className="space-y-2" role="status">
-          <p className="text-2xs leading-snug text-[hsl(218_40%_85%)]">{t('p2d_paused_note')}</p>
-          {railButton({ primary: true, icon: Play, onClick: () => handleControlJob('resume'), label: t('p2d_resume_search') })}
-          {railButton({ icon: Square, onClick: () => handleControlJob('stop'), label: t('p2d_stop_search') })}
-        </div>
-      )}
-    </div>
-  );
+  const moduleRef = React.useRef<HTMLDivElement | null>(null);
+  const [moduleVisible, setModuleVisible] = useState(true);
+  useEffect(() => {
+    const el = moduleRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return undefined;
+    const io = new IntersectionObserver(([entry]) => setModuleVisible(entry.isIntersecting), { threshold: 0.05 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  const currentPages = Math.max(1, Math.ceil(currentTotal / MATCHES_PAGE_SIZE));
+  const historyPages = Math.max(1, Math.ceil(historyTotal / MATCHES_PAGE_SIZE));
+  const dnaFacts = facts ? {
+    transaction_type: property?.transaction_type ?? null, property_type: property?.property_type ?? null,
+    city: facts.city ?? null, district: facts.district ?? null, bedrooms: facts.bedrooms ?? null, rooms: facts.rooms ?? null,
+    area: facts.area ?? null, total_price: facts.total_price ?? null, currency: facts.currency ?? null,
+  } : null;
 
   return (
     /*
@@ -1004,10 +971,41 @@ function MatchesContent() {
           />
         </div>
 
+        {/* ── LIVE SEARCH: what is being looked for, and what the search is doing now ── */}
+        <div ref={moduleRef} className="mt-4">
+          <LiveSearchModule
+            id="fbl-live"
+            status={campaignStatus}
+            facts={dnaFacts}
+            counterpart={counterpart === 'TENANT' ? 'TENANT' : counterpart === 'BUYER' ? 'BUYER' : null}
+            propertyLabel={propertyLabel ?? ''}
+            busy={campaignLoading}
+            launchLabel={t(discoverKey)}
+            onLaunch={() => setShowBudget(true)}
+            onPause={() => setShowPauseConfirm(true)}
+            onResume={() => handleControlJob('resume')}
+            onStop={() => handleControlJob('stop')}
+          />
+        </div>
+        {!moduleVisible && (
+          <SearchStatusPill
+            status={campaignStatus}
+            counterpart={counterpart === 'TENANT' ? 'TENANT' : counterpart === 'BUYER' ? 'BUYER' : null}
+            onOpen={() => moduleRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          />
+        )}
+
+        {/* ── RESULTS: everything stored for this property, separate from the live search ── */}
+        <div className="mt-5 flex flex-wrap items-end justify-between gap-2">
+          <div className="min-w-0">
+            <h2 className="font-display text-base font-semibold text-[hsl(218_45%_14%)]">{t('fbl_results_heading')}</h2>
+            <p className="text-2xs text-[hsl(218_28%_38%)]">{t('fbl_results_caption')}</p>
+          </div>
+        </div>
         <FilterRail
           options={filters}
           value={filter}
-          onChange={(next) => setFilter(next)}
+          onChange={(next) => { setFilter(next); setPageParam('page', 1); setPageParam('hp', 1); }}
           ariaLabel={t('matches_filter_all')}
         />
 
@@ -1022,18 +1020,26 @@ function MatchesContent() {
               <FindBuyersResults
                 propertyId={propertyId}
                 counterpart={counterpart === 'TENANT' ? 'TENANT' : counterpart === 'BUYER' ? 'BUYER' : null}
-                refreshKey={leadRefresh}
-                searching={jobRunning}
+                liveSignal={campaignStatus ? (campaignStatus.campaign?.newLeads ?? 0) : null}
+                page={leadPage}
+                onPage={(p) => setPageParam('lp', p)}
                 onCount={setLeadCount}
               />
             ) : null}
+            {matchesPending && (
+              <button type="button" onClick={() => { setPageParam('page', 1); void loadData(); }}
+                className={cn('flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white ring-1 ring-inset ring-[hsl(40_80%_55%/0.5)]', NAVY_BAND)}
+                role="status">
+                <Sparkles className={cn('h-4 w-4', GOLD_TEXT)} aria-hidden="true" />{t('fbl_new_results_banner')}
+              </button>
+            )}
             {loading ? (
               <div className="grid gap-2.5 md:grid-cols-2 2xl:grid-cols-3">
                 {[1, 2, 3, 4].map((i) => (
                   <div key={i} className="hm-discovery-panel h-[15rem] animate-pulse p-3.5" />
                 ))}
               </div>
-            ) : filteredMatches.length === 0 && leadCount > 0 ? null : filteredMatches.length === 0 ? (
+            ) : currentTotal === 0 && historyTotal === 0 && leadCount > 0 ? null : currentTotal === 0 && historyTotal === 0 ? (
               <EmptyState
                 icon={Search}
                 title={t('matches_empty')}
@@ -1041,43 +1047,44 @@ function MatchesContent() {
               />
             ) : (
               /*
-               * TWO COLUMNS FROM md, THREE FROM 2xl. A card is ~240px tall now, so a
-               * 1080p screen shows nine at once where the rejected layout showed two.
-               * On a phone it is one column of compact results, which is the point: the
-               * reader should always see that another opportunity begins below.
+               * TWO COLUMNS FROM md, THREE FROM 2xl. Numbered server pages of 12 in a
+               * stable order; history (demand older than 30 days) is its own section with
+               * its own pages and never counts as current demand.
                */
-              <div className="grid gap-2.5 md:grid-cols-2 2xl:grid-cols-3">
-                {currentMatches.map((match) => renderMatchCard(match, false))}
-                {historyMatches.length > 0 && (
-                  <div className="md:col-span-2 2xl:col-span-3">
-                    <button type="button" onClick={() => setShowHistory((v) => !v)} aria-expanded={showHistory}
-                      className="flex w-full items-center justify-between gap-3 rounded-lg border border-border/60 px-3.5 py-2.5 text-start text-sm text-muted-foreground hover:text-foreground">
-                      <span>{t('matches_history_title', { count: String(historyMatches.length), days: '30' })}</span>
-                      <span aria-hidden="true">{showHistory ? '−' : '+'}</span>
-                    </button>
-                    {showHistory && <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{t('matches_history_body', { days: '30' })}</p>}
+              <div className="space-y-4">
+                {currentMatches.length > 0 && (
+                  <div className="grid gap-2.5 md:grid-cols-2 2xl:grid-cols-3">
+                    {currentMatches.map((match) => renderMatchCard(match, false))}
                   </div>
                 )}
-                {showHistory && historyMatches.map((match) => renderMatchCard(match, true))}
-                {hasMore && (
-                  <div className="md:col-span-2 2xl:col-span-3">
-                    <QuietAction
-                      full
-                      busy={loadingMore}
-                      disabled={loadingMore}
-                      onClick={loadMore}
-                      label={t('matches_load_more')}
-                    />
+                <PageNav page={Math.min(matchPage, currentPages)} totalPages={currentPages}
+                  onPage={(p) => { setPageParam('page', p); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                  label={t('fbl_matches_pages')} />
+                {historyTotal > 0 && (
+                  <div className="space-y-2.5">
+                    <button type="button" onClick={() => setShowHistory((v) => !v)} aria-expanded={showHistory}
+                      className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl bg-white px-3.5 py-2.5 text-start text-sm font-semibold text-[hsl(218_45%_14%)] ring-1 ring-inset ring-[hsl(40_70%_80%)] hover:ring-[hsl(38_92%_50%)]">
+                      <span>{t('matches_history_title', { count: String(historyTotal), days: '30' })}</span>
+                      <span aria-hidden="true" className="text-[hsl(34_90%_40%)]">{showHistory ? '−' : '+'}</span>
+                    </button>
+                    {showHistory && <p className="text-xs leading-relaxed text-[hsl(218_28%_38%)]">{t('matches_history_body', { days: '30' })}</p>}
+                    {showHistory && (
+                      <div className="grid gap-2.5 md:grid-cols-2 2xl:grid-cols-3">
+                        {historyMatches.map((match) => renderMatchCard(match, true))}
+                      </div>
+                    )}
+                    {showHistory && (
+                      <PageNav page={Math.min(historyPage, historyPages)} totalPages={historyPages}
+                        onPage={(p) => setPageParam('hp', p)} label={t('fbl_history_pages')} />
+                    )}
                   </div>
                 )}
               </div>
             )}
           </div>
 
-          {/* ── the rail: context and the campaign, never the header ──── */}
-          {/* While a search is running or paused, its progress and controls come
-              first on a phone; on wide screens the rail stays beside the results. */}
-          <aside className={cn('min-w-0 space-y-3', jobRunning && 'order-first xl:order-none')}>
+          {/* ── the rail: the property this is about, and the deeper-search offer ──── */}
+          <aside className="min-w-0 space-y-3">
             {property && (
               <div className="overflow-hidden rounded-2xl border border-[hsl(40_70%_80%)] bg-white shadow-[0_10px_28px_-18px_hsl(218_60%_15%/0.45)]">
                 <div className={cn('flex items-center gap-2 px-3.5 py-2.5', NAVY_BAND)}>
@@ -1102,38 +1109,16 @@ function MatchesContent() {
               </div>
             )}
 
-            {searchModule}
-
-            {activeJobId && (
-              <FindBuyersCampaignPanel jobId={activeJobId} running={jobRunning} paused={jobPaused} onProgress={bumpLeads} />
-            )}
-
-            {activeJobId && (
-              <MatchingJobProgress
-                jobId={activeJobId}
-                propertyId={propertyId}
-                onComplete={(job) => {
-                  bumpLeads();
-                  if (job.matches_created > 0) {
-                    toast.success(t('matches_job_complete_toast', { count: String(job.matches_created) }));
-                    loadData();
-                  } else if (job.status === 'partially_completed' || job.status === 'budget_reached') {
-                    toast.warning(t('matches_job_partial_toast'));
-                  }
-                }}
-              />
-            )}
-
             {/* Expand Search: a PAYG continuation, explicitly preserved. Renders nothing
                 when the last settled sweep recorded no headroom. */}
-            {propertyId && lastSweep?.campaign_id && !activeJobId && (
+            {propertyId && lastSweep?.campaign_id && !jobRunning && (
               <DeeperSearchPanel
                 propertyId={propertyId}
                 campaignId={lastSweep.campaign_id}
                 jobId={lastSweep.id}
                 jobStatus={lastSweep.status}
                 headroom={lastSweep.discovery_headroom}
-                onStarted={(newJobId) => setActiveJobId(newJobId)}
+                onStarted={() => { void refreshStatus(); }}
               />
             )}
 

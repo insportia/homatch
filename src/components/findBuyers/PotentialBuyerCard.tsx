@@ -143,8 +143,10 @@ export function PotentialBuyerCard({ lead, propertyId }: { lead: PotentialLead; 
               <Quote className="h-3.5 w-3.5" aria-hidden="true" />
               {t('fbx_intent_title')}
             </h4>
-            <blockquote dir="auto" lang={srcLang ?? undefined} className={cn('mt-1.5 whitespace-pre-line break-words text-sm leading-relaxed', INK)}>
-              “{best.text}”
+            {/* The source's own direction, isolated from the card's: an Arabic or Hebrew
+                excerpt reads right-to-left inside a Georgian card without flipping it. */}
+            <blockquote dir="auto" lang={srcLang ?? undefined} className={cn('mt-1.5 whitespace-pre-line break-words text-start text-sm leading-relaxed [unicode-bidi:plaintext]', INK)}>
+              <bdi>{best.text}</bdi>
             </blockquote>
             {foreign ? (
               <div className="mt-2 flex flex-wrap items-center gap-2">

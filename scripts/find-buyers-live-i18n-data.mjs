@@ -1,0 +1,189 @@
+/*
+ * FIND BUYERS / FIND TENANTS — live search, lifecycle truth, pagination,
+ * media refresh (one PR, 2026-10-04 production repair).
+ *
+ * Owner-approved Georgian lines are used as written. Terminology: match =
+ * დამთხვევა, tenant = მოიჯარე, never "confirmed buyer".
+ * Order is en, ka, ru, tr, ar, he — LANGS in lib/i18nSplice.mjs.
+ */
+export const FIND_BUYERS_LIVE_STRINGS = {
+  /* ── lifecycle headlines (server state → words) ── */
+  fbl_state_idle: ['Ready to search when you are', 'ძებნა მზადაა დასაწყებად', 'Поиск готов к запуску', 'Arama başlatılmaya hazır', 'البحث جاهز للبدء', 'החיפוש מוכן להתחלה'],
+  fbl_state_preparing: ['Preparing the search…', 'ძებნას ვამზადებთ…', 'Готовим поиск…', 'Arama hazırlanıyor…', 'جارٍ تجهيز البحث…', 'מכינים את החיפוש…'],
+  fbl_state_queued: ['Search started — sources are queued', 'ძებნა დაიწყო — წყაროები რიგშია', 'Поиск начался — источники в очереди', 'Arama başladı — kaynaklar sırada', 'بدأ البحث — المصادر في قائمة الانتظار', 'החיפוש התחיל — המקורות בתור'],
+  fbl_state_searching: ['Searching public demand now', 'მიმდინარეობს საჯარო მოთხოვნის ძებნა', 'Идёт поиск публичного спроса', 'Herkese açık talep aranıyor', 'جارٍ البحث عن الطلب العام', 'מחפשים עכשיו ביקוש ציבורי'],
+  fbl_state_partial: ['Searching — first results are in', 'ძებნა გრძელდება — პირველი შედეგები უკვე მოვიდა', 'Поиск идёт — первые результаты уже есть', 'Arama sürüyor — ilk sonuçlar geldi', 'البحث مستمر — وصلت أولى النتائج', 'החיפוש נמשך — התוצאות הראשונות הגיעו'],
+  fbl_state_pausing: ['Pausing the search…', 'ვაჩერებთ მიმდინარე ძებნას…', 'Приостанавливаем поиск…', 'Arama duraklatılıyor…', 'جارٍ إيقاف البحث مؤقتًا…', 'משהים את החיפוש…'],
+  fbl_state_paused: ['Search is paused', 'ძებნა დაპაუზებულია', 'Поиск приостановлен', 'Arama duraklatıldı', 'البحث متوقف مؤقتًا', 'החיפוש מושהה'],
+  fbl_state_done_results: ['Search finished — new matches found', 'ძებნა დასრულდა — ნაპოვნია ახალი შესაბამისობები', 'Поиск завершён — найдены новые совпадения', 'Arama tamamlandı — yeni eşleşmeler bulundu', 'انتهى البحث — تم العثور على تطابقات جديدة', 'החיפוש הסתיים — נמצאו התאמות חדשות'],
+  fbl_state_done_zero: ['Search finished — no new active demand for now', 'ძებნა დასრულდა — ამ ეტაპზე ახალი აქტიური მოთხოვნა ვერ მოიძებნა', 'Поиск завершён — нового активного спроса пока нет', 'Arama tamamlandı — şimdilik yeni aktif talep yok', 'انتهى البحث — لا يوجد طلب نشط جديد حاليًا', 'החיפוש הסתיים — אין כרגע ביקוש פעיל חדש'],
+  fbl_state_degraded: ['Search finished with limited coverage', 'ძებნა დასრულდა შეზღუდული დაფარვით', 'Поиск завершён с ограниченным охватом', 'Arama sınırlı kapsamla tamamlandı', 'انتهى البحث بتغطية محدودة', 'החיפוש הסתיים בכיסוי מוגבל'],
+  fbl_state_failed: ['The search could not finish', 'ძებნა ვერ დასრულდა', 'Поиск не удалось завершить', 'Arama tamamlanamadı', 'تعذّر إكمال البحث', 'לא ניתן היה להשלים את החיפוש'],
+  fbl_state_unavailable: ['The search could not start', 'ძებნა ამ ეტაპზე ვერ დაიწყო', 'Поиск не удалось начать', 'Arama başlatılamadı', 'تعذّر بدء البحث', 'לא ניתן היה להתחיל את החיפוש'],
+  fbl_state_cancelled: ['Search stopped', 'ძებნა შეჩერდა', 'Поиск остановлен', 'Arama durduruldu', 'تم إيقاف البحث', 'החיפוש נעצר'],
+  fbl_eyebrow_buyers: ['Buyer search', 'მყიდველების ძებნა', 'Поиск покупателей', 'Alıcı araması', 'البحث عن مشترين', 'חיפוש קונים'],
+  fbl_eyebrow_tenants: ['Tenant search', 'მოიჯარეების ძებნა', 'Поиск арендаторов', 'Kiracı araması', 'البحث عن مستأجرين', 'חיפוש שוכרים'],
+
+  /* ── controls ── */
+  fbl_pause: ['Pause search', 'ძებნის დაპაუზება', 'Приостановить поиск', 'Aramayı duraklat', 'إيقاف البحث مؤقتًا', 'השהיית החיפוש'],
+  fbl_pausing: ['Pausing…', 'ვაჩერებთ…', 'Приостанавливаем…', 'Duraklatılıyor…', 'جارٍ الإيقاف…', 'משהים…'],
+  fbl_resume: ['Continue search', 'ძებნის გაგრძელება', 'Продолжить поиск', 'Aramaya devam et', 'متابعة البحث', 'המשך החיפוש'],
+  fbl_stop: ['Stop', 'შეჩერება', 'Остановить', 'Durdur', 'إيقاف', 'עצירה'],
+  fbl_pausing_note: [
+    'Sources already running are finishing; no new source will start.',
+    'უკვე გაშვებული წყაროები ასრულებენ მუშაობას — ახალი წყარო აღარ დაიწყება.',
+    'Уже запущенные источники завершают работу; новые не начнутся.',
+    'Çalışan kaynaklar işini bitiriyor; yeni kaynak başlamayacak.',
+    'تنهي المصادر الجارية عملها؛ لن يبدأ أي مصدر جديد.',
+    'המקורות שכבר פועלים מסיימים; מקור חדש לא יתחיל.',
+  ],
+  fbl_pause_confirm_desc: [
+    'No new source will start. Sources already running finish and their results are kept. You can continue the same search later without paying again.',
+    'ახალი წყარო აღარ დაიწყება. უკვე გაშვებული წყაროები დაასრულებენ და მათი შედეგები შეინახება. იგივე ძებნის გაგრძელება მოგვიანებით თავიდან გადახდის გარეშე შეგიძლიათ.',
+    'Новые источники не начнутся. Уже запущенные завершатся, их результаты сохранятся. Тот же поиск можно продолжить позже без повторной оплаты.',
+    'Yeni kaynak başlamaz. Çalışanlar tamamlanır ve sonuçları saklanır. Aynı aramaya daha sonra yeniden ödemeden devam edebilirsiniz.',
+    'لن يبدأ أي مصدر جديد. ستكتمل المصادر الجارية وتُحفظ نتائجها. يمكنك متابعة البحث نفسه لاحقًا دون دفع مجددًا.',
+    'מקור חדש לא יתחיל. מקורות שכבר פועלים יסתיימו והתוצאות יישמרו. אפשר להמשיך את אותו חיפוש מאוחר יותר בלי לשלם שוב.',
+  ],
+  fbl_not_ready: [
+    'Search is not available right now: discovery sources are not switched on yet. Nothing will be charged.',
+    'ძებნა ამ ეტაპზე მიუწვდომელია — საძიებო წყაროები ჯერ არ არის ჩართული. თანხა არ ჩამოიჭრება.',
+    'Поиск сейчас недоступен: источники ещё не включены. Ничего не будет списано.',
+    'Arama şu anda kullanılamıyor: arama kaynakları henüz açık değil. Ücret alınmaz.',
+    'البحث غير متاح الآن: لم يتم تفعيل مصادر البحث بعد. لن يتم خصم أي مبلغ.',
+    'החיפוש אינו זמין כרגע: מקורות החיפוש עדיין לא הופעלו. לא ייגבה תשלום.',
+  ],
+  fbl_unavailable_error: [
+    'The search could not start right now — no discovery source is available. Nothing was charged.',
+    'ძებნა ამ ეტაპზე ვერ დაიწყო — საძიებო წყარო ხელმისაწვდომი არ არის. თანხა არ ჩამოგეჭრათ.',
+    'Поиск сейчас не начался — нет доступного источника. Ничего не списано.',
+    'Arama şu anda başlatılamadı — kullanılabilir kaynak yok. Ücret alınmadı.',
+    'تعذّر بدء البحث الآن — لا يتوفر أي مصدر. لم يتم خصم أي مبلغ.',
+    'לא ניתן היה להתחיל את החיפוש כעת — אין מקור זמין. לא נגבה תשלום.',
+  ],
+
+  /* ── live metrics (real counts only) ── */
+  fbl_m_working: ['sources working', 'წყარო მუშავდება', 'источников в работе', 'kaynak çalışıyor', 'مصادر قيد العمل', 'מקורות פועלים'],
+  fbl_m_done: ['sources finished', 'წყარო დასრულებულია', 'источников завершено', 'kaynak tamamlandı', 'مصادر انتهت', 'מקורות הסתיימו'],
+  fbl_m_signals: ['signals analysed', 'სიგნალი გაანალიზდა', 'сигналов проанализировано', 'sinyal incelendi', 'إشارات تم تحليلها', 'אותות נותחו'],
+  fbl_m_possible: ['possible matches', 'შესაძლო შესაბამისობა', 'возможных совпадений', 'olası eşleşme', 'تطابقات محتملة', 'התאמות אפשריות'],
+  fbl_m_strong: ['strong matches', 'ძლიერი დამთხვევა', 'сильных совпадений', 'güçlü eşleşme', 'تطابقات قوية', 'התאמות חזקות'],
+  fbl_m_stale: ['older than 30 days, skipped', '30 დღეზე ძველი, გამოტოვებული', 'старше 30 дней, пропущено', '30 günden eski, atlandı', 'أقدم من 30 يومًا، تم تخطيها', 'ישנים מ־30 יום, דולגו'],
+  fbl_live_line: [
+    '{{working}} sources working · {{signals}} signals analysed · {{possible}} possible matches',
+    '{{working}} წყარო მუშავდება · {{signals}} სიგნალი გაანალიზდა · {{possible}} შესაძლო შესაბამისობა',
+    'В работе источников: {{working}} · сигналов: {{signals}} · возможных совпадений: {{possible}}',
+    '{{working}} kaynak çalışıyor · {{signals}} sinyal incelendi · {{possible}} olası eşleşme',
+    '{{working}} مصادر قيد العمل · {{signals}} إشارات · {{possible}} تطابقات محتملة',
+    '{{working}} מקורות פועלים · {{signals}} אותות · {{possible}} התאמות אפשריות',
+  ],
+  fbl_preparing_note: ['Choosing where to search for this property…', 'ვარჩევთ, სად ვეძებოთ ამ ქონებისთვის…', 'Выбираем, где искать для этого объекта…', 'Bu mülk için nerede aranacağı seçiliyor…', 'نختار أين نبحث لهذا العقار…', 'בוחרים היכן לחפש עבור הנכס…'],
+  fbl_node_property: ['Property', 'ქონება', 'Объект', 'Mülk', 'العقار', 'הנכס'],
+  fbl_network_aria: [
+    'Live search network. Sources: {{sources}}',
+    'ძებნის ცოცხალი ქსელი. წყაროები: {{sources}}',
+    'Сеть живого поиска. Источники: {{sources}}',
+    'Canlı arama ağı. Kaynaklar: {{sources}}',
+    'شبكة البحث المباشر. المصادر: {{sources}}',
+    'רשת החיפוש החי. מקורות: {{sources}}',
+  ],
+  fbl_last_results_note: [
+    'The last search found {{n}} new results. They are below.',
+    'ბოლო ძებნამ {{n}} ახალი შედეგი იპოვა — ისინი ქვემოთაა.',
+    'Последний поиск нашёл новых результатов: {{n}}. Они ниже.',
+    'Son arama {{n}} yeni sonuç buldu. Aşağıda.',
+    'وجد البحث الأخير {{n}} نتائج جديدة. هي أدناه.',
+    'החיפוש האחרון מצא {{n}} תוצאות חדשות. הן למטה.',
+  ],
+  fbl_last_zero_note: [
+    'Every source of the last search was read; no current demand fit this property. Results shown below are from earlier searches.',
+    'ბოლო ძებნამ ყველა წყარო დაამუშავა — მიმდინარე მოთხოვნა ამ ქონებას არ შეესაბამა. ქვემოთ წინა ძებნების შედეგებია.',
+    'Последний поиск прочитал все источники; текущий спрос не подошёл. Ниже — результаты прошлых поисков.',
+    'Son aramada tüm kaynaklar okundu; güncel talep uymadı. Aşağıdakiler önceki aramalardan.',
+    'قرأ البحث الأخير جميع المصادر؛ لم يناسب أي طلب حالي. النتائج أدناه من عمليات بحث سابقة.',
+    'החיפוש האחרון קרא את כל המקורות; שום ביקוש עדכני לא התאים. התוצאות למטה מחיפושים קודמים.',
+  ],
+  fbl_last_unavailable_note: [
+    'The last search could not reach any discovery source, so it found nothing new. It is not a sign of no demand. Results below are from earlier searches.',
+    'ბოლო ძებნამ საძიებო წყაროები ვერ ჩართო, ამიტომ ახალი ვერაფერი იპოვა — ეს მოთხოვნის არარსებობას არ ნიშნავს. ქვემოთ წინა ძებნების შედეგებია.',
+    'Последний поиск не смог подключить источники, поэтому нового нет. Это не значит, что спроса нет. Ниже — прошлые результаты.',
+    'Son arama hiçbir kaynağa ulaşamadı; bu talep olmadığı anlamına gelmez. Aşağıdakiler önceki aramalardan.',
+    'لم يتمكن البحث الأخير من الوصول إلى أي مصدر، وهذا لا يعني غياب الطلب. النتائج أدناه من عمليات سابقة.',
+    'החיפוש האחרון לא הגיע לאף מקור; אין זה אומר שאין ביקוש. התוצאות למטה מחיפושים קודמים.',
+  ],
+  fbl_last_other_note: [
+    'Results below are from earlier searches.',
+    'ქვემოთ წინა ძებნების შედეგებია.',
+    'Ниже — результаты прошлых поисков.',
+    'Aşağıdakiler önceki aramalardan.',
+    'النتائج أدناه من عمليات بحث سابقة.',
+    'התוצאות למטה מחיפושים קודמים.',
+  ],
+
+  /* ── what HOMATCH is looking for ── */
+  fbl_dna_for_sale: ['For sale', 'იყიდება', 'Продажа', 'Satılık', 'للبيع', 'למכירה'],
+  fbl_dna_for_rent: ['For rent', 'ქირავდება', 'Аренда', 'Kiralık', 'للإيجار', 'להשכרה'],
+  fbl_dna_bedrooms: ['{{n}} bedrooms', '{{n}} საძინებელი', 'Спален: {{n}}', '{{n}} yatak odası', '{{n}} غرف نوم', '{{n}} חדרי שינה'],
+  fbl_dna_budget_sale: ['Buyer budget {{range}}', 'მყიდველის ბიუჯეტი {{range}}', 'Бюджет покупателя {{range}}', 'Alıcı bütçesi {{range}}', 'ميزانية المشتري {{range}}', 'תקציב קונה {{range}}'],
+  fbl_dna_budget_rent: ['Tenant budget {{range}}', 'მოიჯარის ბიუჯეტი {{range}}', 'Бюджет арендатора {{range}}', 'Kiracı bütçesi {{range}}', 'ميزانية المستأجر {{range}}', 'תקציב שוכר {{range}}'],
+  fbl_dna_sentence_sale: [
+    'We look for active public demand from the last 30 days that fits this property.',
+    'ვეძებთ ბოლო 30 დღის აქტიურ საჯარო მოთხოვნას, რომელიც ამ ქონებას შეესაბამება.',
+    'Ищем активный публичный спрос за последние 30 дней, подходящий этому объекту.',
+    'Son 30 günün bu mülke uyan aktif, herkese açık talebini arıyoruz.',
+    'نبحث عن طلب عام نشط من آخر 30 يومًا يناسب هذا العقار.',
+    'אנחנו מחפשים ביקוש ציבורי פעיל מ־30 הימים האחרונים שמתאים לנכס הזה.',
+  ],
+  fbl_dna_sentence_rent: [
+    'We look for active public rental demand from the last 30 days that fits this property.',
+    'ვეძებთ ბოლო 30 დღის აქტიურ საჯარო ქირაობის მოთხოვნას, რომელიც ამ ქონებას შეესაბამება.',
+    'Ищем активный публичный спрос на аренду за последние 30 дней, подходящий этому объекту.',
+    'Son 30 günün bu mülke uyan aktif, herkese açık kiralama talebini arıyoruz.',
+    'نبحث عن طلب إيجار عام نشط من آخر 30 يومًا يناسب هذا العقار.',
+    'אנחנו מחפשים ביקוש ציבורי פעיל לשכירות מ־30 הימים האחרונים שמתאים לנכס הזה.',
+  ],
+
+  /* ── results and pages ── */
+  fbl_results_heading: ['Saved results', 'შენახული შედეგები', 'Сохранённые результаты', 'Kayıtlı sonuçlar', 'النتائج المحفوظة', 'תוצאות שמורות'],
+  fbl_results_caption: [
+    'Everything found for this property that is still current demand. New = not yet viewed.',
+    'ყველაფერი, რაც ამ ქონებისთვის მოიძებნა და ჯერ კიდევ აქტუალური მოთხოვნაა. ახალი = ჯერ არ გინახავთ.',
+    'Всё найденное для этого объекта, что всё ещё актуально. Новые — ещё не просмотренные.',
+    'Bu mülk için bulunan ve hâlâ güncel olan her şey. Yeni = henüz görülmedi.',
+    'كل ما وُجد لهذا العقار ولا يزال طلبًا حاليًا. جديد = لم تتم مشاهدته بعد.',
+    'כל מה שנמצא לנכס הזה ועדיין ביקוש עדכני. חדש = טרם נצפה.',
+  ],
+  fbl_new_results_banner: ['New matches are in — show them', 'ახალი დამთხვევებია — ჩვენება', 'Есть новые совпадения — показать', 'Yeni eşleşmeler var — göster', 'هناك تطابقات جديدة — عرضها', 'יש התאמות חדשות — הצגה'],
+  fbl_matches_pages: ['Match pages', 'დამთხვევების გვერდები', 'Страницы совпадений', 'Eşleşme sayfaları', 'صفحات التطابقات', 'עמודי התאמות'],
+  fbl_leads_pages: ['Potential buyer pages', 'შესაძლო მყიდველების გვერდები', 'Страницы потенциальных покупателей', 'Olası alıcı sayfaları', 'صفحات المشترين المحتملين', 'עמודי קונים פוטנציאליים'],
+  fbl_history_pages: ['Earlier demand pages', 'წინა მოთხოვნების გვერდები', 'Страницы прошлого спроса', 'Önceki talep sayfaları', 'صفحات الطلب السابق', 'עמודי ביקוש קודם'],
+  fbl_page_prev: ['Previous page', 'წინა გვერდი', 'Предыдущая страница', 'Önceki sayfa', 'الصفحة السابقة', 'העמוד הקודם'],
+  fbl_page_next: ['Next page', 'შემდეგი გვერდი', 'Следующая страница', 'Sonraki sayfa', 'الصفحة التالية', 'העמוד הבא'],
+  fbl_page_n: ['Page {{n}}', 'გვერდი {{n}}', 'Страница {{n}}', 'Sayfa {{n}}', 'الصفحة {{n}}', 'עמוד {{n}}'],
+  fbl_page_of: ['Page {{n}} of {{total}}', 'გვერდი {{n}} / {{total}}', 'Страница {{n}} из {{total}}', 'Sayfa {{n}} / {{total}}', 'الصفحة {{n}} من {{total}}', 'עמוד {{n}} מתוך {{total}}'],
+
+  /* ── persistent status entry ── */
+  fbl_pill_running_buyers: ['Buyer search running', 'მყიდველების ძებნა მიმდინარეობს', 'Идёт поиск покупателей', 'Alıcı araması sürüyor', 'البحث عن مشترين جارٍ', 'חיפוש קונים פועל'],
+  fbl_pill_running_tenants: ['Tenant search running', 'მოიჯარეების ძებნა მიმდინარეობს', 'Идёт поиск арендаторов', 'Kiracı araması sürüyor', 'البحث عن مستأجرين جارٍ', 'חיפוש שוכרים פועל'],
+  fbl_pill_paused: ['Search is paused', 'ძებნა დაპაუზებულია', 'Поиск приостановлен', 'Arama duraklatıldı', 'البحث متوقف مؤقتًا', 'החיפוש מושהה'],
+  fbl_pill_results: ['{{n}} new matches', '{{n}} ახალი დამთხვევა', 'Новых совпадений: {{n}}', '{{n}} yeni eşleşme', '{{n}} تطابقات جديدة', '{{n}} התאמות חדשות'],
+  fbl_open_live: ['Open the live search', 'ცოცხალი ძებნის ნახვა', 'Открыть живой поиск', 'Canlı aramayı aç', 'فتح البحث المباشر', 'פתיחת החיפוש החי'],
+
+  /* ── admin control center ── */
+  fbl_admin_state: ['Lifecycle', 'სასიცოცხლო ციკლი', 'Жизненный цикл', 'Yaşam döngüsü', 'دورة الحياة', 'מחזור חיים'],
+  fbl_admin_work: ['Work Q/R/D/F/P · runs', 'სამუშაო რ/მ/დ/ჩ/პ · გაშვება', 'Работа О/В/Г/С/П · запуски', 'İş S/Ç/T/B/D · çalıştırma', 'العمل ق/ج/م/ف/إ · تشغيل', 'עבודה ת/ר/ה/נ/מ · ריצות'],
+  fbl_admin_signals: ['Signals analysed', 'გაანალიზებული სიგნალები', 'Сигналов проанализировано', 'İncelenen sinyal', 'إشارات محللة', 'אותות שנותחו'],
+  fbl_admin_new: ['New results', 'ახალი შედეგები', 'Новые результаты', 'Yeni sonuçlar', 'نتائج جديدة', 'תוצאות חדשות'],
+  fbl_admin_stop_reason: ['Stop reason', 'შეჩერების მიზეზი', 'Причина остановки', 'Durma nedeni', 'سبب التوقف', 'סיבת עצירה'],
+
+  /* ── media ── */
+  fbl_gallery_count: ['{{n}} photos', '{{n}} ფოტო', 'Фото: {{n}}', '{{n}} fotoğraf', '{{n}} صور', '{{n}} תמונות'],
+  fbl_gallery_more: ['{{n}} more photos', 'კიდევ {{n}} ფოტო', 'Ещё фото: {{n}}', '{{n}} fotoğraf daha', '{{n}} صور أخرى', 'עוד {{n}} תמונות'],
+  fbl_media_photos: ['Photos', 'ფოტოები', 'Фото', 'Fotoğraflar', 'الصور', 'תמונות'],
+  fbl_media_refresh: ['Refresh photos from the listing', 'ფოტოების განახლება განცხადებიდან', 'Обновить фото из объявления', 'Fotoğrafları ilandan yenile', 'تحديث الصور من الإعلان', 'רענון התמונות מהמודעה'],
+  fbl_media_refreshing: ['Refreshing photos…', 'ფოტოებს ვაახლებთ…', 'Обновляем фото…', 'Fotoğraflar yenileniyor…', 'جارٍ تحديث الصور…', 'מרעננים תמונות…'],
+  fbl_media_refreshed: ['Photos updated — {{n}} in the gallery', 'ფოტოები განახლდა — გალერეაში {{n}} ფოტოა', 'Фото обновлены — в галерее {{n}}', 'Fotoğraflar güncellendi — galeride {{n}}', 'تم تحديث الصور — {{n}} في المعرض', 'התמונות עודכנו — {{n}} בגלריה'],
+  fbl_media_nothing_new: ['No new photos on the listing', 'განცხადებაზე ახალი ფოტო არ არის', 'Новых фото в объявлении нет', 'İlanda yeni fotoğraf yok', 'لا توجد صور جديدة في الإعلان', 'אין תמונות חדשות במודעה'],
+  fbl_media_recent: ['Photos were refreshed a few minutes ago', 'ფოტოები რამდენიმე წუთის წინ განახლდა', 'Фото обновлялись несколько минут назад', 'Fotoğraflar birkaç dakika önce yenilendi', 'تم تحديث الصور قبل دقائق', 'התמונות רועננו לפני כמה דקות'],
+  fbl_media_failed: ['The listing could not be read right now', 'განცხადების წაკითხვა ამ ეტაპზე ვერ მოხერხდა', 'Не удалось прочитать объявление', 'İlan şu anda okunamadı', 'تعذّرت قراءة الإعلان الآن', 'לא ניתן היה לקרוא את המודעה כעת'],
+};

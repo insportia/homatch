@@ -25,7 +25,7 @@
 // THE LIGHTBOX IS A DIALOG, NOT A DIV WITH A HIGH z-index. Escape closes it, arrows
 // move, focus is trapped by the primitive, and the page behind it does not scroll.
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Expand, ImageOff } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { PrivateImage } from '@/components/common/PrivateImage';
@@ -41,6 +41,25 @@ import { type GallerySource, galleryImages } from '@/property/gallery';
  */
 export type { GalleryPhoto, GallerySource } from '@/property/gallery';
 export { galleryImages } from '@/property/gallery';
+
+/*
+ * SWIPE, FOR A THUMB. A horizontal drag of 40px or more moves one photo; a mostly
+ * vertical drag is the page scrolling and is left alone. In RTL the direction mirrors.
+ */
+function useSwipe(go: (delta: number) => void, rtl: boolean) {
+  const start = useRef<{ x: number; y: number } | null>(null);
+  return {
+    onPointerDown: (e: React.PointerEvent) => { if (e.pointerType !== 'mouse') start.current = { x: e.clientX, y: e.clientY }; },
+    onPointerUp: (e: React.PointerEvent) => {
+      const s = start.current; start.current = null;
+      if (!s) return;
+      const dx = e.clientX - s.x; const dy = e.clientY - s.y;
+      if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
+      go((dx < 0 ? 1 : -1) * (rtl ? -1 : 1));
+    },
+    onPointerCancel: () => { start.current = null; },
+  };
+}
 
 function Empty({ label }: { label: string }) {
   return (
@@ -71,7 +90,7 @@ export function PropertyGallery({
     ? 'aspect-[4/3] sm:aspect-[16/10] lg:aspect-auto lg:min-h-[24rem] lg:flex-1'
     : 'aspect-[16/9] sm:aspect-[16/7]';
   const outer = ratio === 'hero' ? 'flex flex-col gap-2 lg:h-full' : 'space-y-2';
-  const { t } = useLanguage();
+  const { t, isRTL } = useLanguage();
   const images = useMemo(() => galleryImages(source), [source]);
   const [index, setIndex] = useState(0);
   const [open, setOpen] = useState(false);
@@ -102,6 +121,8 @@ export function PropertyGallery({
     return () => window.removeEventListener('keydown', onKey);
   }, [open, go]);
 
+  const swipe = useSwipe(go, isRTL);
+
   if (count === 0) {
     return (
       <div className={cn(outer)}><div className={cn('relative w-full overflow-hidden rounded-xl bg-secondary/40', frame)}>
@@ -120,7 +141,12 @@ export function PropertyGallery({
   return (
     <div className={outer}>
       {/* ── THE PRIMARY IMAGE ─────────────────────────────────────────── */}
-      <div className={cn('relative w-full overflow-hidden rounded-xl bg-secondary/40', frame)}>
+      <div className={cn('relative w-full touch-pan-y overflow-hidden rounded-xl bg-secondary/40', frame)} {...swipe}>
+        {count > 1 && (
+          <span className="pointer-events-none absolute start-2 top-2 z-[1] rounded-full bg-[hsl(218_52%_11%/0.82)] px-2.5 py-1 text-[13px] font-semibold text-[hsl(40_94%_70%)] shadow-sm backdrop-blur">
+            {t('fbl_gallery_count', { n: String(count) })}
+          </span>
+        )}
         <PrivateImage
           src={images[safeIndex]}
           alt={title}
@@ -176,7 +202,28 @@ export function PropertyGallery({
         button, so the rail is usable from the keyboard as well as the thumb.
       */}
       {count > 1 && (
-        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+        /* Desktop: a supporting preview grid (the next four, then "+N" opens the rest). */
+        <div className="hidden grid-cols-4 gap-2 lg:grid">
+          {images.slice(1, 5).map((image, i) => {
+            const position = i + 1;
+            const more = position === 4 && count > 5 ? count - 5 : 0;
+            return (
+              <button key={`p-${image}`} type="button" onClick={() => { setIndex(position); if (more) setOpen(true); }}
+                aria-label={more ? t('fbl_gallery_more', { n: String(more) }) : `${position + 1} / ${count}`}
+                className="relative aspect-[4/3] overflow-hidden rounded-lg ring-1 ring-inset ring-border transition hover:ring-[hsl(38_92%_50%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                <PrivateImage src={image} alt="" className="absolute inset-0 h-full w-full object-cover"
+                  pending={<div className="absolute inset-0 animate-pulse bg-secondary/60" />}
+                  fallback={<div className="flex h-full w-full items-center justify-center text-muted-foreground/40"><ImageOff className="h-4 w-4" aria-hidden="true" /></div>} />
+                {more > 0 && (
+                  <span className="absolute inset-0 flex items-center justify-center bg-[hsl(218_52%_11%/0.62)] font-display text-lg font-semibold text-white">+{more}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {count > 1 && (
+        <div className="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-1 lg:hidden">
           {images.map((image, position) => (
             <button
               key={`${image}-${position}`}
@@ -185,7 +232,7 @@ export function PropertyGallery({
               aria-label={`${position + 1} / ${count}`}
               aria-current={position === safeIndex}
               className={cn(
-                'relative h-16 w-24 shrink-0 overflow-hidden rounded-lg border transition',
+                'relative h-16 w-24 shrink-0 snap-start overflow-hidden rounded-lg border transition',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                 position === safeIndex
                   ? 'border-primary ring-1 ring-primary'
@@ -216,7 +263,7 @@ export function PropertyGallery({
           {/* Named for screen readers; the visible title would only crowd the photo. */}
           <DialogTitle className="sr-only">{title}</DialogTitle>
 
-          <div className="relative aspect-[4/3] w-full sm:aspect-[16/9]">
+          <div className="relative aspect-[4/3] w-full touch-pan-y sm:aspect-[16/9]" {...swipe}>
             <PrivateImage
               src={images[safeIndex]}
               alt={title}

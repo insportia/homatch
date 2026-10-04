@@ -262,9 +262,17 @@ export function FindBuyersControlCenter() {
       {data && tab === 'campaigns' ? (
         <div className="mt-4">
           <Table
-            head={[t('fbx_admin_started'), t('fbx_admin_mode'), t('fbx_admin_credits_committed'), t('fbx_admin_revenue'), t('fbx_admin_reserved'), t('fbx_admin_provider_spend'), t('fbx_admin_ai_spend'), t('fbx_admin_translation_spend'), t('fbx_admin_total_cogs'), t('fbx_admin_contribution'), t('fbx_admin_qualified'), t('fbx_admin_strong'), t('fbx_admin_status'), t('fbx_admin_last_activity')]}
+            head={[t('fbx_admin_started'), t('fbl_admin_state'), t('fbl_admin_work'), t('fbl_admin_signals'), t('fbl_admin_new'), t('fbl_admin_stop_reason'), t('fbx_admin_mode'), t('fbx_admin_credits_committed'), t('fbx_admin_revenue'), t('fbx_admin_reserved'), t('fbx_admin_provider_spend'), t('fbx_admin_ai_spend'), t('fbx_admin_translation_spend'), t('fbx_admin_total_cogs'), t('fbx_admin_contribution'), t('fbx_admin_qualified'), t('fbx_admin_strong'), t('fbx_admin_status'), t('fbx_admin_last_activity')]}
             rows={data.campaigns.map((c) => [
-              <span key="s" title={String(c.matching_job_id)}>{when(c.created_at)}</span>,
+              <span key="s" title={`job ${c.matching_job_id} · campaign ${c.campaign_id ?? '—'} · property ${c.property_id}`}>{when(c.created_at)}</span>,
+              /* The server's lifecycle (find_buyers_job_state), the same one the owner sees. */
+              <span key="st" className="font-semibold">{String(c.lifecycle?.state ?? '—')}</span>,
+              <span key="w" dir="ltr" title="queued / running / done / failed / paused · runs in flight" className="tabular-nums">
+                {n(c.lifecycle?.queue?.queued)}/{n(c.lifecycle?.queue?.running)}/{n(c.lifecycle?.queue?.done)}/{n(c.lifecycle?.queue?.failed)}/{n(c.lifecycle?.queue?.paused)} · {n(c.lifecycle?.runs?.inFlight)}
+              </span>,
+              n(c.lifecycle?.signalsAnalyzed),
+              n(c.lifecycle?.newResults),
+              <span key="sr" dir="ltr">{String(c.stop_reason ?? c.lifecycle?.failureReason ?? '—')}</span>,
               c.transaction === 'RENT' ? t('fbx_find_tenants') : t('fbx_find_buyers'),
               <span key="cr" dir="ltr">{n(c.credits_committed)} ({usd(c.customer_value_micros)})</span>,
               <span key="rv" dir="ltr">{usd(c.revenue_micros)}</span>,

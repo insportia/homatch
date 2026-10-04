@@ -1,11 +1,13 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { beginExecution, releaseExecution } from '../_shared/billing.ts';
 import { loadDiscoverySettings } from '../_shared/discoverySettings.ts';
-import { claimJobTransition, finalizeCampaignJob } from '../_shared/campaignRun.ts';
+import { claimJobTransition, failCampaignJob, finalizeCampaignJob } from '../_shared/campaignRun.ts';
 import { queuePlannedJobs, storePlan } from '../_shared/campaignSources.ts';
 import { compileDemandPlan } from '../../../src/research-core/discovery/discovery-plan.ts';
 import { creditsPerUsd, loadFindBuyersSettings, minimumCredits, startSocialCampaign } from '../_shared/findBuyers/campaign.ts';
 import { translateLeadText } from '../_shared/findBuyers/translate.ts';
+import { discoveryReadiness } from '../_shared/findBuyers/readiness.ts';
+import { outcomeWithoutExternalWork } from '../../../src/research-core/findBuyers/readiness.ts';
 import { fetchCurrentFx } from '../_shared/fx.ts';
 import {
   persistCampaignLanguages,
@@ -353,8 +355,10 @@ Deno.serve(async (req: Request) => {
         .from('matching_jobs')
         .select('id,status')
         .eq('property_id', propertyId)
+        /* A paused search is still this property's search: resume it,
+           never reserve a second budget beside it. */
         .in('status', ['queued', 'analysing_property', 'generating_queries', 'searching_sources',
-          'collecting_results', 'normalizing', 'deduplicating', 'classifying', 'ranking'])
+          'collecting_results', 'normalizing', 'deduplicating', 'classifying', 'ranking', 'paused'])
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -411,6 +415,21 @@ Deno.serve(async (req: Request) => {
         reasonCode: 'ABOVE_CAMPAIGN_MAXIMUM',
         maxBudgetCredits: discovery.campaignMaxCredits,
       }, 400);
+    }
+    /*
+     * SEARCH READINESS, BEFORE ANY CREDIT IS RESERVED. A campaign with no
+     * executable discovery path (social switch off or no eligible Actor, and
+     * native source discovery off) would only re-read stored demand and then
+     * "finish" -- production 2026-10-04 did exactly that in 220 ms and charged
+     * for it. It is refused here instead; nothing is reserved or created.
+     */
+    const readiness = await discoveryReadiness(db, discovery, findBuyers);
+    if (!readiness.ready) {
+      return json({
+        error: 'Search is not available right now.',
+        reasonCode: 'DISCOVERY_UNAVAILABLE',
+        readinessReason: readiness.reason,
+      }, 409);
     }
     const grant = await beginExecution(db, {
       userId: homatchUser.id,
@@ -843,6 +862,28 @@ Deno.serve(async (req: Request) => {
           partialBudget: grant.partialBudget,
         },
       }, 202);
+    }
+
+    /*
+     * NOTHING EXTERNAL WAS QUEUED. With internal results the campaign ends as
+     * before (it found current demand). With none, no discovery work exists:
+     * the campaign is UNAVAILABLE, its reservation is released in full and it
+     * is never reported as "finished with 0 results".
+     */
+    if (outcomeWithoutExternalWork(freshFromInternal) === 'UNAVAILABLE') {
+      if (await claimJobTransition(db, jobId!, ['classifying', 'analysing_property', 'queued'], { status: 'ranking' })) {
+        await failCampaignJob(db, {
+          id: jobId!, property_id: propertyId, campaign_id: campaignId, started_at: startedAt,
+        }, grant, 'DISCOVERY_UNAVAILABLE', 'no discovery source could start; nothing was charged');
+      }
+      return json({
+        success: false,
+        jobId,
+        campaignId,
+        status: 'failed',
+        reasonCode: 'DISCOVERY_UNAVAILABLE',
+        billing: { funding: grant.funding, creditsCharged: 0, creditsAuthorized: grant.authorizedMaxCredits },
+      }, 409);
     }
 
     await event(db, jobId!, sourcesAvailable ? 'SOURCE_DISCOVERY_NOT_NEEDED' : 'SOURCE_DISCOVERY_OFF', {

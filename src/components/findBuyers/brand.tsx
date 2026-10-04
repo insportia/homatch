@@ -33,6 +33,7 @@ export const SOURCE_STYLE: Record<string, SourceStyle> = {
   BLUESKY: { label: 'Bluesky', color: '#1185FE', Icon: MessageCircle },
   YOUTUBE: { label: 'YouTube', color: '#FF0000', Icon: Youtube },
   FORUM: { label: 'Forum', color: '#7C3AED', Icon: MessagesSquare },
+  WEB: { label: 'Web', color: '#0E7490', Icon: Globe2 },
 };
 export const sourceStyle = (s: string): SourceStyle => SOURCE_STYLE[s] ?? { label: s, color: '#1E3A8A', Icon: Globe2 };
 

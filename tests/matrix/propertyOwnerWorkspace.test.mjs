@@ -154,8 +154,10 @@ test('the detail page is a workspace: wide canvas, no sidebar, collapsing column
   assert.doesNotMatch(page, /md:grid-cols-3 gap-5/, 'the old 2/3 + 1/3 sidebar grid is gone');
   assert.doesNotMatch(page, /lg:items-start/, 'the gallery no longer leaves a hole under it');
   assert.match(page, /data-testid="pow-quick-actions" className="grid grid-cols-2 gap-2\.5 sm:grid-cols-\[repeat\(auto-fit,minmax\(10\.5rem,1fr\)\)\]"/);
-  assert.match(page, /hasAside \? 'lg:col-span-8' : 'lg:col-span-12'/, 'no empty side column');
-  assert.match(page, /\{hasAside && <aside/);
+  /* The side column always has content now (the listing-quality panel lives there),
+     so it is unconditional — never an empty column. */
+  assert.match(page, /className="min-w-0 space-y-4 lg:col-span-8"/);
+  assert.match(page, /<aside className="min-w-0 space-y-4 lg:col-span-4">\s+<MatchabilityPanel/, 'no empty side column');
   /* Every action that was there is still there. */
   for (const key of ['prop_ask_ai_btn', 'prop_find_better_deal_btn', 'prop_verify_btn', 'dash_calculate_mortgage_property', 'ds_open_in_design_studio', 'pow_action_investment', 'mads_property_cta', 'prop_view_matches']) {
     assert.ok(page.includes(`'${key}'`), `${key} kept`);

@@ -1,4 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { extractListingMedia, IMPORTED_GALLERY_MAX, mergeGallery } from '../../../src/import/listingMedia.ts';
 
 // ============================================================
 // HOMATCH — import-property Edge Function v4
@@ -176,7 +177,7 @@ function extractJsonLdImages(jsonLd: Record<string, unknown> | null): string[] {
   return [];
 }
 
-/** Deduplicate, filter, and cap gallery to 5 listing images */
+/** Deduplicate and filter a gallery; an external gallery is never cut to the manual-upload limit. */
 function buildGallery(urls: string[]): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
@@ -185,7 +186,7 @@ function buildGallery(urls: string[]): string[] {
       seen.add(u);
       result.push(u);
     }
-    if (result.length >= 5) break;
+    if (result.length >= IMPORTED_GALLERY_MAX) break;
   }
   return result;
 }
@@ -513,7 +514,7 @@ function adaptMyHome(html: string, url: string): Partial<ExtractedFacts> | null 
 
         if (validImgs.length > 0) {
           facts.cover_image   = validImgs[0];
-          facts.gallery_images = validImgs.slice(0, 5);
+          facts.gallery_images = validImgs.slice(0, IMPORTED_GALLERY_MAX);
         }
       }
 
@@ -579,7 +580,7 @@ function adaptMyHome(html: string, url: string): Partial<ExtractedFacts> | null 
             .filter(u => u && isListingPhoto(u));
           if (valid.length > 0) {
             facts.cover_image    = facts.cover_image ?? valid[0];
-            facts.gallery_images = valid.slice(0, 5);
+            facts.gallery_images = valid.slice(0, IMPORTED_GALLERY_MAX);
           }
         }
       } catch { /* ignore */ }
@@ -834,7 +835,7 @@ function adaptSS(html: string, url: string): Partial<ExtractedFacts> | null {
           .filter(u => u && isListingPhoto(u));
         if (validImgs.length > 0) {
           facts.cover_image = validImgs[0];
-          facts.gallery_images = validImgs.slice(0, 5);
+          facts.gallery_images = validImgs.slice(0, IMPORTED_GALLERY_MAX);
         }
       }
     } catch (e) {
@@ -881,7 +882,7 @@ function adaptSS(html: string, url: string): Partial<ExtractedFacts> | null {
     const allStaticImgs = [...html.matchAll(/https:\/\/static\.ss\.ge\/[^\s"'<>]+\.(?:jpg|jpeg|webp|png)/gi)]
       .map(m => m[0])
       .filter(u => !/_Thumb\./i.test(u) && isListingPhoto(u));
-    const dedupedImgs = [...new Set(allStaticImgs)].slice(0, 5);
+    const dedupedImgs = [...new Set(allStaticImgs)].slice(0, IMPORTED_GALLERY_MAX);
     if (dedupedImgs.length > 0) {
       facts.gallery_images = dedupedImgs;
       facts.cover_image = dedupedImgs[0];
@@ -984,7 +985,7 @@ function universalExtract(html: string, url: string): Partial<ExtractedFacts> {
         const fs = node.floorSize as Record<string, unknown> | undefined;
         if (!facts.area && fs?.value) { const a = parseFloat(String(fs.value)); if (a > 0) facts.area = a; }
         const imgs = extractJsonLdImages(node);
-        if (imgs.length > 0 && !facts.gallery_images?.length) { facts.cover_image = imgs[0]; facts.gallery_images = imgs.slice(0, 5); }
+        if (imgs.length > 0 && !facts.gallery_images?.length) { facts.cover_image = imgs[0]; facts.gallery_images = imgs.slice(0, IMPORTED_GALLERY_MAX); }
       }
     } catch { /* skip malformed */ }
   }
@@ -1004,7 +1005,7 @@ function universalExtract(html: string, url: string): Partial<ExtractedFacts> {
   }
   if (!facts.cover_image) {
     const imgs = [...extractOgImages(html), ...extractTwitterImages(html)];
-    if (imgs.length > 0) { facts.cover_image = imgs[0]; if (!facts.gallery_images?.length) facts.gallery_images = imgs.slice(0, 5); }
+    if (imgs.length > 0) { facts.cover_image = imgs[0]; if (!facts.gallery_images?.length) facts.gallery_images = imgs.slice(0, IMPORTED_GALLERY_MAX); }
   }
   const ogPrice = metaGet('product:price:amount') ?? metaGet('og:price:amount');
   const ogCurr  = metaGet('product:price:currency') ?? metaGet('og:price:currency');
@@ -1283,7 +1284,7 @@ Deno.serve(async (req) => {
     authUser = user;
   }
 
-  let body: { url?: string; importId?: string } = {};
+  let body: { url?: string; importId?: string; refreshPropertyId?: string } = {};
   try {
     body = await req.json();
   } catch {
@@ -1292,8 +1293,45 @@ Deno.serve(async (req) => {
     });
   }
 
+  /*
+   * MEDIA REFRESH OF AN EXISTING PROPERTY. The same fetch and extraction, run on
+   * the property's own source URL, for its owner (or an admin). The property id
+   * stays; nothing is created; the gallery is MERGED (existing entries keep
+   * their place, newly found source photos are appended); owner uploads in
+   * property_photos are never touched; a cover is set only when there is none.
+   */
+  const refreshPropertyId = typeof body.refreshPropertyId === 'string' ? body.refreshPropertyId : null;
+  let refreshTarget: { propertyId: string; userId: string; facts: Record<string, unknown> | null; cover: string | null } | null = null;
+  if (refreshPropertyId) {
+    const { data: me } = await supabase.from('users').select('id,is_admin').eq('auth_id', authUser!.id).maybeSingle();
+    const { data: prop } = await supabase.from('properties').select('id,user_id,cover_photo_url,is_deleted').eq('id', refreshPropertyId).maybeSingle();
+    if (!me || !prop || prop.is_deleted || (prop.user_id !== me.id && !me.is_admin)) {
+      return Response.json({ success: false, error: 'Not your property', error_code: 'FORBIDDEN' }, { status: 403, headers: CORS });
+    }
+    const { data: f } = await supabase.from('property_facts').select('source_url,gallery_images,cover_image,source_listing_id').eq('property_id', refreshPropertyId).maybeSingle();
+    if (!f?.source_url) {
+      return Response.json({ success: false, error: 'No source listing', error_code: 'NO_SOURCE' }, { status: 422, headers: CORS });
+    }
+    /* At most one refresh per property every 10 minutes. */
+    const { data: recent } = await supabase.from('property_imports').select('id,created_at,photos_found,photos_candidates')
+      .eq('property_id', refreshPropertyId).eq('fetch_strategy', 'MEDIA_REFRESH').gte('created_at', new Date(Date.now() - 10 * 60_000).toISOString())
+      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+    if (recent) {
+      return Response.json({ success: true, refreshed: false, reason: 'RECENT', stored: (f.gallery_images ?? []).length }, { headers: CORS });
+    }
+    refreshTarget = { propertyId: refreshPropertyId, userId: me.id, facts: f as Record<string, unknown>, cover: prop.cover_photo_url ?? null };
+    body.url = String(f.source_url);
+  }
+
   const rawUrl = (body.url ?? '').trim();
-  const importId = body.importId ?? null;
+  let importId = body.importId ?? null;
+  if (refreshTarget) {
+    const { data: row } = await supabase.from('property_imports').insert({
+      property_id: refreshTarget.propertyId, user_id: refreshTarget.userId, source_url: rawUrl, status: 'PROCESSING',
+      fetch_strategy: 'MEDIA_REFRESH', source_domain: (() => { try { return new URL(rawUrl).hostname; } catch { return null; } })(),
+    }).select('id').maybeSingle();
+    importId = row?.id ?? null;
+  }
   const mockMode = Deno.env.get('MOCK_DATA_PROVIDERS') === 'true';
 
   const updateImport = async (updates: Record<string, unknown>) => {
@@ -1619,6 +1657,18 @@ Deno.serve(async (req) => {
     }
   }
 
+  /* EVERY PHOTO OF THIS LISTING (research-core/import/listingMedia): the listing
+     object's own images array (Pages or App Router payload), JSON-LD, or the
+     cover's upload folder — whichever proves more of the listing's photos. */
+  const listingIdForMedia = String((facts as Record<string, unknown>).source_listing_id
+    ?? (facts as Record<string, unknown>).external_listing_id
+    ?? (rawUrl.match(/[-\/](\d{6,9})\/?(?:\?|$)/)?.[1] ?? ''));
+  const media = extractListingMedia(html, { listingId: listingIdForMedia || null, coverHint: facts.cover_image ?? null });
+  if (media.candidates > (facts.gallery_images?.length ?? 0)) {
+    facts.gallery_images = media.images;
+    if (!facts.cover_image) facts.cover_image = media.images[0];
+  }
+
   // cover_image: prefer already-set (from adapter __NEXT_DATA__), then first gallery image
   // NEVER fall back to a non-listing asset — isListingPhoto() was already applied in buildGallery
   if (!facts.cover_image && facts.gallery_images && facts.gallery_images.length > 0) {
@@ -1745,8 +1795,25 @@ Deno.serve(async (req) => {
 
   console.log('[import-property] extraction complete:', JSON.stringify(diagnostic));
 
+  /* MEDIA HEALTH: how many listing photos the source showed vs what was kept. */
+  let refreshResult: Record<string, unknown> | null = null;
+  if (refreshTarget) {
+    const existing = Array.isArray(refreshTarget.facts?.gallery_images) ? (refreshTarget.facts!.gallery_images as string[]) : [];
+    const merged = mergeGallery(existing, facts.gallery_images ?? []);
+    const patch: Record<string, unknown> = { gallery_images: merged, media_last_ok_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    if (!refreshTarget.facts?.cover_image && merged[0]) patch.cover_image = merged[0];
+    await supabase.from('property_facts').update(patch).eq('property_id', refreshTarget.propertyId);
+    if (!refreshTarget.cover && merged[0]) {
+      await supabase.from('properties').update({ cover_photo_url: merged[0] }).eq('id', refreshTarget.propertyId);
+    }
+    refreshResult = { refreshed: true, before: existing.length, stored: merged.length, sourcePhotos: media.candidates, method: media.method };
+  }
+
   await updateImport({
     status: 'COMPLETED',
+    photos_candidates: media.candidates,
+    photos_rejected: media.rejected,
+    extraction_sources: [`media:${media.method}`],
     extracted_data: facts,
     render_provider_used: fetchStrategy,
     extraction_provider: fetchStrategy,
@@ -1765,6 +1832,7 @@ Deno.serve(async (req) => {
     success: true,
     title: facts.title ?? '',
     facts,
-    diagnostic,
+    diagnostic: { ...diagnostic, media: { sourcePhotos: media.candidates, kept: (facts.gallery_images ?? []).length, method: media.method } },
+    ...(refreshResult ?? {}),
   }, { headers: CORS });
 });

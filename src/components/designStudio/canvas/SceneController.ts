@@ -2188,8 +2188,12 @@ export class SceneController {
       this.reportRoom();
       return Promise.resolve(true);
     }
-    return this.startRoute(pose.position, pose.target, EYE_HEIGHT_M - 0.25, opts.through ? THROUGH_S : 0).then((ok) => {
-      if (!ok && this.walk && !this.walk.route) this.walkTo(pose);
+    this.routeStuck = false;
+    const walked = this.startRoute(pose.position, pose.target, EYE_HEIGHT_M - 0.25, opts.through ? THROUGH_S : 0);
+    const begun = !!this.walk?.route;
+    return walked.then((ok) => {
+      // No way there, or held up on the way: a cut. A walk the visitor (or the entrance) interrupted stays where it was.
+      if (!ok && (!begun || this.routeStuck) && this.walk && !this.walk.route) this.walkTo(pose);
       return ok;
     });
   }
@@ -2216,6 +2220,9 @@ export class SceneController {
       this.requestRender();
     });
   }
+
+  /** The last route ended because it was held up (not because the visitor took over). */
+  private routeStuck = false;
 
   /** True while the visitor is being walked somewhere (tour, Live Here). */
   get routing(): boolean {
@@ -2272,7 +2279,7 @@ export class SceneController {
     // Held by a door still swinging: wait, the route continues when it is open.
     if (Math.hypot(w.pos.x - before.x, w.pos.y - before.y) < 1e-4 && Math.abs(turn) < 0.2 && r.doors.size === 0 && !this.living.step(performance.now())) {
       r.stuck = (r.stuck ?? 0) + dt;
-      if (r.stuck > 2.5) { this.cancelRoute(false); return false; }
+      if (r.stuck > 2.5) { this.routeStuck = true; this.cancelRoute(false); return false; }
     } else {
       r.stuck = 0;
     }
@@ -2673,6 +2680,8 @@ export class SceneController {
   walkTo(pose: WalkPose, durationMs = 0) {
     const w = this.walk;
     if (!w) return;
+    // A cut (back to the entrance) ends any walk under way: the visitor is never carried on from the new place.
+    if (w.route) this.cancelRoute(false);
     if (w.seated) { w.seated = null; this.onSeatChange?.(null); this.setPosture('STANDING'); }
     w.vel = { x: 0, y: 0 };
     this.normalFrustum();

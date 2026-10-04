@@ -1895,7 +1895,8 @@ async function checkpoint8Share(browser) {
   await v.getByRole('button', { name: 'Overview' }).waitFor();
   check('visitor: enters at the entrance', (await whereV())?.includes('Hall'), await whereV());
   await v.getByRole('button', { name: 'Guided tour' }).click();
-  await v.waitForTimeout(3500);
+  // Until the tour has walked on (a software-rendered test browser may draw only a few frames a second).
+  for (let i = 0; i < 240 && ((await whereV()) ?? '').includes('Hall'); i += 1) await v.waitForTimeout(250);
   const toured = await whereV();
   check('visitor: the guided tour moves through the rooms', !!toured && !toured.includes('Hall'), toured);
   await v.getByRole('button', { name: 'Pause tour' }).click();
@@ -1945,9 +1946,7 @@ async function checkpoint8Share(browser) {
   const p = await phone.newPage();
   await wire(p, store, errors);
   await p.goto(url3, { waitUntil: 'domcontentloaded' });
-  // Inside at once; the cover is the overview.
-  await p.getByRole('button', { name: 'מבט כללי' }).first().waitFor({ timeout: 25000 });
-  await p.getByRole('button', { name: 'מבט כללי' }).first().click();
+  // A design presentation link (/d/): it opens on the presentation; only a walkthrough link opens inside.
   await p.getByRole('button', { name: 'כניסה לסיור' }).waitFor({ timeout: 25000 });
   check('phone he: the page speaks Hebrew, right to left', (await p.evaluate(() => document.documentElement.dir)) === 'rtl');
   check('phone he: the cover fits', (await overflowX(p)) <= 0);
@@ -2711,7 +2710,7 @@ async function tourStore() {
 }
 
 /** Wait until the visitor stands in a room whose name the bar shows (walked there, not cut). */
-async function tArrive(page, name, ms = 6000) {
+async function tArrive(page, name, ms = 60000) {
   for (let t = 0; t < ms; t += 100) {
     const now = await tWhere(page);
     if (now?.includes(name) && !(await tScene(page, (c) => c.routing))) return true;
@@ -2781,7 +2780,7 @@ async function tourDesktop(browser) {
     JSON.stringify({ box, door }));
 
   // ── Click: walked THROUGH that doorway, in about a second, never cut.
-  const samples = tTrack(page, 12000);
+  const samples = tTrack(page, 90000);
   await corrMarker.click();
   const path1 = await samples;
   const moving = path1.filter((s) => s.routing);
@@ -2818,7 +2817,7 @@ async function tourDesktop(browser) {
   check('plan: every reachable room is offered', (await page.getByTestId('walk-plan-room').count()) === 8);
   await page.screenshot({ path: path.join(OUT, 'tour-04-plan-1440-en.png') });
   await page.locator('[data-testid="walk-plan-room"][data-room="r-bed2"]').click();
-  check('plan: walked to bedroom 2', await tArrive(page, 'Bedroom 2', 15000), await tWhere(page));
+  check('plan: walked to bedroom 2', await tArrive(page, 'Bedroom 2'), await tWhere(page));
   check('plan: closes after choosing', (await page.getByTestId('walk-plan').count()) === 0);
 
   // ── Room chips and the entrance, always there.
@@ -2826,10 +2825,30 @@ async function tourDesktop(browser) {
   await page.getByTestId('walk-entrance').click();
   check('entrance: back at the entrance', await tArrive(page, 'Hall'), await tWhere(page));
 
+  // ── The entrance, pressed in the middle of a doorway walk: a cut that ends the walk (never carried on from there).
+  await tFace(page, 'd-entry-corr');
+  await page.waitForTimeout(300);
+  // Both presses in one go, so the walk is certainly still under way when the entrance is pressed.
+  const midWalk = await page.evaluate(() => {
+    document.querySelector('[data-testid="walk-door"][data-room="r-corr"]').click();
+    const walking = window.__dsScene.routing;
+    document.querySelector('[data-testid="walk-entrance"]').click();
+    return walking;
+  });
+  check('entrance mid-walk: the doorway walk had begun', midWalk === true);
+  await page.waitForTimeout(1500);
+  check('entrance mid-walk: stays at the entrance, the walk ended', (await tScene(page, (c) => c.walk.room === 'r-entry' && !c.routing)), await tWhere(page));
+
   // ── Free walking stays: W walks.
   const before = await tPlayer(page);
-  await page.keyboard.down('KeyW'); await page.waitForTimeout(1600); await page.keyboard.up('KeyW');
-  await page.waitForTimeout(500);
+  // Held until the body has moved (a software-rendered test browser may draw only a few frames a second).
+  await page.keyboard.down('KeyW');
+  for (let t = 0; t < 300; t += 1) {
+    const p = await tPlayer(page);
+    if (Math.hypot(p.pos.x - before.pos.x, p.pos.y - before.pos.y) > 0.3) break;
+    await page.waitForTimeout(100);
+  }
+  await page.keyboard.up('KeyW');
   const after = await tPlayer(page);
   check('free walk: W still walks', Math.hypot(after.pos.x - before.pos.x, after.pos.y - before.pos.y) > 0.1, JSON.stringify([before.pos, after.pos]));
 
@@ -2929,7 +2948,7 @@ async function tourPhone(browser, lang) {
   check(`${tag}: the doorway name is a comfortable target (≥ 40 px tall)`, !!mb && mb.height >= 40, JSON.stringify(mb));
   await page.screenshot({ path: path.join(OUT, `tour-phone-01-${lang}.png`) });
   await marker.tap();
-  for (let t = 0; t < 40 && (await tScene(page, (c) => c.walk.room)) !== 'r-corr'; t += 1) await page.waitForTimeout(100);
+  for (let t = 0; t < 600 && (await tScene(page, (c) => c.walk.room)) !== 'r-corr'; t += 1) await page.waitForTimeout(100);
   await page.waitForTimeout(400);
   check(`${tag}: a tap walks through to the corridor`, (await tScene(page, (c) => c.walk.room)) === 'r-corr');
   await page.getByTestId('walk-plan-open').tap();
@@ -2938,10 +2957,10 @@ async function tourPhone(browser, lang) {
   check(`${tag}: the plan is a bottom sheet inside the screen`, !!sheet && sheet.x >= 0 && sheet.x + sheet.width <= 390 && sheet.y + sheet.height <= 844, JSON.stringify(sheet));
   await page.screenshot({ path: path.join(OUT, `tour-phone-02-plan-${lang}.png`) });
   await page.locator('[data-testid="walk-plan-room"][data-room="r-kitchen"]').tap();
-  for (let t = 0; t < 250 && (await tScene(page, (c) => c.walk.room)) !== 'r-kitchen'; t += 1) await page.waitForTimeout(100);
+  for (let t = 0; t < 600 && (await tScene(page, (c) => c.walk.room)) !== 'r-kitchen'; t += 1) await page.waitForTimeout(100);
   check(`${tag}: plan → kitchen`, (await tScene(page, (c) => c.walk.room)) === 'r-kitchen');
   await page.getByTestId('walk-back').tap();
-  for (let t = 0; t < 100 && (await tScene(page, (c) => c.walk.room)) !== 'r-corr'; t += 1) await page.waitForTimeout(100);
+  for (let t = 0; t < 600 && (await tScene(page, (c) => c.walk.room)) !== 'r-corr'; t += 1) await page.waitForTimeout(100);
   check(`${tag}: back → corridor`, (await tScene(page, (c) => c.walk.room)) === 'r-corr');
   check(`${tag}: the stick still walks (free walking kept)`, await page.getByLabel(/joystick|Joystick|ჯოისტიკ|عصا/i).count() > 0 || true);
   check(`${tag}: nothing overflows`, (await overflowX(page)) <= 0, String(await overflowX(page)));

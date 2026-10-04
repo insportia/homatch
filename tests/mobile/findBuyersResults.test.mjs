@@ -168,7 +168,7 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', admin = false,
     if (url.includes('/rpc/billing_budget_offer')) return r.fulfill(json({ ok: true, offer: 'PAYG_FULL', estimate_min_credits: 17.5, estimate_max_credits: 32.5, available_balance: 99832.03, min_viable_budget_credits: 50 }));
     if (url.includes('/rpc/billing_my_budget_choices')) return r.fulfill(json({ ok: true, balance: 99832.03, min_viable: 50, allow_custom: true, recommended: 100,
       presets: [100, 250, 500, 1000].map((c) => ({ credits: c, affordable: true, viable: true, recommended: c === 100 })) }));
-    if (url.includes('/rest/v1/background_jobs')) return r.fulfill(json(jobs));
+    if (url.includes('/rpc/background_jobs_mine')) return r.fulfill(json(jobs));
     if (url.includes('/rpc/find_buyers_public_config')) return r.fulfill(json({ minUsd: 10, creditsPerUsd: 10, minCredits: 100 }));
     if (url.includes('/functions/v1/match-campaign')) {
       const body = JSON.parse(req.postData() ?? '{}');
@@ -367,9 +367,8 @@ test('an Arabic excerpt reads right-to-left inside a left-to-right card (Georgia
 const IDLE = { readiness: { ready: true, reason: null, sources: ['TELEGRAM'] },
   campaign: { ...STATUS_SEARCHING.campaign, state: 'UNAVAILABLE', active: false, sources: [], executed: false, newResults: 0, newLeads: 0,
     queue: { total: 0, queued: 0, running: 0, done: 0, failed: 0, cancelled: 0, paused: 0 }, runs: { inFlight: 0, succeeded: 0, failed: 0 } } };
-const RUNNING_ELSEWHERE = [{ id: 'bg1', user_id: 'u1', product_type: 'VERIFY', subject_type: 'RESEARCH_JOB', subject_id: 'r1', state: 'PROCESSING',
-  progress: 40, current_stage: 'x', result_ref: '/verify?job=r1', created_at: ago(0.01), updated_at: ago(0.001) }];
-const START = { en: /Find interested people|Find buyers/, ka: /ადამიანების პოვნა|მყიდველ/, ar: /./ };
+const RUNNING_ELSEWHERE = [{ id: 'bg1', productType: 'VERIFY', subjectType: 'RESEARCH_JOB', subjectId: 'r1', state: 'PROCESSING',
+  progress: 40, currentStage: 'x', resultRef: '/verify?job=r1', stages: [], metadata: {}, createdAt: ago(0.01), updatedAt: ago(0.001) }];
 
 test('phones 320–430px (ka, en, ar): the page and the search dialog fit, scroll, and the task badge covers nothing', opts, async (t) => {
   const failures = [];
@@ -396,12 +395,11 @@ test('phones 320–430px (ka, en, ar): the page and the search dialog fit, scrol
       if (!l.badge) failures.push(`${where}: running-task badge missing`);
       else {
         if (l.badge.w > 48 || l.badge.h > 48) failures.push(`${where}: task badge ${l.badge.w}×${l.badge.h} spans the content`);
-        if (!/1/.test(l.badge.label ?? '')) failures.push(`${where}: task badge has no accessible name`);
+        if ((l.badge.label ?? '').trim().length < 4) failures.push(`${where}: task badge has no accessible name`);
       }
       if (!l.scrolledToEnd) failures.push(`${where}: page does not scroll to its end`);
       /* The search dialog. */
       await page.evaluate(() => window.scrollTo(0, 0));
-      await page.locator('main a[href$="/matches"]').count(); // the page's primary link opens Matches; the dialog is on Matches
       await page.goto(`${BASE}/property/${PROPERTY_ID}/matches`, { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('text=Buyer budget, text=მყიდველის ბიუჯეტი, text=ميزانية', { timeout: 30000 }).catch(() => {});
       await page.waitForTimeout(1500);

@@ -49,6 +49,7 @@ import { BODY_RADIUS_M, COMFORT_RADIUS_M, buildWalkModel, distanceToObb, findPat
 import {
   DENSITY_MAX, density, densityChecked, essentialRole, redundantPieces, repairRank, servesRole, strandedFloor, type WalkGate,
 } from './walkability.ts';
+import { ANCHOR_FALLBACK_M } from './fidelity.ts';
 import { type ObjectShape, shapedAsset } from '../objectShape.ts';
 import { applyOperation, type Operation, type OperationContext, validateOperation } from '../operations.ts';
 import { candidatePositions, evaluateInWorld, footprint, type Obb, type PlacementIssue, placementWorld, snapToWall } from '../placement.ts';
@@ -259,26 +260,34 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
     for (const { item, asset: own } of order) {
       let shape = shapeAt(own, item.scale);
       let asset = shapedAsset(own, { shape });
-      let found: ReturnType<typeof findPose> = null;
-      if (isLocked(item)) {
-        const near = findLockedPose(space, assets, working.objects, room, own, item);
-        if (near) { found = near; shape = shapeAt(own, near.scale); asset = shapedAsset(own, { shape }); }
-      } else found = findPose(space, assets, working.objects, room, asset, item);
       const entry: ItemReport = {
         roomId: room.id, code: item.code, type: item.type, instanceId: null, outcome: 'DROPPED', reason: null, movedM: null, warnings: [],
         ...(item.refKey ? { refKey: item.refKey } : {}), ...(isLocked(item) ? { locked: true } : {}),
       };
       report.items.push(entry);
-      if (!found) { entry.reason = isLocked(item) ? 'ANCHOR_NO_SAFE_PLACE' : 'NO_SAFE_PLACE'; continue; }
+      // A locked piece: its candidates in repair order, each tried until the design accepts one (the operation
+      // validator is the final word; a pose it refuses never ends the search).
+      const options: Array<NonNullable<ReturnType<typeof findPose>> & { scale?: number }> = isLocked(item)
+        ? lockedOptions(space, assets, working.objects, room, own, item)
+        : [findPose(space, assets, working.objects, room, asset, item)].filter((x): x is NonNullable<ReturnType<typeof findPose>> => !!x);
+      if (!options.length) { entry.reason = isLocked(item) ? 'ANCHOR_NO_SAFE_PLACE' : 'NO_SAFE_PLACE'; continue; }
+      let found: (typeof options)[number] | null = null;
+      let object: ObjectInstance | null = null;
+      for (const option of options) {
+        const s1 = option.scale != null ? shapeAt(own, option.scale) : shape;
+        const candidate: ObjectInstance = {
+          instanceId: `${input.idPrefix}-${n + 1}`, assetId: item.code, roomId: room.id,
+          position: { x: r3(option.at.x), y: 0, z: r3(option.at.y) }, rotationY: Math.round(option.rotation * 1e6) / 1e6,
+          materialVariant: null, colorOverride: item.color, locked: false,
+          ...(s1 ? { shape: s1 } : {}),
+        };
+        const why = apply({ type: 'ADD_OBJECT', object: candidate });
+        if (why) { entry.reason = why; continue; }
+        found = option; object = candidate; shape = s1; asset = shapedAsset(own, { shape });
+        break;
+      }
+      if (!found || !object) continue;
       n += 1;
-      const object: ObjectInstance = {
-        instanceId: `${input.idPrefix}-${n}`, assetId: item.code, roomId: room.id,
-        position: { x: r3(found.at.x), y: 0, z: r3(found.at.y) }, rotationY: Math.round(found.rotation * 1e6) / 1e6,
-        materialVariant: null, colorOverride: item.color, locked: false,
-        ...(shape ? { shape } : {}),
-      };
-      const why = apply({ type: 'ADD_OBJECT', object });
-      if (why) { entry.reason = why; continue; }
       entry.instanceId = object.instanceId;
       entry.outcome = item.pose ? (found.kept ? 'PLANNED' : 'CORRECTED') : 'PLACED';
       entry.reason = found.kept || !item.pose ? null : found.why;
@@ -550,37 +559,75 @@ function lockCandidates(lock: { at: Point; rotation: number; maxShiftM: number; 
 }
 
 /**
- * Where a reference-locked piece stands, in the repair order (fidelity first): the picture's pose; a small move
- * (within its lock); the same at a slightly smaller scale (never under SCALE_FLOOR of the catalogue size); a small
- * turn. Clean only: a locked piece is never accepted with a tight access zone. Null: no safe place within its lock.
+ * Where a reference-locked piece may stand, in the repair order (fidelity first), clean poses only, at most
+ * `max`: the picture's pose; a small move (within its lock); the same at a slightly smaller scale (never under
+ * SCALE_FLOOR of the catalogue size); a small turn; then, last, the nearest clean place in the SAME part of the
+ * room (its 3 × 3 cell or a neighbour, within ANCHOR_FALLBACK of the picture's pose) — the plan of a space read
+ * from pictures is an estimate, and a piece a few decimetres off is the picture, a piece missing is not.
  */
-function findLockedPose(
-  space: SpaceModel, assets: Map<string, CatalogAsset>, objects: ObjectInstance[], room: SpaceRoom, own: CatalogAsset, item: BuildItem,
-): { at: Point; rotation: number; kept: boolean; why: string | null; movedM: number | null; verdict: Verdict; scale: number } | null {
-  if (!item.pose || !item.lock) return null;
+function lockedOptions(
+  space: SpaceModel, assets: Map<string, CatalogAsset>, objects: ObjectInstance[], room: SpaceRoom, own: CatalogAsset, item: BuildItem, max = 8,
+): Array<{ at: Point; rotation: number; kept: boolean; why: string | null; movedM: number | null; verdict: Verdict; scale: number }> {
+  if (!item.pose || !item.lock) return [];
   const lock = { at: { x: room.bounds.minX + item.pose.x, y: room.bounds.minY + item.pose.y }, rotation: item.pose.rotationDeg * DEG, maxShiftM: item.lock.maxShiftM, maxTurnDeg: item.lock.maxTurnDeg };
   const ctx = { space, assets, objects };
   const world = placementWorld(ctx, room);
   const scales = [item.scale, ...[0.94, 0.88].map((k) => r3(Math.max(SCALE_FLOOR, item.scale * k))).filter((x) => x < item.scale - 0.005)];
-  const cands = lockCandidates(lock);
+  const out: ReturnType<typeof lockedOptions> = [];
   let firstIssue: string | null = null;
-  // Position before scale, scale before orientation.
+  const consider = (at: Point, rotation: number, scale: number, turn: number) => {
+    const asset = shapedAsset(own, { shape: shapeAt(own, scale) });
+    if (!pointInPolygon(at, room.polygon) || onStairs(space, asset, at, rotation)) return;
+    const issues = evaluateInWorld(world, asset, at, rotation);
+    if (!firstIssue && issues.length) firstIssue = issues.find((i) => i.code !== 'TIGHT_ACCESS')?.code ?? 'TIGHT_ACCESS';
+    if (verdictOf(issues) !== 'CLEAN') return;
+    const movedM = r3(Math.hypot(at.x - lock.at.x, at.y - lock.at.y));
+    const kept = movedM < 0.005 && turn === 0 && scale === item.scale;
+    out.push({ at, rotation, kept, why: kept ? null : firstIssue ?? 'COLLISION', movedM, verdict: 'CLEAN', scale });
+  };
+  const cands = lockCandidates(lock);
+  // Position before scale, scale before orientation; a few of each tier (the validator may still refuse one).
   for (const turnPhase of [false, true]) {
     for (const scale of scales) {
-      const asset = shapedAsset(own, { shape: shapeAt(own, scale) });
+      let found = 0;
       for (const c of cands) {
-        if ((c.turn !== 0) !== turnPhase) continue;
-        if (!pointInPolygon(c.at, room.polygon) || onStairs(space, asset, c.at, c.rotation)) continue;
-        const issues = evaluateInWorld(world, asset, c.at, c.rotation);
-        if (!firstIssue && c.turn === 0 && scale === item.scale && c.at === cands[0].at) firstIssue = issues.find((i) => i.code !== 'TIGHT_ACCESS')?.code ?? (issues.length ? 'TIGHT_ACCESS' : null);
-        if (verdictOf(issues) !== 'CLEAN') continue;
-        const movedM = r3(Math.hypot(c.at.x - lock.at.x, c.at.y - lock.at.y));
-        const kept = movedM < 0.005 && c.turn === 0 && scale === item.scale;
-        return { at: c.at, rotation: c.rotation, kept, why: kept ? null : firstIssue ?? 'COLLISION', movedM, verdict: 'CLEAN', scale };
+        if ((c.turn !== 0) !== turnPhase || found >= 2 || out.length >= max) continue;
+        const before = out.length;
+        consider(c.at, c.rotation, scale, c.turn);
+        if (out.length > before) found += 1;
       }
     }
   }
-  return null;
+  if (out.length < max) {
+    // The fallback: the same part of the room, nearest first, at the picture's rotation (or a quarter turn).
+    const cell = (p: Point) => [
+      Math.floor(((p.x - room.bounds.minX) / Math.max(0.01, room.bounds.maxX - room.bounds.minX)) * 3),
+      Math.floor(((p.y - room.bounds.minY) / Math.max(0.01, room.bounds.maxY - room.bounds.minY)) * 3),
+    ];
+    const home = cell(lock.at);
+    const reach = Math.max(ANCHOR_FALLBACK_M, 0.25 * Math.hypot(room.bounds.maxX - room.bounds.minX, room.bounds.maxY - room.bounds.minY));
+    const snapped = snapToWall(ctx, own, lock.at, lock.rotation, room.id, 0.9);
+    const ring: Array<{ at: Point; rotation: number }> = snapped.snapped ? [{ at: snapped.at, rotation: snapped.rotation }] : [];
+    for (let r = lock.maxShiftM + 0.15; r <= reach + 1e-9; r += 0.15) {
+      const k = Math.max(12, Math.round((2 * Math.PI * r) / 0.2));
+      for (let i = 0; i < k; i += 1) {
+        const a = (i / k) * Math.PI * 2;
+        const at = { x: lock.at.x + Math.cos(a) * r, y: lock.at.y + Math.sin(a) * r };
+        ring.push({ at, rotation: lock.rotation }, { at, rotation: lock.rotation + Math.PI / 2 });
+      }
+    }
+    for (const c of ring) {
+      if (out.length >= max) break;
+      const cc = cell(c.at);
+      if (Math.abs(cc[0] - home[0]) > 1 || Math.abs(cc[1] - home[1]) > 1) continue;
+      for (const scale of scales.slice(0, 2)) {
+        const before = out.length;
+        consider(c.at, c.rotation, scale, 1);
+        if (out.length > before) break;
+      }
+    }
+  }
+  return out;
 }
 
 /** A locked piece is never scaled below this share of its catalogue size to fit (scenePlan SCALE_MIN). */

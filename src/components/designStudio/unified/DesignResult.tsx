@@ -370,6 +370,18 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
     }
   };
   const heroRoom = hero ? roomOf(hero) ?? data.heroRoomId : data.heroRoomId;
+  // The pictures one can step into: the one shown first, then each room's own generated picture.
+  const walkPhotos = useMemo(() => {
+    const out: Array<{ id: string; url: string; key: string | null; label: string; kind: 'ROOM' | 'MASTER' }> = [];
+    const keyOf = (r: RenderRecord) => r.final_key ?? r.base_key ?? null;
+    if (hero && heroUrl) out.push({ id: hero.id, url: heroUrl, key: keyOf(hero), kind: roomOf(hero) ? 'ROOM' : 'MASTER', label: roomOf(hero) ? roomLabel(roomOf(hero)) ?? t('dsx_photo3d_this') : t('dsx_photo3d_this') });
+    for (const [roomId, r] of roomShots) {
+      const url = urls.get(r.id);
+      if (!url || r.id === hero?.id) continue;
+      out.push({ id: r.id, url, key: keyOf(r), kind: 'ROOM', label: roomLabel(roomId) ?? t('dsx_photo3d_room') });
+    }
+    return out.slice(0, 12);
+  }, [hero, heroUrl, roomShots, urls, roomLabel, t]);
   const others = data.rooms.filter((r) => r.id !== (data.heroRoomId ?? ''));
 
   return (
@@ -557,7 +569,7 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
 
         {/* ── The 3D walkthrough of the design shown: always from this project (a photo design's space is reconstructed by the server) ── */}
         {hero ? (
-          <WalkthroughPanel projectId={projectId} designVersionId={hero.version_id ?? data.head.id} renderId={hero.id} />
+          <WalkthroughPanel projectId={projectId} designVersionId={hero.version_id ?? data.head.id} renderId={hero.id} photos={walkPhotos} />
         ) : null}
 
         {/* ── Your options ───────────────────────────────────────────── */}

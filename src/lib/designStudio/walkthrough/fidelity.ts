@@ -74,7 +74,11 @@ export interface FidelityReport {
   /** The first failure, in FIDELITY_CODES order; null when it passed. */
   code: FidelityCode | null;
   codes: FidelityCode[];
+  /** What fails the build (in FIDELITY_CODES order of their codes). */
   findings: Finding[];
+  /** What is recorded but does not fail it: estimates that may be off (the camera, a few decimetres, a piece the
+   *  catalogue cannot match exactly) — a walkthrough is never failed on what HOMATCH itself only guessed. */
+  warnings: Finding[];
   metrics: {
     anchors: number; anchorsPresent: number; objectRecall: number | null;
     meanShiftM: number | null; maxShiftM: number | null;
@@ -91,6 +95,9 @@ export interface FidelityReport {
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
 const DEG = Math.PI / 180;
 const diagOf = (room: SpaceRoom) => Math.hypot(room.bounds.maxX - room.bounds.minX, room.bounds.maxY - room.bounds.minY);
+
+/** How far, at least, a locked piece may fall back within its own part of the room (build.ts lockedOptions). */
+export const ANCHOR_FALLBACK_M = 1.2;
 
 /** How far a reference-locked anchor may be nudged (room-relative, bounded) and turned. */
 export function anchorLock(room: SpaceRoom): { maxShiftM: number; maxTurnDeg: number } {
@@ -186,7 +193,9 @@ export function referenceFidelity(input: {
 }): FidelityReport {
   const { space, plan, build } = input;
   const findings: Finding[] = [];
-  const add = (code: FidelityCode, roomId: string | null, key: string | null, detail: string) => findings.push({ code, roomId, key, detail });
+  const warnings: Finding[] = [];
+  const add = (code: FidelityCode, roomId: string | null, key: string | null, detail: string, blocking = true) => (blocking ? findings : warnings).push({ code, roomId, key, detail });
+  const dollhouse = plan.reference?.view === 'MASTER';
   const rooms = new Map(space.rooms.map((r) => [r.id, r]));
   const ref = plan.reference ?? { roomId: null, visibleRoomIds: [], camera: null, cameraNote: 'NO_REFERENCE' };
   const visible = new Set(ref.visibleRoomIds);
@@ -226,10 +235,16 @@ export function referenceFidelity(input: {
 
   // ── Objects ──
   const anchors = judged.filter((j) => j.refx.locked);
-  for (const a of anchors.filter((j) => !j.final)) add('REFERENCE_OBJECT_MISSING', a.roomId, a.key, `${a.type} ${a.key} is in the picture but not in the walkthrough (${a.reason ?? 'dropped'})`);
+  // A missing anchor fails the build when it is what the room is (a sofa, a bed, a dining table, the kitchen) or when
+  // several are missing; one secondary anchor with no safe place anywhere in its part of the room is recorded.
+  const missingAnchors = anchors.filter((j) => !j.final);
+  const defining = (t: string) => /^(SOFA|BED|DINING_TABLE|KITCHEN_RUN)$/.test(t);
+  for (const a of missingAnchors) {
+    add('REFERENCE_OBJECT_MISSING', a.roomId, a.key, `${a.type} ${a.key} is in the picture but not in the walkthrough (${a.reason ?? 'dropped'})`, defining(a.type) || missingAnchors.length >= 2);
+  }
   const shown = judged.filter((j) => (j.refx.importance === 'ANCHOR' || j.refx.importance === 'MAJOR') && (j.refx.basis === 'OBSERVED' || j.refx.basis === 'STRONGLY_INFERRED'));
   const recall = shown.length ? shown.filter((j) => j.final).length / shown.length : null;
-  if (recall != null && shown.length >= 3 && recall < 0.7) add('REFERENCE_OBJECT_MISSING', ref.roomId, null, `only ${Math.round(recall * 100)}% of the picture's major pieces stand`);
+  if (recall != null && shown.length >= 3 && recall < 0.5) add('REFERENCE_OBJECT_MISSING', ref.roomId, null, `only ${Math.round(recall * 100)}% of the picture's major pieces stand`);
 
   // ── Layout: anchors stay; the composition keeps its spread and centre ──
   const shifts: number[] = [];
@@ -238,20 +253,22 @@ export function referenceFidelity(input: {
     const room = rooms.get(a.roomId)!;
     const s = Math.hypot(a.final.x - a.proposed.x, a.final.y - a.proposed.y);
     shifts.push(s);
-    if (s > anchorLock(room).maxShiftM + 0.05) add('REFERENCE_LAYOUT_MISMATCH', a.roomId, a.key, `${a.type} ${a.key} moved ${r3(s)} m from where the picture has it`);
+    // Within its lock: the picture. Within its part of the room (build.ts lockedOptions): recorded. Further: a move.
+    const fallback = Math.max(ANCHOR_FALLBACK_M, 0.25 * diagOf(room));
+    if (s > anchorLock(room).maxShiftM + 0.05) add('REFERENCE_LAYOUT_MISMATCH', a.roomId, a.key, `${a.type} ${a.key} moved ${r3(s)} m from where the picture has it`, s > fallback + 0.1);
   }
   let spreadRatio: number | null = null; let centroidShiftRatio: number | null = null;
   for (const roomId of visible) {
     const room = rooms.get(roomId);
     if (!room) continue;
     const pairs = judged.filter((j) => j.roomId === roomId && j.proposed && j.final && j.refx.importance !== 'DECOR');
-    if (pairs.length < 3) continue;
+    if (pairs.length < 3 || room.areaM2 < 8) continue;
     const before = spreadOf(pairs.map((j) => j.proposed!)); const after = spreadOf(pairs.map((j) => ({ x: j.final!.x, y: j.final!.y })));
     const ratio = before.rms > 0.05 ? after.rms / before.rms : 1;
     const shift = Math.hypot(after.c.x - before.c.x, after.c.y - before.c.y) / diagOf(room);
     if (roomId === ref.roomId || spreadRatio == null) { spreadRatio = r3(ratio); centroidShiftRatio = r3(shift); }
-    if (ratio < 0.6) add('REFERENCE_LAYOUT_MISMATCH', roomId, null, `the room's furniture is packed together (spread ${Math.round(ratio * 100)}% of the picture's)`);
-    else if (shift > 0.2) add('REFERENCE_LAYOUT_MISMATCH', roomId, null, `the room's furniture shifted ${Math.round(shift * 100)}% of the room away from where the picture has it`);
+    if (ratio < 0.6) add('REFERENCE_LAYOUT_MISMATCH', roomId, null, `the room's furniture is packed together (spread ${Math.round(ratio * 100)}% of the picture's)`, ratio < 0.5);
+    else if (shift > 0.2) add('REFERENCE_LAYOUT_MISMATCH', roomId, null, `the room's furniture shifted ${Math.round(shift * 100)}% of the room away from where the picture has it`, false);
   }
   // A corner cluster, judged on the built room alone (whatever the plan said): pieces packed together far from the middle.
   let referenceRoomPieces = 0;
@@ -282,12 +299,13 @@ export function referenceFidelity(input: {
     }
   }
   const imageError = median(imgErr);
-  if (!cam && plan.reference) add('REFERENCE_CAMERA_MISMATCH', ref.roomId, null, `the picture could not be located in the plan (${ref.cameraNote ?? 'no camera'})`);
+  // The camera is HOMATCH's estimate (an AI picture has none): its errors are recorded, never a failure on their own.
+  if (!cam && plan.reference) add('REFERENCE_CAMERA_MISMATCH', ref.roomId, null, `the picture could not be located in the plan (${ref.cameraNote ?? 'no camera'})`, false);
   else if (cam && imageError != null && imgErr.length >= 2 && imageError > 0.22) {
     const spreadShown = shownPx.length >= 3 ? spreadOf(shownPx.map(([x, y]) => ({ x, y }))).rms : 0;
     const spreadPlan = planPx.length >= 3 ? spreadOf(planPx.map(([x, y]) => ({ x, y }))).rms : 0;
-    if (spreadShown > 0.05 && spreadPlan < 0.5 * spreadShown) add('REFERENCE_LAYOUT_MISMATCH', cam.roomId, null, 'seen from the picture\'s camera, the planned pieces bunch together where the picture spreads them out');
-    else add('REFERENCE_CAMERA_MISMATCH', cam.roomId, null, `seen from the estimated camera, the pieces land ${Math.round(imageError * 100)}% of the picture away from where it shows them`);
+    if (spreadShown > 0.05 && spreadPlan < 0.5 * spreadShown) add('REFERENCE_LAYOUT_MISMATCH', cam.roomId, null, 'seen from the picture\'s camera, the planned pieces bunch together where the picture spreads them out', !dollhouse && imgErr.length >= 3);
+    else add('REFERENCE_CAMERA_MISMATCH', cam.roomId, null, `seen from the estimated camera, the pieces land ${Math.round(imageError * 100)}% of the picture away from where it shows them`, false);
   }
 
   // ── Zones: nothing migrates; no furnished zone is left empty ──
@@ -298,14 +316,14 @@ export function referenceFidelity(input: {
     const a = cellOf(room, j.proposed); const b = cellOf(room, j.final);
     zoneChecks += 1;
     if (Math.abs(a[0] - b[0]) <= 1 && Math.abs(a[1] - b[1]) <= 1) zoneMatches += 1;
-    else add('REFERENCE_ZONE_MISMATCH', j.roomId, j.key, `${j.type} ${j.key} moved to another part of the room`);
+    else add('REFERENCE_ZONE_MISMATCH', j.roomId, j.key, `${j.type} ${j.key} moved to another part of the room`, j.refx.locked);
   }
   for (const roomId of visible) {
     const byZone = new Map<string, Judged[]>();
     for (const j of judged.filter((x) => x.roomId === roomId && lockedOrShown(x.refx) && x.refx.importance !== 'DECOR' && x.refx.importance !== 'MINOR')) {
       (byZone.get(j.refx.zone) ?? byZone.set(j.refx.zone, []).get(j.refx.zone)!).push(j);
     }
-    for (const [zone, list] of byZone) if (zone !== 'OTHER' && list.every((j) => !j.final)) add('REFERENCE_ZONE_MISMATCH', roomId, null, `the picture's ${zone.toLowerCase()} area is empty`);
+    for (const [zone, list] of byZone) if (zone !== 'OTHER' && list.every((j) => !j.final)) add('REFERENCE_ZONE_MISMATCH', roomId, null, `the picture's ${zone.toLowerCase()} area is empty`, false);
   }
 
   // ── Scale: built at about the size the picture shows; nothing an unreal share of its room ──
@@ -320,7 +338,8 @@ export function referenceFidelity(input: {
     const long = Math.max(j.final.w, j.final.d) / Math.max(dims.widthM, dims.depthM);
     const area = (j.final.w * j.final.d) / (dims.widthM * dims.depthM);
     if (long >= 0.7 && long <= 1.4 && area >= 0.5 && area <= 1.9) scaleOk += 1;
-    else if (j.refx.locked || j.refx.importance === 'ANCHOR') add('REFERENCE_SCALE_MISMATCH', j.roomId, j.key, `${j.type} ${j.key} is built at ${Math.round(long * 100)}% of the length the picture shows`);
+    // The catalogue's nearest piece: recorded; one at half or twice the size the picture shows: a failure.
+    else if (j.refx.locked || j.refx.importance === 'ANCHOR') add('REFERENCE_SCALE_MISMATCH', j.roomId, j.key, `${j.type} ${j.key} is built at ${Math.round(long * 100)}% of the length the picture shows`, long < 0.5 || long > 2);
   }
 
   // ── Balance in the pictured rooms ──
@@ -331,7 +350,7 @@ export function referenceFidelity(input: {
   for (const roomId of visible) {
     const shownHere = judged.filter((j) => j.roomId === roomId && lockedOrShown(j.refx) && j.refx.importance !== 'DECOR');
     const standHere = shownHere.filter((j) => j.final).length;
-    if (shownHere.length >= 2 && standHere < Math.ceil(shownHere.length * 0.5)) add('UNDERFURNISHED', roomId, null, `${standHere} of the picture's ${shownHere.length} pieces stand`);
+    if (shownHere.length >= 2 && standHere < Math.ceil(shownHere.length * 0.5)) add('UNDERFURNISHED', roomId, null, `${standHere} of the picture's ${shownHere.length} pieces stand`, standHere < shownHere.length * 0.4);
   }
 
   const codes = FIDELITY_CODES.filter((c) => findings.some((f) => f.code === c));
@@ -345,7 +364,7 @@ export function referenceFidelity(input: {
     imageError == null ? 1 : Math.max(0, 1 - imageError / 0.4),
   ];
   return {
-    ok: !codes.length, code: codes[0] ?? null, codes, findings: findings.slice(0, 40),
+    ok: !codes.length, code: codes[0] ?? null, codes, findings: findings.slice(0, 40), warnings: warnings.slice(0, 40),
     metrics: {
       anchors: anchors.length, anchorsPresent: anchors.filter((a) => a.final).length, objectRecall: recall == null ? null : r3(recall),
       meanShiftM: meanShift, maxShiftM: shifts.length ? r3(Math.max(...shifts)) : null, spreadRatio, centroidShiftRatio,
@@ -359,7 +378,7 @@ const lockedOrShown = (r: RefFacts) => r.locked || r.basis === 'OBSERVED' || r.b
 
 /** What a bounded replan is told: HOMATCH's findings, generated here from fixed codes, keys and numbers. */
 export function feedbackOf(report: FidelityReport): string[] {
-  return report.findings.slice(0, 12).map((f) => `${f.code}${f.roomId ? ` in room ${f.roomId}` : ''}: ${f.detail}`);
+  return [...report.findings, ...report.warnings].slice(0, 12).map((f) => `${f.code}${f.roomId ? ` in room ${f.roomId}` : ''}: ${f.detail}`);
 }
 
 // ── The reference view, rendered: the visual check ──────────────────────────
@@ -375,15 +394,23 @@ export interface VisualQa {
  * the render is the catalogue's furniture in Blender light, never the photoreal picture, so style, colour and
  * light are reported, not judged. Codes in FIDELITY_CODES order; ok when none.
  */
-export function visualVerdict(qa: VisualQa): { ok: boolean; code: FidelityCode | null; codes: FidelityCode[]; missingHigh: number } {
+export function visualVerdict(qa: VisualQa): { ok: boolean; reliable: boolean; code: FidelityCode | null; codes: FidelityCode[]; missingHigh: number } {
   const d = qa.scores.dimensions ?? {};
   const dim = (k: string, fallback: number) => (typeof d[k] === 'number' ? d[k] as number : fallback);
   const missingHigh = qa.errors.filter((e) => e.code === 'objectMissing' && e.severity === 'HIGH' && e.confidence >= 0.6).length;
+  // The render's viewpoint is HOMATCH's own estimate of the picture's camera (an AI picture has none). Seen from
+  // somewhere else, the two pictures cannot be compared piece by piece: such a check is recorded as UNRELIABLE and
+  // never fails a walkthrough — a wrong guess of ours is not a wrong walkthrough.
+  const reliable = dim('camera', 10) >= VISUAL_CAMERA_MIN;
   const codes: FidelityCode[] = [];
-  if (missingHigh >= 3 && dim('inventory', qa.scores.furniture) <= 3) codes.push('REFERENCE_OBJECT_MISSING');
-  if (qa.scores.layout <= 3 && dim('placement', qa.scores.layout) <= 3) codes.push('REFERENCE_LAYOUT_MISMATCH');
-  if (dim('scale', 10) <= 2) codes.push('REFERENCE_SCALE_MISMATCH');
-  if (dim('camera', 10) <= 2 && qa.scores.layout <= 4) codes.push('REFERENCE_CAMERA_MISMATCH');
+  if (reliable) {
+    if (missingHigh >= 3 && dim('inventory', qa.scores.furniture) <= 3) codes.push('REFERENCE_OBJECT_MISSING');
+    if (qa.scores.layout <= 3 && dim('placement', qa.scores.layout) <= 3) codes.push('REFERENCE_LAYOUT_MISMATCH');
+    if (dim('scale', 10) <= 2) codes.push('REFERENCE_SCALE_MISMATCH');
+  }
   const ordered = FIDELITY_CODES.filter((c) => codes.includes(c));
-  return { ok: !ordered.length, code: ordered[0] ?? null, codes: ordered, missingHigh };
+  return { ok: !ordered.length, reliable, code: ordered[0] ?? null, codes: ordered, missingHigh };
 }
+
+/** The viewpoint score (0..10) under which the visual comparison is not a comparison of the same view. */
+export const VISUAL_CAMERA_MIN = 5;

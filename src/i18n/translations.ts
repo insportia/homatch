@@ -15124,6 +15124,25 @@ const en = {
   dsx_walk_step_space: 'Reconstructing the space from your design',
   dsx_walk_inferred_note: 'The 3D space was built from the existing visual material and may partly differ from the exact plan.',
 
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_title: 'Inside the picture',
+  dsx_photo3d_body: 'Step inside the design you chose: the picture itself becomes 3D — look around and walk in. Nothing in it is changed.',
+  dsx_photo3d_enter: 'Step inside the picture',
+  dsx_photo3d_note: 'Opens in seconds, on your device. You see exactly what the picture shows; what it hides stays hidden.',
+  dsx_photo3d_loading: 'Turning the picture into 3D…',
+  dsx_photo3d_failed: 'This device could not turn the picture into 3D. Try again, or open it in another browser.',
+  dsx_photo3d_hint: 'Drag to look around · use the circle to step in',
+  dsx_photo3d_reset: 'Back to the picture’s view',
+  dsx_photo3d_close: 'Close',
+  dsx_photo3d_pictures: 'Pictures of this design',
+  dsx_photo3d_move: 'Move: drag inside the circle',
+  dsx_photo3d_this: 'This design',
+  dsx_photo3d_room: 'Room',
+  dsx_walk_model_title: 'Walkable model of the plan',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_approx: 'Approximate depth on this device · drag to look around',
+
   /* ── FIND BUYERS / FIND TENANTS (memo23 social intelligence) ── */
   fbx_find_buyers: 'Find Buyers',
   fbx_find_tenants: 'Find Tenants',
@@ -15293,8 +15312,6 @@ const en = {
   fbx_admin_estimated: 'Estimated',
   fbx_admin_actual: 'Actual',
   fbx_admin_state: 'Cost state',
-
-  /* ── FIND BUYERS / FIND TENANTS (memo23 social intelligence) ── */
   fbx_fresh_rule: 'Only public signals from the last 30 days. Older or undated posts never enter HOMATCH.',
   fbx_fresh_skipped: '{{count}} older items were skipped.',
   fbx_fresh_badge: 'Last 30 days only',
@@ -30336,6 +30353,25 @@ const ka: Partial<Record<TranslationKey, string>> = {
   dsx_walk_step_space: 'HOMATCH აღადგენს სივრცეს თქვენი დიზაინიდან',
   dsx_walk_inferred_note: '3D სივრცე შექმნილია არსებული ვიზუალური მასალის საფუძველზე და შესაძლოა ზუსტ გეგმას ნაწილობრივ განსხვავდებოდეს.',
 
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_title: 'ფოტოს შიგნით',
+  dsx_photo3d_body: 'შედი შენ მიერ არჩეულ დიზაინში: თავად ფოტო იქცევა 3D-ად — მიმოიხედე და შედი შიგნით. მასში არაფერი იცვლება.',
+  dsx_photo3d_enter: 'შედი ფოტოში',
+  dsx_photo3d_note: 'იხსნება წამებში, შენს მოწყობილობაზე. ხედავ ზუსტად იმას, რასაც ფოტო აჩვენებს; რაც ფოტოში დამალულია, დამალული რჩება.',
+  dsx_photo3d_loading: 'ფოტო 3D-ად იქცევა…',
+  dsx_photo3d_failed: 'ამ მოწყობილობამ ფოტოს 3D-ად გადაქცევა ვერ შეძლო. სცადე თავიდან ან გახსენი სხვა ბრაუზერში.',
+  dsx_photo3d_hint: 'გადაათრიე მიმოსახედად · წრით შედი შიგნით',
+  dsx_photo3d_reset: 'ფოტოს ხედზე დაბრუნება',
+  dsx_photo3d_close: 'დახურვა',
+  dsx_photo3d_pictures: 'ამ დიზაინის ფოტოები',
+  dsx_photo3d_move: 'მოძრაობა: გადაათრიე წრის შიგნით',
+  dsx_photo3d_this: 'ეს დიზაინი',
+  dsx_photo3d_room: 'ოთახი',
+  dsx_walk_model_title: 'გეგმის გასავლელი მოდელი',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_approx: 'ამ მოწყობილობაზე სიღრმე მიახლოებითია · გადაათრიე მიმოსახედად',
+
   /* ── FIND BUYERS / FIND TENANTS (memo23 social intelligence) ── */
   fbx_find_buyers: 'მყიდველების პოვნა',
   fbx_find_tenants: 'მოიჯარეების პოვნა',
@@ -30505,8 +30541,6 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fbx_admin_estimated: 'შეფასებული',
   fbx_admin_actual: 'ფაქტობრივი',
   fbx_admin_state: 'ხარჯის მდგომარეობა',
-
-  /* ── FIND BUYERS / FIND TENANTS (memo23 social intelligence) ── */
   fbx_fresh_rule: 'მხოლოდ ბოლო 30 დღის საჯარო სიგნალები. უფრო ძველი ან თარიღის გარეშე პოსტები HOMATCH-ში საერთოდ არ შემოდის.',
   fbx_fresh_skipped: 'გამოტოვებულია {{count}} ძველი ჩანაწერი.',
   fbx_fresh_badge: 'მხოლოდ ბოლო 30 დღე',
@@ -45539,6 +45573,25 @@ const ru: Partial<Record<TranslationKey, string>> = {
   dsx_walk_step_space: 'HOMATCH восстанавливает пространство по вашему дизайну',
   dsx_walk_inferred_note: '3D-пространство создано на основе имеющихся изображений и может частично отличаться от точной планировки.',
 
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_title: 'Внутри изображения',
+  dsx_photo3d_body: 'Войдите в выбранный дизайн: само изображение становится 3D — осмотритесь и пройдите внутрь. Ничего в нём не меняется.',
+  dsx_photo3d_enter: 'Войти в изображение',
+  dsx_photo3d_note: 'Открывается за секунды на вашем устройстве. Вы видите ровно то, что показывает изображение; скрытое на нём остаётся скрытым.',
+  dsx_photo3d_loading: 'Превращаем изображение в 3D…',
+  dsx_photo3d_failed: 'Этому устройству не удалось превратить изображение в 3D. Попробуйте ещё раз или откройте в другом браузере.',
+  dsx_photo3d_hint: 'Проведите, чтобы осмотреться · круг — чтобы войти',
+  dsx_photo3d_reset: 'Вернуться к виду изображения',
+  dsx_photo3d_close: 'Закрыть',
+  dsx_photo3d_pictures: 'Изображения этого дизайна',
+  dsx_photo3d_move: 'Движение: проведите внутри круга',
+  dsx_photo3d_this: 'Этот дизайн',
+  dsx_photo3d_room: 'Комната',
+  dsx_walk_model_title: 'Модель планировки для прогулки',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_approx: 'На этом устройстве глубина приблизительная · проведите, чтобы осмотреться',
+
   /* ── FIND BUYERS / FIND TENANTS (memo23 social intelligence) ── */
   fbx_find_buyers: 'Найти покупателей',
   fbx_find_tenants: 'Найти арендаторов',
@@ -45708,8 +45761,6 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fbx_admin_estimated: 'Оценка',
   fbx_admin_actual: 'Факт',
   fbx_admin_state: 'Статус затрат',
-
-  /* ── FIND BUYERS / FIND TENANTS (memo23 social intelligence) ── */
   fbx_fresh_rule: 'Только публичные сигналы за последние 30 дней. Более старые или недатированные посты в HOMATCH не попадают.',
   fbx_fresh_skipped: 'Пропущено старых записей: {{count}}.',
   fbx_fresh_badge: 'Только последние 30 дней',
@@ -60740,6 +60791,25 @@ const tr: Partial<Record<TranslationKey, string>> = {
   dsx_walk_step_space: 'HOMATCH alanı tasarımınızdan yeniden kuruyor',
   dsx_walk_inferred_note: '3D alan mevcut görsel malzemeye dayanılarak oluşturuldu ve kesin plandan kısmen farklı olabilir.',
 
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_title: 'Görselin içinde',
+  dsx_photo3d_body: 'Seçtiğiniz tasarımın içine girin: görselin kendisi 3D olur — etrafa bakın ve içeri yürüyün. İçindeki hiçbir şey değişmez.',
+  dsx_photo3d_enter: 'Görselin içine gir',
+  dsx_photo3d_note: 'Cihazınızda saniyeler içinde açılır. Tam olarak görselin gösterdiğini görürsünüz; gizli kalanlar gizli kalır.',
+  dsx_photo3d_loading: 'Görsel 3D’ye dönüştürülüyor…',
+  dsx_photo3d_failed: 'Bu cihaz görseli 3D’ye dönüştüremedi. Tekrar deneyin ya da başka bir tarayıcıda açın.',
+  dsx_photo3d_hint: 'Etrafa bakmak için sürükleyin · içeri girmek için daireyi kullanın',
+  dsx_photo3d_reset: 'Görselin görünümüne dön',
+  dsx_photo3d_close: 'Kapat',
+  dsx_photo3d_pictures: 'Bu tasarımın görselleri',
+  dsx_photo3d_move: 'Hareket: dairenin içinde sürükleyin',
+  dsx_photo3d_this: 'Bu tasarım',
+  dsx_photo3d_room: 'Oda',
+  dsx_walk_model_title: 'Planın gezilebilir modeli',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_approx: 'Bu cihazda derinlik yaklaşık · etrafa bakmak için sürükleyin',
+
   /* ── FIND BUYERS / FIND TENANTS (memo23 social intelligence) ── */
   fbx_find_buyers: 'Alıcı bul',
   fbx_find_tenants: 'Kiracı bul',
@@ -60909,8 +60979,6 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fbx_admin_estimated: 'Tahmini',
   fbx_admin_actual: 'Gerçekleşen',
   fbx_admin_state: 'Maliyet durumu',
-
-  /* ── FIND BUYERS / FIND TENANTS (memo23 social intelligence) ── */
   fbx_fresh_rule: 'Yalnızca son 30 günün herkese açık sinyalleri. Daha eski veya tarihsiz gönderiler HOMATCH’e hiç girmez.',
   fbx_fresh_skipped: '{{count}} eski öğe atlandı.',
   fbx_fresh_badge: 'Yalnızca son 30 gün',
@@ -75941,6 +76009,25 @@ const ar: Partial<Record<TranslationKey, string>> = {
   dsx_walk_step_space: 'يعيد HOMATCH بناء المساحة من تصميمك',
   dsx_walk_inferred_note: 'أُنشئت المساحة ثلاثية الأبعاد من المواد المرئية المتوفرة وقد تختلف جزئياً عن المخطط الدقيق.',
 
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_title: 'داخل الصورة',
+  dsx_photo3d_body: 'ادخل إلى التصميم الذي اخترته: تصبح الصورة نفسها ثلاثية الأبعاد — تجوّل بنظرك وادخل. لا يتغير فيها شيء.',
+  dsx_photo3d_enter: 'ادخل إلى الصورة',
+  dsx_photo3d_note: 'تُفتح خلال ثوانٍ على جهازك. ترى بالضبط ما تُظهره الصورة؛ وما تخفيه يبقى مخفياً.',
+  dsx_photo3d_loading: 'نحوّل الصورة إلى ثلاثية الأبعاد…',
+  dsx_photo3d_failed: 'تعذّر على هذا الجهاز تحويل الصورة إلى ثلاثية الأبعاد. حاول مجدداً أو افتحها في متصفح آخر.',
+  dsx_photo3d_hint: 'اسحب للنظر حولك · استخدم الدائرة للدخول',
+  dsx_photo3d_reset: 'العودة إلى منظر الصورة',
+  dsx_photo3d_close: 'إغلاق',
+  dsx_photo3d_pictures: 'صور هذا التصميم',
+  dsx_photo3d_move: 'الحركة: اسحب داخل الدائرة',
+  dsx_photo3d_this: 'هذا التصميم',
+  dsx_photo3d_room: 'غرفة',
+  dsx_walk_model_title: 'نموذج المخطط القابل للتجول',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_approx: 'العمق تقريبي على هذا الجهاز · اسحب للنظر حولك',
+
   /* ── FIND BUYERS / FIND TENANTS (memo23 social intelligence) ── */
   fbx_find_buyers: 'العثور على مشترين',
   fbx_find_tenants: 'العثور على مستأجرين',
@@ -76110,8 +76197,6 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fbx_admin_estimated: 'المقدّر',
   fbx_admin_actual: 'الفعلي',
   fbx_admin_state: 'حالة التكلفة',
-
-  /* ── FIND BUYERS / FIND TENANTS (memo23 social intelligence) ── */
   fbx_fresh_rule: 'إشارات عامة من آخر 30 يومًا فقط. المنشورات الأقدم أو غير المؤرخة لا تدخل HOMATCH أبدًا.',
   fbx_fresh_skipped: 'تم تخطي {{count}} من العناصر الأقدم.',
   fbx_fresh_badge: 'آخر 30 يومًا فقط',
@@ -91142,6 +91227,25 @@ const he: Partial<Record<TranslationKey, string>> = {
   dsx_walk_step_space: 'HOMATCH משחזר את החלל מהעיצוב שלכם',
   dsx_walk_inferred_note: 'החלל התלת־ממדי נבנה על סמך החומר החזותי הקיים ועשוי להיות שונה חלקית מהתוכנית המדויקת.',
 
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_title: 'בתוך התמונה',
+  dsx_photo3d_body: 'היכנסו לעיצוב שבחרתם: התמונה עצמה הופכת לתלת־ממד — הביטו סביב והיכנסו פנימה. דבר בה אינו משתנה.',
+  dsx_photo3d_enter: 'היכנסו לתמונה',
+  dsx_photo3d_note: 'נפתח בתוך שניות, במכשיר שלכם. אתם רואים בדיוק את מה שהתמונה מראה; מה שמוסתר בה נשאר מוסתר.',
+  dsx_photo3d_loading: 'הופכים את התמונה לתלת־ממד…',
+  dsx_photo3d_failed: 'המכשיר הזה לא הצליח להפוך את התמונה לתלת־ממד. נסו שוב או פתחו בדפדפן אחר.',
+  dsx_photo3d_hint: 'גררו כדי להביט סביב · השתמשו בעיגול כדי להיכנס',
+  dsx_photo3d_reset: 'חזרה למבט של התמונה',
+  dsx_photo3d_close: 'סגירה',
+  dsx_photo3d_pictures: 'תמונות העיצוב הזה',
+  dsx_photo3d_move: 'תנועה: גררו בתוך העיגול',
+  dsx_photo3d_this: 'העיצוב הזה',
+  dsx_photo3d_room: 'חדר',
+  dsx_walk_model_title: 'מודל התוכנית להליכה',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_photo3d_approx: 'במכשיר הזה העומק משוער · גררו כדי להביט סביב',
+
   /* ── FIND BUYERS / FIND TENANTS (memo23 social intelligence) ── */
   fbx_find_buyers: 'מציאת קונים',
   fbx_find_tenants: 'מציאת שוכרים',
@@ -91311,8 +91415,6 @@ const he: Partial<Record<TranslationKey, string>> = {
   fbx_admin_estimated: 'הערכה',
   fbx_admin_actual: 'בפועל',
   fbx_admin_state: 'מצב העלות',
-
-  /* ── FIND BUYERS / FIND TENANTS (memo23 social intelligence) ── */
   fbx_fresh_rule: 'רק אותות ציבוריים מ-30 הימים האחרונים. פוסטים ישנים יותר או ללא תאריך אינם נכנסים ל-HOMATCH.',
   fbx_fresh_skipped: 'דולגו {{count}} פריטים ישנים.',
   fbx_fresh_badge: '30 הימים האחרונים בלבד',

@@ -193,8 +193,8 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
 
   /* What HOMATCH already knows (content reuse, no reclassification). */
   const ids = flat.map((f) => extId(f.item));
-  const { data: known } = await db.from('raw_signals').select('id,external_id,content_fingerprint,intent_json').eq('platform', network).in('external_id', ids);
-  const knownMap = new Map(((known ?? []) as any[]).map((r) => [r.external_id, r]));
+  const known = await inChunks(ids, (part) => db.from('raw_signals').select('id,external_id,content_fingerprint,intent_json').eq('platform', network).in('external_id', part));
+  const knownMap = new Map(known.map((r) => [r.external_id, r]));
 
   const rows = flat.map(({ item, inlineParent }) => ({
     platform: network,
@@ -230,8 +230,8 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
 
   /* Already assessed for THIS campaign → a duplicate, skip. */
   const signalIds = [...idMap.values()];
-  const { data: done } = await db.from('find_buyers_assessments').select('signal_id').eq('matching_job_id', campaign.matching_job_id).in('signal_id', signalIds);
-  const doneSet = new Set(((done ?? []) as any[]).map((r) => r.signal_id));
+  const done = await inChunks(signalIds, (part) => db.from('find_buyers_assessments').select('signal_id').eq('matching_job_id', campaign.matching_job_id).in('signal_id', part));
+  const doneSet = new Set(done.map((r) => r.signal_id));
 
   const assessed: Assessed[] = [];
   const postCtx = new Map<string, ParentContext>();
@@ -365,6 +365,17 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
 }
 
 const REQUESTISH = (v: IntentVerdict | null) => v?.rule === 'explicit_request';
+
+/** PostgREST puts .in() lists in the URL: read them 60 at a time. */
+async function inChunks(values: string[], query: (part: string[]) => PromiseLike<{ data: unknown; error: unknown }>): Promise<any[]> {
+  const out: any[] = [];
+  for (let i = 0; i < values.length; i += 60) {
+    const { data, error } = await query(values.slice(i, i + 60));
+    if (error) throw error;
+    out.push(...((data ?? []) as any[]));
+  }
+  return out;
+}
 
 /** Comments HOMATCH already bought for this post in the last day: judge them again, pay nothing. */
 async function reuseStoredComments(ctx: PipelineCtx, parent: ParentContext, out: PipelineResult): Promise<boolean> {

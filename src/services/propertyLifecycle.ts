@@ -46,7 +46,14 @@ export async function setPropertyAvailability(propertyId: string, available: boo
  */
 export async function refreshPropertyMedia(propertyId: string): Promise<{ refreshed: boolean; stored: number; sourcePhotos: number | null; reason?: string }> {
   const { data, error } = await supabase.functions.invoke('import-property', { body: { refreshPropertyId: propertyId } });
-  if (error || !data?.success) throw new Error(error?.message ?? String(data?.error_code ?? 'refresh failed'));
+  if (error || !data?.success) {
+    /* The function's own reason (LISTING_NOT_AVAILABLE, UNSUPPORTED_SOURCE, …) rides in the error response body. */
+    let code: string | null = data?.error_code ? String(data.error_code) : null;
+    if (!code && error && 'context' in error) {
+      try { code = String((await (error as { context: Response }).context.clone().json())?.error_code ?? '') || null; } catch { /* not JSON */ }
+    }
+    throw Object.assign(new Error(error?.message ?? String(code ?? 'refresh failed')), { code });
+  }
   return {
     refreshed: Boolean(data.refreshed),
     stored: Number(data.stored ?? 0),

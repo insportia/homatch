@@ -15405,6 +15405,21 @@ const en = {
 
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   fbl_admin_work_hint: 'queued / running / done / failed / paused · runs in flight',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbl_state_ready: 'Ready to search',
+  fbl_state_cannot_start: 'Search sources are switched off right now',
+  fbl_last_search: 'Last search ({{date}}): {{state}}',
+  fbl_net_searched: 'Searched',
+  fbl_net_available: 'Available',
+  fbl_net_off: 'Switched off',
+  fbl_m_checked: 'signals checked',
+  fbl_m_qualified: 'qualified matches',
+  fbl_src_checked: '{{n}} signals checked',
+  fbl_src_communities: '{{n}} new communities found',
+  fbl_src_qualified: '{{n}} qualified matches',
+  fbl_media_listing_gone: 'The source no longer shows this listing publicly (it may have been removed or moved)',
+  fbl_media_unsupported: 'Photos can only be refreshed from a supported listing site',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -30724,6 +30739,21 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   fbl_admin_work_hint: 'რიგში / მიმდინარე / დასრულებული / ჩავარდნილი / დაპაუზებული · მიმდინარე გაშვებები',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbl_state_ready: 'ძებნისთვის მზადაა',
+  fbl_state_cannot_start: 'საძიებო წყაროები ამჟამად გამორთულია',
+  fbl_last_search: 'ბოლო ძებნა ({{date}}): {{state}}',
+  fbl_net_searched: 'მოძებნილი',
+  fbl_net_available: 'ხელმისაწვდომი',
+  fbl_net_off: 'გამორთული',
+  fbl_m_checked: 'შემოწმებული სიგნალი',
+  fbl_m_qualified: 'შესაფერისი დამთხვევა',
+  fbl_src_checked: '{{n}} სიგნალი შემოწმდა',
+  fbl_src_communities: '{{n}} ახალი საზოგადოება მოიძებნა',
+  fbl_src_qualified: '{{n}} შესაფერისი დამთხვევა',
+  fbl_media_listing_gone: 'წყარო ამ განცხადებას საჯაროდ აღარ აჩვენებს (შესაძლოა წაიშალა ან მისამართი შეიცვალა)',
+  fbl_media_unsupported: 'ფოტოების განახლება მხოლოდ მხარდაჭერილი საიტის განცხადებიდანაა შესაძლებელი',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -46034,6 +46064,21 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   fbl_admin_work_hint: 'в очереди / выполняется / готово / сбой / пауза · запуски в работе',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbl_state_ready: 'Готово к поиску',
+  fbl_state_cannot_start: 'Источники поиска сейчас отключены',
+  fbl_last_search: 'Последний поиск ({{date}}): {{state}}',
+  fbl_net_searched: 'Проверено',
+  fbl_net_available: 'Доступно',
+  fbl_net_off: 'Отключено',
+  fbl_m_checked: 'сигналов проверено',
+  fbl_m_qualified: 'подходящих совпадений',
+  fbl_src_checked: 'проверено сигналов: {{n}}',
+  fbl_src_communities: 'найдено новых сообществ: {{n}}',
+  fbl_src_qualified: 'подходящих совпадений: {{n}}',
+  fbl_media_listing_gone: 'Источник больше не показывает это объявление публично (возможно, оно удалено или перенесено)',
+  fbl_media_unsupported: 'Обновить фото можно только из объявления на поддерживаемом сайте',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -61342,6 +61387,21 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   fbl_admin_work_hint: 'sırada / çalışıyor / tamam / başarısız / duraklatıldı · süren çalıştırmalar',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbl_state_ready: 'Aramaya hazır',
+  fbl_state_cannot_start: 'Arama kaynakları şu anda kapalı',
+  fbl_last_search: 'Son arama ({{date}}): {{state}}',
+  fbl_net_searched: 'Arandı',
+  fbl_net_available: 'Kullanılabilir',
+  fbl_net_off: 'Kapalı',
+  fbl_m_checked: 'kontrol edilen sinyal',
+  fbl_m_qualified: 'uygun eşleşme',
+  fbl_src_checked: '{{n}} sinyal kontrol edildi',
+  fbl_src_communities: '{{n}} yeni topluluk bulundu',
+  fbl_src_qualified: '{{n}} uygun eşleşme',
+  fbl_media_listing_gone: 'Kaynak bu ilanı artık herkese açık göstermiyor (kaldırılmış veya taşınmış olabilir)',
+  fbl_media_unsupported: 'Fotoğraflar yalnızca desteklenen bir ilan sitesinden yenilenebilir',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -76650,6 +76710,21 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   fbl_admin_work_hint: 'في الانتظار / قيد التشغيل / منجز / فاشل / متوقف مؤقتًا · تشغيلات جارية',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbl_state_ready: 'جاهز للبحث',
+  fbl_state_cannot_start: 'مصادر البحث متوقفة حاليًا',
+  fbl_last_search: 'آخر بحث ({{date}}): {{state}}',
+  fbl_net_searched: 'تم البحث',
+  fbl_net_available: 'متاح',
+  fbl_net_off: 'متوقف',
+  fbl_m_checked: 'إشارات تم فحصها',
+  fbl_m_qualified: 'تطابقات مؤهلة',
+  fbl_src_checked: 'تم فحص {{n}} إشارات',
+  fbl_src_communities: 'تم العثور على {{n}} مجتمعات جديدة',
+  fbl_src_qualified: '{{n}} تطابقات مؤهلة',
+  fbl_media_listing_gone: 'المصدر لم يعد يعرض هذا الإعلان علنًا (ربما حُذف أو نُقل)',
+  fbl_media_unsupported: 'لا يمكن تحديث الصور إلا من موقع إعلانات مدعوم',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -91958,6 +92033,21 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   fbl_admin_work_hint: 'בתור / רץ / הושלם / נכשל / מושהה · ריצות פעילות',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbl_state_ready: 'מוכן לחיפוש',
+  fbl_state_cannot_start: 'מקורות החיפוש כבויים כרגע',
+  fbl_last_search: 'החיפוש האחרון ({{date}}): {{state}}',
+  fbl_net_searched: 'נסרק',
+  fbl_net_available: 'זמין',
+  fbl_net_off: 'כבוי',
+  fbl_m_checked: 'אותות שנבדקו',
+  fbl_m_qualified: 'התאמות מתאימות',
+  fbl_src_checked: '{{n}} אותות נבדקו',
+  fbl_src_communities: '{{n}} קהילות חדשות נמצאו',
+  fbl_src_qualified: '{{n}} התאמות מתאימות',
+  fbl_media_listing_gone: 'המקור כבר לא מציג את המודעה הזו בפומבי (ייתכן שהוסרה או הועברה)',
+  fbl_media_unsupported: 'אפשר לרענן תמונות רק ממודעה באתר נתמך',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

@@ -10,12 +10,17 @@ export type LifecycleState =
 export type Motion = 'active' | 'slowing' | 'still';
 export type Control = 'pause' | 'pausing' | 'resume' | 'none';
 
-export interface ViewSource { source: string; state: 'QUEUED' | 'RUNNING' | 'DONE' | 'FAILED' | 'CANCELLED'; results: number }
+export interface ViewSource {
+  source: string; state: 'QUEUED' | 'RUNNING' | 'DONE' | 'FAILED' | 'CANCELLED'; results: number;
+  checked?: number; communities?: number; qualified?: number;
+}
 export interface ViewInput {
   state: LifecycleState;
   sources: ViewSource[];
   queue: { total: number; queued: number; running: number; done: number; failed: number };
   signalsAnalyzed: number;
+  /** Content the run's sources read; preferred over signalsAnalyzed when larger. */
+  signalsChecked?: number;
   newResults: number;
   strong: number;
 }
@@ -72,7 +77,7 @@ export function campaignView(v: ViewInput): CampaignView {
     metrics: {
       sourcesWorking: v.sources.filter((s) => s.state === 'RUNNING').length,
       sourcesDone: v.sources.filter((s) => s.state === 'DONE' || s.state === 'FAILED').length,
-      signals: Math.max(0, v.signalsAnalyzed),
+      signals: Math.max(0, v.signalsAnalyzed, v.signalsChecked ?? 0),
       possible: Math.max(0, v.newResults),
       strong: Math.max(0, v.strong),
     },
@@ -109,4 +114,59 @@ export function parsePage(raw: string | null, totalPages: number): number {
   const n = Number.parseInt(String(raw ?? ''), 10);
   if (!Number.isFinite(n) || n < 1) return 1;
   return totalPages > 0 ? Math.min(n, totalPages) : n;
+}
+
+/* ── WHAT THE PANEL SAYS NOW ──────────────────────────────────────────────
+ * The headline is the CURRENT state, never a past attempt. A search that is
+ * running (or paused) is current. Otherwise the property is ready to search
+ * or sources are switched off -- and the last search's outcome is history,
+ * shown as its own line with its date. A failed attempt yesterday never
+ * reads as "search unavailable" today when a search could start.
+ */
+export interface CurrentState {
+  headlineKey: string;
+  /** The last finished search, if any: its outcome key and when it ended. */
+  last: { headlineKey: string; at: string | null; state: LifecycleState } | null;
+}
+
+const LIVE_STATES: LifecycleState[] = ['PREPARING', 'QUEUED', 'SEARCHING', 'PARTIAL_RESULTS', 'PAUSING', 'PAUSED'];
+
+export function currentState(
+  campaign: { state: LifecycleState; completedAt?: string | null } | null,
+  readiness: { ready: boolean } | null,
+): CurrentState {
+  if (campaign && LIVE_STATES.includes(campaign.state)) return { headlineKey: HEADLINE[campaign.state], last: null };
+  const last = campaign ? { headlineKey: HEADLINE[campaign.state], at: campaign.completedAt ?? null, state: campaign.state } : null;
+  const headlineKey = readiness == null ? 'fbl_state_idle' : readiness.ready ? 'fbl_state_ready' : 'fbl_state_cannot_start';
+  return { headlineKey, last };
+}
+
+/* ── THE DISCOVERY NETWORK ────────────────────────────────────────────────
+ * Every registered source family, with what is TRUE of it: executed in this
+ * search (its real job state and counts), available but not used, or
+ * switched off. Only executing nodes may move; nothing is drawn as searched
+ * that did not run. New families appear from the server data by themselves.
+ */
+export type NetworkState = 'QUEUED' | 'RUNNING' | 'DONE' | 'FAILED' | 'CANCELLED' | 'AVAILABLE' | 'NOT_SELECTED' | 'DISABLED';
+export interface NetworkNode { source: string; state: NetworkState; checked: number; communities: number; qualified: number; executed: boolean }
+
+export function networkNodes(
+  sources: ViewSource[] | null | undefined,
+  network: Array<{ family: string; state: 'AVAILABLE' | 'DISABLED' }> | null | undefined,
+): NetworkNode[] {
+  const ran = new Map((sources ?? []).map((s) => [s.source.toUpperCase(), s]));
+  const nodes: NetworkNode[] = [...ran.values()].map((s) => ({
+    source: s.source.toUpperCase(), state: s.state, executed: true,
+    checked: Math.max(0, s.checked ?? s.results ?? 0), communities: Math.max(0, s.communities ?? 0), qualified: Math.max(0, s.qualified ?? 0),
+  }));
+  const hadRun = ran.size > 0;
+  for (const f of network ?? []) {
+    const key = f.family.toUpperCase();
+    if (ran.has(key)) continue;
+    nodes.push({ source: key, executed: false, checked: 0, communities: 0, qualified: 0,
+      state: f.state === 'DISABLED' ? 'DISABLED' : hadRun ? 'NOT_SELECTED' : 'AVAILABLE' });
+  }
+  const rank = (n: NetworkNode) => (n.executed ? 0 : n.state === 'DISABLED' ? 2 : 1);
+  /* Executed sources keep the server's order; the rest are alphabetical. */
+  return nodes.sort((a, b) => rank(a) - rank(b) || (a.executed ? 0 : a.source.localeCompare(b.source)));
 }

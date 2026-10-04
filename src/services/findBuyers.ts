@@ -190,7 +190,16 @@ export interface SourceNode {
   source: string;
   state: 'QUEUED' | 'RUNNING' | 'DONE' | 'FAILED' | 'CANCELLED';
   total: number; running: number; queued: number; done: number; failed: number; results: number;
+  /** Content read (messages, posts, comments). Never people. */
+  checked?: number;
+  /** New sources a discovery job registered (e.g. Telegram communities). Never people, never demand. */
+  communities?: number;
+  /** This run's current qualified matches/leads from this network. */
+  qualified?: number;
 }
+
+/** One family of the discovery network and whether a search could use it now. */
+export interface NetworkFamily { family: string; state: 'AVAILABLE' | 'DISABLED' }
 
 export interface CampaignLifecycle {
   jobId: string;
@@ -209,6 +218,9 @@ export interface CampaignLifecycle {
   runs: { inFlight: number; succeeded: number; failed: number };
   sources: SourceNode[];
   signalsAnalyzed: number;
+  /** Content items the run's sources read (sum of per-source `checked`). */
+  signalsChecked?: number;
+  communitiesFound?: number;
   staleSkipped: number;
   duplicatesRemoved: number;
   newResults: number;
@@ -223,6 +235,8 @@ export interface SearchReadiness {
   ready: boolean;
   reason: 'DISCOVERY_SWITCHED_OFF' | 'NO_ELIGIBLE_SOURCE' | 'DISCOVERY_UNAVAILABLE' | null;
   sources: string[];
+  /** Every registered source family (from the registry and switches, never a fixed list). */
+  network?: NetworkFamily[];
 }
 
 export interface CampaignStatus { readiness: SearchReadiness | null; campaign: CampaignLifecycle | null }

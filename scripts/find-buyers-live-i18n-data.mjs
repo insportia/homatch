@@ -187,4 +187,19 @@ export const FIND_BUYERS_LIVE_STRINGS = {
   fbl_media_nothing_new: ['No new photos on the listing', 'განცხადებაზე ახალი ფოტო არ არის', 'Новых фото в объявлении нет', 'İlanda yeni fotoğraf yok', 'لا توجد صور جديدة في الإعلان', 'אין תמונות חדשות במודעה'],
   fbl_media_recent: ['Photos were refreshed a few minutes ago', 'ფოტოები რამდენიმე წუთის წინ განახლდა', 'Фото обновлялись несколько минут назад', 'Fotoğraflar birkaç dakika önce yenilendi', 'تم تحديث الصور قبل دقائق', 'התמונות רועננו לפני כמה דקות'],
   fbl_media_failed: ['The listing could not be read right now', 'განცხადების წაკითხვა ამ ეტაპზე ვერ მოხერხდა', 'Не удалось прочитать объявление', 'İlan şu anda okunamadı', 'تعذّرت قراءة الإعلان الآن', 'לא ניתן היה לקרוא את המודעה כעת'],
+
+  /* ── current state vs history; source truth ── */
+  fbl_state_ready: ['Ready to search', 'ძებნისთვის მზადაა', 'Готово к поиску', 'Aramaya hazır', 'جاهز للبحث', 'מוכן לחיפוש'],
+  fbl_state_cannot_start: ['Search sources are switched off right now', 'საძიებო წყაროები ამჟამად გამორთულია', 'Источники поиска сейчас отключены', 'Arama kaynakları şu anda kapalı', 'مصادر البحث متوقفة حاليًا', 'מקורות החיפוש כבויים כרגע'],
+  fbl_last_search: ['Last search ({{date}}): {{state}}', 'ბოლო ძებნა ({{date}}): {{state}}', 'Последний поиск ({{date}}): {{state}}', 'Son arama ({{date}}): {{state}}', 'آخر بحث ({{date}}): {{state}}', 'החיפוש האחרון ({{date}}): {{state}}'],
+  fbl_net_searched: ['Searched', 'მოძებნილი', 'Проверено', 'Arandı', 'تم البحث', 'נסרק'],
+  fbl_net_available: ['Available', 'ხელმისაწვდომი', 'Доступно', 'Kullanılabilir', 'متاح', 'זמין'],
+  fbl_net_off: ['Switched off', 'გამორთული', 'Отключено', 'Kapalı', 'متوقف', 'כבוי'],
+  fbl_m_checked: ['signals checked', 'შემოწმებული სიგნალი', 'сигналов проверено', 'kontrol edilen sinyal', 'إشارات تم فحصها', 'אותות שנבדקו'],
+  fbl_m_qualified: ['qualified matches', 'შესაფერისი დამთხვევა', 'подходящих совпадений', 'uygun eşleşme', 'تطابقات مؤهلة', 'התאמות מתאימות'],
+  fbl_src_checked: ['{{n}} signals checked', '{{n}} სიგნალი შემოწმდა', 'проверено сигналов: {{n}}', '{{n}} sinyal kontrol edildi', 'تم فحص {{n}} إشارات', '{{n}} אותות נבדקו'],
+  fbl_src_communities: ['{{n}} new communities found', '{{n}} ახალი საზოგადოება მოიძებნა', 'найдено новых сообществ: {{n}}', '{{n}} yeni topluluk bulundu', 'تم العثور على {{n}} مجتمعات جديدة', '{{n}} קהילות חדשות נמצאו'],
+  fbl_src_qualified: ['{{n}} qualified matches', '{{n}} შესაფერისი დამთხვევა', 'подходящих совпадений: {{n}}', '{{n}} uygun eşleşme', '{{n}} تطابقات مؤهلة', '{{n}} התאמות מתאימות'],
+  fbl_media_listing_gone: ['The source no longer shows this listing publicly (it may have been removed or moved)', 'წყარო ამ განცხადებას საჯაროდ აღარ აჩვენებს (შესაძლოა წაიშალა ან მისამართი შეიცვალა)', 'Источник больше не показывает это объявление публично (возможно, оно удалено или перенесено)', 'Kaynak bu ilanı artık herkese açık göstermiyor (kaldırılmış veya taşınmış olabilir)', 'المصدر لم يعد يعرض هذا الإعلان علنًا (ربما حُذف أو نُقل)', 'המקור כבר לא מציג את המודעה הזו בפומבי (ייתכן שהוסרה או הועברה)'],
+  fbl_media_unsupported: ['Photos can only be refreshed from a supported listing site', 'ფოტოების განახლება მხოლოდ მხარდაჭერილი საიტის განცხადებიდანაა შესაძლებელი', 'Обновить фото можно только из объявления на поддерживаемом сайте', 'Fotoğraflar yalnızca desteklenen bir ilan sitesinden yenilenebilir', 'لا يمكن تحديث الصور إلا من موقع إعلانات مدعوم', 'אפשר לרענן תמונות רק ממודעה באתר נתמך'],
 };

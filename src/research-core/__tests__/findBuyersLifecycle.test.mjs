@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { decideReadiness, outcomeWithoutExternalWork } from '../findBuyers/readiness.ts';
-import { campaignView, arrivalAction, pageWindow, parsePage } from '../../findBuyers/campaignView.ts';
+import { campaignView, arrivalAction, pageWindow, parsePage, currentState, networkNodes } from '../../findBuyers/campaignView.ts';
 
 const off = { socialEnabled: false, providerConfigured: true, eligibleActors: 0, nativeSourceDiscoveryEnabled: false, telegramEnabled: true, forumEnabled: false };
 
@@ -96,4 +96,47 @@ test('Q. numbered pages: 0, 1 and many pages; current always visible; URL page c
   assert.equal(parsePage('99', 7), 7);
   assert.equal(parsePage('x', 7), 1);
   assert.equal(parsePage(null, 0), 1);
+});
+
+test('D. a past failed/unavailable attempt never poisons a fresh READY state; it is a dated history line', () => {
+  const past = { state: 'UNAVAILABLE', completedAt: '2026-10-04T15:16:38Z' };
+  const ready = currentState(past, { ready: true });
+  assert.equal(ready.headlineKey, 'fbl_state_ready');
+  assert.equal(ready.last.headlineKey, 'fbl_state_unavailable');
+  assert.equal(ready.last.at, '2026-10-04T15:16:38Z');
+  assert.equal(currentState(past, { ready: false }).headlineKey, 'fbl_state_cannot_start');
+  assert.equal(currentState(null, { ready: true }).last, null);
+  /* E. searching only while a search is actually running */
+  for (const st of ['PREPARING', 'QUEUED', 'SEARCHING', 'PARTIAL_RESULTS', 'PAUSING', 'PAUSED']) {
+    const c = currentState({ state: st }, { ready: true });
+    assert.notEqual(c.headlineKey, 'fbl_state_ready', st);
+    assert.equal(c.last, null, st);
+  }
+  for (const st of ['COMPLETED_WITH_RESULTS', 'COMPLETED_NO_RESULTS', 'DEGRADED_COMPLETED', 'FAILED', 'UNAVAILABLE', 'CANCELLED']) {
+    assert.equal(currentState({ state: st }, { ready: true }).headlineKey, 'fbl_state_ready', `${st} is history`);
+  }
+});
+
+test('F/G. the discovery network: what ran (real counts), what could, what is off — never invented activity', () => {
+  /* the owner's first real run: Telegram read 2 messages and registered 31 communities, 0 qualified */
+  const nodes = networkNodes(
+    [{ source: 'TELEGRAM', state: 'DONE', results: 2, checked: 2, communities: 31, qualified: 0 }],
+    [{ family: 'TELEGRAM', state: 'AVAILABLE' }, { family: 'FACEBOOK', state: 'DISABLED' }, { family: 'INSTAGRAM', state: 'DISABLED' }, { family: 'FORUM', state: 'DISABLED' }],
+  );
+  assert.deepEqual(nodes.map((n) => [n.source, n.state, n.executed]), [
+    ['TELEGRAM', 'DONE', true], ['FACEBOOK', 'DISABLED', false], ['FORUM', 'DISABLED', false], ['INSTAGRAM', 'DISABLED', false],
+  ]);
+  assert.equal(nodes[0].checked, 2);
+  assert.equal(nodes[0].communities, 31);
+  assert.equal(nodes[0].qualified, 0, '33 items are never 33 buyers');
+  /* before any search: available families are AVAILABLE; after a run, an available family that did not run is NOT_SELECTED */
+  assert.equal(networkNodes([], [{ family: 'VK', state: 'AVAILABLE' }])[0].state, 'AVAILABLE');
+  assert.equal(networkNodes([{ source: 'TELEGRAM', state: 'DONE', results: 0 }], [{ family: 'VK', state: 'AVAILABLE' }])[1].state, 'NOT_SELECTED');
+  /* a future family appears by itself */
+  assert.equal(networkNodes(null, [{ family: 'NEW_SOURCE', state: 'AVAILABLE' }])[0].source, 'NEW_SOURCE');
+  /* metrics read "checked", from the real per-source counts */
+  const v = campaignView({ state: 'COMPLETED_NO_RESULTS', sources: [], queue: { total: 2, queued: 0, running: 0, done: 2, failed: 0 },
+    signalsAnalyzed: 0, signalsChecked: 2, newResults: 0, strong: 0 });
+  assert.equal(v.metrics.signals, 2);
+  assert.equal(v.metrics.possible, 0);
 });

@@ -295,7 +295,7 @@ test('live search module: server state, real source nodes only, real counts, the
   const main = await page.textContent('main');
   assert.match(main, /Searching — first results are in/);
   assert.match(main, /sources working/);
-  assert.match(main, /signals analysed/);
+  assert.match(main, /signals checked/);
   assert.match(main, /Saved results/, 'stored results are their own section');
   const net = await page.getAttribute('svg[role="img"][aria-label^="Live search network"]', 'aria-label');
   assert.equal(net, 'Live search network. Sources: FACEBOOK, VK, REDDIT', 'only sources the campaign queued');
@@ -435,4 +435,37 @@ test('phones 320–430px (ka, en, ar): the page and the search dialog fit, scrol
     }
   }
   assert.deepEqual(failures, []);
+});
+
+/* ── THE OWNER'S FIRST REAL RUN (job 7517daa6): Telegram read 2 messages and
+   registered 31 communities; 0 qualified. Social actors were switched off. ── */
+const REAL_RUN = {
+  readiness: { ready: true, reason: null, sources: ['TELEGRAM'], network: [
+    { family: 'TELEGRAM', state: 'AVAILABLE' }, { family: 'FACEBOOK', state: 'DISABLED' }, { family: 'INSTAGRAM', state: 'DISABLED' },
+    { family: 'TIKTOK', state: 'DISABLED' }, { family: 'FORUM', state: 'DISABLED' },
+  ] },
+  campaign: { ...STATUS_SEARCHING.campaign, state: 'COMPLETED_NO_RESULTS', active: false, executed: true, completedAt: ago(0.05),
+    sources: [{ source: 'TELEGRAM', state: 'DONE', total: 2, running: 0, queued: 0, done: 2, failed: 0, results: 2, checked: 2, communities: 31, qualified: 0 }],
+    queue: { total: 2, queued: 0, running: 0, done: 2, failed: 0, cancelled: 0, paused: 0 }, runs: { inFlight: 0, succeeded: 0, failed: 0 },
+    signalsAnalyzed: 0, signalsChecked: 2, communitiesFound: 31, newResults: 0, newLeads: 0, newMatches: 0, strong: 0 },
+};
+
+test('the real run reads truthfully: 2 checked + 31 communities, 0 qualified; READY now; Telegram searched, social off', opts, async (t) => {
+  const { page } = await boot(t, { status: REAL_RUN });
+  await open(page);
+  await page.waitForSelector('[data-testid="fbl-source-outcomes"]', { timeout: 15000 });
+  const main = await page.textContent('main');
+  assert.match(main, /Telegram · 2 signals checked · 31 new communities found · 0 qualified matches/);
+  assert.doesNotMatch(main, /33/, 'raw items and communities are never summed into one number');
+  assert.match(main, /Ready to search/, 'the current state is READY, not the last outcome');
+  assert.match(main, /Last search \(.+\): Search finished — no new active demand/, 'the last outcome is a dated history line');
+  const states = await page.$$eval('svg[role="img"] g[data-state]', (gs) => gs.map((g) => [g.querySelector('text')?.textContent, g.getAttribute('data-state'), !!g.querySelector('[class*="-run"], [class*="-breathe"]')]));
+  assert.deepEqual(states.find((x) => x[0] === 'Telegram'), ['Telegram', 'DONE', false]);
+  for (const name of ['Facebook', 'Instagram', 'TikTok', 'Forum']) {
+    const n = states.find((x) => x[0] === name);
+    assert.ok(n, `${name} is shown in the network`);
+    assert.equal(n[1], 'DISABLED', `${name} is shown as switched off`);
+    assert.equal(n[2], false, `${name} never animates`);
+  }
+  assert.match(await page.textContent('[data-testid="fbl-network-legend"]'), /Searched.*Available.*Switched off/);
 });

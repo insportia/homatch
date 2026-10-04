@@ -6,10 +6,10 @@ import React from 'react';
 import { AlertTriangle, CalendarCheck2, Loader2, Pause, Play, Radar, Square } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { GOLD_FILL, GOLD_TEXT, NAVY_BAND } from '@/components/findBuyers/brand';
+import { GOLD_FILL, GOLD_TEXT, NAVY_BAND, sourceStyle } from '@/components/findBuyers/brand';
 import { DiscoverySnake } from '@/components/findBuyers/DiscoverySnake';
 import { SearchDna, type DnaFacts } from '@/components/findBuyers/SearchDna';
-import { campaignView } from '@/findBuyers/campaignView';
+import { campaignView, currentState, networkNodes } from '@/findBuyers/campaignView';
 import type { CampaignStatus } from '@/services/findBuyers';
 
 const ON_NAVY_SOFT = 'text-[hsl(218_40%_85%)]';
@@ -38,15 +38,22 @@ export function LiveSearchModule({
   onStop: () => void;
   id?: string;
 }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const c = status?.campaign ?? null;
   const view = c ? campaignView({
-    state: c.state, sources: c.sources, queue: c.queue, signalsAnalyzed: c.signalsAnalyzed, newResults: c.newResults, strong: c.strong,
+    state: c.state, sources: c.sources, queue: c.queue, signalsAnalyzed: c.signalsAnalyzed, signalsChecked: c.signalsChecked,
+    newResults: c.newResults, strong: c.strong,
   }) : null;
   const live = Boolean(view?.live);
   const readiness = status?.readiness ?? null;
   const tenant = counterpart === 'TENANT';
-  const showNetwork = Boolean(c && (live || c.sources.length > 0));
+  /* The headline is what is true NOW; a past attempt is its own dated line. */
+  const now = currentState(c, readiness);
+  /* The whole discovery network, from the server: what ran, what could, what is off. */
+  const nodes = networkNodes(c?.sources, readiness?.network);
+  const showNetwork = nodes.length > 0;
+  const ran = nodes.filter((n) => n.executed);
+  const lastDate = now.last?.at ? new Date(now.last.at).toLocaleString(lang, { dateStyle: 'medium', timeStyle: 'short' }) : null;
 
   const button = (o: { label: string; icon: React.ComponentType<{ className?: string }>; onClick?: () => void; primary?: boolean; disabled?: boolean; spinning?: boolean }) => (
     <button
@@ -85,7 +92,7 @@ export function LiveSearchModule({
                   <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[hsl(40_94%_64%)]" />
                 </span>
               )}
-              <span className="break-words">{view ? t(view.headlineKey) : t('fbl_state_idle')}</span>
+              <span className="break-words">{t(now.headlineKey)}</span>
             </h2>
           </div>
         </div>
@@ -114,18 +121,23 @@ export function LiveSearchModule({
       )}
 
       <div className={cn('mt-4 grid gap-4', showNetwork && 'lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]')}>
-        {showNetwork && c && (
+        {showNetwork && (
           <div className="min-w-0 rounded-xl bg-[hsl(218_55%_8%/0.55)] p-2 ring-1 ring-inset ring-white/10" dir="ltr">
             <DiscoverySnake
-              sources={c.sources}
+              sources={nodes}
               motion={view?.motion ?? 'still'}
               propertyLabel={t('fbl_node_property')}
               homatchLabel="HOMATCH"
-              ariaLabel={t('fbl_network_aria', { sources: c.sources.map((s) => s.source).join(', ') || '—' })}
+              ariaLabel={t('fbl_network_aria', { sources: nodes.map((n) => n.source).join(', ') || '—' })}
             />
-            {c.sources.length === 0 && live && (
+            {ran.length === 0 && live && (
               <p className={cn('px-2 pb-2 text-center text-2xs', ON_NAVY_SOFT)} dir="auto">{t('fbl_preparing_note')}</p>
             )}
+            <p className={cn('flex flex-wrap justify-center gap-x-3 gap-y-1 px-2 pb-1.5 text-2xs', ON_NAVY_SOFT)} data-testid="fbl-network-legend">
+              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[hsl(40_94%_64%)]" aria-hidden="true" />{t('fbl_net_searched')}</span>
+              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full border border-[hsl(40_60%_70%/0.7)]" aria-hidden="true" />{t('fbl_net_available')}</span>
+              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full border border-dashed border-[hsl(218_25%_70%/0.7)]" aria-hidden="true" />{t('fbl_net_off')}</span>
+            </p>
           </div>
         )}
         <div className="min-w-0 space-y-4">
@@ -133,11 +145,31 @@ export function LiveSearchModule({
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               <Metric value={view.metrics.sourcesWorking} label={t('fbl_m_working')} accent={view.metrics.sourcesWorking > 0} />
               <Metric value={view.metrics.sourcesDone} label={t('fbl_m_done')} />
-              <Metric value={view.metrics.signals} label={t('fbl_m_signals')} />
-              <Metric value={view.metrics.possible} label={t('fbl_m_possible')} accent={view.metrics.possible > 0} />
+              <Metric value={view.metrics.signals} label={t('fbl_m_checked')} />
+              <Metric value={view.metrics.possible} label={t('fbl_m_qualified')} accent={view.metrics.possible > 0} />
               <Metric value={view.metrics.strong} label={t('fbl_m_strong')} accent={view.metrics.strong > 0} />
               <Metric value={c.staleSkipped} label={t('fbl_m_stale')} />
             </div>
+          )}
+          {/* Per source, in words: what was READ is never what was FOUND. */}
+          {ran.length > 0 && (
+            <ul className="space-y-1.5" data-testid="fbl-source-outcomes">
+              {ran.map((n) => (
+                <li key={n.source} className="rounded-xl bg-white/[0.04] px-3 py-2 text-2xs leading-relaxed ring-1 ring-inset ring-white/10">
+                  <span className="font-semibold text-white">{sourceStyle(n.source).label}</span>
+                  <span className={ON_NAVY_SOFT}>
+                    {' · '}{t('fbl_src_checked', { n: String(n.checked) })}
+                    {n.communities > 0 ? <>{' · '}{t('fbl_src_communities', { n: String(n.communities) })}</> : null}
+                    {' · '}<span className={n.qualified > 0 ? GOLD_TEXT : undefined}>{t('fbl_src_qualified', { n: String(n.qualified) })}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {now.last && (
+            <p className="text-2xs font-semibold text-white" data-testid="fbl-last-search">
+              {t('fbl_last_search', { state: t(now.last.headlineKey), date: lastDate ?? '—' })}
+            </p>
           )}
           {c && !live && (
             <p className={cn('text-2xs leading-relaxed', ON_NAVY_SOFT)}>

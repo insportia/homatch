@@ -28,8 +28,10 @@ export function MediaRefresh({ propertyId, storedCount, sourceDomain, onRefreshe
       } else if (!auto) {
         toast.info(t(r.reason === 'RECENT' ? 'fbl_media_recent' : 'fbl_media_nothing_new'));
       }
-    } catch {
-      if (!auto) toast.error(t('fbl_media_failed'));
+    } catch (e) {
+      /* Say WHY: a listing the source no longer shows is not "could not be read". */
+      const code = (e as { code?: string | null })?.code ?? null;
+      if (!auto) toast.error(t(code === 'LISTING_NOT_AVAILABLE' ? 'fbl_media_listing_gone' : code === 'UNSUPPORTED_SOURCE' ? 'fbl_media_unsupported' : 'fbl_media_failed'));
     } finally {
       setBusy(false);
     }

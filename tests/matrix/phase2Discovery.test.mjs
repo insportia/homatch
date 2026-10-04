@@ -175,7 +175,10 @@ test('portal hops route through the official worker only when an operator says s
   assert.match(sd, /String\(body\.executor \?\? 'EDGE'\) === 'WORKER'/);
   const driver = read('supabase/functions/discovery-queue-worker/driver.ts');
   assert.match(driver, /if \(settings\.workerRouteEnabled\)/);
-  assert.match(driver, /p_providers: executor === 'WORKER' \? \['PORTAL'\] : null/);
+  assert.match(driver, /p_providers: executor === 'WORKER' \? \['PORTAL'\] : NATIVE_PROVIDERS/);
+  /* The native pass names its providers: a null list would also claim the
+     FIND BUYERS social jobs (APIFY_MEMO23), which have their own pass. */
+  assert.match(driver, /const NATIVE_PROVIDERS = \['TELEGRAM', 'TELEGRAM_SOURCES', 'FORUM', 'PORTAL'\]/);
   const worker = read('official-worker/src/discovery/SafeFetch.ts') + read('official-worker/src/discovery/routes.ts');
   assert.doesNotMatch(worker, /SUPABASE_SERVICE_ROLE_KEY|service_role/, 'the worker holds no database authority');
   assert.match(worker, /lookup: \(_host: string, options: any, callback: any\)/, 'the connection is pinned');

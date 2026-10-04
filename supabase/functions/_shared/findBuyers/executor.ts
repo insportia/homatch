@@ -45,6 +45,8 @@ export async function executeSocialJob(db: any, job: any): Promise<SocialOutcome
   if (!campaign || campaign.finalized_at) return out({ outcome: 'CANCELLED', error: 'CAMPAIGN_FINALIZED' });
   const settings = await loadFindBuyersSettings(db);
   if (meta.actorRunId) return poll(db, job, campaign, settings);
+  /* Apify switched off on Admin → Providers: no new memo23 run starts. */
+  if (!settings.apifyEnabled) return out({ outcome: 'CANCELLED', error: 'APIFY_DISABLED_BY_ADMIN' });
   if (!settings.socialEnabled) return out({ outcome: 'CANCELLED', error: 'SOCIAL_DISABLED' });
   return start(db, job, campaign, settings);
 }
@@ -186,6 +188,10 @@ async function poll(db: any, job: any, campaign: any, settings: FindBuyersSettin
   if (!run.cost_booked_at) {
     const providerRunId = run.provider_run_id ?? meta.providerRunId ?? null;
     if (!providerRunId) return out({ outcome: 'WAIT', retrySeconds: 45, metadata: { lastPollError: 'NO_PROVIDER_RUN_ID' } });
+    /* Apify switched off while a run is in flight: ask the provider to abort it
+       (free, idempotent), then keep polling so its real cost is still booked
+       and its reservation settled. */
+    if (!settings.apifyEnabled) await abortRun(providerRunId).catch(() => undefined);
     try { r = await getRun(providerRunId); } catch (error) {
       return out({ outcome: 'WAIT', retrySeconds: 45, metadata: { lastPollError: scrub(String(error)) } });
     }

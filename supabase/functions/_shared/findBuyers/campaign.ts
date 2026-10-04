@@ -16,7 +16,9 @@ import { abortRun, datasetItems, getRun, runCost, TERMINAL_RUN_STATES } from './
 import { openAiJson, parsePriceBook, recordAiCost } from './openai.ts';
 
 export interface FindBuyersSettings {
+  /** find_buyers_social_enabled AND the Apify provider enabled on Admin → Providers. */
   socialEnabled: boolean;
+  apifyEnabled: boolean;
   minUsd: number;
   providerShareBps: number;
   pricingMaxAgeDays: number;
@@ -28,7 +30,15 @@ export interface FindBuyersSettings {
 const SETTING_KEYS = [
   'find_buyers_social_enabled', 'find_buyers_min_usd', 'find_buyers_provider_share_bps',
   'find_buyers_pricing_max_age_days', 'find_buyers_comment_gate', 'find_buyers_sampling', 'find_buyers_openai_price_book',
+  'provider_disabled_list',
 ];
+
+/** Admin → Providers' per-provider switch (admin_settings.provider_disabled_list). APIFY in it stops every memo23 run. */
+export function apifyDisabledByAdmin(list: unknown): boolean {
+  let v = list;
+  if (typeof v === 'string') { try { v = JSON.parse(v); } catch { return false; } }
+  return Array.isArray(v) && v.some((p) => String(p).toUpperCase() === 'APIFY');
+}
 
 const val = (v: unknown) => (typeof v === 'string' ? (() => { try { return JSON.parse(v); } catch { return v; } })() : v);
 
@@ -38,7 +48,9 @@ export async function loadFindBuyersSettings(db: any): Promise<FindBuyersSetting
   const gate = (m.get('find_buyers_comment_gate') ?? {}) as any;
   const num = (v: unknown, d: number) => (Number.isFinite(Number(v)) ? Number(v) : d);
   return {
-    socialEnabled: m.get('find_buyers_social_enabled') === true,
+    /* Server-authoritative: the Apify provider switched off on Admin → Providers stops every memo23 run. */
+    apifyEnabled: !apifyDisabledByAdmin(m.get('provider_disabled_list')),
+    socialEnabled: m.get('find_buyers_social_enabled') === true && !apifyDisabledByAdmin(m.get('provider_disabled_list')),
     minUsd: Math.max(1, num(m.get('find_buyers_min_usd'), 10)),
     providerShareBps: Math.max(0, Math.min(9000, num(m.get('find_buyers_provider_share_bps'), 5000))),
     pricingMaxAgeDays: num(m.get('find_buyers_pricing_max_age_days'), 30),

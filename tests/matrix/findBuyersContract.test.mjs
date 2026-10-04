@@ -108,8 +108,12 @@ test('every new switch is off and no Actor runs unverified', () => {
   assert.equal((seeds.match(/'memo23~/g) ?? []).length, 16, 'sixteen memo23 Actors registered');
 });
 
-test('the generic APIFY provider stays retired; the new provider has its own key', () => {
-  assert.match(read('supabase/functions/_shared/retiredProviders.ts'), /RETIRED_PROVIDERS = \['DATAFORSEO', 'APIFY'\] as const/);
+test('Apify is live only as APIFY_MEMO23; the generic APIFY provider has no executor; DataForSEO stays retired', () => {
+  assert.match(read('supabase/functions/_shared/retiredProviders.ts'), /RETIRED_PROVIDERS = \['DATAFORSEO'\] as const/);
+  const worker = read('supabase/functions/discovery-queue-worker/index.ts');
+  const exec = worker.slice(worker.indexOf('async function executeProvider('));
+  assert.match(exec, /if \(provider === 'APIFY'\) \{\s*throw new ProviderError\(APIFY_ONLY_VIA_MEMO23, false, 423\)/,
+    'a generic APIFY queue job is refused, non-retryable');
   assert.match(MIGRATION, /v_allowed text\[\] := array\['TELEGRAM', 'TELEGRAM_SOURCES', 'FORUM', 'PORTAL', 'APIFY_MEMO23'\]/);
   assert.doesNotMatch(MIGRATION, /'APIFY'\s*,\s*'FIND_BUYERS_ACTOR_RUN'.*provider_disabled_list/s);
 });

@@ -1,7 +1,10 @@
 // provider-health-check — tests a single provider and updates provider_health table
 // Called by Admin UI "Run Test" button. Returns real status — never marks mock as real.
 //
-// RETIRED PROVIDERS ARE REPORTED, NOT TESTED. DataForSEO and Apify are retired
+// APIFY (restored 2026-10-04, memo23 only) is tested through memo23Client's
+// accountCheck: one free account read, no run, no Actor, no secret returned.
+//
+// RETIRED PROVIDERS ARE REPORTED, NOT TESTED. DataForSEO is retired
 // from the Homatch architecture. This function used to send a live DataForSEO
 // SERP query and a live Apify account request whenever an admin pressed "Test"
 // -- a billed call to DataForSEO on every press, to a provider nothing may use.
@@ -12,6 +15,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { isRetiredProvider, retiredReason } from '../_shared/retiredProviders.ts';
+import { accountCheck, providerConfigured as apifyConfigured, Memo23Error } from '../_shared/findBuyers/memo23Client.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -65,6 +69,18 @@ serve(async (req: Request) => {
         success = r.ok;
         status = success ? 'REAL_TEST_PASSED' : 'ERROR';
         if (!success) lastError = `HTTP ${r.status}`;
+        break;
+      }
+      case 'APIFY': {
+        /* Free account read through the single memo23 client; never a run. */
+        if (!apifyConfigured()) { status = 'NOT_CONFIGURED'; break; }
+        try {
+          await accountCheck();
+          success = true; status = 'REAL_TEST_PASSED';
+        } catch (e) {
+          success = false; status = 'ERROR';
+          lastError = e instanceof Memo23Error ? e.message : 'APIFY_CHECK_FAILED';
+        }
         break;
       }
       case 'SCRAPINGBEE': {

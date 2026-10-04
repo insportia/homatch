@@ -238,6 +238,17 @@ MATTERS right now, verify against the live systems, not this file)
 - Importer: source registry (src/import/sourceAdapters.ts: MYHOME, SS);
   MyHome portal-homepage answer → LISTING_NOT_AVAILABLE; refresh cooldown
   fixed (MEDIA_REFRESH no longer overwritten).
+- Apify restored (owner-authorised 2026-10-04) for memo23 only: no longer in
+  RETIRED_PROVIDERS (DataForSEO is). Admin → Providers APIFY card: Test =
+  memo23Client.accountCheck (GET /users/me, free, no run); Enable/Disable =
+  provider_disabled_list, enforced in loadFindBuyersSettings (executor refuses
+  APIFY_DISABLED_BY_ADMIN, in-flight runs aborted then polled to book cost),
+  find_buyers_reserve_actor_run (refuses before any reservation) and
+  find_buyers_readiness (social off). Presets never change Apify's state; its
+  switch is usable under the legacy provider_kill_switch. Generic APIFY queue
+  jobs / reconcile / social-collect stay non-executable (APIFY_ONLY_VIA_MEMO23).
+  Production provider_disabled_list still contains APIFY: enabling is an
+  intentional owner action after deploy.
 - Production: all 16 actors enabled=false, pricing/contract unverified,
   find_buyers_social_enabled=false. Apify is unreachable from CCR containers;
   verification must run through Admin → Discovery → Find Buyers → Actors →

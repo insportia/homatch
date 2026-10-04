@@ -23,17 +23,23 @@ const STATUS_CONFIG = {
 };
 
 /*
+ * APIFY IS LIVE AGAIN (owner, 2026-10-04), for Find Buyers / Find Tenants
+ * memo23 Actors only: its card has Test (a free account check, never a run)
+ * and the Enable/Disable switch, which is server-authoritative — APIFY in
+ * provider_disabled_list stops every memo23 reservation and run. Individual
+ * Actors stay governed by their own registry lifecycle (Find Buyers → Actors).
+ *
  * RETIRED, NOT DISABLED.
  *
- * DataForSEO and Apify are retired from the Homatch architecture. A disabled
+ * DataForSEO is retired from the Homatch architecture. A disabled
  * provider is one an admin can enable again; a retired one has no code path
  * left to enable (supabase/functions/_shared/retiredProviders.ts), so this
  * screen must not offer a button that looks like it would. Their cards keep
  * their history -- cost to date, last error, success rate -- and lose the Test
- * and Enable controls. Every write to provider_disabled_list keeps both names
- * in it, so no preset and no toggle can take them off the list.
+ * and Enable controls. Every write to provider_disabled_list keeps the retired
+ * name in it, so no preset and no toggle can take it off the list.
  */
-const RETIRED_PROVIDERS = ['DATAFORSEO', 'APIFY'];
+const RETIRED_PROVIDERS = ['DATAFORSEO'];
 const isRetired = (provider: string) => RETIRED_PROVIDERS.includes(provider.toUpperCase());
 const withRetired = (list: readonly string[]) => Array.from(new Set([...list, ...RETIRED_PROVIDERS]));
 
@@ -154,8 +160,9 @@ export default function AdminProvidersPage() {
   // provider_disabled_list, external_discovery_strong_score,
   // external_discovery_min_strong_matches) — not a separate, decorative
   // concept. There used to be a third, "web only", which meant disabling APIFY
-  // and keeping DATAFORSEO. Both are retired now, so it would have been the same
+  // and keeping DATAFORSEO. DataForSEO is retired, so it would have been the same
   // as "balanced" under a name that promised something different; it is gone.
+  // Apify (live again for memo23) is never changed by a preset.
   const PRESETS = {
     locked: {
       labelKey: 'admin_providers_preset_locked',
@@ -171,15 +178,17 @@ export default function AdminProvidersPage() {
     setApplyingPreset(presetKey);
     try {
       const preset = PRESETS[presetKey];
+      /* Apify is switched only by its own card: a preset keeps its current state. */
+      const nextDisabled = withRetired([...preset.settings.provider_disabled_list, ...(disabledProviders.includes('APIFY') ? ['APIFY'] : [])]);
       await Promise.all([
         updateAdminSetting('external_discovery_enabled', preset.settings.external_discovery_enabled),
         updateAdminSetting('provider_kill_switch', preset.settings.provider_kill_switch),
-        updateAdminSetting('provider_disabled_list', withRetired(preset.settings.provider_disabled_list)),
+        updateAdminSetting('provider_disabled_list', withRetired(nextDisabled)),
         updateAdminSetting('external_discovery_strong_score', preset.settings.external_discovery_strong_score),
         updateAdminSetting('external_discovery_min_strong_matches', preset.settings.external_discovery_min_strong_matches),
       ]);
       setGlobalKillSwitch(preset.settings.provider_kill_switch);
-      setDisabledProviders(withRetired(preset.settings.provider_disabled_list));
+      setDisabledProviders(nextDisabled);
       toast.success(t('admin_providers_preset_applied', { name: t(preset.labelKey) }));
     } catch (e: any) {
       toast.error(`Failed to apply preset: ${e.message}`);
@@ -325,6 +334,9 @@ export default function AdminProvidersPage() {
                       {t('admin_providers_last_tested')}: {format(new Date(h.last_tested_at), 'MMM d, HH:mm')}
                     </p>
                   )}
+                  {h.provider.toUpperCase() === 'APIFY' && (
+                    <p className="text-xs text-muted-foreground break-words" data-testid="apify-scope">{t('admin_providers_apify_scope')}</p>
+                  )}
                   {retired ? (
                     <p className="text-xs text-muted-foreground pt-1 break-words">{t('admin_providers_retired_desc')}</p>
                   ) : (
@@ -348,7 +360,9 @@ export default function AdminProvidersPage() {
                           ? 'border-green-500/40 text-green-500 hover:bg-green-500/10'
                           : 'border-destructive/40 text-destructive hover:bg-destructive/10',
                       )}
-                      disabled={toggling === h.provider || globalKillSwitch}
+                      /* The legacy kill switch governs generic external discovery; Apify
+                         (memo23 only) has its own server-authoritative switch. */
+                      disabled={toggling === h.provider || (globalKillSwitch && h.provider.toUpperCase() !== 'APIFY')}
                       onClick={() => toggleProvider(h.provider, isDisabled)}
                     >
                       <Power className="h-3 w-3" />
@@ -371,9 +385,10 @@ export default function AdminProvidersPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {treasuryLoading ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />) :
           treasury.map(p => {
-            /* research_providers still holds rows for both retired providers --
-               production had DATAFORSEO enabled=true / ACTIVE on 2026-09-27, a
-               flag nothing executes on. Shown as retired, with no switch. */
+            /* research_providers still holds a row for retired DATAFORSEO --
+               production had it enabled=true / ACTIVE on 2026-09-27, a flag
+               nothing executes on. Shown as retired, with no switch. APIFY's
+               row shows its usage; its only switch is the provider card. */
             const retired = isRetired(p.provider_code);
             return (
             <Card key={p.provider_code} className={cn('shadow-sm', (!p.enabled || retired) && 'opacity-70 border-dashed')}>
@@ -399,6 +414,9 @@ export default function AdminProvidersPage() {
                 {p.notes && <p className="text-[14px] text-muted-foreground/80 leading-snug">{p.notes}</p>}
                 {retired ? (
                   <p className="text-xs text-muted-foreground pt-1 break-words">{t('admin_providers_retired_desc')}</p>
+                ) : p.provider_code.toUpperCase() === 'APIFY' ? (
+                  /* One switch for Apify: the provider card above (provider_disabled_list). */
+                  <p className="text-xs text-muted-foreground pt-1 break-words">{t('admin_providers_apify_treasury_note')}</p>
                 ) : (
                 <div className="flex items-center gap-2 pt-1">
                   <Switch

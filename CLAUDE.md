@@ -46,10 +46,12 @@ An index is never proof of production state.
   lead; native messaging uses canonical conversations; telemetry ≠ intent.
 - **Property**: six-digit permanent server-generated IDs; contact phone is
   private — required ≠ public; no public/indexable/client-trusted exposure.
-- **Retired providers** (DATAFORSEO, generic APIFY): locked off, history
-  preserved, never reactivated. Sole owner-authorised exception (2026-10-04):
-  memo23 Apify Actors for Find Buyers/Tenants, provider key `APIFY_MEMO23`,
-  only via `_shared/findBuyers/memo23Client.ts`, switches OFF by default.
+- **Retired providers**: DATAFORSEO — locked off, history preserved, never
+  reactivated. APIFY was restored by the owner (2026-10-04) ONLY for Find
+  Buyers/Tenants memo23 Actors (`APIFY_MEMO23`), only via
+  `_shared/findBuyers/memo23Client.ts`; Admin → Providers' APIFY switch
+  (`provider_disabled_list`) stops every memo23 run. Generic Apify execution
+  stays deleted; Actors stay governed by their registry lifecycle.
 - **Railway**: the only worker is `homatch-official-worker`
   (`3e7f132b-d0be-4804-9bc0-0b6ad368ad15`). Never `-v2`, never create
   another. Railway deploys only when `official-worker/` changed —

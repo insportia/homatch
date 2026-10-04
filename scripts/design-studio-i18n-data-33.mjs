@@ -45,6 +45,14 @@ export const DS_STRINGS_33 = {
     'نحوّل الصورة إلى ثلاثية الأبعاد…',
     'הופכים את התמונה לתלת־ממד…',
   ],
+  dsx_photo3d_measuring: [
+    'Measuring the depth of the picture…',
+    'ფოტოს სიღრმე იზომება…',
+    'Измеряем глубину изображения…',
+    'Görselin derinliği ölçülüyor…',
+    'نقيس عمق الصورة…',
+    'מודדים את עומק התמונה…',
+  ],
   dsx_photo3d_failed: [
     'This device could not turn the picture into 3D. Try again, or open it in another browser.',
     'ამ მოწყობილობამ ფოტოს 3D-ად გადაქცევა ვერ შეძლო. სცადე თავიდან ან გახსენი სხვა ბრაუზერში.',

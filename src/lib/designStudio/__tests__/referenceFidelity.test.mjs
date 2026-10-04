@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { buildWalkthrough } from '../walkthrough/build.ts';
 import {
-  ANCHOR_FALLBACK_M, anchorLock, CIRCULATION_MIN_M, CIRCULATION_PREFERRED_M, FIDELITY_CODES, feedbackOf, projectToImage, referenceCameraPose, referenceFidelity, visualVerdict,
+  ANCHOR_FALLBACK_M, anchorLock, CIRCULATION_MIN_M, CIRCULATION_PREFERRED_M, FIDELITY_CODES, feedbackOf, projectToImage, referenceCameraPose, referenceFidelity, VISUAL_CAMERA_MIN, visualVerdict,
 } from '../walkthrough/fidelity.ts';
 import { retryableFailure } from '../walkthrough/lifecycle.ts';
 import { emptyDesignState } from '../designState.ts';
@@ -223,13 +223,24 @@ test('TEST 11 — the reference camera for the factory\'s QA render: three.js po
   assert.equal(doll.position[1], 14);
 });
 
-test('TEST 12 — the visual check fails only gross differences, and never on a missing answer', () => {
+test('TEST 12 — the visual check fails only gross differences seen from the same viewpoint; from a wrong one it is UNRELIABLE, never a failure', () => {
   const pass = visualVerdict({ errors: [{ code: 'wrongColor', severity: 'HIGH', confidence: 0.9 }], scores: { layout: 7, furniture: 6, overall: 6, dimensions: { placement: 7, camera: 7, scale: 6, inventory: 7 } } });
   assert.equal(pass.ok, true);
+  assert.equal(pass.reliable, true);
   const corner = visualVerdict({ errors: [], scores: { layout: 2, furniture: 5, overall: 3, dimensions: { placement: 2, camera: 6 } } });
   assert.equal(corner.code, 'REFERENCE_LAYOUT_MISMATCH');
-  const missing = visualVerdict({ errors: Array.from({ length: 3 }, () => ({ code: 'objectMissing', severity: 'HIGH', confidence: 0.8 })), scores: { layout: 5, furniture: 2, overall: 4, dimensions: { inventory: 2 } } });
+  const missing = visualVerdict({ errors: Array.from({ length: 3 }, () => ({ code: 'objectMissing', severity: 'HIGH', confidence: 0.8 })), scores: { layout: 5, furniture: 2, overall: 4, dimensions: { inventory: 2, camera: 7 } } });
   assert.equal(missing.code, 'REFERENCE_OBJECT_MISSING');
+  // Production, walkthrough abaa98de: built, every piece attached, then judged from HOMATCH's estimated camera
+  // (camera 2/10). Not the same view: recorded, not a failure.
+  const prod = visualVerdict({
+    errors: [...Array(3).fill({ code: 'wrongScale', severity: 'MEDIUM', confidence: 0.7 }), { code: 'wrongCamera', severity: 'HIGH', confidence: 0.9 }, ...Array(4).fill({ code: 'wrongObject', severity: 'MEDIUM', confidence: 0.7 }), ...Array(2).fill({ code: 'wrongPosition', severity: 'MEDIUM', confidence: 0.7 })],
+    scores: { layout: 4, furniture: 4, overall: 4, dimensions: { camera: 2, placement: 4, scale: 4, inventory: 5 } },
+  });
+  assert.equal(prod.ok, true);
+  assert.equal(prod.reliable, false);
+  assert.equal(visualVerdict({ errors: [], scores: { layout: 1, furniture: 1, overall: 1, dimensions: { camera: 1, placement: 1 } } }).ok, true);
+  assert.equal(VISUAL_CAMERA_MIN, 5);
 });
 
 test('TEST 13 — failures unlike the picture are retryable (a new plan, told what failed); an unwalkable design is not', () => {
@@ -251,6 +262,10 @@ test('TEST 14 — the route: the picture reaches the model, its hash keys the pl
   assert.match(route, /outputs: \{ render: !!camera, scene: false, objects: true \}/);
   assert.match(route, /await sha256Hex\(src\.bytes\) !== prov\.referenceImageSha256/);
   assert.match(route, /if \(visual\?\.summary\.state === 'FAILED' && visual\.summary\.code\) \{\n    await fail\(/);
+  assert.match(route, /state: !verdict\.reliable \? 'UNRELIABLE' : verdict\.ok \? 'PASSED' : 'FAILED'/);
+  // A retry of a visual-check failure judges the kept build again (no new plan, no new GPU pass).
+  assert.match(route, /const visualOnly = row\.plan_report\?\.visualQa\?\.state === 'FAILED'/);
+  assert.match(route, /\} else if \(visualOnly\) \{\n[^\n]*\n    if \(job\?\.state === 'COMPLETED'\) Object\.assign\(patch, \{ state: 'PROCESSING_RESULT', result_attempts: 0 \}\);/);
   // Never a key in what the page sees.
   assert.doesNotMatch(route.slice(route.indexOf('function publicOf'), route.indexOf('// ── Lineage')), /timings\?\.reference|apiKey|OPENAI/);
 });

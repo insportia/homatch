@@ -22,6 +22,8 @@ import { LeadStateControl } from '@/components/broker/LeadStateControl';
 import { ExternalContactUnlockModal } from '@/components/matching/ExternalContactUnlockModal';
 import { ExternalSitesCard } from '@/components/matching/ExternalSitesCard';
 import { MatchingJobProgress } from '@/components/matching/MatchingJobProgress';
+import { FindBuyersCampaignPanel } from '@/components/findBuyers/FindBuyersCampaignPanel';
+import { FindBuyersResults } from '@/components/findBuyers/FindBuyersResults';
 import {
   AlertDialog, AlertDialogAction,AlertDialogCancel, AlertDialogContent, 
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -380,6 +382,11 @@ function MatchesContent() {
      second tab and a logout: the page asks which search is open, it does not
      remember one. */
   const [jobPaused, setJobPaused] = useState(false);
+  /* Potential buyers/tenants from public conversations refresh as the
+     running search qualifies more of them. */
+  const [leadRefresh, setLeadRefresh] = useState(0);
+  const bumpLeads = useCallback(() => setLeadRefresh((n) => n + 1), []);
+  const [leadCount, setLeadCount] = useState(0);
   /** The last settled sweep, for the Expand Search offer. */
   const [lastSweep, setLastSweep] = useState<{
     id: string;
@@ -831,7 +838,8 @@ function MatchesContent() {
   const counterpart = counterpartFor(property?.transaction_type);
   const slug = counterpart ? counterpart.toLowerCase() : null;
   const titleKey = slug ? `matches_title_${slug}` : 'matches_title';
-  const discoverKey = slug ? `matches_find_${slug}` : 'matches_start_matching';
+  const discoverKey = counterpart === 'BUYER' ? 'fbx_find_buyers' : counterpart === 'TENANT' ? 'fbx_find_tenants'
+    : slug ? `matches_find_${slug}` : 'matches_start_matching';
   /* What the list is about: the owner's own title, else the address they entered, else
      the city. Their own property, so there is no visibility rule to apply here. */
   const propertyLabel = property?.title
@@ -1010,7 +1018,8 @@ function MatchesContent() {
             eyebrow={propertyLabel}
             title={t(titleKey)}
             subtitle={t('matches_count_line', {
-              total: String(counts.total),
+              /* HOMATCH matches plus potential buyers/tenants from public conversations. */
+              total: String(counts.total + leadCount),
               new: String(counts.newCount),
             })}
           />
@@ -1029,14 +1038,23 @@ function MatchesContent() {
         {propertyId ? <NativeMatchesPanel propertyId={propertyId} role="OWNER" className="hm-discovery-panel" /> : null}
 
         <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_17rem]">
-          <div className="min-w-0">
+          <div className="min-w-0 space-y-4">
+            {propertyId ? (
+              <FindBuyersResults
+                propertyId={propertyId}
+                counterpart={counterpart === 'TENANT' ? 'TENANT' : counterpart === 'BUYER' ? 'BUYER' : null}
+                refreshKey={leadRefresh}
+                searching={jobRunning}
+                onCount={setLeadCount}
+              />
+            ) : null}
             {loading ? (
               <div className="grid gap-2.5 md:grid-cols-2 2xl:grid-cols-3">
                 {[1, 2, 3, 4].map((i) => (
                   <div key={i} className="hm-discovery-panel h-[15rem] animate-pulse p-3.5" />
                 ))}
               </div>
-            ) : filteredMatches.length === 0 ? (
+            ) : filteredMatches.length === 0 && leadCount > 0 ? null : filteredMatches.length === 0 ? (
               <EmptyState
                 icon={Search}
                 title={t('matches_empty')}
@@ -1105,10 +1123,15 @@ function MatchesContent() {
             {searchModule}
 
             {activeJobId && (
+              <FindBuyersCampaignPanel jobId={activeJobId} running={jobRunning} paused={jobPaused} onProgress={bumpLeads} />
+            )}
+
+            {activeJobId && (
               <MatchingJobProgress
                 jobId={activeJobId}
                 propertyId={propertyId}
                 onComplete={(job) => {
+                  bumpLeads();
                   if (job.matches_created > 0) {
                     toast.success(t('matches_job_complete_toast', { count: String(job.matches_created) }));
                     loadData();
@@ -1274,12 +1297,13 @@ function MatchesContent() {
       <Dialog open={showBudget} onOpenChange={setShowBudget}>
         <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{t('matches_start_matching')}</DialogTitle>
+            <DialogTitle>{t(counterpart === 'TENANT' ? 'fbx_find_tenants' : 'fbx_find_buyers')}</DialogTitle>
             <DialogDescription className="sr-only">{t('budget_choose_title')}</DialogDescription>
           </DialogHeader>
           <CampaignLaunchPanel
             propertyId={propertyId ?? ''}
             productCode="FIND_CLIENTS"
+            counterpart={counterpart === 'TENANT' ? 'TENANT' : 'BUYER'}
             onRun={(authorized, languages, discoverBrokers) => void handleStartMatching(authorized, languages, discoverBrokers)}
             running={campaignLoading}
           />

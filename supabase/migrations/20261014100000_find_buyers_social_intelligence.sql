@@ -246,6 +246,9 @@ create table if not exists public.find_buyers_leads (
   property_id uuid not null,
   user_id uuid not null,
   person_id uuid not null references public.find_buyers_persons(id),
+  /* Public author identity exactly as the source shows it (never invented). */
+  author_name text,
+  author_profile_url text,
   counterpart text not null check (counterpart in ('BUYER','TENANT')),
   source text not null,
   intent_class text not null,
@@ -974,3 +977,30 @@ end;
 $function$;
 revoke all on function public.admin_find_buyers_actor_update(text, jsonb) from public, anon;
 grant execute on function public.admin_find_buyers_actor_update(text, jsonb) to authenticated;
+
+------------------------------------------------------------------------------
+-- 12. The customer's read of the product rules: minimum budget in the wallet's
+--     own credits. No costs, no provider names.
+------------------------------------------------------------------------------
+create or replace function public.find_buyers_public_config()
+returns jsonb
+language sql
+stable
+security definer
+set search_path to ''
+as $function$
+  with s as (
+    select
+      coalesce((select (value #>> '{}')::numeric from public.admin_settings where key = 'find_buyers_min_usd'), 10) as min_usd,
+      coalesce((select (value #>> '{}')::numeric from public.admin_settings where key = 'credits_per_usd'), 10) as rate,
+      coalesce((select (value #>> '{}')::numeric from public.admin_settings where key = 'campaign_min_credits'), 50) as floor_credits
+  )
+  select jsonb_build_object(
+    'minUsd', min_usd,
+    'creditsPerUsd', rate,
+    'minCredits', greatest(ceil(min_usd * rate), floor_credits),
+    'languages', jsonb_build_array('ka','ru','en','ar','he','tr'))
+  from s;
+$function$;
+revoke all on function public.find_buyers_public_config() from public, anon;
+grant execute on function public.find_buyers_public_config() to authenticated;

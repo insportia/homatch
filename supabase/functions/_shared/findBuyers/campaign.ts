@@ -285,7 +285,7 @@ export async function campaignStats(db: any, matchingJobId: string) {
   const [runs, leads, assess, queue] = await Promise.all([
     db.from('find_buyers_actor_runs').select('source,language,status,qualified_leads,items_fetched,useful_results').eq('matching_job_id', matchingJobId),
     db.from('find_buyers_leads').select('strength,source,signal_count').eq('matching_job_id', matchingJobId),
-    db.from('find_buyers_assessments').select('id', { count: 'exact', head: true }).eq('matching_job_id', matchingJobId),
+    db.from('find_buyers_assessments').select('content_kind').eq('matching_job_id', matchingJobId).limit(5000),
     db.from('discovery_query_queue').select('provider,status,metadata').eq('matching_job_id', matchingJobId),
   ]);
   const r = (runs.data ?? []) as any[];
@@ -299,7 +299,8 @@ export async function campaignStats(db: any, matchingJobId: string) {
     languagesSearched: [...new Set(r.map((x) => x.language).filter((x: string | null) => x && x !== 'multi'))],
     sourcesExplored: [...sources],
     sourcesProductive: [...productive],
-    signalsAnalyzed: Number(assess.count ?? 0),
+    signalsAnalyzed: ((assess.data ?? []) as any[]).length,
+    commentsReviewed: ((assess.data ?? []) as any[]).filter((x) => x.content_kind === 'COMMENT').length,
     qualified: l.length,
     strong: l.filter((x) => x.strength === 'STRONG').length,
     duplicatesRemoved: l.reduce((n, x) => n + Math.max(0, Number(x.signal_count || 1) - 1), 0),

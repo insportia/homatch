@@ -37,12 +37,18 @@ export function SearchBudgetOffer({
   expectedUnits = 1,
   onRun,
   running = false,
+  minCredits,
+  ctaLabel,
 }: {
   productCode: string;
   expectedUnits?: number;
   /** Called with the budget the customer authorised, or null for an included run. */
   onRun: (authorizedMaxCredits: number | null) => void;
   running?: boolean;
+  /** A product floor above the catalogue's (FIND BUYERS: $10 in credits). Optional; absent = unchanged. */
+  minCredits?: number;
+  /** The run button's words for products that name their action (e.g. "Start buyer search"). */
+  ctaLabel?: string;
 }) {
   const { t } = useLanguage();
   const navigate = useNavigate();
@@ -144,7 +150,10 @@ export function SearchBudgetOffer({
    * ladder keeps its shape as a balance moves and the customer can see what
    * topping up would buy.
    */
-  const ladder = (choices?.presets ?? []).filter((p) => p.viable);
+  const floor = Math.max(Number(choices?.min_viable ?? 0), Number(minCredits ?? 0));
+  const ladder = (choices?.presets ?? []).filter((p) => p.viable)
+    /* A product floor (FIND BUYERS $10) removes rungs below it, like non-viable ones. */
+    .filter((p) => !minCredits || p.credits >= floor);
 
   /*
    * What the customer is actually authorising.
@@ -160,12 +169,17 @@ export function SearchBudgetOffer({
   const customUsable = customOpen
     && Number.isFinite(customCredits)
     && customCredits >= Number(choices?.min_viable ?? 0)
+    && (!minCredits || customCredits >= minCredits)
     && customCredits <= Number(choices?.balance ?? 0);
-  const authorized = partial
+  const picked = partial
     ? serverAuthorized
     : customOpen
       ? (customUsable ? customCredits : 0)
-      : (chosen ?? serverAuthorized);
+      : minCredits
+        ? (chosen != null && chosen >= floor ? chosen : (ladder[0]?.credits ?? serverAuthorized))
+        : (chosen ?? serverAuthorized);
+  /* Below the product floor nothing runs (the server refuses it too). */
+  const authorized = minCredits && picked < minCredits ? 0 : picked;
 
   return (
     <div className="rounded-lg border border-border/70 bg-card/60 p-4">
@@ -247,7 +261,7 @@ export function SearchBudgetOffer({
               type="number"
               inputMode="decimal"
               dir="ltr"
-              min={choices?.min_viable ?? 0}
+              min={minCredits ? floor : (choices?.min_viable ?? 0)}
               max={choices?.balance ?? undefined}
               value={custom}
               onChange={(e) => setCustom(e.target.value)}
@@ -275,9 +289,11 @@ export function SearchBudgetOffer({
       <Button className="mt-3 w-full" onClick={() => onRun(authorized)} disabled={running || authorized <= 0}>
         {running && <Loader2 className="me-2 h-4 w-4 animate-spin" />}
         <Search className="me-2 h-4 w-4" />
-        {partial
-          ? t('budget_cta_partial').replace('{n}', cr(authorized))
-          : t('budget_cta_authorize', { credits: cr(authorized) })}
+        {ctaLabel
+          ? ctaLabel
+          : partial
+            ? t('budget_cta_partial').replace('{n}', cr(authorized))
+            : t('budget_cta_authorize', { credits: cr(authorized) })}
       </Button>
 
       {partial && (

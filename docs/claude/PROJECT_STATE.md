@@ -1,6 +1,6 @@
 # PROJECT STATE
 
-last_updated: 2026-10-03
+last_updated: 2026-10-04
 maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
@@ -951,3 +951,13 @@ Base: main `53489d04` (PR #68 live: design-studio-reconstruct v22). Scope: front
 - Known reading defect on that same plan (NOT fixed here): the two bedroom→living doors were read as one door in the bedroom partition, so in the stored geometry the bedrooms connect to each other and not to the living room.
 - Customer billing stays off; cost lines OPENAI_SCENE_PLAN / RUNPOD_GPU / STORAGE are internal.
 - REFERENCE-LOCKED reconstruction ("step inside this image", 2026-10-04): a walkthrough created with a `render_id` treats that READY render as the visual ground truth. PLAN loads its bytes (sha256 → `timings.reference` provenance: referenceImageId, referenceAssetKey, referenceImageSha256, sourceDesignVersionId, generationJobId, sceneMapJobId, aspect, view ROOM/MASTER) and sends it as `input_image` with its SCENE_MAP (the generation-time scene DNA) to OpenAI → `ds-scene-plan-2` (per piece basis OBSERVED/STRONGLY_INFERRED/INFERRED/UNKNOWN, real size, imagePx, zone, importance, referenceLocked; reference room + camera, ROOM or HOME frame). Anchors are locked in build.ts (nudge ≤ `anchorLock`, then small scale, then ≤ 20° turn; never relocated room-wide or dropped for decor/density). `walkthrough/fidelity.ts` gates the build: NOT_WALKABLE, REFERENCE_OBJECT_MISSING / LAYOUT / ZONE / SCALE / CAMERA_MISMATCH, OVER/UNDERFURNISHED (corner clusters fail even when walkable). One automatic replan (second plan attempt, told the findings), then FAILED; manual retry of a REFERENCE_* failure re-plans. SUBMIT renders the reference view (factory `outputs.render`, camera from the plan); PROCESS runs one vision check (`REFERENCE_QA_SYSTEM`, QA_SCHEMA) — gross failures fail, an unavailable check is recorded as such (`plan_report.visualQa`), never as a pass. Plan cache key `timings.planKey` = (picture sha, spec job, version, source); `reusePlanFrom` refuses a plan made for another picture. No migration (jsonb only). Walkthroughs without `render_id` keep the specification plan (`ds-scene-plan-1`) unchanged.
+
+## Find Buyers / Find Tenants — memo23 social intelligence (branch `claude/nifty-hopper-snzn2d`, 2026-10-04) — NOT merged, NOT deployed
+
+- Owner reversed the Apify retirement for memo23 Actors only (provider `APIFY_MEMO23`); generic APIFY stays retired.
+- Map + activation order: docs/claude/PHASE2_DISCOVERY.md § Find Buyers / Find Tenants.
+- Migration `20261014100000_find_buyers_social_intelligence.sql`: written, proven twice on the local fixture
+  (`bash tests/sql/run-find-buyers.sh`), NOT applied. Everything inert until applied + deployed + switched on.
+- Credit rate unchanged (10 credits = $1): the $10 minimum is 100 credits (`find_buyers_min_usd` × `credits_per_usd`).
+  The brief's "1,000 credits = $10" would need `credits_per_usd` = 100 — a global pricing decision left to the owner.
+- Production proof (a bounded $10 campaign) not run: needs the owner to verify/enable Actors and fund it.

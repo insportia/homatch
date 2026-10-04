@@ -19,6 +19,12 @@ warns when a diff enters this domain.
 - **Retired providers stay retired.** DATAFORSEO and APIFY are locked off;
   their history (spend, ledger rows) is preserved. Never reactivate, never
   delete history.
+  Exception (owner, 2026-10-04): memo23 Apify Actors for FIND BUYERS /
+  FIND TENANTS run as provider `APIFY_MEMO23` (registry, verified pricing,
+  per-campaign provider ceiling = `find_buyers_provider_share_bps` of the
+  customer budget, integer-microdollar ledger `find_buyers_cost_ledger`).
+- **Find Buyers minimum** is `find_buyers_min_usd` ($10) converted through
+  `credits_per_usd` (100 credits at 10/$). It is not a second credit rate.
 
 ## Where it lives
 

@@ -311,3 +311,35 @@ Measured marginal COGS per delivered listing is under 1¢ for every route above.
 zero-delivered = zero charge; consider replacing the 59¢ reference COGS with the
 measured route costs after the controlled live proofs. Pricing changes need
 owner approval.
+
+## Find Buyers / Find Tenants — memo23 social intelligence (2026-10-04)
+
+Owner decision: the Apify retirement is reversed **for memo23 Actors only**,
+for this product only. The generic `APIFY` provider stays retired.
+
+| Layer | What | Where |
+|---|---|---|
+| Schema | Actor registry, per-campaign economics, actor runs, microdollar cost ledger, persons, assessments, leads, translation/query caches, source_registry intelligence columns; `APIFY_MEMO23` in the fair claim; wait-finish | `20261014100000_find_buyers_social_intelligence.sql` (proof: `tests/sql/run-find-buyers.sh`) |
+| Money | `find_buyers_reserve_actor_run` (switch, enabled, verified price ≤30 d, campaign provider ceiling, per-actor campaign/daily caps, concurrency) → `find_buyers_book_run_cost` (once; unknown = UNPRICED at the reservation, never 0; failed-but-billed still booked) → `cost_events` (settlement COGS) | migration §9 |
+| Core | Property DNA, six-language query plan, text facts, similarity gate (<70 skip, 70–84 justified only, ≥85 fetch), intent taxonomy bounded by parent context, person identity, lead score, progressive sampling (probe → 50 → 100), normalizers, actor inputs fitted to verified schema | `src/research-core/findBuyers/` |
+| Edge | single Apify door (memo23 ids only, `maxItems` + `maxTotalChargeUsd` = reservation, token scrubbed); executor (start/poll per claim, no lease while waiting); pipeline; campaign start/finish (abort + book before settlement); cached translation; admin verify | `supabase/functions/_shared/findBuyers/` |
+| Wiring | match-campaign: $10 minimum in credits, social start, `action: translate`; driver: native pass names its providers, social pass time-boxed, Telegram fallback only when native fails; `finalizeCampaignJob` counts social leads | `match-campaign`, `discovery-queue-worker`, `_shared/campaignRun.ts` |
+| UI | launch copy + minimum + six languages; live campaign panel; premium lead cards (why, original + translate, similarity/intent, provenance); admin control center (overview, actors + controls, campaigns, sources, languages, ledger) | `src/components/findBuyers/`, `src/components/admin/FindBuyersControlCenter.tsx` |
+
+Actors (public store slugs, verified only from Apify by the admin action):
+FB_GROUP_SEARCH `memo23~facebook-search-groups-scraper`, FB_GROUP_POSTS
+`memo23~apify-facebook-group-scraper`, FB_COMMENTS `memo23~facebook-comments-scraper`,
+IG_PROFILE_POSTS `memo23~apify-instagram-profile-scraper`, IG_COMMENTS
+`memo23~apify-instagram-comments-scraper`, TIKTOK `memo23~tiktok-scraper`,
+VK_POSTS_COMMENTS `memo23~vk-posts-comments-scraper`, TELEGRAM_CHANNEL
+`memo23~telegram-channel-scraper` (fallback), LINKEDIN_GROUPS
+`memo23~linkedin-search-groups-scraper`, LINKEDIN_POSTS `memo23~linkedin-posts-scraper`.
+All seeded **disabled, price unverified**.
+
+Activation order (each step observable in /admin/discovery → Find Buyers):
+apply the migration → deploy `match-campaign`, `discovery-queue-worker`,
+`find-property-run` (shares `_shared/campaignRun.ts`) → per Actor "Verify from
+Apify" (stores price + input schema; never enables) → enable chosen Actors →
+switch `find_buyers_social_enabled` on → one owner-funded $10 campaign.
+Instagram/VK/Telegram-fallback read sources already in `source_registry`
+(there is no memo23 discovery Actor for them); LinkedIn yields comment counts only.

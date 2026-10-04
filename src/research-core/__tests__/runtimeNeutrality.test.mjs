@@ -202,6 +202,18 @@ test('the core is consumed only through its deliberate integration points', () =
     // the ONE signal taxonomy rather than re-deriving them.
     'supabase/functions/_shared/campaignRun.ts',
     'supabase/functions/_shared/campaignSources.ts',
+    /*
+     * FIND BUYERS / FIND TENANTS (memo23 social intelligence). These four edge
+     * modules import only research-core/findBuyers: pure decision code (DNA,
+     * query plan, similarity, intent, identity, scoring, allocation,
+     * normalizers). The one network door to Apify is _shared/findBuyers/
+     * memo23Client.ts, which imports nothing from the core; no fetch, policy
+     * or flow primitive of the core is reached from here.
+     */
+    'supabase/functions/_shared/findBuyers/campaign.ts',
+    'supabase/functions/_shared/findBuyers/executor.ts',
+    'supabase/functions/_shared/findBuyers/pipeline.ts',
+    'supabase/functions/_shared/findBuyers/translate.ts',
     'supabase/functions/atomic-unlock/index.ts',
     'supabase/functions/classify-signals-v2/index.ts',
     'src/matching/currentDemand.ts',

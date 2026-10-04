@@ -435,7 +435,8 @@ async function upsertLead(ctx: PipelineCtx, a: Assessed): Promise<'QUALIFIED' | 
   const bestWhy = (() => { try { return JSON.parse(best.explanation); } catch { return null; } })();
   const row = {
     matching_job_id: campaign.matching_job_id, campaign_id: campaign.campaign_id, property_id: campaign.property_id,
-    user_id: campaign.user_id, person_id: person.id, counterpart: campaign.transaction === 'RENT' ? 'TENANT' : 'BUYER',
+    user_id: campaign.user_id, person_id: person.id,
+    author_name: clip(a.item.author.name, 200), author_profile_url: a.item.author.url, counterpart: campaign.transaction === 'RENT' ? 'TENANT' : 'BUYER',
     source: best.source, intent_class: best.intentClass, overall_score: scored.overall, strength: scored.strength,
     similarity: best.similarity, intent_score: best.intentScore,
     score_components: { ...scored.components, why: bestWhy },

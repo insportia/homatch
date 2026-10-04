@@ -15092,6 +15092,33 @@ const en = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_landing_more: 'Renew, rearrange and develop the layout you want with the help of HOMATCH intelligence. Experience your property in a new way with an interactive 3D tour.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_ref_title: 'Design reference',
+  dsx_ref_body: 'Rooms are generated from the designs you select here. The architecture still comes from your property.',
+  dsx_ref_selected: '{{n}} selected',
+  dsx_ref_pick: 'Use this design',
+  dsx_room_not_yet: 'Not generated yet',
+  dsx_room_from_refs: 'Will be generated from {{n}} selected design(s)',
+  dsx_more_changes: 'More changes',
+  dsx_focus_PALETTE: 'Change colour palette',
+  dsx_focus_MATERIALS: 'Change materials',
+  dsx_focus_FURNITURE: 'Change furniture',
+  dsx_focus_LIGHTING: 'Change lighting',
+  dsx_focus_FLOORING: 'Change flooring',
+  dsx_focus_WALLS: 'Change wall finishes',
+  dsx_focus_DECOR: 'Change decor',
+  dsx_focus_MINIMAL: 'More minimalist',
+  dsx_focus_PREMIUM: 'More premium',
+  dsx_focus_BRIGHTER: 'Brighter',
+  dsx_focus_EDIT: 'Edit a specific part',
+  dsx_walk_needs_title: 'One thing is missing for a walkable tour',
+  dsx_walk_needs_body: 'Your design is kept and the tour will use it. Your pictures show the design, but not what a walk needs:',
+  dsx_walk_missing_WALLS: 'where the walls run',
+  dsx_walk_missing_DOORS: 'where the doors are',
+  dsx_walk_missing_ROOM_SIZES: 'the size of each room',
+  dsx_walk_needs_hint: 'Add the floor plan to this project (a drawing, a photo or a screenshot of it) and the tour starts from this design. Nothing else is uploaded again.',
+  dsx_walk_needs_cta: 'Add the floor plan',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -30098,6 +30125,33 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_landing_more: 'განაახლე, გადააწყე და განავითარე შენთვის სასურველი გეგმარება HOMATCH-ის ინტელექტის დახმარებით. შეიგრძენი შენი ქონება ახლებურად ინტერაქტიული 3D ტურით.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_ref_title: 'დიზაინის საფუძველი',
+  dsx_ref_body: 'ოთახები შეიქმნება აქ მონიშნული დიზაინის მიხედვით. არქიტექტურა კი თქვენი ქონებიდან რჩება.',
+  dsx_ref_selected: 'მონიშნულია: {{n}}',
+  dsx_ref_pick: 'ამ დიზაინის გამოყენება',
+  dsx_room_not_yet: 'ჯერ არ შექმნილა',
+  dsx_room_from_refs: 'შეიქმნება {{n}} მონიშნული დიზაინიდან',
+  dsx_more_changes: 'მეტი ცვლილება',
+  dsx_focus_PALETTE: 'ფერთა პალიტრის შეცვლა',
+  dsx_focus_MATERIALS: 'მასალების შეცვლა',
+  dsx_focus_FURNITURE: 'ავეჯის შეცვლა',
+  dsx_focus_LIGHTING: 'განათების შეცვლა',
+  dsx_focus_FLOORING: 'იატაკის შეცვლა',
+  dsx_focus_WALLS: 'კედლების მოპირკეთების შეცვლა',
+  dsx_focus_DECOR: 'დეკორის შეცვლა',
+  dsx_focus_MINIMAL: 'უფრო მინიმალისტური',
+  dsx_focus_PREMIUM: 'უფრო პრემიუმ',
+  dsx_focus_BRIGHTER: 'უფრო ნათელი',
+  dsx_focus_EDIT: 'კონკრეტული ნაწილის რედაქტირება',
+  dsx_walk_needs_title: '3D ტურისთვის ერთი რამ გვაკლია',
+  dsx_walk_needs_body: 'თქვენი დიზაინი შენახულია და ტური მას გამოიყენებს. სურათები დიზაინს აჩვენებს, მაგრამ არა იმას, რაც სასეირნოდ არის საჭირო:',
+  dsx_walk_missing_WALLS: 'სად გადის კედლები',
+  dsx_walk_missing_DOORS: 'სად არის კარები',
+  dsx_walk_missing_ROOM_SIZES: 'თითოეული ოთახის ზომა',
+  dsx_walk_needs_hint: 'დაამატეთ ამ პროექტს გეგმა (ნახაზი, ფოტო ან სქრინშოტი) და ტური ამ დიზაინიდან დაიწყება. სხვა არაფრის ხელახლა ატვირთვა არ არის საჭირო.',
+  dsx_walk_needs_cta: 'გეგმის დამატება',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -45095,6 +45149,33 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_landing_more: 'Обновите, переставьте и развивайте желаемую планировку с помощью интеллекта HOMATCH. Почувствуйте свою недвижимость по-новому благодаря интерактивной 3D-прогулке.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_ref_title: 'Дизайн-основа',
+  dsx_ref_body: 'Комнаты создаются по дизайнам, выбранным здесь. Архитектура остаётся от вашей недвижимости.',
+  dsx_ref_selected: 'Выбрано: {{n}}',
+  dsx_ref_pick: 'Использовать этот дизайн',
+  dsx_room_not_yet: 'Ещё не создана',
+  dsx_room_from_refs: 'Будет создана по выбранным дизайнам: {{n}}',
+  dsx_more_changes: 'Другие изменения',
+  dsx_focus_PALETTE: 'Сменить палитру',
+  dsx_focus_MATERIALS: 'Сменить материалы',
+  dsx_focus_FURNITURE: 'Сменить мебель',
+  dsx_focus_LIGHTING: 'Сменить освещение',
+  dsx_focus_FLOORING: 'Сменить пол',
+  dsx_focus_WALLS: 'Сменить отделку стен',
+  dsx_focus_DECOR: 'Сменить декор',
+  dsx_focus_MINIMAL: 'Минималистичнее',
+  dsx_focus_PREMIUM: 'Премиальнее',
+  dsx_focus_BRIGHTER: 'Светлее',
+  dsx_focus_EDIT: 'Изменить конкретную часть',
+  dsx_walk_needs_title: 'Для 3D-прогулки не хватает одного',
+  dsx_walk_needs_body: 'Ваш дизайн сохранён, и прогулка будет по нему. Изображения показывают дизайн, но не то, что нужно для прогулки:',
+  dsx_walk_missing_WALLS: 'где проходят стены',
+  dsx_walk_missing_DOORS: 'где находятся двери',
+  dsx_walk_missing_ROOM_SIZES: 'размеры каждой комнаты',
+  dsx_walk_needs_hint: 'Добавьте в проект планировку (чертёж, фото или скриншот), и прогулка начнётся по этому дизайну. Больше ничего загружать заново не нужно.',
+  dsx_walk_needs_cta: 'Добавить планировку',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -60090,6 +60171,33 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_landing_more: 'HOMATCH zekâsının yardımıyla istediğiniz yerleşimi yenileyin, yeniden düzenleyin ve geliştirin. Etkileşimli 3D gezintiyle mülkünüzü yepyeni bir şekilde hissedin.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_ref_title: 'Tasarım referansı',
+  dsx_ref_body: 'Odalar burada seçtiğiniz tasarımlardan oluşturulur. Mimari yine mülkünüzden gelir.',
+  dsx_ref_selected: '{{n}} seçili',
+  dsx_ref_pick: 'Bu tasarımı kullan',
+  dsx_room_not_yet: 'Henüz oluşturulmadı',
+  dsx_room_from_refs: '{{n}} seçili tasarımdan oluşturulacak',
+  dsx_more_changes: 'Daha fazla değişiklik',
+  dsx_focus_PALETTE: 'Renk paletini değiştir',
+  dsx_focus_MATERIALS: 'Malzemeleri değiştir',
+  dsx_focus_FURNITURE: 'Mobilyaları değiştir',
+  dsx_focus_LIGHTING: 'Aydınlatmayı değiştir',
+  dsx_focus_FLOORING: 'Zemini değiştir',
+  dsx_focus_WALLS: 'Duvar kaplamalarını değiştir',
+  dsx_focus_DECOR: 'Dekoru değiştir',
+  dsx_focus_MINIMAL: 'Daha minimalist',
+  dsx_focus_PREMIUM: 'Daha premium',
+  dsx_focus_BRIGHTER: 'Daha aydınlık',
+  dsx_focus_EDIT: 'Belirli bir parçayı düzenle',
+  dsx_walk_needs_title: 'Yürünebilir tur için bir şey eksik',
+  dsx_walk_needs_body: 'Tasarımınız saklandı ve tur onu kullanacak. Görselleriniz tasarımı gösteriyor, ancak bir gezinti için gerekenleri göstermiyor:',
+  dsx_walk_missing_WALLS: 'duvarların nereden geçtiği',
+  dsx_walk_missing_DOORS: 'kapıların nerede olduğu',
+  dsx_walk_missing_ROOM_SIZES: 'her odanın ölçüsü',
+  dsx_walk_needs_hint: 'Bu projeye kat planını ekleyin (çizim, fotoğraf veya ekran görüntüsü), tur bu tasarımdan başlasın. Başka hiçbir şeyi yeniden yüklemeniz gerekmez.',
+  dsx_walk_needs_cta: 'Kat planını ekle',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -75085,6 +75193,33 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_landing_more: 'جدّد مخططك المفضل وأعد ترتيبه وطوّره بمساعدة ذكاء HOMATCH. واختبر عقارك بطريقة جديدة عبر جولة تفاعلية ثلاثية الأبعاد.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_ref_title: 'مرجع التصميم',
+  dsx_ref_body: 'تُنشأ الغرف من التصاميم التي تختارها هنا. ويبقى التصميم المعماري من عقارك.',
+  dsx_ref_selected: 'المحدد: {{n}}',
+  dsx_ref_pick: 'استخدام هذا التصميم',
+  dsx_room_not_yet: 'لم تُنشأ بعد',
+  dsx_room_from_refs: 'ستُنشأ من التصاميم المحددة: {{n}}',
+  dsx_more_changes: 'تغييرات أخرى',
+  dsx_focus_PALETTE: 'تغيير لوحة الألوان',
+  dsx_focus_MATERIALS: 'تغيير المواد',
+  dsx_focus_FURNITURE: 'تغيير الأثاث',
+  dsx_focus_LIGHTING: 'تغيير الإضاءة',
+  dsx_focus_FLOORING: 'تغيير الأرضية',
+  dsx_focus_WALLS: 'تغيير تشطيب الجدران',
+  dsx_focus_DECOR: 'تغيير الديكور',
+  dsx_focus_MINIMAL: 'أكثر بساطة',
+  dsx_focus_PREMIUM: 'أكثر فخامة',
+  dsx_focus_BRIGHTER: 'أكثر إشراقاً',
+  dsx_focus_EDIT: 'تعديل جزء محدد',
+  dsx_walk_needs_title: 'ينقص شيء واحد لجولة ثلاثية الأبعاد',
+  dsx_walk_needs_body: 'تصميمك محفوظ وستستخدمه الجولة. تُظهر صورك التصميم، لكن ليس ما تحتاجه الجولة:',
+  dsx_walk_missing_WALLS: 'مواقع الجدران',
+  dsx_walk_missing_DOORS: 'مواقع الأبواب',
+  dsx_walk_missing_ROOM_SIZES: 'مقاس كل غرفة',
+  dsx_walk_needs_hint: 'أضف مخطط الطابق إلى هذا المشروع (رسماً أو صورة أو لقطة شاشة) وستبدأ الجولة من هذا التصميم. لا حاجة لرفع أي شيء آخر من جديد.',
+  dsx_walk_needs_cta: 'إضافة المخطط',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -90080,6 +90215,33 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_landing_more: 'חדשו, סדרו מחדש ופתחו את התכנון הרצוי לכם בעזרת האינטליגנציה של HOMATCH. חוו את הנכס שלכם מחדש בסיור תלת־ממדי אינטראקטיבי.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_ref_title: 'עיצוב בסיס',
+  dsx_ref_body: 'החדרים נוצרים מהעיצובים שתבחרו כאן. האדריכלות נשארת של הנכס שלכם.',
+  dsx_ref_selected: 'נבחרו: {{n}}',
+  dsx_ref_pick: 'שימוש בעיצוב הזה',
+  dsx_room_not_yet: 'עוד לא נוצר',
+  dsx_room_from_refs: 'ייווצר מתוך העיצובים שנבחרו: {{n}}',
+  dsx_more_changes: 'שינויים נוספים',
+  dsx_focus_PALETTE: 'שינוי פלטת הצבעים',
+  dsx_focus_MATERIALS: 'שינוי החומרים',
+  dsx_focus_FURNITURE: 'שינוי הרהיטים',
+  dsx_focus_LIGHTING: 'שינוי התאורה',
+  dsx_focus_FLOORING: 'שינוי הריצוף',
+  dsx_focus_WALLS: 'שינוי גימור הקירות',
+  dsx_focus_DECOR: 'שינוי העיצוב והאביזרים',
+  dsx_focus_MINIMAL: 'מינימליסטי יותר',
+  dsx_focus_PREMIUM: 'יוקרתי יותר',
+  dsx_focus_BRIGHTER: 'בהיר יותר',
+  dsx_focus_EDIT: 'עריכת חלק מסוים',
+  dsx_walk_needs_title: 'חסר דבר אחד לסיור תלת־ממדי',
+  dsx_walk_needs_body: 'העיצוב שלכם נשמר והסיור ישתמש בו. התמונות מראות את העיצוב, אבל לא את מה שסיור צריך:',
+  dsx_walk_missing_WALLS: 'היכן עוברים הקירות',
+  dsx_walk_missing_DOORS: 'היכן נמצאות הדלתות',
+  dsx_walk_missing_ROOM_SIZES: 'הגודל של כל חדר',
+  dsx_walk_needs_hint: 'הוסיפו לפרויקט את תוכנית הדירה (שרטוט, תמונה או צילום מסך) והסיור יתחיל מהעיצוב הזה. אין צורך להעלות שום דבר אחר מחדש.',
+  dsx_walk_needs_cta: 'הוספת תוכנית',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

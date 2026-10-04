@@ -122,9 +122,10 @@ test('the photo master\'s instruction keeps the customer\'s camera', () => {
     generation: { mustRemain: [], mayChange: [], camera: '', photorealism: [], negative: [], imageInstruction: 'x'.repeat(220), continuityInstruction: '' },
   };
   const text = imageInstruction(spec, { mode: 'MASTER', evidence: ev, direction: directionFrom({}) });
-  assert.match(text, /same camera position, lens and framing/);
+  assert.match(text, /same camera position, lens, framing and presentation/);
   const room = imageInstruction(spec, { mode: 'ROOM', evidence: ev, direction: directionFrom({}), room: { id: 'r2', name: 'Bedroom' } });
-  assert.match(room, /Redesign the room in THIS photograph \(Bedroom\)/);
+  assert.match(room, /Redesign the room in THE FIRST image, the customer's own photograph \(Bedroom\)/);
+  assert.doesNotMatch(text, /undefined/, 'an older specification (without the newer design fields) never prints "undefined"');
 });
 
 test('a 2D floor plan sent as a photo is "read it as a plan" (FLOOR_PLAN), never "unusable material"', () => {

@@ -33,7 +33,7 @@ import { signedUrls } from '@/services/designStudio/files';
 import { referencesById, type ReconstructionRecord } from '@/services/designStudio/reconstructions';
 import { flowOf, planFromPhotos, savePhotoFlow, startPhotoProject, understandingOf, understandPhotos, uploadPhotos } from '@/services/designStudio/photos';
 import type { FloorPlanRecord } from '@/services/designStudio/floorplans';
-import { QualityStep, RING, StyleStep, SURFACE, surpriseStyle } from '../planToHome/SimpleSteps';
+import { QualityStep, RING, StyleStep, SURFACE } from '../planToHome/SimpleSteps';
 import { AnalysisStep, DetailQuestionStep, FailureStep, GeneratingStep, PhotoUploadStep, READING_RECOVERY, type Recovery, useReadyResult } from './Screens';
 
 type Step = 'UPLOAD' | 'READING' | 'FAILED' | 'QUESTION' | 'STYLE' | 'QUALITY' | 'GENERATING';
@@ -295,8 +295,7 @@ export function PhotoFlow({ userId, projectId, projectName, resume, onDone, onCa
         <DetailQuestionStep question={q.question} options={q.options} suggested={q.suggested} images={qImages} onAnswer={answer} busy={busy} />
       ) : null}
       {step === 'STYLE' ? (
-        <StyleStep value={style} onChange={(s) => setStyle(s)} onNext={goQuality}
-          onSurprise={() => { const s = surpriseStyle(style); setStyle(s); }} />
+        <StyleStep value={style} onChange={(s) => setStyle(s)} onNext={goQuality} />
       ) : null}
       {step === 'QUALITY' ? (
         <QualityStep value={quality} onChange={setQuality} onBack={() => { setStep('STYLE'); void save({ step: 'STYLE' }); }}

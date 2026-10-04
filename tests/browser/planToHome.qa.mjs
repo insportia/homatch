@@ -27,11 +27,12 @@
 //                                                              390/ka, 1440/en
 //   E  PHOTOS (the unified OpenAI-first flow): three photos → look over, remove,
 //      add → analysis (left mid-way and resumed) → one detail → Style (more
-//      options, surprise me) → Quality → Generate (reload mid-way, Snake while
+//      options) → Quality → Generate (reload mid-way, Snake while
 //      it is made, READY above the game) → the Result: before / after, edit,
-//      another room, another option. One reading, one specification per
-//      design, one picture per design; no reconstruction, no factory.
-//                                                              390/ka, 1440/en
+//      another room (from the selected generated design), more changes, the 3D
+//      tour's missing evidence, another option. One reading, one specification
+//      per design, one picture per design; no reconstruction, no factory.
+//                                                  360/ka, 390/ka, 430/en, 1440/en
 //   F  PHOTOS that fail: a retryable failure offers "try again" (nothing is
 //      uploaded again); unusable photos ask for another file.  390/en, 390/he
 // No page errors, no horizontal overflow, no duplicate paid work.
@@ -199,6 +200,14 @@ function wireRenders(page, store) {
  */
 function wireGeneration(page, store) {
   store.gen = { specCalls: 0, specRuns: 0, specBodies: [], generateCalls: 0, stepCalls: 0, imageCalls: 0, specJobs: new Map() };
+  // The walkthrough, as walkthrough.ts answers a photo project with no floor plan: exactly what is missing.
+  store.walk = { creates: 0 };
+  void page.route(/\/functions\/v1\/design-studio-reconstruct\/(walkthrough-create|walkthrough-status)$/, (route) => {
+    const headers = { 'access-control-allow-origin': '*' };
+    if (route.request().url().endsWith('walkthrough-status')) return route.fulfill({ status: 200, contentType: 'application/json', headers, body: JSON.stringify({ walkthrough: null, history: [] }) });
+    store.walk.creates += 1;
+    return route.fulfill({ status: 409, contentType: 'application/json', headers, body: JSON.stringify({ error: 'WALKTHROUGH_NEEDS_FLOOR_PLAN', missing: ['WALLS', 'DOORS', 'ROOM_SIZES'], have: ['DESIGN', 'PHOTOS'] }) });
+  });
   const now = () => new Date().toISOString();
   const json = (route, b, status = 200) => route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(b) });
   const legendFor = (versionId) => {
@@ -258,7 +267,8 @@ function wireGeneration(page, store) {
           id: randomUUID(), project_id: job.project_id, user_id: 'hm1', version_id: chain.versionId, kind: roomId ? 'ROOM' : 'MASTER', parent_id: null, // the table: kind = EDIT exactly when parent_id is set
           view: { id: roomId ? `room-${roomId}` : 'master', kind: roomId ? 'ROOM' : 'MASTER', purpose: roomId ? 'MAIN' : 'DOLLHOUSE', roomId, generator: 'OPENAI', mode: job.input.mode },
           status: 'QUEUED', factory_job_id: null, base_key: null, map_key: null, final_key: null, legend: null,
-          finish: { generator: 'OPENAI_FIRST', mode: job.input.mode, specJobId: job.id, sourceKey: job.output.sourceKey, parentRenderId: job.input.parentRenderId ?? null, roomId, look: job.input.look, provider: 'OPENAI', model: null, check: null }, edit: null,
+          finish: { generator: 'OPENAI_FIRST', mode: job.input.mode, specJobId: job.id, sourceKey: job.output.sourceKey, parentRenderId: job.input.parentRenderId ?? null, roomId, look: job.input.look, provider: 'OPENAI', model: null, check: null,
+            ...(roomId ? { referenceRenderIds: job.input.referenceRenderIds ?? (job.input.parentRenderId ? [job.input.parentRenderId] : []) } : {}) }, edit: null,
           billing: { credits: 6, reservationId: null, state: 'NOT_CHARGED' }, error: null, idempotency_key: `chain-${job.id}`, created_at: now(), updated_at: now(),
         };
         store.db.ds_renders.push(row);
@@ -435,7 +445,7 @@ async function zeroQuestionPath(browser, { width, height, lang, touch }) {
   const all = await page.locator('[data-testid^="look-style-"]').count();
   check(`${tag}: "see more options" shows all six (${all})`, all === 6, String(all));
   check(`${tag}: Next waits for a style`, !(await page.getByTestId('look-next').isEnabled()));
-  const small = await page.locator('[data-testid^="look-style-"], [data-testid="look-next"], [data-testid="look-more"], [data-testid="look-surprise"]').evaluateAll((els) => els.filter((e) => e.getBoundingClientRect().height < 48).length);
+  const small = await page.locator('[data-testid^="look-style-"], [data-testid="look-next"], [data-testid="look-more"]').evaluateAll((els) => els.filter((e) => e.getBoundingClientRect().height < 48).length);
   check(`${tag}: style targets are at least 48 px`, small === 0, String(small));
   const sources = store.db.ds_spatial_sources.length;
   await s.reloadAt(tag, 'STYLE', 'look-style');
@@ -809,9 +819,8 @@ async function photoPath(browser, { width, height, lang, touch }) {
   const recon = store.db.ds_reconstructions.at(-1);
   for (let i = 0; i < 40 && !(recon.corrections?.flow?.answers ?? []).length; i += 1) await page.waitForTimeout(150);
   check(`${tag}: the answer is kept on the project`, (recon.corrections?.flow?.answers ?? []).some((x) => x.questionId === 'q1' && x.value === 'OFFICE'));
-  if (lang === 'ka') check(`${tag}: style copy`, (await text()).includes('როგორი სივრცე გინდა?') && (await text()).includes('სხვა ვარიანტების ნახვა') && (await text()).includes('გამაკვირვე') && (await text()).includes('შემდეგი'));
-  await page.getByTestId('look-surprise').click();
-  check(`${tag}: "surprise me" chooses a look`, (await page.locator('[data-testid^="look-style-"][aria-checked="true"]').count()) === 1);
+  if (lang === 'ka') check(`${tag}: style copy`, (await text()).includes('როგორი სივრცე გინდა?') && (await text()).includes('სხვა ვარიანტების ნახვა') && (await text()).includes('შემდეგი'));
+  check(`${tag}: no "surprise me" (another option already exists on the Result)`, (await page.getByTestId('look-surprise').count()) === 0 && !(await text()).includes('გამაკვირვე'));
   await page.getByTestId('look-style-LUXURY').click();
   await page.waitForTimeout(300);
   await shot('style');
@@ -880,8 +889,29 @@ async function photoPath(browser, { width, height, lang, touch }) {
   if (lang === 'ka') check(`${tag}: before / after labels`, (await page.getByTestId('compare').innerText()).includes('მანამდე') && (await page.getByTestId('compare').innerText()).includes('ახალი დიზაინი'));
   await page.getByTestId('home-compare').click();
 
-  // Another room: its own photo, the same design identity; priced, confirmed, server-owned.
+  // Another room: drawn from the SELECTED generated design (its own photo is the architecture); priced, confirmed, server-owned.
   check(`${tag}: the other room is offered`, (await page.getByTestId('room-card').count()) === 1);
+  check(`${tag}: a room not generated yet shows the way to make it, never the customer's upload`, (await page.getByTestId('room-empty').count()) === 1 && (await page.getByTestId('room-card').getAttribute('data-generated')) === 'no' && (await page.locator('[data-testid="room-card"] img').count()) === 0);
+  check(`${tag}: the design reference is the generated design shown`, (await page.getByTestId('room-ref').count()) === 1 && (await page.getByTestId('room-ref').getAttribute('aria-pressed')) === 'true');
+  await page.getByTestId('room-refs').scrollIntoViewIfNeeded();
+  await shot('rooms');
+  await s.noOverflow(tag, 'the rooms with their design reference');
+  // "More changes": one compact list (no "surprise me"), each a real focus the server defines.
+  await page.getByTestId('home-more-toggle').click();
+  check(`${tag}: "More changes" lists the focused changes`, (await page.locator('[data-testid^="home-focus-"]').count()) >= 10);
+  if (lang === 'ka') check(`${tag}: "More changes" copy`, (await page.getByTestId('home-more').innerText()).includes('ფერთა პალიტრის შეცვლა') && (await page.getByTestId('home-more').innerText()).includes('უფრო მინიმალისტური'));
+  await shot('more-changes');
+  await s.noOverflow(tag, 'more changes open');
+  await page.getByTestId('home-more-toggle').click();
+  // The 3D tour starts from the project: with no floor plan in it, exactly what is missing (never a generic upload screen).
+  await page.getByTestId('walk-create').click();
+  await page.getByTestId('walk-needs-plan').waitFor({ timeout: 10000 });
+  check(`${tag}: the 3D tour names exactly what is missing (walls, doors, room sizes)`, (await page.locator('[data-testid="walk-missing"] li').count()) === 3 && (await page.getByTestId('walk-add-plan').isVisible()));
+  if (lang === 'ka') check(`${tag}: missing-evidence copy`, (await page.getByTestId('walk-needs-plan').innerText()).includes('სად გადის კედლები'));
+  check(`${tag}: one walkthrough request for the tap (${store.walk.creates})`, store.walk.creates === 1);
+  await page.getByTestId('walk-needs-plan').scrollIntoViewIfNeeded();
+  await shot('walk-needs-plan');
+  await s.noOverflow(tag, 'the 3D tour evidence message');
   await page.getByTestId('room-create').click();
   await page.getByTestId('home-sheet').waitFor({ timeout: 10000 });
   await shot('room-sheet');
@@ -891,6 +921,9 @@ async function photoPath(browser, { width, height, lang, touch }) {
   await page.getByTestId('room-view').waitFor({ timeout: 60000 });
   const room = store.db.ds_renders.find((r) => r.view?.kind === 'ROOM');
   check(`${tag}: the room is drawn over its own photo (${room?.view?.roomId})`, room?.view?.roomId === 'r2' && room.finish?.sourceKey === store.db.ds_floorplans.find((f) => f.id === recon.reference_ids[1])?.object_key);
+  const roomSpec = store.gen.specBodies.find((b) => b.mode === 'ROOM');
+  check(`${tag}: the selected generated design is sent and recorded as the room's reference`, JSON.stringify(roomSpec?.referenceRenderIds) === JSON.stringify([masters[0]?.id]) && JSON.stringify(room?.finish?.referenceRenderIds) === JSON.stringify([masters[0]?.id]));
+  check(`${tag}: the generated room is shown once made`, (await page.getByTestId('room-shot').count()) === 1 && (await page.getByTestId('room-empty').count()) === 0);
   // Another option, in the customer's own words (never something unasked).
   await page.getByTestId('home-variant').click();
   await page.getByTestId('home-wish-text').fill('a dark green sofa and warmer light');
@@ -994,7 +1027,9 @@ async function main() {
       await rtl(browser, { width: 1440, height: 900, lang: 'he', touch: false });
     }
     if (!only || only === 'E') {
+      await photoPath(browser, { width: 360, height: 780, lang: 'ka', touch: true });
       await photoPath(browser, { width: 390, height: 844, lang: 'ka', touch: true });
+      await photoPath(browser, { width: 430, height: 932, lang: 'en', touch: true });
       await photoPath(browser, { width: 1440, height: 900, lang: 'en', touch: false });
     }
     if (!only || only === 'G') {

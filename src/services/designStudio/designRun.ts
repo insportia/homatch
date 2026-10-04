@@ -46,7 +46,10 @@ export interface RunInput {
   preferences: DesignPreferences;
   roomId?: string | null;
   parentRenderId?: string | null;
-  change?: { style?: string | null; quality?: string | null; note?: string | null } | null;
+  /** ROOM: the generated designs the customer selected as its design reference (the server uses exactly these). */
+  referenceRenderIds?: string[] | null;
+  /** focus: a "More changes" code (the server holds what it means). */
+  change?: { style?: string | null; quality?: string | null; note?: string | null; focus?: string | null } | null;
   /** The credits the customer saw and confirmed; a different price stops before anything is spent. */
   confirmedCredits?: number | null;
   versionName: string;
@@ -86,7 +89,7 @@ async function askSpec(body: Record<string, unknown>): Promise<{ reply: SpecRepl
 }
 
 /** Codes that mean "this request can never succeed as asked" (not a network blip). */
-const HARD = new Set(['BAD_REQUEST', 'NOT_FOUND', 'SOURCE_MISSING', 'QUOTE_MISMATCH', 'QUOTE_STALE', 'QUOTE_EXPIRED', 'RATE_LIMITED', 'DESIGN_UNAVAILABLE', 'QUOTE_NOT_CONFIGURED', 'UNAUTHENTICATED']);
+const HARD = new Set(['BAD_REQUEST', 'NOT_FOUND', 'SOURCE_MISSING', 'REFERENCE_MISSING', 'QUOTE_MISMATCH', 'QUOTE_STALE', 'QUOTE_EXPIRED', 'RATE_LIMITED', 'DESIGN_UNAVAILABLE', 'QUOTE_NOT_CONFIGURED', 'UNAUTHENTICATED']);
 
 export async function runDesign(input: RunInput): Promise<RunResult> {
   const pollMs = input.pollMs ?? 2500;
@@ -114,6 +117,7 @@ export async function runDesign(input: RunInput): Promise<RunResult> {
     const { reply, status } = await askSpec({
       projectId: input.projectId, versionId: input.versionId, mode: input.mode, idempotencyKey: input.key, durable: true,
       look: input.look, preferences: input.preferences, roomId: input.roomId ?? null, parentRenderId: input.parentRenderId ?? null,
+      ...(input.mode === 'ROOM' && input.referenceRenderIds?.length ? { referenceRenderIds: input.referenceRenderIds } : {}),
       change: input.change ?? null, retry, then: quoteToken ? { quoteToken, versionName: input.versionName } : undefined,
     });
     retry = false; // one explicit retry per tap; later asks only watch

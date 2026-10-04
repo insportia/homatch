@@ -50,6 +50,11 @@ export function decodeRgba(bytes: Uint8Array): RgbaOutcome {
   }
 }
 
+/** RGBA → JPEG (a photograph's own format: far smaller and cheaper to encode than PNG). */
+export function encodeJpeg(rgba: Uint8Array, width: number, height: number, quality = 92): Uint8Array {
+  return new Uint8Array(jpeg.encode({ data: rgba, width, height }, quality).data);
+}
+
 export function encodePng(rgba: Uint8Array, width: number, height: number): Uint8Array {
   return encodePngRaw({ width, height, data: rgba, channels: 4, depth: 8 });
 }

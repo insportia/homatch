@@ -123,7 +123,7 @@ export const COMPONENTS = {
     paths: [
       /^src\/(pages|components|lib|services)\/designStudio\//, /^src\/share\//, fn('design-studio-[a-z-]+'),
       /^scripts\/design-studio\//, /^scripts\/build-scene-assets\.mjs$/, /^\.github\/workflows\/design-studio-[^/]+\.ya?ml$/,
-      /^tests\/browser\/designStudio\.qa\.mjs$/,
+      /^tests\/browser\/(designStudio|planToHome)\.qa\.mjs$/,
     ],
     suites: [],
     proofs: ['Design Studio: edge function PROVEN_EXACT; RLS on ds_* tables verified in production'],
@@ -241,7 +241,7 @@ export const DB_OBJECT_OWNERS = [
    whose screens render those keys. Any key outside these prefixes (or a
    structural edit) reaches every screen. */
 export const I18N_KEY_OWNERS = [
-  [/^ds_/, 'DESIGN_STUDIO'],
+  [/^dsx?_/, 'DESIGN_STUDIO'],
   [/^(mm|mads|madsb)_/, 'META_ADS'],
   [/^studio_/, 'SITE_STUDIO'],
   [/^(dev|co)_/, 'DEVELOPER'],

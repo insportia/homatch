@@ -4,10 +4,15 @@
 // customer may close the page at any step and come back to it finished. The
 // steps shown are the server's own states, never a percentage. Asking twice
 // (a double click, a second tab) is the same walkthrough.
+//
+// It starts from what the project already has: a floor-plan design at once; a
+// photo design on the project's floor plan, if it has one. Only when the
+// project truly lacks it does the panel say exactly what is missing (the
+// walls, the doors, the room sizes) and offer to add the plan (onAddPlan).
 
 import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, Check, Loader2, RotateCcw } from 'lucide-react';
+import { Box, Check, Loader2, Map as MapIcon, RotateCcw } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { PROGRESS_STEPS, type ProgressStep } from '@/lib/designStudio/walkthrough/lifecycle';
@@ -25,7 +30,14 @@ const STEP_KEY: Record<ProgressStep, string> = {
 const POLL_MS = 5000;
 const working = (w: Walkthrough | null) => !!w && w.state !== 'READY' && w.state !== 'FAILED' && w.state !== 'CANCELLED';
 
-export function WalkthroughPanel({ projectId, designVersionId, renderId }: { projectId: string; designVersionId: string; renderId: string | null }) {
+/** What a photo design lacks for a walk (the server's `missing`), in the customer's words. */
+const MISSING = ['dsx_walk_missing_WALLS', 'dsx_walk_missing_DOORS', 'dsx_walk_missing_ROOM_SIZES'] as const;
+
+export function WalkthroughPanel({ projectId, designVersionId, renderId, onAddPlan }: {
+  projectId: string; designVersionId: string; renderId: string | null;
+  /** A photo design: where the floor plan is added, when the project has none. */
+  onAddPlan?: () => void;
+}) {
   const { t } = useLanguage();
   const navigate = useNavigate();
   const [walk, setWalk] = useState<Walkthrough | null>(null);
@@ -34,6 +46,9 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId }: { pro
   const [asking, setAsking] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
+  const [needsPlan, setNeedsPlan] = useState(false);
+  // One request per tap: a second tap before the first answer is the same tap.
+  const inFlight = useRef(false);
   const alive = useRef(true);
   useEffect(() => () => { alive.current = false; }, []);
 
@@ -54,13 +69,16 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId }: { pro
   }, [walk?.id, walk?.state, read]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const start = async (newRevision = false) => {
-    if (asking) return;
+    if (asking || inFlight.current) return;
+    inFlight.current = true;
     setAsking(true); setProblem(null);
     const revision = newRevision ? (history[0]?.revision ?? walk?.revision ?? 0) + 1 : (walk?.revision ?? 1);
-    const r = await createWalkthrough({ designVersionId, renderId, newRevision, name: t('dsx_walk_version_name', { n: String(revision) }) });
+    const r = await createWalkthrough({ designVersionId, renderId, newRevision, name: t('dsx_walk_version_name', { n: String(revision) }) }).finally(() => { inFlight.current = false; });
     if (!alive.current) return;
     setAsking(false);
-    if (r.walkthrough) { setWalk(r.walkthrough); void read(r.walkthrough.id); } else setProblem(t('dsx_walk_unavailable'));
+    if (r.walkthrough) { setNeedsPlan(false); setWalk(r.walkthrough); void read(r.walkthrough.id); }
+    else if (r.error === 'WALKTHROUGH_NEEDS_FLOOR_PLAN') setNeedsPlan(true);
+    else setProblem(t('dsx_walk_unavailable'));
   };
   const retry = async () => {
     if (!walk || asking) return;
@@ -87,7 +105,19 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId }: { pro
 
       {problem ? <p role="alert" className="mt-3 rounded-2xl bg-[hsl(0_66%_44%)]/10 px-4 py-3 text-[14px] text-[hsl(0_66%_34%)]">{problem}</p> : null}
 
-      {!walk ? (
+      {!walk && needsPlan ? (
+        <div className="mt-4 rounded-2xl bg-[#F7F4EF] p-4" role="status" data-testid="walk-needs-plan">
+          <p className="text-[15px] font-semibold">{t('dsx_walk_needs_title')}</p>
+          <p className="mt-1 text-[14px] leading-relaxed text-[#4A5263]">{t('dsx_walk_needs_body')}</p>
+          <ul className="mt-2 space-y-1" data-testid="walk-missing">
+            {MISSING.map((m) => <li key={m} className="flex items-center gap-2 text-[14px] font-medium"><span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(38_92%_56%)]" aria-hidden="true" />{t(m)}</li>)}
+          </ul>
+          <p className="mt-2 text-[13px] leading-relaxed text-[#5B6472]">{t('dsx_walk_needs_hint')}</p>
+          {onAddPlan ? (
+            <button type="button" onClick={onAddPlan} className={cn(DARK, 'mt-3 w-full sm:w-auto')} data-testid="walk-add-plan"><MapIcon className="h-4 w-4" aria-hidden="true" />{t('dsx_walk_needs_cta')}</button>
+          ) : null}
+        </div>
+      ) : !walk ? (
         <button type="button" onClick={() => { void start(false); }} disabled={asking} className={cn(DARK, 'mt-4')} data-testid="walk-create">
           {asking ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}{t('dsx_walk_create')}
         </button>

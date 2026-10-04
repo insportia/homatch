@@ -394,15 +394,23 @@ export interface VisualQa {
  * the render is the catalogue's furniture in Blender light, never the photoreal picture, so style, colour and
  * light are reported, not judged. Codes in FIDELITY_CODES order; ok when none.
  */
-export function visualVerdict(qa: VisualQa): { ok: boolean; code: FidelityCode | null; codes: FidelityCode[]; missingHigh: number } {
+export function visualVerdict(qa: VisualQa): { ok: boolean; reliable: boolean; code: FidelityCode | null; codes: FidelityCode[]; missingHigh: number } {
   const d = qa.scores.dimensions ?? {};
   const dim = (k: string, fallback: number) => (typeof d[k] === 'number' ? d[k] as number : fallback);
   const missingHigh = qa.errors.filter((e) => e.code === 'objectMissing' && e.severity === 'HIGH' && e.confidence >= 0.6).length;
+  // The render's viewpoint is HOMATCH's own estimate of the picture's camera (an AI picture has none). Seen from
+  // somewhere else, the two pictures cannot be compared piece by piece: such a check is recorded as UNRELIABLE and
+  // never fails a walkthrough — a wrong guess of ours is not a wrong walkthrough.
+  const reliable = dim('camera', 10) >= VISUAL_CAMERA_MIN;
   const codes: FidelityCode[] = [];
-  if (missingHigh >= 3 && dim('inventory', qa.scores.furniture) <= 3) codes.push('REFERENCE_OBJECT_MISSING');
-  if (qa.scores.layout <= 3 && dim('placement', qa.scores.layout) <= 3) codes.push('REFERENCE_LAYOUT_MISMATCH');
-  if (dim('scale', 10) <= 2) codes.push('REFERENCE_SCALE_MISMATCH');
-  if (dim('camera', 10) <= 2 && qa.scores.layout <= 4) codes.push('REFERENCE_CAMERA_MISMATCH');
+  if (reliable) {
+    if (missingHigh >= 3 && dim('inventory', qa.scores.furniture) <= 3) codes.push('REFERENCE_OBJECT_MISSING');
+    if (qa.scores.layout <= 3 && dim('placement', qa.scores.layout) <= 3) codes.push('REFERENCE_LAYOUT_MISMATCH');
+    if (dim('scale', 10) <= 2) codes.push('REFERENCE_SCALE_MISMATCH');
+  }
   const ordered = FIDELITY_CODES.filter((c) => codes.includes(c));
-  return { ok: !ordered.length, code: ordered[0] ?? null, codes: ordered, missingHigh };
+  return { ok: !ordered.length, reliable, code: ordered[0] ?? null, codes: ordered, missingHigh };
 }
+
+/** The viewpoint score (0..10) under which the visual comparison is not a comparison of the same view. */
+export const VISUAL_CAMERA_MIN = 5;

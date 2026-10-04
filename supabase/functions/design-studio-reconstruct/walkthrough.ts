@@ -524,12 +524,19 @@ export async function handleWalkthroughRetry(req: Request): Promise<Response> {
   // a finished one is processed again; only a job proven dead is replaced.
   const patch: Row = { error: null, lease_at: null, next_check_at: iso(Date.now()), attempts: 0, updated_at: iso(Date.now()), timings: { ...row.timings, manualRetries: (row.timings?.manualRetries ?? 0) + 1, retriedAt: iso(Date.now()) } };
   // A walkthrough judged unlike its picture is planned again (told what failed), never re-judged unchanged.
-  const unlike = typeof row.error === 'string' && (row.error.startsWith('REFERENCE_') || row.error === 'OVERFURNISHED' || row.error === 'UNDERFURNISHED') && !!row.render_id;
+  // A walkthrough built and then judged unlike its picture by the visual check is judged again (the build is kept):
+  // the rules of that check may have changed since; a new plan is not needed to look again.
+  const visualOnly = row.plan_report?.visualQa?.state === 'FAILED' && row.scene_plan && row.walk_version_id && row.factory_job_id;
+  const unlike = !visualOnly && typeof row.error === 'string' && (row.error.startsWith('REFERENCE_') || row.error === 'OVERFURNISHED' || row.error === 'UNDERFURNISHED') && !!row.render_id;
   if (unlike) {
     Object.assign(patch, {
       state: 'QUEUED', plan_attempts: 0, scene_plan: null, walk_version_id: null, factory_job_id: null, provider_job_id: null, submit_attempts: 0, result_attempts: 0,
       timings: { ...patch.timings, replan: { attempt: (Number(row.timings?.replan?.attempt) || 0) + 1, codes: [row.error], feedback: Array.isArray(row.timings?.lastFindings) ? row.timings.lastFindings.slice(0, 12) : [row.error], at: iso(Date.now()) } },
     });
+  } else if (visualOnly) {
+    const { data: job } = await admin.from('ds_factory_jobs').select('id, state').eq('id', row.factory_job_id).maybeSingle();
+    if (job?.state === 'COMPLETED') Object.assign(patch, { state: 'PROCESSING_RESULT', result_attempts: 0 });
+    else Object.assign(patch, { state: 'PLANNING', factory_job_id: null, provider_job_id: null, submit_attempts: 0, result_attempts: 0 });
   } else if (row.scene_plan && row.walk_version_id) {
     const { data: job } = row.factory_job_id ? await admin.from('ds_factory_jobs').select('id, state').eq('id', row.factory_job_id).maybeSingle() : { data: null };
     if (job?.state === 'COMPLETED') Object.assign(patch, { state: 'PROCESSING_RESULT', result_attempts: 0 });
@@ -1092,7 +1099,7 @@ async function referenceViewQa(admin: Row, row: Row, render: Row | null, state: 
   for (const e of qa.errors) byCode[e.code] = (byCode[e.code] ?? 0) + 1;
   return {
     summary: {
-      state: verdict.ok ? 'PASSED' : 'FAILED', code: verdict.code, codes: verdict.codes, missingHigh: verdict.missingHigh,
+      state: !verdict.reliable ? 'UNRELIABLE' : verdict.ok ? 'PASSED' : 'FAILED', code: verdict.code, codes: verdict.codes, missingHigh: verdict.missingHigh,
       scores: qa.scores, errors: byCode, renderAssetId: render.assetId ?? null, renderSha256: render.sha256 ?? null, model: QA_MODEL, ms: Date.now() - started,
     },
     costLine,

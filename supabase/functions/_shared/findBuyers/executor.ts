@@ -11,6 +11,10 @@ import { buildInput, STAGE_OUTPUT, STAGE_NETWORK, type Stage } from '../../../..
 import { normalizeDataset } from '../../../../src/research-core/findBuyers/normalize.ts';
 import { decideArm, armPriority, parseSampling, type ArmStats } from '../../../../src/research-core/findBuyers/allocator.ts';
 import { queryHash } from '../../../../src/research-core/findBuyers/queryPlanner.ts';
+import { sinceFloor } from '../../../../src/research-core/findBuyers/freshness.ts';
+
+/* Stages whose Actor accepts a date floor: never ask for content older than 30 days. */
+const DATE_STAGES: ReadonlySet<string> = new Set(['FB_GROUP_POSTS', 'IG_PROFILE_POSTS', 'VK_WALL', 'TELEGRAM_CHANNEL', 'BLUESKY_SEARCH', 'X_PROFILE', 'THREADS_PROFILE']);
 import { abortRun, datasetItems, getRun, Memo23Error, runCost, startRun, TERMINAL_RUN_STATES, scrub } from './memo23Client.ts';
 import { processItems, type CampaignRow, type ParentContext, type FollowUp } from './pipeline.ts';
 import { campaignStats, insertQueueRows, loadFindBuyersSettings, socialJobRow, type FindBuyersSettings } from './campaign.ts';
@@ -84,33 +88,65 @@ async function start(db: any, job: any, campaign: any, settings: FindBuyersSetti
   if (reservation.replay) {
     const { data: existing } = await db.from('find_buyers_actor_runs').select('provider_run_id,dataset_id,status').eq('id', runId).maybeSingle();
     if (existing?.provider_run_id) return out({ outcome: 'WAIT', retrySeconds: 5, metadata: { actorRunId: runId, providerRunId: existing.provider_run_id, datasetId: existing.dataset_id } });
+    if (existing?.status === 'STARTING') {
+      /* A previous attempt died during the provider call: the run may exist at
+         Apify but its id is lost. Book the reservation as UNKNOWN cost
+         (never zero) and stop this job rather than start a second run. */
+      await db.rpc('find_buyers_book_run_cost', {
+        p_run_id: runId, p_status: 'ABORTED', p_actual_micros: null, p_cost_basis: 'UNKNOWN', p_results_billed: null,
+        p_items_fetched: 0, p_error: 'START_INTERRUPTED: provider run id unknown', p_billing: {},
+      });
+      return out({ outcome: 'FAILED', error: 'START_INTERRUPTED' });
+    }
     if (existing && existing.status !== 'RESERVED') return out({ outcome: 'FAILED', error: `RUN_${existing.status}` });
   }
 
   /* Incremental reading: only content newer than the source's last check (≤30 days). */
-  let since: string | null = null;
-  if (meta.sourceId && ['FB_GROUP_POSTS', 'IG_PROFILE_POSTS', 'VK_WALL', 'TELEGRAM_CHANNEL'].includes(stage)) {
+  /* 30-day floor always; tighter (since the last check, minus 6 h overlap) for a known source. */
+  let since: string | null = DATE_STAGES.has(stage) ? sinceFloor() : null;
+  if (since && meta.sourceId) {
     const { data: src } = await db.from('source_registry').select('last_checked_at').eq('id', meta.sourceId).maybeSingle();
-    const floor = Date.now() - 30 * 86_400_000;
-    const last = src?.last_checked_at ? Date.parse(src.last_checked_at) - 6 * 3_600_000 : floor;
-    since = new Date(Math.max(floor, last)).toISOString();
+    const last = src?.last_checked_at ? Date.parse(src.last_checked_at) - 6 * 3_600_000 : 0;
+    since = new Date(Math.max(Date.parse(since), last)).toISOString();
   }
   const limit = Number(reservation.requestedLimit);
   const { input, dropped } = buildInput(stage, { query: meta.query ?? null, targetUrl: meta.targetUrl ?? null, size: limit, since }, actor.input_contract ?? null);
+  /* STARTING before the provider call, and only from RESERVED and unbooked:
+     a campaign that ended meanwhile has already released this reservation. */
+  const { data: starting } = await db.from('find_buyers_actor_runs').update({ status: 'STARTING' })
+    .eq('id', runId).eq('status', 'RESERVED').is('cost_booked_at', null).select('id');
+  if (!Array.isArray(starting) || starting.length !== 1) return out({ outcome: 'CANCELLED', error: 'RESERVATION_NO_LONGER_OPEN' });
   try {
     const started = await startRun(actor.actor_id, input, {
       maxItems: limit,
       maxTotalChargeUsd: Number(reservation.reservedMicros) / 1_000_000,
       timeoutSeconds: Number(actor.timeout_seconds),
     });
-    await db.from('find_buyers_actor_runs').update({
+    const { data: marked } = await db.from('find_buyers_actor_runs').update({
       status: 'RUNNING', provider_run_id: started.runId, dataset_id: started.datasetId, started_at: new Date().toISOString(),
       reason: { arm: meta.arm, reason: meta.reason, step: meta.step ?? 0, query: meta.query ?? null, targetUrl: meta.targetUrl ?? null, sourceId: meta.sourceId ?? null, droppedInputKeys: dropped, since },
-    }).eq('id', runId);
+    }).eq('id', runId).is('cost_booked_at', null).select('id');
+    if (!Array.isArray(marked) || marked.length !== 1) {
+      /* The campaign finished while the run was being created (its cost was
+         booked as UNKNOWN at the reservation): stop the provider run now. */
+      await abortRun(started.runId);
+      return out({ outcome: 'CANCELLED', error: 'CAMPAIGN_ENDED_DURING_START' });
+    }
     console.log(JSON.stringify({ fb: 'run_started', matchingJobId: job.matching_job_id, queueJobId: job.id, actorRunId: runId, providerRunId: started.runId, actor: actorKey, stage, language: job.language, tranche: meta.tranche ?? 0, attempt: retryCount + 1, limit, reservedMicros: reservation.reservedMicros, reason: meta.reason }));
     return out({ outcome: 'WAIT', retrySeconds: POLL_SECONDS, metadata: { actorRunId: runId, providerRunId: started.runId, datasetId: started.datasetId, actorKey } });
   } catch (error) {
     const e = error instanceof Memo23Error ? error : new Memo23Error(scrub(String(error)), 0, true);
+    /* The provider refused the start (an HTTP answer, so no run exists): back to
+       RESERVED, then release. A network error is ambiguous — booked UNKNOWN. */
+    if (e.status === 0) {
+      await db.rpc('find_buyers_book_run_cost', {
+        p_run_id: runId, p_status: 'ABORTED', p_actual_micros: null, p_cost_basis: 'UNKNOWN', p_results_billed: null,
+        p_items_fetched: 0, p_error: `START_AMBIGUOUS: ${e.message}`, p_billing: {},
+      });
+      await markActorHealth(db, actorKey, false, e.message, false);
+      return out({ outcome: 'FAILED', error: e.message });
+    }
+    await db.from('find_buyers_actor_runs').update({ status: 'RESERVED' }).eq('id', runId).eq('status', 'STARTING').is('cost_booked_at', null);
     await db.rpc('find_buyers_book_run_cost', {
       p_run_id: runId, p_status: 'RELEASED', p_actual_micros: 0, p_cost_basis: 'NOT_STARTED', p_results_billed: 0,
       p_items_fetched: 0, p_error: `START_FAILED: ${e.message}`, p_billing: {},
@@ -190,6 +226,7 @@ async function poll(db: any, job: any, campaign: any, settings: FindBuyersSettin
 
   await db.from('find_buyers_actor_runs').update({
     items_fetched: items.length, useful_results: result.useful, qualified_leads: result.qualified, strong_leads: result.strong,
+    stale_dropped: result.staleDropped,
   }).eq('id', run.id);
   if (meta.sourceId) {
     const { data: src } = await db.from('source_registry').select('posts_observed,fb_spend_micros,fb_qualified_leads,fb_strong_leads').eq('id', meta.sourceId).maybeSingle();
@@ -203,7 +240,7 @@ async function poll(db: any, job: any, campaign: any, settings: FindBuyersSettin
       ...(result.qualified > 0 ? { last_useful_at: new Date().toISOString() } : {}),
     }).eq('id', meta.sourceId);
   }
-  if (meta.query && ['FB_GROUP_SEARCH', 'TIKTOK_SEARCH', 'LINKEDIN_POSTS', 'LINKEDIN_GROUPS', 'VK_WALL'].includes(stage)) {
+  if (meta.query && ['FB_GROUP_SEARCH', 'TIKTOK_SEARCH', 'LINKEDIN_POSTS', 'LINKEDIN_GROUPS', 'VK_WALL', 'REDDIT_SEARCH', 'QUORA_SEARCH', 'BLUESKY_SEARCH'].includes(stage)) {
     await bumpQueryStats(db, network, job.language ?? 'multi', String(meta.query), Number(costMicros || 0), normalized.length, result);
   }
 
@@ -217,7 +254,7 @@ async function poll(db: any, job: any, campaign: any, settings: FindBuyersSettin
   console.log(JSON.stringify({
     fb: 'run_processed', matchingJobId: job.matching_job_id, queueJobId: job.id, actorRunId: run.id, providerRunId: run.provider_run_id,
     actor: run.actor_key, stage, status, billed, costMicros, items: normalized.length, useful: result.useful, qualified: result.qualified,
-    strong: result.strong, duplicates: result.duplicates, reused: result.reused, followUps: followRows.length,
+    strong: result.strong, duplicates: result.duplicates, reused: result.reused, staleDropped: result.staleDropped, followUps: followRows.length,
     armDecision: deepen?.decision ?? null, queued,
   }));
 
@@ -266,6 +303,7 @@ async function bumpQueryStats(db: any, source: string, language: string, query: 
 
 const FOLLOW_STAGE_ACTOR: Partial<Record<Stage, string>> = {
   FB_GROUP_POSTS: 'FB_GROUP_POSTS', FB_COMMENTS: 'FB_COMMENTS', IG_COMMENTS: 'IG_COMMENTS', TIKTOK_COMMENTS: 'TIKTOK',
+  REDDIT_COMMENTS: 'REDDIT', YOUTUBE_COMMENTS: 'YOUTUBE_COMMENTS',
 };
 
 async function followUpRows(db: any, job: any, campaign: any, followUps: FollowUp[], settings: FindBuyersSettings) {

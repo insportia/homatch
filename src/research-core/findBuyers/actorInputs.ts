@@ -14,7 +14,15 @@ export type Stage =
   | 'TIKTOK_SEARCH' | 'TIKTOK_COMMENTS'
   | 'VK_WALL'
   | 'TELEGRAM_CHANNEL'
-  | 'LINKEDIN_GROUPS' | 'LINKEDIN_POSTS';
+  | 'LINKEDIN_GROUPS' | 'LINKEDIN_POSTS'
+  | 'REDDIT_SEARCH' | 'REDDIT_COMMENTS'
+  | 'QUORA_SEARCH'
+  | 'BLUESKY_SEARCH'
+  | 'X_PROFILE' | 'THREADS_PROFILE'
+  | 'YOUTUBE_COMMENTS';
+
+export type Network = 'FACEBOOK' | 'INSTAGRAM' | 'TIKTOK' | 'VK' | 'TELEGRAM' | 'LINKEDIN'
+  | 'REDDIT' | 'QUORA' | 'X' | 'THREADS' | 'BLUESKY' | 'YOUTUBE';
 
 export const STAGE_ACTOR: Readonly<Record<Stage, string>> = {
   FB_GROUP_SEARCH: 'FB_GROUP_SEARCH',
@@ -28,6 +36,13 @@ export const STAGE_ACTOR: Readonly<Record<Stage, string>> = {
   TELEGRAM_CHANNEL: 'TELEGRAM_CHANNEL',
   LINKEDIN_GROUPS: 'LINKEDIN_GROUPS',
   LINKEDIN_POSTS: 'LINKEDIN_POSTS',
+  REDDIT_SEARCH: 'REDDIT',
+  REDDIT_COMMENTS: 'REDDIT',
+  QUORA_SEARCH: 'QUORA',
+  BLUESKY_SEARCH: 'BLUESKY',
+  X_PROFILE: 'X_PROFILE',
+  THREADS_PROFILE: 'THREADS_PROFILE',
+  YOUTUBE_COMMENTS: 'YOUTUBE_COMMENTS',
 };
 
 /** What the normalizer should expect from a stage. */
@@ -37,14 +52,18 @@ export const STAGE_OUTPUT: Readonly<Record<Stage, 'GROUP_SEARCH' | 'POSTS' | 'CO
   TIKTOK_SEARCH: 'POSTS', TIKTOK_COMMENTS: 'COMMENTS',
   VK_WALL: 'POSTS', TELEGRAM_CHANNEL: 'POSTS',
   LINKEDIN_GROUPS: 'GROUP_SEARCH', LINKEDIN_POSTS: 'POSTS',
+  REDDIT_SEARCH: 'POSTS', REDDIT_COMMENTS: 'COMMENTS', QUORA_SEARCH: 'POSTS', BLUESKY_SEARCH: 'POSTS',
+  X_PROFILE: 'POSTS', THREADS_PROFILE: 'POSTS', YOUTUBE_COMMENTS: 'COMMENTS',
 };
 
-export const STAGE_NETWORK: Readonly<Record<Stage, 'FACEBOOK' | 'INSTAGRAM' | 'TIKTOK' | 'VK' | 'TELEGRAM' | 'LINKEDIN'>> = {
+export const STAGE_NETWORK: Readonly<Record<Stage, Network>> = {
   FB_GROUP_SEARCH: 'FACEBOOK', FB_GROUP_POSTS: 'FACEBOOK', FB_COMMENTS: 'FACEBOOK',
   IG_PROFILE_POSTS: 'INSTAGRAM', IG_COMMENTS: 'INSTAGRAM',
   TIKTOK_SEARCH: 'TIKTOK', TIKTOK_COMMENTS: 'TIKTOK',
   VK_WALL: 'VK', TELEGRAM_CHANNEL: 'TELEGRAM',
   LINKEDIN_GROUPS: 'LINKEDIN', LINKEDIN_POSTS: 'LINKEDIN',
+  REDDIT_SEARCH: 'REDDIT', REDDIT_COMMENTS: 'REDDIT', QUORA_SEARCH: 'QUORA', BLUESKY_SEARCH: 'BLUESKY',
+  X_PROFILE: 'X', THREADS_PROFILE: 'THREADS', YOUTUBE_COMMENTS: 'YOUTUBE',
 };
 
 export interface StageParams {
@@ -84,6 +103,21 @@ export function defaultInput(stage: Stage, p: StageParams): Record<string, unkno
       return { startUrls: urls(`https://www.linkedin.com/search/results/groups/?keywords=${encodeURIComponent(q)}`), maxItems: p.size };
     case 'LINKEDIN_POSTS':
       return { searchQueries: [q], maxItems: p.size };
+    /* Reddit: site-wide keyword search over the last month, posts only; comments
+       are a separate, gated stage for qualifying posts. */
+    case 'REDDIT_SEARCH':
+      return { searches: [q], sort: 'new', time: 'month', includeComments: false, maxItems: p.size };
+    case 'REDDIT_COMMENTS':
+      return { startUrls: urls(p.targetUrl), includeComments: true, maxComments: p.size, maxItems: p.size };
+    case 'QUORA_SEARCH':
+      return { searchQueries: [q], maxItems: p.size };
+    case 'BLUESKY_SEARCH':
+      return { searchTerms: [q], sort: 'latest', maxItems: p.size, ...(p.since ? { since: p.since } : {}) };
+    case 'X_PROFILE':
+    case 'THREADS_PROFILE':
+      return { startUrls: urls(p.targetUrl), maxItems: p.size, ...(p.since ? { onlyPostsNewerThan: p.since } : {}) };
+    case 'YOUTUBE_COMMENTS':
+      return { startUrls: urls(p.targetUrl), maxComments: p.size, maxItems: p.size };
   }
 }
 

@@ -24,6 +24,7 @@ import { scoreLead, type LeadSignal } from '../../../../src/research-core/findBu
 import { detectLanguage } from '../../../../src/research-core/findBuyers/languages.ts';
 import { buildWhy, type WhyMatched } from '../../../../src/research-core/findBuyers/explain.ts';
 import { cityMentioned, mentionsPlace } from '../../../../src/research-core/findBuyers/places.ts';
+import { judgeFreshness, MAX_SIGNAL_AGE_DAYS } from '../../../../src/research-core/findBuyers/freshness.ts';
 import { openAiJson, recordAiCost, type PriceBook } from './openai.ts';
 
 export interface CampaignRow {
@@ -44,6 +45,8 @@ export interface ParentContext {
   excerpt: string | null;
   facts: TextFacts | null;
   ageDays: number | null;
+  /** The parent's own date: bounds the age of an undated comment under it. */
+  publishedAt?: string | null;
 }
 
 export interface FollowUp {
@@ -81,6 +84,8 @@ export interface PipelineResult {
   strong: number;
   duplicates: number;
   reused: number;
+  /** Older than 30 days, undated or badly dated: dropped before persistence. */
+  staleDropped: number;
   groupsFound: number;
   followUps: FollowUp[];
   aiCalls: number;
@@ -92,7 +97,7 @@ const ageDaysOf = (iso: string | null, now: number) => (iso ? Math.max(0, (now -
 const clip = (s: string | null | undefined, n: number) => (s ? (s.length > n ? `${s.slice(0, n - 1)}…` : s) : null);
 
 export async function processItems(ctx: PipelineCtx, items: NormalizedItem[]): Promise<PipelineResult> {
-  const out: PipelineResult = { items: items.length, useful: 0, qualified: 0, strong: 0, duplicates: 0, reused: 0, groupsFound: 0, followUps: [], aiCalls: 0 };
+  const out: PipelineResult = { items: items.length, useful: 0, qualified: 0, strong: 0, duplicates: 0, reused: 0, staleDropped: 0, groupsFound: 0, followUps: [], aiCalls: 0 };
   if (!items.length) return out;
   const groups = items.filter((i) => i.kind === 'GROUP');
   if (groups.length) await processGroups(ctx, groups, out);
@@ -183,12 +188,23 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
   const now = ctx.now ?? Date.now();
   const network = STAGE_NETWORK[ctx.stage];
 
-  /* Flatten inline comments (VK delivers them inside the post). */
-  const flat: Array<{ item: NormalizedItem; inlineParent: NormalizedItem | null }> = [];
+  /* Flatten inline comments (VK/Quora deliver them inside the post), then the
+     30-DAY RULE: nothing older than 30 days, undated or badly dated is stored,
+     classified or scored. An undated comment survives only under a fresh,
+     dated parent (it cannot be older than what it answers). */
+  const flat: Array<{ item: NormalizedItem; inlineParent: NormalizedItem | null; ageDays: number | null }> = [];
   for (const it of items) {
-    flat.push({ item: it, inlineParent: null });
-    for (const c of it.inlineComments) flat.push({ item: c, inlineParent: it });
+    const postVerdict = judgeFreshness(it, ctx.parent?.publishedAt ?? null, { now, maxDays: MAX_SIGNAL_AGE_DAYS });
+    if (postVerdict.keep) flat.push({ item: it, inlineParent: null, ageDays: postVerdict.ageDays });
+    else out.staleDropped++;
+    for (const c of it.inlineComments) {
+      /* A stale post's comments are judged on their own dates only. */
+      const v = judgeFreshness(c, postVerdict.keep ? it.publishedAt : null, { now, maxDays: MAX_SIGNAL_AGE_DAYS });
+      if (v.keep) flat.push({ item: c, inlineParent: postVerdict.keep ? it : null, ageDays: v.ageDays });
+      else out.staleDropped++;
+    }
   }
+  if (!flat.length) return;
   const extId = (i: NormalizedItem) => `m23:${i.externalId}`.slice(0, 500);
 
   /* What HOMATCH already knows (content reuse, no reclassification). */
@@ -235,7 +251,7 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
 
   const assessed: Assessed[] = [];
   const postCtx = new Map<string, ParentContext>();
-  for (const { item, inlineParent } of flat) {
+  for (const { item, inlineParent, ageDays: freshAge } of flat) {
     const signalId = idMap.get(extId(item));
     if (!signalId) continue;
     if (doneSet.has(signalId)) { out.duplicates++; continue; }
@@ -243,7 +259,7 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
     const prior = knownMap.get(extId(item));
     if (prior && prior.content_fingerprint === fingerprint) out.reused++;
     const facts = extractTextFacts(item.text);
-    const ageDays = ageDaysOf(item.publishedAt, now);
+    const ageDays = ageDaysOf(item.publishedAt, now) ?? freshAge;
     let parent: ParentContext | null = null;
     if (item.kind === 'COMMENT') parent = inlineParent ? (postCtx.get(inlineParent.externalId) ?? null) : ctx.parent;
     const simResult = item.kind === 'COMMENT' && parent?.facts
@@ -253,7 +269,7 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
     if (item.kind === 'POST') {
       postCtx.set(item.externalId, {
         externalId: item.externalId, url: item.url, signalId, similarity, stance: facts.stance,
-        excerpt: clip(item.text, 300), facts, ageDays,
+        excerpt: clip(item.text, 300), facts, ageDays, publishedAt: item.publishedAt,
       });
     }
     const ictx: IntentContext = {
@@ -272,7 +288,7 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
       else verdict = classifyByRules(item.text, ictx);
     }
     let commentsDecision: string | null = null;
-    if (item.kind === 'POST' && facts.stance !== 'REQUEST' && ['FB_GROUP_POSTS', 'IG_PROFILE_POSTS', 'TIKTOK_SEARCH'].includes(ctx.stage)) {
+    if (item.kind === 'POST' && facts.stance !== 'REQUEST' && ['FB_GROUP_POSTS', 'IG_PROFILE_POSTS', 'TIKTOK_SEARCH', 'REDDIT_SEARCH'].includes(ctx.stage)) {
       commentsDecision = decideComments(similarity, { commentCount: item.engagement.comments, ageDays, sourceYield: ctx.sourceYield }, ctx.gate);
     }
     const why = buildWhy(item.kind === 'COMMENT' ? (REQUESTISH(verdict) ? 'COMMENT_REQUEST' : 'COMMENT_ON_SIMILAR') : 'REQUEST_POST',
@@ -340,7 +356,7 @@ async function processContent(ctx: PipelineCtx, items: NormalizedItem[], out: Pi
 
   /* Comments follow-ups for comparable posts, reusing stored comments first. */
   const commentsStage: Stage | null = ctx.stage === 'FB_GROUP_POSTS' ? 'FB_COMMENTS' : ctx.stage === 'IG_PROFILE_POSTS' ? 'IG_COMMENTS'
-    : ctx.stage === 'TIKTOK_SEARCH' ? 'TIKTOK_COMMENTS' : null;
+    : ctx.stage === 'TIKTOK_SEARCH' ? 'TIKTOK_COMMENTS' : ctx.stage === 'REDDIT_SEARCH' ? 'REDDIT_COMMENTS' : null;
   if (commentsStage) {
     const eligible = assessed
       .filter((a) => a.item.kind === 'POST' && (a.commentsDecision === 'FETCH' || a.commentsDecision === 'FETCH_JUSTIFIED') && a.item.url)
@@ -384,7 +400,10 @@ async function reuseStoredComments(ctx: PipelineCtx, parent: ParentContext, out:
   const { data } = await ctx.db.from('raw_signals')
     .select('external_id,original_text,source_url,author_public_name,author_public_url,published_at,parent_url')
     .eq('platform', network).eq('parent_external_id', `m23:${parent.externalId}`).eq('content_type', 'COMMENT')
-    .gte('last_seen_at', since).limit(200);
+    .gte('last_seen_at', since)
+    /* 30-day rule on reuse too: dated and fresh, or undated under this fresh parent. */
+    .or(`published_at.gte.${new Date((ctx.now ?? Date.now()) - MAX_SIGNAL_AGE_DAYS * DAY).toISOString()},published_at.is.null`)
+    .limit(200);
   const rows = (data ?? []) as any[];
   if (!rows.length) return false;
   const items: NormalizedItem[] = rows.map((r) => ({
@@ -394,9 +413,12 @@ async function reuseStoredComments(ctx: PipelineCtx, parent: ParentContext, out:
     text: r.original_text ?? '', publishedAt: r.published_at, engagement: { comments: null, likes: null, shares: null },
     group: null, inlineComments: [],
   }));
-  const sub = await processItems({ ...ctx, parent, stage: ctx.stage === 'FB_GROUP_POSTS' ? 'FB_COMMENTS' : ctx.stage }, items);
+  const commentStage: Stage = ctx.stage === 'FB_GROUP_POSTS' ? 'FB_COMMENTS' : ctx.stage === 'IG_PROFILE_POSTS' ? 'IG_COMMENTS'
+    : ctx.stage === 'TIKTOK_SEARCH' ? 'TIKTOK_COMMENTS' : ctx.stage === 'REDDIT_SEARCH' ? 'REDDIT_COMMENTS' : ctx.stage;
+  const sub = await processItems({ ...ctx, parent, stage: commentStage }, items);
   out.reused += items.length;
   out.qualified += sub.qualified; out.strong += sub.strong; out.duplicates += sub.duplicates; out.useful += sub.useful;
+  out.staleDropped += sub.staleDropped;
   return true;
 }
 

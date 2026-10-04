@@ -182,3 +182,50 @@ test('first tranche: registry reuse before rediscovery, native Telegram first, d
   const fallback = initialSocialJobs({ dna: SALE, plan, knownSources: known, enabledActors: enabled, nativeTelegramActive: false, now });
   assert.equal(fallback.filter((j) => j.stage === 'TELEGRAM_CHANNEL').length, 1, 'memo23 Telegram only as fallback');
 });
+
+import { judgeFreshness, sinceFloor, MAX_SIGNAL_AGE_DAYS } from '../findBuyers/freshness.ts';
+
+test('30-day rule: stale, undated and future-dated content never enters; undated comments only under a fresh parent', () => {
+  const now = Date.parse('2026-10-04T12:00:00Z');
+  const d = (days) => new Date(now - days * 864e5).toISOString();
+  assert.equal(MAX_SIGNAL_AGE_DAYS, 30);
+  assert.equal(judgeFreshness({ kind: 'POST', publishedAt: d(3) }, null, { now }).keep, true);
+  assert.equal(judgeFreshness({ kind: 'POST', publishedAt: d(30) }, null, { now }).keep, true, 'day 30 is still inside');
+  assert.equal(judgeFreshness({ kind: 'POST', publishedAt: d(31) }, null, { now }).reason, 'STALE');
+  assert.equal(judgeFreshness({ kind: 'POST', publishedAt: null }, null, { now }).reason, 'UNDATED');
+  assert.equal(judgeFreshness({ kind: 'POST', publishedAt: 'not a date' }, null, { now }).reason, 'INVALID_DATE');
+  assert.equal(judgeFreshness({ kind: 'POST', publishedAt: d(-3) }, null, { now }).reason, 'INVALID_DATE');
+  assert.equal(judgeFreshness({ kind: 'COMMENT', publishedAt: null }, d(5), { now }).reason, 'FRESH_BY_PARENT');
+  assert.equal(judgeFreshness({ kind: 'COMMENT', publishedAt: null }, d(45), { now }).keep, false);
+  assert.equal(judgeFreshness({ kind: 'COMMENT', publishedAt: null }, null, { now }).keep, false);
+  assert.equal(judgeFreshness({ kind: 'COMMENT', publishedAt: d(40) }, d(2), { now }).reason, 'STALE', 'an old comment is old whatever the parent');
+  assert.equal(judgeFreshness({ kind: 'GROUP', publishedAt: null }, null, { now }).keep, true, 'groups are sources, not demand');
+  assert.equal(sinceFloor(now), d(30));
+});
+
+test('Reddit, Quora and Bluesky shapes normalize with real permalinks, authors and dates', () => {
+  const reddit = normalizeDataset('POSTS', 'REDDIT', [{ id: 'abc', title: 'Moving to Tbilisi', selftext: 'Looking for a 2 bedroom flat to buy', permalink: '/r/tbilisi/comments/abc/moving/', author: 'nomad42', created_utc: 1759400000, num_comments: 7 }]);
+  assert.equal(reddit[0].url, 'https://www.reddit.com/r/tbilisi/comments/abc/moving/');
+  assert.equal(reddit[0].author.url, 'https://www.reddit.com/user/nomad42');
+  assert.match(reddit[0].text, /Moving to Tbilisi\nLooking for a 2 bedroom/);
+  assert.equal(reddit[0].engagement.comments, 7);
+  assert.ok(reddit[0].publishedAt);
+  const quora = normalizeDataset('POSTS', 'QUORA', [{ id: 'q1', title: 'Is it a good idea to buy an apartment in Batumi?', url: 'https://www.quora.com/Is-it-a-good-idea', createdAt: '2026-09-30T10:00:00Z', answers: [{ id: 'a1', text: 'I am looking too, DM me', author: { name: 'Ann', url: 'https://www.quora.com/profile/Ann' } }] }]);
+  assert.equal(quora[0].inlineComments.length, 1, 'answers ride with the question');
+  assert.equal(quora[0].inlineComments[0].author.url, 'https://www.quora.com/profile/Ann');
+  const sky = normalizeDataset('POSTS', 'BLUESKY', [{ uri: 'at://did:plc:x/app.bsky.feed.post/3kq', author: { handle: 'ana.bsky.social', displayName: 'Ana' }, record: { text: 'Looking to rent in Tbilisi', createdAt: '2026-10-01T09:00:00Z' }, replyCount: 2 }]);
+  assert.equal(sky[0].url, 'https://bsky.app/profile/ana.bsky.social/post/3kq');
+  assert.equal(sky[0].author.url, 'https://bsky.app/profile/ana.bsky.social');
+  assert.equal(sky[0].publishedAt, '2026-10-01T09:00:00.000Z');
+});
+
+test('Reddit, Quora and Bluesky are probed in their realistic languages when enabled', () => {
+  const plan = buildQueryPlan(SALE);
+  const jobs = initialSocialJobs({ dna: SALE, plan, knownSources: [], nativeTelegramActive: true,
+    enabledActors: { REDDIT: { probeSize: 20, priority: 55 }, QUORA: { probeSize: 10, priority: 35 }, BLUESKY: { probeSize: 15, priority: 30 } } });
+  assert.deepEqual(jobs.filter((j) => j.stage === 'REDDIT_SEARCH').map((j) => j.language), ['en', 'ru']);
+  assert.deepEqual(jobs.filter((j) => j.stage === 'QUORA_SEARCH').map((j) => j.language), ['en']);
+  assert.deepEqual(jobs.filter((j) => j.stage === 'BLUESKY_SEARCH').map((j) => j.language), ['en', 'ru', 'tr']);
+  const { input } = buildInput('REDDIT_SEARCH', { query: 'relocating to tbilisi', size: 20 }, null);
+  assert.equal(input.time, 'month', 'Reddit search asks for the last month only');
+});

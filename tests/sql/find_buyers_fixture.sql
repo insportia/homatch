@@ -7,3 +7,8 @@ create table public.source_registry (id uuid primary key default gen_random_uuid
 create table public.cost_events (id uuid primary key default gen_random_uuid(), provider public.cost_provider not null, operation_type text, source text, market text, request_id text, units numeric, cost_usd numeric, success boolean, cache_hit boolean, property_id uuid, signal_id uuid, timestamp timestamptz default now(), job_id uuid, discovery_job_id uuid, pricing_state text);
 create table public.usage_reservations (id uuid primary key default gen_random_uuid(), settled_credits numeric, status text);
 alter table public.discovery_query_queue add column if not exists processed_at timestamptz;
+
+-- Supabase's default privileges: every new table is fully granted to anon,
+-- authenticated and service_role. Without this the column-grant check would
+-- pass here and fail in production.
+alter default privileges in schema public grant all on tables to anon, authenticated, service_role;

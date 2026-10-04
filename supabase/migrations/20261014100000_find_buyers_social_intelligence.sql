@@ -27,8 +27,15 @@
 ------------------------------------------------------------------------------
 alter type public.signal_platform add value if not exists 'TIKTOK';
 alter type public.signal_platform add value if not exists 'LINKEDIN';
+alter type public.signal_platform add value if not exists 'REDDIT';
+alter type public.signal_platform add value if not exists 'QUORA';
+alter type public.signal_platform add value if not exists 'X';
+alter type public.signal_platform add value if not exists 'THREADS';
+alter type public.signal_platform add value if not exists 'BLUESKY';
+alter type public.signal_platform add value if not exists 'YOUTUBE';
 alter type public.source_type add value if not exists 'TIKTOK_SOURCE';
 alter type public.source_type add value if not exists 'LINKEDIN_GROUP';
+alter type public.source_type add value if not exists 'SOCIAL_PROFILE';
 
 ------------------------------------------------------------------------------
 -- 1. Actor registry — one row per memo23 Actor, admin-editable.
@@ -36,9 +43,9 @@ alter type public.source_type add value if not exists 'LINKEDIN_GROUP';
 create table if not exists public.find_buyers_actor_registry (
   actor_key text primary key,
   actor_id text not null,
-  source text not null check (source in ('FACEBOOK','INSTAGRAM','TIKTOK','VK','TELEGRAM','LINKEDIN')),
+  source text not null check (source in ('FACEBOOK','INSTAGRAM','TIKTOK','VK','TELEGRAM','LINKEDIN','REDDIT','QUORA','X','THREADS','BLUESKY','YOUTUBE')),
   purpose text not null check (purpose in (
-    'GROUP_SEARCH','GROUP_POSTS','COMMENTS','PROFILE_POSTS','SEARCH','POSTS','POSTS_AND_COMMENTS','CHANNEL_MESSAGES')),
+    'GROUP_SEARCH','GROUP_POSTS','COMMENTS','PROFILE_POSTS','SEARCH','POSTS','POSTS_AND_COMMENTS','CHANNEL_MESSAGES','QUESTIONS_AND_ANSWERS')),
   role text not null default 'PRIMARY' check (role in ('PRIMARY','FALLBACK')),
   enabled boolean not null default false,
   emergency_disabled boolean not null default false,
@@ -95,7 +102,19 @@ values
   ('LINKEDIN_GROUPS', 'memo23~linkedin-search-groups-scraper', 'LINKEDIN', 'GROUP_SEARCH', 'PRIMARY', 30, 'PAY_PER_RESULT', 800000,
    'store listing $0.80/1k; not verified', 10, 30, 'Group discovery only (no comment text)'),
   ('LINKEDIN_POSTS', 'memo23~linkedin-posts-scraper', 'LINKEDIN', 'POSTS', 'PRIMARY', 35, 'UNKNOWN', null,
-   'store listing; not verified', 10, 40, 'Public posts by keyword; comment COUNTS only')
+   'store listing; not verified', 10, 40, 'Public posts by keyword; comment COUNTS only'),
+  ('REDDIT', 'memo23~reddit-scraper', 'REDDIT', 'SEARCH', 'PRIMARY', 55, 'PAY_PER_RESULT', 500000,
+   'store listing from $0.50/1k; not verified', 20, 100, 'Site-wide keyword search (last month); comments only for qualifying posts'),
+  ('QUORA', 'memo23~quora-scraper', 'QUORA', 'QUESTIONS_AND_ANSWERS', 'PRIMARY', 35, 'PAY_PER_RESULT', 2000000,
+   'store listing from $2.00/1k; not verified', 10, 40, 'Questions by keyword with their answers'),
+  ('BLUESKY', 'memo23~bluesky-scraper', 'BLUESKY', 'SEARCH', 'PRIMARY', 30, 'UNKNOWN', null,
+   'store listing; not verified', 15, 60, 'Keyword search filtered by date'),
+  ('X_PROFILE', 'memo23~twitter-x-scraper', 'X', 'PROFILE_POSTS', 'PRIMARY', 30, 'UNKNOWN', null,
+   'store listing; not verified', 15, 60, 'Known public profiles from the registry (no search)'),
+  ('THREADS_PROFILE', 'memo23~threads-scraper', 'THREADS', 'PROFILE_POSTS', 'PRIMARY', 25, 'UNKNOWN', null,
+   'store listing; not verified', 15, 60, 'Known public profiles from the registry (no search)'),
+  ('YOUTUBE_COMMENTS', 'memo23~youtube-comments-scraper', 'YOUTUBE', 'COMMENTS', 'PRIMARY', 40, 'PAY_PER_RESULT', 400000,
+   'store listing $0.40/1k; not verified', 20, 100, 'Comments of known property videos from the registry')
 on conflict (actor_key) do nothing;
 
 ------------------------------------------------------------------------------
@@ -141,8 +160,10 @@ create table if not exists public.find_buyers_actor_runs (
   attempt integer not null default 1,
   retry_of uuid references public.find_buyers_actor_runs(id) on delete set null,
   requested_limit integer not null,
+  /* STARTING is written BEFORE the provider call: a run in STARTING may have
+     been created at the provider even if its id never came back. */
   status text not null default 'RESERVED' check (status in
-    ('RESERVED','RUNNING','SUCCEEDED','FAILED','ABORTED','TIMED_OUT','RELEASED')),
+    ('RESERVED','STARTING','RUNNING','SUCCEEDED','FAILED','ABORTED','TIMED_OUT','RELEASED')),
   reserved_micros bigint not null default 0 check (reserved_micros >= 0),
   estimated_micros bigint not null default 0 check (estimated_micros >= 0),
   actual_micros bigint check (actual_micros is null or actual_micros >= 0),
@@ -155,6 +176,8 @@ create table if not exists public.find_buyers_actor_runs (
   useful_results integer not null default 0,
   qualified_leads integer not null default 0,
   strong_leads integer not null default 0,
+  /* 30-day rule: items older than 30 days / undated, dropped before persistence. */
+  stale_dropped integer not null default 0,
   reason jsonb not null default '{}'::jsonb,
   provider_billing jsonb not null default '{}'::jsonb,
   error text,
@@ -166,7 +189,7 @@ create table if not exists public.find_buyers_actor_runs (
 );
 create index if not exists find_buyers_actor_runs_job_idx on public.find_buyers_actor_runs (matching_job_id, status);
 create index if not exists find_buyers_actor_runs_actor_day_idx on public.find_buyers_actor_runs (actor_key, created_at desc);
-create index if not exists find_buyers_actor_runs_open_idx on public.find_buyers_actor_runs (status) where status in ('RESERVED','RUNNING');
+create index if not exists find_buyers_actor_runs_open_idx on public.find_buyers_actor_runs (status) where status in ('RESERVED','STARTING','RUNNING');
 
 ------------------------------------------------------------------------------
 -- 4. Cost ledger — every attributable cent, provider and AI alike.
@@ -532,14 +555,21 @@ declare
   v_running integer;
   v_id uuid;
 begin
+  /* Locks in one fixed order — campaign, then actor — so concurrent reserves
+     for different campaigns serialise on the actor's caps too. */
+  select * into v_c from public.find_buyers_campaigns where matching_job_id = p_matching_job_id for update;
+  if not found then return jsonb_build_object('ok', false, 'reason', 'NO_CAMPAIGN'); end if;
+  perform 1 from public.find_buyers_actor_registry where actor_key = p_actor_key for update;
+
+  /* Replay check AFTER the locks: a concurrent twin waits, then replays. */
   select * into v_existing from public.find_buyers_actor_runs where idempotency_key = p_idempotency_key;
   if found then
+    if v_existing.matching_job_id <> p_matching_job_id then
+      return jsonb_build_object('ok', false, 'reason', 'IDEMPOTENCY_KEY_REUSED');
+    end if;
     return jsonb_build_object('ok', true, 'replay', true, 'runId', v_existing.id, 'status', v_existing.status,
                               'reservedMicros', v_existing.reserved_micros);
   end if;
-
-  select * into v_c from public.find_buyers_campaigns where matching_job_id = p_matching_job_id for update;
-  if not found then return jsonb_build_object('ok', false, 'reason', 'NO_CAMPAIGN'); end if;
   if v_c.finalized_at is not null then return jsonb_build_object('ok', false, 'reason', 'CAMPAIGN_FINALIZED'); end if;
 
   select coalesce((select (value #>> '{}')::boolean from public.admin_settings where key = 'find_buyers_social_enabled'), false)
@@ -562,7 +592,7 @@ begin
   v_estimate := v_a.start_fee_micros + ceil(v_limit::numeric * v_a.price_per_1k_micros / 1000)::bigint;
 
   select count(*) into v_running from public.find_buyers_actor_runs
-   where actor_key = p_actor_key and status in ('RESERVED', 'RUNNING');
+   where actor_key = p_actor_key and status in ('RESERVED', 'STARTING', 'RUNNING');
   if v_running >= v_a.concurrency then
     return jsonb_build_object('ok', false, 'reason', 'ACTOR_BUSY', 'retry', true);
   end if;
@@ -570,7 +600,7 @@ begin
   /* Committed = held reservations + booked actuals (+ the reservation of a
      run whose cost is still unknown: never treated as zero). */
   select coalesce(sum(case
-           when status in ('RESERVED', 'RUNNING') then reserved_micros
+           when status in ('RESERVED', 'STARTING', 'RUNNING') then reserved_micros
            when actual_micros is not null then actual_micros
            when status = 'RELEASED' then 0
            else reserved_micros end), 0)
@@ -580,7 +610,7 @@ begin
                               'estimateMicros', v_estimate, 'budgetMicros', v_c.provider_budget_micros);
   end if;
 
-  select coalesce(sum(case when status in ('RESERVED','RUNNING') then reserved_micros
+  select coalesce(sum(case when status in ('RESERVED','STARTING','RUNNING') then reserved_micros
                            when status = 'RELEASED' then 0
                            else coalesce(actual_micros, reserved_micros) end), 0)
     into v_actor_campaign from public.find_buyers_actor_runs
@@ -589,7 +619,7 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'ACTOR_CAMPAIGN_CAP');
   end if;
 
-  select coalesce(sum(case when status in ('RESERVED','RUNNING') then reserved_micros
+  select coalesce(sum(case when status in ('RESERVED','STARTING','RUNNING') then reserved_micros
                            when status = 'RELEASED' then 0
                            else coalesce(actual_micros, reserved_micros) end), 0)
     into v_actor_day from public.find_buyers_actor_runs
@@ -605,7 +635,7 @@ begin
     p_idempotency_key, p_matching_job_id, p_queue_job_id, v_a.actor_key, v_a.actor_id, v_a.source, p_operation,
     p_language, coalesce(p_tranche, 0), p_retry_of,
     case when p_retry_of is null then 1
-         else 1 + (select attempt from public.find_buyers_actor_runs where id = p_retry_of) end,
+         else 1 + coalesce((select attempt from public.find_buyers_actor_runs where id = p_retry_of), 0) end,
     v_limit, 'RESERVED', v_estimate, v_estimate, coalesce(p_reason, '{}'::jsonb))
   returning id into v_id;
 
@@ -657,6 +687,14 @@ begin
   if v_status not in ('SUCCEEDED', 'FAILED', 'ABORTED', 'TIMED_OUT', 'RELEASED') then
     raise exception 'BAD_STATUS %', v_status;
   end if;
+  /* RELEASED (cost 0) only for a run that never reached the provider: still
+     RESERVED, no provider run id. Anything that may have started is booked
+     with its real or UNKNOWN cost, never silently as zero. */
+  if v_status = 'RELEASED' and exists (
+    select 1 from public.find_buyers_actor_runs
+     where id = p_run_id and (status <> 'RESERVED' or provider_run_id is not null)) then
+    return jsonb_build_object('booked', false, 'reason', 'RELEASE_REFUSED_RUN_MAY_HAVE_STARTED');
+  end if;
   update public.find_buyers_actor_runs
      set status = v_status,
          actual_micros = case when v_status = 'RELEASED' then 0 else p_actual_micros end,
@@ -703,7 +741,7 @@ begin
   if v_status <> 'RELEASED' then
     insert into public.cost_events (provider, operation_type, source, market, request_id, units, cost_usd, success,
                                     cache_hit, property_id, job_id, pricing_state)
-    values ('APIFY', 'FIND_BUYERS_ACTOR_RUN', 'memo23:' || v_run.actor_key, 'GE', v_run.provider_run_id,
+    values ('APIFY_MEMO23', 'FIND_BUYERS_ACTOR_RUN', 'memo23:' || v_run.actor_key, 'GE', v_run.provider_run_id,
             coalesce(p_results_billed, 0), coalesce(v_amount, v_run.reserved_micros)::numeric / 1000000,
             v_status = 'SUCCEEDED', false,
             case when v_c.finalized_at is null then v_c.property_id else null end, v_run.matching_job_id,
@@ -753,7 +791,8 @@ begin
   values (
     p_idempotency_key, case when v_c.matching_job_id is not null then p_matching_job_id end, v_c.property_id,
     upper(p_kind), 'OPENAI', p_operation, p_model, p_input_tokens, p_output_tokens,
-    greatest(0, coalesce(p_micros, 0)), greatest(0, coalesce(p_micros, 0)), 'ESTIMATED', 'TOKENS_X_PRICE_BOOK',
+    greatest(0, coalesce(p_micros, 0)), case when p_micros is null then null else greatest(0, p_micros) end,
+    case when p_micros is null then 'UNKNOWN' else 'ESTIMATED' end, 'TOKENS_X_PRICE_BOOK',
     v_c.finalized_at is not null, coalesce(p_metadata, '{}'::jsonb))
   on conflict (idempotency_key) do nothing;
   get diagnostics v_inserted = row_count;
@@ -763,7 +802,7 @@ begin
     values ('OPENAI', 'FIND_BUYERS_' || upper(p_operation), 'find-buyers', 'GE',
             coalesce(p_input_tokens, 0) + coalesce(p_output_tokens, 0),
             greatest(0, coalesce(p_micros, 0))::numeric / 1000000, true, false, v_c.property_id, p_matching_job_id,
-            'ESTIMATED');
+            case when p_micros is null then 'UNPRICED' else 'ESTIMATED' end);
   end if;
   return v_inserted = 1;
 end;
@@ -804,9 +843,16 @@ drop policy if exists find_buyers_leads_owner_read on public.find_buyers_leads;
 create policy find_buyers_leads_owner_read on public.find_buyers_leads
   for select to authenticated using (user_id = public.auth_user_id() or public.is_admin());
 
+/* Supabase's default privileges give anon and authenticated everything on a
+   new table; a column grant restricts nothing on top of a table grant. So all
+   of it is revoked first, then exactly what each audience reads is granted
+   back (precedent: 20260911194022_usage_events_cogs_column_grants.sql). */
 revoke all on public.find_buyers_actor_registry, public.find_buyers_campaigns, public.find_buyers_actor_runs,
   public.find_buyers_cost_ledger, public.find_buyers_persons, public.find_buyers_assessments, public.find_buyers_leads,
-  public.find_buyers_translations, public.find_buyers_query_cache, public.find_buyers_query_stats from anon;
+  public.find_buyers_translations, public.find_buyers_query_cache, public.find_buyers_query_stats from anon, authenticated;
+grant all on public.find_buyers_actor_registry, public.find_buyers_campaigns, public.find_buyers_actor_runs,
+  public.find_buyers_cost_ledger, public.find_buyers_persons, public.find_buyers_assessments, public.find_buyers_leads,
+  public.find_buyers_translations, public.find_buyers_query_cache, public.find_buyers_query_stats to service_role;
 /* Owners see stats and leads but never the internal economics columns. */
 grant select (matching_job_id, campaign_id, property_id, user_id, transaction, credits_committed, languages,
               stats, stop_reason, finalized_at, created_at, last_activity_at)
@@ -843,7 +889,7 @@ begin
       coalesce((select sum(l.actual_micros) from public.find_buyers_cost_ledger l
                  where l.matching_job_id = c.matching_job_id and l.kind = 'OTHER'), 0) as other_micros,
       coalesce((select sum(r.reserved_micros) from public.find_buyers_actor_runs r
-                 where r.matching_job_id = c.matching_job_id and r.status in ('RESERVED','RUNNING')), 0) as reserved_micros,
+                 where r.matching_job_id = c.matching_job_id and r.status in ('RESERVED','STARTING','RUNNING')), 0) as reserved_micros,
       (select count(*) from public.find_buyers_leads fl where fl.matching_job_id = c.matching_job_id) as leads,
       (select count(*) from public.find_buyers_leads fl where fl.matching_job_id = c.matching_job_id and fl.strength = 'STRONG') as strong,
       (select u.settled_credits from public.usage_reservations u
@@ -893,7 +939,7 @@ begin
                (select coalesce(sum(r.useful_results), 0) from public.find_buyers_actor_runs r where r.actor_key = g.actor_key and r.created_at >= v_since) as useful_results,
                (select coalesce(sum(r.qualified_leads), 0) from public.find_buyers_actor_runs r where r.actor_key = g.actor_key and r.created_at >= v_since) as qualified_leads,
                (select coalesce(sum(r.strong_leads), 0) from public.find_buyers_actor_runs r where r.actor_key = g.actor_key and r.created_at >= v_since) as strong_leads,
-               (select coalesce(sum(coalesce(r.actual_micros, case when r.status in ('RESERVED','RUNNING') then 0 else r.reserved_micros end)), 0)
+               (select coalesce(sum(coalesce(r.actual_micros, case when r.status in ('RESERVED','STARTING','RUNNING','RELEASED') then 0 else r.reserved_micros end)), 0)
                   from public.find_buyers_actor_runs r where r.actor_key = g.actor_key and r.created_at >= v_since) as spend_micros,
                (select percentile_disc(0.5) within group (order by r.latency_ms) from public.find_buyers_actor_runs r
                  where r.actor_key = g.actor_key and r.created_at >= v_since and r.latency_ms is not null) as latency_p50_ms
@@ -908,7 +954,8 @@ begin
          order by sr.fb_qualified_leads desc, sr.last_checked_at desc nulls last limit 200) s), '[]'::jsonb),
     'languages', coalesce((select jsonb_agg(lg) from (
         select lang,
-               coalesce((select sum(coalesce(r.actual_micros, 0)) from public.find_buyers_actor_runs r
+               coalesce((select sum(coalesce(r.actual_micros, case when r.status in ('RESERVED','STARTING','RUNNING','RELEASED') then 0 else r.reserved_micros end))
+                           from public.find_buyers_actor_runs r
                           where r.language = lang and r.created_at >= v_since), 0) as spend_micros,
                (select count(*) from public.find_buyers_assessments fa where fa.language = lang and fa.created_at >= v_since) as signals,
                (select count(*) from public.find_buyers_leads fl where fl.language = lang and fl.created_at >= v_since) as qualified,

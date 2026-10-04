@@ -110,7 +110,7 @@ async function planQueries(db: any, dna: PropertyDna, matchingJobId: string, pri
 async function knownSources(db: any, city: string | null): Promise<KnownSource[]> {
   let q = db.from('source_registry')
     .select('id,platform,url,languages,language,city,fb_spend_micros,fb_qualified_leads,last_checked_at,last_successful_at,access_state,lifecycle')
-    .in('platform', ['FACEBOOK', 'INSTAGRAM', 'VK', 'TELEGRAM', 'LINKEDIN'])
+    .in('platform', ['FACEBOOK', 'INSTAGRAM', 'VK', 'TELEGRAM', 'LINKEDIN', 'X', 'THREADS', 'YOUTUBE'])
     .not('url', 'is', null)
     .neq('access_state', 'INACCESSIBLE')
     .not('lifecycle', 'in', '(BLOCKED,RETIRED)')
@@ -140,7 +140,7 @@ export function socialJobRow(job: PlannedSocialJob, ctx: { matchingJobId: string
     dedupe_key: key,
     status: 'PENDING',
     platform: job.stage.startsWith('FB') ? 'FACEBOOK' : job.stage.startsWith('IG') ? 'INSTAGRAM'
-      : job.stage.startsWith('TIKTOK') ? 'OTHER' : job.stage.startsWith('VK') ? 'VK' : job.stage.startsWith('TELEGRAM') ? 'TELEGRAM' : 'OTHER',
+      : job.stage.startsWith('VK') ? 'VK' : job.stage.startsWith('TELEGRAM') ? 'TELEGRAM' : 'OTHER',
     language: job.language === 'multi' ? 'multi' : job.language,
     provider: 'APIFY_MEMO23',
     /* The run-scoped key, as the native jobs do: the legacy unique index on
@@ -249,9 +249,19 @@ export async function finishSocialCampaign(db: any, matchingJobId: string, reaso
   const { data: camp } = await db.from('find_buyers_campaigns').select('matching_job_id,finalized_at').eq('matching_job_id', matchingJobId).maybeSingle();
   if (!camp) return { social: false };
   const { data: open } = await db.from('find_buyers_actor_runs')
-    .select('id,provider_run_id,status,actor_key,requested_limit').eq('matching_job_id', matchingJobId).in('status', ['RESERVED', 'RUNNING']);
+    .select('id,provider_run_id,status,actor_key,requested_limit').eq('matching_job_id', matchingJobId).in('status', ['RESERVED', 'STARTING', 'RUNNING']);
   let aborted = 0; let released = 0;
   for (const run of (open ?? []) as any[]) {
+    if (!run.provider_run_id && run.status === 'STARTING') {
+      /* Being created right now: its id is not known yet. Book UNKNOWN cost at
+         the reservation (never zero); the executor aborts the run it gets back. */
+      await db.rpc('find_buyers_book_run_cost', {
+        p_run_id: run.id, p_status: 'ABORTED', p_actual_micros: null, p_cost_basis: 'UNKNOWN',
+        p_results_billed: null, p_items_fetched: 0, p_error: `ENDED_DURING_START: ${reason}`, p_billing: {},
+      });
+      aborted++;
+      continue;
+    }
     if (!run.provider_run_id) {
       await db.rpc('find_buyers_book_run_cost', {
         p_run_id: run.id, p_status: 'RELEASED', p_actual_micros: 0, p_cost_basis: 'NOT_STARTED',
@@ -283,7 +293,7 @@ export async function finishSocialCampaign(db: any, matchingJobId: string, reaso
 /** Customer-safe counters (no actor ids, no costs). */
 export async function campaignStats(db: any, matchingJobId: string) {
   const [runs, leads, assess, queue] = await Promise.all([
-    db.from('find_buyers_actor_runs').select('source,language,status,qualified_leads,items_fetched,useful_results').eq('matching_job_id', matchingJobId),
+    db.from('find_buyers_actor_runs').select('source,language,status,qualified_leads,items_fetched,useful_results,stale_dropped').eq('matching_job_id', matchingJobId),
     db.from('find_buyers_leads').select('strength,source,signal_count').eq('matching_job_id', matchingJobId),
     db.from('find_buyers_assessments').select('content_kind').eq('matching_job_id', matchingJobId).limit(5000),
     db.from('discovery_query_queue').select('provider,status,metadata').eq('matching_job_id', matchingJobId),
@@ -304,6 +314,8 @@ export async function campaignStats(db: any, matchingJobId: string) {
     qualified: l.length,
     strong: l.filter((x) => x.strength === 'STRONG').length,
     duplicatesRemoved: l.reduce((n, x) => n + Math.max(0, Number(x.signal_count || 1) - 1), 0),
+    /* 30-day rule, made visible: older or undated items skipped, never stored. */
+    staleSkipped: r.reduce((n, x) => n + Number(x.stale_dropped || 0), 0),
     degradedSources: [...new Set(r.filter((x) => ['FAILED', 'TIMED_OUT'].includes(x.status)).map((x) => x.source))],
   };
 }

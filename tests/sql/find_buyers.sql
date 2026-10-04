@@ -41,6 +41,14 @@ begin
   assert not (b2->>'booked')::boolean, 'double booking must be refused';
   select count(*), sum(cost_usd) into n, v from public.cost_events where job_id = '00000000-0000-0000-0000-0000000000c1';
   assert n = 1 and v = 0.009, 'exactly one cost_event of $0.009, got ' || n || ' ' || v;
+  assert (select provider::text from public.cost_events where request_id = 'pr1') = 'APIFY_MEMO23', 'memo23 spend never books as the retired APIFY';
+  -- 6b. a run that reached the provider can never be released at zero
+  r := public.find_buyers_reserve_actor_run('00000000-0000-0000-0000-0000000000c1', 'FB_COMMENTS', 'k-s', null, 'FB_COMMENTS', 'en', 0, 20);
+  update public.find_buyers_actor_runs set status = 'STARTING' where id = (r->>'runId')::uuid;
+  b := public.find_buyers_book_run_cost((r->>'runId')::uuid, 'RELEASED', 0, 'NOT_STARTED', 0, 0);
+  assert b->>'reason' = 'RELEASE_REFUSED_RUN_MAY_HAVE_STARTED', 'release of a STARTING run refused: ' || b::text;
+  b := public.find_buyers_book_run_cost((r->>'runId')::uuid, 'ABORTED', null, 'UNKNOWN', null, 0, 'ENDED_DURING_START');
+  assert b->>'costState' = 'UNKNOWN', 'booked unknown, not zero';
   -- 7. failed run that the provider billed is still booked (never silently zero), not as success
   r := public.find_buyers_reserve_actor_run('00000000-0000-0000-0000-0000000000c1', 'FB_COMMENTS', 'k-b', null, 'FB_COMMENTS', 'en', 0, 20);
   update public.find_buyers_actor_runs set provider_run_id = 'pr2', status = 'RUNNING' where id = (r->>'runId')::uuid;
@@ -51,10 +59,11 @@ begin
   select count(*) into n from public.cost_events where request_id = 'pr2' and pricing_state = 'UNPRICED' and success = false;
   assert n = 1, 'unknown cost is UNPRICED and not a success';
   -- 8. never-started run releases its reservation (0)
+  select count(*) into n from public.cost_events;
   r := public.find_buyers_reserve_actor_run('00000000-0000-0000-0000-0000000000c1', 'FB_COMMENTS', 'k-c', null, 'FB_COMMENTS', 'en', 0, 20);
   b := public.find_buyers_book_run_cost((r->>'runId')::uuid, 'RELEASED', 0, 'NOT_STARTED', 0, 0, 'START_FAILED');
-  select count(*) into n from public.cost_events where request_id is null and job_id = '00000000-0000-0000-0000-0000000000c1';
-  assert n = 0, 'a released run writes no cost_event';
+  assert (b->>'booked')::boolean, 'a never-started run releases';
+  assert (select count(*) from public.cost_events) = n, 'a released run writes no cost_event';
   -- 9. campaign provider cap: committed 19000 of 5,000,000; ask for 5000 results at $1/1k = $5 → refused
   update public.find_buyers_actor_registry set price_per_1k_micros = 1000000, max_results = 5000 where actor_key = 'FB_COMMENTS';
   r := public.find_buyers_reserve_actor_run('00000000-0000-0000-0000-0000000000c1', 'FB_COMMENTS', 'k-d', null, 'FB_COMMENTS', 'en', 0, 5000);
@@ -112,6 +121,9 @@ end $$;
 -- 16. RLS: owners do not get the economics columns
 do $$ begin
   assert not has_column_privilege('authenticated', 'public.find_buyers_campaigns', 'provider_budget_micros', 'select'), 'economics hidden from owners';
+  assert not has_column_privilege('authenticated', 'public.find_buyers_campaigns', 'query_plan', 'select'), 'query plan hidden from owners';
+  assert not has_table_privilege('authenticated', 'public.find_buyers_leads', 'insert'), 'owners cannot write leads';
+  assert has_table_privilege('service_role', 'public.find_buyers_cost_ledger', 'insert'), 'the service role still writes';
   assert has_column_privilege('authenticated', 'public.find_buyers_campaigns', 'stats', 'select'), 'stats visible to owners';
   assert not has_table_privilege('anon', 'public.find_buyers_leads', 'select'), 'anon reads nothing';
 end $$;

@@ -5,11 +5,13 @@
 // that is not present stays null, an item without a stable id or text is
 // dropped, and only real http(s) URLs survive.
 
+import type { Network } from './actorInputs.ts';
+
 export type ItemKind = 'GROUP' | 'POST' | 'COMMENT' | 'PROFILE';
 
 export interface NormalizedItem {
   kind: ItemKind;
-  network: 'FACEBOOK' | 'INSTAGRAM' | 'TIKTOK' | 'VK' | 'TELEGRAM' | 'LINKEDIN';
+  network: Network;
   externalId: string;
   url: string | null;
   parentExternalId: string | null;
@@ -124,6 +126,59 @@ export function normalizeGroup(network: NormalizedItem['network'], o: unknown): 
   };
 }
 
+/**
+ * Network shapes that differ from the common one, mapped onto it before the
+ * shared extraction: Reddit (relative permalinks, title + selftext, epoch
+ * seconds), Quora (question + answers), Bluesky (at:// URIs).
+ */
+export function adapt(network: Network, raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object') return raw;
+  const o = raw as Obj;
+  if (network === 'REDDIT') {
+    const permalink = str(o.permalink);
+    const author = str(o.author);
+    const title = str(o.title);
+    const body = str(o.selftext) ?? str(o.body);
+    return {
+      ...o,
+      text: [title, body].filter(Boolean).join('\n') || null,
+      url: permalink ? (permalink.startsWith('http') ? permalink : `https://www.reddit.com${permalink}`) : o.url,
+      authorName: author,
+      authorUrl: author && author !== '[deleted]' ? `https://www.reddit.com/user/${encodeURIComponent(author)}` : null,
+      username: author,
+      time: o.created_utc ?? o.createdAt ?? o.created,
+      commentsCount: o.num_comments ?? o.numComments,
+    };
+  }
+  if (network === 'QUORA') {
+    const answers = Array.isArray(o.answers) ? o.answers : [];
+    return {
+      ...o,
+      text: str(o.title) ?? str(o.question) ?? str(o.questionText) ?? str(o.text),
+      comments: answers.map((a: any) => ({ ...a, text: a?.text ?? a?.content ?? a?.answer, authorName: a?.author?.name ?? a?.authorName, authorUrl: a?.author?.url ?? a?.authorUrl })),
+      commentsCount: o.answerCount ?? o.answersCount ?? answers.length,
+    };
+  }
+  if (network === 'BLUESKY') {
+    const author = (o.author ?? {}) as Obj;
+    const handle = str(author.handle) ?? str(o.handle);
+    const uri = str(o.uri);
+    const rkey = uri?.split('/').pop() ?? null;
+    return {
+      ...o,
+      text: str((o.record as Obj | undefined)?.text) ?? str(o.text),
+      url: str(o.url) ?? (handle && rkey ? `https://bsky.app/profile/${handle}/post/${rkey}` : null),
+      id: uri ?? o.cid ?? o.id,
+      authorName: str(author.displayName) ?? handle,
+      authorUrl: handle ? `https://bsky.app/profile/${handle}` : null,
+      username: handle,
+      time: (o.record as Obj | undefined)?.createdAt ?? o.createdAt ?? o.indexedAt,
+      commentsCount: o.replyCount,
+    };
+  }
+  return raw;
+}
+
 export function normalizePost(network: NormalizedItem['network'], o: unknown, parent?: { externalId: string; url: string | null } | null): NormalizedItem | null {
   const url = safeHttpUrl(pick(o, URL_KEYS));
   const text = str(pick(o, TEXT)) ?? '';
@@ -176,9 +231,10 @@ export function normalizeDataset(
     /* Actors report errors as items with an error field; they are not results. */
     if (pick(raw, ['error', 'errorMessage']) && !pick(raw, TEXT)) continue;
     const kind = stage === 'GROUP_SEARCH' ? 'GROUP' : stage === 'COMMENTS' ? 'COMMENT' : 'POST';
-    const n = kind === 'GROUP' ? normalizeGroup(network, raw)
-      : kind === 'COMMENT' ? normalizeComment(network, raw, parent)
-      : normalizePost(network, raw, parent);
+    const shaped = adapt(network, raw);
+    const n = kind === 'GROUP' ? normalizeGroup(network, shaped)
+      : kind === 'COMMENT' ? normalizeComment(network, shaped, parent)
+      : normalizePost(network, shaped, parent);
     if (!n || seen.has(n.externalId)) continue;
     seen.add(n.externalId);
     out.push(n);

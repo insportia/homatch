@@ -10,7 +10,7 @@ import { armPriority } from './allocator.ts';
 
 export interface KnownSource {
   id: string;
-  platform: 'FACEBOOK' | 'INSTAGRAM' | 'TIKTOK' | 'VK' | 'TELEGRAM' | 'LINKEDIN';
+  platform: 'FACEBOOK' | 'INSTAGRAM' | 'TIKTOK' | 'VK' | 'TELEGRAM' | 'LINKEDIN' | 'X' | 'THREADS' | 'YOUTUBE';
   url: string;
   languages: string[];
   city: string | null;
@@ -54,6 +54,11 @@ export const NETWORK_LANGUAGES: Readonly<Record<string, readonly SearchLanguage[
   TIKTOK: SEARCH_LANGUAGES,
   LINKEDIN: ['en', 'ru', 'tr'],
   VK: ['ru'],
+  /* Relocation / expat demand is written in English and Russian on Reddit,
+     English on Quora; Bluesky carries EN/RU/TR. */
+  REDDIT: ['en', 'ru'],
+  QUORA: ['en'],
+  BLUESKY: ['en', 'ru', 'tr'],
 };
 
 export function initialSocialJobs(input: PlanInputs): PlannedSocialJob[] {
@@ -139,7 +144,29 @@ export function initialSocialJobs(input: PlanInputs): PlannedSocialJob[] {
     });
   }
 
-  /* VK / INSTAGRAM: walls and profiles the registry already knows. */
+  /* REDDIT / QUORA / BLUESKY: keyword search, one probe per realistic language.
+     Reddit and Quora favour relocation / investment phrasings. */
+  const searchProbe = (stage: Stage, network: keyof typeof NETWORK_LANGUAGES, prefer: string[]) => {
+    if (!has(stage)) return;
+    for (const lang of NETWORK_LANGUAGES[network]) {
+      const demand = queriesFor(plan, 'demand', lang);
+      const q = demand.find((x) => prefer.includes(x.family)) ?? demand[0];
+      if (q) jobs.push({
+        stage, actorKey: STAGE_ACTOR[stage], language: lang, query: q.query, targetUrl: null,
+        sourceId: null, size: probe(stage), arm: `${stage}:${lang}`,
+        priority: armPriority(null, null, base(stage)), reason: 'demand_search',
+      });
+    }
+  };
+  searchProbe('REDDIT_SEARCH', 'REDDIT', ['RELOCATING', 'LOOKING_FOR', 'WANT_BUY', 'WANT_RENT']);
+  searchProbe('QUORA_SEARCH', 'QUORA', ['INVESTMENT', 'RELOCATING', 'WANT_BUY', 'WANT_RENT']);
+  searchProbe('BLUESKY_SEARCH', 'BLUESKY', ['WANT_BUY', 'WANT_RENT', 'LOOKING_FOR']);
+
+  /* VK / INSTAGRAM / X / THREADS / YOUTUBE: sources the registry already knows
+     (memo23 has no discovery Actor for them). */
+  pushKnown('X_PROFILE', 'X', null, 3);
+  pushKnown('THREADS_PROFILE', 'THREADS', null, 3);
+  pushKnown('YOUTUBE_COMMENTS', 'YOUTUBE', null, 3);
   const vkKeyword = queriesFor(plan, 'demand', 'ru')[0]?.query ?? null;
   pushKnown('VK_WALL', 'VK', vkKeyword, 4);
   pushKnown('IG_PROFILE_POSTS', 'INSTAGRAM', null, 3);

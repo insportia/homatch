@@ -68,7 +68,12 @@ test('the 3D tour card opens the picture itself first; the depth model loads onl
   assert.ok(panel.indexOf('if (photoTour) {') > 0 && panel.indexOf('if (photoTour) {') < panel.indexOf('if (!loaded) return null;'));
   assert.match(panel, /if \(!photoTour\) void read\(\);/);
   const result = readFileSync(new URL('../../../components/designStudio/unified/DesignResult.tsx', import.meta.url), 'utf8');
-  assert.match(result, /renderId=\{hero\.id\} photos=\{walkPhotos\}/);
+  assert.match(result, /renderId=\{hero\.id\} photos=\{walkPhotos\} needsRoomPhotos \/>/);
+  // Only eye-level room pictures are walked: a dollhouse picture (seen from above) has no eye level to enter.
+  const walkBlock = result.slice(result.indexOf('const walkPhotos = useMemo'), result.indexOf('const others = data.rooms'));
+  assert.doesNotMatch(walkBlock, /kind: 'MASTER'/);
+  assert.match(walkBlock, /if \(hero && heroUrl && heroRoomId\)/);
+  assert.match(panel, /data-testid="photo3d-rooms-needed"/);
   const depth = readFileSync(new URL('../photo3d/estimateDepth.ts', import.meta.url), 'utf8');
   // Off the page's thread (a slow phone never freezes the page), the picture reduced to the model's size first,
   // and a hard time limit after which the picture still opens.

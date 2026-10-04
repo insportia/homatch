@@ -148,7 +148,7 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', admin = false,
     /* The other admin panels answer with an honest error: this suite covers Find Buyers only. */
     if (url.includes('/rpc/admin_discovery_')) return r.fulfill(json({ message: 'not in this fixture' }, 400));
     if (url.includes('/rest/v1/properties')) return r.fulfill(json(wantsObject ? property : [property]));
-    if (url.includes('/rest/v1/find_buyers_leads')) {
+    if (url.includes('/rest/v1/find_buyers_current_leads')) {
       return r.fulfill({ ...json(LEADS), headers: { 'access-control-allow-origin': '*', 'access-control-expose-headers': 'content-range', 'content-range': `0-${LEADS.length - 1}/${LEADS.length}` } });
     }
     if (url.includes('/rpc/find_buyers_campaign_status')) return r.fulfill(json(status));

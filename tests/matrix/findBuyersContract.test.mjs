@@ -147,7 +147,8 @@ test('A/X. readiness is checked before any credit is reserved; zero executable w
 
 test('L. a paused search is still the property\'s search: no second campaign or reservation beside it', () => {
   const block = MATCH.slice(MATCH.indexOf('ONE RUNNING SEARCH PER PROPERTY'), MATCH.indexOf('const discovery = await loadDiscoverySettings(db);'));
-  assert.match(block, /'classifying', 'ranking', 'paused'\]/);
+  assert.match(block, /\.in\('status', \[\.\.\.ACTIVE_SEARCH_STATUSES\]\)/);
+  assert.match(read('supabase/functions/_shared/findBuyers/startClaim.ts'), /'classifying', 'ranking', 'paused',\s*\] as const/);
   assert.match(block, /alreadyRunning: true/);
 });
 
@@ -185,4 +186,29 @@ test('T/W. the importer keeps every listing photo and records media health', () 
   assert.match(IMP, /photos_candidates: media\.candidates/);
   assert.match(IMP, /const merged = mergeGallery\(existing, facts\.gallery_images \?\? \[\]\);/);
   assert.doesNotMatch(IMP.slice(IMP.indexOf('MEDIA REFRESH OF AN EXISTING PROPERTY')), /from\('property_photos'\)\.(delete|update|insert)/, 'owner uploads are never touched');
+});
+
+test('30-day rule at read time: customer reads and campaign counts use current leads only', () => {
+  const sql = read('supabase/migrations/20261017090000_find_buyers_current_leads_one_active_search.sql');
+  assert.match(sql, /find_buyers_signal_is_current\(p_signal_at timestamptz\)[\s\S]*p_signal_at is not null[\s\S]*now\(\) - interval '30 days'/);
+  assert.match(sql, /create or replace view public\.find_buyers_current_leads with \(security_invoker = true\)/);
+  assert.match(sql, /from public\.find_buyers_leads where matching_job_id = p_job_id\s+and public\.find_buyers_signal_is_current\(signal_at\)/);
+  const svc = read('src/services/findBuyers.ts');
+  assert.doesNotMatch(svc, /from\('find_buyers_leads'\)/, 'owner reads go through find_buyers_current_leads');
+  assert.match(svc, /from\('find_buyers_current_leads'\)/);
+  /* an undated comment carries the parent post's publication date (what ingest judged), never "observed now" */
+  assert.match(read('supabase/functions/_shared/findBuyers/pipeline.ts'),
+    /publishedAt: a\.item\.publishedAt \?\? \(a\.item\.kind === 'COMMENT' \? a\.parent\?\.publishedAt \?\? null : null\)/);
+});
+
+test('one active search per property: the job row is claimed before any credit is reserved', () => {
+  const sql = read('supabase/migrations/20261017090000_find_buyers_current_leads_one_active_search.sql');
+  assert.match(sql, /create unique index if not exists uidx_matching_jobs_one_active_per_property\s+on public\.matching_jobs \(property_id\)\s+where status not in \('completed', 'partially_completed', 'failed', 'cancelled', 'budget_reached'\)/);
+  const mc = read('supabase/functions/match-campaign/index.ts');
+  const claim = mc.indexOf('await claimSearch(db,');
+  const reserve = mc.indexOf('await beginExecution(db,');
+  assert.ok(claim > 0 && reserve > claim, 'claimSearch runs before beginExecution');
+  assert.match(mc.slice(claim, reserve), /if \(!claim\.ok\) \{[\s\S]*alreadyRunning: true[\s\S]*\}/, 'the loser returns before reserving');
+  assert.match(mc, /if \(!grant\.ok\) \{\s*\/\*[^*]*\*\/\s*await abandonClaim\(db, jobId\);/, 'a refused reservation gives the claim back');
+  assert.doesNotMatch(mc, /from\('matching_jobs'\)\.insert/, 'no second, unguarded job insert');
 });

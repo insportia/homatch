@@ -65,10 +65,10 @@ export interface PotentialLead {
   author_profile_url: string | null;
 }
 
-/** Leads for one property, strongest first (RLS: the owner's own rows only). */
+/** Current leads (30-day rule at read time) for one property, strongest first (RLS: the owner's own rows only). */
 export async function getPropertyLeads(propertyId: string, limit = 60): Promise<PotentialLead[]> {
   const { data, error } = await supabase
-    .from('find_buyers_leads')
+    .from('find_buyers_current_leads')
     .select('id,matching_job_id,counterpart,source,intent_class,overall_score,strength,similarity,intent_score,score_components,evidence,signal_count,signal_at,seen_before,language,created_at,author_name,author_profile_url')
     .eq('property_id', propertyId)
     .order('overall_score', { ascending: false })
@@ -242,7 +242,7 @@ export async function getCampaignStatus(propertyId: string): Promise<CampaignSta
 export async function getPropertyLeadsPage(propertyId: string, page: number, pageSize: number): Promise<{ rows: PotentialLead[]; total: number }> {
   const from = Math.max(0, page - 1) * pageSize;
   const { data, error, count } = await supabase
-    .from('find_buyers_leads')
+    .from('find_buyers_current_leads')
     .select('id,matching_job_id,counterpart,source,intent_class,overall_score,strength,similarity,intent_score,score_components,evidence,signal_count,signal_at,seen_before,language,created_at,author_name,author_profile_url', { count: 'exact' })
     .eq('property_id', propertyId)
     .order('overall_score', { ascending: false })

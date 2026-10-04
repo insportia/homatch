@@ -12,17 +12,24 @@
 // reconstructed the panel says so and keeps following it (asking again is the
 // same request; a closed page changes nothing). A tour walked on a
 // reconstructed space carries a quiet note once it is ready.
+//
+// First of all, STEP INSIDE THE PICTURE (PhotoWalk): the design picture the
+// customer is looking at, made 3D on their own device — every element is the
+// picture's own. The walkable model of the plan below is the second option.
 
 import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, Check, Info, Loader2, RotateCcw } from 'lucide-react';
+import { Box, Check, Footprints, Info, Loader2, RotateCcw } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { PROGRESS_STEPS, type ProgressStep } from '@/lib/designStudio/walkthrough/lifecycle';
+import type { WalkPhoto } from './PhotoWalk';
 import { createWalkthrough, retryWalkthrough, walkthroughHref, walkthroughStatus, type Walkthrough } from '@/services/designStudio/walkthrough';
 
 // The same game as every long wait: it only watches the walkthrough's real state (this panel keeps following it).
 const SnakeGame = lazy(() => import('@/components/games/SnakeGame'));
+// Three.js and the depth model load only when a picture is entered.
+const PhotoWalk = lazy(() => import('./PhotoWalk'));
 
 const RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#F7F4EF]';
 const DARK = cn('inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[#0C1119] px-5 text-[15px] font-semibold text-white disabled:opacity-60', RING);
@@ -36,7 +43,11 @@ const working = (w: Walkthrough | null) => !!w && w.state !== 'READY' && w.state
 /** How often a space being reconstructed is asked after (the same request: never a second reading). */
 const SPACE_POLL_MS = 6000;
 
-export function WalkthroughPanel({ projectId, designVersionId, renderId }: { projectId: string; designVersionId: string; renderId: string | null }) {
+export function WalkthroughPanel({ projectId, designVersionId, renderId, photos = [] }: {
+  projectId: string; designVersionId: string; renderId: string | null;
+  /** The design's pictures to step into: the one shown first, then its rooms. */
+  photos?: WalkPhoto[];
+}) {
   const { t } = useLanguage();
   const navigate = useNavigate();
   const [walk, setWalk] = useState<Walkthrough | null>(null);
@@ -46,6 +57,7 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId }: { pro
   const [problem, setProblem] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [reconstructing, setReconstructing] = useState(false);
+  const [inside, setInside] = useState(false);
   // One request per tap: a second tap before the first answer is the same tap.
   const inFlight = useRef(false);
   const alive = useRef(true);
@@ -112,9 +124,27 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId }: { pro
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#0C1119] text-white"><Box className="h-5 w-5" aria-hidden="true" /></span>
         <div className="min-w-0 flex-1">
           <h2 id="ds-walk-title" className="font-display text-[20px] font-semibold">{t('dsx_walk_title')}</h2>
-          <p className="mt-1 text-[14px] text-[#5B6472]">{t('dsx_walk_body')}</p>
+          <p className="mt-1 text-[14px] text-[#5B6472]">{t(photos.length ? 'dsx_photo3d_body' : 'dsx_walk_body')}</p>
         </div>
       </div>
+
+      {photos.length ? (
+        <div className="mt-4" data-testid="photo3d-entry">
+          <button type="button" onClick={() => setInside(true)} className={DARK} data-testid="photo3d-enter">
+            <Footprints className="h-4 w-4" aria-hidden="true" />{t('dsx_photo3d_enter')}
+          </button>
+          <p className="mt-2 text-[13px] leading-relaxed text-[#5B6472]">{t('dsx_photo3d_note')}</p>
+          <div className="mt-5 border-t border-[#EFEAE2] pt-4">
+            <h3 className="text-[15px] font-semibold text-[#0C1119]">{t('dsx_walk_model_title')}</h3>
+            <p className="mt-1 text-[13px] text-[#5B6472]">{t('dsx_walk_body')}</p>
+          </div>
+        </div>
+      ) : null}
+      {inside && photos.length ? (
+        <Suspense fallback={null}>
+          <PhotoWalk photos={photos} initialId={photos[0].id} onClose={() => setInside(false)} />
+        </Suspense>
+      ) : null}
 
       {problem ? <p role="alert" className="mt-3 rounded-2xl bg-[hsl(0_66%_44%)]/10 px-4 py-3 text-[14px] text-[hsl(0_66%_34%)]">{problem}</p> : null}
 

@@ -94,10 +94,10 @@ test('the 3D tour card opens the picture itself first; the depth model loads onl
 });
 
 test('the points to the other rooms stand inside the picture, apart from each other, at about door height', () => {
-  for (const n of [1, 2, 3, 5, 8]) {
+  for (const n of [1, 2, 3, 5, 8, 12]) {
     const at = Array.from({ length: n }, (_, i) => hotspotAt(i, n));
-    for (const p of at) assert.ok(p.u > 0.1 && p.u < 0.9 && p.v > 0.45 && p.v < 0.7, JSON.stringify(p));
-    for (let i = 1; i < n; i += 1) assert.ok(at[i].u - at[i - 1].u > 0.07, `n=${n}`);
+    for (const p of at) assert.ok(p.u >= 0.1 && p.u <= 0.9 && p.v > 0.45 && p.v < 0.7, JSON.stringify(p));
+    for (let i = 1; i < n; i += 1) assert.ok(at[i].u - at[i - 1].u > 0.06, `n=${n}`);
   }
   assert.deepEqual(hotspotAt(0, 1), { u: 0.5, v: 0.56 });
 });

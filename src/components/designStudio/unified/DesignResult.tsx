@@ -58,8 +58,8 @@ const FOCUS_KEY: Record<typeof FOCUSES[number], string> = {
 };
 /** The most generated designs one room may be drawn from (the server's MAX_REFERENCES). */
 const MAX_REFS = 4;
-/** The most rooms one 3D tour makes at once (the server allows 20 designs an hour), and how many side by side. */
-const TOUR_MAX = 8;
+/** The most rooms one 3D tour makes at once (every space of a home: the server allows 20 designs an hour), and how many side by side. */
+const TOUR_MAX = 12;
 const TOUR_PARALLEL = 3;
 /** A short, stable fingerprint of the selected references (the room's idempotency key stays under the server's 128 characters). */
 const fingerprint = (ids: string[]) => {

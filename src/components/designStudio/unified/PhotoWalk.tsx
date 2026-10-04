@@ -65,7 +65,7 @@ export function PhotoWalk({ photos, initialId, onClose }: { photos: WalkPhoto[];
   const resetRef = useRef<() => void>(() => {});
   const photo = photos.find((p) => p.id === activeId) ?? photos[0];
   // The other rooms, as points in this one (placed every frame where the room shows them).
-  const elsewhere = photos.filter((p) => p.id !== photo?.id).slice(0, 8);
+  const elsewhere = photos.filter((p) => p.id !== photo?.id).slice(0, 12);
   const spots = useRef<Array<HTMLButtonElement | null>>([]);
   const photosRef = useRef(photos);
   photosRef.current = photos;
@@ -241,7 +241,7 @@ export function PhotoWalk({ photos, initialId, onClose }: { photos: WalkPhoto[];
         frame = requestAnimationFrame(tick);
         // The other rooms are prepared while this one is looked at, one after another: a tap opens them at once.
         void (async () => {
-          for (const other of photosRef.current.filter((p) => p.id !== photo.id).slice(0, 8)) {
+          for (const other of photosRef.current.filter((p) => p.id !== photo.id).slice(0, 12)) {
             if (disposed) return;
             try { await estimateDepth(other.id, await loadPicture(other, () => {})); } catch { /* measured when entered */ }
           }

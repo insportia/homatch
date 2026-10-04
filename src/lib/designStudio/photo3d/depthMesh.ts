@@ -141,7 +141,7 @@ export function clampWalk(p: { x: number; y: number; z: number }, b: { forwardM:
  * front of what the picture shows there (fractions of the picture, u across, v down).
  */
 export function hotspotAt(i: number, n: number): { u: number; v: number } {
-  const span = Math.min(0.64, 0.13 * Math.max(1, n - 1));
+  const span = Math.min(0.76, 0.13 * Math.max(1, n - 1));
   const u = n <= 1 ? 0.5 : 0.5 - span / 2 + (span * i) / (n - 1);
   return { u, v: 0.56 + (n > 4 && i % 2 ? 0.08 : 0) };
 }

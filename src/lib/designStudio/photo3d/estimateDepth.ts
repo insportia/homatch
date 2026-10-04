@@ -21,6 +21,7 @@ export type DepthProgress = { stage: 'DOWNLOADING'; fraction: number } | { stage
 let worker: Worker | null = null;
 let next = 1;
 const cache = new Map<string, DepthMap>();
+const inflight = new Map<string, Promise<DepthMap>>();
 
 /** The picture at the model's size, as RGBA pixels. */
 export function reducedPixels(img: CanvasImageSource & { width: number; height: number }, naturalWidth: number, naturalHeight: number) {
@@ -38,6 +39,18 @@ export function reducedPixels(img: CanvasImageSource & { width: number; height: 
 export function estimateDepth(key: string, img: HTMLImageElement, progress: (p: DepthProgress) => void = () => {}): Promise<DepthMap> {
   const hit = cache.get(key);
   if (hit) return Promise.resolve(hit);
+  // Already being measured (the next room, prepared while this one is walked): the same answer, not a second one.
+  const busy = inflight.get(key);
+  if (busy) return busy;
+  let p: Promise<DepthMap>;
+  try { p = measure(key, img, progress); } catch (e) { return Promise.reject(e); }
+  inflight.set(key, p);
+  const clear = () => { if (inflight.get(key) === p) inflight.delete(key); };
+  p.then(clear, clear);
+  return p;
+}
+
+function measure(key: string, img: HTMLImageElement, progress: (p: DepthProgress) => void): Promise<DepthMap> {
   const px = reducedPixels(img, img.naturalWidth, img.naturalHeight);
   if (!worker) worker = new Worker(new URL('./depth.worker.ts', import.meta.url), { type: 'module' });
   const w = worker;

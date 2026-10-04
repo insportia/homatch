@@ -41,15 +41,32 @@ const STEP_KEY: Record<ProgressStep, string> = {
 const POLL_MS = 5000;
 const working = (w: Walkthrough | null) => !!w && w.state !== 'READY' && w.state !== 'FAILED' && w.state !== 'CANCELLED';
 
+/** The 3D tour of a picture design, made in one tap: every room's eye-level picture at once (DesignResult owns the runs). */
+export interface TourControl {
+  /** Rooms the tour still needs a picture of. */
+  missing: number;
+  /** Being made: how many rooms of how many are in (nothing else of the work is shown). */
+  making: { total: number; done: number } | null;
+  /** A room of the last tour did not come (asking again makes only the rooms still missing). */
+  short: boolean;
+  /** Changes when a tour has just been made: the tour opens by itself. */
+  openRequest: number;
+  canCreate: boolean;
+  onCreate: () => void;
+  onPlay: () => void;
+}
+
 /** How often a space being reconstructed is asked after (the same request: never a second reading). */
 const SPACE_POLL_MS = 6000;
 
-export function WalkthroughPanel({ projectId, designVersionId, renderId, photos = [], needsRoomPhotos = false }: {
+export function WalkthroughPanel({ projectId, designVersionId, renderId, photos = [], needsRoomPhotos = false, tour = null }: {
   projectId: string; designVersionId: string; renderId: string | null;
   /** The design's eye-level room pictures to step into (the room shown first). */
   photos?: WalkPhoto[];
   /** A picture design: its tour walks its rooms' eye-level pictures — when it has none yet, the card says how to make them. */
   needsRoomPhotos?: boolean;
+  /** One tap makes every room's picture, then the tour opens through them. */
+  tour?: TourControl | null;
 }) {
   const { t } = useLanguage();
   const navigate = useNavigate();
@@ -74,6 +91,13 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, photos 
   }, [designVersionId]);
   // With a picture to step into there is nothing to ask the server.
   const photoTour = photos.length > 0 || needsRoomPhotos;
+  // A tour just made opens by itself: the customer sees the result, not the work.
+  const opened = useRef(tour?.openRequest ?? 0);
+  useEffect(() => {
+    if (!tour?.openRequest || tour.openRequest === opened.current || !photos.length) return;
+    opened.current = tour.openRequest;
+    setInside(true);
+  }, [tour?.openRequest, photos.length]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setWalk(null); setHistory([]); setLoaded(false); if (!photoTour) void read(); }, [read, photoTour]);
 
   // Following it while it works (the page is only a watcher; the server carries on without it).
@@ -126,18 +150,46 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, photos 
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#0C1119] text-white"><Box className="h-5 w-5" aria-hidden="true" /></span>
           <div className="min-w-0 flex-1">
             <h2 id="ds-walk-title" className="font-display text-[20px] font-semibold">{t('dsx_walk_title')}</h2>
-            <p className="mt-1 text-[14px] text-[#5B6472]">{t('dsx_photo3d_body')}</p>
+            <p className="mt-1 text-[14px] text-[#5B6472]">{t('dsx_tour_body')}</p>
           </div>
         </div>
-        {photos.length ? (
+        {tour?.making ? (
+          <div className="mt-4 rounded-2xl bg-[#0C1119] p-4 text-white" role="status" aria-live="polite" data-testid="tour-making">
+            <div className="flex items-center gap-3">
+              <Loader2 className="h-5 w-5 shrink-0 animate-spin text-[hsl(38_92%_62%)]" aria-hidden="true" />
+              <p className="min-w-0 flex-1 text-[15px] font-semibold">{t('dsx_tour_making')}</p>
+            </div>
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/15" aria-hidden="true">
+              <div className="h-full rounded-full bg-[hsl(38_92%_56%)] transition-[width] duration-700" style={{ width: `${Math.round(((tour.making.done + 0.35) / (tour.making.total + 0.35)) * 100)}%` }} />
+            </div>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-[13px] text-white/70">{t('dsx_tour_making_body')}</p>
+              <button type="button" onClick={tour.onPlay} className={cn('h-11 rounded-full bg-[hsl(38_92%_56%)] px-4 text-[14px] font-semibold text-[#0C1119]', RING)} data-testid="tour-snake">{t('dsx_sn_play')}</button>
+            </div>
+          </div>
+        ) : tour && tour.missing > 0 ? (
+          <div className="mt-4" data-testid="tour-create-block">
+            {tour.short ? <p className="mb-3 rounded-2xl bg-[hsl(38_92%_56%)]/12 px-4 py-3 text-[14px] text-[#0C1119]" role="alert" data-testid="tour-short">{t('dsx_tour_partial')}</p> : null}
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={tour.onCreate} disabled={!tour.canCreate} className={DARK} data-testid="tour-create">
+                <Box className="h-4 w-4" aria-hidden="true" />{t(photos.length ? 'dsx_tour_more' : 'dsx_tour_create', { n: String(tour.missing) })}
+              </button>
+              {photos.length ? (
+                <button type="button" onClick={() => setInside(true)} className={CHIP} data-testid="photo3d-enter">
+                  <Footprints className="h-4 w-4" aria-hidden="true" />{t('dsx_walk_open')}
+                </button>
+              ) : null}
+            </div>
+            <p className="mt-2 text-[13px] leading-relaxed text-[#5B6472]">{t('dsx_tour_create_body')}</p>
+          </div>
+        ) : photos.length ? (
           <div className="mt-4" data-testid="photo3d-entry">
             <button type="button" onClick={() => setInside(true)} className={DARK} data-testid="photo3d-enter">
               <Footprints className="h-4 w-4" aria-hidden="true" />{t('dsx_walk_open')}
             </button>
-            <p className="mt-2 text-[13px] leading-relaxed text-[#5B6472]">{t('dsx_photo3d_note')}</p>
           </div>
         ) : (
-          // Only a picture of the whole home from above: there is no eye level in it. The rooms' own pictures are made below.
+          // No room to stand in yet and none to make (a photo design whose rooms are not read yet): the rooms first.
           <div className="mt-4" data-testid="photo3d-rooms-needed">
             <p className="text-[14px] leading-relaxed text-[#0C1119]">{t('dsx_photo3d_rooms_needed')}</p>
             <button type="button" onClick={() => (document.getElementById('ds-rooms') ?? document.getElementById('ds-find-rooms-title'))?.scrollIntoView({ behavior: 'smooth', block: 'start' })}

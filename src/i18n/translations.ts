@@ -15149,6 +15149,19 @@ const en = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_photo3d_rooms_needed: 'The tour walks through eye-level pictures of each room of this design. This picture shows the whole home from above, so there is no eye level to enter yet: create the rooms\' pictures below and the tour opens with them.',
   dsx_photo3d_rooms_cta: 'Create the rooms\' pictures',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_tour_body: 'Walk through every room of this design from the inside: look around, and tap a point to go to the next room.',
+  dsx_tour_create: 'Create the 3D tour',
+  dsx_tour_more: 'Add the other rooms ({{n}})',
+  dsx_tour_create_body: 'Every room is made at once, at eye level, from this design — the same furniture, materials and colours. Then the tour opens by itself.',
+  dsx_tour_confirm_title: '3D tour · {{n}} rooms',
+  dsx_tour_confirm_body: 'All {{n}} rooms are made together from this design. This is the price for all of them.',
+  dsx_tour_making: 'Your 3D tour is being prepared',
+  dsx_tour_making_body: 'It opens by itself when it is ready. You can leave this page.',
+  dsx_tour_partial: 'Some rooms did not come out. Tap again — only the missing rooms are made.',
+  dsx_tour_hint: 'Drag to look around · tap a point to go to another room',
+  dsx_tour_go: 'Go to {{room}}',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -30212,6 +30225,19 @@ const ka: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_photo3d_rooms_needed: 'ტური ამ დიზაინის თითოეული ოთახის თვალის სიმაღლიდან გადაღებულ ფოტოებში დადის. ეს ფოტო მთელ სახლს ზემოდან აჩვენებს, ამიტომ თვალის სიმაღლე მასში ჯერ არ არის: ქვემოთ შექმენი ოთახების ფოტოები და ტური მათით გაიხსნება.',
   dsx_photo3d_rooms_cta: 'ოთახების ფოტოების შექმნა',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_tour_body: 'დაათვალიერე ამ დიზაინის ყველა ოთახი შიგნიდან: მიმოიხედე და წერტილზე დაჭერით გადადი შემდეგ ოთახში.',
+  dsx_tour_create: '3D ტურის შექმნა',
+  dsx_tour_more: 'დანარჩენი ოთახების დამატება ({{n}})',
+  dsx_tour_create_body: 'ყველა ოთახი ერთიანად შეიქმნება თვალის სიმაღლიდან, ამავე დიზაინიდან — იგივე ავეჯი, მასალები და ფერები. შემდეგ ტური თავისით გაიხსნება.',
+  dsx_tour_confirm_title: '3D ტური · {{n}} ოთახი',
+  dsx_tour_confirm_body: 'ყველა {{n}} ოთახი ერთად შეიქმნება ამ დიზაინიდან. ეს არის ფასი ყველასთვის ერთად.',
+  dsx_tour_making: 'შენი 3D ტური მზადდება',
+  dsx_tour_making_body: 'მზად რომ იქნება, თავისით გაიხსნება. შეგიძლია გვერდი დატოვო.',
+  dsx_tour_partial: 'ზოგი ოთახი ვერ შეიქმნა. დააჭირე ხელახლა — შეიქმნება მხოლოდ დაკლებული ოთახები.',
+  dsx_tour_hint: 'გადაათრიე მიმოსახედად · წერტილზე დაჭერით გადადი სხვა ოთახში',
+  dsx_tour_go: 'გადასვლა: {{room}}',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -45266,6 +45292,19 @@ const ru: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_photo3d_rooms_needed: 'Тур проходит по снимкам каждой комнаты этого дизайна на уровне глаз. Это изображение показывает весь дом сверху, поэтому войти пока некуда: создайте снимки комнат ниже, и тур откроется с ними.',
   dsx_photo3d_rooms_cta: 'Создать снимки комнат',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_tour_body: 'Пройдите по всем комнатам этого дизайна изнутри: осмотритесь и нажмите на точку, чтобы перейти в следующую комнату.',
+  dsx_tour_create: 'Создать 3D-тур',
+  dsx_tour_more: 'Добавить остальные комнаты ({{n}})',
+  dsx_tour_create_body: 'Все комнаты создаются сразу, на уровне глаз, из этого дизайна — та же мебель, материалы и цвета. Затем тур откроется сам.',
+  dsx_tour_confirm_title: '3D-тур · комнат: {{n}}',
+  dsx_tour_confirm_body: 'Все комнаты ({{n}}) создаются вместе из этого дизайна. Это цена за все.',
+  dsx_tour_making: 'Ваш 3D-тур готовится',
+  dsx_tour_making_body: 'Он откроется сам, когда будет готов. Можно покинуть страницу.',
+  dsx_tour_partial: 'Некоторые комнаты не получились. Нажмите ещё раз — будут созданы только недостающие.',
+  dsx_tour_hint: 'Проведите, чтобы осмотреться · нажмите на точку, чтобы перейти в другую комнату',
+  dsx_tour_go: 'Перейти: {{room}}',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -60318,6 +60357,19 @@ const tr: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_photo3d_rooms_needed: 'Tur, bu tasarımın her odasının göz hizasından görsellerinde dolaşır. Bu görsel evin tamamını yukarıdan gösteriyor, yani henüz girilecek göz hizası yok: odaların görsellerini aşağıda oluşturun, tur onlarla açılır.',
   dsx_photo3d_rooms_cta: 'Oda görsellerini oluştur',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_tour_body: 'Bu tasarımın tüm odalarını içeriden gezin: etrafa bakın ve sonraki odaya geçmek için bir noktaya dokunun.',
+  dsx_tour_create: '3D turu oluştur',
+  dsx_tour_more: 'Diğer odaları ekle ({{n}})',
+  dsx_tour_create_body: 'Tüm odalar bu tasarımdan, göz hizasında, tek seferde oluşturulur — aynı mobilya, malzeme ve renkler. Ardından tur kendiliğinden açılır.',
+  dsx_tour_confirm_title: '3D tur · {{n}} oda',
+  dsx_tour_confirm_body: '{{n}} odanın tamamı bu tasarımdan birlikte oluşturulur. Bu, hepsinin fiyatıdır.',
+  dsx_tour_making: '3D turunuz hazırlanıyor',
+  dsx_tour_making_body: 'Hazır olduğunda kendiliğinden açılır. Bu sayfadan ayrılabilirsiniz.',
+  dsx_tour_partial: 'Bazı odalar oluşmadı. Tekrar dokunun — yalnızca eksik odalar oluşturulur.',
+  dsx_tour_hint: 'Etrafa bakmak için sürükleyin · başka odaya geçmek için bir noktaya dokunun',
+  dsx_tour_go: 'Git: {{room}}',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -75370,6 +75422,19 @@ const ar: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_photo3d_rooms_needed: 'تتجول الجولة في صور كل غرفة من هذا التصميم على مستوى النظر. هذه الصورة تُظهر المنزل كله من الأعلى، فلا يوجد بعد مستوى نظر للدخول: أنشئ صور الغرف أدناه وستُفتح الجولة بها.',
   dsx_photo3d_rooms_cta: 'إنشاء صور الغرف',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_tour_body: 'تجوّل في كل غرف هذا التصميم من الداخل: انظر حولك واضغط على نقطة للانتقال إلى الغرفة التالية.',
+  dsx_tour_create: 'إنشاء الجولة ثلاثية الأبعاد',
+  dsx_tour_more: 'إضافة بقية الغرف ({{n}})',
+  dsx_tour_create_body: 'تُنشأ كل الغرف دفعة واحدة على مستوى النظر من هذا التصميم — الأثاث والمواد والألوان نفسها. ثم تُفتح الجولة تلقائيًا.',
+  dsx_tour_confirm_title: 'جولة ثلاثية الأبعاد · {{n}} غرف',
+  dsx_tour_confirm_body: 'تُنشأ الغرف الـ{{n}} كلها معًا من هذا التصميم. هذا هو سعرها كلها.',
+  dsx_tour_making: 'جولتك ثلاثية الأبعاد قيد التحضير',
+  dsx_tour_making_body: 'ستُفتح تلقائيًا عندما تكون جاهزة. يمكنك مغادرة هذه الصفحة.',
+  dsx_tour_partial: 'لم تُنشأ بعض الغرف. اضغط مجددًا — ستُنشأ الغرف الناقصة فقط.',
+  dsx_tour_hint: 'اسحب للنظر حولك · اضغط على نقطة للانتقال إلى غرفة أخرى',
+  dsx_tour_go: 'الانتقال إلى: {{room}}',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -90422,6 +90487,19 @@ const he: Partial<Record<TranslationKey, string>> = {
   /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
   dsx_photo3d_rooms_needed: 'הסיור עובר בתמונות בגובה העיניים של כל חדר בעיצוב הזה. התמונה הזו מציגה את כל הבית מלמעלה, ולכן אין בה עדיין גובה עיניים להיכנס אליו: צרו למטה את תמונות החדרים והסיור ייפתח איתן.',
   dsx_photo3d_rooms_cta: 'יצירת תמונות החדרים',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_tour_body: 'סיירו בכל חדרי העיצוב הזה מבפנים: הביטו סביב והקישו על נקודה כדי לעבור לחדר הבא.',
+  dsx_tour_create: 'יצירת סיור תלת־ממדי',
+  dsx_tour_more: 'הוספת שאר החדרים ({{n}})',
+  dsx_tour_create_body: 'כל החדרים נוצרים בבת אחת, בגובה העיניים, מהעיצוב הזה — אותם רהיטים, חומרים וצבעים. אחר כך הסיור נפתח מעצמו.',
+  dsx_tour_confirm_title: 'סיור תלת־ממדי · {{n}} חדרים',
+  dsx_tour_confirm_body: 'כל {{n}} החדרים נוצרים יחד מהעיצוב הזה. זה המחיר של כולם.',
+  dsx_tour_making: 'הסיור התלת־ממדי שלך בהכנה',
+  dsx_tour_making_body: 'הוא ייפתח מעצמו כשיהיה מוכן. אפשר לעזוב את הדף.',
+  dsx_tour_partial: 'חלק מהחדרים לא נוצרו. הקישו שוב — ייווצרו רק החדרים החסרים.',
+  dsx_tour_hint: 'גררו כדי להביט סביב · הקישו על נקודה כדי לעבור לחדר אחר',
+  dsx_tour_go: 'מעבר אל: {{room}}',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

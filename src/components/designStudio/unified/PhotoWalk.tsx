@@ -2,16 +2,17 @@
 //
 // The picture itself is the scene (photo3d/depthMesh.ts): nothing re-designed,
 // nothing replaced. It opens exactly as the picture; drag to look around, the
-// circle (or W A S D / arrows / the wheel) to step in. The other pictures of
-// this design (its rooms) are one tap away. What the picture does not show
-// stays open rather than invented, and the walk ends where the picture does.
+// circle (or W A S D / arrows / the wheel) to step in. The other rooms of this
+// design are points standing in the room: tap one and you are in that room
+// (prepared while you look around, so it opens at once). What the picture does
+// not show stays open rather than invented, and the walk ends where the picture does.
 
 import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, RotateCcw, X } from 'lucide-react';
 import * as THREE from 'three';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
-import { clampWalk, PHOTO_CAMERAS, photoMesh, roomShapedDepth, walkBounds } from '@/lib/designStudio/photo3d/depthMesh';
+import { clampWalk, hotspotAt, PHOTO_CAMERAS, photoMesh, roomShapedDepth, walkBounds } from '@/lib/designStudio/photo3d/depthMesh';
 import { estimateDepth } from '@/lib/designStudio/photo3d/estimateDepth';
 import { signedUrls } from '@/services/designStudio/files';
 
@@ -24,6 +25,31 @@ const SnakeGame = lazy(() => import('@/components/games/SnakeGame'));
 const RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]';
 const ROUND = cn('grid h-11 w-11 place-items-center rounded-full bg-white/10 text-white ring-1 ring-white/20 hover:bg-white/20', RING);
 const SPEED = 0.9;
+
+/** The picture behind a walk photo, as a decoded image: a fresh link first (the page's may have expired), then the one it has. */
+async function loadPicture(photo: WalkPhoto, onStage: (s: string) => void): Promise<HTMLImageElement> {
+  const links = [...new Set([photo.key ? (await signedUrls([photo.key], 900).catch(() => new Map<string, string>())).get(photo.key) : null, photo.url].filter((x): x is string => !!x))];
+  let blob: Blob | null = null;
+  let stage = 'PICTURE_NETWORK';
+  for (const link of links) {
+    const res = await fetch(link, { cache: 'no-store' }).catch(() => null);
+    stage = res ? `PICTURE_${res.status}` : 'PICTURE_NETWORK';
+    onStage(stage);
+    if (res?.ok) { blob = await res.blob(); break; }
+  }
+  if (!blob) throw new Error(stage);
+  onStage('DECODE');
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    return img;
+  } finally {
+    // Decoded: the pixels stay with the image.
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+}
 
 type Phase = { kind: 'LOADING'; progress: number | null; measuring?: boolean } | { kind: 'READY'; approximate: boolean; reason?: string } | { kind: 'FAILED'; code: string };
 
@@ -38,6 +64,11 @@ export function PhotoWalk({ photos, initialId, onClose }: { photos: WalkPhoto[];
   const knob = useRef<HTMLDivElement>(null);
   const resetRef = useRef<() => void>(() => {});
   const photo = photos.find((p) => p.id === activeId) ?? photos[0];
+  // The other rooms, as points in this one (placed every frame where the room shows them).
+  const elsewhere = photos.filter((p) => p.id !== photo?.id).slice(0, 8);
+  const spots = useRef<Array<HTMLButtonElement | null>>([]);
+  const photosRef = useRef(photos);
+  photosRef.current = photos;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -66,6 +97,7 @@ export function PhotoWalk({ photos, initialId, onClose }: { photos: WalkPhoto[];
     const pos = { x: 0, y: 0, z: 0 };
     const look = { yaw: 0, pitch: 0 };
     let bounds = { forwardM: 0.5, sideM: 0.3, upM: 0.25 };
+    let place: ((i: number, n: number) => THREE.Vector3) | null = null;
     const move = { x: 0, y: 0, wheel: 0 };
     const keys = new Set<string>();
     resetRef.current = () => { pos.x = 0; pos.y = 0; pos.z = 0; look.yaw = 0; look.pitch = 0; };
@@ -143,27 +175,26 @@ export function PhotoWalk({ photos, initialId, onClose }: { photos: WalkPhoto[];
       camera.position.set(pos.x, pos.y, pos.z);
       camera.rotation.set(look.pitch, look.yaw, 0);
       renderer.render(scene, camera);
+      camera.updateMatrixWorld();
+      const list = spots.current;
+      const n = list.filter(Boolean).length;
+      const w = el.clientWidth; const h = el.clientHeight;
+      for (let i = 0; i < list.length; i += 1) {
+        const b = list[i];
+        if (!b) continue;
+        const at = place ? place(i, n).project(camera) : null;
+        const shown = !!at && at.z < 1 && Math.abs(at.x) < 1.05 && Math.abs(at.y) < 1.05;
+        b.style.visibility = shown ? 'visible' : 'hidden';
+        if (at && shown) b.style.transform = `translate(${((at.x + 1) / 2) * w}px, ${((1 - at.y) / 2) * h}px) translate(-50%, -50%)`;
+      }
     };
 
     let stage = 'START';
     (async () => {
       try {
-        // A fresh link to the picture (the one the page holds may have expired), then the one it has.
-        const links = [...new Set([photo.key ? (await signedUrls([photo.key], 900).catch(() => new Map<string, string>())).get(photo.key) : null, photo.url].filter((x): x is string => !!x))];
-        let blob: Blob | null = null;
-        for (const link of links) {
-          const res = await fetch(link, { cache: 'no-store' }).catch(() => null);
-          stage = res ? `PICTURE_${res.status}` : 'PICTURE_NETWORK';
-          if (res?.ok) { blob = await res.blob(); break; }
-        }
-        if (!blob) throw new Error(stage);
-        stage = 'DECODE';
-        const url = URL.createObjectURL(blob);
-        const img = new Image();
-        img.src = url;
-        await img.decode();
+        const img = await loadPicture(photo, (st) => { stage = st; });
         stage = 'DEPTH';
-        if (disposed) { URL.revokeObjectURL(url); return; }
+        if (disposed) return;
         // The picture's own depth; a device that cannot estimate it still enters the picture, on a room's shape.
         let approximate = false;
         let reason = '';
@@ -172,7 +203,7 @@ export function PhotoWalk({ photos, initialId, onClose }: { photos: WalkPhoto[];
           setPhase(p.stage === 'MEASURING' ? { kind: 'LOADING', progress: null, measuring: true } : { kind: 'LOADING', progress: p.fraction });
         })
           .catch((e) => { approximate = true; reason = String((e as Error)?.message ?? e).slice(0, 60); return roomShapedDepth(); });
-        if (disposed) { URL.revokeObjectURL(url); return; }
+        if (disposed) return;
         stage = 'MESH';
         const aspect = img.naturalWidth / Math.max(1, img.naturalHeight);
         const mesh = photoMesh(depth, aspect, cam);
@@ -198,9 +229,23 @@ export function PhotoWalk({ photos, initialId, onClose }: { photos: WalkPhoto[];
           const px = d.length / 4;
           scene.background = new THREE.Color(`rgb(${Math.round((r / px) * 0.45)}, ${Math.round((gg / px) * 0.45)}, ${Math.round((b / px) * 0.45)})`);
         }
-        URL.revokeObjectURL(url);
+        // The points to the other rooms: where the picture shows that part of the room, a little nearer.
+        place = (i, n) => {
+          const { u, v } = hotspotAt(i, n);
+          const k = Math.round(v * mesh.rows) * (mesh.cols + 1) + Math.round(u * mesh.cols);
+          return new THREE.Vector3(mesh.positions[k * 3], mesh.positions[k * 3 + 1], mesh.positions[k * 3 + 2]).multiplyScalar(0.8);
+        };
+        // eslint-disable-next-line no-console
+        if (approximate) console.warn('[photo-walk] approximate depth', reason);
         setPhase({ kind: 'READY', approximate, reason });
         frame = requestAnimationFrame(tick);
+        // The other rooms are prepared while this one is looked at, one after another: a tap opens them at once.
+        void (async () => {
+          for (const other of photosRef.current.filter((p) => p.id !== photo.id).slice(0, 8)) {
+            if (disposed) return;
+            try { await estimateDepth(other.id, await loadPicture(other, () => {})); } catch { /* measured when entered */ }
+          }
+        })();
       } catch (e) {
         // eslint-disable-next-line no-console
         console.error('[photo-walk]', stage, e);
@@ -234,7 +279,7 @@ export function PhotoWalk({ photos, initialId, onClose }: { photos: WalkPhoto[];
   return (
     <div className="fixed inset-0 z-[90] flex flex-col bg-[#0C1119] text-white" role="dialog" aria-modal="true" aria-label={t('dsx_photo3d_title')} data-testid="photo-walk" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="flex items-center gap-2 px-3 pb-2 pt-[max(env(safe-area-inset-top),12px)]">
-        <h2 className="min-w-0 flex-1 truncate font-display text-[17px] font-semibold">{t('dsx_photo3d_title')}</h2>
+        <h2 className="min-w-0 flex-1 truncate font-display text-[17px] font-semibold" data-testid="photo-walk-room">{photo?.label ?? t('dsx_photo3d_title')}</h2>
         <button type="button" onClick={() => resetRef.current()} className={ROUND} aria-label={t('dsx_photo3d_reset')} data-testid="photo-walk-reset"><RotateCcw className="h-5 w-5" aria-hidden="true" /></button>
         <button type="button" onClick={onClose} className={cn(ROUND, 'bg-white text-[#0C1119] hover:bg-white/90')} aria-label={t('dsx_photo3d_close')} data-testid="photo-walk-close"><X className="h-5 w-5" aria-hidden="true" /></button>
       </div>
@@ -270,9 +315,20 @@ export function PhotoWalk({ photos, initialId, onClose }: { photos: WalkPhoto[];
           </div>
         ) : null}
         {phase.kind === 'READY' ? (
-          <p className="pointer-events-none absolute inset-x-0 top-3 mx-auto w-fit max-w-[90%] rounded-full bg-black/45 px-4 py-2 text-center text-[13px] text-white" data-testid="photo-walk-hint">{t(phase.approximate ? 'dsx_photo3d_approx' : 'dsx_photo3d_hint')}
-            {phase.approximate && phase.reason ? <span className="block text-2xs text-white/60" data-testid="photo-walk-approx-reason">{phase.reason}</span> : null}</p>
+          <p className="pointer-events-none absolute inset-x-0 top-3 mx-auto w-fit max-w-[90%] rounded-full bg-black/45 px-4 py-2 text-center text-[13px] text-white" data-testid="photo-walk-hint"
+            data-approximate={phase.approximate ? 'yes' : 'no'} data-reason={phase.reason || undefined}>{t(elsewhere.length ? 'dsx_tour_hint' : 'dsx_photo3d_hint')}</p>
         ) : null}
+        {phase.kind === 'READY' ? elsewhere.map((p, i) => (
+          <button key={p.id} ref={(b) => { spots.current[i] = b; }} type="button" onClick={() => setActiveId(p.id)}
+            style={{ visibility: 'hidden' }} aria-label={t('dsx_tour_go', { room: p.label })}
+            className={cn('group absolute left-0 top-0 flex flex-col items-center gap-1.5', RING)} data-testid="photo-walk-spot">
+            <span className="relative grid h-12 w-12 place-items-center" aria-hidden="true">
+              <span className="absolute inset-0 animate-ping rounded-full bg-[hsl(38_92%_56%)]/40" />
+              <span className="relative h-7 w-7 rounded-full border-[3px] border-white bg-[hsl(38_92%_56%)] shadow-[0_4px_16px_rgba(0,0,0,0.45)] transition-transform group-hover:scale-110" />
+            </span>
+            <span className="max-w-[9rem] truncate rounded-full bg-black/60 px-3 py-1 text-[13px] font-semibold text-white backdrop-blur-sm">{p.label}</span>
+          </button>
+        )) : null}
         <div ref={stick} className={cn('absolute bottom-[max(env(safe-area-inset-bottom),20px)] start-5 grid h-28 w-28 touch-none place-items-center rounded-full ring-2 ring-white/40', phase.kind === 'READY' ? '' : 'hidden')}
           aria-label={t('dsx_photo3d_move')} role="application" data-testid="photo-walk-stick">
           <div ref={knob} className="h-12 w-12 rounded-full bg-white/70" />

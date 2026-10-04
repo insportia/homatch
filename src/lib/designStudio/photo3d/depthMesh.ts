@@ -136,6 +136,16 @@ export function clampWalk(p: { x: number; y: number; z: number }, b: { forwardM:
   };
 }
 
+/**
+ * Where the point to another room stands in this one: spread across the room at about door height, a little in
+ * front of what the picture shows there (fractions of the picture, u across, v down).
+ */
+export function hotspotAt(i: number, n: number): { u: number; v: number } {
+  const span = Math.min(0.64, 0.13 * Math.max(1, n - 1));
+  const u = n <= 1 ? 0.5 : 0.5 - span / 2 + (span * i) / (n - 1);
+  return { u, v: 0.56 + (n > 4 && i % 2 ? 0.08 : 0) };
+}
+
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /**

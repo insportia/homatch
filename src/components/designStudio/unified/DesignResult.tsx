@@ -58,6 +58,9 @@ const FOCUS_KEY: Record<typeof FOCUSES[number], string> = {
 };
 /** The most generated designs one room may be drawn from (the server's MAX_REFERENCES). */
 const MAX_REFS = 4;
+/** The most rooms one 3D tour makes at once (the server allows 20 designs an hour), and how many side by side. */
+const TOUR_MAX = 8;
+const TOUR_PARALLEL = 3;
 /** A short, stable fingerprint of the selected references (the room's idempotency key stays under the server's 128 characters). */
 const fingerprint = (ids: string[]) => {
   let h = 0x811c9dc5;
@@ -78,6 +81,8 @@ export interface ResultData {
 
 /** What a pending paid action is, its price, and what Confirm does. */
 interface Pending { title: string; body: string | null; credits: number; charged: boolean; run: () => Promise<void> }
+/** A 3D tour being made: every room's eye-level picture at once, from the same design (one confirmed price per room). */
+interface TourRun { headId: string; roomIds: string[]; credits: number; refs: string[]; look: { style: string; quality: string } }
 /** A design being made right now (followed here; owned by the server). */
 interface Working { label: string; stage: RunStage }
 
@@ -109,6 +114,11 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
   const [pending, setPending] = useState<Pending | null>(null);
   const [sheet, setSheet] = useState<'STYLE' | 'QUALITY' | { roomId: string } | null>(null);
   const [working, setWorking] = useState<Working | null>(null);
+  // The 3D tour being made (how many rooms of how many are in), whether a room of it did not come, and a request to open it.
+  const [tour, setTour] = useState<{ total: number; done: number } | null>(null);
+  const [tourShort, setTourShort] = useState(false);
+  const [tourOpen, setTourOpen] = useState(0);
+  const occupied = !!working || !!tour;
   const [playing, setPlaying] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -254,7 +264,7 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
   };
 
   const nonce = () => Math.random().toString(36).slice(2, 10);
-  const retryFailed = () => { if (failedRun && !working) void generate(failedRun, true); };
+  const retryFailed = () => { if (failedRun && !occupied) void generate(failedRun, true); };
   // The rooms of a whole-home photo, read again from the same photos (nothing uploaded again).
   const [findingRooms, setFindingRooms] = useState(false);
   const [roomsNote, setRoomsNote] = useState<string | null>(null);
@@ -288,17 +298,74 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
   const askFocus = (focus: typeof FOCUSES[number]) => offer('DS_MASTER_RENDER', data.head.id, t(FOCUS_KEY[focus]), null, async (credits) => {
     void generate({ mode: 'VARIANT', key: `foc-${hero!.id}-${focus}-${nonce()}`, label: t(FOCUS_KEY[focus]), credits, focus });
   });
+  // The same room, style and references are the same picture: asking twice (a double tap, a reload, the 3D tour) never pays twice.
+  const roomKey = (roomId: string, style: LookStyle | null, chosen: string[]) => `room-${data.head.id.slice(0, 8)}-${roomId.slice(0, 40)}-${style ?? 'same'}-${fingerprint(chosen)}`;
   const askRoom = (roomId: string, style: LookStyle | null) => {
     const chosen = refs;
     if (!chosen.length) return;
     return offer('DS_ROOM_RENDER', data.head.id, `${t('dsx_room_create')} · ${roomLabel(roomId) ?? ''}`, t('dsx_room_from_refs', { n: String(chosen.length) }), async (credits) => {
-      // The same room, style and references are the same picture: asking twice (a double tap, a reload) never pays twice.
       void generate({
-        mode: 'ROOM', key: `room-${data.head.id.slice(0, 8)}-${roomId.slice(0, 40)}-${style ?? 'same'}-${fingerprint(chosen)}`,
+        mode: 'ROOM', key: roomKey(roomId, style, chosen),
         label: roomLabel(roomId) ?? t('dsx_other_room'), credits, roomId, style, refs: chosen, parentRenderId: chosen[0],
       });
     });
   };
+
+  // ── The 3D tour: one tap makes every room's eye-level picture at once, drawn from the design shown (the same
+  // references, style and quality — the rooms of THIS design), then opens the tour through them. The customer sees
+  // one price for all of them and one wait; each room is its own server-owned run (a closed page changes nothing).
+  const tourKey = `hm-ds-tour:${projectId}`;
+  const tourRunning = useRef(false);
+  const runTour = async (run: TourRun, retry: boolean) => {
+    if (tourRunning.current || !run.roomIds.length) return;
+    tourRunning.current = true;
+    try { window.localStorage.setItem(tourKey, JSON.stringify(run)); } catch { /* private mode */ }
+    setError(null);
+    setTourShort(false);
+    setTour({ total: run.roomIds.length, done: 0 });
+    const base = run.look;
+    const queue = [...run.roomIds];
+    let short = 0;
+    let stop: unknown = null;
+    const one = async (roomId: string) => {
+      try {
+        await runDesign({
+          projectId, versionId: run.headId, mode: 'ROOM', key: roomKey(roomId, null, run.refs), look: base, preferences: lookPreferences(base.style as LookStyle, base.quality as LookQuality),
+          roomId, parentRenderId: run.refs[0], referenceRenderIds: run.refs, confirmedCredits: run.credits, versionName: t('p2h_version_design'), retry,
+        });
+      } catch (e) {
+        const code = e instanceof DesignStudioError ? e.code : '';
+        // Still being made after the page's own wait: the server carries on, the page picks it up on return.
+        if (code !== 'DS_STILL_WORKING' && code !== 'DS_WATCH_STOPPED') short += 1;
+        // A price that moved or missing credits is the customer's to decide: nothing more is asked.
+        if (code === 'DS_PRICE_CHANGED' || code === 'DS_INSUFFICIENT_CREDITS') stop = e;
+      }
+      if (alive.current) { setTour((x) => (x ? { ...x, done: x.done + 1 } : x)); void refresh(); }
+    };
+    await Promise.all(Array.from({ length: Math.min(TOUR_PARALLEL, queue.length) }, async () => {
+      while (queue.length && !stop) await one(queue.shift()!);
+    }));
+    tourRunning.current = false;
+    try { window.localStorage.removeItem(tourKey); } catch { /* private mode */ }
+    if (!alive.current) return;
+    await onReload();
+    await refresh();
+    setTour(null);
+    if (stop) fail(stop);
+    if (short || stop) setTourShort(true);
+    if (short < run.roomIds.length) { setPlaying(false); setTourOpen((n) => n + 1); }
+  };
+  // A tour being made when the page was left: followed again on return (the same runs; nothing is asked twice).
+  useEffect(() => {
+    let saved: TourRun | null = null;
+    try { const v = window.localStorage.getItem(tourKey); saved = v ? JSON.parse(v) as TourRun : null; } catch { saved = null; }
+    if (!saved) return;
+    if (saved.headId !== data.head.id || !Array.isArray(saved.roomIds) || !Array.isArray(saved.refs) || !saved.look) {
+      try { window.localStorage.removeItem(tourKey); } catch { /* private mode */ }
+      return;
+    }
+    void runTour(saved, false);
+  }, [tourKey, data.head.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** An edit inside one target's own mask (the stable edit pipeline). The design's picture changes; nothing moves. */
   const onChoice = async (choice: EditChoice, label: string) => {
@@ -370,12 +437,19 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
     }
   };
   const heroRoom = hero ? roomOf(hero) ?? data.heroRoomId : data.heroRoomId;
+  // A photo design is a picture of the customer's own room at eye level — unless that photo shows the whole home
+  // (several rooms read from one photo): then it is no more a room to stand in than a dollhouse is.
+  const photoHeroEyeLevel = useMemo(() => {
+    if (data.sourceKind !== 'PHOTO' || !data.heroRoomId) return false;
+    const own = data.rooms.find((r) => r.id === data.heroRoomId)?.photoUrl ?? null;
+    return !!own && !data.rooms.some((r) => r.id !== data.heroRoomId && r.photoUrl === own);
+  }, [data.sourceKind, data.heroRoomId, data.rooms]);
   // The pictures one can step into: eye-level pictures of the design's rooms (the room shown first). A dollhouse
   // picture of the whole home is seen from above: there is no eye level in it to enter, so it is never one of them.
   const walkPhotos = useMemo(() => {
     const out: Array<{ id: string; url: string; key: string | null; label: string; kind: 'ROOM' | 'MASTER' }> = [];
     const keyOf = (r: RenderRecord) => r.final_key ?? r.base_key ?? null;
-    const heroRoomId = hero ? roomOf(hero) : null;
+    const heroRoomId = hero ? roomOf(hero) ?? (photoHeroEyeLevel && !roomOf(hero) ? data.heroRoomId : null) : null;
     if (hero && heroUrl && heroRoomId) out.push({ id: hero.id, url: heroUrl, key: keyOf(hero), kind: 'ROOM', label: roomLabel(heroRoomId) ?? t('dsx_photo3d_room') });
     for (const [roomId, r] of roomShots) {
       const url = urls.get(r.id);
@@ -383,8 +457,26 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
       out.push({ id: r.id, url, key: keyOf(r), kind: 'ROOM', label: roomLabel(roomId) ?? t('dsx_photo3d_room') });
     }
     return out.slice(0, 12);
-  }, [hero, heroUrl, roomShots, urls, roomLabel, t]);
+  }, [hero, heroUrl, roomShots, urls, roomLabel, t, photoHeroEyeLevel, data.heroRoomId]);
   const others = data.rooms.filter((r) => r.id !== (data.heroRoomId ?? ''));
+  // The rooms the tour still needs a picture of (the room a photo design already shows is one it has).
+  const tourRooms = useMemo(() => data.rooms
+    .filter((r) => !roomShots.has(r.id) && !(photoHeroEyeLevel && r.id === data.heroRoomId))
+    .slice(0, TOUR_MAX), [data.rooms, roomShots, photoHeroEyeLevel, data.heroRoomId]);
+  /** One price for every room the tour needs, confirmed before anything is spent. */
+  const createTour = async () => {
+    const chosen = refs;
+    if (!chosen.length || !tourRooms.length || occupied) return;
+    setError(null);
+    const q = await quoteRender({ projectId, versionId: data.head.id, product: 'DS_ROOM_RENDER', views: 1 });
+    if (!q.quote) { setError(t('rend_error_quote')); return; }
+    const credits = q.quote.credits;
+    const run: TourRun = { headId: data.head.id, roomIds: tourRooms.map((r) => r.id), credits, refs: chosen, look: look ?? { style: 'MODERN', quality: 'HIGH_QUALITY' } };
+    setPending({
+      title: t('dsx_tour_confirm_title', { n: String(run.roomIds.length) }), body: t('dsx_tour_confirm_body', { n: String(run.roomIds.length) }),
+      credits: credits * run.roomIds.length, charged: q.quote.charged, run: async () => { void runTour(run, true); },
+    });
+  };
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-[#F7F4EF] text-[#0C1119]" data-testid="design-home" data-view="HOME" data-source={data.sourceKind}>
@@ -484,9 +576,9 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
 
         {/* ── What to make next ──────────────────────────────────────── */}
         <div className="mt-6 flex flex-wrap gap-2" data-testid="home-actions">
-          <button type="button" onClick={() => { setWishOpen(true); window.setTimeout(() => document.getElementById('ds-wish')?.focus(), 50); }} disabled={!hero || !!working} className={CHIP} data-testid="home-variant"><Shuffle className="h-4 w-4" aria-hidden="true" />{t('dsx_variant')}</button>
-          <button type="button" onClick={() => setSheet('STYLE')} disabled={!hero || !!working} className={CHIP} data-testid="home-style"><Sparkles className="h-4 w-4" aria-hidden="true" />{t('dsx_change_style')}</button>
-          <button type="button" onClick={() => setSheet('QUALITY')} disabled={!hero || !!working} className={CHIP} data-testid="home-quality"><Layers className="h-4 w-4" aria-hidden="true" />{t('dsx_change_quality')}</button>
+          <button type="button" onClick={() => { setWishOpen(true); window.setTimeout(() => document.getElementById('ds-wish')?.focus(), 50); }} disabled={!hero || occupied} className={CHIP} data-testid="home-variant"><Shuffle className="h-4 w-4" aria-hidden="true" />{t('dsx_variant')}</button>
+          <button type="button" onClick={() => setSheet('STYLE')} disabled={!hero || occupied} className={CHIP} data-testid="home-style"><Sparkles className="h-4 w-4" aria-hidden="true" />{t('dsx_change_style')}</button>
+          <button type="button" onClick={() => setSheet('QUALITY')} disabled={!hero || occupied} className={CHIP} data-testid="home-quality"><Layers className="h-4 w-4" aria-hidden="true" />{t('dsx_change_quality')}</button>
           {others.length ? (
             <button type="button" onClick={() => document.getElementById('ds-rooms')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className={CHIP} data-testid="home-rooms">{t('dsx_other_room')}</button>
           ) : null}
@@ -502,13 +594,13 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
             <ul className="grid grid-cols-1 gap-2 px-3 pb-3 min-[400px]:grid-cols-2 sm:grid-cols-3" data-testid="home-more-list">
               {FOCUSES.map((f) => (
                 <li key={f}>
-                  <button type="button" onClick={() => { void askFocus(f); }} disabled={!!working || busy}
+                  <button type="button" onClick={() => { void askFocus(f); }} disabled={occupied || busy}
                     className={cn('flex min-h-11 w-full items-center rounded-2xl bg-[#F7F4EF] px-4 py-2 text-start text-[14px] font-medium leading-snug hover:bg-[#EFEAE2] disabled:opacity-50', RING)} data-testid={`home-focus-${f}`}>{t(FOCUS_KEY[f])}</button>
                 </li>
               ))}
               {hero.legend ? (
                 <li>
-                  <button type="button" onClick={() => { setMode('EDIT'); setSelected(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }} disabled={!!working}
+                  <button type="button" onClick={() => { setMode('EDIT'); setSelected(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }} disabled={occupied}
                     className={cn('flex min-h-11 w-full items-center gap-2 rounded-2xl bg-[#F7F4EF] px-4 py-2 text-start text-[14px] font-medium leading-snug hover:bg-[#EFEAE2] disabled:opacity-50', RING)} data-testid="home-focus-EDIT"><Pencil className="h-4 w-4 shrink-0" aria-hidden="true" />{t('dsx_focus_EDIT')}</button>
                 </li>
               ) : null}
@@ -516,7 +608,7 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
           </details>
         ) : null}
 
-        {working ? (
+        {working && !tour ? (
           <section className="mt-5 flex flex-wrap items-center gap-3 rounded-[22px] bg-[#0C1119] p-4 text-white sm:p-5" role="status" aria-live="polite" data-testid="home-working">
             <Loader2 className="h-5 w-5 shrink-0 animate-spin text-[hsl(38_92%_62%)]" aria-hidden="true" />
             <div className="min-w-0 flex-1">
@@ -538,12 +630,12 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
             </div>
             <label htmlFor="ds-wish" className="sr-only">{t('dsx_wish_title')}</label>
             <textarea id="ds-wish" value={wish} onChange={(e) => setWish(e.target.value)} onFocus={() => setWishOpen(true)} maxLength={600} rows={wishOpen ? 4 : 2}
-              placeholder={t('dsx_wish_placeholder')} disabled={!!working}
+              placeholder={t('dsx_wish_placeholder')} disabled={occupied}
               className="mt-3 w-full resize-none rounded-2xl bg-white/[0.07] px-4 py-3 text-[15px] leading-relaxed text-white ring-1 ring-white/15 placeholder:text-white/45 focus:outline-none focus:ring-2 focus:ring-[hsl(38_92%_56%)]"
               data-testid="home-wish-text" />
             <div className="mt-3 flex items-center justify-between gap-3">
               <span className="text-[13px] text-white/50 tabular-nums">{wish.length}/600</span>
-              <button type="button" onClick={askWish} disabled={wish.trim().length < 3 || !!working || busy}
+              <button type="button" onClick={askWish} disabled={wish.trim().length < 3 || occupied || busy}
                 className={cn('inline-flex h-11 items-center gap-2 rounded-full bg-[hsl(38_92%_56%)] px-5 text-[14px] font-semibold text-[#0C1119] disabled:cursor-not-allowed disabled:opacity-50', RING)} data-testid="home-wish-send">
                 <Sparkles className="h-4 w-4" aria-hidden="true" />{t('dsx_wish_send')}
               </button>
@@ -551,7 +643,7 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
           </section>
         ) : null}
 
-        {failedRun && !working ? (
+        {failedRun && !occupied ? (
           <section className="mt-5 rounded-[22px] bg-white p-4 ring-1 ring-[#E7E1D8] sm:p-5" role="alert" data-testid="home-recovery">
             <div className="flex items-start gap-3">
               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[hsl(38_92%_56%)]/15 text-[hsl(36_60%_32%)]" aria-hidden="true"><RotateCcw className="h-4 w-4" /></span>
@@ -571,7 +663,8 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
 
         {/* ── The 3D walkthrough of the design shown: always from this project (a photo design's space is reconstructed by the server) ── */}
         {hero ? (
-          <WalkthroughPanel projectId={projectId} designVersionId={hero.version_id ?? data.head.id} renderId={hero.id} photos={walkPhotos} needsRoomPhotos />
+          <WalkthroughPanel projectId={projectId} designVersionId={hero.version_id ?? data.head.id} renderId={hero.id} photos={walkPhotos} needsRoomPhotos
+            tour={{ missing: tourRooms.length, making: tour, short: tourShort, openRequest: tourOpen, canCreate: !occupied && refs.length > 0, onCreate: () => { void createTour(); }, onPlay: () => setPlaying(true) }} />
         ) : null}
 
         {/* ── Your options ───────────────────────────────────────────── */}
@@ -652,7 +745,7 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
                       {shot ? (
                         <button type="button" onClick={() => { void showVersion(shot); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className={cn(CHIP, 'min-h-10')} data-testid="room-view">{t('dsx_view')}</button>
                       ) : null}
-                      <button type="button" onClick={() => setSheet({ roomId: room.id })} disabled={!hero || !!working || !refs.length}
+                      <button type="button" onClick={() => setSheet({ roomId: room.id })} disabled={!hero || occupied || !refs.length}
                         className={cn(shot ? CHIP : DARK, 'min-h-10 px-4 text-[14px]')} data-testid="room-create">{t('dsx_room_create')}</button>
                     </div>
                   </li>
@@ -717,7 +810,7 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
 
       {playing ? (
         <Suspense fallback={null}>
-          <SnakeGame status={working ? 'PROCESSING' : failedRun ? 'FAILED' : 'READY'} stageLabel={t(STAGE_KEY[working?.stage ?? 'RESULT'])}
+          <SnakeGame status={occupied ? 'PROCESSING' : failedRun ? 'FAILED' : 'READY'} stageLabel={tour ? t('dsx_tour_making') : t(STAGE_KEY[working?.stage ?? 'RESULT'])}
             onView={() => { setPlaying(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }} onClose={() => setPlaying(false)} />
         </Suspense>
       ) : null}

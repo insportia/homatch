@@ -6,7 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { clampWalk, EDGE_RATIO, PHOTO_CAMERAS, photoMesh, walkBounds } from '../photo3d/depthMesh.ts';
+import { clampWalk, EDGE_RATIO, hotspotAt, PHOTO_CAMERAS, photoMesh, walkBounds } from '../photo3d/depthMesh.ts';
 
 /** A depth map from a function of (u, v) → disparity. */
 const map = (w, h, f) => ({ width: w, height: h, data: Float32Array.from({ length: w * h }, (_, i) => f((i % w) / (w - 1), Math.floor(i / w) / (h - 1))) });
@@ -68,7 +68,7 @@ test('the 3D tour card opens the picture itself first; the depth model loads onl
   assert.ok(panel.indexOf('if (photoTour) {') > 0 && panel.indexOf('if (photoTour) {') < panel.indexOf('if (!loaded) return null;'));
   assert.match(panel, /if \(!photoTour\) void read\(\);/);
   const result = readFileSync(new URL('../../../components/designStudio/unified/DesignResult.tsx', import.meta.url), 'utf8');
-  assert.match(result, /renderId=\{hero\.id\} photos=\{walkPhotos\} needsRoomPhotos \/>/);
+  assert.match(result, /renderId=\{hero\.id\} photos=\{walkPhotos\} needsRoomPhotos\s/);
   // Only eye-level room pictures are walked: a dollhouse picture (seen from above) has no eye level to enter.
   const walkBlock = result.slice(result.indexOf('const walkPhotos = useMemo'), result.indexOf('const others = data.rooms'));
   assert.doesNotMatch(walkBlock, /kind: 'MASTER'/);
@@ -91,4 +91,42 @@ test('the 3D tour card opens the picture itself first; the depth model loads onl
   assert.match(walk, /dsx_photo3d_measuring/);
   assert.match(walk, /const SnakeGame = lazy\(\(\) => import\('@\/components\/games\/SnakeGame'\)\);/);
   assert.match(walk, /setPhase\(\{ kind: 'FAILED', code: stage \}\)/);
+});
+
+test('the points to the other rooms stand inside the picture, apart from each other, at about door height', () => {
+  for (const n of [1, 2, 3, 5, 8]) {
+    const at = Array.from({ length: n }, (_, i) => hotspotAt(i, n));
+    for (const p of at) assert.ok(p.u > 0.1 && p.u < 0.9 && p.v > 0.45 && p.v < 0.7, JSON.stringify(p));
+    for (let i = 1; i < n; i += 1) assert.ok(at[i].u - at[i - 1].u > 0.07, `n=${n}`);
+  }
+  assert.deepEqual(hotspotAt(0, 1), { u: 0.5, v: 0.56 });
+});
+
+test('one tap makes the whole tour: every missing room at once, one price, one wait, then it opens by itself', () => {
+  const result = readFileSync(new URL('../../../components/designStudio/unified/DesignResult.tsx', import.meta.url), 'utf8');
+  const create = result.slice(result.indexOf('const createTour = async'), result.indexOf('const createTour = async') + 1200);
+  // One price for all of them (each room's confirmed price x the rooms), confirmed before anything is spent.
+  assert.match(create, /credits: credits \* run\.roomIds\.length/);
+  assert.match(create, /setPending\(/);
+  const run = result.slice(result.indexOf('const runTour = async'), result.indexOf('// A tour being made when the page was left'));
+  // Every room drawn from the same design references, under the same key a single room would use (never paid twice).
+  assert.match(run, /key: roomKey\(roomId, null, run\.refs\)/);
+  assert.match(run, /referenceRenderIds: run\.refs/);
+  assert.match(run, /confirmedCredits: run\.credits/);
+  assert.match(run, /Promise\.all\(Array\.from\(\{ length: Math\.min\(TOUR_PARALLEL/);
+  assert.match(run, /setTourOpen\(/);
+  assert.doesNotMatch(run, /setHeroId/, 'the design shown stays the design shown');
+  // A tour left half-made is followed again only on the same design (a different head would be different rooms).
+  assert.match(result, /saved\.headId !== data\.head\.id/);
+  const panel = readFileSync(new URL('../../../components/designStudio/unified/WalkthroughPanel.tsx', import.meta.url), 'utf8');
+  assert.match(panel, /data-testid="tour-create"/);
+  assert.match(panel, /data-testid="tour-making"/);
+  // The wait shows no internal step names: only that it is being prepared.
+  const making = panel.slice(panel.indexOf('data-testid="tour-making"'), panel.indexOf('data-testid="tour-create-block"'));
+  assert.doesNotMatch(making, /STEP_KEY|STAGE_KEY|reason|code/);
+  const walk = readFileSync(new URL('../../../components/designStudio/unified/PhotoWalk.tsx', import.meta.url), 'utf8');
+  assert.match(walk, /data-testid="photo-walk-spot"/);
+  assert.match(walk, /onClick=\{\(\) => setActiveId\(p\.id\)\}/);
+  // Nothing internal on screen: the approximate-depth reason is kept off it.
+  assert.doesNotMatch(walk, /photo-walk-approx-reason/);
 });

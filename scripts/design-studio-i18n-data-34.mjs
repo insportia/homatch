@@ -1,0 +1,96 @@
+// HOMATCH Design Studio — the 3D tour made in one tap: every room of the
+// design at eye level at once, from the design shown, then a tour from room
+// to room by tapping the points standing in each room.
+//
+// Order is [en, ka, ru, tr, ar, he].
+
+export const DS_STRINGS_34 = {
+  dsx_tour_body: [
+    'Walk through every room of this design from the inside: look around, and tap a point to go to the next room.',
+    'დაათვალიერე ამ დიზაინის ყველა ოთახი შიგნიდან: მიმოიხედე და წერტილზე დაჭერით გადადი შემდეგ ოთახში.',
+    'Пройдите по всем комнатам этого дизайна изнутри: осмотритесь и нажмите на точку, чтобы перейти в следующую комнату.',
+    'Bu tasarımın tüm odalarını içeriden gezin: etrafa bakın ve sonraki odaya geçmek için bir noktaya dokunun.',
+    'تجوّل في كل غرف هذا التصميم من الداخل: انظر حولك واضغط على نقطة للانتقال إلى الغرفة التالية.',
+    'סיירו בכל חדרי העיצוב הזה מבפנים: הביטו סביב והקישו על נקודה כדי לעבור לחדר הבא.',
+  ],
+  dsx_tour_create: [
+    'Create the 3D tour',
+    '3D ტურის შექმნა',
+    'Создать 3D-тур',
+    '3D turu oluştur',
+    'إنشاء الجولة ثلاثية الأبعاد',
+    'יצירת סיור תלת־ממדי',
+  ],
+  dsx_tour_more: [
+    'Add the other rooms ({{n}})',
+    'დანარჩენი ოთახების დამატება ({{n}})',
+    'Добавить остальные комнаты ({{n}})',
+    'Diğer odaları ekle ({{n}})',
+    'إضافة بقية الغرف ({{n}})',
+    'הוספת שאר החדרים ({{n}})',
+  ],
+  dsx_tour_create_body: [
+    'Every room is made at once, at eye level, from this design — the same furniture, materials and colours. Then the tour opens by itself.',
+    'ყველა ოთახი ერთიანად შეიქმნება თვალის სიმაღლიდან, ამავე დიზაინიდან — იგივე ავეჯი, მასალები და ფერები. შემდეგ ტური თავისით გაიხსნება.',
+    'Все комнаты создаются сразу, на уровне глаз, из этого дизайна — та же мебель, материалы и цвета. Затем тур откроется сам.',
+    'Tüm odalar bu tasarımdan, göz hizasında, tek seferde oluşturulur — aynı mobilya, malzeme ve renkler. Ardından tur kendiliğinden açılır.',
+    'تُنشأ كل الغرف دفعة واحدة على مستوى النظر من هذا التصميم — الأثاث والمواد والألوان نفسها. ثم تُفتح الجولة تلقائيًا.',
+    'כל החדרים נוצרים בבת אחת, בגובה העיניים, מהעיצוב הזה — אותם רהיטים, חומרים וצבעים. אחר כך הסיור נפתח מעצמו.',
+  ],
+  dsx_tour_confirm_title: [
+    '3D tour · {{n}} rooms',
+    '3D ტური · {{n}} ოთახი',
+    '3D-тур · комнат: {{n}}',
+    '3D tur · {{n}} oda',
+    'جولة ثلاثية الأبعاد · {{n}} غرف',
+    'סיור תלת־ממדי · {{n}} חדרים',
+  ],
+  dsx_tour_confirm_body: [
+    'All {{n}} rooms are made together from this design. This is the price for all of them.',
+    'ყველა {{n}} ოთახი ერთად შეიქმნება ამ დიზაინიდან. ეს არის ფასი ყველასთვის ერთად.',
+    'Все комнаты ({{n}}) создаются вместе из этого дизайна. Это цена за все.',
+    '{{n}} odanın tamamı bu tasarımdan birlikte oluşturulur. Bu, hepsinin fiyatıdır.',
+    'تُنشأ الغرف الـ{{n}} كلها معًا من هذا التصميم. هذا هو سعرها كلها.',
+    'כל {{n}} החדרים נוצרים יחד מהעיצוב הזה. זה המחיר של כולם.',
+  ],
+  dsx_tour_making: [
+    'Your 3D tour is being prepared',
+    'შენი 3D ტური მზადდება',
+    'Ваш 3D-тур готовится',
+    '3D turunuz hazırlanıyor',
+    'جولتك ثلاثية الأبعاد قيد التحضير',
+    'הסיור התלת־ממדי שלך בהכנה',
+  ],
+  dsx_tour_making_body: [
+    'It opens by itself when it is ready. You can leave this page.',
+    'მზად რომ იქნება, თავისით გაიხსნება. შეგიძლია გვერდი დატოვო.',
+    'Он откроется сам, когда будет готов. Можно покинуть страницу.',
+    'Hazır olduğunda kendiliğinden açılır. Bu sayfadan ayrılabilirsiniz.',
+    'ستُفتح تلقائيًا عندما تكون جاهزة. يمكنك مغادرة هذه الصفحة.',
+    'הוא ייפתח מעצמו כשיהיה מוכן. אפשר לעזוב את הדף.',
+  ],
+  dsx_tour_partial: [
+    'Some rooms did not come out. Tap again — only the missing rooms are made.',
+    'ზოგი ოთახი ვერ შეიქმნა. დააჭირე ხელახლა — შეიქმნება მხოლოდ დაკლებული ოთახები.',
+    'Некоторые комнаты не получились. Нажмите ещё раз — будут созданы только недостающие.',
+    'Bazı odalar oluşmadı. Tekrar dokunun — yalnızca eksik odalar oluşturulur.',
+    'لم تُنشأ بعض الغرف. اضغط مجددًا — ستُنشأ الغرف الناقصة فقط.',
+    'חלק מהחדרים לא נוצרו. הקישו שוב — ייווצרו רק החדרים החסרים.',
+  ],
+  dsx_tour_hint: [
+    'Drag to look around · tap a point to go to another room',
+    'გადაათრიე მიმოსახედად · წერტილზე დაჭერით გადადი სხვა ოთახში',
+    'Проведите, чтобы осмотреться · нажмите на точку, чтобы перейти в другую комнату',
+    'Etrafa bakmak için sürükleyin · başka odaya geçmek için bir noktaya dokunun',
+    'اسحب للنظر حولك · اضغط على نقطة للانتقال إلى غرفة أخرى',
+    'גררו כדי להביט סביב · הקישו על נקודה כדי לעבור לחדר אחר',
+  ],
+  dsx_tour_go: [
+    'Go to {{room}}',
+    'გადასვლა: {{room}}',
+    'Перейти: {{room}}',
+    'Git: {{room}}',
+    'الانتقال إلى: {{room}}',
+    'מעבר אל: {{room}}',
+  ],
+};

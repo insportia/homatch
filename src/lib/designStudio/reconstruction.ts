@@ -378,6 +378,9 @@ export function nearestInside(poly: Point[], p: Point, margin: number): Point {
   return best.q;
 }
 
+/** How far a piece of a picture of the finished home is moved here at most to stand legally (as seen). */
+const AS_SEEN_REACH_M = 0.25;
+
 const ORDER: ObjectType[] = [
   // Big fixed things first, so smaller pieces find their place around them.
   'KITCHEN_RUN', 'KITCHEN_ISLAND', 'FRIDGE', 'WARDROBE', 'SHOWER', 'BATH', 'VANITY', 'TOILET', 'BED_DOUBLE', 'BED_SINGLE',
@@ -392,7 +395,15 @@ const rank = (t: ObjectType) => { const i = ORDER.indexOf(t); return i < 0 ? ORD
  */
 export function buildDesign(
   recon: Reconstruction, corrections: ReconCorrections, space: SpaceModel, assets: CatalogAsset[],
-  materials: CatalogMaterial[], options: { scale?: number; roomIdOf?: (key: string) => string; referenceImageIds?: string[] } = {},
+  materials: CatalogMaterial[], options: {
+    scale?: number; roomIdOf?: (key: string) => string; referenceImageIds?: string[];
+    /**
+     * A picture of the finished home (the selected render, walkthrough renderPlan.ts): a piece stands where it was
+     * seen even in a door's zone or a few centimetres into a neighbour, and the walk is proven afterwards by the
+     * walkability build (which moves only what really blocks a way). Without it, every door's zone is kept clear here.
+     */
+    asSeen?: boolean;
+  } = {},
 ): { state: DesignState; report: BuildReport } {
   const scale = options.scale ?? 1;
   const roomIdOf = options.roomIdOf ?? ((k: string) => `r-${k}`);
@@ -437,7 +448,14 @@ export function buildDesign(
     const probe = (rot: number) => (p: Point, roomId: string, doors: string[]) => doorsPassable(space, byCode, [...state.objects, {
       instanceId: '__probe', assetId: own.code, roomId, position: { x: p.x, y: 0, z: p.y }, rotationY: rot, materialVariant: null, colorOverride: null, locked: false, shape,
     }], doors);
-    for (const turn of [0, Math.PI / 2, -Math.PI / 2, Math.PI]) {
+    if (options.asSeen) {
+      const pose = settle(space, asset, o.type, hintInSpace, seen0, read);
+      const roomFor = hintInSpace ?? nearestRoom(space, pose.at);
+      spot = legalSpot(ctx, asset, pose.at, pose.rotation, roomFor, hintInSpace, 'DOORWAY', AS_SEEN_REACH_M)
+        ?? legalSpot(ctx, asset, pose.at, pose.rotation, roomFor, hintInSpace, 'TOUCH', AS_SEEN_REACH_M);
+      rotation = pose.rotation;
+    }
+    for (const turn of spot ? [] : [0, Math.PI / 2, -Math.PI / 2, Math.PI]) {
       const pose = settle(space, asset, o.type, hintInSpace, seen0, read + turn);
       const roomFor = hintInSpace ?? nearestRoom(space, pose.at);
       spot = legalSpot(ctx, asset, pose.at, pose.rotation, roomFor, hintInSpace, 'CLEAR', 0.35)

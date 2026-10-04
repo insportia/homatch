@@ -31,12 +31,12 @@ import type { QualityProfile } from '@/lib/designStudio/quality';
 import type { CatalogAsset, CatalogMaterial } from '@/lib/designStudio/catalog';
 import type { DesignState, ObjectInstance } from '@/lib/designStudio/designState';
 import { PAINTABLE_ROLES, type PartRole } from '@/lib/designStudio/modelParts';
-import { EYE_HEIGHT_M, doorsOnRoute, findPath, isFree, nearestFree, recoverPosition, setDoorClosed, type WalkModel } from '@/lib/designStudio/navigation';
+import { EYE_HEIGHT_M, distanceToObb, distanceToPolygon, doorsOnRoute, findPath, isFree, nearestFree, recoverPosition, setDoorClosed, type WalkModel } from '@/lib/designStudio/navigation';
 import {
   easeInOut as easeInOutCubic, isActiveState, validateInteractions, type ActionCode, type InteractionRole, type InteractionSpec,
 } from '@/lib/designStudio/interactions';
 import {
-  DEFAULT_SETTINGS, REACH_M, TOUCH_LOOK_RAD_PER_PX, canWalk, isTap, look, normalizeSettings, postureTransition, stepBody, stickInput, wishVelocity,
+  DEFAULT_SETTINGS, REACH_M, TOUCH_LOOK_RAD_PER_PX, canWalk, interactionRefusal, isTap, look, normalizeSettings, pickTarget, postureTransition, stepBody, stickInput, wishVelocity,
   type PlayerSettings, type Posture,
 } from '@/lib/designStudio/player';
 import { LivingRuntime, type LiveEntry } from './livingRuntime';
@@ -2055,12 +2055,66 @@ export class SceneController {
     if (!t || !this.walk) return false;
     const code = action ?? this.actionsFor(t)[0];
     if (!code) return false;
+    // Explicit, once, in reach, in this room, never closing a door on the walker (player.ts interactionRefusal).
+    const refusal = this.refusalFor(t, code);
+    if (refusal) { this.lastRefusal = refusal; return false; }
+    this.lastActionAt = performance.now();
     let done = false;
     if ((code === 'SIT' || code === 'LIE_DOWN') && t.objectId) done = this.sitOn(t.objectId, code === 'SIT' ? 'SIT' : 'LIE');
     else if (t.entry) done = this.living.act(t.entry.key, code);
     if (done) this.onAimChange?.(this.hintFor(this.aimed));
     this.requestRender();
     return done;
+  }
+
+  private lastActionAt = -Infinity;
+  /** Why the last explicit use did nothing (QA). */
+  lastRefusal: string | null = null;
+
+  private refusalFor(t: { entry: LiveEntry | null; objectId: string | null; node: THREE.Object3D }, code: ActionCode): string | null {
+    const w = this.walk!;
+    const box = new THREE.Box3().setFromObject(t.node);
+    // Plan (x, y) is world (x, −z).
+    const nearest = { x: Math.max(box.min.x, Math.min(box.max.x, w.pos.x)), y: Math.max(-box.max.z, Math.min(-box.min.z, w.pos.y)) };
+    const centre = box.getCenter(new THREE.Vector3());
+    const targetRoom = this.space ? roomContaining(this.space, { x: centre.x, y: -centre.z }) : null;
+    const playerRoom = this.space ? roomContaining(this.space, w.pos) : null;
+    const doorId = t.entry?.doorId ?? null;
+    const leaf = doorId ? w.model.doorways.get(doorId) : undefined;
+    // A door is in both rooms it joins: usable from either side, never from a room it does not touch.
+    const door = doorId && this.space ? this.space.doors.find((d) => d.id === doorId) : undefined;
+    const doorTouchesPlayerRoom = !!door && !!this.space && !!playerRoom
+      && distanceToPolygon(door.centre, this.space.rooms.find((r) => r.id === playerRoom)?.polygon ?? []) <= 0.3;
+    // Closing: the action leads to a state that blocks the doorway, and the body stands in it.
+    const closes = !!t.entry && !!leaf && !!t.entry.machine.states.get(this.living.nextState(t.entry, code) ?? '')?.blocks;
+    const closingOnBody = closes && !!leaf && distanceToObb(w.pos, leaf) < w.model.radius + 0.05;
+    return interactionRefusal({
+      now: performance.now(), lastActionAt: this.lastActionAt, stickActive: Math.hypot(w.stick.x, w.stick.y) > 0,
+      distanceM: Math.hypot(nearest.x - w.pos.x, nearest.y - w.pos.y), playerRoom, targetRoom, doorTouchesPlayerRoom, closingOnBody,
+    });
+  }
+
+  /**
+   * What E (or the captured mouse) means: the thing on the line of sight, or failing that the usable thing nearest
+   * to it on screen within a small circle, the nearer of two equally near.
+   */
+  private targetNearCentre(): ReturnType<SceneController['targetAt']> {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2; const cy = rect.top + rect.height / 2;
+    const exact = this.targetAt(cx, cy);
+    if (exact) return exact;
+    const radius = Math.min(rect.width, rect.height) * 0.08;
+    const found: Array<{ t: NonNullable<ReturnType<SceneController['targetAt']>>; offPx: number; distanceM: number }> = [];
+    for (const r of [radius / 2, radius]) {
+      for (let k = 0; k < 8; k += 1) {
+        const a = (k / 8) * Math.PI * 2;
+        const t = this.targetAt(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+        if (!t || !this.walk) continue;
+        const c = new THREE.Box3().setFromObject(t.node).getCenter(new THREE.Vector3());
+        found.push({ t, offPx: r, distanceM: Math.hypot(c.x - this.walk.pos.x, -c.z - this.walk.pos.y) });
+      }
+    }
+    return pickTarget(found, radius)?.t ?? null;
   }
 
   /** The old name, kept for the overlay's single-button path. */
@@ -2816,11 +2870,12 @@ export class SceneController {
       // Enter and Space already press a focused button; E never does.
       if (el && e.code !== 'KeyE' && /^(BUTTON|A)$/.test(el.tagName)) return;
       e.preventDefault();
-      if (!this.aimed || this.pointerLocked) {
-        this.lastPointer = null;
-        const rect = this.renderer.domElement.getBoundingClientRect();
-        this.setAim(this.targetAt(rect.left + rect.width / 2, rect.top + rect.height / 2));
-      }
+      if (e.repeat) return; // a held key is one use
+      // What the visitor looks at now (never a target aimed at earlier and walked away from): the hovering mouse's
+      // target, or the line of sight.
+      const hovered = this.lastPointer && !this.pointerLocked ? this.targetAt(this.lastPointer.x, this.lastPointer.y) : null;
+      if (!hovered) this.lastPointer = null;
+      this.setAim(hovered ?? this.targetNearCentre());
       this.performAimed();
       return;
     }

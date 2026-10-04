@@ -45,13 +45,18 @@ test('the reconstruction reader is reused with a walk brief: source pictures for
   assert.match(WALK_SPACE_BRIEF, /Never mark a guess OBSERVED/);
   const walkRoute = code('supabase/functions/design-studio-reconstruct/walkthrough.ts');
   assert.match(walkRoute, /input: \[\{ role: 'system', content: RECON_SYSTEM \}, \{ role: 'user', content \}\]/, 'the existing reconstruction reader');
-  assert.match(walkRoute, /const \{ recon \} = validateReconstruction\(raw, images\.length\);/);
+  // Read with each picture's shape and the selected render's measured frame, then made buildable (readingRepair.ts).
+  assert.match(walkRoute, /const \{ recon: read \} = validateReconstruction\(raw, images\.length, \{\s*\/\/[^\n]*\n\s*imageAspects: images\.map\(\(img\) => img\.aspect\),\s*frames: measured && viewIndex != null \? \[\{ image: selected, view: viewIndex, frame: measured\.frame \}\] : \[\],/);
+  assert.match(walkRoute, /const repaired = repairReading\(read\);\s*const recon = repaired\.recon;/);
   assert.deepEqual([basisOf('OBSERVED', 0.2), basisOf('INFERRED', 0.8), basisOf('INFERRED', 0.5), basisOf('INFERRED', 0.2)], ['OBSERVED', 'INFERRED_HIGH', 'INFERRED_MEDIUM', 'INFERRED_LOW']);
 });
 
 test('A: a generated design with no floor plan starts its walkthrough (no upload blocker anywhere)', () => {
   const route = code('supabase/functions/design-studio-reconstruct/walkthrough.ts');
-  assert.match(route, /if \(source\?\.kind === 'PHOTO_SET'\) \{\s*let onPlan = await designOnPlan\(admin, version, project\.id\);\s*if \(!onPlan\) \{/);
+  assert.match(route, /if \(source\?\.kind === 'PHOTO_SET'\) \{\s*const renderId = body\.renderId \?\? null;\s*let onPlan = await designOnPlan\(admin, version, project\.id, renderId\);/);
+  // A space read from other pictures is read once more from the selected render; a failed reading keeps the old one.
+  assert.match(route, /if \(onPlan && renderId && onPlan\.source\.provenance\?\.inferred === true && onPlan\.source\.provenance\?\.fromRenderId !== renderId\) \{/);
+  assert.match(route, /if \(again\.state === 'READY'\) onPlan = await designOnPlan\(admin, version, project\.id, renderId\) \?\? onPlan;\s*\}\s*if \(!onPlan\) \{/);
   assert.match(route, /const space = await reconstructSpace\(admin,/);
   assert.match(route, /if \(space\.state === 'RUNNING'\) return json\(\{ walkthrough: null, reconstructing: true \}, 202\);/);
   assert.doesNotMatch(route, /have: \['DESIGN', 'PHOTOS'\]/, 'the "add a plan" answer is gone');
@@ -147,7 +152,8 @@ test('E: an invalid spawn (in a wall, outside, nowhere) is recalculated to free 
 
 test('F/G: one reading per photo source — a double tap, a refresh or a reopen follows the same job; failures retry a bounded number of times', () => {
   const route = code('supabase/functions/design-studio-reconstruct/walkthrough.ts');
-  assert.match(route, /const key = await sha256Hex\(`walk-space:v1:\$\{a\.photoSource\.id\}`\);/, 'keyed on the architecture\'s evidence');
+  // Keyed on the architecture's evidence, and on the selected render when the reading furnishes from it.
+  assert.match(route, /const key = await sha256Hex\(a\.renderId \? `walk-space:v2:\$\{a\.photoSource\.id\}:\$\{a\.renderId\}` : `walk-space:v1:\$\{a\.photoSource\.id\}`\);/, 'keyed on the architecture\'s evidence');
   assert.match(route, /if \(rows\.some\(\(j\) => j\.status === 'SUCCEEDED' && j\.output\?\.sourceId\)\) return \{ state: 'READY' \};/, 'done once, reused');
   assert.match(route, /if \(running && isFresh\(running\.started_at\)\) return \{ state: 'RUNNING' \};/, 'a second tap or a refresh follows it');
   assert.match(route, /Two taps that raced: the earliest job stays/);

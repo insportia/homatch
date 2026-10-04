@@ -23,7 +23,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { applyFinish, patternOfSlot } from './finishTextures.ts';
-import { curvedSofa, foliage, frameLounge, pot, roundTable, screenOnStand, shellChair, shellLounge } from './proceduralForms.ts';
+import { curvedSofa, foliage, frameLounge, pot, roundTable, screenOnStand, shellChair, shellLounge, tubChair } from './proceduralForms.ts';
 import type { CatalogAsset, ProceduralKind } from '@/lib/designStudio/catalog';
 import type { InteractionSpec } from '@/lib/designStudio/interactions';
 
@@ -364,6 +364,11 @@ function buildPiece(kind: ProceduralKind, asset: CatalogAsset, colors: SlotColor
       break;
     }
     case 'TABLE': {
+      // Seen round or oval (a round stone dining table): drawn so, as the factory does (furniture.py _table).
+      if (form === 'ROUND' || form === 'OVAL') {
+        roundTable(g, W, D, H, mat('top', '#9c7a55'), mat('legs', '#6d5238'));
+        break;
+      }
       legs(g, W, D, H - 0.04, 0.06, mat('legs', '#6d5238'), 0.045);
       g.add(box(W, 0.04, D, 0, H - 0.04, 0, mat('top', '#9c7a55')));
       break;
@@ -657,6 +662,11 @@ function buildPiece(kind: ProceduralKind, asset: CatalogAsset, colors: SlotColor
     case 'CHAIR': {
       if (form === 'SHELL') {
         shellChair(g, W, D, H, mat('body', '#a4845f'), mat('legs', '#c49a6c'));
+        specs.push(seatsAlong(W, 1, 1.18, 0.02));
+        break;
+      }
+      if (form === 'ROUNDED' || form === 'ROUND') {
+        tubChair(g, W, D, H, mat('body', '#9b5326'), mat('legs', '#3b3128'));
         specs.push(seatsAlong(W, 1, 1.18, 0.02));
         break;
       }

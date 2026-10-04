@@ -322,13 +322,39 @@ export function evaluateInWorld(
     }
     for (const other of world.objects) {
       if (other.id === instanceId || other.flat) continue;
-      if (solidOverlap(box, other.box)) issues.push({ code: 'OVERLAPS_OBJECT', severity: 'WARN', relatedId: other.id });
+      if (solidOverlap(box, other.box) && !tucked(asset, at, rotation, other.asset, other.object)) issues.push({ code: 'OVERLAPS_OBJECT', severity: 'WARN', relatedId: other.id });
     }
     if (asset.clearanceM > 0 && !zoneClear(world, frontZone(asset, at, rotation, asset.clearanceM), instanceId)) {
       issues.push({ code: 'TIGHT_ACCESS', severity: 'WARN' });
     }
   }
   return issues;
+}
+
+const words = (a: Pick<CatalogAsset, 'category' | 'subcategory' | 'code'>) => [a.category, a.subcategory, a.code].filter(Boolean).join(' ').toUpperCase();
+/** A seat drawn up to a table (a dining chair, a stool, an office or outdoor chair; not an armchair). */
+export const isSeat = (a: Pick<CatalogAsset, 'category' | 'subcategory' | 'code'>) => /CHAIR|STOOL/.test(words(a)) && !/ARMCHAIR|LOUNGE|SOFA/.test(words(a));
+/** A surface a seat is drawn up to (a table, a desk, an island or counter). */
+export const isSeatTable = (a: Pick<CatalogAsset, 'category' | 'subcategory' | 'code'>) => /TABLE|DESK|ISLAND|COUNTER/.test(words(a)) && !/SIDE|BEDSIDE|NIGHTSTAND/.test(words(a));
+/** How far a seat may slide under the table it is drawn up to. */
+export const TUCK_M = 0.3;
+
+/**
+ * A seat drawn up to its table overlaps the table's footprint a little (its front slides under the top): that is
+ * how a dining set stands, not a collision. Tucked: one is a seat, the other a table, the seat's centre is outside
+ * the table and within TUCK_M of it.
+ */
+function tucked(asset: CatalogAsset, at: Point, rotation: number, other: CatalogAsset, obj: ObjectInstance): boolean {
+  const seatHere = isSeat(asset) && isSeatTable(other);
+  const tableHere = isSeatTable(asset) && isSeat(other);
+  if (!seatHere && !tableHere) return false;
+  const seat = seatHere ? { at, asset } : { at: { x: obj.position.x, y: obj.position.z }, asset: other };
+  const table = seatHere ? footprint(other, { x: obj.position.x, y: obj.position.z }, obj.rotationY) : footprint(asset, at, rotation);
+  const c = Math.cos(table.angle); const s = Math.sin(table.angle);
+  const dx = seat.at.x - table.cx; const dy = seat.at.y - table.cy;
+  const lx = Math.abs(dx * c + dy * s) - table.hw; const ly = Math.abs(-dx * s + dy * c) - table.hd;
+  const outside = Math.hypot(Math.max(lx, 0), Math.max(ly, 0));
+  return outside > 0 && Math.min(seat.asset.widthM, seat.asset.depthM) / 2 - outside <= TUCK_M;
 }
 
 export const blocks = (issues: PlacementIssue[]) => issues.some((i) => i.severity === 'BLOCK');

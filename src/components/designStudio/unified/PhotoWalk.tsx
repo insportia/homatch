@@ -14,7 +14,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { clampWalk, hotspotAt, PHOTO_CAMERAS, photoMesh, roomShapedDepth, walkBounds } from '@/lib/designStudio/photo3d/depthMesh';
 import { estimateDepth } from '@/lib/designStudio/photo3d/estimateDepth';
-import { signedUrls } from '@/services/designStudio/files';
+import { loadPicture } from './loadPicture';
 
 /** A picture to step into: its storage key (signed afresh when entered — a page left open outlives a link). */
 export interface WalkPhoto { id: string; url: string; key?: string | null; label: string; kind: 'ROOM' | 'MASTER' }
@@ -25,31 +25,6 @@ const SnakeGame = lazy(() => import('@/components/games/SnakeGame'));
 const RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)]';
 const ROUND = cn('grid h-11 w-11 place-items-center rounded-full bg-white/10 text-white ring-1 ring-white/20 hover:bg-white/20', RING);
 const SPEED = 0.9;
-
-/** The picture behind a walk photo, as a decoded image: a fresh link first (the page's may have expired), then the one it has. */
-async function loadPicture(photo: WalkPhoto, onStage: (s: string) => void): Promise<HTMLImageElement> {
-  const links = [...new Set([photo.key ? (await signedUrls([photo.key], 900).catch(() => new Map<string, string>())).get(photo.key) : null, photo.url].filter((x): x is string => !!x))];
-  let blob: Blob | null = null;
-  let stage = 'PICTURE_NETWORK';
-  for (const link of links) {
-    const res = await fetch(link, { cache: 'no-store' }).catch(() => null);
-    stage = res ? `PICTURE_${res.status}` : 'PICTURE_NETWORK';
-    onStage(stage);
-    if (res?.ok) { blob = await res.blob(); break; }
-  }
-  if (!blob) throw new Error(stage);
-  onStage('DECODE');
-  const url = URL.createObjectURL(blob);
-  try {
-    const img = new Image();
-    img.src = url;
-    await img.decode();
-    return img;
-  } finally {
-    // Decoded: the pixels stay with the image.
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
-  }
-}
 
 type Phase = { kind: 'LOADING'; progress: number | null; measuring?: boolean } | { kind: 'READY'; approximate: boolean; reason?: string } | { kind: 'FAILED'; code: string };
 

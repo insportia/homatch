@@ -48,6 +48,8 @@ export interface RunInput {
   parentRenderId?: string | null;
   /** ROOM: the generated designs the customer selected as its design reference (the server uses exactly these). */
   referenceRenderIds?: string[] | null;
+  /** ROOM: the first of the room's four 360° pictures (heading 0); the other three follow with renderRoomView. */
+  heading?: 0 | 1 | 2 | 3 | null;
   /** focus: a "More changes" code (the server holds what it means). */
   change?: { style?: string | null; quality?: string | null; note?: string | null; focus?: string | null } | null;
   /** The credits the customer saw and confirmed; a different price stops before anything is spent. */
@@ -118,6 +120,7 @@ export async function runDesign(input: RunInput): Promise<RunResult> {
       projectId: input.projectId, versionId: input.versionId, mode: input.mode, idempotencyKey: input.key, durable: true,
       look: input.look, preferences: input.preferences, roomId: input.roomId ?? null, parentRenderId: input.parentRenderId ?? null,
       ...(input.mode === 'ROOM' && input.referenceRenderIds?.length ? { referenceRenderIds: input.referenceRenderIds } : {}),
+      ...(input.mode === 'ROOM' && input.heading != null ? { heading: input.heading } : {}),
       change: input.change ?? null, retry, then: quoteToken ? { quoteToken, versionName: input.versionName } : undefined,
     });
     retry = false; // one explicit retry per tap; later asks only watch
@@ -173,8 +176,38 @@ async function renderDirectly(input: RunInput, versionId: string, specJobId: str
   if (input.confirmedCredits != null && quoted.quote.credits !== input.confirmedCredits) throw new DesignStudioFailure('PRICE_CHANGED', true);
   const started = await generateRender({
     quote: quoted.quote, projectId: input.projectId, versionId: input.mode === 'ROOM' ? input.versionId : versionId, specJobId, mode: input.mode,
-    idempotencyKey: `${input.key}-r${attempt}`,
+    idempotencyKey: `${input.key}-r${attempt}`, heading: input.mode === 'ROOM' ? input.heading ?? null : null,
   });
   if (!started.render) throw new DesignStudioFailure(started.error ?? 'RENDER_FAILED', true);
   return started.render.id;
+}
+
+/**
+ * One more of a room's four 360° pictures, from the room's own specification (the same design: never a second
+ * specification): priced, confirmed (the credits the customer saw), started once under its key, followed to READY.
+ */
+export async function renderRoomView(input: {
+  projectId: string; versionId: string; specJobId: string; heading: 1 | 2 | 3; key: string; confirmedCredits: number;
+  signal?: { cancelled: boolean }; pollMs?: number; timeoutMs?: number;
+}): Promise<RenderRecord> {
+  const pollMs = input.pollMs ?? 2500;
+  const until = Date.now() + (input.timeoutMs ?? 20 * 60_000);
+  const quoted = await quoteRender({ projectId: input.projectId, versionId: input.versionId, product: 'DS_ROOM_RENDER', views: 1 });
+  if (!quoted.quote) throw new DesignStudioFailure(quoted.error ?? 'QUOTE_FAILED', true);
+  if (quoted.quote.credits !== input.confirmedCredits) throw new DesignStudioFailure('PRICE_CHANGED', true);
+  const started = await generateRender({
+    quote: quoted.quote, projectId: input.projectId, versionId: input.versionId, specJobId: input.specJobId, mode: 'ROOM', idempotencyKey: input.key, heading: input.heading,
+  });
+  if (!started.render) throw new DesignStudioFailure(started.error ?? 'RENDER_FAILED', started.error !== 'SPEC_MISSING');
+  const id = started.render.id;
+  for (;;) {
+    if (input.signal?.cancelled) throw new DesignStudioError('DS_WATCH_STOPPED');
+    const rows = await stepGenerated([id]).catch(() => null);
+    const row = rows?.[0] ?? null;
+    const step = generationStep(row);
+    if (row && step === 'READY') return row;
+    if (row && step === 'FAILED') throw new DesignStudioFailure(row.error?.replace(/^.*?:/, '') || 'RENDER_FAILED', true);
+    if (Date.now() > until) throw new DesignStudioError('DS_STILL_WORKING');
+    await sleep(pollMs);
+  }
 }

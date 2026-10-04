@@ -59,6 +59,8 @@ import { meterAiCall, priceAiCall, tokensOf } from './metering.ts';
 import { failure, isFresh, kick, readFailure } from './durable.ts';
 import { photoEvidence, photoOfRoom, type PhotoAnswer, type PhotoUnderstanding } from '../_shared/designStudio/photoRead.ts';
 import { decodeRgba, encodePng, rgbaOf } from './rasterRgba.ts';
+import { buildSpaceModel } from '../../../src/lib/designStudio/space.ts';
+import { facingWords, headingFrame, isHeading, type Heading } from '../../../src/lib/designStudio/tour/roomViews.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -264,7 +266,8 @@ export async function handleDesignSpec(req: Request): Promise<Response> {
     if (!quoteMatches(q.claims, { userId: ctx.actorId, projectId: owned.project.id, versionId: owned.version.id, product: productOf(mode), views: 1 })) return json({ error: 'QUOTE_MISMATCH' }, 409);
     if ((await billingOn(ctx.admin)) !== q.claims.charged) return json({ error: 'QUOTE_STALE' }, 409);
     const name = typeof body.then.versionName === 'string' ? body.then.versionName.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 80) : '';
-    then = { claims: q.claims, versionName: name || 'Design' };
+    // A room of the 360° tour: which of its four pictures (the server writes what that side shows from the plan).
+    then = { claims: q.claims, versionName: name || 'Design', ...(mode === 'ROOM' && isHeading(body.heading) ? { heading: body.heading } : {}) };
   }
 
   const src = await sourceOf(ctx, owned.version);
@@ -458,6 +461,7 @@ async function advanceChain(ctx: Ctx, owned: { project: Row; version: Row }, job
   if (!chain.renderId && (await billingOn(ctx.admin)) !== then.claims.charged) return { ...chain, error: 'QUOTE_STALE' };
   const started = await startGenerated(ctx, {
     projectId: owned.project.id, version, job, parent, mode, roomId: mode === 'ROOM' ? job.output.room?.id ?? null : null, claims: then.claims, idempotencyKey,
+    heading: mode === 'ROOM' && isHeading(then.heading) ? then.heading : null,
   });
   if ('error' in started) return { ...chain, error: started.error };
   if (!chain.renderId && started.render?.id) { chain.renderId = started.render.id; await keep(); }
@@ -524,6 +528,34 @@ function genIo(admin: Row): GenIo {
     }
     return specs.get(id);
   };
+  /** A 360° room's first picture (heading 0) of the same specification, ready: the room the other three turn from. */
+  const firstOfRoom = async (row: Row): Promise<{ bytes: Uint8Array; mime: string } | null> => {
+    const roomId = row.view?.roomId;
+    if (!roomId) return null;
+    const { data } = await admin.from('ds_renders').select('final_key, timings').eq('user_id', row.user_id).eq('project_id', row.project_id)
+      .eq('kind', 'ROOM').eq('status', 'READY').eq('view->>roomId', roomId).eq('view->>heading', '0').order('created_at', { ascending: false }).limit(5);
+    const same = (data ?? []).find((r: Row) => r.timings?.ai?.specJobId === row.timings?.ai?.specJobId) ?? null;
+    return same?.final_key ? readImage(same.final_key, MAX_PICTURE_BYTES) : null;
+  };
+  /** What the plan puts on the side a 360° picture faces (its doors, to which rooms, and its windows). */
+  const facingOf = async (row: Row, out: Row, heading: Heading): Promise<string> => {
+    const fallback = 'Show the side of the room this direction faces, with its doors and windows where the design has them.';
+    if (out?.evidence?.sourceKind !== 'FLOOR_PLAN' || !row.view?.roomId) return fallback;
+    const { data: version } = await admin.from('ds_versions').select('source_id, user_id').eq('id', row.version_id).maybeSingle();
+    if (!version || version.user_id !== row.user_id) return fallback;
+    const { data: source } = await admin.from('ds_spatial_sources').select('canonical').eq('id', version.source_id).maybeSingle();
+    const scene = source?.canonical?.scene;
+    if (!scene?.floors?.length || !Array.isArray(scene.walls)) return fallback;
+    try {
+      const space = buildSpaceModel(scene);
+      const rooms: Row[] = Array.isArray(out.evidence.rooms) ? out.evidence.rooms : [];
+      const label = (id: string) => {
+        const r = rooms.find((x) => x.id === id) ?? space.rooms.find((x) => x.id === id);
+        return String(r?.label ?? r?.kind ?? 'next room').toLowerCase().replace(/_/g, ' ').replace(/[^\p{L}\p{N} '-]/gu, '').slice(0, 40) || 'next room';
+      };
+      return facingWords({ space, scene, roomId: String(row.view.roomId), heading, label });
+    } catch { return fallback; }
+  };
   return {
     now: () => Date.now(),
     async claim(row, from, patch) {
@@ -553,8 +585,10 @@ function genIo(admin: Row): GenIo {
     async references(row) {
       // A room's selected design references, after the reference above: all of them over its own photo, the rest over a design.
       const out = await specOf(row);
+      // A 360° picture turned from the first: the first picture of the same room (the same design) comes first.
+      const first = out?.mode === 'ROOM' && isHeading(row.view?.heading) && row.view.heading !== 0 ? await firstOfRoom(row) : null;
       const ids: string[] = out?.mode === 'ROOM' && Array.isArray(out.referenceRenderIds) ? out.referenceRenderIds.map(String) : [];
-      if (!ids.length) return [];
+      if (!ids.length) return first ? [first] : [];
       const overPhoto = out.evidence?.sourceKind === 'PHOTO' && !roomFromWholeHome({ evidence: out.evidence, room: out.room });
       const parentId = row.parent_id ?? row.finish?.parentRenderId ?? null;
       const wanted = overPhoto ? ids : ids.filter((id) => id !== parentId);
@@ -565,7 +599,7 @@ function genIo(admin: Row): GenIo {
         const r = byId.get(id);
         return r?.final_key && r.user_id === row.user_id && r.project_id === row.project_id ? readImage(r.final_key, MAX_PICTURE_BYTES) : Promise.resolve(null);
       }));
-      return pics.filter(Boolean) as Array<{ bytes: Uint8Array; mime: string }>;
+      return [...(first ? [first] : []), ...pics.filter(Boolean)] as Array<{ bytes: Uint8Array; mime: string }>;
     },
     async instruction(row) {
       const out = await specOf(row);
@@ -577,7 +611,13 @@ function genIo(admin: Row): GenIo {
         approvedSpec = data?.user_id === row.user_id ? validateSpec(data?.output?.spec, out.evidence) : null;
       }
       const references = Array.isArray(out.referenceRenderIds) ? out.referenceRenderIds.length : undefined;
-      return spec ? imageInstruction(spec, { mode: out.mode, evidence: out.evidence, direction: out.direction, room: out.room, change: out.change, approvedSpec, ...(references ? { references } : {}) }) : null;
+      if (!spec) return null;
+      const text = imageInstruction(spec, { mode: out.mode, evidence: out.evidence, direction: out.direction, room: out.room, change: out.change, approvedSpec, ...(references ? { references } : {}) });
+      // One of a room's four 360° pictures: which way it faces and what the plan puts on that side, before everything else.
+      const heading = out.mode === 'ROOM' && isHeading(row.view?.heading) ? row.view.heading as Heading : null;
+      if (heading == null) return text;
+      const facing = await facingOf(row, out, heading);
+      return `${headingFrame(heading, facing, heading !== 0)}\n\n${text}`.slice(0, 30000);
     },
     size: () => SIZE,
     async image(input): Promise<ImageAnswer> {
@@ -651,10 +691,11 @@ function genIo(admin: Row): GenIo {
 
 // ── render-generate ──────────────────────────────────────────────────────
 
-const VIEW = (mode: GenerationMode, roomId: string | null, photo = false) => ({
-  id: mode === 'ROOM' ? `room-${roomId}` : 'master', kind: mode === 'ROOM' ? 'ROOM' : 'MASTER', purpose: mode === 'ROOM' ? 'MAIN' : 'DOLLHOUSE', roomId,
+const VIEW = (mode: GenerationMode, roomId: string | null, photo = false, heading: Heading | null = null) => ({
+  id: mode === 'ROOM' ? `room-${roomId}${heading != null ? `-h${heading}` : ''}` : 'master', kind: mode === 'ROOM' ? 'ROOM' : 'MASTER', purpose: mode === 'ROOM' ? 'MAIN' : 'DOLLHOUSE', roomId,
   position: [0, 0, 0], target: [0, 0, 0], fovDeg: null, orthoScale: null, aspect: SIZE.width / SIZE.height, width: SIZE.width, height: SIZE.height,
   samples: 0, cut: null, hideCeilings: !photo && mode !== 'ROOM', objectMap: true, generator: 'OPENAI', mode, ...(photo ? { source: 'PHOTO' } : {}),
+  ...(mode === 'ROOM' && heading != null ? { heading } : {}),
 });
 
 export async function handleRenderGenerate(req: Request): Promise<Response> {
@@ -684,7 +725,8 @@ export async function handleRenderGenerate(req: Request): Promise<Response> {
   if (!quoteMatches(claims, { userId: ctx.actorId, projectId: owned.project.id, versionId: owned.version.id, product, views: 1 })) return json({ error: 'QUOTE_MISMATCH' }, 409);
   if ((await billingOn(ctx.admin)) !== claims.charged) return json({ error: 'QUOTE_STALE' }, 409);
 
-  const out = await startGenerated(ctx, { projectId: owned.project.id, version: owned.version, job, parent, mode, roomId, claims, idempotencyKey: String(body.idempotencyKey) });
+  const heading = mode === 'ROOM' && isHeading(body.heading) ? body.heading : null;
+  const out = await startGenerated(ctx, { projectId: owned.project.id, version: owned.version, job, parent, mode, roomId, claims, idempotencyKey: String(body.idempotencyKey), heading });
   return 'error' in out ? json({ error: out.error }, out.status) : json({ render: out.render, ...(out.reused ? { reused: true } : {}) });
 }
 
@@ -696,10 +738,12 @@ export async function handleRenderGenerate(req: Request): Promise<Response> {
  */
 async function startGenerated(ctx: Ctx, a: {
   projectId: string; version: Row; job: Row; parent: Row; mode: GenerationMode; roomId: string | null; claims: QuoteClaims; idempotencyKey: string;
+  /** ROOM: one of the room's four 360° pictures (absent: the room's ordinary picture). */
+  heading?: Heading | null;
 }): Promise<{ render: Row; reused?: boolean } | { error: string; status: number }> {
   const { mode, roomId, parent, job, claims } = a;
   const product = productOf(mode);
-  const view = VIEW(mode, roomId, job.output?.evidence?.sourceKind === 'PHOTO');
+  const view = VIEW(mode, roomId, job.output?.evidence?.sourceKind === 'PHOTO', a.heading ?? null);
   const key = await renderRowKey(ctx.actorId, a.idempotencyKey, 'START', view.id);
   const record = async () => (await ctx.admin.from('ds_renders').select(RECORD).eq('user_id', ctx.actorId).eq('idempotency_key', key).maybeSingle()).data ?? null;
   const drive = (row: Row) => inBackground(async () => {

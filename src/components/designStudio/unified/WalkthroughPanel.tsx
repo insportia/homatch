@@ -25,12 +25,14 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { cn } from '@/lib/utils';
 import { PROGRESS_STEPS, type ProgressStep } from '@/lib/designStudio/walkthrough/lifecycle';
 import type { WalkPhoto } from './PhotoWalk';
+import type { PanoRoom } from './PanoramaWalk';
 import { createWalkthrough, retryWalkthrough, walkthroughHref, walkthroughStatus, type Walkthrough } from '@/services/designStudio/walkthrough';
 
 // The same game as every long wait: it only watches the walkthrough's real state (this panel keeps following it).
 const SnakeGame = lazy(() => import('@/components/games/SnakeGame'));
 // Three.js and the depth model load only when a picture is entered.
 const PhotoWalk = lazy(() => import('./PhotoWalk'));
+const PanoramaWalk = lazy(() => import('./PanoramaWalk'));
 
 const RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_56%)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#F7F4EF]';
 const DARK = cn('inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[#0C1119] px-5 text-[15px] font-semibold text-white disabled:opacity-60', RING);
@@ -59,7 +61,7 @@ export interface TourControl {
 /** How often a space being reconstructed is asked after (the same request: never a second reading). */
 const SPACE_POLL_MS = 6000;
 
-export function WalkthroughPanel({ projectId, designVersionId, renderId, photos = [], needsRoomPhotos = false, tour = null }: {
+export function WalkthroughPanel({ projectId, designVersionId, renderId, photos: roomPhotos = [], needsRoomPhotos = false, tour = null, panorama }: {
   projectId: string; designVersionId: string; renderId: string | null;
   /** The design's eye-level room pictures to step into (the room shown first). */
   photos?: WalkPhoto[];
@@ -67,7 +69,11 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, photos 
   needsRoomPhotos?: boolean;
   /** One tap makes every room's picture, then the tour opens through them. */
   tour?: TourControl | null;
+  /** A plan's tour: its rooms in 360°, joined by their doors (given, it replaces the single pictures). */
+  panorama?: PanoRoom[];
 }) {
+  // In a 360° tour the rooms are its stops; the single pictures are not walked.
+  const photos: Array<{ id: string }> = panorama ?? roomPhotos;
   const { t } = useLanguage();
   const navigate = useNavigate();
   const [walk, setWalk] = useState<Walkthrough | null>(null);
@@ -150,7 +156,7 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, photos 
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#0C1119] text-white"><Box className="h-5 w-5" aria-hidden="true" /></span>
           <div className="min-w-0 flex-1">
             <h2 id="ds-walk-title" className="font-display text-[20px] font-semibold">{t('dsx_walk_title')}</h2>
-            <p className="mt-1 text-[14px] text-[#5B6472]">{t('dsx_tour_body')}</p>
+            <p className="mt-1 text-[14px] text-[#5B6472]">{t(panorama ? 'dsx_pano_body' : 'dsx_tour_body')}</p>
           </div>
         </div>
         {tour?.making ? (
@@ -196,9 +202,13 @@ export function WalkthroughPanel({ projectId, designVersionId, renderId, photos 
               className={cn(DARK, 'mt-3')} data-testid="photo3d-rooms-cta">{t('dsx_photo3d_rooms_cta')}</button>
           </div>
         )}
-        {inside && photos.length ? (
+        {inside && panorama?.length ? (
           <Suspense fallback={null}>
-            <PhotoWalk photos={photos} initialId={photos[0].id} onClose={() => setInside(false)} />
+            <PanoramaWalk rooms={panorama} initialId={panorama[0].id} onClose={() => setInside(false)} />
+          </Suspense>
+        ) : inside && !panorama && roomPhotos.length ? (
+          <Suspense fallback={null}>
+            <PhotoWalk photos={roomPhotos} initialId={roomPhotos[0].id} onClose={() => setInside(false)} />
           </Suspense>
         ) : null}
       </section>

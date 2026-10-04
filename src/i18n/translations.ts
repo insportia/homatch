@@ -15162,6 +15162,12 @@ const en = {
   dsx_tour_partial: 'Some rooms did not come out. Tap again — only the missing rooms are made.',
   dsx_tour_hint: 'Drag to look around · tap a point to go to another room',
   dsx_tour_go: 'Go to {{room}}',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_pano_body: 'Stand inside every room of this design and look all the way round, 360°. Tap a door to walk into the next room.',
+  dsx_pano_confirm_body: 'All {{n}} rooms are made together from this design, each one all the way round (four pictures per room). This is the price for all of them.',
+  dsx_pano_hint: 'Drag to look all the way round · tap a door to go through',
+  dsx_pano_hint_alone: 'Drag to look all the way round · pick another room above',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -30238,6 +30244,12 @@ const ka: Partial<Record<TranslationKey, string>> = {
   dsx_tour_partial: 'ზოგი ოთახი ვერ შეიქმნა. დააჭირე ხელახლა — შეიქმნება მხოლოდ დაკლებული ოთახები.',
   dsx_tour_hint: 'გადაათრიე მიმოსახედად · წერტილზე დაჭერით გადადი სხვა ოთახში',
   dsx_tour_go: 'გადასვლა: {{room}}',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_pano_body: 'დადექი ამ დიზაინის ყველა ოთახში და მიმოიხედე ირგვლივ, 360°-ით. კარზე დაჭერით შედი მეზობელ ოთახში.',
+  dsx_pano_confirm_body: 'ყველა {{n}} ოთახი ერთად შეიქმნება ამ დიზაინიდან, თითოეული ირგვლივ, 360°-ით (ოთახზე ოთხი ფოტო). ეს არის ფასი ყველასთვის ერთად.',
+  dsx_pano_hint: 'გადაათრიე ირგვლივ მიმოსახედად · კარზე დაჭერით გადადი',
+  dsx_pano_hint_alone: 'გადაათრიე ირგვლივ მიმოსახედად · სხვა ოთახი ზემოთ აირჩიე',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -45305,6 +45317,12 @@ const ru: Partial<Record<TranslationKey, string>> = {
   dsx_tour_partial: 'Некоторые комнаты не получились. Нажмите ещё раз — будут созданы только недостающие.',
   dsx_tour_hint: 'Проведите, чтобы осмотреться · нажмите на точку, чтобы перейти в другую комнату',
   dsx_tour_go: 'Перейти: {{room}}',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_pano_body: 'Встаньте в каждой комнате этого дизайна и осмотритесь на все 360°. Нажмите на дверь, чтобы пройти в соседнюю комнату.',
+  dsx_pano_confirm_body: 'Все комнаты ({{n}}) создаются вместе из этого дизайна, каждая на все 360° (четыре снимка на комнату). Это цена за все.',
+  dsx_pano_hint: 'Проведите, чтобы осмотреться вокруг · нажмите на дверь, чтобы пройти',
+  dsx_pano_hint_alone: 'Проведите, чтобы осмотреться вокруг · выберите другую комнату сверху',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -60370,6 +60388,12 @@ const tr: Partial<Record<TranslationKey, string>> = {
   dsx_tour_partial: 'Bazı odalar oluşmadı. Tekrar dokunun — yalnızca eksik odalar oluşturulur.',
   dsx_tour_hint: 'Etrafa bakmak için sürükleyin · başka odaya geçmek için bir noktaya dokunun',
   dsx_tour_go: 'Git: {{room}}',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_pano_body: 'Bu tasarımın her odasının içinde durun ve 360° etrafınıza bakın. Yan odaya geçmek için bir kapıya dokunun.',
+  dsx_pano_confirm_body: '{{n}} odanın tamamı bu tasarımdan birlikte, her biri 360° (oda başına dört görsel) oluşturulur. Bu, hepsinin fiyatıdır.',
+  dsx_pano_hint: 'Etrafa bakmak için sürükleyin · geçmek için bir kapıya dokunun',
+  dsx_pano_hint_alone: 'Etrafa bakmak için sürükleyin · başka bir odayı yukarıdan seçin',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -75435,6 +75459,12 @@ const ar: Partial<Record<TranslationKey, string>> = {
   dsx_tour_partial: 'لم تُنشأ بعض الغرف. اضغط مجددًا — ستُنشأ الغرف الناقصة فقط.',
   dsx_tour_hint: 'اسحب للنظر حولك · اضغط على نقطة للانتقال إلى غرفة أخرى',
   dsx_tour_go: 'الانتقال إلى: {{room}}',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_pano_body: 'قف داخل كل غرفة من هذا التصميم وانظر حولك 360°. اضغط على باب للدخول إلى الغرفة المجاورة.',
+  dsx_pano_confirm_body: 'تُنشأ الغرف الـ{{n}} كلها معًا من هذا التصميم، كل غرفة بزاوية 360° (أربع صور لكل غرفة). هذا هو سعرها كلها.',
+  dsx_pano_hint: 'اسحب للنظر حولك بالكامل · اضغط على باب للعبور',
+  dsx_pano_hint_alone: 'اسحب للنظر حولك بالكامل · اختر غرفة أخرى في الأعلى',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -90500,6 +90530,12 @@ const he: Partial<Record<TranslationKey, string>> = {
   dsx_tour_partial: 'חלק מהחדרים לא נוצרו. הקישו שוב — ייווצרו רק החדרים החסרים.',
   dsx_tour_hint: 'גררו כדי להביט סביב · הקישו על נקודה כדי לעבור לחדר אחר',
   dsx_tour_go: 'מעבר אל: {{room}}',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_pano_body: 'עמדו בתוך כל חדר בעיצוב הזה והביטו סביב, 360°. הקישו על דלת כדי להיכנס לחדר הסמוך.',
+  dsx_pano_confirm_body: 'כל {{n}} החדרים נוצרים יחד מהעיצוב הזה, כל אחד ב־360° (ארבע תמונות לחדר). זה המחיר של כולם.',
+  dsx_pano_hint: 'גררו כדי להביט סביב · הקישו על דלת כדי לעבור',
+  dsx_pano_hint_alone: 'גררו כדי להביט סביב · בחרו חדר אחר למעלה',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

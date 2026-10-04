@@ -51,9 +51,12 @@ export async function requestDesignSpec(input: {
 /** One generated picture, from a quote the customer saw. The same key is the same render. */
 export async function generateRender(input: {
   quote: RenderQuote; projectId: string; versionId: string; specJobId: string; mode: GenerationMode; idempotencyKey: string;
+  /** ROOM: one of the room's four 360° pictures (0 up the plan, then a quarter turn right each). */
+  heading?: 0 | 1 | 2 | 3 | null;
 }): Promise<{ render: RenderRecord | null; error: string | null }> {
   const r = await call<{ render: RenderRecord | null; error?: string }>('render-generate', {
     quoteToken: input.quote.token, projectId: input.projectId, versionId: input.versionId, specJobId: input.specJobId, mode: input.mode, idempotencyKey: input.idempotencyKey,
+    ...(input.mode === 'ROOM' && input.heading != null ? { heading: input.heading } : {}),
   });
   return { render: r.data?.render ?? null, error: r.error ?? r.data?.error ?? null };
 }

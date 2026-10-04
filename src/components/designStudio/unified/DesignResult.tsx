@@ -36,7 +36,11 @@ import type { DesignVersionRecord } from '@/lib/designStudio/types';
 import { createVersion, setHeadVersion, type ProjectBundle } from '@/services/designStudio/projects';
 import { editRender, listRenders, pollRenders, quoteRender, renderPictureUrls } from '@/services/designStudio/renders';
 import { generationStep, isGenerated, stepGenerated } from '@/services/designStudio/generation';
-import { runDesign, type RunStage } from '@/services/designStudio/designRun';
+import { renderRoomView, runDesign, type RunStage } from '@/services/designStudio/designRun';
+import type { SpaceModel } from '@/lib/designStudio/space';
+import type { GeneratedScene } from '@/lib/floorplan/geometry';
+import { HEADINGS, isHeading, roomOpenings, type Heading } from '@/lib/designStudio/tour/roomViews';
+import type { PanoRoom } from './PanoramaWalk';
 import { DesignStudioError } from '@/services/designStudio/errors';
 import { signedUrls } from '@/services/designStudio/files';
 import { EditPanel } from '@/components/designStudio/renders/EditPanel';
@@ -77,17 +81,26 @@ export interface ResultData {
   rooms: ResultRoom[];
   /** The room the first design shows (photos), so it is not offered again as "another room". */
   heroRoomId: string | null;
+  /** A floor-plan design's plan: the 360° tour joins its rooms by its doors. */
+  plan?: { space: SpaceModel; scene: GeneratedScene } | null;
 }
 
 /** What a pending paid action is, its price, and what Confirm does. */
 interface Pending { title: string; body: string | null; credits: number; charged: boolean; run: () => Promise<void> }
 /** A 3D tour being made: every room's eye-level picture at once, from the same design (one confirmed price per room). */
-interface TourRun { headId: string; roomIds: string[]; credits: number; refs: string[]; look: { style: string; quality: string } }
+interface TourRun {
+  headId: string; roomIds: string[]; credits: number; refs: string[]; look: { style: string; quality: string };
+  /** The 360° tour (a plan's rooms): per room, the pictures still to make (heading 0..3) and the room's specification once it has one. */
+  views?: Array<{ roomId: string; headings: Heading[]; specJobId: string | null }>;
+}
 /** A design being made right now (followed here; owned by the server). */
 interface Working { label: string; stage: RunStage }
 
 const pictureOf = (r: RenderRecord) => r.status === 'READY' && !!(r.final_key ?? r.base_key) && (isGenerated(r) || r.kind === 'EDIT');
 const roomOf = (r: RenderRecord): string | null => (r.view?.kind === 'ROOM' ? (r.view.roomId ?? null) : null);
+/** One of a room's four 360° pictures (heading 0..3), or null for any other picture. */
+const headingOf = (r: RenderRecord): Heading | null => { const h = (r.view as unknown as { heading?: unknown } | null)?.heading; return isHeading(h) ? h : null; };
+const specJobOf = (r: RenderRecord): string | null => (r.finish as unknown as { specJobId?: string } | null)?.specJobId ?? null;
 
 /** One generation the Result asks for (a variant, a style, a quality, a room): its key is its identity on the server. */
 interface GenInput {
@@ -158,7 +171,20 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
   // A room's picture is one GENERATED for it (pictures are generated renders and their edits), never the customer's upload.
   const roomShots = useMemo(() => {
     const m = new Map<string, RenderRecord>();
-    for (const r of pictures) { const id = roomOf(r); if (id && !m.has(id)) m.set(id, r); }
+    for (const r of pictures) { const id = roomOf(r); if (id && !m.has(id) && headingOf(r) == null) m.set(id, r); }
+    for (const r of pictures) { const id = roomOf(r); if (id && !m.has(id) && headingOf(r) === 0) m.set(id, r); }
+    return m;
+  }, [pictures]);
+  // The 360° pictures of each room: heading → picture (the newest specification that has heading 0 wins).
+  const views360 = useMemo(() => {
+    const m = new Map<string, { specJobId: string | null; byHeading: Array<RenderRecord | null> }>();
+    for (const r of pictures) {
+      const id = roomOf(r); const h = headingOf(r);
+      if (!id || h == null) continue;
+      const cur = m.get(id);
+      if (!cur) { const byHeading: Array<RenderRecord | null> = [null, null, null, null]; byHeading[h] = r; m.set(id, { specJobId: specJobOf(r), byHeading }); continue; }
+      if (specJobOf(r) === cur.specJobId && !cur.byHeading[h]) cur.byHeading[h] = r;
+    }
     return m;
   }, [pictures]);
   // The design reference for rooms: the generated designs the customer selected (default: the design shown).
@@ -322,7 +348,7 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
     try { window.localStorage.setItem(tourKey, JSON.stringify(run)); } catch { /* private mode */ }
     setError(null);
     setTourShort(false);
-    setTour({ total: run.roomIds.length, done: 0 });
+    setTour({ total: run.views?.length ? run.views.reduce((n, v) => n + v.headings.length, 0) : run.roomIds.length, done: 0 });
     const base = run.look;
     const queue = [...run.roomIds];
     let short = 0;
@@ -342,9 +368,46 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
       }
       if (alive.current) { setTour((x) => (x ? { ...x, done: x.done + 1 } : x)); void refresh(); }
     };
-    await Promise.all(Array.from({ length: Math.min(TOUR_PARALLEL, queue.length) }, async () => {
-      while (queue.length && !stop) await one(queue.shift()!);
-    }));
+    // The 360° tour: per room the first picture (and the room's specification), then the other three turned from it.
+    const room360 = async (v: NonNullable<TourRun['views']>[number]) => {
+      const keyBase = `${roomKey(v.roomId, null, run.refs)}-360`;
+      let specJobId = v.specJobId;
+      const counted = (e: unknown) => {
+        const code = e instanceof DesignStudioError ? e.code : '';
+        if (code !== 'DS_STILL_WORKING' && code !== 'DS_WATCH_STOPPED') short += 1;
+        if (code === 'DS_PRICE_CHANGED' || code === 'DS_INSUFFICIENT_CREDITS') stop = e;
+      };
+      const step = () => { if (alive.current) { setTour((x) => (x ? { ...x, done: x.done + 1 } : x)); void refresh(); } };
+      const rest = v.headings.filter((h): h is 1 | 2 | 3 => h !== 0);
+      if (v.headings.includes(0)) {
+        try {
+          await runDesign({
+            projectId, versionId: run.headId, mode: 'ROOM', key: keyBase, heading: 0, look: base, preferences: lookPreferences(base.style as LookStyle, base.quality as LookQuality),
+            roomId: v.roomId, parentRenderId: run.refs[0], referenceRenderIds: run.refs, confirmedCredits: run.credits, versionName: t('p2h_version_design'), retry,
+            onProgress: (p) => { if (p.specJobId) specJobId = p.specJobId; },
+          });
+        } catch (e) { counted(e); step(); short += rest.length; rest.forEach(step); return; }
+        step();
+      }
+      if (!specJobId) { short += rest.length; rest.forEach(step); return; }
+      await Promise.all(rest.map(async (h) => {
+        if (stop) { step(); return; }
+        try {
+          await renderRoomView({ projectId, versionId: run.headId, specJobId: specJobId!, heading: h, key: `${keyBase}-h${h}`, confirmedCredits: run.credits });
+        } catch (e) { counted(e); }
+        step();
+      }));
+    };
+    if (run.views?.length) {
+      const rooms = [...run.views];
+      await Promise.all(Array.from({ length: Math.min(TOUR_PARALLEL, rooms.length) }, async () => {
+        while (rooms.length && !stop) await room360(rooms.shift()!);
+      }));
+    } else {
+      await Promise.all(Array.from({ length: Math.min(TOUR_PARALLEL, queue.length) }, async () => {
+        while (queue.length && !stop) await one(queue.shift()!);
+      }));
+    }
     tourRunning.current = false;
     try { window.localStorage.removeItem(tourKey); } catch { /* private mode */ }
     if (!alive.current) return;
@@ -353,14 +416,15 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
     setTour(null);
     if (stop) fail(stop);
     if (short || stop) setTourShort(true);
-    if (short < run.roomIds.length) { setPlaying(false); setTourOpen((n) => n + 1); }
+    const asked = run.views?.length ? run.views.reduce((n, v) => n + v.headings.length, 0) : run.roomIds.length;
+    if (short < asked) { setPlaying(false); setTourOpen((n) => n + 1); }
   };
   // A tour being made when the page was left: followed again on return (the same runs; nothing is asked twice).
   useEffect(() => {
     let saved: TourRun | null = null;
     try { const v = window.localStorage.getItem(tourKey); saved = v ? JSON.parse(v) as TourRun : null; } catch { saved = null; }
     if (!saved) return;
-    if (saved.headId !== data.head.id || !Array.isArray(saved.roomIds) || !Array.isArray(saved.refs) || !saved.look) {
+    if (saved.headId !== data.head.id || !Array.isArray(saved.roomIds) || !Array.isArray(saved.refs) || !saved.look || (saved.views != null && !Array.isArray(saved.views))) {
       try { window.localStorage.removeItem(tourKey); } catch { /* private mode */ }
       return;
     }
@@ -463,9 +527,29 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
   const tourRooms = useMemo(() => data.rooms
     .filter((r) => !roomShots.has(r.id) && !(photoHeroEyeLevel && r.id === data.heroRoomId))
     .slice(0, TOUR_MAX), [data.rooms, roomShots, photoHeroEyeLevel, data.heroRoomId]);
+  // A plan's tour is 360°: every room four times round. What each room still needs (a room the plan cannot join
+  // by a door is still in the tour: its name is on the tour's list).
+  const pano = data.sourceKind === 'FLOOR_PLAN' && !!data.plan;
+  const tourViews = useMemo(() => (pano ? data.rooms.slice(0, TOUR_MAX).map((r) => {
+    const have = views360.get(r.id);
+    return { roomId: r.id, headings: HEADINGS.filter((h) => !have?.byHeading[h]) as Heading[], specJobId: have?.byHeading[0] ? have.specJobId : null };
+  }).filter((v) => v.headings.length) : []), [pano, data.rooms, views360]);
+  const panoRooms = useMemo<PanoRoom[]>(() => {
+    if (!pano || !data.plan) return [];
+    const out: PanoRoom[] = [];
+    for (const r of data.rooms) {
+      const v = views360.get(r.id);
+      const pics = v?.byHeading.map((x) => (x ? { id: x.id, url: urls.get(x.id) ?? '', key: x.final_key ?? x.base_key ?? null } : null));
+      if (!pics || pics.some((x) => !x || (!x.url && !x.key))) continue;
+      const links = roomOpenings(data.plan.space, data.plan.scene, r.id).links;
+      out.push({ id: r.id, label: r.label, views: pics as PanoRoom['views'], doors: links.map((l) => ({ toRoomId: l.toRoomId, bearingDeg: l.bearingDeg })) });
+    }
+    return out;
+  }, [pano, data.plan, data.rooms, views360, urls]);
   /** One price for every room the tour needs, confirmed before anything is spent. */
   const createTour = async () => {
     const chosen = refs;
+    if (pano) { if (chosen.length && tourViews.length && !occupied) await create360(chosen); return; }
     if (!chosen.length || !tourRooms.length || occupied) return;
     setError(null);
     const q = await quoteRender({ projectId, versionId: data.head.id, product: 'DS_ROOM_RENDER', views: 1 });
@@ -475,6 +559,21 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
     setPending({
       title: t('dsx_tour_confirm_title', { n: String(run.roomIds.length) }), body: t('dsx_tour_confirm_body', { n: String(run.roomIds.length) }),
       credits: credits * run.roomIds.length, charged: q.quote.charged, run: async () => { void runTour(run, true); },
+    });
+  };
+  /** The 360° tour: one price for every picture still missing (four per room), confirmed before anything is spent. */
+  const create360 = async (chosen: string[]) => {
+    setError(null);
+    const q = await quoteRender({ projectId, versionId: data.head.id, product: 'DS_ROOM_RENDER', views: 1 });
+    if (!q.quote) { setError(t('rend_error_quote')); return; }
+    const credits = q.quote.credits;
+    const pictures360 = tourViews.reduce((n, v) => n + v.headings.length, 0);
+    const run: TourRun = {
+      headId: data.head.id, roomIds: tourViews.map((v) => v.roomId), credits, refs: chosen, look: look ?? { style: 'MODERN', quality: 'HIGH_QUALITY' }, views: tourViews,
+    };
+    setPending({
+      title: t('dsx_tour_confirm_title', { n: String(run.roomIds.length) }), body: t('dsx_pano_confirm_body', { n: String(run.roomIds.length) }),
+      credits: credits * pictures360, charged: q.quote.charged, run: async () => { void runTour(run, true); },
     });
   };
 
@@ -664,7 +763,8 @@ export function DesignResult({ data, onReload }: { data: ResultData; onReload: (
         {/* ── The 3D walkthrough of the design shown: always from this project (a photo design's space is reconstructed by the server) ── */}
         {hero ? (
           <WalkthroughPanel projectId={projectId} designVersionId={hero.version_id ?? data.head.id} renderId={hero.id} photos={walkPhotos} needsRoomPhotos
-            tour={{ missing: tourRooms.length, making: tour, short: tourShort, openRequest: tourOpen, canCreate: !occupied && refs.length > 0, onCreate: () => { void createTour(); }, onPlay: () => setPlaying(true) }} />
+            panorama={pano ? panoRooms : undefined}
+            tour={{ missing: pano ? tourViews.length : tourRooms.length, making: tour, short: tourShort, openRequest: tourOpen, canCreate: !occupied && refs.length > 0, onCreate: () => { void createTour(); }, onPlay: () => setPlaying(true) }} />
         ) : null}
 
         {/* ── Your options ───────────────────────────────────────────── */}

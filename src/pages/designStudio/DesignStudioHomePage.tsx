@@ -90,8 +90,10 @@ async function loadEntry(projectId: string): Promise<Entry> {
   const renders = await listRenders(projectId);
   if (!renders.some((r) => isGenerated(r))) return { kind: 'LEGACY' };
   const canonical = (source.canonical as CanonicalSpace | null) ?? null;
-  const rooms = canonical?.scene ? buildSpaceModel(canonical.scene).rooms.map((r) => ({ id: r.id, kind: r.kind, label: r.label ?? null, photoUrl: null })) : [];
-  return { kind: 'RESULT', data: { bundle, head, sourceKind: 'FLOOR_PLAN', rooms, heroRoomId: null } };
+  const space = canonical?.scene ? buildSpaceModel(canonical.scene) : null;
+  const rooms = space ? space.rooms.map((r) => ({ id: r.id, kind: r.kind, label: r.label ?? null, photoUrl: null })) : [];
+  // The plan itself rides along: the 360° tour joins the rooms by its doors.
+  return { kind: 'RESULT', data: { bundle, head, sourceKind: 'FLOOR_PLAN', rooms, heroRoomId: null, plan: space && canonical?.scene ? { space, scene: canonical.scene } : null } };
 }
 
 function HomeEntry() {

@@ -86,7 +86,9 @@ test('the 3D tour card opens the picture itself first; the depth model loads onl
   const walk = readFileSync(new URL('../../../components/designStudio/unified/PhotoWalk.tsx', import.meta.url), 'utf8');
   assert.match(walk, /new THREE\.MeshBasicMaterial\(\{ map: texture/, 'unlit: the picture\'s own light and colour');
   // A page left open outlives its picture link: the picture is signed afresh when entered, and a failure names its step.
-  assert.match(walk, /signedUrls\(\[photo\.key\], 900\)/);
+  const loader = readFileSync(new URL('../../../components/designStudio/unified/loadPicture.ts', import.meta.url), 'utf8');
+  assert.match(loader, /signedUrls\(\[p\.key\], 900\)/);
+  assert.match(walk, /await loadPicture\(photo, /);
   // The wait says what it is doing, and has the same game as every long wait.
   assert.match(walk, /dsx_photo3d_measuring/);
   assert.match(walk, /const SnakeGame = lazy\(\(\) => import\('@\/components\/games\/SnakeGame'\)\);/);

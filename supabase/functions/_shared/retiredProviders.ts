@@ -1,5 +1,16 @@
 // HOMATCH — the providers that are retired, named once.
 //
+// 2026-10-04: APIFY IS RESTORED by the owner, ONLY for the controlled Find
+// Buyers / Find Tenants memo23 architecture. It is a live provider again on
+// Admin → Providers (Test = a free account check; Enable/Disable = the
+// server-authoritative provider_disabled_list switch that stops every memo23
+// run), and it executes ONLY through _shared/findBuyers/memo23Client.ts:
+// registered memo23 Actors, each run reserved and capped. The generic Apify
+// execution that was deleted stays deleted; a queue job naming the generic
+// APIFY provider has no executor and is refused (APIFY_ONLY_VIA_MEMO23).
+// DataForSEO remains retired. The history below is why retirement is a
+// property of the code.
+//
 // DataForSEO and Apify are retired from the active Homatch discovery
 // architecture. Not paused and not awaiting a decision: the web lane is being
 // built on permitted public-web access and official APIs, and nothing is
@@ -26,7 +37,7 @@
 // produced, and the migrations that created them. Retiring a provider does
 // not rewrite what it cost us.
 
-export const RETIRED_PROVIDERS = ['DATAFORSEO', 'APIFY'] as const;
+export const RETIRED_PROVIDERS = ['DATAFORSEO'] as const;
 export type RetiredProvider = typeof RETIRED_PROVIDERS[number];
 
 export function isRetiredProvider(provider: unknown): provider is RetiredProvider {
@@ -35,9 +46,8 @@ export function isRetiredProvider(provider: unknown): provider is RetiredProvide
 
 /** The one sentence every retired path returns, so callers can match on it. */
 export function retiredReason(provider: RetiredProvider): string {
-  return provider === 'DATAFORSEO'
-    ? 'DataForSEO is retired from the Homatch discovery architecture.'
-    : 'Apify is retired from the Homatch discovery architecture.';
+  void provider;
+  return 'DataForSEO is retired from the Homatch discovery architecture.';
 }
 
 /**
@@ -56,3 +66,6 @@ export function retiredBody(provider: RetiredProvider) {
     error: retiredReason(provider),
   };
 }
+
+/** Apify is live, but nothing except registered memo23 Actors via Find Buyers runs on it. */
+export const APIFY_ONLY_VIA_MEMO23 = 'APIFY_ONLY_VIA_MEMO23: Apify runs only through Find Buyers / Find Tenants (registered memo23 Actors).';

@@ -1,4 +1,8 @@
-// DATAFORSEO AND APIFY ARE RETIRED, AND NO CODE PATH CAN REACH THEM.
+// DATAFORSEO IS RETIRED, AND NO CODE PATH CAN REACH IT. APIFY IS LIVE AGAIN
+// (owner, 2026-10-04) ONLY THROUGH THE SINGLE MEMO23 CLIENT.
+//
+// The generic Apify execution deleted in 2026-09 stays deleted: no endpoint,
+// no credential read and no executor outside _shared/findBuyers/memo23Client.ts.
 //
 // Retirement used to be a fact about admin_settings: provider_kill_switch = true
 // and both names in provider_disabled_list. Every path that read those settings
@@ -87,18 +91,24 @@ test('the memo23 client is the only Apify door, runs memo23 Actors only, and nev
   const walkSrc = (dir) => { for (const e of readdirSync(dir)) { const f = join(dir, e); if (statSync(f).isDirectory()) walkSrc(f); else if (/\.(ts|tsx)$/.test(e) && /APIFY_API_TOKEN|api\.apify\.com/.test(read(f))) front.push(relative(root, f)); } };
   walkSrc(join(root, 'src'));
   assert.deepEqual(front, [], 'the frontend never names the Apify token or API');
-  /* The new provider key is not the retired one. */
-  assert.match(fnCode('_shared/retiredProviders.ts'), /RETIRED_PROVIDERS = \['DATAFORSEO', 'APIFY'\] as const/);
+  /* Apify is no longer retired; DataForSEO is. */
+  assert.match(fnCode('_shared/retiredProviders.ts'), /RETIRED_PROVIDERS = \['DATAFORSEO'\] as const/);
+  /* The admin Test is one free account read: GET /users/me, never a run or an Actor. */
+  const check = src.slice(src.indexOf('export async function accountCheck('), src.indexOf('export async function actorDefinition('));
+  assert.match(check, /call\('GET', '\/users\/me'/);
+  assert.doesNotMatch(check, /POST|\/runs|\/acts\//, 'the account check must never start or name an Actor');
 });
 
-test('the retired-provider list is the one both names come from', () => {
+test('the retired-provider list names DataForSEO only; Apify answers APIFY_ONLY_VIA_MEMO23 off the memo23 path', () => {
   const shared = fnCode('_shared/retiredProviders.ts');
-  assert.match(shared, /RETIRED_PROVIDERS = \['DATAFORSEO', 'APIFY'\] as const/);
+  assert.match(shared, /RETIRED_PROVIDERS = \['DATAFORSEO'\] as const/);
+  assert.match(shared, /export const APIFY_ONLY_VIA_MEMO23 = 'APIFY_ONLY_VIA_MEMO23:/);
 });
 
-test('social-collect answers 423 retired and does nothing else', () => {
+test('social-collect (generic Apify collection) answers 423 not-executable and does nothing else', () => {
   const src = fnCode('social-collect/index.ts');
-  assert.match(src, /retiredBody\('APIFY'\)/);
+  assert.match(src, /error: APIFY_ONLY_VIA_MEMO23/);
+  assert.match(src, /notExecutable: true/);
   assert.match(src, /status: 423/);
   assert.doesNotMatch(src, /ApifyProvider/, 'social-collect still constructs the Apify provider');
   assert.doesNotMatch(src, /fetch\(/, 'social-collect still makes a network call');
@@ -111,14 +121,16 @@ test('the retired provider classes no longer exist', () => {
   assert.doesNotMatch(src, /class ApifyProvider/);
 });
 
-test('provider-health-check reports retired providers before it could test anything', () => {
+test('provider-health-check reports DataForSEO retired before it could test anything; Apify is tested only via the memo23 account check', () => {
   const src = fnCode('provider-health-check/index.ts');
   const guard = src.indexOf('if (isRetiredProvider(upper))');
   assert.ok(guard > 0, 'the retired short-circuit is gone');
   assert.ok(guard < src.indexOf('fetch('), 'a request can be built before the retired check');
   assert.match(src.slice(guard, guard + 600), /status: 'RETIRED'/);
-  assert.doesNotMatch(src, /case 'DATAFORSEO'|case 'APIFY'/,
-    'a live test case for a retired provider is back');
+  assert.doesNotMatch(src, /case 'DATAFORSEO'/, 'a live test case for retired DataForSEO is back');
+  const apify = src.slice(src.indexOf("case 'APIFY':"), src.indexOf("case 'SCRAPINGBEE':"));
+  assert.match(apify, /await accountCheck\(\)/, 'the Apify test goes through the memo23 client');
+  assert.doesNotMatch(apify, /fetch\(|startRun|actorDefinition|Deno\.env/, 'the Apify test builds no request of its own and reads no credential');
 });
 
 test('discovery-queue-worker fails retired jobs before any provider code', () => {
@@ -127,9 +139,11 @@ test('discovery-queue-worker fails retired jobs before any provider code', () =>
   assert.match(exec, /if \(isRetiredProvider\(provider\)\) \{\s*throw new ProviderError\(`PROVIDER_RETIRED/);
   /* Non-retryable: a retired job must not bounce back into the queue forever. */
   assert.match(exec, /PROVIDER_RETIRED: \$\{retiredReason\(provider\)\}`, false, 423/);
+  /* The generic APIFY provider has no executor: refused before any provider code. */
+  assert.match(exec, /if \(provider === 'APIFY'\) \{\s*throw new ProviderError\(APIFY_ONLY_VIA_MEMO23, false, 423\)/);
   assert.doesNotMatch(src, /executeDataForSEO|executeApify|fetchApifyDataset|apifyRequest/);
-  /* Reconcile read paid Apify datasets and consulted no setting. */
-  assert.match(src, /mode: 'reconcile', retired: true/);
+  /* Reconcile read paid generic Apify datasets and consulted no setting: still off. */
+  assert.match(src, /mode: 'reconcile', notExecutable: true/);
 });
 
 test('the portable job library cannot reach a retired provider either', () => {
@@ -138,12 +152,16 @@ test('the portable job library cannot reach a retired provider either', () => {
   assert.match(src, /retiredJob\('collectSourceUpdates', 'APIFY'\)/);
 });
 
-test('the admin screen offers no control that could re-enable a retired provider', () => {
+test('the admin screen offers no control that could re-enable DataForSEO; Apify has Test and its own switch, which no preset changes', () => {
   const page = stripComments(read(join(root, 'src', 'pages', 'admin', 'AdminProvidersPage.tsx')));
-  assert.match(page, /RETIRED_PROVIDERS = \['DATAFORSEO', 'APIFY'\]/);
+  assert.match(page, /RETIRED_PROVIDERS = \['DATAFORSEO'\]/);
+  /* A preset keeps Apify's current state (it never silently enables Apify). */
+  assert.match(page, /disabledProviders\.includes\('APIFY'\) \? \['APIFY'\] : \[\]/);
+  /* Apify's switch is not hidden behind the legacy external-discovery kill switch. */
+  assert.match(page, /globalKillSwitch && h\.provider\.toUpperCase\(\) !== 'APIFY'/);
   /* The per-card enable and test buttons are not rendered for a retired card. */
   assert.match(page, /\{retired \? \(/);
-  /* Every write to provider_disabled_list keeps both names in it. */
+  /* Every write to provider_disabled_list keeps the retired name in it. */
   const writes = [...page.matchAll(/updateAdminSetting\('provider_disabled_list', ([^)]+)\)/g)];
   assert.ok(writes.length > 0, 'guard: the page no longer writes the disabled list');
   for (const [, arg] of writes) {

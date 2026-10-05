@@ -19,6 +19,10 @@
 //
 // WHAT IT DOES NOW
 //
+// 2026-10-04: Apify itself is restored, but ONLY for Find Buyers' memo23
+// client. This generic collector stays a 423 that builds no request; its
+// answer now says APIFY_ONLY_VIA_MEMO23 instead of "retired".
+//
 // Answers every request with the retired contract (423, paidLaunchesBlocked,
 // retired: true) before reading the body, touching the database or building a
 // request. There is no provider left to construct: ApifyProvider has been
@@ -34,7 +38,7 @@
 // implementation belongs.
 // ============================================================
 
-import { retiredBody } from '../_shared/retiredProviders.ts';
+import { APIFY_ONLY_VIA_MEMO23 } from '../_shared/retiredProviders.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -43,7 +47,8 @@ const CORS = {
 
 Deno.serve((req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
-  return new Response(JSON.stringify(retiredBody('APIFY')), {
+  /* Generic Apify collection stays deleted: Apify runs only via Find Buyers (memo23). */
+  return new Response(JSON.stringify({ success: false, paidLaunchesBlocked: true, notExecutable: true, provider: 'APIFY', error: APIFY_ONLY_VIA_MEMO23 }), {
     status: 423,
     headers: { ...CORS, 'Content-Type': 'application/json' },
   });

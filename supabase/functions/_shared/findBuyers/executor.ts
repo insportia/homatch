@@ -9,6 +9,7 @@
 
 import { buildInput, STAGE_OUTPUT, STAGE_NETWORK, type Stage } from '../../../../src/research-core/findBuyers/actorInputs.ts';
 import { normalizeDataset } from '../../../../src/research-core/findBuyers/normalize.ts';
+import { provesOutputContract } from '../../../../src/research-core/findBuyers/actorCatalog.ts';
 import { decideArm, armPriority, parseSampling, type ArmStats } from '../../../../src/research-core/findBuyers/allocator.ts';
 import { queryHash } from '../../../../src/research-core/findBuyers/queryPlanner.ts';
 import { sinceFloor } from '../../../../src/research-core/findBuyers/freshness.ts';
@@ -44,6 +45,8 @@ export async function executeSocialJob(db: any, job: any): Promise<SocialOutcome
   if (!campaign || campaign.finalized_at) return out({ outcome: 'CANCELLED', error: 'CAMPAIGN_FINALIZED' });
   const settings = await loadFindBuyersSettings(db);
   if (meta.actorRunId) return poll(db, job, campaign, settings);
+  /* Apify switched off on Admin → Providers: no new memo23 run starts. */
+  if (!settings.apifyEnabled) return out({ outcome: 'CANCELLED', error: 'APIFY_DISABLED_BY_ADMIN' });
   if (!settings.socialEnabled) return out({ outcome: 'CANCELLED', error: 'SOCIAL_DISABLED' });
   return start(db, job, campaign, settings);
 }
@@ -185,6 +188,10 @@ async function poll(db: any, job: any, campaign: any, settings: FindBuyersSettin
   if (!run.cost_booked_at) {
     const providerRunId = run.provider_run_id ?? meta.providerRunId ?? null;
     if (!providerRunId) return out({ outcome: 'WAIT', retrySeconds: 45, metadata: { lastPollError: 'NO_PROVIDER_RUN_ID' } });
+    /* Apify switched off while a run is in flight: ask the provider to abort it
+       (free, idempotent), then keep polling so its real cost is still booked
+       and its reservation settled. */
+    if (!settings.apifyEnabled) await abortRun(providerRunId).catch(() => undefined);
     try { r = await getRun(providerRunId); } catch (error) {
       return out({ outcome: 'WAIT', retrySeconds: 45, metadata: { lastPollError: scrub(String(error)) } });
     }
@@ -233,6 +240,12 @@ async function poll(db: any, job: any, campaign: any, settings: FindBuyersSettin
   const network = STAGE_NETWORK[stage];
   const parent = (meta.parent ?? null) as ParentContext | null;
   const normalized = normalizeDataset(STAGE_OUTPUT[stage], network, items, parent ? { externalId: parent.externalId, url: parent.url } : null);
+  /* The output contract is proven only by a real run whose items parsed into
+     real content with a real public URL (never by metadata, never by 0 items). */
+  if (bookStatus === 'SUCCEEDED' && provesOutputContract(normalized)) {
+    const at = new Date().toISOString();
+    await db.from('find_buyers_actor_registry').update({ output_contract_verified_at: at, last_verified_at: at }).eq('actor_key', run.actor_key);
+  }
   const sourceYield = await sourceYieldOf(db, meta.sourceId ?? null);
   const result = await processItems({
     db, campaign: campaign as CampaignRow, stage, runId: run.id, runLanguage: job.language ?? null,
@@ -287,7 +300,7 @@ async function poll(db: any, job: any, campaign: any, settings: FindBuyersSettin
   }
   return out({
     outcome: 'DONE', resultCount: result.qualified, costUsd: Number(costMicros || 0) / 1e6,
-    metadata: { processed: true, items: normalized.length, useful: result.useful, qualified: result.qualified, strong: result.strong, duplicates: result.duplicates, reused: result.reused, armDecision: deepen?.decision ?? null },
+    metadata: { processed: true, items: normalized.length, candidates: result.candidates, dispositions: result.dispositions, useful: result.useful, qualified: result.qualified, strong: result.strong, duplicates: result.duplicates, reused: result.reused, armDecision: deepen?.decision ?? null },
   });
 }
 

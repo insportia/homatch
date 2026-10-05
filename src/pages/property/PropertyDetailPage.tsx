@@ -14,7 +14,7 @@ import { NavGlyphIcon } from '@/components/layouts/NavGlyph';
 import { NAVY_BAND } from '@/components/findBuyers/brand';
 import { SearchDna } from '@/components/findBuyers/SearchDna';
 import { useCampaignStatus } from '@/hooks/useCampaignStatus';
-import { campaignView } from '@/findBuyers/campaignView';
+import { campaignView, currentState } from '@/findBuyers/campaignView';
 import { PropertyReference } from '@/components/owner/ContactPhoneField';
 import { FactLine, OWNER_ICON, OWNER_SECONDARY } from '@/components/owner/portfolio';
 import { CanonicalGroupBanner } from '@/components/property/CanonicalGroupBanner';
@@ -272,8 +272,9 @@ function DiscoverySection({
     ? t(`prop_action_${contextual.toLowerCase()}` as never)
     : t('matches_start_matching');
 
-  const stateLabel = expired ? t('pow_discovery_state_paused_expired')
-    : view ? t(view.headlineKey as never) : t('fbl_state_idle');
+  /* The CURRENT state only: a past attempt is history, on its own line. */
+  const now = currentState(campaign, readiness);
+  const stateLabel = expired ? t('pow_discovery_state_paused_expired') : t(now.headlineKey as never);
 
   return (
     <section aria-labelledby="pow-discovery-title" data-testid="pow-discovery" className="hm-owner-panel overflow-hidden">
@@ -299,6 +300,11 @@ function DiscoverySection({
           {live && view && (
             <p className="text-2xs leading-relaxed text-[hsl(218_40%_85%)]">
               {t('fbl_live_line', { working: String(view.metrics.sourcesWorking), signals: String(view.metrics.signals), possible: String(view.metrics.possible) })}
+            </p>
+          )}
+          {now.last && !expired && (
+            <p className="text-2xs leading-relaxed text-[hsl(218_40%_85%)] break-words" data-testid="pow-last-search">
+              {t('fbl_last_search', { state: t(now.last.headlineKey as never), date: now.last.at ? new Date(now.last.at).toLocaleDateString() : '—' })}
             </p>
           )}
           {!live && readiness && !readiness.ready && !expired && (
@@ -391,7 +397,7 @@ function DiscoverySection({
 
       {/* The ceiling is chosen before anything is spent. */}
       <Dialog open={showBudget} onOpenChange={setShowBudget}>
-        <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md max-h-[85dvh] overflow-y-auto">
+        <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md max-h-[85dvh] overflow-y-auto [&>*]:min-w-0">
           <DialogHeader>
             <DialogTitle className="break-words">{startLabel}</DialogTitle>
             <DialogDescription className="sr-only">{t('budget_choose_title')}</DialogDescription>
@@ -681,7 +687,7 @@ function PropertyDetailContent() {
             <div className="flex flex-wrap items-center gap-2">
               <Link
                 to={contactReady ? `/property/${id}/matches` : `/property/${id}/edit#contact`}
-                className="inline-flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-[hsl(38_92%_54%)] px-4 py-2 text-2xs font-bold text-[#161309] transition-colors hover:bg-[hsl(38_92%_60%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                className="inline-flex min-h-10 min-w-0 basis-full items-center justify-center gap-1.5 rounded-lg bg-[hsl(38_92%_54%)] sm:basis-0 sm:flex-1 px-4 py-2 text-2xs font-bold text-[#161309] transition-colors hover:bg-[hsl(38_92%_60%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
               >
                 {!contactReady && <Phone className="h-3.5 w-3.5 shrink-0" />}
                 <span className="break-words text-center leading-snug">{contactReady ? ownerAction : t('contact_phone_add')}</span>

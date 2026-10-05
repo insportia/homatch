@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { isRetiredProvider, retiredReason, RETIRED_PROVIDERS } from '../_shared/retiredProviders.ts';
+import { APIFY_ONLY_VIA_MEMO23, isRetiredProvider, retiredReason, RETIRED_PROVIDERS } from '../_shared/retiredProviders.ts';
+import { providerConfigured as apifyConfigured } from '../_shared/findBuyers/memo23Client.ts';
 import { drive, adminStop, adminRetry } from './driver.ts';
 import { verifyActor } from '../_shared/findBuyers/admin.ts';
 
@@ -98,9 +99,10 @@ Deno.serve(async (req: Request) => {
        TELEGRAM / TELEGRAM_SOURCES / FORUM, then classify, match, settle. */
     if (mode === 'drive') return json(await drive(db, baseUrl, serviceKey, body));
     if (mode === 'reconcile') {
-      // Reconcile re-read already-paid Apify datasets through the Apify API.
-      // Apify is retired, so there is nothing it may call.
-      return json({ success: false, mode: 'reconcile', retired: true, provider: 'APIFY', error: retiredReason('APIFY') }, 423);
+      // Reconcile re-read already-paid generic Apify datasets. Apify is live
+      // again only for memo23 (Find Buyers), which books its own datasets;
+      // the generic reconcile stays off.
+      return json({ success: false, mode: 'reconcile', notExecutable: true, provider: 'APIFY', error: APIFY_ONLY_VIA_MEMO23 }, 423);
     }
     if (mode !== 'execute') return json({ error: 'Unsupported mode' }, 400);
     const result = await executeControlledJobs(db, baseUrl, serviceKey, body);
@@ -160,7 +162,11 @@ async function audit(db: any) {
     doneWithDataset: Number(doneWithDataset || 0),
     // Reported as retired rather than as configured or not: whether a token is
     // still in the environment no longer decides anything.
-    providers: Object.fromEntries(RETIRED_PROVIDERS.map((name) => [name, { retired: true }])),
+    providers: {
+      ...Object.fromEntries(RETIRED_PROVIDERS.map((name) => [name, { retired: true }])),
+      /* Live for memo23 only; the generic provider has no executor. */
+      APIFY: { retired: false, configured: apifyConfigured(), executesVia: 'APIFY_MEMO23', generic: false },
+    },
   };
 }
 
@@ -291,6 +297,11 @@ async function executeProvider(job: any, _maxResults: number, disabledProviders:
   // Retired first, and unconditionally: no setting can re-enable these.
   if (isRetiredProvider(provider)) {
     throw new ProviderError(`PROVIDER_RETIRED: ${retiredReason(provider)}`, false, 423);
+  }
+  // Apify is live only through Find Buyers' memo23 client (provider
+  // APIFY_MEMO23, its own pass). A generic APIFY job has no executor.
+  if (provider === 'APIFY') {
+    throw new ProviderError(APIFY_ONLY_VIA_MEMO23, false, 423);
   }
   // Per-provider admin disable (AdminProvidersPage's per-card toggle, backed by
   // admin_settings.provider_disabled_list). The master provider_kill_switch

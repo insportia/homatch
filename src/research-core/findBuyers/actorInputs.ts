@@ -75,49 +75,62 @@ export interface StageParams {
 }
 
 const urls = (u: string | null | undefined) => (u ? [{ url: u }] : []);
+const strings = (u: string | null | undefined) => (u ? [u] : []);
+/** Date-only fields (YYYY-MM-DD) take the day of the incremental floor. */
+const day = (iso: string | null | undefined) => (iso ? iso.slice(0, 10) : undefined);
 
+/*
+ * THE REAL CONTRACTS. Each case matches the Actor's published input schema as
+ * read from Apify on 2026-10-04 (registry input_contract.schemaProperties):
+ * required fields are always sent, and nothing relies on a key the Actor does
+ * not accept (fitToSchema drops those silently). Notably TikTok and Reddit
+ * pick their job with a required `mode`, VK and Threads take plain strings,
+ * Facebook group search caps by `maxGroups`, Bluesky searches `searchQueries`.
+ */
 export function defaultInput(stage: Stage, p: StageParams): Record<string, unknown> {
   const q = p.query ?? '';
   switch (stage) {
     case 'FB_GROUP_SEARCH':
-      return { startUrls: urls(`https://www.facebook.com/search/groups/?q=${encodeURIComponent(q)}`), maxItems: p.size };
+      return { searchQueries: [q], maxGroups: p.size };
     case 'FB_GROUP_POSTS':
-      return { startUrls: urls(p.targetUrl), maxItems: p.size, ...(p.since ? { onlyPostsNewerThan: p.since } : {}) };
+      return { startUrls: urls(p.targetUrl), maxItems: p.size, ...(p.since ? { onlyPostsNewerThan: day(p.since) } : {}) };
     case 'FB_COMMENTS':
       return { startUrls: urls(p.targetUrl), maxItems: p.size, commentsMode: 'NEWEST' };
     case 'IG_PROFILE_POSTS':
-      return { startUrls: urls(p.targetUrl), maxItems: p.size, ...(p.since ? { onlyPostsNewerThan: p.since } : {}) };
+      return { startUrls: urls(p.targetUrl), maxItems: p.size };
     case 'IG_COMMENTS':
       return { startUrls: urls(p.targetUrl), maxItems: p.size };
     case 'TIKTOK_SEARCH':
       return q.startsWith('#')
-        ? { hashtags: [q.slice(1)], maxItems: p.size }
-        : { searchQueries: [q], maxItems: p.size };
+        ? { mode: 'hashtag', input: [q.slice(1)], maxResults: p.size }
+        : { mode: 'search', input: [q], maxResults: p.size };
     case 'TIKTOK_COMMENTS':
-      return { postURLs: p.targetUrl ? [p.targetUrl] : [], commentsPerPost: p.size, maxItems: p.size };
+      return { mode: 'comments', input: strings(p.targetUrl), maxResults: p.size };
     case 'VK_WALL':
-      return { startUrls: urls(p.targetUrl), keyword: q || undefined, maxItems: p.size, includeComments: true, ...(p.since ? { dateFrom: p.since.slice(0, 10) } : {}) };
+      return { targets: strings(p.targetUrl), ...(q ? { searchQuery: q } : {}), maxItems: p.size, includeComments: true, ...(p.since ? { publishedAfter: day(p.since) } : {}) };
     case 'TELEGRAM_CHANNEL':
       return { startUrls: urls(p.targetUrl), maxItems: p.size };
     case 'LINKEDIN_GROUPS':
       return { startUrls: urls(`https://www.linkedin.com/search/results/groups/?keywords=${encodeURIComponent(q)}`), maxItems: p.size };
     case 'LINKEDIN_POSTS':
       return { searchQueries: [q], maxItems: p.size };
-    /* Reddit: site-wide keyword search over the last month, posts only; comments
-       are a separate, gated stage for qualifying posts. */
+    /* Reddit: site-wide keyword search, newest first, posts only; comments are a
+       separate, gated stage (postComments) for qualifying posts. The 30-day
+       window is applied at ingest; `searchTimeframe` is ignored by sort=new. */
     case 'REDDIT_SEARCH':
-      return { searches: [q], sort: 'new', time: 'month', includeComments: false, maxItems: p.size };
+      return { mode: 'searchGlobal', searchQueries: [q], sort: 'new', searchTimeframe: 'month', searchIncludeComments: false, maxItems: p.size };
     case 'REDDIT_COMMENTS':
-      return { startUrls: urls(p.targetUrl), includeComments: true, maxComments: p.size, maxItems: p.size };
+      return { mode: 'postComments', postUrls: urls(p.targetUrl), maxComments: p.size, maxItems: p.size };
     case 'QUORA_SEARCH':
       return { searchQueries: [q], maxItems: p.size };
     case 'BLUESKY_SEARCH':
-      return { searchTerms: [q], sort: 'latest', maxItems: p.size, ...(p.since ? { since: p.since } : {}) };
+      return { searchQueries: [q], searchType: 'posts', sort: 'latest', maxItems: p.size, ...(p.since ? { since: day(p.since) } : {}) };
     case 'X_PROFILE':
+      return { startUrls: urls(p.targetUrl), maxItems: p.size, ...(p.since ? { onlyTweetsAfter: p.since } : {}) };
     case 'THREADS_PROFILE':
-      return { startUrls: urls(p.targetUrl), maxItems: p.size, ...(p.since ? { onlyPostsNewerThan: p.since } : {}) };
+      return { mode: 'posts', usernames: strings(p.targetUrl), maxItems: p.size, ...(p.since ? { postedAfter: day(p.since) } : {}) };
     case 'YOUTUBE_COMMENTS':
-      return { startUrls: urls(p.targetUrl), maxComments: p.size, maxItems: p.size };
+      return { startUrls: urls(p.targetUrl), maxItems: p.size };
   }
 }
 

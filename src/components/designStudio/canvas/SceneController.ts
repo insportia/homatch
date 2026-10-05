@@ -1950,6 +1950,8 @@ export class SceneController {
   private targetAt(clientX: number, clientY: number): { entry: LiveEntry | null; objectId: string | null; node: THREE.Object3D } | null {
     const rect = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    // The camera as it is now, not as the last drawn frame left it (a press right after a turn aims where one looks).
+    this.camera.updateMatrixWorld();
     this.raycaster.setFromCamera(ndc, this.camera);
     this.raycaster.far = REACH_M;
     const hits = this.raycaster.intersectObjects([this.spaceGroup, this.fixturesGroup, this.objectsGroup, this.modelGroup], true);

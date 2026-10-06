@@ -7,6 +7,8 @@ import { parsePagination } from '../.tstest-build/marketplace/myhome/api.js';
 import { startMyHomeRuntime } from '../.tstest-build/marketplace/MyHomeRuntime.js';
 import { validateWorkerReport } from '../../src/research-core/marketplace/worker-contract.ts';
 import { processSearch } from '../../src/research-core/marketplace/pipeline.ts';
+import { sanitizeBrief, emptyBrief } from '../../src/research-core/marketplace/brief.ts';
+import { buildSearchRequest } from '../../src/research-core/marketplace/worker-contract.ts';
 
 const request = { contract: 'marketplace-worker-1', searchId: '00000000-0000-4000-8000-000000000001', searchPlanId: '00000000-0000-4000-8000-000000000002',
   market: 'Georgia', country: 'Georgia', city: 'Tbilisi', districts: ['Krtsanisi'], transactionType: 'BUY', propertyType: 'APARTMENT',
@@ -20,6 +22,18 @@ const filters = { data: { real_estate_types: [{id:1},{id:2}], deal_types:{1:[{id
 const row = id => ({id,uuid:`uuid-${id}`,dynamic_title:'Source listing',dynamic_slug:'source-listing',deal_type_id:1,real_estate_type_id:1,city_id:1,district_id:6,urban_id:65,
   city_name:'თბილისი',district_name:'ძველი თბილისი',urban_name:'კრწანისი',area_type_id:1,area:100,room:'10+',bedroom:'10+',price:{2:{price_total:180000,price_square:1800}},
   lat:null,lng:null,yard_area:null,address:'Source address',images:[{large:'https://static-api-statements.tnet.ge/image.webp'}],last_updated:'2026-10-06 16:48:54'});
+
+test('owner start canonicalization maps Varketili through proven multilingual MyHome dictionary', () => {
+  const brief=sanitizeBrief({...emptyBrief(),transactionType:{value:'BUY',status:'STATED'},propertyType:{value:'APARTMENT',status:'STATED'},
+    city:{value:'ვარკეთილი',status:'STATED'},districts:{value:['სუხიშვილის ქუჩა','მიკროები'],status:'STATED'},price:{value:{min:null,max:90000},status:'STATED'}});
+  const req=buildSearchRequest(brief,{searchId:request.searchId,searchPlanId:request.searchPlanId});
+  const liveShape={data:[{id:1,display_name:'Tbilisi',slug:'tbilisi',translations:{ka:{display_name:'თბილისი'}},districts:[{id:5,display_name:'Isani-Samgori',urbans:[{id:52,display_name:'Varketili',slug:'varketili',translations:{ka:{display_name:'ვარკეთილი',display_name_in:'ვარკეთილში'}}}]}]}]};
+  for(const district of ['Varketili','ვარკეთილი','ვარკეთილში']) {
+    const url=new URL(buildQueries({...req,districts:[district]},liveShape,filters)[0].url);
+    assert.equal(url.searchParams.get('cities'),'1');assert.equal(url.searchParams.get('districts'),'5');assert.equal(url.searchParams.get('urbans'),'52');
+  }
+  assert.deepEqual(req.districts,['Varketili']);assert.ok(!JSON.stringify(buildQueries(req,liveShape,filters)).includes('სუხიშვილის'));
+});
 function simulated({ lastPage = 6, total = 139, repeated = false, failPage = null, duplicate = false, emptyPage = null, missingUrlId = null } = {}) {
   const pages = [], reports = []; let listCalls = 0;
   const fetcher = async (input) => {

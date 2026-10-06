@@ -28,6 +28,20 @@ import { compareProperties } from '../marketplace/comparison.ts';
 import { investmentHandoff, mortgageHandoff } from '../marketplace/handoff.ts';
 import { summarizeTelemetry } from '../marketplace/telemetry.ts';
 import { normalisePlan, planReadiness } from '../discovery/search-plan.ts';
+
+test('owner Georgian neighborhood is not a city and street preferences are not acquisition districts', () => {
+  const text = 'მინდა ვარკეთილში, სუხიშვილის ქუჩისკენ, ან მიკროებში მაღლა მხარეს 2 საძინებლიანი ბინა, ახალ აშენებულ კორპუსში ან მიმდინარეში, მაქსიმუმ 90000$, მინიმუმ 70 კვადრატიდან';
+  const brief = briefFromModel({ transactionType:'BUY', propertyType:'APARTMENT', country:'GE',
+    city:'ვარკეთილი', districts:['სუხიშვილის ქუჩა','მიკროები'], locationPreferences:['მაღლა მხარეს'],
+    priceMinUsd:null,priceMaxUsd:90000,areaMinSqm:70,areaMaxSqm:null,
+    bedroomsMin:2,bedroomsMax:2,buildingStatuses:['NEW_BUILD','UNDER_CONSTRUCTION'],userLanguage:'ka' }, text);
+  assert.equal(brief.city.value,'Tbilisi');assert.deepEqual(brief.districts.value,['Varketili']);
+  assert.deepEqual(brief.locationPreferences,['მაღლა მხარეს','სუხიშვილის ქუჩა','მიკროები']);
+  const oldBrief = { ...brief,city:{value:'ვარკეთილი',status:'STATED'},districts:{value:['სუხიშვილის ქუჩა','მიკროები'],status:'STATED'} };
+  const canonical = sanitizeBrief(oldBrief);assert.equal(canonical.city.value,'Tbilisi');assert.deepEqual(canonical.districts.value,['Varketili']);
+  const req = buildSearchRequest(canonical,{searchId:'s',searchPlanId:'p'});
+  assert.equal(req.city,'Tbilisi');assert.deepEqual(req.districts,['Varketili']);assert.equal(req.priceMinUsd,75000);assert.equal(req.priceMaxUsd,90000);
+});
 import { StaticRateConverter } from '../normalize/currency.ts';
 import * as F from './fixtures/marketplaceFixtures.mjs';
 

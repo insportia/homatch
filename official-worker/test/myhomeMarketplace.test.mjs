@@ -53,6 +53,34 @@ test('rooms resolve labels rather than assuming dictionary ID equals count',()=>
   const u=new URL(buildQueries({...request,rooms:{min:9,max:9}},locations,filters)[0].url);
   assert.equal(u.searchParams.get('room_types[0]'),'10');assert.equal(u.searchParams.get('room_types[1]'),null);
 });
+
+test('proven bedrooms, bathrooms, building, renovation and parking mappings use dictionary IDs',()=>{
+  const f={data:{...filters.data,conditions:{1:[...filters.data.conditions[1],{id:15,display_name:'თეთრი პლიუსი'}]}}};
+  const u=new URL(buildQueries({...request,bedrooms:{min:10,max:null},bathrooms:{min:3,max:null},buildingStatuses:['NEW_BUILD'],renovationPreferences:['WHITE_FRAME'],parking:false},locations,f)[0].url);
+  for(const [key,value] of [['bedroom_types[0]','10'],['bathroom_types[0]','3'],['statuses[0]','2'],['conditions[0]','5'],['parking_types[0]','3']]) assert.equal(u.searchParams.get(key),value);
+});
+
+test('proven central heating and positive attributes resolve dynamic IDs, with exact floor flags',()=>{
+  const f={data:{...filters.data,heating_types:[{id:101,display_name:'ცენტრალური გათბობა'},{id:105,display_name:'ცენტრალური+იატაკის გათბობა'}],
+    statement_parameters:{1:[{id:106,type:'feature',svg_file_name:'elevator',deal_types:[1,2,7]},{id:104,type:'furniture-equipment',svg_file_name:'conditioner',deal_types:[1,2,7]},{id:110,type:'furniture-equipment',svg_file_name:'furniture-equipment',deal_types:[1,2,7]},{id:149,type:'label',svg_file_name:'pets-allowed',deal_types:[2,7]}]}}};
+  const u=new URL(buildQueries({...request,mustHave:['CENTRAL_HEATING','ELEVATOR','AIR_CONDITIONING','PET_FRIENDLY'],floorPreferences:['NOT_FIRST','NOT_LAST','HIGH']},locations,f)[0].url);
+  assert.equal(u.searchParams.get('heating_types[0]'),'101');assert.equal(u.searchParams.get('heating_types[1]'),'105');
+  assert.equal(u.searchParams.get('attrs[feature][]'),'106');assert.equal(u.searchParams.get('attrs[furniture-equipment][]'),'104');
+  assert.equal(u.searchParams.get('attrs[label][]'),null,'pet permission is not a sale filter');
+  assert.equal(u.searchParams.get('not_first'),'1');assert.equal(u.searchParams.get('not_last'),'1');assert.equal(u.searchParams.get('floor_from'),null,'HIGH has no invented threshold');
+  const rent=new URL(buildQueries({...request,transactionType:'MONTHLY_RENT',mustHave:['PET_FRIENDLY','FURNISHED']},locations,f)[0].url);
+  assert.equal(rent.searchParams.get('attrs[label][]'),'149');assert.equal(rent.searchParams.get('attrs[furniture-equipment][]'),'110');
+  const c=candidateFromMyHome({...row(1),heating_type_id:105,floor:2,total_floors:10},f,'https://api-statements.tnet.ge/v1/statements');
+  assert.ok(c.amenities.includes('CENTRAL_HEATING'));assert.equal(c.floor,2);assert.equal(c.totalFloors,10);
+  assert.throws(()=>buildQueries({...request,mustHave:['CENTRAL_HEATING']},locations,filters),/Dictionary mapping unavailable/);
+});
+
+test('unproven detail criteria are not invented; source years and exact detail counts stay truthful',()=>{
+  const c=candidateFromMyHome({...row(1),room:'10+',room_type_id:10,build_year:'1955-2000'},filters,'https://api-statements.tnet.ge/v1/statements');
+  assert.equal(c.rooms,9,'detail dictionary ID wins over an inherited list label');assert.equal(c.constructionYear,null);assert.equal(c.retrievalMetadata.buildYearSource,'1955-2000');
+  const u=new URL(buildQueries({...request,niceToHave:['CENTRAL_HEATING'],exclusions:['AIR_CONDITIONING']},locations,filters)[0].url);
+  assert.equal(u.searchParams.has('heating_types[0]'),false);assert.equal(u.searchParams.has('attrs[furniture-equipment][]'),false);
+});
 test('unsupported city or unrepresentable room filter fails explicitly',()=>{
   assert.throws(()=>buildQueries({...request,city:'Unknown'},locations,filters));
   assert.throws(()=>buildQueries({...request,rooms:{min:20,max:19}},locations,filters));

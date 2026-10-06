@@ -18,7 +18,7 @@ import {
   type BuildingStatus, type MarketplacePropertyType, type MarketplaceTransaction, type RenovationStatus,
   asBuildingStatus, asPropertyType, asRenovationStatus, asTransaction,
 } from './taxonomy.ts';
-import { type SearchIntelligenceBrief, confirmedValue } from './brief.ts';
+import { type SearchIntelligenceBrief, confirmedValue, primaryPriceRange } from './brief.ts';
 
 export const WORKER_CONTRACT_VERSION = 'marketplace-worker-1';
 
@@ -99,6 +99,8 @@ export interface MarketplaceSearchRequest {
   mustHave: string[];
   niceToHave: string[];
   exclusions: string[];
+  /** Source-independent floor choices; vague choices are never converted to numeric floors. */
+  floorPreferences?: string[];
   searchLanguages: string[];
   /**
    * The hard ceiling a worker may collect up to. Workers collect slightly above
@@ -125,7 +127,7 @@ export function buildSearchRequest(
   const t = confirmedValue(brief.transactionType);
   const p = confirmedValue(brief.propertyType);
   const city = confirmedValue(brief.city);
-  const price = confirmedValue(brief.price);
+  const price = primaryPriceRange(confirmedValue(brief.price));
   if (!t || !p || !city || !price || price.min === null || price.max === null) {
     throw new Error('buildSearchRequest: brief is not READY');
   }
@@ -156,6 +158,7 @@ export function buildSearchRequest(
     mustHave: [...brief.mustHave],
     niceToHave: [...brief.niceToHave],
     exclusions: [...brief.exclusions],
+    floorPreferences: [...brief.floorPreferences],
     searchLanguages: brief.relevantSearchLanguages.length ? [...brief.relevantSearchLanguages] : ['ka', 'en'],
     collectPriceMaxUsd: Math.floor(price.max * (1 + UPGRADE_CEILING)),
     requestedAt: now.toISOString(),

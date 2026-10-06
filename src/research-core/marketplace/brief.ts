@@ -213,6 +213,13 @@ function range(min: number | null, max: number | null): NumericRange | null {
   return { min, max };
 }
 
+/** Canonical primary budget; acquisition's upgrade ceiling is calculated separately. */
+export function primaryPriceRange(value: NumericRange | null): NumericRange | null {
+  return value && value.min === null && value.max !== null
+    ? { min: Math.max(0, value.max - 15000), max: value.max }
+    : value;
+}
+
 const listOf = <T>(raw: unknown, pick: (v: unknown) => T | null, cap = 12): T[] => {
   const out: T[] = [];
   for (const v of Array.isArray(raw) ? raw.slice(0, cap) : []) {
@@ -296,6 +303,7 @@ export function briefFromModel(raw: unknown, originalText: string): SearchIntell
     brief.dropped.push({ key: 'mps_dropped_currency', value: currency });
   } else {
     brief.price = rangeField(num(raw.priceMinUsd), num(raw.priceMaxUsd));
+    if (brief.price) brief.price = { ...brief.price, value: primaryPriceRange(brief.price.value)! };
   }
   brief.area = rangeField(num(raw.areaMinSqm), num(raw.areaMaxSqm));
   brief.rooms = rangeField(int(raw.roomsMin), int(raw.roomsMax));
@@ -372,7 +380,7 @@ export function applyEdit(brief: SearchIntelligenceBrief, edit: BriefEdit): Sear
     case 'price': case 'area': case 'rooms': case 'bedrooms': case 'bathrooms': {
       const isInt = edit.field !== 'price' && edit.field !== 'area';
       const r = edit.value ? range(isInt ? int(edit.value.min) : num(edit.value.min), isInt ? int(edit.value.max) : num(edit.value.max)) : null;
-      set(edit.field, r);
+      set(edit.field, edit.field === 'price' ? primaryPriceRange(r) : r);
       return next;
     }
     case 'buildingStatuses': {
@@ -416,6 +424,9 @@ export function sanitizeBrief(raw: unknown): SearchIntelligenceBrief {
   brief.districts = field(raw.districts, listPick(placeName, 8));
   brief.locationPreferences = listOf(raw.locationPreferences, placeName, 6);
   brief.price = field(raw.price, rangePick(false));
+  if (brief.price && isRecord(raw.price) && isRecord(raw.price.value) && raw.price.value.min == null) {
+    brief.price = { ...brief.price, value: primaryPriceRange(brief.price.value)! };
+  }
   brief.area = field(raw.area, rangePick(false));
   brief.rooms = field(raw.rooms, rangePick(true));
   brief.bedrooms = field(raw.bedrooms, rangePick(true));
@@ -465,7 +476,7 @@ export function confirmedValue<T>(f: BriefField<T> | null): T | null {
 export function toSearchPlanDraft(brief: SearchIntelligenceBrief): Record<string, unknown> {
   const t = confirmedValue(brief.transactionType);
   const p = confirmedValue(brief.propertyType);
-  const price = confirmedValue(brief.price);
+  const price = primaryPriceRange(confirmedValue(brief.price));
   const area = confirmedValue(brief.area);
   const bedrooms = confirmedValue(brief.bedrooms);
   return {

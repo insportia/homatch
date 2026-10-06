@@ -14,6 +14,16 @@ Unknown negative furniture/amenity evidence remains unknown for the existing
 hard-filter pipeline. Special room labels and source UUID/yard area are preserved
 in evidence/retrievalMetadata because the candidate contract has numeric counts.
 
+The canonical Search Intelligence budget defaults a missing minimum to
+max(0, maximum - 15000) USD. Explicit ranges remain exact; collectPriceMaxUsd
+continues to calculate the separate +10% acquisition ceiling. MyHome forwards
+dictionary-based rooms, bedrooms, bathrooms, status, renovation, parking,
+positive furnished/elevator/air-conditioning/pet permission and central heating.
+NOT_FIRST and NOT_LAST use the captured frontend's exact floor flags; LOW,
+MIDDLE and HIGH have no invented numeric thresholds. Hot-water/project types
+and year ranges are retained as source metadata when supplied, without inventing
+request criteria or exact years. Registry markets include canonical GE.
+
 ```
 User → Search Builder → OpenAI Search Intelligence (call 1, strict schema)
      → Search Readiness Gate (same function client + server; server authoritative)

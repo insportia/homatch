@@ -34,6 +34,8 @@ export interface MarketplaceSearchRequest {
   mustHave: string[];
   niceToHave: string[];
   exclusions: string[];
+  /** Source-independent floor choices; vague choices are never converted to numeric floors. */
+  floorPreferences?: string[];
   searchLanguages: string[];
   /**
    * The hard ceiling a worker may collect up to. Workers collect slightly above

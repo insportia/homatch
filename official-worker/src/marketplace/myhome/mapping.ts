@@ -55,12 +55,31 @@ export function buildQueries(request: MarketplaceSearchRequest, locations: any, 
       if (furniture.length !== 1) throw new Error('Furniture dictionary mapping unavailable');
       url.searchParams.append(`attrs[${furniture[0].type}][]`, String(furniture[0].id));
     }
+    const parameterIcons: Record<string, string> = {
+      ELEVATOR: 'elevator', AIR_CONDITIONING: 'conditioner', FURNISHED: 'furniture-equipment',
+      PET_FRIENDLY: 'pets-allowed',
+    };
+    for (const amenity of request.mustHave) {
+      if (amenity === 'CENTRAL_HEATING') {
+        add('heating_types', idsForLabels(d.heating_types ?? [], ['ცენტრალური გათბობა', 'ცენტრალური+იატაკის გათბობა']));
+      } else if (parameterIcons[amenity]) {
+        const rows = (d.statement_parameters?.[property] ?? []).filter((row: any) =>
+          row.svg_file_name === parameterIcons[amenity] && row.deal_types?.includes(transaction));
+        // A dictionary with no compatible attribute cannot prove absence. Let
+        // HOMATCH enforce the requirement on acquired evidence instead.
+        if (rows.length === 1) url.searchParams.append(`attrs[${rows[0].type}][]`, String(rows[0].id));
+      }
+    }
+    for (const preference of request.floorPreferences ?? []) {
+      if (preference === 'NOT_FIRST') url.searchParams.set('not_first', '1');
+      if (preference === 'NOT_LAST') url.searchParams.set('not_last', '1');
+    }
     return { criteria, url: url.href };
   });
 }
 const number = (v: unknown): number | null => v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v);
 const text = (v: unknown): string | null => typeof v === 'string' && v.trim() ? v.slice(0, 8000) : null;
-function count(raw: any, key: string, rows: Dictionary[]) { return normalizeRoomCount(raw[key] ?? rows?.find(row => row.id === raw[`${key}_type_id`])?.display_name); }
+function count(raw: any, key: string, rows: Dictionary[]) { return normalizeRoomCount(rows?.find(row => row.id === raw[`${key}_type_id`])?.display_name ?? raw[key]); }
 function knownDate(v: unknown) {
   // MyHome's naive timestamps are Georgian local time, not host-local/UTC.
   if (typeof v !== 'string') return null;
@@ -84,6 +103,9 @@ export function candidateFromMyHome(raw: any, filters: any, sourceUrl: string, o
   const amenities = [...new Set(parameters.map(row => icons[row.svg_file_name]).filter(Boolean))];
   if (parking === true) amenities.push('PARKING');
   if (number(raw.balconies) !== null && Number(raw.balconies) > 0) amenities.push('BALCONY');
+  const heatingLabel = d?.heating_types?.find((row: Dictionary) => row.id === raw.heating_type_id)?.display_name;
+  if (['ცენტრალური გათბობა', 'ცენტრალური+იატაკის გათბობა'].includes(heatingLabel)) amenities.push('CENTRAL_HEATING');
+  if (has('pets-allowed')) amenities.push('PET_FRIENDLY');
   const lat = listing.latitude, lng = listing.longitude;
   const validCoords = lat !== null && lng !== null && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
   return {
@@ -108,6 +130,11 @@ export function candidateFromMyHome(raw: any, filters: any, sourceUrl: string, o
     retrievalMetadata: { acquisition: 'PUBLIC_API', uuid: text(raw.uuid), cityId: number(raw.city_id), districtId: number(raw.district_id), urbanId: number(raw.urban_id),
       roomLabel: rooms, bedroomLabel: bedrooms, bathroomLabel: bathrooms, yardAreaSqm: listing.yard_area_m2,
       conditionId: number(raw.condition_id), parkingTypeId: number(raw.parking_type_id), streetId: number(raw.street_id), groupedStreetId: number(raw.grouped_street_id),
-      createdAtSource: text(raw.created_at), buildYearSource: text(raw.build_year), userType: text(raw.user_type?.type) },
+      createdAtSource: text(raw.created_at), buildYearSource: text(raw.build_year), userType: text(raw.user_type?.type),
+      heatingTypeId: number(raw.heating_type_id), heatingLabel: text(heatingLabel),
+      hotWaterTypeId: number(raw.hot_water_type_id),
+      hotWaterLabel: text(d?.hot_water_types?.find((row: Dictionary) => row.id === raw.hot_water_type_id)?.display_name),
+      projectTypeId: number(raw.project_type_id),
+      projectLabel: text(d?.project_types?.[raw.real_estate_type_id]?.find((row: Dictionary) => row.id === raw.project_type_id)?.display_name) },
   };
 }

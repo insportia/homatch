@@ -88,6 +88,11 @@ export function hardFilter(f: PropertyFacts, req: MarketplaceSearchRequest): Har
   check('AREA', inRange(f.areaSqm, { min: req.areaMinSqm, max: req.areaMaxSqm }));
   check('ROOMS', inRange(f.rooms, req.rooms));
   check('BEDROOMS', inRange(f.bedrooms, req.bedrooms));
+  check('BATHROOMS', inRange(f.bathrooms, req.bathrooms));
+  for (const preference of req.floorPreferences ?? []) {
+    if (preference === 'NOT_FIRST') check('FLOOR_NOT_FIRST', f.floor === null ? 'UNKNOWN' : f.floor <= 1 ? 'OUT' : 'IN');
+    if (preference === 'NOT_LAST') check('FLOOR_NOT_LAST', f.floor === null || f.totalFloors === null ? 'UNKNOWN' : f.floor >= f.totalFloors ? 'OUT' : 'IN');
+  }
   const d = districtFit(f.district, req.districts);
   if (d === 'OTHER') violations.push('DISTRICT');
   else if (d === 'UNKNOWN') unverified.push('DISTRICT');

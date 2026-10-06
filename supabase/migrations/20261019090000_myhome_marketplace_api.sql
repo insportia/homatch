@@ -7,9 +7,9 @@ insert into public.discovery_marketplace_workers (
   state, enabled
 ) values (
   'myhome-agent', 'myhome-ge', 'MyHome', 'MARKETPLACE', 'API',
-  array['Georgia'], array['ka','en','ru'], array['APARTMENT','HOUSE','LAND','COMMERCIAL'],
+  array['GE','Georgia'], array['ka','en','ru'], array['APARTMENT','HOUSE','LAND','COMMERCIAL'],
   array['BUY','MONTHLY_RENT','DAILY_RENT'],
-  array['PRICE','AREA','ROOMS','BEDROOMS','BATHROOMS','DISTRICT','BUILDING_STATUS','RENOVATION','FURNISHED','PARKING'],
+  array['PRICE','AREA','ROOMS','BEDROOMS','BATHROOMS','DISTRICT','BUILDING_STATUS','RENOVATION','FURNISHED','PARKING','FLOOR'],
   900000, 2000, 'PROVEN', false
 ) on conflict (worker_id) do update set
   source_key = excluded.source_key, source_name = excluded.source_name,

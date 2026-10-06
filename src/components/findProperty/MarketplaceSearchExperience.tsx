@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { CustomerSurface, PageHero } from '@/components/customer/surface';
+import { NativeMatchesPanel } from '@/components/matching/NativeMatchesPanel';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { type SearchIntelligenceBrief, applyEdit, emptyBrief, sanitizeBrief } from '@/research-core/marketplace/brief';
 import {
@@ -68,7 +69,7 @@ export function MarketplaceSearchExperience({ deepSearchAvailable }: { deepSearc
       try {
         const { search: s } = await searchStatus(searchId ?? undefined);
         if (!alive) return;
-        if (s && (!s.terminal || searchId || Date.now() - Date.parse(s.createdAt) < 6 * 3600_000)) {
+        if (s && (!s.terminal || searchId || (!s.unavailable && Date.now() - Date.parse(s.createdAt) < 6 * 3600_000))) {
           setSearch(s);
           setView(s.terminal && !s.unavailable ? 'RESULTS' : 'SEARCH');
           if (!searchId) setParams({ search: s.id }, { replace: true });
@@ -166,7 +167,12 @@ export function MarketplaceSearchExperience({ deepSearchAvailable }: { deepSearc
       </div>
 
       {view === 'LOADING' && <div className="h-48 animate-pulse rounded-2xl bg-muted/60" aria-busy="true" />}
-      {view === 'MODE' && <SearchModeSelect t={t} deepSearchAvailable={deepSearchAvailable} onMarketplace={() => setView('INTRO')} />}
+      {view === 'MODE' && (
+        <div className="space-y-8">
+          <NativeMatchesPanel role="SEEKER" />
+          <SearchModeSelect t={t} deepSearchAvailable={deepSearchAvailable} onMarketplace={() => setView('INTRO')} />
+        </div>
+      )}
       {view === 'INTRO' && <BuilderIntro t={t} text={text} onText={setText} onSubmit={() => void doUnderstand()} busy={busy} />}
       {view === 'BUILD' && brief && (
         <SearchBuilder t={t} brief={brief} onBrief={setBriefAndDraft} onStart={() => void doStart()} starting={busy}

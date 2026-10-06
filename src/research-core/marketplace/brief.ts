@@ -144,6 +144,7 @@ export const SEARCH_BRIEF_INSTRUCTIONS = [
   'You read one message from a person looking for real estate and return ONLY what they said, in the given JSON schema.',
   'Never invent a value. A field the person did not state is null (or an empty array).',
   'Prices are USD. If the person stated a price in another currency, set priceCurrencyStated to it and leave priceMinUsd/priceMaxUsd null.',
+  'For a maximum only ("up to $150000"), set priceMaxUsd to that maximum and priceMinUsd to null. HOMATCH computes the default minimum; do not calculate or propose it. Preserve both ends when the person explicitly states a range.',
   'A single approximate price ("around 150000") is NOT a range: leave priceMinUsd and priceMaxUsd null and add a proposal for field "price".',
   'Rooms and bedrooms are different fields: "3 ოთახიანი" / "3-room" is rooms, "2 საძინებლიანი" / "2-bedroom" is bedrooms.',
   'transactionType: BUY for purchase, MONTHLY_RENT for monthly/long-term rent, DAILY_RENT for daily/short-term rent.',
@@ -303,7 +304,7 @@ export function briefFromModel(raw: unknown, originalText: string): SearchIntell
     brief.dropped.push({ key: 'mps_dropped_currency', value: currency });
   } else {
     brief.price = rangeField(num(raw.priceMinUsd), num(raw.priceMaxUsd));
-    if (brief.price) brief.price = { ...brief.price, value: primaryPriceRange(brief.price.value)! };
+    if (brief.price && raw.priceMinUsd == null) brief.price = { ...brief.price, value: primaryPriceRange(brief.price.value)! };
   }
   brief.area = rangeField(num(raw.areaMinSqm), num(raw.areaMaxSqm));
   brief.rooms = rangeField(int(raw.roomsMin), int(raw.roomsMax));
@@ -380,7 +381,7 @@ export function applyEdit(brief: SearchIntelligenceBrief, edit: BriefEdit): Sear
     case 'price': case 'area': case 'rooms': case 'bedrooms': case 'bathrooms': {
       const isInt = edit.field !== 'price' && edit.field !== 'area';
       const r = edit.value ? range(isInt ? int(edit.value.min) : num(edit.value.min), isInt ? int(edit.value.max) : num(edit.value.max)) : null;
-      set(edit.field, edit.field === 'price' ? primaryPriceRange(r) : r);
+      set(edit.field, edit.field === 'price' && edit.value?.min == null ? primaryPriceRange(r) : r);
       return next;
     }
     case 'buildingStatuses': {

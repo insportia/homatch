@@ -91,6 +91,7 @@ function knownDate(v: unknown) {
 }
 export function candidateFromMyHome(raw: any, filters: any, sourceUrl: string, observedAt = new Date().toISOString()): ExternalListingCandidate {
   const listing = normalizeListing(raw), d = filters?.data;
+  if (!listing.source_url) throw new Error('Source did not provide a canonical listing URL');
   const rooms = count(raw, 'room', d?.room_types), bedrooms = count(raw, 'bedroom', d?.bedroom_types);
   const bathrooms = count(raw, 'bathroom', d?.bathroom_types);
   const status = d?.statuses?.[raw.real_estate_type_id]?.find((r: Dictionary) => r.id === raw.status_id)?.display_name;

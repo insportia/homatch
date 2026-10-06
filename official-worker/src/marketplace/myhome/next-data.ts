@@ -20,9 +20,9 @@ export function normalizeRoomCount(value:unknown):number|string|null {
   return n !== null && Number.isSafeInteger(n) && n >= 0 ? n : null;
 }
 export function normalizeListing(raw: any) {
-  if (!raw || !Number.isSafeInteger(raw.id) || !raw.dynamic_slug || !raw.dynamic_title) throw new Error('Unrecognized listing schema');
+  if (!raw || !Number.isSafeInteger(raw.id)) throw new Error('Unrecognized listing schema');
   return {source:'myhome.ge',source_id:String(raw.id),source_uuid:raw.uuid ?? null,
-    source_url:`https://www.myhome.ge/udzravi-qoneba/${encodeURIComponent(raw.dynamic_slug)}-${raw.id}/`,
+    source_url:raw.dynamic_slug ? `https://www.myhome.ge/udzravi-qoneba/${encodeURIComponent(raw.dynamic_slug)}-${raw.id}/` : null,
     transaction_type:transactions[raw.deal_type_id] ?? null,property_type:properties[raw.real_estate_type_id] ?? null,
     title:raw.dynamic_title,price:numeric(raw.price?.['2']?.price_total),currency:raw.price?.['2'] ? 'USD' : null,
     area_m2:raw.area_type_id === 1 ? numeric(raw.area) : null,yard_area_m2:numeric(raw.yard_area),rooms:normalizeRoomCount(raw.room),bedrooms:normalizeRoomCount(raw.bedroom),

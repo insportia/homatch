@@ -386,7 +386,7 @@ test('ka: owner can leave a resumed failed search without hiding or retrying it 
   const {page,state}=await boot(t,{lang:'ka',resumeStatus:'FAILED',empty:true});
   await page.goto(BASE+'/find-property');
   await page.getByRole('button',{name:'ახალი ძიება',exact:true}).waitFor();
-  assert.match(await page.textContent('main'),/ძიება ამჟამად ვერ შესრულდა/);
+  assert.match(await page.textContent('main'),/ძიება ამჯერად ვერ შესრულდა/);
   assert.equal(state.starts,0,'failed history does not silently restart acquisition');
   await page.getByRole('button',{name:'ახალი ძიება',exact:true}).click();
   await page.locator('section[aria-labelledby="mps-mode-title"]').waitFor();

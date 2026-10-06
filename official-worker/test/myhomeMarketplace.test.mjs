@@ -14,7 +14,7 @@ const request = { contract: 'marketplace-worker-1', searchId: '00000000-0000-400
   rooms: null, bedrooms: null, bathrooms: null, buildingStatuses: [], renovationPreferences: [], furnished: null, parking: null,
   mustHave: [], niceToHave: [], exclusions: [], searchLanguages: ['ka','en'], requestedAt: new Date().toISOString() };
 const locations = { data: [{id:1,display_name:'Tbilisi',districts:[{id:6,display_name:'Old Tbilisi',urbans:[{id:65,display_name:'Krtsanisi'}]}]}] };
-const filters = { data: { real_estate_types: [{id:1},{id:2}], deal_types:[{id:1},{id:2},{id:7}],
+const filters = { data: { real_estate_types: [{id:1},{id:2}], deal_types:{1:[{id:1},{id:2},{id:7}],2:[{id:1},{id:2},{id:7}]},
   room_types: [{id:10,display_name:'9'},{id:11,display_name:'10+'}], bedroom_types:[{id:10,display_name:'10+'}], bathroom_types:[{id:3,display_name:'3+'}],
   statuses:{1:[{id:2,display_name:'ახალი აშენებული'}]}, conditions:{1:[{id:5,display_name:'თეთრი კარკასი'}]}, parking_types:[{id:3,display_name:'პარკინგის გარეშე'}] } };
 const row = id => ({id,uuid:`uuid-${id}`,dynamic_title:'Source listing',dynamic_slug:'source-listing',deal_type_id:1,real_estate_type_id:1,city_id:1,district_id:6,urban_id:65,
@@ -48,6 +48,12 @@ test('rent/house is materially different and daily rent uses its proven ID',()=>
   let u=new URL(buildQueries({...request,transactionType:'MONTHLY_RENT',propertyType:'HOUSE',collectPriceMaxUsd:5500},locations,filters)[0].url);
   assert.equal(u.searchParams.get('deal_types'),'2');assert.equal(u.searchParams.get('real_estate_types'),'2');assert.equal(u.searchParams.get('price_to'),'5500');
   u=new URL(buildQueries({...request,transactionType:'DAILY_RENT'},locations,filters)[0].url);assert.equal(u.searchParams.get('deal_types'),'7');
+});
+test('real deal dictionary is keyed by property; land rent is not invented from apartment deal IDs',()=>{
+  const f={data:{...filters.data,real_estate_types:[...filters.data.real_estate_types,{id:4},{id:5}],deal_types:{...filters.data.deal_types,4:[{id:1},{id:10}],5:[{id:1},{id:2},{id:7}]}}};
+  assert.throws(()=>buildQueries({...request,propertyType:'LAND',transactionType:'MONTHLY_RENT'},locations,f),/Unsupported MyHome property\/transaction/);
+  const u=new URL(buildQueries({...request,propertyType:'COMMERCIAL',buildingStatuses:['NEW_BUILD']},locations,f)[0].url);
+  assert.equal(u.searchParams.get('statuses[0]'),null,'commercial subtype is not building age');
 });
 test('rooms resolve labels rather than assuming dictionary ID equals count',()=>{
   const u=new URL(buildQueries({...request,rooms:{min:9,max:9}},locations,filters)[0].url);

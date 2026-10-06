@@ -25,7 +25,8 @@ export function buildQueries(request: MarketplaceSearchRequest, locations: any, 
   if (request.contract !== 'marketplace-worker-1' || !['Georgia', 'GE'].includes(request.country) || !properties[request.propertyType]) throw new Error('Unsupported MyHome request');
   const property = properties[request.propertyType], transaction = deals[request.transactionType];
   const d = filters?.data;
-  if (!d || !d.real_estate_types?.some((row: Dictionary) => row.id === property) || !d.deal_types?.some((row: Dictionary) => row.id === transaction)) throw new Error('Invalid MyHome filter dictionary');
+  if (!d || !Array.isArray(d.real_estate_types) || !d.real_estate_types.some((row: Dictionary) => row.id === property)
+    || !Array.isArray(d.deal_types?.[property]) || !d.deal_types[property].some((row: Dictionary) => row.id === transaction)) throw new Error('Unsupported MyHome property/transaction dictionary mapping');
   const base = { transaction, property, city: request.city, currency: 'USD' as const,
     minPrice: request.priceMinUsd, maxPrice: request.collectPriceMaxUsd ?? request.priceMaxUsd,
     minArea: request.areaMinSqm ?? undefined, maxArea: request.areaMaxSqm ?? undefined };
@@ -40,7 +41,9 @@ export function buildQueries(request: MarketplaceSearchRequest, locations: any, 
       if (!ids.length) throw new Error(`No supported values for ${key}`);
       add(key, ids);
     }
-    if (request.buildingStatuses.length) add('statuses', idsForLabels(d.statuses?.[property] ?? [], request.buildingStatuses.map(value => statusLabels[value])));
+    // Land/commercial statuses describe land use or commercial subtype, not
+    // HOMATCH building age. They must never be reinterpreted as building status.
+    if (request.buildingStatuses.length && [1, 2].includes(property)) add('statuses', idsForLabels(d.statuses?.[property] ?? [], request.buildingStatuses.map(value => statusLabels[value])));
     if (request.renovationPreferences.length) add('conditions', idsForLabels(d.conditions?.[property] ?? [], request.renovationPreferences.flatMap(value => conditionLabels[value])));
     if (request.parking !== null) {
       const rows: Dictionary[] = d.parking_types ?? [];

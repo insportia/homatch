@@ -151,6 +151,12 @@ test('real worker report contract feeds the existing pipeline with URLs and imag
   const output=processSearch({request,candidates:validated.report.listings.map(candidate=>({candidate})),now:new Date()});
   assert.ok(output.properties.length>0);assert.equal(output.properties[0].listings[0].exactUrl.startsWith('https://www.myhome.ge/'),true);
   assert.ok(output.properties[0].images.length>0);
+  for(const property of output.properties) for(const listing of property.listings){
+    const candidate=validated.report.listings.find(c=>c.sourceListingId===listing.sourceListingId);
+    assert.ok(candidate,'public response retains the individual source identity');
+    assert.equal(listing.address,candidate.address??null);
+    assert.equal(listing.exactUrl,candidate.exactUrl);
+  }
 });
 test('runtime uses authenticated claim, heartbeat and result report without a service role key',async()=>{
   const source=simulated({lastPage:1,total:3});let claimed=false,completed=false;const bodies=[];

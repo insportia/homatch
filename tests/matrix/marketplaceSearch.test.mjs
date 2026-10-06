@@ -10,6 +10,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const root = process.cwd();
 const read = (p) => readFileSync(join(root, p), 'utf8');
@@ -38,7 +39,8 @@ test('server readiness gate: start re-sanitises the brief and refuses before any
   assert.ok(start > 0 && gate > start && firstInsert > gate, 'the gate precedes every insert');
   assert.match(ms, /const brief = sanitizeBrief\(body\.brief\)/);
   assert.match(ms, /SEARCH_NOT_READY/);
-  assert.match(ms, /if \(switches\.providersKilled\) return json\(\{ error: 'SOURCES_PAUSED' \}, 409\)/);
+  assert.match(ms, /if \(switches\.providersKilled && !switches\.myhomeEnabled\) return json\(\{ error: 'SOURCES_PAUSED' \}, 409\)/);
+  assert.match(ms, /worker\.workerId === 'myhome-agent'\s*\? switches\.myhomeEnabled : !switches\.providersKilled/);
   assert.match(ms, /if \(!switches\.enabled\) return json\(\{ error: 'MARKETPLACE_SEARCH_OFF' \}, 409\)/);
 });
 
@@ -140,7 +142,7 @@ test('approved Georgian copy is used verbatim', () => {
 });
 
 test('every dynamic mps_ key used by the interface exists in all six bundles', async () => {
-  const { MARKETPLACE_SEARCH_STRINGS: S } = await import(join(root, 'scripts/marketplace-search-i18n-data.mjs'));
+  const { MARKETPLACE_SEARCH_STRINGS: S } = await import(pathToFileURL(join(root, 'scripts/marketplace-search-i18n-data.mjs')).href);
   const has = (k) => Object.prototype.hasOwnProperty.call(S, k);
   const want = [];
   for (const v of ['BUY', 'MONTHLY_RENT', 'DAILY_RENT']) want.push(`mps_tx_${v}`);
@@ -227,7 +229,7 @@ test('source-level: new paths are owned by the DISCOVERY component', () => {
   assert.match(comp, /components\\\/findProperty/);
   assert.match(comp, /'marketplace-search', 'marketplace-worker-ingest'/);
   assert.ok(existsSync(join(root, 'tests/sql/run-marketplace.sh')));
-  assert.equal(relative(root, join(root, MIG)), MIG);
+  assert.equal(relative(root, join(root, MIG)).replaceAll('\\', '/'), MIG);
 });
 
 test('understand: atomic per-user quota checked BEFORE any model call; 429 with Retry-After; fails closed', () => {

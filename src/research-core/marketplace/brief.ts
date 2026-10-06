@@ -149,7 +149,8 @@ export const SEARCH_BRIEF_INSTRUCTIONS = [
   'Rooms and bedrooms are different fields: "3 ოთახიანი" / "3-room" is rooms, "2 საძინებლიანი" / "2-bedroom" is bedrooms.',
   'transactionType: BUY for purchase, MONTHLY_RENT for monthly/long-term rent, DAILY_RENT for daily/short-term rent.',
   'buildingStatuses: NEW_BUILD for new/ახალაშენებული, UNDER_CONSTRUCTION for მშენებარე/under construction, OLD_BUILD for old/ძველი, ANY when they say it does not matter.',
-  'Districts and cities are copied as the person wrote them; do not add places they did not name.',
+  'Distinguish cities from neighborhoods: Varketili/ვარკეთილი is a Tbilisi neighborhood, never a city. A known neighborhood implies its parent city. Put the neighborhood in districts; keep streets, microdistrict preferences and relative directions in locationPreferences, never in city or districts.',
+  'Copy named places without inventing extra neighborhoods or street filters. If their parent city is unknown, leave city null so the person is asked.',
   'relevantSearchLanguages: only languages listings for this market are realistically published in.',
   'Proposals are suggestions for missing ranges only; they are shown to the person, never searched on.',
 ].join('\n');
@@ -336,6 +337,30 @@ export function briefFromModel(raw: unknown, originalText: string): SearchIntell
       brief[field] = { value: r, status: 'PROPOSED' };
     }
   }
+  return normalizeSearchLocations(brief);
+}
+
+/** Marketplace-only geography correction, shared by model output and the start gate. */
+export function normalizeSearchLocations(brief: SearchIntelligenceBrief): SearchIntelligenceBrief {
+  const known = (name: string) => resolvePlace(name) ??
+    (['varketili', 'ვარკეთილი', 'ვარკეთილში', 'варкетили'].includes(name.trim().toLowerCase())
+      // Verified MyHome cities dictionary: Tbilisi > Isani-Samgori > Varketili.
+      ? { key: 'varketili', kind: 'DISTRICT' as const, cityKey: 'tbilisi' } : null);
+  const cityPlace = brief.city ? known(brief.city.value) : null;
+  let districts = [...(brief.districts?.value ?? [])];
+  let status = brief.districts?.status ?? brief.city?.status ?? 'STATED';
+  if (cityPlace?.kind === 'DISTRICT' && brief.city) {
+    districts.unshift(cityPlace.key === 'varketili' ? 'Varketili' : brief.city.value);
+    status = brief.city.status === 'PROPOSED' ? 'PROPOSED' : status;
+    brief.city = { value: 'Tbilisi', status: brief.city.status };
+  }
+  const preferences = districts.filter(name => !known(name) &&
+    (/ქუჩ|\bstreet\b|\bavenue\b|\broad\b/iu.test(name) || /^(მიკროები|microdistricts?)$/iu.test(name.trim())));
+  districts = [...new Set(districts.filter(name => !preferences.includes(name)))];
+  brief.locationPreferences = [...new Set([...brief.locationPreferences, ...preferences])].slice(0, 12);
+  brief.districts = districts.length ? { value: districts, status } : null;
+  const implied = districts.map(known).find(place => place?.kind === 'DISTRICT');
+  if (!brief.city && implied) brief.city = { value: 'Tbilisi', status };
   return brief;
 }
 
@@ -372,11 +397,11 @@ export function applyEdit(brief: SearchIntelligenceBrief, edit: BriefEdit): Sear
     }
     case 'transactionType': set('transactionType', edit.value ? asTransaction(edit.value) : null); return next;
     case 'propertyType': set('propertyType', edit.value ? asPropertyType(edit.value) : null); return next;
-    case 'city': set('city', edit.value ? placeName(edit.value) : null); return next;
+    case 'city': set('city', edit.value ? placeName(edit.value) : null); return normalizeSearchLocations(next);
     case 'districts': {
       const list = listOf(edit.value ?? [], placeName, 8);
       set('districts', list.length ? list : null);
-      return next;
+      return normalizeSearchLocations(next);
     }
     case 'price': case 'area': case 'rooms': case 'bedrooms': case 'bathrooms': {
       const isInt = edit.field !== 'price' && edit.field !== 'area';
@@ -448,7 +473,7 @@ export function sanitizeBrief(raw: unknown): SearchIntelligenceBrief {
   brief.exclusions = listOf(raw.exclusions, asAmenity);
   brief.userLanguage = lang(raw.userLanguage);
   brief.relevantSearchLanguages = listOf(raw.relevantSearchLanguages, lang, 6);
-  return brief;
+  return normalizeSearchLocations(brief);
 }
 
 /** Field names currently holding a PROPOSED value. */

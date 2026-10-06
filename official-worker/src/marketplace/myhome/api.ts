@@ -64,8 +64,10 @@ export function validateSearchListings(listings:Listing[],criteria:Criteria) {
 }
 export function resolveLocation(criteria:Criteria,payload:any):Criteria {
   if(!Array.isArray(payload?.data)) throw new Error('Invalid location dictionary');
+  const names = (item:any) => [item.display_name,item.display_name_in,item.slug,
+    ...Object.values(item.translations ?? {}).flatMap((translation:any)=>[translation.display_name,translation.display_name_in])];
   const match=(items:any[],value:string|undefined,id:number|undefined,label:string)=>{
-    const matches=items.filter(item=>id !== undefined ? item.id === id : value && [item.display_name,item.slug].some(x=>typeof x==='string' && x.toLowerCase()===value.toLowerCase()));
+    const matches=items.filter(item=>id !== undefined ? item.id === id : value && names(item).some(x=>typeof x==='string' && x.toLowerCase()===value.toLowerCase()));
     if(matches.length !== 1) throw new Error(`Unknown or ambiguous ${label}`);
     return matches[0];
   };
@@ -84,8 +86,8 @@ export function resolveLocation(criteria:Criteria,payload:any):Criteria {
       if(districtId !== undefined && districtId !== 6 || urbanId !== undefined && urbanId !== 65) throw new Error('Conflicting Krtsanisi IDs');
       districtId=6;urbanId=65;
     } else {
-      const districts=(city.districts ?? []).filter((d:any)=>[d.display_name,d.slug].some((v:any)=>typeof v==='string' && v.toLowerCase()===name));
-      const urbans=(city.districts ?? []).flatMap((d:any)=>(d.urbans ?? []).map((u:any)=>({...u,parent_id:d.id}))).filter((u:any)=>[u.display_name,u.slug].some((v:any)=>typeof v==='string' && v.toLowerCase()===name));
+      const districts=(city.districts ?? []).filter((d:any)=>names(d).some((v:any)=>typeof v==='string' && v.toLowerCase()===name));
+      const urbans=(city.districts ?? []).flatMap((d:any)=>(d.urbans ?? []).map((u:any)=>({...u,parent_id:d.id}))).filter((u:any)=>names(u).some((v:any)=>typeof v==='string' && v.toLowerCase()===name));
       if(districts.length+urbans.length !== 1) throw new Error('Unknown or ambiguous district/urban');
       const resolvedDistrict=districts[0]?.id ?? urbans[0].parent_id;
       const resolvedUrban=urbans[0]?.id;

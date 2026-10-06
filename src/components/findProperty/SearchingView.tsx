@@ -14,8 +14,8 @@ const STAGE_KEY: Record<string, string> = {
  * from the server; there is no animated percentage. The stage list moves only
  * when its counter does. Snake is optional and never blocks anything.
  */
-export function SearchingView({ t, search, onViewResults, onCancel, onPlay }: {
-  t: T; search: SearchSummary; onViewResults: () => void; onCancel: () => void; onPlay: () => void;
+export function SearchingView({ t, search, onViewResults, onCancel, onPlay, onNewSearch }: {
+  t: T; search: SearchSummary; onViewResults: () => void; onCancel: () => void; onPlay: () => void; onNewSearch: () => void;
 }) {
   const c = search.counters;
   /* Real results exist (from whichever sources finished): they can be opened now. */
@@ -26,6 +26,10 @@ export function SearchingView({ t, search, onViewResults, onCancel, onPlay }: {
       <section className="hm-discovery-panel space-y-3 p-6 sm:p-8" role="status">
         <h2 className="font-display text-xl font-semibold text-foreground">{t('mps_unavailable_title')}</h2>
         <p className="text-[15px] text-muted-foreground">{t(search.unavailable === 'NO_SOURCES' ? 'mps_unavailable_no_sources' : 'mps_unavailable_failed')}</p>
+        <button type="button" onClick={onNewSearch}
+          className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          {t('mps_new_search')}
+        </button>
       </section>
     );
   }

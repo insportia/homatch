@@ -97,7 +97,7 @@ function summary(status, { empty = false, output = OUTPUT } = {}) {
       listingsDiscovered: processed ? s.raw : 4, listingsValidated: processed ? s.validated : 0, uniqueProperties: processed && !empty ? s.uniqueProperties : 0,
       strongMatches: processed && !empty ? s.strongMatches : 0, sourcesCompleted: terminal ? 5 : processed ? 3 : 1, sourcesTotal: 5,
     },
-    groups, totalProperties: Object.values(groups).reduce((a, b) => a + b, 0), partial: status === 'PARTIAL_COMPLETE', unavailable: null,
+    groups, totalProperties: Object.values(groups).reduce((a, b) => a + b, 0), partial: status === 'PARTIAL_COMPLETE', unavailable: status === 'FAILED' ? 'FAILED' : null,
   };
 }
 
@@ -380,6 +380,17 @@ test('rate limited understand: a clear message, then the questions; nothing brea
   await page.getByText('You have made many requests in a short time', { exact: false }).waitFor({ timeout: 15000 });
   await page.getByRole('heading', { name: 'What are you looking for?' }).waitFor();
   assert.equal(state.starts, 0, 'no search was started');
+});
+
+test('ka: owner can leave a resumed failed search without hiding or retrying it automatically', opts, async (t) => {
+  const {page,state}=await boot(t,{lang:'ka',resumeStatus:'FAILED',empty:true});
+  await page.goto(BASE+'/find-property');
+  await page.getByRole('button',{name:'ახალი ძიება',exact:true}).waitFor();
+  assert.match(await page.textContent('main'),/ძიება ამჯერად ვერ შესრულდა/);
+  assert.equal(state.starts,0,'failed history does not silently restart acquisition');
+  await page.getByRole('button',{name:'ახალი ძიება',exact:true}).click();
+  await page.locator('section[aria-labelledby="mps-mode-title"]').waitFor();
+  assert.equal(state.starts,0);assert.ok(!new URL(page.url()).searchParams.has('search'));
 });
 
 test('partial and empty results say so, without technical errors', opts, async (t) => {

@@ -39,6 +39,8 @@ export type ReasonCode =
 
 export interface ListingView {
   listingId: string;
+  sourceListingId?: string;
+  address?: string | null;
   source: string;
   sourceName: string | null;
   exactUrl: string;
@@ -282,6 +284,8 @@ export function processSearch(input: PipelineInput): PipelineOutput {
       sourceCount: w.sources,
       listings: [...w.members].sort((a, b) => (a.priceUsd ?? Infinity) - (b.priceUsd ?? Infinity) || a.id.localeCompare(b.id)).map((m) => ({
         listingId: m.id,
+        sourceListingId: m.sourceListingId,
+        address: m.address,
         source: m.source,
         sourceName: m.sourceName,
         exactUrl: m.exactUrl,

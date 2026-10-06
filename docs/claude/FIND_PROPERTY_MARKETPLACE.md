@@ -1,9 +1,18 @@
 # Find Property — Marketplace Search foundation
 
-Status: **built, not activated**. Migration prepared and locally tested, **not
-applied**. No marketplace worker exists. `marketplace_search_enabled` is seeded
-OFF; while it is off (or the service is unreachable) `/find-property` renders the
-existing Find Property unchanged.
+MyHome API integration: `official-worker/src/marketplace` hosts `myhome-agent`
+in the existing Railway service. It uses the live-verified public TNET API,
+dynamic dictionaries, detail enrichment and progressive page reports. Pagination
+continues to `last_page` within the existing 15-minute run deadline; it has no
+page or total-result cap. Authentication uses `MYHOME_WORKER_TOKEN`, with only
+its SHA256 hash in the registry. `MYHOME_MARKETPLACE_ENABLED` starts the poller;
+`marketplace_search_enabled` and `marketplace_myhome_enabled` permit dispatch.
+The global provider kill switch remains authoritative for all other providers.
+Migration `20261019090000_myhome_marketplace_api.sql` registers the worker OFF;
+production activation follows reviewed deployment and connectivity checks.
+Unknown negative furniture/amenity evidence remains unknown for the existing
+hard-filter pipeline. Special room labels and source UUID/yard area are preserved
+in evidence/retrievalMetadata because the candidate contract has numeric counts.
 
 ```
 User → Search Builder → OpenAI Search Intelligence (call 1, strict schema)

@@ -6,6 +6,7 @@
 // BEHIND these endpoints — see orchestrator/, workflows/, evidence/,
 // entities/, documents/, state/.
 import express from 'express';
+import { startMyHomeRuntime } from './marketplace/MyHomeRuntime.js';
 import { chromium } from 'playwright';
 import { randomUUID } from 'node:crypto';
 import { ResearchOrchestrator } from './orchestrator/ResearchOrchestrator.js';
@@ -78,6 +79,9 @@ process.once('SIGTERM', () => { void telegram.shutdown(); });
 // Phase 2 discovery: one SSRF-guarded, address-pinned fetch hop for portal
 // jobs routed through the worker. Token-only; see discovery/routes.ts.
 mountDiscoveryRoutes(app, { token: TOKEN });
+const myhome = startMyHomeRuntime();
+process.once('SIGTERM', () => myhome.shutdown());
+app.get('/health/myhome', auth, (_q: any, r: any) => r.json(myhome.status()));
 
 app.get('/health', (_q: any, r: any) =>
   r.json({

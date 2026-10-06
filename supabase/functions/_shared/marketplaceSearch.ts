@@ -119,12 +119,14 @@ export const searchModel = () =>
 
 const truthy = (v: unknown) => v === true || v === 'true' || (typeof v === 'string' && v.replace(/"/g, '') === 'true');
 
-/** The two switches this product reads. Absent means OFF / killed, never on. */
-export async function loadMarketplaceSwitches(db: Db): Promise<{ enabled: boolean; providersKilled: boolean }> {
-  const { data } = await db.from('admin_settings').select('key,value').in('key', [MARKETPLACE_SWITCH, 'provider_kill_switch']);
+/** Product and provider switches. The MyHome exception is explicit and scoped
+ * to this marketplace adapter; the global provider kill switch is preserved. */
+export async function loadMarketplaceSwitches(db: Db): Promise<{ enabled: boolean; providersKilled: boolean; myhomeEnabled: boolean }> {
+  const { data } = await db.from('admin_settings').select('key,value').in('key', [MARKETPLACE_SWITCH, 'provider_kill_switch', 'marketplace_myhome_enabled']);
   const map = new Map((data ?? []).map((r: { key: string; value: unknown }) => [r.key, r.value]));
   return {
     enabled: truthy(map.get(MARKETPLACE_SWITCH)),
+    myhomeEnabled: truthy(map.get('marketplace_myhome_enabled')),
     /* An unreadable kill switch is treated as ON: dispatching is the thing it guards. */
     providersKilled: map.has('provider_kill_switch') ? truthy(map.get('provider_kill_switch')) : true,
   };

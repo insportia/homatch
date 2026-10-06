@@ -174,6 +174,7 @@ export function MarketplaceSearchExperience({ deepSearchAvailable }: { deepSearc
       )}
       {view === 'SEARCH' && search && (
         <SearchingView t={t} search={search} onViewResults={() => setView('RESULTS')} onPlay={() => setPlaying(true)}
+          onNewSearch={newSearch}
           onCancel={async () => { try { const r = await cancelSearch(search.id); setSearch(r.search); } catch { /* ignore */ } newSearch(); }} />
       )}
       {view === 'SEARCH' && !playing && search?.terminal && (search.counters.uniqueProperties > 0 || !search.unavailable) ? (

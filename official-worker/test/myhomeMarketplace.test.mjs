@@ -20,7 +20,7 @@ const filters = { data: { real_estate_types: [{id:1},{id:2}], deal_types:{1:[{id
 const row = id => ({id,uuid:`uuid-${id}`,dynamic_title:'Source listing',dynamic_slug:'source-listing',deal_type_id:1,real_estate_type_id:1,city_id:1,district_id:6,urban_id:65,
   city_name:'თბილისი',district_name:'ძველი თბილისი',urban_name:'კრწანისი',area_type_id:1,area:100,room:'10+',bedroom:'10+',price:{2:{price_total:180000,price_square:1800}},
   lat:null,lng:null,yard_area:null,address:'Source address',images:[{large:'https://static-api-statements.tnet.ge/image.webp'}],last_updated:'2026-10-06 16:48:54'});
-function simulated({ lastPage = 6, total = 139, repeated = false, failPage = null, duplicate = false, emptyPage = null } = {}) {
+function simulated({ lastPage = 6, total = 139, repeated = false, failPage = null, duplicate = false, emptyPage = null, missingUrlId = null } = {}) {
   const pages = [], reports = []; let listCalls = 0;
   const fetcher = async (input) => {
     const url = new URL(input); let payload;
@@ -36,6 +36,8 @@ function simulated({ lastPage = 6, total = 139, repeated = false, failPage = nul
       if(duplicate && rows.length) rows.push(rows[0]);
       payload={result:true,data:{data:rows}};
     }
+    const records = payload.data?.data ?? (payload.data?.statement ? [payload.data.statement] : []);
+    for (const record of records) if (record.id === missingUrlId) { record.dynamic_slug = null; record.dynamic_title = null; }
     return Response.json(payload);
   };
   return { pages,reports,fetcher,run: (overrides={}) => acquireMyHome({...request,...overrides},{deadlineAt:new Date(Date.now()+900000).toISOString(),fetcher,report:async r=>reports.push(r)}) };
@@ -109,6 +111,12 @@ test('production processes all six pages, all 139 unique IDs and progressive bat
   assert.equal(s.reports.at(-1).status,'COMPLETE');assert.equal(s.reports.at(-1).listings.length,0);
 });
 test('production can traverse 50 pages without an arbitrary small cap',async()=>{const s=simulated({lastPage:50,total:1200});const result=await s.run();assert.equal(result.delivered,1200);assert.equal(s.pages.length,50);});
+test('a live record with no canonical URL does not truncate pagination or invent a URL',async()=>{
+  const s=simulated({missingUrlId:38});const result=await s.run();
+  assert.deepEqual(s.pages,[1,2,3,4,5,6]);assert.equal(result.delivered,138);assert.equal(result.status,'PARTIAL');
+  assert.equal(s.reports.at(-1).errors[0].code,'SOURCE_URL_UNAVAILABLE');assert.match(s.reports.at(-1).errors[0].message,/38/);
+  assert.ok(s.reports.flatMap(r=>r.listings).every(l=>l.sourceListingId!=='38' && !l.exactUrl.includes('null')));
+});
 test('repeated pages report PARTIAL and preserve ingested results',async()=>{const s=simulated({repeated:true});const result=await s.run();assert.equal(result.status,'PARTIAL');assert.equal(result.delivered,24);assert.equal(s.reports.at(-1).errors[0].code,'REPEATED_PAGE');});
 test('unexpected empty page cannot be reported as complete',async()=>{const s=simulated({emptyPage:2});assert.equal((await s.run()).status,'PARTIAL');assert.equal(s.reports.at(-1).errors[0].code,'EMPTY_PAGE');});
 test('access denied is not bypassed or silently converted into empty success',async()=>{const s=simulated({failPage:1});assert.equal((await s.run()).status,'BLOCKED');assert.deepEqual(s.pages,[1]);});

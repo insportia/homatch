@@ -11,6 +11,8 @@ export async function acquireMyHome(request: MarketplaceSearchRequest, options: 
   const started = Date.now(), startedAt = new Date(started).toISOString();
   const deadline = Date.parse(options.deadlineAt);
   const seenIds = new Set<string>(), seenUuids = new Set<string>();
+  let unavailableUrls = 0;
+  const unavailableIds: string[] = [];
   let pagesVisited = 0, actions = 0, discoveredCount = 0, delivered = 0, nextPage = 1, currentQuery = 0;
   const queriesApplied: Record<string, string | number | boolean | null | string[]> = { acquisition: 'PUBLIC_API' };
   function remaining() {
@@ -82,6 +84,13 @@ export async function acquireMyHome(request: MarketplaceSearchRequest, options: 
             const detail = payload?.result === true ? payload?.data?.statement : null;
             if (!detail || String(detail.id) !== row.source_id || detail.uuid !== row.source_uuid) throw new MyHomeFailure('DETAIL_IDENTITY', `Invalid detail identity for ${row.source_id}`);
             const raw = { ...row.raw_source_data, ...detail };
+            // Live API records can lack a slug in both summary and detail.
+            // Never fabricate a URL or stop unrelated pages for that record.
+            if (!raw.dynamic_slug) {
+              unavailableUrls++;
+              if (unavailableIds.length < 20) unavailableIds.push(row.source_id);
+              return null;
+            }
             // Validate detail price/type/location/area too: inventory may change
             // between list and detail. Known mismatches are not fabricated away.
             const merged = parseListEnvelope({ result: true, data: { data: [raw] } });
@@ -103,8 +112,9 @@ export async function acquireMyHome(request: MarketplaceSearchRequest, options: 
         if (batch.length) await report('RESULTS_RECEIVED', batch);
       }
     }
-    await report('COMPLETE');
-    return { status: 'COMPLETE', pagesVisited, delivered };
+    const status = unavailableUrls ? 'PARTIAL' : 'COMPLETE';
+    await report(status, [], unavailableUrls ? [{ code: 'SOURCE_URL_UNAVAILABLE', message: `${unavailableUrls} source records have no canonical URL; IDs: ${unavailableIds.join(',')}. All pagination traversed.` }] : []);
+    return { status, pagesVisited, delivered };
   } catch (error) {
     const e = error instanceof MyHomeFailure ? error : new MyHomeFailure('ACQUISITION_FAILED', error instanceof Error ? error.message : String(error));
     const status = delivered ? 'PARTIAL' : e.code === 'DEADLINE' ? 'TIMED_OUT' : e.code === 'ACCESS_DENIED' ? 'BLOCKED' : 'FAILED';

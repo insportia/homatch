@@ -15556,6 +15556,63 @@ const en = {
 
   /* ── FIND PROPERTY RESULTS ── */
   fpr_required_unknown: 'Confirm {{n}} required details before treating this as an exact match.',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_history: 'Search history',
+  fpw_history_note: 'Saved searches remain available. Counts reflect the last completed processing; reopen to see current eligible results.',
+  fpw_history_empty: 'Your searches will appear here.',
+  fpw_saved_properties: '{{n}} saved unique properties',
+  fpw_saved_strong: '{{n}} strong matches',
+  fpw_open_search: 'View search',
+  fpw_retry: 'Try again',
+  fpw_back_results: 'Back to results',
+  fpw_open_property: 'View property',
+  fpw_previous_photo: 'Previous photo',
+  fpw_next_photo: 'Next photo',
+  fpw_photo: 'Photo {{n}}',
+  fpw_ai: 'AI Property Analysis',
+  fpw_ai_credits: 'Uses Credits through AI Chat. Each response is billed by measured usage.',
+  fpw_status_CREATED: 'Queued',
+  fpw_status_READY: 'Queued',
+  fpw_status_DISPATCHING: 'Starting',
+  fpw_status_SEARCHING: 'Searching',
+  fpw_status_PROCESSING: 'Processing results',
+  fpw_status_RESULTS_AVAILABLE: 'Results available; search continues',
+  fpw_status_COMPLETE: 'Completed',
+  fpw_status_PARTIAL_COMPLETE: 'Partially completed',
+  fpw_status_FAILED: 'Search unavailable',
+  fpw_status_CANCELLED: 'Cancelled',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_listing_count: '{{n}} listings',
+  fpw_ai_working: 'Analysing…',
+  fpw_ai_insufficient: 'Not enough Credits. Your question is preserved; add Credits to continue.',
+  fpw_ai_question: 'Your question about this property',
+  fpw_ai_send: 'Send · uses Credits',
+  fpw_prompt_value: 'Is the asking price supported by the available evidence?',
+  fpw_prompt_risks: 'What are the main risks and unknowns?',
+  fpw_prompt_questions: 'What should I ask the seller before buying?',
+  fpw_prompt_renovation: 'What information is needed to estimate renovation and total cost?',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_open_gallery: 'Open property photos and details',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_over_budget: '{{amount}} above your maximum budget (+{{pct}})',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_ai_usage: '{{used}} Credits used · {{remaining}} remaining',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_seller_owner: 'Owner',
+  fpw_seller_likely_owner: 'Likely owner',
+  fpw_seller_broker_agency: 'Broker / agency',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_ai_pending: 'This paid response is still processing. Wait briefly and retry; it will use the same turn.',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_property_unavailable: 'This property could not be loaded. Reopen the search or try again.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -31018,7 +31075,7 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fpr_building: 'შენობის სტატუსი',
 
   /* ── FIND PROPERTY RESULTS ── */
-  fpr_seller_likely_broker: 'სავარაუდოდ მაკლერი/აგენტი',
+  fpr_seller_likely_broker: 'სავარაუდოდ ბროკერი / სააგენტო',
   fpr_seller_likely_agency: 'სავარაუდოდ სააგენტო',
 
   /* ── FIND PROPERTY RESULTS ── */
@@ -31026,6 +31083,63 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND PROPERTY RESULTS ── */
   fpr_required_unknown: 'ზუსტ შესაბამისობად ჩათვლამდე გადაამოწმე {{n}} აუცილებელი დეტალი.',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_history: 'ძიებების ისტორია',
+  fpw_history_note: 'შენახული ძიებები ხელმისაწვდომია. რაოდენობა ბოლო დამუშავებას ასახავს; მიმდინარე შედეგებისთვის გახსენი ძიება.',
+  fpw_history_empty: 'შენი ძიებები აქ გამოჩნდება.',
+  fpw_saved_properties: '{{n}} შენახული უნიკალური ქონება',
+  fpw_saved_strong: '{{n}} ძლიერი დამთხვევა',
+  fpw_open_search: 'ძიების ნახვა',
+  fpw_retry: 'ხელახლა ცდა',
+  fpw_back_results: 'შედეგებზე დაბრუნება',
+  fpw_open_property: 'ქონების ნახვა',
+  fpw_previous_photo: 'წინა ფოტო',
+  fpw_next_photo: 'შემდეგი ფოტო',
+  fpw_photo: 'ფოტო {{n}}',
+  fpw_ai: 'ქონების AI ანალიზი',
+  fpw_ai_credits: 'იყენებს Credits-ს AI ჩატის მეშვეობით. თითოეული პასუხი ფაქტობრივი გამოყენებით ფასდება.',
+  fpw_status_CREATED: 'რიგშია',
+  fpw_status_READY: 'რიგშია',
+  fpw_status_DISPATCHING: 'იწყება',
+  fpw_status_SEARCHING: 'მიმდინარეობს ძიება',
+  fpw_status_PROCESSING: 'შედეგების დამუშავება',
+  fpw_status_RESULTS_AVAILABLE: 'შედეგები ხელმისაწვდომია; ძიება გრძელდება',
+  fpw_status_COMPLETE: 'დასრულებულია',
+  fpw_status_PARTIAL_COMPLETE: 'ნაწილობრივ დასრულებულია',
+  fpw_status_FAILED: 'ძიება მიუწვდომელია',
+  fpw_status_CANCELLED: 'გაუქმებულია',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_listing_count: '{{n}} განცხადება',
+  fpw_ai_working: 'ანალიზი მიმდინარეობს…',
+  fpw_ai_insufficient: 'Credits არასაკმარისია. კითხვა შენახულია; გასაგრძელებლად შეავსე Credits.',
+  fpw_ai_question: 'შენი კითხვა ამ ქონებაზე',
+  fpw_ai_send: 'გაგზავნა · იყენებს Credits-ს',
+  fpw_prompt_value: 'ამ ფასს არსებული მტკიცებულებები ამყარებს?',
+  fpw_prompt_risks: 'რა არის მთავარი რისკები და უცნობი ფაქტები?',
+  fpw_prompt_questions: 'რა ვკითხო გამყიდველს შეძენამდე?',
+  fpw_prompt_renovation: 'რა ინფორმაცია გვჭირდება რემონტისა და ჯამური ხარჯის შესაფასებლად?',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_open_gallery: 'ქონების ფოტოებისა და დეტალების გახსნა',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_over_budget: 'მაქსიმალურ ბიუჯეტზე {{amount}}-ით მეტი (+{{pct}})',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_ai_usage: 'გამოყენებულია {{used}} Credits · დარჩენილია {{remaining}}',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_seller_owner: 'მესაკუთრე',
+  fpw_seller_likely_owner: 'სავარაუდოდ მესაკუთრე',
+  fpw_seller_broker_agency: 'ბროკერი / სააგენტო',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_ai_pending: 'ფასიანი პასუხი ჯერ მუშავდება. ცოტა ხანში სცადე ხელახლა; იგივე მოთხოვნა გამოიყენება.',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_property_unavailable: 'ამ ქონების ჩატვირთვა ვერ მოხერხდა. გახსენი ძიება ან სცადე ხელახლა.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -46487,6 +46601,63 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND PROPERTY RESULTS ── */
   fpr_required_unknown: 'Прежде чем считать это точным совпадением, уточните {{n}} обязательных условий.',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_history: 'История поиска',
+  fpw_history_note: 'Поиски сохраняются. Количество отражает последнюю обработку; откройте поиск для актуальных результатов.',
+  fpw_history_empty: 'Ваши поиски появятся здесь.',
+  fpw_saved_properties: '{{n}} сохранённых уникальных объектов',
+  fpw_saved_strong: '{{n}} точных совпадений',
+  fpw_open_search: 'Открыть поиск',
+  fpw_retry: 'Повторить',
+  fpw_back_results: 'Вернуться к результатам',
+  fpw_open_property: 'Открыть объект',
+  fpw_previous_photo: 'Предыдущее фото',
+  fpw_next_photo: 'Следующее фото',
+  fpw_photo: 'Фото {{n}}',
+  fpw_ai: 'AI-анализ объекта',
+  fpw_ai_credits: 'Использует Credits через AI-чат. Ответ оплачивается по фактическому использованию.',
+  fpw_status_CREATED: 'В очереди',
+  fpw_status_READY: 'В очереди',
+  fpw_status_DISPATCHING: 'Запускается',
+  fpw_status_SEARCHING: 'Идёт поиск',
+  fpw_status_PROCESSING: 'Обработка результатов',
+  fpw_status_RESULTS_AVAILABLE: 'Есть результаты; поиск продолжается',
+  fpw_status_COMPLETE: 'Завершён',
+  fpw_status_PARTIAL_COMPLETE: 'Частично завершён',
+  fpw_status_FAILED: 'Поиск недоступен',
+  fpw_status_CANCELLED: 'Отменён',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_listing_count: '{{n}} объявлений',
+  fpw_ai_working: 'Анализ…',
+  fpw_ai_insufficient: 'Недостаточно Credits. Вопрос сохранён; пополните Credits для продолжения.',
+  fpw_ai_question: 'Ваш вопрос об этом объекте',
+  fpw_ai_send: 'Отправить · использует Credits',
+  fpw_prompt_value: 'Подтверждают ли имеющиеся данные запрашиваемую цену?',
+  fpw_prompt_risks: 'Каковы основные риски и неизвестные?',
+  fpw_prompt_questions: 'Что спросить у продавца перед покупкой?',
+  fpw_prompt_renovation: 'Какие данные нужны для оценки ремонта и общей стоимости?',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_open_gallery: 'Открыть фото и сведения об объекте',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_over_budget: '{{amount}} выше максимального бюджета (+{{pct}})',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_ai_usage: 'Использовано {{used}} Credits · осталось {{remaining}}',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_seller_owner: 'Собственник',
+  fpw_seller_likely_owner: 'Вероятно, собственник',
+  fpw_seller_broker_agency: 'Брокер / агентство',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_ai_pending: 'Этот оплаченный ответ ещё обрабатывается. Немного подождите и повторите; будет использован тот же запрос.',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_property_unavailable: 'Не удалось загрузить объект. Откройте поиск или повторите попытку.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -61946,6 +62117,63 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND PROPERTY RESULTS ── */
   fpr_required_unknown: 'Tam eşleşme saymadan önce {{n}} zorunlu ayrıntıyı teyit edin.',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_history: 'Arama geçmişi',
+  fpw_history_note: 'Aramalar saklanır. Sayılar son işlemeyi yansıtır; güncel sonuçlar için aramayı açın.',
+  fpw_history_empty: 'Aramalarınız burada görünecek.',
+  fpw_saved_properties: '{{n}} kayıtlı benzersiz mülk',
+  fpw_saved_strong: '{{n}} güçlü eşleşme',
+  fpw_open_search: 'Aramayı görüntüle',
+  fpw_retry: 'Tekrar dene',
+  fpw_back_results: 'Sonuçlara dön',
+  fpw_open_property: 'Mülkü görüntüle',
+  fpw_previous_photo: 'Önceki fotoğraf',
+  fpw_next_photo: 'Sonraki fotoğraf',
+  fpw_photo: 'Fotoğraf {{n}}',
+  fpw_ai: 'AI mülk analizi',
+  fpw_ai_credits: 'AI sohbet üzerinden Credits kullanır. Her yanıt ölçülen kullanıma göre ücretlendirilir.',
+  fpw_status_CREATED: 'Sırada',
+  fpw_status_READY: 'Sırada',
+  fpw_status_DISPATCHING: 'Başlatılıyor',
+  fpw_status_SEARCHING: 'Aranıyor',
+  fpw_status_PROCESSING: 'Sonuçlar işleniyor',
+  fpw_status_RESULTS_AVAILABLE: 'Sonuçlar hazır; arama sürüyor',
+  fpw_status_COMPLETE: 'Tamamlandı',
+  fpw_status_PARTIAL_COMPLETE: 'Kısmen tamamlandı',
+  fpw_status_FAILED: 'Arama kullanılamıyor',
+  fpw_status_CANCELLED: 'İptal edildi',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_listing_count: '{{n}} ilan',
+  fpw_ai_working: 'Analiz ediliyor…',
+  fpw_ai_insufficient: 'Yeterli Credits yok. Sorunuz korunur; devam etmek için Credits ekleyin.',
+  fpw_ai_question: 'Bu mülk hakkındaki sorunuz',
+  fpw_ai_send: 'Gönder · Credits kullanır',
+  fpw_prompt_value: 'Mevcut kanıtlar istenen fiyatı destekliyor mu?',
+  fpw_prompt_risks: 'Başlıca riskler ve bilinmeyenler neler?',
+  fpw_prompt_questions: 'Satın almadan önce satıcıya ne sormalıyım?',
+  fpw_prompt_renovation: 'Tadilat ve toplam maliyet tahmini için hangi bilgiler gerekli?',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_open_gallery: 'Mülk fotoğraflarını ve ayrıntılarını aç',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_over_budget: 'Azami bütçenizin {{amount}} üzerinde (+{{pct}})',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_ai_usage: '{{used}} Credits kullanıldı · {{remaining}} kaldı',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_seller_owner: 'Mal sahibi',
+  fpw_seller_likely_owner: 'Muhtemelen mal sahibi',
+  fpw_seller_broker_agency: 'Emlakçı / emlak ofisi',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_ai_pending: 'Bu ücretli yanıt hâlâ işleniyor. Biraz bekleyip tekrar deneyin; aynı istek kullanılacak.',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_property_unavailable: 'Bu mülk yüklenemedi. Aramayı yeniden açın veya tekrar deneyin.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -77405,6 +77633,63 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND PROPERTY RESULTS ── */
   fpr_required_unknown: 'تأكد من {{n}} تفاصيل مطلوبة قبل اعتبار العقار مطابقًا تمامًا.',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_history: 'سجل البحث',
+  fpw_history_note: 'تظل عمليات البحث محفوظة. الأعداد تعكس آخر معالجة؛ افتح البحث لرؤية النتائج الحالية.',
+  fpw_history_empty: 'ستظهر عمليات بحثك هنا.',
+  fpw_saved_properties: '{{n}} عقارات فريدة محفوظة',
+  fpw_saved_strong: '{{n}} تطابقات قوية',
+  fpw_open_search: 'عرض البحث',
+  fpw_retry: 'حاول مجدداً',
+  fpw_back_results: 'العودة إلى النتائج',
+  fpw_open_property: 'عرض العقار',
+  fpw_previous_photo: 'الصورة السابقة',
+  fpw_next_photo: 'الصورة التالية',
+  fpw_photo: 'الصورة {{n}}',
+  fpw_ai: 'تحليل العقار بالذكاء الاصطناعي',
+  fpw_ai_credits: 'يستخدم Credits عبر محادثة AI. تُحسب تكلفة كل إجابة وفق الاستخدام الفعلي.',
+  fpw_status_CREATED: 'في الانتظار',
+  fpw_status_READY: 'في الانتظار',
+  fpw_status_DISPATCHING: 'جارٍ البدء',
+  fpw_status_SEARCHING: 'جارٍ البحث',
+  fpw_status_PROCESSING: 'جارٍ معالجة النتائج',
+  fpw_status_RESULTS_AVAILABLE: 'النتائج متاحة؛ البحث مستمر',
+  fpw_status_COMPLETE: 'مكتمل',
+  fpw_status_PARTIAL_COMPLETE: 'مكتمل جزئياً',
+  fpw_status_FAILED: 'البحث غير متاح',
+  fpw_status_CANCELLED: 'ملغى',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_listing_count: '{{n}} إعلانات',
+  fpw_ai_working: 'جارٍ التحليل…',
+  fpw_ai_insufficient: 'Credits غير كافية. سؤالك محفوظ؛ أضف Credits للمتابعة.',
+  fpw_ai_question: 'سؤالك عن هذا العقار',
+  fpw_ai_send: 'إرسال · يستخدم Credits',
+  fpw_prompt_value: 'هل تدعم الأدلة المتاحة السعر المطلوب؟',
+  fpw_prompt_risks: 'ما أهم المخاطر والمعلومات المجهولة؟',
+  fpw_prompt_questions: 'ماذا أسأل البائع قبل الشراء؟',
+  fpw_prompt_renovation: 'ما المعلومات اللازمة لتقدير التجديد والتكلفة الإجمالية؟',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_open_gallery: 'فتح صور العقار وتفاصيله',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_over_budget: '{{amount}} فوق الحد الأقصى لميزانيتك (+{{pct}})',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_ai_usage: 'تم استخدام {{used}} Credits · المتبقي {{remaining}}',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_seller_owner: 'المالك',
+  fpw_seller_likely_owner: 'مالك محتمل',
+  fpw_seller_broker_agency: 'وسيط / وكالة',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_ai_pending: 'هذه الإجابة المدفوعة لا تزال قيد المعالجة. انتظر قليلاً وأعد المحاولة؛ سيُستخدم الطلب نفسه.',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_property_unavailable: 'تعذّر تحميل هذا العقار. أعد فتح البحث أو حاول مجدداً.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -92864,6 +93149,63 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND PROPERTY RESULTS ── */
   fpr_required_unknown: 'יש לאשר {{n}} פרטים נדרשים לפני שמחשיבים זאת להתאמה מדויקת.',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_history: 'היסטוריית חיפושים',
+  fpw_history_note: 'החיפושים נשמרים. הספירות משקפות את העיבוד האחרון; פתחו חיפוש לצפייה בתוצאות העדכניות.',
+  fpw_history_empty: 'החיפושים שלכם יופיעו כאן.',
+  fpw_saved_properties: '{{n}} נכסים ייחודיים שמורים',
+  fpw_saved_strong: '{{n}} התאמות חזקות',
+  fpw_open_search: 'צפייה בחיפוש',
+  fpw_retry: 'נסו שוב',
+  fpw_back_results: 'חזרה לתוצאות',
+  fpw_open_property: 'צפייה בנכס',
+  fpw_previous_photo: 'התמונה הקודמת',
+  fpw_next_photo: 'התמונה הבאה',
+  fpw_photo: 'תמונה {{n}}',
+  fpw_ai: 'ניתוח נכס באמצעות AI',
+  fpw_ai_credits: 'משתמש ב-Credits דרך צ׳אט AI. כל תשובה מחויבת לפי השימוש שנמדד.',
+  fpw_status_CREATED: 'בתור',
+  fpw_status_READY: 'בתור',
+  fpw_status_DISPATCHING: 'מתחיל',
+  fpw_status_SEARCHING: 'בחיפוש',
+  fpw_status_PROCESSING: 'מעבד תוצאות',
+  fpw_status_RESULTS_AVAILABLE: 'תוצאות זמינות; החיפוש נמשך',
+  fpw_status_COMPLETE: 'הושלם',
+  fpw_status_PARTIAL_COMPLETE: 'הושלם חלקית',
+  fpw_status_FAILED: 'החיפוש אינו זמין',
+  fpw_status_CANCELLED: 'בוטל',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_listing_count: '{{n}} מודעות',
+  fpw_ai_working: 'מנתח…',
+  fpw_ai_insufficient: 'אין מספיק Credits. השאלה נשמרת; הוסיפו Credits כדי להמשיך.',
+  fpw_ai_question: 'השאלה שלכם על הנכס הזה',
+  fpw_ai_send: 'שליחה · משתמש ב-Credits',
+  fpw_prompt_value: 'האם הראיות הזמינות תומכות במחיר המבוקש?',
+  fpw_prompt_risks: 'מהם הסיכונים העיקריים והמידע החסר?',
+  fpw_prompt_questions: 'מה כדאי לשאול את המוכר לפני רכישה?',
+  fpw_prompt_renovation: 'איזה מידע דרוש להערכת השיפוץ והעלות הכוללת?',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_open_gallery: 'פתיחת תמונות ופרטי הנכס',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_over_budget: '{{amount}} מעל התקציב המרבי (+{{pct}})',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_ai_usage: 'נוצלו {{used}} Credits · נותרו {{remaining}}',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_seller_owner: 'בעלים',
+  fpw_seller_likely_owner: 'כנראה הבעלים',
+  fpw_seller_broker_agency: 'מתווך / סוכנות',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_ai_pending: 'התשובה בתשלום עדיין בעיבוד. המתינו מעט ונסו שוב; ייעשה שימוש באותה בקשה.',
+
+  /* ── FIND PROPERTY WORKSPACE ── */
+  fpw_property_unavailable: 'לא ניתן לטעון את הנכס הזה. פתחו מחדש את החיפוש או נסו שוב.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

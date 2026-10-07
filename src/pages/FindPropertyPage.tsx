@@ -40,11 +40,10 @@
 
 import { ArrowLeft, Building2, Check, Loader2, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { DiscoveryState, ListingCard } from '@/components/customer/ListingCard';
-import { NativeMatchesPanel } from '@/components/matching/NativeMatchesPanel';
-import { OutsideSearchPanel } from '@/components/matching/OutsideSearchPanel';
 import { HomatchSearchComposer, HowItWorks } from '@/components/customer/SearchComposer';
 import {
   type PlanRowData, SearchPlanSummary,
@@ -52,7 +51,10 @@ import {
 import {
   CardAction, CustomerSurface, DISCOVERY_SURFACE, PageHero, QuietAction,
 } from '@/components/customer/surface';
+import { MarketplaceSearchExperience } from '@/components/findProperty/MarketplaceSearchExperience';
 import { AppLayout } from '@/components/layouts/AppLayout';
+import { NativeMatchesPanel } from '@/components/matching/NativeMatchesPanel';
+import { OutsideSearchPanel } from '@/components/matching/OutsideSearchPanel';
 import { Input } from '@/components/ui/input';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -62,6 +64,7 @@ import { formatMoney, intlLocaleFor, isolate } from '@/components/workspace/prim
 import { useLanguage } from '@/contexts/LanguageContext';
 import { placeName } from '@/lib/placeNames';
 import { dimensionKey, recencyFromDate } from '@/matching/presentation';
+import { type BrokerDiscoveryPricing, brokerDiscoveryPricing } from '@/services/brokers';
 import {
   type ConstraintStrength,
   confirmPlan,
@@ -72,9 +75,7 @@ import {
   type SearchGoal,
   type SearchPlan,
 } from '@/services/findProperty';
-import { brokerDiscoveryPricing, type BrokerDiscoveryPricing } from '@/services/brokers';
-import { MarketplaceSearchExperience } from '@/components/findProperty/MarketplaceSearchExperience';
-import { type MarketplaceCapabilities, getCapabilities } from '@/services/marketplaceSearch';
+import { getCapabilities, type MarketplaceCapabilities } from '@/services/marketplaceSearch';
 
 const GOALS: readonly SearchGoal[] = ['BUY', 'RENT', 'SHORT_STAY', 'INVEST', 'COMMERCIAL', 'LAND'];
 
@@ -1028,6 +1029,7 @@ function LegacyFindPropertyPage() {
  * as before, so shipping this code changes nothing a customer sees.
  */
 export default function FindPropertyPage() {
+  const location = useLocation();
   const [caps, setCaps] = useState<MarketplaceCapabilities | null>(null);
   useEffect(() => {
     let alive = true;
@@ -1043,7 +1045,8 @@ export default function FindPropertyPage() {
       </RouteGuard>
     );
   }
-  if (!caps.marketplaceEnabled) return <LegacyFindPropertyPage />;
+  // Pausing acquisition must not hide the user's durable search workspace.
+  if (!caps.marketplaceEnabled && location.pathname.endsWith('/new')) return <LegacyFindPropertyPage />;
   return (
     <RouteGuard>
       <AppLayout noPadding surfaceClass={DISCOVERY_SURFACE}>

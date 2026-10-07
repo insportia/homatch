@@ -308,6 +308,9 @@ export const routes: RouteConfig[] = [
    * nothing to show a visitor who has no search.
    */
   { name: 'Find Property',     path: '/find-property',            element: <FindPropertyPage /> },
+  { name: 'New Property Search', path: '/find-property/new', element: <FindPropertyPage /> },
+  { name: 'Property Search', path: '/find-property/search/:searchId', element: <FindPropertyPage /> },
+  { name: 'Property Intelligence', path: '/find-property/search/:searchId/property/:propertyKey', element: <FindPropertyPage /> },
   /*
    * FOR EXPATS. Public, and more deliberately so than its neighbours: the
    * whole product proposition is that a foreigner who has never heard of

@@ -1,9 +1,11 @@
 // Find Property — presentation helpers. Pure; every word goes through i18n.
 
 import type { BriefField, NumericRange, SearchIntelligenceBrief } from '@/research-core/marketplace/brief';
-import type { RequirementKey } from '@/research-core/marketplace/readiness';
 import type { ListingActivity } from '@/research-core/marketplace/freshness';
+import type { RequirementKey } from '@/research-core/marketplace/readiness';
+
 export { currentActivity } from '@/research-core/marketplace/browse-results';
+export { listingActivity } from '@/research-core/marketplace/freshness';
 
 export type T = (key: string, vars?: Record<string, string | number>) => string;
 

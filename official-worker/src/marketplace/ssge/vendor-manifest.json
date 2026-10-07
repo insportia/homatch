@@ -1,0 +1,20 @@
+{
+  "source": "standalone ssge-worker/src",
+  "acceptanceRun": "2026-10-07T16-39-36-205Z",
+  "files": {
+    "adapter.mjs": "681f5c829358fdb45b2f5b4e4db3dab6cb4296696a7d165538f8034317e6848f",
+    "pagination.mjs": "5958a2f1b386f6eb282b2b85c91273b587f66903ea9ec5d902c1986867172254",
+    "public-client.mjs": "2706211e037e0711731fd18d1779b08738943adc2c58f06909d8111e06ca16e4",
+    "ssge-contract.mjs": "338527c6dc7465a448f2af0192f891c712854793b8a69b50eb4e1f9910897562",
+    "http.mjs": "b1d694f80d172c21dae69785ab2567c8fe09320a347530ad3f240a82f1f5f50f",
+    "public-session.mjs": "da6110a2ef06ac7e8ac18c4f5c315b6fb3b80ef96b1e937d9c68f2d053bc6804",
+    "discovery.mjs": "9a86a5bdb3b55716d67f0047baab28fcd88c8b2eb855706b6c8c74fda572e7a9",
+    "normalize.mjs": "029e83624d2ccbee20ceb908e3dc9b265dbe89809539877c7381cdf5c0f0945f",
+    "locations.mjs": "a8186a7bda5ab192ae4149b68e8e9ef24fe81fc71692112a28111ba6d5e70660",
+    "search-response.mjs": "ed78833cd738ce0d965760d661fbb7c140334894e2dd1288ed63f7f46b88f0f6",
+    "validation.mjs": "a84137f22e6dd44846b6a4cd5d2756bbff23a120a67d7ea6013ad63922fbeecc",
+    "diagnostics.mjs": "a3cec919493bf11ebeb78ebba4e05978070d7fde914cda1541369ac2d6697137",
+    "gateway-http2.mjs": "7f47f3863872358d8dac553686a4cb9d8d78c29dbcb76c02c3f2a4764810c8c4",
+    "page-proof.mjs": "f21ae835aa808d3083a9a312859dbe606f0f5119a5f222c8775d61526326a215"
+  }
+}

@@ -134,13 +134,31 @@ test('V2 mobile: workspace, touch gallery and property AI composer at 375px and 
     await card.waitFor();
     const before = await card.locator('[aria-live="polite"]').textContent();
     const searchUrl = page.url();
-    await card.getByRole('group').evaluate((el) => {
-      const touch = (x) => new Touch({ identifier: 1, target: el, clientX: x, clientY: 100 });
-      el.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, touches: [touch(220)] }));
-      el.dispatchEvent(new TouchEvent('touchend', { bubbles: true, changedTouches: [touch(100)] }));
-      el.querySelector('button').click(); // Browser click after a swipe must be suppressed.
-    });
-    assert.notEqual(await card.locator('[aria-live="polite"]').textContent(), before);
+    const propertyKey = await card.getAttribute('data-property-key');
+    const currentGallery = () => page.locator(`[data-property-key=${JSON.stringify(propertyKey)}]`).getByRole('group');
+    await currentGallery().waitFor({ state: 'visible' });
+    await currentGallery().locator('button').first().click({ trial: true });
+    const gallery = currentGallery();
+    const box = await gallery.boundingBox();
+    assert.ok(box && box.width > 120, 'gallery has room for a horizontal gesture');
+    const touch = await page.context().newCDPSession(page);
+    const x = box.x + box.width * 0.7, y = box.y + box.height * 0.6;
+    // Browser-generated touch events exercise hit testing, touch-action and React
+    // updates, unlike synchronous dispatchEvent calls on the group itself.
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, id: 1 }] });
+    await page.evaluate(() => new Promise(requestAnimationFrame));
+    for (const distance of [30, 60, 90, 120]) {
+      await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x - distance, y, id: 1 }] });
+      await page.evaluate(() => new Promise(requestAnimationFrame));
+    }
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await touch.detach();
+    const expected = `${Number(before.split('/')[0]) % Number(before.split('/')[1]) + 1}/${before.split('/')[1]}`;
+    await page.waitForFunction(({ key, expected }) => [...document.querySelectorAll('[data-property-key]')]
+      .find((el) => el.getAttribute('data-property-key') === key)?.querySelector('[aria-live="polite"]')?.textContent === expected,
+    { key: await card.getAttribute('data-property-key'), expected });
+    assert.equal(await card.locator('[aria-live="polite"]').textContent(), expected, 'left swipe advances exactly one photo');
+    await gallery.evaluate((el) => el.querySelector('button').click()); // Suppress any compatibility click after the swipe.
     assert.equal(page.url(), searchUrl, 'swiping stays on the search');
     await card.getByRole('button').first().click();
     await page.locator('[data-property-dossier]').waitFor();
@@ -176,6 +194,19 @@ test('V2: malformed history is recoverable and never masquerades as an empty wor
   await page.getByRole('button', { name: 'Try again', exact: true }).click();
   await page.locator('a[href="/find-property/search/22222222-2222-4222-8222-222222222222"]').waitFor();
   assert.equal(state.starts, 0);
+});
+
+test('V2: a backend missing the history action stays an error; authenticated retry recovers and legacy optional counts are omitted', opts, async (t) => {
+  const { page, state } = await boot(t);
+  state.historyBackendFailure = true;
+  await page.goto(`${BASE}/find-property`);
+  await page.getByRole('button', { name: 'Try again', exact: true }).waitFor();
+  assert.equal(await page.locator('a[href="/find-property/search/22222222-2222-4222-8222-222222222222"]').count(), 0);
+  state.historyBackendFailure = false;
+  await page.getByRole('button', { name: 'Try again', exact: true }).click();
+  await page.locator('a[href="/find-property/search/22222222-2222-4222-8222-222222222222"]').waitFor();
+  assert.ok(state.historyAuthenticated);
+  assert.ok(state.requests.filter(r => r.action === 'history').every(r => !('user_id' in r)));
 });
 
 function fakeSession() {
@@ -247,10 +278,12 @@ async function boot(t, { rateLimited = false, width = 1440, height = 900, lang =
       state.requests.push(body);
       if (body.action === 'capabilities') return r.fulfill(json({ marketplaceEnabled: enabled, activeSources: enabled ? 5 : 0, deepSearchAvailable: false }));
       if (body.action === 'history') {
+        state.historyAuthenticated = /^Bearer /.test(req.headers().authorization ?? '');
+        if (state.historyBackendFailure) return r.fulfill(json({ error: 'UNKNOWN_ACTION' }, 400));
         if (state.historyMalformed) return r.fulfill(json({}));
         const ids = [{ id: '33333333-3333-4333-8333-333333333333', status: 'FAILED' }, { id: '22222222-2222-4222-8222-222222222222', status: 'COMPLETE' }];
         if (state.started) ids.unshift({ id: '11111111-1111-4111-8111-111111111111', status: resumeStatus ?? 'COMPLETE' });
-        return r.fulfill(json({ page: body.page ?? 1, hasMore: false, items: ids.map(({ id, status }) => ({ id, status, brief: SEARCH_BRIEF, createdAt: new Date().toISOString(), completedAt: new Date().toISOString(), uniqueProperties: status === 'FAILED' ? 0 : output.properties.length, strongMatches: status === 'FAILED' ? 0 : output.stats.strongMatches, sourcesTotal: 5, sourcesTerminal: 5, rawListings: output.stats.raw })) }));
+        return r.fulfill(json({ page: body.page ?? 1, hasMore: false, items: ids.map(({ id, status }) => ({ id, status, brief: SEARCH_BRIEF, createdAt: new Date().toISOString(), completedAt: new Date().toISOString(), uniqueProperties: status === 'FAILED' ? null : output.properties.length, strongMatches: status === 'FAILED' ? null : output.stats.strongMatches, sourcesTotal: 5, sourcesTerminal: 5, rawListings: output.stats.raw })) }));
       }
       if (body.action === 'understand' && rateLimited) {
         return r.fulfill({ ...json({ error: 'RATE_LIMIT_EXCEEDED', code: 'RATE_LIMIT_EXCEEDED', retryAfterSeconds: 120 }, 429), headers: { 'access-control-allow-origin': '*', 'retry-after': '120' } });

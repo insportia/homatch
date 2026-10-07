@@ -1,0 +1,623 @@
+{
+  "acceptanceRun": "2026-10-07T16-39-36-205Z",
+  "locations": {
+    "visibleCities": [
+      {
+        "cityId": 95,
+        "cityTitle": "თბილისი",
+        "latitude": null,
+        "longitude": null,
+        "districts": [
+          {
+            "districtId": 3,
+            "districtTitle": "ვაკე-საბურთალო",
+            "latitude": null,
+            "longitude": null,
+            "subDistricts": [
+              {
+                "subDistrictId": 2,
+                "subDistrictTitle": "ნუცუბიძის ფერდობი",
+                "subDistrictTitleSeo": "ნუცუბიძის ფერდობზე",
+                "latitude": null,
+                "longitude": null,
+                "streets": []
+              },
+              {
+                "subDistrictId": 3,
+                "subDistrictTitle": "საბურთალო",
+                "subDistrictTitleSeo": "საბურთალოზე",
+                "latitude": 41.723691,
+                "longitude": 44.772226,
+                "streets": []
+              },
+              {
+                "subDistrictId": 4,
+                "subDistrictTitle": "სოფ. დიღომი",
+                "subDistrictTitleSeo": "სოფელ დიღომში",
+                "latitude": 41.772891,
+                "longitude": 44.73213,
+                "streets": []
+              },
+              {
+                "subDistrictId": 5,
+                "subDistrictTitle": "ვაჟა ფშაველას კვარტლები",
+                "subDistrictTitleSeo": "ვაჟა ფშაველას კვარტლებში",
+                "latitude": 41.724106,
+                "longitude": 44.731343,
+                "streets": []
+              },
+              {
+                "subDistrictId": 26,
+                "subDistrictTitle": "ლისის ტბა",
+                "subDistrictTitleSeo": "ლისის ტბაზე",
+                "latitude": 41.739297,
+                "longitude": 44.739301,
+                "streets": []
+              },
+              {
+                "subDistrictId": 27,
+                "subDistrictTitle": "კუს ტბა",
+                "subDistrictTitleSeo": "კუს ტბაზე",
+                "latitude": 41.701807,
+                "longitude": 44.754835,
+                "streets": []
+              },
+              {
+                "subDistrictId": 44,
+                "subDistrictTitle": "ბაგები",
+                "subDistrictTitleSeo": "ბაგებში",
+                "latitude": 41.707319,
+                "longitude": 44.73495,
+                "streets": []
+              },
+              {
+                "subDistrictId": 45,
+                "subDistrictTitle": "დიდი დიღომი",
+                "subDistrictTitleSeo": "დიდ დიღომში",
+                "latitude": 41.78747,
+                "longitude": 44.748962,
+                "streets": []
+              },
+              {
+                "subDistrictId": 46,
+                "subDistrictTitle": "დიღომი 1-9",
+                "subDistrictTitleSeo": "დიღომში",
+                "latitude": 41.807024,
+                "longitude": 44.777282,
+                "streets": []
+              },
+              {
+                "subDistrictId": 47,
+                "subDistrictTitle": "ვაკე",
+                "subDistrictTitleSeo": "ვაკეში",
+                "latitude": 41.708394,
+                "longitude": 44.758591,
+                "streets": []
+              },
+              {
+                "subDistrictId": 48,
+                "subDistrictTitle": "ვაშლიჯვარი",
+                "subDistrictTitleSeo": "ვაშლიჯვარში",
+                "latitude": 41.754993,
+                "longitude": 44.76547,
+                "streets": []
+              },
+              {
+                "subDistrictId": 49,
+                "subDistrictTitle": "ვეძისი",
+                "subDistrictTitleSeo": "ვეძისში",
+                "latitude": 41.732662,
+                "longitude": 44.758934,
+                "streets": []
+              },
+              {
+                "subDistrictId": 50,
+                "subDistrictTitle": "თხინვალა",
+                "subDistrictTitleSeo": "თხინვალში",
+                "latitude": 41.743684,
+                "longitude": 44.697361,
+                "streets": []
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "scenarios": [
+    {
+      "name": "A-sale-apartment",
+      "criteria": {
+        "transactionType": "sale",
+        "propertyType": "apartment",
+        "city": 95,
+        "districts": [
+          3
+        ],
+        "priceMaxUsd": 200000,
+        "areaMinSqm": 70
+      },
+      "expected": {
+        "area": 105,
+        "priceUsd": 135000,
+        "sourceListingId": "35611698"
+      },
+      "list": {
+        "applicationId": 35611698,
+        "detailUrl": "iyideba-3-otaxiani-bina-did-dighomshi-35611698",
+        "title": "იყიდება 3 ოთახიანი ბინა დიდ დიღომში",
+        "price": {
+          "priceGeo": 351000,
+          "unitPriceGeo": 3350,
+          "priceUsd": 135000,
+          "unitPriceUsd": 1290,
+          "currencyType": 2
+        },
+        "address": {
+          "municipalityId": null,
+          "municipalityTitle": null,
+          "cityId": 95,
+          "cityTitle": "თბილისი",
+          "districtId": 3,
+          "districtTitle": "ვაკე-საბურთალო",
+          "subdistrictId": 45,
+          "subdistrictTitle": "დიდი დიღომი",
+          "streetId": 1137,
+          "streetTitle": "მირიან მეფის ქ. ",
+          "streetNumber": null
+        },
+        "totalArea": 105,
+        "numberOfBedrooms": 2,
+        "floorNumber": "6",
+        "totalAmountOfFloor": 14,
+        "type": 5,
+        "dealType": 4,
+        "appImages": [
+          {
+            "fileName": "https://static.ss.ge/20260525/3_2bce0ce7-1cc9-4621-b36a-78addabd6470_Thumb.jpg",
+            "isMain": true,
+            "is360": false,
+            "orderNo": 0,
+            "imageType": 0
+          },
+          {
+            "fileName": "https://static.ss.ge/20260525/5_6e77edab-4e56-4c41-8cf5-25db3fe968af_Thumb.jpg",
+            "isMain": false,
+            "is360": false,
+            "orderNo": 1,
+            "imageType": 0
+          }
+        ]
+      },
+      "detail": {
+        "applicationId": 35611698,
+        "address": {
+          "municipalityId": null,
+          "municipalityTitle": null,
+          "cityId": 95,
+          "cityTitle": "თბილისი",
+          "districtId": 3,
+          "districtTitle": "ვაკე-საბურთალო",
+          "subdistrictId": 45,
+          "subdistrictTitle": "დიდი დიღომი",
+          "streetId": 1137,
+          "streetTitle": "მირიან მეფის ქ. ",
+          "streetNumber": null
+        },
+        "price": {
+          "priceGeo": 351000,
+          "unitPriceGeo": 3350,
+          "priceUsd": 135000,
+          "unitPriceUsd": 1290,
+          "currencyType": 2
+        },
+        "appImages": [
+          {
+            "fileName": "https://static.ss.ge/20260525/2_a0357dcb-0457-49d7-b4ff-362bae788cf3.jpg",
+            "isMain": false,
+            "is360": false,
+            "orderNo": 7,
+            "imageType": 0,
+            "fileNameThumb": "https://static.ss.ge/20260525/2_a0357dcb-0457-49d7-b4ff-362bae788cf3_Thumb.jpg"
+          },
+          {
+            "fileName": "https://static.ss.ge/20260525/14_9a089d16-5124-4c13-b202-a5dd8ca10e6b.jpg",
+            "isMain": false,
+            "is360": false,
+            "orderNo": 10,
+            "imageType": 0,
+            "fileNameThumb": "https://static.ss.ge/20260525/14_9a089d16-5124-4c13-b202-a5dd8ca10e6b_Thumb.jpg"
+          },
+          {
+            "fileName": "https://static.ss.ge/20260525/8_d5a88424-614e-4b31-9fc6-b8d4a42e5ed8.jpg",
+            "isMain": false,
+            "is360": false,
+            "orderNo": 9,
+            "imageType": 0,
+            "fileNameThumb": "https://static.ss.ge/20260525/8_d5a88424-614e-4b31-9fc6-b8d4a42e5ed8_Thumb.jpg"
+          },
+          {
+            "fileName": "https://static.ss.ge/20260525/9_0d662042-6705-43ab-9a24-5dd4414cbc03.jpg",
+            "isMain": false,
+            "is360": false,
+            "orderNo": 8,
+            "imageType": 0,
+            "fileNameThumb": "https://static.ss.ge/20260525/9_0d662042-6705-43ab-9a24-5dd4414cbc03_Thumb.jpg"
+          },
+          {
+            "fileName": "https://static.ss.ge/20260525/3_2bce0ce7-1cc9-4621-b36a-78addabd6470.jpg",
+            "isMain": false,
+            "is360": false,
+            "orderNo": 0,
+            "imageType": 0,
+            "fileNameThumb": "https://static.ss.ge/20260525/3_2bce0ce7-1cc9-4621-b36a-78addabd6470_Thumb.jpg"
+          },
+          {
+            "fileName": "https://static.ss.ge/20260525/10_1d7078e3-4e32-4130-aa2d-784e19ed4751.jpg",
+            "isMain": false,
+            "is360": false,
+            "orderNo": 12,
+            "imageType": 0,
+            "fileNameThumb": "https://static.ss.ge/20260525/10_1d7078e3-4e32-4130-aa2d-784e19ed4751_Thumb.jpg"
+          },
+          {
+            "fileName": "https://static.ss.ge/20260525/15_521cb07a-73c3-40cb-bbaa-90c1d37da369.jpg",
+            "isMain": false,
+            "is360": false,
+            "orderNo": 13,
+            "imageType": 0,
+            "fileNameThumb": "https://static.ss.ge/20260525/15_521cb07a-73c3-40cb-bbaa-90c1d37da369_Thumb.jpg"
+          },
+          {
+            "fileName": "https://static.ss.ge/20260525/2_7b14b1ab-4e40-4bd9-90df-7ecdb3e95d79.jpg",
+            "isMain": false,
+            "is360": false,
+            "orderNo": 14,
+            "imageType": 0,
+            "fileNameThumb": "https://static.ss.ge/20260525/2_7b14b1ab-4e40-4bd9-90df-7ecdb3e95d79_Thumb.jpg"
+          },
+          {
+            "fileName": "https://static.ss.ge/20260525/15_b5474dfb-5c34-4860-bd95-2d852cc8cb22.jpg",
+            "isMain": false,
+            "is360": false,
+            "orderNo": 5,
+            "imageType": 0,
+            "fileNameThumb": "https://static.ss.ge/20260525/15_b5474dfb-5c34-4860-bd95-2d852cc8cb22_Thumb.jpg"
+          },
+          {
+            "fileName": "https://static.ss.ge/20260525/1_ce719e25-04e3-485e-930e-69aac6ede918.jpg",
+            "isMain": false,
+            "is360": false,
+            "orderNo": 4,
+            "imageType": 0,
+            "fileNameThumb": "https://static.ss.ge/20260525/1_ce719e25-04e3-485e-930e-69aac6ede918_Thumb.jpg"
+          },
+          {
+            "fileName": "https://static.ss.ge/20260525/4_2c24ebf8-bbfc-4611-9fe4-a6644f80ebb8.jpg",
+            "isMain": false,
+            "is360": false,
+            "orderNo": 11,
+            "imageType": 0,
+            "fileNameThumb": "https://static.ss.ge/20260525/4_2c24ebf8-bbfc-4611-9fe4-a6644f80ebb8_Thumb.jpg"
+          },
+          {
+            "fileName": "https://static.ss.ge/20260525/2_853cfb28-4b7f-457e-92b0-41fa419ec05e.jpg",
+            "isMain": false,
+            "is360": false,
+            "orderNo": 6,
+            "imageType": 0,
+            "fileNameThumb": "https://static.ss.ge/20260525/2_853cfb28-4b7f-457e-92b0-41fa419ec05e_Thumb.jpg"
+          },
+          {
+            "fileName": "https://static.ss.ge/20260525/5_6e77edab-4e56-4c41-8cf5-25db3fe968af.jpg",
+            "isMain": false,
+            "is360": false,
+            "orderNo": 1,
+            "imageType": 0,
+            "fileNameThumb": "https://static.ss.ge/20260525/5_6e77edab-4e56-4c41-8cf5-25db3fe968af_Thumb.jpg"
+          },
+          {
+            "fileName": "https://static.ss.ge/20260525/14_c5ce4b1b-f4df-4fee-a0db-6d02098860aa.jpg",
+            "isMain": false,
+            "is360": false,
+            "orderNo": 3,
+            "imageType": 0,
+            "fileNameThumb": "https://static.ss.ge/20260525/14_c5ce4b1b-f4df-4fee-a0db-6d02098860aa_Thumb.jpg"
+          },
+          {
+            "fileName": "https://static.ss.ge/20260525/17_cac57c91-a6a2-4d0d-9e03-41c572114069.jpg",
+            "isMain": false,
+            "is360": false,
+            "orderNo": 2,
+            "imageType": 0,
+            "fileNameThumb": "https://static.ss.ge/20260525/17_cac57c91-a6a2-4d0d-9e03-41c572114069_Thumb.jpg"
+          }
+        ],
+        "title": "იყიდება 3 ოთახიანი ბინა დიდ დიღომში",
+        "description": {
+          "ka": "იყიდება სამ ოთახიანი 105 კვ.მ. ბინა მირიან მეფის გამზირზე, არ მისული იმედის კლინიკამდე. ახალი გარემონტებული. ავეჯითა და ტექნიკით."
+        },
+        "realEstateTypeId": 5,
+        "realEstateDealTypeId": 4,
+        "areaOfHouse": "",
+        "areaOfYard": "",
+        "totalArea": "105",
+        "bedrooms": 2,
+        "floor": "6",
+        "floors": "14",
+        "rooms": "3",
+        "furniture": true,
+        "elevator": true,
+        "balcony": true,
+        "orderDate": "2026-10-07T16:54:20.5013536+04:00",
+        "locationLatitude": null,
+        "locationLongitude": null,
+        "isInactiveApplication": false
+      },
+      "proof": {
+        "status": 200,
+        "url": "https://home.ss.ge/ka/udzravi-qoneba/iyideba-3-otaxiani-bina-did-dighomshi-35611698",
+        "finalUrl": "https://home.ss.ge/ka/udzravi-qoneba/iyideba-3-otaxiani-bina-did-dighomshi-35611698",
+        "responseHeaders": {
+          "cache-control": "private, no-cache, no-store, max-age=0, must-revalidate",
+          "cf-cache-status": "DYNAMIC",
+          "cf-ray": "a46e57d658d54e68-TBS",
+          "connection": "keep-alive",
+          "content-encoding": "br",
+          "content-type": "text/html; charset=utf-8",
+          "date": "Wed, 07 Oct 2026 16:39:39 GMT",
+          "server": "cloudflare",
+          "set-cookie": "[REDACTED]",
+          "strict-transport-security": "max-age=63072000",
+          "transfer-encoding": "chunked",
+          "vary": "Accept-Encoding",
+          "x-powered-by": "Next.js"
+        },
+        "passed": true,
+        "route": "/real-estate/[slug]",
+        "anonymousSession": true,
+        "canonicalUrl": "https://home.ss.ge/ka/udzravi-qoneba/iyideba-3-otaxiani-bina-did-dighomshi-35611698",
+        "pagePropKeys": [
+          "locations",
+          "appLocale",
+          "hiddenApplications",
+          "hiddenUsers",
+          "userProfile",
+          "hadMembershipInPast",
+          "premiumPrice",
+          "initialAgentInfoData",
+          "applicationData",
+          "hideHeaderMobile"
+        ],
+        "propertyObjects": [
+          {
+            "pointer": "$.pageProps.applicationData",
+            "applicationId": "35611698",
+            "title": "იყიდება 3 ოთახიანი ბინა დიდ დიღომში",
+            "realEstateTypeId": 5
+          }
+        ],
+        "identityPassed": true
+      }
+    },
+    {
+      "name": "B-monthly-rent-house",
+      "criteria": {
+        "transactionType": "monthly_rent",
+        "propertyType": "house",
+        "city": 95,
+        "districts": [
+          3
+        ],
+        "priceMaxUsd": 5000,
+        "areaMinSqm": 100
+      },
+      "expected": {
+        "area": 180,
+        "priceUsd": 1600,
+        "sourceListingId": "36821906"
+      },
+      "list": {
+        "applicationId": 36821906,
+        "detailUrl": "qiravdeba-kerdzo-saxli-lisis-tbaze-36821906",
+        "title": "ქირავდება 4 ოთახიანი კერძო სახლი ლისის ტბაზე",
+        "price": {
+          "priceGeo": 4160,
+          "unitPriceGeo": 23,
+          "priceUsd": 1600,
+          "unitPriceUsd": 9,
+          "currencyType": 2
+        },
+        "address": {
+          "municipalityId": null,
+          "municipalityTitle": null,
+          "cityId": 95,
+          "cityTitle": "თბილისი",
+          "districtId": 3,
+          "districtTitle": "ვაკე-საბურთალო",
+          "subdistrictId": 26,
+          "subdistrictTitle": "ლისის ტბა",
+          "streetId": 2625,
+          "streetTitle": "კვაჭაძის ქ.",
+          "streetNumber": ""
+        },
+        "totalArea": 180,
+        "numberOfBedrooms": 2,
+        "floorNumber": "",
+        "totalAmountOfFloor": null,
+        "type": 4,
+        "dealType": 1,
+        "appImages": [
+          {
+            "fileName": "https://static.ss.ge/20260924/0_a009e81d-d94f-469e-8c56-88be7b0bba4c_Thumb.jpg",
+            "isMain": true,
+            "is360": false,
+            "orderNo": 0,
+            "imageType": 0
+          },
+          {
+            "fileName": "https://static.ss.ge/20260924/4_1491b774-402d-4553-b299-308ac63dcd56_Thumb.jpg",
+            "isMain": false,
+            "is360": false,
+            "orderNo": 1,
+            "imageType": 0
+          }
+        ]
+      },
+      "detail": {
+        "applicationId": 36821906,
+        "address": {
+          "municipalityId": null,
+          "municipalityTitle": null,
+          "cityId": 95,
+          "cityTitle": "თბილისი",
+          "districtId": 3,
+          "districtTitle": "ვაკე-საბურთალო",
+          "subdistrictId": 26,
+          "subdistrictTitle": "ლისის ტბა",
+          "streetId": 2625,
+          "streetTitle": "კვაჭაძის ქ.",
+          "streetNumber": ""
+        },
+        "price": {
+          "priceGeo": 4160,
+          "unitPriceGeo": 23,
+          "priceUsd": 1600,
+          "unitPriceUsd": 9,
+          "currencyType": 2
+        },
+        "appImages": [
+          {
+            "fileName": "https://static.ss.ge/20260924/4_1491b774-402d-4553-b299-308ac63dcd56.jpg",
+            "isMain": false,
+            "is360": false,
+            "orderNo": 1,
+            "imageType": 0,
+            "fileNameThumb": "https://static.ss.ge/20260924/4_1491b774-402d-4553-b299-308ac63dcd56_Thumb.jpg"
+          },
+          {
+            "fileName": "https://static.ss.ge/20260924/6_887f59f7-24a3-4299-9b9f-017c476d9c8c.jpg",
+            "isMain": false,
+            "is360": false,
+            "orderNo": 3,
+            "imageType": 0,
+            "fileNameThumb": "https://static.ss.ge/20260924/6_887f59f7-24a3-4299-9b9f-017c476d9c8c_Thumb.jpg"
+          },
+          {
+            "fileName": "https://static.ss.ge/20260924/3_a22d6b8d-e1c5-4c82-a885-73a4f46bfbdf.jpg",
+            "isMain": false,
+            "is360": false,
+            "orderNo": 7,
+            "imageType": 0,
+            "fileNameThumb": "https://static.ss.ge/20260924/3_a22d6b8d-e1c5-4c82-a885-73a4f46bfbdf_Thumb.jpg"
+          },
+          {
+            "fileName": "https://static.ss.ge/20260924/0_a009e81d-d94f-469e-8c56-88be7b0bba4c.jpg",
+            "isMain": false,
+            "is360": false,
+            "orderNo": 0,
+            "imageType": 0,
+            "fileNameThumb": "https://static.ss.ge/20260924/0_a009e81d-d94f-469e-8c56-88be7b0bba4c_Thumb.jpg"
+          },
+          {
+            "fileName": "https://static.ss.ge/20260924/13_f88fc13e-661e-4af5-8080-191e26537ad8.jpg",
+            "isMain": false,
+            "is360": false,
+            "orderNo": 2,
+            "imageType": 0,
+            "fileNameThumb": "https://static.ss.ge/20260924/13_f88fc13e-661e-4af5-8080-191e26537ad8_Thumb.jpg"
+          },
+          {
+            "fileName": "https://static.ss.ge/20260924/15_b642b66f-d8a5-4d27-8a6b-91c25abee106.jpg",
+            "isMain": false,
+            "is360": false,
+            "orderNo": 6,
+            "imageType": 0,
+            "fileNameThumb": "https://static.ss.ge/20260924/15_b642b66f-d8a5-4d27-8a6b-91c25abee106_Thumb.jpg"
+          },
+          {
+            "fileName": "https://static.ss.ge/20260924/14_bea2cd52-d8e8-4c8b-824a-722a641323b5.jpg",
+            "isMain": false,
+            "is360": false,
+            "orderNo": 4,
+            "imageType": 0,
+            "fileNameThumb": "https://static.ss.ge/20260924/14_bea2cd52-d8e8-4c8b-824a-722a641323b5_Thumb.jpg"
+          },
+          {
+            "fileName": "https://static.ss.ge/20260924/2_a11166f7-20a8-4f9f-a646-31a8c0f24787.jpg",
+            "isMain": false,
+            "is360": false,
+            "orderNo": 5,
+            "imageType": 0,
+            "fileNameThumb": "https://static.ss.ge/20260924/2_a11166f7-20a8-4f9f-a646-31a8c0f24787_Thumb.jpg"
+          }
+        ],
+        "title": "ქირავდება 4 ოთახიანი კერძო სახლი ლისის ტბაზე",
+        "description": {
+          "ka": "‌✨ ქირავდება პრემიუმ კლასის სახლი ლისის ტბასთან, ბრიტანული საერთაშორისო სკოლის გვერდით.\n\nუძრავი ქონება გამოირჩევა ხარისხიანი რემონტითა და გემოვნებით მოწყობილი ინტერიერით.\n\n🏠 სახლს აქვს:\n\nორი იზოლირებული და კომფორტული საძინებელი\n\nცალკე საგარდერობე სივრცე\n\nსრულად აღჭურვილია თანამედროვე ავეჯითა და ტექნიკით\n\nგამწვანებული, კეთილმოწყობილი ეზო მშვიდ და უსაფრთხო გარემოში\n\n📍ადგილმდებარეობა იდეალურია როგორც ოჯახისთვის, ასევე გრძელვადიანი დასვენებისთვის — ბუნებასთან სიახლოვესა და ქალაქთან კომფორტულ წვდომაში.\n\n📞 დამატებითი ინფორმაციისთვის დაგვიკავშირდით: 598 157 144 — ლიკა"
+        },
+        "realEstateTypeId": 4,
+        "realEstateDealTypeId": 1,
+        "areaOfHouse": "180",
+        "areaOfYard": "320",
+        "totalArea": "",
+        "bedrooms": 2,
+        "floor": "",
+        "floors": null,
+        "rooms": "4",
+        "furniture": true,
+        "elevator": false,
+        "balcony": true,
+        "orderDate": "2026-10-07T18:34:57.0519264+04:00",
+        "locationLatitude": 41.74375216102405,
+        "locationLongitude": 44.72209981174993,
+        "isInactiveApplication": false
+      },
+      "proof": {
+        "status": 200,
+        "url": "https://home.ss.ge/ka/udzravi-qoneba/qiravdeba-kerdzo-saxli-lisis-tbaze-36821906",
+        "finalUrl": "https://home.ss.ge/ka/udzravi-qoneba/qiravdeba-kerdzo-saxli-lisis-tbaze-36821906",
+        "responseHeaders": {
+          "cache-control": "private, no-cache, no-store, max-age=0, must-revalidate",
+          "cf-cache-status": "DYNAMIC",
+          "cf-ray": "a46e57e94a7d4e68-TBS",
+          "connection": "keep-alive",
+          "content-encoding": "br",
+          "content-type": "text/html; charset=utf-8",
+          "date": "Wed, 07 Oct 2026 16:39:42 GMT",
+          "server": "cloudflare",
+          "set-cookie": "[REDACTED]",
+          "strict-transport-security": "max-age=63072000",
+          "transfer-encoding": "chunked",
+          "vary": "Accept-Encoding",
+          "x-powered-by": "Next.js"
+        },
+        "passed": true,
+        "route": "/real-estate/[slug]",
+        "anonymousSession": true,
+        "canonicalUrl": "https://home.ss.ge/ka/udzravi-qoneba/qiravdeba-kerdzo-saxli-lisis-tbaze-36821906",
+        "pagePropKeys": [
+          "locations",
+          "appLocale",
+          "hiddenApplications",
+          "hiddenUsers",
+          "userProfile",
+          "hadMembershipInPast",
+          "premiumPrice",
+          "initialAgentInfoData",
+          "applicationData",
+          "hideHeaderMobile"
+        ],
+        "propertyObjects": [
+          {
+            "pointer": "$.pageProps.applicationData",
+            "applicationId": "36821906",
+            "title": "ქირავდება 4 ოთახიანი კერძო სახლი ლისის ტბაზე",
+            "realEstateTypeId": 4
+          }
+        ],
+        "identityPassed": true
+      }
+    }
+  ]
+}

@@ -133,7 +133,8 @@ Deno.serve(async (req: Request) => {
     if (action === 'history') {
       // History remains readable when acquisition is disabled. Ownership comes
       // exclusively from the authenticated profile, never from a client user id.
-      return json(await ownedSearchHistory(db, userId, body.page));
+      const history = await ownedSearchHistory(db, userId, body.page);
+      return json({ ...history, items: history.items.map((item) => ({ ...item, brief: sanitizeBrief(item.brief) })) });
     }
 
     if (!switches.enabled && (action === 'start' || action === 'understand')) return json({ error: 'MARKETPLACE_SEARCH_OFF' }, 409);
@@ -167,7 +168,7 @@ Deno.serve(async (req: Request) => {
       const brief = sanitizeBrief(body.brief);
       const readiness = evaluateReadiness(brief);
       if (readiness.state !== 'READY') return json({ error: 'SEARCH_NOT_READY', readiness }, 422);
-      if (switches.providersKilled && !switches.myhomeEnabled) return json({ error: 'SOURCES_PAUSED' }, 409);
+      if (switches.providersKilled && !switches.myhomeEnabled && !switches.ssgeEnabled) return json({ error: 'SOURCES_PAUSED' }, 409);
 
       /* NO DUPLICATE SEARCH. A reconnect, refresh or second tab that lost its idempotency key
          still reaches the customer's open search for the same request instead of a new one. */
@@ -200,7 +201,7 @@ Deno.serve(async (req: Request) => {
         timeoutMs: Number(w.timeout_ms), maxResults: Number(w.max_results), state: w.state as never, enabled: !!w.enabled, health: w.health as never,
       }));
       const eligible = eligibleWorkers(workers, request).filter((worker) => worker.workerId === 'myhome-agent'
-        ? switches.myhomeEnabled : !switches.providersKilled);
+        ? switches.myhomeEnabled : worker.workerId === 'ssge-agent' ? switches.ssgeEnabled : !switches.providersKilled);
       const now = new Date();
       const { data: search, error: searchErr } = await db.from('discovery_marketplace_searches').insert({
         id: searchId, user_id: userId, search_plan_id: plan.id, idempotency_key: key,

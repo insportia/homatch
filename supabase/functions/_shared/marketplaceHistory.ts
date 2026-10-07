@@ -1,3 +1,5 @@
+const count = (value: unknown) => typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null;
+
 /** Authenticated internal user id only; this helper never accepts a client id. */
 export async function ownedSearchHistory(db: any, userId: string, requestedPage: unknown) {
   const page = typeof requestedPage === 'number' && Number.isInteger(requestedPage)
@@ -11,9 +13,8 @@ export async function ownedSearchHistory(db: any, userId: string, requestedPage:
   const rows = data ?? [];
   return { page, hasMore: rows.length > size, items: rows.slice(0, size).map((row: any) => ({
     id: row.id, status: row.status, brief: row.brief, createdAt: row.created_at,
-    completedAt: row.completed_at, uniqueProperties: Number(row.properties_count) || 0,
-    strongMatches: Number(row.strong_matches) || 0, sourcesTotal: Number(row.workers_total) || 0,
-    sourcesTerminal: Number(row.workers_terminal) || 0,
-    rawListings: typeof row.stats?.validated === 'number' ? row.stats.validated : null,
+    completedAt: row.completed_at ?? null, uniqueProperties: count(row.properties_count),
+    strongMatches: count(row.strong_matches), sourcesTotal: count(row.workers_total),
+    sourcesTerminal: count(row.workers_terminal), rawListings: count(row.stats?.validated),
   })) };
 }

@@ -80,7 +80,7 @@ Deno.serve(async (req: Request) => {
 
     if (action === 'claim') {
       const switches = await loadMarketplaceSwitches(db);
-      if (!switches.enabled || (workerId === 'myhome-agent' ? !switches.myhomeEnabled : switches.providersKilled)) return json({ runs: [] });
+      if (!switches.enabled || (workerId === 'myhome-agent' ? !switches.myhomeEnabled : workerId === 'ssge-agent' ? !switches.ssgeEnabled : switches.providersKilled)) return json({ runs: [] });
       /* Free this worker's lapsed leases first (retry or close each run on its own), then claim
          within the per-provider and global bounds the SQL enforces atomically. */
       const { data: stale } = await db.from('discovery_marketplace_worker_runs')

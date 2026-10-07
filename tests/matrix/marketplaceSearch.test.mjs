@@ -105,12 +105,16 @@ test('hard boundaries: Verify, Meta Ads, Design Studio, AI TALK, Communications,
   }
 });
 
-test('the existing Find Property stays the default until the switch is on', () => {
+test('the existing Find Property stays the default and marketplace is explicitly requested', () => {
   const page = code('src/pages/FindPropertyPage.tsx');
-  assert.match(page, /if \(!caps\.marketplaceEnabled\) return <LegacyFindPropertyPage \/>/);
+  assert.match(page, /const marketplaceRequested = caps\.marketplaceEnabled/);
+  assert.match(page, /params\.get\('marketplace'\) === '1'/);
+  assert.match(page, /Boolean\(params\.get\('search'\)\)/, 'an existing marketplace search remains resumable');
+  assert.match(page, /if \(!marketplaceRequested\)/, 'marketplace availability must not replace the default Find Property workspace');
+  assert.match(page, /<LegacyFindPropertyPage onMarketplace=/, 'the legacy experience remains the default entry');
   assert.match(page, /result\.alsoSeenAt/, 'the legacy experience is intact');
   assert.match(code('src/services/marketplaceSearch.ts'), /return \{ marketplaceEnabled: false, activeSources: 0, deepSearchAvailable: false \}/,
-    'an unreachable service never shows the new experience');
+    'an unreachable service never exposes marketplace search');
 });
 
 test('approved Georgian copy is used verbatim', () => {

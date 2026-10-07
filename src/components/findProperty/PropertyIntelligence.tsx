@@ -4,10 +4,16 @@ import { useNavigate } from 'react-router-dom';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { safeExternalUrl } from '@/lib/safeExternalUrl';
 import { investmentHandoff, mortgageHandoff } from '@/research-core/marketplace/handoff';
-import type { PropertyView } from '@/services/marketplaceSearch';
 import type { ResultProperty } from '@/research-core/marketplace/pipeline';
-import { SELLER_KEY, advantageText, reasonText, sellerLabel } from './PropertyCard';
-import { type T, checkedAgo, num, pct, usd } from './format';
+import type { PropertyView } from '@/services/marketplaceSearch';
+import { checkedAgo, currentActivity, listingActivity, listingAgeText, num, pct, type T, usd } from './format';
+import { advantageText, reasonText, SELLER_KEY, sellerLabel } from './PropertyCard';
+import { PropertyGallery } from './PropertyGallery';
+
+function IntelligenceFrame({ children, fullPage, open, onOpenChange, isRTL }: { children: React.ReactNode; fullPage: boolean; open: boolean; onOpenChange: (o: boolean) => void; isRTL: boolean }) {
+  if (fullPage) return <article data-property-dossier className="mx-auto w-full max-w-5xl overflow-hidden rounded-2xl border border-border bg-card">{children}</article>;
+  return <Sheet open={open} onOpenChange={onOpenChange}><SheetContent side={isRTL ? 'left' : 'right'} className="hm-discovery w-full overflow-y-auto bg-background p-0 sm:max-w-xl">{children}</SheetContent></Sheet>;
+}
 
 const FACTS: Array<[keyof PropertyView['facts'], string]> = [
   ['areaSqm', 'mps_fact_area'], ['rooms', 'mps_fact_rooms'], ['bedrooms', 'mps_fact_bedrooms'], ['bathrooms', 'mps_fact_bathrooms'],
@@ -29,9 +35,11 @@ function factValue(k: keyof PropertyView['facts'], v: unknown, t: T, p: Property
  * evidence in progressive layers. Every listing keeps its exact, clickable
  * source link; public contacts are shown as published.
  */
-export function PropertyIntelligence({ t, p, open, onOpenChange, isRTL, propertyType, onCompare, compareSelected }: {
+export function PropertyIntelligence({ t, p, open, onOpenChange, isRTL, propertyType, onCompare, compareSelected, fullPage = false, budgetMaxUsd }: {
   t: T; p: PropertyView | null; open: boolean; onOpenChange: (o: boolean) => void; isRTL: boolean; propertyType: string | null;
   onCompare: () => void; compareSelected: boolean;
+  fullPage?: boolean;
+  budgetMaxUsd?: number | null;
 }) {
   const navigate = useNavigate();
   const listingsRef = useRef<HTMLDivElement>(null);
@@ -41,21 +49,15 @@ export function PropertyIntelligence({ t, p, open, onOpenChange, isRTL, property
   const place = [f.district, f.city].filter(Boolean).join(', ');
   const mortgage = mortgageHandoff(p);
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side={isRTL ? 'left' : 'right'} className="hm-discovery w-full overflow-y-auto bg-background p-0 sm:max-w-xl">
-        <div className="relative aspect-[16/9] w-full bg-[#0C1119]">
-          {p.images[0] ? <img src={p.images[0]} alt="" referrerPolicy="no-referrer" className="h-full w-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : null}
-        </div>
-        {p.images.length > 1 ? (
-          <div className="flex gap-2 overflow-x-auto px-5 pt-3" aria-label={t('mps_photos')}>
-            {p.images.slice(1, 9).map((src) => <img key={src} src={src} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-16 w-24 shrink-0 rounded-lg object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />)}
-          </div>
-        ) : null}
+    <IntelligenceFrame fullPage={fullPage} open={open} onOpenChange={onOpenChange} isRTL={isRTL}>
+        <PropertyGallery images={p.images} t={t} full />
         <div className="space-y-6 p-5 sm:p-6">
-          <SheetHeader className="space-y-1 text-start">
-            <SheetTitle className="font-display text-3xl font-semibold tracking-[-0.02em]">{usd(f.priceUsd)}</SheetTitle>
-            <SheetDescription dir="auto" className="text-[15px]">{place || p.title}</SheetDescription>
-          </SheetHeader>
+          {fullPage ? <header className="space-y-1 text-start"><h1 className="font-display text-3xl font-semibold tracking-[-0.02em]">{usd(f.priceUsd)}</h1><p dir="auto" className="text-[15px] text-muted-foreground">{place || p.title}</p></header> : <SheetHeader className="space-y-1 text-start"><SheetTitle className="font-display text-3xl font-semibold">{usd(f.priceUsd)}</SheetTitle><SheetDescription dir="auto">{place || p.title}</SheetDescription></SheetHeader>}
+          <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
+            {f.pricePerSqmUsd ? <p>{t('mps_per_sqm', { v: usd(f.pricePerSqmUsd) })}</p> : null}
+            <p>{t('fpw_listing_count', { n: p.listings.length })} · {t('mps_sources_n', { n: p.sourceCount })}</p>
+            <p>{listingAgeText(currentActivity(p), t)}</p>
+          </div>
 
           <dl className="grid grid-cols-2 gap-2">
             {FACTS.map(([k, label]) => {
@@ -87,8 +89,8 @@ export function PropertyIntelligence({ t, p, open, onOpenChange, isRTL, property
                   <li key={line} className="text-[15px] text-foreground/90">· {line}</li>
                 ))}
               </ul>
-              {p.upgrade && p.upgrade.extraPriceUsd !== null ? (
-                <p className="text-sm text-muted-foreground">{t('mps_upgrade_price_diff')}: {usd(p.upgrade.extraPriceUsd)}{p.upgrade.overMaxPct !== null ? ` · ${t('mps_upgrade_over', { pct: pct(p.upgrade.overMaxPct) })}` : ''}</p>
+              {p.upgrade && budgetMaxUsd != null && f.priceUsd != null && p.upgrade.overMaxPct !== null ? (
+                <p className="text-sm text-muted-foreground">{t('fpw_over_budget', { amount: usd(Math.max(0, f.priceUsd - budgetMaxUsd)), pct: pct(p.upgrade.overMaxPct) })}</p>
               ) : null}
               {(p.tradeoffs ?? []).length ? (
                 <ul className="space-y-1">
@@ -117,7 +119,7 @@ export function PropertyIntelligence({ t, p, open, onOpenChange, isRTL, property
                 <AlertTriangle className="h-5 w-5 text-[hsl(var(--gold-ink))]" aria-hidden="true" />{t('mps_price_diff_title')}
               </h3>
               <p className="text-sm text-foreground/85">{t('mps_price_diff_body')}</p>
-              <dl className="grid grid-cols-3 gap-2 text-center">
+              <dl className="grid gap-2 text-center sm:grid-cols-3">
                 <div className="rounded-xl bg-card p-2.5"><dt className="text-xs text-muted-foreground">{t('mps_price_lowest')}</dt><dd className="font-semibold">{usd(d.lowestUsd)}</dd></div>
                 <div className="rounded-xl bg-card p-2.5"><dt className="text-xs text-muted-foreground">{t('mps_price_highest')}</dt><dd className="font-semibold">{usd(d.highestUsd)}</dd></div>
                 <div className="rounded-xl bg-card p-2.5"><dt className="text-xs text-muted-foreground">{t('mps_price_difference')}</dt><dd className="font-semibold">{usd(d.differenceUsd)} · {pct(d.differencePct)}</dd></div>
@@ -144,7 +146,8 @@ export function PropertyIntelligence({ t, p, open, onOpenChange, isRTL, property
                       <p className="font-display text-lg font-semibold">{usd(l.priceUsd)}</p>
                     </div>
                     <div className="flex flex-wrap gap-2 text-xs">
-                      <span className="rounded-full border border-border px-2.5 py-1">{sellerLabel(l.seller, t)}</span>
+                      {l.seller.classification !== 'UNKNOWN' ? <span className="rounded-full border border-border px-2.5 py-1">{sellerLabel(l.seller, t)}</span> : null}
+                      <span className="text-muted-foreground">{listingAgeText(listingActivity(l.publishedAt, l.updatedAt), t)}</span>
                       {checked ? <span className="rounded-full border border-border px-2.5 py-1 text-muted-foreground">{checked}</span> : null}
                       {l.isLowest && d?.significant ? <span className="rounded-full bg-[hsl(var(--gold)/0.15)] px-2.5 py-1 font-medium">{t('mps_price_lowest')}</span> : null}
                       {l.isHighest && d?.significant ? <span className="rounded-full border border-dashed border-border px-2.5 py-1">{t('mps_price_higher')}</span> : null}
@@ -187,7 +190,6 @@ export function PropertyIntelligence({ t, p, open, onOpenChange, isRTL, property
             </button>
           </section>
         </div>
-      </SheetContent>
-    </Sheet>
+    </IntelligenceFrame>
   );
 }

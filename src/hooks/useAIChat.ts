@@ -1,14 +1,23 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { sendStreamRequest } from '@/lib/sse';
-import { supabase } from '@/db/supabase';
-import { ensureAnonymousSession } from '@/services/anonymousSession';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { parseSuggestedReplies, type SuggestedReply } from '@/lib/ai/suggestedReplies';
+import { supabase } from '@/db/supabase';
 import { parseServiceActions, type ServiceAction } from '@/lib/ai/serviceActions';
+import { parseSuggestedReplies, type SuggestedReply } from '@/lib/ai/suggestedReplies';
+import { sendStreamRequest } from '@/lib/sse';
+import { ensureAnonymousSession } from '@/services/anonymousSession';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+const PROPERTY_RETRY_KEY = 'homatch.propertyChat.pendingTurn.v1';
+type PropertyRetry = { scope: string; text: string; id: string };
+function readPropertyRetry(): PropertyRetry | null {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(PROPERTY_RETRY_KEY) ?? 'null');
+    return value && typeof value.scope === 'string' && typeof value.text === 'string' && typeof value.id === 'string'
+      ? value as PropertyRetry : null;
+  } catch { return null; }
+}
 
 export interface AIMessage {
   id: string;
@@ -35,6 +44,10 @@ export interface ChatBilling {
 }
 
 export function useAIChat() {
+  // Property analysis keeps an ambiguous failed turn's reservation identity.
+  // A successful answer or a deliberately different question starts a new turn.
+  const propertyRetry = useRef<PropertyRetry | null | undefined>(undefined);
+  if (propertyRetry.current === undefined) propertyRetry.current = readPropertyRetry();
   const { lang, t } = useLanguage();
   const [messages, setMessages] = useState<AIMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
@@ -70,6 +83,10 @@ export function useAIChat() {
   }, []);
 
   const loadConversation = useCallback(async (convId: string) => {
+    const { data: conversation } = await supabase.from('ai_conversations').select('context').eq('id', convId).maybeSingle();
+    const saved = conversation?.context as Record<string, unknown> | null;
+    if (saved?.surface === 'find-property') setPageContext({ type: 'property', data: saved });
+    else setPageContext((current) => current.data?.surface === 'find-property' ? { type: 'general' } : current);
     const { data } = await supabase.from('ai_messages').select('id, role, content, created_at').eq('conversation_id', convId).order('created_at', { ascending: true });
     if (data) {
       setMessages(data.map(m => ({
@@ -134,7 +151,15 @@ export function useAIChat() {
      * the message text: asking the same question twice on purpose is
      * two turns and should be billed twice.
      */
-    const interactionId = crypto.randomUUID();
+    const propertyScope = pageContext.data?.surface === 'find-property'
+      ? `${pageContext.data.searchId}:${pageContext.data.propertyKey}:${convId}` : null;
+    const retry = propertyRetry.current;
+    const interactionId = propertyScope && retry?.scope === propertyScope && retry.text === userMsg.content
+      ? retry.id : crypto.randomUUID();
+    if (propertyScope) {
+      propertyRetry.current = { scope: propertyScope, text: userMsg.content, id: interactionId };
+      try { sessionStorage.setItem(PROPERTY_RETRY_KEY, JSON.stringify(propertyRetry.current)); } catch { /* in-memory retry identity remains */ }
+    }
     setMessages(prev => [...prev, userMsg]);
     setStreaming(true);
     setStreamContent('');
@@ -230,6 +255,10 @@ export function useAIChat() {
         } catch { /* skip incomplete frames */ }
       },
       onComplete: async () => {
+        if (propertyRetry.current?.id === interactionId) {
+          propertyRetry.current = null;
+          try { if (readPropertyRetry()?.id === interactionId) sessionStorage.removeItem(PROPERTY_RETRY_KEY); } catch { /* storage unavailable */ }
+        }
         const assistantMsg: AIMessage = { id: crypto.randomUUID(), role: 'assistant', content: accumulated, createdAt: new Date() };
         setMessages(prev => [...prev, assistantMsg]);
         setStreamContent('');
@@ -260,6 +289,17 @@ export function useAIChat() {
           try {
             const data = await httpErr.response.clone().json();
             if (data?.error && typeof data.error === 'string') message = data.error;
+            if (propertyScope && data?.code === 'PROPERTY_AI_TURN_SETTLED' && convId) {
+              await loadConversation(convId);
+              propertyRetry.current = null;
+              try { sessionStorage.removeItem(PROPERTY_RETRY_KEY); } catch { /* storage unavailable */ }
+              return;
+            }
+            if (propertyScope && data?.code === 'PROPERTY_AI_TURN_FAILED') {
+              propertyRetry.current = null;
+              try { sessionStorage.removeItem(PROPERTY_RETRY_KEY); } catch { /* storage unavailable */ }
+            }
+            if (propertyScope) message = t(data?.code === 'PROPERTY_AI_TURN_PENDING' ? 'fpw_ai_pending' : 'general_error');
             if (data?.code === 'INSUFFICIENT_CREDITS') {
               /* Not an error either, and emphatically not a toast that
                  throws away what they typed. The turn is rolled back,
@@ -289,7 +329,7 @@ export function useAIChat() {
       },
       signal: abortRef.current.signal,
     });
-  }, [streaming, activeConvId, messages, pageContext, newConversation, loadConversations, lang, t]);
+  }, [streaming, activeConvId, messages, pageContext, newConversation, loadConversations, loadConversation, lang, t]);
 
   const cancelStream = useCallback(() => { abortRef.current?.abort(); setStreaming(false); setStreamContent(''); }, []);
   /* SIGNING IN MID-CONVERSATION.
@@ -315,5 +355,7 @@ export function useAIChat() {
     messages, streaming, streamContent, conversations, activeConvId, pageContext, setPageContext,
     sendMessage, cancelStream, resetChat, loadConversations, loadConversation, newConversation,
     anonLimitReached, suggestedReplies, suggestedActions, lastWebChecked, lastSources, lastBilling, insufficientCredits,
+    pendingPropertyQuestion: propertyRetry.current?.scope === `${pageContext.data?.searchId}:${pageContext.data?.propertyKey}:${activeConvId}`
+      ? propertyRetry.current.text : null,
   };
 }

@@ -19,6 +19,9 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { anonSessionUsable, anonTokenPlausible, sha256Hex } from '../../../src/auth/anonymousSessionServer.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { marketplacePropertyContext } from '../_shared/marketplacePropertyContext.ts';
+import { resultCatalogue } from '../_shared/marketplaceCatalogue.ts';
+import { claimPropertyTurn } from '../_shared/marketplacePropertyTurn.ts';
 import { resolveLocaleFromBody, languageDirective, type Locale } from '../_shared/locale.ts';
 import { HOMATCH_AI_IDENTITY } from '../_shared/aiIdentity.ts';
 import {
@@ -206,12 +209,20 @@ serve(async (req) => {
   if (conversationId) {
     // Scoped by OWNER either way, so a conversation id is never enough on its
     // own — the same rule for an account and for an anonymous session.
-    const q = sb.from('ai_conversations').select('id').eq('id', conversationId);
+    const q = sb.from('ai_conversations').select('id,context').eq('id', conversationId);
     const { data: c } = await (anonSession
       ? q.eq('anon_session_id', anonSession.id)
       : q.eq('user_id', user!.id)
     ).maybeSingle();
     if (!c) return json({ error: 'Conversation not found' }, 404);
+    if (c.context?.surface === 'find-property' && (body.context?.surface !== 'find-property'
+      || body.context?.searchId !== c.context.searchId || body.context?.propertyKey !== c.context.propertyKey)) {
+      return json({ error: 'Property conversation scope mismatch' }, 409);
+    }
+    if (body.context?.surface === 'find-property' && (c.context?.surface !== 'find-property'
+      || body.context?.searchId !== c.context.searchId || body.context?.propertyKey !== c.context.propertyKey)) {
+      return json({ error: 'Property conversation scope mismatch' }, 409);
+    }
   } else if (anonSession) {
     // An anonymous visitor cannot create a conversation themselves — RLS gives
     // them no access to the table — so the first message creates it here,
@@ -233,6 +244,19 @@ serve(async (req) => {
     : { data: null as any };
   const uid = profile?.id;
   if (user && !uid) return json({ error: 'User profile not found' }, 404);
+
+  const marketplaceScope = body.context?.type === 'property' && body.context?.surface === 'find-property';
+  if (marketplaceScope) {
+    if (!user || !uid) return json({ error: 'Unauthorized' }, 401);
+    if (!conversationId) return json({ error: 'Property conversation required' }, 400);
+    try {
+      const context = await marketplacePropertyContext(sb, uid, body.context, resultCatalogue);
+      if (!context) return json({ error: 'Property not found' }, 404);
+      body.context = context;
+    } catch {
+      return json({ error: 'Property context unavailable' }, 503);
+    }
+  }
 
   // ── 1. Fair use: today's message count vs. this user's plan tier ────────
   //
@@ -294,7 +318,25 @@ serve(async (req) => {
   const interactionId = typeof body.interactionId === 'string' && body.interactionId.length >= 8
     ? body.interactionId.slice(0, 120)
     : null;
+  if (marketplaceScope && interactionId) {
+    const { data: prior, error: priorError } = await sb.from('usage_reservations')
+      .select('status,job_ref,metadata').eq('user_id', uid)
+      .eq('idempotency_key', `${CHAT_PRODUCT_CODE}:${interactionId}`).maybeSingle();
+    if (priorError) return json({ error: 'Paid AI turn unavailable', code: 'PROPERTY_AI_UNAVAILABLE' }, 503);
+    if (prior) {
+      if (prior.job_ref !== conversationId || prior.metadata?.searchId !== body.context.searchId
+        || prior.metadata?.propertyKey !== body.context.propertyKey) return json({ error: 'Property turn scope mismatch', code: 'PROPERTY_AI_TURN_SCOPE_MISMATCH' }, 409);
+      const state = prior.status === 'SETTLED' ? 'SETTLED' : prior.status !== 'RESERVED' ? 'FAILED'
+        : prior.metadata?.property_ai_started_at ? 'PENDING' : null;
+      if (state) return json({ error: 'Property turn requires recovery', code: `PROPERTY_AI_TURN_${state}` }, 409);
+    }
+  }
   let grant: ExecutionGrant | null = null;
+
+  // Property analysis never falls through to anonymous or shadow-mode AI.
+  if (marketplaceScope && (!billingEnabled || !interactionId)) {
+    return json({ error: 'Paid AI analysis unavailable', code: 'PROPERTY_AI_UNAVAILABLE' }, 503);
+  }
 
   if (uid && billingEnabled && interactionId) {
     grant = await beginExecution(sb, {
@@ -306,7 +348,8 @@ serve(async (req) => {
          run on a partial budget, so "you cannot quite afford this" must
          refuse rather than quietly authorise less. */
       requireFullBudget: true,
-      metadata: { surface: (body?.context as any)?.surface ?? null, locale: lang },
+      metadata: { surface: (body?.context as any)?.surface ?? null, locale: lang,
+        ...(marketplaceScope ? { searchId: body.context.searchId, propertyKey: body.context.propertyKey } : {}) },
     });
     if (!grant.ok) {
       if (grant.reason === 'INSUFFICIENT_CREDITS' || grant.reason === 'BELOW_MIN_VIABLE_BUDGET') {
@@ -321,6 +364,21 @@ serve(async (req) => {
          none of them should cost them an answer: fall through unbilled
          and record the usage anyway, which is what shadow metering is. */
       grant = null;
+      if (marketplaceScope) return json({ error: 'Paid AI analysis unavailable', code: 'PROPERTY_AI_UNAVAILABLE' }, 503);
+    }
+  }
+
+  if (marketplaceScope) {
+    if (!grant?.ok || !grant.reservationId || grant.funding !== 'PAYG') {
+      if (grant?.ok) await releaseExecution(sb, grant, 'PROPERTY_AI_PAID_RESERVATION_REQUIRED');
+      return json({ error: 'Paid AI analysis unavailable', code: 'PROPERTY_AI_UNAVAILABLE' }, 503);
+    }
+    try {
+      const turn = await claimPropertyTurn(sb, { reservationId: grant.reservationId, userId: uid,
+        conversationId: conversationId!, searchId: body.context.searchId, propertyKey: body.context.propertyKey });
+      if (turn !== 'STARTED') return json({ error: 'Property turn requires recovery', code: `PROPERTY_AI_TURN_${turn}` }, 409);
+    } catch {
+      return json({ error: 'Paid AI turn unavailable', code: 'PROPERTY_AI_UNAVAILABLE' }, 503);
     }
   }
 
@@ -471,6 +529,7 @@ THE CUSTOMER'S OWN VERIFY REPORTS are in HOMATCH INTERNAL DATA under \`verificat
 MORTGAGE NUMBERS ARE NOT YOURS TO COMPUTE. When PAGE CONTEXT carries a \`mortgage\` object, it is the output of Homatch's own deterministic mortgage engine for the scenario the customer is looking at right now — the monthly payment, totals and effective rate under \`scenario\`, and the same engine re-run for the variations people ask about under \`ifTermWere\`, \`ifDownPaymentWere\`, \`ifRateWere\` and \`ifPaidExtraMonthly\`. Quote those figures exactly and say what they mean; never calculate, re-derive, round differently, or estimate a payment, an interest total, a saving or a rate yourself, and never contradict them. If the question needs a figure that is not in the object, say which input is missing and ask for it — \`unknown\` already lists what the customer has not entered, and an unentered cost is NOT zero. Amounts are in \`currency\` and nothing has been converted, so answer in that currency. Never tell anyone they will be approved or are eligible: PTI and LTV here are published macroprudential limits, not a lending decision.
 ${LEAD_EXTRACTION_INSTRUCTION}
 ${internalRetrievalFailed ? 'NOTE: internal data retrieval FAILED this turn. If they ask about their own saved properties, matches or reports, say plainly that you could not reach their saved data right now — never claim it does not exist, and never invent it.\n' : ''}HOMATCH INTERNAL DATA:${internalDataForPrompt(internal)}
+${marketplaceScope ? 'PROPERTY ANALYSIS: Distinguish source facts, description inferences, unknowns and advice. Never promise a seller will accept a negotiation price. Renovation costs are estimates, never exact facts: ask for basic/mid-range/premium level when missing; use ranges and explicit assumptions, and do not invent Georgian construction prices. If current cost evidence is required, use the existing web-checking rules. Purchase-plus-renovation totals need supported purchase price and a supported estimate, otherwise ask for missing information.' : ''}
 PAGE CONTEXT:${JSON.stringify(context).slice(0, 15000)}`;
 
   const key = Deno.env.get('OPENAI_API_KEY');

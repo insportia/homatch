@@ -599,6 +599,9 @@ test('the core is consumed only through its deliberate integration points', () =
      * the marketplace modules are pure data in, data out.
      */
     'supabase/functions/_shared/marketplaceSearch.ts',
+    // Existing read-only legacy catalogue reconstruction, shared by owned
+    // marketplace dossiers and the existing paid AI chat context loader.
+    'supabase/functions/_shared/marketplaceCatalogue.ts',
     'supabase/functions/marketplace-search/index.ts',
     'supabase/functions/marketplace-worker-ingest/index.ts',
     'src/services/marketplaceSearch.ts',

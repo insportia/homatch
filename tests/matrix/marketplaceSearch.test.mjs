@@ -41,7 +41,8 @@ test('server readiness gate: start re-sanitises the brief and refuses before any
   assert.match(ms, /SEARCH_NOT_READY/);
   assert.match(ms, /if \(switches\.providersKilled && !switches\.myhomeEnabled\) return json\(\{ error: 'SOURCES_PAUSED' \}, 409\)/);
   assert.match(ms, /worker\.workerId === 'myhome-agent'\s*\? switches\.myhomeEnabled : !switches\.providersKilled/);
-  assert.match(ms, /if \(!switches\.enabled\) return json\(\{ error: 'MARKETPLACE_SEARCH_OFF' \}, 409\)/);
+  assert.match(ms, /if \(!switches\.enabled && \(action === 'start' \|\| action === 'understand'\)\) return json\(\{ error: 'MARKETPLACE_SEARCH_OFF' \}, 409\)/,
+    'disabled acquisition blocks writes while owned history remains readable');
 });
 
 test('free: Marketplace Search never reserves, charges, settles or imports billing', () => {
@@ -58,7 +59,8 @@ test('ownership: every customer read of a search is scoped to the caller; intern
   assert.match(ms, /\.eq\('user_id', userId\)\.eq\('idempotency_key', key\)/);
   assert.doesNotMatch(ms, /select\('[^']*internal/, 'customer reads select the public view only');
   assert.match(ms, /\.select\('view'\)\.eq\('search_id', search\.id\)/);
-  assert.match(ms, /readAll<\{ view: CustomerProperty \}>/);
+  assert.match(code('supabase/functions/_shared/marketplaceCatalogue.ts'), /readAll<\{ view: CustomerProperty \}>/);
+  assert.match(ms, /resultCatalogue\(db, search\)/, 'legacy reconstruction still uses the same owned search');
 });
 
 test('workers: own token checked against a sha256 hash, constant-time; no Supabase key handed out; bounded payload', () => {
@@ -105,9 +107,10 @@ test('hard boundaries: Verify, Meta Ads, Design Studio, AI TALK, Communications,
   }
 });
 
-test('the existing Find Property stays the default until the switch is on', () => {
+test('search workspace survives acquisition being disabled; new search retains the legacy fallback', () => {
   const page = code('src/pages/FindPropertyPage.tsx');
-  assert.match(page, /if \(!caps\.marketplaceEnabled\) return <LegacyFindPropertyPage \/>/);
+  assert.match(page, /if \(!caps\.marketplaceEnabled && location\.pathname\.endsWith\('\/new'\)\) return <LegacyFindPropertyPage \/>/);
+  assert.match(page, /<MarketplaceSearchExperience deepSearchAvailable/);
   assert.match(page, /result\.alsoSeenAt/, 'the legacy experience is intact');
   assert.match(code('src/services/marketplaceSearch.ts'), /return \{ marketplaceEnabled: false, activeSources: 0, deepSearchAvailable: false \}/,
     'an unreachable service never shows the new experience');

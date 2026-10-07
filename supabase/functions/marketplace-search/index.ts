@@ -18,6 +18,8 @@
 // in cost_events and the search's telemetry (Admin only).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { resultCatalogue } from '../_shared/marketplaceCatalogue.ts';
+import { ownedSearchHistory } from '../_shared/marketplaceHistory.ts';
 import {
   SEARCH_BRIEF_INSTRUCTIONS, SEARCH_BRIEF_JSON_SCHEMA, briefFromModel, sanitizeBrief, toSearchPlanDraft,
 } from '../../../src/research-core/marketplace/brief.ts';
@@ -29,12 +31,11 @@ import {
   isTerminalSearch, progressOf, stagesOf, type SearchStatus, type WorkerRunState,
 } from '../../../src/research-core/marketplace/lifecycle.ts';
 import { compareProperties } from '../../../src/research-core/marketplace/comparison.ts';
-import { RESULT_GROUPS, type ResultGroup, processSearch, publicView } from '../../../src/research-core/marketplace/pipeline.ts';
+import { RESULT_GROUPS, type ResultGroup } from '../../../src/research-core/marketplace/pipeline.ts';
 import { browseResults, catalogueRevision, isCurrentResult, type CustomerProperty } from '../../../src/research-core/marketplace/browse-results.ts';
-import type { ExternalListingCandidate, MarketplaceSearchRequest } from '../../../src/research-core/marketplace/worker-contract.ts';
 import {
   consumeUnderstandQuota, loadMarketplaceSwitches, openaiStructured, processAndStore, recordAiUsage,
-  readAll, loadConverter,
+
 } from '../_shared/marketplaceSearch.ts';
 
 const CORS = {
@@ -51,21 +52,6 @@ const SEARCH_DEADLINE_MS = 20 * 60 * 1000;
 
 // deno-lint-ignore no-explicit-any
 type Db = any;
-
-/** Old saved searches acquire the new deterministic evidence from their own stored raw data.
- * No source request, model call or mutation occurs on a customer read. */
-async function resultCatalogue(db: Db, search: Record<string, unknown>): Promise<CustomerProperty[]> {
-  const rows = await readAll<{ view: CustomerProperty }>((from, to) => db.from('discovery_marketplace_properties')
-    .select('view').eq('search_id', search.id).order('property_key').range(from, to));
-  if (rows.every((row) => row.view.intelligence)) return rows.map((row) => row.view);
-  const raw = await readAll<{ raw: ExternalListingCandidate }>((from, to) => db.from('discovery_marketplace_listings')
-    .select('raw').eq('search_id', search.id).order('id').range(from, to));
-  if (!raw.length) return rows.map((row) => row.view);
-  const output = processSearch({ request: search.request as MarketplaceSearchRequest,
-    candidates: raw.map((row) => ({ workerId: 'stored', candidate: row.raw })), converter: await loadConverter(db),
-    now: new Date(String(search.processed_at ?? search.created_at)) });
-  return output.properties.map(publicView);
-}
 
 /** The customer-safe summary of a search: no cost, no internals, no worker errors. */
 async function summary(db: Db, search: Record<string, unknown>) {
@@ -144,7 +130,13 @@ Deno.serve(async (req: Request) => {
       return json({ marketplaceEnabled: switches.enabled, activeSources: switches.enabled ? Number(count ?? 0) : 0, deepSearchAvailable: false });
     }
 
-    if (!switches.enabled) return json({ error: 'MARKETPLACE_SEARCH_OFF' }, 409);
+    if (action === 'history') {
+      // History remains readable when acquisition is disabled. Ownership comes
+      // exclusively from the authenticated profile, never from a client user id.
+      return json(await ownedSearchHistory(db, userId, body.page));
+    }
+
+    if (!switches.enabled && (action === 'start' || action === 'understand')) return json({ error: 'MARKETPLACE_SEARCH_OFF' }, 409);
 
     if (action === 'understand') {
       const text = String(body.text ?? '').trim().slice(0, 2000);
@@ -289,7 +281,16 @@ Deno.serve(async (req: Request) => {
       if (!search) return json({ error: 'NOT_FOUND' }, 404);
       const keys = action === 'compare' ? [body.a, body.b] : [body.key];
       if (keys.some((k) => typeof k !== 'string' || k.length > 240)) return json({ error: 'BAD_KEY' }, 400);
-      const byKey = new Map((await resultCatalogue(db, search)).filter((p) => isCurrentResult(p) && keys.includes(p.key)).map((p) => [p.key, p]));
+      // Fetch only the requested dossier(s), never every property's details.
+      const { data: detailRows, error: detailError } = await db.from('discovery_marketplace_properties')
+        .select('view').eq('search_id', search.id).in('property_key', keys);
+      if (detailError) throw detailError;
+      const stored = (detailRows ?? []).map((row) => row.view as CustomerProperty);
+      // Older capped catalogues are rebuilt read-only by the existing adapter.
+      const details = stored.length === keys.length && stored.every((p) => p.intelligence)
+        ? stored : (await resultCatalogue(db, search)).filter((p) => keys.includes(p.key));
+      const byKey = new Map(details
+        .filter((p) => isCurrentResult(p)).map((p) => [p.key, p]));
       if (keys.some((k) => !byKey.has(k as string))) return json({ error: 'NOT_FOUND' }, 404);
       if (action === 'property') return json({ property: byKey.get(keys[0] as string), request: search.request });
       const view = (k: unknown) => byKey.get(k as string) as Record<string, any>;

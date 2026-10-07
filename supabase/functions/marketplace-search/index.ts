@@ -233,9 +233,18 @@ Deno.serve(async (req: Request) => {
       let search = body.searchId ? await ownSearch(body.searchId) : null;
       if (!body.searchId) {
         /* Resume: the customer's most recent search, wherever they left it. */
-        const { data } = await db.from('discovery_marketplace_searches').select('*').eq('user_id', userId)
-          .order('created_at', { ascending: false }).limit(1).maybeSingle();
-        search = data ?? null;
+        /* Bare Find Property is a results workspace, not a "latest row" lookup. A newer
+           failed search must not hide the customer's last usable catalogue. Prefer the
+           newest search that actually has properties; only fall back to the latest row
+           when the account has never produced results. */
+        const { data: usable } = await db.from('discovery_marketplace_searches').select('*').eq('user_id', userId)
+          .gt('properties_count', 0).order('created_at', { ascending: false }).limit(1).maybeSingle();
+        if (usable) search = usable;
+        else {
+          const { data: latest } = await db.from('discovery_marketplace_searches').select('*').eq('user_id', userId)
+            .order('created_at', { ascending: false }).limit(1).maybeSingle();
+          search = latest ?? null;
+        }
       }
       if (!search) return json({ search: null });
       if (!isTerminalSearch(search.status)) {

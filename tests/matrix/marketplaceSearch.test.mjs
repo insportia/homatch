@@ -113,6 +113,13 @@ test('the existing Find Property stays the default until the switch is on', () =
     'an unreachable service never shows the new experience');
 });
 
+test('bare Find Property prefers the latest search with a real property catalogue', () => {
+  const edge = code('supabase/functions/marketplace-search/index.ts');
+  assert.match(edge, /\.gt\('properties_count', 0\)/, 'a newer zero-result failure must not hide prior results');
+  assert.match(edge, /if \(usable\) search = usable/, 'the usable catalogue is the default workspace');
+  assert.match(edge, /else \{[\s\S]*order\('created_at'/, 'accounts with no results still receive their latest search state');
+});
+
 test('approved Georgian copy is used verbatim', () => {
   const tr = read('src/i18n/translations.ts');
   const ka = tr.slice(tr.indexOf('const ka: Partial'), tr.indexOf('const ru: Partial'));

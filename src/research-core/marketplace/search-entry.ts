@@ -1,6 +1,10 @@
-/** Explicit history always opens. Unavailable terminal history never claims the landing. */
-export function shouldResumeSearch(search: { terminal: boolean; unavailable: string | null; createdAt: string }, explicitSearchId: string | null, now = Date.now()): boolean {
+/**
+ * Explicit history always opens. A failed/unavailable terminal search never claims the
+ * bare Find Property entry. Every usable latest search does: its result catalogue is the
+ * customer's property workspace and must remain reachable after hours or days, not expire
+ * into the product-selection landing page.
+ */
+export function shouldResumeSearch(search: { terminal: boolean; unavailable: string | null; createdAt: string }, explicitSearchId: string | null, _now = Date.now()): boolean {
   if (explicitSearchId) return true;
-  if (search.terminal && search.unavailable) return false;
-  return !search.terminal || now - Date.parse(search.createdAt) < 6 * 3600_000;
+  return !(search.terminal && search.unavailable);
 }

@@ -89,6 +89,8 @@ export interface EvidenceItem {
   historical?: boolean;
   /** Set when sources disagree; both sides are kept, never merged. */
   conflictsWith?: string;
+  /** Source identity retained as evidence metadata, never customer prose. */
+  sourceIdentity?: import('./service176Evidence.ts').Service176Fact['provenance'];
 }
 
 export interface UnavailableCheck {
@@ -207,6 +209,14 @@ export function buildEvidencePackage(report: unknown): EvidencePackage {
   };
 
   /* ---- TIER 1: official property, ownership, encumbrance, checks ---- */
+
+  for (const fact of arr<import('./service176Evidence.ts').Service176Fact>(r.service176Evidence)) {
+    if (fact?.provenance?.serviceId !== 176 || !fact.claim || !fact.provenance.documentUrl) continue;
+    add({tier: 1, category: fact.category, claim: fact.claim,
+      provenance: 'OFFICIAL_REGISTRY', certainty: 'CONFIRMED',
+      source: 'Public registry', url: fact.provenance.recordUrl,
+      documentRef: fact.provenance.documentUrl, sourceIdentity: fact.provenance});
+  }
 
   for (const f of arr<unknown>(pr.facts)) {
     // publicResearch.facts are the research layer's own synthesised

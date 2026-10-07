@@ -1,4 +1,5 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
+import { projectService176Evidence, service176PromptEvidence } from '../../../src/verify/intelligence/service176Evidence.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { PUBLIC_RESEARCH_TARGETS, publicResearchScope, resolveAssetClass, extractControlStructure } from '../../../src/verify/researchPlan.ts';
 import { anonSessionUsable, anonTokenPlausible, sha256Hex } from '../../../src/auth/anonymousSessionServer.ts';
@@ -1575,7 +1576,7 @@ function searchBudgetFor(j: any, s: Stage): string {
 function prompt(s: Stage, j: any, p: any, l: string): string {
   const L = LANG[l] || 'English';
   const q = j.query;
-  const b = JSON.stringify(p.browserOfficial || {}).slice(0, 24000);
+  const b = JSON.stringify(p.browserOfficial || {}).slice(0, 24000) + service176PromptEvidence(p.browserOfficial);
   /*
    * Appended to whichever stage prompt is built below. SYNTHESIS is excluded:
    * it reasons over the evidence this run actually gathered, and handing it a
@@ -3360,6 +3361,7 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
     dueDiligenceCoverage: coverage,
     confidence: numericConfidence,
     summary: z.executiveSummary || '',
+    service176Evidence: projectService176Evidence(prior.browserOfficial),
     coverageNote: note,
     overallAssessment,
     rightsAndRestrictions,

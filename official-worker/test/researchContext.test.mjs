@@ -6,14 +6,10 @@ import { buildInitialSteps, stepMatchesResult, primaryStepsRemain, buildEntitySt
 
 // Order per the 2026-09-06 "Fix Homatch Verify by implementing this exact
 // pipeline in code" mandate: TAS Map -> TAS Document -> NAPR Property.
-test('buildInitialSteps: cadastral mode is TAS_MAP -> tas (mygov is no longer scheduled)', () => {
-  // my.gov.ge's property service is CAPTCHA-gated, so scheduling it only ever
-  // paused the run and asked the customer to solve a challenge for a lookup
-  // they can do themselves. It is now recommended as an official self-check
-  // at the end of the report; the workflow itself is untouched.
+test('buildInitialSteps: adds bounded My.gov after existing cadastral sources', () => {
   assert.deepEqual(
     buildInitialSteps({ mode: 'cadastral' }).map((s) => s.key),
-    ['TAS_MAP', 'tas']
+    ['TAS_MAP', 'tas', 'mygov']
   );
 });
 
@@ -24,12 +20,12 @@ test('buildInitialSteps: property mode is unaffected by the CAPTCHA-source remov
   );
 });
 
-test('no CAPTCHA-gated source is ever planned again', () => {
+test('My.gov is added only to cadastral plans; other source plans are preserved', () => {
   const cadastral = buildInitialSteps({ mode: 'cadastral' }).map((s) => s.key);
   const property = buildInitialSteps({ mode: 'property' }).map((s) => s.key);
   const entity = buildEntitySteps([{ identificationCode: '1', name: 'A' }], 1).map((s) => s.source);
   for (const plan of [cadastral, property, entity]) {
-    assert.ok(!plan.includes('mygov'), 'mygov is scheduled again');
+    if (plan !== cadastral) assert.ok(!plan.includes('mygov'), 'mygov leaked outside cadastral mode');
     assert.ok(!plan.includes('rstax'), 'rstax is scheduled again');
   }
 });

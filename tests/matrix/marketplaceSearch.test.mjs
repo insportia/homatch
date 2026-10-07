@@ -39,8 +39,8 @@ test('server readiness gate: start re-sanitises the brief and refuses before any
   assert.ok(start > 0 && gate > start && firstInsert > gate, 'the gate precedes every insert');
   assert.match(ms, /const brief = sanitizeBrief\(body\.brief\)/);
   assert.match(ms, /SEARCH_NOT_READY/);
-  assert.match(ms, /if \(switches\.providersKilled && !switches\.myhomeEnabled\) return json\(\{ error: 'SOURCES_PAUSED' \}, 409\)/);
-  assert.match(ms, /worker\.workerId === 'myhome-agent'\s*\? switches\.myhomeEnabled : !switches\.providersKilled/);
+  assert.match(ms, /if \(switches\.providersKilled && !switches\.myhomeEnabled && !switches\.ssgeEnabled\) return json\(\{ error: 'SOURCES_PAUSED' \}, 409\)/);
+  assert.match(ms, /worker\.workerId === 'myhome-agent'\s*\? switches\.myhomeEnabled : worker\.workerId === 'ssge-agent' \? switches\.ssgeEnabled : !switches\.providersKilled/);
   assert.match(ms, /if \(!switches\.enabled && \(action === 'start' \|\| action === 'understand'\)\) return json\(\{ error: 'MARKETPLACE_SEARCH_OFF' \}, 409\)/,
     'disabled acquisition blocks writes while owned history remains readable');
 });

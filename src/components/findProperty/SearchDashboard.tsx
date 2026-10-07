@@ -40,8 +40,8 @@ export function SearchDashboard({ t }: { t: T }) {
           <h3 dir="auto" className="font-display text-lg font-semibold">{[...(item.brief.districts?.value ?? []), item.brief.city?.value].filter(Boolean).join(' · ') || t('plan_page_title')}</h3>
           <p className="text-sm leading-relaxed text-muted-foreground">{criteriaChips(item.brief, t).filter((c) => c.key !== 'location').map((c) => c.label).join(' · ')}</p>
           <div className="space-y-1 text-sm">
-            <p>{t('fpw_saved_properties', { n: item.uniqueProperties })}</p>
-            {item.strongMatches > 0 ? <p className="text-muted-foreground">{t('fpw_saved_strong', { n: item.strongMatches })}</p> : null}
+            {item.uniqueProperties !== null ? <p>{t('fpw_saved_properties', { n: item.uniqueProperties })}</p> : null}
+            {(item.strongMatches ?? 0) > 0 ? <p className="text-muted-foreground">{t('fpw_saved_strong', { n: item.strongMatches ?? 0 })}</p> : null}
             <p>{t(`fpw_status_${item.status}`)}</p>
             <time dateTime={item.createdAt} className="text-muted-foreground">{new Date(item.createdAt).toLocaleString(document.documentElement.lang || undefined, { dateStyle: 'medium', timeStyle: 'short' })}</time>
           </div>

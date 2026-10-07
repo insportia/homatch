@@ -178,6 +178,19 @@ test('V2: malformed history is recoverable and never masquerades as an empty wor
   assert.equal(state.starts, 0);
 });
 
+test('V2: a backend missing the history action stays an error; authenticated retry recovers and legacy optional counts are omitted', opts, async (t) => {
+  const { page, state } = await boot(t);
+  state.historyBackendFailure = true;
+  await page.goto(`${BASE}/find-property`);
+  await page.getByRole('button', { name: 'Try again', exact: true }).waitFor();
+  assert.equal(await page.locator('a[href="/find-property/search/22222222-2222-4222-8222-222222222222"]').count(), 0);
+  state.historyBackendFailure = false;
+  await page.getByRole('button', { name: 'Try again', exact: true }).click();
+  await page.locator('a[href="/find-property/search/22222222-2222-4222-8222-222222222222"]').waitFor();
+  assert.ok(state.historyAuthenticated);
+  assert.ok(state.requests.filter(r => r.action === 'history').every(r => !('user_id' in r)));
+});
+
 function fakeSession() {
   const exp = Math.floor(Date.now() / 1000) + 3600;
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
@@ -247,10 +260,12 @@ async function boot(t, { rateLimited = false, width = 1440, height = 900, lang =
       state.requests.push(body);
       if (body.action === 'capabilities') return r.fulfill(json({ marketplaceEnabled: enabled, activeSources: enabled ? 5 : 0, deepSearchAvailable: false }));
       if (body.action === 'history') {
+        state.historyAuthenticated = /^Bearer /.test(req.headers().authorization ?? '');
+        if (state.historyBackendFailure) return r.fulfill(json({ error: 'UNKNOWN_ACTION' }, 400));
         if (state.historyMalformed) return r.fulfill(json({}));
         const ids = [{ id: '33333333-3333-4333-8333-333333333333', status: 'FAILED' }, { id: '22222222-2222-4222-8222-222222222222', status: 'COMPLETE' }];
         if (state.started) ids.unshift({ id: '11111111-1111-4111-8111-111111111111', status: resumeStatus ?? 'COMPLETE' });
-        return r.fulfill(json({ page: body.page ?? 1, hasMore: false, items: ids.map(({ id, status }) => ({ id, status, brief: SEARCH_BRIEF, createdAt: new Date().toISOString(), completedAt: new Date().toISOString(), uniqueProperties: status === 'FAILED' ? 0 : output.properties.length, strongMatches: status === 'FAILED' ? 0 : output.stats.strongMatches, sourcesTotal: 5, sourcesTerminal: 5, rawListings: output.stats.raw })) }));
+        return r.fulfill(json({ page: body.page ?? 1, hasMore: false, items: ids.map(({ id, status }) => ({ id, status, brief: SEARCH_BRIEF, createdAt: new Date().toISOString(), completedAt: new Date().toISOString(), uniqueProperties: status === 'FAILED' ? null : output.properties.length, strongMatches: status === 'FAILED' ? null : output.stats.strongMatches, sourcesTotal: 5, sourcesTerminal: 5, rawListings: output.stats.raw })) }));
       }
       if (body.action === 'understand' && rateLimited) {
         return r.fulfill({ ...json({ error: 'RATE_LIMIT_EXCEEDED', code: 'RATE_LIMIT_EXCEEDED', retryAfterSeconds: 120 }, 429), headers: { 'access-control-allow-origin': '*', 'retry-after': '120' } });

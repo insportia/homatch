@@ -83,10 +83,10 @@ export interface SearchHistoryItem {
   createdAt: string;
   completedAt: string | null;
   /** Saved counts at processing time, not a claim about today's inventory. */
-  uniqueProperties: number;
-  strongMatches: number;
-  sourcesTotal: number;
-  sourcesTerminal: number;
+  uniqueProperties: number | null;
+  strongMatches: number | null;
+  sourcesTotal: number | null;
+  sourcesTerminal: number | null;
   rawListings: number | null;
 }
 

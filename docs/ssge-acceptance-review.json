@@ -1,0 +1,77 @@
+{
+  "acceptanceRun": "2026-10-07T16-39-36-205Z",
+  "reportSha256": "ccb2c2020d5b70ddc7a907875acdf5fa7efef78d55dca0f6eb10b6c0d1a3d81f",
+  "review": "SAVED_ACCEPTANCE_VALID",
+  "gatewayTransport": "HTTP/2 required; no silent HTTP/1 fallback",
+  "scenarios": [
+    {
+      "scenario": "A-sale-apartment",
+      "criteria": {
+        "transactionType": "sale",
+        "propertyType": "apartment",
+        "city": 95,
+        "districts": [
+          3
+        ],
+        "priceMaxUsd": 200000,
+        "areaMinSqm": 70
+      },
+      "checks": [
+        {
+          "id": "35611698",
+          "url": "https://home.ss.ge/ka/udzravi-qoneba/iyideba-3-otaxiani-bina-did-dighomshi-35611698",
+          "httpStatus": 200,
+          "identityPassed": true
+        },
+        {
+          "id": "36125102",
+          "url": "https://home.ss.ge/ka/udzravi-qoneba/iyideba-4-otaxiani-bina-saburtaloze-36125102",
+          "httpStatus": 200,
+          "identityPassed": true
+        },
+        {
+          "id": "36949209",
+          "url": "https://home.ss.ge/ka/udzravi-qoneba/iyideba-4-otaxiani-bina-saburtaloze-36949209",
+          "httpStatus": 200,
+          "identityPassed": true
+        }
+      ],
+      "fullTraversalVerified": false
+    },
+    {
+      "scenario": "B-monthly-rent-house",
+      "criteria": {
+        "transactionType": "monthly_rent",
+        "propertyType": "house",
+        "city": 95,
+        "districts": [
+          3
+        ],
+        "priceMaxUsd": 5000,
+        "areaMinSqm": 100
+      },
+      "checks": [
+        {
+          "id": "36821906",
+          "url": "https://home.ss.ge/ka/udzravi-qoneba/qiravdeba-kerdzo-saxli-lisis-tbaze-36821906",
+          "httpStatus": 200,
+          "identityPassed": true
+        },
+        {
+          "id": "36319946",
+          "url": "https://home.ss.ge/ka/udzravi-qoneba/qiravdeba-kerdzo-saxli-did-dighomshi-36319946",
+          "httpStatus": 200,
+          "identityPassed": true
+        },
+        {
+          "id": "32811764",
+          "url": "https://home.ss.ge/ka/udzravi-qoneba/qiravdeba-kerdzo-saxli-did-dighomshi-32811764",
+          "httpStatus": 200,
+          "identityPassed": true
+        }
+      ],
+      "fullTraversalVerified": false
+    }
+  ],
+  "productionVerified": false
+}

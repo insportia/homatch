@@ -134,13 +134,29 @@ test('V2 mobile: workspace, touch gallery and property AI composer at 375px and 
     await card.waitFor();
     const before = await card.locator('[aria-live="polite"]').textContent();
     const searchUrl = page.url();
-    await card.getByRole('group').evaluate((el) => {
-      const touch = (x) => new Touch({ identifier: 1, target: el, clientX: x, clientY: 100 });
-      el.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, touches: [touch(220)] }));
-      el.dispatchEvent(new TouchEvent('touchend', { bubbles: true, changedTouches: [touch(100)] }));
-      el.querySelector('button').click(); // Browser click after a swipe must be suppressed.
-    });
-    assert.notEqual(await card.locator('[aria-live="polite"]').textContent(), before);
+    const gallery = card.getByRole('group');
+    await gallery.scrollIntoViewIfNeeded();
+    await gallery.locator('button').first().click({ trial: true }); // Wait for a stable, hittable image surface without opening it.
+    const box = await gallery.boundingBox();
+    assert.ok(box && box.width > 120, 'gallery has room for a horizontal gesture');
+    const touch = await page.context().newCDPSession(page);
+    const x = box.x + box.width * 0.7, y = box.y + box.height * 0.6;
+    // Browser-generated touch events exercise hit testing, touch-action and React
+    // updates, unlike synchronous dispatchEvent calls on the group itself.
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, id: 1 }] });
+    await page.evaluate(() => new Promise(requestAnimationFrame));
+    for (const distance of [30, 60, 90, 120]) {
+      await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x - distance, y, id: 1 }] });
+      await page.evaluate(() => new Promise(requestAnimationFrame));
+    }
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await touch.detach();
+    const expected = `${Number(before.split('/')[0]) % Number(before.split('/')[1]) + 1}/${before.split('/')[1]}`;
+    await page.waitForFunction(({ key, expected }) => [...document.querySelectorAll('[data-property-key]')]
+      .find((el) => el.getAttribute('data-property-key') === key)?.querySelector('[aria-live="polite"]')?.textContent === expected,
+    { key: await card.getAttribute('data-property-key'), expected });
+    assert.equal(await card.locator('[aria-live="polite"]').textContent(), expected, 'left swipe advances exactly one photo');
+    await gallery.evaluate((el) => el.querySelector('button').click()); // Suppress any compatibility click after the swipe.
     assert.equal(page.url(), searchUrl, 'swiping stays on the search');
     await card.getByRole('button').first().click();
     await page.locator('[data-property-dossier]').waitFor();

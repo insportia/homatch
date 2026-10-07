@@ -11,6 +11,7 @@
 // judgement about anybody's honesty.
 
 import type { NormalizedListing } from './normalize.ts';
+import { descriptionSignals } from './description-signals.ts';
 
 export type SellerClass = 'VERIFIED_OWNER' | 'LIKELY_OWNER' | 'AGENCY' | 'BROKER' | 'DEVELOPER' | 'UNKNOWN';
 
@@ -35,12 +36,16 @@ export const OWNER_MAX_SOURCE_LISTINGS = 2;
 
 const AGENCY_TEXT = /სააგენტ|უძრავი ქონების კომპანი|\bagency\b|\brealty\b|агентств|риелтор|риэлтор|emlak ofisi|komisyon|საკომისიო|комисси/iu;
 const OWNER_TEXT = /მესაკუთრისგან|მესაკუთრე|\bowner\b|from the owner|собственник|от хозяина|sahibinden/iu;
-const DEVELOPER_TEXT = /დეველოპერ|\bdeveloper\b|застройщик|müteahhit/iu;
 
 export function classifySeller(l: NormalizedListing, ctx: SellerContext): SellerAssessment {
   const reasons: string[] = [];
   const evidence: string[] = [];
   const text = `${l.title ?? ''}\n${l.description ?? ''}`;
+  const signals = descriptionSignals(text);
+  const agencyText = AGENCY_TEXT.test(text) && !signals.some((s) => s.code === 'AGENCY_LANGUAGE' && s.polarity === 'NEGATED');
+  const ownerMatch = OWNER_TEXT.exec(text);
+  const ownerNegated = !!ownerMatch && /(?:\bnot\b|\bno\b|не|არ ვარ)\s*(?:the\s*)?$/iu.test(text.slice(Math.max(0, ownerMatch.index - 24), ownerMatch.index));
+  const ownerText = !ownerNegated && (OWNER_TEXT.test(text) || signals.some((s) => s.code === 'OWNER_CLAIM' && s.polarity === 'MENTIONED'));
   const declared = l.seller.declaredType;
   const phoneProps = l.seller.phoneKey ? ctx.propertiesPerPhone.get(l.seller.phoneKey) ?? 1 : null;
   const sourceCount = l.seller.sourceListingCount;
@@ -48,10 +53,8 @@ export function classifySeller(l: NormalizedListing, ctx: SellerContext): Seller
   if (l.seller.phoneKey && ctx.verifiedOwnerPhoneKeys?.has(l.seller.phoneKey)) {
     return { classification: 'VERIFIED_OWNER', confidence: 0.95, reasonCodes: ['HOMATCH_VERIFIED_OWNER'], evidence: ['contact matches a HOMATCH-verified owner'] };
   }
-  if (declared === 'DEVELOPER' || DEVELOPER_TEXT.test(text)) {
-    reasons.push(declared === 'DEVELOPER' ? 'DECLARED_DEVELOPER' : 'DEVELOPER_TEXT');
-    evidence.push(declared === 'DEVELOPER' ? 'source marks the seller as a developer' : 'listing text names a developer');
-    return { classification: 'DEVELOPER', confidence: declared === 'DEVELOPER' ? 0.9 : 0.65, reasonCodes: reasons, evidence };
+  if (declared === 'DEVELOPER') {
+    return { classification: 'DEVELOPER', confidence: 0.9, reasonCodes: ['DECLARED_DEVELOPER'], evidence: ['source marks the seller as a developer'] };
   }
   if (declared === 'AGENCY') {
     return { classification: 'AGENCY', confidence: 0.85, reasonCodes: ['DECLARED_AGENCY'], evidence: ['source marks the seller as an agency'] };
@@ -64,14 +67,14 @@ export function classifySeller(l: NormalizedListing, ctx: SellerContext): Seller
   if (multiContact || manyOnSource) {
     if (multiContact) { reasons.push('CONTACT_ON_MANY_PROPERTIES'); evidence.push(`the same public contact is on ${phoneProps} properties in this search`); }
     if (manyOnSource) { reasons.push('MANY_SOURCE_LISTINGS'); evidence.push(`the seller has ${sourceCount} listings on the source`); }
-    if (declared === 'OWNER' || OWNER_TEXT.test(text)) reasons.push('OWNER_CLAIM_NOT_SUPPORTED');
-    const agency = AGENCY_TEXT.test(text);
+    if (declared === 'OWNER' || ownerText) reasons.push('OWNER_CLAIM_NOT_SUPPORTED');
+    const agency = agencyText;
     return { classification: agency ? 'AGENCY' : 'BROKER', confidence: multiContact && manyOnSource ? 0.8 : 0.65, reasonCodes: reasons, evidence };
   }
-  if (AGENCY_TEXT.test(text)) {
+  if (agencyText) {
     return { classification: 'AGENCY', confidence: 0.6, reasonCodes: ['AGENCY_TEXT'], evidence: ['listing text names an agency or a commission'] };
   }
-  const claimsOwner = declared === 'OWNER' || OWNER_TEXT.test(text);
+  const claimsOwner = declared === 'OWNER' || ownerText;
   if (claimsOwner) {
     reasons.push(declared === 'OWNER' ? 'DECLARED_OWNER' : 'OWNER_TEXT');
     evidence.push(declared === 'OWNER' ? 'source marks the seller as the owner' : 'listing text says it is from the owner');

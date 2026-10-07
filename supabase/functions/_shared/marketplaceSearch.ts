@@ -184,7 +184,7 @@ export async function recordAiUsage(db: Db, call: AiUsage['call'], r: { ok: bool
 }
 
 /** Operator-entered current rates only (fx_rates). A pair with no rate stays unconvertible. */
-async function loadConverter(db: Db) {
+export async function loadConverter(db: Db) {
   const { data } = await db.from('fx_rates').select('base_currency,quote_currency,rate,effective_from').is('effective_to', null);
   return converterFrom(ratesFromTable((data ?? []) as never));
 }

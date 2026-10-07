@@ -3,6 +3,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { CustomerSurface, PageHero } from '@/components/customer/surface';
+import { NativeMatchesPanel } from '@/components/matching/NativeMatchesPanel';
+import { shouldResumeSearch } from '@/research-core/marketplace/search-entry';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { type SearchIntelligenceBrief, applyEdit, emptyBrief, sanitizeBrief } from '@/research-core/marketplace/brief';
 import {
@@ -58,6 +60,9 @@ export function MarketplaceSearchExperience({ deepSearchAvailable }: { deepSearc
   const idempotency = useRef<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const searchId = params.get('search');
+  const skipAutomaticResume = useRef(false);
+  const bareEntryView = useRef<'MODE' | 'BUILD'>('MODE');
+  const justStartedId = useRef<string | null>(null);
 
   const setBriefAndDraft = useCallback((b: SearchIntelligenceBrief | null) => { setBrief(b); writeDraft(b); }, []);
 
@@ -65,10 +70,17 @@ export function MarketplaceSearchExperience({ deepSearchAvailable }: { deepSearc
   useEffect(() => {
     let alive = true;
     void (async () => {
+      if (!searchId && skipAutomaticResume.current) {
+        setSearch(null); setOpen(null); setCompare([]); setView(bareEntryView.current); return;
+      }
+      if (searchId && justStartedId.current === searchId) { justStartedId.current = null; return; }
+      setView('LOADING');
+      setOpen(null);
+      setCompare([]);
       try {
         const { search: s } = await searchStatus(searchId ?? undefined);
         if (!alive) return;
-        if (s && (!s.terminal || searchId || Date.now() - Date.parse(s.createdAt) < 6 * 3600_000)) {
+        if (s && shouldResumeSearch(s, searchId)) {
           setSearch(s);
           setView(s.terminal && !s.unavailable ? 'RESULTS' : 'SEARCH');
           if (!searchId) setParams({ search: s.id }, { replace: true });
@@ -76,28 +88,30 @@ export function MarketplaceSearchExperience({ deepSearchAvailable }: { deepSearc
         }
       } catch { /* no search to resume */ }
       if (!alive) return;
+      setSearch(null);
       const draft = readDraft();
       if (draft && (draft.originalText || draft.transactionType)) { setBrief(draft); setView('BUILD'); } else setView('MODE');
     })();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [searchId]);
 
   /* Real polling while the search is open; paused while the tab is hidden. */
   useEffect(() => {
     if (!search || search.terminal || (view !== 'SEARCH' && view !== 'RESULTS')) return;
+    let alive = true;
     const id = window.setInterval(async () => {
       if (document.hidden) return;
       try {
         const { search: s } = await searchStatus(search.id);
-        if (!s) return;
+        if (!s || !alive) return;
         setSearch((prev) => {
           if (prev && (prev.counters.uniqueProperties !== s.counters.uniqueProperties || prev.status !== s.status)) setResultsVersion((v) => v + 1);
           return s;
         });
       } catch { /* next tick */ }
     }, POLL_MS);
-    return () => window.clearInterval(id);
+    return () => { alive = false; window.clearInterval(id); };
   }, [search, view]);
 
   const doUnderstand = async () => {
@@ -124,6 +138,7 @@ export function MarketplaceSearchExperience({ deepSearchAvailable }: { deepSearc
     try {
       const r = await startSearch(brief, idempotency.current);
       setSearch(r.search);
+      justStartedId.current = r.search.id;
       setParams({ search: r.search.id });
       writeDraft(null);
       clearStartKey();
@@ -140,7 +155,7 @@ export function MarketplaceSearchExperience({ deepSearchAvailable }: { deepSearc
   const openProperty = async (p: PropertyView) => {
     setOpen(p);
     if (!search) return;
-    try { const r = await propertyDetail(search.id, p.key); setOpen(r.property); } catch { /* card data stands */ }
+    try { const r = await propertyDetail(search.id, p.key); setOpen((current) => current?.key === p.key ? r.property : current); } catch { /* card data stands */ }
   };
 
   const toggleCompare = (p: PropertyView) => setCompare((cur) => (cur.includes(p.key) ? cur.filter((k) => k !== p.key) : [...cur.slice(-1), p.key]));
@@ -151,7 +166,9 @@ export function MarketplaceSearchExperience({ deepSearchAvailable }: { deepSearc
   };
 
   const newSearch = () => {
-    setParams({}, { replace: true });
+    skipAutomaticResume.current = true;
+    bareEntryView.current = 'MODE';
+    setParams({});
     setSearch(null);
     setCompare([]);
     setText('');
@@ -166,7 +183,9 @@ export function MarketplaceSearchExperience({ deepSearchAvailable }: { deepSearc
       </div>
 
       {view === 'LOADING' && <div className="h-48 animate-pulse rounded-2xl bg-muted/60" aria-busy="true" />}
-      {view === 'MODE' && <SearchModeSelect t={t} deepSearchAvailable={deepSearchAvailable} onMarketplace={() => setView('INTRO')} />}
+      {view === 'MODE' && <><SearchModeSelect t={t} deepSearchAvailable={deepSearchAvailable} onMarketplace={() => setView('INTRO')} />
+        <NativeMatchesPanel role="SEEKER" />
+      </>}
       {view === 'INTRO' && <BuilderIntro t={t} text={text} onText={setText} onSubmit={() => void doUnderstand()} busy={busy} />}
       {view === 'BUILD' && brief && (
         <SearchBuilder t={t} brief={brief} onBrief={setBriefAndDraft} onStart={() => void doStart()} starting={busy}
@@ -186,6 +205,8 @@ export function MarketplaceSearchExperience({ deepSearchAvailable }: { deepSearc
           onChangeCriteria={(f) => {
             const base = sanitizeBrief(search.brief);
             setBriefAndDraft(applyEdit(base, { field: f, value: null }));
+            skipAutomaticResume.current = true;
+            bareEntryView.current = 'BUILD';
             setParams({}, { replace: true });
             setSearch(null);
             setView('BUILD');

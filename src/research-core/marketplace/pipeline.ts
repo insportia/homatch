@@ -22,8 +22,11 @@ import {
   districtFit, hardFilter, rankProperty,
 } from './ranking.ts';
 import { type Gain, selectUpgrades } from './upgrade.ts';
+import { listingActivity } from './freshness.ts';
+import { resultEvidence, type ResultEvidence } from './result-evidence.ts';
+import { descriptionFingerprint } from './description-signals.ts';
 
-export const PIPELINE_VERSION = 'marketplace-pipeline-1';
+export const PIPELINE_VERSION = 'marketplace-pipeline-2';
 
 export type ResultGroup = 'BEST' | 'OWNER' | 'UPGRADE' | 'MORE';
 export const RESULT_GROUPS: readonly ResultGroup[] = ['BEST', 'OWNER', 'UPGRADE', 'MORE'];
@@ -50,6 +53,8 @@ export interface ListingView {
   observedAt: string;
   lastVerifiedAt: string | null;
   freshness: NormalizedListing['freshness'];
+  publishedAt?: string | null;
+  updatedAt?: string | null;
   seller: { classification: SellerAssessment['classification']; name: string | null; publicPhone: string | null; publicEmail: string | null; publicProfile: string | null };
   authorUrl: string | null;
   isLowest: boolean;
@@ -62,6 +67,8 @@ export interface ResultProperty {
   rank: number;
   score: number;
   title: string | null;
+  description?: string | null;
+  intelligence?: ResultEvidence;
   facts: PropertyFacts;
   images: string[];
   freshness: { state: NormalizedListing['freshness']; lastVerifiedAt: string | null };
@@ -123,9 +130,10 @@ export interface PipelineInput {
 
 const FRESH_ORDER = { VERIFIED: 2, RECENT: 1, STALE: 0 } as const;
 
-function mergeFacts(members: NormalizedListing[]): { facts: PropertyFacts; representative: NormalizedListing } {
-  const rep = [...members].sort((a, b) => b.completeness - a.completeness
-    || FRESH_ORDER[b.freshness] - FRESH_ORDER[a.freshness] || a.id.localeCompare(b.id))[0];
+function mergeFacts(members: NormalizedListing[], now: Date): { facts: PropertyFacts; representative: NormalizedListing } {
+  const rep = [...members].sort((a, b) => FRESH_ORDER[b.freshness] - FRESH_ORDER[a.freshness]
+    || (listingActivity(a.publishedAt, a.updatedAt, now).ageDays ?? 31) - (listingActivity(b.publishedAt, b.updatedAt, now).ageDays ?? 31)
+    || b.completeness - a.completeness || a.id.localeCompare(b.id))[0];
   const first = <K extends keyof NormalizedListing>(k: K): NormalizedListing[K] | null => {
     if (rep[k] !== null && rep[k] !== undefined) return rep[k];
     for (const m of members) if (m[k] !== null && m[k] !== undefined) return m[k];
@@ -161,15 +169,22 @@ export function processSearch(input: PipelineInput): PipelineOutput {
   const now = input.now ?? new Date();
   const req = input.request;
   const rejected: Record<string, number> = {};
-  const valid: NormalizedListing[] = [];
-  const seen = new Set<string>();
+  const observations = new Map<string, NormalizedListing>();
   for (const { candidate } of input.candidates) {
     const v = validateListing(candidate, req, { converter: input.converter, now });
     if (!v.valid) { rejected[v.reason] = (rejected[v.reason] ?? 0) + 1; continue; }
-    if (seen.has(v.listing.id)) { rejected.DUPLICATE_REPORT = (rejected.DUPLICATE_REPORT ?? 0) + 1; continue; }
-    seen.add(v.listing.id);
-    valid.push(v.listing);
+    if (v.listing.oldListing) { rejected.LISTING_OVER_30_DAYS = (rejected.LISTING_OVER_30_DAYS ?? 0) + 1; continue; }
+    const prev = observations.get(v.listing.id);
+    if (prev) {
+      rejected.DUPLICATE_REPORT = (rejected.DUPLICATE_REPORT ?? 0) + 1;
+      // Repeated reports choose the newest source observation, then completeness; never input order.
+      const order = Date.parse(v.listing.observedAt) - Date.parse(prev.observedAt)
+        || v.listing.completeness - prev.completeness || JSON.stringify(v.listing).localeCompare(JSON.stringify(prev));
+      if (order <= 0) continue;
+    }
+    observations.set(v.listing.id, v.listing);
   }
+  const valid = [...observations.values()].sort((a, b) => a.id.localeCompare(b.id));
   const byId = new Map(valid.map((l) => [l.id, l]));
   const resolution = resolveProperties(valid);
 
@@ -199,11 +214,12 @@ export function processSearch(input: PipelineInput): PipelineOutput {
     lastVerifiedAt: string | null;
     oldListing: boolean;
     sources: number;
+    intelligence: ResultEvidence;
     cluster: { evidence: string[]; tiers: string[] };
   }
   const working: Working[] = resolution.clusters.map((c) => {
     const members = c.memberIds.map((id) => byId.get(id)!);
-    const { facts, representative } = mergeFacts(members);
+    const { facts, representative } = mergeFacts(members, now);
     const sellers = new Map(members.map((m) => [m.id, classifySeller(m, sellerCtx)]));
     const all = [...sellers.values()];
     const owner = all.filter((s) => isOwnerClass(s.classification)).sort((a, b) => b.confidence - a.confidence)[0];
@@ -218,9 +234,25 @@ export function processSearch(input: PipelineInput): PipelineOutput {
       lastVerifiedAt: verified[0] ?? null,
       oldListing: members.every((m) => m.oldListing),
       sources: new Set(members.map((m) => m.source)).size,
+      intelligence: resultEvidence(representative, members, facts, req, now),
       cluster: { evidence: c.evidence, tiers: c.tiers },
     };
   });
+
+  const possibleKeys = new Set(resolution.possible.flatMap((pair) => [resolution.keyOf.get(pair.a), resolution.keyOf.get(pair.b)]));
+  const descriptions = new Map<string, Set<string>>();
+  for (const w of working) {
+    const fp = descriptionFingerprint(w.rep.description);
+    if (fp) { const keys = descriptions.get(fp) ?? new Set<string>(); keys.add(w.key); descriptions.set(fp, keys); }
+  }
+  for (const w of working) {
+    if (possibleKeys.has(w.key)) w.intelligence.warnings.push('POSSIBLE_DUPLICATE');
+    if (w.discrepancy?.significant) w.intelligence.warnings.push('PRICE_CONFLICT');
+    if (w.seller.reasonCodes.includes('CONTACT_ON_MANY_PROPERTIES')) w.intelligence.warnings.push('MULTI_PROPERTY_CONTACT');
+    const fp = descriptionFingerprint(w.rep.description);
+    if (fp && (descriptions.get(fp)?.size ?? 0) > 1) w.intelligence.warnings.push('COPIED_DESCRIPTION');
+    w.intelligence.verificationNeeded = w.intelligence.warnings.some((code) => code !== 'MULTI_PROPERTY_CONTACT') || w.filter.unverified.length > 0;
+  }
 
   const inBudget = working.filter((w) => w.filter.fits && w.filter.band === 'IN_BUDGET');
   const local = localComparison(inBudget.map((w) => ({ priceUsd: w.facts.priceUsd, pricePerSqmUsd: w.facts.pricePerSqmUsd })));
@@ -230,6 +262,9 @@ export function processSearch(input: PipelineInput): PipelineOutput {
       facts: w.facts, filter: w.filter, freshness: w.freshness, oldListing: w.oldListing,
       seller: w.seller.classification, sellerConfidence: w.seller.confidence, sourceCount: w.sources,
       completeness: w.rep.completeness,
+      listingAgeDays: w.intelligence.activity.ageDays,
+      descriptionFit: w.intelligence.preferences.mentioned.length,
+      warningCount: w.intelligence.warnings.filter((code) => code !== 'MULTI_PROPERTY_CONTACT').length,
     }, req, local);
     return { w, r };
   });
@@ -247,7 +282,8 @@ export function processSearch(input: PipelineInput): PipelineOutput {
     if (w.filter.band !== 'IN_BUDGET') { excluded.push({ key: w.key, reason: `PRICE_${w.filter.band}` }); return false; }
     return true;
   });
-  const order = (a: typeof ranked[number], b: typeof ranked[number]) => b.r.score - a.r.score || a.w.key.localeCompare(b.w.key);
+  const order = (a: typeof ranked[number], b: typeof ranked[number]) => b.r.score - a.r.score
+    || (a.w.intelligence.activity.ageDays ?? 31) - (b.w.intelligence.activity.ageDays ?? 31) || a.w.key.localeCompare(b.w.key);
   const normal = eligible.filter(({ w }) => !upgradeOf.has(w.key)).sort(order);
   const strong = normal.filter(({ w, r }) => r.components.criteria >= STRONG_CRITERIA && w.freshness !== 'STALE');
   const best = strong.slice(0, BEST_LIMIT);
@@ -277,12 +313,16 @@ export function processSearch(input: PipelineInput): PipelineOutput {
       rank: i + 1,
       score: r.score,
       title: w.rep.title,
+      description: w.rep.description?.replace(/<[^>]*>/g, ' ').trim() ?? null,
+      intelligence: { ...w.intelligence, strong: r.components.criteria >= STRONG_CRITERIA && w.filter.unverified.length === 0
+        && w.filter.band === 'IN_BUDGET' && w.freshness !== 'STALE' && !w.intelligence.verificationNeeded },
       facts: w.facts,
       images: [...new Set([...w.rep.images, ...w.members.flatMap((m) => m.images)])].slice(0, 12),
       freshness: { state: w.freshness, lastVerifiedAt: w.lastVerifiedAt },
       seller: { classification: w.seller.classification, confidence: w.seller.confidence, reasonCodes: w.seller.reasonCodes },
       sourceCount: w.sources,
-      listings: [...w.members].sort((a, b) => (a.priceUsd ?? Infinity) - (b.priceUsd ?? Infinity) || a.id.localeCompare(b.id)).map((m) => ({
+      listings: [...w.members].sort((a, b) => Number(b.id === w.rep.id) - Number(a.id === w.rep.id)
+        || (a.priceUsd ?? Infinity) - (b.priceUsd ?? Infinity) || a.id.localeCompare(b.id)).map((m) => ({
         listingId: m.id,
         sourceListingId: m.sourceListingId,
         address: m.address,
@@ -295,6 +335,8 @@ export function processSearch(input: PipelineInput): PipelineOutput {
         observedAt: m.observedAt,
         lastVerifiedAt: m.lastVerifiedAt,
         freshness: m.freshness,
+        publishedAt: m.publishedAt,
+        updatedAt: m.updatedAt,
         seller: {
           classification: w.sellers.get(m.id)!.classification,
           name: m.seller.name, publicPhone: m.seller.publicPhone, publicEmail: m.seller.publicEmail, publicProfile: m.seller.publicProfile,
@@ -323,6 +365,18 @@ export function processSearch(input: PipelineInput): PipelineOutput {
   emit(owners, 'OWNER');
   emit(upgradeRows, 'UPGRADE');
   emit(more, 'MORE');
+
+  // One section per property. Historical storage groups stay compatible with existing consumers.
+  const overall = [...properties].sort((a, b) => b.score - a.score || a.key.localeCompare(b.key));
+  let bestCount = 0;
+  for (const p of overall) {
+    const intel = p.intelligence!;
+    intel.section = p.group === 'UPGRADE' ? 'UPGRADE' : intel.verificationNeeded ? 'VERIFY'
+      : intel.strong && bestCount < BEST_LIMIT ? 'BEST'
+        : intel.strong && intel.activity.ageDays !== null && intel.activity.ageDays <= 2 ? 'FRESH'
+          : p.vsComparable !== null && p.vsComparable <= -0.07 ? 'VALUE' : 'CLOSE';
+    if (intel.section === 'BEST') bestCount += 1;
+  }
 
   const sellerClasses: Record<string, number> = {};
   for (const w of working) sellerClasses[w.seller.classification] = (sellerClasses[w.seller.classification] ?? 0) + 1;

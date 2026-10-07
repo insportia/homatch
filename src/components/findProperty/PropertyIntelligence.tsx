@@ -6,7 +6,7 @@ import { safeExternalUrl } from '@/lib/safeExternalUrl';
 import { investmentHandoff, mortgageHandoff } from '@/research-core/marketplace/handoff';
 import type { PropertyView } from '@/services/marketplaceSearch';
 import type { ResultProperty } from '@/research-core/marketplace/pipeline';
-import { SELLER_KEY, advantageText, reasonText } from './PropertyCard';
+import { SELLER_KEY, advantageText, reasonText, sellerLabel } from './PropertyCard';
 import { type T, checkedAgo, num, pct, usd } from './format';
 
 const FACTS: Array<[keyof PropertyView['facts'], string]> = [
@@ -69,6 +69,16 @@ export function PropertyIntelligence({ t, p, open, onOpenChange, isRTL, property
             })}
           </dl>
 
+          {p.intelligence ? <section className="space-y-2">
+            <h3 className="font-display text-lg font-semibold">{t('fpr_evidence_title')}</h3>
+            {p.unverified.length > 0 ? <p className="text-sm text-muted-foreground">{t('fpr_required_unknown', { n: p.unverified.length })}</p> : null}
+            <p className="text-sm text-muted-foreground">{t(p.seller.reasonCodes.some((c) => c.startsWith('DECLARED_')) ? 'fpr_seller_source' : p.seller.reasonCodes.includes('CONTACT_ON_MANY_PROPERTIES') ? 'fpr_seller_contact' : p.seller.classification === 'LIKELY_OWNER' ? 'fpr_seller_owner' : 'fpr_seller_unclear')}</p>
+            {p.intelligence.warnings.map((code) => <p key={code} className="text-sm text-muted-foreground">{t(`fpr_warning_${code}`)}</p>)}
+            {p.intelligence.signals.map((signal) => <div key={signal.code} className="rounded-xl border border-border p-3"><p className="text-sm font-medium">{t(signal.polarity === 'NEGATED' ? 'fpr_description_negates' : 'fpr_description_mentions', { feature: t(`fpr_signal_${signal.code}`) })}</p><q dir="auto" className="mt-1 block break-words text-sm text-muted-foreground">{signal.evidence}</q></div>)}
+            <p className="text-xs text-muted-foreground">{t('fpr_text_evidence_note')}</p>
+            {p.description ? <details><summary className="min-h-[44px] cursor-pointer py-3 text-sm">{t('fpr_description_evidence')}</summary><p dir="auto" className="whitespace-pre-wrap break-words text-sm leading-relaxed text-muted-foreground">{p.description}</p></details> : null}
+          </section> : null}
+
           {p.reasons.length || p.upgrade ? (
             <section className="space-y-2">
               <h3 className="font-display text-lg font-semibold">{p.upgrade ? t('mps_upgrade_value') : t('mps_why_title')}</h3>
@@ -94,7 +104,7 @@ export function PropertyIntelligence({ t, p, open, onOpenChange, isRTL, property
           <section className="space-y-2">
             <h3 className="font-display text-lg font-semibold">{t('mps_seller_title')}</h3>
             <p className="inline-flex items-center gap-2 text-[15px]">
-              <ShieldCheck className="h-4 w-4 text-[hsl(var(--gold-ink))]" aria-hidden="true" />{t(SELLER_KEY[p.seller.classification])}
+              <ShieldCheck className="h-4 w-4 text-[hsl(var(--gold-ink))]" aria-hidden="true" />{sellerLabel(p.seller, t)}
             </p>
             <ul className="space-y-1">
               {p.seller.reasonCodes.slice(0, 3).map((c) => <li key={c} className="text-sm text-muted-foreground">· {t(`mps_seller_reason_${c}`)}</li>)}
@@ -134,7 +144,7 @@ export function PropertyIntelligence({ t, p, open, onOpenChange, isRTL, property
                       <p className="font-display text-lg font-semibold">{usd(l.priceUsd)}</p>
                     </div>
                     <div className="flex flex-wrap gap-2 text-xs">
-                      <span className="rounded-full border border-border px-2.5 py-1">{t(SELLER_KEY[l.seller.classification])}</span>
+                      <span className="rounded-full border border-border px-2.5 py-1">{sellerLabel(l.seller, t)}</span>
                       {checked ? <span className="rounded-full border border-border px-2.5 py-1 text-muted-foreground">{checked}</span> : null}
                       {l.isLowest && d?.significant ? <span className="rounded-full bg-[hsl(var(--gold)/0.15)] px-2.5 py-1 font-medium">{t('mps_price_lowest')}</span> : null}
                       {l.isHighest && d?.significant ? <span className="rounded-full border border-dashed border-border px-2.5 py-1">{t('mps_price_higher')}</span> : null}

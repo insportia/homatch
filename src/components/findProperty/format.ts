@@ -2,8 +2,16 @@
 
 import type { BriefField, NumericRange, SearchIntelligenceBrief } from '@/research-core/marketplace/brief';
 import type { RequirementKey } from '@/research-core/marketplace/readiness';
+import type { ListingActivity } from '@/research-core/marketplace/freshness';
+export { currentActivity } from '@/research-core/marketplace/browse-results';
 
 export type T = (key: string, vars?: Record<string, string | number>) => string;
+
+export function listingAgeText(activity: ListingActivity, t: T): string {
+  if (activity.ageDays === null) return t('fpr_date_unknown');
+  const age = activity.ageDays === 0 ? t('fpr_today') : activity.ageDays === 1 ? t('fpr_yesterday') : t('fpr_days_ago', { n: activity.ageDays });
+  return t(activity.basis === 'UPDATED' ? 'fpr_updated' : 'fpr_published', { age });
+}
 
 /** USD as the approved copy writes it ("$162,000") in every language. */
 export function usd(value: number | null | undefined): string {

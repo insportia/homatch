@@ -38,9 +38,8 @@
 // does not move the page when it grows: the textarea has a min-height and the layout
 // reserves its space rather than reflowing around it.
 
-import { ArrowLeft, Building2, Check, Layers, Loader2, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { ArrowLeft, Building2, Check, Loader2, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { RouteGuard } from '@/components/common/RouteGuard';
 import { DiscoveryState, ListingCard } from '@/components/customer/ListingCard';
@@ -262,7 +261,7 @@ function ResultCard({ result }: { result: FindPropertyResult }) {
   );
 }
 
-function LegacyFindPropertyPage({ onMarketplace }: { onMarketplace?: () => void }) {
+function LegacyFindPropertyPage() {
   const { t, lang } = useLanguage();
   const [stage, setStage] = useState<Stage>('DESCRIBE');
   const [text, setText] = useState('');
@@ -513,14 +512,6 @@ function LegacyFindPropertyPage({ onMarketplace }: { onMarketplace?: () => void 
       <AppLayout noPadding surfaceClass={DISCOVERY_SURFACE}>
         <CustomerSurface className="space-y-5">
           {header}
-
-          {/* Marketplace Search is an advanced acquisition flow, not the landing page.
-              Keep it available without displacing the customer's existing searches/results. */}
-          {onMarketplace && stage !== 'PLAN' ? (
-            <div className="flex w-full max-w-3xl justify-end">
-              <QuietAction label={t('mps_marketplace_cta')} icon={Layers} onClick={onMarketplace} />
-            </div>
-          ) : null}
 
           {/* ── DESCRIBE ─────────────────────────────────────────────────── */}
           {stage === 'DESCRIBE' && (
@@ -1037,7 +1028,6 @@ function LegacyFindPropertyPage({ onMarketplace }: { onMarketplace?: () => void 
  * as before, so shipping this code changes nothing a customer sees.
  */
 export default function FindPropertyPage() {
-  const [params, setParams] = useSearchParams();
   const [caps, setCaps] = useState<MarketplaceCapabilities | null>(null);
   useEffect(() => {
     let alive = true;
@@ -1053,24 +1043,7 @@ export default function FindPropertyPage() {
       </RouteGuard>
     );
   }
-  /*
-   * DEFAULT ENTRY IS THE CUSTOMER'S PROPERTY WORKSPACE.
-   *
-   * Marketplace Search used to replace the whole route as soon as its feature flag was
-   * enabled. That made a product-selection landing page hide the existing Find Property
-   * inventory/results. The flag now means "this advanced search is available", not
-   * "replace the customer's dashboard". A marketplace search is entered explicitly and
-   * a bookmarked/in-progress marketplace search remains resumable by its search id.
-   */
-  const marketplaceRequested = caps.marketplaceEnabled
-    && (params.get('marketplace') === '1' || Boolean(params.get('search')));
-  if (!marketplaceRequested) {
-    return <LegacyFindPropertyPage onMarketplace={caps.marketplaceEnabled ? () => {
-      const next = new URLSearchParams(params);
-      next.set('marketplace', '1');
-      setParams(next);
-    } : undefined} />;
-  }
+  if (!caps.marketplaceEnabled) return <LegacyFindPropertyPage />;
   return (
     <RouteGuard>
       <AppLayout noPadding surfaceClass={DISCOVERY_SURFACE}>

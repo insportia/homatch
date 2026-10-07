@@ -27,7 +27,17 @@ import { deriveSearchStatus, progressOf, stagesOf, timedOut } from '../marketpla
 import { compareProperties } from '../marketplace/comparison.ts';
 import { investmentHandoff, mortgageHandoff } from '../marketplace/handoff.ts';
 import { summarizeTelemetry } from '../marketplace/telemetry.ts';
+import { shouldResumeSearch } from '../marketplace/search-entry.ts';
 import { normalisePlan, planReadiness } from '../discovery/search-plan.ts';
+
+
+test('bare Find Property resumes the latest usable result catalogue regardless of age', () => {
+  const oldSuccessful = { terminal: true, unavailable: null, createdAt: '2026-01-01T00:00:00.000Z' };
+  const oldUnavailable = { terminal: true, unavailable: 'FAILED', createdAt: '2026-01-01T00:00:00.000Z' };
+  assert.equal(shouldResumeSearch(oldSuccessful, null, Date.parse('2026-10-07T12:00:00.000Z')), true);
+  assert.equal(shouldResumeSearch(oldUnavailable, null, Date.parse('2026-10-07T12:00:00.000Z')), false);
+  assert.equal(shouldResumeSearch(oldUnavailable, 'explicit-history-id', Date.parse('2026-10-07T12:00:00.000Z')), true);
+});
 
 test('owner Georgian neighborhood is not a city and street preferences are not acquisition districts', () => {
   const text = 'მინდა ვარკეთილში, სუხიშვილის ქუჩისკენ, ან მიკროებში მაღლა მხარეს 2 საძინებლიანი ბინა, ახალ აშენებულ კორპუსში ან მიმდინარეში, მაქსიმუმ 90000$, მინიმუმ 70 კვადრატიდან';

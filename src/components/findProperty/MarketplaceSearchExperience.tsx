@@ -183,8 +183,9 @@ export function MarketplaceSearchExperience({ deepSearchAvailable }: { deepSearc
       </div>
 
       {view === 'LOADING' && <div className="h-48 animate-pulse rounded-2xl bg-muted/60" aria-busy="true" />}
-      {view === 'MODE' && <><SearchModeSelect t={t} deepSearchAvailable={deepSearchAvailable} onMarketplace={() => setView('INTRO')} />
+      {view === 'MODE' && <>
         <NativeMatchesPanel role="SEEKER" />
+        <SearchModeSelect t={t} deepSearchAvailable={deepSearchAvailable} onMarketplace={() => setView('INTRO')} />
       </>}
       {view === 'INTRO' && <BuilderIntro t={t} text={text} onText={setText} onSubmit={() => void doUnderstand()} busy={busy} />}
       {view === 'BUILD' && brief && (

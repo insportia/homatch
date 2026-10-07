@@ -29,9 +29,12 @@ import {
   isTerminalSearch, progressOf, stagesOf, type SearchStatus, type WorkerRunState,
 } from '../../../src/research-core/marketplace/lifecycle.ts';
 import { compareProperties } from '../../../src/research-core/marketplace/comparison.ts';
-import { RESULT_GROUPS, type ResultGroup } from '../../../src/research-core/marketplace/pipeline.ts';
+import { RESULT_GROUPS, type ResultGroup, processSearch, publicView } from '../../../src/research-core/marketplace/pipeline.ts';
+import { browseResults, catalogueRevision, isCurrentResult, type CustomerProperty } from '../../../src/research-core/marketplace/browse-results.ts';
+import type { ExternalListingCandidate, MarketplaceSearchRequest } from '../../../src/research-core/marketplace/worker-contract.ts';
 import {
   consumeUnderstandQuota, loadMarketplaceSwitches, openaiStructured, processAndStore, recordAiUsage,
+  readAll, loadConverter,
 } from '../_shared/marketplaceSearch.ts';
 
 const CORS = {
@@ -49,6 +52,21 @@ const SEARCH_DEADLINE_MS = 20 * 60 * 1000;
 // deno-lint-ignore no-explicit-any
 type Db = any;
 
+/** Old saved searches acquire the new deterministic evidence from their own stored raw data.
+ * No source request, model call or mutation occurs on a customer read. */
+async function resultCatalogue(db: Db, search: Record<string, unknown>): Promise<CustomerProperty[]> {
+  const rows = await readAll<{ view: CustomerProperty }>((from, to) => db.from('discovery_marketplace_properties')
+    .select('view').eq('search_id', search.id).order('property_key').range(from, to));
+  if (rows.every((row) => row.view.intelligence)) return rows.map((row) => row.view);
+  const raw = await readAll<{ raw: ExternalListingCandidate }>((from, to) => db.from('discovery_marketplace_listings')
+    .select('raw').eq('search_id', search.id).order('id').range(from, to));
+  if (!raw.length) return rows.map((row) => row.view);
+  const output = processSearch({ request: search.request as MarketplaceSearchRequest,
+    candidates: raw.map((row) => ({ workerId: 'stored', candidate: row.raw })), converter: await loadConverter(db),
+    now: new Date(String(search.processed_at ?? search.created_at)) });
+  return output.properties.map(publicView);
+}
+
 /** The customer-safe summary of a search: no cost, no internals, no worker errors. */
 async function summary(db: Db, search: Record<string, unknown>) {
   const { data: runs } = await db.from('discovery_marketplace_worker_runs')
@@ -56,14 +74,10 @@ async function summary(db: Db, search: Record<string, unknown>) {
   const states: WorkerRunState[] = (runs ?? []).map((r: Record<string, unknown>) => ({
     workerId: String(r.worker_id), status: r.status as WorkerRunState['status'], deadlineAt: String(r.deadline_at), returnedCount: Number(r.returned_count) || 0,
   }));
-  /* Exact per-group counts from the database (count queries, no row cap): the number a
-     customer sees is always the number of properties they can open. */
+  /* Read-time freshness applies to counts as well as cards, including saved searches. */
   const counts: Record<string, number> = { BEST: 0, OWNER: 0, UPGRADE: 0, MORE: 0 };
-  await Promise.all(RESULT_GROUPS.map(async (g) => {
-    const { count } = await db.from('discovery_marketplace_properties').select('id', { count: 'exact', head: true })
-      .eq('search_id', search.id).eq('result_group', g);
-    counts[g] = Number(count ?? 0);
-  }));
+  const catalogue = (await resultCatalogue(db, search)).filter((p) => isCurrentResult(p));
+  for (const p of catalogue) counts[p.group] += 1;
   const stats = (search.stats ?? {}) as Record<string, number>;
   const status = search.status as SearchStatus;
   return {
@@ -82,7 +96,7 @@ async function summary(db: Db, search: Record<string, unknown>) {
       listingsDiscovered: Number(stats.raw ?? 0),
       listingsValidated: Number(stats.validated ?? 0),
       uniqueProperties: Number(stats.uniqueProperties ?? 0),
-      strongMatches: Number(search.strong_matches ?? 0),
+      strongMatches: catalogue.filter((p) => p.intelligence?.strong).length,
       sourcesCompleted: states.filter((s) => s.status === 'COMPLETE' || s.status === 'PARTIAL').length,
       sourcesTotal: states.length,
     },
@@ -238,6 +252,16 @@ Deno.serve(async (req: Request) => {
       return json({ search: await summary(db, search) });
     }
 
+    if (action === 'browse') {
+      const search = await ownSearch(body.searchId);
+      if (!search) return json({ error: 'NOT_FOUND' }, 404);
+      const now = new Date();
+      const properties = await resultCatalogue(db, search);
+      const revision = await catalogueRevision(properties, now);
+      if (body.revision && body.revision !== revision) return json({ error: 'RESULTS_CHANGED' }, 409);
+      return json({ ...browseResults(properties, body.filters, Number(body.page) || 1, now), revision });
+    }
+
     if (action === 'results') {
       const search = await ownSearch(body.searchId);
       if (!search) return json({ error: 'NOT_FOUND' }, 404);
@@ -245,10 +269,10 @@ Deno.serve(async (req: Request) => {
       if (!RESULT_GROUPS.includes(group)) return json({ error: 'BAD_GROUP' }, 400);
       const offset = Math.max(0, Math.trunc(Number(body.offset) || 0));
       const limit = Math.max(1, Math.min(24, Math.trunc(Number(body.limit) || 12)));
-      const { data, count } = await db.from('discovery_marketplace_properties').select('view', { count: 'exact' })
-        .eq('search_id', search.id).eq('result_group', group).order('rank', { ascending: true }).range(offset, offset + limit - 1);
-      const total = Number(count ?? 0);
-      return json({ group, items: (data ?? []).map((r: { view: unknown }) => r.view), total, nextOffset: offset + limit < total ? offset + limit : null });
+      const properties = (await resultCatalogue(db, search)).filter((p) => p.group === group && isCurrentResult(p))
+        .sort((a, b) => a.rank - b.rank || a.key.localeCompare(b.key));
+      const total = properties.length;
+      return json({ group, items: properties.slice(offset, offset + limit), total, nextOffset: offset + limit < total ? offset + limit : null });
     }
 
     if (action === 'property' || action === 'compare') {
@@ -256,8 +280,7 @@ Deno.serve(async (req: Request) => {
       if (!search) return json({ error: 'NOT_FOUND' }, 404);
       const keys = action === 'compare' ? [body.a, body.b] : [body.key];
       if (keys.some((k) => typeof k !== 'string' || k.length > 240)) return json({ error: 'BAD_KEY' }, 400);
-      const { data } = await db.from('discovery_marketplace_properties').select('property_key,view').eq('search_id', search.id).in('property_key', keys);
-      const byKey = new Map((data ?? []).map((r: { property_key: string; view: Record<string, unknown> }) => [r.property_key, r.view]));
+      const byKey = new Map((await resultCatalogue(db, search)).filter((p) => isCurrentResult(p) && keys.includes(p.key)).map((p) => [p.key, p]));
       if (keys.some((k) => !byKey.has(k as string))) return json({ error: 'NOT_FOUND' }, 404);
       if (action === 'property') return json({ property: byKey.get(keys[0] as string), request: search.request });
       const view = (k: unknown) => byKey.get(k as string) as Record<string, any>;

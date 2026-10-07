@@ -57,7 +57,8 @@ test('ownership: every customer read of a search is scoped to the caller; intern
   assert.match(ms, /\.eq\('id', id\)\.eq\('user_id', userId\)/);
   assert.match(ms, /\.eq\('user_id', userId\)\.eq\('idempotency_key', key\)/);
   assert.doesNotMatch(ms, /select\('[^']*internal/, 'customer reads select the public view only');
-  assert.match(ms, /select\('view', \{ count: 'exact' \}\)/);
+  assert.match(ms, /\.select\('view'\)\.eq\('search_id', search\.id\)/);
+  assert.match(ms, /readAll<\{ view: CustomerProperty \}>/);
 });
 
 test('workers: own token checked against a sha256 hash, constant-time; no Supabase key handed out; bounded payload', () => {
@@ -160,8 +161,10 @@ test('every dynamic mps_ key used by the interface exists in all six bundles', a
   for (const a of adv) want.push(`mps_adv_${a}`);
   const trade = read('src/research-core/marketplace/results-intelligence.ts').match(/export type TradeoffCode =([^;]+);/)[1].match(/'([A-Z_]+)'/g).map((x) => x.slice(1, -1));
   for (const tc of trade) want.push(`mps_tradeoff_${tc}`);
-  const sellerReasons = [...read('src/research-core/marketplace/seller.ts').matchAll(/'([A-Z][A-Z_]+)'/g)].map((m) => m[1])
-    .filter((c) => !['VERIFIED_OWNER', 'LIKELY_OWNER', 'AGENCY', 'BROKER', 'DEVELOPER', 'UNKNOWN', 'OWNER', 'PHONE'].includes(c));
+  // Only emitted reason codes become translation keys; description signal enums do not.
+  const sellerReasons = [...read('src/research-core/marketplace/seller.ts').matchAll(/reasons\.push\(([^;]+)\)|reasonCodes:\s*\[([^\]]*)\]/g)]
+    .flatMap((m) => [...(m[1] ?? m[2]).matchAll(/'([A-Z][A-Z_]+)'/g)].map((code) => code[1]))
+    .filter((c) => !['OWNER'].includes(c));
   for (const c of sellerReasons) want.push(`mps_seller_reason_${c}`);
   for (const f of ['price', 'pricePerSqm', 'area', 'rooms', 'bedrooms', 'location', 'buildingStatus', 'renovation', 'floor', 'parking', 'furnished', 'freshness', 'seller', 'sourceCount']) want.push(`mps_cmp_${f}`);
   const missing = want.filter((k) => !has(k));
@@ -208,13 +211,15 @@ test('concurrent orchestration: one batch dispatch, bounded parallel claims, ind
 
 test('results are never capped: exact counts, a real total, every group pages to the end', () => {
   const ms = code(MS);
-  assert.match(ms, /count: 'exact', head: true/);
+  assert.match(ms, /resultCatalogue\(db, search\)\)\.filter\(\(p\) => isCurrentResult\(p\)\)/);
   assert.match(ms, /totalProperties:/);
   assert.doesNotMatch(ms, /select\('result_group'\)/, 'no row-capped counting');
   const rv = code('src/components/findProperty/ResultsView.tsx');
-  assert.match(rv, /IntersectionObserver/);
+  assert.doesNotMatch(rv, /IntersectionObserver/);
+  assert.match(rv, /browseSearchResults/);
+  assert.match(rv, /pageNumbers/);
   assert.match(rv, /mps_total_found/);
-  assert.match(rv, /mps_shown_of/);
+  assert.match(rv, /fpr_page_status/);
 });
 
 test('no fake progress: the searching view renders only server counters', () => {

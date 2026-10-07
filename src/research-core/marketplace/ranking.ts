@@ -104,7 +104,14 @@ export function hardFilter(f: PropertyFacts, req: MarketplaceSearchRequest): Har
     violations.push('RENOVATION');
   }
   if (req.parking === true && f.parking === false) violations.push('PARKING');
+  if (req.parking === true && f.parking === null) unverified.push('PARKING');
   if (req.furnished !== null && f.furnished !== null && req.furnished !== f.furnished) violations.push('FURNISHED');
+  if (req.furnished !== null && f.furnished === null) unverified.push('FURNISHED');
+  for (const must of req.mustHave) {
+    const known = must === 'PARKING' ? f.parking : must === 'FURNISHED' ? f.furnished : f.amenities.includes(must) ? true : null;
+    if (known === false) violations.push(`REQUIRED_${must}`);
+    if (known === null) unverified.push(`REQUIRED_${must}`);
+  }
   for (const ex of req.exclusions) if (f.amenities.includes(ex)) violations.push(`EXCLUDED_${ex}`);
   return { fits: violations.length === 0, band: budgetBand(f.priceUsd, req.priceMinUsd, req.priceMaxUsd), violations, unverified };
 }
@@ -140,6 +147,9 @@ export interface RankInput {
   sellerConfidence: number;
   sourceCount: number;
   completeness: number;
+  listingAgeDays?: number | null;
+  descriptionFit?: number;
+  warningCount?: number;
 }
 
 export interface RankResult {
@@ -177,11 +187,12 @@ function criteriaScore(f: PropertyFacts, filter: HardFilterResult, req: Marketpl
 export function rankProperty(input: RankInput, req: MarketplaceSearchRequest, local: LocalComparison): RankResult {
   const criteria = criteriaScore(input.facts, input.filter, req);
   const budget = input.filter.band === 'IN_BUDGET' ? 1 : input.filter.band === 'UPGRADE_PREFERRED' ? 0.6 : input.filter.band === 'UPGRADE_EXTENDED' ? 0.4 : 0;
-  const freshness = (input.freshness === 'VERIFIED' ? 1 : input.freshness === 'RECENT' ? 0.7 : 0.2) * (input.oldListing ? 0.6 : 1);
+  const activity = input.listingAgeDays == null ? 0.35 : Math.max(0, 1 - input.listingAgeDays / 35);
+  const freshness = (0.8 * activity + 0.2 * (input.freshness === 'VERIFIED' ? 1 : input.freshness === 'RECENT' ? 0.7 : 0.2)) * (input.oldListing ? 0 : 1);
   const vs = vsComparable(input.facts.pricePerSqmUsd, local);
   /* −20% per m² vs similar → 1, +20% → 0, unknown → neutral. */
   const value = vs === null ? 0.5 : Math.max(0, Math.min(1, 0.5 - vs * 2.5));
-  const evidence = Math.min(1, 0.6 + 0.2 * Math.max(0, input.sourceCount - 1));
+  const evidence = Math.max(0, Math.min(1, 0.55 + 0.15 * Math.max(0, input.sourceCount - 1) + 0.15 * (input.descriptionFit ?? 0)) - 0.12 * (input.warningCount ?? 0));
   const seller = SELLER_SCORE[input.seller] * (0.5 + 0.5 * input.sellerConfidence);
   /* Owner preference only for an already competitive, current property. */
   const ownerPreference = (input.seller === 'VERIFIED_OWNER' || input.seller === 'LIKELY_OWNER')

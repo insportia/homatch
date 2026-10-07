@@ -23,6 +23,7 @@ import { join } from 'node:path';
 import { createRequire } from 'node:module';
 
 import { processSearch, pageResults, publicView } from '../../src/research-core/marketplace/pipeline.ts';
+import { browseResults } from '../../src/research-core/marketplace/browse-results.ts';
 import { briefFromModel } from '../../src/research-core/marketplace/brief.ts';
 import { evaluateReadiness } from '../../src/research-core/marketplace/readiness.ts';
 import { compareProperties } from '../../src/research-core/marketplace/comparison.ts';
@@ -31,7 +32,7 @@ import * as F from '../../src/research-core/__tests__/fixtures/marketplaceFixtur
 
 const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
-const PORT = 4361;
+const PORT = Number(process.env.HOMATCH_FIND_PROPERTY_QA_PORT) || 4361;
 const BASE = `http://127.0.0.1:${PORT}`;
 const SHOTS = process.env.FIND_PROPERTY_QA_SHOTS || null;
 const LOCALES = ['ka', 'en', 'ru', 'tr', 'ar', 'he'];
@@ -75,7 +76,8 @@ const profile = { id: 'u1', auth_id: 'u1', email: 'buyer@example.test', is_admin
 function liveCandidates() {
   const now = Date.now();
   return F.fixtureCandidates().map(({ workerId, candidate }) => ({
-    workerId, candidate: { ...candidate, observedAt: new Date(now - (Date.parse(F.FIXTURE_NOW) - Date.parse(candidate.observedAt))).toISOString() },
+    workerId, candidate: { ...candidate, observedAt: new Date(now - (Date.parse(F.FIXTURE_NOW) - Date.parse(candidate.observedAt))).toISOString(),
+      publishedAt: candidate.publishedAt ? new Date(now - (Date.parse(F.FIXTURE_NOW) - Date.parse(candidate.publishedAt))).toISOString() : null },
   }));
 }
 const OUTPUT = processSearch({ request: F.FIXTURE_REQUEST, candidates: liveCandidates() });
@@ -101,18 +103,19 @@ function summary(status, { empty = false, output = OUTPUT } = {}) {
   };
 }
 
-async function boot(t, { rateLimited = false, width = 1440, height = 900, lang = 'en', enabled = true, timeline = ['SEARCHING', 'RESULTS_AVAILABLE', 'COMPLETE'], empty = false, resumeStatus = null, output = OUTPUT } = {}) {
+async function boot(t, { rateLimited = false, width = 1440, height = 900, lang = 'en', enabled = true, timeline = ['SEARCHING', 'RESULTS_AVAILABLE', 'COMPLETE'], empty = false, resumeStatus = null, output = OUTPUT, nativeInventory = false } = {}) {
   const { chromium } = resolvePlaywright();
-  const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
+  const server = spawn(process.execPath, [join(ROOT, 'node_modules/vite/bin/vite.js'), 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore', windowsHide: true });
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
-  t.after(async () => { await browser.close().catch(() => {}); server.kill(); });
+  const close = async () => { await browser.close().catch(() => {}); server.kill(); };
+  t.after(close);
   for (let i = 0; i < 80; i += 1) { try { await fetch(BASE); break; } catch { await new Promise((r) => setTimeout(r, 250)); } }
   const ctx = await browser.newContext({ viewport: { width, height }, isMobile: width < 700, hasTouch: width < 700, reducedMotion: 'reduce' });
   await ctx.addInitScript(([k, s, l]) => { window.localStorage.setItem(k, JSON.stringify(s)); window.localStorage.setItem('homatch_lang', l); },
     ['sb-stubproj-auth-token', fakeSession(), lang]);
   const page = await ctx.newPage();
   const json = (b, status = 200) => ({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(b) });
-  const state = { started: resumeStatus !== null, polls: 0, calls: [], starts: 0 };
+  const state = { started: resumeStatus !== null, polls: 0, calls: [], starts: 0, requests: [], revision: 'fixture-revision', browseFailure: false };
   await page.route('**', async (r) => {
     const req = r.request();
     const url = req.url();
@@ -124,6 +127,7 @@ async function boot(t, { rateLimited = false, width = 1440, height = 900, lang =
     if (url.includes('/functions/v1/marketplace-search')) {
       const body = JSON.parse(req.postData() ?? '{}');
       state.calls.push(body.action);
+      state.requests.push(body);
       if (body.action === 'capabilities') return r.fulfill(json({ marketplaceEnabled: enabled, activeSources: enabled ? 5 : 0, deepSearchAvailable: false }));
       if (body.action === 'understand' && rateLimited) {
         return r.fulfill({ ...json({ error: 'RATE_LIMIT_EXCEEDED', code: 'RATE_LIMIT_EXCEEDED', retryAfterSeconds: 120 }, 429), headers: { 'access-control-allow-origin': '*', 'retry-after': '120' } });
@@ -147,6 +151,12 @@ async function boot(t, { rateLimited = false, width = 1440, height = 900, lang =
         state.polls += 1;
         return r.fulfill(json({ search: summary(timeline[i], { empty, output }) }));
       }
+      if (body.action === 'browse') {
+        if (state.browseFailure) return r.fulfill(json({ error: 'REQUEST_FAILED' }, 503));
+        if (body.revision && body.revision !== state.revision) return r.fulfill(json({ error: 'RESULTS_CHANGED' }, 409));
+        const page = browseResults(empty ? [] : output.properties.map(publicView), body.filters, body.page ?? 1);
+        return r.fulfill(json({ ...page, revision: state.revision }));
+      }
       if (body.action === 'results') {
         const page = empty ? { items: [], total: 0, nextOffset: null } : pageResults(output, body.group, body.offset ?? 0, body.limit ?? 12);
         return r.fulfill(json({ group: body.group, items: page.items.map(publicView), total: page.total, nextOffset: page.nextOffset }));
@@ -164,11 +174,12 @@ async function boot(t, { rateLimited = false, width = 1440, height = 900, lang =
       return r.fulfill(json({ error: 'UNKNOWN_ACTION' }, 400));
     }
     if (url.includes('/functions/v1/find-property')) return r.fulfill(json({ success: true, searches: 0, state: 'NO_ACTIVE_SEARCH', results: [] }));
+    if (url.includes('/rest/v1/rpc/my_native_matches')) return r.fulfill(json(nativeInventory ? [{ kind: 'MATCH', id: 'native-1', role: 'SEEKER', property_id: 'property-1', property_title: 'Native HOMATCH apartment', homatch_id: 101, agreed: ['CITY', 'PRICE'], preference_misses: [], viewing_requested: false, city: 'Tbilisi', price: 150000, currency: 'USD', area: 85, rooms: 3, bedrooms: 2 }] : []));
     const wantsObject = (req.headers().accept ?? '').includes('pgrst.object');
     if (url.includes('/rest/v1/')) return r.fulfill(json(wantsObject ? {} : []));
     return r.fulfill(json({}));
   });
-  return { page, state };
+  return { page, state, close };
 }
 
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -233,7 +244,7 @@ test('ka, 1440: complete request → READY without questions → search → grou
   await page.locator('section[aria-labelledby="mps-g-BEST"] article').first().waitFor({ timeout: 30000 });
   await page.locator('section[aria-labelledby="mps-g-UPGRADE"] article').first().waitFor({ timeout: 30000 });
   const results = await page.textContent('main');
-  for (const s of [`ნაპოვნია ${OUTPUT.properties.length} შესაბამისი ქონება`, 'საუკეთესო ვარიანტები', 'ღირს განხილვა', 'სხვა შესაბამისი ვარიანტები', 'რატომ გირჩევს HOMATCH', 'ნაპოვნია 3 წყაროში', 'ფასებში სხვაობა',
+  for (const s of [`ნაპოვნია ${OUTPUT.properties.length} შესაბამისი ქონება`, 'საუკეთესო დამთხვევები', 'ღირს განხილვა', 'რატომ გირჩევს HOMATCH', 'ნაპოვნია 3 წყაროში', 'ფასებში სხვაობა',
     '+3.5% შენს მაქსიმალურ ბიუჯეტზე მეტი', 'რატომ ღირს განხილვა', 'გინდა უფრო ფართოდ მოვძებნოთ?']) {
     assert.ok(results.includes(s), `results show ${s}`);
   }
@@ -247,7 +258,7 @@ test('ka, 1440: complete request → READY without questions → search → grou
   const sheet = page.locator('[role="dialog"]');
   const text = await sheet.textContent();
   for (const s of ['ფასებში სხვაობა ვიპოვეთ', 'ყველაზე დაბალი ფასი', 'ყველაზე მაღალი ფასი', '$162,000', '$181,000', '$19,000', 'დაკავშირებამდე გადაამოწმე მიმდინარე ფასი და პირობები.',
-    'სავარაუდოდ მესაკუთრისგან', 'სააგენტო', 'ბროკერი', 'უფრო მაღალი ფასი', 'ინვესტიციის ანალიზი', 'იპოთეკის ნახვა']) assert.ok(text.includes(s), `sheet shows ${s}`);
+    'სავარაუდოდ მესაკუთრისგან', 'სააგენტო', 'სავარაუდოდ მაკლერი/აგენტი', 'უფრო მაღალი ფასი', 'ინვესტიციის ანალიზი', 'იპოთეკის ნახვა']) assert.ok(text.includes(s), `sheet shows ${s}`);
   for (const w of ['თაღლით', 'scam', 'fraud']) assert.ok(!text.toLowerCase().includes(w));
   const links = await sheet.locator('a[href^="http"]').evaluateAll((as) => as.map((a) => ({ href: a.getAttribute('href'), target: a.target, rel: a.rel })));
   for (const href of ['https://source-a.example/listing/a-162', 'https://source-b.example/listing/b-165', 'https://source-c.example/listing/c-181']) {
@@ -348,25 +359,40 @@ test('Snake: a thumbnail opens the game at once; keys, WASD and swipe work; the 
   await shot(page, 'ka-390-results');
 });
 
-test('ranking is not hiding: 800 valid matching properties are all reachable in the browser', opts, async (t) => {
+test('800 properties use bounded numbered pages; filters reset and Back/Forward preserve state', opts, async (t) => {
   const many = Array.from({ length: 800 }, (_, i) => F.listing({
     source: 'source-a', sourceListingId: `v${i}`, price: 130000 + (i * 37) % 40000, areaSqm: 80 + (i % 30), floor: 1 + (i % 25), images: [],
     observedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+    publishedAt: new Date(Date.now() - 3 * 86400000).toISOString(),
   }));
   const big = processSearch({ request: F.FIXTURE_REQUEST, candidates: F.fixtureCandidates(many) });
   assert.equal(big.properties.length, 800);
-  const { page } = await boot(t, { lang: 'en', resumeStatus: 'COMPLETE', output: big });
+  const { page, state } = await boot(t, { lang: 'en', resumeStatus: 'COMPLETE', output: big });
   await page.goto(`${BASE}/find-property`, { waitUntil: 'domcontentloaded' });
   await page.getByTestId('mps-total').waitFor({ timeout: 30000 });
   assert.equal(await page.getByTestId('mps-total').textContent(), '800 matching properties found');
-  for (let i = 0; i < 200; i++) {
-    const n = await page.locator('section[aria-labelledby^="mps-g-"] article').count();
-    if (n >= 800) break;
-    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    await page.waitForTimeout(150);
-  }
-  const keys = await page.locator('section[aria-labelledby^="mps-g-"] article').count();
-  assert.equal(keys, 800, 'every valid property is on the page once the customer scrolls');
+  const cards = page.locator('[data-property-key]');
+  await cards.first().waitFor();
+  const first = await cards.evaluateAll((els) => els.map((el) => el.dataset.propertyKey));
+  assert.equal(first.length, 12);
+  await page.getByRole('button', { name: 'Next page', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('nav button[aria-current="page"]')?.textContent === '2');
+  const second = await cards.evaluateAll((els) => els.map((el) => el.dataset.propertyKey));
+  assert.equal(second.length, 12); assert.ok(second.every((key) => !first.includes(key)));
+  await page.goBack(); await page.waitForFunction(() => document.querySelector('nav button[aria-current="page"]')?.textContent === '1');
+  assert.deepEqual(await cards.evaluateAll((els) => els.map((el) => el.dataset.propertyKey)), first);
+  await page.goForward(); await page.waitForFunction(() => document.querySelector('nav button[aria-current="page"]')?.textContent === '2');
+  await page.getByRole('button', { name: 'Page 67', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('nav button[aria-current="page"]')?.textContent === '67');
+  assert.equal(await cards.count(), 8, 'final numbered page reaches the tail without appending DOM');
+  await page.getByText('Price, space and listing evidence', { exact: true }).click();
+  await page.getByLabel('Maximum price ($)', { exact: true }).fill('135000');
+  await page.waitForURL(/fp_priceMax=135000/);
+  assert.equal(new URL(page.url()).searchParams.get('page'), '1');
+  assert.ok(new URL(page.url()).searchParams.has('search')); assert.ok(new URL(page.url()).searchParams.has('revision'));
+  await page.getByRole('button', { name: 'Clear filters', exact: true }).click();
+  await page.waitForFunction(() => !new URL(location.href).searchParams.has('fp_priceMax'));
+  assert.ok(state.requests.filter((r) => r.action === 'browse').every((r) => !r.offset), 'only bounded page requests');
   assert.ok(await overflow(page) <= 1);
 });
 
@@ -384,7 +410,7 @@ test('rate limited understand: a clear message, then the questions; nothing brea
 
 test('ka: owner can leave a resumed failed search without hiding or retrying it automatically', opts, async (t) => {
   const {page,state}=await boot(t,{lang:'ka',resumeStatus:'FAILED',empty:true});
-  await page.goto(BASE+'/find-property');
+  await page.goto(BASE+'/find-property?search=11111111-1111-4111-8111-111111111111');
   await page.getByRole('button',{name:'ახალი ძიება',exact:true}).waitFor();
   assert.match(await page.textContent('main'),/ძიება ამჯერად ვერ შესრულდა/);
   assert.equal(state.starts,0,'failed history does not silently restart acquisition');
@@ -408,10 +434,57 @@ test('partial and empty results say so, without technical errors', opts, async (
     const { page } = await boot(t, { lang: 'ka', resumeStatus: 'COMPLETE', empty: true });
     await page.goto(`${BASE}/find-property`, { waitUntil: 'domcontentloaded' });
     await page.locator('#mps-empty').waitFor({ timeout: 30000 });
+    await page.getByRole('heading', { name: 'ზუსტი შესაბამისობა ჯერ ვერ ვიპოვეთ' }).waitFor({ timeout: 30000 });
     const text = await page.textContent('main');
     for (const s of ['ზუსტი შესაბამისობა ჯერ ვერ ვიპოვეთ', 'ფართობის შეცვლა', 'ბიუჯეტის შეცვლა']) assert.ok(text.includes(s), s);
     await shot(page, 'ka-1440-empty');
+    await page.getByRole('button', { name: 'ბიუჯეტის შეცვლა', exact: true }).click();
+    await page.getByRole('heading', { name: 'რა ფასის ფარგლებში ვეძებოთ?', exact: true }).waitFor({ timeout: 15000 });
+    assert.equal(new URL(page.url()).searchParams.has('search'), false, 'editing criteria stays in the builder');
   }
+});
+
+test('bare failed search cannot hijack native inventory; explicit history and New search remain usable', opts, async (t) => {
+  const { page } = await boot(t, { lang: 'en', resumeStatus: 'FAILED', nativeInventory: true, width: 390 });
+  await page.goto(`${BASE}/find-property`, { waitUntil: 'domcontentloaded' });
+  await page.locator('#mps-mode-title').waitFor({ timeout: 30000 });
+  await page.getByText('Native HOMATCH apartment', { exact: true }).waitFor();
+  assert.equal(new URL(page.url()).searchParams.has('search'), false);
+  await shot(page, 'en-390-failed-bare-native');
+  await page.goto(`${BASE}/find-property?search=11111111-1111-4111-8111-111111111111`, { waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: 'New search', exact: true }).waitFor({ timeout: 30000 });
+  await page.getByRole('button', { name: 'New search', exact: true }).click();
+  await page.locator('#mps-mode-title').waitFor();
+  await page.getByText('Native HOMATCH apartment', { exact: true }).waitFor();
+  await page.goBack();
+  await page.getByRole('button', { name: 'New search', exact: true }).waitFor();
+  assert.ok(new URL(page.url()).searchParams.has('search'));
+  await page.goForward();
+  await page.locator('#mps-mode-title').waitFor();
+  assert.ok(await overflow(page) <= 1);
+});
+
+test('catalogue changes require explicit refresh; request failures retry without a false empty state', opts, async (t) => {
+  const { page, state } = await boot(t, { lang: 'en', resumeStatus: 'COMPLETE' });
+  await page.goto(`${BASE}/find-property`);
+  await page.locator('[data-property-key]').first().waitFor({ timeout: 30000 });
+  await page.waitForFunction(() => new URL(location.href).searchParams.has('revision'));
+  state.revision = 'changed-revision';
+  await page.getByLabel('Sort', { exact: true }).selectOption('FRESHEST');
+  await page.getByRole('button', { name: 'Refresh results', exact: true }).waitFor();
+  assert.equal(await page.locator('#mps-empty').count(), 0);
+  await page.getByRole('button', { name: 'Refresh results', exact: true }).click();
+  await page.waitForFunction(() => new URL(location.href).searchParams.get('revision') === 'changed-revision');
+  assert.equal(new URL(page.url()).searchParams.get('fp_sort'), 'FRESHEST');
+  state.browseFailure = true;
+  await page.getByLabel('Sort', { exact: true }).selectOption('PRICE');
+  await page.getByRole('button', { name: 'Try again', exact: true }).waitFor();
+  assert.equal(await page.locator('#mps-empty').count(), 0);
+  state.browseFailure = false;
+  await page.getByRole('button', { name: 'Try again', exact: true }).click();
+  await page.locator('[data-property-key]').first().waitFor();
+  const prices = await page.locator('[data-property-key]').evaluateAll((cards) => cards.map((card) => Number(card.querySelector('p.font-display')?.textContent?.replace(/[^\d.]/g, ''))));
+  assert.deepEqual(prices, [...prices].sort((a, b) => a - b), 'price sort remains ordered across section boundaries');
 });
 
 test('comparison: two properties side by side, factual rows, no winner', opts, async (t) => {
@@ -436,11 +509,11 @@ test('switch off: the existing Find Property renders, unchanged', opts, async (t
   assert.equal(await page.locator('#mps-mode-title').count(), 0);
 });
 
-test('1440px and 390px, six locales: mode, confirmation, results and property sheet without horizontal overflow; RTL for ar/he', opts, async (t) => {
+test('320px, 390px, 768px and 1440px, six locales: mode, confirmation, results, filters and property sheet without overflow; RTL for ar/he', opts, async (t) => {
   const failures = [];
-  for (const width of [1440, 390]) {
+  for (const width of [1440, 768, 390, 320]) {
     for (const lang of LOCALES) {
-      const { page } = await boot(t, { width, height: width < 700 ? 844 : 900, lang });
+      const { page, close } = await boot(t, { width, height: width < 700 ? 844 : 900, lang, timeline: ['COMPLETE'] });
       await toConfirm(page, `${lang}-${width}-mode`);
       if (await overflow(page) > 1) failures.push(`${lang} ${width}: confirm overflow`);
       const dir = await page.evaluate(() => document.documentElement.getAttribute('dir'));
@@ -449,12 +522,15 @@ test('1440px and 390px, six locales: mode, confirmation, results and property sh
       await page.locator('section[aria-labelledby="mps-g-BEST"] article').first().waitFor({ timeout: 30000 });
       if (await overflow(page) > 1) failures.push(`${lang} ${width}: results overflow ${await overflow(page)}px`);
       await shot(page, `${lang}-${width}-results`);
+      await page.locator('details').filter({ has: page.locator('input[type="number"]') }).locator('summary').click();
+      if (await overflow(page) > 1) failures.push(`${lang} ${width}: expanded filters overflow`);
+      await shot(page, `${lang}-${width}-filters`);
       await page.locator('section[aria-labelledby="mps-g-BEST"]').locator('article').first().locator('button').first().click();
       await page.locator('#mps-listings').waitFor();
       const sheetOverflow = await page.locator('[role="dialog"]').evaluate((el) => el.scrollWidth - el.clientWidth);
       if (sheetOverflow > 1) failures.push(`${lang} ${width}: property sheet overflow ${sheetOverflow}px`);
       await shot(page, `${lang}-${width}-property`);
-      await page.context().close();
+      await close();
     }
   }
   assert.deepEqual(failures, []);

@@ -18,6 +18,7 @@
 
 import { type ResolvableObservation, resolve } from '../discovery/entity-resolution.ts';
 import type { NormalizedListing } from './normalize.ts';
+import { descriptionFingerprint } from './description-signals.ts';
 
 export const PROPERTY_ENTITY_VERSION = 'marketplace-property-entity-1';
 
@@ -91,8 +92,17 @@ export function classifyPair(x: NormalizedListing, y: NormalizedListing): PairDe
 
   const extra: string[] = [];
   const area = areaAgrees(x.areaSqm, y.areaSqm);
+  const locationAgrees = (x.cityKey ?? x.city)?.toLowerCase() === (y.cityKey ?? y.city)?.toLowerCase()
+    && !!(x.districtKey ?? x.district) && (x.districtKey ?? x.district)?.toLowerCase() === (y.districtKey ?? y.district)?.toLowerCase();
+  const detailsAgree = area && x.rooms !== null && x.rooms === y.rooms;
+  // Full image URLs, not a basename or a seller avatar; require two shared photos.
+  const sharedImages = [...new Set(x.images.filter((u) => y.images.includes(u)))];
+  if (sharedImages.length >= 2 && detailsAgree && locationAgrees) extra.push('shared listing images');
+  const text = descriptionFingerprint(x.description);
+  const copied = text !== null && text === descriptionFingerprint(y.description);
+  if (copied && detailsAgree && locationAgrees) extra.push('substantial shared description');
   if (x.imageHashes.length && y.imageHashes.some((h) => x.imageHashes.includes(h)) && area) extra.push('shared image');
-  if (x.seller.phoneKey && x.seller.phoneKey === y.seller.phoneKey && area && x.rooms !== null && x.rooms === y.rooms) {
+  if (x.seller.phoneKey && x.seller.phoneKey === y.seller.phoneKey && detailsAgree && locationAgrees) {
     extra.push('shared public phone');
   }
   if (x.geo && y.geo && metres(x.geo, y.geo) <= GEO_METRES && area) extra.push('same coordinates');
@@ -106,8 +116,10 @@ export function classifyPair(x: NormalizedListing, y: NormalizedListing): PairDe
     const spread = Math.abs(x.priceUsd - y.priceUsd) / Math.max(x.priceUsd, y.priceUsd);
     if (spread > MAX_AUTO_MERGE_PRICE_SPREAD) tier = 'POSSIBLE_SAME_PROPERTY';
   }
-  /* A same-source pair that is not the same id is two listings on one site: never auto-merged. */
-  if (tier === 'LIKELY_SAME_PROPERTY' && x.source === y.source && !extra.includes('shared image')) tier = 'POSSIBLE_SAME_PROPERTY';
+  // One broker's phone / one building's pin / copied template is insufficient for same-site merging.
+  if (tier === 'LIKELY_SAME_PROPERTY' && x.source === y.source
+    && !extra.includes('shared image') && !extra.includes('shared listing images')) tier = 'POSSIBLE_SAME_PROPERTY';
+  if (copied && tier === 'DISTINCT_PROPERTY' && detailsAgree && locationAgrees) tier = 'POSSIBLE_SAME_PROPERTY';
   return { ...base, tier, confidence: Math.min(1, d.confidence + extra.length * 0.1), evidence: [...evidence, ...extra], conflict: null };
 }
 
@@ -139,6 +151,9 @@ function blockKeys(l: NormalizedListing): string[] {
   }
   if (l.seller.phoneKey) keys.push(`p:${l.seller.phoneKey}`);
   for (const h of l.imageHashes.slice(0, 6)) keys.push(`i:${h}`);
+  for (const u of l.images.slice(0, 6)) keys.push(`img:${u}`);
+  const text = descriptionFingerprint(l.description);
+  if (text) keys.push(`text:${text}`);
   if (l.geo) keys.push(`g:${Math.round(l.geo.lat * 2000)}:${Math.round(l.geo.lng * 2000)}`);
   return keys;
 }

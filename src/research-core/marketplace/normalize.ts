@@ -12,7 +12,7 @@
 import type { CurrencyConverter } from '../normalize/currency.ts';
 import { comparePlaces, resolvePlace } from '../normalize/place.ts';
 import { safeWebUrl } from '../discovery/source-link.ts';
-import { listingContextFrom, resolveAgeCeiling } from '../discovery/listing-age-policy.ts';
+import { listingActivity } from './freshness.ts';
 import { publicContactsIn, phoneKey } from '../discovery/public-contacts.ts';
 import type { ExternalListingCandidate, MarketplaceSearchRequest } from './worker-contract.ts';
 import {
@@ -120,10 +120,7 @@ export function normalizeCandidate(
   const observedMs = Date.parse(c.observedAt);
   const age = Number.isFinite(observedMs) ? now.getTime() - observedMs : Infinity;
   const freshness: FreshnessState = age <= VERIFIED_WINDOW_MS ? 'VERIFIED' : age <= 72 * 3600_000 ? 'RECENT' : 'STALE';
-  const ctx = listingContextFrom({ transaction: c.transactionType, propertyType: c.propertyType });
-  const ceiling = resolveAgeCeiling(ctx, { market: c.country });
-  const listedAt = Date.parse(c.updatedAt ?? c.publishedAt ?? '');
-  const oldListing = Number.isFinite(listedAt) && now.getTime() - listedAt > ceiling.days * 86_400_000;
+  const oldListing = listingActivity(c.publishedAt, c.updatedAt, now).expired;
   const phoneFromField = c.seller.publicPhone ? phoneKey(c.seller.publicPhone) : null;
   const phoneFromText = publicContactsIn(c.description).find((x) => x.kind === 'PHONE')?.key ?? null;
   const fields = [c.price, c.areaSqm, c.rooms, c.bedrooms, c.floor, c.district, c.city, c.buildingStatus, c.renovationStatus, c.images[0]];

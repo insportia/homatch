@@ -121,7 +121,7 @@ const MATCHES = matchDetailRows(30, PROPERTY_ID).map((m) => ({ ...m, demand_publ
 
 async function boot(t, { width = 1440, height = 900, lang = 'en', admin = false, status = STATUS_SEARCHING, matches = [], jobs = [] } = {}) {
   const { chromium } = resolvePlaywright();
-  const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
+  const server = spawn(process.execPath, [join(ROOT, 'node_modules/vite/bin/vite.js'), 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore', windowsHide: true });
   const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
   t.after(async () => { await browser.close().catch(() => {}); server.kill(); });
   for (let i = 0; i < 80; i += 1) { try { await fetch(BASE); break; } catch { await new Promise((r) => setTimeout(r, 250)); } }
@@ -192,7 +192,7 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', admin = false,
     if (url.includes('/rest/v1/')) return r.fulfill(json(wantsObject ? {} : []));
     return r.fulfill(json({}));
   });
-  return { page, translateCalls, matchRequests, settingWrites, healthTests };
+  return { page, translateCalls, matchRequests, settingWrites, healthTests, setStatus: (next) => { status = next; } };
 }
 
 const hp = (provider, status) => ({ provider, status, last_error: null, latency_ms: null, success_count: 3, failure_count: 0, last_tested_at: null, updated_at: '2026-10-04T10:00:00Z' });
@@ -329,15 +329,17 @@ test('live search module: server state, real source nodes only, real counts, the
 });
 
 test('pause states: PAUSING says runs are finishing (no pause button), PAUSED offers continue', opts, async (t) => {
+  const held = await boot(t, { status: withState('PAUSING') });
   for (const [state, expectText, button] of [['PAUSING', /Pausing the search/, 'Pausing…'], ['PAUSED', /Search is paused/, 'Continue search']]) {
-    const { page } = await boot(t, { status: withState(state, state === 'PAUSED' ? { runs: { inFlight: 0, succeeded: 2, failed: 0 } } : {}) });
+    const { page } = held;
+    if (state === 'PAUSED') held.setStatus(withState('PAUSED', { runs: { inFlight: 0, succeeded: 2, failed: 0 } }));
     await open(page);
+    await page.getByText(expectText).first().waitFor({ state: 'visible' });
     const main = await page.textContent('main');
     assert.match(main, expectText);
     assert.equal(await page.getByRole('button', { name: 'Pause search' }).count(), 0, `${state}: no pause button`);
     assert.ok(await page.getByRole('button', { name: button }).count() >= 1, `${state}: ${button}`);
     if (state === 'PAUSING') assert.match(main, /no new source will start/);
-    await page.context().close();
   }
 });
 

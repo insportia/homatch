@@ -134,9 +134,11 @@ test('V2 mobile: workspace, touch gallery and property AI composer at 375px and 
     await card.waitFor();
     const before = await card.locator('[aria-live="polite"]').textContent();
     const searchUrl = page.url();
-    const gallery = card.getByRole('group');
-    await gallery.scrollIntoViewIfNeeded();
-    await gallery.locator('button').first().click({ trial: true }); // Wait for a stable, hittable image surface without opening it.
+    const propertyKey = await card.getAttribute('data-property-key');
+    const currentGallery = () => page.locator(`[data-property-key=${JSON.stringify(propertyKey)}]`).getByRole('group');
+    await currentGallery().waitFor({ state: 'visible' });
+    await currentGallery().locator('button').first().click({ trial: true });
+    const gallery = currentGallery();
     const box = await gallery.boundingBox();
     assert.ok(box && box.width > 120, 'gallery has room for a horizontal gesture');
     const touch = await page.context().newCDPSession(page);

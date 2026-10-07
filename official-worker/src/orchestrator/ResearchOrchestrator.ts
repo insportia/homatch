@@ -12,6 +12,7 @@ import { EntityQueue } from '../entities/EntityQueue.js';
 import { runTasMapWorker } from '../workflows/tasmap/TasMapWorker.js';
 import { runTasWorkflow } from '../workflows/tas/TasWorkflow.js';
 import { runMyGovWorkflow } from '../workflows/mygov/MyGovWorkflow.js';
+import { runMyGovApiStep } from '../workflows/mygov/MyGovApiWorkflow.js';
 import { runEnregWorkflow } from '../workflows/enreg/EnregWorkflow.js';
 import { runRsTaxpayerWorker } from '../workflows/financial/RsTaxpayerWorker.js';
 import { runDebtorWorker } from '../workflows/financial/DebtorWorker.js';
@@ -406,6 +407,8 @@ export class ResearchOrchestrator {
     const query = step.type === 'entity' ? step.idCode || step.name : job.query;
     const forEntity = step.type === 'entity' ? { name: step.name, idCode: step.idCode } : null;
 
+    if (key === 'mygov') return runMyGovApiStep(query, entities);
+
     const ctx = jobContext(jobBrowser);
     let page: any;
 
@@ -449,7 +452,6 @@ export class ResearchOrchestrator {
       let result: any;
       if (key === 'tas') result = await runTasWorkflow(page, query, job.mode, entities);
       else if (key === 'TAS_MAP') result = await runTasMapWorker(page, query, ledger, entities);
-      else if (key === 'mygov') result = await runMyGovWorkflow(page, ctx, query, entities);
       else if (key === 'enreg') result = await runEnregWorkflow(page, forEntity || { name: query, idCode: /^[0-9-]{6,}$/.test(String(query || '').trim()) ? query : null }, entities);
       else if (key === 'rstax') result = await runRsTaxpayerWorker(page, forEntity, entities);
       else if (key === 'debtor') result = await runDebtorWorker(page, forEntity, entities);

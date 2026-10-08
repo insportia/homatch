@@ -3,6 +3,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import type { MarketplaceSearchRequest, MarketplaceWorkerResult, ExternalListingCandidate } from '../contract.js';
 import { endpoints, publicJson, parsePagination, parseListEnvelope, validateSearchListings, AcquisitionError } from './api.js';
 import { buildQueries, candidateFromMyHome } from './mapping.js';
+import { publicPage, publicSearchUrl } from './public-page.js';
 
 export class MyHomeFailure extends Error { constructor(public code: string, message: string, public retryable = false) { super(message); } }
 export type AdapterOptions = { fetcher?: typeof fetch; deadlineAt: string; signal?: AbortSignal;
@@ -14,18 +15,18 @@ export async function acquireMyHome(request: MarketplaceSearchRequest, options: 
   let unavailableUrls = 0;
   const unavailableIds: string[] = [];
   let pagesVisited = 0, actions = 0, discoveredCount = 0, delivered = 0, nextPage = 1, currentQuery = 0;
-  const queriesApplied: Record<string, string | number | boolean | null | string[]> = { acquisition: 'PUBLIC_API' };
+  const queriesApplied: Record<string, string | number | boolean | null | string[]> = { acquisition: 'PUBLIC_NEXT_DATA', dictionariesAndCount: 'PUBLIC_API' };
   function remaining() {
     options.signal?.throwIfAborted();
     if (!Number.isFinite(deadline) || Date.now() > deadline - 15000) throw new MyHomeFailure('DEADLINE', 'Existing worker deadline reached; already ingested batches remain available.');
   }
-  async function json(url: string, locale = 'ka'): Promise<any> {
+  async function json(url: string, locale = 'ka', page = false, statementId?: string): Promise<any> {
     for (let attempt = 0; ; attempt++) {
       remaining(); actions++;
       try {
         const fetcher: typeof fetch = (input, init) => (options.fetcher ?? fetch)(input, { ...init,
           signal: AbortSignal.any([AbortSignal.timeout(Math.min(20000, deadline - Date.now() - 10000)), ...(options.signal ? [options.signal] : [])]) });
-        return (await publicJson(url, locale, fetcher)).payload;
+        return (page ? await publicPage(url, fetcher, statementId) : await publicJson(url, locale, fetcher)).payload;
       } catch (error) {
         const e = error as AcquisitionError;
         const retryable = error instanceof AcquisitionError && (e.status === null || e.status === 408 || e.status === 429 || (e.status !== null && e.status >= 500));
@@ -58,7 +59,8 @@ export async function acquireMyHome(request: MarketplaceSearchRequest, options: 
       for (let page = 1; page <= Math.max(1, pagination.last_page); page++) {
         nextPage = page; remaining();
         const url = new URL(query.url); url.searchParams.set('page', String(page));
-        const rows = parseListEnvelope(await json(url.href)); pagesVisited++;
+        const searchUrl = publicSearchUrl(url.href);
+        const rows = parseListEnvelope(await json(searchUrl, 'ka', true)); pagesVisited++;
         validateSearchListings(rows, query.criteria);
         if (pagination.total === 0 && rows.length) throw new MyHomeFailure('COUNT_MISMATCH', 'Count reported zero but listings were returned.');
         if (!rows.length) {
@@ -80,7 +82,12 @@ export async function acquireMyHome(request: MarketplaceSearchRequest, options: 
           const group = await Promise.all(newRows.slice(i, i + 4).map(async row => {
             // Detail enrichment is source acquisition only: it supplies missing
             // description/condition/contact/coordinate evidence to the existing core.
-            const payload = await json(`${endpoints.list}/${row.source_id}`);
+            if (!row.source_url) {
+              unavailableUrls++;
+              if (unavailableIds.length < 20) unavailableIds.push(row.source_id);
+              return null;
+            }
+            const payload = await json(row.source_url, 'ka', true, row.source_id);
             const detail = payload?.result === true ? payload?.data?.statement : null;
             if (!detail || String(detail.id) !== row.source_id || detail.uuid !== row.source_uuid) throw new MyHomeFailure('DETAIL_IDENTITY', `Invalid detail identity for ${row.source_id}`);
             const raw = { ...row.raw_source_data, ...detail };
@@ -95,7 +102,7 @@ export async function acquireMyHome(request: MarketplaceSearchRequest, options: 
             // between list and detail. Known mismatches are not fabricated away.
             const merged = parseListEnvelope({ result: true, data: { data: [raw] } });
             try { validateSearchListings(merged, query.criteria); } catch { return null; }
-            return candidateFromMyHome(raw, filters, url.href);
+            return candidateFromMyHome(raw, filters, searchUrl);
           }));
           candidates.push(...group.filter((candidate): candidate is ExternalListingCandidate => candidate !== null));
         }

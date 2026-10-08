@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { acquireMyHome } from '../.tstest-build/marketplace/myhome/adapter.js';
 import { buildQueries, candidateFromMyHome } from '../.tstest-build/marketplace/myhome/mapping.js';
-import { parsePagination } from '../.tstest-build/marketplace/myhome/api.js';
+import { parsePagination, AcquisitionError } from '../.tstest-build/marketplace/myhome/api.js';
+import { publicSearchUrl, parsePublicPage, publicPage } from '../.tstest-build/marketplace/myhome/public-page.js';
 import { startMyHomeRuntime } from '../.tstest-build/marketplace/MyHomeRuntime.js';
 import { validateWorkerReport } from '../../src/research-core/marketplace/worker-contract.ts';
 import { processSearch } from '../../src/research-core/marketplace/pipeline.ts';
@@ -41,7 +42,7 @@ function simulated({ lastPage = 6, total = 139, repeated = false, failPage = nul
     if(url.hostname.includes('locations')) payload = locations;
     else if(url.pathname.endsWith('statement-parameters')) payload = filters;
     else if(url.pathname.endsWith('/count')) payload = { result:true,data:{page:1,last_page:lastPage,total} };
-    else if(/\/statements\/\d+$/.test(url.pathname)) { const id = Number(url.pathname.split('/').at(-1)); payload = {result:true,data:{statement:{...row(id),room_type_id:11}}}; }
+    else if(url.hostname === 'www.myhome.ge' && /-\d+\/$/.test(url.pathname)) { const id = Number(url.pathname.match(/-(\d+)\/$/)[1]); payload = {result:true,data:{statement:{...row(id),room_type_id:11}}}; }
     else { const page = Number(url.searchParams.get('page')); pages.push(page);listCalls++;
       if(failPage===page) return new Response('Denied',{status:403});
       const size = total === 0 || emptyPage===page ? 0 : page===lastPage ? total-(lastPage-1)*24 : 24;
@@ -52,10 +53,50 @@ function simulated({ lastPage = 6, total = 139, repeated = false, failPage = nul
     }
     const records = payload.data?.data ?? (payload.data?.statement ? [payload.data.statement] : []);
     for (const record of records) if (record.id === missingUrlId) { record.dynamic_slug = null; record.dynamic_title = null; }
+    if (url.hostname === 'www.myhome.ge') {
+      const id = payload.data?.statement?.id;
+      const queryKey = id ? ['statements','details',{locale:'ka',statementId:String(id)}] : ['statements','list',{params:{locale:'ka'},query:Object.fromEntries(url.searchParams)}];
+      return new Response(`<script id="__NEXT_DATA__" type="application/json">${JSON.stringify({page:'/[...slug]',props:{pageProps:{locale:'ka',dehydratedState:{queries:[{queryKey,state:{status:'success',data:payload}}]}}}})}</script>`);
+    }
     return Response.json(payload);
   };
   return { pages,reports,fetcher,run: (overrides={}) => acquireMyHome({...request,...overrides},{deadlineAt:new Date(Date.now()+900000).toISOString(),fetcher,report:async r=>reports.push(r)}) };
 }
+
+test('public Next fixtures confirm exact filters, pagination and detail identity', () => {
+  const fixture = JSON.parse(readFileSync(new URL('./fixtures/myhome-public-next.json',import.meta.url),'utf8'));
+  const html = next => `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify(next)}</script>`;
+  const list = parsePublicPage(html(fixture.search), fixture.searchUrl);
+  assert.equal(list.data.data[0].id,25610778);
+  const detail = parsePublicPage(html(fixture.detail), fixture.detailUrl,'25610778');
+  assert.equal(detail.data.statement.id,list.data.data[0].id);
+  assert.equal(detail.data.statement.uuid,list.data.data[0].uuid);
+  assert.throws(()=>parsePublicPage(html(fixture.search),fixture.searchUrl.replace('page=1','page=2')),/does not confirm/);
+  assert.throws(()=>parsePublicPage(html(fixture.detail),fixture.detailUrl,'999'),/does not confirm/);
+  assert.throws(()=>parsePublicPage('<html>challenge</html>',fixture.searchUrl),/no structured/);
+  const changed=structuredClone(fixture.search);
+  delete changed.props.pageProps.dehydratedState.queries[0].queryKey[2].query.price_to;
+  assert.throws(()=>parsePublicPage(html(changed),fixture.searchUrl),/does not confirm/);
+  assert.equal(publicSearchUrl('https://api-statements.tnet.ge/v1/statements?room_types%5B0%5D=3&page=2'),'https://www.myhome.ge/udzravi-qoneba/?room_types%5B0%5D=3&page=2');
+});
+
+test('public page acquisition stops on access restriction and uses no credentials', async () => {
+  let calls=0;
+  await assert.rejects(publicPage('https://www.myhome.ge/udzravi-qoneba/?page=1',async (_url,init)=>{
+    calls++;assert.deepEqual(init.headers,{Accept:'text/html'});return new Response('Denied',{status:403});
+  }),/HTTP 403/);
+  assert.equal(calls,1);
+});
+test('long production query cannot erase HTTP diagnostics at report ingress', () => {
+  const error = new AcquisitionError('https://api-statements.tnet.ge/v1/statements?' + 'room_types[0]=3&'.repeat(40), 422, 'HTTP 422; request stopped');
+  const validated = validateWorkerReport({contract:'marketplace-worker-1',searchId:request.searchId,searchPlanId:request.searchPlanId,
+    workerId:'myhome-agent',sourceId:'myhome-ge',status:'FAILED',startedAt:new Date().toISOString(),completedAt:new Date().toISOString(),
+    queryApplied:{},discoveredCount:44,returnedCount:0,listings:[],errors:[{code:'SOURCE_REQUEST_FAILED',message:error.message}],metrics:{}}, 'myhome-ge');
+  assert.equal(validated.ok,true);
+  assert.match(validated.report.errors[0].message, /^HTTP 422; request stopped/);
+  assert.ok(validated.report.errors[0].message.length <= 300);
+});
+
 test('canonical mapping preserves collectPriceMaxUsd and exact location IDs',()=>{
   const u=new URL(buildQueries(request,locations,filters)[0].url);
   assert.equal(u.searchParams.get('price_to'),'220000');assert.equal(u.searchParams.get('urbans'),'65');assert.equal(u.searchParams.get('area_from'),'70');

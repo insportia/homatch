@@ -10,7 +10,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getSourceNetwork, type SourceNetwork } from '@/services/findBuyers';
-import { citiesMentioned } from '@/research-core/discovery/sourceNetwork';
+import { citiesMentioned } from '@/findBuyers/actorCatalog';
 
 const n = (v: unknown) => Number(v ?? 0) || 0;
 const when = (iso: unknown) => (iso ? new Date(String(iso)).toLocaleString() : '—');

@@ -27,6 +27,34 @@ mobile shard). Deploy targets: frontend · Railway `homatch-official-worker`
 | Official visuals → private bucket → 1 h signed URLs | yes | no (bucket does not exist yet) |
 | Report, waiting network, Admin panel | unit + browser (stubbed network) | no |
 
+## 1b. Provider independence (what is guaranteed, and how)
+
+- Each worker step runs inside its own try/catch: a crash becomes that
+  source's technical-failure result, and the next source still runs
+  (`ResearchOrchestrator.runStep`).
+- A source that needs a human verification parks the job only for a bounded
+  time. After 20 minutes unattended, research-agent skips that ONE source
+  through the same path as the customer's Skip button
+  (`releaseUnattendedHumanWaits` → `skipHumanWait`). The job then continues
+  to a report built from every other source.
+  - Before this change, the 6-hour reaper failed the whole job and discarded
+    the evidence already collected.
+- `src/verify/providerOutcomes.ts` gives each provider its real state from
+  recorded results only:
+  - States: VERIFIED, COMPLETED, PARTIAL, CAPTCHA_REQUIRED, CAPTCHA_FAILED,
+    SOURCE_CHANGED, TEMPORARILY_UNAVAILABLE, TIMEOUT, FAILED, NOT_VERIFIED.
+  - A failure after evidence was collected is reported as PARTIAL, and that
+    evidence is kept.
+  - Customers see a localized list of provider limitations; Admin sees
+    reasons and counts.
+- **Automatic CAPTCHA solving (2Captcha): not in this repository.**
+  - No code, secret reference or commit for it exists on any branch.
+  - The current product rule is customer-side handoff
+    (`src/research-core/__tests__/researchAccess.test.mjs` guards against a
+    solver in the research core).
+  - Adding automated solving is an owner decision, not an engineering
+    default. See `CODEX-INTEGRATION.md`.
+
 ## 2. Migration and deployment order
 
 All steps are reversible; each waits for the previous step's proof.
@@ -105,7 +133,12 @@ marked incomplete, never conclusive.
 
 ## 5. Outstanding blockers
 
-- NAPR/MyGov Service176 (Codex) and RS.ge (Codex) worker code not received.
+- NAPR/MyGov Service176 (Codex) and RS.ge (Codex) worker code not received
+  (no branch or commit on GitHub; `feat/service176-integration` is the
+  already-merged PR #119).
+- Automatic CAPTCHA solving: no 2Captcha integration exists in the
+  repository. It needs the owner's decision and the Codex code that
+  contains it.
 - Live access to tas.ge is impossible from the development sandbox. Every
   live TAS claim waits for step 3.1.
 - `DownloadServlet` and Georgian PDF text fidelity: unverified until 3.1.

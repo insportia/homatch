@@ -105,3 +105,37 @@ yet (status: **DEFERRED / BLOCKED — awaiting the Codex code**).
 - One paid Verify run with the current implementation and one with CODEX.
   Compare evidence items, status and report.
 - Rollback = setting back to CURRENT.
+
+## CAPTCHA (2Captcha) — audit result, 2026-10-08
+
+- **Repository search.** I searched every branch and commit for `2captcha`,
+  `twocaptcha`, `captcha_api` and similar names. There is no client, no
+  secret reference and no configuration.
+- **The only trace.** The owner's local PowerShell history mentions 2Captcha
+  near the Service176 commands. That code lives with the Codex workstream and
+  was never pushed.
+- **The current product rule is the opposite:**
+  - The customer completes a verification in their OWN browser (commit
+    689939fa, "Hand the CAPTCHA to the customer's own browser, not ours").
+  - Otherwise the source is skipped and marked unverified.
+  - `researchAccess.test.mjs` asserts that nothing in the research core
+    solves a CAPTCHA.
+- **What is built now.**
+  - Detection and classification: `providerOutcomes` distinguishes
+    CAPTCHA_REQUIRED / CAPTCHA_FAILED from SOURCE_CHANGED /
+    TEMPORARILY_UNAVAILABLE / TIMEOUT.
+  - Bounded waits: a verification left unattended for 20 minutes is skipped,
+    and the rest of the research continues.
+  - Admin counters: verifications requested, and waits released while
+    unattended.
+- **What is needed to enable automated solving:**
+  - The owner's explicit decision, including confirmation that it is
+    permitted for these sources.
+  - The Codex code that contains the integration.
+  - A server-side secret.
+  - A per-provider attempt cap and spending cap.
+  - Acceptance of the solution confirmed by the source itself.
+  - A kill switch.
+  - Admin cost tracking.
+  - Removal of the research-core guard only for the official-worker
+    adapters.

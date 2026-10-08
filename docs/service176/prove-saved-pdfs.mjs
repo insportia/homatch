@@ -1,0 +1,33 @@
+import {readFileSync,writeFileSync} from 'node:fs';
+import {createRequire} from 'node:module';
+import {createHash} from 'node:crypto';
+import assert from 'node:assert/strict';
+import {validatePdf} from '../../official-worker/.tstest-build/workflows/mygov/service176/documents.js';
+import {newDocumentShell,markComplete,toLegacyDocument} from '../../official-worker/.tstest-build/documents/DocumentTypes.js';
+const parse=createRequire(new URL('../../official-worker/package.json',import.meta.url))('pdf-parse/lib/pdf-parse.js');
+const root=process.argv[2];
+if(!root)throw new Error('Supply existing saved PDF evidence directory; no network is used');
+const results=[];
+for(const index of [0,1,4]){
+ const file=`document-${index}.pdf`;
+ const evidence=JSON.parse(readFileSync(`${root}/${file}.json`,'utf8').replace(/^\uFEFF/,''));
+ const bytes=readFileSync(`${root}/${file}`);
+ assert.equal(evidence.finalResponse.status,200);
+ assert.equal(evidence.request.url,evidence.reference.sourceReference);
+ assert.equal(evidence.finalResponse.finalUrl,evidence.reference.url);
+ assert.equal(evidence.reference.recordId,evidence.recordId);
+ assert.equal(evidence.reference.registrationNumber,evidence.registrationNumber);
+ const validation=validatePdf(bytes,evidence.finalResponse.contentType);
+ const sha256=createHash('sha256').update(bytes).digest('hex');
+ assert.equal(sha256,evidence.sha256);
+ assert.equal(bytes.length,evidence.finalResponse.byteLength);
+ const parsed=await parse(bytes);
+ const doc=newDocumentShell('mygov',evidence.reference.url,evidence.recordId);
+ Object.assign(doc,{documentType:'PDF_DOCUMENT',rawText:parsed.text,pageCount:parsed.numpages,pagesRead:parsed.numpages,sha256});
+ assert.ok(doc.rawText.trim().length>20);
+ const legacy=toLegacyDocument(markComplete(doc));
+ assert.ok(legacy.parsed&&legacy.textExtractionAvailable&&legacy.complete);
+ results.push({file,recordId:evidence.recordId,registrationNumber:evidence.registrationNumber,...validation,sha256,pages:parsed.numpages,textCharacters:parsed.text.length,legacyParsed:legacy.parsed});
+}
+writeFileSync(new URL('./saved-pdf-proof.json',import.meta.url),JSON.stringify({kind:'Local replay of previously live-verified bytes; no network or CAPTCHA request',results},null,2)+'\n');
+console.log(JSON.stringify(results,null,2));

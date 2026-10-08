@@ -1,0 +1,80 @@
+{
+  "appinfo": {
+    "r_info": [
+      {
+        "APP_ID": "35356992",
+        "REG_NUMBER": "882026724195",
+        "CADCODE": "01.18.06.019.055.03.01.601"
+      }
+    ]
+  },
+  "edocuments": [
+    {
+      "BTC_TR_ID": null,
+      "BITCOIN_READY": false,
+      "BITCOIN_HASH": null,
+      "BITCOIN_TR_ID": null,
+      "BLOB_URI": "https://bs.napr.gov.ge/GetBlob?pid=101&bid=boVlyOwlsX3qmYsntmLmFPp4uAhqGcd71TrZW3]QfMduvhsKB0YBnFXwgKpFI[qK",
+      "ICON": "signed-pdf",
+      "DOC_NAME": "ამონაწერი საჯარო რეესტრიდან",
+      "PDF_COPY_DATE": "1787560598"
+    }
+  ],
+  "statuses": [
+    {
+      "ID": "87466848",
+      "APP_ID": "35356992",
+      "STATUS_ID": "10",
+      "STATUS_NAME": "სარეგისტრაციო წარმოება დასრულებულია",
+      "DECISION_NO": "882026724195-06",
+      "LINK": "https://bs.napr.gov.ge/GetBlob?pid=101&bid=RSkNVKixqRg[J3wMqjGKuLPxxNsV6Wc2Ra0LkZoGm3BVWZCAat4QZvYfXmZy7VvX",
+      "ICON": "signed-pdf"
+    },
+    {
+      "ID": "87466838",
+      "APP_ID": "35356992",
+      "STATUS_ID": "7",
+      "STATUS_NAME": "სარეგისტრაციო წარმოება განახლებულია",
+      "DECISION_NO": "882026724195-05",
+      "LINK": "/api/document/87466838/7/35356992",
+      "ICON": "html"
+    },
+    {
+      "ID": "87457806",
+      "APP_ID": "35356992",
+      "STATUS_ID": "22",
+      "STATUS_NAME": "შეჩერების აღმოსაფხვრელად დამატებით წარმოდგენილია სარეგ. დოკუმენტი",
+      "DECISION_NO": "882026724195-04",
+      "LINK": "/api/document/87457806/22/35356992",
+      "ICON": "html"
+    },
+    {
+      "ID": "87379952",
+      "APP_ID": "35356992",
+      "STATUS_ID": "44",
+      "STATUS_NAME": "სარეგისტრაციო წარმოება შეჩერებულია",
+      "DECISION_NO": "882026724195-03",
+      "LINK": "https://bs.napr.gov.ge/GetBlob?pid=101&bid=RSkNVKixqRg[J3wMqjGKuBtMb4WCtORva]tjT94E[Kg24tvx0APsHKczFZizx[eK",
+      "ICON": "signed-pdf"
+    },
+    {
+      "ID": "87312698",
+      "APP_ID": "35356992",
+      "STATUS_ID": "1",
+      "STATUS_NAME": "სარეგისტრაციო განცხადება მიღებულია",
+      "DECISION_NO": "882026724195-02",
+      "LINK": "/api/document/87312698/1/35356992",
+      "ICON": "html"
+    },
+    {
+      "ID": "87312697",
+      "APP_ID": "35356992",
+      "STATUS_ID": "98",
+      "STATUS_NAME": "განცხადება",
+      "DECISION_NO": "882026724195-01",
+      "LINK": "/api/document/87312697/98/35356992",
+      "ICON": "html"
+    }
+  ],
+  "letters": []
+}

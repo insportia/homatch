@@ -591,9 +591,9 @@ test('the CAPTCHA participation message is gone from the waiting UI', () => {
  * CAPTCHA-gated sources are no longer planned                       *
  * ---------------------------------------------------------------- */
 
-test('RS.ge and my.gov are no longer scheduled by the worker plan', () => {
+test('bounded Service 176 is additive; RS.ge remains unscheduled', () => {
   const ctx = read('official-worker/src/orchestrator/ResearchContext.ts');
-  assert.ok(/\['TAS_MAP', 'tas'\]/.test(ctx), 'mygov is still planned for cadastral runs');
+  assert.ok(/\['TAS_MAP', 'tas', 'mygov'\]/.test(ctx), 'additional Service 176 provider is missing');
   assert.ok(/for \(const source of \['enreg', 'debtor'\] as const\)/.test(ctx), 'rstax is still planned per entity');
 });
 

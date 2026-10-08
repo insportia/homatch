@@ -137,6 +137,8 @@ export interface PortfolioIntelligence {
   total: number;
   fresh: number;
   strong: number;
+  /** A Find Buyers / Find Tenants search has run for this property (its results page exists). */
+  hasSearch?: boolean;
 }
 
 const STRONG_SIGNALS = ['STRONG', 'VERY_STRONG', 'EXCEPTIONAL'];
@@ -165,6 +167,17 @@ export async function portfolioIntelligence(
     if (STRONG_SIGNALS.includes(String(row.signal_strength))) entry.strong += 1;
     found.set(key, entry);
   }
+  /* Which properties already have a search: one read of the campaign's last
+     search (matching_campaigns.last_search_job_id). Best-effort — if it cannot
+     be read, the list still links to the results page by match count. */
+  try {
+    const { data: searched } = await supabase.from('matching_campaigns')
+      .select('property_id,last_search_job_id').in('property_id', propertyIds).not('last_search_job_id', 'is', null);
+    for (const row of (searched ?? []) as Array<{ property_id: string }>) {
+      const key = String(row.property_id);
+      found.set(key, { ...(found.get(key) ?? { total: 0, fresh: 0, strong: 0 }), hasSearch: true });
+    }
+  } catch { /* the label falls back to match counts */ }
   return found;
 }
 

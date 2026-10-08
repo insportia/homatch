@@ -119,12 +119,15 @@ export const searchModel = () =>
 
 const truthy = (v: unknown) => v === true || v === 'true' || (typeof v === 'string' && v.replace(/"/g, '') === 'true');
 
-/** The two switches this product reads. Absent means OFF / killed, never on. */
-export async function loadMarketplaceSwitches(db: Db): Promise<{ enabled: boolean; providersKilled: boolean }> {
-  const { data } = await db.from('admin_settings').select('key,value').in('key', [MARKETPLACE_SWITCH, 'provider_kill_switch']);
+/** Product and provider switches. MyHome and SS.ge exceptions are explicit and
+ * scoped to their marketplace adapters; other providers keep the global switch. */
+export async function loadMarketplaceSwitches(db: Db): Promise<{ enabled: boolean; providersKilled: boolean; myhomeEnabled: boolean; ssgeEnabled: boolean }> {
+  const { data } = await db.from('admin_settings').select('key,value').in('key', [MARKETPLACE_SWITCH, 'provider_kill_switch', 'marketplace_myhome_enabled', 'marketplace_ssge_enabled']);
   const map = new Map((data ?? []).map((r: { key: string; value: unknown }) => [r.key, r.value]));
   return {
     enabled: truthy(map.get(MARKETPLACE_SWITCH)),
+    myhomeEnabled: truthy(map.get('marketplace_myhome_enabled')),
+    ssgeEnabled: truthy(map.get('marketplace_ssge_enabled')),
     /* An unreadable kill switch is treated as ON: dispatching is the thing it guards. */
     providersKilled: map.has('provider_kill_switch') ? truthy(map.get('provider_kill_switch')) : true,
   };
@@ -182,7 +185,7 @@ export async function recordAiUsage(db: Db, call: AiUsage['call'], r: { ok: bool
 }
 
 /** Operator-entered current rates only (fx_rates). A pair with no rate stays unconvertible. */
-async function loadConverter(db: Db) {
+export async function loadConverter(db: Db) {
   const { data } = await db.from('fx_rates').select('base_currency,quote_currency,rate,effective_from').is('effective_to', null);
   return converterFrom(ratesFromTable((data ?? []) as never));
 }

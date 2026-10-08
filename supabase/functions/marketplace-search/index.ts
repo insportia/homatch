@@ -18,6 +18,8 @@
 // in cost_events and the search's telemetry (Admin only).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { resultCatalogue } from '../_shared/marketplaceCatalogue.ts';
+import { ownedSearchHistory } from '../_shared/marketplaceHistory.ts';
 import {
   SEARCH_BRIEF_INSTRUCTIONS, SEARCH_BRIEF_JSON_SCHEMA, briefFromModel, sanitizeBrief, toSearchPlanDraft,
 } from '../../../src/research-core/marketplace/brief.ts';
@@ -30,8 +32,10 @@ import {
 } from '../../../src/research-core/marketplace/lifecycle.ts';
 import { compareProperties } from '../../../src/research-core/marketplace/comparison.ts';
 import { RESULT_GROUPS, type ResultGroup } from '../../../src/research-core/marketplace/pipeline.ts';
+import { browseResults, catalogueRevision, isCurrentResult, type CustomerProperty } from '../../../src/research-core/marketplace/browse-results.ts';
 import {
   consumeUnderstandQuota, loadMarketplaceSwitches, openaiStructured, processAndStore, recordAiUsage,
+
 } from '../_shared/marketplaceSearch.ts';
 
 const CORS = {
@@ -56,14 +60,10 @@ async function summary(db: Db, search: Record<string, unknown>) {
   const states: WorkerRunState[] = (runs ?? []).map((r: Record<string, unknown>) => ({
     workerId: String(r.worker_id), status: r.status as WorkerRunState['status'], deadlineAt: String(r.deadline_at), returnedCount: Number(r.returned_count) || 0,
   }));
-  /* Exact per-group counts from the database (count queries, no row cap): the number a
-     customer sees is always the number of properties they can open. */
+  /* Read-time freshness applies to counts as well as cards, including saved searches. */
   const counts: Record<string, number> = { BEST: 0, OWNER: 0, UPGRADE: 0, MORE: 0 };
-  await Promise.all(RESULT_GROUPS.map(async (g) => {
-    const { count } = await db.from('discovery_marketplace_properties').select('id', { count: 'exact', head: true })
-      .eq('search_id', search.id).eq('result_group', g);
-    counts[g] = Number(count ?? 0);
-  }));
+  const catalogue = (await resultCatalogue(db, search)).filter((p) => isCurrentResult(p));
+  for (const p of catalogue) counts[p.group] += 1;
   const stats = (search.stats ?? {}) as Record<string, number>;
   const status = search.status as SearchStatus;
   return {
@@ -82,7 +82,7 @@ async function summary(db: Db, search: Record<string, unknown>) {
       listingsDiscovered: Number(stats.raw ?? 0),
       listingsValidated: Number(stats.validated ?? 0),
       uniqueProperties: Number(stats.uniqueProperties ?? 0),
-      strongMatches: Number(search.strong_matches ?? 0),
+      strongMatches: catalogue.filter((p) => p.intelligence?.strong).length,
       sourcesCompleted: states.filter((s) => s.status === 'COMPLETE' || s.status === 'PARTIAL').length,
       sourcesTotal: states.length,
     },
@@ -130,7 +130,14 @@ Deno.serve(async (req: Request) => {
       return json({ marketplaceEnabled: switches.enabled, activeSources: switches.enabled ? Number(count ?? 0) : 0, deepSearchAvailable: false });
     }
 
-    if (!switches.enabled) return json({ error: 'MARKETPLACE_SEARCH_OFF' }, 409);
+    if (action === 'history') {
+      // History remains readable when acquisition is disabled. Ownership comes
+      // exclusively from the authenticated profile, never from a client user id.
+      const history = await ownedSearchHistory(db, userId, body.page);
+      return json({ ...history, items: history.items.map((item) => ({ ...item, brief: sanitizeBrief(item.brief) })) });
+    }
+
+    if (!switches.enabled && (action === 'start' || action === 'understand')) return json({ error: 'MARKETPLACE_SEARCH_OFF' }, 409);
 
     if (action === 'understand') {
       const text = String(body.text ?? '').trim().slice(0, 2000);
@@ -161,7 +168,7 @@ Deno.serve(async (req: Request) => {
       const brief = sanitizeBrief(body.brief);
       const readiness = evaluateReadiness(brief);
       if (readiness.state !== 'READY') return json({ error: 'SEARCH_NOT_READY', readiness }, 422);
-      if (switches.providersKilled) return json({ error: 'SOURCES_PAUSED' }, 409);
+      if (switches.providersKilled && !switches.myhomeEnabled && !switches.ssgeEnabled) return json({ error: 'SOURCES_PAUSED' }, 409);
 
       /* NO DUPLICATE SEARCH. A reconnect, refresh or second tab that lost its idempotency key
          still reaches the customer's open search for the same request instead of a new one. */
@@ -193,7 +200,8 @@ Deno.serve(async (req: Request) => {
         supportedFilters: (w.supported_filters ?? []) as never, executionMode: w.execution_mode as never,
         timeoutMs: Number(w.timeout_ms), maxResults: Number(w.max_results), state: w.state as never, enabled: !!w.enabled, health: w.health as never,
       }));
-      const eligible = eligibleWorkers(workers, request);
+      const eligible = eligibleWorkers(workers, request).filter((worker) => worker.workerId === 'myhome-agent'
+        ? switches.myhomeEnabled : worker.workerId === 'ssge-agent' ? switches.ssgeEnabled : !switches.providersKilled);
       const now = new Date();
       const { data: search, error: searchErr } = await db.from('discovery_marketplace_searches').insert({
         id: searchId, user_id: userId, search_plan_id: plan.id, idempotency_key: key,
@@ -218,9 +226,18 @@ Deno.serve(async (req: Request) => {
       let search = body.searchId ? await ownSearch(body.searchId) : null;
       if (!body.searchId) {
         /* Resume: the customer's most recent search, wherever they left it. */
-        const { data } = await db.from('discovery_marketplace_searches').select('*').eq('user_id', userId)
-          .order('created_at', { ascending: false }).limit(1).maybeSingle();
-        search = data ?? null;
+        /* Bare Find Property is a results workspace, not a "latest row" lookup. A newer
+           failed search must not hide the customer's last usable catalogue. Prefer the
+           newest search that actually has properties; only fall back to the latest row
+           when the account has never produced results. */
+        const { data: usable } = await db.from('discovery_marketplace_searches').select('*').eq('user_id', userId)
+          .gt('properties_count', 0).order('created_at', { ascending: false }).limit(1).maybeSingle();
+        if (usable) search = usable;
+        else {
+          const { data: latest } = await db.from('discovery_marketplace_searches').select('*').eq('user_id', userId)
+            .order('created_at', { ascending: false }).limit(1).maybeSingle();
+          search = latest ?? null;
+        }
       }
       if (!search) return json({ search: null });
       if (!isTerminalSearch(search.status)) {
@@ -237,6 +254,16 @@ Deno.serve(async (req: Request) => {
       return json({ search: await summary(db, search) });
     }
 
+    if (action === 'browse') {
+      const search = await ownSearch(body.searchId);
+      if (!search) return json({ error: 'NOT_FOUND' }, 404);
+      const now = new Date();
+      const properties = await resultCatalogue(db, search);
+      const revision = await catalogueRevision(properties, now);
+      if (body.revision && body.revision !== revision) return json({ error: 'RESULTS_CHANGED' }, 409);
+      return json({ ...browseResults(properties, body.filters, Number(body.page) || 1, now), revision });
+    }
+
     if (action === 'results') {
       const search = await ownSearch(body.searchId);
       if (!search) return json({ error: 'NOT_FOUND' }, 404);
@@ -244,10 +271,10 @@ Deno.serve(async (req: Request) => {
       if (!RESULT_GROUPS.includes(group)) return json({ error: 'BAD_GROUP' }, 400);
       const offset = Math.max(0, Math.trunc(Number(body.offset) || 0));
       const limit = Math.max(1, Math.min(24, Math.trunc(Number(body.limit) || 12)));
-      const { data, count } = await db.from('discovery_marketplace_properties').select('view', { count: 'exact' })
-        .eq('search_id', search.id).eq('result_group', group).order('rank', { ascending: true }).range(offset, offset + limit - 1);
-      const total = Number(count ?? 0);
-      return json({ group, items: (data ?? []).map((r: { view: unknown }) => r.view), total, nextOffset: offset + limit < total ? offset + limit : null });
+      const properties = (await resultCatalogue(db, search)).filter((p) => p.group === group && isCurrentResult(p))
+        .sort((a, b) => a.rank - b.rank || a.key.localeCompare(b.key));
+      const total = properties.length;
+      return json({ group, items: properties.slice(offset, offset + limit), total, nextOffset: offset + limit < total ? offset + limit : null });
     }
 
     if (action === 'property' || action === 'compare') {
@@ -255,8 +282,16 @@ Deno.serve(async (req: Request) => {
       if (!search) return json({ error: 'NOT_FOUND' }, 404);
       const keys = action === 'compare' ? [body.a, body.b] : [body.key];
       if (keys.some((k) => typeof k !== 'string' || k.length > 240)) return json({ error: 'BAD_KEY' }, 400);
-      const { data } = await db.from('discovery_marketplace_properties').select('property_key,view').eq('search_id', search.id).in('property_key', keys);
-      const byKey = new Map((data ?? []).map((r: { property_key: string; view: Record<string, unknown> }) => [r.property_key, r.view]));
+      // Fetch only the requested dossier(s), never every property's details.
+      const { data: detailRows, error: detailError } = await db.from('discovery_marketplace_properties')
+        .select('view').eq('search_id', search.id).in('property_key', keys);
+      if (detailError) throw detailError;
+      const stored = (detailRows ?? []).map((row) => row.view as CustomerProperty);
+      // Older capped catalogues are rebuilt read-only by the existing adapter.
+      const details = stored.length === keys.length && stored.every((p) => p.intelligence)
+        ? stored : (await resultCatalogue(db, search)).filter((p) => keys.includes(p.key));
+      const byKey = new Map(details
+        .filter((p) => isCurrentResult(p)).map((p) => [p.key, p]));
       if (keys.some((k) => !byKey.has(k as string))) return json({ error: 'NOT_FOUND' }, 404);
       if (action === 'property') return json({ property: byKey.get(keys[0] as string), request: search.request });
       const view = (k: unknown) => byKey.get(k as string) as Record<string, any>;

@@ -6,10 +6,13 @@
 
 import { supabase } from '@/db/supabase';
 import type { SearchIntelligenceBrief } from '@/research-core/marketplace/brief';
-import type { Readiness } from '@/research-core/marketplace/readiness';
-import type { ResultGroup, ResultProperty } from '@/research-core/marketplace/pipeline';
+import type { BrowsePage, ResultFilters } from '@/research-core/marketplace/browse-results';
 import type { ComparisonRow } from '@/research-core/marketplace/comparison';
 import type { SearchStage, SearchStatus } from '@/research-core/marketplace/lifecycle';
+import type { ResultGroup, ResultProperty } from '@/research-core/marketplace/pipeline';
+import type { Readiness } from '@/research-core/marketplace/readiness';
+
+export type { BrowsePage, ResultFilters } from '@/research-core/marketplace/browse-results';
 
 export type PropertyView = Omit<ResultProperty, 'internal'> & { tradeoffs?: string[] };
 
@@ -73,8 +76,32 @@ export const startSearch = (brief: SearchIntelligenceBrief, idempotencyKey: stri
 export const searchStatus = (searchId?: string) =>
   call<{ search: SearchSummary | null }>(searchId ? { action: 'status', searchId } : { action: 'status' });
 
+export interface SearchHistoryItem {
+  id: string;
+  status: SearchStatus;
+  brief: SearchIntelligenceBrief;
+  createdAt: string;
+  completedAt: string | null;
+  /** Saved counts at processing time, not a claim about today's inventory. */
+  uniqueProperties: number | null;
+  strongMatches: number | null;
+  sourcesTotal: number | null;
+  sourcesTerminal: number | null;
+  rawListings: number | null;
+}
+
+export const searchHistory = async (page = 1) => {
+  const result = await call<{ page: number; hasMore: boolean; items: SearchHistoryItem[] }>({ action: 'history', page });
+  if (!result || !Array.isArray(result.items) || typeof result.hasMore !== 'boolean') throw new MarketplaceError('REQUEST_FAILED');
+  return result;
+};
+
 export const searchResults = (searchId: string, group: ResultGroup, offset = 0, limit = 12) =>
   call<{ group: ResultGroup; items: PropertyView[]; total: number; nextOffset: number | null }>({ action: 'results', searchId, group, offset, limit });
+
+export type SearchBrowsePage = BrowsePage & { revision: string };
+export const browseSearchResults = (searchId: string, filters: ResultFilters, page = 1, revision?: string) =>
+  call<SearchBrowsePage>({ action: 'browse', searchId, filters, page, revision });
 
 export const propertyDetail = (searchId: string, key: string) =>
   call<{ property: PropertyView }>({ action: 'property', searchId, key });

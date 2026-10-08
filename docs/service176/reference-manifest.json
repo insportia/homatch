@@ -1,0 +1,41 @@
+{
+  "referenceRoot": "C:/Users/User/mygov176-worker",
+  "files": [
+    {
+      "file": "api.ts",
+      "sourceSha256": "d73b83b14e68ee407c7908a89778cb3934dca420042f9622e13ca5fe0e2cfe17",
+      "integrationSha256": "c442e5816cb6223720b766a16c03d96aa0bf62f2b1a54f22fe134c40839bcae8",
+      "adaptation": "TypeScript import extension .ts -> .js; explicit node:url URL import for HOMATCH local type shims; fetch URL.href instead of URL object (same serialized URL)"
+    },
+    {
+      "file": "napr-api.ts",
+      "sourceSha256": "92a2a8e45a78c0ab16d1f467420f1d564ea9ca804c73f8c684e8678274617235",
+      "integrationSha256": "e808ea206ec24d0c2ffb8fc80e0b06867af2b00ef2f3036adc77449908153e47",
+      "adaptation": "TypeScript import extension .ts -> .js; explicit node:url URL import for HOMATCH local type shims"
+    },
+    {
+      "file": "napr.ts",
+      "sourceSha256": "729977da32c0858cbb7e3088f515e57ca2c91206468543fdcbdef1c107089066",
+      "integrationSha256": "83ce18fc1b1c545cc36bb2f4dcd7e058d1517ba335095560082e603f8e4b6492",
+      "adaptation": "TypeScript import extension .ts -> .js; explicit node:url URL import for HOMATCH local type shims"
+    },
+    {
+      "file": "document-references.ts",
+      "sourceSha256": "c83866c53d9a6711345662dfa920e641279a9596cacc339fd862a5232822fb96",
+      "integrationSha256": "13767cc63cd0432b17d4d5bc9db009b653c5fcc016b267a2b8911d23e14ac8fe",
+      "adaptation": "TypeScript import extension .ts -> .js; explicit node:url URL import for HOMATCH local type shims"
+    },
+    {
+      "file": "napr-documents.ts",
+      "sourceSha256": "d69f88847732e3db1d43de95a9dddc256e5776f2781a2349dc9e03cc6f5377c8",
+      "integrationSha256": "7f0a3c7fbe65fc4a4b1b6ea60fb0ffca91a84f85dbc14955cb6cad50d9665cf9",
+      "adaptation": "TypeScript import extension .ts -> .js"
+    },
+    {
+      "file": "documents.ts",
+      "sourceSha256": "e3be79d09f3a6a901e266e8682f67b1102510ea155a9654676bfa06bae7d137a",
+      "integrationSha256": "e3be79d09f3a6a901e266e8682f67b1102510ea155a9654676bfa06bae7d137a",
+      "adaptation": "TypeScript import extension .ts -> .js"
+    }
+  ]
+}

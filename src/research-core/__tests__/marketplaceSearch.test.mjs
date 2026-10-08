@@ -27,11 +27,67 @@ import { deriveSearchStatus, progressOf, stagesOf, timedOut } from '../marketpla
 import { compareProperties } from '../marketplace/comparison.ts';
 import { investmentHandoff, mortgageHandoff } from '../marketplace/handoff.ts';
 import { summarizeTelemetry } from '../marketplace/telemetry.ts';
+import { shouldResumeSearch } from '../marketplace/search-entry.ts';
 import { normalisePlan, planReadiness } from '../discovery/search-plan.ts';
+
+
+test('bare Find Property resumes the latest usable result catalogue regardless of age', () => {
+  const oldSuccessful = { terminal: true, unavailable: null, createdAt: '2026-01-01T00:00:00.000Z' };
+  const oldUnavailable = { terminal: true, unavailable: 'FAILED', createdAt: '2026-01-01T00:00:00.000Z' };
+  assert.equal(shouldResumeSearch(oldSuccessful, null, Date.parse('2026-10-07T12:00:00.000Z')), true);
+  assert.equal(shouldResumeSearch(oldUnavailable, null, Date.parse('2026-10-07T12:00:00.000Z')), false);
+  assert.equal(shouldResumeSearch(oldUnavailable, 'explicit-history-id', Date.parse('2026-10-07T12:00:00.000Z')), true);
+});
+
+test('owner Georgian neighborhood is not a city and street preferences are not acquisition districts', () => {
+  const text = 'მინდა ვარკეთილში, სუხიშვილის ქუჩისკენ, ან მიკროებში მაღლა მხარეს 2 საძინებლიანი ბინა, ახალ აშენებულ კორპუსში ან მიმდინარეში, მაქსიმუმ 90000$, მინიმუმ 70 კვადრატიდან';
+  const brief = briefFromModel({ transactionType:'BUY', propertyType:'APARTMENT', country:'GE',
+    city:'ვარკეთილი', districts:['სუხიშვილის ქუჩა','მიკროები'], locationPreferences:['მაღლა მხარეს'],
+    priceMinUsd:null,priceMaxUsd:90000,areaMinSqm:70,areaMaxSqm:null,
+    bedroomsMin:2,bedroomsMax:2,buildingStatuses:['NEW_BUILD','UNDER_CONSTRUCTION'],userLanguage:'ka' }, text);
+  assert.equal(brief.city.value,'Tbilisi');assert.deepEqual(brief.districts.value,['Varketili']);
+  assert.deepEqual(brief.locationPreferences,['მაღლა მხარეს','სუხიშვილის ქუჩა','მიკროები']);
+  const oldBrief = { ...brief,city:{value:'ვარკეთილი',status:'STATED'},districts:{value:['სუხიშვილის ქუჩა','მიკროები'],status:'STATED'} };
+  const canonical = sanitizeBrief(oldBrief);assert.equal(canonical.city.value,'Tbilisi');assert.deepEqual(canonical.districts.value,['Varketili']);
+  const req = buildSearchRequest(canonical,{searchId:'s',searchPlanId:'p'});
+  assert.equal(req.city,'Tbilisi');assert.deepEqual(req.districts,['Varketili']);assert.equal(req.priceMinUsd,75000);assert.equal(req.priceMaxUsd,90000);
+});
 import { StaticRateConverter } from '../normalize/currency.ts';
 import * as F from './fixtures/marketplaceFixtures.mjs';
 
 const READY_BRIEF = () => briefFromModel(F.COMPLETE_MODEL_OUTPUT, F.COMPLETE_TEXT);
+for (const [maximum, minimum] of [[150000, 135000], [200000, 185000], [100000, 85000], [10000, 0]]) {
+  test(`max-only USD ${maximum}: canonical primary range, plan and worker agree`, () => {
+    const brief = briefFromModel({ ...F.COMPLETE_MODEL_OUTPUT, priceMinUsd: null, priceMaxUsd: maximum }, `${F.COMPLETE_TEXT} up to $${maximum}`);
+    assert.deepEqual(brief.price.value, { min: minimum, max: maximum });
+    assert.equal(brief.price.status, 'STATED');
+    const plan = toSearchPlanDraft(brief);
+    assert.equal(plan.budgetMin, minimum); assert.equal(plan.budgetMax, maximum);
+    const req = buildSearchRequest(brief, { searchId: 'search', searchPlanId: 'plan' });
+    assert.equal(req.priceMinUsd, minimum); assert.equal(req.priceMaxUsd, maximum);
+    assert.equal(req.collectPriceMaxUsd, Math.floor(maximum * 1.1));
+    const edited = applyEdit(READY_BRIEF(), { field: 'price', value: { min: null, max: maximum } });
+    assert.deepEqual(edited.price.value, brief.price.value);
+    assert.deepEqual(sanitizeBrief(edited).price.value, brief.price.value);
+  });
+}
+test('explicit USD 120000–150000 stays exact across canonical budget paths', () => {
+  const brief = briefFromModel({ ...F.COMPLETE_MODEL_OUTPUT, priceMinUsd: 120000, priceMaxUsd: 150000 }, '$120000 to $150000');
+  assert.deepEqual(brief.price.value, { min: 120000, max: 150000 });
+  assert.deepEqual(sanitizeBrief(brief).price.value, brief.price.value);
+  assert.deepEqual(applyEdit(brief, { field: 'price', value: brief.price.value }).price.value, brief.price.value);
+  assert.equal(buildSearchRequest(brief, { searchId: 's', searchPlanId: 'p' }).priceMinUsd, 120000);
+});
+test('canonical detailed filters enforce known bathrooms and exact floor exclusions after acquisition', () => {
+  const facts = { priceUsd: 150000, areaSqm: 100, rooms: 3, bedrooms: 2, bathrooms: 1, floor: 1, totalFloors: 10,
+    district: null, buildingStatus: null, renovationStatus: null, parking: null, furnished: null, amenities: [] };
+  const req = { ...F.FIXTURE_REQUEST, districts: [], buildingStatuses: [], bathrooms: { min: 2, max: null }, floorPreferences: ['NOT_FIRST', 'NOT_LAST'] };
+  assert.deepEqual(hardFilter(facts, req).violations, ['BATHROOMS', 'FLOOR_NOT_FIRST']);
+  assert.ok(hardFilter({ ...facts, bathrooms: 2, floor: 10 }, req).violations.includes('FLOOR_NOT_LAST'));
+  const unknown = hardFilter({ ...facts, bathrooms: null, floor: null, totalFloors: null }, req);
+  assert.ok(unknown.unverified.includes('BATHROOMS')); assert.ok(unknown.unverified.includes('FLOOR_NOT_LAST'));
+  assert.equal(unknown.fits, true);
+});
 const run = (list = F.ALL_FIXTURE_LISTINGS, request = F.FIXTURE_REQUEST, extra = {}) =>
   processSearch({ request, candidates: F.fixtureCandidates(list), now: F.FIXTURE_NOW, ...extra });
 
@@ -161,11 +217,12 @@ test('requirements by property type: land, commercial and office never get resid
   assert.deepEqual(requirementsFor(null, null), ['transactionType', 'propertyType', 'location', 'price']);
 });
 
-test('readiness: price needs BOTH min and max; min 0 is a real answer; rooms and bedrooms are separate', () => {
+test('readiness: max-only price gets the primary window; explicit min 0 and separate bedrooms survive', () => {
   let b = READY_BRIEF();
   b = applyEdit(b, { field: 'price', value: { min: null, max: 160000 } });
   let r = evaluateReadiness(b);
-  assert.deepEqual(r.invalid, ['price']);
+  assert.deepEqual(r.invalid, []);
+  assert.deepEqual(b.price.value, { min: 145000, max: 160000 });
   b = applyEdit(b, { field: 'price', value: { min: 0, max: 160000 } });
   assert.equal(evaluateReadiness(b).state, 'READY');
   b = applyEdit(b, { field: 'bedrooms', value: null });

@@ -27,7 +27,7 @@ import {
   canTransition, validateWorkerReport, type WorkerRunStatus,
 } from '../../../src/research-core/marketplace/worker-contract.ts';
 import { DEFAULT_LEASE_SECONDS, leaseUntil, retryDecision } from '../../../src/research-core/marketplace/dispatch.ts';
-import { processAndStore, reapRuns } from '../_shared/marketplaceSearch.ts';
+import { loadMarketplaceSwitches, processAndStore, reapRuns } from '../_shared/marketplaceSearch.ts';
 
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), {
   status, headers: { 'Content-Type': 'application/json' },
@@ -79,6 +79,8 @@ Deno.serve(async (req: Request) => {
     const maxAttempts = Number(worker.max_attempts) || 3;
 
     if (action === 'claim') {
+      const switches = await loadMarketplaceSwitches(db);
+      if (!switches.enabled || (workerId === 'myhome-agent' ? !switches.myhomeEnabled : workerId === 'ssge-agent' ? !switches.ssgeEnabled : switches.providersKilled)) return json({ runs: [] });
       /* Free this worker's lapsed leases first (retry or close each run on its own), then claim
          within the per-provider and global bounds the SQL enforces atomically. */
       const { data: stale } = await db.from('discovery_marketplace_worker_runs')

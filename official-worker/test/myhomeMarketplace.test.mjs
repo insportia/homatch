@@ -213,3 +213,21 @@ test('runtime uses authenticated claim, heartbeat and result report without a se
   try {for(let i=0;i<100&&!completed;i++) await new Promise(resolve=>setTimeout(resolve,10));assert.equal(completed,true);assert.ok(runtime.status().lastClaimAt);assert.ok(bodies.some(b=>b.result?.status==='RESULTS_RECEIVED'));}
   finally{runtime.shutdown();}
 });
+
+test('access diagnostics distinguish explicit CAPTCHA, managed challenge and unknown rejection without leaking response data', async () => {
+  for (const [body,headers,category] of [
+    ['<div class="cf-turnstile">SECRET_CHALLENGE_TOKEN</div>',{'server':'cloudflare'},'CAPTCHA_REQUIRED'],
+    ['<script>cf_chl_SECRET_CHALLENGE_TOKEN</script>',{'server':'cloudflare','cf-mitigated':'challenge'},'CHALLENGE_REQUIRED'],
+    ['Denied SECRET_CHALLENGE_TOKEN',{},'ACCESS_RESTRICTED'],
+  ]) {
+    let calls=0;
+    await assert.rejects(publicPage('https://www.myhome.ge/udzravi-qoneba/?page=1',async ()=>{
+      calls++;return new Response(body,{status:403,headers});
+    }), error => {
+      assert.match(error.message,new RegExp('^HTTP 403; '+category));
+      assert.ok(!error.message.includes('SECRET_CHALLENGE_TOKEN'));
+      return true;
+    });
+    assert.equal(calls,1);
+  }
+});

@@ -164,6 +164,12 @@ export interface SourceNetwork {
     lastSuccessAt: string | null; lastError: string | null; createdAt: string }>;
   campaigns: Array<{ jobId: string; at: string; status: string; communitiesFound: number; newlyRegistered: number; audited: number | null;
     verified: number | null; activated: number | null; readNow: number | null; languages: string[] | null; city: string | null; error: string | null }>;
+  /** Each recent campaign's Phase 1 (discovery) and Phase 2 (extraction). */
+  phases?: Array<{ jobId: string; at: string; finalizedAt: string | null; stopReason: string | null; budgetMicros: number;
+    phase1DeadlineAt: string | null; discoveryCapMicros: number | null; budgetRationale: string | null;
+    planned: { phase1?: number; phase2SourceDependent?: number; phase2IndependentSearch?: number } | null;
+    phase1Queue: Record<string, number> | null; phase2Queue: Record<string, number> | null;
+    phase1SpendMicros: number; phase2SpendMicros: number; runs: Record<string, number> | null }>;
   memo23Discovered: number;
   autoEnable: unknown;
 }

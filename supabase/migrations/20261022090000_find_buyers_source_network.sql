@@ -12,6 +12,8 @@
 -- the posting/recommendation directory — listed, never read — and is reported
 -- on its own line so it is never mistaken for search coverage.
 --
+-- Each recent campaign's two phases (Phase 1 discovery time box and spend
+-- ceiling, Phase 2 extraction) with queue states and committed spend.
 -- Additive and read-only: one STABLE, admin-gated function. No table changes.
 
 create or replace function public.admin_find_buyers_source_network(p_days integer default 7)
@@ -99,6 +101,40 @@ begin
           from public.discovery_query_queue q
          where q.provider = 'TELEGRAM_SOURCES' and q.matching_job_id is not null
          order by q.created_at desc limit 20) y), '[]'::jsonb),
+    /* The two phases of each recent Find Buyers campaign: Phase 1 discovery
+       (its time box and spend ceiling, planned in query_plan.phases) and
+       Phase 2 extraction, with queue states and committed provider spend. */
+    'phases', coalesce((select jsonb_agg(f order by f ->> 'at' desc) from (
+        select jsonb_build_object(
+          'jobId', c.matching_job_id, 'at', c.created_at, 'finalizedAt', c.finalized_at, 'stopReason', c.stop_reason,
+          'budgetMicros', c.provider_budget_micros,
+          'phase1DeadlineAt', c.query_plan -> 'phases' ->> 'phase1DeadlineAt',
+          'discoveryCapMicros', (c.query_plan -> 'phases' -> 'budget' ->> 'discoveryCapMicros')::bigint,
+          'budgetRationale', c.query_plan -> 'phases' -> 'budget' ->> 'rationale',
+          'planned', c.query_plan -> 'phases' -> 'planned',
+          'phase1Queue', (select jsonb_object_agg(st, n) from (
+              select q.status st, count(*) n from public.discovery_query_queue q
+               where q.matching_job_id = c.matching_job_id
+                 and (q.provider = 'TELEGRAM_SOURCES' or (q.provider = 'APIFY_MEMO23' and q.metadata ->> 'stage' in ('FB_GROUP_SEARCH', 'LINKEDIN_GROUPS')))
+               group by q.status) a),
+          'phase2Queue', (select jsonb_object_agg(st, n) from (
+              select q.status st, count(*) n from public.discovery_query_queue q
+               where q.matching_job_id = c.matching_job_id
+                 and (q.provider = 'TELEGRAM' or (q.provider = 'APIFY_MEMO23' and coalesce(q.metadata ->> 'stage', '') not in ('FB_GROUP_SEARCH', 'LINKEDIN_GROUPS')))
+               group by q.status) b),
+          'phase1SpendMicros', (select coalesce(sum(case when r.status in ('RESERVED','STARTING','RUNNING') then r.reserved_micros
+                                                          when r.status = 'RELEASED' then 0 else coalesce(r.actual_micros, r.reserved_micros) end), 0)
+                                   from public.find_buyers_actor_runs r
+                                  where r.matching_job_id = c.matching_job_id and r.operation in ('FB_GROUP_SEARCH', 'LINKEDIN_GROUPS')),
+          'phase2SpendMicros', (select coalesce(sum(case when r.status in ('RESERVED','STARTING','RUNNING') then r.reserved_micros
+                                                          when r.status = 'RELEASED' then 0 else coalesce(r.actual_micros, r.reserved_micros) end), 0)
+                                   from public.find_buyers_actor_runs r
+                                  where r.matching_job_id = c.matching_job_id and r.operation not in ('FB_GROUP_SEARCH', 'LINKEDIN_GROUPS')),
+          'runs', (select jsonb_object_agg(k, n) from (
+              select r.actor_key || ':' || r.status k, count(*) n from public.find_buyers_actor_runs r
+               where r.matching_job_id = c.matching_job_id group by 1) d)) as f
+          from public.find_buyers_campaigns c
+         order by c.created_at desc limit 20) z), '[]'::jsonb),
     'memo23Discovered', (select count(*) from public.source_registry r where r.discovered_via like 'memo23:%'),
     'autoEnable', coalesce((select value from public.admin_settings where key = 'telegram_source_auto_enable'), 'false'::jsonb)
   ) into v;

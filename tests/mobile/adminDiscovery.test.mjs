@@ -156,6 +156,9 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', admin = true, 
           { platform: 'FACEBOOK', discovered: 3, verified: 0, active: 0, read: 1, inactive: 3, blocked: 1, newInWindow: 0, itemsRead: 0, commentsRead: 0, demandSignals: 0, lastRead: null },
         ],
         directory: [{ platform: 'FACEBOOK', listed: 13 }, { platform: 'TELEGRAM', listed: 15 }],
+        phases: [{ jobId: 'j1', at: ago(1), finalizedAt: null, stopReason: null, budgetMicros: 5000000, phase1DeadlineAt: ago(-9),
+          discoveryCapMicros: 61000, budgetRationale: 'FULL_DISCOVERY', planned: { phase1: 3, phase2SourceDependent: 1, phase2IndependentSearch: 4 },
+          phase1Queue: { DONE: 2 }, phase2Queue: { RETRY_WAIT: 4 }, phase1SpendMicros: 48000, phase2SpendMicros: 0, runs: { 'FB_GROUP_SEARCH:SUCCEEDED': 2 } }],
         campaigns: [{ jobId: 'j1', at: ago(1), status: 'DONE', communitiesFound: 38, newlyRegistered: 31, audited: 10, verified: 4, activated: 0, readNow: 0,
           languages: ['ka', 'ru', 'en', 'ar', 'he', 'tr'], city: 'თბილისი', error: null }],
         telegram: [
@@ -332,6 +335,11 @@ test('Find Buyers source network: discovered, verified, active and read stay apa
     assert.match(text, /ka, ru, en, ar, he, tr/, `${lang}: the six searched languages are shown`);
     assert.match(text, /BATUMI/, `${lang}: a community's city is shown`);
     assert.match(text, /75% about property/, `${lang}: the audit finding is shown`);
+    const phases = await page.locator('[data-testid="fbx-net-phases"]').innerText();
+    assert.match(phases, /DONE 2/, `${lang}: Phase 1 queue`);
+    assert.match(phases, /RETRY_WAIT 4/, `${lang}: Phase 2 held`);
+    assert.match(phases, /FULL_DISCOVERY/, `${lang}: the budget rationale`);
+    assert.match(phases, /A 1 \/ B 4/, `${lang}: source-dependent vs independent search`);
     assert.ok(await page.locator('[data-testid="fbx-net-directory"]').count() === 1, `${lang}: the posting directory is on its own line`);
     const layout = await page.evaluate(() => ({ overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, dir: document.documentElement.getAttribute('dir') }));
     assert.ok(layout.overflow <= 1, `${lang}@${width}: no page-level horizontal scroll (${layout.overflow}px)`);

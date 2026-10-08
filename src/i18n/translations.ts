@@ -15665,6 +15665,17 @@ const en = {
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   fbx_languages_choose: 'All six languages are searched. Tap a language to leave it out — the whole budget goes to the languages you keep.',
   fbx_languages_only: 'Searching only in: {{list}}. The whole budget goes to these audiences.',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbx_net_phases: 'Campaign phases',
+  fbx_net_phases_explain: 'Phase 1 discovers communities inside a time box and a spend ceiling planned from the campaign\'s own prices; Phase 2 (A: reads the source pool, B: searches platforms directly) starts no paid run before Phase 1 is done or its time box closes.',
+  fbx_net_phase1: 'Phase 1 · discovery',
+  fbx_net_phase1_cap: 'Phase 1 ceiling',
+  fbx_net_phase1_spend: 'Phase 1 spend',
+  fbx_net_phase2: 'Phase 2 · extraction',
+  fbx_net_phase2_spend: 'Phase 2 spend',
+  fbx_net_budget: 'Provider budget',
+  fbx_net_runs: 'Actor runs',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -31244,6 +31255,17 @@ const ka: Partial<Record<TranslationKey, string>> = {
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   fbx_languages_choose: 'ძიება ექვსივე ენაზე მიმდინარეობს. შეეხეთ ენას, რომ გამოტოვოთ — მთელი ბიუჯეტი დარჩენილ ენებს მოხმარდება.',
   fbx_languages_only: 'ძიება მხოლოდ ამ ენებზე: {{list}}. მთელი ბიუჯეტი ამ აუდიტორიას მოხმარდება.',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbx_net_phases: 'კამპანიის ეტაპები',
+  fbx_net_phases_explain: 'პირველი ეტაპი საზოგადოებებს ეძებს დროის ლიმიტში და კამპანიის ფასებით დაგეგმილი ხარჯის ზღვრით; მეორე ეტაპი (A: წყაროების კითხვა, B: პლატფორმებზე პირდაპირი ძებნა) ფასიან გაშვებას არ იწყებს, სანამ პირველი ეტაპი არ დასრულდება ან მისი დრო არ ამოიწურება.',
+  fbx_net_phase1: 'ეტაპი 1 · ძიება',
+  fbx_net_phase1_cap: 'ეტაპი 1-ის ზღვარი',
+  fbx_net_phase1_spend: 'ეტაპი 1-ის ხარჯი',
+  fbx_net_phase2: 'ეტაპი 2 · მოპოვება',
+  fbx_net_phase2_spend: 'ეტაპი 2-ის ხარჯი',
+  fbx_net_budget: 'პროვაიდერის ბიუჯეტი',
+  fbx_net_runs: 'Actor-ის გაშვებები',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -46814,6 +46836,17 @@ const ru: Partial<Record<TranslationKey, string>> = {
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   fbx_languages_choose: 'Поиск идёт на всех шести языках. Нажмите на язык, чтобы исключить его — весь бюджет пойдёт на оставшиеся языки.',
   fbx_languages_only: 'Поиск только на языках: {{list}}. Весь бюджет пойдёт на эту аудиторию.',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbx_net_phases: 'Этапы кампаний',
+  fbx_net_phases_explain: 'Этап 1 ищет сообщества в пределах лимита времени и потолка расходов, рассчитанного по ценам самой кампании; этап 2 (A: читает пул источников, B: ищет напрямую на платформах) не запускает платных задач, пока этап 1 не завершён или не истекло его время.',
+  fbx_net_phase1: 'Этап 1 · поиск',
+  fbx_net_phase1_cap: 'Потолок этапа 1',
+  fbx_net_phase1_spend: 'Расход этапа 1',
+  fbx_net_phase2: 'Этап 2 · извлечение',
+  fbx_net_phase2_spend: 'Расход этапа 2',
+  fbx_net_budget: 'Бюджет провайдеров',
+  fbx_net_runs: 'Запуски Actor',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -62382,6 +62415,17 @@ const tr: Partial<Record<TranslationKey, string>> = {
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   fbx_languages_choose: 'Altı dilin hepsinde aranır. Bir dili çıkarmak için ona dokunun — bütçenin tamamı kalan dillere gider.',
   fbx_languages_only: 'Yalnızca şu dillerde aranıyor: {{list}}. Bütçenin tamamı bu kitlelere gider.',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbx_net_phases: 'Kampanya aşamaları',
+  fbx_net_phases_explain: 'Aşama 1, kampanyanın kendi fiyatlarıyla planlanan bir süre ve harcama sınırı içinde toplulukları bulur; Aşama 2 (A: kaynak havuzunu okur, B: platformlarda doğrudan arar), Aşama 1 bitmeden veya süresi dolmadan ücretli çalıştırma başlatmaz.',
+  fbx_net_phase1: 'Aşama 1 · keşif',
+  fbx_net_phase1_cap: 'Aşama 1 sınırı',
+  fbx_net_phase1_spend: 'Aşama 1 harcaması',
+  fbx_net_phase2: 'Aşama 2 · çıkarım',
+  fbx_net_phase2_spend: 'Aşama 2 harcaması',
+  fbx_net_budget: 'Sağlayıcı bütçesi',
+  fbx_net_runs: 'Actor çalıştırmaları',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -77950,6 +77994,17 @@ const ar: Partial<Record<TranslationKey, string>> = {
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   fbx_languages_choose: 'يتم البحث بجميع اللغات الست. اضغط على لغة لاستبعادها — تذهب الميزانية كاملة إلى اللغات التي تبقيها.',
   fbx_languages_only: 'البحث فقط باللغات: {{list}}. تذهب الميزانية كاملة إلى هذه الفئات.',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbx_net_phases: 'مراحل الحملات',
+  fbx_net_phases_explain: 'تكتشف المرحلة 1 المجتمعات ضمن مهلة زمنية وسقف إنفاق مخطط من أسعار الحملة نفسها؛ ولا تبدأ المرحلة 2 (أ: تقرأ مجموعة المصادر، ب: تبحث في المنصات مباشرة) أي تشغيل مدفوع قبل انتهاء المرحلة 1 أو انقضاء مهلتها.',
+  fbx_net_phase1: 'المرحلة 1 · الاكتشاف',
+  fbx_net_phase1_cap: 'سقف المرحلة 1',
+  fbx_net_phase1_spend: 'إنفاق المرحلة 1',
+  fbx_net_phase2: 'المرحلة 2 · الاستخراج',
+  fbx_net_phase2_spend: 'إنفاق المرحلة 2',
+  fbx_net_budget: 'ميزانية المزوّدين',
+  fbx_net_runs: 'تشغيلات Actor',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -93518,6 +93573,17 @@ const he: Partial<Record<TranslationKey, string>> = {
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   fbx_languages_choose: 'החיפוש נעשה בכל שש השפות. הקישו על שפה כדי להוציא אותה — כל התקציב ילך לשפות שתשאירו.',
   fbx_languages_only: 'מחפשים רק בשפות: {{list}}. כל התקציב ילך לקהלים האלה.',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbx_net_phases: 'שלבי הקמפיינים',
+  fbx_net_phases_explain: 'שלב 1 מגלה קהילות בתוך חלון זמן ותקרת הוצאה שתוכננו לפי מחירי הקמפיין עצמו; שלב 2 (A: קורא את מאגר המקורות, B: מחפש ישירות בפלטפורמות) לא מתחיל הרצה בתשלום לפני ששלב 1 הסתיים או שחלון הזמן שלו נסגר.',
+  fbx_net_phase1: 'שלב 1 · גילוי',
+  fbx_net_phase1_cap: 'תקרת שלב 1',
+  fbx_net_phase1_spend: 'הוצאת שלב 1',
+  fbx_net_phase2: 'שלב 2 · חילוץ',
+  fbx_net_phase2_spend: 'הוצאת שלב 2',
+  fbx_net_budget: 'תקציב ספקים',
+  fbx_net_runs: 'הרצות Actor',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

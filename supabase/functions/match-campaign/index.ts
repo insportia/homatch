@@ -831,6 +831,8 @@ Deno.serve(async (req: Request) => {
         property: property as any, facts: facts ?? null, planId,
         nativeTelegramActive: discovery.campaignSourceDiscoveryEnabled && discovery.telegramEnabled,
         targetLanguages: explicitLanguages,
+        campaignWindowMinutes: discovery.campaignDiscoveryMinutes,
+        telegramDiscoveryPlanned: plan.tranches.some((t) => t.providers.includes('TELEGRAM_SOURCES')) && plan.queryVariants.length > 0,
       }, findBuyers);
       socialQueued = social.queued;
       paidTelegramQueued = Number((social as any).paidTelegramQueued ?? 0);

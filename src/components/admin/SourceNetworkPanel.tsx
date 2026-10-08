@@ -9,11 +9,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { getSourceNetwork, type SourceNetwork } from '@/services/findBuyers';
+import { getSourceNetwork, usd, type SourceNetwork } from '@/services/findBuyers';
 import { citiesMentioned } from '@/findBuyers/actorCatalog';
 
 const n = (v: unknown) => Number(v ?? 0) || 0;
 const when = (iso: unknown) => (iso ? new Date(String(iso)).toLocaleString() : '—');
+const counts = (m: Record<string, number> | null | undefined) => (m && Object.keys(m).length ? Object.entries(m).map(([k, v]) => `${k} ${v}`).join(' · ') : '—');
 
 function Grid({ head, rows, testId }: { head: string[]; rows: React.ReactNode[][]; testId: string }) {
   return (
@@ -94,6 +95,21 @@ export function SourceNetworkPanel({ days }: { days: number }) {
         rows={data.campaigns.map((c) => [
           when(c.at), c.city ?? '—', Array.isArray(c.languages) && c.languages.length ? c.languages.join(', ') : '—',
           n(c.communitiesFound), n(c.newlyRegistered), c.audited ?? '—', c.verified ?? '—', c.activated ?? '—', c.readNow ?? '—',
+        ])} />
+
+      <h3 className="pt-2 text-xs font-semibold">{t('fbx_net_phases')}</h3>
+      <p className="text-2xs text-muted-foreground">{t('fbx_net_phases_explain')}</p>
+      <Grid testId="fbx-net-phases"
+        head={[t('fbx_net_when'), t('fbx_net_phase1'), t('fbx_net_phase1_cap'), t('fbx_net_phase1_spend'), t('fbx_net_phase2'), t('fbx_net_phase2_spend'), t('fbx_net_budget'), t('fbx_net_runs')]}
+        rows={(data.phases ?? []).map((c) => [
+          when(c.at),
+          <span key="p1" dir="ltr">{counts(c.phase1Queue)}{c.phase1DeadlineAt ? ` · ≤ ${new Date(c.phase1DeadlineAt).toLocaleTimeString()}` : ''}</span>,
+          <span key="cap" dir="ltr">{c.discoveryCapMicros == null ? '—' : `${usd(c.discoveryCapMicros, 3)}${c.budgetRationale ? ` · ${c.budgetRationale}` : ''}`}</span>,
+          <span key="s1" dir="ltr">{usd(n(c.phase1SpendMicros), 3)}</span>,
+          <span key="p2" dir="ltr">{counts(c.phase2Queue)}{c.planned ? ` · A ${n(c.planned.phase2SourceDependent)} / B ${n(c.planned.phase2IndependentSearch)}` : ''}</span>,
+          <span key="s2" dir="ltr">{usd(n(c.phase2SpendMicros), 3)}</span>,
+          <span key="b" dir="ltr">{usd(n(c.budgetMicros), 2)}</span>,
+          <span key="r" dir="ltr" className="break-all">{counts(c.runs)}</span>,
         ])} />
 
       <h3 className="pt-2 text-xs font-semibold">{t('fbx_net_telegram')}</h3>

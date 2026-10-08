@@ -15,6 +15,18 @@ insert into public.discovery_query_queue (property_id, platform, language, query
 values ('00000000-0000-0000-0000-0000000000b1', 'TELEGRAM', 'multi', 'discover', 'DONE', 3, 'TELEGRAM_SOURCES', '00000000-0000-0000-0000-0000000006a1',
         '{"city":"თბილისი","last_outcome":{"communitiesFound":9,"newlyRegistered":3,"audited":4,"verified":2,"activated":0,"readNow":0,"languagesSearched":["ka","en","ru","ar","he","tr"]}}');
 
+/* A campaign with both phases planned and run. */
+insert into public.matching_jobs (id, user_id, property_id, idempotency_key, status)
+values ('00000000-0000-0000-0000-0000000006b1', '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b1', 'phases-1', 'completed');
+insert into public.find_buyers_campaigns (matching_job_id, property_id, user_id, transaction, credits_committed, credits_per_usd, customer_value_micros, provider_budget_micros, query_plan)
+values ('00000000-0000-0000-0000-0000000006b1', '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000a1', 'SALE', 100, 10, 10000000, 5000000,
+        '{"phases":{"phase1DeadlineAt":"2026-10-08T20:10:00Z","budget":{"discoveryCapMicros":61000,"rationale":"FULL_DISCOVERY"},"planned":{"phase1":3,"phase2SourceDependent":1,"phase2IndependentSearch":4}}}');
+insert into public.discovery_query_queue (property_id, platform, language, query, status, result_count, provider, matching_job_id, metadata) values
+  ('00000000-0000-0000-0000-0000000000b1', 'TELEGRAM', 'multi', 'discover', 'DONE', 4, 'TELEGRAM_SOURCES', '00000000-0000-0000-0000-0000000006b1', '{}'),
+  ('00000000-0000-0000-0000-0000000000b1', 'FACEBOOK', 'ka', 'q', 'DONE', 0, 'APIFY_MEMO23', '00000000-0000-0000-0000-0000000006b1', '{"stage":"FB_GROUP_SEARCH"}'),
+  ('00000000-0000-0000-0000-0000000000b1', 'TIKTOK', 'ka', 'q', 'RETRY_WAIT', 0, 'APIFY_MEMO23', '00000000-0000-0000-0000-0000000006b1', '{"stage":"TIKTOK_SEARCH","lastWait":"PHASE1_DISCOVERY"}'),
+  ('00000000-0000-0000-0000-0000000000b1', 'TELEGRAM', 'multi', 'sync', 'PENDING', 0, 'TELEGRAM', '00000000-0000-0000-0000-0000000006b1', '{"direction":"DEMAND"}');
+
 do $$
 declare r jsonb; tg jsonb; fb jsonb; c jsonb;
 begin
@@ -35,9 +47,14 @@ begin
   assert (r ->> 'memo23Discovered')::int = 1, r::text;
   assert r -> 'directory' -> 0 ->> 'listed' = '1', 'directory reported on its own line';
   assert jsonb_array_length(r -> 'telegram') = 4;
-  c := r -> 'campaigns' -> 0;
+  select x into c from jsonb_array_elements(r -> 'campaigns') x where x ->> 'jobId' = '00000000-0000-0000-0000-0000000006a1';
   assert (c ->> 'communitiesFound')::int = 9 and (c ->> 'audited')::int = 4 and jsonb_array_length(c -> 'languages') = 6 and c ->> 'city' = 'თბილისი', c::text;
   assert (r ->> 'autoEnable') = 'false', 'auto-enable reported (absent = false)';
+  select x into c from jsonb_array_elements(r -> 'phases') x where x ->> 'jobId' = '00000000-0000-0000-0000-0000000006b1';
+  assert c is not null, 'the campaign has a phases row: ' || coalesce(r -> 'phases', 'null'::jsonb)::text;
+  assert (c ->> 'discoveryCapMicros')::bigint = 61000 and c ->> 'budgetRationale' = 'FULL_DISCOVERY' and (c -> 'planned' ->> 'phase2IndependentSearch')::int = 4, c::text;
+  assert (c -> 'phase1Queue' ->> 'DONE')::int = 2 and c -> 'phase1Queue' ->> 'RETRY_WAIT' is null, 'Telegram search + group search are Phase 1: ' || c::text;
+  assert (c -> 'phase2Queue' ->> 'RETRY_WAIT')::int = 1 and (c -> 'phase2Queue' ->> 'PENDING')::int = 1, 'TikTok + the Telegram read are Phase 2: ' || c::text;
   perform set_config('app.admin', '', true);
   assert not has_function_privilege('anon', 'public.admin_find_buyers_source_network(integer)', 'execute'), 'anon cannot call it';
 end $$;

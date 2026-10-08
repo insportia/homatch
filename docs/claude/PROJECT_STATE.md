@@ -327,6 +327,33 @@ Owner approvals pending: merge + deploy; apply 20261022090000; set
 operator); optional one-time audit run of the 20 DISCOVERED communities.
 Not done: mirroring imported photos into storage (they die with the source).
 
+## Find Buyers — two-phase engine + COMBINED Telegram (same branch/PR #129, 2026-10-08) — NOT merged/deployed
+
+- Phase 1 (discovery: TELEGRAM_SOURCES + memo23 FB_GROUP_SEARCH / LINKEDIN_GROUPS)
+  is time-boxed: a third of the campaign window, 3..10 min (default 10). Its
+  deadline, the expected native discovery, the planned counts (Phase 1 /
+  Phase 2 A source-dependent / B independent search) and a discovery spend
+  ceiling planned from registry prices (campaignPhases.planDiscoveryBudget, no
+  fixed share) are stored in find_buyers_campaigns.query_plan.phases BEFORE
+  any job is queued.
+- Gate: executor (paid runs) and driver (native Telegram read, DEMAND only)
+  WAIT (no attempt consumed) while Phase 1 is open; proceed when Phase 1 is
+  DONE (partial failures kept) or TIMED_OUT. Polls of started runs never
+  held. Campaigns without stored phases are never held.
+- Phase 1 ceiling enforced before reservation (PHASE1_BUDGET); the campaign
+  hard cap stays atomic in find_buyers_reserve_actor_run (unchanged).
+- Telegram COMBINED (owner 2026-10-08, default when the setting is unset):
+  free reader reads enabled communities; when Phase 1's Telegram search ends,
+  memo23 TELEGRAM_CHANNEL is queued for up to 8 city-fit channels the free
+  reader does not cover (audited-but-off first, then not-yet-audited), never a
+  channel already queued. NATIVE_FIRST / PAID_FIRST still selectable by setting.
+  Paid runs only in funded campaigns, through the same reservation/caps.
+- Admin → Source network: per-campaign phases (queue states, ceiling,
+  rationale, spend per phase, runs per Actor) — in migration 20261022090000.
+- Not built: recurring cycles for an active funded campaign (each launch is
+  one cycle today); cross-platform person-level lead dedupe beyond existing
+  fingerprints.
+
 ## Deferred / known-open (do not "fix" casually)
 
 - Active Search has no dedicated UI surface yet (backend + notify exist).

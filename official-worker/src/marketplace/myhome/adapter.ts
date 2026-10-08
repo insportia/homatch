@@ -6,7 +6,7 @@ import { buildQueries, candidateFromMyHome } from './mapping.js';
 import { publicPage, publicSearchUrl } from './public-page.js';
 
 export class MyHomeFailure extends Error { constructor(public code: string, message: string, public retryable = false) { super(message); } }
-export type AdapterOptions = { fetcher?: typeof fetch; deadlineAt: string; signal?: AbortSignal;
+export type AdapterOptions = { fetcher?: typeof fetch; pageFetcher?: typeof fetch; browserMs?: () => number; deadlineAt: string; signal?: AbortSignal;
   report: (result: MarketplaceWorkerResult & { retryable?: boolean }) => Promise<void> };
 export async function acquireMyHome(request: MarketplaceSearchRequest, options: AdapterOptions) {
   const started = Date.now(), startedAt = new Date(started).toISOString();
@@ -15,7 +15,7 @@ export async function acquireMyHome(request: MarketplaceSearchRequest, options: 
   let unavailableUrls = 0;
   const unavailableIds: string[] = [];
   let pagesVisited = 0, actions = 0, discoveredCount = 0, delivered = 0, nextPage = 1, currentQuery = 0;
-  const queriesApplied: Record<string, string | number | boolean | null | string[]> = { acquisition: 'PUBLIC_NEXT_DATA', dictionariesAndCount: 'PUBLIC_API' };
+  const queriesApplied: Record<string, string | number | boolean | null | string[]> = { acquisition: options.pageFetcher ? 'PUBLIC_NEXT_DATA_BROWSER' : 'PUBLIC_NEXT_DATA', dictionariesAndCount: 'PUBLIC_API' };
   function remaining() {
     options.signal?.throwIfAborted();
     if (!Number.isFinite(deadline) || Date.now() > deadline - 15000) throw new MyHomeFailure('DEADLINE', 'Existing worker deadline reached; already ingested batches remain available.');
@@ -24,7 +24,7 @@ export async function acquireMyHome(request: MarketplaceSearchRequest, options: 
     for (let attempt = 0; ; attempt++) {
       remaining(); actions++;
       try {
-        const fetcher: typeof fetch = (input, init) => (options.fetcher ?? fetch)(input, { ...init,
+        const fetcher: typeof fetch = (input, init) => (page ? options.pageFetcher ?? options.fetcher ?? fetch : options.fetcher ?? fetch)(input, { ...init,
           signal: AbortSignal.any([AbortSignal.timeout(Math.min(20000, deadline - Date.now() - 10000)), ...(options.signal ? [options.signal] : [])]) });
         return (page ? await publicPage(url, fetcher, statementId) : await publicJson(url, locale, fetcher)).payload;
       } catch (error) {
@@ -40,7 +40,7 @@ export async function acquireMyHome(request: MarketplaceSearchRequest, options: 
       workerId: 'myhome-agent', sourceId: 'myhome-ge', status, startedAt,
       completedAt: ['COMPLETE', 'PARTIAL', 'FAILED', 'TIMED_OUT', 'BLOCKED'].includes(status) ? new Date().toISOString() : null,
       queryApplied: { ...queriesApplied, nextPage, queryIndex: currentQuery }, discoveredCount, returnedCount: listings.length, listings, errors,
-      metrics: { durationMs: Date.now() - started, pagesVisited, actions, bytesTransferred: null, browserMs: 0, estimatedCostUsd: null }, retryable };
+      metrics: { durationMs: Date.now() - started, pagesVisited, actions, bytesTransferred: null, browserMs: options.browserMs?.() ?? 0, estimatedCostUsd: null }, retryable };
     if (new TextEncoder().encode(JSON.stringify(result)).length > 1500000) throw new MyHomeFailure('REPORT_TOO_LARGE', 'Report exceeds safe ingress size.');
     await options.report(result); delivered += listings.length;
   };
@@ -78,8 +78,8 @@ export async function acquireMyHome(request: MarketplaceSearchRequest, options: 
         rows.forEach(row => priorIds.add(row.source_id));
         if (!newWithinQuery.length) throw new MyHomeFailure('NO_NEW_IDS', `Page ${page} adds no source identities.`);
         const candidates: ExternalListingCandidate[] = [];
-        for (let i = 0; i < newRows.length; i += 4) {
-          const group = await Promise.all(newRows.slice(i, i + 4).map(async row => {
+        for (let i = 0; i < newRows.length; i += (options.pageFetcher ? 2 : 4)) {
+          const group = await Promise.all(newRows.slice(i, i + (options.pageFetcher ? 2 : 4)).map(async row => {
             // Detail enrichment is source acquisition only: it supplies missing
             // description/condition/contact/coordinate evidence to the existing core.
             if (!row.source_url) {

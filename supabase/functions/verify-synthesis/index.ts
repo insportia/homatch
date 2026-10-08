@@ -176,6 +176,53 @@ function textOf(p: any): string {
  * job was loaded through the caller's own RLS-scoped client, so a caller can
  * only ever persist for a job they were already allowed to see.
  */
+/*
+ * OFFICIAL TAS VISUALS, DELIVERED AS SHORT-LIVED SIGNED URLS.
+ *
+ * The persisted report holds a bucket path per visual; the customer never
+ * sees one. At read time — after the job was loaded through the CALLER'S
+ * RLS client, so only its owner reaches this — each path becomes a signed
+ * URL valid for one hour, and the path is removed. Internal usage numbers
+ * leave the response too. A visual that cannot be signed is simply omitted:
+ * the textual report stands on its own.
+ */
+const VISUAL_BUCKET = 'verify-official-visuals';
+const VISUAL_URL_TTL_SECONDS = 3600;
+async function forCustomer(db: any, payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const { _usage: _droppedUsage, officialVisuals, ...rest } = payload as Record<string, any>;
+  if (!Array.isArray(officialVisuals) || !officialVisuals.length) return rest;
+  const signed: unknown[] = [];
+  for (const v of officialVisuals.slice(0, 6)) {
+    const path = typeof v?.storagePath === 'string' ? v.storagePath : '';
+    if (!/^tas\/[a-f0-9]{64}\.(jpg|png)$/.test(path)) continue;
+    try {
+      const { data } = await db.storage.from(VISUAL_BUCKET).createSignedUrl(path, VISUAL_URL_TTL_SECONDS);
+      if (!data?.signedUrl) continue;
+      signed.push({ id: v.id, role: v.role, kind: v.kind, date: v.date ?? null, width: v.width ?? null, height: v.height ?? null, url: data.signedUrl });
+    } catch {
+      /* omitted, never fatal */
+    }
+  }
+  return signed.length ? { ...rest, officialVisuals: signed } : rest;
+}
+
+/** What this verification reviewed, in counts a customer can read. */
+function researchCoverage(job: any, pkg: any, bundle: any): Record<string, unknown> {
+  const tas = pkg?.tas;
+  const ledger = job?.result_json?._marketplaceLedger;
+  return {
+    researchedAt: job?.completed_at ?? null,
+    latestOfficialDocumentDate: tas?.coverage?.latestDate ?? null,
+    earliestOfficialDocumentDate: tas?.coverage?.earliestDate ?? null,
+    officialCasesReviewed: tas?.coverage?.cases ?? 0,
+    officialStepsReviewed: tas?.coverage?.motions ?? 0,
+    officialAttachmentsRead: tas?.coverage?.attachmentsRead ?? 0,
+    officialFactsConsolidated: Array.isArray(tas?.facts) ? tas.facts.length : 0,
+    marketListingsAnalyzed: typeof bundle?.market?.count === 'number' ? bundle.market.count : 0,
+    marketplaceListingsAdded: typeof ledger?.added === 'number' ? ledger.added : 0,
+  };
+}
+
 async function persist(db: any, jobId: string, payload: unknown): Promise<void> {
   const { error } = await db
     .from('research_jobs')
@@ -381,7 +428,7 @@ serve(async (req) => {
 
     const { data: job, error } = await supabase
       .from('research_jobs')
-      .select('id,result_json,status,synthesis_json,synthesis_state,synthesis_at')
+      .select('id,result_json,status,completed_at,synthesis_json,synthesis_state,synthesis_at')
       .eq('id', jobId)
       .maybeSingle();
     if (error) throw error;
@@ -432,7 +479,7 @@ serve(async (req) => {
      * The persisted report is now authoritative, so returning to a case is
      * a read. */
     if (job.synthesis_state === 'READY' && job.synthesis_json && !body?.force) {
-      return json({ ...withCredibleParticipants(job.synthesis_json as Record<string, unknown>), persisted: true });
+      return json({ ...(await forCustomer(writer, withCredibleParticipants(job.synthesis_json as Record<string, unknown>))), persisted: true });
     }
 
     // The projection still supplies the deterministic property model (type,
@@ -492,6 +539,9 @@ serve(async (req) => {
     }
 
     let raw: string | null = null;
+    // Token usage of THIS call, kept with the report for COGS and Admin.
+    // It used to be discarded, leaving the final synthesis unmetered.
+    let usage: { model: string; inputTokens: number | null; outputTokens: number | null; cachedTokens: number | null } | null = null;
     const apiKey = Deno.env.get('OPENAI_API_KEY');
     if (apiKey) {
       // The asset class decides which sections this property can even have:
@@ -511,7 +561,15 @@ serve(async (req) => {
           }),
         });
         if (res.ok) {
-          raw = textOf(await res.json());
+          const body = await res.json();
+          raw = textOf(body);
+          const u = body?.usage ?? null;
+          usage = {
+            model: MODEL,
+            inputTokens: typeof u?.input_tokens === 'number' ? u.input_tokens : null,
+            outputTokens: typeof u?.output_tokens === 'number' ? u.output_tokens : null,
+            cachedTokens: typeof u?.input_tokens_details?.cached_tokens === 'number' ? u.input_tokens_details.cached_tokens : null,
+          };
         } else {
           // The provider's own words, not a summary of them.
           const detail = (await res.text()).slice(0, 500);
@@ -545,6 +603,11 @@ serve(async (req) => {
         // v3: summary + keyFindings replace overallView/executiveSummary, and
         // the pre-purchase checklist is gone rather than renamed.
         summary: final.summary,
+        // The latest confirmed official position, the documented history
+        // oldest-first, and one caption per official TAS visual.
+        ...(final.currentStatus ? { currentStatus: final.currentStatus } : {}),
+        ...(final.propertyStory ? { propertyStory: final.propertyStory } : {}),
+        ...(final.visualCaptions ? { visualCaptions: final.visualCaptions } : {}),
         keyFindings: final.keyFindings,
         sections: final.sections,
         attentionPoints: final.attentionPoints,
@@ -580,11 +643,18 @@ serve(async (req) => {
       mode: final.mode,
       propertyType: projection.propertyType,
       evidenceCounts: pkg.tierCounts,
+      // Research transparency: counts only, never links.
+      research: researchCoverage(job, pkg, bundle),
+      // Bucket paths (internal); forCustomer() turns them into signed URLs.
+      officialVisuals: Array.isArray(job.result_json?.officialVisuals)
+        ? job.result_json.officialVisuals.filter((v: any) => (pkg.tas?.visuals ?? []).some((t) => t.id === v?.id))
+        : [],
+      _usage: usage,
       empty: false,
     };
 
     await persist(writer, jobId, payload);
-    return json(payload);
+    return json(await forCustomer(writer, payload));
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e);
     console.error('verify-synthesis failed', reason);

@@ -46,6 +46,11 @@ export interface ResearchJob {
    * so a stall is visible in the job document instead of looking like a
    * normal completion. */
   watchdogFinalized?: boolean;
+  /** Which TAS implementation this job runs (forwarded by research-agent
+   * from the audited Admin setting; LEGACY when absent). */
+  tasConfig?: import('../workflows/tas/implementation.js').TasImplementationConfig;
+  /** Admin/debug only: which TAS implementation actually produced the result. */
+  tasExecution?: { implementation: string; fallbackFrom: string | null; durationMs: number } | null;
 }
 
 /**

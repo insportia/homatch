@@ -47,6 +47,7 @@ import { dedupeBlock, isParkingConfirmationPrompt, type TopicKey } from './dedup
 import { SECTION_KEYS } from './prompt.ts';
 import type { SectionKey } from './prompt.ts';
 import type { IntelligenceBundle } from './bundle.ts';
+import { tasLabel, TAS_EVENT_KA } from './evidencePackage.ts';
 
 /** Restrained, and deliberately three. "Attention" is not "bad". */
 export type OverallLabel = 'POSITIVE' | 'BALANCED' | 'NEEDS_ATTENTION';
@@ -129,8 +130,45 @@ export interface NextStep {
   cites: string[];
 }
 
+export interface CurrentStatusItem {
+  label: string;
+  value: string;
+  date: string;
+  cites: string[];
+}
+export interface CurrentStatus {
+  statement: string;
+  items: CurrentStatusItem[];
+}
+
+export const STORY_CHAPTERS = ['EARLIEST', 'INITIAL_PROJECT', 'APPROVALS', 'CONSTRUCTION', 'CHANGES', 'RECENT', 'TODAY'] as const;
+export type StoryChapterKey = (typeof STORY_CHAPTERS)[number];
+export interface StoryChapterOut {
+  key: StoryChapterKey;
+  title: string;
+  period: string;
+  body: string;
+  visualIds: string[];
+  cites: string[];
+}
+export interface PropertyStory {
+  chapters: StoryChapterOut[];
+}
+export interface VisualCaption {
+  visualId: string;
+  caption: string;
+  explanation: string;
+  cites: string[];
+}
+
 export interface BuyerIntelligenceReport {
   summary: BuyerSummary;
+  /** The latest confirmed official position (present tense). */
+  currentStatus?: CurrentStatus;
+  /** The documented history, oldest first (past tense). */
+  propertyStory?: PropertyStory;
+  /** One caption + explanation per official TAS visual actually supplied. */
+  visualCaptions?: VisualCaption[];
   keyFindings: KeyFinding[];
   sections: ReportSection[];
   attentionPoints: AttentionPoint[];
@@ -279,7 +317,41 @@ export function parseReport(raw: string | null | undefined): Partial<BuyerIntell
 
   const cu = (p.contractUpload ?? {}) as Record<string, unknown>;
 
+  const cs = (p.currentStatus ?? null) as Record<string, unknown> | null;
+  const currentStatus: CurrentStatus | undefined = cs && (asString(cs.statement) || asArray(cs.items).length)
+    ? {
+        statement: asString(cs.statement),
+        items: asArray(cs.items)
+          .map((i) => (i ?? {}) as Record<string, unknown>)
+          .filter((i) => asString(i.label) && asString(i.value))
+          .map((i) => ({ label: asString(i.label), value: asString(i.value), date: asString(i.date), cites: asCites(i.cites) }))
+          .slice(0, 8),
+      }
+    : undefined;
+  const ps = (p.propertyStory ?? null) as Record<string, unknown> | null;
+  const chapters: StoryChapterOut[] = asArray(ps?.chapters)
+    .map((c) => (c ?? {}) as Record<string, unknown>)
+    .filter((c) => STORY_CHAPTERS.includes(asString(c.key).toUpperCase() as StoryChapterKey) && asString(c.body))
+    .map((c) => ({
+      key: asString(c.key).toUpperCase() as StoryChapterKey,
+      title: asString(c.title),
+      period: asString(c.period),
+      body: asString(c.body),
+      visualIds: asArray(c.visualIds).map(asString).filter(Boolean),
+      cites: asCites(c.cites),
+    }))
+    .sort((a, b) => STORY_CHAPTERS.indexOf(a.key) - STORY_CHAPTERS.indexOf(b.key))
+    .slice(0, 8);
+  const visualCaptions: VisualCaption[] = asArray(p.visualCaptions)
+    .map((v) => (v ?? {}) as Record<string, unknown>)
+    .filter((v) => asString(v.visualId) && asString(v.caption))
+    .map((v) => ({ visualId: asString(v.visualId), caption: asString(v.caption), explanation: asString(v.explanation), cites: asCites(v.cites) }))
+    .slice(0, 6);
+
   return {
+    ...(currentStatus ? { currentStatus } : {}),
+    ...(chapters.length ? { propertyStory: { chapters } } : {}),
+    ...(visualCaptions.length ? { visualCaptions } : {}),
     summary: { label, statement: asString(sm.statement), highlights },
     keyFindings,
     sections: orderSections(sections),
@@ -326,6 +398,10 @@ function customerProse(c: Partial<BuyerIntelligenceReport>): string {
     ...(c.keyFindings ?? []).flatMap((f) => [f.finding, f.whyItMatters]),
     ...(c.sections ?? []).flatMap((s) => [s.title, s.body]),
     ...(c.attentionPoints ?? []).flatMap((a) => [a.point, a.why]),
+    c.currentStatus?.statement ?? '',
+    ...(c.currentStatus?.items ?? []).flatMap((i) => [i.label, i.value]),
+    ...(c.propertyStory?.chapters ?? []).flatMap((ch) => [ch.title, ch.body]),
+    ...(c.visualCaptions ?? []).flatMap((v) => [v.caption, v.explanation]),
     c.finalView ?? '',
     c.contractUpload?.text ?? '',
   ].join('\n');
@@ -377,7 +453,21 @@ export function validateReport(
     if (!s.cites.length) problems.push('a next step rests on nothing this report established');
   }
 
+  for (const i of candidate.currentStatus?.items ?? []) checkCites(i.cites, 'currentStatus');
+  if ((candidate.currentStatus?.items ?? []).some((i) => !i.cites.length)) problems.push('a current-status item rests on nothing');
+  for (const ch of candidate.propertyStory?.chapters ?? []) {
+    checkCites(ch.cites, `story ${ch.key}`);
+    if (!ch.cites.length && ch.body.length > 240) problems.push(`story chapter ${ch.key} makes substantial claims with no citation`);
+  }
+  for (const v of candidate.visualCaptions ?? []) checkCites(v.cites, 'visualCaptions');
+
   const prose = customerProse(candidate);
+
+  // NO PUBLIC SOURCE LINKS. The report explains what was found; links,
+  // portal addresses and document endpoints live in the internal evidence.
+  if (/https?:\/\/|www\.|\b[a-z0-9-]+\.(?:ge|com|net|org)\/|DownloadServlet|NewArchitectureResponse/i.test(prose)) {
+    problems.push('customer prose contains a URL or source address');
+  }
 
   // NOT FOUND != DOES NOT EXIST.
   for (const phrase of ABSENCE_AS_FACT) {
@@ -473,7 +563,9 @@ export function deterministicReport(pkg: EvidencePackage): BuyerIntelligenceRepo
   const allItems = packageItems(pkg);
   // Reading order, from the one list that defines it.
   for (const key of SECTION_KEYS) {
-    const mine = allItems.filter((i) => SECTION_FOR[i.category] === key);
+    // TAS history items are told as the story and the current status below,
+    // not dumped into a section as a list.
+    const mine = allItems.filter((i) => SECTION_FOR[i.category] === key && !i.tasRef);
     if (!mine.length) continue;
     sections.push({
       key,
@@ -487,7 +579,7 @@ export function deterministicReport(pkg: EvidencePackage): BuyerIntelligenceRepo
   // The strongest few claims, stated as themselves. No interpretation is
   // offered because none can be justified without a model.
   const keyFindings: KeyFinding[] = packageItems(pkg)
-    .filter((i) => i.tier <= 2)
+    .filter((i) => i.tier <= 2 && !i.tasRef)
     .slice(0, MAX_KEY_FINDINGS)
     .map((i) => ({
       finding: i.claim,
@@ -496,10 +588,12 @@ export function deterministicReport(pkg: EvidencePackage): BuyerIntelligenceRepo
       cites: [i.id],
     }));
 
+  const tasBlocks = deterministicTas(pkg);
   return {
+    ...tasBlocks,
     summary: {
       label: 'BALANCED',
-      statement: sections.length
+      statement: sections.length || tasBlocks.propertyStory
         ? 'ქვემოთ თავმოყრილია ის, რაც ამ ქონებაზე მოვიძიეთ, წყაროების მიხედვით.'
         : 'ამ ქონებაზე საკმარისი ინფორმაცია ვერ მოვიძიეთ.',
       highlights: sections.map((s) => ({
@@ -644,6 +738,9 @@ export function finalizeReport(
   }
 
   const cited = new Set([
+    ...(parsed.currentStatus?.items ?? []).flatMap((i) => i.cites),
+    ...(parsed.propertyStory?.chapters ?? []).flatMap((c) => c.cites),
+    ...(parsed.visualCaptions ?? []).flatMap((v) => v.cites),
     ...(parsed.summary?.highlights ?? []).flatMap((h) => h.cites),
     ...(parsed.keyFindings ?? []).flatMap((f) => f.cites),
     ...(parsed.sections ?? []).flatMap((s) => s.cites),
@@ -651,7 +748,23 @@ export function finalizeReport(
     ...(parsed.nextSteps ?? []).flatMap((s) => s.cites),
   ]);
 
-  return stripFalseScarcity(applyFactOwnership({
+  // Visual ids the model may reference are exactly the ones it was given.
+  const visualIds = new Set((pkg?.tas?.visuals ?? []).map((v) => v.id));
+  const story = parsed.propertyStory
+    ? { chapters: parsed.propertyStory.chapters.map((c) => ({ ...c, visualIds: c.visualIds.filter((id) => visualIds.has(id)) })) }
+    : undefined;
+  const captions = (parsed.visualCaptions ?? []).filter((v) => visualIds.has(v.visualId));
+
+  // Whatever the model left out, the record still tells — plainly.
+  const fallback = deterministicTas(pkg);
+  const currentStatus = parsed.currentStatus ?? fallback.currentStatus;
+  const propertyStory = story?.chapters.length ? story : fallback.propertyStory;
+  const visualCaptions = captions.length ? captions : fallback.visualCaptions;
+
+  return removeRepeatedSentences(stripFalseScarcity(applyFactOwnership({
+    ...(currentStatus ? { currentStatus } : {}),
+    ...(propertyStory ? { propertyStory } : {}),
+    ...(visualCaptions ? { visualCaptions } : {}),
     summary: parsed.summary ?? { label: 'BALANCED', statement: '', highlights: [] },
     keyFindings: parsed.keyFindings ?? [],
     sections: parsed.sections ?? [],
@@ -662,7 +775,139 @@ export function finalizeReport(
     mode: 'MODEL',
     rejectedBecause: [],
     evidenceUsed: packageItems(pkg).filter((i) => cited.has(i.id)),
-  }), bundle);
+  }), bundle));
+}
+
+/* ------------------------------------------------------------------ *
+ * The official history without a model                                *
+ * ------------------------------------------------------------------ */
+
+const CHAPTER_TITLE: Record<StoryChapterKey, string> = {
+  EARLIEST: 'საწყისი ჩანაწერი',
+  INITIAL_PROJECT: 'პროექტის დასაწყისი',
+  APPROVALS: 'პირველი შეთანხმებები და ნებართვები',
+  CONSTRUCTION: 'მშენებლობის ეტაპი',
+  CHANGES: 'ცვლილებები და გადაწყვეტილებები',
+  RECENT: 'ბოლო პერიოდი',
+  TODAY: 'რას ნიშნავს ეს დღეს',
+};
+
+const VISUAL_CAPTION_KA: Record<string, string> = {
+  RENDER: 'პროექტის ოფიციალური ვიზუალიზაცია',
+  FACADE: 'ფასადის ოფიციალური ნახაზი',
+  SITE_PLAN: 'გენერალური გეგმა',
+  FLOOR_PLAN: 'სართულის გეგმა',
+  STRUCTURAL: 'კონსტრუქციული ნახაზი',
+  CONSTRUCTION_PHOTO: 'სამშენებლო პროცესის ფოტო',
+  LANDSCAPE: 'გამწვანების პროექტი',
+  OTHER_DRAWING: 'საპროექტო მასალა',
+};
+
+/**
+ * Current status, story chapters and visual captions written from the
+ * consolidated record alone. Plainer than the model's prose, never less
+ * true: each sentence is one cited official fact or event.
+ */
+export function deterministicTas(pkg: EvidencePackage): Pick<BuyerIntelligenceReport, 'currentStatus' | 'propertyStory' | 'visualCaptions'> {
+  const tas = pkg?.tas;
+  const cite = pkg?.tasCite ?? {};
+  if (!tas?.available) return {};
+  const rank = { HIGH: 0, MEDIUM: 1, LOW: 2 } as const;
+  const current = tas.facts
+    .filter((f) => (f.status === 'CURRENT' || f.status === 'CONFLICTING') && cite[f.id])
+    .sort((a, b) => rank[a.materiality] - rank[b.materiality])
+    .slice(0, 6);
+  const lastEvent = [...tas.timeline].reverse().find((e) => cite[e.id] && e.materiality !== 'LOW');
+  const currentStatus: CurrentStatus | undefined = current.length || lastEvent
+    ? {
+        statement: lastEvent
+          ? `უახლესი ოფიციალური ჩანაწერი (${lastEvent.date}): ${TAS_EVENT_KA[lastEvent.kind] ?? ''} — ${lastEvent.title}.`
+          : 'ქვემოთ მოცემულია უახლესი ოფიციალური დოკუმენტებით დადასტურებული მონაცემები.',
+        items: current.map((f) => ({ label: tasLabel(f.key, f.label), value: f.value, date: f.lastSeen ?? '', cites: [cite[f.id]] })),
+      }
+    : undefined;
+  const chapters: StoryChapterOut[] = [];
+  for (const ch of tas.story) {
+    if (ch.key === 'TODAY') continue;
+    const events = ch.eventIds.map((id) => tas.timeline.find((e) => e.id === id)).filter((e) => e && cite[e.id]) as typeof tas.timeline;
+    const changed = ch.factIds.map((id) => tas.facts.find((f) => f.id === id)).filter((f) => f && cite[f.id]) as typeof tas.facts;
+    if (!events.length && !changed.length) continue;
+    const lines = [
+      ...events.map((e) => `${e.date} — ${TAS_EVENT_KA[e.kind] ?? ''}: ${e.title}.`),
+      ...changed.map((f) => `${tasLabel(f.key, f.label)} ადრე იყო ${f.value}, შემდეგ შეიცვალა — ${f.supersededBy}.`),
+    ];
+    chapters.push({
+      key: ch.key,
+      title: CHAPTER_TITLE[ch.key],
+      period: ch.from && ch.to && ch.from !== ch.to ? `${ch.from.slice(0, 4)}–${ch.to.slice(0, 4)}` : ch.from?.slice(0, 4) ?? '',
+      body: lines.join(' '),
+      visualIds: tas.visuals.filter((v) => v.chapter === ch.key).map((v) => v.id),
+      cites: [...events.map((e) => cite[e.id]), ...changed.map((f) => cite[f.id])],
+    });
+  }
+  const visualCaptions: VisualCaption[] = tas.visuals.map((v) => ({
+    visualId: v.id,
+    caption: `${VISUAL_CAPTION_KA[v.kind] ?? VISUAL_CAPTION_KA.OTHER_DRAWING}${v.role === 'EARLIEST_RENDER' ? ' — საწყისი ვერსია' : v.role === 'LATEST_RENDER' ? ' — უახლესი ვერსია' : ''}`,
+    explanation: v.kind === 'CONSTRUCTION_PHOTO'
+      ? 'ფოტო ოფიციალური საქმის მასალებიდანაა და მისი გადაღების დროის მდგომარეობას აჩვენებს.'
+      : 'ეს დამტკიცებული საპროექტო მასალაა — ის აჩვენებს რა იყო დაგეგმილი და არა დასრულებულ შენობას.',
+    cites: [],
+  }));
+  return {
+    ...(currentStatus ? { currentStatus } : {}),
+    ...(chapters.length ? { propertyStory: { chapters } } : {}),
+    ...(visualCaptions.length ? { visualCaptions } : {}),
+  };
+}
+
+/* ------------------------------------------------------------------ *
+ * No repeated paragraphs                                              *
+ * ------------------------------------------------------------------ */
+
+const sentenceKey = (t: string): string =>
+  t.toLowerCase().replace(/[\s.,;:!?()«»"'—–-]+/g, ' ').trim();
+
+/**
+ * A sentence a reader has already met, in reading order, is removed from the
+ * later block. Topic-level ownership (applyFactOwnership) handles facts that
+ * are rephrased; this catches the verbatim and near-verbatim repeats that
+ * read worst — the same date-and-meaning sentence pasted into the summary,
+ * the status, the story and the final view. Short sentences (≤ 40 chars) are
+ * left alone: they are labels, not paragraphs.
+ */
+export function removeRepeatedSentences(r: BuyerIntelligenceReport): BuyerIntelligenceReport {
+  const seen = new Set<string>();
+  const filter = (text: string): string => {
+    if (!text) return text;
+    const parts = text.split(/(?<=[.!?…])\s+/);
+    const kept = parts.filter((p) => {
+      const k = sentenceKey(p);
+      if (k.length <= 40) return true;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    return kept.join(' ');
+  };
+  const summary = { ...r.summary, statement: filter(r.summary.statement) };
+  const currentStatus = r.currentStatus ? { ...r.currentStatus, statement: filter(r.currentStatus.statement) } : undefined;
+  const propertyStory = r.propertyStory
+    ? { chapters: r.propertyStory.chapters.map((c) => ({ ...c, body: filter(c.body) })).filter((c) => c.body.trim()) }
+    : undefined;
+  const sections = r.sections.map((s) => ({ ...s, body: filter(s.body) })).filter((s) => s.body.trim());
+  const keyFindings = r.keyFindings.map((f) => ({ ...f, finding: filter(f.finding) })).filter((f) => f.finding.trim());
+  const attentionPoints = r.attentionPoints.map((a) => ({ ...a, point: filter(a.point) })).filter((a) => a.point.trim());
+  const finalView = filter(r.finalView);
+  return {
+    ...r,
+    summary,
+    ...(currentStatus ? { currentStatus } : {}),
+    ...(propertyStory ? { propertyStory } : {}),
+    sections,
+    keyFindings,
+    attentionPoints,
+    finalView,
+  };
 }
 
 /*

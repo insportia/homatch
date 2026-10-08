@@ -34,6 +34,7 @@ import { summariseSources } from '../../../src/verify/intelligence/sourceVersion
  */
 import { buildResearchSeed } from '../../../src/verify/researchSeed.ts';
 import { runMarketLane, marketLaneBrief, type MarketLaneResult } from '../../../src/verify/marketLane.ts';
+import { foldMarketplaceIntoLane, marketProfileFromSeed } from '../../../src/verify/marketplaceComparables.ts';
 import { createPortalRuntime } from '../../../src/research-core/market/runtime.ts';
 import { subjectGeoFromSeed } from '../../../src/verify/search/subjectGeo.ts';
 import { httpCrawlFetcher } from '../../../src/verify/search/httpCrawlFetcher.ts';
@@ -1826,12 +1827,41 @@ async function launch(sb: any, k: string, m: string, j: any, s: Stage, l: string
     .update({ status: 'RUNNING', stage: `${s}_WAITING`, response_id: p.id, progress: { phase: s.toLowerCase(), percent: s === 'IDENTITY' ? 15 : s === 'OFFICIAL_COLLECTION' ? 40 : s === 'PUBLIC_RESEARCH' ? 62 : s === 'MARKET' ? 80 : 92, provider: 'openai' }, error: null, updated_at: now() })
     .eq('id', j.id);
 }
+/** A jsonb admin setting, as the value it holds (adminSetting() stringifies). */
+async function adminSettingJson(sb: any, key: string): Promise<any> {
+  try {
+    const { data } = await sb.from('admin_settings').select('value').eq('key', key).maybeSingle();
+    return data?.value ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/*
+ * TAS IMPLEMENTATION, CHOSEN BY ADMIN, FORWARDED PER JOB.
+ *
+ * admin_settings.verify_tas_implementation = {active, fallback} selects
+ * between the two implementations ALREADY deployed in the worker image
+ * (LEGACY browser workflow, API_FIRST public DWR client). Absent or
+ * malformed means LEGACY — the worker re-validates the value itself, so
+ * nothing here can select an implementation that does not exist.
+ */
+async function tasImplementationFor(sb: any): Promise<{ active: string; fallback: string | null }> {
+  const v = await adminSettingJson(sb, 'verify_tas_implementation');
+  const ok = (x: unknown) => x === 'LEGACY' || x === 'API_FIRST';
+  const active = ok(v?.active) ? v.active : 'LEGACY';
+  const fallback = ok(v?.fallback) && v.fallback !== active ? v.fallback : null;
+  return { active, fallback };
+}
+
 async function startBrowser(sb: any, j: any): Promise<any> {
-  const r = await wf('/research', 'POST', { query: j.query, mode: j.mode });
+  const tasImplementation = await tasImplementationFor(sb);
+  const r = await wf('/research', 'POST', { query: j.query, mode: j.mode, tasImplementation });
   const p = j.result_json || {};
   p._worker = {
     jobId: r.data.jobId,
     startedAt: new Date().toISOString(),
+    tasImplementation,
   };
   return sb.from('research_jobs').update({ status: 'RUNNING', stage: 'BROWSER_WAITING', result_json: p, progress: { phase: 'official_browser', percent: 34, provider: 'playwright' }, updated_at: now() }).eq('id', j.id);
 }
@@ -1900,6 +1930,132 @@ function officialDocuments(browserOfficial: any): any[] {
  * its own deadline, and any failure is recorded rather than raised. A market
  * lane that breaks must never be able to fail a Verify.
  */
+/*
+ * MYHOME.GE + SS.GE, THROUGH THE EXISTING ACQUISITION ADAPTERS.
+ *
+ * The official worker's /verify/market route runs the same acquireMyHome /
+ * acquireSsge code Find Property uses, bounded to a representative local
+ * sample. It is started once, alongside the portal lane, and runs while the
+ * official sources are being read; its listings are folded into the lane's
+ * comparables (deduplicated across platforms and against the lane) before
+ * MARKET reads them. Free public sources, no model call, no user tables.
+ * admin_settings.verify_marketplace_market_enabled = false switches it off.
+ */
+async function startVerifyMarketplace(db: any, p: any, seed: any): Promise<void> {
+  if (p._verifyMarket) return;
+  const enabled = await adminSettingJson(db, 'verify_marketplace_market_enabled');
+  if (enabled === false || enabled === 'false') {
+    p._verifyMarket = { state: 'DISABLED', done: true };
+    return;
+  }
+  const profile = marketProfileFromSeed(seed);
+  if (!profile) {
+    p._verifyMarket = { state: 'NO_LOCATION', done: true };
+    return;
+  }
+  try {
+    const r = await wf('/verify/market', 'POST', { profile });
+    if (r.code !== 202 || !r.data?.jobId) {
+      p._verifyMarket = { state: `START_${r.code}`, done: true };
+      return;
+    }
+    p._verifyMarket = {
+      state: 'RUNNING', done: false, jobId: r.data.jobId, startedAt: now(), profile,
+      subject: {
+        project: seed?.project?.name?.value ?? null,
+        latitude: seed?.location?.latitude?.value ?? null,
+        longitude: seed?.location?.longitude?.value ?? null,
+        district: profile.district,
+      },
+    };
+  } catch (e) {
+    p._verifyMarket = { state: 'START_FAILED', done: true, error: String((e as any)?.message || e).slice(0, 160) };
+  }
+}
+
+const VERIFY_MARKET_MAX_WAIT_MS = 6 * 60 * 1000;
+
+/** Poll once; fold when finished. Returns true while still waiting. */
+async function pollVerifyMarketplace(p: any): Promise<boolean> {
+  const m = p?._verifyMarket;
+  if (!m || m.done || !m.jobId) return false;
+  try {
+    const r = await wf(`/verify/market/${m.jobId}`);
+    if (r.code === 200 && r.data?.status === 'COMPLETE') {
+      const lane = Array.isArray(p._marketComparables) ? p._marketComparables : [];
+      const folded = foldMarketplaceIntoLane(lane, r.data, m.subject ?? { project: null, latitude: null, longitude: null, district: null }, now());
+      p._marketComparables = folded.comparables;
+      p._marketplaceLedger = { ...folded.ledger, profile: m.profile, durationMs: Date.now() - Date.parse(m.startedAt) };
+      p._verifyMarket = { ...m, state: 'FOLDED', done: true };
+      return false;
+    }
+    if (r.code === 404) {
+      // Worker restarted: the in-memory job is gone. Honest, not fatal.
+      p._verifyMarket = { ...m, state: 'LOST', done: true };
+      p._marketplaceLedger = { state: 'LOST', finalComparableCount: lane0(p) };
+      return false;
+    }
+  } catch {
+    /* transient: try again next tick */
+  }
+  if (Date.now() - Date.parse(m.startedAt) > VERIFY_MARKET_MAX_WAIT_MS) {
+    p._verifyMarket = { ...m, state: 'TIMED_OUT', done: true };
+    p._marketplaceLedger = { state: 'TIMED_OUT', finalComparableCount: lane0(p) };
+    return false;
+  }
+  return true;
+}
+const lane0 = (p: any) => (Array.isArray(p?._marketComparables) ? p._marketComparables.length : 0);
+
+/*
+ * OFFICIAL TAS VISUALS → PRIVATE STORAGE, KEYED BY CONTENT HASH.
+ *
+ * The worker selects ≤ 6 genuine visuals from TAS attachments and holds the
+ * bytes briefly. They are copied once into the private bucket under their
+ * sha256, so an unchanged visual is never re-uploaded or re-analysed for a
+ * later job (the hash IS the cache key). The customer only ever receives a
+ * short-lived signed URL, minted by verify-synthesis at read time.
+ * Marketplace photographs never pass through here.
+ */
+const VISUAL_BUCKET = 'verify-official-visuals';
+async function collectOfficialVisuals(sb: any, w: any, p: any): Promise<void> {
+  try {
+    const tas = (w?.results || []).find((r: any) => r?.source === 'tas' && r?.tasApi);
+    const visuals: any[] = Array.isArray(tas?.tasApi?.visuals) ? tas.tasApi.visuals.slice(0, 6) : [];
+    if (!visuals.length) return;
+    const out: any[] = [];
+    for (const v of visuals) {
+      if (!/^[a-f0-9]{64}$/.test(String(v?.id || ''))) continue;
+      const ext = v.mime === 'image/png' ? 'png' : 'jpg';
+      const path = `tas/${v.id}.${ext}`;
+      let stored = false;
+      try {
+        const res = await fetch(`${WORKER}/research/visual/${v.id}`, { headers: { Authorization: `Bearer ${WT}` }, signal: AbortSignal.timeout(20000) });
+        if (res.ok) {
+          const bytes = new Uint8Array(await res.arrayBuffer());
+          const up = await sb.storage.from(VISUAL_BUCKET).upload(path, bytes, { contentType: v.mime, upsert: false });
+          stored = !up.error || /exist|duplicate/i.test(String(up.error?.message || ''));
+        } else if (res.status === 404) {
+          // Evicted from the worker's cache: the bucket may still hold it from an earlier job.
+          const { data } = await sb.storage.from(VISUAL_BUCKET).list('tas', { search: v.id });
+          stored = Array.isArray(data) && data.length > 0;
+        }
+      } catch {
+        stored = false;
+      }
+      if (!stored) continue;
+      out.push({
+        id: v.id, role: v.role, kind: v.kind, date: v.date ?? null, width: v.width ?? null, height: v.height ?? null,
+        mime: v.mime, extraction: v.extraction, storagePath: path,
+        documentId: v.documentId, attachedFileId: v.attachedFileId, motionId: v.motionId ?? null, fileName: v.fileName ?? null,
+      });
+    }
+    if (out.length) p.officialVisuals = out;
+  } catch (e) {
+    p._officialVisualsError = String((e as any)?.message || e).slice(0, 160);
+  }
+}
+
 async function ensureMarketLane(sb: any, j: any, p: any): Promise<boolean> {
   if (p._marketLaneAttempted) return false;
   p._marketLaneAttempted = true;
@@ -1923,6 +2079,7 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
   // Before any branch is chosen, so every path out of here carries it.
   if (!j.result_json) j.result_json = {};
   await ensureMarketLane(sb, j, j.result_json);
+  await pollVerifyMarketplace(j.result_json);
   if (w.status === 'WAITING_HUMAN') {
     const p = j.result_json || {};
     p._captchaReturnStage = 'BROWSER_WAITING';
@@ -2054,6 +2211,9 @@ async function pollBrowser(sb: any, j: any): Promise<any> {
   // list (see prompt()) and the final customer-facing report (see finish())
   // can both use it — never a new, parallel entity list.
   p.browserOfficial = { results: w.results || [], completedAt: w.completedAt || now(), historicalComparison: w.historicalComparison || null, discoveredEntities: w.discoveredEntities || [] };
+  // Admin diagnostics: which TAS implementation actually produced the result.
+  if (w.tasExecution) p._tasExecution = w.tasExecution;
+  await collectOfficialVisuals(sb, w, p);
   return sb
     .from('research_jobs')
     .update({ status: 'CREATED', stage: 'OFFICIAL_READY', result_json: p, evidence_bundle: dedupe([...(j.evidence_bundle || []), ...bev(w)], (x) => x.url), captcha: {}, progress: { phase: 'official_browser_complete', percent: 44, provider: 'playwright' }, updated_at: now() })
@@ -3519,6 +3679,12 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
      * by reading it mid-run and then finding it gone from the finished row.
      */
     _reusePlan: prior._reusePlan ?? null,
+    // Internal ledgers and official visual references (finish() replaces
+    // result_json wholesale, so they are carried explicitly). Stripped from
+    // every customer response by sanitizeForCustomer().
+    _marketplaceLedger: prior._marketplaceLedger ?? (prior._verifyMarket ? { state: prior._verifyMarket.state } : null),
+    _tasExecution: prior._tasExecution ?? null,
+    officialVisuals: prior.officialVisuals ?? null,
     stage: 'COMPLETE',
     searchedAt: now(),
   };
@@ -3621,9 +3787,15 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
        * whole change without saying so. One guarded call, already single-shot.
        */
       if (!j.result_json) j.result_json = {};
-      if (await ensureMarketLane(sb, j, j.result_json)) {
+      const laneRan = await ensureMarketLane(sb, j, j.result_json);
+      // MyHome.ge / SS.ge comparables must be folded BEFORE MARKET reads the
+      // set. Still running → hold this stage for the next tick (bounded by
+      // VERIFY_MARKET_MAX_WAIT_MS from its start; never indefinitely).
+      const stillWaiting = await pollVerifyMarketplace(j.result_json);
+      if (laneRan || stillWaiting || j.result_json._verifyMarket?.done) {
         await sb.from('research_jobs').update({ result_json: j.result_json, updated_at: now() }).eq('id', j.id);
       }
+      if (stillWaiting) return;
       return await launch(sb, k, m, j, 'MARKET', l);
     }
     // v25 (enreg-only) / v28 (generalized): the reconciliation-driven
@@ -4378,6 +4550,10 @@ async function runVerifyMarketLane(db: any, job: any, result: any): Promise<Mark
     knownFacts,
   });
 
+  // Started first, so MyHome.ge / SS.ge search in parallel with the portal
+  // lane and the official sources. Never fatal.
+  await startVerifyMarketplace(db, result, seed);
+
   const runtime = createPortalRuntime();
   const discovery = discoveryInputsFor(db, seed);
 
@@ -4905,6 +5081,13 @@ function sanitizeForCustomer(job: any): any {
    * `sections` block, which is computed from the row and carries no internals.
    */
   delete r._marketLane;
+  delete r._marketplaceLedger;
+  delete r._verifyMarket;
+  delete r._tasExecution;
+  delete r._officialVisualsError;
+  // Storage paths of official visuals: the customer receives signed URLs
+  // from verify-synthesis only, never a path into the bucket.
+  delete r.officialVisuals;
   delete r._marketComparables;
   delete r._marketConflicts;
   delete r._marketLaneAttempted;

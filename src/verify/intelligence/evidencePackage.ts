@@ -31,6 +31,8 @@
 // database — so it is fully testable, and it is safe to run inside an Edge
 // Function.
 
+import { buildTasIntelligence } from './tasIntelligence.ts';
+
 export type Tier = 1 | 2 | 3 | 4 | 5;
 
 export type Provenance =
@@ -91,6 +93,13 @@ export interface EvidenceItem {
   conflictsWith?: string;
   /** Source identity retained as evidence metadata, never customer prose. */
   sourceIdentity?: import('./service176Evidence.ts').Service176Fact['provenance'];
+  /**
+   * Consolidated TAS intelligence (a fact or an event of the official
+   * history). Budgeted separately from the tier caps, so the project's
+   * official history can never crowd out registry evidence — and registry
+   * evidence can never squeeze the history out.
+   */
+  tasRef?: string;
 }
 
 export interface UnavailableCheck {
@@ -133,6 +142,10 @@ export interface EvidencePackage {
   tierCounts: Record<Tier, number>;
   /** True when items were dropped to fit the budget. */
   truncated: boolean;
+  /** The consolidated TAS picture (internal), when TAS returned anything. */
+  tas?: import('./tasIntelligence.ts').TasIntelligence;
+  /** TAS fact/event id → evidence id, for citations. */
+  tasCite?: Record<string, string>;
 }
 
 /* ------------------------------------------------------------------ *
@@ -179,6 +192,26 @@ export function isPresentable(text: unknown): boolean {
 
 /** Per-tier caps. Registry evidence is never squeezed out by social posts. */
 const TIER_CAP: Record<Tier, number> = { 1: 60, 2: 40, 3: 25, 4: 12, 5: 20 };
+/** TAS intelligence items: HIGH first, then MEDIUM. Beyond this they stay in the digest. */
+const TAS_CAP = 45;
+
+/** Customer-language labels for the consolidated TAS matters. */
+const TAS_LABEL_KA: Record<string, string> = {
+  constructionDeadline: 'მშენებლობის ვადა', floors: 'სართულების რაოდენობა', undergroundFloors: 'მიწისქვეშა სართულები',
+  height: 'შენობის სიმაღლე', buildingClass: 'შენობის კლასი', buildingFunction: 'დანიშნულება', landArea: 'მიწის ნაკვეთის ფართი',
+  footprintArea: 'განაშენიანების ფართი', totalArea: 'საერთო ფართი', residentialArea: 'საცხოვრებელი ფართი',
+  commercialArea: 'კომერციული ფართი', units: 'ბინების რაოდენობა', parking: 'პარკინგი', K1: 'K1 კოეფიციენტი',
+  K2: 'K2 კოეფიციენტი', K3: 'K3 კოეფიციენტი', structuralScheme: 'კონსტრუქციული სისტემა', foundationType: 'საძირკვლის ტიპი',
+  piles: 'ხიმინჯები', seismic: 'სეისმომედეგობა', fireSafety: 'ხანძარსაწინააღმდეგო უსაფრთხოება', facade: 'ფასადი',
+  landscaping: 'გამწვანება', elevator: 'ლიფტი', projectRevision: 'პროექტის რედაქცია', maxStructuralSpan: 'კონსტრუქციული მალი',
+  energyEfficiency: 'ენერგოეფექტურობა', geologicalSurvey: 'გეოლოგიური კვლევა',
+};
+export const tasLabel = (key: string, fallback: string): string => TAS_LABEL_KA[key] ?? fallback.replace(/^(field|tf):/, '');
+
+export const TAS_EVENT_KA: Record<string, string> = {
+  APPLICATION: 'განცხადება', PERMIT: 'ნებართვა', APPROVAL: 'შეთანხმება', AMENDMENT: 'ცვლილება', EXTENSION: 'ვადის გაგრძელება',
+  REFUSAL: 'უარი', SUSPENSION: 'შეჩერება', INSPECTION: 'შემოწმება', COMMISSIONING: 'ექსპლუატაციაში მიღება', DECISION: 'გადაწყვეტილება', OTHER: 'ჩანაწერი',
+};
 
 export function buildEvidencePackage(report: unknown): EvidencePackage {
   const r = obj(report);
@@ -188,6 +221,37 @@ export function buildEvidencePackage(report: unknown): EvidencePackage {
     if (!isPresentable(i.claim)) return;
     items.push({ ...i, id: `e${++n}` });
   };
+
+  /* ---- TAS: the official project history, consolidated ---- */
+  const tas = buildTasIntelligence(r);
+  const tasCite: Record<string, string> = {};
+  if (tas.available) {
+    const rank = { HIGH: 0, MEDIUM: 1, LOW: 2 } as const;
+    const facts = tas.facts.filter((f) => f.materiality !== 'LOW').sort((a, b) => rank[a.materiality] - rank[b.materiality]);
+    for (const f of facts) {
+      const label = tasLabel(f.key, f.label);
+      const when = f.lastSeen ? ` (${f.lastSeen})` : '';
+      const claim =
+        f.status === 'SUPERSEDED'
+          ? `${label}${f.block ? `, ${f.block}` : ''}: ადრე ${f.value}${when}, მოგვიანებით შეიცვალა — ${f.supersededBy}`
+          : `${label}${f.block ? `, ${f.block}` : ''}: ${f.value}${when}${f.status === 'CONFLICTING' ? ' — ერთსა და იმავე თარიღზე განსხვავებული მნიშვნელობა' : ''}`;
+      const before = items.length;
+      add({
+        tier: 1, category: 'DOCUMENT', claim, provenance: 'OFFICIAL_DOCUMENT', certainty: 'CONFIRMED',
+        date: f.lastSeen ?? undefined, historical: f.status === 'SUPERSEDED' || f.status === 'HISTORICAL',
+        conflictsWith: f.status === 'CONFLICTING' ? 'CONFLICTING_OFFICIAL_VALUES' : undefined, tasRef: f.id,
+      });
+      if (items.length > before) tasCite[f.id] = items[items.length - 1].id;
+    }
+    for (const e of tas.timeline.filter((x) => x.materiality !== 'LOW')) {
+      const before = items.length;
+      add({
+        tier: 1, category: 'DOCUMENT', claim: `${e.date} — ${TAS_EVENT_KA[e.kind] ?? e.kind}: ${e.title}${e.status ? ` (${e.status})` : ''}`,
+        provenance: 'OFFICIAL_DOCUMENT', certainty: 'CONFIRMED', date: e.date, tasRef: e.id,
+      });
+      if (items.length > before) tasCite[e.id] = items[items.length - 1].id;
+    }
+  }
 
   const pr = obj(r.publicResearch);
   const unit = obj(r.exactUnit);
@@ -261,7 +325,9 @@ export function buildEvidencePackage(report: unknown): EvidencePackage {
     }
   }
 
-  for (const f of arr<Record<string, unknown>>(r.technicalFacts)) {
+  // The same TAS technical facts, already consolidated above with dates and
+  // supersession. Adding them again would state each fact twice.
+  for (const f of tas.available && tas.facts.length ? [] : arr<Record<string, unknown>>(r.technicalFacts)) {
     const value = nonEmpty(f?.value);
     if (!value) continue;
     add({
@@ -538,8 +604,20 @@ export function buildEvidencePackage(report: unknown): EvidencePackage {
   let truncated = false;
   // Ordered by tier so a cap never drops registry evidence in favour of a
   // social post that happened to be extracted earlier.
+  let tasUsed = 0;
   for (const tier of [1, 2, 3, 4, 5] as Tier[]) {
     for (const item of items.filter((i) => i.tier === tier)) {
+      if (item.tasRef) {
+        // Separate budget; whatever exceeds it is still in the digest.
+        if (tasUsed >= TAS_CAP) {
+          truncated = true;
+          for (const [k, v] of Object.entries(tasCite)) if (v === item.id) delete tasCite[k];
+          continue;
+        }
+        tasUsed++;
+        kept.push(item);
+        continue;
+      }
       if (used[tier] >= TIER_CAP[tier]) { truncated = true; continue; }
       used[tier]++;
       kept.push(item);
@@ -551,8 +629,9 @@ export function buildEvidencePackage(report: unknown): EvidencePackage {
     items: kept,
     unavailable,
     market,
-    tierCounts: { 1: used[1], 2: used[2], 3: used[3], 4: used[4], 5: used[5] } as Record<Tier, number>,
+    tierCounts: { 1: used[1] + tasUsed, 2: used[2], 3: used[3], 4: used[4], 5: used[5] } as Record<Tier, number>,
     truncated,
+    ...(tas.available ? { tas, tasCite } : {}),
   };
 }
 

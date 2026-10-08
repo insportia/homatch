@@ -1,9 +1,33 @@
 # PROJECT STATE
 
-last_updated: 2026-10-04
+last_updated: 2026-10-08
 maintained_by: hand (update when production-relevant facts change; this is the
 session-start truth that saves a production round-trip — but for anything that
 MATTERS right now, verify against the live systems, not this file)
+
+## Verify upgrade (branch `claude/dazzling-cray-34t9ur`, 2026-10-08) — IN PROGRESS, NOT DEPLOYED
+
+- Release model: ONE coordinated release of TAS API-first + NAPR/MyGov Service176 + RS.ge,
+  only after explicit owner approval. Nothing here is deployed, applied or activated.
+- TAS API_FIRST (`official-worker/src/workflows/tas/api/`): DWR serializer + full object-graph
+  parser, client, workflow, attachments/visuals, LEGACY fallback, `/health/tas`, `/tas/test`.
+  Search/detail bodies aligned byte-for-byte to the owner's live-verified tas-worker notes;
+  `DownloadServlet` and motion-id exposure are NOT verified. No live run from this repo
+  (sandbox egress blocks tas.ge). See `CONTRACT.md` there. Default stays LEGACY.
+- Owner's tas-worker archive: README/TASK/package.json/pdf-reader only — NO implementation,
+  tests, captured replies or diagnostics.
+- NAPR/MyGov (Codex) and RS.ge native (Codex): DEFERRED / BLOCKED — code not on GitHub and
+  no archive received. Only merged Service176 (PR #119) exists. Do not rebuild.
+- Market: MyHome.ge + SS.ge via worker `/verify/market` (existing adapters), folded into the
+  market lane (`src/verify/marketplaceComparables.ts`); gated by
+  `admin_settings.verify_marketplace_market_enabled` (seeded false).
+- Intelligence: `src/verify/intelligence/tasIntelligence.ts` (facts/supersession/conflicts/
+  timeline/participants/story/digest), separate TAS evidence budget (45) beside the tier-1 60,
+  report blocks currentStatus/propertyStory/visualCaptions, URL-in-prose rejection,
+  repeated-sentence removal. verify-synthesis now keeps its token usage (`_usage`).
+- Migration `20261021090000_verify_official_visuals_and_switches.sql` NOT applied: private
+  bucket `verify-official-visuals`, settings `verify_tas_implementation` (LEGACY),
+  `verify_marketplace_market_enabled` (false).
 
 ## Production pointers
 

@@ -67,7 +67,7 @@ export interface ReportComparable {
   retrievedAt: string | null;
   comparableType: 'SAME_PROJECT' | 'MICRO_LOCATION' | 'PEER_PROJECT';
   /** How this advert was found. Present so a reader can check the claim. */
-  discoveryMethod: 'DETERMINISTIC_PORTAL_SEARCH';
+  discoveryMethod: 'DETERMINISTIC_PORTAL_SEARCH' | 'MARKETPLACE_WORKER_SEARCH';
   /** Other adverts for the same property, and their prices. */
   alsoListedAt?: Array<{ url: string; source: string; price: string | null }>;
 }

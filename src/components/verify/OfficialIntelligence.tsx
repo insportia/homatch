@@ -12,6 +12,7 @@
 
 import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 
 export interface CurrentStatusView {
   statement: string;
@@ -67,8 +68,20 @@ export interface ResearchCoverageView {
   officialStepsReviewed?: number;
   officialAttachmentsRead?: number;
   officialFactsConsolidated?: number;
+  officialRecordsDiscovered?: number;
+  officialAttachmentsDiscovered?: number;
+  officialEvidenceSelectedForSynthesis?: number;
+  officialMilestonesShown?: number;
+  officialProcessingIncomplete?: boolean;
   marketListingsAnalyzed?: number;
+  providers?: Array<{ provider: string; state: string }>;
 }
+
+/** Display caps: the server already selects; a stored or oversized payload never floods the page. */
+const MAX_MILESTONES = 10;
+const MAX_CHANGES = 8;
+/** First-strong isolates keep a reference or date in reading order inside RTL text. */
+const isolate = (s: string): string => `\u2066${s}\u2069`;
 
 /** A date or range rendered left-to-right inside any locale (RTL safe). */
 const Ltr: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => (
@@ -90,18 +103,20 @@ const safeVisualUrl = (u: unknown): string | null =>
 const OfficialStateBadge: React.FC<{ h: OfficialHistoryClientView['status'] }> = ({ h }) => {
   const { t } = useLanguage();
   const state = KNOWN_STATES.includes(h.state) ? h.state : 'NOT_ESTABLISHED';
+  // A permit whose own validity date has passed is not "in force" — say so in the headline.
+  const expired = state === 'PERMITTED' && h.caveats?.includes('VALIDITY_PASSED');
   const tone = NEGATIVE_STATES.has(state)
     ? 'border-amber-500/50 bg-amber-500/10'
     : state === 'NOT_ESTABLISHED' ? 'border-border bg-card' : 'border-[hsl(38_92%_54%)]/40 bg-[hsl(38_92%_54%)]/10';
   const ref = [h.caseRef, h.decisionNumber ? `№ ${h.decisionNumber}` : null].filter(Boolean).join(' · ');
   return (
     <div className={`rounded-xl border px-4 py-3 space-y-1 ${tone}`}>
-      <p className="text-sm font-semibold break-words">{t(`verify_ox_state_${state.toLowerCase()}`)}</p>
+      <p className="text-sm font-semibold break-words">{t(expired ? 'verify_ox_state_permit_expired' : `verify_ox_state_${state.toLowerCase()}`)}</p>
       <p className="text-xs text-muted-foreground break-words">
         {[
-          day(h.since) ? t('verify_ox_since_date', { date: day(h.since)! }) : null,
-          ref ? `${t('verify_ox_official_ref')} ${ref}` : null,
-          day(h.validUntil) ? t('verify_ox_valid_until_date', { date: day(h.validUntil)! }) : null,
+          day(h.since) ? t('verify_ox_since_date', { date: isolate(day(h.since)!) }) : null,
+          ref ? `${t('verify_ox_official_ref')} ${isolate(ref)}` : null,
+          day(h.validUntil) ? t('verify_ox_valid_until_date', { date: isolate(day(h.validUntil)!) }) : null,
         ].filter(Boolean).join(' · ')}
       </p>
       {!h.conclusive ? <p className="text-xs leading-5 text-amber-700 dark:text-amber-400 break-words">{t('verify_ox_not_conclusive')}</p> : null}
@@ -156,20 +171,27 @@ const VisualFigure: React.FC<{
   onBroken: (id: string) => void;
 }> = ({ v, caption, badge, clean, onBroken }) => {
   const { t } = useLanguage();
+  const [open, setOpen] = React.useState(false);
   const url = safeVisualUrl(v.url);
   if (!url) return null;
   const ratio = v.width && v.height ? `${v.width} / ${v.height}` : '16 / 10';
   const label = caption ? clean(caption.caption) : t('verify_ox_visual_default');
   return (
     <figure className="min-w-0 space-y-2">
-      <div className="relative overflow-hidden rounded-xl border border-border bg-[hsl(222_47%_11%)]" style={{ aspectRatio: ratio }}>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label={t('verify_ox_visual_open', { title: label })}
+        className="group relative block w-full overflow-hidden rounded-xl border border-border bg-[hsl(222_47%_11%)] transition-colors hover:border-[hsl(38_92%_54%)]/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_54%)]"
+        style={{ aspectRatio: ratio }}
+      >
         <img
           src={url}
           alt={label}
           loading="lazy"
           decoding="async"
           referrerPolicy="no-referrer"
-          className="h-full w-full object-contain"
+          className="h-full w-full object-contain transition-transform duration-300 motion-safe:group-hover:scale-[1.02]"
           onError={() => onBroken(v.id)}
         />
         {badge ? (
@@ -177,7 +199,14 @@ const VisualFigure: React.FC<{
             {badge}
           </span>
         ) : null}
-      </div>
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-[min(96vw,1200px)] border-border bg-[hsl(222_47%_8%)] p-3 sm:p-4">
+          <DialogTitle className="pe-8 text-sm font-medium break-words">{label}</DialogTitle>
+          <DialogDescription className="text-xs break-words">{caption?.explanation ? clean(caption.explanation) : t('verify_ox_visual_note')}</DialogDescription>
+          <img src={url} alt={label} referrerPolicy="no-referrer" className="max-h-[78vh] w-full rounded-lg object-contain" />
+        </DialogContent>
+      </Dialog>
       <figcaption className="space-y-0.5">
         <p className="text-sm font-medium break-words">
           {label}
@@ -196,14 +225,14 @@ const MilestoneList: React.FC<{ items: OfficialHistoryClientView['milestones']; 
     <div className="space-y-2">
       <p className="text-2xs uppercase tracking-wider text-muted-foreground">{t('verify_ox_milestones')}</p>
       <ol className="space-y-2">
-        {items.map((m, i) => (
-          <li key={`${m.date}-${i}`} className="grid grid-cols-[5.5rem_1fr] gap-3 text-sm">
-            <Ltr className="tabular-nums text-muted-foreground">{day(m.date)}</Ltr>
+        {items.slice(0, MAX_MILESTONES).map((m, i) => (
+          <li key={`${m.date}-${i}`} className="grid grid-cols-[6.75rem_1fr] gap-3 text-sm">
+            <Ltr className="whitespace-nowrap tabular-nums text-muted-foreground">{day(m.date)}</Ltr>
             <span className="min-w-0 break-words">
               <span className="font-medium">{t(`verify_ox_kind_${(KNOWN_KINDS.includes(m.kind) ? m.kind : 'OTHER').toLowerCase()}`)}</span>
               {m.title ? <span className="text-foreground/80"> — {clean(m.title)}</span> : null}
               {m.caseRef || m.decisionNumber ? (
-                <span className="block text-2xs text-muted-foreground">{[m.caseRef, m.decisionNumber ? `№ ${m.decisionNumber}` : null].filter(Boolean).join(' · ')}</span>
+                <Ltr className="block text-2xs text-muted-foreground">{[m.caseRef, m.decisionNumber ? `№ ${m.decisionNumber}` : null].filter(Boolean).join(' · ')}</Ltr>
               ) : null}
             </span>
           </li>
@@ -220,7 +249,7 @@ const EvolutionList: React.FC<{ items: OfficialHistoryClientView['evolution']; c
     <div className="space-y-2">
       <p className="text-2xs uppercase tracking-wider text-muted-foreground">{t('verify_ox_changed')}</p>
       <ul className="space-y-1.5">
-        {items.map((e, i) => (
+        {items.slice(0, MAX_CHANGES).map((e, i) => (
           <li key={`${e.key}-${i}`} className="text-sm break-words">
             <span className="font-medium">{KNOWN_FACTS.includes(e.key) ? t(`verify_ox_fact_${e.key.toLowerCase()}`) : clean(e.label)}</span>
             {e.block ? <span className="text-muted-foreground"> ({clean(e.block)})</span> : null}
@@ -337,20 +366,34 @@ export const PropertyStoryBlock: React.FC<{
   );
 };
 
+const PROVIDERS = ['tas', 'mygov', 'enreg', 'debtor', 'rstax', 'myhome', 'ssge'];
+const LIMITED_STATES = ['PARTIAL', 'CAPTCHA_REQUIRED', 'CAPTCHA_FAILED', 'SOURCE_CHANGED', 'TEMPORARILY_UNAVAILABLE', 'TIMEOUT', 'FAILED', 'NOT_VERIFIED'];
+
 export const ResearchTransparency: React.FC<{ coverage?: ResearchCoverageView | null }> = ({ coverage }) => {
   const { t } = useLanguage();
   if (!coverage) return null;
   const chips: Array<{ label: string; value: string }> = [];
+  const add = (label: string, n?: number) => {
+    if (n) chips.push({ label: t(label), value: String(n) });
+  };
   if (day(coverage.researchedAt)) chips.push({ label: t('verify_ox_rx_date'), value: day(coverage.researchedAt)! });
   if (day(coverage.latestOfficialDocumentDate)) chips.push({ label: t('verify_ox_rx_latest_doc'), value: day(coverage.latestOfficialDocumentDate)! });
-  if (coverage.officialCasesReviewed) chips.push({ label: t('verify_ox_rx_cases'), value: String(coverage.officialCasesReviewed) });
-  if (coverage.officialAttachmentsRead) chips.push({ label: t('verify_ox_rx_documents'), value: String(coverage.officialAttachmentsRead) });
-  if (coverage.marketListingsAnalyzed) chips.push({ label: t('verify_ox_rx_listings'), value: String(coverage.marketListingsAnalyzed) });
+  // The funnel, in order: found → reviewed → read → weighed → shown.
+  add('verify_ox_rx_records_found', coverage.officialRecordsDiscovered);
+  add('verify_ox_rx_cases', coverage.officialCasesReviewed);
+  add('verify_ox_rx_steps', coverage.officialStepsReviewed);
+  add('verify_ox_rx_documents', coverage.officialAttachmentsRead);
+  add('verify_ox_rx_selected', coverage.officialEvidenceSelectedForSynthesis);
+  add('verify_ox_rx_milestones_shown', coverage.officialMilestonesShown);
+  add('verify_ox_rx_listings', coverage.marketListingsAnalyzed);
+  const limits = (coverage.providers ?? []).filter((p) => PROVIDERS.includes(p.provider) && LIMITED_STATES.includes(p.state));
   const official = !!coverage.officialCasesReviewed;
   const market = !!coverage.marketListingsAnalyzed;
-  if (!official && !market && !chips.length) return null;
-  // Only describes checks that actually completed.
-  const sentence = official && market ? t('verify_ox_rx_both') : official ? t('verify_ox_rx_official') : market ? t('verify_ox_rx_market') : '';
+  if (!official && !market && !chips.length && !limits.length) return null;
+  // Only describes checks that actually completed — and never calls an incomplete run complete.
+  const sentence = coverage.officialProcessingIncomplete
+    ? t('verify_ox_rx_incomplete')
+    : official && market ? t('verify_ox_rx_both') : official ? t('verify_ox_rx_official') : market ? t('verify_ox_rx_market') : '';
   return (
     <section aria-labelledby="verify-transparency" className="rounded-2xl border border-border bg-card/40 p-5 space-y-3">
       <h2 id="verify-transparency" className="text-sm font-semibold tracking-tight">{t('verify_ox_rx_title')}</h2>
@@ -360,10 +403,24 @@ export const ResearchTransparency: React.FC<{ coverage?: ResearchCoverageView | 
           {chips.map((c) => (
             <div key={c.label} className="min-w-0 rounded-full border border-border bg-card px-3 py-1.5 text-xs">
               <dt className="inline text-muted-foreground">{c.label}: </dt>
-              <dd className="inline font-medium tabular-nums">{c.value}</dd>
+              <dd className="inline font-medium tabular-nums"><Ltr>{c.value}</Ltr></dd>
             </div>
           ))}
         </dl>
+      ) : null}
+      {limits.length ? (
+        <div className="space-y-1.5 border-t border-border pt-3">
+          <p className="text-2xs uppercase tracking-wider text-muted-foreground">{t('verify_ox_rx_limits_title')}</p>
+          <ul className="space-y-1">
+            {limits.map((p) => (
+              <li key={p.provider} className="flex flex-wrap gap-x-1.5 text-xs leading-5 break-words">
+                <span className="font-medium">{t(`verify_ox_prov_${p.provider}`)}:</span>
+                <span className="text-muted-foreground">{t(`verify_ox_pstate_${p.state.toLowerCase()}`)}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-2xs leading-relaxed text-muted-foreground break-words">{t('verify_ox_rx_limits_note')}</p>
+        </div>
       ) : null}
     </section>
   );

@@ -29,6 +29,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { projectVerify } from '../../../src/dealroom/domain/assemble.ts';
 import { buildEvidencePackage } from '../../../src/verify/intelligence/evidencePackage.ts';
 import { officialHistoryView } from '../../../src/verify/intelligence/tasIntelligence.ts';
+import { providerOutcomes } from '../../../src/verify/providerOutcomes.ts';
 import { buildIntelligenceBundle } from '../../../src/verify/intelligence/bundle.ts';
 import { draftSnapshot, segmentsFor } from '../../../src/verify/intelligence/marketSnapshot.ts';
 import { writeSnapshot } from '../../../src/verify/intelligence/snapshotStore.ts';
@@ -227,6 +228,8 @@ function researchCoverage(job: any, pkg: any, bundle: any): Record<string, unkno
     officialProcessingIncomplete: tas?.funnel?.incomplete === true,
     marketListingsAnalyzed: typeof bundle?.market?.count === 'number' ? bundle.market.count : 0,
     marketplaceListingsAdded: typeof ledger?.added === 'number' ? ledger.added : 0,
+    // Per provider, the state only — reasons and errors stay in Admin.
+    providers: providerOutcomes(job?.result_json, job?.mode === 'cadastral' ? ['tas', 'mygov'] : []).map((o) => ({ provider: o.provider, state: o.state })),
   };
 }
 

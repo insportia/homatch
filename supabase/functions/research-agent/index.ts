@@ -17,6 +17,7 @@ import { recordSourceVersions } from '../../../src/verify/intelligence/sourceSto
 import { registryExtractFor, applyRegistryExtract } from '../../../src/verify/intelligence/registryOverlay.ts';
 import { compactOfficialContext } from '../../../src/verify/intelligence/officialContext.ts';
 import { promptSafeBrowserOfficial } from '../../../src/verify/intelligence/officialPromptContext.ts';
+import { providerOutcomes } from '../../../src/verify/providerOutcomes.ts';
 import { buildTasIntelligence, officialHistoryView } from '../../../src/verify/intelligence/tasIntelligence.ts';
 import { buildKnownBrief, briefFactsForStage } from '../../../src/verify/intelligence/knownBrief.ts';
 import { buildMarketBrief } from '../../../src/verify/intelligence/marketBrief.ts';
@@ -5019,7 +5020,7 @@ async function recordVerificationCost(db: any, job: any): Promise<void> {
  */
 function stripInternalInProgress(result: any): any {
   const r: any = { ...result };
-  for (const k of ['officialVisuals', '_tasExecution', '_verifyMarket', '_marketplaceLedger', '_officialVisualsError']) delete r[k];
+  for (const k of ['officialVisuals', '_tasExecution', '_verifyMarket', '_marketplaceLedger', '_officialVisualsError', '_unattendedVerificationSkips']) delete r[k];
   if (r.browserOfficial && typeof r.browserOfficial === 'object' && Array.isArray(r.browserOfficial.results)) {
     r.browserOfficial = {
       ...r.browserOfficial,
@@ -5146,6 +5147,7 @@ function sanitizeForCustomer(job: any): any {
   delete r._marketplaceLedger;
   delete r._verifyMarket;
   delete r._tasExecution;
+  delete r._unattendedVerificationSkips;
   delete r._officialVisualsError;
   // Storage paths of official visuals: the customer receives signed URLs
   // from verify-synthesis only, never a path into the bucket.
@@ -5400,7 +5402,110 @@ async function driveSynthesis(sb: any): Promise<void> {
   }
 }
 
+/*
+ * SKIP ONE SOURCE, KEEP THE RESEARCH.
+ *
+ * Ends the human verification for the ONE source that asked for it (the
+ * worker records that source as skipped/unverified) and returns the job to
+ * the stage it came from, so every other source and the report continue.
+ * Used by the customer's Skip button and by the driver when a verification
+ * was left unattended — the two must behave identically.
+ */
+async function skipHumanWait(sb: any, j: any, unattended = false): Promise<any> {
+  const id = j.id;
+  const wid = j.result_json?._worker?.jobId;
+  if (wid) {
+    try {
+      await wf(`/research/${wid}/skip`, 'POST', {});
+    } catch {
+      /* the frontend's modal likely already called this directly — a 404 here is a normal race, not an error */
+    }
+  }
+  const returnStage = j.result_json?._captchaReturnStage || 'BROWSER_WAITING';
+
+  // A human may legitimately spend longer than the browser watchdog
+  // window solving CAPTCHA. Restart the watchdog clock only when
+  // returning to the primary Browserless research job.
+  let resumedResultJson = j.result_json || {};
+  if (
+    returnStage === 'BROWSER_WAITING' &&
+    resumedResultJson?._worker?.jobId
+  ) {
+    resumedResultJson = {
+      ...resumedResultJson,
+      _worker: {
+        ...resumedResultJson._worker,
+        startedAt: new Date().toISOString(),
+      },
+    };
+  }
+  if (unattended) {
+    const source = String(j.captcha?.source || j.result_json?.verificationSite || 'unknown');
+    resumedResultJson = {
+      ...resumedResultJson,
+      _unattendedVerificationSkips: [...(Array.isArray(resumedResultJson._unattendedVerificationSkips) ? resumedResultJson._unattendedVerificationSkips : []), { source, at: now() }].slice(-10),
+    };
+  }
+
+  await sb.from('research_jobs').update({
+    status: 'RUNNING',
+    stage: returnStage,
+    captcha: {},
+    result_json: resumedResultJson,
+    updated_at: now(),
+  }).eq('id', id);
+
+  return {
+    ...j,
+    status: 'RUNNING',
+    stage: returnStage,
+    result_json: resumedResultJson,
+  };
+}
+
+/*
+ * ONE SOURCE'S VERIFICATION NEVER HOLDS THE WHOLE RESEARCH.
+ *
+ * A verification the customer did not complete used to sit in WAITING_HUMAN
+ * until the six-hour reaper failed the ENTIRE job — discarding every source
+ * that had already succeeded. Now, once a verification has waited past
+ * HUMAN_WAIT_MAX_MS, that one source is skipped exactly as the Skip button
+ * would skip it, and the job continues to its report from the evidence the
+ * other sources collected. The skip is recorded (_unattendedVerificationSkips)
+ * so the report and Admin say which source went unverified and why.
+ */
+const HUMAN_WAIT_MAX_MS = 20 * 60 * 1000;
+async function releaseUnattendedHumanWaits(sb: any): Promise<void> {
+  try {
+    const { data: waiting, error } = await sb
+      .from('research_jobs')
+      .select('*')
+      .eq('status', 'WAITING_HUMAN')
+      .is('deleted_at', null)
+      .is('cancelled_at', null)
+      .lt('updated_at', new Date(Date.now() - HUMAN_WAIT_MAX_MS).toISOString())
+      .gt('created_at', new Date(Date.now() - DRIVE_MAX_AGE_MS).toISOString())
+      .order('updated_at', { ascending: true })
+      .limit(DRIVE_BATCH);
+    if (error) {
+      console.error('research-agent drive: unattended-verification sweep query failed', error);
+      return;
+    }
+    for (const j of waiting ?? []) {
+      try {
+        await skipHumanWait(sb, j, true);
+      } catch (e) {
+        console.error(`research-agent drive: could not release unattended verification for ${j.id}`, e);
+      }
+    }
+  } catch (e) {
+    console.error('research-agent drive: unattended-verification sweep failed', e);
+  }
+}
+
 async function driveLiveJobs(sb: any, key: string, model: string): Promise<void> {
+  // Unattended verifications first, so the jobs they release are stepped in this same sweep.
+  await releaseUnattendedHumanWaits(sb);
   try {
     const { data: jobs, error: liveSweepError } = await sb
       .from('research_jobs')
@@ -5771,6 +5876,9 @@ Deno.serve(async (req) => {
             : null,
           market: { lane: r._marketLane ? { advertisements: r._marketLane.advertisements ?? null, uniqueProperties: r._marketLane.uniqueProperties ?? null } : null, marketplace: r._marketplaceLedger ?? null },
           visuals: Array.isArray(r.officialVisuals) ? r.officialVisuals.length : 0,
+          // Every provider's own outcome — one failing never describes the others.
+          providers: providerOutcomes(r, j.mode === 'cadastral' ? ['tas', 'mygov'] : []),
+          unattendedVerificationSkips: Array.isArray(r._unattendedVerificationSkips) ? r._unattendedVerificationSkips.length : 0,
           ai: { researchTokens: tokens, synthesis: usage, synthesisState: j.synthesis_state ?? null, searches: r.webSearchCalls ?? r._searches ?? null },
         };
       });
@@ -5929,47 +6037,7 @@ Deno.serve(async (req) => {
         };
       }
       if (action === 'skip' && j.status === 'WAITING_HUMAN') {
-        const wid = j.result_json?._worker?.jobId;
-        if (wid) {
-          try {
-            await wf(`/research/${wid}/skip`, 'POST', {});
-          } catch {
-            /* the frontend's modal likely already called this directly — a 404 here is a normal race, not an error */
-          }
-        }
-        const returnStage = j.result_json?._captchaReturnStage || 'BROWSER_WAITING';
-
-        // A human may legitimately spend longer than the browser watchdog
-        // window solving CAPTCHA. Restart the watchdog clock only when
-        // returning to the primary Browserless research job.
-        let resumedResultJson = j.result_json || {};
-        if (
-          returnStage === 'BROWSER_WAITING' &&
-          resumedResultJson?._worker?.jobId
-        ) {
-          resumedResultJson = {
-            ...resumedResultJson,
-            _worker: {
-              ...resumedResultJson._worker,
-              startedAt: new Date().toISOString(),
-            },
-          };
-        }
-
-        await sb.from('research_jobs').update({
-          status: 'RUNNING',
-          stage: returnStage,
-          captcha: {},
-          result_json: resumedResultJson,
-          updated_at: now(),
-        }).eq('id', id);
-
-        j = {
-          ...j,
-          status: 'RUNNING',
-          stage: returnStage,
-          result_json: resumedResultJson,
-        };
+        j = await skipHumanWait(sb, j);
       }
       if (!['COMPLETE', 'FAILED', 'WAITING_HUMAN', 'CANCELLED'].includes(j.status)) {
         await advance(sb, key, model, j, lang);

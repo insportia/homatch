@@ -61,6 +61,10 @@ export interface ResearchStreamProps {
   liveCounters?: LiveCounters | null;
   onStop?: () => void;
   stopping?: boolean;
+  /** Told when the game opens or closes, so the page can keep it mounted after the report arrives. */
+  onPlayingChange?: (playing: boolean) => void;
+  /** The game's "view report" action once the report is ready. */
+  onViewReport?: () => void;
 }
 
 export function ResearchStream({
@@ -75,6 +79,8 @@ export function ResearchStream({
   sections,
   liveCounters,
   onStop,
+  onPlayingChange,
+  onViewReport,
   stopping = false,
 }: ResearchStreamProps) {
   const { t } = useLanguage();
@@ -83,6 +89,13 @@ export function ResearchStream({
   // Local UI only. Opening or closing the game never pauses, cancels,
   // restarts or creates research — VerifyPage's polling is untouched.
   const [playing, setPlaying] = React.useState(false);
+  React.useEffect(() => {
+    onPlayingChange?.(playing);
+  }, [playing, onPlayingChange]);
+  // Unmounting closes the game as far as the page is concerned.
+  const playingChange = React.useRef(onPlayingChange);
+  playingChange.current = onPlayingChange;
+  React.useEffect(() => () => playingChange.current?.(false), []);
 
   /*
    * One dependency-free interval drives the clock. The value it renders is
@@ -152,9 +165,27 @@ export function ResearchStream({
         {/* The only live region: announced when the stage changes, never on a
             clock tick, a rotating line or an animation frame. */}
         <p className="text-xs font-medium break-words" aria-live="polite">{nowLine}</p>
-        <ol className="sr-only" aria-label={t('verify_net_sr_heading')}>
+        {/* The network's legend: every node's label and state, visible and read the same way. */}
+        <ol className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2" aria-label={t('verify_net_sr_heading')}>
           {network.nodes.map((n) => (
-            <li key={n.key}>{`${t(n.labelKey)}: ${t(n.stateKey)}`}</li>
+            <li key={n.key} className="flex min-w-0 items-center gap-2 text-2xs leading-5">
+              <span
+                aria-hidden="true"
+                className={`h-2 w-2 shrink-0 rounded-full ${
+                  n.state === 'ACTIVE'
+                    ? 'bg-[hsl(38_92%_54%)] motion-safe:animate-pulse'
+                    : n.state === 'DONE'
+                      ? 'bg-[hsl(38_92%_54%)]'
+                      : n.state === 'PARTIAL'
+                        ? 'border border-[hsl(38_92%_54%)] bg-[hsl(38_92%_54%)]/40'
+                        : n.state === 'UNAVAILABLE'
+                          ? 'border border-muted-foreground/60'
+                          : 'bg-muted-foreground/25'
+                }`}
+              />
+              <span className={`min-w-0 break-words ${n.state === 'IDLE' ? 'text-muted-foreground' : 'text-foreground/85'}`}>{t(n.labelKey)}</span>
+              <span className="ms-auto shrink-0 text-muted-foreground">{t(n.stateKey)}</span>
+            </li>
           ))}
         </ol>
         {network.counters.length > 0 && (
@@ -231,7 +262,10 @@ export function ResearchStream({
             status={snakeStatus}
             stageLabel={nowLine}
             statusLines={{ working: nowLine, ready: t('verify_net_settled'), failed: t('verify_net_stopped') }}
-            onView={() => setPlaying(false)}
+            onView={() => {
+              setPlaying(false);
+              if (reportReady) onViewReport?.();
+            }}
             onClose={() => setPlaying(false)}
           />
         </Suspense>

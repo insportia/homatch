@@ -168,6 +168,17 @@ test('a finished run freezes its duration at completion', () => {
   assert.equal(formatElapsed(elapsedMs(done)), '18:00', 'the clock kept running after the report was ready');
 });
 
+test('a reopened finished job shows its duration, never its age, even before the report loads', () => {
+  const reopened = run({ status: 'COMPLETE', completedAt: new Date(at(9)).toISOString(), now: at(60 * 24 * 30) });
+  assert.equal(formatElapsed(elapsedMs(reopened)), '09:00');
+});
+
+test('a failed run stops its clock at its last server update; long runs read as h:mm:ss', () => {
+  const failed = run({ status: 'FAILED', updatedAt: new Date(at(2)).toISOString(), now: at(50) });
+  assert.equal(formatElapsed(elapsedMs(failed)), '02:00');
+  assert.equal(formatElapsed(3_725_000), '1:02:05');
+});
+
 test('a missing start time degrades to zero rather than to nonsense', () => {
   assert.equal(elapsedMs(run({ createdAt: null })), 0);
   assert.equal(elapsedMs(run({ createdAt: 'not a date' })), 0);

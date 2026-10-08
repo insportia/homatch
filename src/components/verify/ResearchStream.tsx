@@ -30,6 +30,7 @@
 //   - an optional game while waiting — pure local UI, it never touches the job;
 //   - an explicit way to stop, because closing a tab is not cancellation.
 
+import { createPortal } from 'react-dom';
 import React, { Suspense, lazy } from 'react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -48,6 +49,8 @@ export interface ResearchStreamProps {
   /** research_jobs.created_at — the authoritative start of this run. */
   createdAt?: string | null;
   completedAt?: string | null;
+  /** research_jobs.updated_at — where a stopped run's clock stops. */
+  updatedAt?: string | null;
   /** True only when a valid report has been persisted. */
   reportReady?: boolean;
   /** The customer-sanitised research result, for the real-fact reveal. */
@@ -72,6 +75,7 @@ export function ResearchStream({
   stage,
   createdAt,
   completedAt,
+  updatedAt,
   reportReady = false,
   result,
   subject,
@@ -114,7 +118,7 @@ export function ResearchStream({
     return () => clearInterval(id);
   }, []);
 
-  const input = { status, stage, createdAt, completedAt, reportReady };
+  const input = { status, stage, createdAt, completedAt, updatedAt, reportReady };
   const elapsed = formatElapsed(elapsedMs(input));
   // Synthesis is a real phase of the pipeline, so say so rather than leaving
   // the stream describing research that has already finished.
@@ -149,9 +153,10 @@ export function ResearchStream({
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 space-y-1">
           <p className="text-sm font-semibold break-words">
-            {t(synthesizing ? 'verify_stream_synth_title' : 'verify_stream_title')}
+            {t(stopped ? 'verify_net_stopped' : synthesizing ? 'verify_stream_synth_title' : 'verify_stream_title')}
           </p>
-          {subject ? <p className="text-xs text-muted-foreground break-all">{subject}</p> : null}
+          {/* A cadastral code may break only after a dot, never mid-segment. */}
+          {subject ? <p className="text-xs text-muted-foreground break-words">{subject.replace(/\./g, '.\u200b')}</p> : null}
         </div>
         <div className="shrink-0 text-end">
           {/* Measured, so it is shown. Nothing guessed sits beside it. */}
@@ -202,6 +207,7 @@ export function ResearchStream({
         )}
       </div>
 
+      {!stopped && (
       <ul className="space-y-2">
         {lines.map((k, i) => (
           <li
@@ -213,13 +219,14 @@ export function ResearchStream({
             <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(38_92%_54%)]" aria-hidden="true" />
             <span className="min-w-0">
               <span className="block text-sm break-words">{t(k)}</span>
-              <span className="block text-2xs font-semibold uppercase tracking-wider text-[hsl(var(--gold-ink))]/80 break-words">
+              <span aria-hidden="true" className="block text-2xs font-semibold uppercase tracking-wider text-[hsl(var(--gold-ink))]/80 break-words">
                 {PHASE_TAG[phase]}
               </span>
             </span>
           </li>
         ))}
       </ul>
+      )}
 
       {/* WHAT WE ACTUALLY KNOW SO FAR. Every row here was persisted by the
           research itself; none of it is implied by the stage we reached. */}
@@ -256,7 +263,9 @@ export function ResearchStream({
         </div>
       )}
 
-      {playing ? (
+      {/* Rendered at the document root: a fixed overlay inside this spaced
+          section inherited its top margin and left the app header exposed. */}
+      {playing && typeof document !== 'undefined' ? createPortal(
         <Suspense fallback={null}>
           <SnakeGame
             status={snakeStatus}
@@ -268,7 +277,8 @@ export function ResearchStream({
             }}
             onClose={() => setPlaying(false)}
           />
-        </Suspense>
+        </Suspense>,
+        document.body,
       ) : null}
 
       {/*

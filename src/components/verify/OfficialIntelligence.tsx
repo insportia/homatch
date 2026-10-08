@@ -12,7 +12,7 @@
 
 import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
 
 export interface CurrentStatusView {
   statement: string;
@@ -105,7 +105,9 @@ const OfficialStateBadge: React.FC<{ h: OfficialHistoryClientView['status'] }> =
   const state = KNOWN_STATES.includes(h.state) ? h.state : 'NOT_ESTABLISHED';
   // A permit whose own validity date has passed is not "in force" — say so in the headline.
   const expired = state === 'PERMITTED' && h.caveats?.includes('VALIDITY_PASSED');
-  const tone = NEGATIVE_STATES.has(state)
+  // "Provisional: not every document could be read" is only true when a caveat other than an expired date applies.
+  const unreadCaveats = (h.caveats ?? []).filter((c) => c !== 'VALIDITY_PASSED');
+  const tone = NEGATIVE_STATES.has(state) || expired
     ? 'border-amber-500/50 bg-amber-500/10'
     : state === 'NOT_ESTABLISHED' ? 'border-border bg-card' : 'border-[hsl(38_92%_54%)]/40 bg-[hsl(38_92%_54%)]/10';
   const ref = [h.caseRef, h.decisionNumber ? `№ ${h.decisionNumber}` : null].filter(Boolean).join(' · ');
@@ -119,7 +121,7 @@ const OfficialStateBadge: React.FC<{ h: OfficialHistoryClientView['status'] }> =
           day(h.validUntil) ? t('verify_ox_valid_until_date', { date: isolate(day(h.validUntil)!) }) : null,
         ].filter(Boolean).join(' · ')}
       </p>
-      {!h.conclusive ? <p className="text-xs leading-5 text-amber-700 dark:text-amber-400 break-words">{t('verify_ox_not_conclusive')}</p> : null}
+      {!h.conclusive && unreadCaveats.length ? <p className="text-xs leading-5 text-amber-700 dark:text-amber-400 break-words">{t('verify_ox_not_conclusive')}</p> : null}
       {!h.conclusive && h.caveats?.length ? (
         <ul className="list-disc ps-4 space-y-0.5 text-xs leading-5 text-muted-foreground">
           {h.caveats.filter((c) => KNOWN_CAVEATS.has(c)).map((c) => <li key={c} className="break-words">{t(`verify_ox_caveat_${c.toLowerCase()}`)}</li>)}
@@ -178,9 +180,11 @@ const VisualFigure: React.FC<{
   const label = caption ? clean(caption.caption) : t('verify_ox_visual_default');
   return (
     <figure className="min-w-0 space-y-2">
+      {/* A real dialog trigger, so closing returns keyboard focus to this thumbnail. */}
+      <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
       <button
         type="button"
-        onClick={() => setOpen(true)}
         aria-label={t('verify_ox_visual_open', { title: label })}
         className="group relative block w-full overflow-hidden rounded-xl border border-border bg-[hsl(222_47%_11%)] transition-colors hover:border-[hsl(38_92%_54%)]/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(38_92%_54%)]"
         style={{ aspectRatio: ratio }}
@@ -200,10 +204,11 @@ const VisualFigure: React.FC<{
           </span>
         ) : null}
       </button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-[min(96vw,1200px)] border-border bg-[hsl(222_47%_8%)] p-3 sm:p-4">
-          <DialogTitle className="pe-8 text-sm font-medium break-words">{label}</DialogTitle>
-          <DialogDescription className="text-xs break-words">{caption?.explanation ? clean(caption.explanation) : t('verify_ox_visual_note')}</DialogDescription>
+      </DialogTrigger>
+        {/* Navy stage for the drawing: its own light text tokens, never the page theme's. */}
+        <DialogContent className="max-w-[min(96vw,1200px)] border-[hsl(222_30%_22%)] bg-[hsl(222_47%_8%)] p-3 text-[hsl(0_0%_96%)] sm:p-4 [&>button]:text-[hsl(0_0%_96%)] [&>button]:opacity-90">
+          <DialogTitle className="pe-8 text-sm font-medium text-[hsl(0_0%_96%)] break-words">{label}</DialogTitle>
+          <DialogDescription className="text-xs text-[hsl(220_14%_76%)] break-words">{caption?.explanation ? clean(caption.explanation) : t('verify_ox_visual_note')}</DialogDescription>
           <img src={url} alt={label} referrerPolicy="no-referrer" className="max-h-[78vh] w-full rounded-lg object-contain" />
         </DialogContent>
       </Dialog>

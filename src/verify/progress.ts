@@ -55,6 +55,8 @@ export interface ProgressInput {
   completedAt?: string | number | null | undefined;
   /** True only when a valid report has been persisted and is readable. */
   reportReady?: boolean;
+  /** research_jobs.updated_at — where a stopped run without completed_at stopped. */
+  updatedAt?: string | number | null | undefined;
   /** Injected so this module is pure and testable. */
   now?: number;
 }
@@ -142,8 +144,13 @@ export function elapsedMs(input: ProgressInput): number {
   if (started === null) return 0;
   const now = input.now ?? Date.now();
   // A finished run's clock FREEZES at completion. It is a duration, not a
-  // stopwatch someone forgot to stop.
-  const end = input.reportReady ? toMillis(input.completedAt) ?? now : now;
+  // stopwatch someone forgot to stop. That holds from the moment research is
+  // terminal (completed_at), not only once the report is ready — a reopened
+  // finished job must never show its age as a running clock — and a stopped
+  // run freezes at its last server update.
+  const status = String(input.status || '').toUpperCase();
+  const stopped = status === 'FAILED' || status === 'CANCELLED';
+  const end = toMillis(input.completedAt) ?? (stopped ? toMillis(input.updatedAt) ?? now : now);
   return Math.max(0, end - started);
 }
 
@@ -193,12 +200,14 @@ export function estimateProgress(input: ProgressInput): number {
   return Math.round(pct);
 }
 
-/** mm:ss, from a duration that is measured rather than guessed. */
+/** mm:ss (h:mm:ss past an hour), from a duration that is measured rather than guessed. */
 export function formatElapsed(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
-  const mm = Math.floor(total / 60);
+  const hh = Math.floor(total / 3600);
+  const mm = Math.floor((total % 3600) / 60);
   const ss = total % 60;
-  return `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+  const mmss = `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+  return hh ? `${hh}:${mmss}` : mmss;
 }
 
 function toMillis(v: string | number | null | undefined): number | null {

@@ -103,6 +103,8 @@ const HOURLY = 6;
 const SPACE_MODEL = Deno.env.get('OPENAI_DS_RECONSTRUCT_MODEL') || Deno.env.get('OPENAI_DS_FLOORPLAN_MODEL') || Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
 /** Readings of one project's space, at most (each a paid call): a failure is retried automatically up to this. */
 const SPACE_ATTEMPTS = 3;
+/** Readings of the selected render, at most: one. It is the larger paid call, so a failure is reported, never re-bought. */
+const RENDER_SPACE_ATTEMPTS = 1;
 /** Manual retries of one walkthrough after it failed (each resumes from saved work). */
 const MANUAL_RETRIES = 3;
 /** R2 storage, per GB-month (an estimate for the internal cost line, never a charge). */
@@ -207,7 +209,7 @@ async function reconstructSpace(admin: Row, a: { actorId: string; authorization:
   const failed = rows.filter((j) => j.status === 'FAILED');
   const terminal = failed.find((j) => readFailure(j.error)?.category === 'TERMINAL');
   if (terminal) return { state: 'FAILED', code: readFailure(terminal.error)?.code ?? 'SPACE_UNAVAILABLE' };
-  if (failed.length + (running ? 1 : 0) >= SPACE_ATTEMPTS) return { state: 'FAILED', code: readFailure(failed[0]?.error)?.code ?? 'SPACE_UNAVAILABLE' };
+  if (failed.length + (running ? 1 : 0) >= (a.renderId ? RENDER_SPACE_ATTEMPTS : SPACE_ATTEMPTS)) return { state: 'FAILED', code: readFailure(failed[0]?.error)?.code ?? 'SPACE_UNAVAILABLE' };
   if (!Deno.env.get('OPENAI_API_KEY')) return { state: 'FAILED', code: 'SPACE_UNAVAILABLE' };
 
   const { data: job } = await admin.from('ds_jobs').insert({

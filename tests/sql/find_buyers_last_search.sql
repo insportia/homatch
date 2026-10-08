@@ -1,8 +1,8 @@
 -- FIND BUYERS: the campaign records how its last search ended
 -- (20261021090000), while status/status_v2 keep meaning "monitoring on".
 \set ON_ERROR_STOP on
-insert into public.matching_campaigns (id, property_id, status_v2)
-values ('00000000-0000-0000-0000-0000000005c1', '00000000-0000-0000-0000-0000000000b1', 'ACTIVE');
+insert into public.matching_campaigns (id, property_id, user_id, status_v2)
+values ('00000000-0000-0000-0000-0000000005c1', '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000a1', 'ACTIVE');
 
 do $$
 declare c record;
@@ -38,6 +38,21 @@ begin
   update public.matching_jobs set status = 'completed' where id = '00000000-0000-0000-0000-0000000005a1';
   select * into c from public.matching_campaigns where id = '00000000-0000-0000-0000-0000000005c1';
   assert c.last_search_job_id = '00000000-0000-0000-0000-0000000005a2', 'older job did not overwrite: ' || row_to_json(c)::text;
+
+  /* another user's job pointing at this campaign (even with a far-future start) never writes it */
+  insert into public.matching_jobs (id, user_id, property_id, campaign_id, idempotency_key, status, started_at)
+  values ('00000000-0000-0000-0000-0000000005a9', '00000000-0000-0000-0000-0000000000a9', '00000000-0000-0000-0000-0000000000b1',
+          '00000000-0000-0000-0000-0000000005c1', 'last-x', 'failed', now() + interval '10 years');
+  select * into c from public.matching_campaigns where id = '00000000-0000-0000-0000-0000000005c1';
+  assert c.last_search_job_id = '00000000-0000-0000-0000-0000000005a2', 'cross-tenant job did not write: ' || row_to_json(c)::text;
+
+  /* the owner's own future-dated start is clamped to now, so it cannot lock out later searches */
+  insert into public.matching_jobs (id, user_id, property_id, campaign_id, idempotency_key, status, started_at)
+  values ('00000000-0000-0000-0000-0000000005a8', '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000b1',
+          '00000000-0000-0000-0000-0000000005c1', 'last-f', 'queued', now() + interval '10 years');
+  select * into c from public.matching_campaigns where id = '00000000-0000-0000-0000-0000000005c1';
+  assert c.last_search_job_id = '00000000-0000-0000-0000-0000000005a8' and c.last_search_started_at <= now(), 'start clamped: ' || row_to_json(c)::text;
+  update public.matching_jobs set status = 'cancelled', completed_at = now() where id = '00000000-0000-0000-0000-0000000005a8';
 
   /* a job with no campaign is ignored; the helper is server-only */
   insert into public.matching_jobs (id, user_id, property_id, idempotency_key, status)

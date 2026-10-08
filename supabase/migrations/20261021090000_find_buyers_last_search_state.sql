@@ -208,24 +208,38 @@ set search_path to ''
 as $function$
 declare
   v_state text;
+  v_started timestamptz;
+  v_lock_timeout text;
 begin
   if new.campaign_id is null then return new; end if;
   if tg_op = 'UPDATE' and new.status::text is not distinct from old.status::text then return new; end if;
+  /* started_at is writable by the job owner: never trust a future value for ordering. */
+  v_started := least(coalesce(new.started_at, new.created_at, now()), now());
+  v_lock_timeout := current_setting('lock_timeout');
   begin
     v_state := public.matching_job_search_state(new.id);
-    if v_state is null then return new; end if;
-    /* Only the campaign's latest search writes (an older job finishing late never overwrites a newer one). */
-    update public.matching_campaigns c set
-      last_search_job_id = new.id,
-      last_search_state = v_state,
-      last_search_started_at = coalesce(new.started_at, new.created_at),
-      last_search_finished_at = case when v_state in ('SEARCHING', 'PAUSED') then null
-                                     else coalesce(new.completed_at, now()) end
-     where c.id = new.campaign_id
-       and (c.last_search_started_at is null or c.last_search_job_id = new.id
-            or coalesce(new.started_at, new.created_at) >= c.last_search_started_at);
+    if v_state is not null then
+      /* A busy campaign row must not stall the job write: wait briefly, then give up (caught below). */
+      perform set_config('lock_timeout', '2s', true);
+      /* Only the owner's own campaign for the same property, and only its latest search
+         (an older job finishing late never overwrites a newer one). This function runs as
+         definer, so the ownership check here is what keeps one user from writing another's row. */
+      update public.matching_campaigns c set
+        last_search_job_id = new.id,
+        last_search_state = v_state,
+        last_search_started_at = v_started,
+        last_search_finished_at = case when v_state in ('SEARCHING', 'PAUSED') then null
+                                       else least(coalesce(new.completed_at, now()), now()) end
+       where c.id = new.campaign_id
+         and c.user_id = new.user_id
+         and c.property_id = new.property_id
+         and (c.last_search_started_at is null or c.last_search_job_id = new.id
+              or v_started >= c.last_search_started_at);
+      perform set_config('lock_timeout', v_lock_timeout, true);
+    end if;
   exception when others then
     /* Recording the outcome never blocks the job itself. */
+    perform set_config('lock_timeout', v_lock_timeout, true);
     raise warning 'matching_campaign_record_search(%): %', new.id, sqlerrm;
   end;
   return new;
@@ -238,14 +252,17 @@ create trigger trg_matching_campaign_record_search
   after insert or update of status on public.matching_jobs
   for each row execute function public.matching_campaign_record_search();
 
-/* Backfill: each campaign's latest search, through the same mapping. */
+/* Backfill: each campaign's latest search by its owner, through the same mapping (state computed once per campaign). */
 update public.matching_campaigns c set
   last_search_job_id = j.id,
-  last_search_state = public.matching_job_search_state(j.id),
-  last_search_started_at = coalesce(j.started_at, j.created_at),
-  last_search_finished_at = case when public.matching_job_search_state(j.id) in ('SEARCHING', 'PAUSED') then null
+  last_search_state = j.state,
+  last_search_started_at = least(j.started, now()),
+  last_search_finished_at = case when j.state in ('SEARCHING', 'PAUSED') then null
                                  else coalesce(j.completed_at, j.updated_at) end
-  from (select distinct on (campaign_id) id, campaign_id, started_at, created_at, completed_at, updated_at
-          from public.matching_jobs where campaign_id is not null
-         order by campaign_id, coalesce(started_at, created_at) desc) j
- where j.campaign_id = c.id and c.last_search_job_id is null;
+  from (select x.*, public.matching_job_search_state(x.id) as state
+          from (select distinct on (mj.campaign_id) mj.id, mj.campaign_id, mj.user_id, mj.property_id,
+                       coalesce(mj.started_at, mj.created_at) as started, mj.completed_at, mj.updated_at
+                  from public.matching_jobs mj where mj.campaign_id is not null
+                 order by mj.campaign_id, coalesce(mj.started_at, mj.created_at) desc, mj.id desc) x) j
+ where j.campaign_id = c.id and c.user_id = j.user_id and c.property_id = j.property_id
+   and c.last_search_job_id is null and j.state is not null;

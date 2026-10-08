@@ -10,11 +10,12 @@
 import { borderColor, measureFrame, renderPlanView } from '../../../src/lib/designStudio/pictureGeometry.ts';
 import { type PictureFrame, readFrame } from '../_shared/designStudio/pictureFrame.ts';
 import { decodeRgba, encodeJpeg } from './rasterRgba.ts';
+import { lightingFromPicture, type RenderLighting } from '../../../src/lib/designStudio/walkthrough/renderLighting.ts';
 
 /** The render is measured at this longest edge (~0.8 s of CPU on a 1536 × 1024 render). */
 export const RENDER_MEASURE_EDGE_PX = 768;
 
-export interface MeasuredRender { frame: PictureFrame; view: Uint8Array; viewWidth: number; viewHeight: number; aspect: number }
+export interface MeasuredRender { frame: PictureFrame; view: Uint8Array; viewWidth: number; viewHeight: number; aspect: number; lighting: RenderLighting | null }
 
 export function measureRender(bytes: Uint8Array): MeasuredRender | null {
   const decoded = decodeRgba(bytes);
@@ -45,9 +46,11 @@ export function measureRender(bytes: Uint8Array): MeasuredRender | null {
   }
   const measured = measureFrame(grey, w, h);
   if (!measured) return null;
-  const frame = readFrame({ ...measured, background: borderColor(rgba, w, h) });
+  const background = borderColor(rgba, w, h);
+  const frame = readFrame({ ...measured, background });
   if (!frame) return null;
   const pixels = renderPlanView(rgba, w, h, frame);
   const view = encodeJpeg(new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength), frame.view.width, frame.view.height, 90);
-  return { frame, view, viewWidth: frame.view.width, viewHeight: frame.view.height, aspect: W / H };
+  // The render's light (time of day, temperature, lamps), from the same pixels.
+  return { frame, view, viewWidth: frame.view.width, viewHeight: frame.view.height, aspect: W / H, lighting: lightingFromPicture(rgba, w, h, background) };
 }

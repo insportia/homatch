@@ -65,6 +65,7 @@ import { repairReading } from '../../../src/lib/designStudio/walkthrough/reading
 import { furnishingFromReading, readFurnishing, renderTraceBrief, type RenderFurnishing } from '../../../src/lib/designStudio/walkthrough/renderFurnishing.ts';
 import { dressBuilt, planFromFurnishing, RENDER_WALK_RADIUS_M } from '../../../src/lib/designStudio/walkthrough/renderPlan.ts';
 import { renderGate } from '../../../src/lib/designStudio/walkthrough/renderGate.ts';
+import { NEUTRAL_LIGHTING } from '../../../src/lib/designStudio/walkthrough/renderLighting.ts';
 import { imageSize } from '../_shared/designStudio/floorplanRead.ts';
 import { measureRender } from './renderFrame.ts';
 import { meterAiCall } from './metering.ts';
@@ -341,7 +342,7 @@ async function readSpace(admin: Row, a: { actorId: string; project: Row; version
   const space = inferredSpace(recon, `walk-space:${a.photoSource.id}`);
   if ('problems' in space) return fail(`SPACE_NOT_BUILDABLE:${space.problems.slice(0, 3).join(',')}`, false, paid);
   // The render's own pieces, in the built scene's metres: the walkthrough's furnishing (renderFurnishing.ts).
-  const furnishing: RenderFurnishing | null = selected >= 0 && a.renderId ? furnishingFromReading(recon, space.canonical.scene.floors, a.renderId, selected) : null;
+  const furnishing: RenderFurnishing | null = selected >= 0 && a.renderId ? furnishingFromReading(recon, space.canonical.scene.floors, a.renderId, selected, measured?.lighting ?? null) : null;
 
   // An ESTIMATED floor-plan source of this project, marked inferred, used only by the walkthrough.
   const { data: made, error } = await admin.from('ds_spatial_sources').insert({
@@ -1015,7 +1016,8 @@ async function planFromRender(admin: Row, row: Row, design: Loaded, furnishing: 
   const assets = new Map(cat.assets.map((a) => [a.code, a]));
   const materialsByCode = new Map(cat.materials.map((m) => [m.code, m]));
   const materialsById = new Map(cat.materials.map((m) => [m.id, m]));
-  const rp = planFromFurnishing(furnishing, space, cat.assets, cat.materials, { lighting: { timeOfDay: 'DAY', temperature: 'NEUTRAL', interiorIntensity: 0.8 }, styleCode });
+  // Lit as the render is (its measured light); without a measurement, the light every walkthrough had before.
+  const rp = planFromFurnishing(furnishing, space, cat.assets, cat.materials, { lighting: furnishing.lighting ?? NEUTRAL_LIGHTING, styleCode });
   const built = buildWalkthrough({
     space, base: normalizeDesignState(version.state), assets, materialsByCode, materialsById, idPrefix: `walk-${row.revision}`, plan: rp.plan,
     walkRadiusM: RENDER_WALK_RADIUS_M, anchorsAsSeen: true,

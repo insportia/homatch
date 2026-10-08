@@ -17,7 +17,7 @@
 // cinematic path (a sequence of shots along the room graph).
 
 import { COMFORT_RADIUS_M, EYE_HEIGHT_M, isFree, nearestFree, type WalkModel } from './navigation.ts';
-import { roomContaining, wallFrame, type Point, type SpaceModel, type SpaceRoom } from './space.ts';
+import { pointInPolygon, roomContaining, wallFrame, type Point, type SpaceModel, type SpaceRoom } from './space.ts';
 
 export interface CameraShot {
   kind: 'ENTRY' | 'ROOM';
@@ -41,7 +41,13 @@ export interface RoomGraph {
   entryDoorId: string | null;
 }
 
-const MIN_HFOV = 62;
+/** Never narrower than an interior photographer's lens: a narrow room seen down its length stays a room, not a tunnel. */
+const MIN_HFOV = 74;
+/** A room shot's depth counts up to this (beyond it, a longer view is not a better one). */
+const FRAME_DEPTH_M = 4;
+/** How much the furnished design in frame weighs in a room shot (per m² of pieces, near ones more), and its cap. */
+const FRAMED_WEIGHT = 1.2;
+const FRAMED_CAP_M2 = 4;
 const MAX_HFOV = 92;
 
 /** Which rooms each door joins, found by stepping through the opening on both sides. */
@@ -180,12 +186,19 @@ function roomShotAt(space: SpaceModel, walk: WalkModel, roomId: string, aspect: 
     }
   }
 
+  // What the room is about: the standing pieces in it (their centres and footprints), as the walk sees them.
+  const pieces = walk.furniture.filter((o) => pointInPolygon({ x: o.cx, y: o.cy }, poly)).map((o) => ({ at: { x: o.cx, y: o.cy }, area: 4 * o.hw * o.hd }));
+  const pieceArea = pieces.reduce((s0, p) => s0 + p.area, 0);
+  const focus = pieceArea > 0 ? { x: pieces.reduce((s0, p) => s0 + p.at.x * p.area, 0) / pieceArea, y: pieces.reduce((s0, p) => s0 + p.at.y * p.area, 0) / pieceArea } : null;
+
   let best: { score: number; at: Point; target: Point; hfov: number } | null = null;
   for (const raw of candidates) {
     const at = isFree(walk, raw) ? raw : nearestFree(walk, raw, 0.4);
     if (!at || roomContaining(space, at) !== room.id) continue;
-    // Look across the room: toward the centroid, pulled toward a window in view.
-    let look = angleOf(at, c);
+    // Look across the room (toward its centre) or at what the room is about (its furnished focus), each pulled
+    // toward a window in view; whichever frames more of the room's design wins below.
+    for (const towards of focus ? [c, focus] : [c]) {
+    let look = angleOf(at, towards);
     const inView = windows.filter((w) => Math.abs(wrap(angleOf(at, w) - look)) < Math.PI / 3 && clearSight(walk, at, w));
     if (inView.length) {
       const w = inView[0];
@@ -207,8 +220,14 @@ function roomShotAt(space: SpaceModel, walk: WalkModel, roomId: string, aspect: 
     if (seen < 1.5) continue;
     const target = { x: at.x + Math.cos(look) * Math.max(1, seen * 0.6), y: at.y + Math.sin(look) * Math.max(1, seen * 0.6) };
     if (!clearSight(walk, at, target)) continue;
-    const score = seen + inView.length * 1.5 - Math.max(0, hfov - 80) * 0.05;
+    // The design in frame: the pieces within the view and within sight, nearer and larger weighing more. Depth
+    // counts only up to FRAME_DEPTH_M (a long room's far end is not a view of it).
+    const half = (hfov * Math.PI) / 360;
+    const framed = pieces.filter((p) => Math.abs(wrap(angleOf(at, p.at) - look)) < half && Math.hypot(p.at.x - at.x, p.at.y - at.y) > 0.8 && clearSight(walk, at, p.at))
+      .reduce((s0, p) => s0 + p.area / (1 + Math.hypot(p.at.x - at.x, p.at.y - at.y) / 4), 0);
+    const score = Math.min(seen, FRAME_DEPTH_M) + inView.length * 1.5 + Math.min(FRAMED_CAP_M2, framed) * FRAMED_WEIGHT - Math.max(0, hfov - 80) * 0.05;
     if (!best || score > best.score + 1e-9) best = { score, at, target, hfov };
+    }
   }
   if (!best) {
     const at = nearestFree(walk, c, 1.5);

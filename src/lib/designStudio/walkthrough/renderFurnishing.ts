@@ -10,6 +10,7 @@
 // Nothing is invented here: no piece is added, none re-typed. Pure (Deno + Node).
 
 import type { ReconObject, ReconSurface, Reconstruction } from '../reconstructRead.ts';
+import type { BuildPlan } from './build.ts';
 
 export const FURNISHING_VERSION = 'ds-render-furnishing-1';
 const MAX_PIECES = 120;
@@ -28,6 +29,8 @@ export interface RenderFurnishing {
   /** How many pieces stand where their pixels put them, of how many were read in the render. */
   traced: number;
   read: number;
+  /** The render's own light, measured from its pixels (renderLighting.ts); null when it could not be measured. */
+  lighting?: BuildPlan['lighting'] | null;
 }
 
 type P = [number, number];
@@ -92,6 +95,7 @@ export function carryFacing(t: SceneTransform, deg: number): number {
  */
 export function furnishingFromReading(
   recon: Reconstruction, floors: Array<{ id: string; polygon: Array<{ x: number; y: number }> }>, renderId: string, image: number,
+  lighting: BuildPlan['lighting'] | null = null,
 ): RenderFurnishing | null {
   if (!Number.isInteger(image) || image < 0) return null;
   const t = sceneTransform(recon, floors);
@@ -108,6 +112,7 @@ export function furnishingFromReading(
     version: FURNISHING_VERSION, renderId, image, objects,
     surfaces: recon.surfaces.map((s) => ({ ...s })), palette: recon.palette.slice(0, 6), styleWords: recon.styleWords.slice(0, 4), frameColor: recon.frameColor ?? null,
     traced: objects.filter((o) => o.geometry === 'PIXELS').length, read: inRender.length,
+    lighting: lighting ? { timeOfDay: lighting.timeOfDay, temperature: lighting.temperature, interiorIntensity: lighting.interiorIntensity } : null,
   };
 }
 
@@ -124,6 +129,14 @@ export function renderTraceBrief(image: number, view: number | null): string {
 - Plan view ${view} is picture ${image} redrawn from directly above, from its measured camera: trace every ROOM there.` : ''}`;
 }
 
+/** A stored light, only when every part of it is one the build knows. */
+function readLighting(raw: unknown): BuildPlan['lighting'] | null {
+  const l = (raw && typeof raw === 'object' ? raw : null) as Record<string, unknown> | null;
+  if (!l || !['DAY', 'EVENING', 'NIGHT'].includes(String(l.timeOfDay)) || !['WARM', 'NEUTRAL', 'COOL'].includes(String(l.temperature))) return null;
+  const i = Number(l.interiorIntensity);
+  return { timeOfDay: l.timeOfDay as BuildPlan['lighting']['timeOfDay'], temperature: l.temperature as BuildPlan['lighting']['temperature'], interiorIntensity: Number.isFinite(i) ? Math.max(0, Math.min(1, i)) : 0.8 };
+}
+
 /** A stored furnishing, bounded; anything malformed reads as none. */
 export function readFurnishing(raw: unknown): RenderFurnishing | null {
   const o = (raw && typeof raw === 'object' ? raw : null) as Record<string, unknown> | null;
@@ -137,5 +150,6 @@ export function readFurnishing(raw: unknown): RenderFurnishing | null {
     styleWords: Array.isArray(o.styleWords) ? (o.styleWords as string[]).filter((w) => typeof w === 'string').slice(0, 4) : [],
     frameColor: typeof o.frameColor === 'string' ? o.frameColor : null,
     traced: Number(o.traced) || 0, read: Number(o.read) || objects.length,
+    lighting: readLighting(o.lighting),
   };
 }

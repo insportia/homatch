@@ -9,7 +9,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { GOLD_FILL, GOLD_TEXT, NAVY_BAND, sourceStyle } from '@/components/findBuyers/brand';
 import { DiscoverySnake } from '@/components/findBuyers/DiscoverySnake';
 import { SearchDna, type DnaFacts } from '@/components/findBuyers/SearchDna';
-import { campaignView, currentState, networkNodes } from '@/findBuyers/campaignView';
+import { campaignView, currentState, executionState, networkNodes, searchScope } from '@/findBuyers/campaignView';
 import type { CampaignStatus } from '@/services/findBuyers';
 
 const ON_NAVY_SOFT = 'text-[hsl(218_40%_85%)]';
@@ -53,6 +53,12 @@ export function LiveSearchModule({
   const nodes = networkNodes(c?.sources, readiness?.network);
   const showNetwork = nodes.length > 0;
   const ran = nodes.filter((n) => n.executed);
+  /* What actually happened in THIS search: per-source state, and whether only
+     one source ran or the social planner never queued anything. */
+  const scope = c ? searchScope(nodes, c.socialPlan ?? null) : null;
+  const blockedSocial = c ? nodes.filter((n) => !n.executed && executionState(n, c.socialPlan ?? null) === 'BLOCKED') : [];
+  const reasonKey = (r: string | null) => r === 'SOCIAL_DISABLED' ? 'fbl_reason_social_off' : r === 'NO_ACTOR_READY' ? 'fbl_reason_no_actor'
+    : r === 'NO_JOBS' ? 'fbl_reason_no_jobs' : 'fbl_reason_planner_error';
   const lastDate = now.last?.at ? new Date(now.last.at).toLocaleString(lang, { dateStyle: 'medium', timeStyle: 'short' }) : null;
 
   const button = (o: { label: string; icon: React.ComponentType<{ className?: string }>; onClick?: () => void; primary?: boolean; disabled?: boolean; spinning?: boolean }) => (
@@ -157,6 +163,9 @@ export function LiveSearchModule({
               {ran.map((n) => (
                 <li key={n.source} className="rounded-xl bg-white/[0.04] px-3 py-2 text-2xs leading-relaxed ring-1 ring-inset ring-white/10">
                   <span className="font-semibold text-white">{sourceStyle(n.source).label}</span>
+                  <span className="ms-1.5 rounded-full bg-white/10 px-1.5 py-px text-[0.65rem] font-semibold uppercase tracking-wide text-white/80" data-testid="fbl-exec-state" data-state={executionState(n, c?.socialPlan ?? null)}>
+                    {t(`fbl_exec_${executionState(n, c?.socialPlan ?? null).toLowerCase()}` as never)}
+                  </span>
                   <span className={ON_NAVY_SOFT}>
                     {' · '}{t('fbl_src_checked', { n: String(n.checked) })}
                     {n.communities > 0 ? <>{' · '}{t('fbl_src_communities', { n: String(n.communities) })}</> : null}
@@ -165,6 +174,17 @@ export function LiveSearchModule({
                 </li>
               ))}
             </ul>
+          )}
+          {scope && !live && c?.executed && scope.onlySource && (
+            <p className="text-2xs font-semibold text-white" data-testid="fbl-scope-only">
+              {t('fbl_scope_only', { source: sourceStyle(scope.onlySource).label })}
+            </p>
+          )}
+          {scope?.socialBlocked && (
+            <p className={cn('text-2xs leading-relaxed', ON_NAVY_SOFT)} data-testid="fbl-scope-social-blocked">
+              {t('fbl_scope_social_blocked', { reason: t(reasonKey(scope.socialReason) as never) })}
+              {blockedSocial.length > 0 ? <>{' — '}{blockedSocial.map((n) => sourceStyle(n.source).label).join(', ')}</> : null}
+            </p>
           )}
           {now.last && (
             <p className="text-2xs font-semibold text-white" data-testid="fbl-last-search">

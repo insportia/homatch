@@ -293,6 +293,40 @@ MATTERS right now, verify against the live systems, not this file)
   verification must run through Admin → Discovery → Find Buyers → Actors →
   Verify (server-side, free). No paid call, search or charge was made.
 
+## Find Buyers go-live — resumed 2026-10-08 (branch claude/nifty-hopper-snzn2d)
+
+Root cause of the owner's 2026-10-04 searches (jobs 7517daa6, 123bd287 —
+0 memo23 runs, Telegram only): campaign.ts planQueries chained `.catch` on a
+lazy, thenable-only PostgREST builder → TypeError → no plan, no memo23 jobs.
+Fixed here, plus the same bug class in research-purchase (failed purchase
+never released its reservation; production had none stuck) and
+active-search-notify (stopped after one subscriber). tests/matrix/
+supabaseBuilderCatch.test.mjs now fails on any new builder `.catch`.
+
+Also in this PR:
+- Telegram order switch admin_settings.find_buyers_telegram_preference:
+  NATIVE_FIRST (default, unchanged behaviour) | PAID_FIRST (memo23
+  TELEGRAM_CHANNEL on up to 6 known channels first; free reader skipped only
+  when paid jobs were queued; TELEGRAM_SOURCES always runs). Not activated.
+- Migration 20261021090000: matching_campaigns.last_search_* (job, state,
+  started, finished) maintained by a matching_jobs trigger from
+  find_buyers_job_state; status/status_v2 keep meaning "continuous monitoring"
+  (continuous-matching-worker reads status_v2; live trigger
+  sync_matching_campaign_status_columns keeps them equal — not in repo).
+  find_buyers_job_state gains socialPlan {outcome, reason, queued}.
+- Owner UI: one-click "მყიდველები და მოთხოვნები" / "მოიჯარეები და მოთხოვნები"
+  on property page + portfolio list; per-source PLANNED/RUNNING/COMPLETED/
+  SKIPPED/BLOCKED/FAILED; "only X was searched"; social-blocked reason.
+
+Pending OWNER APPROVAL after deploy (production writes, not done):
+- registry: stamp input_contract_verified_at + clear stale "adapter fix
+  pending" notes for TIKTOK, BLUESKY, FB_GROUP_POSTS, VK_POSTS_COMMENTS;
+  THREADS_PROFILE is OFF (owner wanted ON); QUORA is ON (owner wanted OFF;
+  unpriced so it never runs).
+- Telegram preference PAID_FIRST (paid TELEGRAM_CHANNEL $0.25/1k + $0.001
+  start; probe 30, ≤6 channels, ≤$2/search cap).
+- No paid live test until the owner runs it.
+
 ## Deferred / known-open (do not "fix" casually)
 
 - Active Search has no dedicated UI surface yet (backend + notify exist).

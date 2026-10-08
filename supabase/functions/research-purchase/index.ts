@@ -118,10 +118,18 @@ serve(async (req) => {
     // Best-effort release so a failure after RESERVE never leaves
     // funds stuck in limbo (Master Prompt §20).
     if (reservationId) {
-      await supabaseAdmin.rpc('release_credit_reservation', {
-        p_reservation_id: reservationId,
-        p_reason: 'purchase_failed_after_reserve',
-      }).catch(() => {});
+      /* A PostgREST builder is lazy and has no .catch: the old
+         `.rpc(...).catch(...)` threw before the request was ever sent, so a
+         failed purchase never released its reservation. Await it in try. */
+      try {
+        const { error: releaseError } = await supabaseAdmin.rpc('release_credit_reservation', {
+          p_reservation_id: reservationId,
+          p_reason: 'purchase_failed_after_reserve',
+        });
+        if (releaseError) console.error('research-purchase release failed:', releaseError.message);
+      } catch (releaseErr) {
+        console.error('research-purchase release threw:', releaseErr);
+      }
     }
     return json({ error: err instanceof Error ? err.message : 'Unknown error' }, 500);
   }

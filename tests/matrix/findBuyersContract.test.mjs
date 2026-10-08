@@ -78,10 +78,20 @@ test('comments are bought only for comparable parent posts, and stored comments 
   assert.match(PIPELINE, /classification_status: 'FILTERED_OUT'/, 'never PENDING: the demand classifier does not re-pay for these');
 });
 
-test('native Telegram is primary; memo23 Telegram is a fallback only', () => {
+test('Telegram order: native first by default; paid memo23 Telegram first only by the owner setting, native then the fallback', () => {
   assert.match(DRIVER, /job\.provider === 'TELEGRAM' && \(finalStatus === 'FAILED' \|\| finalStatus === 'CANCELLED'\)/);
   assert.match(DRIVER, /const NATIVE_PROVIDERS = \['TELEGRAM', 'TELEGRAM_SOURCES', 'FORUM', 'PORTAL'\]/);
-  assert.match(read('src/research-core/findBuyers/campaignPlan.ts'), /if \(!input\.nativeTelegramActive\) pushKnown\('TELEGRAM_CHANNEL'/);
+  const pref = read('src/research-core/findBuyers/telegramPreference.ts');
+  /* Default is NATIVE_FIRST: only an explicit PAID_FIRST switches the order. */
+  assert.match(pref, /return v === 'PAID_FIRST' \? 'PAID_FIRST' : 'NATIVE_FIRST';/);
+  assert.match(pref, /return pref === 'PAID_FIRST' \|\| !nativeTelegramActive;/);
+  /* The planner only plans paid Telegram through that rule, and only on known channels (never a guessed seed). */
+  assert.match(read('src/research-core/findBuyers/campaignPlan.ts'), /if \(planPaidTelegram\(input\.telegramPreference \?\? 'NATIVE_FIRST', input\.nativeTelegramActive\)\) \{\s*pushKnown\('TELEGRAM_CHANNEL', 'TELEGRAM'/);
+  /* The free reader is skipped only when paid Telegram jobs were actually queued; community discovery stays. */
+  const mc = read('supabase/functions/match-campaign/index.ts');
+  assert.match(mc, /const skipNativeReader = findBuyers\.telegramPreference === 'PAID_FIRST' && paidTelegramQueued > 0;/);
+  assert.match(mc, /plan: skipNativeReader \? withoutNativeTelegramReader\(plan\) : plan,/);
+  assert.match(pref, /providers: t\.providers\.filter\(\(p\) => p !== 'TELEGRAM'\)/);
 });
 
 test('money: provider runs end and are booked BEFORE settlement reads COGS; budget is reserved before every run', () => {

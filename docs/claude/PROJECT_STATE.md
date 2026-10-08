@@ -38,6 +38,14 @@ MATTERS right now, verify against the live systems, not this file)
 - Prompt: TAS raw text is replaced by a deterministic digest (`officialPromptContext.ts`, 9k
   budget) appended after the Service176 evidence; customer view `officialHistoryView` carries no
   internal ids or private names.
+- Adversarial review (2026-10-08) fixed: decision negation/conditionals/conflicts, DWR
+  prototype keys, search-deadline → FAILED (LEGACY fallback), streaming byte limit, EMPTY
+  responses not cached, unmapped values not persisted, fail-closed caveats (unreadable later
+  response, missing ledger, blocks on opposite footing), status prose withheld when not
+  conclusive, in-progress jobs no longer expose tasApi / visual paths / internal ledgers.
+- Release plan, acceptance, rollback: `docs/verify/RELEASE-PLAN.md`. Codex seams (no rebuild):
+  `docs/verify/CODEX-INTEGRATION.md` — note RS.ge (`rstax`) does not run automatically today.
+- Migration renamed to `20261022090000_…` (main's #126 took 20261021090000).
 - Security: the owner's recovered PowerShell history (line 8) contains an apparent 32-hex API
   credential — recommend rotation via the provider + secret store; value never copied anywhere.
 - Migration `20261022090000_verify_official_visuals_and_switches.sql` NOT applied: private

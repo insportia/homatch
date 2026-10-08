@@ -230,6 +230,7 @@ export function ResearchStream({
           <SnakeGame
             status={snakeStatus}
             stageLabel={nowLine}
+            statusLines={{ working: nowLine, ready: t('verify_net_settled'), failed: t('verify_net_stopped') }}
             onView={() => setPlaying(false)}
             onClose={() => setPlaying(false)}
           />

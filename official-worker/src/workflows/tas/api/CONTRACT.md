@@ -27,6 +27,7 @@ from this repository (its sandbox cannot reach tas.ge / docs.tbilisi.gov.ge).
 | Georgian mojibake | Owner's CP437 repair compensated for PowerShell reading a child process's stdout; not applicable in-process. A guarded CP1252/Latin-1 repair is applied only when the signature is present and the result is Georgian | `repairGeorgianMojibake()` |
 | PDF parser | Owner used pdfjs-dist (current); this worker uses the existing `pdf-parse` (older bundled pdf.js). Georgian text-layer fidelity on real TAS PDFs is **NOT VERIFIED** — first live run must compare | injectable `parsePdf` |
 | 19 docs / 67 PDF + 1 HTML + 65 empty responses / 413 attachments = 326 PDF + 87 non-PDF (pla 34, jpg 30, dwg 16, rar 7) / 22 on 1161121 | Expectations written into the owner's later scripts (history has commands, not outputs); reproduced here only by a STRUCTURAL fixture | `test/fixtures/tas/tasFixture.mjs` |
+| Decision outcome / number / issue date from response text | Shape VERIFIED for one motion (639208/4304382: decision 4303543, 13/12/2018, intermediate); other templates' wording NOT VERIFIED | `decisions.ts` (`extractDecision`), conservative: no operative wording → UNDETERMINED |
 | 1161121: 21 vs 22 | The history's line-anchored regex `^s\d+\.attachedFileId=` only sees assignment-form records, not inline object literals — the plausible cause of 21 | graph evaluation covers both forms (tested) |
 
 Acceptance (owner's TASK.md §19) has NOT been met from this repository.

@@ -58,6 +58,9 @@ test('no card invents a conclusion of its own', () => {
     // conclusion of their own. The story and current status the report
     // renders live inside `report`, under the same grounding gate as before.
     'officialVisuals', 'research',
+    // Same standing: the deterministic official history (decided status,
+    // milestones, value changes) computed in tasIntelligence.ts.
+    'officialHistory',
   ]);
   for (const r of new Set(reads)) {
     assert.ok(allowed.has(r), `VerifyReport reads synthesis.${r}, which is not part of the contract`);

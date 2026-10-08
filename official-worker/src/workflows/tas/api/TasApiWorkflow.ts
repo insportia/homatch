@@ -23,6 +23,7 @@ import {
   classifyPayload, classifyPdfText, fileNameFromDisposition, htmlToText, mergeSearchPages, normalizeCaseDetail, parseSearchPage, repairGeorgianMojibake,
   type PdfTextClass, type SearchReconciliation, type TasCaseDetail, type TasSearchPage, type TasSearchRow,
 } from './tasModel.js';
+import { extractDecision, type ExtractedDecision } from './decisions.js';
 import { extractImagesFromPdf, imageSize, rankVisualCandidates, selectVisualShortlist, type VisualKind } from './visuals.js';
 import { extractTasTechnicalFacts, dedupeTasTechnicalFacts } from '../../../documents/TasTechnicalFacts.js';
 import type { LegacySourceResult, WorkflowResult } from '../../WorkflowResult.js';
@@ -83,6 +84,24 @@ export interface MotionRecord {
   response: 'PDF' | 'HTML' | 'EMPTY' | 'OTHER' | 'FAILED' | 'NOT_FETCHED';
   textChars: number;
   sha256: string | null;
+  /** The operative decision read from the response text, when there is one. */
+  decision: ExtractedDecision | null;
+}
+
+/**
+ * Discovery is complete; processing is selective. This says exactly how far
+ * processing got and why anything was not processed, so a budget can never
+ * masquerade as a finding.
+ */
+export interface ProcessingLedger {
+  discovered: { documents: number; motions: number; attachments: number };
+  processed: { details: number; responses: number; attachmentsRead: number; visualsOpened: number };
+  deferred: { attachmentsBudget: number };
+  skipped: { emptyResponses: number; unsupportedFormats: number; duplicateReferences: number };
+  failed: { details: number; responses: number; attachments: number };
+  /** True when anything potentially material was not evaluated. */
+  incomplete: boolean;
+  incompleteReasons: string[];
 }
 
 export interface VisualRecord {
@@ -136,6 +155,7 @@ export interface TasApiResult {
     visualsExtracted: number;
   };
   http: { requests: number; retries: number; bytes: number; failures: number };
+  ledger: ProcessingLedger | null;
   durationMs: number;
   deadlineReached: boolean;
   error: string | null;
@@ -230,6 +250,7 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
       cacheHits: 0, visualCandidates: 0, visualsExtracted: 0,
     },
     http: client.stats,
+    ledger: null,
     durationMs: 0,
     deadlineReached: false,
     error: null,
@@ -322,7 +343,7 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
     result.accounting.caseLevelAttachments = attachmentJobs.filter((j) => j.a.motionId === null).length;
 
     await pool(motionJobs, options.concurrency ?? 3, async ({ docId, m }) => {
-      const rec: MotionRecord = { documentId: docId, motionId: m.motionId, date: m.date, name: m.name, status: m.status, decisionNumber: m.decisionNumber, response: 'NOT_FETCHED', textChars: 0, sha256: null };
+      const rec: MotionRecord = { documentId: docId, motionId: m.motionId, date: m.date, name: m.name, status: m.status, decisionNumber: m.decisionNumber, response: 'NOT_FETCHED', textChars: 0, sha256: null, decision: null };
       const key = `resp:${docId}:${m.motionId}`;
       const cached = cacheGet(key, now());
       try {
@@ -331,6 +352,7 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
           rec.response = cached.format === 'pdf' ? 'PDF' : cached.format === 'html' ? 'HTML' : cached.outcome === 'EMPTY' ? 'EMPTY' : 'OTHER';
           rec.sha256 = cached.sha256;
           rec.textChars = cached.text.length;
+          rec.decision = cached.text ? extractDecision(cached.text) : null;
           if (cached.text) pushText(docId, `[${m.date?.slice(0, 10) ?? 'undated'} · ${m.name ?? 'motion'} · response]\n${cached.text}`);
         } else {
           const r = await client.request(responseUrl(docId, m.motionId));
@@ -352,6 +374,8 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
           else if (cls.kind === 'FAILED') rec.response = 'FAILED';
           else rec.response = 'OTHER';
           rec.textChars = text.length;
+          rec.decision = text ? extractDecision(text) : null;
+          if (rec.decision && !rec.decisionNumber && rec.decision.number) rec.decisionNumber = rec.decision.number;
           if (rec.response !== 'FAILED')
             cachePut(key, { sha256: rec.sha256 ?? '', text, pages, outcome: rec.response === 'EMPTY' ? 'EMPTY' : 'READ_TEXT', format: cls.format ?? cls.kind.toLowerCase(), at: now() });
           if (text) pushText(docId, `[${m.date?.slice(0, 10) ?? 'undated'} · ${m.name ?? 'motion'} · response]\n${text}`);
@@ -491,12 +515,35 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
       });
     }
     result.cases.sort((a, b) => (caseDate(a) ?? '').localeCompare(caseDate(b) ?? ''));
+    result.ledger = buildLedger(result, attachmentJobs.length - new Set(attachmentJobs.map((j) => j.a.attachedFileId)).size);
   } catch (e) {
     if (e instanceof TasDeadline) result.deadlineReached = true;
     else result.error = String((e as Error)?.message ?? e).slice(0, 300);
   }
   result.durationMs = now() - started;
   return result;
+}
+
+function buildLedger(r: TasApiResult, duplicateReferences: number): ProcessingLedger {
+  const o = r.accounting.attachmentOutcomes;
+  const rs = r.accounting.responses;
+  const reasons: string[] = [];
+  if (r.reconciliation && r.reconciliation.reconciled === false) reasons.push('SEARCH_TOTAL_MISMATCH');
+  if (r.reconciliation && r.reconciliation.stopReason === 'MAX_PAGES') reasons.push('SEARCH_PAGE_LIMIT');
+  if (r.accounting.detailFailures) reasons.push('DETAIL_FAILURES');
+  if (rs.FAILED || rs.NOT_FETCHED) reasons.push('RESPONSES_NOT_READ');
+  if (o.NOT_PROCESSED_BUDGET) reasons.push('ATTACHMENTS_DEFERRED_BY_BUDGET');
+  if (o.DOWNLOAD_FAILED || o.FAILED) reasons.push('ATTACHMENTS_FAILED');
+  if (r.deadlineReached) reasons.push('RUN_DEADLINE');
+  return {
+    discovered: { documents: r.accounting.documents, motions: r.accounting.motions, attachments: r.accounting.attachments },
+    processed: { details: r.accounting.detailsRead, responses: rs.PDF + rs.HTML + rs.EMPTY + rs.OTHER, attachmentsRead: o.READ_TEXT + o.LOW_TEXT + o.SCAN_OR_IMAGE_ONLY + o.IMAGE, visualsOpened: r.visuals.length },
+    deferred: { attachmentsBudget: o.NOT_PROCESSED_BUDGET },
+    skipped: { emptyResponses: rs.EMPTY, unsupportedFormats: o.UNSUPPORTED_FORMAT, duplicateReferences },
+    failed: { details: r.accounting.detailFailures, responses: rs.FAILED, attachments: o.DOWNLOAD_FAILED + o.FAILED },
+    incomplete: reasons.length > 0,
+    incompleteReasons: reasons,
+  };
 }
 
 export function caseDate(c: TasApiCase): string | null {

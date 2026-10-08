@@ -208,6 +208,11 @@ const TAS_LABEL_KA: Record<string, string> = {
 };
 export const tasLabel = (key: string, fallback: string): string => TAS_LABEL_KA[key] ?? fallback.replace(/^(field|tf):/, '');
 
+const OFFICIAL_STATE_KA: Record<string, string> = {
+  COMMISSIONED: 'ექსპლუატაციაში მიღებული', PERMITTED: 'მშენებლობის ნებართვა მოქმედებს', PROJECT_APPROVED: 'პროექტი შეთანხმებულია',
+  SUSPENDED: 'შეჩერებული', CANCELLED: 'გაუქმებული', APPLICATION_PENDING: 'განაცხადი განხილვაშია', APPLICATION_REFUSED: 'განაცხადზე უარი',
+};
+
 export const TAS_EVENT_KA: Record<string, string> = {
   APPLICATION: 'განცხადება', PERMIT: 'ნებართვა', APPROVAL: 'შეთანხმება', AMENDMENT: 'ცვლილება', EXTENSION: 'ვადის გაგრძელება',
   REFUSAL: 'უარი', SUSPENSION: 'შეჩერება', INSPECTION: 'შემოწმება', COMMISSIONING: 'ექსპლუატაციაში მიღება', DECISION: 'გადაწყვეტილება', OTHER: 'ჩანაწერი',
@@ -242,6 +247,17 @@ export function buildEvidencePackage(report: unknown): EvidencePackage {
         conflictsWith: f.status === 'CONFLICTING' ? 'CONFLICTING_OFFICIAL_VALUES' : undefined, tasRef: f.id,
       });
       if (items.length > before) tasCite[f.id] = items[items.length - 1].id;
+    }
+    // The controlling official status, stated once, as its own citable item.
+    const st = tas.officialStatus;
+    if (st.state !== 'NOT_ESTABLISHED' && st.basis) {
+      const before = items.length;
+      add({
+        tier: 1, category: 'DOCUMENT',
+        claim: `ოფიციალური სტატუსი: ${OFFICIAL_STATE_KA[st.state] ?? st.state}, ${st.since ?? ''}${st.basis.caseRef ? `, საქმე ${st.basis.caseRef}` : ''}${st.basis.decisionNumber ? `, გადაწყვეტილება № ${st.basis.decisionNumber}` : ''}${st.validUntil ? `, ვადა ${st.validUntil}-მდე` : ''}${st.conclusive ? '' : ' — წინასწარი, ყველა მასალა არ არის დამუშავებული'}`,
+        provenance: 'OFFICIAL_DOCUMENT', certainty: st.conclusive ? 'CONFIRMED' : 'UNCONFIRMED', date: st.since ?? undefined, tasRef: 'officialStatus',
+      });
+      if (items.length > before) tasCite.officialStatus = items[items.length - 1].id;
     }
     for (const e of tas.timeline.filter((x) => x.materiality !== 'LOW')) {
       const before = items.length;

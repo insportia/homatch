@@ -25,6 +25,21 @@ MATTERS right now, verify against the live systems, not this file)
   timeline/participants/story/digest), separate TAS evidence budget (45) beside the tier-1 60,
   report blocks currentStatus/propertyStory/visualCaptions, URL-in-prose rejection,
   repeated-sentence removal. verify-synthesis now keeps its token usage (`_usage`).
+- Decision layer (worker `tas/api/decisions.ts`): each motion response's operative outcome
+  (CANCELLED > SUSPENDED > REFUSED > DEFICIENCY > INTERMEDIATE > COMMISSIONED > DEADLINE_EXTENDED
+  > AMENDMENT_APPROVED > PERMIT_ISSUED > APPROVED; else INFORMATIONAL/UNDETERMINED), number,
+  issue date, valid-until. Phrasings are Georgian form wording, NOT live-verified on real PDFs.
+- Processing ledger (`ProcessingLedger`): discovered/processed/deferred/skipped/failed + incomplete
+  reasons (SEARCH_TOTAL_MISMATCH, DETAIL_FAILURES, ATTACHMENTS_DEFERRED_BY_BUDGET, RUN_DEADLINE…).
+- Official status by AUTHORITY, not recency (`deriveOfficialStatus`): a refusal never revokes a
+  permit; cancellation/suspension outrank; `conclusive=false` with caveats when processing was
+  incomplete or a later decision is undetermined. Story = 5–10 milestones, negatives always kept.
+  Visuals carry versionStatus CURRENT_APPROVED / HISTORICAL_APPROVED / UNDETERMINED.
+- Prompt: TAS raw text is replaced by a deterministic digest (`officialPromptContext.ts`, 9k
+  budget) appended after the Service176 evidence; customer view `officialHistoryView` carries no
+  internal ids or private names.
+- Security: the owner's recovered PowerShell history (line 8) contains an apparent 32-hex API
+  credential — recommend rotation via the provider + secret store; value never copied anywhere.
 - Migration `20261021090000_verify_official_visuals_and_switches.sql` NOT applied: private
   bucket `verify-official-visuals`, settings `verify_tas_implementation` (LEGACY),
   `verify_marketplace_market_enabled` (false).

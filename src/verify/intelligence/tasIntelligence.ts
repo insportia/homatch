@@ -70,6 +70,10 @@ export type EventKind =
   | 'DECISION'
   | 'OTHER';
 
+export type DecisionOutcome =
+  | 'PERMIT_ISSUED' | 'APPROVED' | 'AMENDMENT_APPROVED' | 'DEADLINE_EXTENDED' | 'COMMISSIONED'
+  | 'INTERMEDIATE' | 'DEFICIENCY' | 'REFUSED' | 'SUSPENDED' | 'CANCELLED' | 'INFORMATIONAL' | 'UNDETERMINED';
+
 export interface TimelineEvent {
   id: string;
   date: string;
@@ -79,6 +83,50 @@ export interface TimelineEvent {
   documentId: string | null;
   status: string | null;
   materiality: Materiality;
+  /** The official decision this event carries, when its response was read. */
+  decision?: { number: string | null; outcome: DecisionOutcome; evidence: string | null; validUntil: string | null } | null;
+  /** Deterministic relevance 0..100 (legal effect, status impact, recency, uniqueness). */
+  relevance: number;
+}
+
+/** The property's official situation as the decisions establish it. */
+export type OfficialState =
+  | 'COMMISSIONED'
+  | 'PERMITTED'
+  | 'PROJECT_APPROVED'
+  | 'SUSPENDED'
+  | 'CANCELLED'
+  | 'APPLICATION_PENDING'
+  | 'APPLICATION_REFUSED'
+  | 'NOT_ESTABLISHED';
+
+export interface CurrentOfficialStatus {
+  state: OfficialState;
+  /** Date of the decision that established it. */
+  since: string | null;
+  basis: { caseRef: string | null; decisionNumber: string | null; date: string | null; outcome: DecisionOutcome; evidence: string | null } | null;
+  /** A permit / deadline date stated by the controlling decisions. */
+  validUntil: string | null;
+  /** Later applications still without a final decision. */
+  pending: Array<{ caseRef: string | null; date: string; outcome: DecisionOutcome }>;
+  /** True only when decisions establish the state and nothing material is unread. */
+  conclusive: boolean;
+  caveats: Array<'RESPONSES_UNREAD' | 'LATER_UNDETERMINED_DECISION' | 'PROCESSING_INCOMPLETE' | 'NO_DECISIONS_READ' | 'VALIDITY_PASSED'>;
+}
+
+export interface TasFunnel {
+  discoveredDocuments: number;
+  discoveredMotions: number;
+  discoveredAttachments: number;
+  processedResponses: number;
+  processedAttachments: number;
+  deferredAttachments: number;
+  retainedFacts: number;
+  retainedEvents: number;
+  milestones: number;
+  visualsSelected: number;
+  incomplete: boolean;
+  incompleteReasons: string[];
 }
 
 export type ParticipantRole =
@@ -137,6 +185,14 @@ export interface VisualRef {
   eventId: string | null;
   width: number | null;
   height: number | null;
+  /**
+   * CURRENT_APPROVED only when the visual's own case carries the latest
+   * approving decision; HISTORICAL_APPROVED for an earlier approved case;
+   * otherwise UNDETERMINED (a submitted design is not an approved one).
+   */
+  versionStatus: 'CURRENT_APPROVED' | 'HISTORICAL_APPROVED' | 'UNDETERMINED';
+  documentId: string | null;
+  attachedFileId: string | null;
 }
 
 export interface TasCoverage {
@@ -165,6 +221,11 @@ export interface TasIntelligence {
   visuals: VisualRef[];
   conflicts: Array<{ key: string; label: string; block: string | null; values: Array<{ value: string; date: string | null }> }>;
   currentFactIds: string[];
+  /** Authority-based current official situation. */
+  officialStatus: CurrentOfficialStatus;
+  /** The 5–10 events a buyer needs, chosen by relevance; never drops a negative decision. */
+  milestoneIds: string[];
+  funnel: TasFunnel;
 }
 
 // ─────────────────────────────── helpers ───────────────────────────────
@@ -336,7 +397,7 @@ interface CaseInput {
   parties: Array<{ role: string; name: string; kind?: string; organizationId?: string | null }>;
   values: Array<{ key: string; label: string | null; value: string }>;
   technicalFacts: Array<{ category: string; key: string; value: string }>;
-  motions: Array<{ motionId?: string; date: string | null; name: string | null; status: string | null; decisionNumber?: string | null; response?: string }>;
+  motions: Array<{ motionId?: string; date: string | null; name: string | null; status: string | null; decisionNumber?: string | null; response?: string; decision?: any }>;
   block: string | null;
 }
 
@@ -362,7 +423,7 @@ function readCases(report: unknown): { cases: CaseInput[]; api: any | null } {
         parties: arr<any>(c.parties).map((p) => ({ role: s(p?.role), name: s(p?.name), kind: s(p?.kind), organizationId: p?.organizationId ?? null })),
         values: arr<any>(c.values).map((v) => ({ key: s(v?.key), label: s(v?.label) || null, value: s(v?.value) })),
         technicalFacts: tf.map((f) => ({ category: s(f?.category), key: s(f?.key), value: s(f?.value) })),
-        motions: arr<any>(c.motions).map((m) => ({ motionId: s(m?.motionId), date: day(m?.date), name: s(m?.name) || null, status: s(m?.status) || null, decisionNumber: s(m?.decisionNumber) || null, response: s(m?.response) })),
+        motions: arr<any>(c.motions).map((m) => ({ motionId: s(m?.motionId), date: day(m?.date), name: s(m?.name) || null, status: s(m?.status) || null, decisionNumber: s(m?.decisionNumber) || null, response: s(m?.response), decision: m?.decision && typeof m.decision === 'object' ? m.decision : null })),
         block,
       });
     }
@@ -402,6 +463,9 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
       attachmentsAccounted: 0, attachmentsRead: 0, scanOnly: 0, unsupportedFormats: 0, notProcessed: 0, earliestDate: null, latestDate: null,
     },
     facts: [], timeline: [], participants: [], story: [], visuals: [], conflicts: [], currentFactIds: [],
+    officialStatus: { state: 'NOT_ESTABLISHED', since: null, basis: null, validUntil: null, pending: [], conclusive: false, caveats: ['NO_DECISIONS_READ'] },
+    milestoneIds: [],
+    funnel: { discoveredDocuments: 0, discoveredMotions: 0, discoveredAttachments: 0, processedResponses: 0, processedAttachments: 0, deferredAttachments: 0, retainedFacts: 0, retainedEvents: 0, milestones: 0, visualsSelected: 0, incomplete: false, incompleteReasons: [] },
   };
   if (!cases.length) return empty;
 
@@ -505,17 +569,25 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
   const timeline: TimelineEvent[] = [];
   let eid = 0;
   const seenEvents = new Set<string>();
-  const pushEvent = (date: string | null, title: string, c: CaseInput, status: string | null) => {
-    if (!date || !title) return;
-    const kind = eventKind(`${title} ${status ?? ''}`);
-    const k = `${date}|${kind}|${valueIdentity(title)}|${c.documentId ?? ''}`;
+  const pushEvent = (date: string | null, title: string, c: CaseInput, status: string | null, decision: any = null) => {
+    const d = decision && OUTCOMES.has(decision.outcome) ? decision : null;
+    const when = (d?.issueDate as string | null) ?? date;
+    if (!when || (!title && !d)) return;
+    // A read decision's legal effect outranks the wording of the step's name.
+    const kind = d && d.outcome !== 'UNDETERMINED' && d.outcome !== 'INFORMATIONAL' ? KIND_FOR_OUTCOME[d.outcome as DecisionOutcome] : eventKind(`${title} ${status ?? ''}`);
+    const k = `${when}|${kind}|${valueIdentity(title)}|${c.documentId ?? ''}|${d?.number ?? ''}`;
     if (seenEvents.has(k)) return;
     seenEvents.add(k);
-    timeline.push({ id: `te${++eid}`, date, kind, title, caseRef: c.caseRef, documentId: c.documentId, status, materiality: EVENT_MATERIALITY[kind] });
+    timeline.push({
+      id: `te${++eid}`, date: when, kind, title: title || (d?.number ? `№ ${d.number}` : ''), caseRef: c.caseRef, documentId: c.documentId, status,
+      materiality: d && OUTCOME_MATERIAL.has(d.outcome) ? 'HIGH' : EVENT_MATERIALITY[kind],
+      decision: d ? { number: d.number ?? null, outcome: d.outcome, evidence: d.evidence ? String(d.evidence).slice(0, 240) : null, validUntil: d.validUntil ?? null } : null,
+      relevance: 0,
+    });
   };
   for (const c of cases) {
     pushEvent(c.date, c.docType ?? c.title ?? '', c, c.status);
-    for (const m of c.motions) pushEvent(m.date, m.name ?? '', c, m.status);
+    for (const m of c.motions) pushEvent(m.date, m.name ?? '', c, m.status, m.decision);
   }
   timeline.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
   // A deadline is itself a dated fact worth placing on the timeline.
@@ -558,6 +630,11 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
   }
   participants.sort((a, b) => (b.lastSeen ?? '').localeCompare(a.lastSeen ?? '') || a.name.localeCompare(b.name));
 
+  // ── relevance, current status, milestones ──
+  scoreEvents(timeline, nowIso);
+  const officialStatus = deriveOfficialStatus(timeline, api, nowIso);
+  const milestoneIds = selectMilestones(timeline, officialStatus);
+
   // ── story chapters ──
   const story = buildStory(timeline, facts, nowIso);
 
@@ -571,7 +648,12 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
         if (gap <= 365 * 864e5 && (!nearest || gap < Math.abs(Date.parse(nearest.date) - Date.parse(d)))) nearest = e;
       }
     const chapter = nearest ? (story.find((c) => c.eventIds.includes(nearest!.id))?.key ?? null) : v?.role === 'LATEST_RENDER' ? 'TODAY' : null;
-    return { id: s(v?.id), role: v?.role ?? 'SUPPORTING', kind: s(v?.kind) || 'OTHER_DRAWING', date: d, chapter, eventId: nearest?.id ?? null, width: v?.width ?? null, height: v?.height ?? null };
+    return {
+      id: s(v?.id), role: v?.role ?? 'SUPPORTING', kind: s(v?.kind) || 'OTHER_DRAWING', date: d, chapter, eventId: nearest?.id ?? null,
+      width: v?.width ?? null, height: v?.height ?? null,
+      versionStatus: visualVersionStatus(s(v?.documentId) || null, timeline),
+      documentId: s(v?.documentId) || null, attachedFileId: s(v?.attachedFileId) || null,
+    };
   }).filter((v) => /^[a-f0-9]{64}$/.test(v.id));
 
   // ── coverage (truthful, from the worker's own accounting) ──
@@ -604,7 +686,150 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
     visuals,
     conflicts,
     currentFactIds: facts.filter((f) => f.status === 'CURRENT' || f.status === 'CONFLICTING').map((f) => f.id),
+    officialStatus,
+    milestoneIds,
+    funnel: {
+      discoveredDocuments: Number(obj(api?.ledger).discovered?.documents ?? cases.length) || cases.length,
+      discoveredMotions: Number(obj(api?.ledger).discovered?.motions ?? coverage.motions) || 0,
+      discoveredAttachments: Number(obj(api?.ledger).discovered?.attachments ?? coverage.attachmentsAccounted) || 0,
+      processedResponses: Number(obj(api?.ledger).processed?.responses ?? 0) || 0,
+      processedAttachments: Number(obj(api?.ledger).processed?.attachmentsRead ?? coverage.attachmentsRead) || 0,
+      deferredAttachments: Number(obj(api?.ledger).deferred?.attachmentsBudget ?? 0) || 0,
+      retainedFacts: facts.length,
+      retainedEvents: timeline.length,
+      milestones: milestoneIds.length,
+      visualsSelected: visuals.length,
+      incomplete: obj(api?.ledger).incomplete === true,
+      incompleteReasons: arr<string>(obj(api?.ledger).incompleteReasons).map(String),
+    },
   };
+}
+
+// ─────────────────────────── authority, relevance, milestones ───────────────────────────
+
+const OUTCOMES = new Set<string>(['PERMIT_ISSUED', 'APPROVED', 'AMENDMENT_APPROVED', 'DEADLINE_EXTENDED', 'COMMISSIONED', 'INTERMEDIATE', 'DEFICIENCY', 'REFUSED', 'SUSPENDED', 'CANCELLED', 'INFORMATIONAL', 'UNDETERMINED']);
+const OUTCOME_MATERIAL = new Set<string>(['PERMIT_ISSUED', 'AMENDMENT_APPROVED', 'DEADLINE_EXTENDED', 'COMMISSIONED', 'REFUSED', 'SUSPENDED', 'CANCELLED', 'APPROVED']);
+const NEGATIVE = new Set<string>(['REFUSED', 'SUSPENDED', 'CANCELLED']);
+const KIND_FOR_OUTCOME: Record<DecisionOutcome, EventKind> = {
+  PERMIT_ISSUED: 'PERMIT', APPROVED: 'APPROVAL', AMENDMENT_APPROVED: 'AMENDMENT', DEADLINE_EXTENDED: 'EXTENSION', COMMISSIONED: 'COMMISSIONING',
+  INTERMEDIATE: 'DECISION', DEFICIENCY: 'DECISION', REFUSED: 'REFUSAL', SUSPENDED: 'SUSPENSION', CANCELLED: 'DECISION', INFORMATIONAL: 'OTHER', UNDETERMINED: 'OTHER',
+};
+const KIND_WEIGHT: Record<EventKind, number> = {
+  COMMISSIONING: 50, PERMIT: 48, SUSPENSION: 48, REFUSAL: 45, AMENDMENT: 44, EXTENSION: 42, APPROVAL: 38, DECISION: 28, INSPECTION: 22, APPLICATION: 14, OTHER: 4,
+};
+
+/**
+ * Deterministic relevance: legal effect first, then whether it bears on the
+ * present, then recency, then uniqueness. Routine correspondence and repeated
+ * administrative steps sink; a negative decision never sinks below the
+ * material threshold however old it is.
+ */
+export function scoreEvents(timeline: TimelineEvent[], nowIso: string): void {
+  const now = Date.parse(nowIso);
+  const seenKindPerCase = new Map<string, number>();
+  for (const e of timeline) {
+    const outcome = e.decision?.outcome ?? null;
+    let score = KIND_WEIGHT[e.kind];
+    if (outcome === 'CANCELLED') score = 52;
+    if (outcome && outcome !== 'UNDETERMINED' && outcome !== 'INFORMATIONAL') score += 10; // a read decision, not just a step name
+    const ageYears = Math.max(0, (now - Date.parse(e.date)) / (365 * 864e5));
+    score += Math.max(0, 20 - ageYears * 2.5); // recency, at most 20
+    const k = `${e.caseRef ?? e.documentId}|${e.kind}`;
+    const n = (seenKindPerCase.get(k) ?? 0) + 1;
+    seenKindPerCase.set(k, n);
+    if (n > 1) score -= 15 * (n - 1); // the same step repeated in one case
+    if (outcome && NEGATIVE.has(outcome)) score = Math.max(score, 60);
+    e.relevance = Math.max(0, Math.min(100, Math.round(score)));
+  }
+}
+
+/** Walk the decisions in date order; the controlling one is the latest with legal effect. */
+export function deriveOfficialStatus(timeline: TimelineEvent[], api: any, nowIso: string): CurrentOfficialStatus {
+  const decided = timeline.filter((e) => e.decision && e.decision.outcome !== 'UNDETERMINED' && e.decision.outcome !== 'INFORMATIONAL');
+  let state = 'NOT_ESTABLISHED' as OfficialState;
+  let basisEvent: TimelineEvent | null = null;
+  let validUntil: string | null = null;
+  for (const e of decided) {
+    const o = e.decision!.outcome;
+    const set = (next: OfficialState) => { state = next; basisEvent = e; };
+    if (o === 'CANCELLED') { set('CANCELLED'); validUntil = null; }
+    else if (o === 'SUSPENDED') set('SUSPENDED');
+    else if (o === 'COMMISSIONED') set('COMMISSIONED');
+    else if (o === 'PERMIT_ISSUED' || o === 'AMENDMENT_APPROVED') { set('PERMITTED'); if (e.decision!.validUntil) validUntil = e.decision!.validUntil; }
+    else if (o === 'DEADLINE_EXTENDED') { if (state === 'PERMITTED' || state === 'NOT_ESTABLISHED' || state === 'SUSPENDED') set('PERMITTED'); validUntil = e.decision!.validUntil ?? validUntil; }
+    else if (o === 'APPROVED') { if (state === 'NOT_ESTABLISHED' || state === 'APPLICATION_PENDING' || state === 'APPLICATION_REFUSED') set('PROJECT_APPROVED'); }
+    // A refusal answers ONE application; it does not revoke an earlier permit.
+    else if (o === 'REFUSED') { if (state === 'NOT_ESTABLISHED' || state === 'APPLICATION_PENDING') set('APPLICATION_REFUSED'); }
+    else if (o === 'INTERMEDIATE' || o === 'DEFICIENCY') { if (state === 'NOT_ESTABLISHED') set('APPLICATION_PENDING'); }
+  }
+  // Later applications whose latest answer is not final.
+  const lastByCase = new Map<string, TimelineEvent>();
+  for (const e of decided) lastByCase.set(e.caseRef ?? e.documentId ?? e.id, e);
+  const pending = [...lastByCase.values()]
+    .filter((e) => (e.decision!.outcome === 'INTERMEDIATE' || e.decision!.outcome === 'DEFICIENCY') && (!basisEvent || e.date >= (basisEvent as TimelineEvent).date))
+    .map((e) => ({ caseRef: e.caseRef, date: e.date, outcome: e.decision!.outcome }));
+  const caveats: CurrentOfficialStatus['caveats'] = [];
+  const responses = obj(obj(api?.accounting).responses);
+  if (Number(responses.FAILED || 0) + Number(responses.NOT_FETCHED || 0) > 0) caveats.push('RESPONSES_UNREAD');
+  const b = basisEvent as TimelineEvent | null;
+  if (b && timeline.some((e) => e.date > b.date && e.decision && e.decision.outcome === 'UNDETERMINED')) caveats.push('LATER_UNDETERMINED_DECISION');
+  if (obj(api?.ledger).incomplete === true) caveats.push('PROCESSING_INCOMPLETE');
+  if (!decided.length) caveats.push('NO_DECISIONS_READ');
+  if (validUntil && Date.parse(validUntil) < Date.parse(nowIso)) caveats.push('VALIDITY_PASSED');
+  return {
+    state,
+    since: b?.date ?? null,
+    basis: b ? { caseRef: b.caseRef, decisionNumber: b.decision?.number ?? null, date: b.date, outcome: b.decision!.outcome, evidence: b.decision?.evidence ?? null } : null,
+    validUntil,
+    pending,
+    conclusive: state !== 'NOT_ESTABLISHED' && caveats.length === 0,
+    caveats,
+  };
+}
+
+/**
+ * 5–10 milestones: the first record, every decision with legal effect (all
+ * negative ones always), the controlling decision, then the most relevant of
+ * the rest. One per case+kind. Chronological.
+ */
+export function selectMilestones(timeline: TimelineEvent[], status: CurrentOfficialStatus, max = 10): string[] {
+  if (!timeline.length) return [];
+  const chosen = new Map<string, TimelineEvent>();
+  const keyOf = (e: TimelineEvent) => `${e.caseRef ?? e.documentId}|${e.kind}`;
+  const take = (e: TimelineEvent | undefined) => {
+    if (!e) return;
+    const k = keyOf(e);
+    const prior = chosen.get(k);
+    if (!prior || e.relevance > prior.relevance || (e.relevance === prior.relevance && e.date > prior.date)) chosen.set(k, e);
+  };
+  take(timeline[0]);
+  for (const e of timeline) if (e.decision && NEGATIVE.has(e.decision.outcome)) take(e);
+  const basisDate = status.basis?.date;
+  take(timeline.find((e) => e.date === basisDate && e.decision?.outcome === status.basis?.outcome));
+  for (const e of [...timeline].sort((a, b) => b.relevance - a.relevance)) {
+    if (chosen.size >= max) break;
+    if (e.relevance < 30) break; // routine noise never fills the list
+    take(e);
+  }
+  let list = [...chosen.values()];
+  if (list.length > max) {
+    // Over budget only with many decisions: keep negatives and the basis, drop the least relevant others.
+    const keep = (e: TimelineEvent) => (e.decision && NEGATIVE.has(e.decision.outcome)) || (e.date === basisDate && e.decision?.outcome === status.basis?.outcome) || e === timeline[0];
+    const others = list.filter((e) => !keep(e)).sort((a, b) => b.relevance - a.relevance);
+    list = [...list.filter(keep), ...others.slice(0, Math.max(0, max - list.filter(keep).length))];
+  }
+  return list.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id)).map((e) => e.id);
+}
+
+/** Current vs historical approved design, from the decisions of the visual's own case. */
+function visualVersionStatus(documentId: string | null, timeline: TimelineEvent[]): VisualRef['versionStatus'] {
+  if (!documentId) return 'UNDETERMINED';
+  const approving = new Set(['PERMIT_ISSUED', 'APPROVED', 'AMENDMENT_APPROVED']);
+  const approvals = timeline.filter((e) => e.decision && approving.has(e.decision.outcome));
+  const mine = approvals.filter((e) => e.documentId === documentId);
+  if (!mine.length) return 'UNDETERMINED';
+  const latest = approvals[approvals.length - 1];
+  return latest.documentId === documentId ? 'CURRENT_APPROVED' : 'HISTORICAL_APPROVED';
 }
 
 function buildStory(timeline: TimelineEvent[], facts: TasFact[], nowIso: string): StoryChapter[] {
@@ -678,6 +903,9 @@ export function tasDigest(intel: TasIntelligence, citeFor: (factOrEventId: strin
   };
   push('TAS OFFICIAL HISTORY (deterministic; dates are real document dates).', true);
   push(`Coverage: ${intel.coverage.cases} case(s), ${intel.coverage.motions} recorded steps, earliest ${intel.coverage.earliestDate ?? 'n/a'}, latest ${intel.coverage.latestDate ?? 'n/a'}.`, true);
+  const st = intel.officialStatus;
+  push(`CURRENT OFFICIAL STATUS (deterministic, from decisions): ${st.state}${st.since ? ` since ${st.since}` : ''}${st.basis?.caseRef ? ` — case ${st.basis.caseRef}` : ''}${st.basis?.decisionNumber ? `, decision № ${st.basis.decisionNumber}` : ''}${st.validUntil ? `, valid until ${st.validUntil}` : ''}. ${st.conclusive ? 'CONCLUSIVE.' : `NOT CONCLUSIVE (${st.caveats.join(', ') || 'no controlling decision read'}) — say so plainly, never upgrade it.`}${st.pending.length ? ` Pending later applications: ${st.pending.map((p) => `${p.caseRef ?? '?'} (${p.date}, ${p.outcome})`).join('; ')}.` : ''}`, true);
+  if (intel.funnel.incomplete) push(`PROCESSING INCOMPLETE: ${intel.funnel.incompleteReasons.join(', ')} — conclusions that depend on unread material must be stated as provisional.`, true);
   push('CURRENT DOCUMENTED POSITION:', true);
   const current = intel.facts.filter((f) => f.status === 'CURRENT' || f.status === 'CONFLICTING').sort((a, b) => rank[a.materiality] - rank[b.materiality]);
   for (const f of current) {
@@ -694,11 +922,13 @@ export function tasDigest(intel: TasIntelligence, citeFor: (factOrEventId: strin
     push('UNRESOLVED (same date, different values):', true);
     for (const c of intel.conflicts) push(`- ${c.label}${c.block ? ` (${c.block})` : ''}: ${c.values.map((v) => v.value).join(' vs ')}`, true);
   }
-  push('TIMELINE (oldest first):', true);
+  push('TIMELINE (oldest first; ★ = milestone a buyer needs):', true);
   const events = intel.timeline.slice();
-  const mustEvents = new Set(events.filter((e) => e.materiality === 'HIGH').map((e) => e.id));
+  const mustEvents = new Set(events.filter((e) => e.materiality === 'HIGH' || (e.decision && ['REFUSED', 'SUSPENDED', 'CANCELLED'].includes(e.decision.outcome))).map((e) => e.id));
+  const milestones = new Set(intel.milestoneIds);
   for (const e of events) {
-    const ok = push(`- ${e.date} ${e.kind}: ${e.title}${e.status ? ` — ${e.status}` : ''}${tag(e.id)}`, mustEvents.has(e.id));
+    const dec = e.decision && e.decision.outcome !== 'UNDETERMINED' ? ` [decision${e.decision.number ? ` № ${e.decision.number}` : ''}: ${e.decision.outcome}]` : '';
+    const ok = push(`- ${milestones.has(e.id) ? '★ ' : ''}${e.date} ${e.kind}: ${e.title}${e.status ? ` — ${e.status}` : ''}${dec}${tag(e.id)}`, mustEvents.has(e.id) || milestones.has(e.id));
     ok ? incE++ : arcE++;
   }
   const team = intel.participants.filter((p) => p.customerVisible);
@@ -708,4 +938,56 @@ export function tasDigest(intel: TasIntelligence, citeFor: (factOrEventId: strin
   }
   if (arcF || arcE) push(`ARCHIVED (lower-importance, available on request): ${arcF} fact(s), ${arcE} event(s). Archived ≠ absent.`, true);
   return { text: lines.join('\n'), includedFacts: incF, archivedFacts: arcF, includedEvents: incE, archivedEvents: arcE };
+}
+
+// ─────────────────────────────── customer-safe projection ───────────────────────────────
+
+export interface OfficialHistoryView {
+  status: {
+    state: OfficialState;
+    since: string | null;
+    caseRef: string | null;
+    decisionNumber: string | null;
+    validUntil: string | null;
+    conclusive: boolean;
+    caveats: CurrentOfficialStatus['caveats'];
+    pendingCount: number;
+  };
+  milestones: Array<{ date: string; kind: EventKind; title: string; caseRef: string | null; decisionNumber: string | null; outcome: DecisionOutcome | null }>;
+  evolution: Array<{ key: string; label: string; block: string | null; from: string; fromDate: string | null; to: string; toDate: string | null }>;
+  funnel: TasFunnel;
+  visuals: Array<{ id: string; versionStatus: VisualRef['versionStatus'] }>;
+}
+
+/**
+ * What the customer report may show deterministically: official case and
+ * decision numbers (public references a buyer can quote), dates, outcomes and
+ * value changes. No internal document/attachment ids, hashes, URLs or names
+ * of private persons.
+ */
+export function officialHistoryView(intel: TasIntelligence): OfficialHistoryView | null {
+  if (!intel.available) return null;
+  const byId = new Map(intel.timeline.map((e) => [e.id, e]));
+  const material = new Set(['HIGH', 'MEDIUM']);
+  const evolution = intel.facts
+    .filter((f) => f.status === 'SUPERSEDED' && f.supersededBy && material.has(f.materiality))
+    .map((f) => {
+      const next = intel.facts.find((x) => x.key === f.key && x.block === f.block && x.value === f.supersededBy && x.status !== 'SUPERSEDED');
+      return { key: f.key, label: f.label, block: f.block, from: f.value, fromDate: f.lastSeen, to: f.supersededBy!, toDate: next?.firstSeen ?? null };
+    })
+    .slice(0, 8);
+  const st = intel.officialStatus;
+  return {
+    status: {
+      state: st.state, since: st.since, caseRef: st.basis?.caseRef ?? null, decisionNumber: st.basis?.decisionNumber ?? null,
+      validUntil: st.validUntil, conclusive: st.conclusive, caveats: st.caveats, pendingCount: st.pending.length,
+    },
+    milestones: intel.milestoneIds.map((id) => byId.get(id)).filter(Boolean).map((e) => ({
+      date: e!.date, kind: e!.kind, title: e!.title.slice(0, 160), caseRef: e!.caseRef, decisionNumber: e!.decision?.number ?? null,
+      outcome: e!.decision && e!.decision.outcome !== 'UNDETERMINED' ? e!.decision.outcome : null,
+    })),
+    evolution,
+    funnel: intel.funnel,
+    visuals: intel.visuals.map((v) => ({ id: v.id, versionStatus: v.versionStatus })),
+  };
 }

@@ -181,7 +181,11 @@ export function fakeJpeg(width, height, salt = 0) {
 /** pdf-parse stand-in: fixture PDFs carry their own text marker. */
 export async function fixturePdfParser(bytes) {
   const s = bytes.toString('latin1');
-  if (s.includes('RESPONSE')) return { text: `ბრძანება ${s.slice(-20)}\nმშენებლობის ნებართვის ვადა: 31.12.2026\nმთავარი არქიტექტორის სახელი და გვარი: ნინო კაპანაძე\n`.repeat(4), numpages: 1 };
+  if (s.includes('RESPONSE')) {
+    const motion = Number(s.split(':').pop());
+    const operative = motion % 3 === 0 ? 'შედეგი: შუალედური' : motion % 3 === 1 ? 'პროექტი შეთანხმდეს' : 'მშენებლობის ნებართვა გაიცეს';
+    return { text: `ბრძანება N ${4300000 + (motion % 100000)} 13/12/2018\n${operative}\nმშენებლობის ნებართვის ვადა: 31.12.2026\nმთავარი არქიტექტორის სახელი და გვარი: ნინო კაპანაძე\n`, numpages: 1 };
+  }
   const id = Number(s.split(' ').pop());
   if (id % 7 === 0) return { text: '', numpages: 3 }; // scan-only
   if (id % 11 === 0) return { text: 'გვერდი 1. ხელმოწერა', numpages: 1 }; // low text (< 50 chars)

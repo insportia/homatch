@@ -38,6 +38,27 @@ export interface OfficialVisualView {
   height?: number | null;
   url: string;
 }
+export interface OfficialHistoryClientView {
+  status: {
+    state: string;
+    since: string | null;
+    caseRef: string | null;
+    decisionNumber: string | null;
+    validUntil: string | null;
+    conclusive: boolean;
+    caveats: string[];
+    pendingCount: number;
+  };
+  milestones: Array<{ date: string; kind: string; title: string; caseRef: string | null; decisionNumber: string | null; outcome: string | null }>;
+  evolution: Array<{ key: string; label: string; block: string | null; from: string; fromDate: string | null; to: string; toDate: string | null }>;
+  visuals?: Array<{ id: string; versionStatus: string }>;
+}
+
+const KNOWN_STATES = ['COMMISSIONED', 'PERMITTED', 'PROJECT_APPROVED', 'SUSPENDED', 'CANCELLED', 'APPLICATION_PENDING', 'APPLICATION_REFUSED', 'NOT_ESTABLISHED'];
+const KNOWN_KINDS = ['APPLICATION', 'PERMIT', 'APPROVAL', 'AMENDMENT', 'EXTENSION', 'REFUSAL', 'SUSPENSION', 'INSPECTION', 'COMMISSIONING', 'DECISION', 'OTHER'];
+const KNOWN_FACTS = ['floors', 'undergroundFloors', 'height', 'units', 'constructionDeadline', 'totalArea', 'landArea', 'buildingFunction', 'K1', 'K2', 'parking', 'buildingClass', 'foundationType', 'structuralScheme'];
+const NEGATIVE_STATES = new Set(['SUSPENDED', 'CANCELLED', 'APPLICATION_REFUSED']);
+
 export interface ResearchCoverageView {
   researchedAt?: string | null;
   latestOfficialDocumentDate?: string | null;
@@ -49,6 +70,11 @@ export interface ResearchCoverageView {
   marketListingsAnalyzed?: number;
 }
 
+/** A date or range rendered left-to-right inside any locale (RTL safe). */
+const Ltr: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => (
+  <bdi dir="ltr" className={className}>{children}</bdi>
+);
+
 const day = (iso?: string | null): string | null => {
   if (!iso) return null;
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso));
@@ -59,9 +85,33 @@ const day = (iso?: string | null): string | null => {
 const safeVisualUrl = (u: unknown): string | null =>
   typeof u === 'string' && /^https:\/\/[^/]+\/storage\/v1\/object\/sign\//.test(u) ? u : null;
 
-export const CurrentStatusBlock: React.FC<{ status?: CurrentStatusView | null; clean: (s: string) => string }> = ({ status, clean }) => {
+const OfficialStateBadge: React.FC<{ h: OfficialHistoryClientView['status'] }> = ({ h }) => {
   const { t } = useLanguage();
-  if (!status || (!clean(status.statement) && !status.items?.length)) return null;
+  const state = KNOWN_STATES.includes(h.state) ? h.state : 'NOT_ESTABLISHED';
+  const tone = NEGATIVE_STATES.has(state)
+    ? 'border-amber-500/50 bg-amber-500/10'
+    : state === 'NOT_ESTABLISHED' ? 'border-border bg-card' : 'border-[hsl(38_92%_54%)]/40 bg-[hsl(38_92%_54%)]/10';
+  const ref = [h.caseRef, h.decisionNumber ? `№ ${h.decisionNumber}` : null].filter(Boolean).join(' · ');
+  return (
+    <div className={`rounded-xl border px-4 py-3 space-y-1 ${tone}`}>
+      <p className="text-sm font-semibold break-words">{t(`verify_ox_state_${state.toLowerCase()}`)}</p>
+      <p className="text-xs text-muted-foreground break-words">
+        {[
+          day(h.since) ? t('verify_ox_since_date', { date: day(h.since)! }) : null,
+          ref ? `${t('verify_ox_official_ref')} ${ref}` : null,
+          day(h.validUntil) ? t('verify_ox_valid_until_date', { date: day(h.validUntil)! }) : null,
+        ].filter(Boolean).join(' · ')}
+      </p>
+      {!h.conclusive ? <p className="text-xs leading-5 text-amber-700 dark:text-amber-400 break-words">{t('verify_ox_not_conclusive')}</p> : null}
+      {h.pendingCount > 0 ? <p className="text-xs leading-5 text-muted-foreground break-words">{t('verify_ox_pending', { count: String(h.pendingCount) })}</p> : null}
+    </div>
+  );
+};
+
+export const CurrentStatusBlock: React.FC<{ status?: CurrentStatusView | null; history?: OfficialHistoryClientView | null; clean: (s: string) => string }> = ({ status, history, clean }) => {
+  const { t } = useLanguage();
+  const hasHistory = !!history?.status;
+  if (!hasHistory && (!status || (!clean(status.statement) && !status.items?.length))) return null;
   return (
     <section aria-labelledby="verify-current-status" className="rounded-2xl border border-border bg-card/50 p-5 sm:p-6 space-y-4">
       <div className="space-y-1">
@@ -70,8 +120,9 @@ export const CurrentStatusBlock: React.FC<{ status?: CurrentStatusView | null; c
           {t('verify_ox_current_title')}
         </h2>
       </div>
-      {clean(status.statement) ? <p className="text-[15px] leading-7 text-foreground/90 break-words">{clean(status.statement)}</p> : null}
-      {status.items?.length ? (
+      {hasHistory ? <OfficialStateBadge h={history!.status} /> : null}
+      {status && clean(status.statement) ? <p className="text-[15px] leading-7 text-foreground/90 break-words">{clean(status.statement)}</p> : null}
+      {status?.items?.length ? (
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {status.items.map((i, n) => (
             <div key={`${i.label}-${n}`} className="min-w-0 rounded-xl border border-border bg-card px-4 py-3">
@@ -79,7 +130,7 @@ export const CurrentStatusBlock: React.FC<{ status?: CurrentStatusView | null; c
               <dd className="mt-1 text-sm font-semibold break-words">{clean(i.value)}</dd>
               {day(i.date) ? (
                 <dd className="mt-0.5 text-2xs text-muted-foreground tabular-nums">
-                  {t('verify_ox_as_of')} {day(i.date)}
+                  {t('verify_ox_as_of_date', { date: day(i.date)! })}
                 </dd>
               ) : null}
             </div>
@@ -123,7 +174,7 @@ const VisualFigure: React.FC<{
       <figcaption className="space-y-0.5">
         <p className="text-sm font-medium break-words">
           {label}
-          {day(v.date) ? <span className="ms-2 text-2xs font-normal text-muted-foreground tabular-nums">{day(v.date)}</span> : null}
+          {day(v.date) ? <span className="text-2xs font-normal text-muted-foreground tabular-nums"> · <Ltr>{day(v.date)}</Ltr></span> : null}
         </p>
         {caption?.explanation ? <p className="text-xs leading-5 text-muted-foreground break-words">{clean(caption.explanation)}</p> : null}
       </figcaption>
@@ -131,18 +182,72 @@ const VisualFigure: React.FC<{
   );
 };
 
+const MilestoneList: React.FC<{ items: OfficialHistoryClientView['milestones']; clean: (s: string) => string }> = ({ items, clean }) => {
+  const { t } = useLanguage();
+  if (!items.length) return null;
+  return (
+    <div className="space-y-2">
+      <p className="text-2xs uppercase tracking-wider text-muted-foreground">{t('verify_ox_milestones')}</p>
+      <ol className="space-y-2">
+        {items.map((m, i) => (
+          <li key={`${m.date}-${i}`} className="grid grid-cols-[5.5rem_1fr] gap-3 text-sm">
+            <Ltr className="tabular-nums text-muted-foreground">{day(m.date)}</Ltr>
+            <span className="min-w-0 break-words">
+              <span className="font-medium">{t(`verify_ox_kind_${(KNOWN_KINDS.includes(m.kind) ? m.kind : 'OTHER').toLowerCase()}`)}</span>
+              {m.title ? <span className="text-foreground/80"> — {clean(m.title)}</span> : null}
+              {m.caseRef || m.decisionNumber ? (
+                <span className="block text-2xs text-muted-foreground">{[m.caseRef, m.decisionNumber ? `№ ${m.decisionNumber}` : null].filter(Boolean).join(' · ')}</span>
+              ) : null}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+};
+
+const EvolutionList: React.FC<{ items: OfficialHistoryClientView['evolution']; clean: (s: string) => string }> = ({ items, clean }) => {
+  const { t } = useLanguage();
+  if (!items.length) return null;
+  return (
+    <div className="space-y-2">
+      <p className="text-2xs uppercase tracking-wider text-muted-foreground">{t('verify_ox_changed')}</p>
+      <ul className="space-y-1.5">
+        {items.map((e, i) => (
+          <li key={`${e.key}-${i}`} className="text-sm break-words">
+            <span className="font-medium">{KNOWN_FACTS.includes(e.key) ? t(`verify_ox_fact_${e.key.toLowerCase()}`) : clean(e.label)}</span>
+            {e.block ? <span className="text-muted-foreground"> ({clean(e.block)})</span> : null}
+            {': '}
+            <span className="tabular-nums">{clean(e.from)}</span>
+            <span aria-hidden="true"> → </span>
+            <span className="sr-only">{t('verify_ox_changed_to')}</span>
+            <span className="tabular-nums font-medium">{clean(e.to)}</span>
+            {day(e.toDate) ? <span className="text-2xs text-muted-foreground"> · <Ltr>{day(e.toDate)}</Ltr></span> : null}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+};
+
 export const PropertyStoryBlock: React.FC<{
   chapters?: StoryChapterView[] | null;
   visuals?: OfficialVisualView[] | null;
   captions?: VisualCaptionView[] | null;
+  history?: OfficialHistoryClientView | null;
   clean: (s: string) => string;
-}> = ({ chapters, visuals, captions, clean }) => {
+}> = ({ chapters, visuals, captions, history, clean }) => {
   const { t } = useLanguage();
   const [broken, setBroken] = React.useState<Set<string>>(() => new Set());
   const onBroken = React.useCallback((id: string) => setBroken((b) => new Set(b).add(id)), []);
   const story = (chapters ?? []).filter((c) => clean(c.body));
   const usable = (visuals ?? []).filter((v) => safeVisualUrl(v.url) && !broken.has(v.id)).slice(0, 6);
-  if (!story.length && !usable.length) return null;
+  const milestones = history?.milestones ?? [];
+  const evolution = history?.evolution ?? [];
+  if (!story.length && !usable.length && !milestones.length && !evolution.length) return null;
+  // A render is "the latest APPROVED design" only when its own case carries
+  // the latest approving decision; otherwise it is the latest submitted one.
+  const versionOf = (id: string) => history?.visuals?.find((v) => v.id === id)?.versionStatus ?? 'UNDETERMINED';
 
   const captionFor = (id: string) => (captions ?? []).find((c) => c.visualId === id);
   const latest = usable.find((v) => v.role === 'LATEST_RENDER');
@@ -176,7 +281,13 @@ export const PropertyStoryBlock: React.FC<{
           <p className="text-2xs uppercase tracking-wider text-muted-foreground">{t('verify_ox_evolution_title')}</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <VisualFigure v={comparison.earliest} caption={captionFor(comparison.earliest.id)} badge={t('verify_ox_original')} clean={clean} onBroken={onBroken} />
-            <VisualFigure v={comparison.latest} caption={captionFor(comparison.latest.id)} badge={t('verify_ox_latest')} clean={clean} onBroken={onBroken} />
+            <VisualFigure
+              v={comparison.latest}
+              caption={captionFor(comparison.latest.id)}
+              badge={t(versionOf(comparison.latest.id) === 'CURRENT_APPROVED' ? 'verify_ox_latest' : 'verify_ox_latest_submitted')}
+              clean={clean}
+              onBroken={onBroken}
+            />
           </div>
         </div>
       ) : (
@@ -193,6 +304,8 @@ export const PropertyStoryBlock: React.FC<{
         <p className="text-2xs uppercase tracking-wider text-[hsl(var(--gold-ink))]">{t('verify_ox_story_kicker')}</p>
         <h2 id="verify-story" className="text-base font-semibold tracking-tight break-words">{t('verify_ox_story_title')}</h2>
       </div>
+      <MilestoneList items={milestones} clean={clean} />
+      <EvolutionList items={evolution} clean={clean} />
       {story.length ? (
         <ol className="relative space-y-6 border-s border-[hsl(38_92%_54%)]/30 ps-5">
           {story.map((c) => (
@@ -200,7 +313,7 @@ export const PropertyStoryBlock: React.FC<{
               <span aria-hidden="true" className="absolute -start-[25px] top-1.5 h-2.5 w-2.5 rounded-full bg-[hsl(38_92%_54%)] ring-4 ring-background" />
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <h3 className="text-sm font-semibold break-words">{clean(c.title)}</h3>
-                {c.period ? <span className="text-2xs text-muted-foreground tabular-nums">{c.period}</span> : null}
+                {c.period ? <Ltr className="text-2xs text-muted-foreground tabular-nums">{c.period}</Ltr> : null}
               </div>
               {clean(c.body).split(/\n{2,}/).map((p, i) => (
                 <p key={i} className="text-[15px] leading-7 text-foreground/90 break-words">{p}</p>

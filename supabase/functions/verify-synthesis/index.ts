@@ -28,6 +28,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { projectVerify } from '../../../src/dealroom/domain/assemble.ts';
 import { buildEvidencePackage } from '../../../src/verify/intelligence/evidencePackage.ts';
+import { officialHistoryView } from '../../../src/verify/intelligence/tasIntelligence.ts';
 import { buildIntelligenceBundle } from '../../../src/verify/intelligence/bundle.ts';
 import { draftSnapshot, segmentsFor } from '../../../src/verify/intelligence/marketSnapshot.ts';
 import { writeSnapshot } from '../../../src/verify/intelligence/snapshotStore.ts';
@@ -218,6 +219,12 @@ function researchCoverage(job: any, pkg: any, bundle: any): Record<string, unkno
     officialStepsReviewed: tas?.coverage?.motions ?? 0,
     officialAttachmentsRead: tas?.coverage?.attachmentsRead ?? 0,
     officialFactsConsolidated: Array.isArray(tas?.facts) ? tas.facts.length : 0,
+    // The funnel: discovered → processed → retained → selected → shown.
+    officialRecordsDiscovered: tas?.funnel?.discoveredDocuments ?? 0,
+    officialAttachmentsDiscovered: tas?.funnel?.discoveredAttachments ?? 0,
+    officialEvidenceSelectedForSynthesis: pkg?.items ? pkg.items.filter((i: any) => i.tasRef).length : 0,
+    officialMilestonesShown: tas?.funnel?.milestones ?? 0,
+    officialProcessingIncomplete: tas?.funnel?.incomplete === true,
     marketListingsAnalyzed: typeof bundle?.market?.count === 'number' ? bundle.market.count : 0,
     marketplaceListingsAdded: typeof ledger?.added === 'number' ? ledger.added : 0,
   };
@@ -645,6 +652,10 @@ serve(async (req) => {
       evidenceCounts: pkg.tierCounts,
       // Research transparency: counts only, never links.
       research: researchCoverage(job, pkg, bundle),
+      // Deterministic official history for the report: status (with its
+      // conclusiveness), the 5–10 milestones, value changes, and the funnel
+      // from discovered records to what is shown. Case/decision numbers only.
+      officialHistory: pkg.tas ? officialHistoryView(pkg.tas) : null,
       // Bucket paths (internal); forCustomer() turns them into signed URLs.
       officialVisuals: Array.isArray(job.result_json?.officialVisuals)
         ? job.result_json.officialVisuals.filter((v: any) => (pkg.tas?.visuals ?? []).some((t) => t.id === v?.id))

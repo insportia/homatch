@@ -334,3 +334,18 @@ test('Georgian mojibake (UTF-8 read as CP1252) is repaired; clean text is untouc
   assert.equal(repairGeorgianMojibake(georgian), georgian);
   assert.equal(repairGeorgianMojibake('Plain ASCII áƒ but nothing else'), 'Plain ASCII áƒ but nothing else');
 });
+
+test('processing ledger: discovery vs processing vs deferral, and an honest incomplete flag', async () => {
+  __resetTasApiCaches();
+  const { fetcher } = fixtureFetcher();
+  const full = await acquireTasApi(FULL, { fetcher, parsePdf: fixturePdfParser, pageSize: 10, minGapMs: 0, concurrency: 4 });
+  assert.deepEqual(full.ledger.discovered, { documents: 19, motions: 133, attachments: 413 });
+  assert.equal(full.ledger.incomplete, false);
+  assert.ok(full.cases.flatMap((c) => c.motions).some((m) => m.decision && m.decision.outcome !== 'UNDETERMINED'), 'decisions read from responses');
+  __resetTasApiCaches();
+  const b = fixtureFetcher();
+  const partial = await acquireTasApi(FULL, { fetcher: b.fetcher, parsePdf: fixturePdfParser, pageSize: 10, minGapMs: 0, concurrency: 4, maxAttachmentDownloads: 30 });
+  assert.equal(partial.ledger.incomplete, true);
+  assert.ok(partial.ledger.incompleteReasons.includes('ATTACHMENTS_DEFERRED_BY_BUDGET'));
+  assert.ok(partial.ledger.deferred.attachmentsBudget > 300);
+});

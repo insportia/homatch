@@ -272,9 +272,18 @@ export function VerifyOfficialSourcesPanel() {
                     return (
                       <tr key={j.id} className="border-t border-border align-top">
                         <td className="py-1.5 pe-3"><span className="font-mono">{j.id}</span><br /><span className="text-muted-foreground">{j.status} · {j.query}</span></td>
-                        <td className="py-1.5 pe-3">{j.tas?.execution?.implementation ?? '—'}{j.tas?.execution?.fallbackFrom ? ` ↩ ${j.tas.execution.fallbackFrom}` : ''}<br /><span className="text-muted-foreground">{j.tas?.status ?? ''}</span></td>
+                        <td className="py-1.5 pe-3">
+                          {j.tas?.execution?.implementation ?? '—'}{j.tas?.execution?.fallbackFrom ? ` ↩ ${j.tas.execution.fallbackFrom}` : ''}
+                          <br /><span className="text-muted-foreground">{j.tas?.status ?? ''}</span>
+                          {j.tas?.officialStatus ? (
+                            <><br /><span>{t('adm_vos_status')}: {j.tas.officialStatus.state}{j.tas.officialStatus.since ? ` · ${j.tas.officialStatus.since}` : ''}{j.tas.officialStatus.conclusive ? '' : ' ?'}</span></>
+                          ) : null}
+                          {j.tas?.ledger?.incomplete ? (
+                            <><br /><span className="text-amber-600">{t('adm_vos_incomplete')}: {(j.tas.ledger.incompleteReasons ?? []).join(', ')}</span></>
+                          ) : null}
+                        </td>
                         <td className="py-1.5 pe-3">{acc ? `${acc.detailsRead}/${acc.documents}` : j.tas?.documents ?? '—'}{j.tas?.reconciliation ? (j.tas.reconciliation.reconciled ? ' ✓' : ' ≠') : ''}</td>
-                        <td className="py-1.5 pe-3">{acc ? `${acc.attachments} · ${t('adm_vos_read')} ${(o.READ_TEXT ?? 0) + (o.LOW_TEXT ?? 0)} · scan ${o.SCAN_OR_IMAGE_ONLY ?? 0} · ${t('adm_vos_unsupported')} ${o.UNSUPPORTED_FORMAT ?? 0} · ${t('adm_vos_skipped')} ${(o.NOT_PROCESSED_BUDGET ?? 0) + (o.DOWNLOAD_FAILED ?? 0)}` : '—'}<br /><span className="text-muted-foreground">{t('adm_vos_visuals')}: {j.visuals}</span></td>
+                        <td className="py-1.5 pe-3">{acc ? `${acc.attachments} · ${t('adm_vos_read')} ${(o.READ_TEXT ?? 0) + (o.LOW_TEXT ?? 0)} · scan ${o.SCAN_OR_IMAGE_ONLY ?? 0} · ${t('adm_vos_unsupported')} ${o.UNSUPPORTED_FORMAT ?? 0} · ${t('adm_vos_skipped')} ${(o.NOT_PROCESSED_BUDGET ?? 0) + (o.DOWNLOAD_FAILED ?? 0)}` : '—'}<br /><span className="text-muted-foreground">{t('adm_vos_visuals')}: {j.visuals}{j.tas?.funnel ? ` · ${t('adm_vos_deferred')} ${j.tas.funnel.deferredAttachments} · milestones ${j.tas.funnel.milestones}` : ''}</span></td>
                         <td className="py-1.5 pe-3">{mk ? `MH ${mk.myhome?.listings ?? 0} · SS ${mk.ssge?.listings ?? 0} · dup ${mk.crossPlatformDuplicatesRemoved ?? 0} · +${mk.added ?? 0} = ${mk.finalComparableCount ?? '?'}` : mk === null ? '—' : ''}{mk?.state ? ` (${mk.state})` : ''}</td>
                         <td className="py-1.5 pe-3">{j.ai?.researchTokens ? `${j.ai.researchTokens.input}/${j.ai.researchTokens.output}` : '—'}{j.ai?.synthesis ? ` + ${j.ai.synthesis.inputTokens ?? '?'}/${j.ai.synthesis.outputTokens ?? '?'}` : ''}</td>
                         <td className="py-1.5 pe-3 tabular-nums">{secs(j.durationMs)}</td>

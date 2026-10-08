@@ -63,6 +63,7 @@ import {
   type VisualCaptionView,
   type OfficialVisualView,
   type ResearchCoverageView,
+  type OfficialHistoryClientView,
 } from './OfficialIntelligence';
 import { readable } from '@/verify/readableText';
 import { buyerOpening, unconfirmedItems } from '@/verify/intelligence/buyerSummary';
@@ -212,6 +213,8 @@ export interface VerifySynthesis {
   officialVisuals?: OfficialVisualView[];
   /** What was reviewed, as counts — the report shows no source links. */
   research?: ResearchCoverageView;
+  /** Deterministic official history: status, milestones, value changes. */
+  officialHistory?: OfficialHistoryClientView | null;
 }
 
 /**
@@ -404,7 +407,7 @@ export function VerifyReport({
       <SummaryHero summary={r.summary} weighed={weighed} />
 
       {/* B. THE LATEST CONFIRMED OFFICIAL POSITION — the present tense, once. */}
-      <CurrentStatusBlock status={r.currentStatus} clean={clean} />
+      <CurrentStatusBlock status={r.currentStatus} history={synthesis.officialHistory} clean={clean} />
 
       {synthesis.snapshot ? <Snapshot s={synthesis.snapshot} /> : null}
       {/* The dropped section's own figures, kept where figures belong. */}
@@ -418,6 +421,7 @@ export function VerifyReport({
         chapters={r.propertyStory?.chapters}
         visuals={synthesis.officialVisuals}
         captions={r.visualCaptions}
+        history={synthesis.officialHistory}
         clean={clean}
       />
 

@@ -53,7 +53,9 @@ const touchScreen = () => {
 interface Ui { score: number; alive: boolean; paused: boolean; started: boolean; won: boolean }
 const uiOf = (g: SnakeState): Ui => ({ score: g.score, alive: g.alive, paused: g.paused, started: g.started, won: g.won });
 
-export default function SnakeGame({ status, stageLabel, onView, onClose }: {
+export default function SnakeGame({ status, stageLabel, onView, onClose, statusLines }: {
+  /** Optional host wording for the status bar; Design Studio passes none. */
+  statusLines?: { working?: string; ready?: string; failed?: string };
   status: WatchedStatus;
   /** The work's real stage, in the customer's words. */
   stageLabel: string;
@@ -264,7 +266,13 @@ export default function SnakeGame({ status, stageLabel, onView, onClose }: {
     </button>
   );
 
-  const statusLine = status === 'READY' ? t('dsx_sn_ready') : status === 'FAILED' ? t('dsx_rec_title') : t('dsx_sn_job', { stage: stageLabel });
+  // A host other than Design Studio (e.g. Verify) supplies its own wording;
+  // without it the Design Studio lines are unchanged.
+  const statusLine = status === 'READY'
+    ? (statusLines?.ready ?? t('dsx_sn_ready'))
+    : status === 'FAILED'
+      ? (statusLines?.failed ?? t('dsx_rec_title'))
+      : (statusLines?.working ?? t('dsx_sn_job', { stage: stageLabel }));
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col overscroll-none bg-[#0C1119] text-white" role="dialog" aria-modal="true" aria-label={t('dsx_sn_play')} data-testid="snake-game" data-status={status}>

@@ -40,7 +40,7 @@ MATTERS right now, verify against the live systems, not this file)
   internal ids or private names.
 - Security: the owner's recovered PowerShell history (line 8) contains an apparent 32-hex API
   credential — recommend rotation via the provider + secret store; value never copied anywhere.
-- Migration `20261021090000_verify_official_visuals_and_switches.sql` NOT applied: private
+- Migration `20261022090000_verify_official_visuals_and_switches.sql` NOT applied: private
   bucket `verify-official-visuals`, settings `verify_tas_implementation` (LEGACY),
   `verify_marketplace_market_enabled` (false).
 

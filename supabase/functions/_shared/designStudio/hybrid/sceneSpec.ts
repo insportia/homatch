@@ -54,6 +54,13 @@ export const RUNTIME_KINDS: ReadonlySet<SpecKind> = new Set<SpecKind>([
 export const SPEC_FORMS = ['STRAIGHT', 'ROUNDED', 'CURVED', 'ROUND', 'OVAL', 'SHELL', 'L_SHAPED', 'U_SHAPED',
   // The forms a DESIGN gives a piece (walkthrough/designGraph.ts; built by the factory's furniture.py DESIGN_BUILDERS).
   'SHAKER', 'CLUB', 'TV_WALL', 'UPHOLSTERED', 'BUILT_IN', 'FLUTED', 'BORDERED'] as const;
+/**
+ * The forms the DEPLOYED factory builds (infra/design-studio-gpu-worker/worker/spec.py FORMS in the image RunPod
+ * runs). Its validator refuses any other form, failing the whole pass. A piece whose form is not here goes to the
+ * factory formless and is not built there (runtime false): the walkthrough draws it in its own form. Add a form here
+ * only once the image that builds it (furniture.py DESIGN_BUILDERS) is the one RunPod runs.
+ */
+export const FACTORY_FORMS: readonly string[] = ['STRAIGHT', 'ROUNDED', 'CURVED', 'ROUND', 'OVAL', 'SHELL', 'L_SHAPED', 'U_SHAPED'];
 /** The surface patterns a reading or material names (finishTextures SurfacePattern). */
 export const SPEC_PATTERNS = ['WOOD_PLANK', 'WOOD_HERRINGBONE', 'TILE', 'STONE', 'CONCRETE', 'CARPET', 'PAINT', 'FABRIC', 'WOOD_GRAIN', 'LEATHER'] as const;
 

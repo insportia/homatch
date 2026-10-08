@@ -218,7 +218,10 @@ test('API_FIRST: unchanged evidence is served from cache on the next run (no re-
   await acquireTasApi(FULL, { fetcher: a.fetcher, parsePdf: fixturePdfParser, pageSize: 10, minGapMs: 0, concurrency: 4 });
   const b = fixtureFetcher();
   const r2 = await acquireTasApi(FULL, { fetcher: b.fetcher, parsePdf: fixturePdfParser, pageSize: 10, minGapMs: 0, concurrency: 4 });
-  assert.ok(r2.accounting.cacheHits >= 133 + 400);
+  // 133 responses = 67 PDF + 1 HTML (cached) + 65 EMPTY. EMPTY answers are
+  // deliberately NOT cached — a decision uploaded since must be seen.
+  assert.ok(r2.accounting.cacheHits >= 68 + 400);
+  assert.equal(r2.accounting.responses.EMPTY, 65);
   assert.ok(b.calls.filter((c) => c.path === '/DownloadServlet').length <= 6, 'only shortlisted visuals re-fetched');
 });
 
@@ -348,4 +351,42 @@ test('processing ledger: discovery vs processing vs deferral, and an honest inco
   assert.equal(partial.ledger.incomplete, true);
   assert.ok(partial.ledger.incompleteReasons.includes('ATTACHMENTS_DEFERRED_BY_BUDGET'));
   assert.ok(partial.ledger.deferred.attachmentsBudget > 300);
+});
+
+test('a hostile reply cannot pollute Object.prototype through any path step', () => {
+  const reply = [
+    'var s0={};var s1={};',
+    's0.__proto__.polluted="yes";',
+    's1.constructor.prototype.polluted2="yes";',
+    's0["__proto__"]={polluted3:"yes"};',
+    'var s2=s0.toString;',
+    'dwr.engine.remote.handleCallback("0","0",{isSuccess:true,source:[s0],sources:[1],leak:s2});',
+  ].join('\n');
+  const parsed = parseDwrReply(reply);
+  assert.equal(({}).polluted, undefined);
+  assert.equal(({}).polluted2, undefined);
+  assert.equal(({}).polluted3, undefined);
+  assert.equal(parsed.data?.leak, undefined, 'inherited members are never read');
+});
+
+test('a run cut short during SEARCH is FAILED (LEGACY fallback), never "no TAS history"', async () => {
+  __resetTasApiCaches();
+  const { fetcher } = fixtureFetcher();
+  // Deadline already passed when the first search request is attempted.
+  const raw = await acquireTasApi(FULL, { fetcher, parsePdf: fixturePdfParser, pageSize: 10, minGapMs: 0, now: () => 0, budgetMs: 1000 });
+  assert.equal(raw.searchComplete, false);
+  assert.equal(raw.deadlineReached, true);
+  const legacy = toLegacyTasResult(raw);
+  assert.equal(legacy.status, 'FAILED');
+  assert.equal(shouldFallBack(legacy), true);
+});
+
+test('structured cases persist unmapped field NAMES only, never their values', async () => {
+  __resetTasApiCaches();
+  const { fetcher } = fixtureFetcher();
+  const legacy = toLegacyTasResult(await acquireTasApi(FULL, { fetcher, parsePdf: fixturePdfParser, pageSize: 10, minGapMs: 0, concurrency: 4 }));
+  for (const c of legacy.tasApi.cases) {
+    assert.equal('unmapped' in c, false);
+    assert.ok(Array.isArray(c.unmappedKeys));
+  }
 });

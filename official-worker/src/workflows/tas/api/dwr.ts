@@ -129,6 +129,17 @@ export function serializeDwrCall(call: DwrCall, opts: DwrRequestOptions): string
 
 // ─────────────────────────────── response side ──────────────────────────────
 
+/** Keys that would reach a prototype if a reply used them as a path step. */
+function unsafeKey(k: string | number): boolean {
+  return k === '__proto__' || k === 'constructor' || k === 'prototype';
+}
+
+/** Member read limited to the reply's own data — never inherited properties. */
+function ownMember(target: unknown, k: string | number): any {
+  if (target == null || typeof target !== 'object' || unsafeKey(k)) return undefined;
+  return Object.prototype.hasOwnProperty.call(target, k) ? (target as any)[k] : undefined;
+}
+
 export class DwrParseError extends Error {
   constructor(message: string, public offset: number) {
     super(`${message} @${offset}`);
@@ -343,6 +354,11 @@ class Evaluator {
   }
 
   private assign(path: Array<string | number>, value: DwrValue): void {
+    // Every step is checked: `s0.__proto__.x = …` must never reach Object.prototype.
+    if (path.some(unsafeKey)) {
+      this.ignored++;
+      return;
+    }
     if (path.length === 1) {
       this.vars.set(String(path[0]), value);
       return;
@@ -350,15 +366,13 @@ class Evaluator {
     let target: any = this.vars.get(String(path[0]));
     for (let k = 1; k < path.length - 1; k++) {
       if (target == null || typeof target !== 'object') return;
-      target = target[path[k] as any];
+      target = ownMember(target, path[k]);
     }
     if (target == null || typeof target !== 'object') {
       this.ignored++;
       return;
     }
-    const key = path[path.length - 1];
-    if (key === '__proto__' || key === 'constructor' || key === 'prototype') return;
-    target[key as any] = value;
+    target[path[path.length - 1] as any] = value;
   }
 
   private call(callee: string, args: DwrValue[]): void {
@@ -418,12 +432,12 @@ class Evaluator {
       if (this.peek() === '.') {
         this.i++;
         const k = this.ident();
-        v = v != null && typeof v === 'object' ? v[k] : undefined;
+        v = ownMember(v, k);
       } else if (this.peek() === '[') {
         this.i++;
         const k = this.expr();
         this.expect(']');
-        v = v != null && typeof v === 'object' ? v[k as any] : undefined;
+        v = typeof k === 'string' || typeof k === 'number' ? ownMember(v, k) : undefined;
       } else break;
     }
     return v;
@@ -451,7 +465,7 @@ class Evaluator {
       else key = this.ident();
       this.expect(':');
       const value = this.expr();
-      if (key !== '__proto__' && key !== 'constructor' && key !== 'prototype') o[key] = value;
+      if (!unsafeKey(key)) o[key] = value;
       this.ws();
       const n = this.peek();
       if (n === ',') {

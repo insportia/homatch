@@ -111,7 +111,7 @@ export interface CurrentOfficialStatus {
   pending: Array<{ caseRef: string | null; date: string; outcome: DecisionOutcome }>;
   /** True only when decisions establish the state and nothing material is unread. */
   conclusive: boolean;
-  caveats: Array<'RESPONSES_UNREAD' | 'LATER_UNDETERMINED_DECISION' | 'PROCESSING_INCOMPLETE' | 'NO_DECISIONS_READ' | 'VALIDITY_PASSED'>;
+  caveats: Array<'RESPONSES_UNREAD' | 'LATER_UNDETERMINED_DECISION' | 'PROCESSING_INCOMPLETE' | 'PROCESSING_UNVERIFIED' | 'CASES_DISAGREE' | 'NO_DECISIONS_READ' | 'VALIDITY_PASSED'>;
 }
 
 export interface TasFunnel {
@@ -772,8 +772,39 @@ export function deriveOfficialStatus(timeline: TimelineEvent[], api: any, nowIso
   const responses = obj(obj(api?.accounting).responses);
   if (Number(responses.FAILED || 0) + Number(responses.NOT_FETCHED || 0) > 0) caveats.push('RESPONSES_UNREAD');
   const b = basisEvent as TimelineEvent | null;
-  if (b && timeline.some((e) => e.date > b.date && e.decision && e.decision.outcome === 'UNDETERMINED')) caveats.push('LATER_UNDETERMINED_DECISION');
+  // A later official answer that exists but could not be read (scan, parse
+  // failure, unknown format, ambiguous wording) may change the position.
+  const unreadLater = arr<any>(api?.cases).some((c) =>
+    arr<any>(c?.motions).some((m) => {
+      const kind = s(m?.response);
+      if (kind !== 'PDF' && kind !== 'HTML' && kind !== 'OTHER') return false;
+      const outcome = s(obj(m?.decision).outcome);
+      if (outcome && outcome !== 'UNDETERMINED') return false;
+      const d = day(m?.date);
+      return !b || !d || d > b.date;
+    }));
+  if (b && (unreadLater || timeline.some((e) => e.date > b.date && e.decision && e.decision.outcome === 'UNDETERMINED'))) caveats.push('LATER_UNDETERMINED_DECISION');
+  // Fail closed: API results without a ledger cannot prove completeness.
+  if (api && !api.ledger) caveats.push('PROCESSING_UNVERIFIED');
   if (obj(api?.ledger).incomplete === true) caveats.push('PROCESSING_INCOMPLETE');
+  // The status is parcel-wide. When cases for DIFFERENT building blocks end
+  // on opposite legal footing (block A cancelled, block B permitted) it is
+  // not one answer. A cancellation filed as its own case without a block is
+  // the ordinary pattern and is not flagged.
+  const blockOf = new Map<string, string>();
+  for (const c of arr<any>(api?.cases)) {
+    const tf = arr<any>(c?.technicalFacts);
+    const blk = s(tf.find((f) => f?.key === 'buildingBlock' || f?.key === 'buildingLiter')?.value);
+    if (blk) blockOf.set(s(c?.documentId), blk.toLowerCase());
+  }
+  const finalByCase = new Map<string, { outcome: string; block: string | null }>();
+  for (const e of decided)
+    if (OUTCOME_MATERIAL.has(e.decision!.outcome))
+      finalByCase.set(e.caseRef ?? e.documentId ?? e.id, { outcome: e.decision!.outcome, block: blockOf.get(e.documentId ?? '') ?? null });
+  const finals = [...finalByCase.values()];
+  const sanctionedBlocks = new Set(finals.filter((f) => f.block && (f.outcome === 'CANCELLED' || f.outcome === 'SUSPENDED')).map((f) => f.block));
+  const allowedBlocks = new Set(finals.filter((f) => f.block && !NEGATIVE.has(f.outcome)).map((f) => f.block));
+  if (sanctionedBlocks.size && allowedBlocks.size && [...allowedBlocks].some((b) => !sanctionedBlocks.has(b))) caveats.push('CASES_DISAGREE');
   if (!decided.length) caveats.push('NO_DECISIONS_READ');
   if (validUntil && Date.parse(validUntil) < Date.parse(nowIso)) caveats.push('VALIDITY_PASSED');
   return {

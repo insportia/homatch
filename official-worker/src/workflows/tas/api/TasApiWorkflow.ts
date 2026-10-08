@@ -158,6 +158,8 @@ export interface TasApiResult {
   ledger: ProcessingLedger | null;
   durationMs: number;
   deadlineReached: boolean;
+  /** True only when every search candidate ran to a stop condition. A run cut short in search is never "no result". */
+  searchComplete: boolean;
   error: string | null;
 }
 
@@ -253,6 +255,7 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
     ledger: null,
     durationMs: 0,
     deadlineReached: false,
+    searchComplete: false,
     error: null,
   };
 
@@ -305,6 +308,7 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
       rows = merged.rows;
       if (rows.length) break;
     }
+    result.searchComplete = true;
     result.accounting.documents = rows.length;
 
     // ── 2. case detail graphs ──
@@ -315,8 +319,10 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
         details.set(row.documentId, normalizeCaseDetail(row.documentId, r.data, r.objectCount));
         result.accounting.detailsRead++;
       } catch (e) {
-        if (e instanceof TasDeadline) throw e;
-        result.accounting.detailFailures++;
+        // A deadline leaves the remaining details unread (DETAILS_NOT_READ);
+        // what was read is still assembled and accounted.
+        if (e instanceof TasDeadline) result.deadlineReached = true;
+        else result.accounting.detailFailures++;
       }
     });
 
@@ -349,10 +355,11 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
       try {
         if (cached) {
           result.accounting.cacheHits++;
-          rec.response = cached.format === 'pdf' ? 'PDF' : cached.format === 'html' ? 'HTML' : cached.outcome === 'EMPTY' ? 'EMPTY' : 'OTHER';
+          rec.response = cached.outcome === 'EMPTY' ? 'EMPTY' : cached.format === 'pdf' ? 'PDF' : cached.format === 'html' ? 'HTML' : 'OTHER';
           rec.sha256 = cached.sha256;
           rec.textChars = cached.text.length;
           rec.decision = cached.text ? extractDecision(cached.text) : null;
+          if (rec.decision && !rec.decisionNumber && rec.decision.number) rec.decisionNumber = rec.decision.number;
           if (cached.text) pushText(docId, `[${m.date?.slice(0, 10) ?? 'undated'} · ${m.name ?? 'motion'} · response]\n${cached.text}`);
         } else {
           const r = await client.request(responseUrl(docId, m.motionId));
@@ -376,13 +383,16 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
           rec.textChars = text.length;
           rec.decision = text ? extractDecision(text) : null;
           if (rec.decision && !rec.decisionNumber && rec.decision.number) rec.decisionNumber = rec.decision.number;
-          if (rec.response !== 'FAILED')
-            cachePut(key, { sha256: rec.sha256 ?? '', text, pages, outcome: rec.response === 'EMPTY' ? 'EMPTY' : 'READ_TEXT', format: cls.format ?? cls.kind.toLowerCase(), at: now() });
+          // An EMPTY answer is not cached: a decision uploaded later must be seen on the next run.
+          if (rec.response !== 'FAILED' && rec.response !== 'EMPTY')
+            cachePut(key, { sha256: rec.sha256 ?? '', text, pages, outcome: 'READ_TEXT', format: cls.format ?? cls.kind.toLowerCase(), at: now() });
           if (text) pushText(docId, `[${m.date?.slice(0, 10) ?? 'undated'} · ${m.name ?? 'motion'} · response]\n${text}`);
         }
       } catch (e) {
-        if (e instanceof TasDeadline) throw e;
-        rec.response = 'FAILED';
+        if (e instanceof TasDeadline) {
+          result.deadlineReached = true;
+          rec.response = 'NOT_FETCHED';
+        } else rec.response = 'FAILED';
       }
       result.accounting.responses[rec.response]++;
       const list = motionRecords.get(docId) ?? [];
@@ -515,7 +525,7 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
       });
     }
     result.cases.sort((a, b) => (caseDate(a) ?? '').localeCompare(caseDate(b) ?? ''));
-    result.ledger = buildLedger(result, attachmentJobs.length - new Set(attachmentJobs.map((j) => j.a.attachedFileId)).size);
+    result.ledger = buildLedger(result, attachmentJobs.length - new Set(attachmentJobs.map((j) => j.a.attachedFileId)).size, pageSize);
   } catch (e) {
     if (e instanceof TasDeadline) result.deadlineReached = true;
     else result.error = String((e as Error)?.message ?? e).slice(0, 300);
@@ -524,13 +534,18 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
   return result;
 }
 
-function buildLedger(r: TasApiResult, duplicateReferences: number): ProcessingLedger {
+function buildLedger(r: TasApiResult, duplicateReferences: number, pageSize: number): ProcessingLedger {
   const o = r.accounting.attachmentOutcomes;
   const rs = r.accounting.responses;
   const reasons: string[] = [];
   if (r.reconciliation && r.reconciliation.reconciled === false) reasons.push('SEARCH_TOTAL_MISMATCH');
   if (r.reconciliation && r.reconciliation.stopReason === 'MAX_PAGES') reasons.push('SEARCH_PAGE_LIMIT');
+  // No server total and a full page that then repeated: rows past page one may exist unseen.
+  const rec = r.reconciliation;
+  if (rec && rec.reconciled === null && rec.stopReason === 'REPEATED_PAGE' && rec.uniqueDocumentIds > 0 && rec.uniqueDocumentIds % pageSize === 0)
+    reasons.push('SEARCH_TOTAL_UNKNOWN');
   if (r.accounting.detailFailures) reasons.push('DETAIL_FAILURES');
+  if (r.accounting.detailsRead + r.accounting.detailFailures < r.accounting.documents) reasons.push('DETAILS_NOT_READ');
   if (rs.FAILED || rs.NOT_FETCHED) reasons.push('RESPONSES_NOT_READ');
   if (o.NOT_PROCESSED_BUDGET) reasons.push('ATTACHMENTS_DEFERRED_BY_BUDGET');
   if (o.DOWNLOAD_FAILED || o.FAILED) reasons.push('ATTACHMENTS_FAILED');
@@ -596,8 +611,10 @@ export function toLegacyTasResult(r: TasApiResult): LegacySourceResult & { tasAp
       textTruncated: c.textTruncated,
     };
   });
-  const ok = !r.error && !!r.searchCadastralCode;
   const found = r.accounting.documents;
+  // Search cut short, or cases found but none could be assembled → FAILED, so
+  // the LEGACY fallback runs; never a false "no TAS history".
+  const ok = !r.error && !!r.searchCadastralCode && r.searchComplete && !(found > 0 && r.cases.length === 0);
   const status = !ok ? 'FAILED' : found === 0 ? 'NO_RESULT_CONFIRMED' : 'SEARCH_CONFIRMED';
   const exhausted = ok && !r.deadlineReached && r.accounting.detailFailures === 0;
   const workflowResult: WorkflowResult = {
@@ -628,7 +645,8 @@ export function toLegacyTasResult(r: TasApiResult): LegacySourceResult & { tasAp
     description: c.detail.description,
     parties: c.detail.parties,
     values: c.detail.values,
-    unmapped: c.detail.unmapped,
+    // Source fields not yet mapped: names only (contract discovery), never their values — they may carry personal data.
+    unmappedKeys: Object.keys(c.detail.unmapped ?? {}).slice(0, 80),
     motions: c.motions,
     attachments: c.attachments,
     technicalFacts: dedupeTasTechnicalFacts(extractTasTechnicalFacts(c.text)),

@@ -5010,6 +5010,29 @@ async function recordVerificationCost(db: any, job: any): Promise<void> {
   }
 }
 
+/**
+ * A running job's partial result_json reaches the polling customer. The
+ * structured TAS block (parties, masked personal ids, unmapped source
+ * scalars), storage paths of official visuals and the internal execution /
+ * market ledgers are never part of that — they serve synthesis and admin
+ * diagnostics only. Everything the waiting experience reads is left as is.
+ */
+function stripInternalInProgress(result: any): any {
+  const r: any = { ...result };
+  for (const k of ['officialVisuals', '_tasExecution', '_verifyMarket', '_marketplaceLedger', '_officialVisualsError']) delete r[k];
+  if (r.browserOfficial && typeof r.browserOfficial === 'object' && Array.isArray(r.browserOfficial.results)) {
+    r.browserOfficial = {
+      ...r.browserOfficial,
+      results: r.browserOfficial.results.map((x: any) => {
+        if (!x || typeof x !== 'object' || !('tasApi' in x)) return x;
+        const { tasApi: _internal, ...rest } = x;
+        return rest;
+      }),
+    };
+  }
+  return r;
+}
+
 function sanitizeForCustomer(job: any): any {
   // v32 (P0 fix): `research_jobs.error` also carries the last TRANSIENT
   // retry's message while a job is still actively being retried (see
@@ -5062,6 +5085,7 @@ function sanitizeForCustomer(job: any): any {
       terminalReason: marker === 'HUMAN_VERIFICATION_EXPIRED' ? 'EXPIRED' : 'INCOMPLETE',
     };
   }
+  if (job && job.status !== 'COMPLETE' && job.result_json && typeof job.result_json === 'object') return { ...job, result_json: stripInternalInProgress(job.result_json) };
   if (!job || job.status !== 'COMPLETE' || !job.result_json || typeof job.result_json !== 'object') return job;
   const r: any = sanitizeCustomerReport({ ...job.result_json });
   // Applied on READ, so the reports already in the database are classified by

@@ -15762,6 +15762,15 @@ const en = {
   verify_net_stopped: 'Research stopped before it could finish',
   verify_net_sr_heading: 'Research steps and their status',
   verify_net_play_snake: 'Play Snake while we research your property',
+
+  /* ── VERIFY OFFICIAL HISTORY + ADMIN OFFICIAL SOURCES ── */
+  verify_ox_caveat_responses_unread: 'Some official responses could not be retrieved.',
+  verify_ox_caveat_later_undetermined_decision: 'A later official answer exists but its decision could not be read.',
+  verify_ox_caveat_processing_incomplete: 'Not all official records found were processed.',
+  verify_ox_caveat_processing_unverified: 'The completeness of the official search could not be confirmed.',
+  verify_ox_caveat_cases_disagree: 'Separate official cases on this parcel end on different legal footing.',
+  verify_ox_caveat_no_decisions_read: 'No official decision could be read yet.',
+  verify_ox_caveat_validity_passed: 'The validity date stated in the decision has passed.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -31438,6 +31447,15 @@ const ka: Partial<Record<TranslationKey, string>> = {
   verify_net_stopped: 'კვლევა დასრულებამდე შეწყდა',
   verify_net_sr_heading: 'კვლევის ეტაპები და მათი სტატუსი',
   verify_net_play_snake: 'ითამაშეთ Snake-ი, სანამ თქვენს ქონებას ვიკვლევთ',
+
+  /* ── VERIFY OFFICIAL HISTORY + ADMIN OFFICIAL SOURCES ── */
+  verify_ox_caveat_responses_unread: 'ზოგიერთი ოფიციალური პასუხის მიღება ვერ მოხერხდა.',
+  verify_ox_caveat_later_undetermined_decision: 'არსებობს უფრო გვიანდელი ოფიციალური პასუხი, რომლის გადაწყვეტილების წაკითხვაც ვერ მოხერხდა.',
+  verify_ox_caveat_processing_incomplete: 'მოძიებული ოფიციალური ჩანაწერები ბოლომდე ვერ დამუშავდა.',
+  verify_ox_caveat_processing_unverified: 'ოფიციალური ძიების სისრულის დადასტურება ვერ მოხერხდა.',
+  verify_ox_caveat_cases_disagree: 'ამ ნაკვეთზე ცალკეული ოფიციალური საქმეები განსხვავებული სამართლებრივი შედეგით სრულდება.',
+  verify_ox_caveat_no_decisions_read: 'ოფიციალური გადაწყვეტილების წაკითხვა ჯერ ვერ მოხერხდა.',
+  verify_ox_caveat_validity_passed: 'გადაწყვეტილებაში მითითებული მოქმედების ვადა გასულია.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -47105,6 +47123,15 @@ const ru: Partial<Record<TranslationKey, string>> = {
   verify_net_stopped: 'Исследование остановлено до завершения',
   verify_net_sr_heading: 'Этапы исследования и их статус',
   verify_net_play_snake: 'Сыграйте в Snake, пока мы исследуем ваш объект',
+
+  /* ── VERIFY OFFICIAL HISTORY + ADMIN OFFICIAL SOURCES ── */
+  verify_ox_caveat_responses_unread: 'Некоторые официальные ответы получить не удалось.',
+  verify_ox_caveat_later_undetermined_decision: 'Есть более поздний официальный ответ, но его решение прочитать не удалось.',
+  verify_ox_caveat_processing_incomplete: 'Не все найденные официальные записи были обработаны.',
+  verify_ox_caveat_processing_unverified: 'Полноту официального поиска подтвердить не удалось.',
+  verify_ox_caveat_cases_disagree: 'Отдельные официальные дела по этому участку завершаются с разным правовым результатом.',
+  verify_ox_caveat_no_decisions_read: 'Пока не удалось прочитать ни одного официального решения.',
+  verify_ox_caveat_validity_passed: 'Срок действия, указанный в решении, истёк.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -62770,6 +62797,15 @@ const tr: Partial<Record<TranslationKey, string>> = {
   verify_net_stopped: 'Araştırma tamamlanmadan durdu',
   verify_net_sr_heading: 'Araştırma adımları ve durumları',
   verify_net_play_snake: 'Mülkünüzü araştırırken Snake oynayın',
+
+  /* ── VERIFY OFFICIAL HISTORY + ADMIN OFFICIAL SOURCES ── */
+  verify_ox_caveat_responses_unread: 'Bazı resmî yanıtlar alınamadı.',
+  verify_ox_caveat_later_undetermined_decision: 'Daha sonraki bir resmî yanıt var, ancak kararı okunamadı.',
+  verify_ox_caveat_processing_incomplete: 'Bulunan resmî kayıtların tamamı işlenemedi.',
+  verify_ox_caveat_processing_unverified: 'Resmî aramanın eksiksiz olduğu doğrulanamadı.',
+  verify_ox_caveat_cases_disagree: 'Bu parseldeki ayrı resmî dosyalar farklı hukuki sonuçlarla bitiyor.',
+  verify_ox_caveat_no_decisions_read: 'Henüz hiçbir resmî karar okunamadı.',
+  verify_ox_caveat_validity_passed: 'Kararda belirtilen geçerlilik tarihi geçmiş.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -78435,6 +78471,15 @@ const ar: Partial<Record<TranslationKey, string>> = {
   verify_net_stopped: 'توقف البحث قبل اكتماله',
   verify_net_sr_heading: 'خطوات البحث وحالتها',
   verify_net_play_snake: 'العب Snake بينما نبحث في عقارك',
+
+  /* ── VERIFY OFFICIAL HISTORY + ADMIN OFFICIAL SOURCES ── */
+  verify_ox_caveat_responses_unread: 'تعذّر الحصول على بعض الردود الرسمية.',
+  verify_ox_caveat_later_undetermined_decision: 'يوجد رد رسمي لاحق، لكن تعذّرت قراءة قراره.',
+  verify_ox_caveat_processing_incomplete: 'لم تتم معالجة جميع السجلات الرسمية التي عُثر عليها.',
+  verify_ox_caveat_processing_unverified: 'تعذّر التأكد من اكتمال البحث الرسمي.',
+  verify_ox_caveat_cases_disagree: 'تنتهي الملفات الرسمية المنفصلة لهذه القطعة بنتائج قانونية مختلفة.',
+  verify_ox_caveat_no_decisions_read: 'لم يتسنَّ بعد قراءة أي قرار رسمي.',
+  verify_ox_caveat_validity_passed: 'انقضى تاريخ الصلاحية المذكور في القرار.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -94100,6 +94145,15 @@ const he: Partial<Record<TranslationKey, string>> = {
   verify_net_stopped: 'המחקר נעצר לפני שהושלם',
   verify_net_sr_heading: 'שלבי המחקר והסטטוס שלהם',
   verify_net_play_snake: 'שחקו Snake בזמן שאנחנו חוקרים את הנכס שלכם',
+
+  /* ── VERIFY OFFICIAL HISTORY + ADMIN OFFICIAL SOURCES ── */
+  verify_ox_caveat_responses_unread: 'לא ניתן היה לקבל חלק מהתשובות הרשמיות.',
+  verify_ox_caveat_later_undetermined_decision: 'קיימת תשובה רשמית מאוחרת יותר, אך לא ניתן היה לקרוא את ההחלטה שבה.',
+  verify_ox_caveat_processing_incomplete: 'לא כל הרשומות הרשמיות שנמצאו עובדו.',
+  verify_ox_caveat_processing_unverified: 'לא ניתן היה לאשר שהחיפוש הרשמי היה מלא.',
+  verify_ox_caveat_cases_disagree: 'תיקים רשמיים נפרדים במגרש זה מסתיימים בתוצאה משפטית שונה.',
+  verify_ox_caveat_no_decisions_read: 'עדיין לא ניתן היה לקרוא אף החלטה רשמית.',
+  verify_ox_caveat_validity_passed: 'תאריך התוקף שצוין בהחלטה חלף.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

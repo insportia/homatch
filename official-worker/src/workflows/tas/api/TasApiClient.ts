@@ -87,6 +87,13 @@ export class TasDeadline extends Error {
   }
 }
 
+/** A reply over the byte limit: never retried (it would be just as large again). */
+export class TasPayloadTooLarge extends Error {
+  constructor(bytes: number) {
+    super(`TAS_PAYLOAD_TOO_LARGE ${bytes}`);
+  }
+}
+
 export class TasApiClient {
   private fetcher: typeof fetch;
   private active = 0;
@@ -105,17 +112,23 @@ export class TasApiClient {
 
   private async slot<T>(fn: () => Promise<T>): Promise<T> {
     const max = Math.max(1, this.o.concurrency ?? 3);
+    // A released slot is HANDED to the next waiter (active is not decremented
+    // in between), so no newcomer can slip in and exceed `max`.
     if (this.active >= max) await new Promise<void>((r) => this.waiters.push(r));
-    this.active++;
+    else this.active++;
     try {
+      // Reserve the start time before sleeping, so waiters are spaced by the
+      // gap instead of all computing the same wait from the same lastStart.
       const gap = this.o.minGapMs ?? 250;
-      const wait = this.lastStart + gap - Date.now();
+      const startAt = Math.max(Date.now(), this.lastStart + gap);
+      this.lastStart = startAt;
+      const wait = startAt - Date.now();
       if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-      this.lastStart = Date.now();
       return await fn();
     } finally {
-      this.active--;
-      this.waiters.shift()?.();
+      const next = this.waiters.shift();
+      if (next) next();
+      else this.active--;
     }
   }
 
@@ -134,7 +147,7 @@ export class TasApiClient {
         return r;
       } catch (e) {
         if (e instanceof TasDeadline) throw e;
-        if (attempt >= retries) {
+        if (attempt >= retries || e instanceof TasPayloadTooLarge) {
           this.stats.failures++;
           throw e;
         }
@@ -159,10 +172,9 @@ export class TasApiClient {
     const declared = Number(res.headers.get('content-length') ?? NaN);
     if (Number.isFinite(declared) && declared > max) {
       try { await res.body?.cancel(); } catch { /* ignore */ }
-      throw new Error(`TAS_PAYLOAD_TOO_LARGE ${declared}`);
+      throw new TasPayloadTooLarge(declared);
     }
-    const buf = new Uint8Array(await res.arrayBuffer());
-    if (buf.length > max) throw new Error(`TAS_PAYLOAD_TOO_LARGE ${buf.length}`);
+    const buf = await readBounded(res, max);
     this.stats.bytes += buf.length;
     return { status: res.status, contentType: res.headers.get('content-type'), disposition: res.headers.get('content-disposition'), bytes: buf, durationMs: Date.now() - started };
   }
@@ -191,4 +203,36 @@ export class TasApiClient {
   detail(documentId: string) {
     return this.dwrCall(TAS_PUBLIC.detailPath, 'UserMethods', 'getUserDocumentLastMotion', [dwr.str(String(documentId))], `/architect/public.html?docId=${documentId}`);
   }
+}
+
+/**
+ * Read a body with a running byte count and stop at `max` — a chunked reply
+ * without Content-Length can never be buffered whole before the check.
+ */
+async function readBounded(res: Response, max: number): Promise<Uint8Array> {
+  if (!res.body) {
+    const buf = new Uint8Array(await res.arrayBuffer());
+    if (buf.length > max) throw new TasPayloadTooLarge(buf.length);
+    return buf;
+  }
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > max) {
+      try { await reader.cancel(); } catch { /* ignore */ }
+      throw new TasPayloadTooLarge(total);
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) {
+    out.set(c, at);
+    at += c.length;
+  }
+  return out;
 }

@@ -208,7 +208,7 @@ const TAS_LABEL_KA: Record<string, string> = {
 };
 export const tasLabel = (key: string, fallback: string): string => TAS_LABEL_KA[key] ?? fallback.replace(/^(field|tf):/, '');
 
-const OFFICIAL_STATE_KA: Record<string, string> = {
+export const OFFICIAL_STATE_KA: Record<string, string> = {
   COMMISSIONED: 'ექსპლუატაციაში მიღებული', PERMITTED: 'მშენებლობის ნებართვა მოქმედებს', PROJECT_APPROVED: 'პროექტი შეთანხმებულია',
   SUSPENDED: 'შეჩერებული', CANCELLED: 'გაუქმებული', APPLICATION_PENDING: 'განაცხადი განხილვაშია', APPLICATION_REFUSED: 'განაცხადზე უარი',
 };

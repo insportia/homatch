@@ -134,3 +134,38 @@ test('prompt-safe official payload: TAS raw text replaced by the digest; other s
   const legacy = { results: [{ source: 'tas', documents: [{ rawText: 'legacy' }] }] };
   assert.deepEqual(promptSafeBrowserOfficial(legacy, NOW), { payload: legacy, tasDigest: null });
 });
+
+// ── fail-closed paths (adversarial review) ──
+test('an UNREADABLE later response (scan / parse failure) makes the permit provisional', () => {
+  const t = buildTasIntelligence(report([
+    kase('100', '2019-01-10', 'ნებართვა', [mot('1', '2019-03-01', 'ნებართვა', dec('PERMIT_ISSUED', '111'))]),
+    kase('700', '2024-04-01', 'ცვლილება', [{ motionId: '7', date: '2024-04-20', name: 'პასუხი', status: null, response: 'PDF', decision: null }]),
+  ]), NOW);
+  assert.equal(t.officialStatus.state, 'PERMITTED');
+  assert.equal(t.officialStatus.conclusive, false);
+  assert.ok(t.officialStatus.caveats.includes('LATER_UNDETERMINED_DECISION'));
+});
+
+test('API results WITHOUT a ledger fail closed', () => {
+  const t = buildTasIntelligence(report([
+    kase('100', '2019-01-10', 'ნებართვა', [mot('1', '2019-03-01', 'ნებართვა', dec('PERMIT_ISSUED', '111'))]),
+  ], { ledger: null }), NOW);
+  assert.equal(t.officialStatus.conclusive, false);
+  assert.ok(t.officialStatus.caveats.includes('PROCESSING_UNVERIFIED'));
+});
+
+test('block A cancelled while block B is permitted → CASES_DISAGREE; a block-less cancellation case is not', () => {
+  const blk = (v) => ({ technicalFacts: [{ category: 'BUILDING', key: 'buildingBlock', value: v }] });
+  const t = buildTasIntelligence(report([
+    kase('100', '2019-01-10', 'ნებართვა', [mot('1', '2019-03-01', 'ნებართვა', dec('PERMIT_ISSUED', '111'))], blk('B')),
+    kase('300', '2024-02-01', 'გაუქმება', [mot('3', '2024-03-01', 'ბრძანება', dec('CANCELLED', '333'))], blk('A')),
+  ]), NOW);
+  assert.equal(t.officialStatus.state, 'CANCELLED');
+  assert.ok(t.officialStatus.caveats.includes('CASES_DISAGREE'));
+  assert.equal(t.officialStatus.conclusive, false);
+  const plain = buildTasIntelligence(report([
+    kase('100', '2019-01-10', 'ნებართვა', [mot('1', '2019-03-01', 'ნებართვა', dec('PERMIT_ISSUED', '111'))]),
+    kase('300', '2024-02-01', 'გაუქმება', [mot('3', '2024-03-01', 'ბრძანება', dec('CANCELLED', '333'))]),
+  ]), NOW);
+  assert.equal(plain.officialStatus.conclusive, true);
+});

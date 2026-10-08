@@ -47,7 +47,7 @@ import { dedupeBlock, isParkingConfirmationPrompt, type TopicKey } from './dedup
 import { SECTION_KEYS } from './prompt.ts';
 import type { SectionKey } from './prompt.ts';
 import type { IntelligenceBundle } from './bundle.ts';
-import { tasLabel, TAS_EVENT_KA } from './evidencePackage.ts';
+import { tasLabel, TAS_EVENT_KA, OFFICIAL_STATE_KA } from './evidencePackage.ts';
 
 /** Restrained, and deliberately three. "Attention" is not "bad". */
 export type OverallLabel = 'POSITIVE' | 'BALANCED' | 'NEEDS_ATTENTION';
@@ -757,7 +757,7 @@ export function finalizeReport(
 
   // Whatever the model left out, the record still tells — plainly.
   const fallback = deterministicTas(pkg);
-  const currentStatus = parsed.currentStatus ?? fallback.currentStatus;
+  const currentStatus = withholdUnprovenStatement(pkg, parsed.currentStatus ?? fallback.currentStatus);
   const propertyStory = story?.chapters.length ? story : fallback.propertyStory;
   const visualCaptions = captions.length ? captions : fallback.visualCaptions;
 
@@ -776,6 +776,19 @@ export function finalizeReport(
     rejectedBecause: [],
     evidenceUsed: packageItems(pkg).filter((i) => cited.has(i.id)),
   }), bundle));
+}
+
+/**
+ * When the deterministic official status is NOT conclusive, no free-text
+ * status sentence (the model's or the fallback's) is shown: the localized
+ * state badge and its caveats are the only status line, so prose can never
+ * upgrade an incomplete record into a definitive legal position. Cited fact
+ * items stay — each rests on its own official source.
+ */
+export function withholdUnprovenStatement(pkg: EvidencePackage, cs: CurrentStatus | undefined): CurrentStatus | undefined {
+  const st = pkg?.tas?.officialStatus;
+  if (!cs || !st || st.conclusive) return cs;
+  return cs.items.length ? { ...cs, statement: '' } : undefined;
 }
 
 /* ------------------------------------------------------------------ *
@@ -818,14 +831,20 @@ export function deterministicTas(pkg: EvidencePackage): Pick<BuyerIntelligenceRe
     .sort((a, b) => rank[a.materiality] - rank[b.materiality])
     .slice(0, 6);
   const lastEvent = [...tas.timeline].reverse().find((e) => cite[e.id] && e.materiality !== 'LOW');
-  const currentStatus: CurrentStatus | undefined = current.length || lastEvent
+  // The controlling decision (by legal authority), not the latest upload.
+  const st = tas.officialStatus;
+  const controlling = st?.conclusive && st.basis
+    ? `მოქმედი ოფიციალური მდგომარეობა: ${OFFICIAL_STATE_KA[st.state] ?? st.state} — ${st.basis.date}${st.basis.decisionNumber ? `, გადაწყვეტილება № ${st.basis.decisionNumber}` : ''}${st.validUntil ? `, ვადა ${st.validUntil}-მდე` : ''}.`
+    : null;
+  const currentStatus: CurrentStatus | undefined = withholdUnprovenStatement(pkg, current.length || lastEvent || controlling
     ? {
-        statement: lastEvent
-          ? `უახლესი ოფიციალური ჩანაწერი (${lastEvent.date}): ${TAS_EVENT_KA[lastEvent.kind] ?? ''} — ${lastEvent.title}.`
-          : 'ქვემოთ მოცემულია უახლესი ოფიციალური დოკუმენტებით დადასტურებული მონაცემები.',
+        statement: controlling
+          ?? (lastEvent
+            ? `უახლესი ოფიციალური ჩანაწერი (${lastEvent.date}): ${TAS_EVENT_KA[lastEvent.kind] ?? ''} — ${lastEvent.title}.`
+            : 'ქვემოთ მოცემულია უახლესი ოფიციალური დოკუმენტებით დადასტურებული მონაცემები.'),
         items: current.map((f) => ({ label: tasLabel(f.key, f.label), value: f.value, date: f.lastSeen ?? '', cites: [cite[f.id]] })),
       }
-    : undefined;
+    : undefined);
   const chapters: StoryChapterOut[] = [];
   for (const ch of tas.story) {
     if (ch.key === 'TODAY') continue;

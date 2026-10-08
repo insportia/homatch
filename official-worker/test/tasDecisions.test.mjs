@@ -37,3 +37,42 @@ test('authority ranks cancellation and suspension above any approval', () => {
   assert.ok(OUTCOME_AUTHORITY.SUSPENDED > OUTCOME_AUTHORITY.APPROVED);
   assert.ok(OUTCOME_AUTHORITY.INTERMEDIATE < OUTCOME_AUTHORITY.REFUSED);
 });
+
+// Adversarial review cases: negation, conditional boilerplate, side clauses,
+// conflicting wording and a quoted earlier date must never yield a confident
+// wrong outcome.
+test('the standard refusal title is a refusal, not a permit', () => {
+  assert.equal(extractDecision('ბრძანება N 7000001 20.06.2023 მშენებლობის ნებართვის გაცემაზე უარის თქმის შესახებ').outcome, 'REFUSED');
+});
+
+test('negated approval is a refusal; negated sanctions are not sanctions', () => {
+  assert.equal(extractDecision('ბრძანება N 7000002 20.06.2023 პროექტი არ შეთანხმდეს').outcome, 'REFUSED');
+  assert.notEqual(extractDecision('ბრძანება N 7000003 20.06.2023 ნებართვა არ გაუქმდეს, განმარტება').outcome, 'CANCELLED');
+});
+
+test('conditional boilerplate in a permit does not suspend it', () => {
+  assert.equal(extractDecision('ბრძანება N 7000004 20.06.2023 მშენებლობის ნებართვა გაიცეს. დარღვევის შემთხვევაში ნებართვა შეიძლება შეჩერდეს.').outcome, 'PERMIT_ISSUED');
+});
+
+test('an amendment voiding the PREVIOUS order is an amendment, not a cancellation', () => {
+  assert.equal(extractDecision('ბრძანება N 7000005 20.06.2023 ვბრძანებ: პროექტში ცვლილება შეთანხმდეს; წინა ბრძანება ძალადაკარგულად ჩაითვალოს.').outcome, 'AMENDMENT_APPROVED');
+  assert.equal(extractDecision('ბრძანება N 7000006 20.06.2023 ვბრძანებ: ნებართვა ძალადაკარგულად ჩაითვალოს.').outcome, 'CANCELLED');
+});
+
+test('positive and negative operative wording together → UNDETERMINED', () => {
+  assert.equal(extractDecision('ბრძანება N 7000007 20.06.2023 ნებართვა გაიცეს. ნებართვა გაუქმდეს.').outcome, 'UNDETERMINED');
+});
+
+test('"no deficiency found" is not a deficiency', () => {
+  assert.equal(extractDecision('ბრძანება N 7000008 20.06.2023 ხარვეზი არ გამოვლინდა, პროექტი შეთანხმდეს').outcome, 'APPROVED');
+});
+
+test('a quoted earlier date is not the issue date', () => {
+  const d = extractDecision('თქვენი 12.01.2015 განცხადების საფუძველზე ბრძანება N 7000009 20.06.2023 — მშენებლობის ნებართვა გაიცეს');
+  assert.equal(d.issueDate, '2023-06-20');
+  assert.equal(extractDecision('თქვენი 12.01.2015 განცხადება. ბრძანება ამოუკითხავია. ნებართვა გაიცეს').issueDate, null);
+});
+
+test('ქართული (contains "თუ") does not trigger the conditional guard', () => {
+  assert.equal(extractDecision('ბრძანება N 7000010 20.06.2023 ქართული ტექსტი: მშენებლობის ნებართვა გაიცეს').outcome, 'PERMIT_ISSUED');
+});

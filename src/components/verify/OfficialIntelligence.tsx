@@ -81,6 +81,8 @@ const day = (iso?: string | null): string | null => {
   return m ? `${m[3]}.${m[2]}.${m[1]}` : null;
 };
 
+const KNOWN_CAVEATS = new Set(['RESPONSES_UNREAD', 'LATER_UNDETERMINED_DECISION', 'PROCESSING_INCOMPLETE', 'PROCESSING_UNVERIFIED', 'CASES_DISAGREE', 'NO_DECISIONS_READ', 'VALIDITY_PASSED']);
+
 /* Only signed storage URLs are rendered — a guard, not a style choice. */
 const safeVisualUrl = (u: unknown): string | null =>
   typeof u === 'string' && /^https:\/\/[^/]+\/storage\/v1\/object\/sign\//.test(u) ? u : null;
@@ -103,6 +105,11 @@ const OfficialStateBadge: React.FC<{ h: OfficialHistoryClientView['status'] }> =
         ].filter(Boolean).join(' · ')}
       </p>
       {!h.conclusive ? <p className="text-xs leading-5 text-amber-700 dark:text-amber-400 break-words">{t('verify_ox_not_conclusive')}</p> : null}
+      {!h.conclusive && h.caveats?.length ? (
+        <ul className="list-disc ps-4 space-y-0.5 text-xs leading-5 text-muted-foreground">
+          {h.caveats.filter((c) => KNOWN_CAVEATS.has(c)).map((c) => <li key={c} className="break-words">{t(`verify_ox_caveat_${c.toLowerCase()}`)}</li>)}
+        </ul>
+      ) : null}
       {h.pendingCount > 0 ? <p className="text-xs leading-5 text-muted-foreground break-words">{t('verify_ox_pending', { count: String(h.pendingCount) })}</p> : null}
     </div>
   );

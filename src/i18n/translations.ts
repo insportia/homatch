@@ -15442,6 +15442,9 @@ const en = {
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   admin_providers_apify_scope: 'Live for Find Buyers / Find Tenants only: registered memo23 Actors through one controlled client. Test is a free account check and never runs an Actor. Disable stops every memo23 run. Actors are switched one by one in Discovery → Find Buyers → Actors.',
   admin_providers_apify_treasury_note: 'Switched on and off by the APIFY provider card above.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_failed_geometry: 'The floor plan of this home could not be reconstructed reliably from its pictures: some rooms are missing or misshapen. We did not build a tour that would show the wrong home.',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -30798,6 +30801,9 @@ const ka: Partial<Record<TranslationKey, string>> = {
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   admin_providers_apify_scope: 'აქტიურია მხოლოდ მყიდველების / მოიჯარეების ძებნისთვის: რეგისტრირებული memo23 Actor-ები ერთი კონტროლირებადი კლიენტით. შემოწმება ანგარიშის უფასო გადამოწმებაა და Actor-ს არასდროს უშვებს. გამორთვა ყველა memo23 გაშვებას აჩერებს. Actor-ები ცალ-ცალკე ირთვება: Discovery → Find Buyers → Actors.',
   admin_providers_apify_treasury_note: 'ირთვება და ითიშება ზემოთ, APIFY-ის პროვაიდერის ბარათიდან.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_failed_geometry: 'ფოტოებიდან ამ ბინის გეგმის სანდოდ აღდგენა ვერ მოხერხდა: ზოგი ოთახი აკლია ან არასწორი ფორმისაა. ტური, რომელიც სხვა ბინას აჩვენებდა, არ შევქმენით.',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -46145,6 +46151,9 @@ const ru: Partial<Record<TranslationKey, string>> = {
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   admin_providers_apify_scope: 'Работает только для поиска покупателей / арендаторов: зарегистрированные Actor memo23 через один контролируемый клиент. Проверка — бесплатный запрос к аккаунту, Actor не запускается. Отключение останавливает все запуски memo23. Actor включаются по одному: Discovery → Find Buyers → Actors.',
   admin_providers_apify_treasury_note: 'Включается и отключается карточкой провайдера APIFY выше.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_failed_geometry: 'Не удалось надёжно восстановить планировку этого дома по изображениям: некоторые комнаты отсутствуют или искажены. Мы не стали строить прогулку, которая показала бы другой дом.',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -61490,6 +61499,9 @@ const tr: Partial<Record<TranslationKey, string>> = {
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   admin_providers_apify_scope: 'Yalnızca Alıcı / Kiracı Bul için etkin: tek bir kontrollü istemci üzerinden kayıtlı memo23 Actor\'ları. Test, ücretsiz bir hesap kontrolüdür ve hiçbir Actor çalıştırmaz. Devre dışı bırakmak tüm memo23 çalıştırmalarını durdurur. Actor\'lar tek tek açılır: Discovery → Find Buyers → Actors.',
   admin_providers_apify_treasury_note: 'Yukarıdaki APIFY sağlayıcı kartından açılıp kapatılır.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_failed_geometry: 'Bu evin kat planı görsellerinden güvenilir şekilde yeniden oluşturulamadı: bazı odalar eksik veya biçimi bozuk. Yanlış evi gösterecek bir gezinti oluşturmadık.',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -76835,6 +76847,9 @@ const ar: Partial<Record<TranslationKey, string>> = {
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   admin_providers_apify_scope: 'مفعّل فقط للبحث عن المشترين / المستأجرين: Actors ‏memo23 المسجّلة عبر عميل واحد خاضع للرقابة. الاختبار فحص مجاني للحساب ولا يشغّل أي Actor. التعطيل يوقف كل تشغيلات memo23. تُفعَّل الـ Actors واحدًا واحدًا من Discovery → Find Buyers → Actors.',
   admin_providers_apify_treasury_note: 'يُشغَّل ويُوقَف من بطاقة مزوّد APIFY أعلاه.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_failed_geometry: 'تعذّرت إعادة بناء مخطط هذا المنزل بشكل موثوق من صوره: بعض الغرف مفقودة أو مشوّهة. لم ننشئ جولة قد تعرض منزلًا مختلفًا.',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -92180,6 +92195,9 @@ const he: Partial<Record<TranslationKey, string>> = {
   /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
   admin_providers_apify_scope: 'פעיל רק לחיפוש קונים / שוכרים: Actors רשומים של memo23 דרך לקוח מבוקר אחד. הבדיקה היא בדיקת חשבון חינמית ואינה מריצה Actor. השבתה עוצרת כל הרצה של memo23. ה-Actors מופעלים אחד-אחד ב-Discovery → Find Buyers → Actors.',
   admin_providers_apify_treasury_note: 'מופעל ומושבת מכרטיס הספק APIFY למעלה.',
+
+  /* ── HOMATCH DESIGN STUDIO ──────────────────────────────────────── */
+  dsx_walk_failed_geometry: 'לא ניתן היה לשחזר באופן אמין את תוכנית הדירה מהתמונות: חלק מהחדרים חסרים או מעוותים. לא יצרנו סיור שהיה מציג בית אחר.',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

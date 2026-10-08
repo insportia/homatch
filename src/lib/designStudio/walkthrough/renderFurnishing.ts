@@ -80,7 +80,8 @@ export function sceneTransform(recon: Pick<Reconstruction, 'rooms'>, floors: Arr
   return x && y ? { x, y } : null;
 }
 
-const apply = (t: SceneTransform, p: P): P => [Math.round((t.x.scale * p[0] + t.x.offset) * 1000) / 1000, Math.round((t.y.scale * p[1] + t.y.offset) * 1000) / 1000];
+/** A point of the reading's plan in the built scene's metres. */
+export const carryPoint = (t: SceneTransform, p: P): P => [Math.round((t.x.scale * p[0] + t.x.offset) * 1000) / 1000, Math.round((t.y.scale * p[1] + t.y.offset) * 1000) / 1000];
 
 /** A facing (degrees clockwise from +y) through the transform: a flipped axis mirrors it. */
 export function carryFacing(t: SceneTransform, deg: number): number {
@@ -103,7 +104,7 @@ export function furnishingFromReading(
   const inRender = recon.objects.filter((o) => o.seenIn.includes(image) || o.px?.image === image).slice(0, MAX_PIECES);
   const objects = inRender.map((o): ReconObject => ({
     ...o,
-    at: apply(t, o.at),
+    at: carryPoint(t, o.at),
     facingDeg: carryFacing(t, o.facingDeg),
     // Traces stay with the piece (they are what makes its pose evidence, not a guess).
     px: o.px ? { image: o.px.image, points: [...o.px.points] } : null,

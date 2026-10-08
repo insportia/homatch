@@ -62,7 +62,8 @@ import { getObject } from '../_shared/objectStore.ts';
 import { SCHEMA as RECON_SCHEMA, SYSTEM as RECON_SYSTEM, validateReconstruction } from '../_shared/designStudio/reconstructRead.ts';
 import { inferredSpace, mostlyInferred, WALK_SPACE_BRIEF } from '../../../src/lib/designStudio/walkthrough/inferredSpace.ts';
 import { repairReading } from '../../../src/lib/designStudio/walkthrough/readingRepair.ts';
-import { furnishingFromReading, readFurnishing, renderTraceBrief, type RenderFurnishing } from '../../../src/lib/designStudio/walkthrough/renderFurnishing.ts';
+import { carryPoint, furnishingFromReading, readFurnishing, renderTraceBrief, sceneTransform, type RenderFurnishing } from '../../../src/lib/designStudio/walkthrough/renderFurnishing.ts';
+import { checkGeometry, expectedOfUnderstanding, GEOMETRY_CHECK_VERSION, roomsOfScene, type GeometryCheck } from '../../../src/lib/designStudio/walkthrough/geometryCheck.ts';
 import { dressBuilt, planFromFurnishing, RENDER_WALK_RADIUS_M } from '../../../src/lib/designStudio/walkthrough/renderPlan.ts';
 import { renderGate } from '../../../src/lib/designStudio/walkthrough/renderGate.ts';
 import { NEUTRAL_LIGHTING } from '../../../src/lib/designStudio/walkthrough/renderLighting.ts';
@@ -345,6 +346,16 @@ async function readSpace(admin: Row, a: { actorId: string; project: Row; version
   if ('problems' in space) return fail(`SPACE_NOT_BUILDABLE:${space.problems.slice(0, 3).join(',')}`, false, paid);
   // The render's own pieces, in the built scene's metres: the walkthrough's furnishing (renderFurnishing.ts).
   const furnishing: RenderFurnishing | null = selected >= 0 && a.renderId ? furnishingFromReading(recon, space.canonical.scene.floors, a.renderId, selected, measured?.lighting ?? null) : null;
+  // Is this the home? Checked against the customer's own picture, the reading's pieces and the measured outline
+  // (carried into the scene's frame), before anything is placed (geometryCheck.ts). Recorded with the space.
+  const toScene = sceneTransform(recon, space.canonical.scene.floors);
+  const geometryCheck = checkGeometry({
+    rooms: roomsOfScene(space.canonical.scene.floors),
+    pieces: furnishing ? furnishing.objects : [],
+    expected: expectedOfUnderstanding(u),
+    unreachable: space.unreachable, repairs: space.repairs,
+    footprint: toScene && recon.fidelity?.outline?.length ? recon.fidelity.outline.map((p) => carryPoint(toScene, p)) : null,
+  });
 
   // An ESTIMATED floor-plan source of this project, marked inferred, used only by the walkthrough.
   const { data: made, error } = await admin.from('ds_spatial_sources').insert({
@@ -356,6 +367,7 @@ async function readSpace(admin: Row, a: { actorId: string; project: Row; version
       repairs: space.repairs, spawn: space.spawn, reachable: space.reachable, unreachable: space.unreachable, basis: space.basis, generator: 'OPENAI_FIRST',
       readingRepairs: repaired.repairs, ...(a.renderId ? { fromRenderId: a.renderId, frameMeasured: !!measured, frameFidelity: recon.fidelity ?? null } : {}),
       ...(furnishing ? { furnishing } : {}),
+      geometryCheck,
     },
   }).select('id').single();
   if (error || !made?.id) return fail('SOURCE_NOT_RECORDED', false, paid);
@@ -363,6 +375,9 @@ async function readSpace(admin: Row, a: { actorId: string; project: Row; version
     status: 'SUCCEEDED', finished_at: new Date().toISOString(), ...paid,
     output: {
       kind: 'WALK_SPACE', sourceId: made.id, rooms: space.reachable.length + space.unreachable.length, repairs: space.repairs.length, basis: space.basis, mostlyInferred: mostlyInferred(space.basis),
+      geometry: geometryCheck.verdict,
+      // The validated reading itself (no pictures in it): the space can be rebuilt from it by better code, never bought again.
+      reading: read,
       ...(a.renderId ? { renderId: a.renderId, frameMeasured: !!measured, pieces: furnishing ? { read: furnishing.read, traced: furnishing.traced } : null } : {}),
     },
   }).eq('id', a.jobId).eq('status', 'RUNNING');
@@ -746,6 +761,29 @@ async function loadDesign(admin: Row, row: Row): Promise<Loaded | null> {
   return { version, source, space: buildSpaceModel(scene) };
 }
 
+/**
+ * The geometry check of a space reconstructed from pictures: the one recorded with it, or — for a space recorded
+ * before the check existed — made now from what it holds (its floors, its reading's pieces, the photo reading of the
+ * customer's picture). Null for a measured plan (it is the drawing, not a reading of pictures).
+ */
+async function geometryOf(admin: Row, design: Loaded): Promise<GeometryCheck | null> {
+  const prov = design.source?.provenance;
+  if (prov?.inferred !== true) return null;
+  if (prov.geometryCheck?.version === GEOMETRY_CHECK_VERSION) return prov.geometryCheck as GeometryCheck;
+  const { data: photo } = prov.fromSourceId
+    ? await admin.from('ds_spatial_sources').select('canonical').eq('id', prov.fromSourceId).maybeSingle()
+    : { data: null };
+  return checkGeometry({
+    rooms: roomsOfScene(design.source.canonical.scene.floors),
+    pieces: readFurnishing(prov.furnishing)?.objects ?? [],
+    expected: expectedOfUnderstanding(photo?.canonical?.understanding),
+    unreachable: Array.isArray(prov.unreachable) ? prov.unreachable : [],
+    repairs: Array.isArray(prov.repairs) ? prov.repairs : [],
+    // Its measured outline was recorded in the reading's frame, not the scene's: not compared.
+    footprint: null,
+  });
+}
+
 async function catalogue(admin: Row): Promise<{ assets: CatalogAsset[]; materials: CatalogMaterial[] }> {
   const { data: a } = await admin.from('ds_catalog_assets').select('*').eq('active', true).limit(2000);
   const { data: m } = await admin.from('ds_catalog_materials')
@@ -819,6 +857,17 @@ async function plan(admin: Row, row: Row): Promise<void> {
   const design = await loadDesign(admin, row);
   if (!design) { await fail(admin, row, 'NO_SPACE_MODEL'); return; }
   const { version, space } = design;
+  // A space reconstructed from pictures is the home only if its geometry says so: checked before a single piece is
+  // placed or a GPU second is bought. A failed check is final for this space (the same evidence gives the same
+  // verdict), and says exactly what is missing (geometryCheck.ts).
+  const geometry = await geometryOf(admin, design);
+  if (geometry && geometry.verdict === 'FAIL') {
+    await fail(admin, row, 'GEOMETRY_UNRELIABLE', {
+      timings: { ...row.timings, geometryCheck: geometry, lastFindings: [...new Set(geometry.issues.filter((x) => x.blocking).map((x) => x.code))] },
+      plan_report: { final: { geometry } },
+    });
+    return;
+  }
   const dna = version.design_dna?.version === 'ds-dna-1' ? version.design_dna : null;
   const preferences = normalizePreferences(dna?.preferences ?? null);
   // A space read from the selected render carries that render's pieces: the walkthrough is furnished with exactly

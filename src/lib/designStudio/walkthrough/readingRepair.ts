@@ -105,6 +105,8 @@ export function squareReading(recon: Reconstruction): { recon: Reconstruction; r
       rooms: recon.rooms.map((r) => ({ ...r, polygon: r.polygon.map(map) })),
       openings: recon.openings.map((o) => ({ ...o, at: map(o.at) })),
       objects: recon.objects.map((o) => ({ ...o, at: map(o.at), facingDeg: turnFacing(o.facingDeg) })),
+      // The measured outline of the home is in the same frame: it is squared with everything else.
+      ...(recon.fidelity ? { fidelity: { ...recon.fidelity, ...(recon.fidelity.outline ? { outline: recon.fidelity.outline.map(map) } : {}), ...(recon.fidelity.uncovered ? { uncovered: recon.fidelity.uncovered.map((u) => ({ ...u, centre: map(u.centre) })) } : {}) } } : {}),
     },
     repairs: [{ code: 'SQUARED', element: 'plan', detail: `walls ${shearDeg}° off square, turned ${turnDeg}°` }],
   };

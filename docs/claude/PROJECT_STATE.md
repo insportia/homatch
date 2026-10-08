@@ -1040,6 +1040,23 @@ Base: main `53489d04` (PR #68 live: design-studio-reconstruct v22). Scope: front
 - Owed: deploy design-studio-reconstruct + Runpod worker image; re-run walkthrough on 32624177 (approval required:
   paid OpenAI plan/QA + Runpod GPU, est ≤ $0.10).
 
+### Design Studio photo-project floor plan: geometry before furniture (same branch, 2026-10-08) — NOT deployed
+
+- Failure: project d02e3e62 (render 72361f0e) tour NOT_WALKABLE, 15/46 pieces. Causes: (1) `completeForWalk`
+  deleted the open-plan kitchen-living as a "duplicate" because the hall outline lay inside it (terrace likewise);
+  (2) rooms moved up to 1.2 m "to touch"; (3) pixel-traced corners turned square rooms into diamonds;
+  (4) nothing checked geometry before placement; (5) the raw reading was never stored, so it cannot be re-run free.
+- Fix: `walkthrough/geometryCheck.ts` (expected rooms from the photo reading, ROOM_DROPPED pieces, shape vs the
+  home's wall directions, pieces-in-room, bed fit, reach, measured footprint; CONFIRMED/RECOVERED/UNCERTAIN) → plan()
+  fails GEOMETRY_UNRELIABLE (non-retryable, $0, no GPU) before placement; nested rooms carved
+  (`subtractSquare`), never deleted; room moves only across a wall's thickness (0.35 m); `rightAngleShare` keeps the
+  reader's square outline over a diamond trace; essential pieces placed first, relocated rather than dropped;
+  the validated reading is kept in the WALK_SPACE job output; squared readings carry their measured outline.
+- d02e3e62's stored source: FAIL — kitchen-living + terrace missing (picture 99%), 4 slanted rooms, bedroom pieces
+  outside their rooms, beds do not fit, 4 rooms unreachable. Its kitchen-living outline was never stored: not
+  recoverable without inventing geometry. Next step needs the owner: one bounded second WALK_SPACE reading
+  (first reading $0.0189; estimate ≈ $0.02, cap $0.20).
+
 ### Find Buyers lifecycle truth + UX consolidation (2026-10-04, after the owner's first live test)
 
 - Production case: campaign ee2f0b74 / job 693e6d75 finished 220 ms after creation with 0 queue jobs and

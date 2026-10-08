@@ -278,9 +278,14 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
     for (const item of redundant) report.items.push({ roomId: room.id, code: item.code, type: item.type, instanceId: null, outcome: 'DROPPED', reason: 'REDUNDANT', movedM: null, warnings: [], ...(item.refKey ? { refKey: item.refKey } : {}) });
     // The picture's anchors stand first (nothing else takes their place), then big standing pieces, flat ones last.
     const isLocked = (item: BuildItem) => !!(item.lock && item.pose);
+    // What the room is for stands before anything else in it (a bedroom's bed, a living room's sofa): the
+    // secondary pieces never take its place or its attempts.
+    const role = essentialRole(room.kind);
+    const isEssential = (a: CatalogAsset) => !!role && servesRole(a, role);
     const order = pr.items.filter((item) => !redundant.has(item)).map((item, i) => ({ item, i, asset: assets.get(item.code) }))
       .filter((x): x is { item: BuildItem; i: number; asset: CatalogAsset } => !!x.asset)
-      .sort((a, b) => Number(isLocked(b.item)) - Number(isLocked(a.item)) || Number(isFlat(a.asset)) - Number(isFlat(b.asset)) || b.asset.widthM * b.asset.depthM - a.asset.widthM * a.asset.depthM || a.i - b.i);
+      .sort((a, b) => Number(isEssential(b.asset)) - Number(isEssential(a.asset)) || Number(isLocked(b.item)) - Number(isLocked(a.item))
+        || Number(isFlat(a.asset)) - Number(isFlat(b.asset)) || b.asset.widthM * b.asset.depthM - a.asset.widthM * a.asset.depthM || a.i - b.i);
     for (const { item, asset: own } of order) {
       let shape = itemShape(own, item, item.scale);
       let asset = shapedAsset(own, { shape });
@@ -291,9 +296,15 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
       report.items.push(entry);
       // A locked piece: its candidates in repair order, each tried until the design accepts one (the operation
       // validator is the final word; a pose it refuses never ends the search).
-      const options: Array<NonNullable<ReturnType<typeof findPose>> & { scale?: number }> = isLocked(item)
+      const options: Array<NonNullable<ReturnType<typeof findPose>> & { scale?: number; relocated?: boolean }> = isLocked(item)
         ? lockedOptions(space, assets, working.objects, room, own, item, 8, !!input.anchorsAsSeen)
         : [findPose(space, assets, working.objects, room, asset, item)].filter((x): x is NonNullable<ReturnType<typeof findPose>> => !!x);
+      // The room's essential piece that cannot stand where it was seen stands at the room's best free place
+      // instead (doors and passages kept clear by the same search), never left out while its room has space.
+      if (isLocked(item) && isEssential(own)) {
+        const free = findPose(space, assets, working.objects, room, asset, { ...item, pose: null, lock: null });
+        if (free) options.push({ ...free, relocated: true });
+      }
       if (!options.length) { entry.reason = isLocked(item) ? 'ANCHOR_NO_SAFE_PLACE' : 'NO_SAFE_PLACE'; continue; }
       let found: (typeof options)[number] | null = null;
       let object: ObjectInstance | null = null;
@@ -313,11 +324,11 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
       if (!found || !object) continue;
       n += 1;
       entry.instanceId = object.instanceId;
-      entry.outcome = item.pose ? (found.kept ? 'PLANNED' : 'CORRECTED') : 'PLACED';
-      entry.reason = found.kept || !item.pose ? null : found.why;
+      entry.outcome = item.pose ? (found.kept && !found.relocated ? 'PLANNED' : 'CORRECTED') : 'PLACED';
+      entry.reason = found.relocated ? 'ESSENTIAL_RELOCATED' : found.kept || !item.pose ? null : found.why;
       entry.movedM = found.movedM;
       entry.warnings = found.verdict === 'TIGHT' ? ['TIGHT_ACCESS'] : [];
-      const lock = isLocked(item) && item.lock && item.pose
+      const lock = isLocked(item) && item.lock && item.pose && !found.relocated
         ? { at: { x: room.bounds.minX + item.pose.x, y: room.bounds.minY + item.pose.y }, rotation: item.pose.rotationDeg * DEG, maxShiftM: item.lock.maxShiftM, maxTurnDeg: item.lock.maxTurnDeg }
         : undefined;
       placedOrder.push({ roomId: room.id, instanceId: object.instanceId, flat: isFlat(asset), area: asset.widthM * asset.depthM, box: footprint(asset, found.at, found.rotation), report: entry, asset, rank: repairRank(asset), essential: false, ...(lock ? { lock } : {}) });

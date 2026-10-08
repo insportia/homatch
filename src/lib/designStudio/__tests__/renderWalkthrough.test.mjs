@@ -196,6 +196,24 @@ test('a piece seen standing in the bedroom doorway is pushed off the way (record
   assert.equal(report.gate.ok, true, JSON.stringify(report.gate));
 });
 
+test('a bedroom\'s bed stands first and, seen where it cannot stand, at the room\'s best free place — never left out', () => {
+  // Read 3 m off its room (a mistraced pose): nothing within its lock or its fallback reach. The wardrobe is listed first.
+  const { state: s, report } = buildSeen([room('r-bed', [
+    seen('dev/wardrobe', 'wr', { x: 3.4, y: 0.4, rotationDeg: 0 }),
+    seen('dev/bed-double', 'bed', { x: -3, y: 2, rotationDeg: 90 }),
+  ])]);
+  const bed = report.items.find((i) => i.refKey === 'bed');
+  assert.ok(bed.instanceId, JSON.stringify(report.items));
+  assert.equal(bed.outcome, 'CORRECTED');
+  assert.equal(bed.reason, 'ESSENTIAL_RELOCATED');
+  assert.equal(report.items.findIndex((i) => i.refKey === 'bed'), 0, 'the bed is placed before the wardrobe');
+  const b = s.objects.find((o) => o.instanceId === bed.instanceId);
+  const issues = evaluatePlacement({ space, assets, objects: s.objects.filter((o) => o !== b) }, assets.get('dev/bed-double'), { x: b.position.x, y: b.position.z }, b.rotationY, 'r-bed');
+  assert.deepEqual(issues.filter((x) => x.severity === 'BLOCK'), [], 'a legal place: in its room, clear of walls and the door');
+  assert.ok(!report.gate.missingEssential.includes('r-bed'), JSON.stringify(report.gate));
+  assert.equal(report.gate.ok, true, JSON.stringify(report.gate));
+});
+
 // ── The gate ────────────────────────────────────────────────────────────────
 
 const lookOf = (type) => ({ shape: null, colorOverride: null, provenance: { source: 'IMAGE_RECONSTRUCTION', ref: 'x', label: 'x', detectedType: type, images: [], confidence: 0.9, basis: 'OBSERVED', match: 0.9, approximate: false, confirmed: false } });

@@ -54,6 +54,12 @@ export interface LiveCounters {
   marketComparables?: number | string | null;
   marketState?: number | string | null;
   synthesisState?: number | string | null;
+  /**
+   * The stage a financial-entity detour returns to. FINANCIAL_ENTITY_WAITING
+   * can happen before or after the market step; without this the network
+   * would briefly un-finish nodes the run has already passed.
+   */
+  resumeStage?: string | null;
 }
 
 export interface NetworkInput {
@@ -215,6 +221,11 @@ export function networkState(input: NetworkInput): NetworkState {
    */
   const heard = Boolean(input.stage) || Boolean(status);
   let rank: number | null = heard ? stageRank(input.stage) : 0;
+  // A detour never moves the picture backwards: rank by where it returns.
+  if (String(input.stage || '').toUpperCase() === 'FINANCIAL_ENTITY_WAITING' && counters?.resumeStage) {
+    const back = stageRank(String(counters.resumeStage));
+    if (back !== null) rank = Math.max(rank ?? 0, back - 1);
+  }
   if (rank === null && status === 'COMPLETE' && !stopped) rank = RANK.complete;
   if (input.synthesizing && !stopped) rank = Math.max(rank ?? 0, RANK.synthesis);
   if (reportReady) rank = RANK.complete + 1;

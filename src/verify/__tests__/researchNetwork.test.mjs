@@ -236,3 +236,11 @@ test('stage order never moves a node backwards as the pipeline advances', () => 
     prev = done;
   }
 });
+
+test('a financial-entity detour after the market step never un-finishes passed nodes', () => {
+  const before = networkState({ stage: 'RECONCILIATION_CHECK_PENDING', status: 'CREATED' });
+  const detour = networkState({ stage: 'FINANCIAL_ENTITY_WAITING', status: 'RUNNING', liveCounters: { resumeStage: 'SYNTHESIS_READY' } });
+  const doneBefore = before.nodes.filter((n) => n.state === 'DONE').map((n) => n.key);
+  const doneDuring = detour.nodes.filter((n) => n.state === 'DONE').map((n) => n.key);
+  for (const k of doneBefore) assert.ok(doneDuring.includes(k), `${k} went backwards during the detour`);
+});

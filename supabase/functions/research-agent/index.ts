@@ -2083,6 +2083,8 @@ function liveCountersFor(j: any): Record<string, number | string | null> {
     marketComparables: Array.isArray(r._marketComparables) ? r._marketComparables.length : null,
     marketState: r._verifyMarket?.state ? String(r._verifyMarket.state).replace(/[^A-Z_]/g, '').slice(0, 20) : null,
     synthesisState: typeof j?.synthesis_state === 'string' ? j.synthesis_state : null,
+    // A stage enum (no data): where a financial-entity detour returns to.
+    resumeStage: typeof r._financialReturnStage === 'string' && /^[A-Z_]{3,40}$/.test(r._financialReturnStage) ? r._financialReturnStage : null,
   };
 }
 

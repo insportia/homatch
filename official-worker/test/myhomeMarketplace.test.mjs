@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { acquireMyHome } from '../.tstest-build/marketplace/myhome/adapter.js';
 import { buildQueries, candidateFromMyHome } from '../.tstest-build/marketplace/myhome/mapping.js';
-import { parsePagination } from '../.tstest-build/marketplace/myhome/api.js';
+import { parsePagination, AcquisitionError } from '../.tstest-build/marketplace/myhome/api.js';
 import { startMyHomeRuntime } from '../.tstest-build/marketplace/MyHomeRuntime.js';
 import { validateWorkerReport } from '../../src/research-core/marketplace/worker-contract.ts';
 import { processSearch } from '../../src/research-core/marketplace/pipeline.ts';
@@ -56,6 +56,16 @@ function simulated({ lastPage = 6, total = 139, repeated = false, failPage = nul
   };
   return { pages,reports,fetcher,run: (overrides={}) => acquireMyHome({...request,...overrides},{deadlineAt:new Date(Date.now()+900000).toISOString(),fetcher,report:async r=>reports.push(r)}) };
 }
+test('long production query cannot erase HTTP diagnostics at report ingress', () => {
+  const error = new AcquisitionError('https://api-statements.tnet.ge/v1/statements?' + 'room_types[0]=3&'.repeat(40), 422, 'HTTP 422; request stopped');
+  const validated = validateWorkerReport({contract:'marketplace-worker-1',searchId:request.searchId,searchPlanId:request.searchPlanId,
+    workerId:'myhome-agent',sourceId:'myhome-ge',status:'FAILED',startedAt:new Date().toISOString(),completedAt:new Date().toISOString(),
+    queryApplied:{},discoveredCount:44,returnedCount:0,listings:[],errors:[{code:'SOURCE_REQUEST_FAILED',message:error.message}],metrics:{}}, 'myhome-ge');
+  assert.equal(validated.ok,true);
+  assert.match(validated.report.errors[0].message, /^HTTP 422; request stopped/);
+  assert.ok(validated.report.errors[0].message.length <= 300);
+});
+
 test('canonical mapping preserves collectPriceMaxUsd and exact location IDs',()=>{
   const u=new URL(buildQueries(request,locations,filters)[0].url);
   assert.equal(u.searchParams.get('price_to'),'220000');assert.equal(u.searchParams.get('urbans'),'65');assert.equal(u.searchParams.get('area_from'),'70');

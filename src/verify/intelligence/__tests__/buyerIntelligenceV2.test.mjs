@@ -607,10 +607,15 @@ test('bounded Service 176 is additive; RS.ge remains unscheduled', () => {
   assert.ok(/for \(const source of \['enreg', 'debtor'\] as const\)/.test(ctx), 'rstax is still planned per entity');
 });
 
-test('the research agent no longer queues rstax', () => {
+// Owner decision 2026-10-08: RS.ge runs automatically once its reCAPTCHA can
+// be completed by the shared 2Captcha service — and ONLY then. Without the
+// policy the queue is exactly what it was.
+test('the research agent queues rstax only while automatic verification is enabled for it', () => {
   const agent = read('supabase/functions/research-agent/index.ts');
-  assert.ok(!agent.includes("['enreg', 'rstax', 'debtor']"), 'rstax is still queued');
-  assert.ok(agent.includes("['enreg', 'debtor']"));
+  assert.match(agent, /async function financialQueueFor\(sb: any\)/);
+  assert.ok(agent.includes("return policy.enabled && policy.providers.rstax ? ['enreg', 'rstax', 'debtor'] : ['enreg', 'debtor'];"));
+  assert.ok(!agent.includes("prior._financialQueue = ['enreg', 'rstax', 'debtor']"), 'rstax is queued unconditionally');
+  assert.ok(!agent.includes("prior._financialQueue = ['enreg', 'debtor']"), 'a queue seed bypasses the policy');
 });
 
 test('every OTHER research source remains active', () => {

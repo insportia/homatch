@@ -66,3 +66,12 @@ test('a provider that never ran is NOT_VERIFIED; marketplace appears only when e
   // Market failure never lowers official completeness.
   assert.equal(researchCompleteness(mk).complete, true);
 });
+
+test('an automatic verification that was tried and refused is CAPTCHA_FAILED with its reason', () => {
+  const outs = providerOutcomes(job([tasOk, { source: 'rstax', status: 'WAITING_HUMAN', captchaResolution: [{ attempts: 2, outcome: 'REJECTED' }] }]));
+  assert.deepEqual([stateOf(outs, 'rstax'), outs.find((o) => o.provider === 'rstax').reason], ['CAPTCHA_FAILED', 'AUTO_REJECTED']);
+  // Not attempted (disabled / no key) stays CAPTCHA_REQUIRED.
+  assert.equal(stateOf(providerOutcomes(job([{ source: 'rstax', status: 'WAITING_HUMAN', captchaResolution: [{ attempts: 0, outcome: 'DISABLED' }] }])), 'rstax'), 'CAPTCHA_REQUIRED');
+  // Accepted and read: VERIFIED like any other confirmed search.
+  assert.equal(stateOf(providerOutcomes(job([{ source: 'mygov', status: 'SEARCH_CONFIRMED', documents: [doc], captchaResolution: [{ attempts: 1, outcome: 'ACCEPTED' }] }])), 'mygov'), 'VERIFIED');
+});

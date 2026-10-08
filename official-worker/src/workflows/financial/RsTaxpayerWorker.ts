@@ -6,6 +6,92 @@ import { RSTAX_URL, RSTAX_ID_INPUT_SELECTORS, RSTAX_CAPTCHA_BLOCK_PHRASE, RSTAX_
 import type { LegacySourceResult, RsTaxpayerPublicData } from '../WorkflowResult.js';
 import type { EntityQueue } from '../../entities/EntityQueue.js';
 import { parseRsTaxpayerFields, hasParsedTaxpayerEvidence } from './RsTaxpayerParsing.js';
+import type { CaptchaContext, CaptchaResolution } from '../../captcha/captchaService.js';
+import { detectChallengeInHtml } from '../../captcha/detect.js';
+
+/** Internal: one automatic verification attempt in flight (never exported). */
+interface RsCaptchaAttempt {
+  n: number;
+  solved: { solveId: string; latencyMs: number } | null;
+  log: CaptchaResolution;
+}
+
+/**
+ * RS keeps a visible reCAPTCHA v2 widget on the registry page. When the gate
+ * is pending and the shared CAPTCHA service is allowed for this job, solve it,
+ * place the token where the widget puts a human's token, and run the SAME
+ * Search #2 the human-resume path runs. Returns null when no automatic attempt
+ * can be made (disabled, budget, no/unsupported challenge, solver failure) —
+ * the caller then keeps the existing human path.
+ */
+async function tryAutoVerifyRs(
+  page: Page,
+  forEntity: { name: string; idCode: string | null },
+  entities: EntityQueue | undefined,
+  cap: CaptchaContext,
+  prior: RsCaptchaAttempt | undefined,
+): Promise<{ result: LegacySourceResult | null; log: CaptchaResolution }> {
+  const log: CaptchaResolution = prior?.log ?? { challengeDetected: true, type: null, attempts: 0, outcome: 'HUMAN_FALLBACK', latencyMs: 0 };
+  const n = prior?.n ?? 0;
+  if (n >= cap.policy.maxAttemptsPerProvider) {
+    if (log.outcome === 'HUMAN_FALLBACK') log.outcome = 'BUDGET_EXHAUSTED';
+    return { result: null, log };
+  }
+  const blocked = cap.service.gate(cap.policy, 'rstax', cap.jobId);
+  if (blocked) {
+    log.outcome = blocked;
+    return { result: null, log };
+  }
+  const html = await (page as any).content().catch(() => '');
+  const found = detectChallengeInHtml(html);
+  // The widget's iframe carries the key as ?k= when the attribute is absent.
+  let siteKey = found.siteKey;
+  if (!siteKey) {
+    for (const frame of (page as any).frames?.() ?? []) {
+      const k = /[?&]k=([0-9A-Za-z_-]{20,64})/.exec(String(frame.url?.() || ''))?.[1];
+      if (k) {
+        siteKey = k;
+        break;
+      }
+    }
+  }
+  log.type = found.type;
+  if (!found.present) {
+    log.outcome = 'NO_CHALLENGE';
+    return { result: null, log };
+  }
+  if (!siteKey || (!found.supported && found.type !== 'RECAPTCHA_V2' && found.type !== 'RECAPTCHA_V2_INVISIBLE' && found.type !== 'RECAPTCHA_ENTERPRISE')) {
+    log.outcome = siteKey ? 'UNSUPPORTED' : 'SITEKEY_NOT_FOUND';
+    return { result: null, log };
+  }
+  const solved = await cap.service.solveRecaptchaV2(
+    { provider: 'rstax', jobId: cap.jobId, pageUrl: String((page as any).url?.() || RSTAX_URL), siteKey, invisible: found.type === 'RECAPTCHA_V2_INVISIBLE', enterprise: found.type === 'RECAPTCHA_ENTERPRISE' },
+    cap.policy,
+  );
+  log.attempts++;
+  log.latencyMs += solved.latencyMs;
+  if (!solved.ok) {
+    log.outcome = solved.outcome;
+    // A slow or unsolvable task may succeed once more within the cap.
+    if ((solved.outcome === 'TIMEOUT' || solved.outcome === 'UNSOLVABLE') && n + 1 < cap.policy.maxAttemptsPerProvider)
+      return tryAutoVerifyRs(page, forEntity, entities, cap, { n: n + 1, solved: null, log });
+    return { result: null, log };
+  }
+  // Exactly where reCAPTCHA puts a solved token, plus the page's own callback.
+  await (page as any)
+    .evaluate((token: string) => {
+      for (const ta of Array.from(document.querySelectorAll('textarea[name="g-recaptcha-response"]'))) {
+        (ta as HTMLTextAreaElement).value = token;
+        (ta as HTMLTextAreaElement).innerHTML = token;
+      }
+      const cbName = document.querySelector('.g-recaptcha[data-callback]')?.getAttribute('data-callback');
+      const cb = cbName ? (window as any)[cbName] : null;
+      if (typeof cb === 'function') cb(token);
+    }, solved.token)
+    .catch(() => {});
+  const result = await runRsTaxpayerWorker(page, forEntity, entities, { skipGoto: true, captcha: cap, _attempt: { n: n + 1, solved: { solveId: solved.solveId, latencyMs: solved.latencyMs }, log } });
+  return { result, log };
+}
 
 function buildResult(
   status: string,
@@ -74,7 +160,7 @@ export async function runRsTaxpayerWorker(
   page: Page,
   forEntity: { name: string; idCode: string | null } | null,
   entities?: EntityQueue,
-  opts: { skipGoto?: boolean } = {}
+  opts: { skipGoto?: boolean; captcha?: CaptchaContext; _attempt?: RsCaptchaAttempt } = {}
 ): Promise<LegacySourceResult> {
   const idCode = forEntity?.idCode ? String(forEntity.idCode).trim() : null;
   if (!forEntity || !idCode) {
@@ -139,8 +225,20 @@ export async function runRsTaxpayerWorker(
     // resume. A visible widget is pending only when it is not proven solved,
     // or when RS explicitly says the security button must still be checked.
     if (RSTAX_CAPTCHA_BLOCK_PHRASE.test(sig.after) || (!solved && /g-recaptcha|recaptcha/i.test(await (page as any).locator('body').innerHTML().catch(() => '')))) {
+      // A token we injected that left the gate in place was refused by RS.
+      if (opts._attempt?.solved && opts.captcha) {
+        await opts.captcha.service.reportAcceptance({ provider: 'rstax', jobId: opts.captcha.jobId }, opts._attempt.solved, false);
+        opts._attempt.log.outcome = 'REJECTED';
+      }
+      if (opts.captcha) {
+        const auto = await tryAutoVerifyRs(page, forEntity, entities, opts.captcha, opts._attempt ? { ...opts._attempt, solved: null } : undefined);
+        if (auto.result) return auto.result;
+        return { ...buildResult('WAITING_HUMAN', { forEntity, selector: usedSelector, value: idCode, resultText: sig.after }), status: 'WAITING_HUMAN', captchaResolution: [auto.log] } as LegacySourceResult;
+      }
       return { ...buildResult('WAITING_HUMAN', { forEntity, selector: usedSelector, value: idCode, resultText: sig.after }), status: 'WAITING_HUMAN' };
     }
+    // Past the gate after an automatic verification: RS accepted the token.
+    const verified = opts._attempt?.solved && opts.captcha ? opts._attempt : null;
 
     if (!sig.changed) {
       return buildResult('SUBMITTED_UNCONFIRMED', { forEntity, selector: usedSelector, value: idCode, resultText: sig.after, error: 'search submitted but no new result signal appeared' });
@@ -166,7 +264,14 @@ export async function runRsTaxpayerWorker(
       entities.scanText(sig.after, { source: 'rstax', sourceDocument: RSTAX_SOURCE_META.url, retrievedAt: new Date().toISOString() });
     }
 
-    return buildResult(status, {
+    if (verified) {
+      // Acceptance = RS answered the search (a record, or a confirmed no-result).
+      if (status === 'SEARCH_CONFIRMED' || status === 'NO_RESULT_CONFIRMED') {
+        await opts.captcha!.service.reportAcceptance({ provider: 'rstax', jobId: opts.captcha!.jobId }, verified.solved!, true);
+        verified.log.outcome = 'ACCEPTED';
+      }
+    }
+    const finalResult = buildResult(status, {
       forEntity,
       selector: usedSelector,
       value: idCode,
@@ -174,6 +279,7 @@ export async function runRsTaxpayerWorker(
       taxpayerData,
       error: status === 'SUBMITTED_UNPARSED' ? 'search submitted and page changed, but no parseable taxpayer fields were found — not treated as confirmed evidence' : null,
     });
+    return verified ? ({ ...finalResult, captchaResolution: [verified.log] } as LegacySourceResult) : finalResult;
   } catch (e) {
     return buildResult('FAILED', { forEntity, error: String(e) });
   }

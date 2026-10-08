@@ -36,6 +36,8 @@ export interface LegacySourceResult {
   frameUrls: string[];
   adapter?: string | null;
   frameUrl?: string | null;
+  /** Automatic verification attempts for this source (outcomes only — never a token or key). */
+  captchaResolution?: import('../captcha/captchaService.js').CaptchaResolution[];
   searchControlUsed: string | null;
   queryEntered: string | null;
   submitAction: string | null;

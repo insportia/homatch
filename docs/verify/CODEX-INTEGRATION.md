@@ -106,36 +106,65 @@ yet (status: **DEFERRED / BLOCKED — awaiting the Codex code**).
   Compare evidence items, status and report.
 - Rollback = setting back to CURRENT.
 
-## CAPTCHA (2Captcha) — audit result, 2026-10-08
+## CAPTCHA (2Captcha) — implemented 2026-10-08 (owner decision: on by default)
 
-- **Repository search.** I searched every branch and commit for `2captcha`,
-  `twocaptcha`, `captcha_api` and similar names. There is no client, no
-  secret reference and no configuration.
-- **The only trace.** The owner's local PowerShell history mentions 2Captcha
-  near the Service176 commands. That code lives with the Codex workstream and
-  was never pushed.
-- **The current product rule is the opposite:**
-  - The customer completes a verification in their OWN browser (commit
-    689939fa, "Hand the CAPTCHA to the customer's own browser, not ours").
-  - Otherwise the source is skipped and marked unverified.
-  - `researchAccess.test.mjs` asserts that nothing in the research core
-    solves a CAPTCHA.
-- **What is built now.**
-  - Detection and classification: `providerOutcomes` distinguishes
-    CAPTCHA_REQUIRED / CAPTCHA_FAILED from SOURCE_CHANGED /
-    TEMPORARILY_UNAVAILABLE / TIMEOUT.
-  - Bounded waits: a verification left unattended for 20 minutes is skipped,
-    and the rest of the research continues.
-  - Admin counters: verifications requested, and waits released while
-    unattended.
-- **What is needed to enable automated solving:**
-  - The owner's explicit decision, including confirmation that it is
-    permitted for these sources.
-  - The Codex code that contains the integration.
-  - A server-side secret.
-  - A per-provider attempt cap and spending cap.
-  - Acceptance of the solution confirmed by the source itself.
-  - A kill switch.
-  - Admin cost tracking.
-  - Removal of the research-core guard only for the official-worker
-    adapters.
+- **Shared service.** `official-worker/src/captcha/captchaService.ts` is built
+  on the official SDK `@2captcha/captcha-solver` 1.3.9 (exact pin, MIT,
+  github.com/2captcha/2captcha-javascript).
+  - **Gates:**
+    - The key exists in the worker environment. It is reported by variable
+      NAME only; the accepted names are listed in `CAPTCHA_KEY_NAMES`, or
+      `CAPTCHA_KEY_VAR` can name another one.
+    - Kill switch `CAPTCHA_AUTO_SOLVE=off`.
+    - Admin policy `admin_settings.verify_captcha_auto_solve`, seeded enabled.
+    - Circuit breaker (30 minutes on a bad key or zero balance).
+  - **Bounds:**
+    - 2 attempts per provider per job.
+    - 3 solves per job.
+    - `CAPTCHA_DAILY_CAP` (default 50).
+    - 120 s hard timeout per solve.
+  - **Duplicate prevention:** a challenge already in flight is not submitted
+    again.
+  - **Ledger:** outcome, latency and estimated cost. It never holds the key or
+    a token.
+- **Detection** (`captcha/detect.ts`): no challenge means no spend.
+  - Solved: reCAPTCHA v2, v2 invisible and Enterprise v2.
+  - Reported as unsupported, never solved: v3, hCaptcha and Turnstile.
+- **Service176** (`MyGovApiWorkflow.ts`):
+  1. NAPR gates a record with status 10/15.
+  2. The site key is discovered from the NAPR viewer and its same-origin
+     scripts (`NAPR_RECAPTCHA_SITEKEY` overrides).
+  3. The record is solved, then continued through `resumeRecord(context,
+     token)`, the source's own continuation.
+  4. The record opening is the only proof of acceptance (good report);
+     otherwise the token is bad-reported and retried within the cap.
+  5. An unresolved record stays a non-blocking continuation.
+  - The provider budget rises to 180 s when solving is enabled.
+- **RS.ge** (`RsTaxpayerWorker.ts`):
+  1. The visible reCAPTCHA v2 is solved.
+  2. The token is placed in `g-recaptcha-response` and the page callback runs.
+  3. The same Search #2 as the human-resume path runs.
+  4. A parsed record or a confirmed no-result is acceptance (good report).
+     The gate still standing is rejection (bad report, retry within the cap).
+  5. After that, the existing human path applies, bounded by the 20-minute
+     unattended release.
+  - research-agent queues `rstax` only while the policy enables it.
+- **Admin** (Providers → Verify official sources):
+  - Configured or not, by variable name only.
+  - Kill switch, breaker, solves today against the cap, estimated cost.
+  - Balance on request (a free read).
+  - Recent outcomes.
+  - On/off switches, overall and per provider.
+  - Each job's per-source attempts.
+- **Tests** (`official-worker/test/captcha.test.mjs`): gates, budgets, dedupe,
+  timeout, breaker, redaction, detection, Service176 (accepted / rejected /
+  no CAPTCHA / no site key / hung solver), RS.ge in real Chromium (accepted /
+  rejected → bounded → human fallback), and provider isolation. All use a fake
+  solver; no paid solve has been made.
+- **Not live-verified:**
+  - NAPR's real site-key location and reCAPTCHA variant.
+  - Whether RS.ge accepts an injected token.
+  - Actual cost and latency.
+
+  These are proven only by the first controlled live run (each run costs about
+  $0.003 per solve).

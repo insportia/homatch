@@ -26,6 +26,11 @@
 --      MyHome.ge / SS.ge comparables in Verify Market Research. Off until the
 --      coordinated release activates it.
 --
+--    verify_captcha_auto_solve          {"enabled":true, ...}
+--      Automatic reCAPTCHA completion for NAPR/MyGov Service176 and RS.ge via
+--      the worker's shared 2Captcha service (owner decision 2026-10-08). The
+--      key lives only in the worker environment; this row holds no secret.
+--
 -- Additive only. Nothing existing is altered or removed.
 -- ============================================================================
 
@@ -38,5 +43,7 @@ values
   ('verify_tas_implementation', '{"active":"LEGACY","fallback":null}'::jsonb,
    'Verify TAS implementation: active LEGACY|API_FIRST, fallback LEGACY|null. Selects already-deployed worker code only.'),
   ('verify_marketplace_market_enabled', 'false'::jsonb,
-   'Verify Market Research: fold MyHome.ge and SS.ge comparables (official worker /verify/market) into the market lane.')
+   'Verify Market Research: fold MyHome.ge and SS.ge comparables (official worker /verify/market) into the market lane.'),
+  ('verify_captcha_auto_solve', '{"enabled":true,"providers":{"mygov":true,"rstax":true},"maxAttemptsPerProvider":2,"maxSolvesPerJob":3}'::jsonb,
+   'Verify official sources: automatic reCAPTCHA completion through the worker''s shared 2Captcha service (NAPR/MyGov Service176, RS.ge). Bounded per provider and per job; the worker also enforces its key, CAPTCHA_AUTO_SOLVE=off kill switch, daily cap and breaker.')
 on conflict (key) do nothing;

@@ -15806,7 +15806,18 @@ const en = {
   adm_vos_captcha_title: 'Human verification (CAPTCHA)',
   adm_vos_captcha_required_count: 'Sources that required verification (recent jobs)',
   adm_vos_captcha_unattended: 'released after waiting unattended',
-  adm_vos_captcha_auto_off: 'Automatic CAPTCHA solving is not part of this build: verifications are completed by the customer in their own browser, or the source is skipped and marked unverified.',
+
+  /* ── VERIFY OFFICIAL HISTORY + ADMIN OFFICIAL SOURCES ── */
+  adm_vos_captcha_auto: 'Automatic verification (2Captcha)',
+  adm_vos_captcha_configured: 'Key configured in the worker',
+  adm_vos_captcha_not_configured: 'No 2Captcha key in the worker environment',
+  adm_vos_captcha_kill_switch: 'kill switch on (CAPTCHA_AUTO_SOLVE=off)',
+  adm_vos_captcha_breaker: 'paused after provider error',
+  adm_vos_captcha_today: 'Solves today',
+  adm_vos_captcha_cost_est: 'est. cost per solve',
+  adm_vos_captcha_balance_check: 'check balance',
+  adm_vos_captcha_balance: 'Balance',
+  adm_vos_captcha_recent: 'Recent outcomes',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -31527,7 +31538,18 @@ const ka: Partial<Record<TranslationKey, string>> = {
   adm_vos_captcha_title: 'ადამიანის დადასტურება (CAPTCHA)',
   adm_vos_captcha_required_count: 'წყაროები, რომლებმაც დადასტურება მოითხოვეს (ბოლო კვლევები)',
   adm_vos_captcha_unattended: 'გაშვებული უყურადღებოდ ლოდინის შემდეგ',
-  adm_vos_captcha_auto_off: 'CAPTCHA-ს ავტომატური გადაჭრა ამ ვერსიაში არ არის: დადასტურებას მომხმარებელი საკუთარ ბრაუზერში ასრულებს, ან წყარო გამოტოვდება და გადაუმოწმებლად მოინიშნება.',
+
+  /* ── VERIFY OFFICIAL HISTORY + ADMIN OFFICIAL SOURCES ── */
+  adm_vos_captcha_auto: 'ავტომატური დადასტურება (2Captcha)',
+  adm_vos_captcha_configured: 'გასაღები ვორკერში დაყენებულია',
+  adm_vos_captcha_not_configured: 'ვორკერის გარემოში 2Captcha-ს გასაღები არ არის',
+  adm_vos_captcha_kill_switch: 'გამორთვის გადამრთველი ჩართულია (CAPTCHA_AUTO_SOLVE=off)',
+  adm_vos_captcha_breaker: 'შეჩერებულია პროვაიდერის შეცდომის გამო',
+  adm_vos_captcha_today: 'დღევანდელი გადაჭრები',
+  adm_vos_captcha_cost_est: 'სავარაუდო ფასი ერთზე',
+  adm_vos_captcha_balance_check: 'ბალანსის შემოწმება',
+  adm_vos_captcha_balance: 'ბალანსი',
+  adm_vos_captcha_recent: 'ბოლო შედეგები',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -47239,7 +47261,18 @@ const ru: Partial<Record<TranslationKey, string>> = {
   adm_vos_captcha_title: 'Проверка человеком (CAPTCHA)',
   adm_vos_captcha_required_count: 'Источники, запросившие проверку (последние задания)',
   adm_vos_captcha_unattended: 'отпущено после ожидания без ответа',
-  adm_vos_captcha_auto_off: 'Автоматического решения CAPTCHA в этой сборке нет: проверку проходит клиент в своём браузере, либо источник пропускается и помечается как непроверенный.',
+
+  /* ── VERIFY OFFICIAL HISTORY + ADMIN OFFICIAL SOURCES ── */
+  adm_vos_captcha_auto: 'Автоматическая проверка (2Captcha)',
+  adm_vos_captcha_configured: 'Ключ настроен в воркере',
+  adm_vos_captcha_not_configured: 'В окружении воркера нет ключа 2Captcha',
+  adm_vos_captcha_kill_switch: 'аварийное отключение включено (CAPTCHA_AUTO_SOLVE=off)',
+  adm_vos_captcha_breaker: 'приостановлено из-за ошибки провайдера',
+  adm_vos_captcha_today: 'Решений сегодня',
+  adm_vos_captcha_cost_est: 'оценка стоимости за решение',
+  adm_vos_captcha_balance_check: 'проверить баланс',
+  adm_vos_captcha_balance: 'Баланс',
+  adm_vos_captcha_recent: 'Последние результаты',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -62949,7 +62982,18 @@ const tr: Partial<Record<TranslationKey, string>> = {
   adm_vos_captcha_title: 'İnsan doğrulaması (CAPTCHA)',
   adm_vos_captcha_required_count: 'Doğrulama isteyen kaynaklar (son işler)',
   adm_vos_captcha_unattended: 'yanıtsız beklemeden sonra bırakıldı',
-  adm_vos_captcha_auto_off: 'Bu sürümde otomatik CAPTCHA çözümü yok: doğrulamayı müşteri kendi tarayıcısında tamamlar ya da kaynak atlanır ve doğrulanmamış olarak işaretlenir.',
+
+  /* ── VERIFY OFFICIAL HISTORY + ADMIN OFFICIAL SOURCES ── */
+  adm_vos_captcha_auto: 'Otomatik doğrulama (2Captcha)',
+  adm_vos_captcha_configured: 'Anahtar worker’da tanımlı',
+  adm_vos_captcha_not_configured: 'Worker ortamında 2Captcha anahtarı yok',
+  adm_vos_captcha_kill_switch: 'acil kapatma açık (CAPTCHA_AUTO_SOLVE=off)',
+  adm_vos_captcha_breaker: 'sağlayıcı hatası nedeniyle duraklatıldı',
+  adm_vos_captcha_today: 'Bugünkü çözümler',
+  adm_vos_captcha_cost_est: 'çözüm başına tahmini maliyet',
+  adm_vos_captcha_balance_check: 'bakiyeyi kontrol et',
+  adm_vos_captcha_balance: 'Bakiye',
+  adm_vos_captcha_recent: 'Son sonuçlar',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -78659,7 +78703,18 @@ const ar: Partial<Record<TranslationKey, string>> = {
   adm_vos_captcha_title: 'التحقق البشري (CAPTCHA)',
   adm_vos_captcha_required_count: 'المصادر التي طلبت التحقق (المهام الأخيرة)',
   adm_vos_captcha_unattended: 'أُفرج عنها بعد انتظار دون استجابة',
-  adm_vos_captcha_auto_off: 'لا يتضمن هذا الإصدار حلًّا آليًا لـ CAPTCHA: يُكمل العميل التحقق في متصفحه، أو يُتخطّى المصدر ويُعلَّم بأنه غير متحقَّق منه.',
+
+  /* ── VERIFY OFFICIAL HISTORY + ADMIN OFFICIAL SOURCES ── */
+  adm_vos_captcha_auto: 'التحقق التلقائي (2Captcha)',
+  adm_vos_captcha_configured: 'المفتاح مُعدّ في العامل',
+  adm_vos_captcha_not_configured: 'لا يوجد مفتاح 2Captcha في بيئة العامل',
+  adm_vos_captcha_kill_switch: 'مفتاح الإيقاف مُفعَّل (CAPTCHA_AUTO_SOLVE=off)',
+  adm_vos_captcha_breaker: 'متوقف بعد خطأ من المزوّد',
+  adm_vos_captcha_today: 'عمليات الحل اليوم',
+  adm_vos_captcha_cost_est: 'التكلفة التقديرية لكل حل',
+  adm_vos_captcha_balance_check: 'تحقق من الرصيد',
+  adm_vos_captcha_balance: 'الرصيد',
+  adm_vos_captcha_recent: 'النتائج الأخيرة',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -94369,7 +94424,18 @@ const he: Partial<Record<TranslationKey, string>> = {
   adm_vos_captcha_title: 'אימות אנושי (CAPTCHA)',
   adm_vos_captcha_required_count: 'מקורות שביקשו אימות (משימות אחרונות)',
   adm_vos_captcha_unattended: 'שוחררו לאחר המתנה ללא מענה',
-  adm_vos_captcha_auto_off: 'בגרסה זו אין פתרון אוטומטי ל־CAPTCHA: הלקוח משלים את האימות בדפדפן שלו, או שהמקור מדולג ומסומן כלא מאומת.',
+
+  /* ── VERIFY OFFICIAL HISTORY + ADMIN OFFICIAL SOURCES ── */
+  adm_vos_captcha_auto: 'אימות אוטומטי (2Captcha)',
+  adm_vos_captcha_configured: 'המפתח מוגדר ב־worker',
+  adm_vos_captcha_not_configured: 'אין מפתח 2Captcha בסביבת ה־worker',
+  adm_vos_captcha_kill_switch: 'מתג הכיבוי פעיל (CAPTCHA_AUTO_SOLVE=off)',
+  adm_vos_captcha_breaker: 'הושהה לאחר שגיאת ספק',
+  adm_vos_captcha_today: 'פתרונות היום',
+  adm_vos_captcha_cost_est: 'עלות משוערת לפתרון',
+  adm_vos_captcha_balance_check: 'בדיקת יתרה',
+  adm_vos_captcha_balance: 'יתרה',
+  adm_vos_captcha_recent: 'תוצאות אחרונות',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

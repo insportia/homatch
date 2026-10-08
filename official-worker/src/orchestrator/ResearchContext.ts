@@ -51,6 +51,8 @@ export interface ResearchJob {
   tasConfig?: import('../workflows/tas/implementation.js').TasImplementationConfig;
   /** Admin/debug only: which TAS implementation actually produced the result. */
   tasExecution?: { implementation: string; fallbackFrom: string | null; durationMs: number } | null;
+  /** Automatic CAPTCHA policy for this job (forwarded by research-agent from Admin). */
+  captchaPolicy?: import('../captcha/captchaService.js').CaptchaPolicy;
 }
 
 /**

@@ -5,6 +5,7 @@
 // and research-agent (Supabase) do not break. What changed is everything
 // BEHIND these endpoints — see orchestrator/, workflows/, evidence/,
 // entities/, documents/, state/.
+import { captchaService, parseCaptchaPolicy } from './captcha/captchaService.js';
 import express from 'express';
 import { parseTasConfig, tasHealth } from './workflows/tas/implementation.js';
 import { runTasApiStep, tasApiOptionsFromEnv } from './workflows/tas/api/TasApiStep.js';
@@ -174,12 +175,21 @@ app.post('/research', auth, (req: any, res: any) => {
   const mode = req.body?.mode === 'property' ? 'property' : 'cadastral';
   const query = mode === 'cadastral' ? String(req.body?.query || '').trim().replace(/\s/g, '') : String(req.body?.query || '').trim();
   if (!query) return res.status(400).json({ error: 'query required' });
-  const job = orchestrator.start(query, mode, parseTasConfig(req.body?.tasImplementation));
+  const job = orchestrator.start(query, mode, parseTasConfig(req.body?.tasImplementation), parseCaptchaPolicy(req.body?.captchaPolicy));
   res.status(202).json({ accepted: true, jobId: job.id, status: job.status, tasImplementation: job.tasConfig });
 });
 
 // TAS implementation health (Admin diagnostics). Counters only — never a
 // document, a URL with a session, or a credential.
+// CAPTCHA service health: configured (variable NAME only, never the value),
+// kill switch, caps, breaker and recent outcomes. ?balance=1 asks 2Captcha for
+// the account balance — a free read, no solve.
+app.get('/health/captcha', auth, async (req: any, res: any) => {
+  const status = captchaService.status();
+  const balance = req.query?.balance === '1' ? await captchaService.balance() : undefined;
+  res.json({ ...status, ...(balance !== undefined ? { balanceUsd: balance } : {}), checkedAt: new Date().toISOString() });
+});
+
 app.get('/health/tas', auth, (_req: any, res: any) => {
   res.json({ implementations: tasHealth(), version: TAS_API_VERSION, checkedAt: new Date().toISOString() });
 });
@@ -280,7 +290,7 @@ app.post('/research/rstax-entity', auth, (req: any, res: any) => {
   const name = String(req.body?.name || '').trim();
   const idCode = req.body?.idCode ? String(req.body.idCode).trim() : null;
   if (!idCode) return res.status(400).json({ error: 'idCode required — RS Taxpayers Registry has no name-search field' });
-  const job = orchestrator.startEntity(name || idCode, idCode, 'rstax');
+  const job = orchestrator.startEntity(name || idCode, idCode, 'rstax', parseCaptchaPolicy(req.body?.captchaPolicy));
   res.status(202).json({ accepted: true, jobId: job.id, status: job.status });
 });
 

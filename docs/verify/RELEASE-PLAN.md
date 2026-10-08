@@ -47,13 +47,14 @@ mobile shard). Deploy targets: frontend · Railway `homatch-official-worker`
     evidence is kept.
   - Customers see a localized list of provider limitations; Admin sees
     reasons and counts.
-- **Automatic CAPTCHA solving (2Captcha): not in this repository.**
-  - No code, secret reference or commit for it exists on any branch.
-  - The current product rule is customer-side handoff
-    (`src/research-core/__tests__/researchAccess.test.mjs` guards against a
-    solver in the research core).
-  - Adding automated solving is an owner decision, not an engineering
-    default. See `CODEX-INTEGRATION.md`.
+- **Automatic CAPTCHA solving (2Captcha): implemented and on by default.**
+  - Shared worker service for Service176 and RS.ge, built on the official
+    SDK.
+  - Bounded, deduplicated, redacted, with a kill switch.
+  - Acceptance is confirmed by the source itself.
+  - See `CODEX-INTEGRATION.md`.
+  - Requires the key in the Railway worker environment, which the owner
+    reports as already set.
 
 ## 2. Migration and deployment order
 
@@ -136,9 +137,9 @@ marked incomplete, never conclusive.
 - NAPR/MyGov Service176 (Codex) and RS.ge (Codex) worker code not received
   (no branch or commit on GitHub; `feat/service176-integration` is the
   already-merged PR #119).
-- Automatic CAPTCHA solving: no 2Captcha integration exists in the
-  repository. It needs the owner's decision and the Codex code that
-  contains it.
+- 2Captcha is live-unverified until the first controlled solve. Before it:
+  - Confirm the key's variable NAME in Admin → CAPTCHA card after deploy.
+  - Expect about $0.003 per solve.
 - Live access to tas.ge is impossible from the development sandbox. Every
   live TAS claim waits for step 3.1.
 - `DownloadServlet` and Georgian PDF text fidelity: unverified until 3.1.

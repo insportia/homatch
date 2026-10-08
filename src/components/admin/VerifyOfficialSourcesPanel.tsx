@@ -59,15 +59,20 @@ export function VerifyOfficialSourcesPanel() {
   /** The exact code the last TEST ran on — ACTIVATE is bound to it. */
   const [testedCode, setTestedCode] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  /** CAPTCHA service state from the worker + the Admin policy. Never holds a key. */
+  const [captcha, setCaptcha] = useState<{ policy: any; worker: any } | null>(null);
+  const [captchaBalance, setCaptchaBalance] = useState<number | null | undefined>(undefined);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [h, settings, diag] = await Promise.all([
+      const [h, settings, diag, cap] = await Promise.all([
         invokeAdmin('tas-admin-health').catch(() => null),
         getAdminSettings(),
         invokeAdmin('verify-admin-diagnostics', { limit: 15 }).catch(() => null),
+        invokeAdmin('captcha-admin-health').catch(() => null),
       ]);
+      setCaptcha(cap ?? null);
       if (h?.setting) setSetting(h.setting);
       if (h?.worker?.implementations) {
         setHealth(h.worker.implementations);
@@ -113,6 +118,24 @@ export function VerifyOfficialSourcesPanel() {
       setTestResult({ ok: false, result: { error: e?.message ?? String(e) } });
     } finally {
       setTesting(false);
+    }
+  };
+
+  const saveCaptchaPolicy = async (next: any, reason: string) => {
+    try {
+      await updateAdminSetting('verify_captcha_auto_solve', next, reason);
+      setCaptcha((c) => (c ? { ...c, policy: next } : c));
+      toast.success(t('adm_vos_saved'));
+    } catch (e: any) {
+      toast.error(e?.message ?? String(e));
+    }
+  };
+  const checkBalance = async () => {
+    try {
+      const r = await invokeAdmin('captcha-admin-health', { balance: true });
+      setCaptchaBalance(typeof r?.worker?.balanceUsd === 'number' ? r.worker.balanceUsd : null);
+    } catch {
+      setCaptchaBalance(null);
     }
   };
 
@@ -249,13 +272,67 @@ export function VerifyOfficialSourcesPanel() {
               );
             })}
           </ul>
-          <div className="rounded-lg border border-border p-3 text-xs space-y-1">
-            <p className="font-medium">{t('adm_vos_captcha_title')}</p>
+          <div className="rounded-lg border border-border p-3 text-xs space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-medium">{t('adm_vos_captcha_title')}</p>
+              {captcha?.policy ? (
+                <label className="flex items-center gap-2">
+                  <Switch
+                    checked={captcha.policy.enabled !== false}
+                    onCheckedChange={(on) => void saveCaptchaPolicy({ ...captcha.policy, enabled: on }, `Verify automatic CAPTCHA ${on ? 'on' : 'off'}`)}
+                    aria-label={t('adm_vos_captcha_auto')}
+                  />
+                  {t('adm_vos_captcha_auto')}
+                </label>
+              ) : null}
+            </div>
+            {captcha?.worker && !captcha.worker.unavailable ? (
+              <>
+                <p className="break-words">
+                  {captcha.worker.configured ? (
+                    <span className="text-emerald-600">{t('adm_vos_captcha_configured')}: <span className="font-mono">{captcha.worker.keyVariable}</span></span>
+                  ) : (
+                    <span className="text-amber-600">{t('adm_vos_captcha_not_configured')}</span>
+                  )}
+                  {captcha.worker.killSwitch ? <span className="text-amber-600"> · {t('adm_vos_captcha_kill_switch')}</span> : null}
+                  {captcha.worker.breakerOpen ? <span className="text-amber-600"> · {t('adm_vos_captcha_breaker')}: {captcha.worker.breakerCode}</span> : null}
+                </p>
+                <p>
+                  {t('adm_vos_captcha_today')}: {captcha.worker.usedToday} / {captcha.worker.dailyCap} · {t('adm_vos_captcha_cost_est')}: ${Number(captcha.worker.estCostPerSolveUsd ?? 0).toFixed(3)}
+                  {' · '}
+                  {captchaBalance === undefined ? (
+                    <Button size="sm" variant="ghost" className="h-auto px-1 py-0 text-xs underline" onClick={() => void checkBalance()}>{t('adm_vos_captcha_balance_check')}</Button>
+                  ) : (
+                    <span>{t('adm_vos_captcha_balance')}: {captchaBalance === null ? '—' : `$${captchaBalance.toFixed(2)}`}</span>
+                  )}
+                </p>
+                {Array.isArray(captcha.worker.recent) && captcha.worker.recent.length ? (
+                  <p className="text-muted-foreground break-words">
+                    {t('adm_vos_captcha_recent')}: {Object.entries(captcha.worker.recent.reduce((acc: Record<string, number>, e: any) => ({ ...acc, [`${e.provider} ${e.outcome}`]: (acc[`${e.provider} ${e.outcome}`] ?? 0) + 1 }), {})).map(([k, n]) => `${k} ${n}`).join(' · ')}
+                  </p>
+                ) : null}
+              </>
+            ) : (
+              <p className="text-amber-600 break-words">{t('adm_vos_worker_unreachable')} {captcha?.worker?.error ?? ''}</p>
+            )}
+            {captcha?.policy ? (
+              <div className="flex flex-wrap gap-4">
+                {(['mygov', 'rstax'] as const).map((p) => (
+                  <label key={p} className="flex items-center gap-2">
+                    <Switch
+                      checked={captcha.policy.providers?.[p] !== false}
+                      disabled={captcha.policy.enabled === false}
+                      onCheckedChange={(on) => void saveCaptchaPolicy({ ...captcha.policy, providers: { ...captcha.policy.providers, [p]: on } }, `Verify automatic CAPTCHA ${p} ${on ? 'on' : 'off'}`)}
+                    />
+                    {t(`verify_ox_prov_${p}`)}
+                  </label>
+                ))}
+              </div>
+            ) : null}
             <p>
               {t('adm_vos_captcha_required_count')}: {jobs.reduce((n, j) => n + (j.providers ?? []).filter((o: any) => o.state === 'CAPTCHA_REQUIRED' || o.state === 'CAPTCHA_FAILED').length, 0)} ·{' '}
               {t('adm_vos_captcha_unattended')}: {jobs.reduce((n, j) => n + (Number(j.unattendedVerificationSkips) || 0), 0)}
             </p>
-            <p className="text-muted-foreground break-words">{t('adm_vos_captcha_auto_off')}</p>
           </div>
         </section>
 

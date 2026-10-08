@@ -1861,9 +1861,37 @@ async function tasImplementationFor(sb: any): Promise<{ active: string; fallback
   return { active, fallback };
 }
 
+/*
+ * AUTOMATIC CAPTCHA POLICY (Admin setting verify_captcha_auto_solve).
+ *
+ * Forwarded to the official worker with every job; the worker's shared
+ * 2Captcha service enforces it together with its own key check, kill switch
+ * (CAPTCHA_AUTO_SOLVE=off), caps and circuit breaker. On by default (owner
+ * decision 2026-10-08); an explicit enabled:false turns it off.
+ */
+async function captchaPolicyFor(sb: any): Promise<{ enabled: boolean; providers: { mygov: boolean; rstax: boolean }; maxAttemptsPerProvider: number; maxSolvesPerJob: number }> {
+  const v = await adminSettingJson(sb, 'verify_captcha_auto_solve');
+  const o = v && typeof v === 'object' ? v : {};
+  const n = (x: unknown, lo: number, hi: number, d: number) => (Number.isFinite(Number(x)) ? Math.min(hi, Math.max(lo, Math.floor(Number(x)))) : d);
+  return {
+    enabled: o.enabled !== false,
+    providers: { mygov: o.providers?.mygov !== false, rstax: o.providers?.rstax !== false },
+    maxAttemptsPerProvider: n(o.maxAttemptsPerProvider, 1, 3, 2),
+    maxSolvesPerJob: n(o.maxSolvesPerJob, 1, 6, 3),
+  };
+}
+
+/* RS.ge runs automatically only while its verification can be completed
+ * automatically; otherwise it stays out of the queue exactly as before. */
+async function financialQueueFor(sb: any): Promise<string[]> {
+  const policy = await captchaPolicyFor(sb);
+  return policy.enabled && policy.providers.rstax ? ['enreg', 'rstax', 'debtor'] : ['enreg', 'debtor'];
+}
+
 async function startBrowser(sb: any, j: any): Promise<any> {
   const tasImplementation = await tasImplementationFor(sb);
-  const r = await wf('/research', 'POST', { query: j.query, mode: j.mode, tasImplementation });
+  const captchaPolicy = await captchaPolicyFor(sb);
+  const r = await wf('/research', 'POST', { query: j.query, mode: j.mode, tasImplementation, captchaPolicy });
   const p = j.result_json || {};
   p._worker = {
     jobId: r.data.jobId,
@@ -2437,7 +2465,7 @@ function pickFinancialCandidate(prior: any, source: 'enreg' | 'rstax' | 'debtor'
 // reconciliation-stage trigger. Persisted once per chain run so each
 // individual source's CAPTCHA pause/resume doesn't need to re-derive it.
 async function startFinancialEntity(sb: any, j: any, source: 'enreg' | 'rstax' | 'debtor', name: string, idCode: string | null, returnStage: 'PUBLIC_RESEARCH_READY' | 'MARKET_READY' | 'SYNTHESIS_READY'): Promise<any> {
-  const r = await wf(FINANCIAL_ENDPOINT[source], 'POST', { name, idCode });
+  const r = await wf(FINANCIAL_ENDPOINT[source], 'POST', { name, idCode, ...(source === 'rstax' ? { captchaPolicy: await captchaPolicyFor(sb) } : {}) });
   const p = j.result_json || {};
   // The watchdog's clock starts with the job, not with the first poll: a
   // worker that never reports anything at all must still time out.
@@ -3798,7 +3826,7 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
     // MARKET_READY — PUBLIC_RESEARCH is a real stage in between.
     if (j.status === 'CREATED' && j.stage === 'ENREG_CHECK_PENDING') {
       const prior = j.result_json || {};
-      prior._financialQueue = ['enreg', 'debtor'];
+      prior._financialQueue = await financialQueueFor(sb);
       prior._financialReturnStage = 'PUBLIC_RESEARCH_READY';
       return await processFinancialQueue(sb, { ...j, result_json: prior });
     }
@@ -3813,7 +3841,7 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
     // already covered by the first chain is never looked up again here.
     if (j.status === 'CREATED' && j.stage === 'PUBLIC_RESEARCH_CHECK_PENDING') {
       const prior = j.result_json || {};
-      prior._financialQueue = ['enreg', 'debtor'];
+      prior._financialQueue = await financialQueueFor(sb);
       prior._financialReturnStage = 'MARKET_READY';
       return await processFinancialQueue(sb, { ...j, result_json: prior });
     }
@@ -3845,7 +3873,7 @@ async function advance(sb: any, k: string, m: string, j: any, l: string): Promis
     // alreadyHasResultFor inside pickFinancialCandidate).
     if (j.status === 'CREATED' && j.stage === 'RECONCILIATION_CHECK_PENDING') {
       const prior = j.result_json || {};
-      prior._financialQueue = ['enreg', 'debtor'];
+      prior._financialQueue = await financialQueueFor(sb);
       prior._financialReturnStage = 'SYNTHESIS_READY';
       return await processFinancialQueue(sb, { ...j, result_json: prior });
     }
@@ -5797,10 +5825,25 @@ Deno.serve(async (req) => {
      * admin_settings.verify_tas_implementation through admin_set_setting,
      * selecting between implementations already deployed in the worker.
      */
-    if (b?.action === 'tas-admin-health' || b?.action === 'tas-admin-test' || b?.action === 'verify-admin-diagnostics') {
+    if (b?.action === 'tas-admin-health' || b?.action === 'tas-admin-test' || b?.action === 'verify-admin-diagnostics' || b?.action === 'captcha-admin-health') {
       if (!user) return json({ error: 'forbidden' }, 403);
       const { data: me } = await sb.from('users').select('id,is_admin').eq('auth_id', user.id).maybeSingle();
       if (!me?.is_admin) return json({ error: 'forbidden' }, 403);
+
+      // CAPTCHA service health from the worker: configured (variable NAME only),
+      // kill switch, caps, breaker, recent outcomes and — on request — the
+      // 2Captcha balance (a free read). Never the key, never a token.
+      if (b.action === 'captcha-admin-health') {
+        const policy = await captchaPolicyFor(sb);
+        let worker: any = null;
+        try {
+          const r = await wf(`/health/captcha${b.balance ? '?balance=1' : ''}`);
+          worker = r.code === 200 ? r.data : { unavailable: true, status: r.code };
+        } catch (e) {
+          worker = { unavailable: true, error: String((e as any)?.message || e).slice(0, 160) };
+        }
+        return json({ policy, worker });
+      }
 
       if (b.action === 'tas-admin-health') {
         const setting = await tasImplementationFor(sb);
@@ -5879,6 +5922,8 @@ Deno.serve(async (req) => {
           // Every provider's own outcome — one failing never describes the others.
           providers: providerOutcomes(r, j.mode === 'cadastral' ? ['tas', 'mygov'] : []),
           unattendedVerificationSkips: Array.isArray(r._unattendedVerificationSkips) ? r._unattendedVerificationSkips.length : 0,
+          // Automatic verification attempts per source (outcome, attempts, latency — no tokens).
+          captcha: (r.browserOfficial?.results || []).flatMap((x: any) => (Array.isArray(x?.captchaResolution) ? x.captchaResolution : []).map((c: any) => ({ source: x.source, type: c.type ?? null, attempts: c.attempts ?? 0, outcome: c.outcome ?? null, latencyMs: c.latencyMs ?? 0 }))),
           ai: { researchTokens: tokens, synthesis: usage, synthesisState: j.synthesis_state ?? null, searches: r.webSearchCalls ?? r._searches ?? null },
         };
       });

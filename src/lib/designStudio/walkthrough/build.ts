@@ -390,12 +390,14 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
   const lostRooms = (objects: ObjectInstance[], only?: string) => {
     const lost: string[] = [];
     const check = only ? [only] : [...before];
+    // Only the rooms asked about are looked inside (the flood is the same; the other rooms' interiors are not needed).
+    const asked = new Set(check);
     if (check.some((id) => comfortBefore.has(id))) {
-      const comfort = reachableRooms(space, comfortModel(objects), { start });
+      const comfort = reachableRooms(space, comfortModel(objects), { start, only: asked });
       for (const id of check) if (comfortBefore.has(id) && !comfort.has(id)) lost.push(id);
     }
     if (check.some((id) => bodyOnly.includes(id))) {
-      const body = reachableRooms(space, buildWalkModel(space, objects, assets), { start });
+      const body = reachableRooms(space, buildWalkModel(space, objects, assets), { start, only: asked });
       for (const id of check) if (bodyOnly.includes(id) && !body.has(id)) lost.push(id);
     }
     return lost.sort();

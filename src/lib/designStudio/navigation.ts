@@ -126,11 +126,15 @@ export function recoverPosition(model: WalkModel, p: Point): Point | null {
 }
 
 /** Distance from a point to an oriented box (0 inside). */
+// A box's cosine and sine, kept with it while its angle is unchanged (the same numbers, computed once).
+const trig = new WeakMap<Obb, { a: number; c: number; s: number }>();
 export function distanceToObb(p: Point, b: Obb): number {
   const dx = p.x - b.cx;
   const dy = p.y - b.cy;
-  const c = Math.cos(b.angle);
-  const s = Math.sin(b.angle);
+  let t = trig.get(b);
+  if (!t || t.a !== b.angle) { t = { a: b.angle, c: Math.cos(b.angle), s: Math.sin(b.angle) }; trig.set(b, t); }
+  const c = t.c;
+  const s = t.s;
   const lx = dx * c + dy * s;
   const ly = -dx * s + dy * c;
   const qx = Math.max(Math.abs(lx) - b.hw, 0);
@@ -164,8 +168,10 @@ export function inSpace(model: WalkModel, p: Point): boolean {
 // boxes near the point (the same answer as looking at all of them, for any radius up to INDEX_REACH_M).
 const INDEX_CELL_M = 1;
 const INDEX_REACH_M = 0.6;
-const indexes = new WeakMap<Obb[], Map<string, Obb[]>>();
-function indexOf(list: Obb[]): Map<string, Obb[]> {
+// Cells by number (i, j within ±2^15 m), no strings in the hot path.
+const cellKey = (i: number, j: number) => (i + 32768) * 65536 + (j + 32768);
+const indexes = new WeakMap<Obb[], Map<number, Obb[]>>();
+function indexOf(list: Obb[]): Map<number, Obb[]> {
   let idx = indexes.get(list);
   if (idx) return idx;
   idx = new Map();
@@ -173,7 +179,7 @@ function indexOf(list: Obb[]): Map<string, Obb[]> {
     const r = Math.hypot(b.hw, b.hd) + INDEX_REACH_M;
     for (let i = Math.floor((b.cx - r) / INDEX_CELL_M); i <= Math.floor((b.cx + r) / INDEX_CELL_M); i += 1) {
       for (let j = Math.floor((b.cy - r) / INDEX_CELL_M); j <= Math.floor((b.cy + r) / INDEX_CELL_M); j += 1) {
-        const k = `${i},${j}`;
+        const k = cellKey(i, j);
         (idx.get(k) ?? idx.set(k, []).get(k)!).push(b);
       }
     }
@@ -183,7 +189,7 @@ function indexOf(list: Obb[]): Map<string, Obb[]> {
 }
 function blockedBy(list: Obb[], p: Point, radius: number): boolean {
   if (radius > INDEX_REACH_M) { for (const b of list) if (distanceToObb(p, b) < radius) return true; return false; }
-  const near = indexOf(list).get(`${Math.floor(p.x / INDEX_CELL_M)},${Math.floor(p.y / INDEX_CELL_M)}`);
+  const near = indexOf(list).get(cellKey(Math.floor(p.x / INDEX_CELL_M), Math.floor(p.y / INDEX_CELL_M)));
   if (near) for (const b of near) if (distanceToObb(p, b) < radius) return true;
   return false;
 }
@@ -234,7 +240,7 @@ const SLIDE_TURNS = [0.35, 0.7, 1.05];
 function contactNormal(model: WalkModel, p: Point): Point | null {
   let best: { d: number; n: Point } | null = null;
   for (const list of [model.walls, model.furniture]) {
-    const near = indexOf(list).get(`${Math.floor(p.x / INDEX_CELL_M)},${Math.floor(p.y / INDEX_CELL_M)}`) ?? [];
+    const near = indexOf(list).get(cellKey(Math.floor(p.x / INDEX_CELL_M), Math.floor(p.y / INDEX_CELL_M))) ?? [];
     for (const b of near) {
       const c = Math.cos(b.angle); const s = Math.sin(b.angle);
       const dx = p.x - b.cx; const dy = p.y - b.cy;

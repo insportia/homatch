@@ -173,7 +173,7 @@ function QuickActions({ actions }: { actions: QuickAction[] }) {
 
 function DiscoverySection({
   propertyId, userId, transactionType, matchCounts, creditBalance, life, contactReady,
-  onNavigateMatches, onCountsRefresh, onRenewed,
+  onNavigateMatches, onCountsRefresh, onRenewed, onSearchKnown,
 }: {
   propertyId: string;
   userId: string;
@@ -186,6 +186,8 @@ function DiscoverySection({
   onNavigateMatches: () => void;
   onCountsRefresh: (counts: { total: number; newCount: number; strongCount: number }) => void;
   onRenewed: () => void;
+  /** Tells the page header whether this property already has a search (its results page). */
+  onSearchKnown?: (exists: boolean) => void;
 }) {
   const { t } = useLanguage();
   const [loading, setLoading] = useState(false);
@@ -198,6 +200,8 @@ function DiscoverySection({
      running, and a paused search is not a stopped one. */
   const { status, refresh } = useCampaignStatus(propertyId);
   const campaign = status?.campaign ?? null;
+  const searchExists = Boolean(campaign);
+  useEffect(() => { onSearchKnown?.(searchExists); }, [searchExists, onSearchKnown]);
   const view = campaign ? campaignView({
     state: campaign.state, sources: campaign.sources, queue: campaign.queue,
     signalsAnalyzed: campaign.signalsAnalyzed, newResults: campaign.newResults, strong: campaign.strong,
@@ -442,6 +446,7 @@ function PropertyDetailContent() {
   const [loading, setLoading] = useState(true);
   const [showDelete, setShowDelete] = useState(false);
   const [matchCounts, setMatchCounts] = useState({ total: 0, newCount: 0, strongCount: 0 });
+  const [searchExists, setSearchExists] = useState(false);
   const [creditAccount, setCreditAccount] = useState<CreditAccount | null>(null);
 
   const loadLifecycle = useCallback(async () => {
@@ -561,7 +566,11 @@ function PropertyDetailContent() {
 
   const contactReady = hasContactReadiness(property);
   const action = intelligenceActionFor(property.transaction_type as string | null);
-  const ownerAction = matchCounts.total > 0
+  /* A property with a search (or results) opens its results directly:
+     "მყიდველები და მოთხოვნები" / "მოიჯარეები და მოთხოვნები" — one click, no new search. */
+  const hasSearch = searchExists || matchCounts.total > 0;
+  const resultsLabel = String(property.transaction_type ?? '').toUpperCase() === 'RENT' ? t('fbl_nav_results_tenants') : t('fbl_nav_results_buyers');
+  const ownerAction = hasSearch ? resultsLabel : matchCounts.total > 0
     ? t('prop_view_matches')
     : action ? t(`prop_action_${action.toLowerCase()}` as never) : t('prop_view_matches');
   const isOwner = Boolean(homatchUser && property.user_id === homatchUser.id);
@@ -686,11 +695,12 @@ function PropertyDetailContent() {
             {/* The one primary action, then the owner's management controls. */}
             <div className="flex flex-wrap items-center gap-2">
               <Link
-                to={contactReady ? `/property/${id}/matches` : `/property/${id}/edit#contact`}
+                to={contactReady || hasSearch ? `/property/${id}/matches` : `/property/${id}/edit#contact`}
+                data-testid="property-results-link"
                 className="inline-flex min-h-10 min-w-0 basis-full items-center justify-center gap-1.5 rounded-lg bg-[hsl(38_92%_54%)] sm:basis-0 sm:flex-1 px-4 py-2 text-2xs font-bold text-[#161309] transition-colors hover:bg-[hsl(38_92%_60%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
               >
-                {!contactReady && <Phone className="h-3.5 w-3.5 shrink-0" />}
-                <span className="break-words text-center leading-snug">{contactReady ? ownerAction : t('contact_phone_add')}</span>
+                {!contactReady && !hasSearch && <Phone className="h-3.5 w-3.5 shrink-0" />}
+                <span className="break-words text-center leading-snug">{contactReady || hasSearch ? ownerAction : t('contact_phone_add')}</span>
               </Link>
               <Link to={`/property/${id}/edit`} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3.5 text-2xs font-semibold text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]">
                 <Pencil className="h-3.5 w-3.5 shrink-0" />
@@ -729,6 +739,7 @@ function PropertyDetailContent() {
             onNavigateMatches={() => navigate(`/property/${id}/matches`)}
             onCountsRefresh={setMatchCounts}
             onRenewed={onRenewed}
+            onSearchKnown={setSearchExists}
           />
         )}
 

@@ -254,40 +254,39 @@ MATTERS right now, verify against the live systems, not this file)
   verification must run through Admin → Discovery → Find Buyers → Actors →
   Verify (server-side, free). No paid call, search or charge was made.
 
-## Find Buyers go-live — PAUSED by owner 2026-10-04 23:00 UTC (resume on "continue")
+## Find Buyers go-live — resumed 2026-10-08 (branch claude/nifty-hopper-snzn2d)
 
-Production: main 6a09018 (PR #112 + #113), deploy #959 SUCCESS; migration
-20261018090000 applied. APIFY enabled (removed from provider_disabled_list),
-find_buyers_social_enabled=true, free Telegram on. 15/16 actors pricing
-verified from Apify public metadata (QUORA plan-tiered: unpriced). Owner
-toggled actors in Admin ~22:45: wanted ON = TIKTOK, BLUESKY, FB_GROUP_POSTS,
-VK_POSTS_COMMENTS, THREADS_PROFILE, LINKEDIN_GROUPS (+ the 8 already live);
-OFF = REDDIT, QUORA. LINKEDIN_GROUPS needs LinkedIn cookies (never sent) →
-expected to be rejected by Apify input validation. SQL writes from the
-session were blocked by the approval step; re-read the registry first.
+Root cause of the owner's 2026-10-04 searches (jobs 7517daa6, 123bd287 —
+0 memo23 runs, Telegram only): campaign.ts planQueries chained `.catch` on a
+lazy, thenable-only PostgREST builder → TypeError → no plan, no memo23 jobs.
+Fixed here, plus the same bug class in research-purchase (failed purchase
+never released its reservation; production had none stuck) and
+active-search-notify (stopped after one subscriber). tests/matrix/
+supabaseBuilderCatch.test.mjs now fails on any new builder `.catch`.
 
-ROOT CAUSE of the 22:50 owner search (job 123bd287, campaign ee2f0b74,
-property c5c1a6a4, reservation fd2fe7b0): matching_job_events shows
-SOCIAL_DISCOVERY_FAILED "db.from(...).upsert(...).catch is not a function".
-supabase/functions/_shared/findBuyers/campaign.ts:116-118 (planQueries)
-calls `.upsert(...).catch(...)` on a PostgREST builder (no .catch) → throws
-before query_plan / APIFY_MEMO23 queue rows → 0 actor runs, only native
-Telegram queued (TELEGRAM, TELEGRAM_SOURCES). Same for job 7517daa6.
+Also in this PR:
+- Telegram order switch admin_settings.find_buyers_telegram_preference:
+  NATIVE_FIRST (default, unchanged behaviour) | PAID_FIRST (memo23
+  TELEGRAM_CHANNEL on up to 6 known channels first; free reader skipped only
+  when paid jobs were queued; TELEGRAM_SOURCES always runs). Not activated.
+- Migration 20261021090000: matching_campaigns.last_search_* (job, state,
+  started, finished) maintained by a matching_jobs trigger from
+  find_buyers_job_state; status/status_v2 keep meaning "continuous monitoring"
+  (continuous-matching-worker reads status_v2; live trigger
+  sync_matching_campaign_status_columns keeps them equal — not in repo).
+  find_buyers_job_state gains socialPlan {outcome, reason, queued}.
+- Owner UI: one-click "მყიდველები და მოთხოვნები" / "მოიჯარეები და მოთხოვნები"
+  on property page + portfolio list; per-source PLANNED/RUNNING/COMPLETED/
+  SKIPPED/BLOCKED/FAILED; "only X was searched"; social-blocked reason.
 
-TODO on "continue" (one PR, one deploy, no paid calls, no searches):
-1. Fix campaign.ts:116 (await in try/catch, or `.then(undefined, ...)`);
-   audit every other `.catch(` chained directly on a db builder; add a test
-   that runs startSocialCampaign against a builder without .catch.
-2. Owner request: paid Telegram (memo23 TELEGRAM_CHANNEL) FIRST, native free
-   HOMATCH Telegram SECOND — change campaignPlan.ts (currently paid only when
-   !nativeTelegramActive) + actorCatalog class; confirm with owner first.
-3. Lifecycle: matching_campaigns stays ACTIVE/ACTIVE after a finished search
-   (container vs run) — make the owner-facing state truthful.
-4. Navigation: one-click Property → Find Buyers results ("მყიდველები და
-   მოთხოვნები"), desktop + mobile.
-5. Source UI truth: planned/eligible/running/completed/skipped/blocked/failed;
-   say clearly when only Telegram executed.
-6. Stamp input_contract_verified_at for the 5 fixed actors; read registry back.
+Pending OWNER APPROVAL after deploy (production writes, not done):
+- registry: stamp input_contract_verified_at + clear stale "adapter fix
+  pending" notes for TIKTOK, BLUESKY, FB_GROUP_POSTS, VK_POSTS_COMMENTS;
+  THREADS_PROFILE is OFF (owner wanted ON); QUORA is ON (owner wanted OFF;
+  unpriced so it never runs).
+- Telegram preference PAID_FIRST (paid TELEGRAM_CHANNEL $0.25/1k + $0.001
+  start; probe 30, ≤6 channels, ≤$2/search cap).
+- No paid live test until the owner runs it.
 
 ## Deferred / known-open (do not "fix" casually)
 

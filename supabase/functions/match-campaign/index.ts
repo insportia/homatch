@@ -10,6 +10,7 @@ import { translateLeadText } from '../_shared/findBuyers/translate.ts';
 import { discoveryReadiness } from '../_shared/findBuyers/readiness.ts';
 import { outcomeWithoutExternalWork } from '../../../src/research-core/findBuyers/readiness.ts';
 import { fetchCurrentFx } from '../_shared/fx.ts';
+import { withoutNativeTelegramReader } from '../../../src/research-core/findBuyers/telegramPreference.ts';
 import {
   persistCampaignLanguages,
   readChoice,
@@ -816,6 +817,7 @@ Deno.serve(async (req: Request) => {
      * in internal demand. Native Telegram stays primary (queued below).
      */
     let socialQueued = 0;
+    let paidTelegramQueued = 0;
     try {
       const social = await startSocialCampaign(db, {
         matchingJobId: jobId!, campaignId, propertyId, userId: property.user_id, credits: requestedBudget,
@@ -823,6 +825,7 @@ Deno.serve(async (req: Request) => {
         nativeTelegramActive: discovery.campaignSourceDiscoveryEnabled && discovery.telegramEnabled,
       }, findBuyers);
       socialQueued = social.queued;
+      paidTelegramQueued = Number((social as any).paidTelegramQueued ?? 0);
       await event(db, jobId!, social.queued > 0 ? 'SOCIAL_DISCOVERY_QUEUED' : 'SOCIAL_DISCOVERY_SKIPPED', {
         message: social.queued > 0
           ? `Queued ${social.queued} public-demand probes across sources and languages`
@@ -837,8 +840,18 @@ Deno.serve(async (req: Request) => {
 
     let queued: Awaited<ReturnType<typeof queuePlannedJobs>> = [];
     if (freshFromInternal < target && sourcesAvailable) {
+      /* PAID_FIRST: the memo23 Telegram Actor reads the known channels, so
+         the free reader is the fallback — skipped only when paid Telegram jobs
+         were actually queued. Community discovery (TELEGRAM_SOURCES) stays. */
+      const skipNativeReader = findBuyers.telegramPreference === 'PAID_FIRST' && paidTelegramQueued > 0;
+      if (skipNativeReader) {
+        await event(db, jobId!, 'NATIVE_TELEGRAM_FALLBACK_SKIPPED', {
+          message: 'Paid Telegram reads the known channels first; the free reader is the fallback for this search',
+          paidTelegramJobs: paidTelegramQueued,
+        }).catch(() => undefined);
+      }
       queued = await queuePlannedJobs(db, {
-        plan,
+        plan: skipNativeReader ? withoutNativeTelegramReader(plan) : plan,
         planId,
         runKey: jobId!,
         matchingJobId: jobId!,

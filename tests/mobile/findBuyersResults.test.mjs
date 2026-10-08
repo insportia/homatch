@@ -475,7 +475,7 @@ test('the real run reads truthfully: 2 checked + 31 communities, 0 qualified; RE
   await open(page);
   await page.waitForSelector('[data-testid="fbl-source-outcomes"]', { timeout: 15000 });
   const main = await page.textContent('main');
-  assert.match(main, /Telegram · 2 signals checked · 31 new communities found · 0 qualified matches/);
+  assert.match(main, /Telegram\s*Completed · 2 signals checked · 31 new communities found · 0 qualified matches/);
   assert.doesNotMatch(main, /33/, 'raw items and communities are never summed into one number');
   assert.match(main, /Ready to search/, 'the current state is READY, not the last outcome');
   assert.match(main, /Last search \(.+\): Search finished — no new active demand/, 'the last outcome is a dated history line');
@@ -488,6 +488,41 @@ test('the real run reads truthfully: 2 checked + 31 communities, 0 qualified; RE
     assert.equal(n[2], false, `${name} never animates`);
   }
   assert.match(await page.textContent('[data-testid="fbl-network-legend"]'), /Searched.*Available.*Switched off/);
+});
+
+/* 2026-10-04 23:50 (job 123bd287): social sources were AVAILABLE, the memo23
+   planner crashed, only Telegram ran. The screen must say exactly that. */
+const PLANNER_FAILED = {
+  readiness: { ...REAL_RUN.readiness, network: [
+    { family: 'TELEGRAM', state: 'AVAILABLE' }, { family: 'FACEBOOK', state: 'AVAILABLE' }, { family: 'INSTAGRAM', state: 'AVAILABLE' },
+    { family: 'TIKTOK', state: 'AVAILABLE' }, { family: 'FORUM', state: 'DISABLED' },
+  ] },
+  campaign: { ...REAL_RUN.campaign, sources: [{ ...REAL_RUN.campaign.sources[0], checked: 0, communities: 0, results: 0 }], signalsChecked: 0, communitiesFound: 0,
+    socialPlan: { outcome: 'FAILED', reason: 'PLANNER_ERROR', queued: 0 } },
+};
+
+test('only Telegram ran because the social planner failed: the screen says so, per source, in en/ka/ar at 1440 and 390', opts, async (t) => {
+  const failures = [];
+  for (const [width, lang] of [[1440, 'en'], [390, 'ka'], [390, 'ar']]) {
+    const { page } = await boot(t, { width, height: width < 700 ? 844 : 900, lang, status: PLANNER_FAILED });
+    await open(page);
+    await page.waitForSelector('[data-testid="fbl-scope-social-blocked"]', { timeout: 15000 });
+    const only = await page.textContent('[data-testid="fbl-scope-only"]');
+    const blocked = await page.textContent('[data-testid="fbl-scope-social-blocked"]');
+    const chips = await page.$$eval('[data-testid="fbl-exec-state"]', (els) => els.map((e) => e.getAttribute('data-state')));
+    if (lang === 'en') {
+      if (!/Only Telegram was searched in this search/.test(only ?? '')) failures.push(`en: scope line "${only}"`);
+      if (!/Social sources did not run in this search: a planning error stopped them — Facebook, Instagram, TikTok/.test(blocked ?? '')) failures.push(`en: blocked line "${blocked}"`);
+    }
+    if (lang === 'ka' && !/ამ ძებნაში მხოლოდ/.test(only ?? '')) failures.push(`ka: scope line "${only}"`);
+    if (JSON.stringify(chips) !== JSON.stringify(['COMPLETED'])) failures.push(`${lang} ${width}: chips ${JSON.stringify(chips)}`);
+    const text = await page.evaluate(() => document.body.innerText);
+    if (/fbl_|undefined|NaN/.test(text)) failures.push(`${lang} ${width}: raw key / undefined / NaN`);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    if (overflow > 1) failures.push(`${lang} ${width}: overflow ${overflow}px`);
+    await page.context().close();
+  }
+  assert.deepEqual(failures, []);
 });
 
 test('Admin → Providers: APIFY is live (Test + Enable, memo23 scope note, usable under the legacy kill switch); DATAFORSEO stays retired', opts, async (t) => {

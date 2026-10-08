@@ -15613,6 +15613,22 @@ const en = {
 
   /* ── FIND PROPERTY WORKSPACE ── */
   fpw_property_unavailable: 'This property could not be loaded. Reopen the search or try again.',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbl_nav_results_buyers: 'Buyers and requests',
+  fbl_nav_results_tenants: 'Tenants and requests',
+  fbl_exec_planned: 'Planned',
+  fbl_exec_running: 'Running',
+  fbl_exec_completed: 'Completed',
+  fbl_exec_skipped: 'Skipped',
+  fbl_exec_blocked: 'Blocked',
+  fbl_exec_failed: 'Failed',
+  fbl_scope_only: 'Only {{source}} was searched in this search',
+  fbl_scope_social_blocked: 'Social sources did not run in this search: {{reason}}',
+  fbl_reason_planner_error: 'a planning error stopped them',
+  fbl_reason_social_off: 'social discovery is switched off',
+  fbl_reason_no_actor: 'no social source is ready',
+  fbl_reason_no_jobs: 'no social source had a usable query or known source',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -31140,6 +31156,22 @@ const ka: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND PROPERTY WORKSPACE ── */
   fpw_property_unavailable: 'ამ ქონების ჩატვირთვა ვერ მოხერხდა. გახსენი ძიება ან სცადე ხელახლა.',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbl_nav_results_buyers: 'მყიდველები და მოთხოვნები',
+  fbl_nav_results_tenants: 'მოიჯარეები და მოთხოვნები',
+  fbl_exec_planned: 'დაგეგმილი',
+  fbl_exec_running: 'მიმდინარეობს',
+  fbl_exec_completed: 'დასრულდა',
+  fbl_exec_skipped: 'გამოტოვებული',
+  fbl_exec_blocked: 'დაბლოკილი',
+  fbl_exec_failed: 'ვერ შესრულდა',
+  fbl_scope_only: 'ამ ძებნაში მხოლოდ {{source}} შემოწმდა',
+  fbl_scope_social_blocked: 'სოციალური წყაროები ამ ძებნაში არ ამუშავდა: {{reason}}',
+  fbl_reason_planner_error: 'დაგეგმვისას მოხდა შეცდომა',
+  fbl_reason_social_off: 'სოციალური ძებნა გამორთულია',
+  fbl_reason_no_actor: 'არცერთი სოციალური წყარო არ არის მზად',
+  fbl_reason_no_jobs: 'სოციალურ წყაროებს არ ჰქონდათ გამოსადეგი მოთხოვნა ან ცნობილი წყარო',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -46658,6 +46690,22 @@ const ru: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND PROPERTY WORKSPACE ── */
   fpw_property_unavailable: 'Не удалось загрузить объект. Откройте поиск или повторите попытку.',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbl_nav_results_buyers: 'Покупатели и запросы',
+  fbl_nav_results_tenants: 'Арендаторы и запросы',
+  fbl_exec_planned: 'Запланировано',
+  fbl_exec_running: 'Выполняется',
+  fbl_exec_completed: 'Завершено',
+  fbl_exec_skipped: 'Пропущено',
+  fbl_exec_blocked: 'Заблокировано',
+  fbl_exec_failed: 'Ошибка',
+  fbl_scope_only: 'В этом поиске проверен только {{source}}',
+  fbl_scope_social_blocked: 'Социальные источники в этом поиске не запускались: {{reason}}',
+  fbl_reason_planner_error: 'их остановила ошибка планирования',
+  fbl_reason_social_off: 'социальный поиск отключён',
+  fbl_reason_no_actor: 'ни один социальный источник не готов',
+  fbl_reason_no_jobs: 'у социальных источников не было подходящего запроса или известного источника',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -62174,6 +62222,22 @@ const tr: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND PROPERTY WORKSPACE ── */
   fpw_property_unavailable: 'Bu mülk yüklenemedi. Aramayı yeniden açın veya tekrar deneyin.',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbl_nav_results_buyers: 'Alıcılar ve talepler',
+  fbl_nav_results_tenants: 'Kiracılar ve talepler',
+  fbl_exec_planned: 'Planlandı',
+  fbl_exec_running: 'Çalışıyor',
+  fbl_exec_completed: 'Tamamlandı',
+  fbl_exec_skipped: 'Atlandı',
+  fbl_exec_blocked: 'Engellendi',
+  fbl_exec_failed: 'Başarısız',
+  fbl_scope_only: 'Bu aramada yalnızca {{source}} tarandı',
+  fbl_scope_social_blocked: 'Sosyal kaynaklar bu aramada çalışmadı: {{reason}}',
+  fbl_reason_planner_error: 'bir planlama hatası onları durdurdu',
+  fbl_reason_social_off: 'sosyal keşif kapalı',
+  fbl_reason_no_actor: 'hazır sosyal kaynak yok',
+  fbl_reason_no_jobs: 'sosyal kaynakların kullanılabilir bir sorgusu veya bilinen kaynağı yoktu',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -77690,6 +77754,22 @@ const ar: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND PROPERTY WORKSPACE ── */
   fpw_property_unavailable: 'تعذّر تحميل هذا العقار. أعد فتح البحث أو حاول مجدداً.',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbl_nav_results_buyers: 'المشترون والطلبات',
+  fbl_nav_results_tenants: 'المستأجرون والطلبات',
+  fbl_exec_planned: 'مخطط',
+  fbl_exec_running: 'قيد التشغيل',
+  fbl_exec_completed: 'اكتمل',
+  fbl_exec_skipped: 'تم التخطي',
+  fbl_exec_blocked: 'محظور',
+  fbl_exec_failed: 'فشل',
+  fbl_scope_only: 'في هذا البحث تم البحث في {{source}} فقط',
+  fbl_scope_social_blocked: 'لم تعمل المصادر الاجتماعية في هذا البحث: {{reason}}',
+  fbl_reason_planner_error: 'أوقفها خطأ في التخطيط',
+  fbl_reason_social_off: 'البحث الاجتماعي متوقف',
+  fbl_reason_no_actor: 'لا يوجد مصدر اجتماعي جاهز',
+  fbl_reason_no_jobs: 'لم يكن لدى المصادر الاجتماعية استعلام صالح أو مصدر معروف',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -93206,6 +93286,22 @@ const he: Partial<Record<TranslationKey, string>> = {
 
   /* ── FIND PROPERTY WORKSPACE ── */
   fpw_property_unavailable: 'לא ניתן לטעון את הנכס הזה. פתחו מחדש את החיפוש או נסו שוב.',
+
+  /* ── FIND BUYERS / FIND TENANTS — live search, lifecycle, pagination, media ── */
+  fbl_nav_results_buyers: 'קונים ובקשות',
+  fbl_nav_results_tenants: 'שוכרים ובקשות',
+  fbl_exec_planned: 'מתוכנן',
+  fbl_exec_running: 'פועל',
+  fbl_exec_completed: 'הושלם',
+  fbl_exec_skipped: 'דולג',
+  fbl_exec_blocked: 'חסום',
+  fbl_exec_failed: 'נכשל',
+  fbl_scope_only: 'בחיפוש הזה נבדק רק {{source}}',
+  fbl_scope_social_blocked: 'מקורות חברתיים לא רצו בחיפוש הזה: {{reason}}',
+  fbl_reason_planner_error: 'שגיאת תכנון עצרה אותם',
+  fbl_reason_social_off: 'החיפוש החברתי כבוי',
+  fbl_reason_no_actor: 'אף מקור חברתי אינו מוכן',
+  fbl_reason_no_jobs: 'לא היה למקורות החברתיים שאילתה שמישה או מקור מוכר',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

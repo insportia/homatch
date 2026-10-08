@@ -7,6 +7,7 @@ import type { PropertyDna } from './propertyDna.ts';
 import { queriesFor, type QueryPlan } from './queryPlanner.ts';
 import { STAGE_ACTOR, type Stage } from './actorInputs.ts';
 import { armPriority } from './allocator.ts';
+import { planPaidTelegram, type TelegramPreference } from './telegramPreference.ts';
 
 export interface KnownSource {
   id: string;
@@ -40,6 +41,8 @@ export interface PlanInputs {
   /** actorKey → probe size, for enabled actors only. */
   enabledActors: Record<string, { probeSize: number; priority: number }>;
   nativeTelegramActive: boolean;
+  /** PAID_FIRST: the memo23 Telegram Actor reads known channels first (owner setting). */
+  telegramPreference?: TelegramPreference;
   now?: number;
 }
 
@@ -172,7 +175,13 @@ export function initialSocialJobs(input: PlanInputs): PlannedSocialJob[] {
   pushKnown('IG_PROFILE_POSTS', 'INSTAGRAM', null, 3);
 
   /* TELEGRAM via memo23 only when native Telegram is not collecting. */
-  if (!input.nativeTelegramActive) pushKnown('TELEGRAM_CHANNEL', 'TELEGRAM', null, 3);
+  /* TELEGRAM via memo23: first choice when the owner prefers paid Telegram
+     (reads up to MAX_KNOWN_PER_FAMILY known channels); otherwise only when
+     native Telegram is not collecting. Never without a channel seed. */
+  const paidTelegramFirst = (input.telegramPreference ?? 'NATIVE_FIRST') === 'PAID_FIRST';
+  if (planPaidTelegram(input.telegramPreference ?? 'NATIVE_FIRST', input.nativeTelegramActive)) {
+    pushKnown('TELEGRAM_CHANNEL', 'TELEGRAM', null, paidTelegramFirst ? MAX_KNOWN_PER_FAMILY : 3);
+  }
 
   return jobs;
 }

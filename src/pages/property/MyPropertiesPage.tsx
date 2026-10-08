@@ -393,8 +393,11 @@ function PropertyRow({
 
   /* One contextual primary: matches when there are matches, the contextual discovery
      when there are none, nothing once archived. */
-  const primaryLabel = matches > 0
-    ? t('prop_view_matches')
+  /* A property that already has a search opens its results in one click. */
+  const hasSearch = Boolean(intel?.hasSearch) || matches > 0;
+  const resultsLabel = String(property.transaction_type ?? '').toUpperCase() === 'RENT' ? t('fbl_nav_results_tenants') : t('fbl_nav_results_buyers');
+  const primaryLabel = hasSearch
+    ? resultsLabel
     : action ? t(`prop_action_${action.toLowerCase()}` as never) : t('prop_view_matches');
 
   /*
@@ -408,7 +411,7 @@ function PropertyRow({
   const actions = (
     <div className="flex flex-col gap-1.5">
       {!archived && (
-        <Link to={`/property/${id}/matches`} className={cn(OWNER_PRIMARY, 'w-full')}>
+        <Link to={`/property/${id}/matches`} className={cn(OWNER_PRIMARY, 'w-full')} data-testid="portfolio-results-link">
           <span className="break-words text-center leading-snug">{primaryLabel}</span>
         </Link>
       )}

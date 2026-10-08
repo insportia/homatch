@@ -80,12 +80,14 @@ async function tryAutoVerifyRs(
   // Exactly where reCAPTCHA puts a solved token, plus the page's own callback.
   await (page as any)
     .evaluate((token: string) => {
-      for (const ta of Array.from(document.querySelectorAll('textarea[name="g-recaptcha-response"]'))) {
-        (ta as HTMLTextAreaElement).value = token;
-        (ta as HTMLTextAreaElement).innerHTML = token;
+      // Runs in the page; typed through globalThis so the worker needs no DOM lib.
+      const doc = (globalThis as any).document;
+      for (const ta of Array.from(doc.querySelectorAll('textarea[name="g-recaptcha-response"]')) as any[]) {
+        ta.value = token;
+        ta.innerHTML = token;
       }
-      const cbName = document.querySelector('.g-recaptcha[data-callback]')?.getAttribute('data-callback');
-      const cb = cbName ? (window as any)[cbName] : null;
+      const cbName = doc.querySelector('.g-recaptcha[data-callback]')?.getAttribute('data-callback');
+      const cb = cbName ? (globalThis as any)[cbName] : null;
       if (typeof cb === 'function') cb(token);
     }, solved.token)
     .catch(() => {});

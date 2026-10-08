@@ -221,6 +221,13 @@ const RS_PAGE = (sitekey) => `<!doctype html><html><head><meta charset="utf-8"><
     };
   </script></body></html>`;
 
+// The Playwright workers are excluded from the plain test build (they need DOM
+// types); load the real TypeScript source through tsx, a worker dependency.
+async function loadRsWorker() {
+  const { tsImport } = await import('tsx/esm/api');
+  return tsImport('../src/workflows/financial/RsTaxpayerWorker.ts', import.meta.url);
+}
+
 async function withRsPage(fn) {
   let chromium;
   try {
@@ -244,7 +251,7 @@ async function withRsPage(fn) {
 }
 
 test('RS.ge: CAPTCHA solved, token accepted by the page, taxpayer parsed, good report', { timeout: 90_000 }, async (t) => {
-  const { runRsTaxpayerWorker } = await import('../.tstest-build/workflows/financial/RsTaxpayerWorker.js');
+  const { runRsTaxpayerWorker } = await loadRsWorker();
   const s = fakeSolver(['GOOD']);
   const outcome = await withRsPage(async (page) => runRsTaxpayerWorker(page, { name: 'ტესტი', idCode: '404000000' }, undefined, { captcha: { service: service(s), policy: ON, jobId: 'rs-ok' } }));
   if (outcome === 'skip') return t.skip('Chromium unavailable');
@@ -256,7 +263,7 @@ test('RS.ge: CAPTCHA solved, token accepted by the page, taxpayer parsed, good r
 });
 
 test('RS.ge: rejected tokens → bounded retries → human fallback, never an endless loop', { timeout: 120_000 }, async (t) => {
-  const { runRsTaxpayerWorker } = await import('../.tstest-build/workflows/financial/RsTaxpayerWorker.js');
+  const { runRsTaxpayerWorker } = await loadRsWorker();
   const s = fakeSolver(['BAD']);
   const outcome = await withRsPage(async (page) => runRsTaxpayerWorker(page, { name: 'ტესტი', idCode: '404000000' }, undefined, { captcha: { service: service(s), policy: ON, jobId: 'rs-bad' } }));
   if (outcome === 'skip') return t.skip('Chromium unavailable');

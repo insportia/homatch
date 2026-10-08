@@ -157,7 +157,9 @@ test('F/G: one reading per photo source — a double tap, a refresh or a reopen 
   assert.match(route, /if \(rows\.some\(\(j\) => j\.status === 'SUCCEEDED' && j\.output\?\.sourceId\)\) return \{ state: 'READY' \};/, 'done once, reused');
   assert.match(route, /if \(running && isFresh\(running\.started_at\)\) return \{ state: 'RUNNING' \};/, 'a second tap or a refresh follows it');
   assert.match(route, /Two taps that raced: the earliest job stays/);
-  assert.match(route, /failed\.length \+ \(running \? 1 : 0\) >= SPACE_ATTEMPTS/, 'never an unbounded number of paid readings');
+  assert.match(route, /failed\.length \+ \(running \? 1 : 0\) >= \(a\.renderId \? RENDER_SPACE_ATTEMPTS : SPACE_ATTEMPTS\)/, 'never an unbounded number of paid readings');
+  // A reading of the selected render is bought once: a failure is reported, never retried automatically.
+  assert.match(route, /const RENDER_SPACE_ATTEMPTS = 1;/, 'the render reading is a single paid call');
   assert.match(route, /Answered: paid whatever the answer turns out to be, so metered before it is judged\./);
   const panel = code('src/components/designStudio/unified/WalkthroughPanel.tsx');
   assert.match(panel, /if \(asking \|\| inFlight\.current\) return;/);

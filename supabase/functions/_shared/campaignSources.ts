@@ -117,7 +117,7 @@ export async function executeSourceJob(
   try {
     if (provider === 'TELEGRAM') {
       const { data } = await invokeFunction(baseUrl, serviceKey, 'community-sync',
-        { action: 'sync', source: 'campaign', maxTargets: 10, trace }, 150_000);
+        { action: 'sync', source: 'campaign', maxTargets: 10, city: job.metadata?.city ?? null, trace }, 150_000);
       if (data?.skipped) return cancelled(String(data.skipped));
       const failure = data?.integrationFailure as { kind?: string; detail?: string; retryAfterSeconds?: number | null } | null;
       if (failure?.kind) {
@@ -134,17 +134,32 @@ export async function executeSourceJob(
     if (provider === 'TELEGRAM_SOURCES') {
       const queries: string[] = Array.isArray(job.metadata?.queries) ? job.metadata.queries.map(String) : [];
       const { data } = await invokeFunction(baseUrl, serviceKey, 'community-sync',
-        { action: 'discover', source: 'campaign', queries, maxQueries: Math.min(6, queries.length || 6), trace }, 150_000);
+        /* Find Buyers / Find Tenants (DEMAND): two searches per site language
+           (queries interleaved by language), then this city's communities are
+           audited and read in the same call. Find Property keeps its six. */
+        { action: 'discover', source: 'campaign', direction: job.metadata?.direction ?? null, queries,
+          queryLanguages: Array.isArray(job.metadata?.queryLanguages) ? job.metadata.queryLanguages.map(String) : null,
+          maxQueries: job.metadata?.direction === 'DEMAND' ? Math.min(12, queries.length || 12) : Math.min(6, queries.length || 6),
+          city: job.metadata?.city ?? null, transaction: job.metadata?.transaction ?? null, trace }, 150_000);
       if (data?.skipped) return cancelled(String(data.skipped));
       if (data?.stoppedBy) {
-        const kind = String(data.stoppedBy);
+        /* stoppedBy is { kind, retryAfterSeconds }: String() of it was "[object Object]",
+           so a rate limit or a broken session was reported as a finished search. */
+        const kind = String(typeof data.stoppedBy === 'object' ? data.stoppedBy?.kind ?? '' : data.stoppedBy);
         if (PERMANENT.has(kind)) return failed(`TELEGRAM_${kind}`);
-        if (kind === 'RATE_LIMITED') return retry('TELEGRAM_RATE_LIMITED', 300);
+        if (kind === 'RATE_LIMITED') return retry('TELEGRAM_RATE_LIMITED', Number(data.stoppedBy?.retryAfterSeconds) || 300);
       }
       return done(Number(data?.newlyRegistered ?? 0), {
         queriesRun: Number(data?.queriesRun ?? 0),
+        languagesSearched: Array.isArray(data?.languagesSearched) ? data.languagesSearched : [],
         communitiesFound: Number(data?.communitiesFound ?? 0),
         newlyRegistered: Number(data?.newlyRegistered ?? 0),
+        audited: Array.isArray(data?.audits) ? data.audits.length : 0,
+        verified: Array.isArray(data?.audits) ? data.audits.filter((a: { qualifies?: boolean }) => a.qualifies).length : 0,
+        activated: Number(data?.activated ?? 0),
+        readNow: Number(data?.readNow ?? 0),
+        messagesRead: Number(data?.messagesRead ?? 0),
+        timeBudgetReached: data?.timeBudgetReached === true,
       });
     }
 

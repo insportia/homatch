@@ -15,6 +15,7 @@ import { SEARCH_LANGUAGES } from '../../../../src/research-core/findBuyers/langu
 import { abortRun, datasetItems, getRun, runCost, TERMINAL_RUN_STATES } from './memo23Client.ts';
 import { openAiJson, parsePriceBook, recordAiCost } from './openai.ts';
 import { parseTelegramPreference, type TelegramPreference } from '../../../../src/research-core/findBuyers/telegramPreference.ts';
+import { providerDisabledByAdmin } from '../providerSwitch.ts';
 
 export interface FindBuyersSettings {
   /** find_buyers_social_enabled AND the Apify provider enabled on Admin → Providers. */
@@ -38,9 +39,7 @@ const SETTING_KEYS = [
 
 /** Admin → Providers' per-provider switch (admin_settings.provider_disabled_list). APIFY in it stops every memo23 run. */
 export function apifyDisabledByAdmin(list: unknown): boolean {
-  let v = list;
-  if (typeof v === 'string') { try { v = JSON.parse(v); } catch { return false; } }
-  return Array.isArray(v) && v.some((p) => String(p).toUpperCase() === 'APIFY');
+  return providerDisabledByAdmin(list, 'APIFY');
 }
 
 const val = (v: unknown) => (typeof v === 'string' ? (() => { try { return JSON.parse(v); } catch { return v; } })() : v);
@@ -225,6 +224,8 @@ export interface StartSocialInput {
   facts: Record<string, any> | null;
   planId: string | null;
   nativeTelegramActive: boolean;
+  /** The owner's explicit language choice at launch; null = all six. */
+  targetLanguages?: string[] | null;
 }
 
 export async function startSocialCampaign(db: any, input: StartSocialInput, settings: FindBuyersSettings) {
@@ -244,7 +245,7 @@ export async function startSocialCampaign(db: any, input: StartSocialInput, sett
     matching_job_id: input.matchingJobId, campaign_id: input.campaignId, property_id: input.propertyId,
     user_id: input.userId, transaction: dna.transaction, credits_committed: input.credits, credits_per_usd: rate,
     customer_value_micros: econ.customerValueMicros, provider_budget_micros: econ.providerBudgetMicros,
-    languages: [...SEARCH_LANGUAGES], dna,
+    languages: input.targetLanguages?.length ? SEARCH_LANGUAGES.filter((l) => input.targetLanguages!.includes(l)) : [...SEARCH_LANGUAGES], dna,
   }, { onConflict: 'matching_job_id', ignoreDuplicates: true });
   if (error) throw error;
 
@@ -255,7 +256,7 @@ export async function startSocialCampaign(db: any, input: StartSocialInput, sett
   const plan = await planQueries(db, dna, input.matchingJobId, settings.priceBook);
   await db.from('find_buyers_campaigns').update({ query_plan: plan }).eq('matching_job_id', input.matchingJobId);
   const sources = await knownSources(db, dna.city);
-  const jobs = initialSocialJobs({ dna, plan, knownSources: sources, enabledActors: actors, nativeTelegramActive: input.nativeTelegramActive, telegramPreference: settings.telegramPreference });
+  const jobs = initialSocialJobs({ dna, plan, knownSources: sources, enabledActors: actors, nativeTelegramActive: input.nativeTelegramActive, telegramPreference: settings.telegramPreference, targetLanguages: input.targetLanguages ?? null });
   if (!jobs.length) return { queued: 0, dna, reason: 'NO_JOBS', economics: econ };
   const rows = jobs.map((j) => socialJobRow(j, { matchingJobId: input.matchingJobId, propertyId: input.propertyId, planId: input.planId, tranche: 0, step: 0 }));
   const queued = await insertQueueRows(db, rows);

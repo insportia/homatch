@@ -288,6 +288,45 @@ Pending OWNER APPROVAL after deploy (production writes, not done):
   start; probe 30, ≤6 channels, ≤$2/search cap).
 - No paid live test until the owner runs it.
 
+## Find Buyers Phase 2 — source discovery first (branch claude/nifty-hopper-snzn2d, 2026-10-08) — PR open, NOT merged/deployed
+
+PR #126 merged + deployed (4ffb1c1); migration 20261021090000 applied by the owner
+(ledger 20261008184642); registry writes done by the owner (Threads ON, Quora OFF,
+4 input contracts stamped). Telegram stays NATIVE_FIRST.
+
+Production diagnosis (read-only, 2026-10-08):
+- Telegram community_targets 41: 5 REACHABLE+enabled (1 is Batumi, 2 never yielded
+  items), 6 AUDITED but OFF (all Batumi; `telegram_source_auto_enable=false`),
+  10 LOW_SIGNAL, 20 DISCOVERED never audited (mostly Tbilisi; audits ran 6/run).
+- Campaign discovery ran only the first 6 of 15 fixed phrases = ka+ru only;
+  en/tr/ar/he never searched; phrases ignored the property (Batumi for Tbilisi).
+- Read (priority 70) ran before discovery (60): found communities never read
+  in the same campaign; the read took any enabled community (Batumi included).
+- `stoppedBy` from community-sync was String()-ed → rate limits read as success.
+- Historical searches: 9 pre-Oct jobs had no queue at all; 693e6d75/7517daa6
+  social SKIPPED (SOCIAL_DISABLED); 123bd287 social FAILED (.catch crash, fixed
+  in #126). No search ever ran a memo23 Actor; 0 leads; 0 matches.
+- Photo refresh (property c5c1a6a4, MyHome 25805378): source page no longer
+  shows the listing; import-property still paid ZenRows+ScrapingBee (both in
+  provider_disabled_list) ~75 s; LISTING_NOT_AVAILABLE is not an
+  import_error_code value → UPDATE failed → 3 refresh rows stuck PROCESSING.
+  The stored tnet.ge photo is hot-linked (never mirrored).
+
+Changed (this branch): sourceNetwork.ts (six-language, property-aware,
+rotating discovery queries; city fit), discovery-plan (DEMAND: discovery first,
+city on jobs, explicit languages), community-sync (city-scoped read; campaign
+audit of own-city backlog; same-call read of newly activated communities;
+100 s budget), campaignSources (stoppedBy kind), owner language choice at
+launch (CampaignLaunchPanel chips → EXPLICIT → social planner + discovery),
+admin Source network tab + migration 20261022090000 (admin RPC, read-only),
+import-property honours provider_disabled_list + enum-safe error writes,
+MediaRefresh shows why. Find Property (SUPPLY) behaviour unchanged.
+
+Owner approvals pending: merge + deploy; apply 20261022090000; set
+`telegram_source_auto_enable=true` (else verified communities wait for an
+operator); optional one-time audit run of the 20 DISCOVERED communities.
+Not done: mirroring imported photos into storage (they die with the source).
+
 ## Deferred / known-open (do not "fix" casually)
 
 - Active Search has no dedicated UI surface yet (backend + notify exist).

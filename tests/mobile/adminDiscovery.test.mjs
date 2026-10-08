@@ -141,6 +141,31 @@ async function boot(t, { width = 1440, height = 900, lang = 'en', admin = true, 
         community_supply: { listing_posts: 356, stored_as_supply: 210 },
       }));
     }
+    /* Find Buyers center + its source network tab (2026-10-08 production shape). */
+    if (url.includes('/rest/v1/rpc/admin_find_buyers_center')) {
+      return r.fulfill(json({ switches: { find_buyers_social_enabled: false }, overview: { revenue_micros: 0, credits_committed: 0, customer_value_micros: 0,
+        provider_micros: 0, ai_micros: 0, translation_micros: 0, other_micros: 0, qualified_leads: 0, strong_leads: 0 },
+        campaigns: [], actors: [], sources: [], languages: [], ledger: [] }));
+    }
+    if (url.includes('/rest/v1/rpc/admin_find_buyers_source_network')) {
+      calls.network = (calls.network ?? 0) + 1;
+      return r.fulfill(json({
+        since: ago(7), memo23Discovered: 0, autoEnable: false,
+        platforms: [
+          { platform: 'TELEGRAM', discovered: 41, verified: 11, active: 5, read: 5, inactive: 36, blocked: 1, newInWindow: 31, itemsRead: 1681, commentsRead: 0, demandSignals: 14, lastRead: ago(0) },
+          { platform: 'FACEBOOK', discovered: 3, verified: 0, active: 0, read: 1, inactive: 3, blocked: 1, newInWindow: 0, itemsRead: 0, commentsRead: 0, demandSignals: 0, lastRead: null },
+        ],
+        directory: [{ platform: 'FACEBOOK', listed: 13 }, { platform: 'TELEGRAM', listed: 15 }],
+        campaigns: [{ jobId: 'j1', at: ago(1), status: 'DONE', communitiesFound: 38, newlyRegistered: 31, audited: 10, verified: 4, activated: 0, readNow: 0,
+          languages: ['ka', 'ru', 'en', 'ar', 'he', 'tr'], city: 'თბილისი', error: null }],
+        telegram: [
+          { handle: 'tbilisikvartiri', name: 'Тбилиси Квартиры (RU)', lifecycle: 'REACHABLE', readability: 'READABLE', enabled: true, relevance: null, lastMessageAt: ago(0),
+            auditReason: null, discoveredQuery: null, itemsRead: 14, demandFound: 1, lastSuccessAt: ago(0), lastError: null, createdAt: ago(10) },
+          { handle: 'batumi_re', name: 'Недвижимость Батуми', lifecycle: 'AUDITED', readability: 'READABLE', enabled: false, relevance: 0.75, lastMessageAt: ago(1),
+            auditReason: '75% about property, 0 demand in sample', discoveredQuery: 'недвижимость батуми', itemsRead: 0, demandFound: 0, lastSuccessAt: null, lastError: null, createdAt: ago(4) },
+        ],
+      }));
+    }
     if (url.includes('/rest/v1/rpc/admin_discovery_overview')) {
       calls.rpc += 1;
       if (rpc) return rpc(r, json);
@@ -284,4 +309,32 @@ test('a non-admin never sees the control center', opts, async (t) => {
   const text = await page.evaluate(() => document.body.innerText);
   assert.doesNotMatch(text, /Discovery control center/);
   assert.equal(calls.rpc, 0, 'a non-admin session still asked for the overview');
+});
+
+test('Find Buyers source network: discovered, verified, active and read stay apart, in every language and width', opts, async (t) => {
+  if (skipReason) assert.fail(`admin discovery gate could not run: ${skipReason}`);
+  for (const [lang, width] of [['en', 1440], ['ka', 390], ['ar', 390]]) {
+    const { page, calls } = await boot(t, { lang, width, height: width < 700 ? 844 : 900 });
+    await page.goto(`${BASE}/admin/discovery`, { waitUntil: 'domcontentloaded' });
+    await ready(page);
+    const center = page.locator('[data-testid="find-buyers-center"]');
+    await center.waitFor({ timeout: 20000 });
+    const tabs = center.locator('[role="tab"]');
+    assert.equal(await tabs.count(), 7, `${lang}: seven tabs`);
+    await tabs.nth(3).click();
+    await page.waitForSelector('[data-testid="fbx-source-network"]', { timeout: 20000 });
+    assert.equal(calls.network, 1, `${lang}: the network loads on demand, once`);
+    const totals = await page.evaluate(() => ['discovered', 'verified', 'active', 'read']
+      .map((k) => document.querySelector(`[data-testid="fbx-net-total-${k}"] p:last-child`)?.textContent?.replace(/\D/g, '')));
+    assert.deepEqual(totals, ['44', '11', '5', '6'], `${lang}: totals across platforms`);
+    const text = await page.locator('[data-testid="fbx-source-network"]').innerText();
+    assert.match(text, /TELEGRAM/);
+    assert.match(text, /ka, ru, en, ar, he, tr/, `${lang}: the six searched languages are shown`);
+    assert.match(text, /BATUMI/, `${lang}: a community's city is shown`);
+    assert.match(text, /75% about property/, `${lang}: the audit finding is shown`);
+    assert.ok(await page.locator('[data-testid="fbx-net-directory"]').count() === 1, `${lang}: the posting directory is on its own line`);
+    const layout = await page.evaluate(() => ({ overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, dir: document.documentElement.getAttribute('dir') }));
+    assert.ok(layout.overflow <= 1, `${lang}@${width}: no page-level horizontal scroll (${layout.overflow}px)`);
+    if (lang === 'ar') assert.equal(layout.dir, 'rtl');
+  }
 });

@@ -322,3 +322,29 @@ test('My Property card: normal photo, broken photo explained, freshness chip', o
     await shot(page, 'my-property-390-ka-broken');
   });
 });
+
+/* ── FIND BUYERS: the owner chooses the audience languages at launch ─────── */
+
+test('launch: all six languages by default; tap to narrow (e.g. Georgian only); the last one cannot be removed', opts, async (t) => {
+  for (const [lang, width] of [['ka', 390], ['ar', 1440]]) {
+    const { page } = await boot(t, { lang, width, height: width < 700 ? 844 : 900, imageWorks: true });
+    await page.getByTestId('pow-discovery').waitFor({ timeout: 20000 });
+    /* The start action is the panel's last button (after "view matches"). */
+    await page.getByTestId('pow-discovery').locator('button').last().click();
+    const chips = page.getByTestId('fbx-language-chips');
+    await chips.waitFor({ timeout: 20000 });
+    const pressed = () => chips.locator('button[aria-pressed="true"]').evaluateAll((els) => els.map((e) => e.textContent.trim().toLowerCase()));
+    assert.deepEqual(await pressed(), ['ka', 'ru', 'en', 'ar', 'he', 'tr'], `${lang}: all six by default`);
+    const hint = page.locator('#fbx-lang-hint');
+    const allHint = await hint.innerText();
+    for (const l of ['ru', 'en', 'ar', 'he', 'tr']) await page.getByTestId(`fbx-lang-${l}`).click();
+    assert.deepEqual(await pressed(), ['ka'], `${lang}: Georgian only`);
+    assert.notEqual(await hint.innerText(), allHint, 'the hint says the search is narrowed');
+    assert.match(await hint.innerText(), /KA/);
+    await page.getByTestId('fbx-lang-ka').click();
+    assert.deepEqual(await pressed(), ['ka'], 'the last language stays');
+    await page.getByTestId('fbx-lang-ar').click();
+    assert.deepEqual(await pressed(), ['ka', 'ar'], 'order stays the chips\' order');
+    assert.ok(await noOverflow(page), `${lang}@${width}: no horizontal overflow`);
+  }
+});

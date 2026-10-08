@@ -170,3 +170,57 @@ export function networkNodes(
   /* Executed sources keep the server's order; the rest are alphabetical. */
   return nodes.sort((a, b) => rank(a) - rank(b) || (a.executed ? 0 : a.source.localeCompare(b.source)));
 }
+
+/*
+ * SOURCE EXECUTION TRUTH (owner, 2026-10-04): every source of a search is
+ * shown in exactly one of six states, from what actually happened — never
+ * implying a source ran when it did not.
+ *   PLANNED   queued for this search, not started yet
+ *   RUNNING   executing now
+ *   COMPLETED finished and read content
+ *   SKIPPED   usable, but not used by this search (or stopped before running)
+ *   BLOCKED   could not run: switched off, or its planner failed / refused
+ *   FAILED    started and failed
+ * A source family that was never queued while the social planner FAILED or
+ * was SKIPPED is BLOCKED (with that reason), not "available".
+ */
+export type ExecutionState = 'PLANNED' | 'RUNNING' | 'COMPLETED' | 'SKIPPED' | 'BLOCKED' | 'FAILED' | 'AVAILABLE';
+export interface ScopePlan { outcome: 'QUEUED' | 'SKIPPED' | 'FAILED'; reason: string | null; queued: number }
+
+/** Native HOMATCH sources (not planned by the memo23 social planner). */
+const NATIVE_FAMILIES = new Set(['TELEGRAM', 'FORUM', 'PORTAL', 'WEB']);
+
+export function executionState(node: NetworkNode, socialPlan?: ScopePlan | null): ExecutionState {
+  switch (node.state) {
+    case 'QUEUED': return 'PLANNED';
+    case 'RUNNING': return 'RUNNING';
+    case 'DONE': return 'COMPLETED';
+    case 'FAILED': return 'FAILED';
+    case 'CANCELLED': return 'SKIPPED';
+    case 'DISABLED': return 'BLOCKED';
+    case 'NOT_SELECTED':
+      return !NATIVE_FAMILIES.has(node.source) && socialPlan && socialPlan.outcome !== 'QUEUED' ? 'BLOCKED' : 'SKIPPED';
+    default: return 'AVAILABLE';
+  }
+}
+
+export interface SearchScope {
+  /** Sources that actually executed in this search (reached a run state). */
+  executed: string[];
+  /** Exactly one source executed (e.g. "only Telegram was searched"). */
+  onlySource: string | null;
+  /** The social planner did not queue anything for this search. */
+  socialBlocked: boolean;
+  socialReason: string | null;
+}
+
+export function searchScope(nodes: NetworkNode[], socialPlan?: ScopePlan | null): SearchScope {
+  const executed = nodes.filter((n) => n.executed && n.state !== 'QUEUED' && n.state !== 'CANCELLED').map((n) => n.source);
+  const socialBlocked = Boolean(socialPlan && socialPlan.outcome !== 'QUEUED');
+  return {
+    executed,
+    onlySource: executed.length === 1 ? executed[0] : null,
+    socialBlocked,
+    socialReason: socialBlocked ? (socialPlan?.reason ?? null) : null,
+  };
+}

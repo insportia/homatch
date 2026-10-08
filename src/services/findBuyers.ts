@@ -201,7 +201,11 @@ export interface SourceNode {
 /** One family of the discovery network and whether a search could use it now. */
 export interface NetworkFamily { family: string; state: 'AVAILABLE' | 'DISABLED' }
 
+/** What the social (memo23) planner did for this search (server: matching_job_events). */
+export interface SocialPlan { outcome: 'QUEUED' | 'SKIPPED' | 'FAILED'; reason: string | null; queued: number }
+
 export interface CampaignLifecycle {
+  socialPlan?: SocialPlan | null;
   jobId: string;
   campaignId: string | null;
   state: CampaignLifecycleState;

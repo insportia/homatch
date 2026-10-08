@@ -56,8 +56,7 @@ Deno.serve(async (req) => {
           metadata: { property_id, trigger: 'active_search', subscription_id: sub.id, kind: 'NEW_PROPERTY_MATCH' },
         });
 
-        await supabase.from('active_search_subscriptions')
-          .update({ last_notified_at: new Date().toISOString() }).eq('id', sub.id).catch(() => {});
+        await markNotified(supabase, sub.id);
 
         notified.push(sub.user_id);
       }
@@ -83,8 +82,7 @@ Deno.serve(async (req) => {
           metadata: { signal_id, match_id: match_id || null, property_id: sub.property_id, trigger: 'active_search', subscription_id: sub.id, kind: 'NEW_SIGNAL_MATCH' },
         });
 
-        await supabase.from('active_search_subscriptions')
-          .update({ last_notified_at: new Date().toISOString() }).eq('id', sub.id).catch(() => {});
+        await markNotified(supabase, sub.id);
 
         notified.push(sub.user_id);
       }
@@ -97,3 +95,16 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: String(err) }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });
+
+/* Best-effort stamp. A PostgREST builder is lazy and has no .catch: the old
+   `.update(...).eq(...).catch(...)` threw right after the first notification,
+   so last_notified_at was never written and the loop stopped at one subscriber. */
+async function markNotified(supabase: any, subscriptionId: string) {
+  try {
+    const { error } = await supabase.from('active_search_subscriptions')
+      .update({ last_notified_at: new Date().toISOString() }).eq('id', subscriptionId);
+    if (error) console.error('active-search-notify: last_notified_at not stamped', error.message);
+  } catch (err) {
+    console.error('active-search-notify: last_notified_at threw', err);
+  }
+}

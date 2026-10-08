@@ -14,11 +14,14 @@ import { initialSocialJobs, type KnownSource, type PlannedSocialJob } from '../.
 import { SEARCH_LANGUAGES } from '../../../../src/research-core/findBuyers/languages.ts';
 import { abortRun, datasetItems, getRun, runCost, TERMINAL_RUN_STATES } from './memo23Client.ts';
 import { openAiJson, parsePriceBook, recordAiCost } from './openai.ts';
+import { parseTelegramPreference, type TelegramPreference } from '../../../../src/research-core/findBuyers/telegramPreference.ts';
 
 export interface FindBuyersSettings {
   /** find_buyers_social_enabled AND the Apify provider enabled on Admin → Providers. */
   socialEnabled: boolean;
   apifyEnabled: boolean;
+  /** Owner switch: PAID_FIRST plans the memo23 Telegram Actor first, native as fallback. Default NATIVE_FIRST. */
+  telegramPreference: TelegramPreference;
   minUsd: number;
   providerShareBps: number;
   pricingMaxAgeDays: number;
@@ -30,7 +33,7 @@ export interface FindBuyersSettings {
 const SETTING_KEYS = [
   'find_buyers_social_enabled', 'find_buyers_min_usd', 'find_buyers_provider_share_bps',
   'find_buyers_pricing_max_age_days', 'find_buyers_comment_gate', 'find_buyers_sampling', 'find_buyers_openai_price_book',
-  'provider_disabled_list',
+  'provider_disabled_list', 'find_buyers_telegram_preference',
 ];
 
 /** Admin → Providers' per-provider switch (admin_settings.provider_disabled_list). APIFY in it stops every memo23 run. */
@@ -50,6 +53,7 @@ export async function loadFindBuyersSettings(db: any): Promise<FindBuyersSetting
   return {
     /* Server-authoritative: the Apify provider switched off on Admin → Providers stops every memo23 run. */
     apifyEnabled: !apifyDisabledByAdmin(m.get('provider_disabled_list')),
+    telegramPreference: parseTelegramPreference(m.get('find_buyers_telegram_preference')),
     socialEnabled: m.get('find_buyers_social_enabled') === true && !apifyDisabledByAdmin(m.get('provider_disabled_list')),
     minUsd: Math.max(1, num(m.get('find_buyers_min_usd'), 10)),
     providerShareBps: Math.max(0, Math.min(9000, num(m.get('find_buyers_provider_share_bps'), 5000))),
@@ -113,9 +117,19 @@ async function planQueries(db: any, dna: PropertyDna, matchingJobId: string, pri
   await recordAiCost(db, { key: `ai:queries:${matchingJobId}`, matchingJobId, kind: 'AI', operation: 'QUERY_PLAN', result: res, metadata: { dnaKey: dna.dnaKey } })
     .catch(() => undefined);
   const proposed = res.data?.queries ?? [];
-  await db.from('find_buyers_query_cache').upsert({
-    dna_key: dna.dnaKey, plan_version: QUERY_PLAN_VERSION, queries: proposed, model: res.model, cost_micros: res.costMicros,
-  }, { onConflict: 'dna_key,plan_version' }).catch(() => undefined);
+  /* Best-effort cache: never blocks the plan. A PostgREST builder is only
+     thenable (no .catch), so it is awaited inside try. The old
+     `.upsert(...).catch(...)` threw a TypeError here on every uncached search
+     (2026-10-04, jobs 7517daa6 / 123bd287): planning stopped before any
+     memo23 job was queued, so only native Telegram ever ran. */
+  try {
+    const { error } = await db.from('find_buyers_query_cache').upsert({
+      dna_key: dna.dnaKey, plan_version: QUERY_PLAN_VERSION, queries: proposed, model: res.model, cost_micros: res.costMicros,
+    }, { onConflict: 'dna_key,plan_version' });
+    if (error) console.warn('find_buyers_query_cache upsert failed', error.message ?? error);
+  } catch (error) {
+    console.warn('find_buyers_query_cache upsert threw', error instanceof Error ? error.message : String(error));
+  }
   return mergeModelQueries(base, proposed);
 }
 
@@ -241,13 +255,15 @@ export async function startSocialCampaign(db: any, input: StartSocialInput, sett
   const plan = await planQueries(db, dna, input.matchingJobId, settings.priceBook);
   await db.from('find_buyers_campaigns').update({ query_plan: plan }).eq('matching_job_id', input.matchingJobId);
   const sources = await knownSources(db, dna.city);
-  const jobs = initialSocialJobs({ dna, plan, knownSources: sources, enabledActors: actors, nativeTelegramActive: input.nativeTelegramActive });
+  const jobs = initialSocialJobs({ dna, plan, knownSources: sources, enabledActors: actors, nativeTelegramActive: input.nativeTelegramActive, telegramPreference: settings.telegramPreference });
   if (!jobs.length) return { queued: 0, dna, reason: 'NO_JOBS', economics: econ };
   const rows = jobs.map((j) => socialJobRow(j, { matchingJobId: input.matchingJobId, propertyId: input.propertyId, planId: input.planId, tranche: 0, step: 0 }));
   const queued = await insertQueueRows(db, rows);
   return {
     queued, dna, reason: null, economics: econ,
     reusedSources: jobs.filter((j) => j.reason === 'known_source_reuse').length,
+    /* Paid Telegram jobs queued: when > 0 under PAID_FIRST, the free reader is skipped (fallback). */
+    paidTelegramQueued: jobs.filter((j) => j.stage === 'TELEGRAM_CHANNEL').length,
     languages: [...new Set(jobs.map((j) => j.language))],
   };
 }

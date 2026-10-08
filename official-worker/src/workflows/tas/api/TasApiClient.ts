@@ -65,6 +65,7 @@ export function searchParams(cadastral: string, start: number, limit: number): D
 export interface HttpResult {
   status: number;
   contentType: string | null;
+  disposition: string | null;
   bytes: Uint8Array;
   durationMs: number;
 }
@@ -163,7 +164,7 @@ export class TasApiClient {
     const buf = new Uint8Array(await res.arrayBuffer());
     if (buf.length > max) throw new Error(`TAS_PAYLOAD_TOO_LARGE ${buf.length}`);
     this.stats.bytes += buf.length;
-    return { status: res.status, contentType: res.headers.get('content-type'), bytes: buf, durationMs: Date.now() - started };
+    return { status: res.status, contentType: res.headers.get('content-type'), disposition: res.headers.get('content-disposition'), bytes: buf, durationMs: Date.now() - started };
   }
 
   async dwrCall(path: string, scriptName: string, methodName: string, params: DwrParam[], page: string = TAS_PUBLIC.publicPage): Promise<{ data: DwrValue; objectCount: number }> {

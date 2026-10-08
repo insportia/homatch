@@ -2056,6 +2056,36 @@ async function collectOfficialVisuals(sb: any, w: any, p: any): Promise<void> {
   }
 }
 
+/*
+ * LIVE COUNTERS FOR THE RESEARCH NETWORK.
+ *
+ * Only numbers the pipeline has actually established, from the job row,
+ * as plain integers or null. null means "not known yet", never zero — the
+ * frontend shows nothing rather than a guessed count. No ids, no names, no
+ * URLs, no provider identities: this travels to the browser while research
+ * is still running.
+ */
+function liveCountersFor(j: any): Record<string, number | string | null> {
+  const r = j?.result_json || {};
+  const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : null);
+  const tas = (r.browserOfficial?.results || []).find((x: any) => x?.source === 'tas');
+  const acc = tas?.tasApi?.accounting || null;
+  const officialDocs = Array.isArray(r.browserOfficial?.results)
+    ? r.browserOfficial.results.reduce((n: number, x: any) => n + (Array.isArray(x?.documents) ? x.documents.length : 0), 0)
+    : null;
+  const decisions = acc ? num((acc.responses?.PDF ?? 0) + (acc.responses?.HTML ?? 0)) : null;
+  return {
+    sourcesCompleted: num(j?.progress?.sourcesCompleted),
+    sourcesTotal: num(j?.progress?.sourcesTotal),
+    documentsReviewed: acc ? num((acc.attachmentOutcomes?.READ_TEXT ?? 0) + (acc.attachmentOutcomes?.LOW_TEXT ?? 0)) ?? officialDocs : officialDocs,
+    officialDecisions: decisions,
+    officialCases: acc ? num(acc.documents) : null,
+    marketComparables: Array.isArray(r._marketComparables) ? r._marketComparables.length : null,
+    marketState: r._verifyMarket?.state ? String(r._verifyMarket.state).replace(/[^A-Z_]/g, '').slice(0, 20) : null,
+    synthesisState: typeof j?.synthesis_state === 'string' ? j.synthesis_state : null,
+  };
+}
+
 async function ensureMarketLane(sb: any, j: any, p: any): Promise<boolean> {
   if (p._marketLaneAttempted) return false;
   p._marketLaneAttempted = true;
@@ -5620,6 +5650,89 @@ Deno.serve(async (req) => {
     /** Scopes a read to whoever actually owns the row — never to a known id. */
     const ownedBy = (q: any) =>
       anonSession ? q.eq('anon_session_id', anonSession.id) : q.eq('user_id', user!.id);
+
+    /*
+     * ADMIN: TAS IMPLEMENTATION AND VERIFY DIAGNOSTICS.
+     *
+     * Admin-only (users.is_admin for the caller's own auth id), read-only,
+     * and never a secret: the worker token stays here. ACTIVATE / FALLBACK /
+     * ROLLBACK are NOT actions here — they are audited writes of
+     * admin_settings.verify_tas_implementation through admin_set_setting,
+     * selecting between implementations already deployed in the worker.
+     */
+    if (b?.action === 'tas-admin-health' || b?.action === 'tas-admin-test' || b?.action === 'verify-admin-diagnostics') {
+      if (!user) return json({ error: 'forbidden' }, 403);
+      const { data: me } = await sb.from('users').select('id,is_admin').eq('auth_id', user.id).maybeSingle();
+      if (!me?.is_admin) return json({ error: 'forbidden' }, 403);
+
+      if (b.action === 'tas-admin-health') {
+        const setting = await tasImplementationFor(sb);
+        let worker: any = null;
+        try {
+          const r = await wf('/health/tas');
+          worker = r.code === 200 ? r.data : { unavailable: true, status: r.code };
+        } catch (e) {
+          worker = { unavailable: true, error: String((e as any)?.message || e).slice(0, 160) };
+        }
+        return json({ setting, worker });
+      }
+
+      if (b.action === 'tas-admin-test') {
+        const query = String(b.query || '').trim().replace(/\s/g, '');
+        if (!CAD.test(query)) return json({ error: 'Invalid cadastral code' }, 400);
+        // Read-only public lookup on the worker, bounded; no customer data written.
+        const r = await fetch(`${WORKER}/tas/test`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${WT}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query, budgetMs: Math.min(Number(b.budgetMs) || 120000, 140000), maxAttachmentDownloads: 25 }),
+          signal: AbortSignal.timeout(150000),
+        }).catch((e) => ({ ok: false, status: 0, json: async () => ({ error: String(e?.message || e).slice(0, 160) }) }) as any);
+        const data = await r.json().catch(() => ({}));
+        return json({ ok: !!r.ok && data?.ok === true, status: r.status, result: data });
+      }
+
+      // verify-admin-diagnostics: the last N jobs' internal ledgers. Counts,
+      // states and timings only — no document text, no listing URLs.
+      const limit = Math.min(Math.max(Number(b.limit) || 20, 1), 50);
+      const { data: rows } = await sb
+        .from('research_jobs')
+        .select('id,status,stage,mode,query,created_at,completed_at,result_json,synthesis_json,synthesis_state')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+      const jobs = (rows || []).map((j: any) => {
+        const r = j.result_json || {};
+        const tas = (r.browserOfficial?.results || []).find((x: any) => x?.source === 'tas') || null;
+        const usage = j.synthesis_json?._usage || null;
+        const stageUsage = r.costUsage || r._cost || {};
+        const tokens = Object.values(stageUsage).reduce((acc: any, u: any) => ({
+          input: acc.input + (Number(u?.input_tokens) || 0),
+          output: acc.output + (Number(u?.output_tokens) || 0),
+        }), { input: 0, output: 0 }) as { input: number; output: number };
+        return {
+          id: String(j.id).slice(0, 8),
+          status: j.status,
+          stage: j.stage,
+          query: j.query,
+          createdAt: j.created_at,
+          durationMs: j.completed_at ? Date.parse(j.completed_at) - Date.parse(j.created_at) : null,
+          tas: tas
+            ? {
+                execution: r._tasExecution ?? tas.tasImplementation ?? null,
+                status: tas.status ?? null,
+                reconciliation: tas.tasApi?.reconciliation ?? null,
+                accounting: tas.tasApi?.accounting ?? null,
+                documents: Array.isArray(tas.documents) ? tas.documents.length : 0,
+                http: tas.tasApi?.http ?? null,
+                error: tas.error ? String(tas.error).slice(0, 160) : null,
+              }
+            : null,
+          market: { lane: r._marketLane ? { advertisements: r._marketLane.advertisements ?? null, uniqueProperties: r._marketLane.uniqueProperties ?? null } : null, marketplace: r._marketplaceLedger ?? null },
+          visuals: Array.isArray(r.officialVisuals) ? r.officialVisuals.length : 0,
+          ai: { researchTokens: tokens, synthesis: usage, synthesisState: j.synthesis_state ?? null, searches: r.webSearchCalls ?? r._searches ?? null },
+        };
+      });
+      return json({ jobs });
+    }
     /** The last thing every job response passes through. */
     /*
      * SECTIONS TRAVEL WITH EVERY STATUS READ.
@@ -5824,7 +5937,7 @@ Deno.serve(async (req) => {
       // (see sanitizeForCustomer above). The DB row itself is left untouched —
       // full browserOfficial/cost/provider diagnostics remain queryable there
       // for admin support/debugging, only the customer-facing HTTP body changes.
-      return json(forCaller(j));
+      return json({ ...forCaller(j), liveCounters: liveCountersFor(j) });
     }
 
     const mode: Mode = b.type === 'cadastral' ? 'cadastral' : 'property';

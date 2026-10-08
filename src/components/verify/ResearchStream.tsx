@@ -1,6 +1,6 @@
 // HOMATCH — the research experience.
 //
-// THE CLOCK AND THE PERCENTAGE BOTH COME FROM THE SERVER NOW
+// THE CLOCK COMES FROM THE SERVER, AND THERE IS NO PERCENTAGE ANY MORE
 //
 // This component used to own its own start time. That was correct while the
 // browser WAS the research engine — the component mounted when a run began,
@@ -10,26 +10,37 @@
 // this component mounted would tell them 00:00, which is not a smaller
 // version of the truth, it is a different number.
 //
-// So elapsed time is now `now - research_jobs.created_at`, and the estimated
-// percentage is reconstructed from `created_at` and the pipeline's own stage
-// (see verify/progress.ts). Both are derived, never remembered, which is why
-// neither can reset: refresh, remount, a second tab, or reopening the case
-// from History all recompute the same number from the same two server facts.
+// So elapsed time is `now - research_jobs.created_at`: derived, never
+// remembered, which is why it cannot reset on refresh, remount, a second tab
+// or reopening the case from History.
+//
+// The estimated percentage bar is gone from this view (owner decision,
+// 2026-10). However honestly it was labelled, it was a guessed number beside
+// a measured one. Its place is taken by the research NETWORK
+// (verify/researchNetwork.ts + ResearchNetwork.tsx): nodes that light up only
+// when the real pipeline stage reaches them, sections that came back
+// unavailable shown as unavailable, and counts only when the server has them.
 //
 // WHAT IS SHOWN, AND WHAT IT IS ALLOWED TO CLAIM
 //
-//   - ESTIMATED progress, labelled as an estimate, asymptotic, never 100
-//     until a valid report actually exists;
+//   - the research network, derived from stage + sections + live counters;
 //   - ELAPSED time, which is measured;
 //   - a rotating stream of abstract activity lines (presentation only);
 //   - REAL facts, shown only once the job has genuinely established them;
+//   - an optional game while waiting — pure local UI, it never touches the job;
 //   - an explicit way to stop, because closing a tab is not cancellation.
 
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { estimateProgress, elapsedMs, formatElapsed, phaseFor } from '@/verify/progress';
+import { elapsedMs, formatElapsed, phaseFor } from '@/verify/progress';
 import { messagesFor, PHASE_TAG, extractLiveFacts } from '@/verify/researchNarrative';
+import { networkState, type LiveCounters, type NetworkSection } from '@/verify/researchNetwork';
+import { ResearchNetwork } from '@/components/verify/ResearchNetwork';
+
+// The shared Snake (also offered beside Design Studio renders). Loaded only
+// when someone actually chooses to play.
+const SnakeGame = lazy(() => import('@/components/games/SnakeGame'));
 
 export interface ResearchStreamProps {
   status?: string | null;
@@ -44,6 +55,10 @@ export interface ResearchStreamProps {
   subject?: string | null;
   /** True once research finished and only the report is still being built. */
   synthesizing?: boolean;
+  /** Server-computed section maturities (research-agent `sections.sections`). */
+  sections?: readonly NetworkSection[] | null;
+  /** research-agent `liveCounters`; a null counter is unknown and is not shown. */
+  liveCounters?: LiveCounters | null;
   onStop?: () => void;
   stopping?: boolean;
 }
@@ -57,18 +72,22 @@ export function ResearchStream({
   result,
   subject,
   synthesizing = false,
+  sections,
+  liveCounters,
   onStop,
   stopping = false,
 }: ResearchStreamProps) {
   const { t } = useLanguage();
   const [, forceTick] = React.useState(0);
   const [step, setStep] = React.useState(0);
+  // Local UI only. Opening or closing the game never pauses, cancels,
+  // restarts or creates research — VerifyPage's polling is untouched.
+  const [playing, setPlaying] = React.useState(false);
 
   /*
-   * One dependency-free interval drives both readouts. The values it renders
-   * are recomputed from props on every tick rather than accumulated, so a
-   * prop arriving late (or a re-render arriving early) cannot desynchronise
-   * the clock from the percentage — they are two views of the same instant.
+   * One dependency-free interval drives the clock. The value it renders is
+   * recomputed from props on every tick rather than accumulated, so a prop
+   * arriving late (or a re-render arriving early) cannot desynchronise it.
    */
   React.useEffect(() => {
     const id = setInterval(() => forceTick((n) => n + 1), 1000);
@@ -83,20 +102,34 @@ export function ResearchStream({
   }, []);
 
   const input = { status, stage, createdAt, completedAt, reportReady };
-  const pct = estimateProgress(input);
   const elapsed = formatElapsed(elapsedMs(input));
   // Synthesis is a real phase of the pipeline, so say so rather than leaving
   // the stream describing research that has already finished.
-  // Same rule as the percentage: before the first status poll we know nothing
-  // about this run, and the honest reading of nothing is the beginning — not
-  // the middle of the pipeline, which is where an unknown STAGE belongs.
+  // Before the first status poll we know nothing about this run, and the
+  // honest reading of nothing is the beginning — not the middle of the
+  // pipeline, which is where an unknown STAGE belongs.
   const phase = synthesizing ? 'SYNTHESIS' : createdAt ? phaseFor(stage) : 'STARTING';
   const lines = synthesizing ? messagesFor('SYNTHESIS', step, 1) : messagesFor(phase, step, 3);
   const facts = React.useMemo(() => extractLiveFacts(result), [result]);
+  // Derived from props alone: a remount redraws the same network.
+  const network = React.useMemo(
+    () => networkState({ stage, status, sections, liveCounters, synthesizing, reportReady }),
+    [stage, status, sections, liveCounters, synthesizing, reportReady],
+  );
+  const activeNode = network.nodes.find((n) => n.key === network.activeKey);
+  const stopped = network.terminal === 'FAILED' || network.terminal === 'CANCELLED';
+  // One sentence for screen readers, changing only when the stage does.
+  const nowLine = reportReady
+    ? t('verify_net_settled')
+    : stopped
+      ? t('verify_net_stopped')
+      : activeNode
+        ? t('verify_net_now', { step: t(activeNode.labelKey) })
+        : t(`verify_pstep_${phase.toLowerCase()}`);
+  const snakeStatus = reportReady ? 'READY' : network.terminal === 'FAILED' ? 'FAILED' : 'PROCESSING';
 
   return (
     <section
-      aria-live="polite"
       aria-label={t(synthesizing ? 'verify_stream_synth_title' : 'verify_stream_title')}
       className="rounded-2xl border border-border bg-card/60 p-5 sm:p-6 space-y-5"
     >
@@ -107,34 +140,35 @@ export function ResearchStream({
           </p>
           {subject ? <p className="text-xs text-muted-foreground break-all">{subject}</p> : null}
         </div>
-        <div className="shrink-0 text-right">
-          <p className="tabular-nums text-lg font-semibold leading-none">{pct}%</p>
-          {/* Labelled honestly: this is an estimate, and the number beside it
-              is not — one is guessed, the other is measured. */}
-          <p className="text-2xs uppercase tracking-wider text-muted-foreground mt-1">
-            {t('verify_progress_estimated')}
-          </p>
+        <div className="shrink-0 text-end">
+          {/* Measured, so it is shown. Nothing guessed sits beside it. */}
+          <p className="tabular-nums text-lg font-semibold leading-none">{elapsed}</p>
+          <p className="text-2xs uppercase tracking-wider text-muted-foreground mt-1">{t('verify_net_elapsed')}</p>
         </div>
       </div>
 
-      <div>
-        <div
-          className="h-1.5 w-full rounded-full bg-foreground/10 overflow-hidden"
-          role="progressbar"
-          aria-valuenow={pct}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-label={t('verify_progress_estimated')}
-        >
-          <div
-            className="h-full rounded-full bg-[hsl(38_92%_54%)] transition-all duration-1000 ease-out"
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-        <div className="flex items-center justify-between gap-3 mt-2">
-          <span className="text-2xs text-muted-foreground">{t(`verify_pstep_${phase.toLowerCase()}`)}</span>
-          <span className="tabular-nums text-2xs text-muted-foreground">{elapsed}</span>
-        </div>
+      <div className="space-y-2">
+        <ResearchNetwork network={network} />
+        {/* The only live region: announced when the stage changes, never on a
+            clock tick, a rotating line or an animation frame. */}
+        <p className="text-xs font-medium break-words" aria-live="polite">{nowLine}</p>
+        <ol className="sr-only" aria-label={t('verify_net_sr_heading')}>
+          {network.nodes.map((n) => (
+            <li key={n.key}>{`${t(n.labelKey)}: ${t(n.stateKey)}`}</li>
+          ))}
+        </ol>
+        {network.counters.length > 0 && (
+          <ul className="flex flex-wrap gap-2 pt-1">
+            {network.counters.map((c) => (
+              <li
+                key={c.key}
+                className="rounded-full border border-border bg-background/60 px-3 py-1 text-2xs text-muted-foreground tabular-nums break-words"
+              >
+                {t(c.labelKey, { count: c.value })}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <ul className="space-y-2">
@@ -175,6 +209,32 @@ export function ResearchStream({
       )}
 
       <p className="text-xs leading-relaxed text-muted-foreground break-words">{t('verify_stream_note')}</p>
+
+      {!stopped && !reportReady && (
+        <div className="flex">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setPlaying(true)}
+            className="h-auto min-h-11 whitespace-normal px-4 py-2 text-start leading-snug"
+            data-testid="verify-play-snake"
+          >
+            {t('verify_net_play_snake')}
+          </Button>
+        </div>
+      )}
+
+      {playing ? (
+        <Suspense fallback={null}>
+          <SnakeGame
+            status={snakeStatus}
+            stageLabel={nowLine}
+            onView={() => setPlaying(false)}
+            onClose={() => setPlaying(false)}
+          />
+        </Suspense>
+      ) : null}
 
       {/*
         * THE CONTROL AREA, CONTAINED.

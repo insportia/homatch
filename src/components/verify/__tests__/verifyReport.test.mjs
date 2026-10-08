@@ -52,6 +52,12 @@ test('no card invents a conclusion of its own', () => {
     // pledge — a model that writes no citations must not be able to erase
     // the customer's view of evidence Homatch demonstrably holds.
     'evidenceGroups', 'checklist',
+    // 2026-10 Verify upgrade. `officialVisuals` are official TAS attachments
+    // delivered as signed URLs and `research` is a block of review COUNTS;
+    // both are produced deterministically by verify-synthesis and reach no
+    // conclusion of their own. The story and current status the report
+    // renders live inside `report`, under the same grounding gate as before.
+    'officialVisuals', 'research',
   ]);
   for (const r of new Set(reads)) {
     assert.ok(allowed.has(r), `VerifyReport reads synthesis.${r}, which is not part of the contract`);

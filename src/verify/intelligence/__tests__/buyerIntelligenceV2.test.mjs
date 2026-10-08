@@ -482,9 +482,15 @@ test('the primary report cannot render a portal URL from evidence', () => {
   const src = code('src/components/verify/VerifyReport.tsx');
   assert.ok(!/e\.url/.test(src), 'evidence URLs are rendered in the primary report again');
   assert.ok(!/myhome|ss\.ge/i.test(src), 'a listing portal is named on the customer surface');
-  // The ONLY url the report may render is an official self-check portal.
+  // The report renders NO url at all (2026-10 mandate: summary, not links —
+  // even the self-check portal is named, not linked). Official visuals are
+  // rendered by OfficialIntelligence.tsx, which accepts only signed storage
+  // URLs; that file is guarded separately below.
   const urls = [...src.matchAll(/(\w+)\.url/g)].map((m) => m[1]);
-  assert.deepEqual([...new Set(urls)], ['c'], `unexpected url source(s): ${urls.join(', ')}`);
+  assert.deepEqual([...new Set(urls)], [], `unexpected url source(s): ${urls.join(', ')}`);
+  const visuals = code('src/components/verify/OfficialIntelligence.tsx');
+  assert.ok(!/href=/.test(visuals), 'the official-history blocks must not link anywhere');
+  assert.match(visuals, /storage\\\/v1\\\/object\\\/sign/, 'only signed storage URLs may be rendered as images');
 });
 
 test('there is no "could not confirm" block in the primary report', () => {
@@ -555,15 +561,19 @@ test('the elapsed clock is the SERVER\'s, not this component\'s mount', () => {
     'the interval effect has a dependency again');
 });
 
-test('the percentage is reconstructed from server facts, never accumulated', () => {
+test('the waiting view shows no percentage; the network is derived from server facts', () => {
+  // This test used to demand the estimated percentage (labelled as an
+  // estimate). The owner retired it from the customer view (2026-10): a
+  // guessed number beside a measured one. The research network replaced it,
+  // and the guarantee that matters carries over — what is shown is derived
+  // on every render from server facts, never accumulated, so it cannot reset.
   const src = code('src/components/verify/ResearchStream.tsx');
-  assert.ok(src.includes('estimateProgress('), 'the estimate is not computed by the shared module');
-  // A percentage held in state is a percentage that resets. The whole
-  // guarantee is that it is derived on every render from created_at + stage.
-  assert.ok(!/useState[^;]*pct|setPct/.test(src), 'the percentage is being stored in state again');
+  assert.ok(!src.includes('estimateProgress('), 'the estimated percentage is back in the waiting view');
+  assert.ok(!/role="progressbar"|aria-valuenow/.test(src), 'a percentage progress bar is back');
+  assert.ok(!/\{pct\}%|verify_progress_estimated/.test(src), 'a percentage readout is back');
+  assert.ok(src.includes('networkState('), 'the network is not derived by the shared pure module');
+  assert.ok(!/useState[^;]*(pct|network)|setPct|setNetwork/.test(src), 'progress state is being stored in state');
   assert.ok(!/remaining|დარჩენილ/i.test(src), 'a remaining-time estimate is back');
-  assert.ok(src.includes('verify_progress_estimated'),
-    'the percentage is not labelled as an estimate');
 });
 
 test('the loading stream never names a source, provider or internal state', () => {

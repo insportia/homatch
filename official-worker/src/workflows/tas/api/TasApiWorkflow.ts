@@ -20,7 +20,7 @@ import { createRequire } from 'node:module';
 import { candidateSequence, isCadastralCode } from '../cadastral.js';
 import { TasApiClient, TasDeadline, TAS_PUBLIC, TAS_PAGE_SIZE, attachmentUrl, publicDocumentUrl, responseUrl } from './TasApiClient.js';
 import {
-  classifyPayload, classifyPdfText, htmlToText, mergeSearchPages, normalizeCaseDetail, parseSearchPage,
+  classifyPayload, classifyPdfText, fileNameFromDisposition, htmlToText, mergeSearchPages, normalizeCaseDetail, parseSearchPage, repairGeorgianMojibake,
   type PdfTextClass, type SearchReconciliation, type TasCaseDetail, type TasSearchPage, type TasSearchRow,
 } from './tasModel.js';
 import { extractImagesFromPdf, imageSize, rankVisualCandidates, selectVisualShortlist, type VisualKind } from './visuals.js';
@@ -342,7 +342,7 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
             rec.response = 'PDF';
             try {
               const parsed = await parsePdf(bytesToBuffer(r.bytes));
-              text = parsed.text ?? '';
+              text = repairGeorgianMojibake(parsed.text ?? '');
               pages = parsed.numpages ?? null;
             } catch { /* response exists but has no readable text layer */ }
           } else if (cls.kind === 'HTML') {
@@ -395,7 +395,11 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
         } else if (downloads < maxDownloads || wantsBytes) {
           downloads++;
           const r = await client.request(attachmentUrl(a.attachedFileId));
-          const cls = classifyPayload({ status: r.status, contentType: r.contentType, bytes: r.bytes, fileName: a.fileName });
+          // The servlet's own Content-Disposition is the authoritative name
+          // (and the only reliable type signal for PLA, which has no magic).
+          const declared = fileNameFromDisposition(r.disposition);
+          if (declared && !rec.fileName) rec.fileName = declared;
+          const cls = classifyPayload({ status: r.status, contentType: r.contentType, bytes: r.bytes, fileName: declared ?? a.fileName });
           rec.sha256 = r.bytes.length ? sha256(r.bytes) : null;
           rec.format = cls.format ?? rec.format;
           let text = '';
@@ -405,7 +409,7 @@ export async function acquireTasApi(query: string, options: TasApiOptions = {}):
             if (wantsBytes) pdfBytesForVisuals.set(a.attachedFileId, r.bytes);
             try {
               const parsed = await parsePdf(bytesToBuffer(r.bytes));
-              text = parsed.text ?? '';
+              text = repairGeorgianMojibake(parsed.text ?? '');
               rec.pages = parsed.numpages ?? null;
               rec.outcome = classifyPdfText(text, rec.pages);
             } catch {

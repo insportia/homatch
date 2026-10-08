@@ -27,7 +27,6 @@
  * stops "ელექტროენერგია" being squeezed into a column one character wide.
  */
 import { Fragment } from 'react';
-import { ExternalLink } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { VerifySection, Row, RowList, StatusPill, type StatusTone } from './ui';
 import {
@@ -103,19 +102,8 @@ function Established({ f }: { f: UtilityFinding }) {
         <ul className="mt-3 space-y-1.5">
           {f.evidence.map((e, i) => (
             <li key={`${e.url ?? e.label}-${i}`} className="min-w-0 text-xs">
-              {e.url ? (
-                <a
-                  href={e.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex max-w-full items-start gap-1.5 text-[hsl(var(--gold-ink))] underline underline-offset-2"
-                >
-                  <ExternalLink className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
-                  <span className="min-w-0 break-words">{e.label ?? e.url}</span>
-                </a>
-              ) : (
-                <span className="break-words text-muted-foreground">{e.label}</span>
-              )}
+              {/* The source is named, never linked. */}
+              {e.label ? <span className="break-words text-muted-foreground">{e.label}</span> : null}
             </li>
           ))}
         </ul>

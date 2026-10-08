@@ -53,7 +53,17 @@ import type { ChecklistItem } from '@/verify/intelligence/buyerChecklist';
 import { ContractUpload } from './ContractUpload';
 import { VerifyLinkedContracts } from './VerifyLinkedContracts';
 import { Button } from '@/components/ui/button';
-import { FileText, Copy, Check, ExternalLink, MapPin, Users } from 'lucide-react';
+import { FileText, Copy, Check, MapPin, Users } from 'lucide-react';
+import {
+  CurrentStatusBlock,
+  PropertyStoryBlock,
+  ResearchTransparency,
+  type CurrentStatusView,
+  type StoryChapterView,
+  type VisualCaptionView,
+  type OfficialVisualView,
+  type ResearchCoverageView,
+} from './OfficialIntelligence';
 import { readable } from '@/verify/readableText';
 import { buyerOpening, unconfirmedItems } from '@/verify/intelligence/buyerSummary';
 import { stripInternalTerms, marketShape, TIER_LABEL_KEY } from '@/verify/intelligence/marketNarrative';
@@ -133,6 +143,12 @@ export interface KeyFinding {
 
 export interface BuyerIntelligence {
   summary: { label: OverallLabel; statement: string; highlights: SummaryHighlight[] };
+  /** Latest confirmed official position (present tense). */
+  currentStatus?: CurrentStatusView;
+  /** Documented history, oldest first. */
+  propertyStory?: { chapters: StoryChapterView[] };
+  /** One caption per official TAS visual. */
+  visualCaptions?: VisualCaptionView[];
   keyFindings: KeyFinding[];
   sections: {
     key: string; title: string; body: string;
@@ -192,6 +208,10 @@ export interface VerifySynthesis {
   checklist?: ChecklistItem[];
   mode?: 'MODEL' | 'DETERMINISTIC';
   empty?: boolean;
+  /** Official TAS visuals, as short-lived signed URLs (never marketplace photos). */
+  officialVisuals?: OfficialVisualView[];
+  /** What was reviewed, as counts — the report shows no source links. */
+  research?: ResearchCoverageView;
 }
 
 /**
@@ -383,11 +403,23 @@ export function VerifyReport({
     <article className="mx-auto max-w-[68ch] space-y-8">
       <SummaryHero summary={r.summary} weighed={weighed} />
 
+      {/* B. THE LATEST CONFIRMED OFFICIAL POSITION — the present tense, once. */}
+      <CurrentStatusBlock status={r.currentStatus} clean={clean} />
+
       {synthesis.snapshot ? <Snapshot s={synthesis.snapshot} /> : null}
       {/* The dropped section's own figures, kept where figures belong. */}
       {snapshotMetrics.length ? <Metrics metrics={snapshotMetrics} /> : null}
 
       {findings.length ? <KeyFindings findings={findings} /> : null}
+
+      {/* C + D. THE PROPERTY STORY, with the official TAS visuals beside the
+          chapter they explain (original → latest where both exist). */}
+      <PropertyStoryBlock
+        chapters={r.propertyStory?.chapters}
+        visuals={synthesis.officialVisuals}
+        captions={r.visualCaptions}
+        clean={clean}
+      />
 
       {/* EVIDENCE, WHERE THE READER IS STILL DECIDING WHETHER TO TRUST IT.
           This used to sit at the very bottom, below the disclaimer — past the
@@ -532,6 +564,9 @@ export function VerifyReport({
         */}
       <BuyerChecklist items={synthesis.checklist ?? []} />
       <EvidenceSources groups={buyerFacingGroups(synthesis.evidenceGroups ?? [])} />
+
+      {/* H. RESEARCH TRANSPARENCY — what was reviewed, never a link list. */}
+      <ResearchTransparency coverage={synthesis.research} />
 
       {r.contractUpload?.recommend !== false ? (
         <section className="rounded-xl border border-primary/30 bg-primary/5 p-5 space-y-3">
@@ -1145,15 +1180,6 @@ const SelfChecks: React.FC<{ checks: SelfCheck[] }> = ({ checks }) => {
                 {copied === c.copyValue ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                 {t('verify_ir_copy')}
               </Button>
-              <a
-                href={c.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-xs text-primary underline underline-offset-2 break-all"
-              >
-                <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-                {t('verify_ir_selfcheck_open')}
-              </a>
             </div>
           </div>
         ))}

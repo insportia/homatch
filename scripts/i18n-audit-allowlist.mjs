@@ -35,6 +35,12 @@ export const AUDIT_ALLOWED_STRINGS = [
 // Exact-string exceptions — reviewed case by case.
 export const AUDIT_ALLOWED_EXACT = new Set([
   'Homatch',
+  // Official Georgian source names on the Admin Verify official-sources
+  // panel. They are proper names of government services, printed the same
+  // in every locale (like "TAS" beside them); translating them would name a
+  // service that does not exist.
+  'NAPR / MyGov Service176',
+  'RS.ge',
   // A keyboard keycap drawn in the walkthrough's controls help. It names the
   // physical key, which is printed "Shift" on keyboards sold in all six
   // markets; translating it would describe a key nobody can find.

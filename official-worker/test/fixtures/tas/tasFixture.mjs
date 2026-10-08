@@ -184,6 +184,6 @@ export async function fixturePdfParser(bytes) {
   if (s.includes('RESPONSE')) return { text: `ბრძანება ${s.slice(-20)}\nმშენებლობის ნებართვის ვადა: 31.12.2026\nმთავარი არქიტექტორის სახელი და გვარი: ნინო კაპანაძე\n`.repeat(4), numpages: 1 };
   const id = Number(s.split(' ').pop());
   if (id % 7 === 0) return { text: '', numpages: 3 }; // scan-only
-  if (id % 11 === 0) return { text: 'გვერდი 1. ხელმოწერა და ბეჭედი. თარიღი 2019 წელი. დანართი', numpages: 1 }; // low text
+  if (id % 11 === 0) return { text: 'გვერდი 1. ხელმოწერა', numpages: 1 }; // low text (< 50 chars)
   return { text: `საძირკველი: ფილისებრი რკინაბეტონის ფილა, სისქე 1.2 მ. დოკუმენტი ${id}. `.repeat(8), numpages: 1 };
 }

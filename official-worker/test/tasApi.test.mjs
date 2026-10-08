@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { serializeDwrCall, parseDwrReply, dwr, walkObjects } from '../.tstest-build/workflows/tas/api/dwr.js';
-import { normalizeCaseDetail, parseSearchPage, classifyPayload, classifyPdfText, maskPersonalId, toIsoDate } from '../.tstest-build/workflows/tas/api/tasModel.js';
+import { normalizeCaseDetail, parseSearchPage, classifyPayload, classifyPdfText, maskPersonalId, toIsoDate, fileNameFromDisposition, repairGeorgianMojibake } from '../.tstest-build/workflows/tas/api/tasModel.js';
 import { searchParams } from '../.tstest-build/workflows/tas/api/TasApiClient.js';
 import { acquireTasApi, toLegacyTasResult, __resetTasApiCaches, getCachedVisual } from '../.tstest-build/workflows/tas/api/TasApiWorkflow.js';
 import { rankVisualCandidates, selectVisualShortlist, extractImagesFromPdf, imageSize } from '../.tstest-build/workflows/tas/api/visuals.js';
@@ -162,10 +162,13 @@ test('payload classification: status, content type, signature and size — never
   assert.equal(classifyPayload({ status: 200, bytes: b('AC1027') }).kind, 'CAD');
   assert.equal(classifyPayload({ status: 200, bytes: b('random'), fileName: 'plan.pla' }).kind, 'CAD');
   assert.equal(classifyPayload({ status: 200, bytes: fakeJpeg(10, 10) }).format, 'jpeg');
-  assert.equal(classifyPdfText('x'.repeat(400), 1), 'READ_TEXT');
-  assert.equal(classifyPdfText('x'.repeat(40), 1), 'LOW_TEXT');
-  assert.equal(classifyPdfText('', 3), 'SCAN_OR_IMAGE_ONLY');
+  // Thresholds of the owner's live acceptance run: ≥50 / 1–49 / 0 chars.
+  assert.equal(classifyPdfText('x'.repeat(50), 9), 'READ_TEXT');
+  assert.equal(classifyPdfText('x'.repeat(49), 1), 'LOW_TEXT');
+  assert.equal(classifyPdfText('   ', 3), 'SCAN_OR_IMAGE_ONLY');
   assert.equal(classifyPdfText(null, 1, true), 'FAILED');
+  // ≤ 32 bytes is an empty answer (live inventory rule), unless it is a PDF.
+  assert.equal(classifyPayload({ status: 200, contentType: 'text/html', bytes: b('<html></html>') }).kind, 'EMPTY');
 });
 
 test('dates: DD/MM/YYYY, epoch, ISO; impossible months rejected', () => {
@@ -312,4 +315,22 @@ test('PDF embedded image extraction: DCTDecode streams with size, small images s
   assert.equal(imgs.length, 1);
   assert.equal(imgs[0].width, 1600);
   assert.deepEqual(imageSize(imgs[0].bytes), { width: 1600, height: 900, mime: 'image/jpeg' });
+});
+
+test('Content-Disposition names the attachment (RFC 5987 first) and drives PLA typing', () => {
+  assert.equal(fileNameFromDisposition("attachment; filename*=UTF-8''%E1%83%A2%E1%83%9D%E1%83%9E%E1%83%9D.pla"), 'ტოპო.pla');
+  assert.equal(fileNameFromDisposition('attachment; filename="topo.pdf"'), 'topo.pdf');
+  assert.equal(fileNameFromDisposition('inline; filename=photos gapi.pdf'), 'photos gapi.pdf');
+  assert.equal(fileNameFromDisposition(null), null);
+  const b = (s) => new Uint8Array(Buffer.from(s, 'latin1'));
+  assert.equal(classifyPayload({ status: 200, bytes: b('x'.repeat(64)), fileName: 'ტოპო.pla' }).kind, 'CAD');
+});
+
+test('Georgian mojibake (UTF-8 read as CP1252) is repaired; clean text is untouched', () => {
+  const georgian = 'მშენებლობის ნებართვა';
+  const broken = Buffer.from(georgian, 'utf8').toString('latin1')
+    .replace(/\x83/g, '\u0192'); // CP1252 shows 0x83 as ƒ
+  assert.equal(repairGeorgianMojibake(broken), georgian);
+  assert.equal(repairGeorgianMojibake(georgian), georgian);
+  assert.equal(repairGeorgianMojibake('Plain ASCII áƒ but nothing else'), 'Plain ASCII áƒ but nothing else');
 });

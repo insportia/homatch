@@ -43,7 +43,14 @@ export function SourceNetworkPanel({ days }: { days: number }) {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    try { setData(await getSourceNetwork(days > 0 ? days : 30)); } catch (e) { setError((e as Error).message); } finally { setLoading(false); }
+    try {
+      const next = await getSourceNetwork(days > 0 ? days : 30);
+      /* Anything but the function's own shape (e.g. before the migration) is "not available", never a crash. */
+      if (!next || !Array.isArray(next.platforms) || !Array.isArray(next.campaigns) || !Array.isArray(next.telegram) || !Array.isArray(next.directory)) {
+        setData(null);
+        setError('UNAVAILABLE');
+      } else setData(next);
+    } catch (e) { setError((e as Error).message); } finally { setLoading(false); }
   }, [days]);
   useEffect(() => { void load(); }, [load]);
 

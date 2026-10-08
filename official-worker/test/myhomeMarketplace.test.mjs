@@ -231,3 +231,15 @@ test('access diagnostics distinguish explicit CAPTCHA, managed challenge and unk
     assert.equal(calls,1);
   }
 });
+
+test('public hydration preserves repeated attribute filters rather than dropping or broadening them', () => {
+  const fixture=JSON.parse(readFileSync(new URL('./fixtures/myhome-public-next.json',import.meta.url),'utf8'));
+  const next=structuredClone(fixture.search);
+  const applied=next.props.pageProps.dehydratedState.queries[0].queryKey[2].query;
+  applied['attrs[feature][]']=['106','107'];
+  const url=fixture.searchUrl+'&attrs%5Bfeature%5D%5B%5D=106&attrs%5Bfeature%5D%5B%5D=107';
+  const html=()=>'<script id="__NEXT_DATA__">'+JSON.stringify(next)+'</script>';
+  assert.equal(parsePublicPage(html(),url).data.data[0].id,25610778);
+  applied['attrs[feature][]']=['106'];
+  assert.throws(()=>parsePublicPage(html(),url),/does not confirm/);
+});

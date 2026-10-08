@@ -32,8 +32,12 @@ export function parsePublicPage(html: string, url: string, statementId?: string)
     if (!applied || typeof applied !== 'object') return false;
     // Reject homepage/cache/unfiltered or wrong-page responses, including lost
     // bracketed room, bedroom and status filters. Never accept HTTP 200 alone.
-    return Object.keys(applied).length === [...expected.keys()].length &&
-      [...expected].every(([name, value]) => String(applied[name]) === value);
+    const names = [...new Set(expected.keys())];
+    return Object.keys(applied).length === names.length && names.every(name => {
+      const actual = Array.isArray(applied[name]) ? applied[name].map(String) : [String(applied[name])];
+      const values = expected.getAll(name);
+      return actual.length === values.length && actual.every((value: string, index: number) => value === values[index]);
+    });
   });
   if (matches.length !== 1) fail('Public page does not confirm the requested search or property');
   const payload = matches[0].state.data;

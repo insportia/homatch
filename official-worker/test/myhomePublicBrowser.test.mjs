@@ -22,7 +22,7 @@ test('ordinary browser uses no stealth, proxy, credentials or challenge interact
   try {
     const r=await publicPage(f.data.searchUrl,f.reader.fetcher);
     assert.equal(r.payload.data.data[0].id,25610778);
-    assert.deepEqual(f.calls.launch,[{headless:true,timeout:20000}]);
+    assert.deepEqual(f.calls.launch,[{headless:false,timeout:20000}]);
     assert.equal(f.calls.context,1);assert.equal(f.calls.goto.length,1);
     assert.equal(f.calls.closedPages,1);assert.ok(f.reader.browserMs()>=0);
   } finally {await f.reader.close()}

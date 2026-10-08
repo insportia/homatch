@@ -7,7 +7,7 @@ import { URL } from 'node:url';
 export function createPublicBrowserReader(launch: typeof chromium.launch = options => chromium.launch(options)) {
   let session: Promise<any> | undefined, elapsed = 0;
   async function context() {
-    session ??= launch({headless:true,timeout:20000}).then(async browser => {
+    session ??= launch({headless:false,timeout:20000}).then(async browser => {
       try { return {browser,context:await browser.newContext()}; }
       catch (error) { await browser.close(); throw error; }
     });

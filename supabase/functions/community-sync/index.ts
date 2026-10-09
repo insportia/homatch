@@ -50,6 +50,7 @@ import { activeWindowStart } from '../../../src/research-core/discovery/freshnes
 import { RESEARCH_LANGUAGES } from '../../../src/research-core/discovery/lexicon.ts';
 import { loadDiscoverySettings, type DiscoverySettings } from '../_shared/discoverySettings.ts';
 import { discoverTelegramSources, registerSource } from './sourceDiscovery.ts';
+import { rankCommunitiesForCampaign } from '../../../src/research-core/discovery/sourceNetwork.ts';
 import {
   asCommunityEvidence,
   planObservation,
@@ -156,6 +157,8 @@ Deno.serve(async (req: Request) => {
     const onlyTarget = body.target ? String(body.target) : null;
     /** Campaign gap discovery names the targets its Search Plan selected. */
     const targetIds: string[] = Array.isArray(body.targetIds) ? body.targetIds.map(String).slice(0, 10) : [];
+    /** A Find Buyers campaign's property city: reads keep to its communities. */
+    const campaignCity = body.city ? String(body.city) : null;
     const action = String(body.action || 'sync');
     const trace = String(body.trace || crypto.randomUUID()).slice(0, 64);
 
@@ -184,11 +187,20 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === 'discover') {
+      /* Campaign-scoped audit and same-call read: Find Buyers / Find Tenants. */
+      const campaign = body.source === 'campaign' && body.direction === 'DEMAND';
+      const readTotals = newTotals();
       const report = await discoverTelegramSources(db, client, settings, {
         queries: Array.isArray(body.queries) ? body.queries.map(String) : null,
+        queryLanguages: Array.isArray(body.queryLanguages) ? body.queryLanguages.map(String) : null,
         maxQueries: Number(body.maxQueries) || 6,
+        city: body.city ? String(body.city) : null,
+        campaign,
+        /* A campaign reads what it just verified, in the same call: discovery
+           is the first stage of the campaign, not a side effect for the next one. */
+        readTarget: campaign ? (targetId: string) => readNow(db, client, settings, targetId, readTotals) : undefined,
       });
-      return json({ success: true, mode: client.mode, ...report, elapsedMs: Date.now() - started });
+      return json({ success: true, mode: client.mode, ...report, messagesRead: readTotals.messagesParsed, readTotals, elapsedMs: Date.now() - started });
     }
 
     /*
@@ -199,14 +211,15 @@ Deno.serve(async (req: Request) => {
      */
     let query = db
       .from('community_targets')
-      .select('id,external_id,name,readability,cursor,last_seen_external_id,'
-        + 'last_checked_at,items_read,demand_found,supply_found,duplicates_seen,source_id,languages,last_message_at,market')
+      .select(SYNC_SELECT)
       .eq('platform', 'TELEGRAM')
       .eq('discovery_enabled', true)
       .not('lifecycle', 'in', '(BLOCKED,RETIRED)')
       .or(`rate_limited_until.is.null,rate_limited_until.lt.${new Date().toISOString()}`)
       .order('last_checked_at', { ascending: true, nullsFirst: true })
-      .limit(limit);
+      /* With a campaign city, look wider and keep only that city's (and
+         country-wide) communities: a Tbilisi sale never reads Batumi rentals. */
+      .limit(campaignCity ? Math.min(60, limit * 6) : limit);
     /*
      * The authenticated client can read channels the preview page could not
      * (those failed with CAPABILITY_NOT_SUPPORTED — a statement about the MODE,
@@ -219,12 +232,15 @@ Deno.serve(async (req: Request) => {
     if (onlyTarget) query = query.eq('external_id', onlyTarget);
     if (targetIds.length) query = query.in('id', targetIds);
 
-    const { data: candidates, error } = await query;
+    const { data: fetched, error } = await query;
     if (error) throw error;
+    const ranked = campaignCity ? rankCommunitiesForCampaign((fetched ?? []) as Array<Record<string, any>>, campaignCity) : null;
+    const candidates = ranked ? ranked.slice(0, limit) : fetched;
+    const otherCitySkipped = ranked ? (fetched?.length ?? 0) - ranked.length : 0;
 
     if (!candidates?.length) {
       return json({
-        success: true, targetsConsidered: 0, synced: 0,
+        success: true, targetsConsidered: 0, synced: 0, otherCitySkipped,
         note: 'no enabled Telegram target is eligible right now',
         elapsedMs: Date.now() - started,
       });
@@ -234,34 +250,7 @@ Deno.serve(async (req: Request) => {
     const floor = activeWindowStart(settings.freshness, { source: 'TELEGRAM', campaignMaxDays: settings.freshness.hardMaxDays });
     let integrationFailure: { kind: string; detail: string; retryAfterSeconds: number | null } | null = null;
 
-    /* Counters kept per tick and reported separately, because "we wrote nothing"
-       and "we fetched nothing" are different savings and only one of them is real
-       on this surface. */
-    const totals = {
-      networkFetches: 0,
-      messagesParsed: 0,
-      newMessages: 0,
-      changedMessages: 0,
-      unchangedMessages: 0,
-      classificationsRun: 0,
-      persistenceWrites: 0,
-      /*
-       * Writes the database REFUSED. Reported next to persistenceWrites because
-       * the two together are the only way to tell "nothing needed writing" from
-       * "nothing could be written", and those look identical from a counter that
-       * only ever increments on success.
-       */
-      persistenceFailures: 0,
-      /*
-       * Messages we had stored that are no longer on the channel. Counted because
-       * it was structurally always zero before -- planObservation() produced
-       * MARK_UNAVAILABLE and nothing consumed it, so became_unavailable_at was
-       * never written by anything and every report of "no longer there" was a zero
-       * presented as a measurement.
-       */
-      markedUnavailable: 0,
-      skippedByCooldown: 0,
-    };
+    const totals = newTotals();
 
     for (const target of candidates) {
       /*
@@ -316,6 +305,7 @@ Deno.serve(async (req: Request) => {
       trace,
       integrationFailure,
       targetsConsidered: candidates.length,
+      otherCitySkipped,
       synced: results.filter((r) => r.outcome === 'OK').length,
       results,
       totals,
@@ -329,6 +319,63 @@ Deno.serve(async (req: Request) => {
     return json({ error: error instanceof Error ? error.message : String(error) }, 500);
   }
 });
+
+const SYNC_SELECT = 'id,external_id,name,readability,cursor,last_seen_external_id,'
+  + 'last_checked_at,items_read,demand_found,supply_found,duplicates_seen,source_id,languages,last_message_at,market,metadata';
+
+/* Counters kept per tick and reported separately, because "we wrote nothing"
+   and "we fetched nothing" are different savings and only one of them is real
+   on this surface. */
+function newTotals(): Record<string, number> {
+  return {
+    networkFetches: 0,
+    messagesParsed: 0,
+    newMessages: 0,
+    changedMessages: 0,
+    unchangedMessages: 0,
+    classificationsRun: 0,
+    persistenceWrites: 0,
+    /*
+     * Writes the database REFUSED. Reported next to persistenceWrites because
+     * the two together are the only way to tell "nothing needed writing" from
+     * "nothing could be written", and those look identical from a counter that
+     * only ever increments on success.
+     */
+    persistenceFailures: 0,
+    /*
+     * Messages we had stored that are no longer on the channel. Counted because
+     * it was structurally always zero before -- planObservation() produced
+     * MARK_UNAVAILABLE and nothing consumed it, so became_unavailable_at was
+     * never written by anything and every report of "no longer there" was a zero
+     * presented as a measurement.
+     */
+    markedUnavailable: 0,
+    skippedByCooldown: 0,
+  };
+}
+
+/**
+ * Read one enabled community now, under the same cooldown lock as a sync
+ * tick (a campaign never makes a community read twice in COOLDOWN_MINUTES).
+ */
+async function readNow(
+  db: ReturnType<typeof createClient>,
+  client: TelegramClient,
+  settings: DiscoverySettings,
+  targetId: string,
+  totals: Record<string, number>,
+): Promise<Record<string, unknown> | null> {
+  const { data: target } = await db.from('community_targets').select(SYNC_SELECT)
+    .eq('id', targetId).eq('discovery_enabled', true).maybeSingle();
+  if (!target) return null;
+  const cutoff = new Date(Date.now() - COOLDOWN_MINUTES * 60_000).toISOString();
+  const { data: claimed } = await db.from('community_targets')
+    .update({ last_checked_at: new Date().toISOString() })
+    .eq('id', targetId).or(`last_checked_at.is.null,last_checked_at.lt.${cutoff}`).select('id');
+  if (!claimed?.length) return { target: (target as Record<string, unknown>).external_id, outcome: 'SKIPPED_COOLDOWN' };
+  const floor = activeWindowStart(settings.freshness, { source: 'TELEGRAM', campaignMaxDays: settings.freshness.hardMaxDays });
+  return syncTarget(db, client, target as Record<string, unknown>, totals, floor);
+}
 
 async function syncTarget(
   db: ReturnType<typeof createClient>,

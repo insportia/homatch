@@ -17,9 +17,10 @@ import {
   getFindBuyersCenter, setFindBuyersSetting, updateActor, usd, verifyActorFromApify, type FindBuyersCenter,
 } from '@/services/findBuyers';
 import { actorLifecycle, classifyActor } from '@/findBuyers/actorCatalog';
+import { SourceNetworkPanel } from './SourceNetworkPanel';
 
-type Tab = 'overview' | 'actors' | 'campaigns' | 'sources' | 'languages' | 'ledger';
-const TABS: Tab[] = ['overview', 'actors', 'campaigns', 'sources', 'languages', 'ledger'];
+type Tab = 'overview' | 'actors' | 'campaigns' | 'network' | 'sources' | 'languages' | 'ledger';
+const TABS: Tab[] = ['overview', 'actors', 'campaigns', 'network', 'sources', 'languages', 'ledger'];
 const WINDOWS = [1, 7, 30, 0];
 
 const n = (v: unknown) => Number(v ?? 0) || 0;
@@ -294,6 +295,8 @@ export function FindBuyersControlCenter() {
           />
         </div>
       ) : null}
+
+      {tab === 'network' ? <SourceNetworkPanel days={days} /> : null}
 
       {data && tab === 'sources' ? (
         <div className="mt-4">

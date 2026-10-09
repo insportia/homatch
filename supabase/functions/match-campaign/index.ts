@@ -258,6 +258,10 @@ Deno.serve(async (req: Request) => {
       stored: storedCampaign ?? null,
     });
     await persistCampaignLanguages(db, campaignId, languages);
+    /* The owner's own choice at launch narrows every paid search and the
+       community discovery to those languages; AUTO / ALL search all six. */
+    const explicitLanguages: string[] | null = languages.selection.mode === 'EXPLICIT' && languages.selection.languages.length
+      ? [...languages.selection.languages] : null;
 
     /* ---- expand search ----
      *
@@ -583,6 +587,9 @@ Deno.serve(async (req: Request) => {
         targetResults: target,
         activeDemandMaxDays: discovery.freshness.activeMaxDays,
       },
+      /* One step per day: the next day's campaigns search different phrases. */
+      rotation: Math.floor(Date.now() / 86_400_000),
+      targetLanguages: explicitLanguages,
     });
     const planId = await storePlan(db, { plan, userId: property.user_id, matchingJobId: jobId });
     await updateJob(db, jobId, { search_plan_id: planId });
@@ -823,6 +830,9 @@ Deno.serve(async (req: Request) => {
         matchingJobId: jobId!, campaignId, propertyId, userId: property.user_id, credits: requestedBudget,
         property: property as any, facts: facts ?? null, planId,
         nativeTelegramActive: discovery.campaignSourceDiscoveryEnabled && discovery.telegramEnabled,
+        targetLanguages: explicitLanguages,
+        campaignWindowMinutes: discovery.campaignDiscoveryMinutes,
+        telegramDiscoveryPlanned: plan.tranches.some((t) => t.providers.includes('TELEGRAM_SOURCES')) && plan.queryVariants.length > 0,
       }, findBuyers);
       socialQueued = social.queued;
       paidTelegramQueued = Number((social as any).paidTelegramQueued ?? 0);

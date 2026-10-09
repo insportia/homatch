@@ -17,9 +17,10 @@ const channel = (i) => ({ id: `t${i}`, platform: 'TELEGRAM', url: `https://t.me/
 const actors = { TELEGRAM_CHANNEL: { probeSize: 30, priority: 30 } };
 const paid = (opts) => initialSocialJobs({ dna, plan, knownSources: opts.sources ?? [], enabledActors: opts.actors ?? actors, nativeTelegramActive: opts.native ?? true, telegramPreference: opts.pref }).filter((j) => j.stage === 'TELEGRAM_CHANNEL');
 
-test('the preference defaults to NATIVE_FIRST; only an explicit PAID_FIRST switches it', () => {
-  for (const v of [undefined, null, '', 'native_first', 'paid', 42, 'PAID_FIRSTX']) assert.equal(parseTelegramPreference(v), 'NATIVE_FIRST', String(v));
+test('the preference defaults to COMBINED (owner 2026-10-08); NATIVE_FIRST and PAID_FIRST only when set', () => {
+  for (const v of [undefined, null, '', 'paid', 42, 'PAID_FIRSTX', 'combined']) assert.equal(parseTelegramPreference(v), 'COMBINED', String(v));
   for (const v of ['PAID_FIRST', 'paid_first', '"PAID_FIRST"', ' PAID_FIRST ']) assert.equal(parseTelegramPreference(v), 'PAID_FIRST', String(v));
+  for (const v of ['NATIVE_FIRST', 'native_first', '"NATIVE_FIRST"']) assert.equal(parseTelegramPreference(v), 'NATIVE_FIRST', String(v));
 });
 
 test('NATIVE_FIRST keeps today: paid Telegram only when the free reader is not collecting', () => {
@@ -48,4 +49,32 @@ test('skipping the free reader keeps community discovery and every other native 
   assert.deepEqual(out.tranches.map((t) => t.providers), [['FORUM', 'PORTAL'], ['TELEGRAM_SOURCES']]);
   assert.equal(out.other, 'kept');
   assert.deepEqual(nativePlan.tranches[0].providers, ['TELEGRAM', 'FORUM', 'PORTAL'], 'the original plan is not mutated');
+});
+
+import { nativeCovers, paidTelegramChannels } from '../findBuyers/telegramPreference.ts';
+const T = (external_id, name, lifecycle, extra = {}) => ({ id: external_id, external_id, name, lifecycle, readability: 'READABLE', discovery_enabled: false, ...extra });
+
+test('COMBINED: paid reads only what the free reader does not cover; never the same channel twice', () => {
+  const pool = [
+    T('tbilisikvartiri', 'Тбилиси Квартиры', 'REACHABLE', { discovery_enabled: true }),
+    T('tbilisi_arendaa', 'Тбилиси Аренда Квартир', 'DISCOVERED', { readability: 'UNVERIFIED' }),
+    T('crescotbilisi', 'Квартиры в Тбилиси', 'AUDITED', { relevance_score: 0.9 }),
+    T('udzravi_qoneba', 'უძრავი ქონება საქართველოში', 'AUDITED', { relevance_score: 0.4 }),
+    T('batumi_re', 'Недвижимость Батуми', 'AUDITED', { relevance_score: 0.75 }),
+    T('tbilisy_nedvizhimost', 'Тбилиси недвижимость', 'LOW_SIGNAL'),
+    T('tbilisi_old', 'Tbilisi flats', 'RETIRED'),
+    T('tbilisi_private', 'Tbilisi private', 'AUDITED', { readability: 'PRIVATE' }),
+    T('tbilisi_mode', 'Tbilisi homes', 'AUDITED', { readability: 'API_UNAVAILABLE', last_error_code: 'CAPABILITY_NOT_SUPPORTED' }),
+  ];
+  assert.equal(nativeCovers(pool[0]), true);
+  const chosen = paidTelegramChannels(pool, 'თბილისი', 8).map((c) => c.external_id);
+  assert.deepEqual(chosen, ['crescotbilisi', 'tbilisi_mode', 'tbilisi_arendaa', 'udzravi_qoneba'],
+    'own city verified first (by relevance), then not-yet-audited, then country-wide; covered / other city / low-signal / dead / private never');
+  assert.deepEqual(paidTelegramChannels(pool, 'თბილისი', 2).map((c) => c.external_id), ['crescotbilisi', 'tbilisi_mode'], 'bounded');
+  assert.deepEqual(paidTelegramChannels([T('x', 'bad handle!', 'AUDITED')], null, 5), [], 'only real public handles');
+});
+
+test('COMBINED at launch: no paid Telegram while the free reader is active (it is added after Phase 1 for uncovered channels)', () => {
+  assert.equal(planPaidTelegram('COMBINED', true), false);
+  assert.equal(planPaidTelegram('COMBINED', false), true, 'free reader down: paid covers the known channels at once');
 });

@@ -43,6 +43,12 @@ export interface PlanInputs {
   nativeTelegramActive: boolean;
   /** PAID_FIRST: the memo23 Telegram Actor reads known channels first (owner setting). */
   telegramPreference?: TelegramPreference;
+  /**
+   * The languages the owner CHOSE at launch (explicit mode). Every paid search
+   * outside them is dropped, so the whole budget goes to these audiences.
+   * Absent or empty: all six search languages.
+   */
+  targetLanguages?: readonly string[] | null;
   now?: number;
 }
 
@@ -183,5 +189,23 @@ export function initialSocialJobs(input: PlanInputs): PlannedSocialJob[] {
     pushKnown('TELEGRAM_CHANNEL', 'TELEGRAM', null, paidTelegramFirst ? MAX_KNOWN_PER_FAMILY : 3);
   }
 
-  return jobs;
+  return restrictToLanguages(jobs, input.targetLanguages, knownSources);
+}
+
+/**
+ * Keep only the jobs that serve the owner's chosen languages. A search job is
+ * in a language; a known source qualifies when ANY of its languages is chosen
+ * (or it has none recorded — it is not excluded on a guess).
+ */
+export function restrictToLanguages(jobs: PlannedSocialJob[], target: readonly string[] | null | undefined, knownSources: readonly KnownSource[] = []): PlannedSocialJob[] {
+  const want = new Set((target ?? []).map((l) => String(l).toLowerCase()));
+  if (!want.size) return jobs;
+  const byId = new Map(knownSources.map((s) => [s.id, s]));
+  return jobs.filter((j) => {
+    if (j.sourceId && byId.has(j.sourceId)) {
+      const langs = byId.get(j.sourceId)!.languages;
+      return !langs.length || langs.some((l) => want.has(String(l).toLowerCase()));
+    }
+    return j.language === 'multi' || want.has(String(j.language).toLowerCase());
+  });
 }

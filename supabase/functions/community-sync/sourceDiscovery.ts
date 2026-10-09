@@ -14,22 +14,46 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { TelegramError, type TelegramClient } from '../../../src/research-core/adapters/telegram/client.ts';
 import { auditSource, sourceQueriesFor } from '../../../src/research-core/discovery/telegram-sources.ts';
 import type { DiscoverySettings } from '../_shared/discoverySettings.ts';
+import { citiesMentioned, communityFitFor } from '../../../src/research-core/discovery/sourceNetwork.ts';
 
 const AUDITS_PER_RUN = 6;
+/* A campaign audits more: its own city's backlog first (a free read of 50
+   recent messages per community), bounded by Telegram's read limits. */
+const AUDITS_PER_CAMPAIGN = 10;
+/* Freshly verified communities a campaign reads in the same call. */
+const READS_PER_CAMPAIGN = 4;
+/* The campaign's call to community-sync is given 150 s; audits and reads
+   stop starting after this, so the answer (and the registered work) is never
+   lost to the edge timeout. What is left is picked up by the next campaign. */
+const CAMPAIGN_TIME_BUDGET_MS = 100_000;
 const RESULTS_PER_QUERY = 10;
 
 export async function discoverTelegramSources(
   db: ReturnType<typeof createClient>,
   client: TelegramClient,
   settings: DiscoverySettings,
-  options: { queries: string[] | null; maxQueries: number; market?: string },
+  options: {
+    queries: string[] | null;
+    /** The language of each query (same order), when the caller knows it. */
+    queryLanguages?: string[] | null;
+    maxQueries: number;
+    market?: string;
+    /** The campaign property's city: its communities are audited (and read) first. */
+    city?: string | null;
+    campaign?: boolean;
+    /** Reads one enabled community now (community-sync's cooldown-locked read). */
+    readTarget?: (targetId: string) => Promise<Record<string, unknown> | null>;
+  },
 ): Promise<Record<string, unknown>> {
   if (!client.capabilities.searchPublicChats) {
     return { skipped: 'CAPABILITY_NOT_SUPPORTED', detail: `${client.mode} cannot search public chats` };
   }
   const market = (options.market ?? 'GE').toUpperCase();
+  const deadline = Date.now() + CAMPAIGN_TIME_BUDGET_MS;
+  let timeBudgetReached = false;
+  const outOfTime = () => { if (options.campaign && Date.now() > deadline) timeBudgetReached = true; return timeBudgetReached; };
   const queries = (options.queries?.length
-    ? options.queries.map((query) => ({ language: null as string | null, query }))
+    ? options.queries.map((query, i) => ({ language: (options.queryLanguages?.[i] ?? null) as string | null, query }))
     : sourceQueriesFor(market)).slice(0, Math.max(1, Math.min(15, options.maxQueries)));
 
   const found = new Map<string, { chat: Awaited<ReturnType<TelegramClient['resolveChat']>>; query: string; language: string | null }>();
@@ -68,29 +92,42 @@ export async function discoverTelegramSources(
       discovery_enabled: false,
       telegram_peer_id: chat.id,
       discovered_via: 'TELEGRAM_SEARCH',
-      metadata: { discovered_query: query, participants: chat.participants },
+      metadata: { discovered_query: query, participants: chat.participants, cities: citiesMentioned(`${chat.title ?? ''} ${chat.username}`) },
     }, { onConflict: 'platform,external_id', ignoreDuplicates: true }).select('id');
     if (!error && data?.length) registered += 1;
   }
 
-  /* Audit: newest DISCOVERED first, a handful per run. */
+  /* Audit. A scheduled run: newest DISCOVERED first, a handful. A campaign:
+     its own city's (and country-wide) backlog first — a community about
+     another city is never audited on this campaign's account. */
   const audits: Array<Record<string, unknown>> = [];
+  const verifiedIds: string[] = [];
+  let activated = 0;
   if (!stoppedBy) {
-    const { data: pending } = await db.from('community_targets')
-      .select('id,external_id,metadata')
+    const { data: backlog } = await db.from('community_targets')
+      .select('id,external_id,name,metadata')
       .eq('platform', 'TELEGRAM').eq('lifecycle', 'DISCOVERED')
-      .order('created_at', { ascending: false }).limit(AUDITS_PER_RUN);
-    for (const target of pending ?? []) {
+      .order('created_at', { ascending: false }).limit(options.campaign ? 200 : AUDITS_PER_RUN);
+    const pending = options.campaign
+      ? (backlog ?? [])
+        .map((t) => ({ ...t, fit: communityFitFor(t as { name?: string; external_id?: string; metadata?: Record<string, unknown> }, options.city ?? null) }))
+        .filter((t) => t.fit !== 'OTHER')
+        .sort((a, b) => (a.fit === 'MATCH' ? 0 : 1) - (b.fit === 'MATCH' ? 0 : 1))
+        .slice(0, AUDITS_PER_CAMPAIGN)
+      : (backlog ?? []);
+    for (const target of pending) {
+      if (outOfTime()) break;
       try {
         const page = await client.readHistory(String(target.external_id), { cursor: null, limit: 50 });
         const audit = auditSource(page.items.map((m) => ({ text: m.text, date: m.date })), {
           activeMaxDays: settings.freshness.activeMaxDays,
           minRelevance: settings.telegramMinRelevance,
         });
+        const enable = audit.qualifies && settings.telegramAutoEnableSources;
         await db.from('community_targets').update({
           lifecycle: audit.qualifies ? 'AUDITED' : 'LOW_SIGNAL',
           readability: 'READABLE',
-          discovery_enabled: audit.qualifies && settings.telegramAutoEnableSources,
+          discovery_enabled: enable,
           relevance_score: audit.relevance,
           last_message_at: audit.lastMessageAt,
           audited_at: new Date().toISOString(),
@@ -102,7 +139,8 @@ export async function discoverTelegramSources(
            source_id). Without it revalidate-evidence answers "unregistered;
            not requested" and the evidence stays UNKNOWN forever. */
         await registerSource(db, target, market);
-        audits.push({ target: target.external_id, qualifies: audit.qualifies, relevance: audit.relevance, reason: audit.reason });
+        if (enable) { activated += 1; verifiedIds.push(String(target.id)); }
+        audits.push({ target: target.external_id, qualifies: audit.qualifies, relevance: audit.relevance, reason: audit.reason, demandInSample: audit.demandMessages });
       } catch (error) {
         const kind = error instanceof TelegramError ? error.kind : 'NETWORK_ERROR';
         if (['NOT_CONFIGURED', 'DISABLED', 'AUTH_FAILED', 'RATE_LIMITED'].includes(kind)) {
@@ -120,9 +158,30 @@ export async function discoverTelegramSources(
     }
   }
 
+  /* READ what was just verified (campaign only; never a community Admin has
+     not allowed to be enabled automatically). */
+  const reads: Array<Record<string, unknown>> = [];
+  if (options.campaign && options.readTarget && !stoppedBy) {
+    for (const id of verifiedIds.slice(0, READS_PER_CAMPAIGN)) {
+      if (outOfTime()) break;
+      try {
+        const r = await options.readTarget(id);
+        if (r) reads.push(r);
+        if (r?.outcome === 'INTEGRATION_FAILURE') break;
+      } catch (error) {
+        reads.push({ target: id, outcome: 'FAILED', detail: String(error) });
+      }
+    }
+  }
+
   return {
     market,
     queriesRun: queries.length,
+    languagesSearched: [...new Set(queries.map((q) => q.language).filter(Boolean))],
+    activated,
+    timeBudgetReached,
+    readNow: reads.filter((r) => r.outcome === 'OK').length,
+    reads,
     communitiesFound: found.size,
     newlyRegistered: registered,
     audits,

@@ -27,25 +27,26 @@ register('data:text/javascript,' + encodeURIComponent(`
 globalThis.Deno = { env: { get: () => undefined } };
 globalThis.fetch = async () => { throw new Error('no network in tests'); };
 
-const { startSocialCampaign } = await import('../findBuyers/campaign.ts');
+const { startSocialCampaign, queueCombinedTelegram } = await import('../findBuyers/campaign.ts');
 
 const PRICED = (key, extra = {}) => ({ actor_key: key, enabled: true, emergency_disabled: false, health: 'UNKNOWN', pricing_verified_at: new Date().toISOString(),
   pricing_model: 'PAY_PER_EVENT', price_per_1k_micros: 1_000_000, probe_size: 10, priority: 60, ...extra });
 
 /** A database whose builders behave like PostgREST's: lazy, thenable, and with NO .catch. */
-function prodLikeDb({ actors, sources = [], cacheUpsertError = null }) {
-  const log = { inserts: [], updates: [], upserts: [], rpcs: [] };
+function prodLikeDb({ actors, sources = [], cacheUpsertError = null, extra = {} }) {
+  const log = { inserts: [], updates: [], upserts: [], rpcs: [], order: [] };
   const tables = {
     admin_settings: [{ key: 'credits_per_usd', value: 10 }],
     find_buyers_actor_registry: actors,
     find_buyers_query_cache: [],
     source_registry: sources,
+    ...extra,
   };
   function builder(name) {
     const st = { op: 'select', filters: [], payload: null, single: false };
     const exec = async () => {
-      if (st.op === 'insert') { log.inserts.push({ table: name, row: st.payload }); return { data: null, error: null }; }
-      if (st.op === 'update') { log.updates.push({ table: name, patch: st.payload }); return { data: null, error: null }; }
+      if (st.op === 'insert') { log.inserts.push({ table: name, row: st.payload }); log.order.push(`insert:${name}`); return { data: null, error: null }; }
+      if (st.op === 'update') { log.updates.push({ table: name, patch: st.payload }); log.order.push(`update:${name}:${Object.keys(st.payload).join(',')}:${st.payload.query_plan?.phases ? 'phases' : ''}`); return { data: null, error: null }; }
       if (st.op === 'upsert') {
         log.upserts.push({ table: name, row: st.payload });
         return { data: null, error: name === 'find_buyers_query_cache' ? cacheUpsertError : null };
@@ -135,4 +136,48 @@ test('PAID_FIRST queues the memo23 Telegram Actor on known channels and reports 
   const paidFirst = await run('PAID_FIRST');
   assert.equal(paidFirst.out.paidTelegramQueued, 2);
   assert.ok(paidFirst.rows.every((r) => r.provider === 'APIFY_MEMO23' && r.metadata?.actorKey === 'TELEGRAM_CHANNEL' && r.metadata?.targetUrl?.startsWith('https://t.me/')));
+});
+
+test('TWO PHASES: the plan stores Phase 1\'s time box, the expected Telegram search and a priced discovery ceiling BEFORE any job is queued', async () => {
+  const { db, log } = prodLikeDb({ actors: [PRICED('FB_GROUP_SEARCH', { start_fee_micros: 5000, price_per_1k_micros: 1_900_000, probe_size: 10 }), PRICED('TIKTOK', { start_fee_micros: 5000, price_per_1k_micros: 2_000_000, probe_size: 15 })] });
+  const before = Date.now();
+  const out = await startSocialCampaign(db, { ...INPUT, campaignWindowMinutes: 30, telegramDiscoveryPlanned: true }, SETTINGS);
+  const p = out.phases;
+  assert.equal(p.phase1TimeoutMinutes, 10);
+  const deadline = Date.parse(p.phase1DeadlineAt);
+  assert.ok(deadline >= before + 10 * 60_000 - 1000 && deadline <= Date.now() + 10 * 60_000 + 1000);
+  assert.deepEqual(p.expectedProviders, ['TELEGRAM_SOURCES']);
+  assert.ok(p.planned.phase1 >= 1 && p.planned.phase2IndependentSearch >= 1, JSON.stringify(p.planned));
+  assert.equal(p.budget.rationale, 'FULL_DISCOVERY');
+  const perProbe = 5000 + Math.ceil(10 * 1_900_000 / 1000);
+  assert.equal(p.budget.discoveryCapMicros, perProbe * p.planned.phase1, 'priced from the registry, per planned discovery probe');
+  const phasesAt = log.order.findIndex((o) => o.endsWith(':phases'));
+  const firstQueued = log.order.findIndex((o) => o === 'insert:discovery_query_queue');
+  assert.ok(phasesAt >= 0 && firstQueued > phasesAt, `phases stored before the first queue row: ${log.order.join(' | ')}`);
+});
+
+
+test('COMBINED Telegram after Phase 1: paid reads the uncovered city channels once; NATIVE_FIRST or Apify off adds nothing', async () => {
+  const targets = [
+    { id: 't1', platform: 'TELEGRAM', external_id: 'tbilisikvartiri', name: 'Тбилиси Квартиры', lifecycle: 'REACHABLE', readability: 'READABLE', discovery_enabled: true, source_registry_id: 'r1', languages: ['ru'] },
+    { id: 't2', platform: 'TELEGRAM', external_id: 'crescotbilisi', name: 'Квартиры в Тбилиси', lifecycle: 'AUDITED', readability: 'READABLE', discovery_enabled: false, relevance_score: 0.9, source_registry_id: 'r2', languages: [] },
+    { id: 't3', platform: 'TELEGRAM', external_id: 'tbilisi_arendaa', name: 'Тбилиси Аренда', lifecycle: 'DISCOVERED', readability: 'UNVERIFIED', discovery_enabled: false, languages: [] },
+    { id: 't4', platform: 'TELEGRAM', external_id: 'batumi_re', name: 'Недвижимость Батуми', lifecycle: 'AUDITED', readability: 'READABLE', discovery_enabled: false, languages: [] },
+  ];
+  const campaign = { matching_job_id: 'job-1', property_id: 'prop-1', dna: { city: 'Tbilisi' }, finalized_at: null, languages: ['ka', 'ru', 'en', 'ar', 'he', 'tr'] };
+  const already = { matching_job_id: 'job-1', provider: 'APIFY_MEMO23', metadata: { stage: 'TELEGRAM_CHANNEL', targetUrl: 'https://t.me/tbilisi_arendaa' } };
+  const run = async (settings) => {
+    const { db, log } = prodLikeDb({ actors: [PRICED('TELEGRAM_CHANNEL', { probe_size: 30 })], extra: {
+      admin_settings: [{ key: 'credits_per_usd', value: 10 }, { key: 'find_buyers_social_enabled', value: true }, ...settings],
+      find_buyers_campaigns: [campaign], community_targets: targets, discovery_query_queue: [already] } });
+    const n = await queueCombinedTelegram(db, 'job-1');
+    return { n, rows: log.inserts.filter((i) => i.table === 'discovery_query_queue').map((i) => i.row) };
+  };
+  const combined = await run([]);
+  assert.equal(combined.n, 1);
+  assert.deepEqual(combined.rows.map((r) => r.metadata.targetUrl), ['https://t.me/crescotbilisi'],
+    'not the channel the free reader covers, not Batumi, not the one already queued');
+  assert.ok(combined.rows.every((r) => r.provider === 'APIFY_MEMO23' && r.metadata.stage === 'TELEGRAM_CHANNEL' && r.metadata.reason === 'combined_not_covered_by_free_reader'));
+  assert.equal((await run([{ key: 'find_buyers_telegram_preference', value: 'NATIVE_FIRST' }])).n, 0);
+  assert.equal((await run([{ key: 'provider_disabled_list', value: ['APIFY'] }])).n, 0);
 });

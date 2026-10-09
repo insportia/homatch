@@ -1,6 +1,10 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { extractListingMedia, IMPORTED_GALLERY_MAX, mergeGallery } from '../../../src/import/listingMedia.ts';
 import { resolveListingSource } from '../../../src/import/sourceAdapters.ts';
+import { loadDisabledProviders } from '../_shared/providerSwitch.ts';
+
+/** The values of the import_error_code enum (property_imports.error_code). */
+const DB_ERROR_CODES = new Set(['INVALID_URL', 'NOT_A_LISTING', 'SOURCE_BLOCKED', 'JS_RENDER_REQUIRED', 'RENDER_PROVIDER_UNAVAILABLE', 'EXTRACTION_FAILED', 'LOGIN_REQUIRED', 'RATE_LIMITED']);
 
 // ============================================================
 // HOMATCH — import-property Edge Function v4
@@ -1345,8 +1349,16 @@ Deno.serve(async (req) => {
     if (!importId) return;
     /* A refresh row keeps fetch_strategy = MEDIA_REFRESH: the once-per-10-minutes
        limit reads it. The strategy actually used stays in render_provider_used. */
-    const row = refreshTarget ? (({ fetch_strategy: _f, ...rest }) => rest)(updates as Record<string, unknown> & { fetch_strategy?: unknown }) : updates;
-    await supabase.from('property_imports').update(row).eq('id', importId);
+    const row: Record<string, unknown> = refreshTarget ? (({ fetch_strategy: _f, ...rest }) => rest)(updates as Record<string, unknown> & { fetch_strategy?: unknown }) : { ...updates };
+    /* error_code is the import_error_code enum. A code outside it made the
+       whole UPDATE fail silently, so every refresh of a removed listing stayed
+       PROCESSING forever. The precise code is kept in error_message. */
+    if (typeof row.error_code === 'string' && !DB_ERROR_CODES.has(row.error_code)) {
+      row.error_message = row.error_message ?? row.error_code;
+      row.error_code = row.error_code === 'LISTING_NOT_AVAILABLE' ? 'NOT_A_LISTING' : 'EXTRACTION_FAILED';
+    }
+    const { error: updateError } = await supabase.from('property_imports').update(row).eq('id', importId);
+    if (updateError) console.warn('[import-property] import row update failed:', updateError.message);
   };
 
   // ── Step 1: Validate URL (SSRF block-list) ───────────────
@@ -1408,8 +1420,12 @@ Deno.serve(async (req) => {
   let cfBlocked = false;
   const fallbackChain: FallbackStep[] = [];
 
-  const zenrowsKey    = Deno.env.get('ZENROWS_API_KEY');
-  const scrapingbeeKey = Deno.env.get('SCRAPINGBEE_API_KEY');
+  /* A paid renderer switched off on Admin → Providers is never called, even
+     with its key configured (2026-10-08: every photo refresh still paid ZenRows
+     and ScrapingBee ~75 s for a listing the source no longer shows). */
+  const disabledProviders = await loadDisabledProviders(supabase);
+  const zenrowsKey    = disabledProviders.has('ZENROWS') ? undefined : Deno.env.get('ZENROWS_API_KEY');
+  const scrapingbeeKey = disabledProviders.has('SCRAPINGBEE') ? undefined : Deno.env.get('SCRAPINGBEE_API_KEY');
   const domain        = new URL(rawUrl).hostname;
   const isMyHome      = domain.includes('myhome.ge');
   const isSS          = domain.includes('ss.ge');
@@ -1553,7 +1569,7 @@ Deno.serve(async (req) => {
       console.warn('[import-property] ZenRows threw:', e);
     }
   } else if (!html && !zenrowsKey) {
-    fallbackChain.push({ strategy: 'zenrows', status: 'skipped', reason: 'not_configured' });
+    fallbackChain.push({ strategy: 'zenrows', status: 'skipped', reason: disabledProviders.has('ZENROWS') ? 'disabled_by_admin' : 'not_configured' });
   }
 
   // ── Layer 3: ScrapingBee with premium_proxy + JS render ───
@@ -1598,7 +1614,7 @@ Deno.serve(async (req) => {
       console.warn('[import-property] ScrapingBee threw:', e);
     }
   } else if (!html && !scrapingbeeKey) {
-    fallbackChain.push({ strategy: 'scrapingbee', status: 'skipped', reason: 'not_configured' });
+    fallbackChain.push({ strategy: 'scrapingbee', status: 'skipped', reason: disabledProviders.has('SCRAPINGBEE') ? 'disabled_by_admin' : 'not_configured' });
   }
 
   // ── All layers exhausted — no usable HTML ─────────────────

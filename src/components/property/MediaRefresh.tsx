@@ -15,6 +15,8 @@ export function MediaRefresh({ propertyId, storedCount, sourceDomain, onRefreshe
 }) {
   const { t } = useLanguage();
   const [busy, setBusy] = useState(false);
+  /* Why photos cannot be brought in, kept on screen (an automatic try shows no toast). */
+  const [note, setNote] = useState<string | null>(null);
   const autoTried = useRef(false);
 
   const run = async (auto: boolean) => {
@@ -31,6 +33,7 @@ export function MediaRefresh({ propertyId, storedCount, sourceDomain, onRefreshe
     } catch (e) {
       /* Say WHY: a listing the source no longer shows is not "could not be read". */
       const code = (e as { code?: string | null })?.code ?? null;
+      if (code === 'LISTING_NOT_AVAILABLE') setNote(t('fbl_media_listing_gone'));
       if (!auto) toast.error(t(code === 'LISTING_NOT_AVAILABLE' ? 'fbl_media_listing_gone' : code === 'UNSUPPORTED_SOURCE' ? 'fbl_media_unsupported' : 'fbl_media_failed'));
     } finally {
       setBusy(false);
@@ -47,11 +50,14 @@ export function MediaRefresh({ propertyId, storedCount, sourceDomain, onRefreshe
   }, [propertyId, storedCount, sourceDomain]);
 
   return (
-    <button type="button" onClick={() => void run(false)} disabled={busy}
-      className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-white px-3 text-2xs font-semibold text-[hsl(218_45%_14%)] ring-1 ring-inset ring-[hsl(40_70%_80%)] hover:ring-[hsl(38_92%_50%)] disabled:opacity-70">
-      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Images className="h-3.5 w-3.5 text-[hsl(34_90%_40%)]" aria-hidden="true" />}
-      {t(busy ? 'fbl_media_refreshing' : 'fbl_media_refresh')}
-    </button>
+    <>
+      <button type="button" onClick={() => void run(false)} disabled={busy}
+        className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-white px-3 text-2xs font-semibold text-[hsl(218_45%_14%)] ring-1 ring-inset ring-[hsl(40_70%_80%)] hover:ring-[hsl(38_92%_50%)] disabled:opacity-70">
+        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Images className="h-3.5 w-3.5 text-[hsl(34_90%_40%)]" aria-hidden="true" />}
+        {t(busy ? 'fbl_media_refreshing' : 'fbl_media_refresh')}
+      </button>
+      {note && !busy ? <p className="mt-1.5 text-2xs text-[hsl(218_20%_40%)]" role="status" data-testid="media-refresh-note">{note}</p> : null}
+    </>
   );
 }
 

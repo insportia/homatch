@@ -36,8 +36,9 @@ import {
 import { fetchCurrentFx } from '../_shared/fx.ts';
 import { sourceGroupOf } from '../../../src/research-core/discovery/discovery-plan.ts';
 import { executeSocialJob } from '../_shared/findBuyers/executor.ts';
-import { queueTelegramFallback, sweepStaleActorRuns } from '../_shared/findBuyers/campaign.ts';
+import { loadPhase1, queueCombinedTelegram, queueTelegramFallback, sweepStaleActorRuns } from '../_shared/findBuyers/campaign.ts';
 import { runWorkerPool } from '../../../src/research-core/findBuyers/workerPool.ts';
+import { phase2MayStart } from '../../../src/research-core/findBuyers/campaignPhases.ts';
 
 /* The providers the native pass runs. APIFY_MEMO23 has its own pass. */
 const NATIVE_PROVIDERS = ['TELEGRAM', 'TELEGRAM_SOURCES', 'FORUM', 'PORTAL'];
@@ -106,6 +107,20 @@ async function runSourceJobs(
   if (error) throw error;
   const results: Array<Record<string, unknown>> = [];
   for (const job of (claimed ?? []) as any[]) {
+    /* FIND BUYERS TWO PHASES: the campaign's community read is Phase 2; it
+       waits (no attempt consumed) while Phase 1 discovery is still open
+       inside its time box. Find Property (SUPPLY) is never held. */
+    if (String(job.provider ?? '').toUpperCase() === 'TELEGRAM' && job.matching_job_id && job.metadata?.direction === 'DEMAND') {
+      const p1 = await loadPhase1(db, job.matching_job_id);
+      if (!phase2MayStart(p1.state)) {
+        const { data: waited } = await db.rpc('finish_discovery_source_job_wait', {
+          p_job_id: job.id, p_claim_token: job.claim_token, p_retry_seconds: 30,
+          p_metadata: { lastWait: 'PHASE1_DISCOVERY', phase1Open: p1.open, phase1DeadlineAt: p1.deadlineAt },
+        });
+        results.push({ id: job.id, provider: job.provider, outcome: 'WAIT', status: waited ?? null, resultCount: 0, error: null });
+        continue;
+      }
+    }
     const outcome = await executeSourceJob(baseUrl, serviceKey, job);
     const { data: finalStatus, error: finishError } = await db.rpc('finish_discovery_source_job', {
       p_job_id: job.id,
@@ -138,6 +153,13 @@ async function runSourceJobs(
          channels for this campaign (only if that Actor is enabled). */
       if (job.provider === 'TELEGRAM' && (finalStatus === 'FAILED' || finalStatus === 'CANCELLED')) {
         await queueTelegramFallback(db, job.matching_job_id).catch(() => undefined);
+      }
+      /* COMBINED Telegram: once Phase 1's Telegram search has an outcome, the
+         paid Actor is queued for the channels the free reader does not cover
+         (including the ones just found). Find Buyers only. */
+      if (job.provider === 'TELEGRAM_SOURCES' && job.metadata?.direction === 'DEMAND'
+          && ['DONE', 'FAILED', 'CANCELLED'].includes(String(finalStatus))) {
+        await queueCombinedTelegram(db, job.matching_job_id).catch(() => undefined);
       }
     }
   }

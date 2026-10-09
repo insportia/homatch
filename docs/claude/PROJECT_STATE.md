@@ -19,8 +19,8 @@ MATTERS right now, verify against the live systems, not this file)
 - NAPR/MyGov (Codex) and RS.ge native (Codex): DEFERRED / BLOCKED — code not on GitHub and
   no archive received. Only merged Service176 (PR #119) exists. Do not rebuild.
 - Developer Advertising Intelligence (2026-10-09): last research stage in research-agent at
-  SYNTHESIS_READY (`advanceDeveloperAds`). It uses the shared memo23 client (one seam;
-  APIFY switch moved into it). Its own setting is `verify_developer_ads`, seeded OFF.
+  SYNTHESIS_READY (`advanceDeveloperAds`). It uses the shared memo23 client (unchanged;
+  the APIFY switch via `_shared/providerSwitch.ts`). Setting `verify_developer_ads`, seeded ON.
   Cost rows: `APIFY_MEMO23`/`DEVELOPER_ADS_VERIFY`. Report section: `DeveloperAdvertising.tsx`.
   Admin card: free Actor-input check. Actor schema NOT verified (sandbox blocks apify.com);
   a live free definition read gates every paid run. No paid run made.
@@ -54,7 +54,7 @@ MATTERS right now, verify against the live systems, not this file)
 - Migration renamed to `20261022090000_…` (main's #126 took 20261021090000).
 - Security: the owner's recovered PowerShell history (line 8) contains an apparent 32-hex API
   credential — recommend rotation via the provider + secret store; value never copied anywhere.
-- Migration `20261022090000_verify_official_visuals_and_switches.sql` NOT applied: private
+- Migration `20261023090000_verify_official_visuals_and_switches.sql` NOT applied: private
   bucket `verify-official-visuals`, settings `verify_tas_implementation` (LEGACY),
   `verify_marketplace_market_enabled` (false).
 

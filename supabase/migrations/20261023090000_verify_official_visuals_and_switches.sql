@@ -31,11 +31,12 @@
 --      the worker's shared 2Captcha service (owner decision 2026-10-08). The
 --      key lives only in the worker environment; this row holds no secret.
 --
---    verify_developer_ads               {"enabled":false, ...}
+--    verify_developer_ads               {"enabled":true, ...}
 --      Developer Advertising Intelligence: Verify's last research stage, one
---      bounded memo23 Meta Ad Library run per job (paid per result). Seeded
---      OFF: paid runs start only when the owner enables it in Admin. Also
---      governed by the APIFY switch in provider_disabled_list.
+--      bounded memo23 Meta Ad Library run per job (paid per result; the
+--      ceiling is a provider safeguard). Enabled by the owner's production
+--      release authorization (2026-10-09); Admin switches it off, and so does
+--      the APIFY switch in provider_disabled_list.
 --
 -- Additive only. Nothing existing is altered or removed.
 -- ============================================================================
@@ -52,6 +53,6 @@ values
    'Verify Market Research: fold MyHome.ge and SS.ge comparables (official worker /verify/market) into the market lane.'),
   ('verify_captcha_auto_solve', '{"enabled":true,"providers":{"mygov":true,"rstax":true},"maxAttemptsPerProvider":2,"maxSolvesPerJob":3}'::jsonb,
    'Verify official sources: automatic reCAPTCHA completion through the worker''s shared 2Captcha service (NAPR/MyGov Service176, RS.ge). Bounded per provider and per job; the worker also enforces its key, CAPTCHA_AUTO_SOLVE=off kill switch, daily cap and breaker.'),
-  ('verify_developer_ads', '{"enabled":false,"actorId":"memo23~facebook-ads-library-scraper-ppe","country":"GE","maxTerms":2,"maxItems":30,"maxChargeUsd":0.05,"timeoutSeconds":120,"cacheHours":24}'::jsonb,
-   'Verify Developer Advertising Intelligence: last research stage, one bounded memo23 Meta Ad Library run per job (paid per result, cached 24h). Off until the owner enables it; the APIFY provider switch also stops it.')
+  ('verify_developer_ads', '{"enabled":true,"actorId":"memo23~facebook-ads-library-scraper-ppe","country":"GE","maxTerms":2,"maxItems":50,"maxChargeUsd":0.5,"timeoutSeconds":180,"cacheHours":24}'::jsonb,
+   'Verify Developer Advertising Intelligence: last research stage, one bounded memo23 Meta Ad Library run per job (paid per result, cached 24h; maxChargeUsd is the per-run provider ceiling). Admin or the APIFY provider switch turns it off.')
 on conflict (key) do nothing;

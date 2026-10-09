@@ -55,7 +55,7 @@ An index is never proof of production state.
   Second scope (owner, 2026-10-09): Verify's Developer Advertising stage may
   run ONE memo23 Ad Library Actor through the same client
   (`advanceDeveloperAds` in research-agent), with its own setting
-  `verify_developer_ads` (seeded off), budget and `DEVELOPER_ADS_VERIFY` cost
+  `verify_developer_ads` (Admin switch), budget and `DEVELOPER_ADS_VERIFY` cost
   rows — separate from Find Buyers orchestration, and stopped by the same
   APIFY switch. No other Verify use of Apify.
 - **Railway**: the only worker is `homatch-official-worker`

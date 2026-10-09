@@ -66,8 +66,10 @@ mobile shard). Deploy targets: frontend · Railway `homatch-official-worker`
     UNSUPPORTED, TIMEOUT, FAILED.
 - **One shared Apify client.** The stage uses
   `_shared/findBuyers/memo23Client.ts`; Verify keeps its own orchestration.
-  - Setting `verify_developer_ads`, **seeded `enabled:false`**.
-  - Caps: 2 search terms, 30 items, $0.05 per run, 120 s, 24 h cache.
+  - Setting `verify_developer_ads`, seeded `enabled:true` (owner release
+    authorization 2026-10-09).
+  - Limits: 2 search terms, 50 items, per-run provider ceiling $0.50, 180 s,
+    24 h cache.
   - The APIFY switch in `provider_disabled_list` also stops it.
   - Cost goes to `cost_events` with `APIFY_MEMO23` / `DEVELOPER_ADS_VERIFY`.
   - Exactly one paid run per job: the stage is claimed atomically, and on
@@ -99,7 +101,7 @@ mobile shard). Deploy targets: frontend · Railway `homatch-official-worker`
   1. Run the free Actor-input check. It must report `searchTerms` as
      supported, along with the price per 1k.
   2. Enable the stage and run one Verify on a known developer project
-     (cost ≤ $0.05).
+     (billed at the Actor's real price).
   3. Compare the advertisers and ads with the public Ad Library.
   4. Disable again if wrong (immediate, no deploy).
 
@@ -109,12 +111,12 @@ All steps are reversible; each waits for the previous step's proof.
 
 0. **Preconditions.** PR #127 green on its head (PR Checks, REPO_FULL), the
    Codex workers integrated and green, owner approval recorded, base merged.
-1. **Migration** `20261022090000_verify_official_visuals_and_switches.sql`
+1. **Migration** `20261023090000_verify_official_visuals_and_switches.sql`
    (before deploy; additive): private bucket `verify-official-visuals`
    (no `storage.objects` policy), settings `verify_tas_implementation =
    {"active":"LEGACY","fallback":null}`, `verify_marketplace_market_enabled
    = false`, `verify_captcha_auto_solve` (enabled), `verify_developer_ads`
-   (`enabled:false`). Applied through `run_migrations` or the reviewed MCP apply after
+   (`enabled:true`). Applied through `run_migrations` or the reviewed MCP apply after
    merge. Proof: present in the production ledger; bucket `public = false`;
    both settings at their seeded values.
 2. **Railway** `homatch-official-worker` (`3e7f132b-…`, canonical service

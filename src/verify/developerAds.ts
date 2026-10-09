@@ -42,9 +42,9 @@ export function parseDeveloperAdsPolicy(raw: unknown): DeveloperAdsPolicy {
     actorId: actor,
     country: typeof o.country === 'string' && /^[A-Z]{2}$/.test(o.country) ? o.country : 'GE',
     maxTerms: Math.round(n(o.maxTerms, 1, 3, 2)),
-    maxItems: Math.round(n(o.maxItems, 5, 100, 30)),
-    maxChargeUsd: n(o.maxChargeUsd, 0.01, 1, 0.05),
-    timeoutSeconds: Math.round(n(o.timeoutSeconds, 30, 300, 120)),
+    maxItems: Math.round(n(o.maxItems, 5, 100, 50)),
+    maxChargeUsd: n(o.maxChargeUsd, 0.01, 1, 0.5),
+    timeoutSeconds: Math.round(n(o.timeoutSeconds, 30, 300, 180)),
     cacheHours: Math.round(n(o.cacheHours, 1, 168, 24)),
   };
 }

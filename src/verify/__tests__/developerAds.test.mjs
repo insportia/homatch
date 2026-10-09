@@ -39,7 +39,7 @@ test('identity: developer brand and project from Verify evidence; legal forms st
 
 test('input uses only fields the live schema declares; no search field → not run', () => {
   const id = resolveDeveloperIdentity(RESULT);
-  assert.deepEqual(buildActorInput(['searchTerms', 'searchCountries', 'maxItems', 'adActiveStatus'], id, POLICY), { searchTerms: ['Archi', 'Archi Vake'], searchCountries: ['GE'], maxItems: 30 });
+  assert.deepEqual(buildActorInput(['searchTerms', 'searchCountries', 'maxItems', 'adActiveStatus'], id, POLICY), { searchTerms: ['Archi', 'Archi Vake'], searchCountries: ['GE'], maxItems: 50 });
   assert.deepEqual(buildActorInput(['searchTerms'], id, POLICY), { searchTerms: ['Archi', 'Archi Vake'] });
   assert.equal(buildActorInput(['startUrls', 'maxItems'], id, POLICY), null, 'unsupported capability');
   assert.equal(buildActorInput(['searchTerms'], resolveDeveloperIdentity({}), POLICY), null, 'no identity');
@@ -168,8 +168,9 @@ test('customer payloads carry the view only, never the stage internals', () => {
   const synth = code('supabase/functions/verify-synthesis/index.ts');
   assert.match(synth, /developerAds: pkg\.developerAds && \(pkg\.developerAds\.outcome === 'COMPLETE' \|\| pkg\.developerAds\.outcome === 'CACHED'\)/);
   assert.ok(!/_developerAds/.test(synth), 'synthesis never reads the internal stage state');
-  // Paid runs are off until the owner enables them.
-  assert.match(code('supabase/migrations/20261022090000_verify_official_visuals_and_switches.sql'), /\('verify_developer_ads', '\{"enabled":false,/);
+  // Seeded on by the owner's release authorization (2026-10-09); a missing or
+  // unreadable setting still means OFF.
+  assert.match(code('supabase/migrations/20261023090000_verify_official_visuals_and_switches.sql'), /\('verify_developer_ads', '\{"enabled":true,[^']*"maxChargeUsd":0\.5,/);
   assert.equal(parseDeveloperAdsPolicy(null).enabled, false);
   assert.equal(parseDeveloperAdsPolicy({ enabled: 'true' }).enabled, false, 'only a literal true enables paid runs');
 });
@@ -182,4 +183,10 @@ test('one advertiser page is listed once, under its named profile rather than it
   ]);
   const profiles = socialProfiles(RESULT, id, n.ads.map((a) => ({ ...a, owner: 'DEVELOPER' }))).filter((p) => p.basis === 'AD_LIBRARY_ADVERTISER');
   assert.deepEqual(profiles.map((p) => p.url), ['https://www.facebook.com/archi.ge']);
+});
+
+test('the stage obeys the same APIFY switch as Find Buyers, through the shared reader', () => {
+  const agent = code('supabase/functions/research-agent/index.ts');
+  assert.match(agent, /import \{ providerDisabledByAdmin \} from '\.\.\/_shared\/providerSwitch\.ts';/);
+  assert.equal((agent.match(/providerDisabledByAdmin\(await adminSettingJson\(sb, 'provider_disabled_list'\), 'APIFY'\)/g) || []).length, 2, 'the stage and its admin card both check the switch');
 });

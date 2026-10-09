@@ -19,9 +19,12 @@ import { compactOfficialContext } from '../../../src/verify/intelligence/officia
 import { promptSafeBrowserOfficial } from '../../../src/verify/intelligence/officialPromptContext.ts';
 import { providerOutcomes } from '../../../src/verify/providerOutcomes.ts';
 // Developer Advertising Intelligence: the shared memo23 Apify client (the one
-// seam Verify shares, incl. the APIFY switch) with Verify's OWN orchestration,
-// setting, budget and cost rows — no Find Buyers campaign, reservation or ledger.
-import { startRun as apifyStartRun, getRun as apifyGetRun, abortRun as apifyAbortRun, datasetItems as apifyDatasetItems, actorDefinition as apifyActorDefinition, runCost as apifyRunCost, providerConfigured as apifyConfigured, apifyDisabledByAdmin, TERMINAL_RUN_STATES as APIFY_TERMINAL } from '../_shared/findBuyers/memo23Client.ts';
+// seam Verify shares; the file itself is unchanged) with Verify's OWN
+// orchestration, setting, budget and cost rows — no Find Buyers campaign,
+// reservation or ledger. The APIFY switch is read through the shared
+// _shared/providerSwitch.ts, exactly as Find Buyers reads it.
+import { startRun as apifyStartRun, getRun as apifyGetRun, abortRun as apifyAbortRun, datasetItems as apifyDatasetItems, actorDefinition as apifyActorDefinition, runCost as apifyRunCost, providerConfigured as apifyConfigured, TERMINAL_RUN_STATES as APIFY_TERMINAL } from '../_shared/findBuyers/memo23Client.ts';
+import { providerDisabledByAdmin } from '../_shared/providerSwitch.ts';
 import { parseDeveloperAdsPolicy, resolveDeveloperIdentity, buildActorInput, adsCacheKey, normalizeAds, summarizeAds, type AdsOutcome } from '../../../src/verify/developerAds.ts';
 import { buildTasIntelligence, officialHistoryView } from '../../../src/verify/intelligence/tasIntelligence.ts';
 import { buildKnownBrief, briefFactsForStage } from '../../../src/verify/intelligence/knownBrief.ts';
@@ -1944,7 +1947,7 @@ async function advanceDeveloperAds(sb: any, j: any): Promise<boolean> {
       const policy = await developerAdsPolicyFor(sb);
       const identity = resolveDeveloperIdentity(p, policy.maxTerms);
       if (!policy.enabled) return finishDeveloperAds(p, 'DISABLED', {}, [], identity, policy);
-      if (apifyDisabledByAdmin(await adminSettingJson(sb, 'provider_disabled_list'))) return finishDeveloperAds(p, 'PROVIDER_OFF', {}, [], identity, policy);
+      if (providerDisabledByAdmin(await adminSettingJson(sb, 'provider_disabled_list'), 'APIFY')) return finishDeveloperAds(p, 'PROVIDER_OFF', {}, [], identity, policy);
       if (!apifyConfigured()) return finishDeveloperAds(p, 'NOT_CONFIGURED', {}, [], identity, policy);
       if (!identity.searchTerms.length) return finishDeveloperAds(p, 'NO_IDENTITY', {}, [], identity, policy);
       const cacheKey = adsCacheKey(policy, identity);
@@ -6029,7 +6032,7 @@ Deno.serve(async (req) => {
       // Actor definition read (input fields + pricing). Never runs the Actor.
       if (b.action === 'developer-ads-admin-health') {
         const policy = await developerAdsPolicyFor(sb);
-        const providerOff = apifyDisabledByAdmin(await adminSettingJson(sb, 'provider_disabled_list'));
+        const providerOff = providerDisabledByAdmin(await adminSettingJson(sb, 'provider_disabled_list'), 'APIFY');
         const configured = apifyConfigured();
         let schema: any = null;
         if (b.checkSchema) {

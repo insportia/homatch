@@ -376,6 +376,43 @@ function ResearchNetworkImpl({ network }: ResearchNetworkProps) {
         ctx.fill();
       }
 
+      // THE JOURNEY. A fine track through the themes in research order; the
+      // stretch the research has already covered is gold, the rest a hairline.
+      {
+        const nodesJ = ringRef.current;
+        const nJ = nodesJ.length;
+        if (nJ > 1) {
+          const pts = nodesJ.map((_, i) => toPx(...ringPosition(i, nJ, aspect), 1));
+          let reached = -1;
+          nodesJ.forEach((nd, i) => {
+            if (nd.state !== 'IDLE') reached = i;
+          });
+          // Complete: the journey closes into a full ring.
+          const closed = eng.formation === 'REST' && nodesJ.every((nd) => nd.state !== 'IDLE' && nd.state !== 'ACTIVE');
+          for (let i = 0; i < nJ - (closed ? 0 : 1); i++) {
+            const [ax, ay] = pts[i];
+            const [bx, by] = pts[(i + 1) % nJ];
+            // Bow each segment outward, so the track reads as a ring, not a polygon.
+            const mx = (ax + bx) / 2;
+            const my = (ay + by) / 2;
+            const ox = mx - w / 2;
+            const oy = my - h / 2;
+            const od = Math.hypot(ox, oy) || 1;
+            const cx = mx + (ox / od) * unit * 0.07;
+            const cy = my + (oy / od) * unit * 0.07;
+            const covered = closed || i < reached;
+            ctx.strokeStyle = covered
+              ? `rgba(${PALETTE.gold[0]},${PALETTE.gold[1]},${PALETTE.gold[2]},${(0.32 * Math.min(1, glow + 0.2)).toFixed(3)})`
+              : 'rgba(236,230,216,0.07)';
+            ctx.lineWidth = covered ? 1.2 : 1;
+            ctx.beginPath();
+            ctx.moveTo(ax, ay);
+            ctx.quadraticCurveTo(cx, cy, bx, by);
+            ctx.stroke();
+          }
+        }
+      }
+
       // THE THEMES AND THEIR THREADS INTO THE HOUSE.
       // Each research theme sits on the ring; its thread to the house shows
       // its REAL state: idle threads are barely there, finished ones hold a
@@ -440,6 +477,18 @@ function ResearchNetworkImpl({ network }: ResearchNetworkProps) {
       ctx.beginPath();
       ctx.arc(cxH, cyH, houseR, 0, Math.PI * 2);
       ctx.stroke();
+      // Evidence arriving: slow ripples leave the house while research runs.
+      if (FEEL[eng.formation].carriers) {
+        for (let k = 0; k < 2; k++) {
+          const ph = (eng.t / 3.2 + k / 2) % 1;
+          const rr = houseR * (1 + ph * 1.5);
+          ctx.strokeStyle = `rgba(${PALETTE.gold[0]},${PALETTE.gold[1]},${PALETTE.gold[2]},${((1 - ph) * 0.22 * glow).toFixed(3)})`;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(cxH, cyH, rr, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
       drawHouse(ctx, cxH, cyH + houseR * 0.04, houseR * 0.52, Math.min(1, glow + 0.25));
 
       // The theme nodes themselves, on top of their threads.
@@ -452,6 +501,17 @@ function ResearchNetworkImpl({ network }: ResearchNetworkProps) {
           ctx.globalAlpha = 0.75;
           ctx.drawImage(sprites[1], x - g, y - g, g * 2, g * 2);
           ctx.globalAlpha = 1;
+          // A slow orbit around the theme being researched.
+          ctx.strokeStyle = `rgba(${PALETTE.gold[0]},${PALETTE.gold[1]},${PALETTE.gold[2]},0.55)`;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(x, y, 10, eng.t * 1.1, eng.t * 1.1 + Math.PI * 1.25);
+          ctx.stroke();
+          const oa = eng.t * 1.1 + Math.PI * 1.25;
+          ctx.fillStyle = 'rgba(240,196,110,0.95)';
+          ctx.beginPath();
+          ctx.arc(x + Math.cos(oa) * 10, y + Math.sin(oa) * 10, 1.6, 0, Math.PI * 2);
+          ctx.fill();
         }
         const r = st === 'ACTIVE' ? 5 : 4;
         const [gr, gg, gb] = PALETTE.gold;
@@ -597,10 +657,18 @@ function ResearchNetworkImpl({ network }: ResearchNetworkProps) {
           <span
             key={node.key}
             dir="auto"
-            className={`hidden sm:block pointer-events-none absolute max-w-[9.5rem] text-[11px] leading-tight transition-colors duration-700 motion-reduce:transition-none ${
+            className={`hidden sm:block pointer-events-none absolute max-w-[10rem] rounded-md px-1.5 py-0.5 text-[11.5px] leading-snug tracking-[0.01em] transition-colors duration-700 motion-reduce:transition-none ${
               active ? 'font-semibold' : ''
             } ${side === 'start' ? 'text-end' : side === 'end' ? 'text-start' : 'text-center'}`}
-            style={{ left: `${pos.left}%`, top: `${pos.top}%`, transform, color }}
+            style={{
+              left: `${pos.left}%`,
+              top: `${pos.top}%`,
+              transform,
+              color,
+              // A quiet chip, so a name stays legible over passing particles.
+              background: active ? 'rgba(11,16,24,0.78)' : 'rgba(11,16,24,0.55)',
+              boxShadow: active ? '0 0 0 1px rgba(221,170,72,0.35)' : 'none',
+            }}
           >
             {t(node.labelKey)}
           </span>

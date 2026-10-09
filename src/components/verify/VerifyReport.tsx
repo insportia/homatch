@@ -307,7 +307,7 @@ const paragraphs = (text: string): string[] =>
 const Prose: React.FC<{ text: string }> = ({ text }) => (
   <>
     {paragraphs(text).map((p, i) => (
-      <p key={i} className="text-[15px] leading-7 text-foreground/90 break-words">{p}</p>
+      <p key={i} className="text-[15px] leading-7 text-foreground/90 break-words" dir="auto">{p}</p>
     ))}
   </>
 );
@@ -539,7 +539,7 @@ export function VerifyReport({
           <ul className="space-y-4">
             {r.attentionPoints.map((a, i) => (
               <li key={i} className="border-s-2 border-amber-400/70 ps-4 space-y-1">
-                <p className="text-[15px] leading-7 font-medium break-words">{clean(a.point)}</p>
+                <p className="text-[15px] leading-7 font-medium break-words" dir="auto">{clean(a.point)}</p>
                 {a.why ? (
                   <p className="text-sm leading-6 text-muted-foreground break-words">{clean(a.why)}</p>
                 ) : null}
@@ -750,7 +750,7 @@ const KeyFindings: React.FC<{ findings: KeyFinding[] }> = ({ findings }) => {
           const st = SENTIMENT_STYLE[sentimentOf(f.sentiment)];
           return (
             <li key={i} className={`border-s-2 ${st.edge} ps-4 space-y-1`}>
-              <p className="text-[15px] leading-7 font-medium break-words">{clean(f.finding)}</p>
+              <p className="text-[15px] leading-7 font-medium break-words" dir="auto">{clean(f.finding)}</p>
               {f.whyItMatters ? (
                 <p className="text-sm leading-6 text-muted-foreground break-words">
                   {clean(f.whyItMatters)}

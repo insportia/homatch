@@ -138,7 +138,7 @@ export function DeveloperAdvertising({
             <p className="text-sm leading-6 break-words">{t('verify_ads_none', { country: isolate(countryName(view.country, lang)) })}</p>
             {view.searchedFor?.length ? (
               <p className="text-xs leading-5 text-muted-foreground break-words">
-                {t('vbi_ads_searched_for', { terms: view.searchedFor.slice(0, 3).map((s) => `„${s}“`).join(', ') })}
+                {t('vbi_ads_searched_for', { terms: view.searchedFor.slice(0, 3).map((s) => isolate(`„${s}“`)).join(', ') })}
               </p>
             ) : null}
             <p className="text-xs leading-5 text-muted-foreground break-words">{t('vbi_ads_none_note')}</p>

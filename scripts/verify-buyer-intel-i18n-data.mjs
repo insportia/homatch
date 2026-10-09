@@ -41,7 +41,7 @@ export const VERIFY_BUYER_INTEL_STRINGS = {
   vbi_reg_agreement: ['agreement {{number}}', 'ხელშეკრულება {{number}}', 'договор {{number}}', 'sözleşme {{number}}', 'العقد {{number}}', 'הסכם {{number}}'],
   vbi_reg_removed: [
     'The earlier {{creditor}} mortgage (agreement of {{agreementDate}}) was removed by the decision of {{date}}.',
-    '{{creditor}}-ის ადრინდელი იპოთეკა ({{agreementDate}}-ის ხელშეკრულება) მოიხსნა {{date}}-ის გადაწყვეტილებით.',
+    'ადრინდელი იპოთეკა (კრედიტორი: {{creditor}}, ხელშეკრულება {{agreementDate}}) მოიხსნა {{date}}-ის გადაწყვეტილებით.',
     'Прежняя ипотека {{creditor}} (договор от {{agreementDate}}) снята решением от {{date}}.',
     'Önceki {{creditor}} ipoteği ({{agreementDate}} tarihli sözleşme) {{date}} tarihli kararla kaldırıldı.',
     'أُزيل الرهن السابق لصالح {{creditor}} (عقد بتاريخ {{agreementDate}}) بقرار صادر في {{date}}.',
@@ -49,7 +49,7 @@ export const VERIFY_BUYER_INTEL_STRINGS = {
   ],
   vbi_reg_removed_plain: [
     'The earlier {{creditor}} mortgage (agreement of {{agreementDate}}) no longer appears in the extract of {{date}}.',
-    '{{creditor}}-ის ადრინდელი იპოთეკა ({{agreementDate}}-ის ხელშეკრულება) {{date}}-ის ამონაწერში აღარ ფიგურირებს.',
+    'ადრინდელი იპოთეკა (კრედიტორი: {{creditor}}, ხელშეკრულება {{agreementDate}}) {{date}}-ის ამონაწერში აღარ ფიგურირებს.',
     'Прежняя ипотека {{creditor}} (договор от {{agreementDate}}) в выписке от {{date}} больше не значится.',
     'Önceki {{creditor}} ipoteği ({{agreementDate}} tarihli sözleşme) {{date}} tarihli kayıtta artık yer almıyor.',
     'لم يعد الرهن السابق لصالح {{creditor}} (عقد بتاريخ {{agreementDate}}) يظهر في مستخرج {{date}}.',
@@ -143,7 +143,7 @@ export const VERIFY_BUYER_INTEL_STRINGS = {
   vbi_mkt_scope_district: ['in this district', 'ამ უბანში', 'в этом районе', 'bu semtte', 'في هذا الحي', 'בשכונה הזו'],
   vbi_mkt_scope_city: ['in the city', 'ქალაქში', 'в городе', 'şehirde', 'في المدينة', 'בעיר'],
   vbi_mkt_subtitle: ['Based on {{count}} asking prices HOMATCH analysed.', 'HOMATCH-ის მიერ გაანალიზებული {{count}} მოთხოვნილი ფასის მიხედვით.', 'По {{count}} ценам предложения, которые проанализировал HOMATCH.', 'HOMATCH’in incelediği {{count}} talep fiyatına göre.', 'استنادًا إلى {{count}} من الأسعار المطلوبة التي حللتها HOMATCH.', 'על סמך {{count}} מחירים מבוקשים ש־HOMATCH ניתחה.'],
-  vbi_mkt_median: ['Median asking price', 'მედიანური მოთხოვნილი ფასი', 'Медианная цена предложения', 'Medyan talep fiyatı', 'متوسط السعر المطلوب', 'מחיר מבוקש חציוני'],
+  vbi_mkt_median: ['Median asking price', 'მედიანური მოთხოვნილი ფასი', 'Медианная цена предложения', 'Medyan talep fiyatı', 'السعر المطلوب الوسيط', 'מחיר מבוקש חציוני'],
   vbi_mkt_range: ['Observed range', 'დაფიქსირებული დიაპაზონი', 'Наблюдаемый диапазон', 'Gözlenen aralık', 'النطاق الملاحظ', 'טווח שנצפה'],
   vbi_mkt_as_of: ['Listings as of {{date}}.', 'განცხადებები {{date}}-ის მდგომარეობით.', 'Объявления на {{date}}.', '{{date}} itibarıyla ilanlar.', 'الإعلانات حتى {{date}}.', 'מודעות נכון ל־{{date}}.'],
   vbi_mkt_thin: [
@@ -175,8 +175,8 @@ export const VERIFY_BUYER_INTEL_STRINGS = {
   vbi_nav_checklist: ['Before you buy', 'ყიდვამდე', 'Перед покупкой', 'Almadan önce', 'قبل الشراء', 'לפני הקנייה'],
 
   /* ── location ── */
-  vbi_place_approx: ['approximately {{note}}, per the source', 'დაახლოებით {{note}}, წყაროს მიხედვით', 'примерно {{note}}, по данным источника', 'kaynağa göre yaklaşık {{note}}', 'تقريبًا {{note}}، وفق المصدر', 'בערך {{note}}, לפי המקור'],
-  vbi_place_approx_from: ['approximately {{note}}, according to {{source}}', 'დაახლოებით {{note}}, {{source}}-ის მიხედვით', 'примерно {{note}}, по данным {{source}}', '{{source}} kaynağına göre yaklaşık {{note}}', 'تقريبًا {{note}}، وفق {{source}}', 'בערך {{note}}, לפי {{source}}'],
+  vbi_place_approx: ['approximately {{note}}, per the source', '{{note}} (დაახლოებით, წყაროს მიხედვით)', 'примерно {{note}}, по данным источника', 'kaynağa göre yaklaşık {{note}}', 'تقريبًا {{note}}، وفق المصدر', 'בערך {{note}}, לפי המקור'],
+  vbi_place_approx_from: ['approximately {{note}}, according to {{source}}', '{{note}} (დაახლოებით; წყარო: {{source}})', 'примерно {{note}}, по данным {{source}}', '{{source}} kaynağına göre yaklaşık {{note}}', 'تقريبًا {{note}}، وفق {{source}}', 'בערך {{note}}, לפי {{source}}'],
 
   /* ── research transparency ── */
   vbi_rx_registry: [
@@ -212,7 +212,7 @@ export const VERIFY_BUYER_INTEL_STRINGS = {
   bc_unit_mortgage_label: ['Agree how the apartment’s mortgage is released', 'შეთანხმდით, როგორ მოიხსნება ბინის იპოთეკა', 'Договоритесь, как будет снята ипотека с квартиры', 'Dairedeki ipoteğin nasıl kaldırılacağında anlaşın', 'اتفق على كيفية فكّ رهن الشقة', 'סכמו כיצד תוסר המשכנתה מהדירה'],
   bc_unit_mortgage_detail: [
     'The extract of {{date}} shows a {{creditor}} mortgage on this apartment, registered {{registered}}. Put in the contract how it is released at closing — usually from the purchase price, through the bank.',
-    '{{date}}-ის ამონაწერში ამ ბინაზე {{creditor}}-ის იპოთეკა ფიქსირდება, რეგისტრირებული {{registered}}-ს. ხელშეკრულებაში ჩაწერეთ, როგორ მოიხსნება ის გარიგებისას — როგორც წესი, ნასყიდობის თანხიდან, ბანკის მეშვეობით.',
+    '{{date}}-ის ამონაწერში ამ ბინაზე იპოთეკა ფიქსირდება (კრედიტორი: {{creditor}}, რეგისტრირებულია {{registered}}). ხელშეკრულებაში ჩაწერეთ, როგორ მოიხსნება ის გარიგებისას — როგორც წესი, ნასყიდობის თანხიდან, ბანკის მეშვეობით.',
     'В выписке от {{date}} на квартиру зарегистрирована ипотека {{creditor}} (с {{registered}}). Пропишите в договоре, как она будет снята при сделке — обычно из суммы покупки, через банк.',
     '{{date}} tarihli kayıtta bu dairede {{registered}} tarihinde tescil edilmiş bir {{creditor}} ipoteği görünüyor. Devirde nasıl kaldırılacağını sözleşmeye yazın — genellikle satış bedelinden, banka aracılığıyla.',
     'يُظهر مستخرج {{date}} رهنًا لصالح {{creditor}} على هذه الشقة، مسجّلًا في {{registered}}. اذكر في العقد كيفية فكّه عند الإتمام — عادةً من ثمن الشراء عبر البنك.',

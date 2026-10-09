@@ -76,5 +76,5 @@ export function splitCitations(text: unknown): { text: string; sources: Citation
  * attributed, never as HOMATCH's own precision.
  */
 export function hasDistance(text: string): boolean {
-  return /\d+(?:[.,]\d+)?\s*(?:მ\b|მ\.|მეტრ|კმ|წთ|წუთ|km\b|m\b|min|minutes?|метр|км|мин)/i.test(text);
+  return /\d+(?:[.,]\d+)?\s*(?:მ(?![ა-ჰ])|მეტრ|კმ(?![ა-ჰ])|წთ|წუთ|km\b|m\b|min|minutes?|метр|км|мин)/i.test(text);
 }

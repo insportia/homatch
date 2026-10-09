@@ -21,4 +21,8 @@ test('distance detection marks source-quoted precision for approximate display',
   assert.ok(hasDistance('70 მ და 1 წუთი ფეხით'));
   assert.ok(hasDistance('5 min walk'));
   assert.ok(!hasDistance('ახლოს მდებარეობს'));
+  // Georgian metres: \b does not see Georgian letters (QA finding).
+  assert.ok(hasDistance('70 მ-შია'));
+  assert.ok(hasDistance('70 მ'));
+  assert.ok(!hasDistance('5 მაღაზია'));
 });

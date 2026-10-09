@@ -946,11 +946,14 @@ const PlaceNote: React.FC<{ note: string }> = ({ note }) => {
   const said = clean(text);
   if (!said) return null;
   const from = sources[0]?.host;
+  /* First-strong isolates: a source's Georgian note inside an Arabic or
+     Hebrew sentence otherwise has its figure and hyphen reordered by bidi. */
+  const iso = (v: string) => `\u2068${v}\u2069`;
   return (
     <span className="text-muted-foreground">
       {' — '}
-      {hasDistance(said) ? t(from ? 'vbi_place_approx_from' : 'vbi_place_approx', { note: said, source: from ?? '' }) : said}
-      {!hasDistance(said) && from ? <span className="ms-1 text-2xs">({t('vbi_source', { source: from })})</span> : null}
+      {hasDistance(said) ? t(from ? 'vbi_place_approx_from' : 'vbi_place_approx', { note: iso(said), source: from ? iso(from) : '' }) : <bdi>{said}</bdi>}
+      {!hasDistance(said) && from ? <span className="ms-1 text-2xs">({t('vbi_source', { source: iso(from) })})</span> : null}
     </span>
   );
 };

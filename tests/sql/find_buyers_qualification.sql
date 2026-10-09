@@ -41,4 +41,7 @@ begin
               from public.admin_settings where key = 'find_buyers_comment_gate'), 'gate moved from the old default only';
   end if;
 end $$;
+-- Leave no rows behind: later suites count leads across campaigns.
+delete from public.find_buyers_leads where person_id in ('00000000-0000-0000-0000-0000000003a1', '00000000-0000-0000-0000-0000000003a2', '00000000-0000-0000-0000-0000000003a3', '00000000-0000-0000-0000-0000000003a4');
+delete from public.find_buyers_persons where id in ('00000000-0000-0000-0000-0000000003a1', '00000000-0000-0000-0000-0000000003a2', '00000000-0000-0000-0000-0000000003a3', '00000000-0000-0000-0000-0000000003a4');
 select 'find_buyers_qualification: ok';

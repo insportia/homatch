@@ -238,12 +238,20 @@ export const KNOWN_REJECTIONS = [
   'IRRELEVANT', 'WRONG_LOCATION', 'BUDGET_MISMATCH', 'WRONG_PROPERTY_TYPE', 'STALE', 'DUPLICATE', 'UNCLEAR',
 ] as const;
 
+/** The qualification engine's codes (research-core/findBuyers/qualify.ts) → the worded groups. */
+export const REJECTION_ALIASES: Readonly<Record<string, string>> = {
+  AGENT_INTERMEDIARY: 'AGENT_PROMOTION', SERVICE_AD: 'SERVICE_PROMOTION', NOT_REAL_ESTATE: 'IRRELEVANT',
+  OTHER_CITY: 'WRONG_LOCATION', BUDGET_INCOMPATIBLE: 'BUDGET_MISMATCH', PROPERTY_TYPE_MISMATCH: 'WRONG_PROPERTY_TYPE',
+  NON_RESIDENTIAL: 'WRONG_PROPERTY_TYPE', UNCLEAR_INTENT: 'UNCLEAR', UNDATED: 'STALE',
+};
+
 /** Rejected candidates by reason, largest first; unknown codes fold into OTHER. */
 export function rejectionBreakdown(report: CampaignReport): Array<{ reason: string; count: number }> {
   const src = Object.keys(report.results.rejectionReasons).length ? report.results.rejectionReasons : report.results.signalRejectionReasons;
   const acc = new Map<string, number>();
   for (const [k, v] of Object.entries(src)) {
-    const key = (KNOWN_REJECTIONS as readonly string[]).includes(k) ? k : 'OTHER';
+    const code = REJECTION_ALIASES[k] ?? k;
+    const key = (KNOWN_REJECTIONS as readonly string[]).includes(code) ? code : 'OTHER';
     acc.set(key, (acc.get(key) ?? 0) + v);
   }
   return [...acc.entries()].map(([reason, count]) => ({ reason, count })).filter((x) => x.count > 0).sort((a, b) => b.count - a.count);

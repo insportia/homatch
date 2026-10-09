@@ -401,4 +401,16 @@ export const FIND_BUYERS_REPORT_STRINGS = {
   fbi_first_lead: ['First lead', 'პირველი ლიდი', 'Первый лид', 'İlk aday', 'أول عميل محتمل', 'ליד ראשון'],
   fbi_first_qualified: ['First qualified', 'პირველი კვალიფიციური', 'Первый подходящий', 'İlk nitelikli', 'أول مؤهل', 'מתאים ראשון'],
   fbi_duration: ['Duration', 'ხანგრძლივობა', 'Длительность', 'Süre', 'المدة', 'משך'],
+  /* ── buyer-profile hypotheses (research-core/findBuyers/buyerStrategy.ts PersonaKey) ──
+     Search hypotheses, never claims about a person. */
+  fbr_persona_LOCAL_FAMILY: ['Local family buyer', 'ადგილობრივი ოჯახი', 'Местная семья', 'Yerel aile', 'عائلة محلية', 'משפחה מקומית'],
+  fbr_persona_UPGRADER: ['Upgrading to a larger home', 'უფრო დიდ ბინაზე გადასვლა', 'Переезд в жильё побольше', 'Daha büyük eve geçiş', 'الانتقال إلى منزل أكبر', 'מעבר לדירה גדולה יותר'],
+  fbr_persona_RELOCATING: ['Relocating to the city', 'ქალაქში გადმოსახლება', 'Переезд в город', 'Şehre taşınanlar', 'الانتقال إلى المدينة', 'עוברים לעיר'],
+  fbr_persona_INVESTOR: ['Investment buyer', 'საინვესტიციო მყიდველი', 'Покупка для инвестиций', 'Yatırım amaçlı alıcı', 'مشترٍ بغرض الاستثمار', 'רוכש להשקעה'],
+  fbr_persona_DIASPORA: ['Georgians abroad buying at home', 'საზღვარგარეთ მცხოვრები ქართველები', 'Грузины из-за рубежа', 'Yurt dışındaki Gürcüler', 'جورجيون في الخارج', 'גאורגים מחו״ל'],
+  fbr_persona_FIRST_TIME: ['First-time buyer (mortgage or instalments)', 'პირველი ბინის მყიდველი (იპოთეკა ან განვადება)', 'Первая покупка (ипотека или рассрочка)', 'İlk kez ev alan (kredi veya taksit)', 'مشترٍ لأول مرة (رهن أو تقسيط)', 'רוכש ראשון (משכנתא או תשלומים)'],
+  fbr_persona_LUXURY: ['Premium-segment buyer', 'პრემიუმ სეგმენტის მყიდველი', 'Покупатель премиум-сегмента', 'Premium segment alıcısı', 'مشترٍ في الفئة الممتازة', 'רוכש בפלח היוקרה'],
+  fbr_persona_STUDENT_TENANT: ['Student tenant', 'სტუდენტი მოიჯარე', 'Студент-арендатор', 'Öğrenci kiracı', 'مستأجر طالب', 'שוכר סטודנט'],
+  fbr_persona_EXPAT_TENANT: ['Relocated professional tenant', 'გადმოსახლებული პროფესიონალი მოიჯარე', 'Арендатор-релокант', 'Taşınan profesyonel kiracı', 'مستأجر مهني منتقل', 'שוכר שעבר לעיר'],
+  fbr_persona_FAMILY_TENANT: ['Family tenant', 'ოჯახი მოიჯარე', 'Семья-арендатор', 'Aile kiracı', 'عائلة مستأجرة', 'משפחה שוכרת'],
 };

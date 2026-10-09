@@ -16390,6 +16390,18 @@ const en = {
   fbi_first_lead: 'First lead',
   fbi_first_qualified: 'First qualified',
   fbi_duration: 'Duration',
+
+  /* ── FIND BUYERS / FIND TENANTS — campaign report, Research Notes, match categories, admin Intelligence ── */
+  fbr_persona_LOCAL_FAMILY: 'Local family buyer',
+  fbr_persona_UPGRADER: 'Upgrading to a larger home',
+  fbr_persona_RELOCATING: 'Relocating to the city',
+  fbr_persona_INVESTOR: 'Investment buyer',
+  fbr_persona_DIASPORA: 'Georgians abroad buying at home',
+  fbr_persona_FIRST_TIME: 'First-time buyer (mortgage or instalments)',
+  fbr_persona_LUXURY: 'Premium-segment buyer',
+  fbr_persona_STUDENT_TENANT: 'Student tenant',
+  fbr_persona_EXPAT_TENANT: 'Relocated professional tenant',
+  fbr_persona_FAMILY_TENANT: 'Family tenant',
 };
 
 export type TranslationKey = keyof typeof en;
@@ -32694,6 +32706,18 @@ const ka: Partial<Record<TranslationKey, string>> = {
   fbi_first_lead: 'პირველი ლიდი',
   fbi_first_qualified: 'პირველი კვალიფიციური',
   fbi_duration: 'ხანგრძლივობა',
+
+  /* ── FIND BUYERS / FIND TENANTS — campaign report, Research Notes, match categories, admin Intelligence ── */
+  fbr_persona_LOCAL_FAMILY: 'ადგილობრივი ოჯახი',
+  fbr_persona_UPGRADER: 'უფრო დიდ ბინაზე გადასვლა',
+  fbr_persona_RELOCATING: 'ქალაქში გადმოსახლება',
+  fbr_persona_INVESTOR: 'საინვესტიციო მყიდველი',
+  fbr_persona_DIASPORA: 'საზღვარგარეთ მცხოვრები ქართველები',
+  fbr_persona_FIRST_TIME: 'პირველი ბინის მყიდველი (იპოთეკა ან განვადება)',
+  fbr_persona_LUXURY: 'პრემიუმ სეგმენტის მყიდველი',
+  fbr_persona_STUDENT_TENANT: 'სტუდენტი მოიჯარე',
+  fbr_persona_EXPAT_TENANT: 'გადმოსახლებული პროფესიონალი მოიჯარე',
+  fbr_persona_FAMILY_TENANT: 'ოჯახი მოიჯარე',
 };
 
 const ru: Partial<Record<TranslationKey, string>> = {
@@ -48989,6 +49013,18 @@ const ru: Partial<Record<TranslationKey, string>> = {
   fbi_first_lead: 'Первый лид',
   fbi_first_qualified: 'Первый подходящий',
   fbi_duration: 'Длительность',
+
+  /* ── FIND BUYERS / FIND TENANTS — campaign report, Research Notes, match categories, admin Intelligence ── */
+  fbr_persona_LOCAL_FAMILY: 'Местная семья',
+  fbr_persona_UPGRADER: 'Переезд в жильё побольше',
+  fbr_persona_RELOCATING: 'Переезд в город',
+  fbr_persona_INVESTOR: 'Покупка для инвестиций',
+  fbr_persona_DIASPORA: 'Грузины из-за рубежа',
+  fbr_persona_FIRST_TIME: 'Первая покупка (ипотека или рассрочка)',
+  fbr_persona_LUXURY: 'Покупатель премиум-сегмента',
+  fbr_persona_STUDENT_TENANT: 'Студент-арендатор',
+  fbr_persona_EXPAT_TENANT: 'Арендатор-релокант',
+  fbr_persona_FAMILY_TENANT: 'Семья-арендатор',
 };
 
 const tr: Partial<Record<TranslationKey, string>> = {
@@ -65282,6 +65318,18 @@ const tr: Partial<Record<TranslationKey, string>> = {
   fbi_first_lead: 'İlk aday',
   fbi_first_qualified: 'İlk nitelikli',
   fbi_duration: 'Süre',
+
+  /* ── FIND BUYERS / FIND TENANTS — campaign report, Research Notes, match categories, admin Intelligence ── */
+  fbr_persona_LOCAL_FAMILY: 'Yerel aile',
+  fbr_persona_UPGRADER: 'Daha büyük eve geçiş',
+  fbr_persona_RELOCATING: 'Şehre taşınanlar',
+  fbr_persona_INVESTOR: 'Yatırım amaçlı alıcı',
+  fbr_persona_DIASPORA: 'Yurt dışındaki Gürcüler',
+  fbr_persona_FIRST_TIME: 'İlk kez ev alan (kredi veya taksit)',
+  fbr_persona_LUXURY: 'Premium segment alıcısı',
+  fbr_persona_STUDENT_TENANT: 'Öğrenci kiracı',
+  fbr_persona_EXPAT_TENANT: 'Taşınan profesyonel kiracı',
+  fbr_persona_FAMILY_TENANT: 'Aile kiracı',
 };
 
 const ar: Partial<Record<TranslationKey, string>> = {
@@ -81575,6 +81623,18 @@ const ar: Partial<Record<TranslationKey, string>> = {
   fbi_first_lead: 'أول عميل محتمل',
   fbi_first_qualified: 'أول مؤهل',
   fbi_duration: 'المدة',
+
+  /* ── FIND BUYERS / FIND TENANTS — campaign report, Research Notes, match categories, admin Intelligence ── */
+  fbr_persona_LOCAL_FAMILY: 'عائلة محلية',
+  fbr_persona_UPGRADER: 'الانتقال إلى منزل أكبر',
+  fbr_persona_RELOCATING: 'الانتقال إلى المدينة',
+  fbr_persona_INVESTOR: 'مشترٍ بغرض الاستثمار',
+  fbr_persona_DIASPORA: 'جورجيون في الخارج',
+  fbr_persona_FIRST_TIME: 'مشترٍ لأول مرة (رهن أو تقسيط)',
+  fbr_persona_LUXURY: 'مشترٍ في الفئة الممتازة',
+  fbr_persona_STUDENT_TENANT: 'مستأجر طالب',
+  fbr_persona_EXPAT_TENANT: 'مستأجر مهني منتقل',
+  fbr_persona_FAMILY_TENANT: 'عائلة مستأجرة',
 };
 
 const he: Partial<Record<TranslationKey, string>> = {
@@ -97868,6 +97928,18 @@ const he: Partial<Record<TranslationKey, string>> = {
   fbi_first_lead: 'ליד ראשון',
   fbi_first_qualified: 'מתאים ראשון',
   fbi_duration: 'משך',
+
+  /* ── FIND BUYERS / FIND TENANTS — campaign report, Research Notes, match categories, admin Intelligence ── */
+  fbr_persona_LOCAL_FAMILY: 'משפחה מקומית',
+  fbr_persona_UPGRADER: 'מעבר לדירה גדולה יותר',
+  fbr_persona_RELOCATING: 'עוברים לעיר',
+  fbr_persona_INVESTOR: 'רוכש להשקעה',
+  fbr_persona_DIASPORA: 'גאורגים מחו״ל',
+  fbr_persona_FIRST_TIME: 'רוכש ראשון (משכנתא או תשלומים)',
+  fbr_persona_LUXURY: 'רוכש בפלח היוקרה',
+  fbr_persona_STUDENT_TENANT: 'שוכר סטודנט',
+  fbr_persona_EXPAT_TENANT: 'שוכר שעבר לעיר',
+  fbr_persona_FAMILY_TENANT: 'משפחה שוכרת',
 };
 
 export const translations: Record<SupportedLanguage, Record<TranslationKey, string>> = {

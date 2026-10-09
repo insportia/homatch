@@ -11,7 +11,8 @@
 #                   run is ever handed out twice and none is lost.
 #   3. CRON PURGE   applies the retention migration twice to a 250k-row history
 #                   spanning 42 days; checks only rows older than 7 days go, in
-#                   bounded batches, and the job is scheduled exactly once.
+#                   bounded batches, a still-running row and other jobs are never
+#                   touched, and the job is scheduled exactly once.
 #
 # Needs Postgres 16 binaries + pgbench. Usage: tests/sql/perf/run-db-bench.sh
 set -euo pipefail
@@ -99,11 +100,14 @@ PGB
   case "$inv" in *" twice=0 "*) ;; *) echo "  FAIL: a run was handed out more than once"; exit 1;; esac
 done
 
-echo "== 3. CRON PURGE (20261024090000_cron_history_retention.sql)"
+echo "== 3. CRON PURGE (20261025090000_cron_history_retention.sql)"
 $P -d hmperf -c "insert into cron.job_run_details (jobid, status, command, start_time, end_time)
   select 1 + g % 15, 'succeeded', 'select net.http_post(...)', ts, ts + interval '80 ms'
-    from (select g, now() - interval '42 days' + (g * interval '42 days' / 250000) ts from generate_series(1,250000) g) x;"
-M="$root/supabase/migrations/20261024090000_cron_history_retention.sql"
+    from (select g, now() - interval '42 days' + (g * interval '42 days' / 250000) ts from generate_series(1,250000) g) x;
+  -- A job that hangs for weeks is still running: its row must survive. Another job must stay scheduled.
+  insert into cron.job_run_details (jobid, status, command, start_time) values (99, 'running', 'stuck', now() - interval '30 days');
+  insert into cron.job (jobname, schedule, command) values ('homatch-jobs-worker', '30 seconds', 'select 1');"
+M="$root/supabase/migrations/20261025090000_cron_history_retention.sql"
 $P -d hmperf -1 -f "$M"; $P -d hmperf -1 -f "$M"
 $Q -d hmperf -c "select 'scheduled_jobs='||count(*)||' schedule='||max(schedule) from cron.job where jobname='homatch-cron-history-retention'" | sed 's/^/  /'
 keep_before=$($Q -d hmperf -c "select count(*) from cron.job_run_details where start_time >= now() - interval '7 days'")
@@ -116,7 +120,11 @@ while :; do
 done
 $Q -d hmperf -c "select 'remaining='||count(*)||' older_than_7d='||count(*) filter (where start_time < now() - interval '7 days')
    ||' kept_7d='||count(*) filter (where start_time >= now() - interval '7 days') from cron.job_run_details" | sed "s/^/  calls=$calls deleted=$total /"
-left=$($Q -d hmperf -c "select count(*) from cron.job_run_details where start_time < now() - interval '7 days'")
+left=$($Q -d hmperf -c "select count(*) from cron.job_run_details where start_time < now() - interval '7 days' and status <> 'running'")
+running=$($Q -d hmperf -c "select count(*) from cron.job_run_details where status = 'running'")
+others=$($Q -d hmperf -c "select count(*) from cron.job where jobname = 'homatch-jobs-worker'")
+[ "$running" -eq 1 ] && [ "$others" -eq 1 ] || { echo "  FAIL: running row kept=$running, other job kept=$others"; exit 1; }
+echo "  running row kept=$running, other cron job untouched=$others"
 kept=$($Q -d hmperf -c "select count(*) from cron.job_run_details where start_time >= now() - interval '7 days'")
 [ "$left" -eq 0 ] && [ "$kept" -eq "$keep_before" ] || { echo "  FAIL: retention kept=$kept/$keep_before older_left=$left"; exit 1; }
 echo "DB BENCH: PASS"

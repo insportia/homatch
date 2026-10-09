@@ -41,7 +41,7 @@ no network, no providers, no money).
 5. **Second write/space source:** `cron.job_run_details` keeps every run since
    2026-08-28 — 228k rows, **179 MB = 57% of the database**, never vacuumed, growing
    ~12.4k rows/day, each run written twice. A bounded retention job is prepared
-   (§5, migration `20261024090000`), not applied.
+   (§5, migration `20261025090000`), not applied.
 6. **Capacity:** the platform has no measured user load to extrapolate from, so §4
    models it from per-request costs. The first saturation points at 10k DAU are not
    the database: they are the **Find Buyers discovery driver (~1 source job/minute
@@ -170,7 +170,7 @@ Run on 2026-10-09: 4 cores, Postgres 16, production `work_mem`.
   clients=1   tps=363.5  latency_avg=2.751 ms    done=18170 twice=0 stranded=0 runs_per_s=1817
   clients=8   tps=358.4  latency_avg=22.322 ms   done=17945 twice=0 stranded=0 runs_per_s=1795
   clients=32  tps=299.2  latency_avg=106.952 ms  done=15320 twice=0 stranded=0 runs_per_s=1532
-== 3. CRON PURGE (20261024090000_cron_history_retention.sql)
+== 3. CRON PURGE (20261025090000_cron_history_retention.sql)
   scheduled_jobs=1 schedule=41 * * * *
   call 1 deleted=20000 in 243ms
   calls=12 deleted=208333 remaining=41667 older_than_7d=0 kept_7d=41667
@@ -244,7 +244,7 @@ What scales already:
 
 | Change | Expected benefit | Risk | Rollback | Tests |
 |---|---|---|---|---|
-| `supabase/migrations/20261024090000_cron_history_retention.sql`: `public.purge_cron_history(keep 7 d, batch 20k)` walks the runid key oldest-first, plus an hourly cron (`41 * * * *`). **Prepared, NOT applied.** | Stops the 179 MB / 12.4k-rows/day growth. Backlog cleared in about 7 h at about 20k rows/h, then about 520 rows/h. Each call ≈ 250 ms. | Deletes diagnostic history older than 7 days (not restorable). Space is reused, not returned to the OS. | `select cron.unschedule('homatch-cron-history-retention'); drop function public.purge_cron_history(interval, integer);` | `tests/sql/perf/run-db-bench.sh` §3 (applied twice, exact keep-set) |
+| `supabase/migrations/20261025090000_cron_history_retention.sql`: `public.purge_cron_history(keep 7 d, batch 20k)` walks the runid key oldest-first, plus an hourly cron (`41 * * * *`). **Prepared, NOT applied.** | Stops the 179 MB / 12.4k-rows/day growth. Backlog cleared in about 7 h at about 20k rows/h, then about 520 rows/h. Each call ≈ 250 ms. | Deletes diagnostic history older than 7 days (not restorable). Space is reused, not returned to the OS. | `select cron.unschedule('homatch-cron-history-retention'); drop function public.purge_cron_history(interval, integer);` | `tests/sql/perf/run-db-bench.sh` §3 (applied twice, exact keep-set) |
 | `tests/sql/perf/` (fixture + runner) | Repeatable local evidence for the temp-spill root cause, queue-claim correctness and contention, and retention | None; it never touches production | Delete the folder | Self-checking (`DB BENCH: PASS`) |
 | `scripts/release/components.mjs`: registers `public.purge_cron_history` → TOOLING | Future housekeeping migrations plan as TOOLING instead of REPO_FULL (CLAUDE.md: place new code areas in the same PR) | Release engine change, so this PR itself validates REPO_FULL | Revert the line | `tests/matrix/releasePath.test.mjs` 25/25 |
 | This report | — | — | — | — |
@@ -259,7 +259,7 @@ In recommended order. Each one is independent and reversible unless stated.
 | # | Action | Benefit (evidence) | Risk | Rollback / verification |
 |---|---|---|---|---|
 | A1 | Save a pgss snapshot, then `select pg_stat_statements_reset();` | Temp spill per pgss read goes from 4.6 MB to 0 (local §3); production temp ≈ 10–13 GB/day → ≈ 0 until pgss regrows (weeks). Fastest IO relief. | Loses accumulated query statistics (snapshot first). You asked never to reset stats without approval. | Nothing to roll back. Verify: `temp_bytes` delta over 1 h ≈ 0. |
-| A2 | Apply migration `20261024090000` | §5 | §5 | §5 |
+| A2 | Apply migration `20261025090000` | §5 | §5 | §5 |
 | A3 | Raise compute Micro → **Small** (or Medium before launch) | Higher RAM, `work_mem`, IO baseline and burst budget; removes the 2 MB tuplestore spill structurally (8 MB `work_mem` → 0 spill, local §3). | Brief restart; monthly cost (§8). | Downgrade from the dashboard. |
 | A4 | Set `pg_stat_statements.track_utility = off` (Supabase config/support; verify it is settable on this tier) | Stops migration and DDL bodies (1,366 of 4,880 entries) from refilling pgss. | Lose stats on utility statements. | Set it back on. |
 | A5 | `log_temp_files = 4MB` for 24 h (Supabase config) | Names the exact statement and role behind every spill and confirms the inferred caller. | Log volume (about 2.2k lines/day). | Set back to -1. |
@@ -329,7 +329,7 @@ action is in §6.
   held only already-merged history.
 - No other branch, worktree or PR was touched.
 - Files changed:
-  - `supabase/migrations/20261024090000_cron_history_retention.sql`
+  - `supabase/migrations/20261025090000_cron_history_retention.sql`
   - `tests/sql/perf/*`
   - `scripts/release/components.mjs` (one ownership line)
   - `docs/infra/SCALABILITY_AUDIT.md`

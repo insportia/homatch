@@ -223,6 +223,9 @@ export const GLOBAL_EDGE_PRIMITIVE = /^supabase\/functions\/_shared\/(auth|cors|
 export const DB_OBJECT_OWNERS = [
   [/^(auth\.|storage\.objects$|storage\.buckets$|public\.(users|user_roles|profiles|is_admin|has_role|is_staff|current_user_[a-z_]+|handle_new_user)$)/, 'GLOBAL'],
   [/^public\.(ds_|design_studio)/, 'DESIGN_STUDIO'],
+  // Database housekeeping no application code calls (cron history retention):
+  // service_role only; proven by tests/sql/perf/run-db-bench.sh, not by any suite.
+  [/^public\.purge_cron_history$/, 'TOOLING'],
   [/^public\.(storage_)/, 'STORAGE'],
   [/^public\.(meta_)/, 'META_ADS'],
   [/^public\.(site_|app_content|studio_)/, 'SITE_STUDIO'],
@@ -237,9 +240,6 @@ export const DB_OBJECT_OWNERS = [
   [/^public\.(discovery|supply_|demand_|match|search_profile|active_search|social_discovery|source_)/, 'DISCOVERY'],
   // FIND BUYERS / FIND TENANTS (memo23 social intelligence) and the discovery queue's claim/finish functions.
   [/^public\.(find_buyers_|admin_find_buyers_|claim_discovery_|finish_discovery_|signal_platform$|source_type$)/, 'DISCOVERY'],
-  // Database housekeeping no application code calls (cron history retention):
-  // service_role only; proven by tests/sql/perf/run-db-bench.sh, not by any suite.
-  [/^public\.purge_cron_history$/, 'TOOLING'],
 ];
 
 /* Translation keys by prefix: a translation change reaches the component

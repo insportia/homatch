@@ -1,6 +1,6 @@
 -- Minimal stand-ins for the production objects the benchmarked migrations read.
 -- Only what 20261010100000_marketplace_search_foundation.sql and
--- 20261024090000_cron_history_retention.sql reference; nothing else.
+-- 20261025090000_cron_history_retention.sql reference; nothing else.
 do $$ begin
   create role anon nologin; exception when duplicate_object then null; end $$;
 do $$ begin

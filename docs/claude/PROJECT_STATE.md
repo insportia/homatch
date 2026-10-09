@@ -8,7 +8,7 @@
   is Supabase's own monitoring (`SET pg_stat_statements.track = none` by supabase_admin).
   DB throttled from 05:38 UTC 2026-10-09 (48 cron `job startup timeout`).
 - cron.job_run_details = 179 MB (57% of DB), unbounded: retention migration
-  `20261024090000_cron_history_retention.sql` PREPARED, NOT APPLIED.
+  `20261025090000_cron_history_retention.sql` PREPARED, NOT APPLIED.
 - Awaiting owner approval: pgss reset (A1), retention migration (A2), compute Micro→Small (A3),
   track_utility off (A4), log_temp_files (A5), Realtime publication trim (A6).
 

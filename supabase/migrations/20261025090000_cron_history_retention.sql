@@ -12,6 +12,12 @@
 -- time) so no call scans the table. Scheduled hourly, the ~141k-row backlog is
 -- gone in about 7 hours at ~20k rows/hour, and steady state is ~520 rows/hour.
 --
+-- Safety: only cron.job_run_details rows are deleted — never cron.job, so no
+-- schedule is touched — and never a row still 'starting'/'running'. DELETE takes
+-- row locks only (pg_cron keeps inserting new rows meanwhile); lock_timeout 5s
+-- means a call gives up rather than waits. The job is (re)scheduled by name, so
+-- applying twice leaves exactly one job.
+--
 -- Nothing else changes: no job, schedule, setting or application table is
 -- touched. The space is reused by new rows; the file does not shrink (that would
 -- need VACUUM FULL, an exclusive lock — deliberately not done here).
@@ -29,6 +35,7 @@ returns integer
 language plpgsql
 security definer
 set search_path to ''
+set lock_timeout to '5s'
 as $function$
 declare
   v_cutoff timestamptz := now() - greatest(coalesce(p_keep, interval '7 days'), interval '1 day');
@@ -41,7 +48,8 @@ begin
   delete from cron.job_run_details d
    using oldest
    where d.runid = oldest.runid
-     and d.start_time < v_cutoff;
+     and d.start_time < v_cutoff
+     and d.status not in ('starting', 'running');
   get diagnostics v_deleted = row_count;
   return v_deleted;
 end;

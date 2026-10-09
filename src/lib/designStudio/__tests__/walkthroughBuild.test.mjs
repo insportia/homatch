@@ -361,3 +361,20 @@ test('circulation removes the least furniture that frees the way: the corrected 
   const comfortAfter = roomy(state.objects);
   for (const id of comfortBefore) assert.ok(comfortAfter.has(id), `${id} not comfortably reachable`);
 });
+
+test('a WC or wash room too small to have floor clear of its door is still reached; furniture never wins over a door', async () => {
+  const fs = await import('node:fs');
+  const { buildSpaceModel } = await import('../space.ts');
+  const { buildWalkModel } = await import('../navigation.ts');
+  const { reachableRooms } = await import('../walkthrough/build.ts');
+  // A real floor plan's geometry (labels removed): a 1.0 × 1.2 m WC and a 1.2 × 1.2 m bath off a 1.9 × 1.3 m wash room.
+  const scene = JSON.parse(fs.readFileSync(new URL('./fixtures/two-bed-small-wet-rooms.scene.json', import.meta.url), 'utf8'));
+  const space = buildSpaceModel(scene);
+  assert.deepEqual([...reachableRooms(space, buildWalkModel(space, [], new Map()))].sort(), ['R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9']);
+  const src = fs.readFileSync(new URL('../walkthrough/build.ts', import.meta.url), 'utf8');
+  // The last word: the piece on the way of a cut-off room is moved anywhere clean in its room (its lock released),
+  // and removed only when it fits nowhere — a picture's piece included.
+  assert.match(src, /for \(const pose of cleanPoses\(space, assets, others, home, victim\.asset, 8\)\)/);
+  assert.match(src, /victim\.lock = undefined;/);
+  assert.match(src, /if \(!moved\) drop\(victim, 'DOOR_CLEARED'\);/);
+});

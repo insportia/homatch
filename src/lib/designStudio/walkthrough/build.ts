@@ -662,6 +662,54 @@ export function buildWalkthrough(input: BuildInput): { state: DesignState; repor
     if (!report.circulation.repaired.includes(victim.roomId)) report.circulation.repaired.push(victim.roomId);
   }
 
+  // ── The guarantee, for any plan and any picture: furniture never wins over a door. A room the bare plan reaches
+  //    that is still cut off, or a trap still there, has the piece standing on its way moved anywhere clean in its
+  //    room off that way — a picture's locked piece included — and only when it fits nowhere, removed. Sanitary
+  //    fittings and the kitchen (fixed to their walls) stay; the room's essential piece is the last to give way.
+  for (let guard = 0; guard < 12 && start; guard += 1) {
+    const lost = lostRooms(working.objects);
+    const traps = lost.length ? [] : trapsOf(working.objects);
+    if (!lost.length && !traps.length) break;
+    const where = lost[0] ?? traps[0].roomId;
+    const room = space.rooms.find((r) => r.id === where);
+    let way: Point[] = traps[0]?.cells ?? [];
+    if (lost.length && room) {
+      const goal = freeInside(empty, room);
+      const route = goal ? findPath(empty, start, goal, { throughDoors: true, maxCells: 20000 }) : null;
+      way = [...(route ? routePoints([start, ...route]) : []), ...doorSides(space).map((d) => d.p).filter((q) => pointInPolygon(q, room.polygon))];
+    }
+    if (!way.length) break;
+    const victim = standing().filter((p) => p.rank < 5)
+      .map((p) => ({ p, d: Math.min(...way.map((q) => distanceToObb(q, p.box))) }))
+      .filter((e) => e.d < walkRadius + 0.05)
+      .sort((a, b) => Number(a.p.essential) - Number(b.p.essential) || a.d - b.d || a.p.rank - b.p.rank)[0]?.p;
+    if (!victim) break;
+    const obj = objectOf(victim);
+    const home = rooms.get(victim.roomId);
+    let moved = false;
+    if (obj && home) {
+      const others = working.objects.filter((o) => o.instanceId !== victim.instanceId);
+      for (const pose of cleanPoses(space, assets, others, home, victim.asset, 8)) {
+        const box = footprint(victim.asset, pose.at, pose.rotation);
+        if (way.some((q) => distanceToObb(q, box) < walkRadius + 0.05)) continue;
+        const next: ObjectInstance = { ...obj, position: { x: r3(pose.at.x), y: 0, z: r3(pose.at.y) }, rotationY: Math.round(pose.rotation * 1e6) / 1e6 };
+        const trial = [...others, next];
+        if (lostRooms(trial).length > lost.length) continue;
+        working = { ...working, objects: working.objects.map((o) => (o.instanceId === victim.instanceId ? next : o)) };
+        victim.report.movedM = r3((victim.report.movedM ?? 0) + Math.hypot(box.cx - victim.box.cx, box.cy - victim.box.cy));
+        victim.box = box;
+        victim.lock = undefined;
+        if (victim.report.outcome === 'PLANNED') victim.report.outcome = 'CORRECTED';
+        victim.report.reason = 'DOOR_CLEARED';
+        relocated += 1;
+        moved = true;
+        break;
+      }
+    }
+    if (!moved) drop(victim, 'DOOR_CLEARED');
+    if (!report.circulation.repaired.includes(victim.roomId)) report.circulation.repaired.push(victim.roomId);
+  }
+
   // ── The gate: what the walk is left with ──
   const finalTraps = trapsOf(working.objects);
   const unreachable = start ? lostRooms(working.objects) : [];
@@ -1097,6 +1145,15 @@ function insideGoals(model: WalkModel, room: SpaceRoom, doorSides: Point[]): Poi
     for (let y = Math.min(...ys) + 0.15; y < Math.max(...ys); y += 0.3) {
       const q = { x, y };
       if (pointInPolygon(q, room.polygon) && isFree(model, q) && doorSides.every((d) => Math.hypot(d.x - x, d.y - y) > 0.6)) free.push(q);
+    }
+  }
+  // A room too small to have floor clear of its doorway (a WC, a wash room) is entered by standing in it at all.
+  if (!free.length) {
+    for (let x = Math.min(...xs) + 0.1; x < Math.max(...xs); x += 0.15) {
+      for (let y = Math.min(...ys) + 0.1; y < Math.max(...ys); y += 0.15) {
+        const q = { x, y };
+        if (pointInPolygon(q, room.polygon) && isFree(model, q) && doorSides.every((d) => Math.hypot(d.x - x, d.y - y) > 0.25)) free.push(q);
+      }
     }
   }
   const c = room.centroid;

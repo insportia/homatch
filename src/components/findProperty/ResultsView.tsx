@@ -20,12 +20,18 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
   const [data, setData] = useState<SearchBrowsePage | null>(null);
   const [loading, setLoading] = useState(true), [error, setError] = useState<string | null>(null), [retry, setRetry] = useState(0);
   const initialVersion = useRef(version), heading = useRef<HTMLDivElement>(null);
+  const loadedQuery = useRef<string | null>(null);
   useEffect(() => {
+    const queryKey = JSON.stringify([search.id, filterKey, requestedPage, revision ?? null, retry]);
+    // Recording the revision returned by this exact request is URL bookkeeping,
+    // not another acquisition. Keep mounted cards and open disclosures intact.
+    if (loadedQuery.current === queryKey) { setLoading(false); return; }
     let alive = true;
     setLoading(true); setError(null);
     void browseSearchResults(search.id, JSON.parse(filterKey), requestedPage, revision).then((page) => {
       if (!alive) return;
-      setData(page);
+      loadedQuery.current = JSON.stringify([search.id, filterKey, page.page, page.revision, retry]);
+      setData(page); setLoading(false);
       if (!revision || page.page !== requestedPage) {
         const next = new URLSearchParams(params); next.set('revision', page.revision); next.set('page', String(page.page)); setParams(next, { replace: true });
       }

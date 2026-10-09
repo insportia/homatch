@@ -126,7 +126,10 @@ test('Advisor: confirmed original listings are explorable; optional floor requir
   await duplicates.locator('summary').click();
   assert.doesNotMatch(await duplicates.locator('summary').textContent(), /\{n\}/);
   assert.ok(await duplicates.locator('a[target="_blank"]').count() >= 2);
-  assert.ok(await duplicates.getByText('Lowest price', { exact: false }).isVisible());
+  await duplicates.getByText('Lowest price', { exact: false }).waitFor({ state: 'visible' });
+  await page.waitForURL((url) => url.searchParams.get('revision') === state.revision);
+  assert.equal(await duplicates.getAttribute('open'), '', 'recording the result revision preserves an opened disclosure');
+  assert.equal(state.requests.filter((r) => r.action === 'browse').length, 1, 'initial revision bookkeeping does not refetch and remount the cards');
   await shot(page, 'advisor-mobile-confirmed-duplicates');
   await page.goto(`${BASE}/find-property/new`);
   await page.locator('textarea').fill(F.COMPLETE_TEXT);

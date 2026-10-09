@@ -1846,7 +1846,7 @@ async function launch(sb: any, k: string, m: string, j: any, s: Stage, l: string
   const p = await createOpenAIResponse(k, m, prompt(s, j, j.result_json || {}, l), s !== 'SYNTHESIS');
   return sb
     .from('research_jobs')
-    .update({ status: 'RUNNING', stage: `${s}_WAITING`, response_id: p.id, progress: { phase: s.toLowerCase(), percent: s === 'IDENTITY' ? 15 : s === 'OFFICIAL_COLLECTION' ? 40 : s === 'PUBLIC_RESEARCH' ? 62 : s === 'MARKET' ? 80 : 92, provider: 'openai' }, error: null, updated_at: now() })
+    .update({ status: 'RUNNING', stage: `${s}_WAITING`, response_id: p.id, progress: { phase: s.toLowerCase(), percent: s === 'IDENTITY' ? 15 : s === 'OFFICIAL_COLLECTION' ? 40 : s === 'PUBLIC_RESEARCH' ? 62 : s === 'MARKET' ? 80 : 92, provider: 'openai', startedAt: now() }, error: null, updated_at: now() })
     .eq('id', j.id);
 }
 /** A jsonb admin setting, as the value it holds (adminSetting() stringifies). */
@@ -3484,6 +3484,10 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
   const ev = await resolveSourceUrls(dedupe([...(j.evidence_bundle || []), ...sources], (x) => x.url));
   prior._cost = { ...(prior._cost || {}), [s.toLowerCase()]: p?.usage || null };
   prior._searches = { ...(prior._searches || {}), [s.toLowerCase()]: countWebSearches(p) };
+  // STAGE TIMINGS (internal). Each model stage's own span; the gaps between
+  // consecutive spans are the browser, financial-queue and marketplace waits.
+  // Measured, so performance work is argued from data. Stripped for customers.
+  prior._stageTimes = { ...(prior._stageTimes || {}), [s.toLowerCase()]: { startedAt: j.progress?.startedAt ?? null, finishedAt: now() } };
 
   if (s === 'IDENTITY') {
     prior.identity = z;
@@ -3929,6 +3933,7 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
      * by reading it mid-run and then finding it gone from the finished row.
      */
     _reusePlan: prior._reusePlan ?? null,
+    _stageTimes: prior._stageTimes ?? null,
     // Internal ledgers and official visual references (finish() replaces
     // result_json wholesale, so they are carried explicitly). Stripped from
     // every customer response by sanitizeForCustomer().
@@ -5264,7 +5269,7 @@ async function recordVerificationCost(db: any, job: any): Promise<void> {
  */
 function stripInternalInProgress(result: any): any {
   const r: any = { ...result };
-  for (const k of ['officialVisuals', '_tasExecution', '_verifyMarket', '_marketplaceLedger', '_officialVisualsError', '_unattendedVerificationSkips', '_developerAds']) delete r[k];
+  for (const k of ['officialVisuals', '_tasExecution', '_verifyMarket', '_marketplaceLedger', '_officialVisualsError', '_unattendedVerificationSkips', '_developerAds', '_stageTimes']) delete r[k];
   if (r.browserOfficial && typeof r.browserOfficial === 'object' && Array.isArray(r.browserOfficial.results)) {
     r.browserOfficial = {
       ...r.browserOfficial,
@@ -5379,6 +5384,7 @@ function sanitizeForCustomer(job: any): any {
   // internal economics. A customer buys the current state of their property,
   // not a description of how cheaply we assembled it.
   delete r._reusePlan;
+  delete r._stageTimes;
   delete r._worker;
   delete r._cost;
   delete r._searches;

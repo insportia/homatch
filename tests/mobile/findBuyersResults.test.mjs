@@ -360,14 +360,17 @@ test('a search that could not start never reads as "finished, 0 results"; launch
 });
 
 test('numbered server pages: page 2 is a server request, kept in the URL, Back returns to page 1', opts, async (t) => {
-  const { page, matchRequests } = await boot(t, { matches: MATCHES, status: withState('COMPLETED_WITH_RESULTS', { active: false }) });
+  const { page } = await boot(t, { matches: MATCHES, status: withState('COMPLETED_WITH_RESULTS', { active: false }) });
   await open(page);
   await page.waitForSelector('nav[aria-label="Match pages"]');
   assert.equal(await page.locator('nav[aria-label="Match pages"] [aria-current="page"]').textContent(), '1');
+  /* The current-page marker follows the URL at once; the page-2 fetch fires a
+     tick later, so wait for that request itself rather than reading the log. */
+  const page2Request = page.waitForRequest((r) => r.url().includes('/rest/v1/matches') && /offset=12/.test(r.url()), { timeout: 30000 });
   await page.getByRole('button', { name: 'Page 2' }).click();
   await page.waitForFunction(() => new URLSearchParams(location.search).get('page') === '2');
   await page.waitForFunction(() => document.querySelector('nav[aria-label="Match pages"] [aria-current="page"]')?.textContent === '2');
-  assert.ok(matchRequests.some((u) => /offset=12/.test(u)), 'page 2 asked the server for offset 12');
+  assert.match((await page2Request).url(), /offset=12/, 'page 2 asked the server for offset 12');
   await page.goBack();
   await page.waitForFunction(() => !new URLSearchParams(location.search).get('page'));
   assert.doesNotMatch(await page.textContent('main'), /Show more|მეტის ჩვენება/);

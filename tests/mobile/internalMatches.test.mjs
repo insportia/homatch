@@ -25,7 +25,9 @@ import { scoreDemoMatch } from '../../src/matching/internalMatch.ts';
 
 const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
-const PORT = 4361;
+/* Unique within the mobile:discovery shard — node --test runs its files in
+   parallel, and 4361 belongs to findPropertyMarketplace. */
+const PORT = 4366;
 const BASE = `http://127.0.0.1:${PORT}`;
 const SHOTS = process.env.INTERNAL_MATCHES_SHOTS || null;
 

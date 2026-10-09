@@ -25,7 +25,7 @@ export function ResultsView({ t, search, onOpen, compare, onToggleCompare, onNew
     const queryKey = JSON.stringify([search.id, filterKey, requestedPage, revision ?? null, retry]);
     // Recording the revision returned by this exact request is URL bookkeeping,
     // not another acquisition. Keep mounted cards and open disclosures intact.
-    if (loadedQuery.current === queryKey) { setLoading(false); return; }
+    if (loadedQuery.current === queryKey) { setError(null); setLoading(false); return; }
     let alive = true;
     setLoading(true); setError(null);
     void browseSearchResults(search.id, JSON.parse(filterKey), requestedPage, revision).then((page) => {

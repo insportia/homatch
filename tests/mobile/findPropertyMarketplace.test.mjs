@@ -679,6 +679,14 @@ test('catalogue changes require explicit refresh; request failures retry without
   await page.getByRole('button', { name: 'Try again', exact: true }).waitFor();
   assert.equal(await page.locator('#mps-empty').count(), 0);
   state.browseFailure = false;
+  await page.goBack();
+  await page.locator('[data-property-key]').first().waitFor();
+  assert.equal(new URL(page.url()).searchParams.get('fp_sort'), 'FRESHEST', 'Back restores the successful cached query after a failed filter');
+  assert.equal(await page.getByRole('button', { name: 'Try again', exact: true }).count(), 0, 'a later failed query does not poison a cached result');
+  state.browseFailure = true;
+  await page.getByLabel('Sort', { exact: true }).selectOption('PRICE');
+  await page.getByRole('button', { name: 'Try again', exact: true }).waitFor();
+  state.browseFailure = false;
   await page.getByRole('button', { name: 'Try again', exact: true }).click();
   await page.locator('[data-property-key]').first().waitFor();
   const prices = await page.locator('[data-property-key]').evaluateAll((cards) => cards.map((card) => Number(card.querySelector('p.font-display')?.textContent?.replace(/[^\d.]/g, ''))));

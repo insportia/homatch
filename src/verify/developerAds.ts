@@ -75,6 +75,22 @@ export interface DeveloperIdentity {
   basis: 'REGISTRY_CONFIRMED' | 'WEB_RESEARCH_ONLY' | 'NONE';
 }
 
+/*
+ * A street address is not a project name. When research found no marketed
+ * name it falls back to the address ("Kristian Stiven Street, 18"); searching
+ * the Ad Library for that pays for noise and matches nothing the developer
+ * runs. Street words in the six report languages, or a house number beside a
+ * word, mark an address.
+ */
+const ADDRESS = /(\b(?:street|str|st|avenue|ave|av|lane|road|rd|highway|blvd|boulevard|district|quarter)\b\.?|ქუჩ|ქ\.|გამზ|შესახვ|ჩიხ|კვარტ|მიკრორაიონ|უბანი|улиц|ул\.|проспект|пр\.|переул|шоссе|район|sokak|sokağı|cadde|caddesi|bulvar|mahalle|شارع|جادة|רחוב|שדרות|[№#]\s*\d)/iu;
+const looksLikeAddress = (x: string, address: string): boolean => {
+  if (ADDRESS.test(x) || /^\d+[\s,]/u.test(x.trim())) return true;
+  // Every word of the name is a word of the address ("Kipshidze 22" for "22 Kipshidze Street").
+  const words = nameKey(x).split(' ').filter(Boolean);
+  const addr = new Set(nameKey(address).split(' '));
+  return !!address && words.length > 0 && words.every((w) => addr.has(w));
+};
+
 const GENERIC = new Set(['developer', 'development', 'construction', 'company', 'group', 'მშენებლობა', 'კომპანია', 'დეველოპერი']);
 
 /** Who to search for — only from identity Verify already established. */
@@ -87,7 +103,8 @@ export function resolveDeveloperIdentity(result: unknown, maxTerms = 2): Develop
   const dev = [project.developer, project.developerCompany, company.name, pub.developer, pub.legalCompany, rec.developer, rec.company]
     .map(s)
     .filter(Boolean);
-  const projects = [project.name, ...arr(project.aliases), pub.project].map(s).filter(Boolean);
+  const address = s(project.address);
+  const projects = [project.name, ...arr(project.aliases), pub.project].map(s).filter((x) => x && !looksLikeAddress(x, address));
   const uniq = (xs: string[]) => {
     const seen = new Set<string>();
     return xs.filter((x) => {

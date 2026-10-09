@@ -526,6 +526,19 @@ serve(async (req) => {
       return json({ ...(await forCustomer(writer, read)), persisted: true });
     }
 
+    /* ALREADY BEING WRITTEN.
+     *
+     * research-agent marks the job PENDING and builds the report itself the
+     * moment research completes. The page used to call in at the same moment
+     * and, finding no READY report, start a SECOND model build of the same
+     * report — double the cost, and the customer waited on the slower one.
+     * A fresh PENDING is answered "pending"; the page asks again shortly.
+     * A stale one (an evicted build) is rebuilt here as before. */
+    const pendingAge = Date.now() - Date.parse(String(job.synthesis_at ?? ''));
+    if (job.synthesis_state === 'PENDING' && !body?.force && !internal && Number.isFinite(pendingAge) && pendingAge < 4 * 60 * 1000) {
+      return json({ pending: true, retryAfterMs: 4000 }, 202);
+    }
+
     // The projection still supplies the deterministic property model (type,
     // buyer plan, what completed and what did not). The evidence package is
     // what the model reasons over.

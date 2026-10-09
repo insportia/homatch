@@ -98,7 +98,7 @@ test('stall decision: only past the total deadline AND silent — progress is ne
   assert.equal(officialStallDecision({ ...base, updatedAt: new Date(t0 + OFFICIAL_BROWSER_DEADLINE_MS).toISOString(), now: t0 + OFFICIAL_BROWSER_DEADLINE_MS + OFFICIAL_STALL_MS - 1 }), 'WAIT', 'written recently');
   assert.equal(officialStallDecision({ ...base, stage: 'OFFICIAL_READY', updatedAt: '2026-10-09T08:12:34Z', now: Date.parse('2026-10-09T09:04:42Z') }), 'WAIT');
   assert.equal(officialStallDecision({ ...base, status: 'WAITING_HUMAN', updatedAt: '2026-10-09T08:12:34Z', now: Date.parse('2026-10-09T09:04:42Z') }), 'WAIT', 'a human wait has its own release');
-  assert.ok(OFFICIAL_BROWSER_DEADLINE_MS <= 10 * 60 * 1000, 'official stage bounded at 10 minutes');
+  assert.ok(OFFICIAL_BROWSER_DEADLINE_MS <= 14 * 60 * 1000, 'official stage bounded at 14 minutes (full TAS attachment read)');
 });
 
 test('stall recovery: conditional, keeps stored evidence, never re-runs; a concurrent write wins', async () => {

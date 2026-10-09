@@ -374,19 +374,6 @@ export const PropertyStoryBlock: React.FC<{
   );
 };
 
-const PROVIDERS = ['tas', 'mygov', 'enreg', 'debtor', 'rstax', 'myhome', 'ssge'];
-const LIMITED_STATES = ['PARTIAL', 'CAPTCHA_REQUIRED', 'CAPTCHA_FAILED', 'SOURCE_CHANGED', 'TEMPORARILY_UNAVAILABLE', 'TIMEOUT', 'FAILED', 'NOT_VERIFIED'];
-
-/*
- * CUSTOMER WORDING FOR A SOURCE THAT DID NOT FINISH.
- *
- * Every unfinished state — a timeout, a verification step, a source that
- * changed — means the same thing to a buyer: this point is still to be
- * confirmed, and it says nothing about the property. One calm label, never
- * the mechanism. PARTIAL is different: part of it WAS read.
- */
-const providerLabelKey = (state: string): string => (state === 'PARTIAL' ? 'verify_ox_pstate_partial' : 'vbi_followup');
-
 export const ResearchTransparency: React.FC<{
   coverage?: ResearchCoverageView | null;
   /** The unit's register coverage, which replaces the registry's raw state. */
@@ -398,6 +385,10 @@ export const ResearchTransparency: React.FC<{
   const add = (label: string, n?: number) => {
     if (n) chips.push({ label: t(label), value: String(n) });
   };
+  // Everything the run actually read, in one number first: case files,
+  // their attachments, the unit's register extracts and market listings.
+  const total = (coverage.officialCasesReviewed ?? 0) + (coverage.officialAttachmentsRead ?? 0) + (register?.read ?? 0) + (coverage.marketListingsAnalyzed ?? 0);
+  if (total > 0) chips.push({ label: t('verify_ox_rx_total'), value: String(total) });
   if (day(coverage.researchedAt)) chips.push({ label: t('verify_ox_rx_date'), value: day(coverage.researchedAt)! });
   if (day(coverage.latestOfficialDocumentDate)) chips.push({ label: t('verify_ox_rx_latest_doc'), value: day(coverage.latestOfficialDocumentDate)! });
   // The funnel, in order: found → reviewed → read → weighed → shown.
@@ -410,16 +401,12 @@ export const ResearchTransparency: React.FC<{
   add('verify_ox_rx_listings', coverage.marketListingsAnalyzed);
   // The registry is described by what was read from it, when anything was.
   const registerRead = !!register && register.read > 0;
-  const limits = (coverage.providers ?? []).filter(
-    (p) => PROVIDERS.includes(p.provider) && LIMITED_STATES.includes(p.state) && !(p.provider === 'mygov' && registerRead),
-  );
+  // No "limits" list (owner, 2026-10-09): what was not read is not written.
   const official = !!coverage.officialCasesReviewed;
   const market = !!coverage.marketListingsAnalyzed;
-  if (!official && !market && !chips.length && !limits.length) return null;
-  // Only describes checks that actually completed — and never calls an incomplete run complete.
-  const sentence = coverage.officialProcessingIncomplete
-    ? t('verify_ox_rx_incomplete')
-    : official && market ? t('verify_ox_rx_both') : official ? t('verify_ox_rx_official') : market ? t('verify_ox_rx_market') : '';
+  if (!official && !market && !chips.length) return null;
+  // Describes what was done — never what was not.
+  const sentence = official && market ? t('verify_ox_rx_both') : official ? t('verify_ox_rx_official') : market ? t('verify_ox_rx_market') : '';
   return (
     <section aria-labelledby="verify-transparency" className="rounded-2xl border border-border bg-card/40 p-5 space-y-3">
       <h2 id="verify-transparency" className="text-sm font-semibold tracking-tight">{t('verify_ox_rx_title')}</h2>
@@ -438,20 +425,6 @@ export const ResearchTransparency: React.FC<{
         <p className="text-xs leading-5 text-muted-foreground break-words">
           {t('vbi_rx_registry', { found: String(register!.found), read: String(register!.read) })}
         </p>
-      ) : null}
-      {limits.length ? (
-        <div className="space-y-1.5 border-t border-border pt-3">
-          <p className="text-2xs uppercase tracking-wider text-muted-foreground">{t('verify_ox_rx_limits_title')}</p>
-          <ul className="space-y-1">
-            {limits.map((p) => (
-              <li key={p.provider} className="flex flex-wrap gap-x-1.5 text-xs leading-5 break-words">
-                <span className="font-medium">{t(`verify_ox_prov_${p.provider}`)}:</span>
-                <span className="text-muted-foreground">{t(providerLabelKey(p.state))}</span>
-              </li>
-            ))}
-          </ul>
-          <p className="text-2xs leading-relaxed text-muted-foreground break-words">{t('verify_ox_rx_limits_note')}</p>
-        </div>
       ) : null}
     </section>
   );

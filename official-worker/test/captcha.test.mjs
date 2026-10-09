@@ -390,3 +390,45 @@ test('the key may live under any accepted name, or one named by CAPTCHA_KEY_VAR 
   assert.equal(mk({ CAPTCHA_KEY_VAR: 'MY_SOLVER_SECRET', MY_SOLVER_SECRET: KEY }).keyVariable, 'MY_SOLVER_SECRET');
   assert.equal(mk({ TWOCAPTCHA_API_KEY: 'short' }).configured, false);
 });
+
+// Stand-in for the real failure: Search #1 opens reCAPTCHA's image challenge —
+// a full-screen backdrop plus the bframe iframe attached to <body> — and it
+// stays open after the token is delivered, so a pointer click on the button
+// lands on the backdrop. Production job e02d4f16: zero DOM change after two
+// solved tokens.
+const RS_PAGE_OVERLAY = (sitekey) => `<!doctype html><html><head><meta charset="utf-8"></head><body>
+  <input id="tin"><button id="btnSearch1" type="button">ძიება</button>
+  <div class="g-recaptcha" data-sitekey="${sitekey}"></div>
+  <textarea name="g-recaptcha-response" style="display:none"></textarea>
+  <div id="out"></div>
+  <script>
+    document.getElementById('btnSearch1').onclick = () => {
+      const t = document.querySelector('textarea[name="g-recaptcha-response"]').value;
+      const tin = document.getElementById('tin').value;
+      if (t !== 'GOOD') {
+        const c = document.createElement('div');
+        c.style.cssText = 'position:absolute;top:0;left:0;z-index:2000000000;visibility:visible';
+        c.innerHTML = '<div style="position:fixed;top:0;left:0;width:100%;height:100%;background:#fff;opacity:0.05"></div>' +
+          '<div><iframe title="recaptcha challenge expires in two minutes" src="https://www.google.com/recaptcha/api2/bframe?k=x" width="400" height="580"></iframe></div>';
+        document.body.appendChild(c);
+        document.getElementById('out').innerText = 'გთხოვთ მონიშნოთ უსაფრთხოების ღილაკი';
+        return;
+      }
+      document.getElementById('out').innerText = 'საიდენტიფიკაციო კოდი: ' + tin + '\\nდასახელება: შპს ტესტი\\nსტატუსი: აქტიური';
+    };
+  </script></body></html>`;
+
+test('RS.ge: the open challenge overlay does not swallow Search #2 after a solve', { timeout: 120_000 }, async (t) => {
+  const { runRsTaxpayerWorker } = await loadRsWorker();
+  const s = fakeSolver(['GOOD']);
+  const t0 = Date.now();
+  const outcome = await withRsPage(
+    async (page) => runRsTaxpayerWorker(page, { name: 'ტესტი', idCode: '404000000' }, undefined, { captcha: { service: service(s), policy: ON, jobId: 'rs-overlay' }, postSolveWaitMs: 5000 }),
+    RS_PAGE_OVERLAY(SITEKEY),
+  );
+  if (outcome === 'skip') return t.skip('Chromium unavailable');
+  assert.equal(outcome.status, 'SEARCH_CONFIRMED');
+  assert.equal(outcome.taxpayerData.taxpayerName, 'შპს ტესტი');
+  assert.equal(outcome.captchaResolution[0].outcome, 'ACCEPTED');
+  assert.ok(Date.now() - t0 < 25_000, 'no 30 s click timeout behind the overlay');
+});

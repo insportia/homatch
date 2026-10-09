@@ -111,13 +111,9 @@ test('an incomplete check is advice, never a warning', () => {
    * was actually protecting: the gaps must come after the findings, never
    * before them.
    */
-  const unconfAt = reportCode.indexOf('<UnconfirmedCard');
-  const findingsAt = reportCode.indexOf('<KeyFindings');
-  assert.ok(unconfAt > 0, 'what remains unconfirmed must be stated somewhere');
-  assert.ok(
-    unconfAt > findingsAt,
-    'the gaps must not open the report — that is the defect v2 removed'
-  );
+  // Owner, 2026-10-09 (supersedes mandate 10): what was not established is
+  // not written at all — a list of gaps read as alarm.
+  assert.ok(!reportCode.includes('<UnconfirmedCard'), 'gaps are not listed to the customer');
 
   const actions = reportCode.slice(reportCode.indexOf('r.buyerActions?.length'));
   const actionsBlock = actions.slice(0, actions.indexOf('</section>'));

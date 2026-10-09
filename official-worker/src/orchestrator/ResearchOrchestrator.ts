@@ -188,6 +188,16 @@ export class ResearchOrchestrator {
   // One local Chromium per job (LocalBrowserRuntime.JobBrowser), kept so TTL
   // cleanup and process signals can close a context whose job never finished.
   private jobBrowsers = new Map<string, JobBrowser>();
+  /*
+   * API SOURCES START TOGETHER.
+   *
+   * My.gov (NAPR API + a reCAPTCHA per record) and TAS API_FIRST (DWR +
+   * every attachment) are plain HTTP and never touch Chromium, yet the step
+   * loop ran them one after another — up to 7 + 9 minutes in series, past
+   * the official stage's 10-minute deadline. Both start when the job starts;
+   * their step awaits the running promise. Keyed `${jobId}|${source}`.
+   */
+  private prefetch = new Map<string, Promise<{ result: any; keep: boolean; durationMs?: number }>>();
 
   constructor() {
     setInterval(async () => {
@@ -415,7 +425,15 @@ export class ResearchOrchestrator {
     const query = step.type === 'entity' ? step.idCode || step.name : job.query;
     const forEntity = step.type === 'entity' ? { name: step.name, idCode: step.idCode } : null;
 
-    if (key === 'mygov') return runMyGovApiStep(query, entities, { captcha: this.captchaContext(job) });
+    if (key === 'mygov') {
+      const early = step.type === 'source' ? this.prefetch.get(`${job.id}|mygov`) : undefined;
+      if (early) {
+        this.prefetch.delete(`${job.id}|mygov`);
+        const r = await early;
+        return { result: r.result, keep: r.keep };
+      }
+      return runMyGovApiStep(query, entities, { captcha: this.captchaContext(job) });
+    }
 
     // TAS API_FIRST runs before any browser page is allocated. Its failure is
     // never the customer's: the configured fallback (LEGACY) runs below in the
@@ -424,7 +442,9 @@ export class ResearchOrchestrator {
     if (key === 'tas') {
       const cfg = job.tasConfig ?? DEFAULT_TAS_CONFIG;
       if (cfg.active === 'API_FIRST') {
-        const api = await runTasApiStep(query, entities);
+        const early = step.type === 'source' ? this.prefetch.get(`${job.id}|tas`) : undefined;
+        if (early) this.prefetch.delete(`${job.id}|tas`);
+        const api = (early ? await early : await runTasApiStep(query, entities)) as Awaited<ReturnType<typeof runTasApiStep>>;
         if (!shouldFallBack(api.result) || cfg.fallback !== 'LEGACY') {
           job.tasExecution = { implementation: 'API_FIRST', fallbackFrom: null, durationMs: api.durationMs };
           return { result: api.result, keep: false };
@@ -513,6 +533,25 @@ export class ResearchOrchestrator {
     }
   }
 
+  /** Kick off the HTTP-only sources still ahead in this job (see `prefetch`). */
+  private startApiSources(job: ResearchJob, startIndex: number): void {
+    const ahead = (job.steps ?? []).slice(startIndex);
+    const has = (k: string) => ahead.some((s) => s.type === 'source' && s.key === k);
+    const entities = this.entitiesFor(job.id);
+    const swallow = <T,>(p: Promise<T>) => {
+      // Awaited by the step; never an unhandled rejection meanwhile.
+      p.catch(() => {});
+      return p;
+    };
+    if (has('mygov') && !this.prefetch.has(`${job.id}|mygov`)) {
+      this.prefetch.set(`${job.id}|mygov`, swallow(runMyGovApiStep(job.query, entities, { captcha: this.captchaContext(job) }) as any));
+    }
+    const cfg = job.tasConfig ?? DEFAULT_TAS_CONFIG;
+    if (cfg.active === 'API_FIRST' && has('tas') && !this.prefetch.has(`${job.id}|tas`)) {
+      this.prefetch.set(`${job.id}|tas`, swallow(runTasApiStep(job.query, entities) as any));
+    }
+  }
+
   private async run(job: ResearchJob, startIndex = 0, existing: JobBrowser | null = null): Promise<void> {
     // The watchdog already finalized this job and tore its browser down.
     if (job._abandoned) return;
@@ -525,6 +564,7 @@ export class ResearchOrchestrator {
       // throwaway profile and the bundled human-assist extension loaded.
       // Headed under xvfb-run (Dockerfile), exactly as this repository ran
       // before Browserless. CAPTCHA is still solved only by the human.
+      this.startApiSources(job, startIndex);
       jobBrowser = jobBrowser || (await launchJobBrowser(job.id));
       this.jobBrowsers.set(job.id, jobBrowser);
       for (let i = startIndex; i < job.steps.length; i++) {
@@ -650,6 +690,8 @@ export class ResearchOrchestrator {
       job.historicalComparison = buildHistoricalComparison(job.results.flatMap((r) => (Array.isArray(r?.documents) ? r.documents : [])));
       await closeJobBrowser(jobBrowser, 'job_complete');
       this.jobBrowsers.delete(job.id);
+      this.prefetch.delete(`${job.id}|mygov`);
+      this.prefetch.delete(`${job.id}|tas`);
     } catch (e) {
       if (job._abandoned) {
         // The watchdog already closed this job's browser and finalized it;
@@ -693,6 +735,8 @@ export class ResearchOrchestrator {
 
       await closeJobBrowser(jobBrowser, 'job_failed');
       this.jobBrowsers.delete(job.id);
+      this.prefetch.delete(`${job.id}|mygov`);
+      this.prefetch.delete(`${job.id}|tas`);
       job.updatedAt = now();
     }
   }

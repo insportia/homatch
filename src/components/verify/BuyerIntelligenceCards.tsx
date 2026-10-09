@@ -213,18 +213,22 @@ export function CompanyFinanceCard({ finance }: { finance?: CompanyFinanceView |
           <Row label={t('vbi_fin_liquidation')}><StatusPill tone="risk">{t('vbi_fin_liquidation_registered')}</StatusPill></Row>
         ) : null}
 
-        <Row label={t('vbi_fin_tax')}>
-          {finance.taxStatus.state === 'CHECKED' ? (
-            <span>{t('vbi_fin_tax_checked', { date: iso(dmy(finance.taxStatus.checkedOn) ?? '—') })}</span>
-          ) : (
-            <>
-              <StatusPill tone="quiet">{t('vbi_followup')}</StatusPill>
-              <span className="block mt-1 text-xs leading-5 text-muted-foreground break-words">
-                {t('vbi_fin_tax_help', { id: iso(finance.companyId ?? '—') })}
-              </span>
-            </>
-          )}
-        </Row>
+        {/* Shown only when RS.ge actually answered (owner, 2026-10-09: what
+            was not established is not written). */}
+        {finance.taxStatus.state === 'CHECKED' ? (
+          <Row label={t('vbi_fin_tax')}>
+            {finance.taxStatus.status ? (
+              <StatusPill tone="confirmed"><span dir="auto">{finance.taxStatus.status}</span></StatusPill>
+            ) : null}
+            {finance.taxStatus.vatStatus ? (
+              <span className="block mt-1 text-sm break-words" dir="auto">{t('vbi_fin_vat', { value: finance.taxStatus.vatStatus })}</span>
+            ) : null}
+            {finance.taxStatus.registeredOn ? (
+              <span className="block mt-1 text-xs text-muted-foreground">{t('vbi_fin_tax_registered', { date: iso(dmy(finance.taxStatus.registeredOn) ?? finance.taxStatus.registeredOn) })}</span>
+            ) : null}
+            <span className="block mt-1 text-xs text-muted-foreground">{t('vbi_fin_tax_checked', { date: iso(dmy(finance.taxStatus.checkedOn) ?? '—') })}</span>
+          </Row>
+        ) : null}
 
         {finance.financingPartner ? (
           <Row label={t('vbi_fin_financing')}>
@@ -382,7 +386,6 @@ export function ExecutiveGlance({
       key: 'developer',
       label: t('vbi_glance_developer'),
       value: t(finance.debtorRegistry.state === 'NO_ENTRY' ? 'vbi_fin_debtor_none' : 'vbi_fin_debtor_listed'),
-      note: finance.taxStatus.state === 'NOT_CHECKED' ? `${t('vbi_fin_tax')}: ${t('vbi_followup')}` : undefined,
       tone: finance.debtorRegistry.state === 'NO_ENTRY' ? 'confirmed' : 'risk',
       href: '#vbi-finance',
     });

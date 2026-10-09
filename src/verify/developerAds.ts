@@ -41,7 +41,7 @@ export function parseDeveloperAdsPolicy(raw: unknown): DeveloperAdsPolicy {
     enabled: o.enabled === true,
     actorId: actor,
     country: typeof o.country === 'string' && /^[A-Z]{2}$/.test(o.country) ? o.country : 'GE',
-    maxTerms: Math.round(n(o.maxTerms, 1, 3, 2)),
+    maxTerms: Math.round(n(o.maxTerms, 1, 6, 4)),
     maxItems: Math.round(n(o.maxItems, 5, 100, 50)),
     maxChargeUsd: n(o.maxChargeUsd, 0.01, 1, 0.5),
     timeoutSeconds: Math.round(n(o.timeoutSeconds, 30, 300, 180)),
@@ -94,7 +94,7 @@ const looksLikeAddress = (x: string, address: string): boolean => {
 const GENERIC = new Set(['developer', 'development', 'construction', 'company', 'group', 'მშენებლობა', 'კომპანია', 'დეველოპერი']);
 
 /** Who to search for — only from identity Verify already established. */
-export function resolveDeveloperIdentity(result: unknown, maxTerms = 2): DeveloperIdentity {
+export function resolveDeveloperIdentity(result: unknown, maxTerms = 4): DeveloperIdentity {
   const r = obj(result);
   const project = { ...obj(obj(r.identity).project), ...obj(r.projectProfile) };
   const company = obj(r.companyProfile);
@@ -119,10 +119,26 @@ export function resolveDeveloperIdentity(result: unknown, maxTerms = 2): Develop
   const website = /^https?:\/\//i.test(s(project.website)) ? s(project.website) : null;
   const legalName = s(company.name) || s(pub.legalCompany) || null;
   const legalId = s(company.idCode) || s(pub.companyId) || null;
-  // Brand first (how a developer advertises), then the project. Legal forms stripped.
   const brands = developerNames.map((x) => x.replace(QUOTES, '').replace(LEGAL_FORM, '').trim());
-  // Ads run under a brand and a project name: brand, then project, then the rest.
-  const terms = uniq([brands[0], projectNames[0], ...brands.slice(1), ...projectNames.slice(1)].filter(Boolean) as string[]).slice(0, maxTerms);
+  /*
+   * THE CONSUMER BRAND FIRST.
+   *
+   * Meta's keyword search needs every word of a term in the ad, and real ads
+   * say "Villion" / „ვილიონი“, not the legal entity ("Millenio") nor the full
+   * marketed name ("Villion Krtsanisi Homes"). Production job e02d4f16 sent
+   * exactly those two and got an empty dataset while Villion was advertising.
+   * Order: the official domain's brand ("villion.ge" → "Villion") when a known
+   * name carries it, then one-word project names (every script), then the
+   * developer brand, then the longer names.
+   */
+  const words = (x: string) => nameKey(x).split(' ').filter(Boolean).length;
+  const domainBrand = website ? (hostOf(website).split('.').slice(-2)[0] ?? '') : '';
+  const domainTerm =
+    domainBrand.length >= 3 && [...projectNames, ...brands].some((n) => nameKey(n).split(' ').includes(domainBrand))
+      ? [domainBrand[0].toUpperCase() + domainBrand.slice(1)]
+      : [];
+  const shortProjects = projectNames.filter((x) => words(x) === 1);
+  const terms = uniq([...domainTerm, ...shortProjects, brands[0], ...projectNames, ...brands.slice(1)].filter(Boolean) as string[]).slice(0, maxTerms);
   return {
     developerNames,
     legalName,

@@ -280,6 +280,9 @@ export function priceIsAnomalous(
  * Every other path states its reason, and the reason is stored, so a refresh
  * that repeatedly buys nothing can be found and stopped.
  */
+/** Fewest usable comparables a snapshot needs before a Verify may skip market searching. */
+export const REUSE_MIN_COMPARABLES = 6;
+
 export function planMarket(input: {
   snapshot: StoredSnapshot | null | undefined;
   subjectPricePerSqm?: number | null;
@@ -311,7 +314,10 @@ export function planMarket(input: {
   // An unreadable timestamp is treated as stale. The safe direction.
   if (age === null || age > maxAge) reasons.push('STALE');
   if (snapshot.confidence === 'LOW') reasons.push('LOW_CONFIDENCE');
-  if (Number(snapshot.usable_comparable_count) < 3) reasons.push('TOO_FEW_COMPARABLES');
+  // Reuse WITHOUT searching only on a real sample. A 3-listing snapshot told
+  // the Villion MARKET stage (jobs c80f7237, e02d4f16) to spend no searches,
+  // and the report shipped no comparables at all.
+  if (Number(snapshot.usable_comparable_count) < REUSE_MIN_COMPARABLES) reasons.push('TOO_FEW_COMPARABLES');
   if (priceIsAnomalous(input.subjectPricePerSqm, snapshot)) reasons.push('PRICE_ANOMALY');
 
   if (!reasons.length) {

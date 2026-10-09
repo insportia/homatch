@@ -25,7 +25,10 @@
  */
 
 /** Total time the official browser stage may take before the job proceeds without it. */
-export const OFFICIAL_BROWSER_DEADLINE_MS = 10 * 60 * 1000;
+// 14 minutes: TAS API_FIRST reads every attachment of every case (owner's
+// inventory: ~413 files on one project, its own 9-minute budget) while My.gov
+// solves a reCAPTCHA per record in parallel; 10 cut a complete read short.
+export const OFFICIAL_BROWSER_DEADLINE_MS = 14 * 60 * 1000;
 /** A BROWSER_WAITING row that has not been written for this long is stalled, not slow. */
 export const OFFICIAL_STALL_MS = 5 * 60 * 1000;
 

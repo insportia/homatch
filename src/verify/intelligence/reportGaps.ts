@@ -125,7 +125,14 @@ export interface CompanyFinanceView {
   /** Official debtor registry (NAPR) for the company. */
   debtorRegistry: { state: 'NO_ENTRY' | 'LISTED'; checkedOn: string | null } | null;
   /** Revenue Service taxpayer status. NOT_CHECKED is never adverse. */
-  taxStatus: { state: TaxStatusState; checkedOn: string | null };
+  taxStatus: {
+    state: TaxStatusState;
+    checkedOn: string | null;
+    /** What RS.ge's own record says, verbatim and short — only when CHECKED. */
+    status?: string | null;
+    vatStatus?: string | null;
+    registeredOn?: string | null;
+  };
   /** Charges registered against the COMPANY (not the apartment). */
   pledges: Array<{ creditor: string | null; reference: string | null; registeredOn: string | null }>;
   liquidationRegistered: boolean | null;
@@ -164,9 +171,23 @@ export function companyFinanceFrom(resultJson: unknown, company: CompanyIntellig
     : null;
 
   const tax = resultFor(r, 'rstax', companyId);
-  const taxRead = !!tax && !tax.unavailable && Array.isArray(tax.documents) && tax.documents.length > 0 &&
+  // The RS worker returns its record in taxpayerData, never as documents —
+  // requiring documents meant a successful RS.ge search could never show.
+  const taxData = obj(tax?.taxpayerData);
+  const hasTaxData = ['taxpayerName', 'status', 'vatStatus', 'registrationDate', 'legalForm'].some((k) => typeof taxData[k] === 'string' && taxData[k].trim());
+  const taxRead = !!tax && !tax.unavailable && ((Array.isArray(tax.documents) && tax.documents.length > 0) || hasTaxData) &&
     ['VERIFIED', 'SEARCH_CONFIRMED', 'COMPLETED', 'SUCCESS'].includes(String(tax.status));
-  const taxStatus = { state: taxRead ? ('CHECKED' as const) : ('NOT_CHECKED' as const), checkedOn: taxRead ? isoOfDmy(tax.retrievedAt) : null };
+  const taxStatus = {
+    state: taxRead ? ('CHECKED' as const) : ('NOT_CHECKED' as const),
+    checkedOn: taxRead ? isoOfDmy(tax.retrievedAt) : null,
+    ...(taxRead
+      ? {
+          status: short(taxData.status),
+          vatStatus: short(taxData.vatStatus),
+          registeredOn: isoOfDmy(taxData.registrationDate) ?? (typeof taxData.registrationDate === 'string' ? taxData.registrationDate.slice(0, 20) : null),
+        }
+      : {}),
+  };
 
   const pledges = (company?.encumbrances ?? []).map((e) => ({
     creditor: e.creditor ? e.creditor.replace(/\s*\(საქართველო\)/, '').trim() : null,

@@ -52,8 +52,10 @@ test('uncertainty is still disclosed — calmly, and a tax-status timeout is exp
   assert.match(ka.vbi_fin_tax_help, /არც დადებითი ნიშანია და არც უარყოფითი/);
   assert.match(ka.vbi_ads_none_note, /არ ამტკიცებს/);
   const card = fs.readFileSync(new URL('../../components/verify/BuyerIntelligenceCards.tsx', import.meta.url), 'utf8');
-  // NOT_CHECKED renders the calm follow-up pill, never a risk tone.
-  assert.match(card, /taxStatus\.state === 'CHECKED'[\s\S]{0,400}tone="quiet"[\s\S]{0,40}vbi_followup/);
+  // NOT_CHECKED renders nothing at all (owner, 2026-10-09: what was not
+  // established is not written) — and never a risk tone.
+  assert.match(card, /finance\.taxStatus\.state === 'CHECKED' \? \(/);
+  assert.ok(!/taxStatus[\s\S]{0,200}tone="risk"/.test(card), 'tax status is never a risk tone');
 });
 
 test('report components never render a raw provider state or status code', () => {

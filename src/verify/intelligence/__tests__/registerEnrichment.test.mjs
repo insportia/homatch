@@ -43,7 +43,7 @@ test('persisted report: owner, prose, checklist and self-checks follow the extra
   assert.ok(!keys.includes('ENCUMBRANCE_SCOPE'), 'company pledge is not framed as the unit question');
   assert.ok(keys.includes('UNIT_MORTGAGE_NMA0003673681'));
   assert.ok(keys.includes('SELLER_IS_OWNER'));
-  assert.ok(keys.includes('COMMISSIONING_ACT'));
+  assert.ok(!keys.includes('COMMISSIONING_ACT'), 'a finished building is not sent to be "verified" (owner, 2026-10-09)');
   assert.ok(!keys.includes('JOINT_SIGNATURE'), 'the developer is not the seller');
   assert.deepEqual(out.selfChecks.map((c) => c.kind), ['PROPERTY_EXTRACT']);
   assert.equal(out.propertyRegister.coverage.found, 4);

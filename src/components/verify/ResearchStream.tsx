@@ -100,6 +100,18 @@ export function ResearchStream({
   const playingChange = React.useRef(onPlayingChange);
   playingChange.current = onPlayingChange;
   React.useEffect(() => () => playingChange.current?.(false), []);
+  // The report is ready: it must never stay hidden behind the full-screen
+  // game (owner, 2026-10-09 — "the full picture opened only after I closed
+  // the notification"). Close the game and bring the report into view.
+  const viewReport = React.useRef(onViewReport);
+  viewReport.current = onViewReport;
+  const playingNow = React.useRef(playing);
+  playingNow.current = playing;
+  React.useEffect(() => {
+    if (!reportReady || !playingNow.current) return;
+    setPlaying(false);
+    viewReport.current?.();
+  }, [reportReady]);
 
   /*
    * One dependency-free interval drives the clock. The value it renders is

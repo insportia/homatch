@@ -10,6 +10,7 @@ import { assessFact } from '../../../src/verify/intelligence/freshness.ts';
 import {
   assessFinancialEntityWait, beginWait, unavailableEntityResult,
   type WatchdogState,
+  stallLimitsFor,
 } from '../_shared/verifyWatchdog.ts';
 import { pricingStateForDerivedCost } from '../_shared/providerCost.ts';
 import { notify } from '../_shared/notify.ts';
@@ -1846,7 +1847,7 @@ async function launch(sb: any, k: string, m: string, j: any, s: Stage, l: string
   const p = await createOpenAIResponse(k, m, prompt(s, j, j.result_json || {}, l), s !== 'SYNTHESIS');
   return sb
     .from('research_jobs')
-    .update({ status: 'RUNNING', stage: `${s}_WAITING`, response_id: p.id, progress: { phase: s.toLowerCase(), percent: s === 'IDENTITY' ? 15 : s === 'OFFICIAL_COLLECTION' ? 40 : s === 'PUBLIC_RESEARCH' ? 62 : s === 'MARKET' ? 80 : 92, provider: 'openai' }, error: null, updated_at: now() })
+    .update({ status: 'RUNNING', stage: `${s}_WAITING`, response_id: p.id, progress: { phase: s.toLowerCase(), percent: s === 'IDENTITY' ? 15 : s === 'OFFICIAL_COLLECTION' ? 40 : s === 'PUBLIC_RESEARCH' ? 62 : s === 'MARKET' ? 80 : 92, provider: 'openai', startedAt: now() }, error: null, updated_at: now() })
     .eq('id', j.id);
 }
 /** A jsonb admin setting, as the value it holds (adminSetting() stringifies). */
@@ -2648,13 +2649,49 @@ function pickFinancialCandidate(prior: any, source: 'enreg' | 'rstax' | 'debtor'
 // reconciliation-stage trigger. Persisted once per chain run so each
 // individual source's CAPTCHA pause/resume doesn't need to re-derive it.
 async function startFinancialEntity(sb: any, j: any, source: 'enreg' | 'rstax' | 'debtor', name: string, idCode: string | null, returnStage: 'PUBLIC_RESEARCH_READY' | 'MARKET_READY' | 'SYNTHESIS_READY'): Promise<any> {
-  const r = await wf(FINANCIAL_ENDPOINT[source], 'POST', { name, idCode, ...(source === 'rstax' ? { captchaPolicy: await captchaPolicyFor(sb) } : {}) });
+  /*
+   * CLAIM BEFORE STARTING THE WORKER.
+   *
+   * The status/resume path and the background driver can both advance the
+   * same row. Both used to call the worker first and write second, so job
+   * c80f7237 started TWO rstax worker jobs 6 ms apart (6570a2ad and an
+   * orphan, d367ab14) — two paid CAPTCHA solves each, one browser never
+   * released. The row now moves to FINANCIAL_ENTITY_WAITING only if it is
+   * still the row this tick read; a tick that loses the claim starts nothing.
+   */
   const p = j.result_json || {};
+  p._financialEntityRequestedFor = { source, name, idCode };
+  p._financialReturnStage = returnStage;
+  let claimedAt: string | null = null;
+  if (j.updated_at) {
+    // The claim carries the remaining queue and return stage, so even a tick
+    // that dies right after it leaves a row the next tick can continue.
+    claimedAt = now();
+    const { data: claimed, error: claimError } = await sb
+      .from('research_jobs')
+      .update({ status: 'RUNNING', stage: 'FINANCIAL_ENTITY_WAITING', result_json: p, updated_at: claimedAt })
+      .eq('id', j.id)
+      .eq('updated_at', j.updated_at)
+      .select('id');
+    if (claimError) throw claimError;
+    if (!claimed?.length) return null;
+  }
+  let r: any;
+  try {
+    r = await wf(FINANCIAL_ENDPOINT[source], 'POST', { name, idCode, ...(source === 'rstax' ? { captchaPolicy: await captchaPolicyFor(sb) } : {}) });
+  } catch (e) {
+    // Nothing started: hand the row back exactly as it was, so the caller's
+    // retry handling sees the same stage it always did.
+    if (claimedAt) {
+      await sb.from('research_jobs')
+        .update({ status: j.status, stage: j.stage, result_json: j.result_json, updated_at: now() })
+        .eq('id', j.id).eq('updated_at', claimedAt);
+    }
+    throw e;
+  }
   // The watchdog's clock starts with the job, not with the first poll: a
   // worker that never reports anything at all must still time out.
   p._worker = { jobId: r.data.jobId, wait: beginWait(Date.now()) };
-  p._financialEntityRequestedFor = { source, name, idCode };
-  p._financialReturnStage = returnStage;
   return sb.from('research_jobs').update({ status: 'RUNNING', stage: 'FINANCIAL_ENTITY_WAITING', result_json: p, progress: { phase: `${source}_entity`, percent: returnStage === 'PUBLIC_RESEARCH_READY' ? 50 : returnStage === 'MARKET_READY' ? 70 : 86, provider: 'playwright' }, updated_at: now() }).eq('id', j.id);
 }
 // processFinancialQueue() (v28, NEW): drives `_financialQueue` (initialized
@@ -2705,6 +2742,7 @@ async function pollFinancialEntity(sb: any, j: any): Promise<any> {
      */
     const assessment = assessFinancialEntityWait(
       prior._worker?.wait as WatchdogState | undefined, w, Date.now(),
+      stallLimitsFor(prior._financialEntityRequestedFor?.source),
     );
     if (!assessment.giveUp) {
       // Persist the clock so the next tick can tell movement from stillness.
@@ -3484,6 +3522,10 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
   const ev = await resolveSourceUrls(dedupe([...(j.evidence_bundle || []), ...sources], (x) => x.url));
   prior._cost = { ...(prior._cost || {}), [s.toLowerCase()]: p?.usage || null };
   prior._searches = { ...(prior._searches || {}), [s.toLowerCase()]: countWebSearches(p) };
+  // STAGE TIMINGS (internal). Each model stage's own span; the gaps between
+  // consecutive spans are the browser, financial-queue and marketplace waits.
+  // Measured, so performance work is argued from data. Stripped for customers.
+  prior._stageTimes = { ...(prior._stageTimes || {}), [s.toLowerCase()]: { startedAt: j.progress?.startedAt ?? null, finishedAt: now() } };
 
   if (s === 'IDENTITY') {
     prior.identity = z;
@@ -3929,6 +3971,7 @@ async function finish(sb: any, j: any, s: Stage, p: any, l: string): Promise<any
      * by reading it mid-run and then finding it gone from the finished row.
      */
     _reusePlan: prior._reusePlan ?? null,
+    _stageTimes: prior._stageTimes ?? null,
     // Internal ledgers and official visual references (finish() replaces
     // result_json wholesale, so they are carried explicitly). Stripped from
     // every customer response by sanitizeForCustomer().
@@ -4714,6 +4757,21 @@ async function planMarketFor(db: any, known: any, plan: any): Promise<any | null
        * find it. Never shown to a customer; stripped at the boundary with the
        * rest of _reusePlan. */
       brief: snapshotBrief(decided),
+      /* The figures as STRUCTURE, so a reused snapshot reaches the report's
+       * market section instead of only the model's brief (c80f7237 lost its
+       * market section this way). Aggregates only — no listing data. */
+      snapshot: decided.snapshot && !decided.refresh
+        ? {
+            scope_type: decided.snapshot.scope_type,
+            currency: decided.snapshot.currency,
+            median_price_per_sqm: decided.snapshot.median_price_per_sqm,
+            lower_price_per_sqm: decided.snapshot.lower_price_per_sqm,
+            upper_price_per_sqm: decided.snapshot.upper_price_per_sqm,
+            usable_comparable_count: decided.snapshot.usable_comparable_count,
+            confidence: decided.snapshot.confidence,
+            last_refreshed_at: decided.snapshot.last_refreshed_at,
+          }
+        : null,
     };
   } catch (e) {
     console.error('research-agent: market plan threw', e instanceof Error ? e.message : String(e));
@@ -5086,7 +5144,7 @@ async function learnFromVerification(db: any, jobId: string, report: any): Promi
      * Names and a representation mode are what a buyer needs; the numbers are
      * not their business and are certainly not shared intelligence.
      */
-    const control = extractControlStructure((report as any)?.browserOfficial);
+    const control = extractControlStructure((report as any)?.browserOfficial, (report as any)?.companyProfile?.idCode ?? null);
     const forHarvest = (control.directors.length || control.representation)
       ? {
           ...report,
@@ -5249,7 +5307,7 @@ async function recordVerificationCost(db: any, job: any): Promise<void> {
  */
 function stripInternalInProgress(result: any): any {
   const r: any = { ...result };
-  for (const k of ['officialVisuals', '_tasExecution', '_verifyMarket', '_marketplaceLedger', '_officialVisualsError', '_unattendedVerificationSkips', '_developerAds']) delete r[k];
+  for (const k of ['officialVisuals', '_tasExecution', '_verifyMarket', '_marketplaceLedger', '_officialVisualsError', '_unattendedVerificationSkips', '_stageTimes', '_developerAds']) delete r[k];
   if (r.browserOfficial && typeof r.browserOfficial === 'object' && Array.isArray(r.browserOfficial.results)) {
     r.browserOfficial = {
       ...r.browserOfficial,
@@ -5324,8 +5382,12 @@ function sanitizeForCustomer(job: any): any {
   // The control structure is read from the UNSANITIZED evidence, which only
   // exists on this side, and merged in as names plus a representation mode.
   // Done on read, so the reports already in the database gain it too.
-  const control = extractControlStructure((job.result_json as any)?.browserOfficial);
-  if (control.directors.length || control.representation) {
+  // Only the developer's own extract, by its identification code — never the
+  // pledge creditor's (c80f7237 showed the bank's director as the developer's).
+  // When the registry overlay already supplied the directors, they stand.
+  const control = extractControlStructure((job.result_json as any)?.browserOfficial, r.companyProfile?.idCode ?? null);
+  const overlaid = Array.isArray(r.companyProfile?.registryFields) && r.companyProfile.registryFields.includes('directors');
+  if (!overlaid && (control.directors.length || control.representation)) {
     const existing = Array.isArray(r.companyProfile?.directors) ? r.companyProfile.directors : [];
     const merged = [...existing];
     for (const d of control.directors.map((x) => sanitizeCustomerString(x)).filter(Boolean)) {
@@ -5360,6 +5422,7 @@ function sanitizeForCustomer(job: any): any {
   // internal economics. A customer buys the current state of their property,
   // not a description of how cheaply we assembled it.
   delete r._reusePlan;
+  delete r._stageTimes;
   delete r._worker;
   delete r._cost;
   delete r._searches;

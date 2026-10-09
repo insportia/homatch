@@ -58,6 +58,13 @@ test('no card invents a conclusion of its own', () => {
     // conclusion of their own. The story and current status the report
     // renders live inside `report`, under the same grounding gate as before.
     'officialVisuals', 'research',
+    // 2026-10 buyer-intelligence refinement (job c80f7237). All three are
+    // computed deterministically server-side and rendered as given:
+    // `propertyRegister` is the unit's NAPR extract parsed in code,
+    // `companyFinance` collects registry checks with their dates, and
+    // `marketContext` is a stored market snapshot's aggregates. None is the
+    // model's opinion, and the component draws no conclusion from them.
+    'propertyRegister', 'companyFinance', 'marketContext',
     // Same standing: the deterministic official history (decided status,
     // milestones, value changes) computed in tasIntelligence.ts.
     'officialHistory',

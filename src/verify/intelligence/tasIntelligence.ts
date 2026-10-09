@@ -317,6 +317,24 @@ const PERSON_FACT_ROLES: Record<string, ParticipantRole> = {
 };
 const NON_FACT_KEYS = new Set(['organization', 'idCode', 'buildingBlock', 'buildingLiter']);
 
+/*
+ * VALUES THAT ARE NOT VALUES OF THEIR MATTER.
+ *
+ * Job c80f7237 rendered "building function: ფართობი → არასასოფლო სამეურნეო".
+ * Neither is a building function: "ფართობი" (area) is a table header the form
+ * reader took for a value, and "არასასოფლო სამეურნეო" (non-agricultural) is
+ * the LAND category of the plot. A history built from them invents a change
+ * of purpose that never happened, so they are refused at the door.
+ */
+const HEADER_WORD = /^(ფართობი|ფართი|რაოდენობა|მნიშვნელობა|დასახელება|ერთეული|სულ|area|value|name|unit|total|площадь|значение)$/i;
+const LAND_CATEGORY = /^(არა)?სასოფლო[\s-]*სამეურნეო$|^(non-?)?agricultural$|^(не)?сельскохозяйственн/i;
+export function acceptableValue(key: string, value: string): boolean {
+  const v = s(value).replace(/[.:;,]+$/, '');
+  if (!v || HEADER_WORD.test(v)) return false;
+  if (key === 'buildingFunction' && LAND_CATEGORY.test(v)) return false;
+  return true;
+}
+
 export function ruleFor(label: string): KeyRule | null {
   const t = s(label);
   if (!t) return null;
@@ -480,6 +498,7 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
       if (!v.value) continue;
       const rule = ruleFor(v.label ?? v.key) ?? ruleFor(v.key);
       const key = rule?.key ?? `field:${valueIdentity(v.label ?? v.key).slice(0, 60)}`;
+      if (!acceptableValue(key, v.value)) continue;
       occ.push({ rule, key, label: v.label ?? v.key, value: v.value, block: c.block, src, category: rule?.category ?? 'OTHER', materiality: rule?.materiality ?? 'LOW', single: rule?.single ?? true });
     }
     for (const f of c.technicalFacts) {
@@ -492,6 +511,7 @@ export function buildTasIntelligence(report: unknown, nowIso = new Date().toISOS
       }
       const rule = KEY_RULES.find((r) => r.key === f.key) ?? ruleFor(f.key);
       const key = rule?.key ?? `tf:${f.key}`;
+      if (!acceptableValue(key, f.value)) continue;
       occ.push({ rule, key, label: rule?.key ?? f.key, value: f.value, block: c.block, src, category: rule?.category ?? (['PROJECT', 'PERMIT', 'STRUCTURAL', 'FOUNDATION', 'GEOTECHNICAL', 'MEP', 'LANDSCAPE', 'MATERIAL', 'REVISION'].includes(f.category) ? (f.category as TasFact['category']) : 'OTHER'), materiality: rule?.materiality ?? 'LOW', single: rule?.single ?? true });
     }
     for (const p of c.parties) {

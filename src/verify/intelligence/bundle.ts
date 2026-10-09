@@ -29,6 +29,8 @@ import type { EvidenceGroup } from './evidenceGroups.ts';
 import { buildBuyerChecklist } from './buyerChecklist.ts';
 import type { ChecklistItem } from './buyerChecklist.ts';
 import { selectComparables } from './comparableSelection.ts';
+import { buildPropertyRegister } from './propertyRegister.ts';
+import type { PropertyRegister } from './propertyRegister.ts';
 import type { ComparableSelection } from './comparableSelection.ts';
 
 export interface PropertySnapshot {
@@ -78,6 +80,12 @@ export interface IntelligenceBundle {
   people: PeopleIntelligence;
   participants: ParticipantModel;
   fx: FxContext | null;
+  /*
+   * THE UNIT'S OWN REGISTER (Service 176 extracts, parsed). Null when the
+   * provider returned nothing usable. Authoritative over every prose claim
+   * about owner and mortgages — see propertyRegister.ts.
+   */
+  register: PropertyRegister | null;
   /** Official checks the BUYER can run themselves, framed as next steps. */
   selfChecks: SelfCheck[];
 }
@@ -172,6 +180,8 @@ export function buildIntelligenceBundle(
   const address =
     pkg.subject.address ?? nonEmpty(reconciled.address) ?? nonEmpty(unit.address);
 
+  const register = buildPropertyRegister(r.browserOfficial);
+
   const location = buildLocationIntelligence([
     address,
     nonEmpty(reconciled.address),
@@ -189,7 +199,9 @@ export function buildIntelligenceBundle(
     rooms: nonEmpty(unit.rooms),
     unitNumber: pkg.subject.unitNumber,
     condition: nonEmpty(unit.condition ?? project.handoverCondition),
-    owner: nonEmpty(company.name) ?? pkg.subject.legalCompany,
+    // The extract decides the owner. A private owner is never named, and the
+    // developer is not the owner merely because it built the flat.
+    owner: ownerFromRegister(register) ?? nonEmpty(company.name) ?? pkg.subject.legalCompany,
     developer: pkg.subject.developer,
     constructionStatus: nonEmpty(pr.currentPhysicalStatus ?? project.constructionStatus),
     parking: nonEmpty(pr.parking),
@@ -259,6 +271,7 @@ export function buildIntelligenceBundle(
   const checklist = buildBuyerChecklist({
     cadastralCode: snapshot.cadastralCode ?? null,
     company: companyIntel,
+    register,
     market,
     parkingMentioned: !!snapshot.parking,
     subjectPriceKnown: typeof market?.subjectPricePerSqm === 'number',
@@ -276,7 +289,7 @@ export function buildIntelligenceBundle(
     });
   }
   const companyId = pkg.subject.companyId;
-  if (companyId && snapshot.owner) {
+  if (companyId && snapshot.owner && !ownerIsPrivate(register)) {
     selfChecks.push({
       kind: 'TAXPAYER_REGISTRY',
       url: RS_TAXPAYER_REGISTRY,
@@ -288,6 +301,23 @@ export function buildIntelligenceBundle(
 
   return {
     snapshot, market, company: companyIntel, location, people, participants, fx, selfChecks,
-    evidenceGroups, checklist, comparables,
+    evidenceGroups, checklist, comparables, register,
   };
 }
+
+/*
+ * The snapshot's owner line, from the extract. A private person is described,
+ * never named (the snapshot is customer-facing). Undefined when there is no
+ * extract, so the older sources still decide.
+ */
+export function ownerFromRegister(reg: PropertyRegister | null): string | undefined {
+  const owners = reg?.latest?.owners ?? [];
+  if (!owners.length) return undefined;
+  if (owners.every((o) => o.kind === 'PERSON')) return owners.length > 1 ? 'ფიზიკური პირები' : 'ფიზიკური პირი';
+  return owners.map((o) => (o.kind === 'COMPANY' ? o.name ?? '' : 'ფიზიკური პირი')).filter(Boolean).join(', ') || undefined;
+}
+
+const ownerIsPrivate = (reg: PropertyRegister | null) => {
+  const owners = reg?.latest?.owners ?? [];
+  return owners.length > 0 && owners.every((o) => o.kind === 'PERSON');
+};

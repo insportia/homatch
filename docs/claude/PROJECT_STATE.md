@@ -8,8 +8,10 @@
   is Supabase's own monitoring (`SET pg_stat_statements.track = none` by supabase_admin).
   DB throttled from 05:38 UTC 2026-10-09 (48 cron `job startup timeout`).
 - cron.job_run_details = 179 MB (57% of DB), unbounded: retention migration
-  `20261025090000_cron_history_retention.sql` PREPARED, NOT APPLIED.
-- Awaiting owner approval: pgss reset (A1), retention migration (A2), compute Micro→Small (A3),
+  `20261025090000_cron_history_retention.sql` PREPARED, NOT APPLIED (renamed from 20261024090000: #137 collision).
+- Supabase org is on the FREE plan -> Nano compute, 500 MB DB limit (315 MB now), 100 Edge Functions,
+  150 s function wall clock. Ordered recovery plan: docs/infra/SCALABILITY_AUDIT.md §11.
+- Awaiting owner approval: pgss reset (A1), retention migration (A2), Free→Pro + Nano→Small (A3),
   track_utility off (A4), log_temp_files (A5), Realtime publication trim (A6).
 
 last_updated: 2026-10-08

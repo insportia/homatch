@@ -47,7 +47,7 @@ no network, no providers, no money).
    the database: they are the **Find Buyers discovery driver (~1 source job/minute
    by design)**, the **single Railway browser worker**, **postgres_changes Realtime**,
    and **paid-provider rate limits**. The database itself needs a compute step-up
-   (Micro-class today) before launch traffic, and a pooled, read-scaled setup by 25–50k.
+   (**Nano on the Free plan today** — corrected in §11) before launch traffic, and a pooled, read-scaled setup by 25–50k.
 
 ---
 
@@ -59,7 +59,7 @@ flowchart LR
   U -->|PostgREST + RPC<br/>~226k req/day| GW[Supabase API gateway]
   U -->|invoke| EF[Edge Functions<br/>95 deployed]
   U <-->|postgres_changes<br/>16 tables published| RT[Supabase Realtime]
-  GW --> DB[(Postgres 17<br/>eu-central-1<br/>315 MB, Micro-class)]
+  GW --> DB[(Postgres 17<br/>eu-central-1<br/>315 MB, Nano / Free plan)]
   EF --> DB
   RT -->|list_changes poll ~0.8/s| DB
   CRON[pg_cron<br/>15 jobs, ~12.4k runs/day] -->|net.http_post| EF
@@ -75,7 +75,7 @@ flowchart LR
 | Component | Verified state | Notes |
 |---|---|---|
 | Vercel `homatch` | Production on `main`, static Vite SPA | No server functions in the hot path. |
-| Supabase `ptxajsjhobhvsfhmutjn` | PG 17.6, eu-central-1, ACTIVE_HEALTHY | `max_connections=60`, `shared_buffers=280 MB`, `work_mem=2184 kB`, `effective_cache_size=480 MB` → Micro-class compute (INFERRED: the API does not expose the tier; confirm in Dashboard → Settings → Compute). |
+| Supabase `ptxajsjhobhvsfhmutjn` | PG 17.6, eu-central-1, ACTIVE_HEALTHY | `max_connections=60`, `shared_buffers=280 MB`, `work_mem=2184 kB`, `effective_cache_size=480 MB` → **Nano compute on the Free plan** (VERIFIED: organization plan `free`; Nano is the only Free-plan compute). The earlier "Micro-class" inference was wrong; see §11. |
 | Edge functions | 95 deployed (cap 100) | Workers are driven by cron ticks, not a queue push. |
 | Railway `homatch-official-worker` | 1 replica (ams), limits 8 vCPU / 8 GB; 7-day avg 0.002 vCPU, 0.30 GB; max 0.03 vCPU (hourly samples), 1.41 GB | The only worker (CLAUDE.md). Healthcheck `/health/browser`. |
 | Railway `homatch-official-worker-v2` | Same repo/root, **no branch set**, only 6 variables (no provider or Supabase keys) | A dormant duplicate. Never use (CLAUDE.md); it is NOT a scaling replica. Removal is the owner's decision. |
@@ -228,7 +228,7 @@ headroom.
 | Concurrent active ops | What happens first | Evidence |
 |---|---|---|
 | 100 | **Find Buyers discovery** backlog: about 1 native source job/min, so 100 campaigns × several source jobs = hours of queue. Railway worker browser memory if they are browser-backed (1.4 GB peak seen; Chromium contexts ~150–300 MB each, so about 20–30 per 8 GB). | `driver.ts:62`, Railway metrics |
-| 500 | + Micro-class DB CPU (2 shared cores) and 60 connections; postgres_changes Realtime (single-threaded RLS check per change per subscriber); OpenAI per-minute token limits for Verify synthesis | DB settings, Realtime docs |
+| 500 | + Nano DB CPU/RAM (shared, ≤0.5 GB) (2 shared cores) and 60 connections; postgres_changes Realtime (single-threaded RLS check per change per subscriber); OpenAI per-minute token limits for Verify synthesis | DB settings, Realtime docs |
 | 1,000+ | + Edge Function concurrency/CPU per invocation; RunPod GPU queue for Design Studio (minutes per job); per-provider rate limits (Apify, Meta Graph) | Provider docs; `PROVIDER_DEADLINE_MS` |
 
 What scales already:
@@ -260,7 +260,7 @@ In recommended order. Each one is independent and reversible unless stated.
 |---|---|---|---|---|
 | A1 | Save a pgss snapshot, then `select pg_stat_statements_reset();` | Temp spill per pgss read goes from 4.6 MB to 0 (local §3); production temp ≈ 10–13 GB/day → ≈ 0 until pgss regrows (weeks). Fastest IO relief. | Loses accumulated query statistics (snapshot first). You asked never to reset stats without approval. | Nothing to roll back. Verify: `temp_bytes` delta over 1 h ≈ 0. |
 | A2 | Apply migration `20261025090000` | §5 | §5 | §5 |
-| A3 | Raise compute Micro → **Small** (or Medium before launch) | Higher RAM, `work_mem`, IO baseline and burst budget; removes the 2 MB tuplestore spill structurally (8 MB `work_mem` → 0 spill, local §3). | Brief restart; monthly cost (§8). | Downgrade from the dashboard. |
+| A3 | Upgrade Free → Pro and compute Nano → **Small** (see §11.2 for cost; Medium before launch) | Higher RAM, `work_mem`, IO baseline and burst budget; removes the 2 MB tuplestore spill structurally (8 MB `work_mem` → 0 spill, local §3). | Brief restart; monthly cost (§8). | Downgrade from the dashboard. |
 | A4 | Set `pg_stat_statements.track_utility = off` (Supabase config/support; verify it is settable on this tier) | Stops migration and DDL bodies (1,366 of 4,880 entries) from refilling pgss. | Lose stats on utility statements. | Set it back on. |
 | A5 | `log_temp_files = 4MB` for 24 h (Supabase config) | Names the exact statement and role behind every spill and confirms the inferred caller. | Log volume (about 2.2k lines/day). | Set back to -1. |
 | A6 | Trim the Realtime publication to tables with subscribers (product review) | Cuts `list_changes` decode work (85% of buffer traffic). | Breaks any screen relying on an unpublished table; needs the owning workstreams. | `alter publication … add table`. |
@@ -295,7 +295,7 @@ In recommended order. Each one is independent and reversible unless stated.
 
 | Scale | Supabase (Pro $25 + compute) | Railway worker | Vercel | Infra total (excl. paid AI/scraping/GPU) |
 |---|---|---|---|---|
-| Today | Pro + Micro ≈ $35 | 1 × (~0.002 vCPU, 0.3 GB) ≈ $5–10 | Pro ≈ $20 | ≈ $60–70 |
+| Today | Free plan, Nano: $0 (Pro + Micro would be $25 net, §11) | 1 × (~0.002 vCPU, 0.3 GB) ≈ $5–10 | Pro ≈ $20 | ≈ $60–70 |
 | 10k DAU | Pro + Medium ≈ $85–135 + egress | 2 replicas, ~1 vCPU / 2 GB each ≈ $60–80 | ≈ $20–50 | ≈ $170–270 |
 | 25k DAU | Pro + Large + 1 read replica ≈ $250–350 | 2–4 replicas ≈ $120–200 | ≈ $50–150 | ≈ $420–700 |
 | 50k DAU | Pro + XL + 2 replicas ≈ $650–900 | 4–6 replicas ≈ $250–400 | ≈ $150–400 | ≈ $1,050–1,700 |
@@ -337,3 +337,100 @@ action is in §6.
 - Protected systems were not touched: Verify, Find Property/Buyers, Mortgage, Design
   Studio, Meta Ads, Voice/AI TALK, Communications, billing, RLS, Railway services, cron
   jobs, database settings, statistics.
+
+---
+
+## 11. Pre-approval verification and recovery plan (follow-up, 2026-10-09 11:20 UTC)
+
+### 11.1 What is proven and what is inferred
+
+| Claim | Status | Evidence |
+|---|---|---|
+| DB writes are dominated by temp files | **PROVEN** | 344.6 GB temp vs 1.3 GB WAL and 3.4 GB checkpoint writes since 2026-08-25. Clean 2 h sample (09:16→11:16, no audit pgss reads): **+233 files, +952 MB ≈ 11.4 GB/day**, one ≈4.1 MB file every ≈31 s (`docs/infra/evidence/`). |
+| Those temp files do not come from any statement pg_stat_statements tracks | **PROVEN** | pgss accounts for 0.98 GB of 344 GB. The only tracked spillers are PostgREST schema reloads and this audit's own reads. |
+| Any full pg_stat_statements read at `work_mem=2184kB` spills ≈4.6 MB at today's ~4.9k entries / 2.9 MB of text | **PROVEN** | Local reproduction (§3). Every audit read in production wrote 582–585 blocks (4.8 MB). |
+| A reset, or ≥8 MB `work_mem`, stops that spill | **PROVEN locally** | §3: 4.6 MB → 0 in both cases. |
+| The repeated untracked reader is Supabase's metrics exporter | **INFERRED (strong)** | A persistent remote `supabase_admin` session `application_name=postgres_exporter` (since 2026-09-08); 1,044 × `SET pg_stat_statements.track = none` by `supabase_admin`; file size and cadence match a periodic scrape. Not yet seen: the statement itself. **A5 converts this to proven.** |
+| These temp writes are what exhaust the Disk IO budget | **NOT PROVEN** | The budget is not readable from SQL or the API. Short-lived temp files can be absorbed by the OS page cache, and the *average* rate (≈0.13 MB/s) is low; budget is spent by bursts above baseline. Hence A1 is run as a **measured experiment with a stop rule**, not a promised fix. |
+| The DB is currently throttled | **PROVEN (symptom)** | 48 pg_cron `job startup timeout` failures from 05:38 UTC, none in the prior 25 h; all jobs stalled together up to 34 s. |
+
+### 11.2 Compute tier, Disk IO budget and cost (verified)
+
+- **Plan: Free (organization `tier_free`), so compute is Nano**: shared CPU, ≤0.5 GB RAM, 500 MB database guidance. The earlier "Micro-class" reading of the settings was wrong.
+- **Database size is a second clock.** 315 MB today, of which 179 MB is cron history growing ≈11 MB/day: about 17 days to 500 MB with no retention. That is the Free-plan size limit (the project risks read-only mode). **A2 also addresses this.**
+- **Free-plan Edge Function limits explain two earlier symptoms** (Supabase docs):
+  - The **100-function cap** caused the #72 402. Pro allows 500.
+  - The **150 s wall clock** is the discovery driver's "≤150 s per job" bound. Paid plans allow 400 s.
+- **Disk IO budget remaining: not readable here.** The owner reads Dashboard → Observability → "Disk IO % consumed" (Supabase: >1% means baseline was exceeded; 100% means the budget is exhausted).
+- **Monthly cost:** the Pro plan is $25 and includes a $10 compute credit.
+
+  | Option | Net per month |
+  |---|---|
+  | Pro + Micro (1 GB) | **≈ $25** |
+  | Pro + Small (2 GB) | **≈ $30** |
+  | Pro + Medium (4 GB) | **≈ $75** |
+
+  Plus any disk over 8 GB (none today).
+- **Downtime:** a compute change is "usually < 2 minutes" (Supabase docs). Changing the plan alone does not restart the database; Nano → Micro/Small does.
+
+### 11.3 Ordered recovery plan
+
+| Step | Action | Approval | Downtime | Risk | Rollback | Success criterion (measured, not assumed) |
+|---|---|---|---|---|---|---|
+| 0 | Baseline (read-only) | none | none | none | — | Record `temp_files/temp_bytes`, `wal_bytes`, cron failures/hour (queries in 11.6). The owner screenshots Disk IO % consumed, CPU and RAM. |
+| 1 | **A2:** merge PR #136, then apply `20261025090000_cron_history_retention.sql` once via the guarded `apply_migration` | **YES** | none | Low (11.4) | `select cron.unschedule('homatch-cron-history-retention'); drop function public.purge_cron_history(interval, integer);` | Exactly one job is scheduled. The first run at :41 deletes ≤20,000 rows in < 5 s with 0 new cron failures. After about 7 h, rows older than 7 days = 0. `pg_database_size` stops growing from cron history. |
+| 2 | **A5:** `log_temp_files = '4MB'` for 24 h | **YES** (and feasibility: superuser-only GUC, so it needs the Supabase config CLI or support; may need a paid plan) | none | Log volume (about 2.8k lines/day) | Set it back to `-1` | Log lines name the statement and user behind each temp file. If they show `postgres_exporter` reading `pg_stat_statements`, the caller is proven. Optional: A1 does not depend on it. |
+| 3 | **A1.1:** keep evidence in the DB: `create schema if not exists infra_evidence; revoke all on schema infra_evidence from public, anon, authenticated; create table infra_evidence.pgss_20261009 as select now() as captured_at, * from pg_stat_statements;` | **YES** (DDL) | none | One 4.6 MB spill; about 3 MB of table | `drop schema infra_evidence cascade;` after review | The table row count equals the pgss entry count. Not readable by anon or authenticated. |
+| 4 | **A1.2:** `select pg_stat_statements_reset();` | **YES** | none | 11.5 | None needed (statistics only) | Within 2 h the temp rate falls from ≈476 MB/h to **< 50 MB/h**. 0 cron `job startup timeout` in the following 24 h. Disk IO % consumed falls over the next day. **Stop rule:** if temp does not fall ≥80% in 2 h, the inferred caller is wrong; do not claim success, go to A5. |
+| 5 | **A3:** Free → Pro, and compute Nano → **Small** (Micro is the minimum) | **YES** (spend) | **< 2 min** restart (connections drop; in-flight cron runs fail once and retry on the next tick; Realtime reconnects) | Cost; a brief outage. Run at a quiet minute, not :00/:15/:30/:45. | Downgrade the compute size (another short restart) | `show work_mem` rises. A pgss read writes 0 temp. Disk IO % consumed < 1%/day for 3 days. Edge Function cap 500. |
+
+Do not do A4 (`track_utility` off) or A6 (Realtime publication) in this release. They need separate review, as you asked.
+
+### 11.4 Retention migration: safety (proven by `tests/sql/perf/run-db-bench.sh` §3 and production read-only checks)
+
+- **Deletes only history rows.** It touches `cron.job_run_details` only. `cron.job` is never written except to (re)schedule its own job by name, so no other schedule can change. The bench checks that `homatch-jobs-worker` survives.
+- **Never deletes an active run.** Rows with status `starting`/`running` are excluded, and anything newer than 7 days is excluded. The bench checks that a 30-day-old `running` row survives.
+- **No long locks.** DELETE takes row locks only, while pg_cron keeps inserting new rows. `lock_timeout 5s` means a call gives up rather than waits. No VACUUM FULL, no DDL on cron tables.
+- **No duplicate jobs.** It unschedules by name, then schedules. Applying it twice leaves exactly one job (bench).
+- **Bounded work.** At most 20,000 rows per call, walking the primary key; about 250–330 ms locally per call.
+- **Production prerequisites (read 2026-10-09):**
+  - pg_cron 1.6.4;
+  - `postgres` can DELETE on `cron.job_run_details` and is not superuser;
+  - the job and function do not exist yet;
+  - 0 runs are in progress.
+- **Independent of other migrations.** It defines one new function and one job, and reads no application table.
+
+### 11.5 Consequences of resetting pg_stat_statements
+
+- **What is lost:** per-query call counts, total and mean times, buffer and temp counters since 2026-08-28 (4,948 entries, 10.2 M calls). They feed the Dashboard's Query Performance page and the performance advisors. The cumulative `pg_stat_database`, `pg_stat_wal` and table counters are **not** reset.
+- **Preserved before reset:**
+  - `docs/infra/evidence/pgss-snapshot-2026-10-09.json`: per-role totals and the top statements by time, calls and temp, with no query text (utility statements can contain literals or secrets);
+  - step A1.1: the full in-database copy.
+- **Durability:** the fix decays as entries regrow (about 118/day observed; 1,366 of today's entries are migration and DDL bodies). Spills return after roughly 3 weeks unless A3 raises `work_mem` (or A4 stops utility entries). So **A1 is relief; A3 is the durable fix.**
+
+### 11.6 Post-change monitoring (read-only; for 72 h after each step)
+
+```sql
+-- temp and WAL rate: run twice, 1 h apart, and diff
+select now(), temp_files, temp_bytes, (select wal_bytes from pg_stat_wal) from pg_stat_database where datname = current_database();
+-- cron health (uses the primary key, no full scan)
+select status, left(return_message, 60), count(*) from cron.job_run_details
+ where runid > (select max(runid) - 2000 from cron.job_run_details) and start_time > now() - interval '1 hour' group by 1, 2;
+-- retention progress (one scan; run sparingly)
+select count(*) filter (where start_time < now() - interval '7 days') old_rows, pg_size_pretty(pg_total_relation_size('cron.job_run_details')) from cron.job_run_details;
+```
+
+Alert or roll back on any of:
+- temp > 200 MB/h after A1;
+- any `job startup timeout`;
+- a cron failure rate > 1%;
+- the retention run taking > 10 s;
+- Disk IO % consumed not falling within 24 h.
+
+### 11.7 Compatibility with main and parallel PRs
+
+- **Migration version.** It was renamed from `20261024090000` to `20261025090000`. PR #137 uses `20261024090000`…`130000`, so the old name collided. It now sorts after all of them. Future-dated names are the repository's convention, and the production ledger records the *apply-time* version (for example `20261003161647:marketplace_search_foundation`), so the filename date cannot reorder production. The gated `run_migrations` / `db push` path is not used; this migration is applied individually.
+- **Merges.** The branch now contains main (`04e0cd94`, #135). It merges cleanly with main and with #137; the `components.mjs` line was moved off #137's edit point.
+- **CI on #136 (run 248, before #135):**
+  - Browser: `findPropertyMarketplace.test.mjs:122` timed out. #137 passes that suite on current main, so a rerun on the merged head is expected to pass.
+  - Worker: `myhomeMarketplace.test.mjs` "MarketplaceSearchRequest drift" is **red on main itself since #135**. Reproduced locally on clean `origin/main` 04e0cd94 (28 pass, 1 fail). The fix (syncing `official-worker/src/marketplace/contract.ts`) belongs to the Find Property workstream and touches Railway worker code, so it is **not ported** into this infrastructure PR.

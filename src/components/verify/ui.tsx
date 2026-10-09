@@ -130,7 +130,7 @@ export type StatusTone = 'confirmed' | 'attention' | 'risk' | 'quiet';
 const TONE: Record<StatusTone, string> = {
   // Green survives, because it carries meaning that gold cannot: something
   // was positively established rather than merely emphasised.
-  confirmed: 'border-emerald-600/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300',
+  confirmed: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300',
   attention: 'border-[hsl(var(--gold-border))] bg-[hsl(var(--gold-soft))] text-[hsl(var(--gold-ink))]',
   risk: 'border-destructive/45 bg-destructive/10 text-destructive',
   // The absence of a finding. Present, legible, and not competing.

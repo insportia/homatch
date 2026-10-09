@@ -370,15 +370,16 @@ test('QA 71: three sources, one flat → ONE property, three listings, factual p
 });
 
 test('exact duplicate, likely same, possible same, distinct', () => {
-  const a = norm(F.listing({ sourceListingId: '1' }));
+  const a = norm(F.listing({ ...F.CONFIRMED_IDENTITY, sourceListingId: '1' }));
   assert.equal(classifyPair(a, norm(F.listing({ sourceListingId: '1' }))).tier, 'EXACT_DUPLICATE');
-  assert.equal(classifyPair(a, norm(F.listing({ source: 'source-b', sourceListingId: '9', price: 170000 }))).tier, 'LIKELY_SAME_PROPERTY');
+  assert.equal(classifyPair(a, norm(F.listing({ ...F.CONFIRMED_IDENTITY, source: 'source-b', sourceListingId: '9', price: 170000 }))).tier, 'LIKELY_SAME_PROPERTY');
   const possible = classifyPair(a, norm(F.listing({ source: 'source-b', sourceListingId: '9', floor: null, district: null, rooms: null })));
-  assert.equal(possible.tier, 'POSSIBLE_SAME_PROPERTY', 'area alone with the same city is not enough to merge');
+  assert.equal(possible.tier, 'DISTINCT_PROPERTY', 'area alone with the same city supplies no unit identity');
+  assert.equal(possible.conflict, null, 'missing evidence is not a contradiction');
   assert.equal(classifyPair(a, norm(F.listing({ source: 'source-b', sourceListingId: '9', areaSqm: 120 }))).tier, 'DISTINCT_PROPERTY');
   assert.equal(classifyPair(a, norm(F.listing({ source: 'source-b', sourceListingId: '9', floor: 2 }))).tier, 'DISTINCT_PROPERTY');
   const far = classifyPair(a, norm(F.listing({ source: 'source-b', sourceListingId: '9', price: 300000 })));
-  assert.equal(far.tier, 'POSSIBLE_SAME_PROPERTY', 'a 50% price gap is never merged unseen');
+  assert.equal(far.tier, 'DISTINCT_PROPERTY', 'price differences never establish unit identity');
 });
 
 test('false-merge protection: complete-linkage veto, same-source listings stay separate, possible pairs never merge', () => {
@@ -392,13 +393,14 @@ test('false-merge protection: complete-linkage veto, same-source listings stay s
   }
   const sameSource = resolveProperties([F.listing({ sourceListingId: 'P' }), F.listing({ sourceListingId: 'Q' })].map(norm));
   assert.equal(sameSource.clusters.length, 2, 'two listings on one site are two listings unless proven');
-  assert.equal(sameSource.possible.length, 1);
+  assert.equal(sameSource.possible.length, 0, 'generic dimensions do not even establish a related unit');
 });
 
-test('stronger evidence: a shared image hash or coordinates merge across sources only when the area agrees', () => {
+test('a single shared image hash cannot establish cross-source identity', () => {
   const x = norm(F.listing({ sourceListingId: 'h1', district: null, rooms: null, floor: null, imageHashes: ['ph:abc'] }));
   const y = norm(F.listing({ source: 'source-b', sourceListingId: 'h2', district: null, rooms: null, floor: null, imageHashes: ['ph:abc'] }));
-  assert.equal(classifyPair(x, y).tier, 'LIKELY_SAME_PROPERTY');
+  assert.equal(classifyPair(x, y).tier, 'POSSIBLE_SAME_PROPERTY');
+  assert.equal(resolveProperties([x, y]).clusters.length, 2);
   const z = norm(F.listing({ source: 'source-b', sourceListingId: 'h3', district: null, rooms: null, floor: null, imageHashes: ['ph:abc'], areaSqm: 140 }));
   assert.equal(classifyPair(x, z).tier, 'DISTINCT_PROPERTY');
 });
@@ -462,7 +464,7 @@ test('groups: best, owner opportunities, worth considering, more — no property
   const upgrade = out.properties.filter((p) => p.group === 'UPGRADE');
   assert.deepEqual(upgrade.map((p) => p.key), ['source-a:a-upgrade']);
   assert.ok(upgrade[0].upgrade.advantages.length >= 2);
-  assert.equal(upgrade[0].upgrade.overMaxPct, 0.035);
+  assert.equal(upgrade[0].upgrade.overMaxPct, 0.053);
 });
 
 test('pagination: a page at a time, bounded size, stable offsets', () => {
@@ -501,11 +503,11 @@ test('QA 70: a $155,000 property with no meaningful advantage is NOT recommended
   assert.deepEqual(picks, []);
 });
 
-test('upgrades: 0–5% preferred over 5–10%; advantages are measured facts; never more than three', () => {
+test('upgrades: only 5–10%; advantages are measured facts; never more than three', () => {
   const better = (key, price, band) => upgradeCase({ key, band, facts: { ...upgradeCase().facts, priceUsd: price, areaSqm: 108, pricePerSqmUsd: Math.round(price / 108), parking: true } });
   const picks = selectUpgrades([
-    baselineCase, better('e1', 164000, 'UPGRADE_EXTENDED'), better('p1', 156000, 'UPGRADE_PREFERRED'),
-    better('p2', 157000, 'UPGRADE_PREFERRED'), better('e2', 165000, 'UPGRADE_EXTENDED'), better('x', 165001, 'ABOVE_CEILING'),
+    { ...baselineCase, facts: { ...baselineCase.facts, parking: false } }, better('e1', 164000, 'UPGRADE_EXTENDED'), better('p1', 157500, 'UPGRADE_PREFERRED'),
+    better('p2', 158000, 'UPGRADE_EXTENDED'), better('e2', 165000, 'UPGRADE_EXTENDED'), better('x', 165001, 'ABOVE_CEILING'), better('too-small', 156000, 'UPGRADE_PREFERRED'),
   ], { maxUsd: 150000, districts: ['Vake'] });
   assert.equal(picks.length, MAX_UPGRADE_RECOMMENDATIONS);
   assert.deepEqual(picks.map((p) => p.key).slice(0, 2).sort(), ['p1', 'p2']);

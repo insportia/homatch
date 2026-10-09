@@ -32,13 +32,44 @@ export function parsePublicPage(html: string, url: string, statementId?: string)
     if (!applied || typeof applied !== 'object') return false;
     // Reject homepage/cache/unfiltered or wrong-page responses, including lost
     // bracketed room, bedroom and status filters. Never accept HTTP 200 alone.
-    return Object.keys(applied).length === [...expected.keys()].length &&
-      [...expected].every(([name, value]) => String(applied[name]) === value);
+    const names = [...new Set(expected.keys())];
+    return Object.keys(applied).length === names.length && names.every(name => {
+      const actual = Array.isArray(applied[name]) ? applied[name].map(String) : [String(applied[name])];
+      const values = expected.getAll(name);
+      return actual.length === values.length && actual.every((value: string, index: number) => value === values[index]);
+    });
   });
   if (matches.length !== 1) fail('Public page does not confirm the requested search or property');
   const payload = matches[0].state.data;
   if (payload?.result !== true || (statementId ? String(payload.data?.statement?.id) !== statementId : !Array.isArray(payload.data?.data))) fail('Invalid public listing envelope');
   return payload;
+}
+
+
+async function rejectionDiagnostic(response: Response) {
+  // Keep only classification and public response headers. Never log cookies,
+  // challenge tokens or the response body, and never solve/retry a restriction.
+  const reader = response.body?.getReader();
+  let sample = '', bytes = 0;
+  if (reader) {
+    try {
+      while (bytes < 16384) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        const slice = chunk.value.subarray(0, 16384 - bytes);
+        bytes += slice.length;
+        sample += new TextDecoder().decode(slice);
+      }
+    } catch { /* HTTP status remains authoritative if the body is unavailable. */ }
+    finally { await reader.cancel().catch(() => {}); }
+  }
+  const mitigated = response.headers.get('cf-mitigated');
+  const classification = /g-recaptcha|h-captcha|cf-turnstile|challenges\.cloudflare\.com\/turnstile/i.test(sample)
+    ? 'CAPTCHA_REQUIRED'
+    : mitigated === 'challenge' || /cf_chl_|challenge-platform/i.test(sample)
+      ? 'CHALLENGE_REQUIRED' : 'ACCESS_RESTRICTED';
+  const server = (response.headers.get('server') ?? 'unknown').replace(/[^a-zA-Z0-9._-]/g, '').slice(0, 40);
+  return `HTTP ${response.status}; ${classification}; server=${server}; request stopped`;
 }
 
 export async function publicPage(url: string, fetcher: typeof fetch = fetch, statementId?: string) {
@@ -50,7 +81,7 @@ export async function publicPage(url: string, fetcher: typeof fetch = fetch, sta
     const e = error as Error & {cause?:{code?:string}};
     throw new AcquisitionError(url, null, `${e.message}${e.cause?.code ? ` (${e.cause.code})` : ''}`);
   }
-  if (!response.ok) throw new AcquisitionError(url, response.status, `HTTP ${response.status}; request stopped`);
+  if (!response.ok) throw new AcquisitionError(url, response.status, response.status === 401 || response.status === 403 ? await rejectionDiagnostic(response) : `HTTP ${response.status}; request stopped`);
   const payload = parsePublicPage(await response.text(), url, statementId);
   return {url, status:response.status, payload};
 }
